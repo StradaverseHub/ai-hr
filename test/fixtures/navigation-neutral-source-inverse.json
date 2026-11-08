@@ -1,0 +1,1519 @@
+{
+  "schema": "aihr-navigation-source-inverse/v1",
+  "base": "a90d22e287f487e8959cfb3a3c4e0b7402b8029c",
+  "claim": "Exact predecessor source reconstruction only, never runtime or authority evidence",
+  "files": [
+    {
+      "path": "app/admin/attendance/schedule/group-sections.tsx",
+      "predecessorSha256": "d92bc98216b5c73ac0dc14bb35b65f2f7dd102995e333b8f72899aac35f1496f",
+      "candidateSha256": "fa9d2aaec7f64a757c37b4e2243a2e834896290ce31b61ba82316fb4fc3ea6ed",
+      "edits": [
+        {
+          "afterStart": 28,
+          "after": [
+            "  SCHEDULE_RENDERED_SECTIONS,\n"
+          ],
+          "before": []
+        },
+        {
+          "afterStart": 675,
+          "after": [
+            "        tabs={SCHEDULE_RENDERED_SECTIONS.map(section=>({id:section.key,navigationId:section.navigationId,label:SECTION_LABEL[section.key],body:bodyFor[section.key]}))}/>\n"
+          ],
+          "before": [
+            "        tabs={(['general','attendance','overtime','workingDay'] as const).map(key=>({id:key,label:SECTION_LABEL[key],body:bodyFor[key]}))}/>\n"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "app/admin/attendance/schedule/sections.ts",
+      "predecessorSha256": "c37c975cadd709a8844eb86cb3c657c391eafd5496f5be46b3175a240b62061a",
+      "candidateSha256": "8a550cc556a5fd98e8c4bfea4827902c4aa83f1e567a203d3cf00f0cd2cd662a",
+      "edits": [
+        {
+          "afterStart": 40,
+          "after": [
+            "export const SCHEDULE_SECTION_DEFINITIONS = [\n",
+            "  {key:'general', navigationId:'nested.scheduleGroup.general', builtOrder:0, renderOrder:0},\n",
+            "  {key:'workingDay', navigationId:'nested.scheduleGroup.workingDay', builtOrder:3, renderOrder:3},\n",
+            "  {key:'holiday', navigationId:'nested.scheduleGroup.holiday', builtOrder:null, renderOrder:null},\n",
+            "  {key:'overtime', navigationId:'nested.scheduleGroup.overtime', builtOrder:1, renderOrder:2},\n",
+            "  {key:'attendance', navigationId:'nested.scheduleGroup.attendance', builtOrder:2, renderOrder:1},\n",
+            "  {key:'request', navigationId:'nested.scheduleGroup.request', builtOrder:null, renderOrder:null},\n",
+            "  {key:'notification', navigationId:'nested.scheduleGroup.notification', builtOrder:null, renderOrder:null},\n"
+          ],
+          "before": [
+            "export const SCHEDULE_SECTION_KEYS = [\n",
+            "  'general',\n",
+            "  // r429 (f6819e19) \u00b7 D7 \u2014 WORKING DAY MOVES TO SECOND. It used to be listed seventh, appended after\n",
+            "  // 07ebd04d gave it storage; this round makes it the section the reporter now opens the page FOR \u2014 the\n",
+            "  // Shift page's own week row is retired (D1), so this is the only place a working week is set at all \u2014\n",
+            "  // and asks it to carry the live \"Shifts in this group\" preview beside it. The other five keep their\n",
+            "  // relative order.\n",
+            "  'workingDay',\n",
+            "  'holiday',\n",
+            "  'overtime',\n",
+            "  'attendance',\n",
+            "  'request',\n",
+            "  'notification',\n"
+          ]
+        },
+        {
+          "afterStart": 49,
+          "after": [
+            "export type ScheduleSectionKey = (typeof SCHEDULE_SECTION_DEFINITIONS)[number]['key'];\n",
+            "export const SCHEDULE_SECTION_KEYS:readonly ScheduleSectionKey[] = SCHEDULE_SECTION_DEFINITIONS.map(section=>section.key);\n",
+            "/** Current group-sections owner renders these FOUR, in this exact order. The\n",
+            " * three unsupported definitions stay declared without inventing visible tabs. */\n",
+            "type RenderedSection=Extract<(typeof SCHEDULE_SECTION_DEFINITIONS)[number],{renderOrder:number}>;\n",
+            "export const SCHEDULE_RENDERED_SECTIONS:readonly RenderedSection[] = SCHEDULE_SECTION_DEFINITIONS\n",
+            "  .filter((section):section is RenderedSection=>section.renderOrder!==null).sort((a,b)=>a.renderOrder-b.renderOrder);\n"
+          ],
+          "before": []
+        },
+        {
+          "afterStart": 57,
+          "after": [],
+          "before": [
+            "export type ScheduleSectionKey = (typeof SCHEDULE_SECTION_KEYS)[number];\n"
+          ]
+        },
+        {
+          "afterStart": 59,
+          "after": [
+            "type BuiltSection=Extract<(typeof SCHEDULE_SECTION_DEFINITIONS)[number],{builtOrder:number}>;\n",
+            "export const SCHEDULE_BUILT_SECTIONS:readonly BuiltSection['key'][] = SCHEDULE_SECTION_DEFINITIONS\n",
+            "  .filter((section):section is BuiltSection=>section.builtOrder!==null).sort((a,b)=>a.builtOrder-b.builtOrder).map(section=>section.key);\n"
+          ],
+          "before": [
+            "export const SCHEDULE_BUILT_SECTIONS = ['general', 'overtime', 'attendance', 'workingDay'] as const;\n"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "app/admin/leave-config/records/page.tsx",
+      "predecessorSha256": "79cc6f177e05663727eb1b58f4e249a9929f6c96bed00ab6a919d46aa783e2df",
+      "candidateSha256": "071402c294e0e2d71e788346fdd8da75d202bd01b647ebf44ddc35f6028e6439",
+      "edits": [
+        {
+          "afterStart": 7,
+          "after": [
+            "  leaveConfigRecordNavigation,\n"
+          ],
+          "before": []
+        },
+        {
+          "afterStart": 88,
+          "after": [
+            "                <span aria-current=\"page\" className={tab(true)} data-navigation-destination={leaveConfigRecordNavigation(id).navigationId}>\n"
+          ],
+          "before": [
+            "                <span aria-current=\"page\" className={tab(true)}>\n"
+          ]
+        },
+        {
+          "afterStart": 92,
+          "after": [
+            "                <Link href={leaveConfigRecordHref(id)} className={tab(false)} data-navigation-destination={leaveConfigRecordNavigation(id).navigationId}>\n"
+          ],
+          "before": [
+            "                <Link href={leaveConfigRecordHref(id)} className={tab(false)}>\n"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "app/admin/organization/[companyId]/view/page.tsx",
+      "predecessorSha256": "fdb4dc65ca1793c30a6520826e541c090179c2de0fe5a70469fffbfb5d890ab9",
+      "candidateSha256": "fea9f5d4d18e8efeddcb6d8cc7066bbc6718f86b5a0f83a803554d0f110b4a4f",
+      "edits": [
+        {
+          "afterStart": 16,
+          "after": [
+            "import { COMPANY_PANEL_TABS, companyPanelNavigation, isCompanyPanelTab, type CompanyPanelTab } from '@/lib/company-panel-tabs';\n"
+          ],
+          "before": [
+            "import { COMPANY_PANEL_TABS, isCompanyPanelTab, type CompanyPanelTab } from '@/lib/company-panel-tabs';\n"
+          ]
+        },
+        {
+          "afterStart": 129,
+          "after": [
+            "            data-navigation-destination={companyPanelNavigation(k).navigationId}\n"
+          ],
+          "before": []
+        }
+      ]
+    },
+    {
+      "path": "app/control-tower/agents/sections.ts",
+      "predecessorSha256": "b51f39b0475c214db87e5bfb35a409a8562d77fbbfe54ca697272d6fa3cf7588",
+      "candidateSha256": "12287ca12751e093f099bf7f9628d26de575b9b56855322951ebc897771a6997",
+      "edits": [
+        {
+          "afterStart": 7,
+          "after": [
+            "export const AI_MANAGEMENT_SECTION_DEFINITIONS = [\n",
+            " {key:'overview',navigationId:'nested.aiManagement.overview',path:''},\n",
+            " {key:'provider',navigationId:'nested.aiManagement.provider',path:'/provider'},\n",
+            " {key:'assistant',navigationId:'nested.aiManagement.assistant',path:'/assistant'},\n",
+            " {key:'features',navigationId:'nested.aiManagement.features',path:'/features'},\n",
+            " {key:'allowances',navigationId:'nested.aiManagement.allowances',path:'/allowances'},\n",
+            " {key:'spending',navigationId:'nested.aiManagement.spending',path:'/spending'},\n",
+            " {key:'orchestrator',navigationId:'nested.aiManagement.orchestrator',path:'/orchestrator'},\n",
+            " {key:'runs',navigationId:'nested.aiManagement.runs',path:'/runs'},\n",
+            "] as const;\n",
+            "export type AiManagementSection = (typeof AI_MANAGEMENT_SECTION_DEFINITIONS)[number]['key'];\n",
+            "export const AI_MANAGEMENT_SECTIONS:readonly AiManagementSection[] = AI_MANAGEMENT_SECTION_DEFINITIONS.map(section=>section.key);\n",
+            "export function aiManagementNavigation(section:AiManagementSection){\n",
+            " const definition=AI_MANAGEMENT_SECTION_DEFINITIONS.find(item=>item.key===section);\n",
+            " if(!definition)throw Error('Unknown AI management navigation descriptor');return definition;\n",
+            "}\n"
+          ],
+          "before": [
+            "export const AI_MANAGEMENT_SECTIONS = ['overview','provider','assistant','features','allowances','spending','orchestrator','runs'] as const;\n",
+            "export type AiManagementSection = (typeof AI_MANAGEMENT_SECTIONS)[number];\n"
+          ]
+        },
+        {
+          "afterStart": 29,
+          "after": [
+            " overview:aiManagementNavigation('overview').path,\n",
+            " provider:aiManagementNavigation('provider').path,\n",
+            " assistant:aiManagementNavigation('assistant').path,\n",
+            " features:aiManagementNavigation('features').path,\n",
+            " allowances:aiManagementNavigation('allowances').path,\n",
+            " spending:aiManagementNavigation('spending').path,\n",
+            " orchestrator:aiManagementNavigation('orchestrator').path,\n",
+            " runs:aiManagementNavigation('runs').path\n"
+          ],
+          "before": [
+            "  overview:'',provider:'/provider',assistant:'/assistant',features:'/features',allowances:'/allowances',spending:'/spending',orchestrator:'/orchestrator',runs:'/runs',\n"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "app/lifecycle/v9/workspace.tsx",
+      "predecessorSha256": "7a557492c696882b6022f79518ebefe7de130b5386ff4e99d3bbd219f85a83f2",
+      "candidateSha256": "426475f059a69193145a03092a16005c6ecb009a18ecbdf5674254c9ad126ba5",
+      "edits": [
+        {
+          "afterStart": 2,
+          "after": [
+            "import { V9_NAVIGATION, v9NavigationDescriptor, type V9WorkspaceView } from '@/lib/lifecycle-v9-navigation';\n"
+          ],
+          "before": [
+            "import { V9_NAVIGATION, type V9WorkspaceView } from '@/lib/lifecycle-v9-navigation';\n"
+          ]
+        },
+        {
+          "afterStart": 87,
+          "after": [
+            "  const nav = (key: View, icon: ReactNode) => <button key={key} data-navigation-destination={v9NavigationDescriptor(key).navigationId} type=\"button\" aria-current={view === key ? 'page' : undefined} onClick={() => navigate(key)}>{icon}<span>{titles[key]}</span></button>;\n"
+          ],
+          "before": [
+            "  const nav = (key: View, icon: ReactNode) => <button key={key} type=\"button\" aria-current={view === key ? 'page' : undefined} onClick={() => navigate(key)}>{icon}<span>{titles[key]}</span></button>;\n"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "app/performance/onehr/admin-shell.tsx",
+      "predecessorSha256": "a06f7bfe0063c00999cde2ddeb1ca773f6048979c8270631ea7f215bbb248ccc",
+      "candidateSha256": "8fae1f1865136a214318e274a38d6f5af2279f86e6dbf25a5f25e600dcce3dc2",
+      "edits": [
+        {
+          "afterStart": 3,
+          "after": [
+            "import { adminNavigationIdentity, adminPageHref, adminSection, adminSectionHref, adminSectionList, visibleAdminPages, type AdminSection } from '@/packs/performance/onehr/admin-sections';\n"
+          ],
+          "before": [
+            "import { adminPageHref, adminSection, adminSectionHref, adminSectionList, visibleAdminPages, type AdminSection } from '@/packs/performance/onehr/admin-sections';\n"
+          ]
+        },
+        {
+          "afterStart": 38,
+          "after": [
+            "                data-navigation-destination={adminNavigationIdentity(s.key)}\n"
+          ],
+          "before": []
+        },
+        {
+          "afterStart": 60,
+          "after": [
+            "                data-navigation-destination={adminNavigationIdentity(current.key,x.key)}\n"
+          ],
+          "before": []
+        },
+        {
+          "afterStart": 74,
+          "after": [
+            "                  data-navigation-destination={adminNavigationIdentity(current.key,active.key,p.key)}\n"
+          ],
+          "before": []
+        }
+      ]
+    },
+    {
+      "path": "components/ai-centre/centre-tabs.tsx",
+      "predecessorSha256": "acc49958d53a1d789c88cc19ee630a3d23e1d8bb802b082c11fef6fdfe2f3f10",
+      "candidateSha256": "f5572bb874d63b266deb0883a9bbc69b2f88eedb2c26f9eac20a498e0f39f44f",
+      "edits": [
+        {
+          "afterStart": 8,
+          "after": [
+            "import {aiManagementNavigation} from '@/app/control-tower/agents/sections';\n"
+          ],
+          "before": []
+        },
+        {
+          "afterStart": 38,
+          "after": [
+            "              <Link data-navigation-destination={tab.navigationId} href={tab.href} aria-current={current ? 'page' : undefined}\n"
+          ],
+          "before": [
+            "              <Link href={tab.href} aria-current={current ? 'page' : undefined}\n"
+          ]
+        },
+        {
+          "afterStart": 67,
+          "after": [
+            "            <Link data-navigation-destination={section.navigationId} href={section.href} aria-current={section.key === active ? 'page' : undefined}\n"
+          ],
+          "before": [
+            "            <Link href={section.href} aria-current={section.key === active ? 'page' : undefined}\n"
+          ]
+        },
+        {
+          "afterStart": 102,
+          "after": [
+            "        <Link key={item.section} data-navigation-destination={aiManagementNavigation(item.section).navigationId} href={hrefOf(item.section)} aria-current={item.section === active ? 'page' : undefined}\n"
+          ],
+          "before": [
+            "        <Link key={item.section} href={hrefOf(item.section)} aria-current={item.section === active ? 'page' : undefined}\n"
+          ]
+        },
+        {
+          "afterStart": 119,
+          "after": [
+            "        <Link key={item.page} data-navigation-destination={item.navigationId} href={item.href} aria-current={item.page === active ? 'page' : undefined}\n"
+          ],
+          "before": [
+            "        <Link key={item.page} href={item.href} aria-current={item.page === active ? 'page' : undefined}\n"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "components/company-panel.tsx",
+      "predecessorSha256": "c51f5743b718cee1c0ae7036239a6b9becaa39f254f17924db1b31ff4583b29e",
+      "candidateSha256": "66f68765e51d4f847febcd40c8ff1b04a779623e4c95a5bacf85b62dba3d6df6",
+      "edits": [
+        {
+          "afterStart": 10,
+          "after": [
+            "import { companyPanelNavigation, type CompanyPanelTab } from '@/lib/company-panel-tabs';\n"
+          ],
+          "before": [
+            "import { type CompanyPanelTab } from '@/lib/company-panel-tabs';\n"
+          ]
+        },
+        {
+          "afterStart": 66,
+          "after": [
+            "  navigationId,\n"
+          ],
+          "before": []
+        },
+        {
+          "afterStart": 71,
+          "after": [
+            "  navigationId: string;\n"
+          ],
+          "before": []
+        },
+        {
+          "afterStart": 81,
+          "after": [
+            "      data-navigation-destination={navigationId}\n"
+          ],
+          "before": []
+        },
+        {
+          "afterStart": 847,
+          "after": [
+            "          <TabButton navigationId={companyPanelNavigation('general').navigationId} active={tab === 'general'} onClick={() => selectTab('general')}>\n"
+          ],
+          "before": [
+            "          <TabButton active={tab === 'general'} onClick={() => selectTab('general')}>\n"
+          ]
+        },
+        {
+          "afterStart": 852,
+          "after": [
+            "          <TabButton navigationId={companyPanelNavigation('bank').navigationId} active={tab === 'bank'} onClick={() => selectTab('bank')}>\n"
+          ],
+          "before": [
+            "          <TabButton active={tab === 'bank'} onClick={() => selectTab('bank')}>\n"
+          ]
+        },
+        {
+          "afterStart": 855,
+          "after": [
+            "          <TabButton navigationId={companyPanelNavigation('statutory').navigationId} active={tab === 'statutory'} onClick={() => selectTab('statutory')}>\n"
+          ],
+          "before": [
+            "          <TabButton active={tab === 'statutory'} onClick={() => selectTab('statutory')}>\n"
+          ]
+        },
+        {
+          "afterStart": 861,
+          "after": [
+            "        <div data-navigation-panel={companyPanelNavigation('general').navigationId} className={cn('space-y-4', tab === 'general' ? '' : 'hidden')}>\n"
+          ],
+          "before": [
+            "        <div className={cn('space-y-4', tab === 'general' ? '' : 'hidden')}>\n"
+          ]
+        },
+        {
+          "afterStart": 1190,
+          "after": [
+            "        <div data-navigation-panel={companyPanelNavigation('bank').navigationId} className={cn('space-y-4', tab === 'bank' ? '' : 'hidden')}>\n"
+          ],
+          "before": [
+            "        <div className={cn('space-y-4', tab === 'bank' ? '' : 'hidden')}>\n"
+          ]
+        },
+        {
+          "afterStart": 1300,
+          "after": [
+            "        <div data-navigation-panel={companyPanelNavigation('statutory').navigationId} className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>\n"
+          ],
+          "before": [
+            "        <div className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>\n"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "components/leave-config-map.tsx",
+      "predecessorSha256": "71db1ddcfab580904b3ab30811c5ae9feb3922530e383fda91f38dd7cac2e1e6",
+      "candidateSha256": "e72ff135733e2091727fcbc3a7935ee856ad189218a03f550545d88007d0b3c6",
+      "edits": [
+        {
+          "afterStart": 53,
+          "after": [
+            "export * from '@/lib/leave-config-navigation';\n",
+            "import {LEAVE_CONFIG_MAP,leaveConfigGroupOf,type LeaveConfigScreenId,type LeaveConfigGroupId,type MappedLeaveConfigScreenId} from '@/lib/leave-config-navigation';\n"
+          ],
+          "before": [
+            "/** Every screen in the area. The id is also its label key and its page heading. */\n",
+            "export type LeaveConfigScreenId =\n",
+            "  /**\n",
+            "   * a6fe37fc \u2014 `companyRules` JOINED THE MAP AT THE ROUND 5 CUTOVER, one line, exactly as planned.\n",
+            "   *\n",
+            "   * Round 3 built it as a screen id with NO map entry: it is the one genuinely new destination in the\n",
+            "   * redesign (IA \u00a72.0.3) \u2014 four settings that belong to a company or the tenant, then spread across three\n",
+            "   * screens and one step inside every leave type \u2014 and it was live ALONGSIDE those surfaces, so listing\n",
+            "   * it beside the ones it would absorb would have put two entries for one job in front of the\n",
+            "   * administrator. Carrying the id early is what made this a one-line addition rather than a rename of a\n",
+            "   * screen the customer had already learned.\n",
+            "   *\n",
+            "   * `replacementLeave` and `payrollImpact` are now the ids with no map entry, for the mirror-image\n",
+            "   * reason: their screens are gone and their settings are ON Company rules, so the ids survive only as\n",
+            "   * the SECTION headings there (`leaveConfigScreenTitle('replacementLeave')`).\n",
+            "   *\n",
+            "   * \u2500\u2500 the Round 3 note this replaces, kept because it explains why the id existed before the entry \u2500\u2500\n",
+            "   *\n",
+            "   * `/admin/leave-config/company-rules` is the one genuinely new destination in the redesign (IA \u00a72.0.3):\n",
+            "   * four settings that belong to a company or the tenant, today spread across three screens and one step\n",
+            "   * inside every leave type. It is built ALONGSIDE those surfaces and replaces none of them yet, so it is\n",
+            "   * deliberately absent from `LEAVE_CONFIG_MAP` below \u2014 the map is the customer's MENU and the menu moves\n",
+            "   * at the Round 5 cutover, one commit per screen. Listing a half-migrated screen beside the ones it will\n",
+            "   * absorb would put two entries for one job in front of the administrator.\n",
+            "   *\n",
+            "   * The id exists now for two reasons that both cost a round if deferred: the new page must be able to\n",
+            "   * render the map at all (every leave-config screen reaching every other is the defect this component\n",
+            "   * was built for), and `leaveConfigScreenTitle('companyRules')` gives that page its heading from the\n",
+            "   * SAME key the menu entry will use \u2014 so Round 5 adds one line to the list rather than renaming a\n",
+            "   * screen the customer has already learned. Every other id below is on the map; this one joins it there.\n",
+            "   */\n",
+            "  | 'companyRules'\n",
+            "  | 'leaveTypes'\n",
+            "  | 'entitlementTables'\n",
+            "  /**\n",
+            "   * r279 (3fbf7a02) \u2014 `balanceHealth` (`/admin/leave-config/balance-health`), a SIBLING of the two\n",
+            "   * Entitlements tabs and not a third one of them.\n",
+            "   *\n",
+            "   * The traffic-light listing \u2014 which leave types can produce a balance at all, and what is missing\n",
+            "   * before the rest can \u2014 was drawn at page level on the Leave types tab and named NOWHERE in the menu.\n",
+            "   * The screen that explains a 0.00 balance was the screen you had to already know about before you\n",
+            "   * could find it, so it takes a fly-out row of its own, directly under Entitlements, and a group of its\n",
+            "   * own here. A THIRD ITEM in the entitlements group would have been the wrong shape: it reads EVERY\n",
+            "   * leave type at once, which is the one thing neither of that row's two tabs does.\n",
+            "   */\n",
+            "  | 'balanceHealth'\n",
+            "  | 'approvalChain'\n",
+            "  | 'replacementLeave'\n",
+            "  | 'payrollImpact'\n",
+            "  | 'generateEntitlement'\n",
+            "  /**\n",
+            "   * r281 (09386e29) \u2014 `earnedAccrual` (`/admin/leave-config/earned-accrual`), a NEIGHBOUR of Generate\n",
+            "   * Entitlement and not a section inside it.\n",
+            "   *\n",
+            "   * Run earned accrual was filed underneath the generation wizard, which is the one operation it must\n",
+            "   * never be confused with: Generate Entitlement CREATES a leave year's entitlement, while this tops up\n",
+            "   * what has already been earned and not yet posted. Filing the second inside the first put an operator\n",
+            "   * one scroll away from the wrong button. It is run regularly (fifteen recorded runs, the latest the day\n",
+            "   * before this round), so it takes a row of its own \u2014 directly after Generate Entitlement, so the two\n",
+            "   * stay neighbours without one being filed inside the other.\n",
+            "   */\n",
+            "  | 'earnedAccrual'\n",
+            "  | 'adjustments'\n",
+            "  /**\n",
+            "   * 3fb1a611 (r299) \u2014 `leaveCredit` (`/admin/leave-config/leave-credit`) and `leaveCreditRules`\n",
+            "   * (`/admin/leave-config/leave-credit/rules`): the Credits and Rules TABS of the Leave Credit row, directly\n",
+            "   * after Leave Adjustments. Credits lists every Replacement Leave credit movement (earned through a request,\n",
+            "   * added by HR, used, reversed, expired) with its history; Rules is the replacement-leave policy that left\n",
+            "   * Company rules. Two routes, the house shape for a row with tabs (Leave Adjustments' two are the precedent),\n",
+            "   * so the tab row is this component's and no page draws a strip of its own.\n",
+            "   */\n",
+            "  | 'leaveCredit'\n",
+            "  | 'leaveCreditRules'\n",
+            "  | 'importLeaveData'\n",
+            "  /**\n",
+            "   * 3f15ffdb (r362) \u2014 `leaveHistoryImport` (`/admin/leave-config/history-import`), the RECORD half of a\n",
+            "   * migration, a row and a group of its own directly after Leave Adjustments.\n",
+            "   *\n",
+            "   * A GROUP OF ONE, not a third tab of the `adjustments` group, and the distinction is the item. A tab\n",
+            "   * there would inherit that row's heading and description \u2014 \"adjust balances\" \u2014 which is precisely\n",
+            "   * what this tool must never be read as doing: an imported record moves no balance at all. Taking a\n",
+            "   * group of its own is also what this component's own rule requires (every fly-out row whose\n",
+            "   * destination lives under app/admin/leave-config IS a group, one for one, in order), and it is what\n",
+            "   * makes `leaveConfigPageHeader` give the page its OWN row heading. The tab strip draws nothing for a\n",
+            "   * group of one \u2014 Balance Health, Run earned accrual and Special Setting are the precedents.\n",
+            "   *\n",
+            "   * Its sibling `importLeaveData` keeps its id, its route and its stored role configs and changes only\n",
+            "   * its LABEL, to \"Leave Balance Import\": two near-identical names for two tools that do opposite\n",
+            "   * things is the confusion the pair would otherwise create.\n",
+            "   */\n",
+            "  | 'leaveDataImport'\n",
+            "  | 'leaveHistoryImport'\n",
+            "  /**\n",
+            "   * db55d08a (r369) \u2014 `leaveBfImport` (`/admin/leave-config/bf-import`), the OPENING-FIGURE third of a\n",
+            "   * migration, a row and a group of its own directly after Leave History Data Import.\n",
+            "   *\n",
+            "   * A GROUP OF ITS OWN for the same reason its neighbour is one, and the reason is sharper here. A tab of\n",
+            "   * `leaveHistoryImport` would inherit that row's heading and description \u2014 \"load past leave records\" \u2014\n",
+            "   * and this tool creates no leave record at all. A tab of `adjustments` would inherit \"change an\n",
+            "   * employee's balance by hand\", which describes the wrong mechanism: this writes a dated ledger\n",
+            "   * adjustment that a leave year OPENS with. The group is of one, so `LeaveConfigMap` draws no tab strip.\n",
+            "   *\n",
+            "   * WHY IT IS A THIRD IMPORTER AND NOT A COLUMN ON AN EXISTING ONE: Brought Forward is DERIVED, never\n",
+            "   * stored (`core/read.ts`'s `priorBalance`). Producing it through the balance importer requires knowing\n",
+            "   * that the line must be dated in the PREVIOUS leave year AND must be an `adjustment`; an `accrual`\n",
+            "   * dated inside the year satisfies `yearOpenMarkerCond` and makes Generate Entitlement grant that\n",
+            "   * employee nothing for the whole year. See core/leave-bf-import.ts.\n",
+            "   */\n",
+            "  | 'leaveBfImport'\n",
+            "  | 'entitlementArchive'\n",
+            "  | 'ledgerArchive'\n",
+            "  /**\n",
+            "   * r281 (a73d1e14) \u2014 `specialSetting` (`/admin/leave-config/special-setting`), the LAST row, holding\n",
+            "   * Half Day Deduction.\n",
+            "   *\n",
+            "   * The reporter drew three levels \u2014 Leave Config, then Special Setting, then Half Day Deduction under\n",
+            "   * it. THE RAIL IS TWO LEVELS: `NavChildDescriptor` (packs/registry.ts) carries href/labelKey/icon and\n",
+            "   * no `children`, so a row cannot hold a row. The answer is the house's own single-screen shape:\n",
+            "   * Special Setting is the ROW and Half Day Deduction is the page it opens \u2014 same destination, same\n",
+            "   * grouping, one click instead of two. The plan says this to the reporter in those words and offers\n",
+            "   * reject-and-say-so.\n",
+            "   *\n",
+            "   * \u26a0\ufe0f THE ID IS THE ROW, NOT THE SETTING, and that is deliberate. A second special setting later becomes\n",
+            "   * a second ITEM in this group, and the tab strip appears by itself with the row's name unchanged. An id\n",
+            "   * named for the half-day rule would have had to be renamed on that day, which is the rename of a screen\n",
+            "   * the customer has already learned that this component exists to avoid.\n",
+            "   */\n",
+            "  | 'specialSetting';\n",
+            "\n",
+            "/**\n",
+            " * 10b59703 \u2014 GROUPED BY THE ROWS OF THE LEFT SUBMENU, and nothing else.\n",
+            " *\n",
+            " * \u26a0\ufe0f 5ca446db (r269) \u2014 THE FLY-OUT HAS ONE MORE ROW THAN THIS MAP HAS GROUPS, AND THAT IS CORRECT.\n",
+            " * (r279: seven rows, six groups. The counts move; the RULE below does not, which is why it is written as\n",
+            " * a rule rather than as two numbers. Every row whose destination is a page under\n",
+            " * `app/admin/leave-config/**` IS a group here, one for one, in the same order \u2014 including a row that owns\n",
+            " * a single screen, whose tab row then renders nothing. The ONE row that is not a group is the one whose\n",
+            " * destination is not a Leave Config page at all:)\n",
+            " * The LAST row (\"Employee Leave Inquiry\", packs/leave/index.ts LEAVE_ADMIN_NAV, last child) opens\n",
+            " * `/leave/employee-balances` \u2014 a LEAVE INQUIRY screen that is not a Leave Config screen: it has no page\n",
+            " * under `app/admin/leave-config/**`, it is registered on its own `leaveEmployeeBalances` permission\n",
+            " * column rather than on `leaveConfig`, and its heading comes from its own PageHeader\n",
+            " * (`leave.inquiry.balancesTitle`), not from `leaveConfigPageHeader`. Adding a group for it here would make\n",
+            " * `leaveConfigPageHeader` claim a page it does not own and would break\n",
+            " * test/leave-config-map.test.ts's \"every screen here IS a declared route on its screen key\". The\n",
+            " * row\u2194group agreement below is therefore pinned as \"the map groups ARE the rows whose destinations live\n",
+            " * under the module, in order\", with the one exception named explicitly \u2014 see\n",
+            " * test/leave-config-map.test.ts and test/r266-leave-config-rows.test.ts.\n",
+            " * This note is here because the next person WILL assume the row belongs in this list.\n",
+            " *\n",
+            " * Until r266 the groups were configure / run / history and the component rendered ALL nine screens as a\n",
+            " * pill row on every page \u2014 fourteen navigation controls on the Entitlements landing before the content\n",
+            " * started, five of them duplicating a submenu row beside them, and two screens each named twice on one\n",
+            " * page (\"Configuration record\" in the header, \"Entitlement archive\" in the pills). The reporter's\n",
+            " * instruction was that the submenu IS the navigation. So:\n",
+            " *\n",
+            " *   \u00b7 a group is a submenu ROW (`packs/leave/index.ts` LEAVE_ADMIN_NAV, same order, same set);\n",
+            " *   \u00b7 the first item of every group is the row's own href \u2014 that agreement is pinned by\n",
+            " *     test/leave-config-map.test.ts, not derived, for the same reason the permission registry is not\n",
+            " *     derived from (see the header above);\n",
+            " *   \u00b7 `LeaveConfigMap` renders ONLY the current group's items, as the page's own tab row, and renders\n",
+            " *     nothing at all when the row owns one screen (Generate Entitlement, Approval Workflow, Company rules);\n",
+            " *   \u00b7 the page HEADING is the ROW's label (`leaveConfigRowTitle`), and the map item label is the TAB's\n",
+            " *     label. One screen, one name, in exactly one place each.\n",
+            " *\n",
+            " * `leaveConfigScreenHref` is unchanged: every cross-screen link still resolves through the one list.\n",
+            " */\n",
+            "export type LeaveConfigGroupId =\n",
+            "  | 'entitlements'\n",
+            "  // r279 (3fbf7a02) \u2014 a one-screen row, like `generate`, `approval` and `companyRules` below it: the\n",
+            "  // tab row renders nothing for it, and the group exists so the page reads its heading and description\n",
+            "  // through the same helper every other Leave Config page does.\n",
+            "  | 'balanceHealth'\n",
+            "  | 'adjustments'\n",
+            "  // 3f15ffdb (r362) \u2014 a one-screen row directly after Leave Adjustments (see the screen id's note\n",
+            "  // above for why it is a group of its own rather than a third tab of `adjustments`).\n",
+            "  | 'leaveDataImport'\n",
+            "  | 'leaveHistoryImport'\n",
+            "  // db55d08a (r369) \u2014 a one-screen row directly after Leave History Data Import (see the screen id's note\n",
+            "  // above for why it is a group of its own rather than a tab of either importer beside it).\n",
+            "  | 'leaveBfImport'\n",
+            "  // 3fb1a611 (r299) \u2014 a one-screen row directly after Leave Adjustments (see the screen id's note above).\n",
+            "  | 'leaveCredit'\n",
+            "  | 'generate'\n",
+            "  // r281 (09386e29) \u2014 a one-screen row, like `generate` above it: Run earned accrual is an execution of\n",
+            "  // its own rather than a section of the generator, and the group exists so its page reads its heading\n",
+            "  // and description through the same helper every other Leave Config page does.\n",
+            "  | 'earnedAccrual'\n",
+            "  | 'approval'\n",
+            "  | 'companyRules'\n",
+            "  // r281 (a73d1e14) \u2014 LAST, after Employee Leave Inquiry, where the reporter drew it. A one-screen row\n",
+            "  // like `generate`, `earnedAccrual` and `companyRules`: the tab strip draws nothing for it today and\n",
+            "  // appears on its own the day a second special setting joins the group.\n",
+            "  | 'specialSetting';\n",
+            "\n",
+            "/** The `nav.*` key of the submenu row each group IS \u2014 the heading of every page in the group. */\n",
+            "export type LeaveConfigRowNavKey =\n",
+            "  | 'leaveEntitlements'\n",
+            "  | 'leaveBalanceHealth'\n",
+            "  | 'leaveAdjustments'\n",
+            "  | 'leaveDataImport'\n",
+            "  | 'leaveHistoryImport'\n",
+            "  | 'leaveBfImport'\n",
+            "  | 'leaveCredit'\n",
+            "  | 'leaveGenerate'\n",
+            "  | 'leaveEarnedAccrual'\n",
+            "  | 'leaveApprovalWorkflow'\n",
+            "  | 'leaveCompanyRules'\n",
+            "  | 'leaveSpecialSetting';\n",
+            "\n",
+            "type Group = {\n",
+            "  id: LeaveConfigGroupId;\n",
+            "  navKey: LeaveConfigRowNavKey;\n",
+            "  items: { id: LeaveConfigScreenId; href: string }[];\n",
+            "};\n",
+            "\n",
+            "export const LEAVE_CONFIG_MAP: Group[] = [\n",
+            "  {\n",
+            "    id: 'entitlements',\n",
+            "    navKey: 'leaveEntitlements',\n",
+            "    items: [\n",
+            "      { id: 'leaveTypes', href: '/admin/leave-config/types' },\n",
+            "      { id: 'entitlementTables', href: '/admin/leave-config/entitlement-tables' },\n",
+            "      // 7f69bd71 \u2014 `{ id: 'entitlementArchive', href: '/admin/leave-config/records/entitlement' }` STOOD\n",
+            "      // HERE (10b59703's third tab) and is DELIBERATELY GONE: the reporter's complaint was that a\n",
+            "      // read-only record has no business sitting beside the two tabs somebody uses every day. The record\n",
+            "      // is the Configuration sub-tab of the Reset records sub-screen now (`leaveConfigRecordHref`), and\n",
+            "      // the old address is a redirect stub that lands there with `?capture=` kept.\n",
+            "    ],\n",
+            "  },\n",
+            "  // r279 (3fbf7a02) \u2014 ONE SCREEN, ITS OWN ROW, SECOND. The tab row renders nothing for a group of one\n",
+            "  // (see `LeaveConfigMap` below), so this entry buys exactly two things and they are the two the module\n",
+            "  // is built on: the page's heading is its ROW's `nav` label through `leaveConfigPageHeader`, and the\n",
+            "  // row\u2194group agreement stays 1:1 in both directions \u2014 which is what test/leave-config-map.test.ts and\n",
+            "  // test/r266-leave-config-rows.test.ts assert, and what a mapless row would have forced an exception to.\n",
+            "  { id: 'balanceHealth', navKey: 'leaveBalanceHealth', items: [{ id: 'balanceHealth', href: '/admin/leave-config/balance-health' }] },\n",
+            "  {\n",
+            "    id: 'adjustments',\n",
+            "    navKey: 'leaveAdjustments',\n",
+            "    items: [\n",
+            "      { id: 'adjustments', href: '/admin/leave-config/adjustments' },\n",
+            "      // 7f69bd71 \u2014 `{ id: 'ledgerArchive', href: '/admin/leave-config/records/balances' }` STOOD HERE\n",
+            "      // (10b59703's second tab) and is DELIBERATELY GONE for the same reason as its sibling above. The\n",
+            "      // balance record is the Balances sub-tab of the Reset records sub-screen, reached from one small\n",
+            "      // link at the foot of Adjust balances \u2014 still one click away on the day somebody needs a figure\n",
+            "      // from before a reset, and out of the way every other day.\n",
+            "      // 10b59703 \u2014 Import loads balance MOVEMENTS (opening balances, carry-forward, ad-hoc credits \u2014\n",
+            "      // core/leave-import.ts writes leave_ledger rows). That is an adjustment by file, so it moved out\n",
+            "      // of the Entitlements header and under this row.\n",
+            "      // 3f15ffdb (r362) \u2014 the phrase \"historical leave\" STOOD IN THAT LIST and is deliberately gone,\n",
+            "      // along with the tab's old label: past leave RECORDS are the job of the Leave History Data Import\n",
+            "      // row below, which writes leave_request rows and moves no balance. Two tools, one job each.\n",
+            "      { id: 'importLeaveData', href: '/admin/leave-config/import' },\n",
+            "    ],\n",
+            "  },\n",
+            "  // 3f15ffdb (r362) \u2014 LEAVE HISTORY DATA IMPORT, ONE SCREEN, ITS OWN ROW, DIRECTLY AFTER LEAVE\n",
+            "  // ADJUSTMENTS. The tab row renders nothing for a group of one (see `LeaveConfigMap` below), so this\n",
+            "  // entry buys the same two things Balance Health's does: the page's heading is its ROW's `nav` label\n",
+            "  // through `leaveConfigPageHeader`, and the row\u2194group agreement stays 1:1 in both directions. The\n",
+            "  // alternative \u2014 a third tab of the group above \u2014 was the wrong shape and is the whole point of the\n",
+            "  // item: that row is called Leave Adjustments and describes itself as adjusting balances, and this\n",
+            "  // tool adjusts none. Immediately after it because a migration loads the balances, then the records.\n",
+            "  {\n",
+            "    id: 'leaveDataImport',\n",
+            "    navKey: 'leaveDataImport',\n",
+            "    items: [{ id: 'leaveDataImport', href: '/admin/leave-config/data-import' }],\n",
+            "  },\n",
+            "  // db55d08a (r369) \u2014 LEAVE B/F DATA IMPORT, ONE SCREEN, ITS OWN ROW, DIRECTLY AFTER LEAVE HISTORY DATA\n",
+            "  // IMPORT. The tab row renders nothing for a group of one (see `LeaveConfigMap` below), so this entry buys\n",
+            "  // the same two things its neighbour's does: the page's heading is its ROW's `nav` label through\n",
+            "  // `leaveConfigPageHeader`, and the row<->group agreement stays 1:1 in both directions.\n",
+            "  //\n",
+            "  // The alternative \u2014 a tab of the row above, or a third tab of `adjustments` \u2014 was the wrong shape twice\n",
+            "  // over and that is the item rather than a detail. The row above is called Leave History Data Import and\n",
+            "  // describes itself as loading past leave RECORDS; this tool creates no record at all. The `adjustments`\n",
+            "  // row describes itself as changing a balance by hand; this writes the dated figure a leave year OPENS\n",
+            "  // with, which is a different thing from adjusting the year in progress.\n",
+            "  //\n",
+            "  // IMMEDIATELY AFTER IT, not at the bottom, because the order of the menu is the order of the work \u2014 and\n",
+            "  // the reporter's own go-live sequence is generate the entitlements, then load B/F, then load the leave\n",
+            "  // taken. The screen prints that sequence.\n",
+            "  // 3fb1a611 (r299) \u2014 LEAVE CREDIT, ITS OWN ROW, DIRECTLY AFTER LEAVE ADJUSTMENTS, with two tabs: Credits and\n",
+            "  // Rules. The row is gated on the `toil` module in the sidebar (MODULE_OF_HREF); both pages also check it.\n",
+            "  {\n",
+            "    id: 'leaveCredit',\n",
+            "    navKey: 'leaveCredit',\n",
+            "    items: [\n",
+            "      { id: 'leaveCredit', href: '/admin/leave-config/leave-credit' },\n",
+            "      { id: 'leaveCreditRules', href: '/admin/leave-config/leave-credit/rules' },\n",
+            "    ],\n",
+            "  },\n",
+            "  { id: 'generate', navKey: 'leaveGenerate', items: [{ id: 'generateEntitlement', href: '/admin/leave-config/generate' }] },\n",
+            "  // r281 (09386e29) \u2014 ONE SCREEN, ITS OWN ROW, IMMEDIATELY AFTER GENERATE ENTITLEMENT. The tab row draws\n",
+            "  // nothing for a group of one, so this entry buys the same two things the Balance Health group buys: the\n",
+            "  // page's heading is its ROW's `nav` label through `leaveConfigPageHeader`, and the row\u2194group agreement\n",
+            "  // stays 1:1 in both directions. A THIRD OPTION \u2014 a second tab of the `generate` group \u2014 was the wrong\n",
+            "  // shape and is the whole point of the item: a tab strip would put the two operations back on one screen,\n",
+            "  // which is the confusion between creating entitlement and topping it up that this separates.\n",
+            "  { id: 'earnedAccrual', navKey: 'leaveEarnedAccrual', items: [{ id: 'earnedAccrual', href: '/admin/leave-config/earned-accrual' }] },\n",
+            "  { id: 'approval', navKey: 'leaveApprovalWorkflow', items: [{ id: 'approvalChain', href: '/admin/leave-config/approval-chains' }] },\n",
+            "  // a6fe37fc ROUND 5 (cutover) \u2014 `replacementLeave` and `payrollImpact` are DELIBERATELY absent: their\n",
+            "  // screens were absorbed into Company rules, whose page renders `leaveConfigScreenTitle()` of each as a\n",
+            "  // section heading. Two entries reaching one screen is what this component exists to stop.\n",
+            "  { id: 'companyRules', navKey: 'leaveCompanyRules', items: [{ id: 'companyRules', href: '/admin/leave-config/company-rules' }] },\n",
+            "  // r281 (a73d1e14) \u2014 LAST, AFTER EMPLOYEE LEAVE INQUIRY, which is where the reporter drew it. That row\n",
+            "  // is not a group here (its destination is not a Leave Config page), so this group follows Company rules\n",
+            "  // in THIS list while its row follows the inquiry row in the fly-out \u2014 the two orders still agree,\n",
+            "  // because the agreement is asserted over the rows whose destinations live under the module.\n",
+            "  { id: 'specialSetting', navKey: 'leaveSpecialSetting', items: [{ id: 'specialSetting', href: '/admin/leave-config/special-setting' }] },\n",
+            "];\n",
+            "\n",
+            "/**\n",
+            " * a6fe37fc ROUND 3 (r259 finding 3) \u2014 THE ADDRESS THE MAP GIVES A SCREEN, so a link to a screen can\n",
+            " * never disagree with the menu entry for it. Every cross-screen link inside the module resolves through\n",
+            " * here, so it points where the MAP points.\n",
+            " *\n",
+            " * `replacementLeave` and `payrollImpact` are excluded by TYPE, not by a runtime fallback: their screens\n",
+            " * were absorbed into Company rules, so asking this function for their address is a mistake tsc should\n",
+            " * refuse rather than one this function should paper over with a guessed href.\n",
+            " *\n",
+            " * 7f69bd71 \u2014 `entitlementArchive` and `ledgerArchive` join that exclusion: they are no longer tabs of any\n",
+            " * row, so they have no group, no row heading and no map href. The ids survive as the LABELS of the two\n",
+            " * sub-tabs on the Reset records sub-screen (`leaveConfigScreenTitle`, which takes the wider union), and\n",
+            " * the address of each record resolves through `leaveConfigRecordHref` below \u2014 one source, as before.\n",
+            " */\n",
+            "export type MappedLeaveConfigScreenId = Exclude<\n",
+            "  LeaveConfigScreenId,\n",
+            "  'replacementLeave' | 'payrollImpact' | 'entitlementArchive' | 'ledgerArchive'\n",
+            ">;\n",
+            "\n",
+            "/**\n",
+            " * 7f69bd71 \u2014 THE RESET RECORDS SUB-SCREEN (`/admin/leave-config/records`). Not a row and not a tab: a\n",
+            " * sub-screen of the Leave Adjustments row, reached from one small link at the foot of Adjust balances,\n",
+            " * with a back link at the top. It holds the two read-only records as sub-tabs selected by `?record=`:\n",
+            " *\n",
+            " *   configuration \u2014 the Configuration record (`entitlementArchive`): entitlement tables, eligibility\n",
+            " *                   rules and, in the older captures, benefit schemes, captured before a reset cleared them;\n",
+            " *   balances      \u2014 the Balance record (`ledgerArchive`): the ledger rows a reset removed.\n",
+            " *\n",
+            " * Why a sub-screen and not a third row: the records are records of REMOVALS \u2014 the adjustments domain \u2014\n",
+            " * and the reporter's instruction was that the submenu carries what is used day to day. Why `?record=`\n",
+            " * and not two routes: one guarded page is one route on the `leaveConfig` key, the picker form on either\n",
+            " * sub-tab GETs back to the same address, and the two retired tab addresses redirect here with the\n",
+            " * record named in the query, so `?capture=` rides along unchanged.\n",
+            " *\n",
+            " * The Leave Adjustments row owns this path (`ownedSubpaths`, packs/leave/index.ts) so it stays lit\n",
+            " * while the sub-screen \u2014 or either stub on the way through \u2014 is open.\n",
+            " */\n",
+            "export const LEAVE_CONFIG_RECORDS_HREF = '/admin/leave-config/records';\n",
+            "export const LEAVE_CONFIG_RECORD_IDS = ['configuration', 'balances'] as const;\n",
+            "export type LeaveConfigRecordId = (typeof LEAVE_CONFIG_RECORD_IDS)[number];\n",
+            "\n",
+            "/** The screen id whose `admin.leaveConfigMap.item.*` string labels each sub-tab. */\n",
+            "export const LEAVE_CONFIG_RECORD_LABEL_ID: Record<LeaveConfigRecordId, LeaveConfigScreenId> = {\n",
+            "  configuration: 'entitlementArchive',\n",
+            "  balances: 'ledgerArchive',\n",
+            "};\n",
+            "\n",
+            "/** The address of one record's sub-tab. The stubs, the foot link and the sub-tab strip all resolve\n",
+            " *  through here, so no file spells the address twice. */\n",
+            "export function leaveConfigRecordHref(record: LeaveConfigRecordId): string {\n",
+            "  return `${LEAVE_CONFIG_RECORDS_HREF}?record=${record}`;\n",
+            "}\n",
+            "\n",
+            "/** `?record=` as typed, or the Configuration record for anything else \u2014 including nothing at all. An\n",
+            " *  unknown value is ignored rather than answered with an empty page. */\n",
+            "export function leaveConfigRecordOf(raw: string | undefined): LeaveConfigRecordId {\n",
+            "  return (LEAVE_CONFIG_RECORD_IDS as readonly string[]).includes(raw ?? '')\n",
+            "    ? (raw as LeaveConfigRecordId)\n",
+            "    : 'configuration';\n",
+            "}\n",
+            "\n",
+            "const HREF_BY_ID = Object.fromEntries(\n",
+            "  LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => [i.id, i.href] as const),\n",
+            ") as Record<MappedLeaveConfigScreenId, string>;\n",
+            "\n",
+            "const GROUP_BY_ID = Object.fromEntries(\n",
+            "  LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => [i.id, g] as const)),\n",
+            ") as Record<MappedLeaveConfigScreenId, Group>;\n",
+            "\n",
+            "export function leaveConfigScreenHref(id: MappedLeaveConfigScreenId): string {\n",
+            "  return HREF_BY_ID[id];\n",
+            "}\n",
+            "\n",
+            "/** The submenu row a screen belongs to. */\n",
+            "export function leaveConfigGroupOf(id: MappedLeaveConfigScreenId): Group {\n",
+            "  return GROUP_BY_ID[id];\n",
+            "}\n"
+          ]
+        },
+        {
+          "afterStart": 139,
+          "after": [
+            "              <span aria-current=\"page\" className={tab(true)} data-navigation-destination={it.navigationId}>\n"
+          ],
+          "before": [
+            "              <span aria-current=\"page\" className={tab(true)}>\n"
+          ]
+        },
+        {
+          "afterStart": 143,
+          "after": [
+            "              <Link href={it.href} className={tab(false)} data-navigation-destination={it.navigationId}>\n"
+          ],
+          "before": [
+            "              <Link href={it.href} className={tab(false)}>\n"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "components/schedule-group-tabs.tsx",
+      "predecessorSha256": "2b2160622ec80ede6adc61fb3db82e4a3337529cf43bc873419ec4cacddc85b4",
+      "candidateSha256": "086bc6e663b8c3d975436c751a0c64b55abba29b0e95e30a8189a29d7f525a43",
+      "edits": [
+        {
+          "afterStart": 2,
+          "after": [
+            "type Tab = {id:string;navigationId?:string;label:string;body:ReactNode};\n"
+          ],
+          "before": [
+            "type Tab = {id:string;label:string;body:ReactNode};\n"
+          ]
+        },
+        {
+          "afterStart": 8,
+          "after": [
+            " return <div><div role=\"tablist\" aria-label={ariaLabel} className=\"mb-6 flex gap-1 overflow-x-auto border-b border-border\">{tabs.map((tab,i)=><button key={tab.id} data-navigation-destination={tab.navigationId} id={`tab-${tab.id}`} role=\"tab\" type=\"button\" aria-selected={active===tab.id} aria-controls={`section-${tab.id}`} tabIndex={active===tab.id?0:-1} onClick={()=>select(tab.id)} onKeyDown={e=>{const next=e.key==='ArrowRight'?(i+1)%tabs.length:e.key==='ArrowLeft'?(i+tabs.length-1)%tabs.length:e.key==='Home'?0:e.key==='End'?tabs.length-1:null;if(next!=null){e.preventDefault();select(tabs[next].id);document.getElementById(`tab-${tabs[next].id}`)?.focus();}}} className={`shrink-0 border-b-2 px-3 py-3 text-sm ${active===tab.id?'border-primary font-medium text-foreground':'border-transparent text-muted-foreground hover:text-foreground'}`}>{tab.label}</button>)}</div>{tabs.map(tab=><section key={tab.id} data-navigation-panel={tab.navigationId} id={`section-${tab.id}`} role=\"tabpanel\" aria-labelledby={`tab-${tab.id}`} hidden={active!==tab.id} tabIndex={0} className=\"space-y-6 focus:outline-none\">{tab.body}</section>)}</div>;\n"
+          ],
+          "before": [
+            " return <div><div role=\"tablist\" aria-label={ariaLabel} className=\"mb-6 flex gap-1 overflow-x-auto border-b border-border\">{tabs.map((tab,i)=><button key={tab.id} id={`tab-${tab.id}`} role=\"tab\" type=\"button\" aria-selected={active===tab.id} aria-controls={`section-${tab.id}`} tabIndex={active===tab.id?0:-1} onClick={()=>select(tab.id)} onKeyDown={e=>{const next=e.key==='ArrowRight'?(i+1)%tabs.length:e.key==='ArrowLeft'?(i+tabs.length-1)%tabs.length:e.key==='Home'?0:e.key==='End'?tabs.length-1:null;if(next!=null){e.preventDefault();select(tabs[next].id);document.getElementById(`tab-${tabs[next].id}`)?.focus();}}} className={`shrink-0 border-b-2 px-3 py-3 text-sm ${active===tab.id?'border-primary font-medium text-foreground':'border-transparent text-muted-foreground hover:text-foreground'}`}>{tab.label}</button>)}</div>{tabs.map(tab=><section key={tab.id} id={`section-${tab.id}`} role=\"tabpanel\" aria-labelledby={`tab-${tab.id}`} hidden={active!==tab.id} tabIndex={0} className=\"space-y-6 focus:outline-none\">{tab.body}</section>)}</div>;\n"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "lib/ai-centre/centre-nav.ts",
+      "predecessorSha256": "60b2acb781c24fabcce7fa22624ca4d0b660337e14ad4aa90c9b190517bf6b5f",
+      "candidateSha256": "dc994e3f40f66c82c36c175dd25be1665ae01270364fae2b25757531eef4dc48",
+      "edits": [
+        {
+          "afterStart": 30,
+          "after": [
+            "export type CentreTab = Readonly<{ navigationId:string; key: CentreTabKey; href: string; adminOnly: boolean; sections: boolean }>;\n"
+          ],
+          "before": [
+            "export type CentreTab = Readonly<{ key: CentreTabKey; href: string; adminOnly: boolean; sections: boolean }>;\n"
+          ]
+        },
+        {
+          "afterStart": 34,
+          "after": [
+            "  { navigationId:'submenu.aiCentre.ask', key: 'ask', href: '/assistant', adminOnly: false, sections: false },\n",
+            "  { navigationId:'submenu.aiCentre.operations', key: 'operations', href: '/control-tower/loops', adminOnly: true, sections: true },\n"
+          ],
+          "before": [
+            "  { key: 'ask', href: '/assistant', adminOnly: false, sections: false },\n",
+            "  { key: 'operations', href: '/control-tower/loops', adminOnly: true, sections: true },\n"
+          ]
+        },
+        {
+          "afterStart": 39,
+          "after": [
+            "  { navigationId:'submenu.aiCentre.insights', key: 'insights', href: '/assistant?view=insights', adminOnly: true, sections: false },\n"
+          ],
+          "before": [
+            "  { key: 'insights', href: '/assistant?view=insights', adminOnly: true, sections: false },\n"
+          ]
+        },
+        {
+          "afterStart": 43,
+          "after": [
+            "  { navigationId:'submenu.aiCentre.policies', key: 'policies', href: '/policies', adminOnly: false, sections: false },\n",
+            "  { navigationId:'submenu.aiCentre.administration', key: 'administration', href: '/control-tower/agents/features', adminOnly: true, sections: true },\n",
+            "  { navigationId:'submenu.aiCentre.how', key: 'how', href: '/assistant?view=how', adminOnly: false, sections: false },\n"
+          ],
+          "before": [
+            "  { key: 'policies', href: '/policies', adminOnly: false, sections: false },\n",
+            "  { key: 'administration', href: '/control-tower/agents/features', adminOnly: true, sections: true },\n",
+            "  { key: 'how', href: '/assistant?view=how', adminOnly: false, sections: false },\n"
+          ]
+        },
+        {
+          "afterStart": 58,
+          "after": [
+            "export type CentreSectionTab = Readonly<{ navigationId:string; key: CentreSection; href: string; payroll: boolean; groupAdmin: boolean }>;\n"
+          ],
+          "before": [
+            "export type CentreSectionTab = Readonly<{ key: CentreSection; href: string; payroll: boolean; groupAdmin: boolean }>;\n"
+          ]
+        },
+        {
+          "afterStart": 65,
+          "after": [
+            "    { navigationId:'submenu.aiCentre.loops', key: 'loops', href: '/control-tower/loops', payroll: false, groupAdmin: false },\n"
+          ],
+          "before": [
+            "    { key: 'loops', href: '/control-tower/loops', payroll: false, groupAdmin: false },\n"
+          ]
+        },
+        {
+          "afterStart": 67,
+          "after": [
+            "    { navigationId:'submenu.aiCentre.payrollCycle', key: 'payrollCycle', href: '/control-tower/loops/payroll-cycle', payroll: true, groupAdmin: false },\n"
+          ],
+          "before": [
+            "    { key: 'payrollCycle', href: '/control-tower/loops/payroll-cycle', payroll: true, groupAdmin: false },\n"
+          ]
+        },
+        {
+          "afterStart": 69,
+          "after": [
+            "    { navigationId:'submenu.aiCentre.exceptions', key: 'exceptions', href: '/control-tower/exceptions', payroll: true, groupAdmin: false },\n"
+          ],
+          "before": [
+            "    { key: 'exceptions', href: '/control-tower/exceptions', payroll: true, groupAdmin: false },\n"
+          ]
+        },
+        {
+          "afterStart": 71,
+          "after": [
+            "    { navigationId:'submenu.aiCentre.readiness', key: 'readiness', href: '/control-tower/readiness', payroll: false, groupAdmin: false },\n"
+          ],
+          "before": [
+            "    { key: 'readiness', href: '/control-tower/readiness', payroll: false, groupAdmin: false },\n"
+          ]
+        },
+        {
+          "afterStart": 74,
+          "after": [
+            "    { navigationId:'submenu.aiCentre.workers', key: 'workers', href: '/control-tower/agents/features', payroll: false, groupAdmin: false },\n",
+            "    { navigationId:'submenu.aiCentre.setup', key: 'setup', href: '/control-tower/agents', payroll: false, groupAdmin: false },\n",
+            "    { navigationId:'submenu.aiCentre.spend', key: 'spend', href: '/control-tower/agents/allowances', payroll: false, groupAdmin: false },\n"
+          ],
+          "before": [
+            "    { key: 'workers', href: '/control-tower/agents/features', payroll: false, groupAdmin: false },\n",
+            "    { key: 'setup', href: '/control-tower/agents', payroll: false, groupAdmin: false },\n",
+            "    { key: 'spend', href: '/control-tower/agents/allowances', payroll: false, groupAdmin: false },\n"
+          ]
+        },
+        {
+          "afterStart": 78,
+          "after": [
+            "    { navigationId:'submenu.aiCentre.buildList', key: 'buildList', href: '/control-tower/agents/build-list', payroll: false, groupAdmin: true },\n"
+          ],
+          "before": [
+            "    { key: 'buildList', href: '/control-tower/agents/build-list', payroll: false, groupAdmin: true },\n"
+          ]
+        },
+        {
+          "afterStart": 88,
+          "after": [
+            "export const PAYROLL_CYCLE_PAGES: readonly Readonly<{ navigationId:string; page: PayrollCyclePage; href: string }>[] = [\n",
+            "  { navigationId:'submenu.aiCentre.payroll.pre', page: 'pre', href: '/control-tower/loops/payroll-cycle' },\n",
+            "  { navigationId:'submenu.aiCentre.payroll.salary', page: 'salary', href: '/control-tower/loops/payroll-cycle/salary' },\n",
+            "  { navigationId:'submenu.aiCentre.payroll.settings', page: 'settings', href: '/control-tower/loops/payroll-cycle/settings' },\n",
+            "  { navigationId:'submenu.aiCentre.payroll.audit', page: 'audit', href: '/control-tower/loops/loop_payroll_audit' },\n"
+          ],
+          "before": [
+            "export const PAYROLL_CYCLE_PAGES: readonly Readonly<{ page: PayrollCyclePage; href: string }>[] = [\n",
+            "  { page: 'pre', href: '/control-tower/loops/payroll-cycle' },\n",
+            "  { page: 'salary', href: '/control-tower/loops/payroll-cycle/salary' },\n",
+            "  { page: 'settings', href: '/control-tower/loops/payroll-cycle/settings' },\n",
+            "  { page: 'audit', href: '/control-tower/loops/loop_payroll_audit' },\n"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "lib/company-panel-tabs.ts",
+      "predecessorSha256": "9c52f4004c563cc8e4717102b63324138f4d060519ab61e505011fa2d49ac308",
+      "candidateSha256": "9aeca38a8c5e75d11c58dd20ff5892ac2ec48ebfd27b39cbafce3466c14fc545",
+      "edits": [
+        {
+          "afterStart": 16,
+          "after": [
+            "export const COMPANY_PANEL_TAB_DEFINITIONS = [\n",
+            "  {key:'general', navigationId:'nested.company.general'},\n",
+            "  {key:'bank', navigationId:'nested.company.bank'},\n",
+            "  {key:'statutory', navigationId:'nested.company.statutory'},\n",
+            "] as const;\n",
+            "export type CompanyPanelTab = (typeof COMPANY_PANEL_TAB_DEFINITIONS)[number]['key'];\n",
+            "export const COMPANY_PANEL_TABS:readonly CompanyPanelTab[] = COMPANY_PANEL_TAB_DEFINITIONS.map(tab=>tab.key);\n",
+            "/** Metadata lookup only; never an authority or a tab-state owner. */\n",
+            "export function companyPanelNavigation(tab:CompanyPanelTab){\n",
+            "  const definition=COMPANY_PANEL_TAB_DEFINITIONS.find(row=>row.key===tab);\n",
+            "  if(!definition)throw Error('Unknown company navigation descriptor');\n",
+            "  return definition;\n",
+            "}\n"
+          ],
+          "before": [
+            "export const COMPANY_PANEL_TABS = ['general', 'bank', 'statutory'] as const;\n"
+          ]
+        },
+        {
+          "afterStart": 30,
+          "after": [],
+          "before": [
+            "export type CompanyPanelTab = (typeof COMPANY_PANEL_TABS)[number];\n"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "lib/lifecycle-v9-navigation.ts",
+      "predecessorSha256": "9b77d710c293b0de205aa97cf21f8437d950bee46347989a3b7951d76fb7efd0",
+      "candidateSha256": "3738d02113f3574cc5eb9c76bd5ca9407610cac1e7b819c9b7ee75724eaf36c1",
+      "edits": [
+        {
+          "afterStart": 3,
+          "after": [
+            "  { navigationId:'shell.v9NewJoiners', view: 'joiners', labelKey: 'newJoiners', submenuKey: 'onboardingV31', permission: 'onboarding', href: '/lifecycle/v9', ownedSubpaths: ['/lifecycle/v9/onboarding'] },\n",
+            "  { navigationId:'shell.v9OnboardingChecklists', view: 'onbChecklists', labelKey: 'onboardingChecklists', submenuKey: 'onboardingV31', permission: 'onboarding', href: '/lifecycle/v9?view=onbChecklists' },\n",
+            "  { navigationId:'shell.v9V9Leavers', view: 'leavers', labelKey: 'v9Leavers', submenuKey: 'v9Offboarding', permission: 'offboarding', href: '/lifecycle/v9?view=leavers' },\n",
+            "  { navigationId:'shell.v9V9OffboardingChecklists', view: 'offChecklists', labelKey: 'v9OffboardingChecklists', submenuKey: 'v9Offboarding', permission: 'offboarding', href: '/lifecycle/v9?view=offChecklists' },\n",
+            "  { navigationId:'shell.v9V9Templates', view: 'templates', labelKey: 'v9Templates', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=templates' },\n",
+            "  { navigationId:'shell.v9V9Workflows', view: 'workflows', labelKey: 'v9Workflows', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=workflows' },\n",
+            "  { navigationId:'shell.v9V9Settings', view: 'settings', labelKey: 'v9Settings', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=settings' },\n",
+            "  { navigationId:'shell.v9V9AssignmentGroups', view: 'groups', labelKey: 'v9AssignmentGroups', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=groups' },\n",
+            "  { navigationId:'shell.v9V9ModuleAccess', view: 'access', labelKey: 'v9ModuleAccess', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=access' },\n"
+          ],
+          "before": [
+            "  { view: 'joiners', labelKey: 'newJoiners', submenuKey: 'onboardingV31', permission: 'onboarding', href: '/lifecycle/v9', ownedSubpaths: ['/lifecycle/v9/onboarding'] },\n",
+            "  { view: 'onbChecklists', labelKey: 'onboardingChecklists', submenuKey: 'onboardingV31', permission: 'onboarding', href: '/lifecycle/v9?view=onbChecklists' },\n",
+            "  { view: 'leavers', labelKey: 'v9Leavers', submenuKey: 'v9Offboarding', permission: 'offboarding', href: '/lifecycle/v9?view=leavers' },\n",
+            "  { view: 'offChecklists', labelKey: 'v9OffboardingChecklists', submenuKey: 'v9Offboarding', permission: 'offboarding', href: '/lifecycle/v9?view=offChecklists' },\n",
+            "  { view: 'templates', labelKey: 'v9Templates', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=templates' },\n",
+            "  { view: 'workflows', labelKey: 'v9Workflows', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=workflows' },\n",
+            "  { view: 'settings', labelKey: 'v9Settings', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=settings' },\n",
+            "  { view: 'groups', labelKey: 'v9AssignmentGroups', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=groups' },\n",
+            "  { view: 'access', labelKey: 'v9ModuleAccess', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=access' },\n"
+          ]
+        },
+        {
+          "afterStart": 16,
+          "after": [
+            "  { navigationId:'shell.v9SharedV9Tasks', view: 'tasks', labelKey: 'v9Tasks', href: '/lifecycle/v9?view=tasks' },\n",
+            "  { navigationId:'shell.v9SharedV9RequestRecords', view: 'records', labelKey: 'v9RequestRecords', href: '/lifecycle/v9?view=records' },\n"
+          ],
+          "before": [
+            "  { view: 'tasks', labelKey: 'v9Tasks', href: '/lifecycle/v9?view=tasks' },\n",
+            "  { view: 'records', labelKey: 'v9RequestRecords', href: '/lifecycle/v9?view=records' },\n"
+          ]
+        },
+        {
+          "afterStart": 26,
+          "after": [
+            "\n",
+            "/** Descriptor identity only; actual native visibility remains at the caller. */\n",
+            "export function v9NavigationDescriptor(view:V9WorkspaceView){\n",
+            " const definition=[...V9_NAVIGATION,...V9_SHARED_NAVIGATION].find(item=>item.view===view);\n",
+            " if(!definition)throw Error('Unknown V9 navigation descriptor');return definition;\n",
+            "}\n"
+          ],
+          "before": []
+        }
+      ]
+    },
+    {
+      "path": "lib/navigation/catalogue.ts",
+      "predecessorSha256": "4c0c582cd6344a0501cd40560f38d95991d4c584c3f45c6ef3e888fa02035612",
+      "candidateSha256": "d9e0b811dfc9a008506a9ecd22e6f459767499eaa823857459e26f688275f80c",
+      "edits": [
+        {
+          "afterStart": 183,
+          "after": [
+            " {id:'nested-submenus',owner:'navigation surface owners',reason:'Initial Company/Schedule/Leave Config/V9/AI/Performance admin source definitions are composed separately; Personnel, lifecycle preparation, Leave Type and remaining record-specific families still require composition. Native parameter/principal bindings and v3 baseline/steady500 interactions remain unexecuted for all nested families; source composition does not establish runtime acceptance.'},\n"
+          ],
+          "before": [
+            " {id:'nested-submenus',owner:'navigation surface owners',reason:'Parameterized Personnel/Company/Schedule Group tabs, lifecycle preparation, leave-type configuration, AI management in-section hrefOf navigation and record-specific navigation are not yet composed. Published static submenu composition does not establish the full application universe.'},\n"
+          ]
+        },
+        {
+          "afterStart": 246,
+          "after": [
+            " for(const item of CENTRE_TABS)append(item.navigationId,'lib/ai-centre/centre-nav.ts','ai/tab/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');\n"
+          ],
+          "before": [
+            " for(const item of CENTRE_TABS)append(PUBLISHED_SUBMENU_IDS['ai/tab/'+item.key],'lib/ai-centre/centre-nav.ts','ai/tab/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');\n"
+          ]
+        },
+        {
+          "afterStart": 248,
+          "after": [
+            "  append(item.navigationId,'lib/ai-centre/centre-nav.ts','ai/'+group+'/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');\n",
+            " for(const item of PAYROLL_CYCLE_PAGES)append(item.navigationId,'lib/ai-centre/centre-nav.ts','ai/payroll/'+item.page,item.href,item,'components/ai-centre/centre-tabs.tsx');\n"
+          ],
+          "before": [
+            "  append(PUBLISHED_SUBMENU_IDS['ai/'+group+'/'+item.key],'lib/ai-centre/centre-nav.ts','ai/'+group+'/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');\n",
+            " for(const item of PAYROLL_CYCLE_PAGES)append(PUBLISHED_SUBMENU_IDS['ai/payroll/'+item.page],'lib/ai-centre/centre-nav.ts','ai/payroll/'+item.page,item.href,item,'components/ai-centre/centre-tabs.tsx');\n"
+          ]
+        },
+        {
+          "afterStart": 279,
+          "after": [
+            "\n",
+            "/** Nested source definitions only; no concrete record or executed-role claim. */\n",
+            "export {declaredNestedNavigationCatalogue} from './record-families';\n"
+          ],
+          "before": []
+        }
+      ]
+    },
+    {
+      "path": "packs/performance/onehr/admin-sections.ts",
+      "predecessorSha256": "fb4d1be6f53b2e38683b45eb0f961dbe75c7b791272f9466a603d7bc9a46a2eb",
+      "candidateSha256": "a16b21883c9aa3242f4347b52306cc3f3e98a247f28e15eb1750aee2992af8a7",
+      "edits": [
+        {
+          "afterStart": 45,
+          "after": [
+            "export type AdminPage = { readonly navigationId:string; readonly key: string; readonly parts: readonly AdminPart[]; readonly extra?: AdminExtra; readonly route?: AdminRoute; readonly hidden?: boolean };\n",
+            "export type AdminTab = { readonly navigationId:string; readonly key: string; readonly pages: readonly AdminPage[] };\n",
+            "export type AdminSection = { readonly navigationId:string; readonly key: string; readonly group: 'top' | 'modules' | 'end'; readonly module?: OverviewModule; readonly tabs: readonly AdminTab[] };\n"
+          ],
+          "before": [
+            "export type AdminPage = { readonly key: string; readonly parts: readonly AdminPart[]; readonly extra?: AdminExtra; readonly route?: AdminRoute; readonly hidden?: boolean };\n",
+            "export type AdminTab = { readonly key: string; readonly pages: readonly AdminPage[] };\n",
+            "export type AdminSection = { readonly key: string; readonly group: 'top' | 'modules' | 'end'; readonly module?: OverviewModule; readonly tabs: readonly AdminTab[] };\n"
+          ]
+        },
+        {
+          "afterStart": 49,
+          "after": [
+            "const overview = { navigationId:'overview', key: 'overview', pages: [{ navigationId:'overview', key: 'overview', parts: [], extra: 'overview' }] } as const;\n"
+          ],
+          "before": [
+            "const overview = { key: 'overview', pages: [{ key: 'overview', parts: [], extra: 'overview' }] } as const;\n"
+          ]
+        },
+        {
+          "afterStart": 52,
+          "after": [
+            "  { navigationId:'cycle', key: 'cycle', group: 'top', tabs: [\n",
+            "    { navigationId:'calendar', key: 'calendar', pages: [{ navigationId:'calendar', key: 'calendar', parts: ['cycleActions', 'policy', 'modules', 'windows'] }] },\n",
+            "    { navigationId:'participants', key: 'participants', pages: [{ navigationId:'participants', key: 'participants', parts: ['participants', 'units'] }] },\n",
+            "    { navigationId:'release', key: 'release', pages: [{ navigationId:'release', key: 'release', parts: [], route: 'release' }] },\n",
+            "    { navigationId:'cycles', key: 'cycles', pages: [{ navigationId:'cycles', key: 'cycles', parts: [], extra: 'allCycles' }] },\n"
+          ],
+          "before": [
+            "  { key: 'cycle', group: 'top', tabs: [\n",
+            "    { key: 'calendar', pages: [{ key: 'calendar', parts: ['cycleActions', 'policy', 'modules', 'windows'] }] },\n",
+            "    { key: 'participants', pages: [{ key: 'participants', parts: ['participants', 'units'] }] },\n",
+            "    { key: 'release', pages: [{ key: 'release', parts: [], route: 'release' }] },\n",
+            "    { key: 'cycles', pages: [{ key: 'cycles', parts: [], extra: 'allCycles' }] },\n"
+          ]
+        },
+        {
+          "afterStart": 58,
+          "after": [
+            "  { navigationId:'performance', key: 'performance', group: 'modules', module: 'pm', tabs: [\n"
+          ],
+          "before": [
+            "  { key: 'performance', group: 'modules', module: 'pm', tabs: [\n"
+          ]
+        },
+        {
+          "afterStart": 60,
+          "after": [
+            "    { navigationId:'run', key: 'run', pages: [\n",
+            "      { navigationId:'progress', key: 'progress', parts: ['progress.pm', 'assessments'] },\n",
+            "      { navigationId:'importKpiTargets', key: 'importKpiTargets', parts: ['kpiImport'] },\n",
+            "      { navigationId:'fillBuKpi', key: 'fillBuKpi', parts: ['companyKpi'] },\n"
+          ],
+          "before": [
+            "    { key: 'run', pages: [\n",
+            "      { key: 'progress', parts: ['progress.pm', 'assessments'] },\n",
+            "      { key: 'importKpiTargets', parts: ['kpiImport'] },\n",
+            "      { key: 'fillBuKpi', parts: ['companyKpi'] },\n"
+          ]
+        },
+        {
+          "afterStart": 66,
+          "after": [
+            "    { navigationId:'settings', key: 'settings', pages: [{ navigationId:'settings', key: 'settings', parts: [], extra: 'policyPointer' }] },\n"
+          ],
+          "before": [
+            "    { key: 'settings', pages: [{ key: 'settings', parts: [], extra: 'policyPointer' }] },\n"
+          ]
+        },
+        {
+          "afterStart": 68,
+          "after": [
+            "  { navigationId:'feedback', key: 'feedback', group: 'modules', module: 'f360', tabs: [\n"
+          ],
+          "before": [
+            "  { key: 'feedback', group: 'modules', module: 'f360', tabs: [\n"
+          ]
+        },
+        {
+          "afterStart": 70,
+          "after": [
+            "    { navigationId:'run', key: 'run', pages: [\n",
+            "      { navigationId:'people', key: 'people', parts: ['progress.feedback'] },\n",
+            "      { navigationId:'raterProgress', key: 'raterProgress', parts: ['progress.assessors'] },\n",
+            "      { navigationId:'panels', key: 'panels', parts: ['panels'] },\n"
+          ],
+          "before": [
+            "    { key: 'run', pages: [\n",
+            "      { key: 'people', parts: ['progress.feedback'] },\n",
+            "      { key: 'raterProgress', parts: ['progress.assessors'] },\n",
+            "      { key: 'panels', parts: ['panels'] },\n"
+          ]
+        },
+        {
+          "afterStart": 75,
+          "after": [
+            "    { navigationId:'settings', key: 'settings', pages: [{ navigationId:'framework', key: 'framework', parts: ['framework'] }] },\n"
+          ],
+          "before": [
+            "    { key: 'settings', pages: [{ key: 'framework', parts: ['framework'] }] },\n"
+          ]
+        },
+        {
+          "afterStart": 77,
+          "after": [
+            "  { navigationId:'competency', key: 'competency', group: 'modules', module: 'competency', tabs: [\n"
+          ],
+          "before": [
+            "  { key: 'competency', group: 'modules', module: 'competency', tabs: [\n"
+          ]
+        },
+        {
+          "afterStart": 79,
+          "after": [
+            "    { navigationId:'run', key: 'run', pages: [\n",
+            "      { navigationId:'progress', key: 'progress', parts: ['progress.competency'] },\n",
+            "      { navigationId:'assignCompetencies', key: 'assignCompetencies', parts: ['catalogue.generate'] },\n",
+            "      { navigationId:'importJobCodes', key: 'importJobCodes', parts: ['catalogue.import'] },\n"
+          ],
+          "before": [
+            "    { key: 'run', pages: [\n",
+            "      { key: 'progress', parts: ['progress.competency'] },\n",
+            "      { key: 'assignCompetencies', parts: ['catalogue.generate'] },\n",
+            "      { key: 'importJobCodes', parts: ['catalogue.import'] },\n"
+          ]
+        },
+        {
+          "afterStart": 84,
+          "after": [
+            "    { navigationId:'settings', key: 'settings', pages: [{ navigationId:'competencyLibrary', key: 'competencyLibrary', parts: ['catalogue.profiles'] }] },\n"
+          ],
+          "before": [
+            "    { key: 'settings', pages: [{ key: 'competencyLibrary', parts: ['catalogue.profiles'] }] },\n"
+          ]
+        },
+        {
+          "afterStart": 86,
+          "after": [
+            "  { navigationId:'calibration', key: 'calibration', group: 'modules', module: 'calibration', tabs: [\n"
+          ],
+          "before": [
+            "  { key: 'calibration', group: 'modules', module: 'calibration', tabs: [\n"
+          ]
+        },
+        {
+          "afterStart": 88,
+          "after": [
+            "    { navigationId:'run', key: 'run', pages: [\n",
+            "      { navigationId:'progress', key: 'progress', parts: ['progress.calibration'] },\n",
+            "      { navigationId:'lockStatus', key: 'lockStatus', parts: ['calibration.sessions'] },\n"
+          ],
+          "before": [
+            "    { key: 'run', pages: [\n",
+            "      { key: 'progress', parts: ['progress.calibration'] },\n",
+            "      { key: 'lockStatus', parts: ['calibration.sessions'] },\n"
+          ]
+        },
+        {
+          "afterStart": 92,
+          "after": [
+            "    { navigationId:'settings', key: 'settings', pages: [\n",
+            "      { navigationId:'patAchievement', key: 'patAchievement', parts: ['profit'] },\n",
+            "      { navigationId:'calibrationGroups', key: 'calibrationGroups', parts: ['calibration.groups'] },\n"
+          ],
+          "before": [
+            "    { key: 'settings', pages: [\n",
+            "      { key: 'patAchievement', parts: ['profit'] },\n",
+            "      { key: 'calibrationGroups', parts: ['calibration.groups'] },\n"
+          ]
+        },
+        {
+          "afterStart": 97,
+          "after": [
+            "  { navigationId:'career', key: 'career', group: 'modules', module: 'idp', tabs: [\n"
+          ],
+          "before": [
+            "  { key: 'career', group: 'modules', module: 'idp', tabs: [\n"
+          ]
+        },
+        {
+          "afterStart": 99,
+          "after": [
+            "    { navigationId:'run', key: 'run', pages: [{ navigationId:'progress', key: 'progress', parts: ['progress.career'] }] },\n",
+            "    { navigationId:'settings', key: 'settings', pages: [{ navigationId:'careerRoutes', key: 'careerRoutes', parts: ['catalogue.routes'] }] },\n"
+          ],
+          "before": [
+            "    { key: 'run', pages: [{ key: 'progress', parts: ['progress.career'] }] },\n",
+            "    { key: 'settings', pages: [{ key: 'careerRoutes', parts: ['catalogue.routes'] }] },\n"
+          ]
+        },
+        {
+          "afterStart": 103,
+          "after": [
+            "  { navigationId:'email', key: 'email', group: 'end', tabs: [\n",
+            "    { navigationId:'schedule', key: 'schedule', pages: [{ navigationId:'everyonesReminder', key: 'everyonesReminder', parts: ['reminders'] }] },\n"
+          ],
+          "before": [
+            "  { key: 'email', group: 'end', tabs: [\n",
+            "    { key: 'schedule', pages: [{ key: 'everyonesReminder', parts: ['reminders'] }] },\n"
+          ]
+        },
+        {
+          "afterStart": 106,
+          "after": [
+            "  { navigationId:'reports', key: 'reports', group: 'end', tabs: [\n",
+            "    { navigationId:'reports', key: 'reports', pages: [\n",
+            "      { navigationId:'ratingsRecord', key: 'ratingsRecord', parts: [], route: 'records' },\n"
+          ],
+          "before": [
+            "  { key: 'reports', group: 'end', tabs: [\n",
+            "    { key: 'reports', pages: [\n",
+            "      { key: 'ratingsRecord', parts: [], route: 'records' },\n"
+          ]
+        },
+        {
+          "afterStart": 110,
+          "after": [
+            "      { navigationId:'builtByAgent', key: 'builtByAgent', parts: [], route: 'reports', hidden: true },\n"
+          ],
+          "before": [
+            "      { key: 'builtByAgent', parts: [], route: 'reports', hidden: true },\n"
+          ]
+        },
+        {
+          "afterStart": 210,
+          "after": [
+            "\n",
+            "/** Join explicit canonical metadata, never a URL, label or array position. */\n",
+            "export function adminNavigationIdentity(section:string,tab?:string,page?:string):string{\n",
+            " const s=adminSection(section);if(!s)throw Error('Unknown admin navigation section');\n",
+            " const parent='nested.performanceAdmin.'+s.navigationId;if(tab===undefined)return parent;\n",
+            " const t=s.tabs.find(value=>value.key===tab);if(!t)throw Error('Unknown admin navigation tab');\n",
+            " const branch=parent+'.'+t.navigationId;if(page===undefined)return branch;\n",
+            " const p=t.pages.find(value=>value.key===page);if(!p)throw Error('Unknown admin navigation page');\n",
+            " return branch+'.'+p.navigationId;\n",
+            "}\n"
+          ],
+          "before": []
+        }
+      ]
+    }
+  ],
+  "moved": {
+    "path": "lib/leave-config-navigation.ts",
+    "candidateSha256": "cd7acf814e5aaf0e1ed50fcd2d3d6128fd67146c0699eb9e7f60939198e7f5b7",
+    "predecessorSha256": "15f4e13914fead090665e89fc98d26ecbeb1a05dd0717af35d7f83ed3d9225df",
+    "sourcePath": "components/leave-config-map.tsx",
+    "sourceStartLine": 53,
+    "sourceEndLine": 442,
+    "edits": [
+      {
+        "afterStart": 0,
+        "after": [
+          "/** Pure published Leave configuration facts. Rendering/i18n stay server-owned. */\n"
+        ],
+        "before": []
+      },
+      {
+        "afterStart": 214,
+        "after": [
+          "  items: { navigationId:string; id: LeaveConfigScreenId; href: string }[];\n"
+        ],
+        "before": [
+          "  items: { id: LeaveConfigScreenId; href: string }[];\n"
+        ]
+      },
+      {
+        "afterStart": 222,
+        "after": [
+          "      { navigationId: 'nested.leaveConfig.leaveTypes', id: 'leaveTypes', href: '/admin/leave-config/types' },\n",
+          "      { navigationId: 'nested.leaveConfig.entitlementTables', id: 'entitlementTables', href: '/admin/leave-config/entitlement-tables' },\n"
+        ],
+        "before": [
+          "      { id: 'leaveTypes', href: '/admin/leave-config/types' },\n",
+          "      { id: 'entitlementTables', href: '/admin/leave-config/entitlement-tables' },\n"
+        ]
+      },
+      {
+        "afterStart": 236,
+        "after": [
+          "  { id: 'balanceHealth', navKey: 'leaveBalanceHealth', items: [{ navigationId: 'nested.leaveConfig.balanceHealth', id: 'balanceHealth', href: '/admin/leave-config/balance-health' }] },\n"
+        ],
+        "before": [
+          "  { id: 'balanceHealth', navKey: 'leaveBalanceHealth', items: [{ id: 'balanceHealth', href: '/admin/leave-config/balance-health' }] },\n"
+        ]
+      },
+      {
+        "afterStart": 241,
+        "after": [
+          "      { navigationId: 'nested.leaveConfig.adjustments', id: 'adjustments', href: '/admin/leave-config/adjustments' },\n"
+        ],
+        "before": [
+          "      { id: 'adjustments', href: '/admin/leave-config/adjustments' },\n"
+        ]
+      },
+      {
+        "afterStart": 253,
+        "after": [
+          "      { navigationId: 'nested.leaveConfig.importLeaveData', id: 'importLeaveData', href: '/admin/leave-config/import' },\n"
+        ],
+        "before": [
+          "      { id: 'importLeaveData', href: '/admin/leave-config/import' },\n"
+        ]
+      },
+      {
+        "afterStart": 266,
+        "after": [
+          "    items: [{ navigationId: 'nested.leaveConfig.leaveDataImport', id: 'leaveDataImport', href: '/admin/leave-config/data-import' }],\n"
+        ],
+        "before": [
+          "    items: [{ id: 'leaveDataImport', href: '/admin/leave-config/data-import' }],\n"
+        ]
+      },
+      {
+        "afterStart": 288,
+        "after": [
+          "      { navigationId: 'nested.leaveConfig.leaveCredit', id: 'leaveCredit', href: '/admin/leave-config/leave-credit' },\n",
+          "      { navigationId: 'nested.leaveConfig.leaveCreditRules', id: 'leaveCreditRules', href: '/admin/leave-config/leave-credit/rules' },\n"
+        ],
+        "before": [
+          "      { id: 'leaveCredit', href: '/admin/leave-config/leave-credit' },\n",
+          "      { id: 'leaveCreditRules', href: '/admin/leave-config/leave-credit/rules' },\n"
+        ]
+      },
+      {
+        "afterStart": 292,
+        "after": [
+          "  { id: 'generate', navKey: 'leaveGenerate', items: [{ navigationId: 'nested.leaveConfig.generateEntitlement', id: 'generateEntitlement', href: '/admin/leave-config/generate' }] },\n"
+        ],
+        "before": [
+          "  { id: 'generate', navKey: 'leaveGenerate', items: [{ id: 'generateEntitlement', href: '/admin/leave-config/generate' }] },\n"
+        ]
+      },
+      {
+        "afterStart": 299,
+        "after": [
+          "  { id: 'earnedAccrual', navKey: 'leaveEarnedAccrual', items: [{ navigationId: 'nested.leaveConfig.earnedAccrual', id: 'earnedAccrual', href: '/admin/leave-config/earned-accrual' }] },\n",
+          "  { id: 'approval', navKey: 'leaveApprovalWorkflow', items: [{ navigationId: 'nested.leaveConfig.approvalChain', id: 'approvalChain', href: '/admin/leave-config/approval-chains' }] },\n"
+        ],
+        "before": [
+          "  { id: 'earnedAccrual', navKey: 'leaveEarnedAccrual', items: [{ id: 'earnedAccrual', href: '/admin/leave-config/earned-accrual' }] },\n",
+          "  { id: 'approval', navKey: 'leaveApprovalWorkflow', items: [{ id: 'approvalChain', href: '/admin/leave-config/approval-chains' }] },\n"
+        ]
+      },
+      {
+        "afterStart": 304,
+        "after": [
+          "  { id: 'companyRules', navKey: 'leaveCompanyRules', items: [{ navigationId: 'nested.leaveConfig.companyRules', id: 'companyRules', href: '/admin/leave-config/company-rules' }] },\n"
+        ],
+        "before": [
+          "  { id: 'companyRules', navKey: 'leaveCompanyRules', items: [{ id: 'companyRules', href: '/admin/leave-config/company-rules' }] },\n"
+        ]
+      },
+      {
+        "afterStart": 309,
+        "after": [
+          "  { id: 'specialSetting', navKey: 'leaveSpecialSetting', items: [{ navigationId: 'nested.leaveConfig.specialSetting', id: 'specialSetting', href: '/admin/leave-config/special-setting' }] },\n"
+        ],
+        "before": [
+          "  { id: 'specialSetting', navKey: 'leaveSpecialSetting', items: [{ id: 'specialSetting', href: '/admin/leave-config/special-setting' }] },\n"
+        ]
+      },
+      {
+        "afterStart": 350,
+        "after": [
+          "export const LEAVE_CONFIG_RECORD_DEFINITIONS = [\n",
+          "  {key:'configuration', navigationId:'nested.leaveConfig.records.configuration', labelId:'entitlementArchive'},\n",
+          "  {key:'balances', navigationId:'nested.leaveConfig.records.balances', labelId:'ledgerArchive'},\n",
+          "] as const;\n",
+          "export type LeaveConfigRecordId = (typeof LEAVE_CONFIG_RECORD_DEFINITIONS)[number]['key'];\n",
+          "export const LEAVE_CONFIG_RECORD_IDS:readonly LeaveConfigRecordId[] = LEAVE_CONFIG_RECORD_DEFINITIONS.map(record=>record.key);\n",
+          "export function leaveConfigRecordNavigation(record:LeaveConfigRecordId){\n",
+          "  const definition=LEAVE_CONFIG_RECORD_DEFINITIONS.find(row=>row.key===record);\n",
+          "  if(!definition)throw Error('Unknown leave record descriptor');\n",
+          "  return definition;\n",
+          "}\n"
+        ],
+        "before": [
+          "export const LEAVE_CONFIG_RECORD_IDS = ['configuration', 'balances'] as const;\n",
+          "export type LeaveConfigRecordId = (typeof LEAVE_CONFIG_RECORD_IDS)[number];\n"
+        ]
+      },
+      {
+        "afterStart": 364,
+        "after": [
+          "  configuration: LEAVE_CONFIG_RECORD_DEFINITIONS[0].labelId,\n",
+          "  balances: LEAVE_CONFIG_RECORD_DEFINITIONS[1].labelId,\n"
+        ],
+        "before": [
+          "  configuration: 'entitlementArchive',\n",
+          "  balances: 'ledgerArchive',\n"
+        ]
+      }
+    ]
+  }
+}

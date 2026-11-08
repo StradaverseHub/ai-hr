@@ -6,6 +6,7 @@ import { BookOpen, ChartNoAxesCombined, ChevronDown, Gauge, MessageSquareText, S
 import type { LucideIcon } from 'lucide-react';
 import { aiCentreName } from '@/lib/ai-centre/brand';
 import { ADMIN_GROUPS, PAYROLL_CYCLE_PAGES, centreSectionsFor, centreTabsFor, type AdminSection, type AdministrationSection, type CentreGroup, type CentreSection, type CentreTabKey, type PayrollCyclePage } from '@/lib/ai-centre/centre-nav';
+import {aiManagementNavigation} from '@/app/control-tower/agents/sections';
 import { cn } from '@/lib/utils';
 import { ScrollCurrentTabIntoView } from './centre-tabs-scroll';
 
@@ -35,7 +36,7 @@ export function AiCentreTabs({ active, isAdmin }: { active: CentreTabKey | null;
           const firstAdmin = tab.adminOnly && !tabs[index - 1]?.adminOnly;
           return (
             <li key={tab.key} className={cn('flex', firstAdmin && 'ml-2 border-l border-border pl-2')}>
-              <Link href={tab.href} aria-current={current ? 'page' : undefined}
+              <Link data-navigation-destination={tab.navigationId} href={tab.href} aria-current={current ? 'page' : undefined}
                 className={cn('-mb-px inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   current ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
                 <Icon aria-hidden className="size-4" />
@@ -64,7 +65,7 @@ export function AiCentreSectionTabs({ group, active, payroll, groupAdmin = false
       <ul className="flex min-w-max items-end gap-1 px-1 sm:min-w-0 sm:flex-wrap">
         {centreSectionsFor(group, { payroll, groupAdmin }).map(section => (
           <li key={section.key} className="flex">
-            <Link href={section.href} aria-current={section.key === active ? 'page' : undefined}
+            <Link data-navigation-destination={section.navigationId} href={section.href} aria-current={section.key === active ? 'page' : undefined}
               className={cn('-mb-px inline-flex min-h-11 items-center border-b-2 px-3 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 section.key === active ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
               {t(`sections.${section.key}`)}
@@ -99,7 +100,7 @@ export function AiCentreSubnav({ group, active, available, hrefOf }: {
   return (
     <nav aria-label={t('subnavLabel')} className="flex flex-wrap gap-1 rounded-lg bg-muted p-1 text-sm">
       {items.map(item => (
-        <Link key={item.section} href={hrefOf(item.section)} aria-current={item.section === active ? 'page' : undefined}
+        <Link key={item.section} data-navigation-destination={aiManagementNavigation(item.section).navigationId} href={hrefOf(item.section)} aria-current={item.section === active ? 'page' : undefined}
           className={cn('inline-flex min-h-9 items-center rounded-md px-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             item.section === active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           {t(`subnav.${item.label}`)}
@@ -116,7 +117,7 @@ export function PayrollCycleSubnav({ active }: { active: PayrollCyclePage }) {
   return (
     <nav aria-label={t('payrollCycleSubnavLabel')} data-payroll-cycle-subnav className="flex flex-wrap gap-1 rounded-lg bg-muted p-1 text-sm">
       {PAYROLL_CYCLE_PAGES.map(item => (
-        <Link key={item.page} href={item.href} aria-current={item.page === active ? 'page' : undefined}
+        <Link key={item.page} data-navigation-destination={item.navigationId} href={item.href} aria-current={item.page === active ? 'page' : undefined}
           className={cn('inline-flex min-h-9 items-center rounded-md px-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11',
             item.page === active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           {t(`payrollCyclePages.${item.page}`)}

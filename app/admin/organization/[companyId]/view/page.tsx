@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Kv, Section, Status, type KvItem } from '@/components/monolith';
 import { MONO_LABEL } from '@/components/monolith/classes';
 import { CompanyLogo } from '@/components/company-logo';
-import { COMPANY_PANEL_TABS, isCompanyPanelTab, type CompanyPanelTab } from '@/lib/company-panel-tabs';
+import { COMPANY_PANEL_TABS, companyPanelNavigation, isCompanyPanelTab, type CompanyPanelTab } from '@/lib/company-panel-tabs';
 import { COUNTRY_CODE_OPTIONS, COUNTRY_NAME_OPTIONS } from '@/lib/countries';
 import { myBankLabel } from '@/lib/my-banks';
 import { STATUTORY_AUTHORITIES } from '@/lib/statutory-authorities';
@@ -127,6 +127,7 @@ export default async function CompanyViewPage({
         {COMPANY_PANEL_TABS.map((k) => (
           <Link
             key={k}
+            data-navigation-destination={companyPanelNavigation(k).navigationId}
             href={tabHref(k)}
             aria-current={k === tab ? 'page' : undefined}
             className={cn(

@@ -26,6 +26,7 @@ import { RuleForm } from '../../attendance-policy/rules/rule-form';
 import { ruleShiftChoices } from '../../attendance-policy/rules/shift-choices';
 import {
   SCHEDULE_SECTION_KEYS,
+  SCHEDULE_RENDERED_SECTIONS,
   sectionAnchor,
   type ScheduleSectionKey,
 } from './sections';
@@ -672,7 +673,7 @@ export async function ScheduleGroupSections({
     <div className="space-y-8">
       <ErrorBanner message={orphanError} />
       <ScheduleGroupTabs initial={section ?? savedSection} ariaLabel={t('sectionsAria')}
-        tabs={(['general','attendance','overtime','workingDay'] as const).map(key=>({id:key,label:SECTION_LABEL[key],body:bodyFor[key]}))}/>
+        tabs={SCHEDULE_RENDERED_SECTIONS.map(section=>({id:section.key,navigationId:section.navigationId,label:SECTION_LABEL[section.key],body:bodyFor[section.key]}))}/>
       {mode === 'view' && (
         <div className="flex items-center gap-3">
           <Link href={scheduleGroupEditPath(rule.id)} className={btnPrimary}>

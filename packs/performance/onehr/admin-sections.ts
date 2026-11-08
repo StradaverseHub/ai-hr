@@ -43,72 +43,72 @@ export type AdminPart = (typeof adminCards)[number]['parts'][number];
 export type AdminExtra = 'overview' | 'allCycles' | 'policyPointer';
 /** An existing route under /performance/[cycleId] that a page stands for (it keeps its own address, D8). */
 export type AdminRoute = 'release' | 'records' | 'reports';
-export type AdminPage = { readonly key: string; readonly parts: readonly AdminPart[]; readonly extra?: AdminExtra; readonly route?: AdminRoute; readonly hidden?: boolean };
-export type AdminTab = { readonly key: string; readonly pages: readonly AdminPage[] };
-export type AdminSection = { readonly key: string; readonly group: 'top' | 'modules' | 'end'; readonly module?: OverviewModule; readonly tabs: readonly AdminTab[] };
+export type AdminPage = { readonly navigationId:string; readonly key: string; readonly parts: readonly AdminPart[]; readonly extra?: AdminExtra; readonly route?: AdminRoute; readonly hidden?: boolean };
+export type AdminTab = { readonly navigationId:string; readonly key: string; readonly pages: readonly AdminPage[] };
+export type AdminSection = { readonly navigationId:string; readonly key: string; readonly group: 'top' | 'modules' | 'end'; readonly module?: OverviewModule; readonly tabs: readonly AdminTab[] };
 
-const overview = { key: 'overview', pages: [{ key: 'overview', parts: [], extra: 'overview' }] } as const;
+const overview = { navigationId:'overview', key: 'overview', pages: [{ navigationId:'overview', key: 'overview', parts: [], extra: 'overview' }] } as const;
 
 export const adminSections = [
-  { key: 'cycle', group: 'top', tabs: [
-    { key: 'calendar', pages: [{ key: 'calendar', parts: ['cycleActions', 'policy', 'modules', 'windows'] }] },
-    { key: 'participants', pages: [{ key: 'participants', parts: ['participants', 'units'] }] },
-    { key: 'release', pages: [{ key: 'release', parts: [], route: 'release' }] },
-    { key: 'cycles', pages: [{ key: 'cycles', parts: [], extra: 'allCycles' }] },
+  { navigationId:'cycle', key: 'cycle', group: 'top', tabs: [
+    { navigationId:'calendar', key: 'calendar', pages: [{ navigationId:'calendar', key: 'calendar', parts: ['cycleActions', 'policy', 'modules', 'windows'] }] },
+    { navigationId:'participants', key: 'participants', pages: [{ navigationId:'participants', key: 'participants', parts: ['participants', 'units'] }] },
+    { navigationId:'release', key: 'release', pages: [{ navigationId:'release', key: 'release', parts: [], route: 'release' }] },
+    { navigationId:'cycles', key: 'cycles', pages: [{ navigationId:'cycles', key: 'cycles', parts: [], extra: 'allCycles' }] },
   ] },
-  { key: 'performance', group: 'modules', module: 'pm', tabs: [
+  { navigationId:'performance', key: 'performance', group: 'modules', module: 'pm', tabs: [
     overview,
-    { key: 'run', pages: [
-      { key: 'progress', parts: ['progress.pm', 'assessments'] },
-      { key: 'importKpiTargets', parts: ['kpiImport'] },
-      { key: 'fillBuKpi', parts: ['companyKpi'] },
+    { navigationId:'run', key: 'run', pages: [
+      { navigationId:'progress', key: 'progress', parts: ['progress.pm', 'assessments'] },
+      { navigationId:'importKpiTargets', key: 'importKpiTargets', parts: ['kpiImport'] },
+      { navigationId:'fillBuKpi', key: 'fillBuKpi', parts: ['companyKpi'] },
     ] },
     // DQ-4: the policy form stays whole on Cycle › Calendar, so this tab points there.
-    { key: 'settings', pages: [{ key: 'settings', parts: [], extra: 'policyPointer' }] },
+    { navigationId:'settings', key: 'settings', pages: [{ navigationId:'settings', key: 'settings', parts: [], extra: 'policyPointer' }] },
   ] },
-  { key: 'feedback', group: 'modules', module: 'f360', tabs: [
+  { navigationId:'feedback', key: 'feedback', group: 'modules', module: 'f360', tabs: [
     overview,
-    { key: 'run', pages: [
-      { key: 'people', parts: ['progress.feedback'] },
-      { key: 'raterProgress', parts: ['progress.assessors'] },
-      { key: 'panels', parts: ['panels'] },
+    { navigationId:'run', key: 'run', pages: [
+      { navigationId:'people', key: 'people', parts: ['progress.feedback'] },
+      { navigationId:'raterProgress', key: 'raterProgress', parts: ['progress.assessors'] },
+      { navigationId:'panels', key: 'panels', parts: ['panels'] },
     ] },
-    { key: 'settings', pages: [{ key: 'framework', parts: ['framework'] }] },
+    { navigationId:'settings', key: 'settings', pages: [{ navigationId:'framework', key: 'framework', parts: ['framework'] }] },
   ] },
-  { key: 'competency', group: 'modules', module: 'competency', tabs: [
+  { navigationId:'competency', key: 'competency', group: 'modules', module: 'competency', tabs: [
     overview,
-    { key: 'run', pages: [
-      { key: 'progress', parts: ['progress.competency'] },
-      { key: 'assignCompetencies', parts: ['catalogue.generate'] },
-      { key: 'importJobCodes', parts: ['catalogue.import'] },
+    { navigationId:'run', key: 'run', pages: [
+      { navigationId:'progress', key: 'progress', parts: ['progress.competency'] },
+      { navigationId:'assignCompetencies', key: 'assignCompetencies', parts: ['catalogue.generate'] },
+      { navigationId:'importJobCodes', key: 'importJobCodes', parts: ['catalogue.import'] },
     ] },
-    { key: 'settings', pages: [{ key: 'competencyLibrary', parts: ['catalogue.profiles'] }] },
+    { navigationId:'settings', key: 'settings', pages: [{ navigationId:'competencyLibrary', key: 'competencyLibrary', parts: ['catalogue.profiles'] }] },
   ] },
-  { key: 'calibration', group: 'modules', module: 'calibration', tabs: [
+  { navigationId:'calibration', key: 'calibration', group: 'modules', module: 'calibration', tabs: [
     overview,
-    { key: 'run', pages: [
-      { key: 'progress', parts: ['progress.calibration'] },
-      { key: 'lockStatus', parts: ['calibration.sessions'] },
+    { navigationId:'run', key: 'run', pages: [
+      { navigationId:'progress', key: 'progress', parts: ['progress.calibration'] },
+      { navigationId:'lockStatus', key: 'lockStatus', parts: ['calibration.sessions'] },
     ] },
-    { key: 'settings', pages: [
-      { key: 'patAchievement', parts: ['profit'] },
-      { key: 'calibrationGroups', parts: ['calibration.groups'] },
+    { navigationId:'settings', key: 'settings', pages: [
+      { navigationId:'patAchievement', key: 'patAchievement', parts: ['profit'] },
+      { navigationId:'calibrationGroups', key: 'calibrationGroups', parts: ['calibration.groups'] },
     ] },
   ] },
-  { key: 'career', group: 'modules', module: 'idp', tabs: [
+  { navigationId:'career', key: 'career', group: 'modules', module: 'idp', tabs: [
     overview,
-    { key: 'run', pages: [{ key: 'progress', parts: ['progress.career'] }] },
-    { key: 'settings', pages: [{ key: 'careerRoutes', parts: ['catalogue.routes'] }] },
+    { navigationId:'run', key: 'run', pages: [{ navigationId:'progress', key: 'progress', parts: ['progress.career'] }] },
+    { navigationId:'settings', key: 'settings', pages: [{ navigationId:'careerRoutes', key: 'careerRoutes', parts: ['catalogue.routes'] }] },
   ] },
   // DQ-10: OneHR's Email and Reports sections, drawn only with what AI-HR already has.
-  { key: 'email', group: 'end', tabs: [
-    { key: 'schedule', pages: [{ key: 'everyonesReminder', parts: ['reminders'] }] },
+  { navigationId:'email', key: 'email', group: 'end', tabs: [
+    { navigationId:'schedule', key: 'schedule', pages: [{ navigationId:'everyonesReminder', key: 'everyonesReminder', parts: ['reminders'] }] },
   ] },
-  { key: 'reports', group: 'end', tabs: [
-    { key: 'reports', pages: [
-      { key: 'ratingsRecord', parts: [], route: 'records' },
+  { navigationId:'reports', key: 'reports', group: 'end', tabs: [
+    { navigationId:'reports', key: 'reports', pages: [
+      { navigationId:'ratingsRecord', key: 'ratingsRecord', parts: [], route: 'records' },
       // The assistant's report page needs its report's own query, so it has no link of its own (OneHR: hidden).
-      { key: 'builtByAgent', parts: [], route: 'reports', hidden: true },
+      { navigationId:'builtByAgent', key: 'builtByAgent', parts: [], route: 'reports', hidden: true },
     ] },
   ] },
 ] as const satisfies readonly AdminSection[];
@@ -207,4 +207,14 @@ export function adminReturnPath(raw: unknown, cycleId: string): string | null {
   const at = resolveAdminTab(match[2], match[3], url.searchParams.get('sub'));
   if (!at || at.page.route) return null;
   return adminPageHref(cycleId, at.section.key, at.tab.key, at.page.key);
+}
+
+/** Join explicit canonical metadata, never a URL, label or array position. */
+export function adminNavigationIdentity(section:string,tab?:string,page?:string):string{
+ const s=adminSection(section);if(!s)throw Error('Unknown admin navigation section');
+ const parent='nested.performanceAdmin.'+s.navigationId;if(tab===undefined)return parent;
+ const t=s.tabs.find(value=>value.key===tab);if(!t)throw Error('Unknown admin navigation tab');
+ const branch=parent+'.'+t.navigationId;if(page===undefined)return branch;
+ const p=t.pages.find(value=>value.key===page);if(!p)throw Error('Unknown admin navigation page');
+ return branch+'.'+p.navigationId;
 }

@@ -183,11 +183,11 @@ describe('the frame: sections, tabs and pages from the one registry', () => {
     for (const s of adminSectionList) {
       const ui = show(await PerformanceAdminShell({ cycleId: CYCLE, cycleName: '2026 Year-End', section: s.key, tab: s.tabs[0].key, children: null }));
       const side = within(screen.getByRole('navigation', { name: pa.nav.sections }));
-      expect(side.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')])).toEqual(adminSectionList.map((x) => [pa.sections[x.key], adminSectionHref(CYCLE, x.key)]));
+      expect(side.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href'),a.getAttribute('data-navigation-destination')])).toEqual(adminSectionList.map((x) => [pa.sections[x.key], adminSectionHref(CYCLE, x.key),'nested.performanceAdmin.'+x.navigationId]));
       expect(side.getByRole('link', { name: pa.sections[s.key] })).toHaveAttribute('aria-current', 'true');
       expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(pa.sections[s.key]);
       const tabs = within(screen.getByRole('navigation', { name: pa.sections[s.key] }));
-      expect(tabs.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]), s.key).toEqual(s.tabs.map((t) => [pa.tabs[t.key], adminPageHref(CYCLE, s.key, t.key)]));
+      expect(tabs.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href'),a.getAttribute('data-navigation-destination')]), s.key).toEqual(s.tabs.map((t) => [pa.tabs[t.key], adminPageHref(CYCLE, s.key, t.key),'nested.performanceAdmin.'+s.navigationId+'.'+t.navigationId]));
       expect(tabs.getByRole('link', { name: pa.tabs[s.tabs[0].key] })).toHaveAttribute('aria-current');
       ui.unmount();
     }
@@ -197,8 +197,8 @@ describe('the frame: sections, tabs and pages from the one registry', () => {
   it('lists a tab\'s pages under it when it holds more than one, and marks the open one', async () => {
     show(await PerformanceAdminShell({ cycleId: CYCLE, section: 'feedback', tab: 'run', page: 'raterProgress', children: null }));
     const pages = within(screen.getByRole('navigation', { name: pa.nav.pages }));
-    expect(pages.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-      [pa.pages.people, `/performance/${CYCLE}/feedback/run`], [pa.pages.raterProgress, `/performance/${CYCLE}/feedback/run?sub=raterProgress`], [pa.pages.panels, `/performance/${CYCLE}/feedback/run?sub=panels`],
+    expect(pages.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href'),a.getAttribute('data-navigation-destination')])).toEqual([
+      [pa.pages.people, `/performance/${CYCLE}/feedback/run`, 'nested.performanceAdmin.feedback.run.people'], [pa.pages.raterProgress, `/performance/${CYCLE}/feedback/run?sub=raterProgress`, 'nested.performanceAdmin.feedback.run.raterProgress'], [pa.pages.panels, `/performance/${CYCLE}/feedback/run?sub=panels`, 'nested.performanceAdmin.feedback.run.panels'],
     ]);
     expect(pages.getByRole('link', { name: pa.pages.raterProgress })).toHaveAttribute('aria-current', 'page');
   });

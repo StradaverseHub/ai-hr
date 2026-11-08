@@ -14,9 +14,20 @@
  * A tab key reaching a redirect is checked against THIS array and nothing else: never the posted string,
  * which would be a query-injection hole at the one place a path and a query string are concatenated.
  */
-export const COMPANY_PANEL_TABS = ['general', 'bank', 'statutory'] as const;
+export const COMPANY_PANEL_TAB_DEFINITIONS = [
+  {key:'general', navigationId:'nested.company.general'},
+  {key:'bank', navigationId:'nested.company.bank'},
+  {key:'statutory', navigationId:'nested.company.statutory'},
+] as const;
+export type CompanyPanelTab = (typeof COMPANY_PANEL_TAB_DEFINITIONS)[number]['key'];
+export const COMPANY_PANEL_TABS:readonly CompanyPanelTab[] = COMPANY_PANEL_TAB_DEFINITIONS.map(tab=>tab.key);
+/** Metadata lookup only; never an authority or a tab-state owner. */
+export function companyPanelNavigation(tab:CompanyPanelTab){
+  const definition=COMPANY_PANEL_TAB_DEFINITIONS.find(row=>row.key===tab);
+  if(!definition)throw Error('Unknown company navigation descriptor');
+  return definition;
+}
 
-export type CompanyPanelTab = (typeof COMPANY_PANEL_TABS)[number];
 
 export function isCompanyPanelTab(v: unknown): v is CompanyPanelTab {
   return typeof v === 'string' && (COMPANY_PANEL_TABS as readonly string[]).includes(v);

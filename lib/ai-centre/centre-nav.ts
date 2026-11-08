@@ -28,22 +28,22 @@ export const isCentreView = (value: unknown): value is CentreView =>
 export type CentreTabKey = 'ask' | 'operations' | 'administration' | 'how' | 'insights' | 'policies';
 
 /** `sections`: the tab is a group whose pages show a second tab row (CENTRE_SECTIONS). */
-export type CentreTab = Readonly<{ key: CentreTabKey; href: string; adminOnly: boolean; sections: boolean }>;
+export type CentreTab = Readonly<{ navigationId:string; key: CentreTabKey; href: string; adminOnly: boolean; sections: boolean }>;
 
 /** The approved structure's order: Ask · Operations ▾ · Insights · Policies · Administration ▾ · How it works. */
 export const CENTRE_TABS: readonly CentreTab[] = [
-  { key: 'ask', href: '/assistant', adminOnly: false, sections: false },
-  { key: 'operations', href: '/control-tower/loops', adminOnly: true, sections: true },
+  { navigationId:'submenu.aiCentre.ask', key: 'ask', href: '/assistant', adminOnly: false, sections: false },
+  { navigationId:'submenu.aiCentre.operations', key: 'operations', href: '/control-tower/loops', adminOnly: true, sections: true },
   // Owner decision 27: Insights is for HR and group administrators only (HR capacity and AI quality); its sections are
   // guarded again inside the view (components/ai-centre/insights.tsx) and by their services. A non-administrator who
   // opens it is forwarded to their own payroll readiness page.
-  { key: 'insights', href: '/assistant?view=insights', adminOnly: true, sections: false },
+  { navigationId:'submenu.aiCentre.insights', key: 'insights', href: '/assistant?view=insights', adminOnly: true, sections: false },
   // AI v2 Phase 2 P2-5: Policies, the Living Handbook, for every signed-in person. Its own linkable page, app/policies
   // (a signed-in session), so Ask can link it. Administrators write and approve policies; everyone else reads the
   // approved text of their own company's policies only (components/ai-centre/policies.tsx, migration 0971).
-  { key: 'policies', href: '/policies', adminOnly: false, sections: false },
-  { key: 'administration', href: '/control-tower/agents/features', adminOnly: true, sections: true },
-  { key: 'how', href: '/assistant?view=how', adminOnly: false, sections: false },
+  { navigationId:'submenu.aiCentre.policies', key: 'policies', href: '/policies', adminOnly: false, sections: false },
+  { navigationId:'submenu.aiCentre.administration', key: 'administration', href: '/control-tower/agents/features', adminOnly: true, sections: true },
+  { navigationId:'submenu.aiCentre.how', key: 'how', href: '/assistant?view=how', adminOnly: false, sections: false },
 ];
 
 export function centreTabsFor(viewer: { isAdmin: boolean }): readonly CentreTab[] {
@@ -56,27 +56,27 @@ export function centreTabsFor(viewer: { isAdmin: boolean }): readonly CentreTab[
 export type OperationsSection = 'loops' | 'payrollCycle' | 'exceptions' | 'readiness';
 export type AdministrationSection = 'workers' | 'setup' | 'spend' | 'buildList';
 export type CentreSection = OperationsSection | AdministrationSection;
-export type CentreSectionTab = Readonly<{ key: CentreSection; href: string; payroll: boolean; groupAdmin: boolean }>;
+export type CentreSectionTab = Readonly<{ navigationId:string; key: CentreSection; href: string; payroll: boolean; groupAdmin: boolean }>;
 export type CentreGroup = 'operations' | 'administration';
 
 export const CENTRE_SECTIONS: Readonly<Record<CentreGroup, readonly CentreSectionTab[]>> = {
   operations: [
     // AI v2 W8: the loops at the Prepare level; the landing page of Operations, with all seven loops (the six in its
     // table and the three payroll loops listed above it, the Audit loop among them).
-    { key: 'loops', href: '/control-tower/loops', payroll: false, groupAdmin: false },
+    { navigationId:'submenu.aiCentre.loops', key: 'loops', href: '/control-tower/loops', payroll: false, groupAdmin: false },
     // The three payroll loops' pages: Pre-salary (the cycle), Salary payroll and its Settings, and Audit.
-    { key: 'payrollCycle', href: '/control-tower/loops/payroll-cycle', payroll: true, groupAdmin: false },
+    { navigationId:'submenu.aiCentre.payrollCycle', key: 'payrollCycle', href: '/control-tower/loops/payroll-cycle', payroll: true, groupAdmin: false },
     // The one queue of payroll exceptions (decision 28: resolved here only), with the "cause already fixed" group.
-    { key: 'exceptions', href: '/control-tower/exceptions', payroll: true, groupAdmin: false },
+    { navigationId:'submenu.aiCentre.exceptions', key: 'exceptions', href: '/control-tower/exceptions', payroll: true, groupAdmin: false },
     // The one list of record gaps, with who acts, Refresh and what the missing-data loop asked.
-    { key: 'readiness', href: '/control-tower/readiness', payroll: false, groupAdmin: false },
+    { navigationId:'submenu.aiCentre.readiness', key: 'readiness', href: '/control-tower/readiness', payroll: false, groupAdmin: false },
   ],
   administration: [
-    { key: 'workers', href: '/control-tower/agents/features', payroll: false, groupAdmin: false },
-    { key: 'setup', href: '/control-tower/agents', payroll: false, groupAdmin: false },
-    { key: 'spend', href: '/control-tower/agents/allowances', payroll: false, groupAdmin: false },
+    { navigationId:'submenu.aiCentre.workers', key: 'workers', href: '/control-tower/agents/features', payroll: false, groupAdmin: false },
+    { navigationId:'submenu.aiCentre.setup', key: 'setup', href: '/control-tower/agents', payroll: false, groupAdmin: false },
+    { navigationId:'submenu.aiCentre.spend', key: 'spend', href: '/control-tower/agents/allowances', payroll: false, groupAdmin: false },
     // From the former Opportunities page: the ranked build list and its export, which only a group administrator reads.
-    { key: 'buildList', href: '/control-tower/agents/build-list', payroll: false, groupAdmin: true },
+    { navigationId:'submenu.aiCentre.buildList', key: 'buildList', href: '/control-tower/agents/build-list', payroll: false, groupAdmin: true },
   ],
 };
 
@@ -86,11 +86,11 @@ export function centreSectionsFor(group: CentreGroup, viewer: { payroll: boolean
 
 /** The pages of Operations › Payroll cycle, in the payroll loops' order, as its in-section row. */
 export type PayrollCyclePage = 'pre' | 'salary' | 'settings' | 'audit';
-export const PAYROLL_CYCLE_PAGES: readonly Readonly<{ page: PayrollCyclePage; href: string }>[] = [
-  { page: 'pre', href: '/control-tower/loops/payroll-cycle' },
-  { page: 'salary', href: '/control-tower/loops/payroll-cycle/salary' },
-  { page: 'settings', href: '/control-tower/loops/payroll-cycle/settings' },
-  { page: 'audit', href: '/control-tower/loops/loop_payroll_audit' },
+export const PAYROLL_CYCLE_PAGES: readonly Readonly<{ navigationId:string; page: PayrollCyclePage; href: string }>[] = [
+  { navigationId:'submenu.aiCentre.payroll.pre', page: 'pre', href: '/control-tower/loops/payroll-cycle' },
+  { navigationId:'submenu.aiCentre.payroll.salary', page: 'salary', href: '/control-tower/loops/payroll-cycle/salary' },
+  { navigationId:'submenu.aiCentre.payroll.settings', page: 'settings', href: '/control-tower/loops/payroll-cycle/settings' },
+  { navigationId:'submenu.aiCentre.payroll.audit', page: 'audit', href: '/control-tower/loops/loop_payroll_audit' },
 ];
 
 /** The AI management sections grouped under the Administration sections. Orchestrator is not listed: its work queue

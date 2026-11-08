@@ -5,6 +5,7 @@ import { requireAdmin } from '@/lib/authz';
 import { PageHeader } from '@/components/ui';
 import {
   LEAVE_CONFIG_RECORD_IDS,
+  leaveConfigRecordNavigation,
   LEAVE_CONFIG_RECORD_LABEL_ID,
   leaveConfigRecordHref,
   leaveConfigRecordOf,
@@ -85,11 +86,11 @@ export default async function LeaveConfigResetRecordsPage({
               {i > 0 ? <span aria-hidden className="hidden h-px w-3 bg-border sm:block" /> : null}
               {id === record ? (
                 // The current sub-tab is NOT a link: a link to where you already are is a dead control.
-                <span aria-current="page" className={tab(true)}>
+                <span aria-current="page" className={tab(true)} data-navigation-destination={leaveConfigRecordNavigation(id).navigationId}>
                   {label}
                 </span>
               ) : (
-                <Link href={leaveConfigRecordHref(id)} className={tab(false)}>
+                <Link href={leaveConfigRecordHref(id)} className={tab(false)} data-navigation-destination={leaveConfigRecordNavigation(id).navigationId}>
                   {label}
                 </Link>
               )}

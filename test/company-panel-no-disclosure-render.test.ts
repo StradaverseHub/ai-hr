@@ -513,3 +513,14 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     expect(html, 'not even as a value left behind').not.toContain('gone-person');
   });
 });
+
+/** Metadata must locate the real mounted panels without changing their active state. */
+it.each(LOCALES)('keeps Company navigation and every panel mounted in %s',locale=>{
+ for(const active of ['general','bank','statutory']){
+  const html=render(locale,{...richProps,initialTab:active});
+  expect([...html.matchAll(/data-navigation-destination="([^"]+)"/g)].map(row=>row[1])).toEqual(['nested.company.general','nested.company.bank','nested.company.statutory']);
+  expect([...html.matchAll(/data-navigation-panel="([^"]+)"/g)].map(row=>row[1])).toEqual(['nested.company.general','nested.company.bank','nested.company.statutory']);
+  expect([...html.matchAll(/data-navigation-panel="([^"]+)" class="([^"]+)"/g)].filter(row=>!row[2].split(' ').includes('hidden')).map(row=>row[1])).toEqual(['nested.company.'+active]);
+  expect([...html.matchAll(/data-navigation-destination="([^"]+)" aria-selected="true"/g)].map(row=>row[1])).toEqual(['nested.company.'+active]);
+ }
+});

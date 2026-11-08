@@ -51,7 +51,7 @@ describe('the admin sections, tabs and pages (exact set)', () => {
     expect(modules.map((s) => s.module).sort()).toEqual([...overviewModules].sort());
     for (const s of modules) {
       expect(s.tabs.map((t) => t.key), s.key).toEqual(['overview', 'run', 'settings']);
-      expect(s.tabs[0].pages, s.key).toEqual([{ key: 'overview', parts: [], extra: 'overview' }]);
+      expect(s.tabs[0].pages, s.key).toEqual([{ navigationId:'overview', key: 'overview', parts: [], extra: 'overview' }]);
     }
     expect(pagesOf().filter((x) => x.page.extra === 'overview').map((x) => x.section)).toEqual(modules.map((s) => s.key));
   });

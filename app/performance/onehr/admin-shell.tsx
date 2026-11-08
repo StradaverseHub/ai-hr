@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { getTranslations } from 'next-intl/server';
 import Link from '@/components/intent-link';
-import { adminPageHref, adminSection, adminSectionHref, adminSectionList, visibleAdminPages, type AdminSection } from '@/packs/performance/onehr/admin-sections';
+import { adminNavigationIdentity, adminPageHref, adminSection, adminSectionHref, adminSectionList, visibleAdminPages, type AdminSection } from '@/packs/performance/onehr/admin-sections';
 import { PerformanceAdminAssistant } from './admin-assistant';
 
 const groups = ['top', 'modules', 'end'] as const satisfies readonly AdminSection['group'][];
@@ -36,6 +36,7 @@ export async function PerformanceAdminShell({ cycleId, cycleName, section, tab, 
             <li key={s.key} className={`shrink-0 ${i === 0 && group !== 'top' ? 'md:mt-4' : ''}`}>
               {i === 0 && group === 'modules' && <span className="hidden px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:block">{t('groups.modules')}</span>}
               <Link
+                data-navigation-destination={adminNavigationIdentity(s.key)}
                 href={adminSectionHref(cycleId, s.key)}
                 aria-current={s.key === current.key ? 'true' : undefined}
                 className={`flex min-h-9 items-center whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors ${s.key === current.key ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
@@ -57,6 +58,7 @@ export async function PerformanceAdminShell({ cycleId, cycleName, section, tab, 
             {current.tabs.map((x) => (
               <Link
                 key={x.key}
+                data-navigation-destination={adminNavigationIdentity(current.key,x.key)}
                 href={adminPageHref(cycleId, current.key, x.key)}
                 aria-current={x.key === active.key ? (pages.length > 1 ? 'true' : 'page') : undefined}
                 className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors ${x.key === active.key ? 'border-primary font-medium text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
@@ -70,6 +72,7 @@ export async function PerformanceAdminShell({ cycleId, cycleName, section, tab, 
               {pages.map((p) => (
                 <Link
                   key={p.key}
+                  data-navigation-destination={adminNavigationIdentity(current.key,active.key,p.key)}
                   href={adminPageHref(cycleId, current.key, active.key, p.key)}
                   aria-current={p.key === pageKey ? 'page' : undefined}
                   className={`rounded-full border px-3 py-1 text-sm ${p.key === pageKey ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'}`}

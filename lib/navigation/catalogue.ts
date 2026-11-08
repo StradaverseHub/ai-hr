@@ -181,7 +181,7 @@ export type ApplicationNavigationDeclaration=Omit<NavigationDeclaration,'descrip
 export type ApplicationNavigationCatalogue={declarations:ApplicationNavigationDeclaration[];issues:CatalogueIssue[]};
 /** Explicit backlog beyond this bounded shell universe; these are not coverage receipts. */
 export const NAVIGATION_COVERAGE_BACKLOG = [
- {id:'nested-submenus',owner:'navigation surface owners',reason:'Parameterized Personnel/Company/Schedule Group tabs, lifecycle preparation, leave-type configuration, AI management in-section hrefOf navigation and record-specific navigation are not yet composed. Published static submenu composition does not establish the full application universe.'},
+ {id:'nested-submenus',owner:'navigation surface owners',reason:'Initial Company/Schedule/Leave Config/V9/AI/Performance admin source definitions are composed separately; Personnel, lifecycle preparation, Leave Type and remaining record-specific families still require composition. Native parameter/principal bindings and v3 baseline/steady500 interactions remain unexecuted for all nested families; source composition does not establish runtime acceptance.'},
 ] as const;
 
 export function declaredNavigationCatalogue():NavigationCatalogue {
@@ -244,10 +244,10 @@ export function declaredApplicationNavigationCatalogue():ApplicationNavigationCa
  };
  for(const registry of MODULE_SUBMENU_REGISTRIES)for(const item of registry.items)
   append(item.id,'lib/navigation/module-submenus.ts',item.id,item.href,item,registry.rendererOwner,registry.items[0].href);
- for(const item of CENTRE_TABS)append(PUBLISHED_SUBMENU_IDS['ai/tab/'+item.key],'lib/ai-centre/centre-nav.ts','ai/tab/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');
+ for(const item of CENTRE_TABS)append(item.navigationId,'lib/ai-centre/centre-nav.ts','ai/tab/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');
  for(const [group,items]of Object.entries(CENTRE_SECTIONS))for(const item of items)
-  append(PUBLISHED_SUBMENU_IDS['ai/'+group+'/'+item.key],'lib/ai-centre/centre-nav.ts','ai/'+group+'/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');
- for(const item of PAYROLL_CYCLE_PAGES)append(PUBLISHED_SUBMENU_IDS['ai/payroll/'+item.page],'lib/ai-centre/centre-nav.ts','ai/payroll/'+item.page,item.href,item,'components/ai-centre/centre-tabs.tsx');
+  append(item.navigationId,'lib/ai-centre/centre-nav.ts','ai/'+group+'/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');
+ for(const item of PAYROLL_CYCLE_PAGES)append(item.navigationId,'lib/ai-centre/centre-nav.ts','ai/payroll/'+item.page,item.href,item,'components/ai-centre/centre-tabs.tsx');
  for(const item of SECURITY_PAGES)append(PUBLISHED_SUBMENU_IDS['security/'+item.key],'lib/security-center-navigation.ts','security/'+item.key,item.href,item);
  // This owner already publishes literal durable IDs; keep their namespaced IDs
  // rather than deriving identities from translated labels or current addresses.
@@ -277,3 +277,6 @@ export function resolveNavigationCatalogue(facts:ShellNavigationFacts){
  }
  return {...catalogue,issues,rows,resolution};
 }
+
+/** Nested source definitions only; no concrete record or executed-role claim. */
+export {declaredNestedNavigationCatalogue} from './record-families';

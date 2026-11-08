@@ -44,8 +44,8 @@ it('does not advertise lifecycle navigation without its module entitlement',()=>
  render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin onboardingV9Access onboardingV9Navigation={permissions} defaultCollapsed={false} enabledModules={[]}/></NextIntlClientProvider>);
  expect(screen.queryByRole('button',{name:'On/Off Boarding'})).not.toBeInTheDocument();
 });
-function workspace(view:'templates'|'onbChecklists'|'leavers'|'tasks'|'records', access=permissions){
- return <NextIntlClientProvider locale="en" messages={messages}><V9Workspace navigation="global" initialView={view} viewer={{name:'Fictional HR',employeeCode:null,employed:false}} initial={{config:v9Defaults(),cases:[],actor:{id:'fictional-hr',name:'Fictional HR'},canConfigure:true,personnelWritableKeys:[],permissions:access,options:{users:[],companies:[],employees:[],labels:{},leaveTypes:[]}}}/></NextIntlClientProvider>;
+function workspace(view:'templates'|'onbChecklists'|'leavers'|'tasks'|'records', access=permissions,navigation:'global'|'standalone'='global'){
+ return <NextIntlClientProvider locale="en" messages={messages}><V9Workspace navigation={navigation} initialView={view} viewer={{name:'Fictional HR',employeeCode:null,employed:false}} initial={{config:v9Defaults(),cases:[],actor:{id:'fictional-hr',name:'Fictional HR'},canConfigure:true,personnelWritableKeys:[],permissions:access,options:{users:[],companies:[],employees:[],labels:{},leaveTypes:[]}}}/></NextIntlClientProvider>;
 }
 it('opens the requested V9 screen without a second sidebar and follows a changed deep link',()=>{
  const view=render(workspace('templates'));
@@ -68,4 +68,14 @@ it('keeps Tasks and Request Records reachable through the shared Inbox, outside 
  const inbox=within(screen.getByRole('navigation',{name:messages.nav.inbox}));
  expect(inbox.getByRole('link',{name:'Tasks'})).toHaveAttribute('href','/lifecycle/v9?view=tasks');
  expect(inbox.getByRole('link',{name:'Request Records'})).toHaveAttribute('href','/lifecycle/v9?view=records');
+});
+
+it('binds standalone V9 native menu placements to existing shell identities without changing conditional choices',()=>{
+ render(workspace('templates',permissions,'standalone'));
+ const menu=screen.getByRole('navigation',{name:'Onboarding and offboarding'});
+ expect(Array.from(menu.querySelectorAll('button[data-navigation-destination]')).map(button=>button.getAttribute('data-navigation-destination'))).toEqual([
+  'shell.v9SharedV9RequestRecords','shell.v9SharedV9Tasks','shell.v9NewJoiners','shell.v9OnboardingChecklists','shell.v9V9Leavers','shell.v9V9OffboardingChecklists',
+  'shell.v9V9Templates','shell.v9V9Workflows','shell.v9V9Settings','shell.v9V9AssignmentGroups','shell.v9V9ModuleAccess',
+ ]);
+ fireEvent.click(within(menu).getByRole('button',{name:'Tasks'}));expect(within(menu).getByRole('button',{name:'Tasks'})).toHaveAttribute('aria-current','page');
 });

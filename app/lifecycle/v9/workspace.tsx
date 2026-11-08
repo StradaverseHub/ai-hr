@@ -1,6 +1,6 @@
 'use client';
 import {OffboardingCaseView} from './offboarding-case-view';
-import { V9_NAVIGATION, type V9WorkspaceView } from '@/lib/lifecycle-v9-navigation';
+import { V9_NAVIGATION, v9NavigationDescriptor, type V9WorkspaceView } from '@/lib/lifecycle-v9-navigation';
 import { createContext, useContext, useEffect, useId, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -85,7 +85,7 @@ export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativ
   }
   function openCase(id:string|null){setSelected(id);setDocument(null);setError('');setNotice('');}
   function navigate(next: View) { if (navigation === 'global') { const destination = V9_NAVIGATION.find(item => item.view === next); if (destination) router.push(destination.href); return; } if (nativeCase && next === 'joiners') { router.push('/lifecycle/v9'); return; } setMobileNavigation(false); setView(next); setSelected(null); setDocument(null); setPick(''); setError(''); setNotice(''); }
-  const nav = (key: View, icon: ReactNode) => <button key={key} type="button" aria-current={view === key ? 'page' : undefined} onClick={() => navigate(key)}>{icon}<span>{titles[key]}</span></button>;
+  const nav = (key: View, icon: ReactNode) => <button key={key} data-navigation-destination={v9NavigationDescriptor(key).navigationId} type="button" aria-current={view === key ? 'page' : undefined} onClick={() => navigate(key)}>{icon}<span>{titles[key]}</span></button>;
   if (!config) return <div className="v9-workspace"><section className="v9-panel"><h1>Onboarding & offboarding</h1><p>Set up the V9 templates, checklists and workflows. Existing cases and history stay available.</p>{error && <p role="alert" className="v9-notice v9-error">{error}</p>}{initial.canConfigure ? <Button primary disabled={busy} onClick={() => perform(setupV9, 'V9 workspace configured.')}>Set up workspace</Button> : <p>A group administrator must configure this workspace.</p>}</section></div>;
   return <ActorContext.Provider value={initial.actor}><RuleLabels.Provider value={initial.options.labels}><div className={'v9-workspace' + (navigation === 'global' ? ' v9-workspace-global' : '')} data-area-theme={navigation === 'standalone' ? 'lifecycle-v9' : undefined}><div className={'v9-layout' + (navigation === 'global' ? ' v9-layout-global' : '')}>
     {navigation === 'standalone' && <><div className="v9-mobile-top"><Link href="/">Kingdee AI HR</Link><button type="button" className="v9-button" aria-controls="v9-navigation" aria-expanded={mobileNavigation} onClick={() => setMobileNavigation(value => !value)}>{mobileNavigation ? 'Close menu' : 'Menu'}</button></div>

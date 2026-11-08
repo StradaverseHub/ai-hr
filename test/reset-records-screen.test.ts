@@ -31,7 +31,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { createTranslator } from 'next-intl';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
@@ -87,6 +87,7 @@ import OlderArchiveStub from '../app/admin/leave/entitlements/archive/page';
 import OlderLedgerArchiveStub from '../app/admin/leave/entitlements/ledger-archive/page';
 import AdjustmentsPage from '../app/admin/leave-config/adjustments/page';
 import {
+  type MappedLeaveConfigScreenId,
   LEAVE_CONFIG_MAP,
   LEAVE_CONFIG_RECORD_IDS,
   LEAVE_CONFIG_RECORD_LABEL_ID,
@@ -241,8 +242,8 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
     expect(hrefs).not.toContain('/admin/leave-config/records/entitlement');
     expect(hrefs).not.toContain('/admin/leave-config/records/balances');
     expect(hrefs, 'the sub-screen is not a menu entry').not.toContain(ROUTE);
-    // Excluded by TYPE, joining the replacementLeave / payrollImpact precedent — pinned in the source.
-    expect(read('components/leave-config-map.tsx')).toContain("'replacementLeave' | 'payrollImpact' | 'entitlementArchive' | 'ledgerArchive'");
+    // Actual exported API type excludes these labels regardless of source-file placement.
+    expectTypeOf<Extract<MappedLeaveConfigScreenId,'replacementLeave'|'payrollImpact'|'entitlementArchive'|'ledgerArchive'>>().toEqualTypeOf<never>();
   });
 
   it('the record helpers: two ids, their labels are the old tab strings, their addresses are the sub-tabs', async () => {

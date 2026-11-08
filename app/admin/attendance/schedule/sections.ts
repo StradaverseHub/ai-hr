@@ -38,25 +38,28 @@
  */
 import { scheduleGroupViewPath } from '../../attendance-policy/schedule-panel';
 
-export const SCHEDULE_SECTION_KEYS = [
-  'general',
-  // r429 (f6819e19) · D7 — WORKING DAY MOVES TO SECOND. It used to be listed seventh, appended after
-  // 07ebd04d gave it storage; this round makes it the section the reporter now opens the page FOR — the
-  // Shift page's own week row is retired (D1), so this is the only place a working week is set at all —
-  // and asks it to carry the live "Shifts in this group" preview beside it. The other five keep their
-  // relative order.
-  'workingDay',
-  'holiday',
-  'overtime',
-  'attendance',
-  'request',
-  'notification',
+export const SCHEDULE_SECTION_DEFINITIONS = [
+  {key:'general', navigationId:'nested.scheduleGroup.general', builtOrder:0, renderOrder:0},
+  {key:'workingDay', navigationId:'nested.scheduleGroup.workingDay', builtOrder:3, renderOrder:3},
+  {key:'holiday', navigationId:'nested.scheduleGroup.holiday', builtOrder:null, renderOrder:null},
+  {key:'overtime', navigationId:'nested.scheduleGroup.overtime', builtOrder:1, renderOrder:2},
+  {key:'attendance', navigationId:'nested.scheduleGroup.attendance', builtOrder:2, renderOrder:1},
+  {key:'request', navigationId:'nested.scheduleGroup.request', builtOrder:null, renderOrder:null},
+  {key:'notification', navigationId:'nested.scheduleGroup.notification', builtOrder:null, renderOrder:null},
 ] as const;
+export type ScheduleSectionKey = (typeof SCHEDULE_SECTION_DEFINITIONS)[number]['key'];
+export const SCHEDULE_SECTION_KEYS:readonly ScheduleSectionKey[] = SCHEDULE_SECTION_DEFINITIONS.map(section=>section.key);
+/** Current group-sections owner renders these FOUR, in this exact order. The
+ * three unsupported definitions stay declared without inventing visible tabs. */
+type RenderedSection=Extract<(typeof SCHEDULE_SECTION_DEFINITIONS)[number],{renderOrder:number}>;
+export const SCHEDULE_RENDERED_SECTIONS:readonly RenderedSection[] = SCHEDULE_SECTION_DEFINITIONS
+  .filter((section):section is RenderedSection=>section.renderOrder!==null).sort((a,b)=>a.renderOrder-b.renderOrder);
 
-export type ScheduleSectionKey = (typeof SCHEDULE_SECTION_KEYS)[number];
 
 /** The sections that render a control or a value. The rest render the "not built yet" line. */
-export const SCHEDULE_BUILT_SECTIONS = ['general', 'overtime', 'attendance', 'workingDay'] as const;
+type BuiltSection=Extract<(typeof SCHEDULE_SECTION_DEFINITIONS)[number],{builtOrder:number}>;
+export const SCHEDULE_BUILT_SECTIONS:readonly BuiltSection['key'][] = SCHEDULE_SECTION_DEFINITIONS
+  .filter((section):section is BuiltSection=>section.builtOrder!==null).sort((a,b)=>a.builtOrder-b.builtOrder).map(section=>section.key);
 
 /** One section's anchor on the per-group page, so a save can return the reader to the section they saved. */
 export const sectionAnchor = (key: ScheduleSectionKey) => `section-${key}`;

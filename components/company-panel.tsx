@@ -8,7 +8,7 @@ import { useTranslations } from 'next-intl';
 import { Landmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { COUNTRY_CODE_OPTIONS, COUNTRY_NAME_OPTIONS } from '@/lib/countries';
-import { type CompanyPanelTab } from '@/lib/company-panel-tabs';
+import { companyPanelNavigation, type CompanyPanelTab } from '@/lib/company-panel-tabs';
 import { type TabSaveResult } from '@/lib/tab-save-sections';
 import { firstDirtyGuard } from '@/lib/unsaved-changes';
 import { TabSaveScope } from './tab-save-scope';
@@ -64,10 +64,12 @@ const TAB_TRACKER_ATTR = 'data-company-tab-tracker';
 
 /** One tab trigger — mirrors the claims-tabs styling (border-b, active = border-primary text-primary). */
 function TabButton({
+  navigationId,
   active,
   onClick,
   children,
 }: {
+  navigationId: string;
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
@@ -77,6 +79,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       role="tab"
+      data-navigation-destination={navigationId}
       aria-selected={active}
       className={cn(
         '-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors',
@@ -842,21 +845,21 @@ export function CompanyPanel({
       <div className="border-t border-border px-4 py-4">
         {/* Tab bar — groups the company detail sections so the panel reads as tabs, not one long scroll. */}
         <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto border-b border-border">
-          <TabButton active={tab === 'general'} onClick={() => selectTab('general')}>
+          <TabButton navigationId={companyPanelNavigation('general').navigationId} active={tab === 'general'} onClick={() => selectTab('general')}>
             {t('tabGeneral')}
           </TabButton>
           {/* Slot two, restored by r226. `tabBankAccount` had been sitting unused in all six catalogues
               since 3c2f55d7 rev 2 removed the tab; it is the same string, back in the same place. */}
-          <TabButton active={tab === 'bank'} onClick={() => selectTab('bank')}>
+          <TabButton navigationId={companyPanelNavigation('bank').navigationId} active={tab === 'bank'} onClick={() => selectTab('bank')}>
             {t('tabBankAccount')}
           </TabButton>
-          <TabButton active={tab === 'statutory'} onClick={() => selectTab('statutory')}>
+          <TabButton navigationId={companyPanelNavigation('statutory').navigationId} active={tab === 'statutory'} onClick={() => selectTab('statutory')}>
             {t('tabStatutory')}
           </TabButton>
         </div>
 
         {/* General: the company logo, then its master data */}
-        <div className={cn('space-y-4', tab === 'general' ? '' : 'hidden')}>
+        <div data-navigation-panel={companyPanelNavigation('general').navigationId} className={cn('space-y-4', tab === 'general' ? '' : 'hidden')}>
         {/* Company logo — FIRST on the tab, and edited the way the Personnel profile photo is: a pencil
             trigger over the upload/remove forms, with the picked file previewed before it is saved
             (3c2f55d7 rev 2). Storage, the PNG/JPG rule and the 2 MB limit are untouched. */}
@@ -1185,7 +1188,7 @@ export function CompanyPanel({
             tab and folded the bank details into "Other" on the reporter's instruction; the reporter has
             since asked for the tab back, in writing. The bank-profile data and logic (core/bank-profile)
             never moved and are unchanged — this is a tab boundary, not a rewrite. */}
-        <div className={cn('space-y-4', tab === 'bank' ? '' : 'hidden')}>
+        <div data-navigation-panel={companyPanelNavigation('bank').navigationId} className={cn('space-y-4', tab === 'bank' ? '' : 'hidden')}>
         {/* Bank disbursement profiles (ADR-0031) — bank-issued corporate ID + employer debit account */}
         {isMY ? (
           <div className="space-y-3 rounded-lg border border-border bg-card p-3">
@@ -1295,7 +1298,7 @@ export function CompanyPanel({
 
         {/* Statutory: the statutory workspace (94ae7e1f — the old "Payroll" tab, renamed; it only ever
             held statutory configuration). Country-pack section (ADR-0008). */}
-        <div className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>
+        <div data-navigation-panel={companyPanelNavigation('statutory').navigationId} className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>
         {isMY ? (
           /**
            * ── 15e5bd93 REVISION 2 (r353) — THIS TAB SHOWS THE SETUP, IT NO LONGER EDITS IT ───────
