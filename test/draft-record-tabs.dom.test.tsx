@@ -128,6 +128,8 @@ describe('the draft opens on the SAME tabs an activated employee opens', () => {
     wrap();
     const t = messages.people.detail.tabs;
     expect(tabNames()).toEqual([t.profile, t.job, t.bankStatutory, t.payroll, t.family]);
+    expect(within(tabStrip()).getAllByRole('tab').map(tab=>tab.getAttribute('data-navigation-destination'))).toEqual(['nested.personnelDraft.profile','nested.personnelDraft.job','nested.personnelDraft.bankStatutory','nested.personnelDraft.payroll','nested.personnelDraft.family']);
+    expect(document.querySelector('[data-navigation-panel="nested.personnelDraft.profile"]')).toBeVisible();
   });
 
   it('does NOT show the six tabs a draft is not entitled to', () => {

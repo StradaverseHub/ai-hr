@@ -4,6 +4,7 @@ import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {ClientTabs,type PersonnelTabKey} from '@/components/personnel-tabs';
+import {ESS_PROFILE_TAB_DEFINITIONS} from '@/lib/personnel-record-navigation';
 import {Button,Card,inputCls} from '@/components/ui';
 import {essVisibleFields} from '@/lib/personnel-ess-contract';
 import {personnelFieldLabel} from '@/lib/personnel-field-label';
@@ -21,7 +22,7 @@ import type {EssReadRecord,readOwnProfileFacts} from '@/core/profile-view';
 import type {ProfileProposalLine} from '@/lib/profile-proposal-display';
 import {saveMyProfileEditAction,readMyProfileMovementAction} from './profile-edit-actions';
 const rowIdentity=(row:EssRecord|NewRecord)=>row.id??('clientId' in row?row.clientId:'');
-const keys:PersonnelTabKey[]=['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others'];
+const keys:PersonnelTabKey[]=ESS_PROFILE_TAB_DEFINITIONS.map(tab=>tab.key);
 type History={id:string;status:string;createdAt:string;decisionReason:string|null;lines:ProfileProposalLine[]};
 type NewRecord={kind:EssRegisterChange['kind'];id:null;clientId:string;values:Record<string,EssScalar>;baselines:Record<string,string>;primary:false};
 /** AI v2 slice 3 follow-up: a change prepared in chat opens the form editing, filled from the server-validated seed
@@ -132,6 +133,6 @@ export function ProfileEditor({workspace,facts,extraPanels,history,hiddenTabs=[]
   {editing&&<div className="space-y-2 rounded-md border border-border p-4"><label className="block text-sm font-medium" htmlFor="profile-supporting-files">{t('supportingFiles')}</label><input id="profile-supporting-files" type="file" accept="application/pdf,image/png,image/jpeg" multiple disabled={busy} onChange={event=>setSupportingFiles(Array.from(event.target.files??[]))} className="text-sm"/><p className="text-xs text-muted-foreground">{t('attachmentLimit')}</p>{supportingFiles.map(file=><p key={`${file.name}:${file.lastModified}`} className="text-sm">{file.name}</p>)}</div>}
   {editing&&withheld.length>0&&<p data-profile-seed-withheld role="note" className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">{t('seedWithheld',{fields:withheld.map(fieldLabel).join(', ')})}</p>}
   {error&&<p role="alert" className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">{error}</p>}{notice&&<div role="status" className="rounded-md border border-emerald-300 p-3 text-sm"><p>{notice}</p>{Boolean(outcome?.saved.length)&&<p className="mt-1">{t('savedFields',{fields:outcome!.saved.map(fieldLabel).join(', ')})}</p>}{Boolean(outcome?.waiting.length)&&<p className="mt-1">{t('waitingFields',{fields:outcome!.waiting.map(fieldLabel).join(', ')})}</p>}</div>}
-  {activeKeys.length?<ClientTabs<PersonnelTabKey> key={activeKeys.join('|')} tabs={activeKeys.map(key=>({key,label:labels(`people.detail.tabs.${key}`)}))} panels={panels} emptyLabel={t('noRecords')} defaultTab={activeKeys.includes(defaultTab)?defaultTab:activeKeys[0]??defaultTab} ariaLabel={labels('me.title')} monolithTxt/>:<Card className="p-5 text-sm text-muted-foreground">{t('noVisibleSections')}</Card>}
+  {activeKeys.length?<ClientTabs<PersonnelTabKey> key={activeKeys.join('|')} tabs={ESS_PROFILE_TAB_DEFINITIONS.filter(tab=>activeKeys.includes(tab.key)).map(tab=>({key:tab.key,label:labels(`people.detail.tabs.${tab.key}`),navigationId:tab.navigationId}))} panels={panels} emptyLabel={t('noRecords')} defaultTab={activeKeys.includes(defaultTab)?defaultTab:activeKeys[0]??defaultTab} ariaLabel={labels('me.title')} monolithTxt/>:<Card className="p-5 text-sm text-muted-foreground">{t('noVisibleSections')}</Card>}
  </div>;
 }

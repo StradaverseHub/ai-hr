@@ -1,3 +1,4 @@
+import {TAB_KEYS as canonicalLeaveTypeTabs} from '../lib/leave-type-navigation';
 /**
  * Restructure Leave Condition Secondary Workflow (feedback 08bc6841), plus the two layout follow-ups the
  * reporter filed against the result: 165baee5 (Criteria configurable in place, no "Edit rules" hop) and
@@ -142,9 +143,7 @@ describe('08bc6841 · the Condition step REUSES the SubStepBar (two sub-steps in
     // a6fe37fc removed the nesting entirely: Criteria and Leave Application Rules are two of five tabs on
     // ONE bar, which is the strongest possible form of "no second bar". The component itself survives and
     // is still mounted by Generate entitlement and Adjustments — see leave-type-general-substeps.test.ts.
-    expect(tabsSrc).toContain(
-      "export const TAB_KEYS = ['identity', 'eligibility', 'entitlement', 'application', 'approvers'] as const",
-    );
+    expect(canonicalLeaveTypeTabs).toEqual(['identity','eligibility','entitlement','application','approvers']);
     for (const key of ['eligibility', 'application'] as const) {
       expect(tabsSrc.includes(`{activeTab === '${key}' && (`), `tab '${key}' gated`).toBe(true);
     }

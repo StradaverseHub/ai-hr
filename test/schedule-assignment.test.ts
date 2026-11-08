@@ -1,3 +1,4 @@
+import {PERSONNEL_RECORD_TAB_DEFINITIONS} from '../lib/personnel-record-navigation';
 /**
  * r209 — Schedule Assignment (0bade264) and the Attendance menu rename (0bade264 + 6448574f),
  * r263 — the edit panel on that screen (a485afa1),
@@ -1060,7 +1061,7 @@ describe('a485afa1 — ONE record, TWO doors: the row opens its own page, throug
     expect(card).not.toContain('setDefaultShiftAction');
     expect(card).toContain('id="section-schedule-group"');
     expect(card).toContain('action={setEmploymentScheduleGroupAction}');
-    expect(card).toContain("{ key: 'attendance', label: t('tabs.attendance') }");
+    expect(PERSONNEL_RECORD_TAB_DEFINITIONS.map(tab=>tab.key)).toContain('attendance');
   });
 
   it('removal goes through core too, and re-opens the period it closed', () => {

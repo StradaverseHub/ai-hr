@@ -251,3 +251,15 @@ describe('PENDING CANCELLATION on the employee’s own record, in every locale',
     expect(errors, errors.join('\n')).toEqual([]);
   });
 });
+
+
+it.each(LOCALES)('keeps five real Leave Type controls and merged storage state in %s',async locale=>{
+ window.localStorage.setItem('leaveTypeCards:lt-annual',JSON.stringify({activeStep:'general',generalSubStep:'earning',activeTab:'identity',retained:'existing'}));
+ const {view,errors}=mountTabs(locale,typeData());
+ // Explicit server openTab still beats remembered storage; only one conditional body mounts.
+ expect(view.container.querySelector('[data-navigation-panel="nested.leaveType.application"]')).toBeTruthy();
+ const keys=['identity','eligibility','entitlement','application','approvers'] as const;
+ expect(Array.from(view.container.querySelectorAll('button[data-navigation-destination]')).map(button=>button.getAttribute('data-navigation-destination'))).toEqual(keys.map(key=>'nested.leaveType.'+key));
+ for(const key of keys){const button=screen.getByRole('button',{name:CATALOGUES[locale].admin.leaveConfigTypes.tab[key],exact:true});await userEvent.click(button);expect(button).toHaveAttribute('aria-current','step');const panel=view.container.querySelector('[data-navigation-panel="nested.leaveType.'+key+'"]');expect(panel).toBeVisible();if(!(panel instanceof HTMLElement))throw Error('Missing actual Leave Type body');expect(within(panel).getByRole('heading',{name:CATALOGUES[locale].admin.leaveConfigTypes.tab[key]})).toBeVisible();expect(view.container.querySelectorAll('[data-navigation-panel]')).toHaveLength(1);expect(JSON.parse(window.localStorage.getItem('leaveTypeCards:lt-annual')!)).toEqual({activeStep:'general',generalSubStep:'earning',activeTab:key,retained:'existing'});}
+ expect(errors).toEqual([]);
+});

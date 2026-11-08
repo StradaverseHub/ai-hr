@@ -28,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
+import {TAB_KEYS} from '../lib/leave-type-navigation';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import { leavePack, LEAVE_ADMIN_DESTINATIONS } from '../packs/leave';
 
@@ -59,13 +60,8 @@ const payrollPageSrc = read('app/admin/leave/payroll/page.tsx');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-/** The tab keys as the shipped file declares them, read from source (this is a client component; the
- *  repo's convention for it is a static scan, not an import that would pull React in). */
-function tabKeysFromSource(): string[] {
-  const m = tabsSrc.match(/export const TAB_KEYS = \[([^\]]*)\] as const;/);
-  expect(m, 'TAB_KEYS literal not found in the tabs file').not.toBeNull();
-  return [...m![1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
-}
+/** Actual neutral storage-key export shared by the renderer and source catalogue. */
+function tabKeysFromSource(): string[] {return [...TAB_KEYS];}
 
 describe('a6fe37fc R2 · storage-key tripwire — the guard c9e18c7e deleted, re-written for the new screen', () => {
   it('never names a tab after a RETIRED accordion key (approval · display · calculation)', () => {

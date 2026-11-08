@@ -1,16 +1,17 @@
+import {PERSONNEL_RECORD_TAB_DEFINITIONS} from '../lib/personnel-record-navigation';
+import type {PersonnelTabKey} from '../components/personnel-tabs';
 /** The approved dated-calendar change replaces the obsolete Work Location / Shift Arrangement editors.
  * Preserve the Attendance tab, Schedule Group and canonical Location Assignment/clocking controls. */
 import fs from 'node:fs';
 import path from 'node:path';
-import {describe,expect,it} from 'vitest';
+import {describe,expect,expectTypeOf,it} from 'vitest';
 const PAGE=fs.readFileSync(path.resolve(__dirname,'../app/admin/personnel/[employmentId]/page.tsx'),'utf8');
-const TABS=fs.readFileSync(path.resolve(__dirname,'../components/personnel-tabs.tsx'),'utf8');
 const code=PAGE.replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'');
 function panel(key:string,next:string){const start=code.indexOf(key+': ('),end=code.indexOf(next,start);expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start);const value=code.slice(start,end);expect(value.length).toBeGreaterThan(100);return value;}
 describe('Personnel Attendance retains the current assignment owners',()=>{
  it('keeps the tab immediately after Employment and exposes its translated navigation',()=>{
-  const job=PAGE.indexOf("{ key: 'job', label: t('tabs.job') }"),attendance=PAGE.indexOf("{ key: 'attendance', label: t('tabs.attendance') }"),bank=PAGE.indexOf("{ key: 'bankStatutory', label: t('tabs.bankStatutory') }");
-  expect(job).toBeGreaterThan(-1);expect(attendance).toBeGreaterThan(job);expect(bank).toBeGreaterThan(attendance);expect(TABS).toContain("'attendance'");
+  const keys=PERSONNEL_RECORD_TAB_DEFINITIONS.map(tab=>tab.key),job=keys.indexOf('job'),attendance=keys.indexOf('attendance'),bank=keys.indexOf('bankStatutory');
+  expect(job).toBeGreaterThan(-1);expect(attendance).toBeGreaterThan(job);expect(bank).toBeGreaterThan(attendance);expectTypeOf<Extract<PersonnelTabKey,'attendance'>>().toEqualTypeOf<'attendance'>();
  });
  it('keeps dated Holiday Calendar, Schedule Group and Location Assignment together, without obsolete duplicate editors',()=>{
   const attendance=panel('attendance','bankStatutory: (');

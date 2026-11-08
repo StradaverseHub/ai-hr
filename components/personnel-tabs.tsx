@@ -29,7 +29,7 @@ import { firstDirtyGuard } from '@/lib/unsaved-changes';
 /** Window event a tour engine dispatches with a CSS selector to make the tab holding it visible. */
 export const TOUR_REVEAL_EVENT = 'tour:reveal';
 
-export type PersonnelTabKey = 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification' | 'others';
+export type {PersonnelTabKey} from '@/lib/personnel-record-navigation';
 
 export function ClientTabs<K extends string>({
   tabs,
@@ -41,7 +41,7 @@ export function ClientTabs<K extends string>({
   onTabChange,
   monolithTxt = false,
 }: {
-  tabs: { key: K; label: string }[];
+  tabs: { key: K; label: string; navigationId?:string }[];
   panels: Partial<Record<K, ReactNode>>;
   // Shown when a tab's panel resolves to nothing (e.g. Documents for an employee with no records,
   // or any admin-only tab viewed by a non-admin). Keeps a switched-to tab from looking broken.
@@ -198,6 +198,7 @@ export function ClientTabs<K extends string>({
             key={tab.key}
             type="button"
             role="tab"
+            data-navigation-destination={tab.navigationId}
             id={`${tabShellId}-tab-${tab.key}`}
             aria-controls={`${tabShellId}-panel-${tab.key}`}
             aria-selected={active === tab.key}
@@ -237,6 +238,7 @@ export function ClientTabs<K extends string>({
             id={`${tabShellId}-panel-${tab.key}`}
             aria-labelledby={`${tabShellId}-tab-${tab.key}`}
             data-tabpanel={tab.key}
+            data-navigation-panel={tab.navigationId}
             hidden={active !== tab.key}
             className={active === tab.key ? 'space-y-6' : undefined}
           >

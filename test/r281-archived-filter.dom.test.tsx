@@ -365,3 +365,13 @@ describe('§J/§K a3411394 · the two facts a render cannot reach', () => {
     expect(page).toContain('includeArchived: true');
   });
 });
+
+
+it('binds actual mobile/desktop record choices to one declaration while retaining filtering and unknown-hash refusal',async()=>{
+ const view=mount();const declaration='nested.leaveTypeWorkspace.selection';
+ const select=screen.getByRole('combobox',{name:EN.workspaceTypeListLabel});expect(select).toHaveAttribute('data-navigation-destination',declaration);
+ const options=within(select).getAllByRole('option');expect(options.map(option=>option.getAttribute('data-navigation-record-id'))).toEqual(ITEMS.filter(item=>!item.archived).map(item=>item.id));
+ const choice=rail().querySelector('button[data-navigation-destination]')!;expect(choice).toHaveAttribute('data-navigation-destination',declaration);expect(choice).toHaveAttribute('data-navigation-record-id',ITEMS[0].id);expect(view.container.querySelector('[data-navigation-panel="'+declaration+'"]')).toHaveAttribute('data-navigation-record-id',ITEMS[0].id);
+ await userEvent.click(chip(rail(),EN.workspaceFilterArchived));const archived=ITEMS.find(item=>item.archived)!;expect(select).toHaveValue(archived.id);expect(view.container.querySelector('[data-navigation-panel="'+declaration+'"]')).toHaveAttribute('data-navigation-record-id',archived.id);expect(window.location.hash).toBe('#type-'+archived.id);
+ window.history.replaceState(null,'','/admin/leave-config/types#type-foreign-record');window.dispatchEvent(new HashChangeEvent('hashchange'));expect(select).toHaveValue(archived.id);expect(view.container.querySelector('[data-navigation-panel="'+declaration+'"]')).toHaveAttribute('data-navigation-record-id',archived.id);
+});

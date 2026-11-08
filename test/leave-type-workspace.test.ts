@@ -1,3 +1,4 @@
+import {TAB_KEYS as canonicalLeaveTypeTabs} from '../lib/leave-type-navigation';
 /**
  * Leave Type configuration workspace (feedback c979aa8b): the Entitlements tab's stacked collapsible
  * leave-type rows became a two-pane workspace —
@@ -200,9 +201,7 @@ describe('c979aa8b · step bar: numbered 1–4, category labels, one section at 
     // key list, so the badge a reader sees is the position in that list and the walk order cannot drift
     // from the labels. That is unchanged; only the list is new, and it is new because grouping by how the
     // code grew is the defect this whole item was raised about (IA §1.2).
-    expect(panelSrc).toContain(
-      "export const TAB_KEYS = ['identity', 'eligibility', 'entitlement', 'application', 'approvers'] as const",
-    );
+    expect(canonicalLeaveTypeTabs).toEqual(['identity','eligibility','entitlement','application','approvers']);
     // The visible number is the 1-based index of the map — tab 1 The leave type … tab 5 Who approves it.
     expect(panelSrc).toContain('{i + 1}');
     // Each label is the tab key's own message key, one namespace, so a new tab cannot ship unlabelled.

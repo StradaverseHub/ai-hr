@@ -1,3 +1,5 @@
+import {PERSONNEL_RECORD_TAB_DEFINITIONS} from '../lib/personnel-record-navigation';
+import type {PersonnelTabKey} from '../components/personnel-tabs';
 import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 /**
  * Bank & Statutory tab (feedback 40ef71a0) — the Personnel (Admin) employee-detail page must expose a
@@ -13,24 +15,22 @@ import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
 const PAGE = fs.readFileSync(
   path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
   'utf8',
 );
-const TABS = fs.readFileSync(path.resolve(__dirname, '../components/personnel-tabs.tsx'), 'utf8');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('Personnel — Bank & Statutory tab (40ef71a0)', () => {
   it('registers the bankStatutory tab in the tab strip', () => {
-    expect(PAGE.includes("{ key: 'bankStatutory', label: t('tabs.bankStatutory') }")).toBe(true);
-    // The union type the tab array is annotated with must include the key too.
-    expect(PAGE.includes("'bankStatutory'")).toBe(true);
+    expect(PERSONNEL_RECORD_TAB_DEFINITIONS.map(tab=>tab.key)).toContain('bankStatutory');
+    expectTypeOf<Extract<(typeof PERSONNEL_RECORD_TAB_DEFINITIONS)[number]['key'],'bankStatutory'>>().toEqualTypeOf<'bankStatutory'>();
   });
 
   it('mirrors the new key in the ClientTabs PersonnelTabKey union', () => {
-    expect(TABS.includes("'bankStatutory'")).toBe(true);
+    expectTypeOf<Extract<PersonnelTabKey,'bankStatutory'>>().toEqualTypeOf<'bankStatutory'>();
   });
 
   it('renders the statutory card + dedicated bank card as the bankStatutory panel', () => {

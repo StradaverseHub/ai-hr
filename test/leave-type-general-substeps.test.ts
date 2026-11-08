@@ -1,3 +1,4 @@
+import {TAB_KEYS as canonicalLeaveTypeTabs} from '../lib/leave-type-navigation';
 /**
  * Enhance Leave Type Configuration Flow Structure and Move Approval Workflow (feedback e1a51aea).
  *
@@ -133,9 +134,7 @@ describe('e1a51aea · reusable sub-step control', () => {
     // The successor of "the SubStepBar inside the General card with the sub-steps in walk order". What is
     // asserted is unchanged in substance — one navigation control, every destination gated on its own key,
     // no second bar nested inside a destination — and the destinations are the five tabs now.
-    expect(tabsSrc).toContain(
-      "export const TAB_KEYS = ['identity', 'eligibility', 'entitlement', 'application', 'approvers'] as const",
-    );
+    expect(canonicalLeaveTypeTabs).toEqual(['identity','eligibility','entitlement','application','approvers']);
     for (const key of TABS) {
       expect(tabsSrc.includes(`{activeTab === '${key}' && (`), `tab '${key}' gated`).toBe(true);
     }

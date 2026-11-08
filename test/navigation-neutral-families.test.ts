@@ -10,9 +10,9 @@ import {LEAVE_CONFIG_MAP,LEAVE_CONFIG_RECORD_DEFINITIONS,leaveConfigRecordHref,l
 import {AI_MANAGEMENT_SECTION_DEFINITIONS,availableAiManagementSections,aiManagementHref} from '../app/control-tower/agents/sections';
 import {adminSectionList,adminNavigationIdentity,adminPageHref} from '../packs/performance/onehr/admin-sections';
 import {V9_NAVIGATION,V9_SHARED_NAVIGATION} from '../lib/lifecycle-v9-navigation';
-it('composes six source owners by descriptor reference without claiming runtime or removing the backlog',()=>{
+it('composes the initial and inline source owners by descriptor reference without claiming runtime or removing the backlog',()=>{
  const c=declaredNestedNavigationCatalogue();expect(c.issues).toEqual([]);expect(c.runtimeAcceptance).toBe(false);expect(c.releaseAuthorized).toBe(false);
- expect(new Set(c.declarations.map(row=>row.family))).toEqual(new Set(['company','scheduleGroup','leaveConfig','lifecycleV9','aiManagement','performanceAdmin']));
+ expect(new Set(c.declarations.map(row=>row.family))).toEqual(new Set(['company','scheduleGroup','leaveConfig','lifecycleV9','aiManagement','performanceAdmin','personnelRecord','personnelDraft','essProfile','leaveType','leaveTypeWorkspace','probationPreparation']));
  expect(c.declarations.every(row=>row.runtime==='unexecuted')).toBe(true);expect(NAVIGATION_COVERAGE_BACKLOG.map(row=>row.id)).toContain('nested-submenus');
  for(const descriptor of [...COMPANY_PANEL_TAB_DEFINITIONS,...SCHEDULE_SECTION_DEFINITIONS,...LEAVE_CONFIG_MAP.flatMap(g=>g.items),...LEAVE_CONFIG_RECORD_DEFINITIONS,...AI_MANAGEMENT_SECTION_DEFINITIONS,...V9_NAVIGATION,...V9_SHARED_NAVIGATION])expect(c.declarations.filter(row=>row.descriptor===descriptor)).toHaveLength(1);
  expect(declaredApplicationNavigationCatalogue().issues).toEqual([]);

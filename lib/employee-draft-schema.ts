@@ -564,6 +564,8 @@ export function draftFamily(data: EmployeeDraftData): EmployeeDraftFamilyMember[
  */
 export const DRAFT_TABS = ['profile', 'job', 'bankStatutory', 'payroll', 'family'] as const;
 export type DraftTabKey = (typeof DRAFT_TABS)[number];
+const DRAFT_TAB_NAVIGATION:Record<DraftTabKey,string>={profile:'nested.personnelDraft.profile',job:'nested.personnelDraft.job',bankStatutory:'nested.personnelDraft.bankStatutory',payroll:'nested.personnelDraft.payroll',family:'nested.personnelDraft.family'};
+export const DRAFT_TAB_DEFINITIONS=DRAFT_TABS.map(key=>({key,navigationId:DRAFT_TAB_NAVIGATION[key]}));
 
 /**
  * THE STORED STEP NUMBER, DECLARED RATHER THAN COUNTED — and 5 IS BURNED.

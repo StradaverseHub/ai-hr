@@ -1,3 +1,5 @@
+import {PERSONNEL_RECORD_TAB_DEFINITIONS} from '../lib/personnel-record-navigation';
+import type {PersonnelTabKey} from '../components/personnel-tabs';
 /**
  * Personnel (Admin) — Qualification tab (feedback a949184a). Covers: admin CRUD (add/list/update/archive),
  * catalog-backed qualification validation (active-option rule, legacy tolerance, empty-catalog
@@ -11,7 +13,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import * as schema from '../db/schema';
 import { type SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
@@ -328,15 +330,14 @@ describe('Personnel — Qualification tab drift guard (a949184a)', () => {
     path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
     'utf8',
   );
-  const TABS = fs.readFileSync(path.resolve(__dirname, '../components/personnel-tabs.tsx'), 'utf8');
   const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
   it('registers the qualification tab in the tab strip', () => {
-    expect(PAGE.includes("{ key: 'qualification', label: t('tabs.qualification') }")).toBe(true);
+    expect(PERSONNEL_RECORD_TAB_DEFINITIONS.map(tab=>tab.key)).toContain('qualification');
   });
 
   it('mirrors the new key in the ClientTabs PersonnelTabKey union', () => {
-    expect(TABS.includes("'qualification'")).toBe(true);
+    expectTypeOf<Extract<PersonnelTabKey,'qualification'>>().toEqualTypeOf<'qualification'>();
   });
 
   it('wires the qualification panel into the panels record', () => {

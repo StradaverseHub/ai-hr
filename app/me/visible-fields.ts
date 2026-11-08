@@ -1,9 +1,10 @@
+import {PERSONNEL_TAB_KEYS as ME_TABS} from '@/lib/personnel-record-navigation';
 import {PERSONNEL_FIELDS} from '@/lib/personnel-field-registry';
 import {ESS_PROFILE_TABS,PERSONNEL_ESS_SECTION_LABEL_KEYS} from '@/lib/personnel-ess-model';
 /** Compatibility exports for source consumers; ESS authority lives on every shared Personnel descriptor.
  * Import/report scope never grants employee visibility or editing. */
 /** All eleven Personnel tabs, in the approved Personnel order. */
-export const ME_TABS = ['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others'] as const;
+export {ME_TABS};
 export type MeTabKey = (typeof ME_TABS)[number];
 
 /**

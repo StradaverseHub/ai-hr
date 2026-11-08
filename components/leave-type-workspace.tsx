@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
+import {LEAVE_TYPE_WORKSPACE_CHOICE} from '@/lib/leave-type-navigation';
 import { LEAVE_COLORS, LEAVE_ICONS, isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
 import { Button, inputCls } from './ui';
 
@@ -248,6 +249,7 @@ export function LeaveTypeWorkspace({
           <label className="min-w-0 flex-1">
             <span className="sr-only">{t('workspaceTypeListLabel')}</span>
             <select
+              data-navigation-destination={LEAVE_TYPE_WORKSPACE_CHOICE.navigationId}
               value={selected}
               onChange={(e) => select(e.target.value)}
               aria-label={t('workspaceTypeListLabel')}
@@ -258,7 +260,7 @@ export function LeaveTypeWorkspace({
                    archived state (a3411394), ride in the option text so the dropdown says the same thing the
                    desktop list does. `opacity-60` cannot cross into an <option> at all, so on a phone this is
                    not a second cue: without it the dropdown says NOTHING about an archived type. */
-                <option key={item.id} value={item.id}>
+                <option key={item.id} value={item.id} data-navigation-record-id={item.id}>
                   {[item.name, item.archived ? t('archivedBadge') : null, item.alert]
                     .filter(Boolean)
                     .join(' — ')}
@@ -303,6 +305,8 @@ export function LeaveTypeWorkspace({
                 <button
                   type="button"
                   onClick={() => select(item.id)}
+                  data-navigation-destination={LEAVE_TYPE_WORKSPACE_CHOICE.navigationId}
+                  data-navigation-record-id={item.id}
                   aria-current={active ? 'true' : undefined}
                   className={cn(
                     'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
@@ -361,7 +365,7 @@ export function LeaveTypeWorkspace({
       </nav>
 
       {/* Right workspace: the selected type's step-flow panel — never swapped for the add form (8cc268c4). */}
-      <div className="min-w-0 flex-1 md:border-l md:border-border md:pl-4">
+      <div className="min-w-0 flex-1 md:border-l md:border-border md:pl-4" data-navigation-panel={LEAVE_TYPE_WORKSPACE_CHOICE.navigationId} data-navigation-record-id={selected}>
         {panels[selected] ?? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveTypes')}</p>
         )}

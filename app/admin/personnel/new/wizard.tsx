@@ -146,6 +146,7 @@ import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DEFAULT_EMPLOYMENT_TYPE,
   DRAFT_TABS,
+  DRAFT_TAB_DEFINITIONS,
   draftFamily,
   draftProvisionalEndOn,
   draftShowsEndDateBox,
@@ -414,7 +415,7 @@ export function EmployeeWizard({
     payroll: t('tabs.payroll'),
     family: t('tabs.family'),
   };
-  const tabs = DRAFT_TABS.map((key) => ({ key, label: tabLabel[key] }));
+  const tabs = DRAFT_TAB_DEFINITIONS.map(({key,navigationId}) => ({ key, label: tabLabel[key], navigationId }));
 
   /**
    * THE FIVE PANELS, ONE PER TAB — the SAME fields the wizard's five steps carried, regrouped under the

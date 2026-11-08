@@ -24,6 +24,7 @@ describe('My Profile single cross-tab editor',()=>{
  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('renders all eleven canonical tabs and the single edit course in %s',locale=>{
   const errors:unknown[]=[];mount(locale,workspace(),error=>errors.push(error));
   const words=catalogues[locale];expect(screen.getAllByRole('tab')).toHaveLength(11);for(const key of ['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others'] as const)expect(screen.getByRole('tab',{name:words.people.detail.tabs[key]})).toBeTruthy();
+  expect(screen.getAllByRole('tab').map(tab=>tab.getAttribute('data-navigation-destination'))).toEqual(['nested.essProfile.profile','nested.essProfile.family','nested.essProfile.job','nested.essProfile.careerMovement','nested.essProfile.attendance','nested.essProfile.bankStatutory','nested.essProfile.payroll','nested.essProfile.leave','nested.essProfile.documents','nested.essProfile.qualification','nested.essProfile.others']);
   expect(screen.getByRole('button',{name:words.essProfile.requestEdit})).toBeTruthy();expect(errors).toEqual([]);expect(screen.queryByText(words.people.detail.emergency.remarks)).toBeNull();
  });
  it('submits only touched fields across tabs with the exact captured register ID and baselines',async()=>{
@@ -97,6 +98,7 @@ it('omits explicitly hidden tabs and their supplied panels rather than keeping p
  const view=workspace();view.visible=[];view.editable=[];view.legacyPrimaryEditable=[];
  render(<NextIntlClientProvider locale="en" messages={en}><ProfileEditor workspace={view} facts={facts} hiddenTabs={['Profile','Payroll']} defaultTab="profile" extraPanels={{profile:<p>PRIVATE PROFILE PANEL</p>,payroll:<p>PRIVATE PAY PANEL</p>}} history={[]}/></NextIntlClientProvider>);
  expect(screen.queryByRole('tab',{name:en.people.detail.tabs.profile})).toBeNull();expect(screen.queryByRole('tab',{name:en.people.detail.tabs.payroll})).toBeNull();
+ expect(document.querySelector('[data-navigation-destination="nested.essProfile.profile"]')).toBeNull();expect(document.querySelector('[data-navigation-panel="nested.essProfile.profile"]')).toBeNull();expect(document.querySelector('[data-navigation-destination="nested.essProfile.payroll"]')).toBeNull();
  expect(document.body.textContent).not.toContain('PRIVATE PROFILE PANEL');expect(document.body.textContent).not.toContain('PRIVATE PAY PANEL');expect(screen.getByRole('tab',{name:en.people.detail.tabs.family})).toHaveAttribute('aria-selected','true');
 });
 

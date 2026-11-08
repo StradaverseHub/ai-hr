@@ -28,6 +28,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { DRAFT_TABS, missingByTab, openingTab, stepKey, stepNumber } from '../lib/employee-draft-schema';
+import {PERSONNEL_RECORD_TAB_DEFINITIONS} from '../lib/personnel-record-navigation';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -40,11 +41,9 @@ const RECORD = 'app/admin/personnel/[employmentId]/page.tsx';
 // ── §1 the vocabulary ─────────────────────────────────────────────────────────────────────────────
 describe('§1 a draft uses the ACTIVE RECORD\'S tab keys, and only the five it is entitled to', () => {
   it('every DRAFT_TABS key is a tab the activated record actually has', () => {
-    // Read from the record's own tab list rather than from a hand-copied array: this is the thing that
-    // would rot. If somebody renames `bankStatutory` on the employee screen, a draft tab pointing at the
-    // old key stops being "the same tab" and this fails.
-    const record = read(RECORD);
-    const recordTabs = [...record.matchAll(/\{ key: '(\w+)', label: t\('tabs\.(\w+)'\) \}/g)].map((m) => m[1]);
+    // The page and rendered tab strip consume this canonical fact owner. The
+    // inline renderer parity controls also exercise its actual mounted panels.
+    const recordTabs = PERSONNEL_RECORD_TAB_DEFINITIONS.map(tab=>tab.key);
     // 39306a9e retired Others and rehomed its cards, leaving ten active tabs. Keep the
     // non-empty inventory guard and pin retirement without requiring the removed tab back.
     expect(recordTabs.length, 'the record\'s tab list could not be read — has its shape changed?')

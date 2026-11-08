@@ -1,0 +1,257 @@
+{
+  "kind": "INLINE_FACT_SOURCE_INVERSE_NOT_RUNTIME_EVIDENCE",
+  "base": "d77fcef941a1660fc979b3231f2edf93e62f1ebe",
+  "units": "complete-lines",
+  "files": [
+    {
+      "path": "app/admin/leave-config/types/leave-type-tabs.tsx",
+      "candidateSha256": "77fb41a28c62fadd6b38519d82564a31e34158e154d2ac10e8cc17581e49fae9",
+      "predecessorSha256": "beda1ce1e2f80f023ac13b824f0d995bbb7bd65641be39609cc865cc80ced169",
+      "edits": [
+        {
+          "start": 487,
+          "end": 488,
+          "candidate": "      <div className=\"space-y-3\" data-navigation-panel={leaveTypeTabNavigation(activeTab)}>\n",
+          "predecessor": "      <div className=\"space-y-3\">\n"
+        },
+        {
+          "start": 466,
+          "end": 467,
+          "candidate": "                data-navigation-destination={leaveTypeTabNavigation(key)}\n",
+          "predecessor": ""
+        },
+        {
+          "start": 69,
+          "end": 70,
+          "candidate": "// The neutral storage-key declaration is shared with the source catalogue.\n",
+          "predecessor": "export const TAB_KEYS = ['identity', 'eligibility', 'entitlement', 'application', 'approvers'] as const;\nexport type TabKey = (typeof TAB_KEYS)[number];\n"
+        },
+        {
+          "start": 3,
+          "end": 6,
+          "candidate": "import {TAB_KEYS,leaveTypeTabNavigation,type TabKey} from '@/lib/leave-type-navigation';\nexport {TAB_KEYS} from '@/lib/leave-type-navigation';\nexport type {TabKey} from '@/lib/leave-type-navigation';\n",
+          "predecessor": ""
+        }
+      ]
+    },
+    {
+      "path": "app/admin/personnel/[employmentId]/page.tsx",
+      "candidateSha256": "b481f993b39b20ee6d56c84539219fd3983b0428ab3b5d176e9bd7a14c586983",
+      "predecessorSha256": "39aa4821c6a833974e452666028f40fba0a0c936809ee8e5e257e38bc953cec8",
+      "edits": [
+        {
+          "start": 766,
+          "end": 767,
+          "candidate": "  const tabs = PERSONNEL_RECORD_TAB_DEFINITIONS.map(({key,navigationId}) => ({key,label:t(`tabs.${key}`),navigationId}));\n",
+          "predecessor": "  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification'; label: string }[] = [\n    { key: 'profile', label: t('tabs.profile') },\n    { key: 'family', label: t('tabs.family') },\n    { key: 'job', label: t('tabs.job') },\n    // Movement (5296d984, redesigned by 78853b97): the Employment History timeline \u2014 a Hired-first\n    // projection over the domain_event ledger \u2014 plus a single New Event entry point that folds in the\n    // former Transfer / Terminate / Blacklist boxes (their audited services are reused via\n    // core/movement.ts). The Employment tab keeps the \"how they work\" master data (reporting lines,\n    // delegations); the \"events that change employment over time\" live here, right after Employment.\n    { key: 'careerMovement', label: t('tabs.careerMovement') },\n    // Attendance Information (feedback 1fbe9891): consolidates the attendance-related master data that\n    // was previously split across Employment (Work Location + Shift Arrangement) and Others (Clocking\n    // Locations & Geofencing) into one dedicated tab. Same cards, same server actions \u2014 only regrouped.\n    // Positioned right after Employment so the operational attendance setup sits next to the role/posting.\n    { key: 'attendance', label: t('tabs.attendance') },\n    // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card \u2014 which already co-locates the\n    // salary-payment bank fields alongside EPF/SOCSO/EIS/PCB \u2014 is relocated here out of the Payroll tab,\n    // giving all pay-related master data its own clearly-named home. Positioned before Payroll.\n    { key: 'bankStatutory', label: t('tabs.bankStatutory') },\n    { key: 'payroll', label: t('tabs.payroll') },\n    { key: 'leave', label: t('tabs.leave') },\n    { key: 'documents', label: t('tabs.documents') },\n    // Qualification (feedback a949184a): the employee's academic / professional qualification history \u2014\n    // a list-and-dialog register mirroring the Family tab's table + dialogForm pattern. Placed after\n    // Documents per the request's tab-order example.\n    { key: 'qualification', label: t('tabs.qualification') },\n  ];\n"
+        },
+        {
+          "start": 764,
+          "end": 765,
+          "candidate": "  // Tab labels (people.detail.tabs.*). Ten tabs regrouping the existing sections below; the page still\n",
+          "predecessor": "  // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still\n"
+        },
+        {
+          "start": 171,
+          "end": 172,
+          "candidate": "import {PERSONNEL_RECORD_TAB_DEFINITIONS} from '@/lib/personnel-record-navigation';\n",
+          "predecessor": ""
+        }
+      ]
+    },
+    {
+      "path": "app/admin/personnel/new/wizard.tsx",
+      "candidateSha256": "dda3457a0fc9830e40fb78102863ac807e8d1c29b372814fe6437f1bc1fcd55b",
+      "predecessorSha256": "3032989e0cfaa2c6a2a2b9da5e990ec36958e015249a1d985197fc273a3df985",
+      "edits": [
+        {
+          "start": 417,
+          "end": 418,
+          "candidate": "  const tabs = DRAFT_TAB_DEFINITIONS.map(({key,navigationId}) => ({ key, label: tabLabel[key], navigationId }));\n",
+          "predecessor": "  const tabs = DRAFT_TABS.map((key) => ({ key, label: tabLabel[key] }));\n"
+        },
+        {
+          "start": 148,
+          "end": 149,
+          "candidate": "  DRAFT_TAB_DEFINITIONS,\n",
+          "predecessor": ""
+        }
+      ]
+    },
+    {
+      "path": "app/lifecycle/probation/preparation-nav.tsx",
+      "candidateSha256": "bde4cfd0c9ee56ef2a6c842f027123129064d69c28231870ae5944575e57d79b",
+      "predecessorSha256": "ad0536c347ad5688a54d0ce830ed680047fdf67d745a7abef15832dac2462c72",
+      "edits": [
+        {
+          "start": 5,
+          "end": 6,
+          "candidate": " const t=useTranslations('probation');return <nav className=\"probation-actions\" aria-label={t('configuration')}>{PROBATION_PREPARATION_LINKS.map(({path,labelKey,navigationId})=><Link className=\"v9-button\" key={path} data-navigation-destination={navigationId} href={probationPreparationHref(path,companyId)}>{t(labelKey)}</Link>)}</nav>;\n",
+          "predecessor": " const t=useTranslations('probation');return <nav className=\"probation-actions\" aria-label={t('configuration')}>{[['settings','settings.title'],['forms','form.title'],['routes','routes.title'],['workflows','workflows.title'],['templates','templates.title'],['intake','intake.title']].map(([path,key])=><Link className=\"v9-button\" key={path} href={'/lifecycle/probation/'+path+'?company='+encodeURIComponent(companyId)}>{t(key)}</Link>)}</nav>;\n"
+        },
+        {
+          "start": 3,
+          "end": 4,
+          "candidate": "import {PROBATION_PREPARATION_LINKS,probationPreparationHref} from '@/lib/probation-preparation-navigation';\n",
+          "predecessor": ""
+        }
+      ]
+    },
+    {
+      "path": "app/me/profile-editor.tsx",
+      "candidateSha256": "fa4258cde6d82486c875eb53cb2fdf3d4f80a81f282429aef45006cfad3d80bf",
+      "predecessorSha256": "f6f08d5b45b63398605df8622e50f70195735e2ea049c30adff5d3c3696a3840",
+      "edits": [
+        {
+          "start": 135,
+          "end": 136,
+          "candidate": "  {activeKeys.length?<ClientTabs<PersonnelTabKey> key={activeKeys.join('|')} tabs={ESS_PROFILE_TAB_DEFINITIONS.filter(tab=>activeKeys.includes(tab.key)).map(tab=>({key:tab.key,label:labels(`people.detail.tabs.${tab.key}`),navigationId:tab.navigationId}))} panels={panels} emptyLabel={t('noRecords')} defaultTab={activeKeys.includes(defaultTab)?defaultTab:activeKeys[0]??defaultTab} ariaLabel={labels('me.title')} monolithTxt/>:<Card className=\"p-5 text-sm text-muted-foreground\">{t('noVisibleSections')}</Card>}\n",
+          "predecessor": "  {activeKeys.length?<ClientTabs<PersonnelTabKey> key={activeKeys.join('|')} tabs={activeKeys.map(key=>({key,label:labels(`people.detail.tabs.${key}`)}))} panels={panels} emptyLabel={t('noRecords')} defaultTab={activeKeys.includes(defaultTab)?defaultTab:activeKeys[0]??defaultTab} ariaLabel={labels('me.title')} monolithTxt/>:<Card className=\"p-5 text-sm text-muted-foreground\">{t('noVisibleSections')}</Card>}\n"
+        },
+        {
+          "start": 24,
+          "end": 25,
+          "candidate": "const keys:PersonnelTabKey[]=ESS_PROFILE_TAB_DEFINITIONS.map(tab=>tab.key);\n",
+          "predecessor": "const keys:PersonnelTabKey[]=['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others'];\n"
+        },
+        {
+          "start": 6,
+          "end": 7,
+          "candidate": "import {ESS_PROFILE_TAB_DEFINITIONS} from '@/lib/personnel-record-navigation';\n",
+          "predecessor": ""
+        }
+      ]
+    },
+    {
+      "path": "app/me/visible-fields.ts",
+      "candidateSha256": "87268d3c4ac635d91fbef8084f119e6574596e5b3df0fe7c272e4c5218b63d09",
+      "predecessorSha256": "2a548b0b555dcf6245a196e6ca1a0fd50c09355094e67dfc70c0251e3463f3e4",
+      "edits": [
+        {
+          "start": 6,
+          "end": 7,
+          "candidate": "export {ME_TABS};\n",
+          "predecessor": "export const ME_TABS = ['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others'] as const;\n"
+        },
+        {
+          "start": 0,
+          "end": 1,
+          "candidate": "import {PERSONNEL_TAB_KEYS as ME_TABS} from '@/lib/personnel-record-navigation';\n",
+          "predecessor": ""
+        }
+      ]
+    },
+    {
+      "path": "components/leave-type-workspace.tsx",
+      "candidateSha256": "539f2187567b34fbf70b7b5a077be12aa743e9098dd4d50d37bc7a8630890f36",
+      "predecessorSha256": "83b6325b2ce0891571927449e331938768cd3eeb8d3d3b626b3c4630f14e5f1d",
+      "edits": [
+        {
+          "start": 367,
+          "end": 368,
+          "candidate": "      <div className=\"min-w-0 flex-1 md:border-l md:border-border md:pl-4\" data-navigation-panel={LEAVE_TYPE_WORKSPACE_CHOICE.navigationId} data-navigation-record-id={selected}>\n",
+          "predecessor": "      <div className=\"min-w-0 flex-1 md:border-l md:border-border md:pl-4\">\n"
+        },
+        {
+          "start": 307,
+          "end": 309,
+          "candidate": "                  data-navigation-destination={LEAVE_TYPE_WORKSPACE_CHOICE.navigationId}\n                  data-navigation-record-id={item.id}\n",
+          "predecessor": ""
+        },
+        {
+          "start": 262,
+          "end": 263,
+          "candidate": "                <option key={item.id} value={item.id} data-navigation-record-id={item.id}>\n",
+          "predecessor": "                <option key={item.id} value={item.id}>\n"
+        },
+        {
+          "start": 251,
+          "end": 252,
+          "candidate": "              data-navigation-destination={LEAVE_TYPE_WORKSPACE_CHOICE.navigationId}\n",
+          "predecessor": ""
+        },
+        {
+          "start": 6,
+          "end": 7,
+          "candidate": "import {LEAVE_TYPE_WORKSPACE_CHOICE} from '@/lib/leave-type-navigation';\n",
+          "predecessor": ""
+        }
+      ]
+    },
+    {
+      "path": "components/personnel-tabs.tsx",
+      "candidateSha256": "b3961ba70440add2416fe0743034f470acd2f2b6b2fc81628dbe830646b5d3e5",
+      "predecessorSha256": "f29984e95997e67278bf0f4b1495062a4b93073febf3827617e9c12611c8d3fc",
+      "edits": [
+        {
+          "start": 240,
+          "end": 241,
+          "candidate": "            data-navigation-panel={tab.navigationId}\n",
+          "predecessor": ""
+        },
+        {
+          "start": 200,
+          "end": 201,
+          "candidate": "            data-navigation-destination={tab.navigationId}\n",
+          "predecessor": ""
+        },
+        {
+          "start": 43,
+          "end": 44,
+          "candidate": "  tabs: { key: K; label: string; navigationId?:string }[];\n",
+          "predecessor": "  tabs: { key: K; label: string }[];\n"
+        },
+        {
+          "start": 31,
+          "end": 32,
+          "candidate": "export type {PersonnelTabKey} from '@/lib/personnel-record-navigation';\n",
+          "predecessor": "export type PersonnelTabKey = 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification' | 'others';\n"
+        }
+      ]
+    },
+    {
+      "path": "lib/employee-draft-schema.ts",
+      "candidateSha256": "84f49d88156223363fd4b3980bffc9422854ac078cf28ba8d77d55ac59c25e8f",
+      "predecessorSha256": "70c75812a08c94f641ba87379948656a5cf25ea4f2b4392499cfb0ff08b42696",
+      "edits": [
+        {
+          "start": 566,
+          "end": 568,
+          "candidate": "const DRAFT_TAB_NAVIGATION:Record<DraftTabKey,string>={profile:'nested.personnelDraft.profile',job:'nested.personnelDraft.job',bankStatutory:'nested.personnelDraft.bankStatutory',payroll:'nested.personnelDraft.payroll',family:'nested.personnelDraft.family'};\nexport const DRAFT_TAB_DEFINITIONS=DRAFT_TABS.map(key=>({key,navigationId:DRAFT_TAB_NAVIGATION[key]}));\n",
+          "predecessor": ""
+        }
+      ]
+    },
+    {
+      "path": "lib/navigation/record-families.ts",
+      "candidateSha256": "34c2baa7fdc7f6e123fa4721278381c1e8d4ba548406e17e8f6ef364c408f6bb",
+      "predecessorSha256": "23bdbdcfd08d59c42dd42060a0e889b6fbe422383b03b04149fc690f96621e32",
+      "edits": [
+        {
+          "start": 51,
+          "end": 64,
+          "candidate": " // These are source declarations, never native permission or fixture resolution.\n for(const tab of PERSONNEL_RECORD_TAB_DEFINITIONS)declarations.push({id:tab.navigationId,family:'personnelRecord',sourceOwner:'lib/personnel-record-navigation.ts',rendererOwner:'app/admin/personnel/[employmentId]/page.tsx',descriptor:tab,\n  kind:'panel',parameters:['employmentId'],addressOwner:'ClientTabs.commitTab / existing Personnel page defaultTab',implementation:'built',rendered:'conditional',runtime:'unexecuted'});\n for(const tab of DRAFT_TAB_DEFINITIONS)declarations.push({id:tab.navigationId,family:'personnelDraft',sourceOwner:'lib/employee-draft-schema.ts',rendererOwner:'app/admin/personnel/new/wizard.tsx',descriptor:tab,\n  kind:'panel',parameters:['draftId'],addressOwner:'ClientTabs.commitTab / openingTab / stored current_step',implementation:'built',rendered:'conditional',runtime:'unexecuted'});\n for(const tab of ESS_PROFILE_TAB_DEFINITIONS)declarations.push({id:tab.navigationId,family:'essProfile',sourceOwner:'lib/personnel-record-navigation.ts',rendererOwner:'app/me/profile-editor.tsx',descriptor:tab,\n  kind:'panel',parameters:['employmentId'],addressOwner:'ProfileEditor native hiddenTabs / ClientTabs.commitTab',implementation:'built',rendered:'conditional',runtime:'unexecuted'});\n for(const tab of LEAVE_TYPE_TAB_DEFINITIONS)declarations.push({id:tab.navigationId,family:'leaveType',sourceOwner:'lib/leave-type-navigation.ts',rendererOwner:'app/admin/leave-config/types/leave-type-tabs.tsx',descriptor:tab,\n  kind:'panel',parameters:['leaveTypeId'],addressOwner:'LeaveTypeTabs.selectTab / openTab / leaveTypeCards storage',implementation:'built',rendered:'conditional',runtime:'unexecuted'});\n declarations.push({id:LEAVE_TYPE_WORKSPACE_CHOICE.navigationId,family:'leaveTypeWorkspace',sourceOwner:'lib/leave-type-navigation.ts',rendererOwner:'components/leave-type-workspace.tsx',descriptor:LEAVE_TYPE_WORKSPACE_CHOICE,\n  kind:'record-choice',parameters:['leaveTypeId'],addressOwner:'LeaveTypeWorkspace.select / hashchange / existing filtered items',implementation:'built',rendered:'conditional',runtime:'unexecuted'});\n for(const link of PROBATION_PREPARATION_LINKS)declarations.push({id:link.navigationId,family:'probationPreparation',sourceOwner:'lib/probation-preparation-navigation.ts',rendererOwner:'app/lifecycle/probation/preparation-nav.tsx',descriptor:link,\n  kind:'route',parameters:['companyId'],addressOwner:'probationPreparationHref / existing configuration and canPrepare callers',implementation:'built',rendered:'conditional',runtime:'unexecuted'});\n",
+          "predecessor": ""
+        },
+        {
+          "start": 17,
+          "end": 18,
+          "candidate": " kind:'panel'|'route'|'branch'|'alias'|'record-choice'; parameters:readonly ('companyId'|'ruleId'|'cycleId'|'employmentId'|'draftId'|'leaveTypeId')[];\n",
+          "predecessor": " kind:'panel'|'route'|'branch'|'alias'; parameters:readonly ('companyId'|'ruleId'|'cycleId')[];\n"
+        },
+        {
+          "start": 15,
+          "end": 16,
+          "candidate": " id:string; family:'company'|'scheduleGroup'|'leaveConfig'|'lifecycleV9'|'aiManagement'|'performanceAdmin'|'personnelRecord'|'personnelDraft'|'essProfile'|'leaveType'|'leaveTypeWorkspace'|'probationPreparation';\n",
+          "predecessor": " id:string; family:'company'|'scheduleGroup'|'leaveConfig'|'lifecycleV9'|'aiManagement'|'performanceAdmin';\n"
+        },
+        {
+          "start": 2,
+          "end": 6,
+          "candidate": "import {PERSONNEL_RECORD_TAB_DEFINITIONS,ESS_PROFILE_TAB_DEFINITIONS} from '../personnel-record-navigation';\nimport {DRAFT_TAB_DEFINITIONS} from '../employee-draft-schema';\nimport {LEAVE_TYPE_TAB_DEFINITIONS,LEAVE_TYPE_WORKSPACE_CHOICE} from '../leave-type-navigation';\nimport {PROBATION_PREPARATION_LINKS} from '../probation-preparation-navigation';\n",
+          "predecessor": ""
+        }
+      ]
+    }
+  ]
+}

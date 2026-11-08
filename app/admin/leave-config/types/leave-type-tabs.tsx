@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import {TAB_KEYS,leaveTypeTabNavigation,type TabKey} from '@/lib/leave-type-navigation';
+export {TAB_KEYS} from '@/lib/leave-type-navigation';
+export type {TabKey} from '@/lib/leave-type-navigation';
 import { useTranslations } from 'next-intl';
 import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/leave-org-criteria';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
@@ -64,8 +67,7 @@ import {
  */
 
 /** The five tabs, in walk order. THE KEYS ARE STORAGE KEYS (see the header's storage-key rule). */
-export const TAB_KEYS = ['identity', 'eligibility', 'entitlement', 'application', 'approvers'] as const;
-export type TabKey = (typeof TAB_KEYS)[number];
+// The neutral storage-key declaration is shared with the source catalogue.
 
 /**
  * The RETIRED step / sub-step keys a stored `leaveTypeCards:<id>` payload may still hold, and the tab
@@ -462,6 +464,7 @@ export function LeaveTypeTabs({
               <button
                 type="button"
                 onClick={() => selectTab(key)}
+                data-navigation-destination={leaveTypeTabNavigation(key)}
                 aria-current={tabActive ? 'step' : undefined}
                 aria-controls={tabActive ? `tab-${key}-${id}` : undefined}
                 className={tabBtn(tabActive)}
@@ -482,7 +485,7 @@ export function LeaveTypeTabs({
         })}
       </ol>
 
-      <div className="space-y-3">
+      <div className="space-y-3" data-navigation-panel={leaveTypeTabNavigation(activeTab)}>
         {/* ── TAB 1 · The leave type ─────────────────────────────────────────────────────────────── */}
         {activeTab === 'identity' && (
           <Card>

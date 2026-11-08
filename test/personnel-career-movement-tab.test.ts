@@ -1,3 +1,5 @@
+import {PERSONNEL_RECORD_TAB_DEFINITIONS} from '../lib/personnel-record-navigation';
+import type {PersonnelTabKey} from '../components/personnel-tabs';
 /**
  * Movement tab — Employment History redesign (78853b97, supersedes the 5296d984 relocation checks).
  * The Personnel (Admin) Movement tab is now ONE clean screen: an Employment History timeline
@@ -9,7 +11,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { isCorrectedMovementRow, partitionMovementRows } from '../lib/movement-visibility';
 import type { MovementHistoryRow, MovementReversal, MovementStatus } from '../core/movement';
 import { COMPARISON_KINDS,isComparisonKind } from '../core/movement-kinds';
@@ -20,7 +22,6 @@ const PAGE = fs.readFileSync(
   path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
   'utf8',
 );
-const TABS = fs.readFileSync(path.resolve(__dirname, '../components/personnel-tabs.tsx'), 'utf8');
 const NEW_EVENT = fs.readFileSync(
   path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-new-event.tsx'),
   'utf8',
@@ -49,12 +50,9 @@ function panelBody(key: string): string {
 
 describe('Personnel — Movement tab / Employment History (78853b97)', () => {
   it('registers the career-movement tab in the tab strip, after Employment (job)', () => {
-    expect(PAGE.includes("{ key: 'careerMovement', label: t('tabs.careerMovement') }")).toBe(true);
-    const jobIdx = PAGE.indexOf("{ key: 'job', label: t('tabs.job') }");
-    const cmIdx = PAGE.indexOf("{ key: 'careerMovement', label: t('tabs.careerMovement') }");
-    expect(jobIdx).toBeGreaterThan(-1);
-    expect(cmIdx).toBeGreaterThan(jobIdx);
-    expect(TABS.includes("'careerMovement'")).toBe(true);
+    const keys=PERSONNEL_RECORD_TAB_DEFINITIONS.map(tab=>tab.key);expect(keys).toContain('careerMovement');
+    const jobIdx=keys.indexOf('job'),cmIdx=keys.indexOf('careerMovement');expect(jobIdx).toBeGreaterThan(-1);expect(cmIdx).toBeGreaterThan(jobIdx);
+    expectTypeOf<Extract<PersonnelTabKey,'careerMovement'>>().toEqualTypeOf<'careerMovement'>();
   });
 
   it('renders detail + new-event + edit + Employment History inside the careerMovement panel', () => {
