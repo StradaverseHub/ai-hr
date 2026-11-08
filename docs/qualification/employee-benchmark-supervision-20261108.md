@@ -1,5 +1,9 @@
 # Employee benchmark: bounded external ownership checkpoint
 
+This first source checkpoint was superseded before execution by the
+[review recovery](employee-benchmark-supervision-recovery-20261108.md). That
+record owns current clock, native admission, timeout and control-count details.
+
 Unexecuted source successor of frozen `c5eaabdfbcdcdffff0dfb9b33b1a6d01b20e9966`.
 Run42430111658 reached the20-minute job timeout and five-minute force cancellation;
 its artifact list was empty and execution-log download returned404. No phase or

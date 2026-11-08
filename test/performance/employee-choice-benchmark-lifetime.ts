@@ -2,7 +2,7 @@
 export const employeeChoiceBenchmarkBounds=Object.freeze({totalMs:900000,reserveMs:60000,workMs:840000});
 type Clock={now:()=>number;schedule:(work:()=>void,ms:number)=>()=>void};
 type RecordEvent=(event:{kind:string;phase?:string;elapsedMs:number;reason?:string})=>void;
-const systemClock:Clock={now:()=>performance.now(),schedule:(work,ms)=>{const timer=setTimeout(work,ms);return()=>clearTimeout(timer);}};
+const systemClock:Clock={now:()=>Number(process.hrtime.bigint())/1e6,schedule:(work,ms)=>{const timer=setTimeout(work,ms);return()=>clearTimeout(timer);}};
 /** Record ownership before testing a signal that may have aborted during await.
  * The creator remains responsible for closing failures before it returns. */
 export async function adoptEmployeeChoiceBenchmarkResource<T extends {close:()=>Promise<void>}>(create:()=>Promise<T>,signal:AbortSignal,record:(resource:T)=>void):Promise<T>{
@@ -21,10 +21,10 @@ export function employeeChoiceBenchmarkLifetime(cancel:()=>Promise<void>,record:
   // Retain the rejecting promise for drain, without an unhandled rejection.
   void cancelling.catch(()=>{});
  };
- const start=()=>{
-  if(started!==undefined)throw Error('Benchmark lifetime already started');started=clock.now();emit('file-started');
-  cancelWorkTimer=clock.schedule(()=>stop('file-work-budget'),employeeChoiceBenchmarkBounds.workMs);
-  cancelTotalTimer=clock.schedule(()=>{uncertain=true;emit('total-envelope-exhausted');stop('owner-uncertain');},employeeChoiceBenchmarkBounds.totalMs);
+ const start=(frontier=clock.now())=>{
+  if(started!==undefined)throw Error('Benchmark lifetime already started');if(!Number.isFinite(frontier)||frontier>clock.now()||clock.now()-frontier>3000)throw Error('Exact benchmark start frontier refused');started=frontier;emit('file-started');
+  cancelWorkTimer=clock.schedule(()=>stop('file-work-budget'),Math.max(0,employeeChoiceBenchmarkBounds.workMs-elapsed()));
+  cancelTotalTimer=clock.schedule(()=>{uncertain=true;emit('total-envelope-exhausted');stop('owner-uncertain');},Math.max(0,employeeChoiceBenchmarkBounds.totalMs-elapsed()));
  };
  const active=()=>{
   if(started===undefined)throw Error('Benchmark lifetime not started');

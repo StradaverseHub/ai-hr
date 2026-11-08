@@ -1,6 +1,10 @@
 """Native Linux process controls only. No application/DB/performance execution."""
 import importlib.util
 import os
+import json
+import time
+import tempfile
+from unittest.mock import patch
 from pathlib import Path
 import sys
 import unittest
@@ -73,6 +77,9 @@ class BudgetModels(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.job_budget('benchmark', anchor, env, 'fixed-host', now)
         self.assertEqual(module.job_budget('stop', anchor, env, 'fixed-host', 2110), (9, 1110))
+        self.assertEqual(module.job_budget('native-controls', anchor, env, 'fixed-host', 1800), (180, 800))
+        with self.assertRaises(ValueError):
+            module.job_budget('native-controls', anchor, env, 'fixed-host', 1865)
 
     def test_file_clock_never_acknowledges_an_incomplete900_second_envelope(self):
         env = {'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '1'}
@@ -84,6 +91,51 @@ class BudgetModels(unittest.TestCase):
         for change in ({'version': True}, {'run': '124'}, {'startNs': '999000000000'}, {'startNs': '1012000000000'}, {'extra': 1}):
             with self.assertRaises(ValueError):
                 module.check_file_clock({**witness, **change}, env, 1000, 1011, 960)
+
+    def test_slow_failed_optional_terminal_caps_still_reserve_actual_stop_and_artifact_tail(self):
+        env = {'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '1', 'AIHR_FOCUSED_JOB_MONOTONIC_NS': '1000000000000'}
+        anchor = {'version': 1, 'run': '123', 'attempt': '1', 'job': 'selected-tests', 'bootId': 'fixed-host', 'startNs': env['AIHR_FOCUSED_JOB_MONOTONIC_NS'], 'wallTimeNs': '1800000000000000000'}
+        now = 2044
+        for stage in ['git-head', 'git-status', 'evidence', 'stats']:
+            seconds, _ = module.job_budget(stage, anchor, env, 'fixed-host', now)
+            now += seconds + 6  # Even a failed command consumes its full shutdown proof.
+        for stage in ['logs', 'inspect']:
+            with self.assertRaises(ValueError):
+                module.job_budget(stage, anchor, env, 'fixed-host', now)
+        seconds, elapsed = module.job_budget('stop', anchor, env, 'fixed-host', now)
+        self.assertEqual(seconds, 9)
+        self.assertLessEqual(elapsed + seconds + 6 + 30, 1170)
+
+class ClosedEntryModels(unittest.TestCase):
+    def test_actual_closed_main_runs_mandatory_stop_despite_initial_and_all_later_progress_failures(self):
+        # Actual main/request/clock/stage/fork/reap code executes. ONLY the child
+        # process edge is substituted for a stdlib marker: no Docker/PG call or
+        # actual hosted DB admission is claimed by this explicitly modelled env.
+        with tempfile.TemporaryDirectory(prefix='aihr-closed-stop-') as folder:
+            temporary = Path(folder).resolve(); destination = temporary / 'evidence'; destination.mkdir()
+            marker = temporary / 'stopped'
+            control = Path(__file__).resolve().parents[2]
+            run = '123'; start = str(time.monotonic_ns())
+            anchor = {'version': 1, 'run': run, 'attempt': '1', 'job': 'selected-tests', 'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip(), 'startNs': start, 'wallTimeNs': str(time.time_ns())}
+            env = {'RUNNER_TEMP': str(temporary), 'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted', 'GITHUB_RUN_ID': run, 'GITHUB_RUN_ATTEMPT': '1', 'AIHR_FOCUSED_TESTS': json.dumps([module.FILE]), 'AIHR_CI_HEAD': 'a'*40, 'AIHR_CI_CONTROL_HEAD': 'b'*40, 'AIHR_FOCUSED_JOB_MONOTONIC_NS': start, 'AIHR_FOCUSED_JOB_ANCHOR': json.dumps(anchor)}
+            request = {'stage': 'stop', 'node': os.environ['AIHR_BENCHMARK_TEST_NODE'], 'controller': str(control), 'destination': str(destination)}
+            original_exec = os.execvpe
+            def child_edge(executable, argv, values):
+                if argv != ['bash', str(control / '.github/ci/postgres.sh'), 'stop']:
+                    os._exit(95)
+                original_exec(sys.executable, [sys.executable, '-I', '-B', '-c', 'from pathlib import Path;Path('+repr(str(marker))+').write_text("STOPPED")'], values)
+            with patch.dict(os.environ, env), patch.object(sys, 'argv', [__file__, json.dumps(request)]), patch.object(module, 'append_event', side_effect=OSError('PRIVATE_PAYLOAD')), patch.object(module.os, 'execvpe', side_effect=child_edge):
+                self.assertEqual(module.main(), 1)
+            self.assertEqual(marker.read_text(), 'STOPPED')
+            self.assertEqual(module.own_children(), [])
+            with patch.dict(os.environ, {**env, 'AIHR_FOCUSED_TESTS': json.dumps([module.CONTROL_FILE])}):
+                stage, command, _ = module.request_command({**request, 'stage': 'native-controls'})
+                self.assertEqual(stage, 'native-controls')
+                self.assertEqual(command[4], module.CONTROL_FILE)
+                with self.assertRaises(ValueError):
+                    module.request_command({**request, 'stage': 'benchmark'})
+            with patch.dict(os.environ, env), self.assertRaises(ValueError):
+                module.request_command({**request, 'stage': 'native-controls'})
 
 if __name__ == '__main__':
     unittest.main()

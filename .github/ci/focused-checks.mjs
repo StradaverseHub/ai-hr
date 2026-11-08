@@ -14,6 +14,7 @@ const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
 const hash = text => createHash('sha256').update(text).digest('hex');
 const git = (cwd, ...args) => execFileSync('git', args, {cwd, encoding: 'utf8'}).trim();
 export const employeeBenchmarkFile='test/employee-choice-native-purpose-plan.test.ts';
+export const employeeNativeControlFile='test/employee-choice-benchmark-owner-native.test.ts';
 const benchmarkSupervisor=fileURLToPath(new URL('./employee-benchmark-supervisor.py',import.meta.url));
 const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
 const databaseKeys = ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL'];
@@ -63,6 +64,21 @@ export function verifyFocusedResult(result, files, cwd) {
 }
 
 export function isEmployeeChoiceBenchmark(files){return files.length===1&&files[0]===employeeBenchmarkFile;}
+export function isEmployeeChoiceNativeControls(files){return files.length===1&&files[0]===employeeNativeControlFile;}
+
+export function focusedBenchmarkStageFrontier(execute){
+ let poisoned=false;
+ return(name,options={})=>{
+  if(poisoned&&['reset','migrate','benchmark','native-controls'].includes(name))throw Error('Uncertain benchmark owner refuses new SQL work');
+  try{const result=execute(name,options);if(result.error||result.status!==0)poisoned=true;return result;}catch(error){poisoned=true;throw error;}
+ };
+}
+export function finalizeFocusedBenchmark(partial,cleanup,refused){
+ let unavailable=false,refusalCallbackFailed=false;
+ try{partial();}catch{unavailable=true;try{refused();}catch{refusalCallbackFailed=true;}}
+ try{cleanup();}catch(error){if(unavailable)throw new AggregateError([Error('Partial focused evidence persistence refused'),error],'Focused evidence and cleanup both refused');throw error;}
+ if(refusalCallbackFailed)throw Error('Focused evidence refusal reporting failed after mandatory cleanup');
+}
 
 function runnerOnly() {
   if (process.env.GITHUB_ACTIONS !== 'true' || process.env.CI !== 'true' || process.platform !== 'linux'
@@ -118,21 +134,21 @@ export function runFocused(destination) {
   const cwd = process.cwd(), sha = process.env.AIHR_CI_HEAD, controller = process.env.AIHR_CI_CONTROL_HEAD;
   if (!/^[0-9a-f]{40}$/.test(controller ?? '')) throw Error('Missing exact focused controller identity');
   const files = parseSelection(process.env.AIHR_FOCUSED_TESTS);
-  const benchmark=isEmployeeChoiceBenchmark(files);
+  const benchmark=isEmployeeChoiceBenchmark(files),nativeControls=isEmployeeChoiceNativeControls(files),supervised=benchmark||nativeControls;
   const dir = resolve(destination), runnerTemp = realpathSync(process.env.RUNNER_TEMP);
   if (!relative(runnerTemp, dir) || relative(runnerTemp, dir).startsWith('../') || isAbsolute(relative(runnerTemp, dir)))
     throw Error('Evidence must use an owned directory under RUNNER_TEMP');
   mkdirSync(dir, {recursive: true});
-  const stage=(name,options={})=>spawnSync('python3',['-I','-B',benchmarkSupervisor,JSON.stringify({stage:name,node:process.execPath,
-    controller:resolve(fileURLToPath(new URL('../..',import.meta.url))),destination:dir})],{cwd,...options});
-  const metadata=benchmark?name=>{const result=stage(name,{encoding:'utf8',maxBuffer:1024*1024});if(result.error||result.status!==0)throw Error('Supervised metadata refused');return result.stdout.trimEnd();}:undefined;
+  const stage=focusedBenchmarkStageFrontier((name,options={})=>spawnSync('python3',['-I','-B',benchmarkSupervisor,JSON.stringify({stage:name,node:process.execPath,
+    controller:resolve(fileURLToPath(new URL('../..',import.meta.url))),destination:dir})],{cwd,...options}));
+  const metadata=supervised?name=>{const result=stage(name,{encoding:'utf8',maxBuffer:1024*1024});if(result.error||result.status!==0)throw Error('Supervised metadata refused');return result.stdout.trimEnd();}:undefined;
   assertCandidate(cwd,sha,metadata);
   checkedTrackedFiles(cwd, files,metadata);
   const classifier = 'scripts/gate-db-classify.ts';
   const classificationOptions={cwd,input:files.join('\n')+'\n',encoding:'utf8',maxBuffer:1024*1024};
-  const classification=benchmark?stage('classifier',classificationOptions):null;
-  if(benchmark&&(classification.error||classification.status!==0))throw Error('Supervised classifier refused');
-  const output=benchmark?classification.stdout:execFileSync(process.execPath,['--import','tsx',classifier,'explain'],classificationOptions);
+  const classification=supervised?stage('classifier',classificationOptions):null;
+  if(supervised&&(classification.error||classification.status!==0))throw Error('Supervised classifier refused');
+  const output=supervised?classification.stdout:execFileSync(process.execPath,['--import','tsx',classifier,'explain'],classificationOptions);
   const groups = partitionSelection(files, output);
   const qualifyPort = restrictedPortRequest(process.env.AIHR_QUALIFY_RESTRICTED_PORT, groups, process.env.AIHR_RESTRICTED_PORT_TYPECHECK);
   const postgresProfile = groups.DB.length ? assertFocusedPostgresProfile(process.env) : null;
@@ -159,9 +175,9 @@ export function runFocused(destination) {
           touchedDatabase = true;
           if (qualifyPort) batch.prerequisiteQualification = {enabled:true,status:'pending'};
           executeDatabaseSetup(qualifyPort, {
-            reset(){if ((benchmark?stage('reset',{stdio:'inherit',env:pgEnv}):spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: pgEnv})).status !== 0) throw Error('Owned PostgreSQL setup failed');},
+            reset(){if ((supervised?stage('reset',{stdio:'inherit',env:pgEnv}):spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: pgEnv})).status !== 0) throw Error('Owned PostgreSQL setup failed');},
             before(){runRestrictedPortQualification(cwd,'before',dir,env);},
-            migrate(){if ((benchmark?stage('migrate',{stdio:'inherit',env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit', env})).status !== 0) throw Error('Candidate migration failed');},
+            migrate(){if ((supervised?stage('migrate',{stdio:'inherit',env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit', env})).status !== 0) throw Error('Candidate migration failed');},
             after(){runRestrictedPortQualification(cwd,'after',dir,env);},
           });
           if (qualifyPort) batch.prerequisiteQualification.status = 'passed';
@@ -170,7 +186,7 @@ export function runFocused(destination) {
         const args = ['exec', 'vitest', 'run'];
         if (kind === 'NODB') args.push('--config', 'vitest.nodb.config.ts');
         args.push(...selected, '--reporter=default', '--reporter=json', '--outputFile.json=' + resultPath);
-        const child = benchmark?stage('benchmark',{stdio:'inherit',env}):spawnSync('pnpm', args, {stdio: 'inherit', env});
+        const child = supervised?stage(nativeControls?'native-controls':'benchmark',{stdio:'inherit',env}):spawnSync('pnpm', args, {stdio: 'inherit', env});
         batch.processExitCode = child.status; batch.signal = child.signal;
         if (child.error || child.status !== 0) throw Error('Selected test process failed');
         batch.assertions = verifyFocusedResult(JSON.parse(readFileSync(resultPath, 'utf8')), selected, cwd);
@@ -182,37 +198,43 @@ export function runFocused(destination) {
     report.exitCode = report.batches.every(batch => batch.exitCode === 0) ? 0 : 1;
   } catch (error) { report.error = error instanceof Error ? error.message : 'Focused checks failed'; }
   finally {
-    if(benchmark)writeFileSync(join(dir,'focused-partial.json'),JSON.stringify({...report,kind:'FOCUSED_PARTIAL_ONLY',complete:false,exitCode:1,endedAt:new Date().toISOString()},null,2)+'\n',{flag:'wx',mode:0o600});
+    const partial=()=>writeFileSync(join(dir,'focused-partial.json'),JSON.stringify({...report,kind:'FOCUSED_PARTIAL_ONLY',complete:false,exitCode:1,endedAt:new Date().toISOString()},null,2)+'\n',{flag:'wx',mode:0o600});
+    const cleanup=()=>{
     if (touchedDatabase) {
+      const terminal=()=>{
       try {
-        if(benchmark){const terminal=stage('evidence',{encoding:'utf8',maxBuffer:2*1024*1024,env:pgEnv});if(terminal.error||terminal.status!==0)throw Error('Supervised terminal evidence refused');report.databaseTerminalEvidence=JSON.parse(terminal.stdout);}
+        if(supervised){const terminal=stage('evidence',{encoding:'utf8',maxBuffer:2*1024*1024,env:pgEnv});if(terminal.error||terminal.status!==0)throw Error('Supervised terminal evidence refused');report.databaseTerminalEvidence=JSON.parse(terminal.stdout);}
         else report.databaseTerminalEvidence = capturePostgresEvidence('db-1', postgresProfile);
         validatePostgresEvidence(report.databaseTerminalEvidence, {postgres: postgresProfile});
       } catch (error) { report.databaseTelemetryError = String(error); report.exitCode = 1; }
-      const stats = benchmark?stage('stats',{encoding:'utf8',env:pgEnv}):spawnSync('bash', [postgres, 'stats'], {encoding: 'utf8', env: pgEnv});
+      const stats = supervised?stage('stats',{encoding:'utf8',env:pgEnv}):spawnSync('bash', [postgres, 'stats'], {encoding: 'utf8', env: pgEnv});
       if (stats.status !== 0) report.exitCode = 1;
       writeFileSync(join(dir, 'postgres-stats.txt'), (stats.stdout ?? '') + (stats.stderr ?? ''), {flag: 'wx'});
       // Stats validates container ownership before these read-only diagnostics; preserve before stop.
       if (stats.status === 0) {
         const name = `aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-db-1`;
         for (const [file, args] of [['postgres.log', ['logs', name]], ['postgres-state.json', ['inspect', '--format', '{{json .State}}', name]]]) {
-          const result = benchmark?stage(file==='postgres.log'?'logs':'inspect',{encoding:'utf8',maxBuffer:16*1024*1024}):spawnSync('docker', args, {encoding: 'utf8', maxBuffer: 16 * 1024 * 1024});
+          const result = supervised?stage(file==='postgres.log'?'logs':'inspect',{encoding:'utf8',maxBuffer:16*1024*1024}):spawnSync('docker', args, {encoding: 'utf8', maxBuffer: 16 * 1024 * 1024});
           writeFileSync(join(dir, file), (result.stdout ?? '') + (result.stderr ?? ''), {flag: 'wx'});
         }
       }
-      if ((benchmark?stage('stop',{stdio:'inherit',env:pgEnv}):spawnSync('bash', [postgres, 'stop'], {stdio: 'inherit', env: pgEnv})).status !== 0) report.exitCode = 1;
+      };
+      const dispose=()=>{if ((supervised?stage('stop',{stdio:'inherit',env:pgEnv}):spawnSync('bash', [postgres, 'stop'], {stdio: 'inherit', env: pgEnv})).status !== 0) report.exitCode = 1;};
+      if(supervised)finalizeFocusedBenchmark(terminal,dispose,()=>{report.exitCode=1;report.databaseTerminalCaptureError='terminal-persistence-refused';});else{terminal();dispose();}
     }
     report.endedAt = new Date().toISOString();
     report.healthAfter = hostHealth();
     writeFileSync(join(dir, 'focused.json'), JSON.stringify(report, null, 2) + '\n', {flag: 'wx'});
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Focused development checks\nCandidate: ${sha}\nController: ${controller}\nSelected files: ${files.length}\nExit: ${report.exitCode}\n\nFOCUSED ONLY — no release receipt, full coverage or deployment approval.\n`);
+    };
+    if(supervised)finalizeFocusedBenchmark(partial,cleanup,()=>{report.exitCode=1;report.partialEvidenceError='partial-persistence-refused';});else cleanup();
   }
   return report.exitCode;
 }
 
 export function cleanupEmployeeChoiceBenchmark(destination){
   runnerOnly();
-  if(!isEmployeeChoiceBenchmark(parseSelection(process.env.AIHR_FOCUSED_TESTS)))throw Error('Sole benchmark cleanup required');
+  const files=parseSelection(process.env.AIHR_FOCUSED_TESTS);if(!isEmployeeChoiceBenchmark(files)&&!isEmployeeChoiceNativeControls(files))throw Error('Sole employee benchmark/control cleanup required');
   const dir=resolve(destination),expected=join(realpathSync(process.env.RUNNER_TEMP),'aihr-focused');
   if(dir!==expected)throw Error('Fixed benchmark cleanup evidence directory required');
   mkdirSync(dir,{recursive:true});

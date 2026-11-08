@@ -111,3 +111,10 @@ it('refuses unsafe identity/path drift and cannot overwrite source binding or in
   symlinkSync(f.directory,join(f.directory,'linked'));expect(()=>employeeChoiceBenchmarkEvidence(join(f.directory,'linked'),binding)).toThrow('Owned');
  }finally{f.close();}
 });
+it('uses the same T0 externally published before delayed ACK and internally preserves the full absolute cleanup reserve',async()=>{
+ const time=clock(),life=employeeChoiceBenchmarkLifetime(async()=>{},()=>{},time);
+ const publishedT0=time.now();life.start(publishedT0);time.advance(2999); // Actual ACK delay is work-envelope time.
+ await life.run('first-work-after-ack',async()=>{});time.advance(837001);expect(life.snapshot()).toMatchObject({elapsedMs:840000,stopped:true});
+ time.advance(59999);await life.finish(async()=>{});expect(life.snapshot()).toMatchObject({elapsedMs:899999,finished:true,uncertain:false});
+ const delayed=clock(),other=employeeChoiceBenchmarkLifetime(async()=>{},()=>{},delayed);delayed.advance(3001);expect(()=>other.start(0)).toThrow('frontier');
+});

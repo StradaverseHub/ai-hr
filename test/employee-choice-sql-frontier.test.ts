@@ -1,6 +1,6 @@
 /** Pure lifecycle models only; no native DB/worker performance claim. */
 import {expect,it} from 'vitest';
-import {employeeChoiceSqlFrontier,employeeChoiceCloseRegistry,employeeChoiceReadFrontier} from './performance/employee-choice-sql-frontier';
+import {employeeChoiceSqlFrontier,employeeChoiceCloseRegistry,employeeChoiceReadFrontier,employeeChoiceWorkRegistry} from './performance/employee-choice-sql-frontier';
 function deferred(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return{promise,resolve};}
 it('checks every tagged/unsafe/transaction statement and callback before admitting work after stop',async()=>{
  let stopped=false,calls=0;const active=()=>{if(stopped)throw Error('stopped');};
@@ -33,4 +33,28 @@ it('guards lazy Drizzle-shaped execution at the synchronous clock frontier and r
  const tx=employeeChoiceReadFrontier(native,()=>{if(time>=840000)throw Error('clock stopped');});
  const first=await tx.select().from();expect(first).toBe(rows);expect(statements).toBe(1);
  const lazy=tx.select().from();time=840000;await expect(Promise.resolve(lazy)).rejects.toThrow('clock stopped');expect(statements).toBe(1);expect(()=>tx.select()).toThrow('clock stopped');
+});
+
+it('drains the actual callback after begin returned and preserves a DISTINCT same-code finally failure',async()=>{
+ for(const distinctFinally of [false,true]){
+  const registry=employeeChoiceWorkRegistry(),queryFailed=deferred(),release=deferred();let stopped=false,outerReject!:(error:unknown)=>void;
+  const nativeError=Object.assign(Error('native query closure'),{code:'CONNECTION_DESTROYED'}),outerError=Object.assign(Error('outer native closure'),{code:'CONNECTION_CLOSED'}),finallyError=Object.assign(Error('distinct finally failure'),{code:'CONNECTION_DESTROYED'});
+  type Native=(()=>Promise<never>)&{begin:(callback:(tx:Native)=>Promise<void>)=>Promise<void>};
+  const outer=new Promise<void>((_resolve,reject)=>{outerReject=reject;});
+  const native:Native=Object.assign(()=>Promise.reject(nativeError),{begin(callback:(tx:Native)=>Promise<void>){void callback(native).catch(()=>{});return outer;}});
+  const active=()=>{if(stopped)throw Error('stopped');};
+  const tx=employeeChoiceSqlFrontier(native,active,work=>registry.own(work,active),registry.watch,error=>{registry.nativeFailure(error);queryFailed.resolve();});
+  const operation=tx.begin(async sql=>{try{await sql();}finally{await release.promise;if(distinctFinally)throw finallyError;}});void operation.catch(()=>{});
+  await queryFailed.promise;stopped=true;registry.stop();outerReject(outerError);await expect(operation).rejects.toBe(outerError);
+  let complete=false;const drain=registry.settle().finally(()=>{complete=true;});await Promise.resolve();expect(complete).toBe(false);release.resolve();
+  if(distinctFinally){const failure:unknown=await drain.catch(error=>error);expect(failure).toBeInstanceOf(AggregateError);if(!(failure instanceof AggregateError))throw Error('Compound refusal required');expect(failure.errors).toEqual([finallyError]);}
+  else expect(await drain).toMatchObject({admitted:1,settled:1,rejected:1,pending:0});
+ }
+});
+it('refuses a driver callback arriving after close before invoking any domain work',async()=>{
+ const registry=employeeChoiceWorkRegistry();let stopped=false,called=false,late:((tx:object)=>Promise<void>)|undefined;
+ const closed=Object.assign(Error('outer closed'),{code:'CONNECTION_CLOSED'});
+ const native=Object.assign(()=>Promise.resolve(),{begin(callback:(tx:object)=>Promise<void>){late=callback;return Promise.reject(closed);}});
+ const active=()=>{if(stopped)throw Error('stopped');};const sql=employeeChoiceSqlFrontier(native,active,work=>registry.own(work,active),registry.watch,registry.nativeFailure);
+ await expect(sql.begin(async()=>{called=true;})).rejects.toBe(closed);stopped=true;registry.stop();expect(()=>late!(native)).toThrow('stopped');expect(called).toBe(false);expect(await registry.settle()).toMatchObject({admitted:0,pending:0});
 });

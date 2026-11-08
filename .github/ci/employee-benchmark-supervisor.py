@@ -16,7 +16,8 @@ import time
 from pathlib import Path
 
 FILE = 'test/employee-choice-native-purpose-plan.test.ts'
-LIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10, 'evidence': 30, 'classifier': 15, 'reset': 60, 'migrate': 60, 'benchmark': 960,
+CONTROL_FILE = 'test/employee-choice-benchmark-owner-native.test.ts'
+LIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10, 'evidence': 30, 'classifier': 15, 'reset': 60, 'migrate': 60, 'benchmark': 960, 'native-controls': 180,
           'stats': 10, 'logs': 10, 'inspect': 10, 'stop': 9}
 REASONS = {'complete', 'command-failed', 'deadline', 'monitor-died', 'handshake-refused',
            'protocol-refused', 'descendants-survived', 'session-escaped', 'group-uncertain', 'owner-interrupted'}
@@ -112,7 +113,7 @@ def append_event(path, event):
         os.close(fd)
 
 
-def supervise(argv, seconds, event, *, clock=time.monotonic, monitor_fault=False, file_clock=None):
+def supervise(argv, seconds, event, *, clock=time.monotonic, monitor_fault=False, file_clock=None, mandatory=False):
     """Library inputs are fixed by CLI below; native controls supply tiny fixtures.
     A forked monitor never admits a command before session identity ACK. Parent
     never polls/reaps it through Popen; its reserved PID cannot name a new group.
@@ -215,7 +216,7 @@ def supervise(argv, seconds, event, *, clock=time.monotonic, monitor_fault=False
                         and actual['group'] == child and actual['session'] == child and actual['state'] not in ('Z', 'X'))
                 admitted = True
                 write_packet_event = {'kind': 'session-admitted', 'pid': child, 'start': actual['start']}
-                if not emit(write_packet_event):
+                if not emit(write_packet_event) and not mandatory:
                     reason = 'protocol-refused'; break
                 require(os.write(ack_w, b'A') == 1)
             else:
@@ -281,7 +282,12 @@ def request_command(request):
     require(control.is_absolute() and control.resolve() == control and (control / '.github/ci/postgres.sh').is_file())
     temp = Path(os.environ['RUNNER_TEMP']).resolve()
     require(destination.is_absolute() and destination.resolve() == destination and temp in destination.parents)
-    require(json.loads(os.environ['AIHR_FOCUSED_TESTS']) == [FILE])
+    selection = json.loads(os.environ['AIHR_FOCUSED_TESTS'])
+    require(selection in ([FILE], [CONTROL_FILE]))
+    if stage == 'benchmark':
+        require(selection == [FILE])
+    if stage == 'native-controls':
+        require(selection == [CONTROL_FILE])
     require(os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted')
     require(re.fullmatch(r'[1-9][0-9]{0,19}', os.environ['GITHUB_RUN_ID']) is not None
             and re.fullmatch(r'[1-9][0-9]{0,3}', os.environ['GITHUB_RUN_ATTEMPT']) is not None)
@@ -294,6 +300,7 @@ def request_command(request):
         'classifier': [str(node), '--import', 'tsx', 'scripts/gate-db-classify.ts', 'explain'],
         'reset': ['bash', str(control / '.github/ci/postgres.sh'), 'reset'],
         'migrate': ['pnpm', 'db:migrate'],
+        'native-controls': ['pnpm', 'exec', 'vitest', 'run', CONTROL_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
         'benchmark': ['pnpm', 'exec', 'vitest', 'run', FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
         'stats': ['bash', str(control / '.github/ci/postgres.sh'), 'stats'],
         'logs': ['docker', 'logs', name],
@@ -317,10 +324,12 @@ def job_budget(stage, anchor, env, boot, now):
     # artifact tail. Authenticated API job.startedAt must independently
     # corroborate anchor.wallTimeNs minus job.startedAt <=30s after the run.
     require(0 <= elapsed < 1170 and stage in LIMITS)
-    reserve = 30 if stage in {'git-head', 'git-status', 'git-tracked', 'evidence', 'stats', 'logs', 'inspect', 'stop'} else 120
+    reserve = 30 if stage == 'stop' else 45 if stage in {'git-head', 'git-status', 'git-tracked', 'evidence', 'stats', 'logs', 'inspect'} else 120
     seconds = min(LIMITS[stage], 1170 - elapsed - reserve - 6)
     if stage == 'benchmark':
         require(seconds >= 900)
+    if stage == 'native-controls':
+        require(seconds >= 180)
     require(seconds > 0)
     return seconds, elapsed
 
@@ -350,8 +359,14 @@ def main():
     except (ValueError, KeyError, TypeError):
         event({'kind': 'stage-refused', 'reason': 'job-envelope-refused'})
         return 1
-    event({'kind': 'stage-started', 'budgetSeconds': seconds, 'jobElapsedSeconds': elapsed,
-           'anchorWallTimeNs': anchor['wallTimeNs']})
+    diagnostic_failed = False
+    try:
+        event({'kind': 'stage-started', 'budgetSeconds': seconds, 'jobElapsedSeconds': elapsed,
+               'anchorWallTimeNs': anchor['wallTimeNs']})
+    except BaseException:
+        diagnostic_failed = True
+        if stage != 'stop':
+            return 1
     def file_clock(started, now):
         path = destination / 'employee-choice-native-purpose' / 'benchmark-clock.json'
         try:
@@ -377,8 +392,8 @@ def main():
         os.link(pending, ack, follow_symlinks=False)
         os.unlink(pending)
         return observed
-    result = supervise(argv, seconds, event, file_clock=file_clock if stage == 'benchmark' else None)
-    return 0 if result['reason'] == 'complete' and result['groupQuiescent'] else 1
+    result = supervise(argv, seconds, event, file_clock=file_clock if stage == 'benchmark' else None, mandatory=stage == 'stop')
+    return 0 if not diagnostic_failed and result['reason'] == 'complete' and result['groupQuiescent'] else 1
 
 
 if __name__ == '__main__':

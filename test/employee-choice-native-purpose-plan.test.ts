@@ -35,11 +35,12 @@ const selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 // Accepted integration must register the complete file and call admitSingletonTest.
 const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selection)&&selection.length===1&&selection[0]===file;
 beforeAll(async()=>{initializeEvidence();
- const clock={version:1,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,startNs:String(process.hrtime.bigint())};
+ const startNs=process.hrtime.bigint();lifetime.start(Number(startNs)/1e6);
+ const clock={version:1,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,startNs:String(startNs)};
  writeFileSync(join(output,'benchmark-clock.pending'),JSON.stringify(clock),{flag:'wx',mode:0o600});renameSync(join(output,'benchmark-clock.pending'),join(output,'benchmark-clock.json'));
  const ack=join(output,'benchmark-clock-ack.json'),waiting=performance.now();
  while(!existsSync(ack)){if(performance.now()-waiting>3000)throw Error('External benchmark full-envelope admission missing');await new Promise(resolve=>setTimeout(resolve,20));}
- expect(JSON.parse(readFileSync(ack,'utf8'))).toEqual(clock);lifetime.start();ownedPools=employeeChoiceBenchmarkOwner(signal,phase=>progress({kind:'owner-phase',phase}),active);await lifetime.run('migration',migrateTestDb);});
+ expect(JSON.parse(readFileSync(ack,'utf8'))).toEqual(clock);ownedPools=employeeChoiceBenchmarkOwner(signal,phase=>progress({kind:'owner-phase',phase}),active);await lifetime.run('migration',migrateTestDb);});
 type Variant='current'|'native';const variants:readonly Variant[]=['current','native'];
 type Page=Awaited<ReturnType<typeof current.readEmployeeChoices>>;
 type Input=Parameters<typeof current.readEmployeeChoices>[1];
@@ -274,7 +275,7 @@ it.skipIf(!requested)('prepares exactly50k fictional current-root facts and a gu
  expect(completeFixtureIds.slice(0,25)).toEqual(fixture.expectedFirst);expect(completeFixtureIds.slice(-25)).toEqual(fixture.expectedLast);
  report.completeServerScope={identities:completeFixtureIds.length,source:'Independent exact seed employee_code1..50000',inputOrder:'reverse',clipped:false};
  cardinalities=await employeeChoiceActualCardinalities(owner.db);report.exactWholeFixtureCardinalities=cardinalities;report.initialResources=resources();
- const identities=(report.identities??=[])as unknown[];timing=await adoptEmployeeChoiceBenchmarkResource(()=>employeeChoicePurposeSession('timing',active,value=>identities.push(value),poison,()=>ownedPools!.installCarrier(),close=>ownedPools!.register(close)),signal,value=>{timing=value;});active();
+ const identities=(report.identities??=[])as unknown[];timing=await adoptEmployeeChoiceBenchmarkResource(()=>employeeChoicePurposeSession('timing',active,value=>identities.push(value),poison,()=>ownedPools!.installCarrier(),(close,name)=>ownedPools!.register(close,name),work=>ownedPools!.ownWork(work),work=>ownedPools!.watchWork(work)),signal,value=>{timing=value;});active();
  const [instrumentation]=await timing.single.client`select current_setting('auto_explain.log_min_duration',true) as duration`;
  expect(instrumentation.duration===null||instrumentation.duration===''||instrumentation.duration==='-1').toBe(true);
  report.timingBackend=timing.defaults;report.preparationComplete=true;await installation.unchanged();save();
@@ -291,7 +292,7 @@ it.skipIf(!requested)('captures real nested native plans on a separate bound app
  let restoreSpy=()=>{},verifyLatestPlans:(()=>void)|undefined;
  await preserveDiagnosticFailure(async()=>{
  progress({kind:'logging-config-started'});logging=await employeeChoicePlanLogging(installation!.database,value=>{logging=value;report.loggingCleanupWitness={beforeSha256:value.beforeSha256,instrumentedSha256:value.instrumentedSha256,restorationAccepted:false};progress({kind:'logging-native-witness-owned-before-commit'});save();});progress({kind:'logging-config-completed'});report.instrumentationConfig={beforeSha256:logging.beforeSha256,instrumentedSha256:logging.instrumentedSha256,settings:logging.settings};
- const identities=(report.identities??=[])as unknown[];plansSession=await adoptEmployeeChoiceBenchmarkResource(()=>employeeChoicePurposeSession('plans',active,value=>identities.push(value),poison,()=>ownedPools!.installCarrier(),close=>ownedPools!.register(close)),signal,value=>{plansSession=value;});active();expect(plansSession.defaults.pid).not.toBe(timing!.defaults.pid);
+ const identities=(report.identities??=[])as unknown[];plansSession=await adoptEmployeeChoiceBenchmarkResource(()=>employeeChoicePurposeSession('plans',active,value=>identities.push(value),poison,()=>ownedPools!.installCarrier(),(close,name)=>ownedPools!.register(close,name),work=>ownedPools!.ownWork(work),work=>ownedPools!.watchWork(work)),signal,value=>{plansSession=value;});active();expect(plansSession.defaults.pid).not.toBe(timing!.defaults.pid);
  report.planBackend=plansSession.defaults;
  // session_preload_libraries is privileged inspection even for a genuine app
  // LOGIN. The owner verified its exact database setting before this NEW backend
