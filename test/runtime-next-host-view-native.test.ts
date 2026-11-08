@@ -35,9 +35,9 @@ it('proves privileged cache overlays and bounded owned stop with actual systemd2
  const topology=report.resourceTopology;
  expect(topology).toMatchObject({kind:'ACTUAL_UNCHANGED_RESOURCE_METHOD_DIAGNOSTIC_NOT_READINESS',
   actualProcessUnchanged:true,profileConstructorVerified:false,nextApplicationVerified:false,releaseEligible:false});
- expect(typeof topology.resourceReady).toBe('boolean');
- if(topology.resourceReady)expect(topology.guardReason).toBe('resource-check-accepted');
- else expect(topology.guardReason).toMatch(/^(?:missing-nonroot-cap|ancestor-memory-too-low|ancestor-cpu-too-low|resource-check-refused)$/);
+ expect(topology.resourceReady).toBe(true);expect(topology.guardReason).toBe('resource-check-accepted');
+ expect(topology.leafCPUWeightBefore).toBe(100);expect(topology.leafCPUWeightAfter).toBe(100);
+ expect(topology.before[0].cpu).toMatchObject({capPresent:true,available:true});expect(topology.before[1].cpu.subtreeEnabled).toBe(true);
  expect(topology.after).toEqual(topology.before);
  expect(topology.before.map((row:{tier:string})=>row.tier)).toEqual(['worker','aggregate','root']);
  for(const row of topology.before){

@@ -96,6 +96,19 @@ class HostViewModels(unittest.TestCase):
         for fixed in ('CPUQuota=400%', 'MemoryHigh=7168M', 'MemoryMax=8192M', 'MemorySwapMax=0', 'TasksMax=1024'):
             self.assertIn(fixed, source)
 
+    def test_leaf_cpu_constructor_requires_exact_effective_weight_without_a_resource_guard_waiver(self):
+        N.require_leaf_cpu_weight({'CPUWeight': '100'}, require)
+        for value in ({}, {'CPUWeight': '99'}, {'CPUWeight': '101'}, {'CPUWeight': '100\n'},
+                      {'CPUWeight': 100}, {'CPUWeight': True}, {'CPUAccounting': 'yes'}):
+            with self.assertRaisesRegex(AssertionError, 'CPU weight differs'):
+                N.require_leaf_cpu_weight(value, require)
+        host, full = pathlib.Path(H.__file__).read_text(), pathlib.Path(F.__file__).read_text()
+        self.assertIn('CPUWeight=100', host);self.assertIn('CPUWeight=100', full)
+        self.assertIn("report['resourceTopology']['resourceReady'] is True", host)
+        self.assertIn("'Explicit leaf CPU constructor did not satisfy unchanged resource method'", host)
+        self.assertIn("'leafCPUWeightBefore': weights[0]", host)
+        self.assertIn("'leafCPUWeightAfter': weights[1]", host)
+
     def test_host_empty_placeholders_keep_exact_mode_and_complete_native_identity(self):
         result = self.view()
         self.assertFalse(result['overlaid']);self.assertEqual(set(result['placeholders']), set(N.CACHE_TARGETS))
@@ -394,6 +407,23 @@ class HostViewModels(unittest.TestCase):
         self.assertTrue(root.exists());self.assertEqual(len(list(root.iterdir())), 1)
 
     def test_both_complete_predecessor_fixtures_reconstruct_without_dropping_old_guards(self):
+        layer = json.loads((ROOT / 'deploy/admission/next_cpu_weight_constructor_inverse.json').read_text())
+        self.assertEqual(layer['base'], '6115dd5a6a6e1f2d2dedf4723e0e8ca2b568da65')
+        def predecessor(name):
+            text = (ROOT / name).read_text();row = layer['files'][name]
+            self.assertEqual(hashlib.sha256(text.encode()).hexdigest(), row['currentSha256'])
+            lines, frontier = text.splitlines(keepends=True), len(text.splitlines(keepends=True))
+            for edit in row['changes']:
+                self.assertTrue(0 <= edit['start'] <= edit['end'] <= frontier)
+                self.assertEqual(''.join(lines[edit['start']:edit['end']]), edit['after'])
+                lines[edit['start']:edit['end']] = edit['before'].splitlines(keepends=True);frontier = edit['start']
+            restored = ''.join(lines)
+            self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(), row['originalSha256'])
+            return restored
+        # Whole current layer is checked before every older inverse consumes its
+        # own exact historical source. No historical hash is recaptured/rewritten.
+        for name in layer['files']:
+            predecessor(name)
         inverse = json.loads((ROOT / 'deploy/admission/next_cleanup_phase_inverse.json').read_text())
         expected = {'deploy/admission/test_next_native.py': '730f34682797f8ecef52b98181ab12f786081caebe1d24f1552d24d6d4ef8632',
                     'deploy/admission/test_next_host_view_native.py': '6d2cb72060fef1d816724e71ccef374b75cc6cd4fca77bbe0471042064a91c7a'}
@@ -401,7 +431,7 @@ class HostViewModels(unittest.TestCase):
         self.assertEqual(inverse['base'], 'f37f9d629458b7d2bf4a34bdb3a0891e32af96e2')
         self.assertEqual(set(inverse['files']), set(expected))
         for name, digest in expected.items():
-            row = inverse['files'][name];source = (ROOT / name).read_text()
+            row = inverse['files'][name];source = predecessor(name)
             self.assertEqual(row['originalSha256'], digest)
             self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
             for change in reversed(row['changes']):
@@ -411,7 +441,7 @@ class HostViewModels(unittest.TestCase):
         # Fixture recovery must not silently rewrite any other original model.
         recovery = json.loads((ROOT / 'deploy/admission/next_cgroup_control_guard_order_inverse.json').read_text())
         self.assertEqual(recovery['base'], '26105ef7e53b088ffec8dc701606a70ce32677d1')
-        source = pathlib.Path(__file__).read_text()
+        source = predecessor('deploy/admission/test_next_host_view.py')
         self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), recovery['currentSha256'])
         lines = source.splitlines(keepends=True)
         for change in recovery['changes']:

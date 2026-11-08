@@ -1218,6 +1218,7 @@ CapabilityBoundingSet=
 BindReadOnlyPaths={release}:{release}:norbind
 {binds}
 Slice={SLICE}
+CPUWeight=100
 UMask=0077
 '''
     configuration_phase('unit-files')

@@ -30,7 +30,7 @@ SAFE_PATH = re.compile(r'/[A-Za-z0-9_./@-]+')
 SYSTEM_LIBRARY_PATH = re.compile(r'/usr/lib/[A-Za-z0-9_./@+-]+')
 EXTRA_PROPERTIES = ('ProtectSystem', 'ProtectHome', 'PrivateMounts', 'NoNewPrivileges', 'CapabilityBoundingSet',
                     'RestrictNamespaces', 'BindPaths', 'BindReadOnlyPaths', 'ReadWritePaths',
-                    'ReadOnlyPaths', 'Slice', 'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax')
+                    'ReadOnlyPaths', 'Slice', 'CPUWeight', 'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax')
 APP_ENVIRONMENT = frozenset({'NODE_ENV', 'HOME', 'PATH', 'NEXT_TELEMETRY_DISABLED', 'AUTH_PROVIDER',
     'ALLOW_DEMO_SESSION', 'DATABASE_URL', 'AUTH_PUBLIC_ORIGIN', 'AUTH_SESSION_KEY',
     'AUTH_DEFAULT_ORGANIZATION', 'AUDIT_HASH_CHAIN_ENABLED', 'AI_CONFIG_SECRET'})
@@ -143,6 +143,10 @@ def load_verified_module(directory, name, wanted, secure_path, require, uid):
     module.__file__ = str(directory / name)
     exec(compile(raw, module.__file__, 'exec'), module.__dict__)
     return module
+
+
+def require_leaf_cpu_weight(properties, require):
+    require(properties.get('CPUWeight') == '100', 'Managed worker CPU weight differs')
 
 
 class NextRuntime:
@@ -488,6 +492,7 @@ class NextRuntime:
         require, spec = self.require, self.value['units'][unit]
         envelope = self.value['resourceEnvelope']
         require(all(key in properties for key in EXTRA_PROPERTIES), 'Managed unit properties incomplete')
+        require_leaf_cpu_weight(properties, require)
         require(properties['ProtectSystem'] == 'strict' and properties['ProtectHome'] == 'yes'
                 and properties['PrivateMounts'] == 'yes'
                 and properties.get('DynamicUser') == 'no'

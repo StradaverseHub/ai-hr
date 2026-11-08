@@ -57,7 +57,7 @@ def command(*arguments, check=True, cap=3):
 def properties(unit, cap=3):
     require(unit in UNITS, 'Unknown native conformance unit')
     result = command('/usr/bin/systemctl', '--system', 'show', unit,
-        '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ControlGroup,FragmentPath,SourcePath,Transient,DropInPaths,KillMode,Delegate,User,NoNewPrivileges,TimeoutStopUSec,SendSIGKILL,RuntimeMaxUSec', cap=cap)
+        '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ControlGroup,FragmentPath,SourcePath,Transient,DropInPaths,KillMode,Delegate,User,NoNewPrivileges,TimeoutStopUSec,SendSIGKILL,RuntimeMaxUSec,CPUWeight', cap=cap)
     require(len(result.stdout) <= 8192, 'Native conformance metadata exceeds bound')
     return dict(line.split('=', 1) for line in result.stdout.decode().splitlines() if '=' in line)
 
@@ -146,7 +146,7 @@ def resource_topology(N, I, invocation, files, source_hashes):
     """Closed observation of the UNCHANGED real resource method, not readiness."""
     aggregate = pathlib.Path('/sys/fs/cgroup' + AGGREGATE_GROUP)
     directories = [('worker', aggregate / UNIT), ('aggregate', aggregate), ('root', pathlib.Path('/sys/fs/cgroup'))]
-    identities = {}
+    identities, weights = {}, []
     def custody():
         for name in (UNIT, AGGREGATE):
             limit()
@@ -156,6 +156,8 @@ def resource_topology(N, I, invocation, files, source_hashes):
             actual = properties(name)
             require(actual.get('FragmentPath') == str(file) and actual.get('DropInPaths') == ''
                     and actual.get('SourcePath') == '' and actual.get('Transient') == 'no', 'Native resource declaration differs')
+            if name == UNIT:
+                N.require_leaf_cpu_weight(actual, require)
         for name, digest in source_hashes.items():
             limit()
             file = ROOT / name;secure(file, 0)
@@ -170,6 +172,10 @@ def resource_topology(N, I, invocation, files, source_hashes):
                 require(identities[tier] == identity, 'Native resource tier replaced')
             else:
                 identities[tier] = identity
+            if tier == 'worker':
+                weight = N.kernel_text(directory / 'cpu.weight', secure, require)
+                require(weight == '100', 'Actual worker CPU weight differs')
+                weights.append(int(weight))
             available = N.kernel_text(directory / 'cgroup.controllers', secure, require).split()
             enabled = N.kernel_text(directory / 'cgroup.subtree_control', secure, require).split()
             require(len(available) <= 32 and len(set(available)) == len(available) and len(enabled) <= 32
@@ -216,6 +222,7 @@ def resource_topology(N, I, invocation, files, source_hashes):
     require(re.fullmatch(r'[A-Za-z0-9.+_-]{1,128}', kernel) is not None, 'Kernel version syntax differs')
     return {'kind': 'ACTUAL_UNCHANGED_RESOURCE_METHOD_DIAGNOSTIC_NOT_READINESS', 'before': before, 'after': after,
             'resourceReady': verdict, 'guardReason': reason, 'actualProcessUnchanged': True,
+            'leafCPUWeightBefore': weights[0], 'leafCPUWeightAfter': weights[1],
             'kernelVersion': kernel, 'profileConstructorVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False}
 
 
@@ -483,7 +490,7 @@ def main():
         unit += 'ExecStartPre=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook\n'
         unit += 'ExecStart=/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' app\n'
         unit += 'ExecStartPost=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook\n'
-        unit += 'Slice=' + AGGREGATE + '\nDelegate=no\n'
+        unit += 'Slice=' + AGGREGATE + '\nDelegate=no\nCPUWeight=100\n'
         unit += 'BindReadOnlyPaths=' + str(RELEASE) + ':' + str(RELEASE) + ':norbind\n'
         unit += ''.join('BindPaths=' + row['source'] + ':' + str(RELEASE / row['target']) + ':norbind\n' for row in rows(N)[UNIT])
         aggregate = '[Slice]\nCPUAccounting=yes\nMemoryAccounting=yes\nCPUQuota=400%\nMemoryHigh=7168M\nMemoryMax=8192M\nMemorySwapMax=0\nTasksMax=1024\n'
@@ -523,6 +530,7 @@ def main():
                 and actual.get('KillMode') == 'control-group' and actual.get('Delegate') == 'no'
                 and actual.get('TimeoutStopUSec') == '3s' and actual.get('SendSIGKILL') == 'yes'
                 and actual.get('RuntimeMaxUSec') == '15s', 'Effective native conformance service differs')
+        N.require_leaf_cpu_weight(actual, require)
         actual_slice = properties(AGGREGATE)
         require(actual_slice.get('FragmentPath') == '/etc/systemd/system/' + AGGREGATE
                 and actual_slice.get('DropInPaths') == '' and actual_slice.get('SourcePath') == ''
@@ -535,6 +543,13 @@ def main():
         N.require_owned_invocation(slice_state, slice_state.get('InvocationID'), require)
         invocations[AGGREGATE] = slice_state['InvocationID']
         report['resourceTopology'] = resource_topology(N, I, started['InvocationID'], files, report['sourceSha256'])
+        require(report['resourceTopology']['resourceReady'] is True
+                and report['resourceTopology']['guardReason'] == 'resource-check-accepted',
+                'Explicit leaf CPU constructor did not satisfy unchanged resource method')
+        require(report['resourceTopology']['before'][0]['cpu']['capPresent'] is True
+                and report['resourceTopology']['before'][0]['cpu']['available'] is True
+                and report['resourceTopology']['before'][1]['cpu']['subtreeEnabled'] is True,
+                'Actual leaf CPU controller topology differs')
         hook_report = json.loads((ROOT / 'hook-proof.json').read_text())
         require(hook_report['nativeNamespaceVerified'] is True, 'Actual hook proof missing')
         with I.PinnedTree(RELEASE, require) as tree:

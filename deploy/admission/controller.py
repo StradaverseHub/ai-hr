@@ -291,7 +291,7 @@ class LinuxHost:
             keys.extend([
                 'ProtectSystem', 'ProtectHome', 'PrivateMounts', 'NoNewPrivileges', 'CapabilityBoundingSet', 'RestrictNamespaces',
                 'BindPaths', 'BindReadOnlyPaths', 'ReadWritePaths', 'ReadOnlyPaths', 'Slice',
-                'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax'])
+                'CPUWeight', 'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax'])
         try:
             result = subprocess.run(['/usr/bin/systemctl', '--system', 'show', unit,
                                      '--property=' + ','.join(keys)], env=SAFE_ENV,
