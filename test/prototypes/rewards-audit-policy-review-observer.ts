@@ -196,8 +196,8 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
       and g.grantor=p.proowner and g.privilege_type='EXECUTE'and g.is_grantable=false)as allowed,
      exists(select 1 from reward_policy_test_private.binding b join pg_stat_activity a on a.pid=b.backend_pid and a.backend_start=b.backend_started_at
       join pg_locks l on l.pid=a.pid and l.locktype='transactionid'and l.granted and l.mode='ExclusiveLock'and l.transactionid=b.root_xid::xid
-      where b.review_id=${reviewId}::uuid and b.backend_pid=${root.pid}and b.backend_started_at=${root.started}::text::timestamptz
-      and b.root_xid=${root.xid}::text::xid8 and a.datname=${database}and a.usename='ai_hr_app')as bound`;
+      where b.review_id=${reviewId}::uuid and b.backend_pid=${root.pid} and b.backend_started_at=${root.started}::text::timestamptz
+      and b.root_xid=${root.xid}::text::xid8 and a.datname=${database} and a.usename='ai_hr_app')as bound`;
     signal.throwIfAborted();expect(row.bound).toBe(true);observe(stage,row.allowed,root);return row.allowed;
    };
    expect(await ownerDirect('owner-before-revoke')).toBe(true);

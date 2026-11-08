@@ -158,3 +158,54 @@ it('preserves distinct native, abort, frame and poisoning failures by identity w
  const failure=await runReviewObservationRefusal(abort.signal,{open:async()=>{},rollback:async()=>{abort.abort(primary);throw cleanup;},release:async()=>{releases++;}},async run=>run(undefined),async()=>{throw native;},()=>{throw Error('forbidden verification');},()=>{throw poisonFailure;}).then(()=>undefined,error=>error);
  expect(failure).toBeInstanceOf(AggregateError);expect(failure.errors).toEqual([native,primary,cleanup,poisonFailure]);expect(failure.errors.filter((error:unknown)=>error===native)).toHaveLength(1);expect(releases).toBe(0);
 });
+
+
+// Parse actual tagged templates without importing/executing the native observer.
+import ts from 'typescript';
+function observerSqlBoundaries(text:string){
+ const file=ts.createSourceFile('observer.ts',text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+ const diagnostics=(file as ts.SourceFile&{parseDiagnostics:readonly ts.Diagnostic[]}).parseDiagnostics;
+ if(diagnostics.length)throw Error('Observer TypeScript syntax required');
+ const boundaries:{tag:string;before:string;after:string;start:number;beforeEnd:number}[]=[],tags:string[]=[];
+ const visit=(node:ts.Node)=>{
+  if(ts.isTaggedTemplateExpression(node)){
+   const tag=node.tag.getText(file);tags.push(tag);
+   if(!['sql','owner.client','tx','nested','other'].includes(tag))throw Error('Unknown observer SQL tag');
+   if(ts.isTemplateExpression(node.template)){
+    let before=node.template.head.text,beforeEnd=node.template.head.end-2;
+    for(const span of node.template.templateSpans){
+     boundaries.push({tag,before,after:span.literal.text,start:span.literal.getStart(file)+1,beforeEnd});
+     before=span.literal.text;beforeEnd=span.literal.end-2;
+    }
+   }
+  }
+  ts.forEachChild(node,visit);
+ };
+ visit(file);
+ const joined=/[A-Za-z0-9_$\u0080-\uFFFF]/;
+ const bad=boundaries.filter(row=>joined.test(Array.from(row.before).at(-1)??'')||joined.test(Array.from(row.after)[0]??''));
+ return{tags,boundaries,bad};
+}
+it('checks both sides of every scalar interpolation in the actual observer SQL templates, including committed ACL proof queries',()=>{
+ const helper=readFileSync('test/prototypes/rewards-audit-policy-review-observer.ts','utf8'),actual=observerSqlBoundaries(helper);
+ expect(new Set(actual.tags)).toEqual(new Set(['sql','owner.client','tx','nested','other']));
+ expect(actual.tags).toHaveLength(50);expect(actual.boundaries).toHaveLength(47);expect(actual.bad).toEqual([]);
+ // Exact two-boundary predecessor mutation is red even though TypeScript parses.
+ const previous=helper.replace('${root.pid} and b.backend_started_at','${root.pid}and b.backend_started_at').replace('::xid8 and a.datname=${database} and a.usename', '::xid8 and a.datname=${database}and a.usename');
+ expect(previous).not.toBe(helper);expect(observerSqlBoundaries(previous).bad).toHaveLength(2);
+});
+it('detects newly joined SQL identifiers at every actual interpolation rather than trusting the repaired literals alone',()=>{
+ const helper=readFileSync('test/prototypes/rewards-audit-policy-review-observer.ts','utf8'),actual=observerSqlBoundaries(helper);
+ expect(actual.boundaries).toHaveLength(47);
+ for(const boundary of actual.boundaries){
+  // Insert at actual AST literal edges: casts and closing punctuation are retained.
+  const joinedAfter=helper.slice(0,boundary.start)+'and'+helper.slice(boundary.start);
+  const joinedBefore=helper.slice(0,boundary.beforeEnd)+'where'+helper.slice(boundary.beforeEnd);
+  expect(observerSqlBoundaries(joinedAfter).bad.length).toBeGreaterThan(0);
+  expect(observerSqlBoundaries(joinedBefore).bad.length).toBeGreaterThan(0);
+ }
+ for(const text of ['sql`select 1and${value}::uuid`','owner.client`select id=${value}and true`'])expect(observerSqlBoundaries(text).bad).toHaveLength(1);
+ expect(()=>observerSqlBoundaries('unexpected`select ${value}`')).toThrow('Unknown observer SQL tag');
+ expect(()=>observerSqlBoundaries('sql`select ${value}')).toThrow('Observer TypeScript syntax required');
+ expect(observerSqlBoundaries("sql`select id=${value}::uuid,(${other})` ").bad).toEqual([]);
+});
