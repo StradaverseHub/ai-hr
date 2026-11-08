@@ -2,7 +2,7 @@ import type {FormulaType} from './pay-formula-registry';
 /** Stable reporter IDs; business labels use the answered Before Shift / After Shift terminology. */
 export type AttendanceFormulaUnit='minutes'|'count'|'clock-minute'|'date'|'flag'|'code'|'days';
 export type AttendanceFormulaVariable={ordinal:number;id:string;label:string;type:FormulaType;unit:AttendanceFormulaUnit;owner:string;aggregation:'sum'|'last'|'invariant'};
-export const ATTENDANCE_FORMULA_CATALOG_VERSION='attendance-formula-1';
+export const ATTENDANCE_FORMULA_CATALOG_VERSION='attendance-formula-2';
 export const REMOVED_ATTENDANCE_FORMULA_VARIABLES=['CallbackInShift','ZoneACallbackOT','ZoneACallbackPreOT','ZoneBCallbackOT','ZoneBCallbackPreOT','ZoneACollection','OTAssignWorkHour'] as const;
 export const ATTENDANCE_FORMULA_VARIABLES:readonly AttendanceFormulaVariable[]=[
  {ordinal:1,id:'ActualPostOTBreak',label:"Actual Post OTBreak",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
@@ -12,10 +12,10 @@ export const ATTENDANCE_FORMULA_VARIABLES:readonly AttendanceFormulaVariable[]=[
  {ordinal:5,id:'ApproveZoneAPreOT',label:"Before Shift Approved Overtime — Cross-Day Shift",type:'decimal',unit:'minutes',owner:'overtime-approval',aggregation:'sum'},
  {ordinal:6,id:'ApproveZoneBOT',label:"Approve After Shift OT",type:'decimal',unit:'minutes',owner:'overtime-approval',aggregation:'sum'},
  {ordinal:7,id:'ApproveZoneBPreOT',label:"After Shift Approved Overtime — Cross-Day Shift",type:'decimal',unit:'minutes',owner:'overtime-approval',aggregation:'sum'},
- {ordinal:8,id:'AprZoneAPostOTBreakWorkMins',label:"Apr Before Shift Post OTBreak Work Mins",type:'decimal',unit:'minutes',owner:'overtime-approval',aggregation:'sum'},
- {ordinal:9,id:'AprZoneAPreOTBreakWorkMins',label:"Apr Before Shift Pre OTBreak Work Mins",type:'decimal',unit:'minutes',owner:'overtime-approval',aggregation:'sum'},
- {ordinal:10,id:'AprZoneBPostOTBreakWorkMins',label:"Apr After Shift Post OTBreak Work Mins",type:'decimal',unit:'minutes',owner:'overtime-approval',aggregation:'sum'},
- {ordinal:11,id:'AprZoneBPreOTBreakWorkMins',label:"Apr After Shift Pre OTBreak Work Mins",type:'decimal',unit:'minutes',owner:'overtime-approval',aggregation:'sum'},
+ {ordinal:8,id:'AprZoneAPostOTBreakWorkMins',label:"Approved Break Work After Shift",type:'decimal',unit:'minutes',owner:'overtime-approval',aggregation:'sum'},
+ {ordinal:9,id:'AprZoneAPreOTBreakWorkMins',label:"Approved Break Work Before Shift",type:'decimal',unit:'minutes',owner:'overtime-approval',aggregation:'sum'},
+ {ordinal:10,id:'AprZoneBPostOTBreakWorkMins',label:"Approved Break Work After Shift — Legacy Alias",type:'decimal',unit:'minutes',owner:'overtime-approval',aggregation:'sum'},
+ {ordinal:11,id:'AprZoneBPreOTBreakWorkMins',label:"Approved Break Work After Shift — Legacy Alias",type:'decimal',unit:'minutes',owner:'overtime-approval',aggregation:'sum'},
  {ordinal:12,id:'Break1FlexUsed',label:"Break1 Flex Used",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
  {ordinal:13,id:'Break1Interval',label:"Break1 Interval",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
  {ordinal:14,id:'Break2FlexUsed',label:"Break2 Flex Used",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
@@ -122,16 +122,16 @@ export const ATTENDANCE_FORMULA_VARIABLES:readonly AttendanceFormulaVariable[]=[
  {ordinal:117,id:'YesterdayZoneBWorkingMins',label:"Yesterday After Shift Working Mins",type:'decimal',unit:'minutes',owner:'adjacent-attendance',aggregation:'sum'},
  {ordinal:121,id:'ZoneADayType',label:"Before Shift Day Type",type:'string',unit:'code',owner:'recorded-attendance',aggregation:'invariant'},
  {ordinal:122,id:'ZoneADayTypeDesc',label:"Before Shift Day Type Desc",type:'string',unit:'code',owner:'recorded-attendance',aggregation:'invariant'},
- {ordinal:123,id:'ZoneAInShiftOT',label:"Before Shift In Shift OT",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
+ {ordinal:123,id:'ZoneAInShiftOT',label:"In-Shift Overtime — Work During Scheduled Break",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
  {ordinal:124,id:'ZoneAPostOT',label:"After Shift End Unapproved Overtime",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
  {ordinal:125,id:'ZoneAPreOT',label:"Before Shift Unapproved Overtime",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
  {ordinal:126,id:'ZoneAWorkingMins',label:"Before Shift Working Mins",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
  {ordinal:129,id:'ZoneBDayType',label:"After Shift Day Type",type:'string',unit:'code',owner:'recorded-attendance',aggregation:'invariant'},
- {ordinal:130,id:'ZoneBPostInShiftOT',label:"After Shift Post In Shift OT",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
+ {ordinal:130,id:'ZoneBPostInShiftOT',label:"In-Shift Overtime — Legacy Alias of ZoneAInShiftOT",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
  {ordinal:131,id:'ZoneBPostOT',label:"After Shift End Unapproved Overtime",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
- {ordinal:132,id:'ZoneBPreInShiftOT',label:"After Shift Pre In Shift OT",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
+ {ordinal:132,id:'ZoneBPreInShiftOT',label:"In-Shift Overtime — Legacy Alias of ZoneAInShiftOT",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
  {ordinal:133,id:'ZoneBPreOT',label:"After Shift Unapproved Overtime — Cross-Day Shift",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
- {ordinal:134,id:'ZoneBPreOTDayType',label:"After Shift Pre OTDay Type",type:'string',unit:'code',owner:'recorded-attendance',aggregation:'invariant'},
+ {ordinal:134,id:'ZoneBPreOTDayType',label:"Cross-Day Before Shift Overtime — Actual Work Date Day Type",type:'string',unit:'code',owner:'recorded-attendance',aggregation:'invariant'},
  {ordinal:135,id:'ZoneBWorkingMins',label:"After Shift Working Mins",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
 ];
 const byId=new Map(ATTENDANCE_FORMULA_VARIABLES.map(variable=>[variable.id,variable]));
@@ -159,3 +159,9 @@ export const ATTENDANCE_FORMULA_FIELDS=[
  {function:'EmployeeInformation',key:'positionId',type:'string',source:'dated-assignment-position',dateBasis:'effective-date'},
  ...['gradeId','orgDivision','orgBranch','orgRegion','orgLine','orgSection','orgTeam','orgBase','employmentCategory'].map(key=>({function:'EmployeeInformation',key,type:'string' as const,source:'recorded-personnel-'+key,dateBasis:'recorded'})),
 ] as const;
+
+/** The reporter consolidated these legacy IDs into one category. They are aliases, never additive buckets. */
+export const ATTENDANCE_FORMULA_ALIASES:Readonly<Record<string,string>>={
+ ZoneBPreInShiftOT:'ZoneAInShiftOT',ZoneBPostInShiftOT:'ZoneAInShiftOT',
+ AprZoneBPreOTBreakWorkMins:'AprZoneAPostOTBreakWorkMins',AprZoneBPostOTBreakWorkMins:'AprZoneAPostOTBreakWorkMins',
+};

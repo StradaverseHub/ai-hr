@@ -39,6 +39,10 @@ export function attendanceFormulaRecordedMeasurements(trace:AttendanceTraceV1,ph
   const windows=breaks.filter(row=>!row.flexible).map(({from,to})=>({from,to}));
   if(region!=='Shift'&&breaks.every(row=>!row.flexible&&row.clockingRequired===true))values[region+'BreakWorkingMins']=minutes(intersect(physical,windows,4320),4320);
  }
+ if(selected&&regions.Shift.every(row=>!row.flexible&&row.clockingRequired===true)&&frozen.flexibleBreakMinutes===null){
+  const inShift=minutes(intersect(selected,regions.Shift.map(({from,to})=>({from,to})),4320),4320);
+  values.ZoneAInShiftOT=inShift;values.ZoneBPreInShiftOT=inShift;values.ZoneBPostInShiftOT=inShift;
+ }
  if(physical){
   const covered=union(physical,4320);if(!covered.length)return {values,breaks:rows};
   if(trace.formulaBreaks&&trace.formulaBreaks.v===1&&trace.punch.workedMinutes!==null&&gross!-trace.punch.workedMinutes===trace.formulaBreaks.actualBefore+trace.formulaBreaks.actualAfter+trace.formulaBreaks.actualShift){values.ActualPreOTBreak=trace.formulaBreaks.actualBefore;values.ActualPostOTBreak=trace.formulaBreaks.actualAfter;values.ActualShiftBreak=trace.formulaBreaks.actualShift;}

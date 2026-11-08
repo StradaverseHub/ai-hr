@@ -23,3 +23,10 @@ describe('Attendance formula language and period contract',()=>{
 });
 
 it('keeps the referenced variable ID with its observation trace',()=>{const library={conditions:[],formulas:[{code:'TRACE',source:'Return {#FormulaID}("TotalWorkingMins") / 60'}]};const result=evaluateAttendanceFormula(library,'TRACE',[day('2026-11-01','90')]);expect(result.trace.find(step=>step.event.kind==='read')?.request).toMatchObject({code:'FormulaID',args:[{type:'string',value:'TotalWorkingMins'}]});});
+
+it('allows each legacy alias on its own but rejects duplicate categories across dependencies',()=>{
+ const library={conditions:[],formulas:[{code:'A',source:'Return {#FormulaID}("ZoneBPreInShiftOT")'}]};
+ expect(()=>compileAttendanceFormulaLibrary(library,'A')).not.toThrow();
+ expect(()=>compileAttendanceFormulaLibrary({conditions:[],formulas:[{code:'A',source:'Return {#FormulaID}("ZoneAInShiftOT") + {#FormulaID}("B")'},{code:'B',source:'Return {#FormulaID}("ZoneBPostInShiftOT")'}]},'A')).toThrow(/aliases/);
+ expect(()=>compileAttendanceFormulaLibrary({conditions:[],formulas:[{code:'A',source:'Return {#FormulaID}("AprZoneAPostOTBreakWorkMins") + {#FormulaID}("AprZoneBPreOTBreakWorkMins")'}]},'A')).toThrow(/aliases/);
+});

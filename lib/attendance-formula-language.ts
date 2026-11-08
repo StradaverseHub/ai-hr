@@ -1,4 +1,4 @@
-import {ATTENDANCE_FORMULA_CATALOG_VERSION,ATTENDANCE_FORMULA_VARIABLES,ATTENDANCE_FORMULA_FIELDS,attendanceFormulaVariable} from './attendance-formula-catalog';
+import {ATTENDANCE_FORMULA_CATALOG_VERSION,ATTENDANCE_FORMULA_ALIASES,ATTENDANCE_FORMULA_VARIABLES,ATTENDANCE_FORMULA_FIELDS,attendanceFormulaVariable} from './attendance-formula-catalog';
 import {parsePayFormula,validatePayFormula,evaluatePayFormula,addFormulaDecimal,type FormulaDialect,type FormulaProgram,type FormulaTraceEvent,type FormulaRequest} from './pay-formula-language';
 import {payFormulaFunction,type FormulaFunction,type FormulaValue} from './pay-formula-registry';
 export type AttendanceFormulaDefinition={code:string;source:string};
@@ -31,6 +31,10 @@ export function compileAttendanceFormulaLibrary(library:AttendanceFormulaLibrary
  const sourceCalls=rootCode?[...reachable].flatMap(code=>callsByCode.get(code)??[]):allCalls;
  const fields=[...new Map(sourceCalls.filter(call=>ATTENDANCE_FORMULA_FIELDS.some(field=>field.function===call.code&&field.key===String(call.args[0]?.value))).map(call=>[call.code+':'+String(call.args[0].value),{code:call.code,key:String(call.args[0].value)}])).values()].sort((a,b)=>(a.code+':'+a.key).localeCompare(b.code+':'+b.key));
  const variables=[...new Set(sourceCalls.filter(call=>call.code==='FormulaID'&&!programs.has(String(call.args[0]?.value))).map(call=>String(call.args[0]?.value)))].sort();
+ // A dependency graph may use either spelling, but cannot combine two names for the same minutes.
+ // Check each reachable root independently so unrelated reusable formulas remain legal.
+ const checkedRoots=rootCode?[rootCode]:library.formulas.map(formula=>formula.code);
+ for(const root of checkedRoots){const seen=new Set<string>(),ids=new Set<string>();const walk=(code:string)=>{if(seen.has(code))return;seen.add(code);for(const call of callsByCode.get(code)??[]){const id=String(call.args[0]?.value);if(['FormulaID','ConditionID'].includes(call.code)&&programs.has(id))walk(id);else if(call.code==='FormulaID')ids.add(id);}};walk(root);const canonical=new Map<string,string>();for(const id of ids){const key=ATTENDANCE_FORMULA_ALIASES[id]??id,prior=canonical.get(key);if(prior&&prior!==id)throw Error(`Attendance variables ${prior} and ${id} are aliases of the same minutes. Use one ID to prevent duplicate counting.`);canonical.set(key,id);}}
  return {dialect,programs,fields,variables,requirements:{financial:fields.some(field=>field.code==='EmployeeInformation'&&field.key==='basicSalary'),workforce:fields.some(field=>field.code.startsWith('Employee')&&field.key!=='basicSalary')}};
 }
 /** Every value comes from an authorized native source. This engine cannot read storage or post pay. */

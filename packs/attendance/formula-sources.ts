@@ -129,6 +129,20 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
   if(leaveMeasurement.allCodes)for(const [half,suffix]of [['AM','1stHalf'],['PM','2ndHalf']] as const){const codes=leaveMeasurement.allCodes[half].map(id=>types.find(type=>type.id===id)?.code);if(codes.every(code=>code!=null))string('LeaveCode'+suffix+'All',codes.sort().join(','),'all-approved-positioned-leave-types');}
   if(positioned&&schedule.startAbs!==null&&schedule.endAbs!==null){
    const work=selectedPhysical!;
+   // Break work uses physical closed work, not net work with unpaid breaks already removed.
+   // Only explicit positioned approvals prove approved break work; no-approval policy is insufficient.
+   if(plans&&recordedMeasurements.breaks){
+    for(const [type,ids] of [['before_shift',['AprZoneAPreOTBreakWorkMins']],['after_shift',['AprZoneAPostOTBreakWorkMins','AprZoneBPreOTBreakWorkMins','AprZoneBPostOTBreakWorkMins']]] as const){
+     const rows=recordedMeasurements.breaks.filter(row=>row.breakType===type);
+     if(rows.every(row=>!row.flexible&&row.clockingRequired===true))for(const id of ids)decimal(id,count(intersect(intersect(work,plans,4320),rows.map(({from,to})=>({from,to})),4320),4320),'explicit-approved-positioned-break-work');
+    }
+   }
+   if(schedule.crossesMidnight&&context?.state==='policy'){
+    const before=schedule.startAbs>0?intersect(work,[{from:0,to:schedule.startAbs}],4320):[];
+    const dates=[...new Set(before.flatMap(part=>Array.from({length:Math.floor((part.to-1)/1440)-Math.floor(part.from/1440)+1},(_,i)=>addDaysIso(date,Math.floor(part.from/1440)+i))))];
+    const proofs=dates.map(date=>context.calendar.find(day=>day.date===date));
+    if(proofs.length&&proofs.every(proof=>proof?.state==='known')&&new Set(proofs.map(proof=>proof?.state==='known'?proof.dayClass:null)).size===1){const proof=proofs[0];if(proof?.state==='known')string('ZoneBPreOTDayType',proof.dayClass,'actual-cross-day-before-shift-work-calendar');}
+   }
    const frozen=trace.formulaSchedule;
    const frozenMatches=frozen?.v===1&&context?.state==='policy'&&JSON.stringify(frozen.breakPeriods)===JSON.stringify(context.schedule.breakPeriods)&&frozen.flexibleBreakMinutes===context.schedule.flexibleBreakMinutes&&frozen.flexiDuration===context.schedule.flexiDuration;
    if(frozenMatches&&placement?.state==='known'&&placement.scheduled.from===schedule.startAbs&&placement.scheduled.to===schedule.endAbs){

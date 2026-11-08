@@ -2,6 +2,7 @@ import {ATTENDANCE_FORMULA_VARIABLES} from './attendance-formula-catalog';
 /** Implemented native bindings only. Inventory membership is not an implementation or availability claim.
  * Every binding still requires its dated native evidence; missing proof is never synthesized as zero. */
 export const ATTENDANCE_FORMULA_IMPLEMENTED_IDS=[
+ 'AprZoneAPostOTBreakWorkMins','AprZoneAPreOTBreakWorkMins','AprZoneBPostOTBreakWorkMins','AprZoneBPreOTBreakWorkMins','ZoneAInShiftOT','ZoneBPostInShiftOT','ZoneBPreInShiftOT','ZoneBPreOTDayType',
  'RecordDate','ShiftDate','DayDate','WeekDayNumber','WeekDay','PID','StartWork','LastWork','isResigned',
  'YesterdayNormalDayType','TomorrowNormalDayType','YesterdayLeaveCode','TomorrowLeaveCode',
  'LeaveCode1stHalfAll','LeaveCode2ndHalfAll','LeaveOnBreak1','LeaveOnBreak2','LeaveOnBreak3','LeaveOnBreak4','OnHourlyLeaveLateIn','OnHourlyLeaveEarlyOut','OnLeaveFirstHalfLateIn','OnLeaveSecondHalfEarlyOut','LeaveCode1stHalf','LeaveCode2ndHalf','LeaveValue1stHalf','LeaveValue2ndHalf','OnLeaveDurationMins',
