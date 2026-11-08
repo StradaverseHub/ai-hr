@@ -93,7 +93,7 @@ export function rewardNavigation(ctx: SessionContext, isPlatformAdmin: boolean =
         exists(select 1 from app.reward_current_group_roles() role where role='gr') as "wholeGroupManage",
         app.reward_setup_allowed(null, 'library_view') as libraries,
         app.is_group_admin() as bootstrap,
-        exists(select 1 from visible_units u where 'gr' = any(array(select app.reward_roles(u.id)))) as access
+        exists(select 1 from app.reward_maintenance_units(NULL::uuid,false) u where app.reward_admin(u.company_id) or 'gr' = any(array(select app.reward_roles(u.id)))) as access
     `);
     if (!pages) return [];
     return [

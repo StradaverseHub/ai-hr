@@ -1,6 +1,6 @@
 /** Review lifecycle and access administration. These projections never load the pay roster. */
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
@@ -33,7 +33,7 @@ async function adminUnit(tx: Tx, id: string, revision?: number, lock = false) {
     uuid.parse(id);
     if(lock)await tx.execute(sql`select app.reward_access_lock_unit(${id}::uuid)`);
     const [unit]=await tx.execute<MaintenanceUnit>(sql`select ${maintenanceColumns} from app.reward_maintenance_units(${id}::uuid,true)`);
-    if (!unit)
+    if (!unit || unit.deletedAt)
         throw new RewardMaintenanceError('missing');
     await admin(tx, unit.companyId);
     if (revision !== undefined && unit.revision !== revision)
@@ -279,13 +279,12 @@ export async function rewardAccessAdministration(ctx: SessionContext, companyIds
         if (!ids.length)
             return { reviews: [], members: [], users: [], candidates: [], suggestions: [] };
         const reviews=await tx.execute<Pick<MaintenanceUnit,'id'|'companyId'|'businessUnitId'|'cycleId'|'kind'|'status'|'revision'>&{company:string;unit:string;cycle:string;year:number;accessMode:string;exemption:string|null}>(sql`
-          select u.id,c.id as "companyId",c.legal_name as company,b.id as "businessUnitId",coalesce(nullif(trim(b.label),''),b.code) as unit,
-           r.id as "cycleId",r.name as cycle,r.year,u.kind,u.status,u.revision,
+          select u.id,u.company_id as "companyId",u.company_name as company,u.business_unit_id as "businessUnitId",u.business_unit_name as unit,
+           u.cycle_id as "cycleId",u.cycle_name as cycle,u.cycle_year as year,u.kind,u.status,u.revision,
            case when app.reward_access_manage(u.id) then 'manage' else 'propose' end as "accessMode",app.reward_access_exemption(u.id) as exemption
           from app.reward_maintenance_units(NULL::uuid,false) u
-          join company c on c.id=u.company_id join business_unit b on b.id=u.business_unit_id join reward_cycle r on r.id=u.cycle_id
-          where u.company_id=ANY(${`{${ids.join(',')}}`}::uuid[])
-          order by r.year desc,r.name,c.legal_name,b.code,u.id`);
+          where u.company_id=ANY(${`{${ids.join(',')}}`}::uuid[]) AND app.reward_access_scope(u.id)
+          order by u.cycle_year desc,u.cycle_name,u.company_name,u.business_unit_code,u.id`);
         if (!reviews.length)
             return { reviews: [], members: [], users: [], candidates: [], suggestions: [] };
         await tx.execute(sql`select app.reward_access_observe(NULL::uuid)`);

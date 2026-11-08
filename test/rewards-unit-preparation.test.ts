@@ -10,6 +10,7 @@ import { createPreparingRewardUnit as createApprovedRewardUnit } from './rewards
 import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget } from './rewards-governance-fixture';
 import { setRewardMember } from './rewards-access-fixture';
 import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardPreparationNotices,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference,rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange } from '../packs/rewards/service';
+import {rewardNavigation} from '../packs/rewards/access-policy';
 import {dispatchNotificationsFromSweep} from '../core/notifications';
 import { REWARD_PREPARATION_STEPS } from '../packs/rewards/preparation-model';
 
@@ -182,12 +183,17 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
 
  it('keeps access administration available without disclosing a preparing review',async()=>{
   const [person]=await owner.db.insert(schema.person).values({tenantId:base.tenantId,fullName:'Fictional unseated HR administrator',primaryEmail:randomUUID()+'@fixture.test'}).returning();
-  const userId=await createAppUser(base.tenantId,person.id,'hr_admin'),admin:SessionContext={...gr,userId,personId:person.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+  const userId=await createAppUser(base.tenantId,person.id,'hr_admin');
+  await owner.db.update(schema.roleAssignment).set({companyId:base.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+  const admin:SessionContext={...gr,userId,personId:person.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:base.companyId}]};
+  const [subject]=await owner.db.select({personId:schema.employment.personId}).from(schema.employment).where(eq(schema.employment.id,employmentId));
+  const checkerLogin=await createAppUser(base.tenantId,subject.personId,'employee');
   await expect(getRewardUnit(admin,unitId)).rejects.toThrow();
   expect(await withTenant(admin,tx=>tx.select({source:schema.rewardEntry.source}).from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)))).toEqual([]);
   const administration=await rewardAccessAdministration(admin,[base.companyId]);expect(administration.reviews.map(row=>row.id)).toContain(unitId);
+  expect(await rewardNavigation(admin,false)).toContain('/admin/rewards/access');
   expect(JSON.stringify(administration.reviews)).not.toContain('basicCents');expect(JSON.stringify(administration.reviews)).not.toContain('policy');
-  const input={unitId,revision:(await getRewardUnit(gr,unitId)).unit.revision,before:null,after:{userId:reviewer.userId!,role:'gr'},reason:'Fictional HR administrator proposes another preparation checker'};
+  const input={unitId,revision:(await getRewardUnit(gr,unitId)).unit.revision,before:null,after:{userId:checkerLogin,role:'gr'},reason:'Fictional HR administrator proposes another preparation checker'};
   const preview=await previewRewardAccessChange(admin,input);const saved=await saveRewardAccessChange(admin,input,preview.digest);
   expect(saved.requestId).toBeTruthy();
   const requests=await owner.db.select().from(schema.rewardAccessRequest).where(eq(schema.rewardAccessRequest.id,saved.requestId));expect(requests).toHaveLength(1);

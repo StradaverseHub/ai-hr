@@ -26,11 +26,11 @@ export type RewardUnitCoverage = { unitId: string; roles: RewardRoleCoverage[]; 
 /** Per-unit coverage for units the caller can already read (RLS decides). No roster or pay fact is loaded. */
 export async function rewardUnitCoverage(tx: Tx, unitIds: string[]): Promise<RewardUnitCoverage[]> {
     if (!unitIds.length) return [];
-    const units = await tx.select({ id: rewardUnit.id, kind: rewardUnit.kind, offcycle: rewardUnit.offcycle }).from(rewardUnit).where(inArray(rewardUnit.id, unitIds));
+    const units = await tx.select({ id: rewardUnit.id, kind: rewardUnit.kind, offcycle: rewardUnit.offcycle }).from(sql`app.reward_maintenance_units(NULL::uuid,false) as reward_unit`).where(inArray(rewardUnit.id, unitIds));
     const holders = await tx.select({ unitId: rewardMember.unitId, role: rewardMember.role, userId: rewardMember.userId, name: person.fullName, email: person.primaryEmail }).from(rewardMember).innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), eq(appUser.tenantId, rewardMember.tenantId))).leftJoin(person, and(eq(person.id, appUser.personId), sql `app.access_workforce_person(${person.id}, 'workforce.view')`)).where(and(inArray(rewardMember.unitId, unitIds), sql`app.reward_member_eligible(${rewardMember.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
     const coverage = await tx.execute<{ unitId: string; role: RewardRole }>(sql`
       select id as "unitId", app.reward_group_coverage_roles(id) as role
-      from reward_unit where id = any(array[${sql.join(units.map(u => sql`${u.id}::uuid`), sql`, `)}]::uuid[])
+      from app.reward_maintenance_units(NULL::uuid,false) where id = any(array[${sql.join(units.map(u => sql`${u.id}::uuid`), sql`, `)}]::uuid[])
     `);
     const byId = new Map(units.map(u => [u.id, u]));
     return unitIds.filter(id => byId.has(id)).map(unitId => {

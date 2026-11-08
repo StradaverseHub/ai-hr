@@ -38,3 +38,9 @@ PAT remains owned by PAT Inputs. Preparation reads its recorded binding; it neit
 ## Verification
 
 Verify role and scope withholding through services and native reads, stale basis refusal, complete independent release, same-person refusal, locked setup, source invalidation, audited notifications and preservation of posted history. Hosted behavior tests, the whole compiler, rendered screens and release acceptance establish distinct claims. No deployment is authorized by this decision.
+
+## Retained maintenance and uploaded-award owners
+
+Preparing units still permit their existing scoped access administrator to read routing metadata and maintain participants. That bounded projection contains unit/company/cycle identity, stage and revision; it never returns financial policy or entries. Native scope, lock, review and independent access-request rules remain authoritative. Draft deletion retains its original administrator, exact revision, history-retention and View As refusal through a bounded native command and the existing audit owner.
+
+Uploaded annual awards keep their existing independently checked current-file owner. Ordinary reviewers remain withheld until the current upload has a named check, check time and matching version without a required source refresh. Its native same-person, immutable version and salary/source validation continue to govern release. It does not acquire six synthetic library-preparation confirmations or a legacy marker. Group Rewards and existing inspection seats use the uploaded review; the standard Unit set-up command refuses it. A private tenant-bounded upload-state reader is excluded only from the old recursive PUBLIC policy arms; every existing actor retains the prior policy expression.

@@ -40,7 +40,7 @@ END $$;
 --> statement-breakpoint
 -- Uploaded awards retain their own current-version independent check; never fabricate six
 -- standard-plan confirmations. The private projection must not recurse through legacy PUBLIC RLS.
-GRANT SELECT(unit_id,tenant_id,current_version,checked_version,refresh_required) ON public.reward_uploaded_review TO ai_hr_reward_preparation_reader;
+GRANT SELECT(unit_id,tenant_id,current_version,checked_version,checked_by,checked_at,refresh_required) ON public.reward_uploaded_review TO ai_hr_reward_preparation_reader;
 GRANT EXECUTE ON FUNCTION app.reward_access(uuid),app.reward_roles(uuid),app.reward_not_viewing_as() TO ai_hr_reward_preparation_reader;
 DO $$ DECLARE p record; BEGIN
  FOR p IN SELECT polname,pg_get_expr(polqual,polrelid) AS expression FROM pg_policy
@@ -51,7 +51,7 @@ END $$;
 CREATE POLICY reward_preparation_upload_read ON public.reward_uploaded_review FOR SELECT TO ai_hr_reward_preparation_reader USING(tenant_id=app.current_tenant_id());
 CREATE FUNCTION app.reward_preparation_upload_state(p_unit uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
- SELECT jsonb_build_object('present',true,'released',coalesce(current_version>0 AND checked_version=current_version AND NOT refresh_required,false))
+ SELECT jsonb_build_object('present',true,'released',coalesce(current_version>0 AND checked_version=current_version AND checked_by IS NOT NULL AND checked_at IS NOT NULL AND NOT refresh_required,false))
  FROM public.reward_uploaded_review WHERE unit_id=p_unit AND tenant_id=app.current_tenant_id()
 $$;
 ALTER FUNCTION app.reward_preparation_upload_state(uuid) OWNER TO ai_hr_reward_preparation_reader;
@@ -362,17 +362,24 @@ GRANT EXECUTE ON FUNCTION app.reward_preparation_notification_recipients(uuid,te
 -- Access maintenance needs review identity and routing state, never financial policy or entries.
 -- Retain its original native scope owner while raw preparing reviews remain withheld.
 CREATE FUNCTION app.reward_maintenance_units(p_unit uuid,p_admin_only boolean DEFAULT false)
-RETURNS TABLE(id uuid,tenant_id uuid,company_id uuid,business_unit_id uuid,cycle_id uuid,kind text,status text,revision integer,deleted_at timestamptz)
+RETURNS TABLE(id uuid,tenant_id uuid,company_id uuid,business_unit_id uuid,cycle_id uuid,kind text,status text,revision integer,deleted_at timestamptz,offcycle jsonb,company_name text,business_unit_name text,business_unit_code text,cycle_name text,cycle_year integer)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
- SELECT u.id,u.tenant_id,u.company_id,u.business_unit_id,u.cycle_id,u.kind::text,u.status::text,u.revision,u.deleted_at
- FROM public.reward_unit u WHERE u.tenant_id=app.current_tenant_id() AND(p_unit IS NULL OR u.id=p_unit)
- AND((u.deleted_at IS NULL AND app.reward_access_scope(u.id)) OR(p_admin_only AND app.reward_admin(u.company_id)))
+ SELECT u.id,u.tenant_id,u.company_id,u.business_unit_id,u.cycle_id,u.kind::text,u.status::text,u.revision,u.deleted_at,
+  CASE WHEN u.offcycle IS NULL THEN NULL ELSE jsonb_build_object('bgOrigin',coalesce((u.offcycle->>'bgOrigin')::boolean,false),'exceptionReason','') END,
+  c.legal_name,coalesce(nullif(trim(b.label),''),b.code),b.code,cy.name,cy.year
+ FROM public.reward_unit u JOIN public.company c ON c.id=u.company_id AND c.tenant_id=u.tenant_id
+ JOIN public.business_unit b ON b.id=u.business_unit_id AND b.tenant_id=u.tenant_id
+ JOIN public.reward_cycle cy ON cy.id=u.cycle_id AND cy.tenant_id=u.tenant_id
+ WHERE u.tenant_id=app.current_tenant_id() AND(p_unit IS NULL OR u.id=p_unit)
+ AND((u.deleted_at IS NULL AND(app.reward_access_scope(u.id) OR app.reward_access(u.id))) OR(p_admin_only AND p_unit IS NOT NULL AND app.reward_admin(u.company_id)))
  AND(NOT p_admin_only OR app.reward_admin(u.company_id))
 $$;
 CREATE FUNCTION app.reward_maintenance_delete(p_unit uuid,p_revision integer) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
 DECLARE u public.reward_unit; refusal text;
 BEGIN
+ IF p_revision IS NULL OR p_revision<1 THEN RETURN jsonb_build_object('error','changed'); END IF;
+ IF NOT app.reward_not_viewing_as() THEN RETURN jsonb_build_object('error','scope'); END IF;
  SELECT * INTO u FROM public.reward_unit WHERE id=p_unit AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF NOT FOUND THEN RETURN jsonb_build_object('error','missing'); END IF;
  IF NOT app.reward_admin(u.company_id) THEN RETURN jsonb_build_object('error','scope'); END IF;
@@ -390,3 +397,64 @@ DO $$ DECLARE native_owner name; BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.reward_maintenance_units(uuid,boolean),app.reward_maintenance_delete(uuid,integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_maintenance_units(uuid,boolean),app.reward_maintenance_delete(uuid,integer) TO ai_hr_app;
+--> statement-breakpoint
+-- Native Rewards eligibility fingerprints read published organisation facts. The schema owner
+-- inherits ai_hr_app but cannot bypass FORCE RLS; its run-access guard must not query itself.
+-- These private fact readers retain the existing actor/scope/checker predicates in their callers.
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='ai_hr_company_org_source_reader') THEN
+  CREATE ROLE ai_hr_company_org_source_reader NOLOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT;
+ END IF;
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='ai_hr_company_org_source_reader' AND(rolcanlogin OR rolsuper OR rolbypassrls OR rolinherit)) THEN RAISE EXCEPTION 'Unsafe organisation source reader'; END IF;
+END $$;
+GRANT USAGE ON SCHEMA public,app TO ai_hr_company_org_source_reader;
+GRANT SELECT(id,tenant_id,requested_by,authority_company_ids,company_ids,mapping,state,effective_on,published_at) ON public.company_organisation_run TO ai_hr_company_org_source_reader;
+GRANT SELECT(run_id,tenant_id,company_id,before_tags,after_tags) ON public.company_organisation_run_row TO ai_hr_company_org_source_reader;
+GRANT SELECT(run_id,tenant_id,company_id,business_unit_id,parent_company_id) ON public.company_organisation_mapping TO ai_hr_company_org_source_reader;
+CREATE POLICY company_org_source_run_read ON public.company_organisation_run FOR SELECT TO ai_hr_company_org_source_reader USING(tenant_id=app.current_tenant_id());
+CREATE POLICY company_org_source_row_read ON public.company_organisation_run_row FOR SELECT TO ai_hr_company_org_source_reader USING(tenant_id=app.current_tenant_id());
+CREATE POLICY company_org_source_mapping_read ON public.company_organisation_mapping FOR SELECT TO ai_hr_company_org_source_reader USING(tenant_id=app.current_tenant_id());
+CREATE FUNCTION app.company_org_scope_run(p_id uuid)
+RETURNS TABLE(id uuid,tenant_id uuid,requested_by uuid,authority_company_ids uuid[],company_ids uuid[],mapping jsonb,state text,effective_on date,published_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+ SELECT id,tenant_id,requested_by,authority_company_ids,company_ids,mapping,state::text,effective_on,published_at
+ FROM public.company_organisation_run WHERE tenant_id=app.current_tenant_id() AND(p_id IS NULL OR id=p_id)
+$$;
+CREATE FUNCTION app.company_org_scope_rows(p_id uuid)
+RETURNS TABLE(run_id uuid,tenant_id uuid,company_id uuid,before_tags jsonb,after_tags jsonb)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+ SELECT run_id,tenant_id,company_id,before_tags,after_tags FROM public.company_organisation_run_row
+ WHERE tenant_id=app.current_tenant_id() AND(p_id IS NULL OR run_id=p_id)
+$$;
+CREATE FUNCTION app.company_org_scope_mappings()
+RETURNS TABLE(run_id uuid,tenant_id uuid,company_id uuid,business_unit_id uuid,parent_company_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+ SELECT run_id,tenant_id,company_id,business_unit_id,parent_company_id FROM public.company_organisation_mapping WHERE tenant_id=app.current_tenant_id()
+$$;
+ALTER FUNCTION app.company_org_scope_run(uuid) OWNER TO ai_hr_company_org_source_reader;
+ALTER FUNCTION app.company_org_scope_rows(uuid) OWNER TO ai_hr_company_org_source_reader;
+ALTER FUNCTION app.company_org_scope_mappings() OWNER TO ai_hr_company_org_source_reader;
+REVOKE ALL ON FUNCTION app.company_org_scope_run(uuid),app.company_org_scope_rows(uuid),app.company_org_scope_mappings() FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE f record; definition text; changed text; BEGIN
+ FOR f IN SELECT p.oid,p.proname,pg_get_userbyid(p.proowner) AS native_owner FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='app' AND p.proname IN('company_org_run_access','company_org_run_checker','company_org_mapping_at') LOOP
+  definition:=pg_get_functiondef(f.oid);
+  IF f.proname='company_org_mapping_at' THEN
+   changed:=replace(replace(definition,'company_organisation_run r','app.company_org_scope_run(NULL::uuid) r'),'company_organisation_mapping m','app.company_org_scope_mappings() m');
+  ELSE
+   changed:=replace(replace(definition,'company_organisation_run r','app.company_org_scope_run(p_id) r'),'company_organisation_run_row x','app.company_org_scope_rows(p_id) x');
+  END IF;
+  IF changed=definition THEN RAISE EXCEPTION 'Organisation source definition changed unexpectedly: %',f.proname; END IF;
+  EXECUTE changed;
+  EXECUTE format('GRANT EXECUTE ON FUNCTION app.company_org_scope_run(uuid),app.company_org_scope_rows(uuid),app.company_org_scope_mappings() TO %I',f.native_owner);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+-- Existing private upload readers already hold SELECT; make their policy's boolean dependency
+-- explicit without granting a user, login, table column or new financial projection.
+DO $$ DECLARE reader name; BEGIN
+ FOR reader IN SELECT rolname FROM pg_roles WHERE rolname LIKE 'ai_hr_%' AND NOT rolcanlogin
+  AND has_column_privilege(oid,'public.reward_uploaded_review','unit_id','SELECT') LOOP
+  EXECUTE format('GRANT EXECUTE ON FUNCTION app.reward_access(uuid) TO %I',reader);
+ END LOOP;
+END $$;
