@@ -9,6 +9,8 @@ import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} 
 import {bindPlanWitnessIdentity} from './manifest.mjs';
 import {assertNativeBuildMatches} from './singleton-protocol.mjs';
 import {randomUUID} from 'node:crypto';
+import {employeeLifecycleUnit} from './employee-lifecycle-profile.mjs';
+import {readEmployeeLifecycleArchive} from './employee-lifecycle-api.mjs';
 import {createPlan,hash} from './plan.mjs';
 import {admitAiManifests} from './ai-manifest-admission.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
@@ -49,6 +51,9 @@ export async function verifyCi({candidatePath,runId,baseline}){
   const path=join(dir,artifact.name+'.zip'),bytes=readCiArchive(artifact,path);
   verifyArtifactBytes(artifact,bytes);
   if(bytes.length!==artifact.size_in_bytes)throw Error('Artifact API/archive byte size differs');
+  // The five source-registered lifecycle units use the closed bounded receiver.
+  // Their authenticated ZIP is replayed after the canonical gate plan is read.
+  if(local.units.some(unit=>employeeLifecycleUnit(unit)&&artifact.name==='unit-'+unit.id))continue;
   const binary=artifact.name===BUILD_ARTIFACT;
   execFileSync('python3',[fileURLToPath(new URL(binary?'./build-transport-extract.py':'./extract-artifact.py',import.meta.url)),path,join(dir,artifact.name),...(binary?[artifact.digest.slice(7)]:[])],{stdio:'inherit',timeout:60000});
  }
@@ -61,9 +66,10 @@ export async function verifyCi({candidatePath,runId,baseline}){
  }
  const json=(name,file)=>JSON.parse(readFileSync(join(dir,name,file),'utf8'));
  const plan=json('gate-plan','ci-plan.json'),receipt=json('gate-evidence','ci-receipt.json');
- const reports=local.units.map(({id})=>json(`unit-${id}`,`unit-${id}.json`));
  const expectedPlan=bindPlanWitnessIdentity(local,{controller,baseline},plan.runtime);
- const verified=validateProof({plan,reports,receipt,expectedPlan,p});
+ const employeeUnits=readEmployeeArchives({plan:expectedPlan,run,jobs,artifacts,dir,sourceRoot:candidatePath});
+ const reports=local.units.map(unit=>employeeUnits.has(unit.id)?JSON.parse(employeeUnits.get(unit.id).members.get(`unit-${unit.id}.json`)):json(`unit-${unit.id}`,`unit-${unit.id}.json`));
+ const verified=validateProof({plan,reports,receipt,expectedPlan,p,employeeUnits});
  const build=await sourceBoundBuild({candidatePath,dir,p,jobs});
  assertNativeBuildMatches(expectedPlan,reports,build,artifacts.find(a=>a.name===BUILD_ARTIFACT),jobs.find(j=>j.name==='build').id);
  if(cleanHead(controllerRoot)!==controller||cleanHead(candidatePath)!==candidate)throw Error('Source changed during CI verification');
@@ -77,18 +83,40 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  verifyCi({candidatePath,runId,baseline}).then(value=>console.log(JSON.stringify(value,null,2))).catch(error=>{console.error(error);process.exitCode=1;});
 }
 
+/** Replay each source-registered employee ZIP through a fresh private receiver.
+ * The real API inventories and their exact retained ZIP digests are mandatory;
+ * a previous parsed receipt never substitutes for re-reading native members. */
+function readEmployeeArchives({plan,run,jobs,artifacts,dir,sourceRoot}){
+ const selected=plan.units.filter(unit=>employeeLifecycleUnit(unit));
+ if(!selected.length)return new Map();
+ const destination=join(dir,'employee-byte-replay-'+randomUUID());mkdirSync(destination,{mode:0o700});
+ const result=new Map();
+ for(const unit of selected){
+  const matchingJobs=jobs.filter(job=>job.name===`test (${unit.id})`),matchingArtifacts=artifacts.filter(artifact=>artifact.name==='unit-'+unit.id);
+  if(matchingJobs.length!==1||matchingArtifacts.length!==1)throw Error('Employee API job/archive inventory differs');
+  const job=matchingJobs[0],artifact=matchingArtifacts[0],archivePath=join(dir,artifact.name+'.zip');
+  const archive=readCiArchive(artifact,archivePath);verifyArtifactBytes(artifact,archive);
+  if(archive.length!==artifact.size_in_bytes)throw Error('Employee API/archive byte size differs');
+  result.set(unit.id,readEmployeeLifecycleArchive({plan,unit,run,job,artifact,archivePath,destination:join(destination,unit.id),sourceRoot}));
+ }
+ return result;
+}
+
 export async function revalidateCi(evidence){
  const local=createPlan(evidence.candidatePath);
  if(cleanHead(controllerRoot)!==evidence.controller||cleanHead(evidence.candidatePath)!==evidence.sha)throw Error('Source changed after CI verification');
  const p={controller:evidence.controller,candidate:evidence.sha,runId:evidence.runId,baseline:evidence.baseline,controllerBranch:evidence.controllerBranch};
  const expectedPlan=bindPlanWitnessIdentity(local,p);
- validateRun(api(`actions/runs/${p.runId}`),p);
+ const run=api(`actions/runs/${p.runId}`);validateRun(run,p);
  const jobs=pages(`actions/runs/${p.runId}/jobs?filter=all`,'jobs');validateJobs(jobs,local);
  const artifacts=pages(`actions/runs/${p.runId}/artifacts`,'artifacts');validateArtifacts(artifacts,p,local);
  const identity=a=>JSON.stringify(a.map(x=>({id:x.id,name:x.name,digest:x.digest})).sort((a,b)=>a.name.localeCompare(b.name)));
  if(identity(artifacts)!==identity(evidence.artifacts)||![p.baseline,p.candidate].includes(api('git/ref/heads/alpha').object?.sha))throw Error('CI evidence or alpha moved after verification');
  const build=await sourceBoundBuild({candidatePath:evidence.candidatePath,dir:evidence.evidenceDirectory,p,jobs});
- const reports=local.units.map(u=>JSON.parse(readFileSync(join(evidence.evidenceDirectory,'unit-'+u.id,'unit-'+u.id+'.json'),'utf8')));
+ const employeeUnits=readEmployeeArchives({plan:expectedPlan,run,jobs,artifacts,dir:evidence.evidenceDirectory,sourceRoot:evidence.candidatePath});
+ const reports=local.units.map(unit=>JSON.parse(employeeUnits.has(unit.id)?employeeUnits.get(unit.id).members.get(`unit-${unit.id}.json`):readFileSync(join(evidence.evidenceDirectory,'unit-'+unit.id,'unit-'+unit.id+'.json'),'utf8')));
+ const proofPlan=JSON.parse(readFileSync(join(evidence.evidenceDirectory,'gate-plan/ci-plan.json'),'utf8')),receipt=JSON.parse(readFileSync(join(evidence.evidenceDirectory,'gate-evidence/ci-receipt.json'),'utf8'));
+ validateProof({plan:proofPlan,reports,receipt,expectedPlan,p,employeeUnits});
  assertNativeBuildMatches(expectedPlan,reports,build,artifacts.find(a=>a.name===BUILD_ARTIFACT),jobs.find(j=>j.name==='build').id);
  if(!isDeepStrictEqual(build,evidence.build)||cleanHead(controllerRoot)!==p.controller||cleanHead(evidence.candidatePath)!==p.candidate)throw Error('Validated build bytes or canonical source changed');
  return true;

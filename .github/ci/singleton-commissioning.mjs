@@ -6,6 +6,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {createPlan,hash} from './plan.mjs';
 import {assertSingletonUnit,nativeNextUnit} from './singleton-protocol.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
+import {collectEmployeeLifecycleWitness} from './employee-lifecycle-api.mjs';
 import {employeeLifecycleMatrixRow} from './employee-lifecycle-profile.mjs';
 export const COMMISSION_TITLE='Singleton commissioning only';
 export function commissioningIntent(eventName,inputs={},attempt){
@@ -57,11 +58,12 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(!ids)throw Error('Commissioning summary requires explicit intent');
   const plan=createPlan(),selection=JSON.parse(readBounded(args[0],1024*1024));
   if(!isDeepStrictEqual(selection,selectCommissioning(plan,ids)))throw Error('Frozen commissioning intent drift');
-  const files=readdirSync(args[1]).filter(f=>/^unit-.+\.json$/.test(f));
-  if(files.length>16)throw Error('Excessive commissioning reports');
-  // Verify one bounded report at a time; do not retain sixteen large native plans.
-  function* entries(){for(const f of files){const bytes=readBounded(join(args[1],f),64*1024*1024);yield {bytes,report:JSON.parse(bytes)};}}
-  const summary=summarizeCommissioning(plan,selection,entries(),{runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT});
+  const folders=readdirSync(args[1]);if(folders.length>16)throw Error('Excessive commissioning reports');
+  for(const folder of folders)if(!selection.selected.some(id=>folder==='commission-unit-'+id))throw Error('Foreign commissioning artifact directory');
+  const employeeUnits=await collectEmployeeLifecycleWitness(plan,plan.units.filter(unit=>selection.selected.includes(unit.id)));
+  // Each artifact retains its OWN directory; raw native bytes never merge.
+  function* entries(){for(const id of selection.selected){const file=join(args[1],'commission-unit-'+id,'unit-'+id+'.json');try{const bytes=readBounded(file,64*1024*1024);yield {bytes,report:JSON.parse(bytes)};}catch(error){if(error.code!=='ENOENT')throw error;}}}
+  const summary=summarizeCommissioning(plan,selection,entries(),{runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,employeeUnits});
   writeFileSync(args[2],JSON.stringify(summary,null,2)+'\n',{flag:'wx'});
   appendFileSync(process.env.GITHUB_STEP_SUMMARY,`Selected native profiles: ${summary.outcomes.filter(o=>o.outcome==='verified').length}/${summary.selected.length} verified; ${summary.omitted.length} units omitted. Incomplete development evidence; release authorization is false.\n`);
   if(!summary.selectedProfilesVerified)process.exitCode=1;

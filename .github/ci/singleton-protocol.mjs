@@ -6,6 +6,7 @@ import {CI_POLICY} from './policy-version.mjs';
 import {NATIVE_HELPER_SOURCES} from './native-next-helper-sources.mjs';
 import {REWARDS_NATIVE_SOURCES} from './rewards-native-sources.mjs';
 import {EMPLOYEE_LIFECYCLE_PROFILE,employeeLifecycleFile} from './employee-lifecycle-profile.mjs';
+import {EMPLOYEE_LIFECYCLE_SOURCES,assertEmployeeLifecycleSourceClosure} from './employee-lifecycle-sources.mjs';
 export const SINGLETON_VERSION=1;
 const measured=[
  'test/access-editor-native-owner-presentation.test.ts',
@@ -69,6 +70,7 @@ export function assertSingletonUnit(unit){
 // Fixed reviewed component closure. These are source bindings, not privileges,
 // new profiles, skip exemptions or permission to execute an arbitrary candidate.
 const componentSources=Object.freeze({
+ ...Object.fromEntries(EMPLOYEE_LIFECYCLE_PROFILE.files.map(({file})=>[file,assertEmployeeLifecycleSourceClosure(EMPLOYEE_LIFECYCLE_SOURCES)])),
  'test/rewards-audit-policy-native.test.ts':Object.freeze(['.github/ci/rewards-native-sources.mjs',...REWARDS_NATIVE_SOURCES]),
  'test/rewards-audited-read-prototype.test.ts':Object.freeze(['.github/ci/rewards-native-sources.mjs',...REWARDS_NATIVE_SOURCES]),
  'test/attendance-shared-submission-bridge.test.ts':Object.freeze([
@@ -104,7 +106,7 @@ const componentSources=Object.freeze({
 export function singletonSourceMaximum(file){return file==='messages/ta.json'?8*1024*1024:4*1024*1024;}
 export function singletonSources(unit){
  assertSingletonUnit(unit);
- return [unit.files[0],'test/helpers/ci-singleton-admission.ts','.github/ci/singleton-protocol.mjs','.github/ci/policy-version.mjs',
+ const sources=[unit.files[0],'test/helpers/ci-singleton-admission.ts','.github/ci/singleton-protocol.mjs','.github/ci/policy-version.mjs',
   'vitest.config.ts','vitest.nodb.config.ts',...(componentSources[unit.files[0]]??[]),...(unit.kind==='db'?['test/db-names.ts','test/global-setup.ts','test/env.ts']:['deploy/admission/test_native.py']),
   ...(nativeNextUnit(unit)?[...Object.values(NATIVE_HELPER_SOURCES),'.github/ci/native-next-helper-sources.mjs','.github/ci/native-next-build-packet.mjs',
    '.github/ci/native-next-installation.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs',
@@ -114,6 +116,7 @@ export function singletonSources(unit){
    '.github/ci/run-unit.mjs','.github/ci/plan.mjs','.github/ci/singleton-profiles.mjs',
    '.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml',
    'scripts/migrate-with-focused-prerequisites.ts','scripts/lib/discard-premigration.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts']:[])].sort();
+ return employeeLifecycleFile(unit.files[0])?[...new Set(sources)]:sources;
 }
 export const protocolHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fullSha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);

@@ -43,3 +43,40 @@ start/30min bounds, exact cases/stages/container custody, independently decoded
 qualify normal CI before API plumbing, full closure, omission/privacy/fault
 controls, root PG integration and independent source review are complete.
 Root894a2152 PG/helper/always-stop/close changes remain outside this branch.
+
+## Additional blocked source checkpoint
+
+The operational owner now carries a separate API/ZIP witness through normal
+verification, selected-profile summaries, release verification and release
+revalidation. The five employee artifacts retain separate extraction directories
+and full byte maps. Their fixed receiver independently rehashes the actual API
+ZIP digest before extraction; the legacy receiver remains unchanged. Final
+verification replays the original bounded native gzip/framing/call/work oracles,
+keeps the strict1000ms target, and requires actual published restoration witnesses.
+The known classic terminal-witness publication gap remains a refusal; measurement
+completion does not waive it.
+
+A static TypeScript5.9.3 AST import/read-input inventory produced3426 bound source
+paths, including all743 ordered native SQL sources and the two retained unlisted
+SQL files. It deliberately includes complete classifier/read-owner dependencies
+rather than relying on a thin selected-file label. Actual dynamic catalogue inputs
+are closed to the existing locale files, fixed build-input imports and lock-bound
+external dependencies. The private graph proposal retains roots/edges and unresolved
+integration files for review. An independent critical-owner list and the actual
+canonical journal are checked before hashing, so a coherently rehashed omission
+cannot change the source contract. The source list grants no execution authority.
+
+New source controls cover transport provenance (including PR source vs merge
+controller), exact binary archive preservation and receiver refusal, coherent
+critical-owner/migration omission, and mechanical byte reconstruction of all four
+original pure decoder/framer/binder/work sources. All original semantic controls
+remain required. Only static syntax, source reconstruction and diff checks have
+run. Every behavior check, compiler and build remains UNRUN.
+
+This is still incomplete and MUST NOT be dispatched. Remaining work includes the
+full adversarial lifecycle/native witness models, meaningful retained-artifact
+replay, final source/guard audit and reviewed integration of the separately owned
+PG/always-stop implementation. The current isolated source intentionally lacks
+those three root-owned files; the complete planner must refuse them. Policyv20 is
+unchanged; no future policy number is allocated here. No release, staging or
+production acceptance is asserted.

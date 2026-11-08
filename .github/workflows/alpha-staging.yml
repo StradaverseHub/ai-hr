@@ -720,8 +720,9 @@ jobs:
         with:
           path: ${{ runner.temp }}/aihr-ci
           pattern: unit-*
-          merge-multiple: true
-      - run: node ../automation/.github/ci/verify-shards.mjs "$RUNNER_TEMP/aihr-ci" "$RUNNER_TEMP/ci-receipt.json"
+          merge-multiple: false
+      - env: {GH_TOKEN: '${{ github.token }}'}
+        run: node ../automation/.github/ci/verify-shards.mjs "$RUNNER_TEMP/aihr-ci" "$RUNNER_TEMP/ci-receipt.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gate-evidence
@@ -762,8 +763,9 @@ jobs:
         with:
           pattern: commission-unit-*
           path: ${{ runner.temp }}/commission-reports
-          merge-multiple: true
+          merge-multiple: false
       - name: Verify selected native reports without a release receipt
+        env: {GH_TOKEN: '${{ github.token }}'}
         run: node ../automation/.github/ci/singleton-commissioning.mjs summary "$RUNNER_TEMP/commission-plan/commission-selection.json" "$RUNNER_TEMP/commission-reports" "$RUNNER_TEMP/singleton-commissioning.json"
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

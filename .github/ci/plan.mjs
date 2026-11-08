@@ -5,6 +5,8 @@ import {fileURLToPath} from 'node:url';
 import {readFileSync,realpathSync,lstatSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {singletonSources,singletonSourceMaximum,assertSingletonCoverage} from './singleton-protocol.mjs';
+import {employeeLifecycleUnit} from './employee-lifecycle-profile.mjs';
+import {assertEmployeeLifecycleSourceClosure} from './employee-lifecycle-sources.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {inspectPdfToolScope} from './pdf-tool-scope.mjs';
 import {buildUnits,hash,CI_EXECUTION} from './manifest.mjs';
@@ -36,6 +38,7 @@ export function createPlan(cwd = process.cwd()) {
   const browsers = tracked.filter(f => f.endsWith('.browser.test.tsx')).sort();
   const pdfTooling=inspectPdfToolScope(cwd);
   const units = buildUnits(suite,groups,browsers);
+  for(const unit of units)if(employeeLifecycleUnit(unit))assertEmployeeLifecycleSourceClosure(singletonSources(unit),JSON.parse(readFileSync(resolve(cwd,'db/migrations/meta/_journal.json'),'utf8')));
   const singletonSourceHashes=Object.fromEntries(units.filter(u=>u.singleton).map(unit=>[unit.id,Object.fromEntries(singletonSources(unit).map(file=>{
    const path=resolve(cwd,file);if(realpathSync(path)!==path||!lstatSync(path).isFile()||lstatSync(path).size>singletonSourceMaximum(file))throw Error('Unsafe singleton source');
    return [file,createHash('sha256').update(readFileSync(path)).digest('hex')];
