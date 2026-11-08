@@ -1209,6 +1209,58 @@ def key_name_digests(keys, expected_count):
         'state': 'complete', 'count': expected_count, 'digests': sorted(hashes), 'reason': 'none'}, expected_count)
 
 
+
+PLAIN_KEY_NAME_MAX = 64
+
+
+def validate_plain_key_names(value, digest):
+    """Pure explicit OTHER names only; no value or native/admission authority."""
+    validate_key_name_digests(digest)
+    if (type(value) is not dict or set(value) != {'namesComplete', 'names'}
+            or type(value['namesComplete']) is not bool or type(value['names']) is not list):
+        raise ValueError('Closed plain key-name schema refused')
+    names = value['names']
+    if not value['namesComplete']:
+        if names != []:
+            raise ValueError('Unavailable plain key-name payload refused')
+        return value
+    allowed = APP_ENVIRONMENT | FLEET_ENVIRONMENT | SYSTEMD_ENVIRONMENT
+    if (digest['state'] != 'complete' or len(names) != digest['count'] or len(names) > KEY_NAME_DIGEST_MAX
+            or any(type(name) is not str or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', name) is None
+                or name in allowed or name in ENVIRONMENT_OBSERVATION_NAMES or forbidden_environment(name)
+                for name in names) or names != sorted(set(names))):
+        raise ValueError('Complete plain key-name set refused')
+    if sorted(hashlib.sha256(KEY_NAME_DIGEST_DOMAIN + name.encode('utf8', 'strict')).hexdigest()
+              for name in names) != digest['digests']:
+        raise ValueError('Plain key-name digest pairing refused')
+    return value
+
+
+def plain_key_names(keys, expected_count, digest):
+    """Immutable same-read tuple ONLY. All or nothing, with no partial-name leak."""
+    unavailable = {'namesComplete': False, 'names': []}
+    validate_key_name_digests(digest, expected_count)
+    if type(keys) is not tuple:
+        raise ValueError('Immutable key-name tuple required')
+    if digest['state'] != 'complete':
+        return unavailable
+    allowed = APP_ENVIRONMENT | FLEET_ENVIRONMENT | SYSTEMD_ENVIRONMENT
+    names, seen = [], set()
+    for name in keys:
+        if type(name) is not str or not name or '\0' in name or '=' in name or name in seen:
+            return unavailable
+        seen.add(name)
+        if name not in allowed and name not in ENVIRONMENT_OBSERVATION_NAMES:
+            if (len(names) >= KEY_NAME_DIGEST_MAX or forbidden_environment(name)
+                    or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', name) is None):
+                return unavailable
+            names.append(name)
+    try:
+        return validate_plain_key_names({'namesComplete': True, 'names': sorted(names)}, digest)
+    except (ValueError, TypeError, UnicodeError, OverflowError):
+        return unavailable
+
+
 def environment_process_read(directory, name, bound, deadline):
     import time
     if name not in ('stat', 'cmdline', 'cgroup', 'environ'):

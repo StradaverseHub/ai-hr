@@ -20,7 +20,7 @@ Unavailable is EXACT `namesComplete:false,names:[]`. Count remains in the origin
 
 ## Same15-message transport
 
-Retain original PHASE_PREFIX, TERMINAL_PREFIX_V2, `validate_phase_observation` and `validate_terminal_observation` WHOLE BYTE unchanged. Add fixed prefix `AIHR_OWNED_ENV_OBSERVER_TERMINAL_V3 ` and new v3 validator. V3 has EXACT fields: `version:3`, `kind:CLOSED_PHASE_TERMINAL_OTHER_KEY_NAMES_NOT_ADMISSION`, `phase` (unchanged v1 finished phase), `keyNames` (unchanged digest packet), `namesComplete`, `names`.
+Retain original PHASE_PREFIX, TERMINAL_PREFIX (whose bytes end TERMINAL_V2), `validate_phase_observation` and `validate_terminal_observation` WHOLE BYTE unchanged. Add fixed prefix `AIHR_OWNED_ENV_OBSERVER_TERMINAL_V3 ` and new v3 validator. V3 has EXACT fields: `version:3`, `kind:CLOSED_PHASE_TERMINAL_OTHER_KEY_NAMES_NOT_ADMISSION`, `phase` (unchanged v1 finished phase), `keyNames` (unchanged digest packet), `namesComplete`, `names`.
 
 V3 validation delegates phase/digest semantics to the original v2 validator using its exact reconstructed v2 shape, then validates plain payload against the same digest packet. No phase can acquire native authority through this pure delegation. `PhaseTracker.capture_keys` gets optional plain payload+fixed validator parameters. Its old2-argument path remains v2 for original controls/old data. Native full helper always supplies a valid complete-or-unavailable plain payload, so its finished frame becomes v3. No extra frame is added. Existing terminal-before-write/broken latches, no-retry uncertain-write behavior and unconditional original admission exec remain whole-source or exact-control invariants. A failed/incomplete helper cannot emit names in any ordinary phase/failure frame.
 

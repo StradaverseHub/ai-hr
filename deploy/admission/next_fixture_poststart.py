@@ -18,6 +18,7 @@ PROFILE = pathlib.Path('/etc/aihr-admission/profile.json')
 # Diagnostic states only. None establishes source/process/environment/admission authority.
 PHASE_PREFIX = 'AIHR_OWNED_ENV_OBSERVER_PHASE_V1 '
 TERMINAL_PREFIX = 'AIHR_OWNED_ENV_OBSERVER_TERMINAL_V2 '
+PLAIN_TERMINAL_PREFIX = 'AIHR_OWNED_ENV_OBSERVER_TERMINAL_V3 '
 PHASES = ('timer-armed', 'context-read', 'profile-bound', 'helpers-bound',
     'observer-loaded', 'main-selector', 'declaration-before', 'process-before',
     'environment-read', 'environment-classified', 'process-after', 'custody-after',
@@ -56,12 +57,25 @@ def validate_terminal_observation(value, subject, validate_keys):
     return value
 
 
+def validate_plain_terminal_observation(value, subject, validate_keys, validate_plain):
+    if (type(value) is not dict or set(value) != {'version', 'kind', 'phase', 'keyNames', 'namesComplete', 'names'}
+            or type(value['version']) is not int or value['version'] != 3
+            or value['kind'] != 'CLOSED_PHASE_TERMINAL_OTHER_KEY_NAMES_NOT_ADMISSION'):
+        raise ValueError('Closed plain key-name terminal required')
+    validate_terminal_observation({'version': 2,
+        'kind': 'CLOSED_PHASE_TERMINAL_KEY_NAME_DIGEST_NOT_ADMISSION',
+        'phase': value['phase'], 'keyNames': value['keyNames']}, subject, validate_keys)
+    validate_plain({'namesComplete': value['namesComplete'], 'names': value['names']}, value['keyNames'])
+    return value
+
+
 class PhaseTracker:
     """Private bounded helper telemetry. A copied phase packet proves no native state."""
     def __init__(self, unit, deadline):
         self.subject, self.deadline = 'worker-' + unit[9], deadline
         self.index, self.terminal, self.broken = -1, False, False
         self.key_names, self.key_codec = None, None
+        self.plain_names, self.plain_codec = None, None
 
     def write(self, result, cause='none'):
         if self.broken or self.terminal or time.monotonic() >= self.deadline:
@@ -76,6 +90,12 @@ class PhaseTracker:
                 'kind': 'CLOSED_PHASE_TERMINAL_KEY_NAME_DIGEST_NOT_ADMISSION',
                 'phase': value, 'keyNames': self.key_names}, self.subject, self.key_codec)
             prefix = TERMINAL_PREFIX
+            if self.plain_names is not None:
+                value = validate_plain_terminal_observation({'version': 3,
+                    'kind': 'CLOSED_PHASE_TERMINAL_OTHER_KEY_NAMES_NOT_ADMISSION',
+                    'phase': value['phase'], 'keyNames': value['keyNames'], **self.plain_names},
+                    self.subject, self.key_codec, self.plain_codec)
+                prefix = PLAIN_TERMINAL_PREFIX
         message = prefix.encode() + (json.dumps(value, sort_keys=True, separators=(',', ':')) + '\n').encode()
         if len(message) > 1024:
             raise ValueError('Observer phase bound refused')
@@ -101,10 +121,12 @@ class PhaseTracker:
         self.index += 1
         self.write('entered')
 
-    def capture_keys(self, value, validate_keys):
+    def capture_keys(self, value, validate_keys, plain=None, validate_plain=None):
         if self.key_names is not None or self.terminal or self.broken:
             raise ValueError('Repeated key-name capture refused')
         self.key_names, self.key_codec = validate_keys(value), validate_keys
+        if plain is not None:
+            self.plain_names, self.plain_codec = validate_plain(plain, value), validate_plain
 
     def finish(self):
         if self.index != len(PHASES) - 1:
@@ -211,15 +233,19 @@ def full_observation(unit, deadline, phase=None, key_capture=None):
     main_pid = os.environ.get('MAINPID', '')
     if re.fullmatch(r'[1-9][0-9]{0,9}', main_pid) is None:
         raise ValueError('Observation main identity unavailable')
-    captured = None
+    captured, plain = None, None
     def capture(keys, count):
-        nonlocal captured
+        nonlocal captured, plain
         if captured is not None:
             raise ValueError('Repeated native key-name capture refused')
         try:
             captured = N.key_name_digests(keys, count)
         except (ValueError, TypeError, UnicodeError, OverflowError):
             captured = N.unavailable_key_name_digests(count)
+        try:
+            plain = N.plain_key_names(keys, count, captured)
+        except (ValueError, TypeError, UnicodeError, OverflowError):
+            plain = {'namesComplete': False, 'names': []}
     result = N.observe_owned_environment({'pid': int(main_pid), 'invocation': os.environ.get('INVOCATION_ID', ''),
         'uid': spec['workerUid'], 'executable': spec['executable'], 'cwd': spec['releaseDirectory'],
         'cgroup': profile['resourceEnvelope']['cgroupPath'] + '/' + unit,
@@ -230,7 +256,10 @@ def full_observation(unit, deadline, phase=None, key_capture=None):
     if key_capture is not None:
         if captured is None:
             captured = N.unavailable_key_name_digests(result['otherUnqualifiedCount'])
-        key_capture(N.validate_key_name_digests(captured, result['otherUnqualifiedCount']), N.validate_key_name_digests)
+        if plain is None:
+            plain = {'namesComplete': False, 'names': []}
+        key_capture(N.validate_key_name_digests(captured, result['otherUnqualifiedCount']), N.validate_key_name_digests,
+                    N.validate_plain_key_names(plain, captured), N.validate_plain_key_names)
     mark('environment-packet')
     message = N.ENVIRONMENT_OBSERVATION_PREFIX.encode() + N.canonical(result)
     if len(message) > 4096:

@@ -1903,7 +1903,9 @@ def runtime_environment_journal_diagnostic(raw, unit, invocation, python_exe, so
             'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'state': 'receiver-unavailable', 'phases': [],
             'census': None, 'phaseUnavailable': True, 'keyNameDiagnostic': {
                 'kind': 'KEY_NAME_HASHES_NOT_ENVIRONMENT_OR_ADMISSION', 'state': 'unavailable',
-                'helperCompletion': 'unavailable', 'count': None, 'digests': [], 'reason': 'phase-unavailable'}}}
+                'helperCompletion': 'unavailable', 'count': None, 'digests': [], 'reason': 'phase-unavailable'}, 'plainKeyNameDiagnostic': {
+                'kind': 'PLAIN_OTHER_KEY_NAMES_NOT_ENVIRONMENT_OR_ADMISSION', 'state': 'unavailable',
+                'helperCompletion': 'unavailable', 'count': None, 'names': [], 'reason': 'phase-unavailable'}}}
 
 
 def _runtime_environment_phase_diagnostic(raw, unit, invocation, python_exe, sources, observed):
@@ -1922,7 +1924,7 @@ def _runtime_environment_phase_diagnostic(raw, unit, invocation, python_exe, sou
         'records': 0, 'environmentCandidates': 0, 'phaseCandidates': 0, 'trustedHelperCandidates': 0,
         'metadataMatches': dict.fromkeys(('uid', 'executable', 'unit', 'invocation'), 0),
         'commandClasses': dict.fromkeys(('helper', 'controller', 'other-or-missing'), 0)}
-    phases, unavailable, key_names = [], False, None
+    phases, unavailable, key_names, plain_names = [], False, None, None
     def unique(pairs):
         value = {}
         for key, item in pairs:
@@ -1934,7 +1936,8 @@ def _runtime_environment_phase_diagnostic(raw, unit, invocation, python_exe, sou
         message = row.get('MESSAGE') if type(row) is dict else None
         if type(message) is not str:
             continue
-        terminal = message.startswith(P.TERMINAL_PREFIX)
+        plain_terminal = message.startswith(P.PLAIN_TERMINAL_PREFIX)
+        terminal = message.startswith(P.TERMINAL_PREFIX) or plain_terminal
         phase = message.startswith(P.PHASE_PREFIX) or terminal
         environment = message.startswith(N.ENVIRONMENT_OBSERVATION_PREFIX)
         if not (phase or environment):
@@ -1955,8 +1958,13 @@ def _runtime_environment_phase_diagnostic(raw, unit, invocation, python_exe, sou
             continue
         try:
             require(len(message.encode()) <= 1024, 'Observer phase message bound refused')
-            candidate_keys = None
-            if terminal:
+            candidate_keys, candidate_plain = None, None
+            if plain_terminal:
+                envelope = P.validate_plain_terminal_observation(json.loads(message[len(P.PLAIN_TERMINAL_PREFIX):], object_pairs_hook=unique),
+                    RUNTIME_DIAGNOSTIC_UNITS[unit], N.validate_key_name_digests, N.validate_plain_key_names)
+                value, candidate_keys = envelope['phase'], envelope['keyNames']
+                candidate_plain = {key: envelope[key] for key in ('namesComplete', 'names')}
+            elif terminal:
                 envelope = P.validate_terminal_observation(json.loads(message[len(P.TERMINAL_PREFIX):], object_pairs_hook=unique),
                     RUNTIME_DIAGNOSTIC_UNITS[unit], N.validate_key_name_digests)
                 value, candidate_keys = envelope['phase'], envelope['keyNames']
@@ -1970,7 +1978,7 @@ def _runtime_environment_phase_diagnostic(raw, unit, invocation, python_exe, sou
                 require(phases and value['phase'] == phases[-1]['phase'], 'Observer terminal phase differs')
             phases.append(value)
             if terminal:
-                key_names = candidate_keys
+                key_names, plain_names = candidate_keys, candidate_plain
         except BaseException:
             unavailable = True
     # Never publish a partial accepted ledger after a malformed/duplicate/foreign
@@ -1978,10 +1986,12 @@ def _runtime_environment_phase_diagnostic(raw, unit, invocation, python_exe, sou
     if key_names is not None and len(phases) == 14 and phases[-1]['result'] == 'finished' and len(observed) == 1:
         try:
             N.validate_key_name_digests(key_names, observed[0]['otherUnqualifiedCount'])
+            if plain_names is not None:
+                N.validate_plain_key_names(plain_names, key_names)
         except (ValueError, TypeError):
             unavailable = True
     if unavailable:
-        phases, key_names = [], None
+        phases, key_names, plain_names = [], None, None
     helper_finished = len(phases) == 14 and phases[-1]['result'] == 'finished'
     count = observed[0]['otherUnqualifiedCount'] if len(observed) == 1 else None
     key_diagnostic = {'kind': 'KEY_NAME_HASHES_NOT_ENVIRONMENT_OR_ADMISSION',
@@ -1994,13 +2004,25 @@ def _runtime_environment_phase_diagnostic(raw, unit, invocation, python_exe, sou
             reason='environment-observation-missing' if len(observed) != 1 else 'terminal-v2-absent')
         if len(observed) == 1 and key_names is not None:
             key_diagnostic.update(state=key_names['state'], digests=list(key_names['digests']), reason=key_names['reason'])
+    plain_diagnostic = {'kind': 'PLAIN_OTHER_KEY_NAMES_NOT_ENVIRONMENT_OR_ADMISSION',
+        'state': 'helper-not-finished', 'helperCompletion': 'not-finished', 'count': count,
+        'names': [], 'reason': 'helper-not-finished'}
+    if unavailable:
+        plain_diagnostic.update(state='unavailable', helperCompletion='unavailable', reason='phase-unavailable')
+    elif helper_finished:
+        plain_diagnostic.update(state='unavailable', helperCompletion='finished',
+            reason='environment-observation-missing' if len(observed) != 1 else 'terminal-v3-absent')
+        if len(observed) == 1 and plain_names is not None:
+            plain_diagnostic.update(state='complete' if plain_names['namesComplete'] else 'unavailable',
+                names=list(plain_names['names']), reason='none' if plain_names['namesComplete'] else 'plain-unavailable')
     state = 'environment-observed' if observed else 'phase-only' if phases else \
         'untrusted-candidates-only' if census['environmentCandidates'] + census['phaseCandidates'] else 'no-candidates'
     if unavailable:
         state = 'receiver-unavailable'
     return {'observations': observed, 'diagnostic': {'kind': 'CLOSED_OBSERVER_PHASE_DIAGNOSTIC_NOT_ENVIRONMENT_OR_ADMISSION',
         'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'state': state, 'phases': phases, 'census': census,
-        'phaseUnavailable': unavailable, 'keyNameDiagnostic': key_diagnostic}}
+        'phaseUnavailable': unavailable, 'keyNameDiagnostic': key_diagnostic,
+        'plainKeyNameDiagnostic': plain_diagnostic}}
 
 
 def runtime_owned_declaration(unit):

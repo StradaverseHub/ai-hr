@@ -78,6 +78,18 @@ it('proves privileged cache overlays and bounded owned stop with actual systemd2
  expect(keyNames.digests.every((value:unknown)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value))).toBe(true);
  expect(keyNames.digests).toContain(createHash('sha256').update(Buffer.concat([Buffer.from('AIHR_INITIAL_ENV_OTHER_KEY_NAME_SHA256_V1\0'),Buffer.from('AIHR_OBSERVATION_CANARY')])).digest('hex'));
  expect(JSON.stringify(keyProof)).not.toMatch(/fictional-private-canary|AIHR_OBSERVATION_CANARY|fictional-observation/);
+ const plainProof=report.initialEnvironmentPlainKeyNameObservation;
+ expect(Object.keys(plainProof).sort()).toEqual(['kind','subject','keyNames','namesComplete','names','fullHelperVerified','nextApplicationVerified','releaseEligible'].sort());
+ expect(plainProof).toMatchObject({kind:'ACTUAL_SHARED_PLAIN_OTHER_KEY_NAMES_COMPONENT_NOT_FULL_HELPER_OR_NEXT',subject:'host-component',fullHelperVerified:false,nextApplicationVerified:false,releaseEligible:false});
+ expect(plainProof.keyNames).toEqual(keyNames);expect(typeof plainProof.namesComplete).toBe('boolean');
+ expect(Array.isArray(plainProof.names)).toBe(true);
+ if(plainProof.namesComplete){
+  expect(plainProof.names).toHaveLength(keyNames.count);expect(plainProof.names).toEqual([...new Set(plainProof.names)].sort());
+  expect(plainProof.names.every((name:unknown)=>typeof name==='string'&&/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name))).toBe(true);
+  expect(plainProof.names).toContain('AIHR_OBSERVATION_CANARY');
+  expect(plainProof.names.map((name:string)=>createHash('sha256').update(Buffer.concat([Buffer.from('AIHR_INITIAL_ENV_OTHER_KEY_NAME_SHA256_V1\0'),Buffer.from(name)])).digest('hex')).sort()).toEqual(keyNames.digests);
+ }else expect(plainProof.names).toEqual([]);
+ expect(JSON.stringify(plainProof)).not.toMatch(/fictional-private-canary|fictional-observation|name=value/);
  const topology=report.resourceTopology;
  expect(topology).toMatchObject({kind:'ACTUAL_UNCHANGED_RESOURCE_METHOD_DIAGNOSTIC_NOT_READINESS',
   actualProcessUnchanged:true,profileConstructorVerified:false,nextApplicationVerified:false,releaseEligible:false});
