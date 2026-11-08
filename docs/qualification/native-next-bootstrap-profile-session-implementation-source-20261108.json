@@ -1,8 +1,8 @@
 {
   "kind": "ONE_BOOTSTRAP_PROFILE_OPERATION_CURRENT_SOURCE_NOT_RUN_EVIDENCE",
-  "base": "249e9b0ce33dabb69e95b0c1887303e51487e8b9",
-  "sourceRef": "codex/next-bootstrap-session-20261108",
-  "currentCount": 118,
+  "base": "8bad0fa214c50cc140408a185a1a2494f041da57",
+  "sourceRef": "codex/next-bootstrap-source-ref-correction-20261108",
+  "currentCount": 119,
   "sourceSha256": {
     ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
     ".github/ci/ai-manifest-admission.mjs": "180b439bbce1605e60271841c57386c5f6dba977edfeb1c36402bd1649157f76",
@@ -59,9 +59,10 @@
     "deploy/admission/test_next_native.py": "010c09c94c602e819f16984b0fd13208618d1427cb7ce0e8c738a2db69b56230",
     "deploy/admission/test_next_plain_key_names.py": "8836e5ca8077019e6fa4ee4ab7b03950626eb8fd25f412522cf83b8c1ec045c6",
     "deploy/admission/test_next_profile.py": "ef1b8df8e45b3e5603e30f7b71d400736a445ccc858e53607af082f07b03bf7f",
+    "docs/qualification/native-next-bootstrap-profile-session-8bad-source-historical-20261108.json": "6732891348a401a272475f5ac03ad1c3852fa86fbf7c0cb2d4eb302a153a3778",
     "docs/qualification/native-next-bootstrap-profile-session-design-20261108.md": "41d634c0310272271919723e7b1e773e86ecc2d28bfe45b7b6d0e340f98a80a6",
     "docs/qualification/native-next-bootstrap-profile-session-design-source-20261108.json": "e1c801635892e473a0128629fcdff7024d2521b0d3f56ec9b9e590e4f75f567b",
-    "docs/qualification/native-next-bootstrap-profile-session-implementation-20261108.md": "92b1e678087372c20f5b6a6d8a0b6b4c63330972fa974fa579324634aeb205fa",
+    "docs/qualification/native-next-bootstrap-profile-session-implementation-20261108.md": "b442a5a9cbb5cc9eb4a0cbff51d53a7449f4b2fbb44f25dd111fc4bcbf1bb3bb",
     "docs/qualification/native-next-environment-observation-20261108.md": "cba118612cfb80d3b764a2e523c063b68ba042b64e9dd351b2e57bccf56d88bd",
     "docs/qualification/native-next-environment-observation-design-20261108.md": "06b160a1f5a52f8c678e1bb87fdd6e6a2adcc594234f13dea4faf9bdebf84dbe",
     "docs/qualification/native-next-environment-observation-design-source-20261108.json": "acf3401d2e48fd8868e571f04475122b1e494bd932b9b05fa2cdc7704e7f824b",
@@ -195,5 +196,24 @@
   "repositoryBehaviorExecutedLocally": false,
   "fullNextVerified": false,
   "full500Verified": false,
-  "releaseEligible": false
+  "releaseEligible": false,
+  "runtimeImplementationBase": "249e9b0ce33dabb69e95b0c1887303e51487e8b9",
+  "runtimeImplementation": "8bad0fa214c50cc140408a185a1a2494f041da57",
+  "documentationOnly": true,
+  "repositoryRefObservation": {
+    "observedAt": "2026-11-08T15:13:26Z",
+    "repositoryId": 1333414856,
+    "defaultBranch": "main",
+    "defaultBranchSha": "82859db9a598d5a83e6da9a60d3643b6969c04c3",
+    "originMain": "82859db9a598d5a83e6da9a60d3643b6969c04c3",
+    "originAlpha": "82859db9a598d5a83e6da9a60d3643b6969c04c3",
+    "rootIntegrationBranch": "codex/architecture-current-main-reconciliation-20261108",
+    "rootIntegrationSha": "6f8b3098b985802e6255395c45d547d2e27e1d24",
+    "rootIntegrationSeparateFromThisCandidate": true
+  },
+  "historical8badSidecar": {
+    "path": "docs/qualification/native-next-bootstrap-profile-session-8bad-source-historical-20261108.json",
+    "sha256": "6732891348a401a272475f5ac03ad1c3852fa86fbf7c0cb2d4eb302a153a3778",
+    "wholeOriginal": true
+  }
 }
