@@ -97,7 +97,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '3201_ai_centre_function_coverage':'0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a',
  ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
  '3500_ai_centre_architecture_compatibility':'3286f17e76b8d997c46b22019df613b9eef1d1b82c85c125cdb57b80392884ca',
- '3501_ai_centre_mandate_write_order':'e74c20b463617319a75963ad745e8bdaae6ff4746a3ef84628d7bc1673ab2684',
+ '3501_ai_centre_mandate_write_order':'821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);

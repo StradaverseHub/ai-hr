@@ -93,3 +93,27 @@ The 3500 component evidence joins29 at8c22/run42485943511,23 unaffected at0b15/
 run42484550879 and7 source-owner cases at7e491/run42483981970; these are distinct
 source/run identities, not one59-case run. No generated AI manifest, provider
 approval, release certificate, staging deployment or production authority renews.
+
+## Initial native failure and source correction
+
+Frozen50b1efaf86e21fa1511fd8e4fae951375d49b928 was executed in the two planned
+focused runs42489599002 and42489600800, actual controller
+82859db9a598d5a83e6da9a60d3643b6969c04c3, attempt1. Both finished with the
+ordinary initial migration failing before any of the46 planned database cases.
+The second run's seven source-owner cases passed under that exact50b1 identity.
+The actual native message was `column reference "p" is ambiguous`, character37,
+inline guard line32 at IF. PostgreSQL explained that `p` could be the PL/pgSQL
+variable or a table column. Downloaded default logs do not expose SQLSTATE;
+no specific SQLSTATE is claimed. Both owned containers cleaned up successfully,
+with PostgreSQL16.15/jitON and zero OOM/crash. The isolated upgrade owner, drift,
+foreign-lock and competing-writer native proofs have not executed yet.
+
+The source correction renames only the four conflicting SQL aliases inside the
+DO blocks to `policy_row`/`function_row`; outer temporary-table SELECT aliases
+remain unchanged. The fourth, in reserved-name EXISTS, is a latent source
+inference from PostgreSQL16 record-field resolution, not an executed second
+failure. Both new trigger bodies/MD5 values, all guard values/logic,
+ACL/RLS/defaults/lock order, journal and every native case remain byte exact.
+Only the candidate3501 SQL test hash changes with these aliases. Original failed
+runs are retained; affected database retries await root and independent review.
+This source correction grants no native PASS, provider or deployment approval.

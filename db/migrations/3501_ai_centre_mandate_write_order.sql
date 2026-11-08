@@ -31,11 +31,11 @@ BEGIN
   'definition',pg_get_triggerdef(t.oid),'function_identity',t.tgfoid::regprocedure::text)ORDER BY t.tgname),'[]')
   FROM pg_trigger t WHERE t.tgrelid=c.oid AND NOT t.tgisinternal) IS DISTINCT FROM '[{"tgname":"aaa_ai_centre_control_lock","tgenabled":"O","tgtype":23,"definition":"CREATE TRIGGER aaa_ai_centre_control_lock BEFORE INSERT OR UPDATE ON public.teras_mandate_control FOR EACH ROW EXECUTE FUNCTION app.ai_centre_control_lock()","function_identity":"app.ai_centre_control_lock()"},{"tgname":"teras_mandate_control_version","tgenabled":"O","tgtype":19,"definition":"CREATE TRIGGER teras_mandate_control_version BEFORE UPDATE ON public.teras_mandate_control FOR EACH ROW EXECUTE FUNCTION app.teras_bump_version(''version'')","function_identity":"app.teras_bump_version()"}]'::jsonb
  THEN RAISE EXCEPTION 'Unexpected AI Centre mandate triggers' USING ERRCODE='55000';END IF;
- IF (SELECT coalesce(jsonb_agg(to_jsonb(p)-'schemaname'-'tablename' ORDER BY policyname),'[]') FROM pg_policies p
+ IF (SELECT coalesce(jsonb_agg(to_jsonb(policy_row)-'schemaname'-'tablename' ORDER BY policyname),'[]') FROM pg_policies policy_row
   WHERE schemaname='public' AND tablename='teras_mandate_control') IS DISTINCT FROM '[{"policyname":"teras_control_admin_insert","permissive":"PERMISSIVE","roles":["ai_hr_app"],"cmd":"INSERT","qual":null,"with_check":"((tenant_id = app.current_tenant_id()) AND (app.current_agent_principal() IS NULL) AND app.is_group_admin() AND (app.principal_snapshot_current() IS TRUE) AND (changed_by_user_id = app.current_user_id()))"},{"policyname":"teras_control_admin_update","permissive":"PERMISSIVE","roles":["ai_hr_app"],"cmd":"UPDATE","qual":"((tenant_id = app.current_tenant_id()) AND (app.current_agent_principal() IS NULL) AND app.is_group_admin() AND (app.principal_snapshot_current() IS TRUE))","with_check":"((tenant_id = app.current_tenant_id()) AND (changed_by_user_id = app.current_user_id()))"},{"policyname":"teras_control_read","permissive":"PERMISSIVE","roles":["ai_hr_app"],"cmd":"SELECT","qual":"(tenant_id = app.current_tenant_id())","with_check":null}]'::jsonb
  THEN RAISE EXCEPTION 'Unexpected AI Centre mandate policies' USING ERRCODE='55000';END IF;
- IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'
-  AND p.proname IN('ai_centre_mandate_write_order','ai_centre_mandate_bound_tenant'))
+ IF EXISTS(SELECT 1 FROM pg_proc function_row JOIN pg_namespace n ON n.oid=function_row.pronamespace WHERE n.nspname='app'
+  AND function_row.proname IN('ai_centre_mandate_write_order','ai_centre_mandate_bound_tenant'))
  THEN RAISE EXCEPTION 'AI Centre mandate append names already occupied' USING ERRCODE='55000';END IF;
 END $guard$;
 --> statement-breakpoint
@@ -90,9 +90,9 @@ BEGIN
   current_attributes:=NULL;
   IF before_row.kind='table' THEN SELECT to_jsonb(c) INTO current_attributes FROM pg_class c WHERE c.oid=before_row.oid;
    -- Adding triggers can only preserve the already-true relhastriggers flag.
-  ELSIF before_row.kind='function' THEN SELECT to_jsonb(p) INTO current_attributes FROM pg_proc p WHERE p.oid=before_row.oid;
+  ELSIF before_row.kind='function' THEN SELECT to_jsonb(function_row) INTO current_attributes FROM pg_proc function_row WHERE function_row.oid=before_row.oid;
   ELSIF before_row.kind='trigger' THEN SELECT to_jsonb(t) INTO current_attributes FROM pg_trigger t WHERE t.oid=before_row.oid;
-  ELSIF before_row.kind='policy' THEN SELECT to_jsonb(p) INTO current_attributes FROM pg_policy p WHERE p.oid=before_row.oid;END IF;
+  ELSIF before_row.kind='policy' THEN SELECT to_jsonb(policy_row) INTO current_attributes FROM pg_policy policy_row WHERE policy_row.oid=before_row.oid;END IF;
   IF current_attributes IS DISTINCT FROM before_row.attributes THEN
    RAISE EXCEPTION 'AI Centre mandate predecessor changed: %',before_row.kind USING ERRCODE='55000';END IF;
  END LOOP;
