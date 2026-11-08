@@ -1,3 +1,4 @@
+import {admitEmployeeChoiceLifecycle} from './performance/employee-choice-lifecycle-admission';
 /** Actual app LOGIN/RLS and borrowed native RRRO controls; no mocked data or providers. */
 import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync,existsSync,renameSync} from 'node:fs';
@@ -20,8 +21,7 @@ import {exactAsciiPrototypeRuntimeEvidence,closeExactAsciiPrototypeRuntime} from
 import {createAssignmentAuthorityFixture,assertAssignmentAuthority} from './performance/employee-choice-assignment-authority';
 import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-const file='test/employee-choice-exact-ascii-purpose.test.ts',selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'null');
-if(process.env.GITHUB_ACTIONS!=='true'||process.env.CI!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.RUNNER_OS!=='Linux'||process.env.GITHUB_JOB!=='selected-tests'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||process.env.GITHUB_WORKFLOW!=='alpha-focused-checks'||process.env.GITHUB_EVENT_NAME!=='workflow_dispatch'||process.env.GITHUB_RUN_ATTEMPT!=='1'||!(/^[1-9][0-9]{0,19}(?![\s\S])/).test(process.env.GITHUB_RUN_ID??'')||!(/^[0-9a-f]{40}(?![\s\S])/).test(process.env.AIHR_CI_HEAD??'')||!(/^[0-9a-f]{40}(?![\s\S])/).test(process.env.AIHR_CI_CONTROL_HEAD??'')||!Array.isArray(selection)||selection.length!==1||selection[0]!==file)throw Error('Exact sole owned ASCII purpose qualification required; normal CI registration pending');
+const file='test/employee-choice-exact-ascii-purpose.test.ts',lifecycle=admitEmployeeChoiceLifecycle(file);
 let installation:ExactAsciiInstallation|undefined,b:Base,started=false;
 let ownedPools:ReturnType<typeof employeeChoiceBenchmarkOwner>|undefined,metadata:ReturnType<typeof employeeChoicePrototypeCarriers>|undefined;
 const custodies=new Set<ExactAsciiOwnership>();
@@ -39,7 +39,7 @@ function nativeIt(name:string,work:()=>Promise<void>,timeout=30000){it(name,cont
 it('constructs the guarded unchanged-grant native experiment under an owned300s lifetime',context=>{
  started=true;const startNs=process.hrtime.bigint();lifetime.start(Number(startNs)/1e6);return bounded(context,'construction',async()=>{
   try{
-   const base=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR!);expect(realpathSync(base)).toBe(base);expect(lstatSync(base).uid).toBe(process.getuid!());
+   const base=lifecycle.evidenceDirectory;expect(realpathSync(base)).toBe(base);expect(lstatSync(base).uid).toBe(process.getuid!());
    const output=join(base,'employee-choice-exact-ascii-purpose');mkdirSync(output,{mode:0o700});
    const clock={version:1,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,startNs:String(startNs)};
    writeFileSync(join(output,'benchmark-clock.pending'),JSON.stringify(clock),{flag:'wx',mode:0o600});renameSync(join(output,'benchmark-clock.pending'),join(output,'benchmark-clock.json'));
@@ -90,7 +90,7 @@ afterAll(()=>lifetime.finish(async()=>{
  await finish(async()=>{
   const value=JSON.stringify({kind:'ACTUAL_ASCII_RUNTIME_OBSERVATION_NOT_QUALIFICATION',runtime:exactAsciiPrototypeRuntimeEvidence(),releaseAuthorized:false})+'\n';
   if(Buffer.byteLength(value)>16384)throw Error('Closed runtime observation exceeds bound');
-  writeFileSync(join(resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR!),'employee-choice-exact-ascii-purpose','runtime-before-shutdown.json'),value,{flag:'wx',mode:0o600});
+  writeFileSync(join(lifecycle.evidenceDirectory,'employee-choice-exact-ascii-purpose','runtime-before-shutdown.json'),value,{flag:'wx',mode:0o600});
  });
  await finish(async()=>{closeExactAsciiPrototypeRuntime();});await finish(async()=>metadata?.close());await finish(closeAll);await finish(async()=>ownedPools?.close());
  if(errors.length)throw new AggregateError(errors,'Owned ASCII purpose restoration and settlement refused');

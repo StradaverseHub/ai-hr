@@ -1,13 +1,14 @@
+import {admitEmployeeChoiceLifecycle} from './performance/employee-choice-lifecycle-admission';
 /** Actual fixed native seam only. Root must register its closed sole outer owner
  * before execution; no ordinary/shared-file or release qualification is claimed. */
 import {afterAll,expect,it,type TestContext} from 'vitest';
 import {owner} from './harness';
 import {employeeChoiceNativeObjectOid} from './performance/employee-choice-native-object-identity';
 import {employeeChoiceNativeCaseOwner} from './performance/employee-choice-native-case-owner';
-import {admitEmployeeChoiceNativeFactory,employeeChoiceNativeFactoryFixture,type FactoryStatement} from './performance/employee-choice-native-factory-fixture';
+import {employeeChoiceNativeFactoryFixture,type FactoryStatement} from './performance/employee-choice-native-factory-fixture';
 import {employeeChoiceNativePrototypeOwner,employeeChoicePrototypeSignature,type EmployeeChoiceNativeInstallation} from './performance/employee-choice-native-purpose-owner-factory';
 import {employeeChoiceNativeSecurity,installEmployeeChoiceNativePrototype} from './performance/employee-choice-native-purpose-owner';
-admitEmployeeChoiceNativeFactory();
+admitEmployeeChoiceLifecycle('test/employee-choice-native-owner-factory.test.ts');
 const cases=employeeChoiceNativeCaseOwner();afterAll(()=>cases.drain());
 type Fixture=ReturnType<typeof employeeChoiceNativeFactoryFixture>;
 let legacy:{full:Record<string,unknown>;security:EmployeeChoiceNativeInstallation['security'];trace:FactoryStatement[];oid:string}|undefined;
