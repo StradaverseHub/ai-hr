@@ -48,4 +48,22 @@ describe('bounded expected content from the existing native fictional fixture',(
    const value=fixture();edit(value);expect(()=>projectNavigationFixtureBindings(value)).toThrow();
   }
  });
+ it('binds both tenant actor cohorts and refuses absent or swapped actor tenant IDs',()=>{
+  const value=fixture(),bindings=projectNavigationFixtureBindings(value);
+  expect(bindings.size).toBe(500);
+  expect(bindings.get(0)?.actorName).toBe('PERF Person 0000');expect(bindings.get(250)?.actorName).toBe('PERF Person 0250');
+  expect(bindings.get(0)?.activeHeadcount).toBe('250');expect(bindings.get(250)?.activeHeadcount).toBe('250');
+  expect(bindings.get(0)!.rosterScope[uuid(1)]).toBe('PERF Person 0000');expect(bindings.get(250)!.rosterScope[uuid(251)]).toBe('PERF Person 0250');
+  expect(Object.hasOwn(bindings.get(0)!.rosterScope,uuid(251))).toBe(false);expect(Object.hasOwn(bindings.get(250)!.rosterScope,uuid(1))).toBe(false);
+  for(const index of [0,250]){
+   const missing=fixture();
+   const withoutTenant={...missing,users:missing.users.map((actor,i)=>{
+    if(i!==index)return actor;
+    const {tenantId,...remaining}=actor;void tenantId;return remaining;
+   })};
+   expect(()=>projectNavigationFixtureBindings(withoutTenant)).toThrow('Native fictional actor allocation differs');
+   const swapped=fixture();swapped.users[index].tenantId=swapped.tenants[index===0?1:0].tenantId;
+   expect(()=>projectNavigationFixtureBindings(swapped)).toThrow('Native fictional actor allocation differs');
+  }
+ });
 });

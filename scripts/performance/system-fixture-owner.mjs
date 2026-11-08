@@ -119,7 +119,7 @@ try{
     await writeRecord(tx,'family:'+family,{subject},subject,expiry);
     await writeRecord(tx,'session:'+digest(token),{subject,version,family,native:false,absoluteExpiry:expiry},subject,expiry);
    });
-   users.push({index,tenant:t,company:c,role,name,userId,subject,employmentId:hired.employmentId,personId:hired.personId,companyId:company.companyId,batchId:company.batchId,claimTypeId:type.id,leaveTypeId:b.annualLeaveTypeId,token,organization,username,password,secret});
+   users.push({index,tenant:t,tenantId:b.tenantId,company:c,role,name,userId,subject,employmentId:hired.employmentId,personId:hired.personId,companyId:company.companyId,batchId:company.batchId,claimTypeId:type.id,leaveTypeId:b.annualLeaveTypeId,token,organization,username,password,secret});
    operationTimings.identityAndSessionProvisioning.push(performance.now()-identityStarted);
    if(index%50===49)console.log('[system-perf-fixture] provisioned '+(index+1)+' principals');
   }
@@ -232,6 +232,68 @@ try{
  }
  const modules=await owner.client`select tenant_id,array_agg(module_code order by module_code)as modules from tenant_module where tenant_id=any(${tenants.map(t=>t.tenantId)}::uuid[])and status='active'group by tenant_id`;
 
+ // Verify ONLY the 500 traffic actors against native stored facts, not global fixture totals.
+ // Seed administrators and the legal no-login Rewards prerequisite are outside this selected set.
+ const actorUuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+ assert(tenants.length===2&&tenants.every(tenant=>actorUuid.test(tenant.tenantId)&&tenant.companies.length===5),
+  'Traffic actor creator inventory differs');
+ const actorTenantIds=tenants.map(tenant=>tenant.tenantId),actorCompanyIds=tenants.flatMap(tenant=>tenant.companies.map(company=>company.companyId));
+ assert(new Set(actorTenantIds).size===2&&actorCompanyIds.length===10&&new Set(actorCompanyIds).size===10&&actorCompanyIds.every(id=>actorUuid.test(id)),
+  'Traffic actor creator scope differs');
+ assert(users.length===500&&new Set(users.map(user=>user.index)).size===500&&users.every(user=>Number.isInteger(user.index)&&user.index>=0&&user.index<500),
+  'Traffic actor index inventory differs');
+ for(const key of ['userId','personId','employmentId'])assert(users.every(user=>actorUuid.test(user[key]))&&new Set(users.map(user=>user[key])).size===500,
+  'Traffic actor identity inventory differs');
+ const actorByIndex=new Map(users.map(user=>[user.index,user]));
+ const actorExpected=Array.from({length:500},(_,index)=>{
+  const actor=actorByIndex.get(index),tenantIndex=Math.floor(index/250),companyIndex=Math.floor(index%250/50),position=index%50;
+  const tenant=tenants[tenantIndex],company=tenant.companies[companyIndex];
+  const role=index===0||index===250?'groupHR':position<2?'companyHR':position<4?'manager':'employee';
+  const name='PERF Person '+String(index).padStart(4,'0'),employeeCode='PERF'+String(index).padStart(4,'0');
+  assert(actor&&actor.tenant===tenantIndex&&actor.tenantId===tenant.tenantId&&actor.company===companyIndex&&actor.companyId===company.companyId&&actor.role===role&&actor.name===name,
+   'Serialized traffic actor creator binding differs');
+  const grants=[[tenant.tenantId,'employee',company.companyId]];
+  if(role==='manager')grants.push([tenant.tenantId,'manager',company.companyId]);
+  if(role==='companyHR'||role==='groupHR')grants.push([tenant.tenantId,'hr_admin',role==='groupHR'?null:company.companyId]);
+  if(role==='groupHR')grants.push([tenant.tenantId,'payroll_partner',null],[tenant.tenantId,'performance_comp_partner',null]);
+  return {userId:actor.userId,personId:actor.personId,employmentId:actor.employmentId,tenantId:tenant.tenantId,companyId:company.companyId,name,employeeCode,grants};
+ });
+ assert(actorTenantIds.every(id=>actorExpected.filter(actor=>actor.tenantId===id).length===250)&&actorCompanyIds.every(id=>actorExpected.filter(actor=>actor.companyId===id).length===50),
+  'Traffic actor tenant or company allocation differs');
+ assert(['employee','manager','companyHR','groupHR'].every((role,index)=>users.filter(actor=>actor.role===role).length===[460,20,18,2][index]),
+  'Traffic actor role allocation differs');
+ assert(actorExpected.reduce((total,actor)=>total+actor.grants.length,0)===544,'Traffic actor expected grant inventory differs');
+ // One owner-client SELECT, keyed by exactly 500 known users/employments. LEFT joins
+ // expose missing or mismatched facts; no tenant filter can hide a foreign native grant.
+ // Five grants is an overflow sentinel: the largest legitimate set has four, so
+ // truncation can NEVER turn an extra/duplicate grant set into a matching expected set.
+ const actorNative=await owner.client`select wanted.user_id::text as requested_user_id,
+  u.id::text as user_id,u.tenant_id::text as user_tenant_id,u.person_id::text as user_person_id,
+  e.id::text as employment_id,e.tenant_id::text as employment_tenant_id,e.person_id::text as employment_person_id,e.company_id::text as employment_company_id,e.employee_code,
+  p.id::text as person_id,p.tenant_id::text as person_tenant_id,p.full_name,
+  c.id::text as company_id,c.tenant_id::text as company_tenant_id,
+  coalesce((select jsonb_agg(jsonb_build_array(r.tenant_id::text,r.role::text,r.company_id::text) order by r.role::text collate "C",r.company_id nulls first,r.tenant_id,r.id)
+   from(select ra.id,ra.tenant_id,ra.role,ra.company_id from public.role_assignment ra where ra.app_user_id=u.id
+    order by ra.role::text collate "C",ra.company_id nulls first,ra.tenant_id,ra.id limit 5)r),'[]'::jsonb)as grants
+  from jsonb_to_recordset(${JSON.stringify(actorExpected.map(actor=>({user_id:actor.userId,employment_id:actor.employmentId})))}::jsonb)as wanted(user_id uuid,employment_id uuid)
+  left join public.app_user u on u.id=wanted.user_id
+  left join public.employment e on e.id=wanted.employment_id
+  left join public.person p on p.id=e.person_id
+  left join public.company c on c.id=e.company_id order by wanted.user_id`;
+ assert(actorNative.length===500&&new Set(actorNative.map(actor=>actor.requested_user_id)).size===500,'Native selected traffic actor inventory differs');
+ const actorExpectedByUser=new Map(actorExpected.map(actor=>[actor.userId,actor]));
+ for(const row of actorNative){
+  const expected=actorExpectedByUser.get(row.requested_user_id);
+  assert(expected&&row.user_id===expected.userId&&row.user_tenant_id===expected.tenantId&&row.user_person_id===expected.personId
+   &&row.employment_id===expected.employmentId&&row.employment_tenant_id===expected.tenantId&&row.employment_person_id===expected.personId&&row.employment_company_id===expected.companyId&&row.employee_code===expected.employeeCode
+   &&row.person_id===expected.personId&&row.person_tenant_id===expected.tenantId&&row.full_name===expected.name&&row.company_id===expected.companyId&&row.company_tenant_id===expected.tenantId,
+   'Native traffic actor identity or scope differs');
+  assert(Array.isArray(row.grants)&&JSON.stringify(row.grants)===JSON.stringify(expected.grants),'Native traffic actor grants differ');
+ }
+ assert(actorNative.reduce((total,actor)=>total+actor.grants.length,0)===544,'Native traffic actor grant inventory differs');
+ // Boolean assertions above never render private row/ID values. Public evidence is aggregates only.
+ writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'actor-tenancy.json'),JSON.stringify({fictional:true,trafficActors:500,tenants:2,companies:10,actorsPerTenant:250,actorsPerCompany:50,
+  roles:{employee:460,manager:20,companyHR:18,groupHR:2},nativeSelectedRows:actorNative.length,nativeGrants:544,globalPopulationAsserted:false},null,2));
  const fixturePath=join(process.env.PERF_PRIVATE_DIR,'fixture.json');
  writeFileSync(fixturePath,JSON.stringify({today,month,users,tenants}),{mode:0o600});
  // Use the actual server-only package export only for this child; the existing fixture stays in ordinary Node.
