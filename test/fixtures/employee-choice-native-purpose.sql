@@ -152,20 +152,22 @@ BEGIN
   UNION ALL
   SELECT d."employmentId",d.name FROM employee_choice_page_descending d
  ),employee_choice_page_assignments AS MATERIALIZED(
-  SELECT k."employmentId",a."departmentId",a."businessUnitId" FROM employee_choice_page_keys k
-  JOIN LATERAL(
+  -- Carry the bounded page identities through hydration exactly once. Joining
+  -- this materialized page back to matching can become a quadratic page join.
+  SELECT m."employmentId",m.name,m."employeeCode",m."companyId",a."departmentId",a."businessUnitId",m.status
+  FROM employee_choice_matching m LEFT JOIN LATERAL(
    SELECT current_assignment.department_id AS "departmentId",current_assignment.business_unit_id AS "businessUnitId"
    FROM public.assignment current_assignment WHERE identity_project AND current_assignment.tenant_id=p_tenant
-    AND current_assignment.employment_id=k."employmentId" AND current_assignment.valid_to IS NULL AND current_assignment.superseded_at IS NULL
+    AND current_assignment.employment_id=m."employmentId" AND current_assignment.valid_to IS NULL AND current_assignment.superseded_at IS NULL
    OFFSET 0
   ) a ON true
+  WHERE identity_project AND (m."employmentId" IN(SELECT k."employmentId" FROM employee_choice_page_keys k)) IS TRUE
  ),employee_choice_result AS (
-  SELECT m."employmentId",m.name,m."employeeCode",m."companyId",
-   CASE WHEN identity_project THEN a."departmentId" ELSE m."departmentId" END AS "departmentId",
-   CASE WHEN identity_project THEN a."businessUnitId" ELSE m."businessUnitId" END AS "businessUnitId",m.status
-  FROM employee_choice_matching m LEFT JOIN employee_choice_page_assignments a ON a."employmentId"=m."employmentId"
-   WHERE p_port IN('page','project') AND p_search_mode='none'
+  SELECT m.* FROM employee_choice_matching m
+   WHERE NOT identity_project AND p_port IN('page','project') AND p_search_mode='none'
     AND (m."employmentId" IN(SELECT k."employmentId" FROM employee_choice_page_keys k)) IS TRUE
+  UNION ALL
+  SELECT p.* FROM employee_choice_page_assignments p WHERE identity_project
   UNION ALL
   SELECT m.* FROM employee_choice_matching m WHERE (p_port='ids' OR (p_port='page' AND p_search_mode<>'none')) AND
    CASE p_search_mode WHEN 'none' THEN true WHEN 'impossible' THEN false
