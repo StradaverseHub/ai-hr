@@ -1,13 +1,13 @@
 {
   "kind": "AI_MANAGEMENT_SECTION_SOURCE_ONLY_NOT_QUALIFICATION",
   "base": "cd47c63c77d26431ee33de38b75790c62924a1ad",
-  "sourceRef": "codex/ai-provider-active-row-decoder-20261109",
+  "sourceRef": "codex/ai-management-common-presentation-20261109",
   "currentSourceSha256": {
     "app/control-tower/agents/centre-controls.tsx": "3ce6b612fec0b328103b5221b673714e59f4548bf37be243211cfc4293d18915",
     "app/control-tower/agents/screen.tsx": "a137c62df804c0c4e6e40f11d3ecca1e295fabb3b817fb1d440225e38a172d12",
     "app/control-tower/agents/sections.ts": "b81f66a6d5b3ae8bca6ee5ef348187ba00782c63daffadc654bc03e7f690855b",
     "core/ai-inventory.ts": "39fb65f86aacfe0f624a92b3ec9bded28969121af5c30dcb76e2b32618f3efd1",
-    "core/ai-management.ts": "0cf2eea5529b850bac91ed5e6a03dd95e0adfcaabb6cded3eba9318b4c600bd2",
+    "core/ai-management.ts": "5ef8372aa5da630c5db634ee9c9d3e91ae5e678672e3d180f2db164674f562a4",
     "test/ai-centre-evidence.dom.test.tsx": "db1bd6f55113e6868576c33e8f533716203a5ab96611263098fc0edc46504a32",
     "test/ai-centre-page-timing.test.ts": "f2b9c76d2f69a8f94c20f228b6406a0926d7e31ba4749b80fbd5d18c64c3d25a",
     "test/ai-centre-step5-evidence.dom.test.tsx": "3ba0ff3f95a9021e5c0e65c84757538147f1d3a971e57a9c8e82539580693b0f",
@@ -17,8 +17,8 @@
     "test/ai-probe-history-page.dom.test.tsx": "8499c2ae79f630e0195e15d95e24225fdc93fb747f44c0fe8f0c76131bb2eb15",
     "test/automatic-followup-features.dom.test.tsx": "c442c9253dd293a278e7998fec67451d0732dc78a117c1752ff8ddb51467b6e2",
     "lib/ai/management-sections.ts": "d7efd0b96f9875c560c6b075c9ff1688a7bf0851684adbdab45c399f3cb5c783",
-    "test/ai-management-section-projection.test.ts": "46aabd77f1f53aa524d1bb57ff6cc0f0ade4eb23bc5f660072a906d4fa34084d",
-    "docs/adr/2026-11-09-ai-management-section-projection.md": "7b9c1565609c913ef8a68d9ef8815f39571821cc3e8942729cfdee4203378b08",
+    "test/ai-management-section-projection.test.ts": "55d2463ecd033a32e7dae12b436bde9fb0c883ff685d51f62c213c0af34156f2",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "1516c40b702bbdb73304d517435e5c8517518ba42887ec3e0c49316e23ade2c1",
     "test/ai-management-contract.test.ts": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808",
     "docs/qualification/ai-management-hosted-fixture-recovery-source-20261109.json": "a64ae179f8a3c9379d1f014a8f5c302b9642ff9837fb053144320ae5026fff91",
     "components/ai-centre/how-it-works.tsx": "e3e4e132419a5676d3be77c82883093b81d824ed2237ad03d508b4a232084265",
@@ -28,7 +28,11 @@
     "core/ai-provider-snapshot.ts": "945a01c642f23e7a7603b2d917e5b2a47db6547121a41a29082b1542f6c09a4c",
     "core/ai-provider-row.ts": "cfdb19a9c3c325862ccae535c8aba377e0952bec3270616996dded3774fddfe8",
     "test/ai-provider-snapshot.test.ts": "6680a24e0ee210eaf540a8b086fccebb9789c08b9974f809c7dcb6bb5a4248c3",
-    "docs/qualification/ai-provider-active-row-decoder-source-20261109.json": "7db18eb59a7eeafe0d82ade9e8bfac7305cca4cd5fe489e194b47891b06886a8"
+    "docs/qualification/ai-provider-active-row-decoder-source-20261109.json": "7db18eb59a7eeafe0d82ade9e8bfac7305cca4cd5fe489e194b47891b06886a8",
+    "core/ai-spend-management.ts": "932659860f919825d0533ecba0b1ad258e7a1f3a0abfd153bba0f7b51089e945",
+    "core/ai-management-presentation.ts": "407e1d7d07fe61248b11080f2fd81c25e02d387c4ca2bc13792c470c5596454d",
+    "test/ai-management-presentation.test.ts": "81121c2a83f7b7ef8968a968e2c8db484edadcad9c79a157204a6f84604033c2",
+    "docs/qualification/ai-management-common-presentation-source-20261109.json": "fbccc52a20a2972ab52be8b4a90942f6f35caa4b26eaa1bde89d645fb1690947"
   },
   "selfExcluded": "docs/qualification/ai-management-section-projection-source-20261109.json",
   "wholeParentGitPreimages": {
@@ -190,50 +194,80 @@
       ]
     },
     "core/ai-management.ts": {
-      "currentSha256": "0cf2eea5529b850bac91ed5e6a03dd95e0adfcaabb6cded3eba9318b4c600bd2",
+      "currentSha256": "5ef8372aa5da630c5db634ee9c9d3e91ae5e678672e3d180f2db164674f562a4",
       "parentSha256": "2e2c25f9ad2685ed6072da4aaa4929604ddecb4d5a323b3acf9966ab63473a01",
       "changes": [
         {
-          "startLine": 242,
-          "endLine": 243,
+          "startLine": 256,
+          "endLine": 258,
+          "after": "    return {spend:purpose==='full'?await aiSpendStatusTx(tx,ctx):await aiSpendPresentationStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};\n  },purpose==='full'?undefined:{readOnlySnapshot:true});\n",
+          "before": "    return {spend:await aiSpendStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};\n  });\n"
+        },
+        {
+          "startLine": 248,
+          "endLine": 249,
           "after": "    const legacyBudgets = purpose!=='status' && isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= ${todayInKualaLumpur()}::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];\n",
           "before": "    const legacyBudgets = isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= ${todayInKualaLumpur()}::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];\n"
         },
         {
-          "startLine": 238,
-          "endLine": 239,
+          "startLine": 244,
+          "endLine": 245,
           "after": "    const runs = purpose==='full' && isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt,reportedCredits:aiModelRun.openrouterAccountCostCredits,roundTripMs:aiModelRun.observedRoundTripMs,observationStatus:aiModelRun.providerObservationStatus})\n",
           "before": "    const runs = isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt,reportedCredits:aiModelRun.openrouterAccountCostCredits,roundTripMs:aiModelRun.observedRoundTripMs,observationStatus:aiModelRun.providerObservationStatus})\n"
         },
         {
-          "startLine": 196,
-          "endLine": 197,
+          "startLine": 202,
+          "endLine": 203,
           "after": "    const userRows = purpose!=='status' && isGroupAdmin(ctx) ? Array.from(await tx.execute<UserUsageRow & {assistant_granted:boolean}>(sql`\n",
           "before": "    const userRows = isGroupAdmin(ctx) ? Array.from(await tx.execute<UserUsageRow & {assistant_granted:boolean}>(sql`\n"
         },
         {
-          "startLine": 133,
-          "endLine": 138,
+          "startLine": 139,
+          "endLine": 144,
           "after": "    // Page status names the usable active model; the Provider form keeps its pending candidate separate.\n    // Preserve the full legacy API's settings-view selection for its existing consumers.\n    const selectedProvider = purpose==='full'\n      ? !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved\n      : resolved;\n",
           "before": "    const selectedProvider = !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved;\n"
         },
         {
-          "startLine": 96,
-          "endLine": 120,
-          "after": "  return readAiManagement(ctx, search, runFilter, 'full');\n}\n\ntype FullManagementView=Awaited<ReturnType<typeof aiManagementView>>;\ntype SharedManagementView=Omit<FullManagementView,'users'|'moreUsers'|'legacyBudget'|'runs'|'runFilter'>;\nexport type AiManagementPageView=SharedManagementView&(\n | {section:'allowances';allowances:Pick<FullManagementView,'users'|'moreUsers'|'legacyBudget'>}\n | {section:Exclude<AiManagementSection,'allowances'>;allowances:null}\n);\n\n/** Page-purpose projection. A missing detail is omitted data, never a zero/empty full read.\n * All common authority, provider usability, attention, switch and spend reads stay identical.\n * The Runs page owns its separate dated/paged history; no page consumes legacy recent runs. */\nexport async function aiManagementPageView(ctx:SessionContext,section:AiManagementSection,search='',runFilter:AiRunFilter={}):Promise<AiManagementPageView>{\n  if(!AI_MANAGEMENT_SECTIONS.some(value=>value===section))throw new AiControlError('Unknown AI management section.');\n  const full=await readAiManagement(ctx,search,{...runFilter},section==='allowances'?'allowances':'status');\n  const {users,moreUsers,legacyBudget,runs:_runs,runFilter:_runFilter,...common}=full;\n  if(section==='allowances')return {...common,section,allowances:{users,moreUsers,legacyBudget}};\n  return {...common,section,allowances:null};\n}\nexport type AiManagementAllowanceUser=FullManagementView['users'][number];\n\n/** One existing query/derivation owner. The purpose only excludes unused page detail reads. */\nasync function readAiManagement(ctx:SessionContext,search:string,runFilter:AiRunFilter,purpose:'full'|'allowances'|'status') {\n",
+          "startLine": 135,
+          "endLine": 138,
+          "after": "    if(purpose==='full'){\n      try { const cfg = await resolveActiveAiConfig(tx,ctx); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }\n    }else resolved=presentationProvider;\n",
+          "before": "    try { const cfg = await resolveActiveAiConfig(tx,ctx); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }\n"
+        },
+        {
+          "startLine": 128,
+          "endLine": 131,
+          "after": "    let presentationProvider:Awaited<ReturnType<typeof readAiManagementPresentationTx>>=null;\n    if(purpose==='full')await currentControlAdminTx(tx,ctx,false);\n    else presentationProvider=await readAiManagementPresentationTx(tx,ctx);\n",
+          "before": "    await currentControlAdminTx(tx,ctx,false);\n"
+        },
+        {
+          "startLine": 126,
+          "endLine": 127,
+          "after": "  const provider = purpose==='full' && isGroupAdmin(ctx) ? await getAiConfigView(ctx) : null;\n",
+          "before": "  const provider = isGroupAdmin(ctx) ? await getAiConfigView(ctx) : null;\n"
+        },
+        {
+          "startLine": 97,
+          "endLine": 122,
+          "after": "  return readAiManagement(ctx, search, runFilter, 'full');\n}\n\ntype FullManagementView=Awaited<ReturnType<typeof aiManagementView>>;\ntype SharedManagementView=Omit<FullManagementView,'users'|'moreUsers'|'legacyBudget'|'runs'|'runFilter'>;\nexport type AiManagementPageView=SharedManagementView&(\n | {section:'allowances';allowances:Pick<FullManagementView,'users'|'moreUsers'|'legacyBudget'>}\n | {section:Exclude<AiManagementSection,'allowances'>;allowances:null}\n);\n\n/** Page-purpose projection. A missing detail is omitted data, never a zero/empty full read.\n * Pages use one native read-only snapshot; the full API retains its live RC authority.\n * Shared allowance/attention/switch arithmetic remains in the single read owner.\n * The Runs page owns its separate dated/paged history; no page consumes legacy recent runs. */\nexport async function aiManagementPageView(ctx:SessionContext,section:AiManagementSection,search='',runFilter:AiRunFilter={}):Promise<AiManagementPageView>{\n  if(!AI_MANAGEMENT_SECTIONS.some(value=>value===section))throw new AiControlError('Unknown AI management section.');\n  const full=await readAiManagement(ctx,search,{...runFilter},section==='allowances'?'allowances':'status');\n  const {users,moreUsers,legacyBudget,runs:_runs,runFilter:_runFilter,...common}=full;\n  if(section==='allowances')return {...common,section,allowances:{users,moreUsers,legacyBudget}};\n  return {...common,section,allowances:null};\n}\nexport type AiManagementAllowanceUser=FullManagementView['users'][number];\n\n/** One existing query/derivation owner. The purpose only excludes unused page detail reads. */\nasync function readAiManagement(ctx:SessionContext,search:string,runFilter:AiRunFilter,purpose:'full'|'allowances'|'status') {\n",
           "before": ""
         },
         {
-          "startLine": 94,
-          "endLine": 95,
+          "startLine": 95,
+          "endLine": 96,
           "after": "/** The full legacy API retains users, recent runs and budgets for its existing consumers. */\n",
           "before": ""
         },
         {
-          "startLine": 17,
-          "endLine": 18,
+          "startLine": 18,
+          "endLine": 19,
           "after": "import {AI_MANAGEMENT_SECTIONS,type AiManagementSection} from '../lib/ai/management-sections';\n",
           "before": ""
+        },
+        {
+          "startLine": 15,
+          "endLine": 17,
+          "after": "import {aiSpendStatusTx,aiSpendPresentationStatusTx} from './ai-spend-management';\nimport {readAiManagementPresentationTx} from './ai-management-presentation';\n",
+          "before": "import {aiSpendStatusTx} from './ai-spend-management';\n"
         }
       ]
     }
@@ -245,7 +279,6 @@
     "core/ai-principal.ts": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21",
     "core/ai-provider-authority.ts": "d37a6b5aa76de0ca92a5a2d3006f0b34b7a111458d51d0e783f7e9b471b7a38d",
     "core/ai-provider-readiness.ts": "aad2948b7727b44c4e830ff4dc496bc7825127ab2a4e6bc493e54d2f6139a2d1",
-    "core/ai-spend-management.ts": "c0d2ee3d5dd90e033f9e5968c34d41c624d287ed40a56c889da1196a6bbfe048",
     "core/ai-centre-control.ts": "90b4b0161664f5f17cc0f4cc548def2cc00271d117b1852301a29aa5769db33a",
     "core/ai-centre-inventory.ts": "60744c123a892115c8fc2ae8c5049cc82ecd02e622decbe88ebbcd10c56dd7c0",
     "core/mandates/mandates.ts": "f4deafef68d764f6405d29e8ae66b7a186f050718c0429b989bd188e96e34014",
@@ -280,7 +313,6 @@
     "oneSharedSectionOwner": true,
     "legacyThreeArgumentApiFull": true,
     "allCommonQueryAndDerivationBytesPreserved": false,
-    "onlyNativeQueryPurposeGuardsAdded": 3,
     "nonAllowancesUserAndBudgetQueriesOmitted": 7,
     "allPageLegacyRecentRunQueriesOmitted": 8,
     "pageDtoHasNoLegacyUsersRunsFilterFields": true,
@@ -290,10 +322,12 @@
     "controlsOriginalPromiseAllBlockWhole": true,
     "controlsIndependentCatchOrderTuplePreserved": true,
     "controlsNoServerActionDirectiveOrNewEndpoint": true,
-    "noIsolationLockCommandStopAuditProviderEgressChange": true,
+    "noIsolationLockCommandStopAuditProviderEgressChange": false,
     "membershipInputsShrinkToAllAttentionActorsWhenUnusedUserListOmitted": true,
     "allEightGroupMatrixPurposesExerciseRealGroupMemberships": true,
-    "commonSelectionExplicitException": "Page-only provider metadata uses validated active model; full legacy selection and Provider pending/active form preserved."
+    "commonSelectionExplicitException": "Page-only provider metadata uses validated active model; full legacy selection and Provider pending/active form preserved.",
+    "commonPresentationExplicitException": "PAGE native RRRO admission replaces RC Access proof; full/command/Stop/provider/effect authority unchanged. No native ABI allocated/installed.",
+    "originalProjectionPurposeGuardsRetained": 3
   },
   "authoredNotExecutedCensus": {
     "newNativeCases": 17,
@@ -497,6 +531,32 @@
     "noRrroPresentationOrNativeAuthorityAdded": true,
     "sourceOnly": true,
     "runtimeQualified": false,
+    "releaseAuthorized": false
+  },
+  "commonPresentationPreparation": {
+    "parent": "d45829993342fcb6de225bb567668f94de898b3e",
+    "record": "docs/qualification/ai-management-common-presentation-source-20261109.json",
+    "recordSha256": "fbccc52a20a2972ab52be8b4a90942f6f35caa4b26eaa1bde89d645fb1690947",
+    "wholeParentIndex": {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+      "gitBlob": "461a64e2648c47a73891483c87ed0fcbdfaab4ad",
+      "sha256": "2fcd1a530303b2b2acd76ce494a90089333a5346e42c25a514026e6e2cbb58a2",
+      "bytes": 31047
+    },
+    "oldWholeProtectedSpendPin": "Historical sealed d458 only; current file/mapped read and whole writer proof recorded separately.",
+    "allFiveCurrentProductInversesSameWholeOriginalTargets": true,
+    "otherFourProductInverseObjectsWhole": true,
+    "sourceCensus": {
+      "projectionExpanded": 17,
+      "projectionModeCensusCallbacksIntentionallyChanged": 3,
+      "newPresentationExpanded": 9,
+      "upgradeFixture": "NOT_AUTHORED_UNTIL_ALLOCATED_BASELINE"
+    },
+    "nativeAbiStatus": "PRIVATE_UNALLOCATED_GUARDS_UNRESOLVED",
+    "currentAllEightGetClosure": "OPEN_SEPARATE_ROUTE_LEASES",
+    "currentSourceGraphApprovalAndRuntimeQualified": false,
+    "sourceOnly": true,
     "releaseAuthorized": false
   }
 }

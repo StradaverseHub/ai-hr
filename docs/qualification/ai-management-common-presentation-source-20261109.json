@@ -1,0 +1,517 @@
+{
+  "kind": "AI_MANAGEMENT_COMMON_PRESENTATION_SOURCE_PREPARATION_NOT_RUNTIME_OR_INSTALLATION",
+  "parent": "d45829993342fcb6de225bb567668f94de898b3e",
+  "sourceRef": "codex/ai-management-common-presentation-20261109",
+  "scope": [
+    "core/ai-management.ts",
+    "core/ai-spend-management.ts",
+    "core/ai-management-presentation.ts",
+    "test/ai-management-section-projection.test.ts",
+    "test/ai-management-presentation.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/ai-management-section-projection-source-20261109.json",
+    "docs/qualification/ai-management-common-presentation-source-20261109.json"
+  ],
+  "approvedUpgradeFixturePathDeferred": "test/ai-management-presentation-upgrade.test.ts deliberately not created until exact allocated append and accepted baseline exist; private concrete plan is not a test/skip or PASS.",
+  "wholeActualParentGitPreimages": [
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/ai-management.ts",
+      "gitBlob": "57d4c0484acdec1557bbb4452146796c33b7f754",
+      "sha256": "0cf2eea5529b850bac91ed5e6a03dd95e0adfcaabb6cded3eba9318b4c600bd2",
+      "bytes": 46131
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/ai-spend-management.ts",
+      "gitBlob": "12e35579a13ef58c43667823647360e7e86d38a8",
+      "sha256": "c0d2ee3d5dd90e033f9e5968c34d41c624d287ed40a56c889da1196a6bbfe048",
+      "bytes": 2814
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "test/ai-management-section-projection.test.ts",
+      "gitBlob": "2011c55cf68ec861a3090612664981c366567f8e",
+      "sha256": "46aabd77f1f53aa524d1bb57ff6cc0f0ade4eb23bc5f660072a906d4fa34084d",
+      "bytes": 26143
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "gitBlob": "85d86f95dc9034b9f0ff98211215395edfab3ab3",
+      "sha256": "7b9c1565609c913ef8a68d9ef8815f39571821cc3e8942729cfdee4203378b08",
+      "bytes": 13268
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+      "gitBlob": "461a64e2648c47a73891483c87ed0fcbdfaab4ad",
+      "sha256": "2fcd1a530303b2b2acd76ce494a90089333a5346e42c25a514026e6e2cbb58a2",
+      "bytes": 31047
+    }
+  ],
+  "newFilesAbsentFromParent": [
+    "core/ai-management-presentation.ts",
+    "test/ai-management-presentation.test.ts",
+    "docs/qualification/ai-management-common-presentation-source-20261109.json"
+  ],
+  "currentSourceSha256": {
+    "core/ai-management.ts": "5ef8372aa5da630c5db634ee9c9d3e91ae5e678672e3d180f2db164674f562a4",
+    "core/ai-spend-management.ts": "932659860f919825d0533ecba0b1ad258e7a1f3a0abfd153bba0f7b51089e945",
+    "core/ai-management-presentation.ts": "407e1d7d07fe61248b11080f2fd81c25e02d387c4ca2bc13792c470c5596454d",
+    "test/ai-management-section-projection.test.ts": "55d2463ecd033a32e7dae12b436bde9fb0c883ff685d51f62c213c0af34156f2",
+    "test/ai-management-presentation.test.ts": "81121c2a83f7b7ef8968a968e2c8db484edadcad9c79a157204a6f84604033c2",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "1516c40b702bbdb73304d517435e5c8517518ba42887ec3e0c49316e23ade2c1"
+  },
+  "historicalWholeProtectedSpendOwner": {
+    "status": "HISTORICAL_D458_ONLY_NOT_CURRENT_WHOLE_FILE",
+    "ref": {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/ai-spend-management.ts",
+      "gitBlob": "12e35579a13ef58c43667823647360e7e86d38a8",
+      "sha256": "c0d2ee3d5dd90e033f9e5968c34d41c624d287ed40a56c889da1196a6bbfe048",
+      "bytes": 2814
+    },
+    "writerAndOldRCGuardQueryRemainWhole": true
+  },
+  "wholeImmediateParentInverses": {
+    "core/ai-management.ts": {
+      "coordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+      "changes": [
+        {
+          "startLine": 256,
+          "endLine": 258,
+          "after": "    return {spend:purpose==='full'?await aiSpendStatusTx(tx,ctx):await aiSpendPresentationStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};\n  },purpose==='full'?undefined:{readOnlySnapshot:true});\n",
+          "before": "    return {spend:await aiSpendStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};\n  });\n"
+        },
+        {
+          "startLine": 135,
+          "endLine": 138,
+          "after": "    if(purpose==='full'){\n      try { const cfg = await resolveActiveAiConfig(tx,ctx); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }\n    }else resolved=presentationProvider;\n",
+          "before": "    try { const cfg = await resolveActiveAiConfig(tx,ctx); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }\n"
+        },
+        {
+          "startLine": 128,
+          "endLine": 131,
+          "after": "    let presentationProvider:Awaited<ReturnType<typeof readAiManagementPresentationTx>>=null;\n    if(purpose==='full')await currentControlAdminTx(tx,ctx,false);\n    else presentationProvider=await readAiManagementPresentationTx(tx,ctx);\n",
+          "before": "    await currentControlAdminTx(tx,ctx,false);\n"
+        },
+        {
+          "startLine": 126,
+          "endLine": 127,
+          "after": "  const provider = purpose==='full' && isGroupAdmin(ctx) ? await getAiConfigView(ctx) : null;\n",
+          "before": "  const provider = isGroupAdmin(ctx) ? await getAiConfigView(ctx) : null;\n"
+        },
+        {
+          "startLine": 108,
+          "endLine": 110,
+          "after": " * Pages use one native read-only snapshot; the full API retains its live RC authority.\n * Shared allowance/attention/switch arithmetic remains in the single read owner.\n",
+          "before": " * All common authority, provider usability, attention, switch and spend reads stay identical.\n"
+        },
+        {
+          "startLine": 15,
+          "endLine": 17,
+          "after": "import {aiSpendStatusTx,aiSpendPresentationStatusTx} from './ai-spend-management';\nimport {readAiManagementPresentationTx} from './ai-management-presentation';\n",
+          "before": "import {aiSpendStatusTx} from './ai-spend-management';\n"
+        }
+      ]
+    },
+    "core/ai-spend-management.ts": {
+      "coordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+      "changes": [
+        {
+          "startLine": 12,
+          "endLine": 24,
+          "after": " const[row]=await tx.execute<{status:AiSpendStatus}>(sql`select app.ai_optional_spend_status() as status`);if(!row)throw new AiGatewayError('AI spend allocation unavailable.');return normalizeAiSpendStatus(row.status);\n}\n/** One mapper for legacy RC and snapshot presentation; no price or capability authority. */\nfunction normalizeAiSpendStatus(status:AiSpendStatus):AiSpendStatus{\n const count=status.reviewedCarrierRecords;return{...status,reviewedCarrierRecords:typeof count==='number'&&Number.isSafeInteger(count)&&count>=0?count:null,unpricedUnknownRuns:typeof status.unpricedUnknownRuns==='number'&&Number.isSafeInteger(status.unpricedUnknownRuns)&&status.unpricedUnknownRuns>=0?status.unpricedUnknownRuns:null,liveCapability:'not_verified_here'};\n}\n/** Presentation-only native ABI. Missing/drifted schema is a real failure, never an RC fallback. */\nexport async function aiSpendPresentationStatusTx(tx:Tx,ctx:SessionContext):Promise<AiSpendStatus|null>{\n const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};\n await assertAiPresentationPrincipalTx(tx,current);if(!isGroupAdmin(current))return null;\n const[row]=await tx.execute<{status:AiSpendStatus}>(sql`select app.ai_spend_presentation_status_v1() as status`);\n if(!row)throw new AiGatewayError('AI spend allocation unavailable.');return normalizeAiSpendStatus(row.status);\n",
+          "before": " const[row]=await tx.execute<{status:AiSpendStatus}>(sql`select app.ai_optional_spend_status() as status`);if(!row)throw new AiGatewayError('AI spend allocation unavailable.');const count=row.status.reviewedCarrierRecords;return{...row.status,reviewedCarrierRecords:typeof count==='number'&&Number.isSafeInteger(count)&&count>=0?count:null,unpricedUnknownRuns:typeof row.status.unpricedUnknownRuns==='number'&&Number.isSafeInteger(row.status.unpricedUnknownRuns)&&row.status.unpricedUnknownRuns>=0?row.status.unpricedUnknownRuns:null,liveCapability:'not_verified_here'};\n"
+        },
+        {
+          "startLine": 4,
+          "endLine": 5,
+          "after": "import {assertAiPrincipalTx,assertAiPresentationPrincipalTx} from './ai-principal';\n",
+          "before": "import {assertAiPrincipalTx} from './ai-principal';\n"
+        }
+      ]
+    },
+    "test/ai-management-section-projection.test.ts": {
+      "coordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+      "changes": [
+        {
+          "startLine": 286,
+          "endLine": 290,
+          "after": " expect(authorityCounts(baseline.probe.queries)).toEqual({'rc-carrier':5,access:5,'rc-principal':5,'group-admin':2,'provider-form':1,candidate:1,active:1,'legacy-spend':1});\n expect(authorityCounts(candidate.probe.queries)).toEqual({'rrro-principal':2,'presentation-admin':1,active:1,'presentation-spend':1});\n expect(candidate.probe.queries.length).toBe(baseline.probe.queries.length-19);\n expect(candidate.probe.properties).toHaveLength(1);expect(candidate.probe.properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});\n",
+          "before": " expect(candidate.probe.queries.length).toBe(baseline.probe.queries.length-3);\n"
+        },
+        {
+          "startLine": 137,
+          "endLine": 140,
+          "after": "  expect(authorityCounts(result.probe.queries)).toEqual({'rrro-principal':2,'presentation-admin':1,active:1});\n  expect(result.probe.queries).toHaveLength(baselineRead.probe.queries.length-6);\n  expect(result.probe.properties).toHaveLength(1);expect(result.probe.properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});\n",
+          "before": ""
+        },
+        {
+          "startLine": 131,
+          "endLine": 133,
+          "after": " const ctx:SessionContext={...group,userId:u.id,grants:[{role:'hr_admin',companyId:b.companyId}]},baselineRead=await observed(()=>aiManagementView(ctx)),baseline=baselineRead.value;\n expect(authorityCounts(baselineRead.probe.queries)).toEqual({'rc-carrier':3,access:3,'rc-principal':3,active:1});\n",
+          "before": " const ctx:SessionContext={...group,userId:u.id,grants:[{role:'hr_admin',companyId:b.companyId}]},baseline=await aiManagementView(ctx);\n"
+        },
+        {
+          "startLine": 118,
+          "endLine": 120,
+          "after": "  expect(result.probe.properties).toHaveLength(1);\n  expect(result.probe.properties.every(p=>p.role==='ai_hr_app'&&p.isolation==='repeatable read'&&p.readOnly===true)).toBe(true);\n",
+          "before": "  expect(result.probe.properties).toHaveLength(baseline.probe.properties.length);\n  expect(result.probe.properties.every(p=>p.role==='ai_hr_app'&&p.isolation==='read committed'&&p.readOnly===false)).toBe(true);\n"
+        },
+        {
+          "startLine": 113,
+          "endLine": 116,
+          "after": "  // Exact authority delta21\u21925 plus the unchanged one/three omitted detail statements.\n  expect(authorityCounts(result.probe.queries)).toEqual({'rrro-principal':2,'presentation-admin':1,active:1,'presentation-spend':1});\n  expect(result.probe.queries.length).toBe(baseline.probe.queries.length-16-(section==='allowances'?1:3));\n",
+          "before": "  expect(result.probe.queries.length).toBe(baseline.probe.queries.length-(section==='allowances'?1:3));\n"
+        },
+        {
+          "startLine": 104,
+          "endLine": 106,
+          "after": " expect(authorityCounts(baseline.probe.queries)).toEqual({'rc-carrier':5,access:5,'rc-principal':5,'group-admin':2,'provider-form':1,candidate:1,active:1,'legacy-spend':1});\n expect(baseline.probe.properties).toHaveLength(2);expect(baseline.probe.properties.every(p=>p.role==='ai_hr_app'&&p.isolation==='read committed'&&!p.readOnly)).toBe(true);\n",
+          "before": ""
+        },
+        {
+          "startLine": 57,
+          "endLine": 75,
+          "after": "/** Closed authority statement census; required fact SQL remains in the original parity oracle. */\nfunction authorityCounts(queries:NativeReadQuery[]){\n const counts:Record<string,number>={};\n for(const query of queries){const text=query.sql;let kind:string|undefined;\n  if(text.includes('from public.app_user u')&&text.includes('app.principal_snapshot_current()'))kind=text.includes(\"'repeatable read'\")?'rrro-principal':'rc-principal';\n  else if(text.includes(' as matches')&&text.includes(\"'read committed'\"))kind='rc-carrier';\n  else if(text.includes('pg_advisory_xact_lock('))kind='access';\n  else if(text.includes(' as group_allowed'))kind='presentation-admin';\n  else if(text.includes('select app.is_group_admin() as allowed'))kind='group-admin';\n  else if(text.includes('app.ai_active_provider_config_v2()'))kind='active';\n  else if(text.includes('app.ai_provider_candidate_view_v1()'))kind='candidate';\n  else if(text.includes('app.ai_optional_spend_status()'))kind='legacy-spend';\n  else if(text.includes('app.ai_spend_presentation_status_v1()'))kind='presentation-spend';\n  else if(text.includes('from \"ai_provider_config\"'))kind='provider-form';\n  if(kind)counts[kind]=(counts[kind]??0)+1;\n }\n return counts;\n}\n",
+          "before": ""
+        }
+      ]
+    }
+  },
+  "wholeProtectedOwnerPins": [
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/client.ts",
+      "gitBlob": "0c4f28e00393a763608b506d608a3cf7df542c57",
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f",
+      "bytes": 22595
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/schema.ts",
+      "gitBlob": "c80eb3180eebc7bf9fb9a30367e4b00746b22592",
+      "sha256": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112",
+      "bytes": 820303
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/workload.ts",
+      "gitBlob": "b49f7ae02df60dff44c5211378bf1c6b0df05510",
+      "sha256": "bbbd5e108bf78c6320e7db6befac4845c190f967e1f367d7f525b0da1ca8a692",
+      "bytes": 1171
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/ai-principal.ts",
+      "gitBlob": "85630db56130b32196d12e7ffd04fbb27fb88b22",
+      "sha256": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21",
+      "bytes": 3793
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/read-composition-principal.ts",
+      "gitBlob": "b3b1450d56494b9ea4ddb256dd79e7621cbf4988",
+      "sha256": "c7aa4e96c317171db89581f72c418b4cff36cb18daa40f1a6e19766b38e75b2d",
+      "bytes": 820
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/access-configuration-lock.ts",
+      "gitBlob": "821a3ca3d4f08caff5a035674ea1932abf457cd8",
+      "sha256": "9bc7cd8706b1db3d9b223943d4161cbaec5bd8860c436e46195dc9277292f29e",
+      "bytes": 1892
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/ai-config.ts",
+      "gitBlob": "ef9f1a64435a1d1e0cf9c2110fc28175afc227bb",
+      "sha256": "6f6345624735f94d5c1faa9306d7a3fa913a61e0cbfb29c5e46b367aea8ea252",
+      "bytes": 21367
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/ai-provider-snapshot.ts",
+      "gitBlob": "21556843d8972922ec2e439bd8e2e893f0655295",
+      "sha256": "945a01c642f23e7a7603b2d917e5b2a47db6547121a41a29082b1542f6c09a4c",
+      "bytes": 11272
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/ai-provider-row.ts",
+      "gitBlob": "da6028cae15f546e557f1ca62b6f38c873b256db",
+      "sha256": "cfdb19a9c3c325862ccae535c8aba377e0952bec3270616996dded3774fddfe8",
+      "bytes": 2122
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/ai-provider-authority.ts",
+      "gitBlob": "d74986076258249925cd0942ef883682e2f0a19a",
+      "sha256": "d37a6b5aa76de0ca92a5a2d3006f0b34b7a111458d51d0e783f7e9b471b7a38d",
+      "bytes": 508
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/ai-provider-readiness.ts",
+      "gitBlob": "06a9cd274d447d1a2e1a44a4a19e885a4b538d3e",
+      "sha256": "aad2948b7727b44c4e830ff4dc496bc7825127ab2a4e6bc493e54d2f6139a2d1",
+      "bytes": 10118
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/ai-centre-control.ts",
+      "gitBlob": "f7e47027ec8964b4c25732b7294e6c2a1f72147f",
+      "sha256": "90b4b0161664f5f17cc0f4cc548def2cc00271d117b1852301a29aa5769db33a",
+      "bytes": 3376
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/ai-centre-inventory.ts",
+      "gitBlob": "c59b234847d0f97f922d7f01a1f904851c84fac3",
+      "sha256": "60744c123a892115c8fc2ae8c5049cc82ecd02e622decbe88ebbcd10c56dd7c0",
+      "bytes": 4723
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/mandates/mandates.ts",
+      "gitBlob": "9098392e8c83989d69ea5254c84f550952ac4c2d",
+      "sha256": "f4deafef68d764f6405d29e8ae66b7a186f050718c0429b989bd188e96e34014",
+      "bytes": 17327
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/entitlements.ts",
+      "gitBlob": "d20c047c91cfadf816781d5eac9844432cc101e5",
+      "sha256": "e1762b36f490b3aaf79afedbe5f7bc363a16e79e85b78fbefea04d68c8e05055",
+      "bytes": 56779
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "core/agent-principal.ts",
+      "gitBlob": "6ee2faa2f96a7414532f08904e59c53052a4fb73",
+      "sha256": "411ac66d9b6cc8cf754ef1bf2a04785f96018e466c76c4e7acd2919cd27c7dd7",
+      "bytes": 7198
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "lib/ai/registry.ts",
+      "gitBlob": "27c603ef11fe39c7b27254b941333674f1b3d3ff",
+      "sha256": "68211cdf669941d312d5c3ce57f1efa55c288acf6324fc848c32b20694104712",
+      "bytes": 2740
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "lib/ai/crypto.ts",
+      "gitBlob": "4a8d2293c1f91bff9fe5e01bc2aa132321521d89",
+      "sha256": "b7b3963a4ab4390f5061e6a374c98f1343c7b0503a01f50af44dd92697077f3d",
+      "bytes": 5306
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "lib/ai/types.ts",
+      "gitBlob": "82098b38dd641f8f3a1b12555a5a4d02f04e2dbe",
+      "sha256": "da8d161d20a10e34fb39d5d8767ddcc3f139d1f617246b6c58840d99a1937696",
+      "bytes": 12046
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "lib/authz-model.ts",
+      "gitBlob": "f8ae2f260ed1212606b0148af9c61647acd63dfc",
+      "sha256": "7be6796f0b6534f3fd9a2e3332d9307ec1fc2bbead8a1607a2890ecaf08e5969",
+      "bytes": 6338
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "test/harness.ts",
+      "gitBlob": "2239a072cbc922366ebb0ad1f3ec7c85c8668685",
+      "sha256": "ab992137979341edd6bc15ba47e38d99d3e96994b788f15afde27cea3ed6db9e",
+      "bytes": 50558
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "test/helpers/native-read-observer.ts",
+      "gitBlob": "fdf10e2b00b0ad0f65d34c17787c0a115961fd26",
+      "sha256": "401bd549ee1ff0ad4ae7241743860682dd8a081ee71e9ee401056b0dc95787d5",
+      "bytes": 5384
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/0058_chunky_beast.sql",
+      "gitBlob": "ad49283620159792a68fcf94236304a397fa130a",
+      "sha256": "7499a3adcd769a8bebad4a4ae1e2f8683404f373e2e137f4bf1c9137fcc64f9a",
+      "bytes": 942
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/0059_ai_provider_config_rls.sql",
+      "gitBlob": "d0a925357abf36326f57fbc77ed0283d3703244a",
+      "sha256": "632e6365830bfd939b3b43ea1fe18f632ce2addaf114af3a9a3dbf6278885905",
+      "bytes": 3970
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/0541_ai_control_centre.sql",
+      "gitBlob": "5aa157470f04d888f9300d551fac1ea3670cdb81",
+      "sha256": "4eafc29701a7ceada09220c1c9d957683bfc346f5f5041370b97cdd90581eb7c",
+      "bytes": 12449
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/0623_openrouter_provider_options.sql",
+      "gitBlob": "01754463e8ccc6fe8204d51eec4ff30849be0538",
+      "sha256": "0f78416bd82c8e7328732b4234fe071ba15248f387ab9aa8ef911ee1822cd319",
+      "bytes": 4288
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/0625_provider_readiness.sql",
+      "gitBlob": "c726037cfbce63df162990472f9a2d111e5a0be2",
+      "sha256": "8634525e4ac5a6810435518b54b92f5f478f75c9004413180fdeabbf46bc15f1",
+      "bytes": 17498
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/0651_ai_spend_controls.sql",
+      "gitBlob": "7a2a15de48c2b2b6c2cab844c27bf716f779b3a3",
+      "sha256": "3985c5bfc2bc3cddaae19db086ecc75627f3a8dbcdf7f1d65802f7bf32668ac3",
+      "bytes": 69872
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/0654_ai_optional_usd_policy.sql",
+      "gitBlob": "59029fc244b708d278947b8d2f9c983fcf8dbfe0",
+      "sha256": "c27d38029a7140a70c9a661dd71244a4a62a0f262e9db94fdbf63c81bbdcd4dd",
+      "bytes": 21325
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/0661_ai_gateway_provider.sql",
+      "gitBlob": "57c3e3ae7a04bdecba586444d958e214cd1dba2d",
+      "sha256": "24c4aa02c017e7f55ab538041a1fc206c49d9ddb87f1855865cdce1abcc23f33",
+      "bytes": 2102
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/0678_ai_connection_probe_ledger.sql",
+      "gitBlob": "d8493f4864ffceabfb14de1f66e28665b24f7c7c",
+      "sha256": "e96851f0b09ba117f9cec03852b9c270da456c36b69a5199a588f483e1a9772a",
+      "bytes": 12429
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/0686_ai_provider_custody_owner_rls.sql",
+      "gitBlob": "ac68caa5fabb19b598f419c3ea5df3b0e2aabda5",
+      "sha256": "571fe5c0865f1419cf500d3ce90f82fea8b80145dec8a48e0c75a0aa3d31555d",
+      "bytes": 1567
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/3200_ai_centre_controls.sql",
+      "gitBlob": "0ae6e4af0b2bce07d60837e1cb88e5aea10ccc03",
+      "sha256": "2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2",
+      "bytes": 20085
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/3500_ai_centre_architecture_compatibility.sql",
+      "gitBlob": "961c9b17b704702c5f52c83b8eb7d88b1ed80c25",
+      "sha256": "3286f17e76b8d997c46b22019df613b9eef1d1b82c85c125cdb57b80392884ca",
+      "bytes": 13020
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/3501_ai_centre_mandate_write_order.sql",
+      "gitBlob": "508cf9e5b1f288d76a07329a927acc822c4c13f0",
+      "sha256": "821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76",
+      "bytes": 11230
+    },
+    {
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "path": "db/migrations/meta/_journal.json",
+      "gitBlob": "3ba4ce0e97252c35528232169ab9780cbbe23acb",
+      "sha256": "c288908efd8c5ecdad8162599b8160a6ae22cd84442f956812632ed097b01052",
+      "bytes": 115315
+    }
+  ],
+  "legacyAndBusinessContracts": {
+    "fullThreeArgEntryWhole": true,
+    "fullCurrentAdminProviderConfigResolverNativeSpendCallsAndIsolationUnchanged": true,
+    "onlyOneCommonQueryAndDerivationOwner": true,
+    "allowanceUsageAttentionQuietGroupDateOrderLimitMathWhole": true,
+    "pageOnlyNativeRRROBeforeGucs": true,
+    "nativePrincipalAndAdminBeforePrivateFacts": true,
+    "noRCOrAccessAiGateInNewCommonPath": true,
+    "providerActiveV2SqlOutsideCpuCatch": true,
+    "onlyCpuInvalidStoredRowUnavailableAndNoPresentRowFallback": true,
+    "noSnapshotOrCommandIssuer": true,
+    "companyNoPrivateSpendOrCandidate": true,
+    "allPageCommonPurposesNoCandidateFormQuery": true,
+    "oldRCSpendGuardAndNativeQueryWhole": true,
+    "sharedStatusMapperExpressionExact": true,
+    "spendSetterBodyWhole": true,
+    "noNativeSqlMigrationJournalChanges": true
+  },
+  "intentionalProjectionTestChanges": {
+    "same12Registrations17ExpandedNames": true,
+    "only3ModeAndAuthorityCensusCallbacksChanged": true,
+    "other9Registrations14ExpandedBodiesWhole": true,
+    "allFactDtoExpectedValueOraclesRetained": true,
+    "ordinaryGroupAuthorityStatementsFull21Page5": true,
+    "exactGroupStatementDeltaFullMinus16MinusDetailAllow1Status3": true,
+    "ordinaryCompanyAuthorityFull10Page4ExactDelta6": true,
+    "sourceExpectedNotMeasured": true
+  },
+  "newNativeFixtureCensus": {
+    "registrations": 8,
+    "expandedCases": 9,
+    "authoredNotExecuted": true,
+    "cases": [
+      "actual four native mode matrix",
+      "independent zero/unknown/nonprobe accounting",
+      "candidate metadata/private/table ACL refusals",
+      "Access writer committed revocation",
+      "Access writer rolled back revocation",
+      "snapshot scope narrowing/stale command",
+      "native DML and SQL rollback",
+      "held raw Stop writer before read",
+      "Stop old/new snapshot and live command refusal/resume"
+    ],
+    "noExtraDriverPool": true,
+    "nativeModesUseExistingAppDbBeforeBeginGucs": true,
+    "heldReadsObserveActualPidRoleModeLocksWhileHolderOpen": true,
+    "onlyTestNativeLockTimeoutBoundedNoGuardSubstitution": true
+  },
+  "privateNativePlans": [
+    {
+      "path": "/private/tmp/aihr-ai-management-common-presentation-native-plan-20261109/abi-and-guard-plan-v2-private.json",
+      "sha256": "aded84f75c248e067f693e05dee5e0c95e44f267b3daf6b77d544116b44aaef7",
+      "bytes": 18551,
+      "meaning": "PRIVATE SOURCE REVIEW DATA ONLY; no allocated/executable SQL or native proof"
+    },
+    {
+      "path": "/private/tmp/aihr-ai-management-common-presentation-native-plan-20261109/populated-upgrade-fixture-plan.md",
+      "sha256": "e3231e266bbd556ec611a05a78542b1573fb94c01a39093981fdc08edd3814a7",
+      "bytes": 4339,
+      "meaning": "PRIVATE SOURCE REVIEW DATA ONLY; no allocated/executable SQL or native proof"
+    }
+  ],
+  "nativeGuardStatus": "UNRESOLVED: actual710 versus future four principal bodies and selected upstream/reallocated38; owner-only policy/all-overload absence/full pre/post guards must be accepted before any SQL becomes executable.",
+  "nativeFactsProposed": "Two private VOLATILE base/optional facts; exact final0651/0678 math once; oldtwoRCABI/OID/ACL preserved, newRRROguarded wrapper; no app/private helper grants or PUBLIC owner policy.",
+  "nativeSqlAllocatedOrInstalled": false,
+  "routeClosureOpen": [
+    "Provider form child RC",
+    "Workers children RC",
+    "Assistant provenance/erasure RC",
+    "Allowances preview RC",
+    "optional cohort composition"
+  ],
+  "sourceGraphAndApprovalBindingsOpen": true,
+  "allExistingFailuresAndPassesRemainOriginalIdentities": true,
+  "repositoryImportsTestsNativeDbBuildNetworkExecutedLocally": false,
+  "runtimeQualified": false,
+  "published": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

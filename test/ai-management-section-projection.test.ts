@@ -55,6 +55,24 @@ const classify=(text:string)=>text.includes('left join lateral(select count(*) f
  :text.includes('"ai_model_run"')&&text.includes('"finished_at"')?'legacy-recent-runs'
  :text.includes('select u.id,')&&text.includes('array(select r.role::text')?'user-memberships':'shared';
 const classes=(queries:NativeReadQuery[])=>queries.map(q=>classify(q.sql));
+/** Closed authority statement census; required fact SQL remains in the original parity oracle. */
+function authorityCounts(queries:NativeReadQuery[]){
+ const counts:Record<string,number>={};
+ for(const query of queries){const text=query.sql;let kind:string|undefined;
+  if(text.includes('from public.app_user u')&&text.includes('app.principal_snapshot_current()'))kind=text.includes("'repeatable read'")?'rrro-principal':'rc-principal';
+  else if(text.includes(' as matches')&&text.includes("'read committed'"))kind='rc-carrier';
+  else if(text.includes('pg_advisory_xact_lock('))kind='access';
+  else if(text.includes(' as group_allowed'))kind='presentation-admin';
+  else if(text.includes('select app.is_group_admin() as allowed'))kind='group-admin';
+  else if(text.includes('app.ai_active_provider_config_v2()'))kind='active';
+  else if(text.includes('app.ai_provider_candidate_view_v1()'))kind='candidate';
+  else if(text.includes('app.ai_optional_spend_status()'))kind='legacy-spend';
+  else if(text.includes('app.ai_spend_presentation_status_v1()'))kind='presentation-spend';
+  else if(text.includes('from "ai_provider_config"'))kind='provider-form';
+  if(kind)counts[kind]=(counts[kind]??0)+1;
+ }
+ return counts;
+}
 async function observed<T>(read:()=>Promise<T>){const probe=observeNativeRead({classify}),start=performance.now();try{const value=await read();return {value,probe,elapsedMs:performance.now()-start};}finally{probe.restore();}}
 async function login(name:string,role:'employee'|'hr_admin'='employee',personId?:string){
  const [row]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:name,personId}).returning();
@@ -84,6 +102,8 @@ it('preserves all eight group-admin page projections and removes only their unus
  const f=await populated(),baseline=await observed(()=>aiManagementView(group));
  expect(baseline.value.users).toHaveLength(50);expect(baseline.value.moreUsers).toBe(true);expect(baseline.value.runs).toHaveLength(4);
  expect(baseline.value.legacyBudget).toMatchObject({monthly:12345,daily:7});
+ expect(authorityCounts(baseline.probe.queries)).toEqual({'rc-carrier':5,access:5,'rc-principal':5,'group-admin':2,'provider-form':1,candidate:1,active:1,'legacy-spend':1});
+ expect(baseline.probe.properties).toHaveLength(2);expect(baseline.probe.properties.every(p=>p.role==='ai_hr_app'&&p.isolation==='read committed'&&!p.readOnly)).toBe(true);
  expect(classes(baseline.probe.queries).filter(c=>c!=='shared')).toEqual(['top-users','user-memberships','legacy-recent-runs','legacy-budget']);
  for(const section of AI_MANAGEMENT_SECTIONS){
   const result=await observed(()=>aiManagementPageView(group,section));expect(result.value).toEqual(expectedPage(baseline.value,section));
@@ -91,11 +111,13 @@ it('preserves all eight group-admin page projections and removes only their unus
   expect(classes(result.probe.queries)).not.toContain('legacy-recent-runs');
   expect(classes(result.probe.queries).filter(c=>c==='top-users')).toHaveLength(section==='allowances'?1:0);
   expect(classes(result.probe.queries).filter(c=>c==='legacy-budget')).toHaveLength(section==='allowances'?1:0);
-  expect(result.probe.queries.length).toBe(baseline.probe.queries.length-(section==='allowances'?1:3));
+  // Exact authority delta21→5 plus the unchanged one/three omitted detail statements.
+  expect(authorityCounts(result.probe.queries)).toEqual({'rrro-principal':2,'presentation-admin':1,active:1,'presentation-spend':1});
+  expect(result.probe.queries.length).toBe(baseline.probe.queries.length-16-(section==='allowances'?1:3));
   const memberships=result.probe.queries.filter(q=>classify(q.sql)==='user-memberships');expect(memberships).toHaveLength(1);
   if(section!=='allowances'){expect(memberships[0].rows).toBe(2);expect(memberships[0].params).toContain(f.heavy);expect(memberships[0].params).toContain(f.quiet);}
-  expect(result.probe.properties).toHaveLength(baseline.probe.properties.length);
-  expect(result.probe.properties.every(p=>p.role==='ai_hr_app'&&p.isolation==='read committed'&&p.readOnly===false)).toBe(true);
+  expect(result.probe.properties).toHaveLength(1);
+  expect(result.probe.properties.every(p=>p.role==='ai_hr_app'&&p.isolation==='repeatable read'&&p.readOnly===true)).toBe(true);
   expect(result.probe.state).toEqual({active:0,maxActive:1});
  }
  expect(baseline.value.attention.users.map(u=>u.id)).toEqual([f.heavy,f.quiet]);
@@ -107,11 +129,15 @@ it('preserves company-scoped projections without returning group users, runs or 
  await setAiAllowance(group,{kind:'company',subjectId:otherCompany.id,dailyRequests:0,monthlyTokens:null,enabled:true});
  const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'projection-company-admin'}).returning();
  await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,companyId:b.companyId,role:'hr_admin'});
- const ctx:SessionContext={...group,userId:u.id,grants:[{role:'hr_admin',companyId:b.companyId}]},baseline=await aiManagementView(ctx);
+ const ctx:SessionContext={...group,userId:u.id,grants:[{role:'hr_admin',companyId:b.companyId}]},baselineRead=await observed(()=>aiManagementView(ctx)),baseline=baselineRead.value;
+ expect(authorityCounts(baselineRead.probe.queries)).toEqual({'rc-carrier':3,access:3,'rc-principal':3,active:1});
  expect(baseline.companies.map(c=>c.id)).toEqual([b.companyId]);expect(baseline.users).toEqual([]);expect(baseline.runs).toEqual([]);
  expect(baseline.attention.users).toEqual([]);expect(baseline.attention.blocked).toEqual([]);expect(baseline.spend).toBeNull();
  for(const section of AI_MANAGEMENT_SECTIONS){
   const result=await observed(()=>aiManagementPageView(ctx,section));expect(result.value).toEqual(expectedPage(baseline,section));
+  expect(authorityCounts(result.probe.queries)).toEqual({'rrro-principal':2,'presentation-admin':1,active:1});
+  expect(result.probe.queries).toHaveLength(baselineRead.probe.queries.length-6);
+  expect(result.probe.properties).toHaveLength(1);expect(result.probe.properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});
   expect(classes(result.probe.queries)).not.toContain('top-users');expect(classes(result.probe.queries)).not.toContain('legacy-recent-runs');
   expect(classes(result.probe.queries)).not.toContain('legacy-budget');
   const visible=JSON.stringify(result.value);
@@ -258,7 +284,10 @@ it('removes the all-login lateral query from a scaled non-Allowances read with e
  expect(secondFull.probe.queries.length).toBe(firstFull.probe.queries.length);expect(secondPage.probe.queries.length).toBe(firstPage.probe.queries.length);
  expect(baseline.value.users).toHaveLength(50);expect(baseline.value.moreUsers).toBe(true);expect(candidate.value).toEqual(expectedPage(baseline.value,'features'));
  expect(baseline.value.users[0].id).toBe(f.heavy);expect(classes(baseline.probe.queries).filter(c=>c==='top-users')).toHaveLength(1);expect(classes(candidate.probe.queries)).not.toContain('top-users');
- expect(candidate.probe.queries.length).toBe(baseline.probe.queries.length-3);
+ expect(authorityCounts(baseline.probe.queries)).toEqual({'rc-carrier':5,access:5,'rc-principal':5,'group-admin':2,'provider-form':1,candidate:1,active:1,'legacy-spend':1});
+ expect(authorityCounts(candidate.probe.queries)).toEqual({'rrro-principal':2,'presentation-admin':1,active:1,'presentation-spend':1});
+ expect(candidate.probe.queries.length).toBe(baseline.probe.queries.length-19);
+ expect(candidate.probe.properties).toHaveLength(1);expect(candidate.probe.properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});
  const beforeRows=baseline.probe.queries.reduce((n,q)=>n+(q.rows??0),0),afterRows=candidate.probe.queries.reduce((n,q)=>n+(q.rows??0),0);expect(afterRows).toBeLessThan(beforeRows);
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'ai-management-section-projection.json'),JSON.stringify({
   kind:'NATIVE_AI_MANAGEMENT_SECTION_COMPONENT_NOT_BROWSER_OR_RELEASE',releaseEligible:false,fictionalBulkLogins:1060,nativeTenantLoginRows:census.logins,

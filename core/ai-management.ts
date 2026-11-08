@@ -13,7 +13,8 @@ import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { setTenantSetting } from './tenant-settings';
 import { assertAiPrincipalTx } from './ai-principal';
 import { isZeroCapped } from './ai-zero-cap';
-import {aiSpendStatusTx} from './ai-spend-management';
+import {aiSpendStatusTx,aiSpendPresentationStatusTx} from './ai-spend-management';
+import {readAiManagementPresentationTx} from './ai-management-presentation';
 import { agentSwitchStatesTx, type AgentFeature } from './agent-principal';
 import {AI_MANAGEMENT_SECTIONS,type AiManagementSection} from '../lib/ai/management-sections';
 
@@ -105,7 +106,8 @@ export type AiManagementPageView=SharedManagementView&(
 );
 
 /** Page-purpose projection. A missing detail is omitted data, never a zero/empty full read.
- * All common authority, provider usability, attention, switch and spend reads stay identical.
+ * Pages use one native read-only snapshot; the full API retains its live RC authority.
+ * Shared allowance/attention/switch arithmetic remains in the single read owner.
  * The Runs page owns its separate dated/paged history; no page consumes legacy recent runs. */
 export async function aiManagementPageView(ctx:SessionContext,section:AiManagementSection,search='',runFilter:AiRunFilter={}):Promise<AiManagementPageView>{
   if(!AI_MANAGEMENT_SECTIONS.some(value=>value===section))throw new AiControlError('Unknown AI management section.');
@@ -122,14 +124,18 @@ async function readAiManagement(ctx:SessionContext,search:string,runFilter:AiRun
   // Tenant key/routing configuration needs fresh group-wide authority (getAiConfigView). A company
   // administrator still manages its own scope here and sees only the provider/model its resolved
   // configuration would use, never the tenant configuration view.
-  const provider = isGroupAdmin(ctx) ? await getAiConfigView(ctx) : null;
+  const provider = purpose==='full' && isGroupAdmin(ctx) ? await getAiConfigView(ctx) : null;
   return withTenant(ctx, async tx => {
-    await currentControlAdminTx(tx,ctx,false);
+    let presentationProvider:Awaited<ReturnType<typeof readAiManagementPresentationTx>>=null;
+    if(purpose==='full')await currentControlAdminTx(tx,ctx,false);
+    else presentationProvider=await readAiManagementPresentationTx(tx,ctx);
     const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
     const policies = await tx.select().from(aiControlPolicy).orderBy(asc(aiControlPolicy.scopeKey));
     const activeProvider = provider?.providers.find(p => p.isActive);
     let resolved: Pick<NonNullable<Awaited<ReturnType<typeof resolveActiveAiConfig>>>,'provider'|'model'> | null = null;
-    try { const cfg = await resolveActiveAiConfig(tx,ctx); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }
+    if(purpose==='full'){
+      try { const cfg = await resolveActiveAiConfig(tx,ctx); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }
+    }else resolved=presentationProvider;
     const usable = resolved !== null;
     // Page status names the usable active model; the Provider form keeps its pending candidate separate.
     // Preserve the full legacy API's settings-view selection for its existing consumers.
@@ -248,8 +254,8 @@ async function readAiManagement(ctx:SessionContext,search:string,runFilter:AiRun
       blocked: activity.filter(r=>Number(r.blocked_today)>0).map(r=>({id:r.id,label:r.label,count:Number(r.blocked_today),reason:r.last_reason}))
         .sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label)),
     };
-    return {spend:await aiSpendStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
-  });
+    return {spend:purpose==='full'?await aiSpendStatusTx(tx,ctx):await aiSpendPresentationStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
+  },purpose==='full'?undefined:{readOnlySnapshot:true});
 }
 
 export async function setAiFeature(ctx: SessionContext, feature: AiFeatureId, enabled: boolean) {
