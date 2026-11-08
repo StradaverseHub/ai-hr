@@ -38,7 +38,7 @@ function parseXml(xml: string) {
 describe('System Labels workbook native worksheet structure', () => {
   it.each([false, true])('omits empty validation containers and preserves list features (populated export: %s)', async populated => {
     const kinds = LABEL_IMPORT_DEFINITIONS.map(definition => definition.kind);
-    expect(kinds).toHaveLength(14);
+    expect(kinds).toHaveLength(23);
     const bytes = await buildSystemLabelWorkbook({
       references, kinds,
       ...(populated ? {
@@ -58,7 +58,8 @@ describe('System Labels workbook native worksheet structure', () => {
       const document = parseXml(await zip.file(`xl/worksheets/sheet${index + 1}.xml`)!.async('string'));
       const containers = elements(document, 'dataValidations');
       const rules = elements(document, 'dataValidation');
-      const expected = expectedRules[definition.kind] ?? [];
+      const ranges:Record<string,string>={Company:'Reference!$A$2:$A$3',Criteria:'Reference!$C$2:$C$3','Criteria Companies':'Reference!$A$2:$A$3','Head Employee Code':'Reference!$E$2:$E$3','Grade Codes':'Reference!$G$2:$G$3'};
+      const expected=Object.entries(ranges).flatMap(([field,reference])=>{const at=definition.columns.indexOf(field);return at<0?[]:[[`${XLSX.utils.encode_col(at)}2:${XLSX.utils.encode_col(at)}1001`,reference]];});
       // CT_DataValidations requires at least one child. Omit this optional container otherwise.
       // https://github.com/dotnet/Open-XML-SDK/blob/main/data/schemas/schemas_openxmlformats_org_spreadsheetml_2006_main.json
       expect(containers, definition.kind).toHaveLength(expected.length ? 1 : 0);
@@ -82,9 +83,9 @@ describe('System Labels workbook native worksheet structure', () => {
       expect(elements(document, 'c').find(cell => cell.getAttribute('r') === address)?.getAttribute('s')).toBe('1');
       if (populated) expect(workbook.Sheets[definition.kind][address]).toMatchObject({ v: '000123', t: 's', z: '@' });
     }
-    expect(listsWithoutRules).toBe(9);
-    expect(totalRules).toBe(15);
-    expect(readSystemLabelWorkbook(bytes)).toHaveLength(populated ? 14 : 0);
+    expect(listsWithoutRules).toBe(0);
+    expect(totalRules).toBe(72);
+    expect(readSystemLabelWorkbook(bytes)).toHaveLength(populated ? 23 : 0);
     expect(systemLabelExportId(bytes)).toBe(populated ? exportId : null);
     expect(sheets.filter(sheet => sheet.getAttribute('state') === 'veryHidden').map(sheet => sheet.getAttribute('name')))
       .toEqual(populated ? ['_Export'] : []);

@@ -49,7 +49,8 @@ CREATE TRIGGER label_scope_guard BEFORE INSERT OR UPDATE ON grade_group FOR EACH
 --> statement-breakpoint
 -- A person without one unambiguous visible company may pick only global values.
 CREATE FUNCTION app.system_label_person_company(p_person uuid) RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT CASE WHEN count(DISTINCT e.company_id)=1 THEN (array_agg(DISTINCT e.company_id))[1] END FROM public.employment e
+ SELECT coalesce((SELECT co.id FROM public.company co WHERE co.id=nullif(current_setting('app.system_label_operation_company',true),'')::uuid AND co.tenant_id=app.current_tenant_id() AND co.archived_at IS NULL AND app.is_admin_for(co.id)),
+ CASE WHEN count(DISTINCT e.company_id)=1 THEN (array_agg(DISTINCT e.company_id))[1] END) FROM public.employment e
  WHERE e.tenant_id=app.current_tenant_id() AND e.person_id=p_person AND app.can_see_employment(e.id)
  AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date);
 $$;
@@ -124,3 +125,18 @@ CREATE TRIGGER label_selection_guard BEFORE INSERT OR UPDATE ON grade_group_memb
 CREATE TRIGGER label_selection_guard BEFORE INSERT OR UPDATE ON leave_approval_policy FOR EACH ROW EXECUTE FUNCTION app.system_label_selection_guard();
 CREATE TRIGGER label_selection_guard BEFORE INSERT OR UPDATE ON claim_policy FOR EACH ROW EXECUTE FUNCTION app.system_label_selection_guard();
 CREATE TRIGGER label_selection_guard BEFORE INSERT OR UPDATE ON claim_mileage_rate FOR EACH ROW EXECUTE FUNCTION app.system_label_selection_guard();
+--> statement-breakpoint
+-- Existence only: hidden label values, names, assignments and owning companies are never returned.
+CREATE FUNCTION app.system_label_catalog_conflicts(p_rows jsonb) RETURNS TABLE(row_key text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT r->>'key' FROM jsonb_array_elements(p_rows) r WHERE app.is_admin() AND jsonb_array_length(p_rows)<=7000 AND (
+  ((r->>'kind')='grades' AND EXISTS(SELECT 1 FROM public.job_grade g WHERE g.tenant_id=app.current_tenant_id() AND g.code=r->>'code'))
+  OR ((r->>'kind')='grade_groups' AND EXISTS(SELECT 1 FROM public.grade_group g WHERE g.tenant_id=app.current_tenant_id() AND lower(g.name)=lower(r->>'code')))
+  OR EXISTS(SELECT 1 FROM public.profile_option p WHERE p.tenant_id=app.current_tenant_id() AND p.category=r->>'kind' AND p.value=r->>'code'));
+$$;
+REVOKE ALL ON FUNCTION app.system_label_catalog_conflicts(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.system_label_catalog_conflicts(jsonb) TO ai_hr_app;
+--> statement-breakpoint
+CREATE POLICY label_scope_insert ON grade_group_member AS RESTRICTIVE FOR INSERT WITH CHECK(EXISTS(SELECT 1 FROM grade_group g WHERE g.id=grade_group_id AND g.tenant_id=grade_group_member.tenant_id AND app.system_label_scope_admin(g.scope_company_ids)));
+CREATE POLICY label_scope_update ON grade_group_member AS RESTRICTIVE FOR UPDATE USING(EXISTS(SELECT 1 FROM grade_group g WHERE g.id=grade_group_id AND g.tenant_id=grade_group_member.tenant_id AND app.system_label_scope_admin(g.scope_company_ids))) WITH CHECK(EXISTS(SELECT 1 FROM grade_group g WHERE g.id=grade_group_id AND g.tenant_id=grade_group_member.tenant_id AND app.system_label_scope_admin(g.scope_company_ids)));
+CREATE POLICY label_scope_delete ON grade_group_member AS RESTRICTIVE FOR DELETE USING(EXISTS(SELECT 1 FROM grade_group g WHERE g.id=grade_group_id AND g.tenant_id=grade_group_member.tenant_id AND app.system_label_scope_admin(g.scope_company_ids)));

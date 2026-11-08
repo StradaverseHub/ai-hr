@@ -36460,6 +36460,7 @@
     "scopeHelp": "Leave Criteria, Criteria Companies and Company blank for Global (All Companies). Company entries apply only to those companies. Global imports require a group administrator.",
     "global": "Global (All Companies)",
     "companies": "{count} selected companies",
-    "assignment": "Assignment"
+    "assignment": "Assignment",
+    "failedRows": "{count} failed rows. Download the error report to review them."
   }
 }

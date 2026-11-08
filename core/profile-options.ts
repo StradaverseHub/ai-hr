@@ -1,13 +1,13 @@
 import {labelAppliesToCompany} from '../lib/system-label-assignment';
 import { tenantMutation } from '../db/tenant-mutation';
 /**
- * Configurable Personnel-profile dropdown catalogs (7d309da7) — a generic, tenant-wide option table that
+ * Configurable Personnel-profile dropdown catalogs (7d309da7) — a generic option table that
  * backs the six formerly-free-text Profile fields: religion / race / nationality / state / country /
  * relationship (emergency-contact). HR admins add / edit / activate / deactivate / delete options here and
  * the Profile-tab dropdowns read through `listProfileOptions`.
  *
  * DELIBERATELY separate from `core/system-labels.ts` (LABEL_KINDS = department/position/cost_center/
- * business_unit are company-scoped typed tables with a sharing junction) — these are flat tenant-wide lists.
+ * business_unit are company-scoped typed tables with a sharing junction) — these are flat catalogues, global by default, with explicit company sets for new scoped labels.
  *
  * LEGACY-VALUE TOLERANCE (the #1 correctness requirement): person columns STAY free-text; there is NO data
  * migration. A value stored on a person that is not (or no longer) in the active catalog is PRESERVED on
@@ -27,42 +27,9 @@ import { countryPacks } from '../localization/registry';
 import { DEPENDENT_RELATIONSHIP_CATEGORY, DEPENDENT_RELATIONSHIPS } from './dependents';
 import { QUALIFICATION_LEVEL_CATEGORY, QUALIFICATION_LEVEL_DEFAULTS } from './qualifications';
 
-export const PROFILE_OPTION_CATEGORIES = [
-  'religion',
-  'race',
-  'nationality',
-  'state',
-  'country',
-  'relationship',
-  // 8c284478 — Salutation (Mr / Dr / Dato' …) on Profile > Personal Details, positioned before Full Name.
-  // Same flat tenant-wide catalog + legacy-value tolerance as religion/race; defaults seeded by migration
-  // 0300 (existing tenants) and seedProfileOptions (new tenants).
-  'salutation',
-  // Personnel Organisation Assignment standardisation (1001ff61) — the eight flat organisation/job fields
-  // stored as free text on `employment` (org_division / org_branch / org_region / org_line / org_section /
-  // org_team / org_base + employment_category) are now backed by the profile_option catalog, giving each a
-  // centrally-managed dropdown in System Labels > Profile Options WITHOUT new tables. Same flat tenant-wide
-  // list + legacy-value tolerance as religion/race. These govern EMPLOYMENT columns (see
-  // CATEGORY_EMPLOYMENT_COLUMN), not person columns.
-  'division',
-  'branch',
-  'region',
-  'line',
-  'section',
-  'team',
-  'base',
-  'category',
-  // ea36b7fa — Family & Dependents consolidation: the Family tab's Relationship dropdown becomes centrally
-  // maintainable here. DISTINCT from the 'relationship' category above (which governs the emergency-contact
-  // field on person) — this one governs employee_dependent.relationship. The five built-in values
-  // (DEPENDENT_RELATIONSHIPS) are seeded below and stay ALWAYS valid server-side; custom values behave like
-  // 'other' for field/relief logic. Existing tenants are topped up by migration 0303.
-  DEPENDENT_RELATIONSHIP_CATEGORY,
-  // Feedback a949184a — Qualification tab: the Qualification dropdown (employee_qualification.qualification)
-  // becomes centrally maintainable here, the salutation / dependentRelationship pattern. Same flat
-  // tenant-wide list + legacy-value tolerance; existing tenants are topped up by migration 0306.
-  QUALIFICATION_LEVEL_CATEGORY,
-] as const;
+// Workbook, editors and canonical validators share one supported category registry.
+export {PROFILE_LABEL_CATEGORIES as PROFILE_OPTION_CATEGORIES} from '../lib/system-label-definition';
+import {PROFILE_LABEL_CATEGORIES as PROFILE_OPTION_CATEGORIES} from '../lib/system-label-definition';
 export type ProfileOptionCategory = (typeof PROFILE_OPTION_CATEGORIES)[number];
 
 // 1001ff61 — the subset of categories whose values live on EMPLOYMENT columns (org assignment), as opposed
@@ -347,6 +314,7 @@ export async function createProfileOption(
   p: { category: string; value: string; label?: string | null; description?: string | null; sortOrder?: number | null; isActive?: boolean; scopeCompanyIds?: string[]|null },
   existingTx?: Tx,
 ): Promise<{ id: string }> {
+  p={...p,scopeCompanyIds:p.scopeCompanyIds?.slice()??null};
   if (!isProfileOptionCategory(p.category)) throw new Error('Unknown option category');
   const value = p.value.trim();
   if (!value) throw new Error('Value is required');

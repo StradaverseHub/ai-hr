@@ -3,62 +3,9 @@ import {SystemLabelScope} from './system-label-scope';
 
 import {SystemLabelExportButton} from './system-label-export-button';
 
-/**
- * GradeLabelsGrid — the spreadsheet editor for GRADES on System Settings → System Label → Organisation
- * Labels (feedback b1b81a08). Grades are organisation-level master data (they set the seniority bands leave
- * entitlements, benefit schemes, claim limits and approval routing all read from), so they belong beside
- * Departments / Positions / Cost Centres / Business Units — not five levels deep inside Leave Config.
- *
- * Modelled on components/profile-options-grid.tsx, NOT on components/system-labels-grid.tsx. job_grade is
- * TENANT-GLOBAL: no company_id, no is_global, no label_company_assignment row. The company-scoped grid
- * assumes per-company rows plus a sharing junction throughout (scope cell, scope filter, company select,
- * copy-to-companies, sharing panel, per-row scope duplication…), so hosting grade there needed a synthetic
- * record mapper plus ~ten `kind === 'grade'` suppressions and still rendered a meaningless Criteria column.
- * ProfileOptionsGrid's header already describes job_grade verbatim — "a FLAT tenant-wide catalog with NO
- * company scope, NO sharing, and NO Criteria column" — so the rail swaps the BODY instead. (The Criteria
- * column below is a fixed read-only label, not that grid's editable scope cell; see the note on it.)
- *
- * A SIBLING of ProfileOptionsGrid rather than a reuse of it: Profile Options enforces value immutability
- * (Code is read-only once saved), whereas grade codes became editable in 728a7db6. That is a behavioural
- * divergence, not a cosmetic one, so ProfileOptionsGrid is left untouched.
- *
- * Columns are Code · Label · Description · Rank · Criteria · Status · Actions. Rank sorts NUMERICALLY (the
- * company grid's String(...).localeCompare would order 1, 10, 11, 2, 3).
- *
- * CRITERIA IS BACK, READ-ONLY (e3c733df round 2). The first round dropped it as "meaningless"; the reporter
- * asked for it again, "exactly like other category". On the four company-scoped kinds Criteria is NOT free
- * text — it is the SHARING SCOPE cell (a pill reading Global / Own company / N companies, opening the
- * company-assignment popover). Following it exactly for a tenant-global catalog therefore means rendering
- * that same pill at its one possible value: every grade applies to every company, so it reads "Global" and
- * has no popover to open. That is the honest column, and it needs no `criteria` field — the free-text slot
- * the reporter also asked for is Description, added in round 1 and sitting one column to the left. Two
- * free-text boxes for one idea would be the wrong outcome. NOTE this deliberately stops short of company
- * scope for grades: job_grade still has no company_id, no is_global and no assignment junction, and none of
- * the sharing wiring is imported here.
- *
- * Archive/restore batches into Save and is undoable via Discard, so it carries no confirm
- * dialog of its own; hard Delete keeps one, and is refused when the grade is still referenced by an
- * employee, an entitlement eligibility rule, an approval rule, a claim limit, a mileage rate or a grade
- * group.
- *
- * r224 — THE ARCHIVED VIEW STOPS WHISPERING. Everything the reporter asked for here already existed; it
- * was all hidden behind a `title` attribute, which is why it read as absent. Three changes, and only the
- * third is new behaviour:
- *   1. On an ARCHIVED row the permanent delete is a LABELLED button ("Delete permanently"), not the same
- *      unlabelled cross the drafts use to discard themselves. Same action, same confirm dialog.
- *   2. When that delete is refused, the reason renders as text under the row instead of only on hover.
- *      It is the ONE string (`gradeInUseHint`), corrected to name the six things deleteJobGrade actually
- *      checks — the old copy still said "leave policies", a table 0405 dropped, and omitted entitlement
- *      eligibility rules and mileage rates, which is exactly the drift a second hand-written list causes.
- *   3. Typing a code that belongs to an archived grade no longer creates a silent duplicate. The save
- *      comes back with a row error carrying that grade's id, and the offer to restore it in place.
- *
- * PAGED SINCE 9da61c86, through the shared client pager. Rows are filtered and sorted FIRST and sliced
- * second, so Rank still orders every grade rather than the twenty-five on screen, and Save still submits
- * every dirty row — not the ones the page happens to be showing.
- *
- * All writes go through the server actions passed in from the page; each still appends its DomainEvent.
- */
+/** Job Grade maintenance retains existing identifiers, rank, archive/restore and in-use guards.
+ * Company-specific records display their saved assignment; Export reads the authorized server catalogue.
+ * Scope is not a text field and cannot change through a generic grid save. */
 
 import { labelCodeConflicts } from '@/lib/label-code-conflicts';
 import { refreshEditableRows } from '@/lib/refresh-editable-rows';
@@ -596,10 +543,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                     />
                   </td>
                   <td className="px-3 py-1.5">
-                    {/* Same pill the company-scoped kinds show for a global row, minus the chevron — there
-                        is no per-company assignment to open, so a clickable control would be a dead end.
-                        Rendered for drafts too: a grade is tenant-wide the moment it exists, so unlike the
-                        company grid there is nothing to "save first" before the scope is known. */}
+
                     <SystemLabelScope ids={data.find(row=>row.id===r.id)?.scopeCompanyIds}/>
                   </td>
                   <td className="px-3 py-1.5">

@@ -1,13 +1,13 @@
 import {LABEL_IMPORT_DEFINITIONS} from '@/lib/system-label-definition';
 import { scopedAdmin } from '@/lib/scope';
 import { downloadSystemLabelsWithData } from '@/core/system-label-import';
-import { adminCompanies } from '@/core/read';
+import { labelMaintenanceCompanies } from '@/core/system-labels';
 import { publicErrorMessage } from '@/lib/public-error';
 export async function GET(request:Request){
  const {s}=await scopedAdmin();
  const q=new URL(request.url).searchParams;
  try{
-  const companies=await adminCompanies(s);
+  const companies=await labelMaintenanceCompanies(s);
   const companyIds=q.has('company')?q.getAll('company'):companies.filter(c=>!c.archivedAt).map(c=>c.id),kinds=q.getAll('kind');
   if(companyIds.length>1000||kinds.length>LABEL_IMPORT_DEFINITIONS.length)throw new Error('Selection exceeds the supported size.');
   const bytes=await downloadSystemLabelsWithData(s,{companyIds,kinds,includeInactive:q.get('inactive')==='1'});

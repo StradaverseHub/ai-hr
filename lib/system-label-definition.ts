@@ -12,6 +12,7 @@ export const ORGANISATION_LABEL_COLUMNS = {
   business_unit: [{ headerKey: 'code', field: 'code', required: true }, { headerKey: 'label', field: 'label' }, { headerKey: 'description', field: 'name', required: true }],
 } as const;
 
+/** scope denotes the storage family, not availability; every category resolves explicit company intent. */
 export const LABEL_IMPORT_DEFINITIONS = [
   ...ORGANISATION_LABEL_KINDS.map(kind => ({ kind, scope: 'company' as const,
     columns: ['Company', 'Criteria', 'Criteria Companies', ...ORGANISATION_LABEL_COLUMNS[kind].map(c => ({code:'Code',label:'Label',description:'Description'}[c.headerKey])),
@@ -32,9 +33,9 @@ export const LABEL_TEMPLATE_DEFINITIONS = [
       ['Company', 'Company'], ['Criteria', 'Criteria'], ['Criteria Companies', 'Criteria Companies'], ['Status', 'Status'],
     ],
   })),
-  { kind: 'grades', sheet: 'Job Grade', columns: [['Code', 'Code'], ['Label', 'Label'], ['Description', 'Description'], ['Rank', 'Rank'],...LABEL_SCOPE_COLUMNS.map(c=>[c,c]), ['Status', 'Status']] },
+  { kind: 'grades', sheet: 'Job Grade', columns: [['Code', 'Code'], ['Label', 'Label'], ['Description', 'Description'], ['Rank', 'Rank'], ['Status', 'Status'],...LABEL_SCOPE_COLUMNS.map(c=>[c,c])] },
   { kind: 'grade_groups', sheet: 'Grade Groups', columns: [['Group name', 'Name'], ['Grades in this group', 'Grade Codes'],...LABEL_SCOPE_COLUMNS.map(c=>[c,c])] },
-  ...PROFILE_LABEL_CATEGORIES.map(kind => ({ kind, sheet: ({dependentRelationship:'Family Relationship',qualificationLevel:'Qualification Level'} as Record<string,string>)[kind]??kind[0].toUpperCase() + kind.slice(1), columns: [['Code', 'Code'], ['Label', 'Label'], ['Description', 'Description'],...LABEL_SCOPE_COLUMNS.map(c=>[c,c]), ['Status', 'Status']] })),
+  ...PROFILE_LABEL_CATEGORIES.map(kind => ({ kind, sheet: ({dependentRelationship:'Family Relationship',qualificationLevel:'Qualification Level'} as Record<string,string>)[kind]??kind[0].toUpperCase() + kind.slice(1), columns: [['Code', 'Code'], ['Label', 'Label'], ['Description', 'Description'], ['Status', 'Status'],...LABEL_SCOPE_COLUMNS.map(c=>[c,c])] })),
 ] as const;
 export type LabelImportMode = 'add' | 'update' | 'merge';
 export type LabelImportRow = { sheet: string; row: number; values: Record<string, string>; warnings?:string[] };

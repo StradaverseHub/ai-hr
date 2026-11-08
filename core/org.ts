@@ -1,3 +1,4 @@
+import {withSystemLabelCompanyTx} from './system-label-selection';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,type OrganisationTagTrigger} from './company-organisation';
 import {probationDateAuthorityTx} from './probation-effect-authority';
@@ -210,7 +211,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
   outerTx?: Tx) {
   p = { ...p, person: { ...p.person }, grantLeaveTypes: p.grantLeaveTypes?.map(type => ({ ...type })) };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  const run = async (tx:Tx) => {
+  const run = async (tx:Tx) => withSystemLabelCompanyTx(tx,p.companyId,async()=>{
     // Hiring is a Workforce command even when called without a page/import facade. Acquire fresh
     // access before Criteria/data locks; reusing a person cannot cross their retained explicit deny.
     await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
@@ -234,8 +235,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
       if(dept?.businessUnitId && dept.businessUnitId!==p.businessUnitId)throw new Error('Choose a department available under the selected business unit.');
     }
     if(p.gradeId){
-      const [grade]=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),eq(jobGrade.id,p.gradeId),isNull(jobGrade.archivedAt))).for('share');
-      if(!grade)throw new Error('Choose an active job grade from this organisation.');
+      const [grade]=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),eq(jobGrade.id,p.gradeId),isNull(jobGrade.archivedAt),sql`app.system_label_scope_applies(${jobGrade.scopeCompanyIds},${p.companyId}::uuid)`)).for('share');
+      if(!grade)throw new Error('Choose an active job grade available for this company.');
     }
     let personId = p.person.id;
     if (!personId) {
@@ -506,7 +507,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
     await packFor(taxCompany?.country)?.statutory.initializeHiredTaxSelectionTx?.(tx,ctx,{employmentId:emp.id,companyId:p.companyId,scheme:p.initialTaxScheme??'resident'});
     await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:emp.id,companyId:p.companyId,asOf:p.hiredOn,trigger:'hire'});
     return { employmentId: emp.id, personId };
-  };
+  });
   return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 

@@ -371,7 +371,7 @@ export default async function EmployeePage({
     listDepartments(s, { companyIds: [emp.companyId] }),
     reportingLinesFor(s, employmentId),
     listWorkforcePickOptions(s),
-    listJobGrades(s),
+    listJobGrades(s,{companyId:orgScopeCompanyId}),
     delegationsFor(s, employmentId),
   ]);
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or

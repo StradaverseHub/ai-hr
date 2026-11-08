@@ -36460,6 +36460,7 @@
     "scopeHelp": "Criteria、Criteria Companies 和 Company 全部留空表示全局（所有公司）。填写公司信息则仅适用于指定公司。全局导入需要集团管理员权限。",
     "global": "全局（所有公司）",
     "companies": "{count} 家指定公司",
-    "assignment": "适用范围"
+    "assignment": "适用范围",
+    "failedRows": "{count} 行失败。下载错误报告查看详情。"
   }
 }

@@ -153,6 +153,7 @@ export function readSystemLabelWorkbook(bytes: Buffer, options:{generation?:numb
       const fields = Object.fromEntries(columns.map((c, n) => [c, String(values[i][n] ?? '').trim()]));
       if(!newLayout&&headers[columns.length]==='Status')fields.Status=String(values[i][columns.length]??'').trim();
       if (Object.values(fields).some(v => v.length > 1000)) throw new Error(`A value is too long in ${sheet}, row ${i + 1}.`);
+      if(['Criteria','Criteria Companies','Company'].every(field=>!fields[field]))for(const field of ['Criteria','Criteria Companies','Company'])delete fields[field];
       if(legacy) {
         const scope=fields.Criteria;
         if(scope==='own'||scope==='shared') {

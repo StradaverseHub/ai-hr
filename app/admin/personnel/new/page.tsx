@@ -118,27 +118,27 @@ export default async function CreateEmployeePage({
     listPositions(session, { companyIds: scopeIds }),
     listCostCenters(session, { companyIds: scopeIds }),
     listBusinessUnits(session, { companyIds: scopeIds }),
-    listJobGrades(session),
+    listJobGrades(session,{companyId:scopeIds.length===1?scopeIds[0]:null}),
     listManagerCandidates(session, { companyIds: scopeIds }),
     // 35b7af0a group 8 — active options only, exactly as the Personnel profile card reads them, so a
     // nationality HR can pick here is one core/org.ts's catalog validation will accept on a later edit.
-    listProfileOptions(session, 'nationality', { activeOnly: true }),
+    listProfileOptions(session, 'nationality', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
     // 759dfc7d — the two catalogs the Family step needs, read the SAME way the Personnel Family tab reads
     // them: active options only, so a relationship HR can pick on a draft is one `assertDependentsValid`
     // will still accept at Activate. An empty dependentRelationship catalog is not an error — the step
     // falls back to the five built-ins, exactly as that tab does.
-    listProfileOptions(session, 'dependentRelationship', { activeOnly: true }),
-    listProfileOptions(session, 'country', { activeOnly: true }),
+    listProfileOptions(session, 'dependentRelationship', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
+    listProfileOptions(session, 'country', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
     // da7463b4 — the `state` catalog the Permanent / Correspondence address blocks need, read exactly as
     // the Personnel Contact & Address card reads it. The COUNTRY catalog beside it is the same list that
     // card uses, so the address blocks share `countries` rather than resolving a second copy of one list.
-    listProfileOptions(session, 'state', { activeOnly: true }),
+    listProfileOptions(session, 'state', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
     // a72610af — the three catalogs behind Salutation, Religion and Race, read exactly as the Personnel
     // profile card reads them (active options only), so a value HR can pick on a draft is one
     // `updatePerson`'s catalog check will accept at Activate.
-    listProfileOptions(session, 'salutation', { activeOnly: true }),
-    listProfileOptions(session, 'religion', { activeOnly: true }),
-    listProfileOptions(session, 'race', { activeOnly: true }),
+    listProfileOptions(session, 'salutation', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
+    listProfileOptions(session, 'religion', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
+    listProfileOptions(session, 'race', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
   ]);
 
   // Same inversion the Personnel page performs: resolver answers per company → Map(labelId → CSV).

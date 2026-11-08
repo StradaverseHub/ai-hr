@@ -3,7 +3,7 @@ import {eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant} from '../db/client';
 import * as s from '../db/schema';
-import {createCompany,createJobGrade} from '../core/admin';
+import {createCompany,createJobGrade,createDepartment} from '../core/admin';
 import {createGradeGroup} from '../packs/leave/service';
 import {hireEmployee} from '../core/org';
 import {listProfileOptions,createProfileOption} from '../core/profile-options';
@@ -34,26 +34,28 @@ describe('Company-aware System Labels imports and canonical consumers',()=>{
  });
  it('filters profile choices by the target company and refuses a scoped grade in another company',async()=>{
   const other=await createCompany(adminCtx(b),{legalName:'Fictional other company'});
+  const department=await createDepartment(adminCtx(b),{companyId:other.id,name:'Fictional scoped grade department'});
   await createProfileOption(adminCtx(b),{category:'division',value:'SCOPED',scopeCompanyIds:[b.companyId]});
   expect((await listProfileOptions(adminCtx(b),'division',{activeOnly:true,companyId:b.companyId})).map(r=>r.value)).toContain('SCOPED');
   expect((await listProfileOptions(adminCtx(b),'division',{activeOnly:true,companyId:other.id})).map(r=>r.value)).not.toContain('SCOPED');
   expect((await listProfileOptions(adminCtx(b),'division',{activeOnly:true})).map(r=>r.value)).not.toContain('SCOPED');
   const grade=await createJobGrade(adminCtx(b),{code:'SCOPE_GRADE',name:'Scoped grade',scopeCompanyIds:[b.companyId]});
-  await expect(hireEmployee(adminCtx(b),{person:{fullName:'Fictional scope refusal',primaryEmail:'scope@example.invalid'},companyId:other.id,gradeId:grade.id,hiredOn:'2026-01-01',employmentType:'full_time'})).rejects.toThrow();
+  await expect(hireEmployee(adminCtx(b),{person:{fullName:'Fictional scope refusal',primaryEmail:'scope@example.invalid'},companyId:other.id,departmentId:department.id,gradeId:grade.id,hiredOn:'2026-01-01',employmentType:'full_time'})).rejects.toThrow('this company');
   await expect(createGradeGroup(adminCtx(b),{name:'Invalid global group',gradeIds:[grade.id]})).rejects.toThrow();
  });
  it('records failed and skipped rows without overwriting existing records',async()=>{
   await createProfileOption(adminCtx(b),{category:'division',value:'EXISTS',label:'Original'});
-  const bytes=await book({division:[{Code:'EXISTS',Company:b.companyId},{Code:'INVALID',Company:'unknown'},{Code:'VALID',Company:b.companyId}]}),preview=await previewSystemLabelImport(adminCtx(b),bytes);
-  expect(await applySystemLabelImport(adminCtx(b),{bytes,token:preview.token})).toMatchObject({imported:1,skipped:0,failed:2,errorReport:expect.any(String)});
+  const bytes=await book({division:[{Code:'EXISTS',Company:b.companyId},{Code:'INVALID',Company:'unknown'},{Code:'VALID',Company:b.companyId},{Code:'VALID',Company:b.companyId}]}),preview=await previewSystemLabelImport(adminCtx(b),bytes);
+  expect(await applySystemLabelImport(adminCtx(b),{bytes,token:preview.token})).toMatchObject({imported:1,skipped:1,failed:2,errorReport:expect.any(String)});
   const [original]=await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'EXISTS'));expect(original.label).toBe('Original');
   const events=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'system-label-import.applied'));
-  expect(events).toHaveLength(1);expect((events[0].payload as {rows:unknown[]}).rows).toHaveLength(3);
+  expect(events).toHaveLength(1);expect((events[0].payload as {rows:unknown[]}).rows).toHaveLength(4);
  });
  it('enforces company scope for raw employment writes and preserves unchanged historical values',async()=>{
   await createProfileOption(adminCtx(b),{category:'division',value:'ONLY_THIS',scopeCompanyIds:[b.companyId]});
   const other=await createCompany(adminCtx(b),{legalName:'Other operation company'});
-  const hired=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional employee',primaryEmail:'company-guard@example.invalid'},companyId:other.id,hiredOn:'2026-01-01',employmentType:'full_time'});
+  const department=await createDepartment(adminCtx(b),{companyId:other.id,name:'Fictional raw scope department'});
+  const hired=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional employee',primaryEmail:'company-guard@example.invalid'},companyId:other.id,departmentId:department.id,hiredOn:'2026-01-01',employmentType:'full_time'});
   await expect(withTenant(adminCtx(b),tx=>tx.update(s.employment).set({orgDivision:'ONLY_THIS'}).where(eq(s.employment.id,hired.employmentId)))).rejects.toThrow();
   await owner.db.update(s.employment).set({orgDivision:'ONLY_THIS'}).where(eq(s.employment.id,hired.employmentId));
   await withTenant(adminCtx(b),tx=>tx.update(s.employment).set({orgDivision:'ONLY_THIS'}).where(eq(s.employment.id,hired.employmentId)));
