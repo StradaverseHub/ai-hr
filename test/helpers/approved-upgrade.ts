@@ -44,6 +44,10 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1656,when:1793330001856,tag:'2406_payroll_reconciliation_generation'},
  {idx:1660,when:1793330001860,tag:'2460_payroll_individual_import_queue'},
  {idx:1900,when:1793330002200,tag:'2600_onboarding_current_personnel'},
+ // ADR-0174 follow-up: every definer path ends with pg_temp, and the remaining company references keep their tenant.
+ {idx:2200,when:1793330002500,tag:'2900_definer_search_path_pin'},
+ {idx:2201,when:1793330002501,tag:'2901_company_reference_tenant_fk_not_valid'},
+ {idx:2202,when:1793330002502,tag:'2902_company_reference_tenant_fk_validate'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -80,6 +84,9 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2406_payroll_reconciliation_generation':'38979689c8df2b486fdd1c104de7dd94e872ba8e0838e1d51cc8be119fa99113',
  '2460_payroll_individual_import_queue':'5919c5fde5796a08c13d2a37174becaa20f86abb896e2aa66be5d3b222a79f4c',
  '2600_onboarding_current_personnel':'ef82561ecfca93f3feab8f38918c3449569b68afe944085cceb8bafd25ab60be',
+ '2900_definer_search_path_pin':'545c360024e20d0276587a63f0ab8432573673095248cd75070df38b961fafa5',
+ '2901_company_reference_tenant_fk_not_valid':'bd3e72eec9f148d7b2e2a469df1e9266f94fa339e3c190ba6539435170b2cf4d',
+ '2902_company_reference_tenant_fk_validate':'4ff1bdaacc211086cac68caa64d05dbdb34c014e9541df38a9447d92c19f21f5',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
