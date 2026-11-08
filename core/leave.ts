@@ -12196,8 +12196,8 @@ async function leaveProjectionTx(tx:Tx,p:{employmentIds:string[];from:string;to:
 
 /** Canonical approved leave measurements for Attendance. Counts remain known when overlapping legacy
  * approvals cannot supply an unambiguous duration. No request span is counted by the consumer. */
-export type ApprovedAllowanceLeavePiece={typeId:string;paid:boolean|null;days:number;requestIds:string[];session:'AM'|'PM'|'hourly'|'full_day';minutes:number|null};
-export async function approvedLeaveMeasurementsTx(tx:Tx,p:{employmentIds:string[];from:string;to:string;today:string}) {
+export type ApprovedAllowanceLeavePiece={typeId:string;paid:boolean|null;days:number;requestIds:string[];session:'AM'|'PM'|'hourly'|'full_day';minutes:number|null;from?:string|null;to?:string|null};
+export async function approvedLeaveMeasurementsTx(tx:Tx,p:{employmentIds:string[];from:string;to:string;today:string;positions?:boolean}) {
  const projected=await leaveProjectionTx(tx,{...p,purpose:'allowance'});
  type Piece={typeId:string;paid:boolean|null;days:number;requestId:string;session:'AM'|'PM'|'hourly'|'full_day';minutes:number|null;from:string|null;to:string|null;source:string;unknown:boolean};
  const hourlyMinutes=(req:typeof projected[number]):number|null=>{
@@ -12227,7 +12227,7 @@ export async function approvedLeaveMeasurementsTx(tx:Tx,p:{employmentIds:string[
   for(let i=0;i<unique.length;i++)for(let j=i+1;j<unique.length;j++)if(overlap(unique[i],unique[j]))ambiguous=true;
   const total=unique.reduce((sum,p)=>sum+Math.round(p.days*100),0);
   if(total>100)ambiguous=true;
-  const leave=ambiguous?null:unique.map(piece=>({typeId:piece.typeId,paid:piece.paid,days:piece.days,session:piece.session,minutes:piece.minutes,requestIds:pieces.filter(p=>p.typeId===piece.typeId&&p.session===piece.session&&p.from===piece.from&&p.to===piece.to).map(p=>p.requestId).sort()}));
+  const leave=ambiguous?null:unique.map(piece=>({typeId:piece.typeId,paid:piece.paid,days:piece.days,session:piece.session,minutes:piece.minutes,...(p.positions?{from:piece.from,to:piece.to}:{}),requestIds:pieces.filter(p=>p.typeId===piece.typeId&&p.session===piece.session&&p.from===piece.from&&p.to===piece.to).map(p=>p.requestId).sort()}));
   out.set(key,{types:[...new Set(pieces.filter(piece=>!piece.unknown).map(piece=>piece.typeId))].sort(),unknownTypes:[...new Set(pieces.filter(piece=>piece.unknown).map(piece=>piece.typeId))].sort(),leave,source:pieces.some(piece=>piece.unknown)?'legacy-approved-date-allocation-unknown':ambiguous?'approved-leave-overlap-duration-unknown':unique.map(piece=>piece.source).sort().join(';')});
  }
  return out;

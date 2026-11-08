@@ -46,7 +46,7 @@ async function evaluate(tx:Tx,ctx:SessionContext,revision:typeof attendanceFormu
  if(revision.registryVersion!==ATTENDANCE_FORMULA_CATALOG_VERSION||revision.evaluatorVersion!==PAY_FORMULA_EVALUATOR_VERSION)throw Error('The formula engine changed. Save and test a new version.');
  if(!uuid.test(employmentId))throw Error('Choose a test employee.');const configuration=validateAttendanceFormulaConfiguration(revision.definition),component=await item(tx,configuration),period=attendanceFormulaPeriod(date,configuration.period),compiled=compileAttendanceFormulaLibrary(configuration.library,configuration.code);
  // Testing validates a draft against historical evidence; effectiveFrom governs application to pay.
- const source=await readAttendanceFormulaDaysTx(tx,ctx,{companyId:configuration.companyId,employmentId,from:period.from,to:period.to,fields:compiled.fields,includeEligibility:configuration.eligibility.mode==='criteria'});
+ const source=await readAttendanceFormulaDaysTx(tx,ctx,{companyId:configuration.companyId,employmentId,from:period.from,to:period.to,fields:compiled.fields,variables:compiled.variables,includeEligibility:configuration.eligibility.mode==='criteria'});
  if(configuration.eligibility.mode==='selected'&&!configuration.eligibility.employmentIds.includes(employmentId))throw Error('Choose an employee included by this formula.');
  if(configuration.eligibility.mode==='criteria'){
   await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');const criterion=configuration.eligibility.expression,selected=source.eligibilityFacts.at(-1)?.facts;

@@ -2,7 +2,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {withTenant} from '../db/client';
 import {resolveEntitlementsTx} from './entitlements';
 import {assertModuleGate} from './module-gate';
-import {assertAttendanceFormulaAuthorTx} from './attendance-formulas';
+import {assertAttendanceFormulaAuthorTx} from '../packs/attendance/service';
 import {assertAiPrincipalTx} from './ai-principal';
 import {withAiCentreFunction} from './ai-centre-control';
 import {resolveActiveAiConfig} from './ai-config';

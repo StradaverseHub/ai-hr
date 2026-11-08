@@ -162,10 +162,11 @@ export type TraceAttendancePolicyBinding={
 
 export type AttendanceTraceV1 = {
   executionPolicy?:TraceAttendancePolicyBinding;
+  formulaBreaks?:{v:1;actualBefore:number;actualAfter:number;actualShift:number};
   /** Exact calculation-time schedule details for formula evidence. Absent on older rows; readers
    * must never substitute a mutable current shift with the same total break count. */
   formulaSchedule?:{v:1;flexiDuration:boolean;durationOnly:boolean;flexibleBreakMinutes:number|null;
-    halfDayBefore:string;shiftCode:string|null;shiftName:string|null;scheduleDayKind:'full'|'half'|'off'|'rest'|null;
+    halfDayBefore:string;weeklyPattern?:number[]|null;shiftCode:string|null;shiftName:string|null;scheduleDayKind:'full'|'half'|'off'|'rest'|null;
     breakPeriods:{breakType?:'in_shift'|'before_shift'|'after_shift';start:string;end:string;flexible?:boolean;clockingRequired?:boolean;paid?:boolean;flexibleMinutes?:number}[]|null};
   /** Reference only: exact quantities and evidence remain in the immutable OT owner. A refusal
    * prevents financial consumers from silently using the legacy OT fields for this formula day. */

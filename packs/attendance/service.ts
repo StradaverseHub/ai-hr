@@ -118,6 +118,6 @@ export {lockAttendanceDayScheduleIntervalTx} from './day-adjustment';
 // AI v2 W2: the pure day classifier the Attendance Request screen groups by, for the chat correction preparer.
 export {classifyDay,KIND_OF_SECTION,type ExceptionDay} from './exceptions';
 export {readAttendanceFormulaDaysTx} from './formula-sources';
-export {saveAttendanceFormula,testAttendanceFormula,activateAttendanceFormula,changeAttendanceFormulaStatus,getAttendanceFormula,readAttendanceFormulaTest,attendanceFormulaSetup,listAttendanceFormulas,searchAttendanceFormulaEmployees} from '../../core/attendance-formulas';
+export {assertAttendanceFormulaAuthorTx,saveAttendanceFormula,testAttendanceFormula,activateAttendanceFormula,changeAttendanceFormulaStatus,getAttendanceFormula,readAttendanceFormulaTest,attendanceFormulaSetup,listAttendanceFormulas,searchAttendanceFormulaEmployees} from '../../core/attendance-formulas';
 
 export {draftAttendanceFormula} from '../../core/attendance-formula-ai';

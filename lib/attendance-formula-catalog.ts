@@ -128,9 +128,9 @@ export const ATTENDANCE_FORMULA_VARIABLES:readonly AttendanceFormulaVariable[]=[
  {ordinal:126,id:'ZoneAWorkingMins',label:"Before Shift Working Mins",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
  {ordinal:129,id:'ZoneBDayType',label:"After Shift Day Type",type:'string',unit:'code',owner:'recorded-attendance',aggregation:'invariant'},
  {ordinal:130,id:'ZoneBPostInShiftOT',label:"After Shift Post In Shift OT",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
- {ordinal:131,id:'ZoneBPostOT',label:"After Shift Post OT",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
+ {ordinal:131,id:'ZoneBPostOT',label:"After Shift End Unapproved Overtime",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
  {ordinal:132,id:'ZoneBPreInShiftOT',label:"After Shift Pre In Shift OT",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
- {ordinal:133,id:'ZoneBPreOT',label:"After Shift Pre OT",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
+ {ordinal:133,id:'ZoneBPreOT',label:"After Shift Unapproved Overtime — Cross-Day Shift",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
  {ordinal:134,id:'ZoneBPreOTDayType',label:"After Shift Pre OTDay Type",type:'string',unit:'code',owner:'recorded-attendance',aggregation:'invariant'},
  {ordinal:135,id:'ZoneBWorkingMins',label:"After Shift Working Mins",type:'decimal',unit:'minutes',owner:'recorded-attendance',aggregation:'sum'},
 ];
