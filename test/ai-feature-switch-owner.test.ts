@@ -24,6 +24,13 @@ const live = (marker: string) => {
   expect(at).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(at);
   return {file, body: src.slice(at, end)};
 };
+/** The original installed wrapper is an independent byte oracle, not the final filename. */
+const centreWrapper = (marker:string) => {
+  const src=read('db/migrations/3200_ai_centre_controls.sql'),at=src.indexOf('CREATE '+marker);
+  expect(at,marker).toBeGreaterThanOrEqual(0);
+  const start=at+'CREATE '.length,end=src.indexOf('$$;',src.indexOf('$$',start)+2);
+  expect(end).toBeGreaterThan(start);return src.slice(start,end);
+};
 const seed = () => journal.flatMap(file=>{
   const inserts=[...read(file).matchAll(/INSERT INTO app\.ai_feature_setting\(feature_id,setting_key\) VALUES([\s\S]*?);/g)];
   return inserts.flatMap(insert=>[...insert[1].matchAll(/\('([^']+)','([^']+)'\)/g)].map(m=>[m[1],m[2]] as const));
@@ -45,15 +52,21 @@ describe('one switch owner per AI feature (0692)', () => {
 
   it('reads the live switch key from the table, with no hard-coded CASE left', () => {
     const context = live('FUNCTION app._ai_control_context_for_purpose(');
-    expect(context.file).toBe('db/migrations/2138_ai_pause_company_discovery.sql');
+    expect(context.body).toContain('feature_paused:=coalesce(forced_pause,false) OR EXISTS(SELECT 1 FROM public.teras_mandate_control c WHERE c.tenant_id=tid AND c.stopped)');
     const pause=live('FUNCTION app.ai_action_unpaused(').body;
     // The installed centre stop wrapper must survive later pause-discovery optimisation.
-    const beforeCentre=read(context.file);
+    const beforeCentre=live('FUNCTION app._ai_control_context_before_centre(').body;
     expect(beforeCentre).toContain('RETURN QUERY SELECT * FROM app._ai_control_context_for_purpose(wanted_feature,forced_pause,false)');
     expect(pause).toContain('app._ai_control_context_for_purpose(wanted_feature,forced_pause,true)');
     const wrapper = live('FUNCTION app._ai_control_context(');
-    expect(wrapper.file).toBe('db/migrations/3200_ai_centre_controls.sql');
-    expect(read(wrapper.file)).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
+    expect(wrapper.body).toBe(centreWrapper('FUNCTION app._ai_control_context('));
+    expect(live('FUNCTION app.ai_agent_action_unpaused(').body).toBe(centreWrapper('FUNCTION app.ai_agent_action_unpaused('));
+    expect(read('db/migrations/3200_ai_centre_controls.sql')).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
+    const compatibility=read(wrapper.file);
+    expect(compatibility).toContain("'app._ai_control_context_before_centre(text,boolean)','0d00bc269a9b69d02a8b42d70eba8cce'");
+    expect(compatibility).toContain("'app.ai_agent_action_unpaused_before_centre(text)','96a2c89c92efcad817c0777a0cd8ad83'");
+    expect(compatibility).toContain("p.proowner<>control_owner");
+    expect(compatibility).toContain("a.grantor<>p.proowner OR a.is_grantable");
     expect(wrapper.body).toContain('FROM app._ai_control_context_before_centre(wanted_feature,forced_pause) c');
     expect(wrapper.body).toContain('c.feature_paused OR EXISTS(SELECT 1 FROM public.teras_mandate_control t WHERE t.tenant_id=app.current_tenant_id() AND t.stopped)');
     expect(wrapper.body).not.toContain('SELECT s.setting_key');
