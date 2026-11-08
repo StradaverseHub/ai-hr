@@ -86,12 +86,15 @@ it('keeps exact as-of/lifecycle, current-assignment, person and free-text filter
  await owner.db.update(employment).set({workState:'Selangor'}).where(eq(employment.id,ann.employmentId));
  await owner.db.update(assignment).set({costCenterId:b.costCenterId}).where(eq(assignment.employmentId,ann.employmentId));
  await setEmploymentInfo(ctx,{employmentId:dan.employmentId,confirmationDate:'2026-12-01'});
+ await parity(ctx,[b.companyId],{asOf:'2026-05-31',filters:{departmentId:b.deptB}},[{name:'pr',count:1}]);
  await terminateEmployment(ctx,{employmentId:bob.employmentId,terminationDate:'2026-06-01',terminationType:'voluntary'});
+ expect(await owner.db.select({departmentId:assignment.departmentId,validTo:assignment.validTo,supersededAt:assignment.supersededAt})
+  .from(assignment).where(eq(assignment.employmentId,bob.employmentId))).toEqual([{departmentId:b.deptB,validTo:'2026-06-01',supersededAt:null}]);
  const citizen=[{name:'citizen',count:1}],noncitizen=[{name:'non_citizen',count:1}];
  await parity(ctx,[b.companyId],{asOf},[...citizen,...noncitizen]);
  await parity(ctx,[b.companyId],{asOf:'2019-12-31'},[]);
  await parity(ctx,[b.companyId],{asOf,filters:{lifecycleStatus:'terminated'}},[{name:'pr',count:1}]);
- await parity(ctx,[b.companyId],{asOf:'2026-05-31',filters:{departmentId:b.deptB}},[{name:'pr',count:1}]);
+ await parity(ctx,[b.companyId],{asOf:'2026-05-31',filters:{departmentId:b.deptB}},[]);
  await parity(ctx,[b.companyId],{asOf,filters:{departmentId:b.deptB}},[]);
  await parity(ctx,[b.companyId],{asOf,filters:{gender:'female',workState:'Selangor',q:'Ann'}},citizen);
  await parity(ctx,[b.companyId],{asOf,filters:{gender:'female',q:'Dan'}},[]);
