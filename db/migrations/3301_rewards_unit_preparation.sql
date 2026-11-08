@@ -238,3 +238,26 @@ ALTER FUNCTION app.reward_preparation_source_changed() OWNER TO ai_hr_reward_pre
 REVOKE ALL ON FUNCTION app.reward_preparation_source_changed() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER reward_preparation_source_changed AFTER INSERT OR UPDATE OF source,facts OR DELETE ON public.reward_entry
  FOR EACH ROW EXECUTE FUNCTION app.reward_preparation_source_changed();
+
+--> statement-breakpoint
+-- Inspection seats remain visible during preparation, but no seat may advance an unchecked review.
+CREATE FUNCTION app.reward_preparation_decision_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF NEW.kind<>'annual' OR NOT NEW.preparation_required OR NEW.status IS NOT DISTINCT FROM OLD.status THEN RETURN NEW; END IF;
+ IF NEW.status IN('withdrawn','rejected') THEN RETURN NEW; END IF;
+ IF NEW.status='draft' AND OLD.status NOT IN('posted','withdrawn','rejected') THEN
+  IF 'gr'=ANY(ARRAY(SELECT app.reward_roles(NEW.id))) AND EXISTS(
+   SELECT 1 FROM public.reward_governance_history h WHERE h.unit_id=NEW.id AND h.tenant_id=NEW.tenant_id
+   AND h.kind='preparation-reopen' AND h.actor_id=app.current_user_id() AND length(trim(h.reason))>=10
+   AND h.xmin=pg_current_xact_id()::xid) THEN RETURN NEW; END IF;
+  RAISE EXCEPTION 'A current reasoned Group Rewards change is required to restart preparation';
+ END IF;
+ IF NOT coalesce((app.reward_preparation_view(NEW.id)->>'released')::boolean,false) THEN
+  RAISE EXCEPTION 'Preparation must be independently checked and released before a review decision';
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_preparation_decision_guard() FROM PUBLIC;
+CREATE TRIGGER reward_preparation_decision_guard BEFORE UPDATE OF status ON public.reward_unit
+ FOR EACH ROW EXECUTE FUNCTION app.reward_preparation_decision_guard();

@@ -9,7 +9,7 @@ import { createAppUser,owner,closeAll,resetDb,migrateTestDb,seedBase,setModule,e
 import { createApprovedRewardUnit } from './rewards-setup-fixture';
 import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget } from './rewards-governance-fixture';
 import { setRewardMember } from './rewards-access-fixture';
-import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference } from '../packs/rewards/service';
+import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference } from '../packs/rewards/service';
 import { REWARD_PREPARATION_STEPS } from '../packs/rewards/preparation-model';
 
 let base:Base,gr:SessionContext,checker:SessionContext,reviewer:SessionContext,unitId:string,employmentId:string;
@@ -111,6 +111,26 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   await saveRewardDashboardPreference(gr,[base.companyId],{scope:unitId,period:'annual'});
   expect(await getRewardDashboardPreference(gr)).toEqual({scope:unitId,period:'annual'});
   expect(await getRewardDashboardPreference(reviewer)).toBeNull();
+ });
+
+ it('prevents even an inspection seat from advancing preparation and restarts an already-routed review on a controlled change',async()=>{
+  const initial=await getRewardUnit(gr,unitId);
+  await expect(decideRewardUnit(gr,unitId,initial.unit.revision,'approve','Fictional premature approval')).rejects.toThrow(/independently checked/);
+  await expect(withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)))).rejects.toThrow(/independently checked/);
+  await confirmAll();await change(checker,{kind:'release'});
+  await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)));
+  const routed=await getRewardPreparationChecklist(gr,unitId);expect(routed.canEdit).toBe(false);expect(routed.canReopen).toBe(true);
+  await change(gr,{kind:'reopen',reason:'Fictional routed review needs a source correction'});
+  expect((await getRewardUnit(gr,unitId)).unit.status).toBe('draft');expect((await getRewardPreparationChecklist(gr,unitId)).canEdit).toBe(true);
+  expect((await getRewardPreparationStatus(reviewer,unitId)).released).toBe(false);
+ });
+
+ it('preserves historical GR setup editing without inventing release or step history',async()=>{
+  await owner.db.execute(sql`update reward_unit set preparation_required=false where id=${unitId}::uuid`);
+  const historical=await getRewardPreparationChecklist(gr,unitId);expect(historical.access.required).toBe(false);expect(historical.canEdit).toBe(true);expect(historical.preparation.steps).toEqual({});
+  await expect(change(gr,{kind:'expected',date:'2026-11-30'})).rejects.toThrow(/Legacy review/);
+  const gov=await getRewardUnitGovernance(gr,unitId);await saveRewardUnitInputs(gr,unitId,gov.revision,{...gov.inputs!,multiplierBp:11000},'Fictional legacy multiplier correction');
+  expect((await getRewardPreparationChecklist(gr,unitId)).preparation.steps).toEqual({});
  });
 
  it('keeps the preparation compatibility flag out of ordinary runtime control',async()=>{
