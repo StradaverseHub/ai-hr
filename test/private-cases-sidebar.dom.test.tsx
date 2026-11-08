@@ -51,7 +51,7 @@ describe('private case rows in the rail',()=>{
  });
  it('labels both in every shipped locale',()=>{
   for(const locale of ['en','ms','zh','vi','ta','th']){
-   const nav=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8')).nav as Record<string,string>;
+   const nav=JSON.parse(readFileSync(`messages/${locale}.json`,'utf8')).nav as Record<string,string>;
    expect(nav.myPrivateCases?.trim(),locale).toBeTruthy();expect(nav.privateCases?.trim(),locale).toBeTruthy();
   }
  });
