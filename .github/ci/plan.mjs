@@ -4,7 +4,7 @@ import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {readFileSync,realpathSync,lstatSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {singletonSources,assertSingletonCoverage} from './singleton-protocol.mjs';
+import {singletonSources,singletonSourceMaximum,assertSingletonCoverage} from './singleton-protocol.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {inspectPdfToolScope} from './pdf-tool-scope.mjs';
 import {buildUnits,hash,CI_EXECUTION} from './manifest.mjs';
@@ -37,7 +37,7 @@ export function createPlan(cwd = process.cwd()) {
   const pdfTooling=inspectPdfToolScope(cwd);
   const units = buildUnits(suite,groups,browsers);
   const singletonSourceHashes=Object.fromEntries(units.filter(u=>u.singleton).map(unit=>[unit.id,Object.fromEntries(singletonSources(unit).map(file=>{
-   const path=resolve(cwd,file);if(realpathSync(path)!==path||!lstatSync(path).isFile()||lstatSync(path).size>4194304)throw Error('Unsafe singleton source');
+   const path=resolve(cwd,file);if(realpathSync(path)!==path||!lstatSync(path).isFile()||lstatSync(path).size>singletonSourceMaximum(file))throw Error('Unsafe singleton source');
    return [file,createHash('sha256').update(readFileSync(path)).digest('hex')];
   }))]));
   const body = {schemaVersion: 2, policyVersion: CI_POLICY, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', migrationBase: process.env.AIHR_CI_MIGRATION_BASE ?? null, runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, execution:CI_EXECUTION, pdfTooling, singletonSources:singletonSourceHashes, suite, units};

@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,lstatSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {buildUnits,requiredEvidence,CI_EXECUTION} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
-import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,protocolHash,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection} from './singleton-protocol.mjs';
+import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,singletonSourceMaximum,protocolHash,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection} from './singleton-protocol.mjs';
 import {requiredHostedSingletons} from '../../scripts/gate-singleton-scope.mjs';
 const browser=['test/fictional.browser.test.tsx'];
 function fixture(file='test/runtime-ready-admission-native.test.ts'){
@@ -183,6 +184,38 @@ test('Attendance owned child and pidfd proof cannot share a job or omit its actu
 });
 
 
+test('singleton source limits grant only the exact Tamil member a bounded 8 MiB read',()=>{
+ const ordinary=4*1024*1024,tamil=8*1024*1024;
+ assert.equal(singletonSourceMaximum('messages/ta.json'),tamil);
+ for(const file of ['messages/en.json','unknown/source.json','messages/ta.json/child','messages/ta.json.backup',
+  'messages/TA.json','./messages/ta.json','/messages/ta.json','messages/../messages/ta.json',
+  'messages//ta.json','messages\\ta.json','messages/ta.json?approved=true','messages/ta.json\0']){
+  assert.equal(singletonSourceMaximum(file),ordinary,file);
+  assert(ordinary<=singletonSourceMaximum(file));assert(!(ordinary+1<=singletonSourceMaximum(file)));
+ }
+ assert(tamil<=singletonSourceMaximum('messages/ta.json'));
+ assert(!(tamil+1<=singletonSourceMaximum('messages/ta.json')));
+ assert.equal(SINGLETON_FILES['messages/ta.json'],undefined); // A size bound is not test/profile admission.
+ const planner=readFileSync(new URL('./plan.mjs',import.meta.url),'utf8');
+ const admission=readFileSync(new URL('../../test/helpers/ci-singleton-admission.ts',import.meta.url),'utf8');
+ assert(planner.includes('lstatSync(path).size>singletonSourceMaximum(file)'));
+ assert(admission.includes('regular(join(source,path),singletonSourceMaximum(path))'));
+ assert(!planner.includes('size>4194304'));assert(!admission.includes('regular(join(source,path),4194304)'));
+});
+test('both Rewards jobs retain and hash the complete large Tamil dependency without a generic limit increase',()=>{
+ const root=fileURLToPath(new URL('../../',import.meta.url)),file='messages/ta.json';
+ const raw=readFileSync(new URL('../../'+file,import.meta.url)),info=lstatSync(new URL('../../'+file,import.meta.url));
+ assert(info.isFile()&&!info.isSymbolicLink());assert.equal(raw.length,info.size);
+ assert(raw.length>4*1024*1024&&raw.length<=singletonSourceMaximum(file));
+ const committed=execFileSync('git',['show','HEAD:'+file],{cwd:root,maxBuffer:8*1024*1024});
+ assert(raw.equals(committed));assert.equal(createHash('sha256').update(raw).digest('hex'),createHash('sha256').update(committed).digest('hex'));
+ for(const selected of ['test/rewards-audit-policy-native.test.ts','test/rewards-audited-read-prototype.test.ts']){
+  const sources=singletonSources(fixture(selected).unit);assert.equal(sources.filter(path=>path===file).length,1);
+  const large=sources.filter(path=>lstatSync(new URL('../../'+path,import.meta.url)).size>4*1024*1024);
+  assert.deepEqual(large,[file]);
+  for(const path of sources)assert(lstatSync(new URL('../../'+path,import.meta.url)).size<=singletonSourceMaximum(path),path);
+ }
+});
 test('Rewards native policy and original read family retain complete isolated source-bound jobs',()=>{
  const files=['test/rewards-audit-policy-native.test.ts','test/rewards-audited-read-prototype.test.ts'];
  const critical=[

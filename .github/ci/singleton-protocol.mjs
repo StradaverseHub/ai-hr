@@ -84,6 +84,11 @@ const componentSources=Object.freeze({
   'test/fixtures/notification-worker/query-shape.sql','test/fixtures/notification-worker/exact-source.sql',
  ]),
 });
+/** Bounds complete source hashing only; this never admits a path or a profile.
+ * The native Rewards closure imports the complete 4.73 MB Tamil catalogue.
+ * All other sources, including unknown or noncanonical spellings, retain 4 MiB.
+ * @param {string} file exact repository-relative source member */
+export function singletonSourceMaximum(file){return file==='messages/ta.json'?8*1024*1024:4*1024*1024;}
 export function singletonSources(unit){
  assertSingletonUnit(unit);
  return [unit.files[0],'test/helpers/ci-singleton-admission.ts','.github/ci/singleton-protocol.mjs','.github/ci/policy-version.mjs',
