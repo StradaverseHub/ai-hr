@@ -1,0 +1,193 @@
+{
+  "kind": "AI_MANAGEMENT_PAGE_ACTIVE_MODEL_SOURCE_ONLY_NOT_QUALIFICATION",
+  "parent": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+  "branch": "codex/ai-management-active-model-correctness-20261109",
+  "scope": [
+    "core/ai-management.ts",
+    "test/ai-management-section-projection.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/ai-management-section-projection-source-20261109.json",
+    "docs/qualification/ai-management-active-model-correctness-source-20261109.json"
+  ],
+  "wholeActualParentGitPreimages": [
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "core/ai-management.ts",
+      "gitBlob": "0c0aa121ce5c2d3a51a0a2c84dfd6625b3eeab23",
+      "sha256": "759c3bb016c250ac1f8f9d56a29e7049e32854e7a654e9d698b7e3df49118255",
+      "bytes": 45893
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "test/ai-management-section-projection.test.ts",
+      "gitBlob": "5659023e944540466d2fc3e39f7883eb8d733c35",
+      "sha256": "5b1d12868bed27cf5791ece99a77321d54c96aa228f1dd7963c405aba07bafd5",
+      "bytes": 21899
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "gitBlob": "25750caa12f41484fa7bd2e00999392be923d018",
+      "sha256": "fa9658d5d8f9c9603317a7f01d78c4bc61dadf7e4018ba5c24ee07c73cc2065a",
+      "bytes": 9382
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+      "gitBlob": "ea58f63e20c1c19ad99566b4f90bedb925153e38",
+      "sha256": "f2afee96913c2b0646be9a897bfd0b139fb6abcd398c028330d78ede13e190ff",
+      "bytes": 27348
+    }
+  ],
+  "currentSourceSha256": {
+    "core/ai-management.ts": "0cf2eea5529b850bac91ed5e6a03dd95e0adfcaabb6cded3eba9318b4c600bd2",
+    "test/ai-management-section-projection.test.ts": "46aabd77f1f53aa524d1bb57ff6cc0f0ade4eb23bc5f660072a906d4fa34084d",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "fd4307fa0279f4fd78498fbad10c523dfef7653e0465bdc3bdd3d697269b8d4a"
+  },
+  "inverseCoordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+  "wholeImmediateParentInverses": {
+    "core/ai-management.ts": [
+      {
+        "startLine": 133,
+        "endLine": 138,
+        "after": "    // Page status names the usable active model; the Provider form keeps its pending candidate separate.\n    // Preserve the full legacy API's settings-view selection for its existing consumers.\n    const selectedProvider = purpose==='full'\n      ? !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved\n      : resolved;\n",
+        "before": "    const selectedProvider = !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved;\n"
+      }
+    ],
+    "test/ai-management-section-projection.test.ts": [
+      {
+        "startLine": 120,
+        "endLine": 159,
+        "after": "});\n\nit('shows the validated active model on every page while the Provider form retains a distinct saved candidate',async()=>{\n const activeModel='fictional/active-a',candidateModel='fictional/candidate-b',activeKey='fictional-active-key-never-sent';\n const options={version:1,routing:{allowedProviders:['approved-a'],allowFallbacks:false,sort:'latency'}};\n // A genuine encrypted preexisting active row; no fabricated baseline/evaluation receipt or provider call.\n await owner.db.insert(schema.aiProviderConfig).values({tenantId:b.tenantId,provider:'openrouter',model:activeModel,\n  apiKeyCiphertext:encryptSecret(activeKey,b.tenantId),keyLast4:activeKey.slice(-4),providerOptions:options,isActive:true});\n await saveAiProviderConfig(group,{provider:'openrouter',model:candidateModel,apiKey:'fictional-candidate-key-never-sent',providerOptions:options});\n const nativeActive=()=>withTenant(group,async tx=>Array.from(await tx.execute<{provider:string;model:string}>(sql`select provider,model from app.ai_active_provider_config_v2()`)));\n const nativeCandidate=()=>withTenant(group,async tx=>Array.from(await tx.execute<{provider:string;model:string}>(sql`select provider,model from app.ai_provider_candidate_view_v1()`)));\n expect(await nativeActive()).toEqual([{provider:'openrouter',model:activeModel}]);\n expect(await nativeCandidate()).toEqual([{provider:'openrouter',model:candidateModel}]);\n const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'projection-model-company-admin'}).returning();\n await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,companyId:b.companyId,role:'hr_admin'});\n const company:SessionContext={...group,userId:u.id,grants:[{role:'hr_admin',companyId:b.companyId}]};\n for(const ctx of [group,company])expect(await withTenant(ctx,async tx=>Array.from(await tx.execute(sql`select current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as read_only`)))).toEqual([{role:'ai_hr_app',isolation:'read committed',read_only:'off'}]);\n const audits=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.id);\n const effects=async()=>Array.from(await owner.db.execute<{runs:string;reservations:string;evaluations:string}>(sql`select\n  (select count(*)::text from public.ai_model_run where tenant_id=${b.tenantId}::uuid) as runs,\n  (select count(*)::text from app.ai_spend_reservation where tenant_id=${b.tenantId}::uuid) as reservations,\n  (select count(*)::text from public.ai_provider_protocol_evaluation where tenant_id=${b.tenantId}::uuid) as evaluations`));\n expect(await effects()).toEqual([{runs:'0',reservations:'0',evaluations:'0'}]);\n for(const section of AI_MANAGEMENT_SECTIONS){\n  const groupPage=await aiManagementPageView(group,section),companyPage=await aiManagementPageView(company,section);\n  expect(groupPage.provider).toEqual({provider:'openrouter',model:activeModel});\n  expect(companyPage.provider).toEqual({provider:'openrouter',model:activeModel});\n  expect(companyPage.spend).toBeNull();expect(companyPage.groups).toEqual([]);\n }\n // The compatibility API and pending-edit form retain their separate, explicit contracts.\n expect((await aiManagementView(group)).provider).toEqual({provider:'openrouter',model:candidateModel});\n expect((await aiManagementView(company)).provider).toEqual({provider:'openrouter',model:activeModel});\n const form=await getAiConfigView(group);\n expect(form.providers.find(p=>p.provider==='openrouter')).toMatchObject({isActive:true,model:candidateModel,activeModel,candidateSaved:true});\n expect(await nativeActive()).toEqual([{provider:'openrouter',model:activeModel}]);\n expect(await nativeCandidate()).toEqual([{provider:'openrouter',model:candidateModel}]);\n expect(await effects()).toEqual([{runs:'0',reservations:'0',evaluations:'0'}]);\n expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.id)).toEqual(audits);\n expect(providerAttempt).not.toHaveBeenCalled();expect(networkAttempt).not.toHaveBeenCalled();\n",
+        "before": ""
+      },
+      {
+        "startLine": 16,
+        "endLine": 17,
+        "after": "import {encryptSecret} from '../lib/ai/crypto';\n",
+        "before": ""
+      },
+      {
+        "startLine": 10,
+        "endLine": 11,
+        "after": "import {getAiConfigView,saveAiProviderConfig} from '../core/ai-config';\n",
+        "before": "import {saveAiProviderConfig} from '../core/ai-config';\n"
+      },
+      {
+        "startLine": 6,
+        "endLine": 7,
+        "after": "import {withTenant,type SessionContext} from '../db/client';\n",
+        "before": "import type {SessionContext} from '../db/client';\n"
+      }
+    ]
+  },
+  "adrAppendOnly": true,
+  "productContract": {
+    "pageOnlyActiveProviderSelection": true,
+    "legacyFullSelectionExpressionWhole": true,
+    "pendingProviderFormAndAllAuthorityCallsWhole": true,
+    "isolationLocksQueriesNativeSqlPermissionsCommandsUnchanged": true,
+    "rrroImplemented": false
+  },
+  "nativeFixture": {
+    "newCases": 1,
+    "originalProjectionExpandedCasesWhole": 16,
+    "originalContractCasesWhole": 6,
+    "newProjectionExpandedCases": 17,
+    "actualAppRoleModeAsserted": [
+      "ai_hr_app",
+      "read committed",
+      "off"
+    ],
+    "preexistingEncryptedActiveModel": "fictional/active-a",
+    "savedCandidateModel": "fictional/candidate-b",
+    "genuineCandidateSaveOwner": true,
+    "independentNativeActiveAndCandidateFacts": true,
+    "allEightPurposesGroupAndCompanyExpectedActiveA": true,
+    "legacyGroupFullBAndCompanyFullAExplicit": true,
+    "providerFormCandidateBActiveAExplicit": true,
+    "noRunReservationEvaluationAuditOrTransportFromDisplay": true,
+    "executed": false
+  },
+  "wholeOriginalCoreRestorationTarget": {
+    "source": "cd47c63c77d26431ee33de38b75790c62924a1ad",
+    "sha256": "2e2c25f9ad2685ed6072da4aaa4929604ddecb4d5a323b3acf9966ab63473a01",
+    "bytes": 43974,
+    "gitBlob": "dd18e5143f06c1bb1f0e9a63ea082068006f58bf"
+  },
+  "historicalEvidenceRetained": {
+    "originalFailedSource": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+    "originalFailedRun": 42509856754,
+    "nodeRecoverySource": "f97dc006abc6aa91196c2d70eaa0aae0b51149b6",
+    "nodeRecoveryRun": 42511453856,
+    "domRecoverySource": "85de9902a6d4ac1ae103fb4df8809a265a3d74a5",
+    "domRecoveryRun": 42512334101,
+    "noneRelabeledToThisChild": true
+  },
+  "proposedMinimumAffectedNativeSelector": "test/ai-management-section-projection.test.ts",
+  "allGlobalGraphBindingsAndApprovalsRemainUnqualified": true,
+  "repositoryBehaviorExecutedLocally": false,
+  "runtimeQualified": false,
+  "providerOrNetworkCalls": false,
+  "published": false,
+  "releaseAuthorized": false,
+  "productionHeld": true,
+  "additionalWholeProtectedFixtureOwners": [
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "lib/ai/crypto.ts",
+      "gitBlob": "4a8d2293c1f91bff9fe5e01bc2aa132321521d89",
+      "sha256": "b7b3963a4ab4390f5061e6a374c98f1343c7b0503a01f50af44dd92697077f3d",
+      "bytes": 5306
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "lib/ai/providers/openrouter-configuration.ts",
+      "gitBlob": "5b5ec102dd129e6b9afc2ba84e9f8f534a9e835a",
+      "sha256": "34aa946628268800dd7c04541a39daae764fdd93842693f3fca730188bc7502d",
+      "bytes": 1133
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "lib/ai/providers/openrouter-transport.ts",
+      "gitBlob": "1a4d18adfc504230d1e10989a5caceba6f1d0f84",
+      "sha256": "3e2bec947be6dcca7f2e5a867c5e62a95aa74c99ff0587b6a8917a7df9cf102b",
+      "bytes": 13864
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "db/migrations/0623_openrouter_provider_options.sql",
+      "gitBlob": "01754463e8ccc6fe8204d51eec4ff30849be0538",
+      "sha256": "0f78416bd82c8e7328732b4234fe071ba15248f387ab9aa8ef911ee1822cd319",
+      "bytes": 4288
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "db/migrations/0625_provider_readiness.sql",
+      "gitBlob": "c726037cfbce63df162990472f9a2d111e5a0be2",
+      "sha256": "8634525e4ac5a6810435518b54b92f5f478f75c9004413180fdeabbf46bc15f1",
+      "bytes": 17498
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "db/migrations/0686_ai_provider_custody_owner_rls.sql",
+      "gitBlob": "ac68caa5fabb19b598f419c3ea5df3b0e2aabda5",
+      "sha256": "571fe5c0865f1419cf500d3ce90f82fea8b80145dec8a48e0c75a0aa3d31555d",
+      "bytes": 1567
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "db/migrations/0814_ai_provider_change_gate.sql",
+      "gitBlob": "243d3d5cedbacd5507ab1f52debabd4f4c8b2d28",
+      "sha256": "acd288d90f61190327a327defd4671cea63f255f307a6ac73bee93b20c717441",
+      "bytes": 25227
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "test/harness.ts",
+      "gitBlob": "2239a072cbc922366ebb0ad1f3ec7c85c8668685",
+      "sha256": "ab992137979341edd6bc15ba47e38d99d3e96994b788f15afde27cea3ed6db9e",
+      "bytes": 50558
+    }
+  ]
+}

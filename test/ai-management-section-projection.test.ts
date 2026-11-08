@@ -4,16 +4,17 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
-import type {SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {aiManagementPageView,aiManagementView,setAiAllowance,setGroupAllowance,setAiFeature} from '../core/ai-management';
 import {aiManagementAlerts,aiInventoryView,aiRunHistory} from '../core/ai-inventory';
-import {saveAiProviderConfig} from '../core/ai-config';
+import {getAiConfigView,saveAiProviderConfig} from '../core/ai-config';
 import {setAiSpendBudget} from '../core/ai-spend-management';
 import {hireEmployee,terminateEmployment} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {AI_MANAGEMENT_SECTIONS,type AiManagementSection} from '../lib/ai/management-sections';
 import type {AiAdapter} from '../lib/ai/types';
+import {encryptSecret} from '../lib/ai/crypto';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import {anthropicAdapter} from '../lib/ai/providers/anthropic';
 import {googleAdapter} from '../lib/ai/providers/google';
@@ -117,6 +118,45 @@ it('preserves company-scoped projections without returning group users, runs or 
   expect(visible).not.toContain(otherCompany.id);expect(visible).not.toContain(f.heavy);expect(visible).not.toContain(f.quiet);
  }
  const page=await aiManagementPageView(ctx,'features');expect((await aiInventoryView(ctx,page)).scope).toBe('registry');expect(await aiManagementAlerts(ctx,page)).toEqual({status:'not_shown'});
+});
+
+it('shows the validated active model on every page while the Provider form retains a distinct saved candidate',async()=>{
+ const activeModel='fictional/active-a',candidateModel='fictional/candidate-b',activeKey='fictional-active-key-never-sent';
+ const options={version:1,routing:{allowedProviders:['approved-a'],allowFallbacks:false,sort:'latency'}};
+ // A genuine encrypted preexisting active row; no fabricated baseline/evaluation receipt or provider call.
+ await owner.db.insert(schema.aiProviderConfig).values({tenantId:b.tenantId,provider:'openrouter',model:activeModel,
+  apiKeyCiphertext:encryptSecret(activeKey,b.tenantId),keyLast4:activeKey.slice(-4),providerOptions:options,isActive:true});
+ await saveAiProviderConfig(group,{provider:'openrouter',model:candidateModel,apiKey:'fictional-candidate-key-never-sent',providerOptions:options});
+ const nativeActive=()=>withTenant(group,async tx=>Array.from(await tx.execute<{provider:string;model:string}>(sql`select provider,model from app.ai_active_provider_config_v2()`)));
+ const nativeCandidate=()=>withTenant(group,async tx=>Array.from(await tx.execute<{provider:string;model:string}>(sql`select provider,model from app.ai_provider_candidate_view_v1()`)));
+ expect(await nativeActive()).toEqual([{provider:'openrouter',model:activeModel}]);
+ expect(await nativeCandidate()).toEqual([{provider:'openrouter',model:candidateModel}]);
+ const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'projection-model-company-admin'}).returning();
+ await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,companyId:b.companyId,role:'hr_admin'});
+ const company:SessionContext={...group,userId:u.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
+ for(const ctx of [group,company])expect(await withTenant(ctx,async tx=>Array.from(await tx.execute(sql`select current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as read_only`)))).toEqual([{role:'ai_hr_app',isolation:'read committed',read_only:'off'}]);
+ const audits=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.id);
+ const effects=async()=>Array.from(await owner.db.execute<{runs:string;reservations:string;evaluations:string}>(sql`select
+  (select count(*)::text from public.ai_model_run where tenant_id=${b.tenantId}::uuid) as runs,
+  (select count(*)::text from app.ai_spend_reservation where tenant_id=${b.tenantId}::uuid) as reservations,
+  (select count(*)::text from public.ai_provider_protocol_evaluation where tenant_id=${b.tenantId}::uuid) as evaluations`));
+ expect(await effects()).toEqual([{runs:'0',reservations:'0',evaluations:'0'}]);
+ for(const section of AI_MANAGEMENT_SECTIONS){
+  const groupPage=await aiManagementPageView(group,section),companyPage=await aiManagementPageView(company,section);
+  expect(groupPage.provider).toEqual({provider:'openrouter',model:activeModel});
+  expect(companyPage.provider).toEqual({provider:'openrouter',model:activeModel});
+  expect(companyPage.spend).toBeNull();expect(companyPage.groups).toEqual([]);
+ }
+ // The compatibility API and pending-edit form retain their separate, explicit contracts.
+ expect((await aiManagementView(group)).provider).toEqual({provider:'openrouter',model:candidateModel});
+ expect((await aiManagementView(company)).provider).toEqual({provider:'openrouter',model:activeModel});
+ const form=await getAiConfigView(group);
+ expect(form.providers.find(p=>p.provider==='openrouter')).toMatchObject({isActive:true,model:candidateModel,activeModel,candidateSaved:true});
+ expect(await nativeActive()).toEqual([{provider:'openrouter',model:activeModel}]);
+ expect(await nativeCandidate()).toEqual([{provider:'openrouter',model:candidateModel}]);
+ expect(await effects()).toEqual([{runs:'0',reservations:'0',evaluations:'0'}]);
+ expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.id)).toEqual(audits);
+ expect(providerAttempt).not.toHaveBeenCalled();expect(networkAttempt).not.toHaveBeenCalled();
 });
 
 it('keeps zero and null caps, quiet zero-capped users, held tokens and switch attribution exact',async()=>{

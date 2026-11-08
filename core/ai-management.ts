@@ -131,7 +131,11 @@ async function readAiManagement(ctx:SessionContext,search:string,runFilter:AiRun
     let resolved: Pick<NonNullable<Awaited<ReturnType<typeof resolveActiveAiConfig>>>,'provider'|'model'> | null = null;
     try { const cfg = await resolveActiveAiConfig(tx,ctx); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }
     const usable = resolved !== null;
-    const selectedProvider = !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved;
+    // Page status names the usable active model; the Provider form keeps its pending candidate separate.
+    // Preserve the full legacy API's settings-view selection for its existing consumers.
+    const selectedProvider = purpose==='full'
+      ? !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved
+      : resolved;
     // Only provider/model metadata crosses to the view, after checking that its key can be resolved.
     // One switch owner per feature (0692): a setting-backed feature follows its setting alone; a settingless one
     // its `feature:` policy row. A feature row left over for a setting-backed feature cannot be written any more
