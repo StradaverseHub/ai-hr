@@ -297,11 +297,14 @@ describe('F · the contract between the form and the server action', () => {
   it('Remarks and Attachment are offered, and the action posts both', () => {
     expect(APPLY).toContain('name="remark"');
     expect(APPLY).toContain('name="attachment"');
-    // React supplies the function action's POST/multipart encoding. Explicit attributes warn and
-    // are overridden; retaining the function action and file field preserves the upload contract.
-    const form = APPLY.match(/<form\b[^>]*action=\{myRequestOvertime\}[^>]*>/)?.[0];
+    // The retained live form sends FormData to the same server action, including its file,
+    // without a navigation or reset on routing refusal. Native fallback must never put input in a URL.
+    const form = APPLY.match(/<AttendanceSubmissionForm\b[^>]*action=\{myRequestOvertime\}[^>]*>/)?.[0];
     expect(form).toBeDefined();
-    expect(form).not.toMatch(/\b(?:encType|method)=/);
+    const wrapper=read('components/attendance-submission-form.tsx');
+    expect(wrapper).toContain('new FormData(event.currentTarget)');
+    expect(wrapper).toContain('method="post"');
+    expect(wrapper).toContain('await action(data)');
     const fn = ACTIONS.slice(ACTIONS.indexOf('export async function myRequestOvertime'));
     const body = fn.slice(0, fn.indexOf('\n}\n') + 3);
     expect(body).toContain("formData.get('remark')");
