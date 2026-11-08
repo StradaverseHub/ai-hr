@@ -9583,7 +9583,17 @@
       "runTypeOffCycle": "Off-cycle",
       "runTypeBonus": "Bonus",
       "runTypeAdjustment": "Adjustment",
-      "ocbcBlankHashNotice": "Initial layout: the Hash Total field is left blank in its reserved position, as requested. Bank acceptance has not been verified."
+      "ocbcBlankHashNotice": "Initial layout: the Hash Total field is left blank in its reserved position, as requested. Bank acceptance has not been verified.",
+      "maybankSalary": "Maybank2E-RC V7.4 · Salary",
+      "maybankSalaryDesc": "Pipe-delimited V7.4 file from saved payroll, using this company’s configured payment account.",
+      "maybankKwsp": "Maybank2E-RC V7.4 · KWSP",
+      "maybankKwspDesc": "Pipe-delimited V7.4 file from saved payroll, using this company’s configured payment account.",
+      "maybankSocso": "Maybank2E-RC V7.4 · SOCSO",
+      "maybankSocsoDesc": "Pipe-delimited V7.4 file from saved payroll, using this company’s configured payment account.",
+      "maybankLhdn": "Maybank2E-RC V7.4 · LHDN",
+      "maybankLhdnDesc": "Pipe-delimited V7.4 file from saved payroll, using this company’s configured payment account.",
+      "maybankZakat": "Maybank2E-RC V7.4 · Zakat",
+      "maybankZakatDesc": "Pipe-delimited V7.4 file from saved payroll, using this company’s configured payment account."
     },
     "payslipInformation": {
       "employee": "Employee Name",
@@ -36554,5 +36564,23 @@
     "overdue": "Overdue",
     "noDue": "No due date set",
     "destinations": "Rewards pages"
+  },
+  "maybankPayment": {
+    "settings": "Maybank payment file settings",
+    "version": "Maybank File Format Version",
+    "notConfigured": "Not configured",
+    "hashHelp": "The V7.4 document does not include the bank’s hash formula. Confirm your arrangement with Maybank before selecting a blank hash.",
+    "hashArrangement": "Bank hashing arrangement",
+    "unconfirmed": "Not confirmed / hashing required",
+    "noHash": "Bank confirmed: hashing not required",
+    "stateCode": "EPF / Zakat company state",
+    "zakatClass": "Zakat classification",
+    "mappingHelp": "Salary uses this company’s primary account. Map KWSP, SOCSO, LHDN and Zakat to their paying accounts under Statutory Accounts.",
+    "downloadNotice": "Uses this company’s configured category account. Generated files still require Maybank upload validation; downloading records no payment.",
+    "payeeResidency": "Bank payee residency",
+    "notRecorded": "Not recorded",
+    "resident": "Resident",
+    "nonResident": "Non-resident",
+    "residencyHelp": "Record the bank payee’s residency for payment reporting, including a custom account holder. This is separate from employee tax residency."
   }
 }

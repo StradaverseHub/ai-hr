@@ -9583,7 +9583,17 @@
       "runTypeOffCycle": "Luar kitaran",
       "runTypeBonus": "Bonus",
       "runTypeAdjustment": "Pelarasan",
-      "ocbcBlankHashNotice": "Susun atur awal: medan Hash Total dibiarkan kosong pada kedudukan yang ditetapkan, seperti diminta. Penerimaan bank belum disahkan."
+      "ocbcBlankHashNotice": "Susun atur awal: medan Hash Total dibiarkan kosong pada kedudukan yang ditetapkan, seperti diminta. Penerimaan bank belum disahkan.",
+      "maybankSalary": "Maybank2E-RC V7.4 · Gaji",
+      "maybankSalaryDesc": "Fail V7.4 dipisahkan paip daripada gaji tersimpan, menggunakan akaun pembayaran syarikat ini.",
+      "maybankKwsp": "Maybank2E-RC V7.4 · KWSP",
+      "maybankKwspDesc": "Fail V7.4 dipisahkan paip daripada gaji tersimpan, menggunakan akaun pembayaran syarikat ini.",
+      "maybankSocso": "Maybank2E-RC V7.4 · SOCSO",
+      "maybankSocsoDesc": "Fail V7.4 dipisahkan paip daripada gaji tersimpan, menggunakan akaun pembayaran syarikat ini.",
+      "maybankLhdn": "Maybank2E-RC V7.4 · LHDN",
+      "maybankLhdnDesc": "Fail V7.4 dipisahkan paip daripada gaji tersimpan, menggunakan akaun pembayaran syarikat ini.",
+      "maybankZakat": "Maybank2E-RC V7.4 · Zakat",
+      "maybankZakatDesc": "Fail V7.4 dipisahkan paip daripada gaji tersimpan, menggunakan akaun pembayaran syarikat ini."
     },
     "payslipInformation": {
       "employee": "Nama Pekerja",
@@ -36554,5 +36564,23 @@
     "overdue": "Lewat",
     "noDue": "Tarikh akhir belum ditetapkan",
     "destinations": "Halaman Ganjaran"
+  },
+  "maybankPayment": {
+    "settings": "Tetapan fail pembayaran Maybank",
+    "version": "Versi Format Fail Maybank",
+    "notConfigured": "Belum dikonfigurasi",
+    "hashHelp": "Dokumen V7.4 tidak menyertakan formula hash bank. Sahkan aturan dengan Maybank sebelum memilih hash kosong.",
+    "hashArrangement": "Aturan hash bank",
+    "unconfirmed": "Belum disahkan / hash diperlukan",
+    "noHash": "Bank mengesahkan: hash tidak diperlukan",
+    "stateCode": "Negeri syarikat EPF / Zakat",
+    "zakatClass": "Klasifikasi Zakat",
+    "mappingHelp": "Gaji menggunakan akaun utama syarikat ini. Petakan KWSP, SOCSO, LHDN dan Zakat kepada akaun pembayar di Akaun Berkanun.",
+    "downloadNotice": "Menggunakan akaun kategori syarikat ini. Fail masih perlu disahkan melalui muat naik Maybank; muat turun tidak merekodkan pembayaran.",
+    "payeeResidency": "Pemastautinan penerima bank",
+    "notRecorded": "Belum direkodkan",
+    "resident": "Pemastautin",
+    "nonResident": "Bukan pemastautin",
+    "residencyHelp": "Rekod pemastautinan penerima untuk pelaporan pembayaran, termasuk pemegang akaun tersuai. Ini berasingan daripada pemastautinan cukai pekerja."
   }
 }

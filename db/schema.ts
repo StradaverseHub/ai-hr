@@ -3505,6 +3505,7 @@ export const employeeStatutoryMy = pgTable(
     epfManualReason: text('epf_manual_reason'),
     bankName: text('bank_name'),
     bankAccountNo: text('bank_account_no'),
+    bankPayeeResidency: text('bank_payee_residency').$type<'resident'|'non_resident'|null>(),
     // Custom payment holder (item ef720d3a). Where a banking restriction requires an employee's salary to be
     // paid into a THIRD party's account (spouse / authorised person), these opt-in switches surface a custom
     // holder name / identification that the disbursement path uses as the payee instead of the employee.
@@ -3726,6 +3727,7 @@ export const companyBankProfile = pgTable(
     currency: text('currency').notNull().default('MYR'),
     // At most one primary per company (partial unique index below). The default account a payment run
     // debits when nothing more specific is chosen.
+    maybankPaymentSettings: jsonb('maybank_payment_settings').$type<import('../lib/maybank-payment-settings').MaybankPaymentSettings|null>(),
     fileContactName: text('file_contact_name'),
     fileContactPhone: text('file_contact_phone'),
     fileStateCode: text('file_state_code'),
