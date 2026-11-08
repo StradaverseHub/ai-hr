@@ -1,6 +1,8 @@
 import {beforeEach, expect, it, vi} from 'vitest';
 import {render, screen, within} from '@testing-library/react';
 import type {ReactNode} from 'react';
+import {NextIntlClientProvider} from 'next-intl';
+import en from '../messages/en.json';
 import {pageState, parsePageQuery} from '../lib/pagination';
 
 const ports=vi.hoisted(()=>({hires:vi.fn(),terms:vi.fn(),changes:vi.fn(),carry:vi.fn(),count:vi.fn(),manager:vi.fn(),filters:vi.fn(),dashboard:vi.fn()}));
@@ -68,7 +70,7 @@ beforeEach(()=>{
 });
 
 it('renders exact totals and bounded native report pages with independent pagers and complete export links',async()=>{
-  render(await AnalyticsPage({searchParams:Promise.resolve(params)}));
+  render(<NextIntlClientProvider locale="en" messages={en}>{await AnalyticsPage({searchParams:Promise.resolve(params)})}</NextIntlClientProvider>);
   expect(screen.getByRole('heading',{name:'newHiresTitle 50000'})).toBeInTheDocument();
   expect(screen.getByRole('heading',{name:'terminationsTitle 10000'})).toBeInTheDocument();
   expect(screen.getByRole('heading',{name:'changeJobsTitle 20000'})).toBeInTheDocument();
