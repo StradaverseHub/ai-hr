@@ -11,6 +11,6 @@ it('accepts only safe positive integral numeric alternatives without loosening t
 });
 it('rejects malformed, clipped, coercible and noncanonical OIDs without invoking user conversion',()=>{
  let coerced=0;const hostile={toString(){coerced++;return'72965';},valueOf(){coerced++;return 72965;}};
- for(const value of ['', '0','01','+1','-1','1.0','1e3',' 1','1 ','4294967296','10000000000','１','1\0',null,undefined,true,BigInt(1),[],['72965'],hostile,Symbol('private')])expect(()=>employeeChoiceNativeObjectOid(value)).toThrow('uint32');
+ for(const value of ['', '0','01','+1','-1','1.0','1e3',' 1','1 ','4294967296','10000000000','１','1\0','1\n','1\r','1\r\n','1\u2028','1\u2029',null,undefined,true,BigInt(1),[],['72965'],hostile,Symbol('private')])expect(()=>employeeChoiceNativeObjectOid(value)).toThrow('uint32');
  expect(coerced).toBe(0);
 });

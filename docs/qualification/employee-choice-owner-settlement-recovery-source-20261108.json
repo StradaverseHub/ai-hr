@@ -2,16 +2,16 @@
   "kind": "EMPLOYEE_OWNER_MANDATORY_SETTLEMENT_RECOVERY_SOURCE_NOT_EXECUTED",
   "base": "ca2c64b397ec91a19b8174168c3ea9effd12137b",
   "legacyBenchmarkBase": "334ed804b794ff945153b70c638f22193fbe177c",
-  "sourceRef": "codex/employee-native-owner-settlement-recovery-20261108",
+  "sourceRef": "codex/employee-native-object-absolute-end-20261108",
   "sourceSha256": {
     "test/performance/employee-choice-owned-settlement.ts": "e4fe93308ee5ff14b89410f035cff9ed7c3d044151a1843d19919250a9930a27",
-    "test/performance/employee-choice-native-object-identity.ts": "ba5bac996d65bcd88262fd50e45d8ea67fa3f4db98c6b3ea8f169dbc4a252fbd",
+    "test/performance/employee-choice-native-object-identity.ts": "c9b3f20bd7cc304704575cfce9925e4b64db3cbd9258db2a1c5a7431ff250393",
     "test/performance/employee-choice-benchmark-owner.ts": "6281fd843e2843b89806d57e415b9182d4985a2c5aa65c010e5d0b1d30034fbe",
     "test/performance/employee-choice-native-factory-fixture.ts": "7901c84f48bc113188010dfadc59d6681c60aa40ab564d7ac47aecae3ea762fd",
     "test/employee-choice-native-owner-factory.test.ts": "255728fbec634ee378e4a9e56bcd0729583cd9dc3441843b7bcfdd4f64f6ab6d",
-    "test/employee-choice-native-object-identity.test.ts": "a40cfc052c27e5f0bb05c8d811d12fe0b2e00a636daf3ae293092a2659a58e2b",
+    "test/employee-choice-native-object-identity.test.ts": "42c45bac914e2c972b20940400057c1797b5386d06bbdc566f1cc7ad7ee1328d",
     "test/employee-choice-owned-settlement.test.ts": "5c1fb9e98c0bcb3d96ba38746b029c4327ba15d2f6de1fafd7f83f4f92d8ca0f",
-    "docs/qualification/employee-choice-owner-settlement-recovery-20261108.md": "d67a378f09d4cfa625c9a13b05cb611fb48187ae10395272ab669969e358ed70"
+    "docs/qualification/employee-choice-owner-settlement-recovery-20261108.md": "20bb1fee0fdb42881a151cac7395d2e58726910d5c38023c03b927428252f74b"
   },
   "unchangedCriticalSha256": {
     "test/performance/employee-choice-native-purpose-owner.ts": "12f0873b15dfd86e8972bc1d951c62d8827227513b11a2726807c561faf625ef",
@@ -69,5 +69,7 @@
   "testsExecuted": false,
   "normalCiAdmitted": false,
   "releaseAuthorized": false,
-  "productionHeld": true
+  "productionHeld": true,
+  "recoveryParent": "d11dae3f28ffc874b96aebbe9769b16bef9f4b72",
+  "absoluteEndSourceReviewRecovery": true
 }
