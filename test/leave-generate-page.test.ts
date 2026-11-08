@@ -148,7 +148,7 @@ describe('4b0e76ae · the Generate Entitlement page is REACHABLE', () => {
     expect(page.includes('={t}'), 'no translator may cross the boundary').toBe(false);
     const form = read(GENERATE_FORM);
     expect(form.startsWith("'use client'")).toBe(true);
-    expect(form).toContain('<form ref={formRef} action={action}');
+    expect(form).toMatch(/<form\b[^>]*ref=\{formRef\}[^>]*action=\{action\}/);
     // The client form translates for ITSELF (one namespace, so the i18n guard's check C can see it).
     expect(form).toContain("useTranslations('admin.leave')");
   });

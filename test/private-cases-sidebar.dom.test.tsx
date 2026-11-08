@@ -5,6 +5,7 @@
  * handle). Placement comes from the shared placement owner (lib/navigation-workspaces.ts). Presentation only: both
  * pages decide for themselves, and /cases shows each login only what row security returns. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
+import {readFileSync} from 'node:fs';
 import {cleanup,render} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {enWithAiCentre as messages} from './helpers/ai-centre-messages';
@@ -48,9 +49,9 @@ describe('private case rows in the rail',()=>{
   expect(navigationRouteOwner('/cases/00000000-0000-4000-8000-0000000ca5e1','',rows)?.destination.href).toBe('/cases');
   expect(navigationRouteOwner('/me','',rows)?.destination.href).toBe('/me');
  });
- it('labels both in every shipped locale',async()=>{
+ it('labels both in every shipped locale',()=>{
   for(const locale of ['en','ms','zh','vi','ta','th']){
-   const nav=(await import(`../messages/${locale}.json`)).default.nav as Record<string,string>;
+   const nav=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8')).nav as Record<string,string>;
    expect(nav.myPrivateCases?.trim(),locale).toBeTruthy();expect(nav.privateCases?.trim(),locale).toBeTruthy();
   }
  });

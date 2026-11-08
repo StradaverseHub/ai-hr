@@ -83,7 +83,8 @@ describe('Personnel filter panel: component fundamentals', () => {
   });
 
   it('keeps the GET-form semantics (no-JS submit, URL-carried filters)', () => {
-    expect(src.includes('method="get"')).toBe(true);
+    expect(src).toContain("import Form from 'next/form'");
+    expect(src).toContain('<Form action={action}');
     expect(src).toMatch(/action=\{action\}/);
     // Apply is a real submit; Clear all is a plain link back to the page's own base path. Feedback
     // 650b6eb8 gave that base an optional set of FOREIGN params (`hidden`) so a page carrying two

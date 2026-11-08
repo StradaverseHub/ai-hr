@@ -483,13 +483,13 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
      * that the real anchor still carries the attribute.
      */
     it('the Employment History workbook anchor stays exempt from the unsaved-changes guard', () => {
-      // `<a[\s>]` and not `<a`, so `<article`/`<aside` cannot be mistaken for an anchor.
+      // Match the native anchor or its feedback component, without matching article/aside.
       const anchors = PAGE()
-        .split(/<a[\s>]/)
+        .split(/<(?:a|ExportDownloadLink)[\s>]/)
         .slice(1)
         .map((chunk) => chunk.slice(0, chunk.indexOf('>')));
       const exportAnchor = anchors.find((tag) => tag.includes('movement-export'));
-      expect(exportAnchor, 'the Export to Excel anchor is still a bare <a> on this page').toBeDefined();
+      expect(exportAnchor, 'the Export to Excel control still renders a native anchor').toBeDefined();
       expect(exportAnchor).toContain(`${UNSAVED_GUARD_ATTR}="ignore"`);
     });
 
