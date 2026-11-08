@@ -71,3 +71,20 @@ context predecessor message with SQLSTATE55000 on the stock driver's native
 DrizzleQueryError.cause. An earlier migration's55000 cannot satisfy that oracle.
 All runtime SQL, journal entries, cases and existing
 assertions remain intact; this stronger native course is still UNRUN.
+
+The first hosted run42483981970, attempt1, source7e49191f9ba39e0768af24f775cf98612664eee1 /
+controller9dd3847b4a3ce9e4cf4df744edcf10b250dcbbb8, finished all seven planned jobs.
+Its seven source-owner cases passed at that original identity. Initial candidate
+migration failed in3500 before any of the six DB files executed: PostgreSQL16.15
+reported syntax error at character4046, the unparenthesized CASE's inner THEN in
+the guard IF expression. Original failure and artifact13618717341 remain retained;
+ZIP SHA256b77de21118cdbbff602940c58eead0a1572c5314bcb8112af3323af02ce127cb.
+
+This isolated source child adds parentheses around that CASE expression and
+updates only the approved3500 SQL hash. All native function bodies, ACL checks,
+earlier SQL, journal tuples and native cases remain byte-identical to7e491.
+Affected qualification is the six previously unexecuted DB selectors; the seven
+owner passes remain attached to7e491/run42483981970. The populated709 owner,
+whole-batch rollback,44+1 drift, raw-stop race and fixture cleanup course remains
+unexecuted. The agent stop snapshot hypothesis is unresolved. No repair has run
+locally, and no new native or release claim is made before hosted evidence.

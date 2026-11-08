@@ -30,7 +30,7 @@ BEGIN
    OR pg_get_function_arguments(p.oid) IS DISTINCT FROM expected.arguments OR pg_get_function_result(p.oid) IS DISTINCT FROM expected.result
    OR has_function_privilege('ai_hr_app',p.oid,'EXECUTE') IS DISTINCT FROM expected.app_execute
    OR (SELECT count(*) FROM pg_proc q WHERE q.pronamespace=p.pronamespace AND q.proname=p.proname)<>1
-   OR (SELECT count(*) FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))))<>CASE WHEN expected.app_execute THEN 2 ELSE 1 END
+   OR (SELECT count(*) FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))))<>(CASE WHEN expected.app_execute THEN 2 ELSE 1 END)
    OR EXISTS(SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
     WHERE a.grantor<>p.proowner OR a.is_grantable OR a.privilege_type<>'EXECUTE'
      OR (a.grantee<>p.proowner AND (NOT expected.app_execute OR a.grantee<>'ai_hr_app'::regrole)))
