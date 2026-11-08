@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createFormatter, createTranslator } from 'next-intl';
+import { createFormatter, createTranslator, NextIntlClientProvider } from 'next-intl';
+import { createElement } from 'react';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
@@ -49,7 +50,9 @@ describe('group-admin ranked build-list source',()=>{
   expect(JSON.stringify(view.entries)).not.toContain(base.adminUserId);
   for(const locale of Object.keys(copies) as (keyof typeof copies)[]){
    visual.locale=locale;
-   const html=renderToStaticMarkup(await RankedBuildList({view}));
+   const html = renderToStaticMarkup(createElement(NextIntlClientProvider, {
+    locale, messages: copies[locale], children: await RankedBuildList({view}),
+   }));
    expect(html).toContain(copies[locale].processAssessment.buildList.title);
    expect(html).toContain('adminCancelLeaveAction');
    expect(html).not.toContain('Build fixture');

@@ -731,7 +731,7 @@ export function TabSaveScope({
         >
           {screenActions.leave.label}
         </Link>
-        <Button
+        <Button aria-busy={pending}
           type="button"
           size="sm"
           data-tab-save-submit={where}
@@ -808,7 +808,7 @@ export function TabSaveScope({
               screenActionPair('bar')
             ) : (
               <>
-                <Button
+                <Button aria-busy={pending}
                   type="button"
                   variant="outline"
                   size="sm"
@@ -817,7 +817,7 @@ export function TabSaveScope({
                 >
                   {discardWaiting ? t('discarding') : t('discardChanges')}
                 </Button>
-                <Button type="button" size="sm" disabled={!dirty || pending || discardWaiting} onClick={() => save()}>
+                <Button aria-busy={pending} type="button" size="sm" disabled={!dirty || pending || discardWaiting} onClick={() => save()}>
                   {pending ? t('saving') : t('saveChanges')}
                 </Button>
               </>
@@ -886,7 +886,7 @@ export function TabSaveScope({
               >
                 {screenActions ? screenActions.prompt.discard : t('discardChanges')}
               </Button>
-              <Button
+              <Button aria-busy={pending}
                 type="button"
                 size="sm"
                 disabled={pending || discardWaiting}

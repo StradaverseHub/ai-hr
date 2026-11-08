@@ -42,7 +42,7 @@ export function TodayAsk({label,placeholder,submitLabel,openingLabel,suggestions
   </form>
   {suggestions.length>0&&<div role="group" aria-label={suggestionsLabel} className="flex flex-wrap gap-2">
    {suggestions.map(item=>typeof item==='string'
-    ?<button key={item} type="button" disabled={pending} onClick={()=>{setValue(item);box.current?.focus();}} className={CHIP}>{item}</button>
+    ?<button aria-busy={pending} key={item} type="button" disabled={pending} onClick={()=>{setValue(item);box.current?.focus();}} className={CHIP}>{item}</button>
     :<Link key={item.text} href={item.href} data-today-suggestion-link className={CHIP}>{item.text}</Link>)}
   </div>}
  </div>;

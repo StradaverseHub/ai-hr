@@ -1,5 +1,6 @@
 'use client';
 
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { useActionState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Card, Field, inputCls } from '@/components/ui';
@@ -21,7 +22,7 @@ export function ImportHires({ companies }: { companies: { id: string; name: stri
           </Field>
           <div className="flex items-end gap-3">
             <Button type="submit" disabled={previewing}>{t('import.preview')}</Button>
-            <a href="/lifecycle/onboarding/import/template" className="text-sm text-primary underline-offset-2 hover:underline">{t('import.template')}</a>
+            <ExportDownloadLink href="/lifecycle/onboarding/import/template" className="text-sm text-primary underline-offset-2 hover:underline">{t('import.template')}</ExportDownloadLink>
           </div>
           <p className="col-span-full text-xs text-muted-foreground">{t('import.rules')}</p>
         </form>

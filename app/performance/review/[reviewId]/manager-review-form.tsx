@@ -57,7 +57,7 @@ export function ManagerReviewForm({
       {aiEnabled && (
         <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-muted/30 p-3">
           <p className="text-xs text-muted-foreground">{t('aiDraftHint')}</p>
-          <Button type="button" variant="secondary" size="sm" onClick={onDraft} disabled={pending} className="shrink-0">
+          <Button aria-busy={pending} type="button" variant="secondary" size="sm" onClick={onDraft} disabled={pending} className="shrink-0">
             {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
             {pending ? t('aiDrafting') : t('aiDraftButton')}
           </Button>

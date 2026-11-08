@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdminOrAuditReader } from '@/lib/authz';
 import { isAdmin, isGroupAdmin } from '@/lib/authz-model';
@@ -91,7 +92,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
           <span data-loop-switch={detail.loop.on ? 'on' : 'off'} className="text-sm">{detail.loop.on ? tl('on') : tl('off')}</span>
           {groupAdmin && !auditor && <form action={setLoopSwitchAction}>
             <input type="hidden" name="loop" value={LOOP} /><input type="hidden" name="from" value="detail" /><input type="hidden" name="enabled" value={String(!detail.loop.on)} />
-            <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${tl(detail.loop.on ? 'turnOff' : 'turnOn')} · ${name}`}>{tl(detail.loop.on ? 'turnOff' : 'turnOn')}</button>
+            <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${tl(detail.loop.on ? 'turnOff' : 'turnOn')} · ${name}`}>{tl(detail.loop.on ? 'turnOff' : 'turnOn')}</ActionButton>
           </form>}
         </div>} />
       {auditor && <p data-audit-read-only role="note" className="rounded-lg border border-border bg-muted/50 p-3 text-sm">{t('auditor.readOnly')}</p>}
@@ -155,7 +156,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                       <a href={auditPackHref(item.companyId, payPeriod)} className="inline-flex min-h-9 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11" aria-label={`${t('companies.pack')} · ${item.companyName}`}>{t('companies.pack')}</a>
                       {!auditor && <form action={captureAuditNowAction} className="mt-1">
                         <input type="hidden" name="period" value={payPeriod} /><input type="hidden" name="company" value={item.companyId} />
-                        <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('companies.capture')} · ${item.companyName}`}>{t('companies.capture')}</button>
+                        <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('companies.capture')} · ${item.companyName}`}>{t('companies.capture')}</ActionButton>
                       </form>}
                     </td>
                   </tr>
@@ -218,7 +219,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                     <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('findings.note')}</span>
                       <input name="note" required maxLength={1000} defaultValue={item.acknowledgement ? t('acknowledged.note', { reason: item.acknowledgement.reason }) : undefined}
                         className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
-                    <button type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t('findings.record')} · ${t(`controls.${item.controlId}`)}`}>{t('findings.record')}</button>
+                    <ActionButton type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t('findings.record')} · ${t(`controls.${item.controlId}`)}`}>{t('findings.record')}</ActionButton>
                   </form>
                 )}
                 {!auditor && !item.acknowledgement && !item.disposition && <form action={acknowledgeFindingAction} data-acknowledge-finding className="flex flex-wrap items-end gap-2">
@@ -232,7 +233,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                     <input name="reason" required maxLength={500} className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
                   <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('acknowledged.reviewOn')}</span>
                     <input type="date" name="reviewOn" className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
-                  <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('acknowledged.record')} · ${t(`controls.${item.controlId}`)}`}>{t('acknowledged.record')}</button>
+                  <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('acknowledged.record')} · ${t(`controls.${item.controlId}`)}`}>{t('acknowledged.record')}</ActionButton>
                 </form>}
               </li>
             ))}
@@ -261,7 +262,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                     </select></label>
                   <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('corrections.note')}</span>
                     <input name="note" required maxLength={1000} className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
-                  <button type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t(item.rootCause ? 'corrections.update' : 'corrections.record')} · ${t(`corrections.actions.${item.action}`, { seq: item.runSeq })}`}>{t(item.rootCause ? 'corrections.update' : 'corrections.record')}</button>
+                  <ActionButton type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t(item.rootCause ? 'corrections.update' : 'corrections.record')} · ${t(`corrections.actions.${item.action}`, { seq: item.runSeq })}`}>{t(item.rootCause ? 'corrections.update' : 'corrections.record')}</ActionButton>
                 </form>}
               </li>
             ))}
@@ -286,7 +287,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                   <select name="preparerClosedMode" defaultValue={item.settings.preparerClosedMode} className={cn(inputCls, 'pointer-coarse:min-h-11')}>
                     {PREPARER_CLOSED_MODES.map(mode => <option key={mode} value={mode}>{t(`administration.preparerClosed.${mode}`)}</option>)}
                   </select></label>
-                <button type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t('administration.save')} · ${item.companyName}`}>{t('administration.save')}</button>
+                <ActionButton type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t('administration.save')} · ${item.companyName}`}>{t('administration.save')}</ActionButton>
                 <span className="text-xs text-muted-foreground">{item.settings.version === null ? t('administration.defaults') : t('administration.version', { version: item.settings.version })}</span>
                 <p className="m-0 w-full text-xs text-muted-foreground">{t('administration.loosenHelp')}</p>
               </form>
@@ -300,7 +301,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                           <span className="ml-1 text-xs text-muted-foreground">{t('administration.grantedOn', { date: f.dateTime(reader.grantedAt, { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' }) })}</span></span>
                         <form action={revokeAuditReaderAction}>
                           {hidden({ grant: reader.id })}
-                          <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('administration.revoke')} · ${reader.label ?? reader.appUserId.slice(0, 8)} · ${item.companyName}`}>{t('administration.revoke')}</button>
+                          <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('administration.revoke')} · ${reader.label ?? reader.appUserId.slice(0, 8)} · ${item.companyName}`}>{t('administration.revoke')}</ActionButton>
                         </form>
                       </li>
                     ))}
@@ -314,7 +315,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                       {admin.candidates.filter(candidate => !item.readers.some(reader => reader.appUserId === candidate.appUserId)).map(candidate =>
                         <option key={candidate.appUserId} value={candidate.appUserId}>{candidate.label ?? t('administration.loginWithoutRecord', { id: candidate.appUserId.slice(0, 8) })}</option>)}
                     </select></label>
-                  <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('administration.grant')} · ${item.companyName}`}>{t('administration.grant')}</button>
+                  <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('administration.grant')} · ${item.companyName}`}>{t('administration.grant')}</ActionButton>
                 </form>
                 <p className="m-0 text-xs text-muted-foreground">{t('administration.auditorsHelp')}</p>
               </div>
@@ -335,7 +336,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                 <form action={setLoopPauseAction}>
                   <input type="hidden" name="loop" value={LOOP} /><input type="hidden" name="from" value="detail" />
                   <input type="hidden" name="company" value={item.companyId} /><input type="hidden" name="paused" value={String(!item.paused)} />
-                  <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${tl(item.paused ? 'pause.resume' : 'pause.pause')} · ${item.companyName}`}>{tl(item.paused ? 'pause.resume' : 'pause.pause')}</button>
+                  <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${tl(item.paused ? 'pause.resume' : 'pause.pause')} · ${item.companyName}`}>{tl(item.paused ? 'pause.resume' : 'pause.pause')}</ActionButton>
                 </form>
               </span>
             </li>

@@ -24,7 +24,7 @@ export function SavedChatList({initialChats,nextCursor,scopeDigest,activeThreadI
  return <nav aria-label={t(embedded?'recent':'chats')} className="pb-3">{!embedded&&<><h2 className="py-3 text-sm font-medium">{t('chats')}</h2>
   <Link href={newChatHref} scroll={false} className="mb-2 inline-flex min-h-11 items-center rounded-md px-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('new')}</Link></>}
   <ul className="max-h-80 space-y-1 overflow-y-auto overscroll-contain">{chats.map(chat=><li key={chat.threadId}><Link href={'/assistant?e='+encodeURIComponent(chat.exchangeId)} scroll={false} aria-current={activeThreadId===chat.threadId?'page':undefined} className="block break-words rounded-md px-2 py-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-[current=page]:bg-muted">{chat.title}</Link></li>)}</ul>
-  {cursor&&<button type="button" disabled={pending} onClick={()=>void more()} className="inline-flex min-h-11 items-center px-2 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{t('moreChats')}</button>}
+  {cursor&&<button aria-busy={pending} type="button" disabled={pending} onClick={()=>void more()} className="inline-flex min-h-11 items-center px-2 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{t('moreChats')}</button>}
   {error&&<p role="status" className="py-2 text-xs text-muted-foreground">{error}</p>}
  </nav>;
 }

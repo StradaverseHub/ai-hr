@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { getFormatter, getTranslations } from 'next-intl/server';
@@ -135,7 +136,7 @@ function NewPolicyForm({ t, companies, today }: { t: T; companies: readonly { id
         <label className="flex flex-col gap-1.5"><span className="text-xs font-medium text-muted-foreground">{t('form.body')}</span>
           <textarea name="body" required rows={10} maxLength={20000} className={cn(inputCls, 'h-auto min-h-48 py-2 leading-6')} /></label>
         <p className="text-xs text-muted-foreground">{t('form.bodyHint')}</p>
-        <button type="submit" className={cn(btnPrimary, target)}>{t('form.create')}</button>
+        <ActionButton type="submit" className={cn(btnPrimary, target)}>{t('form.create')}</ActionButton>
       </form>
     </Card>
   );
@@ -209,13 +210,13 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
           {draft && detail.canEdit && !editing && <Link href={href({ policy, edit: '1' })} className={cn(btnGhost, target)}>{t('actions.edit')}</Link>}
           {draft && detail.canEdit && detail.settings.length > 0 && detail.sharedOk && (
             <form action={readPolicyValuesAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={v.id} />
-              <button type="submit" className={cn(btnGhost, target)}>{t('actions.read')}</button></form>)}
+              <ActionButton type="submit" className={cn(btnGhost, target)}>{t('actions.read')}</ActionButton></form>)}
           {draft && detail.canEdit && (
             <form action={submitPolicyAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={v.id} />
-              <button type="submit" disabled={undecided || uncovered} className={cn(btnPrimary, target)}>{t('actions.send')}</button></form>)}
+              <ActionButton type="submit" disabled={undecided || uncovered} className={cn(btnPrimary, target)}>{t('actions.send')}</ActionButton></form>)}
           {approved && detail.canEdit && !openDraft && (
             <form action={draftFromVersionAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={v.id} />
-              <button type="submit" className={cn(btnGhost, target)}>{t('actions.edit')}</button></form>)}
+              <ActionButton type="submit" className={cn(btnGhost, target)}>{t('actions.edit')}</ActionButton></form>)}
         </div>
       </header>
 
@@ -230,7 +231,7 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
               <textarea name="body" required rows={10} maxLength={20000} defaultValue={v.body} className={cn(inputCls, 'h-auto min-h-48 py-2 leading-6')} /></label>
             <p className="text-xs text-muted-foreground">{t('form.editHint')}</p>
             <div className="flex flex-wrap gap-2">
-              <button type="submit" className={cn(btnPrimary, target)}>{t('form.save')}</button>
+              <ActionButton type="submit" className={cn(btnPrimary, target)}>{t('form.save')}</ActionButton>
               <Link href={href({ policy })} className={cn(btnGhost, target)}>{t('form.cancel')}</Link>
             </div>
           </form>
@@ -292,9 +293,9 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
               {item.kind !== 'text' && item.valueId && detail.canEdit && !openDraft && detail.inForceId && (
                 <span className="flex flex-wrap gap-2">
                   <form action={prepareFromDriftAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={detail.inForceId} /><Hidden name="valueId" value={item.valueId} />
-                    <Hidden name="resolution" value="use_handbook" /><button type="submit" className={cn(btnPrimary, target)}>{t('drift.useHandbook')}</button></form>
+                    <Hidden name="resolution" value="use_handbook" /><ActionButton type="submit" className={cn(btnPrimary, target)}>{t('drift.useHandbook')}</ActionButton></form>
                   <form action={prepareFromDriftAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={detail.inForceId} /><Hidden name="valueId" value={item.valueId} />
-                    <Hidden name="resolution" value="update_handbook" /><button type="submit" className={cn(btnGhost, target)}>{t('drift.updateHandbook')}</button></form>
+                    <Hidden name="resolution" value="update_handbook" /><ActionButton type="submit" className={cn(btnGhost, target)}>{t('drift.updateHandbook')}</ActionButton></form>
                 </span>
               )}
             </div>
@@ -319,9 +320,9 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
             ? <p className="text-sm text-muted-foreground" data-policy-second>{t('approval.needSecond')}</p>
             : <div className="flex flex-wrap gap-2">
                 <form action={approvePolicyAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={v.id} />
-                  <button type="submit" className={cn(btnPrimary, target)}>{v.changesSettings ? t('approval.approveApply') : t('approval.approve')}</button></form>
+                  <ActionButton type="submit" className={cn(btnPrimary, target)}>{v.changesSettings ? t('approval.approveApply') : t('approval.approve')}</ActionButton></form>
                 <form action={returnPolicyAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={v.id} />
-                  <button type="submit" className={cn(btnGhost, target)}>{t('approval.return')}</button></form>
+                  <ActionButton type="submit" className={cn(btnGhost, target)}>{t('approval.return')}</ActionButton></form>
               </div>)
           : <p className="text-sm text-muted-foreground">{t('approval.waiting')}</p>)}
         {approved && detail.applications.length > 0 && (
@@ -334,7 +335,7 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
                     date: day(f, a.applyOn), message: a.ownerMessage ?? '' })}</span>
                   {a.status === 'scheduled' && isGroupAdmin && a.applyOn <= today && (
                     <form action={applyScheduledPolicyValueAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={v.id} /><Hidden name="valueId" value={value.id} />
-                      <button type="submit" className={cn(btnGhost, target)}>{t('applied.applyNow')}</button></form>)}
+                      <ActionButton type="submit" className={cn(btnGhost, target)}>{t('applied.applyNow')}</ActionButton></form>)}
                 </li>
               );
             })}
@@ -350,7 +351,7 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
               <span>{t('versions.row', { version: x.version, status: t(`status.${x.status}`), date: day(f, x.effectiveFrom) })}{x.id === detail.inForceId && <span className="ml-2 text-xs text-muted-foreground">{t('versions.inForce')}</span>}</span>
               {x.status === 'approved' && x.id !== v.id && detail.canEdit && !openDraft && (
                 <form action={draftFromVersionAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={x.id} />
-                  <button type="submit" className={cn(btnGhost, target)}>{t('versions.restore')}</button></form>)}
+                  <ActionButton type="submit" className={cn(btnGhost, target)}>{t('versions.restore')}</ActionButton></form>)}
             </li>
           ))}
         </ul>
@@ -385,8 +386,8 @@ function EnforceTable({ t, f, values, policy, decide }: { t: T; f: F; values: re
                       <span className="flex flex-wrap gap-1.5">
                         {(['confirmed', 'rejected'] as const).map(decision => (
                           <form key={decision} action={decidePolicyValueAction}><Hidden name="policy" value={policy} /><Hidden name="valueId" value={value.id} /><Hidden name="decision" value={decision} />
-                            <button type="submit" aria-pressed={value.decision === decision} className={cn(decision === 'confirmed' ? btnPrimary : btnGhost, target, 'h-8 px-2.5 text-xs',
-                              value.decision === decision && 'ring-2 ring-ring')}>{t(`decide.${decision}`)}</button></form>
+                            <ActionButton type="submit" aria-pressed={value.decision === decision} className={cn(decision === 'confirmed' ? btnPrimary : btnGhost, target, 'h-8 px-2.5 text-xs',
+                              value.decision === decision && 'ring-2 ring-ring')}>{t(`decide.${decision}`)}</ActionButton></form>
                         ))}
                       </span>
                     ) : <span className="text-xs">{t(`decision.${value.decision ?? 'pending'}`)}</span>}
@@ -421,7 +422,7 @@ function Mentions({ t, f, mentions, policy, versionId, mark }: { t: T; f: F; men
               {mark && !m.confirmed && (
                 <form action={markTextOnlyAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={versionId} /><Hidden name="setting" value={m.setting} />
                   <Hidden name="marked" value={m.textOnly ? 'false' : 'true'} />
-                  <button type="submit" className={cn(btnGhost, target, 'h-8 px-2.5 text-xs')}>{m.textOnly ? t('mentions.unmark') : t('mentions.markTextOnly')}</button></form>)}
+                  <ActionButton type="submit" className={cn(btnGhost, target, 'h-8 px-2.5 text-xs')}>{m.textOnly ? t('mentions.unmark') : t('mentions.markTextOnly')}</ActionButton></form>)}
             </li>
           );
         })}

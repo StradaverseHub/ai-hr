@@ -39,13 +39,13 @@ export function FixedItemArchivePanel({resumeActionId,initialEmploymentId}:{resu
  return <section className="space-y-5" aria-busy={busy}>
   <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{busy?t('working'):''}</p>{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
   {state.kind==='select'&&<form onSubmit={prepare} className="space-y-4">
-   <div className="flex flex-wrap items-end gap-2"><label className="min-w-0 flex-1 text-sm font-medium">{t('search')}<input value={query} maxLength={80} onChange={e=>setQuery(e.target.value)} className={`${inputCls} mt-1`}/></label><Button type="button" variant="outline" disabled={busy} onClick={()=>load('')}>{t('search')}</Button></div>
+   <div className="flex flex-wrap items-end gap-2"><label className="min-w-0 flex-1 text-sm font-medium">{t('search')}<input value={query} maxLength={80} onChange={e=>setQuery(e.target.value)} className={`${inputCls} mt-1`}/></label><Button aria-busy={busy} type="button" variant="outline" disabled={busy} onClick={()=>load('')}>{t('search')}</Button></div>
    <label className="block text-sm font-medium">{t('employee')}<select value={employmentId} disabled={busy} className={`${inputCls} mt-1`} onChange={e=>{setEmploymentId(e.target.value);clear();load(e.target.value);}}><option value="">{t('choose')}</option>{choices?.kind==='choices'&&choices.employees.map(row=><option key={row.employmentId} value={row.employmentId}>{t('employeeValue',{name:row.employeeName,code:row.employeeCode??'—',company:row.companyName})}</option>)}</select></label>
    {choices?.kind==='choices'&&choices.truncated&&<p className="text-xs text-muted-foreground">{t('truncated')}</p>}
    {selected&&<label className="block text-sm font-medium">{t('item')}<select value={subjectId} disabled={busy} className={`${inputCls} mt-1`} onChange={e=>{setSubjectId(e.target.value);setConsent(false);}}><option value="">{t('choose')}</option>{items.map(row=><option key={row.id} value={row.id}>{row.fields.code} · {row.fields.name} · {row.fields.validFrom}</option>)}</select></label>}
    {selected&&items.length===0&&<p className="text-sm text-muted-foreground">{t('empty')}</p>}
    <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={consent} disabled={busy||!item} onChange={e=>setConsent(e.target.checked)} className="mt-1"/>{t('consent')}</label>
-   <Button type="submit" disabled={busy||!selected||!item||!consent}>{t('prepare')}</Button>
+   <Button aria-busy={busy} type="submit" disabled={busy||!selected||!item||!consent}>{t('prepare')}</Button>
   </form>}
   {review&&<div className="space-y-4 rounded-lg border border-border p-4"><h2 className="text-lg font-semibold">{t('reviewTitle')}</h2><p className="text-sm">{t('employeeValue',{name:review.review.employeeName,code:review.review.employeeCode??'—',company:review.review.companyName})}</p>
    <dl className="grid min-w-0 gap-4 text-sm sm:grid-cols-2">{fields.map(key=><div key={key} className="min-w-0"><dt className="font-medium">{t(`fields.${key}`)}</dt><dd className="whitespace-pre-wrap break-words">{display(review.review.before[key])}</dd></div>)}</dl>
@@ -54,13 +54,13 @@ export function FixedItemArchivePanel({resumeActionId,initialEmploymentId}:{resu
    {review.review.processedPeriods.length>0&&<p className="text-sm">{t('processed')}: {review.review.processedPeriods.join(', ')}</p>}
    <p className="text-xs text-muted-foreground">{t('expires')}: {review.expiresAt}</p>
    {expired?<p role="alert" className="text-sm">{t('expired')}</p>:<label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={confirmed} disabled={busy} onChange={e=>setConfirmed(e.target.checked)} className="mt-1"/>{t('confirmConsent')}</label>}
-   <div className="flex flex-wrap gap-2"><Button type="button" disabled={busy||!confirmed||expired} onClick={()=>decide('confirm')}>{t('confirm')}</Button><Button type="button" variant="outline" disabled={busy} onClick={()=>decide('discard')}>{t('discard')}</Button></div>
+   <div className="flex flex-wrap gap-2"><Button aria-busy={busy} type="button" disabled={busy||!confirmed||expired} onClick={()=>decide('confirm')}>{t('confirm')}</Button><Button aria-busy={busy} type="button" variant="outline" disabled={busy} onClick={()=>decide('discard')}>{t('discard')}</Button></div>
   </div>}
-  {state.kind==='uncertain'&&<aside className="space-y-3 rounded-md border border-border p-4"><p className="text-sm">{t('uncertain')}</p>{state.actionId&&<Button type="button" disabled={busy} onClick={()=>void dispatch({action,operation:'reopen',actionId:state.actionId})}>{t('reopen')}</Button>}</aside>}
+  {state.kind==='uncertain'&&<aside className="space-y-3 rounded-md border border-border p-4"><p className="text-sm">{t('uncertain')}</p>{state.actionId&&<Button aria-busy={busy} type="button" disabled={busy} onClick={()=>void dispatch({action,operation:'reopen',actionId:state.actionId})}>{t('reopen')}</Button>}</aside>}
   {state.kind==='completed'&&<div className="space-y-2"><h2 className="font-semibold">{t('done')}</h2><p className="text-sm">{t('history')}</p><p className="text-sm">{t('recalculation')}</p><p className="break-all text-xs text-muted-foreground">{state.receipt.receipt.eventId}</p></div>}
   {state.kind==='retired'&&<p>{t('retired')}</p>}
-  <Button type="button" variant="outline" disabled={busy} onClick={()=>void dispatch({action,operation:'list'})}>{t('resume')}</Button>
-  {index&&<ul className="space-y-2">{index.reviews.map(row=><li key={row.actionId}><button type="button" className="min-h-11 text-left text-sm underline" disabled={busy} onClick={()=>void dispatch({action,operation:'reopen',actionId:row.actionId})}>{row.createdAt} · {row.state}</button></li>)}</ul>}
+  <Button aria-busy={busy} type="button" variant="outline" disabled={busy} onClick={()=>void dispatch({action,operation:'list'})}>{t('resume')}</Button>
+  {index&&<ul className="space-y-2">{index.reviews.map(row=><li key={row.actionId}><button aria-busy={busy} type="button" className="min-h-11 text-left text-sm underline" disabled={busy} onClick={()=>void dispatch({action,operation:'reopen',actionId:row.actionId})}>{row.createdAt} · {row.state}</button></li>)}</ul>}
   <p className="text-sm text-muted-foreground">{t('nativeNote')} <Link href="/payroll/transactions/fixed" className="underline">{t('native')}</Link></p>
  </section>;
 }

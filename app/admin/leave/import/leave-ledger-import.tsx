@@ -268,10 +268,10 @@ export function LeaveLedgerImport() {
         </details>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button onClick={validate} disabled={pending || reading || !csv.trim()}>
+          <Button aria-busy={pending} onClick={validate} disabled={pending || reading || !csv.trim()}>
             {pending && phase !== 'done' ? t('validating') : t('validate')}
           </Button>
-          <Button
+          <Button aria-busy={pending}
             variant="outline"
             onClick={() => {
               setCsv(SAMPLE);

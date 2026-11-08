@@ -40,6 +40,9 @@ vi.mock('next-intl/server', () => ({
 }));
 
 import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
+import { NextIntlClientProvider } from 'next-intl';
+import messages from '../messages/en.json';
 import EventPage from '../app/payroll/statutory-forms/event/page';
 import { GET as continueGET } from '../app/payroll/statutory-forms/event/continue/route';
 import Cp22aPreviewPage from '../app/payroll/cp22a/[employmentId]/preview/page';
@@ -293,7 +296,11 @@ describe('r413 · CP22 moved onto the screen and its document did not change', (
       'app/payroll/cp22/[employmentId]/text/route.ts',
       'public/forms/cp22-pin-1-2021.pdf',
     ]) {
-      expect(fs.readFileSync(path.join(ROOT, f), 'latin1') === execFileSync('git', ['show', `${BASELINE}:${f}`], { cwd: ROOT, encoding: 'latin1' }), f).toBe(true);
+      // The preview now includes approved download feedback; document owners keep their old baseline.
+      const baseline = f === 'app/payroll/cp22/[employmentId]/preview/page.tsx'
+        ? '6cd8f7951d32ff09d5134e0d293dbc8ba0bac578'
+        : BASELINE;
+      expect(fs.readFileSync(path.join(ROOT, f), 'latin1') === execFileSync('git', ['show', `${baseline}:${f}`], { cwd: ROOT, encoding: 'latin1' }), f).toBe(true);
     }
   });
 });
@@ -309,7 +316,9 @@ describe('r413 · the CP22A preview page', () => {
     scope = { s: adminCtx(b), scopeIds: [fc.id] };
     expect(await thrown(Cp22aPreviewPage(props()))).toBe('NEXT_NOT_FOUND');
     scope = { s: adminCtx(b), scopeIds: [b.companyId] };
-    const html = renderToStaticMarkup(await Cp22aPreviewPage(props()));
+    const html = renderToStaticMarkup(createElement(NextIntlClientProvider, {
+      locale: 'en', messages, children: await Cp22aPreviewPage(props()),
+    }));
     expect(html).toContain('data-statutory-pdf-viewer');
     expect(html).toContain('aspect-[612/792]');
     // The typed answer rides into the frame and the download.

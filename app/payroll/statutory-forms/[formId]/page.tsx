@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import {taxBasisNoticeReferences} from '@/packs/payroll/service';
 import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
 import { notFound, redirect } from 'next/navigation';
@@ -435,15 +436,15 @@ export default async function StatutoryFormPage({
                   Form E row's own arrival, which is where they belong. */}
               {!eaLang && (
                 <>
-                  <a href={exportHref('pdf')} className={outBtn}>
+                  <ExportDownloadLink href={exportHref('pdf')} className={outBtn}>
                     {t('downloadPdf')}
-                  </a>
-                  <a href={exportHref('xlsx')} className={outBtn}>
+                  </ExportDownloadLink>
+                  <ExportDownloadLink href={exportHref('xlsx')} className={outBtn}>
                     {t('downloadExcel')}
-                  </a>
-                  <a href={exportHref('csv')} className={outBtn}>
+                  </ExportDownloadLink>
+                  <ExportDownloadLink href={exportHref('csv')} className={outBtn}>
                     {t('downloadCsv')}
-                  </a>
+                  </ExportDownloadLink>
                 </>
               )}
               <PrintButton />

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -139,7 +140,7 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
                 {/* ONLY WHAT IS ON SCREEN CAN BE APPROVED. Posting a filter instead of ids would let a row that appeared
                     between render and click ride along on an approval nobody gave it. */}
                 {p.subjects.slice(0, p.type.blastRadiusCap).map(sub => <input key={sub.verdictId} type="hidden" name="verdictId" value={sub.verdictId} />)}
-                <button type="submit" className={cn(btnPrimary, target)}>{ta('approve', { n: Math.min(p.subjects.length, p.type.blastRadiusCap) })}</button>
+                <ActionButton type="submit" className={cn(btnPrimary, target)}>{ta('approve', { n: Math.min(p.subjects.length, p.type.blastRadiusCap) })}</ActionButton>
                 <p className="mt-2 text-xs text-muted-foreground">{ta('recheckNote')}</p>
               </form>
             </div>
@@ -164,7 +165,7 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
                   <input type="hidden" name="target" value={block.companyId} /><input type="hidden" name="verdict" value={block.verdictId} />
                   <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs"><span className="text-muted-foreground">{tc('acknowledgedBlocks.prefilled')}</span>
                     <input readOnly value={block.reason} className={cn(inputCls, target)} /></label>
-                  <button type="submit" className={cn(btnPrimary, target)} aria-label={`${tc('acknowledgedBlocks.resolve')} · ${block.personName ?? tc('flags.unnamed')}`}>{tc('acknowledgedBlocks.resolve')}</button>
+                  <ActionButton type="submit" className={cn(btnPrimary, target)} aria-label={`${tc('acknowledgedBlocks.resolve')} · ${block.personName ?? tc('flags.unnamed')}`}>{tc('acknowledgedBlocks.resolve')}</ActionButton>
                 </form>
               </li>
             ))}

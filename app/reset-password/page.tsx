@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { internalSelected, internalConfig } from '@/lib/internal-auth/config';
 import { InternalAuthForm } from '../login/internal-form';
 import { publicLoginPresentation } from '@/lib/login-presentation-server';
@@ -39,12 +40,12 @@ export default async function ResetPasswordPage({
               className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20"
             />
           </label>
-          <button
+          <ActionButton
             type="submit"
             className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             {t('reset.submit')}
-          </button>
+          </ActionButton>
         </form>
       )}
 

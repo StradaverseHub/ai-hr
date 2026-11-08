@@ -39,7 +39,7 @@ export function ProtectedAnalysisPanel({labels,scopeKey,defaultMonth}:{labels:Pr
     {(Object.keys(labels.domains) as ProtectedAnalysisDomain[]).map(value=><option key={value} value={value}>{labels.domains[value]}</option>)}
    </select></label>
    {monthly&&<label className="grid gap-1.5 text-sm" htmlFor={`${id}-month`}>{labels.month}<input id={`${id}-month`} type="month" value={month} max={previousPayrollComparisonPeriod(todayInKualaLumpur().slice(0,7))} disabled={pending} onChange={event=>setMonth(event.target.value)} className="min-h-10 rounded-md border bg-background px-3"/></label>}
-   <button type="button" disabled={pending||!scopeKey} onClick={run} className="min-h-10 rounded-md border px-4 text-sm font-medium disabled:opacity-50">{labels.run}</button>
+   <button aria-busy={pending} type="button" disabled={pending||!scopeKey} onClick={run} className="min-h-10 rounded-md border px-4 text-sm font-medium disabled:opacity-50">{labels.run}</button>
   </div>
   <p className="text-xs text-muted-foreground">{domain==='workforce'||domain==='payroll'?labels.compareWindow:labels.snapshotWindow}</p>
   {pending&&<ThinkingIndicator label={labels.thinking}/>}

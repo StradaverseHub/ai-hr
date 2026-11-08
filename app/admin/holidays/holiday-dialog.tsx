@@ -353,7 +353,7 @@ function HolidayForm({
             {labels.cancel}
           </button>
         </Dialog.Close>
-        <button type="submit" className={btnPrimary} disabled={pending}>
+        <button aria-busy={pending} type="submit" className={btnPrimary} disabled={pending}>
           {pending ? labels.saving : labels.submit}
         </button>
       </div>

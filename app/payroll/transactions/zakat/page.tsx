@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
@@ -304,12 +305,12 @@ export default async function ZakatTransactionPage({
             <div className="flex items-center justify-between gap-3 pr-4">
               <SectionHeader title={t('zakat.history.appliedTitle')} count={appliedRows.length} />
               {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
-              <a
+              <ExportDownloadLink
                 href={`/payroll/transactions/zakat/history-export?${exportQuery}`}
                 className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
                 {t('zakat.history.exportCsv')}
-              </a>
+              </ExportDownloadLink>
             </div>
             <p className="px-4 pt-2 text-xs text-muted-foreground">{t('zakat.history.appliedSubtitle')}</p>
 

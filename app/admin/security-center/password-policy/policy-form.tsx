@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useActionState,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {NEW_PASSWORD_REQUIREMENTS,LEGACY_PASSWORD_REQUIREMENTS,type PasswordPolicyState} from '@/lib/password-policy';
@@ -24,7 +25,7 @@ export function PasswordPolicyForm({policy,revision}:PasswordPolicyState){
      <h2 className="pt-4 font-semibold">{t('full.firstLogin')}</h2>{toggle('forceFirstChange')}{toggle('firstResetVerification')}<p className="text-sm leading-relaxed text-muted-foreground">{t('full.mfa')}</p>
     </section></div>
   </fieldset><p className="text-sm text-muted-foreground">{t('full.effect')}</p>
-  <button className={btnPrimary} disabled={pending} type="submit">{t(pending?'saving':'save')}</button>
+  <ActionButton aria-busy={pending} className={btnPrimary} disabled={pending} type="submit">{t(pending?'saving':'save')}</ActionButton>
   {state.status!=='idle'&&<p role={state.status==='saved'?'status':'alert'} className="text-sm">{t(`result.${state.status}`)}</p>}
  </form>;
 }

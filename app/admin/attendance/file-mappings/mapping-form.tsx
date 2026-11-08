@@ -857,7 +857,7 @@ export function MappingForm({
         >
           {t('form.cancel')}
         </Link>
-        <Button type="submit" form={formId} disabled={pending || readingSample}>
+        <Button aria-busy={pending} type="submit" form={formId} disabled={pending || readingSample}>
           {pending ? t('form.saving') : t('form.save')}
         </Button>
       </div>

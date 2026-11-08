@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { loopsOverview, type LoopRow } from '@/core/loops/views';
@@ -77,7 +78,7 @@ export default async function LoopsPage({ searchParams }: { searchParams: Promis
                       <form action={setLoopSwitchAction} className="mt-1">
                         <input type="hidden" name="loop" value={row.id} />
                         <input type="hidden" name="enabled" value={String(!row.on)} />
-                        <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(row.on ? 'turnOff' : 'turnOn')} · ${name(row)}`}>{t(row.on ? 'turnOff' : 'turnOn')}</button>
+                        <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(row.on ? 'turnOff' : 'turnOn')} · ${name(row)}`}>{t(row.on ? 'turnOff' : 'turnOn')}</ActionButton>
                       </form>
                     )}
                   </td>

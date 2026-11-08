@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {labelsInCompanyScope,type CompanyScopedLabel} from '@/lib/system-label-scope';
 import { useActionState, useCallback, useState } from 'react';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
@@ -143,7 +144,7 @@ export function AttendanceAllowanceEditor({options,components,policy,action,init
       {method==='weekly'&&<p className="rounded-xl bg-muted p-3 text-sm">{t('weeklyRule')}</p>}
       <p className="text-sm text-muted-foreground">{t('reviewWarning')}</p>{advanced&&(rules.v===3||rules.v===4)&&<p className="text-sm text-muted-foreground">{v('activationHint')}</p>}
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" required name="reviewed" checked={reviewed} onChange={e=>{e.stopPropagation();setReviewed(e.target.checked);}}/>{t('reviewConfirm')}</label>
-      <div className="flex items-center gap-4"><button type="submit" className={btnPrimary} disabled={!reviewed||pending}>{advanced&&(rules.v===3||rules.v===4)?v('savePreview'):t('save')}</button><a className="text-sm text-muted-foreground" href="/admin/attendance-allowance">{t('cancel')}</a></div>
+      <div className="flex items-center gap-4"><ActionButton aria-busy={pending} type="submit" className={btnPrimary} disabled={!reviewed||pending}>{advanced&&(rules.v===3||rules.v===4)?v('savePreview'):t('save')}</ActionButton><a className="text-sm text-muted-foreground" href="/admin/attendance-allowance">{t('cancel')}</a></div>
     </section>
     </fieldset>
   </form>;

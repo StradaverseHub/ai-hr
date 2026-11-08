@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
@@ -286,9 +287,9 @@ export default async function EmployeeIdConfigPage({
             )}
 
             <div className="sm:col-span-2 flex items-center gap-3">
-              <button type="submit" className={btnPrimary}>
+              <ActionButton type="submit" className={btnPrimary}>
                 {t('save')}
-              </button>
+              </ActionButton>
               {/* Cancel returns to the page of the list the editor was opened from, not to page one. */}
               <Link
                 href={listQs ? `${PAGE}?${listQs}` : PAGE}

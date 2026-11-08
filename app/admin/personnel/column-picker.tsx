@@ -204,7 +204,7 @@ export function ColumnPicker({
               {labels.unavailableNote}
             </p>
             <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-2.5">
-              <button
+              <button aria-busy={pending}
                 type="button"
                 onClick={reset}
                 disabled={pending}
@@ -212,7 +212,7 @@ export function ColumnPicker({
               >
                 {labels.reset}
               </button>
-              <Button type="button" size="sm" onClick={apply} disabled={pending}>
+              <Button aria-busy={pending} type="button" size="sm" onClick={apply} disabled={pending}>
                 {labels.apply}
               </Button>
             </div>

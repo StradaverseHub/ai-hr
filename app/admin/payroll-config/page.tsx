@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -71,9 +72,9 @@ export default async function PayrollConfigCompaniesPage({
               aria-label={t('searchCompanyPlaceholder')}
               className={`${inputCls} w-56`}
             />
-            <button className={btnPrimary} type="submit">
+            <ActionButton className={btnPrimary} type="submit">
               {t('search')}
-            </button>
+            </ActionButton>
           </form>
         </div>
 

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { useFormatter, useTranslations } from 'next-intl';
 import type { WorkerDetail, WorkerRow } from '@/core/agent-registry/views';
@@ -29,7 +30,7 @@ function switchControl(t: ReturnType<typeof useTranslations>, row: WorkerRow) {
           <span>{t('conversationAttest')}</span>
         </label>
       )}
-      <button type="submit" className={btnGhost} aria-label={`${t(row.switch.on ? 'turnOff' : 'turnOn')} · ${known(t, `workers.${row.id}`, row.label)}`}>{t(row.switch.on ? 'turnOff' : 'turnOn')}</button>
+      <ActionButton type="submit" className={btnGhost} aria-label={`${t(row.switch.on ? 'turnOff' : 'turnOn')} · ${known(t, `workers.${row.id}`, row.label)}`}>{t(row.switch.on ? 'turnOff' : 'turnOn')}</ActionButton>
       <p className="mt-1 text-xs text-muted-foreground">{t('switchOwner.worker_control')}</p>
     </form>
   );

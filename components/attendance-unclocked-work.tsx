@@ -38,7 +38,7 @@ export function AttendanceUnclockedWork({employmentId,date}:{employmentId:string
    <label className="block space-y-1 text-sm">{t('reason')}<textarea className={inputCls+' min-h-24'} name="reason" required maxLength={500} disabled={pending}/></label>
    <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="completeWorkedDay" required disabled={pending} className="mt-1 size-4"/>{t('complete')}</label>
    {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
-   <Button type="submit" disabled={pending}>{t(pending?'submitting':'submit')}</Button>
+   <Button aria-busy={pending} type="submit" disabled={pending}>{t(pending?'submitting':'submit')}</Button>
   </form>}
  </Card>;
 }

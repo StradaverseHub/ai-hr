@@ -56,11 +56,12 @@ function revalidateShell(): void {
   revalidatePath('/', 'layout');
 }
 /** After the last request-bound task, keep feedback on an allowed neutral destination. */
-async function decisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav: Nav, feedback: { toast?: string; error?: string }): Promise<string> {
+async function decisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav: Nav, feedback: { toast?: string; error?: string; approvalSeal?: boolean }): Promise<string> {
   const neutralDestination = () => {
     const query = new URLSearchParams();
     if (feedback.toast) query.set('toast', feedback.toast);
     if (feedback.error) query.set('error', feedback.error);
+    if (feedback.approvalSeal && feedback.toast && !feedback.error) query.set('approvalSeal', '1');
     return `/?${query.toString()}`;
   };
   if (!isAdmin(s) && !(s.roles ?? []).includes('manager')) {
@@ -84,9 +85,9 @@ async function decisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav:
   }
   return approvalsReturnUrl({ ...nav, ...feedback });
 }
-async function done(toast:string,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{
+async function done(toast:string,nav:Nav,s:Awaited<ReturnType<typeof getSession>>,approvalSeal=false):Promise<never>{
   revalidateShell();
-  redirect(await decisionReturnUrl(s,nav,{toast}));
+  redirect(await decisionReturnUrl(s,nav,{toast,approvalSeal}));
 }
 async function fail(e:unknown,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{
   redirect(await decisionReturnUrl(s,nav,{error:publicErrorMessage(e)}));
@@ -99,8 +100,9 @@ export async function approveLeaveAction(formData: FormData) {
   // Partial Leave Approval (0131): the reject-reason textarea (required when rejecting). Threaded through so
   // decideLeave can enforce the mandatory reason and stamp it onto the leave-request.rejected event.
   const rejectReason = String(formData.get('rejectReason') || '') || undefined;
+  let outcome: Awaited<ReturnType<typeof decideLeave>> | undefined;
   try {
-    await decideLeave(s, { leaveRequestId: String(formData.get('id')), decision, rejectReason });
+    outcome = await decideLeave(s, { leaveRequestId: String(formData.get('id')), decision, rejectReason });
   } catch (e) {
     // Partial Leave Approval (0131): re-localize the new MissingRejectReasonError (and the existing typed
     // leave errors) into the viewer's language, like the /me + leave-tab flows do.
@@ -108,7 +110,8 @@ export async function approveLeaveAction(formData: FormData) {
   }
   // AI v2 W6: after the decision committed, whether the approver followed the recommendation shown beside it.
   await followLeaveRecommendation(s, formData.get('recommendationRecordId'), decision);
-  await done(`Leave ${decision}`, nav, s);
+  const message = outcome?.status === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Leave ${decision}`;
+  await done(message, nav, s, outcome?.status === 'approved');
 }
 
 // Partial Leave Approval — single-request model (ADR-0068 §4D): decide ONE requested date of a per-date
@@ -132,7 +135,7 @@ export async function decideLeaveDateAction(formData: FormData) {
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
   await followPerDateRecommendation(s, formData, outcome);
-  await done(`Date ${decision}`, nav, s);
+  await done(`Date ${decision}`, nav, s, outcome?.status === 'approved');
 }
 
 // Partial Leave Approval — single-request model (R17 600be8ac): decide MANY requested dates in ONE submit
@@ -169,7 +172,7 @@ export async function decideLeaveDatesAction(formData: FormData) {
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
   await followPerDateRecommendation(s, formData, outcome);
-  await done('Leave decided', nav, s);
+  await done('Leave decided', nav, s, outcome?.status === 'approved');
 }
 
 /** AI v2 slice 3 follow-up: the per-date path records whether the approver followed the recommendation, as the
@@ -187,9 +190,10 @@ export async function decideLeaveCancellationAction(formData: FormData) {
   const s = await getSession();
   const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
+  let outcome: Awaited<ReturnType<typeof decideLeaveCancellation>> | undefined;
   try {
     const me = await myEmployment(s);
-    await decideLeaveCancellation(s, {
+    outcome = await decideLeaveCancellation(s, {
       cancellationRequestId: String(formData.get('id')),
       decision,
       deciderEmploymentId: me?.employmentId,
@@ -197,7 +201,8 @@ export async function decideLeaveCancellationAction(formData: FormData) {
   } catch (e) {
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
-  await done(`Cancellation ${decision}`, nav, s);
+  const message = outcome?.status === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Cancellation ${decision}`;
+  await done(message, nav, s, outcome?.status === 'approved');
 }
 
 export async function approveCorrectionAction(formData: FormData) {
@@ -214,7 +219,7 @@ export async function approveCorrectionAction(formData: FormData) {
   }
   const toast = outcomeStatus === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Correction ${decision}`;
   revalidateShell();
-  redirect(await decisionReturnUrl(s, nav, { toast }));
+  redirect(await decisionReturnUrl(s, nav, { toast, approvalSeal: outcomeStatus === 'approved' }));
 }
 
 /**
@@ -377,5 +382,5 @@ export async function approveClaimAction(formData: FormData) {
   } catch (e) {
     await fail(e, nav, s);
   }
-  await done(`Claim ${approved ? 'approved' : 'rejected'}`, nav, s);
+  await done(`Claim ${approved ? 'approved' : 'rejected'}`, nav, s, approved);
 }

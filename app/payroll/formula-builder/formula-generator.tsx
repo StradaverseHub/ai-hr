@@ -42,7 +42,7 @@ export function FormulaGenerator({ source, disabled, apply }: {
     <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={accepted} disabled={disabled}
       onChange={event => { setAccepted(event.target.checked); if(!event.target.checked){generation.current++;busy.current=false;setPending(false);setResult(null);} }}/>{t('consent')}</label>
     <div className="flex flex-wrap gap-2">
-      <button type="button" className={formulaPrimary} disabled={disabled || pending || !accepted || !requirement.trim()} onClick={generate}>{t(pending ? 'working' : result ? 'regenerate' : 'generate')}</button>
+      <button aria-busy={pending} type="button" className={formulaPrimary} disabled={disabled || pending || !accepted || !requirement.trim()} onClick={generate}>{t(pending ? 'working' : result ? 'regenerate' : 'generate')}</button>
       <button type="button" className={formulaButton} onClick={clear}>{t('clear')}</button>
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getFormatter, getTranslations } from 'next-intl/server';
@@ -432,9 +433,9 @@ function VerdictCard({
           <input type="hidden" name="batchId" value={batchId} />
           <input type="hidden" name="verdictId" value={row.verdictId} />
           {from ? <input type="hidden" name="from" value={from} /> : null}
-          <button type="submit" className="text-[11px] font-medium text-primary underline-offset-2 hover:underline">
+          <ActionButton type="submit" className="text-[11px] font-medium text-primary underline-offset-2 hover:underline">
             {explainLabel}
-          </button>
+          </ActionButton>
         </form>
       )}
 

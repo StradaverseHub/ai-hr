@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { organisationFilterChoices } from '@/lib/organisation-choice-label';
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import Link from 'next/link';
@@ -848,7 +849,7 @@ export default async function TransactionViewPage({
               <div className="flex items-center justify-between gap-3 pr-4">
                 <SectionHeader title={t('view.tabs.individual')} count={individualRows.length} />
                 {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
-                <a
+                <ExportDownloadLink
                   href={`/payroll/transaction-view/export?${new URLSearchParams({
                     ...(companyId ? { companyId } : {}),
                     ...(employmentId ? { employmentId } : {}),
@@ -864,7 +865,7 @@ export default async function TransactionViewPage({
                   className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                 >
                   {t('view.exportCsv')}
-                </a>
+                </ExportDownloadLink>
               </div>
               {/* Sortable + searchable grid (feedback 7b2d4228): GET filters above narrow the set; this client table
                   adds column sorting over the fetched rows. */}
@@ -898,7 +899,7 @@ export default async function TransactionViewPage({
                   {/* Opens down and to the LEFT (end-0), so a wide panel never pushes the page sideways. */}
                   <div className="absolute end-0 top-full z-20 mt-1 w-80 rounded-md border border-border bg-background p-1 shadow-lg">
                     {historyExportChoices.map((choice) => (
-                      <a
+                      <ExportDownloadLink
                         key={choice.scope}
                         href={`/payroll/transaction-view/history-export?${new URLSearchParams(
                           // "All processed payroll" carries NO filters — the link says what the file is, so a
@@ -909,7 +910,7 @@ export default async function TransactionViewPage({
                       >
                         <span className="block text-sm font-medium text-foreground">{choice.label}</span>
                         <span className="block text-xs text-muted-foreground">{choice.hint}</span>
-                      </a>
+                      </ExportDownloadLink>
                     ))}
                   </div>
                 </details>
@@ -1000,12 +1001,12 @@ export default async function TransactionViewPage({
                     </Card>
                   )}
                   <div className="flex justify-end">
-                    <a
+                    <ExportDownloadLink
                       href={`/payroll/statutory-detail/export?payslipId=${encodeURIComponent(statutoryRow.id)}`}
                       className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
                     >
                       {tStat('exportExcel')}
-                    </a>
+                    </ExportDownloadLink>
                   </div>
                   <StatutoryDetailView
                     ctx={{

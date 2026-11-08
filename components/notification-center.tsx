@@ -99,7 +99,7 @@ export function NotificationCenter({
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabKey>('notifications');
   const [query, setQuery] = useState('');
-  const [, start] = useTransition();
+  const [marking, start] = useTransition();
 
   const markRead = (id: string) => start(async () => { await markNotificationReadAction(id); router.refresh(); });
   const markAll = () => start(async () => { await markAllNotificationsReadAction(); router.refresh(); });
@@ -283,7 +283,7 @@ export function NotificationCenter({
               <>
                 {unread > 0 && (
                   <div className="flex justify-end border-b border-border px-4 py-1.5">
-                    <button type="button" onClick={markAll} className="text-xs font-medium text-primary hover:underline">
+                    <button type="button" onClick={markAll} aria-busy={marking} disabled={marking} className="text-xs font-medium text-primary hover:underline">
                       {t('markAllRead')}
                     </button>
                   </div>

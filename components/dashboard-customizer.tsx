@@ -442,7 +442,7 @@ export function DashboardCustomizer({
             <div className="flex flex-wrap items-center gap-2">
               {/* Add Card — employee-selectable cards not currently shown. */}
               <div className="relative">
-                <Button
+                <Button aria-busy={pending}
                   variant="outline"
                   size="sm"
                   onClick={() => setAddOpen((o) => !o)}
@@ -488,16 +488,16 @@ export function DashboardCustomizer({
                   </div>
                 )}
               </div>
-              <Button variant="ghost" size="sm" onClick={reset} disabled={pending}>
+              <Button aria-busy={pending} variant="ghost" size="sm" onClick={reset} disabled={pending}>
                 {t('resetToDefault')}
               </Button>
-              <Button variant="outline" size="sm" onClick={cancel} disabled={pending}>
+              <Button aria-busy={pending} variant="outline" size="sm" onClick={cancel} disabled={pending}>
                 {t('cancel')}
               </Button>
               {/* Save is gated behind a confirmation dialog (feedback 31b46dcc). */}
               <AlertDialog.Root>
                 <AlertDialog.Trigger asChild>
-                  <Button size="sm" disabled={pending}>
+                  <Button aria-busy={pending} size="sm" disabled={pending}>
                     {t('saveChanges')}
                   </Button>
                 </AlertDialog.Trigger>

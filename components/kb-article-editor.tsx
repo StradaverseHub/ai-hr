@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -75,9 +76,9 @@ export function KbArticleEditor({ doc }: { doc: Doc }) {
         <Link href={`/knowledge-base/${doc.id}`} className={btnGhost}>
           {t('cancel')}
         </Link>
-        <button type="submit" className={btnPrimary}>
+        <ActionButton type="submit" className={btnPrimary}>
           {t('save')}
-        </button>
+        </ActionButton>
       </div>
     </form>
   );

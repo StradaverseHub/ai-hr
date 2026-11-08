@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
@@ -200,9 +201,9 @@ export default async function DashboardCardConfigPage({
                       <option value="inactive">{t('status.inactive')}</option>
                     </select>
                   </label>
-                  <button type="submit" className={btnPrimary}>
+                  <ActionButton type="submit" className={btnPrimary}>
                     {tm('filtersApply')}
-                  </button>
+                  </ActionButton>
                   {(q || typeFilter || statusFilter) && (
                     <Link
                       href={`${PAGE}?section=library${sp.size ? `&size=${pq.size}` : ''}`}
@@ -460,9 +461,9 @@ export default async function DashboardCardConfigPage({
                     <p className="sm:col-span-2 text-xs text-muted-foreground">{t('mandatoryHint')}</p>
 
                     <div className="sm:col-span-2 flex items-center gap-3">
-                      <button type="submit" className={btnPrimary}>
+                      <ActionButton type="submit" className={btnPrimary}>
                         {t('save')}
-                      </button>
+                      </ActionButton>
                       <Link
                         href={`${PAGE}?${listQs}`}
                         className="text-sm font-medium text-muted-foreground hover:text-foreground"

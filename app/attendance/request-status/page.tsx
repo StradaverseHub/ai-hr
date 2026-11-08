@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { attendanceApplicationType } from '@/lib/attendance-workflow';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -161,13 +162,12 @@ export default async function MyRequestStatusPage({
               was asked from) and not when there is nothing in it — an export link over an empty tab is an
               empty workbook nobody asked for, so the muted sentence says so instead. */}
           {refusal == null && reqPage.state.total > 0 ? (
-            <Link
+            <ExportDownloadLink
               href={exportHref}
-              prefetch={false}
               className="ml-auto font-medium text-primary underline-offset-2 hover:underline"
             >
               {t('maExportExcel')}
-            </Link>
+            </ExportDownloadLink>
           ) : refusal == null ? (
             <span className="ml-auto text-xs font-normal text-muted-foreground">{t('maExportNone')}</span>
           ) : null}

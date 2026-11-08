@@ -1,4 +1,5 @@
 /** The same authorized answer and visible terminal state in home and floating chat. */
+import { ActionButton } from '@/components/ui/action-button';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '../../db/client';
 import type {loadAiWorkspace} from '../../core/ai-workspace';
@@ -30,7 +31,7 @@ export async function ExchangeReply({exchange:h,ctx}:{exchange:Exchange;ctx:Sess
     <input type="hidden" name="exchangeId" value={h.id}/>
     <label className="flex items-start gap-2"><input type="checkbox" name="consented" value="yes" required className="mt-0.5"/><span>{t('workspace.feedbackConsent')}</span></label>
     <div className="flex flex-wrap gap-2" aria-label={t('workspace.feedbackTitle')}>
-     {(['helpful','needs_correction','incorrect'] as const).map(outcome=><button key={outcome} type="submit" name="outcome" value={outcome} className="min-h-11 rounded-md border px-3 py-2 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t(`workspace.feedback_${outcome}`)}</button>)}
+     {(['helpful','needs_correction','incorrect'] as const).map(outcome=><ActionButton key={outcome} type="submit" name="outcome" value={outcome} className="min-h-11 rounded-md border px-3 py-2 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t(`workspace.feedback_${outcome}`)}</ActionButton>)}
     </div>
    </form>
   </details>
