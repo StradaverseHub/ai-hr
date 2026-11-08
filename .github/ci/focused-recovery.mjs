@@ -53,7 +53,7 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
  const plan=source.parsed.get('gate-plan')?.get('ci-plan.json'),local=createPlan(candidatePath);assert(plan,'Missing original archived plan');
  const {fingerprint:unused,...body}={...local,controller,migrationBase:baseline,runtime:plan.runtime};
  const expectedPlan={...body,fingerprint:hash(body)};
- const assessment=assessResumeSource({...source,expectedPlan,expected:p});
+ const assessment=assessResumeSource({...source,expectedPlan,expected:p},candidatePath);
  const workflow=api('actions/workflows/alpha-focused-checks.yml');
  assert(workflow.path==='.github/workflows/alpha-focused-checks.yml'&&workflow.state==='active','Focused workflow registry differs');
  const focused=[];
@@ -66,7 +66,7 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
   focused.push({...f,producer,artifact,report:packet.get('focused.json'),result:packet.get('nodb.vitest.json')});
  }
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyFocusedRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController});
+ const recovery=verifyFocusedRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController},candidatePath);
  recovery.verificationDiagnostic=verificationDiagnostic;
  const build=await sourceBoundBuild({candidatePath,dir,p:{...p,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assertNativeBuildMatches(expectedPlan,reports,build,source.artifacts.find(a=>a.name===BUILD_ARTIFACT),source.jobs.find(j=>j.name==='build').id);

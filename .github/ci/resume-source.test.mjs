@@ -1,8 +1,33 @@
 import test from 'node:test';
+import {realpathSync,readFileSync as readModelSource} from 'node:fs';
+import {fileURLToPath as modelFileURLToPath} from 'node:url';
+import {createHash as modelCreateHash} from 'node:crypto';
+import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
+import {singletonSources} from './singleton-protocol.mjs';
+import {join as modelJoin} from 'node:path';
 import assert from 'node:assert/strict';
 import {assessResumeSource} from './resume-source.mjs';
 import {fixture, put, remove, time} from './resume-test-fixtures.mjs';
 
+
+// Source-data model only: actual hosted/source authentication belongs to the real adapters.
+const modelRoot=realpathSync(modelFileURLToPath(new URL('../../',import.meta.url)));
+function databaseModel(f,root=modelRoot){
+ const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
+ const unit=buildDatabaseModelUnits([file],{db:[file],nodb:[]},[])[0],report=f.reports.find(report=>report.id===oldId),runId=f.expected.runId??100;
+ f.expected.runId=runId;plan.suite=[...plan.suite.filter(path=>!old.files.includes(path)),file].sort();plan.units=plan.units.map(row=>row.id===oldId?unit:row);
+ const journal='db/migrations/meta/_journal.json',journalHash=modelCreateHash('sha256').update(readModelSource(modelJoin(root,journal))).digest('hex');
+ plan.singletonSources={[unit.id]:Object.fromEntries(singletonSources(unit,root).map(path=>[path,path===journal?journalHash:'c'.repeat(64)]))};
+ const {fingerprint,...body}=plan;plan.fingerprint=modelCreateHash('sha256').update(JSON.stringify(body)).digest('hex');
+ report.id=unit.id;report.files=unit.files;report.batches[0].result.testResults=[{name:report.cwd+'/'+file,status:'passed',assertionResults:[{status:'passed'}]}];
+ report.batches[0].result.numTotalTests=1;report.batches[0].result.numPassedTests=1;
+ const resource=report.databaseTerminalEvidence;resource.name=`aihr-ci-${runId}-1-${unit.id}`;report.batches[0].databaseEvidence=structuredClone(resource);
+ report.singleton={schemaVersion:1,mode:'full-ci-singleton',candidate:plan.sha,controller:plan.controller,runId:String(runId),attempt:'1',unit:unit.id,fingerprint:plan.fingerprint,file,profile:unit.singleton.profile,sourceHashes:plan.singletonSources[unit.id],evidenceDirectory:'/tmp/model/aihr-ci',prerequisites:{kind:'fresh-job-postgres-cluster',workers:1,database:structuredClone(resource)}};
+ for(const row of f.reports)row.fingerprint=plan.fingerprint;
+ if(f.jobs)f.jobs.find(job=>job.name===`test (${oldId})`).name=`test (${unit.id})`;
+ if(f.archives){remove(f,'unit-'+oldId);put(f,'gate-plan','ci-plan.json',plan);for(const row of f.reports)put(f,'unit-'+row.id,`unit-${row.id}.json`,row);}
+ return f;
+}
 test('Verified raw archives produce a non-authoritative assessment, preserving a failed whole run', () => {
   const f = fixture(), before = structuredClone(f.run), r = assessResumeSource(f);
   assert.equal(r.reusable.length, 5); assert.equal(r.rerun.length, 0);
@@ -12,6 +37,7 @@ test('Verified raw archives produce a non-authoritative assessment, preserving a
   assert.equal(r.sourceRun.conclusion, 'failure'); assert.deepEqual(f.run, before);
   for (const unit of r.reusable) {assert.equal(unit.source.runId, 100); assert(unit.source.jobId > 0); assert.match(unit.source.digest, /^sha256:/);}
   assert.equal(r.observations.length, f.expectedPlan.units.length); assert(r.freshPrerequisites.includes('build'));
+  const db=databaseModel(fixture());assert.throws(()=>assessResumeSource(db),/Explicit candidate root/);assert.throws(()=>assessResumeSource({...db,candidateRoot:modelRoot}),/Explicit candidate root/);assert.equal(assessResumeSource(db,modelRoot).reusable.length,5);
 });
 test('A failed producing job overrides a green payload; it is never selected from an earlier green', () => {
   const f = fixture(), unit = f.expectedPlan.units.find(u => u.kind === 'db');
@@ -52,6 +78,7 @@ test('Archived plan and report identity are independently checked', () => {
     f => {const r = structuredClone(f.reports[0]); r.id = f.reports[1].id; put(f, 'unit-' + f.reports[0].id, `unit-${f.reports[0].id}.json`, r);}]) {
     const f = fixture(); change(f); assert.throws(() => assessResumeSource(f));
   }
+  const db=databaseModel(fixture()),archived={...db.expectedPlan,candidateRoot:modelRoot};put(db,'gate-plan','ci-plan.json',archived);assert.throws(()=>assessResumeSource(db,modelRoot),/plan/);
 });
 test('Authenticated archive bytes still cannot contain traversal or executable files', () => {
   for (const name of ['../escape.json', 'payload.sh']) {

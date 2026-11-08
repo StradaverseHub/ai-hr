@@ -44,8 +44,8 @@ export function admitSingletonTest(file:string){
   const unit=plan.units.find((row:{id:string})=>row.id===binding.unit);assert(unit);assert.equal(unit.files[0],file);
   const layout={workspace,temp,source,automation,cwd:source,evidence:directory,platform:process.platform,sourceHead:candidate,controllerHead:git(automation,'rev-parse','HEAD'),sourceClean:true,controllerClean:git(automation,'status','--porcelain')===''};
   validateSingletonHost({env,event:JSON.parse(regular(env.GITHUB_EVENT_PATH!,1048576).toString('utf8')),layout,plan,unit});
-  validateSingletonBinding(binding,plan,unit,{runId:env.GITHUB_RUN_ID,attempt:env.GITHUB_RUN_ATTEMPT});
-  for(const path of singletonSources(unit))assert.equal(createHash('sha256').update(regular(join(source,path),singletonSourceMaximum(path))).digest('hex'),binding.sourceHashes[path]);
+  validateSingletonBinding(binding,plan,unit,{runId:env.GITHUB_RUN_ID,attempt:env.GITHUB_RUN_ATTEMPT},source);
+  for(const path of singletonSources(unit,source))assert.equal(createHash('sha256').update(regular(join(source,path),singletonSourceMaximum(path))).digest('hex'),binding.sourceHashes[path]);
   if(typeof unit.id!=='string')throw Error('Actual singleton unit ID must be a string');
   return {mode:'full-ci-singleton' as const,evidenceDirectory:directory,databaseUnit:unit.id};
  }

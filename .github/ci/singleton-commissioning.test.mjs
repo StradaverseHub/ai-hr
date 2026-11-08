@@ -1,5 +1,7 @@
 import test from 'node:test';
+import {realpathSync} from 'node:fs';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {readFileSync,writeFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
@@ -9,11 +11,14 @@ import {buildUnits,CI_EXECUTION} from './manifest.mjs';
 import {protocolHash,singletonDescriptor,singletonKind,singletonSources} from './singleton-protocol.mjs';
 import {EMPLOYEE_LIFECYCLE_PROFILE,employeeLifecycleMatrixRow} from './employee-lifecycle-profile.mjs';
 import {COMMISSION_TITLE,commissioningIntent,selectCommissioning,summarizeCommissioning} from './singleton-commissioning.mjs';
+const candidateRoot=realpathSync(fileURLToPath(new URL('../../',import.meta.url)));
+const journalPath='db/migrations/meta/_journal.json';
+const journalHash=createHash('sha256').update(readFileSync(new URL('../../'+journalPath,import.meta.url))).digest('hex');
 const browser=['test/fictional.browser.test.tsx'];
 function fixture(file='test/runtime-ready-admission-native.test.ts'){
  const kind=singletonKind(singletonDescriptor(file).profile),units=buildUnits([file],{db:kind==='db'?[file]:[],nodb:kind==='nodb'?[file]:[]},browser),unit=units[0];
  const body={schemaVersion:2,policyVersion:'aihr-staging-ci/v21',sha:'a'.repeat(40),controller:'b'.repeat(40),migrationBase:'d'.repeat(40),runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite:[file],units,
-  singletonSources:{[unit.id]:Object.fromEntries(singletonSources(unit).map(path=>[path,'c'.repeat(64)]))}};
+  singletonSources:{[unit.id]:Object.fromEntries(singletonSources(unit,candidateRoot).map(path=>[path,path===journalPath?journalHash:'c'.repeat(64)]))}};
  const plan={...body,fingerprint:protocolHash(body)},witness={runId:123,attempt:1};
  const prerequisites=kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:{schemaVersion:2,profileVersion:2,configuredCapBytes:2113929216,peakBudgetBytes:2147483648,errors:{},memoryLimit:2113929216,memorySwap:2113929216,memoryMax:2113929216,memorySwapMax:0,memoryPeak:1500000000,memoryEvents:{max:0,oom:0,oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'},name:`aihr-ci-123-1-${unit.id}`}}:
   {kind:'actual-job-systemd-nginx',platform:'linux',pid1:'systemd',sudoUid:'0',nginxPath:'/usr/sbin/nginx',nginxSha256:'e'.repeat(64),nginxVersion:'nginx version: nginx/1.24.0',systemdVersion:'systemd 255'};
@@ -44,20 +49,21 @@ test('selection is scheduling-only over the complete plan, never a shortened pla
 });
 test('selected host and database reports retain actual native/source/run proofs but produce no release receipt',()=>{
  for(const file of ['test/runtime-ready-admission-native.test.ts','test/leave-inquiry-read-cost.test.ts']){
-  const f=selectedFixture(file),summary=summarizeCommissioning(f.plan,f.selection,f.entries,f.witness);
+  const f=selectedFixture(file),summary=summarizeCommissioning(f.plan,f.selection,f.entries,f.witness,candidateRoot);
+  if(f.unit.kind==='db'){assert.throws(()=>summarizeCommissioning(f.plan,f.selection,f.entries,f.witness),/Explicit candidate root/);assert.throws(()=>summarizeCommissioning(f.plan,f.selection,f.entries,f.witness,''),/Explicit candidate root/);assert.equal(summarizeCommissioning(f.plan,f.selection,[],f.witness).outcomes[0].outcome,'missing');}
   assert.equal(summary.selectedProfilesVerified,true);assert.equal(summary.completeSuite,false);assert.equal(summary.releaseAuthorized,false);assert.equal(summary.outcomes[0].tests,1);assert.match(summary.outcomes[0].reportHash,/^[0-9a-f]{64}$/);assert.equal(summary.result,undefined);assert.equal(summary.tier,undefined);assert(summary.omitted.length>0);
  }
 });
 test('native failures, skipped assertions, omitted or stale reports cannot be counted as verified',()=>{
  for(const change of [f=>f.entries=[],f=>f.entries[0].report.exitCode=1,f=>f.entries[0].report.sha='f'.repeat(40),f=>f.entries[0].report.fingerprint='f'.repeat(64),f=>f.entries[0].report.batches[0].result.numPendingTests=1,f=>f.entries[0].report.batches[0].result.testResults[0].assertionResults[0].status='skipped',f=>f.entries[0].report.singleton.prerequisites.pid1='init',f=>f.entries[0].report.singleton.sourceHashes={},f=>f.entries[0].report.singleton.controller='f'.repeat(40),f=>f.witness.runId=999]){
-  const f=selectedFixture();change(f);for(const e of f.entries)e.bytes=JSON.stringify(e.report);assert.equal(summarizeCommissioning(f.plan,f.selection,f.entries,f.witness).selectedProfilesVerified,false);
+  const f=selectedFixture();change(f);for(const e of f.entries)e.bytes=JSON.stringify(e.report);assert.equal(summarizeCommissioning(f.plan,f.selection,f.entries,f.witness,candidateRoot).selectedProfilesVerified,false);
  }
- const f=selectedFixture('test/leave-inquiry-read-cost.test.ts');f.entries[0].report.databaseTerminalEvidence.memoryEvents.oom_kill=1;f.entries[0].bytes=JSON.stringify(f.entries[0].report);assert.equal(summarizeCommissioning(f.plan,f.selection,f.entries,f.witness).selectedProfilesVerified,false);
+ const f=selectedFixture('test/leave-inquiry-read-cost.test.ts');f.entries[0].report.databaseTerminalEvidence.memoryEvents.oom_kill=1;f.entries[0].bytes=JSON.stringify(f.entries[0].report);assert.equal(summarizeCommissioning(f.plan,f.selection,f.entries,f.witness,candidateRoot).selectedProfilesVerified,false);
 });
 test('extra/duplicate reports, altered selection or source identity refuse the development summary',()=>{
- for(const change of [f=>f.entries.push(f.entries[0]),f=>f.entries[0].report.id='db-'+'f'.repeat(16),f=>f.selection.fingerprint='f'.repeat(64),f=>f.selection.omitted=[],f=>f.selection.completeSuite=true,f=>f.selection.releaseAuthorized=true,f=>f.witness.attempt=2,f=>f.witness.runId=undefined]){const f=selectedFixture();change(f);for(const e of f.entries)e.bytes=JSON.stringify(e.report);assert.throws(()=>summarizeCommissioning(f.plan,f.selection,f.entries,f.witness));}
+ for(const change of [f=>f.entries.push(f.entries[0]),f=>f.entries[0].report.id='db-'+'f'.repeat(16),f=>f.selection.fingerprint='f'.repeat(64),f=>f.selection.omitted=[],f=>f.selection.completeSuite=true,f=>f.selection.releaseAuthorized=true,f=>f.witness.attempt=2,f=>f.witness.runId=undefined]){const f=selectedFixture();change(f);for(const e of f.entries)e.bytes=JSON.stringify(e.report);assert.throws(()=>summarizeCommissioning(f.plan,f.selection,f.entries,f.witness,candidateRoot));}
 });
-test('mismatched raw bytes cannot authenticate a different parsed report',()=>{const f=selectedFixture();f.entries[0].bytes='{}';assert.throws(()=>summarizeCommissioning(f.plan,f.selection,f.entries,f.witness),/raw report bytes differ/);});
+test('mismatched raw bytes cannot authenticate a different parsed report',()=>{const f=selectedFixture();f.entries[0].bytes='{}';assert.throws(()=>summarizeCommissioning(f.plan,f.selection,f.entries,f.witness,candidateRoot),/raw report bytes differ/);});
 test('commissioning keeps the real test job/prerequisites and skips every release-producing job',()=>{
  const source=readFileSync(new URL('../workflows/alpha-staging.yml',import.meta.url),'utf8');
  assert(source.includes("'"+COMMISSION_TITLE+"'"));
@@ -145,7 +151,7 @@ test('native hybrid commissioning consumes one canonical build while ordinary un
 
 test('the real matrix subprocess derives every one of the five lifecycle hints from complete registered units',()=>{
  const files=EMPLOYEE_LIFECYCLE_PROFILE.files.map(row=>row.file),suite=[...files,'test/ordinary.test.ts'],units=buildUnits(suite,{db:files,nodb:['test/ordinary.test.ts']},browser),ordinary=fixture();
- const body={...ordinary.plan,suite,units,singletonSources:Object.fromEntries(units.filter(unit=>unit.singleton).map(unit=>[unit.id,Object.fromEntries(singletonSources(unit).map(file=>[file,'e'.repeat(64)]))]))};delete body.fingerprint;const planValue={...body,fingerprint:protocolHash(body)};
+ const body={...ordinary.plan,suite,units,singletonSources:Object.fromEntries(units.filter(unit=>unit.singleton).map(unit=>[unit.id,Object.fromEntries(singletonSources(unit,candidateRoot).map(file=>[file,file===journalPath?journalHash:'e'.repeat(64)]))]))};delete body.fingerprint;const planValue={...body,fingerprint:protocolHash(body)};
  const directory=mkdtempSync(join(tmpdir(),'employee-matrix-model-'));try{
   const event=join(directory,'event.json'),plan=join(directory,'plan.json'),output=join(directory,'output'),selection=join(directory,'selection.json'),bytes=JSON.stringify(planValue);writeFileSync(plan,bytes);writeFileSync(event,JSON.stringify({inputs:{}}));writeFileSync(output,'');
   const child=spawnSync(process.execPath,[fileURLToPath(new URL('./singleton-commissioning.mjs',import.meta.url)),'matrix',plan,selection],{encoding:'utf8',timeout:5000,env:{...process.env,GITHUB_EVENT_PATH:event,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ATTEMPT:'1',GITHUB_OUTPUT:output}});assert.equal(child.status,0,child.stderr);assert.equal(readFileSync(plan,'utf8'),bytes);

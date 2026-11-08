@@ -33,10 +33,10 @@ export function provisionSingletonHost(plan,unit,dir){
   nginxPath:realpathSync('/usr/sbin/nginx'),nginxSha256:createHash('sha256').update(readFileSync('/usr/sbin/nginx')).digest('hex'),nginxVersion:version.stderr.trim(),systemdVersion:run('systemctl',['--version']).split('\n')[0]};
 }
 export function writeSingletonBinding(plan,unit,dir,prerequisites){
- actualSingletonHost(plan,unit,dir);
+ const layout=actualSingletonHost(plan,unit,dir);
  const binding={schemaVersion:1,mode:'full-ci-singleton',candidate:plan.sha,controller:plan.controller,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,
   unit:unit.id,fingerprint:plan.fingerprint,file:unit.files[0],profile:unit.singleton.profile,sourceHashes:plan.singletonSources[unit.id],evidenceDirectory:dir,prerequisites};
- for(const file of singletonSources(unit)){const path=join(process.cwd(),file);assert.equal(realpathSync(path),path);assert(lstatSync(path).isFile());assert.equal(createHash('sha256').update(readFileSync(path)).digest('hex'),binding.sourceHashes[file]);}
- validateSingletonBinding(binding,plan,unit,{runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT});
+ for(const file of singletonSources(unit,layout.source)){const path=join(layout.source,file);assert.equal(realpathSync(path),path);assert(lstatSync(path).isFile());assert.equal(createHash('sha256').update(readFileSync(path)).digest('hex'),binding.sourceHashes[file]);}
+ validateSingletonBinding(binding,plan,unit,{runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT},layout.source);
  const path=join(dir,`${unit.id}-singleton.json`),bytes=JSON.stringify(binding,null,2)+'\n';writeFileSync(path,bytes,{flag:'wx',mode:0o600});return {binding,path,bytes};
 }

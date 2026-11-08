@@ -38,8 +38,27 @@ export function createPlan(cwd = process.cwd()) {
   const browsers = tracked.filter(f => f.endsWith('.browser.test.tsx')).sort();
   const pdfTooling=inspectPdfToolScope(cwd);
   const units = buildUnits(suite,groups,browsers);
-  for(const unit of units)if(employeeLifecycleUnit(unit))assertEmployeeLifecycleSourceClosure(singletonSources(unit),JSON.parse(readFileSync(resolve(cwd,'db/migrations/meta/_journal.json'),'utf8')));
-  const singletonSourceHashes=Object.fromEntries(units.filter(u=>u.singleton).map(unit=>[unit.id,Object.fromEntries(singletonSources(unit).map(file=>{
+  const sourceFiles=new Map(units.filter(unit=>unit.singleton).map(unit=>[unit.id,singletonSources(unit,cwd)]));
+  const requiredMigrations=new Set(units.filter(unit=>unit.singleton&&unit.kind==='db').flatMap(unit=>sourceFiles.get(unit.id))
+   .filter(file=>file==='db/migrations/meta/_journal.json'||file.startsWith('db/migrations/')&&file.endsWith('.sql')));
+  if(requiredMigrations.size){
+   // The existing clean-HEAD owner observes the index ONCE. Clean status alone
+   // does not exclude ignored SQL; journal-derived membership is not tracking.
+   const raw=git('ls-files','--cached','--stage','-z','--','db/migrations');
+   if(!raw.endsWith('\0'))throw Error('Incomplete canonical migration index');
+   const index=new Map();
+   for(const record of raw.slice(0,-1).split('\0')){
+    const match=/^([0-7]{6}) ([a-f0-9]{40}) 0\t([^\0]+)(?![\s\S])/.exec(record);
+    if(!match)throw Error('Malformed canonical migration index');
+    const [,mode,,file]=match;
+    if(!file.startsWith('db/migrations/')||file.includes('\\')||/[\x00-\x1f\x7f]/.test(file)
+      ||file.split('/').some(part=>part===''||part==='.'||part==='..')||index.has(file))throw Error('Noncanonical or duplicate migration index path');
+    index.set(file,mode);
+   }
+   for(const file of requiredMigrations)if(!['100644','100755'].includes(index.get(file)))throw Error('Canonical database source must be tracked as a regular file: '+file);
+  }
+  for(const unit of units)if(employeeLifecycleUnit(unit))assertEmployeeLifecycleSourceClosure(sourceFiles.get(unit.id),JSON.parse(readFileSync(resolve(cwd,'db/migrations/meta/_journal.json'),'utf8')));
+  const singletonSourceHashes=Object.fromEntries(units.filter(u=>u.singleton).map(unit=>[unit.id,Object.fromEntries(sourceFiles.get(unit.id).map(file=>{
    const path=resolve(cwd,file);if(realpathSync(path)!==path||!lstatSync(path).isFile()||lstatSync(path).size>singletonSourceMaximum(file))throw Error('Unsafe singleton source');
    return [file,createHash('sha256').update(readFileSync(path)).digest('hex')];
   }))]));

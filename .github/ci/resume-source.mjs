@@ -39,9 +39,9 @@ function archiveJson(artifact, bytes, filename, members = null) {
 }
 
 /** Input snapshots must ultimately be fetched/revalidated independently through authenticated GitHub APIs. */
-export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts, archives, now = Date.now()}) {
+export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts, archives, now = Date.now()},candidateRoot) {
   // Validate complete source-derived coverage before looking at downloaded evidence.
-  const empty = assessResumeCoverage({expectedPlan, expected, reports: []});
+  const empty = assessResumeCoverage({expectedPlan, expected, reports: []},candidateRoot);
   const topology = requiredEvidence(expectedPlan);
   if (!positiveId(expected.runId) || !Number.isFinite(now)) fail('invalid expected run/time');
   if (run?.id !== expected.runId || run.repository?.id !== REPOSITORY_ID
@@ -164,7 +164,7 @@ export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts
   if (receiptArtifact) fromJob(receiptArtifact, 'verify', 'ci-receipt.json');
   if (run.conclusion === 'success' && topology.artifacts.some(name => !artifactByName.has(name)))
     fail('successful run omitted expected artifacts');
-  const assessment = assessResumeCoverage({expectedPlan, expected, reports});
+  const assessment = assessResumeCoverage({expectedPlan, expected, reports},candidateRoot);
   const reusable = [], rerun = [...assessment.rerun];
   for (const unit of assessment.reusable) {
     const original = plan.units.find(item => item.id === unit.id), job = byName.get(jobName(original));

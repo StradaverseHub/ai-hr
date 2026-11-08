@@ -166,13 +166,43 @@
     },
     ".github/ci/employee-lifecycle-sources.test.mjs": {
       "parentSha256": "73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196",
-      "currentSha256": "e1bf0d3e07420da90b330bfd9d19deaf73dbdc1fe29f1cb323e0dfe89ba17dbf",
+      "currentSha256": "647c3553bcdb3554be2ddc24c6e042aea497b286e86ea7736c0aec9d5b4df6eb",
       "changes": [
         {
-          "startLine": 8,
-          "endLine": 12,
+          "startLine": 30,
+          "endLine": 36,
+          "before": "",
+          "after": " const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[EMPLOYEE_LIFECYCLE_PROFILE.files[0].file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}};\n assert.throws(()=>singletonSources(unit));for(const path of ['db/migrations/3500_ai_centre_architecture_compatibility.sql','db/migrations/3501_ai_centre_mandate_write_order.sql'])assert(singletonSources(unit,candidateRoot).includes(path));\n const root=realpathSync(mkdtempSync(join(tmpdir(),'employee-shared-history-model-')));try{\n  mkdirSync(join(root,'db/migrations/meta'),{recursive:true});for(const file of readdirSync(join(candidateRoot,'db/migrations')).filter(file=>file.endsWith('.sql')))writeFileSync(join(root,'db/migrations',file),'-- fictional source input\\n');\n  for(const entries of [[],[{tag:'../foreign'}],[journal.entries[0],journal.entries[0]]]){writeFileSync(join(root,'db/migrations/meta/_journal.json'),JSON.stringify({...journal,entries}));assert.throws(()=>singletonSources(unit,root));}\n }finally{rmSync(root,{recursive:true,force:true});}\n"
+        },
+        {
+          "startLine": 22,
+          "endLine": 25,
+          "before": "",
+          "after": " const file='.github/ci/employee-lifecycle-sources.test.mjs',current=readFileSync(new URL('./employee-lifecycle-sources.test.mjs',import.meta.url),'utf8');\n const original=employeeChoiceRestorationSourceInverse(file,current);assert.equal(Buffer.byteLength(original),3512);assert.equal(createHash('sha256').update(original).digest('hex'),'73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196');\n assert.throws(()=>employeeChoiceRestorationSourceInverse(file,current+'\\n'),/current source changed/);\n"
+        },
+        {
+          "startLine": 19,
+          "endLine": 20,
+          "before": " for(const row of EMPLOYEE_LIFECYCLE_PROFILE.files){const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[row.file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}},sources=singletonSources(unit);assert.equal(new Set(sources).size,sources.length);assertEmployeeLifecycleSourceClosure(sources,journal);for(const owner of independentOwners)assert(sources.includes(owner));for(const entry of journal.entries)assert(sources.includes('db/migrations/'+entry.tag+'.sql'));for(const file of ['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql'])assert(sources.includes(file));}\n",
+          "after": " for(const row of EMPLOYEE_LIFECYCLE_PROFILE.files){const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[row.file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}},sources=singletonSources(unit,candidateRoot);assert.equal(new Set(sources).size,sources.length);assertEmployeeLifecycleSourceClosure(sources,journal);for(const owner of independentOwners)assert(sources.includes(owner));for(const entry of journal.entries)assert(sources.includes('db/migrations/'+entry.tag+'.sql'));for(const file of ['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql'])assert(sources.includes(file));}\n"
+        },
+        {
+          "startLine": 13,
+          "endLine": 17,
           "before": "const independentOwners=['.github/ci/unit-report-directories.mjs','.github/ci/unit-report-directories.test.mjs','test/ci-unit-report-directory-contract.test.ts','.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\n",
           "after": "const independentOwners=[\".github/ci/employee-restoration-proof.mjs\",\"test/employee-choice-restoration-proof.test.ts\",\"test/performance/employee-choice-restoration-cleanup.ts\",\"test/performance/employee-choice-restoration-source.ts\",\"docs/qualification/employee-native-restoration-inverse-20261108.json\",'.github/ci/unit-report-directories.mjs','.github/ci/unit-report-directories.test.mjs','test/ci-unit-report-directory-contract.test.ts','.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\nindependentOwners.push(\"core/employee-choice-ascii.ts\",\"test/performance/employee-choice-benchmark-contract.ts\",\"test/performance/employee-choice-benchmark-harness.ts\",\".github/ci/employee-ascii-compiled-source.mjs\",\".github/ci/employee-ascii-compiled-source.test.mjs\",\".github/ci/employee-ascii-runtime-qualification.mjs\",\".github/ci/employee-ascii-runtime-qualification.test.mjs\",\"test/employee-ascii-runtime-qualification-model.test.ts\",\"test/employee-choice-inline-ascii-native.test.ts\",\"test/fixtures/employee-choice-ascii-proof-native.ts\",\"test/fixtures/employee-choice-ascii-observation.ts\",\"test/fixtures/employee-choice-ascii-proof-lifetime.ts\",\"test/fixtures/employee-choice-ascii-scalar-corpus.sql\",\"test/fixtures/employee-choice-ascii-vectors.sql\",\"test/employee-choice-exact-ascii-proof.test.ts\",\"test/employee-choice-ascii-observation.test.ts\",\"test/fixtures/unicode-17.0.0/LICENSE.txt\",\"test/fixtures/unicode-17.0.0/UnicodeData.txt\",\"test/fixtures/unicode-17.0.0/SpecialCasing.txt\",\".github/ci/focused-checks.mjs\",\".github/workflows/alpha-focused-checks.yml\");\nindependentOwners.push(\".github/ci/restricted-port-qualification.mjs\",\".github/ci/diagnostics/native-reference/admission.mjs\",\"lib/ai/centre-activity.ts\",\"core/ai-centre-control.ts\");\nindependentOwners.push('.github/ci/compiler-file-window-inverse.json');\n"
+        },
+        {
+          "startLine": 11,
+          "endLine": 12,
+          "before": "",
+          "after": "const candidateRoot=realpathSync(fileURLToPath(new URL('../../',import.meta.url)));\n"
+        },
+        {
+          "startLine": 2,
+          "endLine": 7,
+          "before": "import {readFileSync} from 'node:fs';\n",
+          "after": "import {readFileSync,realpathSync,mkdtempSync,mkdirSync,writeFileSync,readdirSync,rmSync} from 'node:fs';\nimport {fileURLToPath} from 'node:url';\nimport {join} from 'node:path';\nimport {tmpdir} from 'node:os';\nimport {employeeChoiceRestorationSourceInverse} from '../../test/performance/employee-choice-restoration-source.ts';\n"
         }
       ]
     },

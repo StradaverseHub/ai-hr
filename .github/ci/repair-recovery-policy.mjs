@@ -76,7 +76,7 @@ function caseInventory(result,files,cwd,{passing}){
 export function requireReviewedRepairController({execute,repair,controller,reviewedController}){
  if(execute&&repair)assert(sha(controller)&&reviewedController===controller,'Exact independent verifier review required before any repair deployment operation');
 }
-export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history}){
+export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history},sourceCandidateRoot){
  assert(sourceRun.status==='completed'&&sourceRun.conclusion==='failure'&&sourceRun.run_attempt===1&&assessment.sourceRun.id===sourceRun.id,'Original complete failure required');
  assert(assessment.sha===sourcePlan.sha&&assessment.controller===sourcePlan.controller&&assessment.fingerprint===sourcePlan.fingerprint&&assessment.baseline===plan.migrationBase,'Original source assessment differs');
  assert(verificationDiagnostic.controller===verificationController&&id(verificationDiagnostic.runId),'Hosted verifier diagnostic required');
@@ -111,7 +111,7 @@ export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,repor
  const units=[];let tests=0;
  for(const u of plan.units){const report=reports.find(r=>r.id===u.id);assert(report?.sha===sourcePlan.sha&&report.fingerprint===sourcePlan.fingerprint,'Original report was relabelled');
   if(!fresh.has(u.id)){
-   const witness=assessment.reusable.find(x=>x.id===u.id),verified=verifyUnitReport(sourcePlan,report,{runId:sourceRun.id,attempt:1});assert(witness?.source&&witness.reportHash===hash(report),'Retained original proof changed');
+   const witness=assessment.reusable.find(x=>x.id===u.id),verified=verifyUnitReport(sourcePlan,report,{runId:sourceRun.id,attempt:1},sourceCandidateRoot);assert(witness?.source&&witness.reportHash===hash(report),'Retained original proof changed');
    tests+=verified.tests;units.push({id:u.id,kind:'retained',originalSha:sourcePlan.sha,originalFingerprint:sourcePlan.fingerprint,reportHash:hash(report),tests:verified.tests,source:witness.source});continue;
   }
   assert(!u.singleton,'Singleton replacement requires its authenticated full-unit profile; generic focused repair is not supported');

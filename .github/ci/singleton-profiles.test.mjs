@@ -1,6 +1,10 @@
 import test from 'node:test';
+import {realpathSync} from 'node:fs';
 import assert from 'node:assert/strict';
-import {readFileSync,lstatSync,readdirSync} from 'node:fs';
+import {readFileSync,lstatSync,readdirSync,mkdtempSync,mkdirSync,writeFileSync,rmSync,unlinkSync,symlinkSync,copyFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createPlan} from './plan.mjs';
 import {createHash} from 'node:crypto';
 import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -8,11 +12,14 @@ import {buildUnits,requiredEvidence,CI_EXECUTION} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
 import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,singletonSourceMaximum,protocolHash,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection} from './singleton-protocol.mjs';
 import {requiredHostedSingletons} from '../../scripts/gate-singleton-scope.mjs';
+const candidateRoot=realpathSync(fileURLToPath(new URL('../../',import.meta.url)));
+const journalPath='db/migrations/meta/_journal.json';
+const journalHash=createHash('sha256').update(readFileSync(new URL('../../'+journalPath,import.meta.url))).digest('hex');
 const browser=['test/fictional.browser.test.tsx'];
 function fixture(file='test/runtime-ready-admission-native.test.ts'){
  const kind=singletonKind(singletonDescriptor(file).profile),units=buildUnits([file],{db:kind==='db'?[file]:[],nodb:kind==='nodb'?[file]:[]},browser),unit=units[0];
  const body={schemaVersion:2,policyVersion:'aihr-staging-ci/v21',sha:'a'.repeat(40),controller:'b'.repeat(40),migrationBase:'d'.repeat(40),runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite:[file],units,
-  singletonSources:{[unit.id]:Object.fromEntries(singletonSources(unit).map(path=>[path,'c'.repeat(64)]))}};
+  singletonSources:{[unit.id]:Object.fromEntries(singletonSources(unit,candidateRoot).map(path=>[path,path===journalPath?journalHash:'c'.repeat(64)]))}};
  const plan={...body,fingerprint:protocolHash(body)},witness={runId:123,attempt:1};
  const prerequisites=kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:{schemaVersion:2,profileVersion:2,configuredCapBytes:2113929216,peakBudgetBytes:2147483648,errors:{},memoryLimit:2113929216,memorySwap:2113929216,memoryMax:2113929216,memorySwapMax:0,memoryPeak:1500000000,memoryEvents:{max:0,oom:0,oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'},name:`aihr-ci-123-1-${unit.id}`}}:
   {kind:'actual-job-systemd-nginx',platform:'linux',pid1:'systemd',sudoUid:'0',nginxPath:'/usr/sbin/nginx',nginxSha256:'e'.repeat(64),nginxVersion:'nginx version: nginx/1.24.0',systemdVersion:'systemd 255'};
@@ -34,10 +41,66 @@ test('every registered infrastructure file remains exactly once in its native cl
  for(const unit of special){const changed=structuredClone(units);changed.find(u=>u.id===unit.id).singleton.workers=2;assert.throws(()=>requiredEvidence({suite,units:changed}));}
  assert.throws(()=>buildUnits([native[0]],{db:[],nodb:[native[0]]},browser));
  assert.deepEqual(requiredHostedSingletons(suite).sort(),native.sort());
+ // Data-only source fixtures do not claim to authenticate a hosted owner.
+ const databaseFixture=fixture('test/notification-worker-lifecycle.test.ts'),hostFixture=fixture(),all=singletonSources(databaseFixture.unit,candidateRoot);
+ const common=['.github/ci/candidate-environment.mjs','.github/ci/db-scheduling.mjs','.github/ci/employee-lifecycle-profile.mjs','.github/ci/employee-lifecycle-sources.mjs','.github/ci/native-next-helper-sources.mjs','.github/ci/native-next-installation.mjs','.github/ci/policy-version.mjs','.github/ci/postgres-evidence.mjs','.github/ci/rewards-native-sources.mjs','.github/ci/singleton-protocol.mjs','scripts/test-duration-order.mjs','scripts/test-duration-sequencer.mjs','test/db-names.ts','test/helpers/ci-singleton-admission.ts','test/env.ts','vitest.config.ts','vitest.nodb.config.ts','.github/ci/employee-lifecycle-profile.json','.github/ci/db-duration-hints.json','package.json','pnpm-lock.yaml','tsconfig.json'];
+ const database=['.github/ci/notification-catalogue-replay.mjs','db/schema.ts','drizzle.config.ts','lib/personnel-choice-vocabulary.ts','lib/profile-routing-policy.ts','packs/catalog.ts','scripts/lib/discard-premigration.ts','scripts/migrate-with-focused-prerequisites.ts','scripts/seed-catalogs.ts','test/global-setup.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts','test/profile.ts'];
+ assert.equal(common.length,22);assert.equal(database.length,12);
+ for(const file of [...common,...database])assert(all.includes(file),file);
+ const sql=readdirSync(join(candidateRoot,'db/migrations')).filter(file=>file.endsWith('.sql')).map(file=>'db/migrations/'+file).sort();
+ assert.equal(sql.length,749);assert.deepEqual(all.filter(file=>file.startsWith('db/migrations/')).sort(),[journalPath,...sql].sort());
+ assert.throws(()=>singletonSources(databaseFixture.unit));assert.throws(()=>validateSingletonBinding(databaseFixture.binding,databaseFixture.plan,databaseFixture.unit,databaseFixture.witness));
+ const directory=realpathSync(mkdtempSync(join(tmpdir(),'shared-database-model-'))),journal=JSON.parse(readFileSync(join(candidateRoot,journalPath),'utf8'));
+ const write=(file,bytes)=>{mkdirSync(join(directory,file,'..'),{recursive:true});writeFileSync(join(directory,file),bytes);};
+ try{
+  // NoDB/ordinary/missing context cannot read any journal, even in an empty root.
+  const pure=singletonSources(hostFixture.unit,directory);for(const file of common)assert(pure.includes(file));
+  for(const file of [...database,journalPath,...sql])assert(!pure.includes(file),file);
+  validateSingletonBinding(hostFixture.binding,hostFixture.plan,hostFixture.unit,hostFixture.witness);
+  write(journalPath,readFileSync(join(candidateRoot,journalPath)));for(const file of sql)write(file,'-- fictional source membership input\n');
+  assert.deepEqual(singletonSources(databaseFixture.unit,directory),all);
+  validateSingletonBinding(databaseFixture.binding,databaseFixture.plan,databaseFixture.unit,databaseFixture.witness,directory);
+  const raw=readFileSync(join(directory,journalPath));
+  write(journalPath,JSON.stringify({...journal,entries:[...journal.entries].reverse()}));
+  assert.deepEqual(singletonSources(databaseFixture.unit,directory),all);assert.throws(()=>validateSingletonBinding(databaseFixture.binding,databaseFixture.plan,databaseFixture.unit,databaseFixture.witness,directory),/Canonical journal bytes differ/);
+  write(journalPath,raw);const appended={...journal,entries:[...journal.entries,{...journal.entries.at(-1),idx:journal.entries.length,tag:'9999_shared_prerequisite_model'}]},added='db/migrations/9999_shared_prerequisite_model.sql';
+  write(journalPath,JSON.stringify(appended));write(added,'-- fictional append\n');assert(singletonSources(databaseFixture.unit,directory).includes(added));
+  assert.throws(()=>validateSingletonBinding(databaseFixture.binding,databaseFixture.plan,databaseFixture.unit,databaseFixture.witness,directory));unlinkSync(join(directory,added));write(journalPath,raw);
+  for(const entries of [[],[journal.entries[0],journal.entries[0]],[{tag:'../foreign'}],[{tag:'nested/tag'}],[{tag:'trailing\n'}],[{tag:1}],null]){
+   write(journalPath,JSON.stringify({...journal,entries}));assert.throws(()=>singletonSources(databaseFixture.unit,directory));
+  }
+  write(journalPath,'{');assert.throws(()=>singletonSources(databaseFixture.unit,directory));write(journalPath,raw);
+  const first=sql[0];unlinkSync(join(directory,first));assert.throws(()=>singletonSources(databaseFixture.unit,directory));write(first,'-- restored\n');
+  write('db/migrations/unexpected.sql','-- unexpected\n');assert.throws(()=>singletonSources(databaseFixture.unit,directory));unlinkSync(join(directory,'db/migrations/unexpected.sql'));
+  unlinkSync(join(directory,first));symlinkSync(join(directory,sql[1]),join(directory,first));assert.throws(()=>singletonSources(databaseFixture.unit,directory));unlinkSync(join(directory,first));mkdirSync(join(directory,first));assert.throws(()=>singletonSources(databaseFixture.unit,directory));rmSync(join(directory,first));write(first,'-- restored\n');
+  write(journalPath,Buffer.alloc(4*1024*1024+1,32));assert.throws(()=>singletonSources(databaseFixture.unit,directory));write(journalPath,raw);
+  unlinkSync(join(directory,journalPath));symlinkSync(join(candidateRoot,journalPath),join(directory,journalPath));assert.throws(()=>singletonSources(databaseFixture.unit,directory));unlinkSync(join(directory,journalPath));write(journalPath,raw);
+ }finally{rmSync(directory,{recursive:true,force:true});}
+ // Exercise the ACTUAL planner and index owner. Matching physical/journal SQL
+ // ignored by Git remains clean but must fail at the tracked-source gate.
+ const repository=realpathSync(mkdtempSync(join(tmpdir(),'shared-database-index-model-')));
+ const keys=['AIHR_CI_HEAD','AIHR_CI_CLASSIFIER_RUNTIME'],saved=new Map(keys.map(key=>[key,process.env[key]]));
+ const git=(...args)=>execFileSync('git',['-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false',...args],{cwd:repository,encoding:'utf8',timeout:10000});
+ const copy=file=>{mkdirSync(join(repository,file,'..'),{recursive:true});copyFileSync(join(candidateRoot,file),join(repository,file));};
+ try{
+  for(const file of [...all,'scripts/gate-db-classify.ts','test/payslip-pdf.test.ts','test/r379-pcb2ii-pdf.test.ts','lib/borang-8a-pdf.ts','lib/borang-8b-pdf.ts','lib/cp21-fields.ts','lib/cp22a-fields.ts'])copy(file);
+  const added='db/migrations/9999_shared_index_model.sql';
+  writeFileSync(join(repository,journalPath),JSON.stringify({...journal,entries:[...journal.entries,{...journal.entries.at(-1),idx:journal.entries.length,tag:'9999_shared_index_model'}]}));
+  writeFileSync(join(repository,added),'-- ignored fictional SQL source\n');writeFileSync(join(repository,'.gitignore'),added+'\n');
+  git('init','--quiet');git('add','.');git('-c','user.name=Fictional CI','-c','user.email=ci@example.invalid','commit','--quiet','-m','Canonical index model');
+  delete process.env.AIHR_CI_HEAD;process.env.AIHR_CI_CLASSIFIER_RUNTIME='native';
+  assert.equal(git('status','--porcelain').trim(),'');assert(singletonSources(databaseFixture.unit,repository).includes(added));
+  assert.throws(()=>createPlan(repository),new RegExp('Canonical database source must be tracked as a regular file: '+added));
+  git('add','--force',added);git('-c','user.name=Fictional CI','-c','user.email=ci@example.invalid','commit','--quiet','-m','Track matching canonical SQL');
+  const actual=createPlan(repository),selected=actual.units.find(unit=>unit.files.includes(databaseFixture.unit.files[0]));
+  assert(selected?.singleton);assert.equal(actual.sha,git('rev-parse','HEAD').trim());assert.equal(actual.singletonSources[selected.id][added],createHash('sha256').update(readFileSync(join(repository,added))).digest('hex'));
+  writeFileSync(join(repository,journalPath),readFileSync(join(repository,journalPath),'utf8')+'\n');git('add',journalPath);git('-c','user.name=Fictional CI','-c','user.email=ci@example.invalid','commit','--quiet','-m','Change raw journal bytes only');const changed=createPlan(repository);assert.deepEqual(Object.keys(changed.singletonSources[selected.id]),Object.keys(actual.singletonSources[selected.id]));assert.notEqual(changed.singletonSources[selected.id][journalPath],actual.singletonSources[selected.id][journalPath]);assert.notEqual(changed.fingerprint,actual.fingerprint);
+  process.env.AIHR_CI_HEAD='f'.repeat(40);assert.throws(()=>createPlan(repository),/checkout does not match requested HEAD/);
+ }finally{for(const[key,value]of saved){if(value===undefined)delete process.env[key];else process.env[key]=value;}rmSync(repository,{recursive:true,force:true});}
 });
 test('actual full-CI host context, complete plan and closed native prerequisites admit',()=>{
  for(const file of ['test/runtime-ready-admission-native.test.ts','test/notification-worker-lifecycle.test.ts','test/analytics-termination-lateral.test.ts','test/runtime-next-admission-native.test.ts','test/access-editor-native-owner-presentation.test.ts','test/notification-worker-native-plan-diagnostic.test.ts']){
-  const f=fixture(file);validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
+  const f=fixture(file);validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
  }
 });
 for(const [name,mutate]of [
@@ -49,7 +112,7 @@ for(const [name,mutate]of [
  ['not systemd',f=>f.binding.prerequisites.pid1='init'],['sudo not root',f=>f.binding.prerequisites.sudoUid='1000'],['missing nginx',f=>delete f.binding.prerequisites.nginxVersion],
  ['changed nginx bytes',f=>f.binding.prerequisites.nginxSha256='claimed'],['unknown proof key',f=>f.binding.accepted=true],
  ['absent authenticated witness',f=>f.witness=undefined],
-])test('refuses singleton proof: '+name,()=>{const f=fixture();mutate(f);assert.throws(()=>validateSingletonBinding(f.binding,f.plan,f.unit,f.witness));});
+])test('refuses singleton proof: '+name,()=>{const f=fixture();mutate(f);assert.throws(()=>validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot));});
 for(const [name,mutate]of [
  ['forged focused selection',f=>f.env.AIHR_FOCUSED_TESTS='[]'],['empty focused hint',f=>f.env.AIHR_FOCUSED_SUITE_CAPACITY=''],
  ['foreign repository',f=>f.env.GITHUB_REPOSITORY='other/repo'],['other workflow',f=>f.env.GITHUB_WORKFLOW='alpha-focused-checks'],
@@ -59,7 +122,7 @@ for(const [name,mutate]of [
  ['wrong event source',f=>f.event.inputs.expected_sha='f'.repeat(40)],['foreign event repository',f=>f.event.repository.id=1],['unsupported event',f=>f.env.GITHUB_EVENT_NAME='schedule'],
 ])test('refuses singleton host: '+name,()=>{const f=fixture();mutate(f);assert.throws(()=>validateSingletonHost(f));});
 test('cluster receipt is bound to the physical job/run/attempt/unit, not a worker database namespace',()=>{
- const f=fixture('test/notification-worker-lifecycle.test.ts');f.binding.prerequisites.database.name='aihr-ci-123-1-db-other';assert.throws(()=>validateSingletonBinding(f.binding,f.plan,f.unit,f.witness));
+ const f=fixture('test/notification-worker-lifecycle.test.ts');f.binding.prerequisites.database.name='aihr-ci-123-1-db-other';assert.throws(()=>validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot));
  assertNoSingletonHints({});for(const env of [{AIHR_CI_SINGLETON_BINDING:'/tmp/forged'},{AIHR_CI_SINGLETON_UNKNOWN:''}])assert.throws(()=>assertNoSingletonHints(env));
 });
 test('database tests bind every actual URL to the canonical owned loopback worker before their bodies run',()=>{
@@ -69,8 +132,8 @@ test('database tests bind every actual URL to the canonical owned loopback worke
 });
 test('strict unit verifier requires the complete source-bound singleton invocation and refuses skipped/missing proof',()=>{
  const f=fixture(),report={schemaVersion:1,sha:f.plan.sha,fingerprint:f.plan.fingerprint,id:f.unit.id,cwd:'/fixture/source',files:f.unit.files,exitCode:0,singleton:f.binding,batches:[{exitCode:0,result:{success:true,numFailedTests:0,numFailedTestSuites:0,numPendingTests:0,numPendingTestSuites:0,numTodoTests:0,numTotalTests:1,numPassedTests:1,testResults:[{name:'/fixture/source/'+f.unit.files[0],status:'passed',assertionResults:[{status:'passed'}]}]}}]};
- assert.equal(verifyUnitReport(f.plan,report,f.witness).tests,1);
- for(const mutate of [r=>delete r.singleton,r=>r.batches.push(r.batches[0]),r=>r.batches[0].result.numPendingTests=1,r=>r.batches[0].result.testResults[0].assertionResults[0].status='skipped']){const changed=structuredClone(report);mutate(changed);assert.throws(()=>verifyUnitReport(f.plan,changed,f.witness));}
+ assert.equal(verifyUnitReport(f.plan,report,f.witness,candidateRoot).tests,1);
+ for(const mutate of [r=>delete r.singleton,r=>r.batches.push(r.batches[0]),r=>r.batches[0].result.numPendingTests=1,r=>r.batches[0].result.testResults[0].assertionResults[0].status='skipped']){const changed=structuredClone(report);mutate(changed);assert.throws(()=>verifyUnitReport(f.plan,changed,f.witness,candidateRoot));}
  assert.throws(()=>verifyUnitReport(f.plan,report));
 });
 test('source admissions and full workflow never manufacture focused variables or omit controlled cases',()=>{
@@ -106,14 +169,14 @@ test('hybrid capability binds the conjunction of actual host, owned database and
  const f=fixture('test/runtime-next-admission-native.test.ts');
  assert.equal(f.unit.kind,'db');assert.equal(f.unit.singleton.isolation,'job-host-and-postgres-cluster');
  assert.equal(singletonJobName(f.unit),`native-test (${f.unit.id})`);
- assert(singletonSources(f.unit).includes('deploy/admission/next_profile.py'));
- assert(singletonSources(f.unit).includes('.github/ci/native-next-build-packet.mjs'));
- validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
+ assert(singletonSources(f.unit,candidateRoot).includes('deploy/admission/next_profile.py'));
+ assert(singletonSources(f.unit,candidateRoot).includes('.github/ci/native-next-build-packet.mjs'));
+ validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
  for(const mutate of [p=>delete p.host,p=>delete p.database,p=>delete p.build,p=>p.build.source='f'.repeat(40),
   p=>p.build.controller='f'.repeat(40),p=>p.build.runId='456',p=>p.build.attempt='2',p=>p.build.artifactDigest='claimed',
   p=>p.build.producerJobId='0',p=>p.build.nextBuildId='',p=>p.build.extra=true,p=>p.host.pid1='init',
   p=>p.kind='fresh-job-postgres-cluster']){
-  const changed=structuredClone(f.binding);mutate(changed.prerequisites);assert.throws(()=>validateSingletonBinding(changed,f.plan,f.unit,f.witness));
+  const changed=structuredClone(f.binding);mutate(changed.prerequisites);assert.throws(()=>validateSingletonBinding(changed,f.plan,f.unit,f.witness,candidateRoot));
  }
  const wrong=structuredClone(f);wrong.env.GITHUB_JOB='test';assert.throws(()=>validateSingletonHost(wrong));
  const ordinary=fixture();ordinary.env.GITHUB_JOB='native-test';assert.throws(()=>validateSingletonHost(ordinary));
@@ -141,13 +204,13 @@ test('Access native-owner and paired notification diagnostics retain isolated au
  ]]];
  for(const[file,profile,owned]of cases){
   const f=fixture(file);assert.deepEqual(f.unit.singleton,{version:1,profile,workers:1,isolation:'job-postgres-cluster'});assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);
-  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);const actual=singletonSources(f.unit);assert.equal(new Set(actual).size,actual.length);
+  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);const actual=singletonSources(f.unit,candidateRoot);assert.equal(new Set(actual).size,actual.length);
   for(const source of owned){
    assert(actual.includes(source));assert(readFileSync(new URL('../../'+source,import.meta.url)).length>0);
    // Even a self-consistent plan/binding cannot omit a reviewed closure owner.
    const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
    const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
-   assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness));
+   assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot));
   }
   assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
  }
@@ -159,7 +222,7 @@ test('Access native-owner and paired notification diagnostics retain isolated au
 test('Attendance owned child and pidfd proof cannot share a job or omit its actual Python/SQL/source owners',()=>{
  const file='test/attendance-shared-submission-bridge.test.ts',f=fixture(file);
  assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
- assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
+ assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
  const owners=[
   'db/migrations/0592_attendance_workflow_v4.sql','db/migrations/3101_attendance_shared_workflow.sql',
   'db/migrations/3110_attendance_workflow_owner_rls.sql','db/migrations/3210_attendance_shared_workflow_submission_lock.sql',
@@ -169,12 +232,12 @@ test('Attendance owned child and pidfd proof cannot share a job or omit its actu
   'test/helpers/attendance-bridge-owner-proof.ts','test/helpers/attendance-bridge-owner-protocol.ts',
   'test/helpers/attendance-bridge-owner-worker.ts','test/helpers/attendance-bridge-pidfd.py','test/helpers/attendance-bridge-pidfd.ts',
  ];
- const sources=singletonSources(f.unit);assert.equal(new Set(sources).size,sources.length);
+ const sources=singletonSources(f.unit,candidateRoot);assert.equal(new Set(sources).size,sources.length);
  for(const source of owners){
   assert(sources.includes(source));assert(readFileSync(new URL('../../'+source,import.meta.url)).length>0);
   const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
   const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
-  assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness));
+  assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot));
  }
  assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));
  assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
@@ -210,7 +273,7 @@ test('both Rewards jobs retain and hash the complete large Tamil dependency with
  const committed=execFileSync('git',['show','HEAD:'+file],{cwd:root,maxBuffer:8*1024*1024});
  assert(raw.equals(committed));assert.equal(createHash('sha256').update(raw).digest('hex'),createHash('sha256').update(committed).digest('hex'));
  for(const selected of ['test/rewards-audit-policy-native.test.ts','test/rewards-audited-read-prototype.test.ts']){
-  const sources=singletonSources(fixture(selected).unit);assert.equal(sources.filter(path=>path===file).length,1);
+  const sources=singletonSources(fixture(selected).unit,candidateRoot);assert.equal(sources.filter(path=>path===file).length,1);
   const large=sources.filter(path=>lstatSync(new URL('../../'+path,import.meta.url)).size>4*1024*1024);
   assert.deepEqual(large,[file]);
   for(const path of sources)assert(lstatSync(new URL('../../'+path,import.meta.url)).size<=singletonSourceMaximum(path),path);
@@ -247,17 +310,17 @@ test('Rewards native policy and original read family retain complete isolated so
  const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,749);
  assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql']);
  for(const file of files){
-  const f=fixture(file),sources=singletonSources(f.unit);
+  const f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
   assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
   assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);assert.equal(new Set(sources).size,sources.length);
-  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
+  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
   for(const entry of journal.entries)assert(sources.includes('db/migrations/'+entry.tag+'.sql'));
   for(const path of physicalSql)assert(sources.includes(path),'Actual Rewards SQL/fingerprint input omitted: '+path);
   for(const source of critical){
    assert(sources.includes(source),source);assert(readFileSync(new URL('../../'+source,import.meta.url)).length>0);
    const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
    const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
-   assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness));
+   assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot));
   }
   assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));
   assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
@@ -293,7 +356,7 @@ test('only the exact five delegated entries may use the shared FIRST actual sing
 
 
 test('shared module JIT diagnostic owns one unchanged controlled database and cannot omit any actual imported source',()=>{
- const file='test/module-read-jit-diagnostic.test.ts',f=fixture(file),sources=singletonSources(f.unit);
+ const file='test/module-read-jit-diagnostic.test.ts',f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
  assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
  assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);assert.equal(new Set(sources).size,sources.length);
  assert.equal(sources.length,1556);assert.equal(createHash('sha256').update(JSON.stringify(sources)).digest('hex'),'742577028ddcab2a088f16a9c810a9c978ed44f7523cd331bed84aef708503a5');
@@ -303,12 +366,12 @@ test('shared module JIT diagnostic owns one unchanged controlled database and ca
  const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,749);
  for(const path of [...journalSql,...physicalSql])assert(sources.includes(path),'Actual canonical SQL/fingerprint input omitted: '+path);
  assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql']);
- validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
+ validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
  for(const source of sources){
   const bytes=readFileSync(new URL('../../'+source,import.meta.url));assert(bytes.length>0&&bytes.length<=singletonSourceMaximum(source),source);
   const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
   const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
-  assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness),source);
+  assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot),source);
  }
  assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
  const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');

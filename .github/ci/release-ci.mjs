@@ -69,7 +69,7 @@ export async function verifyCi({candidatePath,runId,baseline}){
  const expectedPlan=bindPlanWitnessIdentity(local,{controller,baseline},plan.runtime);
  const employeeUnits=readEmployeeArchives({plan:expectedPlan,run,jobs,artifacts,dir,sourceRoot:candidatePath});
  const reports=local.units.map(unit=>employeeUnits.has(unit.id)?JSON.parse(employeeUnits.get(unit.id).members.get(`unit-${unit.id}.json`)):json(`unit-${unit.id}`,`unit-${unit.id}.json`));
- const verified=validateProof({plan,reports,receipt,expectedPlan,p,employeeUnits});
+ const verified=validateProof({plan,reports,receipt,expectedPlan,p,employeeUnits},candidatePath);
  const build=await sourceBoundBuild({candidatePath,dir,p,jobs});
  assertNativeBuildMatches(expectedPlan,reports,build,artifacts.find(a=>a.name===BUILD_ARTIFACT),jobs.find(j=>j.name==='build').id);
  if(cleanHead(controllerRoot)!==controller||cleanHead(candidatePath)!==candidate)throw Error('Source changed during CI verification');
