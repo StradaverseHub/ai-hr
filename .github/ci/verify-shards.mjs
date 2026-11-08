@@ -1,6 +1,6 @@
 /** Refuse omitted, repeated, skipped, failed, foreign-revision or zero-test evidence. */
-import {readdirSync, readFileSync, writeFileSync} from 'node:fs';
-import {join, relative, resolve} from 'node:path';
+import {writeFileSync} from 'node:fs';
+import {relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {createPlan, hash} from './plan.mjs';
@@ -8,6 +8,7 @@ import {validatePdfSetupProof} from './pdf-tools.mjs';
 import {employeeLifecycleUnit} from './employee-lifecycle-profile.mjs';
 import {verifyEmployeeLifecycleUnit} from './employee-lifecycle-witness.mjs';
 import {collectEmployeeLifecycleWitness} from './employee-lifecycle-api.mjs';
+import {readUnitReportDirectories} from './unit-report-directories.mjs';
 import {validateSingletonBinding} from './singleton-protocol.mjs';
 export function verifyUnitReport(plan, report, witness) {
   const unit = plan.units.find(u => u.id === report?.id);
@@ -62,7 +63,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const [dir, output] = process.argv.slice(2);
   if (!dir || !output) throw Error('Usage: verify-shards.mjs <report-directory> <receipt-output>');
   const plan=createPlan();
-  const reports=plan.units.map(unit=>JSON.parse(readFileSync(join(dir,'unit-'+unit.id,'unit-'+unit.id+'.json'),'utf8')));
+  const reports=[...readUnitReportDirectories(resolve(dir),plan.units,{mode:'full'})].map(entry=>entry.report);
   const employeeUnits=await collectEmployeeLifecycleWitness(plan,plan.units);
   const receipt = verifyReports(plan, reports, {runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,employeeUnits});
   writeFileSync(output, JSON.stringify(receipt, null, 2) + '\n', {flag: 'wx'});

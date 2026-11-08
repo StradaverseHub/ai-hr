@@ -64,6 +64,8 @@ export const EMPLOYEE_LIFECYCLE_SOURCES=Object.freeze([
  ".github/ci/singleton-commissioning.mjs",
  ".github/ci/singleton-profiles.mjs",
  ".github/ci/singleton-protocol.mjs",
+ ".github/ci/unit-report-directories.mjs",
+ ".github/ci/unit-report-directories.test.mjs",
  ".github/ci/verify-shards.mjs",
  ".github/workflows/alpha-staging.yml",
  "app/admin/_redirects.ts",
@@ -3295,6 +3297,7 @@ export const EMPLOYEE_LIFECYCLE_SOURCES=Object.freeze([
  "test/access-editor-native-owner-presentation.test.ts",
  "test/analytics-termination-lateral.test.ts",
  "test/attendance-shared-submission-bridge.test.ts",
+ "test/ci-unit-report-directory-contract.test.ts",
  "test/db-names.ts",
  "test/dom-setup.ts",
  "test/employee-choice-assignment-membership-plan.test.ts",
@@ -3445,6 +3448,9 @@ export const EMPLOYEE_LIFECYCLE_SOURCES=Object.freeze([
 ]);
 export const EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS=Object.freeze(EMPLOYEE_LIFECYCLE_SOURCES.filter(file=>file.startsWith('.github/')));
 export const EMPLOYEE_LIFECYCLE_CRITICAL=Object.freeze([
+ ".github/ci/unit-report-directories.mjs",
+ ".github/ci/unit-report-directories.test.mjs",
+ "test/ci-unit-report-directory-contract.test.ts",
  ".github/actions/setup-alpha/action.yml",
  ".github/ci/employee-lifecycle-always-stop.mjs",
  ".github/ci/employee-lifecycle-api.mjs",
