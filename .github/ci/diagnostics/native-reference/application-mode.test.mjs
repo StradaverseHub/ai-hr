@@ -26,11 +26,12 @@ test('native API errors and explicit modes retain identity instead of being swal
 test('whole parent-context inverse retains all three original bodies and current executable source bindings',()=>{
  const inverse=JSON.parse(readFileSync(new URL('./application-parent-context-inverse.json',import.meta.url))),hash=bytes=>createHash('sha256').update(bytes).digest('hex');assert.equal(inverse.base,'267dcb7b8bf8866268734944aa8af2adaa2d6696');
  assert.deepEqual(inverse.files.map(row=>row.path).sort(),['.github/ci/diagnostics/native-reference/application-worker.mjs','docs/qualification/compiler-native-application-inventory-source-20261108.json','test/compiler-native-application-controls.test.ts'].sort());
- // Restore complete current→ACA→a1 bodies before the immutable e54 layer.
+ // Restore complete current→54→ACA→a1 bodies before the immutable e54 layer.
  // The current manifest is the only deliberate self-hash exclusion; its full
  // parent preimages and every current component pin are still checked.
  const manifest='docs/qualification/compiler-native-application-inventory-source-20261108.json',restored=new Map();
  for(const[file,base,paths]of [
+  ['application-original-attachment-inverse.json','54b8b1cf55660e15391a454c21c2d3b2ebc3b043',['.github/ci/diagnostics/native-reference/application-syntax.mjs','.github/ci/diagnostics/native-reference/application-worker.mjs','.github/ci/diagnostics/native-reference/application-mode-native.test.mjs','.github/ci/diagnostics/native-reference/application.test.mjs','.github/ci/diagnostics/native-reference/application-mode.test.mjs','test/compiler-native-application-controls.test.ts','test/compiler-native-usage-mode.test.ts',manifest]],
   ['application-jsdoc-binding-inverse.json','aca13b6136a58e14e2f7445be98483364e81434d',['.github/ci/diagnostics/native-reference/application-mode.test.mjs','.github/ci/diagnostics/native-reference/application-mode-native.test.mjs',manifest]],
   ['application-jsdoc-inverse.json','a1b866f070e2098682813d3fb6c6e60b17fcd9c8',['.github/ci/diagnostics/native-reference/application-worker.mjs','.github/ci/diagnostics/native-reference/application-mode-native.test.mjs','test/compiler-native-usage-mode.test.ts',manifest]],
  ]){
