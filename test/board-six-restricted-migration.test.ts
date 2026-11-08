@@ -7,7 +7,6 @@ import postgres from 'postgres';
 import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {drizzle} from 'drizzle-orm/postgres-js';
 import {expect,it} from 'vitest';
-import {defaultPolicy} from '../packs/rewards/model';
 
 it('upgrades the exact seven migrations under restricted ownership and removes every temporary role privilege',async()=>{
  const expected3701='4d8969bfc0b8f134f8cc01c42a738eb6cc4babdcb1ccfb0ec824a61d9b9fee11';
@@ -50,17 +49,16 @@ it('upgrades the exact seven migrations under restricted ownership and removes e
   await restricted.unsafe('SET ROLE ai_hr_owner');
   const [session]=await restricted`select current_user as database_role,session_user as login_name,(select rolsuper or rolcreaterole or rolcreatedb or rolbypassrls from pg_roles where rolname=session_user) as elevated`;
   expect(session).toEqual({database_role:'ai_hr_owner',login_name:login,elevated:false});
-  const tenant=randomUUID(),company=randomUUID(),user=randomUUID(),cycle=randomUUID(),unit=randomUUID();
+  const tenant=randomUUID(),company=randomUUID(),user=randomUUID();
   await db.begin(async tx=>{
    await tx`insert into tenant(id,workos_org_id,name) values(${tenant},${randomUUID()},'Fictional restricted migration')`;
    await tx`insert into company(id,tenant_id,legal_name,country,currency) values(${company},${tenant},'Fictional restricted upgrade','MY','MYR')`;
    await tx`insert into app_user(id,tenant_id,workos_user_id) values(${user},${tenant},${randomUUID()})`;
-   await tx.unsafe("select set_config('app.tenant_id',$1,true),set_config('app.user_id',$2,true),set_config('app.roles','hr_admin',true),set_config('app.grants',$3,true)",[tenant,user,JSON.stringify([{role:'hr_admin',companyId:null}])]);
-   await tx`insert into reward_cycle(id,tenant_id,name,year,created_by) values(${cycle},${tenant},'Fictional upgrade',2026,${user})`;
-   await tx`insert into reward_unit(id,tenant_id,cycle_id,company_id,created_by,policy,snapshot_date,status,revision) values(${unit},${tenant},${cycle},${company},${user},${JSON.stringify(defaultPolicy(2026))}::jsonb,'2026-11-09','draft',1)`;
   });
-  const snapshot=async()=>({units:await db`select to_jsonb(u)-'preparation_required' value from reward_unit u where tenant_id=${tenant} order by id`,events:await db`select * from domain_event where tenant_id=${tenant} order by sequence`});
-  const before=await snapshot();expect(before.units).toHaveLength(1);
+  // This operational fixture preserves nonempty existing rows. Native Rewards population and
+  // confidentiality cases remain the separate unchanged release qualification.
+  const snapshot=async()=>({companies:await db`select * from company where tenant_id=${tenant} order by id`,users:await db`select * from app_user where tenant_id=${tenant} order by id`,tenants:await db`select * from tenant where id=${tenant}`});
+  const before=await snapshot();expect(before.companies).toHaveLength(1);expect(before.users).toHaveLength(1);expect(before.tenants).toHaveLength(1);
   const ledger=()=>db`select id::text,hash,created_at::text from drizzle.__drizzle_migrations order by id`;
   const prefix=await ledger();expect(prefix).toHaveLength(710);
   // Missing owner-transfer privileges reproduce the restricted installation failure and roll back fully.
@@ -68,10 +66,18 @@ it('upgrades the exact seven migrations under restricted ownership and removes e
   expect(await ledger()).toEqual(prefix);expect(await snapshot()).toEqual(before);
   const prepare=readFileSync('deploy/runner-control/board-six-role-prerequisite.sql','utf8');
   await db.begin(async tx=>{await tx.unsafe(prepare);});prepared=true;
+  // A real failed ordinary migration must not strand the temporary owner-transfer privileges.
+  await db.unsafe("CREATE FUNCTION public.six_fixture_migration_refusal() RETURNS event_trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Fictional migration refusal after prerequisite' USING ERRCODE='23514'; END $$; CREATE EVENT TRIGGER six_fixture_migration_refusal ON ddl_command_start WHEN TAG IN ('CREATE FUNCTION') EXECUTE FUNCTION public.six_fixture_migration_refusal();");
+  try{await expect(migrate(drizzle(restricted),{migrationsFolder:'db/migrations'})).rejects.toMatchObject({cause:expect.objectContaining({code:'23514'})});}
+  finally{await db.unsafe('DROP EVENT TRIGGER six_fixture_migration_refusal; DROP FUNCTION public.six_fixture_migration_refusal();');}
+  expect(await ledger()).toEqual(prefix);expect(await snapshot()).toEqual(before);
+  await db.begin(async tx=>{await tx.unsafe(readFileSync('deploy/runner-control/board-six-role-failure-cleanup.sql','utf8'));});prepared=false;
+  expect(await roleSnapshot()).toEqual(originalEdges);
+  expect(await db`select has_schema_privilege(oid,'app','CREATE') as can_create from pg_roles where rolname=any(${roleNames}::text[])`).toEqual(roleNames.map(()=>({can_create:false})));
+  await db.begin(async tx=>{await tx.unsafe(prepare);});prepared=true;
   await migrate(drizzle(restricted),{migrationsFolder:'db/migrations'});
   const after=await ledger();expect(after).toHaveLength(717);expect(after.slice(0,710)).toEqual(prefix);
   expect(await snapshot()).toEqual(before);
-  expect(await db`select preparation_required from reward_unit where id=${unit}`).toEqual([{preparation_required:false}]);
   await db.begin(async tx=>{await tx.unsafe(readFileSync('deploy/runner-control/board-six-role-postflight.sql','utf8'));});prepared=false;
   expect(await roleSnapshot()).toEqual(originalEdges);
   expect(await db`select rolname,has_schema_privilege(oid,'app','CREATE') as can_create,pg_has_role('ai_hr_app',oid,'MEMBER') as app_member from pg_roles where rolname=any(${roleNames}::text[]) order by rolname`).toEqual(roleNames.slice().sort().map(rolname=>({rolname,can_create:false,app_member:false})));
