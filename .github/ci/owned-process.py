@@ -109,13 +109,14 @@ def append_event(path, event):
         os.close(fd)
 
 
-def supervise(argv, seconds, event, *, clock=time.monotonic, monitor_fault=False, file_clock=None, mandatory=False):
+def supervise(argv, seconds, event, *, clock=time.monotonic, monitor_fault=False, file_clock=None, file_seconds=900, mandatory=False):
     """Library inputs are fixed by CLI below; native controls supply tiny fixtures.
     A forked monitor never admits a command before session identity ACK. Parent
     never polls/reaps it through Popen; its reserved PID cannot name a new group.
     """
     require(sys.platform == 'linux' and hasattr(os, 'pidfd_open') and hasattr(os, 'WNOWAIT'))
     require(type(seconds) in (int, float) and 0 < seconds <= 960)
+    require(type(file_seconds) in (int, float) and 0 < file_seconds <= 960)
     require(own_children() == [] and signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
             and len(list(Path('/proc/self/task').iterdir())) == 1)
     previous_subreaper = subreaper(True)
@@ -184,7 +185,7 @@ def supervise(argv, seconds, event, *, clock=time.monotonic, monitor_fault=False
             if file_clock is not None and benchmark_start is None:
                 benchmark_start = file_clock(started, now)
                 if benchmark_start is not None:
-                    deadline = min(deadline, benchmark_start + 900)
+                    deadline = min(deadline, benchmark_start + file_seconds)
             if file_clock is not None and benchmark_start is None and now - started >= 60:
                 reason = 'deadline'; break
             if stopped:

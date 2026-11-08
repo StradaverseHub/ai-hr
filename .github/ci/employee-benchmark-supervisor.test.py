@@ -190,11 +190,34 @@ class SharedKernelModels(unittest.TestCase):
             current = current.replace(change['after'], change['before'])
         self.assertEqual(hashlib.sha256(current.encode()).hexdigest(), extension['priorAdapterSha256'])
         shared = (folder / 'owned-process.py').read_text()
+        window = json.loads((folder / 'compiler-file-window-inverse.json').read_text())
+        self.assertEqual(window['base'], '756e834dc0db88b5131547bc6d5108284201ab48')
+        self.assertEqual(window['qualifiedKernelSha256'], 'cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c')
+        self.assertEqual(hashlib.sha256(shared.encode()).hexdigest(), window['currentKernelSha256'])
+        for change in reversed(window['changes']):
+            self.assertEqual(shared.count(change['after']), 1)
+            shared = shared.replace(change['after'], change['before'])
+        self.assertEqual(hashlib.sha256(shared.encode()).hexdigest(), window['qualifiedKernelSha256'])
         span = shared[shared.index('REASONS = '):]
         self.assertEqual(hashlib.sha256(span.encode()).hexdigest(), archive['extractedSpanSha256'])
         self.assertEqual(current.count(archive['loader']), 1)
         original = current.replace(archive['loader'], span)
         self.assertEqual(hashlib.sha256(original.encode()).hexdigest(), archive['originalSha256'])
+
+    def test_purpose_file_window_owns_actual_short_deadline_resistant_child_and_interrupt(self):
+        for value in (0, -1, False, float('nan'), float('inf'), 961):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                module.supervise([sys.executable, '-I', '-B', '-c', 'pass'], 1, lambda _: None, file_seconds=value)
+        started = time.monotonic()
+        result, _ = self.run_owned([sys.executable, '-I', '-B', '-c',
+            'import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(10)'],
+            seconds=1, file_seconds=.15, file_clock=lambda beginning, _now: beginning)
+        self.assertEqual(result['reason'], 'deadline')
+        self.assertGreaterEqual(time.monotonic() - started, .15)
+        self.assertLess(time.monotonic() - started, 2)
+        result, _ = self.run_owned([sys.executable, '-I', '-B', '-c',
+            'import os,signal,sys,time; os.kill(int(sys.argv[1]),signal.SIGTERM); time.sleep(10)', str(os.getpid())], seconds=1)
+        self.assertEqual(result['reason'], 'owner-interrupted')
 
     def test_fixed_sibling_and_actual_kernel_globals_have_no_second_command_or_process_loop(self):
         kernel = module._owned_process
