@@ -118,7 +118,7 @@ async function populated(){
   const loopId=loopIds.find(id=>id===worker.id);
   if(record.kind==='loop_runs'&&!loopId)throw new Error('Extend the independent loop read fixtures.');
   if(record.kind==='loop_runs'&&loopId)await owner.db.insert(terasLoopRun).values({tenantId:b.tenantId,runId:randomUUID(),workerId:loopId,
-   companyId:b.companyId,status:'stopped',sponsorUserId:group.userId,loopVersion:'fictional-worker-read',startedAt:origin,finishedAt:origin,checks:[],reads:[]});
+   companyId:b.companyId,status:'ran',sponsorUserId:group.userId,loopVersion:'fictional-worker-read',startedAt:origin,finishedAt:origin,checks:[],reads:[]});
  }
  await setJobTypeEnablement(group,{jobType:'team_absence_weekly_summary',enabled:true});await setJobTypeEnablement(group,{jobType:'daily_digest',enabled:true});
  const grantor=await manager(),weekly=await grantMandate(grantor,{jobType:'team_absence_weekly_summary',scope:{team:'direct'},limits:{maxRunsPerDay:1,maxPeople:50},schedule:{weekday:1},notify:'daily_summary',validDays:30});
@@ -254,7 +254,7 @@ it.each(['employee','foreign-carrier','mismatched-grants','revoked','archived','
  if(mode==='mismatched-grants')ctx={...group,roles:['super_admin'],grants:[{role:'super_admin',companyId:null}]};
  if(mode==='revoked')await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,group.userId!));
  if(mode==='archived')await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,group.userId!));
- if(mode==='relinked'){const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Relinked Worker Administrator'}).returning();await owner.db.update(schema.appUser).set({personId:p.id}).where(eq(schema.appUser.id,group.userId!));}
+ if(mode==='relinked'){const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Relinked Worker Administrator',primaryEmail:randomUUID()+'@workers.invalid'}).returning();await owner.db.update(schema.appUser).set({personId:p.id}).where(eq(schema.appUser.id,group.userId!));}
  if(mode==='blocked'){
   const hired=await hireEmployee(group,{person:{fullName:'Fictional Blocked Worker Administrator',primaryEmail:randomUUID()+'@workers.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
   const id=await createAppUser(b.tenantId,hired.personId,'hr_admin');ctx={...group,userId:id,personId:hired.personId};await terminateEmployment(group,{employmentId:hired.employmentId,terminationDate:'2021-01-01'});

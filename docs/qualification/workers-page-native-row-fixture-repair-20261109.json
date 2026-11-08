@@ -1,0 +1,411 @@
+{
+  "kind": "WORKERS_NATIVE_ROW_FIXTURE_PREMISE_RECOVERY_SOURCE_ONLY_UNRUN",
+  "parentCommit": "6341770a5f38d349c9aa2c750987423c66a5d15b",
+  "sourceRef": "codex/workers-page-native-row-fixture-recovery-20261109",
+  "exactChangedPaths": [
+    "test/agent-registry-page-presentation.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/workers-page-presentation-source-20261109.json",
+    "docs/qualification/workers-page-native-row-fixture-repair-20261109.json"
+  ],
+  "currentSourceRows": [
+    {
+      "path": "test/agent-registry-page-presentation.test.ts",
+      "current": {
+        "bytes": 35428,
+        "sha256": "caf6fb903653d106f412a508adb9d8561e2dfc4a39606323507f3edbaed7ce81"
+      },
+      "wholeParent": {
+        "source": "6341770a5f38d349c9aa2c750987423c66a5d15b",
+        "gitBlob": "455b91d4f19cd248cde731ad55a6491a7d3705b5",
+        "bytes": 35387,
+        "sha256": "969d4c5da56c2b79fe192fa08ea6140dea5ca0c4f57d765fa1f8880a09f76942"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 10058,
+          "currentEnd": 10216,
+          "currentRangeSha256": "1897135ccc26e64b73a2a362eb20a50f593280ee1d17c303c8306e27df10b626",
+          "parentStart": 10058,
+          "parentEnd": 10220,
+          "parentText": "   companyId:b.companyId,status:'stopped',sponsorUserId:group.userId,loopVersion:'fictional-worker-read',startedAt:origin,finishedAt:origin,checks:[],reads:[]});\n"
+        },
+        {
+          "currentStart": 23263,
+          "currentEnd": 23575,
+          "currentRangeSha256": "a0646acaa7ca0e262528639076ec7dcb03d4ae889d45dae0509fee5973f38b99",
+          "parentStart": 23267,
+          "parentEnd": 23534,
+          "parentText": " if(mode==='relinked'){const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Relinked Worker Administrator'}).returning();await owner.db.update(schema.appUser).set({personId:p.id}).where(eq(schema.appUser.id,group.userId!));}\n"
+        }
+      ]
+    },
+    {
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "current": {
+        "bytes": 21729,
+        "sha256": "e7bce2709788f42fb346c53e863c01c9ff7eb4dc598d1d7a108aabcf36d18aec"
+      },
+      "wholeParent": {
+        "source": "6341770a5f38d349c9aa2c750987423c66a5d15b",
+        "gitBlob": "cb790c91db3d9bb6f4d8754cc12b9580de56505c",
+        "bytes": 19687,
+        "sha256": "876efcfeb0845aef3c2723344812b912093a0c7f73b6f0d8cf8e53c0685bcdd5"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 19687,
+          "currentEnd": 21729,
+          "currentRangeSha256": "73e92c41106c3c054c9cbd6a0ef57dafe4b3717206c75758ffa0fd8872cf3050",
+          "parentStart": 19687,
+          "parentEnd": 19687,
+          "parentText": ""
+        }
+      ]
+    },
+    {
+      "path": "docs/qualification/workers-page-presentation-source-20261109.json",
+      "current": {
+        "bytes": 20485,
+        "sha256": "53c607bb847822328ed6b1a198cffe024cdc36b6c747e8cc00ae9ec5d831af94"
+      },
+      "wholeParent": {
+        "source": "6341770a5f38d349c9aa2c750987423c66a5d15b",
+        "gitBlob": "dc391a1781a92e39c14126aa98f063594dc6b87b",
+        "bytes": 18372,
+        "sha256": "bde3979b0b5c2050057df4be63c8deb62874cec17d97f847a57a90bcfc4b95b5"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 130,
+          "currentEnd": 204,
+          "currentRangeSha256": "4e5319b3be7aaee17ec89988b105ad4a8cb7f31bfc5287384d2372419012b6af",
+          "parentStart": 130,
+          "parentEnd": 197,
+          "parentText": "  \"sourceRef\": \"codex/workers-page-native-clock-fixture-20261109\",\n"
+        },
+        {
+          "currentStart": 694,
+          "currentEnd": 853,
+          "currentRangeSha256": "389670e1d7ff1393e74d9d8df674229d3ef0434d145de8fd1838607d3e4655ad",
+          "parentStart": 687,
+          "parentEnd": 767,
+          "parentText": "    \"docs/qualification/workers-page-native-clock-fixture-repair-20261109.json\"\n"
+        },
+        {
+          "currentStart": 5230,
+          "currentEnd": 5335,
+          "currentRangeSha256": "ca5f61d5b5556825c6290617777726a2b1424e21bb7caa4ded762a73c34cce0f",
+          "parentStart": 5144,
+          "parentEnd": 5249,
+          "parentText": "      \"bytes\": 35387,\n      \"sha256\": \"969d4c5da56c2b79fe192fa08ea6140dea5ca0c4f57d765fa1f8880a09f76942\"\n"
+        },
+        {
+          "currentStart": 5421,
+          "currentEnd": 5526,
+          "currentRangeSha256": "a404658395728496b488a0c535bb879bf8468ae7012245c2de36d32d40a6cdc8",
+          "parentStart": 5335,
+          "parentEnd": 5440,
+          "parentText": "      \"bytes\": 19687,\n      \"sha256\": \"876efcfeb0845aef3c2723344812b912093a0c7f73b6f0d8cf8e53c0685bcdd5\"\n"
+        },
+        {
+          "currentStart": 18452,
+          "currentEnd": 20479,
+          "currentRangeSha256": "d7162c44cffeab0bd56a1c7402dae4dcf4bbbb38f0c09ce74f8c0207e9bbf01a",
+          "parentStart": 18366,
+          "parentEnd": 18366,
+          "parentText": ""
+        }
+      ]
+    }
+  ],
+  "newRecordAbsentFromParent": "docs/qualification/workers-page-native-row-fixture-repair-20261109.json",
+  "repair": {
+    "status": {
+      "fromLiteral": "stopped",
+      "toLiteral": "ran",
+      "owner": "populated",
+      "otherFieldsWhole": true,
+      "sourceBasis": "2002 CHECK, LoopRunStatus, canonical live-company run writer"
+    },
+    "relinkedPerson": {
+      "requiredField": "primaryEmail",
+      "value": "randomUUID()+'@workers.invalid'",
+      "allRelinkAndAssertionStatementsWhole": true
+    },
+    "wholeFixtureInverse": [
+      {
+        "current": "companyId:b.companyId,status:'ran',sponsorUserId:group.userId,loopVersion:'fictional-worker-read'",
+        "parent": "companyId:b.companyId,status:'stopped',sponsorUserId:group.userId,loopVersion:'fictional-worker-read'"
+      },
+      {
+        "current": "fullName:'Fictional Relinked Worker Administrator',primaryEmail:randomUUID()+'@workers.invalid'",
+        "parent": "fullName:'Fictional Relinked Worker Administrator'"
+      }
+    ],
+    "allOtherFixtureBytesWhole": true
+  },
+  "canonicalConstraintTypeAndWriterPins": [
+    {
+      "path": "db/migrations/2002_teras_loops.sql",
+      "bytes": 15495,
+      "sha256": "9614f0d8aa6855d24fe0b7ee1e75c46f80f89e19ec43161825e4bf357eefb908",
+      "gitBlob": "2edb4a21dd2b9306bc1b034352c57ac0fa410526"
+    },
+    {
+      "path": "db/migrations/2006_payroll_audit_loop.sql",
+      "bytes": 36529,
+      "sha256": "05bc9e35367093ae4c6aec877a7ca7ec171387cb84b28940e0db0e190fcf7723",
+      "gitBlob": "ab496ab7e1eedf857f8cc789571ad89666ef5a4a"
+    },
+    {
+      "path": "core/loops/types.ts",
+      "bytes": 2600,
+      "sha256": "33da1bb9a69ebfc2f8bf092e975df6dbfbc0e733042628da8d54415b9749bfd6",
+      "gitBlob": "cc93c4408126db669f76624d497904549965f428"
+    },
+    {
+      "path": "core/loops/run.ts",
+      "bytes": 21691,
+      "sha256": "3aa80804f9949881e579f351aac057c56506a7b3e2d4f31a1b863b1fac392ae6",
+      "gitBlob": "69b52030538ec0617e13f745405fcbbd5a3ed10c"
+    },
+    {
+      "path": "db/teras-schema.ts",
+      "bytes": 12338,
+      "sha256": "02b1de0ebd3ecc320ff539ce797fb9955258bc411c83a431cbd5972cd10f8ce7",
+      "gitBlob": "8109dcce1e303acb15affc76fdba4df3ca133a0b"
+    },
+    {
+      "path": "db/migrations/0000_luxuriant_anita_blake.sql",
+      "bytes": 16085,
+      "sha256": "dbdefe63e22e7cfb3b95532b86bd1cf3a37c7c6b079ef9e57f0d68a7fa6b6fac",
+      "gitBlob": "e5c3167f05a73029df549c8f05135edcf48fb9f6"
+    },
+    {
+      "path": "db/schema.ts",
+      "bytes": 820303,
+      "sha256": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112",
+      "gitBlob": "c80eb3180eebc7bf9fb9a30367e4b00746b22592"
+    }
+  ],
+  "wholeCurrentProductPins": [
+    {
+      "path": "core/control-domains.ts",
+      "bytes": 15500,
+      "sha256": "ec8073d9c7e0bfb73278c455317ca6a72f57fc28d2923928d986cc6a686e5871"
+    },
+    {
+      "path": "core/control-tower.ts",
+      "bytes": 15973,
+      "sha256": "ab648bf82ee1cccc438c766228e85727d22709cfeffcda30b53e28df70a5b37d"
+    },
+    {
+      "path": "core/agent-proposal.ts",
+      "bytes": 14208,
+      "sha256": "540ed7fbe04f9ab97bb4815575e7f1234d17a1565090b6e67fd17fecb00ca495"
+    },
+    {
+      "path": "core/agent-registry/views.ts",
+      "bytes": 24788,
+      "sha256": "517dde8ead4b33a07a6bfb5985a6ec26f2166508da30cf79138cacb1d1cc2dcf"
+    },
+    {
+      "path": "core/agent-registry/export.ts",
+      "bytes": 12540,
+      "sha256": "deeca6fb6b288db937d734c5aee414aebfc1c9a98ca3d59003b742ee4d993179"
+    },
+    {
+      "path": "core/agent-registry/controls.ts",
+      "bytes": 17705,
+      "sha256": "9b6bd7ac1e9bb013e4ca5b75f7b1bac341fbf0a523d5e00a8ac77bda7fb6b711"
+    }
+  ],
+  "allTrackedProductionFilesWholeFromParent": true,
+  "nativeCensus": {
+    "registrations": 22,
+    "expandedCases": 33,
+    "allNamesAssertionsCapsWhole": true,
+    "expectCallCount": 112,
+    "wholeOtherDirectRegistrations": 21,
+    "expandedCasesWithWholeRegistrationBodies": 26,
+    "otherSharedRefusalModesWithUnexecutedRelinkedBranchChange": 6,
+    "all32OtherExpandedCallbackPathsStatementsWhole": true,
+    "sharedPopulatedConstructorOnlyStatusCorrection": true,
+    "newCases": 0,
+    "executed": false
+  },
+  "externalSourceEvidence": {
+    "basename": "aihr-workers-native-row-fixture-external-ast-20261109.json",
+    "bytes": 6051,
+    "sha256": "29a104defc4069ff333b78a4fae9e8a6ce196e991279ba27970e5dd930f3c6ea",
+    "meaning": "Standalone external Babel syntax/census and two-literal whole inverse; not TypeScript/native PASS."
+  },
+  "historicalFailure": {
+    "runId": 42525422735,
+    "source": "6341770a5f38d349c9aa2c750987423c66a5d15b",
+    "controller": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
+    "attempt": 1,
+    "conclusion": "failure",
+    "authenticationSha256": "ccc62378f9fe73d00fa22dac2c8e010fdb09fd7d343a6ef53dba42ce58fa03fc",
+    "primaryPassed": 22,
+    "primaryFailed": 11,
+    "legacyPassed": 66,
+    "allSevenPlannedJobsTerminal": true,
+    "failureCases": [
+      {
+        "file": "test/agent-registry-page-presentation.test.ts",
+        "name": "matches the legacy visible registry/summary/detail fields for all20 workers and five record families",
+        "status": "failed",
+        "durationMs": 1619.6058240000002,
+        "sourceLine": 120,
+        "nativeSqlState": "23514",
+        "nativeCause": "teras_loop_run_status_check",
+        "queryFrontier": "Fixtureloopruninsert beforetargetedread",
+        "failureMessageSha256": "feb2720a4f2a61da0266e228142950898df69030c8d256cf2b8eba9995856352"
+      },
+      {
+        "file": "test/agent-registry-page-presentation.test.ts",
+        "name": "executes one native checkout in RRRO and batches actual last-run/control/job reads without issuing a provider",
+        "status": "failed",
+        "durationMs": 1183.1034679999993,
+        "sourceLine": 120,
+        "nativeSqlState": "23514",
+        "nativeCause": "teras_loop_run_status_check",
+        "queryFrontier": "Fixtureloopruninsert beforetargetedread",
+        "failureMessageSha256": "9595bc0b99df6653c82821632e1c8c69149c9760ed47fc69b599c4c2d47681f5"
+      },
+      {
+        "file": "test/agent-registry-page-presentation.test.ts",
+        "name": "omits agreement closure classification, blockers/provider work and summary follow-up reads on their actual page purposes",
+        "status": "failed",
+        "durationMs": 1453.6608850000011,
+        "sourceLine": 120,
+        "nativeSqlState": "23514",
+        "nativeCause": "teras_loop_run_status_check",
+        "queryFrontier": "Fixtureloopruninsert beforetargetedread",
+        "failureMessageSha256": "883e96ad25199a2dce0a20efedccb226befebb3d4673c465448ea91678f099a1"
+      },
+      {
+        "file": "test/agent-registry-page-presentation.test.ts",
+        "name": "narrows detail without recomputing provider, switches, proposal rates or whole record payloads",
+        "status": "failed",
+        "durationMs": 1196.0366939999985,
+        "sourceLine": 120,
+        "nativeSqlState": "23514",
+        "nativeCause": "teras_loop_run_status_check",
+        "queryFrontier": "Fixtureloopruninsert beforetargetedread",
+        "failureMessageSha256": "82da5f45c85fa97c907b7dfa6df44979e7c896f76c1cd0039814634509296915"
+      },
+      {
+        "file": "test/agent-registry-page-presentation.test.ts",
+        "name": "uses the common attributed switch/provider facts but no newly issued configuration or permission grant",
+        "status": "failed",
+        "durationMs": 1250.6150759999982,
+        "sourceLine": 120,
+        "nativeSqlState": "23514",
+        "nativeCause": "teras_loop_run_status_check",
+        "queryFrontier": "Fixtureloopruninsert beforetargetedread",
+        "failureMessageSha256": "4ef34a8649b7fd9708a1fe04d86d2373d23e8e930ed34e43dc0bd2a66e643ff6"
+      },
+      {
+        "file": "test/agent-registry-page-presentation.test.ts",
+        "name": "keeps mandate state boundaries, count denominators and revocation independent of display facts",
+        "status": "failed",
+        "durationMs": 1268.2751089999983,
+        "sourceLine": 120,
+        "nativeSqlState": "23514",
+        "nativeCause": "teras_loop_run_status_check",
+        "queryFrontier": "Fixtureloopruninsert beforetargetedread",
+        "failureMessageSha256": "15b116918a1b42ed45c9fe9bb9a62e12f0bd7774b5c87cd6b4e7f4f4bfe33e75"
+      },
+      {
+        "file": "test/agent-registry-page-presentation.test.ts",
+        "name": "refuses relinked through every native page reader",
+        "status": "failed",
+        "durationMs": 1160.7665960000013,
+        "sourceLine": 257,
+        "nativeSqlState": "23502",
+        "nativeCause": "person.primary_email NOTNULL",
+        "queryFrontier": "Fixturepersoninsert beforepersonrelink/pagequery",
+        "failureMessageSha256": "897e06b5c3517437a15754766f5be725b9acfe4352682396ffa2ec06e96448c8"
+      },
+      {
+        "file": "test/agent-registry-page-presentation.test.ts",
+        "name": "finishes while a real access writer remains held through rollback",
+        "status": "failed",
+        "durationMs": 1261.7443499999936,
+        "sourceLine": 120,
+        "nativeSqlState": "23514",
+        "nativeCause": "teras_loop_run_status_check",
+        "queryFrontier": "Fixtureloopruninsert beforetargetedread",
+        "failureMessageSha256": "7df36bc041d3176dfe519b88fb32a41ffe4c7871f8674d7ffe9c0379ee490eb2"
+      },
+      {
+        "file": "test/agent-registry-page-presentation.test.ts",
+        "name": "finishes while a real access writer remains held through commit",
+        "status": "failed",
+        "durationMs": 1318.1065050000034,
+        "sourceLine": 120,
+        "nativeSqlState": "23514",
+        "nativeCause": "teras_loop_run_status_check",
+        "queryFrontier": "Fixtureloopruninsert beforetargetedread",
+        "failureMessageSha256": "e167730473178d9a84db3f29fa8262555abf73513915894d0c23c115a182474c"
+      },
+      {
+        "file": "test/agent-registry-page-presentation.test.ts",
+        "name": "finishes while a real ai-stop writer remains held through rollback",
+        "status": "failed",
+        "durationMs": 1648.2961970000033,
+        "sourceLine": 120,
+        "nativeSqlState": "23514",
+        "nativeCause": "teras_loop_run_status_check",
+        "queryFrontier": "Fixtureloopruninsert beforetargetedread",
+        "failureMessageSha256": "691b409d5a1b19b00d7b4e2479b1c92a72f7e65b286ad54c07ccb5061d3bf708"
+      },
+      {
+        "file": "test/agent-registry-page-presentation.test.ts",
+        "name": "finishes while a real ai-stop writer remains held through commit",
+        "status": "failed",
+        "durationMs": 2302.6719809999995,
+        "sourceLine": 120,
+        "nativeSqlState": "23514",
+        "nativeCause": "teras_loop_run_status_check",
+        "queryFrontier": "Fixtureloopruninsert beforetargetedread",
+        "failureMessageSha256": "10e3ddb25a6f7b1831b5f28d7ce9c301713d31d7b4610f99f9eed318dc6aa5e4"
+      }
+    ],
+    "failuresRemainOriginal": true,
+    "legacyPassesRemainAt634": true,
+    "noPassTransferredToRecovery": true,
+    "scope": "Ten native loop status CHECK failures and one native Person email NOTNULL failure at fixture construction, not evidence of a product read defect."
+  },
+  "proposedHostedRecovery": {
+    "selectors": [
+      "test/agent-registry-page-presentation.test.ts"
+    ],
+    "expectedExpandedCases": 33,
+    "priorLegacy66RetainedOnlyAtOriginalIdentity": true,
+    "requiresRootAndDifferentPeerFullSourceReview": true,
+    "sourceUploadAuthorized": false,
+    "dispatchAuthorized": false
+  },
+  "status": {
+    "sourceImplementation": true,
+    "repoImports": false,
+    "testsExecuted": false,
+    "compiler": false,
+    "app": false,
+    "db": false,
+    "native": false,
+    "network": false,
+    "upload": false,
+    "WorkersNativeCustody": "OPEN",
+    "aggregateSourceGraphBinding": "OPEN",
+    "routeComposition": "OPEN",
+    "disclosureBinding": "OPEN",
+    "staging": "HELD",
+    "production": "HELD"
+  },
+  "acyclicity": "Current index names this record without its hash; this record binds index bytes. Neither record is runtime-imported; historical records remain whole and no self-current hash is embedded."
+}

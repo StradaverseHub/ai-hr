@@ -157,3 +157,36 @@ Five additional native cases independently specify all four built-ins and fresh 
 Source inspection of the installed Drizzle0.45.2 Postgres.js driver confirms that raw timestamp parsers are transparent. The fixture's `tx.execute<{at:Date}>(select now())` annotation could not create a `Date`, so implicit page reads supplied timestamp text to the product's deliberate Date guard. The fixture helper now requests the real transaction clock as `now()::text`, requires an actual string, decodes it to a finite `Date`, and keeps explicitly supplied test dates unchanged. It does not substitute an application clock or alter product validation.
 
 All production files,22 registration/callback bodies,33 expanded cases and timeout caps remain whole. The other new date reads use actual schema-column builders (including the five filtered MAX timestamp decoders); raw execution results contain only provider text, boolean authority or backend IDs. This is a source correction to an UNRUN fixture premise, not an observed runtime failure or passing result. Prior source reviews remain bound to their original source. The original frozen0912 and separate Workers catalogue query are preserved; root and independent full source/data review still precede hosted/native qualification.
+
+## Workers native row fixture recovery
+
+The complete6341770 focused run42525422735 settled with88 passing and11 failing
+cases. All11 failures stopped at native fixture inserts: ten used the unsupported
+loop-run status `stopped` (SQLSTATE23514), and the relinked-principal fixture
+omitted Person's required `primary_email` (23502). These are fixture-premise
+failures; they do not establish a product read failure. The original run, its22
+other presentation passes and66 legacy passes remain attached to6341770.
+
+The shared populated constructor now records `ran`, matching the existing
+`LoopRunStatus`, canonical loop writer and database CHECK. Its fictional origin,
+timestamps, IDs, company, sponsor, record counts and all other fields remain.
+The relinked-person constructor supplies a unique fictional
+`randomUUID() + '@workers.invalid'` email before performing the same real App
+User relink. No constraint, schema, type, product, expected DTO, assertion,
+provider guard, fixture clock or timeout changes.
+
+The22 registrations still expand to33 identically named cases. Twenty-one
+complete registration bodies remain byte-exact. The one seven-mode registration
+changes only the constructor inside its `mode === 'relinked'` branch; its six
+other modes and every assertion remain unchanged. All32 other expanded callback
+paths retain their original statements. This distinction avoids claiming that
+the shared parameterized function's literal bytes stayed unchanged.
+
+Only the affected presentation file is proposed for the next33-case hosted
+recovery after root and independent full source review. The unaffected66 legacy
+passes are retained at their original source; this repair does not relabel them.
+The source index and compact nonruntime correction record bind exact whole634
+preimages and both inverses without importing historical records at runtime.
+Current native behavior, Workers custody, coherent aggregate/source disclosure,
+route composition, browser and release qualification remain open. Staging and
+production remain held.

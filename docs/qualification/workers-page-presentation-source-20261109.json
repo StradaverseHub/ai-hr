@@ -1,7 +1,7 @@
 {
   "kind": "WORKERS_PAGE_DISPLAY_SERVICE_SOURCE_ONLY_UNQUALIFIED",
   "parentCommit": "d45829993342fcb6de225bb567668f94de898b3e",
-  "sourceRef": "codex/workers-page-native-clock-fixture-20261109",
+  "sourceRef": "codex/workers-page-native-row-fixture-recovery-20261109",
   "exactChangedPaths": [
     "core/control-domains.ts",
     "core/control-tower.ts",
@@ -13,7 +13,8 @@
     "docs/adr/2026-11-09-ai-management-section-projection.md",
     "docs/qualification/workers-page-presentation-source-20261109.json",
     "docs/qualification/workers-page-refresh-error-repair-20261109.json",
-    "docs/qualification/workers-page-native-clock-fixture-repair-20261109.json"
+    "docs/qualification/workers-page-native-clock-fixture-repair-20261109.json",
+    "docs/qualification/workers-page-native-row-fixture-repair-20261109.json"
   ],
   "status": {
     "sourceImplementation": "AUTHORED",
@@ -137,13 +138,13 @@
     },
     {
       "path": "test/agent-registry-page-presentation.test.ts",
-      "bytes": 35387,
-      "sha256": "969d4c5da56c2b79fe192fa08ea6140dea5ca0c4f57d765fa1f8880a09f76942"
+      "bytes": 35428,
+      "sha256": "caf6fb903653d106f412a508adb9d8561e2dfc4a39606323507f3edbaed7ce81"
     },
     {
       "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
-      "bytes": 19687,
-      "sha256": "876efcfeb0845aef3c2723344812b912093a0c7f73b6f0d8cf8e53c0685bcdd5"
+      "bytes": 21729,
+      "sha256": "e7bce2709788f42fb346c53e863c01c9ff7eb4dc598d1d7a108aabcf36d18aec"
     }
   ],
   "protectedWholeParentPins": [
@@ -426,5 +427,50 @@
     },
     "scope": "Fixture commonFacts DB-clock decode only; all product files and all33 case bodies remain whole.",
     "status": "SOURCE_AUTHORED_UNRUN"
+  },
+  "nativeRowFixtureRepair": {
+    "record": "docs/qualification/workers-page-native-row-fixture-repair-20261109.json",
+    "parentCommit": "6341770a5f38d349c9aa2c750987423c66a5d15b",
+    "wholeParentIndex": {
+      "path": "docs/qualification/workers-page-presentation-source-20261109.json",
+      "commit": "6341770a5f38d349c9aa2c750987423c66a5d15b",
+      "gitBlob": "dc391a1781a92e39c14126aa98f063594dc6b87b",
+      "bytes": 18372,
+      "sha256": "bde3979b0b5c2050057df4be63c8deb62874cec17d97f847a57a90bcfc4b95b5"
+    },
+    "previousAffectedPins": [
+      {
+        "path": "test/agent-registry-page-presentation.test.ts",
+        "bytes": 35387,
+        "sha256": "969d4c5da56c2b79fe192fa08ea6140dea5ca0c4f57d765fa1f8880a09f76942"
+      },
+      {
+        "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+        "bytes": 19687,
+        "sha256": "876efcfeb0845aef3c2723344812b912093a0c7f73b6f0d8cf8e53c0685bcdd5"
+      }
+    ],
+    "scope": "Fixture only: stopped\u2192ran in populated loop-run record; required unique fictional primaryEmail only in relinked Person constructor. All products, helper clock/authority and every assertion/name/cap remain.",
+    "registrationPreservation": {
+      "registrations": 22,
+      "expandedCases": 33,
+      "wholeOtherRegistrationBodies": 21,
+      "wholeOtherExpandedRegistrationBodies": 26,
+      "unchangedOtherRefusalModes": 6,
+      "onlyChangedMode": "relinked",
+      "all32OtherExpandedCallbackPathsStatementsUnchanged": true
+    },
+    "originalFailedRun": {
+      "source": "6341770a5f38d349c9aa2c750987423c66a5d15b",
+      "controller": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
+      "runId": 42525422735,
+      "conclusion": "failure",
+      "primaryPassed": 22,
+      "primaryFailed": 11,
+      "retainedLegacyPassed": 66,
+      "authenticationSha256": "ccc62378f9fe73d00fa22dac2c8e010fdb09fd7d343a6ef53dba42ce58fa03fc",
+      "adoptedOntoRepair": false
+    },
+    "status": "SOURCE_AUTHORED_UNRUN_ROOT_AND_DIFFERENT_PEER_REVIEW_REQUIRED"
   }
 }
