@@ -43,7 +43,7 @@ it('requires explicit disclosure and applies a proposal only to the unsaved draf
  fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.ai}));fireEvent.change(screen.getByLabelText(en.attendanceFormula.aiRequirement),{target:{value:'Fictional attendance rule'}});
  expect(screen.getByRole('button',{name:en.attendanceFormula.aiGenerate})).toBeDisabled();fireEvent.click(screen.getByRole('checkbox',{name:en.attendanceFormula.aiDisclosure}));fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.aiGenerate}));
  await waitFor(()=>expect(screen.getByText('Fictional proposal')).toBeTruthy());expect(mocks.draft).toHaveBeenCalledWith({companyId,requirement:'Fictional attendance rule',disclosureAccepted:true});
- fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.aiApply}));expect(screen.getByRole('textbox',{name:en.attendanceFormula.formulaExpression})).toHaveValue('Return 1');expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();
+ await waitFor(()=>expect(screen.getByRole('button',{name:en.attendanceFormula.aiApply})).toBeEnabled()); fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.aiApply}));expect(screen.getByRole('textbox',{name:en.attendanceFormula.formulaExpression})).toHaveValue('Return 1');expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();
 });
 
 it('requires a saved version, an actual test and an explicit review before activation',async()=>{
