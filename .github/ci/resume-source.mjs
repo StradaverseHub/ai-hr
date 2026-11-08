@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
-import {requiredEvidence} from './manifest.mjs';
+import {requiredEvidence,optionalSkippedCiJob} from './manifest.mjs';
 import {BUILD_ARTIFACT,BUILD_ZIP_MAX,inspectCiBuildPacket} from './build-artifact.mjs';
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_FAILURE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
@@ -17,7 +17,7 @@ const positiveId = value => Number.isSafeInteger(value) && value > 0;
 const terminal = new Set(['success', 'failure', 'cancelled', 'timed_out', 'skipped']);
 const maxArchiveBytes = 64 * 1024 ** 2;
 const timestamp = value => typeof value === 'string' ? Date.parse(value) : NaN;
-const jobName = unit => unit.kind === 'browser' ? `browser (${unit.engine})` : `test (${unit.id})`;
+import {singletonJobName as jobName} from './singleton-protocol.mjs';
 
 /** Digest check precedes bounded JSON-only extraction; no caller-supplied extracted object is trusted. */
 function archiveJson(artifact, bytes, filename, members = null) {
@@ -67,7 +67,7 @@ export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts
       || job.run_id !== run.id || job.run_attempt !== 1 || job.head_sha !== expected.controller
       || job.head_branch !== run.head_branch || job.status !== 'completed' || !terminal.has(job.conclusion))
       fail('duplicate, foreign, rerun or incomplete job');
-    if (!topology.jobs.includes(job.name) && !(job.name === 'runner-diagnostics' && job.conclusion === 'skipped'))
+    if (!topology.jobs.includes(job.name) && !(optionalSkippedCiJob(job.name,expectedPlan) && job.conclusion === 'skipped'))
       fail('unexpected job');
     if (job.conclusion !== 'skipped') {
       const start = timestamp(job.started_at), end = timestamp(job.completed_at);

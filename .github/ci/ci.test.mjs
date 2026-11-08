@@ -79,7 +79,7 @@ test('full-CI import is inert in ordinary local/noDB context without loading can
  const result=spawnSync(process.execPath,['--input-type=module','-e',`await import(${JSON.stringify(new URL('./run-unit.mjs',import.meta.url).href)}); console.log('inert controller import');`],{encoding:'utf8',env:{...process.env,CI:'false',GITHUB_ACTIONS:'false',DATABASE_URL:'postgres://nobody:nothing@127.0.0.1:1/no_database',TEST_DATABASE_URL:'postgres://nobody:nothing@127.0.0.1:1/no_database'}});
  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout.trim(),'inert controller import');
  const source=readFileSync(script,'utf8');assert.doesNotMatch(source,/import\s+(?:[^;]+from\s+)?['"](?:postgres|pg|.*personnel-draft-discard-ci-role-fixture)['"]/);
- assert.match(source,/if\(process\.argv\[1\].*\)main\(\);/);
+ assert.match(source,/if\(process\.argv\[1\]&&resolve\(process\.argv\[1\]\)===fileURLToPath\(import\.meta\.url\)\)main\(\)\.catch\(/);
 });
 test('full-CI accepts actual first/final DB batches and emits only migration-child canonical hints',()=>{
  const c=roleContext(),binding=fullCiRoleBinding(c),env=fullCiRoleMigrationEnvironment(c.env,binding,c.layout.evidence);
@@ -139,7 +139,7 @@ test('actual pinned7c57 ordinary migration profile performs no new source reads 
  const owners=profileOwners(actualLegacy7c57);assert.equal(inspectFullCiRoleApplicability(owners.read,owners.present),'ordinary');assert.deepEqual(owners.reads,['package.json','db/migrations/meta/_journal.json']);assert.equal(JSON.parse(actualLegacy7c57['package.json']).scripts['db:migrate'],'drizzle-kit migrate');
  // The known immutable Git snapshot has no0859 journal row/file and none of the3 new helper sources.
  assert.equal(JSON.parse(actualLegacy7c57['db/migrations/meta/_journal.json']).entries.some(row=>row.tag.includes('employee_draft_discard_custody')),false);for(const path of Object.keys(actualFullHandshakeV1))assert.equal(owners.present(path),false);
- const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');const profile=source.indexOf("const roleProfile=unit.kind==='db'?actualFullCiRoleApplicability():null"),reset=source.indexOf("const reset = spawnSync('bash'",profile),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?',reset);assert(profile>=0&&reset>profile&&context>reset);assert.match(source,/const migrate = roleContext\?spawnSync\('pnpm', \['db:migrate'\], \{stdio: 'inherit',env:roleContext.env\}\):spawnSync\('pnpm', \['db:migrate'\], \{stdio: 'inherit'\}\);/);assert.match(source,/if\(roleContext\)rolePrerequisites=readFullCiRoleReceipt/);
+ const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');const profile=source.indexOf("const roleProfile=unit.kind==='db'?actualFullCiRoleApplicability():null"),reset=source.indexOf("const reset = spawnSync('bash'",profile),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?',reset);assert(profile>=0&&reset>profile&&context>reset);assert.match(source,/const migrate = roleContext\?spawnSync\('pnpm', \['db:migrate'\], \{stdio: 'inherit',env:roleContext.env\}\):spawnSync\('pnpm', \['db:migrate'\], \{stdio: 'inherit',env:candidateEnvironment\(process.env\)\}\);/);assert.match(source,/if\(roleContext\)rolePrerequisites=readFullCiRoleReceipt/);
 });
 test('required0859 and frozen three-source handshake demand the strict full receipt, without fallback',()=>{
  const files=requiredRoleProfile(),owners=profileOwners(files);assert.equal(inspectFullCiRoleApplicability(owners.read,owners.present),'full_ci_disposable');assert(owners.reads.includes('scripts/lib/discard-premigration.ts'));
@@ -155,4 +155,21 @@ test('full namespace is only absent or empty; every nonempty namespace refuses',
 });
 test('receipt PG16 versionText requires a real string, never coercion',()=>{
  const c=roleContext(),b=fullCiRoleBinding(c),receipt=roleReceipt(c);assert.doesNotThrow(()=>validateFullCiRoleReceipt(receipt,b,c.sourceHashes));for(const value of [['PostgreSQL 16.15 on fixture'],{toString:'PostgreSQL 16.15 on fixture'},null,16,true]){const wrong=structuredClone(receipt);wrong.fixture.postgres.versionText=value;assert.throws(()=>validateFullCiRoleReceipt(wrong,b,c.sourceHashes));}
+});
+
+test('catalogue replay receipt extension is mandatory only for the two closed isolated native units',async()=>{
+ const {catalogueReplayRoleHash}=await import('./notification-catalogue-replay.mjs');
+ const context=roleContext(),ordinary=fullCiRoleBinding(context),base=roleReceipt(context),sources={ownerSha256:'1'.repeat(64),contractSha256:'2'.repeat(64)};
+ const facts={objects:[{oid:20000}],dependencies:[{objid:20000}],shared:[]};
+ for(const [file,mode]of [['test/notification-final-catalogue-baseline.test.ts','baseline'],['test/notification-final-catalogue-oid-shift.test.ts','oid-shift']]){
+  const binding={...ordinary,batchFiles:[file]},receipt={...base,...binding,catalogueReplay:{version:1,kind:'NATIVE_CATALOGUE_REPLAY_PREREQUISITE_NOT_PROFILE',mode,candidate:binding.candidate,controller:binding.controller,runId:binding.runId,attempt:binding.attempt,unit:binding.unit,planFingerprint:binding.planFingerprint,sourceHashes:sources,
+   session:{database:'postgres',pid:123,backendStart:'2026-11-08 00:00:00.123456+00',postmasterStart:'2026-11-08T00:00:00.123456Z',versionNumber:base.fixture.postgres.versionNumber,versionText:base.fixture.postgres.versionText,session:'postgres',current:'postgres',loopback:true},
+   roleCatalogSha256:catalogueReplayRoleHash({roles:base.fixture.roles,edges:base.fixture.edges}),allocation:mode==='baseline'?null:{namespaceOid:20000,enumOid:20001,enumArrayOid:20002,heapOid:20003,rowTypeOid:20004,rowArrayOid:20005,nativeRowsSha256:catalogueReplayRoleHash(facts.objects),dependenciesSha256:catalogueReplayRoleHash({dependencies:facts.dependencies,shared:facts.shared}),facts},objectsAbsent:true,quiescence:{sameCluster:true,ownedPresent:false,observerPid:124,observerStart:'2026-11-08 00:00:01.123456+00',observedAt:'2026-11-08 00:00:02.123456+00',postmasterStart:'2026-11-08T00:00:00.123456Z'},releaseAuthorized:false}};
+  assert.doesNotThrow(()=>validateFullCiRoleReceipt(receipt,binding,context.sourceHashes,sources));
+  assert.throws(()=>validateFullCiRoleReceipt(receipt,binding,context.sourceHashes));
+  for(const mutate of [x=>delete x.catalogueReplay,x=>x.catalogueReplay.sourceHashes.ownerSha256='0'.repeat(64),x=>x.catalogueReplay.roleCatalogSha256='0'.repeat(64),x=>x.catalogueReplay.session.versionNumber++,x=>x.catalogueReplay.session.database='ai_hr_dev',x=>x.catalogueReplay.objectsAbsent=false,x=>x.catalogueReplay.extra=true]){
+   const changed=structuredClone(receipt);mutate(changed);assert.throws(()=>validateFullCiRoleReceipt(changed,binding,context.sourceHashes,sources));
+  }
+  assert.throws(()=>validateFullCiRoleReceipt({...base,catalogueReplay:receipt.catalogueReplay},ordinary,context.sourceHashes,sources));
+ }
 });

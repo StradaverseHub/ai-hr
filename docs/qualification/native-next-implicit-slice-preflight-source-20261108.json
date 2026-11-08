@@ -1,0 +1,36 @@
+{
+  "kind": "FIXED_IMPLICIT_SLICE_NATIVE_NEXT_PREFLIGHT_SOURCE_ONLY",
+  "base": "ad2e0c59d94c3caff2a9f0e240feae0372898954",
+  "sourceRef": "codex/native-next-implicit-slice-preflight-20261108",
+  "qualification": "NOT_RUN; independent review then authenticated new-source/new-build commissioning required",
+  "sourceSelectors": [
+    "test/runtime-next-prepackage-diagnostic.test.ts"
+  ],
+  "nativeSelectors": [
+    "test/runtime-next-admission-native.test.ts"
+  ],
+  "nativeUnit": "db-ef098640eeb0a97b",
+  "sourceModelCases": 12,
+  "strictAbsentServiceCount": 4,
+  "fixedSlice": "aihr-native-next.slice",
+  "managerLookupDirectoryLimit": 64,
+  "managerAssociatedUnitLimit": 2048,
+  "fixtureSeconds": 480,
+  "actualNextBootVerified": false,
+  "fullApplicationJourneysVerified": false,
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "retainedOriginalFailure": {
+    "run": 42418472291,
+    "source": "7f73f33823e408c3fdaa8d348ccece86883278ff",
+    "actualGuardReasonObserved": false,
+    "actualNextBootVerified": false
+  },
+  "sourceSha256": {
+    "deploy/admission/test_next_native.py": "945f845de25fd39c248c441f03eea3388de10847f1b26ec2d636ba9acd9017e2",
+    "deploy/admission/test_next_prepackage_diagnostic.py": "4eb462953841ebe9c735c896fdeb7d899c37d8ed833de2c839a58e0d38963a4b",
+    "test/runtime-next-prepackage-diagnostic.test.ts": "a784b48bbd6c23ef11012239171b644dea364600fb76f7d6efd5300930714f16",
+    "test/runtime-next-admission-native.test.ts": "95aaffe81712eaa573b9f735d81dd610a7958ad5544d1628581a1bc8a92e37f6",
+    "docs/qualification/native-next-implicit-slice-preflight-20261108.md": "c6e2b0a6dea0d99490310909cee43c9c0864822f25a71a5ef58535304cf795c3"
+  }
+}

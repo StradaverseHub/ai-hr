@@ -216,3 +216,15 @@ it('requires administrator authority at both registration boundaries and refuses
  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.pay_formula_personnel_register('person; DROP TABLE company','Employer','No native executable source registration',true)`))).rejects.toBeDefined();
  await expect(withTenant(ctx,tx=>tx.insert(schema.domainEvent).values({tenantId:base.tenantId,aggregateType:'pay-formula-personnel-registration',aggregateId:user.id,eventType:'pay-formula.personnel-registered',actorType:'user',actorId:ctx.userId!,payload:{sourceKey:'companyId'}}))).rejects.toBeDefined();
 });
+it('calculates without optional tests and preserves the old payslip evidence when a new saved version becomes current',async()=>{
+ const saved=await savePayFormula(ctx,{formulaId:'UNTESTED_SAVED',description:'Immediately usable saved formula',method:'write',source:'Return 25'});
+ const component=await upsertPayComponent(ctx,{...item,rule:{kind:'formula_builder',formulaId:'UNTESTED_SAVED',dependencies:[]}});
+ await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:component.id,amount:1,effectiveFrom:context.period+'-01',allowZeroAmount:true});
+ const first=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});await generatePayslips(ctx,{batchId:first.batchId});
+ const before=await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,first.batchId));
+ expect(before).toEqual([expect.objectContaining({revisionId:saved.revisionId,amount:'25'})]);
+ const changed=await savePayFormula(ctx,{id:saved.id,expectedRevisionId:saved.revisionId,formulaId:'UNTESTED_SAVED',description:'New future calculation',method:'write',source:'Return 50'});
+ const {loadSavedFormulaProgramTx}=await import('../core/pay-formula');
+ expect((await withTenant(ctx,tx=>loadSavedFormulaProgramTx(tx,ctx,'UNTESTED_SAVED'))).revisionId).toBe(changed.revisionId);
+ expect(await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,first.batchId))).toEqual(before);
+});

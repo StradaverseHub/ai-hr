@@ -7,6 +7,10 @@ export const DIRECT_CONTENT_ROUTES:Readonly<Record<string,string>>={
 };
 export function navigationScenarioEntry(scenario:NavigationScenario){
  const kind=scenario.entry??'canonical-link';
+ if(kind==='shell-menu'){
+  if(DIRECT_CONTENT_ROUTES[scenario.destinationId]!==scenario.href||scenario.originHref!=='/')throw Error('Unreviewed native shell address');
+  return {kind,selector:null};
+ }
  if(kind==='direct-route-content'){
   if(DIRECT_CONTENT_ROUTES[scenario.destinationId]!==scenario.href||scenario.originHref!==scenario.href)throw Error('Unreviewed direct module-content address');
   return {kind,selector:null};

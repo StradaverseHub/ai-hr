@@ -1,3 +1,4 @@
+import {admitSingletonTest} from './helpers/ci-singleton-admission';
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -11,8 +12,8 @@ it('qualifies the root generation controller with real Linux systemd and Nginx',
  expect(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()).toBe(process.env.AIHR_CI_HEAD);
  // This host-scoped native fixture is a dedicated unit, never an unnoticed
  // shared-process test or skipped capability requirement in a larger gate.
- expect(JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]')).toEqual(['test/runtime-ready-admission-native.test.ts']);
- const evidence=join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'runtime-ready-admission-native.json');
+ const admission=admitSingletonTest('test/runtime-ready-admission-native.test.ts');
+ const evidence=join(admission.evidenceDirectory,'runtime-ready-admission-native.json');
  const keys=['GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','AIHR_CI_HEAD','RUNNER_TEMP'] as const;
  execFileSync('sudo',['-n','env',...keys.map(key=>`${key}=${process.env[key]??''}`),'/usr/bin/python3','-I','-B','deploy/admission/test_native.py',evidence],
   {encoding:'utf8',timeout:240000,stdio:['ignore','pipe','pipe'],maxBuffer:1024*1024});

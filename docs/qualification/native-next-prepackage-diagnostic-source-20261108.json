@@ -1,0 +1,36 @@
+{
+  "kind": "CLOSED_ACTUAL_NEXT_PREPACKAGE_DIAGNOSTICS_SOURCE_ONLY",
+  "base": "7f73f33823e408c3fdaa8d348ccece86883278ff",
+  "sourceRef": "codex/native-next-prepackage-diagnostics-20261108",
+  "qualification": "NOT_RUN; separate proper slice guard successor required before native commissioning",
+  "selectors": [
+    "test/runtime-next-prepackage-diagnostic.test.ts"
+  ],
+  "sourceModelCases": 5,
+  "originalConditionsPreserved": true,
+  "fixtureSeconds": 480,
+  "actualNextBootVerified": false,
+  "fullApplicationJourneysVerified": false,
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "retainedOriginalFailure": {
+    "run": 42418472291,
+    "source": "7f73f33823e408c3fdaa8d348ccece86883278ff",
+    "controller": "7f73f33823e408c3fdaa8d348ccece86883278ff",
+    "unit": "db-ef098640eeb0a97b",
+    "nativeFailed": 1,
+    "nativeSkipped": 0,
+    "nativeMs": 35085.77288,
+    "phase": "actual-host-and-sealed-input-preflight",
+    "failureType": "AssertionError",
+    "ownedRuntimeCleaned": true,
+    "nextBuildId": "y4am-2dnxlUAFZgUkNZFW",
+    "actualGuardReasonObserved": false
+  },
+  "sourceSha256": {
+    "deploy/admission/test_next_native.py": "cb120524f472c142f7abb1160f3423bde8f0d1bb9bd4d2d5a93eceb277b2cf67",
+    "deploy/admission/test_next_prepackage_diagnostic.py": "817d38487737eb4f4807e2dcf89a32c8b4363b2b75d38e09289e36e861d071da",
+    "test/runtime-next-prepackage-diagnostic.test.ts": "02ce4d2a6388bb3fdbe30caa7f0385c883d63b2dfe01ec2338c2dc48df02b844",
+    "docs/qualification/native-next-prepackage-diagnostic-20261108.md": "3df28a5461f74ab2c1013ee2f3bf34d0edaa04de9e07d21f44a8b683800b208f"
+  }
+}

@@ -11,6 +11,13 @@ import {hostHealth} from './host-health.mjs';
 import {createPlan,hash} from './plan.mjs';
 import {DB_BATCH_FILES} from './manifest.mjs';
 import {validatePdfSetupProof} from './pdf-tools.mjs';
+import {assertNoSingletonHints,nativeNextUnit,singletonControllerPath} from './singleton-protocol.mjs';
+import {readProtectedBootstrap,readProtectedNativeEvent} from './native-next-installation.mjs';
+import {actualSingletonHost,provisionSingletonHost,writeSingletonBinding} from './singleton-profiles.mjs';
+
+import {candidateEnvironment,nativePreparationEnvironment} from './candidate-environment.mjs';
+import {provisionNativeNextBuild,captureNativeNextInstallation} from './native-next-build-packet.mjs';
+import {catalogueReplayMode,CATALOGUE_REPLAY_SOURCES,validateCatalogueReplayReceipt,catalogueReplayRoleHash} from './notification-catalogue-replay.mjs';
 
 // Frozen full-CI handshake v1. Diagnostic setup receipt only; never installation/release authority.
 export const FULL_CI_ROLE_HINTS=Object.freeze(['AIHR_CI_DISPOSABLE_ROLE_MODE','AIHR_CI_ROLE_UNIT','AIHR_CI_ROLE_BATCH_OFFSET','AIHR_CI_ROLE_EVIDENCE_DIR','AIHR_CI_ROLE_PLAN_FINGERPRINT']);
@@ -35,10 +42,10 @@ export function fullCiRoleBinding({plan,unit,offset,batchSize,files,env,resetSta
  const {fingerprint,...body}=plan;assert.equal(hash(body),fingerprint,'Reconstructed actual plan fingerprint differs');
  assert(fullSha(plan.sha)&&fullSha(plan.controller));
  assert.equal(env.GITHUB_ACTIONS,'true');assert.equal(env.CI,'true');assert.equal(env.RUNNER_ENVIRONMENT,'github-hosted');assert.equal(env.RUNNER_OS,'Linux');
- assert.equal(env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(env.GITHUB_REPOSITORY_ID,'1333414856');assert.equal(env.GITHUB_WORKFLOW,'alpha-staging-ci');assert.equal(env.GITHUB_JOB,'test');
+ assert.equal(env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(env.GITHUB_REPOSITORY_ID,'1333414856');assert.equal(env.GITHUB_WORKFLOW,'alpha-staging-ci');assert.equal(env.GITHUB_JOB,nativeNextUnit(unit)?'native-test':'test');
  assert(positiveId(env.GITHUB_RUN_ID)&&positiveId(env.GITHUB_RUN_ATTEMPT));assert.equal(env.AIHR_CI_HEAD,plan.sha);assert.equal(env.AIHR_CI_CONTROL_HEAD,plan.controller);assert.equal(env.GITHUB_SHA,plan.controller);
  assert.equal(layout.platform,'linux');assert.equal(layout.sourceHead,plan.sha);assert.equal(layout.controllerHead,plan.controller);assert.equal(layout.sourceClean,true);assert.equal(layout.controllerClean,true);
- assert.equal(layout.source,join(layout.workspace,'source'));assert.equal(layout.automation,join(layout.workspace,'automation'));assert.equal(layout.cwd,layout.source);
+ assert.equal(layout.source,join(layout.workspace,'source'));assert.equal(layout.automation,singletonControllerPath(unit,layout.workspace,env.GITHUB_RUN_ID));assert.equal(layout.cwd,layout.source);
  assert.equal(layout.evidence,join(layout.temp,'aihr-ci'));assert.equal(layout.controllerScript,join(layout.automation,'.github/ci/run-unit.mjs'));
  assert.equal(event?.repository?.full_name,'StradaverseHub/ai-hr');assert.equal(String(event.repository.id),'1333414856');
  const workflow='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@';assert(typeof env.GITHUB_WORKFLOW_REF==='string'&&env.GITHUB_WORKFLOW_REF.startsWith(workflow));
@@ -57,10 +64,12 @@ export function fullCiRoleBinding({plan,unit,offset,batchSize,files,env,resetSta
 }
 export function fullCiRoleMigrationEnvironment(env,binding,evidence){
  assertNoFullCiRoleHints(env);assert.equal(binding.mode,fullRoleMode);
- return {...env,...FULL_CI_ROLE_URLS,AIHR_CI_DISPOSABLE_ROLE_MODE:fullRoleMode,AIHR_CI_ROLE_UNIT:binding.unit,AIHR_CI_ROLE_BATCH_OFFSET:String(binding.offset),AIHR_CI_ROLE_EVIDENCE_DIR:evidence,AIHR_CI_ROLE_PLAN_FINGERPRINT:binding.planFingerprint};
+ return {...candidateEnvironment(env),...FULL_CI_ROLE_URLS,AIHR_CI_DISPOSABLE_ROLE_MODE:fullRoleMode,AIHR_CI_ROLE_UNIT:binding.unit,AIHR_CI_ROLE_BATCH_OFFSET:String(binding.offset),AIHR_CI_ROLE_EVIDENCE_DIR:evidence,AIHR_CI_ROLE_PLAN_FINGERPRINT:binding.planFingerprint};
 }
-export function validateFullCiRoleReceipt(receipt,binding,sourceHashes){
- exactKeys(receipt,[...Object.keys(binding),'schemaVersion','kind','phase','scope',...Object.keys(fullRoleSources),'fixture']);
+/** @param {Record<string,string>|undefined} [catalogueReplaySources] */
+export function validateFullCiRoleReceipt(receipt,binding,sourceHashes,catalogueReplaySources=undefined){
+ const replay=catalogueReplayMode(binding.batchFiles);
+ exactKeys(receipt,[...Object.keys(binding),'schemaVersion','kind','phase','scope',...Object.keys(fullRoleSources),'fixture',...(replay?['catalogueReplay']:[])]);
  for(const [key,value]of Object.entries(binding))assert.deepEqual(receipt[key],value,`Role prerequisite binding differs: ${key}`);
  assert.equal(receipt.schemaVersion,1);assert.equal(receipt.kind,fullRoleKind);assert.equal(receipt.phase,'before_initial_candidate_migration');assert.equal(receipt.scope,fullRoleScope);
  for(const [key,value]of Object.entries(sourceHashes))assert.equal(receipt[key],value);
@@ -77,19 +86,21 @@ export function validateFullCiRoleReceipt(receipt,binding,sourceHashes){
  assert.deepEqual(fixture.edges,[{role:'ai_hr_app',member:'ai_hr_draft_discard_port',grantor:'postgres',inherit:true,set:false,admin:false},{role:'ai_hr_draft_discard_port',member:'ai_hr_owner',grantor:'postgres',inherit:false,set:true,admin:false}]);
  exactKeys(fixture.postgres,['versionNumber','versionText','session','current']);
  assert(Number.isSafeInteger(fixture.postgres.versionNumber)&&fixture.postgres.versionNumber>=160000&&fixture.postgres.versionNumber<170000);assert(typeof fixture.postgres.versionText==='string');assert(/^PostgreSQL 16\./.test(fixture.postgres.versionText));assert.equal(fixture.postgres.session,'postgres');assert.equal(fixture.postgres.current,'postgres');
- return {kind:receipt.kind,mode:receipt.mode,unit:receipt.unit,offset:receipt.offset,planFingerprint:receipt.planFingerprint,batchSize:receipt.batchSize,batchFiles:receipt.batchFiles,...sourceHashes,postgresVersionNumber:fixture.postgres.versionNumber,roles:names,scope:receipt.scope};
+ if(replay){validateCatalogueReplayReceipt(receipt.catalogueReplay,binding,catalogueReplaySources);assert.equal(receipt.catalogueReplay.roleCatalogSha256,catalogueReplayRoleHash({roles:fixture.roles,edges:fixture.edges}));assert.equal(receipt.catalogueReplay.session.versionNumber,fixture.postgres.versionNumber);assert.equal(receipt.catalogueReplay.session.versionText,fixture.postgres.versionText);}
+ return {kind:receipt.kind,mode:receipt.mode,unit:receipt.unit,offset:receipt.offset,planFingerprint:receipt.planFingerprint,batchSize:receipt.batchSize,batchFiles:receipt.batchFiles,...sourceHashes,postgresVersionNumber:fixture.postgres.versionNumber,roles:names,scope:receipt.scope,...(replay?{catalogueReplay:receipt.catalogueReplay}:{})};
 }
 const ownedRegularBytes=(path,maximum)=>{
  const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{assert.equal(realpathSync(`/proc/self/fd/${fd}`),resolve(path),'Role evidence descriptor escaped its canonical path');const stat=fstatSync(fd);assert(stat.isFile()&&stat.uid===process.getuid()&&stat.nlink===1&&stat.size>0&&stat.size<=maximum,'Expected bounded owned regular role evidence');const bytes=readFileSync(fd);assert.equal(bytes.length,stat.size);return bytes;}finally{closeSync(fd);}
 };
-export function readFullCiRoleReceipt(dir,binding,sourceHashes,temp){
+/** @param {Record<string,string>|undefined} [catalogueReplaySources] */
+export function readFullCiRoleReceipt(dir,binding,sourceHashes,temp,catalogueReplaySources=undefined){
  assert.equal(resolve(dir),realpathSync(dir));assert.equal(dir,join(realpathSync(temp),'aihr-ci'));
  const stat=lstatSync(dir);assert(stat.isDirectory()&&!stat.isSymbolicLink()&&stat.uid===process.getuid());
  const basename=`personnel-dd-full-role-${binding.unit}-offset-${binding.offset}.json`;
  assert(/^personnel-dd-full-role-db-(?:[1-4]|[0-9a-f]{16})-offset-[0-9]+\.json$/.test(basename));
  const bytes=ownedRegularBytes(join(dir,basename),32768),receipt=JSON.parse(bytes.toString('utf8'));
- return {...validateFullCiRoleReceipt(receipt,binding,sourceHashes),basename,sha256:createHash('sha256').update(bytes).digest('hex')};
+ return {...validateFullCiRoleReceipt(receipt,binding,sourceHashes,catalogueReplaySources),basename,sha256:createHash('sha256').update(bytes).digest('hex')};
 }
 
 // Applicability is inspected before DB reset or full-context/source-hash reads. No environment skip.
@@ -124,19 +135,25 @@ function actualFullCiRoleApplicability(){
  return inspectFullCiRoleApplicability(file=>{const path=join(root,file);assert.equal(path,realpathSync(path));return ownedRegularBytes(path,1048576).toString('utf8');},file=>{const path=join(root,file);if(!existsSync(path))return false;assert.equal(path,realpathSync(path));assert(lstatSync(path).isFile(),'Unexpected role-profile source shape');return true;});
 }
 function actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatus){
- const env=process.env,workspace=realpathSync(env.GITHUB_WORKSPACE),source=realpathSync(join(workspace,'source')),automation=realpathSync(join(workspace,'automation')),temp=realpathSync(env.RUNNER_TEMP);
- assert.equal(resolve(join(workspace,'source')),source);assert.equal(resolve(join(workspace,'automation')),automation);assert.equal(resolve(dir),realpathSync(dir));
- const git=(cwd,...args)=>execFileSync('git',['-C',cwd,...args],{encoding:'utf8'}).trim();
+ const env=process.env,workspace=realpathSync(env.GITHUB_WORKSPACE),source=realpathSync(join(workspace,'source')),
+  automation=realpathSync(singletonControllerPath(unit,workspace,env.GITHUB_RUN_ID)),temp=realpathSync(env.RUNNER_TEMP);
+ assert.equal(resolve(join(workspace,'source')),source);assert.equal(resolve(dir),realpathSync(dir));
+ if(nativeNextUnit(unit)){const bootstrap=readProtectedBootstrap(env);assert.equal(bootstrap.automation,automation);assert.equal(realpathSync('/proc/self/exe'),bootstrap.protectedNodePath);}
+ const git=(cwd,...args)=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{env:nativePreparationEnvironment(process.env),encoding:'utf8'}).trim();
  const sourceHashes=Object.fromEntries(Object.entries(fullRoleSources).map(([key,file])=>{const path=join(source,file);assert.equal(path,realpathSync(path));return[key,createHash('sha256').update(ownedRegularBytes(path,262144)).digest('hex')];}));
- const event=JSON.parse(ownedRegularBytes(env.GITHUB_EVENT_PATH,1048576).toString('utf8'));
+ const event=JSON.parse((nativeNextUnit(unit)?readProtectedNativeEvent(env):ownedRegularBytes(env.GITHUB_EVENT_PATH,1048576)).toString('utf8'));
  const layout={platform:process.platform,workspace,source,automation,temp,evidence:realpathSync(dir),cwd:realpathSync(process.cwd()),controllerScript:realpathSync(fileURLToPath(import.meta.url)),sourceHead:git(source,'rev-parse','HEAD'),controllerHead:git(automation,'rev-parse','HEAD'),sourceClean:git(source,'status','--porcelain')==='',controllerClean:git(automation,'status','--porcelain')===''};
  const binding=fullCiRoleBinding({plan,unit,offset,batchSize,files,env,resetStatus,event,layout,sourceHashes});
- return {binding,sourceHashes,env:fullCiRoleMigrationEnvironment(env,binding,dir)};
+ const catalogueReplaySources=catalogueReplayMode(files)?Object.fromEntries(Object.entries(CATALOGUE_REPLAY_SOURCES).map(([key,file])=>{const path=join(source,file);assert.equal(path,realpathSync(path));const digest=createHash('sha256').update(ownedRegularBytes(path,262144)).digest('hex');assert.equal(digest,plan.singletonSources?.[unit.id]?.[file],'Catalogue replay owner missing from complete singleton source binding');return[key,digest];})):undefined;
+ return {binding,sourceHashes,catalogueReplaySources,env:fullCiRoleMigrationEnvironment(env,binding,dir)};
 }
 
-export function main(){
+export async function main(){
 if (process.env.GITHUB_ACTIONS !== 'true' || process.env.CI !== 'true' || process.platform !== 'linux') throw Error('GitHub runners only; never the shared developer cluster');
 assertNoFullCiRoleHints(process.env);
+assertNoSingletonHints(process.env);
+assert(!Object.keys(process.env).some(key=>key.startsWith('AIHR_NATIVE_NEXT_')),'Inherited native build packet hints are forbidden');
+const installation=captureNativeNextInstallation();
 const [id, destination] = process.argv.slice(2), plan = createPlan(), unit = plan.units.find(u => u.id === id);
 if (!unit || !destination) throw Error('Unknown CI unit or missing evidence directory');
 const dir = resolve(destination); mkdirSync(dir, {recursive: true});
@@ -144,6 +161,11 @@ const report = {healthBefore: null, schemaVersion: 1, sha: plan.sha, fingerprint
 const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
 let failure = false;
 try {
+  if(nativeNextUnit(unit)){
+   const bootstrap=readProtectedBootstrap();
+   execFileSync(bootstrap.protectedNodePath,[join(bootstrap.automation,'.github/ci/native-controller-owner.mjs'),'pdf-tools','--unit',id],
+    {cwd:process.cwd(),env:nativePreparationEnvironment(process.env),stdio:'inherit',timeout:180000});
+  }
   if(unit.kind!=='browser'){report.pdfToolSetup=JSON.parse(readFileSync(join(process.env.RUNNER_TEMP,'pdf-tools-setup.json'),'utf8'));validatePdfSetupProof(plan,unit,report.pdfToolSetup);}
   report.healthBefore = hostHealth();
   writeFileSync(join(dir, `health-before-${id}.json`), JSON.stringify(report.healthBefore,null,2)+'\n', {flag:'wx'});
@@ -159,9 +181,9 @@ try {
       const reset = spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
       if (reset.status !== 0) throw Error('Owned CI PostgreSQL reset failed');
       const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,reset.status):null;
-      const migrate = roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit'});
+      const migrate = roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});
       if(migrate.status !== 0)throw Error('CI migration failed');
-      if(roleContext)rolePrerequisites=readFullCiRoleReceipt(dir,roleContext.binding,roleContext.sourceHashes,process.env.RUNNER_TEMP);
+      if(roleContext)rolePrerequisites=readFullCiRoleReceipt(dir,roleContext.binding,roleContext.sourceHashes,process.env.RUNNER_TEMP,roleContext.catalogueReplaySources);
     }
     const args = ['exec', 'vitest', 'run'];
     if (unit.kind === 'nodb') args.push('--config', 'vitest.nodb.config.ts');
@@ -173,9 +195,27 @@ try {
       args.push('--config', config);
     }
     args.push(...files, '--reporter=default', '--reporter=json', '--outputFile.json=' + path);
-    const env = {...process.env, VITEST_MAX_WORKERS: String(plan.execution.workers), VITEST_MAX_WORKERS_NODB: String(plan.execution.workers), AIHR_BROWSER_ENGINE: unit.engine ?? '', AIHR_TEST_DURATION_ORDER: unit.kind==='db'?'true':'false'};
+    const workers=unit.singleton?.workers??plan.execution.workers;
+    const env = {...candidateEnvironment(process.env), VITEST_MAX_WORKERS: String(workers), VITEST_MAX_WORKERS_NODB: String(workers), AIHR_CI_UNIT:unit.kind==='db'?id:'', AIHR_BROWSER_ENGINE: unit.engine ?? '', AIHR_TEST_DURATION_ORDER: unit.kind==='db'?'true':'false'};
     if (unit.kind !== 'db') for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL']) env[key] = closed;
+    let singleton=null;
+    if(unit.singleton){
+      if(offset!==0||files.length!==1||unit.files.length!==1)throw Error('Singleton unit was batched');
+      let prerequisites;
+      if(nativeNextUnit(unit)){
+        actualSingletonHost(plan,unit,dir);
+        Object.assign(env,FULL_CI_ROLE_URLS);
+        const host=provisionSingletonHost(plan,unit,dir),build=await provisionNativeNextBuild(plan,unit,dir,process.env,installation);
+        prerequisites={kind:'fresh-job-next-systemd-nginx-postgres',workers:1,database:capturePostgresEvidence(id,plan.execution.postgres),host,build:build.prerequisite};
+        env.AIHR_NATIVE_NEXT_PACKET_DIR=build.packetDirectory;env.AIHR_NATIVE_NEXT_BUILD_BINDING=build.bindingPath;
+        // GitHub credentials belong to the provisioning owner, never the app/test child.
+        delete env.GH_TOKEN;delete env.GITHUB_TOKEN;
+      }else prerequisites=unit.kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:capturePostgresEvidence(id,plan.execution.postgres)}:provisionSingletonHost(plan,unit,dir);
+      if(unit.kind==='db')validatePostgresEvidence(prerequisites.database,plan.execution);
+      singleton=writeSingletonBinding(plan,unit,dir,prerequisites);env.AIHR_CI_SINGLETON_BINDING=singleton.path;report.singleton=singleton.binding;
+    }
     const child = spawnSync('pnpm', args, {stdio: 'inherit', env});
+    if(singleton&&readFileSync(singleton.path,'utf8')!==singleton.bytes)throw Error('Singleton admission receipt changed during test');
     const exitCode = child.status ?? 1;
     const stats = unit.kind === 'db' ? spawnSync('bash', [postgres, 'stats'], {encoding:'utf8', env:{...process.env, AIHR_CI_UNIT:id}}) : null;
     const databaseEvidence=unit.kind==='db'?capturePostgresEvidence(id,plan.execution.postgres):null;
@@ -200,4 +240,4 @@ try {
 process.exitCode = report.exitCode;
 
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main();
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{console.error(error);process.exitCode=1;});

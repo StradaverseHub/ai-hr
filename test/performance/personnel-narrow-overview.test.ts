@@ -1,3 +1,4 @@
+import {admitSingletonTest} from '../helpers/ci-singleton-admission';
 /** Independent hosted measurement. Earlier whole-projection timeout probes are not repeated. */
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -9,19 +10,17 @@ import {seedPersonnelCorrectionFixture,seedPersonnelNativeFixture} from './perso
 import {personnelDatedTagsPrototype} from './personnel-dated-tags-prototype';
 import {personnelNarrowOverviewProbe} from './personnel-narrow-overview-probe';
 
-const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&
- selected[0]==='test/performance/personnel-narrow-overview.test.ts';
+const singletonAdmission=admitSingletonTest('test/performance/personnel-narrow-overview.test.ts');
 beforeAll(migrateTestDb);afterAll(closeAll);
 
-it.skipIf(!requested)('measures narrow dated Personnel facts and bounded native page DTOs at fifty thousand employees',async()=>{
+it('measures narrow dated Personnel facts and bounded native page DTOs at fifty thousand employees',async()=>{
  const count=50_000,started=performance.now();
  const report:Record<string,unknown>={
   kind:'PERSONNEL_NARROW_OVERVIEW_50K_COMPONENT_ONLY',releaseEligible:false,targetEmployees:count,concurrentUsers:1,
   queryTargetMs:1000,nativeTriggers:'unchanged',limitations:'Synthetic single tenant, no private search or quality filters, browser or 500-user claims.',
  };
- expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-narrow-overview.json'),JSON.stringify(report,null,2));
+ expect(singletonAdmission.evidenceDirectory).toBeTruthy();
+ const save=()=>writeFileSync(join(singletonAdmission.evidenceDirectory!,'personnel-narrow-overview.json'),JSON.stringify(report,null,2));
  const phase=(name:string)=>{report.phase=name;report.elapsedMs=performance.now()-started;save();};
  const failures:{mode:string;elapsedMs:number;errorType:string;sqlState:string|null}[]=[];
  try{

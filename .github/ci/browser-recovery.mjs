@@ -1,3 +1,5 @@
+import {BUILD_ARTIFACT} from './build-artifact.mjs';
+import {assertNativeBuildMatches} from './singleton-protocol.mjs';
 /** Authenticated exact-source recovery; producer and reviewed operator identities remain distinct. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -79,11 +81,13 @@ export async function verifyBrowserRecoveredCi({candidatePath,runId,baseline,bro
  const packet=fresh.parsed.get('diagnostic-complete-image-browser-firefox'),binding=fresh.parsed.get('browser-recovery-runtime-firefox');
  assert(binding?.size===1&&binding.has('image-binding.json'),'Exact runtime binding packet required');
  assert(packet?.has('unit-browser-firefox.json')&&[...packet.keys()].every(n=>/^(unit-browser-firefox|health-before-browser-firefox|browser-firefox-batch-\d+)\.json$/.test(n)),'Unexpected Firefox packet member');
- const recovery=verifyBrowserRecovery({plan,freshPlan,assessment,run:source.run,jobs:source.jobs,reports:plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`)),fresh:{...fresh,producer,binding:binding.get('image-binding.json'),report:packet.get('unit-browser-firefox.json')},verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,lockSha256:createHash('sha256').update(readFileSync(join(candidatePath,'pnpm-lock.yaml'))).digest('hex')});
+ const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
+ const recovery=verifyBrowserRecovery({plan,freshPlan,assessment,run:source.run,jobs:source.jobs,reports,fresh:{...fresh,producer,binding:binding.get('image-binding.json'),report:packet.get('unit-browser-firefox.json')},verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,lockSha256:createHash('sha256').update(readFileSync(join(candidatePath,'pnpm-lock.yaml'))).digest('hex')});
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),rows=pages('actions/runs?created='+encodeURIComponent('>='+since),'workflow_runs').filter(r=>[WORKFLOW_ID,BROWSER_WORKFLOW_ID].includes(r.workflow_id)||r.path==='.github/workflows/alpha-focused-checks.yml');
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages('actions/runs?status='+status,'workflow_runs'));
  recovery.history=validateBrowserHistory({source,rows,candidateBranch,browserRunId,auxiliaryRunIds});
  const build=await sourceBoundBuild({candidatePath,dir,p:{candidate,controller,baseline,runId,controllerBranch:source.run.head_branch},jobs:source.jobs});
+ assertNativeBuildMatches(plan,reports,build,source.artifacts.find(a=>a.name===BUILD_ARTIFACT),source.jobs.find(j=>j.name==='build').id);
  assert(isDeepStrictEqual(originalMetadata,metadata(runId))&&isDeepStrictEqual(browserMetadata,metadata(browserRunId)),'Recovery API evidence changed before admission');
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');checkRefs();
  const result={...recovery,tier:'ci',result:'PASS',recovery,fingerprint:hash(recovery),build,candidatePath,controllerBranch:source.run.head_branch,browserControllerBranch:controllerBranch,browserProducerController,browserProducerBranch,producerDiagnosticRunId,candidateBranch,auxiliaryRunIds,browserRunId,verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest})),installationAuthorized:false};

@@ -21,3 +21,9 @@ it('refuses a forged company before save, preview, or routing writes', async () 
   expect((await setAttendanceWorkflowEnabledAction('foreign', 'irregularity', true)).ok).toBe(false);
   expect(save).not.toHaveBeenCalled(); expect(preview).not.toHaveBeenCalled(); expect(enable).not.toHaveBeenCalled();
 });
+it('uses actual allowed companies for shared edits when the company switcher is narrower',async()=>{
+ scope.mockResolvedValue({s:{actor:'group HR'},scopeIds:['company'],allowedCompanyIds:['company','second']});
+ const shared={...input,companyIds:['company','second']};
+ expect(await saveAttendanceWorkflowAction(null,shared)).toEqual({ok:true,lineageId:'stored-lineage'});
+ expect(save).toHaveBeenCalledWith(expect.anything(),shared,undefined,undefined,false);
+});

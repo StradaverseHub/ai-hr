@@ -45,10 +45,17 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1656,when:1793330001856,tag:'2406_payroll_reconciliation_generation'},
  {idx:1660,when:1793330001860,tag:'2460_payroll_individual_import_queue'},
  {idx:1900,when:1793330002200,tag:'2600_onboarding_current_personnel'},
+ {idx:2400,when:1793330002700,tag:'3100_pay_formula_saved_availability'},
+ {idx:2401,when:1793330002701,tag:'3101_attendance_shared_workflow'},
+ {idx:2410,when:1793330002710,tag:'3110_attendance_workflow_owner_rls'},
  ...PERFORMANCE_MIGRATION_IDENTITIES.map(({idx,when,tag})=>({idx,when,tag})),
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '3100_pay_formula_saved_availability':'7bc0ab95aea27bae36f9be299784d3d391b4a315aa0302a9c42c2dbf9996b1b8',
+ '3101_attendance_shared_workflow':'f32d12965f2788dc673f0c09e128996a653341bbcf6933e47f211da021617169',
+ '3110_attendance_workflow_owner_rls':'39fc4b31666120cb4befe263b8b30433d6752dbaa52cda6cdbe350b3077f8f16',
+
  '2106_account_management_subject':'d4bbd5d20d9b40294b31d022a3ec0cf29e9a290f10749493c4934db31c5cdd67',
  '2107_probation_module_permission':'da94777be8e2b3f4365851eb785a64baaf9c54e9fb64808f7c72379ee94732f8',
  '2108_rewards_entity_classification':'8f485227fba437d5a24bc8b762630c670c38364d98d10e85802ce6e05bddd1c6',

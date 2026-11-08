@@ -2,20 +2,21 @@
 import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
 import {relative} from 'node:path';
-import {hash,requiredEvidence} from './manifest.mjs';
+import {hash,requiredEvidence,optionalSkippedCiJob} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
 import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,WORKFLOW_PATH} from './release-policy.mjs';
 export const RECOVERY_POLICY='aihr-focused-recovery/v1';
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
 const positive=x=>Number.isSafeInteger(x)&&x>0;
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
-const jobName=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
+import {singletonJobName as jobName} from './singleton-protocol.mjs';
 const focusedJobs=['resolve','selected-tests','typecheck','linux-build','native-typecheck','native-swift-models','native-bundle'];
 export function validateRecoveryControllerDiagnostic({run,jobs,controller,now=Date.now()}){
  assert(sha(controller)&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID&&positive(run.id),'Foreign verification-controller diagnostic');
  assert(run.workflow_id===WORKFLOW_ID&&run.path===WORKFLOW_PATH&&run.event==='workflow_dispatch'&&run.head_sha===controller&&run.status==='completed'&&run.conclusion==='success'&&run.run_attempt===1&&run.display_title?.startsWith('CI controller checks · '),'Exact successful controller-only diagnostic required');
  assert(now-Date.parse(run.created_at)<=86400000&&Date.parse(run.created_at)<=now+60000,'Stale controller diagnostic');
- const names=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','deployment-hold'];
+ const names=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','commission-summary','deployment-hold'];
+ if(jobs.some(j=>j.name==='native-test'))names.push('native-test');
  assert(jobs.length===names.length&&new Set(jobs.map(j=>j.name)).size===names.length,'Complete controller diagnostic job inventory required');
  for(const j of jobs)assert(names.includes(j.name)&&j.run_id===run.id&&j.head_sha===controller&&j.run_attempt===1&&j.status==='completed'&&j.conclusion===(['resolve','deployment-hold'].includes(j.name)?'success':'skipped'),'Diagnostic executed application checks or failed controls');
  assert(jobs.find(j=>j.name==='resolve').steps?.some(s=>s.name==='CI integrity regression checks'&&s.conclusion==='success'),'Controller integrity controls did not pass');
@@ -59,7 +60,7 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
  assert(failed.size>0&&failed.size===assessment.rerun.length&&assessment.reusable.length+failed.size===plan.units.length,'Incomplete source coverage assessment');
  for(const j of jobs){
   const unit=plan.units.find(u=>jobName(u)===j.name);
-  if(j.name==='runner-diagnostics'){assert(j.conclusion==='skipped');continue;}
+  if(optionalSkippedCiJob(j.name,plan)){assert(j.conclusion==='skipped');continue;}
   assert(required.jobs.includes(j.name),'Unknown source job');
   if(j.name==='verify'){assert(j.conclusion==='failure','Original dependent verifier must remain failed');continue;}
   if(unit&&failed.has(unit.id)){assert(unit.kind==='nodb'&&j.conclusion==='failure','v1 recovers failed no-DB test units only');continue;}
@@ -91,9 +92,10 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
  for(const unit of plan.units){
   const report=reports.find(r=>r.id===unit.id);
   if(!failed.has(unit.id)){
-   const result=verifyUnitReport(plan,report),source=assessment.reusable.find(r=>r.id===unit.id);
+   const result=verifyUnitReport(plan,report,{runId:run.id,attempt:1}),source=assessment.reusable.find(r=>r.id===unit.id);
    assert(source?.reportHash===hash(report),'Retained report changed');tests+=result.tests;units.push({id:unit.id,kind:'retained',files:result.files,tests:result.tests,reportHash:hash(report),source:source.source});continue;
   }
+  assert(!unit.singleton,'Singleton replacement requires its authenticated full-unit profile; generic focused recovery is not supported');
   assert(report.sha===plan.sha&&report.fingerprint===plan.fingerprint&&report.exitCode!==0,'Failed original unit identity differs');same(report.files,unit.files,'Original failed coverage differs');
   // Recover the complete failed process, never infer passes from a process with an unhandled error.
   const originalCases=new Map();

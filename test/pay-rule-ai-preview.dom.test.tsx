@@ -1,3 +1,4 @@
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';

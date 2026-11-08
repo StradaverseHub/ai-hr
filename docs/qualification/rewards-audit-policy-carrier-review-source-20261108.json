@@ -1,0 +1,14 @@
+{
+  "kind": "STATIC_CARRIER_AND_FIRST_FLOOR_PRE_RACE_REVIEW_NOT_IMPLEMENTATION",
+  "base": "2bf430b566b3c481a93a304e90794dcb3e3664ec",
+  "canonicalPrototypeBase": "315467b94d49011ba367a54c46a4eaa2e90b8a8a",
+  "applicationSqlOrTestsChanged": false,
+  "checksExecuted": false,
+  "interfaceAccepted": false,
+  "globalWriterModeCoverageComplete": false,
+  "releaseAuthorized": false,
+  "sourceSha256": {
+    "docs/architecture/REWARDS-AUDIT-POLICY-CARRIER-REVIEW-20261108.md": "f5cad16b6845fe1d7f24346c4002fb18f201b0343c44ff845a3de4b34c1929f8",
+    "docs/qualification/rewards-audit-writer-carrier-source-index-20261108.json": "ab64174cb4fb13e9db38a4d7c26562b21a68de65fb0177776a8958c169f78a3f"
+  }
+}

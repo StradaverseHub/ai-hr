@@ -57,6 +57,7 @@ export type ComparisonResult = {
     unexplained: number; totals: ComparisonTotal[] } | null;
   page: number; pageSize: number;
   unavailablePayItems?: string[];
+  availablePayItems?: string[];
 };
 const key = (employmentId: string, companyId: string, currency: string | null) =>
   JSON.stringify([employmentId, companyId, currency]);

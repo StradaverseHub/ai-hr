@@ -68,8 +68,15 @@ export function attendanceApplicationType(row: {
     return row.requestedOtMinutes != null && !row.proposedCheckIn && !row.proposedCheckOut && !row.clockChanges ? 'self_overtime' : 'irregularity';
 }
 export function validateAttendanceWorkflow(input: AttendanceWorkflowInput): AttendanceWorkflowInput {
-    if (!input || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(input.companyId ?? '') || !/^[A-Za-z0-9_-]{1,40}$/.test(input.code ?? '') || !input.name?.trim() || input.name.trim().length > 120 || (input.description?.length ?? 0) > 1000 || !ATTENDANCE_APPLICATION_TYPES.includes(input.applicationType) || !Number.isInteger(input.priority) || input.priority < 0 || input.priority > 9999)
-        throw new AttendanceWorkflowError('invalid', 'Enter a code, name, application type and priority from 0 to 9999.');
+    if(!input||typeof input!=='object')throw new AttendanceWorkflowError('invalid','Enter a workflow configuration.');
+    const code=typeof input.code==='string'?input.code.trim():'',name=typeof input.name==='string'?input.name.trim():'';
+    if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(input.companyId??''))throw new AttendanceWorkflowError('invalid','Select a permitted company.');
+    if(!/^[A-Za-z0-9_-]{1,40}$/.test(code))throw new AttendanceWorkflowError('invalid','Workflow Code must contain 1 to 40 letters, digits, underscores or hyphens.');
+    if(!name||name.length>120)throw new AttendanceWorkflowError('invalid','Enter a Workflow Name up to 120 characters.');
+    if((input.description?.length??0)>1000)throw new AttendanceWorkflowError('invalid','Description must be 1000 characters or fewer.');
+    if(!ATTENDANCE_APPLICATION_TYPES.includes(input.applicationType))throw new AttendanceWorkflowError('invalid','Select Attendance Irregularity or Self Overtime.');
+    if(!Number.isInteger(input.priority)||input.priority<0||input.priority>9999)throw new AttendanceWorkflowError('invalid','Priority must be a whole number from 0 to 9999.');
+    input={...input,code,name};
     const routingVersion = input.routingVersion ?? 1;
     if (routingVersion !== 1 && routingVersion !== 2) throw new AttendanceWorkflowError('invalid', 'Choose a supported routing version.');
     if (!Array.isArray(input.stages) || input.stages.length < 1 || input.stages.length > 10)
