@@ -3,8 +3,9 @@ import {describe,it,expect,afterAll} from 'vitest';
 import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
 import {createWriteStream,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
+import {totalmem,availableParallelism} from 'node:os';
 import {setTimeout as delay} from 'node:timers/promises';
-import {chromium,type Browser} from 'playwright';
+import {chromium,type Browser,type Page} from 'playwright';
 import {eq} from 'drizzle-orm';
 import {adminCtx,migrateTestDb,resetDb,seedBase,owner,closeAll} from './harness';
 import {createCompany} from '../core/admin';
@@ -37,9 +38,23 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const evidence=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR??'/tmp/aihr-label-browser-evidence');mkdirSync(evidence,{recursive:true});
   const log=join(evidence,'system-label-browser-server.log'),stream=createWriteStream(log);serverLog=stream;
   const port=3149,origin=`http://127.0.0.1:${port}`;
+  const memory=totalmem(),heapMiB=memory>=12*1024**3?8192:4096;
+  writeFileSync(join(evidence,'system-label-browser-resources.json'),JSON.stringify({memoryBytes:memory,cpus:availableParallelism(),heapMiB,runner:process.env.RUNNER_ENVIRONMENT??'local'}));
+  async function navigate(target:Page,path:string){
+   for(let attempt=0;;attempt++){
+    if(server?.exitCode!==null)throw new Error('Owned preview process exited: '+readFileSync(log,'utf8').slice(-5000));
+    try{return await target.goto(origin+path,{waitUntil:'networkidle',timeout:180000});}
+    catch(error){
+     // Next's development supervisor can briefly close its listener during a documented memory restart.
+     // Retry only connection-level restarts of this owned process; HTTP/application failures still fail.
+     if(attempt>=5||!error||!/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/.test(String(error)))throw error;
+     await delay(750);
+    }
+   }
+  }
   // No production credentials or identity provider. This is the existing explicit developer identity route.
   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
-   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:'--max-old-space-size=4096'},stdio:['ignore','pipe','pipe']});
+   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:`--max-old-space-size=${heapMiB}`},stdio:['ignore','pipe','pipe']});
   server.stdout?.pipe(stream,{end:false});server.stderr?.pipe(stream,{end:false});
   let ready=false;
   for(let attempt=0;attempt<120;attempt++){
@@ -56,13 +71,13 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const context=await browser.newContext({viewport:{width:1440,height:1050},acceptDownloads:true});
   await context.addCookies([{name:'dev_user',value:b.adminUserId,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
   const page=await context.newPage();page.setDefaultTimeout(90000);
-  const response=await page.goto(origin+'/admin/settings/system-labels',{waitUntil:'networkidle',timeout:180000});
+  const response=await navigate(page,'/admin/settings/system-labels');
   expect(response?.status()).toBe(200);expect(page.url()).toContain('/system-labels');
   // Even a fresh personal catalogue must retain its category rail and Excel export.
-  await page.goto(origin+'/admin/settings/system-labels/profile-options',{waitUntil:'networkidle',timeout:120000});
+  await navigate(page,'/admin/settings/system-labels/profile-options');
   await page.getByRole('button',{name:en.systemLabelExchange.export,exact:true}).waitFor();
   await page.screenshot({path:join(evidence,'system-label-profile-options-empty.png'),fullPage:true});
-  await page.goto(origin+'/admin/settings/system-labels',{waitUntil:'networkidle',timeout:120000});
+  await navigate(page,'/admin/settings/system-labels');
   const exports=page.getByRole('button',{name:en.systemLabelExchange.export,exact:true});await expect.poll(()=>exports.count()).toBe(1);
   const downloaded=page.waitForEvent('download');await exports.click();const download=await downloaded;
   expect(download.suggestedFilename()).toMatch(/\.xlsx$/);
@@ -92,7 +107,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
    const messages=JSON.parse(readFileSync(join(process.cwd(),'messages',locale+'.json'),'utf8'));
    await context.addCookies([{name:LOCALE_COOKIE,value:locale,url:origin}]);
    for(const [name,width,height]of [['desktop',1440,1050],['mobile',390,844]] as const){
-    await page.setViewportSize({width,height});await page.goto(origin+'/admin/settings/system-labels',{waitUntil:'networkidle',timeout:120000});
+    await page.setViewportSize({width,height});await navigate(page,'/admin/settings/system-labels');
     await page.getByRole('button',{name:messages.systemLabelExchange.export,exact:true}).waitFor();
     expect(await page.locator('body').innerText()).not.toMatch(/MISSING_MESSAGE|INVALID_MESSAGE|Application error/);
     await page.screenshot({path:join(evidence,`system-label-exchange-${locale}-${name}.png`),fullPage:true});
@@ -101,7 +116,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const restrictedContext=await browser.newContext({viewport:{width:1440,height:1050}});
   await restrictedContext.addCookies([{name:'dev_user',value:restricted.id,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
   const restrictedPage=await restrictedContext.newPage();restrictedPage.setDefaultTimeout(90000);
-  await restrictedPage.goto(origin+'/admin/settings/system-labels',{waitUntil:'networkidle',timeout:120000});
+  await navigate(restrictedPage,'/admin/settings/system-labels');
   await restrictedPage.getByRole('button',{name:en.admin.systemLabels.excel.import,exact:true}).click();
   const refused=await buildSystemLabelWorkbook({kinds:['department'],rows:{department:[{Code:'BROWSER_FORBIDDEN_GLOBAL'}]},references:{companies:[],grades:[],employees:[]}});
   await restrictedPage.locator('input[type=file]').setInputFiles({name:'forbidden-global.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:refused});
