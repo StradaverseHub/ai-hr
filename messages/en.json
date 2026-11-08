@@ -2263,6 +2263,7 @@
       "exclusionsField": "Field",
       "exclusionsReason": "Why and where to go",
       "exclusionReasons": {
+        "bankPayeeResidency": "Choose bank payee residency in Personnel > Bank & Statutory > Bank Information. Employee imports do not derive it from tax residency or citizenship.",
         "datedCalendar": "Set dated calendars in Personnel > Attendance > Holiday Calendar to keep prior assignment history. Employee imports cannot change the calendar or its dates.",
         "testRecord": "This internal safety classification is retained. Personnel and employee imports cannot edit it.",
         "resignationDates": "Resignation dates come from applicable Movement events. Use Movement import or the resignation workflow.",

@@ -2263,6 +2263,7 @@
       "exclusionsField": "Trường",
       "exclusionsReason": "Lý do và nơi xử lý",
       "exclusionReasons": {
+        "bankPayeeResidency": "Chọn tình trạng cư trú của người nhận tiền ngân hàng tại Nhân sự > Ngân hàng và thông tin theo luật > Thông tin ngân hàng. Nhập nhân viên không suy ra giá trị này từ tình trạng cư trú thuế hoặc quốc tịch.",
         "datedCalendar": "Thiết lập lịch theo ngày tại Nhân sự > Chấm công > Lịch ngày nghỉ để giữ lại lịch sử phân công trước đó. Nhập dữ liệu nhân viên không thể thay đổi lịch hoặc các ngày áp dụng.",
         "testRecord": "Phân loại an toàn nội bộ này được giữ lại. Mục Nhân sự và chức năng nhập nhân viên không thể sửa phân loại này.",
         "resignationDates": "Các ngày nghỉ việc được xác định từ sự kiện Biến động có hiệu lực. Dùng chức năng nhập Biến động hoặc quy trình nghỉ việc.",

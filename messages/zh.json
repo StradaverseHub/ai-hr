@@ -2263,6 +2263,7 @@
       "exclusionsField": "字段",
       "exclusionsReason": "原因与处理位置",
       "exclusionReasons": {
+        "bankPayeeResidency": "请在人员 > 银行与法定资料 > 银行资料中选择银行收款人的居留身份。员工导入不会根据税务居民身份或国籍推断此项。",
         "datedCalendar": "请在员工管理 > 考勤 > 假日日历中设置有日期的日历分配，以保留既往分配历史。员工导入不能更改日历或其起止日期。",
         "testRecord": "此内部安全分类会保留。员工管理和员工导入均不能编辑此标记。",
         "resignationDates": "离职日期由适用的人事异动事件确定。请使用人事异动导入或离职流程。",

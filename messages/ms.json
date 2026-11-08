@@ -2263,6 +2263,7 @@
       "exclusionsField": "Medan",
       "exclusionsReason": "Sebab dan tempat untuk menguruskannya",
       "exclusionReasons": {
+        "bankPayeeResidency": "Pilih status pemastautin penerima bank dalam Personel > Bank & Berkanun > Maklumat Bank. Import pekerja tidak menentukannya daripada status pemastautin cukai atau kewarganegaraan.",
         "datedCalendar": "Tetapkan kalendar mengikut tarikh dalam Personel > Kehadiran > Kalendar Cuti supaya sejarah penetapan terdahulu dikekalkan. Import pekerja tidak boleh mengubah kalendar atau tarikhnya.",
         "testRecord": "Klasifikasi keselamatan dalaman ini dikekalkan. Personnel dan import pekerja tidak boleh mengubahnya.",
         "resignationDates": "Tarikh peletakan jawatan datang daripada peristiwa Pergerakan yang terpakai. Gunakan import Pergerakan atau aliran kerja peletakan jawatan.",
