@@ -1,0 +1,151 @@
+{
+  "kind": "WORKERS_PRESENTATION_REFRESH_ERROR_SOURCE_REPAIR_NOT_RUNTIME",
+  "parentCommit": "c95a8494641c0cf246edf8680fc9e90b8ef85858",
+  "sourceRef": "codex/workers-page-refresh-error-20261109",
+  "exactChangedPaths": [
+    "core/control-domains.ts",
+    "core/agent-registry/controls.ts",
+    "test/agent-registry-page-presentation.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/workers-page-presentation-source-20261109.json",
+    "docs/qualification/workers-page-refresh-error-repair-20261109.json"
+  ],
+  "finding": {
+    "independentReviewSha256": "d9e21160ba018aa0f2799144ed0de0779517a78302a61045429ef35822a87e6c",
+    "priority": "P2",
+    "cause": "The actual current entitlement result retained a prior session resolution error; snapshotOf therefore refused an otherwise successful refresh.",
+    "canonicalPattern": "core/module-presentation-read.ts: successful await, then entitlementsError:undefined."
+  },
+  "wholeParentPreimages": [
+    {
+      "path": "core/control-domains.ts",
+      "bytes": 15472,
+      "sha256": "4c5b469c3d6bd32d9220194715427ec7584b1649617c18f9e511ac7208ce970f",
+      "commit": "c95a8494641c0cf246edf8680fc9e90b8ef85858",
+      "mode": "100644",
+      "gitBlob": "dd0e398f70185e906163770a88efe6454c42ca12",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "core/agent-registry/controls.ts",
+      "bytes": 17677,
+      "sha256": "224a9277cb4da88af96da8aaf6f87cf1ebb3fe622f8e723698d38dd329ae63c9",
+      "commit": "c95a8494641c0cf246edf8680fc9e90b8ef85858",
+      "mode": "100644",
+      "gitBlob": "7ed98e3a396915a8a4d21f53ae6f4c97b26f6e25",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "test/agent-registry-page-presentation.test.ts",
+      "bytes": 29778,
+      "sha256": "820223811de86f9bd5ab0b479987e2a94b8246284384c9d66d3f84f363770276",
+      "commit": "c95a8494641c0cf246edf8680fc9e90b8ef85858",
+      "mode": "100644",
+      "gitBlob": "80d0441e47d30ff6e96f4d4eafa989019f530e76",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "bytes": 16886,
+      "sha256": "c5f10da237d9f61772f1f9278208809734b8ba0641fb88bd25190e058a88f190",
+      "commit": "c95a8494641c0cf246edf8680fc9e90b8ef85858",
+      "mode": "100644",
+      "gitBlob": "b1f079a69e9c991374115b067e3b2b169c2d5e79",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "docs/qualification/workers-page-presentation-source-20261109.json",
+      "bytes": 15846,
+      "sha256": "648d83ef5f8809512109d69a2815b735230809d902ac4fa684d0da88ed7a2cc1",
+      "commit": "c95a8494641c0cf246edf8680fc9e90b8ef85858",
+      "mode": "100644",
+      "gitBlob": "f16e54f2ddf21b6ae430c53603d4de36ca427975",
+      "wholeGitBytesVerified": true
+    }
+  ],
+  "newPathAbsentFromParent": "docs/qualification/workers-page-refresh-error-repair-20261109.json",
+  "currentPins": [
+    {
+      "path": "core/control-domains.ts",
+      "bytes": 15500,
+      "sha256": "ec8073d9c7e0bfb73278c455317ca6a72f57fc28d2923928d986cc6a686e5871"
+    },
+    {
+      "path": "core/agent-registry/controls.ts",
+      "bytes": 17705,
+      "sha256": "9b6bd7ac1e9bb013e4ca5b75f7b1bac341fbf0a523d5e00a8ac77bda7fb6b711"
+    },
+    {
+      "path": "test/agent-registry-page-presentation.test.ts",
+      "bytes": 35137,
+      "sha256": "676270adff325f68920466377cb8d4b4ac954789f525d1d9749f47777b2f22bc"
+    },
+    {
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "bytes": 18454,
+      "sha256": "c02a6fa1b9e718e55796d151c170cd70b9eba6db35d91fb486b8ca603cfbe19b"
+    },
+    {
+      "path": "docs/qualification/workers-page-presentation-source-20261109.json",
+      "bytes": 17370,
+      "sha256": "05e9e9508dbf5fe4ab37cdc799d9aafe89aff20acbb186532cb95c2630f5f0ce"
+    }
+  ],
+  "productChanges": {
+    "core/control-domains.ts": "Only workersBuiltInStatusesTx fresh result receives entitlementsError:undefined after successful await.",
+    "core/agent-registry/controls.ts": "Only workerPageContextTx returned fresh result receives entitlementsError:undefined after successful await.",
+    "exactWholeFileInverse": "Removing each sole ,entitlementsError:undefined suffix restores its whole c95a file. No imports, guards, commands or legacy RC functions change."
+  },
+  "testDisposition": {
+    "oldRegistrations": 18,
+    "oldExpandedCases": 28,
+    "allOldCallbackExpressionsWhole": true,
+    "newRegistrations": 4,
+    "newExpandedNativeCases": 5,
+    "currentRegistrations": 22,
+    "currentExpandedNativeCases": 33,
+    "newControls": [
+      "Authorized prior-error/no cached entitlements recovers exact four built-ins and independent current context attributes",
+      "Current payroll module disabled after cached-on snapshot renders moduleOff and fresh false without mutating supplied context",
+      "Foreign native carrier and revoked login still refused despite prior-error marker",
+      "Real native entitlement query undefined-table SQL failure in each owner propagates with rollback before new successful snapshot"
+    ],
+    "result": "AUTHORED_UNRUN",
+    "failureFixture": "Transaction-local search_path=pg_catalog makes the actual unqualified entitlement SELECT fail42P01; no resolver/proof mock, shared schema mutation, persistent config or catch-to-default."
+  },
+  "externalSourceEvidence": {
+    "basename": "aihr-workers-refresh-repair-source-review-20261109.json",
+    "sha256": "e230f42200ce623a947c6b8e6d0b6ac55ad94490666240e6841b303b1d357617",
+    "bytes": 6684,
+    "scope": "External Babel syntax parse, exact two whole-product inverses, all18 old registration/callback expressions and complete old test prefix after two import inverses; not execution or compiler."
+  },
+  "originalFrozenSourcePreserved": "c95a8494641c0cf246edf8680fc9e90b8ef85858",
+  "frozenWorkersCatalogueQueryPreserved": {
+    "sha256": "8ae37f8a4ff8b3edd280e7f0d2c63ee23623eee12785f0795c8838c43e365a2c",
+    "disposition": "Separate unchanged private metadata proposal; not execution or native qualification."
+  },
+  "status": {
+    "tests": "UNRUN",
+    "compiler": "UNRUN",
+    "nativeWorkersCustody": "OPEN",
+    "sourceDisclosureBinding": "OPEN",
+    "routeComposition": "OPEN",
+    "runtimeQualification": "OPEN",
+    "staging": "HELD",
+    "production": "HELD"
+  },
+  "reviewRequired": "Root plus different independent peer FULL source/data before any hosted course; original c95a findings/results stay bound to that exact source.",
+  "permissionsCommandsStopAndProvider": "No source owner changed outside two presentation refresh result literals; no new authority, provider, native SQL, migration, endpoint, cache or execution gate.",
+  "proposedHostedSelectors": [
+    "test/agent-registry-page-presentation.test.ts",
+    "test/agent-registry-workers.test.ts",
+    "test/control-tower-agreement.test.ts",
+    "test/agent-proposal.test.ts",
+    "test/ai-centre.test.ts",
+    "test/control-tower-menu.test.ts"
+  ],
+  "repositoryImportsExecuted": false,
+  "testsExecuted": false,
+  "nativeSqlExecuted": false,
+  "networkOrUploadPerformed": false
+}

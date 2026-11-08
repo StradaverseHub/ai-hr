@@ -13,9 +13,9 @@ import {recordProposal} from '../core/agent-proposal';
 import {registeredWorkers} from '../core/agent-registry/workers';
 import {listWorkers,workerDetail,listWorkersPageTx,workerDetailPageTx,type WorkerRow,type WorkerDetail} from '../core/agent-registry/views';
 import {outcomeSummary,outcomeSummaryPageTx} from '../core/agent-registry/export';
-import {workerPageSwitchesTx,setWorkerSwitch,type WorkerPageReadFacts} from '../core/agent-registry/controls';
+import {workerPageContextTx,workerPageSwitchesTx,setWorkerSwitch,type WorkerPageReadFacts} from '../core/agent-registry/controls';
 import {agentSwitchStatesTx,agentContext,ensureAgentPrincipal} from '../core/agent-principal';
-import {resolveEntitlementsTx} from '../core/entitlements';
+import {isModuleEnabled,resolveEntitlementsTx} from '../core/entitlements';
 import {assertAiPresentationPrincipalTx} from '../core/ai-principal';
 import {decodeStoredActiveAiProviderRow} from '../core/ai-provider-row';
 import {saveAiProviderConfig} from '../core/ai-config';
@@ -329,4 +329,59 @@ it('awaits a real native statement cancellation and rollback before another page
  },{readOnlySnapshot:true}).then(()=>null,(error:unknown)=>error);
  expect(pgSqlState(failure)).toBe('57014');
  expect((await page()).rows).toHaveLength(20);
+});
+
+it('recovers current built-ins and context from a real authorized session with an earlier error and no cached entitlements',async()=>{
+ const supplied:SessionContext={...group,entitlements:undefined,entitlementsError:'Fictional earlier session resolver failure'},before=JSON.stringify(supplied);
+ const result=await withTenant(supplied,async tx=>({builtIns:await workersBuiltInStatusesTx(tx,supplied,new Date()),current:await workerPageContextTx(tx,supplied)}),{readOnlySnapshot:true});
+ expect(result.builtIns).toEqual([{id:'detectors',kind:'deterministic',active:true,reasonKey:'detectorsOn'},
+  {id:'sweep',kind:'deterministic',active:false,reasonKey:'sweepNever'},
+  {id:'actions',kind:'deterministic',active:true,reasonKey:'actionsOn'},
+  {id:'autonomy',kind:'deterministic',active:false,reasonKey:'autonomyByDesign',offByDesign:true}]);
+ expect(result.current).toMatchObject({tenantId:b.tenantId,userId:b.adminUserId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}],
+  entitlements:{tenantId:b.tenantId,tenantStatus:'active',scopedModules:{}}});
+ expect(result.current.entitlementsError).toBeUndefined();expect(result.current.entitlements?.enabledModules).toEqual(expect.arrayContaining(['assistant','payroll','claims']));
+ expect(isModuleEnabled(result.current,'payroll')).toBe(true);expect(JSON.stringify(supplied)).toBe(before);
+});
+
+it('uses the actual current disabled module despite a stale enabled snapshot and earlier resolution error',async()=>{
+ const supplied:SessionContext={...group,entitlementsError:'Fictional earlier resolver failure'};expect(group.entitlements?.enabledModules).toContain('payroll');
+ await setModule(b.tenantId,'payroll',null);
+ const result=await withTenant(supplied,async tx=>({builtIns:await workersBuiltInStatusesTx(tx,supplied,new Date()),current:await workerPageContextTx(tx,supplied)}),{readOnlySnapshot:true});
+ expect(result.builtIns).toEqual([{id:'detectors',kind:'deterministic',active:false,reasonKey:'moduleOff'},
+  {id:'sweep',kind:'deterministic',active:false,reasonKey:'sweepNever'},
+  {id:'actions',kind:'deterministic',active:false,reasonKey:'moduleOff'},
+  {id:'autonomy',kind:'deterministic',active:false,reasonKey:'autonomyByDesign',offByDesign:true}]);
+ expect(result.current.entitlements?.enabledModules).not.toContain('payroll');expect(result.current.entitlementsError).toBeUndefined();expect(isModuleEnabled(result.current,'payroll')).toBe(false);
+ expect(supplied.entitlementsError).toBe('Fictional earlier resolver failure');expect(supplied.entitlements?.enabledModules).toContain('payroll');
+});
+
+it('does not turn an earlier resolution error into native authority for a foreign carrier or revoked login',async()=>{
+ const other=await seedBase(),foreign:SessionContext={...adminCtx(other),grants:[{role:'hr_admin',companyId:null}],entitlementsError:'Fictional earlier resolver failure'};
+ for(const read of [(tx:Tx)=>workersBuiltInStatusesTx(tx,foreign,new Date()),(tx:Tx)=>workerPageContextTx(tx,foreign)])
+  await expect(withTenant(group,read,{readOnlySnapshot:true})).rejects.toThrow('Current AI calling authority');
+ const revoked:SessionContext={...group,entitlements:undefined,entitlementsError:'Fictional earlier resolver failure'};
+ await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,group.userId!));
+ for(const read of [(tx:Tx)=>workersBuiltInStatusesTx(tx,revoked,new Date()),(tx:Tx)=>workerPageContextTx(tx,revoked)])
+  await expect(withTenant(revoked,read,{readOnlySnapshot:true})).rejects.toThrow('Current AI calling authority');
+ expect(revoked.entitlementsError).toBe('Fictional earlier resolver failure');expect(foreign.entitlementsError).toBe('Fictional earlier resolver failure');
+});
+
+it.each(['built-ins','context'] as const)('propagates a real entitlement query SQL failure through %s and rolls back before recovery',async purpose=>{
+ const supplied:SessionContext={...group,entitlements:undefined,entitlementsError:'Fictional earlier resolver failure'},probe=observeNativeRead();
+ let failure:unknown;
+ try{
+  failure=await withTenant(supplied,async tx=>{
+   // Native principal helpers use their pinned source paths. The entitlement owner deliberately
+   // resolves its real unqualified tables; a transaction-local path makes that actual SQL fail.
+   await tx.execute(sql`set local search_path=pg_catalog`);
+   return purpose==='built-ins'?workersBuiltInStatusesTx(tx,supplied,new Date()):workerPageContextTx(tx,supplied);
+  },{readOnlySnapshot:true}).then(()=>null,(error:unknown)=>error);
+  expect(pgSqlState(failure)).toBe('42P01');expect(probe.queries.some(q=>q.sql.includes('FROM tenant_module tm'))).toBe(true);
+  expect(probe.state).toEqual({active:0,maxActive:1});expect(probe.properties).toHaveLength(1);
+ }finally{probe.restore();}
+ expect(supplied.entitlements).toBeUndefined();expect(supplied.entitlementsError).toBe('Fictional earlier resolver failure');
+ const current=await withTenant(supplied,tx=>workerPageContextTx(tx,supplied),{readOnlySnapshot:true});
+ expect(current.entitlementsError).toBeUndefined();expect(isModuleEnabled(current,'payroll')).toBe(true);
+ expect((await withTenant(supplied,tx=>workersBuiltInStatusesTx(tx,supplied,new Date()),{readOnlySnapshot:true})).find(row=>row.id==='detectors')).toMatchObject({active:true,reasonKey:'detectorsOn'});
 });

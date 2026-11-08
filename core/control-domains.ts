@@ -296,7 +296,7 @@ export async function workersBuiltInStatusesTx(tx:Tx,supplied:SessionContext,at:
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))},now=at.getTime();
  if(!ctx.userId||ctx.agent||!isAdmin(ctx)||!Number.isFinite(now))throw new Error('Current Workers presentation authority required.');
  await assertAiPresentationPrincipalTx(tx,ctx);
- const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)},lastSweep=await latestSweepTx(tx);
+ const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId),entitlementsError:undefined},lastSweep=await latestSweepTx(tx);
  const payrollOn=isModuleEnabled(fresh,'payroll'),sweepFresh=lastSweep!=null&&now-lastSweep.getTime()<SWEEP_FRESH_DAYS*24*60*60*1000;
  return Object.freeze((['detectors','sweep','actions','autonomy'] as const).map(id=>Object.freeze({id,kind:'deterministic' as const,...builtInStatusFields(id,payrollOn,lastSweep,sweepFresh)})));
 }

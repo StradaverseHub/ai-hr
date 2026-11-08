@@ -1,7 +1,7 @@
 {
   "kind": "WORKERS_PAGE_DISPLAY_SERVICE_SOURCE_ONLY_UNQUALIFIED",
   "parentCommit": "d45829993342fcb6de225bb567668f94de898b3e",
-  "sourceRef": "codex/workers-page-presentation-20261109",
+  "sourceRef": "codex/workers-page-refresh-error-20261109",
   "exactChangedPaths": [
     "core/control-domains.ts",
     "core/control-tower.ts",
@@ -11,7 +11,8 @@
     "core/agent-registry/controls.ts",
     "test/agent-registry-page-presentation.test.ts",
     "docs/adr/2026-11-09-ai-management-section-projection.md",
-    "docs/qualification/workers-page-presentation-source-20261109.json"
+    "docs/qualification/workers-page-presentation-source-20261109.json",
+    "docs/qualification/workers-page-refresh-error-repair-20261109.json"
   ],
   "status": {
     "sourceImplementation": "AUTHORED",
@@ -105,8 +106,8 @@
   "currentPins": [
     {
       "path": "core/control-domains.ts",
-      "bytes": 15472,
-      "sha256": "4c5b469c3d6bd32d9220194715427ec7584b1649617c18f9e511ac7208ce970f"
+      "bytes": 15500,
+      "sha256": "ec8073d9c7e0bfb73278c455317ca6a72f57fc28d2923928d986cc6a686e5871"
     },
     {
       "path": "core/control-tower.ts",
@@ -130,18 +131,18 @@
     },
     {
       "path": "core/agent-registry/controls.ts",
-      "bytes": 17677,
-      "sha256": "224a9277cb4da88af96da8aaf6f87cf1ebb3fe622f8e723698d38dd329ae63c9"
+      "bytes": 17705,
+      "sha256": "9b6bd7ac1e9bb013e4ca5b75f7b1bac341fbf0a523d5e00a8ac77bda7fb6b711"
     },
     {
       "path": "test/agent-registry-page-presentation.test.ts",
-      "bytes": 29778,
-      "sha256": "820223811de86f9bd5ab0b479987e2a94b8246284384c9d66d3f84f363770276"
+      "bytes": 35137,
+      "sha256": "676270adff325f68920466377cb8d4b4ac954789f525d1d9749f47777b2f22bc"
     },
     {
       "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
-      "bytes": 16886,
-      "sha256": "c5f10da237d9f61772f1f9278208809734b8ba0641fb88bd25190e058a88f190"
+      "bytes": 18454,
+      "sha256": "c02a6fa1b9e718e55796d151c170cd70b9eba6db35d91fb486b8ca603cfbe19b"
     }
   ],
   "protectedWholeParentPins": [
@@ -315,11 +316,12 @@
     "artifactBasename": "aihr-workers-page-external-ast-review-20261109.json",
     "sha256": "de938cfc2a1f60861889f4c50d7076ee1bf6b96571e80d502b704231e5536bd8",
     "bytes": 30301,
-    "scope": "External Babel syntax/data/whole-parent inspection only. No repository module imported, no test or compiler execution."
+    "scope": "External Babel syntax/data/whole-parent inspection only. No repository module imported, no test or compiler execution.",
+    "disposition": "Historical original c95a source evidence; current repair and unchanged old callbacks are bound separately by workers-page-refresh-error-repair-20261109.json. No runtime result."
   },
   "authoredControls": {
-    "registrations": 18,
-    "expandedNativeCases": 28,
+    "registrations": 22,
+    "expandedNativeCases": 33,
     "coverage": [
       "20-worker/five-record-kind visible legacy parity",
       "actual RRRO app checkout and batch-query observation",
@@ -335,7 +337,8 @@
       "admitted snapshot versus later revocation",
       "held Access and AI Stop writers, each commit and rollback",
       "database RO, failed-query rollback and real native cancellation",
-      "mutable input capture before suspension"
+      "mutable input capture before suspension",
+      "Prior-error/no-cached snapshot recovery, independent current-off module facts, native foreign/revoked refusal and real entitlement-query SQL failure/rollback through both refreshed presentation owners"
     ],
     "result": "AUTHORED_UNRUN"
   },
@@ -390,5 +393,21 @@
     "test/control-tower-menu.test.ts"
   ],
   "mandatoryReview": "Root plus a different independent peer FULL source/data review before hosted execution. Passing prior unrelated/source-specific courses do not qualify this slice.",
-  "immutableEvidenceMethod": "Whole parent preimages use immutable exact commit/path/Git blob/mode plus SHA256 and whole-byte counts; no duplicated historical maps or new runtime Git reader/decoder."
+  "immutableEvidenceMethod": "Whole parent preimages use immutable exact commit/path/Git blob/mode plus SHA256 and whole-byte counts; no duplicated historical maps or new runtime Git reader/decoder.",
+  "currentPinDisposition": "Eight current product/test/ADR pins; this index and the repair record are excluded to avoid a content-hash cycle. The repair record independently binds the current index and its whole c95a preimage.",
+  "presentationRefreshRepair": {
+    "record": "docs/qualification/workers-page-refresh-error-repair-20261109.json",
+    "parentCommit": "c95a8494641c0cf246edf8680fc9e90b8ef85858",
+    "historicalSourceIndex": {
+      "path": "docs/qualification/workers-page-presentation-source-20261109.json",
+      "bytes": 15846,
+      "sha256": "648d83ef5f8809512109d69a2815b735230809d902ac4fa684d0da88ed7a2cc1",
+      "commit": "c95a8494641c0cf246edf8680fc9e90b8ef85858",
+      "mode": "100644",
+      "gitBlob": "f16e54f2ddf21b6ae430c53603d4de36ca427975",
+      "wholeGitBytesVerified": true
+    },
+    "result": "SOURCE_AUTHORED_UNRUN",
+    "scope": "Only the two successful actual presentation refresh results clear an earlier session error; native admission and actual refresh failure behavior remain unchanged."
+  }
 }

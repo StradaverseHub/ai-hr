@@ -66,7 +66,7 @@ export async function workerPageContextTx(tx:Tx,supplied:SessionContext):Promise
  await assertAiPresentationPrincipalTx(tx,ctx);
  const [native]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
  if(native?.allowed!==true)throw new WorkerControlRefused('not_administrator');
- return {...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};
+ return {...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId),entitlementsError:undefined};
 }
 
 /** The closed registry's switches for a display, without executing a live run gate.
