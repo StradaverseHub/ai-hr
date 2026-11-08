@@ -126,8 +126,8 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
   const scope=reviewObservationScope.parse({tenantId:ctx.tenantId,userId:ctx.userId,reviewId,action});
   const [raw]=await tx.execute(sql`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,pg_current_xact_id()::text as xid,session_user::text as login,current_database()as database`);
   const root=reviewObservationRoot.parse(raw);expect(root.database).toBe(database);signal.throwIfAborted();
-  const [actual]=await owner.client`select exists(select 1 from pg_stat_activity a join pg_locks l on l.pid=a.pid where a.pid=${root.pid} and a.backend_start=${root.started}::text::timestamptz and a.datname=${database}and a.usename='ai_hr_app'and l.locktype='transactionid'and l.granted and l.mode='ExclusiveLock'and l.transactionid=${root.xid}::text::xid8::xid)as actual,
-   exists(select 1 from app.assistant_own_leave_review where id=${scope.reviewId}::uuid and tenant_id=${scope.tenantId}::uuid and user_id=${scope.userId}::uuid and action_kind=${scope.action}and state='awaiting_confirmation')as review`;
+  const [actual]=await owner.client`select exists(select 1 from pg_stat_activity a join pg_locks l on l.pid=a.pid where a.pid=${root.pid} and a.backend_start=${root.started}::text::timestamptz and a.datname=${database} and a.usename='ai_hr_app'and l.locktype='transactionid'and l.granted and l.mode='ExclusiveLock'and l.transactionid=${root.xid}::text::xid8::xid)as actual,
+   exists(select 1 from app.assistant_own_leave_review where id=${scope.reviewId}::uuid and tenant_id=${scope.tenantId}::uuid and user_id=${scope.userId}::uuid and action_kind=${scope.action} and state='awaiting_confirmation')as review`;
   expect(actual).toEqual({actual:true,review:true});signal.throwIfAborted();
   const prior=bindings.get(reviewId);if(prior)expect(root).toEqual(prior);
   else{
@@ -169,7 +169,7 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
   // Each mismatch is a REAL other native backend identity, never a caller packet.
   for(const field of ['pid','start','xid']as const){
    signal.throwIfAborted();await controlledPolicyWait(poison).run(async()=>{
-    const changed=field==='pid'?await owner.client`update reward_policy_test_private.binding set backend_pid=pg_backend_pid()where review_id=${reviewId}::uuid returning backend_pid<>${root.pid}as distinct_identity`
+    const changed=field==='pid'?await owner.client`update reward_policy_test_private.binding set backend_pid=pg_backend_pid()where review_id=${reviewId}::uuid returning backend_pid<>${root.pid} as distinct_identity`
      :field==='start'?await owner.client`update reward_policy_test_private.binding set backend_started_at=(select backend_start from pg_stat_activity where pid=pg_backend_pid())where review_id=${reviewId}::uuid returning backend_started_at<>${root.started}::text::timestamptz as distinct_identity`
      :await owner.client`update reward_policy_test_private.binding set root_xid=pg_current_xact_id()where review_id=${reviewId}::uuid returning root_xid<>${root.xid}::text::xid8 as distinct_identity`;
     expect(Array.from(changed)).toEqual([{distinct_identity:true}]);signal.throwIfAborted();await refused(tx,signal,()=>read(tx,reviewId,action,signal));
