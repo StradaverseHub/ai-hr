@@ -893,9 +893,11 @@ export async function demographicsByNationality(
 
 async function demographicsByNationalityTx(tx:Tx,ctx:SessionContext,scopeIds:string[]|undefined,opts:{asOf:string;filters?:AnalyticsFilters},filters:AnalyticsFilters):Promise<DimensionCount[]|null> {
   if (!isAdmin(ctx)) return null;
-    // (b) DISTINCT person base: select the person id + citizenship once per person, not per employment.
+    // (b) Aggregate distinct people in the native enum bucket, retaining every
+    // original join/filter. At most three citizenships plus missing-row Unknown
+    // cross the driver; concurrent employments still count one person.
     const rows = await tx
-      .selectDistinct({ personId: person.id, citizenship: employeeStatutoryMy.epfCitizenship })
+      .select({ citizenship: employeeStatutoryMy.epfCitizenship, count: sql<string>`count(distinct ${person.id})` })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(assignment, currentAssignment)
@@ -903,8 +905,12 @@ async function demographicsByNationalityTx(tx:Tx,ctx:SessionContext,scopeIds:str
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, person.id))
       .where(
         analyticsWhere({ ...filters, lifecycleStatus: filters.lifecycleStatus ?? 'active' }, scopeIds, { asOf: opts.asOf }),
-      );
-    return tally(rows.map((r) => r.citizenship));
+      )
+      .groupBy(employeeStatutoryMy.epfCitizenship);
+    // The original DISTINCT query had no order. Preserve descending counts;
+    // equal-count bucket order remains unspecified, without a new collation.
+    return rows.map((r) => ({ name: r.citizenship ?? UNKNOWN_BUCKET, count: Number(r.count) }))
+      .sort((a, b) => b.count - a.count);
 }
 // ───────────────────────────── Leave analytics ─────────────────────────────
 // leave_ledger is tenant-scoped only (no companyId/department/costCenter), so EVERY leave aggregation
