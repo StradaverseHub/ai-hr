@@ -117,6 +117,23 @@ class BudgetModels(unittest.TestCase):
         self.assertEqual(seconds, 9)
         self.assertLessEqual(elapsed + seconds + 6 + 30, 1170)
 
+class AsciiAdmissionModels(unittest.TestCase):
+    def test_distinct_ascii_full_file_clocks_refuse_partial_future_and_cross_run_envelopes(self):
+        env = {'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '1', 'AIHR_FOCUSED_JOB_MONOTONIC_NS': '1000000000000'}
+        anchor = {'version': 1, 'run': '123', 'attempt': '1', 'job': 'selected-tests', 'bootId': 'fixed-host', 'startNs': env['AIHR_FOCUSED_JOB_MONOTONIC_NS'], 'wallTimeNs': '1800000000000000000'}
+        self.assertEqual(module.FILE_CLOCK_DIRECTORIES, {'benchmark': 'employee-choice-native-purpose', 'ascii-purpose': 'employee-choice-exact-ascii-purpose', 'ascii-plan': 'employee-choice-exact-ascii'})
+        witness = {'version': 1, 'run': '123', 'attempt': '1', 'startNs': '1060000000000'}
+        for stage in ('ascii-purpose', 'ascii-plan'):
+            seconds, elapsed = module.job_budget(stage, anchor, env, 'fixed-host', 1010)
+            self.assertEqual((seconds, elapsed), (960, 10))
+            self.assertEqual(module.check_file_clock(witness, env, 1000, 1060, seconds), 1060)
+            with self.assertRaises(ValueError):
+                module.job_budget(stage, anchor, env, 'fixed-host', 1145)
+            with self.assertRaises(ValueError):
+                module.check_file_clock(witness, env, 1000, 1060, 959)
+            with self.assertRaises(ValueError):
+                module.check_file_clock({**witness, 'run': '124'}, env, 1000, 1060, seconds)
+
 class ClosedEntryModels(unittest.TestCase):
     def test_actual_closed_main_runs_mandatory_stop_despite_initial_and_all_later_progress_failures(self):
         # Actual main/request/clock/stage/fork/reap code executes. ONLY the child
@@ -147,12 +164,12 @@ class ClosedEntryModels(unittest.TestCase):
                     module.request_command({**request, 'stage': 'benchmark'})
             with patch.dict(os.environ, env), self.assertRaises(ValueError):
                 module.request_command({**request, 'stage': 'native-controls'})
-            for selected, expected_stage, fixed_file in [([module.FILE], 'benchmark', module.FILE), ([module.CONTROL_FILE], 'native-controls', module.CONTROL_FILE), ([module.FACTORY_FILE], 'native-factory', module.FACTORY_FILE)]:
+            for selected, expected_stage, fixed_file in [([module.FILE], 'benchmark', module.FILE), ([module.CONTROL_FILE], 'native-controls', module.CONTROL_FILE), ([module.FACTORY_FILE], 'native-factory', module.FACTORY_FILE), ([module.ASCII_PURPOSE_FILE], 'ascii-purpose', module.ASCII_PURPOSE_FILE), ([module.ASCII_PLAN_FILE], 'ascii-plan', module.ASCII_PLAN_FILE)]:
                 with patch.dict(os.environ, {**env, 'AIHR_FOCUSED_TESTS': json.dumps(selected)}):
                     stage, command, _ = module.request_command({**request, 'stage': expected_stage})
                     self.assertEqual(stage, expected_stage)
                     self.assertEqual(command, ['pnpm', 'exec', 'vitest', 'run', fixed_file, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')])
-                    for other in {'benchmark', 'native-controls', 'native-factory'} - {expected_stage}:
+                    for other in {'benchmark', 'native-controls', 'native-factory', 'ascii-purpose', 'ascii-plan'} - {expected_stage}:
                         with self.assertRaises(ValueError):
                             module.request_command({**request, 'stage': other})
             for selected in [[], [module.FACTORY_FILE, module.CONTROL_FILE], [module.FACTORY_FILE, module.FACTORY_FILE], [module.FACTORY_FILE + '.extra']]:
@@ -165,6 +182,13 @@ class SharedKernelModels(unittest.TestCase):
         archive = json.loads((folder / 'owned-process-extraction.json').read_text())
         self.assertEqual(archive['base'], 'c73c8e15400890e5dfcb0d32d178929a5522ab5c')
         current = (folder / 'employee-benchmark-supervisor.py').read_text()
+        extension = json.loads((folder / 'employee-ascii-adapter-inverse.json').read_text())
+        self.assertEqual(extension['base'], '756e834dc0db88b5131547bc6d5108284201ab48')
+        self.assertEqual(hashlib.sha256(current.encode()).hexdigest(), extension['currentAdapterSha256'])
+        for change in reversed(extension['changes']):
+            self.assertEqual(current.count(change['after']), 1)
+            current = current.replace(change['after'], change['before'])
+        self.assertEqual(hashlib.sha256(current.encode()).hexdigest(), extension['priorAdapterSha256'])
         shared = (folder / 'owned-process.py').read_text()
         span = shared[shared.index('REASONS = '):]
         self.assertEqual(hashlib.sha256(span.encode()).hexdigest(), archive['extractedSpanSha256'])

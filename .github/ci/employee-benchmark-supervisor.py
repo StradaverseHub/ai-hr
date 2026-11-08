@@ -18,7 +18,10 @@ from pathlib import Path
 FILE = 'test/employee-choice-native-purpose-plan.test.ts'
 CONTROL_FILE = 'test/employee-choice-benchmark-owner-native.test.ts'
 FACTORY_FILE = 'test/employee-choice-native-owner-factory.test.ts'
-LIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10, 'evidence': 30, 'classifier': 15, 'reset': 60, 'migrate': 60, 'benchmark': 960, 'native-controls': 180, 'native-factory': 206,
+ASCII_PURPOSE_FILE = 'test/employee-choice-exact-ascii-purpose.test.ts'
+ASCII_PLAN_FILE = 'test/employee-choice-exact-ascii-plan.test.ts'
+FILE_CLOCK_DIRECTORIES = {'benchmark': 'employee-choice-native-purpose', 'ascii-purpose': 'employee-choice-exact-ascii-purpose', 'ascii-plan': 'employee-choice-exact-ascii'}
+LIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10, 'evidence': 30, 'classifier': 15, 'reset': 60, 'migrate': 60, 'benchmark': 960, 'native-controls': 180, 'native-factory': 206, 'ascii-purpose': 960, 'ascii-plan': 960,
           'stats': 10, 'logs': 10, 'inspect': 10, 'stop': 9}
 # Compile the fixed source-owned sibling bytes directly. -I/-B do not stop
 # SourceFileLoader from reading an ignored timestamp-valid .pyc.
@@ -43,13 +46,17 @@ def request_command(request):
     temp = Path(os.environ['RUNNER_TEMP']).resolve()
     require(destination.is_absolute() and destination.resolve() == destination and temp in destination.parents)
     selection = json.loads(os.environ['AIHR_FOCUSED_TESTS'])
-    require(selection in ([FILE], [CONTROL_FILE], [FACTORY_FILE]))
+    require(selection in ([FILE], [CONTROL_FILE], [FACTORY_FILE], [ASCII_PURPOSE_FILE], [ASCII_PLAN_FILE]))
     if stage == 'benchmark':
         require(selection == [FILE])
     if stage == 'native-controls':
         require(selection == [CONTROL_FILE])
     if stage == 'native-factory':
         require(selection == [FACTORY_FILE])
+    if stage == 'ascii-purpose':
+        require(selection == [ASCII_PURPOSE_FILE])
+    if stage == 'ascii-plan':
+        require(selection == [ASCII_PLAN_FILE])
     require(os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted')
     require(re.fullmatch(r'[1-9][0-9]{0,19}', os.environ['GITHUB_RUN_ID']) is not None
             and re.fullmatch(r'[1-9][0-9]{0,3}', os.environ['GITHUB_RUN_ATTEMPT']) is not None)
@@ -64,6 +71,8 @@ def request_command(request):
         'migrate': ['pnpm', 'db:migrate'],
         'native-controls': ['pnpm', 'exec', 'vitest', 'run', CONTROL_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
         'native-factory': ['pnpm', 'exec', 'vitest', 'run', FACTORY_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
+        'ascii-purpose': ['pnpm', 'exec', 'vitest', 'run', ASCII_PURPOSE_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
+        'ascii-plan': ['pnpm', 'exec', 'vitest', 'run', ASCII_PLAN_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
         'benchmark': ['pnpm', 'exec', 'vitest', 'run', FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
         'stats': ['bash', str(control / '.github/ci/postgres.sh'), 'stats'],
         'logs': ['docker', 'logs', name],
@@ -89,7 +98,10 @@ def job_budget(stage, anchor, env, boot, now):
     require(0 <= elapsed < 1170 and stage in LIMITS)
     reserve = 30 if stage == 'stop' else 45 if stage in {'git-head', 'git-status', 'git-tracked', 'evidence', 'stats', 'logs', 'inspect'} else 120
     seconds = min(LIMITS[stage], 1170 - elapsed - reserve - 6)
-    if stage == 'benchmark':
+    if stage in FILE_CLOCK_DIRECTORIES:
+        # Both ASCII files keep their OWN900s aggregate840work/60drain clock.
+        # Up to60s pre-file setup fits the fixed960s outer active ceiling;
+        # case ceilings are not additive admission or a borrowed206s factory.
         require(seconds >= 900)
     if stage == 'native-controls':
         require(seconds >= 180)
@@ -135,7 +147,7 @@ def main():
         if stage != 'stop':
             return 1
     def file_clock(started, now):
-        path = destination / 'employee-choice-native-purpose' / 'benchmark-clock.json'
+        path = destination / FILE_CLOCK_DIRECTORIES[stage] / 'benchmark-clock.json'
         try:
             fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         except FileNotFoundError:
@@ -159,7 +171,7 @@ def main():
         os.link(pending, ack, follow_symlinks=False)
         os.unlink(pending)
         return observed
-    result = supervise(argv, seconds, event, file_clock=file_clock if stage == 'benchmark' else None, mandatory=stage == 'stop')
+    result = supervise(argv, seconds, event, file_clock=file_clock if stage in FILE_CLOCK_DIRECTORIES else None, mandatory=stage == 'stop')
     return 0 if not diagnostic_failed and result['reason'] == 'complete' and result['groupQuiescent'] else 1
 
 

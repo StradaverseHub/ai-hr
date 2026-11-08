@@ -98,9 +98,9 @@ test('partial evidence failure cannot prevent mandatory cleanup or erase its ind
 });
 test('uncertain process owner permanently refuses further reset/migration/test SQL while safe stop remains available',async()=>{
  const {focusedBenchmarkStageFrontier}=await import('./focused-checks.mjs');
- for(const failed of ['benchmark','native-controls','native-factory']){
+ for(const failed of ['benchmark','native-controls','native-factory','ascii-purpose','ascii-plan']){
   const calls=[],stage=focusedBenchmarkStageFrontier(name=>{calls.push(name);return{status:name===failed?1:0};});
-  stage(failed);for(const name of ['reset','migrate','benchmark','native-controls','native-factory'])assert.throws(()=>stage(name));
+  stage(failed);for(const name of ['reset','migrate','benchmark','native-controls','native-factory','ascii-purpose','ascii-plan'])assert.throws(()=>stage(name));
   for(const name of ['evidence','stats','stop'])stage(name);assert.deepEqual(calls,[failed,'evidence','stats','stop']);
  }
 });
@@ -118,7 +118,17 @@ test('only the exact sole three-case native factory uses its own supervised rout
  for(const selected of [[],files,[employeeNativeFactoryFile,files[0]],[employeeNativeControlFile],[employeeBenchmarkFile],[employeeNativeFactoryFile+'.extra']])assert.equal(isEmployeeChoiceNativeFactory(selected),false);
  assert.equal(isEmployeeChoiceNativeControls([employeeNativeControlFile]),true);assert.equal(isEmployeeChoiceNativeControls([employeeNativeFactoryFile]),false);assert.equal(isEmployeeChoiceBenchmark([employeeNativeFactoryFile]),false);
  const workflow=readFileSync(new URL('../workflows/alpha-focused-checks.yml',import.meta.url),'utf8'),anchor=workflow.indexOf('- name: Anchor first executable focused job step'),checkout=workflow.indexOf('- uses: actions/checkout@',anchor);
- assert(anchor>=0&&checkout>anchor);assert(workflow.includes("[\"test/employee-choice-native-owner-factory.test.ts\"]' ]; then"));
- const owner=readFileSync(new URL('./focused-checks.mjs',import.meta.url),'utf8');assert(owner.includes("stage(nativeFactory?'native-factory':nativeControls?'native-controls':'benchmark'"));
+ assert(anchor>=0&&checkout>anchor);assert(workflow.includes("'[\"test/employee-choice-native-owner-factory.test.ts\"]'"));
+ const owner=readFileSync(new URL('./focused-checks.mjs',import.meta.url),'utf8');assert(owner.includes("stage(nativeFactory?'native-factory':nativeControls?'native-controls':asciiPurpose?'ascii-purpose':asciiPlan?'ascii-plan':'benchmark'"));
  assert(owner.includes('!isEmployeeChoiceNativeFactory(files)'));
+});
+
+test('ASCII purpose and plan have separate sole closed commands and mandatory cleanup, never mixed selections',async()=>{
+ const {isEmployeeChoiceAsciiPurpose,isEmployeeChoiceAsciiPlan,employeeAsciiPurposeFile,employeeAsciiPlanFile,employeeNativeFactoryFile}=await import('./focused-checks.mjs');
+ for(const [accept,file,other]of [[isEmployeeChoiceAsciiPurpose,employeeAsciiPurposeFile,employeeAsciiPlanFile],[isEmployeeChoiceAsciiPlan,employeeAsciiPlanFile,employeeAsciiPurposeFile]]){
+  assert.equal(accept([file]),true);
+  for(const selected of [[],[other],[file,other],[file,file],[file+'.extra'],[employeeBenchmarkFile],[employeeNativeFactoryFile]])assert.equal(accept(selected),false);
+ }
+ const workflow=readFileSync(new URL('../workflows/alpha-focused-checks.yml',import.meta.url),'utf8');
+ for(const file of [employeeAsciiPurposeFile,employeeAsciiPlanFile])assert(workflow.includes(`'["${file}"]'`));
 });

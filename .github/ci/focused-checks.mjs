@@ -16,6 +16,8 @@ const git = (cwd, ...args) => execFileSync('git', args, {cwd, encoding: 'utf8'})
 export const employeeBenchmarkFile='test/employee-choice-native-purpose-plan.test.ts';
 export const employeeNativeControlFile='test/employee-choice-benchmark-owner-native.test.ts';
 export const employeeNativeFactoryFile='test/employee-choice-native-owner-factory.test.ts';
+export const employeeAsciiPurposeFile='test/employee-choice-exact-ascii-purpose.test.ts';
+export const employeeAsciiPlanFile='test/employee-choice-exact-ascii-plan.test.ts';
 const benchmarkSupervisor=fileURLToPath(new URL('./employee-benchmark-supervisor.py',import.meta.url));
 const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
 const databaseKeys = ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL'];
@@ -68,10 +70,13 @@ export function isEmployeeChoiceBenchmark(files){return files.length===1&&files[
 export function isEmployeeChoiceNativeControls(files){return files.length===1&&files[0]===employeeNativeControlFile;}
 export function isEmployeeChoiceNativeFactory(files){return files.length===1&&files[0]===employeeNativeFactoryFile;}
 
+export function isEmployeeChoiceAsciiPurpose(files){return files.length===1&&files[0]===employeeAsciiPurposeFile;}
+export function isEmployeeChoiceAsciiPlan(files){return files.length===1&&files[0]===employeeAsciiPlanFile;}
+
 export function focusedBenchmarkStageFrontier(execute){
  let poisoned=false;
  return(name,options={})=>{
-  if(poisoned&&['reset','migrate','benchmark','native-controls','native-factory'].includes(name))throw Error('Uncertain benchmark owner refuses new SQL work');
+  if(poisoned&&['reset','migrate','benchmark','native-controls','native-factory','ascii-purpose','ascii-plan'].includes(name))throw Error('Uncertain benchmark owner refuses new SQL work');
   try{const result=execute(name,options);if(result.error||result.status!==0)poisoned=true;return result;}catch(error){poisoned=true;throw error;}
  };
 }
@@ -136,7 +141,7 @@ export function runFocused(destination) {
   const cwd = process.cwd(), sha = process.env.AIHR_CI_HEAD, controller = process.env.AIHR_CI_CONTROL_HEAD;
   if (!/^[0-9a-f]{40}$/.test(controller ?? '')) throw Error('Missing exact focused controller identity');
   const files = parseSelection(process.env.AIHR_FOCUSED_TESTS);
-  const benchmark=isEmployeeChoiceBenchmark(files),nativeControls=isEmployeeChoiceNativeControls(files),nativeFactory=isEmployeeChoiceNativeFactory(files),supervised=benchmark||nativeControls||nativeFactory;
+  const benchmark=isEmployeeChoiceBenchmark(files),nativeControls=isEmployeeChoiceNativeControls(files),nativeFactory=isEmployeeChoiceNativeFactory(files),asciiPurpose=isEmployeeChoiceAsciiPurpose(files),asciiPlan=isEmployeeChoiceAsciiPlan(files),supervised=benchmark||nativeControls||nativeFactory||asciiPurpose||asciiPlan;
   const dir = resolve(destination), runnerTemp = realpathSync(process.env.RUNNER_TEMP);
   if (!relative(runnerTemp, dir) || relative(runnerTemp, dir).startsWith('../') || isAbsolute(relative(runnerTemp, dir)))
     throw Error('Evidence must use an owned directory under RUNNER_TEMP');
@@ -188,7 +193,7 @@ export function runFocused(destination) {
         const args = ['exec', 'vitest', 'run'];
         if (kind === 'NODB') args.push('--config', 'vitest.nodb.config.ts');
         args.push(...selected, '--reporter=default', '--reporter=json', '--outputFile.json=' + resultPath);
-        const child = supervised?stage(nativeFactory?'native-factory':nativeControls?'native-controls':'benchmark',{stdio:'inherit',env}):spawnSync('pnpm', args, {stdio: 'inherit', env});
+        const child = supervised?stage(nativeFactory?'native-factory':nativeControls?'native-controls':asciiPurpose?'ascii-purpose':asciiPlan?'ascii-plan':'benchmark',{stdio:'inherit',env}):spawnSync('pnpm', args, {stdio: 'inherit', env});
         batch.processExitCode = child.status; batch.signal = child.signal;
         if (child.error || child.status !== 0) throw Error('Selected test process failed');
         batch.assertions = verifyFocusedResult(JSON.parse(readFileSync(resultPath, 'utf8')), selected, cwd);
@@ -236,7 +241,7 @@ export function runFocused(destination) {
 
 export function cleanupEmployeeChoiceBenchmark(destination){
   runnerOnly();
-  const files=parseSelection(process.env.AIHR_FOCUSED_TESTS);if(!isEmployeeChoiceBenchmark(files)&&!isEmployeeChoiceNativeControls(files)&&!isEmployeeChoiceNativeFactory(files))throw Error('Sole employee benchmark/control cleanup required');
+  const files=parseSelection(process.env.AIHR_FOCUSED_TESTS);if(!isEmployeeChoiceBenchmark(files)&&!isEmployeeChoiceNativeControls(files)&&!isEmployeeChoiceNativeFactory(files)&&!isEmployeeChoiceAsciiPurpose(files)&&!isEmployeeChoiceAsciiPlan(files))throw Error('Sole employee benchmark/control cleanup required');
   const dir=resolve(destination),expected=join(realpathSync(process.env.RUNNER_TEMP),'aihr-focused');
   if(dir!==expected)throw Error('Fixed benchmark cleanup evidence directory required');
   mkdirSync(dir,{recursive:true});

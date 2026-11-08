@@ -1,0 +1,40 @@
+{
+  "kind": "CLOSED_ASCII_ADAPTER_EXTENSION_SOURCE_INVERSE_NOT_QUALIFICATION",
+  "base": "756e834dc0db88b5131547bc6d5108284201ab48",
+  "priorAdapterSha256": "298dfafde539019b3a109f41475715c82200dcadd3e702d9f2b5c88cca116f96",
+  "currentAdapterSha256": "68a47dce71197e7fc1f57702cbc1dc99495ac58d5cf43243c702c82873467926",
+  "changes": [
+    {
+      "before": "FACTORY_FILE = 'test/employee-choice-native-owner-factory.test.ts'",
+      "after": "FACTORY_FILE = 'test/employee-choice-native-owner-factory.test.ts'\nASCII_PURPOSE_FILE = 'test/employee-choice-exact-ascii-purpose.test.ts'\nASCII_PLAN_FILE = 'test/employee-choice-exact-ascii-plan.test.ts'\nFILE_CLOCK_DIRECTORIES = {'benchmark': 'employee-choice-native-purpose', 'ascii-purpose': 'employee-choice-exact-ascii-purpose', 'ascii-plan': 'employee-choice-exact-ascii'}"
+    },
+    {
+      "before": "'native-factory': 206,",
+      "after": "'native-factory': 206, 'ascii-purpose': 960, 'ascii-plan': 960,"
+    },
+    {
+      "before": "require(selection in ([FILE], [CONTROL_FILE], [FACTORY_FILE]))",
+      "after": "require(selection in ([FILE], [CONTROL_FILE], [FACTORY_FILE], [ASCII_PURPOSE_FILE], [ASCII_PLAN_FILE]))"
+    },
+    {
+      "before": "    require(os.environ.get('GITHUB_ACTIONS')",
+      "after": "    if stage == 'ascii-purpose':\n        require(selection == [ASCII_PURPOSE_FILE])\n    if stage == 'ascii-plan':\n        require(selection == [ASCII_PLAN_FILE])\n    require(os.environ.get('GITHUB_ACTIONS')"
+    },
+    {
+      "before": "        'benchmark': ['pnpm'",
+      "after": "        'ascii-purpose': ['pnpm', 'exec', 'vitest', 'run', ASCII_PURPOSE_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],\n        'ascii-plan': ['pnpm', 'exec', 'vitest', 'run', ASCII_PLAN_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],\n        'benchmark': ['pnpm'"
+    },
+    {
+      "before": "    if stage == 'benchmark':\n        require(seconds >= 900)",
+      "after": "    if stage in FILE_CLOCK_DIRECTORIES:\n        # Both ASCII files keep their OWN900s aggregate840work/60drain clock.\n        # Up to60s pre-file setup fits the fixed960s outer active ceiling;\n        # case ceilings are not additive admission or a borrowed206s factory.\n        require(seconds >= 900)"
+    },
+    {
+      "before": "path = destination / 'employee-choice-native-purpose' / 'benchmark-clock.json'",
+      "after": "path = destination / FILE_CLOCK_DIRECTORIES[stage] / 'benchmark-clock.json'"
+    },
+    {
+      "before": "file_clock=file_clock if stage == 'benchmark' else None",
+      "after": "file_clock=file_clock if stage in FILE_CLOCK_DIRECTORIES else None"
+    }
+  ]
+}
