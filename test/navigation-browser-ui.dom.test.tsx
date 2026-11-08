@@ -14,7 +14,7 @@ const identity={candidateSha:'a'.repeat(40),controllerSha:'b'.repeat(40),runId:1
 type Actor=NavigationExpectedInputs['actorInputs'][number];
 function inputs(fixture=fictionalNavigationFixture()){
  const bindings=projectNavigationFixtureBindings(fixture),projected=projectNavigationExpectedInputs(bindings,plan,identity);
- return {bindings,decoded:parseNavigationExpectedInputBytes(navigationExpectedInputBytes(projected,plan),plan,projected.source)};
+ return {bindings,decoded:parseNavigationExpectedInputBytes(new Uint8Array(navigationExpectedInputBytes(projected,plan)),plan,projected.source)};
 }
 function scenario(actor:Actor,checks:NavigationCheck[],steps:NavigationScenario['steps']=[]):NavigationScenario{
  const target=actor.routeTargets[0],source=plan.scenarios.find(row=>row.role===actor.roleLabel&&row.destinationId===target.destinationId)!;
