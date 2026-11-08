@@ -1835,3 +1835,9 @@ idx2601 / when1793330002901, immediately after its owned 3300. Preparation
 extends the existing governance history. Existing reviews retain explicitly
 legacy visibility; no doer/checker history is manufactured. New annual review
 creation requires the preparation release. No live migration has been applied.
+
+The same coordinator reserves 3302_maybank_payment_arrangement at idx2602 /
+when1793330002902. A fresh full fetch and survey of 1046 journals and 686
+readable registered worktrees found no higher competing reservation than its
+owned 3301/2601/1793330002901. This adds explicit Maybank arrangement metadata
+and a separate, nullable payee banking-residency fact; no tax residency is copied.

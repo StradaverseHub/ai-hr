@@ -21,6 +21,7 @@ import { companyBankProfile } from '../db/schema';
 import { isMyBankKey, myBankLabel, disbursementFormatFor } from '../lib/my-banks';
 
 /** A bank key from the shared master (lib/my-banks.ts). Plain string — the master is the gate, not the type. */
+import {maybankPaymentSettingsSchema,type MaybankPaymentSettings} from '../lib/maybank-payment-settings';
 export type DisbursementBank = string;
 
 export type CompanyBankProfileInput = {
@@ -43,6 +44,7 @@ export type CompanyBankProfileInput = {
   fileContactPhone?:string|null;
   fileStateCode?:string|null;
   requirePayeeIdCheck?:boolean;
+  maybankPaymentSettings?:MaybankPaymentSettings|null;
 };
 
 const clean = (v: string | null | undefined): string | null => v?.trim() || null;
@@ -67,6 +69,7 @@ export async function upsertCompanyBankProfile(ctx: SessionContext, p: CompanyBa
   const currency = clean(p.currency)?.toUpperCase() ?? 'MYR';
   const isPrimary = p.isPrimary === true;
   const fields = {
+    ...(p.bank!=='maybank'?{maybankPaymentSettings:null}:p.maybankPaymentSettings!==undefined?{maybankPaymentSettings:p.maybankPaymentSettings?maybankPaymentSettingsSchema.parse(p.maybankPaymentSettings):null}:{}),
     bank: p.bank,
     corporateId,
     debitAccountNo,
@@ -128,6 +131,7 @@ export async function upsertCompanyBankProfile(ctx: SessionContext, p: CompanyBa
         companyBankProfileId: rowId,
         companyId: p.companyId,
         bank: p.bank,
+        ...(p.maybankPaymentSettings!==undefined?{maybankFileVersion:p.maybankPaymentSettings?.version??null,maybankHashArrangement:p.maybankPaymentSettings?.hashMode??null,zakatClassification:p.maybankPaymentSettings?.zakatClassification??null}:{}),
         txnType,
         currency,
         isPrimary,
@@ -197,6 +201,7 @@ const PROFILE_COLUMNS = {
   swiftCode: companyBankProfile.swiftCode,
   currency: companyBankProfile.currency,
   isPrimary: companyBankProfile.isPrimary,
+  maybankPaymentSettings:companyBankProfile.maybankPaymentSettings,
   fileContactName:companyBankProfile.fileContactName,fileContactPhone:companyBankProfile.fileContactPhone,fileStateCode:companyBankProfile.fileStateCode,requirePayeeIdCheck:companyBankProfile.requirePayeeIdCheck,
 };
 
