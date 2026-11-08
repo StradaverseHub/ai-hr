@@ -17,6 +17,7 @@ import {actualSingletonHost,provisionSingletonHost,writeSingletonBinding} from '
 
 import {candidateEnvironment,nativePreparationEnvironment} from './candidate-environment.mjs';
 import {provisionNativeNextBuild,captureNativeNextInstallation} from './native-next-build-packet.mjs';
+import {catalogueReplayMode,CATALOGUE_REPLAY_SOURCES,validateCatalogueReplayReceipt,catalogueReplayRoleHash} from './notification-catalogue-replay.mjs';
 
 // Frozen full-CI handshake v1. Diagnostic setup receipt only; never installation/release authority.
 export const FULL_CI_ROLE_HINTS=Object.freeze(['AIHR_CI_DISPOSABLE_ROLE_MODE','AIHR_CI_ROLE_UNIT','AIHR_CI_ROLE_BATCH_OFFSET','AIHR_CI_ROLE_EVIDENCE_DIR','AIHR_CI_ROLE_PLAN_FINGERPRINT']);
@@ -65,8 +66,10 @@ export function fullCiRoleMigrationEnvironment(env,binding,evidence){
  assertNoFullCiRoleHints(env);assert.equal(binding.mode,fullRoleMode);
  return {...candidateEnvironment(env),...FULL_CI_ROLE_URLS,AIHR_CI_DISPOSABLE_ROLE_MODE:fullRoleMode,AIHR_CI_ROLE_UNIT:binding.unit,AIHR_CI_ROLE_BATCH_OFFSET:String(binding.offset),AIHR_CI_ROLE_EVIDENCE_DIR:evidence,AIHR_CI_ROLE_PLAN_FINGERPRINT:binding.planFingerprint};
 }
-export function validateFullCiRoleReceipt(receipt,binding,sourceHashes){
- exactKeys(receipt,[...Object.keys(binding),'schemaVersion','kind','phase','scope',...Object.keys(fullRoleSources),'fixture']);
+/** @param {Record<string,string>|undefined} [catalogueReplaySources] */
+export function validateFullCiRoleReceipt(receipt,binding,sourceHashes,catalogueReplaySources=undefined){
+ const replay=catalogueReplayMode(binding.batchFiles);
+ exactKeys(receipt,[...Object.keys(binding),'schemaVersion','kind','phase','scope',...Object.keys(fullRoleSources),'fixture',...(replay?['catalogueReplay']:[])]);
  for(const [key,value]of Object.entries(binding))assert.deepEqual(receipt[key],value,`Role prerequisite binding differs: ${key}`);
  assert.equal(receipt.schemaVersion,1);assert.equal(receipt.kind,fullRoleKind);assert.equal(receipt.phase,'before_initial_candidate_migration');assert.equal(receipt.scope,fullRoleScope);
  for(const [key,value]of Object.entries(sourceHashes))assert.equal(receipt[key],value);
@@ -83,19 +86,21 @@ export function validateFullCiRoleReceipt(receipt,binding,sourceHashes){
  assert.deepEqual(fixture.edges,[{role:'ai_hr_app',member:'ai_hr_draft_discard_port',grantor:'postgres',inherit:true,set:false,admin:false},{role:'ai_hr_draft_discard_port',member:'ai_hr_owner',grantor:'postgres',inherit:false,set:true,admin:false}]);
  exactKeys(fixture.postgres,['versionNumber','versionText','session','current']);
  assert(Number.isSafeInteger(fixture.postgres.versionNumber)&&fixture.postgres.versionNumber>=160000&&fixture.postgres.versionNumber<170000);assert(typeof fixture.postgres.versionText==='string');assert(/^PostgreSQL 16\./.test(fixture.postgres.versionText));assert.equal(fixture.postgres.session,'postgres');assert.equal(fixture.postgres.current,'postgres');
- return {kind:receipt.kind,mode:receipt.mode,unit:receipt.unit,offset:receipt.offset,planFingerprint:receipt.planFingerprint,batchSize:receipt.batchSize,batchFiles:receipt.batchFiles,...sourceHashes,postgresVersionNumber:fixture.postgres.versionNumber,roles:names,scope:receipt.scope};
+ if(replay){validateCatalogueReplayReceipt(receipt.catalogueReplay,binding,catalogueReplaySources);assert.equal(receipt.catalogueReplay.roleCatalogSha256,catalogueReplayRoleHash({roles:fixture.roles,edges:fixture.edges}));assert.equal(receipt.catalogueReplay.session.versionNumber,fixture.postgres.versionNumber);assert.equal(receipt.catalogueReplay.session.versionText,fixture.postgres.versionText);}
+ return {kind:receipt.kind,mode:receipt.mode,unit:receipt.unit,offset:receipt.offset,planFingerprint:receipt.planFingerprint,batchSize:receipt.batchSize,batchFiles:receipt.batchFiles,...sourceHashes,postgresVersionNumber:fixture.postgres.versionNumber,roles:names,scope:receipt.scope,...(replay?{catalogueReplay:receipt.catalogueReplay}:{})};
 }
 const ownedRegularBytes=(path,maximum)=>{
  const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{assert.equal(realpathSync(`/proc/self/fd/${fd}`),resolve(path),'Role evidence descriptor escaped its canonical path');const stat=fstatSync(fd);assert(stat.isFile()&&stat.uid===process.getuid()&&stat.nlink===1&&stat.size>0&&stat.size<=maximum,'Expected bounded owned regular role evidence');const bytes=readFileSync(fd);assert.equal(bytes.length,stat.size);return bytes;}finally{closeSync(fd);}
 };
-export function readFullCiRoleReceipt(dir,binding,sourceHashes,temp){
+/** @param {Record<string,string>|undefined} [catalogueReplaySources] */
+export function readFullCiRoleReceipt(dir,binding,sourceHashes,temp,catalogueReplaySources=undefined){
  assert.equal(resolve(dir),realpathSync(dir));assert.equal(dir,join(realpathSync(temp),'aihr-ci'));
  const stat=lstatSync(dir);assert(stat.isDirectory()&&!stat.isSymbolicLink()&&stat.uid===process.getuid());
  const basename=`personnel-dd-full-role-${binding.unit}-offset-${binding.offset}.json`;
  assert(/^personnel-dd-full-role-db-(?:[1-4]|[0-9a-f]{16})-offset-[0-9]+\.json$/.test(basename));
  const bytes=ownedRegularBytes(join(dir,basename),32768),receipt=JSON.parse(bytes.toString('utf8'));
- return {...validateFullCiRoleReceipt(receipt,binding,sourceHashes),basename,sha256:createHash('sha256').update(bytes).digest('hex')};
+ return {...validateFullCiRoleReceipt(receipt,binding,sourceHashes,catalogueReplaySources),basename,sha256:createHash('sha256').update(bytes).digest('hex')};
 }
 
 // Applicability is inspected before DB reset or full-context/source-hash reads. No environment skip.
@@ -139,7 +144,8 @@ function actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatu
  const event=JSON.parse((nativeNextUnit(unit)?readProtectedNativeEvent(env):ownedRegularBytes(env.GITHUB_EVENT_PATH,1048576)).toString('utf8'));
  const layout={platform:process.platform,workspace,source,automation,temp,evidence:realpathSync(dir),cwd:realpathSync(process.cwd()),controllerScript:realpathSync(fileURLToPath(import.meta.url)),sourceHead:git(source,'rev-parse','HEAD'),controllerHead:git(automation,'rev-parse','HEAD'),sourceClean:git(source,'status','--porcelain')==='',controllerClean:git(automation,'status','--porcelain')===''};
  const binding=fullCiRoleBinding({plan,unit,offset,batchSize,files,env,resetStatus,event,layout,sourceHashes});
- return {binding,sourceHashes,env:fullCiRoleMigrationEnvironment(env,binding,dir)};
+ const catalogueReplaySources=catalogueReplayMode(files)?Object.fromEntries(Object.entries(CATALOGUE_REPLAY_SOURCES).map(([key,file])=>{const path=join(source,file);assert.equal(path,realpathSync(path));const digest=createHash('sha256').update(ownedRegularBytes(path,262144)).digest('hex');assert.equal(digest,plan.singletonSources?.[unit.id]?.[file],'Catalogue replay owner missing from complete singleton source binding');return[key,digest];})):undefined;
+ return {binding,sourceHashes,catalogueReplaySources,env:fullCiRoleMigrationEnvironment(env,binding,dir)};
 }
 
 export async function main(){
@@ -177,7 +183,7 @@ try {
       const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,reset.status):null;
       const migrate = roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});
       if(migrate.status !== 0)throw Error('CI migration failed');
-      if(roleContext)rolePrerequisites=readFullCiRoleReceipt(dir,roleContext.binding,roleContext.sourceHashes,process.env.RUNNER_TEMP);
+      if(roleContext)rolePrerequisites=readFullCiRoleReceipt(dir,roleContext.binding,roleContext.sourceHashes,process.env.RUNNER_TEMP,roleContext.catalogueReplaySources);
     }
     const args = ['exec', 'vitest', 'run'];
     if (unit.kind === 'nodb') args.push('--config', 'vitest.nodb.config.ts');

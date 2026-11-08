@@ -146,3 +146,19 @@ it('hybrid prerequisites require the exact reconstructed native unit rather than
  }
  f.env.GITHUB_JOB='test';expect(()=>inspectFullCiRoleAdmission(f.env,host)).toThrow('actual event path');
 });
+
+it('runs the closed replay owner after original role setup and before receipt/migration, refusing failure before canonical SQL',async()=>{
+ const paths={ownerSha256:'test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts',contractSha256:'.github/ci/notification-catalogue-replay.mjs'};
+ for(const failing of [false,true]){
+  const f=fullFixture();f.observed.plan.units[0].files=['test/notification-final-catalogue-baseline.test.ts'];
+  for(const path of Object.values(paths))f.texts[path]='fixed fictional replay source '+path;
+  const prepareCatalogueReplay=vi.fn(async(admission:FullCiRoleAdmission)=>{
+   f.order.push('replay');if(failing)throw Error('Fixed native allocation refusal');
+   return{version:1,kind:'NATIVE_CATALOGUE_REPLAY_PREREQUISITE_NOT_PROFILE',mode:'baseline',candidate:admission.binding.candidate,controller:admission.binding.controller,runId:admission.binding.runId,attempt:admission.binding.attempt,unit:admission.binding.unit,planFingerprint:admission.binding.planFingerprint,
+    sourceHashes:Object.fromEntries(Object.entries(paths).map(([key,path])=>[key,f.owners.fingerprint(path)])),session:{database:'postgres',pid:123,backendStart:'2026-11-08 00:00:00.123456+00',postmasterStart:'2026-11-08T00:00:00.123456Z',versionNumber:160015,versionText:'PostgreSQL 16.15 fixed pure fixture',session:'postgres',current:'postgres',loopback:true},roleCatalogSha256:'f'.repeat(64),allocation:null,objectsAbsent:true,quiescence:{sameCluster:true,ownedPresent:false,observerPid:124,observerStart:'2026-11-08 00:00:01.123456+00',observedAt:'2026-11-08 00:00:02.123456+00',postmasterStart:'2026-11-08T00:00:00.123456Z'},releaseAuthorized:false};
+  });
+  const run=()=>runCandidateMigration({focused:false,environment:f.env,migrationTarget:f.env.MIGRATION_DATABASE_URL,testMigrationTarget:f.env.TEST_MIGRATION_DATABASE_URL,arguments:[]},{...f.owners,prepareCatalogueReplay});
+  if(failing){await expect(run()).rejects.toThrow('allocation refusal');expect(f.order).toEqual(['load','guard','prepare','replay']);expect(f.owners.recordPrerequisites).not.toHaveBeenCalled();expect(f.owners.migrate).not.toHaveBeenCalled();}
+  else{expect(await run()).toBe(0);expect(f.order).toEqual(['load','guard','prepare','replay','receipt','migrate']);expect(f.owners.recordPrerequisites.mock.calls[0][0]).toHaveProperty('catalogueReplay.mode','baseline');}
+ }
+});

@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {isAbsolute,join,resolve} from 'node:path';
+import {catalogueReplayMode,CATALOGUE_REPLAY_SOURCES,validateCatalogueReplayReceipt} from '../../.github/ci/notification-catalogue-replay.mjs';
 /** Pure orchestration: no driver, helper import, connection, filesystem or process side effects.
  * The CLI supplies the actual environment and dynamically loads the strict disposable owner only
  * after focused intent. Tests inject these owners without importing provisioning code. */
@@ -19,6 +20,7 @@ export type MigrationDependencies={
  loadFocusedRoleOwner():Promise<FocusedRoleOwner>;
  fingerprint(path:string):string;
  recordPrerequisites(metadata:Readonly<Record<string,unknown>>,full?:FullCiRoleAdmission):void;
+ prepareCatalogueReplay?(admission:FullCiRoleAdmission):Promise<unknown>;
  migrate(args:readonly string[]):number;
 };
 export function focusedMigrationAdmin(target:string|undefined,testTarget:string|undefined):string{
@@ -45,7 +47,13 @@ export async function runCandidateMigration(input:{focused:boolean;environment?:
   if(owners.fingerprint(ROLE_FIXTURE_INPUT)!==admission.sourceDigests.helper)throw Error('Full CI role fixture source changed.');
   const fixture=await owner.prepareDisposableDraftDiscardRoles(admission.admin,admission.binding);
   if(!fixture||typeof fixture!=='object'||!('mode' in fixture)||fixture.mode!==FULL_CI_ROLE_MODE)throw Error('Full CI disposable prerequisites unavailable.');
-  owners.recordPrerequisites({...admission.binding,schemaVersion:1,kind:FULL_CI_ROLE_KIND,phase:'before_initial_candidate_migration',scope:FULL_CI_ROLE_SCOPE,helperSha256:admission.sourceDigests.helper,wrapperSha256:admission.sourceDigests.wrapper,orchestrationSha256:admission.sourceDigests.orchestration,fixture},admission);
+  let catalogueReplay:unknown;
+  if(catalogueReplayMode(admission.binding.batchFiles)){
+   if(!owners.prepareCatalogueReplay)throw Error('Exact catalogue replay prerequisite owner missing.');
+   const sourceHashes=Object.fromEntries(Object.entries(CATALOGUE_REPLAY_SOURCES).map(([key,path])=>[key,owners.fingerprint(path)]));
+   catalogueReplay=validateCatalogueReplayReceipt(await owners.prepareCatalogueReplay(admission),admission.binding,sourceHashes);
+  }
+  owners.recordPrerequisites({...admission.binding,schemaVersion:1,kind:FULL_CI_ROLE_KIND,phase:'before_initial_candidate_migration',scope:FULL_CI_ROLE_SCOPE,helperSha256:admission.sourceDigests.helper,wrapperSha256:admission.sourceDigests.wrapper,orchestrationSha256:admission.sourceDigests.orchestration,fixture,...(catalogueReplay?{catalogueReplay}:{})},admission);
   return owners.migrate(args);
  }
  if(input.focused){

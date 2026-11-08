@@ -156,3 +156,20 @@ test('full namespace is only absent or empty; every nonempty namespace refuses',
 test('receipt PG16 versionText requires a real string, never coercion',()=>{
  const c=roleContext(),b=fullCiRoleBinding(c),receipt=roleReceipt(c);assert.doesNotThrow(()=>validateFullCiRoleReceipt(receipt,b,c.sourceHashes));for(const value of [['PostgreSQL 16.15 on fixture'],{toString:'PostgreSQL 16.15 on fixture'},null,16,true]){const wrong=structuredClone(receipt);wrong.fixture.postgres.versionText=value;assert.throws(()=>validateFullCiRoleReceipt(wrong,b,c.sourceHashes));}
 });
+
+test('catalogue replay receipt extension is mandatory only for the two closed isolated native units',async()=>{
+ const {catalogueReplayRoleHash}=await import('./notification-catalogue-replay.mjs');
+ const context=roleContext(),ordinary=fullCiRoleBinding(context),base=roleReceipt(context),sources={ownerSha256:'1'.repeat(64),contractSha256:'2'.repeat(64)};
+ const facts={objects:[{oid:20000}],dependencies:[{objid:20000}],shared:[]};
+ for(const [file,mode]of [['test/notification-final-catalogue-baseline.test.ts','baseline'],['test/notification-final-catalogue-oid-shift.test.ts','oid-shift']]){
+  const binding={...ordinary,batchFiles:[file]},receipt={...base,...binding,catalogueReplay:{version:1,kind:'NATIVE_CATALOGUE_REPLAY_PREREQUISITE_NOT_PROFILE',mode,candidate:binding.candidate,controller:binding.controller,runId:binding.runId,attempt:binding.attempt,unit:binding.unit,planFingerprint:binding.planFingerprint,sourceHashes:sources,
+   session:{database:'postgres',pid:123,backendStart:'2026-11-08 00:00:00.123456+00',postmasterStart:'2026-11-08T00:00:00.123456Z',versionNumber:base.fixture.postgres.versionNumber,versionText:base.fixture.postgres.versionText,session:'postgres',current:'postgres',loopback:true},
+   roleCatalogSha256:catalogueReplayRoleHash({roles:base.fixture.roles,edges:base.fixture.edges}),allocation:mode==='baseline'?null:{namespaceOid:20000,enumOid:20001,enumArrayOid:20002,heapOid:20003,rowTypeOid:20004,rowArrayOid:20005,nativeRowsSha256:catalogueReplayRoleHash(facts.objects),dependenciesSha256:catalogueReplayRoleHash({dependencies:facts.dependencies,shared:facts.shared}),facts},objectsAbsent:true,quiescence:{sameCluster:true,ownedPresent:false,observerPid:124,observerStart:'2026-11-08 00:00:01.123456+00',observedAt:'2026-11-08 00:00:02.123456+00',postmasterStart:'2026-11-08T00:00:00.123456Z'},releaseAuthorized:false}};
+  assert.doesNotThrow(()=>validateFullCiRoleReceipt(receipt,binding,context.sourceHashes,sources));
+  assert.throws(()=>validateFullCiRoleReceipt(receipt,binding,context.sourceHashes));
+  for(const mutate of [x=>delete x.catalogueReplay,x=>x.catalogueReplay.sourceHashes.ownerSha256='0'.repeat(64),x=>x.catalogueReplay.roleCatalogSha256='0'.repeat(64),x=>x.catalogueReplay.session.versionNumber++,x=>x.catalogueReplay.session.database='ai_hr_dev',x=>x.catalogueReplay.objectsAbsent=false,x=>x.catalogueReplay.extra=true]){
+   const changed=structuredClone(receipt);mutate(changed);assert.throws(()=>validateFullCiRoleReceipt(changed,binding,context.sourceHashes,sources));
+  }
+  assert.throws(()=>validateFullCiRoleReceipt({...base,catalogueReplay:receipt.catalogueReplay},ordinary,context.sourceHashes,sources));
+ }
+});
