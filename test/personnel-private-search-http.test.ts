@@ -8,7 +8,7 @@ beforeEach(()=>{create.mockReset();create.mockResolvedValue('a'.repeat(43));});
 const request=(body:string,origin='https://fixture.invalid')=>new Request('https://fixture.invalid/admin/personnel/search',{method:'POST',headers:{origin,host:'fixture.invalid','content-type':'application/x-www-form-urlencoded'},body});
 it('posts all text privately, returns only opaque membership and validated ordinary filters',async()=>{
  const raw='FICTIONAL-PASSPORT-4321',body=new URLSearchParams({term:raw,companies:scope.company,grade:'12',joinedFrom:'2026-01-01'});
- const response=await POST(request(body.toString()));expect(response.status).toBe(303);expect(create).toHaveBeenCalledWith(scope.ctx,{text:raw,companyIds:[scope.company]});
+ const response=await POST(request(body.toString()));expect(response.status).toBe(303);expect(create).toHaveBeenCalledWith(scope.ctx,{text:raw,companyIds:[scope.company],columnFilters:[],previousToken:undefined});
  const location=response.headers.get('location')!;expect(location).not.toContain(raw);expect(location).toContain('search='+('a'.repeat(43)));expect(location).toContain('grade=12');expect(response.headers.get('cache-control')).toBe('private, no-store');expect(await response.text()).not.toContain(raw);
 });
 it('rejects cross-origin and oversized bodies before accessing native search',async()=>{
@@ -18,4 +18,12 @@ it('rejects cross-origin and oversized bodies before accessing native search',as
 it('never echoes an underlying source failure or supplied search text',async()=>{
  create.mockRejectedValue(new Error('private backend sentinel'));const response=await POST(request('term=private-input-sentinel'));
  expect(response.status).toBe(400);expect(await response.text()).toBe('Search unavailable. Try again.');
+});
+
+it('keeps column filter text out of the redirect and passes conjunctive filters to the private owner',async()=>{
+ const raw='PRIVATE-FICTIONAL-EMPLOYEE';const form=new URLSearchParams({'field.name':raw,'field.employment.contractStartDate':'2026-01-01','operator.employment.contractStartDate':'from',sort:'joinDate',direction:'desc'});
+ const response=await POST(request(form.toString()));expect(response.status).toBe(303);expect(response.headers.get('location')).not.toContain(raw);expect(response.headers.get('location')).toContain('sort=joinDate');expect(create.mock.calls[0][1].columnFilters).toEqual([{field:'name',operator:'contains',value:raw},{field:'employment.contractStartDate',operator:'from',value:'2026-01-01'}]);
+});
+it('ordinary filters do not create private membership and untrusted search text never enters the URL',async()=>{
+ const response=await POST(request('companies='+scope.company+'&search=private-text'));expect(response.status).toBe(303);expect(response.headers.get('location')).not.toContain('private-text');expect(create).not.toHaveBeenCalled();
 });

@@ -9,7 +9,7 @@ import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-sc
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
 afterEach(cleanup);
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',c='33333333-3333-4333-8333-333333333333';
-it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s renders one private employee search, scoped three-level company tree, removable chips and full BU names',async locale=>{
+it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s renders one private employee search, independent company selection, removable chips and full BU names',async locale=>{
  const messages=catalogues[locale],copy=messages.personnelOrganisationFilters,base=messages.people.list;
  const longUnit=copy.businessUnit+' · Fictional shared manufacturing and property services organisation';
  const companies=[{id:a,name:'Fictional Company One',parentCompanyId:'root',parentCompany:'Fictional Group',businessGroupId:'root',businessGroup:'Fictional Group',businessUnitId:'unit',businessUnit:longUnit},{id:b,name:'Fictional Company Two',parentCompanyId:'root',parentCompany:'Fictional Group',businessGroupId:'root',businessGroup:'Fictional Group',businessUnitId:'unit',businessUnit:longUnit},{id:c,name:'Fictional Other Group Company',parentCompanyId:null,parentCompany:null,businessGroupId:'other',businessGroup:'Fictional Other Group',businessUnitId:null,businessUnit:null}];
@@ -20,10 +20,10 @@ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s renders one 
  expect(view.container.querySelectorAll('input[name="term"]')).toHaveLength(1);expect(view.container.querySelector('form[action="/admin/personnel/search"]')).toHaveAttribute('method','post');
  fireEvent.change(screen.getByRole('searchbox',{name:copy.search}),{target:{value:'FICTIONAL-PASSPORT-123'}});expect(screen.getByRole('link',{name:copy.shareView}).getAttribute('href')).not.toContain('PASSPORT');expect(screen.getByRole('link',{name:copy.shareView}).getAttribute('href')).not.toContain('search=');
  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'personnel-organisation-results','Actual Personnel private-search and full Business Unit cell components; fictional records; no authenticated staging acceptance','atelier');
- fireEvent.click(screen.getByText(base.filter));await waitFor(()=>expect(document.querySelector('form[action="/admin/personnel"]')).not.toBeNull());
- const form=document.querySelector<HTMLFormElement>('form[action="/admin/personnel"]')!,group=form.querySelector<HTMLDetailsElement>('[data-company-group="root"]')!;group.open=true;
- fireEvent.click(within(group).getByRole('button',{name:copy.selectAll}));expect(new FormData(form).getAll('companies').sort()).toEqual([a,b]);
- fireEvent.change(screen.getByRole('searchbox',{name:copy.companySearch}),{target:{value:'Company One'}});expect(new FormData(form).getAll('companies').sort()).toEqual([a,b]);
+ fireEvent.click(screen.getByText(base.filter));await waitFor(()=>expect(document.querySelector('[role="dialog"] form')).not.toBeNull());
+ const form=document.querySelector<HTMLFormElement>('[role="dialog"] form')!;expect(form).toHaveAttribute('method','post');expect(form.querySelector('[data-company-group]')).toBeNull();
+ fireEvent.click(within(form).getByRole('button',{name:copy.selectAll}));expect(new FormData(form).getAll('companies').sort()).toEqual([a,b,c]);
+ fireEvent.change(screen.getByRole('searchbox',{name:copy.companySearch}),{target:{value:'Company One'}});expect(new FormData(form).getAll('companies').sort()).toEqual([a,b,c]);
  fireEvent.change(screen.getByRole('searchbox',{name:copy.companySearch}),{target:{value:''}});
  for(const details of form.querySelectorAll('details'))details.open=true;
  expect(screen.getByText(longUnit,{selector:'span[title]'})).toHaveAttribute('title',longUnit);

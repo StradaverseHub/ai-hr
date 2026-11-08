@@ -822,7 +822,29 @@
       "exportAria": "Eksport senarai pekerja yang ditapis ke Excel",
       "exportTitle": "Pekerja",
       "rejectReasonPlaceholder": "Sebab penolakan (wajib)",
-      "childReliefReview": "Semakan pelepasan anak"
+      "childReliefReview": "Semakan pelepasan anak",
+      "controls": {
+        "applyColumns": "Terapkan penapis lajur",
+        "clear": "Kosongkan penapis",
+        "filter": "Tapis",
+        "filterColumn": "Tapis {name}",
+        "moveColumn": "Alih {name}",
+        "moveHint": "Seret pemegang lajur, atau fokus padanya dan gunakan anak panah Kiri/Kanan.",
+        "saveFailed": "Susunan lajur tidak dapat disimpan. Cuba lagi.",
+        "employmentFields": "Medan pekerjaan",
+        "employeeDetails": "ID pekerja, nama, e-mel atau IC / pasport yang dibenarkan",
+        "contains": "Mengandungi",
+        "equals": "Sama dengan",
+        "from": "Pada atau selepas / sekurang-kurangnya",
+        "to": "Pada atau sebelum / paling banyak",
+        "blank": "Kosong / tidak ditetapkan",
+        "notBlank": "Mempunyai nilai",
+        "operation": "Operasi penapis untuk {name}",
+        "privateHint": "Teks kekal peribadi. Penapis peribadi tamat selepas lima minit; tambah kriteria untuk mengecilkan hasil, atau kosongkan untuk bermula semula.",
+        "currentFieldsHint": "Medan pekerjaan semasa sahaja. Sejarah, delegasi dan rekod berulang menggunakan skrin khusus. Draf disembunyikan semasa penapis peribadi atau pekerjaan aktif.",
+        "privateActive": "Penapis peribadi aktif",
+        "privateExpired": "Penapis peribadi tamat atau tidak tersedia. Terapkan semula."
+      }
     },
     "switcher": {
       "ariaLabel": "Cari pekerja",

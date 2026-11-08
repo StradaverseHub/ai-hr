@@ -5027,6 +5027,13 @@
       "when": 1793330003400,
       "tag": "3800_attendance_workflow_lifecycle_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 3101,
+      "version": "7",
+      "when": 1793330003401,
+      "tag": "3801_personnel_employment_filter_projection",
+      "breakpoints": true
     }
   ]
 }

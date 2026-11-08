@@ -141,3 +141,25 @@ it('retains unpaginated totals, status counts and company choices past the last 
   expect(pastEnd.headcount.total).toBe(1);
   expect(pastEnd.organisationChoices.companies.map(company => company.id)).toContain(b.companyId);
 });
+it('sorts the full matching population by typed dates before pagination, with ID ties and nulls last',async()=>{
+ const older=await hire('Z Older',{hiredOn:'2020-01-01'}),newer=await hire('A Newer',{hiredOn:'2024-01-01'});
+ await owner.db.update(s.employment).set({joinDate:'2020-02-01'}).where(eq(s.employment.id,older.employmentId));await owner.db.update(s.employment).set({joinDate:'2024-03-01'}).where(eq(s.employment.id,newer.employmentId));
+ expect((await list({columnSort:'joinDate',sortDirection:'asc',limit:1,offset:0})).rows.map(row=>row.employmentId)).toEqual([older.employmentId]);
+ expect((await list({columnSort:'joinDate',sortDirection:'desc',limit:1,offset:0})).rows.map(row=>row.employmentId)).toEqual([newer.employmentId]);
+ expect((await list({columnSort:'joinDate',sortDirection:'asc',limit:1,offset:1})).rows.map(row=>row.employmentId)).toEqual([newer.employmentId]);
+});
+it('privately combines column and Employment facts and invalidates membership after assignment changes',async()=>{
+ const employee=await hire('Column Filter Fixture');await hire('Unrelated employee');await owner.db.update(s.employment).set({probationValue:12,orgDivision:'Fictional Division'}).where(eq(s.employment.id,employee.employmentId));
+ const token=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:[b.companyId],columnFilters:[{field:'name',operator:'contains',value:'Column Filter'},{field:'employment.probationValue',operator:'from',value:'10'},{field:'employment.orgDivision',operator:'equals',value:'Fictional Division'}]});
+ expect((await list({privateSearch:token})).rows.map(row=>row.employmentId)).toEqual([employee.employmentId]);
+ const stored=await owner.withTenant(ctx,tx=>tx.execute<{matches:unknown}>(sql`select matches from personnel_private_search where token_hash=${privateSearchHash(token)}`));expect(JSON.stringify(stored)).not.toContain('Fictional Division');expect(JSON.stringify(stored)).not.toContain('Column Filter');
+ await setEmploymentAssignment(ctx,{employmentId:employee.employmentId,effectiveDate:'2026-01-01',departmentId:b.deptB});expect((await list({privateSearch:token})).total).toBe(0);
+});
+it('retains identity permission provenance when another column filter narrows an identity result',async()=>{
+ const employee=await hire('Identity provenance');await identity(employee.personId,'800202-02-3456');
+ const first=await createPersonnelPrivateSearch(ctx,{text:'800202-02-3456',companyIds:[b.companyId]});
+ const narrowed=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:[b.companyId],previousToken:first,columnFilters:[{field:'name',operator:'contains',value:'Identity'}]});
+ expect((await list({privateSearch:narrowed})).total).toBe(1);
+ await owner.db.insert(s.payrollPermissionGrant).values({tenantId:b.tenantId,companyId:b.companyId,role:'hr_admin',permissionKey:'report.read.identity',allowed:false});
+ expect((await list({privateSearch:narrowed})).total).toBe(0);
+});

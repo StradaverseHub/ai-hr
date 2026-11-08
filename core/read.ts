@@ -1,3 +1,5 @@
+import {PERSONNEL_COLUMN_SOURCES,PERSONNEL_DATE_COLUMNS} from '../lib/personnel-list-controls';
+import {isEmployeeColumnKey,type EmployeeColumnKey} from '../lib/employee-columns';
 import {privateSearchHash} from './personnel-private-search';
 import {personnelDuplicateIdsTx,type PersonnelQualityFlag} from './personnel-quality';
 import {payrollEmploymentPredicate,payrollCompensationEffectiveOn,payrollRunContextsTx,outstandingPaymentPredicate,payrollEmploymentEnd} from '../packs/payroll/service';
@@ -382,6 +384,7 @@ export type EmployeeListFilters = {
   qualityFlags?: PersonnelQualityFlag[];
   /** Opaque, principal-bound five-minute result membership; never raw identity text. */
   privateSearch?: string;
+  columnSort?: EmployeeColumnKey; sortDirection?: 'asc'|'desc';
 };
 
 /** The current-assignment join (≤1 row per employment) — shared by every employee-listing query so the
@@ -425,7 +428,7 @@ function employeeListWhere(p: EmployeeListFilters, c: EmployeeListColumns = empl
 /** The JSON owner declares every field. Query expressions are fixed server source, never a caller's
  * field/table selector. Reuse the exact status/filter owner above; no second interpretation in SQL. */
 const workforceListSource = sql`app.access_workforce_list_rows() as workforce_row(value)`;
-const personnelListSource = (companyIds?:string[],asOf=todayInKualaLumpur()) => sql`app.personnel_filter_rows(${asOf}::date,${companyIds?sql`ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`}) as workforce_row(value)`;
+const personnelListSource = (companyIds?:string[],asOf=todayInKualaLumpur()) => sql`app.personnel_list_rows(${asOf}::date,${companyIds?sql`ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`}) as workforce_row(value)`;
 const workforceListValue = <T>(key: string): SQL<T> => sql<T>`workforce_row.value ->> ${key}`;
 const workforceListDate = (key: string) => sql<string | null>`(${workforceListValue(key)})::date`;
 const workforceListUuid = (key: string) => sql<string>`(${workforceListValue(key)})::uuid`;
@@ -456,7 +459,7 @@ const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns
    p.probationEndFrom?gte(workforceListDate('probationEndDate'),p.probationEndFrom):undefined,
    p.probationEndTo?lte(workforceListDate('probationEndDate'),p.probationEndTo):undefined,
    p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>flag==='suspected_duplicate'?(duplicateIds.length?inArray(workforceListUuid('employmentId'),[...duplicateIds]):sql`false`):sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
-   p.privateSearch?sql`app.personnel_private_search_matches(${privateSearchHash(p.privateSearch)??''},${workforceListUuid('employmentId')},${columns.companyId},${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`})`:undefined);
+   p.privateSearch?sql`app.personnel_column_search_matches(${privateSearchHash(p.privateSearch)??''},${workforceListUuid('employmentId')},${columns.companyId},${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`},${workforceListValue('filterRevision')})`:undefined);
 
 export type PersonnelCompanyChoice = {
   id: string; name: string; parentCompanyId: string | null; parentCompany: string | null;
@@ -502,10 +505,9 @@ async function workforcePersonnelPageTx(
     ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf })
     : [];
   const filters = workforceListWhere(input, columns, duplicateIds);
-  const sort = input.sort === 'company'
-    ? [sql`lower(${workforceListValue('company')})`, sql`lower(${columns.name})`]
-    : [columns.name];
-  const order = sql.join([...sort, workforceListUuid('employmentId')], sql`, `);
+  const key=isEmployeeColumnKey(input.columnSort)?input.columnSort:undefined;
+  const sortValue=key==='status'?columns.status:key&&PERSONNEL_DATE_COLUMNS.has(key)?workforceListDate(PERSONNEL_COLUMN_SOURCES[key]):key?sql`lower(${workforceListValue(PERSONNEL_COLUMN_SOURCES[key])})`:input.sort==='company'?sql`lower(${workforceListValue('company')})`:sql`lower(${columns.name})`;
+  const order=sql.join([sql`${sortValue} ${input.sortDirection==='desc'?sql`desc`:sql`asc`} nulls last`,workforceListUuid('employmentId')],sql`, `);
   // The projection evaluates dated organisation and access policy for every admitted employee.
   // Evaluate it once even when the requested page is empty. The count is independent of pagination.
   const source = sql`personnel_source as workforce_row`;

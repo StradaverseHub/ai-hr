@@ -822,7 +822,29 @@
       "exportAria": "将筛选后的员工列表导出为 Excel",
       "exportTitle": "员工",
       "rejectReasonPlaceholder": "拒绝理由（必填）",
-      "childReliefReview": "子女税务减免检视"
+      "childReliefReview": "子女税务减免检视",
+      "controls": {
+        "applyColumns": "应用列筛选",
+        "clear": "清除筛选",
+        "filter": "筛选",
+        "filterColumn": "筛选{name}",
+        "moveColumn": "移动{name}",
+        "moveHint": "拖动列手柄，或聚焦手柄后使用左右方向键移动。",
+        "saveFailed": "无法保存列顺序。请重试。",
+        "employmentFields": "雇佣字段",
+        "employeeDetails": "员工编号、姓名、邮箱或获准查看的身份证 / 护照",
+        "contains": "包含",
+        "equals": "等于",
+        "from": "不早于 / 至少",
+        "to": "不晚于 / 至多",
+        "blank": "空白 / 未分配",
+        "notBlank": "已有值",
+        "operation": "{name}的筛选方式",
+        "privateHint": "文本保持私密。私密筛选五分钟后到期；添加条件可缩小结果，清除后可重新开始。",
+        "currentFieldsHint": "仅包含当前雇佣字段。历史、委托和重复记录请使用专用页面。使用私密或仅适用于雇佣的筛选时，草稿会隐藏。",
+        "privateActive": "私密筛选已启用",
+        "privateExpired": "私密筛选已到期或不可用。请重新应用。"
+      }
     },
     "switcher": {
       "ariaLabel": "搜索员工",

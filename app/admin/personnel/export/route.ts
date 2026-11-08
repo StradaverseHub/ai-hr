@@ -84,7 +84,7 @@ async function exportPersonnel(req: Request) {
   const url = new URL(req.url);
   const sp = url.searchParams;
   const params: PersonnelSearchParams = {};
-  for(const key of ['q','company','companies','dept','status','type','bucket','cols','bu','parent','group','grade','position','quality','confirmation','joinedFrom','joinedTo','probationFrom','probationTo','search'] as const){const values=sp.getAll(key).map(value=>value.trim()).filter(Boolean);if(values.length)Object.assign(params,{[key]:['companies','bu','parent','group','grade','position','quality'].includes(key)&&values.length>1?values:values[0]});}
+  for(const key of ['q','company','companies','dept','status','type','bucket','cols','bu','parent','group','grade','position','quality','confirmation','joinedFrom','joinedTo','probationFrom','probationTo','search','sort','direction'] as const){const values=sp.getAll(key).map(value=>value.trim()).filter(Boolean);if(values.length)Object.assign(params,{[key]:['companies','bu','parent','group','grade','position','quality'].includes(key)&&values.length>1?values:values[0]});}
   const query = parsePersonnelListQuery(params);
   // xlsx is this item's default — the reporter asked for Excel by name. `format=csv` stays available
   // because the neutral report shape gets it for free and some downstream tools prefer it.

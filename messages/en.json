@@ -822,7 +822,29 @@
       "exportAria": "Export the filtered employee list to Excel",
       "exportTitle": "Employees",
       "rejectReasonPlaceholder": "Reason for rejecting (required)",
-      "childReliefReview": "Child relief review"
+      "childReliefReview": "Child relief review",
+      "controls": {
+        "applyColumns": "Apply column filters",
+        "clear": "Clear filters",
+        "filter": "Filter",
+        "filterColumn": "Filter {name}",
+        "moveColumn": "Move {name}",
+        "moveHint": "Drag a column handle, or focus it and use Left/Right arrows to move it.",
+        "saveFailed": "Could not save the column order. Try again.",
+        "employmentFields": "Employment fields",
+        "employeeDetails": "Employee ID, name, email or permitted IC / passport",
+        "contains": "Contains",
+        "equals": "Equals",
+        "from": "On or after / at least",
+        "to": "On or before / at most",
+        "blank": "Blank / unassigned",
+        "notBlank": "Has a value",
+        "operation": "Filter operation for {name}",
+        "privateHint": "Text stays private. Active private filters expire after five minutes; add criteria to narrow them, or clear to start again.",
+        "currentFieldsHint": "Current Employment fields only. History, delegations and repeated records use their dedicated screens. Drafts are hidden while private or Employment-only filters are active.",
+        "privateActive": "Private filters active",
+        "privateExpired": "Private filters expired or unavailable. Apply them again."
+      }
     },
     "switcher": {
       "ariaLabel": "Search employee",

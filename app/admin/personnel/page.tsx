@@ -1,3 +1,7 @@
+import {PersonnelListTable} from './list-table';
+import {PERSONNEL_EMPLOYMENT_FILTERS} from '@/lib/personnel-list-employment-fields';
+import {personnelFieldLabel} from '@/lib/personnel-field-label';
+import {PERSONNEL_FIELDS} from '@/lib/personnel-field-registry';
 import {ResponsiveActions} from '@/components/responsive-actions';
 import {personnelPrivateSearchAvailable} from '@/core/personnel-private-search';
 import { ExportDownloadLink } from '@/components/export-download-link';
@@ -31,8 +35,8 @@ import {
 } from '@/lib/employee-columns';
 import { resetEmployeeColumnsAction, saveEmployeeColumnsAction } from './column-actions';
 import { ColumnPicker } from './column-picker';
-import { DraftRow, draftRowHref } from './draft-row';
-import { EmployeeRow, employeeRowHref } from './employee-row';
+import { draftRowHref } from './draft-row';
+import { employeeRowHref } from './employee-row';
 import { employmentPhotoIds } from '@/core/person-photo';
 // 034a5080 — the Create New Employee prompt over this list. Same four-question body the standalone route
 // renders, so it needs the same Employee ID rule resolution the route's page performs.
@@ -50,7 +54,7 @@ import {
   type PersonnelSearchParams,
 } from './list-query';
 // Approved9c6b06d4: one private list search and hierarchy-aware filters; profile switchers stay on profiles.
-import {PersonnelOrganisationFilters,PersonnelPrivateSearch} from './organisation-filters';
+import {PersonnelOrganisationFilters} from './organisation-filters';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -178,6 +182,8 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   ]);
 
   const columns = savedColumns.selected;
+  const allLabels=await getTranslations();
+  const employmentFilterFields=scopeIds.every(id=>maintainIds.has(id))?PERSONNEL_EMPLOYMENT_FILTERS.map(f=>({...f,label:personnelFieldLabel(PERSONNEL_FIELDS.find(d=>d.tab==='Employment'&&d.owner==='employment'&&d.ownerField===f.key)!, (key,fallback)=>allLabels.has(key)?allLabels(key):fallback)})):[];
 
   // What crosses into the prompt is PLAIN DATA (booleans, strings, numbers and a pre-formatted sample
   // code) for the reason app/admin/personnel/new/page.tsx spells out at length: both the prompt and its
@@ -326,9 +332,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
     label: t(COLUMN_LABEL_KEY[key]),
     mandatory: MANDATORY_EMPLOYEE_COLUMNS.includes(key),
   }));
-  const absentNote = t('columnsAbsent', {
-    fields: UNAVAILABLE_EMPLOYEE_FIELDS.map((f) => t(ABSENT_LABEL_KEY[f])).join(', '),
-  });
+  const absentNote = ''; // Stored Employment labels now have their own filter controls.
 
   // The Export link carries the SCREEN's resolved columns, not just the filters, so the file cannot
   // disagree with the table even if the preference changes in another tab between the two requests.
@@ -374,7 +378,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
           // group `shrink-0` — without wrapping, a narrow window would scroll the PAGE sideways rather
           // than stacking the controls, which is the one thing a full-width change must not introduce.
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
+            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} employmentFields={employmentFilterFields} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             {canCreate && (
               <CreateEmployeeDialog
                 triggerLabel={t('createNewEmployee')}
@@ -437,7 +441,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
         }
       />
 
-      <PersonnelPrivateSearch key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} parameters={[...personnelQueryParams(sp)]} active={!!query.filters.privateSearch} labels={{label:to('search'),placeholder:to('searchPlaceholder'),submit:to('searchButton'),privateHint:to('privateHint'),active:to(searchAvailable?'privateActive':'privateUnavailable'),clear:to('clearSearch'),share:to('shareView')}}/>
+
 
       {/* Point 5 + 6 — the headcount summary, and every card a one-click narrowing. */}
       <div
@@ -480,6 +484,8 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
         labels={filterLabels}
       />
 
+      {query.filters.privateSearch&&<p role="status" className="text-sm text-muted-foreground">{t(searchAvailable?'controls.privateActive':'controls.privateExpired')}</p>}
+
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
           {error}
@@ -488,84 +494,13 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
 
       <Card className="overflow-hidden" data-tour="people-table">
         {pager}
-        {/* The table can now carry up to sixteen columns, so it scrolls INSIDE its card rather than
-            pushing the page sideways — the same rule the full-width change (c002b3c3) was careful about. */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                {columns.map((key) => (
-                  <th key={key} scope="col" data-column={key} className="whitespace-nowrap px-4 py-3 font-medium">
-                    {t(COLUMN_LABEL_KEY[key])}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {/* DRAFTS FIRST (item 06f0cb8f). Same columns as everyone else — the reporter's own example
-                  table is Employee ID / Employee Name / Company / Status — so a Draft reads as what it is:
-                  a place in the list with a number held for it.
+        <PersonnelListTable columns={columns} allOrder={savedColumns.order} columnOptions={{company:companies.map(c=>({value:c.id,label:c.name})),department:departments.map(d=>({value:d.id,label:d.label||d.name})),position:uniqueOptions(organisationChoices.rows.map(row=>({value:row.positionId,label:row.position}))),businessUnit:uniqueOptions(organisationChoices.rows.map(row=>({value:row.businessUnitId,label:row.businessUnit}))),employmentType:EMPLOYMENT_TYPES.map(et=>({value:et.value,label:t(et.labelKey)})),status:EMPLOYEE_STATUS_BUCKETS.map(value=>({value,label:tStatus(value)}))}}
+          labels={Object.fromEntries(Object.entries(COLUMN_LABEL_KEY).map(([key,label])=>[key,t(label)])) as Record<EmployeeColumnKey,string>}
+          parameters={[...personnelQueryParams(sp)]} sort={query.filters.columnSort} direction={query.filters.sortDirection}
+          employees={employees.map(e=>{const st=deriveEmploymentStatus(e,today);return {employmentId:e.employmentId,name:e.name,email:e.email,employeeCode:e.employeeCode,status:st,statusLabel:tStatus(st),text:Object.fromEntries(columns.map(key=>[key,textCell(e,key)])),photoPersonId:photoIds.get(e.employmentId)??null};})}
+          drafts={drafts.map(d=>({draftId:d.id,label:d.label||t('draftUntitled'),avatarName:d.label||'?',subtitle:d.missing.length?t('draftMissing',{count:d.missing.length}):t('draftReady'),reservedEmployeeCode:d.reservedEmployeeCode,companyName:d.companyName??t('draftNoCompany'),statusLabel:t('statusDraft')}))}
+          empty={q?t('emptySearch',{q}):hasFilters?t('emptyFiltered'):t('emptyNoEmployeesAdmin')}/>
 
-                  420ebab5 — and it is clickable across its whole width like every other row here, because
-                  it IS one of the rows the reporter was looking at. The destination differs (the form that
-                  finishes the draft, not a profile that does not exist yet) and the row says so twice, in
-                  the Draft chip and the sub-line under the name. Every string is resolved here: <DraftRow>
-                  owns no translator, exactly like <EmployeeRow>. */}
-              {drafts.map((d) => (
-                <DraftRow
-                  key={d.id}
-                  draftId={d.id}
-                  label={d.label || t('draftUntitled')}
-                  avatarName={d.label || '?'}
-                  subtitle={
-                    d.missing.length > 0 ? t('draftMissing', { count: d.missing.length }) : t('draftReady')
-                  }
-                  reservedEmployeeCode={d.reservedEmployeeCode}
-                  companyName={d.companyName ?? t('draftNoCompany')}
-                  statusLabel={t('statusDraft')}
-                  columns={columns}
-                />
-              ))}
-              {/* 420ebab5 — THE WHOLE ROW OPENS THE EMPLOYEE. The row carried the hover tint and nothing
-                  else: only the name was a link, so it looked clickable and was not. The markup moved into
-                  <EmployeeRow>, which is the one place the stretched-link idiom is spelled and explains
-                  itself there — and it had to move to be TESTABLE at all, because this page is an async
-                  server component that reads the database before it renders a single row.
-
-                  Everything the row shows is still resolved HERE and handed over as plain text: the
-                  component owns no translator, no clock and no column catalogue of its own, so this table
-                  and the Excel export keep printing the same projection. */}
-              {employees.map((e) => {
-                const st = deriveEmploymentStatus(e, today);
-                const text: Partial<Record<EmployeeColumnKey, string | null>> = {};
-                for (const key of columns) text[key] = textCell(e, key);
-                return (
-                  <EmployeeRow
-                    key={e.employmentId}
-                    employmentId={e.employmentId}
-                    name={e.name}
-                    email={e.email}
-                    employeeCode={e.employeeCode}
-                    status={st}
-                    statusLabel={tStatus(st)}
-                    columns={columns}
-                    text={text}
-                    photoPersonId={photoIds.get(e.employmentId) ?? null}
-                  />
-                );
-              })}
-              {/* The empty state counts the DRAFT rows too — "no employees yet" under a table that is
-                  visibly showing two of them would be the screen contradicting itself. */}
-              {employees.length === 0 && drafts.length === 0 && (
-                <tr>
-                  <td colSpan={columns.length} className="px-4 py-10 text-center text-muted-foreground">
-                    {q ? t('emptySearch', { q }) : hasFilters ? t('emptyFiltered') : t('emptyNoEmployeesAdmin')}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
       </Card>
 
     </div>

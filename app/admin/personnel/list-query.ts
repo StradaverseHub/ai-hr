@@ -1,3 +1,4 @@
+import {isEmployeeColumnKey} from '@/lib/employee-columns';
 import {isCalendarDate} from '@/lib/calendar-date';
 import {PERSONNEL_QUALITY_FLAGS,type PersonnelQualityFlag} from '@/core/personnel-quality';
 /**
@@ -54,7 +55,7 @@ export type PersonnelSearchParams = {
   companies?:string|string[]; bu?:string|string[]; parent?:string|string[]; group?:string|string[];
   grade?:string|string[]; position?:string|string[]; quality?:string|string[];
   confirmation?:string; joinedFrom?:string; joinedTo?:string; probationFrom?:string; probationTo?:string;
-  search?:string;
+  search?:string; sort?:string; direction?:string;
 
 };
 
@@ -106,6 +107,7 @@ export function parsePersonnelListQuery(sp: PersonnelSearchParams): PersonnelLis
     hasFilters: !!(q || company || dept || type || sp.status || sp.bucket || sp.search || [sp.companies,sp.bu,sp.parent,sp.group,sp.grade,sp.position,sp.quality,sp.confirmation,sp.joinedFrom,sp.joinedTo,sp.probationFrom,sp.probationTo].some(value=>Array.isArray(value)?value.length:!!value)),
     filters: {
       q,
+      columnSort:isEmployeeColumnKey(sp.sort)?sp.sort:undefined,sortDirection:sp.direction==='desc'?'desc':'asc',
       privateSearch: sp.search&&/^[A-Za-z0-9_-]{43}$/.test(sp.search)?sp.search:sp.search?'invalid':undefined,
       filterCompanyIds:uuidValues(sp.companies),businessUnitIds:uuidValues(sp.bu),parentCompanyIds:uuidValues(sp.parent),businessGroupIds:uuidValues(sp.group),
       jobGrades:values(sp.grade).filter(value=>value==='H'||/^(1[2-9]|2[0-3])$/.test(value)),positionIds:uuidValues(sp.position),
@@ -188,7 +190,7 @@ export function draftListScope(
 /** Every navigation/export path carries the same validated ordinary filter vocabulary. */
 export function personnelQueryParams(sp:PersonnelSearchParams):URLSearchParams{
  const parsed=parsePersonnelListQuery(sp),f=parsed.filters,out=new URLSearchParams();
- for(const [key,value] of Object.entries({q:parsed.q,company:parsed.company,dept:parsed.dept,type:parsed.type,status:parsed.legacyStatus,bucket:parsed.draftOnly?'draft':parsed.bucket,search:f.privateSearch,confirmation:f.confirmationState,joinedFrom:f.joinedFrom,joinedTo:f.joinedTo,probationFrom:f.probationEndFrom,probationTo:f.probationEndTo}))if(value)out.set(key,value);
+ for(const [key,value] of Object.entries({sort:f.columnSort,direction:f.columnSort?f.sortDirection:undefined,q:parsed.q,company:parsed.company,dept:parsed.dept,type:parsed.type,status:parsed.legacyStatus,bucket:parsed.draftOnly?'draft':parsed.bucket,search:f.privateSearch,confirmation:f.confirmationState,joinedFrom:f.joinedFrom,joinedTo:f.joinedTo,probationFrom:f.probationEndFrom,probationTo:f.probationEndTo}))if(value)out.set(key,value);
  for(const [key,value] of Object.entries({companies:f.filterCompanyIds,bu:f.businessUnitIds,parent:f.parentCompanyIds,group:f.businessGroupIds,grade:f.jobGrades,position:f.positionIds,quality:f.qualityFlags}))if(value?.length)out.set(key,value.join(','));
  return out;
 }

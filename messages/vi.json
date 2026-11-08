@@ -822,7 +822,29 @@
       "exportAria": "Xuất danh sách nhân viên đã lọc ra Excel",
       "exportTitle": "Nhân viên",
       "rejectReasonPlaceholder": "Lý do từ chối (bắt buộc)",
-      "childReliefReview": "Rà soát giảm trừ cho con"
+      "childReliefReview": "Rà soát giảm trừ cho con",
+      "controls": {
+        "applyColumns": "Áp dụng bộ lọc cột",
+        "clear": "Xóa bộ lọc",
+        "filter": "Lọc",
+        "filterColumn": "Lọc {name}",
+        "moveColumn": "Di chuyển {name}",
+        "moveHint": "Kéo tay nắm cột, hoặc chọn tay nắm và dùng phím Trái/Phải để di chuyển.",
+        "saveFailed": "Không thể lưu thứ tự cột. Hãy thử lại.",
+        "employmentFields": "Trường việc làm",
+        "employeeDetails": "Mã nhân viên, tên, email hoặc CMND / hộ chiếu được phép",
+        "contains": "Chứa",
+        "equals": "Bằng",
+        "from": "Từ ngày / ít nhất",
+        "to": "Đến ngày / nhiều nhất",
+        "blank": "Trống / chưa gán",
+        "notBlank": "Có giá trị",
+        "operation": "Phép lọc cho {name}",
+        "privateHint": "Văn bản được giữ riêng tư. Bộ lọc riêng tư hết hạn sau năm phút; thêm điều kiện để thu hẹp hoặc xóa để bắt đầu lại.",
+        "currentFieldsHint": "Chỉ gồm trường việc làm hiện tại. Lịch sử, ủy quyền và bản ghi lặp lại dùng màn hình riêng. Bản nháp bị ẩn khi có bộ lọc riêng tư hoặc chỉ dành cho việc làm.",
+        "privateActive": "Bộ lọc riêng tư đang hoạt động",
+        "privateExpired": "Bộ lọc riêng tư hết hạn hoặc không khả dụng. Hãy áp dụng lại."
+      }
     },
     "switcher": {
       "ariaLabel": "Tìm nhân viên",
