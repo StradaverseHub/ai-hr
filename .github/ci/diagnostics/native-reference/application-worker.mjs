@@ -10,7 +10,7 @@ import {observeLoadedNativeInput,stableNativeInput,withinInputRoot,APPLICATION_I
 import {assertFixedInventoryConfig} from './application-protocol.mjs';
 import {REFERENCE_LIMITS} from './graph.mjs';
 import {observeNativeUsageResolution} from './application-mode.mjs';
-import {walkNativeApplicationSyntax} from './application-syntax.mjs';
+import {walkNativeApplicationSyntax,captureNativeApplicationAttachments} from './application-syntax.mjs';
 
 function observeNativeApplication(ts,source,config,check){
  assertFixedInventoryConfig(source,config);check();const dependencyRoot=join(source,'node_modules');assert.equal(realpathSync(dependencyRoot),dependencyRoot);
@@ -22,6 +22,7 @@ function observeNativeApplication(ts,source,config,check){
  for(const file of loaded){check();const record=observeLoadedNativeInput(ts,program,file,{source,dependencyRoot,configured,check});bytes+=record.bytes;assert(bytes<=REFERENCE_LIMITS.totalBytes);record.externalModule=ts.isExternalModule(file);files.push(record);
   if(!ts.isExternalModule(file)){globals.push(record.logicalPath);if(!file.isDeclarationFile&&!record.defaultLibrary)gaps.push({kind:'global-implementation-native-ownership-open',file:record.logicalPath});}
  }
+ const attachmentIntegrity=captureNativeApplicationAttachments(ts,loaded,check);
  const loadedNames=new Set(files.map(row=>row.logicalPath)),add=row=>{assert(observations.length<1000000,'Native edge metadata bound');observations.push(row);};
  const target=value=>{
   if(!value)return null;const logicalPath=resolve(value.resolvedFileName),path=realpathSync(logicalPath);assert(withinInputRoot(source,path),'Public native resolution outside candidate');
@@ -50,7 +51,7 @@ function observeNativeApplication(ts,source,config,check){
    }
    if(ts.isJSDocImportTag(node)&&node.moduleSpecifier&&ts.isStringLiteralLike(node.moduleSpecifier))module(node.moduleSpecifier,'jsdoc-import');
   }
-  walkNativeApplicationSyntax(ts,file,observe,check);
+  walkNativeApplicationSyntax(ts,file,node=>{attachmentIntegrity.observe(file,node);observe(node);},check);
   for(const ref of file.referencedFiles){const logicalPath=resolve(dirname(from),ref.fileName);add({from,kind:'path-reference',specifier:ref.fileName,position:ref.pos,end:ref.end,target:loadedNames.has(logicalPath)?{logicalPath,path:realpathSync(logicalPath)}:null});if(!loadedNames.has(logicalPath))gaps.push({kind:'path-reference-native-target-open',from,reference:ref});}
   for(const ref of file.typeReferenceDirectives){const mode=ref.resolutionMode??file.impliedNodeFormat,value=ts.resolveTypeReferenceDirective(ref.fileName,file.fileName,parsed.options,ts.sys,undefined,undefined,mode);const result=target(value.resolvedTypeReferenceDirective);add({from,kind:'type-reference',specifier:ref.fileName,position:ref.pos,end:ref.end,mode:mode??null,target:result});if(!result)gaps.push({kind:'unresolved-public-type-reference',from,reference:ref});}
   for(const ref of file.libReferenceDirectives)add({from,kind:'lib-reference',specifier:ref.fileName,position:ref.pos,end:ref.end,target:null});
@@ -62,11 +63,11 @@ function observeNativeApplication(ts,source,config,check){
  // Complete parsed config provenance is retained; parsed options are evidence,
  // never serialized into a different compiler configuration.
  const buildConfig=join(source,'tsconfig.build.json'),buildBefore=stableNativeInput(buildConfig,{root:source,check}).record,buildParsed=parsedConfig(ts,buildConfig);assert.deepEqual(stableNativeInput(buildConfig,{root:source,check}).record,buildBefore);
- assert.deepEqual(stableNativeInput(config,{root:source,check}).record,configBefore);check();
+ assert.deepEqual(stableNativeInput(config,{root:source,check}).record,configBefore);check();attachmentIntegrity.verify();check();
  return{kind:'ACTUAL_UNMODIFIED_DEFAULT_APPLICATION_PROGRAM_METADATA',config,configSeal:configBefore,roots:nativeRoots,parsedRoots:parsed.fileNames,options:parsed.options,projectReferences:parsed.projectReferences??[],files,observations,ambient,globals,automaticTypes,gaps,
   buildConfiguration:{config:buildConfig,configSeal:buildBefore,roots:buildParsed.fileNames,options:buildParsed.options,projectReferences:buildParsed.projectReferences??[],freshProgramObserved:false},
   rawLoadedInputBytes:bytes,semanticRequested:false,diagnosticsRequested:false,emissionRequested:false,customHost:false,originalOptionsUnmodified:true,
-  resolutionMethod:'Unmodified public createProgram plus independent public resolveModuleName/resolveTypeReferenceDirective(ts.sys); independent observations are not native cache provenance'};
+  resolutionMethod:'PINNED_PARSER_OWN_DATA TS5.9.3 attachment metadata with complete original attachment identity/descriptor integrity; unmodified public createProgram plus independent public resolveModuleName/resolveTypeReferenceDirective(ts.sys); independent observations are not native cache provenance'};
 }
 export function nativeApplicationWorker(){
  assert.equal(process.argv.length,2);const proof=admitCompilerApplicationInventory('inventory-worker');assert(proof.sourceHashes['.github/ci/diagnostics/native-reference/application-syntax.mjs'],'Complete original native syntax source owner required');const clock=readCompilerApplicationInventoryClock(proof),started=process.hrtime.bigint();

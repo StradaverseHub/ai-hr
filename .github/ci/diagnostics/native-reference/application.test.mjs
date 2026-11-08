@@ -62,3 +62,53 @@ test('complete inverse restores every changed existing owner and the qualified k
  for(const row of inverse.files){const current=readFileSync(new URL('../../../../'+row.path,import.meta.url));assert.equal(createHash('sha256').update(current).digest('hex'),row.currentSha256);const original=Buffer.from(row.originalBase64,'base64');assert.equal(createHash('sha256').update(original).digest('hex'),row.originalSha256);assert(original.length>0);}
  const kernel=readFileSync(new URL('../../owned-process.py',import.meta.url));assert.equal(createHash('sha256').update(kernel).digest('hex'),'9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129');
 });
+
+// Explicit pure parser-DATA models; never a real Program, resolver or authority.
+import {walkNativeApplicationSyntax,captureNativeApplicationAttachments} from './application-syntax.mjs';
+const attachmentModel=()=>{const literal={kind:'literal'},tag={kind:'tag',children:[literal]},document={kind:'doc',children:[tag]},array=[document],child={kind:'ordinary'},file={kind:'file',jsDoc:array,children:[child]};const ts={isJSDoc:node=>node.kind==='doc',forEachChild(node,visit){for(const child of node.children??[])visit(child);}};return{ts,file,array,document,tag,literal,child};};
+test('pinned parser DATA traversal ignores native-array iterators and all trivia service and tag getter methods',()=>{
+ const m=attachmentModel(),poison=()=>{throw Error('Forbidden getter called');};Object.defineProperty(m.array,Symbol.iterator,{get:poison});for(const node of [m.file,m.document,m.tag,m.literal,m.child])for(const name of ['getStart','getChildren','getJSDocTags'])Object.defineProperty(node,name,{get:poison});
+ const expected=[m.file,m.document,m.tag,m.literal,m.child],observed=[];walkNativeApplicationSyntax(m.ts,m.file,node=>{observed.push(node);return true;});assert.deepEqual(observed,expected);
+});
+test('accessor nonarray sparse accessor-entry and non-document attachments refuse without invoking getters',()=>{
+ for(const kind of ['accessor','nonarray','hole','entry-accessor','not-doc']){
+  const m=attachmentModel();let reads=0;
+  if(kind==='accessor')Object.defineProperty(m.file,'jsDoc',{get(){reads++;return m.array;}});
+  if(kind==='nonarray')m.file.jsDoc={length:0};if(kind==='hole')delete m.array[0];if(kind==='entry-accessor')Object.defineProperty(m.array,'0',{get(){reads++;return m.document;}});if(kind==='not-doc')m.array[0]={kind:'ordinary'};
+  assert.throws(()=>walkNativeApplicationSyntax(m.ts,m.file,()=>{}),/Original jsDoc must be DATA|Original jsDoc must be an array|Original attachment DATA document/);assert.equal(reads,0);
+ }
+});
+test('shared attachment identities and ordinary cycles preserve every host edge while observing each original once in order',()=>{
+ const m=attachmentModel(),second={kind:'host',jsDoc:m.array,children:[m.file]};m.child.children=[second];const integrity=captureNativeApplicationAttachments(m.ts,[m.file]),observed=[];
+ walkNativeApplicationSyntax(m.ts,m.file,node=>{integrity.observe(m.file,node);observed.push(node);});assert.deepEqual(observed,[m.file,m.document,m.tag,m.literal,m.child,second]);integrity.verify();
+});
+test('complete private original membership rejects omitted reordered duplicate or foreign observations',()=>{
+ for(const kind of ['omitted','reordered','duplicate','foreign']){
+  const m=attachmentModel(),integrity=captureNativeApplicationAttachments(m.ts,[m.file]),nodes=[m.file,m.document,m.tag,m.literal,m.child];
+  assert.throws(()=>{if(kind==='omitted'){for(const node of nodes.slice(0,-1))integrity.observe(m.file,node);integrity.verify();}else if(kind==='reordered'){integrity.observe(m.file,m.file);integrity.observe(m.file,m.tag);}else if(kind==='duplicate'){integrity.observe(m.file,m.file);integrity.observe(m.file,m.file);}else integrity.observe(m.file,{kind:'forged'});},/Incomplete original Program observation|Original Program observation order changed|Duplicate original Program observation|Observation is not an original Program member/);
+ }
+});
+test('whole original DATA descriptors include attachment arrays tags literals extra keys flags and absent-parent states',()=>{
+ for(const kind of ['array-entry','array-extra','array-flag','tag-parent','literal-key','host-array','doc-array-order']){
+  const m=attachmentModel();m.array.pos=1;m.array.end=9;const integrity=captureNativeApplicationAttachments(m.ts,[m.file]);walkNativeApplicationSyntax(m.ts,m.file,node=>integrity.observe(m.file,node));
+  if(kind==='array-entry')m.array[0]={kind:'doc'};if(kind==='array-extra')m.array.cache='new';if(kind==='array-flag')Object.defineProperty(m.array,'pos',{writable:false});if(kind==='tag-parent')m.tag.parent=m.document;if(kind==='literal-key')m.literal.extra=true;if(kind==='host-array')m.file.jsDoc=[m.document];if(kind==='doc-array-order')m.document.children.push({kind:'tag'});
+  assert.throws(()=>integrity.verify(),/Original own key count changed|Original own descriptor changed|Original own key order changed/);
+ }
+});
+test('new or removed attachment ownership and original members cannot hide behind unchanged source text or metadata booleans',()=>{
+ for(const kind of ['new-host','removed-child']){
+  const m=attachmentModel();if(kind==='removed-child')m.child.children=[{kind:'leaf'}];const integrity=captureNativeApplicationAttachments(m.ts,[m.file]);walkNativeApplicationSyntax(m.ts,m.file,node=>integrity.observe(m.file,node));
+  if(kind==='new-host')m.child.jsDoc=[{kind:'doc'}];else m.child.children.length=0;
+  assert.throws(()=>integrity.verify(),/New original attachment host|Original Program member disappeared|Original Program member order changed/);
+ }
+});
+test('closed frontier errors propagate unchanged and stop any later original observation without a fallback traversal',()=>{
+ const m=attachmentModel(),failure=Error('Closed original observation frontier'),observed=[];
+ assert.throws(()=>walkNativeApplicationSyntax(m.ts,m.file,node=>observed.push(node),()=>{if(observed.length===2)throw failure;}),error=>error===failure);assert.deepEqual(observed,[m.file,m.document]);
+ const integrity=captureNativeApplicationAttachments(m.ts,[m.file]);walkNativeApplicationSyntax(m.ts,m.file,node=>integrity.observe(m.file,node));assert.throws(()=>{integrity.verify();integrity.verify();},/Integrity verification repeated/);
+});
+test('full original worker owns complete private conjunction before output and labels parser attachment metadata honestly without changing native mode owner',()=>{
+ const helper=readFileSync(new URL('./application-syntax.mjs',import.meta.url),'utf8'),worker=readFileSync(new URL('./application-worker.mjs',import.meta.url),'utf8'),mode=readFileSync(new URL('./application-mode.mjs',import.meta.url));
+ assert(!/\.getStart\(|\.getChildren\(|getJSDocTags\(|\.parent\s*=|\.jsDoc\s*=/.test(helper));assert(!helper.includes('file.text'));assert(helper.includes("Object.getOwnPropertyDescriptor(node,'jsDoc')"));assert(helper.includes("Object.getOwnPropertyDescriptor(array,String(index))"));assert(helper.includes("assert.equal(state.order.get(node),state.observedCount"));
+ const before=worker.indexOf('const attachmentIntegrity=captureNativeApplicationAttachments(ts,loaded,check);'),walk=worker.indexOf('attachmentIntegrity.observe(file,node);observe(node);'),after=worker.indexOf('attachmentIntegrity.verify();'),output=worker.indexOf("return{kind:'ACTUAL_UNMODIFIED_DEFAULT_APPLICATION_PROGRAM_METADATA'");assert(before>0&&walk>before&&after>walk&&output>after);assert(worker.includes('PINNED_PARSER_OWN_DATA TS5.9.3'));assert.equal(createHash('sha256').update(mode).digest('hex'),'b8dee0b836e1047d3574cf5ca30515c521096fef383741aa87d56202243957dd');
+});
