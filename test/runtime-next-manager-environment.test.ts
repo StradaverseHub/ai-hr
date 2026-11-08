@@ -11,6 +11,6 @@ it('checks the actual singleton protocol with its complete shared preparation so
  const result=spawnSync(process.execPath,['--test','.github/ci/singleton-profiles.test.mjs'],{encoding:'utf8',timeout:30000,maxBuffer:1024*1024});
  const output=(result.stdout??'')+(result.stderr??'');
  expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,output).toBe(0);
- expect(output).toMatch(/# tests 11\n/);expect(output).toMatch(/# pass 11\n/);
+ expect(output).toMatch(/# tests 45\n/);expect(output).toMatch(/# pass 45\n/);
  expect(output).toMatch(/# fail 0\n/);expect(output).toMatch(/# cancelled 0\n/);expect(output).toMatch(/# skipped 0\n/);expect(output).toMatch(/# todo 0\n/);process.stdout.write(output);
 },35000);
