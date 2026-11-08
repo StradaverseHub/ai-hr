@@ -2,6 +2,8 @@
  * Root convergence must add a thin real admitSingletonTest entrypoint BEFORE calling
  * registration. This module cannot create CI evidence, grants or release authority. */
 import {randomUUID} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
 import postgres from 'postgres';
 import {afterAll,afterEach,beforeEach,expect,it,vi,type TestContext} from 'vitest';
 import {sql,eq} from 'drizzle-orm';
@@ -33,6 +35,10 @@ import {rewardsAuditPolicyFixtureOwner,type RewardsAuditPolicyFixtureOwner} from
 import {rewardsAuditCanonicalTruthContract} from './rewards-audit-policy-contract';
 import {rewardPolicyReaderProcess} from './rewards-audit-policy-reader-process';
 import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
+import {rewardsPolicyDiagnostics} from './rewards-audit-policy-diagnostic';
+import * as actionGuardOwner from '../../core/assistant-actions/agent-action-guard';
+import * as bankSourceOwner from '../../core/assistant-actions/bank-maintenance-source';
+import * as catalogueSourceOwner from '../../core/assistant-actions/position-archive-source';
 
 export const rewardsAuditPolicyNativeCaseNames=[
  'constructs one real bounded injected owner with exact full native PRE/profile and generated canonical truth',
@@ -66,6 +72,7 @@ async function refusal(work:PromiseLike<unknown>,code='42501'){const error=await
 export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
  const controller=rewardsAuditPolicyController(),ownership=controller.lifetime,realWithTenant=database.withTenant;
  let fixture:RewardsAuditPolicyFixtureOwner|undefined,family:ReturnType<typeof createUninstalledRewardsAuditFamily>|undefined;const caseSockets=new Set<ReturnType<typeof postgres>>();
+ let diagnostics:ReturnType<typeof rewardsPolicyDiagnostics>|undefined;
  const owned=()=>{if(!fixture||!family)throw Error('Owned native policy constructor unavailable');return{fixture,family};};
  controller.registerStop(closeAll);
  beforeEach(()=>{ownership.beforeCase();vi.stubEnv('AUDIT_HASH_CHAIN_ENABLED','false');vi.stubEnv('AI_CONFIG_SECRET','fictional-policy-custody-secret-123456789');});
@@ -88,16 +95,34 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
   do{context.signal.throwIfAborted();const [row]=await owner.client`select exists(select 1 from pg_stat_activity w,pg_stat_activity h where w.pid=${waiting.pid} and w.backend_start=${waiting.started}::text::timestamptz and h.pid=${holder.pid} and h.backend_start=${holder.started}::text::timestamptz and h.pid=any(pg_blocking_pids(w.pid)))as owned`;
    if(row.owned===true)return;await new Promise<void>(resolve=>setTimeout(resolve,5));
   }while(Date.now()<until);
-  throw Error('Actual bounded native blocking witness unavailable');
+  const primary=Error('Actual bounded native blocking witness unavailable');
+  try{context.signal.throwIfAborted();if(!diagnostics)throw Error('No owned diagnostic case');diagnostics.wait(await controller.waitSnapshot(waiting,holder,context.signal));}
+  catch(error){throw new AggregateError([primary,error],'Native wait witness and diagnostic unavailable',{cause:primary});}
+  throw primary;
  }
 
  function nativeIt(index:number,work:(ctx:TestContext)=>Promise<void>){it(rewardsAuditPolicyNativeCaseNames[index],context=>ownership.run(context,async()=>{
+  const observed=rewardsPolicyDiagnostics();diagnostics=observed;
   // Only budget instrumentation: every real application Tx and canonical service
   // still executes. No native permission, source, approval or result is mocked.
   const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:SessionContext,run:(tx:database.Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>realWithTenant(ctx,async tx=>{
-   await tx.execute(sql`set local statement_timeout='20s'`);await tx.execute(sql`set local lock_timeout='300ms'`);return run(tx);
+   await tx.execute(sql`set local statement_timeout='20s'`);await tx.execute(sql`set local lock_timeout='300ms'`);return observed.callback('tenant-callback',()=>run(tx));
   },options));
-  await controlledPolicyWait(ownership.poison).run(()=>work(context),async()=>{spy.mockRestore();});
+  const actualGuard=actionGuardOwner.withAgentActionGuard,actualBankActor=bankSourceOwner.assertBankMaintenanceActorTx,actualBank=bankSourceOwner.prepareBankMaintenanceSourceTx,actualCatalogueLock=catalogueSourceOwner.lockPositionArchiveSourceTx,actualCatalogue=catalogueSourceOwner.preparePositionArchiveTx;
+  const observers=[
+   vi.spyOn(actionGuardOwner,'withAgentActionGuard').mockImplementation((...args:Parameters<typeof actualGuard>)=>observed.callback('agent-guard',()=>actualGuard(...args))),
+   vi.spyOn(bankSourceOwner,'assertBankMaintenanceActorTx').mockImplementation((...args:Parameters<typeof actualBankActor>)=>observed.callback('bank-actor',()=>actualBankActor(...args))),
+   vi.spyOn(bankSourceOwner,'prepareBankMaintenanceSourceTx').mockImplementation((...args:Parameters<typeof actualBank>)=>observed.callback('bank-source',()=>actualBank(...args))),
+   vi.spyOn(catalogueSourceOwner,'lockPositionArchiveSourceTx').mockImplementation((...args:Parameters<typeof actualCatalogueLock>)=>observed.callback('catalogue-lock',()=>actualCatalogueLock(...args))),
+   vi.spyOn(catalogueSourceOwner,'preparePositionArchiveTx').mockImplementation((...args:Parameters<typeof actualCatalogue>)=>observed.callback('catalogue-source',()=>actualCatalogue(...args))),
+  ];
+  await controlledPolicyWait(ownership.poison).run(()=>work(context),async()=>{
+   spy.mockRestore();for(const observer of observers)observer.mockRestore();diagnostics=undefined;
+   const report={...observed.snapshot(),caseIndex:index},bytes=JSON.stringify(report)+'\n';
+   if(Buffer.byteLength(bytes,'utf8')>32768)throw Error('Bounded Rewards diagnostic publication refused');
+   try{writeFileSync(join(evidenceDirectory,'rewards-policy-case-'+index+'-diagnostic.json'),bytes,{flag:'wx',mode:0o600});}catch{throw Error('Owned Rewards diagnostic publication unavailable');}
+   if(!report.complete)throw Error('Incomplete Rewards diagnostic observations');
+  });
  }));}
  async function base(){await owned().fixture.finishCase();await owned().fixture.reset();await resetDb();const b=await seedBase();for(const module of ['rewards','assistant','payroll','country-my'])await setModule(b.tenantId,module,'active');await setSetting(b.tenantId,'audit.hash_chain_enabled',false);const ctx=adminCtx(b);await grantAssistant(ctx,{appUserId:b.adminUserId});return{b,ctx};}
  async function setup(){
@@ -149,7 +174,7 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
   const independent=app();expect((await independent`select session_user,current_user,current_setting('transaction_isolation')as mode`)[0]).toEqual({session_user:'ai_hr_app',current_user:'ai_hr_app',mode:'read committed'});
   const native=await event(independent,f.ctx,'policy.first-fresh-writer');expect(native.chain_seq).toBe(1);expect(native.prev_hash).toBe('GENESIS');
   expect((await owner.client`select count(*)::int as n from reward_audit_private.projection`)[0].n).toBe(0);expect(await api.materialize()).toBe(1);expect(await api.materialize()).toBe(0);
-  expect((await owner.client`select e.actor_id=r.actor_id as historical_actor,e.occurred_at=r.observed_at as historical_time,e.chain_seq::int as seq,e.prev_hash=${native.hash}as linked,e.hash=app.domain_event_hash(e.prev_hash,e.tenant_id,e.chain_seq,e.aggregate_type,e.aggregate_id,e.event_type,e.actor_type::text,e.actor_id,e.subject_employment_id,e.payload)as canonical from public.domain_event e join reward_audit_private.receipt r on r.event_id=e.id where r.id=${read.receipt.id}::uuid`)[0]).toEqual({historical_actor:true,historical_time:true,seq:2,linked:true,canonical:true});
+  expect((await owner.client`select e.actor_id=r.actor_id as historical_actor,e.occurred_at=r.observed_at as historical_time,e.chain_seq::int as seq,e.prev_hash=${native.hash} as linked,e.hash=app.domain_event_hash(e.prev_hash,e.tenant_id,e.chain_seq,e.aggregate_type,e.aggregate_id,e.event_type,e.actor_type::text,e.actor_id,e.subject_employment_id,e.payload)as canonical from public.domain_event e join reward_audit_private.receipt r on r.event_id=e.id where r.id=${read.receipt.id}::uuid`)[0]).toEqual({historical_actor:true,historical_time:true,seq:2,linked:true,canonical:true});
  });
  nativeIt(4,async()=>{
   const f=await setup();await setSetting(f.b.tenantId,'audit.hash_chain_enabled',true);const connection=reader(),rolledBack=Error('Controlled actual rollback after native finalization');
@@ -256,16 +281,14 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
     expect((await tx`select current_user=session_user and current_user::regrole::oid=(select relowner from pg_class where oid='public.domain_event'::regclass)as native_owner,current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')as readonly,current_setting('statement_timeout')as statement,current_setting('lock_timeout')as lock`)[0]).toEqual({native_owner:true,isolation:mode,readonly:'off',statement:'20s',lock:'300ms'});
     const identity=await rootIdentity(tx);await tx`set constraints all immediate`;
     expect((await tx`select app._domain_event_next(${f.b.tenantId}::uuid)as pre`)[0].pre).toEqual({armed:false,priorSeq:null,priorHash:null});
-    await tx`savepoint observe_restored_marker_timing`;
-    await controlledPolicyWait(ownership.poison).run(async()=>{
+    await refusal(tx.savepoint(async child=>{
      // A leaked DEFERRED state would make THIS INSERT succeed, so the
      // refusal assertion fails before any later SET CONSTRAINTS or COMMIT.
-     await refusal(tx`insert into reward_audit_policy_private.floor_marker(tenant_id,policy_version)values(${f.b.tenantId}::uuid,1)`,'55000');
-    },async()=>{
-     // Even the deliberately broken-state regression cannot commit a fake
-     // floor: always remove its row and queued trigger before the outer TX.
-     await tx`rollback to savepoint observe_restored_marker_timing`;await tx`release savepoint observe_restored_marker_timing`;
-    });
+     await child`insert into reward_audit_policy_private.floor_marker(tenant_id,policy_version)values(${f.b.tenantId}::uuid,1)`;
+    }),'55000');
+    // postgres-js owns this child's error bookkeeping AND native rollback.
+    // If the INSERT wrongly succeeds, refusal throws and the outer TX rolls
+    // back everything; a fake floor can never commit on the failed assertion.
     expect((await tx`select 1 as usable,not exists(select 1 from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid)as no_marker`)[0]).toEqual({usable:1,no_marker:true});return identity;
    });
    await exactFrames(f.b.tenantId,ownedBefore,[ownRoot]);

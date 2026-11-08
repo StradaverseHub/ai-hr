@@ -5,6 +5,7 @@ import {z} from 'zod';
 import {workerDb} from '../db-names';
 import {defaultControllerApplication} from './rewards-audit-default-controller-protocol';
 import {rewardsAuditPolicyLifetime} from './rewards-audit-policy-lifetime';
+import type {RewardPolicyWaitObservation} from './rewards-audit-policy-diagnostic';
 const identitySchema=z.object({pid:z.number().int().positive(),started:z.string().min(20),database:z.string(),session_user:z.string(),current_user:z.string(),loopback:z.literal(true),statement:z.string(),lock:z.string(),isolation:z.string(),readonly:z.string(),native_owner:z.literal(true)}).strict();
 type Identity=z.infer<typeof identitySchema>;
 export function rewardsAuditPolicyController(){
@@ -31,6 +32,26 @@ export function rewardsAuditPolicyController(){
   dependencies:{owner,migrateTestDb:async()=>{await identity('work');},closeAll:async()=>{await Promise.all([work.end({timeout:0}),cleanup.end({timeout:0})]);}},
   registerDefaultController(nonce:string){const name=defaultControllerApplication(nonce);if(defaultControllers.has(name)||defaultControllers.size>=2)throw Error('Only two owned default-controller lifetimes allowed');defaultControllers.add(name);},
   registerStop(stop:()=>Promise<void>){let owned:Promise<void>|undefined;stops.add(()=>owned??=Promise.resolve().then(stop));},
+  /** Failure-only read: no raw activity/query/lock values leave this boundary. */
+  async waitSnapshot(waiting:{pid:number;started:string},holder:{pid:number;started:string},signal:AbortSignal):Promise<RewardPolicyWaitObservation>{
+   signal.throwIfAborted();if(lifetime.ownerPhase()!=='work')throw Error('Actual Rewards diagnostic work admission required');
+   const connection=postgres(url.toString(),{max:1,connect_timeout:2,connection:{statement_timeout:2000,lock_timeout:300,default_transaction_read_only:'on',application_name:'owned_rewards_policy_wait_observer'}});
+   let stopped:Promise<void>|undefined;const close=()=>stopped??=connection.end({timeout:0});stops.add(close);
+   let stopFailure=false,stopping=false;const stop=()=>{stopping=true;void close().catch(()=>{stopFailure=true;});};
+   const timer=setTimeout(stop,2000);signal.addEventListener('abort',stop,{once:true});
+   let result:RewardPolicyWaitObservation|undefined,failure:Error|undefined;
+   try{
+    signal.throwIfAborted();
+    const [raw]=await connection`with w as materialized(select pid,state,wait_event_type from pg_stat_activity where pid=${waiting.pid} and backend_start=${waiting.started}::text::timestamptz and datname=${database}),
+     h as materialized(select pid from pg_stat_activity where pid=${holder.pid} and backend_start=${holder.started}::text::timestamptz and datname=${database})
+     select exists(select 1 from w)as "waitingPresent",exists(select 1 from h)as "holderPresent",exists(select 1 from w where state='active')as "waitingActive",exists(select 1 from w where wait_event_type='Lock')as "waitingOnLock",exists(select 1 from w,h where h.pid=any(pg_blocking_pids(w.pid)))as "ownedBlocking"`;
+    const row=z.object({waitingPresent:z.boolean(),holderPresent:z.boolean(),waitingActive:z.boolean(),waitingOnLock:z.boolean(),ownedBlocking:z.boolean()}).strict().parse(raw);
+    signal.throwIfAborted();if(stopping)throw Error('Owned diagnostic deadline');result={kind:'wait-unavailable',...row};
+   }catch{failure=Error('Closed native Rewards wait diagnostic unavailable');}
+   finally{clearTimeout(timer);signal.removeEventListener('abort',stop);try{await close();}catch{stopFailure=true;}if(!stopFailure)stops.delete(close);}
+   if(stopFailure){const cleanup=Error('Owned native wait observer socket drain unavailable');lifetime.poison(cleanup);throw failure?new AggregateError([failure,cleanup],'Native wait observation and socket drain failed',{cause:failure}):cleanup;}
+   if(failure)throw failure;if(!result)throw Error('Owned native wait observation absent');return result;
+  },
   /** All case work is already drained before this actual bounded restoration. */
   async close(knownOwned:boolean,restore:()=>Promise<void>){
    let failure:unknown;
@@ -43,8 +64,8 @@ export function rewardsAuditPolicyController(){
      const deadline=performance.now()+2000;let absent=false;
      do{
       const [actual]=await observer`select current_database()as database,current_user,inet_server_addr()='127.0.0.1'::inet as loopback,
-       not exists(select 1 from pg_stat_activity s join jsonb_to_recordset(${JSON.stringify(identities)}::text::jsonb)as owned(pid integer,started text,session_user text)
-        on s.pid=owned.pid and s.backend_start=owned.started::timestamptz and s.usename=owned.session_user where s.datname=${database})
+       not exists(select 1 from pg_stat_activity s join jsonb_to_recordset(${JSON.stringify(identities)}::text::jsonb)as owned(pid integer,started text,"session_user" text)
+        on s.pid=owned.pid and s.backend_start=owned.started::timestamptz and s.usename=owned."session_user" where s.datname=${database})
        and not exists(select 1 from pg_stat_activity s where s.datname=${database} and s.usename=${decodeURIComponent(url.username)} and s.application_name=any(${[...defaultControllers]}::text[]))as absent`;
       expect(actual).toMatchObject({database,current_user:decodeURIComponent(url.username),loopback:true});
       if(actual.absent===true){absent=true;break;}if(performance.now()>=deadline)break;await new Promise(resolve=>setTimeout(resolve,10));
