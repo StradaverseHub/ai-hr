@@ -10,6 +10,9 @@ export function exactAsciiLaunchShape(argv:readonly string[]):Readonly<{preload:
   const flag=argv[index];
   if(flag==='--experimental-import-meta-resolve'&&!meta){meta=true;continue;}
   if((flag==='--require'||flag==='-r')&&preload===undefined){const path=argv[++index];if(!path||!path.startsWith('/')||path.includes('\0'))return null;preload=path;continue;}
+  // Actual locked Vitest worker argv uses a separate value token. This only
+  // recognizes the two already supported conditions; source/runtime checks remain mandatory.
+  if(flag==='--conditions'){const value=argv[++index];if(value==='node'||value==='development')continue;return null;}
   if(flag==='--conditions=node'||flag==='--conditions=development'||flag==='--max-old-space-size=4096'||flag==='--max-old-space-size=6144')continue;
   return null;
  }

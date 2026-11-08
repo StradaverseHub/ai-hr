@@ -1,0 +1,137 @@
+{
+  "kind": "ASCII_OBSERVED_CONDITION_GRAMMAR_SOURCE_NOT_QUALIFICATION",
+  "base": "2b8c8df9ac6724524eb3e11f93ff387aa459bbb3",
+  "sourceRef": "codex/employee-ascii-observed-condition-grammar-20261108",
+  "sourceSha256": {
+    "test/performance/employee-choice-exact-ascii-runtime-contract.ts": "f1c591fc5133604384bd19d9905980755f4ae8d06c72e2d05f05e98341f1f101",
+    "test/employee-choice-exact-ascii-runtime.test.ts": "ed468fe80bc382dc313f065aa3b3e990a263f94057fe9d89e1c7dbd5e0021a46",
+    "test/employee-choice-exact-ascii-launch-observation.test.ts": "953cc54584638d172352b17898020930adf238e5b9efb3ecc6f95b31f41ea1f3",
+    "docs/qualification/employee-ascii-observed-condition-grammar-20261108.md": "97a3468f1e8a6706877dd55f6357dc7860a18a26693e46efce5b7672b3137ed2"
+  },
+  "unchangedSha256": {
+    "test/performance/employee-choice-exact-ascii-runtime.ts": "3ba9e9aece28232badbccabb9ba13e731047a3327160081d01a4c03db3085921",
+    "test/performance/employee-choice-exact-ascii-launch-observation.ts": "3de710fd020a76e5ca66688b01ff401e2ef1c0b1c3ee3c790d23ab4c1283d1c4",
+    "test/performance/employee-choice-exact-ascii-reader.ts": "ed2e2fb304de2d78435c13ec9caf9d71161c68755abea459674d50fbf1a1a8fd",
+    "test/performance/employee-choice-exact-ascii-owner.ts": "d66ca2fe7f67c2ee271e873ab2d035ff694da7bcbc4065a1dd6b13203873d26e",
+    "test/performance/employee-choice-exact-ascii-owner-factory.ts": "1d289fead9e6edfd010c6b8ff9afad2e39a4dc2602d4e8ad307a9b64e1fb4c39",
+    "test/employee-choice-exact-ascii-purpose.test.ts": "c9e9ef2bdbe856093b1781271737755b8cece58615ba8061df35ac63622dbbeb",
+    "test/employee-choice-exact-ascii-plan.test.ts": "b7cdc6700afa0ef0aeb1b846778f5f2e927c9467ecf70bed8ebc298b1e057763",
+    "test/fixtures/employee-choice-exact-ascii-purpose.sql": "10b0d44d8943fdfbb76e748028e8fbd2938a514ea22c57b70cfcc665b6a41743",
+    ".github/ci/employee-benchmark-supervisor.py": "7fc4b786ad1a21e652fe0f6a5c27582b4b23a92ed31319ad49a7f18b16ecfe8e",
+    ".github/ci/owned-process.py": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+    ".github/workflows/alpha-focused-checks.yml": "b80b0ca5884c3e0e39ee898068526fcb28f4fc4df64ecd72ddcd10b903d5138d",
+    "test/fixtures/employee-choice-ascii-observation.ts": "a6b0a1cc58224abbdf29e0e0613977b4cc4f18534dbb7ee3ec65bb2d2a5fb6cd",
+    "test/fixtures/unicode-17.0.0/UnicodeData.txt": "2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c",
+    "test/fixtures/unicode-17.0.0/SpecialCasing.txt": "efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588",
+    "test/performance/employee-choice-exact-ascii-plan-work.ts": "0c2974cb27bd2c71985e80607383732af317ba71dcb960f4d0af9ee2b33ab3bb"
+  },
+  "inverses": [
+    {
+      "path": "test/performance/employee-choice-exact-ascii-runtime-contract.ts",
+      "predecessorSha256": "14f1f74b60fedaf394c3b5a7c1b1e0661d6327bc34472d146c81830e69cd7813",
+      "candidateSha256": "f1c591fc5133604384bd19d9905980755f4ae8d06c72e2d05f05e98341f1f101",
+      "edits": [
+        {
+          "afterStart": 12,
+          "after": [
+            "  // Actual locked Vitest worker argv uses a separate value token. This only\n",
+            "  // recognizes the two already supported conditions; source/runtime checks remain mandatory.\n",
+            "  if(flag==='--conditions'){const value=argv[++index];if(value==='node'||value==='development')continue;return null;}\n"
+          ],
+          "before": []
+        }
+      ]
+    },
+    {
+      "path": "test/employee-choice-exact-ascii-runtime.test.ts",
+      "predecessorSha256": "50a1d02f922a96c81f7e74913928c3c34188a87bef300b50418f60a07da2d9c0",
+      "candidateSha256": "ed468fe80bc382dc313f065aa3b3e990a263f94057fe9d89e1c7dbd5e0021a46",
+      "edits": [
+        {
+          "afterStart": 15,
+          "after": [
+            "});\n",
+            "it('recognizes the exact observed seven-token worker shape without granting runtime qualification',()=>{\n",
+            " const argv=Object.freeze(['--experimental-import-meta-resolve','--require',preload,'--conditions','node','--conditions','development']);\n",
+            " const before=[...argv],parsed=exactAsciiLaunchShape(argv);expect(parsed).toEqual({preload});expect(Object.isFrozen(parsed)).toBe(true);expect(argv).toEqual(before);\n",
+            " expect(Object.keys(parsed!)).toEqual(['preload']);\n",
+            "});\n",
+            "it('refuses missing foreign malformed NUL and truncated separate condition values',()=>{\n",
+            " const prefix=['--experimental-import-meta-resolve','--require',preload];\n",
+            " for(const suffix of [['--conditions'],['--conditions',''],['--conditions','production'],['--conditions','Node'],['--conditions','node,development'],['--conditions','node\\0'],['--conditions','development\\n'],['--conditions','/foreign/value'],['--conditions','--require'],['--conditions','node','--conditions'],['--conditions','node','foreign'],['--conditions=production']])expect(exactAsciiLaunchShape([...prefix,...suffix])).toBeNull();\n",
+            "});\n",
+            "it('retains duplicate and mixed-form handling of already allowed conditions while refusing duplicate launch owners',()=>{\n",
+            " const prefix=['--experimental-import-meta-resolve','--require',preload];\n",
+            " for(const suffix of [['--conditions=node','--conditions=node'],['--conditions','node','--conditions=node'],['--conditions=development','--conditions','node','--conditions','development'],['--conditions','node','--max-old-space-size=4096','--conditions','node']])expect(exactAsciiLaunchShape([...prefix,...suffix])).toEqual({preload});\n",
+            " for(const suffix of [['--conditions','node','--require',preload],['--conditions','development','--experimental-import-meta-resolve'],['--conditions','node','--import','foreign']])expect(exactAsciiLaunchShape([...prefix,...suffix])).toBeNull();\n"
+          ],
+          "before": []
+        }
+      ]
+    },
+    {
+      "path": "test/employee-choice-exact-ascii-launch-observation.test.ts",
+      "predecessorSha256": "973c3f6e449cc72029877c6a4da0cc554d13d3b8fba1e4e735fe30d8eb06e2fb",
+      "candidateSha256": "953cc54584638d172352b17898020930adf238e5b9efb3ecc6f95b31f41ea1f3",
+      "edits": [
+        {
+          "afterStart": 5,
+          "after": [
+            "import {exactAsciiPrototypeRuntime} from './performance/employee-choice-exact-ascii-runtime';\n"
+          ],
+          "before": []
+        },
+        {
+          "afterStart": 37,
+          "after": [
+            "it('diagnostic output and a recognized separate-token shape cannot activate the input-free runtime owner',()=>{\n"
+          ],
+          "before": [
+            "it('diagnostic knowledge cannot admit the currently refused separate-token launch',()=>{\n"
+          ]
+        },
+        {
+          "afterStart": 39,
+          "after": [
+            " const diagnostic=exactAsciiLaunchObservationShape(separate),shape=exactAsciiLaunchShape(separate);\n",
+            " expect(diagnostic.status).toBe('bounded');expect(shape).toEqual({preload:'/owned/suppress-warnings.cjs'});\n",
+            " expect(Object.keys(shape!)).toEqual(['preload']);\n",
+            " expect(Reflect.apply(exactAsciiPrototypeRuntime,undefined,[diagnostic])).toBe(false);\n",
+            " expect(Reflect.apply(exactAsciiPrototypeRuntime,undefined,[shape])).toBe(false);\n",
+            " expect(exactAsciiLaunchShape(['--experimental-import-meta-resolve','--require','/owned/suppress-warnings.cjs','--conditions=node'])).toEqual(shape);\n"
+          ],
+          "before": [
+            " expect(exactAsciiLaunchShape(separate)).toBeNull();expect(exactAsciiLaunchObservationShape(separate).status).toBe('bounded');expect(exactAsciiLaunchShape(separate)).toBeNull();\n",
+            " expect(exactAsciiLaunchShape(['--experimental-import-meta-resolve','--require','/owned/suppress-warnings.cjs','--conditions=node'])).toEqual({preload:'/owned/suppress-warnings.cjs'});\n"
+          ]
+        }
+      ]
+    }
+  ],
+  "originalEvidence": {
+    "run": 42448763524,
+    "artifact": 13604223147,
+    "zipSha256": "d3b81930ae35bc6bc67ab47737517b9ae5a3c9ae90556e02aa1d4f6c456e4574",
+    "observationSha256": "25bd8e725e611e3a9896cf7b06a89ff1d123ec78791cd60540a39266a141f0e0",
+    "result": "7PASS/2FAIL; unknown-launch-profile",
+    "observedExecArgvCount": 7,
+    "nativeCmdlineCount": 9,
+    "executableMatches": true,
+    "matchesRuntimeExpectedArgv": true
+  },
+  "plannedPure": [
+    {
+      "selector": "test/employee-choice-exact-ascii-runtime.test.ts",
+      "cases": 14
+    },
+    {
+      "selector": "test/employee-choice-exact-ascii-launch-observation.test.ts",
+      "cases": 6
+    }
+  ],
+  "nativeCasesUnchanged": 9,
+  "benchmarkCasesUnchanged": 6,
+  "checksExecuted": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

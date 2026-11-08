@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {expect,it} from 'vitest';
 import {exactAsciiLaunchObservationShape} from './performance/employee-choice-exact-ascii-launch-observation';
 import {exactAsciiLaunchShape} from './performance/employee-choice-exact-ascii-runtime-contract';
+import {exactAsciiPrototypeRuntime} from './performance/employee-choice-exact-ascii-runtime';
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
 it('observes separate versus equals flags and fixed value categories without returning preload paths',()=>{
  const args=['--experimental-import-meta-resolve','--require','/private/fictional/suppress-warnings.cjs','--conditions','node','--conditions=development','--max-old-space-size=4096'];
@@ -34,8 +35,12 @@ it('caps encoded observations rather than exposing an unbounded argument transcr
  const result=exactAsciiLaunchObservationShape(Array(64).fill('--experimental-import-meta-resolve'));
  expect(result).toEqual({status:'refused',reason:'observation-output-bound'});expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(128);
 });
-it('diagnostic knowledge cannot admit the currently refused separate-token launch',()=>{
+it('diagnostic output and a recognized separate-token shape cannot activate the input-free runtime owner',()=>{
  const separate=['--experimental-import-meta-resolve','--require','/owned/suppress-warnings.cjs','--conditions','node'];
- expect(exactAsciiLaunchShape(separate)).toBeNull();expect(exactAsciiLaunchObservationShape(separate).status).toBe('bounded');expect(exactAsciiLaunchShape(separate)).toBeNull();
- expect(exactAsciiLaunchShape(['--experimental-import-meta-resolve','--require','/owned/suppress-warnings.cjs','--conditions=node'])).toEqual({preload:'/owned/suppress-warnings.cjs'});
+ const diagnostic=exactAsciiLaunchObservationShape(separate),shape=exactAsciiLaunchShape(separate);
+ expect(diagnostic.status).toBe('bounded');expect(shape).toEqual({preload:'/owned/suppress-warnings.cjs'});
+ expect(Object.keys(shape!)).toEqual(['preload']);
+ expect(Reflect.apply(exactAsciiPrototypeRuntime,undefined,[diagnostic])).toBe(false);
+ expect(Reflect.apply(exactAsciiPrototypeRuntime,undefined,[shape])).toBe(false);
+ expect(exactAsciiLaunchShape(['--experimental-import-meta-resolve','--require','/owned/suppress-warnings.cjs','--conditions=node'])).toEqual(shape);
 });

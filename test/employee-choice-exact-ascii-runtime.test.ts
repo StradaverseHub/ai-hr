@@ -14,6 +14,20 @@ it('recognizes only the closed actual Vitest launch grammar and returns a source
  // resolves and hashes the exact dependency before any process qualification.
  expect(exactAsciiLaunchShape(['--experimental-import-meta-resolve','--require','/unreviewed/suppress-warnings.cjs'])).toEqual({preload:'/unreviewed/suppress-warnings.cjs'});
 });
+it('recognizes the exact observed seven-token worker shape without granting runtime qualification',()=>{
+ const argv=Object.freeze(['--experimental-import-meta-resolve','--require',preload,'--conditions','node','--conditions','development']);
+ const before=[...argv],parsed=exactAsciiLaunchShape(argv);expect(parsed).toEqual({preload});expect(Object.isFrozen(parsed)).toBe(true);expect(argv).toEqual(before);
+ expect(Object.keys(parsed!)).toEqual(['preload']);
+});
+it('refuses missing foreign malformed NUL and truncated separate condition values',()=>{
+ const prefix=['--experimental-import-meta-resolve','--require',preload];
+ for(const suffix of [['--conditions'],['--conditions',''],['--conditions','production'],['--conditions','Node'],['--conditions','node,development'],['--conditions','node\0'],['--conditions','development\n'],['--conditions','/foreign/value'],['--conditions','--require'],['--conditions','node','--conditions'],['--conditions','node','foreign'],['--conditions=production']])expect(exactAsciiLaunchShape([...prefix,...suffix])).toBeNull();
+});
+it('retains duplicate and mixed-form handling of already allowed conditions while refusing duplicate launch owners',()=>{
+ const prefix=['--experimental-import-meta-resolve','--require',preload];
+ for(const suffix of [['--conditions=node','--conditions=node'],['--conditions','node','--conditions=node'],['--conditions=development','--conditions','node','--conditions','development'],['--conditions','node','--max-old-space-size=4096','--conditions','node']])expect(exactAsciiLaunchShape([...prefix,...suffix])).toEqual({preload});
+ for(const suffix of [['--conditions','node','--require',preload],['--conditions','development','--experimental-import-meta-resolve'],['--conditions','node','--import','foreign']])expect(exactAsciiLaunchShape([...prefix,...suffix])).toBeNull();
+});
 it('refuses every reviewed ICU/loader flag form instead of accepting a filename or boolean claim',()=>{
  for(const flags of [['--icu-data-dir=/tmp/data'],['--icu-data-dir','/tmp/data'],['--import','tsx'],['--import=data:text/javascript,'],['--loader','loader.js'],['--experimental-loader=loader.js'],['--eligible=true'],['--require','data:text/javascript,']])expect(exactAsciiLaunchShape([...flags,'--experimental-import-meta-resolve','--require',preload])).toBeNull();
 });
