@@ -61,6 +61,8 @@ it('executes all51 exact singleton profile controller cases with no skipped or s
  const child=spawnSync(process.execPath,['--test','--test-reporter=tap','.github/ci/singleton-profiles.test.mjs'],{
   cwd:root,encoding:'utf8',timeout:25000,maxBuffer:1024*1024,
  });
+ process.stdout.write(child.stdout??'');
+ process.stderr.write(child.stderr??'');
  expect(child.error).toBeUndefined();expect(child.signal).toBeNull();expect(child.status).toBe(0);
  const output=child.stdout;expect(typeof output).toBe('string');expect(output.length).toBeGreaterThan(0);
  expect(output).not.toMatch(/^not ok\b/m);expect(output).not.toMatch(/^(?:ok|not ok)\s+[0-9]+.*#\s*(?:SKIP|TODO)\b/im);

@@ -192,3 +192,11 @@ real controller owner. No mirrored replacement model or new test-case budget.
 Root+independent affectedFULL review of this frozen source precedes publication.
 Only after actual hosted1wrapper+51nestedcases pass may the separately authorized
 sole3caseJIT diagnostic run. This adds no native/normal/release qualification.
+
+
+The retained-TAP successor preserves the frozen2b2 wrapper and adds only two
+bounded child-stream writes BEFORE assertions, matching the existing compiler
+model wrapper. Actual nested TAP names/outcomes, including failures, now reach
+the hosted job log for independent authentication. These are the fixed pure
+controller model streams, separate from the UID component's private diagnostics.
+All25s/1MiB/30s bounds,51names and original failure/status guards remain whole.
