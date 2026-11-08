@@ -79,8 +79,15 @@ Production adoption requires separately protected startup/source/ICU closure.
 
 ## New native owner and reader boundaries
 
-Add an unnumbered guarded disposable fixture function under a NEW name; preserve
-the original native-purpose SQL and original JS fallback reader byte-for-byte.
+Preserve the original native-purpose SQL and original JS fallback reader
+byte-for-byte. A new unnumbered guarded fixture replaces ONLY the existing
+20-argument disposable prototype body, adding exact-ascii alongside its unchanged
+legacy modes. OID/ABI/owner/full metadata except prosrc and every ACL/grant stay
+exact. A compositional owner captures the original actual identity before any
+COMMIT, checks candidate and security identity, and restores the exact old native
+definition before calling the original guarded remover. No new function grant
+is introduced. This refines c149's initial new-name direction to honor the
+no-new-grants constraint; the frozen earlier ADR commit remains historical.
 The new function retains their exact native RR/RO, actual ai_hr_app session,
 principal snapshot, RLS/role/grant/company/date/population, label-mode and input
 validation. It receives only actual prepared ASCII text, not a runtime flag.
