@@ -2,7 +2,7 @@ import {prepareNativeAssessmentReminder} from './reminder';
 /** Uncommissioned fixed-API prototype. No application pool, service facade or Drizzle carrier. */
 import type {Sql,TransactionSql} from 'postgres';
 import {z} from 'zod';
-import {createNotificationRegistry,type EventRef,type NotificationRecipientReaders} from '../../core/notification-registry';
+import {createNotificationRegistry,type EventRef,type NotificationRecipientReaders,type NotificationSpec} from '../../core/notification-registry';
 import type {NativeNotificationEvent} from './lifecycle';
 
 export class UnsupportedNotificationFacts extends Error{
@@ -52,13 +52,53 @@ const nativeReaders:NotificationRecipientReaders<Reader>={
  payrollClosed:(r,e)=>ids(r,e,'payroll-audience'),
  approvalChase:()=>unsupported,
 };
+/** Closed source-owned support, not permission or an installation receipt.
+ * Unknown/missing metadata never falls back to subject audience. */
+export const nativeNotificationReaderSupport:Readonly<Record<keyof NotificationRecipientReaders<Reader>,boolean>>=Object.freeze({
+ probation:false,
+ contract:true,
+ onboardingDigest:true,
+ assessmentReminder:true,
+ rewardSuspension:true,
+ rewardUploadChecker:true,
+ rewardUploadReady:true,
+ rewardRouted:true,
+ rewardPoolChanged:true,
+ rewardApproved:true,
+ leaveSubmitted:false,
+ leaveCancellationSubmitted:false,
+ overtimeSubmitted:false,
+ readinessNudge:false,
+ peerFeedback:false,
+ assessmentReviewTask:false,
+ assessmentKpiApproval:false,
+ legacyReviewStarted:false,
+ legacyReviewEvaluated:false,
+ legacyReviewDecidedLetter:false,
+ legacyReviewReminder:false,
+ delegationStarted:true,
+ delegationEnded:true,
+ leaveEscalation:false,
+ automaticReviewChase:false,
+ missingClockFollowup:false,
+ passportFollowup:false,
+ lifecycleFollowup:false,
+ noticePublished:true,
+ payrollClosed:true,
+ approvalChase:false,
+});
+export function nativeNotificationRecipeImplemented(spec:Pick<NotificationSpec<Reader>,'recipientAudience'|'recipientPort'>,version:2|3){
+ if(spec.recipientAudience==='subject'||spec.recipientAudience==='none')return true;
+ return spec.recipientAudience==='reader'&&spec.recipientPort!==undefined&&nativeNotificationReaderSupport[spec.recipientPort]===true
+  &&(spec.recipientPort!=='assessmentReminder'||version===3);
+}
 const registry=createNotificationRegistry(nativeReaders);
 /** Owner-installed closed metadata, derived from the single canonical registry.
  * The service has no installation API or authority to alter this contract. */
 function projectionContract(version:2|3){return Object.entries(registry).flatMap(([eventType,entry])=>(Array.isArray(entry)?entry:[entry]).map(spec=>({
  eventType,kind:spec.kind,category:spec.category,recipientPort:spec.recipientPort??null,
- audience:spec.recipientPort?'reader':spec.recipientAudience??'subject',guard:spec.recipientGuard??null,
- implemented:(!spec.recipientPort||nativeReaders[spec.recipientPort]!==unsupported&&spec.recipientPort!=='approvalChase')&&(spec.recipientPort!=='assessmentReminder'||version===3),
+ audience:spec.recipientAudience,guard:spec.recipientGuard??null,
+ implemented:nativeNotificationRecipeImplemented(spec,version),
 })));}
 export const notificationWorkerProjectionContract=projectionContract(2);
 export const notificationWorkerAssessmentContract=projectionContract(3);

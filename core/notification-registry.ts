@@ -10,7 +10,10 @@ export type NotificationPayload=Record<string,unknown>|null;
 export type NoticeAudienceReader=(noticeId:string)=>Promise<string[]>;
 export type NotificationRecipientReader<Reader>=(reader:Reader,event:EventRef,payload:NotificationPayload,noticeReader?:NoticeAudienceReader)=>Promise<string[]>;
 export type NotificationPayloadGuard={field:'overtime'|'supersededByAdminCancellation'|'notify';equals:true;not?:true};
-export type NotificationSpec<Reader>={recipientAudience?:'none';recipientGuard?:NotificationPayloadGuard;kind:string;category:NotificationEmailCategory|null;render:(payload:NotificationPayload,event:EventRef)=>Rendered;recipientPort?:keyof NotificationRecipientReaders<Reader>;recipients?:NotificationRecipientReader<Reader>};
+type NotificationAudience<Reader>=
+ |{recipientAudience:'subject'|'none';recipientPort?:never}
+ |{recipientAudience:'reader';recipientPort:keyof NotificationRecipientReaders<Reader>};
+export type NotificationSpec<Reader>=NotificationAudience<Reader>&{recipientGuard?:NotificationPayloadGuard;kind:string;category:NotificationEmailCategory|null;render:(payload:NotificationPayload,event:EventRef)=>Rendered;recipients?:NotificationRecipientReader<Reader>};
 export type ApprovalChaseSource='claim'|'attendance_correction'|'replacement_leave';
 export type NotificationRecipientReaders<Reader>={
  probation:NotificationRecipientReader<Reader>;
@@ -64,10 +67,23 @@ const noticeNotify:NotificationPayloadGuard={field:'notify',equals:true};
 function payloadGuardMatches(payload:NotificationPayload,guard:NotificationPayloadGuard){
  const matches=payload?.[guard.field]===guard.equals;return guard.not?!matches:matches;
 }
+const noRecipients=async()=>[];
 const subjectRecipient=async<Reader>(_reader:Reader,event:EventRef)=>event.subjectEmploymentId?[event.subjectEmploymentId]:[];
+/** Definition validation only; this cannot issue native or application authority. */
+export function assertNotificationRecipeAudience<Reader>(value:unknown,readers:NotificationRecipientReaders<Reader>){
+ if(!value||typeof value!=='object'||!('recipientAudience'in value))throw Error('Explicit canonical notification audience required');
+ const port='recipientPort'in value?value.recipientPort:undefined,recipient='recipients'in value?value.recipients:undefined;
+ if(value.recipientAudience==='subject'){
+  if(port!==undefined||recipient!==undefined&&recipient!==subjectRecipient)throw Error('Canonical subject notification resolver differs');
+ }else if(value.recipientAudience==='none'){
+  if(port!==undefined||recipient!==noRecipients)throw Error('Canonical no-recipient notification resolver differs');
+ }else if(value.recipientAudience==='reader'){
+  if(typeof port!=='string'||!Object.hasOwn(readers,port)||typeof recipient!=='function')throw Error('Canonical reader notification port required');
+ }else throw Error('Unknown canonical notification audience');
+}
 export function createNotificationRegistry<Reader>(readers:NotificationRecipientReaders<Reader>):Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]> {
 function approvalChaseSpec(source: ApprovalChaseSource, kind: string, category: NotificationEmailCategory, title: string, what: string): NotificationSpec<Reader> {
-  return {
+  return {recipientAudience:'reader',
     kind,
     category,
     render: (p) => {
@@ -84,52 +100,52 @@ function approvalChaseSpec(source: ApprovalChaseSource, kind: string, category: 
 }
 
 const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]>= {
-  'probation.notification-due':{kind:'probation.notification',category:'review',recipientPort:'probation',recipients:readers.probation,render:(payload)=>({severity:'action',title:'probation.notification.title',body:'probation.notification.body',linkPath:typeof payload?.caseId==='string'?(payload.documentKind==='letter'&&typeof payload.partId==='string'?`/lifecycle/probation/${payload.caseId}/letters/${payload.partId}`:`/lifecycle/probation/${payload.caseId}`):'/lifecycle/probation'})},
+  'probation.notification-due':{recipientAudience:'reader',kind:'probation.notification',category:'review',recipientPort:'probation',recipients:readers.probation,render:(payload)=>({severity:'action',title:'probation.notification.title',body:'probation.notification.body',linkPath:typeof payload?.caseId==='string'?(payload.documentKind==='letter'&&typeof payload.partId==='string'?`/lifecycle/probation/${payload.caseId}/letters/${payload.partId}`:`/lifecycle/probation/${payload.caseId}`):'/lifecycle/probation'})},
   // This explicit command atomically point-projects its in-app notification. SQL refuses a forged
   // event or a commit without that exact projection; the global cursor must not project it twice.
   'employee-home.greeting.sent': {
-    kind:'employee-home.greeting',category:null,recipientAudience:'none',recipients:async()=>[],
+    kind:'employee-home.greeting',category:null,recipientAudience:'none',recipients:noRecipients,
     render:(_payload,ev)=>({severity:'info',title:'employeeHome.greetingNotification.title',
       body:'employeeHome.greetingNotification.body',linkPath:`/me/greetings/${ev.aggregateId}`}),
   },
-  'contract.notification-due': {
+  'contract.notification-due': {recipientAudience:'reader',
     kind:'contract.notification-due',category:'review',
     recipientPort:'contract',recipients:readers.contract,
     render:()=>({severity:'action',title:'Contract staff task',body:'Open Contract Management to review your assigned task.',linkPath:'/lifecycle/contracts'}),
   },
-  'onboarding.digest': {
+  'onboarding.digest': {recipientAudience:'reader',
     kind:'onboarding.digest',category:'onboarding',
     recipientPort:'onboardingDigest',recipients:readers.onboardingDigest,
     render:()=>({severity:'info',title:'Your daily onboarding digest',body:'Review your assigned onboarding work, approvals and conversations.',linkPath:'/tasks'}),
   },
-  'assessment.reminder-queued': {
+  'assessment.reminder-queued': {recipientAudience:'reader',
     kind:'performance.reminder',category:'performance',
     recipientPort:'assessmentReminder',recipients:readers.assessmentReminder,
     render:()=>({severity:'action',title:'Assessment work waiting on you',body:'Open your performance workspace to complete your pending review tasks.',linkPath:'/me/performance'}),
   },
-  'reward-access.suspended': {
+  'reward-access.suspended': {recipientAudience:'reader',
     kind:'rewards.access-suspended',category:'rewards',
     render:(_payload,event)=>({severity:'warning',title:'Rewards access suspended',body:'People records changed. Check approval-role coverage and ask a Rewards administrator to review suspended access.',linkPath:`/rewards/${event.aggregateId}?view=approvals`}),
     recipientPort:'rewardSuspension',recipients:readers.rewardSuspension,
   },
-  'reward-unit.upload-replaced':{kind:'rewards.upload-check',category:'rewards',recipientPort:'rewardUploadChecker',recipients:readers.rewardUploadChecker,render:(_payload,event)=>({severity:'action',title:'rewardUploaded.checkNotificationTitle',body:'rewardUploaded.checkNotificationBody',linkPath:`/rewards/${event.aggregateId}/uploaded`})},
-  'reward-unit.upload-confirmed':{kind:'rewards.upload-ready',category:'rewards',recipientPort:'rewardUploadReady',recipients:readers.rewardUploadReady,render:(_payload,event)=>({severity:'action',title:'rewardUploaded.readyNotificationTitle',body:'rewardUploaded.readyNotificationBody',linkPath:`/rewards/${event.aggregateId}`})},
-  'reward-unit.routed': {
+  'reward-unit.upload-replaced':{recipientAudience:'reader',kind:'rewards.upload-check',category:'rewards',recipientPort:'rewardUploadChecker',recipients:readers.rewardUploadChecker,render:(_payload,event)=>({severity:'action',title:'rewardUploaded.checkNotificationTitle',body:'rewardUploaded.checkNotificationBody',linkPath:`/rewards/${event.aggregateId}/uploaded`})},
+  'reward-unit.upload-confirmed':{recipientAudience:'reader',kind:'rewards.upload-ready',category:'rewards',recipientPort:'rewardUploadReady',recipients:readers.rewardUploadReady,render:(_payload,event)=>({severity:'action',title:'rewardUploaded.readyNotificationTitle',body:'rewardUploaded.readyNotificationBody',linkPath:`/rewards/${event.aggregateId}`})},
+  'reward-unit.routed': {recipientAudience:'reader',
     kind: 'rewards.review', category: 'rewards',
     render: (p, ev) => renderRewardRouted(p, ev),
     recipientPort:'rewardRouted',recipients:readers.rewardRouted,
   },
-  'reward-unit.final-pool-changed': {
+  'reward-unit.final-pool-changed': {recipientAudience:'reader',
     kind:'rewards.final-pool-changed',category:'rewards',
     render:(_payload,event)=>({severity:'action',title:'Rewards pool updated',body:'Group Rewards changed the bonus pool or its status. Review the current pool and budget checks before approving.',linkPath:`/rewards/${event.aggregateId}#unit-governance`}),
     recipientPort:'rewardPoolChanged',recipients:readers.rewardPoolChanged,
   },
-  'reward-unit.approved': {
+  'reward-unit.approved': {recipientAudience:'reader',
     kind: 'rewards.approved', category: 'rewards',
     render: (_p, ev) => ({ severity: 'action', title: 'Rewards ready for payroll', body: 'The review is approved and ready for the payroll handoff.', linkPath: `/rewards/${ev.aggregateId}?view=approvals` }),
     recipientPort:'rewardApproved',recipients:readers.rewardApproved,
   },
-  'leave-request.approved': {
+  'leave-request.approved': {recipientAudience:'subject',
     kind: 'leave.approved',
     category: 'leave',
     // Partial Leave Approval notification fix: a MIXED per-date outcome (finalizeLeaveApproval sets
@@ -165,7 +181,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
       return { severity: 'info', title: 'Leave approved', body: 'Your leave request was approved.', linkPath: '/me' };
     },
   },
-  'leave-request.rejected': {
+  'leave-request.rejected': {recipientAudience:'subject',
     kind: 'leave.rejected',
     category: 'leave',
     render: () => ({ severity: 'warning', title: 'Leave not approved', body: 'Your leave request was rejected.', linkPath: '/me' }),
@@ -173,7 +189,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   // HR cancelled a leave on the employee's behalf (feedback 22e68ff0). Default recipient = the event's
   // subjectEmploymentId (the affected employee) — no fan-out resolver. The payload carries the display facts
   // (type + dates) the ticket wants in the notice. English-only strings, matching every other registry entry.
-  'leave-request.admin-cancelled': {
+  'leave-request.admin-cancelled': {recipientAudience:'subject',
     kind: 'leave.admin-cancelled',
     category: 'leave',
     render: (p) => ({
@@ -187,7 +203,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   // and HR"). Unlike the other leave notices, the SUBJECT here is the person who took the action, so a subject
   // notice would be pointless — a fan-out resolver targets the approver (the subject's current administrative
   // manager) + the company's HR admins instead, excluding the subject. English-only body (registry convention).
-  'leave-request.self-cancelled': {
+  'leave-request.self-cancelled': {recipientAudience:'reader',
     kind: 'leave.self-cancelled',
     category: 'leave',
     render: (p) => ({
@@ -204,7 +220,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   // "Notify the approver and HR" box was ticked, a choice SNAPSHOTTED into the event payload at request time
   // (re-reading the leave type at dispatch would let a later untick retroactively un-notify).
   // Email uses a separate brief template; the in-app strings follow the registry convention.
-  'leave-cancellation.requested': {
+  'leave-cancellation.requested': {recipientAudience:'reader',
     kind: 'leave.cancellation-requested',
     category: 'leave',
     render: (p) => {
@@ -225,7 +241,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     },
     recipientPort:'leaveCancellationSubmitted',recipients:readers.leaveCancellationSubmitted,
   },
-  'leave-cancellation.approved': {
+  'leave-cancellation.approved': {recipientAudience:'subject',
     kind: 'leave.cancellation-approved',
     category: 'leave',
     render: (p) => {
@@ -242,7 +258,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
       };
     },
   },
-  'leave-cancellation.rejected': {
+  'leave-cancellation.rejected': {recipientAudience:'subject',
     kind: 'leave.cancellation-rejected',
     category: 'leave',
     render: (p) => {
@@ -259,7 +275,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     // by HR", and "your cancellation was not approved… the leave stays approved" would be untrue.
     recipientGuard:cancellationNotSuperseded,recipients:subjectRecipient,
   },
-  'toil.accrued': {
+  'toil.accrued': {recipientAudience:'subject',
     kind: 'toil.accrued',
     category: 'toil',
     render: (p) => ({
@@ -269,24 +285,24 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
       linkPath: '/me',
     }),
   },
-  'toil.converted': {
+  'toil.converted': {recipientAudience:'subject',
     kind: 'toil.converted',
     category: 'toil',
     render: (p) => ({ severity: 'info', title: 'In-lieu converted to pay', body: `Your unused time in lieu (${p?.daysCredited ?? ''} day(s)) was converted to pay.`, linkPath: '/me' }),
   },
-  'toil.lapsed': {
+  'toil.lapsed': {recipientAudience:'subject',
     kind: 'toil.lapsed',
     category: 'toil',
     render: (p) => ({ severity: 'warning', title: 'In-lieu expired', body: `Your unused time in lieu (${p?.daysCredited ?? ''} day(s)) has lapsed.`, linkPath: '/me' }),
   },
   // 34-2b producers — the rest of the "your request was actioned" decisions (each already carries the
   // requester as subjectEmploymentId) plus the payslip-ready fan-out.
-  'resignation.accepted': {
+  'resignation.accepted': {recipientAudience:'subject',
     kind: 'resignation.accepted',
     category: 'offboarding',
     render: () => ({ severity: 'info', title: 'Resignation accepted', body: 'Your resignation has been accepted by HR.', linkPath: '/me' }),
   },
-  'resignation.rejected': {
+  'resignation.rejected': {recipientAudience:'subject',
     kind: 'resignation.rejected',
     category: 'offboarding',
     render: () => ({ severity: 'warning', title: 'Resignation not accepted', body: 'Your resignation was not accepted — please speak with HR.', linkPath: '/me' }),
@@ -301,7 +317,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
    * `subjectEmploymentId` is the person who filed it, so the DEFAULT recipient resolver is already right
    * and no `recipients` override is needed — the absence of one here is deliberate, not an oversight.
    */
-  'claim-request.triage-queried': {
+  'claim-request.triage-queried': {recipientAudience:'subject',
     kind: 'claim.triageQueried',
     // The claims category, so muting claim notifications mutes this too. It is a question about a claim.
     category: 'claims',
@@ -318,12 +334,12 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
       linkPath: '/me',
     }),
   },
-  'claim-request.approved': {
+  'claim-request.approved': {recipientAudience:'subject',
     kind: 'claim.approved',
     category: 'claims',
     render: () => ({ severity: 'info', title: 'Claim approved', body: 'Your expense claim was approved.', linkPath: '/me' }),
   },
-  'claim-request.rejected': {
+  'claim-request.rejected': {recipientAudience:'subject',
     kind: 'claim.rejected',
     category: 'claims',
     render: () => ({ severity: 'warning', title: 'Claim not approved', body: 'Your expense claim was not approved.', linkPath: '/me' }),
@@ -341,7 +357,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   //
   // English-only strings, the registry convention — a notification body is rendered once and STORED, so
   // there is no per-language version of it.
-  'attendance-correction.requested': {
+  'attendance-correction.requested': {recipientAudience:'reader',
     kind: 'attendance.ot-requested',
     category: 'attendance',
     render: (p) => {
@@ -363,7 +379,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   },
   // The subject IS the employee whose plan was decided, so these two would take the default recipient —
   // but the resolver is spelled out anyway to carry the overtime-only scope above.
-  'attendance-correction.approved': {
+  'attendance-correction.approved': {recipientAudience:'subject',
     kind: 'attendance.ot-approved',
     category: 'attendance',
     render: (p) => ({
@@ -380,7 +396,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     }),
     recipientGuard:overtimeOnly,recipients:subjectRecipient,
   },
-  'attendance-correction.rejected': {
+  'attendance-correction.rejected': {recipientAudience:'subject',
     kind: 'attendance.ot-rejected',
     category: 'attendance',
     render: () => ({
@@ -395,7 +411,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   // model draft that passed `nudgeIsFaithful` — and if it did not, the sweep already substituted the
   // deterministic template, so by the time it reaches this registry there is exactly one body and it is
   // trustworthy. Rendering here would have to re-decide that, and two places deciding is how they drift.
-  'readiness.nudge-raised': {
+  'readiness.nudge-raised': {recipientAudience:'reader',
     kind: 'readiness.nudge',
     // Its OWN category, so the existing per-category preference is a precise opt-out: somebody can mute
     // record chasers without muting leave approvals.
@@ -415,33 +431,33 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     }),
     recipientPort:'readinessNudge',recipients:readers.readinessNudge,
   },
-  'profile-change.approved': {
+  'profile-change.approved': {recipientAudience:'subject',
     kind: 'profile.approved',
     category: 'profile',
     render: () => ({ severity: 'info', title: 'Profile change approved', body: 'Your requested profile change was approved.', linkPath: '/me' }),
   },
-  'profile-change.rejected': {
+  'profile-change.rejected': {recipientAudience:'subject',
     kind: 'profile.rejected',
     category: 'profile',
     render: () => ({ severity: 'warning', title: 'Profile change not approved', body: 'Your requested profile change was not approved.', linkPath: '/me' }),
   },
-  'peer-feedback-request.created': {
+  'peer-feedback-request.created': {recipientAudience:'reader',
     kind:'performance.feedback-request',category:'performance',
     render:()=>({severity:'action',title:'Feedback requested',body:'A colleague has requested your feedback. Open your performance tasks.',linkPath:'/me/performance'}),
     recipientPort:'peerFeedback',recipients:readers.peerFeedback,
   },
-  ...Object.fromEntries(['results-submitted','competencies-submitted','plan-shared'].map(event=>[`onehr.${event}`,{
+  ...Object.fromEntries(['results-submitted','competencies-submitted','plan-shared'].map(event=>[`onehr.${event}`,{recipientAudience:'reader' as const,
     kind:'performance.review-task',category:'performance' as const,recipientPort:'assessmentReviewTask' as const,recipients:(reader:Reader,ev:EventRef)=>readers.assessmentReviewTask(reader,ev,event==='results-submitted'?'results':event==='competencies-submitted'?'competencies':'plan'),
     render:()=>({severity:'action' as const,title:'Performance review task',body:'An employee has submitted information for your review. Open your performance tasks.',linkPath:'/me/performance'}),
   }])),
-  'onehr.kpi-approval-needed': {
+  'onehr.kpi-approval-needed': {recipientAudience:'reader',
     kind:'performance.review-task',category:'performance',
     recipientPort:'assessmentKpiApproval',recipients:readers.assessmentKpiApproval,
     render:()=>({severity:'action',title:'Performance review task',body:'A KPI approval is awaiting your review. Open your performance tasks.',linkPath:'/me/performance'}),
   },
   // WP-E: a release is announced once per person per release action (onehr.results-to-person below), not once
   // per component; onehr.result-released stays an audit event.
-  ...Object.fromEntries(['scorecard-approved','scorecard-returned','plan-reviewed','plan-closed'].map(event=>[`onehr.${event}`,{
+  ...Object.fromEntries(['scorecard-approved','scorecard-returned','plan-reviewed','plan-closed'].map(event=>[`onehr.${event}`,{recipientAudience:'subject',
     kind:'performance.update',category:'performance' as const,
     render:()=>({severity:'info' as const,title:'Performance assessment update',body:'There is an update to your assessment or development plan. Open your performance tasks.',linkPath:'/me/performance'}),
   }])),
@@ -449,7 +465,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   // service's ledger already decided who is newly told; the copy carries a count or the kinds released, never a
   // band and never another person's name. Delivery: the bell always; email under the tenant's performance
   // category policy and the recipient's own consent (E-6).
-  'onehr.results-to-leader': {
+  'onehr.results-to-leader': {recipientAudience:'subject',
     kind:'performance.update',category:'performance',
     render:(p)=>{
       const count=typeof p?.count==='number'&&p.count>0?p.count:1,moved=typeof p?.moved==='number'&&p.moved>0?p.moved:0;
@@ -459,7 +475,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
         linkPath:'/performance/led'};
     },
   },
-  'onehr.results-to-person': {
+  'onehr.results-to-person': {recipientAudience:'subject',
     kind:'performance.update',category:'performance',
     render:(p)=>{
       const words:Record<string,string>={performance:'your performance band',potential:'your potential band',talent:'your talent status',feedback:'your 360 feedback report'};
@@ -471,14 +487,14 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   // Performance closure (lifecycle G4). Release-safe: closeReview asserts the cycle is released before
   // closing, and the body says only that the review was finalized — never the score or ABC class (the
   // /me review surface gates the actual figures behind the existing release/showManager rules).
-  'performance-review.closed': {
+  'performance-review.closed': {recipientAudience:'subject',
     kind: 'performance.closed',
     category: 'performance',
     render: () => ({ severity: 'info', title: 'Performance review finalized', body: 'Your performance review has been finalized.', linkPath: '/me' }),
   },
   // Employment-review workflow (0110). started → fan out to the resolved direct manager (from the review
   // row) + the company's HR admins; manager-evaluated → HR admins; decided → the subject (default path).
-  'employment-review.started': {
+  'employment-review.started': {recipientAudience:'reader',
     kind: 'review.started',
     category: 'review',
     render: () => ({
@@ -489,7 +505,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     }),
     recipientPort:'legacyReviewStarted',recipients:readers.legacyReviewStarted,
   },
-  'employment-review.manager-evaluated': {
+  'employment-review.manager-evaluated': {recipientAudience:'reader',
     kind: 'review.manager-evaluated',
     category: 'review',
     render: () => ({
@@ -501,14 +517,14 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     recipientPort:'legacyReviewEvaluated',recipients:readers.legacyReviewEvaluated,
   },
   'employment-review.decided': [
-    {
+    {recipientAudience:'subject',
       kind: 'review.decided',
       category: 'review',
       // Default subject path (no resolver) — notify the subject only. The decision itself is gated behind
       // the /me review surface; the body says only that the review is complete.
       render: () => ({ severity: 'info', title: 'Your review is complete', body: 'Your review has been finalized.', linkPath: '/me' }),
     },
-    {
+    {recipientAudience:'reader',
       // 6522d26a Fn 5.2 — the follow-up "issue letter" HR task: same event, HR fan-out, deep-link to the
       // subject's profile review section where the save/upload affordances live. The notification IS the
       // task (a dedicated task table is deliberately out of scope).
@@ -525,7 +541,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   ],
   // 6522d26a Fn 2 — configurable reminder cadence: the sweep appends one reminder-due per (review,
   // offset window); recipients = assigned manager + the company's HR admins (clone of .started).
-  'employment-review.reminder-due': {
+  'employment-review.reminder-due': {recipientAudience:'reader',
     kind: 'review.reminder',
     category: 'review',
     render: (p) => ({
@@ -540,7 +556,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   // event's subjectEmploymentId is the delegator (the person handing over), so a subject-default notice
   // would be wrong; a fan-out resolver reads the delegate off the reporting_line row (aggregateId) instead.
   // Deep-links to /delegations, where the full picture (who covers whom, windows, revoke) lives.
-  'delegation.started': {
+  'delegation.started': {recipientAudience:'reader',
     kind: 'delegation.started',
     category: 'delegation',
     render: (p) => ({
@@ -551,7 +567,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     }),
     recipientPort:'delegationStarted',recipients:readers.delegationStarted,
   },
-  'delegation.ended': {
+  'delegation.ended': {recipientAudience:'reader',
     kind: 'delegation.ended',
     category: 'delegation',
     render: (p) => ({
@@ -569,7 +585,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   // — or the request — has since been decided, no notification is created. That re-check is what makes
   // "if the approver acts in time, nothing is sent" actually hold. English-only strings, the registry
   // convention (notification bodies are rendered once and STORED — there is no per-language version).
-  'leave-request.escalation-due': {
+  'leave-request.escalation-due': {recipientAudience:'reader',
     kind: 'leave.escalation',
     category: 'leave',
     render: (p) => ({
@@ -589,7 +605,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     approvalChaseSpec('attendance_correction', 'attendance.approval-overdue', 'attendance', 'Attendance request approval overdue', 'An attendance request'),
     approvalChaseSpec('replacement_leave', 'toil.approval-overdue', 'toil', 'Replacement leave approval overdue', 'A replacement leave request'),
   ],
-  'automatic-chase.review-raised': {
+  'automatic-chase.review-raised': {recipientAudience:'reader',
     kind: 'review.overdue',
     category: 'review',
     render: (p) => ({
@@ -601,16 +617,16 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     recipientPort:'automaticReviewChase',recipients:readers.automaticReviewChase,
   },
   'automatic-chase.followup-raised': [
-    {kind:'attendance.missing-clock',category:'attendance',render:p=>({severity:'action',title:'Please check your clock-in record',body:`No clock-in is recorded for ${typeof p?.waitingOn==='string'?p.waitingOn:''}. Check Attendance if a record is missing; this reminder does not establish whether you worked.`,linkPath:'/me'}),recipients:readers.missingClockFollowup},
-    {kind:'profile.passport-expiry',category:'profile',render:p=>({severity:'action',title:'Recorded passport expiry approaching',body:`A recorded passport expiry is ${typeof p?.waitingOn==='string'?p.waitingOn:''}. Check the Personnel record and follow your renewal process.`,linkPath:'/me'}),recipients:readers.passportFollowup},
-    {kind:'lifecycle.step-waiting',category:null,render:()=>({severity:'action',title:'Lifecycle checklist needs attention',body:'An actionable checklist step is still incomplete. Review the case; this reminder does not complete or verify any task.',linkPath:'/lifecycle'}),recipients:readers.lifecycleFollowup},
+    {recipientAudience:'reader',kind:'attendance.missing-clock',category:'attendance',render:p=>({severity:'action',title:'Please check your clock-in record',body:`No clock-in is recorded for ${typeof p?.waitingOn==='string'?p.waitingOn:''}. Check Attendance if a record is missing; this reminder does not establish whether you worked.`,linkPath:'/me'}),recipientPort:'missingClockFollowup',recipients:readers.missingClockFollowup},
+    {recipientAudience:'reader',kind:'profile.passport-expiry',category:'profile',render:p=>({severity:'action',title:'Recorded passport expiry approaching',body:`A recorded passport expiry is ${typeof p?.waitingOn==='string'?p.waitingOn:''}. Check the Personnel record and follow your renewal process.`,linkPath:'/me'}),recipientPort:'passportFollowup',recipients:readers.passportFollowup},
+    {recipientAudience:'reader',kind:'lifecycle.step-waiting',category:null,render:()=>({severity:'action',title:'Lifecycle checklist needs attention',body:'An actionable checklist step is still incomplete. Review the case; this reminder does not complete or verify any task.',linkPath:'/lifecycle'}),recipientPort:'lifecycleFollowup',recipients:readers.lifecycleFollowup},
   ],
   // 6e122302 — a Notice Board notice is A NOTIFICATION WITH A DIFFERENT PAYLOAD, which is why core/notice.ts
   // carries no delivery code of its own. Publishing appends notice.published; this entry fans it out to the
   // audience SNAPSHOT (notice_recipient) as ordinary in-app notifications, shown by the same bell as
   // everything else. Conditional email also uses this snapshot, tenant category permission and recipient
   // consent; the brief external alert carries a link instead of the notice's title/body.
-  'notice.published': {
+  'notice.published': {recipientAudience:'reader',
     kind: 'notice.published',
     category: 'notice',
     // Delivery stays informational. Required current-version acknowledgements are live assigned work
@@ -625,7 +641,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     recipientPort:'noticePublished',recipientGuard:noticeNotify,recipients:readers.noticePublished,
   },
   // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
-  'payroll-batch.closed': {
+  'payroll-batch.closed': {recipientAudience:'reader',
     kind: 'payslip.ready',
     category: 'payroll',
     render: () => ({ severity: 'info', title: 'Payslip ready', body: 'Your payslip is ready to view.', linkPath: '/me' }),
@@ -633,7 +649,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   },
   // AI v2 Phase 1 slice 3 (core/letter-requests.ts): HR declined an employee's letter request. The employee (the event's
   // subject) is told only that it was declined: no letter type, no reason, no HR name. In-app only (no email category).
-  'letter-request.declined': {
+  'letter-request.declined': {recipientAudience:'subject',
     kind: 'letter-request.declined',
     category: null,
     render: () => ({ severity: 'info', title: 'Letter request declined', body: 'Your letter request was declined. Open My Letters to see its status.', linkPath: '/me/letters' }),
@@ -641,7 +657,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   // AI v2 Phase 2 P2-1 (core/loops/act-clock-outs.ts): the missed clock-outs loop, acting within its limits, set a missed
   // clock-out to the roster end through the attendance owner. The employee (the event's subject) is told the day, the
   // time and until when they can undo it on Today. Dates and a clock time only. In-app only (no email category).
-  'teras-loop.action.applied': {
+  'teras-loop.action.applied': {recipientAudience:'subject',
     kind: 'teras-loop.clock-out-set',
     category: null,
     render: (p) => {
@@ -655,7 +671,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   },
   // AI v2 Phase 2 P2-1 (core/loops/act-requests.ts): the missing employee data loop, acting within its limits, sent the
   // employee its request to fill in their own details. A count and their own request section only; no record changed.
-  'teras-loop.request.sent': {
+  'teras-loop.request.sent': {recipientAudience:'subject',
     kind: 'teras-loop.details-requested',
     category: null,
     render: (p) => {
@@ -667,7 +683,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
         linkPath: `/me?tab=${tab}#section-request-${tab}` };
     },
   },
-  'teras-loop.request.withdrawn': {
+  'teras-loop.request.withdrawn': {recipientAudience:'subject',
     kind: 'teras-loop.details-request-withdrawn',
     category: null,
     render: () => ({ severity: 'info', title: 'Details request withdrawn', body: 'The request to complete your details was withdrawn. You can ignore it.', linkPath: '/me' }),
@@ -678,7 +694,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   // reader's own language (components/notification-center.tsx, payrollReadiness.reminder.* in all six catalogues), like the
   // greeting and letter notices: the title says how soon, the body whether items of their own, requests to decide, or
   // both wait. Never a pay figure, an amount, a count of someone else's or another person's name. It opens Today.
-  'teras-loop.cut-off-reminder': {
+  'teras-loop.cut-off-reminder': {recipientAudience:'subject',
     kind: 'teras-loop.cut-off-reminder',
     category: null,
     render: (p) => {
@@ -690,6 +706,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     },
   },
 };
+ for(const entry of Object.values(registry))for(const spec of Array.isArray(entry)?entry:[entry])assertNotificationRecipeAudience(spec,readers);
  // One installed guard description powers both the pure caller and native
  // audience admission; native code interprets this closed boolean predicate.
  for(const entry of Object.values(registry))for(const spec of Array.isArray(entry)?entry:[entry])if(spec.recipientGuard){
