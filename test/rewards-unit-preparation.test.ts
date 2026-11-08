@@ -10,6 +10,7 @@ import { createPreparingRewardUnit as createApprovedRewardUnit } from './rewards
 import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget } from './rewards-governance-fixture';
 import { setRewardMember } from './rewards-access-fixture';
 import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardPreparationNotices,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference } from '../packs/rewards/service';
+import {dispatchNotificationsFromSweep} from '../core/notifications';
 import { REWARD_PREPARATION_STEPS } from '../packs/rewards/preparation-model';
 
 let base:Base,gr:SessionContext,checker:SessionContext,reviewer:SessionContext,unitId:string,employmentId:string;
@@ -131,6 +132,9 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   await expect(withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)))).rejects.toMatchObject({cause:{message:expect.stringMatching(/independently checked/)}});
   await confirmAll();await change(checker,{kind:'release'});
   await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)));
+  await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'draft'}).where(eq(schema.rewardUnit.id,unitId)));
+  expect((await getRewardPreparationStatus(reviewer,unitId)).released).toBe(true);
+  await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)));
   const routed=await getRewardPreparationChecklist(gr,unitId);expect(routed.canEdit).toBe(false);expect(routed.canReopen).toBe(true);
   await change(gr,{kind:'reopen',reason:'Fictional routed review needs a source correction'});
   expect((await getRewardUnit(gr,unitId)).unit.status).toBe('draft');expect((await getRewardPreparationChecklist(gr,unitId)).canEdit).toBe(true);
@@ -143,6 +147,21 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   await expect(change(gr,{kind:'expected',date:'2026-11-30'})).rejects.toThrow(/Legacy review/);
   const gov=await getRewardUnitGovernance(gr,unitId);await saveRewardUnitInputs(gr,unitId,gov.revision,{...gov.inputs!,multiplierBp:11000},'Fictional legacy multiplier correction');
   expect((await getRewardPreparationChecklist(gr,unitId)).preparation.steps).toEqual({});
+ });
+
+ it('notifies the current pre-change approver once after the review returns to draft',async()=>{
+  const recipient=await hireEmployee(gr,{person:{fullName:'Fictional current GR approver',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+  const userId=await createAppUser(base.tenantId,recipient.personId,'employee');
+  await setRewardMember(gr,unitId,(await getRewardUnit(gr,unitId)).unit.revision,userId,'gr');
+  await confirmAll();await change(checker,{kind:'release'});
+  await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)));
+  await change(gr,{kind:'reopen',reason:'Fictional routed review correction requires a fresh check'});
+  await setModule(base.tenantId,'notifications','active');const active=await entitledCtx(base),system:SessionContext={tenantId:base.tenantId,roles:['hr_admin'],entitlements:active.entitlements};
+  const[event]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.preparation-changed')));
+  expect(event.payload).toEqual({to:'gr'});expect((await getRewardUnit(gr,unitId)).unit.status).toBe('draft');
+  await dispatchNotificationsFromSweep(system,owner);await dispatchNotificationsFromSweep(system,owner);
+  const notices=await owner.db.select().from(schema.notification).where(and(eq(schema.notification.sourceEventId,event.id),eq(schema.notification.recipientEmploymentId,recipient.employmentId)));
+  expect(notices).toHaveLength(1);expect(notices[0].kind).toBe('rewards.preparation-changed');expect(notices[0].linkPath).toBe(`/rewards/${unitId}`);
  });
 
  it('keeps the preparation compatibility flag out of ordinary runtime control',async()=>{

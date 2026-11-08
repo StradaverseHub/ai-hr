@@ -245,7 +245,7 @@ CREATE FUNCTION app.reward_preparation_decision_guard() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
 BEGIN
  IF NEW.kind<>'annual' OR NOT NEW.preparation_required OR NEW.status IS NOT DISTINCT FROM OLD.status THEN RETURN NEW; END IF;
- IF NEW.status IN('withdrawn','rejected') THEN RETURN NEW; END IF;
+ IF NEW.status IN('withdrawn','rejected') OR coalesce((app.reward_preparation_view(NEW.id)->>'released')::boolean,false) THEN RETURN NEW; END IF;
  IF NEW.status='draft' AND OLD.status NOT IN('posted','withdrawn','rejected') THEN
   IF 'gr'=ANY(ARRAY(SELECT app.reward_roles(NEW.id))) AND EXISTS(
    SELECT 1 FROM public.reward_governance_history h WHERE h.unit_id=NEW.id AND h.tenant_id=NEW.tenant_id
@@ -287,3 +287,32 @@ DO $$ DECLARE native_owner name; BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.reward_preparation_notices() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_preparation_notices() TO ai_hr_app;
+
+--> statement-breakpoint
+-- Preparation changes may return an approval-stage review to draft. Resolve the recorded stage's
+-- CURRENT eligible holders without the normal routed-notice requirement r.status=wanted_stage.
+CREATE FUNCTION app.reward_preparation_notification_recipients(wanted_unit uuid,wanted_stage text,wanted_released boolean) RETURNS SETOF uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT DISTINCT e.id FROM public.reward_unit r
+ JOIN public.app_user u ON u.tenant_id=r.tenant_id AND u.person_id IS NOT NULL
+ JOIN public.employment e ON e.person_id=u.person_id AND e.tenant_id=r.tenant_id
+ CROSS JOIN (SELECT (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AS today) d
+ WHERE r.id=wanted_unit AND r.tenant_id=app.current_tenant_id() AND r.deleted_at IS NULL
+ AND app.is_admin() AND (app.current_user_id() IS NULL OR app.reward_admin(r.company_id))
+ AND app.reward_preparation_released(r.id)=wanted_released
+ AND wanted_stage IN('draft','bg','gr','ctro','ec','approved')
+ AND u.archived_at IS NULL AND NOT app.login_blocked_on(u.id,d.today)
+ AND e.hired_on<=d.today AND e.blacklisted_at IS NULL
+ AND (least(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR d.today<=least(e.resignation_date,e.last_working_date,e.terminated_on))
+ AND (EXISTS(SELECT 1 FROM public.reward_member m WHERE m.tenant_id=r.tenant_id AND m.unit_id=r.id AND m.user_id=u.id
+  AND m.role=CASE WHEN wanted_stage='draft' THEN 'bu' WHEN wanted_stage='approved' THEN 'payroll' ELSE wanted_stage END
+  AND (e.company_id=r.company_id OR m.role IN('gr','ctro','ec')) AND app.reward_member_eligible_internal(m.id))
+ OR EXISTS(SELECT 1 FROM public.reward_group_role_grant g WHERE g.tenant_id=r.tenant_id AND g.user_id=u.id
+  AND g.role=wanted_stage AND g.active AND app.reward_group_person_eligible(g.user_id)))
+$$;
+DO $$ DECLARE native_owner name; BEGIN
+ SELECT pg_get_userbyid(proowner) INTO native_owner FROM pg_proc WHERE oid='app.reward_roles_preparation_audience(uuid)'::regprocedure;
+ EXECUTE format('ALTER FUNCTION app.reward_preparation_notification_recipients(uuid,text,boolean) OWNER TO %I',native_owner);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_preparation_notification_recipients(uuid,text,boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_preparation_notification_recipients(uuid,text,boolean) TO ai_hr_app;

@@ -4,7 +4,7 @@ import {cleanup,render,screen} from '@testing-library/react';
 import {NextIntlClientProvider,createTranslator} from 'next-intl';
 import en from '../messages/en.json';
 import {defaultPolicy} from '../packs/rewards/model';
-const ports=vi.hoisted(()=>({read:vi.fn(),preparation:vi.fn<(...args:unknown[])=>Promise<{required:boolean;released:boolean;setupVisible:boolean;isGr:boolean;preparation:null;expectedRelease?:string}>>(async()=>({required:false,released:true,setupVisible:false,isGr:false,preparation:null})),redirect:vi.fn((href:string)=>{throw new Error(href);})}));
+const ports=vi.hoisted(()=>({read:vi.fn(),preparation:vi.fn<(...args:unknown[])=>Promise<{required:boolean;released:boolean;setupVisible:boolean;isGr:boolean;preparation:null|{releasedAt:string};expectedRelease?:string}>>(async()=>({required:false,released:true,setupVisible:false,isGr:false,preparation:null})),redirect:vi.fn((href:string)=>{throw new Error(href);})}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next/navigation',()=>({redirect:ports.redirect,usePathname:()=>'/rewards/unit'}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as 'rewards'})}));
@@ -60,6 +60,12 @@ describe('annual Reward Desk page composition',()=>{
   expect(screen.getByText('Expected release: 2026-11-30')).toBeTruthy();
   expect(ports.read).not.toHaveBeenCalled();expect(screen.queryByRole('heading',{name:'1 · Salary increase'})).toBeNull();
  });
+ it('opens the preparation history from the released review note',async()=>{
+  ports.read.mockResolvedValue(view());ports.preparation.mockResolvedValue({required:true,released:true,setupVisible:true,isGr:true,preparation:{releasedAt:'2026-11-08T00:00:00Z'}});
+  const element=await RewardUnitPage({params:Promise.resolve({unitId:'unit'}),searchParams:Promise.resolve({})});render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
+  expect(screen.getByRole('link',{name:en.rewardsPreparation.changeLog})).toHaveAttribute('href','/rewards/unit/setup#preparation-history');
+ });
+
  it('redirects old annual budget links to the canonical section while keeping search and check parameters',async()=>{
   ports.read.mockResolvedValue(view());await expect(RewardUnitPage({params:Promise.resolve({unitId:'unit'}),searchParams:Promise.resolve({view:'budget',q:'Fictional person'})})).rejects.toThrow('/rewards/unit?q=Fictional+person#salary-increase');
   await expect(RewardUnitPage({params:Promise.resolve({unitId:'unit'}),searchParams:Promise.resolve({view:'review',check:'BUD-05'})})).rejects.toThrow('/rewards/unit?check=BUD-05#checks');
