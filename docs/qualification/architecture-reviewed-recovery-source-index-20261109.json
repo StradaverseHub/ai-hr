@@ -1,0 +1,1029 @@
+{
+  "kind": "CURRENT_AGGREGATE_SOURCE_BINDING_OVERLAY_NOT_RUNTIME_QUALIFICATION",
+  "schemaVersion": 1,
+  "identity": {
+    "integrationBase": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+    "reviewedSharedComponent": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+    "reviewedAiComponent": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+    "sharedNormalMerge": "ac112743b6d654543009770c5e5b0239f2b07938",
+    "aiNormalMergeAndImmediateBindingParent": "b6211e4ced9e5ccb5b741f42d1322f686dd4349f",
+    "currentCommit": "Frozen externally after source review; no self-hash cycle",
+    "sourceRef": "codex/architecture-reviewed-recovery-binding-20261109",
+    "freshRemoteRefsVerified": false,
+    "baseRule": "Exact root-authorized a519; no network/fetch or main/alpha integration claim."
+  },
+  "composition": {
+    "normalMergesOnly": true,
+    "mergeConflicts": false,
+    "reviewedAiProductAndTestOwnersWhole": true,
+    "rootAnalyticsOwnersWhole": [
+      {
+        "commit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+        "path": "core/analytics.ts",
+        "gitBlob": "5c950acfad158738f7e38c131e44e004a1308b6f",
+        "bytes": 80255,
+        "sha256": "50ebbd6e8d5f750db55a6430f98d0f0b19dee26d07969dfb4eff9e12f0631769"
+      },
+      {
+        "commit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+        "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+        "gitBlob": "668067927da8dfab2b3750c08acc760309eb3c5d",
+        "bytes": 8096,
+        "sha256": "652b8c724af96d942cbfd8dc550e6977181473cb650fff6b56c2544ce3b9e3ca"
+      },
+      {
+        "commit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+        "path": "test/analytics-dashboard-composition.test.ts",
+        "gitBlob": "ed22a9d8ecabcf1c345c1ed0da564f0360e4d914",
+        "bytes": 15332,
+        "sha256": "4378612704093b31b836f6bee70f4860faabf1a3cb9c622a4cb6367edb74a965"
+      },
+      {
+        "commit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+        "path": "test/analytics-employment-aggregates.test.ts",
+        "gitBlob": "8484401aa699792db7faae405c474233bda188db",
+        "bytes": 13990,
+        "sha256": "5098d0874e66080134a5217a0a1682f8f1d43ef1951b5e43095c7db92e49cd53"
+      },
+      {
+        "commit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+        "path": "test/analytics-native-scale.test.ts",
+        "gitBlob": "b4d7709ea1e6e5c77f88d6fca68468768a9e5c4e",
+        "bytes": 24338,
+        "sha256": "9b1518a189347be1a9eb44f3fd636ba134b47b3c297ec28b212aefe2a9b26686"
+      },
+      {
+        "commit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+        "path": "test/helpers/analytics-employment-aggregates-original.ts",
+        "gitBlob": "f17dc27f4d71c5e4475f05bee58f4d40a1b3d5ab",
+        "bytes": 4271,
+        "sha256": "0e85ac01c84a2e0cb7e7fdf66ab7c932894c00d9fd3ddb5fcda6c0b77826b6bd"
+      },
+      {
+        "commit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+        "path": "test/module-read-jit-diagnostic.test.ts",
+        "gitBlob": "0579a4cabff63cac71fc6a65da9f5a2fca270742",
+        "bytes": 21680,
+        "sha256": "325315af7145f9930462861152e6633bb2293844d1e3168dfc850b99b6693eab"
+      }
+    ],
+    "reviewedSourceOnlyProvenance": [
+      {
+        "scope": "COMPONENT_SOURCE_REVIEW_ONLY",
+        "file": "aihr-shared-2bc5-root-full-source-review-20261109.json",
+        "sha256": "2b63987c5cb9ae9995de245513b31a3fc5afeb802f7f02414d366fe583510ffd"
+      },
+      {
+        "scope": "COMPONENT_SOURCE_REVIEW_ONLY",
+        "file": "aihr-ai-12bc-root-full-source-review-20261109.json",
+        "sha256": "23b1e71cdf83874da15c31f747863a920d90cc39443992dda2839b3a90077848"
+      },
+      {
+        "scope": "COMPONENT_SOURCE_REVIEW_ONLY",
+        "file": "aihr-ai-12bc-independent-full-source-review-20261109.json",
+        "sha256": "53eabdee07526e176236e5d667dd5b538eb3a69d39a0cba4a5818955bbfbf8c6"
+      }
+    ],
+    "historicalEvidenceTransferred": false
+  },
+  "historicalComponentIndexes": [
+    {
+      "commit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+      "path": "docs/qualification/shared-database-prerequisite-source-closure-20261109.json",
+      "gitBlob": "83863f17632acaf3e9940569acca4a49cee2e46b",
+      "bytes": 1111079,
+      "sha256": "a56e9e71523e0f5f925223809184103dc6b4d64a05f9003910ff66923b5dbb9a"
+    },
+    {
+      "commit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+      "path": "docs/qualification/shared-database-prerequisite-source-index-20261109.json",
+      "gitBlob": "e69f53fb00f76cebf0537751290924014ccd53ea",
+      "bytes": 8687644,
+      "sha256": "bf8a3da62f7e1bcc11629af72a691f8b549a992919c492383ed16d10c11a720f"
+    },
+    {
+      "commit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+      "path": "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json",
+      "gitBlob": "3ea6f449648b49da76b94060b094ad8ab92ee8fb",
+      "bytes": 17979,
+      "sha256": "06791cca8ffed3d82a8a49c2885305c0aa7c2a52f84778307cc0a1adb430e137"
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+      "gitBlob": "ea58f63e20c1c19ad99566b4f90bedb925153e38",
+      "bytes": 27348,
+      "sha256": "f2afee96913c2b0646be9a897bfd0b139fb6abcd398c028330d78ede13e190ff"
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "docs/qualification/ai-management-reviewed-recovery-composition-20261109.json",
+      "gitBlob": "bf455e394bdfd41e459f1c08951bc6dcb1c10077",
+      "bytes": 6188,
+      "sha256": "26e5e66fb2a547709529089c67c90c7a1c3769afb3c8a949a7b1c2f2ce0aa5dc"
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "docs/qualification/ai-management-hosted-fixture-recovery-source-20261109.json",
+      "gitBlob": "22c0e46a9bc863412f083c7497fa7bfd02e16a0e",
+      "bytes": 9059,
+      "sha256": "a64ae179f8a3c9379d1f014a8f5c302b9642ff9837fb053144320ae5026fff91"
+    },
+    {
+      "commit": "12bc6eb1857d69191a35951c1fbd9a7850904056",
+      "path": "docs/qualification/ai-centre-mobile-fixture-recovery-source-20261109.json",
+      "gitBlob": "6dbf8da7a132adb6c78e35906a70515904d371f9",
+      "bytes": 22608,
+      "sha256": "6e2f36e1a595674eb37a462554e331275b9f6a2c73318a76d342b0810c18c071"
+    }
+  ],
+  "historicalIndexRule": "All named component records are WHOLE immutable source snapshots of their exact Git component. Their old source-current/count/leaf-open fields describe that component only. This NEW overlay owns current aggregate membership/hash facts. It is not read by planner/admission/runtime and grants no privilege, exemption or PASS.",
+  "baselineRegistry": {
+    "wholeComponentIndex": {
+      "commit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+      "path": "docs/qualification/shared-database-prerequisite-source-index-20261109.json",
+      "gitBlob": "e69f53fb00f76cebf0537751290924014ccd53ea",
+      "bytes": 8687644,
+      "sha256": "bf8a3da62f7e1bcc11629af72a691f8b549a992919c492383ed16d10c11a720f"
+    },
+    "candidateSourceRegistryCount": 3495,
+    "orderedRegistrySourcePairsSha256": "c6c9c43368dcbee725828eebf6a58774ab1ff6fe461acd937bcd4dc683708c31",
+    "reconstructionRule": "Read exact sealed Git component index candidateSourceRegistry and runtimeRegistrations; replace only named currentChangedSourceRows; add only per-registration addedPaths, remove only removedPaths; sort unique paths. Every remaining row is byte-bound by its component hash and verified against current aggregate bytes. No caller inputs or runtime adoption."
+  },
+  "currentChangedSourceRows": [
+    {
+      "path": ".github/ci/employee-lifecycle-sources.mjs",
+      "bytes": 153397,
+      "sha256": "9f8a598bbbe8245eb2f619dcb38f4532492e98611ed81979ee766f3d5862c36f",
+      "gitBlobContentAddress": "22d3c224aa93a621c6610b655ac4e48ea89dc731",
+      "componentParentSha256": "6cec7d46dbd7f26e628dab30b41fffa7e5f2de10efbb8861dc06aba2306771f5",
+      "requiredBy": [
+        "test/access-editor-native-owner-presentation.test.ts",
+        "test/analytics-termination-lateral.test.ts",
+        "test/attendance-shared-submission-bridge.test.ts",
+        "test/employee-choice-assignment-membership-plan.test.ts",
+        "test/employee-choice-organisation-plan.test.ts",
+        "test/leave-inquiry-read-cost.test.ts",
+        "test/module-read-jit-diagnostic.test.ts",
+        "test/payroll-audit-processing-rc.test.ts",
+        "test/rewards-audit-policy-native.test.ts",
+        "test/rewards-audited-read-prototype.test.ts",
+        "test/performance/attendance-punch-index.profile.test.ts",
+        "test/performance/claims-preview-index.profile.test.ts",
+        "test/performance/leave-pending-index.profile.test.ts",
+        "test/performance/personnel-narrow-overview.test.ts",
+        "test/performance/personnel-narrow-production.test.ts",
+        "test/performance/personnel-native-list-plan.test.ts",
+        "test/performance/personnel-retained-million.test.ts",
+        "test/performance/workforce-bounded-read-plan.test.ts",
+        "test/employee-choice-native-purpose-plan.test.ts",
+        "test/employee-choice-benchmark-owner-native.test.ts",
+        "test/employee-choice-native-owner-factory.test.ts",
+        "test/employee-choice-exact-ascii-purpose.test.ts",
+        "test/employee-choice-exact-ascii-plan.test.ts",
+        "test/runtime-ready-admission-native.test.ts",
+        "test/notification-worker-lifecycle.test.ts",
+        "test/notification-worker-native-plan-diagnostic.test.ts",
+        "test/runtime-next-admission-native.test.ts"
+      ]
+    },
+    {
+      "path": ".github/ci/employee-lifecycle-sources.test.mjs",
+      "bytes": 7510,
+      "sha256": "ef14926b21b32329a634bf626f68875eaf904c0cc69b6f3f82c1b23c624a2322",
+      "gitBlobContentAddress": "96852b04f1c7d5e053e65584fe4102e9a5d90019",
+      "componentParentSha256": "1fa4bacd24d84a852615ae3f82939feb4da67b1a1b983202babf45006e10dec1",
+      "requiredBy": [
+        "test/employee-choice-native-purpose-plan.test.ts",
+        "test/employee-choice-benchmark-owner-native.test.ts",
+        "test/employee-choice-native-owner-factory.test.ts",
+        "test/employee-choice-exact-ascii-purpose.test.ts",
+        "test/employee-choice-exact-ascii-plan.test.ts"
+      ]
+    },
+    {
+      "path": "app/control-tower/agents/sections.ts",
+      "bytes": 2162,
+      "sha256": "b81f66a6d5b3ae8bca6ee5ef348187ba00782c63daffadc654bc03e7f690855b",
+      "gitBlobContentAddress": "abc29aa05d0cdc6c89c89754267e6d36c7724a2f",
+      "componentParentSha256": "b51f39b0475c214db87e5bfb35a409a8562d77fbbfe54ca697272d6fa3cf7588",
+      "requiredBy": [
+        "test/employee-choice-native-purpose-plan.test.ts",
+        "test/employee-choice-benchmark-owner-native.test.ts",
+        "test/employee-choice-native-owner-factory.test.ts",
+        "test/employee-choice-exact-ascii-purpose.test.ts",
+        "test/employee-choice-exact-ascii-plan.test.ts"
+      ]
+    },
+    {
+      "path": "core/ai-inventory.ts",
+      "bytes": 16925,
+      "sha256": "39fb65f86aacfe0f624a92b3ec9bded28969121af5c30dcb76e2b32618f3efd1",
+      "gitBlobContentAddress": "adfa723757a6cef0880e8020a621da3120ce666f",
+      "componentParentSha256": "61e153c6c90ce5581229222e787773bac7da75af47e3800758d839f978fd56ed",
+      "requiredBy": [
+        "test/employee-choice-native-purpose-plan.test.ts",
+        "test/employee-choice-benchmark-owner-native.test.ts",
+        "test/employee-choice-native-owner-factory.test.ts",
+        "test/employee-choice-exact-ascii-purpose.test.ts",
+        "test/employee-choice-exact-ascii-plan.test.ts"
+      ]
+    },
+    {
+      "path": "core/ai-management.ts",
+      "bytes": 45893,
+      "sha256": "759c3bb016c250ac1f8f9d56a29e7049e32854e7a654e9d698b7e3df49118255",
+      "gitBlobContentAddress": "0c0aa121ce5c2d3a51a0a2c84dfd6625b3eeab23",
+      "componentParentSha256": "2e2c25f9ad2685ed6072da4aaa4929604ddecb4d5a323b3acf9966ab63473a01",
+      "requiredBy": [
+        "test/employee-choice-native-purpose-plan.test.ts",
+        "test/employee-choice-benchmark-owner-native.test.ts",
+        "test/employee-choice-native-owner-factory.test.ts",
+        "test/employee-choice-exact-ascii-purpose.test.ts",
+        "test/employee-choice-exact-ascii-plan.test.ts"
+      ]
+    },
+    {
+      "path": "core/analytics.ts",
+      "bytes": 80255,
+      "sha256": "50ebbd6e8d5f750db55a6430f98d0f0b19dee26d07969dfb4eff9e12f0631769",
+      "gitBlobContentAddress": "5c950acfad158738f7e38c131e44e004a1308b6f",
+      "componentParentSha256": "328e0037e6ad23b15cccaea91a0e68834b14c83a05420d07faab7203268b44b0",
+      "requiredBy": [
+        "test/module-read-jit-diagnostic.test.ts",
+        "test/employee-choice-native-purpose-plan.test.ts",
+        "test/employee-choice-benchmark-owner-native.test.ts",
+        "test/employee-choice-native-owner-factory.test.ts",
+        "test/employee-choice-exact-ascii-purpose.test.ts",
+        "test/employee-choice-exact-ascii-plan.test.ts"
+      ]
+    },
+    {
+      "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "bytes": 140709,
+      "sha256": "21539b92435b8d3d48acd087373bada320795ea1ef361533d57f30c08388b47a",
+      "gitBlobContentAddress": "d87533e8943a8286b11f986b18f363e273481a68",
+      "componentParentSha256": "335922aa54bbcbf2a3446c298674762a6992e18438d4025c6ba07c61d67dcd3f",
+      "requiredBy": [
+        "test/employee-choice-native-purpose-plan.test.ts",
+        "test/employee-choice-benchmark-owner-native.test.ts",
+        "test/employee-choice-native-owner-factory.test.ts",
+        "test/employee-choice-exact-ascii-purpose.test.ts",
+        "test/employee-choice-exact-ascii-plan.test.ts"
+      ]
+    },
+    {
+      "path": "lib/ai/management-sections.ts",
+      "bytes": 291,
+      "sha256": "d7efd0b96f9875c560c6b075c9ff1688a7bf0851684adbdab45c399f3cb5c783",
+      "gitBlobContentAddress": "87dc8fb100b8f21234aa53676727ec6544392598",
+      "componentParentSha256": null,
+      "requiredBy": [
+        "test/employee-choice-native-purpose-plan.test.ts",
+        "test/employee-choice-benchmark-owner-native.test.ts",
+        "test/employee-choice-native-owner-factory.test.ts",
+        "test/employee-choice-exact-ascii-purpose.test.ts",
+        "test/employee-choice-exact-ascii-plan.test.ts"
+      ]
+    },
+    {
+      "path": "test/module-read-jit-diagnostic.test.ts",
+      "bytes": 21680,
+      "sha256": "325315af7145f9930462861152e6633bb2293844d1e3168dfc850b99b6693eab",
+      "gitBlobContentAddress": "0579a4cabff63cac71fc6a65da9f5a2fca270742",
+      "componentParentSha256": "d57b9069bc869006d4d72eb256bd976bfe6f568d6529425beaea6b55d278f22d",
+      "requiredBy": [
+        "test/module-read-jit-diagnostic.test.ts"
+      ]
+    }
+  ],
+  "removedRegistryPaths": [],
+  "currentRegistrySummary": {
+    "uniqueSourcePaths": 3496,
+    "runtimeEntries": 27,
+    "runtimeToSourceEdges": 36552,
+    "orderedRegistrySourcePairsSha256": "448f9e95167f0044600ac980d69e2225aebd6ba90c499884b3167830ce51fbfb",
+    "allCurrentPathsExistAndHashesVerified": true,
+    "meaning": "Statically extracted actual singleton source membership edges, not a transitive compiler graph or runtime performance result."
+  },
+  "currentRuntimeRegistrations": [
+    {
+      "path": "test/access-editor-native-owner-presentation.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 792,
+      "orderedPathsSha256": "d5b5ff1d0237987c2d9c23d152175cd9394bd8023b3620dc99cecc4d340c16f5",
+      "componentParentCount": 792,
+      "componentParentOrderedPathsSha256": "d5b5ff1d0237987c2d9c23d152175cd9394bd8023b3620dc99cecc4d340c16f5",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "52bae01bf0cea834ce9ba5a872584e865609e76a354169bbe65ac2f5bfb70e0b"
+    },
+    {
+      "path": "test/analytics-termination-lateral.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "157a8a2838c602a36af2882211d431994a1c161af3a88a6a5367f029dd543c2d",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "157a8a2838c602a36af2882211d431994a1c161af3a88a6a5367f029dd543c2d",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "21057ad19c7d0f764094ff0a0b87f7a0fad2c330a45590c35a2bc5c2f99b919b"
+    },
+    {
+      "path": "test/attendance-shared-submission-bridge.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 800,
+      "orderedPathsSha256": "904bda03a657833b5eeafa8dad0d36f2e2c89a5986ae8c8573d53c59934c0803",
+      "componentParentCount": 800,
+      "componentParentOrderedPathsSha256": "904bda03a657833b5eeafa8dad0d36f2e2c89a5986ae8c8573d53c59934c0803",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "069739e5b709fc0ac5a319ee817fcad9cf00c800b531811b08919faa2f66c926"
+    },
+    {
+      "path": "test/employee-choice-assignment-membership-plan.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "c38f8a1d3ef74691178b25267eebb222c57196533803cade67caf3bb00bcec09",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "c38f8a1d3ef74691178b25267eebb222c57196533803cade67caf3bb00bcec09",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "fb795f05f561390e1349da6ba8172847c518c50301fa90dfe119f7effc17f610"
+    },
+    {
+      "path": "test/employee-choice-organisation-plan.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "cfbc123ff1cfac020e86bc7cdaa6eaf7e7ba207880c9251ddf2de29848300686",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "cfbc123ff1cfac020e86bc7cdaa6eaf7e7ba207880c9251ddf2de29848300686",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "0efcec8686366b2028996e0e8546e12e94a9570be74571f1c60bdeaca93ee712"
+    },
+    {
+      "path": "test/leave-inquiry-read-cost.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "ec4834871f9ec7a7997585cf4da15809eab38ea4dbb99e0c8fb1784996446759",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "ec4834871f9ec7a7997585cf4da15809eab38ea4dbb99e0c8fb1784996446759",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "08e785d482e459d660f6f9e6d1c6ea7d0e482e1ed528beac4f3db1114f00a784"
+    },
+    {
+      "path": "test/module-read-jit-diagnostic.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 1556,
+      "orderedPathsSha256": "742577028ddcab2a088f16a9c810a9c978ed44f7523cd331bed84aef708503a5",
+      "componentParentCount": 1556,
+      "componentParentOrderedPathsSha256": "742577028ddcab2a088f16a9c810a9c978ed44f7523cd331bed84aef708503a5",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "761f93468cbb1f528888b58e4b5c76e75cdaff0c989579995afb818b62659b77"
+    },
+    {
+      "path": "test/payroll-audit-processing-rc.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "9fb50bfcbedcb488c344d4b55c6bfc96f8db5e18372917d1fe8ccd0f0e592db3",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "9fb50bfcbedcb488c344d4b55c6bfc96f8db5e18372917d1fe8ccd0f0e592db3",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "508581d3b18d1ba2bd71a7a3735c5c435e145dabfe49642a88cca33d986ff79c"
+    },
+    {
+      "path": "test/rewards-audit-policy-native.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 1694,
+      "orderedPathsSha256": "9f7fdbd5b97732a60e30a88d51d1ede3f262ad21efa728ae58024f44d6a37a50",
+      "componentParentCount": 1694,
+      "componentParentOrderedPathsSha256": "9f7fdbd5b97732a60e30a88d51d1ede3f262ad21efa728ae58024f44d6a37a50",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "c3612dd68378c784d14e7747acfbd9c1551bb74d0de708732eec20157e721e46"
+    },
+    {
+      "path": "test/rewards-audited-read-prototype.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 1694,
+      "orderedPathsSha256": "d8967153e712ef87f002eaed92e3e38c886a316181c131f0275e7716c51ef29e",
+      "componentParentCount": 1694,
+      "componentParentOrderedPathsSha256": "d8967153e712ef87f002eaed92e3e38c886a316181c131f0275e7716c51ef29e",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "edbf0d6659f7b25479b76ec9d62e9c8ef37837f5cae1802018bf69ba9fb379b1"
+    },
+    {
+      "path": "test/performance/attendance-punch-index.profile.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "2e4bcaa5c1bbf5a9575c59e909e6d7a13d090930af3ca54e8257955bccaad7f4",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "2e4bcaa5c1bbf5a9575c59e909e6d7a13d090930af3ca54e8257955bccaad7f4",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "8da3a9ae116917371515abf91cdf077ffa1b83ad877ee529f1614b2a828ceb6b"
+    },
+    {
+      "path": "test/performance/claims-preview-index.profile.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "af523c92219a244cedee6823259ab01204d98f1bd6db4d9dbc70acb91a7b0d47",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "af523c92219a244cedee6823259ab01204d98f1bd6db4d9dbc70acb91a7b0d47",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "4bf1fabe085ab9d4256477a60bc8fedaf471f383c2090ecbf38aa81b0a572016"
+    },
+    {
+      "path": "test/performance/leave-pending-index.profile.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "e276ac9fba4d378b083a3acda3e46b5e38717995531be1915d37543200261f09",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "e276ac9fba4d378b083a3acda3e46b5e38717995531be1915d37543200261f09",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "ef9dc0285a6d711345b43313dde1a2ab31e9c523b17e25c3f011005ca3d2d2dd"
+    },
+    {
+      "path": "test/performance/personnel-narrow-overview.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "a4c30ad463f455c3cef688a34ed57050f76444c40b11885f99eaa1bd99e2bb2e",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "a4c30ad463f455c3cef688a34ed57050f76444c40b11885f99eaa1bd99e2bb2e",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "186d8e535756cf769259a808b88c98be8a9a7375b1ab35d27969340513806d5f"
+    },
+    {
+      "path": "test/performance/personnel-narrow-production.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "78dafe72f9214954446111c09da4aac4c9b7b0a1c3375e4da07be777bbbf5ab4",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "78dafe72f9214954446111c09da4aac4c9b7b0a1c3375e4da07be777bbbf5ab4",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "4173ed2604e4d448e8d28e8722bc6cf3e335cc5f97a44ee36255bef1609cfbbd"
+    },
+    {
+      "path": "test/performance/personnel-native-list-plan.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "78bb9d485c5f69eed1f9c24e18776b06ffb769e3b691aac33fccdb502bfe6117",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "78bb9d485c5f69eed1f9c24e18776b06ffb769e3b691aac33fccdb502bfe6117",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "1d06793f470d5a00dba8e1261fd8880fca41790a1febb375a8a408e1d829cd03"
+    },
+    {
+      "path": "test/performance/personnel-retained-million.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "07a3d27a4f5604371874b051e5cc65ff28fcaf76d5e9d9adc4805062384f719a",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "07a3d27a4f5604371874b051e5cc65ff28fcaf76d5e9d9adc4805062384f719a",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "6607f5e2dce32fe52436f0bcfa36caeaca8e184f141c2337830599c5aa6e1a83"
+    },
+    {
+      "path": "test/performance/workforce-bounded-read-plan.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "99464aaf031642f19f33f0b335a7a36047476f532868166532557ba31785a21a",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "99464aaf031642f19f33f0b335a7a36047476f532868166532557ba31785a21a",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "74c49c5b993c14cda6bb106801020fb33d6e649e3566c8c08419303cc3ee5acc"
+    },
+    {
+      "path": "test/employee-choice-native-purpose-plan.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 3478,
+      "orderedPathsSha256": "7051ffde5d0f4b0de1ab8936fc62d8b9ac1774b4990758baa4753c015fc4a815",
+      "componentParentCount": 3477,
+      "componentParentOrderedPathsSha256": "aea4e0d877bc4de5958e65eb17bac0e4cfdf763e993e3e9b007a047419549e1f",
+      "addedPaths": [
+        "lib/ai/management-sections.ts"
+      ],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "70c053f6f99393c1f7a3e27cefbac102f1b37f94f4ad63ff572b61e996d310f6"
+    },
+    {
+      "path": "test/employee-choice-benchmark-owner-native.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 3478,
+      "orderedPathsSha256": "7051ffde5d0f4b0de1ab8936fc62d8b9ac1774b4990758baa4753c015fc4a815",
+      "componentParentCount": 3477,
+      "componentParentOrderedPathsSha256": "aea4e0d877bc4de5958e65eb17bac0e4cfdf763e993e3e9b007a047419549e1f",
+      "addedPaths": [
+        "lib/ai/management-sections.ts"
+      ],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "70c053f6f99393c1f7a3e27cefbac102f1b37f94f4ad63ff572b61e996d310f6"
+    },
+    {
+      "path": "test/employee-choice-native-owner-factory.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 3478,
+      "orderedPathsSha256": "7051ffde5d0f4b0de1ab8936fc62d8b9ac1774b4990758baa4753c015fc4a815",
+      "componentParentCount": 3477,
+      "componentParentOrderedPathsSha256": "aea4e0d877bc4de5958e65eb17bac0e4cfdf763e993e3e9b007a047419549e1f",
+      "addedPaths": [
+        "lib/ai/management-sections.ts"
+      ],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "70c053f6f99393c1f7a3e27cefbac102f1b37f94f4ad63ff572b61e996d310f6"
+    },
+    {
+      "path": "test/employee-choice-exact-ascii-purpose.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 3478,
+      "orderedPathsSha256": "7051ffde5d0f4b0de1ab8936fc62d8b9ac1774b4990758baa4753c015fc4a815",
+      "componentParentCount": 3477,
+      "componentParentOrderedPathsSha256": "aea4e0d877bc4de5958e65eb17bac0e4cfdf763e993e3e9b007a047419549e1f",
+      "addedPaths": [
+        "lib/ai/management-sections.ts"
+      ],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "70c053f6f99393c1f7a3e27cefbac102f1b37f94f4ad63ff572b61e996d310f6"
+    },
+    {
+      "path": "test/employee-choice-exact-ascii-plan.test.ts",
+      "kind": "db",
+      "profile": "controlled-database-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "controlled-database-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 3478,
+      "orderedPathsSha256": "7051ffde5d0f4b0de1ab8936fc62d8b9ac1774b4990758baa4753c015fc4a815",
+      "componentParentCount": 3477,
+      "componentParentOrderedPathsSha256": "aea4e0d877bc4de5958e65eb17bac0e4cfdf763e993e3e9b007a047419549e1f",
+      "addedPaths": [
+        "lib/ai/management-sections.ts"
+      ],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "70c053f6f99393c1f7a3e27cefbac102f1b37f94f4ad63ff572b61e996d310f6"
+    },
+    {
+      "path": "test/runtime-ready-admission-native.test.ts",
+      "kind": "nodb",
+      "profile": "linux-systemd-nginx-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "linux-systemd-nginx-v1",
+        "workers": 1,
+        "isolation": "job-host"
+      },
+      "count": 24,
+      "orderedPathsSha256": "2798bcaf65db9e09b033a95a5319aebd17e147088e71e03a0e4f05756c4a7133",
+      "componentParentCount": 24,
+      "componentParentOrderedPathsSha256": "2798bcaf65db9e09b033a95a5319aebd17e147088e71e03a0e4f05756c4a7133",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "6e46a93b25e75f6316977aa991bf39000c39f0cc2be241244149ef3cf0c11c58"
+    },
+    {
+      "path": "test/notification-worker-lifecycle.test.ts",
+      "kind": "db",
+      "profile": "notification-cluster-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "notification-cluster-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 785,
+      "orderedPathsSha256": "0d869fedec7dc7bc98a93beca56a768f60aca883f3876b82431d0c1ddd77cfbe",
+      "componentParentCount": 785,
+      "componentParentOrderedPathsSha256": "0d869fedec7dc7bc98a93beca56a768f60aca883f3876b82431d0c1ddd77cfbe",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "81b2219f5ecefc7a56d11e139faca35ad57ccfeeb84d84d605a5fdef96fb2e31"
+    },
+    {
+      "path": "test/notification-worker-native-plan-diagnostic.test.ts",
+      "kind": "db",
+      "profile": "notification-cluster-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "notification-cluster-v1",
+        "workers": 1,
+        "isolation": "job-postgres-cluster"
+      },
+      "count": 801,
+      "orderedPathsSha256": "6b35a40c58f569b069e9ce2547d5ff40c9acf1a7852e8a045bbe64f927698708",
+      "componentParentCount": 801,
+      "componentParentOrderedPathsSha256": "6b35a40c58f569b069e9ce2547d5ff40c9acf1a7852e8a045bbe64f927698708",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "d9d5cb7c7d4c02843d2fc023710526cd554dbc889e965703bb3b882dd830826e"
+    },
+    {
+      "path": "test/runtime-next-admission-native.test.ts",
+      "kind": "db",
+      "profile": "linux-next-postgres-v1",
+      "descriptor": {
+        "version": 1,
+        "profile": "linux-next-postgres-v1",
+        "workers": 1,
+        "isolation": "job-host-and-postgres-cluster"
+      },
+      "count": 811,
+      "orderedPathsSha256": "b9e6691b306e36fc0852bb7b0a3eccde31becb7a0807bf1fe883867d15334ca1",
+      "componentParentCount": 811,
+      "componentParentOrderedPathsSha256": "b9e6691b306e36fc0852bb7b0a3eccde31becb7a0807bf1fe883867d15334ca1",
+      "addedPaths": [],
+      "removedPaths": [],
+      "currentOrderedSourcePairsSha256": "2f52ab64829ff1dd714ab90e8b20181c570531aa4e2a18e338fff23725a68c01"
+    }
+  ],
+  "employeeLeafBinding": {
+    "path": "lib/ai/management-sections.ts",
+    "current": {
+      "path": "lib/ai/management-sections.ts",
+      "bytes": 291,
+      "sha256": "d7efd0b96f9875c560c6b075c9ff1688a7bf0851684adbdab45c399f3cb5c783",
+      "gitBlobContentAddress": "87dc8fb100b8f21234aa53676727ec6544392598"
+    },
+    "rawMemberCount": 3475,
+    "rawOrderedPathsSha256": "f4121b4979edfa1fd918d32a3ed7fa18f27ca8ad030790619f5c48df351f03fe",
+    "criticalMemberCount": 79,
+    "independentOmissionOwner": ".github/ci/employee-lifecycle-sources.test.mjs",
+    "independentOwnersIncludesLeaf": true,
+    "onlyMissingCriticalAfterRemovingLeaf": true,
+    "fiveEmployeeCompleteUnitsBound": true,
+    "actualValueImporters": [
+      "core/ai-management.ts",
+      "app/control-tower/agents/sections.ts"
+    ],
+    "valueImportAndReexportBytesReviewed": true,
+    "rawCriticalAndIndependentModelChangesOnly": true,
+    "all205ExistingModelCallbackBodiesWholeAgainst2bc": true,
+    "currentSourceBindingClosedNotSemanticQualification": true
+  },
+  "currentRestorationMap": {
+    "current": {
+      "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "bytes": 140709,
+      "sha256": "21539b92435b8d3d48acd087373bada320795ea1ef361533d57f30c08388b47a",
+      "gitBlobContentAddress": "d87533e8943a8286b11f986b18f363e273481a68"
+    },
+    "wholeImmediateParent": {
+      "commit": "b6211e4ced9e5ccb5b741f42d1322f686dd4349f",
+      "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "gitBlob": "c98644e76cafddce76339041bb68a57b99bf0c55",
+      "bytes": 140478,
+      "sha256": "335922aa54bbcbf2a3446c298674762a6992e18438d4025c6ba07c61d67dcd3f"
+    },
+    "base": "ee5722312689fc88d8a9253c232945e6f2599900",
+    "rows": [
+      {
+        "path": ".github/ci/employee-lifecycle-native.mjs",
+        "currentSha256": "f7692b8255143b90d6c2f54f848ef3e07967ed6597c5c9d3a68128b8574928e3",
+        "parentSha256": "6b8690a1171f18b656721f23e0e793c948842bcce8bb123e0691b91c20b90426",
+        "parentBytes": 13443,
+        "sameWholeParentTarget": true,
+        "changedRow": false
+      },
+      {
+        "path": ".github/ci/employee-lifecycle-sources.mjs",
+        "currentSha256": "9f8a598bbbe8245eb2f619dcb38f4532492e98611ed81979ee766f3d5862c36f",
+        "parentSha256": "80db405706af787565e9f827f3688d2c1dfad3cd62b2cd7e393f87297ffa63ec",
+        "parentBytes": 150087,
+        "sameWholeParentTarget": true,
+        "changedRow": true
+      },
+      {
+        "path": ".github/ci/employee-lifecycle-sources.test.mjs",
+        "currentSha256": "ef14926b21b32329a634bf626f68875eaf904c0cc69b6f3f82c1b23c624a2322",
+        "parentSha256": "73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196",
+        "parentBytes": 3512,
+        "sameWholeParentTarget": true,
+        "changedRow": true
+      },
+      {
+        "path": "test/employee-choice-exact-ascii-owner-source.test.ts",
+        "currentSha256": "fcf64ec74dabb477c0fdec59b1585f21e1c35144490d96d2f0b4939c1ddf126f",
+        "parentSha256": "49a950ce097cb876063731c6c5440a8778144398f78d460f7d3996fc4d3ce0e3",
+        "parentBytes": 3154,
+        "sameWholeParentTarget": true,
+        "changedRow": false
+      },
+      {
+        "path": "test/employee-choice-exact-ascii-plan.test.ts",
+        "currentSha256": "65a248b53a80c1e78e1149e147ebee953c28010b407a10e44922a1ecc0a1eafd",
+        "parentSha256": "9a2f4c67ebcfc6e7671ad19e71629fbf27976723ccde972f0ddab9cef1dafd62",
+        "parentBytes": 49338,
+        "sameWholeParentTarget": true,
+        "changedRow": false
+      },
+      {
+        "path": "test/employee-choice-native-owner-factory-source.test.ts",
+        "currentSha256": "5c8a442b67ea31bdbb22f065e59cd7898d08d0de7e7666df866a585877da7bd8",
+        "parentSha256": "471f3cb7b08165cb9928819086a1a739591d4434877924e0d1e795b00efafc54",
+        "parentBytes": 2636,
+        "sameWholeParentTarget": true,
+        "changedRow": false
+      },
+      {
+        "path": "test/employee-choice-native-owner-factory.test.ts",
+        "currentSha256": "86f18bb75c07d7f9ba74ab25939cc27986978b9d4ed2f152c8d34237b914a612",
+        "parentSha256": "5496c9431c466009af9ac422824e2f9de67e0c8610ec2888ee2809f7637abd56",
+        "parentBytes": 7410,
+        "sameWholeParentTarget": true,
+        "changedRow": false
+      },
+      {
+        "path": "test/employee-choice-native-purpose-plan.test.ts",
+        "currentSha256": "91ab7878478676531d720ba91c945b1aae527f5470d9a6151d2098b9786234ab",
+        "parentSha256": "2d43363f21e30554a4a7f987614ac93f21d7dc29beda0dcbdf2a9fe6f612569b",
+        "parentBytes": 43211,
+        "sameWholeParentTarget": true,
+        "changedRow": false
+      },
+      {
+        "path": "test/performance/employee-choice-auto-explain.ts",
+        "currentSha256": "e4d1eaed529b6fb9f20ec53b30a5a22bf875915a1231e6c8b1fea14977fd3332",
+        "parentSha256": "db4eeea5172dd75617548acb11e574f68d70bc09260fdb2a96a68c6ac93ee30a",
+        "parentBytes": 3769,
+        "sameWholeParentTarget": true,
+        "changedRow": false
+      },
+      {
+        "path": "test/performance/employee-choice-exact-ascii-owner-factory.ts",
+        "currentSha256": "7025275d14ad8d1504943b0bba75e9a0cde71e390ec3a646842991e88e97fcc2",
+        "parentSha256": "1d289fead9e6edfd010c6b8ff9afad2e39a4dc2602d4e8ad307a9b64e1fb4c39",
+        "parentBytes": 6071,
+        "sameWholeParentTarget": true,
+        "changedRow": false
+      },
+      {
+        "path": "test/performance/employee-choice-native-purpose-owner-factory.ts",
+        "currentSha256": "65c9b170f78eac82f0db5baa69f59e260d53b8b917f7e0c154a9b7acab4e9a76",
+        "parentSha256": "481e5f20b38d02325570147c146428066213560d9066aa3141869454924a3e13",
+        "parentBytes": 7206,
+        "sameWholeParentTarget": true,
+        "changedRow": false
+      }
+    ],
+    "otherNineRawRowsPreserved": true,
+    "sameWholeEe572ModelTargetBytes": 3512,
+    "sameWholeEe572ModelTargetSha256": "73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196",
+    "sameWholeEe572MjsTargetSha256": "80db405706af787565e9f827f3688d2c1dfad3cd62b2cd7e393f87297ffa63ec",
+    "dataReplayOnlyActualHelperNotExecuted": true
+  },
+  "wholeImmediateBindingPreimages": [
+    {
+      "commit": "b6211e4ced9e5ccb5b741f42d1322f686dd4349f",
+      "path": ".github/ci/employee-lifecycle-sources.mjs",
+      "gitBlob": "a1e0f23a6f354071afc4f59d62819214af09d26b",
+      "bytes": 153329,
+      "sha256": "6cec7d46dbd7f26e628dab30b41fffa7e5f2de10efbb8861dc06aba2306771f5"
+    },
+    {
+      "commit": "b6211e4ced9e5ccb5b741f42d1322f686dd4349f",
+      "path": ".github/ci/employee-lifecycle-sources.test.mjs",
+      "gitBlob": "44e65a27b9769c88adf6dd174e9e4b2cd940a8be",
+      "bytes": 7478,
+      "sha256": "1fa4bacd24d84a852615ae3f82939feb4da67b1a1b983202babf45006e10dec1"
+    },
+    {
+      "commit": "b6211e4ced9e5ccb5b741f42d1322f686dd4349f",
+      "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "gitBlob": "c98644e76cafddce76339041bb68a57b99bf0c55",
+      "bytes": 140478,
+      "sha256": "335922aa54bbcbf2a3446c298674762a6992e18438d4025c6ba07c61d67dcd3f"
+    }
+  ],
+  "currentBindingSourceRows": [
+    {
+      "path": ".github/ci/employee-lifecycle-sources.mjs",
+      "bytes": 153397,
+      "sha256": "9f8a598bbbe8245eb2f619dcb38f4532492e98611ed81979ee766f3d5862c36f",
+      "gitBlobContentAddress": "22d3c224aa93a621c6610b655ac4e48ea89dc731"
+    },
+    {
+      "path": ".github/ci/employee-lifecycle-sources.test.mjs",
+      "bytes": 7510,
+      "sha256": "ef14926b21b32329a634bf626f68875eaf904c0cc69b6f3f82c1b23c624a2322",
+      "gitBlobContentAddress": "96852b04f1c7d5e053e65584fe4102e9a5d90019"
+    },
+    {
+      "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "bytes": 140709,
+      "sha256": "21539b92435b8d3d48acd087373bada320795ea1ef361533d57f30c08388b47a",
+      "gitBlobContentAddress": "d87533e8943a8286b11f986b18f363e273481a68"
+    }
+  ],
+  "preservedCanonicalDatabaseInputs": {
+    "journal": {
+      "path": "db/migrations/meta/_journal.json",
+      "bytes": 115315,
+      "sha256": "c288908efd8c5ecdad8162599b8160a6ae22cd84442f956812632ed097b01052",
+      "gitBlobContentAddress": "3ba4ce0e97252c35528232169ab9780cbbe23acb"
+    },
+    "orderedJournalEntries": 747,
+    "physicalSqlInputs": 749,
+    "physicalOnly": [
+      "db/migrations/2301_attendance_workflow_submission_shared_lock.sql",
+      "db/migrations/3103_access_editor_presentation.sql"
+    ],
+    "allSqlAndJournalWhole2bc": true,
+    "migrationExecutionOrderUnchanged": true
+  },
+  "currentAiComponentHashRowsVerified": 21,
+  "pendingAffectedHostedSelectors": [
+    "test/employee-choice-lifecycle-evidence-contract.test.ts",
+    "test/employee-ascii-runtime-qualification-model.test.ts",
+    "test/singleton-execution-profile-controller.test.ts",
+    ".github/ci/employee-lifecycle-sources.test.mjs",
+    "test/employee-choice-native-owner-factory-source.test.ts",
+    "test/employee-choice-exact-ascii-owner-source.test.ts",
+    ".github/ci/singleton-profiles.test.mjs",
+    ".github/ci/ci.test.mjs",
+    "test/ai-management-section-projection.test.ts",
+    "test/ai-management-contract.test.ts",
+    "test/ai-centre-evidence.dom.test.tsx",
+    "test/ai-management-page.dom.test.tsx",
+    "test/ai-inventory-screen.dom.test.tsx",
+    "test/ai-management-naming.dom.test.tsx",
+    "test/ai-probe-history-page.dom.test.tsx",
+    "test/automatic-followup-features.dom.test.tsx"
+  ],
+  "pendingGateRule": "Root plus different peer FULL aggregate affected review first; actual existing hosted selector availability/coverage must be verified before dispatch. Retain only source-identical unaffected component successes under authenticated policy; no transfer by merge. No normal5/SixOp/API/compiler/native/bootstrap/browser/load qualification or release witness is created.",
+  "checksExecutedLocally": false,
+  "repositoryModulesImportedLocally": false,
+  "runtimeQualified": false,
+  "typecheckQualified": false,
+  "browserOrLoadQualified": false,
+  "stagingDeployed": false,
+  "productionHeld": true,
+  "selfReferenceRule": "This non-runtime record excludes its own current hash/commit. External frozen Git commit binds complete bytes. Whole preimages are exact Git references; no nested Base64 history or duplicated8MB index."
+}

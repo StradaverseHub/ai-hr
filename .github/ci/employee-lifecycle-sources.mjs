@@ -2303,6 +2303,7 @@ export const EMPLOYEE_LIFECYCLE_SOURCES=Object.freeze([
  "lib/ai/job-architecture-policy.ts",
  "lib/ai/leave-answer-evidence.ts",
  "lib/ai/lifecycle-offboarding-human-handoff.ts",
+ "lib/ai/management-sections.ts",
  "lib/ai/module-agent-actions.ts",
  "lib/ai/module-agent-prompt-candidate.ts",
  "lib/ai/module-agent-prompt-holdouts.ts",
@@ -3556,6 +3557,7 @@ export const EMPLOYEE_LIFECYCLE_CRITICAL=Object.freeze([
  ".github/ci/restricted-port-qualification.mjs",
  ".github/ci/diagnostics/native-reference/admission.mjs",
  "lib/ai/centre-activity.ts",
+ "lib/ai/management-sections.ts",
  "core/ai-centre-control.ts",
  ".github/ci/compiler-file-window-inverse.json"
 ]);
