@@ -1,6 +1,6 @@
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {eq} from 'drizzle-orm';
+import {and,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import * as schema from '../db/schema';
 import {withTenant,type Tx} from '../db/client';
@@ -63,7 +63,11 @@ async function fixture(){
   ...Array.from({length:100},(_,i)=>cycle(rules[3].id,shifts[5],add(date,i))),
  ]);
  await owner.db.update(schema.shift).set({archivedAt:new Date()}).where(eq(schema.shift.id,shifts[1]));
- await owner.db.insert(schema.attendanceRuleShift).values({tenantId:b.tenantId,ruleId:rules[3].id,shiftId:shifts[5]});
+ // createShift already owns this membership. Confirm its actual native fact
+ // instead of writing a second copy of the same (rule, shift) primary key.
+ const membership=await withTenant(ctx,tx=>tx.select({ruleId:schema.attendanceRuleShift.ruleId,shiftId:schema.attendanceRuleShift.shiftId})
+  .from(schema.attendanceRuleShift).where(and(eq(schema.attendanceRuleShift.ruleId,rules[3].id),eq(schema.attendanceRuleShift.shiftId,shifts[5]))));
+ expect(membership).toEqual([{ruleId:rules[3].id,shiftId:shifts[5]}]);
  return {b,ctx,date,rules,shifts,ids};
 }
 
