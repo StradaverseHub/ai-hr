@@ -9583,7 +9583,17 @@
       "runTypeOffCycle": "Ngoài chu kỳ",
       "runTypeBonus": "Thưởng",
       "runTypeAdjustment": "Điều chỉnh",
-      "ocbcBlankHashNotice": "Bố cục ban đầu: để trống trường Hash Total tại đúng vị trí dành sẵn theo yêu cầu. Chưa xác minh việc ngân hàng chấp nhận."
+      "ocbcBlankHashNotice": "Bố cục ban đầu: để trống trường Hash Total tại đúng vị trí dành sẵn theo yêu cầu. Chưa xác minh việc ngân hàng chấp nhận.",
+      "maybankSalary": "Maybank2E-RC V7.4 · Lương",
+      "maybankSalaryDesc": "Tệp V7.4 phân tách bằng dấu gạch đứng từ bảng lương đã lưu, dùng tài khoản thanh toán đã cấu hình của công ty này.",
+      "maybankKwsp": "Maybank2E-RC V7.4 · KWSP",
+      "maybankKwspDesc": "Tệp V7.4 phân tách bằng dấu gạch đứng từ bảng lương đã lưu, dùng tài khoản thanh toán đã cấu hình của công ty này.",
+      "maybankSocso": "Maybank2E-RC V7.4 · SOCSO",
+      "maybankSocsoDesc": "Tệp V7.4 phân tách bằng dấu gạch đứng từ bảng lương đã lưu, dùng tài khoản thanh toán đã cấu hình của công ty này.",
+      "maybankLhdn": "Maybank2E-RC V7.4 · LHDN",
+      "maybankLhdnDesc": "Tệp V7.4 phân tách bằng dấu gạch đứng từ bảng lương đã lưu, dùng tài khoản thanh toán đã cấu hình của công ty này.",
+      "maybankZakat": "Maybank2E-RC V7.4 · Zakat",
+      "maybankZakatDesc": "Tệp V7.4 phân tách bằng dấu gạch đứng từ bảng lương đã lưu, dùng tài khoản thanh toán đã cấu hình của công ty này."
     },
     "payslipInformation": {
       "employee": "Tên nhân viên",
@@ -36554,5 +36564,23 @@
     "overdue": "Quá hạn",
     "noDue": "Chưa đặt hạn chót",
     "destinations": "Các trang thưởng"
+  },
+  "maybankPayment": {
+    "settings": "Cài đặt tệp thanh toán Maybank",
+    "version": "Phiên bản định dạng tệp Maybank",
+    "notConfigured": "Chưa cấu hình",
+    "hashHelp": "Tài liệu V7.4 không có công thức băm của ngân hàng. Xác nhận thỏa thuận với Maybank trước khi chọn để trống mã băm.",
+    "hashArrangement": "Thỏa thuận băm với ngân hàng",
+    "unconfirmed": "Chưa xác nhận / cần mã băm",
+    "noHash": "Ngân hàng xác nhận: không cần mã băm",
+    "stateCode": "Bang công ty cho EPF / Zakat",
+    "zakatClass": "Phân loại Zakat",
+    "mappingHelp": "Lương dùng tài khoản chính của công ty này. Gán tài khoản trả KWSP, SOCSO, LHDN và Zakat trong Tài khoản pháp định.",
+    "downloadNotice": "Dùng tài khoản đã cấu hình cho danh mục của công ty này. Tệp vẫn cần được Maybank xác thực khi tải lên; tải xuống không ghi nhận thanh toán.",
+    "payeeResidency": "Tình trạng cư trú của người nhận tiền",
+    "notRecorded": "Chưa ghi nhận",
+    "resident": "Cư trú",
+    "nonResident": "Không cư trú",
+    "residencyHelp": "Ghi nhận tình trạng cư trú của người nhận để báo cáo thanh toán, gồm cả chủ tài khoản tùy chỉnh. Thông tin này tách biệt với tình trạng cư trú thuế của nhân viên."
   }
 }

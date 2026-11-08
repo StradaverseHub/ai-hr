@@ -8,7 +8,7 @@ import { formatMoney } from '@/lib/money';
 import type { BankPaymentPreview, BankPaymentRequest } from '@/localization/country-pack';
 import type { SelectionOption } from './download-dialog';
 
-type Options = { accounts: { id: string; label: string; last4: string }[]; runs: { runSeq: number; cycleName: string | null; runType: string }[] };
+type Options = { configuredAccountId?:string|null;accounts: { id: string; label: string; last4: string }[]; runs: { runSeq: number; cycleName: string | null; runType: string }[] };
 type Props = {
   formatId: string; formatLabel: string; periodKind: 'month' | 'month-cycle' | 'month-runs'; testIndicator: boolean;
   endpoint: string; companies: SelectionOption[]; defaultCompanyId: string; years: string[]; defaultYear: string;
@@ -17,7 +17,7 @@ type Props = {
 
 /** Preview and generation share one exact request; generation retries retain the same idempotency key. */
 export function BankDownloadDialog(p: Props) {
-  const t = useTranslations('payroll.paymentSubmission');
+  const t = useTranslations('payroll.paymentSubmission'),mb=useTranslations('maybankPayment');
   const locale = useLocale();
   const [open, setOpen] = useState(false);
   const [companyId, setCompanyId] = useState(p.defaultCompanyId);
@@ -56,7 +56,7 @@ export function BankDownloadDialog(p: Props) {
         const response = await fetch(`${p.endpoint}?${q}`, { signal: controller.signal, cache: 'no-store' });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || t('bankRequestFailed'));
-        if (!controller.signal.aborted) setOptions(data);
+        if (!controller.signal.aborted){setOptions(data);if(data.configuredAccountId&&data.accounts.some((a:{id:string})=>a.id===data.configuredAccountId))setBankProfileId(data.configuredAccountId);}
       } catch (e) {
         if (!controller.signal.aborted) setError(e instanceof Error ? e.message : t('bankRequestFailed'));
       } finally { if (!controller.signal.aborted) setLoading(false); }
@@ -110,6 +110,7 @@ export function BankDownloadDialog(p: Props) {
         <Dialog.Title className="text-lg font-semibold">{p.formatLabel}</Dialog.Title>
         <Dialog.Description className="mt-1 text-sm text-muted-foreground">{t('bankSelectionIntro')}</Dialog.Description>
         {(p.formatId === 'my.ocbc.lhdn' || p.formatId === 'my.ocbc.zakat') && <p className="mt-3 text-sm text-muted-foreground">{t('ocbcBlankHashNotice')}</p>}
+        {p.formatId.startsWith('my.maybank74.')&&<p className="mt-3 text-sm text-muted-foreground">{mb('downloadNotice')}</p>}
         <fieldset disabled={busy} className="mt-4 grid grid-cols-2 gap-4 disabled:opacity-70">
           <div className="col-span-2"><Field label={t('company')}><select aria-label={t('company')} className={inputCls} value={companyId} onChange={(e) => change(() => setCompanyId(e.target.value))}>{p.companies.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select></Field></div>
           <Field label={t('year')}><select aria-label={t('year')} className={inputCls} value={year} onChange={(e) => change(() => setYear(e.target.value))}>{p.years.map((y) => <option key={y}>{y}</option>)}</select></Field>

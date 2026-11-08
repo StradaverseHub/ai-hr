@@ -9583,7 +9583,17 @@
       "runTypeOffCycle": "额外周期",
       "runTypeBonus": "奖金",
       "runTypeAdjustment": "调整",
-      "ocbcBlankHashNotice": "初始格式：按要求将 Hash Total 字段保留在规定位置并留空。尚未验证银行是否接受。"
+      "ocbcBlankHashNotice": "初始格式：按要求将 Hash Total 字段保留在规定位置并留空。尚未验证银行是否接受。",
+      "maybankSalary": "Maybank2E-RC V7.4 · 薪资",
+      "maybankSalaryDesc": "以保存的薪资记录及本公司配置的付款账户生成 V7.4 竖线分隔文件。",
+      "maybankKwsp": "Maybank2E-RC V7.4 · 公积金",
+      "maybankKwspDesc": "以保存的薪资记录及本公司配置的付款账户生成 V7.4 竖线分隔文件。",
+      "maybankSocso": "Maybank2E-RC V7.4 · 社险",
+      "maybankSocsoDesc": "以保存的薪资记录及本公司配置的付款账户生成 V7.4 竖线分隔文件。",
+      "maybankLhdn": "Maybank2E-RC V7.4 · 所得税",
+      "maybankLhdnDesc": "以保存的薪资记录及本公司配置的付款账户生成 V7.4 竖线分隔文件。",
+      "maybankZakat": "Maybank2E-RC V7.4 · 天课",
+      "maybankZakatDesc": "以保存的薪资记录及本公司配置的付款账户生成 V7.4 竖线分隔文件。"
     },
     "payslipInformation": {
       "employee": "员工姓名",
@@ -36554,5 +36564,23 @@
     "overdue": "已逾期",
     "noDue": "未设截止日期",
     "destinations": "薪酬页面"
+  },
+  "maybankPayment": {
+    "settings": "Maybank 付款文件设置",
+    "version": "Maybank 文件格式版本",
+    "notConfigured": "未配置",
+    "hashHelp": "V7.4 文档不包含银行的哈希公式。选择空白哈希前，请向 Maybank 确认付款安排。",
+    "hashArrangement": "银行哈希安排",
+    "unconfirmed": "未确认 / 需要哈希",
+    "noHash": "银行已确认：无需哈希",
+    "stateCode": "公积金 / 天课公司州属",
+    "zakatClass": "天课分类",
+    "mappingHelp": "薪资使用本公司的主要账户。请在法定机构账户中为 KWSP、SOCSO、LHDN 和天课指定付款账户。",
+    "downloadNotice": "使用本公司配置的类别账户。生成文件仍需通过 Maybank 上传验证；下载不会记录付款。",
+    "payeeResidency": "银行收款人居民身份",
+    "notRecorded": "未记录",
+    "resident": "居民",
+    "nonResident": "非居民",
+    "residencyHelp": "请记录收款人的居民身份以供付款申报，包括自定义账户持有人。此资料与员工税务居民身份分开。"
   }
 }
