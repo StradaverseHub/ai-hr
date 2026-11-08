@@ -1,6 +1,6 @@
 /** Frozen c5e36cb03095527ba1fb6a0e8fc2bf54080f2c46 usualShiftsFor body;
  * only its export name changes. Native parity must not share the new rule selection. */
-import {inArray} from 'drizzle-orm';
+import {eq,inArray} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {employment,shift} from '../../db/schema';
 import {weekLookupTx} from '../../core/attendance';
