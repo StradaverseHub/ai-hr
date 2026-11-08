@@ -218,15 +218,6 @@ export function declaredNavigationCatalogue():NavigationCatalogue {
 /** Explicit bindings for older published registries without durable IDs. A new
  * registry key cannot silently acquire an identity derived from its URL. */
 const PUBLISHED_SUBMENU_IDS:Readonly<Record<string,string>>={
- 'ai/tab/ask':'submenu.aiCentre.ask','ai/tab/operations':'submenu.aiCentre.operations',
- 'ai/tab/insights':'submenu.aiCentre.insights','ai/tab/policies':'submenu.aiCentre.policies',
- 'ai/tab/administration':'submenu.aiCentre.administration','ai/tab/how':'submenu.aiCentre.how',
- 'ai/operations/loops':'submenu.aiCentre.loops','ai/operations/payrollCycle':'submenu.aiCentre.payrollCycle',
- 'ai/operations/exceptions':'submenu.aiCentre.exceptions','ai/operations/readiness':'submenu.aiCentre.readiness',
- 'ai/administration/workers':'submenu.aiCentre.workers','ai/administration/setup':'submenu.aiCentre.setup',
- 'ai/administration/spend':'submenu.aiCentre.spend','ai/administration/buildList':'submenu.aiCentre.buildList',
- 'ai/payroll/pre':'submenu.aiCentre.payroll.pre','ai/payroll/salary':'submenu.aiCentre.payroll.salary',
- 'ai/payroll/settings':'submenu.aiCentre.payroll.settings','ai/payroll/audit':'submenu.aiCentre.payroll.audit',
  'security/permissions':'submenu.security.permissions','security/functions':'submenu.security.functions',
  'security/create':'submenu.security.create','security/invite':'submenu.security.invite',
  'security/users':'submenu.security.users','security/passwordPolicy':'submenu.security.passwordPolicy',

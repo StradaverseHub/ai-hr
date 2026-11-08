@@ -1071,7 +1071,7 @@
     {
       "path": "lib/navigation/catalogue.ts",
       "predecessorSha256": "4c0c582cd6344a0501cd40560f38d95991d4c584c3f45c6ef3e888fa02035612",
-      "candidateSha256": "d9e0b811dfc9a008506a9ecd22e6f459767499eaa823857459e26f688275f80c",
+      "candidateSha256": "7fca613022e253543a3c71eee412168a4d542d939d1d44e7dbae3c35b9aa3bda",
       "edits": [
         {
           "afterStart": 183,
@@ -1083,7 +1083,22 @@
           ]
         },
         {
-          "afterStart": 246,
+          "afterStart": 220,
+          "after": [],
+          "before": [
+            " 'ai/tab/ask':'submenu.aiCentre.ask','ai/tab/operations':'submenu.aiCentre.operations',\n",
+            " 'ai/tab/insights':'submenu.aiCentre.insights','ai/tab/policies':'submenu.aiCentre.policies',\n",
+            " 'ai/tab/administration':'submenu.aiCentre.administration','ai/tab/how':'submenu.aiCentre.how',\n",
+            " 'ai/operations/loops':'submenu.aiCentre.loops','ai/operations/payrollCycle':'submenu.aiCentre.payrollCycle',\n",
+            " 'ai/operations/exceptions':'submenu.aiCentre.exceptions','ai/operations/readiness':'submenu.aiCentre.readiness',\n",
+            " 'ai/administration/workers':'submenu.aiCentre.workers','ai/administration/setup':'submenu.aiCentre.setup',\n",
+            " 'ai/administration/spend':'submenu.aiCentre.spend','ai/administration/buildList':'submenu.aiCentre.buildList',\n",
+            " 'ai/payroll/pre':'submenu.aiCentre.payroll.pre','ai/payroll/salary':'submenu.aiCentre.payroll.salary',\n",
+            " 'ai/payroll/settings':'submenu.aiCentre.payroll.settings','ai/payroll/audit':'submenu.aiCentre.payroll.audit',\n"
+          ]
+        },
+        {
+          "afterStart": 237,
           "after": [
             " for(const item of CENTRE_TABS)append(item.navigationId,'lib/ai-centre/centre-nav.ts','ai/tab/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');\n"
           ],
@@ -1092,7 +1107,7 @@
           ]
         },
         {
-          "afterStart": 248,
+          "afterStart": 239,
           "after": [
             "  append(item.navigationId,'lib/ai-centre/centre-nav.ts','ai/'+group+'/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');\n",
             " for(const item of PAYROLL_CYCLE_PAGES)append(item.navigationId,'lib/ai-centre/centre-nav.ts','ai/payroll/'+item.page,item.href,item,'components/ai-centre/centre-tabs.tsx');\n"
@@ -1103,7 +1118,7 @@
           ]
         },
         {
-          "afterStart": 279,
+          "afterStart": 270,
           "after": [
             "\n",
             "/** Nested source definitions only; no concrete record or executed-role claim. */\n",

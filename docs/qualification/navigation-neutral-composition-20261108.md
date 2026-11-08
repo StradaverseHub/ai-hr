@@ -30,12 +30,12 @@ retains all three independent orders. The three unsupported definitions and
 notBuilt bodies remain; no previously absent tab is made visible. No unsupported
 choice can qualify usable data.
 
-The inherited source's AI centre published-ID map contained only Security keys
-while its AI append calls still used removed map entries. AI source definitions
-now carry the original literal IDs themselves, and catalogue/actual rendered
-links use those facts. Original sourceKey/addresses and 222 declaration contract
-are retained. Unknown newly published choices still cause an unmapped issue;
-this correction is not a claim that an earlier failing source was qualified.
+The predecessor publishes18 AI literal IDs in the central fallback map. Those
+IDs now live once in their canonical AI centre definitions; catalogue and
+rendered links consume the same facts. The unused fallback duplicates are
+removed. Original sourceKey/address/222-declaration contracts remain. This is
+an ownership extraction, with no claim that the predecessor omitted its IDs or
+that source composition establishes runtime coverage.
 
 Only static metadata attributes are added to renderers. Company hidden panels,
 Schedule hidden mounted forms/legacy query+fragment/keyboard state, V9 conditional

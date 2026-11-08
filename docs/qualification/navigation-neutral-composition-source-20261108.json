@@ -1,7 +1,7 @@
 {
   "kind": "NAVIGATION_NEUTRAL_SOURCE_COMPOSITION_NOT_RUNTIME_ACCEPTANCE",
   "sourceBase": "a90d22e287f487e8959cfb3a3c4e0b7402b8029c",
-  "sourceRef": "codex/nested-navigation-neutral-composition-20261108",
+  "sourceRef": "codex/navigation-neutral-owner-cleanup-20261108",
   "sourceSha256": {
     "app/admin/attendance/schedule/group-sections.tsx": "fa9d2aaec7f64a757c37b4e2243a2e834896290ce31b61ba82316fb4fc3ea6ed",
     "app/admin/attendance/schedule/sections.ts": "8a550cc556a5fd98e8c4bfea4827902c4aa83f1e567a203d3cf00f0cd2cd662a",
@@ -14,17 +14,17 @@
     "components/company-panel.tsx": "66f68765e51d4f847febcd40c8ff1b04a779623e4c95a5bacf85b62dba3d6df6",
     "components/leave-config-map.tsx": "e72ff135733e2091727fcbc3a7935ee856ad189218a03f550545d88007d0b3c6",
     "components/schedule-group-tabs.tsx": "086bc6e663b8c3d975436c751a0c64b55abba29b0e95e30a8189a29d7f525a43",
-    "docs/qualification/navigation-neutral-composition-20261108.md": "099e96b653f5637c6def45f8dd832a3eaa5194275fbd1f5952f177651a9b4371",
+    "docs/qualification/navigation-neutral-composition-20261108.md": "2b9168b5f2c64fb7be4e6fa8f71665988a59455a9b45fadaeb3d00bb2db889a0",
     "lib/ai-centre/centre-nav.ts": "dc994e3f40f66c82c36c175dd25be1665ae01270364fae2b25757531eef4dc48",
     "lib/company-panel-tabs.ts": "9aeca38a8c5e75d11c58dd20ff5892ac2ec48ebfd27b39cbafce3466c14fc545",
     "lib/leave-config-navigation.ts": "cd7acf814e5aaf0e1ed50fcd2d3d6128fd67146c0699eb9e7f60939198e7f5b7",
     "lib/lifecycle-v9-navigation.ts": "3738d02113f3574cc5eb9c76bd5ca9407610cac1e7b819c9b7ee75724eaf36c1",
-    "lib/navigation/catalogue.ts": "d9e0b811dfc9a008506a9ecd22e6f459767499eaa823857459e26f688275f80c",
+    "lib/navigation/catalogue.ts": "7fca613022e253543a3c71eee412168a4d542d939d1d44e7dbae3c35b9aa3bda",
     "lib/navigation/record-families.ts": "23bdbdcfd08d59c42dd42060a0e889b6fbe422383b03b04149fc690f96621e32",
     "packs/performance/onehr/admin-sections.ts": "a16b21883c9aa3242f4347b52306cc3f3e98a247f28e15eb1750aee2992af8a7",
     "scripts/performance/navigation-coverage-ledger.json": "837a58a0853a61e473023194e8486a5df74014f1b26d7841fb5ec9f205b3dbbe",
     "test/company-panel-no-disclosure-render.test.ts": "9061a96afe4fed76713e944379f7a6a2650a0e4542de519a76827cacd1b15a81",
-    "test/fixtures/navigation-neutral-source-inverse.json": "853c1ced0f0c02f383e376b9d2611d314551c8dfa4f77e02d45314c80e7547e7",
+    "test/fixtures/navigation-neutral-source-inverse.json": "f811751c8c6a24169ec39f6c74f00f4a2b4b6e716cceadbeacd43ca2fad39ed4",
     "test/lifecycle-v9-navigation.dom.test.tsx": "20148df7cd390068fa56eac02eb4126005cc6aa937a56fb4f3ce734bcd141642",
     "test/navigation-neutral-families.test.ts": "72b1638ec156fdab071e0f7a9013424032694564f34791c3a6a30c8b0daf40c5",
     "test/navigation-neutral-renderers.dom.test.tsx": "7e4400f6938eaf7e489c0977b0fbc95afe24d3023983e82ebba9d4ca026d6f10",
@@ -119,5 +119,6 @@
     "movedPureFactsPredecessorSha256": "15f4e13914fead090665e89fc98d26ecbeb1a05dd0717af35d7f83ed3d9225df",
     "unchangedClaims": "business/auth/grants/builders/old v2/runtime orchestration source unchanged as explicitly pinned; metadata/fact extraction reviewed separately"
   },
-  "aiBinding": "Generated AI manifests and approval literals untouched; current composed integration manifests and any required review remain root-owned, no new binding claim."
+  "aiBinding": "Generated AI manifests and approval literals untouched; current composed integration manifests and any required review remain root-owned, no new binding claim.",
+  "sourceCheckpoint": "c8081531d04b2a4e8b8ed4d25119aa46ec739e8f"
 }
