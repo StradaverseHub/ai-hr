@@ -24,7 +24,7 @@ afterEach(cleanup);
 describe('default-off scheduled reminder controls',()=>{
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s renders the actual feature controls with named default-off actions',async locale=>{
   state.locale=locale;const page=await AiManagementScreen({session:{tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never,section:'features',searchParams:Promise.resolve({})});
-  const view=render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}>{page}</NextIntlClientProvider>);
+  const view=render(<NextIntlClientProvider locale={locale} messages={withAiCentre(locale,copies[locale] as any)}>{page}</NextIntlClientProvider>);
   for(const id of ['clock_reminders','document_reminders','lifecycle_chasers'] as const){
    expect(screen.getByText(copies[locale].aiManagement.features[id])).toBeTruthy();
    const row=view.container.querySelector('#ai-feature-'+id)!;expect(row.querySelector('input[name=feature]')?.getAttribute('value')).toBe(id);expect(row.querySelector('input[name=enabled]')?.getAttribute('value')).toBe('true');

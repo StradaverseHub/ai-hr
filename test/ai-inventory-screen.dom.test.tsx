@@ -49,7 +49,7 @@ afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;});
 const session={tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never;
 const renderPage=async(locale:keyof typeof copies,section:'features'|'runs',searchParams={})=>{
  const page=await AiManagementScreen({session,section,searchParams:Promise.resolve(searchParams)});
- return render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}><main className="min-w-0 p-4">{page}</main></NextIntlClientProvider>);
+ return render(<NextIntlClientProvider locale={locale} messages={withAiCentre(locale,copies[locale] as any)}><main className="min-w-0 p-4">{page}</main></NextIntlClientProvider>);
 };
 
 describe('AI inventory in six rendered locales',()=>{

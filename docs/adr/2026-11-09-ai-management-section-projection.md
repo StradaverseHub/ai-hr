@@ -63,3 +63,37 @@ The new shared leaf is an actual runtime dependency of the Employee source owner
 through existing management/navigation imports. Its static source binding needs
 coherent integration review; this slice does not silently claim the previous
 member count or global source qualification. No CI registry/framework is changed.
+
+## Recovery of captured mobile overflow and fixture translation context
+
+The complete course on source `1b78bee247e47c8d9ae85209bb3b0e852aedb321`
+(run `42509856754`) settled with 190 of 198 cases passing. The eight failures
+remain historical failures: six How it works mobile captures and two unrelated
+DB source-fixture cases. No successful result transfers automatically to a child.
+
+All six How desktop captures fit their 1440px viewport. Their mobile captures
+report overflow at 390px and produce 454px-wide full-page PNGs. The mobile CSS
+requires 44px button targets, but the nine step targets occupy one nonwrapping
+strip. Nine targets plus the step panel padding/border and page inset account
+for the captured width. The How fixture already merges its separate AI Centre
+catalogue; its translation context is not the cause of this overflow.
+
+The step section now permits shrinking within its grid track and constrains its
+width. Its tablist wraps within the panel. All nine targets, the global touch
+minimum, keyboard and playback handlers, reduced-motion behavior, captions and
+step state remain unchanged. No overflow clipping or screenshot tolerance is
+introduced. Existing six-locale desktop/mobile captures remain the regression
+check; rendered success is pending hosted execution.
+
+Separately, five other DOM fixtures supplied merged messages to mocked server
+translations while their client providers supplied only base catalogues. Their
+client mounts now use the existing `withAiCentre` or `enWithAiCentre` helper to
+match the server. Locale matrices, data owners, assertions, captures, production
+catalogue loading, permissions and query/command behavior are unchanged.
+
+The source-failure/correction record identifies exact parent Git objects, small
+reversible source substitutions, protected owners and the original failed course.
+It is non-runtime review data, not release evidence. Source review by another
+reviewer and affected hosted recovery are required before composition/adoption.
+Browser preflight, worker/load qualification and staging remain pending;
+production remains held.
