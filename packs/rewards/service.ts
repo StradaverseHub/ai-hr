@@ -1,3 +1,4 @@
+import { emptyRewardPreparation, REWARD_PREPARATION_STEPS, rewardPreparationStatus } from './preparation-model';
 import {rewardArchitectureForSourceTx} from './architecture-source';
 import {advisorNeedsOverrideReason} from './advisor-model';
 import {calculateUploadedRewards} from './uploaded-awards-model';
@@ -97,6 +98,7 @@ async function projectGovernanceTx(tx:Tx,ctx:SessionContext,unitId:string,state:
 }
 async function saveGovernanceTx(tx:Tx,ctx:SessionContext,unitId:string,before:RewardGovernance|null,after:RewardGovernance,kind:string,reason:string){
  const actor=idSchema.parse(ctx.userId);
+ if(before?.preparation?.state==='released'&&after.preparation?.state==='released'&&!isDeepStrictEqual(before,after))throw new RewardError('Unit set-up is locked. Request a controlled change and give a reason.');
  await tx.insert(rewardGovernance).values({tenantId:ctx.tenantId,unitId,state:after}).onConflictDoUpdate({target:rewardGovernance.unitId,set:{state:after,updatedAt:new Date()}});
  await tx.insert(rewardGovernanceHistory).values({tenantId:ctx.tenantId,unitId,actorId:actor,kind,reason,before,after});
  const [savedUnit]=await tx.select({policy:rewardUnit.policy}).from(rewardUnit).where(eq(rewardUnit.id,unitId));
@@ -514,6 +516,8 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
     const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId));
     if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
     const roles = await rolesFor(tx, unitId);
+    const [prep]=await tx.execute<{value:RewardPreparationView|null}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
+    if(unit.kind==='annual'&&!prep?.value?.setupVisible)throw new RewardError('You do not have access to Unit set-up.');
     const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
     if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Rewards configuration requires company administrator or Group Rewards access.');
     const [cycle] = await tx.select({ name: rewardCycle.name, year: rewardCycle.year }).from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
@@ -522,8 +526,8 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
     const [originRow]=await tx.execute<{origin:{versionId:string;revision:number;name:string;changed:boolean}|null}>(sql`select app.reward_policy_unit_origin(${unitId}::uuid) as origin`);
     const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);
     return { libraryBound:libraryBinding?.bound??false,unit:{...unit,policy:redactPatPolicy(effectiveRewardPolicy(unit.policy,await governanceStateTx(tx,unitId)),roles)}, cycle, name: bu?.name ?? 'Business unit', members,canReadPat:roles.includes('gr'),policyOrigin:originRow?.origin??null,
-      canConfigure: roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
-      canManageMembers: !!admin?.ok && unit.status === 'draft',
+      canConfigure: !(prep?.value?.required&&prep.value.released) && roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
+      canManageMembers: !!admin?.ok && roles.includes('gr') && unit.status === 'draft',
     };
   });
 }
@@ -624,6 +628,7 @@ export async function createRewardUnitTx(tx:Tx,ctx:SessionContext,raw:PlannedRew
 export async function saveRewardPolicy(ctx: SessionContext, unitId: string, revision: number, raw: unknown) {
   const parsed = policySchema.parse(raw);
   return withRewardsTenant(ctx, async tx => {
+    await assertRewardPreparationMutableTx(tx,unitId);
     const { unit, roles } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
     // bcd7cc0f: the unit multiplier has one writer (saveRewardMultiplier), which previews it and records a reason.
     // 4e3e1af7 / 8ad87ae8: the lump reason and pay-window decisions also have their own writers.
@@ -762,6 +767,7 @@ export async function previewRewardSeniorMembership(ctx: SessionContext, unitId:
 export async function saveRewardSeniorMembership(ctx: SessionContext, unitId: string, revision: number, raw: unknown, previewDigest: string) {
   z.string().regex(/^[a-f0-9]{64}$/).parse(previewDigest);
   return withRewardsTenant(ctx, async tx => {
+    await assertRewardPreparationMutableTx(tx,unitId);
     const { unit, roles, entries } = await load(tx, unitId, true);
     assertSeniorSelectionAuthority(unit, revision, roles);
     const prepared = prepareSeniorSelection(ctx, unit, entries, roles, raw);
@@ -846,6 +852,7 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
 export async function importRewardFacts(ctx: SessionContext, unitId: string, revision: number, rows: { employmentId: string; facts: RewardFacts }[]) {
   const input = z.array(z.object({ employmentId: idSchema, facts: factsSchema })).min(1).max(10000).parse(rows);
   return withRewardsTenant(ctx, async tx => {
+    await assertRewardPreparationMutableTx(tx,unitId);
     const { unit, roles, entries } = await load(tx, unitId, true);await assertRewardCapabilityTx(tx,unitId,'data.check'); assertRevision(unit, revision); assertUnlocked(unit);
     if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may import ratings and classifications.');
     const seen = new Set<string>();
@@ -938,6 +945,7 @@ export async function saveRewardSourceRefresh(ctx: SessionContext, unitId: strin
   z.string().regex(/^[a-f0-9]{64}$/).parse(previewDigest);
   const date = isoDateSchema.parse(asOf);
   return withRewardsTenant(ctx, async tx => {
+    await assertRewardPreparationMutableTx(tx,unitId);
     const { unit, roles, entries } = await load(tx, unitId, true);await assertRewardCapabilityTx(tx,unitId,'snapshot.refresh');
     if((await tx.execute(sql`select 1 from reward_uploaded_review where unit_id=${unitId}::uuid`)).length)throw new RewardError('Refresh Payroll sources from the Uploaded awards page.');
     const plan = await planSourceRefreshTx(tx, ctx, unit, roles, entries, revision, date);
@@ -1838,4 +1846,118 @@ export async function rewardPromotionNominations(ctx: SessionContext, companyIds
     }
     return { year, page, maxPage, companies, nominations };
   });
+}
+
+// The unit's existing governance record is the sole owner of preparation evidence.
+export type RewardPreparationView = {
+ unitId:string;required:boolean;released:boolean;setupVisible:boolean;isGr:boolean;
+ expectedRelease:string|null;preparation:import('./preparation-model').RewardPreparation|null;
+ applied:{salary:{name:string;version:number;confirmed:boolean};bonus:{name:string;version:number;confirmed:boolean}}|null;origin:{name:string;revision:number;versionId:string}|null;
+ history:{id:string;kind:string;reason:string;actorName:string|null;at:string}[];
+ actorNames:Record<string,string>;namedDoer:boolean;personId:string|null;independentChecker:boolean;stateForSetup:RewardGovernance|null;
+};
+export async function getRewardPreparationStatus(ctx:SessionContext,unitId:string){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ idSchema.parse(unitId);
+ return withRewardsTenant(ctx,async tx=>{
+  const [row]=await tx.execute<{value:RewardPreparationView|null}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
+  if(!row?.value)throw new RewardError('You do not have access to this unit.');
+  return row.value;
+ });
+}
+
+function preparationBasis(unit:typeof rewardUnit.$inferSelect,entries:RewardEntry[],state:RewardGovernance){
+ const {unitGovernanceDigest:_digest,lumpUnitCents:_lump,lumpReason:_reason,...policy}=unit.policy;
+ const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'
+  ?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)])):value;
+ return createHash('sha256').update(JSON.stringify(canonical({snapshotDate:unit.snapshotDate,policy,
+  entries:[...entries].sort((a,b)=>a.id.localeCompare(b.id)).map(entry=>({id:entry.id,source:entry.source,facts:entry.facts})),
+  inputs:state.inputs,selection:state.selection,exemption:state.exemption}))).digest('hex');
+}
+
+async function preparationReadinessTx(tx:Tx,ctx:SessionContext,unit:typeof rewardUnit.$inferSelect,roles:RewardRole[],entries:Awaited<ReturnType<typeof load>>['entries'],state:RewardGovernance){
+ const refresh=await planSourceRefreshTx(tx,ctx,unit,roles,entries,unit.revision,unit.snapshotDate);
+ const [binding]=await tx.execute<{salary_version_id:string;bonus_version_id:string;pool_recalculation_required:boolean}>(sql`select salary_version_id,bonus_version_id,pool_recalculation_required from reward_unit_setup where unit_id=${unit.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+ const publicState=await governancePublicTx(tx,unit.id);
+ const present=entries.filter(entry=>!entry.source.leftOn),personIds=present.map(entry=>entry.source.personId);
+ return {
+  snapshot:refresh.changes.length===0,
+  data:present.every(entry=>entry.facts.reviewed&&entry.facts.performance&&entry.facts.talent)&&new Set(personIds).size===personIds.length,
+  excluded:refresh.changes.length===0&&!!unit.policy.blockedFrom&&!!unit.policy.blockedTo,
+  senior:!!state.selection?.confirmedBy&&entries.filter(entry=>entry.facts.seniorPlan).every(entry=>seniorGrade(entry.source.grade)),
+  budget:!!state.inputs&&poolStatus(state)!=='not-set'&&!binding?.pool_recalculation_required&&publicState?.basis===governanceBasis(unit.policy,entries),
+  applied:!!unit.policyGroupVersionId&&!!binding?.salary_version_id&&!!binding?.bonus_version_id,
+ };
+}
+
+export async function getRewardPreparationChecklist(ctx:SessionContext,unitId:string){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ const access=await getRewardPreparationStatus(ctx,unitId);
+ if(!access.setupVisible)throw new RewardError('You do not have access to Unit set-up.');
+ return withRewardsTenant(ctx,async tx=>{
+  const {unit,roles,entries}=await load(tx,unitId);
+  const state=access.stateForSetup??await governanceStateTx(tx,unitId)??emptyGovernance();
+  const preparation=state.preparation??emptyRewardPreparation();
+  // CTRO/EC receive the bounded proof projection and view links, without reading private salary inputs.
+  const checks=access.required&&roles.includes('gr')&&unit.status==='draft'?await preparationReadinessTx(tx,ctx,unit,roles,entries,state):null;
+  const [viewing]=await tx.execute<{value:boolean}>(sql`select exists(select 1 from reward_access_view_session where tenant_id=app.current_tenant_id() and viewer_id=app.current_user_id() and ended_at is null and expires_at>now()) as value`);
+  return {access,unitId,revision:unit.revision,preparation,basis:preparationBasis(unit,entries,state),checks,
+   canEdit:access.required&&access.namedDoer&&roles.includes('gr')&&unit.kind==='annual'&&unit.status==='draft'&&!viewing?.value,
+   snapshotDate:unit.snapshotDate,companyId:unit.companyId,branch:unit.policy.bonusStructure==='branch',budgetInputs:state.inputs};
+ });
+}
+
+export async function changeRewardPreparation(ctx:SessionContext,unitId:string,revision:number,raw:unknown){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ const command=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('expected'),date:isoDateSchema}).strict(),
+  z.object({kind:z.literal('confirm'),step:z.enum(REWARD_PREPARATION_STEPS),basis:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
+  z.object({kind:z.literal('release'),basis:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
+  z.object({kind:z.literal('reopen'),reason:z.string().trim().min(10).max(2000)}).strict(),
+ ]).parse(raw);
+ return withRewardsTenant(ctx,async tx=>{
+  await assertRewardWritableTx(tx);
+  const {unit,roles,entries}=await load(tx,unitId,true);
+  governanceAuthority(unit,roles,revision);await assertRewardCapabilityTx(tx,unitId,'snapshot.refresh');
+  const [admission]=await tx.execute<{required:boolean}>(sql`select preparation_required as required from public.reward_unit where id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  if(!admission?.required)throw new RewardError('Legacy review preparation history is not recorded. New annual reviews use the checked release process.');
+  const before=await governanceStateTx(tx,unitId),after=structuredClone(before??emptyGovernance());
+  const preparation=after.preparation??emptyRewardPreparation();after.preparation=preparation;
+  const actor=idSchema.parse(ctx.userId),basis=preparationBasis(unit,entries,after);
+  const [identity]=await tx.execute<{value:RewardPreparationView}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
+  const actorPersonId=identity?.value?.personId;
+  if(!actorPersonId)throw new RewardError('A person-backed Group Rewards account is required.');
+  if(command.kind==='reopen'){
+   if(preparation.state!=='released')throw new RewardError('This review is already being prepared.');
+   preparation.state='preparing';preparation.steps={};preparation.changeReason=command.reason;
+   preparation.releasedBy=null;preparation.releasedByPersonId=null;preparation.releasedAt=null;preparation.releaseBasis=null;
+  }else{
+   if(preparation.state==='released')throw new RewardError('Unit set-up is locked. Request a controlled change and give a reason.');
+   if(command.kind==='expected')preparation.expectedRelease=command.date;
+   else{
+    if(command.basis!==basis)throw new RewardError('This review changed in another session. Reload before confirming preparation.');
+    const checks=await preparationReadinessTx(tx,ctx,unit,roles,entries,after);
+    if(command.kind==='confirm'){
+     if(!checks[command.step])throw new RewardError(`Complete the ${command.step} preparation requirement before confirming it.`);
+     preparation.steps[command.step]={basis,actorId:actor,actorPersonId,at:new Date().toISOString()};
+    }else{
+     const status=rewardPreparationStatus(preparation,basis);
+     if(!status.ready||REWARD_PREPARATION_STEPS.some(step=>!checks[step])||!preparation.expectedRelease)
+      throw new RewardError('Complete and confirm every current preparation step and set the expected release date.');
+     const [checker]=await tx.execute<{value:RewardPreparationView}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
+     if(status.doers.includes(actor)||!checker?.value?.independentChecker)throw new RewardError('A different Group Rewards person must check and release this review.');
+     preparation.state='released';preparation.releasedBy=actor;preparation.releasedByPersonId=actorPersonId;preparation.releasedAt=new Date().toISOString();preparation.releaseBasis=basis;
+    }
+   }
+  }
+  await saveGovernanceTx(tx,ctx,unitId,before,after,'preparation-'+command.kind,command.kind==='reopen'?command.reason:'Group Rewards preparation '+command.kind);
+  if(command.kind==='release')await stamp(tx,ctx,unitId,'preparation-released',{to:unit.status});
+  if(command.kind==='reopen')await stamp(tx,ctx,unitId,'preparation-changed',{to:unit.status});
+  return {unitId,revision:revision+1};
+ });
+}
+
+async function assertRewardPreparationMutableTx(tx:Tx,unitId:string){
+ const [row]=await tx.execute<{value:RewardPreparationView|null}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
+ if(row?.value?.required&&row.value.released)throw new RewardError('Unit set-up is locked. Request a controlled change and give a reason.');
 }

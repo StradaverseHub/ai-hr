@@ -11,7 +11,7 @@ vi.mock('next/navigation',()=>({redirect:ports.redirect,useRouter:()=>({replace:
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as 'rewards'})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'t',userId:'actor'},scopeIds:['company']})}));
 vi.mock('../lib/authz',()=>({requireModule:vi.fn()}));
-vi.mock('../packs/rewards/service',async()=>({getRewardUnit:ports.read,getRewardUnitGovernance:async()=>({managed:false}),listRewardUnits:async()=>[{id:'unit',holders:['Fictional CEO']}],defaultPolicy:(await import('../packs/rewards/model')).defaultPolicy,rewardPayrollChoices:async()=>[],rewardSetupChoices:async()=>({companies:[]})}));
+vi.mock('../packs/rewards/service',async()=>({getRewardUnit:ports.read,getRewardPreparationStatus:async()=>({required:false,released:true,setupVisible:false,isGr:false,preparation:null}),getRewardUnitGovernance:async()=>({managed:false}),listRewardUnits:async()=>[{id:'unit',holders:['Fictional CEO']}],defaultPolicy:(await import('../packs/rewards/model')).defaultPolicy,rewardPayrollChoices:async()=>[],rewardSetupChoices:async()=>({companies:[]})}));
 vi.mock('../app/rewards/actions',()=>({importOnehrAction:vi.fn(),decideAction:vi.fn(),importFactsAction:vi.fn(),offcycleAction:vi.fn(),postAction:vi.fn()}));
 vi.mock('../app/rewards/[unitId]/unit-governance',()=>({UnitGovernance:()=> <div>Unit budget owner</div>}));
 vi.mock('../app/rewards/[unitId]/lump-sum',()=>({UnitLumpSum:()=> <div>Existing lump-sum owner</div>}));

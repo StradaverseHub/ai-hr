@@ -365,6 +365,21 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     render: (p, ev) => renderRewardRouted(p, ev),
     recipients: (tx, ev, payload) => rewardNotificationRecipients(tx, ev.aggregateId, payload?.to),
   },
+  'reward-unit.preparation-released': {
+    kind:'rewards.preparation-released',category:'rewards',
+    recipients:(tx,event,payload)=>rewardNotificationRecipients(tx,event.aggregateId,payload?.to),
+    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.releaseNotificationTitle',body:'rewardsPreparation.releaseNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
+  },
+  'reward-unit.preparation-changed': {
+    kind:'rewards.preparation-changed',category:'rewards',
+    recipients:(tx,event,payload)=>rewardNotificationRecipients(tx,event.aggregateId,payload?.to),
+    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.changeNotificationTitle',body:'rewardsPreparation.changeNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
+  },
+  'reward-unit.preparation-invalidated': {
+    kind:'rewards.preparation-invalidated',category:'rewards',
+    recipients:(tx,event,payload)=>rewardNotificationRecipients(tx,event.aggregateId,payload?.to),
+    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.changeNotificationTitle',body:'rewardsPreparation.changeNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
+  },
   'reward-unit.final-pool-changed': {
     kind:'rewards.final-pool-changed',category:'rewards',
     render:(_payload,event)=>({severity:'action',title:'Rewards pool updated',body:'Group Rewards changed the bonus pool or its status. Review the current pool and budget checks before approving.',linkPath:`/rewards/${event.aggregateId}#unit-governance`}),

@@ -62,7 +62,7 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
     {!v.canConfigure && <p className="max-w-3xl text-sm text-muted-foreground">{unit.status === 'draft' ? t('configurationPermission') : t('locked')}</p>}
     <RewardCalendarForm unitId={unitId} revision={calendar.revision} values={calendar.values} canEdit={!readOnly && calendar.canEdit} />
     {senior && <SeniorMembership key={senior.revision} value={senior} />}
-    <RewardPolicyContent libraryOwned={v.libraryBound} readOnly={readOnly} canReadPat={v.canReadPat} canConfigure={v.canConfigure} unitId={unitId} revision={unit.revision} policy={unit.policy} />
+    <section id="applied-setup"><RewardPolicyContent libraryOwned={v.libraryBound} readOnly={readOnly} canReadPat={v.canReadPat} canConfigure={v.canConfigure} unitId={unitId} revision={unit.revision} policy={unit.policy} /></section>
   </div>;
 }
 

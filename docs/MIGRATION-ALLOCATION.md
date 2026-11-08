@@ -1790,3 +1790,9 @@ idx2545 and when1793330002845. Read-only staging had 706 applied migrations
 through1793330002701. The canonical journal prefix and applied SQL bytes remain
 unchanged. Refresh the exact ordered target ledger and peer reservations before
 integration or release; this reservation grants no installation priority.
+
+The same approved-item coordinator reserves 3301_rewards_unit_preparation at
+idx2601 / when1793330002901, immediately after its owned 3300. Preparation
+extends the existing governance history. Existing reviews retain explicitly
+legacy visibility; no doer/checker history is manufactured. New annual review
+creation requires the preparation release. No live migration has been applied.
