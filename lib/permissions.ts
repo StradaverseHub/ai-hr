@@ -161,7 +161,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'emailTemplates',href:'/admin/settings/email-templates',labelKey:'nav.emailTemplates',guard:'scopedAdmin',routes:['/admin/settings/email-templates'],hasScopeNote:true},
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
   {screenKey:'rewards',href:'/rewards',labelKey:'nav.rewards',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
-    '/rewards','/rewards/[unitId]','/rewards/[unitId]/data-check','/rewards/[unitId]/people/[entryId]','/rewards/[unitId]/advisor',
+    '/rewards','/rewards/reviews','/rewards/[unitId]','/rewards/[unitId]/setup','/rewards/[unitId]/data-check','/rewards/[unitId]/people/[entryId]','/rewards/[unitId]/advisor',
     '/rewards/[unitId]/advisor/fairness','/rewards/[unitId]/uploaded','/rewards/analytics','/rewards/promotions','/rewards/rules',
   ]},
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
@@ -1021,6 +1021,10 @@ export const SCREENS: readonly ScreenEntry[] = [
       // fcc2ea42 — independent OT formula workspace; existing permission identity and guard.
       '/admin/attendance/settings/overtime-patterns',
     ],
+  },
+  {
+    screenKey: 'attendanceFormulaBuilder',href:'/admin/attendance/settings/formula-builder',labelKey:'nav.attendanceFormulaBuilder',guard:'scopedAdmin',
+    routes:['/admin/attendance/settings/formula-builder','/admin/attendance/settings/formula-builder/new','/admin/attendance/settings/formula-builder/[id]'],
   },
   {
     screenKey: 'attendanceAllowance',

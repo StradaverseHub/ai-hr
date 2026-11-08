@@ -2914,6 +2914,7 @@ export default async function EmployeePage({
         bankName: statutory?.bankName ?? null,
         bankAccountNo: statutory?.bankAccountNo ?? null,
         enableCustomHolderName: statutory?.enableCustomHolderName ?? false,
+        bankPayeeResidency: statutory?.bankPayeeResidency ?? null,
         customHolderName: statutory?.customHolderName ?? null,
         enableCustomHolderId: statutory?.enableCustomHolderId ?? false,
         customHolderId: statutory?.customHolderId ?? null,

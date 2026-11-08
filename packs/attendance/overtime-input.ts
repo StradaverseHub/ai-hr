@@ -68,7 +68,7 @@ export async function captureCanonicalOvertimePersonnelContextTx(tx: Tx, ctx: Se
 }
 
 /** Only captured calculation intervals with canonical punch corroboration can establish placement. */
-function recordedIntervals(day: typeof attendance.$inferSelect, punches: (typeof attendancePunch.$inferSelect)[]): RecordedWorkInterval[] | null {
+export function recordedOvertimeWorkIntervals(day: typeof attendance.$inferSelect, punches: (typeof attendancePunch.$inferSelect)[]): RecordedWorkInterval[] | null {
   const trace = isAttendanceTrace(day.calcTrace) ? day.calcTrace : null;
   if (!trace || !Array.isArray(trace.punch.calculationIntervals) || !trace.punch.calculationIntervals.length || !day.checkOutAt) return null;
   const intervals = trace.punch.calculationIntervals;
@@ -187,7 +187,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   facts.requiredWorkingMinutes = minute(trace ? trace.schedule.normalMinutesOverride ?? trace.schedule.scheduledMinutes : null, attendanceProvenance('requiredWorkingMinutes'));
   facts.lateMinutes = minute(day.lateMinutes, attendanceProvenance('lateMinutes'));
   Object.assign(facts,recordedSalaryFacts(salary,entity.currency,p.date));
-  let work = recordedOvertimeWork({attendanceId: day.id, attendanceDate: p.date, workedMinutes: day.workedMinutes, dayType: day.dayType, intervals: recordedIntervals(day, punches)});
+  let work = recordedOvertimeWork({attendanceId: day.id, attendanceDate: p.date, workedMinutes: day.workedMinutes, dayType: day.dayType, intervals: recordedOvertimeWorkIntervals(day, punches)});
   // Use the same latest approved OT-bearing decision the canonical landing owner reasserts. A pending
   // later request does not silently revoke a completed decision; its exact state is included in the digest.
   const otDecisions = decisions.filter(row => row.requestedOtMinutes != null);

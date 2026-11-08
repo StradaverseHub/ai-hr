@@ -153,6 +153,7 @@ export type TxnBatch = {
 };
 
 export type TxnPayItem = {
+  appliedCompanyIds?: string[] | null;
   id: string;
   code: string;
   name: string;
@@ -324,6 +325,8 @@ export function TxnWorkspace({
     () => (requireComponent ? KINDS.filter((k) => k !== 'earning' && k !== 'deduction') : [...KINDS]),
     [requireComponent],
   );
+  const [selectedId, setSelectedId] = useState('');
+  const itemCompanyId = employees.find(employee => employee.employmentId === selectedId)?.companyId;
   const itemOptions = useMemo<ItemOption[]>(() => {
     // A generic kind names no pay item, so there is no rule to calculate from — its amount is always typed.
     const generic: ItemOption[] = genericKinds.map((k) => ({
@@ -339,7 +342,7 @@ export function TxnWorkspace({
       readsCalendarDays: false,
     }));
     const master: ItemOption[] = payItems
-      .filter((c) => COMPONENT_KIND_TO_TXN[c.kind] != null)
+      .filter((c) => COMPONENT_KIND_TO_TXN[c.kind] != null && (c.appliedCompanyIds == null || !!itemCompanyId && c.appliedCompanyIds.includes(itemCompanyId)))
       .map((c) => ({
         value: `c:${c.id}`,
         label: `${c.code} — ${c.name}`,
@@ -351,7 +354,7 @@ export function TxnWorkspace({
         readsCalendarDays: c.readsCalendarDays === true,
       }));
     return [...generic, ...master];
-  }, [payItems, t, genericKinds]);
+  }, [payItems, t, genericKinds, itemCompanyId]);
   const itemByValue = useMemo(() => new Map(itemOptions.map((o) => [o.value, o])), [itemOptions]);
   const masterEarnings = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'earning'), [itemOptions]);
   const masterDeductions = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'deduction'), [itemOptions]);
@@ -382,7 +385,7 @@ export function TxnWorkspace({
    */
   const [periodFilter, setPeriodFilter] = useState('');
   const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState('');
+
   /** 009c8a37 — the More-filters fold. Closed on arrival, remembered while the screen is open, and
    *  deliberately not persisted; same reasoning as the shared panel's copy. */
   const [filtersOpen, setFiltersOpen] = useState(false);

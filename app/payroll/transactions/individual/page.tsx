@@ -65,6 +65,7 @@ export default async function IndividualTransactionPage({
   // answering them here is what stops the screen and the service disagreeing about which items calculate.
   const payItems = payComponents.map((c) => ({
     id: c.id,
+    appliedCompanyIds: c.appliedCompanyIds?.filter(id => scopeIds.includes(id)) ?? null,
     code: c.code,
     name: c.name,
     kind: c.kind,

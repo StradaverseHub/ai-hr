@@ -17,5 +17,6 @@ export const ATTENDANCE_SETTINGS_CARDS = [
   { key: 'registeredDevices', href: '/admin/attendance/settings/registered-devices' },
   { key: 'approvalWorkflow', href: '/admin/attendance/approval-workflow' },
   { key: 'overtimePatterns', href: '/admin/attendance/settings/overtime-patterns' },
+  { key: 'formulaBuilder', href: '/admin/attendance/settings/formula-builder' },
   { key: 'offlineClocking', href: '/admin/attendance/settings/offline-clocking' },
 ] as const;

@@ -186,6 +186,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/attendance/schedule','admin',null],['/admin/attendance/schedule-assignment','admin',null],
  ['/admin/attendance/schedule-assignment/bulk','admin',null],['/admin/attendance/schedule/new','admin',null],
  ['/admin/attendance/settings','admin',null],['/admin/attendance/settings/company-policy','admin',null],
+ ['/admin/attendance/settings/formula-builder','admin',null],['/admin/attendance/settings/formula-builder/new','admin',null],
  ['/admin/attendance/settings/overtime-patterns','admin',null],['/admin/attendance/settings/registered-devices','admin',null],
  ['/admin/attendance/settings/work-schedule-overtime','admin',null],['/admin/audit','admin',null],['/admin/card-assignment','admin','attendance'],
  ['/admin/claims','admin',null],['/admin/claims/forms','admin',null],['/admin/claims/limits','admin',null],['/admin/claims/mileage','admin',null],
@@ -286,7 +287,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/performance/plan/team','everyone','performance'],['/performance/team','everyone','performance'],
  ['/performance/team/kpis','everyone','performance'],['/performance/workspace','everyone','performance'],['/personnel','everyone',null],
  ['/policies','everyone',null],
- ['/reports','admin',null],['/reports/employee-master','admin',null],['/rewards','everyone','rewards'],['/rewards/approvals','everyone','rewards'],
+ ['/reports','admin',null],['/reports/employee-master','admin',null],['/rewards','everyone','rewards'],['/rewards/approvals','everyone','rewards'],['/rewards/reviews','everyone','rewards'],
  ['/roster','everyone','attendance'],['/roster/exceptions','everyone','attendance'],['/roster/import','admin','attendance'],
  ['/system-testing','everyone','system_testing'],['/tasks','everyone',null],
 ] satisfies PageRow[]).map(row=>Object.freeze(row)));

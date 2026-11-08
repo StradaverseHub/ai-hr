@@ -81,6 +81,7 @@ function componentFields(formData: FormData, normalizeCode = true): PayComponent
     : 'allowance';
   const includedInPcb = bool(formData, 'includedInPcb');
   return {
+    ...(formData.has('appliedCompanyMode') ? { appliedCompanyIds: formData.get('appliedCompanyMode') === 'all' ? null : formData.getAll('appliedCompanyIds').map(String) } : {}),
     code: normalizeCode ? String(formData.get('code') ?? '').trim().toUpperCase() : String(formData.get('code') ?? ''),
     name: String(formData.get('name') ?? '').trim() || String(formData.get('label') ?? '').trim(),
     // Optional short display name; the service trims and stores blank as null.

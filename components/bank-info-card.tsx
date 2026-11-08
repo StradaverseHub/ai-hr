@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import {Field,inputCls} from '@/components/ui';
 // 35b7af0a group 5 — the Bank + Bank Account Number field group, shared with the Create New Employee
 // wizard. The BNM catalog it renders moved with it (it was this file's module-level BANK_NAMES).
 import { BankAccountFields } from '@/components/bank-account-fields';
@@ -8,6 +9,7 @@ import { BankAccountFields } from '@/components/bank-account-fields';
 import { CustomHolderFields } from '@/components/custom-holder-fields';
 
 export type BankInfoDefaults = {
+  bankPayeeResidency?:'resident'|'non_resident'|null;
   bankName: string | null;
   bankAccountNo: string | null;
   enableCustomHolderName: boolean;
@@ -38,7 +40,7 @@ export function BankInfoCard({
   personId: string;
   defaults: BankInfoDefaults;
 }) {
-  const t = useTranslations('people.detail');
+  const t = useTranslations('people.detail'),bankText=useTranslations('maybankPayment');
   // The catalog, and the rule that preserves a legacy / non-catalog bank name so an existing value isn't
   // silently dropped from the picker, moved into BankAccountFields with the fields themselves (35b7af0a
   // group 5) — the wizard needs both and had neither.
@@ -78,6 +80,8 @@ export function BankInfoCard({
             />
           </div>
         </fieldset>
+
+        <div data-bank-payee-residency><Field label={bankText('payeeResidency')}><select name="bankPayeeResidency" aria-label={bankText('payeeResidency')} defaultValue={defaults.bankPayeeResidency??''} className={inputCls}><option value="">{bankText('notRecorded')}</option><option value="resident">{bankText('resident')}</option><option value="non_resident">{bankText('nonResident')}</option></select><p className="mt-1 text-xs text-muted-foreground">{bankText('residencyHelp')}</p></Field></div>
 
         {/* Custom payment holder — pay salary into a third party's account (spouse / authorised person).
             r393 (685d2380 step 3a) — the SAME field group the draft employee's Bank & Statutory tab renders

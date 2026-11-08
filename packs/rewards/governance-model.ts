@@ -17,6 +17,7 @@ export type RewardPoolStatus = 'not-set' | 'provisional' | 'final' | 'legacy';
 export type RewardCheck = { proposedBy: string; confirmedBy: string | null; confirmedAt: string | null };
 export type SeniorAward = { newBasicCents: number; bonusCents: number; approvalReference: string; approvalDate: string; reason: string; sourceFingerprint:string; evidence: {id:string;name:string;mime:string;size:number}[] } & RewardCheck;
 export type RewardGovernance = {
+  preparation?: import('./preparation-model').RewardPreparation;
   version: 1; inputs: RewardUnitInputs | null; selection: (RewardCheck & {employmentIds:string[]}) | null;
   exemption: ({reason:string} & RewardCheck) | null;
   awards: Record<string, SeniorAward>;

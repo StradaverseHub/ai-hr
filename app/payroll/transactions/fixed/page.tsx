@@ -94,7 +94,7 @@ export default async function FixedTransactionPage({
 
   const [components, existing, cycles] = selectedEmp
     ? await Promise.all([
-        listPayComponents(s, { readyOnly: true }),
+        listPayComponents(s, { readyOnly: true, companyId: selectedEmp.companyId }),
         listEmploymentPayComponents(s, selectedEmp.employmentId),
         listPayrollCycles(s, selectedEmp.companyId, { activeOnly: true }),
       ])

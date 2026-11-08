@@ -2,6 +2,7 @@
  * These helpers select evidence, never attach/consume a transaction or calculate a Pay Item.
  * Callers retain the Native feature gates, employee/company authorization and run routing. */
 import {and,eq,gte,inArray,isNull,lte,or,sql} from 'drizzle-orm';
+import type {PayRule} from '../db/schema';
 import type {Tx} from '../db/client';
 import {attendance,employmentPayComponent,payComponent,payrollBatchComponent,payrollIndividualTxn} from '../db/schema';
 import {collectableCycleIds,intendedCycleFilter} from '../packs/payroll/service';
@@ -21,7 +22,7 @@ export async function readPayrollComponentInputsTx(tx:Tx,p:{employmentIds:string
   .where(and(inArray(employmentPayComponent.employmentId,p.employmentIds),lte(employmentPayComponent.validFrom,p.periodEnd),or(isNull(employmentPayComponent.validTo),gte(employmentPayComponent.validTo,p.periodStart)),isNull(employmentPayComponent.supersededAt))).orderBy(payComponent.code,employmentPayComponent.id):[];
  // valid_to is INCLUSIVE, exactly as the existing Native recurring owner. Archived catalogue rows
  // are deliberately not filtered here: generation's canonical reader does not discard their money.
- const batch=p.batchId&&p.employmentIds.length?await tx.select({...componentColumns,sourceId:payrollBatchComponent.id,oneOff:sql<boolean>`true`,employmentId:payrollBatchComponent.employmentId,amount:payrollBatchComponent.amount})
+ const batch=p.batchId&&p.employmentIds.length?await tx.select({...componentColumns,sourceId:payrollBatchComponent.id,oneOff:sql<boolean>`true`,employmentId:payrollBatchComponent.employmentId,amount:payrollBatchComponent.amount,rounding:sql<string>`case when exists(select 1 from payroll_attendance_allowance_source s where s.batch_id=${payrollBatchComponent.batchId} and s.employment_id=${payrollBatchComponent.employmentId} and s.component_id=${payrollBatchComponent.componentId} and s.formula_result_id is not null) then 'none' else ${payComponent.roundingMethod} end`,rule:sql<PayRule|null>`case when exists(select 1 from payroll_attendance_allowance_source s where s.batch_id=${payrollBatchComponent.batchId} and s.employment_id=${payrollBatchComponent.employmentId} and s.component_id=${payrollBatchComponent.componentId} and s.formula_result_id is not null) then null else ${payComponent.rule} end`,prorates:sql<boolean>`case when exists(select 1 from payroll_attendance_allowance_source s where s.batch_id=${payrollBatchComponent.batchId} and s.employment_id=${payrollBatchComponent.employmentId} and s.component_id=${payrollBatchComponent.componentId} and s.formula_result_id is not null) then false else ${payComponent.prorates} end`})
   .from(payrollBatchComponent).innerJoin(payComponent,eq(payComponent.id,payrollBatchComponent.componentId))
   .where(and(eq(payrollBatchComponent.batchId,p.batchId),inArray(payrollBatchComponent.employmentId,p.employmentIds))).orderBy(payComponent.code,payrollBatchComponent.id):[];
  return {recurring,batch};

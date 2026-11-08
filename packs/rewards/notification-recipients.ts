@@ -28,3 +28,10 @@ export async function rewardAccessSuspensionRecipients(tx:Tx,unitId:string):Prom
 }
 
 export async function rewardUploadCheckerRecipients(tx:Tx,unitId:string){const rows=await tx.execute<{employmentId:string}>(sql`select app.reward_upload_checker_recipients(${unitId}::uuid) as "employmentId"`);return rows.map(r=>r.employmentId);}
+
+/** Same native eligibility owners; a correction retains its prior stage while returning to preparation. */
+export async function rewardPreparationNotificationRecipients(tx:Tx,unitId:string,stage:unknown,released:boolean){
+ if(typeof stage!=='string')return [];
+ const rows=await tx.execute<{employmentId:string}>(sql`select app.reward_preparation_notification_recipients(${unitId}::uuid,${stage},${released}) as "employmentId"`);
+ return rows.map(row=>row.employmentId);
+}

@@ -16,7 +16,7 @@ describe('Rewards review overview',()=>{
   show([base,second]);const row=screen.getAllByRole('row')[1];
   for(const text of ['Fictional Reviewer','76.2%','50.5%','2 blocks','1 exception'])expect(within(row).getByText(text)).toBeTruthy();
   expect(within(row).getByText('2 days overdue').className).toContain('text-destructive');
-  expect(screen.getByRole('link',{name:'Waiting for my action: 1'}).getAttribute('href')).toBe('/rewards?waiting=1');
+  expect(screen.getByRole('link',{name:'Waiting for my action: 1'}).getAttribute('href')).toBe('/rewards/reviews?waiting=1');
   expect(screen.getByText(/1 review is in progress.*Executive Chairman/)).toBeTruthy();
  });
  it('opens each visible overview card and only offers approvals to an admitted viewer', () => {

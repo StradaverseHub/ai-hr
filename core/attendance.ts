@@ -695,6 +695,7 @@ type ResolvedSchedule = {
   scheduleDayKind?: 'full' | 'half' | 'off' | 'rest';
   displayShiftCode?: string | null;
   displayShiftName?: string | null;
+  displayWeeklyPattern?:number[]|null;
   dayType: DayType;
   lateAfter: string; // time-of-day after which check-in is "late" (shift start + policy grace, or policy)
   halfDayBefore: string; // checkout before this on a workday ⇒ half-day (policy / shift midpoint)
@@ -842,8 +843,10 @@ type RosterRow = {
   flexOn: boolean | null;
   flexMin: number | null;
   shiftType: (typeof shift.$inferSelect)['type'] | null;
+  pattern?:number[]|null;
 };
 const rosterRowCols = {
+  pattern:shift.weeklyPattern,
   isRestDay: rosterAssignment.isRestDay,
   shiftId: shift.id,
   code: shift.code,
@@ -1057,7 +1060,7 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
     scheduleDayKind: pol.halfWorkingDays.includes(isoWeekday(date)) ? 'half' : 'full',
   });
 
-  const fullFlexiSchedule=(row:{shiftId:string|null;code:string|null;name:string|null;override:number|null;brk:number|null;periods:BreakPeriod[]|null;cutoffOn:boolean|null;cutoffAt:string|null;flexOn:boolean|null;flexMin:number|null;otRule:ShiftOtRule|null},rule:ResolvedAttendanceRule|null,kind:'full'|'half'|'off'|'rest',source:'roster-shift'|'default-shift'):ResolvedSchedule=>{
+  const fullFlexiSchedule=(row:{pattern?:number[]|null;shiftId:string|null;code:string|null;name:string|null;override:number|null;brk:number|null;periods:BreakPeriod[]|null;cutoffOn:boolean|null;cutoffAt:string|null;flexOn:boolean|null;flexMin:number|null;otRule:ShiftOtRule|null},rule:ResolvedAttendanceRule|null,kind:'full'|'half'|'off'|'rest',source:'roster-shift'|'default-shift'):ResolvedSchedule=>{
    if(row.override==null||row.override<=0)throw new Error('Full Flexi normal working hours are unavailable. Ask HR to correct the shift.');
    const required=kind==='half'?Math.floor(row.override/2):kind==='full'?row.override:0;
    return {dayType:isHoliday?'holiday':isWorkingDayKind(kind)?'workday':'rest_day',lateAfter:pol.lateAfter,halfDayBefore:pol.halfDayBefore,
@@ -1065,7 +1068,7 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
     shiftStart:null,shiftEnd:null,scheduledStart:null,scheduledEnd:null,crossesMidnight:false,
     dailyCutoffMinutes:row.cutoffOn&&row.cutoffAt?toMinutes(row.cutoffAt):null,flexibleBreakMinutes:row.flexOn?row.flexMin:null,
     flexiDuration:true,durationOnly:true,otRule:row.otRule,otWindows:null,rule,lateGraceMinutes:0,earlyGraceMinutes:0,
-    source:!isWorkingDayKind(kind)?'default-shift-rest':source,scheduleDayKind:kind,displayShiftId:row.shiftId,displayShiftCode:row.code,displayShiftName:row.name};
+    source:!isWorkingDayKind(kind)?'default-shift-rest':source,scheduleDayKind:kind,displayShiftId:row.shiftId,displayShiftCode:row.code,displayShiftName:row.name,displayWeeklyPattern:row.pattern?.slice()??null};
   };
   if(ra&&!ra.isRestDay&&ra.shiftType==='full_flexi'){
     const rule=await ruleFor(ra.ruleId);const resolved=fullFlexiSchedule(ra,rule,'full','roster-shift');
@@ -1121,6 +1124,7 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
       crossesMidnight: ra.crosses!,
       source: 'roster-shift',
       scheduleDayKind: 'full',
+      displayWeeklyPattern:ra.pattern?.slice()??null,
       displayShiftId: ra.shiftId,
       displayShiftCode: ra.code,
       displayShiftName: ra.name,
@@ -1263,6 +1267,7 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
         crossesMidnight: crosses,
         source: 'default-shift',
         scheduleDayKind: kind === 'half' ? 'half' : 'full',
+        displayWeeklyPattern:ds.pattern?.slice()??null,
         displayShiftId: ds.shiftId,
         displayShiftCode: ds.code,
         displayShiftName: ds.name,
@@ -1401,6 +1406,10 @@ function deriveAttendance(
         };
   const baseTrace = (): AttendanceTraceV1 => ({
     v: ATTENDANCE_TRACE_VERSION,
+    formulaSchedule:{v:1,flexiDuration:s.flexiDuration,durationOnly:s.durationOnly===true,
+      flexibleBreakMinutes:s.flexibleBreakMinutes,halfDayBefore:s.halfDayBefore,
+      weeklyPattern:s.displayWeeklyPattern?.slice()??null,shiftCode:s.displayShiftCode??null,shiftName:s.displayShiftName??null,scheduleDayKind:s.scheduleDayKind??null,
+      breakPeriods:s.breakPeriods?.map(row=>({...row}))??null},
     ...(exceptionActive?{exemption:{revisionId:exemption!.id,effectiveFrom:exemption!.effectiveFrom,types:['absent','late','early_out'] as const}}:{}),
     schedule: {
       source: s.source,
@@ -1641,6 +1650,7 @@ function deriveAttendance(
   // ── 7c834696 POINT 3 · finish the trace. Reads the finished figures; writes none of them. ───────────
   const trace = baseTrace();
   trace.schedule.breakSpanned = durationBreak ?? spannedBreak;
+  trace.formulaBreaks={v:1,actualBefore:beforeBreak,actualAfter:afterBreak,actualShift:Math.max(0,span-regularWorked)};
   trace.punch = {
     inAbs: inAbsRaw, outAbs: inAbsRaw + span, spanMinutes: span, workedMinutes,
     calculationIntervals: (intervals ?? [{inAbs: w?.inAbs ?? inAbsRaw, outAbs: (w?.inAbs ?? inAbsRaw) + span}]).map(part => ({...part})),

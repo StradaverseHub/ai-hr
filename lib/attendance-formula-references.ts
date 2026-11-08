@@ -1,0 +1,14 @@
+import type {AttendanceFormulaLibrary} from './attendance-formula-language';
+/** Fictional editable teaching examples. No reference authorizes pay, an approval or a statutory rate. */
+const ref=(id:string)=>'{#FormulaID}("'+id+'")';
+export const ATTENDANCE_FORMULA_REFERENCES=[
+ ...(['1.0','1.5','2.0','3.0'] as const).map(multiplier=>({
+  key:'ot'+multiplier.replace('.',''),name:'Overtime '+multiplier,purpose:'overtime' as const,outputUnit:'amount' as const,
+  variables:['ApproveZoneAOT','ApproveZoneBOT','OTAssignmentInShift','AprZoneAPreOTBreakWorkMins','AprZoneAPostOTBreakWorkMins'],
+  example:{minutes:'90',hourlyRate:'20',multiplier,expected:String(30*Number(multiplier))},
+  library:{conditions:[{code:'APPROVED_MINUTES',description:'Approved positioned overtime minutes, including approved break work.',source:'Return '+['ApproveZoneAOT','ApproveZoneBOT','OTAssignmentInShift','AprZoneAPreOTBreakWorkMins','AprZoneAPostOTBreakWorkMins'].map(ref).join(' + ')}],formulas:[{code:'EXAMPLE',source:`' Fictional hourly rate20; replace with your authorized company rule.\nReturn {#ConditionID}("APPROVED_MINUTES") / 60 * 20 * ${multiplier}`}]} satisfies AttendanceFormulaLibrary,
+ })),
+ {key:'absent',name:'Absent',purpose:'deduction' as const,outputUnit:'amount' as const,variables:['TotalWorkingMins','OnLeaveDurationMins','ScheduleWorkingTime'],example:{minutes:'0',hourlyRate:'20',multiplier:'8',expected:'160'},library:{conditions:[{code:'ABSENT_DAY',type:'boolean' as const,description:'A complete recorded scheduled day with zero work and no approved leave.',source:`If ${ref('TotalWorkingMins')} = 0 AndAlso ${ref('OnLeaveDurationMins')} = 0 AndAlso ${ref('ScheduleWorkingTime')} > 0 Then\n Return True\nElse\n Return False\nEnd If`}],formulas:[{code:'EXAMPLE',source:'\' Fictional daily deduction160; requires lawful company policy and complete attendance evidence.\nIf {#ConditionID}("ABSENT_DAY") Then\n Return 160\nElse\n Return 0\nEnd If'}]} satisfies AttendanceFormulaLibrary},
+ {key:'late',name:'Late In',purpose:'deduction' as const,outputUnit:'amount' as const,variables:['LateInShift'],example:{minutes:'15',hourlyRate:'20',multiplier:'1',expected:'5'},library:{conditions:[{code:'LATE_MINUTES',description:'Recorded lateness after the native grace and deduction rules.',source:'Return '+ref('LateInShift')}],formulas:[{code:'EXAMPLE',source:'\' Fictional hourly deduction rate20; replace with your authorized company rule.\nReturn {#ConditionID}("LATE_MINUTES") / 60 * 20'}]} satisfies AttendanceFormulaLibrary},
+];
+export function attendanceFormulaReference(key:string,code:string){const reference=ATTENDANCE_FORMULA_REFERENCES.find(row=>row.key===key);if(!reference)throw Error('Choose an Attendance formula reference.');return {reference,library:{...reference.library,formulas:reference.library.formulas.map(row=>({...row,code}))}};}
