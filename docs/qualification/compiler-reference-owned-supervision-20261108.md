@@ -81,3 +81,9 @@ readiness is absent, then retain all strict nlink1/UID/native identity/bounds.
 Both source readers exercise actual final+pending nlink2 files, absent/early/
 foreign markers and settled positives. DelayedACK uses the real linked stage,
 not direct file creation; T0 and all3/60/720/848/job limits are unchanged.
+
+Failed-area recovery from actual 2aff controls/controller runs is documented in
+compiler-owned-controls-recovery-20261108.md. Graph 23/adapter 7 successes retain
+their original source identities; process 12 fixture removal and kernel 17 bounded
+diagnostic plus controller routing-source oracle require affected hosted checks.
+No underlying kernel failure cause or native miniature PASS is inferred.

@@ -1,7 +1,7 @@
 /** Read-only own-proc/descriptor controls, not actual supervised CI admission. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,writeFileSync,readFileSync,symlinkSync,rmSync,mkdirSync,linkSync,unlinkSync,lstatSync,chmodSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,readFileSync,symlinkSync,rmSync,rmdirSync,mkdirSync,linkSync,unlinkSync,lstatSync,chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {compilerProcIdentity,boundedCompilerBytes,admitCompilerReference,publishCompilerReferenceClock,readPublishedCompilerBytes} from './admission.mjs';
@@ -51,6 +51,6 @@ test('clock and ACK readers wait through real nlink2 and refuse foreign readines
   unlinkSync(pending);assert.equal(readPublishedCompilerBytes(file,5).toString(),'fixed');
   for(const mode of [0o755,0o1700]){chmodSync(ready,mode);assert.throws(()=>readPublishedCompilerBytes(file,5));}chmodSync(ready,0o700);
   writeFileSync(join(ready,'foreign'),'fixed');assert.throws(()=>readPublishedCompilerBytes(file,5));unlinkSync(join(ready,'foreign'));
-  rmSync(ready);symlinkSync(root,ready);assert.throws(()=>readPublishedCompilerBytes(file,5));unlinkSync(ready);
+  rmdirSync(ready);symlinkSync(root,ready);assert.throws(()=>readPublishedCompilerBytes(file,5));unlinkSync(ready);
  }}finally{rmSync(root,{recursive:true,force:true});}
 });

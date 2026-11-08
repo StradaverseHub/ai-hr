@@ -42,16 +42,59 @@ test('independent v12 report verification rejects absent or foreign per-unit dep
  for(const key of ['candidate','controller','fingerprint','unit']){const wrong=structuredClone(report);wrong.pdfToolSetup[key]='foreign';assert.throws(()=>verifyReports(plan,[wrong]));}
 });
 
+/** Interpret only the closed boolean/string syntax used by these five current
+ * routing guards. No eval, code calls, arbitrary property or general GHA engine. */
+function cleanupGuardPredicate(source){
+ assert.equal(typeof source,'string');assert(source.length>0&&source.length<=4096);
+ const tokens=[];let offset=0;
+ while(offset<source.length){
+  if(/^\s*$/.test(source.slice(offset)))break;
+  const match=/^\s*(&&|\|\||==|!=|!|\(|\)|inputs\.installer_fixture_phase|inputs\.filesystem_activation_probe|github\.repository|'[A-Za-z0-9_/-]+')/.exec(source.slice(offset));
+  assert(match,'Unsupported cleanup guard syntax');tokens.push(match[1]);offset+=match[0].length;assert(tokens.length<=256);
+ }
+ let cursor=0;
+ const take=token=>tokens[cursor]===token?(cursor++,true):false;
+ function primary(){
+  if(take('(')){const value=or();assert(take(')'),'Unclosed cleanup guard');return value;}
+  const token=tokens[cursor++];assert(['inputs.installer_fixture_phase','inputs.filesystem_activation_probe','github.repository'].includes(token),'Closed cleanup input required');
+  if(token==='inputs.filesystem_activation_probe')return facts=>facts.activation;
+  const operator=tokens[cursor++],literal=tokens[cursor++];assert(['==','!='].includes(operator)&&/^'[A-Za-z0-9_/-]+'$/.test(literal??''),'Closed cleanup comparison required');
+  const expected=literal.slice(1,-1);return facts=>{const value=token==='github.repository'?facts.repository:facts.phase;return operator==='=='?value===expected:value!==expected;};
+ }
+ function unary(){if(take('!')){const next=unary();return facts=>!next(facts);}return primary();}
+ function and(){let left=unary();while(take('&&')){const before=left,right=unary();left=facts=>before(facts)&&right(facts);}return left;}
+ function or(){let left=and();while(take('||')){const before=left,right=and();left=facts=>before(facts)||right(facts);}return left;}
+ const predicate=or();assert.equal(cursor,tokens.length,'Unexpected cleanup guard tail');
+ return facts=>{assert(facts&&typeof facts.phase==='string'&&typeof facts.activation==='boolean'&&typeof facts.repository==='string');const value=predicate(facts);assert.equal(typeof value,'boolean');return value;};
+}
 test('normal cleanup diagnostic selects only the explicit non-activation phase',()=>{
  const workflow=readFileSync(new URL('../workflows/alpha-staging-diagnostics.yml',import.meta.url),'utf8');
  const job=workflow.match(/^  normal-cleanup:\n    if: \$\{\{ (.+) \}\}/m);assert(job,'Normal cleanup diagnostic must have an explicit routing guard');
- const guard=job[1];assert.match(guard,/^inputs\.installer_fixture_phase == 'normal-cleanup' && !inputs\.filesystem_activation_probe$/);
- const route=(phase,activation)=>guard.replace("inputs.installer_fixture_phase == 'normal-cleanup'",String(phase==='normal-cleanup')).replace('!inputs.filesystem_activation_probe',String(!activation))==='true && true';
- for(const phase of ['full','source-proof-followup','environment','source-transfer-followup','ledger-connection-followup','pdf-tools-setup','private-access-integration','normal-cleanup'])for(const activation of [true,false])assert.equal(route(phase,activation),phase==='normal-cleanup'&&!activation);
- assert.doesNotMatch(workflow,/normal_cleanup_probe/);assert.match(workflow,/options: \[full,[^\n]*normal-cleanup\]/);
- // Every existing activation fixture keeps its own activation guard, so normal=false cannot enter it.
- const activationJobs=[...workflow.matchAll(/^  ([a-z-]+):\n    if: \$\{\{ (inputs\.filesystem_activation_probe[^\n]+) \}\}/gm)];assert.ok(activationJobs.length>=4);
- for(const [,name,guard] of activationJobs)assert.ok(guard.includes("inputs.installer_fixture_phase != 'normal-cleanup'")||/inputs\.installer_fixture_phase == '(?!normal-cleanup)[a-z-]+'/.test(guard),'Activation route must exclude normal cleanup even for conflicting selectors: '+name);
+ const normal=cleanupGuardPredicate(job[1]);
+ const options=workflow.match(/options: \[([^\n]+)\]/);assert(options,'Fixed installer phase choices required');
+ const phases=options[1].split(',').map(value=>value.trim());assert(phases.includes('normal-cleanup')&&phases.includes('compiler-boundary')&&phases.includes('compiler-consumer-trace'));
+ for(const phase of [...phases,'unreviewed-future-phase'])for(const activation of [true,false])for(const repository of ['StradaverseHub/ai-hr','foreign/repository'])
+  assert.equal(normal({phase,activation,repository}),phase==='normal-cleanup'&&!activation,'Actual normal routing differs: '+phase+'/'+activation);
+ assert.doesNotMatch(workflow,/normal_cleanup_probe/);
+ // Preserve all five existing activation routes, including their repository,
+ // normal-cleanup and both compiler-phase exclusions despite harmless wrapping.
+ const activationJobs=[...workflow.matchAll(/^  ([a-z-]+):\n    if: \$\{\{ (.+) \}\}/gm)].filter(([, ,guard])=>/(?:^|[\s(])inputs\.filesystem_activation_probe\b/.test(guard));
+ assert.deepEqual(activationJobs.map(([,name])=>name),['filesystem-activation','private-access-integration','pdf-tools-setup','ledger-connection-followup','source-transfer-followup']);
+ const compilerPhases=['compiler-boundary','compiler-consumer-trace'],specific=['private-access-integration','pdf-tools-setup','ledger-connection-followup','source-transfer-followup'];
+ for(const [,name,guard]of activationJobs){
+  const route=cleanupGuardPredicate(guard);
+  for(const phase of phases)for(const activation of [true,false])for(const repository of ['StradaverseHub/ai-hr','foreign/repository']){
+   const expected=activation&&repository==='StradaverseHub/ai-hr'&&!compilerPhases.includes(phase)
+    &&(name==='filesystem-activation'?!['normal-cleanup',...specific].includes(phase):phase===name);
+   assert.equal(route({phase,activation,repository}),expected,'Actual activation routing differs: '+name+'/'+phase+'/'+activation+'/'+repository);
+  }
+ }
+ // A lost activation exclusion must fail the same truth table; unknown input,
+ // injected call, malformed comparison/parenthesis and trailing clauses refuse.
+ const bad=cleanupGuardPredicate("inputs.installer_fixture_phase == 'normal-cleanup'");
+ assert.notEqual(bad({phase:'normal-cleanup',activation:true,repository:'StradaverseHub/ai-hr'}),normal({phase:'normal-cleanup',activation:true,repository:'StradaverseHub/ai-hr'}));
+ for(const source of ["inputs.unknown == 'normal-cleanup'","always()","inputs.installer_fixture_phase = 'normal-cleanup'","(inputs.filesystem_activation_probe","inputs.filesystem_activation_probe trailing","inputs.installer_fixture_phase == 'normal-cleanup' || process.exit"])
+  assert.throws(()=>cleanupGuardPredicate(source));
 });
 
 
