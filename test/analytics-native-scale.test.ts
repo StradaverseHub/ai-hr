@@ -3,7 +3,7 @@ import {join} from 'node:path';
 import {cpus,totalmem} from 'node:os';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {
- analyticsManagerSelection,carryForwardReportPage,changeJobTransactionsPage,headcountSummary,
+ analyticsDashboard,UNKNOWN_BUCKET,analyticsManagerSelection,carryForwardReportPage,changeJobTransactionsPage,headcountSummary,
  masterDataCount,masterDataExport,newHires,newHiresPage,terminationsPage,
 } from '../core/analytics';
 import {parsePageQuery} from '../lib/pagination';
@@ -43,5 +43,31 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
  report.transportBytes={fullNewHires:Buffer.byteLength(JSON.stringify(fullHires)),pagedNewHires:Buffer.byteLength(JSON.stringify(hires)),
   fullMaster:Buffer.byteLength(JSON.stringify(baseline)),masterCount:Buffer.byteLength(JSON.stringify(count))};
  report.pageRows={hires:hires.rows.length,deep:deep.rows.length,terms:terms.rows.length,changes:changes.rows.length,carry:carry.rows.length};
+ // Measure the actual shared dashboard course, retaining every standalone read
+ // and full export above. Its independent fixture facts are not a timing target.
+ const dashboard=await timed('dashboardSnapshotMs',()=>analyticsDashboard(ctx,[b.companyId],{
+  from:'2020-01-01',to:'2026-01-01',year:2020,filters:{},
+  pages:{hires:page,terms:page,changeJobs:page,carryForward:page},
+ }));
+ expect(dashboard.hc).toEqual({total:40000,byCompany:[{name:'Acme Sdn Bhd',count:40000}],byDepartment:[{name:'Finance',count:40000}],byPosition:[{name:'—',count:40000}]});
+ expect(dashboard.masterCount).toBe(40000);expect(dashboard.demographics.total).toBe(40000);
+ expect(dashboard.demographics.byGender).toEqual([{name:UNKNOWN_BUCKET,count:40000}]);
+ expect(dashboard.demographics.byAgeBand).toEqual([{name:UNKNOWN_BUCKET,count:40000}]);
+ expect(dashboard.nationality).toEqual([{name:UNKNOWN_BUCKET,count:40000}]);
+ expect(dashboard.hires.state.total).toBe(50000);expect(dashboard.hires.rows).toHaveLength(25);
+ expect(dashboard.hires.rows.map(row=>row.name)).toEqual(Array.from({length:25},(_,i)=>'Fictional retained Personnel '+String(i+1).padStart(9,'0')));
+ expect(dashboard.terms.state.total).toBe(10000);expect(dashboard.terms.rows).toHaveLength(25);
+ expect(dashboard.terms.rows.map(row=>row.name)).toEqual(Array.from({length:25},(_,i)=>'Fictional retained Personnel '+String((i+1)*5).padStart(9,'0')));
+ expect(dashboard.changeJobs.state.total).toBe(0);expect(dashboard.changeJobs.rows).toEqual([]);
+ expect(dashboard.carryForward.state.total).toBe(50000);expect(dashboard.carryForward.rows).toHaveLength(25);
+ expect(dashboard.carryForward.rows.map(row=>row.employeeName)).toEqual(Array.from({length:25},(_,i)=>'Fictional retained Personnel '+String(i+1).padStart(9,'0')));
+ expect(dashboard.carryForward.rows.every(row=>row.carried===0&&row.forfeitedAtOpen===0&&row.forfeitedAtExpiry===0)).toBe(true);
+ expect(dashboard.turnover).toEqual({leavers:10000,headcountStart:50000,headcountEnd:40000,avgHeadcount:45000,turnoverPct:22.2});
+ expect(dashboard.movement).toEqual([{month:'2020-01',hires:50000,leavers:0,netChange:50000},{month:'2024-01',hires:0,leavers:10000,netChange:-10000}]);
+ expect(dashboard.leaveUtil).toEqual([]);expect(dashboard.leaveBalances).toEqual([]);expect(dashboard.sickTrend).toEqual({configured:false,series:[]});
+ report.dashboardSnapshot={reports:13,headcount:dashboard.hc.total,masterCount:dashboard.masterCount,demographics:dashboard.demographics.total,
+  hires:{total:dashboard.hires.state.total,rows:dashboard.hires.rows.length},terms:{total:dashboard.terms.state.total,rows:dashboard.terms.rows.length},
+  changes:{total:dashboard.changeJobs.state.total,rows:dashboard.changeJobs.rows.length},carry:{total:dashboard.carryForward.state.total,rows:dashboard.carryForward.rows.length},
+  transportBytes:Buffer.byteLength(JSON.stringify(dashboard)),independentNativeFixtureFacts:true};
  report.exactNativePopulationAndResults=true;report.complete=true;save();
 },300000);
