@@ -1,4 +1,4 @@
-/** Real native authority and synthetic transport. This fixture grants no production disclosure approval. */
+/** Real native authority/source-bound review and synthetic transport. This fixture cannot grant disclosure approval. */
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {sql,eq} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
@@ -11,7 +11,7 @@ import {setAiCentreReadControl} from '../core/ai-centre-inventory';
 import {setMandateStopSwitch} from '../core/mandates/mandates';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 const fixture=vi.hoisted(()=>({technicalAdmission:true}));
-vi.mock('../lib/ai/provider-data-reviews',async original=>{const actual=await original<typeof import('../lib/ai/provider-data-reviews')>();return {...actual,assertProviderDataContractReviewed:(contract:string,digest:string)=>{if(contract==='authored_attendance_formula_v1'&&fixture.technicalAdmission)return;return actual.assertProviderDataContractReviewed(contract,digest);}};});
+vi.mock('../lib/ai/provider-data-reviews',async original=>{const actual=await original<typeof import('../lib/ai/provider-data-reviews')>();return {...actual,assertProviderDataContractReviewed:(contract:string,digest:string)=>{if(contract==='authored_attendance_formula_v1'&&!fixture.technicalAdmission)throw Error('Fictional review withheld');return actual.assertProviderDataContractReviewed(contract,digest);}};});
 let base:Base,ctx:SessionContext,beforeAdmission:(()=>Promise<void>)|undefined,retarget=false;
 const response=()=>JSON.stringify({source:'Return {#FormulaID}("TotalWorkingMins") / 60',conditions:[],explanation:'Fictional bounded proposal',questions:[],assumptions:[]});
 const input=()=>({companyId:base.companyId,requirement:'Fictional worked hours rule',disclosureAccepted:true});
@@ -29,7 +29,7 @@ describe('Attendance proposal native provider admission',()=>{
  });
  it('refuses actual nonadministrators before configuration or transport',async()=>{await expect(draftAttendanceFormula(await entitledCtx(base,['employee']),input())).rejects.toThrow();expect(configuration.resolveActiveAiConfig).not.toHaveBeenCalled();expect(openaiAdapter.generate).not.toHaveBeenCalled();});
  it('refuses a foreign company and forged public native-source properties',async()=>{const other=await seedBase();await expect(draftAttendanceFormula(ctx,{...input(),companyId:other.companyId})).rejects.toThrow();await expect(draftAttendanceFormula(ctx,{...input(),employee:{salary:'private'}})).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();});
- it('enforces the real missing approval for this new purpose before transport',async()=>{fixture.technicalAdmission=false;await expect(draftAttendanceFormula(ctx,input())).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();});
+ it('refuses a withheld review before transport while positive cases use the actual source review',async()=>{fixture.technicalAdmission=false;await expect(draftAttendanceFormula(ctx,input())).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();});
  it.each(['module','login'] as const)('rechecks %s authority at admission',async kind=>{beforeAdmission=async()=>{if(kind==='module')await setModule(base.tenantId,'attendance','disabled');else await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,base.adminUserId));};await expect(draftAttendanceFormula(ctx,input())).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();});
  it('refuses changed provider bytes after preparation',async()=>{retarget=true;await expect(draftAttendanceFormula(ctx,input())).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();});
  it('observes its child control and the global stop without affecting a sibling',async()=>{await setAiCentreReadControl(ctx,'read:operation_attendance_formula_draft',false);await expect(draftAttendanceFormula(ctx,input())).rejects.toMatchObject({reason:'paused'});await setAiCentreReadControl(ctx,'read:operation_attendance_formula_draft',true);await setMandateStopSwitch(ctx,true);await expect(draftAttendanceFormula(ctx,input())).rejects.toMatchObject({reason:'paused'});expect(configuration.resolveActiveAiConfig).not.toHaveBeenCalled();expect(openaiAdapter.generate).not.toHaveBeenCalled();});

@@ -1,7 +1,8 @@
 import {describe,it,expect} from 'vitest';
 import {attendanceFormulaDraftPrompt,attendanceFormulaDraftRequest,adjudicateAttendanceFormulaDraft} from '../lib/attendance-formula-ai';
 import {getProviderWorkloadDescriptor} from '../lib/ai/provider-workload-policy';
-import {providerDataReviewStatus} from '../lib/ai/provider-data-reviews';
+import {providerDataReviewStatus,assertProviderDataContractReviewed} from '../lib/ai/provider-data-reviews';
+import {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST} from '../lib/ai/provider-data-source-manifest';
 const proposal=(source:string|null,extra={})=>JSON.stringify({source,conditions:[],explanation:'Fictional draft for human review',questions:[],assumptions:[],...extra});
 describe('Attendance authoring proposal boundary',()=>{
  it('sends only explicit authored wording and public grammar, never native records or private configuration',()=>{
@@ -19,11 +20,14 @@ describe('Attendance authoring proposal boundary',()=>{
   expect(()=>adjudicateAttendanceFormulaDraft(proposal('Return 1',{activate:true}))).toThrow();
   expect(()=>adjudicateAttendanceFormulaDraft('x'.repeat(262145))).toThrow();
  });
- it('keeps questions non-applicable and registers a new fail-closed disclosure purpose',()=>{
+ it('keeps questions non-applicable and requires the actual exact source review for its disclosure purpose',()=>{
   expect(adjudicateAttendanceFormulaDraft(proposal(null,{questions:['Which approved rate?']}))).toMatchObject({valid:false,source:null});
   expect(adjudicateAttendanceFormulaDraft(proposal('Return 1',{questions:['Confirm intended units?']}))).toMatchObject({valid:false});
   const descriptor=getProviderWorkloadDescriptor('authored_attendance_formula_v1');expect(descriptor?.features).toEqual(['pay_rule_draft']);expect(descriptor?.capture({requirement:'Fictional worked hours rule',disclosureAccepted:true}).args).toEqual(attendanceFormulaDraftPrompt({requirement:'Fictional worked hours rule',disclosureAccepted:true}));
-  // No human approval for this new purpose has been supplied. Implementation cannot self-approve.
-  expect(providerDataReviewStatus('authored_attendance_formula_v1')).toBe('pending');
+  // Actual owner approval is recorded in the reviewed six-item packet; stale or unknown source still refuses.
+  expect(providerDataReviewStatus('authored_attendance_formula_v1')).toBe('approved');
+  expect(()=>assertProviderDataContractReviewed('authored_attendance_formula_v1',PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)).not.toThrow();
+  expect(()=>assertProviderDataContractReviewed('authored_attendance_formula_v1','0'.repeat(64))).toThrow();
+  expect(()=>assertProviderDataContractReviewed('unknown_attendance_formula_v1',PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)).toThrow();
  });
 });

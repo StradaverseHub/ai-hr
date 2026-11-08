@@ -104,3 +104,7 @@ This request authorizes neither production installation nor production-package p
 - `packs/rewards/preparation-model.ts`
 - `packs/rewards/service.ts`
 - `scripts/ai-provider-data-source-manifest.mjs`
+
+## Actual owner decision
+
+The repository owner answered this exact packet in the release chat: **“Approve this exact scope; continue grouped staging.”** The decision was recorded at2026-11-08T16:58:14Z (9November MYT). Exactly28 existing approved sourceDigest literals renew fromb203d15b to the exact570c80d8 fingerprint above, preserving all original metadata and both pending contracts byte-for-byte. The one new `authored_attendance_formula_v1` record has the finite scope, provisional owner identity and evidence anchor stated above. Removing that new record and reversing only the28 digest substitutions reproduces the original qualified incoming registry exactly. This is actual human authorization, not automated specialist certification, provider execution, a release witness or staging acceptance. No stored evaluation/promotion was renewed. The proposed-state text above records the packet presented before this answer.
