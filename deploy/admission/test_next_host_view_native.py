@@ -74,9 +74,9 @@ def declaration_absent(name):
     return (actual.get('LoadState') in ('not-found', 'loaded')
             and actual.get('ActiveState') == 'inactive'
             and actual.get('SubState') == 'dead'
-            and actual.get('FragmentPath', '') == actual.get('DropInPaths', '') == ''
-            and actual.get('SourcePath', '') == '' and actual.get('Transient', 'no') == 'no'
-            and actual.get('ControlGroup', '') in ('', AGGREGATE_GROUP)
+            and actual.get('FragmentPath') == actual.get('DropInPaths') == ''
+            and actual.get('SourcePath') == '' and actual.get('Transient') == 'no'
+            and actual.get('ControlGroup') in ('', AGGREGATE_GROUP)
             and not os.path.lexists('/sys/fs/cgroup' + AGGREGATE_GROUP))
 
 
@@ -155,7 +155,7 @@ def resource_topology(N, I, invocation, files, source_hashes):
             require((info.st_dev, info.st_ino) == files[name], 'Native resource declaration replaced')
             actual = properties(name)
             require(actual.get('FragmentPath') == str(file) and actual.get('DropInPaths') == ''
-                    and actual.get('SourcePath', '') == '' and actual.get('Transient', 'no') == 'no', 'Native resource declaration differs')
+                    and actual.get('SourcePath') == '' and actual.get('Transient') == 'no', 'Native resource declaration differs')
         for name, digest in source_hashes.items():
             limit()
             file = ROOT / name;secure(file, 0)
@@ -525,8 +525,8 @@ def main():
                 and actual.get('RuntimeMaxUSec') == '15s', 'Effective native conformance service differs')
         actual_slice = properties(AGGREGATE)
         require(actual_slice.get('FragmentPath') == '/etc/systemd/system/' + AGGREGATE
-                and actual_slice.get('DropInPaths') == '' and actual_slice.get('SourcePath', '') == ''
-                and actual_slice.get('Transient', 'no') == 'no', 'Effective aggregate source differs')
+                and actual_slice.get('DropInPaths') == '' and actual_slice.get('SourcePath') == ''
+                and actual_slice.get('Transient') == 'no', 'Effective aggregate source differs')
         start_owned(UNIT)
         started = properties(UNIT);invocations[UNIT] = started['InvocationID']
         slice_state = properties(AGGREGATE)

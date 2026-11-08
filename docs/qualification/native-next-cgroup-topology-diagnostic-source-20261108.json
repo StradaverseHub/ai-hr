@@ -1,14 +1,14 @@
 {
   "kind": "NATIVE_CGROUP_TOPOLOGY_SOURCE_NOT_READINESS",
-  "base": "faf953df4298a5f48eb3249ca05f1c1040ade9ce",
-  "sourceRef": "codex/native-next-cgroup-cap-diagnosis-20261108",
+  "base": "9870afe7eb886d0632a413d69d49d14f43c920b5",
+  "sourceRef": "codex/native-next-cgroup-metadata-refusal-20261108",
   "sourceSha256": {
-    "deploy/admission/test_next_host_view_native.py": "771658bbdc45a2430ea47c4f3658e34fb798953a8c147f4baca0836bf14f94cb",
-    "deploy/admission/test_next_host_view.py": "6261fa6c252226d44720ba0de7163ae38c3ef7f71d58418ffb9a64f3b7f19e08",
-    "deploy/admission/next_cleanup_phase_inverse.json": "3a96b8e6dfb4e566c947585626ee1c6fdcd87948a23328c797b6185923fab00a",
+    "deploy/admission/test_next_host_view_native.py": "539547bd89c92fa41828f2f03666711ab9b90303349490113dc4a171af6f393b",
+    "deploy/admission/test_next_host_view.py": "986490671d61f107d253e013e2c556dc5f34a4ca4e172aa23afdd971459882f1",
+    "deploy/admission/next_cleanup_phase_inverse.json": "223d5afed26d5c9f8e8954c7d44e89e54184d3cc2e2c34a6ac535141c1e441da",
     "test/runtime-next-host-view-native.test.ts": "73c57a46d73c4becef5ed821c4a7ec29cd37bda2b46771a8c7076307830bb479",
     "test/runtime-next-host-view.test.ts": "5ada8cc29c983202f0e866fb2cd9aa332dd7b579f539acb70312fd952cdeb683",
-    "docs/qualification/native-next-cgroup-topology-diagnostic-20261108.md": "09c3d3f8f18691418e3f7ce3753d799f4e34b47a271a341a331d220cfe615c90"
+    "docs/qualification/native-next-cgroup-topology-diagnostic-20261108.md": "305b35e5e2018b3abf2407627ce1414d03b9df1399c540d1793319ff1c9fb132"
   },
   "unchangedSha256": {
     "deploy/admission/next_profile.py": "5b16cea3c023e744ec492f5ed68e6195873eebeb5075800060a21abd71e3b245",

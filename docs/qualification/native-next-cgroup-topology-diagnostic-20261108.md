@@ -4,6 +4,13 @@ Base: `faf953df4298a5f48eb3249ca05f1c1040ade9ce`. Fresh fetched main/alpha
 are both `b7c0393aa3c7606a33dd15103426e5c535324065`; this owned child is not
 a deployment or protected-ref update. Production remains held.
 
+Strict metadata successor: frozen9870 remains preserved and unexecuted. Common
+Unit fields FragmentPath/DropInPaths/SourcePath/Transient/ControlGroup must be
+actually returned; missing fields cannot stand for an absent source or safe
+implicit slice. Five missing-field negatives extend the existing model, keeping
+all20 declarations. Slice-only service PID fields are not a process capability;
+actual cgroup emptiness and slice state/invocation remain independently required.
+
 Actual full Next run42448521845 finished with one failed native case. Retained
 artifact13604833469 records actual-browser-start-first, worker exit143, the
 trusted sealed literal next-profile.py741 (`Missing nonroot ancestor resource

@@ -62,6 +62,9 @@ class HostViewModels(unittest.TestCase):
                             {'ActiveState': 'active'}, {'SubState': 'running'}):
                 with patch.object(H, 'properties', return_value=value | changes):
                     self.assertFalse(H.declaration_absent(H.AGGREGATE))
+            for missing in ('FragmentPath', 'DropInPaths', 'SourcePath', 'Transient', 'ControlGroup'):
+                with patch.object(H, 'properties', return_value={key: item for key, item in value.items() if key != missing}):
+                    self.assertFalse(H.declaration_absent(H.AGGREGATE))
         with patch.object(H, 'properties', return_value=value), \
                 patch.object(H.os.path, 'lexists', side_effect=lambda path: str(path).startswith('/sys/fs/cgroup')):
             self.assertFalse(H.declaration_absent(H.AGGREGATE))
