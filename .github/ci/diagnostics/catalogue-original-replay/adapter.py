@@ -128,8 +128,73 @@ class Cancellation:
                                 'escapedSession': False, 'releaseAuthorized': False})
 
 
+class Progress:
+    """Best-effort phase observations, never a process/admission receipt."""
+    stages = ('environment', 'paths', 'dependencies', 'launch', 'kernel-settlement')
+
+    def __init__(self):
+        self.fd = None
+        self.current = None
+        self.failed = False
+        self.closed = False
+        try:
+            workspace = Path(os.environ['GITHUB_WORKSPACE'])
+            temporary = Path(os.environ['RUNNER_TEMP'])
+            if (not workspace.is_absolute() or workspace.resolve() != workspace
+                    or ROOT != workspace / 'controller' or Path.cwd() != ROOT
+                    or not temporary.is_absolute() or temporary.resolve() != temporary):
+                raise ValueError('Diagnostic root refused')
+            private = temporary / 'original-catalogue-replay-private'
+            info = private.lstat()
+            if (private.resolve() != private or not stat.S_ISDIR(info.st_mode)
+                    or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700):
+                raise ValueError('Diagnostic root refused')
+            self.fd = os.open(private / 'adapter-progress.jsonl',
+                              os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except BaseException:
+            self.failed = True
+
+    def emit(self, stage, status):
+        if self.failed or self.closed:
+            return
+        try:
+            packet = {'kind': 'ORIGINAL_REPLAY_PHASE_OBSERVATION', 'role': 'adapter',
+                      'stage': stage, 'status': status}
+            data = (json.dumps(packet, separators=(',', ':')) + '\n').encode('utf8')
+            if os.write(self.fd, data) != len(data):
+                raise ValueError('Diagnostic short write')
+        except BaseException:
+            self.failed = True
+
+    def next(self, stage):
+        kernel.require(stage in self.stages)
+        if self.current is not None:
+            self.emit(self.current, 'complete')
+        self.current = stage
+        self.emit(stage, 'entered')
+
+    def finish(self, status):
+        kernel.require(status in ('complete', 'refused'))
+        if self.closed:
+            return
+        if self.current is not None:
+            self.emit(self.current, status)
+        self.closed = True
+        if self.fd is not None:
+            try:
+                os.close(self.fd)
+            except BaseException:
+                self.failed = True
+
+
+_progress = None
+
+
 def main():
+    global _progress
     began = time.monotonic()
+    _progress = Progress()
+    _progress.next('environment')
     kernel.require(len(sys.argv) == 1 and sys.platform == 'linux')
     keys = {'PATH', 'LANG', 'LC_ALL', 'TZ', 'GITHUB_WORKSPACE', 'RUNNER_TEMP', 'GITHUB_ACTIONS',
             'CI', 'RUNNER_ENVIRONMENT', 'GITHUB_REPOSITORY', 'GITHUB_REPOSITORY_ID',
@@ -144,6 +209,7 @@ def main():
         kernel.require(os.environ[key] == value)
     kernel.require(re.fullmatch(r'[1-9][0-9]{0,19}', os.environ['GITHUB_RUN_ID']) is not None
                    and re.fullmatch(r'[0-9a-f]{40}', os.environ['GITHUB_WORKFLOW_SHA']) is not None)
+    _progress.next('paths')
     workspace = Path(os.environ['GITHUB_WORKSPACE'])
     temporary = Path(os.environ['RUNNER_TEMP'])
     kernel.require(workspace.is_absolute() and workspace.resolve() == workspace
@@ -158,6 +224,7 @@ def main():
                    and os.path.samefile(node, '/proc/%s/exe' % os.getppid()))
     original = workspace / 'original'
     kernel.require(original.resolve() == original and original.is_dir())
+    _progress.next('dependencies')
     package = (original / 'node_modules/tsx/package.json').resolve()
     kernel.require((original / 'node_modules') in package.parents
                    and json.loads(fixed_bytes(package, 262144))['version'] == '4.22.4')
@@ -182,6 +249,7 @@ def main():
     os.environ.clear()
     os.environ.update(fixed)
     os.chdir(original)
+    _progress.next('launch')
     try:
         receipt = kernel.supervise([str(node), '--import', str(loader), str(Path(__file__).with_name('worker.mjs'))],
                                    seconds, control.event, clock=control.clock, mandatory=False)
@@ -189,9 +257,11 @@ def main():
         # The group-stop event already disabled polling before restoration;
         # this also closes every refusal path that never admitted a session.
         control.disable()
+    _progress.next('kernel-settlement')
     completed = control.completed(receipt) and time.monotonic() - began < 180
     terminal = {'kind': 'ORIGINAL_CATALOGUE_SHARED_OWNER_TERMINAL', 'completed': completed,
                 'familySettled': receipt['reaped'] and receipt['groupQuiescent'] and not receipt['escapedSession']}
+    _progress.finish('complete' if completed else 'refused')
     sys.stdout.write(json.dumps(terminal, separators=(',', ':')) + '\n')
     return 0 if completed else 1
 
@@ -200,6 +270,8 @@ if __name__ == '__main__':
     try:
         outcome = main()
     except BaseException:
+        if _progress is not None:
+            _progress.finish('refused')
         sys.stderr.write('Original catalogue worker ownership refused\n')
         outcome = 1
     sys.exit(outcome)

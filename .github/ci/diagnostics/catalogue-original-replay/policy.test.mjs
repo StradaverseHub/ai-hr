@@ -85,3 +85,55 @@ test('the registered manual diagnostic route is byte-identical to the reviewed c
  const registered=readFileSync(new URL('../../../workflows/alpha-staging-diagnostics.yml',import.meta.url));
  assert(reviewed.equals(registered));assert(!/inputs:|push:|pull_request:/.test(registered.toString('utf8')));
 });
+
+test('closed progress prefixes identify boundaries without success, authentication or reflected errors',async()=>{
+ const{PROGRESS_STAGES,decodeProgress,validateComparisonDiagnostic}=await import('./progress.mjs');
+ const rows=[];for(const stage of PROGRESS_STAGES.worker){for(const status of ['entered','complete']){rows.push({kind:'ORIGINAL_REPLAY_PHASE_OBSERVATION',role:'worker',stage,status});assert.deepEqual(decodeProgress('worker',Buffer.from(rows.map(row=>JSON.stringify(row)+'\n').join(''))),{stage,status});}}
+ const diagnostic={kind:'UNAUTHENTICATED_COMPARISON_PHASE_OBSERVATIONS',childOutcome:'exit-nonzero',adapter:{stage:'launch',status:'entered'},worker:{stage:'plan-import',status:'refused'}};
+ assert.equal(validateComparisonDiagnostic(diagnostic),diagnostic);assert.deepEqual(publicFailure('comparison',diagnostic).comparisonDiagnostic,diagnostic);assert.throws(()=>publicFailure('publish',diagnostic));
+ for(const mutate of [v=>v.childOutcome='FICTIONAL_PRIVATE',v=>v.worker.stage='FICTIONAL_PRIVATE',v=>v.adapter.status='success',v=>v.worker.extra='FICTIONAL_PRIVATE',v=>v.authenticated=true,v=>v.adapter={stage:'unavailable',status:'complete'}]){const bad=clone(diagnostic);mutate(bad);assert.throws(()=>validateComparisonDiagnostic(bad));}
+});
+test('duplicate, skipped, unknown-source, partial and hostile progress records cannot classify',async()=>{
+ const{decodeProgress}=await import('./progress.mjs'),first={kind:'ORIGINAL_REPLAY_PHASE_OBSERVATION',role:'worker',stage:'entry',status:'entered'},encode=rows=>Buffer.from(rows.map(row=>JSON.stringify(row)+'\n').join(''));
+ for(const rows of [[first,first],[{...first,stage:'plan-import'}],[{...first,role:'adapter'}],[{...first,kind:'FOREIGN_RECORD'}],[{...first,status:'complete'}],[{...first,extra:'FICTIONAL_PRIVATE'}],[first,{...first,status:'refused'},first]])assert.throws(()=>decodeProgress('worker',encode(rows)));
+ for(const bytes of [Buffer.from(''),Buffer.from(JSON.stringify(first)),Buffer.from('{"private":"FICTIONAL_PRIVATE"}\n'),Buffer.from(JSON.stringify(first).replace('"worker"','"foreign","role":"worker"')+'\n'),Buffer.alloc(16385),Buffer.from([0xff,10])])assert.throws(()=>decodeProgress('worker',bytes));
+ assert.throws(()=>decodeProgress('unknown',encode([first])));
+});
+test('actual private progress IO refuses links, permissions, oversize and incomplete writes',async()=>{
+ const fs=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{readProgress,comparisonProgress}=await import('./progress.mjs');
+ const root=fs.realpathSync(fs.mkdtempSync(join(tmpdir(),'replay-progress-'))),path=join(root,'worker-progress.jsonl'),other=join(root,'other');fs.chmodSync(root,0o700);
+ const unavailable={stage:'unavailable',status:'unavailable'};
+ try{
+  assert.deepEqual(readProgress('worker',root),unavailable);const writer=comparisonProgress('worker',root);writer.next('entry');assert.deepEqual(readProgress('worker',root),{stage:'entry',status:'entered'});writer.finish('refused');assert.deepEqual(readProgress('worker',root),{stage:'entry',status:'refused'});
+  fs.linkSync(path,other);assert.deepEqual(readProgress('worker',root),unavailable);fs.unlinkSync(other);
+  const valid=fs.readFileSync(path);fs.unlinkSync(path);fs.writeFileSync(other,valid,{mode:0o600});fs.symlinkSync(other,path);assert.deepEqual(readProgress('worker',root),unavailable);fs.unlinkSync(path);
+  fs.writeFileSync(path,valid,{mode:0o600});fs.chmodSync(path,0o644);assert.deepEqual(readProgress('worker',root),unavailable);fs.chmodSync(path,0o600);
+  fs.writeFileSync(path,Buffer.alloc(16385));assert.deepEqual(readProgress('worker',root),unavailable);fs.writeFileSync(path,valid.subarray(0,-1));assert.deepEqual(readProgress('worker',root),unavailable);
+  assert.deepEqual(readProgress('foreign',root),unavailable);assert(fs.readFileSync(other).equals(valid));
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('diagnostic publication refusal neither overwrites a foreign target nor replaces primary work',async()=>{
+ const fs=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{comparisonProgress}=await import('./progress.mjs');
+ const root=fs.realpathSync(fs.mkdtempSync(join(tmpdir(),'replay-progress-refuse-'))),target=join(root,'worker-progress.jsonl'),secret='FICTIONAL_PRIVATE_UNCHANGED';fs.chmodSync(root,0o700);fs.writeFileSync(target,secret,{mode:0o600});
+ try{const writer=comparisonProgress('worker',root);writer.next('entry');writer.finish('refused');assert.equal(fs.readFileSync(target,'utf8'),secret);fs.chmodSync(root,0o755);fs.unlinkSync(target);const denied=comparisonProgress('worker',root);denied.next('entry');denied.finish('complete');assert.equal(fs.existsSync(target),false);}finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('diagnostic IO awaits actual CLOSE and observes final phase without changing primary exit',async()=>{
+ const fs=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{comparisonProgress,closedComparisonDiagnostic}=await import('./progress.mjs');
+ const root=fs.realpathSync(fs.mkdtempSync(join(tmpdir(),'replay-progress-close-')));fs.chmodSync(root,0o700);let close,settled=false;const done=new Promise(resolve=>{close=resolve;});
+ try{
+  const observed=closedComparisonDiagnostic(done,root,{error:false,expired:false,bytes:0}).then(value=>{settled=true;return value;});await Promise.resolve();assert.equal(settled,false);
+  const writer=comparisonProgress('worker',root);writer.next('entry');writer.finish('refused');await Promise.resolve();assert.equal(settled,false);const exit={code:1,signal:null};close(exit);const value=await observed;assert.equal(value.exit,exit);assert.equal(value.diagnostic.childOutcome,'exit-nonzero');assert.deepEqual(value.diagnostic.worker,{stage:'entry',status:'refused'});
+  for(const[state,exit,expected]of [[{error:true,expired:false,bytes:0},{code:null,signal:null},'spawn-error'],[{error:false,expired:true,bytes:0},{code:0,signal:null},'expired'],[{error:false,expired:false,bytes:65537},{code:0,signal:null},'oversize'],[{error:false,expired:false,bytes:0},{code:null,signal:'FICTIONAL_PRIVATE'},'signal'],[{error:false,expired:false,bytes:0},{code:0,signal:null},'exit-zero']]){const observation=await closedComparisonDiagnostic(Promise.resolve(exit),root,state);assert.equal(observation.diagnostic.childOutcome,expected);assert(!JSON.stringify(observation.diagnostic).includes('FICTIONAL_PRIVATE'));}
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('diagnostic additions exactly reconstruct all four original acceptance and ownership sources',async()=>{
+ const{readFileSync}=await import('node:fs'),{createHash}=await import('node:crypto'),proof=JSON.parse(readFileSync(new URL('progress-inverse.json',import.meta.url),'utf8')),sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+ assert.equal(proof.base,'d78bda4f141dd9193aa0c84df2b177440d5c4032');assert.deepEqual(Object.keys(proof.files).sort(),['adapter.py','parent.mjs','policy.mjs','worker.mjs']);
+ for(const[name,entry]of Object.entries(proof.files)){let text=readFileSync(new URL(name,import.meta.url),'utf8');assert.equal(sha(text),entry.currentSha256);let frontier=text.length;for(const edit of entry.edits){assert(Number.isSafeInteger(edit.start)&&Number.isSafeInteger(edit.end)&&edit.start>=0&&edit.start<=edit.end&&edit.end<=frontier);text=text.slice(0,edit.start)+edit.original+text.slice(edit.end);frontier=edit.start;}assert.equal(sha(text),entry.originalSha256);}
+});
+test('adapter diagnostics cannot change the qualified kernel, command, budgets or terminal receipt',async()=>{
+ const{readFileSync}=await import('node:fs'),{PROGRESS_STAGES}=await import('./progress.mjs'),adapter=readFileSync(new URL('adapter.py',import.meta.url),'utf8'),parent=readFileSync(new URL('parent.mjs',import.meta.url),'utf8');
+ const stages=adapter.match(/    stages = \(([^\n]+)\)/);assert(stages);assert.deepEqual([...stages[1].matchAll(/'([^']+)'/g)].map(match=>match[1]),PROGRESS_STAGES.adapter);
+ assert(adapter.includes("began = time.monotonic()\n    _progress = Progress()"));assert(adapter.includes('began + 173'));assert(adapter.includes('time.monotonic() - began < 180'));assert(adapter.includes("KERNEL_SHA = 'cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c'"));
+ assert(parent.includes('await closedComparisonDiagnostic(done,privateRoot'));assert(parent.includes('assert(!error&&!expired&&size<=65536&&exit.code===0&&exit.signal===null'));assert(parent.includes("completed:true,familySettled:true"));
+});

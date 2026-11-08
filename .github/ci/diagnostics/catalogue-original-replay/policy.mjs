@@ -1,5 +1,6 @@
 /** Metadata validation only. Caller JSON never becomes API authentication. */
 import assert from 'node:assert/strict';
+import {validateComparisonDiagnostic} from './progress.mjs';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 const freeze=value=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
@@ -29,10 +30,10 @@ export function originalReconstructionEnvironment(environment){
  return safe;
 }
 export const FAILURE_PHASES=Object.freeze(['admission','api-before','download','extract','api-after','comparison','api-final','publish']);
-export function publicFailure(phase){assert(FAILURE_PHASES.includes(phase));return{kind:'ORIGINAL_CATALOGUE_REPLAY_DIAGNOSTIC',complete:false,phase,expectedProfileAuthorized:false,releaseAuthorized:false};}
+export function publicFailure(phase,diagnostic){assert(FAILURE_PHASES.includes(phase));if(diagnostic!==undefined){assert.equal(phase,'comparison');validateComparisonDiagnostic(diagnostic);}return{kind:'ORIGINAL_CATALOGUE_REPLAY_DIAGNOSTIC',complete:false,phase,expectedProfileAuthorized:false,releaseAuthorized:false,...(diagnostic===undefined?{}:{comparisonDiagnostic:diagnostic})};}
 /** Output failure must not replace a closed refusal with a raw filesystem error. */
-export function publishPublicFailure(phase,publish){
- const bytes=JSON.stringify(publicFailure(phase),null,2)+'\n';
+export function publishPublicFailure(phase,publish,diagnostic){
+ const bytes=JSON.stringify(publicFailure(phase,diagnostic),null,2)+'\n';
  try{publish(bytes);return true;}catch{return false;}
 }
 export function validatePublicComparison(value){

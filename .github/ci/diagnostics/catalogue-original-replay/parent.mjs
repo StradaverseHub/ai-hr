@@ -7,9 +7,11 @@ import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {downloadCiArchives,readCiArchive} from '../../archive-downloads.mjs';
 import {CONTRACT,digest,validateOriginalMetadata,validatePublicComparison,publishPublicFailure} from './policy.mjs';
+import {closedComparisonDiagnostic} from './progress.mjs';
 import {directChildren} from './direct-children.mjs';
 const root=realpathSync(fileURLToPath(new URL('../../../../',import.meta.url)));
 const children=directChildren();
+let failedComparisonDiagnostic;
 let ghConfiguration;
 const safe=()=>({PATH:'/usr/bin:/bin',LANG:'C',LC_ALL:'C',TZ:'UTC'});
 function ghEnvironment(){assert(typeof process.env.GH_TOKEN==='string'&&process.env.GH_TOKEN.length>0&&typeof ghConfiguration==='string');return{...safe(),GH_CONFIG_DIR:ghConfiguration,GH_TOKEN:process.env.GH_TOKEN,GH_HOST:'github.com',GH_NO_UPDATE_NOTIFIER:'1',GH_PROMPT_DISABLED:'1'};}
@@ -39,7 +41,7 @@ async function compareWithSharedOwner({workspace,temp,privateRoot}){
  const done=new Promise(resolve=>{child.once('error',value=>{error=value;});child.once('close',(code,signal)=>{closed=true;resolve({code,signal});});});
  const requestStop=()=>{if(!closed)child.stdin.end();};const interrupted=()=>requestStop();process.on('SIGTERM',interrupted);process.on('SIGINT',interrupted);
  const timer=setTimeout(()=>{expired=true;requestStop();},180000);
- try{child.stderr.on('data',()=>{});child.stdout.on('data',chunk=>{size+=chunk.length;if(size<=65536)chunks.push(chunk);else requestStop();});child.stdin.on('error',value=>{error??=value;});const exit=await done;assert(!error&&!expired&&size<=65536&&exit.code===0&&exit.signal===null,'Owned original comparison refused');
+ try{child.stderr.on('data',()=>{});child.stdout.on('data',chunk=>{size+=chunk.length;if(size<=65536)chunks.push(chunk);else requestStop();});child.stdin.on('error',value=>{error??=value;});const {exit,diagnostic}=await closedComparisonDiagnostic(done,privateRoot,{get error(){return error!==undefined;},get expired(){return expired;},get bytes(){return size;}});failedComparisonDiagnostic=diagnostic;assert(!error&&!expired&&size<=65536&&exit.code===0&&exit.signal===null,'Owned original comparison refused');
   const terminal=JSON.parse(Buffer.concat(chunks).toString('utf8'));assert.deepEqual(terminal,{kind:'ORIGINAL_CATALOGUE_SHARED_OWNER_TERMINAL',completed:true,familySettled:true});
   const result=JSON.parse(readFileSync(join(privateRoot,'comparison-result.json'),'utf8'));return validatePublicComparison(result);
  }finally{clearTimeout(timer);requestStop();await done;process.removeListener('SIGTERM',interrupted);process.removeListener('SIGINT',interrupted);}
@@ -47,7 +49,7 @@ async function compareWithSharedOwner({workspace,temp,privateRoot}){
 export async function originalCatalogueReplay(){
  let phase='admission',publicRoot;
  const interrupted=()=>children.cancel();process.on('SIGTERM',interrupted);process.on('SIGINT',interrupted);
- const fail=()=>{if(publicRoot)publishPublicFailure(phase,bytes=>writeFileSync(join(publicRoot,'result.json'),bytes,{mode:0o600}));process.stderr.write('Original catalogue replay refused at '+phase+'\n');process.exitCode=1;};
+ const fail=()=>{if(publicRoot)publishPublicFailure(phase,bytes=>writeFileSync(join(publicRoot,'result.json'),bytes,{mode:0o600}),phase==='comparison'?failedComparisonDiagnostic:undefined);process.stderr.write('Original catalogue replay refused at '+phase+'\n');process.exitCode=1;};
  try{
   assert.equal(process.argv.length,2);assert.equal(process.platform,'linux');assert.equal(process.versions.node,'22.23.3');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.CI,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');assert.equal(process.env.GITHUB_REPOSITORY,CONTRACT.repository.full_name);assert.equal(process.env.GITHUB_REPOSITORY_ID,String(CONTRACT.repository.id));assert.equal(process.env.GITHUB_EVENT_NAME,'workflow_dispatch');assert.equal(process.env.GITHUB_RUN_ATTEMPT,'1');assert.equal(process.env.GITHUB_JOB,'replay');assert.equal(process.env.GITHUB_WORKFLOW,'original-catalogue-replay-diagnostic');
   const event=JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH,'utf8'));assert.equal(event.repository.id,CONTRACT.repository.id);assert.equal(Object.keys(event.inputs??{}).length,0);
