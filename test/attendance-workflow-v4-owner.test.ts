@@ -7,7 +7,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections,myOvertimePlans} from '../core/attendance';
-import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,archiveAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
+import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,attendanceWorkflowWarningPage,archiveAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
 import {attendanceApplicationDetail,attendanceApplicationFilterOptions} from '../core/attendance-application-history';
 import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
 import {createNotificationEmailService} from '../deploy/identity-email/notifications';
@@ -335,7 +335,25 @@ describe('approved shared workflows and actor-scoped approver search',()=>{
   expect((await previewAttendanceWorkflow(root,input,saved.lineageId)).rows[0].resolvedStages[0].approvers[0].employmentId).toBe(reviewer.employmentId);
   await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(eq(schema.roleAssignment.appUserId,reviewer.ctx.userId!));
   expect((await searchAttendanceApprovers(root,{companyIds:[base.companyId],query:'Fictional group reviewer',page:0})).rows[0].eligible).toBe(false);
-  await expect(saveAttendanceWorkflow(root,{...input,expectedVersion:1},saved.lineageId)).rejects.toThrow();
+  // The group administrator still has permission to configure this selected person. It is the
+  // reviewer's qualifying login grant for the applicant's company that now needs correction.
+  const [visible]=await withTenant(root,tx=>tx.execute<{allowed:boolean}>(sql`select app.is_admin_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.view') allowed from employment e where e.id=${reviewer.employmentId}::uuid`));
+  expect(visible.allowed).toBe(true);
+  const warned=await saveAttendanceWorkflow(root,{...input,expectedVersion:1},saved.lineageId);
+  expect(warned).toMatchObject({version:2,warningCount:1});
+  expect(await attendanceWorkflowWarningPage(root,saved.lineageId,[base.companyId])).toMatchObject({total:1,rows:[{employmentId:worker.employmentId,name:'Fictional group applicant',levelIndex:0,problem:{code:'missing_or_ambiguous_login',levelIndex:0}}]});
+  // Saving correctable setup does not grant approval authority or leave an orphan application.
+  await setAttendanceWorkflowEnabled(root,base.companyId,'irregularity',true);
+  const on=todayInKualaLumpur();await checkIn(root,{employmentId:worker.employmentId,date:on,time:'08:00',manual:true});await checkOut(root,{employmentId:worker.employmentId,date:on,time:'17:00',manual:true});
+  await expect(requestAttendanceCorrection(worker.ctx,{employmentId:worker.employmentId,date:on,checkIn:'09:00',checkOut:'18:00',reason:'Unqualified reviewer must not become an approver'})).rejects.toThrow();
+  expect(await owner.db.select().from(schema.attendanceCorrection)).toEqual([]);
+  expect(await owner.db.select().from(schema.attendanceWorkflowRequest)).toEqual([]);
+  expect(await owner.db.select().from(schema.attendanceWorkflowDecision)).toEqual([]);
+  // A company-only administrator cannot turn an inaccessible sibling employee into a warning.
+  const scoped=await actor('Fictional applicant-company HR','hr_admin');
+  await owner.db.update(schema.roleAssignment).set({companyId:base.companyId}).where(eq(schema.roleAssignment.appUserId,scoped.ctx.userId!));
+  await expect(saveAttendanceWorkflow(scoped.ctx,{...input,expectedVersion:2},saved.lineageId)).rejects.toMatchObject({problem:{code:'employee_unavailable',levelIndex:0}});
+  expect((await listAttendanceWorkflows(root,[base.companyId])).find(row=>row.lineageId===saved.lineageId)?.version).toBe(2);
  });
 });
 it('refuses a partial-scope edit and serializes shared automatic priorities across reversed company selections',async()=>{
