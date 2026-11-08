@@ -3,12 +3,13 @@ import {render, screen, within} from '@testing-library/react';
 import type {ReactNode} from 'react';
 import {pageState, parsePageQuery} from '../lib/pagination';
 
-const ports=vi.hoisted(()=>({hires:vi.fn(),terms:vi.fn(),changes:vi.fn(),carry:vi.fn(),count:vi.fn(),manager:vi.fn(),filters:vi.fn()}));
+const ports=vi.hoisted(()=>({hires:vi.fn(),terms:vi.fn(),changes:vi.fn(),carry:vi.fn(),count:vi.fn(),manager:vi.fn(),filters:vi.fn(),dashboard:vi.fn()}));
 vi.mock('../lib/scope',()=>({scopedAdmin:async()=>({s:{tenantId:'tenant',userId:'caller'},scopeIds:['company']})}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>(key:string)=>key}));
 vi.mock('../core/read',()=>({listCompanies:async()=>[],listDepartments:async()=>[]}));
 vi.mock('../core/admin',()=>({listCostCenters:async()=>[]}));
 vi.mock('../core/analytics',()=>({
+  analyticsDashboard:ports.dashboard,
   analyticsDateRange:(get:(key:string)=>string|undefined)=>({from:get('from')??'2026-01-01',to:get('to')??'2026-12-31'}),
   parseAnalyticsFilters:(get:(key:string)=>string|undefined)=>({departmentId:get('departmentId'),q:get('q'),companyId:get('companyId'),managerEmploymentId:get('managerEmploymentId')}),
   parseReportYear:()=>2026,
@@ -50,6 +51,20 @@ beforeEach(()=>{
   ports.terms.mockImplementation(async(_s,_scope,p)=>result('Termination',50,10000,p.page));
   ports.changes.mockImplementation(async(_s,_scope,p)=>result('Change',100,20000,p.page));
   ports.carry.mockImplementation(async(_s,_scope,p)=>result('Carry',200,40000,p.page));
+  ports.dashboard.mockImplementation(async(s,scope,p)=>{
+    const filter={departmentId:p.filters.departmentId,q:p.filters.q};
+    return {
+      hc:{total:40000,byCompany:[],byDepartment:[],byPosition:[]},
+      hires:await ports.hires(s,scope,{from:p.from,to:p.to,filter,page:p.pages.hires}),
+      terms:await ports.terms(s,scope,{from:p.from,to:p.to,filter,page:p.pages.terms}),
+      changeJobs:await ports.changes(s,scope,{from:p.from,to:p.to,filter,page:p.pages.changeJobs}),
+      carryForward:await ports.carry(s,scope,{year:p.year,filter,companyId:p.filters.companyId,page:p.pages.carryForward}),
+      masterCount:await ports.count(s,scope,{filter}),
+      turnover:{turnoverPct:1,leavers:100,headcountStart:40000,headcountEnd:40000},
+      demographics:{byGender:[],byMarital:[],byAgeBand:[],byDepartment:[],byLocation:[],byCostCentre:[],byEmploymentStatus:[]},
+      nationality:[],leaveUtil:[],leaveBalances:[],sickTrend:{configured:true,series:[]},movement:[],
+    };
+  });
 });
 
 it('renders exact totals and bounded native report pages with independent pagers and complete export links',async()=>{
@@ -73,4 +88,10 @@ it('renders exact totals and bounded native report pages with independent pagers
   expect(ports.filters.mock.calls[0][0].options).not.toHaveProperty('managers');
   expect(screen.getAllByRole('row')).toHaveLength(25+50+100+200+4);
   expect(ports.count).toHaveBeenCalledWith(expect.anything(),['company'],{filter:{departmentId:'department',q:'Alpha %'}});
+  expect(ports.dashboard).toHaveBeenCalledTimes(1);
+  expect(ports.dashboard).toHaveBeenCalledWith(expect.anything(),['company'],{
+    from:params.from,to:params.to,year:2026,filters:{departmentId:'department',q:'Alpha %',companyId:'company',managerEmploymentId:'deep-manager'},
+    pages:{hires:parsePageQuery({page:'2',size:'25'}),terms:parsePageQuery({page:'3',size:'50'}),
+      changeJobs:parsePageQuery({page:'4',size:'100'}),carryForward:parsePageQuery({page:'5',size:'200'})},
+  });
 });

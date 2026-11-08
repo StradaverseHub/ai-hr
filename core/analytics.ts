@@ -381,13 +381,14 @@ function masterDataRowsTx(tx:Tx, scopeIds:string[]|undefined, opts:MasterDataOpt
 /** Exact dashboard count. No employee or compensation values leave the database. */
 export function masterDataCount(ctx:SessionContext,scopeIds:string[]|undefined,opts:MasterDataOptions={}):Promise<number>{
   const scope=scopeIds?.slice(), input={...opts,filter:opts.filter?{...opts.filter}:undefined};
-  return withAnalyticsPresentation(ctx,async tx=>{
+  return withAnalyticsPresentation(ctx,tx=>masterDataCountTx(tx,scope,input));
+}
+
+async function masterDataCountTx(tx:Tx,scope:string[]|undefined,input:MasterDataOptions):Promise<number> {
     const source=masterDataRowsTx(tx,scope,input).as('analytics_master_count');
     const [row]=await tx.select({total:count()}).from(source);
     return Number(row?.total??0);
-  });
 }
-
 export function masterDataExport(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
@@ -525,7 +526,10 @@ export function newHires(ctx:SessionContext,scopeIds:string[]|undefined,p:Period
 
 export async function newHiresPage(ctx:SessionContext,scopeIds:string[]|undefined,p:PeriodReportInput&{page:PageQuery}):Promise<AnalyticsReportPage<HireRow>>{
   const page=validatedReportPage(p.page),scope=scopeIds?.slice(),input={from:p.from,to:p.to,filter:p.filter?{...p.filter}:undefined};
-  return withAnalyticsPresentation(ctx,async tx=>{
+  return withAnalyticsPresentation(ctx,tx=>newHiresPageTx(tx,scope,input,page));
+}
+
+async function newHiresPageTx(tx:Tx,scope:string[]|undefined,input:PeriodReportInput,page:PageQuery):Promise<AnalyticsReportPage<HireRow>> {
     const source=newHiresRowsTx(tx,scope,input).as('analytics_newHires_page');
     const rows=await tx.select({
       name:source.name,
@@ -538,9 +542,7 @@ export async function newHiresPage(ctx:SessionContext,scopeIds:string[]|undefine
     // An empty page still reports the full population (including an out-of-range page).
     const total=rows.length?Number(rows[0].total):Number((await tx.select({total:count()}).from(source))[0]?.total??0);
     return {rows:rows.map(({total,...row})=>row),state:pageState(page,total,rows.length)};
-  });
 }
-
 export type TerminationRow = {
   name: string;
   company: string;
@@ -601,7 +603,10 @@ export function terminations(ctx:SessionContext,scopeIds:string[]|undefined,p:Pe
 
 export async function terminationsPage(ctx:SessionContext,scopeIds:string[]|undefined,p:PeriodReportInput&{page:PageQuery}):Promise<AnalyticsReportPage<TerminationRow>>{
   const page=validatedReportPage(p.page),scope=scopeIds?.slice(),input={from:p.from,to:p.to,filter:p.filter?{...p.filter}:undefined};
-  return withAnalyticsPresentation(ctx,async tx=>{
+  return withAnalyticsPresentation(ctx,tx=>terminationsPageTx(tx,scope,input,page));
+}
+
+async function terminationsPageTx(tx:Tx,scope:string[]|undefined,input:PeriodReportInput,page:PageQuery):Promise<AnalyticsReportPage<TerminationRow>> {
     const source=terminationsRowsTx(tx,scope,input).as('analytics_terminations_page');
     const rows=await tx.select({
       name:source.name,
@@ -615,9 +620,7 @@ export async function terminationsPage(ctx:SessionContext,scopeIds:string[]|unde
     // An empty page still reports the full population (including an out-of-range page).
     const total=rows.length?Number(rows[0].total):Number((await tx.select({total:count()}).from(source))[0]?.total??0);
     return {rows:rows.map(({total,...row})=>row),state:pageState(page,total,rows.length)};
-  });
 }
-
 export type TurnoverResult = {
   leavers: number;
   headcountStart: number;
@@ -740,7 +743,10 @@ export function changeJobTransactions(ctx:SessionContext,scopeIds:string[]|undef
 
 export async function changeJobTransactionsPage(ctx:SessionContext,scopeIds:string[]|undefined,p:PeriodReportInput&{page:PageQuery}):Promise<AnalyticsReportPage<ChangeJobRow>>{
   const page=validatedReportPage(p.page),scope=scopeIds?.slice(),input={from:p.from,to:p.to,filter:p.filter?{...p.filter}:undefined};
-  return withAnalyticsPresentation(ctx,async tx=>{
+  return withAnalyticsPresentation(ctx,tx=>changeJobTransactionsPageTx(tx,scope,input,page));
+}
+
+async function changeJobTransactionsPageTx(tx:Tx,scope:string[]|undefined,input:PeriodReportInput,page:PageQuery):Promise<AnalyticsReportPage<ChangeJobRow>> {
     const source=changeJobTransactionsRowsTx(tx,scope,input).as('analytics_changeJobTransactions_page');
     const rows=await tx.select({
       name:source.name,
@@ -755,9 +761,7 @@ export async function changeJobTransactionsPage(ctx:SessionContext,scopeIds:stri
     // An empty page still reports the full population (including an out-of-range page).
     const total=rows.length?Number(rows[0].total):Number((await tx.select({total:count()}).from(source))[0]?.total??0);
     return {rows:rows.map(({total,...row})=>row),state:pageState(page,total,rows.length)};
-  });
 }
-
 // ───────────────────────── Dimension distributions (visual charts) ─────────────────────────
 // Every distribution is filter-aware and tallied in JS (small result sets) so the Unknown / Unassigned
 // bucketing logic lives in one place. Person-level dimensions (gender / marital / age) sum to the
@@ -783,14 +787,8 @@ function tally(rows: (string | null)[], nullBucket = UNKNOWN_BUCKET): DimensionC
 
 /** The base row set for person-level dimensions: one row per active-as-of-asOf employment matching the
  *  filters, carrying the person attributes + the current assignment's dept/costCentre/status. */
-function dimensionRows(
-  ctx: SessionContext,
-  scopeIds: string[] | undefined,
-  filters: AnalyticsFilters,
-  asOf: string,
-) {
-  return withTenant(ctx, (tx) =>
-    tx
+function dimensionRowsTx(tx:Tx,scopeIds:string[]|undefined,filters:AnalyticsFilters,asOf:string) {
+  return tx
       .select({
         gender: person.gender,
         maritalStatus: person.maritalStatus,
@@ -809,8 +807,7 @@ function dimensionRows(
       .leftJoin(costCenter, eq(costCenter.id, assignment.costCenterId))
       .where(
         analyticsWhere({ ...filters, lifecycleStatus: filters.lifecycleStatus ?? 'active' }, scopeIds, { asOf }),
-      ),
-  );
+      );
 }
 
 /** Bucket a date-of-birth (ISO) into an age band as of `asOf`; null DOB → UNKNOWN_BUCKET. */
@@ -850,8 +847,11 @@ export async function workforceDemographics(
   scopeIds: string[] | undefined,
   opts: { asOf: string; filters?: AnalyticsFilters },
 ): Promise<Demographics> {
+  return withTenant(ctx,tx=>workforceDemographicsTx(tx,scopeIds,opts));
+}
+async function workforceDemographicsTx(tx:Tx,scopeIds:string[]|undefined,opts:{asOf:string;filters?:AnalyticsFilters}):Promise<Demographics> {
   const filters = opts.filters ?? {};
-  const rows = await dimensionRows(ctx, scopeIds, filters, opts.asOf);
+  const rows = await dimensionRowsTx(tx, scopeIds, filters, opts.asOf);
   const byAgeBand = tally(rows.map((r) => ageBand(r.dateOfBirth, opts.asOf))).sort(
     (a, b) => AGE_ORDER.indexOf(a.name) - AGE_ORDER.indexOf(b.name),
   );
@@ -888,7 +888,11 @@ export async function demographicsByNationality(
 ): Promise<DimensionCount[] | null> {
   if (!isAdmin(ctx)) return null; // (a) admin-only — scoped viewers get the card omitted.
   const filters = opts.filters ?? {};
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>demographicsByNationalityTx(tx,ctx,scopeIds,opts,filters));
+}
+
+async function demographicsByNationalityTx(tx:Tx,ctx:SessionContext,scopeIds:string[]|undefined,opts:{asOf:string;filters?:AnalyticsFilters},filters:AnalyticsFilters):Promise<DimensionCount[]|null> {
+  if (!isAdmin(ctx)) return null;
     // (b) DISTINCT person base: select the person id + citizenship once per person, not per employment.
     const rows = await tx
       .selectDistinct({ personId: person.id, citizenship: employeeStatutoryMy.epfCitizenship })
@@ -901,9 +905,7 @@ export async function demographicsByNationality(
         analyticsWhere({ ...filters, lifecycleStatus: filters.lifecycleStatus ?? 'active' }, scopeIds, { asOf: opts.asOf }),
       );
     return tally(rows.map((r) => r.citizenship));
-  });
 }
-
 // ───────────────────────────── Leave analytics ─────────────────────────────
 // leave_ledger is tenant-scoped only (no companyId/department/costCenter), so EVERY leave aggregation
 // JOINs leave_ledger → employment → company and applies scopeWhere explicitly. Read-only → no events.
@@ -917,7 +919,10 @@ export async function leaveUtilisation(
   scopeIds: string[] | undefined,
   filters: AnalyticsFilters = {},
 ): Promise<LeaveUtilisationRow[]> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>leaveUtilisationTx(tx,scopeIds,filters));
+}
+
+async function leaveUtilisationTx(tx:Tx,scopeIds:string[]|undefined,filters:AnalyticsFilters):Promise<LeaveUtilisationRow[]> {
     const rows = await tx
       .select({
         name: leaveType.name,
@@ -936,9 +941,7 @@ export async function leaveUtilisation(
       .groupBy(leaveType.name)
       .orderBy(leaveType.name);
     return rows.map((r) => ({ name: r.name, granted: Number(r.granted), taken: Number(r.taken) }));
-  });
 }
-
 // ─────────────────── Carry-forward & forfeiture report ───────────────────
 // Per (employment, ANNUAL leave type) row for the leave-year cycle STARTING in the selected year: what
 // carried in, its expiry date, and what was forfeited at open (cap-excess) vs at expiry — sourced from
@@ -1025,7 +1028,10 @@ export function carryForwardReport(ctx:SessionContext,scopeIds:string[]|undefine
  * of fully bounded native collation. Expensive ledger/template reads are page-only. */
 export async function carryForwardReportPage(ctx:SessionContext,scopeIds:string[]|undefined,p:CarryForwardInput&{page:PageQuery}):Promise<AnalyticsReportPage<CarryForwardReportRow>>{
   const page=validatedReportPage(p.page),scope=scopeIds?.slice(),input={year:p.year,companyId:p.companyId,filter:p.filter?{...p.filter}:undefined};
-  return withAnalyticsPresentation(ctx,async tx=>{
+  return withAnalyticsPresentation(ctx,tx=>carryForwardReportPageTx(tx,scope,input,page));
+}
+
+async function carryForwardReportPageTx(tx:Tx,scope:string[]|undefined,input:CarryForwardInput,page:PageQuery):Promise<AnalyticsReportPage<CarryForwardReportRow>> {
     const [annual]=await tx.select({id:leaveType.id}).from(leaveType).where(eq(leaveType.code,'ANNUAL')).limit(1);
     if(!annual)return {rows:[],state:pageState(page,0,0)};
     const population=carryForwardPopulationTx(tx,scope,input).as('analytics_carry_population');
@@ -1046,9 +1052,7 @@ export async function carryForwardReportPage(ctx:SessionContext,scopeIds:string[
     const selected=identities.slice(page.offset,page.offset+page.limit).map(row=>row.employmentId);
     const rows=selected.length?await carryForwardRowsTx(tx,scope,input,selected):[];
     return {rows,state:pageState(page,identities.length,rows.length)};
-  });
 }
-
 async function carryForwardRowsTx(tx:Tx,scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]):Promise<CarryForwardReportRow[]>{
   if(selectedIds?.length===0)return [];
     const year = p.year;
@@ -1268,7 +1272,10 @@ export async function leaveBalancesSummary(
   scopeIds: string[] | undefined,
   filters: AnalyticsFilters = {},
 ): Promise<LeaveBalanceRow[]> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>leaveBalancesSummaryTx(tx,scopeIds,filters));
+}
+
+async function leaveBalancesSummaryTx(tx:Tx,scopeIds:string[]|undefined,filters:AnalyticsFilters):Promise<LeaveBalanceRow[]> {
     const rows = await tx
       .select({
         name: leaveType.name,
@@ -1282,9 +1289,7 @@ export async function leaveBalancesSummary(
       .groupBy(leaveType.name)
       .orderBy(leaveType.name);
     return rows.map((r) => ({ name: r.name, balance: Number(r.balance) }));
-  });
 }
-
 export type SickLeaveTrendRow = { month: string; days: number };
 export type SickLeaveTrend = { configured: boolean; series: SickLeaveTrendRow[] };
 
@@ -1300,7 +1305,10 @@ export async function sickLeaveTrend(
   p: { from: string; to: string; sickCode?: string; filters?: AnalyticsFilters },
 ): Promise<SickLeaveTrend> {
   const filters = p.filters ?? {};
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>sickLeaveTrendTx(tx,scopeIds,p,filters));
+}
+
+async function sickLeaveTrendTx(tx:Tx,scopeIds:string[]|undefined,p:{from:string;to:string;sickCode?:string;filters?:AnalyticsFilters},filters:AnalyticsFilters):Promise<SickLeaveTrend> {
     const types = await tx.select({ id: leaveType.id, code: leaveType.code }).from(leaveType);
     const sickIds = p.sickCode
       ? types.filter((t) => t.code === p.sickCode).map((t) => t.id)
@@ -1325,9 +1333,7 @@ export async function sickLeaveTrend(
       .groupBy(sql`to_char(${leaveLedger.effectiveOn}, 'YYYY-MM')`)
       .orderBy(sql`to_char(${leaveLedger.effectiveOn}, 'YYYY-MM')`);
     return { configured: true, series: rows.map((r) => ({ month: r.month, days: Number(r.days) })) };
-  });
 }
-
 // ─────────────────────────── Employee-movement series ───────────────────────────
 export type MovementRow = { month: string; hires: number; leavers: number; netChange: number };
 
@@ -1341,7 +1347,10 @@ export async function movementByMonth(
   p: { from: string; to: string; filters?: AnalyticsFilters },
 ): Promise<MovementRow[]> {
   const filters = p.filters ?? {};
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>movementByMonthTx(tx,scopeIds,p,filters));
+}
+
+async function movementByMonthTx(tx:Tx,scopeIds:string[]|undefined,p:{from:string;to:string;filters?:AnalyticsFilters},filters:AnalyticsFilters):Promise<MovementRow[]> {
     const baseWhere = (dateCol: typeof employment.hiredOn | typeof employment.terminatedOn) =>
       and(gte(dateCol, p.from), lte(dateCol, p.to), analyticsWhere({ ...filters, lifecycleStatus: undefined }, scopeIds, {}));
     const hireRows = await tx
@@ -1371,9 +1380,7 @@ export async function movementByMonth(
     for (const r of leaveRows) ensure(r.month).leavers = Number(r.c);
     for (const row of m.values()) row.netChange = row.hires - row.leavers;
     return [...m.values()].sort((a, b) => a.month.localeCompare(b.month));
-  });
 }
-
 /** Turnover honouring the new dashboard filters (extends the period KPI to company-filter parity).
  *  Average headcount = (active at from + active at to) / 2; turnover = leavers ÷ avg × 100. */
 export function turnoverRateFiltered(
@@ -1383,7 +1390,10 @@ export function turnoverRateFiltered(
 ): Promise<TurnoverResult> {
   const filters = p.filters ?? {};
   const companyWhere = filters.companyId ? eq(employment.companyId, filters.companyId) : undefined;
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>turnoverRateFilteredTx(tx,scopeIds,p,companyWhere));
+}
+
+async function turnoverRateFilteredTx(tx:Tx,scopeIds:string[]|undefined,p:{from:string;to:string;filters?:AnalyticsFilters},companyWhere:SQL|undefined):Promise<TurnoverResult> {
     const headcountAt = async (d: string): Promise<number> => {
       const [r] = await tx
         .select({ c: count() })
@@ -1401,5 +1411,36 @@ export function turnoverRateFiltered(
     const avgHeadcount = round1((headcountStart + headcountEnd) / 2);
     const turnoverPct = avgHeadcount > 0 ? round1((leavers / avgHeadcount) * 100) : 0;
     return { leavers, headcountStart, headcountEnd, avgHeadcount, turnoverPct };
+}
+
+export type AnalyticsDashboardInput = {
+  from:string;to:string;year:number;filters:AnalyticsFilters;
+  pages:{hires:PageQuery;terms:PageQuery;changeJobs:PageQuery;carryForward:PageQuery};
+};
+
+/** One display admission and one snapshot own all dashboard reports. Canonical
+ * report bodies run sequentially on this Tx; no borrowed sibling can outlive it.
+ * Metadata, exports and standalone report admissions retain their existing owners. */
+export async function analyticsDashboard(supplied:SessionContext,scopeIds:string[]|undefined,p:AnalyticsDashboardInput) {
+  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+  const scope=scopeIds?.slice(),from=p.from,to=p.to,year=p.year,filters={...p.filters};
+  const filter:ReportFilter={departmentId:filters.departmentId,q:filters.q};
+  const pages={hires:validatedReportPage(p.pages.hires),terms:validatedReportPage(p.pages.terms),
+    changeJobs:validatedReportPage(p.pages.changeJobs),carryForward:validatedReportPage(p.pages.carryForward)};
+  return withAnalyticsPresentation(ctx,async tx=>{
+    const hc=await headcountSummaryTx(tx,scope,{asOf:to});
+    const hires=await newHiresPageTx(tx,scope,{from,to,filter},pages.hires);
+    const terms=await terminationsPageTx(tx,scope,{from,to,filter},pages.terms);
+    const turnover=await turnoverRateFilteredTx(tx,scope,{from,to,filters},filters.companyId?eq(employment.companyId,filters.companyId):undefined);
+    const changeJobs=await changeJobTransactionsPageTx(tx,scope,{from,to,filter},pages.changeJobs);
+    const demographics=await workforceDemographicsTx(tx,scope,{asOf:to,filters});
+    const nationality=await demographicsByNationalityTx(tx,ctx,scope,{asOf:to,filters},filters);
+    const leaveUtil=await leaveUtilisationTx(tx,scope,filters);
+    const leaveBalances=await leaveBalancesSummaryTx(tx,scope,filters);
+    const sickTrend=await sickLeaveTrendTx(tx,scope,{from,to,filters},filters);
+    const movement=await movementByMonthTx(tx,scope,{from,to,filters},filters);
+    const carryForward=await carryForwardReportPageTx(tx,scope,{year,filter,companyId:filters.companyId},pages.carryForward);
+    const masterCount=await masterDataCountTx(tx,scope,{filter});
+    return {hc,hires,terms,turnover,changeJobs,demographics,nationality,leaveUtil,leaveBalances,sickTrend,movement,carryForward,masterCount};
   });
 }
