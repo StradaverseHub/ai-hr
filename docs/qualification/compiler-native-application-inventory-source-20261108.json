@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "COMPILER_NATIVE_APPLICATION_INVENTORY_SOURCE_NOT_QUALIFICATION",
-  "sourceRef": "codex/compiler-native-application-inventory-20261108",
+  "sourceRef": "codex/compiler-application-control-import-20261108",
   "reviewedIntegration": "1ffaffae266870a0b298ec8094433eeeb0dcb57e",
   "reviewedDesign": "047a0748b41bad3b2abde1c170f1a01c16f97687",
   "requiredCurrentSharedAncestor": "29d9edcbc4368be871688e9fdf35347676a7841c",
@@ -21,7 +21,7 @@
     ".github/ci/diagnostics/native-reference/admission.test.mjs": "3e0f32e5ad02a70bfff5e11eeecb5608a2a14c658773522be6f7aa89f464769a",
     ".github/ci/diagnostics/native-reference/application-inputs.mjs": "7a765d7af7f711d0c9c65026f45efed8f66be3fd74ecdc5137deb337713d3727",
     ".github/ci/diagnostics/native-reference/application-inventory.mjs": "5743026bf5cd081b60ffd8e6e88f994111c5ab9399fe850089030a5309f7a592",
-    ".github/ci/diagnostics/native-reference/application-owner-inverse.json": "e9ca4eac0969e679e915af6999198f0c6df95b6560bef68fadbfa0197f99d180",
+    ".github/ci/diagnostics/native-reference/application-owner-inverse.json": "8584d652e8e62ae358a286adbc9535de49b3c2fc03d40d2b5fc17da0597f828c",
     ".github/ci/diagnostics/native-reference/application-protocol.mjs": "a3daa34c48285dd3ea17573245730fdcdb9f03a79f462a77735eff059a056376",
     ".github/ci/diagnostics/native-reference/application-worker.mjs": "65feb472c0a2f539fa4d3d812e12c67ab79943e483a35c82e3b8c7c23f8f6f33",
     ".github/ci/diagnostics/native-reference/application.test.mjs": "24ec548eb6a159f4860b44ab51934048a02d4237e4df8da37bc3fb52f569394b",
@@ -40,7 +40,7 @@
     ".github/ci/employee-benchmark-supervisor.py": "68a47dce71197e7fc1f57702cbc1dc99495ac58d5cf43243c702c82873467926",
     ".github/ci/employee-benchmark-supervisor.test.py": "d95721c1172ed25318eb1d209a6d4aa5d7ce2e741c177bce103920c38e08490d",
     ".github/ci/focused-checks.mjs": "b5fbf10dc46d6a5089015fed3e15d571e4a0301ab3b1b737228a67f6e4d553f2",
-    ".github/ci/focused-checks.test.mjs": "eb1b14329c2165d866bd97216a966b6b86c42d3b55ca32fc6dd68aebfecebaa1",
+    ".github/ci/focused-checks.test.mjs": "cb8221657d7f5e23fd83c83bd46a283c22653aa9f206eeaece9e351642328ca5",
     ".github/ci/host-health.mjs": "d88d53222b04be01d803e516783033cc406251c3983258a4fdb18c5493087c93",
     ".github/ci/manifest.mjs": "6fd081b890148a35014927200e1b0ae9053d565895b68b400eab08e49b858143",
     ".github/ci/owned-process.py": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129",
@@ -133,5 +133,6 @@
   "planQualified": false,
   "originalApplicationFiveNegativesQualified": false,
   "ordinarySingletonRegistration": "OPEN_FOR_BOTH_COMPILER_DIAGNOSTICS",
-  "releaseAuthorized": false
+  "releaseAuthorized": false,
+  "sourceOnlyPredecessor": "51edc2cbc274fe89cd923f9adc0fc1951df0f332"
 }

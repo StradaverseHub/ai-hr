@@ -190,6 +190,7 @@ test('application ownership stream requires its own actual terminal stage and ne
  assert.throws(()=>parseCompilerSettlementRows(compilerStream(rows),compilerContext));assert.throws(()=>parseCompilerSettlementRows(compilerStream(compilerRows()),compilerContext,'application'));
  assert.throws(()=>parseCompilerSettlementRows(compilerStream(rows),compilerContext,'arbitrary'));
 });
-test('failed metadata prefix closes BOTH compiler purposes before a native process can start',()=>{
+test('failed metadata prefix closes BOTH compiler purposes before a native process can start',async()=>{
+ const {focusedBenchmarkStageFrontier}=await import('./focused-checks.mjs');
  for(const failed of ['classifier','git-head','compiler-application-inventory']){const calls=[],stage=focusedBenchmarkStageFrontier(name=>{calls.push(name);return{status:1};});stage(failed);for(const terminal of ['compiler-reference','compiler-application-inventory'])assert.throws(()=>stage(terminal));assert.deepEqual(calls,[failed]);}
 });
