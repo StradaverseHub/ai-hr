@@ -155,3 +155,33 @@ cases remain at39006 with true identities. Node22/24 semantic8case receipts
 42499626287/42499637093 remain at39006, eachdistinctdevelopmentkind with allnormal/
 compiler/release/package flagsfalse. They neither repair nor relabel the model
 failure. Product/helper/controller/workflow/worker/profile bytes stay unchanged.
+
+
+## Actual planner delegation successor
+
+5239 repaired two source models; the live `assertSingletonCoverage` still required
+both630 wrappers to contain direct admission. This isolated5239 successor fixes
+ONLY that existing lifecycle-entry branch and its existing source-admission case.
+Exactly two fixed whole wrappers bind classic/exact-ascii to the byte-pinned
+shared harness and closed purpose/file contract; actual shared admission precedes
+hooks and the original helper must FIRST call actual singleton admission. Wrong
+purpose/import/file, missing/moved admission, focused skips, changed/unknown shared
+bytes and undeclared delegates refuse through the SAME live guard. The other
+three direct entries retain their original grammar and all other profiles retain
+their original branch. No application, benchmark entry/harness/contract, registry,
+resource, kernel, clock, worker, workflow or budget changes.
+
+The prior statement that controller bytes stayed whole describes the historical
+5239 model-only delta. THIS successor honestly changes singleton-protocol.mjs and
+singleton-profiles.test.mjs; both current hashes and complete5239 Git preimages/
+compact source inverses are bound. All11 restoration rows and original ee572
+predecessor remain WHOLE; neither new edited source has an existing restoration
+row. All3474 ordered source members and745journal/747physicalSQL remain whole.
+Current EEF3500/3501 integration is separate and not covered here.
+
+Source-only/unrun: root plus independent FULL review precede upload or hosted
+checks. Hosted actual controller/planner and affected source-closure controls
+still must pass before factory3-first normal singleton commissioning. This guard
+neither manufactures a native owner nor grants normal-five/SixOp/API, inline50k
+speed, wholeNoDB/compiler/release or deployment acceptance. Existing6-case plan
+entries still compare frozenJS with SQL prototypes, not actual inline product SQL.

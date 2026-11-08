@@ -49,12 +49,32 @@ export function assertSingletonCoverage(suite,read){
   if(profile){
    if(employeeLifecycleFile(file)){
     const helper=read('test/performance/employee-choice-lifecycle-admission.ts');
-    assert(/^import \{admitEmployeeChoiceLifecycle\} from '\.\/performance\/employee-choice-lifecycle-admission';$/m.test(text),'Closed lifecycle entry must import the actual shared owner');
-    const lines=text.split('\n'),direct="admitEmployeeChoiceLifecycle('"+file+"');",declaration="const file='"+file+"';",combined="const file='"+file+"',lifecycle=admitEmployeeChoiceLifecycle(file);";
-    const line=lines.findIndex(value=>value.startsWith(direct)||value===combined||value==='const lifecycle=admitEmployeeChoiceLifecycle(file);'&&lines.includes(declaration));
-    const call=line>=0?lines.slice(0,line).join('\n').length:-1;
-    const firstCase=/\b(?:beforeAll|beforeEach|afterAll|it|test)\s*\(/.exec(text)?.index??Infinity;
-    assert(call>=0&&call<firstCase,'Closed lifecycle entry must actually admit its exact complete file before hooks');
+    // Exactly two existing630 wrappers delegate to ONE byte-bound shared owner.
+    // The other three entries retain their original direct-admission grammar.
+    const delegates={'test/employee-choice-native-purpose-plan.test.ts':'classic','test/employee-choice-exact-ascii-plan.test.ts':'exact-ascii'};
+    if(Object.hasOwn(delegates,file)){
+     const purpose=delegates[file];
+     assert.equal(text,`/** Fixed existing native benchmark entry. The shared owner admits its exact
+ * real lifecycle profile before any hooks, constructors or SQL. */
+import {registerEmployeeChoiceBenchmark} from './performance/employee-choice-benchmark-harness';
+registerEmployeeChoiceBenchmark('${purpose}');
+`,'Only the exact fixed benchmark wrapper may delegate');
+     const shared=read('test/performance/employee-choice-benchmark-harness.ts'),contract=read('test/performance/employee-choice-benchmark-contract.ts');
+     assert.equal(createHash('sha256').update(shared).digest('hex'),'e4cc3c70a7c3e39a6bcc0294a9bd623e48d4c097395a804860e4eefa47973c5f','Complete shared benchmark owner changed');
+     assert.equal(createHash('sha256').update(contract).digest('hex'),'b19775a87ccab9951d8ab49bf1807e38cea1efb7fbba91d6d7731d19f0ee16b5','Complete closed purpose/file contract changed');
+     const prefix="export function registerEmployeeChoiceBenchmark(purpose:EmployeeChoiceBenchmarkPurpose){\nconst contract=employeeChoiceBenchmarkContract(purpose),ascii=purpose==='exact-ascii',prototype=ascii?exactAscii:classic;\nconst file=contract.file;\nconst lifecycle=admitEmployeeChoiceLifecycle(file);\nbeforeAll(async()=>{initializeEvidence();";
+     assert(shared.startsWith("import {admitEmployeeChoiceLifecycle} from './employee-choice-lifecycle-admission';")&&shared.split(prefix).length===2,'Shared owner must FIRST admit its closed contract file before hooks');
+     assert(contract.includes("if(!Object.hasOwn(contracts,purpose))throw Error('Unknown closed employee benchmark purpose')"));
+     assert(contract.includes((purpose==='classic'?'classic':"'exact-ascii'")+":Object.freeze({file:'"+file+"'"),'Delegated purpose must retain its exact registered file');
+     assert(!/AIHR_FOCUSED_(?:TESTS|SUITE_CAPACITY|EVIDENCE_DIR)|\.(?:skipIf|runIf)\s*\(/.test(shared),'Shared native owner cannot focus or skip its complete file');
+    }else{
+     assert(/^import \{admitEmployeeChoiceLifecycle\} from '\.\/performance\/employee-choice-lifecycle-admission';$/m.test(text),'Closed lifecycle entry must import the actual shared owner');
+     const lines=text.split('\n'),direct="admitEmployeeChoiceLifecycle('"+file+"');",declaration="const file='"+file+"';",combined="const file='"+file+"',lifecycle=admitEmployeeChoiceLifecycle(file);";
+     const line=lines.findIndex(value=>value.startsWith(direct)||value===combined||value==='const lifecycle=admitEmployeeChoiceLifecycle(file);'&&lines.includes(declaration));
+     const call=line>=0?lines.slice(0,line).join('\n').length:-1;
+     const firstCase=/\b(?:beforeAll|beforeEach|afterAll|it|test)\s*\(/.exec(text)?.index??Infinity;
+     assert(call>=0&&call<firstCase,'Closed lifecycle entry must actually admit its exact complete file before hooks');
+    }
     assert(/export function admitEmployeeChoiceLifecycle\(file:string\)\{\s*const admission=admitSingletonTest\(file\);/.test(helper),'Shared lifecycle owner must FIRST perform actual singleton admission');
    }else assert(/\badmitSingletonTest\s*\(/.test(text),'Registered singleton lacks actual full/focused admission: '+file);
   }

@@ -19,10 +19,12 @@
     ".github/ci/employee-ascii-compiled-source.mjs": "5e61c0886a3f46c2b3539d65f746ebc0b4245c4cb9b9010756584df6c82696f2",
     ".github/ci/employee-ascii-compiled-source.test.mjs": "33ad1612e5f5e3c0095c4a702545e85481bc3a8f1cf320b749f7e4b47a21c4d4",
     ".github/ci/employee-ascii-runtime-qualification.mjs": "c6840d9352628fc1e7c525a187944fe2ded01f6cd91666d8a7b6041119e6f08d",
-    "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json": "6b4a2ee439a61eda842e5d715ffd4ba358005be45c7beb30cc94208b97b3e1c4",
-    "docs/qualification/employee-ascii-two-runtime-ci-20261108.md": "f14d37a25a9770c2bf05406cf108b8f446fa7d2d6faafb055e05ae6250dcb76e",
+    "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json": "c104bd62765b200fdb41de4db1b53f44a6c6f27d37587befcabc387f8b321260",
+    "docs/qualification/employee-ascii-two-runtime-ci-20261108.md": "4dfc5ff6a4850934cf0b04c70020245fe29cef2cbf815aa74d7effe086102f5d",
     ".github/ci/employee-lifecycle-context.test.mjs": "589c079c57de3bdb9a41db2a0cd0e4c1c7457cbea1da34fa7bdb9f993bf11bab",
-    ".github/ci/employee-lifecycle-profile.test.mjs": "bbd28f51554a6f8aa1e1ba3ae0f0aaa55bee46fa611badf2da2659105326a885"
+    ".github/ci/employee-lifecycle-profile.test.mjs": "bbd28f51554a6f8aa1e1ba3ae0f0aaa55bee46fa611badf2da2659105326a885",
+    ".github/ci/singleton-protocol.mjs": "5efc2231e640992730280838a1bcdc3ff0785b1c000ab27007df13a09a0c2f93",
+    ".github/ci/singleton-profiles.test.mjs": "3142982c311e941271da7efc28e0b3d976f239519fdd9c92315623805ea95ae6"
   },
   "wholeParentPreimages": {
     ".github/ci/employee-lifecycle-native.mjs": {
@@ -87,7 +89,6 @@
     ".github/ci/release-policy.mjs": "b765b495801c2211af68fd76108cfa8630b6c58c142680c8d0363a43063e73fb",
     ".github/ci/verify-shards.mjs": "2117efbd40830b9cb6439093803d46167e98bd62eacf9f21e27007a6aee39236",
     ".github/ci/run-unit.mjs": "8048da93f5563509f41414a86c0232bc0de9a36e9759db7a4772ee273111ffd2",
-    ".github/ci/singleton-protocol.mjs": "997e3bcd38bb4afadd06a85ce7545f7f99a41c4fe4eb9b37ac08ce177f1ae095",
     ".github/ci/postgres.sh": "92b95465e3484558e0a8a69f58c06279fdfcdf15c22af7c23ff630a3e556f3ee",
     "scripts/gate-db-classify.ts": "2a8c7a347ffc0ac6c090de12def4c8f6f3a055db2780f90d7fdf596e4c76b654",
     "core/employee-choice.ts": "a8ce69b0e4919e0df561676714523705daa9bc0df5d402ac36cdb2be977f53b4",
@@ -215,5 +216,59 @@
       42499626287,
       42499637093
     ]
+  },
+  "liveDelegationSuccessor": {
+    "parent": "5239d9c446ff9c6081b7262674020789ad21787f",
+    "changedPaths": [
+      ".github/ci/singleton-protocol.mjs",
+      ".github/ci/singleton-profiles.test.mjs",
+      "docs/qualification/employee-ascii-two-runtime-ci-20261108.md",
+      "docs/qualification/employee-ascii-two-runtime-ci-source-20261108.json",
+      "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json"
+    ],
+    "actualWhole5239Preimages": {
+      ".github/ci/singleton-protocol.mjs": {
+        "gitBlob": "e3636e55009280d437d67e94820cb7295d42fb9e",
+        "sha256": "997e3bcd38bb4afadd06a85ce7545f7f99a41c4fe4eb9b37ac08ce177f1ae095",
+        "bytes": 19057
+      },
+      ".github/ci/singleton-profiles.test.mjs": {
+        "gitBlob": "c127061a73cc8af591184182bbd39b87195352e2",
+        "sha256": "222ff0f38ec2e7d9e60d313f59ccad7009f411230fc1cdbd4be1104ad47ea074",
+        "bytes": 30651
+      },
+      "docs/qualification/employee-ascii-two-runtime-ci-20261108.md": {
+        "gitBlob": "3a6c9cf1fe609cb0678daf5c838e52959fa18c9d",
+        "sha256": "f14d37a25a9770c2bf05406cf108b8f446fa7d2d6faafb055e05ae6250dcb76e",
+        "bytes": 10358
+      },
+      "docs/qualification/employee-ascii-two-runtime-ci-source-20261108.json": {
+        "gitBlob": "92154234fbc05fb8ad2e3ca63cd260849f5a24e8",
+        "sha256": "1c540437153f82e8ffed718d46d693c2fc9c43af01a8f76f1cf94b176d7ba9f3",
+        "bytes": 12952
+      },
+      "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json": {
+        "gitBlob": "7c79c5eff975cb726883270e4c435a79eedba936",
+        "sha256": "6b4a2ee439a61eda842e5d715ffd4ba358005be45c7beb30cc94208b97b3e1c4",
+        "bytes": 5714
+      }
+    },
+    "sameLiveInvariantInSourceModels": true,
+    "onlyChangedRuntimeFunction": "assertSingletonCoverage",
+    "preservedDirectEntryGrammar": true,
+    "wholeSharedHarnessSha256": "e4cc3c70a7c3e39a6bcc0294a9bd623e48d4c097395a804860e4eefa47973c5f",
+    "wholeClosedContractSha256": "b19775a87ccab9951d8ab49bf1807e38cea1efb7fbba91d6d7731d19f0ee16b5",
+    "all11RestorationRowsWhole": true,
+    "restorationMapSha256": "318a51f38d8af4bee39d417ead19d2a34a4037aea5a3f15e3dc7587cdfd3b18f",
+    "sourceMemberCount": 3474,
+    "sourceMembersWhole": true,
+    "journal745physical747": true,
+    "normalCommissioningVerified": false,
+    "inlineProduct50kMeasured": false,
+    "noRuntimeExecution": true,
+    "releaseAuthorized": false,
+    "supersededHistoricalUnchangedClaims": {
+      ".github/ci/singleton-protocol.mjs": "997e3bcd38bb4afadd06a85ce7545f7f99a41c4fe4eb9b37ac08ce177f1ae095"
+    }
   }
 }

@@ -117,5 +117,67 @@
     "default900PurposePreserved": true,
     "blanketNormalQualification": false,
     "originalFailedRun": 42498303645
+  },
+  "liveDelegationSuccessor": {
+    "kind": "ACTUAL_PLANNER_FIXED_DELEGATION_SOURCE_ONLY_NOT_COMMISSIONING",
+    "parent": "5239d9c446ff9c6081b7262674020789ad21787f",
+    "actualWhole5239Preimages": {
+      ".github/ci/singleton-protocol.mjs": {
+        "gitBlob": "e3636e55009280d437d67e94820cb7295d42fb9e",
+        "sha256": "997e3bcd38bb4afadd06a85ce7545f7f99a41c4fe4eb9b37ac08ce177f1ae095",
+        "bytes": 19057
+      },
+      ".github/ci/singleton-profiles.test.mjs": {
+        "gitBlob": "c127061a73cc8af591184182bbd39b87195352e2",
+        "sha256": "222ff0f38ec2e7d9e60d313f59ccad7009f411230fc1cdbd4be1104ad47ea074",
+        "bytes": 30651
+      },
+      "docs/qualification/employee-ascii-two-runtime-ci-20261108.md": {
+        "gitBlob": "3a6c9cf1fe609cb0678daf5c838e52959fa18c9d",
+        "sha256": "f14d37a25a9770c2bf05406cf108b8f446fa7d2d6faafb055e05ae6250dcb76e",
+        "bytes": 10358
+      },
+      "docs/qualification/employee-ascii-two-runtime-ci-source-20261108.json": {
+        "gitBlob": "92154234fbc05fb8ad2e3ca63cd260849f5a24e8",
+        "sha256": "1c540437153f82e8ffed718d46d693c2fc9c43af01a8f76f1cf94b176d7ba9f3",
+        "bytes": 12952
+      },
+      "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json": {
+        "gitBlob": "7c79c5eff975cb726883270e4c435a79eedba936",
+        "sha256": "6b4a2ee439a61eda842e5d715ffd4ba358005be45c7beb30cc94208b97b3e1c4",
+        "bytes": 5714
+      }
+    },
+    "sourceInverses": {
+      ".github/ci/singleton-protocol.mjs": {
+        "currentSha256": "5efc2231e640992730280838a1bcdc3ff0785b1c000ab27007df13a09a0c2f93",
+        "parentSha256": "997e3bcd38bb4afadd06a85ce7545f7f99a41c4fe4eb9b37ac08ce177f1ae095",
+        "coordinates": "ZERO_BASED_HALF_OPEN_DESCENDING_CURRENT_LINES",
+        "changes": [
+          {
+            "startLine": 51,
+            "endLine": 77,
+            "before": "    assert(/^import \\{admitEmployeeChoiceLifecycle\\} from '\\.\\/performance\\/employee-choice-lifecycle-admission';$/m.test(text),'Closed lifecycle entry must import the actual shared owner');\n    const lines=text.split('\\n'),direct=\"admitEmployeeChoiceLifecycle('\"+file+\"');\",declaration=\"const file='\"+file+\"';\",combined=\"const file='\"+file+\"',lifecycle=admitEmployeeChoiceLifecycle(file);\";\n    const line=lines.findIndex(value=>value.startsWith(direct)||value===combined||value==='const lifecycle=admitEmployeeChoiceLifecycle(file);'&&lines.includes(declaration));\n    const call=line>=0?lines.slice(0,line).join('\\n').length:-1;\n    const firstCase=/\\b(?:beforeAll|beforeEach|afterAll|it|test)\\s*\\(/.exec(text)?.index??Infinity;\n    assert(call>=0&&call<firstCase,'Closed lifecycle entry must actually admit its exact complete file before hooks');\n",
+            "after": "    // Exactly two existing630 wrappers delegate to ONE byte-bound shared owner.\n    // The other three entries retain their original direct-admission grammar.\n    const delegates={'test/employee-choice-native-purpose-plan.test.ts':'classic','test/employee-choice-exact-ascii-plan.test.ts':'exact-ascii'};\n    if(Object.hasOwn(delegates,file)){\n     const purpose=delegates[file];\n     assert.equal(text,`/** Fixed existing native benchmark entry. The shared owner admits its exact\n * real lifecycle profile before any hooks, constructors or SQL. */\nimport {registerEmployeeChoiceBenchmark} from './performance/employee-choice-benchmark-harness';\nregisterEmployeeChoiceBenchmark('${purpose}');\n`,'Only the exact fixed benchmark wrapper may delegate');\n     const shared=read('test/performance/employee-choice-benchmark-harness.ts'),contract=read('test/performance/employee-choice-benchmark-contract.ts');\n     assert.equal(createHash('sha256').update(shared).digest('hex'),'e4cc3c70a7c3e39a6bcc0294a9bd623e48d4c097395a804860e4eefa47973c5f','Complete shared benchmark owner changed');\n     assert.equal(createHash('sha256').update(contract).digest('hex'),'b19775a87ccab9951d8ab49bf1807e38cea1efb7fbba91d6d7731d19f0ee16b5','Complete closed purpose/file contract changed');\n     const prefix=\"export function registerEmployeeChoiceBenchmark(purpose:EmployeeChoiceBenchmarkPurpose){\\nconst contract=employeeChoiceBenchmarkContract(purpose),ascii=purpose==='exact-ascii',prototype=ascii?exactAscii:classic;\\nconst file=contract.file;\\nconst lifecycle=admitEmployeeChoiceLifecycle(file);\\nbeforeAll(async()=>{initializeEvidence();\";\n     assert(shared.startsWith(\"import {admitEmployeeChoiceLifecycle} from './employee-choice-lifecycle-admission';\")&&shared.split(prefix).length===2,'Shared owner must FIRST admit its closed contract file before hooks');\n     assert(contract.includes(\"if(!Object.hasOwn(contracts,purpose))throw Error('Unknown closed employee benchmark purpose')\"));\n     assert(contract.includes((purpose==='classic'?'classic':\"'exact-ascii'\")+\":Object.freeze({file:'\"+file+\"'\"),'Delegated purpose must retain its exact registered file');\n     assert(!/AIHR_FOCUSED_(?:TESTS|SUITE_CAPACITY|EVIDENCE_DIR)|\\.(?:skipIf|runIf)\\s*\\(/.test(shared),'Shared native owner cannot focus or skip its complete file');\n    }else{\n     assert(/^import \\{admitEmployeeChoiceLifecycle\\} from '\\.\\/performance\\/employee-choice-lifecycle-admission';$/m.test(text),'Closed lifecycle entry must import the actual shared owner');\n     const lines=text.split('\\n'),direct=\"admitEmployeeChoiceLifecycle('\"+file+\"');\",declaration=\"const file='\"+file+\"';\",combined=\"const file='\"+file+\"',lifecycle=admitEmployeeChoiceLifecycle(file);\";\n     const line=lines.findIndex(value=>value.startsWith(direct)||value===combined||value==='const lifecycle=admitEmployeeChoiceLifecycle(file);'&&lines.includes(declaration));\n     const call=line>=0?lines.slice(0,line).join('\\n').length:-1;\n     const firstCase=/\\b(?:beforeAll|beforeEach|afterAll|it|test)\\s*\\(/.exec(text)?.index??Infinity;\n     assert(call>=0&&call<firstCase,'Closed lifecycle entry must actually admit its exact complete file before hooks');\n    }\n"
+          }
+        ]
+      },
+      ".github/ci/singleton-profiles.test.mjs": {
+        "currentSha256": "3142982c311e941271da7efc28e0b3d976f239519fdd9c92315623805ea95ae6",
+        "parentSha256": "222ff0f38ec2e7d9e60d313f59ccad7009f411230fc1cdbd4be1104ad47ea074",
+        "coordinates": "ZERO_BASED_HALF_OPEN_DESCENDING_CURRENT_LINES",
+        "changes": [
+          {
+            "startLine": 269,
+            "endLine": 279,
+            "before": "  for(const change of [text=>text.replace(/admitEmployeeChoiceLifecycle\\((?:file|'[^']+')\\)/g,'unadmitted()'),text=>text.replace(\"from './performance/employee-choice-lifecycle-admission'\",\"from './performance/foreign'\"),text=>text.replaceAll(file,'test/employee-choice-foreign.test.ts')])assert.throws(()=>assertSingletonCoverage([file],path=>path===file?change(read(path)):read(path)));\n",
+            "after": "  const delegates={'test/employee-choice-native-purpose-plan.test.ts':'classic','test/employee-choice-exact-ascii-plan.test.ts':'exact-ascii'};\n  const refuse=(target,change)=>assert.throws(()=>assertSingletonCoverage([file],path=>path===target?change(read(path)):read(path)));\n  if(Object.hasOwn(delegates,file)){\n   const purpose=delegates[file],shared='test/performance/employee-choice-benchmark-harness.ts',contract='test/performance/employee-choice-benchmark-contract.ts';\n   for(const change of [text=>text.replace(\"registerEmployeeChoiceBenchmark('\"+purpose+\"')\",\"registerEmployeeChoiceBenchmark('foreign')\"),text=>text.replace(\"registerEmployeeChoiceBenchmark('\"+purpose+\"')\",\"registerEmployeeChoiceBenchmark('\"+(purpose==='classic'?'exact-ascii':'classic')+\"')\"),text=>text.replace('employee-choice-benchmark-harness','foreign-owner'),text=>text+\"\\nbeforeAll(()=>{});\",text=>text+\"\\nit.skipIf(true)('skipped',()=>{});\"])refuse(file,change);\n   for(const change of [text=>text.replace('const lifecycle=admitEmployeeChoiceLifecycle(file);',''),text=>text.replace('const lifecycle=admitEmployeeChoiceLifecycle(file);\\nbeforeAll','beforeAll\\nconst lifecycle=admitEmployeeChoiceLifecycle(file);'),text=>text.replace(\"from './employee-choice-lifecycle-admission'\",\"from './foreign'\"),text=>text.replace('const file=contract.file;',\"const file='test/foreign.test.ts';\"),text=>text+\"\\nit.skipIf(true)('skipped',()=>{});\",text=>text+'\\n'])refuse(shared,change);\n   for(const change of [text=>text.replace(\"file:'\"+file+\"'\",\"file:'test/foreign.test.ts'\"),text=>text.replace(\"if(!Object.hasOwn(contracts,purpose))throw Error('Unknown closed employee benchmark purpose');\",''),text=>text+'\\n'])refuse(contract,change);\n  }else{\n   for(const change of [text=>text.replace(/admitEmployeeChoiceLifecycle\\((?:file|'[^']+')\\)/g,'unadmitted()'),text=>text.replace(\"from './performance/employee-choice-lifecycle-admission'\",\"from './performance/foreign'\"),text=>text.replaceAll(file,'test/employee-choice-foreign.test.ts'),text=>\"import {registerEmployeeChoiceBenchmark} from './performance/employee-choice-benchmark-harness';\\nregisterEmployeeChoiceBenchmark('classic');\\n\"])refuse(file,change);\n  }\n"
+          }
+        ]
+      }
+    },
+    "wholePriorRestorationMapSha256": "318a51f38d8af4bee39d417ead19d2a34a4037aea5a3f15e3dc7587cdfd3b18f",
+    "restorationRowsChanged": [],
+    "sameRestorationBase": "ee5722312689fc88d8a9253c232945e6f2599900"
   }
 }

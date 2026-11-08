@@ -267,7 +267,16 @@ test('only the exact five delegated entries may use the shared FIRST actual sing
  const helper='test/performance/employee-choice-lifecycle-admission.ts',read=path=>readFileSync(new URL('../../'+path,import.meta.url),'utf8');
  for(const {file}of EMPLOYEE_LIFECYCLE_PROFILE.files){
   assertSingletonCoverage([file],read);
-  for(const change of [text=>text.replace(/admitEmployeeChoiceLifecycle\((?:file|'[^']+')\)/g,'unadmitted()'),text=>text.replace("from './performance/employee-choice-lifecycle-admission'","from './performance/foreign'"),text=>text.replaceAll(file,'test/employee-choice-foreign.test.ts')])assert.throws(()=>assertSingletonCoverage([file],path=>path===file?change(read(path)):read(path)));
+  const delegates={'test/employee-choice-native-purpose-plan.test.ts':'classic','test/employee-choice-exact-ascii-plan.test.ts':'exact-ascii'};
+  const refuse=(target,change)=>assert.throws(()=>assertSingletonCoverage([file],path=>path===target?change(read(path)):read(path)));
+  if(Object.hasOwn(delegates,file)){
+   const purpose=delegates[file],shared='test/performance/employee-choice-benchmark-harness.ts',contract='test/performance/employee-choice-benchmark-contract.ts';
+   for(const change of [text=>text.replace("registerEmployeeChoiceBenchmark('"+purpose+"')","registerEmployeeChoiceBenchmark('foreign')"),text=>text.replace("registerEmployeeChoiceBenchmark('"+purpose+"')","registerEmployeeChoiceBenchmark('"+(purpose==='classic'?'exact-ascii':'classic')+"')"),text=>text.replace('employee-choice-benchmark-harness','foreign-owner'),text=>text+"\nbeforeAll(()=>{});",text=>text+"\nit.skipIf(true)('skipped',()=>{});"])refuse(file,change);
+   for(const change of [text=>text.replace('const lifecycle=admitEmployeeChoiceLifecycle(file);',''),text=>text.replace('const lifecycle=admitEmployeeChoiceLifecycle(file);\nbeforeAll','beforeAll\nconst lifecycle=admitEmployeeChoiceLifecycle(file);'),text=>text.replace("from './employee-choice-lifecycle-admission'","from './foreign'"),text=>text.replace('const file=contract.file;',"const file='test/foreign.test.ts';"),text=>text+"\nit.skipIf(true)('skipped',()=>{});",text=>text+'\n'])refuse(shared,change);
+   for(const change of [text=>text.replace("file:'"+file+"'","file:'test/foreign.test.ts'"),text=>text.replace("if(!Object.hasOwn(contracts,purpose))throw Error('Unknown closed employee benchmark purpose');",''),text=>text+'\n'])refuse(contract,change);
+  }else{
+   for(const change of [text=>text.replace(/admitEmployeeChoiceLifecycle\((?:file|'[^']+')\)/g,'unadmitted()'),text=>text.replace("from './performance/employee-choice-lifecycle-admission'","from './performance/foreign'"),text=>text.replaceAll(file,'test/employee-choice-foreign.test.ts'),text=>"import {registerEmployeeChoiceBenchmark} from './performance/employee-choice-benchmark-harness';\nregisterEmployeeChoiceBenchmark('classic');\n"])refuse(file,change);
+  }
   assert.throws(()=>assertSingletonCoverage([file],path=>path===helper?read(path).replace('const admission=admitSingletonTest(file);','const admission=JSON.parse("{}");'):read(path)));
   assert.throws(()=>assertSingletonCoverage([file],path=>path===helper?read(path).replace('const admission=admitSingletonTest(file);','const caller=true;const admission=admitSingletonTest(file);'):read(path)));
  }
