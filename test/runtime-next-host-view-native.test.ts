@@ -29,9 +29,26 @@ it('proves privileged cache overlays and bounded owned stop with actual systemd2
  expect(report.privilegedHookView.overlayOwnership).toEqual(Array(3).fill({uid:65534,mode:0o700}));
  expect(report.privilegedHookView.sourceRefusals).toEqual(['foreign-source','link-source','same-path-inode-replaced']);
  expect(report.hostPlaceholderOwnership).toEqual(Array(3).fill({uid:0,mode:0o755}));
- expect(report.sourceSha256).toEqual(Object.fromEntries([['probe.py','deploy/admission/test_next_host_view_native.py'],['next_profile.py','deploy/admission/next_profile.py'],['runtime_inventory.py','.github/ci/runtime_inventory.py']].map(([name,path])=>[name,createHash('sha256').update(readFileSync(path)).digest('hex')])));
+ expect(report.sourceSha256).toEqual(Object.fromEntries([['probe.py','deploy/admission/test_next_host_view_native.py'],['next_profile.py','deploy/admission/next_profile.py'],['runtime_inventory.py','.github/ci/runtime_inventory.py'],['next_preparation.py','deploy/admission/test_next_native.py']].map(([name,path])=>[name,createHash('sha256').update(readFileSync(path)).digest('hex')])));
  expect(report.stopElapsedMs).toBeLessThanOrEqual(4000);
  expect(report.resourceReadinessQualified).toBe(false);
+ const preparation=report.managerEnvironmentPreparation;
+ expect(preparation).toMatchObject({kind:'ACTUAL_SHARED_TYPED_MANAGER_PREPARATION_NOT_NEXT_OR_ADMISSION',stable:true,hostReadCapMs:500,fullHelperVerified:false,nextApplicationVerified:false,releaseEligible:false});
+ expect(preparation.operations).toHaveLength(2);
+ for(const [ordinal,operation]of preparation.operations.entries()){
+  expect(Object.keys(operation).sort()).toEqual(['ordinal','outcome','returned','settled','keyCount','unsetCount'].sort());
+  expect(operation).toMatchObject({ordinal,outcome:'complete',returned:true,settled:true});
+  expect(Number.isInteger(operation.keyCount)&&operation.keyCount>=0&&operation.keyCount<=128).toBe(true);
+  expect(Number.isInteger(operation.unsetCount)&&operation.unsetCount>=0&&operation.unsetCount<=operation.keyCount).toBe(true);
+ }
+ expect(preparation.operations[0].unsetCount).toBe(preparation.operations[1].unsetCount);
+ const origin=report.installedPublicSgxSource;
+ expect(Object.keys(origin).sort()).toEqual(['kind','state','knownPublicSourceSha256','defaultOverridesAbsent','customGeneratorPathObserved','exclusiveOriginVerified','nextApplicationVerified','releaseEligible'].sort());
+ expect(origin).toMatchObject({kind:'INSTALLED_KNOWN_PUBLIC_UBUNTU_SGX_SOURCE_NOT_EXECUTION_HISTORY',customGeneratorPathObserved:false,exclusiveOriginVerified:false,nextApplicationVerified:false,releaseEligible:false});
+ expect(['matched-public-source','unavailable']).toContain(origin.state);
+ if(origin.state==='matched-public-source'){
+  expect(origin.defaultOverridesAbsent).toBe(true);expect(origin.knownPublicSourceSha256).toBe('cb746a20301f3845341c980a4f5432f963a19645d2bbb390d1712bd1474751ab');
+ }else expect(origin.knownPublicSourceSha256).toBeNull();
  const observed=report.initialEnvironmentObservation;
  expect(observed).toMatchObject({version:1,kind:'ACTUAL_OWNED_INITIAL_ENVIRONMENT_OBSERVATION_NOT_ADMISSION',
   subject:'host-component',sourceVerified:true,invocationMatched:true,processStable:true,parseComplete:true,

@@ -458,7 +458,7 @@ def systemctl(*args, check=True, timeout=30):
 
 
 def props(unit, timeout=30):
-    raw = systemctl('show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup', timeout=timeout).stdout.decode()
+    raw = systemctl('show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup,UnsetEnvironment', timeout=timeout).stdout.decode()
     return dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
 
 
@@ -1100,6 +1100,37 @@ class OwnedPostgresScope:
         save()
 
 
+MANAGER_ENVIRONMENT_ARGUMENTS = ('/usr/bin/busctl', '--system', '--json=short', 'get-property',
+    'org.freedesktop.systemd1', '/org/freedesktop/systemd1', 'org.freedesktop.systemd1.Manager', 'Environment')
+
+
+def manager_environment_snapshot(N, deadline):
+    """Private fixed read only. Actual caller owns its exact two-slot ledger."""
+    require(os.geteuid() == 0 and type(deadline) is float
+            and 0 < deadline - time.monotonic() <= 3, 'Manager environment read budget refused')
+    result, raw = runtime_diagnostic_read(list(MANAGER_ENVIRONMENT_ARGUMENTS), deadline)
+    require(type(result) is int and result == 0, 'Manager environment transport refused')
+    return N.manager_environment_keys(raw)
+
+
+def manager_projection_snapshot(N, ledger, ordinal):
+    require(type(ledger) is list and type(ordinal) is int and ordinal in (0, 1) and len(ledger) == ordinal
+            and report.get('currentPhase') == 'protected-native-configuration'
+            and report.get('configuration', {}).get('stage') == ('unit-files' if ordinal == 0 else 'manager-reload'),
+            'Manager environment preparation order refused')
+    entry = {'ordinal': ordinal, 'outcome': 'entered', 'returned': False, 'settled': False,
+             'keyCount': None, 'unsetCount': None}
+    ledger.append(entry)
+    try:
+        names = manager_environment_snapshot(N, min(DEADLINE, time.monotonic() + 3))
+        projected = N.manager_unset_environment(names)
+    except BaseException:
+        entry['outcome'] = 'refused'
+        raise
+    entry.update(outcome='complete', returned=True, settled=True, keyCount=len(names), unsetCount=len(projected))
+    return projected
+
+
 def configure(plan, binding, N, release, runtime_package, postgres_scope):
     global managed_runtime_module
     managed_runtime_module = N
@@ -1163,6 +1194,11 @@ http {
  }
 }
 ''')
+    configuration_phase('unit-files')
+    projection_ledger = []
+    report['managerEnvironmentProjection'] = {'kind': 'ACTUAL_PRIVATE_MANAGER_KEYS_PROJECTION_NOT_ADMISSION',
+        'operations': projection_ledger, 'stable': False, 'effectiveUnitsVerified': False}
+    manager_unsets = manager_projection_snapshot(N, projection_ledger, 0)
     files = {PROXY: '''[Unit]
 Description=Owned actual Next admission Nginx fixture
 [Service]
@@ -1199,6 +1235,7 @@ WorkingDirectory={release}
 EnvironmentFile=/etc/aihr-admission/app.env
 EnvironmentFile=-/run/aihr-admission/ports/{slot}.env
 Environment=AIHR_APP_WORKERS=2 AIHR_DB_TOTAL_CONNECTIONS=16 AIHR_DB_POOL_MAX=8
+UnsetEnvironment={' '.join(manager_unsets)}
 ExecStartPre=+/usr/bin/python3 -I -B /usr/local/lib/aihr-admission/controller.py reserve {unit}
 ExecStart={plan['nodePath']} --max-old-space-size=2048 {release}/node_modules/next/dist/bin/next start --hostname 127.0.0.1
 ExecStartPost=+/usr/bin/python3 -I -B /usr/local/lib/aihr-admission/next_fixture_poststart.py {unit}
@@ -1221,7 +1258,6 @@ Slice={SLICE}
 CPUWeight=100
 UMask=0077
 '''
-    configuration_phase('unit-files')
     for name, contents in files.items():
         file = pathlib.Path('/etc/systemd/system', name)
         require(not os.path.lexists(file), 'Fixture unit destination already exists')
@@ -1232,6 +1268,9 @@ UMask=0077
     postgres_scope.snapshot('before-config-reload')
     systemctl('daemon-reload')
     postgres_scope.snapshot('after-config-reload')
+    require(manager_projection_snapshot(N, projection_ledger, 1) == manager_unsets,
+            'Manager environment projection changed during reload')
+    report['managerEnvironmentProjection']['stable'] = True
     configuration_phase('guarded-profile')
     C = load('actual_next_controller', pathlib.Path('/usr/local/lib/aihr-admission/controller.py'))
     profile = {'version': 2, 'epoch': os.urandom(16).hex(), 'source': plan['candidate'], 'build': binding['nextBuildId'],
@@ -1246,9 +1285,14 @@ UMask=0077
         'ports': pool, 'units': {}, 'healthSeconds': 60, 'activationSeconds': 5, 'drainSeconds': 30,
         'reloadGuardDigest': C.command_identity(props(PROXY)['ExecReload'])}
     for slot, unit in enumerate(UNITS, 1):
+        observed = props(unit)
+        require(type(observed.get('UnsetEnvironment')) is str
+                and observed['UnsetEnvironment'].split() == list(manager_unsets),
+                'Effective manager environment projection differs')
         profile['units'][unit] = {'environmentFile': f'/run/aihr-admission/ports/{slot}.env',
             'releaseDirectory': str(release), 'workerUid': nobody.pw_uid,
-            'commandDigest': C.command_identity(props(unit)['ExecStart']), 'executable': plan['nodePath']}
+            'commandDigest': C.command_identity(observed['ExecStart']), 'executable': plan['nodePath']}
+    report['managerEnvironmentProjection']['effectiveUnitsVerified'] = True
     write(C.PROFILE, N.canonical(profile))
     # Private native observation custody only; contains no environment data.
     observation_context = {'version': 1, 'profileSha256': hashlib.sha256(N.canonical(profile)).hexdigest(),
@@ -1706,7 +1750,8 @@ def runtime_command_label(arguments):
         for verb in ('start', 'stop', 'reset-failed'):
             if tail == [verb, unit] or tail == [verb, '--no-block', unit]:
                 return verb + '-' + label
-        if tail == ['show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup']:
+        if tail in (['show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup'],
+                    ['show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup,UnsetEnvironment']):
             return 'properties-' + label
     if tail == ['show', BROWSER, '--property=Description,Transient']:
         return 'browser-owner-check'

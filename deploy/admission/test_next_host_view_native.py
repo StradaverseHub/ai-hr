@@ -300,6 +300,95 @@ def secure(file, uid, directory=False):
     require(stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode), 'Native conformance path type differs')
 
 
+PUBLIC_SGX_GENERATOR = pathlib.Path('/usr/lib/systemd/system-environment-generators/linux-base-sgx')
+PUBLIC_SGX_GENERATOR_SHA = 'cb746a20301f3845341c980a4f5432f963a19645d2bbb390d1712bd1474751ab'
+SGX_GENERATOR_OVERRIDES = tuple(pathlib.Path(prefix, 'linux-base-sgx') for prefix in (
+    '/run/systemd/system-environment-generators', '/etc/systemd/system-environment-generators',
+    '/usr/local/lib/systemd/system-environment-generators'))
+
+
+def sgx_default_overrides_absent():
+    # Fixed lookup basenames only. Refuse parent symlinks rather than following
+    # them into an unreviewed path, even for this diagnostic-only observation.
+    for fixed in SGX_GENERATOR_OVERRIDES:
+        current = pathlib.Path('/')
+        for index, part in enumerate(fixed.parts[1:]):
+            limit()
+            current /= part
+            try:
+                info = current.lstat()
+            except FileNotFoundError:
+                break
+            if index == len(fixed.parts) - 2:
+                return False
+            require(not stat.S_ISLNK(info.st_mode) and stat.S_ISDIR(info.st_mode)
+                    and info.st_uid == 0 and not stat.S_IMODE(info.st_mode) & 0o022,
+                    'Public generator lookup unavailable')
+    return True
+
+
+def installed_public_sgx_source():
+    """Installed PUBLIC source only; never exclusive causal/default-path proof."""
+    result = {'kind': 'INSTALLED_KNOWN_PUBLIC_UBUNTU_SGX_SOURCE_NOT_EXECUTION_HISTORY',
+        'state': 'unavailable', 'knownPublicSourceSha256': None, 'defaultOverridesAbsent': False,
+        'customGeneratorPathObserved': False, 'exclusiveOriginVerified': False,
+        'nextApplicationVerified': False, 'releaseEligible': False}
+    fd = None
+    try:
+        limit()
+        if not sgx_default_overrides_absent():
+            return result
+        result['defaultOverridesAbsent'] = True
+        secure(PUBLIC_SGX_GENERATOR, 0)
+        before = PUBLIC_SGX_GENERATOR.lstat()
+        require(before.st_nlink == 1 and before.st_mode & 0o111 and 0 < before.st_size <= 4096,
+                'Public generator metadata unavailable')
+        identity = lambda info: (info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        fd = os.open(PUBLIC_SGX_GENERATOR, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        require(identity(os.fstat(fd)) == identity(before), 'Public generator changed')
+        raw = bytearray()
+        while True:
+            limit()
+            part = os.read(fd, min(4096, 4097 - len(raw)))
+            if not part:
+                break
+            raw.extend(part)
+            require(len(raw) <= 4096, 'Public generator metadata unavailable')
+        require(len(raw) == before.st_size and identity(os.fstat(fd)) == identity(before)
+                and identity(PUBLIC_SGX_GENERATOR.lstat()) == identity(before)
+                and sgx_default_overrides_absent(), 'Public generator changed')
+        if hashlib.sha256(raw).hexdigest() == PUBLIC_SGX_GENERATOR_SHA:
+            result.update(state='matched-public-source', knownPublicSourceSha256=PUBLIC_SGX_GENERATOR_SHA)
+    except BaseException:
+        result.update(state='unavailable', knownPublicSourceSha256=None)
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except BaseException:
+                result.update(state='unavailable', knownPublicSourceSha256=None)
+    return result
+
+
+def host_manager_snapshot(N, preparation, ledger, ordinal):
+    require(type(ledger) is list and type(ordinal) is int and ordinal in (0, 1) and len(ledger) == ordinal,
+            'Host manager preparation order refused')
+    entry = {'ordinal': ordinal, 'outcome': 'entered', 'returned': False, 'settled': False,
+             'keyCount': None, 'unsetCount': None}
+    ledger.append(entry)
+    try:
+        # Each actual native read shares the SAME constructor/pipe/decoder as
+        # Next preparation. Host owns this stricter half-second sub-budget.
+        names = preparation.manager_environment_snapshot(N, time.monotonic() + limit(.5))
+        projected = N.manager_unset_environment(names)
+    except BaseException:
+        entry['outcome'] = 'refused'
+        raise
+    entry.update(outcome='complete', returned=True, settled=True, keyCount=len(names), unsetCount=len(projected))
+    return projected
+
+
 def hook():
     require(os.geteuid() == 0 and pathlib.Path(__file__) == ROOT / 'probe.py', 'Fixed protected hook required')
     secure(ROOT / 'probe.py', 0)
@@ -529,7 +618,8 @@ def main():
                 'Native conformance root construction differs')
         owned_root = (info.st_dev, info.st_ino)
         for name, source in [('probe.py', pathlib.Path(__file__)), ('next_profile.py', pathlib.Path(__file__).with_name('next_profile.py')),
-                             ('runtime_inventory.py', pathlib.Path(__file__).resolve().parents[2] / '.github/ci/runtime_inventory.py')]:
+                             ('runtime_inventory.py', pathlib.Path(__file__).resolve().parents[2] / '.github/ci/runtime_inventory.py'),
+                             ('next_preparation.py', pathlib.Path(__file__).with_name('test_next_native.py'))]:
             data = source.read_bytes();require(0 < len(data) <= 256 * 1024, 'Bounded source closure required')
             destination = ROOT / name
             with destination.open('xb') as output:
@@ -537,6 +627,14 @@ def main():
             destination.chmod(0o644)
             report.setdefault('sourceSha256', {})[name] = hashlib.sha256(data).hexdigest()
         N, I = load('owned_host_view', ROOT / 'next_profile.py'), load('owned_host_inventory', ROOT / 'runtime_inventory.py')
+        secure(ROOT / 'next_preparation.py', 0)
+        preparation = load('owned_host_next_preparation', ROOT / 'next_preparation.py')
+        projection_ledger = []
+        report['managerEnvironmentPreparation'] = {'kind': 'ACTUAL_SHARED_TYPED_MANAGER_PREPARATION_NOT_NEXT_OR_ADMISSION',
+            'operations': projection_ledger, 'stable': False, 'hostReadCapMs': 500,
+            'fullHelperVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False}
+        manager_unsets = host_manager_snapshot(N, preparation, projection_ledger, 0)
+        report['installedPublicSgxSource'] = installed_public_sgx_source()
         for target in N.CACHE_TARGETS:
             (RELEASE / target).mkdir(parents=True, mode=0o755)
         (RELEASE / '.next/foreign-cache').mkdir(mode=0o755)
@@ -565,6 +663,9 @@ def main():
                 output.write(content)
             file.chmod(0o644);info = file.lstat();files[name] = (info.st_dev, info.st_ino)
         command('/usr/bin/systemctl', '--system', 'daemon-reload')
+        require(host_manager_snapshot(N, preparation, projection_ledger, 1) == manager_unsets,
+                'Host manager projection changed during reload')
+        report['managerEnvironmentPreparation']['stable'] = True
         def start_owned(name, check=True):
             result, failures = None, []
             try:

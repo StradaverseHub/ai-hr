@@ -1261,6 +1261,54 @@ def plain_key_names(keys, expected_count, digest):
         return unavailable
 
 
+MANAGER_ENVIRONMENT_MAX = 131072
+MANAGER_ENVIRONMENT_KEYS_MAX = 128
+
+
+def manager_environment_keys(raw):
+    """Typed busctl255.4 property payload -> immutable KEYS ONLY, no authority."""
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('Manager environment metadata refused')
+            result[key] = value
+        return result
+    if type(raw) is not bytes or not 0 < len(raw) <= MANAGER_ENVIRONMENT_MAX:
+        raise ValueError('Manager environment metadata refused')
+    try:
+        value = json.loads(raw.decode('utf8', 'strict'), object_pairs_hook=unique)
+        if (type(value) is not dict or set(value) != {'type', 'data'} or value['type'] != 'as'
+                or type(value['data']) is not list or len(value['data']) > MANAGER_ENVIRONMENT_KEYS_MAX):
+            raise ValueError('Manager environment metadata refused')
+        names = set()
+        for assignment in value['data']:
+            if type(assignment) is not str or '\0' in assignment:
+                raise ValueError('Manager environment metadata refused')
+            name, separator, _private_value = assignment.partition('=')
+            if (not separator or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,127}', name) is None
+                    or name in names):
+                raise ValueError('Manager environment metadata refused')
+            names.add(name)
+        return tuple(sorted(names))
+    except (ValueError, UnicodeError, TypeError, KeyError, RecursionError, OverflowError):
+        raise ValueError('Manager environment metadata refused') from None
+
+
+def manager_unset_environment(keys):
+    """Pure generic negative projection; never returns values or admission proof."""
+    if (type(keys) is not tuple or len(keys) > MANAGER_ENVIRONMENT_KEYS_MAX
+            or any(type(name) is not str or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,127}', name) is None for name in keys)
+            or len(set(keys)) != len(keys)):
+        raise ValueError('Manager environment key tuple refused')
+    # UnsetEnvironment applies to ALL Exec* commands, including the generated
+    # MAINPID required by ExecStartPost. Do not silently erase that control input.
+    if 'MAINPID' in keys:
+        raise ValueError('Manager environment control-input collision refused')
+    allowed = APP_ENVIRONMENT | FLEET_ENVIRONMENT | SYSTEMD_ENVIRONMENT
+    return tuple(sorted(name for name in keys if name not in allowed))
+
+
 def environment_process_read(directory, name, bound, deadline):
     import time
     if name not in ('stat', 'cmdline', 'cgroup', 'environ'):

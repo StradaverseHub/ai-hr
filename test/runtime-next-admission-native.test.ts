@@ -51,6 +51,16 @@ it('boots two actual same-build Next workers through protected native admission 
    fullApplicationJourneysVerified:false,hostInstallationVerified:false,actualNextBootVerified:true,
    checkOnlyDidNotStartWorkers:true,coldBusinessRequests:0,allStoppedGenerationsReclaimed:true,
    rawBindAndProcessFamilyBarriersPreserved:true,ownedRuntimeCleaned:true});
+  const projection=report.managerEnvironmentProjection;
+  expect(projection).toMatchObject({kind:'ACTUAL_PRIVATE_MANAGER_KEYS_PROJECTION_NOT_ADMISSION',stable:true,effectiveUnitsVerified:true});
+  expect(projection.operations).toHaveLength(2);
+  for(const [ordinal,operation]of projection.operations.entries()){
+   expect(Object.keys(operation).sort()).toEqual(['ordinal','outcome','returned','settled','keyCount','unsetCount'].sort());
+   expect(operation).toMatchObject({ordinal,outcome:'complete',returned:true,settled:true});
+   expect(Number.isInteger(operation.keyCount)&&operation.keyCount>=0&&operation.keyCount<=128).toBe(true);
+   expect(Number.isInteger(operation.unsetCount)&&operation.unsetCount>=0&&operation.unsetCount<=operation.keyCount).toBe(true);
+  }
+  expect(projection.operations[0].unsetCount).toBe(projection.operations[1].unsetCount);
   expect(report.nativeIngress).toMatchObject({tls:true,nodeProxyUsed:false,webWorkers:2,steadyLoadCapacityClaim:false,proxyNextUpstream:'off'});
   expect(report.slicePreflight).toMatchObject({fixedImplicitSliceAbsenceVerified:true,existingKernelCgroup:false});
   expect(report.slicePreflight.lookupDirectories).toBeGreaterThan(0);expect(report.slicePreflight.lookupDirectories).toBeLessThanOrEqual(64);

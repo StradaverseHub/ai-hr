@@ -138,7 +138,7 @@ test('host cache conformance owns a distinct complete host-only source-bound sin
  assert.deepEqual(f.unit.singleton,{version:1,profile:'linux-systemd-nginx-v1',workers:1,isolation:'job-host'});
  assert.equal(nativeNextUnit(f.unit),false);assert.equal(singletonJobName(f.unit),`test (${f.unit.id})`);
  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
- const required=['deploy/admission/test_next_host_view_native.py','deploy/admission/next_profile.py','.github/ci/runtime_inventory.py',
+ const required=['deploy/admission/test_next_host_view_native.py','deploy/admission/test_next_native.py','deploy/admission/next_profile.py','.github/ci/runtime_inventory.py',
   '.github/ci/singleton-profiles.mjs','.github/ci/run-unit.mjs','.github/ci/plan.mjs','.github/ci/manifest.mjs',
   '.github/ci/candidate-environment.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml','scripts/gate-db-classify.ts'];
  for(const source of required){
@@ -151,5 +151,5 @@ test('host cache conformance owns a distinct complete host-only source-bound sin
  assert.throws(()=>validateSingletonBinding({...f.binding,prerequisites:{kind:'fresh-job-postgres-cluster',workers:1,database:{}}},f.plan,f.unit,f.witness));
  const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
  assert(source.includes("admitSingletonTest('"+file+"')"));assert(source.includes('timeout:30000'));assert(source.includes('},35000)'));
- assert(!source.includes('240000'));assert(!source.includes('test_next_native.py'));assert(!source.includes('.skipIf('));
+ assert(!source.includes('240000'));assert(source.includes("'next_preparation.py','deploy/admission/test_next_native.py'"));assert(!source.includes('.skipIf('));
 });
