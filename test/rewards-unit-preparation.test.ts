@@ -153,6 +153,13 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   const recipient=await hireEmployee(gr,{person:{fullName:'Fictional current GR approver',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
   const userId=await createAppUser(base.tenantId,recipient.personId,'employee');
   await setRewardMember(gr,unitId,(await getRewardUnit(gr,unitId)).unit.revision,userId,'gr');
+  // Hiring the recipient changes the live roster: acknowledge that source change before release.
+  await refreshRewardSources(gr,unitId,(await getRewardUnit(gr,unitId)).unit.revision,snapshotDate);
+  for(const actor of [gr,checker]){
+   const current=await getRewardUnit(actor,unitId),pending=current.rows.filter(row=>!row.facts.reviewed);
+   if(pending.length)await importRewardFacts(actor,unitId,current.unit.revision,pending.map(row=>({employmentId:row.source.employmentId,facts:{...row.facts,talent:'STAR' as const,performance:'ME' as const,reviewed:true}})));
+  }
+  await refreshRewardFixtureBudget(gr,unitId);
   await confirmAll();await change(checker,{kind:'release'});
   await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)));
   await change(gr,{kind:'reopen',reason:'Fictional routed review correction requires a fresh check'});
