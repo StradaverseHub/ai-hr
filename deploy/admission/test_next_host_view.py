@@ -1,5 +1,6 @@
 """Synthetic descriptor/policy/settlement models only; no sudo/systemd/app/DB."""
 import importlib.util
+import base64
 import hashlib
 import json
 import os
@@ -419,8 +420,23 @@ class HostViewModels(unittest.TestCase):
         self.assertEqual(capability['base'], '80a564ef2258613bc8b9489dcc6a3ac709442a34')
         receipt = json.loads((ROOT / 'deploy/admission/next_host_key_receipt_inverse.json').read_text())
         self.assertEqual(receipt['base'], 'c0456f6a98e5f3feaf11ca4d759d57c8b76e25da')
+        timing = json.loads((ROOT / 'deploy/admission/next_controller_admit_timing_inverse.json').read_text())
+        self.assertEqual(timing['base'], '525e39cd1c6eac8d3c1547f764754a436bf41e12')
         def current(name):
             source = (ROOT / name).read_text()
+            # C is absent from the old receipt layers. Reconstruct its whole
+            # actual525 preimage before the older CPU-constructor chain.
+            if name == 'deploy/admission/controller.py':
+                row = timing['files'][name]
+                self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
+                lines, frontier = source.splitlines(keepends=True), len(source.splitlines(keepends=True))
+                for edit in row['changes']:
+                    self.assertTrue(0 <= edit['start'] <= edit['end'] <= frontier)
+                    self.assertEqual(''.join(lines[edit['start']:edit['end']]), edit['after'])
+                    lines[edit['start']:edit['end']] = edit['before'].splitlines(keepends=True);frontier = edit['start']
+                source = ''.join(lines)
+                self.assertEqual(source.encode(), base64.b64decode(row['originalBase64'], validate=True))
+                self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['originalSha256'])
             for layer in (receipt, capability, key_names, terminal, phase, observation):
                 if name not in layer['files']:
                     continue

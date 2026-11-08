@@ -1,7 +1,7 @@
 {
   "kind": "EXACT_SOURCE_CENSUS_NOT_EXECUTED_CASE_EVENTS",
-  "base": "96461c0fee5dddae990ac474d70f8f137d511148",
-  "sourceRef": "codex/next-controller-admit-terminal-frontier-20261109",
+  "base": "db93cee9427302d4d05642f77c12ac07a16d133b",
+  "sourceRef": "codex/next-host-history-controller-rewind-20261109",
   "focusedFiles": 10,
   "focusedWrappers": 14,
   "underlying": 311,
@@ -209,107 +209,107 @@
         {
           "class": "HostViewModels",
           "method": "test_both_complete_predecessor_fixtures_reconstruct_without_dropping_old_guards",
-          "line": 409
+          "line": 410
         },
         {
           "class": "HostViewModels",
           "method": "test_browser_stop_and_runtime_bounds_are_explicit_source_contract_not_native_proof",
-          "line": 268
+          "line": 269
         },
         {
           "class": "HostViewModels",
           "method": "test_descriptor_disposal_checks_aggregate_deadline_between_actual_owned_members",
-          "line": 396
+          "line": 397
         },
         {
           "class": "HostViewModels",
           "method": "test_fixed_manager_proc_and_executable_fences_refuse_before_host_root_access",
-          "line": 147
+          "line": 148
         },
         {
           "class": "HostViewModels",
           "method": "test_foreign_browser_refusal_still_stops_every_other_owned_service_and_keeps_paths",
-          "line": 243
+          "line": 244
         },
         {
           "class": "HostViewModels",
           "method": "test_foreign_slice_child_is_preserved_without_stopping_slice",
-          "line": 261
+          "line": 262
         },
         {
           "class": "HostViewModels",
           "method": "test_full_five_second_native_stop_fits_settlement_without_spending_disposal_reserve",
-          "line": 294
+          "line": 295
         },
         {
           "class": "HostViewModels",
           "method": "test_host_empty_placeholders_keep_exact_mode_and_complete_native_identity",
-          "line": 112
+          "line": 113
         },
         {
           "class": "HostViewModels",
           "method": "test_host_nonempty_or_link_placeholder_never_gets_mutable_overlay_exception",
-          "line": 121
+          "line": 122
         },
         {
           "class": "HostViewModels",
           "method": "test_implicit_slice_absence_never_adopts_a_source_dropin_transient_or_kernel_group",
-          "line": 55
+          "line": 56
         },
         {
           "class": "HostViewModels",
           "method": "test_leaf_cpu_constructor_requires_exact_effective_weight_without_a_resource_guard_waiver",
-          "line": 99
+          "line": 100
         },
         {
           "class": "HostViewModels",
           "method": "test_native_invocation_observation_cannot_adopt_missing_or_foreign_custody",
-          "line": 175
+          "line": 176
         },
         {
           "class": "HostViewModels",
           "method": "test_native_seven_second_cleanup_keeps_independent_stop_after_metadata_or_queue_stall",
-          "line": 301
+          "line": 302
         },
         {
           "class": "HostViewModels",
           "method": "test_one_failed_stop_never_prevents_other_independent_stop_attempts",
-          "line": 249
+          "line": 250
         },
         {
           "class": "HostViewModels",
           "method": "test_partial_or_extra_mounts_refuse_before_any_host_root_magic_link",
-          "line": 129
+          "line": 130
         },
         {
           "class": "HostViewModels",
           "method": "test_replaced_root_is_refused_before_any_unit_or_directory_disposal",
-          "line": 331
+          "line": 332
         },
         {
           "class": "HostViewModels",
           "method": "test_resource_diagnostic_calls_the_unchanged_method_and_does_not_claim_full_profile_admission",
-          "line": 88
+          "line": 89
         },
         {
           "class": "HostViewModels",
           "method": "test_resource_guard_diagnostic_returns_only_closed_source_reasons",
-          "line": 47
+          "line": 48
         },
         {
           "class": "HostViewModels",
           "method": "test_slice_unknown_process_foreign_directory_and_nested_directory_are_retained",
-          "line": 72
+          "line": 73
         },
         {
           "class": "HostViewModels",
           "method": "test_stalled_full_metadata_reserves_other_unit_observations_and_stop_queue",
-          "line": 280
+          "line": 281
         },
         {
           "class": "HostViewModels",
           "method": "test_stalled_full_stop_queue_does_not_consume_other_owned_stops",
-          "line": 288
+          "line": 289
         }
       ],
       "count": 21
@@ -1526,5 +1526,68 @@
     "journalReads": 1,
     "readDeadlineMs": 500,
     "actualNextVerified": false
+  },
+  "recoverySelection": {
+    "kind": "SOURCE_DEPENDENCY_SELECTION_NOT_NEW_PASS_EVIDENCE",
+    "parentSource": "db93cee9427302d4d05642f77c12ac07a16d133b",
+    "parentRun": "42503803308",
+    "parentConclusion": "failure",
+    "failedSelector": "test/runtime-next-host-view.test.ts",
+    "affectedSelectors": [
+      "test/runtime-native-controller-admit-timing.test.ts",
+      "test/runtime-next-bootstrap-session.test.ts",
+      "test/runtime-next-environment-observation.test.ts",
+      "test/runtime-next-failure-diagnostic.test.ts",
+      "test/runtime-next-host-view.test.ts",
+      "test/runtime-next-manager-environment.test.ts",
+      "test/runtime-next-plain-key-names.test.ts"
+    ],
+    "affectedFiles": 7,
+    "affectedWrappers": 11,
+    "affectedPython": 191,
+    "incidentalSameFileTap": 45,
+    "incidentalSameFileVm": 3,
+    "affectedUnderlying": 239,
+    "retainedSelectors": [
+      "test/runtime-next-prepackage-diagnostic.test.ts",
+      "test/runtime-next-profile.test.ts",
+      "test/runtime-ready-admission.test.ts"
+    ],
+    "retainedFiles": 3,
+    "retainedWrappers": 3,
+    "retainedSourceBoundUnderlying": 72,
+    "retainedRawPythonSuiteCounts": 47,
+    "state25ChildStderrDiscarded": true,
+    "state25OnlySourceDefinedWithPassedWrapperExitStdout": true,
+    "sameFileGranularityReason": "Official focused route selects files; shared history consumers require these7selectors; unchanged TAP/VM repeat inside manager/bootstrap files",
+    "changedHistoryInputs": [
+      "next_host_key_receipt_inverse.json",
+      "next_manager_environment_inverse.json",
+      "next_bootstrap_session_inverse.json",
+      "next_controller_admit_timing_inverse.json",
+      "next_controller_admit_terminal_inverse.json"
+    ],
+    "retainedExecutedSourceDependenciesWholeDb93": {
+      "test/runtime-next-profile.test.ts": {
+        "test/runtime-next-profile.test.ts": "25f64a2099a0656904a7ce2395d301112fe8f1df55d97b9820ded621f6395c1e",
+        "deploy/admission/test_next_profile.py": "ef1b8df8e45b3e5603e30f7b71d400736a445ccc858e53607af082f07b03bf7f",
+        "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
+        "deploy/admission/next_profile.py": "80e32be041b80a007bceeb5af60bbf0d922cb490017950fc034057e30476f846",
+        ".github/ci/runtime_inventory.py": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d"
+      },
+      "test/runtime-ready-admission.test.ts": {
+        "test/runtime-ready-admission.test.ts": "0bc2a2e750126e9c7d3d1f450f9d39a44e4de46bc921f1d380924706c23e93f4",
+        "deploy/admission/test_state.py": "868f324ccdd9076e10b709146a171fc1f6e76656a08c8ead6d9a4a741e36e903",
+        "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d"
+      },
+      "test/runtime-next-prepackage-diagnostic.test.ts": {
+        "test/runtime-next-prepackage-diagnostic.test.ts": "45aac343676d78a94b2d183a99980d3faafca5822c25b43eb7f31cdc1840b808",
+        "deploy/admission/test_next_prepackage_diagnostic.py": "822fa94c709ff0db13239f4f662b4f81bed4099251d55177d6c9e172ffef99d3",
+        "deploy/admission/test_next_native.py": "8dafc69d328219c8a6ec12887d4be708dcbd07f21e31b020fd51a2100c82fa86",
+        "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
+        "deploy/admission/next_profile.py": "80e32be041b80a007bceeb5af60bbf0d922cb490017950fc034057e30476f846",
+        ".github/ci/runtime_inventory.py": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d"
+      }
+    }
   }
 }

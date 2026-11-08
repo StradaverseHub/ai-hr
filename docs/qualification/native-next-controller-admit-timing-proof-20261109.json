@@ -20,6 +20,36 @@
   },
   "history": [
     {
+      "manifest": "next_host_history_controller_inverse.json",
+      "base": "db93cee9427302d4d05642f77c12ac07a16d133b",
+      "wholeActualGitPreimages": [
+        {
+          "path": "deploy/admission/test_next_host_view.py",
+          "actualGitPreimageSha256": "a8b4b4c83638f7e7a5932fd1f4fca942c6c0784a3103443a2d307015f8cb11a7"
+        },
+        {
+          "path": "deploy/admission/next_host_key_receipt_inverse.json",
+          "actualGitPreimageSha256": "e1f97882d4cd5062b3516debaf666603c7d17169c20d263bcfbe401f9e23e385"
+        },
+        {
+          "path": "deploy/admission/next_manager_environment_inverse.json",
+          "actualGitPreimageSha256": "9a6d0b821d23cdedbc9219195bb3d5193fdad0606e360c9bd5a5c316ed169e18"
+        },
+        {
+          "path": "deploy/admission/next_bootstrap_session_inverse.json",
+          "actualGitPreimageSha256": "6c09239417e687cc69ad28f1d9da1bfb58703716553df7ad69e643e7c37bdbdf"
+        },
+        {
+          "path": "deploy/admission/next_controller_admit_timing_inverse.json",
+          "actualGitPreimageSha256": "0d3e5c15299a602202622112a107e48e63b10a316dc9242109237dd1abbbafed"
+        },
+        {
+          "path": "deploy/admission/next_controller_admit_terminal_inverse.json",
+          "actualGitPreimageSha256": "9253b204c70c076360402b77a74e1c158fe8599b1dc979b82d5a2cee44054fc1"
+        }
+      ]
+    },
+    {
       "manifest": "next_controller_admit_terminal_inverse.json",
       "base": "96461c0fee5dddae990ac474d70f8f137d511148",
       "wholeActualGitPreimages": [
@@ -208,7 +238,7 @@
     "deploy/admission/test_next_host_view_native.py": "5d8c1c51b475794ede922d2c69905bf2add4a2d3775f1d4f4a5357287367472e",
     ".github/ci/singleton-protocol.mjs": "6e4782b307ddfe44a97788d599ccdece7c9c8aa23cc4175a444f567263612e8f"
   },
-  "revisionBase": "96461c0fee5dddae990ac474d70f8f137d511148",
+  "revisionBase": "db93cee9427302d4d05642f77c12ac07a16d133b",
   "onlyRuntimeDeltaOneTerminalGuard": true,
   "unchangedFrom96461": {
     "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
@@ -223,5 +253,59 @@
     "scripts/performance/native-next-boot-browser.mjs": "f18b593143ac639703a1653e04e712466063b6631f5873ccaa622f0b7c21744f",
     ".github/workflows/alpha-staging.yml": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
     ".github/workflows/alpha-focused-checks.yml": "cc3c8e9bac07370bd70f1333bff6f697c2943120771cb8f8ca07caf87543e827"
-  }
+  },
+  "thisRepairRuntimeDeltaNone": true,
+  "unchangedRuntimeFromDb93": {
+    "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
+    "deploy/admission/test_next_native.py": "8dafc69d328219c8a6ec12887d4be708dcbd07f21e31b020fd51a2100c82fa86",
+    "deploy/admission/test_next_host_view_native.py": "5d8c1c51b475794ede922d2c69905bf2add4a2d3775f1d4f4a5357287367472e",
+    "deploy/admission/next_profile.py": "80e32be041b80a007bceeb5af60bbf0d922cb490017950fc034057e30476f846",
+    "deploy/admission/next_fixture_poststart.py": "1796325ab09b591604f6977859861f624c80abbf6994ac73052bb0e13e1a9c3b",
+    "deploy/admission/next_fixture_filesystem.py": "5d8a813ef012c82f79e9a4aa0d60ebb640f5549006d71ab380a9e7c5d5975b25",
+    ".github/ci/runtime_inventory.py": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d",
+    ".github/ci/singleton-protocol.mjs": "6e4782b307ddfe44a97788d599ccdece7c9c8aa23cc4175a444f567263612e8f",
+    ".github/ci/singleton-profiles.test.mjs": "fb2345fa638bb41d227de6e9e3d50533e669c71f38a6b830dc53616f946ca498",
+    "test/runtime-next-host-view-native.test.ts": "4b9c23ab4536f09b4c5475dba677a1c10fc315982345b735b5f6a26628ced9d0",
+    "deploy/admission/test_controller_admit_timing.py": "1b74bf4a3d6b7d40d5ac5b5427c6e213cedc4d4de113638850f5bb91c045d931",
+    "test/runtime-native-controller-admit-timing.test.ts": "914d132e89cd74b4cf0a4a6babdee175f9ae6dea772b60de9dc1c1780614d698",
+    "scripts/performance/native-next-boot-browser.mjs": "f18b593143ac639703a1653e04e712466063b6631f5873ccaa622f0b7c21744f",
+    ".github/workflows/alpha-staging.yml": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
+    ".github/workflows/alpha-focused-checks.yml": "cc3c8e9bac07370bd70f1333bff6f697c2943120771cb8f8ca07caf87543e827"
+  },
+  "hostModelOnlyChangedCase": "test_both_complete_predecessor_fixtures_reconstruct_without_dropping_old_guards",
+  "hostOther20CaseBodiesWhole": true,
+  "controllerHistoricalChain": {
+    "currentSha256": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
+    "whole525Sha256": "9bcd22c302401cf20ff35eff99bb1762ccd75fed6d0e5780c4edc3369a45fbd4",
+    "cpuBase": "6115dd5a6a6e1f2d2dedf4723e0e8ca2b568da65",
+    "wholeCpuBaseSha256": "c83fa023e51137fcaae007e2e4f756388096fe47bccf3254bfc870f466686dd6",
+    "actualGitMatches": true
+  },
+  "allEightCpuFixtureInputsAndWholeTargetsActualGit": [
+    "deploy/admission/controller.py",
+    "deploy/admission/next_profile.py",
+    "deploy/admission/test_next_host_view.py",
+    "deploy/admission/test_next_host_view_native.py",
+    "deploy/admission/test_next_native.py",
+    "deploy/admission/test_next_profile.py",
+    "test/runtime-next-host-view-native.test.ts",
+    "test/runtime-next-host-view.test.ts"
+  ],
+  "remainingCleanupAndRecoveryWholeTargetsActualGit": [
+    {
+      "path": "deploy/admission/test_next_native.py",
+      "base": "f37f9d629458b7d2bf4a34bdb3a0891e32af96e2",
+      "sha256": "730f34682797f8ecef52b98181ab12f786081caebe1d24f1552d24d6d4ef8632"
+    },
+    {
+      "path": "deploy/admission/test_next_host_view_native.py",
+      "base": "f37f9d629458b7d2bf4a34bdb3a0891e32af96e2",
+      "sha256": "6d2cb72060fef1d816724e71ccef374b75cc6cd4fca77bbe0471042064a91c7a"
+    },
+    {
+      "path": "deploy/admission/test_next_host_view.py",
+      "base": "26105ef7e53b088ffec8dc701606a70ce32677d1",
+      "sha256": "986490671d61f107d253e013e2c556dc5f34a4ca4e172aa23afdd971459882f1"
+    }
+  ]
 }
