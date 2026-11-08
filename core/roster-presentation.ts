@@ -6,7 +6,7 @@ import {assignment,department,businessUnit,position,shift,employment,person} fro
 import {readEmployeeChoicesTx,readEmployeeChoiceIdsTx} from './employee-choice';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {boundPersonnelStatementTx} from './personnel-read-bounds';
-import {assertRosterWindow,hydrateRosterWindow,listShiftsForTenant,rosterDepartmentPopulationIdsTx,rosterGenerationTemplateTx,type RosterMonthEmployee} from './roster';
+import {assertRosterWindow,hydrateRosterWindow,rosterDisplayShiftsTx,rosterDepartmentPopulationIdsTx,rosterGenerationTemplateTx,type RosterMonthEmployee} from './roster';
 import {datesBetween} from '../lib/roster-month';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {organisationFilterChoices} from '../lib/organisation-choice-label';
@@ -61,7 +61,7 @@ export function rosterWindowPage(ctx:SessionContext,p:RosterPopulation&{from:str
  return withTenant(ctx,async tx=>{
   await assertAiPresentationPrincipalTx(tx,ctx);await boundPersonnelStatementTx(tx);
   const population=await rosterEmployeePageTx(tx,ctx,p);
-  const shifts=await listShiftsForTenant(ctx,undefined,tx);
+  const shifts=await rosterDisplayShiftsTx(tx);
   const view=await hydrateRosterWindow(ctx,{from:p.from,to:p.to,dates:datesBetween(p.from,p.to),employees:population.rows,allEmployees:[],shiftRows:shifts},tx);
   return {...view,total:population.total,businessUnitOptions:population.businessUnitOptions,departmentOptions:population.departmentOptions};
  },{readOnlySnapshot:true});

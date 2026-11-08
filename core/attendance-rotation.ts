@@ -14,8 +14,13 @@ import { lockPayrollForScheduleChange, markPayrollForAttendanceChange } from '..
 export type AttendanceRotationVersion = typeof attendanceRotation.$inferSelect;
 export type RotationShift = typeof shift.$inferSelect;
 export type RotationResolvedDay = { version: AttendanceRotationVersion; day: RotationCycle['days'][number]; shift: RotationShift | null };
-export async function rotationLookupTx(tx: Tx) {
-  const versions = await tx.select().from(attendanceRotation).orderBy(asc(attendanceRotation.ruleId), asc(attendanceRotation.effectiveFrom));
+/** Omitted scope preserves the complete owner lookup. An explicit empty rule set
+ * has no rotations; a populated scope retains every dated version of those rules. */
+export async function rotationLookupTx(tx: Tx, scope?: {ruleIds: readonly string[]}) {
+  const ruleIds = scope?.ruleIds.slice();
+  const versions = ruleIds?.length === 0 ? [] : await tx.select().from(attendanceRotation)
+    .where(ruleIds ? inArray(attendanceRotation.ruleId,ruleIds) : undefined)
+    .orderBy(asc(attendanceRotation.ruleId), asc(attendanceRotation.effectiveFrom));
   const ids = [...new Set(versions.flatMap(v => v.allowedShiftIds))];
   const shifts = ids.length ? await tx.select().from(shift).where(inArray(shift.id, ids)) : [];
   const byShift = new Map(shifts.map(s => [s.id, s]));

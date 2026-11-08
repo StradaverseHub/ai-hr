@@ -1358,6 +1358,14 @@ export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchive
   return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
+/** The grid displays the complete active shared library but does not use allowedRuleIds.
+ * Read only its DTO; command/settings eligibility stays with listShiftsForTenant and
+ * the canonical schedule-group admission owners. The supplied Tx owns RLS/snapshot. */
+export function rosterDisplayShiftsTx(tx: Tx): Promise<RosterMonthView['shifts']> {
+  return tx.select({id:shift.id,code:shift.code,name:shift.name,startTime:shift.startTime,endTime:shift.endTime,color:shift.color})
+    .from(shift).where(isNull(shift.archivedAt)).orderBy(asc(shift.startTime),asc(shift.name));
+}
+
 // ── cf21e554 STAGE 2 · the shift's own Overtime Schedule ────────────────────────────────────────────
 
 /** One row of the Overtime Schedule tab, as the form posts it. */
@@ -2735,11 +2743,18 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[], exi
     // Half working weekdays must travel with the resolved full pattern to every roster consumer.
     // They are working cells; this read does not invent half-day duration or reclassify rest/off days.
     const lookup = await weekLookupTx(tx, null, [...rows.map((r) => r.shiftRuleId), ...rows.map((r) => r.groupRuleId)]);
-    const rotationLookup = await rotationLookupTx(tx);
-    const periodsByEmp = rotationLookup.versions.length ? await liveArrangementsTx(tx,employmentIds) : new Map();
-    const datedIds=[...new Set([...periodsByEmp.values()].flatMap(periods=>periods.map((p:{shiftId:string})=>p.shiftId)))];
+    // A group overrides the dated shift ladder. Without a group, any live ladder
+    // replaces the current default-shift rule, including periods with no rule.
+    // Read those exact page dependencies before requesting rotation history.
+    const periodsByEmp = await liveArrangementsTx(tx,rows.filter(row=>!row.groupRuleId).map(row=>row.employmentId));
+    const datedIds=[...new Set([...periodsByEmp.values()].flatMap(periods=>periods.map(p=>p.shiftId)))];
     const datedRules=datedIds.length ? await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,datedIds)) : [];
     const ruleByShift=new Map(datedRules.map(sh=>[sh.id,sh.ruleId]));
+    const rotationRuleIds=[...new Set(rows.flatMap(row=>{
+      const periods=!row.groupRuleId?periodsByEmp.get(row.employmentId)??[]:[];
+      return periods.length?periods.map(period=>ruleByShift.get(period.shiftId)):[row.groupRuleId??row.shiftRuleId];
+    }).filter((id):id is string=>!!id))];
+    const rotationLookup = await rotationLookupTx(tx,{ruleIds:rotationRuleIds});
     return rows.flatMap(({ halfPattern, offPattern, shiftRuleId, groupRuleId, ...r }) => {
       const periods:{validFrom:string;ruleId:string|null}[] = !groupRuleId ? (periodsByEmp.get(r.employmentId)??[])
         .map((p:{validFrom:string;shiftId:string})=>({validFrom:p.validFrom,ruleId:ruleByShift.get(p.shiftId)??null})) : [];
@@ -2932,7 +2947,7 @@ export async function hydrateRosterWindow(
   { from, to, dates, employees, allEmployees, shiftRows }: {
     from: string; to: string; dates: string[];
     employees: RosterMonthEmployee[]; allEmployees: RosterMonthEmployee[];
-    shiftRows: Awaited<ReturnType<typeof listShiftsForTenant>>;
+    shiftRows: RosterMonthView['shifts'];
   },
   existingTx?: Tx,
 ): Promise<RosterMonthView> {
