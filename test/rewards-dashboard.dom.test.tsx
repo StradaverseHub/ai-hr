@@ -3,6 +3,9 @@ import {afterEach,describe,it,expect,vi} from 'vitest';
 import {render,screen,cleanup} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
+import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
+import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
+const copies={en,ms,zh,ta,th,vi:viCopy};
 import {RewardsDashboard} from '../app/rewards/dashboard';
 import type {RewardDashboard} from '../packs/rewards/service';
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
@@ -25,3 +28,8 @@ describe('short Rewards dashboard',()=>{
   show({...value,units:[{...value.units[0],restricted:true,budgets:null}]});expect(screen.getAllByText(en.rewardDashboard.restricted)).toHaveLength(2);expect(screen.queryByRole('meter')).toBeNull();expect(screen.queryByText(/100.00/)).toBeNull();
  });
 });
+
+it.each(Object.keys(copies) as (keyof typeof copies)[])('renders short dashboard in %s at desktop and phone sizes',async locale=>{
+ const view=render(<NextIntlClientProvider locale={locale} messages={copies[locale]} onError={error=>{throw error;}}><main className="space-y-5 p-5"><h1 className="text-2xl font-semibold">{copies[locale].rewardDashboard.greeting}</h1><RewardsDashboard value={value}/></main></NextIntlClientProvider>);
+ await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'rewards-dashboard');
+},60000);
