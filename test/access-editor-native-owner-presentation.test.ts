@@ -13,6 +13,7 @@ import {setCompensation} from '../core/comp';
 import {pgSqlState} from '../lib/db-error';
 import {readAccessConfigurationEditor as lockedEditor} from './fixtures/access-editor-locked-baseline';
 import {accessEditorNativeOwnerFixture} from './fixtures/access-editor-native-owner';
+import {accessNativeMetadataOid} from './fixtures/access-editor-owner-dependencies';
 import {accessEditorOwnedWork} from './fixtures/access-editor-owned-work';
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
 // Registry/controller convergence is REQUIRED before this new selector may run.
@@ -66,7 +67,7 @@ it('preserves canonical Access behavior under a real restricted native owner and
   const oldRoot=await lockedEditor(root.ctx),oldEmployee=await lockedEditor(employee.ctx);expect(oldRoot.snapshot.groups).toHaveLength(7);expect(oldEmployee).toEqual(oldRoot);
   expect(oldRoot.history.filter(row=>row.operation!=='initialized')).toHaveLength(3);
   const info=async()=>{const [row]=await f.admin<Info[]>`select pg_get_functiondef(p.oid)as definition,p.prosrc as body,to_jsonb(p)as details from pg_proc p where p.oid='app.access_install_defaults(uuid,uuid)'::regprocedure`;return row;};
-  const predecessor=await info();expect(createHash('md5').update(predecessor.body).digest('hex')).toBe('3b4bd83bfef3d84a3af43885256e2187');expect(predecessor.details.proowner).toBe(f.newOwner);
+  const predecessor=await info();expect(createHash('md5').update(predecessor.body).digest('hex')).toBe('3b4bd83bfef3d84a3af43885256e2187');expect(accessNativeMetadataOid(predecessor.details.proowner)).toBe(f.newOwner);
   const before=await f.dataFacts(),catalog=await f.catalog();
   const absent=async()=>expect((await f.admin`select to_regprocedure('app._access_bootstrap_eligible(uuid,uuid)')as helper,to_regprocedure('app.access_editor_presentation_v1()')as projection`)[0]).toEqual({helper:null,projection:null});
   for(const drift of ['body','configuration','owner','cost','app-user-owner','configuration-owner','schema-owner']as const){
@@ -94,7 +95,7 @@ it('preserves canonical Access behavior under a real restricted native owner and
   const newFunctionDependency=(classid:unknown,objid:unknown)=>String(classid)===procClass&&addedIds.has(String(objid));
   expect(afterDependencies.filter(row=>!newFunctionDependency(row.details.classid,row.details.objid))).toEqual(beforeDependencies);expect(afterDependencies.filter(row=>newFunctionDependency(row.details.classid,row.details.objid)).length).toBeGreaterThan(0);
   expect(afterShared.filter(row=>!newFunctionDependency(row.classid,row.objid))).toEqual(beforeShared);expect(afterShared.filter(row=>newFunctionDependency(row.classid,row.objid)).length).toBeGreaterThan(0);
-  expect(added.every(row=>Number(row.owner)===f.newOwner)).toBe(true);
+  expect(added.every(row=>accessNativeMetadataOid(row.owner)===f.newOwner)).toBe(true);
   for(const old of beforeFunctions){const next=afterFunctions.find(row=>String(row.oid)===String(old.oid));expect(next).toBeTruthy();if(old.signature!=='app.access_install_defaults(uuid,uuid)')expect(next).toEqual(old);}
   const after=await info(),predicate=predecessor.body.slice(predecessor.body.indexOf(' IF NOT EXISTS(SELECT 1 FROM public.app_user'),predecessor.body.indexOf(' THEN',predecessor.body.indexOf(' IF NOT EXISTS(SELECT 1 FROM public.app_user'))+5);
   expect(predicate).toContain('app.access_recovery_available(a.id)');expect(after.details).toEqual({...predecessor.details,prosrc:predecessor.body.replace(predicate,' IF NOT app._access_bootstrap_eligible(t,u) THEN')});

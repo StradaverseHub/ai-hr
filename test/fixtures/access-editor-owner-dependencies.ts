@@ -5,8 +5,10 @@ import assert from 'node:assert/strict';
 import {z} from 'zod';
 const oid=z.number().int().safe().positive().max(4294967295);
 // pg_proc/pg_type to_jsonb preserves oid's native numeric-string encoding on
-// PostgreSQL; resolve ONLY these typed namespace references for set derivation.
+// PostgreSQL; resolve ONLY explicitly named typed namespace/owner references.
 const metadataOid=z.union([oid,z.string().regex(/^[1-9][0-9]{0,9}$/).transform(Number).pipe(oid)]);
+/** Resolve only an explicitly identified native metadata OID; preserve raw rows. */
+export function accessNativeMetadataOid(input:unknown){return metadataOid.parse(input);}
 const nativeKind=z.string().length(1);
 export const accessSharedDependency=z.object({dbid:oid,classid:oid,objid:oid,objsubid:z.number().int().safe().nonnegative(),refclassid:oid,refobjid:oid,deptype:z.string().length(1)}).strict();
 export type AccessSharedDependency=z.infer<typeof accessSharedDependency>;

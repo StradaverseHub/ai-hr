@@ -1,6 +1,6 @@
 /** Native-owner dependency oracle models only; real rollback-control/native tests remain required. */
 import {expect,it} from 'vitest';
-import {accessOwnerDependencyExpectation,assertAccessOwnerDependencies,type AccessSharedDependency} from './fixtures/access-editor-owner-dependencies';
+import {accessNativeMetadataOid,accessOwnerDependencyExpectation,assertAccessOwnerDependencies,type AccessSharedDependency} from './fixtures/access-editor-owner-dependencies';
 function sample(){
  const binding={database:37,roleCatalog:100,namespaceCatalog:200,functionCatalog:300,relationCatalog:400,typeCatalog:500,oldOwner:10,newOwner:999};
  const edge=(classid:number,objid:number,refobjid:number,deptype:string):AccessSharedDependency=>({dbid:37,classid,objid,objsubid:0,refclassid:100,refobjid,deptype});
@@ -48,4 +48,12 @@ it('rejects lost/changed/extra baseline ACL and foreign edges, unknown row field
  const foreign=[...rows];foreign[acl]={...foreign[acl],refobjid:123};expect(()=>assertAccessOwnerDependencies(expected,foreign,expected.expectedRawSharedDependencies)).toThrow();
  expect(()=>assertAccessOwnerDependencies(expected,[...rows,{...rows[acl],unexpectedNativeField:'never silently discarded'}],expected.expectedRawSharedDependencies)).toThrow();
  expect(()=>accessOwnerDependencyExpectation({...f.before,sharedDependencies:[...f.before.sharedDependencies,{...rows.find(row=>row.refobjid===10)!}]},f.transfer,f.binding,f.pin)).toThrow('unexpectedly referenced');
+});
+
+it('accepts only bounded exact native metadata OIDs while preserving raw predecessor metadata and owner equality',()=>{
+ for(const value of [1,73012,4294967295,'1','73012','4294967295'])expect(accessNativeMetadataOid(value)).toBe(Number(value));
+ for(const value of [0,-1,1.5,4294967296,NaN,Infinity,'','0','-1','1.0','1e3','01',' 73012','73012 ','+73012','4294967296',null,undefined,true,{oid:'73012'}])expect(()=>accessNativeMetadataOid(value)).toThrow();
+ const raw={proowner:'73012',prosrc:'exact native body',unknownNativeField:{oid:'must remain opaque'}};
+ expect(accessNativeMetadataOid(raw.proowner)).toBe(73012);expect(accessNativeMetadataOid(raw.proowner)).not.toBe(73013);
+ expect(raw).toEqual({proowner:'73012',prosrc:'exact native body',unknownNativeField:{oid:'must remain opaque'}});
 });

@@ -1,0 +1,64 @@
+{
+  "kind": "ACCESS_NATIVE_METADATA_OID_FIXTURE_RECOVERY_NOT_ACCEPTANCE",
+  "base": "054dce80906c08c137be730e908c8a0e3592e4d2",
+  "sourceRef": "codex/access-native-owner-oid-recovery-20261108",
+  "qualification": "NOT_RUN; root and independent review required",
+  "selectors": {
+    "pure": {
+      "file": "test/access-editor-owner-dependencies.test.ts",
+      "cases": 6,
+      "newCase": "accepts only bounded exact native metadata OIDs while preserving raw predecessor metadata and owner equality"
+    },
+    "native": {
+      "file": "test/access-editor-native-owner-presentation.test.ts",
+      "cases": 1,
+      "caseMs": 300000,
+      "profile": "controlled-database-v1"
+    },
+    "controller": "node --test .github/ci/singleton-profiles.test.mjs"
+  },
+  "originalFailure": {
+    "run": "42429017228",
+    "source": "054dce80906c08c137be730e908c8a0e3592e4d2",
+    "controller": "054dce80906c08c137be730e908c8a0e3592e4d2",
+    "artifact": 13596288609,
+    "zipSha256": "8b29b1c02179dd5787e011c5502f3a60f3760d8798980dcd6a67ac00b2f71f0a",
+    "diagnosticSha256": "d5b558895cf668b99caaaa8b4d15b355f49e70b7c04e2718ef5f760fdaeb6947",
+    "passed": 0,
+    "failed": 1,
+    "pending": 0,
+    "durationMs": 24504.307026,
+    "point": "test/access-editor-native-owner-presentation.test.ts:69:177 BEFORE3211",
+    "actualOwnerJson": "73012",
+    "expectedOwnerNumber": 73012,
+    "catalogueDiffering": {},
+    "cleanup": {
+      "complete": true,
+      "databaseAbsent": true,
+      "rolesAbsent": true,
+      "ownedBackendsAbsent": true,
+      "elapsedMs": 239.40469300000404
+    },
+    "migration3211Executed": false
+  },
+  "sourceSha256": {
+    "test/access-editor-native-owner-presentation.test.ts": "438daf40b96a82040d00297b47a131eb3b187b41b3a95eafc98158867e062c90",
+    "test/fixtures/access-editor-owner-dependencies.ts": "5b527f51bbd0c4796b12cfe382731ae5e6cbde0b04a66856dc701a8c80e26a71",
+    "test/access-editor-owner-dependencies.test.ts": "af40b4c5148a35a44c26c9b4931fe2824e9169e0df7b0b66aa79341f45f7e410",
+    "docs/qualification/access-native-owner-oid-recovery-20261108.md": "7fe4ce0433b53e7917d006e776d9e81a86ed2c5a171014cdf8288f3084c86395"
+  },
+  "unchangedSha256": {
+    "db/migrations/3211_access_editor_native_owner_presentation.sql": "9f9691816d1ae1b9bad62675169b3b07353af50e14c3863d247ffb3fbc3a3421",
+    "test/fixtures/access-editor-native-owner.ts": "c0b55a71db7a9c3230de197474ec6004300565b96a53b9a312c8d2a1ce9e5687",
+    "test/fixtures/access-editor-cleanup-lifetime.ts": "5cce9a3d44d784cd53007ffdcf5a782ad87d694f9c30271b2fefc6cc68b70a1c",
+    "test/fixtures/access-editor-owned-work.ts": "91d8b6cd9958898b93ba048d4c9927fdc1ec5f0da0b17c09a448b06f8cdee6a7",
+    ".github/ci/singleton-protocol.mjs": "4a7701b6b947db21e168ab2037a280fe75dd9a204975be65cbb67fc655a6abe2",
+    ".github/ci/singleton-profiles.test.mjs": "e0cf74130a5f154f93cb9fa9184e6b2700a75b2e095a94953a2659bc53161bdf",
+    "db/migrations/meta/_journal.json": "6156a0e467e2d75549d0f583330b157ff9bfe43b14f096d39cc9663ac95909af"
+  },
+  "nativeTestInverseReconstructs054Exactly": true,
+  "rawMetadataUnmodified": true,
+  "nativeSqlChanged": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}
