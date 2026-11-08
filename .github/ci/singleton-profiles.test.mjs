@@ -1,7 +1,7 @@
 import test from 'node:test';
 import {realpathSync} from 'node:fs';
 import assert from 'node:assert/strict';
-import {readFileSync,lstatSync,readdirSync,mkdtempSync,mkdirSync,writeFileSync,rmSync,unlinkSync,symlinkSync,copyFileSync} from 'node:fs';
+import {readFileSync,lstatSync,readdirSync,mkdtempSync,mkdirSync,writeFileSync,rmSync,rmdirSync,unlinkSync,symlinkSync,copyFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createPlan} from './plan.mjs';
@@ -72,7 +72,7 @@ test('every registered infrastructure file remains exactly once in its native cl
   write(journalPath,'{');assert.throws(()=>singletonSources(databaseFixture.unit,directory));write(journalPath,raw);
   const first=sql[0];unlinkSync(join(directory,first));assert.throws(()=>singletonSources(databaseFixture.unit,directory));write(first,'-- restored\n');
   write('db/migrations/unexpected.sql','-- unexpected\n');assert.throws(()=>singletonSources(databaseFixture.unit,directory));unlinkSync(join(directory,'db/migrations/unexpected.sql'));
-  unlinkSync(join(directory,first));symlinkSync(join(directory,sql[1]),join(directory,first));assert.throws(()=>singletonSources(databaseFixture.unit,directory));unlinkSync(join(directory,first));mkdirSync(join(directory,first));assert.throws(()=>singletonSources(databaseFixture.unit,directory));rmSync(join(directory,first));write(first,'-- restored\n');
+  unlinkSync(join(directory,first));symlinkSync(join(directory,sql[1]),join(directory,first));assert.throws(()=>singletonSources(databaseFixture.unit,directory));unlinkSync(join(directory,first));mkdirSync(join(directory,first));assert.throws(()=>singletonSources(databaseFixture.unit,directory));rmdirSync(join(directory,first));write(first,'-- restored\n');
   write(journalPath,Buffer.alloc(4*1024*1024+1,32));assert.throws(()=>singletonSources(databaseFixture.unit,directory));write(journalPath,raw);
   unlinkSync(join(directory,journalPath));symlinkSync(join(candidateRoot,journalPath),join(directory,journalPath));assert.throws(()=>singletonSources(databaseFixture.unit,directory));unlinkSync(join(directory,journalPath));write(journalPath,raw);
  }finally{rmSync(directory,{recursive:true,force:true});}
@@ -83,7 +83,7 @@ test('every registered infrastructure file remains exactly once in its native cl
  const git=(...args)=>execFileSync('git',['-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false',...args],{cwd:repository,encoding:'utf8',timeout:10000});
  const copy=file=>{mkdirSync(join(repository,file,'..'),{recursive:true});copyFileSync(join(candidateRoot,file),join(repository,file));};
  try{
-  for(const file of [...all,'scripts/gate-db-classify.ts','test/payslip-pdf.test.ts','test/r379-pcb2ii-pdf.test.ts','lib/borang-8a-pdf.ts','lib/borang-8b-pdf.ts','lib/cp21-fields.ts','lib/cp22a-fields.ts'])copy(file);
+  for(const file of [...all,'scripts/gate-db-classify.ts','test/payslip-pdf.test.ts','test/r379-pcb2ii-pdf.test.ts','lib/borang-8a-pdf.ts','lib/borang-8b-pdf.ts','lib/cp21-fields.ts','lib/cp22a-fields.ts','lib/payslip-pdf.ts','lib/payslip-pdf-strings.ts','test/fixtures/payslip-pdf-fixture.ts','core/payslip-information.ts','lib/pcb2ii-pdf.ts','lib/payslip-pdf-fonts.ts','lib/pcb2ii-form.ts','test/tailwind-width-order.browser.test.tsx'])copy(file);
   const added='db/migrations/9999_shared_index_model.sql';
   writeFileSync(join(repository,journalPath),JSON.stringify({...journal,entries:[...journal.entries,{...journal.entries.at(-1),idx:journal.entries.length,tag:'9999_shared_index_model'}]}));
   writeFileSync(join(repository,added),'-- ignored fictional SQL source\n');writeFileSync(join(repository,'.gitignore'),added+'\n');

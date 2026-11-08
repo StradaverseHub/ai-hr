@@ -8,14 +8,16 @@
   "testsExecuted": false,
   "localRepositoryExecution": false,
   "identity": {
-    "parentCandidateCommit": "f3a7b5001329d3731de1e8db469807aceab70cec",
-    "currentReviewedExistingSourceSetSha256": "0f0cd1c02c08efd60a96a3def766c928c0759f317279162f4ffe6bb9a4940907",
+    "parentCandidateCommit": "dd899f911fc90170c4af2d90a1fd42b10ce8afd1",
+    "currentReviewedExistingSourceSetSha256": "6f93daf35de8eaba4172529d0319537cb7ec0f92b38b46f7a668add3ef21449c",
     "currentSourceCommit": "Resolved by the clean frozen commit containing this record; no self-referential commit claim.",
     "executedCandidateCommit": null,
     "executedControllerCommit": null,
     "migrationBaseline": null,
     "qualificationPlanFingerprint": null,
-    "reason": "No repository runtime, controller run, hosted job, staging or production operation has executed in this source-only lease."
+    "reason": "This fixture-recovery child is source-authored and UNRUN. DD899 original authenticated courses both FAIL and remain bound to their original source/controller. Frozen root and different-peer review are pending.",
+    "historicalArchitectureBase": "f3a7b5001329d3731de1e8db469807aceab70cec",
+    "sourceSetDigestRule": "SHA256 of compact UTF-8 JSON sorted [path,current SHA256] pairs for the 31 existing architecture source/map paths; no execution or review PASS implied."
   },
   "scope": {
     "productionPaths": 18,
@@ -30,7 +32,18 @@
     "totalOwnedPaths": 33,
     "all205ExistingCallbackDefinitionsPreserved": true,
     "existing51SingletonGeneratedCasesPreserved": true,
-    "callbackDefinitionsAreNotExecutedCounts": true
+    "callbackDefinitionsAreNotExecutedCounts": true,
+    "fixtureRecoveryChild": {
+      "parent": "dd899f911fc90170c4af2d90a1fd42b10ce8afd1",
+      "existingModelOwnersEdited": 10,
+      "activeMapRowsRecomposed": 1,
+      "existingNonruntimeRecordsUpdated": 2,
+      "newNonruntimeProvenanceRecords": 1,
+      "totalOwnedChildPaths": 14,
+      "priorArchitectureOwnedPaths": 33,
+      "protectedProductionPathsUnchanged": 18
+    },
+    "aggregateExistingEditedModelsFromHistoricalBase": 12
   },
   "commonPrerequisites": [
     ".github/ci/candidate-environment.mjs",
@@ -1539,17 +1552,17 @@
     "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
     "composition": {
       "kind": "EXTERNAL_DATA_ONLY_WHOLE_PREDECESSOR_COMPOSITION_NOT_RUNTIME",
-      "base": "f3a7b5001329d3731de1e8db469807aceab70cec",
+      "base": "dd899f911fc90170c4af2d90a1fd42b10ce8afd1",
       "target": "ee5722312689fc88d8a9253c232945e6f2599900",
       "model": ".github/ci/employee-lifecycle-sources.test.mjs",
       "parentBytes": 3512,
       "parentSha256": "73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196",
-      "currentBytes": 7082,
-      "currentSha256": "647c3553bcdb3554be2ddc24c6e042aea497b286e86ea7736c0aec9d5b4df6eb",
-      "mapParentBytes": 135318,
-      "mapParentSha256": "318a51f38d8af4bee39d417ead19d2a34a4037aea5a3f15e3dc7587cdfd3b18f",
-      "mapCurrentBytes": 139341,
-      "mapCurrentSha256": "ce3a2734553abd53f5c4274b89ced5ff339a33a89cc9e354687f8921e4232d1a",
+      "currentBytes": 7478,
+      "currentSha256": "1fa4bacd24d84a852615ae3f82939feb4da67b1a1b983202babf45006e10dec1",
+      "mapParentBytes": 139341,
+      "mapParentSha256": "ce3a2734553abd53f5c4274b89ced5ff339a33a89cc9e354687f8921e4232d1a",
+      "mapCurrentBytes": 140478,
+      "mapCurrentSha256": "335922aa54bbcbf2a3446c298674762a6992e18438d4025c6ba07c61d67dcd3f",
       "unchangedRows": [
         {
           "path": ".github/ci/employee-lifecycle-native.mjs",
@@ -1594,16 +1607,16 @@
       ],
       "changes": [
         {
-          "startLine": 30,
-          "endLine": 36,
+          "startLine": 35,
+          "endLine": 41,
           "before": "",
           "after": " const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[EMPLOYEE_LIFECYCLE_PROFILE.files[0].file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}};\n assert.throws(()=>singletonSources(unit));for(const path of ['db/migrations/3500_ai_centre_architecture_compatibility.sql','db/migrations/3501_ai_centre_mandate_write_order.sql'])assert(singletonSources(unit,candidateRoot).includes(path));\n const root=realpathSync(mkdtempSync(join(tmpdir(),'employee-shared-history-model-')));try{\n  mkdirSync(join(root,'db/migrations/meta'),{recursive:true});for(const file of readdirSync(join(candidateRoot,'db/migrations')).filter(file=>file.endsWith('.sql')))writeFileSync(join(root,'db/migrations',file),'-- fictional source input\\n');\n  for(const entries of [[],[{tag:'../foreign'}],[journal.entries[0],journal.entries[0]]]){writeFileSync(join(root,'db/migrations/meta/_journal.json'),JSON.stringify({...journal,entries}));assert.throws(()=>singletonSources(unit,root));}\n }finally{rmSync(root,{recursive:true,force:true});}\n"
         },
         {
           "startLine": 22,
-          "endLine": 25,
-          "before": "",
-          "after": " const file='.github/ci/employee-lifecycle-sources.test.mjs',current=readFileSync(new URL('./employee-lifecycle-sources.test.mjs',import.meta.url),'utf8');\n const original=employeeChoiceRestorationSourceInverse(file,current);assert.equal(Buffer.byteLength(original),3512);assert.equal(createHash('sha256').update(original).digest('hex'),'73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196');\n assert.throws(()=>employeeChoiceRestorationSourceInverse(file,current+'\\n'),/current source changed/);\n"
+          "endLine": 31,
+          "before": " for(const missing of [...independentOwners,'db/migrations/'+journal.entries[0].tag+'.sql','db/migrations/'+journal.entries.at(-1).tag+'.sql']){const reduced=EMPLOYEE_LIFECYCLE_SOURCES.filter(file=>file!==missing);assert.notEqual(fingerprint(reduced),fingerprint(EMPLOYEE_LIFECYCLE_SOURCES));assert.throws(()=>assertEmployeeLifecycleSourceClosure(reduced,journal));}\n",
+          "after": " const file='.github/ci/employee-lifecycle-sources.test.mjs',current=readFileSync(new URL('./employee-lifecycle-sources.test.mjs',import.meta.url),'utf8');\n const original=employeeChoiceRestorationSourceInverse(file,current);assert.equal(Buffer.byteLength(original),3512);assert.equal(createHash('sha256').update(original).digest('hex'),'73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196');\n assert.throws(()=>employeeChoiceRestorationSourceInverse(file,current+'\\n'),/current source changed/);\n const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[EMPLOYEE_LIFECYCLE_PROFILE.files[0].file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}},complete=singletonSources(unit,candidateRoot);\n assertEmployeeLifecycleSourceClosure(complete,journal);\n for(const missing of [...independentOwners,'db/migrations/'+journal.entries[0].tag+'.sql','db/migrations/'+journal.entries.at(-1).tag+'.sql']){\n  assert(complete.includes(missing),missing);const reduced=complete.filter(file=>file!==missing);\n  assert.equal(reduced.length,complete.length-1);assert(!reduced.includes(missing));assert.notEqual(fingerprint(reduced),fingerprint(complete));assert.throws(()=>assertEmployeeLifecycleSourceClosure(reduced,journal));\n }\n"
         },
         {
           "startLine": 19,
@@ -1629,7 +1642,8 @@
           "before": "import {readFileSync} from 'node:fs';\n",
           "after": "import {readFileSync,realpathSync,mkdtempSync,mkdirSync,writeFileSync,readdirSync,rmSync} from 'node:fs';\nimport {fileURLToPath} from 'node:url';\nimport {join} from 'node:path';\nimport {tmpdir} from 'node:os';\nimport {employeeChoiceRestorationSourceInverse} from '../../test/performance/employee-choice-restoration-source.ts';\n"
         }
-      ]
+      ],
+      "historicalArchitectureBase": "f3a7b5001329d3731de1e8db469807aceab70cec"
     },
     "historicalWholeParentArchive": {
       "commit": "f3a7b5001329d3731de1e8db469807aceab70cec",
@@ -1648,7 +1662,7 @@
       "encoding": "base64",
       "wholeSource": "aW1wb3J0IHRlc3QgZnJvbSAnbm9kZTp0ZXN0JzsKaW1wb3J0IGFzc2VydCBmcm9tICdub2RlOmFzc2VydC9zdHJpY3QnOwppbXBvcnQge3JlYWRGaWxlU3luY30gZnJvbSAnbm9kZTpmcyc7CmltcG9ydCB7Y3JlYXRlSGFzaH0gZnJvbSAnbm9kZTpjcnlwdG8nOwppbXBvcnQge0VNUExPWUVFX0xJRkVDWUNMRV9QUk9GSUxFfSBmcm9tICcuL2VtcGxveWVlLWxpZmVjeWNsZS1wcm9maWxlLm1qcyc7CmltcG9ydCB7RU1QTE9ZRUVfTElGRUNZQ0xFX1NPVVJDRVMsYXNzZXJ0RW1wbG95ZWVMaWZlY3ljbGVTb3VyY2VDbG9zdXJlfSBmcm9tICcuL2VtcGxveWVlLWxpZmVjeWNsZS1zb3VyY2VzLm1qcyc7CmltcG9ydCB7c2luZ2xldG9uU291cmNlc30gZnJvbSAnLi9zaW5nbGV0b24tcHJvdG9jb2wubWpzJzsKY29uc3Qgam91cm5hbD1KU09OLnBhcnNlKHJlYWRGaWxlU3luYyhuZXcgVVJMKCcuLi8uLi9kYi9taWdyYXRpb25zL21ldGEvX2pvdXJuYWwuanNvbicsaW1wb3J0Lm1ldGEudXJsKSwndXRmOCcpKTsKY29uc3QgaW5kZXBlbmRlbnRPd25lcnM9WycuZ2l0aHViL2NpL3VuaXQtcmVwb3J0LWRpcmVjdG9yaWVzLm1qcycsJy5naXRodWIvY2kvdW5pdC1yZXBvcnQtZGlyZWN0b3JpZXMudGVzdC5tanMnLCd0ZXN0L2NpLXVuaXQtcmVwb3J0LWRpcmVjdG9yeS1jb250cmFjdC50ZXN0LnRzJywnLmdpdGh1Yi9jaS9ydW4tdW5pdC5tanMnLCcuZ2l0aHViL2NpL2VtcGxveWVlLWxpZmVjeWNsZS5tanMnLCcuZ2l0aHViL2NpL2VtcGxveWVlLWxpZmVjeWNsZS1wcm9maWxlLmpzb24nLCcuZ2l0aHViL2NpL2VtcGxveWVlLWxpZmVjeWNsZS1jb250ZXh0Lm1qcycsJy5naXRodWIvY2kvZW1wbG95ZWUtbGlmZWN5Y2xlLXN1cGVydmlzb3IucHknLCcuZ2l0aHViL2NpL2VtcGxveWVlLWxpZmVjeWNsZS1hbHdheXMtc3RvcC5tanMnLCcuZ2l0aHViL2NpL2VtcGxveWVlLXBvc3RncmVzLXBvbGljeS5weScsJy5naXRodWIvY2kvZW1wbG95ZWUtcG9zdGdyZXMtcmVzb3VyY2UucHknLCcuZ2l0aHViL2NpL293bmVkLXByb2Nlc3MucHknLCcuZ2l0aHViL2NpL2VtcGxveWVlLWxpZmVjeWNsZS1hcGkubWpzJywnLmdpdGh1Yi9jaS9lbXBsb3llZS1saWZlY3ljbGUtZXZpZGVuY2UubWpzJywnLmdpdGh1Yi9jaS9lbXBsb3llZS1saWZlY3ljbGUtZXh0cmFjdC5weScsJy5naXRodWIvY2kvZW1wbG95ZWUtbGlmZWN5Y2xlLXdpdG5lc3MubWpzJywnLmdpdGh1Yi9jaS9lbXBsb3llZS1saWZlY3ljbGUtbmF0aXZlLm1qcycsJy5naXRodWIvY2kvZW1wbG95ZWUtbmF0aXZlLWxvZy1jb2RlYy5tanMnLCcuZ2l0aHViL2NpL3JlbGVhc2UtY2kubWpzJywnLmdpdGh1Yi9jaS92ZXJpZnktc2hhcmRzLm1qcycsJ3Rlc3QvcGVyZm9ybWFuY2UvZW1wbG95ZWUtY2hvaWNlLWxpZmVjeWNsZS1hZG1pc3Npb24udHMnLCd0ZXN0L2hlbHBlcnMvY2ktc2luZ2xldG9uLWFkbWlzc2lvbi50cycsJ3Rlc3QvaGFybmVzcy50cycsJ2RiL2NsaWVudC50cycsJ2RiL3NjaGVtYS50cycsJ2RiL21pZ3JhdGlvbnMvbWV0YS9fam91cm5hbC5qc29uJywndGVzdC9maXh0dXJlcy9lbXBsb3llZS1jaG9pY2UtbmF0aXZlLXB1cnBvc2Uuc3FsJywndGVzdC9maXh0dXJlcy9lbXBsb3llZS1jaG9pY2UtZXhhY3QtYXNjaWktcHVycG9zZS5zcWwnLCdjb3JlL2VtcGxveWVlLWNob2ljZS50cycsJ2xpYi9oci1kYXRlLnRzJ107CmNvbnN0IGZpbmdlcnByaW50PXBhdGhzPT5jcmVhdGVIYXNoKCdzaGEyNTYnKS51cGRhdGUoSlNPTi5zdHJpbmdpZnkocGF0aHMubWFwKGZpbGU9PltmaWxlLCdjJy5yZXBlYXQoNjQpXSkpKS5kaWdlc3QoJ2hleCcpOwp0ZXN0KCdhbGwgZml2ZSBzb3VyY2UtcmVnaXN0ZXJlZCB1bml0cyByZXRhaW4gdGhlIGFjdHVhbCBjYW5vbmljYWwgU1FMIGhpc3RvcnkgYW5kIG9uZSBjb21wbGV0ZSBzb3VyY2Ugb3duZXInLCgpPT57CiBmb3IoY29uc3Qgcm93IG9mIEVNUExPWUVFX0xJRkVDWUNMRV9QUk9GSUxFLmZpbGVzKXtjb25zdCB1bml0PXtpZDonZGItJysnYScucmVwZWF0KDE2KSxraW5kOidkYicsZmlsZXM6W3Jvdy5maWxlXSxzaW5nbGV0b246e3ZlcnNpb246MSxwcm9maWxlOidjb250cm9sbGVkLWRhdGFiYXNlLXYxJyx3b3JrZXJzOjEsaXNvbGF0aW9uOidqb2ItcG9zdGdyZXMtY2x1c3Rlcid9fSxzb3VyY2VzPXNpbmdsZXRvblNvdXJjZXModW5pdCk7YXNzZXJ0LmVxdWFsKG5ldyBTZXQoc291cmNlcykuc2l6ZSxzb3VyY2VzLmxlbmd0aCk7YXNzZXJ0RW1wbG95ZWVMaWZlY3ljbGVTb3VyY2VDbG9zdXJlKHNvdXJjZXMsam91cm5hbCk7Zm9yKGNvbnN0IG93bmVyIG9mIGluZGVwZW5kZW50T3duZXJzKWFzc2VydChzb3VyY2VzLmluY2x1ZGVzKG93bmVyKSk7Zm9yKGNvbnN0IGVudHJ5IG9mIGpvdXJuYWwuZW50cmllcylhc3NlcnQoc291cmNlcy5pbmNsdWRlcygnZGIvbWlncmF0aW9ucy8nK2VudHJ5LnRhZysnLnNxbCcpKTtmb3IoY29uc3QgZmlsZSBvZiBbJ2RiL21pZ3JhdGlvbnMvMjMwMV9hdHRlbmRhbmNlX3dvcmtmbG93X3N1Ym1pc3Npb25fc2hhcmVkX2xvY2suc3FsJywnZGIvbWlncmF0aW9ucy8zMTAzX2FjY2Vzc19lZGl0b3JfcHJlc2VudGF0aW9uLnNxbCddKWFzc2VydChzb3VyY2VzLmluY2x1ZGVzKGZpbGUpKTt9Cn0pOwp0ZXN0KCdjb2hlcmVudGx5IHJlaGFzaGVkIG1pc3NpbmcgY3JpdGljYWwgb3duZXJzIG9yIGNhbm9uaWNhbCBTUUwgc3RpbGwgcmVmdXNlIGluZGVwZW5kZW50bHknLCgpPT57CiBmb3IoY29uc3QgbWlzc2luZyBvZiBbLi4uaW5kZXBlbmRlbnRPd25lcnMsJ2RiL21pZ3JhdGlvbnMvJytqb3VybmFsLmVudHJpZXNbMF0udGFnKycuc3FsJywnZGIvbWlncmF0aW9ucy8nK2pvdXJuYWwuZW50cmllcy5hdCgtMSkudGFnKycuc3FsJ10pe2NvbnN0IHJlZHVjZWQ9RU1QTE9ZRUVfTElGRUNZQ0xFX1NPVVJDRVMuZmlsdGVyKGZpbGU9PmZpbGUhPT1taXNzaW5nKTthc3NlcnQubm90RXF1YWwoZmluZ2VycHJpbnQocmVkdWNlZCksZmluZ2VycHJpbnQoRU1QTE9ZRUVfTElGRUNZQ0xFX1NPVVJDRVMpKTthc3NlcnQudGhyb3dzKCgpPT5hc3NlcnRFbXBsb3llZUxpZmVjeWNsZVNvdXJjZUNsb3N1cmUocmVkdWNlZCxqb3VybmFsKSk7fQp9KTsKdGVzdCgnZHVwbGljYXRlZCBzb3VyY2VzIGFuZCBtYWxmb3JtZWQvZHVwbGljYXRlZCBuYXRpdmUgaGlzdG9yeSBjYW5ub3QgcmVkZWZpbmUgdGhlIGNvbXBsZXRlIGNsb3N1cmUnLCgpPT57CiBhc3NlcnQudGhyb3dzKCgpPT5hc3NlcnRFbXBsb3llZUxpZmVjeWNsZVNvdXJjZUNsb3N1cmUoWy4uLkVNUExPWUVFX0xJRkVDWUNMRV9TT1VSQ0VTLEVNUExPWUVFX0xJRkVDWUNMRV9TT1VSQ0VTWzBdXSxqb3VybmFsKSk7CiBmb3IoY29uc3QgZW50cmllcyBvZiBbW10sW3t0YWc6Jy4uL2ZvcmVpZ24nfV0sW2pvdXJuYWwuZW50cmllc1swXSxqb3VybmFsLmVudHJpZXNbMF1dXSlhc3NlcnQudGhyb3dzKCgpPT5hc3NlcnRFbXBsb3llZUxpZmVjeWNsZVNvdXJjZUNsb3N1cmUoRU1QTE9ZRUVfTElGRUNZQ0xFX1NPVVJDRVMse2VudHJpZXN9KSk7Cn0pOwo="
     },
-    "claims": "Only the model row recomposed; other 10 serialized rows, base, kind and parent hashes remain exact. Existing helper regression is model-only; no observed model native crash claim."
+    "claims": "Only current model row recomposed against actual whole ee572 Git bytes; other 10 serialized DD899 rows, base, kind and original parent hashes whole. Exact original DD899 map reference in correction provenance; historical f3a7 whole map archive retained unchanged."
   },
   "wholeParentInverses": [
     {
@@ -1667,7 +1681,7 @@
         "sha256": "7abfdcf1bee8f0714f5454beda4f512bd74120a368c34c638c5a4c5ecd319693",
         "gitBlob": "4f1fc54f60eab965bff9a87210811c69c7323620"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/browser-recovery.mjs",
@@ -1685,7 +1699,7 @@
         "sha256": "a918b628bd35d0afcf05675361c5fcab3b80f3ecfd4d829ec9683bb895c39d8f",
         "gitBlob": "165664e2800e0b776cf982e8a142baae16bb41b8"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/browser-recovery.test.mjs",
@@ -1699,11 +1713,11 @@
       },
       "current": {
         "path": ".github/ci/browser-recovery.test.mjs",
-        "bytes": 17088,
-        "sha256": "4d927ee84e4948f4d8c2e0a99d58a9ffb8bb518b6673e358aabb0dc9bfa773c0",
-        "gitBlob": "a2282daaa80c64cf30e8a45eb66553924acaf1ed"
+        "bytes": 17220,
+        "sha256": "7cda9620ca886b3c86a3f7aa93c0c9a68c89cc4d3154630f94b4b2c664582bd6",
+        "gitBlob": "87f5e88779e15056b9049a984b1c4f4dd4e939d4"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/ci.test.mjs",
@@ -1717,11 +1731,11 @@
       },
       "current": {
         "path": ".github/ci/ci.test.mjs",
-        "bytes": 67939,
-        "sha256": "a03f602f3d06aa5e8af522dfc1eb84565f89c6785738cfca37e005da8bfd5016",
-        "gitBlob": "d540baceefc46a7ce34feddecb8ccaf97ff335f8"
+        "bytes": 68071,
+        "sha256": "d5921d67e4b1a290ca8afa40c80dc1823d742fb41b93876742673fd8bdcc65f5",
+        "gitBlob": "109d5738665781e4c89eb18eb142e9959de81870"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/employee-lifecycle-sources.test.mjs",
@@ -1735,11 +1749,11 @@
       },
       "current": {
         "path": ".github/ci/employee-lifecycle-sources.test.mjs",
-        "bytes": 7082,
-        "sha256": "647c3553bcdb3554be2ddc24c6e042aea497b286e86ea7736c0aec9d5b4df6eb",
-        "gitBlob": "d4e44b76bc0cbb6a5c658fbcbf3227eccd4917b7"
+        "bytes": 7478,
+        "sha256": "1fa4bacd24d84a852615ae3f82939feb4da67b1a1b983202babf45006e10dec1",
+        "gitBlob": "44e65a27b9769c88adf6dd174e9e4b2cd940a8be"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/employee-lifecycle.mjs",
@@ -1757,7 +1771,7 @@
         "sha256": "f15c7e8524c6153cf0eda7598c6de7b044620b813b81b273af47f177a3039ea2",
         "gitBlob": "db52687395f1607f8ed4170a8b6bc8f6861e9853"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/focused-recovery-policy.mjs",
@@ -1775,7 +1789,7 @@
         "sha256": "ec9294aa9eeff7550f5e8bef44815e24176434e735df54af2499c88fbc806c10",
         "gitBlob": "a7351501b81ce1c94c0e76d320663c6d924e683b"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/focused-recovery.mjs",
@@ -1793,7 +1807,7 @@
         "sha256": "ccda3a69606df6db8db26569e54a6cd66d1ee8fd14f04eb9f2d1c39d2acd2198",
         "gitBlob": "7aea7734de1d19c0a4fd92e09b1e929618211f2d"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/focused-recovery.test.mjs",
@@ -1807,11 +1821,11 @@
       },
       "current": {
         "path": ".github/ci/focused-recovery.test.mjs",
-        "bytes": 12711,
-        "sha256": "364ede08672a6b1a64bab7cd32e5e6cdec137dab95d0f49b17ee73131879d313",
-        "gitBlob": "2423b6ea380b7fea164c3d110faa93ea6dd00866"
+        "bytes": 12843,
+        "sha256": "d3c929b80c4b3bea6e0a0641644a7369c865e10e03e1ea6cee251c05dcd0904d",
+        "gitBlob": "0d3f52cec068792368cd4d22756c9ebe932826c9"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/native-next-build-packet.test.mjs",
@@ -1829,7 +1843,7 @@
         "sha256": "6e449ab9884beb3898459df5af44c7047a35bc1265fd06428a3b072301daf0d9",
         "gitBlob": "5ddb340a1f97aff0c76b9f5e0672db8bf103e909"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/plan.mjs",
@@ -1847,7 +1861,7 @@
         "sha256": "83ed8d67ae92af8f7b3fdf8532ed9833db7160d2aec618ae395c58fbbc36a11d",
         "gitBlob": "36aa405c661765fb9350000e46192db1e4dc95eb"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/release-ci.mjs",
@@ -1865,7 +1879,7 @@
         "sha256": "c60aafe3ea7025e244ee1332499dab0e60f4f51a8a8d2ba60d6cd7a29a95fad6",
         "gitBlob": "c97ef28a741216ea2c679de86dfbbd4f0a0bd988"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/release-policy.mjs",
@@ -1883,7 +1897,7 @@
         "sha256": "46516a5ffc5f5643853be6315fce49ebae0845f06b347e98754bf28141b9fef8",
         "gitBlob": "06f3cae91eeb0af03b6ae660ce0865e3e51aa94d"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/release-policy.test.mjs",
@@ -1897,11 +1911,11 @@
       },
       "current": {
         "path": ".github/ci/release-policy.test.mjs",
-        "bytes": 16743,
-        "sha256": "999cc27c3c6183e71ed07b166811c63a0cb2071065d572c293146ac09ab3d553",
-        "gitBlob": "d90383cd150ad66b519c64ad7388d2d2814eb94b"
+        "bytes": 16875,
+        "sha256": "20de7f889970c8a5da6cbdd8c16478267e04d5c41059698e330bf623daf2c37f",
+        "gitBlob": "3128d9a789c7fa39ea452ecd36c588d177e1f51a"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/repair-recovery-policy.mjs",
@@ -1919,7 +1933,7 @@
         "sha256": "465cdcc0bc692b9e29bec20f121db9c34f2e6e4bd580360cc46b0bb518255855",
         "gitBlob": "03541e4557b3381adcb0c2eab6afab794548c279"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/repair-recovery.mjs",
@@ -1937,7 +1951,7 @@
         "sha256": "61a30bade9cf7b2b84849ba5efc7d69a356d43b681e1a1a08a418a2c8d692e6a",
         "gitBlob": "5ed944e66db092ea3ee1bbdf192ca8f2b045484d"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/repair-recovery.test.mjs",
@@ -1951,11 +1965,11 @@
       },
       "current": {
         "path": ".github/ci/repair-recovery.test.mjs",
-        "bytes": 20804,
-        "sha256": "e58b2e6019d646c35619648f7beef79837e5a82d8303096ca4a6ec6bc37b1509",
-        "gitBlob": "8276a539478b4aded65e864a40d06edcc07b35d6"
+        "bytes": 20936,
+        "sha256": "25160e12364d2ee03b375f2d769b5fe5fa19e11d41818bd5e74be821d4defbe7",
+        "gitBlob": "34504f027571ab8a2d19a38300f47d83bac10ab9"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/resume-assessment.mjs",
@@ -1973,7 +1987,7 @@
         "sha256": "5c597d62eb23ac0198ceae35a421b8d4bdebc7938204abc544513817837d465d",
         "gitBlob": "7b1639391ebbde6bd4e6508f27eff9a65b24759f"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/resume-assessment.test.mjs",
@@ -1987,11 +2001,11 @@
       },
       "current": {
         "path": ".github/ci/resume-assessment.test.mjs",
-        "bytes": 7906,
-        "sha256": "b36a6d04cc80563e33d48f32af0b7640932bb350330e9e652f0bbfe18d86d624",
-        "gitBlob": "020303a9c4ec0da0dc8f40e20cf8ff4cc609a6b1"
+        "bytes": 8038,
+        "sha256": "3fd27639f250d2a9e36e11e4171a1a3f87988aa5a9520d796d190b1fbd09b164",
+        "gitBlob": "cc377c03d0a9dc83faef71480a4107870ce73021"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/resume-repair.mjs",
@@ -2009,7 +2023,7 @@
         "sha256": "2b573bd04ed773860479b3d32d1b7ef50a027921e763492e0e56b19eec0d4712",
         "gitBlob": "aa1b90cd896fdae1bcbc4a7fbc08e5c1c2d15ea9"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/resume-repair.test.mjs",
@@ -2023,11 +2037,11 @@
       },
       "current": {
         "path": ".github/ci/resume-repair.test.mjs",
-        "bytes": 11316,
-        "sha256": "2d1d53a83190e352e24aa897464eca3eecb12c55eabd5a5af010cc2b69349729",
-        "gitBlob": "1e3bf97bc9b3d3632e90d562afc1c7d7004b4513"
+        "bytes": 11448,
+        "sha256": "c4e92b8afd52899905da012eac02978dcd9d818595763214d3fac1e7f286a386",
+        "gitBlob": "e02125d9b24517c849e4ae12293f3a575f3e333b"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/resume-source.mjs",
@@ -2045,7 +2059,7 @@
         "sha256": "4b3bd302eac0ba0fb860be62358c92ae6e820e4875d8177d5cbc5ea36f3d3af7",
         "gitBlob": "a86e407c2db7d1048f9ad11aed7c75fb9ca43cfa"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/resume-source.test.mjs",
@@ -2059,11 +2073,11 @@
       },
       "current": {
         "path": ".github/ci/resume-source.test.mjs",
-        "bytes": 12734,
-        "sha256": "a845b14ab582482488c1ce40a28d8bda9b3c9b75e73bcedb20bda796cd4415de",
-        "gitBlob": "db18b836dee493dba4991de88d54f849ba914662"
+        "bytes": 12866,
+        "sha256": "9c7d1f108e3796cfdf1ce1c70439a6b01f0f300c309564796af2b4acffc17587",
+        "gitBlob": "f4aca2170ba0b59994c1e69deb878b7fc8fc1a3f"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/singleton-commissioning.mjs",
@@ -2081,7 +2095,7 @@
         "sha256": "5ff3087c15f4d5f285b74116305b994b2d287158b6b1fecf7764d53dde8ca4b5",
         "gitBlob": "bf99774fe1c9d24050c7956effed5f4bb413848d"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/singleton-commissioning.test.mjs",
@@ -2099,7 +2113,7 @@
         "sha256": "05839eb701adecaf83f0ee69b817d24d1b9081fc1d5e966c30643cc7f28c203a",
         "gitBlob": "6cf1122d0d40a8b2bef4e94470bfe29cc3be220f"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/singleton-profiles.mjs",
@@ -2117,7 +2131,7 @@
         "sha256": "ba087f8f9799b1f7f2c436cf613b4c6b373dac07c7382e9017ecb534c28befd3",
         "gitBlob": "4d42d178d354853979425e17057ea15a5e653e51"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/singleton-profiles.test.mjs",
@@ -2131,11 +2145,11 @@
       },
       "current": {
         "path": ".github/ci/singleton-profiles.test.mjs",
-        "bytes": 46119,
-        "sha256": "0b850eb8809914f7af640dd0c917e2b42216a7acd6a6760df1d8ad6a45e567cd",
-        "gitBlob": "6905c9d8efd77aa7881538bd101ddc8d17290885"
+        "bytes": 46364,
+        "sha256": "c11e0234262c0734d8473f4f6ea32113843f14e73e692617c4619c8a6819a57f",
+        "gitBlob": "27c63a03e68e2ecc2322fc466d1f4db5a6e96d3f"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/singleton-protocol.mjs",
@@ -2153,7 +2167,7 @@
         "sha256": "a5b02e31304383880ccac5773b76cec0334a44de6683d8f7869e3a95bf40fb92",
         "gitBlob": "1d7e404f250230b4590d5e0064f44157ab8ada77"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": ".github/ci/verify-shards.mjs",
@@ -2171,7 +2185,7 @@
         "sha256": "b3bb8d8d9f44672216ae3458d921d6362318e96844e4688a92926b4ae9eff596",
         "gitBlob": "22f630e5728467b22b1104fb3b8ff70edcda2746"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
@@ -2185,11 +2199,11 @@
       },
       "current": {
         "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
-        "bytes": 139341,
-        "sha256": "ce3a2734553abd53f5c4274b89ced5ff339a33a89cc9e354687f8921e4232d1a",
-        "gitBlob": "3c2fd933a10c5c1af2e36ba39b2edae8551a7f5b"
+        "bytes": 140478,
+        "sha256": "335922aa54bbcbf2a3446c298674762a6992e18438d4025c6ba07c61d67dcd3f",
+        "gitBlob": "c98644e76cafddce76339041bb68a57b99bf0c55"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
     {
       "path": "test/helpers/ci-singleton-admission.ts",
@@ -2207,7 +2221,7 @@
         "sha256": "f87d1a97de3ecaae5e5e77b195f4dff673c7fe43b3f684f4abcf256a98e8313c",
         "gitBlob": "397e59483117b6a8e8ebc1be9fbf67070df4455e"
       },
-      "inverse": "Restore the entire original byte sequence, never execute it."
+      "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     }
   ],
   "historicalEvidenceUnchanged": [
@@ -2284,13 +2298,13 @@
   ],
   "verification": {
     "sourceChecksOnly": [
-      "External Babel parsed 30 edited JS/TS files without importing repository modules",
-      "External AST census retained all 205 callback definitions and exact title expressions across 22 model files",
-      "External literal/data derivation retained every specialized component and computed all 27 source membership lists",
-      "Git/data hashing verified exact canonical 747 journal entries, 749 physical regular tracked SQL inputs and raw journal bytes",
-      "External data inversion reconstructed the exact whole 3512-byte ee572 model and retained other 10 map row byte slices"
+      "External Babel source parsing; no repository imports or execution",
+      "All 205 callback definitions/title expressions and 51 generated singleton cases retained",
+      "All 27 actual membership path sets and specialized component literals retained",
+      "All 11 active map rows reconstruct actual whole ee572 Git originals; other 10 serialized row bytes unchanged",
+      "All 31 current source/map pins and immutable historical f3a7 whole preimages verified; immediate DD899 whole source refs in correction provenance"
     ],
-    "repositoryTests": "UNRUN",
+    "repositoryTests": "UNRUN_FOR_THIS_CHILD; ORIGINAL_DD899_COURSES_BOTH_FAIL",
     "browserPreflight": "UNRUN",
     "workerComparisons2_4_8": "UNRUN",
     "zeroBusyCrashesBlockingLocks": "UNPROVEN",
@@ -2322,11 +2336,23 @@
       "test/employee-choice-native-owner-factory-source.test.ts",
       "test/employee-choice-exact-ascii-owner-source.test.ts"
     ],
-    "selectorNote": "All existing callbacks/generator cases run. Two unchanged factory-source files contain six existing regression cases. Exact hosted run/controller/source/baseline/plan remains root-owned and unselected here."
+    "selectorNote": "Existing selectors only; all existing callbacks and generator cases retained. Root owns affected hosted retries after full frozen root and different-peer review. Original DD899 failures remain failures; no native commissioning or release result."
   },
   "pendingIntegration": [
     "Future AI leaf lib/ai/management-sections.ts does not exist in this f3a7 source; a later root-owned merge must extend/requalify the actual source graph.",
     "Freshly fetched main/alpha moved independently after base selection; this lease intentionally preserves the exact root-approved f3a7 base and does not merge unrelated live refs."
   ],
-  "recordSelfReferenceRule": "These two new source-only records are outside runtime source membership. The existing 31 edited paths are fully byte-pinned; index/closure final commit identity is supplied by Git outside their own bytes, avoiding a record hash cycle."
+  "recordSelfReferenceRule": "Existing closure/index and new small provenance are outside runtime membership. All 31 existing architecture paths are current byte-pinned; immediate DD899 preimages are immutable Git refs, historical f3a7 whole preimages retained. Current commit identity supplied externally by Git; no record hash cycle.",
+  "fixtureRecoveryProvenance": {
+    "current": {
+      "path": "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json",
+      "bytes": 17979,
+      "sha256": "06791cca8ffed3d82a8a49c2885305c0aa7c2a52f84778307cc0a1adb430e137",
+      "gitBlob": "3ea6f449648b49da76b94060b094ad8ab92ee8fb"
+    },
+    "originalCourses": "BOTH_FAIL_ORIGINAL_IDENTITIES_RETAINED",
+    "currentChildHostedStatus": "UNRUN",
+    "currentRootAndDifferentPeerReview": "PENDING"
+  },
+  "reviewProvenanceStatus": "Existing six design/source review references are historical source provenance only; they do not approve this fixture-recovery child."
 }

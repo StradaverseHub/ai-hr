@@ -23,7 +23,12 @@ test('coherently rehashed missing critical owners or canonical SQL still refuse 
  const file='.github/ci/employee-lifecycle-sources.test.mjs',current=readFileSync(new URL('./employee-lifecycle-sources.test.mjs',import.meta.url),'utf8');
  const original=employeeChoiceRestorationSourceInverse(file,current);assert.equal(Buffer.byteLength(original),3512);assert.equal(createHash('sha256').update(original).digest('hex'),'73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196');
  assert.throws(()=>employeeChoiceRestorationSourceInverse(file,current+'\n'),/current source changed/);
- for(const missing of [...independentOwners,'db/migrations/'+journal.entries[0].tag+'.sql','db/migrations/'+journal.entries.at(-1).tag+'.sql']){const reduced=EMPLOYEE_LIFECYCLE_SOURCES.filter(file=>file!==missing);assert.notEqual(fingerprint(reduced),fingerprint(EMPLOYEE_LIFECYCLE_SOURCES));assert.throws(()=>assertEmployeeLifecycleSourceClosure(reduced,journal));}
+ const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[EMPLOYEE_LIFECYCLE_PROFILE.files[0].file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}},complete=singletonSources(unit,candidateRoot);
+ assertEmployeeLifecycleSourceClosure(complete,journal);
+ for(const missing of [...independentOwners,'db/migrations/'+journal.entries[0].tag+'.sql','db/migrations/'+journal.entries.at(-1).tag+'.sql']){
+  assert(complete.includes(missing),missing);const reduced=complete.filter(file=>file!==missing);
+  assert.equal(reduced.length,complete.length-1);assert(!reduced.includes(missing));assert.notEqual(fingerprint(reduced),fingerprint(complete));assert.throws(()=>assertEmployeeLifecycleSourceClosure(reduced,journal));
+ }
 });
 test('duplicated sources and malformed/duplicated native history cannot redefine the complete closure',()=>{
  assert.throws(()=>assertEmployeeLifecycleSourceClosure([...EMPLOYEE_LIFECYCLE_SOURCES,EMPLOYEE_LIFECYCLE_SOURCES[0]],journal));

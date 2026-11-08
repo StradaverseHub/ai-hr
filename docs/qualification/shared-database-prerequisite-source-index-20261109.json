@@ -1,16 +1,16 @@
 {
   "kind": "SHARED_DATABASE_PREREQUISITE_SOURCE_INDEX_NOT_RUNTIME_OR_RELEASE",
   "schemaVersion": 1,
-  "sourceParentCommit": "f3a7b5001329d3731de1e8db469807aceab70cec",
-  "existingReviewedSourceSetSha256": "0f0cd1c02c08efd60a96a3def766c928c0759f317279162f4ffe6bb9a4940907",
+  "sourceParentCommit": "dd899f911fc90170c4af2d90a1fd42b10ce8afd1",
+  "existingReviewedSourceSetSha256": "6f93daf35de8eaba4172529d0319537cb7ec0f92b38b46f7a668add3ef21449c",
   "releaseAuthorized": false,
   "checksExecuted": false,
   "sourceChecksOnly": true,
   "closure": {
     "path": "docs/qualification/shared-database-prerequisite-source-closure-20261109.json",
-    "bytes": 1104829,
-    "sha256": "e12b04ee821bb9814b93f7479da180d117e346a22ec22e35e485d7c80b4321e6",
-    "gitBlob": "ee62a7de6bd8621fdb2d8f9f44a8a5a789c8aea0"
+    "bytes": 1111079,
+    "sha256": "a56e9e71523e0f5f925223809184103dc6b4d64a05f9003910ff66923b5dbb9a",
+    "gitBlob": "83863f17632acaf3e9940569acca4a49cee2e46b"
   },
   "selfHashExcluded": true,
   "productionContracts": [
@@ -32,7 +32,8 @@
         "gitBlob": "1d7e404f250230b4590d5e0064f44157ab8ada77"
       },
       "historicalDesignSourceSha256": "9f5411fbe5cc92c2e43c871dec6981291302d32314a75b30eb3f370878d23c6c",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/plan.mjs",
@@ -52,7 +53,8 @@
         "gitBlob": "36aa405c661765fb9350000e46192db1e4dc95eb"
       },
       "historicalDesignSourceSha256": "c8579a354b03654e453f83990561255f28217110ee1d6a14d3e19510830d2952",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/singleton-profiles.mjs",
@@ -72,7 +74,8 @@
         "gitBlob": "4d42d178d354853979425e17057ea15a5e653e51"
       },
       "historicalDesignSourceSha256": "b1edfd129049b0a027675ff1888a1481f8f023f011652070079f227d421a32cb",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/employee-lifecycle.mjs",
@@ -92,7 +95,8 @@
         "gitBlob": "db52687395f1607f8ed4170a8b6bc8f6861e9853"
       },
       "historicalDesignSourceSha256": "36355f4cb6b359f79a69ee5dca5afba28c0b08c971cc6d99b32946b0a5620c6b",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": "test/helpers/ci-singleton-admission.ts",
@@ -112,7 +116,8 @@
         "gitBlob": "397e59483117b6a8e8ebc1be9fbf67070df4455e"
       },
       "historicalDesignSourceSha256": "e8fe3d04b3aca8c25960d0faaa6f674adb192ecdd49fde76ca5c4cc1a9dfbfb8",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/verify-shards.mjs",
@@ -132,7 +137,8 @@
         "gitBlob": "22f630e5728467b22b1104fb3b8ff70edcda2746"
       },
       "historicalDesignSourceSha256": "2117efbd40830b9cb6439093803d46167e98bd62eacf9f21e27007a6aee39236",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/release-ci.mjs",
@@ -152,7 +158,8 @@
         "gitBlob": "c97ef28a741216ea2c679de86dfbbd4f0a0bd988"
       },
       "historicalDesignSourceSha256": "9f1809ee5b302b5074f40089febaaee1bed385199bd08b1e959fe2767642b4b8",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/release-policy.mjs",
@@ -172,7 +179,8 @@
         "gitBlob": "06f3cae91eeb0af03b6ae660ce0865e3e51aa94d"
       },
       "historicalDesignSourceSha256": "b765b495801c2211af68fd76108cfa8630b6c58c142680c8d0363a43063e73fb",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/singleton-commissioning.mjs",
@@ -192,7 +200,8 @@
         "gitBlob": "bf99774fe1c9d24050c7956effed5f4bb413848d"
       },
       "historicalDesignSourceSha256": "3b793c3cf660179acff986a0b515ce951ad2785a678dfcc26f98afef0d53b166",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/resume-assessment.mjs",
@@ -212,7 +221,8 @@
         "gitBlob": "7b1639391ebbde6bd4e6508f27eff9a65b24759f"
       },
       "historicalDesignSourceSha256": "cfd0925b969bfb46455c317508c188bd26754725013c01ba39db2b1574f623a9",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/resume-source.mjs",
@@ -232,7 +242,8 @@
         "gitBlob": "a86e407c2db7d1048f9ad11aed7c75fb9ca43cfa"
       },
       "historicalDesignSourceSha256": "65a2e1d30e3e858d2a6f28f9844363ffc3879164b2d95d96d97cf5a53faafae0",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/resume-repair.mjs",
@@ -252,7 +263,8 @@
         "gitBlob": "aa1b90cd896fdae1bcbc4a7fbc08e5c1c2d15ea9"
       },
       "historicalDesignSourceSha256": "1357d518f835be1fcd7e2ffdfd3329d4e7f968f81d0bdd801866651c2ff55f97",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/focused-recovery-policy.mjs",
@@ -272,7 +284,8 @@
         "gitBlob": "a7351501b81ce1c94c0e76d320663c6d924e683b"
       },
       "historicalDesignSourceSha256": "926011ee66bbee8644ca8671789a12e661ff7cfd62eb908c854a8ae28beb606f",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/focused-recovery.mjs",
@@ -292,7 +305,8 @@
         "gitBlob": "7aea7734de1d19c0a4fd92e09b1e929618211f2d"
       },
       "historicalDesignSourceSha256": "48bf1cd87a8c6f8d0f8c3db390ca60214521482f54a04cb05cb02f9974c5000b",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/browser-recovery-policy.mjs",
@@ -312,7 +326,8 @@
         "gitBlob": "4f1fc54f60eab965bff9a87210811c69c7323620"
       },
       "historicalDesignSourceSha256": "c64552a390990a572e0d9104ed869886f214d145aa9aee9a201e173e8b5aae45",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/browser-recovery.mjs",
@@ -332,7 +347,8 @@
         "gitBlob": "165664e2800e0b776cf982e8a142baae16bb41b8"
       },
       "historicalDesignSourceSha256": "66f5c28373bf79150642d18bd7ca7ad91ef6b69c3ef574be098cf5a596d895db",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/repair-recovery-policy.mjs",
@@ -352,7 +368,8 @@
         "gitBlob": "03541e4557b3381adcb0c2eab6afab794548c279"
       },
       "historicalDesignSourceSha256": "f7fa58cd7e1f0577f464ad9896a80fcd3e85d9a8da1023fd970d54382fc919a6",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     },
     {
       "file": ".github/ci/repair-recovery.mjs",
@@ -372,7 +389,8 @@
         "gitBlob": "5ed944e66db092ea3ee1bbdf192ca8f2b045484d"
       },
       "historicalDesignSourceSha256": "bc0fe06b6ca91afa8956115fd9f1caa7825997da4ecec48f6e0d301afd2aea7f",
-      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa"
+      "historicalDesignSourceCommit": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "unchangedFromImmediateParent": true
     }
   ],
   "modelCensus": [
@@ -380,29 +398,24 @@
       "path": ".github/ci/browser-recovery.test.mjs",
       "beforeCount": 10,
       "currentCount": 10,
-      "changed": [
-        {
-          "beforeLine": 28,
-          "currentLine": 52,
-          "title": "'Complete Firefox replacement preserves original failure, all retained sources and both plan fingerprints'"
-        }
-      ],
-      "parentSha256": "b093709f7bc9df58809c5d56769855c608e4e92c57d54184761bb262caca1d86",
+      "changed": [],
+      "parentSha256": "4d927ee84e4948f4d8c2e0a99d58a9ffb8bb518b6673e358aabb0dc9bfa773c0",
       "current": {
         "path": ".github/ci/browser-recovery.test.mjs",
-        "bytes": 17088,
-        "sha256": "4d927ee84e4948f4d8c2e0a99d58a9ffb8bb518b6673e358aabb0dc9bfa773c0",
-        "gitBlob": "a2282daaa80c64cf30e8a45eb66553924acaf1ed"
+        "bytes": 17220,
+        "sha256": "7cda9620ca886b3c86a3f7aa93c0c9a68c89cc4d3154630f94b4b2c664582bd6",
+        "gitBlob": "87f5e88779e15056b9049a984b1c4f4dd4e939d4"
       },
       "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         28,
         39,
         52,
         60
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "b093709f7bc9df58809c5d56769855c608e4e92c57d54184761bb262caca1d86"
     },
     {
       "path": ".github/ci/build-artifact.test.mjs",
@@ -417,9 +430,10 @@
         "gitBlob": "8c51213b0d03e8a68d4e373134935d9555d1a102"
       },
       "editedFile": false,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [],
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "970842a14c6deba12ba97d1471303ee64de03e106fce74802bd20312d0634154"
     },
     {
       "path": ".github/ci/build-source-binding.test.mjs",
@@ -434,9 +448,10 @@
         "gitBlob": "76ed3193adbb1fc3e54128c050e1bd41143fc807"
       },
       "editedFile": false,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [],
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "670f5bdb5db783f5067b1e0534ee77f02177c72c567e799472cdd396e82f0989"
     },
     {
       "path": ".github/ci/candidate-environment.test.mjs",
@@ -451,37 +466,33 @@
         "gitBlob": "540dc0affae1fd7500557b6d04eaf5c7ceffe7ab"
       },
       "editedFile": false,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [],
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "60eef6b180fb6eb8ec1dbbd0ecc4bee0e43b50a68ad82146f4e30e6d303d4340"
     },
     {
       "path": ".github/ci/ci.test.mjs",
       "beforeCount": 26,
       "currentCount": 26,
-      "changed": [
-        {
-          "beforeLine": 12,
-          "currentLine": 37,
-          "title": "'Complete execution retains exact candidate and controller identity'"
-        }
-      ],
-      "parentSha256": "145a5ab12b2995199899b87f3fb1de227d4ff16cb3b3ac7ffeb829a1aea527d4",
+      "changed": [],
+      "parentSha256": "a03f602f3d06aa5e8af522dfc1eb84565f89c6785738cfca37e005da8bfd5016",
       "current": {
         "path": ".github/ci/ci.test.mjs",
-        "bytes": 67939,
-        "sha256": "a03f602f3d06aa5e8af522dfc1eb84565f89c6785738cfca37e005da8bfd5016",
-        "gitBlob": "d540baceefc46a7ce34feddecb8ccaf97ff335f8"
+        "bytes": 68071,
+        "sha256": "d5921d67e4b1a290ca8afa40c80dc1823d742fb41b93876742673fd8bdcc65f5",
+        "gitBlob": "109d5738665781e4c89eb18eb142e9959de81870"
       },
       "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         12,
         22,
         23,
         39
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "145a5ab12b2995199899b87f3fb1de227d4ff16cb3b3ac7ffeb829a1aea527d4"
     },
     {
       "path": ".github/ci/employee-lifecycle-context.test.mjs",
@@ -496,9 +507,10 @@
         "gitBlob": "48eb054f8b44cec868d8a73fc6b4d02410d0a93a"
       },
       "editedFile": false,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [],
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "589c079c57de3bdb9a41db2a0cd0e4c1c7457cbea1da34fa7bdb9f993bf11bab"
     },
     {
       "path": ".github/ci/employee-lifecycle-operational.test.mjs",
@@ -513,9 +525,10 @@
         "gitBlob": "d9d83bf8a2a93b3dccf91dd52f3f64dde3ca6510"
       },
       "editedFile": false,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [],
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "757b78b9accec94ca81c5681d77a0290a9477e8e842d2bb87e31d18d2808a72a"
     },
     {
       "path": ".github/ci/employee-lifecycle-sources.test.mjs",
@@ -523,36 +536,27 @@
       "currentCount": 3,
       "changed": [
         {
-          "beforeLine": 14,
-          "currentLine": 19,
-          "title": "'all five source-registered units retain the actual canonical SQL history and one complete source owner'"
-        },
-        {
-          "beforeLine": 17,
+          "beforeLine": 22,
           "currentLine": 22,
           "title": "'coherently rehashed missing critical owners or canonical SQL still refuse independently'"
-        },
-        {
-          "beforeLine": 20,
-          "currentLine": 28,
-          "title": "'duplicated sources and malformed/duplicated native history cannot redefine the complete closure'"
         }
       ],
-      "parentSha256": "e1bf0d3e07420da90b330bfd9d19deaf73dbdc1fe29f1cb323e0dfe89ba17dbf",
+      "parentSha256": "647c3553bcdb3554be2ddc24c6e042aea497b286e86ea7736c0aec9d5b4df6eb",
       "current": {
         "path": ".github/ci/employee-lifecycle-sources.test.mjs",
-        "bytes": 7082,
-        "sha256": "647c3553bcdb3554be2ddc24c6e042aea497b286e86ea7736c0aec9d5b4df6eb",
-        "gitBlob": "d4e44b76bc0cbb6a5c658fbcbf3227eccd4917b7"
+        "bytes": 7478,
+        "sha256": "1fa4bacd24d84a852615ae3f82939feb4da67b1a1b983202babf45006e10dec1",
+        "gitBlob": "44e65a27b9769c88adf6dd174e9e4b2cd940a8be"
       },
       "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         11,
         14,
         17
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "e1bf0d3e07420da90b330bfd9d19deaf73dbdc1fe29f1cb323e0dfe89ba17dbf"
     },
     {
       "path": ".github/ci/employee-lifecycle-witness.test.mjs",
@@ -567,62 +571,53 @@
         "gitBlob": "65bf6d3f29cc572ba42af63a4264d9a65b6428e4"
       },
       "editedFile": false,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [],
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "a4a10412046eb54e0346e04ea8e7a908497fe54f1a90f7281aa9507e299c6542"
     },
     {
       "path": ".github/ci/focused-recovery.test.mjs",
       "beforeCount": 7,
       "currentCount": 7,
-      "changed": [
-        {
-          "beforeLine": 26,
-          "currentLine": 50,
-          "title": "'Recovery retains every successful unit and every original failure without mutating reports'"
-        }
-      ],
-      "parentSha256": "bbd90b067364307b7736020c7b33802c6a0a6f9a9cbc9dd436a54504264b2da8",
+      "changed": [],
+      "parentSha256": "364ede08672a6b1a64bab7cd32e5e6cdec137dab95d0f49b17ee73131879d313",
       "current": {
         "path": ".github/ci/focused-recovery.test.mjs",
-        "bytes": 12711,
-        "sha256": "364ede08672a6b1a64bab7cd32e5e6cdec137dab95d0f49b17ee73131879d313",
-        "gitBlob": "2423b6ea380b7fea164c3d110faa93ea6dd00866"
+        "bytes": 12843,
+        "sha256": "d3c929b80c4b3bea6e0a0641644a7369c865e10e03e1ea6cee251c05dcd0904d",
+        "gitBlob": "0d3f52cec068792368cd4d22756c9ebe932826c9"
       },
       "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         26,
         46,
         58,
         64
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "bbd90b067364307b7736020c7b33802c6a0a6f9a9cbc9dd436a54504264b2da8"
     },
     {
       "path": ".github/ci/native-next-build-packet.test.mjs",
       "beforeCount": 9,
       "currentCount": 9,
-      "changed": [
-        {
-          "beforeLine": 63,
-          "currentLine": 65,
-          "title": "'privileged helper closure is finite, committed on both sides and sealed before returning candidate hints'"
-        }
-      ],
-      "parentSha256": "be8dbd454af4f4e5894ad2ecd87ef55b0847121565a6adb7b64e2edb277b9727",
+      "changed": [],
+      "parentSha256": "6e449ab9884beb3898459df5af44c7047a35bc1265fd06428a3b072301daf0d9",
       "current": {
         "path": ".github/ci/native-next-build-packet.test.mjs",
         "bytes": 10365,
         "sha256": "6e449ab9884beb3898459df5af44c7047a35bc1265fd06428a3b072301daf0d9",
         "gitBlob": "5ddb340a1f97aff0c76b9f5e0672db8bf103e909"
       },
-      "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "editedFile": false,
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         63
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "be8dbd454af4f4e5894ad2ecd87ef55b0847121565a6adb7b64e2edb277b9727"
     },
     {
       "path": ".github/ci/next-application-cache.test.mjs",
@@ -637,9 +632,10 @@
         "gitBlob": "7c691184b8a723a94b2448860928a179dd20e601"
       },
       "editedFile": false,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [],
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "83604e6facaf8a059892f59056fb736b8491582fbbaa49c5d54b0dcb29ee7a86"
     },
     {
       "path": ".github/ci/prefetch-ci.test.mjs",
@@ -654,37 +650,33 @@
         "gitBlob": "9a0b2440aae268a6d2be58196fc114e8e2c440f4"
       },
       "editedFile": false,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [],
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "f97d0abc37c476ada719ade37aebfa7d46c5272a6a0837ff7abc72e6fa0d8823"
     },
     {
       "path": ".github/ci/release-policy.test.mjs",
       "beforeCount": 20,
       "currentCount": 20,
-      "changed": [
-        {
-          "beforeLine": 28,
-          "currentLine": 64,
-          "title": "'A complete same-policy witness validates without creating any local full receipt'"
-        }
-      ],
-      "parentSha256": "ff444f29d584ffa0f4a057bc40a61f23243ff1095806dd0ed4e2c2488c00a1e9",
+      "changed": [],
+      "parentSha256": "999cc27c3c6183e71ed07b166811c63a0cb2071065d572c293146ac09ab3d553",
       "current": {
         "path": ".github/ci/release-policy.test.mjs",
-        "bytes": 16743,
-        "sha256": "999cc27c3c6183e71ed07b166811c63a0cb2071065d572c293146ac09ab3d553",
-        "gitBlob": "d90383cd150ad66b519c64ad7388d2d2814eb94b"
+        "bytes": 16875,
+        "sha256": "20de7f889970c8a5da6cbdd8c16478267e04d5c41059698e330bf623daf2c37f",
+        "gitBlob": "3128d9a789c7fa39ea452ecd36c588d177e1f51a"
       },
       "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         28,
         37,
         48,
         86
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "ff444f29d584ffa0f4a057bc40a61f23243ff1095806dd0ed4e2c2488c00a1e9"
     },
     {
       "path": ".github/ci/repair-recovery-adapter.test.mjs",
@@ -699,31 +691,26 @@
         "gitBlob": "d1f207b495b2d94cb4ee8ac0cf967d9dec6bf0ca"
       },
       "editedFile": false,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [],
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "1e21e82705911687f2b54610be0c5378dc8bd9a8eed1ef1ea1459c7f78e0cbf5"
     },
     {
       "path": ".github/ci/repair-recovery.test.mjs",
       "beforeCount": 13,
       "currentCount": 13,
-      "changed": [
-        {
-          "beforeLine": 33,
-          "currentLine": 69,
-          "title": "'v2 preserves failed source and retained report identities while replacing compiler/build and whole failed process'"
-        }
-      ],
-      "parentSha256": "c8f0eeb7338c4e2a4c844936aae7680afc171aaf1071c029f9b8b82f049039d1",
+      "changed": [],
+      "parentSha256": "e58b2e6019d646c35619648f7beef79837e5a82d8303096ca4a6ec6bc37b1509",
       "current": {
         "path": ".github/ci/repair-recovery.test.mjs",
-        "bytes": 20804,
-        "sha256": "e58b2e6019d646c35619648f7beef79837e5a82d8303096ca4a6ec6bc37b1509",
-        "gitBlob": "8276a539478b4aded65e864a40d06edcc07b35d6"
+        "bytes": 20936,
+        "sha256": "25160e12364d2ee03b375f2d769b5fe5fa19e11d41818bd5e74be821d4defbe7",
+        "gitBlob": "34504f027571ab8a2d19a38300f47d83bac10ab9"
       },
       "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         33,
         48,
         59,
@@ -732,29 +719,24 @@
         73,
         94
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "c8f0eeb7338c4e2a4c844936aae7680afc171aaf1071c029f9b8b82f049039d1"
     },
     {
       "path": ".github/ci/resume-assessment.test.mjs",
       "beforeCount": 7,
       "currentCount": 7,
-      "changed": [
-        {
-          "beforeLine": 16,
-          "currentLine": 40,
-          "title": "'All green unit assessment is explicitly not release evidence and still requires fresh prerequisites'"
-        }
-      ],
-      "parentSha256": "c49758fea47c52ec715096e32ecb6a05b90ab387dc1872041f10809d4174c626",
+      "changed": [],
+      "parentSha256": "b36a6d04cc80563e33d48f32af0b7640932bb350330e9e652f0bbfe18d86d624",
       "current": {
         "path": ".github/ci/resume-assessment.test.mjs",
-        "bytes": 7906,
-        "sha256": "b36a6d04cc80563e33d48f32af0b7640932bb350330e9e652f0bbfe18d86d624",
-        "gitBlob": "020303a9c4ec0da0dc8f40e20cf8ff4cc609a6b1"
+        "bytes": 8038,
+        "sha256": "3fd27639f250d2a9e36e11e4171a1a3f87988aa5a9520d796d190b1fbd09b164",
+        "gitBlob": "cc377c03d0a9dc83faef71480a4107870ce73021"
       },
       "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         16,
         17,
         18,
@@ -762,111 +744,71 @@
         21,
         22
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "c49758fea47c52ec715096e32ecb6a05b90ab387dc1872041f10809d4174c626"
     },
     {
       "path": ".github/ci/resume-repair.test.mjs",
       "beforeCount": 8,
       "currentCount": 8,
-      "changed": [
-        {
-          "beforeLine": 26,
-          "currentLine": 63,
-          "title": "'Unaffected units retain their original SHA/report hash and new candidate binding without rewriting reports'"
-        }
-      ],
-      "parentSha256": "a76c068b9456c8277360d706f9acf7a6d4494e9c8a3ae8661b58d632727d948e",
+      "changed": [],
+      "parentSha256": "2d1d53a83190e352e24aa897464eca3eecb12c55eabd5a5af010cc2b69349729",
       "current": {
         "path": ".github/ci/resume-repair.test.mjs",
-        "bytes": 11316,
-        "sha256": "2d1d53a83190e352e24aa897464eca3eecb12c55eabd5a5af010cc2b69349729",
-        "gitBlob": "1e3bf97bc9b3d3632e90d562afc1c7d7004b4513"
+        "bytes": 11448,
+        "sha256": "c4e92b8afd52899905da012eac02978dcd9d818595763214d3fac1e7f286a386",
+        "gitBlob": "e02125d9b24517c849e4ae12293f3a575f3e333b"
       },
       "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         26,
         41,
         50,
         78,
         101
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "a76c068b9456c8277360d706f9acf7a6d4494e9c8a3ae8661b58d632727d948e"
     },
     {
       "path": ".github/ci/resume-source.test.mjs",
       "beforeCount": 13,
       "currentCount": 13,
-      "changed": [
-        {
-          "beforeLine": 6,
-          "currentLine": 31,
-          "title": "'Verified raw archives produce a non-authoritative assessment, preserving a failed whole run'"
-        },
-        {
-          "beforeLine": 50,
-          "currentLine": 76,
-          "title": "'Archived plan and report identity are independently checked'"
-        }
-      ],
-      "parentSha256": "41e10ce9697441864cb6ce29464fb5a6b765b4173db59b69bd35718fa87cfe7e",
+      "changed": [],
+      "parentSha256": "a845b14ab582482488c1ce40a28d8bda9b3c9b75e73bcedb20bda796cd4415de",
       "current": {
         "path": ".github/ci/resume-source.test.mjs",
-        "bytes": 12734,
-        "sha256": "a845b14ab582482488c1ce40a28d8bda9b3c9b75e73bcedb20bda796cd4415de",
-        "gitBlob": "db18b836dee493dba4991de88d54f849ba914662"
+        "bytes": 12866,
+        "sha256": "9c7d1f108e3796cfdf1ce1c70439a6b01f0f300c309564796af2b4acffc17587",
+        "gitBlob": "f4aca2170ba0b59994c1e69deb878b7fc8fc1a3f"
       },
       "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         6,
         28,
         49,
         50
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "41e10ce9697441864cb6ce29464fb5a6b765b4173db59b69bd35718fa87cfe7e"
     },
     {
       "path": ".github/ci/singleton-commissioning.test.mjs",
       "beforeCount": 11,
       "currentCount": 11,
-      "changed": [
-        {
-          "beforeLine": 45,
-          "currentLine": 50,
-          "title": "'selected host and database reports retain actual native/source/run proofs but produce no release receipt'"
-        },
-        {
-          "beforeLine": 51,
-          "currentLine": 57,
-          "title": "'native failures, skipped assertions, omitted or stale reports cannot be counted as verified'"
-        },
-        {
-          "beforeLine": 57,
-          "currentLine": 63,
-          "title": "'extra/duplicate reports, altered selection or source identity refuse the development summary'"
-        },
-        {
-          "beforeLine": 60,
-          "currentLine": 66,
-          "title": "'mismatched raw bytes cannot authenticate a different parsed report'"
-        },
-        {
-          "beforeLine": 146,
-          "currentLine": 152,
-          "title": "'the real matrix subprocess derives every one of the five lifecycle hints from complete registered units'"
-        }
-      ],
-      "parentSha256": "2005a6451504df68e9ac433e74ae24e70cb061256ef4dcd1d38c04ebfe08aa8b",
+      "changed": [],
+      "parentSha256": "05839eb701adecaf83f0ee69b817d24d1b9081fc1d5e966c30643cc7f28c203a",
       "current": {
         "path": ".github/ci/singleton-commissioning.test.mjs",
         "bytes": 18523,
         "sha256": "05839eb701adecaf83f0ee69b817d24d1b9081fc1d5e966c30643cc7f28c203a",
         "gitBlob": "6cf1122d0d40a8b2bef4e94470bfe29cc3be220f"
       },
-      "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "editedFile": false,
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         30,
         39,
         45,
@@ -877,7 +819,8 @@
         87,
         146
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "2005a6451504df68e9ac433e74ae24e70cb061256ef4dcd1d38c04ebfe08aa8b"
     },
     {
       "path": ".github/ci/singleton-profiles.test.mjs",
@@ -885,71 +828,21 @@
       "currentCount": 19,
       "changed": [
         {
-          "beforeLine": 28,
+          "beforeLine": 35,
           "currentLine": 35,
           "title": "'every registered infrastructure file remains exactly once in its native class and a dedicated bounded job'"
-        },
-        {
-          "beforeLine": 38,
-          "currentLine": 101,
-          "title": "'actual full-CI host context, complete plan and closed native prerequisites admit'"
-        },
-        {
-          "beforeLine": 52,
-          "currentLine": 115,
-          "title": "'refuses singleton proof: '+name"
-        },
-        {
-          "beforeLine": 61,
-          "currentLine": 124,
-          "title": "'cluster receipt is bound to the physical job/run/attempt/unit, not a worker database namespace'"
-        },
-        {
-          "beforeLine": 70,
-          "currentLine": 133,
-          "title": "'strict unit verifier requires the complete source-bound singleton invocation and refuses skipped/missing proof'"
-        },
-        {
-          "beforeLine": 105,
-          "currentLine": 168,
-          "title": "'hybrid capability binds the conjunction of actual host, owned database and identical same-run build'"
-        },
-        {
-          "beforeLine": 136,
-          "currentLine": 199,
-          "title": "'Access native-owner and paired notification diagnostics retain isolated authenticated jobs and their exact owned source closure'"
-        },
-        {
-          "beforeLine": 159,
-          "currentLine": 222,
-          "title": "'Attendance owned child and pidfd proof cannot share a job or omit its actual Python/SQL/source owners'"
-        },
-        {
-          "beforeLine": 205,
-          "currentLine": 268,
-          "title": "'both Rewards jobs retain and hash the complete large Tamil dependency without a generic limit increase'"
-        },
-        {
-          "beforeLine": 219,
-          "currentLine": 282,
-          "title": "'Rewards native policy and original read family retain complete isolated source-bound jobs'"
-        },
-        {
-          "beforeLine": 295,
-          "currentLine": 358,
-          "title": "'shared module JIT diagnostic owns one unchanged controlled database and cannot omit any actual imported source'"
         }
       ],
-      "parentSha256": "d8b325e6427a0e052bbe8bfadfd385b08175955aa1284521d4e97f02efdbe2c2",
+      "parentSha256": "0b850eb8809914f7af640dd0c917e2b42216a7acd6a6760df1d8ad6a45e567cd",
       "current": {
         "path": ".github/ci/singleton-profiles.test.mjs",
-        "bytes": 46119,
-        "sha256": "0b850eb8809914f7af640dd0c917e2b42216a7acd6a6760df1d8ad6a45e567cd",
-        "gitBlob": "6905c9d8efd77aa7881538bd101ddc8d17290885"
+        "bytes": 46364,
+        "sha256": "c11e0234262c0734d8473f4f6ea32113843f14e73e692617c4619c8a6819a57f",
+        "gitBlob": "27c63a03e68e2ecc2322fc466d1f4db5a6e96d3f"
       },
       "editedFile": true,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [
         28,
         38,
         52,
@@ -964,7 +857,8 @@
         219,
         278
       ],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "d8b325e6427a0e052bbe8bfadfd385b08175955aa1284521d4e97f02efdbe2c2"
     },
     {
       "path": ".github/ci/unit-report-directories.test.mjs",
@@ -979,9 +873,10 @@
         "gitBlob": "f905cfa7eaf0c7b1ee4ca44ca7df4e9211074d35"
       },
       "editedFile": false,
-      "originalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "originalAllowedCallbackLines": [],
-      "lineReconciliation": "Titles matched exactly against the actual f3a7 parent; EEF callback line numbers remain historical."
+      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "historicalOriginalAllowedCallbackLines": [],
+      "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+      "historicalF3a7ParentSha256": "ca43bbec8ca9ef2a37300c931cb357b1962c6aab899f42bc4e2bb7bcd4b87bd8"
     }
   ],
   "runtimeRegistrations": [
@@ -75068,9 +74963,9 @@
     },
     {
       "path": ".github/ci/employee-lifecycle-sources.test.mjs",
-      "bytes": 7082,
-      "sha256": "647c3553bcdb3554be2ddc24c6e042aea497b286e86ea7736c0aec9d5b4df6eb",
-      "gitBlob": "d4e44b76bc0cbb6a5c658fbcbf3227eccd4917b7",
+      "bytes": 7478,
+      "sha256": "1fa4bacd24d84a852615ae3f82939feb4da67b1a1b983202babf45006e10dec1",
+      "gitBlob": "44e65a27b9769c88adf6dd174e9e4b2cd940a8be",
       "origins": [
         "PRESERVED_SPECIALIZED_COMPONENT"
       ],
@@ -146538,9 +146433,9 @@
     },
     {
       "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
-      "bytes": 139341,
-      "sha256": "ce3a2734553abd53f5c4274b89ced5ff339a33a89cc9e354687f8921e4232d1a",
-      "gitBlob": "3c2fd933a10c5c1af2e36ba39b2edae8551a7f5b",
+      "bytes": 140478,
+      "sha256": "335922aa54bbcbf2a3446c298674762a6992e18438d4025c6ba07c61d67dcd3f",
+      "gitBlob": "c98644e76cafddce76339041bb68a57b99bf0c55",
       "origins": [
         "PRESERVED_SPECIALIZED_COMPONENT"
       ],
@@ -179402,8 +179297,23 @@
     }
   ],
   "newRecords": [
-    "docs/qualification/shared-database-prerequisite-source-closure-20261109.json",
-    "docs/qualification/shared-database-prerequisite-source-index-20261109.json"
+    "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json"
   ],
-  "status": "SOURCE_AUTHORED_UNRUN_AWAITING_FROZEN_ROOT_AND_DIFFERENT_PEER_REVIEW"
+  "status": "FIXTURE_RECOVERY_SOURCE_AUTHORED_UNRUN_AWAITING_FROZEN_ROOT_AND_DIFFERENT_PEER_REVIEW",
+  "historicalArchitectureBase": "f3a7b5001329d3731de1e8db469807aceab70cec",
+  "sourceSetDigestRule": "SHA256 of compact UTF-8 JSON sorted [path,current SHA256] pairs for the 31 existing architecture source/map paths; no execution or review PASS implied.",
+  "fixtureRecoveryProvenance": {
+    "path": "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json",
+    "bytes": 17979,
+    "sha256": "06791cca8ffed3d82a8a49c2885305c0aa7c2a52f84778307cc0a1adb430e137",
+    "gitBlob": "3ea6f449648b49da76b94060b094ad8ab92ee8fb"
+  },
+  "reviewProvenanceStatus": "Existing six design/source review references are historical source provenance only; they do not approve this fixture-recovery child.",
+  "runtimeEdgeCensus": {
+    "runtimeEntries": 27,
+    "sourceVertices": 3495,
+    "runtimeToSourceEdges": 36547,
+    "membershipOrderedPathsUnchangedFromImmediateParent": true,
+    "meaning": "Source membership edges only; no runtime or performance result."
+  }
 }
