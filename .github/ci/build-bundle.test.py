@@ -110,6 +110,201 @@ class BundleTests(unittest.TestCase):
         bundle.unpack(archive, manifest_path, self.destination, self.target, str(self.source))
         self.assertEqual(bundle.verify_directory(self.destination, manifest_path, self.target, str(self.source)), manifest)
 
+    def test_linear_revalidation_checks_deep_wide_and_linked_records_with_one_open_per_directory(self):
+        root = self.root / 'linear'; (root / 'wide').mkdir(parents=True)
+        deep = '/'.join('level' + str(i) for i in range(127))
+        (root / deep).mkdir(parents=True)
+        names = ['wide/member-' + str(i) for i in range(64)] + [deep + '/last']
+        for name in names:
+            (root / name).write_bytes(b'actual fixture bytes')
+        (root / 'link').symlink_to('wide/member-0')
+        with bundle.inventory.PinnedTree(root) as tree:
+            for name in names:
+                self.assertEqual(tree.read_bytes(name, 64), b'actual fixture bytes')
+            self.assertEqual(tree.readlink('link'), 'wide/member-0')
+            with self.assertRaisesRegex(ValueError, 'unsafe descriptor-relative inventory path'):
+                tree.read_bytes(deep + '/last/child', 64)
+            original = (dict(tree.directories), dict(tree.links), dict(tree.files))
+            opened = []; actual_open = os.open
+            def counted(name, flags, *args, **kwargs):
+                fd = actual_open(name, flags, *args, **kwargs)
+                if flags & os.O_DIRECTORY:
+                    opened.append((name, kwargs.get('dir_fd')))
+                return fd
+            with mock.patch.object(os, 'open', side_effect=counted):
+                tree.assert_unchanged()
+            self.assertEqual(len(opened), len([name for name in tree.directories if name]))
+            self.assertEqual((tree.directories, tree.links, tree.files), original)
+            self.assertEqual(len(tree.files), 65)
+            self.assertEqual(len(tree.links), 1)
+
+    def test_linear_revalidation_refuses_root_or_ancestor_replacement_during_the_walk(self):
+        for kind in ('root', 'ancestor'):
+            with self.subTest(kind=kind):
+                ancestor = self.root / ('linear-' + kind); root = ancestor / 'inner'
+                root.mkdir(parents=True); (root / 'member').write_bytes(b'original')
+                outside = self.root / ('foreign-' + kind); outside.mkdir(); (outside / 'member').write_bytes(b'foreign')
+                actual_stat = os.stat; changed = False
+                def raced(name, *args, **kwargs):
+                    nonlocal changed
+                    if name == 'member' and kwargs.get('dir_fd') is not None and not changed:
+                        changed = True; selected = root if kind == 'root' else ancestor
+                        selected.rename(self.root / ('preserved-' + kind))
+                        selected.symlink_to(outside, target_is_directory=True)
+                    return actual_stat(name, *args, **kwargs)
+                with self.assertRaises((ValueError, OSError)):
+                    with bundle.inventory.PinnedTree(root) as tree:
+                        self.assertEqual(tree.read_bytes('member', 32), b'original')
+                        with mock.patch.object(os, 'stat', side_effect=raced), mock.patch.object(os, 'fdopen', side_effect=AssertionError('foreign payload must not be read')):
+                            tree.assert_unchanged()
+                self.assertTrue(changed)
+                self.assertEqual((outside / 'member').read_bytes(), b'foreign')
+
+    def test_linear_revalidation_refuses_a_replaced_parent_after_its_descriptor_was_opened(self):
+        root = self.root / 'linear-parent'; (root / 'nested').mkdir(parents=True)
+        (root / 'nested/member').write_bytes(b'original')
+        outside = self.root / 'foreign-parent'; outside.mkdir(); (outside / 'member').write_bytes(b'foreign')
+        actual_open = os.open; changed = False
+        def raced(name, flags, *args, **kwargs):
+            nonlocal changed
+            fd = actual_open(name, flags, *args, **kwargs)
+            if name == 'nested' and kwargs.get('dir_fd') is not None and not changed:
+                changed = True; (root / 'nested').rename(root / 'preserved')
+                (root / 'nested').symlink_to(outside, target_is_directory=True)
+            return fd
+        with self.assertRaises((ValueError, OSError)):
+            with bundle.inventory.PinnedTree(root) as tree:
+                self.assertEqual(tree.read_bytes('nested/member', 32), b'original')
+                with mock.patch.object(os, 'open', side_effect=raced), mock.patch.object(os, 'fdopen', side_effect=AssertionError('foreign payload must not be read')):
+                    tree.assert_unchanged()
+        self.assertTrue(changed)
+        self.assertEqual((outside / 'member').read_bytes(), b'foreign')
+
+    def test_linear_revalidation_refuses_same_size_mtime_restored_mode_and_hardlink_mutations(self):
+        for kind in ('bytes', 'mode', 'hardlink'):
+            with self.subTest(kind=kind):
+                root = self.root / ('linear-metadata-' + kind); root.mkdir(); member = root / 'member'
+                member.write_bytes(b'first'); member.chmod(0o600); prior = member.stat()
+                actual_stat = os.stat; changed = False
+                def raced(name, *args, **kwargs):
+                    nonlocal changed
+                    found = actual_stat(name, *args, **kwargs)
+                    if name == 'member' and kwargs.get('dir_fd') is not None and not changed:
+                        changed = True
+                        if kind == 'bytes':
+                            member.write_bytes(b'other'); os.utime(member, ns=(prior.st_atime_ns, prior.st_mtime_ns))
+                        elif kind == 'mode':
+                            member.chmod(0o640)
+                        else:
+                            os.link(member, self.root / 'outside-hardlink')
+                    return found
+                with self.assertRaises((ValueError, OSError)):
+                    with bundle.inventory.PinnedTree(root) as tree:
+                        self.assertEqual(tree.read_bytes('member', 32), b'first')
+                        with mock.patch.object(os, 'stat', side_effect=raced):
+                            tree.assert_unchanged()
+                self.assertTrue(changed)
+
+    def test_linear_revalidation_refuses_link_target_races_and_special_member_substitution(self):
+        root = self.root / 'linear-link'; root.mkdir(); (root / 'member').write_bytes(b'first')
+        link = root / 'link'; link.symlink_to('member'); actual_readlink = os.readlink; changed = False
+        def raced_link(name, *args, **kwargs):
+            nonlocal changed
+            value = actual_readlink(name, *args, **kwargs)
+            if name == 'link' and kwargs.get('dir_fd') is not None and not changed:
+                changed = True; link.unlink(); link.symlink_to('missing')
+            return value
+        with self.assertRaises((ValueError, OSError)):
+            with bundle.inventory.PinnedTree(root) as tree:
+                self.assertEqual(tree.readlink('link'), 'member')
+                with mock.patch.object(os, 'readlink', side_effect=raced_link):
+                    tree.assert_unchanged()
+        self.assertTrue(changed)
+        special = self.root / 'linear-special'; special.mkdir(); member = special / 'member'; member.write_bytes(b'first')
+        actual_stat = os.stat; substituted = False
+        def raced_file(name, *args, **kwargs):
+            nonlocal substituted
+            found = actual_stat(name, *args, **kwargs)
+            if name == 'member' and kwargs.get('dir_fd') is not None and not substituted:
+                substituted = True; member.unlink(); os.mkfifo(member)
+            return found
+        with self.assertRaises((ValueError, OSError)):
+            with bundle.inventory.PinnedTree(special) as tree:
+                self.assertEqual(tree.read_bytes('member', 32), b'first')
+                with mock.patch.object(os, 'stat', side_effect=raced_file), mock.patch.object(os, 'fdopen', side_effect=AssertionError('special payload must not be read')):
+                    tree.assert_unchanged()
+        self.assertTrue(substituted)
+
+    def test_linear_revalidation_refuses_arrivals_deletions_and_directory_changes_after_entry(self):
+        for kind in ('arrival', 'deletion', 'directory'):
+            with self.subTest(kind=kind):
+                root = self.root / ('linear-arrival-' + kind); (root / 'nested').mkdir(parents=True)
+                (root / 'nested').chmod(0o755)
+                member = root / 'nested/member'; member.write_bytes(b'first')
+                actual_stat = os.stat; changed = False
+                def raced(name, *args, **kwargs):
+                    nonlocal changed
+                    found = actual_stat(name, *args, **kwargs)
+                    if name == 'member' and kwargs.get('dir_fd') is not None and not changed:
+                        changed = True
+                        if kind == 'arrival':
+                            (root / 'nested/arrival').write_bytes(b'new')
+                        elif kind == 'deletion':
+                            member.unlink()
+                        else:
+                            (root / 'nested').chmod(0o700)
+                    return found
+                with self.assertRaises((ValueError, OSError)):
+                    with bundle.inventory.PinnedTree(root) as tree:
+                        self.assertEqual(tree.read_bytes('nested/member', 32), b'first')
+                        with mock.patch.object(os, 'stat', side_effect=raced):
+                            tree.assert_unchanged()
+                self.assertTrue(changed)
+
+    def test_linear_revalidation_closes_only_its_actual_traversal_descriptors_on_all_paths(self):
+        for failure in (False, True):
+            with self.subTest(failure=failure):
+                root = self.root / ('linear-fds-' + str(failure)); (root / 'a/b').mkdir(parents=True)
+                member = root / 'a/b/member'; member.write_bytes(b'first')
+                tree = bundle.inventory.PinnedTree(root)
+                try:
+                    self.assertEqual(tree.read_bytes('a/b/member', 32), b'first')
+                    if failure:
+                        member.write_bytes(b'other')
+                    opened = []; actual_open, actual_dup = os.open, os.dup
+                    def opened_fd(*args, **kwargs):
+                        fd = actual_open(*args, **kwargs); opened.append(fd); return fd
+                    def duplicated_fd(*args, **kwargs):
+                        fd = actual_dup(*args, **kwargs); opened.append(fd); return fd
+                    with mock.patch.object(os, 'open', side_effect=opened_fd), mock.patch.object(os, 'dup', side_effect=duplicated_fd):
+                        if failure:
+                            with self.assertRaises(ValueError):
+                                tree.assert_unchanged()
+                        else:
+                            tree.assert_unchanged()
+                    self.assertGreaterEqual(len(opened), 3)
+                    for fd in set(opened):
+                        with self.assertRaises(OSError):
+                            os.fstat(fd)
+                    self.assertEqual(os.fstat(tree.fd).st_ino, root.stat().st_ino)
+                finally:
+                    tree.close()
+
+    def test_linear_revalidation_preserves_partial_empty_repeated_and_unrecorded_cache_views(self):
+        root = self.root / 'linear-partial'; (root / 'a').mkdir(parents=True); (root / 'cache').mkdir()
+        (root / 'a/member').write_bytes(b'first'); (root / 'a/link').symlink_to('member')
+        with bundle.inventory.PinnedTree(root) as empty:
+            empty.assert_unchanged(); self.assertEqual((empty.directories, empty.links, empty.files), ({}, {}, {}))
+            with empty.directory('cache', record=False):
+                (root / 'cache/mutable').write_bytes(b'cache content')
+            empty.assert_unchanged(); self.assertEqual((empty.directories, empty.links, empty.files), ({}, {}, {}))
+        with bundle.inventory.PinnedTree(root) as partial:
+            self.assertEqual(partial.read_bytes('a/member', 32), b'first'); self.assertEqual(partial.readlink('a/link'), 'member')
+            self.assertNotIn('', partial.directories)
+            original = (dict(partial.directories), dict(partial.links), dict(partial.files))
+            partial.assert_unchanged(); partial.assert_unchanged()
+            self.assertEqual((partial.directories, partial.links, partial.files), original)
+
     def test_descriptor_inventory_refuses_ancestor_replacement_without_reading_the_replacement(self):
         root = self.root / 'pinned'; (root / 'parent').mkdir(parents=True); (root / 'parent/member').write_bytes(b'original')
         outside = self.root / 'outside'; outside.mkdir(); (outside / 'member').write_bytes(b'private replacement')

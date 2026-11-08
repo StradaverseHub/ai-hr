@@ -1,0 +1,241 @@
+{
+  "kind": "LINEAR_FRESH_RUNTIME_INVENTORY_REVALIDATION_SOURCE_ONLY_NOT_NATIVE_PROOF",
+  "parent": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d",
+  "sourceRef": "codex/linear-runtime-inventory-revalidation-20261109",
+  "leasePaths": [
+    ".github/ci/runtime_inventory.py",
+    ".github/ci/build-bundle.test.py",
+    "docs/qualification/native-next-controller-admit-timing-source-20261109.json",
+    "docs/qualification/native-next-linear-inventory-source-20261109.json"
+  ],
+  "currentSourceRows": [
+    {
+      "path": ".github/ci/runtime_inventory.py",
+      "current": {
+        "path": ".github/ci/runtime_inventory.py",
+        "bytes": 29252,
+        "sha256": "8471a64c91b60564b894ae61f34c290183be010875711430de8cd4bef5c7cc99",
+        "gitBlob": "9606d19dfd46eeac2eefadaba84cc03ed030e6f8"
+      },
+      "wholeParent": {
+        "path": ".github/ci/runtime_inventory.py",
+        "bytes": 25995,
+        "sha256": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d",
+        "gitBlob": "9f738c7a343699ea16a85021f750b00bfe02fb91",
+        "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 11738,
+          "currentEnd": 15623,
+          "currentRangeSha256": "dce01895416ed281b6f364688480652a46d6d11a5dd6b9474b2b3419177210ae",
+          "parentStart": 11738,
+          "parentEnd": 12366,
+          "parentText": "    def assert_unchanged(self):\n        self._pins()\n        for relative, wanted in list(self.directories.items()):\n            with self.directory(relative, record=False) as current:\n                self.check(identity(os.fstat(current)) == wanted, 'inventory directory changed')\n        for relative, wanted in list(self.links.items()):\n            self.check((identity(self.metadata(relative)), self.readlink(relative)) == wanted, 'inventory link changed')\n        for relative, wanted in list(self.files.items()):\n            self.check(identity(self.metadata(relative)) == wanted, 'inventory file changed after reading')\n\n"
+        }
+      ]
+    },
+    {
+      "path": ".github/ci/build-bundle.test.py",
+      "current": {
+        "path": ".github/ci/build-bundle.test.py",
+        "bytes": 64520,
+        "sha256": "14888c95fd5a2e292aaf0fb628f1be102f22b920313292d780f46edcd8f6c2da",
+        "gitBlob": "b43e29dc8fb2bafeb68514522a308e4e7689e54a"
+      },
+      "wholeParent": {
+        "path": ".github/ci/build-bundle.test.py",
+        "bytes": 52184,
+        "sha256": "a5346ec0540d6de8e3f8d8bb5d1f485092b7a0c164c89aa930a1e75375edb92b",
+        "gitBlob": "deb2e9c0187d9234d1a01eb3401048d584e1ef1c",
+        "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 7466,
+          "currentEnd": 19802,
+          "currentRangeSha256": "a9d09f664d650fb7cdee4bd94769e5319f5a5da5442a7a59f1ba719edec8ec48",
+          "parentStart": 7466,
+          "parentEnd": 7466,
+          "parentText": ""
+        }
+      ]
+    }
+  ],
+  "wholeParentIndex": {
+    "path": "docs/qualification/native-next-controller-admit-timing-source-20261109.json",
+    "bytes": 34595,
+    "sha256": "41eed278ae89e9cc7e30b7aebad6270b4a4f7236e99acb19b6bd3662c9228e59",
+    "gitBlob": "10a4caafb9b4f1f69a22cb078b52ee09024d8d08",
+    "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+  },
+  "acyclic": "Index binds this record hash; this record refers only to immutable parent index Git bytes, never current index bytes or its own hash.",
+  "sourceContract": {
+    "changedRuntimeOwner": "ONLY PinnedTree.assert_unchanged body and nested traversal helpers; all other inventory methods/identity5tuple/limits whole.",
+    "freshBoundaryCount": 12,
+    "fullPackageByteHashPerControllerOperation": 1,
+    "verifyReleaseCalls": 9,
+    "cachedFreshVerifyReleaseCalls": 8,
+    "additionalWorkerFinalFreshTreeChecks": 3,
+    "guardUnchanged": "Every original PID/startTicks/invocation/ownership/command/namespace/mount/env/resources/listener/credential check and call/publication boundary whole.",
+    "algorithm": "One fresh recorded-directory-FD DFS per call; all legacy saved node tuples plus full fresh pre/post stat and named/held directory linkage; no following links or reading payload in metadata assertion.",
+    "implicitRoot": "Constructor-held rootFD is implicit even without recorded empty key; empty/partial inventories and record=False mutable cache behavior preserved; no synthetic prior root tuple or new ownership policy.",
+    "fds": "Traversal owns its root dup and depth-bounded childFDs; allclosefinally; original root chain/close lifecycle whole. MAX_TREE_DEPTH128 unchanged.",
+    "noAuthorityCache": "No cross-walk permission/PASS cache/new issuer/ACK/WeakSet/process or transport helper.",
+    "caps": "Original90start/480total/510subprocess/600Vitest plus all30s/20m/model limits unchanged. No --no-block/restart/deferredpublication/proof omission.",
+    "membership": "Current133/21HOST/41FULL source-map path sets unchanged; only actual primitive digest and sourceRef/pointer current metadata move."
+  },
+  "controls": {
+    "oldBundleMethods": 57,
+    "oldBodiesWhole": true,
+    "newActualFilesystemMethods": [
+      "test_linear_revalidation_checks_deep_wide_and_linked_records_with_one_open_per_directory",
+      "test_linear_revalidation_refuses_root_or_ancestor_replacement_during_the_walk",
+      "test_linear_revalidation_refuses_a_replaced_parent_after_its_descriptor_was_opened",
+      "test_linear_revalidation_refuses_same_size_mtime_restored_mode_and_hardlink_mutations",
+      "test_linear_revalidation_refuses_link_target_races_and_special_member_substitution",
+      "test_linear_revalidation_refuses_arrivals_deletions_and_directory_changes_after_entry",
+      "test_linear_revalidation_closes_only_its_actual_traversal_descriptors_on_all_paths",
+      "test_linear_revalidation_preserves_partial_empty_repeated_and_unrecorded_cache_views"
+    ],
+    "prospectiveBundleMethods": 65,
+    "unchangedNextProfileMethods": 16,
+    "unchangedDependencyInventoryMethods": 9,
+    "executed": false,
+    "nativeMountForeignUidOrProcessProofFromModels": false,
+    "cases": "Actual temporary files and real syscalls; operation-count linearity not speed assertion;128components legal129refused; late root/ancestor/parent/link/file/mode/hardlink/special/arrival/deletion races; actualFDclosure/partial/rootrecordFalse.",
+    "all12BoundariesRetainedNoRuntimeGainObserved": true
+  },
+  "protectedWholeSource": [
+    {
+      "path": "deploy/admission/controller.py",
+      "bytes": 74923,
+      "sha256": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
+      "gitBlob": "ad22c7c3b57eef404d3b477fb2c4df8cb2963821",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "deploy/admission/next_profile.py",
+      "bytes": 86968,
+      "sha256": "80e32be041b80a007bceeb5af60bbf0d922cb490017950fc034057e30476f846",
+      "gitBlob": "35dc544ff1a46a1f8edc8b92146d7a50ede2587c",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "deploy/admission/test_next_native.py",
+      "bytes": 151181,
+      "sha256": "8dafc69d328219c8a6ec12887d4be708dcbd07f21e31b020fd51a2100c82fa86",
+      "gitBlob": "1811f2482449b6860941b49c2b13ac7856367078",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "deploy/admission/next_fixture_poststart.py",
+      "bytes": 20658,
+      "sha256": "79b408916df2ada1d7d5c7b9c6d16c722026573b1070abb1721df42210af3559",
+      "gitBlob": "e894328c0fc442f07be4de71ed0c90420abbc714",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "deploy/admission/test_next_profile.py",
+      "bytes": 32612,
+      "sha256": "ef1b8df8e45b3e5603e30f7b71d400736a445ccc858e53607af082f07b03bf7f",
+      "gitBlob": "8d6d8f3965d72f2195adbd455e36f8a4e5f0677c",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "deploy/admission/test_next_dependency_inventory.py",
+      "bytes": 13787,
+      "sha256": "becf07b63e5d573b5c25e27a68cea04cfee16f87928bf54f96f13a61aae6dcaf",
+      "gitBlob": "0b7d7c1b1b3c9f51c736fbf091f4830613a73ed4",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "test/runtime-next-profile.test.ts",
+      "bytes": 814,
+      "sha256": "25f64a2099a0656904a7ce2395d301112fe8f1df55d97b9820ded621f6395c1e",
+      "gitBlob": "83956c87eb150943a2d59a063e5fe9669bb3eb6c",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "test/runtime-next-dependency-inventory.test.ts",
+      "bytes": 786,
+      "sha256": "a0068f455ccdddacc58d797811932ede0352fbdc2cd05df63ba867ea28d50a84",
+      "gitBlob": "c9d4d6aeb318425b887825ebb2c628c7692eec10",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "test/runtime-next-admission-native.test.ts",
+      "bytes": 12508,
+      "sha256": "e3b2f708db3716cd9db059832e9dce6f3172a27825902667bc9ae3c83f4daa91",
+      "gitBlob": "237b5520e91ce052cd12740ba3cc91280b1e7faa",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "test/runtime-next-host-view-native.test.ts",
+      "bytes": 13216,
+      "sha256": "6aa3a31ec85f404d15686e6d7f89a69ad965928899e73fc80b41d58b2b1e7217",
+      "gitBlob": "837c380c6eb46b9baafe967e62c94d0a7506103a",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": ".github/workflows/alpha-staging.yml",
+      "bytes": 38635,
+      "sha256": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
+      "gitBlob": "1648c46d62d66ea9472170b9cdff48d7427f3799",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": ".github/ci/typecheck.sh",
+      "bytes": 3876,
+      "sha256": "cb410d168ff728c97cd5f819d103e0e13b88728b89c0e80fb8b8a4444ce8ae55",
+      "gitBlob": "8585738c336ddde9a0bc89b903e0bc1016dcda87",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "next.config.ts",
+      "bytes": 6579,
+      "sha256": "a2e110533821502c36cd0b371960fe7cb73710ef9e253221bd188696560724f6",
+      "gitBlob": "2ebf0df644d76c1e44c90284929f7d27806b4c0c",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "tsconfig.json",
+      "bytes": 676,
+      "sha256": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a",
+      "gitBlob": "68581393e4d0778b4011b57c6d9d904cf8ecd335",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    },
+    {
+      "path": "tsconfig.build.json",
+      "bytes": 200,
+      "sha256": "1c989c374f21f205e7aeb51842cc6032307bc91075faf5a6feccc945fcda49bf",
+      "gitBlob": "18f8b805abdf8003dd1bc1c076ff53b29ef9c6e1",
+      "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    }
+  ],
+  "originalEvidence": {
+    "bootRun": 42529417451,
+    "bootAuthenticationSha256": "848a7d1c151518d159693ce9a72dc2ad633174ae6200fc4ea88dbd993222e1c9",
+    "firstStartUs": 90095397,
+    "controllerPrefixUs": 73767662,
+    "preControllerUs": 16433020,
+    "controllerLastReturnAfterCallerTimeoutUs": 105285,
+    "firstReadyBrowserNotEntered": true,
+    "bootActualComplete": false,
+    "oldHostRun": 42525567505,
+    "allOldPassFailureIdentitiesRetainedOnlyAt7fc": true,
+    "cleanupExportLimits": "Native source-bound ownedRuntimeCleaned true and boundedstoprows0; outerPGstop individually not independentlyexported whenunit alreadyfailed; no poststopcensus.",
+    "subcallCpuOrSyscallAttribution": "UNKNOWN; no measured speedup. .next subset formula not actual fullruntime record census."
+  },
+  "requiredNext": "Root+differentpeer FULL actual source/data review, hosted65+16+9 affected controls, then separate root-reviewed genuineHOST and normalBOOT current source/same-run newbuild as authorized; no publication/runtime authority here.",
+  "authority": {
+    "localRepoImportsTestsCompilerGeneratorsBuildDbNativeExecuted": false,
+    "runtimeQualified": false,
+    "hostQualified": false,
+    "bootQualified": false,
+    "releaseEligible": false,
+    "providerApprovalRenewed": false,
+    "stagingQualified": false,
+    "productionHeld": true
+  }
+}
