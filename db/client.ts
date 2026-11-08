@@ -6,7 +6,7 @@
  * tenant/user/roles as transaction-local GUCs. RLS policies read those GUCs, so
  * isolation and ABAC are enforced by the database, not by app code.
  */
-import { drizzle } from 'drizzle-orm/postgres-js';
+import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import {createDatabaseAdmission} from './admission';
@@ -190,7 +190,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   }
   // Direct table-based select/insert/update/delete retain their own schema and types. Registering
   // every table here eagerly rebuilds unused db.query helpers in every transaction.
-  const db = drizzle(client);
+  const db: Db = drizzle(client);
   const configuredPoolMax = client.options.max;
   let admission = admissionByPool.get(client);
   if (!admission) {
@@ -214,7 +214,6 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     tenantWritesByPool.set(client,tenantWrites);
   }
   const withTenantWriteWork=tenantWrites.run;
-  type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
   /** For existing raw SQL owners only. This adds no transaction, GUC, retry or authority.
    * Open queries inside work; do not pass an already-running promise or nest withTenant here.
@@ -343,8 +342,13 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   return { db, client, withTenant, withPoolWork, withBackgroundReadWork, withTenantWriteWork };
 }
 
-export type Db = ReturnType<typeof createDb>['db'];
-export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+/** Complete native class boundary: inherited generic API and protected identity stay intact. */
+export interface Db extends PostgresJsDatabase<Record<string, never>> {
+  $client: ReturnType<typeof postgres>;
+}
+type NativeDbTransaction = Parameters<Parameters<PostgresJsDatabase<Record<string, never>>['transaction']>[0]>[0];
+/** Same actual callback class, named without extracting through createDb's inferred return. */
+export interface Tx extends NativeDbTransaction {}
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is not set');
