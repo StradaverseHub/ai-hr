@@ -1,7 +1,8 @@
 """Finalize the fixed synthetic source tree below an already held directory.
 
 The protected caller owns the installer module, bound input bytes, stage mount
-and all later cleanup. This leaf supplies filesystem observations only.
+and all later cleanup. This leaf finalizes the private stage and verifies its
+owned files.
 """
 from __future__ import annotations
 
