@@ -1,0 +1,111 @@
+{
+  "kind": "EMPLOYEE_DEPARTMENT_EXISTENCE_SOURCE_CANDIDATE",
+  "qualification": "SOURCE_ONLY_UNRUN",
+  "releaseEligible": false,
+  "parent": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+  "reviewedDesign": {
+    "v2Sha256": "5cde2c1992e5a7cf06f545b109ba70f066618fdf48a0c005aeaecfd124b186c6",
+    "v2SourceIndexSha256": "a4b6a1f0d144c778139ff948684b53de49a67a258951d7d6837aa50b80451661",
+    "v2IndependentReviewSha256": "0f29093c843d88dbe70591da07166bf475ed9560f86a1ac1d6b644fbd99f77cf"
+  },
+  "retainedNegativeIndex": {
+    "source": "8bfee48a889af200aa035859ab41cc083c0c2eff",
+    "run": 42535097408,
+    "authenticationSha256": "28b2d5573122daccf7af71c2fe72c46ae30d946ec8fc6a4f63c944ff41161699",
+    "decision": "TESTED_INDEX_UNUSED_REMOVED",
+    "historicalDistinctRawFailure": "UNKNOWN"
+  },
+  "legacyStatement": {
+    "bytes": 934,
+    "sha256": "95900f68e826391eea261670dbeff344a7ef75e2ba921090ceef1ed949de172e",
+    "parameters": [
+      "tenant",
+      "tenant",
+      "tenant",
+      "tenant",
+      "one company UUID array text",
+      "tenant"
+    ]
+  },
+  "currentFiles": {
+    "core/employee-choice.ts": {
+      "currentBytes": 19651,
+      "currentSha256": "67f799472ce3cde515b744d9ff1087140403a8010110eebbbac5128d916e9b4f",
+      "wholeOriginalGitRef": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d:core/employee-choice.ts",
+      "wholeOriginalBlob": "71257dab2ceafa1b52b7f6eab6549d240eb41b73",
+      "wholeOriginalBytes": 19091,
+      "wholeOriginalSha256": "a8ce69b0e4919e0df561676714523705daa9bc0df5d402ac36cdb2be977f53b4"
+    },
+    "test/employee-choice-db.test.ts": {
+      "currentBytes": 28619,
+      "currentSha256": "45b2a8634990948278a9ed102441d225809d9384bca4dc0ec5cd9a7ed78cd803",
+      "wholeOriginalGitRef": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d:test/employee-choice-db.test.ts",
+      "wholeOriginalBlob": "7b95bef78820d6aa49f22686bef4a68a3de19afa",
+      "wholeOriginalBytes": 15373,
+      "wholeOriginalSha256": "1a689caf19c62c06a8f6a0d147d00098a1acfd52f204db5dc3c2734668b42635"
+    },
+    "test/employee-choice-unicode-scale.test.ts": {
+      "currentBytes": 36373,
+      "currentSha256": "06ac58340c489f9fdd9cac44e5f5c7875a783cbac4492cb12c02baa5bd851b1a",
+      "wholeOriginalGitRef": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d:test/employee-choice-unicode-scale.test.ts",
+      "wholeOriginalBlob": "33ffb2d7a2e627feebdf6be2343350b3d28cf2a7",
+      "wholeOriginalBytes": 4455,
+      "wholeOriginalSha256": "67acc9503022ee957ecbaf2db05834704893300cfb45c58a12ab3aacad760a4b"
+    },
+    "docs/adr/2026-11-07-employee-choice-organisation-plan.md": {
+      "currentBytes": 4557,
+      "currentSha256": "7647f3d6701fefdd881462c4ea34a5b9ccd11b9502511b76d2f14e838621101f",
+      "wholeOriginalGitRef": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d:docs/adr/2026-11-07-employee-choice-organisation-plan.md",
+      "wholeOriginalBlob": "e998fdeb1848a04877671554b942652b63f2ea61",
+      "wholeOriginalBytes": 3068,
+      "wholeOriginalSha256": "b15ea75acb9587019bc939f3daa8f8f81b716637bffe8944a985d894bbe971b9"
+    }
+  },
+  "preservation": {
+    "onlyDepartmentExistenceProductStatement": true,
+    "wholeOriginalSmallCases": 4,
+    "newSmallCases": 3,
+    "originalScaleCaseMilliseconds": 300000,
+    "wholeOriginalScaleReads": 4,
+    "wholeOriginalScaleAssertions": 14,
+    "originalScaleStatementInventoryExpected": 305,
+    "schemaMigrationsRoleAndWorkflowEdits": 0
+  },
+  "focusedCourse": {
+    "dedicatedScaleFile": "test/employee-choice-unicode-scale.test.ts",
+    "correctnessFile": "test/employee-choice-db.test.ts",
+    "ordinaryScaleStillRunsOriginalReads": true,
+    "requiredCaseTimeRemainingMs": 65000,
+    "wallSlotsMs": [
+      27000,
+      5000,
+      18000,
+      10000
+    ],
+    "appColdConnectTypeAndBootstrapMs": [
+      1000,
+      500,
+      1500
+    ],
+    "ownerColdConnectTypeAndSetupMs": [
+      2000,
+      10000,
+      10000
+    ],
+    "ownerOriginalFixtureStatementCapMs": 10000,
+    "applicationOriginalReadStatementCapMs": 20000,
+    "matchedStatementCapMs": 3000,
+    "stressAndBatchStatementCapMs": 1000,
+    "lockCapMs": 300,
+    "maximumRawPlans": 4,
+    "pairedPerformanceClaim": "DESCRIPTIVE_MATCHED_PAIR_ONLY",
+    "stressPerformanceClaim": "ABSOLUTE_FIXED_SCOPE_ONLY",
+    "nativeFit": "UNMEASURED"
+  },
+  "holds": [
+    "independent full source review",
+    "hosted native correctness and scale receipts",
+    "source and disclosure qualification",
+    "staging and production authority"
+  ]
+}

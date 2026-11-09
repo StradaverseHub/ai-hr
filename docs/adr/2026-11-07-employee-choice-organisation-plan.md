@@ -42,3 +42,27 @@ Run this probe and the whole compiler on standard hosted Actions after source re
 Retain original outcomes and wait for all planned jobs before repairs. Root owns any
 eventual migration allocation, independent review and release qualification. Neither
 this diagnostic nor a component PASS grants installation or production authority.
+
+## Department options candidate
+
+The later hosted component run `42535097408` tested a valid department index in
+an isolated 50,000-employee fixture. PostgreSQL did not choose it. All four
+captured plans retained the same 31 nodes, including 50,001 Assignment GiST
+probes. Their execution times were 2.23 to 2.26 seconds. JIT was enabled and none
+of the four plans reported JIT activity. The test removed the index and verified
+restoration. The exact historical DISTINCT failure remains unlocated.
+
+The candidate changes only the department existence query. It selects Assignment
+witnesses by tenant, department and current state before checking the associated
+Employment and Person against the existing population and native row security.
+Company, business unit, page, selection and scope remain with their current
+owners. A department's origin company can differ from Employment's company.
+
+The dedicated hosted component probe compares the frozen historical department
+statement with the actual candidate statement over one read-only snapshot. Two
+separate stress reads exercise eight extra empty departments with broad and sparse
+scope. Their limits apply to these fixtures. The matched timings are individual
+observations. The stress checks establish absolute limits and exact results for
+their inputs. Verification requires the observed native plan, original lookup
+results and owned transaction settlement. This source candidate has no release
+qualification or deployment receipt.

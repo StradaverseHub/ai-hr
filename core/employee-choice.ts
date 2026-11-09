@@ -193,12 +193,21 @@ async function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string,signal
   null::uuid as "businessUnitId",null::text as "businessUnitCode",null::text as "businessUnit"
  from ${company} where ${company.tenantId}=${tenantId}::uuid and exists(select 1 ${members} offset 0) order by "companyId"`);
  signal?.throwIfAborted();
+ // Keep the department match outside the Employment/Person witness so an empty department
+ // can finish without probing Assignment once per visible Employment.
  const departments=await tx.execute<ChoiceOptions>(sql`select ${company.id} as "companyId",${company.legalName} as company,${department.id} as "departmentId",${labels?sql`${department.name}`:sql`null::text`} as "departmentCode",
   ${labels?sql`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`:sql`${department.name}`} as department,
   null::uuid as "businessUnitId",null::text as "businessUnitCode",null::text as "businessUnit"
  from ${company} cross join ${department}
  where ${company.tenantId}=${tenantId}::uuid and ${department.tenantId}=${tenantId}::uuid
-  and exists(select 1 ${assignedMembers} and ${assignment.departmentId}=${department.id} offset 0) order by "companyId","departmentId"`);
+  and exists(select 1 from ${assignment}
+   where ${assignment.tenantId}=${tenantId}::uuid and ${assignment.validTo} is null
+    and ${assignment.supersededAt} is null and ${assignment.departmentId}=${department.id}
+    and exists(select 1 from ${employment} join ${person}
+     on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
+     where ${employment.id}=${assignment.employmentId} and ${scope} and ${employment.companyId}=${company.id}
+     offset 0)
+   offset 0) order by "companyId","departmentId"`);
  signal?.throwIfAborted();
  const units=await tx.execute<ChoiceOptions>(sql`select ${company.id} as "companyId",${company.legalName} as company,null::uuid as "departmentId",null::text as "departmentCode",null::text as department,${businessUnit.id} as "businessUnitId",
   ${labels?sql`${businessUnit.code}`:sql`null::text`} as "businessUnitCode",

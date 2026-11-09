@@ -5,11 +5,14 @@ import {availableParallelism,cpus,totalmem} from 'node:os';
 import {eq,sql,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
-import {readEmployeeChoices} from '../core/employee-choice';
-import {isEmployeeChoicePage} from '../lib/employee-choice';
+import {readEmployeeChoices,readEmployeeChoicesTx} from '../core/employee-choice';
+import {isEmployeeChoicePage,type EmployeeChoice,type EmployeeChoicePage} from '../lib/employee-choice';
 import {listEmployees} from '../core/read';
-import {hireEmployee} from '../core/org';
-import {assignment,businessUnit,company,department,employment,person,reportingLine,roleAssignment} from '../db/schema';
+import {hireEmployee,setEmploymentAssignment,setReportingLine} from '../core/org';
+import {archiveDepartment,assignRole,createCompany,createDepartment,revokeRole} from '../core/admin';
+import {setAppUserArchived} from '../core/auth';
+import {setLabelCriteria} from '../core/system-labels';
+import {appUser,assignment,businessUnit,company,department,employment,labelCompanyAssignment,person,reportingLine,roleAssignment} from '../db/schema';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
@@ -149,3 +152,123 @@ it.each(['count','cursor'] as const)('stops further SQL after a disconnected %s 
  expect(sawRead).toBe(true);expect(afterAbort).toBe(0);
  expect((await readEmployeeChoices(ctx,{companyIds:[b.companyId]})).total).toBe(0);
 });
+
+const emptyFilters={query:'',companyId:'',departmentId:'',businessUnitId:'',status:''};
+const choicesWithoutContext=({contextId:_contextId,...page}:EmployeeChoicePage)=>page;
+const choiceRow=(employmentId:string,name:string,employeeCode:string|null,companyId:string,company:string,
+ departmentId:string|null,department:string|null,status:EmployeeChoice['status']='active',departmentCode:string|null=null):EmployeeChoice=>({
+ employmentId,name,employeeCode,companyId,company,departmentId,department,departmentCode,
+ businessUnit:null,businessUnitId:null,businessUnitCode:null,status,
+});
+const choicePage=(rows:EmployeeChoice[],companyOptions:EmployeeChoicePage['companyOptions'],departmentOptions:EmployeeChoicePage['departmentOptions'],
+ extra:Partial<Omit<EmployeeChoicePage,'contextId'>>={}):Omit<EmployeeChoicePage,'contextId'>=>({
+ rows,total:rows.length,selected:null,offset:0,limit:25,filters:emptyFilters,labelMode:'names',companyOptions,
+ departmentOptions,allDepartmentOptions:departmentOptions,businessUnitOptions:[],...extra,
+});
+
+it('retains exact department facets for shared origin, multiple employments, scope and current native login',async()=>{
+ const b=await seedBase(),foreign=await seedBase(),ctx=adminCtx(b);
+ const {id:otherCompany}=await createCompany(ctx,{legalName:'Zeta Facet Company'});
+ const shared={id:b.deptA,name:'Finance'},operations={id:b.deptB,name:'Operations'};
+ const acme={id:b.companyId,name:'Acme Sdn Bhd'},zeta={id:otherCompany,name:'Zeta Facet Company'};
+ await setLabelCriteria(ctx,{kind:'department',labelId:shared.id,isGlobal:false,companyIds:[acme.id,zeta.id]});
+ const criteria=await owner.db.select({companyId:labelCompanyAssignment.companyId}).from(labelCompanyAssignment).where(eq(labelCompanyAssignment.labelId,shared.id));
+ expect(criteria.map(value=>value.companyId).sort()).toEqual([acme.id,zeta.id].sort());
+ const [origin]=await owner.db.select({companyId:department.companyId}).from(department).where(eq(department.id,shared.id));expect(origin.companyId).toBe(acme.id);
+ const first=await hireEmployee(ctx,{person:{fullName:'Alpha %_\\ 人',primaryEmail:'alpha-facet@example.invalid'},companyId:acme.id,departmentId:operations.id,employeeCode:'FACET-A',hiredOn:'2020-01-01',employmentType:'full_time'});
+ const second=await hireEmployee(ctx,{person:{id:first.personId},companyId:zeta.id,departmentId:shared.id,employeeCode:'FACET-B',hiredOn:'2020-01-01',employmentType:'full_time'});
+ const [association]=await owner.db.select({personId:employment.personId,companyId:employment.companyId,departmentId:assignment.departmentId}).from(employment)
+  .innerJoin(assignment,eq(assignment.employmentId,employment.id)).where(eq(employment.id,second.employmentId));
+ expect(association).toEqual({personId:first.personId,companyId:zeta.id,departmentId:shared.id});
+ const alpha=choiceRow(first.employmentId,'Alpha %_\\ 人','FACET-A',acme.id,acme.name,operations.id,operations.name);
+ const beta=choiceRow(second.employmentId,'Alpha %_\\ 人','FACET-B',zeta.id,zeta.name,shared.id,shared.name);
+ const both=[alpha,beta].sort((left,right)=>left.employmentId<right.employmentId?-1:1);
+ expect(choicesWithoutContext(await readEmployeeChoices(ctx,{companyIds:[]}))).toEqual(choicePage(both,[acme,zeta],[shared,operations]));
+ const narrowed=await readEmployeeChoices(ctx,{companyIds:[],companyId:zeta.id,query:'%_\\ 人',status:'active',selectedId:alpha.employmentId,limit:1});
+ expect(choicesWithoutContext(narrowed)).toEqual(choicePage([beta],[acme,zeta],[shared],{
+  allDepartmentOptions:[shared,operations],selected:alpha,limit:1,filters:{...emptyFilters,companyId:zeta.id,query:'%_\\ 人',status:'active'},
+ }));
+ const outside=await hireEmployee(adminCtx(foreign),{person:{fullName:'Foreign Facet',primaryEmail:'foreign-facet@example.invalid'},companyId:foreign.companyId,departmentId:foreign.deptA,employeeCode:'FACET-F',hiredOn:'2020-01-01',employmentType:'full_time'});
+ expect(choicesWithoutContext(await readEmployeeChoices(ctx,{companyIds:[foreign.companyId],selectedId:outside.employmentId}))).toEqual(choicePage([],[],[]));
+ const [account]=await owner.db.insert(appUser).values({tenantId:b.tenantId,workosUserId:'user_'+randomUUID()}).returning({id:appUser.id});
+ const scopedGrant=await assignRole(ctx,{appUserId:account.id,role:'hr_admin',companyId:zeta.id});
+ const scoped:SessionContext={tenantId:b.tenantId,userId:account.id,grants:[{role:'hr_admin',companyId:zeta.id}]};
+ expect(choicesWithoutContext(await readEmployeeChoices(scoped,{companyIds:[]}))).toEqual(choicePage([beta],[zeta],[shared]));
+ await expect(readEmployeeChoices({...scoped,grants:[{role:'hr_admin',companyId:null}]},{companyIds:[]})).rejects.toThrow('calling authority');
+ await revokeRole(ctx,{roleAssignmentId:scopedGrant.id});
+ await expect(readEmployeeChoices(scoped,{companyIds:[]})).rejects.toThrow('calling authority');
+ const userId=await createAppUser(b.tenantId,first.personId,'employee'),self:SessionContext={tenantId:b.tenantId,userId,personId:first.personId,roles:['employee']};
+ expect(choicesWithoutContext(await readEmployeeChoices(self,{companyIds:[zeta.id]}))).toEqual(choicePage([beta],[zeta],[shared]));
+ await expect(readEmployeeChoices(self,{companyIds:[],labelMode:'labels'})).rejects.toThrow('administration access');
+ await expect(readEmployeeChoices({...self,personId:randomUUID()},{companyIds:[]})).rejects.toThrow('calling authority');
+ await setAppUserArchived(ctx,{appUserId:userId,archived:true});
+ await expect(readEmployeeChoices(self,{companyIds:[]})).rejects.toThrow('calling authority');
+},120000);
+
+it('retains current Assignment facets across dates, native exclusion, archived labels and sparse borrowed scope',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b),acme={id:b.companyId,name:'Acme Sdn Bhd'};
+ const [constraint]=await owner.client`select c.contype,c.condeferrable,c.convalidated,am.amname,
+   pg_get_constraintdef(c.oid) as definition,pg_get_expr(i.indpred,i.indrelid) as predicate
+   from pg_constraint c join pg_index i on i.indexrelid=c.conindid join pg_class x on x.oid=c.conindid
+   join pg_am am on am.oid=x.relam where c.conrelid='public.assignment'::regclass and c.conname='assignment_no_overlap'`;
+ expect(constraint).toMatchObject({contype:'x',condeferrable:false,convalidated:true,amname:'gist',predicate:'(superseded_at IS NULL)'});
+ expect(constraint.definition).toContain("employment_id WITH =, daterange(valid_from, valid_to, '[)'::text) WITH &&");
+ const obsolete=await createDepartment(ctx,{companyId:acme.id,name:'Facet Former'});
+ const superseded=await createDepartment(ctx,{companyId:acme.id,name:'Facet Superseded'});
+ const future=await hireEmployee(ctx,{person:{fullName:'Alpha Future',primaryEmail:'future-facet@example.invalid'},companyId:acme.id,departmentId:obsolete.id,employeeCode:'FACET-FUT',hiredOn:'2020-01-01',employmentType:'full_time'});
+ const date='2099-01-01';
+ expect(await setEmploymentAssignment(ctx,{employmentId:future.employmentId,departmentId:b.deptA,effectiveDate:date})).toMatchObject({changed:true});
+ const [later]=await owner.db.select().from(assignment).where(eq(assignment.employmentId,future.employmentId)).then(rows=>rows.filter(row=>row.validTo===null));
+ expect(later).toMatchObject({departmentId:b.deptA,validFrom:date,validTo:null,supersededAt:null});
+ const [ended]=await owner.db.insert(employment).values({tenantId:b.tenantId,personId:future.personId,companyId:acme.id,hiredOn:'2020-01-01',terminatedOn:'2024-01-01',employeeCode:'FACET-ENDED'}).returning({id:employment.id});
+ await owner.db.insert(assignment).values({tenantId:b.tenantId,employmentId:ended.id,companyId:acme.id,departmentId:b.deptB,validFrom:'2020-01-01',employmentType:'full_time'});
+ await owner.db.insert(assignment).values({tenantId:b.tenantId,employmentId:ended.id,companyId:acme.id,departmentId:superseded.id,validFrom:'2020-01-01',employmentType:'full_time',supersededAt:new Date('2021-01-01T00:00:00Z')});
+ const [unassignedPerson]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Zed Unassigned',primaryEmail:'no-facet@example.invalid'}).returning({id:person.id});
+ const [unassigned]=await owner.db.insert(employment).values({tenantId:b.tenantId,personId:unassignedPerson.id,companyId:acme.id,hiredOn:'2020-01-01'}).returning({id:employment.id});
+ const before=await owner.client`select id,department_id,valid_from,valid_to,superseded_at from assignment where employment_id=${future.employmentId}::uuid order by id`;
+ await expect(owner.client.begin(tx=>tx`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from)
+   values(${b.tenantId}::uuid,${future.employmentId}::uuid,${acme.id}::uuid,${b.deptB}::uuid,'full_time',${date}::date)`))
+  .rejects.toMatchObject({code:'23P01',constraint_name:'assignment_no_overlap'});
+ expect(await owner.client`select id,department_id,valid_from,valid_to,superseded_at from assignment where employment_id=${future.employmentId}::uuid order by id`).toEqual(before);
+ await archiveDepartment(ctx,{id:b.deptA,archived:true});
+ const [archived]=await owner.db.select({date:department.archivedAt}).from(department).where(eq(department.id,b.deptA));expect(archived.date).not.toBeNull();
+ await owner.db.update(department).set({label:'  Facet 人  '}).where(eq(department.id,b.deptA));
+ await owner.db.update(department).set({label:'   ',description:'  Facet 人  '}).where(eq(department.id,b.deptB));
+ const finance={id:b.deptA,name:'Finance'},operations={id:b.deptB,name:'Operations'};
+ const active=choiceRow(future.employmentId,'Alpha Future','FACET-FUT',acme.id,acme.name,b.deptA,'Finance');
+ const endedRow=choiceRow(ended.id,'Alpha Future','FACET-ENDED',acme.id,acme.name,b.deptB,'Operations','ended');
+ const missing=choiceRow(unassigned.id,'Zed Unassigned',null,acme.id,acme.name,null,null);
+ const ordered=[active,endedRow].sort((left,right)=>left.employmentId<right.employmentId?-1:1);
+ const labelled=ordered.map(row=>({...row,department:'Facet 人',departmentCode:row.department}));
+ expect(choicesWithoutContext(await readEmployeeChoices(ctx,{companyIds:[],labelMode:'labels'}))).toEqual(choicePage([...labelled,missing],[acme],
+  [{id:b.deptA,name:'Facet 人 (Finance)'},{id:b.deptB,name:'Facet 人 (Operations)'}],{labelMode:'labels'}));
+ await database.withTenant(ctx,async tx=>{
+  const equality=await readEmployeeChoicesTx(tx,ctx,{companyIds:[acme.id],terminatedAfter:'2024-01-01'});
+  expect(choicesWithoutContext(equality)).toEqual(choicePage([active,missing],[acme],[finance]));
+  const sparse=await readEmployeeChoicesTx(tx,ctx,{companyIds:[acme.id],terminatedAfter:'2023-12-31',employmentIds:[ended.id]});
+  expect(choicesWithoutContext(sparse)).toEqual(choicePage([endedRow],[acme],[operations]));
+  expect(choicesWithoutContext(await readEmployeeChoicesTx(tx,ctx,{companyIds:[],employmentIds:[]}))).toEqual(choicePage([],[],[]));
+ },{readOnlySnapshot:true});
+},120000);
+
+it('keeps manager and department hierarchy facets inside native effective reporting dates',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b),acme={id:b.companyId,name:'Acme Sdn Bhd'};
+ const child=await createDepartment(ctx,{companyId:acme.id,name:'Facet Child',parentDepartmentId:b.deptA});
+ const future=await createDepartment(ctx,{companyId:acme.id,name:'Facet Future'});
+ const hire=async(name:string,departmentId:string,code:string)=>hireEmployee(ctx,{person:{fullName:name,primaryEmail:code.toLowerCase()+'@example.invalid'},
+  companyId:acme.id,departmentId,employeeCode:code,hiredOn:'2020-01-01',employmentType:'full_time'});
+ const manager=await hire('Alpha Manager',b.deptA,'FACET-MGR');
+ const report=await hire('Beta Direct',b.deptB,'FACET-DIR');
+ const hod=await hire('Gamma Department',child.id,'FACET-HOD');
+ const outside=await hire('Zed Future',future.id,'FACET-LATE');
+ await setReportingLine(ctx,{subordinateEmploymentId:report.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
+ await setReportingLine(ctx,{subordinateEmploymentId:outside.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2099-01-01'});
+ const userId=await createAppUser(b.tenantId,manager.personId,'manager');
+ const actor:SessionContext={tenantId:b.tenantId,userId,personId:manager.personId,roles:['manager']};
+ const departments=[{id:child.id,name:'Facet Child'},{id:b.deptA,name:'Finance'},{id:b.deptB,name:'Operations'}];
+ expect(choicesWithoutContext(await readEmployeeChoices(actor,{companyIds:[],selectedId:outside.employmentId}))).toEqual(choicePage([
+  choiceRow(manager.employmentId,'Alpha Manager','FACET-MGR',acme.id,acme.name,b.deptA,'Finance'),
+  choiceRow(report.employmentId,'Beta Direct','FACET-DIR',acme.id,acme.name,b.deptB,'Operations'),
+  choiceRow(hod.employmentId,'Gamma Department','FACET-HOD',acme.id,acme.name,child.id,'Facet Child'),
+ ],[acme],departments));
+},120000);
