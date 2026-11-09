@@ -10,6 +10,8 @@ import {aiManagementPageView,aiManagementView,setAiAllowance,setGroupAllowance,s
 import {aiManagementAlerts,aiInventoryView,aiRunHistory} from '../core/ai-inventory';
 import {getAiConfigView,saveAiProviderConfig} from '../core/ai-config';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {assistantLauncherFor,assistantShellFor,setAssistantLauncher} from '../core/assistant-launcher';
 import {agentStatuses} from '../core/control-domains';
 import {agreementView} from '../core/control-tower';
 import {listWorkers,workerDetail} from '../core/agent-registry/views';
@@ -25,7 +27,7 @@ import {gatewayAdapter} from '../lib/ai/providers/gateway';
 import {openrouterAdapter} from '../lib/ai/providers/openrouter';
 import {readOpenRouterOptions} from '../lib/ai/providers/openrouter-configuration';
 import {observeNativeRead,type NativeReadQuery} from './helpers/native-read-observer';
-import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 let b:Base,group:SessionContext;
 const providerAttempt=vi.fn(),networkAttempt=vi.fn();
@@ -190,6 +192,53 @@ it('loads Worker diagnostics and registry while Access configuration is locked',
   clearTimeout(deadline);
   await reads?.catch(()=>{});
  }
+});
+
+it('loads an enabled shell launcher while Access is locked and preserves visibility guards',async()=>{
+ await setModule(b.tenantId,'assistant','active');
+ const admin=await entitledCtx(b);
+ const hire=await hireEmployee(admin,{person:{fullName:'Fictional Launcher User',primaryEmail:'launcher@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const userId=await createAppUser(b.tenantId,hire.personId,'employee');
+ const personId=hire.personId,settings={enabled:true,position:'bottom-left',hiddenAreas:['people','payroll']};
+ const viewer=async():Promise<SessionContext>=>({...await entitledCtx(b,['employee']),userId,personId});
+ await grantAssistant(admin,{appUserId:userId});
+ await setAssistantLauncher(admin,settings);
+ const hidden={allowed:true,launcher:null};
+ expect(await assistantShellFor(await viewer())).toEqual(hidden);
+
+ await saveAiProviderConfig(admin,{provider:'openai',model:'fictional-launcher-model',apiKey:'fictional-launcher-key',makeActive:true});
+ await setAssistantLauncher(admin,{...settings,enabled:false});
+ expect(await assistantShellFor(await viewer())).toEqual(hidden);
+ await setAssistantLauncher(admin,settings);
+ const ctx=await viewer(),launcher={position:'bottom-left',hiddenAreas:['payroll','people']};
+ const expected={allowed:true,launcher};
+ expect(await assistantShellFor(ctx)).toEqual(expected);
+
+ let reads:Promise<unknown>|undefined;
+ let deadline:ReturnType<typeof setTimeout>|undefined;
+ try{
+  await withTenant(admin,async tx=>{
+   await lockAccessConfigurationTx(tx,b.tenantId);
+   reads=Promise.all([assistantShellFor(ctx),assistantLauncherFor(ctx)]);
+   const timeout=new Promise<never>((_,reject)=>{
+    deadline=setTimeout(()=>reject(new Error('Assistant launcher waited for the held Access lock')),4000);
+   });
+   expect(await Promise.race([reads,timeout])).toEqual([expected,launcher]);
+  });
+ }finally{
+  clearTimeout(deadline);
+  await reads?.catch(()=>{});
+ }
+
+ expect(await assistantShellFor({...ctx,personId:randomUUID()})).toEqual(hidden);
+ const foreign=await seedBase();
+ await setModule(foreign.tenantId,'assistant','active');
+ const foreignAdmin=await entitledCtx(foreign);
+ await setAssistantLauncher(foreignAdmin,settings);
+ await saveAiProviderConfig(foreignAdmin,{provider:'openai',model:'foreign-fictional-launcher',apiKey:'foreign-fictional-key',makeActive:true});
+ expect(await assistantShellFor({...await entitledCtx(foreign,['employee']),userId,personId})).toEqual({allowed:false,launcher:null});
+ await revokeAssistant(admin,{appUserId:userId});
+ expect(await assistantShellFor(ctx)).toEqual({allowed:false,launcher:null});
 });
 
 it('keeps zero and null caps, quiet zero-capped users, held tokens and switch attribution exact',async()=>{

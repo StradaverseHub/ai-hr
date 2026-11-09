@@ -15,7 +15,7 @@ vi.mock('../lib/scope',()=>({getScopeIds:async(ids:string[])=>ids}));
 const DEFAULTS:Record<string,unknown>={'assistant.launcher_enabled':false,'assistant.launcher_position':'bottom-right','assistant.launcher_hidden_areas':''};
 vi.mock('../core/entitlements',()=>({getSetting:(_ctx:unknown,key:string)=>{if(owner.settings.__broken)throw Error('PRIVATE snapshot');return key in owner.settings?owner.settings[key]:DEFAULTS[key];}}));
 vi.mock('../core/assistant-grant',()=>({mayUseAssistant:owner.access}));
-vi.mock('../core/ai-config',()=>({resolveActiveAiConfig:owner.provider}));
+vi.mock('../core/ai-provider-snapshot',()=>({readAiProviderPresentationTx:owner.provider}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,work:(tx:unknown)=>unknown)=>work({})}));
 vi.mock('../core/tenant-settings',()=>({setTenantSetting:owner.write}));
 import {resolvePageContext,PAGE_AREAS} from '../lib/ai/page-context';

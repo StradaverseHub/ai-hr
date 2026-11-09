@@ -4,7 +4,7 @@
  * does. Hiding the button is presentation only. */
 import { withTenant, type SessionContext } from '../db/client';
 import { getSetting } from './entitlements';
-import { resolveActiveAiConfig } from './ai-config';
+import { readAiProviderPresentationTx } from './ai-provider-snapshot';
 import { mayUseAssistant } from './assistant-grant';
 import { setTenantSetting } from './tenant-settings';
 import { isPageArea, PAGE_AREAS, type PageArea } from '../lib/ai/page-context';
@@ -38,8 +38,9 @@ export async function assistantLauncherFor(ctx: SessionContext): Promise<Omit<La
 }
 
 async function configuredLauncher(ctx: SessionContext, settings: LauncherSettings) {
-  if (!settings.enabled || !(await withTenant(ctx, tx => resolveActiveAiConfig(tx, ctx)))) return null;
-  return { position: settings.position, hiddenAreas: settings.hiddenAreas };
+  if (!settings.enabled) return null;
+  const provider = await withTenant(ctx, tx => readAiProviderPresentationTx(tx, ctx), { readOnlySnapshot: true });
+  return provider ? { position: settings.position, hiddenAreas: settings.hiddenAreas } : null;
 }
 
 /** The shell's navigation and launcher use one current grant result in this render. */
