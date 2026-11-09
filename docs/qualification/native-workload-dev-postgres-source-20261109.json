@@ -1,7 +1,7 @@
 {
   "kind": "DORMANT_NATIVE_WORKLOAD_DEV_POSTGRES_SOURCE_ONLY",
-  "parent": "6573b4c68e5846e96a96df757623406ead13eb77",
-  "sourceRef": "codex/native-workload-dev-postgres-20261109",
+  "parent": "e3a8c7127df49ae5fabd34588a021f9a93fbf26f",
+  "sourceRef": "codex/native-workload-dev-postgres-proof-20261109",
   "design": {
     "bytes": 14837,
     "sha256": "4d2f693ed1fedc7ae273d724d50f7aaab31459538810f258bbde19919dee5fbe"
@@ -31,21 +31,25 @@
   },
   "physicalProofInterfaces": {
     "separate": "Per-job source and physical birth, before/after TCP sessions, effective ACL and SCRAM kind, bounded statistics, SQLSTATE refusals and terminal physical settlement.",
-    "crossBinding": "Native database OID, observer role OID, loopback tuple and backend birth stay in private adjudication.",
+    "crossBinding": "Private owner TCP identity from both reserved observations joins the held physical process and reserved owner PID, backend birth and dev database OID. Observer backend and one active virtual transaction birth stay bound together.",
     "statistics": "Same actual dev OID and workload app role. Bounded numeric counts only.",
     "observerTemporaryPrivilege": "Expected false in actual effective PostgreSQL privileges. Native TEMP refusal with read/write-capable transaction and SQLSTATE 42501 is pending. If PUBLIC grants TEMP, the separately reviewed activation owner may revoke only the disposable database PUBLIC TEMP edge after checking the canonical existing owners.",
     "statements": {
       "session": {
-        "bytes": 1044,
-        "sha256": "f10c7459994261f9e11f59f295163ad3831783df37f7499d638cd43e5ea934e7"
+        "bytes": 1313,
+        "sha256": "e00435cdcdcaf1a614e9153a65a43af0dae083aebe02a904cd7c81b60abdf163"
+      },
+      "ownerClusterIdentity": {
+        "bytes": 349,
+        "sha256": "7173671c88774bf89989425319eb31d0e50051ec5f49e4cf584a5962fff99127"
       },
       "passwordKinds": {
         "bytes": 424,
         "sha256": "07ddc154a110ce66a41d193cf7b44224f2ad257f65f617cd7e9164f1633423df"
       },
       "observerAcl": {
-        "bytes": 3580,
-        "sha256": "0ae8dbc0c7c8e446c45524d22a44712520abab217d2c5ba4e0b2b02891b0fb0e"
+        "bytes": 6949,
+        "sha256": "bb4b199f8fc7e4975059dd76da15d7a892103b33789732a53593c743805235e6"
       },
       "statistics": {
         "bytes": 599,
@@ -59,8 +63,11 @@
       "independent physical birth must bind exact source, controller, first attempt, run, unit and dev HBA",
       "owner, RLS app and stats roles must use stable distinct dev TCP connections on both observations",
       "observer requires held repeatable read, read-only, connection cap and short statement and lock limits",
+      "reserved owner TCP snapshots must independently match the held physical cluster even when endpoint and OIDs match",
+      "another repeatable read transaction on the same live observer backend does not retain the held observation",
       "effective observer ACL refuses PUBLIC TEMP, unsafe role edges, table or definer rights and absent reset evidence",
       "ACL observations are bound to the held database and role and refuse unknown inventory bounds",
+      "observer ownership and unsafe catalogue access refuse even when ordinary business ACL grants are absent",
       "only closed same-realm aggregate app observations with positive live activity can be retained",
       "actual refusal categories distinguish wrong auth, foreign realm and server-denied privileges",
       "successful observation cannot replace cleanup tied to the held physical birth",
@@ -191,19 +198,27 @@
   },
   "sourceChanges": {
     ".github/ci/native-workload-dev-postgres.mjs": {
-      "parent": null,
-      "current": {
+      "parent": {
         "bytes": 15445,
         "sha256": "90befe5cb578622bfbc52987d655b8334a11c62659a30d2b1c33e242c7d21bea",
         "gitBlob": "e7e3de630bd61ef8abe32232b23b6d6de6a1bf77"
+      },
+      "current": {
+        "bytes": 21726,
+        "sha256": "666acd1646eb2bae4013b03bd58e1f6821b492ac85ea07c711f8dba28acd8f94",
+        "gitBlob": "e336f4142ed1be15153574def759a5f968df8be9"
       }
     },
     ".github/ci/native-workload-dev-postgres.test.mjs": {
-      "parent": null,
-      "current": {
+      "parent": {
         "bytes": 11159,
         "sha256": "7c60c3f4436b0c35b4368e317acb9223f0ee83c5b2b9078abf368f8d5fbd02d6",
         "gitBlob": "503b85656efaccb193ff9f21d9843024caa37ec7"
+      },
+      "current": {
+        "bytes": 14628,
+        "sha256": "e41b64c9c88e95ba8693dc821277766cc6adbb396b7ed726740284849cf037a8",
+        "gitBlob": "5330a38f8c116ad93cc0a3ee6bcf593fbff8de09"
       }
     }
   },
@@ -232,7 +247,8 @@
     "Canonical pre-migration role, journal/migration, organisation and seed owners with scoped app positive and negative witnesses",
     "Actual statement and lock timeout, independent fixed read outcomes, native negative SQLSTATEs and closed resource settlement",
     "Closed root statistics/phase-reset and separately scoped product-persistence ownership outside the driver",
-    "New sole fixed native registration and authenticated actual native receipt, separate from full browser or load"
+    "New sole fixed native registration and authenticated actual native receipt, separate from full browser or load",
+    "Actual held owner TCP identifier and same observer transaction joins, exact upstream catalog/default and extension role ACLs, and real native proof against the admitted PostgreSQL image."
   ],
   "qualification": {
     "modelsExecuted": false,
@@ -240,5 +256,41 @@
     "nativeEvidence": false,
     "published": false,
     "releaseEligible": false
+  },
+  "historicalSourceRecord": {
+    "source": "e3a8c7127df49ae5fabd34588a021f9a93fbf26f",
+    "path": "docs/qualification/native-workload-dev-postgres-source-20261109.json",
+    "bytes": 11033,
+    "sha256": "8bbe6532c0636d6a5dffa09bfb22d0dd0681d3ae67a870cee8c37f77ac21f471",
+    "gitBlob": "8be2432313791c687470e1c1decff4cb56791a71"
+  },
+  "proofBindingCorrection": {
+    "review": {
+      "bytes": 6997,
+      "sha256": "dfee3e0dd33359a97906eccb7a9d42663298150c9d3c3c2abb7282be77fc5942"
+    },
+    "historicalAuthorProof": {
+      "bytes": 9342,
+      "sha256": "37aadc7126103061b06b72061042eedc9a4a5fd6bab5c29e6db11258ba3bb0e5"
+    },
+    "ownerCluster": "Actual pg_control_system system identifier read only by protected postgres owner on its reserved TCP connection. Compare canonical uint64 SHA-256 with the separately held physical system identity at both observations. Raw identifier never returned.",
+    "observerTransaction": "Read server transaction birth and granted own virtual-XID lock on each observation. Compare both across held observer snapshots. Actual owner must retain the single repeatable-read read-only callback across probes.",
+    "observerOwnershipAndCatalogue": "Detect direct and effective ownership via database, schema, relation and function owners. Reject other explicit inherited system relation or column grants, unsafe writes and effective reads of the eleven fixed sensitive catalogue targets. PostgreSQL standard PUBLIC safe metadata remains in scope, including only the nonsecret pg_subscription columns.",
+    "fixedSystemStatsGrants": [
+      "pg_catalog.pg_shmem_allocations",
+      "pg_catalog.pg_backend_memory_contexts"
+    ],
+    "resetMembership": "Require exact three-argument reset function to belong to actual pg_stat_statements extension, with no effective observer EXECUTE.",
+    "localPg16SourceReferences": {
+      "system_views.sql": {
+        "bytes": 50273,
+        "sha256": "1c47b3f1172e7ff8a0736d6747cd4487a3e970cc8f437705b1484baf2aae29e0"
+      },
+      "extension/pg_stat_statements--1.6--1.7.sql": {
+        "bytes": 806,
+        "sha256": "7a5ffffffbff4eab6dff365f8cdb63fd5b675674e2ab52a53adf705aec45fc73"
+      }
+    },
+    "scope": "Local installed PostgreSQL 16 source and dormant source models. Hosted pinned-image role ACL, read-only transaction and physical privileges remain pending."
   }
 }

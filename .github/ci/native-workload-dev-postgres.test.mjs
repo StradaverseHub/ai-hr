@@ -13,9 +13,10 @@ import {
 
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const binding={source:'a'.repeat(40),controller:'b'.repeat(40),runId:123,attempt:1,unit:'db-0123456789abcdef'};
+const systemIdentifier='7354182341226312455';
 const birth={
  binding,containerId:'a'.repeat(64),ownerNonce:'b'.repeat(64),processId:501,processBirth:'1234',cgroupDevice:'37',cgroupInode:'987',
- systemIdentifierSha256:'c'.repeat(64),hbaSha256:DEV_WORKLOAD_POSTGRES_HBA_SHA256,databaseOid:'16001',
+ systemIdentifierSha256:sha(systemIdentifier),hbaSha256:DEV_WORKLOAD_POSTGRES_HBA_SHA256,databaseOid:'16001',
 };
 const roleNames=['postgres','ai_hr_app','ai_hr_workload_observer'];
 const credential=(role,letter)=>`postgres://${role}:${letter.repeat(64)}@127.0.0.1:5433/ai_hr_dev`;
@@ -27,12 +28,19 @@ const tcp=(slot,index)=>({
  superuser:slot==='owner',bypassRls:slot==='owner',createDb:slot==='owner',createRole:slot==='owner',
  replication:slot==='owner',connectionLimit:slot==='observer'?2:-1,readOnly:slot==='observer',
  isolation:slot==='observer'?'repeatable read':'read committed',statementTimeoutMs:2000,lockTimeoutMs:300,
+ transactionBirth:'1794250001.012345',virtualTransaction:(10+index)+'/1',
 });
 const sessions=()=>Object.fromEntries(['owner','app','observer'].map((slot,index)=>[slot,tcp(slot,index)]));
+const observation=(held=sessions(),overrides={})=>({
+ sessions:held,ownerCluster:{pid:held.owner.pid,backendBirth:held.owner.backendBirth,databaseOid:held.owner.databaseOid,
+  systemIdentifier,...overrides},
+});
 const acl={
  databaseOid:birth.databaseOid,observerOid:'16012',schemasChecked:5,relationsChecked:600,columnsChecked:5500,definersChecked:87,
  readableStatsViews:2,creatableSchemas:0,unsafeRelations:0,callableDefiners:0,directMemberships:1,otherMemberships:0,
  exactStatsGrant:true,inheritsStats:true,setsStats:false,canTemp:false,canCreateDatabaseObjects:false,resetExists:true,canReset:false,
+ ownsDatabase:false,ownedSchemas:0,ownedRelations:0,ownedFunctions:0,catalogueRelationsChecked:410,sensitiveCatalogueChecked:11,
+ sensitiveCatalogueReadable:0,unexpectedCatalogueGrants:0,unexpectedCatalogueColumnGrants:0,catalogueWriteRights:0,
 };
 const stats={databaseOid:birth.databaseOid,appBackends:1,appUngrantedLocks:0,appStatementRows:1};
 const refusals={
@@ -90,20 +98,42 @@ test('independent physical birth must bind exact source, controller, first attem
 });
 
 test('owner, RLS app and stats roles must use stable distinct dev TCP connections on both observations',()=>{
- validateDevWorkloadSessions(sessions(),sessions(),birth.databaseOid);
+ validateDevWorkloadSessions(observation(),observation(),birth,binding);
  const before=sessions();
  for(const change of [{database:'ai_hr_test_w1'},{databaseOid:'16002'},{login:'postgres'},{role:'postgres'},
   {serverAddress:'::1'},{clientAddress:'127.0.0.2'},{serverPort:5432},{superuser:true},{bypassRls:true},
   {pid:before.owner.pid},{roleOid:before.owner.roleOid},{clientPort:before.owner.clientPort},
   {pid:612},{backendBirth:'1794250000.654321'}])
-  assert.throws(()=>validateDevWorkloadSessions(before,{...before,app:{...before.app,...change}},birth.databaseOid),/TCP/);
+  assert.throws(()=>validateDevWorkloadSessions(observation(before),observation({...before,app:{...before.app,...change}}),birth,binding),/TCP/);
 });
 
 test('observer requires held repeatable read, read-only, connection cap and short statement and lock limits',()=>{
  const before=sessions();
  for(const change of [{readOnly:false},{isolation:'read committed'},{connectionLimit:3},{lockTimeoutMs:1000},{statementTimeoutMs:20000}])
-  assert.throws(()=>validateDevWorkloadSessions(before,{...before,observer:{...before.observer,...change}},birth.databaseOid),
+  assert.throws(()=>validateDevWorkloadSessions(observation(before),observation({...before,observer:{...before.observer,...change}}),birth,binding),
    /observer transaction|TCP limits/);
+});
+
+test('reserved owner TCP snapshots must independently match the held physical cluster even when endpoint and OIDs match',()=>{
+ const held=sessions(),before=observation(held);
+ for(const change of [{systemIdentifier:'7354182341226312456'},{systemIdentifier:'18446744073709551616'},
+  {pid:held.owner.pid+1},{backendBirth:'1794250000.000012'},{databaseOid:'16002'}]){
+  const foreign=observation(held,change);
+  for(const [first,last] of [[before,foreign],[foreign,before]])
+   assert.throws(()=>validateDevWorkloadSessions(first,last,birth,binding),error=>
+    /owner TCP cluster/.test(error.message) && !error.message.includes(systemIdentifier)
+    && !error.message.includes('7354182341226312456'));
+ }
+});
+
+test('another repeatable read transaction on the same live observer backend does not retain the held observation',()=>{
+ const held=sessions(),before=observation(held);
+ const renew=change=>observation({...held,observer:{...held.observer,...change}});
+ validateDevWorkloadSessions(before,observation(held),birth,binding);
+ for(const change of [{virtualTransaction:'12/2'},{transactionBirth:'1794250001.012346'}])
+  assert.throws(()=>validateDevWorkloadSessions(before,renew(change),birth,binding),/held observer transaction changed/);
+ for(const change of [{virtualTransaction:null},{virtualTransaction:'12/1\n'},{transactionBirth:'0'}])
+  assert.throws(()=>validateDevWorkloadSessions(before,renew(change),birth,binding),/TCP transaction refused/);
 });
 
 test('effective observer ACL refuses PUBLIC TEMP, unsafe role edges, table or definer rights and absent reset evidence',()=>{
@@ -118,9 +148,22 @@ test('ACL observations are bound to the held database and role and refuse unknow
  assert.throws(()=>validateDevWorkloadObserverAcl(acl,birth.databaseOid,'16013'),/ACL identity/);
  assert.throws(()=>validateDevWorkloadObserverAcl(acl,'16002','16012'),/ACL identity/);
  for(const change of [{schemasChecked:0},{relationsChecked:8193},{columnsChecked:131073},{definersChecked:8193},
+  {catalogueRelationsChecked:8193},{sensitiveCatalogueChecked:10},
   {readableStatsViews:1}])
   assert.throws(()=>validateDevWorkloadObserverAcl({...acl,...change},birth.databaseOid,'16012'),/ACL census/);
  assert.throws(()=>validateDevWorkloadObserverAcl({...acl,unknown:true},birth.databaseOid,'16012'),/Closed/);
+});
+
+test('observer ownership and unsafe catalogue access refuse even when ordinary business ACL grants are absent',()=>{
+ for(const change of [{ownsDatabase:true},{ownedSchemas:1},{ownedRelations:1},{ownedFunctions:1}])
+  assert.throws(()=>validateDevWorkloadObserverAcl({...acl,...change},birth.databaseOid,'16012'),/observer ownership/);
+ for(const change of [{sensitiveCatalogueReadable:1},{unexpectedCatalogueGrants:1},
+  {unexpectedCatalogueColumnGrants:1},{catalogueWriteRights:1}])
+  assert.throws(()=>validateDevWorkloadObserverAcl({...acl,...change},birth.databaseOid,'16012'),/observer catalogue access/);
+ assert.match(DEV_WORKLOAD_POSTGRES_READS.observerAcl,/pg_has_role\(t.observer,r.oid,'USAGE'\) OR pg_has_role\(t.observer,r.oid,'SET'\)/);
+ assert.match(DEV_WORKLOAD_POSTGRES_READS.observerAcl,/\('pg_subscription','subconninfo'\)/);
+ assert.match(DEV_WORKLOAD_POSTGRES_READS.observerAcl,/acl.grantee=stats AND acl.grantor=postgres_owner/);
+ assert.match(DEV_WORKLOAD_POSTGRES_READS.observerAcl,/ext.extname='pg_stat_statements'/);
 });
 
 test('only closed same-realm aggregate app observations with positive live activity can be retained',()=>{
@@ -149,13 +192,15 @@ test('successful observation cannot replace cleanup tied to the held physical bi
 });
 
 test('native observation statements are finite reads and expose no password or query text',()=>{
- assert.deepEqual(Object.keys(DEV_WORKLOAD_POSTGRES_READS),['session','passwordKinds','observerAcl','statistics']);
+ assert.deepEqual(Object.keys(DEV_WORKLOAD_POSTGRES_READS),['session','ownerClusterIdentity','passwordKinds','observerAcl','statistics']);
  assert(Object.isFrozen(DEV_WORKLOAD_POSTGRES_READS));
  for(const statement of Object.values(DEV_WORKLOAD_POSTGRES_READS)){
   assert.match(statement,/^(SELECT|WITH)\s/);
   assert(!statement.includes(';'));
  }
  assert.match(DEV_WORKLOAD_POSTGRES_READS.passwordKinds,/bool_or\(rolpassword LIKE 'SCRAM-SHA-256\$%'/);
+ assert.match(DEV_WORKLOAD_POSTGRES_READS.ownerClusterIdentity,/a.pid=pg_backend_pid\(\) AND session_user='postgres' AND current_user='postgres'/);
+ assert.match(DEV_WORKLOAD_POSTGRES_READS.session,/l.virtualxid=l.virtualtransaction/);
  assert.match(DEV_WORKLOAD_POSTGRES_READS.observerAcl,/has_database_privilege\(observer,db,'TEMPORARY'\)/);
  assert.match(DEV_WORKLOAD_POSTGRES_READS.observerAcl,/to_regprocedure\('public\.pg_stat_statements_reset\(oid,oid,bigint\)'\)/);
 });

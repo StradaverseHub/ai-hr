@@ -1,5 +1,6 @@
 /** Fixed dev-realm evidence grammar. No connection, provisioning or admission entry. */
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 
 export const DEV_WORKLOAD_POSTGRES_PROFILE = 'linux-next-workload-dev-postgres-v1';
 export const DEV_WORKLOAD_POSTGRES_DATABASE = 'ai_hr_dev';
@@ -22,9 +23,11 @@ const MAX_OID = 4294967295;
 const BINDING_KEYS = ['source','controller','runId','attempt','unit'];
 const BIRTH_KEYS = ['binding','containerId','ownerNonce','processId','processBirth','cgroupDevice','cgroupInode',
  'systemIdentifierSha256','hbaSha256','databaseOid'];
-const SESSION_KEYS = ['login','role','database','databaseOid','roleOid','pid','backendBirth',
+const SESSION_ID_KEYS = ['login','role','database','databaseOid','roleOid','pid','backendBirth',
  'clientAddress','clientPort','serverAddress','serverPort','superuser','bypassRls','createDb','createRole',
  'replication','connectionLimit','readOnly','isolation','statementTimeoutMs','lockTimeoutMs'];
+const SESSION_TX_KEYS = ['transactionBirth','virtualTransaction'];
+const SESSION_KEYS = [...SESSION_ID_KEYS,...SESSION_TX_KEYS];
 
 // The future protected owner holds the DB and executes these exact statements
 // under bounded client/transaction limits. These strings are inert source data.
@@ -38,20 +41,34 @@ export const DEV_WORKLOAD_POSTGRES_READS = Object.freeze({
   r.rolcreaterole AS "createRole", r.rolreplication AS replication, r.rolconnlimit AS "connectionLimit",
   current_setting('transaction_read_only') = 'on' AS "readOnly",
   current_setting('transaction_isolation') AS isolation,
+  extract(epoch FROM transaction_timestamp())::text AS "transactionBirth",
+  (SELECT l.virtualxid FROM pg_locks l WHERE l.pid=a.pid AND l.locktype='virtualxid'
+    AND l.mode='ExclusiveLock' AND l.granted AND l.virtualxid=l.virtualtransaction) AS "virtualTransaction",
   (SELECT setting::int FROM pg_settings WHERE name='statement_timeout' AND unit='ms') AS "statementTimeoutMs",
   (SELECT setting::int FROM pg_settings WHERE name='lock_timeout' AND unit='ms') AS "lockTimeoutMs"
  FROM pg_stat_activity a JOIN pg_database d ON d.oid=a.datid
  JOIN pg_roles r ON r.rolname=current_user WHERE a.pid=pg_backend_pid()`,
+ // The protected owner must run this on the same reserved TCP backend as its
+ // session observation. The observer never receives this execute capability.
+ ownerClusterIdentity: `SELECT a.pid, extract(epoch FROM a.backend_start)::text AS "backendBirth",
+  a.datid::text AS "databaseOid", c.system_identifier::text AS "systemIdentifier"
+ FROM pg_stat_activity a CROSS JOIN pg_catalog.pg_control_system() c
+ WHERE a.pid=pg_backend_pid() AND session_user='postgres' AND current_user='postgres'
+   AND current_database()='ai_hr_dev'`,
  passwordKinds: `SELECT
   COALESCE(bool_or(rolpassword LIKE 'SCRAM-SHA-256$%') FILTER (WHERE rolname='postgres'),false) AS owner,
   COALESCE(bool_or(rolpassword LIKE 'SCRAM-SHA-256$%') FILTER (WHERE rolname='ai_hr_app'),false) AS app,
   COALESCE(bool_or(rolpassword LIKE 'SCRAM-SHA-256$%') FILTER (WHERE rolname='ai_hr_workload_observer'),false) AS observer
  FROM pg_authid WHERE rolname IN ('postgres','ai_hr_app','ai_hr_workload_observer')`,
  observerAcl: `WITH target AS (
-  SELECT d.oid AS db, r.oid AS observer, s.oid AS stats
-  FROM pg_database d CROSS JOIN pg_roles r CROSS JOIN pg_roles s
+  SELECT d.oid AS db, d.datdba, r.oid AS observer, s.oid AS stats, o.oid AS postgres_owner
+  FROM pg_database d CROSS JOIN pg_roles r CROSS JOIN pg_roles s CROSS JOIN pg_roles o
   WHERE d.datname='ai_hr_dev' AND current_database()=d.datname
     AND r.rolname='ai_hr_workload_observer' AND s.rolname='pg_read_all_stats'
+    AND o.rolname='postgres'
+ ), effective_roles AS (
+  SELECT r.oid FROM pg_roles r CROSS JOIN target t
+  WHERE r.oid=t.observer OR pg_has_role(t.observer,r.oid,'USAGE') OR pg_has_role(t.observer,r.oid,'SET')
  ), namespaces AS (
   SELECT oid FROM pg_namespace
   WHERE nspname NOT IN ('pg_catalog','information_schema')
@@ -59,6 +76,18 @@ export const DEV_WORKLOAD_POSTGRES_READS = Object.freeze({
  ), relations AS (
   SELECT c.oid,c.relkind FROM pg_class c JOIN namespaces n ON n.oid=c.relnamespace
   WHERE c.relkind IN ('r','p','v','m','f','S')
+ ), catalogue AS (
+  SELECT c.oid,c.relname,c.relkind,c.relowner,c.relacl,n.nspname
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE (n.nspname IN ('pg_catalog','information_schema') OR n.nspname ~ '^pg_(toast|temp)(_|$)')
+    AND c.relkind IN ('r','p','v','m','f','S','t')
+ ), sensitive_catalogue AS (
+  SELECT c.oid, fixed.secret_column FROM (VALUES
+    ('pg_authid',NULL),('pg_shadow',NULL),('pg_user_mapping',NULL),('pg_statistic',NULL),
+    ('pg_statistic_ext_data',NULL),('pg_file_settings',NULL),('pg_hba_file_rules',NULL),
+    ('pg_ident_file_mappings',NULL),('pg_config',NULL),('pg_replication_origin_status',NULL),
+    ('pg_subscription','subconninfo')
+  ) fixed(name,secret_column) JOIN catalogue c ON c.nspname='pg_catalog' AND c.relname::text=fixed.name
  ), stats_views AS (
   SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   JOIN pg_depend dep ON dep.classid='pg_class'::regclass AND dep.objid=c.oid AND dep.objsubid=0
@@ -69,7 +98,12 @@ export const DEV_WORKLOAD_POSTGRES_READS = Object.freeze({
  ), definer_functions AS (
   SELECT oid,pronamespace FROM pg_proc WHERE prosecdef
  ), reset_function AS (
-  SELECT to_regprocedure('public.pg_stat_statements_reset(oid,oid,bigint)') AS oid
+  SELECT p.oid FROM pg_proc p
+  JOIN pg_depend dep ON dep.classid='pg_proc'::regclass AND dep.objid=p.oid AND dep.objsubid=0
+    AND dep.refclassid='pg_extension'::regclass AND dep.refobjsubid=0 AND dep.deptype='e'
+  JOIN pg_extension ext ON ext.oid=dep.refobjid AND ext.extnamespace=p.pronamespace
+  WHERE p.oid=to_regprocedure('public.pg_stat_statements_reset(oid,oid,bigint)')
+    AND ext.extname='pg_stat_statements'
  )
  SELECT db::text AS "databaseOid", observer::text AS "observerOid",
   (SELECT count(*)::int FROM namespaces) AS "schemasChecked",
@@ -90,6 +124,30 @@ export const DEV_WORKLOAD_POSTGRES_READS = Object.freeze({
   (SELECT count(*)::int FROM definer_functions p
     WHERE has_schema_privilege(observer,p.pronamespace,'USAGE')
       AND has_function_privilege(observer,p.oid,'EXECUTE')) AS "callableDefiners",
+  datdba IN (SELECT oid FROM effective_roles) AS "ownsDatabase",
+  (SELECT count(*)::int FROM pg_namespace n WHERE n.nspowner IN (SELECT oid FROM effective_roles)) AS "ownedSchemas",
+  (SELECT count(*)::int FROM pg_class c WHERE c.relowner IN (SELECT oid FROM effective_roles)) AS "ownedRelations",
+  (SELECT count(*)::int FROM pg_proc p WHERE p.proowner IN (SELECT oid FROM effective_roles)) AS "ownedFunctions",
+  (SELECT count(*)::int FROM catalogue) AS "catalogueRelationsChecked",
+  (SELECT count(*)::int FROM sensitive_catalogue) AS "sensitiveCatalogueChecked",
+  (SELECT count(*)::int FROM sensitive_catalogue s
+    WHERE has_table_privilege(observer,s.oid,'SELECT')
+      OR CASE WHEN s.secret_column IS NULL THEN has_any_column_privilege(observer,s.oid,'SELECT')
+        ELSE has_column_privilege(observer,s.oid,s.secret_column,'SELECT') END) AS "sensitiveCatalogueReadable",
+  (SELECT count(*)::int FROM catalogue c CROSS JOIN LATERAL aclexplode(c.relacl) acl
+    WHERE acl.grantee IN (SELECT oid FROM effective_roles)
+      AND NOT (c.nspname='pg_catalog' AND c.relkind='v' AND c.relowner=postgres_owner
+        AND c.relname IN ('pg_shmem_allocations','pg_backend_memory_contexts')
+        AND acl.grantee=stats AND acl.grantor=postgres_owner
+        AND acl.privilege_type='SELECT' AND NOT acl.is_grantable)) AS "unexpectedCatalogueGrants",
+  (SELECT count(*)::int FROM pg_attribute a JOIN catalogue c ON c.oid=a.attrelid
+    CROSS JOIN LATERAL aclexplode(a.attacl) acl
+    WHERE a.attnum>0 AND NOT a.attisdropped AND acl.grantee IN (SELECT oid FROM effective_roles)) AS "unexpectedCatalogueColumnGrants",
+  (SELECT count(*)::int FROM catalogue c WHERE CASE WHEN c.relkind='S'
+    THEN has_sequence_privilege(observer,c.oid,'USAGE,SELECT,UPDATE')
+    ELSE has_table_privilege(observer,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+      OR has_any_column_privilege(observer,c.oid,'INSERT,UPDATE,REFERENCES')
+    END) AS "catalogueWriteRights",
   (SELECT count(*)::int FROM pg_auth_members WHERE member=observer) AS "directMemberships",
   (SELECT count(*)::int FROM pg_roles r WHERE r.oid NOT IN (observer,stats)
     AND pg_has_role(observer,r.oid,'MEMBER')) AS "otherMemberships",
@@ -101,7 +159,7 @@ export const DEV_WORKLOAD_POSTGRES_READS = Object.freeze({
   has_database_privilege(observer,db,'CREATE') AS "canCreateDatabaseObjects",
   reset_function.oid IS NOT NULL AS "resetExists",
   has_function_privilege(observer,reset_function.oid::oid,'EXECUTE') AS "canReset"
- FROM target CROSS JOIN reset_function`,
+ FROM target LEFT JOIN reset_function ON true`,
  statistics: `SELECT d.oid::text AS "databaseOid",
   (SELECT count(*)::int FROM pg_stat_activity a WHERE a.datid=d.oid AND a.usesysid=r.oid
     AND a.backend_type='client backend') AS "appBackends",
@@ -120,6 +178,7 @@ const decimal = value => typeof value==='string' && /^[1-9][0-9]{0,19}(?![\s\S])
 const oid = value => decimal(value) && Number(value)<=MAX_OID;
 const integer = (value,min,max) => Number.isSafeInteger(value) && value>=min && value<=max;
 const digest = (value,size=64) => typeof value==='string' && value.length===size && /^[a-f0-9]+(?![\s\S])/.test(value);
+const epoch = value => typeof value==='string' && /^[1-9][0-9]{0,19}(?:\.[0-9]{1,9})?(?![\s\S])/.test(value);
 
 /** Observe syntax and separation privately. No URL is returned or included in a failure. */
 export function validateDevWorkloadCredentials(urls){
@@ -164,7 +223,7 @@ function validateSession(row,role,databaseOid){
  closed(row,SESSION_KEYS,'Closed dev workload TCP session required');
  assert(row.login===role && row.role===role && row.database===DEV_WORKLOAD_POSTGRES_DATABASE
   && row.databaseOid===databaseOid && oid(row.roleOid) && integer(row.pid,2,4194304)
-  && typeof row.backendBirth==='string' && /^[1-9][0-9]{0,19}(?:\.[0-9]{1,9})?(?![\s\S])/.test(row.backendBirth)
+  && epoch(row.backendBirth)
   && row.clientAddress===HOST && row.serverAddress===HOST && row.serverPort===PORT && integer(row.clientPort,1,65535),
  'Dev workload TCP identity refused');
  const privileged=['superuser','bypassRls','createDb','createRole','replication'];
@@ -173,35 +232,60 @@ function validateSession(row,role,databaseOid){
  assert(typeof row.readOnly==='boolean' && ['read committed','repeatable read'].includes(row.isolation)
   && integer(row.connectionLimit,-1,100) && row.statementTimeoutMs===2000 && row.lockTimeoutMs===300,
  'Dev workload TCP limits refused');
+ assert(epoch(row.transactionBirth) && typeof row.virtualTransaction==='string'
+  && /^[1-9][0-9]{0,9}\/[1-9][0-9]{0,9}(?![\s\S])/.test(row.virtualTransaction), 'Dev workload TCP transaction refused');
  if(role===ROLES.observer)assert(row.readOnly && row.isolation==='repeatable read' && row.connectionLimit===2,
   'Dev workload observer transaction refused');
 }
 
-export function validateDevWorkloadSessions(before,after,physicalDatabaseOid){
- assert(oid(physicalDatabaseOid),'Dev workload physical database OID refused');
- for(const sessions of [before,after]){
+function validateOwnerCluster(row,owner,physicalBirth){
+ closed(row,['pid','backendBirth','databaseOid','systemIdentifier'],'Closed dev workload owner TCP cluster observation required');
+ assert(row.pid===owner.pid && row.backendBirth===owner.backendBirth && row.databaseOid===physicalBirth.databaseOid,
+  'Dev workload owner TCP cluster session differs');
+ assert(decimal(row.systemIdentifier) && BigInt(row.systemIdentifier)<=18446744073709551615n
+  && createHash('sha256').update(row.systemIdentifier).digest('hex')===physicalBirth.systemIdentifierSha256,
+ 'Dev workload owner TCP cluster identity differs');
+}
+
+export function validateDevWorkloadSessions(before,after,physicalBirth,expectedBinding){
+ validateDevWorkloadBirth(physicalBirth,expectedBinding);
+ for(const observation of [before,after]){
+  closed(observation,['sessions','ownerCluster'],'Closed dev workload TCP observation required');
+  const {sessions,ownerCluster}=observation;
   closed(sessions,ROLE_SLOTS,'Closed dev workload TCP role census required');
-  for(const slot of ROLE_SLOTS)validateSession(sessions[slot],ROLES[slot],physicalDatabaseOid);
+  for(const slot of ROLE_SLOTS)validateSession(sessions[slot],ROLES[slot],physicalBirth.databaseOid);
   for(const key of ['pid','roleOid','clientPort'])
    assert(new Set(ROLE_SLOTS.map(slot=>sessions[slot][key])).size===ROLE_SLOTS.length,'Dev workload TCP sessions collide');
+  validateOwnerCluster(ownerCluster,sessions.owner,physicalBirth);
  }
- assert(ROLE_SLOTS.every(slot=>SESSION_KEYS.every(key=>before[slot][key]===after[slot][key])),
+ assert(ROLE_SLOTS.every(slot=>SESSION_ID_KEYS.every(key=>before.sessions[slot][key]===after.sessions[slot][key])),
   'Dev workload TCP session changed during observation');
+ assert(SESSION_TX_KEYS.every(key=>before.sessions.observer[key]===after.sessions.observer[key]),
+  'Dev workload held observer transaction changed during observation');
 }
 
 export function validateDevWorkloadObserverAcl(acl,physicalDatabaseOid,heldObserverOid){
  closed(acl,['databaseOid','observerOid','schemasChecked','relationsChecked','columnsChecked','definersChecked',
   'readableStatsViews','creatableSchemas','unsafeRelations','callableDefiners','directMemberships','otherMemberships','exactStatsGrant',
-  'inheritsStats','setsStats','canTemp','canCreateDatabaseObjects','resetExists','canReset'],'Closed dev workload observer ACL required');
+  'inheritsStats','setsStats','canTemp','canCreateDatabaseObjects','resetExists','canReset',
+  'ownsDatabase','ownedSchemas','ownedRelations','ownedFunctions','catalogueRelationsChecked','sensitiveCatalogueChecked',
+  'sensitiveCatalogueReadable','unexpectedCatalogueGrants','unexpectedCatalogueColumnGrants','catalogueWriteRights'],
+ 'Closed dev workload observer ACL required');
  assert(oid(physicalDatabaseOid) && oid(heldObserverOid) && acl.databaseOid===physicalDatabaseOid && acl.observerOid===heldObserverOid,
   'Dev workload observer ACL identity refused');
  assert(integer(acl.schemasChecked,1,128) && integer(acl.relationsChecked,3,8192)
-  && integer(acl.columnsChecked,3,131072) && integer(acl.definersChecked,0,8192) && acl.readableStatsViews===2,
+  && integer(acl.columnsChecked,3,131072) && integer(acl.definersChecked,0,8192) && acl.readableStatsViews===2
+  && integer(acl.catalogueRelationsChecked,11,8192) && acl.sensitiveCatalogueChecked===11,
  'Dev workload observer ACL census refused');
  assert(acl.creatableSchemas===0 && acl.unsafeRelations===0 && acl.callableDefiners===0
   && acl.directMemberships===1 && acl.otherMemberships===0 && acl.exactStatsGrant===true && acl.inheritsStats===true && acl.setsStats===false
   && acl.canTemp===false && acl.canCreateDatabaseObjects===false && acl.resetExists===true && acl.canReset===false,
  'Dev workload observer effective authority refused');
+ assert(acl.ownsDatabase===false && acl.ownedSchemas===0 && acl.ownedRelations===0 && acl.ownedFunctions===0,
+  'Dev workload observer ownership refused');
+ assert(acl.sensitiveCatalogueReadable===0 && acl.unexpectedCatalogueGrants===0
+  && acl.unexpectedCatalogueColumnGrants===0 && acl.catalogueWriteRights===0,
+ 'Dev workload observer catalogue access refused');
 }
 
 export function validateDevWorkloadStatistics(row,physicalDatabaseOid){
