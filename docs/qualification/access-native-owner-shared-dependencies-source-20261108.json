@@ -1,0 +1,51 @@
+{
+  "kind": "ACCESS_NATIVE_PINNED_OWNER_DEPENDENCY_RECOVERY_NOT_ACCEPTANCE",
+  "base": "43ef4e6d89e7290c4d71c13da25ec5653b80dcbd",
+  "sourceRef": "codex/access-native-owner-shared-dependencies-20261108",
+  "qualification": "NOT_RUN; root and independent review required",
+  "pureSelector": {
+    "file": "test/access-editor-owner-dependencies.test.ts",
+    "cases": 5
+  },
+  "nativeSelector": {
+    "file": "test/access-editor-native-owner-presentation.test.ts",
+    "cases": 1,
+    "caseMs": 300000,
+    "profile": "controlled-database-v1"
+  },
+  "controllerSelector": "node --test .github/ci/singleton-profiles.test.mjs",
+  "nativeSqlChanged": false,
+  "commandsAndCleanupExact": true,
+  "expectedEdgesUseEmpiricalCount": false,
+  "sourceSha256": {
+    "test/fixtures/access-editor-native-owner.ts": "c0b55a71db7a9c3230de197474ec6004300565b96a53b9a312c8d2a1ce9e5687",
+    "test/fixtures/access-editor-owner-dependencies.ts": "cae839e18380a053793260216c1a36bfdc081a4c7c7c497a15735ef1c0396b28",
+    "test/access-editor-owner-dependencies.test.ts": "cb5a2536b68cd93db5fac28ca903618bf2bdc4ba2523dee8e3f9eeba9dfdebe3",
+    ".github/ci/singleton-protocol.mjs": "4a7701b6b947db21e168ab2037a280fe75dd9a204975be65cbb67fc655a6abe2",
+    ".github/ci/singleton-profiles.test.mjs": "e0cf74130a5f154f93cb9fa9184e6b2700a75b2e095a94953a2659bc53161bdf",
+    "docs/qualification/access-native-owner-shared-dependencies-20261108.md": "a4e6cacca9bbb4242b83dc7f03fea400d0f02fb4de2d228f5735e2c8d6b11f4d"
+  },
+  "unchangedSourceSha256": {
+    "db/migrations/3211_access_editor_native_owner_presentation.sql": "9f9691816d1ae1b9bad62675169b3b07353af50e14c3863d247ffb3fbc3a3421",
+    "test/access-editor-native-owner-presentation.test.ts": "f9e3d85cf024f18a6e1cca052a2cc0857c76ebc1ce48b4f2c0e50723aa507b63",
+    "test/fixtures/access-editor-cleanup-lifetime.ts": "5cce9a3d44d784cd53007ffdcf5a782ad87d694f9c30271b2fefc6cc68b70a1c",
+    "test/fixtures/access-editor-owned-work.ts": "91d8b6cd9958898b93ba048d4c9927fdc1ec5f0da0b17c09a448b06f8cdee6a7",
+    "test/fixtures/access-editor-original739-journal.json": "881d1d8debe355e83c242b1dcdbc5de2e51e303dcbffbdf14cb22e0e27067b21",
+    "test/fixtures/access-editor-locked-baseline.ts": "abd52e2d2ab8d9d4a5d799d3bb15a71335acb80c1c91a032c2c6801b5b47f097",
+    "test/fixtures/access-editor-catalogue-diagnostic.ts": "286917f00a214bf0e1359f8abd6798171ce91160b905c30ff19ae6c0d1ba1639",
+    "db/migrations/meta/_journal.json": "6156a0e467e2d75549d0f583330b157ff9bfe43b14f096d39cc9663ac95909af"
+  },
+  "originalFailure": {
+    "run": 42427069925,
+    "artifact": 13596381292,
+    "zipSha256": "c8c6a6aa3d48a4dca6c624b4990891e7974b7ac3991a1a1fbdd03a01cd18d04f",
+    "diagnosticSha256": "18ea584e55ea8bb444d9a40eefa83d4313ebcbc9f5e0d61407f1dbac8f37cf17",
+    "otherSectionsEqual": 17,
+    "deltaAdded": 2967,
+    "deltaRemoved": 0
+  },
+  "releaseAuthorized": false,
+  "productionHeld": true,
+  "localApplicationChecksExecuted": false,
+  "staticSourceChecksExecuted": true
+}

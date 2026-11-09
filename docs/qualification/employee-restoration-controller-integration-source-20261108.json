@@ -1,0 +1,115 @@
+{
+  "kind": "EMPLOYEE_RESTORATION_CONTROLLER_INTEGRATED_SOURCE_ONLY_NOT_QUALIFICATION",
+  "merge": "edb2f47d3f761633bf19c9b2564685b85c44bb8f",
+  "parents": [
+    "f05017ea39a8193fb2d74462ac80da5cacb47f7c",
+    "bd63c9f8559c037d4e29c8d738bced5c0aaf01a3"
+  ],
+  "sourceRef": "codex/employee-restoration-controller-integration-20261108",
+  "componentBase": {
+    "file": "docs/qualification/employee-native-restoration-source-20261108.json",
+    "sha256": "0860306a820419921afde33a1d67962c93f1ae6d14778cb14f60973fdf72ac42",
+    "completeComponentMapSha256": "b3097120020b8e3a9862afd1d3591a1846ee2685a139b74ae7a2352a1fbe553a",
+    "encoding": "Resolve immutable completeComponentBase plus immutable componentSourceOverrides; every resulting current file is independently checked"
+  },
+  "componentSourceOverrides": {
+    ".github/ci/unit-report-directories.test.mjs": "ca43bbec8ca9ef2a37300c931cb357b1962c6aab899f42bc4e2bb7bcd4b87bd8"
+  },
+  "completeComponentMapEncoding": "UTF8 compact sorted JSON object plus final LF",
+  "completeComponentMapSha256": "0bb86af9439c19290a9db9af4ce6b5994781c72faf61f4c60edef9c0a34940ff",
+  "sourceMembers": 3447,
+  "controllerMembers": 66,
+  "restorationParentFilesRetained": 18,
+  "controllerRecoveryParentFilesRetained": 4,
+  "extraControllerSourceSha256": {
+    ".github/ci/ci.test.mjs": "7c1421682dfd2799c00c486db01e40704e03050d2fb2fc16cfbddd2d963db83d"
+  },
+  "currentRequestSha256": {
+    "docs/qualification/employee-restoration-controller-integration-20261108.md": "7b9c4d0cae0627723364d0db81493d95ccd045fd3cd84895f63bf3aa5437bb1c"
+  },
+  "immutableSourceRecordsSha256": {
+    "docs/qualification/employee-native-restoration-design-20261108.md": "c533cf2708d2c207e28173ca8e637647c238e79b76d66fab8c36c8b7c4f7f806",
+    "docs/qualification/employee-native-restoration-design-source-20261108.json": "cb9f36b4188abfedd223f16ad607eecac92a71e2d429eac6bad59adb5b47f512",
+    "docs/qualification/employee-native-restoration-20261108.md": "55291bf0fcc5779408b8910e6ff839e1684fe6a186f716bece9e43a04effa00a",
+    "docs/qualification/employee-native-restoration-inverse-20261108.json": "59ec94a14fa94f763d3ae5d5455fb1ddbb20a2faa845afe54c6d333057da867f",
+    "docs/qualification/employee-native-restoration-source-20261108.json": "0860306a820419921afde33a1d67962c93f1ae6d14778cb14f60973fdf72ac42",
+    "docs/qualification/employee-normal-policy-v21-source-20261108.json": "a1a54611adcbbc4013812578dc21b6f374312054b6f71885e92b6832bc7b8163",
+    "docs/qualification/employee-normal-controller-recovery-20261108.md": "c7c99111c735aac8d0680d0448e3b97ad3dc82c5baf6449c1f4be41184652873",
+    "docs/qualification/employee-normal-controller-recovery-source-20261108.json": "e7a22c137075cb9f98d90874e6964b5e815ed95d00ff36cc3a1dc28dc39315a9",
+    "test/fixtures/employee-choice-exact-ascii-owner-inverse.json": "4a62bdecabf4802e8db4f12656a2300ff85e9e38f5d6c295cc1c5cb56948fac1",
+    "test/fixtures/employee-choice-native-purpose-owner-334.source": "3df8e3b01b4ab52304675b8d167f68059ac8e47cfa12835c0b3c3db034da4d3d",
+    "test/fixtures/employee-choice-exact-ascii-owner-76b.source": "44c648ef808dc2a3db73480e315ed93b8830b4dd339980ac205af509ea7d3784"
+  },
+  "prospectiveOrdinarySelectors": [
+    {
+      "file": "test/employee-choice-restoration-proof.test.ts",
+      "cases": 8
+    },
+    {
+      "file": "test/employee-choice-ascii-terminal-witness.test.ts",
+      "cases": 4
+    },
+    {
+      "file": "test/employee-choice-native-owner-factory-source.test.ts",
+      "cases": 3
+    },
+    {
+      "file": "test/employee-choice-exact-ascii-owner-source.test.ts",
+      "cases": 3
+    },
+    {
+      "file": "test/employee-choice-lifecycle-evidence-contract.test.ts",
+      "cases": 1
+    },
+    {
+      "file": "test/ci-unit-report-directory-contract.test.ts",
+      "cases": 1
+    }
+  ],
+  "nestedEvidenceControls": 28,
+  "nestedDirectoryControls": 12,
+  "requiredNormalNativeUnits": [
+    {
+      "file": "test/employee-choice-native-purpose-plan.test.ts",
+      "cases": 6
+    },
+    {
+      "file": "test/employee-choice-benchmark-owner-native.test.ts",
+      "cases": 2
+    },
+    {
+      "file": "test/employee-choice-native-owner-factory.test.ts",
+      "cases": 3
+    },
+    {
+      "file": "test/employee-choice-exact-ascii-purpose.test.ts",
+      "cases": 9
+    },
+    {
+      "file": "test/employee-choice-exact-ascii-plan.test.ts",
+      "cases": 6
+    }
+  ],
+  "completeCurrentControllerAndPlanRequired": true,
+  "retainedClassifierFailure": {
+    "source": "bd63c9f8559c037d4e29c8d738bced5c0aaf01a3",
+    "run": "42458527894",
+    "childTimeoutMs": 15000,
+    "result": "ETIMEDOUT_SIGTERM_EMPTY_OUTPUT",
+    "fixedByThisIntegration": false
+  },
+  "policyVersion": "aihr-staging-ci/v21",
+  "policyAllocatedHere": false,
+  "kernelSha256": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+  "strictWholeNativeSampleMs": 1000,
+  "classifierChanged": false,
+  "boundsChanged": false,
+  "historicalMapsAndInversesUnchanged": true,
+  "behaviorExecutedLocally": false,
+  "uploaded": false,
+  "dispatched": false,
+  "qualified": false,
+  "releaseAuthorized": false,
+  "stagingHeld": true,
+  "productionHeld": true
+}

@@ -4,7 +4,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {readEmployeeHomeTasks} from '../core/employee-home-tasks';
+import {OwnHomeTaskSourceRead,readEmployeeHomeTasks} from '../core/employee-home-tasks';
 import {saveEmployeeHomeConfiguration} from '../core/employee-home-configuration';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {projectHomeAssignedWork,type EmployeeHomeTask} from '../lib/employee-home-tasks';
@@ -52,6 +52,15 @@ describe('Home Waiting for You projects complete actual owner assignments',()=>{
   await saveEmployeeHomeConfiguration(adminCtx(b),{companyId:b.companyId,audienceRole:'manager',expectedOrdinal:0,configuration:config,reason:'Fictional task effort acceptance'});
   const value=await readEmployeeHomeTasks(manager.ctx,manager.employmentId);
   expect(value).toMatchObject({grain:'account',total:25,effortMinutes:100,unestimated:0,pages:3});expect(value.items).toHaveLength(12);
+  const source=new OwnHomeTaskSourceRead(manager.ctx,manager.employmentId);
+  const [count,firstPage]=await Promise.all([
+   source.count(manager.ctx,manager.employmentId),
+   readEmployeeHomeTasks(manager.ctx,manager.employmentId,1,undefined,source),
+  ]);
+  expect(count).toBe(25);
+  expect(firstPage).toEqual(value);
+  await expect(source.count({...manager.ctx},manager.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
+  expect(()=>source.summary(manager.ctx,subject.employmentId)).toThrow();
   const response=await GET(new Request('http://localhost/api/home/tasks?employmentId='+manager.employmentId+'&page=3'));
   expect(response.status).toBe(200);const last=await response.json();expect(last).toMatchObject({total:25,page:3});expect(last.items).toHaveLength(1);
   expect(response.headers.get('cache-control')).toBe('private, no-store');
@@ -95,6 +104,18 @@ describe('Home Waiting for You projects complete actual owner assignments',()=>{
   expect(await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx)).toEqual([]);
   cycle=await perf.getOnehrCycle(a,cycleId);await perf.updateOnehrWindows(a,cycleId,cycle!.revision,{},'Fictional open work window');
   expect(await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx)).toHaveLength(1);
+  const standardRead=vi.spyOn(perf,'pendingStandardFeedbackTaskMetadata');
+  const onehrRead=vi.spyOn(perf,'pendingOnehrFeedbackTaskMetadata');
+  try{
+   const source=new OwnHomeTaskSourceRead(peer.ctx,peer.employmentId);
+   const [count,value]=await Promise.all([
+    source.count(peer.ctx,peer.employmentId),readEmployeeHomeTasks(peer.ctx,peer.employmentId,1,undefined,source),
+   ]);
+   expect(value.total).toBe(count);
+   expect(value.items).toEqual(expect.arrayContaining([expect.objectContaining({id:assigned[0].id,kind:'feedback'})]));
+   expect(standardRead).toHaveBeenCalledExactlyOnceWith(peer.ctx);
+   expect(onehrRead).toHaveBeenCalledExactlyOnceWith(peer.ctx);
+  }finally{standardRead.mockRestore();onehrRead.mockRestore();}
   await perf.declineOnehrFeedback(peer.ctx,assigned[0].id);expect(await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx)).toEqual([]);
  });
 });

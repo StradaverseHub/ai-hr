@@ -7,15 +7,19 @@ import { createTranslator } from 'next-intl';
 import en from '../messages/en.json';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
-const ports = vi.hoisted(() => ({ list: vi.fn(), choices: vi.fn(), shared: vi.fn() }));
+const ports = vi.hoisted(() => ({ list: vi.fn(), choices: vi.fn(), visible: vi.fn(), shared: vi.fn(), memberships: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en-GB', getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as 'rewards' }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedSession: async () => ({ s: { tenantId: 'tenant', userId: 'actor' }, scopeIds: ['company'] }), getScopeIds: async (ids: string[]) => ids }));
 vi.mock('../lib/session', () => ({ getSession: async () => ({ tenantId: 'tenant', userId: 'actor' }) }));
 vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupPlans: async () => [], rewardReviewCompanyGroups: async () => ({}) }));
 vi.mock('../lib/authz', () => ({ requireModule: vi.fn(), isAdmin: () => false }));
-vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: async () => [{ id: 'company', wholeGroup: true }, { id: 'company-2', wholeGroup: true }], rewardNavigation: async () => ['/rewards'] }));
-vi.mock('../packs/rewards/service', async () => ({ listRewardReviewStatus: async () => ({ rows: await ports.list(), year, emptyReason: null }), rewardCoverageForUnits: async () => [], rewardPolicyMemberships:vi.fn(async()=>[{companyId:'company',businessUnitId:'bu-1'},{companyId:'company',businessUnitId:'bu-2'}]),rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
+vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: ports.visible, rewardNavigation: async () => ['/rewards'] }));
+vi.mock('../packs/rewards/service', async () => ({
+  listRewardReviewStatus: async (ctx: unknown, ids: string[]) => ({ rows: await ports.list(ctx, ids), year, emptyReason: ids.length ? null : 'noScope' }),
+  rewardCoverageForUnits: async () => [], rewardPolicyMemberships: ports.memberships, rewardSetupChoices: ports.choices,
+  rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording,
+}));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
 vi.mock('../app/admin/rewards/plans/actions', () => ({ planAction: vi.fn() }));
@@ -47,8 +51,10 @@ const rows = [
 ];
 beforeEach(() => {
   ports.list.mockResolvedValue(rows);
+  ports.visible.mockResolvedValue([{ id: 'company', wholeGroup: true }, { id: 'company-2', wholeGroup: true }]);
   ports.choices.mockResolvedValue({ companies: [{ id: 'company', name: 'Sample Trading Sdn Bhd' }], units: [{ id: 'bu-1', companyId: 'company', name: 'Northern Sales', global: false }], users: [], memberships:[{companyId:'company',businessUnitId:'bu-1'}],cycles: [{ id: 'cycle-1', name: '2026 Annual Compensation Review', year }] });
   ports.shared.mockResolvedValue([]);
+  ports.memberships.mockResolvedValue([{ companyId: 'company', businessUnitId: 'bu-1' }, { companyId: 'company', businessUnitId: 'bu-2' }]);
 });
 afterEach(cleanup);
 
@@ -195,5 +201,56 @@ describe('Shared configuration visibility (56595838)', () => {
     const row = screen.getAllByRole('row')[1];
     expect(within(row).getByText(/Group Standard 2026 · Version 3/)).toBeTruthy();
     expect(within(row).getByText('changed in this review')).toBeTruthy();
+  });
+});
+
+describe('All Reviews uses company-only setup choices and the scoped review status list', () => {
+  const session = { tenantId: 'tenant', userId: 'actor' };
+  const rejectUnusedReads = () => {
+    ports.memberships.mockClear().mockRejectedValue(new Error('Unused policy memberships must not load for this page'));
+    ports.shared.mockClear().mockRejectedValue(new Error('Unused shared policy contents must not load for this page'));
+    ports.choices.mockClear();
+    ports.list.mockClear();
+  };
+
+  it('retains scoped maintenance and filters reviews by their actual creation plan', async () => {
+    rejectUnusedReads();
+    const policyOrigin = { versionId: 'approved-plan', revision: 3, name: 'Group Standard 2026', changed: true };
+    ports.list.mockResolvedValue([
+      { ...rows[0], policyOrigin, creationPlanVersionId: 'approved-plan' },
+      { ...rows[1], policyOrigin, creationPlanVersionId: null },
+    ]);
+    render(wrap(await page({})));
+    expect(ports.choices).toHaveBeenCalledExactlyOnceWith(session, ['company', 'company-2'], { fields: [] });
+    expect(ports.list).toHaveBeenCalledExactlyOnceWith(session, ['company', 'company-2']);
+    expect(ports.memberships).not.toHaveBeenCalled();
+    expect(ports.shared).not.toHaveBeenCalled();
+    const [, managed, other] = screen.getAllByRole('row');
+    expect(within(managed).getByRole('link', { name: en.rewardsDeletion.view })).toBeTruthy();
+    expect(within(other).queryByRole('link', { name: en.rewardsDeletion.view })).toBeNull();
+    cleanup();
+
+    render(wrap(await page({ plan: 'approved-plan' })));
+    expect(screen.getAllByRole('row')).toHaveLength(2);
+    const review = screen.getAllByRole('row')[1];
+    expect(within(review).getByText('Northern Sales')).toBeTruthy();
+    expect(within(review).getByText('Group Standard 2026 · Version 3')).toBeTruthy();
+    expect(within(review).getByText('changed in this review')).toBeTruthy();
+    const form = screen.getByRole('form', { name: en.rewards.reviewList.filters });
+    expect(form.querySelector('input[name="plan"]')).toHaveValue('approved-plan');
+  });
+
+  it('preserves the native list entry and scoped empty state without setup catalogue reads', async () => {
+    rejectUnusedReads();
+    ports.visible.mockResolvedValue([]);
+    ports.choices.mockResolvedValue({ companies: [], units: [], users: [], cycles: [] });
+    ports.list.mockResolvedValue([]);
+    render(wrap(await page({})));
+    expect(ports.choices).toHaveBeenCalledExactlyOnceWith(session, [], { fields: [] });
+    expect(ports.list).toHaveBeenCalledExactlyOnceWith(session, []);
+    expect(ports.memberships).not.toHaveBeenCalled();
+    expect(ports.shared).not.toHaveBeenCalled();
+    expect(screen.getByText(en.rewards.reviewList.empty.noScope)).toBeTruthy();
+    expect(screen.queryByRole('form', { name: en.rewards.reviewList.filters })).toBeNull();
   });
 });

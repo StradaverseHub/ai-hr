@@ -1,0 +1,58 @@
+{
+  "kind": "EMPLOYEE_NATIVE_OWNER_FACTORY_SOURCE_ONLY_NOT_EXECUTED",
+  "base": "334ed804b794ff945153b70c638f22193fbe177c",
+  "reviewedDesign": "663b656c4103dea6aefde58002066ea18ae1eef8",
+  "sourceRef": "codex/employee-native-owner-factory-20261108",
+  "legacySourceGitBlob": "4958fe216b0ea933794d2554f15474040c0dccce",
+  "sourceSha256": {
+    "test/performance/employee-choice-native-purpose-owner.ts": "12f0873b15dfd86e8972bc1d951c62d8827227513b11a2726807c561faf625ef",
+    "test/performance/employee-choice-native-purpose-owner-factory.ts": "481e5f20b38d02325570147c146428066213560d9066aa3141869454924a3e13",
+    "test/performance/employee-choice-native-owner-source.ts": "6594b4b2bc811095c736ccdd0533e7c753b7e6e6612cc617c6dd8283c0dc80a6",
+    "test/performance/employee-choice-native-factory-fixture.ts": "1af322cbf68b239ba3d9928b6ba790cc33aef72ab00cb3826fe7c41f171f81bb",
+    "test/employee-choice-native-owner-factory-source.test.ts": "471f3cb7b08165cb9928819086a1a739591d4434877924e0d1e795b00efafc54",
+    "test/employee-choice-native-owner-factory.test.ts": "67a06110303bdd01baa475bdb4d41f5e8898c96105a9228fcc68ff6fcf7a9b9d",
+    "test/fixtures/employee-choice-native-purpose-owner-334.source": "3df8e3b01b4ab52304675b8d167f68059ac8e47cfa12835c0b3c3db034da4d3d",
+    "docs/qualification/employee-choice-native-owner-factory-20261108.md": "841c71210213d6075e42da393e8b81ae6bc8c1ec1fcf4f1c748dd254b1ae89b1"
+  },
+  "unchangedCriticalSha256": {
+    "test/performance/employee-choice-native-case-owner.ts": "167cbacbc058d4d1b5ad68aab7e44386b6be7200a0d8d84a7073f479b8d82580",
+    "test/performance/employee-choice-sql-frontier.ts": "cc086b95488cf1ba8b832a965a2737674be1f8b3abbde0cca2fafee7e7c74d8d",
+    "test/performance/employee-choice-owned-binding.ts": "17b329a63aa79151e6bb066ffe10c70ebf253b9000cae2fe6ec1cf610b46d2b0",
+    "test/fixtures/employee-choice-native-purpose.sql": "d72e6ded4a07cbbb848856c35391e1e56fdd02ad793c71a18360754e11fe8efc",
+    "test/performance/employee-choice-native-current-baseline.ts": "fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816",
+    "core/employee-choice.ts": "ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5",
+    "test/harness.ts": "ab992137979341edd6bc15ba47e38d99d3e96994b788f15afde27cea3ed6db9e",
+    "test/db-names.ts": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b",
+    "test/global-setup.ts": "831822941d54ec3d79ceb66d3dece99af4af70ac2e4a4b594c843c156ec4ca1d",
+    "test/env.ts": "e8f9c2584f15c4701fc6ea032a3f5c90ea4581e64919bf1c535d79dda6677cf7",
+    "vitest.config.ts": "a2d0d96b3a1f18c322ea76a208de4a0b217b13258cff01f48e3a1f754dba318d"
+  },
+  "sourceSelectors": [
+    {
+      "files": [
+        "test/employee-choice-native-owner-factory-source.test.ts"
+      ],
+      "cases": 3,
+      "database": false
+    }
+  ],
+  "nativeSelector": {
+    "files": [
+      "test/employee-choice-native-owner-factory.test.ts"
+    ],
+    "cases": 3,
+    "workers": 1,
+    "database": "owned physical job cluster",
+    "admission": "BLOCKED until root exact fixed external-stage and source/controller registration",
+    "workMs": 18000,
+    "totalMs": 26000,
+    "caseAndHookMs": 30000
+  },
+  "applicationChanged": false,
+  "sqlChanged": false,
+  "defaultsChanged": false,
+  "normalCiAdmitted": false,
+  "nativeExecuted": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

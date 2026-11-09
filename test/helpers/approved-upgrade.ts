@@ -1,6 +1,7 @@
-/** Exact approved forward tail and its ONE intended populated permission transition.
+/** Exact approved forward tail and its intended populated permission transitions.
  * Historical receipts remain pinned by each owning fixture. No migration or old audit row is skipped. */
 import {expect} from 'vitest';
+import {PERFORMANCE_MIGRATION_IDENTITIES} from '../performance-migration-identities';
 import {createHash} from 'node:crypto';
 import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -63,6 +64,9 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3302,when:1793330003602,tag:'4002_attendance_prepare_review_only'},
  {idx:3500,when:1793330003800,tag:'4100_rewards_review_creator_independence'},
  {idx:3501,when:1793330003801,tag:'4101_attendance_formula_company_scope'},
+ ...PERFORMANCE_MIGRATION_IDENTITIES.map(({idx,when,tag})=>({idx,when,tag})),
+ {idx:3636,when:1793330003936,tag:'3500_ai_centre_architecture_compatibility'},
+ {idx:3637,when:1793330003937,tag:'3501_ai_centre_mandate_write_order'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -119,6 +123,9 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2600_onboarding_current_personnel':'ef82561ecfca93f3feab8f38918c3449569b68afe944085cceb8bafd25ab60be',
  '3200_ai_centre_controls':'2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2',
  '3201_ai_centre_function_coverage':'0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a',
+ ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
+ '3500_ai_centre_architecture_compatibility':'3286f17e76b8d997c46b22019df613b9eef1d1b82c85c125cdb57b80392884ca',
+ '3501_ai_centre_mandate_write_order':'821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
@@ -132,7 +139,7 @@ const ordered=(rows:Row[])=>rows.map(canonical).sort();
 async function table(db:Database,name:string):Promise<Row[]>{return (await db.client.unsafe('select to_jsonb(t) value from '+name+' t order by to_jsonb(t)::text')).map(row=>row.value as Row);}
 /** Stage the complete ordinary prefix immediately before 2107, inspect exactly that transition,
  * then migrate every remaining journal entry. No SQL is installed outside the ordinary migrator. */
-export async function migrateApprovedUpgrade(db:Database):Promise<ApprovedUpgradeWitness>{
+export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db/migrations'):Promise<ApprovedUpgradeWitness>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
  assertApprovedUpgradeTail(journal.entries);
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='2107_probation_module_permission');
@@ -183,7 +190,7 @@ export async function migrateApprovedUpgrade(db:Database):Promise<ApprovedUpgrad
    expect(after).toEqual({...before,generation:Number(before.generation)+(configs.some(row=>row.tenant_id===before.tenant_id)?1:0)});return {before,after};
   });
   expect(await table(db,'public.access_group')).toEqual(groups);expect(await table(db,'public.app_user')).toEqual(users);
-  await migrate(db.db,{migrationsFolder:'db/migrations'});
+  await migrate(db.db,{migrationsFolder});
   expect(await db.client`select id from public.company where display_group_field is not null or display_group_option_id is not null`).toEqual([]);
   expect(await db.client`select user_id from public.reward_group_role_grant`).toEqual([]);
   expect(await table(db,'public.domain_event')).toEqual(eventsAfter);

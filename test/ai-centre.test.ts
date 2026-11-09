@@ -11,6 +11,7 @@
  *  - SIX LANGUAGES, SAME KEYS AND PLACEHOLDERS.
  *  - THE APPROVED DIGESTS ARE NOT TOUCHED. The centre's files sit outside both digest scopes. */
 import { describe, expect, it } from 'vitest';
+import {messagesForLocale} from '../i18n/catalogs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ADMIN_GROUPS, CENTRE_SECTIONS, CENTRE_TABS, adminGroupOf, centreSectionsFor, centreTabsFor, isCentreView } from '../lib/ai-centre/centre-nav';
@@ -215,10 +216,12 @@ describe('AI centre messages', () => {
     }
   });
 
-  it('is merged over the main catalogue for every locale', () => {
-    const request = read('i18n/request.ts');
-    expect(request).toContain("import aiCentreEn from '../messages/ai-centre/en.json'");
-    expect(request).toContain('import(`../messages/ai-centre/${locale}.json`)');
+  it.each(['en','ms','zh','vi','ta','th'] as const)('%s merges AI Centre copy into the request catalogue', async locale => {
+    const messages=await messagesForLocale(locale);
+    for(const [key,value] of catalogue(locale)){
+      const actual=key.split('.').reduce<unknown>((node,part)=>node&&typeof node==='object'?(node as Record<string,unknown>)[part]:undefined,messages);
+      expect(actual,key).toBe(value);
+    }
   });
 
   it('names the architecture through one constant, never in copy, and shows it only on How it works', () => {
@@ -237,8 +240,11 @@ describe('AI centre messages', () => {
       expect(named, `login-editorial ${locale}`).toEqual([...LOGIN_NOVERI_KEYS]);
     }
     // On the Ask page the name is used only by the How it works view.
-    for (const line of read('app/assistant/page.tsx').split('\n').filter(line => /AI_PRODUCT_NAME|AI_ARCHITECTURE_LABEL/.test(line) && !/^import /.test(line)))
-      expect(line).toMatch(/sp\.view === 'how'/);
+    const assistantPage = read('app/assistant/page.tsx');
+    expect(assistantPage).toContain("const tc = sp.view === 'how' ? await getTranslations('aiCentre.how') : null;");
+    const nameLines = assistantPage.split('\n').filter(line => /AI_PRODUCT_NAME|AI_ARCHITECTURE_LABEL/.test(line) && !/^import /.test(line));
+    expect(nameLines).toHaveLength(1);
+    expect(nameLines[0]).toMatch(/\{tc && .*AI_ARCHITECTURE_LABEL/);
     expect(AI_ARCHITECTURE_LABEL).toBe(`${AI_PRODUCT_NAME} OS`);
     expect(read('lib/ai-centre/brand.ts')).not.toMatch(/'Noveri OS'/);
     for (const locale of ['en', 'ms', 'zh', 'vi', 'ta', 'th'])

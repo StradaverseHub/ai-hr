@@ -345,7 +345,7 @@ describe('8ebabbf2 — the Employment tab has no organisation-assignment writer 
     expect(pageSrc).toContain("t('employmentInfo.assignmentViewOnlyNote')");
     expect(pageSrc).toContain("t('employmentInfo.assignmentViewOnlyLink')");
     // The link must open the New Event form itself, not merely the Movement tab.
-    expect(pageSrc).toContain('?tab=careerMovement&newEvent=1');
+    expect(pageSrc).toContain("const newMovementHref = movementPageHref(emp.employmentId, 'new')");
   });
 
   it('still adds no migration — this item changes presentation and permissions only', () => {

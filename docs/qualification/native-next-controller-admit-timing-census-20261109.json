@@ -1,0 +1,1837 @@
+{
+  "kind": "EXACT_SOURCE_CENSUS_NOT_EXECUTED_CASE_EVENTS",
+  "base": "ffe8ced4d5ef226aad2da56d11a35483ffa35728",
+  "sourceRef": "codex/next-poststart-receipt-family-repair-20261109",
+  "focusedFiles": 10,
+  "focusedWrappers": 14,
+  "underlying": 333,
+  "python": 285,
+  "nodeTap": 45,
+  "directVm": 3,
+  "pythonOrder": "standard unittest prefix test (NOT test_), class-name then method-name sort; no per-case event claim before actual Actions",
+  "files": [
+    {
+      "wrapper": "test/runtime-next-environment-observation.test.ts",
+      "source": "deploy/admission/test_next_environment_observation.py",
+      "pythonCases": [
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_closed_receiver_rejects_extra_missing_unknown_labels_and_inconsistent_counts",
+          "line": 188
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_even_keyboard_interrupt_in_observation_executes_original_scrubbed_admission",
+          "line": 248
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_exact_known_vocabulary_and_always_allowed_locale_labels",
+          "line": 109
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_expired_native_read_never_opens_additional_environment_data",
+          "line": 267
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_fixed_journal_message_fits_existing_bounds_with_all_known_labels",
+          "line": 227
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_foreign_principal_invocation_command_cgroup_and_pid_reuse_refuse",
+          "line": 172
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_journal_duplicate_records_duplicate_keys_and_extra_payload_fields_refuse",
+          "line": 210
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_malformed_utf8_missing_nul_empty_duplicate_and_oversized_sources_refuse",
+          "line": 143
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_native_owner_authority_requires_both_custody_checks_and_stable_pinned_process",
+          "line": 165
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_observation_budget_and_telemetry_failures_cancel_timer_and_restore_handler",
+          "line": 235
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_original_controller_literal_branch_does_not_accept_helper_observation_as_admission",
+          "line": 221
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_original_environment_guard_still_refuses_known_unknown_and_forbidden_fields",
+          "line": 149
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_pure_counts_never_claim_process_or_source_authority",
+          "line": 122
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_root_helper_journal_branch_requires_exact_source_and_native_metadata",
+          "line": 200
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_unknown_keys_values_and_prefix_variants_remain_aggregate_only",
+          "line": 133
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_unknown_or_changed_custody_never_yields_a_native_success",
+          "line": 178
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_exact_two_fixed_contexts_and_inherited_stream_flags",
+          "line": 712
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_observation_baseexception_still_invokes_current_child_once",
+          "line": 736
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_refuses_foreign_context_and_constructor_failure_without_retry",
+          "line": 755
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_terminal_signals_never_become_numeric_success",
+          "line": 725
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_wait_interrupt_and_secondary_failures_still_attempt_kill_and_reap",
+          "line": 744
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_zero_and_nonzero_status_are_exact_after_reap",
+          "line": 720
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_closed_key_codec_rejects_boolean_count_unknown_state_extra_raw_data_and_bad_hash_sets",
+          "line": 526
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_complete_zero_one_four_and_strict_utf8_names_never_encode_values_or_known_names",
+          "line": 504
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_host_component_six_hooks_and_canary_data_cannot_be_a_full_worker_terminal",
+          "line": 648
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_malformed_duplicate_wrong_subject_count_or_prefix_terminal_preserves_old_v1_observation",
+          "line": 595
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_missing_native_environment_or_unfinished_helper_never_publishes_digest_authority",
+          "line": 586
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_native_capture_seam_uses_one_existing_environ_read_and_keys_only_before_postchecks",
+          "line": 536
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_overflow_has_no_prefix_and_duplicate_collision_mismatch_or_surrogate_refuses",
+          "line": 518
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_source_sealed_terminal_joins_real_shaped_v1_and_counts_each_record_only_once",
+          "line": 576
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_terminal_v2_keeps_fourteen_rows_fifteen_messages_and_original_phase_codec",
+          "line": 562
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_unavailable_overflow_is_finished_metadata_not_hash_or_readiness_success",
+          "line": 608
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_v2_terminal_uncertain_write_and_actual_post_try_abort_cannot_publish_a_second_terminal",
+          "line": 615
+        },
+        {
+          "class": "KeyNameDigestModels",
+          "method": "test_whole_native_guards_v1_codecs_original_exec_and_single_read_are_source_exact",
+          "line": 657
+        },
+        {
+          "class": "PhaseDiagnosticModels",
+          "method": "test_actual_post_write_async_abort_cannot_publish_a_second_terminal_frame",
+          "line": 424
+        },
+        {
+          "class": "PhaseDiagnosticModels",
+          "method": "test_actual_tracker_emits_exact_bounded_closed_order_without_native_authority",
+          "line": 293
+        },
+        {
+          "class": "PhaseDiagnosticModels",
+          "method": "test_bad_phase_ledgers_and_optional_receiver_failure_never_discard_original_valid_observation",
+          "line": 360
+        },
+        {
+          "class": "PhaseDiagnosticModels",
+          "method": "test_census_preserves_untrusted_controller_foreign_and_missing_metadata_without_reflection",
+          "line": 348
+        },
+        {
+          "class": "PhaseDiagnosticModels",
+          "method": "test_closed_failure_families_never_publish_private_errors_or_extra_fields",
+          "line": 313
+        },
+        {
+          "class": "PhaseDiagnosticModels",
+          "method": "test_every_original_native_check_and_environment_validator_remains_whole_source_exact",
+          "line": 379
+        },
+        {
+          "class": "PhaseDiagnosticModels",
+          "method": "test_partial_write_expiry_and_occupied_timer_never_retry_or_start_more_observation",
+          "line": 324
+        },
+        {
+          "class": "PhaseDiagnosticModels",
+          "method": "test_real_best_effort_failure_reports_only_its_entered_phase_and_restores_original_timer",
+          "line": 336
+        },
+        {
+          "class": "PhaseDiagnosticModels",
+          "method": "test_shared_native_hook_subsequence_is_exact_and_never_a_full_helper_ledger",
+          "line": 370
+        }
+      ],
+      "count": 43
+    },
+    {
+      "wrapper": "test/runtime-next-host-view.test.ts",
+      "source": "deploy/admission/test_next_host_view.py",
+      "pythonCases": [
+        {
+          "class": "HostViewModels",
+          "method": "test_both_complete_predecessor_fixtures_reconstruct_without_dropping_old_guards",
+          "line": 410
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_browser_stop_and_runtime_bounds_are_explicit_source_contract_not_native_proof",
+          "line": 269
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_descriptor_disposal_checks_aggregate_deadline_between_actual_owned_members",
+          "line": 397
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_fixed_manager_proc_and_executable_fences_refuse_before_host_root_access",
+          "line": 148
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_foreign_browser_refusal_still_stops_every_other_owned_service_and_keeps_paths",
+          "line": 244
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_foreign_slice_child_is_preserved_without_stopping_slice",
+          "line": 262
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_full_five_second_native_stop_fits_settlement_without_spending_disposal_reserve",
+          "line": 295
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_host_empty_placeholders_keep_exact_mode_and_complete_native_identity",
+          "line": 113
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_host_nonempty_or_link_placeholder_never_gets_mutable_overlay_exception",
+          "line": 122
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_implicit_slice_absence_never_adopts_a_source_dropin_transient_or_kernel_group",
+          "line": 56
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_leaf_cpu_constructor_requires_exact_effective_weight_without_a_resource_guard_waiver",
+          "line": 100
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_native_invocation_observation_cannot_adopt_missing_or_foreign_custody",
+          "line": 176
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_native_seven_second_cleanup_keeps_independent_stop_after_metadata_or_queue_stall",
+          "line": 302
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_one_failed_stop_never_prevents_other_independent_stop_attempts",
+          "line": 250
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_partial_or_extra_mounts_refuse_before_any_host_root_magic_link",
+          "line": 130
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_replaced_root_is_refused_before_any_unit_or_directory_disposal",
+          "line": 332
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_resource_diagnostic_calls_the_unchanged_method_and_does_not_claim_full_profile_admission",
+          "line": 89
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_resource_guard_diagnostic_returns_only_closed_source_reasons",
+          "line": 48
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_slice_unknown_process_foreign_directory_and_nested_directory_are_retained",
+          "line": 73
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_stalled_full_metadata_reserves_other_unit_observations_and_stop_queue",
+          "line": 281
+        },
+        {
+          "class": "HostViewModels",
+          "method": "test_stalled_full_stop_queue_does_not_consume_other_owned_stops",
+          "line": 289
+        }
+      ],
+      "count": 21
+    },
+    {
+      "wrapper": "test/runtime-next-failure-diagnostic.test.ts",
+      "source": "deploy/admission/test_next_failure_diagnostic.py",
+      "pythonCases": [
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_actual_fixture_refusal_records_only_authenticated_code_and_ast_call_locations",
+          "line": 111
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_actual_run_keeps_original_assertion_and_actual_result_object",
+          "line": 77
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_actual_run_timeout_preserves_original_identity_and_redacts_private_arguments",
+          "line": 87
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_all_three_actual_source_owners_contribute_exact_literal_guard_sites",
+          "line": 99
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_bounded_reader_reaps_its_actual_unprivileged_child_on_overflow_and_deadline",
+          "line": 201
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_closed_command_labels_and_numeric_return_codes_do_not_reflect_arguments",
+          "line": 69
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_complete_original_native_authority_and_cleanup_source_bytes_are_preserved",
+          "line": 333
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_current_native_declaration_drift_refuses_before_read_and_again_before_classification",
+          "line": 319
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_empty_ownership_never_reads_or_classifies_same_named_foreign_invocations",
+          "line": 296
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_every_foreign_native_identity_prevents_a_literal_classification",
+          "line": 138
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_exact_root_controller_message_maps_to_all_source_bound_sites",
+          "line": 130
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_fixed_complete_state_snapshot_keeps_only_closed_states_and_exit_scalars",
+          "line": 158
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_forged_filename_and_globals_do_not_replace_actual_sealed_code_identity",
+          "line": 119
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_kill_failure_cannot_skip_wait_or_pipe_close_and_never_exposes_its_message",
+          "line": 241
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_only_exact_closed_controller_exception_classes_are_reported",
+          "line": 153
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_partial_duplicate_extra_or_foreign_state_records_refuse_without_raw_values",
+          "line": 167
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_partial_ownership_reads_and_classifies_only_the_exact_captured_worker",
+          "line": 307
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_primary_and_cleanup_diagnostics_stay_separate_and_io_cannot_reclassify_failure",
+          "line": 175
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_private_unknown_suffixed_newline_and_binary_messages_never_enter_evidence",
+          "line": 146
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_reader_retains_actual_nonzero_exit_without_uploading_private_bytes",
+          "line": 217
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_selector_creation_failure_still_reaps_the_already_created_actual_child",
+          "line": 222
+        },
+        {
+          "class": "FailureDiagnosticModels",
+          "method": "test_source_drift_or_expired_work_budget_cannot_start_a_diagnostic_command",
+          "line": 189
+        }
+      ],
+      "count": 22
+    },
+    {
+      "wrapper": "test/runtime-next-plain-key-names.test.ts",
+      "source": "deploy/admission/test_next_plain_key_names.py",
+      "pythonCases": [
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test65_unicode_whitespace_punctuation_and_escaped_names_are_all_or_nothing",
+          "line": 75
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_allowed_private_and_fixed_vocabulary_names_never_enter_plain_payload",
+          "line": 88
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_ascii_standard_grammar_accepts_one_and_exact64_without_escaping",
+          "line": 69
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_closed_plain_codec_rejects_extra_fields_wrong_types_duplicates_unsorted_or_partial",
+          "line": 118
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_closed_v3_validator_requires_original_finished_phase_and_digest_pairing",
+          "line": 159
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_complete_zero_one_four_are_explicit_sorted_names_with_old_digest_pairing",
+          "line": 60
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_composed_receipt_replays_every_byte_and_preserves_all_frozen_parent_preimages",
+          "line": 263
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_duplicate_malformed_or_count_mismatched_v3_keeps_old_v1_but_not_names",
+          "line": 207
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_forbidden_other_name_suppresses_entire_plain_set_without_losing_old_hashes",
+          "line": 80
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_foreign_native_metadata_and_helper_command_cannot_publish",
+          "line": 200
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_full14_phase_same_v1_receiver_publishes_names_as_diagnostic_only",
+          "line": 167
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_mapping_views_lists_and_duplicate_tuple_cannot_smuggle_value_capability",
+          "line": 104
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_missing_v1_cannot_turn_a_genuine_v3_phase_ledger_into_publication",
+          "line": 183
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_native_same_read_tuple_seam_keeps_values_private_and_single_environ_read",
+          "line": 126
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_old_v2_packets_retain_hash_diagnostic_without_plain_name_publication",
+          "line": 188
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_overflow_five_or_unavailable_original_digest_never_leaks_a_prefix",
+          "line": 99
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_partial_phase_ledger_or_lone_terminal_cannot_publish_plain_names",
+          "line": 194
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_source_bound_pure_codec_has_no_environment_or_value_access",
+          "line": 138
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_unavailable_plain_preserves_genuine_v1_and_digest_success",
+          "line": 177
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_v3_post_try_abort_latches_before_publish_and_cannot_emit_second_terminal",
+          "line": 237
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_v3_tracker_worst_case998_and_unchanged15_message_aggregate7693",
+          "line": 147
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_v3_uncertain_write_never_retries_or_publishes_failure_with_names",
+          "line": 226
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_v3_unknown_prefix_is_not_a_terminal_or_fallback_name_oracle",
+          "line": 219
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_whole_original_guards_observer_v1_parser_v2_validator_exec_and37_models_are_preserved",
+          "line": 323
+        },
+        {
+          "class": "PlainKeyNameModels",
+          "method": "test_wrong_hash_domain_or_count_suppresses_producer_and_refuses_complete_receiver",
+          "line": 112
+        }
+      ],
+      "count": 25
+    },
+    {
+      "wrapper": "test/runtime-next-manager-environment.test.ts",
+      "source": "deploy/admission/test_next_manager_environment.py",
+      "pythonCases": [
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_actual_guard620_still_refuses_unknown_process_fields",
+          "line": 95
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_duplicate_json_fields_or_assignment_names_refuse",
+          "line": 37
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_every_existing_app_fleet_systemd_name_is_preserved",
+          "line": 70
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_exact128_key_limit_and129_refusal",
+          "line": 54
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_exact_raw_byte_limit_has_no_value_size_or_value_hash_output",
+          "line": 48
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_fixed_override_paths_require_absent_leaf_and_safe_known_parents",
+          "line": 172
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_forbidden_loader_credentials_and_observation_names_never_become_allowed",
+          "line": 76
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_full_failed_transport_or_projection_retains_entered_refused_prefix",
+          "line": 133
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_full_ledger_order_third_slot_and_phase_refuse_before_read",
+          "line": 127
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_full_two_slot_ledger_records_only_completed_settled_counts",
+          "line": 117
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_generic_projection_has_no_sgx_special_case",
+          "line": 65
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_host_failed_read_has_no_success_or_value_reflection",
+          "line": 149
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_host_uses_actual_same_constructor_twice_with_stricter_half_second_budget",
+          "line": 140
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_known_public_source_match_is_not_execution_history_or_next_acceptance",
+          "line": 161
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_mainpid_collision_refuses_all_exec_control_input_erasure",
+          "line": 85
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_malformed_utf8_json_types_and_deep_json_refuse_without_reflection",
+          "line": 41
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_name_grammar_and128_boundary_are_closed",
+          "line": 58
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_nested_array_is_not_the_primary_busctl_wire_format",
+          "line": 31
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_non_tuple_duplicate_or_invalid_projection_input_refuses",
+          "line": 81
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_primary_busctl255_variant_as_has_direct_string_array",
+          "line": 26
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_public_source_probe_budget_or_metadata_failure_is_explicitly_unavailable",
+          "line": 182
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_shared_constructor_refuses_uid_deadline_nonzero_bool_and_malformed_transport",
+          "line": 113
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_shared_constructor_uses_only_fixed_local_typed_manager_read",
+          "line": 109
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_unknown_changed_oversized_override_or_close_failure_never_exports_file_hash",
+          "line": 167
+        },
+        {
+          "class": "ManagerEnvironmentModels",
+          "method": "test_whole_parent_history_and_unchanged_guards_pipe_observers_and_stock_exec",
+          "line": 188
+        }
+      ],
+      "count": 25
+    },
+    {
+      "wrapper": "test/runtime-next-bootstrap-session.test.ts",
+      "source": "deploy/admission/test_next_bootstrap_session.py",
+      "pythonCases": [
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_allfive_live_proofs_and_filesystem_controls_still_run",
+          "line": 202
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_body_and_timing_cleanup_failures_are_both_retained",
+          "line": 188
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_clock_metadata_is_numeric_and_unknown_property_bytes_never_reflect",
+          "line": 299
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_clock_rollback_refuses_without_clamping",
+          "line": 183
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_duplicate_bool_negative_or_unknown_stage_refuses",
+          "line": 162
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_exited_browser_never_receives_fake_first_ack",
+          "line": 262
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_failed_profile_constructor_does_not_launch_or_claim_closed_session",
+          "line": 224
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_first_ack_occurs_only_after_live_filesystem_and_rechecked_ready",
+          "line": 209
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_first_live_environment_refusal_cannot_reuse_prepared_ready_ack",
+          "line": 244
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_fixed13_slots_are_explicit_not_entered_not_success",
+          "line": 148
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_generation_after_live_proof_drift_refuses_first_ack",
+          "line": 250
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_invalid_timing_code_is_refused_without_reflecting_its_value",
+          "line": 176
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_no_profile_or_live_proof_survives_into_next_operation",
+          "line": 292
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_numeric_stage_elapsed_is_actual_clock_difference",
+          "line": 154
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_original_and_close_failures_are_both_retained",
+          "line": 280
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_original_pipe_failure_preserved_with_close_mandatory",
+          "line": 268
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_prepared_process_identity_cannot_admit_replacement",
+          "line": 256
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_profile_close_failure_prevents_boot_success",
+          "line": 274
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_profile_source_start_ready_precede_browser_and_one_profile_closes",
+          "line": 194
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_second_cold_and_permit_course_remains_after_first_ack",
+          "line": 217
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_source_label_or_metadata_or_full_read_failure_always_closes",
+          "line": 230
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_stage_refusal_keeps_no_error_text_or_fake_success",
+          "line": 169
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_start_or_ready_generation_failure_never_launches_browser",
+          "line": 237
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_successful_actual_shape_is_closed13slots_with_nested_first_clock_and_small_frame",
+          "line": 310
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_whole_parent_inverse_replays_each_byte_without_historical_pass_transfer",
+          "line": 341
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_whole_protected_owners_original_pipe_manager_functions_and_budgets_are_preserved",
+          "line": 319
+        },
+        {
+          "class": "BootstrapSessionModels",
+          "method": "test_wrapper_settlement_failure_is_mandatory_and_profile_still_closes",
+          "line": 286
+        }
+      ],
+      "count": 27
+    },
+    {
+      "wrapper": "test/runtime-next-profile.test.ts",
+      "source": "deploy/admission/test_next_profile.py",
+      "pythonCases": [
+        {
+          "class": "NextProfileTests",
+          "method": "test_actual_environment_bytes_must_match_protected_identity_and_every_pool_and_port",
+          "line": 342
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_byte_metadata_build_action_and_environment_bindings_are_independent",
+          "line": 289
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_controller_version_dispatch_verifies_exact_helper_bytes_and_preserves_v1_shape",
+          "line": 380
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_escaping_cycle_and_wrong_external_alias_refuse_even_with_a_matching_link_manifest",
+          "line": 264
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_exact_cold_format2_package_reuses_canonical_links_and_detects_later_byte_change",
+          "line": 202
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_home_model_requires_actual_inaccessible_inode_not_only_a_protecthome_string",
+          "line": 503
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_hosted_profile_uses_only_exact_canonical_worker_database",
+          "line": 223
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_kernel_model_needs_inode_and_readonly_proof_even_when_mount_text_matches",
+          "line": 471
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_mount_parser_refuses_truncation_duplicate_ids_and_unbounded_or_escaped_targets",
+          "line": 495
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_native_library_plus_names_preserve_all_other_path_boundaries",
+          "line": 33
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_no_action_key_loader_owner_database_or_forged_fleet_value_can_be_private_authority",
+          "line": 304
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_nonstarting_declarations_do_not_issue_resource_evidence_and_readiness_requires_it",
+          "line": 442
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_positive_constructor_keeps_profile_mapping_after_private_environment_validation",
+          "line": 212
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_resource_costs_do_not_multiply_and_eight_workers_cannot_claim_sustained_capacity",
+          "line": 322
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_unit_policy_requires_exact_typed_nonrecursive_binds_and_privilege_restrictions",
+          "line": 404
+        },
+        {
+          "class": "NextProfileTests",
+          "method": "test_unknown_member_writable_code_and_hardlink_are_not_cache_exceptions",
+          "line": 238
+        }
+      ],
+      "count": 16
+    },
+    {
+      "wrapper": "test/runtime-ready-admission.test.ts",
+      "source": "deploy/admission/test_state.py",
+      "pythonCases": [
+        {
+          "class": "StateTests",
+          "method": "test_changed_deployment_profile_fences_a_pending_health_callback",
+          "line": 590
+        },
+        {
+          "class": "StateTests",
+          "method": "test_closed_profile_rejects_symlinks_shared_permissions_and_code_in_paths",
+          "line": 608
+        },
+        {
+          "class": "StateTests",
+          "method": "test_cold_endpoint_is_never_in_published_config",
+          "line": 144
+        },
+        {
+          "class": "StateTests",
+          "method": "test_crash_after_reload_requires_fresh_verified_publication_and_tracks_new_readers",
+          "line": 346
+        },
+        {
+          "class": "StateTests",
+          "method": "test_current_health_admits_once_and_stale_callbacks_cannot_mutate_it",
+          "line": 280
+        },
+        {
+          "class": "StateTests",
+          "method": "test_dead_draining_generation_retains_readers_then_eventually_releases",
+          "line": 476
+        },
+        {
+          "class": "StateTests",
+          "method": "test_dead_unbindable_endpoint_stays_reserved_while_peer_and_replacement_serve",
+          "line": 490
+        },
+        {
+          "class": "StateTests",
+          "method": "test_drain_timeout_retains_live_process_and_port_until_every_reader_exits",
+          "line": 516
+        },
+        {
+          "class": "StateTests",
+          "method": "test_failed_second_barrier_stays_pending_until_a_new_proved_reload",
+          "line": 552
+        },
+        {
+          "class": "StateTests",
+          "method": "test_failed_validation_retains_prior_configuration_and_does_not_admit",
+          "line": 335
+        },
+        {
+          "class": "StateTests",
+          "method": "test_interrupted_add_retains_late_old_config_child_through_recovery_barrier",
+          "line": 367
+        },
+        {
+          "class": "StateTests",
+          "method": "test_interrupted_cleanup_reaps_only_natively_dead_nonpublished_generations",
+          "line": 454
+        },
+        {
+          "class": "StateTests",
+          "method": "test_native_diagnostics_only_publish_catalogued_fixed_reasons",
+          "line": 254
+        },
+        {
+          "class": "StateTests",
+          "method": "test_native_reclamation_observer_redacts_unknown_reasons_and_restores_enforcement",
+          "line": 227
+        },
+        {
+          "class": "StateTests",
+          "method": "test_new_build_overlap_refuses_without_authenticated_compatibility_contract",
+          "line": 598
+        },
+        {
+          "class": "StateTests",
+          "method": "test_pid_reuse_does_not_make_old_identity_alive",
+          "line": 326
+        },
+        {
+          "class": "StateTests",
+          "method": "test_pool_exhaustion_does_not_recycle_an_uncertain_endpoint",
+          "line": 579
+        },
+        {
+          "class": "StateTests",
+          "method": "test_pre_hup_child_is_retained_and_same_config_barrier_can_retire_it",
+          "line": 534
+        },
+        {
+          "class": "StateTests",
+          "method": "test_ready_reconciliation_unpublishes_a_live_but_stopping_service",
+          "line": 317
+        },
+        {
+          "class": "StateTests",
+          "method": "test_reconcile_retires_dead_saved_warming_process_but_retains_cooling_and_readers",
+          "line": 404
+        },
+        {
+          "class": "StateTests",
+          "method": "test_reconcile_still_fully_admits_current_live_saved_warming_process",
+          "line": 439
+        },
+        {
+          "class": "StateTests",
+          "method": "test_reservation_rewrites_overlay_after_interrupted_first_write",
+          "line": 272
+        },
+        {
+          "class": "StateTests",
+          "method": "test_stopping_at_health_or_publication_never_completes_admission",
+          "line": 290
+        },
+        {
+          "class": "StateTests",
+          "method": "test_typed_credential_transport_retains_fixed_stage_and_failure_without_private_contents",
+          "line": 188
+        },
+        {
+          "class": "StateTests",
+          "method": "test_typed_empty_credentials_are_required_instead_of_systemctl_display",
+          "line": 152
+        }
+      ],
+      "count": 25
+    },
+    {
+      "wrapper": "test/runtime-native-controller-admit-timing.test.ts",
+      "source": "deploy/admission/test_controller_admit_timing.py",
+      "pythonCases": [
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_actual_linux_worker_resource_typed_runtime_and_final_guards_remain_ordered",
+          "line": 305
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_actual_main_profile_close_failure_is_not_hidden_by_observer",
+          "line": 322
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_actual_main_refusal_and_short_prefix_do_not_claim_original_literal_capture",
+          "line": 170
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_actual_prestart_is_one_fixed_same_pid_exec_with_observer_closed_first",
+          "line": 268
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_actual_state_admit_with_observer_preserves_ready_and_idempotent_fencing",
+          "line": 274
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_actual_state_publication_failure_still_raises_and_does_not_admit",
+          "line": 295
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_actual_state_repeat_health_has_one_repeat_span_and_no_added_attempt",
+          "line": 284
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_async_send_abort_latches_and_propagates_before_original_body",
+          "line": 134
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_backward_invalid_and_overflow_clock_disable_without_clamping",
+          "line": 154
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_cached_old_or_new_host_metadata_is_never_reclassified_by_order",
+          "line": 245
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_duplicate_close_is_safe_and_original_stream_not_closed",
+          "line": 167
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_duplicate_unknown_extra_fields_boolean_integer_and_invalid_duration_reject",
+          "line": 191
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_exact_clock_elapsed_closed_fields_and_actual_send_flags",
+          "line": 112
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_file_stderr_emits_nothing_and_closes_only_duplicate",
+          "line": 98
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_full_next_receiver_requires_both_exact_source_hashes_and_no_partial_claim",
+          "line": 229
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_full_next_receiver_requires_every_native_field_and_exact_c_argv",
+          "line": 224
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_full_valid_trace_and_finite_report_frames",
+          "line": 177
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_01_real_pair_is_code_zero_and_never_admission",
+          "line": 378
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_02_preflight_code_one_precedes_any_read",
+          "line": 383
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_03_read_code_two_does_not_clear_mandatory_settlement",
+          "line": 394
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_04_nonzero_status_code_three_precedes_bad_raw",
+          "line": 406
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_05_input_and_line_codes_four_five_preserve_bounds",
+          "line": 410
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_06_json_code_six_does_not_reflect_private_rows",
+          "line": 419
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_07_origin_argv_pid_codes_seven_eight_nine_short_circuit",
+          "line": 425
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_08_pair_codes_ten_eleven_keep_cached_metadata_untrusted",
+          "line": 438
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_09_codec_codes_twelve_thirteen_keep_before_order",
+          "line": 450
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_10_shape_codes_fourteen_fifteen_keep_before_order",
+          "line": 458
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_11_same_pid_clock_codes_sixteen_seventeen_are_ordered",
+          "line": 465
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_12_unexpected_invalid_code_privacy_and_exact_size",
+          "line": 477
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_host_clock_reverse_truncated_duplicate_or_missing_pairs_reject",
+          "line": 256
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_host_foreign_pid_metadata_transport_or_source_course_reject",
+          "line": 251
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_host_four_packets_require_exact_distinct_argv_and_actual_same_private_pid",
+          "line": 241
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_host_single_bounded_read_unavailable_has_no_boolean_or_raw_claim",
+          "line": 261
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_interrupted_prefix_retains_only_observed_active_stack",
+          "line": 186
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_invalid_stage_never_changes_body_execution",
+          "line": 161
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_metadata_duplicate_fields_and_complete_json_eof_are_unavailable",
+          "line": 334
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_nested_same_stage_is_single_use_not_a_heartbeat",
+          "line": 120
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_nondefault_python_socket_timeout_disables_without_dup_or_flag_change",
+          "line": 108
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_original_baseexception_identity_survives_observer_failure",
+          "line": 142
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_original_literal_receiver_and_helper_owners_remain_independent",
+          "line": 236
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_profile_close_exit_rejects_any_later_previously_unused_stage",
+          "line": 200
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_raw_count_exact64_overflow_empty_and_overlong_frames_reject",
+          "line": 220
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_real_socket_pair_uses_actual_factory_and_does_not_change_original_flags",
+          "line": 86
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_sequence_gap_duplicate_exit_without_enter_and_illegal_stage_parent_reject",
+          "line": 216
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_short_eagain_eintr_and_send_errors_latch_no_application_retry",
+          "line": 127
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_source_hook_guard_body_and_controller_lexical_rewind_are_whole",
+          "line": 342
+        },
+        {
+          "class": "FreshChildOriginModels",
+          "method": "test_fresh_origin_foreign_privilege_argv_linebreak_and_source_binding_refuse",
+          "line": 523
+        },
+        {
+          "class": "FreshChildOriginModels",
+          "method": "test_fresh_origin_missing_duplicate_cached_pid_and_incomplete_newline_refuse",
+          "line": 515
+        },
+        {
+          "class": "FreshChildOriginModels",
+          "method": "test_fresh_origin_real_codec_requires_distinct_private_live_identities",
+          "line": 508
+        },
+        {
+          "class": "FreshChildOriginModels",
+          "method": "test_fresh_schedule_absolute_frontiers_and_invocation_bound_records_are_not_authority",
+          "line": 533
+        }
+      ],
+      "count": 50
+    },
+    {
+      "wrapper": "test/runtime-next-prepackage-diagnostic.test.ts",
+      "source": "deploy/admission/test_next_prepackage_diagnostic.py",
+      "pythonCases": [
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_a_foreign_associated_service_or_scope_refuses_even_if_the_slice_is_inactive",
+          "line": 130
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_actual_configuration_wrapper_refuses_exact_controller_errors_with_only_closed_reasons",
+          "line": 252
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_actual_directory_function_keeps_all_service_units_strictly_absent",
+          "line": 67
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_clean_implicit_slice_requires_all_actual_host_observations_before_admission",
+          "line": 104
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_compiled_receiver_refusals_publish_only_exact_allowlisted_codes_never_child_output",
+          "line": 161
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_compiled_receiver_success_and_timeout_keep_real_outcomes_and_private_redaction",
+          "line": 179
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_configuration_stages_are_closed_and_unknown_values_never_enter_evidence",
+          "line": 241
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_every_fixed_guard_retains_a_real_refusal_and_only_its_bound_public_labels",
+          "line": 34
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_existing_kernel_cgroup_cannot_be_adopted_as_a_clean_implicit_slice",
+          "line": 137
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_fragment_dropin_transient_active_cgroup_alias_and_foreign_identity_refuse",
+          "line": 111
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_incomplete_or_duplicate_manager_properties_never_form_an_absence_witness",
+          "line": 123
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_manager_directory_reader_admits_only_real_root_owned_system_lookup_paths",
+          "line": 153
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_native_probe_actual_refusal_and_timeout_stay_failures_with_only_owned_entered_stage",
+          "line": 226
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_native_probe_diagnostics_require_exact_order_and_never_reflect_unknown_or_private_output",
+          "line": 209
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_native_probe_launch_uses_only_fixed_copied_cwd_nonroot_and_closed_private_environment",
+          "line": 191
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_private_unknown_suffixed_or_unbounded_configuration_errors_remain_generic_and_timeouts_remain_failures",
+          "line": 264
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_real_unit_file_dropin_directory_and_dangling_link_are_all_refused",
+          "line": 142
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_source_observer_binds_all_three_sources_own_bytes_and_profile_before_any_code_can_execute",
+          "line": 436
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_source_observer_calls_actual_unmodified_controller_root_guard_without_root_or_systemd",
+          "line": 323
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_source_observer_calls_original_for_unmapped_private_require_and_restores_before_return",
+          "line": 339
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_source_observer_checks_real_next_and_inventory_guard_code_identities_with_private_inputs",
+          "line": 370
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_source_observer_decoder_requires_bound_callsite_and_never_reflects_unknown_private_or_extra_fields",
+          "line": 455
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_source_observer_keeps_abnormal_numeric_exit_closed_and_actual_root_entry_refuses_nonroot",
+          "line": 489
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_source_observer_launch_uses_only_fixed_checkonly_closed_stdin_and_original_timeout",
+          "line": 477
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_source_observer_output_buffer_is_bounded_in_bytes_and_private_success_is_never_forwarded",
+          "line": 506
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_source_observer_rejects_foreign_stack_forged_filename_code_and_foreign_main_identity",
+          "line": 403
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_source_observer_restores_on_success_direct_refusal_and_nonrequire_private_exception",
+          "line": 351
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_successful_configuration_control_keeps_actual_return_and_unknown_or_wrong_phase_never_executes",
+          "line": 278
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_successful_guard_does_not_mint_a_failure_or_execute_a_native_operation",
+          "line": 61
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_unknown_code_or_stage_never_enters_evidence_or_exception_text",
+          "line": 43
+        },
+        {
+          "class": "PrepackageDiagnosticModels",
+          "method": "test_valid_code_in_a_foreign_phase_refuses_without_a_misleading_guard_record",
+          "line": 54
+        }
+      ],
+      "count": 31
+    }
+  ],
+  "wrappers": [
+    {
+      "path": "test/runtime-native-controller-admit-timing.test.ts",
+      "name": "bounds actual controller phase emission, strict native decoding and historical/fresh-child handoff refusal models",
+      "line": 4
+    },
+    {
+      "path": "test/runtime-next-environment-observation.test.ts",
+      "name": "checks closed environment observations, strict ownership and unconditional admission without leaking private fields",
+      "line": 4
+    },
+    {
+      "path": "test/runtime-next-host-view.test.ts",
+      "name": "retains host cache guards and mandatory stop settlement in source models",
+      "line": 4
+    },
+    {
+      "path": "test/runtime-next-failure-diagnostic.test.ts",
+      "name": "checks all bounded sealed-source failure and privacy models without skips",
+      "line": 4
+    },
+    {
+      "path": "test/runtime-next-plain-key-names.test.ts",
+      "name": "checks bounded plain OTHER names, digest pairing and genuine full-helper receiver transitions",
+      "line": 4
+    },
+    {
+      "path": "test/runtime-next-manager-environment.test.ts",
+      "name": "checks generic manager projection, reserved control input, private transport and finite source history",
+      "line": 4
+    },
+    {
+      "path": "test/runtime-next-manager-environment.test.ts",
+      "name": "checks the actual singleton protocol with its complete shared preparation source closure",
+      "line": 10
+    },
+    {
+      "path": "test/runtime-next-bootstrap-session.test.ts",
+      "name": "checks one-operation profile custody, five fresh live proofs, refusal and mandatory close states",
+      "line": 8
+    },
+    {
+      "path": "test/runtime-next-bootstrap-session.test.ts",
+      "name": "uses the actual first-request function and original remaining clock before a genuine reply",
+      "line": 28
+    },
+    {
+      "path": "test/runtime-next-bootstrap-session.test.ts",
+      "name": "records the actual original90s timer rejection without raising the cap or clamping elapsed time",
+      "line": 38
+    },
+    {
+      "path": "test/runtime-next-bootstrap-session.test.ts",
+      "name": "clears a failed first request without reflecting private error text into timing evidence",
+      "line": 45
+    },
+    {
+      "path": "test/runtime-next-profile.test.ts",
+      "name": "rejects unbound managed packages, mounts, private environments and resource claims in source models",
+      "line": 4
+    },
+    {
+      "path": "test/runtime-ready-admission.test.ts",
+      "name": "preserves generation fencing, publication recovery and complete drain semantics",
+      "line": 4
+    },
+    {
+      "path": "test/runtime-next-prepackage-diagnostic.test.ts",
+      "name": "executes all closed prepackage diagnostic and redaction models without skips",
+      "line": 5
+    }
+  ],
+  "nodeSource": ".github/ci/singleton-profiles.test.mjs",
+  "nodeCases": [
+    "every registered infrastructure file remains exactly once in its native class and a dedicated bounded job",
+    "actual full-CI host context, complete plan and closed native prerequisites admit",
+    "refuses singleton proof: foreign source",
+    "refuses singleton proof: foreign controller",
+    "refuses singleton proof: wrong unit",
+    "refuses singleton proof: wrong file",
+    "refuses singleton proof: wrong profile",
+    "refuses singleton proof: claimed focused mode",
+    "refuses singleton proof: second attempt",
+    "refuses singleton proof: wrong producing run",
+    "refuses singleton proof: missing source proof",
+    "refuses singleton proof: source byte drift",
+    "refuses singleton proof: wrong plan fingerprint",
+    "refuses singleton proof: expanded workers",
+    "refuses singleton proof: batched file",
+    "refuses singleton proof: not systemd",
+    "refuses singleton proof: sudo not root",
+    "refuses singleton proof: missing nginx",
+    "refuses singleton proof: changed nginx bytes",
+    "refuses singleton proof: unknown proof key",
+    "refuses singleton proof: absent authenticated witness",
+    "refuses singleton host: forged focused selection",
+    "refuses singleton host: empty focused hint",
+    "refuses singleton host: foreign repository",
+    "refuses singleton host: other workflow",
+    "refuses singleton host: not hosted",
+    "refuses singleton host: wrong job",
+    "refuses singleton host: rerun",
+    "refuses singleton host: dirty candidate",
+    "refuses singleton host: dirty controller",
+    "refuses singleton host: symlinked source layout",
+    "refuses singleton host: foreign evidence path",
+    "refuses singleton host: wrong actual source",
+    "refuses singleton host: wrong event source",
+    "refuses singleton host: foreign event repository",
+    "refuses singleton host: unsupported event",
+    "cluster receipt is bound to the physical job/run/attempt/unit, not a worker database namespace",
+    "database tests bind every actual URL to the canonical owned loopback worker before their bodies run",
+    "strict unit verifier requires the complete source-bound singleton invocation and refuses skipped/missing proof",
+    "source admissions and full workflow never manufacture focused variables or omit controlled cases",
+    "discovered future focused-only guards fail planning until their actual full admission is implemented",
+    "the real local scope guard refuses a complete native inventory rather than executing a narrowed gate",
+    "hybrid capability binds the conjunction of actual host, owned database and identical same-run build",
+    "final independent build verification refuses a native unit that exercised different compiled bytes",
+    "host cache conformance owns a distinct complete host-only source-bound singleton"
+  ],
+  "actualExecution": false,
+  "profile16RetainedOnNewSource": false,
+  "nativeHostSeparate": {
+    "cases": 1,
+    "sourcePins": 20,
+    "nativeCopiedFiles": 5,
+    "handoffPackets": 4,
+    "journalReads": 1,
+    "readDeadlineMs": 500,
+    "actualNextVerified": false
+  },
+  "recoverySelection": {
+    "kind": "SOURCE_DEPENDENCY_SELECTION_NOT_NEW_PASS_EVIDENCE",
+    "parentSource": "db93cee9427302d4d05642f77c12ac07a16d133b",
+    "parentRun": "42503803308",
+    "parentConclusion": "failure",
+    "failedSelector": "test/runtime-next-host-view.test.ts",
+    "affectedSelectors": [
+      "test/runtime-native-controller-admit-timing.test.ts",
+      "test/runtime-next-bootstrap-session.test.ts",
+      "test/runtime-next-environment-observation.test.ts",
+      "test/runtime-next-failure-diagnostic.test.ts",
+      "test/runtime-next-host-view.test.ts",
+      "test/runtime-next-manager-environment.test.ts",
+      "test/runtime-next-plain-key-names.test.ts"
+    ],
+    "affectedFiles": 7,
+    "affectedWrappers": 11,
+    "affectedPython": 191,
+    "incidentalSameFileTap": 45,
+    "incidentalSameFileVm": 3,
+    "affectedUnderlying": 239,
+    "retainedSelectors": [
+      "test/runtime-next-prepackage-diagnostic.test.ts",
+      "test/runtime-next-profile.test.ts",
+      "test/runtime-ready-admission.test.ts"
+    ],
+    "retainedFiles": 3,
+    "retainedWrappers": 3,
+    "retainedSourceBoundUnderlying": 72,
+    "retainedRawPythonSuiteCounts": 47,
+    "state25ChildStderrDiscarded": true,
+    "state25OnlySourceDefinedWithPassedWrapperExitStdout": true,
+    "sameFileGranularityReason": "Official focused route selects files; shared history consumers require these7selectors; unchanged TAP/VM repeat inside manager/bootstrap files",
+    "changedHistoryInputs": [
+      "next_host_key_receipt_inverse.json",
+      "next_manager_environment_inverse.json",
+      "next_bootstrap_session_inverse.json",
+      "next_controller_admit_timing_inverse.json",
+      "next_controller_admit_terminal_inverse.json"
+    ],
+    "retainedExecutedSourceDependenciesWholeDb93": {
+      "test/runtime-next-profile.test.ts": {
+        "test/runtime-next-profile.test.ts": "25f64a2099a0656904a7ce2395d301112fe8f1df55d97b9820ded621f6395c1e",
+        "deploy/admission/test_next_profile.py": "ef1b8df8e45b3e5603e30f7b71d400736a445ccc858e53607af082f07b03bf7f",
+        "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
+        "deploy/admission/next_profile.py": "80e32be041b80a007bceeb5af60bbf0d922cb490017950fc034057e30476f846",
+        ".github/ci/runtime_inventory.py": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d"
+      },
+      "test/runtime-ready-admission.test.ts": {
+        "test/runtime-ready-admission.test.ts": "0bc2a2e750126e9c7d3d1f450f9d39a44e4de46bc921f1d380924706c23e93f4",
+        "deploy/admission/test_state.py": "868f324ccdd9076e10b709146a171fc1f6e76656a08c8ead6d9a4a741e36e903",
+        "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d"
+      },
+      "test/runtime-next-prepackage-diagnostic.test.ts": {
+        "test/runtime-next-prepackage-diagnostic.test.ts": "45aac343676d78a94b2d183a99980d3faafca5822c25b43eb7f31cdc1840b808",
+        "deploy/admission/test_next_prepackage_diagnostic.py": "822fa94c709ff0db13239f4f662b4f81bed4099251d55177d6c9e172ffef99d3",
+        "deploy/admission/test_next_native.py": "8dafc69d328219c8a6ec12887d4be708dcbd07f21e31b020fd51a2100c82fa86",
+        "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
+        "deploy/admission/next_profile.py": "80e32be041b80a007bceeb5af60bbf0d922cb490017950fc034057e30476f846",
+        ".github/ci/runtime_inventory.py": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d"
+      }
+    }
+  },
+  "handoffRefusalAddedPureMethods": 12,
+  "executedLocally": false,
+  "affectedFocusedFiles": 7,
+  "affectedOuterWrappers": 11,
+  "affectedPythonCases": 213,
+  "affectedUnderlyingCases": 261,
+  "freshChildSourceOnly": {
+    "parent": "ffe8ced4d5ef226aad2da56d11a35483ffa35728",
+    "addedEnvironmentMethods": 6,
+    "addedTimingMethods": 4,
+    "runtimeExecuted": false,
+    "nativeWorkFitUnknown": true
+  },
+  "directFileSourceDiscovery": {
+    "basis": "AST top-level __main__/unittest.main position versus authored class method definitions; no imports/execution/runtime PASS",
+    "files": [
+      {
+        "source": "deploy/admission/test_next_environment_observation.py",
+        "unittestMainLine": 768,
+        "authoredMethods": 43,
+        "definedBeforeMain": 43,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_host_view.py",
+        "unittestMainLine": 499,
+        "authoredMethods": 21,
+        "definedBeforeMain": 21,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_failure_diagnostic.py",
+        "unittestMainLine": 434,
+        "authoredMethods": 22,
+        "definedBeforeMain": 22,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_plain_key_names.py",
+        "unittestMainLine": 345,
+        "authoredMethods": 25,
+        "definedBeforeMain": 25,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_manager_environment.py",
+        "unittestMainLine": 260,
+        "authoredMethods": 25,
+        "definedBeforeMain": 25,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_bootstrap_session.py",
+        "unittestMainLine": 351,
+        "authoredMethods": 27,
+        "definedBeforeMain": 27,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_profile.py",
+        "unittestMainLine": 518,
+        "authoredMethods": 16,
+        "definedBeforeMain": 16,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_state.py",
+        "unittestMainLine": 631,
+        "authoredMethods": 25,
+        "definedBeforeMain": 25,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_controller_admit_timing.py",
+        "unittestMainLine": 561,
+        "authoredMethods": 50,
+        "definedBeforeMain": 50,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_prepackage_diagnostic.py",
+        "unittestMainLine": 523,
+        "authoredMethods": 31,
+        "definedBeforeMain": 31,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      }
+    ]
+  },
+  "sourceReviewRepair": {
+    "parent": "dae090b042680a17d7a282be47ac057bd98d7c18",
+    "findings": [
+      "F1",
+      "F2",
+      "F3",
+      "F4"
+    ],
+    "newMethodCount": 0,
+    "actualExecution": false
+  },
+  "pureControlFailureRepair": {
+    "parent": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+    "failureRun": 42518834654,
+    "newMethods": 0,
+    "all285MethodNamesPreserved": true,
+    "sameAffectedPython213": true,
+    "sameAffectedUnderlying261": true,
+    "twoFixtureRepairs": "os import and code-accepting ExitObserved callback",
+    "currentClockProof": "strict AST assignments/limit/advance plus seven defined finite mutation refusals; not executed",
+    "wholeHistoricalWrapperPreimageAdded": true,
+    "actualExecution": false
+  },
+  "plainReceiptFamilyRepair": {
+    "parent": "3d2a66cec5dd8fbcbc226ef0a2a72f926804bb1d",
+    "failureRun": 42521165894,
+    "oneExistingMethodChanged": true,
+    "newMethods": 0,
+    "same285Names333Underlying": true,
+    "affectedPython213Underlying261AreSourceNotPassEvents": true,
+    "allFiveActive49InverseFilesWhole": true,
+    "newCaseNames": [],
+    "negativeDataAdjudicationsAuthoredNotExecuted": 11,
+    "sameAdjudicatorForPositiveAndNegativeRows": true,
+    "actualExecution": false
+  }
+}

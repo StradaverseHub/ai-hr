@@ -1,5 +1,6 @@
 import { InquiryTabLink as Link } from './inquiry-tab-link';
 import { getTranslations } from 'next-intl/server';
+import {LEAVE_INQUIRY_SUBMENU} from '@/lib/navigation/module-submenus';
 
 /** r378 b594a6e0: two full-width inquiry destinations, with employee search context
  * carried in its own picker namespace. The retired Employee Details listing now
@@ -58,10 +59,7 @@ export async function LeaveInquiryNav({
     return qs ? `${base}?${qs}` : base;
   };
 
-  const tabs = [
-    { key: 'balances', href: hrefFor('/leave/employee-balances', 'balances'), label: t('employeeBalances') },
-    { key: 'records', href: hrefFor('/leave/employee-records', 'records'), label: t('employeeLeaveRecord') },
-  ] as const;
+  const tabs = LEAVE_INQUIRY_SUBMENU.map(tab=>({...tab,href:hrefFor(tab.href,tab.key),label:t(tab.labelKey)}));
 
   return (
     <nav aria-label={t('navLabel')}>
@@ -73,6 +71,7 @@ export async function LeaveInquiryNav({
           <li key={tab.key}>
             <Link
               href={tab.href}
+              data-navigation-destination={tab.id}
               aria-current={active === tab.key ? 'page' : undefined}
               className={`block whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
                 active === tab.key

@@ -1,0 +1,30 @@
+{
+ "kind": "NOTIFICATION_WORKER_PROJECTION_PARTIAL_PROTOTYPE_REQUEST",
+ "releaseEligible": false,
+ "base": "6094fb821429c27e17430422ea1192a9c7ba1075",
+ "status": "Namespace recovery632 normally merged; serialized combined fixture source only, hosted qualification pending",
+ "nativeSelector": "docs/qualification/notification-worker-projection-focused-tests.json",
+ "nativeExecution": "One substantive sole-file standard hosted suite owns the fixed LOGIN once and serializes stage1 and stage2 on the same job-owned PostgreSQL16 worker database",
+ "regressionSelector": "docs/qualification/notification-registry-extraction-focused-tests.json",
+ "runTypecheck": true,
+ "runBuild": false,
+ "implementedSource": [
+  "Single shared render/payload recipe registry",
+  "Named unchanged web recipient adapters",
+  "Fixed native supported fact branches",
+  "Employment and bounded Rewards-account project APIs",
+  "Existing consent enqueue owner in same transaction",
+  "Protected finish_event and exact receipt/cursor settlement",
+  "Native nonzero run counters"
+ ],
+ "missing": [
+  "Unsupported pure recipient/fact evaluators",
+  "Assessment reminder preparation API and hidden-write parity",
+  "Complete per-family native parity and fault matrix",
+  "Canonical settings and process kill-lever integration without app pool",
+  "Abandoned-run recovery/retention",
+  "Final owner/ACL guarded migration/installer",
+  "Protected invocation/package/scheduler/browser qualification"
+ ],
+ "production": "Held; existing fallback and combined scheduled duties unchanged, no live installation/SMTP/provider/deployment"
+}

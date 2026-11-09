@@ -1,0 +1,430 @@
+/** Pure byte/format codec. Fixed crypto hashing ONLY; no filesystem/process/native authority. */
+import {createHash} from 'node:crypto';
+export type Engine = 'a' | 'b' | 'c';
+export type Purpose = 'semantic' | 'cli-b' | 'cli-c';
+export type Verdict = {rootId:number; kind:'DB'|'NODB'; reason:string};
+type Obj = Record<string, unknown>;
+type Check = (v:unknown)=>void;
+const fail = ():never => { throw Error('Classifier witness protocol refused'); };
+const need = (v:unknown):void => { if (!v) fail(); };
+const object = (v:unknown):Obj => { need(v!==null && typeof v==='object' && !Array.isArray(v) && Object.getPrototypeOf(v)===Object.prototype); return v as Obj; };
+const shape = (v:unknown, fields:Record<string,Check>):Obj => {
+ const o=object(v); need(JSON.stringify(Object.keys(o).sort())===JSON.stringify(Object.keys(fields).sort()));
+ for(const [k,c] of Object.entries(fields)) c(o[k]); return o;
+};
+const str:Check=v=>need(typeof v==='string');
+const text:Check=v=>{str(v);need(!(v as string).includes('\0'));};
+const nonempty:Check=v=>{text(v);need((v as string).length>0);};
+const uint:Check=v=>need(Number.isSafeInteger(v) && (v as number)>=0);
+const positive:Check=v=>{uint(v);need((v as number)>0);};
+const bool:Check=v=>need(typeof v==='boolean');
+const fixed=(...values:unknown[]):Check=>v=>need(values.includes(v));
+const nullable=(c:Check):Check=>v=>{if(v!==null)c(v);};
+const list=(c:Check):Check=>v=>{need(Array.isArray(v));for(const x of v as unknown[])c(x);};
+const sha:Check=v=>need(typeof v==='string' && /^[a-f0-9]{64}$/.test(v));
+const git:Check=v=>need(typeof v==='string' && /^[a-f0-9]{40}$/.test(v));
+const decimal:Check=v=>need(typeof v==='string' && /^(0|[1-9][0-9]*)$/.test(v));
+const engine:Check=fixed('a','b','c');
+const purpose:Check=fixed('semantic','cli-b','cli-c');
+const kind:Check=fixed('DB','NODB');
+const path:Check=v=>{nonempty(v);need(!(v as string).startsWith('/') && !(v as string).split('/').some(s=>s==='.'||s==='..'||s===''));};
+const rootPath:Check=v=>{path(v);need(!/\s/.test(v as string));};
+const suiteRoot:Check=v=>{rootPath(v);need((v as string).startsWith('test/')&&/\.test\.ts$|\.dom\.test\.tsx$/.test(v as string));};
+const rows=(v:unknown,c:Check):Obj[]=>{list(c)(v);return v as Obj[];};
+const ids=(rs:Obj[],key='id'):void=>rs.forEach((r,i)=>need(r[key]===i));
+const unique=(vs:unknown[]):void=>need(new Set(vs).size===vs.length);
+const same=(a:unknown,b:unknown):void=>need(canonicalJson(a)===canonicalJson(b));
+const ordered=(vs:string[]):void=>{unique(vs);same(vs,[...vs].sort());};
+const version:Check=fixed(1);
+const verdict:Check=v=>{shape(v,{rootId:uint,kind,reason:str});};
+
+/** Sorted JSON keys, exact code units (including escaped control/surrogate strings), one LF. */
+export function canonicalJson(value:unknown):string {
+ const visit=(v:unknown):unknown=>{
+  if(v===null || typeof v==='string' || typeof v==='boolean')return v;
+  if(typeof v==='number'){need(Number.isFinite(v) && !Object.is(v,-0));return v;}
+  if(Array.isArray(v))return v.map(visit);
+  const o=object(v), out:Obj=Object.create(null);for(const k of Object.keys(o).sort())out[k]=visit(o[k]);return out;
+ };
+ return JSON.stringify(visit(value))+'\n';
+}
+export function decodeCanonicalJson(raw:string):unknown {
+ let v:unknown;try{v=JSON.parse(raw);}catch{fail();}sameRaw(raw,canonicalJson(v));return v;
+}
+function sameRaw(a:string,b:string):void { need(a===b); }
+
+const COMMON = ['binding.json','anchor.json','prerequisites.json','suite.json','stdin.txt',
+ 'git-source-head.stdout','git-source-status.stdout','git-source-tracked.bin','git-controller-head.stdout','git-controller-status.stdout',
+ 'post-git-source-head.stdout','post-git-source-status.stdout','post-git-source-tracked.bin','post-git-controller-head.stdout','post-git-controller-status.stdout',
+ 'native-ownership.jsonl','report.json'] as const;
+export const SEMANTIC_MEMBERS = Object.freeze([...COMMON,'program-a.ts','program-b.ts','program-c.ts','snapshot-index.json',
+ 'calls-a.json','calls-b.json','calls-c.json','graph.json','reasons.json','semantic-a.tsv','semantic-b.tsv','semantic-c.tsv',
+ 'delta-a-b.json','delta-a-c.json','delta-b-c.json','phase-collect.json','phase-replay.json','phase-seal.json']);
+export const CLI_MEMBERS = Object.freeze([...COMMON,'semantic-parent.json','snapshot-index.json','program.ts','package-context.json',
+ 'native-clock.json','stdin-stream.json','native.stdout','native.stderr','native-result.json','source-pre.json','source-post.json','phase-parent-auth.json','phase-seal.json']);
+const GIT_STAGES=['source-head','source-status','all-tracked','controller-head','controller-status'];
+const POST_STAGES=['post-source-head','post-source-status','post-all-tracked','post-controller-head','post-controller-status'];
+export function stageNames(p:Purpose):string[]{ return p==='semantic' ? [...GIT_STAGES,'collect','replay',...POST_STAGES,'seal'] : [...GIT_STAGES,'parent-auth','prepare','cli','postimage',...POST_STAGES,'seal']; }
+const PRE_MEMBERS=['git-source-head.stdout','git-source-status.stdout','git-source-tracked.bin','git-controller-head.stdout','git-controller-status.stdout'];
+const POST_MEMBERS=PRE_MEMBERS.map(x=>'post-'+x);
+function stageMembers(p:Purpose):string[][] {
+ const pre=PRE_MEMBERS.map(x=>[x]), post=POST_MEMBERS.map(x=>[x]);
+ return p==='semantic' ? [...pre,
+  ['suite.json','stdin.txt','snapshot-index.json','calls-a.json','calls-b.json','calls-c.json','phase-collect.json'],
+  ['graph.json','reasons.json','semantic-a.tsv','semantic-b.tsv','semantic-c.tsv','delta-a-b.json','delta-a-c.json','delta-b-c.json','phase-replay.json'],...post,
+  []] : [...pre,
+  ['semantic-parent.json','snapshot-index.json','phase-parent-auth.json'],
+  ['suite.json','stdin.txt','program.ts','package-context.json','source-pre.json'],
+  ['native-clock.json','stdin-stream.json','native.stdout','native.stderr','native-result.json'],['source-post.json'],...post,
+  []];
+}
+export function memberLimit(name:string):number {
+ if(name==='native-ownership.jsonl')return OWNERSHIP_LIMITS.bytes;
+ if(name==='stdin.txt'||name.endsWith('tracked.bin'))return 8*1024*1024;
+ if(name.endsWith('.ts')||name.endsWith('.tsv')||name==='snapshot-index.json'||name.startsWith('calls-')||name.startsWith('delta-')||['graph.json','reasons.json','native.stdout','native.stderr','native-ownership.jsonl'].includes(name))return 16*1024*1024;
+ return 1024*1024;
+}
+const progressCheck:Check=v=>{
+ const seal:Check=x=>{const o=object(x);if(o.state==='not-reached')shape(x,{state:fixed('not-reached')});else shape(x,{state:fixed('executed'),phase:phaseCheck});};
+ shape(v,{version,kind:fixed('NATIVE_CALLBACK_PROGRESS_NOT_ADMISSION'),purpose,complete:bool,completedStages:list(nonempty),failedStage:nullable(nonempty),failedMembers:list(nonempty),seal,custody:custodyCheck});
+};
+function validateNativePrefix(p:Purpose,names:string[],progress:unknown):void {
+ progressCheck(progress);const r=progress as Obj;need(r.purpose===p);unique(names);
+ const stages=stageNames(p),done=r.completedStages as string[],failed=r.failedMembers as string[];
+ same(done,stages.slice(0,done.length));need(done.length<=stages.length);
+ const all=p==='semantic'?SEMANTIC_MEMBERS:CLI_MEMBERS;
+ for(const n of names)need(n!=='report.json'&&all.includes(n));
+ const base=['binding.json','anchor.json','prerequisites.json','phase-seal.json','native-ownership.jsonl',...(p==='semantic'?['program-a.ts','program-b.ts','program-c.ts']:[])];
+ const groups=stageMembers(p),expected=[...base,...groups.slice(0,done.length).flat()];
+ if(r.complete){need(done.length===stages.length&&r.failedStage===null&&failed.length===0);const custody=r.custody as Custody;need(custody.state==='closed'&&custody.closure==='closed');}
+ else {need(done.length<stages.length&&r.failedStage===stages[done.length]);same(failed,groups[done.length].slice(0,failed.length));expected.push(...failed);}
+ const seal=r.seal as Obj;
+ if(done.length===stages.length||r.failedStage==='seal'){
+  need(seal.state==='executed');const phase=seal.phase as Obj;need(phase.stage==='seal'&&phase.workLimitMs===10000&&BigInt(phase.endNs as string)>=BigInt(phase.startNs as string));
+  if(r.complete)need(phase.complete===true&&phase.outcome==='complete');else need(phase.complete===false&&phase.outcome!=='complete');
+ }else need(seal.state==='not-reached');
+ same([...names].sort(),expected.sort());
+}
+/** Callback NEVER creates/accepts runner report. Native completion is still pending-runner. */
+export function validateCallbackMemberSet(p:Purpose,names:string[],progress:unknown):'pending-runner'|'partial-native' {
+ validateNativePrefix(p,names,progress);return (progress as Obj).complete?'pending-runner':'partial-native';
+}
+export function validateFinalMemberSet(p:Purpose,names:string[],progress:unknown,rawReport:string,candidateRoot:string):'passed'|'failed' {
+ need(names.filter(n=>n==='report.json').length===1);validateNativePrefix(p,names.filter(n=>n!=='report.json'),progress);
+ const result=validateActualVitestReport(p,rawReport,candidateRoot);return (progress as Obj).complete&&result==='passed'?'passed':'failed';
+}
+
+export type SnapshotRow = {id:number;path:string;firstSeen:number;firstEngine:Engine;value:null|{blob:string;rawSha256:string;rawBytes:number;textSha256:string;textCodeUnits:number;mode:'100644'|'100755'}};
+export type Snapshot = {version:1;rows:SnapshotRow[]};
+export function validateSnapshot(v:unknown):Snapshot {
+ const positiveValue:Check=x=>{shape(x,{blob:git,rawSha256:sha,rawBytes:uint,textSha256:sha,textCodeUnits:uint,mode:fixed('100644','100755')});};
+ const o=shape(v,{version,rows:list(x=>{shape(x,{id:uint,path:str,firstSeen:uint,firstEngine:engine,value:nullable(positiveValue)});})});
+ const rs=o.rows as SnapshotRow[];ids(rs as unknown as Obj[]);ordered(rs.map(r=>r.path));same(rs.map(r=>r.firstSeen).sort((a,b)=>a-b),rs.map((_,i)=>i));return v as Snapshot;
+}
+export function validateCalls(v:unknown,snapshot:Snapshot,expected:Engine):void {
+ const o=shape(v,{version,engine,rows:list(x=>{shape(x,{id:uint,sourceId:uint});})});need(o.engine===expected);
+ const rs=o.rows as Obj[];ids(rs);for(const r of rs)need((r.sourceId as number)<snapshot.rows.length);
+}
+export function validateSuite(v:unknown):string[]{
+ const o=shape(v,{version,paths:list(suiteRoot)}),paths=o.paths as string[];need(paths.length>0);ordered(paths);return paths;
+}
+export function validateVerdicts(v:unknown,roots:string[]):Verdict[]{
+ const rs=rows(v,verdict);need(rs.length===roots.length);ids(rs,'rootId');return v as Verdict[];
+}
+/** Semantic TSV is reversible: JSON-string path/reason, never native CLI text. */
+export function semanticTsv(roots:string[],values:Verdict[]):string {
+ validateSuite({version:1,paths:roots});validateVerdicts(values,roots);
+ return values.map(v=>`${v.kind}\t${JSON.stringify(roots[v.rootId])}\t${JSON.stringify(v.reason)}\n`).join('');
+}
+export function parseSemanticTsv(raw:string,roots:string[]):Verdict[]{
+ need(raw.endsWith('\n'));const lines=raw.slice(0,-1).split('\n');need(lines.length===roots.length);
+ const values=lines.map((line,i)=>{const fields=line.split('\t');need(fields.length===3);kind(fields[0]);let p:unknown,r:unknown;try{p=JSON.parse(fields[1]);r=JSON.parse(fields[2]);}catch{fail();}need(p===roots[i]);str(r);return{rootId:i,kind:fields[0] as 'DB'|'NODB',reason:r as string};});
+ sameRaw(raw,semanticTsv(roots,values));return values;
+}
+export function validateGraph(v:unknown,snapshot:Snapshot,roots:string[]):void {
+ const step:Check=x=>{const o=object(x);if(o.kind==='helper')shape(o,{kind:fixed('helper'),targetId:uint});else shape(o,{kind:fixed('direct'),reason:str});};
+ const resolver:Check=x=>{shape(x,{id:uint,nodeId:uint,importIndex:uint,specifier:str,candidates:list(uint),selectedSourceId:nullable(uint),outcome:fixed('bare','missing','resolved')});};
+ const o=shape(v,{version,nodes:list(x=>{shape(x,{id:uint,sourceId:uint,steps:list(step)});}),resolvers:list(resolver),hazardous:list(uint)});
+ const ns=o.nodes as Obj[],res=o.resolvers as Obj[];ids(ns);ids(res);unique(ns.map(n=>n.sourceId));
+ for(const n of ns){need((n.sourceId as number)<snapshot.rows.length);for(const s of n.steps as Obj[])if(s.kind==='helper')need((s.targetId as number)<ns.length);}
+ for(const root of roots)need(ns.some(n=>snapshot.rows[n.sourceId as number].path===root));
+ let priorNode=-1,priorImport=-1;
+ for(const r of res){need((r.nodeId as number)<ns.length);need((r.nodeId as number)>priorNode||r.nodeId===priorNode&&(r.importIndex as number)>priorImport);priorNode=r.nodeId as number;priorImport=r.importIndex as number;
+  for(const id of r.candidates as number[])need(id<snapshot.rows.length);
+  const selected=r.selectedSourceId as number|null,candidates=r.candidates as number[];
+  if(r.outcome==='bare')need(candidates.length===0&&selected===null);
+  else if(r.outcome==='missing')need(selected===null&&candidates.every(id=>snapshot.rows[id].value===null));
+  else {need(selected!==null&&candidates.length>0&&candidates[candidates.length-1]===selected&&snapshot.rows[selected].value!==null);need(candidates.slice(0,-1).every(id=>snapshot.rows[id].value===null));}
+ }
+ const hazards=o.hazardous as number[];same(hazards,[...new Set(hazards)].sort((a,b)=>a-b));for(const id of hazards)need(id<ns.length);
+}
+export function validateReasons(v:unknown,roots:string[],nodeCount:number):Record<Engine,Verdict[]> {
+ const witness:Check=x=>{shape(x,{rootId:uint,nodeIds:list(uint),directNodeId:nullable(uint),directStepIndex:nullable(uint)});};
+ const o=shape(v,{version,a:list(verdict),b:list(verdict),c:list(verdict),witnesses:list(witness)});
+ const a=validateVerdicts(o.a,roots),b=validateVerdicts(o.b,roots),c=validateVerdicts(o.c,roots);same(b,c);
+ const ws=o.witnesses as Obj[];need(ws.length===roots.length);ids(ws,'rootId');
+ for(const w of ws){const ns=w.nodeIds as number[];unique(ns);for(const id of ns)need(id<nodeCount);
+  if(b[w.rootId as number].kind==='NODB')need(ns.length===0&&w.directNodeId===null&&w.directStepIndex===null);
+  else {need(ns.length>0&&w.directNodeId===ns[ns.length-1]&&w.directStepIndex!==null);}
+ }return{a,b,c};
+}
+export function deltaRows(before:Verdict[],after:Verdict[]):Obj[]{
+ need(before.length===after.length);return before.flatMap((a,i)=>{const b=after[i];need(a.rootId===i&&b.rootId===i);return a.kind===b.kind&&a.reason===b.reason?[]:[{rootId:i,before:{kind:a.kind,reason:a.reason},after:{kind:b.kind,reason:b.reason}}];});
+}
+export function validateDelta(v:unknown,from:Engine,to:Engine,before:Verdict[],after:Verdict[]):void {
+ const endpoint:Check=x=>{shape(x,{kind,reason:str});};
+ const o=shape(v,{version,from:engine,to:engine,rows:list(x=>{shape(x,{rootId:uint,before:endpoint,after:endpoint});})});
+ need(o.from===from&&o.to===to);same(o.rows,deltaRows(before,after));
+}
+/** Both exact raw output and actual separately-obtained normal planner groups are required.
+ * This pure check does not prove the groups came from a native planner; that custody is external. */
+export function validateNativeStdout(rawBytes:Uint8Array,roots:string[],values:Verdict[],actualNormalGroups:unknown):void {
+ validateSuite({version:1,paths:roots});validateVerdicts(values,roots);
+ for(const v of values)need(!/[\u0000-\u001f\u007f]/.test(v.reason)&&v.reason.trim()===v.reason);
+ const expected=values.map(v=>`${v.kind}\t${roots[v.rootId]}\t${v.reason}\n`).join('');const encoded=new TextEncoder().encode(expected);need(utf8.decode(encoded)===expected);need(rawBytes.length===encoded.length&&rawBytes.every((v,i)=>v===encoded[i]));let raw:string;try{raw=utf8.decode(rawBytes);}catch{fail();}
+ const groups=shape(actualNormalGroups,{db:list(rootPath),nodb:list(rootPath)});
+ const decoded={db:[] as string[],nodb:[] as string[]};
+ // Exact normal plan.mjs trim/split/destructure course, with stricter ambiguity rejection above.
+ for(const [tag,file] of raw.trim().split('\n').map(line=>line.split('\t'))){need(['DB','NODB'].includes(tag)&&roots.includes(file));decoded[tag==='DB'?'db':'nodb'].push(file);}
+ same([...decoded.db,...decoded.nodb].sort(),roots);same(groups,decoded);
+}
+
+const phaseCheck:Check=v=>{shape(v,{version,stage:nonempty,complete:bool,startNs:decimal,endNs:decimal,workLimitMs:positive,settlementLimitMs:fixed(6000),outcome:fixed('complete','refused','deadline','owner-loss','unsettled')});};
+const contextCheck:Check=v=>{shape(v,{version,source:git,inventorySha256:sha,negativeSourceIds:list(uint),positiveSourceIds:list(uint)});};
+const metadata:Record<string,Check>={
+ 'binding.json':v=>{shape(v,{version,kind:fixed('UNAUTHENTICATED_FORMAT_ONLY'),purpose,source:git,controller:git,run:decimal,attempt:positive,job:decimal,node:fixed('22.23.3'),programs:list(x=>{shape(x,{engine,sha256:sha,gitSource:git});})});},
+ 'anchor.json':v=>{shape(v,{version,bootId:v=>need(typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(v)),wallMs:decimal,monotonicNs:decimal,run:decimal,attempt:positive,job:decimal,purpose});},
+ 'prerequisites.json':v=>{shape(v,{version,sourceClean:bool,controllerClean:bool,inventorySha256:sha,suiteSha256:sha,stdinSha256:sha});},
+ 'semantic-parent.json':v=>{shape(v,{version,source:git,controller:git,run:decimal,attempt:positive,job:decimal,artifact:decimal,archiveSha256:sha,archiveBytes:uint});},
+ 'package-context.json':v=>{shape(v,{version,node:fixed('22.23.3'),loader:fixed('native'),basename:fixed('gate-db-classify.ts'),packageSha256:sha,programSha256:sha,imports:list(fixed('node:fs'))});},
+ 'native-clock.json':v=>{shape(v,{version,startNs:decimal,endNs:decimal,workLimitMs:fixed(15000),settlementLimitMs:fixed(6000),deadlineHit:bool});},
+ 'stdin-stream.json':v=>{shape(v,{version,kind:fixed('NODE_STDIO_STREAM_SOCKET_NOT_FIFO'),inputSha256:sha,inputBytes:uint,writeFinished:bool,writerClosed:bool,readerClosed:bool,eofObserved:bool,transportError:bool});},
+ 'native-result.json':v=>{shape(v,{version,exitCode:nullable(uint),signal:nullable(fixed('SIGTERM','SIGKILL','SIGABRT','SIGSEGV','SIGINT')),deadlineHit:bool,familySettled:bool,normalPlanConformance:bool});},
+ 'source-pre.json':contextCheck,'source-post.json':contextCheck,
+ 'phase-collect.json':phaseCheck,'phase-replay.json':phaseCheck,'phase-parent-auth.json':phaseCheck,'phase-seal.json':progressCheck,
+};
+/** Closed JSON schemas for native records are proposals, NOT validation of the represented facts. */
+export function validateMetadataMember(name:string,value:unknown):void { need(Object.hasOwn(metadata,name));metadata[name](value); }
+export const OWNERSHIP_LIMITS=Object.freeze({bytes:131072,rows:128,rowBytes:1024,actorsPerStage:2});
+export type KernelReason='complete'|'command-failed'|'deadline'|'monitor-died'|'handshake-refused'|'protocol-refused'|'descendants-survived'|'session-escaped'|'group-uncertain'|'owner-interrupted';
+export type KernelPacket={kind:'session-admitted';pid:number;start:number}|{kind:'group-stop-before-reap';reason:KernelReason}|{kind:'group-quiescent-then-reaped';monitorExit:number;escapedSession:boolean}|{kind:'stage-ended';reason:KernelReason;commandExit:number|null;admitted:boolean;reaped:boolean;groupQuiescent:boolean;escapedSession:boolean;releaseAuthorized:false};
+export type ChildObservation={state:'empty'}|{state:'nonempty';count:number}|{state:'unavailable';reason:'identity-read'|'owner-changed'|'read-bound'};
+export type OwnerPin={actorId:number;role:'root'|'stage-adapter';pid:number;startTicks:string;parentPid:number;parentStartTicks:string;groupId:number;sessionId:number;uid:number;children:ChildObservation};
+export type OwnerClose={actorId:number;identity:{state:'matched'}|{state:'unavailable';reason:'identity-read'|'owner-changed'|'read-bound'};children:ChildObservation;handles:{writer:'closed'|'not-created'|'unknown';reader:'closed'|'not-created'|'unknown';stdout:'closed'|'not-created'|'unknown';stderr:'closed'|'not-created'|'unknown';pidfds:'closed'|'not-created'|'unknown';kernelDescriptors:'kernel-returned-closed'|'not-entered'|'unknown'}};
+export type OwnershipRow={version:1;sequence:number;stage:string|null}&({kind:'owner-pinned';payload:OwnerPin}|{kind:'kernel';payload:KernelPacket}|{kind:'upstream-owner-lost';payload:{actorId:number;pid:number;startTicks:string}}|{kind:'owner-close-observed';payload:OwnerClose});
+export type Custody={state:'not-started'|'closed'|'owner-loss'|'incomplete';closure:'closed'|'unsettled'|'unknown';bytes:number;sha256:string;completeRows:number;framing:'complete'|'truncated-tail'};
+const kernelReasons:Check=fixed('complete','command-failed','deadline','monitor-died','handshake-refused','protocol-refused','descendants-survived','session-escaped','group-uncertain','owner-interrupted');
+const exit:Check=v=>need(Number.isSafeInteger(v)&&(v as number)>=-64&&(v as number)<=255);
+const childCheck:Check=v=>{const o=object(v);if(o.state==='empty')shape(v,{state:fixed('empty')});else if(o.state==='nonempty')shape(v,{state:fixed('nonempty'),count:positive});else shape(v,{state:fixed('unavailable'),reason:fixed('identity-read','owner-changed','read-bound')});};
+const closeCheck:Check=v=>{shape(v,{actorId:uint,identity:x=>{const o=object(x);if(o.state==='matched')shape(x,{state:fixed('matched')});else shape(x,{state:fixed('unavailable'),reason:fixed('identity-read','owner-changed','read-bound')});},children:childCheck,handles:x=>{shape(x,{writer:fixed('closed','not-created','unknown'),reader:fixed('closed','not-created','unknown'),stdout:fixed('closed','not-created','unknown'),stderr:fixed('closed','not-created','unknown'),pidfds:fixed('closed','not-created','unknown'),kernelDescriptors:fixed('kernel-returned-closed','not-entered','unknown')});}});};
+const kernelCheck:Check=v=>{
+ const o=object(v);
+ if(o.kind==='session-admitted')shape(v,{kind:fixed('session-admitted'),pid:positive,start:uint});
+ else if(o.kind==='group-stop-before-reap')shape(v,{kind:fixed('group-stop-before-reap'),reason:kernelReasons});
+ else if(o.kind==='group-quiescent-then-reaped')shape(v,{kind:fixed('group-quiescent-then-reaped'),monitorExit:exit,escapedSession:bool});
+ else shape(v,{kind:fixed('stage-ended'),reason:kernelReasons,commandExit:nullable(exit),admitted:bool,reaped:bool,groupQuiescent:bool,escapedSession:bool,releaseAuthorized:fixed(false)});
+};
+const ownershipRowCheck:Check=v=>{
+ const o=object(v),payload:Check=o.kind==='owner-pinned'?x=>{shape(x,{actorId:uint,role:fixed('root','stage-adapter'),pid:positive,startTicks:decimal,parentPid:positive,parentStartTicks:decimal,groupId:positive,sessionId:positive,uid:uint,children:childCheck});}:o.kind==='kernel'?kernelCheck:o.kind==='upstream-owner-lost'?x=>{shape(x,{actorId:uint,pid:positive,startTicks:decimal});}:closeCheck;
+ shape(v,{version,sequence:uint,stage:nullable(nonempty),kind:fixed('owner-pinned','kernel','upstream-owner-lost','owner-close-observed'),payload});
+};
+const custodyCheck:Check=v=>{
+ const o=shape(v,{state:fixed('not-started','closed','owner-loss','incomplete'),closure:fixed('closed','unsettled','unknown'),bytes:uint,sha256:sha,completeRows:uint,framing:fixed('complete','truncated-tail')});
+ need((o.bytes as number)<=OWNERSHIP_LIMITS.bytes&&(o.completeRows as number)<=OWNERSHIP_LIMITS.rows);
+ if(o.state==='not-started'||o.state==='closed')need(o.closure==='closed'&&o.framing==='complete');
+ if(o.state==='incomplete')need(o.closure!=='closed');
+};
+type StageImage={index:number;ownerId:number;packets:KernelPacket[];result:Extract<KernelPacket,{kind:'stage-ended'}>|null};
+type ActorImage={stage:string|null;pin:OwnerPin;close:OwnerClose|null;returned:boolean;entered:boolean};
+export type LedgerInspection={kind:'FORMAT_ONLY_NOT_NATIVE_OR_ADMISSION';rawBytes:Uint8Array;bytes:number;sha256:string;completeRows:number;framing:'complete'|'truncated-tail';rows:OwnershipRow[];issue:null|'row-bound'|'row-schema-or-order'|'truncated-tail';closure:'closed'|'unsettled'|'unknown';ownerLoss:boolean;hasKernel:boolean;stageResults:ReadonlyArray<{stage:string;result:Extract<KernelPacket,{kind:'stage-ended'}>|null}>};
+/** Replay canonical COMPLETE rows, preserve the entire raw byte string including invalid tails.
+ * Empty/missing events do NOT establish no-start. The native launch fence is external. */
+export function inspectOwnershipLedger(raw:Uint8Array,p:Purpose):LedgerInspection {
+ need(raw instanceof Uint8Array&&raw.length<=OWNERSHIP_LIMITS.bytes);const bytes=new Uint8Array(raw),names=stageNames(p);
+ const actors:ActorImage[]=[],stages:StageImage[]=[],rows:OwnershipRow[]=[],monitorIdentities=new Set<string>();let loss=false,rootClosed=false,issue:LedgerInspection['issue']=null,completeRows=0,offset=0;
+ const active=()=>actors.map((a,id)=>({a,id})).filter(({a})=>a.close===null);
+ // Return a trial image only. No accepted-prefix state changes before ALL row guards.
+ const stageCandidate=(stage:string):StageImage=>{
+  const index=names.indexOf(stage);need(index>=0);let s=stages.at(-1);
+  if(!s||s.index!==index){need(!loss&&index===(s?s.index+1:0));if(s){need(s.result?.reason==='complete');need(!active().some(({a})=>a.stage===names[s!.index]));}
+   s={index,ownerId:active().at(-1)!.id,packets:[],result:null};
+  }return s;
+ };
+ const commitStage=(s:StageImage)=>{if(stages.at(-1)!==s)stages.push(s);};
+ function accept(row:OwnershipRow){
+  need(row.sequence===rows.length&&!rootClosed);
+  if(row.kind==='owner-pinned'){
+   const a=row.payload;let trial:StageImage|null=null;need(a.pid!==a.parentPid);need(a.actorId===actors.length&&actors.length<=1+OWNERSHIP_LIMITS.actorsPerStage*names.length);need(!actors.some(x=>x.pin.pid===a.pid&&x.pin.startTicks===a.startTicks));
+   if(a.role==='root')need(actors.length===0&&row.stage===null);
+   else {need(actors.length>0&&row.stage!==null&&!loss);trial=stageCandidate(row.stage);need(trial.packets.length===0&&actors.filter(x=>x.stage===row.stage).length<OWNERSHIP_LIMITS.actorsPerStage);const parent=active().at(-1)!;need(a.parentPid===parent.a.pin.pid&&a.parentStartTicks===parent.a.pin.startTicks);need(parent.a.pin.children.state==='empty');}
+   if(trial)commitStage(trial);actors.push({stage:row.stage,pin:a,close:null,returned:false,entered:false});return;
+  }
+  need(actors.length>0);
+  if(row.kind==='owner-close-observed'){
+   const a=actors[row.payload.actorId];need(a&&a.close===null&&row.stage===a.stage&&active().at(-1)!.id===row.payload.actorId);
+   if(row.payload.handles.kernelDescriptors==='kernel-returned-closed')need(a.returned);
+   if(row.payload.handles.kernelDescriptors==='not-entered')need(!a.entered);
+   a.close=row.payload;if(row.payload.actorId===0)rootClosed=true;return;
+  }
+  if(row.kind==='upstream-owner-lost'){
+   need(!loss);const a=actors[row.payload.actorId];need(a&&a.close===null&&row.payload.pid===a.pin.parentPid&&row.payload.startTicks===a.pin.parentStartTicks);
+   const trial=row.stage===null?null:stageCandidate(row.stage);if(row.stage===null)need(stages.length===0);if(trial)commitStage(trial);loss=true;return;
+  }
+  need(row.stage!==null);const s=stageCandidate(row.stage),packet=row.payload;need(s.result===null&&active().every(({a})=>a.pin.children.state==='empty'));
+  const actor=active().at(-1)!;need(actor.a.stage===null||actor.a.stage===row.stage);const ownerId=s.packets.length===0?actor.id:s.ownerId;need(ownerId===actor.id);let monitorKey:string|null=null,terminal:StageImage['result']=null;
+  const prior=s.packets.map(x=>x.kind);
+  if(packet.kind==='session-admitted'){
+   need(!loss&&prior.length===0&&!actors.some(x=>x.pin.pid===packet.pid&&x.pin.startTicks===String(packet.start)));monitorKey=packet.pid+':'+packet.start;need(!monitorIdentities.has(monitorKey));
+  }else if(packet.kind==='group-stop-before-reap'){same(prior,['session-admitted']);need(packet.reason!=='group-uncertain'&&packet.reason!=='session-escaped');}
+  else if(packet.kind==='group-quiescent-then-reaped')need(prior.length===0||canonicalJson(prior)===canonicalJson(['session-admitted','group-stop-before-reap']));
+  else {
+   const admitted=prior.includes('session-admitted'),quiescent=prior.includes('group-quiescent-then-reaped');need(packet.admitted===admitted&&packet.reaped===quiescent&&packet.groupQuiescent===packet.reaped);
+   same(prior,admitted?['session-admitted','group-stop-before-reap',...(quiescent?['group-quiescent-then-reaped']:[])]:quiescent?['group-quiescent-then-reaped']:[]);
+   if(quiescent)need(packet.escapedSession===(s.packets.at(-1) as Extract<KernelPacket,{kind:'group-quiescent-then-reaped'}>).escapedSession);
+   if(admitted){
+    const stop=s.packets.find(x=>x.kind==='group-stop-before-reap') as Extract<KernelPacket,{kind:'group-stop-before-reap'}>;
+    const afterCleanup=!quiescent?'group-uncertain':stop.reason==='complete'&&packet.escapedSession?'session-escaped':stop.reason;
+    // cb1 may retain the stop reason, degrade on cleanup, then refuse event failure; never improve it.
+    need(packet.reason===afterCleanup||packet.reason==='protocol-refused');
+   }
+   if(packet.reason==='complete')need(admitted&&quiescent&&!packet.escapedSession&&packet.commandExit===0);
+   if(!admitted)need(packet.commandExit===null);
+   if(packet.reason==='command-failed')need(admitted&&packet.commandExit!==null&&packet.commandExit!==0);
+   terminal=packet;
+  }
+  // Single accepted-row commit frontier: every schema/order/identity/causal guard above has passed.
+  commitStage(s);s.ownerId=ownerId;actor.a.entered=true;if(monitorKey!==null)monitorIdentities.add(monitorKey);if(terminal){s.result=terminal;actor.a.returned=true;}s.packets.push(packet);
+ }
+ for(let i=0;i<bytes.length;i++)if(bytes[i]===10){
+  completeRows++;if(issue===null){if(completeRows>OWNERSHIP_LIMITS.rows)issue='row-bound';else try{need(i-offset+1<=OWNERSHIP_LIMITS.rowBytes);const row=decodeCanonicalJson(utf8.decode(bytes.subarray(offset,i+1)));ownershipRowCheck(row);accept(row as OwnershipRow);rows.push(row as OwnershipRow);}catch{issue='row-schema-or-order';}}offset=i+1;
+ }
+ const framing=offset===bytes.length?'complete':'truncated-tail';if(issue===null&&framing==='truncated-tail')issue='truncated-tail';
+ const knownUnsettled=actors.some(a=>a.pin.children.state==='nonempty'||a.close?.children.state==='nonempty')||stages.some(s=>s.result?.escapedSession===true||s.result?.reaped===false);
+ const actorsClosed=actors.length>0&&rootClosed&&actors.every(a=>a.pin.children.state==='empty'&&a.close?.identity.state==='matched'&&a.close.children.state==='empty'&&Object.values(a.close.handles).every(x=>x!=='unknown'));
+ const familiesClosed=stages.every(s=>s.packets.length===0||s.result?.reaped===true&&s.result.groupQuiescent&&!s.result.escapedSession);
+ const closure=issue===null&&actorsClosed&&familiesClosed?'closed':knownUnsettled?'unsettled':'unknown';
+ return{kind:'FORMAT_ONLY_NOT_NATIVE_OR_ADMISSION',rawBytes:bytes,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),completeRows,framing,rows,issue,closure,ownerLoss:loss,hasKernel:stages.some(s=>s.packets.length>0),stageResults:stages.map(s=>({stage:names[s.index],result:s.result}))};
+}
+/** Strict complete-row codec; NOT a declaration that the represented native facts happened. */
+export function validateOwnershipJsonl(raw:string,p:Purpose):void {
+ const bytes=new TextEncoder().encode(raw);need(utf8.decode(bytes)===raw);const result=inspectOwnershipLedger(bytes,p);need(result.issue===null&&result.rows.length>0);
+}
+function validateCustody(progress:Obj,raw:Uint8Array,p:Purpose):void {
+ const c=progress.custody as Custody;custodyCheck(c);const ledger=inspectOwnershipLedger(raw,p);
+ need(c.bytes===ledger.bytes&&c.sha256===ledger.sha256&&c.completeRows===ledger.completeRows&&c.framing===ledger.framing&&c.closure===ledger.closure);
+ if(c.state==='owner-loss')need(ledger.ownerLoss);else need(!ledger.ownerLoss);
+ if(c.state==='not-started')need(!ledger.hasKernel&&ledger.closure==='closed');
+ else if(c.state==='closed')need(ledger.hasKernel&&ledger.closure==='closed');
+ else if(c.state==='incomplete')need(ledger.closure!=='closed');
+ const done=progress.completedStages as string[],names=stageNames(p);for(const stage of done)need(ledger.stageResults.some(s=>s.stage===stage&&s.result?.reason==='complete'));
+ for(const s of ledger.stageResults)need(names.indexOf(s.stage)<=done.length-Number(progress.complete));
+ if(progress.complete)need(c.state==='closed'&&ledger.stageResults.length===names.length&&ledger.stageResults.every(s=>s.result?.reason==='complete'));
+}
+
+const utf8 = new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
+export type ArchiveMember = {name:string;bytes:Uint8Array};
+/** UTF-8 framing/size/member checks only. No ZIP extraction, source fetch or native trust. */
+function decodeRawMembers(p:Purpose,input:ArchiveMember[]):Map<string,string|Uint8Array> {
+ need(input.length<=100);unique(input.map(x=>x.name));let total=0;const out=new Map<string,string|Uint8Array>();
+ const allowed=p==='semantic'?SEMANTIC_MEMBERS:CLI_MEMBERS;
+ for(const {name,bytes} of input){need(allowed.includes(name)&&bytes instanceof Uint8Array&&bytes.length<=memberLimit(name));total+=bytes.length;need(total<=128*1024*1024);
+  if(name.endsWith('tracked.bin')||name==='native.stdout'||name==='native.stderr'||name==='report.json'||name==='native-ownership.jsonl')out.set(name,new Uint8Array(bytes));else{let s:string;try{s=utf8.decode(bytes);}catch{fail();}out.set(name,s!);}
+ }
+ return out;
+}
+/** Decode callback output only; the runner report cannot exist inside this API. */
+export function decodeMembers(p:Purpose,input:ArchiveMember[]):Map<string,string|Uint8Array> {
+ const out=decodeRawMembers(p,input),raw=out.get('phase-seal.json');need(typeof raw==='string');validateCallbackMemberSet(p,[...out.keys()],decodeCanonicalJson(raw as string));return out;
+}
+/** Parse actual Git --stage -z output, preserving tabs/newlines in paths after FIRST tab. */
+export function parseTracked(raw:Uint8Array):{mode:string;blob:string;path:string}[]{
+ need(raw.length>0&&raw[raw.length-1]===0);let s:string;try{s=utf8.decode(raw);}catch{fail();}
+ const records=s!.slice(0,-1).split('\0').map(record=>{const tab=record.indexOf('\t');need(tab>0);const header=record.slice(0,tab),file=record.slice(tab+1);const m=/^(100644|100755) ([0-9a-f]{40}) 0$/.exec(header);need(m);path(file);return{mode:m![1],blob:m![2],path:file};});
+ unique(records.map(r=>r.path));const enc=new TextEncoder();const compare=(a:string,b:string)=>{const x=enc.encode(a),y=enc.encode(b);for(let i=0;i<Math.min(x.length,y.length);i++)if(x[i]!==y[i])return x[i]-y[i];return x.length-y.length;};same(records.map(r=>r.path),records.map(r=>r.path).sort(compare));return records;
+}
+/** Validate EACH present complete member; cross-member content equality is mandatory even for partial output. */
+export function validateCallbackArchiveData(p:Purpose,input:ArchiveMember[]):void {
+ const data=decodeMembers(p,input),json=(name:string):unknown=>decodeCanonicalJson(data.get(name) as string);
+ const report=json('phase-seal.json') as Obj;need(report.purpose===p);
+ for(const [name,raw] of data){
+  if(Object.hasOwn(metadata,name)){validateMetadataMember(name,json(name));continue;}
+  if(name==='native-ownership.jsonl'){validateCustody(report,raw as Uint8Array,p);continue;}
+  if(name.endsWith('tracked.bin')){parseTracked(raw as Uint8Array);continue;}
+  if(name.includes('head.stdout')){need(/^[0-9a-f]{40}\n$/.test(raw as string));continue;}
+  if(name.includes('status.stdout')){need(raw==='');continue;}
+  if(name.endsWith('.ts')){need((raw as string).length>0);continue;}
+  // Typed relation members below require their dependencies; partial prefixes may not skip them.
+  if(name==='native.stdout'||name==='native.stderr'||name==='stdin.txt')continue;
+  need(name==='suite.json'||name==='snapshot-index.json'||name.startsWith('calls-')||name==='graph.json'||name==='reasons.json'||name.startsWith('semantic-')||name.startsWith('delta-'));
+ }
+ const suite=data.has('suite.json')?validateSuite(json('suite.json')):null;
+ if(data.has('stdin.txt')){need(suite);sameRaw(data.get('stdin.txt') as string,suite!.join('\n')+'\n');}
+ const snap=data.has('snapshot-index.json')?validateSnapshot(json('snapshot-index.json')):null;
+ for(const e of ['a','b','c'] as Engine[])if(data.has(`calls-${e}.json`)){need(snap);validateCalls(json(`calls-${e}.json`),snap!,e);}
+ if(snap&&['a','b','c'].every(e=>data.has(`calls-${e}.json`))){const seen=new Set<number>();for(const e of ['c','b','a'] as Engine[])for(const call of (json(`calls-${e}.json`) as Obj).rows as Obj[]){const id=call.sourceId as number;if(!seen.has(id)){need(snap.rows[id].firstSeen===seen.size&&snap.rows[id].firstEngine===e);seen.add(id);}}need(seen.size===snap.rows.length);}
+ if(data.has('graph.json')){need(snap&&suite);validateGraph(json('graph.json'),snap!,suite!);}
+ let verdicts:Record<Engine,Verdict[]>|null=null;
+ if(data.has('reasons.json')){need(suite&&data.has('graph.json'));const graph=json('graph.json') as Obj;verdicts=validateReasons(json('reasons.json'),suite!,(graph.nodes as unknown[]).length);validateReasonEdges(json('reasons.json'),graph,verdicts.b,snap!,suite!);}
+ for(const e of ['a','b','c'] as Engine[])if(data.has(`semantic-${e}.tsv`)){need(suite&&verdicts);same(parseSemanticTsv(data.get(`semantic-${e}.tsv`) as string,suite!),verdicts![e]);}
+ for(const [a,b] of [['a','b'],['a','c'],['b','c']] as [Engine,Engine][])if(data.has(`delta-${a}-${b}.json`)){need(verdicts);validateDelta(json(`delta-${a}-${b}.json`),a,b,verdicts![a],verdicts![b]);}
+ for(const name of ['phase-collect.json','phase-replay.json','phase-parent-auth.json'])if(data.has(name)){const v=json(name) as Obj;need(v.stage===name.slice(6,-5));need(v.workLimitMs===(name==='phase-parent-auth.json'?120000:15000));need(BigInt(v.endNs as string)>=BigInt(v.startNs as string));if(report.complete)need(v.complete===true&&v.outcome==='complete');}
+ const binding=json('binding.json') as Obj;need(binding.purpose===p);const programs=binding.programs as Obj[];same(programs.map(x=>x.engine),p==='semantic'?['a','b','c']:[p==='cli-b'?'b':'c']);
+ const anchor=json('anchor.json') as Obj;for(const key of ['purpose','run','attempt','job'])need(anchor[key]===binding[key]);
+ if(snap)for(const name of ['source-pre.json','source-post.json'])if(data.has(name)){const v=json(name) as Obj;need(v.source===binding.source);same(v.negativeSourceIds,snap.rows.filter(r=>r.value===null).map(r=>r.id));same(v.positiveSourceIds,snap.rows.filter(r=>r.value!==null).map(r=>r.id));}
+ // Raw native stdout requires semantic-parent verdicts AND the separately obtained actual normal
+ // planner interpretation at the independent final receiver: use validateNativeStdout there.
+ // The format owner deliberately cannot confer that external conjunction from producer JSON.
+}
+function validateReasonEdges(value:unknown,graph:Obj,vs:Verdict[],snap:Snapshot,roots:string[]):void {
+ const nodes=graph.nodes as Obj[],ws=(value as Obj).witnesses as Obj[];
+ for(const w of ws){const seq=w.nodeIds as number[];if(seq.length===0)continue;
+  need(snap.rows[nodes[seq[0]].sourceId as number].path===roots[w.rootId as number]);
+  for(let i=1;i<seq.length;i++)need((nodes[seq[i-1]].steps as Obj[]).some(s=>s.kind==='helper'&&s.targetId===seq[i]));
+  const steps=nodes[w.directNodeId as number].steps as Obj[],index=w.directStepIndex as number;need(index<steps.length);const terminal=steps[index];need(terminal.kind==='direct'&&terminal.reason===vs[w.rootId as number].reason);
+ }
+}
+
+export const NATIVE_CASE_TITLE='qualifies the complete source-bound classifier witness';
+export const PURPOSE_SELECTORS:Readonly<Record<Purpose,string>>=Object.freeze({
+ semantic:'test/gate-db-classifier-semantic-witness.test.ts',
+ 'cli-b':'test/gate-db-classifier-cli-b.test.ts','cli-c':'test/gate-db-classifier-cli-c.test.ts',
+});
+const millis:Check=v=>need(typeof v==='number'&&Number.isFinite(v)&&v>=0);
+/** Pinned Vitest4.1.8 JSON.stringify output: raw reporter bytes, NOT canonicalJson.
+ * Exact shape/one-case outcome only; actual runner/source/finish custody remains external. */
+export function validateActualVitestReport(p:Purpose,raw:string,candidateRoot:string):'passed'|'failed' {
+ need(candidateRoot.startsWith('/')&&!candidateRoot.endsWith('/')&&!candidateRoot.includes('//')&&!/[\u0000-\u001f\u007f]/.test(candidateRoot)&&!candidateRoot.split('/').some(s=>s==='.'||s==='..'));
+ let parsed:unknown;try{parsed=JSON.parse(raw);}catch{fail();}sameRaw(raw,JSON.stringify(parsed));
+ const snapshot:Check=v=>{shape(v,{added:uint,failure:bool,filesAdded:uint,filesRemoved:uint,filesRemovedList:list(str),filesUnmatched:uint,filesUpdated:uint,matched:uint,total:uint,unchecked:uint,uncheckedKeysByFile:list(x=>{shape(x,{filePath:str,keys:list(str)});}),unmatched:uint,updated:uint,didUpdate:bool});};
+ const assertion:Check=v=>{
+  const o=object(v),fields:Record<string,Check>={ancestorTitles:list(str),fullName:str,status:fixed('passed','failed','skipped','pending','todo','disabled'),title:str,failureMessages:list(str),meta:x=>{shape(x,{});},tags:list(str)};
+  if(Object.hasOwn(o,'duration'))fields.duration=nullable(millis);
+  if(Object.hasOwn(o,'location'))fields.location=nullable(x=>{shape(x,{line:positive,column:uint});});
+  shape(v,fields);
+ };
+ const file:Check=v=>{shape(v,{assertionResults:list(assertion),startTime:millis,endTime:millis,status:fixed('passed','failed'),message:str,name:str});};
+ const o=shape(parsed,{numTotalTestSuites:uint,numPassedTestSuites:uint,numFailedTestSuites:uint,numPendingTestSuites:uint,numTotalTests:uint,numPassedTests:uint,numFailedTests:uint,numPendingTests:uint,numTodoTests:uint,snapshot,startTime:millis,success:bool,testResults:list(file)});
+ // Coverage is deliberately disabled in these fixed future selectors; coverageMap is absent.
+ const files=o.testResults as Obj[];need(files.length===1);const f=files[0];need(f.name===candidateRoot+'/'+PURPOSE_SELECTORS[p]&&(f.endTime as number)>=(f.startTime as number)&&(f.startTime as number)>=(o.startTime as number));
+ const assertions=f.assertionResults as Obj[];need(assertions.length<=1&&o.numTotalTests===assertions.length);
+ need(o.numPendingTests===0&&o.numPendingTestSuites===0&&o.numTodoTests===0);
+ need((o.numPassedTests as number)+(o.numFailedTests as number)===assertions.length);
+ need((o.numPassedTestSuites as number)+(o.numFailedTestSuites as number)===o.numTotalTestSuites&&o.numTotalTestSuites===1);
+ for(const a of assertions){need(a.title===NATIVE_CASE_TITLE&&a.fullName===NATIVE_CASE_TITLE);same(a.ancestorTitles,[]);same(a.tags,[]);need(a.status==='passed'||a.status==='failed');}
+ const actualPassed=assertions.filter(a=>a.status==='passed').length,actualFailed=assertions.filter(a=>a.status==='failed').length;
+ need(o.numPassedTests===actualPassed&&o.numFailedTests===actualFailed);
+ const snap=o.snapshot as Obj;
+ for(const key of ['added','filesAdded','filesRemoved','filesUnmatched','filesUpdated','matched','total','unchecked','unmatched','updated'])need(snap[key]===0);
+ need(snap.failure===false&&snap.didUpdate===false);same(snap.filesRemovedList,[]);same(snap.uncheckedKeysByFile,[]);
+ if(o.success===true){need(assertions.length===1&&actualPassed===1&&o.numFailedTestSuites===0&&f.status==='passed'&&f.message==='');same(assertions[0].failureMessages,[]);need(Object.hasOwn(assertions[0],'duration'));millis(assertions[0].duration);return'passed';}
+ need(f.status==='failed'&&o.numFailedTestSuites===1);return'failed';
+}
+/** Called ONLY by a future post-runner collector after actual process finish/settlement.
+ * This API requires the report; no caller boolean can waive it. Result is format-only. */
+export function validateFinalArchiveData(p:Purpose,input:ArchiveMember[],candidateRoot:string):{kind:'FORMAT_ONLY_NOT_NATIVE_OR_ADMISSION';outcome:'passed'|'failed';reportBytes:Uint8Array} {
+ const data=decodeRawMembers(p,input),raw=data.get('report.json');need(raw instanceof Uint8Array);let report:string;try{report=utf8.decode(raw as Uint8Array);}catch{fail();}
+ const progressRaw=data.get('phase-seal.json');need(typeof progressRaw==='string');const progress=decodeCanonicalJson(progressRaw as string);
+ const outcome=validateFinalMemberSet(p,[...data.keys()],progress,report!,candidateRoot);
+ validateCallbackArchiveData(p,input.filter(m=>m.name!=='report.json'));
+ return{kind:'FORMAT_ONLY_NOT_NATIVE_OR_ADMISSION',outcome,reportBytes:new Uint8Array(raw as Uint8Array)};
+}

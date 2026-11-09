@@ -1,0 +1,186 @@
+{
+  "kind": "PAYROLL_BASELINE_SINGLETON_CLOSURE_SOURCE_ONLY",
+  "parent": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+  "selectedBaseline": "5aa20706fb7219e28bd077307d7d892996640e1a",
+  "previous755Source": "5fde07d91759e01e1a01f2f08c135e3752613138",
+  "activeMigrationJournal": {
+    "baselineRows": 718,
+    "strictPendingSuffixRows": 38,
+    "currentUniqueJournalRows": 756,
+    "currentRegularPhysicalSQL": 756,
+    "orderedJournalSQLNamesSha256": "7476d2b1a87090f9f0d58504517f4562ce9b42c8f323fe3c5571efce2ddba78c",
+    "rawJournal": {
+      "path": "db/migrations/meta/_journal.json",
+      "bytes": 116763,
+      "sha256": "a2921f854c40db2da14cf4e1a1c73b7aa3f5bbe2fdfa02a6b49689644b971dd3",
+      "commit": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+      "gitBlob": "c08a5605241706fb99da0b9790d2f68249012564"
+    },
+    "newActiveSql": {
+      "path": "db/migrations/3900_individual_transaction_calculation_method.sql",
+      "bytes": 348,
+      "sha256": "f6f4a31109f66bc5c9038315e249829c2655b870db98a9cbb1ede9cfdab958d4",
+      "commit": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+      "gitBlob": "c70956077e7f339a5da30f57ac97c4c5514d97a0"
+    },
+    "exactBaselineRowAndSQLBytesWhole": true,
+    "separateHistoricalInputs": [
+      {
+        "path": "test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql",
+        "bytes": 1078,
+        "sha256": "421384a8eff51afcf0b910b966db1e092dd67343cd4fefff40c05aad537ae4fa",
+        "commit": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+        "gitBlob": "65dd3b5824b5c73d0b5d36041d315c2485d91aee"
+      },
+      {
+        "path": "test/fixtures/historical-migrations/3103_access_editor_presentation.sql",
+        "bytes": 8644,
+        "sha256": "bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47",
+        "commit": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+        "gitBlob": "0ae0ed267b2f401328977d80d0bfa9bad358a279"
+      }
+    ]
+  },
+  "payrollValueInput": {
+    "leaf": {
+      "path": "packs/payroll/individual-calculation.ts",
+      "bytes": 5523,
+      "sha256": "7ae59509e1331f52c59868705e1c7cb6825d968d5f7e4a2e7bed4663df67522c",
+      "commit": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+      "gitBlob": "e48dc1437a06772d446cbfbda39d29516179deb1"
+    },
+    "directOwners": [
+      "packs/payroll/service.ts",
+      "core/payroll-individual-txn.ts"
+    ],
+    "localValueDependenciesAlreadyInAllThreeLists": [
+      "db/client.ts",
+      "lib/pay-formula-model.ts",
+      "lib/transaction-effective-date.ts",
+      "core/pay-component-catalog-lock.ts",
+      "core/pay-component-company.ts",
+      "core/pay-formula.ts",
+      "core/pay-formula-runtime.ts"
+    ]
+  },
+  "sourceMembership": {
+    "jit": {
+      "before": 1584,
+      "beforeSha256": "512189a8692016924f67081ede283316892f28f6ad580015d888324c936d8659",
+      "unrepairedAtCurrentBaseline": 1585,
+      "unrepairedSha256": "1ab3bbceab281e442d48135d5004e12b040308474e6541b4a4a1df7b389d81e0",
+      "current": 1586,
+      "currentSha256": "489ea9de464aab73508c8ce48e445df4e43be58a8a72ae48bb64039d135a2056",
+      "oldMembersWhole": true,
+      "adds": [
+        "db/migrations/3900_individual_transaction_calculation_method.sql",
+        "packs/payroll/individual-calculation.ts"
+      ],
+      "exhaustiveOmissionGuardPreserved": true
+    },
+    "employeeRaw": {
+      "before": 3515,
+      "current": 3516
+    },
+    "rewardsRaw": {
+      "before": 1714,
+      "current": 1715
+    }
+  },
+  "activeEmployeeInverse": {
+    "base": "ee5722312689fc88d8a9253c232945e6f2599900",
+    "rows": 11,
+    "rebuiltCurrentRows": [
+      ".github/ci/employee-lifecycle-sources.mjs",
+      ".github/ci/employee-lifecycle-sources.test.mjs"
+    ],
+    "nineOtherRowsWhole": true,
+    "allElevenExactGitPredecessorsReplayed": true
+  },
+  "affectedExistingModels": {
+    "singletonProfiles": 20,
+    "employeeSourceOwner": 3,
+    "newModelCases": 0,
+    "actualControllerFailuresAtParent": "SOURCE_PREDICTION_NOT_HOSTED"
+  },
+  "changedExistingCurrentPins": [
+    {
+      "path": ".github/ci/singleton-protocol.mjs",
+      "bytes": 103106,
+      "sha256": "caf1ded38e67d966f6942725d6da20f32d29c9a7d73731d895a3cd041f22c467"
+    },
+    {
+      "path": ".github/ci/singleton-profiles.test.mjs",
+      "bytes": 66942,
+      "sha256": "db2ad0330edecc65b505d7a0e3713bca5adf714790168ded83461198e30ed1e9"
+    },
+    {
+      "path": ".github/ci/employee-lifecycle-sources.mjs",
+      "bytes": 157001,
+      "sha256": "13d81583bc62647a0fa50c13a85e19c8f41c938840496d19356a6ae6c92f4b47"
+    },
+    {
+      "path": ".github/ci/employee-lifecycle-sources.test.mjs",
+      "bytes": 9656,
+      "sha256": "2e90253ef538107b6241ea6a1e785b4bf1ec6f7f8234a9b44323f680d9d81955"
+    },
+    {
+      "path": ".github/ci/rewards-native-sources.mjs",
+      "bytes": 75002,
+      "sha256": "d4fabc956aff1f9d95a19275baa468ca0776b99b266b0669eaaa86528c5fe0ec"
+    },
+    {
+      "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "bytes": 150449,
+      "sha256": "78757960fedf5e1e66a625a9194890872429f8005a19c2a9d1802b4a71175879"
+    }
+  ],
+  "wholeDirectParentPreimages": [
+    {
+      "path": ".github/ci/singleton-protocol.mjs",
+      "bytes": 103061,
+      "sha256": "29fda727f5115921fc975c5a89c14b41896bcaba58ab34a5d0074e856b40c2ed",
+      "commit": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+      "gitBlob": "c1ceb40ee8247e8ec617e4690f7bbc006aa11279"
+    },
+    {
+      "path": ".github/ci/singleton-profiles.test.mjs",
+      "bytes": 66874,
+      "sha256": "23a121f1d333326723a81e3f2c5b3d23f9736174073d5259213501d5f2d40e47",
+      "commit": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+      "gitBlob": "c41ade5adbd4d2f80da31a4cf3bef1db264c9258"
+    },
+    {
+      "path": ".github/ci/employee-lifecycle-sources.mjs",
+      "bytes": 156913,
+      "sha256": "e10360f6488e6dc51a1cdf3bef2e4f552b70d142a206a1ee0d1537d13c98117a",
+      "commit": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+      "gitBlob": "9160474f3519063705d247f3d2635029e12fd98e"
+    },
+    {
+      "path": ".github/ci/employee-lifecycle-sources.test.mjs",
+      "bytes": 9614,
+      "sha256": "00b9bfd733f27e6bd032709fb436252407b89f446165e871c4db1cc18d9996ac",
+      "commit": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+      "gitBlob": "e7d1c732178dca70930e8d7a61b377e134d1b7d7"
+    },
+    {
+      "path": ".github/ci/rewards-native-sources.mjs",
+      "bytes": 74958,
+      "sha256": "d70ed7c94532e9352f870b9992dd93aa3ec44d359522b0655ce475dc001327e0",
+      "commit": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+      "gitBlob": "b3c1f13fcd1923d4857e7c2782f01506e1cc9851"
+    },
+    {
+      "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "bytes": 150190,
+      "sha256": "351ab5a461c77c08717770ad9f46ee4f7b94bf459e2da35bdb67035a467385f1",
+      "commit": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+      "gitBlob": "646c6b049adb9e2a7940b7e5cc6ac56a75ec2f7a"
+    }
+  ],
+  "historicalQualificationUnchanged": true,
+  "repositoryBehaviorExecuted": false,
+  "hostedQualificationObserved": false,
+  "releaseAuthorized": false
+}

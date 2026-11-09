@@ -54,7 +54,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/admin/leave-config/approval-chains','page:/admin/leave-config/balance-health','page:/admin/leave-config/company-rules',
  'page:/admin/leave-config/earned-accrual','page:/admin/leave-config/generate','page:/admin/leave-config/leave-credit',
  'page:/admin/leave-config/types','page:/admin/lifecycle','page:/admin/loans','page:/admin/notice-board','page:/admin/organization',
- 'page:/admin/personnel','page:/admin/personnel/duplicates','page:/admin/personnel/import','page:/admin/privacy','page:/admin/rewards',
+ 'page:/admin/personnel','page:/admin/personnel/duplicates','page:/admin/personnel/import','page:/admin/privacy',
  'page:/admin/rewards/access','page:/admin/rewards/shared','page:/admin/scheduled-actions','page:/admin/settings/email',
  'page:/admin/settings/email-templates','page:/admin/settings/employee-id','page:/admin/settings/hiring-defaults',
  'page:/admin/settings/notifications','page:/admin/settings/profile-requests','page:/admin/settings/profile-requests/rules',

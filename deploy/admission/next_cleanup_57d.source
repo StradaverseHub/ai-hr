@@ -1,0 +1,44 @@
+def cleanup(postgres_scope):
+    # Never remove a package under an unowned/replaced live service declaration.
+    for unit, expected in owned_units.items():
+        path = pathlib.Path('/etc/systemd/system', unit)
+        info = path.lstat()
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and (info.st_dev, info.st_ino) == expected,
+                'Owned unit changed; preserve uncertain runtime for diagnosis')
+    transient = props(BROWSER)
+    if transient.get('LoadState') != 'not-found':
+        actual = systemctl('show', BROWSER, '--property=Description,Transient').stdout.decode()
+        require('Transient=yes\n' in actual and 'Description=Owned actual Next browser ' + report['runId'] + '\n' in actual,
+                'Unexpected browser transient unit; preserve uncertain runtime')
+        systemctl('stop', BROWSER, check=False, timeout=10)
+        require_stopped(BROWSER)
+        systemctl('reset-failed', BROWSER, check=False)
+    for unit in [*reversed(UNITS), PROXY, SLICE]:
+        if unit in owned_units:
+            systemctl('stop', unit, check=False, timeout=15)
+            require_stopped(unit)
+            systemctl('reset-failed', unit, check=False)
+            pathlib.Path('/etc/systemd/system', unit).unlink()
+    if owned_units:
+        require(postgres_scope is not None, 'Owned PostgreSQL reload guard absent')
+        postgres_scope.snapshot('before-cleanup-reload')
+        systemctl('daemon-reload')
+        postgres_scope.snapshot('after-cleanup-reload')
+    require(shutil.rmtree.avoids_symlink_attacks, 'Descriptor-safe cleanup unavailable')
+    for name in reversed(ROOTS):
+        if name in owned_paths:
+            info = os.lstat(name)
+            require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0
+                    and (info.st_dev, info.st_ino) == owned_paths[name], 'Owned fixture directory changed')
+            shutil.rmtree(name)
+    if created_home:
+        home = pathlib.Path('/var/empty/aihr')
+        info = home.lstat()
+        require((info.st_dev, info.st_ino) == owned_paths[str(home)] and info.st_uid == 0, 'Owned empty home changed')
+        home.rmdir()
+    if created_empty_parent is not None:
+        parent = pathlib.Path('/var/empty')
+        info = parent.lstat()
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0
+                and (info.st_dev, info.st_ino) == created_empty_parent, 'Owned empty-home parent changed')
+        parent.rmdir()

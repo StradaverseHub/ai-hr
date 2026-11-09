@@ -354,10 +354,8 @@ export async function getResignationAttachmentById(
 }
 
 
-export function pendingResignationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
-  return withTenant(ctx,async tx=>{
-    await assertAssignedWorkPrincipalTx(tx,ctx);
-    const rows=await tx.select({id:resignationRequest.id,employmentId:resignationRequest.employmentId,
+function pendingResignationHeadersQuery(tx:Tx,ctx:SessionContext,companyIds?:string[]){
+  return tx.select({id:resignationRequest.id,employmentId:resignationRequest.employmentId,
       personId:resignationRequest.personId,employee:person.fullName,createdAt:resignationRequest.createdAt})
       .from(resignationRequest)
       .innerJoin(employment,and(eq(employment.id,resignationRequest.employmentId),eq(employment.tenantId,resignationRequest.tenantId)))
@@ -365,6 +363,16 @@ export function pendingResignationTaskMetadata(ctx:SessionContext,companyIds?:st
       .where(and(eq(resignationRequest.tenantId,ctx.tenantId),eq(resignationRequest.status,'pending'),
         sql`NOT app.is_self_person(${resignationRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
       .orderBy(desc(resignationRequest.createdAt),resignationRequest.id);
+}
+
+export function pendingResignationCandidatesExistSql(tx:Tx,ctx:SessionContext,companyIds?:string[]){
+  return sql<boolean>`exists (${pendingResignationHeadersQuery(tx,ctx,companyIds).getSQL()})`;
+}
+
+export function pendingResignationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+  return withTenant(ctx,async tx=>{
+    await assertAssignedWorkPrincipalTx(tx,ctx);
+    const rows=await pendingResignationHeadersQuery(tx,ctx,companyIds);
     const result:AssignedApprovalMetadata[]=[];
     for(const row of rows){
       try{await assertResignationDecisionAuthorityTx(tx,ctx,row.employmentId);result.push(row);}

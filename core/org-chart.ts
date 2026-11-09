@@ -30,7 +30,9 @@ export async function orgChartSnapshot(ctx:SessionContext,p:{companyIds:string[]
    .orderBy(asc(person.fullName),desc(assignment.validFrom),asc(employment.id));
   const roots=await tx.select({employmentId:orgChartRoot.employmentId}).from(orgChartRoot).where(and(lte(orgChartRoot.validFrom,asOf),or(isNull(orgChartRoot.validTo),gt(orgChartRoot.validTo,asOf))));
   const top=new Set(roots.map(r=>r.employmentId));
-  const seen=new Set<string>();const all:OrgChartEmployee[]=rows.filter(row=>{if(seen.has(row.employmentId))return false;seen.add(row.employmentId);return true;}).map(row=>({
+  const firstRowByEmployment=new Map<string,typeof rows[number]>();
+  for(const row of rows)if(!firstRowByEmployment.has(row.employmentId))firstRowByEmployment.set(row.employmentId,row);
+  const all:OrgChartEmployee[]=[...firstRowByEmployment.values()].map(row=>({
    employmentId:row.employmentId,personId:row.personId,name:row.name,employeeCode:row.employeeCode,role:row.role,department:row.department,departmentId:row.departmentId,
    businessUnit:row.businessUnit,businessUnitId:row.businessUnitId,companyId:row.companyId,company:row.company,employmentType:row.employmentType,
    status:row.terminatedOn&&row.terminatedOn<=asOf?'inactive':row.tenderResignationDate&&row.tenderResignationDate<=asOf?'notice':row.employmentType==='full_time'&&row.probationEndDate&&(!row.confirmationDate||row.confirmationDate>asOf)?'probation':'active',
@@ -45,14 +47,17 @@ export async function orgChartSnapshot(ctx:SessionContext,p:{companyIds:string[]
   const ended=await tx.select({subordinate:reportingLine.subordinateEmploymentId,manager:reportingLine.managerEmploymentId,validTo:reportingLine.validTo})
    .from(reportingLine).where(and(eq(reportingLine.lineType,'administrative'),isNull(reportingLine.supersededAt),lte(reportingLine.validTo,asOf),sql`app.can_see_employment(${reportingLine.subordinateEmploymentId})`)).orderBy(desc(reportingLine.validTo),desc(reportingLine.validFrom),asc(reportingLine.id));
   const latestEnded=new Map<string,typeof ended[number]>();for(const edge of ended)if(!latestEnded.has(edge.subordinate))latestEnded.set(edge.subordinate,edge);
-  for(const employee of result.employees){if(employee.managerState!=='missing')continue;const previous=latestEnded.get(employee.employmentId);const manager=previous?all.find(e=>e.employmentId===previous.manager):undefined;const original=previous?rows.find(e=>e.employmentId===previous.manager):undefined;
-   if(previous&&manager?.status==='inactive'&&previous.validTo===original?.terminatedOn){employee.managerState='inactive';employee.managerName=manager.name;const issue=result.issues.find(i=>i.employmentId===employee.employmentId);if(issue)issue.code='inactive';}
+  const employeeById=new Map(all.map(employee=>[employee.employmentId,employee]));
+  const issueByEmployment=new Map(result.issues.map(issue=>[issue.employmentId,issue]));
+  for(const employee of result.employees){if(employee.managerState!=='missing')continue;const previous=latestEnded.get(employee.employmentId);const manager=previous?employeeById.get(previous.manager):undefined;const original=previous?firstRowByEmployment.get(previous.manager):undefined;
+   if(previous&&manager?.status==='inactive'&&previous.validTo===original?.terminatedOn){employee.managerState='inactive';employee.managerName=manager.name;const issue=issueByEmployment.get(employee.employmentId);if(issue)issue.code='inactive';}
   }
   const counts=new Map<string,number>();for(const edge of result.edges)if(edge.type==='administrative')counts.set(edge.manager,(counts.get(edge.manager)??0)+1);
   for(const employee of result.employees)employee.directReportCount=counts.get(employee.employmentId)??0;
   const options=[...new Map(all.filter(e=>e.status!=='inactive').map(({companyId,company,businessUnitId,businessUnit,departmentId,department})=>[JSON.stringify([companyId,businessUnitId,departmentId]),{companyId,company,businessUnitId,businessUnit,departmentId,department}])).values()];
   const companies=await tx.select({id:company.id,name:company.legalName}).from(company).where(and(inArray(company.id,p.companyIds),or(sql`app.is_admin_for(${company.id})`,sql`EXISTS(SELECT 1 FROM employment visible WHERE visible.company_id=${company.id} AND app.can_see_employment(visible.id))`))).orderBy(asc(company.legalName));
-  for(const co of companies)if(!options.some(option=>option.companyId===co.id))options.push({companyId:co.id,company:co.name,businessUnitId:null,businessUnit:null,departmentId:null,department:null});
+  const companiesWithOptions=new Set(options.map(option=>option.companyId));
+  for(const co of companies)if(!companiesWithOptions.has(co.id))options.push({companyId:co.id,company:co.name,businessUnitId:null,businessUnit:null,departmentId:null,department:null});
   return {...result,options,asOf,canManage:authority?.allowed===true};
  });
 }

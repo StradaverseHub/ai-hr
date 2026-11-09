@@ -12,7 +12,7 @@ export async function isCurrentAssignedApproval(ctx:SessionContext,focus:Assigne
  switch(focus.kind){
   case 'leave':rows=await pendingLeaveTaskMetadata(ctx);break;
   case 'leaveCancellation':rows=await pendingLeaveCancellationTaskMetadata(ctx);break;
-  case 'attendance':rows=modules.attendance?await pendingAttendanceTaskMetadata(ctx):[];break;
+  case 'attendance':rows=modules.attendance?await pendingAttendanceTaskMetadata(ctx,undefined,focus.id):[];break;
   case 'claim':rows=modules.claims?await pendingClaimTaskMetadata(ctx):[];break;
   case 'resignation':rows=await pendingResignationTaskMetadata(ctx);break;
   case 'managerReview':rows=await pendingReviewTaskMetadata(ctx,'manager');break;

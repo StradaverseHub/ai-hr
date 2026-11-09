@@ -1,0 +1,23 @@
+{
+  "kind": "ROOT_SEALED_NATIVE_NEXT_CI_HANDOFF_PREPARED_NOT_RELEASE",
+  "base": "98ec4cdd8556d2c5a6c6b1d4696081f6c648003b",
+  "qualification": "NOT_RUN; source/syntax only",
+  "sourceSha256": {
+    ".github/ci/native-next-build-packet.mjs": "d47e287fffa31e7fc8520a80d1c50f2875ef35a7b374e407b37a33daffa1b5b2",
+    ".github/ci/native-next-build-packet.test.mjs": "df1da556b4294b21d8dce7787c59759a544ff1b426f4e1297b7888bc24578089",
+    ".github/ci/native-next-helper-sources.mjs": "f8238d02b92a0464dcbe9a517a9a959ecef350696d48666cc7e2ef30ca47e1f0",
+    ".github/ci/singleton-protocol.mjs": "fd8e6b3fbdf893168b67e239e5d330ed31d19433ea56cafcb41f4750eeb0f6e6",
+    "deploy/admission/next_build_binding.py": "1e3098a836bb5f520f1aefb0af53a35da2fb116f92d3767e35bf18b1d2a94b15",
+    "deploy/admission/test_next_build_binding.py": "770b9452c062c0d64334de1dd04ada206acaf75c00ae72d0f0173c3cfa3089df",
+    "test/runtime-next-build-binding.test.ts": "c6e383d617fdcb601b16eb2701bfa3869e3327448af8ed1e28433cc511302882",
+    "docs/qualification/native-next-sealed-build-binding-20261108.md": "89a1fe2a258770612cc21b663d4cd9a73a228c37c2f1daae45f7703c84770554"
+  },
+  "controller": "alpha-staging.yml controller_only=true diagnostics_only=true; complete plan required",
+  "focusedSelectors": [
+    "test/runtime-next-build-binding.test.ts"
+  ],
+  "actualNativeHandoffCommissioned": false,
+  "actualNextBootQualified": false,
+  "releaseAuthorized": false,
+  "production": "HELD"
+}

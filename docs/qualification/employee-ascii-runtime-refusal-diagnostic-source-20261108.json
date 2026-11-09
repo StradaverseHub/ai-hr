@@ -1,0 +1,21 @@
+{
+  "kind": "ASCII_RUNTIME_REFUSAL_OBSERVATION_SOURCE_NOT_QUALIFICATION",
+  "base": "ec3f4622c0137642593e56a8376156da9ca92225",
+  "sourceRef": "codex/employee-ascii-runtime-refusal-diagnostic-20261108",
+  "sourceSha256": {
+    "test/employee-choice-exact-ascii-purpose.test.ts": "d3565017931732ea5c21e06ec5acdce151dd340ffbdc2e65d732d800d17ada7f",
+    "docs/qualification/employee-ascii-runtime-refusal-diagnostic-20261108.md": "5ab7a4e108c968f0543342950382046243b1a68f45583b0c0673dace5a4c2c00"
+  },
+  "unchangedSha256": {
+    "test/performance/employee-choice-exact-ascii-runtime.ts": "3ba9e9aece28232badbccabb9ba13e731047a3327160081d01a4c03db3085921",
+    "test/performance/employee-choice-exact-ascii-runtime-contract.ts": "14f1f74b60fedaf394c3b5a7c1b1e0661d6327bc34472d146c81830e69cd7813",
+    "test/performance/employee-choice-exact-ascii-reader.ts": "ed2e2fb304de2d78435c13ec9caf9d71161c68755abea459674d50fbf1a1a8fd",
+    ".github/ci/employee-benchmark-supervisor.py": "68a47dce71197e7fc1f57702cbc1dc99495ac58d5cf43243c702c82873467926",
+    ".github/ci/owned-process.py": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+    ".github/workflows/alpha-focused-checks.yml": "b80b0ca5884c3e0e39ee898068526fcb28f4fc4df64ecd72ddcd10b903d5138d"
+  },
+  "originalRun": 42444864796,
+  "runtimeExecuted": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

@@ -2,12 +2,16 @@
 
 import { ExportDownloadLink } from '@/components/export-download-link';
 import * as Dialog from '@radix-ui/react-dialog';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, ErrorBanner, tableWrapCls, thCls, theadCls, tbodyCls } from './ui';
 import { LABEL_IMPORT_DEFINITIONS, ORGANISATION_LABEL_KINDS, type LabelImportPreview, type LabelImportPreviewRow } from '@/lib/system-label-definition';
 import type { previewLabelsAction, importLabelsAction } from '@/app/admin/settings/system-labels/import-actions';
+
+const subscribeHydration=()=>()=>{};
+const clientSnapshot=()=>true;
+const serverSnapshot=()=>false;
 
 export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];selectedCompanyIds?:string[]}={}) {
   const exchange=useTranslations('systemLabelExchange');
@@ -15,6 +19,8 @@ export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];s
   const category=(kind:string)=>(ORGANISATION_LABEL_KINDS as readonly string[]).includes(kind)?tc(`category.${kind}`):kind==='grades'?tc('category.grade'):kind==='grade_groups'?tg('groupsTitle'):tp(`category.${kind}`);
   const rowMessage=(row:LabelImportPreviewRow)=>row.reason==='required'&&row.reasonField?w('required',{field:w(`fields.${row.reasonField}`)}):w(row.reason==='required'?'invalidRow':row.reason??'invalidRow');
   const fileInput=useRef<HTMLInputElement>(null),stepHeading=useRef<HTMLHeadingElement>(null),importTrigger=useRef<HTMLButtonElement>(null);
+  // The server button cannot accept a click before this wizard's React boundary owns it.
+  const hydrated=useSyncExternalStore(subscribeHydration,clientSnapshot,serverSnapshot);
   const [open,setOpen]=useState(false),[file,setFile]=useState<File|null>(null);
   const [preview,setPreview]=useState<LabelImportPreview|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(false);
   const [summary,setSummary]=useState<{imported:number;updated:number;skipped:number;failed:number;errorReport?:string}|null>(null),[pending,start]=useTransition();
@@ -54,7 +60,7 @@ export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];s
     <p className="text-sm text-muted-foreground">{exchange('scopeHelp')}</p>
     <div className="flex flex-wrap justify-end gap-2">
       <ExportDownloadLink href="/admin/settings/system-labels/template" className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium">{tx('template')}</ExportDownloadLink>
-      <Button ref={importTrigger} type="button" onClick={()=>{if(summary){setSummary(null);setPreview(null);setFile(null);setError('');}setOpen(true);}}>{t('import')}</Button>
+      <Button ref={importTrigger} type="button" disabled={!hydrated} data-label-import-ready={hydrated?'true':'false'} onClick={()=>{if(summary){setSummary(null);setPreview(null);setFile(null);setError('');}setOpen(true);}}>{t('import')}</Button>
     </div>
     <Dialog.Root open={open} onOpenChange={value=>{if(!pending)setOpen(value);}}><Dialog.Portal>
       <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40"/>

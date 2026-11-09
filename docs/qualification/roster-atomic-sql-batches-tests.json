@@ -1,0 +1,10 @@
+[
+  "test/roster-atomic-sql-batches.test.ts",
+  "test/schedule-group-allowed-shifts.test.ts",
+  "test/schedule-group-resolution.test.ts",
+  "test/schedule-group-week-pattern.test.ts",
+  "test/schedule-rotation.test.ts",
+  "test/shift-effective-date.test.ts",
+  "test/leave-roster-bulk-source-participation.test.ts",
+  "test/roster-write-guard.test.ts"
+]

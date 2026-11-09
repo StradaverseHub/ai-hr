@@ -1,0 +1,90 @@
+{
+  "kind": "NORMAL_EMPLOYEE_TEST_RECOVERY_SOURCE_ONLY",
+  "base": "517c5a697f9260b9342ce612125c6325bf334131",
+  "sourceRef": "codex/employee-normal-controller-recovery-20261108",
+  "policyVersion": "aihr-staging-ci/v21",
+  "completeComponentBase": {
+    "file": "docs/qualification/employee-normal-policy-v21-source-20261108.json",
+    "sha256": "a1a54611adcbbc4013812578dc21b6f374312054b6f71885e92b6832bc7b8163"
+  },
+  "componentSourceOverrides": {
+    ".github/ci/unit-report-directories.test.mjs": "ca43bbec8ca9ef2a37300c931cb357b1962c6aab899f42bc4e2bb7bcd4b87bd8"
+  },
+  "completeComponentMapSha256": "25fd433d3ff483eda24a21f05dcc7882a709dcc9b37ef82acd85021b4223a2ae",
+  "sourceMembers": 3442,
+  "controllerMembers": 65,
+  "sourceSha256": {
+    ".github/ci/ci.test.mjs": "7c1421682dfd2799c00c486db01e40704e03050d2fb2fc16cfbddd2d963db83d",
+    ".github/ci/unit-report-directories.test.mjs": "ca43bbec8ca9ef2a37300c931cb357b1962c6aab899f42bc4e2bb7bcd4b87bd8",
+    "docs/qualification/employee-normal-controller-recovery-20261108.md": "c7c99111c735aac8d0680d0448e3b97ad3dc82c5baf6449c1f4be41184652873"
+  },
+  "wholeParentInverses": {
+    ".github/ci/ci.test.mjs": {
+      "parentSha256": "c5df1d1e24b80f46ef3d1139d553dab39379533df30d445230d40e8537cd3743",
+      "currentSha256": "7c1421682dfd2799c00c486db01e40704e03050d2fb2fc16cfbddd2d963db83d",
+      "changes": [
+        {
+          "startLine": 163,
+          "endLine": 164,
+          "before": " const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');const profile=source.indexOf(\"const roleProfile=unit.kind==='db'?actualFullCiRoleApplicability():null\"),reset=source.indexOf(\"const reset = spawnSync('bash'\",profile),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?',reset);assert(profile>=0&&reset>profile&&context>reset);assert.match(source,/const migrate = roleContext\\?spawnSync\\('pnpm', \\['db:migrate'\\], \\{stdio: 'inherit',env:roleContext.env\\}\\):spawnSync\\('pnpm', \\['db:migrate'\\], \\{stdio: 'inherit',env:candidateEnvironment\\(process.env\\)\\}\\);/);assert.match(source,/if\\(roleContext\\)rolePrerequisites=readFullCiRoleReceipt/);\n",
+          "after": " const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');const profile=source.indexOf(\"const roleProfile=unit.kind==='db'?actualFullCiRoleApplicability():null\"),reset=source.indexOf(\"const reset = lifecycle?fixedStage('reset'):spawnSync('bash'\",profile),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?',reset);assert(profile>=0&&reset>profile&&context>reset);assertFullCiProvisioningWiring(source);assert.match(source,/if\\(roleContext\\)rolePrerequisites=readFullCiRoleReceipt/);\n"
+        },
+        {
+          "startLine": 135,
+          "endLine": 148,
+          "before": " const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8'),reset=source.indexOf(\"if (reset.status !== 0)\"),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(',reset),migration=source.indexOf(\"const migrate = roleContext?spawnSync('pnpm', ['db:migrate']\",context),receipt=source.indexOf('rolePrerequisites=readFullCiRoleReceipt(',migration),vitest=source.indexOf(\"const child = spawnSync('pnpm', args\",receipt);\n assert(reset>=0&&context>reset&&migration>context&&receipt>migration&&vitest>receipt);assert.match(source.slice(migration,receipt),/env:roleContext\\.env/);assert.match(source.slice(vitest,vitest+100),/stdio: 'inherit', env/);assert.doesNotMatch(source.slice(source.indexOf('const env = {...process.env'),vitest),/roleContext|AIHR_CI_ROLE_|AIHR_CI_DISPOSABLE_ROLE/);assert.match(source,/report\\.batches\\.push\\(\\{exitCode,databaseEvidence,\\.\\.\\.\\(rolePrerequisites\\?\\{rolePrerequisites\\}:\\{\\}\\)/);\n",
+          "after": " assertFullCiProvisioningWiring(readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8'));\n});\ntest('both owned and ordinary provisioning branches retain ordering and never give role setup authority to Vitest',()=>{\n const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');\n for(const [before,after]of [\n  [\"if (reset.status !== 0)\",\"if (reset.status === 0)\"],\n  ['const roleContext=roleProfile===fullRoleMode?','const roleContext=undefined;const unused=roleProfile===fullRoleMode?'],\n  [\"lifecycle?fixedStage('reset')\",\"lifecycle?fixedStage('migrate')\"],\n  [\"lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env))\",\"lifecycle?fixedStage('migrate',candidateEnvironment(process.env))\"],\n  [\"{stdio: 'inherit',env:roleContext.env}\",\"{stdio: 'inherit',env:candidateEnvironment(process.env)}\"],\n  [\"lifecycle?fixedStage(lifecycleProfile.stage,env)\",\"lifecycle?fixedStage('migrate',env)\"],\n  ['const env = {...candidateEnvironment(process.env),','const env = {...roleContext.env,'],\n ]){assert.equal(source.split(before).length-1,1);assert.throws(()=>assertFullCiProvisioningWiring(source.replace(before,after)));}\n"
+        },
+        {
+          "startLine": 123,
+          "endLine": 134,
+          "before": "",
+          "after": "function assertFullCiProvisioningWiring(source){\n const start=source.indexOf('export async function main(){');assert(start>=0);source=source.slice(start);\n const reset=source.indexOf(\"if (reset.status !== 0)\"),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(',reset),migration=source.indexOf('const migrate = ',context),receipt=source.indexOf('rolePrerequisites=readFullCiRoleReceipt(',migration),environment=source.indexOf('const env = {...candidateEnvironment(process.env)',receipt),vitest=source.indexOf('const child = ',environment);\n assert(reset>=0&&context>reset&&migration>context&&receipt>migration&&environment>receipt&&vitest>environment);\n const line=at=>source.slice(at,source.indexOf('\\n',at)).trim();\n assert(source.includes(\"const reset = lifecycle?fixedStage('reset'):spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});\"));\n assert.equal(line(migration),\"const migrate = lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env)):roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});\");\n assert.equal(line(vitest),\"const child = lifecycle?fixedStage(lifecycleProfile.stage,env):spawnSync('pnpm', args, {stdio: 'inherit', env});\");\n assert.doesNotMatch(line(environment),/roleContext|AIHR_CI_ROLE_|AIHR_CI_DISPOSABLE_ROLE/);\n assert.match(source,/report\\.batches\\.push\\(\\{exitCode,databaseEvidence,\\.\\.\\.\\(rolePrerequisites\\?\\{rolePrerequisites\\}:\\{\\}\\)/);\n}\n"
+        }
+      ]
+    },
+    ".github/ci/unit-report-directories.test.mjs": {
+      "parentSha256": "a4604c85fef7023a9a57f10548163a441c3a79603d6f3324ce6bb82556be2f39",
+      "currentSha256": "ca43bbec8ca9ef2a37300c931cb357b1962c6aab899f42bc4e2bb7bcd4b87bd8",
+      "changes": [
+        {
+          "startLine": 53,
+          "endLine": 54,
+          "before": " const path=make(root,ordinary),report=join(path,'unit-'+ordinary.id+'.json'),alias=join(path,'aliased.json');linkSync(report,alias);refused(()=>read(root,[ordinary]));rmSync(alias);rmSync(report);mkdirSync(report);refused(()=>read(root,[ordinary]));rmSync(report);writeFileSync(report,'');refused(()=>read(root,[ordinary]));truncateSync(report,UNIT_REPORT_DIRECTORY_BOUNDS.memberBytes+1);refused(()=>read(root,[ordinary]));\n",
+          "after": " const path=make(root,ordinary),report=join(path,'unit-'+ordinary.id+'.json'),alias=join(path,'aliased.json');linkSync(report,alias);refused(()=>read(root,[ordinary]));rmSync(alias);rmSync(report);mkdirSync(report);refused(()=>read(root,[ordinary]));rmdirSync(report);writeFileSync(report,'');refused(()=>read(root,[ordinary]));truncateSync(report,UNIT_REPORT_DIRECTORY_BOUNDS.memberBytes+1);refused(()=>read(root,[ordinary]));\n"
+        },
+        {
+          "startLine": 25,
+          "endLine": 26,
+          "before": " rmSync(join(root,'unit-foreign'));renameSync(folder(root,browser,'full'),join(root,'unit-foreign'));refused(()=>read(root,[ordinary,browser]));\n",
+          "after": " rmdirSync(join(root,'unit-foreign'));renameSync(folder(root,browser,'full'),join(root,'unit-foreign'));refused(()=>read(root,[ordinary,browser]));\n"
+        },
+        {
+          "startLine": 3,
+          "endLine": 4,
+          "before": "import {mkdtempSync,mkdirSync,writeFileSync,rmSync,symlinkSync,linkSync,renameSync,truncateSync,chmodSync,realpathSync} from 'node:fs';\n",
+          "after": "import {mkdtempSync,mkdirSync,writeFileSync,rmSync,rmdirSync,symlinkSync,linkSync,renameSync,truncateSync,chmodSync,realpathSync} from 'node:fs';\n"
+        }
+      ]
+    }
+  },
+  "retainedFocusedRun": "42457513223",
+  "retainedControllerRun": "42457527603",
+  "retainedPassingSelectors": [
+    "test/employee-choice-lifecycle-contract.test.ts",
+    "test/employee-choice-lifecycle-evidence-contract.test.ts",
+    "test/employee-choice-auto-explain-parser.test.ts",
+    "test/employee-choice-native-log-capture.test.ts",
+    "test/employee-choice-exact-ascii-plan-work.test.ts",
+    "test/employee-postgres-custody-policy.test.ts"
+  ],
+  "requestedSelectors": [
+    "test/ci-unit-report-directory-contract.test.ts"
+  ],
+  "controllerAndCompletePlannerRequired": true,
+  "testsExecuted": false,
+  "nativeQualified": false,
+  "releaseAuthorized": false,
+  "stagingHeld": true,
+  "productionHeld": true
+}

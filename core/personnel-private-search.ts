@@ -6,7 +6,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {createHash,randomBytes} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {withPersonnelRead} from './personnel-read-bounds';
+import {boundPersonnelStatementTx,withPersonnelRead} from './personnel-read-bounds';
 const TOKEN=/^[A-Za-z0-9_-]{43}$/;
 export const privateSearchHash=(token:string)=>TOKEN.test(token)?createHash('sha256').update(token).digest('hex'):null;
 export class PersonnelSearchLimitError extends Error{constructor(){super('Narrow the top company scope before searching this many records.');}}
@@ -19,7 +19,8 @@ async function privateCriteriaTx(tx:Tx,token:string,companyIds:string[]):Promise
 export function readPersonnelPrivateCriteria(ctx:SessionContext,token:string,companyIds:string[]):Promise<PersonnelPrivateCriteria|null>{return withPersonnelRead(ctx,tx=>privateCriteriaTx(tx,token,companyIds));}
 export async function createPersonnelPrivateSearch(ctx:SessionContext,p:{text:string;companyIds:string[];columnFilters?:PersonnelColumnFilter[];previousToken?:string;replaceCriteria?:boolean}):Promise<string>{
  if(p.companyIds.length>1000||!ctx.userId)throw new PersonnelSearchLimitError();
- return withPersonnelRead(ctx,async tx=>{
+ return withTenant(ctx,async tx=>{
+  await boundPersonnelStatementTx(tx);
   const prior=p.previousToken&&!p.replaceCriteria?await privateCriteriaTx(tx,p.previousToken,p.companyIds):null;
   if(p.previousToken&&!p.replaceCriteria&&!prior)throw new Error('Private filters expired. Apply the complete filters again.');
   const byField=new Map((prior?.filters??[]).map(filter=>[filter.field,filter]));for(const filter of p.columnFilters??[])byField.set(filter.field,filter);

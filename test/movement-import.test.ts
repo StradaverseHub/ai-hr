@@ -193,7 +193,7 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
  it('rolls back transactional label epochs and an actually armed audit chain during preview',async()=>{
   const id=await hire(),before=await state(id),beforeEpoch=await epochs(),text=csv([['EMP-0004','transfer',day(-2),b.deptB,'','Armed preview audit']]);
   const original=tenantClient.withTenant,beforeIds=new Set(before.events.map(row=>row.id));let observedChainRows=0,observedEpochChange=false;
-  const intercepted:typeof original=async<T>(ctx:tenantClient.SessionContext,fn:(tx:tenantClient.Tx)=>Promise<T>,options?:{readOnlySnapshot:true})=>original(ctx,async tx=>{
+  const intercepted:typeof original=async<T>(ctx:tenantClient.SessionContext,fn:(tx:tenantClient.Tx)=>Promise<T>,options?: Parameters<typeof tenantClient.withTenant>[2])=>original(ctx,async tx=>{
    await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);
    try{return await fn(tx);}catch(error){
     const rows=await tx.select({id:domainEvent.id,chainSeq:domainEvent.chainSeq}).from(domainEvent).where(eq(domainEvent.subjectEmploymentId,id));observedChainRows+=rows.filter(row=>!beforeIds.has(row.id)&&row.chainSeq!==null).length;

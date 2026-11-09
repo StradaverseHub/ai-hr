@@ -1,8 +1,7 @@
 import { idleTimeoutMinutesFor } from '../session-policy-server';
 import { internalIssuer } from '../internal-auth/config';
 import { randomUUID } from 'node:crypto';
-import { client } from '../../db/client';
-import { authTransaction, readRecord, writeRecord, deleteRecord, type AuthSql } from '../internal-auth/store';
+import { authTransaction, readRecord, readAuthRecord, withAuthReadConnection, writeRecord, deleteRecord, type AuthSql } from '../internal-auth/store';
 import { opaque, digest, validOpaque } from '../internal-auth/crypto';
 import { todayInKualaLumpur } from '../hr-date';
 import { EntraError, issuerFor, type EntraConfig } from './model';
@@ -44,7 +43,7 @@ export async function createEntraSession(config:EntraConfig,objectId:string,nati
 /** The shared organization policy is read before entering the family transaction: never nest a pool checkout. */
 async function webSession(raw:string,touch:boolean) {
   if(!validOpaque(raw))return null;
-  const key=`entra-session:${digest(raw)}`,initial=await readRecord<Identity>(client,key);
+  const key=`entra-session:${digest(raw)}`,initial=await readAuthRecord<Identity>(key);
   if(!initial||initial.native)return null;
   const idleMs=await idleTimeoutMinutesFor(initial.tenantId)*60_000;
   return authTransaction(`entra-family:${initial.family}`,async tx=>{
@@ -72,14 +71,16 @@ export async function readEntraSession(token:string|undefined,native=false) {
   if(!native)return validOpaque(token)?(await webSession(token!,false))?.identity??null:null;
   const raw=token?.startsWith('aihr_')?token.slice(5):'';
   if(!validOpaque(raw))return null;
-  const value=await readRecord<Identity>(client,`entra-session:${digest(raw)}`);
-  if(!value||!value.native||!await readRecord(client,`entra-family:${value.family}`))return null;
-  try{return await allowed(client,value);}catch(e){if(e instanceof EntraError)return null;throw e;}
+  return withAuthReadConnection(async connection=>{
+    const value=await readRecord<Identity>(connection,`entra-session:${digest(raw)}`);
+    if(!value||!value.native||!await readRecord(connection,`entra-family:${value.family}`))return null;
+    try{return await allowed(connection,value);}catch(e){if(e instanceof EntraError)return null;throw e;}
+  });
 }
 export async function rotateEntraRefresh(token:string):Promise<EntraTokens|null> {
   const raw=token.startsWith('aihr_refresh_')?token.slice(13):'';
   if(!validOpaque(raw))return null;
-  const key=`entra-refresh:${digest(raw)}`,initial=await readRecord<Identity&{used:boolean}>(client,key);
+  const key=`entra-refresh:${digest(raw)}`,initial=await readAuthRecord<Identity&{used:boolean}>(key);
   if(!initial)return null;
   const result=await authTransaction(`entra-family:${initial.family}`,async tx=>{
     const value=await readRecord<Identity&{used:boolean}>(tx,key,true);
@@ -95,7 +96,7 @@ export async function rotateEntraRefresh(token:string):Promise<EntraTokens|null>
 }
 export async function revokeEntraSession(token:string|undefined,native=false,refresh?:string) {
   const raw=native&&token?.startsWith('aihr_')?token.slice(5):native?'':token;
-  let value=validOpaque(raw)?await readRecord<Identity>(client,`entra-session:${digest(raw!)}`):null;
-  if(!value&&refresh?.startsWith('aihr_refresh_')&&validOpaque(refresh.slice(13)))value=await readRecord<Identity>(client,`entra-refresh:${digest(refresh.slice(13))}`);
+  let value=validOpaque(raw)?await readAuthRecord<Identity>(`entra-session:${digest(raw!)}`):null;
+  if(!value&&refresh?.startsWith('aihr_refresh_')&&validOpaque(refresh.slice(13)))value=await readAuthRecord<Identity>(`entra-refresh:${digest(refresh.slice(13))}`);
   if(value&&value.native===native)await authTransaction(`entra-family:${value.family}`,async tx=>{await deleteRecord(tx,`entra-family:${value!.family}`);await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'app-user.logged-out','user',$2::uuid,$3::jsonb)",[value!.tenantId,value!.userId,JSON.stringify({provider:'entra'})]);});
 }

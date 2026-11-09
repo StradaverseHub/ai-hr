@@ -1,0 +1,27 @@
+{
+  "kind": "FIXED_DIRECT_VITEST_ASCII_ROUTE_SOURCE_NOT_QUALIFICATION",
+  "base": "7ea8c2cbc2b4bb3c173eff04e2c20625edf5cca6",
+  "sourceRef": "codex/employee-ascii-direct-vitest-entry-20261108",
+  "sourceSha256": {
+    ".github/ci/employee-benchmark-supervisor.py": "7fc4b786ad1a21e652fe0f6a5c27582b4b23a92ed31319ad49a7f18b16ecfe8e",
+    ".github/ci/employee-benchmark-supervisor.test.py": "e3b2305355972b04049eb69429d916ee3931cb2f6bf9dbad2dd6ce9f997e97dd",
+    ".github/ci/employee-ascii-adapter-inverse.json": "8e5f6bb450f7438fc53fe0b858b06a24c164f7019e9cf1bed5bf826aed245d87",
+    "docs/qualification/employee-ascii-direct-vitest-entry-20261108.md": "c03a273ef5253111b8724d3b5281bac0b07f7a9941a190b69b1fb0315fd2467e"
+  },
+  "unchangedSha256": {
+    ".github/ci/owned-process.py": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+    "test/performance/employee-choice-exact-ascii-runtime.ts": "3ba9e9aece28232badbccabb9ba13e731047a3327160081d01a4c03db3085921",
+    "test/performance/employee-choice-exact-ascii-runtime-contract.ts": "14f1f74b60fedaf394c3b5a7c1b1e0661d6327bc34472d146c81830e69cd7813",
+    "test/performance/employee-choice-exact-ascii-reader.ts": "ed2e2fb304de2d78435c13ec9caf9d71161c68755abea459674d50fbf1a1a8fd",
+    "test/employee-choice-exact-ascii-purpose.test.ts": "d3565017931732ea5c21e06ec5acdce151dd340ffbdc2e65d732d800d17ada7f",
+    "test/employee-choice-exact-ascii-plan.test.ts": "b7cdc6700afa0ef0aeb1b846778f5f2e927c9467ecf70bed8ebc298b1e057763",
+    ".github/ci/focused-checks.mjs": "64a81e31e868e305136366087b876cadc1b75fd59986cc2961167a3a6ffa30a8",
+    ".github/workflows/alpha-focused-checks.yml": "b80b0ca5884c3e0e39ee898068526fcb28f4fc4df64ecd72ddcd10b903d5138d",
+    "test/employee-choice-benchmark-supervisor.test.ts": "82b13eb4a4e987efb8264d4d74f843dac8fd94a1708059d30b6b443cf59e8f8a"
+  },
+  "runtimeExecuted": false,
+  "eligibilityRelaxed": false,
+  "environmentSanitized": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}
