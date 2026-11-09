@@ -62,11 +62,12 @@ function prepareChoices(ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPa
  if(p.terminatedAfter!==undefined)populationScope=sql`${populationScope} and (${employment.terminatedOn} is null or ${employment.terminatedOn}>${p.terminatedAfter}::date)`;
  if(p.employmentIds!==undefined)populationScope=sql`${populationScope} and ${p.employmentIds.length?sql`${employment.id}=any(${'{'+p.employmentIds.join(',')+'}'}::uuid[])`:sql`false`}`;
  const inCompany=filters.companyId?sql`${employment.companyId}=${filters.companyId}::uuid`:sql`true`;
+ const inStatus=filters.status?filters.status==='active'?sql`${employment.terminatedOn} is null`:sql`${employment.terminatedOn} is not null`:sql`true`;
  const where=sql`${populationScope} and ${inCompany}
   and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`}
   and ${filters.departmentId?sql`${assignment.departmentId}=${filters.departmentId}::uuid`:sql`true`}
-  and ${filters.status?filters.status==='active'?sql`${employment.terminatedOn} is null`:sql`${employment.terminatedOn} is not null`:sql`true`}`;
- return {filters,offset,limit,labelMode,q,from,organisationFilter,scoped:populationScope,where};
+  and ${inStatus}`;
+ return {filters,offset,limit,labelMode,q,from,organisationFilter,scoped:populationScope,inCompany,inStatus,where};
 }
 /** General navigation owns its snapshot and keeps the public transport's 200-row cap. */
 export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInput&{companyIds:string[]},signal?:AbortSignal):Promise<EmployeeChoicePage>{
@@ -82,12 +83,11 @@ export async function readEmployeeChoicesTx(tx:Tx,ctx:SessionContext,p:EmployeeC
  return readChoicePageTx(tx,captureContext(ctx),captureInput(p),ALL_ROW_CEILING,signal);
 }
 async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPageSize:number,signal?:AbortSignal):Promise<EmployeeChoicePage>{
- const {filters,offset,limit,labelMode,q,from,organisationFilter,scoped,where}=prepareChoices(ctx,p,maximumPageSize);
+ const {filters,offset,limit,labelMode,q,from,organisationFilter,scoped,inCompany,inStatus,where}=prepareChoices(ctx,p,maximumPageSize);
  signal?.throwIfAborted();
   await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
   if(labelMode==='labels'&&!isAdmin(ctx))throw new EmployeeChoiceAccessError('Employee catalogue labels require current administration access');
   const exactAscii=employeeChoiceExactAsciiPredicate(sql`${person.fullName}`,sql`coalesce(${employment.employeeCode},'')`,q);
-  const pageWhere=exactAscii?sql`${where} and ${exactAscii}`:where;
   const base=sql`select ${columns(labelMode==='labels')} ${from}`;
   let rows:EmployeeChoice[]=[],total=0;
   if(!q||exactAscii){
@@ -95,11 +95,17 @@ async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerI
    // An empty first page has no matches. A later offset can hide matching rows.
    // The immediate native assignment_no_overlap constraint (also guarded by
    // Personnel migrations) permits at most one unsuperseded NULL-ended assignment.
-   // Without organisation filters, authorize/count/page identities first, then
-   // project the bounded page's native assignment and label joins.
-   const population=organisationFilter?from:employeeIdentityFrom(ctx.tenantId);
-   const page=await tx.execute<EmployeeChoice&{total:number}>(organisationFilter?sql`select ${columns(labelMode==='labels')},(count(*) over())::int as total ${from}
-    where ${pageWhere} order by ${person.fullName},${employment.id},${assignment.id} limit ${limit} offset ${offset}`:sql`
+   // Keep the native Assignment membership as a positive subplan. Hydrate
+   // Assignment and labels only for the page keys, after the exact count.
+   const identityWhere=organisationFilter?sql`${scoped} and ${inCompany}
+  and (${employment.id} in(select ${assignment.employmentId} from ${assignment}
+  where ${assignment.tenantId}=${ctx.tenantId}::uuid and ${assignment.validTo} is null and ${assignment.supersededAt} is null
+   and ${filters.departmentId?sql`${assignment.departmentId}=${filters.departmentId}::uuid`:sql`true`}
+   and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`})) is true
+  and ${inStatus}`:where;
+   const pageWhere=exactAscii?sql`${identityWhere} and ${exactAscii}`:identityWhere;
+   const population=employeeIdentityFrom(ctx.tenantId);
+   const page=await tx.execute<EmployeeChoice&{total:number}>(sql`
     with employee_choice_page as materialized(select ${employment.id},(count(*) over())::int as total ${population}
      where ${pageWhere} order by ${person.fullName},${employment.id} limit ${limit} offset ${offset})
     select ${columns(labelMode==='labels')},employee_choice_page.total ${from}
