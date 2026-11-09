@@ -9,10 +9,17 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const orderSeal = rows => ({count: rows.length, sha256: digest(rows.join('\n') + '\n')});
 const inventory = {
   run: '42622447268', artifactSha256: '3d04b526646ca45c9a0e48b2e49f060f9649bcdab0e71c5a17491272bd1d4c6c',
-  original: {count: 9213, sha256: '4985e950cd4e517650db3b6667126a5ea2a2495183c4a21b2a83362321d364a9'},
-  build: {count: 5025, sha256: '424c024160e5ec43e9457fdd711d6ae33fd68515b1750c6756733bd506e71e1f'},
+  // Historical graph above anchors the predecessor; current root seals were recensed separately.
+  candidateRootRecensus: {candidateSha: '6c05efc24242b8a5f50933e7cbb6709a276b286d', sha256: '7a2a6057316da5273c3cc6837f84f5c1d3d0eff2e4faab7da2984b918971e43c'},
+  original: {count: 9219, sha256: 'f5af7cc74862541ecd562b93119dd81e6a0ad3cadcbea2672f1f9658a2ebf0e3'},
+  build: {count: 5030, sha256: 'e3ff4d97cf96c0708c74e731e501efdbb1a058461b4b288fabea67f61dcc8a68'},
   'test-tooling-first': {count: 2094, sha256: 'fa6cadcb858a986aa50d0a2c0d2aadfa50ca07f358d249009d30498649b9d34e'},
-  'test-tooling-second': {count: 2094, sha256: '48e72ca8875891261b568986d83ae661fb0a3d34da6593f5f8fc4c5ad5ea557a'},
+  'test-tooling-second': {count: 2095, sha256: 'ae69697b5daac62b0f420e994c69af57df19e06e39fc3f94266ad1c195aaf455'},
+};
+const configured = {
+  'build': {count: 5032, sha256: 'f87cfeabba51cfee4626d4b0b2b96ab0e9574667771ee15fc7cf939cf913c201'},
+  'test-tooling-first': {count: 2098, sha256: '376eeda0ebe6f031af36b359d2104aecb14aacbf57dfe05d790e19a96eceeafa'},
+  'test-tooling-second': {count: 2101, sha256: '9582c036d65a25c969cce54d49250e9023bd2e17d6a5e24237cdd0567488c949'},
 };
 const localContext = {
   '.next/types/cache-life.d.ts': '87384ad5954f65285fc17ba8ed39d010a8ef111edba114e493b0431d677e5faa',
@@ -80,7 +87,7 @@ const originalSet = new Set(original.roots);
 const buildSet = new Set(build.roots);
 assert(build.roots.every(root => originalSet.has(root)));
 const complement = original.roots.filter(root => !buildSet.has(root));
-assert(complement.length === 4188);
+assert(complement.length === 4189);
 const byCell = {build: build.roots, 'test-tooling-first': complement.slice(0, 2094), 'test-tooling-second': complement.slice(2094)};
 for (const key of cells) assert.deepEqual(orderSeal(byCell[key]), inventory[key]);
 const ownership = cells.flatMap(key => byCell[key]);
@@ -105,6 +112,7 @@ assert.deepEqual(typeRoots.filter(root => ts.sys.directoryExists(root)), [join(s
 const owned = new Set(byCell[cell]);
 const context = new Set(Object.keys(localContext));
 const roots = original.roots.filter(root => owned.has(root) || context.has(root));
+assert.deepEqual(orderSeal(roots), configured[cell]);
 const project = join(directory, 'partition.tsconfig.json');
 writeFileSync(project, JSON.stringify({
   extends: join(source, 'tsconfig.json'), files: roots.map(root => join(source, root)), include: [], exclude: [],

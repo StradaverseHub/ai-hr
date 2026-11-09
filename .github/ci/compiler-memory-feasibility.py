@@ -15,9 +15,9 @@ import sys
 import time
 
 
-SOURCE = '3a3bc5dd325df1d57000eb03bebc76c8cda7157c'
-SOURCE_BRANCH = 'codex/architecture-ai-management-snapshot-20261109'
-BRANCH = 'codex/compiler-3a3bc5dd-partition-feasibility-20261109'
+SOURCE = '6c05efc24242b8a5f50933e7cbb6709a276b286d'
+SOURCE_BRANCH = 'codex/architecture-zero-busy-lock-qualification-20261109'
+BRANCH = 'codex/compiler-6c05efc2-partition-feasibility-20261109'
 PARTITION_CELLS = ('build', 'test-tooling-first', 'test-tooling-second')
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
@@ -313,7 +313,7 @@ def partition_report(directory, source, cell, raw):
     require(plan.get('cell') == cell and plan.get('originalRootOwnershipExact') is True
             and plan.get('externalAmbientGlobalParityProven') is False, 'partition-plan')
     roots = plan.pop('roots')
-    require(isinstance(roots, list) and 0 < len(roots) <= 9213 and len(roots) == len(set(roots))
+    require(isinstance(roots, list) and 0 < len(roots) <= 9219 and len(roots) == len(set(roots))
             and all(isinstance(root, str) and not root.startswith('/') and '..' not in root.split('/')
                     and not re.search(r'[\x00-\x1f]', root) for root in roots), 'partition-plan')
     require(plan.get('configured') == {'count': len(roots),
