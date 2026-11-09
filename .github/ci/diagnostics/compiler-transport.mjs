@@ -112,11 +112,13 @@ async function compile(source,cache,out,report,name,expectedErrorPath=null){
  const row={name,startedAt:new Date().toISOString(),expectedErrorPath,processExitCode:null};report.phases.push(row);
  const log=join(out,name+'.log');
  const command=[process.execPath,join(source,'node_modules/typescript/lib/tsc.js'),'--noEmit','--pretty','false','--extendedDiagnostics','--tsBuildInfoFile',cache.file];
- const args=process.env.AIHR_CI_CAPACITY_PROFILE==='bounded-whole-compiler'
-  ?['-v','/usr/bin/prlimit','--fsize=67108864','--',...command]:['-v',...command];
- const result=await measuredCommand('/usr/bin/time',args,{cwd:source,env:{...process.env,NODE_OPTIONS:'--max-old-space-size=12288'},log});
+ const managed=process.env.AIHR_CI_CAPACITY_PROFILE==='bounded-whole-compiler';
+ const args=managed?['-v','/usr/bin/prlimit','--fsize=67108864','--',...command]:['-v',...command];
+ const timeoutMs=managed?15*60_000:10*60_000;
+ const result=await measuredCommand('/usr/bin/time',args,{cwd:source,env:{...process.env,NODE_OPTIONS:'--max-old-space-size=12288'},log,timeoutMs});
  Object.assign(row,result,{processExitCode:result.code,endedAt:new Date().toISOString()});
  diskSample(source,report,name+'-after');
+ assert(!result.timedOut,`Whole-project compiler exceeded its ${timeoutMs/60_000}-minute limit`);
  const text=regular(log,MAX_LOG).toString('utf8');Object.assign(row,validateCompilerPhase(result,text,expectedErrorPath));
  const bytes=regular(cache.file,64*1024*1024);row.cache={bytes:bytes.length,sha256:hash(bytes)};
  return {row,bytes,text};
