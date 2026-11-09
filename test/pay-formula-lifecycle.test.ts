@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {createTranslator,type AbstractIntlMessages} from 'next-intl';
+import {createTranslator} from 'next-intl';
 import en from '../messages/en.json';
 import {readPayItemFormulaOptions} from '../app/admin/pay-components/formula-options';
 import {parsePayFormula,type FormulaProgram} from '../lib/pay-formula-language';
@@ -50,8 +50,8 @@ it('offers all successfully saved formulas without a mandatory test or activatio
  expect((await listPayComponents(ctx)).find(item => item.code === 'PICKED')?.rule).toMatchObject({ formulaId: 'PICKABLE' });
 });
 it('projects the latest saved linked explanation without exposing source or weakening catalogue authority',async()=>{
- const messages:AbstractIntlMessages=en;
- const t=createTranslator({locale:'en',messages,namespace:'payFormula'});
+ // The projection looks up message keys and interpolation values dynamically.
+ const t=createTranslator({locale:'en',messages:en,namespace:'payFormula'}) as unknown as Parameters<typeof readPayItemFormulaOptions>[1];
  const source=`' A private author comment
 If {#Input} > 10 Then
   {#Explain}("Review this branch")

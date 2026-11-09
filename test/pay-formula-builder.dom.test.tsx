@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
-import {createTranslator,NextIntlClientProvider,type AbstractIntlMessages} from 'next-intl';
+import {createTranslator,NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import vietnamese from '../messages/vi.json';
 import {PayRuleEditor} from '../app/admin/pay-components/pay-rule-editor';
 import {FormulaEditor} from '../app/payroll/formula-builder/editor';
@@ -129,8 +129,8 @@ End If`;
  it('renders the native Formula Builder input kind and explicit context bindings',async()=>{const native=render(<NextIntlClientProvider locale="en" messages={en}><form><PayRuleEditor catalogueOnly code="FIXTURE_OT" kind="allowance" prorates={false} rule={null} aiEnabled={false} payItems={[{code:'BASIC',name:'Basic salary'}]} previewEmployees={[]} activeFormulas={[{formulaId:'OT_TEST',description:'Fictional tested overtime',dependencies:['BASIC'],explanation:[{depth:0,text:'The result is Basic salary.'}]}]}/></form></NextIntlClientProvider>);fireEvent.change(screen.getByLabelText(en.payRule.kindLabel),{target:{value:'formula_builder'}});fireEvent.change(screen.getByLabelText(en.payRule.builderFormula),{target:{value:'OT_TEST'}});for(const [label,value] of [[en.payRule.builderOrdinaryRate,'26'],[en.payRule.builderHoursPerDay,'8'],[en.payRule.builderRate,'1.5']])fireEvent.change(screen.getByLabelText(label),{target:{value}});expect(JSON.parse((native.container.querySelector('input[name="rule"]') as HTMLInputElement).value)).toEqual({kind:'formula_builder',formulaId:'OT_TEST',dependencies:['BASIC']});expect(new FormData(native.container.querySelector('form')!).get('formulaHoursPerDay')).toBe('8');await captureAiReviewScreenshots(aiReviewDomHtml(native.container),'en','formula-pay-item',visualFixture,'atelier');},120000);
  it.each(['en','ms'] as const)('shows the reopened saved reference-template explanation in Pay Items (%s)',locale=>{
   const messages=catalogues[locale],formula=fixture();
-  const translationMessages:AbstractIntlMessages=messages;
-  const t=createTranslator({locale,messages:translationMessages,namespace:'payFormula'});
+  // The projection looks up message keys and interpolation values dynamically.
+  const t=createTranslator({locale,messages,namespace:'payFormula'}) as unknown as Parameters<typeof describePayFormula>[1];
   const savedSource=payFormulaTemplateSource('OT_1_5',messages.payFormula.templates.hourlyRateNote);
   formula.latest={...formula.latest,source:savedSource,program:parsePayFormula(savedSource)};
   formula.versions=[formula.latest];
