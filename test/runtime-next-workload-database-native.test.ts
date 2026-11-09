@@ -2,11 +2,13 @@
 import {createHash} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {setTimeout as sleep} from 'node:timers/promises';
 import postgres from 'postgres';
 import {expect,it} from 'vitest';
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
 import {NATIVE_WORKLOAD_DATABASE_CASE,NATIVE_WORKLOAD_DATABASE_MEMBER,NATIVE_WORKLOAD_OBSERVER,
  validateNativeWorkloadObserverUrl} from '../.github/ci/singleton-protocol.mjs';
+import {protectedLockObserverCounts,protectedLockObserverQuery} from '../scripts/performance/protected-lock-observer.mjs';
 
 const admission=admitSingletonTest('test/runtime-next-workload-database-native.test.ts');
 if(admission.mode!=='full-ci-singleton'||!admission.workloadDatabase||!admission.workloadContext)throw Error('Native workload database custody binding required');
@@ -32,6 +34,92 @@ async function nativeSession(db:Client){
   current_setting('transaction_read_only')='on' as "readOnly"
   from pg_roles r where r.rolname=current_user`;
  return row;
+}
+
+type BackendIdentity={pid:number,backendStart:string,databaseOid:string};
+async function lockBackend(db:Client,databaseOid:string,role:string):Promise<BackendIdentity>{
+ const [row]=await db<BackendIdentity[]>`select pid,datid::text as "databaseOid",
+  extract(epoch from backend_start)::text as "backendStart" from pg_catalog.pg_stat_activity
+  where pid=pg_backend_pid() and datname='ai_hr_test_w1' and backend_type='client backend'
+   and session_user=${role} and current_user=${role} and host(inet_server_addr())='127.0.0.1' and inet_server_port()=5433
+   and (select count(*) from pg_catalog.pg_settings where unit='ms'
+    and (name,setting) in (('statement_timeout','2000'),('lock_timeout','300')))=2`;
+ if(!row||!Number.isSafeInteger(row.pid)||row.pid<=1||typeof row.backendStart!=='string'
+  ||!/^\d+(?:\.\d+)?$/.test(row.backendStart)||row.databaseOid!==databaseOid){
+  throw Error('Native workload lock backend refused');
+ }
+ return row;
+}
+
+async function verifyNativeLockObservation(owner:Client,app:Client,observer:Client,databaseOid:string){
+ // All three pools are already warm and each admits only one physical connection.
+ // Their caller closes them even if a reservation or native settlement refuses.
+ const holder=await owner.reserve(),actor=await app.reserve(),reader=await observer.reserve();
+ const ownerBackend=await lockBackend(holder,databaseOid,'postgres'),appBackend=await lockBackend(actor,databaseOid,'ai_hr_app');
+ const observerBackend=await lockBackend(reader,databaseOid,NATIVE_WORKLOAD_OBSERVER);
+ if(new Set([ownerBackend.pid,appBackend.pid,observerBackend.pid]).size!==3)throw Error('Native workload lock backends were not distinct');
+ const [identity]=await holder`select system_identifier::text as id from pg_catalog.pg_control_system()`;
+ if(typeof identity?.id!=='string'||createHash('sha256').update(identity.id).digest('hex')!==custody.systemIdentifierSha256){
+  throw Error('Native workload held cluster identity differed');
+ }
+ const sample=async()=>protectedLockObserverCounts(await protectedLockObserverQuery(reader),observerBackend);
+ const before=await sample();
+ if(before.appSessions!==1||before.blockingAppSessions!==0)throw Error('Native workload lock baseline refused');
+
+ // One fixed, synthetic two-int advisory key on the owned worker database.
+ const lockClass=1314344014,lockObject=1;
+ let waiter:Promise<boolean>|undefined;
+ const errors:unknown[]=[];
+ try{
+  // Explicit commands keep rollback on the reserved backend without an async begin callback.
+  if((await holder`begin`).command!=='BEGIN')throw Error('Native workload lock transaction refused');
+  const [lock]=await holder`select pg_backend_pid() as pid,
+   pg_catalog.pg_try_advisory_xact_lock(${lockClass}::int4,${lockObject}::int4) as acquired`;
+  if(lock?.pid!==ownerBackend.pid||lock.acquired!==true)throw Error('Native workload held lock refused');
+  // Keep a handler attached from dispatch through rollback. The app's existing
+  // 300ms lock_timeout still applies, and this observation must finish earlier.
+  const deadline=performance.now()+200;
+  waiter=actor`select pg_catalog.pg_advisory_xact_lock(${lockClass}::int4,${lockObject}::int4)`
+   .then(result=>result.command==='SELECT'&&result.length===1,()=>false);
+  let observed=false;
+  for(let attempt=0;attempt<12&&performance.now()<deadline;attempt++){
+   const row=await sample();
+   if(row.appSessions!==1)throw Error('Native workload app session census differed');
+   if(performance.now()>=deadline)break;
+   if(row.blockingAppSessions===1){
+    // This is the first statistics observation in the held transaction.
+    const [edge]=await holder`select pg_backend_pid() as pid,exists(
+     select 1 from pg_catalog.pg_stat_activity a where a.pid=${appBackend.pid}::int4
+      and a.datid=${databaseOid}::oid and extract(epoch from a.backend_start)::text=${appBackend.backendStart}
+      and a.usename='ai_hr_app' and a.wait_event_type='Lock' and a.wait_event='advisory'
+      and pg_catalog.pg_blocking_pids(a.pid)=array[pg_backend_pid()]
+    ) as blocked`;
+    observed=edge?.pid===ownerBackend.pid&&edge.blocked===true&&performance.now()<deadline;
+    break;
+   }
+   if(attempt<11&&performance.now()+10<deadline)await sleep(10);
+  }
+  if(!observed)throw Error('Native workload lock edge was not observed within its bound');
+ }catch(error){errors.push(error);}
+ finally{
+  // Roll back even if BEGIN acknowledgement was ambiguous. A refused rollback
+  // prevents receipt emission, and the parent still has to stop the whole cluster.
+  try{
+   if((await holder`rollback`).command!=='ROLLBACK')throw Error('Native workload lock rollback refused');
+  }catch(error){errors.push(error);}
+  if(waiter&&!(await waiter))errors.push(Error('Native workload app lock waiter did not settle successfully'));
+ }
+ if(errors.length)throw new AggregateError(errors,'Native workload lock observation or settlement refused');
+
+ const [terminal]=await holder`select pg_backend_pid() as pid,not exists(
+  select 1 from pg_catalog.pg_locks l where l.database=${databaseOid}::oid and l.locktype='advisory'
+   and l.classid=${lockClass}::oid and l.objid=${lockObject}::oid and l.objsubid=2
+ ) as released`;
+ const after=await sample();
+ if(terminal?.pid!==ownerBackend.pid||terminal.released!==true||after.appSessions!==1||after.blockingAppSessions!==0){
+  throw Error('Native workload lock release could not be verified');
+ }
+ reader.release();actor.release();holder.release();
 }
 
 it(NATIVE_WORKLOAD_DATABASE_CASE,async()=>{
@@ -69,6 +157,7 @@ it(NATIVE_WORKLOAD_DATABASE_CASE,async()=>{
    const foreignDb=new URL(raw);foreignDb.pathname='/ai_hr_dev';await refuseConnection(foreignDb.href,'28000');
   }
   const foreignOwnerDb=new URL(ownerUrl);foreignOwnerDb.pathname='/template1';await refuseConnection(foreignOwnerDb.href,'28000');
+  await verifyNativeLockObservation(owner,app,observer,ownerSession.oid);
  }finally{
   const closures=await Promise.allSettled([owner.end({timeout:2}),app.end({timeout:2}),observer.end({timeout:2})]);
   if(closures.some(row=>row.status==='rejected'))throw Error('Native workload test client closure refused');
