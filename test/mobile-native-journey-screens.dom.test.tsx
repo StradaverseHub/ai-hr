@@ -11,6 +11,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {DEFAULT_MOBILE_DESIGN,mobilePalette} from '../lib/mobile-design';
 import * as errors from '../mobile/lib/errors';
 import * as contract from '../lib/mobile-api/contract';
+import * as v2clock from '../lib/mobile-api/v2/clock-review';
 import * as v2team from '../lib/mobile-api/v2/team';
 import * as enrollment from '../mobile/lib/enrollment-journal';
 import {SignedClockUnavailable,type SignedClockStatus} from '../mobile/lib/signed-clock-journal';
@@ -33,7 +34,7 @@ function fixture(platform:'ios'|'android'='ios'){
     './auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./motion': mobileMotionPorts, '../../lib/motion': mobileMotionPorts, './visual': mobileVisualPorts, './design':{DesignText:Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark')})},'./errors':errors,'./i18n':{appLocale:()=>'en',t:(s:string,v?:any)=>s==='awayToday'?`${s} ${v.n}/${v.total}`:s},'expo-crypto':{randomUUID:()=>`${String(++sequence).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`},'expo-router':{useRouter: () => ({push:vi.fn(),navigate:vi.fn()}), useFocusEffect:()=>{},router:{push:vi.fn(),navigate:vi.fn()}}};
   const provider=load('mobile/lib/journey-drafts.tsx',{...base,'expo-file-system':{File:class{exists=false},Directory:class{exists=false},Paths:{cache:'cache'}}});
   const ui={Chip:(p:any)=><button disabled={p.disabled} aria-pressed={!!p.selected} onClick={p.onPress}>{p.title}</button>,NoteLine:({text}:any)=><span>{text}</span>,InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:({onPress}:any)=><button aria-label="back" onClick={onPress}>‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,Screen:({children,footer}:any)=><div>{children}{footer}</div>,Title:({children}:any)=><h1>{children}</h1>,Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
-  const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,geofencingRequired:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
+  const clockState={enabled:true,employmentId:'own',state:{reviewExceptions:false,date:'2026-01-01',clockedIn:false,geofencingRequired:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
   const teamState={enabled:true,today:'2026-01-01',from:'2026-01-01',to:'2026-01-07',scope:'my_team',companies:1,memberCount:2,truncated:false,items:[{employmentId:'a',name:'Approved Away',dates:[{date:'2026-01-01',status:'approved',session:'full_day'}]},{employmentId:'b',name:'Pending Colleague',dates:[{date:'2026-01-01',status:'pending',session:'AM'}]}]};
   let signedState:SignedClockStatus={status:'empty'},restoredClock:any;
   const retained=new Set<string>();
@@ -54,10 +55,10 @@ function fixture(platform:'ios'|'android'='ios'){
   const engine={armOffline:vi.fn(),syncOffline:vi.fn(),beforeOnlinePunch:vi.fn(),afterOnlinePunch:vi.fn(),captureOfflinePunch:vi.fn(),offlineClaims:vi.fn(),removeUndeliverable:vi.fn(),subscribeOfflineForeground:vi.fn(),keepOfflineSynced:vi.fn()};
   const anchorRead=vi.fn(async()=>null);
   const offlineUi=load('mobile/lib/offline-clock.tsx',{...base,'./config':{offlineClockingBuild:false,config:{apiUrl:'https://hr.example.com'},identityNamespace:()=>'company'},'./offline-sync':engine,'./offline-anchor':{readOfflineAnchor:anchorRead},'./signed-clock':{openOwnedSignedClock:openSigned},'expo-symbols':{SymbolView:()=>null},'./ui':{...ui,colors:{warn:'#9A5B00',danger:'#B42318'}}});
-  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./enrollment-journal':enrollment,'./signed-clock-journal':{SignedClockUnavailable},'./signed-clock':{openOwnedSignedClock:openSigned},'./submission-recovery':{useSubmissionRecovery:(_kind:string,_id:string,onRestore:(value:unknown)=>void)=>{
+  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'../../lib/mobile-api/v2/clock-review':v2clock,'./enrollment-journal':enrollment,'./signed-clock-journal':{SignedClockUnavailable},'./signed-clock':{openOwnedSignedClock:openSigned},'./submission-recovery':{useSubmissionRecovery:(_kind:string,_id:string,onRestore:(value:unknown)=>void)=>{
     React.useEffect(()=>{if(restoredClock){const value=restoredClock;if(value.entry.integrity)retained.add(value.entry.requestId);onRestore(value);}},[]);
     return {ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt,hasSignedAttempt};
-  }},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null}),useApiV2:(path:string)=>({data:path==='v2/team/availability'?teamState:null,reload,loading:false,error:null})},'../../lib/mobile-api/v2/team':v2team,'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./shift-reminder-signal':{requestShiftReminderRefresh:()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'./offline-clock':offlineUi,'./home-cards':{cardFigure:(c:any)=>c.takenOnly?c.taken:c.isCurrentCycle?c.canApplyFor:c.balance},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{},'@expo/ui/community/datetime-picker':picker};
+  }},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPostFormV2:(path:string,_schema:unknown,...args:unknown[])=>post(path,...args),apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null}),useApiV2:(path:string)=>({data:path==='v2/team/availability'?teamState:null,reload,loading:false,error:null})},'../../lib/mobile-api/v2/team':v2team,'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./shift-reminder-signal':{requestShiftReminderRefresh:()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'./offline-clock':offlineUi,'./home-cards':{cardFigure:(c:any)=>c.takenOnly?c.taken:c.isCurrentCycle?c.canApplyFor:c.balance},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{},'@expo/ui/community/datetime-picker':picker};
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
@@ -68,6 +69,32 @@ afterEach(cleanup);
 /** Start a request and choose its type in the leave-type list (nothing is pre-selected). */
 function startRequest(name='Annual leave'){fireEvent.click(screen.getByText('requestLeave'));fireEvent.click(screen.getByRole('button',{name:'leaveType, chooseLeaveType'}));fireEvent.click(screen.getByRole('radio',{name:new RegExp('^'+name)}));}
 describe('native clock job',()=>{
+  it('records an advisory clock-in with one tap and shows the clock-out action after a receipt',async()=>{
+    const f=fixture();
+    f.clockState.state.reviewExceptions=true;
+    f.clockState.state.attendancePhotoSetting='required';
+    f.capture.mockRejectedValueOnce(new errors.LocationCaptureError('permission_denied','No location'));
+    const recordedAt='2026-01-01T01:00:00Z';
+    f.post.mockResolvedValueOnce({outcome:'accepted',receipt:{direction:'in',recordedAt,reviewReasons:['location_missing','photo_missing']}});
+    render(<f.App kind="clock"/>);
+    expect(screen.queryByText('slidePrepare')).toBeNull();
+    expect(screen.queryByText('pendingAttempt')).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'clockIn'}));
+    await screen.findByText('clockedInAt');
+    expect(screen.getByText('clockNeedsReview')).toBeTruthy();
+    expect(screen.getByRole('button',{name:'clockOut'})).toBeEnabled();
+    expect(f.post).toHaveBeenCalledTimes(1);
+    const [path, form]=f.post.mock.calls[0];
+    expect(path).toBe('v2/clock');
+    expect(v2clock.ClockReviewCommand.parse(JSON.parse(form.get('command')))).toMatchObject({action:'in',location:null});
+    expect(f.preview).not.toHaveBeenCalled();
+    expect(f.photo).not.toHaveBeenCalled();
+    expect(f.reportAttempt).not.toHaveBeenCalled();
+    f.post.mockResolvedValueOnce({outcome:'accepted',receipt:{direction:'out',recordedAt}});
+    fireEvent.click(screen.getByRole('button',{name:'clockOut'}));
+    await screen.findByText('clockedOutAt');
+    expect(JSON.parse(f.post.mock.calls[1][1].get('command')).action).toBe('out');
+  });
   it('prepares and records against the server-authorized default work profile without an explicit Me selection',async()=>{
     const f=fixture();f.session.employmentId=null;render(<f.App kind="clock"/>);
     fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');

@@ -25,7 +25,7 @@ export function RequestWorkspaceScreen({kind,id}:{kind:RequestWorkspaceKind;id:s
  }
  function confirm(action:RequestWorkspaceCommand['action']){if(!w||pending)return;const generation=authGeneration(),body={requestId:randomUUID(),action,expected:w.expected,...(kind==='profile'&&action==='reject'?{reason:reason.trim()}: {})};
   const message=[w.subject,w.kind==='resignation'?`${copy.lastDay}: ${w.lastWorkingDay}\n${copy.consequence}`:w.kind==='noticeAcknowledgement'?`${copy.version}: ${w.contentVersion}`:'',action==='reject'?reason:''].filter(Boolean).join('\n');
-  Alert.alert(t('approvalConfirmTitle'),message,[{text:t('cancel'),style:'cancel'},{text:action==='acknowledge'?copy.acknowledge:t(action==='approve'?'approvalApprove':'approvalReject'),style:action==='reject'||kind==='resignation'&&action==='approve'?'destructive':'default',onPress:()=>{if(live.current&&authGeneration()===generation)void send(body);}}]);
+  Alert.approval(t('approvalConfirmTitle'),message,[{text:t('cancel'),style:'cancel'},{text:action==='acknowledge'?copy.acknowledge:t(action==='approve'?'approvalApprove':'approvalReject'),style:action==='reject'||kind==='resignation'&&action==='approve'?'destructive':'default',onPress:()=>{if(live.current&&authGeneration()===generation)void send(body);}}]);
  }
  if(done)return <Screen back><Text accessibilityRole="alert">{copy.done}</Text><Button title={t('approvalsBack')} onPress={()=>router.replace('/approvals')}/></Screen>;
  const online=w&&!detail.error&&!detail.loading;

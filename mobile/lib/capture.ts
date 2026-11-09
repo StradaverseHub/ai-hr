@@ -9,9 +9,9 @@ import type {ClockSourceSignals} from '../../lib/mobile-clock-integrity';
 import type { LocalAttachment } from './journey-drafts';
 import { t } from './i18n';
 import {LocationCaptureError} from './errors';
-export async function capturePosition(assertCurrent?:()=>void){
+export async function capturePosition(assertCurrent?:()=>void, advisory=false){
   assertCurrent?.();
-  const permission=await Location.requestForegroundPermissionsAsync();
+  const permission=await (advisory?Location.getForegroundPermissionsAsync():Location.requestForegroundPermissionsAsync());
   if(permission.status!=='granted')throw new LocationCaptureError(permission.canAskAgain?'permission_denied':'permission_blocked',t(permission.canAskAgain?'locationPermission':'locationPermissionBlocked'));
   assertCurrent?.();
   const permissionAccuracy:'precise'|'approximate'|'unavailable'=permission.android?.accuracy==='coarse'||permission.ios?.accuracy==='reduced'?'approximate':permission.android?.accuracy==='fine'||permission.ios?.accuracy==='full'?'precise':'unavailable';
@@ -23,7 +23,7 @@ export async function capturePosition(assertCurrent?:()=>void){
     if(ended)throw new LocationCaptureError('unavailable',t('locationTimeout'));
     if(AppState.currentState!=='active')throw new LocationCaptureError('unavailable',t('unlockContinue'));
     assertCurrent?.();return Location.getCurrentPositionAsync({accuracy:Location.Accuracy.High});
-  })(),new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new LocationCaptureError('unavailable',t('locationTimeout'))),20000);})])
+  })(),new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new LocationCaptureError('unavailable',t('locationTimeout'))),advisory?3500:20000);})])
     .catch(error=>{throw error instanceof LocationCaptureError?error:new LocationCaptureError('unavailable',t('locationTimeout'));})
     .finally(()=>{ended=true;clearTimeout(timeout);});
   if(AppState.currentState!=='active')throw new Error(t('unlockContinue'));

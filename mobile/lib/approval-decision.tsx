@@ -11,7 +11,7 @@
  *
  * Claims include recorded amounts, custom fields and protected receipt review.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { TextInput, Linking, Pressable, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,16 +26,19 @@ import { RequestRejectedError, SignInRequiredError } from './errors';
 import { Material,StatusPill,alpha } from './visual';
 import { Icon } from './icon';
 import { Atmosphere } from './design';
-import { appLocale, t, type MessageKey } from './i18n';
+import { appLocale, intlLocale, t, type MessageKey } from './i18n';
 import { PagedList, usePagedResource } from './paged-list';
 import { useSession } from './session';
-import { Button, Card, HeaderBack, LoadState, Muted, Screen, Title, Row, fmtDays, fmtMoney } from './ui';
+import { Button, Card, Chip, HeaderBack, LoadState, Muted, Screen, Title, Row, fmtDays, fmtMoney } from './ui';
 import {
   TaskDecisionResult, TaskDetailResult, TaskItemV2,
   type TaskDecisionRefusal, type TaskDecisionRefusalCode, type TaskDetailV2, type TaskKind,
 } from '../../lib/mobile-api/v2/tasks';
 
+import { MobileApprovalHistoryItem } from '../../lib/mobile-api/v2/approval-history';
+
 export const TASKS = v2Page('v2/tasks', TaskItemV2);
+const HISTORY = v2Page('v2/tasks/history', MobileApprovalHistoryItem);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NATIVE = ['leave', 'leaveCancellation', 'attendance', 'claim', 'replacementLeave', 'managerReview', 'hrReview', 'profile', 'resignation', 'noticeAcknowledgement', 'performanceReview', 'assessmentWork', 'careerPlan', 'calibration', 'rewardReview'] as const;
 /** Decided in this app: the server says it may be, AND this build has the screen for it (claims no longer do). */
@@ -134,23 +137,60 @@ export function HomeApprovalQueue({ refreshToken }: { refreshToken: number }) {
   </View>;
 }
 
-/** Every pending task, the web inbox's order. Offline: the rows already shown stay, labelled stale. */
+const historyModuleLabel = {
+  leave: 'task_leave', attendance: 'task_attendance', claims: 'task_claim', travel: 'approvalHistoryTravel',
+  resignation: 'task_resignation', profile: 'task_profile', review: 'task_managerReview',
+} as const satisfies Record<MobileApprovalHistoryItem['moduleKey'], MessageKey>;
+const historyActionLabel = {
+  approved: 'approved', rejected: 'rejected', stepApproved: 'approvalHistoryStep', perDayDecision: 'approvalHistoryDates',
+  confirmed: 'approvalHistoryConfirmed', extended: 'approvalHistoryExtended', terminated: 'approvalHistoryTerminated',
+} as const satisfies Record<MobileApprovalHistoryItem['actionKey'], MessageKey>;
+const historyKey = (item: MobileApprovalHistoryItem) => item.id;
+const listPadding = { padding: 20, gap: 8, paddingBottom: 40 };
+
+function PendingApprovals({ header }: { header: ReactNode }) {
+  const { signOut } = useSession();
+  const list = usePagedResource(TASKS, { native: 'expanded', limit: '10' }, keyOf, signOut);
+  return <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={listPadding}
+    header={header} renderItem={(item) => <TaskRow item={item} />} />;
+}
+
+function ApprovalHistory({ header }: { header: ReactNode }) {
+  const { signOut } = useSession();
+  const { palette } = useTenantDesign();
+  const [action, setAction] = useState<'approved' | 'rejected'>('approved');
+  const list = usePagedResource(HISTORY, { action, limit: '10' }, historyKey, signOut);
+  return <PagedList list={list} keyOf={historyKey} emptyText={t('approvalHistoryEmpty')} contentContainerStyle={listPadding}
+    header={<View style={{ gap: 12 }}>{header}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {(['approved', 'rejected'] as const).map((choice) => <Chip key={choice} title={t(choice)} selected={choice === action} onPress={() => setAction(choice)} />)}
+      </View>
+      {!!list.error && <Button title={t('openOnWeb')} kind="quiet" onPress={() => openOnWeb('/approvals/history')} />}
+    </View>}
+    renderItem={(item) => <View style={{ gap: 6, paddingVertical: 14, borderBottomWidth: 1, borderColor: palette.border }}>
+      <StatusPill label={t(historyActionLabel[item.actionKey])} />
+      <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>{item.subjectName ?? '—'}</Text>
+      <Muted>{t(historyModuleLabel[item.moduleKey])}{item.deciderName ? ` · ${item.deciderName}` : ''}</Muted>
+      <Muted>{new Date(item.occurredAt).toLocaleString(intlLocale(), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' })}</Muted>
+    </View>} />;
+}
+
+/** Load each list only when its tab is open. The history reader shares the web team's access rules. */
 export function ApprovalsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const { palette } = useTenantDesign();
-  const { signOut } = useSession();
-  // First paint needs only a few visible rows. Keep the server cursor so every
-  // task remains reachable without hydrating 25 details before showing anything.
-  const list = usePagedResource(TASKS, { native: 'expanded', limit: '10' }, keyOf, signOut);
+  const [history, setHistory] = useState(false);
+  const header = <View style={{ gap: 12 }}>
+    {!embedded && <HeaderBack />}
+    <Muted>{t('approvalsTitle')}</Muted>
+    <Title>{history ? t('approvalHistoryTitle') : t('fieldReviewTitle')}</Title>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 12 }}>
+      <Chip title={t('pending')} selected={!history} onPress={() => setHistory(false)} />
+      <Chip title={t('approvalHistoryTitle')} selected={history} onPress={() => setHistory(true)} />
+    </View>
+  </View>;
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={[]}>
     <Atmosphere strong />
-    <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={{ padding: 20, gap: 8, paddingBottom: 40 }}
-      header={<View style={{ gap: 12 }}>
-        {!embedded && <HeaderBack />}
-        <Muted>{t('approvalsTitle')}</Muted>
-        <Title>{t('fieldReviewTitle')}</Title>
-        <View style={{flexDirection:'row',gap:8,paddingBottom:12}}><StatusPill label={t('pending')}/></View>
-      </View>}
-      renderItem={(item) => <TaskRow item={item} />} />
+    {history ? <ApprovalHistory header={header} /> : <PendingApprovals header={header} />}
   </SafeAreaView>;
 }
 
@@ -254,7 +294,7 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
       else message = t('approvalConfirmApprove', { name, what });
     } else message = t('approvalConfirmApprove', { name, what });
     const generation=authGeneration();
-    Alert.alert(t('approvalConfirmTitle'), message, [
+    Alert.approval(t('approvalConfirmTitle'), message, [
       { text: t('cancel'), style: 'cancel' },
       { text: decision === 'approve' ? t('approvalApprove') : t('approvalReject'), style: decision === 'reject' ? 'destructive' : 'default', onPress: () => {if(live.current&&authGeneration()===generation)void send(body);} },
     ]);

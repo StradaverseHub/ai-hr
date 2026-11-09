@@ -5,7 +5,7 @@ import { InAppAlert as Alert } from './in-app-alert';
 import { DesignText as Text } from './design';
 import { randomUUID } from 'expo-crypto';
 import {identityNamespace} from './config';
-import { apiGet,apiPost,useApi,type ClockResponse } from './api';
+import { apiGet,apiPost,apiPostFormV2,useApi,type ClockResponse } from './api';
 import { requestShiftReminderRefresh } from './shift-reminder-signal';
 import { assertAuthGeneration,authGeneration } from './auth';
 import { capturePhoto,capturePosition,appendAttachment } from './capture';
@@ -21,7 +21,8 @@ import {openOwnedSignedClock} from './signed-clock';
 import {SignedClockUnavailable,type SignedClockStatus} from './signed-clock-journal';
 import {EnrollmentConflict} from './enrollment-journal';
 import { useSubmissionRecovery } from './submission-recovery';
-import { ClockCommand,ClockPreparation } from '../../lib/mobile-api/contract';
+import { ClockCommand,ClockPreparation,ClockResult } from '../../lib/mobile-api/contract';
+import { ClockReviewCommand } from '../../lib/mobile-api/v2/clock-review';
 import {SubmissionJournalFull,PendingSubmissionConflict} from './submission-journal';
 import { Button,Card,InfoNote,LoadState,Muted,Row } from './ui';
 import {useOfflineClock,offlineClocking,offlineBlockedMessage,OfflineClockBanner,SavedOfflinePunches} from './offline-clock';
@@ -36,16 +37,17 @@ export type HomeClockView={
 };
 /**
  * The clock journey. `variant: 'home'` (Mobile WOW round, owner request) runs the SAME journey from Home's card in one
- * tap: prepare (saved attempt, signed-clock checks, location assessment and required photo), then show the same
- * explicit review and receipt recovery controls on Home. No Home tap automatically submits a punch.
+ * tap. Advisory-capable workplaces submit directly after that tap. Older servers and signed
+ * deployments can still require an evidence or registration step.
  */
 export function ClockPanel({refreshToken=0,variant='full',renderHome,afterControls,initialAction,widgetIntent,widgetEmployment}:{initialAction?:'in'|'out';widgetIntent?:string;widgetEmployment?:string;refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode;afterControls?:ReactNode}={}){
   const router = useRouter();
   const {employmentId,status:sessionStatus,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
-  const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut,{enabled:variant!=='home'});
+  const [detailsOpen,setDetailsOpen]=useState(false);
+  const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut,{enabled:variant!=='home'&&(clock.data?.state?.reviewExceptions!==true||detailsOpen)});
   const visited=useRef(false);
-  useFocusEffect(useCallback(()=>{if(visited.current){clock.reload();attempts.reload();}visited.current=true;},[clock.reload,attempts.reload]));
+  useFocusEffect(useCallback(()=>{if(visited.current){clock.reload();if(detailsOpen)attempts.reload();}visited.current=true;},[clock.reload,attempts.reload,detailsOpen]));
   useEffect(()=>{if(refreshToken){clock.reload();attempts.reload();}},[refreshToken,clock.reload,attempts.reload]);
   // D8: every fresh clock answer (after a punch, a refresh or a return) re-plans the shift reminders.
   const clockOwner=authGeneration(),clockNamespace=identityNamespace();
@@ -76,7 +78,8 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   const identity=clock.data?.employmentId??(coldStart?offline.employmentId:undefined);
   // Pending journals stay with their original employment. Never display or submit another subject's draft.
   const draft=retainedDraft?.employmentId&&identity&&retainedDraft.employmentId!==identity?null:retainedDraft;
-  const action=(draft&&draft.phase!=='done'?draft.action:undefined)??((offline.clockedIn??current?.clockedIn)?'out':'in');
+  const simplified=current?.reviewExceptions===true;
+  const action=(draft&&draft.phase!=='done'?draft.action:undefined)??(draft?.phase==='done'&&draft.clockProtocol==='review'?(draft.action==='in'?'out':'in'):((offline.clockedIn??current?.clockedIn)?'out':'in'));
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const [signedStatus,setSignedStatus]=useState<SignedClockStatus|null>(null);
   const [registrationNeeded,setRegistrationNeeded]=useState(false);
@@ -100,7 +103,16 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
       putClock({employmentId:identity??undefined,action:saved.action,requestId:saved.requestId,attemptStartedAt:saved.claimedAt,
         attemptReceiptTime:entry.attemptReceipt?.receivedAt,phase:'idle',message:t('attemptSavedNotSent')});return;
     }
-    const parsed=ClockCommand.parse(JSON.parse(command));
+    const raw:unknown=JSON.parse(command);
+    if(!entry.integrity){
+      const review=ClockReviewCommand.safeParse(raw);
+      if(review.success){
+        const {action,requestId,location,deviceToken}=review.data;
+        putClock({employmentId:identity??undefined,action,requestId,geo:location??undefined,deviceToken,photo:file,clockProtocol:'review',phase:'uncertain',message:t('clockUncertain')});
+        return;
+      }
+    }
+    const parsed=ClockCommand.parse(raw);
     putClock({employmentId:identity??undefined,action:parsed.action,requestId:parsed.requestId,geo:{lat:parsed.lat,lng:parsed.lng,accuracy:parsed.accuracy,sampledAt:parsed.sampledAt,...(entry.integrity?{source:entry.integrity.source}:{})},...(entry.integrity?{clockProtocol:'signed' as const}:{}),deviceToken:parsed.deviceToken,photo:file,phase:'uncertain',message:t('clockUncertain')});
   });
   useEffect(()=>{
@@ -154,7 +166,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     if(flight.current||!identity||!(current||coldStart)||pending||!recovery.ready)return;
     flight.current=true;
     const owner=authGeneration();
-    let photo=draft?.photo;
+    let photo=draft?.phase==='idle'?draft.photo:undefined;
     let next:ClockDraft={employmentId:identity,action,phase:'preparing'};
     putClock(next);
     try{
@@ -194,6 +206,21 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
         next={...next,clockProtocol:'signed'};
         try{await controller.key();}catch(error){if(needsRegistration(error))setRegistrationNeeded(true);throw error;}
       }else if(capabilities&&!(capabilities.outcome==='unavailable'&&capabilities.code==='not_configured'))throw new Error(t('signedClockUnavailable'));
+      if(simplified&&next.clockProtocol!=='signed'){
+        const deviceToken=(await readClockDevice(identity))??undefined;
+        operation(owner).assertCurrent();
+        next={...next,clockProtocol:'review',deviceToken,photo};
+        if(current.deviceRequired&&!deviceToken){
+          putClock({...next,phase:'review'});
+          return;
+        }
+        let geo:ClockDraft['geo'];
+        try{geo=await capturePosition(operation(owner).assertCurrent,true);}
+        catch(error){if(!(error instanceof LocationCaptureError)||error.issue==='mock_location')throw error;}
+        operation(owner).assertCurrent();
+        await sendClock({...next,geo},owner);
+        return;
+      }
       operation(owner).assertCurrent();const geo=await capturePosition(operation(owner).assertCurrent);assertAuthGeneration(owner);
       if(!putClock({...next,geo}))return;
       operation(owner).assertCurrent();const locationAssessment=await apiPost('clock-location',{lat:geo.lat,lng:geo.lng,accuracy:geo.accuracy,sampledAt:geo.sampledAt},{employmentId:identity},operation(owner));assertAuthGeneration(owner);
@@ -217,9 +244,11 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   }
   async function takePhoto(){
     let captured:ClockDraft['photo'];
-    if(flight.current||!draft||pending)return;flight.current=true;const owner=authGeneration();putClock({...draft,phase:'preparing'});
-    try{const photo=await capturePhoto(operation(owner).assertCurrent);captured=photo??undefined;assertAuthGeneration(owner);if(photo){if(putClock({...draft,photo},draft.requestId))removeLocalFile(draft.photo);else removeLocalFile(photo);}else putClock(draft,draft.requestId);}
-    catch(e){removeLocalFile(captured);putClock({...draft,message:errorMessage(e)},draft.requestId);}finally{flight.current=false;}
+    if(flight.current||!identity||pending||draft?.phase==='uncertain')return;
+    const photoDraft=draft?.phase==='idle'||draft?.phase==='review'?draft:{employmentId:identity,action,phase:'idle' as const};
+    flight.current=true;const owner=authGeneration();putClock({...photoDraft,phase:'preparing'});
+    try{const photo=await capturePhoto(operation(owner).assertCurrent);captured=photo??undefined;assertAuthGeneration(owner);if(photo){if(putClock({...photoDraft,photo},photoDraft.requestId))removeLocalFile(photoDraft.photo);else removeLocalFile(photo);}else putClock(photoDraft,photoDraft.requestId);}
+    catch(e){removeLocalFile(captured);putClock({...photoDraft,message:errorMessage(e)},photoDraft.requestId);}finally{flight.current=false;}
   }
   async function register(){
     if(flight.current||!identity||!draft||pending)return;flight.current=true;const owner=authGeneration();putClock({...draft,phase:'preparing'});
@@ -231,7 +260,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   function signedResult(result:SignedClockStatus,saved:ClockDraft){
     setSignedStatus(result);
     if(result.status==='accepted'){
-      removeLocalFile(saved.photo);putClock({...saved,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt,message:undefined},saved.requestId);clock.reload();if(offlineClocking)offline.after();return true;
+      removeLocalFile(saved.photo);putClock({...saved,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt,reviewReasons:result.receipt.reviewReasons,message:undefined},saved.requestId);clock.reload();if(offlineClocking)offline.after();return true;
     }
     if(result.status==='abandoned'){
       removeLocalFile(saved.photo);putClock({employmentId:identity??undefined,action:saved.action,phase:'idle',message:t('pendingDiscarded')},saved.requestId);clock.reload();return true;
@@ -273,10 +302,28 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     }
   }
   async function submit(){
-    if(flight.current||!identity||!draft?.requestId||(!draft.geo&&draft.clockProtocol!=='signed')||!(current||offlineRoute.current===draft.requestId)||AppState.currentState!=='active')return;
-    if(draft.phase!=='uncertain'&&draft.geo&&Math.abs(Date.now()-draft.geo.sampledAt)>120000){putClock({...draft,phase:'idle',message:t('locationExpired')});return;}
+    if(flight.current||!identity||!draft?.requestId||(!draft.geo&&!draft.clockProtocol)||!(current||offlineRoute.current===draft.requestId)||AppState.currentState!=='active')return;
+    if(draft.phase!=='uncertain'&&draft.clockProtocol!=='review'&&draft.geo&&Math.abs(Date.now()-draft.geo.sampledAt)>120000){putClock({...draft,phase:'idle',message:t('locationExpired')});return;}
     if(current?.deviceRequired&&!draft.deviceToken&&draft.clockProtocol!=='signed')return;
-    flight.current=true;const owner=authGeneration();
+    flight.current=true;
+    try{
+      const owner=authGeneration();
+      if(draft.clockProtocol==='review'&&draft.phase==='review'){await prepareRegisteredReview(draft,owner);return;}
+      await sendClock(draft,owner);
+    }finally{flight.current=false;}
+  }
+  async function prepareRegisteredReview(saved:ClockDraft,owner:number){
+    let geo:ClockDraft['geo'];
+    try{geo=await capturePosition(operation(owner).assertCurrent,true);operation(owner).assertCurrent();}
+    catch(error){
+      if(error instanceof LocationCaptureError&&error.issue!=='mock_location'){
+        try{operation(owner).assertCurrent();}catch{putClock({...saved,message:t('attemptNotRecorded')},saved.requestId);return;}
+      }else{putClock({...saved,message:errorMessage(error)},saved.requestId);return;}
+    }
+    await sendClock({...saved,geo},owner);
+  }
+  async function sendClock(draft:ClockDraft,owner:number){
+    if(!identity||!draft.requestId)return;
     let sent=false;
     let reportingAttempt=false;
     let uploadFile:ClockDraft['photo'];
@@ -284,17 +331,36 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     try{
       if(offlineRoute.current===draft.requestId){await submitOffline(draft,owner);return;}
       if(draft.clockProtocol==='signed'){await submitSigned(draft,owner);return;}
-      if(!draft.geo)throw new Error(t('locationInvalid'));
-      const staged=await recovery.stage(JSON.stringify({action:draft.action,requestId:draft.requestId,lat:draft.geo.lat,lng:draft.geo.lng,accuracy:draft.geo.accuracy,sampledAt:draft.geo.sampledAt,deviceToken:draft.deviceToken}),draft.photo);assertAuthGeneration(owner);
+      operation(owner).assertCurrent();
+      const advisory=draft.clockProtocol==='review';
+      const {geo}=draft;
+      if(!advisory&&!geo)throw new Error(t('locationInvalid'));
+      const location=geo?{lat:geo.lat,lng:geo.lng,accuracy:geo.accuracy,sampledAt:geo.sampledAt}:null;
+      const intent={action:draft.action,requestId:draft.requestId,deviceToken:draft.deviceToken};
+      const staged=await recovery.stage(JSON.stringify(advisory?{...intent,location}:{...intent,...location}),draft.photo);assertAuthGeneration(owner);
       uploadFile=staged.file;
       if(!putClock({...draft,photo:staged.file,phase:'submitting'},draft.requestId))return;
-      reportingAttempt=true;await recovery.reportAttempt(draft.requestId,operation(owner));assertAuthGeneration(owner);
-      attempts.reload();
+      if(!advisory){
+        reportingAttempt=true;await recovery.reportAttempt(draft.requestId,operation(owner));assertAuthGeneration(owner);
+        if(detailsOpen)attempts.reload();
+      }
       const form=new FormData();form.append('command',staged.command);if(staged.file)appendAttachment(form,'photo',staged.file);
-      sent=true;const result=await apiPost('clock',form,{employmentId:identity},operation(owner));assertAuthGeneration(owner);
+      operation(owner).assertCurrent();
+      sent=true;
+      const result=advisory?await apiPostFormV2('v2/clock',ClockResult,form,{employmentId:identity},operation(owner)):await apiPost('clock',form,{employmentId:identity},operation(owner));
+      assertAuthGeneration(owner);
       await recovery.resolve(draft.requestId);assertAuthGeneration(owner);
-      if(result.outcome==='accepted'){removeLocalFile(draft.photo);putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt});if(offlineClocking)offline.after();}
-      else{if(result.code==='device_required')await clearClockDevice();removeLocalFile(draft.photo);putClock({employmentId:identity,action,phase:'idle',message:t(result.locationReason?locationRefusals[result.locationReason]:refusals[result.code])});}
+      if(result.outcome==='accepted'){removeLocalFile(draft.photo);putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt,reviewReasons:result.receipt.reviewReasons});if(offlineClocking)offline.after();}
+      else{
+        if(result.code==='device_required'){
+          await clearClockDevice();assertAuthGeneration(owner);
+          removeLocalFile(draft.photo);
+          putClock({employmentId:identity,action:draft.action,phase:'idle',message:t('registerDevice')},draft.requestId);
+        }else{
+          removeLocalFile(draft.photo);
+          putClock({employmentId:identity,action:draft.action,phase:'idle',message:t(result.locationReason?locationRefusals[result.locationReason]:refusals[result.code])},draft.requestId);
+        }
+      }
       clock.reload();
     }catch(e){
       if(draft.clockProtocol==='signed'){
@@ -308,7 +374,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
       else putClock({...draft,phase:'uncertain',message:t(sent?'clockUncertain':reportingAttempt?'attemptReportRequired':e instanceof SubmissionJournalFull?'pendingStorageFull':'submissionSaveFailed')},draft.requestId);
       if(e instanceof SignInRequiredError)void signOut();
     }
-    finally{removeLocalFile(uploadFile);flight.current=false;}
+    finally{removeLocalFile(uploadFile);}
   }
   async function recover(abandon=false){
     if(flight.current||!identity||!draft?.requestId)return;
@@ -326,7 +392,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
       if(result.kind!=='clock'||result.requestId!==draft.requestId||result.receipt&&result.receipt.direction!==draft.action)throw new Error('Unexpected submission receipt');
       if(result.kind==='clock'&&result.receipt){
         await recovery.resolve(draft.requestId);assertAuthGeneration(owner);
-        if(putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt,message:undefined},draft.requestId))removeLocalFile(draft.photo);
+        if(putClock({...draft,photo:undefined,phase:'done',receiptTime:result.receipt.recordedAt,reviewReasons:result.receipt.reviewReasons,message:undefined},draft.requestId))removeLocalFile(draft.photo);
         clock.reload();
       }else if(result.abandoned){
         await recovery.resolve(draft.requestId);assertAuthGeneration(owner);removeLocalFile(draft.photo);
@@ -348,11 +414,13 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   const homeDisabled=!(current||coldStart)||pending||!recovery.ready||clock.loading||
     !!draft&&['review','uncertain','submitting','preparing'].includes(draft.phase)||
     signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending';
+  const directDisabled=homeDisabled||offline.mode==='sending';
+  const directButton=!home&&simplified&&(!draft||['idle','preparing','submitting','done'].includes(draft.phase));
   const homeContent=home?renderHome?.({current:current??null,loading:clock.loading,error:clock.error,reload:clock.reload,action,
     busy:pending,disabled:homeDisabled,doneAt:draft?.phase==='done'?draft.receiptTime??null:null,
-    message:draft?.message??null,finishOnClockTab:false,clock:()=>void prepare(),phase:draft?.phase??null}):null;
+    message:draft?.reviewReasons?.length?t('clockNeedsReview'):draft?.message??null,finishOnClockTab:false,clock:()=>void prepare(),phase:draft?.phase??null}):null;
   // The same review, evidence, registration and receipt controls remain on Home.
-  // A primary Home tap prepares only; submission still requires explicit human confirmation.
+  // The same evidence and recovery controls also work for existing server deployments.
   const showHomeJourney=!compactAttempt&&(!!draft&&(draft.phase!=='done'&&(draft.phase!=='idle'||!!draft.message))||registrationNeeded||!!recovery.error||offline.mode==='offline'||signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending');
   if(home&&clock.data&&!clock.data.enabled)return null;
   if(clock.data&&!clock.data.enabled)return <Muted>{t('attendanceOff')}</Muted>;
@@ -370,23 +438,36 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     {signedStatus?.status==='offline_pending'&&!offlineClocking&&<Muted>{t('signedClockOfflinePending')}</Muted>}
     {signedStatus?.status==='other_pending'&&!offline.otherExchange&&<Muted>{t('signedClockOtherPending')}</Muted>}
     {(current||coldStart)&&<>
-      {!home&&current&&<View style={{gap:12,paddingTop:4,paddingBottom:8}}>
+      {!home&&current&&simplified&&<View style={{alignItems:'center',gap:12,paddingVertical:12}}>
+        <Text style={{color:palette.muted,textAlign:'center',fontSize:15}}>{new Date(current.date+'T12:00:00+08:00').toLocaleDateString(appLocale(),{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'Asia/Kuala_Lumpur'})}</Text>
+        {directButton&&<Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{disabled:directDisabled,busy:pending}}
+          disabled={directDisabled} onPress={()=>void prepare()}
+          style={({pressed})=>({width:'100%',maxWidth:232,minHeight:112,paddingHorizontal:18,paddingVertical:18,borderRadius:32,backgroundColor:palette.button,alignItems:'center',justifyContent:'center',gap:6,opacity:pressed||directDisabled ? 0.74 : 1})}>
+          <Text style={{color:palette.onButton,fontWeight:'700',fontSize:26,textAlign:'center'}}>{pending?t('preparingClock'):label}</Text>
+          </Pressable>}
+        <Text style={{color:palette.text,textAlign:'center',fontSize:15}}>{current.shift.start&&current.shift.end?t('clockCurrentShift',{time:`${current.shift.start.slice(0,5)} – ${current.shift.end.slice(0,5)}`}):t('noShift')}</Text>
+        {directButton&&!pending&&<Button kind="quiet" title={t(action==='in'?'switchToClockOut':'switchToClockIn')} onPress={()=>putClock({employmentId:identity,action:action==='in'?'out':'in',phase:'idle',...(draft?.phase==='idle'?{photo:draft.photo}:{})})}/>}
+      </View>}
+      {!home&&current&&!simplified&&<View style={{gap:12,paddingTop:4,paddingBottom:8}}>
         <View style={{flexDirection:'row',justifyContent:'space-between',gap:12}}><Text style={{color:palette.muted,fontSize:13}}>{current.shift.code?`${current.date} · ${current.shift.code}`:current.date}</Text><Text style={{color:palette.accent,fontSize:13,flexShrink:1,textAlign:'right'}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text></View>
         <TimeDisplay seconds={current.workedSeconds} label={t('workedTime',{hours:Math.floor(current.workedSeconds/3600),minutes:Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')})}/>
         <Text style={{color:palette.muted,fontSize:13,textAlign:'center'}}>{current.shift.start&&current.shift.end?`${current.shift.start.slice(0,5)} → ${current.shift.end.slice(0,5)}`:t('noShift')}</Text>
       </View>}
-      {draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
-        {!home&&(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:44,justifyContent:'center',borderRadius:2,backgroundColor:a===action?palette.card:'transparent',borderWidth:1,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.text:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
+      {draft?.phase==='done'&&simplified?<View accessibilityLiveRegion="polite" style={{alignItems:'center',gap:4}}>
+        <Text style={{color:palette.text,fontSize:16,fontWeight:'600',textAlign:'center'}}>{t(draft.action==='in'?'clockedInAt':'clockedOutAt',{time:new Date(draft.receiptTime??current?.serverNow??Date.now()).toLocaleTimeString(appLocale(),{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kuala_Lumpur'})})}</Text>
+        {!!draft.reviewReasons?.length&&<Muted>{t('clockNeedsReview')}</Muted>}
+      </View>:draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
+        {!home&&!simplified&&(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:44,justifyContent:'center',borderRadius:2,backgroundColor:a===action?palette.card:'transparent',borderWidth:1,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.text:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
         {draft?.message&&!restoredAttempt&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{draft.message}</Text>}
-        {restoredAttempt&&<Pressable accessibilityRole="button" accessibilityLabel={t('pendingAttempt')} accessibilityState={{expanded:attemptExpanded}} onPress={()=>setExpandedAttempt(attemptExpanded?null:draft.requestId??null)} style={{minHeight:44,flexDirection:'row',alignItems:'center',gap:12}}><Text style={{flex:1,color:palette.muted,fontSize:13,lineHeight:18}}>{t('attemptNotRecorded')}</Text><Text style={{color:palette.accent,fontSize:20}}>{attemptExpanded?'−':'+'}</Text></Pressable>}
-        {!!draft?.attemptStartedAt&&attemptExpanded&&!['done','uncertain','submitting'].includes(draft.phase)&&<Card>
+        {(!simplified||detailsOpen)&&restoredAttempt&&<Pressable accessibilityRole="button" accessibilityLabel={t('pendingAttempt')} accessibilityState={{expanded:attemptExpanded}} onPress={()=>setExpandedAttempt(attemptExpanded?null:draft.requestId??null)} style={{minHeight:44,flexDirection:'row',alignItems:'center',gap:12}}><Text style={{flex:1,color:palette.muted,fontSize:13,lineHeight:18}}>{t('attemptNotRecorded')}</Text><Text style={{color:palette.accent,fontSize:20}}>{attemptExpanded?'−':'+'}</Text></Pressable>}
+        {(!simplified||detailsOpen)&&!!draft?.attemptStartedAt&&attemptExpanded&&!['done','uncertain','submitting'].includes(draft.phase)&&<Card>
           <Text accessibilityRole="header" style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t('pendingAttempt')}</Text>
           <Muted>{t('attemptTimeClaim')}</Muted>
           <Row label={t('attemptClaimedAt')} value={new Date(draft.attemptStartedAt).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/>
           <Text selectable style={{color:palette.text}}>{draft.requestId}</Text>
           {draft.attemptReceiptTime?<><Muted>{t('attemptReported')}</Muted><Row label={t('attemptReceivedAt')} value={new Date(draft.attemptReceiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/></>:<Button title={t('sendAttemptRecord')} disabled={pending} kind="quiet" onPress={()=>void reportAttempt()}/>}
         </Card>}
-        {draft?.phase==='idle'&&(!restoredAttempt||attemptExpanded)&&<Button title={t('reviewSavedAttempts')} kind="quiet" onPress={()=>router.push('/pending-submissions')}/>}
+        {(!simplified||detailsOpen)&&draft?.phase==='idle'&&(!restoredAttempt||attemptExpanded)&&<Button title={t('reviewSavedAttempts')} kind="quiet" onPress={()=>router.push('/pending-submissions')}/>}
         {draft?.locationIssue&&['permission_blocked','approximate_permission','services_disabled'].includes(draft.locationIssue)&&<Button title={t('openLocationSettings')} kind="quiet" onPress={()=>{void Linking.openSettings().catch(()=>{});}}/>}
         {draft?.locationAssessment&&<Card>
           {draft.locationAssessment.siteName&&<Row label={t('assignedLocation')} value={draft.locationAssessment.siteName}/>}
@@ -395,6 +476,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
           {draft.locationAssessment.accuracyM!=null&&<Row label={t('locationAccuracy')} value={`± ${Math.round(draft.locationAssessment.accuracyM)} m`}/>}
           {draft.locationAssessment.maximumAccuracyM!=null&&<Row label={t('locationMaximumAccuracy')} value={`${draft.locationAssessment.maximumAccuracyM} m`}/>}
         </Card>}
+        {draft?.clockProtocol==='review'&&draft.phase==='review'&&current?.deviceRequired&&!draft.deviceToken&&<><Muted>{t('registrationNotice')}</Muted><Button title={t('registerDevice')} onPress={()=>void register()}/></>}
         {draft?.geo&&(draft.phase==='review'||draft.phase==='uncertain'||draft.phase==='submitting')&&<Card>
           <Text style={{color:palette.text,fontSize:21,fontWeight:'600'}}>{label}</Text>
           <Row label={t('locationAccuracy')} value={`± ${Math.round(draft.geo.accuracy)} m`}/>
@@ -406,15 +488,18 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
         </Card>}
         {draft?.phase==='uncertain'?<><Muted>{t('retrySameClock')}</Muted><Button title={t('checkReceipt')} onPress={()=>void recover()}/><Button title={t('retrySameClock')} disabled={!recovery.ready} onPress={()=>void submit()}/>
           {draft.clockProtocol==='signed'&&<Button title={t('pendingDiscard')} kind="quiet" onPress={()=>Alert.alert(t('pendingDiscard'),t('pendingDiscardConfirm'),[{text:t('cancel'),style:'cancel'},{text:t('pendingDiscard'),style:'destructive',onPress:()=>void recover(true)}])}/>}
-        </>:<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={(!current&&!coldStart)||pending||!recovery.ready||offline.mode==='sending'||(signedStatus?.status==='other_pending'&&!offline.otherExchange||signedStatus?.status==='offline_pending'&&!offlineClocking)||(draft?.phase==='review'&&current?.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
+        </>:simplified&&draft?.phase==='review'&&draft.clockProtocol==='review'?<Button title={label} disabled={current?.deviceRequired&&!draft.deviceToken} onPress={()=>void submit()}/>:(!simplified||draft?.phase==='review')&&<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={(!current&&!coldStart)||pending||!recovery.ready||offline.mode==='sending'||(signedStatus?.status==='other_pending'&&!offline.otherExchange||signedStatus?.status==='offline_pending'&&!offlineClocking)||(draft?.phase==='review'&&current?.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
         {draft&&draft.phase==='review'&&<Button title={t('cancel')} kind="quiet" onPress={cancel}/>}
-        {offline.mode!=='offline'&&<InfoNote short={t('onlineClockShort')} detail={t('onlineClockOnly')}/>}
+        {(!simplified||detailsOpen)&&offline.mode!=='offline'&&<InfoNote short={t('onlineClockShort')} detail={t('onlineClockOnly')}/>}
       </>}
       <SavedOfflinePunches offline={offline}/>
-      {afterControls}
-      {!home&&current&&<><View style={{gap:8,marginTop:8}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('clockHistory')}</Text>
+      {!home&&simplified&&<Button kind="quiet" title={t(detailsOpen?'clockHideDetails':'clockShowDetails')} onPress={()=>setDetailsOpen(!detailsOpen)}/>}
+      {(!simplified||detailsOpen)&&afterControls}
+      {!home&&current&&(!simplified||detailsOpen)&&<>
+      {simplified&&current.attendancePhotoSetting!=='not_required'&&(!draft||draft.phase==='idle'||draft.phase==='done')&&<Button title={draft?.photo?t('retakePhoto'):t('addPhoto')} kind="quiet" onPress={()=>void takePhoto()}/>}
+      {simplified&&draft?.phase==='idle'&&draft.photo&&<Image source={{uri:draft.photo.uri}} style={{width:72,height:72,borderRadius:8}} accessibilityLabel={t('attendancePhoto')}/>}<View style={{gap:8,marginTop:8}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('clockHistory')}</Text>
         {current.legacy.map((c,i)=><Row key={`${c.direction}-${c.time}-${i}`} label={c.direction==='in'?t('clockIn'):t('clockOut')} value={c.time.slice(0,5)}/>)}
-        {current.captures.map(c=><Row key={c.id} label={c.direction==='in'?t('clockIn'):t('clockOut')} value={new Date(c.recordedAt).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kuala_Lumpur'})}/>)}
+        {current.captures.map(c=><Row key={c.id} label={`${c.direction==='in'?t('clockIn'):t('clockOut')}${c.reviewReasons?.length?` · ${t('clockNeedsReview')}`:''}`} value={new Date(c.recordedAt).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kuala_Lumpur'})}/>)}
         {!current.captures.length&&!current.legacy.length&&<Muted>{t('noClockHistory')}</Muted>}
       </View>
       <View style={{gap:8,marginTop:8}}>

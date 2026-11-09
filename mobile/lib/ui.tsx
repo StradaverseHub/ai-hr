@@ -51,6 +51,7 @@ export function Screen({
   return (
     <DetailContext.Provider value={back}><SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={[]}>
       <Atmosphere strong={atmospheric} />
+      {back && <View style={{ paddingHorizontal: 16, backgroundColor: palette.bg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border }}><HeaderBack /></View>}
       <ScrollView
         // A tap on a button while the keyboard is up acts at once (it used to only dismiss the keyboard, and the shifted
         // layout could put the next tap on another control).
@@ -58,7 +59,7 @@ export function Screen({
         contentContainerStyle={[styles.scroll, design.schemaVersion === 2 && { padding: design.composition.layout.padding, gap: design.composition.layout.gap, paddingBottom: 32 }]}
         refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={() => { reload(); onRefresh(); }} /> : undefined}
       >
-        {back ? <HeaderBack /> : null}{children}
+        {children}
       </ScrollView>
       {footer ? <View style={{paddingBottom:footerInset}}>{footer}</View> : null}
     </SafeAreaView></DetailContext.Provider>
@@ -134,8 +135,9 @@ export function HeaderBack({ onPress }: { onPress?: () => void } = {}) {
       if (router.canGoBack()) router.back();
       else router.replace('/');
     })}
-      style={({ pressed }) => [styles.back, { backgroundColor: palette.card }, pressed && { opacity: 0.6 }]}>
-      <Text style={{ color: palette.accent, fontSize: 30, lineHeight: 32 }}>‹</Text>
+      style={({ pressed }) => [styles.back, pressed && { opacity: 0.6 }]}>
+      <Text accessible={false} style={{ color: palette.accent, fontSize: 28, lineHeight: 32 }}>‹</Text>
+      <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>{t('back')}</Text>
     </Pressable>
   );
 }
@@ -253,6 +255,6 @@ const styles = StyleSheet.create({
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   buttonTextQuiet: { color: colors.accent },
   chip: { minHeight: 44, minWidth: 44, paddingHorizontal: 12, borderWidth: 1, borderRadius: 2, alignItems: 'center', justifyContent: 'center' },
-  back: { alignSelf: 'flex-start', width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  back: { alignSelf: 'flex-start', minWidth: 48, minHeight: 48, paddingHorizontal: 4, flexDirection: 'row', gap: 8, alignItems: 'center' },
   listRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingVertical: 16, borderBottomWidth: 1 },
 });

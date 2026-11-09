@@ -1,7 +1,7 @@
 /** Ephemeral confirmation UI only. The server still decides permissions and business outcomes. */
 export type InAppAlertButton = { text?: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void };
 export type AlertScope = { generation: number; route: string; employmentId: string | null; active: boolean };
-export type InAppAlertState = { id: number; title: string; message: string; buttons: readonly InAppAlertButton[] };
+export type InAppAlertState = { id: number; title: string; message: string; presentation: 'alert' | 'approval'; buttons: readonly InAppAlertButton[] };
 
 export function createInAppAlertState() {
   let readScope: (() => AlertScope) | null = null;
@@ -34,10 +34,10 @@ export function createInAppAlertState() {
       host = owner; readScope = reader;
       return () => { if (host === owner) { host = null; readScope = null; clear(); } };
     },
-    show(title: string, message = '', buttons: readonly InAppAlertButton[] = [{}]) {
+    show(title: string, message = '', buttons: readonly InAppAlertButton[] = [{}], presentation: InAppAlertState['presentation'] = 'alert') {
       const scope = readScope?.();
       if (!host || !scope?.active || current) return;
-      current = { id: ++sequence, title, message, buttons: buttons.length ? buttons.map(button => ({ ...button })) : [{}], scope: { ...scope }, host };
+      current = { id: ++sequence, title, message, presentation, buttons: buttons.length ? buttons.map(button => ({ ...button })) : [{}], scope: { ...scope }, host };
       emit();
     },
     press,

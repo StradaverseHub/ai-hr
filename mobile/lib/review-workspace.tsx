@@ -39,7 +39,7 @@ export function ReviewWorkspaceScreen({kind,id}:{kind:ReviewWorkspaceKind;id:str
   const parsed=ReviewWorkspaceCommand.safeParse({requestId:randomUUID(),expected:workspace.expected,action,comments:(kind==='managerReview'||action==='extend')?comments.trim()||undefined:undefined,...(action==='terminate'?{terminationReason}:{}),...(action==='extend'?{extendToDate:date.trim()}: {})});
   if(!parsed.success){setNotice(t('genericError'));return;}
   const generation=authGeneration();
-  Alert.alert(t('approvalConfirmTitle'),`${workspace.subject.name}\n${copy[action]}${action==='extend'?` · ${date}`:''}\n${action==='terminate'?terminationReason??'':comments}\n\n${copy.advisory}`,[{text:t('cancel'),style:'cancel'},{text:copy.submit,onPress:()=>{if(live.current&&authGeneration()===generation)void send(parsed.data);}}]);
+  Alert.approval(t('approvalConfirmTitle'),`${workspace.subject.name}\n${copy[action]}${action==='extend'?` · ${date}`:''}\n${action==='terminate'?terminationReason??'':comments}\n\n${copy.advisory}`,[{text:t('cancel'),style:'cancel'},{text:copy.submit,onPress:()=>{if(live.current&&authGeneration()===generation)void send(parsed.data);}}]);
  }
  const input={color:palette.text,borderColor:palette.border,borderWidth:1,borderRadius:12,padding:12,fontSize:16,minHeight:48};
  if(done)return <Screen back><Text accessibilityRole="alert">{done==='pending_hr'?copy.next:copy.done}</Text><Button title={t('approvalsBack')} onPress={()=>router.replace('/approvals')}/></Screen>;

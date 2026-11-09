@@ -1,3 +1,4 @@
+import { ClockReviewCommand } from '../../lib/mobile-api/v2/clock-review';
 /** Pending evidence is a local claim. Only a server receipt can establish an accepted submission. */
 import { ClockCommand, LeaveCommand,ClockPreparation,ClockAttemptReceipt } from '../../lib/mobile-api/contract';
 import { z } from 'zod';
@@ -37,6 +38,7 @@ const entrySchema=z.object({
   evidence:z.object({reference:z.string().regex(/^[0-9a-f-]{36}\.sealed$/),name:z.string().min(1).max(200),
     mimeType:z.string().min(1).max(100),size:z.number().int().positive().max(10*1024*1024),digest:digestSchema}).strict().optional(),
 }).strict();
+const PendingClockCommand = ClockCommand.or(ClockReviewCommand);
 /** Reject corrupt committed state; an older empty state must never substitute for it. */
 function digestData(kind:SubmissionKind,command:string,evidence:unknown,integrity?:JournalEntry['integrity']){return JSON.stringify([kind,command,evidence,...(integrity?[integrity]:[])]);}
 export function parseJournalSnapshot(value:unknown,scope:SubmissionScope):JournalSnapshot {
@@ -48,7 +50,8 @@ export function parseJournalSnapshot(value:unknown,scope:SubmissionScope):Journa
       if(entry.integrity&&(snapshot.version!==3||entry.kind!=='clock'||entry.stage))throw new Error();
       if(entry.stage==='preparation'&&(snapshot.version===1||entry.kind!=='clock'||entry.evidence))throw new Error();
       if(entry.attemptReceipt&&(entry.stage!=='preparation'||entry.attemptReceipt.requestId!==entry.requestId))throw new Error();
-      const parsed=(entry.stage==='preparation'?ClockPreparation:entry.kind==='clock'?ClockCommand:LeaveCommand).parse(JSON.parse(entry.command));
+      const parsed=(entry.stage==='preparation'?ClockPreparation:entry.kind==='clock'?PendingClockCommand:LeaveCommand).parse(JSON.parse(entry.command));
+      if(entry.integrity&&!ClockCommand.safeParse(parsed).success)throw new Error();
       if(parsed.requestId!==entry.requestId||entry.kind==='clock'&&(entry.evidence?.size??0)>2*1024*1024)throw new Error();
       if(entry.stage==='preparation'&&ClockPreparation.parse(parsed).claimedAt!==entry.createdAt)throw new Error();
     }
@@ -109,7 +112,7 @@ export function createSubmissionJournal(rawScope: SubmissionScope, ports: Journa
       if(!entry)throw new SubmissionJournalUnavailable('Pending clock attempt unavailable');
       const expected=await ports.digest(digestData('clock',entry.command,entry.evidence?{name:entry.evidence.name,mimeType:entry.evidence.mimeType,size:entry.evidence.size,digest:entry.evidence.digest}:null,entry.integrity));ports.assertCurrent();
       if(expected!==entry.digest)throw new SubmissionJournalUnavailable('Pending attempt failed verification');
-      const parsed=(entry.stage==='preparation'?ClockPreparation:ClockCommand).parse(JSON.parse(entry.command));
+      const parsed=(entry.stage==='preparation'?ClockPreparation:PendingClockCommand).parse(JSON.parse(entry.command));
       return ClockPreparation.parse({requestId:entry.requestId,action:parsed.action,claimedAt:entry.createdAt});
     });},
     stage(kind:SubmissionKind,command:string,rawFile?:EvidenceFile,source?:ClockSourceSignals){
@@ -117,8 +120,8 @@ export function createSubmissionJournal(rawScope: SubmissionScope, ports: Journa
       try{if(source!==undefined){if(kind!=='clock')throw new Error();integrity={version:1,source:ClockSourceSignals.parse(source)};}}catch{return Promise.reject(new SubmissionJournalUnavailable('Invalid source metadata'));}
       return enqueue(async()=>{
       const previous=await load();
-      let parsed:ReturnType<typeof ClockCommand.parse>|ReturnType<typeof LeaveCommand.parse>;
-      try{if(!['clock','leave'].includes(kind)||new TextEncoder().encode(command).byteLength>16384)throw new Error();parsed=(kind==='clock'?ClockCommand:LeaveCommand).parse(JSON.parse(command));}
+      let parsed:ReturnType<typeof PendingClockCommand.parse>|ReturnType<typeof LeaveCommand.parse>;
+      try{if(!['clock','leave'].includes(kind)||new TextEncoder().encode(command).byteLength>16384)throw new Error();parsed=(kind==='clock'?PendingClockCommand:LeaveCommand).parse(JSON.parse(command));if(integrity&&!ClockCommand.safeParse(parsed).success)throw new Error();}
       catch{throw new SubmissionJournalUnavailable('Invalid pending command');}
       let bytes:Uint8Array|undefined,fileDigest:string|undefined;
       if(file){
@@ -132,7 +135,7 @@ export function createSubmissionJournal(rawScope: SubmissionScope, ports: Journa
       const existing=previous.entries.find(e=>e.kind===kind);
       if(existing){
         if(existing.stage==='preparation'){
-          if(kind!=='clock'||existing.requestId!==parsed.requestId||ClockPreparation.parse(JSON.parse(existing.command)).action!==ClockCommand.parse(parsed).action)
+          if(kind!=='clock'||existing.requestId!==parsed.requestId||ClockPreparation.parse(JSON.parse(existing.command)).action!==PendingClockCommand.parse(parsed).action)
             throw new PendingSubmissionConflict('Review the saved clock attempt before replacing it');
           if(await ports.digest(JSON.stringify(['clock',existing.command,null]))!==existing.digest)throw new SubmissionJournalUnavailable('Pending attempt failed verification');
           ports.assertCurrent();

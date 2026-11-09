@@ -17,6 +17,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_MOBILE_DESIGN, mobilePalette } from '../lib/mobile-design';
 import * as errors from '../mobile/lib/errors';
+import * as v2history from '../lib/mobile-api/v2/approval-history';
 import * as v2tasks from '../lib/mobile-api/v2/tasks';
 import * as v2claims from '../lib/mobile-api/v2/claims';
 
@@ -56,7 +57,7 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
     FlatList: (p: { refreshControl: React.ReactNode; ListHeaderComponent: React.ReactNode; ListEmptyComponent: React.ReactNode; ListFooterComponent: React.ReactNode; onEndReached:()=>void; data: unknown[]; keyExtractor: (i: unknown) => string; renderItem: (a: { item: unknown }) => React.ReactNode }) =>
       <div>{p.refreshControl}{p.ListHeaderComponent}{p.data.length ? p.data.map((i) => <div key={p.keyExtractor(i)}>{p.renderItem({ item: i })}</div>) : p.ListEmptyComponent}{p.ListFooterComponent}<button onClick={p.onEndReached}>scroll-end</button></div>,
   };
-  const ui = {fmtMoney:(v:string)=>v,InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,
+  const ui = {Chip:({title,onPress}:any)=><button onClick={onPress}>{title}</button>,fmtMoney:(v:string)=>v,InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,
     Button: (p: { disabled?: boolean; onPress: () => void; title: string }) => <button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,
     Card: View, Muted: Text, Title: Text, Row: ({ label, value }: { label: string; value: string }) => <p>{label}: {value}</p>,
     Screen: ({ children, onRefresh, footer }: { children?: React.ReactNode; onRefresh?: () => void; footer?: React.ReactNode }) => <div><button onClick={onRefresh}>refresh</button>{children}{footer}</div>,
@@ -76,7 +77,7 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
   const claimParts = { ClaimAnswers: () => null, ReceiptLink: () => null, claimMoney: (a: string | null, c: string | null) => [c, a].filter(Boolean).join(' ') };
   const screens = load('mobile/lib/approval-decision.tsx', {
     './approval-document':{ApprovalDocument:({name}:any)=><span>{name}</span>},
-    ...base, './api': api, './paged-list': paged, '../../lib/mobile-api/v2/tasks': v2tasks,
+    ...base, './api': api, './paged-list': paged, '../../lib/mobile-api/v2/tasks': v2tasks, '../../lib/mobile-api/v2/approval-history': v2history,
     './claim-parts': claimParts, '../../lib/mobile-api/v2/claims': v2claims,
     'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { useRouter: () => ({ push, back }), router: { push: () => { throw new Error('The imperative router is unavailable before the first render has finished.'); } } },
     'expo-crypto': { randomUUID: () => `${String(++seq).padStart(8, '0')}-bbbb-4bbb-8bbb-bbbbbbbbbbbb` },

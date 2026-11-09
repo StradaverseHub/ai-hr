@@ -31,7 +31,7 @@ const fromPicker=(mode:'date'|'time',d:Date)=>mode==='date'?`${d.getFullYear()}-
  * and correctly triggers the session guard; an inline picker avoids that focus change without weakening the guard.
  * Both platforms commit only on Done, so looking at or cancelling a picker changes nothing.
  */
-export function PickerField({label,mode,value,today,disabled,onChange}:{label:string;mode:'date'|'time';value:string|undefined;today:string;disabled:boolean;onChange:(value:string)=>void}){
+export function PickerField({label,mode,value,today,disabled,onChange,calendar=false}:{label:string;mode:'date'|'time';value:string|undefined;today:string;disabled:boolean;onChange:(value:string)=>void;calendar?:boolean}){
   const {palette}=useTenantDesign();const [open,setOpen]=useState<Date|null>(null);
   const {width,fontScale}=useWindowDimensions();
   // Keep a complete calendar date on one line without shrinking the user's chosen text size.
@@ -44,9 +44,11 @@ export function PickerField({label,mode,value,today,disabled,onChange}:{label:st
     <Text style={{color:palette.muted,fontSize:14}}>{label}</Text>
     <Button title={value||t('pickerChoose')} accessibilityLabel={label} kind="quiet" disabled={disabled} onPress={show}/>
     {open&&!disabled&&<>
-      <DateTimePicker testID={label} value={open} mode={mode} display="spinner" presentation="inline" is24Hour accentColor={palette.accent} style={{width:'100%'}} onChange={(_event,picked)=>{if(picked)setOpen(picked);}}/>
-      <Button title={t('pickerDone')} onPress={()=>{onChange(fromPicker(mode,open));setOpen(null);}}/>
-      <Button title={t('cancel')} kind="quiet" onPress={()=>setOpen(null)}/>
+      <DateTimePicker testID={label} value={open} mode={mode} display={calendar && mode === 'date' ? Platform.OS === 'ios' ? 'inline' : 'default' : 'spinner'} presentation="inline" is24Hour accentColor={palette.accent} style={{width:'100%'}} onChange={(_event,picked)=>{if(picked)setOpen(picked);}}/>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={{ flexGrow: 1 }}><Button title={t('cancel')} kind="quiet" onPress={()=>setOpen(null)}/></View>
+        <View style={{ flexGrow: 1 }}><Button title={t('pickerDone')} onPress={()=>{onChange(fromPicker(mode,open));setOpen(null);}}/></View>
+      </View>
     </>}
   </View>;
 }
@@ -225,12 +227,12 @@ export function LeaveRequestForm({options,today,onSubmitted,notices={},cards=[]}
     <ListRow label={t('leaveType')} value={selected?[selected.name,figureOf(selected.id)].filter(Boolean).join(' · '):t('chooseLeaveType')} onPress={()=>{if(!disabled)setPicking(true);}}/>
     {header}
     {draft.command.durationType==='full_day'
-      ?<View style={{flexDirection:'row',flexWrap:'wrap',gap:10}}><PickerField label={t('startDate')} mode="date" value={draft.command.startDate} today={today} disabled={!!disabled} onChange={v=>edit({startDate:v,...(v>draft.command.endDate?{endDate:v}:{})})}/><PickerField label={t('endDate')} mode="date" value={draft.command.endDate} today={today} disabled={!!disabled} onChange={v=>edit({endDate:v})}/></View>
-      :<PickerField label={t('leaveDate')} mode="date" value={draft.command.startDate} today={today} disabled={!!disabled} onChange={v=>edit({startDate:v,endDate:v})}/>}
+      ?<View style={{flexDirection:'row',flexWrap:'wrap',gap:10}}><PickerField label={t('startDate')} mode="date" calendar value={draft.command.startDate} today={today} disabled={!!disabled} onChange={v=>edit({startDate:v,...(v>draft.command.endDate?{endDate:v}:{})})}/><PickerField label={t('endDate')} mode="date" calendar value={draft.command.endDate} today={today} disabled={!!disabled} onChange={v=>edit({endDate:v})}/></View>
+      :<PickerField label={t('leaveDate')} mode="date" calendar value={draft.command.startDate} today={today} disabled={!!disabled} onChange={v=>edit({startDate:v,endDate:v})}/>}
     {(selected?.durations.length??0)>1&&<View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{dayParts.filter(p=>selected?.durations.includes(p.d)).map(p=><Chip key={p.d} title={t(p.key)} selected={p.d===draft.command.durationType} disabled={!!disabled} onPress={()=>edit({durationType:p.d,endDate:p.d==='full_day'?draft.command.endDate:draft.command.startDate})}/>)}</View>}
     {draft.command.durationType==='hourly'&&<View style={{flexDirection:'row',flexWrap:'wrap',gap:10}}><PickerField label={t('fromTime')} mode="time" value={draft.command.fromTime} today={today} disabled={!!disabled} onChange={v=>edit({fromTime:v})}/><PickerField label={t('toTime')} mode="time" value={draft.command.toTime} today={today} disabled={!!disabled} onChange={v=>edit({toTime:v})}/></View>}
     {selected?.emergencySplit&&<><Text style={{color:palette.muted}}>{t('emergencyCategory')}</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{(['illness','personal','other'] as const).map(c=><Chip key={c} title={t(c)} selected={draft.command.reasonCategory===c} disabled={!!disabled} onPress={()=>edit({reasonCategory:c})}/>)}</View>{checkbox(t('unpaidConsent'),!!draft.command.unpaidConsent,()=>edit({unpaidConsent:!draft.command.unpaidConsent}))}</>}
-    {selected?.maternity&&<>{field(t('survivingChildren'),draft.command.survivingChildren==null?'':String(draft.command.survivingChildren),v=>edit({survivingChildren:v===''?undefined:Number(v)}))}<PickerField label={t('confinementDate')} mode="date" value={draft.command.confinementDate} today={today} disabled={!!disabled} onChange={v=>edit({confinementDate:v})}/></>}
+    {selected?.maternity&&<>{field(t('survivingChildren'),draft.command.survivingChildren==null?'':String(draft.command.survivingChildren),v=>edit({survivingChildren:v===''?undefined:Number(v)}))}<PickerField label={t('confinementDate')} mode="date" calendar value={draft.command.confinementDate} today={today} disabled={!!disabled} onChange={v=>edit({confinementDate:v})}/></>}
     {extrasShown?<View style={{gap:8}}>
       <Text style={{color:palette.text,fontSize:16,fontWeight:'600'}}>{t('addReasonOrDocument')}{extrasRequired?` · ${t('required')}`:''}</Text>
       {field(t('reason'),draft.command.reason??'',v=>edit({reason:v}),true)}

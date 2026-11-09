@@ -32,7 +32,7 @@ export function PackWorkspaceScreen({kind,id}:{kind:PackWorkspaceKind;id:string}
   catch(e){if(e instanceof SignInRequiredError){setPending(null);void signOut();}else if(e instanceof RequestRejectedError){setPending(null);setNotice(t('genericError'));read.reload();}else setPending({body,uncertain:true});}finally{flight.current=false;}}
  function confirm(){if(!w||!action||pending)return;const values=valuesOf(action);if(!values){setNotice(t('genericError'));return;}const generation=authGeneration(),body={requestId:randomUUID(),action:action.id,values,expected:w.expected};
   const message=[w.title,action.label,action.consequence].join('\n');
-  Alert.alert(t('approvalConfirmTitle'),message,[{text:t('cancel'),style:'cancel'},{text:t('confirmAction'),onPress:()=>{if(live.current&&authGeneration()===generation)void send(body);}}]);}
+  Alert.approval(t('approvalConfirmTitle'),message,[{text:t('cancel'),style:'cancel'},{text:t('confirmAction'),onPress:()=>{if(live.current&&authGeneration()===generation)void send(body);}}]);}
  function navigate(person:string|undefined,page=offset){setChosen(null);setEdits({});setNotice(null);setFocus(person);setOffset(page);}
  const change=(key:string,next:PackValue)=>setEdits(v=>({...v,[key]:next}));
  if(done)return <Screen back><Text accessibilityRole="alert">{requestCopy().done}</Text><Button title={t('approvalsBack')} onPress={()=>router.replace('/approvals')}/></Screen>;

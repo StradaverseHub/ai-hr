@@ -14,6 +14,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {DEFAULT_MOBILE_DESIGN,mobilePalette} from '../lib/mobile-design';
 import * as errors from '../mobile/lib/errors';
 import * as contract from '../lib/mobile-api/contract';
+import * as v2clock from '../lib/mobile-api/v2/clock-review';
 import * as enrollment from '../mobile/lib/enrollment-journal';
 import {SignedClockUnavailable,type SignedClockStatus} from '../mobile/lib/signed-clock-journal';
 import * as journal from '../mobile/lib/submission-journal';
@@ -67,7 +68,7 @@ function fixture(options:{clock?:'loaded'|'offline';employmentId?:string|null}={
   const stage=vi.fn(async(command:string,file?:unknown,signals?:unknown)=>{const parsed=JSON.parse(command);staged.set(parsed.requestId,parsed.action);if(signals)retained.add(parsed.requestId);return {command,file};});
   const prepareClock=vi.fn(async(action:string,requestId:string)=>({requestId,kind:'clock',stage:'preparation',createdAt:Date.now(),command:JSON.stringify({action,requestId,claimedAt:Date.now()})}));
   const reportAttempt=vi.fn(async(requestId:string)=>({requestId,receivedAt:new Date().toISOString()})),resolve=vi.fn(async()=>{});
-  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'./enrollment-journal':enrollment,'./signed-clock-journal':{SignedClockUnavailable},'./signed-clock':{openOwnedSignedClock:openSigned},
+  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'../../lib/mobile-api/v2/clock-review':v2clock,'./enrollment-journal':enrollment,'./signed-clock-journal':{SignedClockUnavailable},'./signed-clock':{openOwnedSignedClock:openSigned},
     './submission-recovery':{useSubmissionRecovery:()=>({ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt,hasSignedAttempt:async(id:string)=>retained.has(id)})},
     './journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,
     './api':{apiGet:vi.fn(),apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>path==='clock'?clockRead:{data:{items:[]},reload:vi.fn(),loading:false,error:null}},
