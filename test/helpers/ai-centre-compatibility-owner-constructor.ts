@@ -1574,7 +1574,7 @@ async function selectedAppCreate(q:ISql,budget:SelectedBudget,allowed:boolean){
 async function selectedMutation(q:ISql,model:AiCentreSelectedJobModel,budget:SelectedBudget,query:string){
  budget.guard();await selectedPrivateIdentity(q,model,budget);await q.unsafe(query);budget.guard();
 }
-const selectedMetadataRef='refs/heads/codex/ai-centre-metadata-owned-settlement-20261109';
+const selectedMetadataRef='refs/heads/codex/ai-centre-metadata-absolute-cleanup-20261109';
 const selectedMetadataWorkflow='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@'+selectedMetadataRef;
 const selectedMetadataLimit={rows:40000,bytes:64*1024*1024};
 const selectedMetadataReserve={rows:64,bytes:16384};
@@ -1582,6 +1582,19 @@ const selectedMetadataCensusWindowMs=13000;
 const selectedMetadataSettlementWindowMs=5000;
 // Two 5s active caller closes, an idle app close and five exact cleanup commands.
 const selectedMetadataOuterWindowMs=85000;
+const selectedMetadataCleanupTimes={connection:5000,native:12000,files:1000} as const;
+type SelectedMetadataCleanupOperation=keyof typeof selectedMetadataCleanupTimes;
+function selectedMetadataCleanupFits(now:number,startedAt:number,neededMs:number){
+ return now+neededMs<startedAt+300000;
+}
+const selectedMetadataCleanupHandoff=(startedAt:number)=>selectedMetadataCleanupFits(performance.now(),startedAt,selectedMetadataOuterWindowMs);
+async function selectedMetadataCleanupStep<T>(startedAt:number,kind:SelectedMetadataCleanupOperation,run:()=>T|PromiseLike<T>){
+ const now=performance.now(),allowance=selectedMetadataCleanupTimes[kind];
+ selectedNeed(selectedMetadataCleanupFits(now,startedAt,allowance),'Selected metadata cleanup has no settled operation window');
+ const result=await run();
+ selectedNeed(performance.now()<now+allowance,'Selected metadata cleanup operation returned beyond its deadline');
+ return result;
+}
 const selectedMetadataAdminLimits={connect_timeout:2,fetch_types:false,connection:{statement_timeout:10000,lock_timeout:5000}};
 const selectedMetadataSchemaScope='n.nspname IN('+selectedList(schemas)+')';
 const selectedMetadataCounts=[
@@ -1605,6 +1618,7 @@ type SelectedMetadataFrontierObservation={
  reserved:SelectedMetadataTotals;settlementCharged:SelectedMetadataTotals;byKind:SelectedMetadataCount[];rows:ReturnType<typeof selectedMetadataProjection>;
  historicalBytes:'unobserved';futurePhaseFit:'unqualified';private710FixtureAlreadySeeded:true;
  ownedDiagnosticSettlement:'not-started'|'settled'|'uncertain';externalOwnedStopRequired:boolean;measurement:'complete'|'incomplete';
+ settlementProof:'reader-native-absence-and-observer-graceful-socket-close'|'unavailable';
 };
 const selectedMetadataObservations=new WeakMap<object,SelectedMetadataFrontierObservation>();
 export function aiCentreSelectedMetadataFrontierObservation(error:unknown){
@@ -1622,7 +1636,8 @@ function selectedMetadataDiagnostic(mode:'full'|'focused'){
 }
 export function aiCentreSelectedMetadataDiagnosticIntent(){
  if(!selectedMetadataDiagnostic('full'))return undefined;
- return {adminOptions:selectedMetadataAdminLimits,pending:{kind:'SELECTED_METADATA_FRONTIER_PENDING',releaseAuthorized:false,
+ return {adminOptions:selectedMetadataAdminLimits,cleanupHandoff:selectedMetadataCleanupHandoff,cleanupStep:selectedMetadataCleanupStep,
+  pending:{kind:'SELECTED_METADATA_FRONTIER_PENDING',releaseAuthorized:false,
   stage:'before-ownership-transfer',private710FixtureAlreadySeeded:true,ownedJobMustSettleOnInterruption:true}};
 }
 function selectedMetadataAdmissionAvailable(now:number,censusEnd:number,rows:number,bytes:number){
@@ -1709,7 +1724,8 @@ async function selectedInventoryFrontier(configuration:ReturnType<typeof selecte
    charge(rows,countRows+1,workRows,workBytes);
    budget.guard();selectedNeed(performance.now()<censusEnd,'Selected metadata census returned beyond its deadline');observations=row.counts;
   }catch(error){note(error);}
-  try{await reader.end({timeout:1});}catch(error){identity=undefined;note(error);}
+  // Await graceful frontend close. A transport stall remains with the hosted owner.
+  try{await reader.end();}catch(error){identity=undefined;note(error);}
   if(observations&&identity){
    if(performance.now()<censusEnd)byKind.push(...observations);
    else note(Error('Selected metadata census socket closed beyond its deadline'));
@@ -1729,7 +1745,7 @@ async function selectedInventoryFrontier(configuration:ReturnType<typeof selecte
    selectedNeed(actual.pid!==identity.pid&&typeof actual.backendStart==='string'&&/^\d+(?:\.\d+)?(?![\s\S])/.test(actual.backendStart));
    selectedEqual(actual.absent,true);absent=true;
   }catch(error){note(error);}
-  try{await observer.end({timeout:1});}catch(error){absent=false;note(error);}
+  try{await observer.end();}catch(error){absent=false;note(error);}
   if(absent&&performance.now()<settlementEnd)settlement='settled';
  }
  if(settlement==='uncertain')note(Error('Selected metadata native settlement requires owned job stop'));
@@ -1741,7 +1757,9 @@ async function selectedInventoryFrontier(configuration:ReturnType<typeof selecte
   reserved:{...selectedMetadataReserve},settlementCharged:{rows:budget.rows-beforeSettlement.rows,bytes:budget.bytes-beforeSettlement.bytes},
   // The original no-event-trigger guard separately charged one metadata row.
   byKind,rows:selectedMetadataProjection(prior.rows+1,byKind),historicalBytes:'unobserved',futurePhaseFit:'unqualified',
-  private710FixtureAlreadySeeded:true,ownedDiagnosticSettlement:settlement,externalOwnedStopRequired:settlement==='uncertain',
+  private710FixtureAlreadySeeded:true,ownedDiagnosticSettlement:settlement,
+  externalOwnedStopRequired:settlement==='uncertain'||!selectedMetadataCleanupHandoff(caseStartedAt),
+  settlementProof:settlement==='settled'?'reader-native-absence-and-observer-graceful-socket-close':'unavailable',
   measurement:!failed&&byKind.length===selectedMetadataCounts.length&&byKind.every(row=>row.completeness==='exact')?'complete':'incomplete',
  });
  throw outcome;
@@ -1912,6 +1930,11 @@ export function aiCentreSelectedJobSourceModel(mode:'full'|'focused'):AiCentreSe
  expect(selectedMetadataAdmissionAvailable(10000,23001,2,4096)).toBe(true);
  expect(selectedMetadataAdmissionAvailable(10000,23001,1,4096)).toBe(false);
  expect(selectedMetadataAdmissionAvailable(10000,23001,2,4095)).toBe(false);
+ for(const allowance of [selectedMetadataOuterWindowMs,...Object.values(selectedMetadataCleanupTimes)]){
+  expect(selectedMetadataCleanupFits(300000-allowance-1,0,allowance)).toBe(true);
+  expect(selectedMetadataCleanupFits(300000-allowance,0,allowance)).toBe(false);
+ }
+ expect(selectedMetadataCleanupFits(290000,0,selectedMetadataOuterWindowMs)).toBe(false);
  const token='0123456789abcdef0123456789abcdef',role='aihr_ai_compat_'+token,database='ai_hr_ai_compat_'+token;
  const cluster:SelectedCluster={systemIdentifier:'123456789',startedAt:'2026-11-09 00:00:00+00',version:160015,jit:'on',jitAvailable:true,maxConnections:100,maxLocks:256};
  const bound=(name:string,oid:string):SelectedRole=>({oid,name,login:name==='ai_hr_app'||name==='ai_hr_owner'||name===role,super:false,inherit:['ai_hr_app','ai_hr_owner','ai_hr_draft_discard_port',role].includes(name),createRole:false,createDb:false,replication:false,bypassRls:false,connectionLimit:-1,passwordNull:true,validUntil:null,config:null});

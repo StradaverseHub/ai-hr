@@ -296,13 +296,20 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
   throw error;
  }finally{
   const failures:unknown[]=[];
-  if(metadataExternalStop){report.cleanupComplete=false;report.ownedJobCleanupRequired=true;}
-  else for(const close of [()=>application.client.end({timeout:5}),async()=>{if(selectedCourse)await selectedCourse.closeMigration();else await migration?.client.end({timeout:5});},()=>storage.client.end({timeout:5}),
-   async()=>{if(created){expect(await admin`select oid::text as oid from pg_database where datname=${database}`).toEqual([{oid:databaseOid}]);await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);}},
-   async()=>{if(roleCreated){expect(await admin`select oid::text as oid from pg_roles where rolname=${role}`).toEqual([{oid:roleOid}]);await admin.unsafe(`DROP ROLE "${role}"`);}},
+  const cleanupStep=<T>(kind:'connection'|'native'|'files',run:()=>T|PromiseLike<T>)=>
+   metadataIntent?metadataIntent.cleanupStep(caseStartedAt,kind,run):run();
+  const closeOptions=metadataIntent?undefined:{timeout:5};
+  if(metadataIntent&&(!metadataIntent.cleanupHandoff(caseStartedAt)||selectedCourse||migration))metadataExternalStop=true;
+  for(const close of [()=>cleanupStep('connection',()=>application.client.end(closeOptions)),async()=>{if(selectedCourse)await selectedCourse.closeMigration();else await migration?.client.end({timeout:5});},()=>cleanupStep('connection',()=>storage.client.end(closeOptions)),
+   async()=>{if(created){expect(await cleanupStep('native',()=>admin`select oid::text as oid from pg_database where datname=${database}`)).toEqual([{oid:databaseOid}]);await cleanupStep('native',()=>admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`));}},
+   async()=>{if(roleCreated){expect(await cleanupStep('native',()=>admin`select oid::text as oid from pg_roles where rolname=${role}`)).toEqual([{oid:roleOid}]);await cleanupStep('native',()=>admin.unsafe(`DROP ROLE "${role}"`));}},
    async()=>{if(selectedCourse)report.globalNativeCleanup=await selectedCourse.verifyCleanup();},
-   async()=>{const [absence]=await admin`select not exists(select 1 from pg_database where datname=${database}) as database_absent,not exists(select 1 from pg_roles where rolname=${role}) as role_absent`;expect(absence).toEqual({database_absent:true,role_absent:true});report.cleanup=absence;report.cleanupComplete=!primaryFailure&&failures.length===0;},()=>admin.end({timeout:5}),
-   ()=>rmSync(directory,{recursive:true,force:true})])try{await close();}catch(error){failures.push(error);}
+   async()=>{const [absence]=await cleanupStep('native',()=>admin`select not exists(select 1 from pg_database where datname=${database}) as database_absent,not exists(select 1 from pg_roles where rolname=${role}) as role_absent`);expect(absence).toEqual({database_absent:true,role_absent:true});report.cleanup=absence;report.cleanupComplete=!primaryFailure&&failures.length===0;},()=>cleanupStep('connection',()=>admin.end(closeOptions)),
+   ()=>cleanupStep('files',()=>rmSync(directory,{recursive:true,force:true}))]){
+   if(metadataExternalStop)break;
+   try{await close();}catch(error){failures.push(error);if(metadataIntent)metadataExternalStop=true;}
+  }
+  if(metadataExternalStop){report.cleanupComplete=false;report.ownedJobCleanupRequired=true;}
   report.phase=primaryFailure||failures.length?'failed':'complete';if(primaryFailure||failures.length)report.complete=false;try{save();}catch(error){failures.push(error);}
   if(failures.length)throw new AggregateError([...(primaryFailure?[primaryFailure]:[]),...failures],'AI compatibility fixture cleanup failed');
  }
