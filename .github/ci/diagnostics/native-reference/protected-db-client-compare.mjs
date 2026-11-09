@@ -354,7 +354,8 @@ function observeProgram(ts, program, check) {
   return {files, read, fileFor, moduleFor, packageAt, target, typeRoots, automaticTypes, packageRows};
 }
 
-function emittedFiles(dir, check) {
+function emittedFiles(dir, expectedCount, check) {
+  assert(Number.isSafeInteger(expectedCount) && expectedCount >= 0 && expectedCount <= producerPins.length);
   const names = [];
   function visit(path) {
     for (const name of readdirSync(path)) {
@@ -366,7 +367,7 @@ function emittedFiles(dir, check) {
         assert(stat.isFile());
         names.push(current);
       }
-      assert(names.length <= 6);
+      assert(names.length <= expectedCount);
     }
   }
   visit(dir);
@@ -563,7 +564,7 @@ export async function runProtectedDbClientComparison({
     assert.deepEqual(diagnostics(producerResult.text),[]);
     const nativeOutputs = producerResult.text.split(/\r?\n/).filter(line=>line.startsWith('TSFILE: ')).map(line=>line.slice(8)).sort();
     assert.deepEqual(nativeOutputs,[...expectedOutputs,built.buildInfo].sort());
-    assert.deepEqual(emittedFiles(built.emitted,check),expectedOutputs);
+    assert.deepEqual(emittedFiles(built.emitted,expectedOutputs.length,check),expectedOutputs);
     const outputs = nativeOutputs.map(path=>seal(path,check));
     held.push(...outputs);
     const producerLoaded = fileList(producerResult.text);
@@ -606,7 +607,7 @@ export async function runProtectedDbClientComparison({
     const refusedDiagnostics = diagnostics(refused.text);
     assert.deepEqual(refusedDiagnostics.map(({file,line,code})=>({file,line,code})),[{file:missingProbe,line:1,code:6305}]);
     assert(producerModules.every(path=>!fileList(refused.text).includes(path)));
-    assert.deepEqual(emittedFiles(absent.emitted,check),[]);
+    assert.deepEqual(emittedFiles(absent.emitted,0,check),[]);
     assert(!exists(absent.buildInfo));
     if (exists(missing.buildInfo)) held.push(seal(missing.buildInfo,check));
     done('missing-reference',{diagnostics:refusedDiagnostics});
