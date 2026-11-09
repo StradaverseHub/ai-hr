@@ -7,12 +7,12 @@ import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SessionContext } from '../db/client';
 import type { Base } from '../test/harness';
-import {APP_URL, BASE, CANDIDATE, OWNER_URL, assertPristineAuthTenant, installFictionalServerOnlyResolution, readCanonicalAdmission} from './fictional-ai-upgrade-canonical-admission.mjs';
+import {APP_URL, BASE, BASE_ROWS, CANDIDATE, CANDIDATE_ROWS, OWNER_URL, assertPristineAuthTenant, installFictionalServerOnlyResolution, readCanonicalAdmission} from './fictional-ai-upgrade-canonical-admission.mjs';
 
 const BASE_MODULE = 'e43b340ce5851409e0f63eff0f1d786c681fb8068517988b063fc1060760d247';
-const CANDIDATE_MODULE = '982b79512dea177d5205aa6ae2f671f058e14ad6ca1c20606f47b7466aeda02f';
+const CANDIDATE_MODULE = '4ddc2167638f46a6ad860a5dd406cc1d2d86bfbf05a5253fb469298b5bbf9bd3';
 const BASE_PROVIDER = 'ffd2e1fec9fd42740bdd1cda8b4859237c78327bdca9471b17c9406b44eb58ce';
-const CANDIDATE_PROVIDER = 'f1c2967f5d76665114b877553ec8bb3efd5f929b3b2219a9cf2023a7aa183163';
+const CANDIDATE_PROVIDER = '095084bc959b61fd9d74e318e639c022dbd55bbc2fe74c217b56e1ef1d610457';
 const AI_TABLES = ['ai_agent_candidate', 'ai_agent_candidate_provenance', 'ai_agent_evaluation',
   'ai_agent_promotion', 'ai_agent_job_receipt', 'ai_agent_job_feedback', 'ai_agent_rollback'] as const;
 const TABLES = [...AI_TABLES, 'assistant_grant', 'person', 'employment', 'assignment', 'reporting_line', 'role_assignment', 'domain_event'] as const;
@@ -99,7 +99,7 @@ async function main() {
     // Sort by the native integer column because the unqualified output alias is text.
     const ledger = [...await owner.client<LedgerRow[]>`select m.id::text as id, m.hash, m.created_at::text as created_at
       from drizzle.__drizzle_migrations m order by m.id`];
-    assert.equal(freshLedger.length, phase === 'prepare' ? 723 : 765);
+    assert.equal(freshLedger.length, phase === 'prepare' ? BASE_ROWS : CANDIDATE_ROWS);
     validateMigrationLedgerRows(freshLedger,ledger);
     enter('database-identity');
     const [{db,role,postgresSystemId,postmasterEpoch}] = await owner.client<{
@@ -121,8 +121,8 @@ async function main() {
       assert.equal(before.postmasterEpoch,postmasterEpoch);
       assert.equal(before.executionUid,custody.host.uid); assert.equal(before.netNamespace,custody.host.netNamespace);
       assert(before.prerequisiteSha256 !== custody.prerequisiteSha256,'A fresh candidate prerequisite receipt is required');
-      assert.equal(before.ledger.length,723);
-      assert.deepEqual(ledger.slice(0,723),before.ledger);
+      assert.equal(before.ledger.length,BASE_ROWS);
+      assert.deepEqual(ledger.slice(0,BASE_ROWS),before.ledger);
     } else {
       enter('pristine-baseline');
       const {SYSTEM_TENANT_ID} = await import('../db/seed-guard');
