@@ -15,6 +15,10 @@ on:
         description: JSON array of 1–64 tracked unit/DOM test paths; candidate classifier owns DB selection
         required: true
         type: string
+      architecture_browser_development_preflight:
+        description: Fixed first-attempt fictional two-worker functional browser course, without load or release authority
+        default: false
+        type: boolean
       employee_ascii_qualification:
         description: Closed development-only employee ASCII semantic cell; requires the exact proof and product selectors
         default: 'off'
@@ -98,6 +102,51 @@ jobs:
       sha: ${{ steps.candidate.outputs.sha }}
       tests: ${{ steps.selection.outputs.tests }}
     steps:
+      - name: Admit only the fixed development browser dispatch
+        if: ${{ inputs.architecture_browser_development_preflight }}
+        env:
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          /usr/bin/python3 -I -B - <<'PYTHON'
+          import json, os, re
+
+          repository = 'StradaverseHub/ai-hr'
+          branch = 'codex/architecture-browser-development-preflight-20261109'
+          ref = 'refs/heads/' + branch
+          workflow = repository + '/.github/workflows/alpha-focused-checks.yml@' + ref
+          sha = os.environ.get('GITHUB_WORKFLOW_SHA', '')
+          expected_environment = {
+              'GITHUB_ACTIONS': 'true', 'CI': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted',
+              'RUNNER_OS': 'Linux', 'RUNNER_ARCH': 'X64', 'GITHUB_REPOSITORY': repository,
+              'GITHUB_REPOSITORY_ID': '1333414856', 'GITHUB_EVENT_NAME': 'workflow_dispatch',
+              'GITHUB_WORKFLOW': 'alpha-focused-checks', 'GITHUB_JOB': 'resolve', 'GITHUB_RUN_ATTEMPT': '1',
+              'GITHUB_REF': ref, 'GITHUB_WORKFLOW_REF': workflow, 'GITHUB_SHA': sha,
+              'AIHR_CI_CONTROL_HEAD': sha, 'STAGING_ENABLED': 'false', 'PRODUCTION_ENABLED': 'false',
+          }
+          if (not re.fullmatch(r'[a-f0-9]{40}', sha)
+                  or any(os.environ.get(key) != value for key, value in expected_environment.items())):
+              raise SystemExit('Development browser event, runner, source or deployment policy refused')
+          with open(os.environ['GITHUB_EVENT_PATH'], 'rb') as stream:
+              raw = stream.read(65537)
+          if not 0 < len(raw) <= 65536:
+              raise SystemExit('Development browser event exceeds bound')
+          event = json.loads(raw)
+          repo = event.get('repository', {})
+          expected_inputs = {
+              'candidate_ref': branch, 'expected_sha': sha, 'selected_tests': '[]',
+              'architecture_browser_development_preflight': 'true', 'employee_ascii_qualification': 'off',
+              'qualify_restricted_port_prerequisites': 'false', 'profile_database': 'false', 'duration_order': 'false',
+              'run_typecheck': 'false', 'run_native_typecheck': 'false', 'run_native_swift_models': 'false',
+              'run_native_bundle': 'false', 'run_build': 'false', 'model_eval': '', 'eval_budget_usd': '20',
+              'eval_allowed_providers': '',
+          }
+          if (event.get('ref') not in (branch, ref) or repo.get('full_name') != repository
+                  or repo.get('id') != 1333414856 or repo.get('private') is not False
+                  or repo.get('fork') is not False or repo.get('default_branch') != 'main'
+                  or event.get('inputs') != expected_inputs):
+              raise SystemExit('Development browser dispatch inputs refused')
+          PYTHON
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.workflow_sha }}
@@ -106,8 +155,10 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
       - name: Focused controller regression checks
+        if: ${{ !inputs.architecture_browser_development_preflight }}
         run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
       - name: Validate bounded manifest
+        if: ${{ !inputs.architecture_browser_development_preflight }}
         id: selection
         run: node .github/ci/focused-checks.mjs selection
         env:
@@ -123,8 +174,8 @@ jobs:
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
-    environment: ${{ inputs.model_eval != '' && 'assistant-eval' || '' }}
-    timeout-minutes: ${{ inputs.model_eval != '' && 45 || 20 }}
+    environment: ${{ !inputs.architecture_browser_development_preflight && inputs.model_eval != '' && 'assistant-eval' || '' }}
+    timeout-minutes: ${{ inputs.architecture_browser_development_preflight && 40 || inputs.model_eval != '' && 45 || 20 }}
     defaults:
       run:
         working-directory: source
@@ -134,7 +185,7 @@ jobs:
       AIHR_FOCUSED_SUITE_CAPACITY: 'true'
       AIHR_QUALIFY_RESTRICTED_PORT: ${{ inputs.qualify_restricted_port_prerequisites }}
       AIHR_RESTRICTED_PORT_TYPECHECK: ${{ inputs.run_typecheck }}
-      AIHR_EVAL_OPENROUTER_KEY: ${{ inputs.model_eval != '' && secrets.OPENROUTER_API_KEY || '' }}
+      AIHR_EVAL_OPENROUTER_KEY: ${{ !inputs.architecture_browser_development_preflight && inputs.model_eval != '' && secrets.OPENROUTER_API_KEY || '' }}
       AIHR_EVAL_MODEL: ${{ inputs.model_eval }}
       AIHR_EVAL_BUDGET_USD: ${{ inputs.eval_budget_usd }}
       AIHR_EVAL_ALLOWED_PROVIDERS: ${{ inputs.eval_allowed_providers }}
@@ -163,31 +214,68 @@ jobs:
           path: source
           fetch-depth: 0
           persist-credentials: false
+      - name: Verify the exact self-source before dependency installation
+        if: ${{ inputs.architecture_browser_development_preflight }}
+        id: development-browser-source
+        env:
+          EXPECTED_SOURCE: ${{ inputs.expected_sha }}
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_JOB" = selected-tests
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ARCH" = X64
+          test "$AIHR_CI_HEAD" = "$EXPECTED_SOURCE"
+          test "$GITHUB_WORKFLOW_SHA" = "$EXPECTED_SOURCE"
+          test "$STAGING_ENABLED" = false
+          test "$PRODUCTION_ENABLED" = false
+          for checkout in "$GITHUB_WORKSPACE/automation" "$GITHUB_WORKSPACE/source"; do
+            test "$(git -C "$checkout" rev-parse HEAD)" = "$EXPECTED_SOURCE"
+            test -z "$(git -C "$checkout" status --porcelain)"
+            test "$(git -C "$checkout" remote get-url origin)" = https://github.com/StradaverseHub/ai-hr
+          done
+          git merge-base --is-ancestor 9e9db2e5453663a627217513299b0e8307141a74 "$EXPECTED_SOURCE"
+          for member in .github/workflows/alpha-focused-checks.yml .github/actions/setup-alpha/action.yml \
+            .github/ci/postgres.sh package.json pnpm-lock.yaml scripts/performance/system-runner.mjs \
+            scripts/performance/system-load.mjs scripts/performance/system-fixture.mjs; do
+            digest="$(git show "$EXPECTED_SOURCE:$member" | sha256sum | cut -d' ' -f1)"
+            printf '%s  %s\n%s  %s\n' "$digest" "$member" "$digest" "../automation/$member" | sha256sum --check --status
+          done
+          # The existing navigation owner admits this exact canonical spelling.
+          git remote set-url origin https://github.com/StradaverseHub/ai-hr.git
       - uses: ./automation/.github/actions/setup-alpha
+        if: ${{ !inputs.architecture_browser_development_preflight }}
         with:
           capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"
           node: "${{ inputs.employee_ascii_qualification == 'node24' && '24.22.1' || '22.23.3' }}"
+      - uses: ./automation/.github/actions/setup-alpha
+        if: ${{ inputs.architecture_browser_development_preflight }}
+        with: {node: '24.22.1', mobile: 'false', capacity_profile: legacy}
       - name: Provision multilingual fonts for AI review screenshots
-        if: ${{ contains(inputs.selected_tests, 'test/ai-management-naming.dom.test.tsx') || contains(inputs.selected_tests, 'test/ai-probe-history-page.dom.test.tsx') || contains(inputs.selected_tests, 'test/feedback-kanban.dom.test.tsx') || contains(inputs.selected_tests, 'test/security-center-sidebar.dom.test.tsx') }}
+        if: ${{ !inputs.architecture_browser_development_preflight && (contains(inputs.selected_tests, 'test/ai-management-naming.dom.test.tsx') || contains(inputs.selected_tests, 'test/ai-probe-history-page.dom.test.tsx') || contains(inputs.selected_tests, 'test/feedback-kanban.dom.test.tsx') || contains(inputs.selected_tests, 'test/security-center-sidebar.dom.test.tsx')) }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk
       - name: Provision native readiness witness prerequisite
         # Fixed official distro package; no arbitrary package/URL input.
-        if: ${{ contains(fromJSON(needs.resolve.outputs.tests), 'test/runtime-ready-admission-native.test.ts') }}
+        if: ${{ !inputs.architecture_browser_development_preflight && contains(fromJSON(needs.resolve.outputs.tests), 'test/runtime-ready-admission-native.test.ts') }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends nginx
           dpkg-query -W -f='${Package} ${Version}\n' nginx
       - name: Classify and execute only selected files
+        if: ${{ !inputs.architecture_browser_development_preflight }}
         run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"
         env:
           AIHR_FOCUSED_EVIDENCE_DIR: ${{ runner.temp }}/aihr-focused
       - name: Summarize opt-in harness phase timings
-        if: ${{ always() && inputs.profile_database }}
+        if: ${{ always() && !inputs.architecture_browser_development_preflight && inputs.profile_database }}
         run: node scripts/report-test-profile.mjs "$RUNNER_TEMP/aihr-focused/harness-profile" "$RUNNER_TEMP/aihr-focused/profile-summary.json"
       - name: Ensure owned resource settlement after interrupted checks
-        if: always()
+        if: ${{ always() && !inputs.architecture_browser_development_preflight }}
         run: |
           if [ "$AIHR_RESOLVED_FOCUSED_TESTS" = '["test/compiler-native-reference-fixture.test.ts"]' ]; then
             node ../automation/.github/ci/focused-checks.mjs compiler-settled "$RUNNER_TEMP/aihr-focused"
@@ -201,11 +289,126 @@ jobs:
         env:
           AIHR_RESOLVED_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
           AIHR_CI_UNIT: ${{ needs.resolve.outputs.tests != '["test/compiler-native-reference-fixture.test.ts"]' && needs.resolve.outputs.tests != '["test/compiler-native-application-inventory.test.ts"]' && 'db-1' || '' }}
-      - if: always()
+      - if: ${{ always() && !inputs.architecture_browser_development_preflight }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ inputs.employee_ascii_qualification == 'node22' && 'employee-ascii-qualification-node22' || inputs.employee_ascii_qualification == 'node24' && 'employee-ascii-qualification-node24' || 'focused-development-evidence' }}
           path: ${{ runner.temp }}/aihr-focused/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Select installed Chrome or install locked Playwright Chromium
+        if: ${{ inputs.architecture_browser_development_preflight }}
+        run: |
+          set -euo pipefail
+          if test -x /usr/bin/google-chrome; then
+            echo 'PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome' >> "$GITHUB_ENV"
+            /usr/bin/google-chrome --version
+          else
+            pnpm exec playwright install --with-deps chromium
+          fi
+      - name: Fictional two-worker functional browser preflight
+        if: ${{ inputs.architecture_browser_development_preflight }}
+        id: development-browser
+        env:
+          AIHR_CI_UNIT: db-1
+          AIHR_CI_PG_DURABLE: '1'
+          AIHR_CI_PG_STATEMENTS: '1'
+          AIHR_CI_PG_STATEMENTS_OWNER: system-http-profile
+          NEXT_TELEMETRY_DISABLED: '1'
+          PERF_HTTP_SUITE: workflow-preflight
+          PERF_HTTP_THINK_MS: '1000'
+          PERF_HTTP_HOLD_MS: '30000'
+          PERF_APP_WORKERS: '2'
+          PERF_APP_POOL_CONNECTIONS: '16'
+          PERF_APP_TOTAL_HEAP_MIB: '4096'
+          PERF_ATTENDANCE_DAYS: '180'
+        run: |
+          set -euo pipefail
+          for name in system-performance-evidence system-performance-private; do
+            test ! -e "$RUNNER_TEMP/$name"
+            test ! -L "$RUNNER_TEMP/$name"
+          done
+          node scripts/performance/system-runner.mjs
+      - name: Settle only the disposable development PostgreSQL container
+        if: ${{ always() && inputs.architecture_browser_development_preflight && steps.development-browser-source.outcome == 'success' && steps.development-browser.outcome != 'skipped' && steps.development-browser.outcome != '' }}
+        id: development-browser-cleanup
+        env:
+          AIHR_CI_UNIT: db-1
+          AIHR_CI_PG_DURABLE: '1'
+          AIHR_CI_PG_STATEMENTS: '1'
+          AIHR_CI_PG_STATEMENTS_OWNER: system-http-profile
+        run: timeout --signal=TERM --kill-after=5s 25s bash ../automation/.github/ci/postgres.sh stop
+      - name: Select existing sanitized development evidence
+        if: ${{ always() && inputs.architecture_browser_development_preflight && steps.development-browser-source.outcome == 'success' && steps.development-browser.outcome != 'skipped' && steps.development-browser.outcome != '' }}
+        id: development-browser-evidence
+        env:
+          COURSE_OUTCOME: ${{ steps.development-browser.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.development-browser-cleanup.outcome }}
+        run: |
+          /usr/bin/python3 -I -B - <<'PYTHON'
+          import json, os, stat
+          from pathlib import Path
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'system-performance-evidence'
+          if root.resolve(strict=True) != root or not root.is_dir():
+              raise SystemExit('Development browser evidence directory refused')
+
+          def check_file(name):
+              member = root / name
+              info = member.lstat()
+              if (member.resolve(strict=True) != member or not stat.S_ISREG(info.st_mode)
+                      or info.st_uid != os.getuid() or info.st_nlink != 1 or not 0 < info.st_size <= 4 * 1024**2):
+                  raise SystemExit('Development browser evidence member refused')
+              return member
+
+          members = []
+          for name in ('navigation-browser-capture.json', 'actor-tenancy.json', 'fixture.json',
+                       'fixture-phases.json', 'server-native-failures.json', 'postgres-lock-failures.json'):
+              try:
+                  members.append(check_file(name))
+              except FileNotFoundError:
+                  pass
+          if not members:
+              raise SystemExit('No sanitized development browser evidence')
+
+          if os.environ['COURSE_OUTCOME'] == 'success' and os.environ['CLEANUP_OUTCOME'] == 'success':
+              runner = json.loads(check_file('runner.json').read_bytes())
+              driver = json.loads(check_file('http-browser.json').read_bytes())
+              fixture = json.loads(check_file('fixture.json').read_bytes())
+              capture = json.loads(check_file('navigation-browser-capture.json').read_bytes())
+              sha = os.environ['AIHR_CI_HEAD']
+              topology = runner.get('topology', {})
+              baseline = capture.get('baseline', {})
+              if (runner.get('kind') != 'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY'
+                      or runner.get('sha') != sha or runner.get('controller') != sha
+                      or runner.get('run') != os.environ['GITHUB_RUN_ID'] or runner.get('exitCode') != 0
+                      or runner.get('releaseEligible') is not False or runner.get('productionEquivalent') is not False
+                      or runner.get('runtimeAcceptance', {}).get('pass') is not True
+                      or [topology.get(key) for key in ('workers', 'poolPerWorker', 'totalApplicationPool',
+                                                       'heapMiBPerWorker', 'totalHeapMiB')] != [2, 8, 16, 2048, 4096]
+                      or driver.get('kind') != 'HTTP_WORKFLOW_PREFLIGHT_ONLY' or driver.get('suite') != 'workflow-preflight'
+                      or driver.get('preflightPassed') is not True or driver.get('users') != 0
+                      or driver.get('releaseEligible') is not False or fixture.get('fictional') is not True
+                      or fixture.get('claimsPerEmployee') != 200 or fixture.get('counts', {}).get('claims') != 100000
+                      or capture.get('releaseAuthorized') is not False or 'loaded' in capture
+                      or baseline.get('complete') is not True or baseline.get('candidateSha') != sha
+                      or baseline.get('controllerSha') != sha or baseline.get('engine') != 'chromium'
+                      or baseline.get('phase') != 'baseline' or baseline.get('runAttempt') != 1
+                      or baseline.get('runId') != int(os.environ['GITHUB_RUN_ID'])):
+                  raise SystemExit('Development browser terminal evidence refused')
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+                  summary.write('Two-worker fictional functional browser preflight passed. '
+                                'No steady load, release authority or deployment.\n')
+          # The full runner/driver records, SQL samples, screenshots, profiles and logs stay on the runner.
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('paths<<DEVELOPMENT_EVIDENCE\n' + '\n'.join(map(str, members)) + '\nDEVELOPMENT_EVIDENCE\n')
+          PYTHON
+      - name: Publish sanitized functional browser development evidence
+        if: ${{ always() && inputs.architecture_browser_development_preflight && steps.development-browser-evidence.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: architecture-browser-development-preflight-evidence
+          path: ${{ steps.development-browser-evidence.outputs.paths }}
           if-no-files-found: error
           retention-days: 14
   typecheck:
