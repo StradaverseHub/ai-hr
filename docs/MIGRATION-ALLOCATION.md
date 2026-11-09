@@ -1,3 +1,17 @@
+# Assistant Annual Rewards Return snapshot — 9 November 2026 (unapplied)
+
+Reserve `4200_assistant_rewards_return_presentation_snapshot` at idx 3638 and
+when 1793330003938 after the 761-entry architecture journal. It appends an
+Assistant chooser that reads the existing policy and Rewards facts from one
+read-only snapshot. The allocation survey found no competing claim above idx
+3637 / when 1793330003937. Verify the accepted source and installed ledger
+before release admission.
+
+Reserve `4201_assistant_rewards_calendar_cancel_presentation_snapshot` at idx
+3639 and when 1793330003939. It extends the same presentation policy to Calendar
+and Cancel choices. The 4200 migration bytes and earlier journal entries stay
+as recorded.
+
 # Architecture after the five approved board items — 9 November 2026 (provisional)
 
 The private release-first preview uses the exact `8527509182bf5f0a63bd31b2e863ee74090933d5`

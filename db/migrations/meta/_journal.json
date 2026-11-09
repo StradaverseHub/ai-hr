@@ -5328,6 +5328,20 @@
       "when": 1793330003937,
       "tag": "3501_ai_centre_mandate_write_order",
       "breakpoints": true
+    },
+    {
+      "idx": 3638,
+      "version": "7",
+      "when": 1793330003938,
+      "tag": "4200_assistant_rewards_return_presentation_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 3639,
+      "version": "7",
+      "when": 1793330003939,
+      "tag": "4201_assistant_rewards_calendar_cancel_presentation_snapshot",
+      "breakpoints": true
     }
   ]
 }
