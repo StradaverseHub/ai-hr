@@ -20,12 +20,12 @@ on:
         default: false
         type: boolean
       measured_browser_course:
-        description: Complete role-route browser preflight on one frozen development source
+        description: Full role-route preflight or same-source 2, 4 and 8 worker comparison
         type: choice
-        options: ['off', 'preflight-2']
+        options: ['off', 'preflight-2', 'serial-2-4-8']
         default: 'off'
       measured_browser_preflight_run:
-        description: Reserved same-source prerequisite for a later admitted worker course
+        description: Successful full browser preflight run ID on the same immutable source
         type: string
         default: ''
       employee_ascii_qualification:
@@ -110,6 +110,8 @@ jobs:
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
       tests: ${{ steps.selection.outputs.tests }}
+      worker_admission: ${{ steps.worker-prerequisite.outputs.admission }}
+      worker_admission_sha256: ${{ steps.worker-prerequisite.outputs.sha256 }}
     steps:
       - name: Admit only the fixed development browser dispatch
         if: ${{ inputs.architecture_browser_development_preflight }}
@@ -168,6 +170,7 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
+          fetch-depth: ${{ inputs.measured_browser_course == 'serial-2-4-8' && '0' || '1' }}
       - name: Pin dependency-free controller runtime
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
@@ -188,6 +191,14 @@ jobs:
           const result = inspectMeasuredWorkerDispatch(process.env, JSON.parse(readFileSync(path, 'utf8')));
           assert.equal(result.profile.course, 'preflight-2');
           JS
+      - name: Authenticate same-source full browser preflight for the worker comparison
+        if: ${{ inputs.measured_browser_course == 'serial-2-4-8' }}
+        id: worker-prerequisite
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: node .github/ci/measured-browser-worker-prerequisite.mjs
       - name: Focused controller regression checks
         if: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
         run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
@@ -236,7 +247,7 @@ jobs:
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
     environment: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.model_eval != '' && 'assistant-eval' || '' }}
-    timeout-minutes: ${{ (inputs.architecture_browser_development_preflight || inputs.measured_browser_course == 'preflight-2') && 40 || inputs.model_eval != '' && 45 || 20 }}
+    timeout-minutes: ${{ inputs.measured_browser_course == 'serial-2-4-8' && 120 || (inputs.architecture_browser_development_preflight || inputs.measured_browser_course == 'preflight-2') && 40 || inputs.model_eval != '' && 45 || 20 }}
     defaults:
       run:
         working-directory: source
@@ -277,7 +288,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Verify the exact self-source before dependency installation
-        if: ${{ (inputs.architecture_browser_development_preflight || inputs.measured_browser_course == 'preflight-2') }}
+        if: ${{ (inputs.architecture_browser_development_preflight || inputs.measured_browser_course != 'off') }}
         id: development-browser-source
         env:
           EXPECTED_SOURCE: ${{ inputs.expected_sha }}
@@ -309,13 +320,41 @@ jobs:
           done
           # The existing navigation owner admits this exact canonical spelling.
           git remote set-url origin https://github.com/StradaverseHub/ai-hr.git
+      - name: Materialize the authenticated worker preflight receipt
+        if: ${{ inputs.measured_browser_course == 'serial-2-4-8' }}
+        env:
+          PREFLIGHT_RUN: ${{ inputs.measured_browser_preflight_run }}
+          PREFLIGHT_ADMISSION: ${{ needs.resolve.outputs.worker_admission }}
+          PREFLIGHT_ADMISSION_SHA256: ${{ needs.resolve.outputs.worker_admission_sha256 }}
+        run: |
+          /usr/bin/python3 -I -B - <<'PYTHON'
+          import base64, hashlib, json, os, re
+          from pathlib import Path
+
+          envelope = os.environ['PREFLIGHT_ADMISSION']
+          assert 0 < len(envelope) <= 2048
+          raw = base64.b64decode(envelope, validate=True)
+          assert base64.b64encode(raw).decode('ascii') == envelope and raw.endswith(b'\n')
+          digest = os.environ['PREFLIGHT_ADMISSION_SHA256']
+          assert re.fullmatch(r'[a-f0-9]{64}', digest) and hashlib.sha256(raw).hexdigest() == digest
+          receipt = json.loads(raw)
+          assert receipt['kind'] == 'AUTHENTICATED_FULL_DEVELOPMENT_PREFLIGHT_SCOPE_ONLY'
+          assert receipt['releaseEligible'] is False
+          assert receipt['source'] == os.environ['AIHR_CI_HEAD'] == os.environ['GITHUB_WORKFLOW_SHA']
+          assert str(receipt['runId']) == os.environ['PREFLIGHT_RUN']
+          temp = Path(os.environ['RUNNER_TEMP'])
+          assert temp.is_absolute() and temp.resolve(strict=True) == temp and temp.stat().st_uid == os.getuid()
+          path = temp / 'aihr-worker-comparison-admission.json'
+          with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'wb') as out:
+              out.write(raw)
+          PYTHON
       - uses: ./automation/.github/actions/setup-alpha
         if: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
         with:
           capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"
           node: "${{ inputs.employee_ascii_qualification == 'node24' && '24.22.1' || '22.23.3' }}"
       - uses: ./automation/.github/actions/setup-alpha
-        if: ${{ (inputs.architecture_browser_development_preflight || inputs.measured_browser_course == 'preflight-2') }}
+        if: ${{ (inputs.architecture_browser_development_preflight || inputs.measured_browser_course != 'off') }}
         with: {node: '24.22.1', mobile: 'false', capacity_profile: legacy}
       - name: Provision multilingual fonts for AI review screenshots
         if: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && (contains(inputs.selected_tests, 'test/ai-management-naming.dom.test.tsx') || contains(inputs.selected_tests, 'test/ai-probe-history-page.dom.test.tsx') || contains(inputs.selected_tests, 'test/feedback-kanban.dom.test.tsx') || contains(inputs.selected_tests, 'test/security-center-sidebar.dom.test.tsx')) }}
@@ -360,7 +399,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Select installed Chrome or install locked Playwright Chromium
-        if: ${{ (inputs.architecture_browser_development_preflight || inputs.measured_browser_course == 'preflight-2') }}
+        if: ${{ (inputs.architecture_browser_development_preflight || inputs.measured_browser_course != 'off') }}
         run: |
           set -euo pipefail
           if test -x /usr/bin/google-chrome; then
@@ -1140,6 +1179,30 @@ jobs:
         with:
           name: architecture-browser-development-preflight-evidence
           path: ${{ steps.development-browser-cleanup.outputs.paths }}
+          if-no-files-found: error
+          retention-days: 14
+      - name: Run the fixed same-build 2, 4 and 8 worker comparison
+        if: ${{ inputs.measured_browser_course == 'serial-2-4-8' }}
+        id: worker-comparison
+        env:
+          AIHR_CI_UNIT: db-1
+          AIHR_CI_PG_DURABLE: '1'
+          AIHR_CI_PG_STATEMENTS: '1'
+          AIHR_CI_PG_STATEMENTS_OWNER: system-http-profile
+          AIHR_WORKER_COMPARISON_ADMISSION_SHA256: ${{ needs.resolve.outputs.worker_admission_sha256 }}
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          set -euo pipefail
+          test "${#AIHR_FOCUSED_JOB_MONOTONIC_NS}" -le 18
+          [[ "$AIHR_FOCUSED_JOB_MONOTONIC_NS" =~ ^[1-9][0-9]+$ ]]
+          export AIHR_WORKER_COMPARISON_T0_MS="$(( AIHR_FOCUSED_JOB_MONOTONIC_NS / 1000000 ))"
+          /usr/bin/python3 -I -B .github/ci/worker-comparison-family.py
+      - name: Publish sanitized worker comparison evidence
+        if: ${{ always() && inputs.measured_browser_course == 'serial-2-4-8' && (steps.worker-comparison.outcome == 'success' || steps.worker-comparison.outcome == 'failure') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: architecture-same-build-worker-comparison-evidence
+          path: ${{ runner.temp }}/system-worker-comparison-evidence/summary.json
           if-no-files-found: error
           retention-days: 14
   typecheck:
