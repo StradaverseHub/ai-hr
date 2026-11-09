@@ -260,7 +260,7 @@ function developmentMeasurementInput(){
 it('joins the exact development terminal receipt and refuses changed identity or inconsistent zeros',()=>{
  const input=developmentMeasurementInput(),expected={...input.identity,suite:input.suite};
  const receipt=buildDevelopmentMeasurement(input);
- expect(receipt).toMatchObject({complete:true,workCompleted:true,busyResponses:0,
+ expect(receipt).toMatchObject({complete:true,workCompleted:true,busyResponses:0,load:null,
   pageEvents:{qualifiedCrashes:0,aborted:2},locks:{preflight:{blockingSamples:0},loaded:{state:'not-applicable'}}});
  expect(validateDevelopmentMeasurement(receipt,expected)).toBe(true);
  for(const change of [
@@ -293,6 +293,34 @@ it('retains incomplete terminal receipts without promoting missing Pages, app tr
  }
  const loaded=buildDevelopmentMeasurement({...input,suite:'whole-system'});
  expect(loaded.complete).toBe(false);expect(validateDevelopmentMeasurement(loaded,{...expected,suite:'whole-system'})).toBe(true);
+});
+
+it('seals a whole-system hold only after all 500 lanes arrived on time and completed',()=>{
+ const load={holdMs:300000,windowElapsed:true,firstFullConcurrencyUs:10000000,launched:500,
+  peakActive:500,completed:500,failed:0,activeAtSettlement:0,earlyLaneExits:0,iterations:500};
+ const samples=Array.from({length:300},(_,i)=>({...legacyLockRow(110+i*1000,120+i*1000),appSessions:1}));
+ const input={...developmentMeasurementInput(),suite:'whole-system',load,
+  loaded:developmentLockWindowEvidence('loaded',samples,{startMs:100,endMs:300100},true)};
+ const expected={...input.identity,suite:input.suite};
+ const receipt=buildDevelopmentMeasurement(input);
+ expect(receipt).toMatchObject({complete:true,load,locks:{loaded:{blockingSamples:0,qualifiedSamples:300}}});
+ expect(receipt.load).not.toBe(load);
+ expect(validateDevelopmentMeasurement(receipt,expected)).toBe(true);
+ for(const change of [
+  {holdMs:30000},{windowElapsed:false},{firstFullConcurrencyUs:10000001},{earlyLaneExits:1},
+  {launched:499,completed:499,peakActive:499,firstFullConcurrencyUs:null},
+  {completed:499,failed:1},{completed:499,activeAtSettlement:1},
+ ]){
+  const observed={...load,...change};
+  const incomplete=buildDevelopmentMeasurement({...input,load:observed});
+  expect(incomplete).toMatchObject({complete:false,load:observed,renderedCapture:null});
+  expect(validateDevelopmentMeasurement(incomplete,expected)).toBe(true);
+  expect(validateDevelopmentMeasurement({...receipt,load:observed},expected)).toBe(false);
+ }
+ for(const forged of [null,{...load,completed:501},{...load,firstFullConcurrencyUs:null},{...load,unknown:0}]){
+  expect(buildDevelopmentMeasurement({...input,load:forged})).toMatchObject({complete:false,load:null,renderedCapture:null});
+  expect(validateDevelopmentMeasurement({...receipt,load:forged},expected)).toBe(false);
+ }
 });
 
 it('requires the bounded rendered capture binding only for a complete development terminal receipt',()=>{

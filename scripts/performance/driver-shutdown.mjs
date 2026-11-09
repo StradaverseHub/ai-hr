@@ -228,16 +228,35 @@ const developmentPagesFields=['censusComplete','observedPages','closedPages','ob
  'aborted','transport','http5xx','pageError','consoleError'];
 const developmentLockFields=Object.keys(developmentNotLoaded);
 const developmentSettlementFields=['browser','https','diagnostics','auditPool','observerPool'];
+const developmentLoadFields=['holdMs','windowElapsed','firstFullConcurrencyUs','launched','peakActive','completed','failed',
+ 'activeAtSettlement','earlyLaneExits','iterations'];
 
-function cleanDevelopmentMeasurement({suite,identity,workCompleted,busyResponses,pageEvents,locks,settlement}){
+function validDevelopmentSteadyLoad(load){
+ return closedFields(load,developmentLoadFields)&&[30000,300000].includes(load.holdMs)
+  &&typeof load.windowElapsed==='boolean'&&knownCount(load.firstFullConcurrencyUs,Number.MAX_SAFE_INTEGER)
+  &&['launched','peakActive','completed','failed','activeAtSettlement','earlyLaneExits'].every(key=>boundedInteger(load[key],500))
+  &&load.completed+load.failed+load.activeAtSettlement===load.launched
+  &&load.activeAtSettlement<=load.peakActive&&load.peakActive<=load.launched&&load.earlyLaneExits<=load.completed+load.failed
+  &&(load.firstFullConcurrencyUs!==null)===(load.peakActive===500)
+  &&boundedInteger(load.iterations,Number.MAX_SAFE_INTEGER)&&load.iterations>=load.completed;
+}
+
+export function developmentSteadyLoadPass(load){
+ return validDevelopmentSteadyLoad(load)&&load.holdMs===300000&&load.windowElapsed
+  &&load.firstFullConcurrencyUs!==null&&load.firstFullConcurrencyUs<=10000000
+  &&load.launched===500&&load.peakActive===500&&load.completed===500
+  &&load.failed===0&&load.activeAtSettlement===0&&load.earlyLaneExits===0;
+}
+
+function cleanDevelopmentMeasurement({suite,identity,workCompleted,busyResponses,pageEvents,locks,settlement,load}){
  return workCompleted&&busyResponses===0&&exactHex(identity.harnessSha256,64)&&exactHex(identity.scenarioSha256,64)
   &&pageEvents.censusComplete&&pageEvents.qualifiedCrashes===0&&pageEvents.aborted!==null
   &&['transport','http5xx','pageError','consoleError'].every(key=>pageEvents[key]===0)
-  &&locks.preflight.pass===true&&(suite==='workflow-preflight'||locks.loaded.pass===true)
+  &&locks.preflight.pass===true&&(suite==='workflow-preflight'||locks.loaded.pass===true&&developmentSteadyLoadPass(load))
   &&developmentSettlementFields.every(key=>settlement[key]==='settled');
 }
 
-export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,busyResponses,pages,preflight,loaded,shutdown,renderedCapture}){
+export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,busyResponses,pages,preflight,loaded,shutdown,renderedCapture,load=null}){
  const observedPages=knownCount(pages.observedPages,4096)?pages.observedPages:null;
  const closedPages=knownCount(pages.closedPages,4096)
   &&(observedPages!==null?pages.closedPages<=observedPages:pages.closedPages===null)?pages.closedPages:null;
@@ -255,17 +274,19 @@ export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,
  const busy=observedEventCount(busyResponses);
  const evidence={kind:developmentTerminalKind,suite,workCompleted,identity,busyResponses:workCompleted||busy>0?busy:null,
   poolEvidence:developmentPoolEvidence,pageEvents,
-  locks:{preflight,loaded:suite==='workflow-preflight'?developmentNotLoaded:loaded},settlement};
+  locks:{preflight,loaded:suite==='workflow-preflight'?developmentNotLoaded:loaded},settlement,
+  load:suite==='whole-system'&&validDevelopmentSteadyLoad(load)?{...load}:null};
  const complete=clean&&validRenderedCapture(renderedCapture)&&cleanDevelopmentMeasurement(evidence);
  return {...evidence,complete,renderedCapture:complete?{sha256:renderedCapture.sha256,bytes:renderedCapture.bytes}:null};
 }
 
 export function validateDevelopmentMeasurement(value,expected){
- if(!closedFields(value,['kind','suite','workCompleted','identity','busyResponses','poolEvidence','pageEvents','locks','settlement','complete','renderedCapture'])
+ if(!closedFields(value,['kind','suite','workCompleted','identity','busyResponses','poolEvidence','pageEvents','locks','settlement','load','complete','renderedCapture'])
   ||value.kind!==developmentTerminalKind||value.poolEvidence!==developmentPoolEvidence||!['workflow-preflight','whole-system'].includes(value.suite)||value.suite!==expected.suite
   ||typeof value.workCompleted!=='boolean'||typeof value.complete!=='boolean'||!knownCount(value.busyResponses,1000000)
   ||(!value.workCompleted&&value.busyResponses===0))return false;
- const {identity,pageEvents,locks,settlement}=value;
+ const {identity,pageEvents,locks,settlement,load}=value;
+ if(load!==null&&(value.suite!=='whole-system'||!validDevelopmentSteadyLoad(load)))return false;
  if(!closedFields(identity,['candidateSha','controllerSha','runId','runAttempt','harnessSha256','scenarioSha256'])
   ||!exactHex(identity.candidateSha,40)||!exactHex(identity.controllerSha,40)||!Number.isSafeInteger(identity.runId)||identity.runId<1
   ||identity.runAttempt!==1||!['candidateSha','controllerSha','runId','runAttempt'].every(key=>identity[key]===expected[key])
