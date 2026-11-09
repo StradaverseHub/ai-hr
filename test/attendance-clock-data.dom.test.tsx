@@ -4,7 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
 import { AttendanceClockData } from '../components/attendance-clock-data';
 afterEach(cleanup);
-const row = (id: string, time: string, removed = false) => ({ id, punchAt: time, direction: 'in' as const, method: 'web' as const, captureId: 'capture-' + id, photoAvailable: true, clockSource: 'online' as const, effectiveAt: null, receivedAt: null, lat: 3, lng: 101, voidedAt: removed ? '2026-07-16T00:00:00Z' : null, voidedBy: removed ? 'HR reviewer' : null, voidReason: removed ? 'Wrong clocking' : null, importRun: null, importFile: null });
+const row = (id: string, time: string, removed = false) => ({ id, punchAt: time, direction: 'in' as const, method: 'web' as const, captureId: 'capture-' + id, photoAvailable: true, clockSource: 'online' as const, effectiveAt: null, receivedAt: '2026-07-15T' + time + '+08:00', lat: 3, lng: 101, voidedAt: removed ? '2026-07-16T00:00:00Z' : null, voidedBy: removed ? 'HR reviewer' : null, voidReason: removed ? 'Wrong clocking' : null, importRun: null, importFile: null });
 type Rows = Parameters<typeof AttendanceClockData>[0]['data']['rows'];
 function mount(rows: Rows) {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };

@@ -86,7 +86,7 @@ it('selects pairing from the resolved business day class, including explicit Off
     const editor=await attendanceDayEditor(ctx,f.employmentId,date);
     if(!editor)throw new Error('Expected the scoped Attendance editor.');
     await saveAttendanceDayEdit(ctx,{employmentId:f.employmentId,date,baseline:editor.baseline,
-      reason:'Fictional canonical day type',kind:'schedule',shiftId:null,dayKind});
+      reason:'Fictional canonical day type',confirmPayrollRecalculation:false,kind:'schedule',shiftId:null,dayKind});
     await f.importDay(date,[['09:00:00','in'],['12:00:00','out'],['13:00:00','in'],['18:00:00','out']]);
     expect(await f.read(date)).toMatchObject({workedMinutes,calcTrace:{clockPolicy:{dayClass,pairing}}});
   }

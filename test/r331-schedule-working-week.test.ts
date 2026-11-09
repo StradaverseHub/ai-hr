@@ -58,7 +58,10 @@ class RedirectError extends Error {
   }
 }
 vi.mock('../lib/session', () => ({ getSession: vi.fn(async () => ctx) }));
-vi.mock('../lib/authz', () => ({ requireAdmin: vi.fn(async () => ctx) }));
+vi.mock('../lib/authz', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz')>()),
+  requireAdmin: vi.fn(async () => ctx),
+}));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => '/admin/attendance/schedule/group/edit',

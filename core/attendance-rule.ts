@@ -819,7 +819,7 @@ export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRu
         if (value !== undefined) merged[key]=value;
       }
     } else if (p.section === 'overtimeFull') {
-      if(p.expected!==attendanceRuleOvertimeSnapshot(currentRows,rule.applyToEarlyOt)) {
+      if(p.expected!==attendanceRuleOvertimeSnapshot(rows,rule.applyToEarlyOt)) {
         throw new Error('The overtime settings changed. Reopen this schedule before saving overtime settings.');
       }
       merged.otRows=p.bands;

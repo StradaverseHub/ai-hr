@@ -1,6 +1,6 @@
 import React, { cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator } from 'next-intl';
 import messages from '../messages/en.json';
 import type { SessionContext } from '../db/client';
@@ -148,15 +148,15 @@ describe('independent Schedule Group forms after a server refresh', () => {
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
     const view=render(await page('original-band-id'));
     const overtime=screen.getByRole('form',{name:'overtime'}) as HTMLFormElement;
-    const rounding=overtime.querySelector<HTMLInputElement>('[name="roundingMode_0"]')!;
+    const rounding=within(overtime).getByRole<HTMLSelectElement>('combobox',{name:messages.admin.attendanceRule.otColRounding});
     const identity=new FormData(overtime).get('otBandSnapshot');
     fireEvent.change(rounding,{target:{value:'up'}});
     await act(async()=>view.rerender(await page('new-band-id',undefined,'general',{
       otRows:[{...rule.otRows[0],toMinutes:60,rate:'2.0'},
         {...rule.otRows[0],id:'second-band',fromMinutes:61,toMinutes:0,roundingMode:'none',roundToMinutes:null}]})));
     expect(screen.getByRole('alert')).toHaveTextContent(messages.scheduleDrafts.staleLadder);
-    expect(overtime.querySelector('select[aria-label="Rounding"]')).toBe(rounding);
-    expect(rounding.value).toBe('up');expect(overtime.querySelectorAll('select[aria-label="Rounding"]')).toHaveLength(1);
+    expect(within(overtime).getAllByRole('combobox',{name:messages.admin.attendanceRule.otColRounding})).toEqual([rounding]);
+    expect(rounding.value).toBe('up');
     expect(new FormData(overtime).get('otBandSnapshot')).toBe(identity);
     expect(hasUnsavedChanges()).toBe(true);
     fireEvent.click(screen.getByRole('button',{name:messages.scheduleDrafts.reload}));
