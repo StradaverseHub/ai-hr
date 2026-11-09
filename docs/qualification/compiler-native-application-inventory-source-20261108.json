@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "COMPILER_NATIVE_APPLICATION_INVENTORY_SOURCE_NOT_QUALIFICATION",
-  "sourceRef": "codex/compiler-current-owner-inverse-20261109",
+  "sourceRef": "codex/compiler-native-inclusion-provenance-20261109",
   "reviewedIntegration": "1ffaffae266870a0b298ec8094433eeeb0dcb57e",
   "reviewedDesign": "047a0748b41bad3b2abde1c170f1a01c16f97687",
   "requiredCurrentSharedAncestor": "29d9edcbc4368be871688e9fdf35347676a7841c",
@@ -33,16 +33,17 @@
     ".github/ci/diagnostics/native-reference/application-inventory.mjs": "5743026bf5cd081b60ffd8e6e88f994111c5ab9399fe850089030a5309f7a592",
     ".github/ci/diagnostics/native-reference/application-jsdoc-binding-inverse.json": "7a613c5d1d9533cba7b9581b2be2d338e229561e5b9a0dcb6b39c41c8125d036",
     ".github/ci/diagnostics/native-reference/application-jsdoc-inverse.json": "c55d07a421dd4a8e8a00f19a8d992e627a760149dae4fb02d76da07332f0c96c",
-    ".github/ci/diagnostics/native-reference/application-mode-native.test.mjs": "40a0bcec224f320272047ba8edbc089899a5748eddfcb06013048a556c2b31ef",
+    ".github/ci/diagnostics/native-reference/application-mode-native.test.mjs": "ca186b93c89115417659d323e083df07109f5662f213b5cd95505f02b5d53159",
     ".github/ci/diagnostics/native-reference/application-mode.mjs": "b8dee0b836e1047d3574cf5ca30515c521096fef383741aa87d56202243957dd",
-    ".github/ci/diagnostics/native-reference/application-mode.test.mjs": "7e33dbcc135760b869f555eef9ea45a1039cea6d1680cf0917b4776b38921f0c",
+    ".github/ci/diagnostics/native-reference/application-mode.test.mjs": "f0518a1a32707beffc1af42972de9d7ee07689af3c14da905987e75c61e1b66a",
+    ".github/ci/diagnostics/native-reference/application-native-inclusion-inverse.json": "4dcdaec42bf2274273a022d9a80e50c8ad1016ab74c6b973162e3080b6816f62",
     ".github/ci/diagnostics/native-reference/application-original-attachment-inverse.json": "1a387510ae8ce606ba3ad6a56627e2833dbde96fa541e134bdaf005bbcc904bb",
     ".github/ci/diagnostics/native-reference/application-owner-inverse.json": "8584d652e8e62ae358a286adbc9535de49b3c2fc03d40d2b5fc17da0597f828c",
     ".github/ci/diagnostics/native-reference/application-parent-context-inverse.json": "176db10f6b9cb53a70aa5bf6f1c201317eb9cbd94882f902e1f966fff66ec816",
-    ".github/ci/diagnostics/native-reference/application-protocol.mjs": "a3daa34c48285dd3ea17573245730fdcdb9f03a79f462a77735eff059a056376",
+    ".github/ci/diagnostics/native-reference/application-protocol.mjs": "eb991dabbac51c0ab921ae0a16ed4423079affc8ff2255dcafc04742f29e3e9b",
     ".github/ci/diagnostics/native-reference/application-syntax.mjs": "b395b3020bd0228937d656e42889e213b1096d584d988b1728f752aca2fb820d",
-    ".github/ci/diagnostics/native-reference/application-worker.mjs": "84bd5be47b95871028d4468e1fd547877d3ef4002a57d1ff81baa5e381158de8",
-    ".github/ci/diagnostics/native-reference/application.test.mjs": "61b1823187eba5609f7ae4dd8ce5c26ef0425b92e5d164799284d53ee1897e09",
+    ".github/ci/diagnostics/native-reference/application-worker.mjs": "a1bf2d90f517c7767d8ee78516d7b824274ebc0c8ae8717fa8e7efcf9a0559ad",
+    ".github/ci/diagnostics/native-reference/application.test.mjs": "91f5bc50d4ac5e97731c91233024ca0289e18beb56b4ccad0246e6ee3b0c9893",
     ".github/ci/diagnostics/native-reference/config.mjs": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95",
     ".github/ci/diagnostics/native-reference/dependency-custody-inverse.json": "d32319321ced719bc1898cf6a26d6bc5225fe14d1806f2285cc44f06499a2fa2",
     ".github/ci/diagnostics/native-reference/fixture.mjs": "9542df648d16320338174d1f692fd243696142b2e91dfa7e95184acba0712c84",
@@ -472,5 +473,39 @@
     "metadataExecuted": false,
     "ordinaryCompilerQualified": false,
     "releaseAuthorized": false
+  },
+  "nativeInclusionObservation": {
+    "base": "8afae970e772d2610d677b2e98c60deee103ebde",
+    "wholePredecessorInverse": ".github/ci/diagnostics/native-reference/application-native-inclusion-inverse.json",
+    "currentComponentMembers": 149,
+    "priorAuthenticatedInventory": {
+      "run": 42552022335,
+      "authenticationSha256": "4c473a418d9c3ad84a767a601f54e92cba7f910677986058352034f25a5cebaf",
+      "historicalOnly": true
+    },
+    "toolchain": {
+      "node": "22.23.3",
+      "typescript": "5.9.3",
+      "apiSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+      "cliSha256": "e8f349eabd48486bdb2bf9dc1a00c89d58297270c54b745838879e2859194419"
+    },
+    "scope": "Native typed reason order and occurrence identities, read-only stored resolution iteration, native library/type/file/redirect metadata, and independently compared stock CLI file/family counts.",
+    "noCacheMutation": "Pinned mode-aware get writes its reverse-key map. Stored resolution readers use forEach only. No stock explanation formatter call from the API worker.",
+    "exactOrderedReasonTextCompared": false,
+    "cliOccurrencePairsAssigned": false,
+    "freshFirstLoadsObserved": false,
+    "nativeFitMeasured": false,
+    "graphQualified": false,
+    "ordinaryCompilerQualified": false,
+    "releaseAuthorized": false,
+    "staticRelativeSourceBinding": {
+      "scope": "JS_TS_LITERAL_RELATIVE_MODULE_AND_IMPORT_META_URL_SOURCE_BINDING_NOT_NATIVE_GRAPH",
+      "closedEligibleMembers": 149,
+      "edgeOccurrences": 224,
+      "selfHashExcluded": "docs/qualification/compiler-native-application-inventory-source-20261108.json",
+      "newlyPinnedPaths": [
+        ".github/ci/diagnostics/native-reference/application-native-inclusion-inverse.json"
+      ]
+    }
   }
 }

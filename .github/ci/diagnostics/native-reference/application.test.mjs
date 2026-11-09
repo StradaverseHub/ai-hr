@@ -6,7 +6,7 @@ import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {stableNativeInput,observeLoadedNativeInput,installedPackageContext,candidatePackageContext,withinInputRoot,inputSha} from './application-inputs.mjs';
-import {parseNativeExplanation,reconcileNativeMembership,compareAvailableContext,assertFixedInventoryConfig} from './application-protocol.mjs';
+import {parseNativeExplanation,reconcileNativeMembership,compareNativeInclusion,compareAvailableContext,assertFixedInventoryConfig} from './application-protocol.mjs';
 import {admitCompilerApplicationInventory,publishCompilerApplicationInventoryClock,readCompilerApplicationInventoryClock} from './admission.mjs';
 const scratch=work=>{const root=mkdtempSync(join(tmpdir(),'native-application-control-'));try{return work(root);}finally{rmSync(root,{recursive:true,force:true});}};
 test('canonical path containment rejects root, sibling-prefix and traversal ownership',()=>{
@@ -47,6 +47,19 @@ test('ordered membership disagreement and an absent original root refuse complet
 });
 test('complete membership never launders unresolved context or direct SCC observations into graph/plan qualification',()=>{
  const value=reconcileNativeMembership(explanation(),inventory());assert.equal(value.orderedInventoryComplete,true);for(const key of ['graphComplete','planFeasible','compilerQualified'])assert.equal(value[key],false);assert(value.gaps.some(row=>row.kind==='ambient-provider-open'));assert(value.gaps.some(row=>row.kind==='unknown-native-explanation-form'));assert(value.gaps.some(row=>row.kind==='native-reason-edge-reconciliation-open'));assert.deepEqual(value.observedImplementationComponents,[['/owned/a.ts','/owned/b.ts']]);
+ const cli=parseNativeExplanation('a.ts\n  Root file specified for compilation\nb.ts\n  Imported via "./b" from file a.ts\n  Imported via "./b" from file a.ts\n  File redirects to file a.ts\n','/owned');
+ const first={kind:3,from:0,index:0,name:'./b',pos:7,end:12,synthetic:false,mode:99,stored:0,storedTargetMatchesReason:true};
+ const native={kind:'PINNED_TS593_READ_ONLY_PROGRAM_INCLUSION',files:[{logicalPath:'/owned/a.ts',reasons:[{kind:0}]},{logicalPath:'/owned/b.ts',reasons:[first,{...first,index:1,pos:20,end:25}]}],stores:[{kind:'resolvedModule',file:0,name:'./b',mode:99,target:{loadedFile:1}}],automaticTypes:[]};
+ const api={...inventory(),nativeInclusion:native};const comparison=reconcileNativeMembership(cli,api).inclusionComparison;
+ assert(comparison.fileFamilyCountsAgree);assert.equal(comparison.nativeCounts[3],2);assert.equal(comparison.annotations,1);assert.equal(comparison.targetDisagreements,0);
+ for(const key of ['exactOrderedReasonTextCompared','cliOccurrencePairsAssigned','freshFirstLoadsObserved'])assert.equal(comparison[key],false);
+ const missing=structuredClone(native);missing.files[1].reasons.pop();assert.deepEqual(compareNativeInclusion(cli,missing).disagreements.map(row=>row.file),[1]);
+ const extra=structuredClone(native);extra.files[1].reasons.push({...first});assert.equal(compareNativeInclusion(cli,extra).fileFamilyCountsAgree,false);
+ for(const delta of [{kind:11},{mode:1},{from:8},{name:'wrong'},{stored:3},{synthetic:true},{pos:-1,end:-1}]){const invalid=structuredClone(native);Object.assign(invalid.files[1].reasons[0],delta);assert.throws(()=>compareNativeInclusion(cli,invalid));}
+ for(const loadedFile of [0,12]){const invalid=structuredClone(native);invalid.stores[0].target.loadedFile=loadedFile;assert.throws(()=>compareNativeInclusion(cli,invalid),/target linkage/);}
+ const unresolved=structuredClone(native);unresolved.stores[0].target=null;for(const row of unresolved.files[1].reasons)row.storedTargetMatchesReason=false;
+ assert.equal(compareNativeInclusion(cli,unresolved).targetDisagreements,2);
+ assert.throws(()=>reconcileNativeMembership(cli,{...inventory(),kind:'ACTUAL_UNMODIFIED_DEFAULT_APPLICATION_PROGRAM_METADATA'}),/observation required/);
 });
 test('physical aliases and changed available package/link context remain explicit gaps or refusals',()=>{
  const api=inventory();api.files[1].path=api.files[0].path;assert(reconcileNativeMembership(explanation(),api).gaps.some(row=>row.kind==='multiple-native-logical-aliases'));const before={kind:'STABLE_AVAILABLE_PACKAGE_CONTEXT_NOT_NATIVE_READ_TRACE',packages:[],aliases:[]};assert.throws(()=>compareAvailableContext(before,{...before,aliases:[{path:'changed'}]}));assert.throws(()=>compareAvailableContext(before,{...before,kind:'NATIVE_READ_TRACE'}));

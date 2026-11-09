@@ -2,12 +2,13 @@
  * or the five actual application API negatives. No host/AST/binder overrides. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,writeFileSync,readFileSync,readdirSync,rmSync,realpathSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,readdirSync,rmSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join,basename} from 'node:path';
+import {join,basename,dirname} from 'node:path';
 import {compilerOwner} from './worker.mjs';
 import {observeNativeUsageResolution} from './application-mode.mjs';
 import {walkNativeApplicationSyntax,captureNativeApplicationAttachments} from './application-syntax.mjs';
+import {observeNativeInclusion} from './application-worker.mjs';
 const fixtures=Object.freeze({
  'dep.ts':'export const value=1; export type Kind={ok:true};\n',
  'static.ts':'import {value} from "./dep"; export {value} from "./dep";\n',
@@ -48,6 +49,64 @@ function parentImage(ts,files){
   for(const key of row.keys){const before=row.descriptors[key],after=Object.getOwnPropertyDescriptor(object,key);assert(after);assert.equal(Object.hasOwn(after,'value'),Object.hasOwn(before,'value'));for(const field of ['value','writable','get','set','enumerable','configurable'])if(!Object.is(after[field],before[field]))assert.fail('Original native own descriptor changed: '+String(key)+'.'+field);}
  }};
  Object.defineProperty(unchanged,'hasNativeNode',{value:node=>nodes.has(node)});return unchanged;
+}
+function checkNativeInclusion(root){
+ const sources={
+  'package.json':'{"type":"module"}',
+  'carrier.ts':'/// <reference path="./path.d.ts" />\n/// <reference types="demo" />\n/// <reference lib="es2015.promise" />\nimport {kind} from "./dep.js"; export {kind} from "./dep.js";\nimport "./missing.js"; import "./outside-membership.js";\n',
+  'path.d.ts':'declare const fromPath: true;\n',
+  'dep.ts':'export const kind=1; export type Kind=1;\n',
+  'outside-membership.js':'export const value=1;\n',
+  'mode.ts':'import type {Kind} from "./dep.js" with {"resolution-mode":"import"};\nexport type Other=import("./dep.js",{with:{"resolution-mode":"require"}}).Kind;\n',
+  'types.d.ts':'/** @param input {import("./dep.js").Kind} */\nexport declare function use(input: import("./dep.js").Kind): void;\n',
+  'asset.json':'{"value":1}',
+  'node_modules/react/package.json':'{"name":"react","version":"1.0.0","type":"module","exports":{"./jsx-runtime":{"types":"./jsx-runtime.d.ts"}}}',
+  'node_modules/react/jsx-runtime.d.ts':'export declare function jsx(): unknown;\n',
+  'node_modules/@types/demo/package.json':'{"name":"@types/demo","version":"1.0.0","types":"index.d.ts"}',
+  'node_modules/@types/demo/index.d.ts':'declare const demo: true;\n',
+ };
+ for(const dir of ['one','two']){
+  sources[dir+'/entry.ts']='export type {Item} from "peer-package";\n';
+  sources[dir+'/node_modules/peer-package/package.json']='{"name":"peer-package","version":"1.0.0","type":"module","types":"index.d.ts","peerDependencies":{"actual-peer":"*"}}';
+  sources[dir+'/node_modules/peer-package/index.d.ts']='export interface Item { value: true }\n';
+  sources[dir+'/node_modules/actual-peer/package.json']='{"name":"actual-peer","version":"2.3.4"}';
+ }
+ const context=join(root,'inclusion');
+ for(const[name,body]of Object.entries(sources)){const path=join(context,name);mkdirSync(dirname(path),{recursive:true,mode:0o700});writeFileSync(path,body,{flag:'wx',mode:0o600});}
+ const owner=compilerOwner(process.cwd()),{ts}=owner,roots=['carrier.ts','mode.ts','types.d.ts','asset.json','one/entry.ts','two/entry.ts'].map(name=>join(context,name));
+ const options={target:ts.ScriptTarget.ES2017,module:ts.ModuleKind.NodeNext,moduleResolution:ts.ModuleResolutionKind.NodeNext,jsx:ts.JsxEmit.ReactJSX,isolatedModules:true,resolveJsonModule:true,allowJs:false,lib:['lib.es5.d.ts'],typeRoots:[join(context,'node_modules/@types')],noEmit:true};
+ const program=ts.createProgram({rootNames:roots,options}),unchanged=parentImage(ts,program.getSourceFiles());
+ const docs=references(ts,program.getSourceFile(roots[2]));assert.deepEqual(docs.map(row=>row.literal.text),['./dep.js','./dep.js']);
+ const syntheticImages=[roots[0],roots[3]].flatMap(path=>{
+  const literal=program.getSourceFile(path).imports.find(ref=>ref.text==='react/jsx-runtime');assert(literal?.parent);
+  return[literal,literal.parent].map(node=>[node,Object.getOwnPropertyDescriptors(node)]);
+ });
+ const native=observeNativeInclusion(owner,program,()=>{}),fileIndex=name=>{const index=native.files.findIndex(row=>row.logicalPath===join(context,name));assert(index>=0,name);return index;};
+ const reasons=(name,kind)=>native.files[fileIndex(name)].reasons.filter(row=>row.kind===kind);
+ const dependency=reasons('dep.ts',3),carrier=fileIndex('carrier.ts'),same=dependency.filter(row=>row.from===carrier);
+ assert.equal(same.length,2);assert.notEqual(same[0].pos,same[1].pos);assert.equal(same[0].stored,same[1].stored);
+ assert(same.every(row=>row.name==='./dep.js'&&!row.synthetic&&row.storedTargetMatchesReason));
+ const modes=native.stores.filter(row=>row.file===fileIndex('mode.ts')&&row.name==='./dep.js').map(row=>row.mode).sort((a,b)=>a-b);
+ assert.deepEqual(modes,[ts.ModuleKind.CommonJS,ts.ModuleKind.ESNext]);
+ const documented=dependency.filter(row=>row.from===fileIndex('types.d.ts'));
+ assert.equal(documented.length,1);assert.equal(documented[0].pos,docs[1].literal.pos);assert.notEqual(documented[0].pos,docs[0].literal.pos);
+ assert.deepEqual(native.stores.filter(row=>row.file===carrier&&row.name==='./missing.js').map(row=>row.target),[null]);
+ const outside=native.stores.find(row=>row.file===carrier&&row.name==='./outside-membership.js').target;
+ assert.deepEqual([outside.status,outside.loadedFile,outside.logicalPath],['RESOLVED_NOT_LOADED',null,join(context,'outside-membership.js')]);
+ const jsx=reasons('node_modules/react/jsx-runtime.d.ts',3);
+ for(const name of ['carrier.ts','asset.json']){const rows=jsx.filter(row=>row.from===fileIndex(name));assert.equal(rows.length,1);assert.deepEqual([rows[0].name,rows[0].synthetic,rows[0].pos,rows[0].end,rows[0].storedTargetMatchesReason],['react/jsx-runtime',true,-1,-1,true]);}
+ assert(reasons('path.d.ts',4).some(row=>row.from===carrier&&row.name==='./path.d.ts'&&row.selectedTargetMatchesReason));
+ assert(reasons('node_modules/@types/demo/index.d.ts',5).some(row=>row.from===carrier&&row.name==='demo'&&row.storedTargetMatchesReason));
+ assert.equal(native.automaticOrigin,'IMPLICIT');assert.deepEqual(native.automaticTypes.map(row=>row.name),['demo']);
+ assert(reasons('node_modules/@types/demo/index.d.ts',8).some(row=>row.automatic===0&&row.storedTargetMatchesReason));
+ const lib=native.files.find(row=>basename(row.logicalPath)==='lib.es2015.promise.d.ts');assert(lib?.reasons.some(row=>row.kind===7&&row.from===carrier&&row.name==='es2015.promise'&&row.selectedTargetMatchesReason));
+ const first=fileIndex('one/node_modules/peer-package/index.d.ts'),second=fileIndex('two/node_modules/peer-package/index.d.ts');
+ assert.equal(native.files[first].redirect,null);assert.equal(native.files[second].redirect?.loadedFile,first);
+ assert.equal(native.files[second].packageScope.type,'module');assert.equal(native.files[second].impliedEmitFormat,ts.ModuleKind.ESNext);
+ assert.deepEqual(native.stores.filter(row=>row.name==='peer-package').map(row=>row.target.packageId.peerDependencies),['+actual-peer@2.3.4','+actual-peer@2.3.4']);
+ for(const[node,before]of syntheticImages)assert.deepEqual(Object.getOwnPropertyDescriptors(node),before);
+ unchanged();assert.strictEqual(program.getCompilerOptions(),options);assert.deepEqual(program.getRootFileNames(),roots);
+ for(const[name,body]of Object.entries(sources))assert.equal(readFileSync(join(context,name),'utf8'),body);
 }
 test('actual unchanged default Program retains all syntax forms while unparented TS require remains an explicit unresolved-context observation',()=>owned(root=>{
  const{ts}=compilerOwner(process.cwd()),options={target:ts.ScriptTarget.ES2017,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.Bundler,allowJs:true,noEmit:true};
@@ -139,4 +198,5 @@ test('the genuine default Program retains complete original attachment closure a
  });
  assert.deepEqual(docs,expected);assert(binary>=6);assert.equal(jsx,1);assert.equal(template,1);assert.deepEqual(references.map(([kind,literal])=>[kind,literal.text]),[['jsdoc-import','./dep'],['import-type','./dep']]);for(const[,literal]of references)assert(unchanged.hasNativeNode(literal));
  integrity.verify();unchanged();assert.strictEqual(program.getCompilerOptions(),options);assert.deepEqual(program.getRootFileNames(),roots);for(const[name,body]of Object.entries(sources))assert.equal(readFileSync(join(root,name),'utf8'),body);
+ checkNativeInclusion(root);
 }));

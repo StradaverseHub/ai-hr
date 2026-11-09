@@ -1,10 +1,10 @@
-/** Actual candidate default Program, public AST/resolvers, metadata ONLY.
- * No custom host, semantic diagnostics, emission, options override or cache API. */
+/** Actual candidate default Program metadata. No custom host, semantic
+ * diagnostics, emission, options override or native cache mutations. */
 import assert from 'node:assert/strict';
 import {writeFileSync,realpathSync} from 'node:fs';
-import {join,resolve,dirname} from 'node:path';
+import {join,resolve,dirname,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {compilerOwner,parsedConfig} from './worker.mjs';
+import {compilerOwner,parsedConfig,API_SHA256,CLI_SHA256} from './worker.mjs';
 import {admitCompilerApplicationInventory,readCompilerApplicationInventoryClock} from './admission.mjs';
 import {observeLoadedNativeInput,stableNativeInput,withinInputRoot,APPLICATION_INPUT_LIMITS} from './application-inputs.mjs';
 import {assertFixedInventoryConfig} from './application-protocol.mjs';
@@ -12,7 +12,90 @@ import {REFERENCE_LIMITS} from './graph.mjs';
 import {observeNativeUsageResolution} from './application-mode.mjs';
 import {walkNativeApplicationSyntax,captureNativeApplicationAttachments} from './application-syntax.mjs';
 
-function observeNativeApplication(ts,source,config,check){
+const storedMode=mode=>{assert(mode===undefined||mode===1||mode===99,'Unexpected TS5.9.3 resolution mode');return mode??null;};
+const checkedIndex=(array,index)=>{assert(Array.isArray(array)&&Number.isSafeInteger(index)&&index>=0&&index<array.length&&Object.hasOwn(array,index),'Native reason index outside original roster');return array[index];};
+
+// The pinned mode-aware cache's get() writes its reverse-key map. Only its
+// native forEach is read-only. The stock formatter also calls that getter, so
+// the stock CLI explanation remains a separate observation from this Program.
+export function observeNativeInclusion(owner,program,check){
+ assert.equal(owner.version,'5.9.3');assert.equal(owner.apiSha256,API_SHA256);assert.equal(owner.cliSha256,CLI_SHA256);
+ const loaded=program.getSourceFiles(),options=program.getCompilerOptions(),roots=program.getRootFileNames(),fileIndices=new Map(),byPath=new Map();
+ assert(loaded.length>0&&loaded.length<=APPLICATION_INPUT_LIMITS.files);
+ let entries=0;const admit=()=>{check();assert(++entries<=APPLICATION_INPUT_LIMITS.metadataEntries,'Native inclusion metadata bound');};
+ for(let index=0;index<loaded.length;index++){
+  admit();const file=loaded[index];assert(isAbsolute(file.path)&&!byPath.has(file.path)&&!fileIndices.has(file));
+  byPath.set(file.path,index);fileIndices.set(file,index);
+ }
+ const loadedIndex=file=>fileIndices.get(file)??null;
+ const positiveTargets=new Map();
+ const resolved=value=>{
+  if(!value)return null;
+  const logicalPath=value.resolvedFileName;assert(isAbsolute(logicalPath));
+  if(!positiveTargets.has(logicalPath))positiveTargets.set(logicalPath,loadedIndex(program.getSourceFile(logicalPath)));
+  const loadedFile=positiveTargets.get(logicalPath),id=value.packageId;
+  return{logicalPath,loadedFile,status:loadedFile===null?'RESOLVED_NOT_LOADED':'RESOLVED_LOADED',originalPath:value.originalPath??null,extension:value.extension??null,
+   packageId:id?{name:id.name,subModuleName:id.subModuleName,version:id.version,peerDependencies:id.peerDependencies??null}:null,
+   isExternalLibraryImport:value.isExternalLibraryImport??null,resolvedUsingTsExtension:value.resolvedUsingTsExtension??null};
+ };
+ const stores=[],moduleKeys=new Map(),typeKeys=new Map();
+ const key=(file,name,mode)=>JSON.stringify([file,name,mode]);
+ const addStored=(keys,field)=>(result,name,mode,path)=>{
+  admit();const file=byPath.get(path),observedMode=storedMode(mode),identity=key(file,name,observedMode);
+  assert(file!==undefined&&typeof name==='string'&&result&&!keys.has(identity),'Unowned or duplicate native stored-resolution key');
+  keys.set(identity,stores.length);stores.push({kind:field,file,name,mode:observedMode,target:resolved(result[field])});
+ };
+ program.forEachResolvedModule(addStored(moduleKeys,'resolvedModule'));
+ program.forEachResolvedTypeReferenceDirective(addStored(typeKeys,'resolvedTypeReferenceDirective'));
+ const automaticNames=program.getAutomaticTypeDirectiveNames(),automaticTargets=new Map();
+ program.getAutomaticTypeDirectiveResolutions().forEach((result,name,mode)=>{
+  admit();assert(mode===undefined&&result&&!automaticTargets.has(name));automaticTargets.set(name,resolved(result.resolvedTypeReferenceDirective));
+ });
+ const automaticTypes=automaticNames.map(name=>{admit();assert(automaticTargets.has(name));return{name,target:automaticTargets.get(name)};});
+ const automaticIndices=new Map(automaticNames.map((name,index)=>[name,index]));
+ assert.equal(automaticTargets.size,automaticIndices.size,'Native automatic type roster and store disagree');
+ const inclusions=program.getFileIncludeReasons();
+ for(const [path,rows]of inclusions){admit();assert(byPath.has(path)&&Array.isArray(rows)&&rows.length>0,'Unowned native inclusion roster');}
+ const files=loaded.map((file,target)=>{
+  check();const reasons=inclusions.get(file.path);assert(reasons?.length,'Loaded file lacks native inclusion reasons');
+  const sourceRows=reasons.map(reason=>{
+   admit();assert(reason&&Number.isSafeInteger(reason.kind)&&reason.kind>=0&&reason.kind<=8,'Unexpected TS5.9.3 file inclusion kind');
+   const{kind,index}=reason;
+   if(kind===0)return{kind,index,root:checkedIndex(roots,index)};
+   if(kind===1||kind===2){const ref=checkedIndex(program.getResolvedProjectReferences(),index);assert(ref?.sourceFile);return{kind,index,project:ref.sourceFile.fileName};}
+   if(kind===6)return{kind,index:index??null,library:index===undefined?null:checkedIndex(options.lib,index)};
+   if(kind===8){const automatic=automaticIndices.get(reason.typeReference);assert(automatic!==undefined);return{kind,automatic,storedTargetMatchesReason:automaticTypes[automatic].target?.loadedFile===target};}
+   const from=byPath.get(reason.file);assert(from!==undefined);const original=loaded[from];assert.strictEqual(program.getSourceFileByPath(reason.file),original);
+   const array=kind===3?original.imports:kind===4?original.referencedFiles:kind===5?original.typeReferenceDirectives:original.libReferenceDirectives;
+   const ref=checkedIndex(array,index),{pos,end}=ref,synthetic=kind===3&&pos===-1&&end===-1;
+   assert(synthetic||Number.isSafeInteger(pos)&&Number.isSafeInteger(end)&&pos>=0&&pos<end&&end<=original.text.length,'Unexpected native reference position');
+   const name=kind===3?ref.text:ref.fileName;assert(typeof name==='string');
+   const row={kind,from,index,name,pos,end,synthetic};
+   if(kind===3||kind===5){
+    if(kind===3){assert(owner.ts.isStringLiteralLike(ref)&&ref.parent);row.literalKind=ref.kind;row.parentKind=ref.parent.kind;}
+    const mode=kind===3?program.getModeForResolutionAtIndex(original,index):ref.resolutionMode||program.getDefaultResolutionModeForFile(original);
+    const observedMode=storedMode(mode),stored=(kind===3?moduleKeys:typeKeys).get(key(from,name,observedMode));
+    assert(stored!==undefined,'Indexed native reference lacks its mode-aware stored key');
+    return{...row,mode:observedMode,stored,storedTargetMatchesReason:stores[stored].target?.loadedFile===target};
+   }
+   const selected=kind===4?program.getSourceFileFromReference(original,ref):program.getLibFileFromReference(ref);
+   return{...row,selectedLoadedFile:loadedIndex(selected),selectedTargetMatchesReason:selected===file};
+  });
+  const redirect=file.redirectInfo?.redirectTarget,packageScope=file.packageJsonScope;
+  const packageType=packageScope?.contents.packageJsonContent.type;
+  assert(isAbsolute(file.resolvedPath));
+  return{logicalPath:resolve(file.fileName),canonicalPath:file.path,resolvedPath:file.resolvedPath,originalFileName:file.originalFileName,
+   redirect:redirect?{loadedFile:loadedIndex(redirect),logicalPath:resolve(redirect.fileName),canonicalPath:redirect.path}:null,
+   impliedNodeFormat:storedMode(file.impliedNodeFormat),impliedEmitFormat:storedMode(program.getImpliedNodeFormatForEmit(file)),
+   packageScope:packageScope?{directory:packageScope.packageDirectory,type:packageType===undefined?'MISSING':packageType==='module'||packageType==='commonjs'?packageType:'OTHER'}:null,
+   reasons:sourceRows};
+ });
+ assert.strictEqual(program.getSourceFiles(),loaded);assert.strictEqual(program.getCompilerOptions(),options);check();
+ return{kind:'PINNED_TS593_READ_ONLY_PROGRAM_INCLUSION',files,stores,automaticOrigin:options.types===undefined?'IMPLICIT':'COMPILER_OPTIONS',automaticTypes};
+}
+
+function observeNativeApplication(owner,source,config,check){
+ const{ts}=owner;
  assertFixedInventoryConfig(source,config);check();const dependencyRoot=join(source,'node_modules');assert.equal(realpathSync(dependencyRoot),dependencyRoot);
  const configBefore=stableNativeInput(config,{root:source,check}).record,parsed=parsedConfig(ts,config);
  // Exactly the original options, roots and reference order. No host property.
@@ -63,8 +146,9 @@ function observeNativeApplication(ts,source,config,check){
  // Complete parsed config provenance is retained; parsed options are evidence,
  // never serialized into a different compiler configuration.
  const buildConfig=join(source,'tsconfig.build.json'),buildBefore=stableNativeInput(buildConfig,{root:source,check}).record,buildParsed=parsedConfig(ts,buildConfig);assert.deepEqual(stableNativeInput(buildConfig,{root:source,check}).record,buildBefore);
+ const nativeInclusion=observeNativeInclusion(owner,program,check);
  assert.deepEqual(stableNativeInput(config,{root:source,check}).record,configBefore);check();attachmentIntegrity.verify();check();
- return{kind:'ACTUAL_UNMODIFIED_DEFAULT_APPLICATION_PROGRAM_METADATA',config,configSeal:configBefore,roots:nativeRoots,parsedRoots:parsed.fileNames,options:parsed.options,projectReferences:parsed.projectReferences??[],files,observations,ambient,globals,automaticTypes,gaps,
+ return{kind:'ACTUAL_UNMODIFIED_DEFAULT_APPLICATION_PROGRAM_METADATA',config,configSeal:configBefore,roots:nativeRoots,parsedRoots:parsed.fileNames,options:parsed.options,projectReferences:parsed.projectReferences??[],files,observations,ambient,globals,automaticTypes,gaps,nativeInclusion,
   buildConfiguration:{config:buildConfig,configSeal:buildBefore,roots:buildParsed.fileNames,options:buildParsed.options,projectReferences:buildParsed.projectReferences??[],freshProgramObserved:false},
   rawLoadedInputBytes:bytes,semanticRequested:false,diagnosticsRequested:false,emissionRequested:false,customHost:false,originalOptionsUnmodified:true,
   resolutionMethod:'PINNED_PARSER_OWN_DATA TS5.9.3 attachment metadata with complete original attachment identity/descriptor integrity; unmodified public createProgram plus independent public resolveModuleName/resolveTypeReferenceDirective(ts.sys); independent observations are not native cache provenance'};
@@ -72,7 +156,7 @@ function observeNativeApplication(ts,source,config,check){
 export function nativeApplicationWorker(){
  assert.equal(process.argv.length,2);const proof=admitCompilerApplicationInventory('inventory-worker');assert(proof.sourceHashes['.github/ci/diagnostics/native-reference/application-syntax.mjs'],'Complete original native syntax source owner required');const clock=readCompilerApplicationInventoryClock(proof),started=process.hrtime.bigint();
  const check=()=>{assert(process.hrtime.bigint()-BigInt(clock.startNs)<BigInt(718000000000),'Aggregate inventory frontier closed');assert(process.hrtime.bigint()-started<BigInt(APPLICATION_INPUT_LIMITS.phaseMs)*1000000n,'Native metadata phase cap');};
- const config=join(proof.source,'tsconfig.json'),owner=compilerOwner(proof.source),value=observeNativeApplication(owner.ts,proof.source,config,check);
+ const config=join(proof.source,'tsconfig.json'),owner=compilerOwner(proof.source),value=observeNativeApplication(owner,proof.source,config,check);
  const output=join(proof.destination,'compiler-native-application-inventory','original-api.json');check();const raw=JSON.stringify({...value,typescript:owner.version,apiSha256:owner.apiSha256,ordinaryCompilerQualified:false,releaseAuthorized:false},null,2)+'\n';assert(Buffer.byteLength(raw)<=REFERENCE_LIMITS.fileBytes);assert.equal(compilerOwner(proof.source).apiSha256,owner.apiSha256);writeFileSync(output,raw,{flag:'wx',mode:0o600});check();
 }
 

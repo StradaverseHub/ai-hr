@@ -26,11 +26,12 @@ test('native API errors and explicit modes retain identity instead of being swal
 test('whole parent-context inverse retains all three original bodies and current executable source bindings',()=>{
  const inverse=JSON.parse(readFileSync(new URL('./application-parent-context-inverse.json',import.meta.url))),hash=bytes=>createHash('sha256').update(bytes).digest('hex');assert.equal(inverse.base,'267dcb7b8bf8866268734944aa8af2adaa2d6696');
  assert.deepEqual(inverse.files.map(row=>row.path).sort(),['.github/ci/diagnostics/native-reference/application-worker.mjs','docs/qualification/compiler-native-application-inventory-source-20261108.json','test/compiler-native-application-controls.test.ts'].sort());
- // Restore the owner rebind, the stock-control rebind, then the original attachment layers.
+ // Restore native inclusion before the owner rebind, stock-control rebind and original attachment layers.
  // The current manifest is the only deliberate self-hash exclusion; its full
  // parent preimages and every current component pin are still checked.
  const manifest='docs/qualification/compiler-native-application-inventory-source-20261108.json',restored=new Map();
  for(const[file,base,paths]of [
+  ['application-native-inclusion-inverse.json','8afae970e772d2610d677b2e98c60deee103ebde',['.github/ci/diagnostics/native-reference/application-worker.mjs','.github/ci/diagnostics/native-reference/application-protocol.mjs','.github/ci/diagnostics/native-reference/application-mode-native.test.mjs','.github/ci/diagnostics/native-reference/application.test.mjs','.github/ci/diagnostics/native-reference/application-mode.test.mjs',manifest]],
   ['application-current-owner-inverse.json','b1ce2b5cd0654d07baeb40826a5b5fcda74e437b',['.github/ci/diagnostics/native-reference/application.test.mjs','.github/ci/diagnostics/native-reference/application-mode.test.mjs',manifest]],
   ['application-current-control-inverse.json','0be622808b1b7a07889fdf4ef2f273e43c740c38',['.github/ci/diagnostics/native-reference/application-mode.test.mjs',manifest]],
   ['application-original-attachment-inverse.json','54b8b1cf55660e15391a454c21c2d3b2ebc3b043',['.github/ci/diagnostics/native-reference/application-syntax.mjs','.github/ci/diagnostics/native-reference/application-worker.mjs','.github/ci/diagnostics/native-reference/application-mode-native.test.mjs','.github/ci/diagnostics/native-reference/application.test.mjs','.github/ci/diagnostics/native-reference/application-mode.test.mjs','test/compiler-native-application-controls.test.ts','test/compiler-native-usage-mode.test.ts',manifest]],
@@ -38,6 +39,15 @@ test('whole parent-context inverse retains all three original bodies and current
   ['application-jsdoc-inverse.json','a1b866f070e2098682813d3fb6c6e60b17fcd9c8',['.github/ci/diagnostics/native-reference/application-worker.mjs','.github/ci/diagnostics/native-reference/application-mode-native.test.mjs','test/compiler-native-usage-mode.test.ts',manifest]],
  ]){
   const layer=JSON.parse(readFileSync(new URL('./'+file,import.meta.url)));assert.equal(layer.base,base);assert.deepEqual(Object.keys(layer.files).sort(),paths.sort());
+  if(file==='application-native-inclusion-inverse.json'){
+   assert.equal(layer.kind,'WHOLE_PARENT_NATIVE_INCLUSION_SOURCE_INVERSE_NOT_QUALIFICATION');
+   assert.deepEqual(layer.addedPaths,['.github/ci/diagnostics/native-reference/application-native-inclusion-inverse.json']);
+   for(const[path,row]of Object.entries(layer.files)){
+    const original=Buffer.from(row.originalBase64,'base64');assert.equal(original.toString('base64'),row.originalBase64,path);
+    assert.equal(original.length,row.originalBytes,path);assert.equal(createHash('sha1').update('blob '+original.length+'\0').update(original).digest('hex'),row.originalGitBlob,path);
+    assert.equal(row.currentSha256===null,path===manifest,path);
+   }
+  }
   for(const[path,row]of Object.entries(layer.files)){const current=restored.has(path)?restored.get(path):readFileSync(new URL('../../../../'+path,import.meta.url));if(row.currentSha256)assert.equal(hash(current),row.currentSha256,path);else assert.equal(path,manifest);const original=Buffer.from(row.originalBase64,'base64');assert.equal(hash(original),row.originalSha256,path);restored.set(path,original);}
  }
  for(const row of inverse.files){assert.equal(hash(Buffer.from(row.originalBase64,'base64')),row.originalSha256);if(row.currentSha256)assert.equal(hash(restored.has(row.path)?restored.get(row.path):readFileSync(new URL('../../../../'+row.path,import.meta.url))),row.currentSha256);else assert.equal(row.path,'docs/qualification/compiler-native-application-inventory-source-20261108.json');}
