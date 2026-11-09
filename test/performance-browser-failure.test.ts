@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {browserFailureLocation,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from '../scripts/performance/browser-failure';
+import {browserFailureLocation,browserPreflightClickObstruction,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from '../scripts/performance/browser-failure';
 it('locates driver assertions without copying sensitive messages, stack paths or arbitrary error codes',()=>{
  const secret='fixture-password-and-session-value';
  const result=browserFailureLocation({code:'ERR_ASSERTION',message:secret,stack:'Error: '+secret+'\n at visit (file:///private/'+secret+'/system-load.mjs:241:17)'});
@@ -36,4 +36,19 @@ it('keeps closed filenames, bounded numbers and unknown error codes out of owner
   expect(browserFailureLocation({code:secret,stack:'Error: '+secret+'\n at visit (file:///private/'+frame+')'})).toEqual({errorCode:null,sourceLine:null,sourceColumn:null});
  }
  expect(browserFailureLocation({code:secret,stack:'Error: '+secret+'\n at visit (file:///private/system-load-owner.mjs:999999:999999)\n at later (file:///private/system-load-owner.mjs:3:4)'})).toEqual({errorCode:null,sourceLine:999999,sourceColumn:999999,sourceFile:'system-load-owner.mjs'});
+});
+
+it('projects only closed click timeout reasons without exposing locator or obstruction details',()=>{
+ const secret='fixture-session-and-dom-value';
+ const timeout=(detail:string)=>({name:'TimeoutError',message:'locator.click: Timeout 125.5ms exceeded.\nCall log:\n  - waiting for '+secret+'\n  - '+detail});
+ expect(browserPreflightClickObstruction(timeout('<div>'+secret+'</div> intercepts pointer events'))).toBe('pointer-intercepted');
+ expect(browserPreflightClickObstruction(timeout('element is outside of the viewport'))).toBe('outside-viewport');
+ expect(browserPreflightClickObstruction(timeout('element is not stable'))).toBe('element-unstable');
+ expect(browserPreflightClickObstruction(timeout('element is not visible'))).toBe('element-invisible');
+ expect(browserPreflightClickObstruction(timeout('element is not enabled'))).toBe('element-disabled');
+ expect(browserPreflightClickObstruction(timeout('element was detached from the DOM, retrying'))).toBe('element-detached');
+ expect(browserPreflightClickObstruction(timeout(secret))).toBe('click-timeout');
+ expect(browserPreflightClickObstruction({name:'TimeoutError',message:'locator.waitFor: Timeout 125ms exceeded. '+secret})).toBeNull();
+ expect(browserPreflightClickObstruction({...timeout(secret),name:'Error'})).toBeNull();
+ expect(browserPreflightClickObstruction(null)).toBeNull();
 });

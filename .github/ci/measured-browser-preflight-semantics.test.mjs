@@ -80,7 +80,7 @@ function model() {
       },
       postgresWaitLogCoverage: { kind: 'development-heavyweight-lock-log', thresholdMs: 100, retainedFailures: 0, databaseBackendsSettled: true },
     },
-    fixture: { fictional: true, fixtureVolumeKind: 'workflow-preflight-only', tenants: 2, companies: 10, users: 500,
+    fixture: { fictional: true, fixtureVolumeKind: 'workflow-preflight-only', tenants: 2, companies: 10, users: 500, returningUsers: 500,
       claimsPerEmployee: 200, attendanceDays: 180, roles: { ...roles }, counts: { claims: 100000, attendance: 90000, payslips: 500 },
       attendanceBounds: { current_rows: 500, before_hire: 0 } },
     actors: { fictional: true, globalPopulationAsserted: false, trafficActors: 500, tenants: 2, companies: 10,
@@ -140,6 +140,8 @@ test('refuses unknown, late or positive sampled and owned-log results separately
 test('requires exact fixture scope, observed clean workers and real settled Page scope', async () => {
   await refuses([
     e => { e.fixture.counts.attendance = 89999; },
+    e => { e.fixture.returningUsers = 499; },
+    e => { delete e.fixture.returningUsers; },
     e => { e.actors.nativeGrants = 543; },
     e => { e.workerFailures = null; },
     e => { e.measurement.legacyEvidence['server-native-failures.json'] = 'absent'; },

@@ -22,3 +22,20 @@ export function browserPreflightErrorFingerprint(message:string){
  if(message.startsWith('An error occurred in the Server Components render.'))return 'next-server-component-render';
  return 'other';
 }
+
+
+/** Classify a real Playwright click timeout without emitting its actionability log. */
+export function browserPreflightClickObstruction(error:unknown){
+ const value=error as {name?:unknown;message?:unknown}|null;
+ if(value?.name!=='TimeoutError'||typeof value.message!=='string')return null;
+ const message=value.message.slice(0,16384);
+ if(!/^locator\.click: Timeout [0-9]+(?:\.[0-9]+)?ms exceeded\./.test(message))return null;
+ const callLog=message.split('\nCall log:\n',2)[1]??'';
+ if(callLog.includes('intercepts pointer events'))return 'pointer-intercepted';
+ if(callLog.includes('element is outside of the viewport'))return 'outside-viewport';
+ if(callLog.includes('element is not stable'))return 'element-unstable';
+ if(callLog.includes('element is not visible'))return 'element-invisible';
+ if(callLog.includes('element is not enabled'))return 'element-disabled';
+ if(callLog.includes('element was detached from the DOM'))return 'element-detached';
+ return 'click-timeout';
+}

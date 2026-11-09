@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHomeHttpReplay} from './home-http.mjs';
-import {browserFailureLocation,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from './browser-failure.ts';
+import {browserFailureLocation,browserPreflightClickObstruction,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
@@ -1046,7 +1046,8 @@ async function main(){
     if(url.origin===base)path=url.pathname;
    }
    report.preflightBrowserStageFailure??={stage,role:user?.role??null,path,
-    errorType:driverErrorFact(reason).kind,...browserPreflightFailureLocation(reason)};
+    errorType:driverErrorFact(reason).kind,...browserPreflightFailureLocation(reason),
+    clickObstruction:browserPreflightClickObstruction(reason)};
   });
  }
  // Exercise real password/MFA before any capacity test; these results are never loaded proof.

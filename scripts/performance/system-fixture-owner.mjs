@@ -42,6 +42,8 @@ const attendanceDays=Number(process.env.PERF_ATTENDANCE_DAYS||180);assert([180,2
 const claimsPerEmployee=process.env.PERF_HTTP_SUITE==='workflow-preflight'?200:2000;
 // Retained attendance must not predate employment; preserve the old 180-day fixture's hire date.
 const hiredOn=attendanceDays===180?'2025-01-01':new Date(Date.parse(today+'T12:00:00Z')-(attendanceDays+1)*86400000).toISOString().slice(0,10);
+// These established fictional workers exercise returning navigation, not first-use tour enrollment.
+const onboardedAt=new Date(hiredOn+'T00:00:00+08:00');
 const hash=await passwordHash(password),users=[],tenants=[];
 const operationTimings={hire:[],identityAndSessionProvisioning:[],historyAndCompensationSeed:[],payrollGenerate50:[],payrollClose50:[]};
 const timingSummary=values=>{const rows=[...values].sort((a,b)=>a-b);return{samples:rows.length,totalMs:rows.reduce((sum,value)=>sum+value,0),p50Ms:rows[Math.ceil(rows.length*.5)-1]??null,p95Ms:rows[Math.ceil(rows.length*.95)-1]??null,maxMs:rows.at(-1)??null};};
@@ -124,7 +126,7 @@ try{
    const hireStarted=performance.now();const hired=await hireEmployee(ctx,{person:{fullName:name,primaryEmail:email},companyId:company.companyId,departmentId:company.departmentId,employmentType:'full_time',hiredOn,employeeCode:'PERF'+String(index).padStart(4,'0')});
    operationTimings.hire.push(performance.now()-hireStarted);const identityStarted=performance.now();
    const userId=randomUUID(),subject=randomUUID(),version=randomUUID(),secret=generateSecret(),issuer=internalIssuer(b.tenantId);
-   await owner.db.insert(s.appUser).values({id:userId,tenantId:b.tenantId,personId:hired.personId,workosUserId:'perf_'+userId});
+   await owner.db.insert(s.appUser).values({id:userId,tenantId:b.tenantId,personId:hired.personId,workosUserId:'perf_'+userId,onboardedAt});
    const grants=[{tenantId:b.tenantId,appUserId:userId,role:'employee',companyId:company.companyId}];
    if(role==='manager')grants.push({tenantId:b.tenantId,appUserId:userId,role:'manager',companyId:company.companyId});
    if(role==='companyHR'||role==='groupHR')grants.push({tenantId:b.tenantId,appUserId:userId,role:'hr_admin',companyId:role==='groupHR'?null:company.companyId});
@@ -297,6 +299,7 @@ try{
  // truncation can NEVER turn an extra/duplicate grant set into a matching expected set.
  const actorNative=await owner.client`select wanted.user_id::text as requested_user_id,
   u.id::text as user_id,u.tenant_id::text as user_tenant_id,u.person_id::text as user_person_id,
+  u.onboarded_at=${onboardedAt}::timestamptz as returning_user,
   e.id::text as employment_id,e.tenant_id::text as employment_tenant_id,e.person_id::text as employment_person_id,e.company_id::text as employment_company_id,e.employee_code,
   p.id::text as person_id,p.tenant_id::text as person_tenant_id,p.full_name,
   c.id::text as company_id,c.tenant_id::text as company_tenant_id,
@@ -319,6 +322,8 @@ try{
   assert(Array.isArray(row.grants)&&JSON.stringify(row.grants)===JSON.stringify(expected.grants),'Native traffic actor grants differ');
  }
  assert(actorNative.reduce((total,actor)=>total+actor.grants.length,0)===544,'Native traffic actor grant inventory differs');
+ const returningUsers=actorNative.filter(actor=>actor.returning_user===true).length;
+ assert(returningUsers===500,'Native returning traffic actor inventory differs');
  // Boolean assertions above never render private row/ID values. Public evidence is aggregates only.
  writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'actor-tenancy.json'),JSON.stringify({fictional:true,trafficActors:500,tenants:2,companies:10,actorsPerTenant:250,actorsPerCompany:50,
   roles:{employee:460,manager:20,companyHR:18,groupHR:2},nativeSelectedRows:actorNative.length,nativeGrants:544,globalPopulationAsserted:false},null,2));
@@ -328,7 +333,7 @@ try{
  await fixturePhase(null,'assistant-saved-history',()=>execFileSync(process.execPath,['--import','tsx','scripts/performance/assistant-history-seed.mjs'],{stdio:'inherit',timeout:120000}));
  const seededHistory=JSON.parse(readFileSync(fixturePath,'utf8')).assistantHistory;
  assert.equal(Object.keys(seededHistory).length,4);assert(Object.values(seededHistory).every(history=>history.rowsVerified===true));
- writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,operationTimingScope:'sequential fictional native fixture commands, not HTTP concurrency',operationTimings:Object.fromEntries(Object.entries(operationTimings).map(([key,values])=>[key,timingSummary(values)])),tenants:2,companies:10,users:500,claimsPerEmployee,fixtureVolumeKind:claimsPerEmployee===2000?'full-load':'workflow-preflight-only',historicalMonth,publicationMonth,monthlyBasicSalary:5000,fixtureCommandContext:'native database-resolved entitlements',payslipFixture:'500 native-generated/closed historical slips; current processing drafts start empty',attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,notificationFixture:'Enabled in-app projection; no external email delivery worker or relay',aiCentreFixture:'Assistant module and native user grants active; four representative owned sealed histories,640retained exchanges; no provider created or prompt submitted',assistantHistoryFixture:{actors:4,tenants:2,threadsPerActor:20,exchangesPerActor:160,rowsVerified:true,scope:'representative browser actors, notall500users'},explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
+ writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,operationTimingScope:'sequential fictional native fixture commands, not HTTP concurrency',operationTimings:Object.fromEntries(Object.entries(operationTimings).map(([key,values])=>[key,timingSummary(values)])),tenants:2,companies:10,users:500,returningUsers,claimsPerEmployee,fixtureVolumeKind:claimsPerEmployee===2000?'full-load':'workflow-preflight-only',historicalMonth,publicationMonth,monthlyBasicSalary:5000,fixtureCommandContext:'native database-resolved entitlements',payslipFixture:'500 native-generated/closed historical slips; current processing drafts start empty',attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,notificationFixture:'Enabled in-app projection; no external email delivery worker or relay',aiCentreFixture:'Assistant module and native user grants active; four representative owned sealed histories,640retained exchanges; no provider created or prompt submitted',assistantHistoryFixture:{actors:4,tenants:2,threadsPerActor:20,exchangesPerActor:160,rowsVerified:true,scope:'representative browser actors, notall500users'},explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
  console.log('[system-perf-fixture] complete; private sessions are outside artifact directory');
 }finally{await closeAll();}
 }

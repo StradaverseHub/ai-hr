@@ -806,6 +806,7 @@ jobs:
               summary = projected_counts(row, 'tenants companies users claimsPerEmployee attendanceDays')
               summary.update(
                   fictional=True, monthlyBasicSalary=number(row.get('monthlyBasicSalary'), 5000, 5000),
+                  returningUsers=number(row.get('returningUsers'), 500, 500),
                   fixtureVolumeKind=choice(row.get('fixtureVolumeKind'), {'workflow-preflight-only'}),
                   historicalMonth=matches(row.get('historicalMonth'), r'[0-9]{4}-(0[1-9]|1[0-2])'),
                   publicationMonth=matches(row.get('publicationMonth'), r'[0-9]{4}-(0[1-9]|1[0-2])'),
@@ -954,6 +955,7 @@ jobs:
                                                  if full_course else ('absent', {}, None))
               fixture_state, fixture, _ = json_member(directory, 'fixture.json', lambda row:
                   row.get('fictional') is True and number(row.get('claimsPerEmployee'), 200, 200) == 200
+                  and number(row.get('returningUsers'), 500, 500) == 500
                   and number(record(row.get('counts')).get('claims'), 100000, 100000) == 100000)
               if directory_state == 'refused':
                   runner_state = driver_state = capture_state = fixture_state = union_state = 'refused'
@@ -1198,6 +1200,8 @@ jobs:
                                                   'sourceColumn': column if source_file else None} if visit else None,
                       'browserStageFailure': {'stage': stage_name, 'role': choice(browser_stage.get('role'), roles),
                           **route(browser_stage.get('path')), 'errorType': choice(browser_stage.get('errorType'), types),
+                          'clickObstruction': choice(browser_stage.get('clickObstruction'), {'pointer-intercepted',
+                              'outside-viewport', 'element-unstable', 'element-invisible', 'element-disabled', 'element-detached', 'click-timeout'}),
                           'sourceFile': stage_file, 'sourceLine': stage_line if stage_file else None,
                           'sourceColumn': stage_column if stage_file else None} if stage_name else None,
                       'browserErrorSignals': browser_signals,

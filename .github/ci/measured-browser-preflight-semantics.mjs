@@ -61,7 +61,7 @@ const hash = value => createHash('sha256').update(JSON.stringify(value)).digest(
 function fixtureEvidence(fixture, actors, postgres, workers) {
   assert.deepEqual(actors, actorCounts, 'Measured preflight traffic actor census differs');
   assert(fixture?.fictional === true && fixture.fixtureVolumeKind === 'workflow-preflight-only'
-    && fixture.tenants === 2 && fixture.companies === 10 && fixture.users === 500
+    && fixture.tenants === 2 && fixture.companies === 10 && fixture.users === 500 && fixture.returningUsers === 500
     && fixture.claimsPerEmployee === 200 && fixture.attendanceDays === 180, 'Measured preflight fixture scope differs');
   assert.deepEqual(fixture.roles, roles, 'Measured preflight fixture role census differs');
   assert.deepEqual(fixture.counts, { claims: 100000, attendance: 90000, payslips: 500 }, 'Measured preflight fixture counts differ');
