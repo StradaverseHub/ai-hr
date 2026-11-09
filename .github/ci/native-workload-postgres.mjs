@@ -27,6 +27,15 @@ const socketSql=(id,input,database='postgres')=>docker(['exec','-i',id,'psql','-
 function missing(path){
  try{lstatSync(path);return false;}catch(error){if(error.code==='ENOENT')return true;throw error;}
 }
+function processStart(pid){
+ let stat;
+ try{stat=readFileSync(`/proc/${pid}/stat`,'utf8');}catch(error){if(error.code==='ENOENT')return null;throw error;}
+ const end=stat.lastIndexOf(') '),start=stat.slice(end+2).trimEnd().split(' ')[19];
+ assert(stat.startsWith(`${pid} (`)&&end>0&&/^[1-9][0-9]*$/.test(start),'Native workload PostgreSQL process birth refused');
+ return start;
+}
+const containerCgroup=id=>`/system.slice/docker-${id}.scope`;
+const identityHash=row=>sha(JSON.stringify([row.id,row.pid,row.started,row.processStart,row.cgroupDevice,row.cgroupInode]));
 
 function scram(password){
  const salt=randomBytes(16),key=pbkdf2Sync(password,salt,4096,32,'sha256');
@@ -92,7 +101,7 @@ export function prepareNativeWorkloadPostgres(plan,unit,destination){
   }
  }catch(error){removePrivateFiles();throw error;}
 
- let identity,socketFacts,started=false,completedStart=false,closed=false;
+ let identity,socketFacts,started=false,closed=false;
  function ownedContainer(id){
   assert(/^[a-f0-9]{64}$/.test(id),'Native workload container identity refused');
   const row=JSON.parse(docker(['inspect','--type','container','--format',inspectFormat,id]));
@@ -104,8 +113,15 @@ export function prepareNativeWorkloadPostgres(plan,unit,destination){
   const id=listed(),row=ownedContainer(id);
   assert(row.running===true&&Number.isSafeInteger(row.pid)&&row.pid>1&&/^[0-9T:.+Z-]{20,40}$/.test(row.started),
    'Native workload PostgreSQL is not running');
-  assert.equal(readFileSync(`/proc/${row.pid}/cgroup`,'utf8'),`0::/system.slice/docker-${row.id}.scope\n`,'Native workload PostgreSQL cgroup differs');
-  if(identity)assert(row.id===identity.id&&row.pid===identity.pid&&row.started===identity.started,'Native workload PostgreSQL process changed');
+  const start=processStart(row.pid),cgroup=containerCgroup(row.id);
+  const path=`/sys/fs/cgroup${cgroup}`,birth=lstatSync(path,{bigint:true});
+  assert(start!==null&&birth.isDirectory(),'Native workload PostgreSQL cgroup or process is absent');
+  assert.equal(readFileSync(`/proc/${row.pid}/cgroup`,'utf8'),`0::${cgroup}\n`,'Native workload PostgreSQL cgroup differs');
+  assert.equal(processStart(row.pid),start,'Native workload PostgreSQL process birth changed');
+  const after=lstatSync(path,{bigint:true});
+  assert(after.isDirectory()&&after.dev===birth.dev&&after.ino===birth.ino,'Native workload PostgreSQL cgroup birth changed');
+  Object.assign(row,{processStart:start,cgroupDevice:String(birth.dev),cgroupInode:String(birth.ino)});
+  if(identity)assert.equal(identityHash(row),identityHash(identity),'Native workload PostgreSQL process changed');
   return row;
  }
  const profile=plan.execution.postgres;
@@ -122,7 +138,6 @@ export function prepareNativeWorkloadPostgres(plan,unit,destination){
    GITHUB_RUN_ATTEMPT:'1',RUNNER_TEMP:temp,AIHR_CI_UNIT:unit.id,AIHR_CI_PG_PROFILE:'2',AIHR_CI_PG_CONFIGURED_CAP_BYTES:'2113929216',
    AIHR_CI_PG_PEAK_BUDGET_BYTES:'2147483648',AIHR_CI_PG_JIT:'on',DOCKER_HOST:dockerSocket};
   invoke('/usr/bin/timeout',['--kill-after=5s','90s','/usr/bin/bash',join(automation,'.github/ci/postgres.sh'),'reset-native-workload',directory,nonce],undefined,100000,env);
-  completedStart=true;
   identity=live();
   socketSql(identity.id,`ALTER ROLE ai_hr_app PASSWORD '${scram(app)}';
    CREATE ROLE ${NATIVE_WORKLOAD_OBSERVER} LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 2 PASSWORD '${scram(observer)}';
@@ -132,13 +147,13 @@ export function prepareNativeWorkloadPostgres(plan,unit,destination){
   // The ordinary global setup builds its template from template1 and then clones the worker.
   socketSql(identity.id,'CREATE EXTENSION pg_stat_statements;', 'template1');
   socketFacts=actualSocketFacts(identity.id);
-  const proof={kind:'OWNED_SCRAM_WORKLOAD_DATABASE_COMPONENT',containerIdentitySha256:sha(JSON.stringify([identity.id,identity.pid,identity.started])),
+  const proof={kind:'OWNED_SCRAM_WORKLOAD_DATABASE_COMPONENT',containerIdentitySha256:identityHash(identity),
    ...socketFacts};
   validateNativeWorkloadDatabaseCustody(proof);evidence();return proof;
  }
  function close(){
   assert(!closed,'Native workload database closure is single-use');closed=true;
-  let containerAbsent=false;
+  let containerAbsent=false,processAbsent=false,cgroupAbsent=false;
   const bound=()=>identity?docker(['container','ls','-aq','--no-trunc','--filter',`id=${identity.id}`]):'';
   try{
    if(started){
@@ -148,9 +163,15 @@ export function prepareNativeWorkloadPostgres(plan,unit,destination){
     if(id){const row=ownedContainer(id);assert(!identity||row.id===identity.id,'Native workload cleanup found a different container');docker(['rm','-fv',row.id]);}
    }
    containerAbsent=listed()===''&&bound()==='';
-   if(identity)containerAbsent&&=missing(`/sys/fs/cgroup/system.slice/docker-${identity.id}.scope`);
+   if(identity){
+    processAbsent=processStart(identity.pid)!==identity.processStart;
+    cgroupAbsent=missing(`/sys/fs/cgroup${containerCgroup(identity.id)}`);
+   }
   }finally{removePrivateFiles();}
-  return {containerAbsent,privateFilesRemoved:true,complete:completedStart&&containerAbsent};
+  const privateFilesRemoved=missing(directory);
+  return {kind:'NATIVE_WORKLOAD_DATABASE_SETTLEMENT',containerIdentitySha256:identity?identityHash(identity):null,
+   systemIdentifierSha256:socketFacts?.systemIdentifierSha256??null,containerAbsent,processAbsent,cgroupAbsent,privateFilesRemoved,
+   complete:Boolean(identity&&socketFacts&&containerAbsent&&processAbsent&&cgroupAbsent&&privateFilesRemoved)};
  }
  return {start,evidence,close,migrationUrls,observerEnvironment:{[NATIVE_WORKLOAD_OBSERVER_URL]:observerUrl}};
 }

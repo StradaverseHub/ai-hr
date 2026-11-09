@@ -9,9 +9,11 @@ import {createHash} from 'node:crypto';
 import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {buildUnits,requiredEvidence,CI_EXECUTION} from './manifest.mjs';
-import {verifyUnitReport} from './verify-shards.mjs';
+import {verifyReports,verifyUnitReport} from './verify-shards.mjs';
+import {readUnitReportDirectories,readWorkloadDatabaseArtifact} from './unit-report-directories.mjs';
+import {selectCommissioning,summarizeCommissioning} from './singleton-commissioning.mjs';
 import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,singletonSourceMaximum,protocolHash,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection} from './singleton-protocol.mjs';
-import {NATIVE_WORKLOAD_DATABASE_FILE,NATIVE_WORKLOAD_DATABASE_HBA,NATIVE_WORKLOAD_DATABASE_SETTINGS,NATIVE_WORKLOAD_OBSERVER,
+import {NATIVE_WORKLOAD_DATABASE_CASE,NATIVE_WORKLOAD_DATABASE_FILE,NATIVE_WORKLOAD_DATABASE_HBA,NATIVE_WORKLOAD_DATABASE_MEMBER,NATIVE_WORKLOAD_DATABASE_SETTINGS,NATIVE_WORKLOAD_OBSERVER,
  NATIVE_WORKLOAD_OBSERVER_URL,nativeWorkloadDatabaseUnit,validateNativeWorkloadDatabaseUrls,validateNativeWorkloadObserverUrl} from './singleton-protocol.mjs';
 import {prepareNativeWorkloadPostgres} from './native-workload-postgres.mjs';
 import {requiredHostedSingletons} from '../../scripts/gate-singleton-scope.mjs';
@@ -140,7 +142,63 @@ test('native workload DB custody refuses focused intent, foreign role URLs and i
  assert.throws(()=>validateNativeWorkloadDatabaseUrls(worker,'ai_hr_test_w2'));
  assert.throws(()=>validateNativeWorkloadDatabaseUrls(migration,'ai_hr_test_w1'));
  assert.throws(()=>validateNativeWorkloadObserverUrl({...worker,[NATIVE_WORKLOAD_OBSERVER_URL]:url(NATIVE_WORKLOAD_OBSERVER,'b','ai_hr_test_w1')}));
+ verifyWorkloadArtifactControls(f);
 });
+function verifyWorkloadArtifactControls({plan,unit,binding,witness}){
+ const {database,build,workloadDatabase}=binding.prerequisites;
+ const {containerIdentitySha256,systemIdentifierSha256}=workloadDatabase;
+ const close={kind:'NATIVE_WORKLOAD_DATABASE_SETTLEMENT',containerIdentitySha256,systemIdentifierSha256,
+  containerAbsent:true,processAbsent:true,cgroupAbsent:true,privateFilesRemoved:true,complete:true};
+ const report={schemaVersion:1,sha:plan.sha,fingerprint:plan.fingerprint,id:unit.id,cwd:'/fixture/source',files:unit.files,exitCode:0,
+  singleton:binding,databaseTerminalEvidence:database,workloadDatabaseClose:close,batches:[{exitCode:0,databaseEvidence:database,
+   result:{success:true,numFailedTests:0,numFailedTestSuites:0,numTotalTests:1,numPassedTests:1,
+    testResults:[{name:'/fixture/source/'+unit.files[0],status:'passed',assertionResults:[{title:NATIVE_WORKLOAD_DATABASE_CASE,status:'passed'}]}]}}]};
+ const member={kind:'NATIVE_WORKLOAD_DATABASE_CUSTODY_COMPONENT_ONLY',source:plan.sha,controller:plan.controller,runId:'123',attempt:'1',
+  fingerprint:plan.fingerprint,unit:unit.id,buildArtifactId:build.artifactId,buildProducerJobId:build.producerJobId,buildArchiveSha256:build.archiveSha256,
+  systemIdentifierSha256,containerIdentitySha256,authenticatedRoles:3,connectionRefusals:8,privilegeRefusals:5,clientClosures:3,releaseEligible:false};
+ const serialize=value=>Buffer.from(JSON.stringify(value)+'\n'),raw=serialize(member),sha=createHash('sha256').update(raw).digest('hex');
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'workload-database-artifact-')));
+ try{
+  const artifact=join(root,'unit-'+unit.id),file=join(artifact,NATIVE_WORKLOAD_DATABASE_MEMBER);
+  mkdirSync(artifact);writeFileSync(join(artifact,`unit-${unit.id}.json`),serialize(report));writeFileSync(file,raw);
+  const [entry]=[...readUnitReportDirectories(root,[unit],{mode:'full'})],replay=readWorkloadDatabaseArtifact(artifact,unit);
+  assert.deepEqual(entry,replay);assert.deepEqual(replay.workloadDatabaseBytes,raw);
+  const verify=(r,bytes)=>verifyUnitReport(plan,r,{...witness,workloadDatabases:new Map([[unit.id,bytes]])},candidateRoot);
+  assert.equal(verify(entry.report,entry.workloadDatabaseBytes).workloadDatabaseSha256,sha);
+  const browserReports=plan.units.filter(candidate=>candidate.kind==='browser').map(browserUnit=>({
+   schemaVersion:1,sha:plan.sha,fingerprint:plan.fingerprint,id:browserUnit.id,cwd:report.cwd,files:browserUnit.files,exitCode:0,
+   batches:[{exitCode:0,result:{...report.batches[0].result,testResults:[{
+    name:report.cwd+'/'+browserUnit.files[0],status:'passed',assertionResults:[{title:'fictional browser witness',status:'passed'}],
+   }]}}],
+  }));
+  const reports=[report,...browserReports];
+  assert.equal(verifyReports(plan,reports,{...witness,workloadDatabases:new Map([[unit.id,raw]])},candidateRoot)
+   .reports.find(row=>row.id===unit.id).workloadDatabaseSha256,sha);
+  assert.throws(()=>verifyReports(plan,reports,witness,candidateRoot),/member or settlement refused/);
+  const selection=selectCommissioning(plan,[unit.id]);
+  const commissioningRoot=join(root,'commissioning');mkdirSync(commissioningRoot);
+  const commissioningArtifact=join(commissioningRoot,'commission-unit-'+unit.id);mkdirSync(commissioningArtifact);
+  const commissioningMember=join(commissioningArtifact,NATIVE_WORKLOAD_DATABASE_MEMBER);
+  writeFileSync(join(commissioningArtifact,`unit-${unit.id}.json`),serialize(report));writeFileSync(commissioningMember,raw);
+  const summary=()=>summarizeCommissioning(plan,selection,readUnitReportDirectories(commissioningRoot,[unit],{mode:'commissioning'}),witness,candidateRoot);
+  assert.equal(summary().outcomes[0].workloadDatabaseSha256,sha);
+  unlinkSync(commissioningMember);assert.equal(summary().outcomes[0].outcome,'refused');
+  for(const changed of [undefined,Buffer.from([255]),Buffer.from('{'),Buffer.from(raw.toString().replace('{','{"source":"'+plan.sha+'",')),
+   ...Object.keys(member).map(key=>serialize({...member,[key]:null})),serialize({...member,unexpected:true})]){
+   assert.throws(()=>verify(report,changed),/member or settlement refused/);
+  }
+  for(const mutate of [r=>delete r.workloadDatabaseClose,r=>r.workloadDatabaseSettlementRefused=true,
+   ...Object.keys(close).map(key=>r=>r.workloadDatabaseClose[key]=null),r=>r.workloadDatabaseClose.extra=true,
+   r=>r.batches[0].result.testResults[0].assertionResults[0].title='substitute',
+   r=>r.databaseTerminalEvidence={...database,name:'foreign'},r=>r.batches[0].databaseEvidence={...database,name:'foreign'}]){
+   const changed=structuredClone(report);mutate(changed);assert.throws(()=>verify(changed,raw),/member or settlement refused/);
+  }
+  const refused=()=>assert.throws(()=>readWorkloadDatabaseArtifact(artifact,unit),/report-directory custody refused/);
+  for(const invalid of [Buffer.alloc(4097),Buffer.alloc(0)]){writeFileSync(file,invalid);refused();}
+  unlinkSync(file);symlinkSync(join(artifact,`unit-${unit.id}.json`),file);refused();unlinkSync(file);
+  writeFileSync(file,raw);const nested=join(artifact,'nested');mkdirSync(nested);writeFileSync(join(nested,NATIVE_WORKLOAD_DATABASE_MEMBER),raw);refused();
+ }finally{rmSync(root,{recursive:true,force:true});}
+}
 for(const [name,mutate]of [
  ['foreign source',f=>f.binding.candidate='f'.repeat(40)],['foreign controller',f=>f.binding.controller='f'.repeat(40)],
  ['wrong unit',f=>f.binding.unit='other'],['wrong file',f=>f.binding.file='test/ordinary.test.ts'],['wrong profile',f=>f.binding.profile='unknown'],

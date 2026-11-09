@@ -29,7 +29,7 @@ export function summarizeCommissioning(plan,selection,entries,witness,candidateR
  if(!isDeepStrictEqual(selection,selectCommissioning(plan,selection?.selected)))throw Error('Commissioning selection differs from the complete source plan');
  if(typeof entries?.[Symbol.iterator]!=='function')throw Error('Invalid commissioning reports');
  const seen=new Set(),outcomes=[];
- for(const {bytes,report} of entries){
+ for(const {bytes,report,workloadDatabaseBytes} of entries){
   if(outcomes.length>=16)throw Error('Excessive commissioning reports');
   if(typeof bytes!=='string'||!isDeepStrictEqual(JSON.parse(bytes),report))throw Error('Commissioning raw report bytes differ from parsed evidence');
   if(!selection.selected.includes(report?.id)||seen.has(report.id))throw Error('Unknown or duplicated commissioning report');
@@ -37,8 +37,10 @@ export function summarizeCommissioning(plan,selection,entries,witness,candidateR
   const unit=plan.units.find(unit=>unit.id===report.id);
   if(unit.singleton&&unit.kind==='db'&&report.singleton!==undefined&&(typeof candidateRoot!=='string'||candidateRoot.length===0))throw Error('Explicit candidate root required for present database singleton report');
   let verified,error;
-  try{verified=verifyUnitReport(plan,report,witness,candidateRoot);}catch(e){error=String(e.message).slice(0,500);}
-  outcomes.push({id:report.id,reportHash:hash(bytes),outcome:verified?'verified':'refused',...(verified?{tests:verified.tests}:{error})});
+  const workloadDatabases=workloadDatabaseBytes?new Map([[report.id,workloadDatabaseBytes]]):undefined;
+  try{verified=verifyUnitReport(plan,report,{...witness,workloadDatabases},candidateRoot);}catch(e){error=String(e.message).slice(0,500);}
+  outcomes.push({id:report.id,reportHash:hash(bytes),outcome:verified?'verified':'refused',...(verified?{tests:verified.tests,
+   ...(verified.workloadDatabaseSha256?{workloadDatabaseSha256:verified.workloadDatabaseSha256}:{})}:{error})});
  }
  for(const id of selection.selected)if(!seen.has(id))outcomes.push({id,outcome:'missing'});
  return {...selection,runId:String(witness.runId),attempt:String(witness.attempt),outcomes:outcomes.sort((a,b)=>a.id.localeCompare(b.id)),selectedProfilesVerified:outcomes.every(o=>o.outcome==='verified')};

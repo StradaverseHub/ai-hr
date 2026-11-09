@@ -5,11 +5,12 @@ import {join} from 'node:path';
 import postgres from 'postgres';
 import {expect,it} from 'vitest';
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
-import {NATIVE_WORKLOAD_OBSERVER,validateNativeWorkloadObserverUrl} from '../.github/ci/singleton-protocol.mjs';
+import {NATIVE_WORKLOAD_DATABASE_CASE,NATIVE_WORKLOAD_DATABASE_MEMBER,NATIVE_WORKLOAD_OBSERVER,
+ validateNativeWorkloadObserverUrl} from '../.github/ci/singleton-protocol.mjs';
 
 const admission=admitSingletonTest('test/runtime-next-workload-database-native.test.ts');
-if(admission.mode!=='full-ci-singleton'||!admission.workloadDatabase)throw Error('Native workload database custody binding required');
-const custody=admission.workloadDatabase;
+if(admission.mode!=='full-ci-singleton'||!admission.workloadDatabase||!admission.workloadContext)throw Error('Native workload database custody binding required');
+const custody=admission.workloadDatabase,context=admission.workloadContext;
 
 const client=(url:string)=>postgres(url,{max:1,connect_timeout:3,connection:{statement_timeout:2000,lock_timeout:300}});
 type Client=ReturnType<typeof client>;
@@ -33,7 +34,7 @@ async function nativeSession(db:Client){
  return row;
 }
 
-it('authenticates the native workload owner, application and observer on the owned durable worker database',async()=>{
+it(NATIVE_WORKLOAD_DATABASE_CASE,async()=>{
  const ownerUrl=process.env.MIGRATION_DATABASE_URL!,appUrl=process.env.DATABASE_URL!,observerUrl=validateNativeWorkloadObserverUrl(process.env);
  const owner=client(ownerUrl),app=client(appUrl),observer=client(observerUrl);
  try{
@@ -72,9 +73,9 @@ it('authenticates the native workload owner, application and observer on the own
   const closures=await Promise.allSettled([owner.end({timeout:2}),app.end({timeout:2}),observer.end({timeout:2})]);
   if(closures.some(row=>row.status==='rejected'))throw Error('Native workload test client closure refused');
  }
- writeFileSync(join(admission.evidenceDirectory,'runtime-next-workload-database.json'),JSON.stringify({
-  kind:'NATIVE_WORKLOAD_DATABASE_CUSTODY_COMPONENT_ONLY',source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,
-  runId:process.env.GITHUB_RUN_ID,unit:admission.databaseUnit,systemIdentifierSha256:custody.systemIdentifierSha256,
+ writeFileSync(join(admission.evidenceDirectory,NATIVE_WORKLOAD_DATABASE_MEMBER),JSON.stringify({
+  kind:'NATIVE_WORKLOAD_DATABASE_CUSTODY_COMPONENT_ONLY',...context,unit:admission.databaseUnit,
+  systemIdentifierSha256:custody.systemIdentifierSha256,containerIdentitySha256:custody.containerIdentitySha256,
   authenticatedRoles:3,connectionRefusals:8,privilegeRefusals:5,clientClosures:3,releaseEligible:false,
  })+'\n',{flag:'wx',mode:0o600});
 });

@@ -51,7 +51,11 @@ export function admitSingletonTest(file:string){
   for(const path of singletonSources(unit,source))assert.equal(createHash('sha256').update(regular(join(source,path),singletonSourceMaximum(path))).digest('hex'),binding.sourceHashes[path]);
   if(typeof unit.id!=='string')throw Error('Actual singleton unit ID must be a string');
   return {mode:'full-ci-singleton' as const,evidenceDirectory:directory,databaseUnit:unit.id,
-   ...(workload?{workloadDatabase:binding.prerequisites.workloadDatabase}:{})};
+   ...(workload?{workloadDatabase:binding.prerequisites.workloadDatabase,workloadContext:{
+    source:binding.candidate,controller:binding.controller,runId:binding.runId,attempt:binding.attempt,fingerprint:binding.fingerprint,
+    buildArtifactId:binding.prerequisites.build.artifactId,buildProducerJobId:binding.prerequisites.build.producerJobId,
+    buildArchiveSha256:binding.prerequisites.build.archiveSha256,
+   }}:{})};
  }
  assert.equal(env.GITHUB_WORKFLOW,'alpha-focused-checks');assert.equal(env.GITHUB_JOB,'selected-tests');assert.equal(env.GITHUB_RUN_ATTEMPT,'1');assert.equal(env.AIHR_FOCUSED_SUITE_CAPACITY,'true');
  assert.deepEqual(JSON.parse(env.AIHR_FOCUSED_TESTS??'null'),[file],'A real exact sole-file focused invocation is required');

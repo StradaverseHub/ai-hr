@@ -12,6 +12,9 @@ import {EMPLOYEE_LIFECYCLE_SOURCES,assertEmployeeLifecycleSourceClosure} from '.
 export const SINGLETON_VERSION=1;
 export const NATIVE_WORKLOAD_DATABASE_FILE='test/runtime-next-workload-database-native.test.ts';
 export const NATIVE_WORKLOAD_DATABASE_PROFILE='linux-next-workload-postgres-v1';
+export const NATIVE_WORKLOAD_DATABASE_MEMBER='runtime-next-workload-database.json';
+export const NATIVE_WORKLOAD_DATABASE_MEMBER_MAX=4096;
+export const NATIVE_WORKLOAD_DATABASE_CASE='authenticates the native workload owner, application and observer on the owned durable worker database';
 export const NATIVE_WORKLOAD_OBSERVER='ai_hr_workload_observer';
 export const NATIVE_WORKLOAD_OBSERVER_URL='AIHR_NATIVE_WORKLOAD_DATABASE_OBSERVER_URL';
 export const NATIVE_WORKLOAD_DATABASE_HBA=[

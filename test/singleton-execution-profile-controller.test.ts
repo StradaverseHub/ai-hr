@@ -7,6 +7,7 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const expected=[
  "every registered infrastructure file remains exactly once in its native class and a dedicated bounded job",
  "actual full-CI host context, complete plan and closed native prerequisites admit",
+ "native workload DB custody refuses focused intent, foreign role URLs and incomplete durable custody",
  "refuses singleton proof: foreign source",
  "refuses singleton proof: foreign controller",
  "refuses singleton proof: wrong unit",
@@ -57,7 +58,7 @@ const expected=[
  "only the exact five delegated entries may use the shared FIRST actual singleton admission owner",
  "shared module JIT diagnostic owns one unchanged controlled database and cannot omit any actual imported source"
 ] as const;
-it('executes all51 exact singleton profile controller cases with no skipped or substituted source-admission control',()=>{
+it('executes all52 exact singleton profile controller cases with no skipped or substituted source-admission control',()=>{
  const child=spawnSync(process.execPath,['--test','--test-reporter=tap','.github/ci/singleton-profiles.test.mjs'],{
   cwd:root,encoding:'utf8',timeout:25000,maxBuffer:1024*1024,
  });
@@ -69,8 +70,8 @@ it('executes all51 exact singleton profile controller cases with no skipped or s
  expect([...output.matchAll(/^# Subtest: (.+)$/gm)].map(row=>row[1])).toEqual([...expected]);
  expect([...output.matchAll(/^ok ([0-9]+) - (.+)$/gm)].map(row=>({number:Number(row[1]),name:row[2]})))
   .toEqual(expected.map((name,index)=>({number:index+1,name})));
- expect(output.match(/^1\.\.51$/gm)).toHaveLength(1);
- for(const [key,value]of Object.entries({tests:51,suites:0,pass:51,fail:0,cancelled:0,skipped:0,todo:0})){
+ expect(output.match(/^1\.\.52$/gm)).toHaveLength(1);
+ for(const [key,value]of Object.entries({tests:52,suites:0,pass:52,fail:0,cancelled:0,skipped:0,todo:0})){
   const rows=[...output.matchAll(new RegExp('^# '+key+' ([0-9]+)$','gm'))];
   expect(rows).toHaveLength(1);expect(Number(rows[0][1])).toBe(value);
  }
