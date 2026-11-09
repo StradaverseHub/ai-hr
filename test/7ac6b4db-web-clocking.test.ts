@@ -107,7 +107,7 @@ describe('r378/r430 · private camera capture, now CONDITIONAL on attendancePhot
     // never unconditionally on p.photo/p.mime (both are optional on ClockIntent now).
     expect(command).toContain('decodeClockPhoto(p.photo, p.mime');
     expect(command).toContain("photoSetting !== 'not_required' && p.photo");
-    expect(command).toContain("if (photoSetting === 'required' && !p.photo) throw new AttendancePhotoRequiredError()");
+    expect(command).toMatch(/if \(photoSetting === 'required' && !p.photo\) \{\s*if \(!native\?\.reviewExceptions\) throw new AttendancePhotoRequiredError\(\)/);
     // Signed native work repeats own eligibility inside its existing transaction; the ordinary
     // native carrier retains its owner. Web resolves own eligibility for explicit selections.
     expect(command).toContain('joined?myOwnEmploymentSubjectsTx(joined.tx,ctx,{profileEdit:true}):myEmployments(ctx)');
