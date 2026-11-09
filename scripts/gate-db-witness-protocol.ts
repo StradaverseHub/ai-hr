@@ -181,7 +181,8 @@ export function validateDelta(v:unknown,from:Engine,to:Engine,before:Verdict[],a
 export function validateNativeStdout(rawBytes:Uint8Array,roots:string[],values:Verdict[],actualNormalGroups:unknown):void {
  validateSuite({version:1,paths:roots});validateVerdicts(values,roots);
  for(const v of values)need(!/[\u0000-\u001f\u007f]/.test(v.reason)&&v.reason.trim()===v.reason);
- const expected=values.map(v=>`${v.kind}\t${roots[v.rootId]}\t${v.reason}\n`).join('');const encoded=new TextEncoder().encode(expected);need(utf8.decode(encoded)===expected);need(rawBytes.length===encoded.length&&rawBytes.every((v,i)=>v===encoded[i]));let raw:string;try{raw=utf8.decode(rawBytes);}catch{fail();}
+ const expected=values.map(v=>`${v.kind}\t${roots[v.rootId]}\t${v.reason}\n`).join('');const encoded=new TextEncoder().encode(expected);need(utf8.decode(encoded)===expected);need(rawBytes.length===encoded.length&&rawBytes.every((v,i)=>v===encoded[i]));
+ let raw:string;try{raw=utf8.decode(rawBytes);}catch{return fail();}
  const groups=shape(actualNormalGroups,{db:list(rootPath),nodb:list(rootPath)});
  const decoded={db:[] as string[],nodb:[] as string[]};
  // Exact normal plan.mjs trim/split/destructure course, with stricter ambiguity rejection above.
@@ -256,7 +257,7 @@ export function inspectOwnershipLedger(raw:Uint8Array,p:Purpose):LedgerInspectio
   if(row.kind==='owner-pinned'){
    const a=row.payload;let trial:StageImage|null=null;need(a.pid!==a.parentPid);need(a.actorId===actors.length&&actors.length<=1+OWNERSHIP_LIMITS.actorsPerStage*names.length);need(!actors.some(x=>x.pin.pid===a.pid&&x.pin.startTicks===a.startTicks));
    if(a.role==='root')need(actors.length===0&&row.stage===null);
-   else {need(actors.length>0&&row.stage!==null&&!loss);trial=stageCandidate(row.stage);need(trial.packets.length===0&&actors.filter(x=>x.stage===row.stage).length<OWNERSHIP_LIMITS.actorsPerStage);const parent=active().at(-1)!;need(a.parentPid===parent.a.pin.pid&&a.parentStartTicks===parent.a.pin.startTicks);need(parent.a.pin.children.state==='empty');}
+   else {if(row.stage===null)return fail();need(actors.length>0&&!loss);trial=stageCandidate(row.stage);need(trial.packets.length===0&&actors.filter(x=>x.stage===row.stage).length<OWNERSHIP_LIMITS.actorsPerStage);const parent=active().at(-1)!;need(a.parentPid===parent.a.pin.pid&&a.parentStartTicks===parent.a.pin.startTicks);need(parent.a.pin.children.state==='empty');}
    if(trial)commitStage(trial);actors.push({stage:row.stage,pin:a,close:null,returned:false,entered:false});return;
   }
   need(actors.length>0);
@@ -270,7 +271,7 @@ export function inspectOwnershipLedger(raw:Uint8Array,p:Purpose):LedgerInspectio
    need(!loss);const a=actors[row.payload.actorId];need(a&&a.close===null&&row.payload.pid===a.pin.parentPid&&row.payload.startTicks===a.pin.parentStartTicks);
    const trial=row.stage===null?null:stageCandidate(row.stage);if(row.stage===null)need(stages.length===0);if(trial)commitStage(trial);loss=true;return;
   }
-  need(row.stage!==null);const s=stageCandidate(row.stage),packet=row.payload;need(s.result===null&&active().every(({a})=>a.pin.children.state==='empty'));
+  if(row.stage===null)return fail();const s=stageCandidate(row.stage),packet=row.payload;need(s.result===null&&active().every(({a})=>a.pin.children.state==='empty'));
   const actor=active().at(-1)!;need(actor.a.stage===null||actor.a.stage===row.stage);const ownerId=s.packets.length===0?actor.id:s.ownerId;need(ownerId===actor.id);let monitorKey:string|null=null,terminal:StageImage['result']=null;
   const prior=s.packets.map(x=>x.kind);
   if(packet.kind==='session-admitted'){
