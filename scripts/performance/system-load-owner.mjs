@@ -42,7 +42,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
  nativePreflightRoutePlan,nativePreflightRouteFor,nativePreflightContentWitness,nativePreflightReadiness,
- assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion,readManifestRoute} from './system-route-manifest.mjs';
+ assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,requireNativeRenderedUnion,readManifestRoute} from './system-route-manifest.mjs';
 function createDevelopmentPageCensus(){
  const observation=createNativeBrowserFailureObservation(),contexts=new Map();
  let observedPages=0,closedPages=0,incomplete=false;
@@ -64,7 +64,10 @@ function createDevelopmentPageCensus(){
     }));
    });
   },
-  pageCount:observation.pageCount,
+  // V2 records Chromium cancellations separately. A canceled owned document
+  // still fails its exact response/navigation checks before rendered evidence.
+  pageCount:page=>observation.pageCount(page,{includeAborted:false}),
+  pageFacts:observation.pageFacts,
   finish(shutdown,strict,recordFailure){
    observe(()=>{for(const [context,live] of contexts)assert(live.size===0&&context.pages().length===0);});
    const settled=shutdown.contexts,events=observation.facts();
@@ -675,12 +678,14 @@ async function main(){
   const contentWitness=nativeRoute?nativePreflightContentWitness(user.role,path):null;
   const deadline=nativeRoute?Math.min(renderedDeadline,start+90000):null;
   const timeout=(limit=90000)=>deadline===null?limit:Math.min(limit,nativeRemaining(deadline));
-  let witness=null,redirectStatus=null;
+  let witness=null,redirectStatus=null,nativeEvidenceRule=null,nativeEvidenceDom=null,browserFactsBefore=null;
   const startedWith=loadState?.();
   try{
    requireNativeBusiness();
    const browserFailuresBefore=nativeRoute?renderedPageEvents.pageCount(page):0;
    if(nativeRoute){
+    browserFactsBefore=renderedPageEvents.pageFacts(page);
+    nativeEvidenceRule='document';
     assert(!signIn&&nativeDom);
     requireNativePreflightFixtureDay(contentWitness,fixture.today);
     nativeDom.beforeNavigation();
@@ -689,8 +694,10 @@ async function main(){
    // Readiness is proved below. Network-idle adds an unrelated500ms quiet window.
    else response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:timeout()});
   visitStage='page-content';
+  if(nativeRoute)nativeEvidenceRule='status';
   if(response)assert.equal(response.status(),200);
    if(nativeRoute){
+    nativeEvidenceRule='route';
     assert(response&&response.url()===base+nativeRoute.final,'Native rendered response address differs');
     const request=response.request(),prior=request.redirectedFrom();
     const exactDevelopmentDocument=(reply,url)=>{
@@ -700,6 +707,7 @@ async function main(){
     };
     if(fullDevelopmentRoutes)assert(exactDevelopmentDocument(response,base+nativeRoute.final),
      'Full development rendered response is not the exact document');
+    nativeEvidenceRule='redirect';
     if(nativeRoute.redirectStatus!==null){
      assert(prior&&!prior.redirectedFrom()&&prior.url()===base+path,'Native compatibility redirect chain differs');
      const redirect=await prior.response();assert(redirect,'Native compatibility redirect response missing');
@@ -707,6 +715,7 @@ async function main(){
       'Full development rendered redirect is not the exact document');
      assertNativePreflightRedirect(path,redirect.status(),redirect.headers().location);redirectStatus=redirect.status();
     }else assert(!prior,'Unexpected native preflight route redirect');
+    nativeEvidenceRule=null;
    }
    assert(!new URL(page.url()).pathname.startsWith('/login'));
    if(nativeRoute)await page.locator('main').waitFor({timeout:timeout(30000)});else await page.locator('main').waitFor();
@@ -836,17 +845,20 @@ async function main(){
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
   if(nativeRoute){
    visitStage='native-primary-rendered-evidence';
+   nativeEvidenceRule='identity';
    const account=page.locator('button[data-tour="account"]'),signedInName=account.getByText(user.name,{exact:true});
    await signedInName.first().waitFor({state:'visible',timeout:timeout()});
    assert(await account.count()===1&&await account.isEnabled({timeout:timeout()})&&await signedInName.count()===1
     &&await signedInName.innerText({timeout:timeout()})===user.name,'Native rendered route account differs');
    let view=null;
    if(nativeRoute.view!==null){
+    nativeEvidenceRule='view';
     const views=page.locator('main [data-ai-centre]:visible');
     await views.first().waitFor({state:'visible',timeout:timeout()});
     assert.equal(await views.count(),1,'Native Assistant selected view is ambiguous');
     view=await views.first().getAttribute('data-ai-centre',{timeout:timeout()});
    }
+   nativeEvidenceRule='witness';
    if(contentWitness!==null){
     witness=await verifyNativePreflightContent(page,contentWitness,{
      actorIndex:user.index,actorName:user.name,seedToday:fixture.today,
@@ -855,12 +867,17 @@ async function main(){
      companyIds:fixture.tenants[0]?.companies?.map(company=>company.companyId),
     },timeout);
    }
+   nativeEvidenceRule='document';
    const observed=await nativeDom.snapshot(timeout);
-   requireNativePreflightFixtureDay(contentWitness,fixture.today);timeout();
+   nativeEvidenceDom=observed;
+   nativeEvidenceRule='witness';requireNativePreflightFixtureDay(contentWitness,fixture.today);
+   nativeEvidenceRule='deadline';timeout();
+   nativeEvidenceRule='route';
    assert.equal(page.url(),base+nativeRoute.final,'Native rendered route or query changed after readiness');
    const row={role:user.role,actorIndex:user.index,requested:path,final:page.url().slice(base.length),status:response.status(),redirectStatus,
     accountObserved:true,readiness:nativePreflightReadiness(witness),witness,view,elapsedMs:performance.now()-start,
     failureCount:renderedPageEvents.pageCount(page)-browserFailuresBefore+observed.busy+observed.unavailable+observed.alerts};
+   nativeEvidenceRule='shape';
    assertNativeRenderedVisit(row);renderedReport.observations.push(row);
   }
   if(signIn){
@@ -887,7 +904,13 @@ async function main(){
    visitFailed=true;
    failures.notePrimary(error);
    await failures.attempt('visit-diagnostic',async()=>{
+   const nativeEvidence=nativeEvidenceRule&&browserFactsBefore?{
+    rule:nativeRenderedVisitFailureRule(error)??nativeEvidenceRule,
+    browser:Object.fromEntries(Object.entries(renderedPageEvents.pageFacts(page)).map(([kind,count])=>[kind,count-browserFactsBefore[kind]])),
+    dom:nativeEvidenceDom,
+   }:null;
    const detail={phase,role:user.role,user:user.index,path,errorType:driverErrorFact(error).kind,visitStage,startedWith,...browserFailureLocation(error),elapsedMs:performance.now()-start,
+    nativeEvidence,
     pdfRequests:browserPdfRequests.get(page)??[],
     frames:page.frames().map(frame=>{try{const url=new URL(frame.url());return {sameOrigin:url.origin===base,path:url.origin===base?url.pathname:'<other>'};}catch{return {path:'<unavailable>'};}}),dom:null};
    // Promise.all shutdown can make other pages fail later. Preserve the actual first visit.

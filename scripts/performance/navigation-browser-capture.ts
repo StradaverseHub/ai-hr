@@ -276,6 +276,7 @@ const browserFailureCounts=()=>({aborted:0,transport:0,http5xx:0,pageError:0,con
 /** Browser events on already-owned Pages. Observations confer no admission. */
 export function createNativeBrowserFailureObservation(){
  const pages=new WeakMap<Page,ReturnType<typeof browserFailureCounts>>(),total=browserFailureCounts();
+ const pageFacts=(page:Page)=>{const counts=pages.get(page);assert(counts,'Unobserved native browser Page');return {...counts};};
  return {
   observe(page:Page){
    assert(!pages.has(page),'Native browser Page already observed');const counts=browserFailureCounts();pages.set(page,counts);
@@ -286,7 +287,11 @@ export function createNativeBrowserFailureObservation(){
    page.on('console',message=>{if(message.type()==='error')add('consoleError');});
    page.on('crash',()=>add('crash'));
   },
-  pageCount(page:Page){const counts=pages.get(page);assert(counts,'Unobserved native browser Page');return Object.values(counts).reduce((sum,count)=>sum+count,0);},
+  pageFacts,
+  pageCount(page:Page,{includeAborted=true}={}){
+   const counts=pageFacts(page);
+   return Object.values(counts).reduce((sum,count)=>sum+count,0)-(includeAborted?0:counts.aborted);
+  },
   facts(){return {...total};},
   requireClean(){assert(Object.values(total).every(count=>count===0),'Native browser failures observed through settlement');},
  };

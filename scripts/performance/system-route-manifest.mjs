@@ -107,18 +107,28 @@ export function nativePreflightReadiness(witness){
 }
 
 /** Data adjudication only. Native route/account/failure facts come from the owned page. */
+const renderedVisitFailureRules=new WeakMap();
+export const nativeRenderedVisitFailureRule=error=>renderedVisitFailureRules.get(error)??null;
 export function assertNativeRenderedVisit(row){
- assert(row&&typeof row==='object');
- assert.deepEqual(Object.keys(row).sort(),['accountObserved','actorIndex','elapsedMs','failureCount','final','readiness','redirectStatus','requested','role','status','view','witness']);
- const expected=nativePreflightRouteFor(row.role,row.actorIndex,row.requested);
- assert.equal(row.final,expected.final,'Native preflight final route or query differs');
- assert.equal(row.redirectStatus,expected.redirectStatus,'Native preflight redirect chain differs');
- assert.equal(row.view,expected.view,'Native preflight selected Assistant view differs');
- assert.equal(row.status,200);assert.equal(row.accountObserved,true);assert.equal(row.failureCount,0);
- assert(Number.isFinite(row.elapsedMs)&&row.elapsedMs>=0&&row.elapsedMs<=90000,'Native rendered-route deadline exceeded');
- assert.equal(row.witness,expected.witness,'Native preflight usable-content witness differs');
- assert.equal(row.readiness,nativePreflightReadiness(expected.witness),'Native preflight readiness exceeds observed content');
- return expected;
+ let rule='shape';
+ try{
+  assert(row&&typeof row==='object');
+  assert.deepEqual(Object.keys(row).sort(),['accountObserved','actorIndex','elapsedMs','failureCount','final','readiness','redirectStatus','requested','role','status','view','witness']);
+  rule='scope';const expected=nativePreflightRouteFor(row.role,row.actorIndex,row.requested);
+  rule='route';assert.equal(row.final,expected.final,'Native preflight final route or query differs');
+  rule='redirect';assert.equal(row.redirectStatus,expected.redirectStatus,'Native preflight redirect chain differs');
+  rule='view';assert.equal(row.view,expected.view,'Native preflight selected Assistant view differs');
+  rule='status';assert.equal(row.status,200);
+  rule='identity';assert.equal(row.accountObserved,true);
+  rule='failures';assert.equal(row.failureCount,0);
+  rule='deadline';assert(Number.isFinite(row.elapsedMs)&&row.elapsedMs>=0&&row.elapsedMs<=90000,'Native rendered-route deadline exceeded');
+  rule='witness';assert.equal(row.witness,expected.witness,'Native preflight usable-content witness differs');
+  rule='readiness';assert.equal(row.readiness,nativePreflightReadiness(expected.witness),'Native preflight readiness exceeds observed content');
+  return expected;
+ }catch(error){
+  if(error instanceof assert.AssertionError)renderedVisitFailureRules.set(error,rule);
+  throw error;
+ }
 }
 
 export function requireNativeRenderedUnion(rows){

@@ -5,7 +5,8 @@ import {nativeHiddenShellCasesSha256,validateNavigationScenarioPlan,type Navigat
 import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
 import {isNativeOwnPayslipPdfPath,requireNativePreflightFixtureDay} from '../scripts/performance/native-preflight-content';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
- nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion,readManifestRoute} from '../scripts/performance/system-route-manifest.mjs';
+ nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,
+ requireNativeRenderedUnion,readManifestRoute} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to its source route',()=>{
  const handlers=new Set(['/admin/claims/forms','/admin/locations','/admin/rewards']);
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
@@ -55,6 +56,22 @@ it('refuses route substitution, silent redirect and usability without an actual 
  const roster=rows.find(item=>item.role==='groupHR'&&item.requested==='/roster')!;
  expect(()=>assertNativeRenderedVisit({...roster,witness:null,readiness:'rendered-only'})).toThrow(/witness/);
  expect(()=>assertNativeRenderedVisit({...roster,witness:'analytics-fixture-metrics'})).toThrow(/witness/);
+});
+
+it('classifies the exact rendered assertion without using its messages or route data',()=>{
+ const row=nativeRenderedRows().find(item=>item.role==='employee'&&item.requested==='/assistant?view=tools')!;
+ for(const [rule,delta] of [
+  ['shape',{additional:true}],['scope',{actorIndex:254}],['route',{final:'/assistant'}],
+  ['redirect',{redirectStatus:308}],['view',{view:'ask'}],['status',{status:500}],
+  ['identity',{accountObserved:false}],['failures',{failureCount:1}],['deadline',{elapsedMs:90001}],
+  ['witness',{witness:'home-card-inventory'}],['readiness',{readiness:'usable-content'}],
+ ] as const){
+  expect(()=>{
+   try{assertNativeRenderedVisit({...row,...delta});}
+   catch(error){expect(nativeRenderedVisitFailureRule(error)).toBe(rule);throw error;}
+  }).toThrow();
+ }
+ expect(nativeRenderedVisitFailureRule(new Error('fixture private value'))).toBeNull();
 });
 
 it('binds cross-module content and the explicit AI scope denial to the existing exact role routes',()=>{

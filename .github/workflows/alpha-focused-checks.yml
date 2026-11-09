@@ -937,6 +937,21 @@ jobs:
                   projected['logWindow'] = window
               return projected
 
+          def project_native_visit_evidence(value):
+              if not closed(value, 'rule browser dom'):
+                  return None
+              rule = choice(value['rule'], {'shape', 'scope', 'route', 'redirect', 'view', 'status', 'identity',
+                                           'document', 'failures', 'deadline', 'witness', 'readiness'})
+              browser, dom = value['browser'], value['dom']
+              if rule is None or not closed(browser, 'aborted transport http5xx pageError consoleError crash'):
+                  return None
+              if any(number(count, 4096) is None for count in browser.values()):
+                  return None
+              if dom is not None and (not closed(dom, 'busy unavailable alerts')
+                                      or any(number(count, 4096) is None for count in dom.values())):
+                  return None
+              return {'rule': rule, 'browser': browser, 'dom': dom}
+
 
           def publish(directory, name, raw):
               fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=directory)
@@ -1236,7 +1251,8 @@ jobs:
                                                   'errorType': choice(visit.get('errorType'), types),
                                                   'errorCode': choice(visit.get('errorCode'), {'ERR_ASSERTION'}),
                                                   'sourceFile': source_file, 'sourceLine': line if source_file else None,
-                                                  'sourceColumn': column if source_file else None} if visit else None,
+                                                  'sourceColumn': column if source_file else None,
+                                                  'nativeEvidence': project_native_visit_evidence(visit.get('nativeEvidence'))} if visit else None,
                       'browserStageFailure': {'stage': stage_name, 'role': choice(browser_stage.get('role'), roles),
                           **route(browser_stage.get('path')), 'errorType': choice(browser_stage.get('errorType'), types),
                           'clickObstruction': choice(browser_stage.get('clickObstruction'), {'pointer-intercepted',

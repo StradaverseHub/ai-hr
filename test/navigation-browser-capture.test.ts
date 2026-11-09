@@ -37,7 +37,7 @@ function developmentPageCensusModel(){
  const context=Object.assign(new EventEmitter(),{pages:()=>[...live]});
  census.attach(context);
  return {
-  stages,
+  stages,pageCount:census.pageCount,pageFacts:census.pageFacts,
   open(notify=true){
    let closed=false;
    const page=Object.assign(new EventEmitter(),{context:()=>context,isClosed:()=>closed});
@@ -56,12 +56,27 @@ it('records the owned development Page crash and distinguishes ordinary aborts t
  for(const [crashed,strict] of [[false,true],[true,true],[true,false]]){
   const model=developmentPageCensusModel(),first=model.open(),last=model.open();
   first.page.emit('requestfailed',{url:()=> 'https://localhost:3443/asset',failure:()=>({errorText:'net::ERR_ABORTED'})});
+  expect(model.pageCount(first.page)).toBe(0);
+  expect(model.pageFacts(first.page)).toMatchObject({aborted:1,transport:0});
   first.close();
   if(crashed)last.page.emit('crash');
   last.close();
   expect(model.finish({strict})).toMatchObject({censusComplete:true,observedPages:2,closedPages:2,aborted:1,crash:Number(crashed)});
   expect(model.stages).toEqual(crashed&&strict?['development-page-crash']:[]);
  }
+});
+
+it('keeps development transport, response and browser failures in the rendered route count',()=>{
+ const model=developmentPageCensusModel(),{page}=model.open();
+ const url=()=> 'https://localhost:3443/asset';
+ page.emit('requestfailed',{url,failure:()=>({errorText:'net::ERR_ABORTED'})});
+ page.emit('requestfailed',{url,failure:()=>({errorText:'net::ERR_CONNECTION_RESET'})});
+ page.emit('response',{url,status:()=>500});
+ page.emit('pageerror',new Error('fixture page error'));
+ page.emit('console',{type:()=> 'error'});
+ page.emit('crash');
+ expect(model.pageCount(page)).toBe(5);
+ expect(model.pageFacts(page)).toEqual({aborted:1,transport:1,http5xx:1,pageError:1,consoleError:1,crash:1});
 });
 
 it('refuses missing Page or context census even with zero observed crashes',()=>{
