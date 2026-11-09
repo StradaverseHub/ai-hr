@@ -3,6 +3,7 @@ import {PersonnelReadBusyError} from '@/core/personnel-read-bounds';
 import {isSameOriginBrowserRequest} from '@/lib/request-origin';
 import {requireWorkforceAccess} from '@/lib/workforce-authz';
 import {createPersonnelPrivateSearch,PersonnelSearchLimitError} from '@/core/personnel-private-search';
+import {parsePageQuery} from '@/lib/pagination';
 import {personnelQueryParams,type PersonnelSearchParams} from '../list-query';
 export async function POST(request: Request) {
  try {
@@ -29,8 +30,12 @@ async function searchPersonnel(request: Request) {
   const filters=parsePersonnelColumnFilters(form).filter(filter=>filter.field!==form.get('removeField'));
   const text=form.get('removeField')==='term'?'':String(form.get('term')??'').trim();
   const target=personnelQueryParams(params);
+  if (form.has('size')) target.set('size', String(parsePageQuery({ size: form.get('size') ?? undefined }).size));
   if(text||filters.length){const token=await createPersonnelPrivateSearch(s,{text,companyIds:scopeIds,columnFilters:filters,replaceCriteria:true});target.set('search',token);}
-  return new Response(null,{status:303,headers:{Location:'/admin/personnel'+(target.size?'?'+target.toString():''),'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'}});
+  const href = '/admin/personnel' + (target.size ? '?' + target.toString() : '');
+  const headers = { 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' };
+  if (request.headers.get('accept') === 'application/json') return Response.json({ href }, { headers });
+  return new Response(null, { status: 303, headers: { ...headers, Location: href } });
  }
  catch(error){if(error instanceof PersonnelReadBusyError)throw error;return new Response(error instanceof PersonnelSearchLimitError?error.message:'Search unavailable. Try again.',{status:400,headers:{'Cache-Control':'private, no-store'}});}
 }

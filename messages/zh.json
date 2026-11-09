@@ -822,6 +822,9 @@
       "absentEmployeeCategory": "员工类别",
       "absentEmployeeType": "员工类型",
       "exportXlsx": "导出",
+      "exportCurrentPage": "导出当前页信息",
+      "exportAllDetails": "导出所有员工详情",
+      "exportEmpty": "没有可导出的员工信息",
       "exportAria": "将筛选后的员工列表导出为 Excel",
       "exportTitle": "员工",
       "rejectReasonPlaceholder": "拒绝理由（必填）",
@@ -36674,6 +36677,7 @@
     "groupingHint": "请先审核并发布公司映射，再进行薪酬或工资分组。仍可保存雇佣信息。"
   },
   "personnelOrganisationFilters": {
+    "updatingResults": "正在更新结果…",
     "readBusy": "人事系统正忙。请稍候再试。",
     "retryRead": "重试",
     "businessUnit": "业务单位",

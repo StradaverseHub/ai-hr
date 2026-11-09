@@ -155,8 +155,6 @@ export type PanelStatutory = {
   epfEmployerNo: string | null;
   socsoEmployerCode: string | null;
   lhdnEmployerNo: string | null;
-  myinvoisTin: string | null;
-  ssmRegistrationNo: string | null;
   hrdfStatus: 'not_registered' | 'mandatory' | 'optional' | null;
 } | null;
 // R46 orgbank (84719377) — `bank` is a key from the SHARED Malaysian bank master (lib/my-banks.ts), the
@@ -601,7 +599,7 @@ function StatutoryBodyRow({
  * instruction and took the statutory FIELDS off this panel altogether — they are ONE dedicated screen
  * (components/statutory-setup-screen.tsx: every body as a card, every field open, one Save; r355's
  * per-body page was contested as "an unnecessary intermediate page" and deleted in r372) — so the
- * Statutory tab holds the company's own registrations and a read-only list of the eight bodies that
+ * Statutory tab holds a read-only list of the eight bodies that
  * LINKS there. See StatutoryBodyRow.
  *
  * ⚠️ ONE EXCEPTION, ON THE REPORTER'S APPROVED REQUEST (48652e18, r419): "Add a bank account" on the Bank
@@ -676,7 +674,6 @@ export function CompanyPanel({
     archiveCompany: Action;
     deleteCompany: Action;
     setParent: Action;
-    setStatutory: Action;
     setBankProfile: Action;
     removeBankProfile: Action;
     setStatutoryAuthority: Action;
@@ -692,17 +689,6 @@ export function CompanyPanel({
      * action at all would POST to the current URL.
      */
     saveGeneralTab: TabSaveAction;
-    /**
-     * 15e5bd93 rev 2 (r353) — `saveStatutoryTab` STOOD HERE AND IS GONE, with the consolidated statutory
-     * Save it named. The reporter contested r352's one-Save-for-the-tab shape along with the in-tab
-     * editing it depended on, and asked for Save and Cancel on each body's own card on a dedicated screen.
-     * `app/admin/organization/statutory-tab-actions.ts` is retired rather than left bound to nothing:
-     * a `'use server'` export nothing submits to is a second writer of `company_statutory_my` that no
-     * screen exercises and no reader can see is dead.
-     *
-     * Approved 6a2b463a moves the SSM/TIN fields into General with its existing consolidated Save.
-     * Statutory remains a read-only list of authority settings.
-     */
   };
 }) {
   const t = useTranslations('admin.organization');
@@ -902,10 +888,7 @@ export function CompanyPanel({
             bar reading only "Save Changes" would appear to cover the logo and the delete button too. The
             Default Payroll Cycle name is dropped for a tenant without Payroll, where that card is not
             drawn at all — a bar must not name a card the reader cannot find (r256 shipped that fault
-            twice before it was caught by rendering the screen).
-
-            Approved 6a2b463a moves SSM/TIN into General. The existing partial-patch statutory owner
-            still writes them; the General Save now covers the registration section too. */}
+            twice before it was caught by rendering the screen). */}
         <TabSaveScope
           tabKey="general"
           identity={{ companyId: c.id }}
@@ -913,7 +896,6 @@ export function CompanyPanel({
           covers={[
             t('sectionCompanyInfo'),
             t('sectionContactInfo'),
-            ...(isMY ? [t('companyRegistrationDetails')] : []),
             ...(activeCycleNames !== null ? [t('defaultPayrollCycle')] : []),
             t('groupParent'),
           ]}
@@ -1028,22 +1010,6 @@ export function CompanyPanel({
             </div>
           </div>
         </form>
-
-        {isMY && <form action={actions.setStatutory} data-save-section="registration"
-          className="space-y-2.5 rounded-lg border border-border bg-card p-3">
-          <SubHeader>{t('companyRegistrationDetails')}</SubHeader>
-          <input type="hidden" name="companyId" value={c.id} />
-          <input type="hidden" name="filingCountry" value="MY" />
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Field label={t('ssmRegistrationNo')}>
-              <input name="ssmRegistrationNo" defaultValue={statutory?.ssmRegistrationNo ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('myinvoisTin')}>
-              <input name="myinvoisTin" defaultValue={statutory?.myinvoisTin ?? ''} className={inputCls} />
-            </Field>
-          </div>
-          <p className="text-xs text-muted-foreground">{t('statutoryFilingsHint')}</p>
-        </form>}
 
         {/* ── Relocated here by r226 ──────────────────────────────────────────────────────────
             The default payroll cycle, the group parent and archive/delete used to sit on an "Other"
@@ -1317,28 +1283,7 @@ export function CompanyPanel({
             held statutory configuration). Country-pack section (ADR-0008). */}
         <div className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>
         {isMY ? (
-          /**
-           * ── 15e5bd93 REVISION 2 (r353) — THIS TAB SHOWS THE SETUP, IT NO LONGER EDITS IT ───────
-           *
-           * ⚠️ THIS REPLACES r352'S "ONE SAVE FOR THE WHOLE STATUTORY TAB", AND THE REPORTER CONTESTED
-           * THAT SHAPE. r352 answered 65b22c00's finding 1 by consolidating this tab: the eight bodies
-           * became a rail plus a workspace with no Save buttons of their own, so one sticky bar could own
-           * them and the SSM / MyInvois card together. The contest rejects the premise — "Do not expand
-           * the statutory settings directly within the existing Statutory tab" — so the editors are gone
-           * from here and the consolidated Save has nothing left to consolidate.
-           *
-           * FINDING 1 IS THEREFORE BACK WHERE IT WAS, AND THAT IS THE HONEST OUTCOME rather than a
-           * regression: the audit's objection to a scope on this tab was that a sticky bar would sit
-           * "above eight statutory-body editors it does not own". There are no editors here now, but there
-           * is also only ONE card left — and a sticky Save/Discard bar above a single two-field card is
-           * the "worse than none" that same finding named. So the registrations card keeps its own Save
-           * button, exactly as it did before r352, and it stays on the tab r226 put it on.
-           *
-           * WHAT THE TAB IS FOR NOW: the company's own registrations (editable, here), and a read-only
-           * list of the eight bodies with what is on file for each and a link to the dedicated screen
-           * that edits them. Approved point 1, in the reporter's words: "Open Settings" becomes a link to
-           * a real page.
-           */
+          /* Authority settings are edited on the dedicated Statutory screen. */
           <div className="flex flex-col gap-4 lg:flex-row">
             {/* R46 orgbank (84719377) — per-authority PAYMENT setup: for each statutory body, which company
                 bank account pays it, its address/contact, and the authorised signatory. Every authority in

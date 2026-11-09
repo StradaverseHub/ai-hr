@@ -217,7 +217,15 @@ it('previews current email values and holds without mutating the case or queuing
   expect(preview.holds).toContain('Upload Supporting proof.');
   expect(JSON.stringify({ c, config })).toBe(before);
   config.emails[0].body = 'Bank: {employee.bankAcc}'; environment.mergeValues['employee.bankAcc'] = '123456789';
-  expect(M.previewEmail(c, config, 'notice', environment).holds).toContain('Remove sensitive fields from the email text.');
+  const blocked = M.previewEmail(c, config, 'notice', environment);
+  expect(blocked.holds).toContain('Remove sensitive fields from the email text.');
+  expect(blocked.body).not.toContain('123456789');
+  config.emails[0].body = '{race} {employee.religion}';
+  environment.mergeValues.race = 'private-race';
+  environment.mergeValues['employee.religion'] = 'private-religion';
+  const protectedPreview = M.previewEmail(c, config, 'notice', environment);
+  expect(protectedPreview.holds).toContain('Remove sensitive fields from the email text.');
+  expect(protectedPreview.body).not.toMatch(/private-race|private-religion/);
 });
 
 

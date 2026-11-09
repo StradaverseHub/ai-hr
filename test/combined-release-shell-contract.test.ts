@@ -17,13 +17,14 @@ describe('combined release rendered-shell source boundary',()=>{
    expect(source.match(pattern)?.[1],key).toBe(geometry[key as keyof typeof geometry]);
   }
  });
- it('keeps the actual audit and personnel pagers above their rows',()=>{
+ it('keeps Audit pagination above its rows and Personnel pagination below its rows',()=>{
   const audit=readFileSync('app/admin/audit/page.tsx','utf8');
   expect(audit.indexOf('<Pager basePath="/admin/audit"')).toBeGreaterThan(0);
   expect(audit.indexOf('<Pager basePath="/admin/audit"')).toBeLessThan(audit.indexOf('<AuditTable rows='));
   const personnel=readFileSync('app/admin/personnel/page.tsx','utf8');
-  expect(personnel.indexOf('{pager}')).toBeGreaterThan(0);
-  expect(personnel.indexOf('{pager}')).toBeLessThan(personnel.indexOf('<PersonnelListTable'));
+  const tableAt=personnel.indexOf('<PersonnelListTable');
+  expect(tableAt).toBeGreaterThan(0);
+  expect(personnel.indexOf('{pager}')).toBeGreaterThan(tableAt);
  });
  it('retains real server authorization behind the displayed destinations',()=>{
   expect(readFileSync('app/admin/audit/page.tsx','utf8')).toContain('await requireAdmin()');

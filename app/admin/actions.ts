@@ -490,17 +490,13 @@ export async function setCompanyStatutoryAction(formData: FormData) {
   try {
     const pack = packFor(country);
     if (!pack?.companyStatutory) throw new Error(`No statutory pack for ${country}`);
-    // Every field is read through postedField, so this action now writes exactly the boxes the form in
-    // front of the operator actually had. r226 left only MyInvois + SSM on the Statutory tab's identity
-    // list (the rest moved onto their own body's card) — and this action still serves BOTH shapes, which
-    // is why it keeps reading all five names rather than shrinking to two.
+    // Compatibility saves may still update the filing bodies and contribution rate.
+    // SSM and MyInvois values are owned by the stored filing record, outside these forms.
     await pack.companyStatutory.set(s, {
       companyId,
       epfEmployerNo: postedField(formData, 'epfEmployerNo'),
       socsoEmployerCode: postedField(formData, 'socsoEmployerCode'),
       lhdnEmployerNo: postedField(formData, 'lhdnEmployerNo'),
-      myinvoisTin: postedField(formData, 'myinvoisTin'),
-      ssmRegistrationNo: postedField(formData, 'ssmRegistrationNo'),
       hrdfStatus: postedHrdfStatus(formData),
     });
   } catch (e) {
@@ -1695,20 +1691,6 @@ async function applyCompanyDetailsSection(s: Session, fd: FormData): Promise<voi
   });
 }
 
-/** Only the registration fields rendered on General may be submitted through its consolidated Save. */
-async function applyCompanyRegistrationSection(s: Session, fd: FormData): Promise<void> {
-  const companyId = String(fd.get('companyId'));
-  const [companyRow] = (await listCompanies(s, { adminOnly: true })).filter(c => c.id === companyId);
-  const pack = companyRow?.country === 'MY' ? packFor(companyRow.country) : undefined;
-  if (!pack) {
-    const t = await getTranslations('admin.organization');
-    throw new Error(t('registration.saveFailed'));
-  }
-  await pack.companyStatutory.set(s, {
-    companyId, ssmRegistrationNo: postedField(fd, 'ssmRegistrationNo'), myinvoisTin: postedField(fd, 'myinvoisTin'),
-  });
-}
-
 /**
  * 65b22c00 — ONE "Save Changes" for Organization → a company → General.
  *
@@ -1746,7 +1728,6 @@ export async function saveCompanyGeneralTabAction(formData: FormData): Promise<T
 
   const writers: Record<string, (s: Session, fd: FormData) => Promise<void>> = {
     company: applyCompanyDetailsSection,
-    registration: applyCompanyRegistrationSection,
     cycle: applyDefaultCycleSection,
     parent: applyParentSection,
   };

@@ -5,6 +5,8 @@ import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {EMPLOYEE_COLUMN_KEYS,type EmployeeColumnKey} from '../lib/employee-columns';
 import {PersonnelListTable} from '../app/admin/personnel/list-table';
+import {PersonnelExportOptions} from '../app/admin/personnel/export-options';
+import {PersonnelAutoFilters} from '../app/admin/personnel/auto-filter';
 const controls=vi.hoisted(()=>({save:vi.fn(),refresh:vi.fn(),replace:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:controls.refresh,replace:controls.replace})}));
 vi.mock('../app/admin/personnel/column-actions',()=>({saveEmployeeColumnsAction:controls.save}));
@@ -38,3 +40,37 @@ it('captures the actual listing controls in desktop and phone viewports',async()
  const view=make();
  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','feedback-personnel-column-controls','Approved column-filter and header-reorder listing; real Personnel components with fictional records; no installed acceptance','atelier');
 },120000);
+
+it('coalesces typing and sends private filter text only in the request body', async () => {
+ const fetchMock = vi.fn().mockResolvedValue(Response.json({ href: '/admin/personnel?search='+'a'.repeat(43)+'&size=50' }));
+ vi.stubGlobal('fetch', fetchMock);
+ try {
+  render(<NextIntlClientProvider locale="en" messages={en}><PersonnelAutoFilters>
+    <PersonnelListTable columns={['name']} allOrder={[...EMPLOYEE_COLUMN_KEYS]} labels={labels} employees={[]} drafts={[]} parameters={[]} pageSize="50" empty="None"/>
+  </PersonnelAutoFilters></NextIntlClientProvider>);
+  const field = screen.getByLabelText('Filter name');
+  fireEvent.change(field, { target: { value: 'Fi' } });
+  fireEvent.change(field, { target: { value: 'Fictional' } });
+  await waitFor(() => expect(controls.replace).toHaveBeenCalledWith('/admin/personnel?search='+'a'.repeat(43)+'&size=50', { scroll: false }));
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  const [target, request] = fetchMock.mock.calls[0];
+  expect(target).toBe('/admin/personnel/search');
+  expect(request.method).toBe('POST');
+  expect(request.body.get('field.name')).toBe('Fictional');
+  expect(request.body.get('size')).toBe('50');
+  expect(request.body.has('page')).toBe(false);
+ } finally {
+  vi.unstubAllGlobals();
+ }
+});
+
+it('renders the two distinct Excel download choices', async () => {
+ render(<NextIntlClientProvider locale="en" messages={en}>
+  <PersonnelExportOptions pageHref="/admin/personnel/export?mode=page&page=1&size=25" allHref="/admin/personnel/export?mode=all" hasPage hasEmployees/>
+ </NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+ expect(screen.getByRole('link', { name: 'Export Current Page Information' })).toHaveAttribute('href', expect.stringContaining('mode=page&page=1'));
+ expect(screen.getByRole('link', { name: 'Export All Employee Details' })).toHaveAttribute('href', expect.stringContaining('mode=all'));
+ await captureAiReviewScreenshots(aiReviewDomHtml(document.body), 'en', 'feedback-personnel-export-choices',
+  'Actual Personnel export choice dialog with fictional scoped downloads');
+}, 120_000);

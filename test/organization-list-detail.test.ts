@@ -433,13 +433,13 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
     expect(openHtml, 'nothing on an opened company may need opening again').not.toContain('<details');
     expect(openHtml, 'the General tab renders its content on arrival').toContain('name="legalName"');
 
+    expect(props.actions).not.toHaveProperty('setStatutory');
     // Every write the panel offers still reaches a real server action.
     for (const k of [
       'updateCompany',
       'archiveCompany',
       'deleteCompany',
       'setParent',
-      'setStatutory',
       'setBankProfile',
       'removeBankProfile',
       'setStatutoryAuthority',
