@@ -28,6 +28,9 @@ _READ = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
 _WRITE = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
 _PACKAGES = ('playwright', 'playwright-core', 'postgres')
 _MAX_ENTRIES = 2 + _PARSER.ZIP_COUNT_MAX + _PARSER.PACKAGE_COUNT_MAX
+_SYNTHETIC_ENTRIES = 504
+_SYNTHETIC_BYTES = 291895066
+_SYNTHETIC_SHA = '27bc563027c1750df1e4fcb0ff252f972b20d7ac8772e4563da8435acf4e9a8a'
 
 
 class StagedMember(NamedTuple):
@@ -37,6 +40,18 @@ class StagedMember(NamedTuple):
     bytes: int
     sha256: str | None
     archive_mode: int
+
+
+class SyntheticToolJournal(NamedTuple):
+    root_birth: tuple[int, int]
+    created: tuple[tuple[str, str, tuple[int, int]], ...]
+    pending: tuple[str, str] | None
+
+
+class SyntheticToolchain(NamedTuple):
+    members: tuple[StagedMember, ...]
+    root_state: tuple
+    member_states: tuple[tuple[str, tuple], ...]
 
 
 def _birth(info):
@@ -69,6 +84,7 @@ class _PrivateTree:
         self.device = info.st_dev
         self.directories = {'': _birth(info)}
         self.files = {}
+        self._created = None  # Only the fixed synthetic scope retains a creation journal.
         self._metadata(info, 'directory')
         with _fd(os.open('.', _DIR, dir_fd=root)) as scan:
             self._check_directory(scan, '', info)
@@ -87,7 +103,8 @@ class _PrivateTree:
 
     def _capacity(self):
         _PARSER.remaining(self.deadline)
-        _PARSER.require(len(self.directories) + len(self.files) - 1 < _MAX_ENTRIES,
+        limit = _MAX_ENTRIES if self._created is None else min(_MAX_ENTRIES, _SYNTHETIC_ENTRIES)
+        _PARSER.require(len(self.directories) + len(self.files) - 1 < limit,
                         'private tool tree entry bound')
 
     def _check_directory(self, fd, relative, named=None):
@@ -113,13 +130,17 @@ class _PrivateTree:
             fresh = path not in self.directories
             if fresh:
                 self._capacity()
+                if self._created is not None:
+                    self._pending = (path, 'directory')
                 os.mkdir(name, mode=0o700, dir_fd=parent)
             named = os.stat(name, dir_fd=parent, follow_symlinks=False)
             if fresh:
                 self._metadata(named, 'directory')
                 self.directories[path] = _birth(named)
             with _fd(os.open(name, _DIR, dir_fd=parent)) as fd:
-                self._check_directory(fd, path, named)
+                actual = self._check_directory(fd, path, named)
+                if fresh and self._created is not None:
+                    self._remember(path, 'directory', actual)
                 with enter(fd, path, parts[1:]) as current:
                     yield current
                 self._check_directory(fd, path, os.stat(name, dir_fd=parent, follow_symlinks=False))
@@ -142,12 +163,21 @@ class _PrivateTree:
         parent, name = destination.rsplit('/', 1)
         _PARSER.require(destination not in self.files and destination not in self.directories,
                         'duplicate private tool file')
+        if self._created is not None:
+            _PARSER.require(self._planned_bytes + size <= _SYNTHETIC_BYTES, 'private synthetic tool byte bound')
+            self._planned_bytes += size
         with self._directory(parent) as folder:
             self._capacity()
+            if self._created is not None:
+                self._pending = (destination, 'file')
             with _fd(os.open(name, _WRITE, 0o600, dir_fd=folder)) as fd:
                 info = os.fstat(fd)
                 self._metadata(info, 'file')
                 self.files[destination] = _birth(info)
+                if self._created is not None:
+                    _PARSER.require(_state(info) == _state(os.stat(name, dir_fd=folder, follow_symlinks=False)),
+                                    'private synthetic created file differs')
+                    self._remember(destination, 'file', info)
                 count = 0
 
                 def write(block):
@@ -194,6 +224,7 @@ class _PrivateTree:
         _PARSER.require(expected.keys() == (self.directories.keys() | self.files.keys()) - {''},
                         'private tool staged tree membership differs')
         actual = {}
+        states = {} if self._created is not None else None
 
         def visit(folder, relative, before):
             _PARSER.remaining(self.deadline)
@@ -214,11 +245,17 @@ class _PrivateTree:
                         _PARSER.require(self._read_file(folder, name, path, info, size) == digest,
                                         'private tool readback content differs')
                     actual[path] = StagedMember(path, kind, stat.S_IMODE(info.st_mode), size, digest, mode)
+                    if states is not None:
+                        states[path] = _state(info)
             _PARSER.require(_state(os.fstat(folder)) == _state(before), 'private tool readback directory changed')
 
         with _fd(os.open('.', _DIR, dir_fd=self.root)) as scan:
-            visit(scan, '', self._check_directory(scan, '', self._check_directory(self.root, '')))
+            before = self._check_directory(scan, '', self._check_directory(self.root, ''))
+            visit(scan, '', before)
         _PARSER.require(actual.keys() == expected.keys(), 'private tool readback tree incomplete')
+        if states is not None:
+            _PARSER.require(_state(os.fstat(self.root)) == _state(before), 'private synthetic tool root changed')
+            self._verified = _state(before), tuple(sorted(states.items()))
         _PARSER.remaining(self.deadline)
         return tuple(actual[name] for name in sorted(actual))
 
@@ -230,8 +267,10 @@ class _PrivateTree:
         sources = {'chromium': browser}
         budget = _PARSER.PACKAGE_COUNT_MAX
         for name, source in zip(_PACKAGES, (playwright, playwright_core, postgres), strict=True):
-            rows = _PARSER._inspect_package(name, source, self.deadline, budget, sink(name))
-            sources[name] = rows
+            destination = None if name == 'postgres' and self._created is not None else sink(name)
+            rows = _PARSER._inspect_package(name, source, self.deadline, budget, destination)
+            if destination is not None:
+                sources[name] = rows
             budget -= len(rows)
         expected = {name: ('directory', 0o555, 0, None) for name in ('chromium', 'node_modules')}
         for archive, rows in sources.items():
@@ -256,3 +295,52 @@ def materialize_toolchain(root_fd, chromium, playwright, playwright_core, postgr
         members = _PrivateTree(owned_root, deadline).materialize(chromium, playwright, playwright_core, postgres)
     _PARSER.remaining(deadline)
     return members
+
+
+class _SyntheticToolTree(_PrivateTree):
+    def __init__(self, root, deadline):
+        super().__init__(root, deadline)
+        self._created = []
+        self._pending = self._verified = None
+        self._planned_bytes = 0
+        self._attempted = False
+
+    def _remember(self, path, kind, info):
+        _PARSER.require(self._pending == (path, kind), 'private synthetic tool creation differs')
+        self._created.append((path, kind, _birth(info)[:2]))
+        self._pending = None
+
+    def journal(self):
+        """Snapshot of known creations and any unproved attempt, with no cleanup authority."""
+        return SyntheticToolJournal(self.directories[''][:2], tuple(self._created), self._pending)
+
+    def materialize(self, chromium, playwright, playwright_core, postgres):
+        _PARSER.require(self.root is not None and not self._attempted, 'private synthetic tool stage is not fresh')
+        self._attempted = True
+        members = super().materialize(chromium, playwright, playwright_core, postgres)
+        rows = [(row.path, row.kind, row.archive_mode, row.bytes, row.sha256) for row in members]
+        _PARSER.require(len(rows) == _SYNTHETIC_ENTRIES and sum(row[3] for row in rows) == _SYNTHETIC_BYTES
+                        and hashlib.sha256(_PARSER.canonical(rows)).hexdigest() == _SYNTHETIC_SHA,
+                        'private synthetic tool projection differs')
+        _PARSER.remaining(self.deadline)
+        return SyntheticToolchain(members, *self._verified)
+
+
+@contextmanager
+def synthetic_tool_stage(root_fd, deadline):
+    """One fixed private stage of Chromium and Playwright after checking all four archives.
+
+    The owner supplies an empty held directory and retains its own descriptor.
+    Preserve the stage journal on refusal and settle only actual owned effects.
+    """
+    _PARSER.require(type(root_fd) is int and root_fd > 2 and not os.get_inheritable(root_fd)
+                    and type(deadline) in (int, float) and math.isfinite(deadline),
+                    'held private synthetic tool directory and finite deadline required')
+    _PARSER.remaining(deadline)
+    with _fd(os.dup(root_fd)) as owned_root:
+        stage = _SyntheticToolTree(owned_root, deadline)
+        try:
+            yield stage
+        finally:
+            stage.root = None
+    _PARSER.remaining(deadline)
