@@ -1,0 +1,87 @@
+{
+  "kind": "PERSONNEL_ORGANISATION_PAGE_STATEMENT_TIMING_SOURCE_ONLY",
+  "directParent": "daf2fc6bd5272697d4c7048e9bf9ecdaa151ef0f",
+  "selector": "test/employee-choice-db.test.ts",
+  "testSource": {
+    "parent": {
+      "gitBlob": "b8a8c72a0bb3700f38e2e76c52d3aa3cf7b6f8f5",
+      "bytes": 75724,
+      "sha256": "763a368834346905fc51601a7b8573f126f97af35fa26c60afbc6192d6d9d146"
+    },
+    "current": {
+      "bytes": 79757,
+      "sha256": "b1c6c16af282d228f48a0fe824dd5a20a373e907d522d28dc79124170911e191"
+    },
+    "sourceCaseCount": 10,
+    "priorExpectationsUnchanged": 160,
+    "nativeSqlTemplatesUnchanged": 32,
+    "activeAndCleanupAdmissionCallsUnchanged": 16
+  },
+  "sourceInverse": {
+    "restore": "test/employee-choice-db.test.ts",
+    "remove": "docs/qualification/employee-organisation-page-statement-timings-source-20261109.json",
+    "targetGitTree": "b071eca1f99dc1d429d225acea7b7db5422db6df"
+  },
+  "protectedGitBlobs": {
+    "core/employee-choice.ts": "06c19151cd686b538e4f3c8c42a7a827b563d81c",
+    "test/performance/personnel-native-fixture.ts": "933f1543bf2ea08aae446d805720272e597dacf0",
+    "test/performance/employee-choice-department-pair-probe.ts": "ffb918d4ce3ae2f4a7addce4b843bdc1d7baf292",
+    ".github/workflows/alpha-focused-checks.yml": "e993882d7e92f28bd4f75f31556f5a971dfe47f6",
+    "test/global-setup.ts": "526193c2dc39ad7a9298161fff0c95ca9e62f1f6",
+    ".github/ci/postgres.sh": "8d9cdd60ca3bf666e5717c17efd3841ecb3879fb",
+    "db/client.ts": "0c4f28e00393a763608b506d608a3cf7df542c57"
+  },
+  "retainedHostedFailure": {
+    "source": "daf2fc6bd5272697d4c7048e9bf9ecdaa151ef0f",
+    "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+    "run": 42563293240,
+    "attempt": 1,
+    "terminalJobs": 7,
+    "artifactId": 13650836076,
+    "artifactSha256": "c223ca2a2ca0cf170fc415a011f70311279724b311893c9c24a93622e6e8c781",
+    "pageMemberSha256": "4d0f7a80eab4bc3fb63d9554f590d095302610dfa90a8677e710d35aece785cb",
+    "postgresLogSha256": "e7abf6d80c9d708756c53b355d93cdfc1b9415d2c3df6641e81459399a9badcf",
+    "selectedLogSha256": "9df222e5e13a8db5a9d268959d442f74b819dcb77e437efcf50992ee7b1f31e9",
+    "reportedCases": {
+      "passed": 9,
+      "failed": 1
+    },
+    "dtoVerifiedMatchedReads": 12,
+    "instrumentedPageOrCountPlans": 16,
+    "publicPortObserved": false,
+    "nativeAppSettled": true,
+    "fixtureRestored": true,
+    "reason": "The exact final planner catalogue differed after the matched course. The one-second outcome gate was not reached."
+  },
+  "diagnostic": {
+    "samples": 12,
+    "maximumPositions": 76,
+    "orderedPositions": [
+      "principal",
+      "page",
+      "count only in empty-unit",
+      "selected",
+      "company",
+      "department",
+      "unit"
+    ],
+    "newNativeStatements": 0,
+    "preTagPlanPositions": [
+      "selected",
+      "company",
+      "department",
+      "unit"
+    ],
+    "preTagPlanBasis": "Estimate-only plan summaries from the existing untagged ordinary read, sealed to the matched query text and bindings. These plans precede the two unit inserts and the 500 tags.",
+    "currentProductSqlUnchanged": true,
+    "noMaintenanceChange": true,
+    "receiptCapsUnchanged": {
+      "metadataBytes": 65536,
+      "rawPlanBytes": 4194304,
+      "perRawPlanBytes": 1048576
+    },
+    "scope": "The existing application execute timing is retained after measured reads and native cleanup. All existing catalogue, DTO, prepared-plan, settlement, restoration, deadline, and one-second gates remain in force."
+  },
+  "runtimeQualificationPending": true,
+  "releaseEligible": false
+}

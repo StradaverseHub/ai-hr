@@ -125,12 +125,15 @@ it('pages the real 50k population without retaining whole employee DTOs or losin
  const {b,ctx,expectedFirst,expectedLast,organisationTagSample}=await seedPersonnelNativeFixture(50000,report,name=>{report.phase=name;save();},save);
  report.fixtureReady=true;phaseElapsedMs.fixtureReady=performance.now()-caseStart;save();
  const timings:Record<string,number>={},statements:Record<string,unknown>[]=[];report.statements=statements;report.timings=timings;
+ const preTagCalls:PagePreTagCall[]=[];
+ let capturePreTag=false;
  const actual=database.withTenant,dialect=new PgDialect();
  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{
   await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='20s'`);
   return read(new Proxy(tx,{get(target,key,receiver){
    if(key==='execute')return async(query:SQL)=>{
-    const text=dialect.sqlToQuery(query).sql,entry:Record<string,unknown>={sql:text};statements.push(entry);save();
+    const compiled=dialect.sqlToQuery(query),text=compiled.sql,entry:Record<string,unknown>={sql:text};statements.push(entry);save();
+    if(capturePreTag&&preTagCalls.length<7)preTagCalls.push({compiled,entry});
     if(/^\s*(select |with )/i.test(text))entry.plan=await target.execute(sql`explain (format json) ${query}`);
     const started=performance.now();try{return await target.execute(query);}catch(error){entry.error=String(error);throw error;}finally{entry.ms=performance.now()-started;save();}
    };
@@ -144,14 +147,16 @@ it('pages the real 50k population without retaining whole employee DTOs or losin
  expect(deep.rows.map(row=>row.employmentId)).toEqual(expectedLast);expect(deep.total).toBe(50000);
  start=performance.now();const found=await readEmployeeChoices(ctx,{companyIds:[b.companyId],query:'PERF000050000'});timings.searchMs=performance.now()-start;
  expect(found.total).toBe(1);expect(found.rows.map(row=>row.employmentId)).toEqual(expectedLast.slice(-1));
+ capturePreTag=course!==undefined;
  start=performance.now();const filtered=await readEmployeeChoices(ctx,{companyIds:[b.companyId],departmentId:b.deptA,status:'active',selectedId:expectedLast.at(-1)});timings.organisationFilteredMs=performance.now()-start;
+ capturePreTag=false;
  expect(isEmployeeChoicePage(JSON.parse(JSON.stringify(filtered)))).toBe(true);expect(filtered.total).toBe(40000);expect(filtered.rows.map(row=>row.employmentId)).toEqual(organisationTagSample.filter((_,index)=>(index+1)%5!==0).slice(0,25));expect(filtered.selected?.employmentId).toBe(expectedLast.at(-1));
  report.timings=timings;report.maxPageRows=Math.max(first.rows.length,deep.rows.length,found.rows.length,filtered.rows.length);report.exactNativeIdsAndCounts=true;
  phaseElapsedMs.ordinaryReadsComplete=performance.now()-caseStart;save();
  }finally{spy.mockRestore();save();}
  if(course){
   phaseElapsedMs.comparisonEntry=performance.now()-caseStart;save();
-  await compareOrganisationPage({b,ctx,expectedLast,organisationTagSample},course,caseEnd,context.signal);
+  await compareOrganisationPage({b,ctx,expectedLast,organisationTagSample},course,caseEnd,context.signal,preTagCalls);
  }
  })();
  context.onTestFinished(async()=>{await pending.catch(()=>{});});
@@ -201,6 +206,35 @@ function previousOrganisationPage(tenant:string,input:OrganisationPageInput){
 }
 
 type PagePlanNode={ [key:string]:unknown;Plans?:PagePlanNode[] };
+type PageCompiled=ReturnType<PgDialect['sqlToQuery']>;
+type PagePreTagCall={compiled:PageCompiled;entry:Record<string,unknown>};
+const pageAuxiliaryPositions=['selected','company','department','unit'] as const;
+type PagePosition='principal'|'page'|'count'|typeof pageAuxiliaryPositions[number];
+const pageRelationNames=['assignment','business_unit','company','department','employment','person'] as const;
+
+function organisationPagePreTagPlan(result:unknown){
+ if(!Array.isArray(result)||result.length!==1)throw new Error('Missing pre-tag organisation plan row');
+ const raw:unknown=result[0]?.['QUERY PLAN'];
+ if(!Array.isArray(raw)||raw.length!==1||!raw[0]||typeof raw[0]!=='object')throw new Error('Missing pre-tag organisation plan document');
+ const document=raw[0] as Record<string,unknown>,root=document.Plan as PagePlanNode;
+ const relationScans=pageRelationNames.map(relation=>({relation,scans:0,sequential:0}));
+ let nodes=0;
+ const visit=(node:PagePlanNode,depth:number)=>{
+  if(!node||typeof node!=='object'||typeof node['Node Type']!=='string'||++nodes>2048||depth>64||
+     (node.Plans!==undefined&&!Array.isArray(node.Plans)))throw new Error('Pre-tag organisation plan exceeds its node envelope');
+  const relation=relationScans.find(row=>row.relation===node['Relation Name']);
+  if(relation){relation.scans++;if(node['Node Type']==='Seq Scan')relation.sequential++;}
+  for(const child of node.Plans??[])visit(child,depth+1);
+ };
+ visit(root,0);
+ const nodeKind=root['Node Type'],cost=root['Total Cost'],estimatedRows=root['Plan Rows'];
+ const rootKind=nodeKind==='Limit'||nodeKind==='Sort'||nodeKind==='Result'||nodeKind==='Nested Loop'?nodeKind:'other';
+ if(typeof cost!=='number'||!Number.isFinite(cost)||cost<0||
+    typeof estimatedRows!=='number'||!Number.isSafeInteger(estimatedRows)||estimatedRows<0)
+  throw new Error('Invalid pre-tag organisation plan estimates');
+ return {rootKind,cost,estimatedRows,nodes,jit:document.JIT!==undefined,relationScans};
+}
+
 function organisationPagePlan(raw:unknown,candidate:boolean,kind:'page'|'count',pageRows:number,assignmentKeys:number){
  if(!Array.isArray(raw)||raw.length!==1||!raw[0]||typeof raw[0]!=='object')throw new Error('Unexpected organisation page plan');
  const document=raw[0] as Record<string,unknown>,root=document.Plan as PagePlanNode;
@@ -288,7 +322,7 @@ const pagePrepared=sql`select count(*)::int as total,coalesce(sum(generic_plans)
  or statement like '%count(*) over())::int as total from "employment"%'
  or statement like 'select count(*)::int as total from "employment"%'`;
 
-async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<ReturnType<typeof organisationPageCourse>>,caseEnd:number,signal:AbortSignal){
+async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<ReturnType<typeof organisationPageCourse>>,caseEnd:number,signal:AbortSignal,preTagCalls:readonly PagePreTagCall[]){
  const {b,ctx,expectedLast,organisationTagSample}=fixture,tenant=b.tenantId,dialect=new PgDialect();
  const activeEnd=caseEnd-25000,ownerDeadline=caseEnd;
  const requireTime=(deadline:number,remaining:number,phase:string)=>{
@@ -328,8 +362,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   {label:'empty-unit',input:{...baseInput,businessUnitId:empty,status:undefined},total:0,keys:0,rows:[],
    pageHash:'8aea24203fe5571c0ea0533b8194a025bbd24e03d4e168c112f8d22b05b3127d'},
  ] as const;
- type Compiled=ReturnType<PgDialect['sqlToQuery']>;
- const seal=({sql:text,params}:Compiled)=>({sql:organisationPageHash(text),params:organisationPageHash(JSON.stringify(params))});
+ const seal=({sql:text,params}:PageCompiled)=>({sql:organisationPageHash(text),params:organisationPageHash(JSON.stringify(params))});
  const expectedRow=({id,ordinal}:{id:string;ordinal:number},unit:boolean)=>{
   const n=String(ordinal).padStart(9,'0'),row=choiceRow(id,'Fictional retained Personnel '+n,'PERF'+n,b.companyId,'Acme Sdn Bhd',
    b.deptA,'Finance',ordinal%5===0?'ended':'active');
@@ -362,6 +395,8 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  type Sample={epoch:Epoch;label:string;wallMs:number;ordinary:Times;instrumented:Times;dtoVerified:boolean};
  const observations:Sample[]=[],rawPlans:{epoch:Epoch;label:string;kind:Target;raw:unknown}[]=[];
  const planSummaries:Record<string,unknown>[]=[];
+ type PositionTiming={position:PagePosition;ms:number;source:'product'|'previous';seal:ReturnType<typeof seal>};
+ const positionTimings:{epoch:Epoch;label:string;statements:PositionTiming[]}[]=[];
  const metadata:Record<string,unknown>={kind:'FICTIONAL_NATIVE_ORGANISATION_PAGE_COMPONENT_ONLY',releaseEligible:false,
   source:course.source,controller:course.controller,caseEnd,activeEnd,epochs,observations,planSummaries,
   historical:{run:42387710131,source:'1de4d9047a7e8d58f79693ba614b2e5e0a586a43',wholePortTargetMet:false},
@@ -374,8 +409,8 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  };
  const runRead=async(tx:Tx,epoch:Epoch,profile:typeof references[number])=>{
   const product=epoch==='B0'||epoch==='B1',count=profile.total===0;
-  const positions=['principal','page',...(count?['count']:[]),'selected','company','department','unit'];
-  const calls:{position:string;compiled:Compiled;original:SQL;forwarded:SQL;ms:number}[]=[];
+  const positions:PagePosition[]=count?['principal','page','count',...pageAuxiliaryPositions]:['principal','page',...pageAuxiliaryPositions];
+  const calls:{position:PagePosition;compiled:PageCompiled;original:SQL;forwarded:SQL;ms:number}[]=[];
   const guarded=new Proxy(tx,{get(target,key,receiver){
    if(key==='execute')return async(query:SQL)=>{
     active('product '+profile.label+' statement');
@@ -407,6 +442,10 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   const allSeals=(metadata.productSeals??={}) as Record<string,ReturnType<typeof seal>[]>;
   if(epoch==='A0')allSeals[profile.label]=seals;else expect(seals).toEqual(allSeals[profile.label]);
   observation.dtoVerified=true;
+  positionTimings.push({epoch,label:profile.label,statements:calls.map(({position,ms},index):PositionTiming=>{
+   if(!product&&(position==='page'||position==='count'))return {position,ms,source:'previous',seal:profile.oldSeals[position]};
+   return {position,ms,source:'product',seal:seals[index]};
+  })});
   for(const call of calls){
    if(call.position!=='page'&&call.position!=='count')continue;
    const kind=call.position;
@@ -630,6 +669,23 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  metadata.failures={work:errorHash(workFailure),cleanup:errorHash(restoreFailure)};
  metadata.restored=restored;metadata.ownerStopRequired=organisationPageUnconfirmed;
  const failures=[...(workFailed?[workFailure]:[]),...(restoreFailed?[restoreFailure]:[])];
+ metadata.positionTimings=positionTimings;
+ try{
+  if(preTagCalls.length!==6)throw new Error('Unexpected pre-tag organisation statement census');
+  const timedPositions=positionTimings.reduce((n,sample)=>n+sample.statements.length,0);
+  if(positionTimings.length>12||timedPositions>76||(!workFailed&&(positionTimings.length!==12||timedPositions!==76)))
+   throw new Error('Unexpected organisation position timing census');
+  // The ordinary plans predate the tags. Match their query and parameters without
+  // treating their estimates as evidence about the later fixture or measured runtime.
+  metadata.preTagAuxiliaryPlans={fixture:'before-unit-insert-and-assignment-tags',kind:'estimate-only',
+   ...(!positionTimings.length?{omission:'no-matched-ordinary-read'}:{}),
+   statements:positionTimings.length?pageAuxiliaryPositions.map((position,index)=>{
+    const {compiled,entry}=preTagCalls[index+2],sourceSeal=seal(compiled);
+    const matches=positionTimings.flatMap(sample=>sample.statements.filter(statement=>statement.position===position));
+    for(const match of matches)expect(match.seal).toEqual(sourceSeal);
+    return {position,seal:sourceSeal,matchedSamples:matches.length,...organisationPagePreTagPlan(entry.plan)};
+   }):[]};
+ }catch(error){failures.push(error);}
  try{save();}catch(error){failures.push(error);}
  if(failures.length)throw new AggregateError(failures,'Native organisation page work or cleanup refused');
  expect(restored).toBe(true);
