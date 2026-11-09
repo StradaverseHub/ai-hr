@@ -1277,6 +1277,26 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  let statisticsHolder:ReturnType<typeof holdStatistics>|undefined,statisticsFailure:{error:unknown}|undefined;
  const publicPortMs:Record<string,number>={};
  metadata.publicPortMs=publicPortMs;
+ const primaryJit:{
+  primary:'off';optionalBaseline:'on';priorDefaultJitRun:number;
+  transitions:{scope:'abba'|'public';pid:number;from:'on'|'off';to:'on'|'off'}[];
+  catalogueRefusalRestoreFailure?:string|null;
+ }={primary:'off',optionalBaseline:'on',priorDefaultJitRun:42578693715,transitions:[]};
+ metadata.primaryJit=primaryJit;
+ const transitionPrimaryJit=async(tx:Tx,scope:'abba'|'public',to:'on'|'off')=>{
+  const from=to==='off'?'on':'off';
+  active('primary '+scope+' local JIT '+to);
+  const [setting]=await tx.execute<{pid:number;jit:string|null}>(sql`select pg_backend_pid() as pid,
+   case when current_user='ai_hr_app' and session_user='ai_hr_app'
+    and pg_catalog.current_setting('transaction_isolation')='repeatable read'
+    and pg_catalog.current_setting('transaction_read_only')='on' and pg_catalog.current_setting('jit')=${from}
+    then pg_catalog.set_config('jit',${to},true) end as jit`);
+  active('primary '+scope+' local JIT readback',0);
+  expect(setting.jit).toBe(to);
+  expect(setting.pid).toBeGreaterThan(0);
+  primaryJit.transitions.push({scope,pid:setting.pid,from,to});
+  return setting.pid;
+ };
  const assessPrimaryTimings=()=>references.map(({label,total})=>{
   const arms=epochs.map(epoch=>observations.find(row=>row.epoch===epoch&&row.label===label));
   if(arms.some(arm=>!arm?.dtoVerified))throw new Error('Incomplete organisation page ABBA');
@@ -1330,9 +1350,13 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   save();
   await database.withTenant(ctx,tx=>track((async()=>{
    await limit(tx,active);
+   const defaultIdentity=await realm(tx,active,'ai_hr_app');
+   sameWorker(defaultIdentity,preparedOwner);expect(defaultIdentity.pid).not.toBe(preparedOwner.pid);
+   expect(defaultIdentity.pid).not.toBe(statisticsBackend.pid);
+   expect(defaultIdentity.planner.jit).toBe('on');
+   expect(await transitionPrimaryJit(tx,'abba','off')).toBe(defaultIdentity.pid);
    const identity=await realm(tx,active,'ai_hr_app');
-   sameWorker(identity,preparedOwner);expect(identity.pid).not.toBe(preparedOwner.pid);
-   expect(identity.pid).not.toBe(statisticsBackend.pid);
+   expect(identity).toEqual({...defaultIdentity,planner:{...defaultIdentity.planner,jit:'off'}});
    metadata.app=identity;
    active('initial planner catalogue');
    const [catalogue]=await tx.execute<{facts:{indexes:unknown[][];policies:{tablename:string;policyname:string;qual:string}[];
@@ -1350,6 +1374,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
     const ordered=epoch==='B0'||epoch==='A1'?[...references].reverse():references;
     for(const profile of ordered)await runRead(tx,epoch,profile);
    }
+   expect(planSummaries.map(plan=>plan.jit)).toEqual(Array(16).fill(null));
    active('prepared statement evidence');
    const [prepared]=await tx.execute<{total:number;generic:number}>(pagePrepared);
    expect(prepared.total).toBeLessThanOrEqual(100);expect(prepared.generic).toBe(0);metadata.prepared=prepared;
@@ -1359,25 +1384,41 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    catch(error){
     // Preserve the exact original mismatch even if collecting the later plans refuses.
     catalogueRefusal={error};
-   try{
-    await observeTaggedAuxiliaries(tx,identity,terminalCatalogue);
-    await compareTaggedEnvelope(tx,identity);
-   }
-    finally{throw error;}
+    try{
+     // Keep the existing mismatch diagnostic on its original native JIT-on profile.
+     try{
+      expect(await transitionPrimaryJit(tx,'abba','on')).toBe(identity.pid);
+      expect(await realm(tx,active,'ai_hr_app')).toEqual(defaultIdentity);
+     }catch(restoreError){
+      primaryJit.catalogueRefusalRestoreFailure=errorHash(restoreError);
+      throw restoreError;
+     }
+     await observeTaggedAuxiliaries(tx,defaultIdentity,terminalCatalogue);
+     await compareTaggedEnvelope(tx,defaultIdentity);
+    }finally{throw error;}
    }
    expect(await realm(tx,active,'ai_hr_app')).toEqual(identity);
+   expect(await transitionPrimaryJit(tx,'abba','on')).toBe(identity.pid);
+   expect(await realm(tx,active,'ai_hr_app')).toEqual(defaultIdentity);
    active('ABBA transaction completion',0);
-   cleanEnvelopeReference={identity,catalogue:terminalCatalogue};
+   cleanEnvelopeReference={identity:defaultIdentity,catalogue:terminalCatalogue};
   })()),{readOnlySnapshot:true,readSignal:signal});
   // Independently time the public port including its checkout and settlement.
   const actual=database.withTenant;
   const publicSpy=vi.spyOn(database,'withTenant').mockImplementation(<T>(session:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>
    actual(session,tx=>track((async()=>{
     await limit(tx,active);
-    return read(new Proxy(tx,{get(target,key,receiver){
+    expect(options?.readOnlySnapshot).toBe(true);
+    expect(options?.readSignal).toBe(signal);
+    const pid=await transitionPrimaryJit(tx,'public','off');
+    expect(pid).not.toBe(statisticsBackend.pid);
+    const value=await read(new Proxy(tx,{get(target,key,receiver){
      if(key==='execute')return (query:SQL)=>{active('public page statement');return target.execute(query);};
      const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
     }}));
+    // On rejection the outer transaction rolls back its local setting.
+    expect(await transitionPrimaryJit(tx,'public','on')).toBe(pid);
+    return value;
    })()),options));
   try{
    for(const profile of references){
@@ -1388,6 +1429,10 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    }
   }finally{publicSpy.mockRestore();}
   active('public port evidence completion',0);
+  expect(primaryJit.transitions.map(({scope,to})=>[scope,to])).toEqual([
+   ['abba','off'],['abba','on'],['public','off'],['public','on'],
+   ['public','off'],['public','on'],['public','off'],['public','on'],
+  ]);
   if(cleanEnvelopeReference){
    // Persist the timing verdict before any optional checkout. The final
    // outcome still requires native settlement and fixture restoration.
