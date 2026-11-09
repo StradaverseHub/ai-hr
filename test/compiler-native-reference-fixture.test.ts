@@ -1,11 +1,10 @@
-/** BLOCKED until root's exact closed hosted route/source registration. Native
- * miniature fixture qualification only; never ordinary compiler or release. */
+/** Closed stock Next typegen prequalification. No date A/B or release evidence. */
 import {spawnClosed,type ClosedChildEnvironment} from './helpers/closed-child-process.mjs';
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {expect,it} from 'vitest';
 import {admitCompilerReference,publishCompilerReferenceClock} from '../.github/ci/diagnostics/native-reference/admission.mjs';
-it('checks genuine native composite emission/reference/declaration fixture semantics',async context=>{
+it('generates stock Next route types in the protected exact-source view',async context=>{
  const started=process.hrtime.bigint(),controller=new AbortController(),failures:unknown[]=[],output:Buffer[]=[];
  let child:ReturnType<typeof spawnClosed>|undefined,closed:Promise<{code:number|null;signal:NodeJS.Signals|null}>|undefined;
  let exited=false,finished=false,bytes=0,timer:ReturnType<typeof setTimeout>|undefined,killTimer:ReturnType<typeof setTimeout>|undefined,drainTimer:ReturnType<typeof setTimeout>|undefined;
@@ -39,7 +38,16 @@ it('checks genuine native composite emission/reference/declaration fixture seman
    }
    timer=setTimeout(()=>stop(Error('Native fixture aggregate budget exhausted')),Math.max(0,718000-elapsed()));
    const result=await closed;controller.signal.throwIfAborted();expect(failures).toEqual([]);expect(result.signal).toBeNull();expect(result.code,Buffer.concat(output).toString('utf8')).toBe(0);
-   const report=JSON.parse(readFileSync(join(proof.destination,'compiler-native-reference/report.json'),'utf8'));expect(report.complete).toBe(true);expect(report.ordinaryCompilerQualified).toBe(false);expect(report.releaseAuthorized).toBe(false);expect(report.applicationInventoryComplete).toBe(false);expect(report.originalApplicationFiveNegativesQualified).toBe(false);expect(report.elapsedMs).toBeLessThanOrEqual(720000);
+   const report=JSON.parse(readFileSync(join(proof.destination,'compiler-protected-docker/report.json'),'utf8'));
+   expect(report).toMatchObject({kind:'PROTECTED_NEXT_TYPEGEN_A139',source:proof.sourceHead,controller:proof.controllerHead,
+    run:proof.run,attempt:proof.attempt,productSource:'a1397fa78ed35188849445962d35bdf48087b7a4',productInputsMounted:true,
+    transportQualified:true,stockNextInvoked:true,strictCompilerInvoked:false,ordinaryCompilerQualified:false,releaseAuthorized:false,
+    typegen:{kind:'PROTECTED_STOCK_NEXT_TYPEGEN',exit:0,routeSemanticCoverage:false,releaseEligible:false,
+     dependencies:{gnuElfLoaded:true,swcVersion:'16.4.1'}},
+    settlement:{containerAbsent:true,processAbsent:true,cgroupAbsent:true,imageAbsent:true,privatePayloadRemoved:true,
+     identityRetainedForSettlement:true}});
+   expect(Object.keys(report.typegen.generated)).toHaveLength(5);
+   expect(elapsed()).toBeLessThanOrEqual(720000);
   }catch(error){remember(error);}
   finally{
    if(child&&!exited)stop(Error('Owned native fixture settlement required'));

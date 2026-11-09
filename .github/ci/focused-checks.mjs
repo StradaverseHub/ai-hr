@@ -175,6 +175,11 @@ export function runFocused(destination) {
     const profile=compilerPurpose(files),control=resolve(fileURLToPath(new URL('../..',import.meta.url))),relativeManifest=profile.manifest;
     const raw=readFileSync(join(cwd,relativeManifest));if(!raw.equals(readFileSync(join(control,relativeManifest))))throw Error('Compiler source/controller declaration differs');
     const declaration=JSON.parse(raw);if(declaration.kind!==profile.kind)throw Error('Closed compiler source declaration required');
+    if(declaration.protectedViewPilot){
+      const ref='refs/heads/codex/compiler-protected-next-typegen-a139-20261109';
+      if(profile.purpose!=='reference'||process.env.GITHUB_REF!==ref||sha!==controller)
+        throw Error('Protected Next typegen requires its exact self-source branch');
+    }
     for(const [path,wanted]of Object.entries(declaration.componentSources))if(hash(readFileSync(join(cwd,path)))!==wanted||hash(readFileSync(join(control,path)))!==wanted)throw Error('Compiler source/controller bytes differ');
     const self=compilerProcIdentity(process.pid);
     writeFileSync(join(dir,profile.preflight),JSON.stringify({version:1,kind:profile.preflightKind,source:sha,controller,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,actor:{pid:self.pid,start:self.start},sourceHashes:declaration.componentSources}),{flag:'wx',mode:0o600});
@@ -341,7 +346,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     employeeAsciiSelection(files);
     appendFileSync(process.env.GITHUB_OUTPUT, `tests=${JSON.stringify(files)}\n`);
   } else if (command === 'run' && process.argv.length === 4) process.exitCode = runFocused(process.argv[3]);
-  else if(command === 'compiler-settled' && process.argv.length === 4)process.exitCode=cleanupCompilerReference(process.argv[3]);
+  else if(command === 'compiler-settled' && process.argv.length === 4){
+    try{process.exitCode=cleanupCompilerReference(process.argv[3]);}
+    finally{
+      if(process.env.GITHUB_REF==='refs/heads/codex/compiler-protected-next-typegen-a139-20261109'){
+        const {settleProtectedDockerCanary}=await import('./diagnostics/native-reference/protected-docker-canary.mjs');
+        settleProtectedDockerCanary(process.argv[3]);
+      }
+    }
+  }
   else if(command === 'cleanup' && process.argv.length === 4) process.exitCode=cleanupEmployeeChoiceBenchmark(process.argv[3]);
   else throw Error('Usage: focused-checks.mjs selection | run <owned-evidence-directory> | cleanup <fixed-benchmark-evidence-directory>');
 }
