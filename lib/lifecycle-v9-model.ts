@@ -549,14 +549,16 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   if (!email) throw new V9Error('Email template not found.', 'not_found');
   const holds: string[] = [], edit = c.emailEdits?.[email.id] ?? { subject: email.subject, body: email.body };
   const values = { ...env.mergeValues, 'owner.name': c.facts.name, 'pending.tasks': pendingPre(c).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
-  const subject = merge(edit.subject, values), body = merge(edit.body, values);
+  const sensitive = emailSensitiveKeys(config);
+  const previewValues = Object.fromEntries(Object.entries(values).filter(([key]) => !sensitive.has(key)));
+  const subject = merge(edit.subject, previewValues), body = merge(edit.body, previewValues);
   if (c.state !== 'submitted') holds.push('Submit or reopen the case before sending.');
   if (!email.active) holds.push('This email template is inactive.');
   const acceptanceHold = acceptanceDeliveryHold(c, emailId); if (acceptanceHold) holds.push(acceptanceHold);
   if (v9ImageTokens(body.text).some(id => !email.images?.some(image => image.id === id))) holds.push('Insert an available inline image before sending.');
   const missing = [...new Set([...subject.missing, ...body.missing])];
   if (missing.length) holds.push(`Complete missing merge fields: ${missing.join(', ')}.`);
-  try { merge(edit.subject + '\n' + edit.body, values, emailSensitiveKeys(config)); } catch { holds.push('Remove sensitive fields from the email text.'); }
+  try { merge(edit.subject + '\n' + edit.body, previewValues, sensitive); } catch { holds.push('Remove sensitive fields from the email text.'); }
   const contact = c.module === 'onb' && !c.facts.employeeUserId ? env.onboardingContact : undefined;
   const target = c.facts.employeeUserId ?? contact?.email;
   const to = target && (contact || env.eligibleUser(target)) ? [{ id: target, name: contact ? c.facts.name : recipientName(target, env) }] : [];
@@ -585,7 +587,7 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   return { emailId, name: email.name, subject: subject.text, body: body.text, edit: { ...edit }, to, cc, documents, holds: [...new Set(holds)], canSend: holds.length === 0, ...(assets.length ? { assets: structuredClone(assets) } : {}) };
 }
 function emailSensitiveKeys(config: Config): Set<string> {
-  const identityKeys = ['icNo', 'passportNo', 'taxNo', 'epfNo', 'bankAcc', 'bankAccount', 'bankAccountNo', 'spIc', 'spTax'];
+  const identityKeys = ['icNo', 'passportNo', 'taxNo', 'epfNo', 'bankAcc', 'bankAccount', 'bankAccountNo', 'spIc', 'spTax', 'race', 'religion'];
   return new Set([...identityKeys.flatMap(key => [key, `employee.${key}`, `case.${key}`]), ...(['onb','off'] as const).flatMap(module => resolveV9CaseFields(module,config.caseForms?.[module],true).filter(field=>field.hrOnly).map(field=>`case.${field.key}`)), ...config.templates.flatMap(t => t.versions.flatMap(v => v.fields.filter(f => f.sensitive).flatMap(f => [f.id, ...(f.pmKey ? [f.pmKey, `employee.${f.pmKey}`] : [])])))]);
 }
 

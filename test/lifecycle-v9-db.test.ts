@@ -1418,3 +1418,39 @@ it('regenerates native documents through the canonical private writer and keeps 
  const [stored]=await owner.db.execute<{public_data:Record<string,unknown>;private_data:Record<string,unknown>;copies:number}>(sql`select c.data as public_data,p.data as private_data,(select count(*)::int from lc_v9_case where id=c.id) as copies from lc_onboarding_case c join lc_onboarding_private p on p.case_id=c.id where c.id=${c.id}::uuid`);
  expect(stored.public_data).not.toHaveProperty('documents');expect(stored.private_data).toHaveProperty('lifecycleV9.documents');expect(stored.copies).toBe(0);
 });
+
+it('previews the saved draft contact fields and organisation names without sending mail', async () => {
+  const [unit] = await owner.client`
+    insert into business_unit (tenant_id, company_id, code, name)
+    values (${base.tenantId}::uuid, ${base.companyId}::uuid, 'EMAIL-FIXTURE', 'Fictional Business Unit')
+    returning id
+  `;
+  await owner.client`update department set business_unit_id=${unit.id}::uuid where id=${base.deptA}::uuid`;
+  const config = (await v9Workspace(admin)).config!;
+  config.emails.push({
+    id: 'draft-field-preview', name: 'Fictional draft field preview', module: 'onb', active: true,
+    sender: 'onboarding', subject: '{employee.position}',
+    body: '{employee.businessUnit} · {employee.department} · {employee.supervisor} · {personalEmail} · {mobile} · {address}',
+    cc: [], links: [], attachments: [], slots: [],
+  });
+  await v9SaveConfig(admin, config.revision, config);
+  const draft = await saveEmployeeDraft(admin, {
+    currentStep: 1,
+    data: {
+      profile: {
+        fullName: 'Fictional email preview joiner', primaryEmail: 'preview-work@example.test',
+        personalEmail: 'preview-personal@example.test', phone: '+60121234567', permanentAddressLine1: '100 Fixture Road',
+      },
+      employment: {
+        companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId,
+        reportingManagerEmploymentId: employmentId, hiredOn: addDays(todayInKualaLumpur(), 5),
+      },
+    },
+  });
+  const row = (await onboardingList(admin)).find(candidate => candidate.case.sourceDraftId === draft.id)!;
+  const preview = await v9PreviewEmail(admin, row.case.id, 'draft-field-preview');
+  expect(preview.subject).toBe('Executive');
+  expect(preview.body).toBe('Fictional Business Unit · Finance · V9 subject · preview-personal@example.test · +60121234567 · 100 Fixture Road');
+  expect((await v9CaseDetail(admin, row.case.id)).case.mails).toHaveLength(0);
+  await expect(v9PreviewEmail(other, row.case.id, 'draft-field-preview')).rejects.toThrow();
+});

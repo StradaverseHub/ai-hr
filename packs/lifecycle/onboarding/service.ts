@@ -1365,6 +1365,35 @@ export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string
     const roles = await tx.execute<{ kind: string; user_id: string }>(sql`select * from app.onboarding_task_actors(${result.c.personId}::uuid,${/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(supervisor) ? supervisor : null}::uuid)`);
     return { ...result, documentState: privateRow?.state ?? null, employeeUserId: subjects.length === 1 ? subjects[0].id : null, supervisorUserId: roles.find(role => role.kind === 'manager')?.user_id ?? null };
 }
+/** Read just the email-eligible profile fields of an already-authorised case's linked draft. */
+export async function onboardingV9DraftEmailFieldsTx(
+    ctx: SessionContext,
+    tx: Tx,
+    native: Awaited<ReturnType<typeof onboardingV9ReadTx>>,
+): Promise<Record<string, string>> {
+    if (native.c.employmentId || !native.row.sourceDraftId) return {};
+    const [draft] = await tx.select({ data: employeeDraft.data }).from(employeeDraft).where(and(
+        eq(employeeDraft.id, native.row.sourceDraftId),
+        eq(employeeDraft.tenantId, ctx.tenantId),
+        eq(employeeDraft.companyId, native.row.companyId),
+    ));
+    const p = (draft?.data as EmployeeDraftData | undefined)?.profile;
+    if (!p) return {};
+    const title = (value?: string) => value ? value[0].toUpperCase() + value.slice(1) : '';
+    return {
+        email: p.primaryEmail ?? '',
+        nationality: p.nationality ?? '',
+        gender: title(p.gender),
+        marital: title(p.maritalStatus),
+        mobile: p.phone ?? '',
+        homePhone: p.homePhone ?? '',
+        personalEmail: p.personalEmail ?? '',
+        address: [
+            p.permanentAddressLine1, p.permanentAddressLine2, p.permanentAddressLine3,
+            p.permanentPostcode, p.permanentCity, p.permanentState, p.permanentCountry,
+        ].filter(Boolean).join(', '),
+    };
+}
 export async function onboardingV9StoreTx(ctx: SessionContext, tx: Tx, id: string, expected: number, state: NativeDocumentState, completed: string[], action: string) {
     const { row, c, actor } = await onboardingV9ReadTx(ctx, tx, id);
     if(ctx.userId&&!actor.module&&!actor.caseActions)M.fail('Case actions are required.','forbidden');

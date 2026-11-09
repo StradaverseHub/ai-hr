@@ -4,8 +4,9 @@ import {PERSONNEL_EMPLOYMENT_FILTERS} from '@/lib/personnel-list-employment-fiel
 import {personnelFieldLabel} from '@/lib/personnel-field-label';
 import {PERSONNEL_FIELDS} from '@/lib/personnel-field-registry';
 import {ResponsiveActions} from '@/components/responsive-actions';
-import {personnelPrivateSearchAvailable,readPersonnelPrivateCriteria} from '@/core/personnel-private-search';
-import { ExportDownloadLink } from '@/components/export-download-link';
+import {readPersonnelPrivateCriteria} from '@/core/personnel-private-search';
+import { PersonnelExportOptions } from './export-options';
+import { PersonnelAutoFilters } from './auto-filter';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {PersonnelReadBusyError} from '@/core/personnel-read-bounds';
 import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
@@ -156,17 +157,17 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   // overloading `status`.
   const query = parsePersonnelListQuery(sp);
   const { q, company, dept, type, draftOnly, hasFilters } = query;
-  const searchAvailable=query.filters.privateSearch?await personnelPrivateSearchAvailable(session,query.filters.privateSearch,scopeIds):false;
-  const privateCriteria=query.filters.privateSearch?await readPersonnelPrivateCriteria(session,query.filters.privateSearch,scopeIds):null;
-
-  const overview = await readPersonnelOverview(session, {
+  const overviewRead = readPersonnelOverview(session, {
     companyIds: scopeIds,
     ...query.filters,
     limit: pq.limit,
     offset: pq.offset,
   }, headcountFilters(query));
-  const { employees: { rows: employeeRows, total: employeeTotal }, headcount, organisationChoices } = overview;
-  const [companies, departments, allDrafts, savedColumns, idConfigs] = await Promise.all([
+  const [overview, privateCriteria, companies, departments, allDrafts, savedColumns, idConfigs] = await Promise.all([
+    overviewRead,
+    query.filters.privateSearch
+      ? readPersonnelPrivateCriteria(session, query.filters.privateSearch, scopeIds)
+      : Promise.resolve(null),
     listCompanies(session).then(rows=>rows.filter(row=>workforceIds.has(row.id))),
     scopeIds.length?listDepartments(session,{companyIds:scopeIds}):Promise.resolve([]),
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
@@ -183,6 +184,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
     canCreate ? listConfigs(session, scopeIds) : Promise.resolve([]),
   ]);
 
+  const { employees: { rows: employeeRows, total: employeeTotal }, headcount, organisationChoices } = overview;
   const columns = savedColumns.selected;
   const allLabels=await getTranslations();
   const employmentFilterFields=scopeIds.every(id=>maintainIds.has(id))?PERSONNEL_EMPLOYMENT_FILTERS.map(f=>({...f,label:f.key==='directSuperiorEmployeeCode'?t('controls.superiorId'):f.key==='directSuperiorFullName'?t('controls.superiorName'):personnelFieldLabel(PERSONNEL_FIELDS.find(d=>d.tab==='Employment'&&['employment','directSuperior'].includes(d.owner)&&(d.owner==='directSuperior'?'directSuperior'+d.ownerField[0].toUpperCase()+d.ownerField.slice(1):d.ownerField)===f.key)!, (key,fallback)=>allLabels.has(key)?allLabels(key):fallback)})):[];
@@ -338,7 +340,14 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
 
   // The Export link carries the SCREEN's resolved columns, not just the filters, so the file cannot
   // disagree with the table even if the preference changes in another tab between the two requests.
-  const exportHref = (()=>{const next=personnelQueryParams(sp);next.set('cols',columns.join(','));return '/admin/personnel/export?'+next.toString();})();
+  const exportParams = personnelQueryParams(sp);
+  exportParams.set('mode', 'all');
+  const allExportHref = '/admin/personnel/export?' + exportParams;
+  exportParams.set('mode', 'page');
+  exportParams.set('page', String(pq.page));
+  exportParams.set('size', String(pq.size));
+  exportParams.set('cols', columns.join(','));
+  const pageExportHref = '/admin/personnel/export?' + exportParams;
 
   /** The plain-text cell for a column, from the SAME projection the export prints. */
   const textCell = (e: (typeof employees)[number], key: EmployeeColumnKey) =>
@@ -368,6 +377,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
     // later report the ultrawide readability problem this cap exists to prevent, that is an argument to
     // re-cap Payroll — not to uncap this page to match it.
     <div className="mx-auto max-w-[100rem] space-y-6">
+      <PersonnelAutoFilters key={scopeIds.slice().sort().join(',')}>
       <PageHeader
         // 4ea70bb7 — `adminTitle`, NOT `title`. The people.list namespace is shared: people.list.title is
         // also the heading of the employee-facing directory at /personnel, the header of the Excel export
@@ -380,7 +390,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
           // group `shrink-0` — without wrapping, a narrow window would scroll the PAGE sideways rather
           // than stacking the controls, which is the one thing a full-width change must not introduce.
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} privateCriteria={privateCriteria??undefined} employmentFields={employmentFilterFields} columnFields={(['code','name','email','reportingTo','costCenter','workLocation','jobGrade'] as const).map(key=>({key,label:t(COLUMN_LABEL_KEY[key]),type:'text'}))} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
+            <PersonnelOrganisationFilters pageSize={String(pq.size)} fields={filterFields} values={filterValues} privateCriteria={privateCriteria??undefined} employmentFields={employmentFilterFields} columnFields={(['code','name','email','reportingTo','costCenter','workLocation','jobGrade'] as const).map(key=>({key,label:t(COLUMN_LABEL_KEY[key]),type:'text'}))} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             {canCreate && (
               <CreateEmployeeDialog
                 triggerLabel={t('createNewEmployee')}
@@ -431,13 +441,8 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
               saveAction={saveEmployeeColumnsAction}
               resetAction={resetEmployeeColumnsAction}
             />
-            <ExportDownloadLink
-              href={exportHref}
-              aria-label={t('exportAria')}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-            >
-              {t('exportXlsx')}
-            </ExportDownloadLink>
+            <PersonnelExportOptions pageHref={pageExportHref} allHref={allExportHref}
+              hasPage={employees.length + drafts.length > 0} hasEmployees={total > 0}/>
             </ResponsiveActions>
           </div>
         }
@@ -486,7 +491,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
         labels={filterLabels}
       />
 
-      {query.filters.privateSearch&&<p role="status" className="text-sm text-muted-foreground">{t(searchAvailable?'controls.privateActive':'controls.privateExpired')}</p>}
+      {query.filters.privateSearch&&<p role="status" className="text-sm text-muted-foreground">{t(privateCriteria?'controls.privateActive':'controls.privateExpired')}</p>}
       {privateCriteria&&<PersonnelPrivateFilterChips valueLabels={{company:Object.fromEntries(companies.map(c=>[c.id,c.name])),department:Object.fromEntries(departments.map(d=>[d.id,d.label||d.name])),position:Object.fromEntries(organisationChoices.rows.filter(r=>r.positionId&&r.position).map(r=>[r.positionId!,r.position!])),businessUnit:Object.fromEntries(organisationChoices.rows.filter(r=>r.businessUnitId&&r.businessUnit).map(r=>[r.businessUnitId!,r.businessUnit!])),status:Object.fromEntries(EMPLOYEE_STATUS_BUCKETS.map(value=>[value,tStatus(value)])),employmentType:Object.fromEntries(EMPLOYMENT_TYPES.map(et=>[et.value,t(et.labelKey)]))}} criteria={privateCriteria} parameters={[...personnelQueryParams(sp)]} labels={{term:t('controls.employeeDetails'),...Object.fromEntries(Object.entries(COLUMN_LABEL_KEY).map(([key,label])=>[key,t(label)])),...Object.fromEntries(employmentFilterFields.map(field=>['employment.'+field.key,field.label]))}}/>}
 
       {error && (
@@ -496,16 +501,16 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
       )}
 
       <Card className="overflow-hidden" data-tour="people-table">
-        {pager}
-        <PersonnelListTable key={query.filters.privateSearch??'no-private-filters'} privateCriteria={privateCriteria??undefined} columns={columns} allOrder={savedColumns.order} columnOptions={{company:companies.map(c=>({value:c.id,label:c.name})),department:departments.map(d=>({value:d.id,label:d.label||d.name})),position:uniqueOptions(organisationChoices.rows.map(row=>({value:row.positionId,label:row.position}))),businessUnit:uniqueOptions(organisationChoices.rows.map(row=>({value:row.businessUnitId,label:row.businessUnit}))),employmentType:EMPLOYMENT_TYPES.map(et=>({value:et.value,label:t(et.labelKey)})),status:EMPLOYEE_STATUS_BUCKETS.map(value=>({value,label:tStatus(value)}))}}
+        <PersonnelListTable pageSize={String(pq.size)} privateCriteria={privateCriteria??undefined} columns={columns} allOrder={savedColumns.order} columnOptions={{company:companies.map(c=>({value:c.id,label:c.name})),department:departments.map(d=>({value:d.id,label:d.label||d.name})),position:uniqueOptions(organisationChoices.rows.map(row=>({value:row.positionId,label:row.position}))),businessUnit:uniqueOptions(organisationChoices.rows.map(row=>({value:row.businessUnitId,label:row.businessUnit}))),employmentType:EMPLOYMENT_TYPES.map(et=>({value:et.value,label:t(et.labelKey)})),status:EMPLOYEE_STATUS_BUCKETS.map(value=>({value,label:tStatus(value)}))}}
           labels={Object.fromEntries(Object.entries(COLUMN_LABEL_KEY).map(([key,label])=>[key,t(label)])) as Record<EmployeeColumnKey,string>}
           parameters={[...personnelQueryParams(sp)]} sort={query.filters.columnSort} direction={query.filters.sortDirection}
           employees={employees.map(e=>{const st=deriveEmploymentStatus(e,today);return {employmentId:e.employmentId,name:e.name,email:e.email,employeeCode:e.employeeCode,status:st,statusLabel:tStatus(st),text:Object.fromEntries(columns.map(key=>[key,textCell(e,key)])),photoPersonId:photoIds.get(e.employmentId)??null};})}
           drafts={drafts.map(d=>({draftId:d.id,label:d.label||t('draftUntitled'),avatarName:d.label||'?',subtitle:d.missing.length?t('draftMissing',{count:d.missing.length}):t('draftReady'),reservedEmployeeCode:d.reservedEmployeeCode,companyName:d.companyName??t('draftNoCompany'),statusLabel:t('statusDraft')}))}
           empty={q?t('emptySearch',{q}):hasFilters?t('emptyFiltered'):t('emptyNoEmployeesAdmin')}/>
 
+        <div className="flex justify-end border-t border-border">{pager}</div>
       </Card>
-
+      </PersonnelAutoFilters>
     </div>
   );
 }

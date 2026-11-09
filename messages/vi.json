@@ -822,6 +822,9 @@
       "absentEmployeeCategory": "Phân loại nhân viên",
       "absentEmployeeType": "Loại nhân viên",
       "exportXlsx": "Xuất",
+      "exportCurrentPage": "Xuất thông tin trang hiện tại",
+      "exportAllDetails": "Xuất toàn bộ chi tiết nhân viên",
+      "exportEmpty": "Không có thông tin nhân viên để xuất",
       "exportAria": "Xuất danh sách nhân viên đã lọc ra Excel",
       "exportTitle": "Nhân viên",
       "rejectReasonPlaceholder": "Lý do từ chối (bắt buộc)",
@@ -36667,6 +36670,7 @@
     "groupingHint": "Xét duyệt và công bố ánh xạ công ty trước khi nhóm Lương thưởng hoặc bảng lương. Vẫn có thể lưu thông tin việc làm."
   },
   "personnelOrganisationFilters": {
+    "updatingResults": "Đang cập nhật kết quả…",
     "readBusy": "Hệ thống Nhân sự đang bận. Vui lòng đợi một lát rồi thử lại.",
     "retryRead": "Thử lại",
     "businessUnit": "Đơn vị kinh doanh",

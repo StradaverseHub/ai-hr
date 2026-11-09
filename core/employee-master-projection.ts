@@ -41,10 +41,13 @@ async function rowsFor(tx:Tx,table:AnyPgTable,key:AnyPgColumn,ids:string[],extra
   return rows as Row[];
 }
 
-export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:EmployeeMasterSpec,fields:readonly PersonnelFieldDescriptor[],catalogue:readonly PersonnelFieldDescriptor[],options:{includeWithoutCompany?:boolean}={}):Promise<MasterSubject[]>{
+export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:EmployeeMasterSpec,fields:readonly PersonnelFieldDescriptor[],catalogue:readonly PersonnelFieldDescriptor[],options:{includeWithoutCompany?:boolean;employmentIds?:readonly string[]}={}):Promise<MasterSubject[]>{
   const today=todayInKualaLumpur(),started=Date.now();
   const needed=new Set(fields.filter(f=>spec.asAt===today||f.history!=='current'&&f.history!=='none').map(f=>f.owner));
-  const candidates=await tx.select().from(schema.employment).where(and(lte(schema.employment.hiredOn,spec.asAt),or(...spec.companyIds.map(id=>employedByCompanyDuring(id,spec.asAt,spec.asAt))))).orderBy(asc(schema.employment.id)).limit(SUBJECT_LIMIT+1);
+  if (options.employmentIds?.length === 0) return [];
+  const candidates=await tx.select().from(schema.employment).where(and(
+    options.employmentIds ? inArray(schema.employment.id, options.employmentIds) : undefined,
+    lte(schema.employment.hiredOn,spec.asAt),or(...spec.companyIds.map(id=>employedByCompanyDuring(id,spec.asAt,spec.asAt))))).orderBy(asc(schema.employment.id)).limit(SUBJECT_LIMIT+1);
   if(candidates.length>SUBJECT_LIMIT)throw new Error('This report matches more than 2,000 employments. Narrow its company/employee conditions.');
   // Canonical termination closes assignment.validTo at terminatedOn (exclusive). An ended report
   // subject needs strict proof of its last effective company day, never today's mutable employer.
