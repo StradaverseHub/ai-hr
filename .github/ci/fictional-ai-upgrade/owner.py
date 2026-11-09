@@ -23,6 +23,7 @@ ROLE = 'personnel-draft-discard-premigration-role-prerequisites.json'
 UID = 47106
 SELECTED = '["test/module-specialist-release-lifecycle.test.ts"]'
 OWNER_ROOT = Path('/var/lib/aihr-fictional-upgrade')
+FIXTURE_RUNTIME_ROOT = Path('/var/tmp')
 SYSTEM_ENV = {'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C.UTF-8'}
 PINS = {
     'package.json': '7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c',
@@ -135,6 +136,9 @@ def failure_excerpt(path):
 
 def migration_failure_category(excerpt, role_recorded):
     """Publish a fixed label only. The underlying process output always remains private."""
+    for label in ('node','pnpm','git','checkout','checkout-cwd','tsx','fixture-temp','role-evidence'):
+        if re.search(rb'(?m)^fictional-upgrade-path-refused:'+label.encode()+rb'$',excerpt):
+            return label+'-path-refused'
     for category,pattern in (
         ('namespace-entry-refused',rb'(?m)^nsenter: '),
         ('child-identity-refused',rb'(?m)^setpriv: '),
@@ -338,31 +342,66 @@ def verify_dependency_pins(workspace):
             need(digest(plain(path/name,4*1024**2)) == wanted)
 
 
+def fixture_runtime_path(raw,run,runner):
+    path = Path(raw)
+    need(path.parent == FIXTURE_RUNTIME_ROOT and re.fullmatch(
+         r'aihr-fictional-upgrade\.'+re.escape(run)+r'\.[a-zA-Z0-9]{8}',path.name))
+    info = path.lstat()
+    need(path.resolve(strict=True) == path and stat.S_ISDIR(info.st_mode)
+         and info.st_uid == runner and info.st_mode & 0o777 == 0o755)
+    return path
+
+
+FIXTURE_PATH_PROBE = '''
+import os
+import sys
+
+try:
+    cwd = os.getcwd()
+except OSError:
+    cwd = None
+if len(sys.argv) != 9 or cwd != sys.argv[1]:
+    sys.stderr.write('fictional-upgrade-path-refused:checkout-cwd\\n')
+    sys.exit(2)
+for label, path, mode in zip(
+    ('node','pnpm','git','checkout','tsx','fixture-temp','role-evidence'),
+    sys.argv[2:],
+    (os.X_OK,os.X_OK,os.X_OK,os.R_OK,os.R_OK,os.W_OK|os.X_OK,os.W_OK|os.X_OK),
+):
+    if not os.access(path,mode):
+        sys.stderr.write('fictional-upgrade-path-refused:'+label+'\\n')
+        sys.exit(2)
+'''
+
+
 def main():
     stage = 'admission'
-    need(os.getuid() == 0 and sys.platform == 'linux' and len(sys.argv) == 3)
+    need(os.getuid() == 0 and sys.platform == 'linux' and len(sys.argv) == 4)
     run, controller, job = admit(os.environ)
     ws, temp = (Path(os.environ[key]).resolve(strict=True) for key in ('GITHUB_WORKSPACE','RUNNER_TEMP'))
     need(ws == Path(os.environ['GITHUB_WORKSPACE']) and temp == Path(os.environ['RUNNER_TEMP']))
     runner = ws.stat().st_uid
     need(runner > 0 and temp.stat().st_uid == runner and runner != UID and os.environ.get('SUDO_UID') == str(runner))
-    node, pnpm = (Path(value) for value in sys.argv[1:])
+    runtime = fixture_runtime_path(sys.argv[1],run,runner)
+    node, pnpm = (Path(value) for value in sys.argv[2:])
+    need(node == runtime/'bin'/'node' and pnpm == runtime/'pnpm'/'node_modules'/'.bin'/'pnpm')
     for program in (node,pnpm):
-        need(program.is_absolute() and program.is_file() and os.access(program,os.X_OK))
+        need(program.resolve(strict=True).is_relative_to(runtime) and program.is_file() and os.access(program,os.X_OK))
     base_env = {'PATH': str(node.parent)+':'+str(pnpm.parent)+':/usr/bin:/bin','LANG':'C.UTF-8','TZ':'Asia/Kuala_Lumpur'}
     need(capture([str(node),'--version'],env=base_env).strip() == b'v22.23.3')
     need(capture([str(pnpm),'--version'],env=base_env).strip() == b'10.33.2')
     git = lambda source, *args: capture(['/usr/bin/git','--no-optional-locks','-c','safe.directory='+str(source),
         '-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false',*args],cwd=source,env=base_env).decode().strip()
-    sources = {'prepare':ws/'baseline','compare':ws/'source'}
+    sources = {'prepare':runtime/'baseline','compare':runtime/'source'}
     control = ws/'automation'
-    for path, wanted in ((control,controller),(sources['prepare'],BASE),(sources['compare'],CANDIDATE)):
+    for path, wanted in ((control,controller),(ws/'baseline',BASE),(ws/'source',CANDIDATE),
+                         (sources['prepare'],BASE),(sources['compare'],CANDIDATE)):
         need(path.resolve(strict=True) == path and git(path,'rev-parse','HEAD') == wanted
              and not git(path,'status','--porcelain','--untracked-files=no')
              and git(path,'remote','get-url','origin') in ('https://github.com/'+REPO,'https://github.com/'+REPO+'.git'))
-    capture(['/usr/bin/git','-c','safe.directory='+str(sources['compare']),'merge-base','--is-ancestor',BASE,CANDIDATE],
-            cwd=sources['compare'],env=base_env)
-    verify_dependency_pins(ws)
+    capture(['/usr/bin/git','-c','safe.directory='+str(ws/'source'),'merge-base','--is-ancestor',BASE,CANDIDATE],
+            cwd=ws/'source',env=base_env)
+    verify_dependency_pins(runtime)
     for path in sources.values():
         need(not (path/'.env.local').exists() and (path/'node_modules').is_dir())
         for parent, dirs, files in os.walk(path):
@@ -384,7 +423,10 @@ def main():
     for args in (['passwd',str(UID)],['group',str(UID)]):
         need(subprocess.run(['/usr/bin/getent',*args],stdout=subprocess.DEVNULL,check=False).returncode == 2)
 
-    witness_dir, focus = temp/'aihr-fictional-ai-upgrade-private', temp/'aihr-focused'
+    fixture_temp = runtime/'fixture-temp'
+    need(fixture_temp.resolve(strict=True) == fixture_temp and fixture_temp.is_dir()
+         and fixture_temp.stat().st_uid == runner and fixture_temp.stat().st_mode & 0o022 == 0)
+    witness_dir, focus = fixture_temp/'aihr-fictional-ai-upgrade-private', fixture_temp/'aihr-focused'
     public = temp/'aihr-fictional-ai-upgrade-summary.json'
     root = OWNER_ROOT
     if not root.exists():
@@ -399,7 +441,7 @@ def main():
         source_bytes = plain(controlled/filename)
         for path in sources.values():
             write(path/'scripts'/filename,source_bytes,0o444)
-    common = {**base_env,**job,'GITHUB_RUN_ID':run,'RUNNER_TEMP':str(temp),'NODE_ENV':'test',
+    common = {**base_env,**job,'GITHUB_RUN_ID':run,'RUNNER_TEMP':str(fixture_temp),'NODE_ENV':'test',
               'HOME':str(witness_dir),'TSX_DISABLE_CACHE':'1','GIT_CONFIG_NOSYSTEM':'1'}
     name, nonce = container_name(run), os.urandom(16).hex()
     lease = os.open(custody/'owner.lock',os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_RDWR,0o600)
@@ -514,7 +556,7 @@ def main():
         # Verify the privileged SQL program path as well as the app-side namespace.
         socket_psql(row['Id'],'ai_hr_dev',copy_program_canary())
         canary = 'import socket; c=socket.create_connection(("127.0.0.1",5433),2); c.close()'
-        owned('network-canary',control,['/usr/bin/python3','-I','-B','-c',canary],common,12)
+        owned('network-canary',runtime,['/usr/bin/python3','-I','-B','-c',canary],common,12)
         for phase, source in sources.items():
             stage = phase+'-migration-custody'
             sha = BASE if phase == 'prepare' else CANDIDATE
@@ -523,11 +565,18 @@ def main():
                    'AIHR_FOCUSED_EVIDENCE_DIR':str(focus),'DATABASE_URL':APP+'ai_hr_dev','MIGRATION_DATABASE_URL':ADMIN+'ai_hr_dev',
                    'TEST_DATABASE_URL':APP+'ai_hr_test','TEST_MIGRATION_DATABASE_URL':ADMIN+'ai_hr_test'}
             need(db_identity() == born and not role_path.exists())
+            stage = phase+'-migration-paths'
+            owned(stage,source,['/usr/bin/python3','-I','-B','-c',FIXTURE_PATH_PROBE,
+                  source,node,pnpm,'/usr/bin/git',source/'.git'/'HEAD',source/'node_modules'/'tsx'/'package.json',witness_dir,focus],env,20)
+            stage = phase+'-migration-node'
+            owned(stage,source,[node,'--version'],env,20)
+            stage = phase+'-migration-pnpm'
+            owned(stage,source,[pnpm,'--version'],env,20)
             stage = phase+'-migration-toolchain'
             probe = ('import {execFileSync} from "node:child_process";'
                      'if(execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8"}).trim()!==process.env.AIHR_CI_HEAD)process.exit(2);'
                      'for(const packageName of ["tsx","postgres","drizzle-kit"])import.meta.resolve(packageName);')
-            owned(stage,source,[pnpm,'exec',node,'--import','tsx','--input-type=module','--eval',probe],env,25)
+            owned(stage,source,[node,'--import','tsx','--input-type=module','--eval',probe],env,25)
             stage = phase+'-migration-wrapper'
             owned(stage,source,[pnpm,'db:migrate'],env,360)
             stage = phase+'-migration-role-receipt'

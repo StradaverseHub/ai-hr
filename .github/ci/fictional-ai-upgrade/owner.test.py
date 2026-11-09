@@ -3,6 +3,8 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -70,6 +72,46 @@ class Admission(unittest.TestCase):
             self.assertTrue(all(re.fullmatch(r'[A-Z_][A-Z0-9_]*',key) for key in keys))
             self.assertCountEqual(keys,required)
         self.assertEqual(len(re.findall(r'(?m)^\s+sudo --preserve-env="\$keep" /usr/bin/python3 ',step)),2)
+
+    def test_workflow_uses_the_fixture_install_for_sudo(self):
+        workflow = Path(__file__).resolve().parents[2]/'workflows'/'alpha-focused-checks.yml'
+        text = workflow.read_text()
+        scope = text.split('id: fictional-ai-upgrade-runtime\n',1)[1]
+        scope = scope.split('id: fictional-ai-upgrade-recovery\n',1)[0]
+        self.assertIn('dest: ${{ steps.fictional-ai-upgrade-runtime.outputs.path }}/pnpm',scope)
+        self.assertIn('install -m 0755 "$(command -v node)" "$runtime/bin/node"',scope)
+        self.assertIn('pnpm --dir "$checkout" install --frozen-lockfile --ignore-scripts --store-dir "$runtime/pnpm-store"',scope)
+        self.assertIn(' -B "$owner" "$runtime" "$runtime/bin/node" "$runtime/pnpm/node_modules/.bin/pnpm"',scope)
+
+    def test_fixture_runtime_refuses_other_runs_and_unsafe_permissions(self):
+        root = self.event.parent
+        runtime = root/'aihr-fictional-upgrade.1010.a1234567'
+        runtime.mkdir(mode=0o755)
+        runtime.chmod(0o755)
+        with patch.object(owner,'FIXTURE_RUNTIME_ROOT',root):
+            self.assertEqual(owner.fixture_runtime_path(str(runtime),'1010',runtime.stat().st_uid),runtime)
+            with self.assertRaises(ValueError):
+                owner.fixture_runtime_path(str(runtime),'9999',runtime.stat().st_uid)
+            runtime.chmod(0o777)
+            with self.assertRaises(ValueError):
+                owner.fixture_runtime_path(str(runtime),'1010',runtime.stat().st_uid)
+
+    def test_path_probe_identifies_each_denied_input_without_disclosing_paths(self):
+        fixture = str(self.event.parent)
+        readable = str(Path(__file__).resolve())
+        paths = [sys.executable,sys.executable,sys.executable,readable,readable,fixture,fixture]
+        command = [sys.executable,'-I','-B','-c',owner.FIXTURE_PATH_PROBE]
+        passed = subprocess.run(command+[fixture]+paths,cwd=fixture,capture_output=True,check=False)
+        self.assertEqual((passed.returncode,passed.stderr),(0,b''))
+        wrong_cwd = subprocess.run(command+[fixture+'/missing']+paths,cwd=fixture,capture_output=True,check=False)
+        self.assertEqual((wrong_cwd.returncode,wrong_cwd.stderr),(2,b'fictional-upgrade-path-refused:checkout-cwd\n'))
+        for index,label in enumerate(('node','pnpm','git','checkout','tsx','fixture-temp','role-evidence')):
+            with self.subTest(label=label):
+                blocked = paths.copy()
+                blocked[index] = fixture+'/private-missing-path'
+                result = subprocess.run(command+[fixture]+blocked,cwd=fixture,capture_output=True,check=False)
+                self.assertEqual((result.returncode,result.stderr),(2,('fictional-upgrade-path-refused:'+label+'\n').encode()))
+                self.assertEqual(owner.migration_failure_category(result.stderr,False),label+'-path-refused')
 
     def test_database_start_uses_closed_network_and_empty_copy_canary(self):
         argv = owner.start_argv('fictional','nonce')
