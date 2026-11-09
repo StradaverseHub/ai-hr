@@ -349,7 +349,7 @@ class NativeNavigationGitModel(unittest.TestCase):
                 H._check_git_store(tree, self.deadline())
             config.write_bytes(baseline)
 
-            with self.assertRaisesRegex(ValueError, 'inventory member changed'), I.PinnedTree(root) as tree:
+            with self.assertRaisesRegex(ValueError, '^inventory file changed after reading$'), I.PinnedTree(root) as tree:
                 H._check_git_store(tree, self.deadline())
                 worktree.write_bytes(stock + b'\n')
 
