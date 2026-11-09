@@ -208,6 +208,10 @@ class ParentModels(unittest.TestCase):
                         raise OSError('ambiguous write')
                     return 0 if variant == 'short' else len(packet)
                 owner.control.send.side_effect = send
+                with self.assertRaisesRegex(P.Refused, '^wrapper-parent-ack-once$'):
+                    owner._send_ack()
+                owner.control.send.assert_not_called()
+                self.assertFalse(owner.manager_request_possible)
                 with (
                     patch.multiple(owner, _source=Mock(), _packages=Mock(), _snapshot=Mock(), _root_pipe_pair=Mock()),
                     patch.object(G, '_poll', return_value={}),

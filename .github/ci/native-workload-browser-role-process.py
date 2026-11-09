@@ -4,7 +4,9 @@ The protected caller owns the wrapper ACK, candidate discovery, role grant and
 service/cgroup settlement. This module acquires no launch authority.
 """
 
+import hashlib
 import os
+import stat
 from contextlib import ExitStack, contextmanager
 from time import monotonic_ns
 from types import ModuleType
@@ -22,8 +24,7 @@ class VerifiedRoleMain(NamedTuple):
     main: tuple
     manager_main: tuple
     service_view: tuple
-    read_fd: int
-    write_fd: int
+    pipe: object
 
 
 def _require(condition, reason):
@@ -32,21 +33,79 @@ def _require(condition, reason):
 
 
 class _RoleProcess:
-    def __init__(self, host, mounts, launch_view, launch_plan, installer, finalizer, service_view, *,
+    def __init__(self, host, mounts, launch_view, launch_plan, installer, finalizer, service_view, issuer, *,
                  manager, wrapper, layout, stage_snapshot, node_fd, clock):
         self._host, self._mounts, self._view = host, mounts, launch_view
         self._plan, self._installer, self._finalizer = launch_plan, installer, finalizer
         self._service_view, self._manager, self._wrapper = service_view, manager, wrapper
+        self._issuer = issuer
         self._layout, self._stage, self._node_fd, self._clock = layout, stage_snapshot, node_fd, clock
         self._role, self._run = wrapper.role, wrapper.run
         self._frontier = 42 if self._role == 'third' else 32
         self._before = None
         self._gate_argv = None
+        self._ack_attempted = self._acknowledged = False
         self._attempted = self._joined = self._failed = False
 
     def _left(self):
         self._clock.remaining(self._frontier)
         self._wrapper.active.left()
+
+    @contextmanager
+    def _held_third_probe(self):
+        # A stage directory stamp cannot authenticate the contents of a leaf
+        # that the ungated third Python process imports as soon as it execs.
+        stage, view = self._layout.stage, self._view
+        parent, name = 'roles', 'native-workload-browser-host.py'
+        path = parent + '/' + name
+        _require(self._role == 'third' and self._plan._PROBE == path, 'role-process-third-probe')
+        rows = self._service_view._stage_rows(self._finalizer, self._stage, frozenset((parent,)))[parent]
+        directory, probe = rows.get(parent), rows.get(path)
+        _require(directory is not None and directory.kind == 'directory' and directory.mode == 0o555
+                 and probe is not None and probe.kind == 'file' and probe.mode == 0o444
+                 and 0 < probe.bytes <= self._finalizer._ROLE_MAX, 'role-process-third-probe')
+        deadline = self._clock.start + self._frontier
+        self._left()
+        with (view.held_launch_source(self._host, self._mounts, run_id=self._run, stage_fd=stage,
+                                      planned_bytes=0, planned_entries=0, deadline=deadline) as launch,
+              view._own(os.open(parent, self._installer._DIR, dir_fd=stage)) as folder,
+              view._own(os.open(name, self._installer._READ, dir_fd=folder)) as fd):
+            def current():
+                self._left()
+                stage_info = os.fstat(stage)
+                _require(launch.path == self._layout.root + '/launch-source'
+                         and launch.backing_birth == (stage_info.st_dev, stage_info.st_ino)
+                         and self._installer._state(stage_info) == self._stage.root_state,
+                         'role-process-stage-root')
+                for held, relative, enclosing, row, mode in (
+                    (folder, parent, stage, directory, stat.S_IFDIR | 0o555),
+                    (fd, name, folder, probe, stat.S_IFREG | 0o444),
+                ):
+                    self._left()
+                    info = os.fstat(held)
+                    _require(info.st_mode == mode and info.st_uid == info.st_gid == 0
+                             and not os.get_inheritable(held)
+                             and (row is directory or (info.st_nlink == 1 and info.st_size == probe.bytes))
+                             and self._installer._state(info) == row.state == self._installer._state(
+                                 os.stat(relative, dir_fd=enclosing, follow_symlinks=False)), 'role-process-third-probe')
+                    _require(view._mount_id(self._layout.fdinfo, held, deadline) == launch.local_mount_id,
+                             'role-process-third-probe-mount')
+
+            current()
+            digest, offset = hashlib.sha256(), 0
+            while offset < probe.bytes:
+                self._left()
+                size = min(16384, probe.bytes - offset)
+                block = os.pread(fd, size, offset)
+                _require(0 < len(block) <= size, 'role-process-third-probe-bytes')
+                digest.update(block)
+                offset += len(block)
+            self._left()
+            _require(not os.pread(fd, 1, offset) and digest.hexdigest() == probe.sha256,
+                     'role-process-third-probe-bytes')
+            current()
+            yield
+            current()
 
     def before_request(self):
         """Check the exact READY command and current unit absence before ACK."""
@@ -80,6 +139,8 @@ class _RoleProcess:
             service = wrapper.stock_argv[split + 2:]
             if self._role == 'third':
                 _require(service == command.argv[split + 1:], 'role-process-stock-command')
+                with self._held_third_probe():
+                    self._left()
             else:
                 _, node = self._host._main_commands(self._role, self._run, service)
                 _require(node == command.argv[split + 1:] and service[8] == str(wrapper.launch_by),
@@ -96,11 +157,32 @@ class _RoleProcess:
             self._settle_failure(primary)
             raise
 
+    def acknowledge_request(self):
+        """Send the existing wrapper ACK once, while the joined source proof is current."""
+        wrapper = self._wrapper
+        _require(self._before is not None and not self._ack_attempted and not self._failed
+                 and wrapper.live and wrapper.ready and not wrapper.manager_request_possible and not wrapper.reap_attempted
+                 and self._manager.phase(self._role) == 'prelaunch-absent', 'role-process-ack-order')
+        self._ack_attempted = True
+        try:
+            self._left()
+            if self._role == 'third':
+                wrapper._prepare_ack()
+                with self._held_third_probe():
+                    wrapper._send_ack()
+            else:
+                wrapper.acknowledge()
+            self._left()
+            self._acknowledged = True
+        except BaseException as primary:
+            self._settle_failure(primary)
+            raise
+
     @contextmanager
     def hold_main(self, *, candidate_pid, candidate_invocation):
         """Treat the discovery pair as candidates until both native owners agree."""
         wrapper, manager = self._wrapper, self._manager
-        _require(self._before is not None and not self._attempted and not self._failed
+        _require(self._acknowledged and not self._attempted and not self._failed
                  and wrapper.live and wrapper.ack_sent and wrapper.stock_seen and not wrapper.reap_attempted
                  and manager.phase(self._role) == 'prelaunch-absent', 'role-process-main-order')
         self._attempted = True
@@ -114,9 +196,7 @@ class _RoleProcess:
             wrapper._current_identity(wrapper.active)
             self._left()
             with ExitStack() as owned:
-                read_fd, write_fd = wrapper.take_role_pipes()
-                owned.enter_context(self._view._own(read_fd))
-                owned.enter_context(self._view._own(write_fd))
+                read_fd, write_fd = wrapper.borrow_role_pipes()
                 main = owned.enter_context(self._host.held_synthetic_main(
                     candidate_pid, self._role, self._run, python_fd=wrapper.python_fd, node_fd=self._node_fd,
                     root_read_fd=read_fd, root_write_fd=write_fd, gate_argv=self._gate_argv, clock=self._clock,
@@ -139,7 +219,10 @@ class _RoleProcess:
                 _require(manager_main.pid == identity.pid and manager_main.invocation == candidate_invocation
                          and current() == initial, 'role-process-main-changed')
                 self._left()
-                yield VerifiedRoleMain(main, manager_main, observed, read_fd, write_fd)
+                pipe = wrapper.adopt_role_pipes(self._issuer, output_birth=identity.output_birth,
+                                                input_birth=identity.input_birth)
+                self._left()
+                yield VerifiedRoleMain(main, manager_main, observed, pipe)
             self._joined = True
         except BaseException as primary:
             self._settle_failure(primary)
@@ -164,20 +247,21 @@ class _RoleProcess:
 
 
 @contextmanager
-def held_role_process(host, mounts, launch_view, launch_plan, installer, finalizer, service_view,
+def held_role_process(host, mounts, launch_view, launch_plan, installer, finalizer, service_view, issuer,
                       reference, wrapper_parent, runtime_layout, *, manager, wrapper, layout, stage_snapshot,
                       node_fd, clock):
     """Borrow the source-pinned owners and the protected caller's open scopes.
 
     Before entry the caller owns the READY wrapper, held broker transport and
-    fixed launch inputs. After before_request the caller may submit its ACK,
-    observe stock exec and supply independently discovered fixed-unit hints.
-    The yielded pre-grant main and pipe ends are borrowed until hold_main
-    exits. The caller must not transfer or close them. It must prove the
-    existing role readiness frame on these exact pipes before any grant,
-    and owns service, cgroup and manager-reference disposition on failure.
+    fixed launch inputs. The caller uses before_request and acknowledge_request
+    before stock exec observation and fixed-unit discovery. It must preserve
+    the immutable launch source through exec, including the ungated third probe.
+    The native main scope is borrowed until hold_main exits. The existing issuer
+    uses the one adopted pipe object while the wrapper scope remains open and
+    owns readiness, grant and exact transcript closure. The protected caller
+    owns service, cgroup and manager-reference disposition on failure.
     """
-    modules = (host, mounts, launch_view, launch_plan, installer, finalizer, service_view,
+    modules = (host, mounts, launch_view, launch_plan, installer, finalizer, service_view, issuer,
                reference, wrapper_parent, runtime_layout)
     _require(all(type(module) is ModuleType for module in modules)
              and type(manager) is reference.ManagerReference and type(wrapper) is wrapper_parent._WrapperParent
@@ -191,7 +275,7 @@ def held_role_process(host, mounts, launch_view, launch_plan, installer, finaliz
              and wrapper.launch_by == wrapper.started + (42 if wrapper.role == 'third' else 32) * _SECOND
              and ((node_fd is None) if wrapper.role == 'third' else (type(node_fd) is int and node_fd > 2)),
              'role-process-owner')
-    owner = _RoleProcess(host, mounts, launch_view, launch_plan, installer, finalizer, service_view,
+    owner = _RoleProcess(host, mounts, launch_view, launch_plan, installer, finalizer, service_view, issuer,
                          manager=manager, wrapper=wrapper, layout=layout, stage_snapshot=stage_snapshot,
                          node_fd=node_fd, clock=clock)
     try:

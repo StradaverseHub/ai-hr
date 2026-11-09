@@ -140,7 +140,7 @@ class _WrapperParent:
         self.package_marks = None
         self.live = True
         self.started_spawn = self.ready = self.ack_attempted = self.stock_seen = False
-        self.ack_sent = self.stock_attempted = False
+        self.ack_prepared = self.ack_sent = self.stock_attempted = False
         self.signal_attempted = self.reap_attempted = self.reaped = False
 
     @property
@@ -397,12 +397,22 @@ class _WrapperParent:
 
     def acknowledge(self):
         """Caller first proves current absence through the separate manager owner."""
-        _need(self.live and self.ready and not self.ack_attempted and not self.reap_attempted,
+        self._prepare_ack()
+        self._send_ack()
+
+    def _prepare_ack(self):
+        _need(self.live and self.ready and not self.ack_prepared and not self.ack_attempted and not self.reap_attempted,
               'wrapper-parent-ack-once')
         self._source()
         self._packages(self.active)
         self._snapshot(self.active, helper=True)
         self._root_pipe_pair()
+        self.ack_prepared = True
+
+    def _send_ack(self):
+        _need(self.live and self.ready and self.ack_prepared and not self.ack_attempted and not self.reap_attempted,
+              'wrapper-parent-ack-once')
+        self.ack_prepared = False
         _need(not self.gate._poll(self.control, self.pidfd, 0), 'wrapper-parent-ready-surplus')
         packet = self.gate._GO
         self.active.left()
@@ -432,22 +442,43 @@ class _WrapperParent:
 
     def take_role_pipes(self):
         """Transfer the root output-read and input-write FDs to the one transcript owner."""
-        _need(self.live and self.stock_seen and self.root_pipes is not None and not self.reap_attempted,
+        reader, writer = self.borrow_role_pipes()
+        self.root_pipes = None
+        return reader, writer
+
+    def borrow_role_pipes(self):
+        """Read the exact pair without relinquishing wrapper cleanup ownership."""
+        _need(self.live and self.stock_seen and type(self.root_pipes) is tuple and not self.reap_attempted,
               'wrapper-parent-pipe-transfer')
         self._root_pipe_pair()
         self.active.left()
         writer, reader = self.root_pipes
-        self.root_pipes = None
         return reader, writer
+
+    def adopt_role_pipes(self, issuer, *, output_birth, input_birth):
+        """Install the one transcript pipe object before returning any ownership."""
+        _need(type(issuer) is ModuleType, 'wrapper-parent-pipe-issuer')
+        reader, writer = self.borrow_role_pipes()
+        pipe = issuer._RolePipes(reader, writer, 512)
+        _need(type(pipe) is issuer._RolePipes and (pipe.read_birth, pipe.write_birth) == (output_birth, input_birth)
+              and self.borrow_role_pipes() == (reader, writer), 'wrapper-parent-pipe-identity')
+        # Before this single assignment the original tuple owns both ends;
+        # afterwards cleanup reaches the same stateful object as the issuer.
+        self.root_pipes = pipe
+        return pipe
 
     def _close_channels(self):
         with ExitStack() as closed:
             if self.control is not None:
                 closed.callback(self.control.close)
                 self.control = None
-            if self.root_pipes is not None:
-                for fd in self.root_pipes:
-                    closed.callback(os.close, fd)
+            pair = self.root_pipes
+            if pair is not None:
+                if type(pair) is tuple:
+                    for fd in pair:
+                        closed.callback(os.close, fd)
+                else:
+                    closed.callback(pair.close)
                 self.root_pipes = None
 
     def settle(self, *, terminate=False):
