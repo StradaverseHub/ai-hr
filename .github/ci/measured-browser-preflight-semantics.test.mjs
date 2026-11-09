@@ -42,7 +42,7 @@ function model() {
     renderedUnion: {
       kind: 'DEVELOPMENT_RENDERED_ROUTE_UNION_V1', ...identity, runAttempt: 1, complete: true,
       releaseEligible: false, protectedNative: false, dynamicNavigationComplete: false,
-      counts: { total: 191, urls: 93, usable: 16, scopedDenials: 1, renderedOnly: 174 },
+      counts: { total: 191, urls: 93, usable: 17, scopedDenials: 1, renderedOnly: 173 },
       observations: routes.map(row => ({ ...row, status: 200, accountObserved: true, elapsedMs: 100,
         failureCount: 0, readiness: nativePreflightReadiness(row.witness) })),
       primaryRetirement: [0, 1, 2, 4].map(actorIndex => {

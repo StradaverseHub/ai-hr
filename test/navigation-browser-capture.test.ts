@@ -586,7 +586,7 @@ it('seals the separate development route union only with exact route, hidden and
   expect(seal).toEqual({sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length});
   const actual=JSON.parse(bytes.toString('utf8'));
   expect(actual).toMatchObject({kind:'DEVELOPMENT_RENDERED_ROUTE_UNION_V1',complete:true,releaseEligible:false,protectedNative:false,
-   dynamicNavigationComplete:false,counts:{total:191,urls:93,usable:16,scopedDenials:1,renderedOnly:174},hiddenShell:{count:4,retiredDocuments:8},
+   dynamicNavigationComplete:false,counts:{total:191,urls:93,usable:17,scopedDenials:1,renderedOnly:173},hiddenShell:{count:4,retiredDocuments:8},
    candidateSha:source.sha,controllerSha:source.sha,runId:123,runAttempt:1});
   expect(actual.observations).toEqual(rows);expect(actual.primaryRetirement).toEqual(primary);
   expect(()=>writeDevelopmentRenderedRouteUnion(output,baseline,rows,hidden,primary,tiles)).toThrow(/EEXIST/);

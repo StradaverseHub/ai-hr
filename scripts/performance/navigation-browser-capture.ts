@@ -503,7 +503,7 @@ export function writeDevelopmentRenderedRouteUnion(outputDirectory:string,baseli
  assert(candidateSha===controllerSha,'Full development browser requires exact self-source');
  validateNativeShellBaseline(hidden,{candidateSha,controllerSha,runId,harnessSha256,scenarioSha256});
  const plan=nativePreflightRoutePlan(),counts=requireNativeRenderedUnion(rows);
- assert.deepEqual(counts,{total:191,usable:16,scopedDenials:1,renderedOnly:174});
+ assert.deepEqual(counts,{total:191,usable:17,scopedDenials:1,renderedOnly:173});
  const urls=new Set(plan.map(row=>row.requested)).size;
  assert.equal(urls,93,'Full development requested address census differs');
  const ordered=plan.map(expected=>rows.find(row=>row.actorIndex===expected.actorIndex&&row.requested===expected.requested)!);

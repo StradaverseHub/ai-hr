@@ -42,9 +42,9 @@ function navigationContracts() {
   return navigation;
 }
 
-const routeDigest = '091d065fc229aeaba438dea386a71f378d6bf4f171bab2972be6e3358da44ba4';
+const routeDigest = '369e09c260c30de51be51f2de04a1467ca63682bd5ed0ecc48754b0cb80eb393';
 const hiddenDigest = '36b86d2561088d2063db0431652b3418c8dee1ec558eeadc5a970bccc9a9fa74';
-const count = { total: 191, urls: 93, usable: 16, scopedDenials: 1, renderedOnly: 174 };
+const count = { total: 191, urls: 93, usable: 17, scopedDenials: 1, renderedOnly: 173 };
 const roles = { employee: 460, manager: 20, companyHR: 18, groupHR: 2 };
 const actorCounts = { fictional: true, globalPopulationAsserted: false, trafficActors: 500, tenants: 2, companies: 10,
   actorsPerTenant: 250, actorsPerCompany: 50, nativeSelectedRows: 500, nativeGrants: 544, roles };

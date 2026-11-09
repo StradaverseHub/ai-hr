@@ -668,12 +668,12 @@ jobs:
                       or row['kind'] != 'DEVELOPMENT_RENDERED_ROUTE_UNION_V1' or row['complete'] is not True
                       or any(row[key] is not False for key in ('releaseEligible', 'protectedNative', 'dynamicNavigationComplete'))
                       or not same_identity(row) or not all(digest(row[key]) for key in ('harnessSha256', 'scenarioSha256'))
-                      or row['counts'] != {'total': 191, 'urls': 93, 'usable': 16, 'scopedDenials': 1, 'renderedOnly': 174}
+                      or row['counts'] != {'total': 191, 'urls': 93, 'usable': 17, 'scopedDenials': 1, 'renderedOnly': 173}
                       or count(row['observations']) != 191):
                   return False
               roles = {'employee': (4, 30), 'manager': (2, 16), 'companyHR': (1, 71), 'groupHR': (0, 74)}
               paths, readiness, visited, tuples = set(), Counter(), Counter(), []
-              expected_route_tuples = '091d065fc229aeaba438dea386a71f378d6bf4f171bab2972be6e3358da44ba4'
+              expected_route_tuples = '369e09c260c30de51be51f2de04a1467ca63682bd5ed0ecc48754b0cb80eb393'
               expected_hidden_plan = '36b86d2561088d2063db0431652b3418c8dee1ec558eeadc5a970bccc9a9fa74'
               route_pattern = r'/(?:[a-z0-9-]+(?:/[a-z0-9-]+)*)?(?:\?view=(?:how|privacy|tools|insights))?'
               redirects = {'/admin/claims/forms': (308, '/admin/claims'),
@@ -705,7 +705,7 @@ jobs:
               if (hashlib.sha256(canonical_routes).hexdigest() != expected_route_tuples
                       or len({requested for _, requested in paths}) != 93
                       or visited != Counter({role: facts[1] for role, facts in roles.items()})
-                      or readiness != Counter({'usable-content': 16, 'scope-denial': 1, 'rendered-only': 174})):
+                      or readiness != Counter({'usable-content': 17, 'scope-denial': 1, 'rendered-only': 173})):
                   return False
               counts = {index: size for index, size in roles.values()}
               if row['primaryRetirement'] != [

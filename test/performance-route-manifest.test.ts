@@ -36,7 +36,7 @@ it('requires the complete current native role union on exactly the four primary 
   const rows=plan.filter(row=>row.role===role);expect(rows).toHaveLength(count);
   expect(rows.map(row=>row.requested)).toEqual(routePools[role]);expect(rows.every(row=>row.actorIndex===actor)).toBe(true);
  }
- const observed=nativeRenderedRows();expect(requireNativeRenderedUnion(observed)).toEqual({total:191,usable:16,scopedDenials:1,renderedOnly:174});
+ const observed=nativeRenderedRows();expect(requireNativeRenderedUnion(observed)).toEqual({total:191,usable:17,scopedDenials:1,renderedOnly:173});
  expect(observed.filter(row=>row.view!==null)).toHaveLength(14);
  expect(observed.filter(row=>row.redirectStatus!==null)).toHaveLength(6);
  expect(()=>requireNativeRenderedUnion(observed.slice(1))).toThrow(/incomplete/);
