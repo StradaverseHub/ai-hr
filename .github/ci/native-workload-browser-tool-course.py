@@ -268,6 +268,24 @@ def download_writers(writers):
         births.add(key)
 
 
+def _download_body(response, fd, maximum, browser, deadline):
+    with fixed_refusal('download-framing', (ValueError, http.client.IncompleteRead)):
+        expected = _download_headers(response, maximum, browser)
+        limit = maximum if expected is None else expected
+        total = 0
+        while True:
+            left(deadline)
+            block = response.read(min(CHUNK, limit + 1 - total))
+            if not block:
+                break
+            total += len(block)
+            require(total <= limit, 'TOOL transfer exceeds byte bound')
+            with fixed_refusal('download-write'):
+                write_all(fd, block, deadline)
+        require(total > 0 and (expected is None or total == expected), 'TOOL HTTP body length differs')
+        return total
+
+
 def download(uid, gid, deadline, writers):
     here = pathlib.Path(__file__).absolute()
     root = here.parents[3]
@@ -286,20 +304,7 @@ def download(uid, gid, deadline, writers):
             try:
                 connection.request('GET', target, headers={'Accept-Encoding': 'identity', 'Connection': 'close'})
                 with connection.getresponse() as response:
-                    with fixed_refusal('download-framing', (ValueError,)):
-                        expected = _download_headers(response, maximum, name == 'chromium.zip')
-                        total = 0
-                        while True:
-                            left(deadline)
-                            block = response.read(min(CHUNK, maximum + 1 - total))
-                            if not block:
-                                break
-                            total += len(block)
-                            require(total <= maximum, 'TOOL transfer exceeds byte bound')
-                            with fixed_refusal('download-write'):
-                                write_all(fd, block, deadline)
-                        require(total > 0 and (expected is None or total == expected), 'TOOL HTTP body length differs')
-                        lengths[name] = total
+                    lengths[name] = _download_body(response, fd, maximum, name == 'chromium.zip', deadline)
             finally:
                 connection.close()
     with fixed_refusal('download-write'):
@@ -436,7 +441,9 @@ def _run_tool_command(kernel, argv, stop):
                     os.close(publish)
                     require(os.read(grant, 1) == b'A', 'TOOL session was not granted')
                     os.close(grant)
-                    left(stop)
+                    # A parent descheduled just before writing ACK cannot extend
+                    # the shorter admission boundary for the actual child exec.
+                    left(ready_stop)
                     os.execve(argv[0], argv, child_env)
                 except BaseException:
                     os._exit(125)

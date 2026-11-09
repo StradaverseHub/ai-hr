@@ -1,6 +1,7 @@
 """Source models for the exclusive TOOL route. No network, sudo or native mount."""
 from __future__ import annotations
 
+import copy
 import fcntl
 import io
 import os
@@ -58,6 +59,29 @@ def response(status, headers):
 def owned_result(**changes):
     return {'reaped': True, 'groupQuiescent': True, 'admitted': True, 'reason': 'complete',
             'commandExit': 0, 'escapedSession': False} | changes
+
+
+def tool_owner_report():
+    # Fictional receipt data with the exact producer shape. The capture gate
+    # checks publication shape and neither authenticates nor grants authority.
+    rows = [{'path':path, 'mode':'100644', 'size':100, 'gitBlob':'b'*40,
+             'sha256':B.TOOL_PACKAGE_PINS.get(path, 'c'*64)} for path in B.TOOL_MEMBERS]
+    packages = ('playwright','playwright-core','postgres')
+    outcome = {'reason':'complete', 'exit':0, 'admitted':True, 'reaped':True, 'quiescent':True, 'escapedSession':False}
+    return {'kind':'NATIVE_TOOL_ONLY_COMPONENT', 'complete':True, 'cleanup':'complete', 'source':SOURCE,
+            'controller':SOURCE, 'runId':'123', 'attempt':1, 'job':'native-test', 'eventSha256':'e'*64,
+            'sourceMembers':rows, 'sourceCapsuleSha256':B.hashlib.sha256(B.canonical(rows)).hexdigest(),
+            'platform':{'system':'linux', 'machine':'x86_64', 'ubuntu':'24.04', 'python':[3,12,3]},
+            'elapsedMs':100000, 'ownedProcessesSettled':True, 'browserStarted':False, 'applicationBuilt':False,
+            'databaseStarted':False, 'nativeWorkloadQualified':False, 'releaseAuthorized':False,
+            'processOutcomes':{operation:outcome.copy() for operation in
+                               ('namespace-private','archive-downloader','payload-bind','payload-remount','payload-unmount')},
+            'transfer':{'generation':'1784092784777971', 'privateWriters':True,
+                        'lengths':{'chromium.zip':120231126, **{name+'.tgz':1 for name in packages}}},
+            'materialized':{'treeSha256':'1'*64, 'browserSha256':'2'*64, 'browserTreeSha256':'3'*64,
+                            'readOnly':True, 'noSuid':True, 'noDev':True, 'noExec':True, 'entries':300,
+                            'fileBytes':273378828, 'mountId':22, 'packageLockSRI':dict.fromkeys(packages,'sha512-'+'A'*86+'==')},
+            'mountsAbsent':True, 'namespaceAbsent':True}
 
 
 class ToolIntentModels(unittest.TestCase):
@@ -136,8 +160,80 @@ class ToolIntentModels(unittest.TestCase):
             with self.subTest(status=status), self.assertRaises(ValueError):
                 B._validate_tool_capture(malformed, status)
 
+    def test_success_capture_requires_closed_owner_shape_and_positive_settlement(self):
+        report = tool_owner_report()
+        B._validate_tool_capture(B.canonical(report), '0')
+        bare = {'kind':'NATIVE_TOOL_ONLY_COMPONENT', 'complete':True, 'releaseAuthorized':False}
+        with self.assertRaises(ValueError):
+            B._validate_tool_capture(B.canonical(bare), '0')
+        for change in (lambda row: row.update(extra='foreign value'), lambda row: row.pop('mountsAbsent'),
+                       lambda row: row.update(attempt=True), lambda row: row.update(controller='b'*40),
+                       lambda row: row.update(elapsedMs=180000), lambda row: row['sourceMembers'].reverse(),
+                       lambda row: row['sourceMembers'][0].update(size=True),
+                       lambda row: row['sourceMembers'][0].update(raw='foreign value'),
+                       lambda row: row['sourceMembers'][0].update(gitBlob='d'*40),
+                       lambda row: row['platform'].update(python=[3,12,True]),
+                       lambda row: row['transfer']['lengths'].update({'postgres.tgz':16*1024**2+1}),
+                       lambda row: row['materialized']['packageLockSRI'].update(postgres='sha512-foreign'),
+                       lambda row: row['processOutcomes'].pop('payload-unmount'),
+                       lambda row: row['processOutcomes']['archive-downloader'].update(exit=False)):
+            changed = copy.deepcopy(report)
+            change(changed)
+            with self.subTest(fields=changed.keys()), self.assertRaises(ValueError):
+                B._validate_tool_capture(B.canonical(changed), '0')
+
+    def test_refusal_capture_closes_unknown_and_positive_cleanup_shapes_separately(self):
+        early = B._tool_refusal('tool-bootstrap-refused')
+        B._validate_tool_capture(B.canonical(early), '1')
+        with self.assertRaises(ValueError):
+            B._validate_tool_capture(B.canonical(early | {'cleanup':'complete'}), '1')
+        with self.assertRaises(ValueError):
+            B._validate_tool_capture(B.canonical(early | {'extra':'unbounded'}), '1')
+        report = tool_owner_report()
+        report.update(complete=False, cleanup='refused', failure='fixed-archive-acquisition',
+                      failureReason='deadline', cleanupReason='contract-refused', ownedProcessesSettled=False)
+        for key in ('transfer','materialized','mountsAbsent','namespaceAbsent'):
+            del report[key]
+        outcomes = report['processOutcomes']
+        outcomes['archive-downloader'].update(exit=None, reason='deadline', reaped=False, quiescent=False,
+                                               settlementReason='group-uncertain')
+        for operation in ('payload-bind','payload-remount','payload-unmount'):
+            del outcomes[operation]
+        B._validate_tool_capture(B.canonical(report), '1')
+        for changed in (report | {'cleanup':'complete'}, report | {'cleanupReason':'unknown raw text'},
+                        report | {'mountsAbsent':True}, report | {'failureReason':'raw error'}):
+            with self.assertRaises(ValueError):
+                B._validate_tool_capture(B.canonical(changed), '1')
+        report.update(cleanup='complete', ownedProcessesSettled=True, mountsAbsent=True, namespaceAbsent=True)
+        del report['cleanupReason']
+        row = outcomes['archive-downloader']
+        row.update(exit=-9, reaped=True, quiescent=True)
+        del row['settlementReason']
+        B._validate_tool_capture(B.canonical(report), '1')
+
 
 class ToolTransportModels(unittest.TestCase):
+    def test_incomplete_and_overcap_bodies_are_framing_refusals_before_overcap_write(self):
+        now = time.monotonic()
+        for headers, pieces, written, success in [
+            ([('Content-Length','3')], [b'abc',b''], 3, True),
+            ([('Content-Length','3')], [b'a',b''], 1, False),
+            ([('Content-Length','3')], [b'abcd'], 0, False),
+            ([('Transfer-Encoding','chunked')], [b'abcd',b'e'], 4, False),
+            ([('Transfer-Encoding','chunked')], [C.http.client.IncompleteRead(b'a',2)], 0, False),
+        ]:
+            observed = response(200, headers)
+            observed.read = Mock(side_effect=pieces)
+            with self.subTest(headers=headers,pieces=pieces), patch.object(C, 'write_all') as write:
+                if success:
+                    self.assertEqual(C._download_body(observed, 17, 4, False, now+30), 3)
+                    write.assert_called_once_with(17,b'abc',now+30)
+                else:
+                    with self.assertRaises(C.ToolRefusal) as refused:
+                        C._download_body(observed, 17, 4, False, now+30)
+                    self.assertEqual(refused.exception.reason, 'download-framing')
+                self.assertEqual(sum(len(step.args[1]) for step in write.call_args_list), written)
+
     def test_writer_capabilities_require_five_fresh_disjoint_write_only_inodes(self):
         with tempfile.TemporaryDirectory() as parent, ExitStack() as held:
             paths = [pathlib.Path(parent) / name for name in C.DOWNLOAD_SLOTS]
@@ -259,6 +355,59 @@ class ToolTransportModels(unittest.TestCase):
              patch.object(C.os, 'write') as ack, self.assertRaisesRegex(C.ToolRefusal, 'elapsed boundary'):
             C._admit_tool_command(kernel, child, 10, 13, 110, lambda: False)
         ack.assert_not_called()
+
+    def test_child_refuses_late_ack_at_shorter_handshake_stop_before_native_exec(self):
+        for granted_at in (102.5, 103):
+            now = 100
+            kernel = Mock()
+            kernel.own_children.return_value = []
+            kernel.identity.return_value = {'pid':4321, 'parent':1234, 'group':4321, 'session':4321, 'start':22, 'state':'S'}
+
+            def grant(_fd, _length):
+                nonlocal now
+                now = granted_at
+                return b'A'
+
+            with self.subTest(granted_at=granted_at), patch.object(C.time, 'monotonic', side_effect=lambda: now), \
+                 patch.object(C.pathlib.Path, 'iterdir', return_value=iter([1])), \
+                 patch.object(C.signal, 'getsignal', return_value=signal.SIG_DFL), patch.object(C.signal, 'signal'), \
+                 patch.object(C.os, 'pipe', side_effect=[(10,11),(12,13)]), patch.object(C.os, 'close'), \
+                 patch.object(C.os, 'fork', return_value=0), patch.object(C.os, 'setsid'), \
+                 patch.object(C.os, 'read', side_effect=grant), patch.object(C.os, '_exit', side_effect=SystemExit(125)), \
+                 patch.object(C.os, 'execve', side_effect=OSError('fictional')) as execute, self.assertRaises(SystemExit):
+                C._run_tool_command(kernel, [C.MOUNT,'-i','--make-rprivate','/'], 110)
+            self.assertEqual(execute.call_count, int(granted_at < 103))
+
+    def test_late_written_ack_keeps_real_group_proof_through_owned_refusal_reap(self):
+        child, now = 4321, 100
+        row = {'pid':child, 'parent':os.getpid(), 'group':child, 'session':child, 'start':22, 'state':'S'}
+        packet = C.canonical({'kind':'ready', **{key:value for key, value in row.items() if key != 'state'}})
+        kernel = Mock()
+        kernel.own_children.side_effect = [[], [child], []]
+        kernel.identity.return_value = row
+        kernel.live_group.return_value = []
+
+        def write_ack(fd, data):
+            nonlocal now
+            self.assertEqual((fd,data), (13,b'A'))
+            now = 103
+            return 1
+
+        with patch.object(C.time, 'monotonic', side_effect=lambda: now), \
+             patch.object(C.pathlib.Path, 'iterdir', return_value=iter([1])), \
+             patch.object(C.signal, 'getsignal', return_value=signal.SIG_DFL), patch.object(C.signal, 'signal'), \
+             patch.object(C.os, 'pipe', side_effect=[(10,11),(12,13)]), patch.object(C.os, 'close'), \
+             patch.object(C.os, 'fork', return_value=child), patch.object(C.os, 'pidfd_open', return_value=20), \
+             patch.object(C.select, 'select', return_value=([10], [], [])), patch.object(C.os, 'read', return_value=packet), \
+             patch.object(C.os, 'write', side_effect=write_ack), \
+             patch.object(C.os, 'waitid', return_value=SimpleNamespace(si_pid=child)), \
+             patch.object(C.os, 'killpg') as stop, patch.object(C.os, 'waitpid', return_value=(child,125<<8)) as reap:
+            order = Mock()
+            order.attach_mock(stop, 'stop')
+            order.attach_mock(reap, 'reap')
+            result = C._run_tool_command(kernel, [C.MOUNT,'-i','--make-rprivate','/'], 110)
+        self.assertEqual(order.mock_calls, [call.stop(child,signal.SIGKILL),call.reap(child,os.WNOHANG)])
+        self.assertEqual(result, owned_result(reason='command-failed',commandExit=125))
 
     def test_absolute_settlement_bound_refuses_late_signal_or_late_reap(self):
         child = 4321

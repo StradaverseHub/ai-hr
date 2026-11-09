@@ -467,6 +467,131 @@ def _write_tool_receipt(report):
     sys.stdout.buffer.write(encoded)
 
 
+def _tool_capture_keys(value, required, optional=()):
+    need(type(value) is dict and set(required) <= value.keys() <= set(required) | set(optional),
+         'Returned TOOL capture fields differ')
+
+
+def _tool_capture_int(value, minimum, maximum):
+    return type(value) is int and minimum <= value <= maximum
+
+
+def _tool_capture_hex(value, length):
+    return type(value) is str and len(value) == length and re.fullmatch(r'[0-9a-f]+', value) is not None
+
+
+def _validate_tool_owner_capture(report):
+    base = ('kind', 'complete', 'cleanup', 'source', 'controller', 'runId', 'attempt', 'job', 'eventSha256',
+            'sourceMembers', 'sourceCapsuleSha256', 'platform', 'elapsedMs', 'ownedProcessesSettled')
+    negative = ('browserStarted', 'applicationBuilt', 'databaseStarted', 'nativeWorkloadQualified', 'releaseAuthorized')
+    closure = ('mountsAbsent', 'namespaceAbsent')
+    observed = ('processOutcomes', 'transfer', 'materialized')
+    complete = report['complete']
+    _tool_capture_keys(report, base + negative + (closure + observed if complete else ('failure',)),
+                       () if complete else closure + observed + ('failureReason', 'cleanupReason'))
+    need(all(report[key] is False for key in negative) and report['job'] == 'native-test'
+         and _tool_capture_int(report['attempt'], 1, 1) and _tool_capture_hex(report['source'], 40)
+         and report['controller'] == report['source'] and type(report['runId']) is str
+         and re.fullmatch(r'[1-9][0-9]{0,15}', report['runId']) is not None
+         and _tool_capture_hex(report['eventSha256'], 64) and _tool_capture_hex(report['sourceCapsuleSha256'], 64)
+         and _tool_capture_int(report['elapsedMs'], 0, 600000)
+         and type(report['ownedProcessesSettled']) is bool, 'Returned TOOL owner identity differs')
+
+    platform = report['platform']
+    _tool_capture_keys(platform, ('system', 'machine', 'python', 'ubuntu'))
+    python = platform['python']
+    need(platform['system'] == 'linux' and platform['machine'] == 'x86_64' and platform['ubuntu'] == '24.04'
+         and type(python) is list and len(python) == 3 and python[0] == 3
+         and all(_tool_capture_int(part, 0, 255) for part in python), 'Returned TOOL platform differs')
+
+    rows = report['sourceMembers']
+    need(type(rows) is list and len(rows) == len(TOOL_MEMBERS), 'Returned TOOL source member census differs')
+    for path, row in zip(TOOL_MEMBERS, rows, strict=True):
+        _tool_capture_keys(row, ('path', 'mode', 'size', 'gitBlob', 'sha256'))
+        need(row['path'] == path and row['mode'] == '100644' and _tool_capture_int(row['size'], 1, TOOL_MEMBER_MAX)
+             and _tool_capture_hex(row['gitBlob'], 40) and _tool_capture_hex(row['sha256'], 64)
+             and (path not in TOOL_PACKAGE_PINS or row['sha256'] == TOOL_PACKAGE_PINS[path]),
+             'Returned TOOL source member differs')
+    need(hashlib.sha256(canonical(rows)).hexdigest() == report['sourceCapsuleSha256'], 'Returned TOOL capsule differs')
+
+    packages = ('playwright', 'playwright-core', 'postgres')
+    if 'transfer' in report:
+        transfer = report['transfer']
+        _tool_capture_keys(transfer, ('generation', 'lengths', 'privateWriters'))
+        lengths = transfer['lengths']
+        _tool_capture_keys(lengths, ('chromium.zip',) + tuple(name + '.tgz' for name in packages))
+        need(transfer['generation'] == '1784092784777971' and transfer['privateWriters'] is True
+             and _tool_capture_int(lengths['chromium.zip'], 120231126, 120231126)
+             and all(_tool_capture_int(lengths[name + '.tgz'], 1, 16 * 1024**2) for name in packages),
+             'Returned TOOL transfer differs')
+    if 'materialized' in report:
+        materialized = report['materialized']
+        digests = ('treeSha256', 'browserSha256', 'browserTreeSha256')
+        flags = ('readOnly', 'noSuid', 'noDev', 'noExec')
+        _tool_capture_keys(materialized, digests + flags + ('entries', 'fileBytes', 'mountId', 'packageLockSRI'))
+        sri = materialized['packageLockSRI']
+        _tool_capture_keys(sri, packages)
+        need('transfer' in report and all(_tool_capture_hex(materialized[key], 64) for key in digests)
+             and all(materialized[key] is True for key in flags) and _tool_capture_int(materialized['entries'], 1, 5122)
+             and _tool_capture_int(materialized['fileBytes'], 1, 273378828 + 3 * 64 * 1024**2)
+             and _tool_capture_int(materialized['mountId'], 1, 2**31 - 1)
+             and all(type(value) is str and re.fullmatch(r'sha512-[A-Za-z0-9+/]{85}[AQgw]==', value)
+                     for value in sri.values()), 'Returned TOOL installation differs')
+
+    operations = ('namespace-private', 'archive-downloader', 'payload-bind', 'payload-remount', 'payload-unmount')
+    reasons = ('complete', 'command-failed', 'deadline', 'handshake-refused', 'descendants-survived',
+               'protocol-refused', 'owner-interrupted', 'group-uncertain', 'session-escaped')
+    successful_operations = set()
+    if 'processOutcomes' in report:
+        outcomes = report['processOutcomes']
+        _tool_capture_keys(outcomes, operations if complete else (), () if complete else operations)
+        need(bool(outcomes), 'Returned TOOL process census empty')
+        for operation, row in outcomes.items():
+            flags = ('admitted', 'reaped', 'quiescent', 'escapedSession')
+            _tool_capture_keys(row, ('reason', 'exit') + flags, ('settlementReason',))
+            need(row['reason'] in reasons and all(type(row[key]) is bool for key in flags)
+                 and (row['exit'] is None or row['admitted'] and _tool_capture_int(row['exit'], -64, 255))
+                 and (not row['escapedSession'] or row['reaped'])
+                 and (row['quiescent'] and row['reaped'] and 'settlementReason' not in row
+                      or not row['quiescent'] and row.get('settlementReason') == 'group-uncertain'),
+                 'Returned TOOL process outcome differs')
+            if (row['reason'] == 'complete' and row['exit'] == 0 and row['admitted']
+                    and row['quiescent'] and not row['escapedSession']):
+                successful_operations.add(operation)
+    if 'transfer' in report:
+        need(set(operations[:2]) <= successful_operations, 'Returned TOOL transfer lacks process outcomes')
+    if 'materialized' in report:
+        need(set(operations[:4]) <= successful_operations, 'Returned TOOL installation lacks process outcomes')
+
+    cleanup = report['cleanup']
+    need(cleanup in ('complete', 'refused', 'not-acquired') and all(report[key] is True for key in closure if key in report)
+         and ('namespaceAbsent' not in report or 'mountsAbsent' in report)
+         and ('mountsAbsent' not in report or report['ownedProcessesSettled']), 'Returned TOOL cleanup fields differ')
+    if cleanup == 'complete':
+        need(all(report.get(key) is True for key in closure) and 'cleanupReason' not in report,
+             'Returned TOOL cleanup lacks positive absence')
+    elif cleanup == 'not-acquired':
+        need(not any(key in report for key in closure + observed + ('cleanupReason',)),
+             'Returned TOOL unacquired state contains owner observations')
+    if complete:
+        need(cleanup == 'complete' and report['elapsedMs'] < 180000 and successful_operations == set(operations),
+             'Returned TOOL success lacks bounded cleanup and process completion')
+    else:
+        stages = ('root-parent-acquisition', 'root-acquisition', 'source-capsule', 'private-mount-namespace',
+                  'fixed-archive-acquisition', 'strict-materialization', 'readonly-installation-readback',
+                  'owner-finalization', 'owned-settlement')
+        failure_reasons = reasons[1:] + ('host-io', 'contract-refused', 'download-identity', 'download-writer',
+            'download-tls-transport', 'download-framing', 'download-deadline', 'download-write',
+            'strict-archive-pin', 'strict-archive-or-tree')
+        need(report['failure'] in stages and (report.get('failureReason') in failure_reasons
+             or report['failure'] == 'owned-settlement' and 'failureReason' not in report)
+             and ('cleanupReason' not in report or cleanup == 'refused' and report['cleanupReason'] in
+                  ('namespace-creation-unproved', 'host-io', 'contract-refused', 'deadline', 'owner-interrupted',
+                   'handshake-refused', 'protocol-refused', 'command-failed', 'group-uncertain',
+                   'descendants-survived', 'session-escaped')),
+             'Returned TOOL failure reasons differ')
+
+
 def _validate_tool_capture(raw, status):
     need(status in ('0', '1') and 0 < len(raw) <= 65536, 'Returned TOOL capture required')
     report = json.loads(raw)
@@ -474,6 +599,10 @@ def _validate_tool_capture(raw, status):
          and report.get('kind') == 'NATIVE_TOOL_ONLY_COMPONENT'
          and report.get('complete') is (status == '0') and report.get('releaseAuthorized') is False,
          'Returned TOOL capture differs')
+    if report.get('failure') in ('tool-pre-root-refused', 'tool-bootstrap-refused'):
+        need(report == _tool_refusal(report['failure']), 'Returned TOOL bootstrap refusal differs')
+    else:
+        _validate_tool_owner_capture(report)
 
 
 def prepare_tool():
