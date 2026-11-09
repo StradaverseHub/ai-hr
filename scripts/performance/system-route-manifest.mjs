@@ -91,6 +91,15 @@ export function assertNativePreflightRedirect(requested,status,location){
  assert(location===expected.final||location===origin+expected.final,'Native compatibility redirect location differs');
 }
 
+// The owned GET checks the exact status without following a redirect.
+export async function readManifestRoute(requested,get){
+ assert(concreteReadRoutes.has(requested),'Unreviewed concrete read route');
+ const redirect=compatibilityRoutes.get(requested);
+ const response=await get(requested,redirect?.status??200);
+ if(redirect)assertNativePreflightRedirect(requested,response.status,response.headers.location);
+ return response;
+}
+
 export function nativePreflightReadiness(witness){
  if(witness===scopedDenialWitness)return 'scope-denial';
  return witness?'usable-content':'rendered-only';

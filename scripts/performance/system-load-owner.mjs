@@ -40,7 +40,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
  nativePreflightRoutePlan,nativePreflightRouteFor,nativePreflightContentWitness,nativePreflightReadiness,
- assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from './system-route-manifest.mjs';
+ assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion,readManifestRoute} from './system-route-manifest.mjs';
 export async function runDevelopmentSystemLoad(){
  return runSystemLoad();
 }
@@ -190,6 +190,7 @@ function rejectBusyPage(user,path,channel){
 const claimRestorationKey=Symbol('owned claim restoration');
 const homeHttp=createHomeHttpReplay({base,request,report});
 function request(...args){requireNativeBusiness();return requests.run(()=>requestBody(...args));}
+function readRoute(user,route){return readManifestRoute(route,(path,status)=>request(user,path,undefined,status));}
 async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action,claimAttempt){
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
  if(Array.isArray(fields)){body=Buffer.from(JSON.stringify(fields));contentType='text/plain;charset=UTF-8';}
@@ -433,8 +434,7 @@ async function main(){
    slowPilotTimers.add(diagnostic);
    try{
     const intended=nativePreflight?nativePreflightRouteFor(user.role,user.index,route):null;
-    const response=intended?.redirectStatus!=null?await request(user,route,undefined,intended.redirectStatus):await request(user,route);
-    if(intended?.redirectStatus!=null)assertNativePreflightRedirect(route,response.status,response.headers.location);
+    const response=await readRoute(user,route);
     report.coverage.push({role:user.role,route,status:'passed',durationMs:response.durationMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes,
      ...(intended?{actorIndex:user.index,httpStatus:response.status,redirectStatus:intended.redirectStatus}:{})});
    }
@@ -1400,7 +1400,7 @@ async function main(){
    const navigationStarted=performance.now(),lease=navigationScheduler?.reserve({role:user.role,ordinal,actors:roleCounts.get(user.role),iteration,slot,startedMs:navigationStarted});
    const route=lease?.route??measuredRoutePools[user.role][slot];let usable=false;
    try{
-    await request(user,route);
+    await readRoute(user,route);
     if(route==='/'&&['employee','manager'].includes(user.role))await homeHttp.read(user,true);
     pageInteractions.push({role:user.role,route,startedMs:navigationStarted,durationMs:performance.now()-navigationStarted});usable=true;
    }finally{if(lease)navigationScheduler.complete(lease,usable);}

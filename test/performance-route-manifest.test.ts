@@ -1,10 +1,10 @@
 import {existsSync,readFileSync} from 'node:fs';
-import {expect,it} from 'vitest';
+import {expect,it,vi} from 'vitest';
 import {validateNavigationScenarioPlan,type NavigationFixtureRole,type NavigationScenario} from '../scripts/performance/navigation-protocol';
 import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
 import {isNativeOwnPayslipPdfPath,requireNativePreflightFixtureDay} from '../scripts/performance/native-preflight-content';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
- nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from '../scripts/performance/system-route-manifest.mjs';
+ nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion,readManifestRoute} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to an existing page',()=>{
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
  for(const [role,paths]of Object.entries(routePools)){
@@ -113,6 +113,39 @@ it('retains both guarded compatibility requests and their distinct exact canonic
    expect(()=>assertNativePreflightRedirect(requested,status,wrongLocation)).toThrow(/location/);
  }
  expect(()=>assertNativePreflightRedirect('/admin/locations?focus=extra',307,'/admin/work-locations/clocking')).toThrow(/Unreviewed/);
+});
+
+it('reads each exact declared route once using its expected HTTP status without following redirects',async()=>{
+ for(const [requested,status,location]of [
+  ['/assistant?view=tools',200,undefined],
+  ['/admin/claims/forms',308,'/admin/claims'],
+  ['/admin/locations',307,'https://localhost:3443/admin/work-locations/clocking'],
+ ]as const){
+  const response={status,headers:{location}};
+  const get=vi.fn(async()=>response);
+  await expect(readManifestRoute(requested,get)).resolves.toBe(response);
+  expect(get).toHaveBeenCalledExactlyOnceWith(requested,status);
+ }
+});
+
+it('refuses unknown reads before issuing a request and propagates read and redirect failures',async()=>{
+ const never=vi.fn();
+ for(const requested of ['/admin/locations?focus=extra','/admin/claims/forms/','/assistant?view=unreviewed','/unreviewed']){
+  await expect(readManifestRoute(requested,never)).rejects.toThrow(/Unreviewed concrete read route/);
+ }
+ expect(never).not.toHaveBeenCalled();
+ const failure=Error('owned read failed');
+ const refused=vi.fn(async()=>{throw failure;});
+ await expect(readManifestRoute('/claims',refused)).rejects.toBe(failure);
+ expect(refused).toHaveBeenCalledExactlyOnceWith('/claims',200);
+ for(const [status,location,reason]of [
+  [200,'/admin/work-locations/clocking',/status/],
+  [307,'/admin/claims',/location/],
+ ]as const){
+  const get=vi.fn(async()=>({status,headers:{location}}));
+  await expect(readManifestRoute('/admin/locations',get)).rejects.toThrow(reason);
+  expect(get).toHaveBeenCalledExactlyOnceWith('/admin/locations',307);
+ }
 });
 
 it('covers the installed AI Centre tabs and administrator sections without granting employees admin routes',()=>{
