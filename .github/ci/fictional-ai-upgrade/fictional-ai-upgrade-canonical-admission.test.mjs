@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import {mkdirSync,mkdtempSync,rmSync,writeFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {test} from 'node:test';
-import {APP_URL,BASE,BRANCH,CANDIDATE,IMAGE,OWNER_URL,SOURCE_PINS,assertPristineAuthTenant,validateCanonicalAdmission} from './fictional-ai-upgrade-canonical-admission.mjs';
+import {APP_URL,BASE,BRANCH,CANDIDATE,IMAGE,OWNER_URL,SOURCE_PINS,assertPristineAuthTenant,installFictionalServerOnlyResolution,validateCanonicalAdmission} from './fictional-ai-upgrade-canonical-admission.mjs';
 
 const control = 'c'.repeat(40), run = '12345', repo = 'StradaverseHub/ai-hr';
 function fixture(phase) {
@@ -27,6 +31,27 @@ function fixture(phase) {
 }
 test('accepts only matching baseline and candidate phase identities',()=>{
   for (const phase of ['prepare','compare']) assert.equal(validateCanonicalAdmission(fixture(phase)).runId,run);
+});
+test('selects the packaged server marker without selecting server exports for other packages',t=>{
+  const root = mkdtempSync(join(tmpdir(),'fictional-imports-'));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  for (const name of ['server-only','fictional-ui']) {
+    const dir = join(root,'node_modules',name);
+    mkdirSync(dir,{recursive:true});
+    writeFileSync(join(dir,'package.json'),JSON.stringify({exports:{'react-server':'./server.cjs',default:'./default.cjs'}}));
+    writeFileSync(join(dir,'server.cjs'),"module.exports = 'server';");
+    writeFileSync(join(dir,'default.cjs'),"module.exports = 'default';");
+  }
+  const require = createRequire(join(root,'probe.cjs'));
+  assert.match(require.resolve('server-only'),/default[.]cjs$/);
+  const hook = installFictionalServerOnlyResolution();
+  try {
+    assert.equal(require('server-only'),'server');
+    assert.equal(require('fictional-ui'),'default');
+  } finally {
+    hook.deregister();
+  }
+  assert.match(require.resolve('server-only'),/default[.]cjs$/);
 });
 test('requires the exact migration-created auth tenant and refuses all other rows',()=>{
   const id='00000000-0000-0000-0000-000000000000';

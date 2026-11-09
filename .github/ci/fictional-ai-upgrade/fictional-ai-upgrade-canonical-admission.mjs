@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {lstatSync, readFileSync, realpathSync} from 'node:fs';
+import {registerHooks} from 'node:module';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -11,6 +12,16 @@ export const BRANCH = 'codex/architecture-ai-source-upgrade-witness-20261109';
 export const IMAGE = 'postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97';
 export const APP_URL = 'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev';
 export const OWNER_URL = 'postgres://postgres@127.0.0.1:5433/ai_hr_dev';
+export function installFictionalServerOnlyResolution() {
+  // The standalone witness needs the real server marker and ordinary React for UI dependencies.
+  return registerHooks({
+    resolve(specifier, context, nextResolve) {
+      return nextResolve(specifier, specifier === 'server-only'
+        ? {...context,conditions:[...context.conditions,'react-server']}
+        : context);
+    },
+  });
+}
 export function assertPristineAuthTenant(rows,systemTenantId) {
   // Exact fresh migration 0151 sentinel. Demo, lookalike and additional tenants all refuse.
   assert.deepEqual([...rows],[{id:systemTenantId,workosOrgId:'org_system_auth_audit',name:'System (auth audit)'}],

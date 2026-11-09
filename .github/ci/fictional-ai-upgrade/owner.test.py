@@ -179,6 +179,11 @@ class Admission(unittest.TestCase):
         ):
             self.assertEqual(owner.witness_failure_category(invalid),'unclassified-stage-failure')
 
+    def test_witness_uses_default_node_package_conditions(self):
+        owner_source = Path(owner.__file__).read_text()
+        self.assertIn("[node,'--import','tsx','scripts/fictional-ai-source-upgrade.mts',phase]",owner_source)
+        self.assertNotIn('--conditions=react-server',owner_source)
+
     def test_native_ledger_order_uses_integer_column_before_text_projection(self):
         witness = Path(__file__).with_name('fictional-ai-source-upgrade.mts').read_text()
         query = re.search(r'owner\.client<LedgerRow\[\]>`([^`]+)`',witness)

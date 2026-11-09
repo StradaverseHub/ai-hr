@@ -614,7 +614,7 @@ def main():
             write(custody/(phase+'-custody.json'),json.dumps(packet).encode(),0o444)
             stage = phase+'-witness'
             need(db_identity() == born)
-            owned(stage,source,[node,'--conditions=react-server','--import','tsx','scripts/fictional-ai-source-upgrade.mts',phase],
+            owned(stage,source,[node,'--import','tsx','scripts/fictional-ai-source-upgrade.mts',phase],
                   {**common,'AIHR_CI_HEAD':sha,'AIHR_AI_UPGRADE_ARTIFACT_DIR':str(witness_dir),
                    'TEST_DATABASE_URL':APP+'ai_hr_dev','TEST_MIGRATION_DATABASE_URL':ADMIN+'ai_hr_dev'},120)
             need(db_identity() == born)

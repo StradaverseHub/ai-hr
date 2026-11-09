@@ -7,7 +7,7 @@ import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SessionContext } from '../db/client';
 import type { Base } from '../test/harness';
-import {APP_URL, BASE, CANDIDATE, OWNER_URL, assertPristineAuthTenant, readCanonicalAdmission} from './fictional-ai-upgrade-canonical-admission.mjs';
+import {APP_URL, BASE, CANDIDATE, OWNER_URL, assertPristineAuthTenant, installFictionalServerOnlyResolution, readCanonicalAdmission} from './fictional-ai-upgrade-canonical-admission.mjs';
 
 const BASE_MODULE = '7f15e132bb44c257e9a9615184e12625684556945f8edc9b75999657c3266d2e';
 const CANDIDATE_MODULE = '9e45abb74a6035bd26d9eaef8fe2e06bc0a88de2704587ef1864a378b5c465a9';
@@ -137,6 +137,7 @@ async function main() {
     assert.match(env.AI_CONFIG_SECRET,/^[a-f0-9]{64}$/);
 
     enter('app-imports');
+    installFictionalServerOnlyResolution();
     const {sql} = await import('drizzle-orm');
     const {withTenant} = await import('../db/client');
     const {todayInKualaLumpur} = await import('../lib/hr-date');
