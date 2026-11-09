@@ -26,10 +26,13 @@ export function requireSuccessfulBuild(official,status,sha){
  return status;
 }
 export async function operatorRelease(options){try{return await leasedOperatorRelease(options);}catch(error){throw redactLeaseError(error);}}
-async function leasedOperatorRelease({candidatePath,runId,execute=false,recoveryRunIds=[],repair=null,browserRecovery=null}){
+async function leasedOperatorRelease({candidatePath,runId,execute=false,recoveryRunIds=[],repair=null,browserRecovery=null,exactDatabase=false}){
  candidatePath=resolve(candidatePath);bindStaging(process.env);
+ if(exactDatabase&&(repair||browserRecovery||recoveryRunIds.length!==1))throw Error('Exact database recovery requires one focused run');
  if(browserRecovery&&(repair||recoveryRunIds.length))throw Error('Choose one explicitly versioned browser recovery route');
  if(browserRecovery)requireReviewedBrowserController({execute,controller:cleanHead(controllerRoot),reviewedController:process.env.AIHR_BROWSER_REVIEWED_CONTROLLER});
+ if(execute&&exactDatabase&&process.env.AIHR_DB_RECOVERY_REVIEWED_CONTROLLER!==cleanHead(controllerRoot))
+  throw Error('Exact independent database recovery controller review required before deployment');
  if(execute&&repair)requireReviewedRepairController({execute,repair,controller:cleanHead(controllerRoot),reviewedController:process.env.AIHR_REPAIR_REVIEWED_CONTROLLER});
  const packetTransport=execute?assertRsyncPacketCapability():null;
  // Import the ACTUAL frozen candidate's official release helpers; never rewrite its gate code.
@@ -49,7 +52,7 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  const baselineLedger=verifyBaselineMigrationPreflight({candidatePath,baseline,ssh});
  const recovering=recoveryRunIds.length>0;
  if(repair&&recovering)throw Error('Choose one explicitly versioned recovery route');
- const evidence=browserRecovery?await verifyBrowserRecoveredCi({...browserRecovery,candidatePath,runId,baseline}):repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});
+ const evidence=browserRecovery?await verifyBrowserRecoveredCi({...browserRecovery,candidatePath,runId,baseline}):repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds,exactDatabase}):await verifyCi({candidatePath,runId,baseline});
  const save=(name,data)=>writeFileSync(join(evidence.evidenceDirectory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
  save('operator-preflight.json',{...evidence,target:STAGING,baselineLedger,profilePreflight,execute,packetTransport});
  if(!execute)return evidence;
@@ -100,7 +103,7 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
   arrivalVerified:true,ownedResourceCleanupVerified:true,releaseHandbackVerified:false};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const [mode,candidatePath,runId,focused]=process.argv.slice(2),recovering=['verify-recovery','deploy-recovery'].includes(mode),repairing=['verify-repair','deploy-repair'].includes(mode);
- if(!['verify','deploy','verify-recovery','deploy-recovery','verify-repair','deploy-repair','verify-browser-recovery','deploy-browser-recovery'].includes(mode)||!candidatePath||!/^\d+$/.test(runId??'')||((recovering||repairing||['verify-browser-recovery','deploy-browser-recovery'].includes(mode))?!focused:focused!==undefined))throw Error('Usage: node --import tsx operator-release.mjs <verify|deploy|verify-recovery|deploy-recovery|verify-repair|deploy-repair|verify-browser-recovery|deploy-browser-recovery> <candidate-worktree> <original-run-id> [JSON-focused-run-ids|JSON-repair-options|JSON-browser-recovery-options]');
- operatorRelease({candidatePath,runId,execute:mode.startsWith('deploy'),recoveryRunIds:recovering?JSON.parse(focused):[],repair:repairing?JSON.parse(focused):null,browserRecovery:['verify-browser-recovery','deploy-browser-recovery'].includes(mode)?JSON.parse(focused):null}).then(result=>{console.log(JSON.stringify(result,null,2));process.exit(0);}).catch(error=>{console.error(error);process.exit(1);});
+ const [mode,candidatePath,runId,focused]=process.argv.slice(2),exactDatabase=['verify-db-recovery','deploy-db-recovery'].includes(mode),recovering=exactDatabase||['verify-recovery','deploy-recovery'].includes(mode),repairing=['verify-repair','deploy-repair'].includes(mode);
+ if(!['verify','deploy','verify-recovery','deploy-recovery','verify-db-recovery','deploy-db-recovery','verify-repair','deploy-repair','verify-browser-recovery','deploy-browser-recovery'].includes(mode)||!candidatePath||!/^\d+$/.test(runId??'')||((recovering||repairing||['verify-browser-recovery','deploy-browser-recovery'].includes(mode))?!focused:focused!==undefined))throw Error('Usage: node --import tsx operator-release.mjs <verify|deploy|verify-recovery|deploy-recovery|verify-db-recovery|deploy-db-recovery|verify-repair|deploy-repair|verify-browser-recovery|deploy-browser-recovery> <candidate-worktree> <original-run-id> [JSON-focused-run-ids|JSON-repair-options|JSON-browser-recovery-options]');
+ operatorRelease({candidatePath,runId,execute:mode.startsWith('deploy'),exactDatabase,recoveryRunIds:recovering?JSON.parse(focused):[],repair:repairing?JSON.parse(focused):null,browserRecovery:['verify-browser-recovery','deploy-browser-recovery'].includes(mode)?JSON.parse(focused):null}).then(result=>{console.log(JSON.stringify(result,null,2));process.exit(0);}).catch(error=>{console.error(error);process.exit(1);});
 }

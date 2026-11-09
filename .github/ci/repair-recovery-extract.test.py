@@ -1,7 +1,7 @@
 import json,pathlib,subprocess,sys,tempfile,unittest,zipfile,stat
 SCRIPT=pathlib.Path(__file__).with_name('repair-recovery-extract.py')
 class RepairExtraction(unittest.TestCase):
-    def invoke(self,database=False,extra=(),omit=None,mixed=False):
+    def invoke(self,database=False,extra=(),omit=None,mixed=False,exact_db=False):
         with tempfile.TemporaryDirectory() as root:
             root=pathlib.Path(root);archive=root/'in.zip';destination=root/'out'
             groups={'NODB':[] if database else ['test/a.test.ts'],'DB':['test/a.test.ts'] if database else []}
@@ -12,10 +12,18 @@ class RepairExtraction(unittest.TestCase):
                 for n,v in members.items():
                     if n!=omit:z.writestr(n,v)
                 for n,v in extra:z.writestr(n,v)
-            p=subprocess.run([sys.executable,str(SCRIPT),str(archive),str(destination)],capture_output=True)
+            p=subprocess.run([sys.executable,str(SCRIPT),str(archive),str(destination),*(['--exact-db'] if exact_db else [])],capture_output=True)
             return p.returncode,sorted(x.name for x in destination.iterdir()) if destination.exists() else []
     def test_nodb(self):self.assertEqual(self.invoke(),(0,['focused.json','nodb.vitest.json']))
     def test_db_diagnostics_not_extracted(self):self.assertEqual(self.invoke(True),(0,['db.vitest.json','focused.json']))
+    def test_exact_database_mode_keeps_only_receipts_and_result(self):
+        roles=['personnel-draft-discard-premigration-role-prerequisites.json','personnel-draft-discard-role-prerequisites.json']
+        extras=[(name,'{}') for name in roles]+[('system-label-exchange-ms-desktop.png',b'PNG'),('system-label-browser-server.log','safe')]
+        self.assertEqual(self.invoke(True,extra=extras,exact_db=True),(0,['db.vitest.json','focused.json',*roles]))
+        self.assertNotEqual(self.invoke(True,extra=extras)[0],0)
+        self.assertNotEqual(self.invoke(True,extra=extras[1:],exact_db=True)[0],0)
+        self.assertNotEqual(self.invoke(exact_db=True)[0],0)
+        self.assertNotEqual(self.invoke(True,extra=[('system-label-browser-secret.json','{}')],exact_db=True)[0],0)
     def test_mixed_refused(self):self.assertNotEqual(self.invoke(mixed=True)[0],0)
     def test_missing_db_diagnostic(self):self.assertNotEqual(self.invoke(True,omit='postgres-stats.txt')[0],0)
     def test_missing_result(self):self.assertNotEqual(self.invoke(True,omit='db.vitest.json')[0],0)

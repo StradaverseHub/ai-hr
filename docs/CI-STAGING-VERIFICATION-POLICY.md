@@ -22,6 +22,18 @@ node --import tsx .github/ci/operator-release.mjs verify-recovery \
 
 Use `deploy-recovery` with the same identities only under staging deployment authority. Run only failed/invalidated areas; a focused pass alone or the old scheduling-only assessors still grants no deployment authority. This is an explicit recovery policy version, not an undocumented relaxation of normal single-run admission.
 
+### Exact database batch recovery
+
+`verify-db-recovery` accepts one failed ordinary database unit from a complete first-attempt full gate. Run the entire failed unit through the published focused workflow with the original candidate and controller. The original successful canonical build and all passing jobs stay bound to their original source. The replacement must preserve the complete assertion inventory, worker count, PostgreSQL patch version, JIT and memory profile, and any required premigration role setup. The installer uses the original build packet. The failed full gate stays failed.
+
+```sh
+export AIHR_RECOVERY_CONTROLLER_RUN_ID=ACTUAL_CONTROLLER_ONLY_RUN_ID
+node --import tsx .github/ci/operator-release.mjs verify-db-recovery \
+  /ABSOLUTE/ORIGINAL/CANDIDATE ORIGINAL_FULL_RUN_ID '[FOCUSED_DB_RUN_ID]'
+```
+
+The read-only command produces a diagnostic certificate pending independent review of the exact verifier commit. After that review, set `AIHR_DB_RECOVERY_REVIEWED_CONTROLLER` to the reviewed commit and authenticate the evidence again. The `deploy-db-recovery` route requires that exact review and existing staging deployment authority and lease.
+
 Current case: repair candidate/controller `c4fad43c1d67d69125a3f37e7549a5a8a7053362`, baseline `348b720e7a82c5e5573fc09196d06dfce50c787c`, original full run `40990989039`. The currently observed failure is the `nodb-f0f364cf77d50dce` unit's unhandled autosave callback from `test/onehr-ui.dom.test.tsx`; final complete failed-area selection must use the terminal job inventory, not this interim observation. No second whole gate was dispatched.
 
 

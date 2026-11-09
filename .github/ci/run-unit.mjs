@@ -16,7 +16,7 @@ import {validatePdfSetupProof} from './pdf-tools.mjs';
 export const FULL_CI_ROLE_HINTS=Object.freeze(['AIHR_CI_DISPOSABLE_ROLE_MODE','AIHR_CI_ROLE_UNIT','AIHR_CI_ROLE_BATCH_OFFSET','AIHR_CI_ROLE_EVIDENCE_DIR','AIHR_CI_ROLE_PLAN_FINGERPRINT']);
 const fullRoleMode='full_ci_disposable',fullRoleKind='PERSONNEL_DRAFT_DISCARD_FULL_CI_ROLE_PREREQUISITES';
 const fullRoleScope='disposable CI setup only; no native, installation or release attestation';
-const fullRoleSources=Object.freeze({helperSha256:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',wrapperSha256:'scripts/migrate-with-focused-prerequisites.ts',orchestrationSha256:'scripts/lib/discard-premigration.ts'});
+export const fullRoleSources=Object.freeze({helperSha256:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',wrapperSha256:'scripts/migrate-with-focused-prerequisites.ts',orchestrationSha256:'scripts/lib/discard-premigration.ts'});
 export const FULL_CI_ROLE_URLS=Object.freeze({DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test'});
 const exactKeys=(value,keys)=>{assert(value&&typeof value==='object'&&!Array.isArray(value));assert.deepEqual(Object.keys(value).sort(),[...keys].sort());};
 const fullSha=value=>typeof value==='string'&&/^[0-9a-f]{40}$/.test(value);
@@ -64,7 +64,11 @@ export function validateFullCiRoleReceipt(receipt,binding,sourceHashes){
  for(const [key,value]of Object.entries(binding))assert.deepEqual(receipt[key],value,`Role prerequisite binding differs: ${key}`);
  assert.equal(receipt.schemaVersion,1);assert.equal(receipt.kind,fullRoleKind);assert.equal(receipt.phase,'before_initial_candidate_migration');assert.equal(receipt.scope,fullRoleScope);
  for(const [key,value]of Object.entries(sourceHashes))assert.equal(receipt[key],value);
- const fixture=receipt.fixture;exactKeys(fixture,['mode','roles','edges','postgres']);assert.equal(fixture.mode,fullRoleMode);
+ const names=validateDisposableRoleFixture(receipt.fixture,fullRoleMode);
+ return {kind:receipt.kind,mode:receipt.mode,unit:receipt.unit,offset:receipt.offset,planFingerprint:receipt.planFingerprint,batchSize:receipt.batchSize,batchFiles:receipt.batchFiles,...sourceHashes,postgresVersionNumber:receipt.fixture.postgres.versionNumber,roles:names,scope:receipt.scope};
+}
+export function validateDisposableRoleFixture(fixture,mode){
+ exactKeys(fixture,['mode','roles','edges','postgres']);assert.equal(fixture.mode,mode);
  assert(Array.isArray(fixture.roles)&&fixture.roles.length===3);assert(Array.isArray(fixture.edges)&&fixture.edges.length===2);
  const names=['ai_hr_app','ai_hr_draft_discard_port','ai_hr_owner'];assert.deepEqual(fixture.roles.map(role=>role.name),names);
  const oids=new Set();for(const role of fixture.roles){
@@ -77,7 +81,7 @@ export function validateFullCiRoleReceipt(receipt,binding,sourceHashes){
  assert.deepEqual(fixture.edges,[{role:'ai_hr_app',member:'ai_hr_draft_discard_port',grantor:'postgres',inherit:true,set:false,admin:false},{role:'ai_hr_draft_discard_port',member:'ai_hr_owner',grantor:'postgres',inherit:false,set:true,admin:false}]);
  exactKeys(fixture.postgres,['versionNumber','versionText','session','current']);
  assert(Number.isSafeInteger(fixture.postgres.versionNumber)&&fixture.postgres.versionNumber>=160000&&fixture.postgres.versionNumber<170000);assert(typeof fixture.postgres.versionText==='string');assert(/^PostgreSQL 16\./.test(fixture.postgres.versionText));assert.equal(fixture.postgres.session,'postgres');assert.equal(fixture.postgres.current,'postgres');
- return {kind:receipt.kind,mode:receipt.mode,unit:receipt.unit,offset:receipt.offset,planFingerprint:receipt.planFingerprint,batchSize:receipt.batchSize,batchFiles:receipt.batchFiles,...sourceHashes,postgresVersionNumber:fixture.postgres.versionNumber,roles:names,scope:receipt.scope};
+ return names;
 }
 const ownedRegularBytes=(path,maximum)=>{
  const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
