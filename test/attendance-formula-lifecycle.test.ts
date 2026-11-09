@@ -1,4 +1,5 @@
 import {afterAll,beforeAll,beforeEach,describe,it,expect} from 'vitest';
+import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant} from '../db/client';
@@ -110,4 +111,33 @@ it('rejects incomplete All Companies coverage, a company-limited Pay Item and ov
  const proof=await testAttendanceFormula(f.ctx,{...duplicate,employmentId:second.employmentId,date:f.date});
  await expect(activateAttendanceFormula(f.ctx,{...duplicate,testId:proof.id})).rejects.toThrow(/overlaps/);
  expect((await getAttendanceFormula(f.ctx,duplicate.id)).status).toBe('inactive');
+});
+
+it('projects a company’s active version through FORCE RLS under the restricted migration owner',async()=>{
+ const f=await fixture(),second=await secondEmployer(f);
+ const shared=await saveAttendanceFormula(f.ctx,{configuration:{...f.configuration,
+  companyScope:{mode:'selected',companyIds:[base.companyId,second.id]}}});
+ const proof=await testAttendanceFormula(f.ctx,{...shared,employmentId:second.employmentId,date:f.date});
+ await activateAttendanceFormula(f.ctx,{...shared,testId:proof.id});
+
+ const role='formula_owner_'+randomUUID().replaceAll('-',''),rollback=new Error('Rollback restricted formula owner fixture');
+ await expect(owner.withTenant(second.scoped,async tx=>{
+  await tx.execute(sql.raw(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT`));
+  await tx.execute(sql.raw(`GRANT USAGE,CREATE ON SCHEMA public,app TO ${role}`));
+  for(const table of ['company','employment','assignment','attendance_formula','attendance_formula_revision','attendance_formula_event','attendance_formula_result']){
+   await tx.execute(sql.raw(`ALTER TABLE public.${table} OWNER TO ${role}`));
+  }
+  await tx.execute(sql.raw(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO ${role}`));
+  for(const signature of ['attendance_formula_author_current(uuid)','attendance_formula_subject_versions(uuid,uuid,date,uuid,uuid,uuid,boolean)']){
+   await tx.execute(sql.raw(`ALTER FUNCTION app.${signature} OWNER TO ${role}`));
+  }
+  await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);
+  const [authority]=await tx.execute<{author:boolean}>(sql`SELECT app.attendance_formula_author_current(${shared.id}::uuid) AS author`);
+  expect(authority.author).toBe(false);
+  const revisions=await tx.execute<{id:string;company_id:string}>(sql`SELECT id,company_id
+   FROM app.attendance_formula_subject_versions(${second.id}::uuid,${second.employmentId}::uuid,${f.date}::date)`);
+  expect([...revisions]).toEqual([{id:shared.revisionId,company_id:second.id}]);
+  expect(await tx.select().from(attendanceFormulaRevision)).toEqual([]);
+  throw rollback;
+ })).rejects.toBe(rollback);
 });
