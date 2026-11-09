@@ -204,10 +204,12 @@ export function holdDevelopmentBuildSnapshot(env){
    requireNamedRoot(sourcePath,source);requireNamedRoot(tempPath,temp);
    assert(sameInode(held(privateRoot),stats(child(temp,privateName))),'Worker build private directory name changed');
   }
-  function operation(work){
+  function operation(work,deadlineMs){
    assert(state!=='failed'&&state!=='closed','Worker build snapshot unavailable');
+   assert(deadlineMs===undefined||Number.isSafeInteger(deadlineMs)&&deadlineMs>0,'Worker build snapshot absolute deadline refused');
    const started=performance.now(),stop=started+maxWorkMs-workMs;
-   const check=()=>assert(performance.now()<stop,'Worker build snapshot work budget exhausted');
+   const check=()=>assert(performance.now()<stop
+    &&(deadlineMs===undefined||process.hrtime.bigint()/1_000_000n<BigInt(deadlineMs)),'Worker build snapshot work budget exhausted');
    try{check();namedRoots();const result=work(check);namedRoots();check();return result;}
    catch(error){state='failed';throw error;}
    finally{workMs+=performance.now()-started;}
@@ -222,7 +224,7 @@ export function holdDevelopmentBuildSnapshot(env){
    return Object.freeze({identity,seal,directory:Object.freeze({device:String(dev),inode:String(ino)})});
   }
   return Object.freeze({
-   capture(){return operation(check=>{
+   capture(deadlineMs){return operation(check=>{
     assert(state==='waiting','Worker build snapshot may capture only once');
     const path=child(source,buildName),built=openDirectory(path);
     try{
@@ -235,8 +237,8 @@ export function holdDevelopmentBuildSnapshot(env){
      assert(sameInode(held(built),stats(path)),'Worker build origin name changed during verification');
      return view(built);
     }finally{closeSync(built);}
-   });},
-   install(){return operation(check=>{
+   },deadlineMs);},
+   install(deadlineMs){return operation(check=>{
     assert(state==='captured'&&installs<2,'Worker build copy course exhausted');
     assert(missing(child(source,buildName)),'Worker build target is occupied');
     checkSeed(check);check();
@@ -249,8 +251,8 @@ export function holdDevelopmentBuildSnapshot(env){
       'Worker build copy or seed name changed');
      installs++;return view(target);
     }finally{closeSync(target);}
-   });},
-   verify(){return operation(check=>{checkSeed(check);return seal;});},
+   },deadlineMs);},
+   verify(deadlineMs){return operation(check=>{checkSeed(check);return seal;},deadlineMs);},
    close(){if(state!=='closed'){state='closed';close();}},
   });
  }catch(error){try{close();}catch{}throw error;}

@@ -1,7 +1,7 @@
 /** Development-only production renderer and durable job-owned PostgreSQL. No target credentials. */
 import assert from 'node:assert/strict';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
-import {randomBytes} from 'node:crypto';
+import {createHash,randomBytes} from 'node:crypto';
 import {mkdirSync,writeFileSync,readFileSync,copyFileSync,readdirSync,openSync,closeSync,lstatSync,realpathSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import https from 'node:https';
@@ -17,15 +17,25 @@ import {createDriverFailures,createDriverSockets,validateDevelopmentMeasurement,
 import {systemBuildEnvironment} from './build-environment.mjs';
 import {isolatedWorkerBudget,isolatedWorkerCpuAdmission} from './worker-budget.mjs';
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
+import {createWorkerComparisonModel} from './worker-comparison.mjs';
+import {holdDevelopmentBuildSnapshot} from './worker-comparison-build.mjs';
+import {comparisonClock,holdWorkerComparisonFiles,openWorkerComparisonFamily,readComparisonJson} from './worker-comparison-custody.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
 assert.equal(process.env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const sha=git('rev-parse','HEAD');assert.equal(sha,process.env.AIHR_CI_HEAD);assert.equal(git('status','--porcelain'),'');
-const out=join(process.env.RUNNER_TEMP,'system-performance-evidence'),privateDir=join(process.env.RUNNER_TEMP,'system-performance-private');
-mkdirSync(out,{recursive:true,mode:0o700});mkdirSync(privateDir,{recursive:true,mode:0o700});
-const focusedEvidence=join(process.env.RUNNER_TEMP,'aihr-focused');mkdirSync(focusedEvidence,{recursive:true,mode:0o700});
+const checksum=value=>createHash('sha256').update(value).digest('hex');
+const comparisonPorts=[5433,3443,...Array.from({length:8},(_,index)=>3174+index)];
+async function assertPortFree(port){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
+
+async function runSystemCell(comparison=null){
+const base=comparison?.env??process.env;
+const out=comparison?.paths.out??join(base.RUNNER_TEMP,'system-performance-evidence');
+const privateDir=comparison?.paths.privateDir??join(base.RUNNER_TEMP,'system-performance-private');
+const focusedEvidence=comparison?.paths.focusedEvidence??join(base.RUNNER_TEMP,'aihr-focused');
+if(!comparison)for(const directory of [out,privateDir,focusedEvidence])mkdirSync(directory,{recursive:true,mode:0o700});
 const authKey=randomBytes(32).toString('hex');
-const env={...process.env,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',AUTH_PROVIDER:'internal',AUTH_SESSION_KEY:authKey,AUTH_PUBLIC_ORIGIN:'https://localhost:3443',
+const env={...base,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',AUTH_PROVIDER:'internal',AUTH_SESSION_KEY:authKey,AUTH_PUBLIC_ORIGIN:'https://localhost:3443',
  AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',AUDIT_HASH_CHAIN_ENABLED:'true',
  AI_CONFIG_SECRET:randomBytes(32).toString('hex'),PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:out,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
@@ -33,23 +43,23 @@ const env={...process.env,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUIT
 for(const key of Object.keys(env))if(key.startsWith('WORKOS_')||key==='SHARE_PASSWORD'||key==='DEV_USER_ID')delete env[key];
 env.SHARE_PASSWORD='';env.DEV_USER_ID='';
 const {workers,totalApplicationPool,poolPerWorker,heapPerWorker,totalHeapMiB}=isolatedWorkerBudget(
- process.env.PERF_APP_WORKERS,process.env.PERF_APP_POOL_CONNECTIONS,process.env.PERF_APP_TOTAL_HEAP_MIB);
+ env.PERF_APP_WORKERS,env.PERF_APP_POOL_CONNECTIONS,env.PERF_APP_TOTAL_HEAP_MIB);
 const host={cpus:os.availableParallelism(),memoryBytes:os.totalmem()};
 const cpuAdmission=isolatedWorkerCpuAdmission({workers,availableCpus:host.cpus,
- oversubscriptionDiagnostic:process.env.PERF_ALLOW_CPU_OVERSUBSCRIPTION_DIAGNOSTIC==='true',suite:process.env.PERF_HTTP_SUITE});
+ oversubscriptionDiagnostic:env.PERF_ALLOW_CPU_OVERSUBSCRIPTION_DIAGNOSTIC==='true',suite:env.PERF_HTTP_SUITE});
 if(totalHeapMiB===8192){
- assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted','larger diagnostic heap requires a hosted runner');
+ assert.equal(env.RUNNER_ENVIRONMENT,'github-hosted','larger diagnostic heap requires a hosted runner');
  assert(host.cpus===4&&host.memoryBytes>=15*1024**3&&host.memoryBytes<=17*1024**3,'larger diagnostic heap requires the standard hosted 4-CPU / 16-GB runner');
 }
 const ports=Array.from({length:workers},(_,index)=>3174+index);
-const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha,controller:process.env.AIHR_CI_CONTROL_HEAD,
- run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool,heapMiBPerWorker:heapPerWorker,totalHeapMiB,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host,cpuAdmission,phases:[],exitCode:1};
+const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha,controller:env.AIHR_CI_CONTROL_HEAD,
+ run:env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool,heapMiBPerWorker:heapPerWorker,totalHeapMiB,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host,cpuAdmission,phases:[],exitCode:1};
 const measureDevelopment=['workflow-preflight','whole-system'].includes(env.PERF_HTTP_SUITE);
 const lockLogNonce=measureDevelopment?randomBytes(16).toString('hex'):null;
 const requireRenderedUnion=fullDevelopmentBrowserRouteCourse(env);
 const measurementIdentity={candidateSha:sha,controllerSha:report.controller,runId:Number(report.run),
  requireRenderedUnion,
- runAttempt:Number(process.env.GITHUB_RUN_ATTEMPT),suite:env.PERF_HTTP_SUITE};
+ runAttempt:Number(env.GITHUB_RUN_ATTEMPT),suite:env.PERF_HTTP_SUITE};
 const measurement=measureDevelopment?report.developmentMeasurement={kind:'DEVELOPMENT_BROWSER_RUNNER_MEASUREMENT_V1',complete:false,
  driver:null,driverReceipt:'absent',settlement:{driver:'unknown',proxy:'unknown',workers:'unknown',
   ...developmentPostgresSettlement('unknown','unknown',null)}}:null;
@@ -59,14 +69,31 @@ const proxyFailures=measurement?createDriverFailures():null;
 const proxySockets=proxyFailures?createDriverSockets(proxyFailures):null;
 const save=()=>writeFileSync(join(out,'runner.json'),JSON.stringify(report,null,2));
 save();
-async function assertPortFree(port){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});await new Promise(resolve=>server.close(resolve));}
+const directChildren=new Set();
+let cleaning=false,build=null,fixture=null,postgresProfile=null;
+function timeBudget(maximum,reserve=0,full=false){
+ if(!comparison)return maximum;
+ const deadline=cleaning?comparison.frontiers.settlementEndMs:comparison.frontiers.activeEndMs;
+ const available=deadline-comparisonClock()-reserve;
+ assert(available>0&&(!full||available>=maximum),'Worker comparison phase does not fit its absolute frontier');
+ return Math.min(maximum,available);
+}
+function trackChild(child){
+ if(comparison){
+  directChildren.add(child);
+  child.once('close',()=>directChildren.delete(child));
+ }
+ return child;
+}
 async function run(label,command,args,childEnv=env,timeout=900000){
+ timeout=timeBudget(timeout,10000,label==='http-and-browser');
  console.log('[system-perf] '+label+' started');const start=Date.now();
  const fd=openSync(join(privateDir,label+'.log'),'w',0o600);
+ const phaseDeadline=comparison?comparisonClock()+timeout:null;
  const measuring=measurement!==null&&label==='http-and-browser';
  const capturingBirth=measurement!==null&&label==='postgres';
- const child=spawn(command,args,{env:childEnv,stdio:measuring?['ignore',fd,fd,'ipc']:
-  capturingBirth?['ignore',fd,fd,'pipe']:['ignore',fd,fd]});
+ const child=trackChild(spawn(command,args,{env:childEnv,stdio:measuring?['ignore',fd,fd,'ipc']:
+  capturingBirth?['ignore',fd,fd,'pipe']:['ignore',fd,fd]}));
  let birth=Buffer.alloc(0),birthRefused=false;
  if(capturingBirth&&child.stdio[3]){
   child.stdio[3].on('data',chunk=>{
@@ -82,16 +109,25 @@ async function run(label,command,args,childEnv=env,timeout=900000){
   }
   measurement.driverReceipt='observed';measurement.driver=value;
  });
- let killTimer,timedOut=false,exitSignal;
+ let killTimer,closeTimer,timedOut=false,exitSignal,refuseUnsettled;
  const timer=setTimeout(()=>{
   timedOut=true;child.kill('SIGTERM');
   killTimer=setTimeout(()=>{
    child.kill('SIGKILL');
    if(capturingBirth)child.stdio[3]?.destroy();
+   if(comparison)closeTimer=setTimeout(()=>refuseUnsettled(Error('Worker comparison direct child close unobserved')),1000);
   },10000);
  },timeout);
  let code;
- try{code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once(measuring||capturingBirth?'close':'exit',(value,signal)=>{exitSignal=signal;resolve(value);});});}finally{clearTimeout(timer);clearTimeout(killTimer);closeSync(fd);}
+ try{code=await new Promise((resolve,reject)=>{
+  refuseUnsettled=reject;
+  child.once('error',reject);
+  child.once(comparison||measuring||capturingBirth?'close':'exit',(value,signal)=>{exitSignal=signal;resolve(value);});
+ });}catch(error){
+  if(!comparison||!timedOut)throw error;
+  code=null;
+ }finally{clearTimeout(timer);clearTimeout(killTimer);clearTimeout(closeTimer);closeSync(fd);}
+ if(phaseDeadline!==null&&comparisonClock()>=phaseDeadline)timedOut=true;
  if(capturingBirth){
   developmentReset.id=birthRefused?null:developmentPostgresBirthId(birth);
   developmentReset.state=timedOut||code===null||exitSignal!==null?'unknown':code===0&&developmentReset.id?'settled':'failed';
@@ -102,11 +138,12 @@ async function run(label,command,args,childEnv=env,timeout=900000){
  if(measuring)measurement.settlement.driver=!timedOut&&code===0&&exitSignal===null?'settled':'failed';
  report.phases.push({label,elapsedMs:Date.now()-start,exitCode:code,timeoutMs:timeout,timedOut,exitSignal});save();
  console.log('[system-perf] '+JSON.stringify(report.phases.at(-1)));
- if(code!==0){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
+ if(code!==0&&!comparison){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
  assert.equal(timedOut,false,label+' exceeded its unchanged process budget; retain incomplete evidence');
  assert.equal(code,0,label+' failed; private process logs contain no published credentials');
  if(capturingBirth)assert(developmentReset.state==='settled','Development PostgreSQL reset birth receipt refused');
  if(measuring)assert(measurement.driver?.complete===true,'Development driver terminal measurement refused');
+ timeBudget(1);
 }
 function summarizeCpu(){
  const frames=new Map(),root=resolve('.next/server/chunks/ssr')+'/';
@@ -160,7 +197,7 @@ function summarizeNativeFailures(){
  report.nativeRuntimeFailures=failures;
  writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'Exact public-error reference/SQLSTATE metadata plus bounded native Draft marker blocks; Draft block errors may overlap; raw logs and SQL excluded',failures},null,2));
 }
-const apps=[],appFds=[],workerProcessErrors=new Set();let proxy,upstream,dbStarted=false,postgresRuntimeFailures;
+const apps=[],appFds=[],workerProcessErrors=new Set(),appBirths=new Map();let proxy,upstream,dbStarted=false,postgresRuntimeFailures;
 let developmentPostgresBirth;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
 // Keep the canonical reset recipe. Its Docker commands cannot remove anything
@@ -202,7 +239,7 @@ const developmentDocker=()=>developmentDockerContext(privateDir);
 function dockerQuery(args,maximum=4096,timeout=10000){
  const context=developmentDocker();
  return execFileSync(DEVELOPMENT_DOCKER_COMMAND,[...context.args,...args],
-  {env:context.env,encoding:'utf8',timeout,killSignal:'SIGKILL',maxBuffer:maximum}).trim();
+  {env:context.env,encoding:'utf8',timeout:timeBudget(timeout),killSignal:'SIGKILL',maxBuffer:maximum}).trim();
 }
 function dockerContainerIds(filter){
  const raw=dockerQuery(['container','ls','--all','--quiet','--no-trunc','--filter',filter]);
@@ -289,7 +326,13 @@ function confirmDevelopmentPostgresAbsent(held){
 }
 
 try{
- for(const port of ports)await assertPortFree(port);await assertPortFree(3443);
+ for(const port of comparison?comparisonPorts:[...ports,3443]){timeBudget(1);await assertPortFree(port);}
+ if(comparison){
+  const {cell}=comparison;
+  assert(measureDevelopment&&!requireRenderedUnion&&workers===cell.workers&&poolPerWorker===cell.poolPerWorker
+   &&totalApplicationPool===cell.totalPool&&heapPerWorker===cell.heapMiBPerWorker&&totalHeapMiB===cell.totalHeapMiB,
+  'Worker comparison cell topology refused');
+ }
  const {buildEnv,admission}=systemBuildEnvironment(env,readFileSync('/proc/meminfo','utf8'));
  report.buildHeap=admission;save();
  if(measureDevelopment){
@@ -309,28 +352,67 @@ try{
   developmentPostgresBirth=captureDevelopmentPostgres(developmentReset.id);
  }else await run('postgres','bash',['.github/ci/postgres.sh','reset']);
  dbStarted=true;
+ if(comparison){
+  comparison.recordDatabase(developmentPostgresBirth);
+  postgresProfile=observeComparisonPostgres(developmentPostgresBirth);
+  assert.equal(postgresProfile.capBytes,2113929216,'Worker comparison native PostgreSQL memory cap refused');
+  assert.equal(postgresProfile.swapMaxBytes,0,'Worker comparison PostgreSQL swap refused');
+ }
  await run('migrate','pnpm',['db:migrate']);
  // Native performance helpers are installed through the ordinary migration journal.
+ if(comparison){
+  const receipt=readComparisonJson(join(focusedEvidence,'personnel-draft-discard-premigration-role-prerequisites.json'),256*1024);
+  assert(receipt.kind==='PERSONNEL_DRAFT_DISCARD_PREMIGRATION_ROLE_PREREQUISITES'
+   &&receipt.phase==='before_initial_candidate_migration'&&receipt.fixture?.mode==='focused_disposable'
+   &&receipt.candidate===sha&&receipt.controller===report.controller&&receipt.runId===report.run&&receipt.attempt==='1',
+  'Worker comparison focused role evidence refused');
+  for(const [key,path] of Object.entries({
+   helperSha256:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',wrapperSha256:'scripts/migrate-with-focused-prerequisites.ts',
+   orchestrationSha256:'scripts/lib/discard-premigration.ts',
+  }))assert.equal(receipt[key],checksum(readFileSync(path)),'Worker comparison focused role source seal refused');
+ }
  copyFileSync(join(focusedEvidence,'personnel-draft-discard-premigration-role-prerequisites.json'),join(out,'personnel-draft-discard-premigration-role-prerequisites.json'));
  await run('organisation-admission-verifier',process.execPath,['--import','tsx','scripts/provision-organisation-admission.ts']);
  await run('catalogs',process.execPath,['--import','tsx','scripts/seed-catalogs.ts']);
  await run('fixture',process.execPath,['--conditions=react-server','--import','tsx','scripts/performance/system-fixture.mjs'],{...env,NODE_ENV:'development',TEST_DATABASE_URL:env.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:env.MIGRATION_DATABASE_URL},600000);
+ if(comparison){
+  const native=readComparisonJson(join(out,'fixture.json'),512*1024);
+  const population=readComparisonJson(join(out,'actor-tenancy.json'),4096);
+  const privateFixture=readComparisonJson(join(privateDir,'fixture.json'),8*1024**2);
+  assert(native.fictional===true&&population.fictional===true&&native.attendanceDays===comparison.cell.attendanceDays
+   &&native.claimsPerEmployee===comparison.cell.claimsPerActor&&native.tenants===population.tenants&&native.companies===population.companies
+   &&native.users===population.trafficActors&&native.users===population.nativeSelectedRows
+   &&privateFixture.month===privateFixture.today.slice(0,7),'Worker comparison fixture evidence refused');
+  fixture={day:privateFixture.today,actors:native.users,tenants:native.tenants,companies:native.companies,
+   nativeGrants:population.nativeGrants,claims:native.counts.claims,attendance:native.counts.attendance,payslips:native.counts.payslips};
+ }
  // Refuse invalid database/role/fixture setup before paying for the production build.
- await run('build',process.execPath,['.github/ci/build-heap.mjs','measure',join(out,'next-build-memory'),'--','pnpm','build'],buildEnv);
+ if(!comparison||comparison.cell.buildMode==='comparison-first'){
+  await run('build',process.execPath,['.github/ci/build-heap.mjs','measure',join(out,'next-build-memory'),'--','pnpm','build'],buildEnv);
+  if(comparison)build=comparison.snapshot.capture(comparison.frontiers.activeEndMs);
+ }else{
+  assert.equal(comparison.cell.buildMode,'comparison-copy');
+  build=comparison.snapshot.install(comparison.frontiers.activeEndMs);
+ }
+ if(comparison)comparison.holdBuild(build);
+ timeBudget(1);
  report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();
+ if(build)assert.equal(report.buildId,build.seal.buildId,'Worker comparison runtime build ID differs');
 
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(privateDir,'key.pem'),'-out',join(privateDir,'cert.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost']);
  mkdirSync(join(out,'cpu'),{recursive:true});
  report.applicationRuntimeFrom=new Date().toISOString();save();
  if(measureDevelopment)await markDevelopmentLockLog('begin');
  for(const [index,port]of ports.entries()){
+  timeBudget(1);
   const fd=openSync(join(privateDir,'server-'+index+'.log'),'w',0o600);appFds.push(fd);
-  const app=spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'--import',resolve('scripts/performance/profile-exit.mjs'),'--import',resolve('scripts/performance/transaction-timing.mjs'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',PERF_TX_TIMING_PATH:join(out,'app-transactions-'+index+'.json'),AIHR_DB_POOL_MAX:String(poolPerWorker),AIHR_APP_WORKERS:String(workers),AIHR_DB_TOTAL_CONNECTIONS:String(totalApplicationPool),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]});
+  const app=trackChild(spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'--import',resolve('scripts/performance/profile-exit.mjs'),'--import',resolve('scripts/performance/transaction-timing.mjs'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',PERF_TX_TIMING_PATH:join(out,'app-transactions-'+index+'.json'),AIHR_DB_POOL_MAX:String(poolPerWorker),AIHR_APP_WORKERS:String(workers),AIHR_DB_TOTAL_CONNECTIONS:String(totalApplicationPool),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]}));
   if(measurement)app.on('error',()=>workerProcessErrors.add(index));
   apps.push(app);
  }
  // Avoid replaying a mutation onto a backend socket that closed during an idle interval.
  // Fresh loopback connections also avoid unsafe automatic retries after an ambiguous write.
+ timeBudget(1);
  upstream=new http.Agent({keepAlive:false,maxSockets:4000});let nextWorker=0;
  proxy=https.createServer({key:readFileSync(join(privateDir,'key.pem')),cert:readFileSync(join(privateDir,'cert.pem'))},(req,res)=>{
   const request=http.request({host:'127.0.0.1',port:ports[nextWorker++%ports.length],path:req.url,method:req.method,agent:upstream,
@@ -347,12 +429,13 @@ try{
  for(const [worker,port]of ports.entries()){
   const started=Date.now();let health=false,login=false,attempts=0;
   while(Date.now()-started<60000){
+   timeBudget(1);
    attempts++;
    try{
-    const response=await fetch('http://127.0.0.1:'+port+'/health',{signal:AbortSignal.timeout(5000)});
+    const response=await fetch('http://127.0.0.1:'+port+'/health',{signal:AbortSignal.timeout(timeBudget(5000))});
     health=response.status===200&&(await response.text())==='{"status":"ok"}\n';
     if(health){
-     const response=await fetch('http://127.0.0.1:'+port+'/login',{signal:AbortSignal.timeout(5000)});
+     const response=await fetch('http://127.0.0.1:'+port+'/login',{signal:AbortSignal.timeout(timeBudget(5000))});
      login=response.status===200;await response.body?.cancel();
      if(login)break;
     }
@@ -362,15 +445,29 @@ try{
   report.workerReadiness.push({worker,elapsedMs:Date.now()-started,attempts,health,login,homeHandlerRequests:0});save();
   assert(health&&login,'production worker did not become ready');
  }
+ if(comparison){
+  for(const app of apps){
+   assert(app.exitCode===null&&app.signalCode===null,'Worker comparison worker terminated before driver admission');
+   appBirths.set(app.pid,processBirth(app.pid));
+  }
+  report.comparisonWorkerMemory={startup:comparisonWorkerMemory(apps,appBirths),terminal:null};
+ }
  // The driver covers setup journeys and verification as well as the steady traffic interval.
  // Keep the post-warmup allowance constant when the measured interval is longer.
  const driverTimeoutMs=600000+Math.max(0,Number(env.PERF_HTTP_HOLD_MS??30000)-30000);
- await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,...(measureDevelopment?{PERF_POSTGRES_CONTAINER_ID:developmentPostgresBirth.id}:{}),PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}).trim(),NODE_OPTIONS:'--max-old-space-size=2048'},driverTimeoutMs);
+ if(comparison)assert.equal(driverTimeoutMs,comparison.cell.driverMs,'Worker comparison driver budget differs');
+ const clockTicks=execFileSync('getconf',['CLK_TCK'],{encoding:'utf8',...(comparison?{env,timeout:timeBudget(5000),killSignal:'SIGKILL'}:{})}).trim();
+ await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,...(measureDevelopment?{PERF_POSTGRES_CONTAINER_ID:developmentPostgresBirth.id}:{}),PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:clockTicks,NODE_OPTIONS:'--max-old-space-size=2048'},driverTimeoutMs);
+ if(comparison)report.comparisonWorkerMemory.terminal=comparisonWorkerMemory(apps,appBirths);
  summarizeNativeFailures();
  assert(report.workerFatalDiagnostics.every(worker=>worker.logMarkers.passiveReadUnavailable===0),'passive shell approval read failures must be fixed before acceptance');
  report.exitCode=0;
-}catch(error){report.error=String(error.message).slice(0,350);console.error('[system-perf] '+report.error);}
+}catch(error){
+ report.error=String(error.message).slice(0,350);
+ console.error(comparison?'[system-perf] Comparison cell setup or measurement refused':'[system-perf] '+report.error);
+}
 finally{
+ cleaning=true;
  if(proxy&&measurement){
   const serverClosed=new Promise(resolve=>{proxy.close(error=>resolve(!error));proxy.closeAllConnections();});
   const agentClosed=proxySockets.closeAgent(upstream);
@@ -423,7 +520,7 @@ finally{
   else try{closeSync(fd);}catch{measurement.settlement.workers='failed';}
  }
  try{summarizeNativeFailures();}catch{report.nativeFailureSummaryUnavailable=true;}
- if(apps.length)try{summarizeCpu();}catch(error){report.cpuSummaryError=String(error.message).slice(0,180);}
+ if(apps.length&&!comparison)try{summarizeCpu();}catch(error){report.cpuSummaryError=String(error.message).slice(0,180);}
  if(dbStarted){
   if(!measurement){
    const stats=spawnSync('bash',['.github/ci/postgres.sh','stats'],{env,encoding:'utf8'});
@@ -431,6 +528,11 @@ finally{
   }else try{
    const stats=dockerQuery(['stats','--no-stream','--format','{{json .}}',developmentPostgresBirth.id],16384);
    writeFileSync(join(out,'postgres-resources.txt'),stats+'\n');
+   if(comparison){
+    postgresProfile=observeComparisonPostgres(developmentPostgresBirth);
+    assert(postgresProfile.capBytes===2113929216&&postgresProfile.swapMaxBytes===0
+     &&postgresProfile.oom===0&&postgresProfile.oomKill===0,'Worker comparison PostgreSQL resource evidence refused');
+   }
   }catch{report.postgresResourceSummaryUnavailable=true;report.exitCode=1;}
   try{
    if(measureDevelopment){
@@ -448,7 +550,7 @@ finally{
    const logs=spawnSync(logContext?DEVELOPMENT_DOCKER_COMMAND:'docker',
     [...(logContext?.args??[]),'logs',...(!measureDevelopment&&report.applicationRuntimeFrom?['--since',report.applicationRuntimeFrom]:[]),
      logContext?developmentPostgresBirth.id:container],
-    {encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024,...(logContext?{env:logContext.env,killSignal:'SIGKILL'}:{})});
+    {encoding:'utf8',timeout:timeBudget(10000),maxBuffer:8*1024*1024,...(logContext?{env:logContext.env,killSignal:'SIGKILL'}:{})});
    assert.equal(logs.status,0);
    const log=measureDevelopment?(logs.stderr??''):(logs.stdout??'')+'\n'+(logs.stderr??'');
    const window=measureDevelopment&&!report.postgresLockWindowEndUnavailable?developmentPostgresLockWindow(log,lockLogNonce):null;
@@ -504,4 +606,206 @@ finally{
  }
  save();
 }
-process.exitCode=report.exitCode;
+return {report,build,fixture,postgresProfile,directChildren};
+}
+
+function comparisonWorkerMemory(apps,births){
+ return apps.map((app,worker)=>{
+  const birth=births.get(app.pid);
+  assert(birth&&app.exitCode===null&&app.signalCode===null&&processBirth(app.pid)===birth,'Worker comparison application memory birth refused');
+  const status=readFileSync('/proc/'+app.pid+'/status','utf8');
+  const memory=field=>{
+   const value=Number(status.match(new RegExp('^'+field+':\\s+(\\d+) kB$','m'))?.[1]);
+   assert(Number.isSafeInteger(value)&&value>0,'Worker comparison application memory missing');
+   return value*1024;
+  };
+  const row={worker,rssBytes:memory('VmRSS'),peakRssBytes:memory('VmHWM')};
+  assert(processBirth(app.pid)===birth,'Worker comparison application memory birth changed');
+  return row;
+ });
+}
+
+function observeComparisonPostgres(birth){
+ const read=name=>{
+  const path=join(birth.path,name),value=readFileSync(path,'utf8').trim();
+  const row=lstatSync(birth.path,{bigint:true});
+  assert(String(row.dev)===birth.cgroupDevice&&String(row.ino)===birth.cgroupInode
+   &&processBirth(birth.pid)===birth.birth,'Worker comparison PostgreSQL resource birth changed');
+  return value;
+ };
+ const exact=value=>{
+  const parsed=Number(value);
+  assert(/^(0|[1-9][0-9]*)$/.test(value??'')&&Number.isSafeInteger(parsed),'Worker comparison PostgreSQL counter refused');
+  return parsed;
+ };
+ const events=Object.fromEntries(read('memory.events.local').split('\n').map(row=>row.split(' ')));
+ return {birthSeal:checksum(birth.id+':'+birth.volume),capBytes:exact(read('memory.max')),swapMaxBytes:exact(read('memory.swap.max')),
+  currentBytes:exact(read('memory.current')),peakBytes:exact(read('memory.peak')),oom:exact(events.oom),oomKill:exact(events.oom_kill)};
+}
+
+const inheritedComparisonKeys=[
+ 'PATH','HOME','USER','LOGNAME','LANG','LC_ALL','TZ','PNPM_HOME','COREPACK_HOME','CI',
+ 'GITHUB_ACTIONS','GITHUB_EVENT_NAME','GITHUB_EVENT_PATH','GITHUB_JOB','GITHUB_REPOSITORY','GITHUB_REPOSITORY_ID',
+ 'GITHUB_WORKFLOW','GITHUB_WORKFLOW_REF','GITHUB_WORKFLOW_SHA','GITHUB_SHA','GITHUB_REF','GITHUB_REF_NAME',
+ 'GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','GITHUB_WORKSPACE','RUNNER_TEMP','RUNNER_ENVIRONMENT','RUNNER_OS','RUNNER_ARCH',
+ 'AIHR_CI_HEAD','AIHR_CI_CONTROL_HEAD','AIHR_CI_UNIT','AIHR_CI_PG_PROFILE','AIHR_CI_PG_CONFIGURED_CAP_BYTES',
+ 'AIHR_CI_PG_PEAK_BUDGET_BYTES','AIHR_CI_PG_JIT','AIHR_CI_PG_DURABLE','AIHR_CI_PG_STATEMENTS','AIHR_CI_PG_STATEMENTS_OWNER',
+ 'AIHR_MEASURED_BROWSER_COURSE','PLAYWRIGHT_CHROMIUM_EXECUTABLE',
+];
+function comparisonEnvironment(cell,paths){
+ const base=Object.fromEntries(inheritedComparisonKeys.filter(key=>process.env[key]!==undefined).map(key=>[key,process.env[key]]));
+ assert(base.PLAYWRIGHT_CHROMIUM_EXECUTABLE===undefined||base.PLAYWRIGHT_CHROMIUM_EXECUTABLE==='/usr/bin/google-chrome',
+  'Worker comparison Chromium source refused');
+ const temp=join(paths.privateDir,'tmp');
+ mkdirSync(temp,{mode:0o700});
+ return Object.freeze({...base,TMPDIR:temp,NEXT_TELEMETRY_DISABLED:'1',
+  PERF_HTTP_SUITE:cell.suite,PERF_HTTP_THINK_MS:String(cell.thinkMs),PERF_HTTP_HOLD_MS:String(cell.holdMs),
+  PERF_APP_WORKERS:String(cell.workers),PERF_APP_POOL_CONNECTIONS:String(cell.totalPool),PERF_APP_TOTAL_HEAP_MIB:String(cell.totalHeapMiB),
+  PERF_ATTENDANCE_DAYS:String(cell.attendanceDays),...(cell.oversubscribed?{PERF_ALLOW_CPU_OVERSUBSCRIPTION_DIAGNOSTIC:'true'}:{})});
+}
+function comparisonTelemetry(result,out){
+ const {report,postgresProfile,fixture}=result;
+ const measurement=report.developmentMeasurement;
+ const number=value=>Number.isFinite(value)&&value>=0?value:null;
+ const count=value=>Array.isArray(value)&&value.length<=1000000?value.length:null;
+ const metrics=(row,keys)=>Object.fromEntries(keys.map(key=>[key,number(row?.[key])]));
+ let browser=null;
+ try{browser=readComparisonJson(join(out,'http-browser.json'),32*1024**2);}catch{}
+ let renderedCaseCounts=null;
+ const driver=measurement?.driver;
+ if(driver?.renderedCapture)try{
+  const {bytes,sha256}=driver.renderedCapture;
+  const capture=readComparisonJson(join(out,'navigation-browser-capture.json'),bytes,sha256);
+  assert(capture.schemaVersion===1&&capture.releaseAuthorized===false&&capture.baseline.complete===true);
+  assert(driver.suite==='workflow-preflight'?capture.loaded===undefined:capture.loaded?.complete===true);
+  for(const phase of ['baseline',...(capture.loaded?['loaded']:[])])
+   for(const key of Object.keys(driver.identity))assert.equal(capture[phase][key],driver.identity[key]);
+  renderedCaseCounts={baseline:count(capture.baseline.observations),loaded:count(capture.loaded?.observations)};
+ }catch{}
+ let canonicalBuild=null;
+ if(result.build&&report.phases.some(row=>row.label==='build'))try{
+  const memory=readComparisonJson(join(out,'next-build-memory','build-memory.json'),32768);
+  canonicalBuild={...metrics(memory,['peakRssKiB','minMemAvailableKiB','memTotalKiB','memAvailableSamples','exitCode']),
+   verdict:['pass','warn','fail'].includes(memory.verdict)?memory.verdict:null};
+ }catch{}
+ const roles=['employee','manager','companyHR','groupHR'];
+ const roleLatency=browser?.steady?Object.fromEntries(roles.map(role=>[role,Object.fromEntries(['navigation','read','write'].map(work=>
+  [work,metrics(browser.steady.roles?.[role]?.[work],['samples','p50Ms','p95Ms','p99Ms','maxMs'])]))])):null;
+ const appMemory=browser?.appMemory?.processes;
+ return {
+  scope:result.scope,topology:report.topology,cpuAdmission:report.cpuAdmission,fixture,canonicalBuild,
+  postgres:postgresProfile,postgresWaitLog:report.postgresWaitLogCoverage??null,
+  nativeRuntimeFailureCount:count(report.nativeRuntimeFailures),
+  workerCrashes:report.profileShutdown?.filter(row=>row.alreadyExited===true||row.forced===true||row.code!==0||row.signal!==null).length??null,
+  runtimeAcceptance:report.runtimeAcceptance??null,poolBudget:report.poolBudgetEvidence??null,
+  driverReceipt:measurement?.driverReceipt??null,driver:driver??null,renderedCaseCounts,
+  settlement:measurement?.settlement??null,roleLatency,
+  workerMemory:report.comparisonWorkerMemory??null,
+  appMemory:Array.isArray(appMemory)&&appMemory.length===report.topology.workers?appMemory.map(row=>metrics(row,['worker','rssMiB','peakRssMiB'])):null,
+  resourceCpu:browser?.resourceCpu?metrics(browser.resourceCpu,['elapsedSeconds','postgresCpuSeconds','postgresThrottledSeconds',
+   'proxyCpuSeconds','hostUserSystemSeconds','hostIoWaitSeconds','hostStealSeconds']):null,
+  appCpu:browser?.cpu?metrics(browser.cpu,['appProcesses','appCpuSeconds','driverCpuSeconds','elapsedSeconds']):null,
+  browserErrors:count(browser?.browserErrors),functionalErrors:count(browser?.functionalErrors),
+  phaseStatus:report.phases.map(row=>({label:row.label,elapsedMs:row.elapsedMs,exitCode:row.exitCode,timedOut:row.timedOut})),
+ };
+}
+function comparisonPassed(result,telemetry,prerequisite){
+ const {driver}=telemetry;
+ const measurement=result.report.developmentMeasurement;
+ return result.report.exitCode===0&&measurement?.complete===true&&driver?.busyResponses===0
+  &&driver.identity.harnessSha256===prerequisite.harnessSha256&&driver.identity.scenarioSha256===prerequisite.scenarioSha256
+  &&driver.pageEvents.qualifiedCrashes===0&&telemetry.workerCrashes===0&&telemetry.renderedCaseCounts?.baseline===48
+  &&driver.locks.preflight.pass===true
+  &&(driver.suite==='workflow-preflight'||driver.locks.loaded.pass===true&&telemetry.roleLatency!==null
+   &&Object.values(telemetry.roleLatency).every(role=>Object.values(role).every(row=>row.samples>0&&row.p95Ms!==null)))
+  &&telemetry.postgresWaitLog?.thresholdMs===100&&telemetry.postgresWaitLog.retainedFailures===0
+  &&telemetry.postgresWaitLog.databaseBackendsSettled===true&&telemetry.runtimeAcceptance?.pass===true
+  &&telemetry.postgres?.oom===0&&telemetry.postgres.oomKill===0&&telemetry.workerMemory?.terminal?.length===result.report.topology.workers;
+}
+
+async function runWorkerComparison(){
+ const env=process.env;
+ assert(env.AIHR_MEASURED_BROWSER_COURSE==='serial-2-4-8'&&env.AIHR_CI_PG_PROFILE==='2'
+  &&env.AIHR_CI_PG_CONFIGURED_CAP_BYTES==='2113929216'&&env.AIHR_CI_PG_PEAK_BUDGET_BYTES==='2147483648'
+  &&env.AIHR_CI_PG_JIT==='on'&&env.AIHR_CI_PG_MEMORY_GIB===undefined,'Worker comparison hosted database profile refused');
+ assert(/^[1-9][0-9]{0,14}$/.test(env.AIHR_WORKER_COMPARISON_T0_MS??'')
+  &&/^[0-9a-f]{64}$/.test(env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256??''),'Worker comparison sealed admission missing');
+ const anchorMs=Number(env.AIHR_WORKER_COMPARISON_T0_MS),now=comparisonClock;
+ assert(now()>=anchorMs&&now()<anchorMs+4040000,'Worker comparison admission deadline elapsed');
+ assert(realpathSync(env.RUNNER_TEMP)===env.RUNNER_TEMP,'Worker comparison temporary root refused');
+ const prerequisite=readComparisonJson(join(env.RUNNER_TEMP,'aihr-worker-comparison-admission.json'),4096,env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256);
+ const identity={candidateSha:sha,controllerSha:env.AIHR_CI_CONTROL_HEAD,runId:Number(env.GITHUB_RUN_ID),runAttempt:Number(env.GITHUB_RUN_ATTEMPT)};
+ const host={effectiveCpus:os.availableParallelism(),memoryBytes:os.totalmem(),nodeVersion:process.version,postgresProfile:2};
+ const family=openWorkerComparisonFamily(env);
+ let snapshot,files,current;
+ const receipts={},containers=new Set(),volumes=new Set();
+ try{
+  const model=createWorkerComparisonModel({identity,prerequisite,host,anchorMs,now,
+   async observeCell({cell,frontiers}){
+    const paths=files.openCell(cell);
+    current=null;
+    const result=await runSystemCell({cell,frontiers,paths,snapshot,env:comparisonEnvironment(cell,paths),
+     holdBuild:view=>files.holdBuild(cell.ordinal,view),
+     recordDatabase(birth){
+      assert(!containers.has(birth.id)&&!volumes.has(birth.volume),'Worker comparison database birth reused');
+      containers.add(birth.id);
+      volumes.add(birth.volume);
+     },
+    });
+    current={ordinal:cell.ordinal,result};
+    const telemetry=comparisonTelemetry({...result,scope:cell.scope},paths.out);
+    receipts[cell.name]=telemetry;
+    return {kind:'WORKER_COMPARISON_CELL_V1',scope:cell.scope,passed:comparisonPassed(result,telemetry,prerequisite),
+     build:result.build,fixture:result.fixture};
+   },
+   async settledForReuse({cell,frontiers}){
+    const deadline=frontiers.settlementEndMs;
+    assert(current?.ordinal===cell.ordinal,'Worker comparison cell completion missing');
+    const {report,directChildren}=current.result;
+    const childDeadline=Math.min(deadline,now()+5000);
+    while(directChildren.size&&now()<childDeadline)await pause(25);
+    assert(directChildren.size===0&&now()<deadline,'Worker comparison direct child closes incomplete');
+    const {postgres,postgresAbsent}=report.developmentMeasurement.settlement;
+    assert(postgres==='settled'&&postgresAbsent===true,'Worker comparison PostgreSQL birth removal incomplete');
+    for(const port of comparisonPorts){
+     assert(now()<deadline,'Worker comparison loopback deadline elapsed');
+     await assertPortFree(port);
+    }
+    await family.acknowledge(cell.ordinal,deadline);
+    files.retireCell(cell.ordinal,deadline);
+    current=null;
+    return {kind:'WORKER_COMPARISON_CELL_SETTLEMENT_V1',...identity,ordinal:cell.ordinal,settledForReuse:true,
+     directChildrenClosed:true,processFamilyEmpty:true,postgresBirthAbsent:true,portsAbsent:true,
+     runtimeBuildRetired:true,focusedDirectoryRetired:true};
+   },
+   verifySeed:({deadlineMs})=>snapshot.verify(deadlineMs),
+   retireSeed({deadlineMs}){
+    snapshot.close();
+    files.retireSeed(deadlineMs);
+    return {kind:'WORKER_COMPARISON_SEED_RETIREMENT_V1',...identity,retired:true,privateDirectoryRetired:true};
+   },
+  });
+  await family.acknowledge(0,anchorMs+4040000);
+  files=holdWorkerComparisonFiles(env);
+  snapshot=holdDevelopmentBuildSnapshot(env);
+  files.holdSeed();
+  const result=await model.run();
+  files.publish({...result,kind:'HOSTED_WORKER_COMPARISON_V1',host,productionEquivalent:false,
+   eightWorkerScope:'Four-vCPU oversubscription diagnostic only. No steady load.',
+   comparability:'Steady cells use one build seal, independent PostgreSQL births and equal configured budgets. Physical layout and host cache can differ.',
+   cells:result.cells.map(cell=>({...cell,observation:receipts[cell.name]??null}))},result.frontiers.finalEndMs);
+  return result.complete?0:1;
+ }finally{
+  family.close();
+  try{snapshot?.close();}finally{files?.close();}
+ }
+}
+
+if(process.argv.length===2){
+ assert(process.env.AIHR_MEASURED_BROWSER_COURSE!=='serial-2-4-8','Serial comparison requires the closed process owner');
+ process.exitCode=(await runSystemCell()).report.exitCode;
+}else{
+ assert(process.argv.length===3&&process.argv[2]==='--serial-2-4-8','Unknown system performance runner entry point');
+ try{process.exitCode=await runWorkerComparison();}
+ catch{console.error('[system-perf] Worker comparison custody or publication refused');process.exitCode=1;}
+}
