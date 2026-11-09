@@ -1107,24 +1107,36 @@ function carryIdentityDeclaration(tx:Tx,scope:string[]|undefined,input:CarryForw
       order by ${id}`;
   const search=input.filter?.departmentId ? undefined : qWhere(input.filter);
   if(search){
-    // Keep company bindings ahead of search, and evaluate the uncorrelated Person match once.
+    // Keep company bindings ahead of search. A matching Person PK supplies at most one
+    // non-null name marker per partition. Employment events carry NULL and sort after
+    // the marker. An empty name still matches by email and is distinct from no marker.
     const terms=carryForwardEmploymentTerms(scope,input);
     const companyScope=and(terms.scope,terms.company);
     const population=sql`(
       with "analytics_carry_scoped_employment" as not materialized (
         select ${employment.id}, ${employment.personId}, ${employment.companyId}, ${employment.hiredOn}, ${employment.terminatedOn}
         from ${employment}${companyScope ? sql` where ${companyScope}` : undefined}
-      ), "analytics_carry_matching_person" as materialized (
-        select ${person.id}, ${person.fullName} from ${person} where ${search}
       )
-      select ${employment.id}, "matching_person"."full_name"
-      from "analytics_carry_scoped_employment" as ${employment}
-      inner join "analytics_carry_matching_person" as "matching_person" on "matching_person"."id" = ${employment.personId}
-      inner join ${company} on ${eq(company.id,employment.companyId)}
-      where ${and(terms.hired,terms.termination)}
-      order by ${employment.id}
+      select employment_id, carried_name
+      from (
+        select employment_id, max(person_name) over (
+          partition by person_id order by event_kind
+          rows between unbounded preceding and current row
+        ) as carried_name
+        from (
+          select ${person.id} as person_id, 0 as event_kind,
+            null::uuid as employment_id, ${person.fullName} as person_name
+          from ${person} where ${search}
+          union all
+          select ${employment.personId}, 1, ${employment.id}, null::text
+          from "analytics_carry_scoped_employment" as ${employment}
+          inner join ${company} on ${eq(company.id,employment.companyId)}
+          where ${and(terms.hired,terms.termination)}
+        ) as "analytics_carry_identity_events"
+      ) as "analytics_carry_windowed"
+      where employment_id is not null and carried_name is not null
     ) ${sql.identifier(alias)}`;
-    return declare(population,sql`${sql.identifier(alias)}."id"`,sql`${sql.identifier(alias)}."full_name"`);
+    return declare(population,sql`${sql.identifier(alias)}."employment_id"`,sql`${sql.identifier(alias)}."carried_name"`);
   }
   // assignment_no_overlap allows at most one open, non-superseded assignment per employment.
   // Department's primary key makes the second left join cardinality-preserving as well.

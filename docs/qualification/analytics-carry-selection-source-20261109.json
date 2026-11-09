@@ -858,5 +858,117 @@
       "bytes": 110544,
       "sha256": "a2e61c9d305da67ac828eb3dc5862384a38660bade6afb57276adfefca35aa12"
     }
+  },
+  "carrySearchedIdentityStream": {
+    "directParent": "a26a18a8769eccb37202b264e57027e29ffd6fb7",
+    "historicalA26a": {
+      "source": "a26a18a8769eccb37202b264e57027e29ffd6fb7",
+      "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "runId": 42556633688,
+      "attempt": 1,
+      "terminalJobs": 7,
+      "passed": 14,
+      "failed": 1,
+      "artifactId": 13647657528,
+      "zipSha256": "37870454a3a6738be4729a32627fc5bf496f8906dcfdb4f1d5bed9b2c6095d44",
+      "zipBytes": 15609,
+      "retainedMembers": {
+        "analytics-carry-boundaries.json": {
+          "bytes": 14102,
+          "sha256": "1a063d00d2f09c0e0c7f7435e1f89857518e6b9e925ce85f99f2092f3600053d"
+        },
+        "db.vitest.json": {
+          "bytes": 6557,
+          "sha256": "8b6a13e8c38452ae64249c0cba38d08b46bed95edc76f39da395410050cf8fc3"
+        },
+        "focused.json": {
+          "bytes": 11233,
+          "sha256": "569fb446bf852b18c75dc32f212e5545e2c63412211d504a0429876ef0ed5ca1"
+        },
+        "analytics-carry-dense-declaration-estimate-private.json": {
+          "bytes": 10357,
+          "sha256": "563f5e55aec03309f6d6b6b577f6d5fcce355f1c6375c6459796c26fdac8fcef"
+        },
+        "personnel-draft-discard-premigration-role-prerequisites.json": {
+          "bytes": 2342,
+          "sha256": "6af071ae36a60c09dde21379dca3cbf8b9dfa40f457d3f830eea6664ee493e86"
+        },
+        "personnel-draft-discard-role-prerequisites.json": {
+          "bytes": 1916,
+          "sha256": "ed256a16eff0c71a6d454a5397f3560cf950ee47f3586b2df464c80b5c59d995"
+        },
+        "postgres-state.json": {
+          "bytes": 217,
+          "sha256": "03ec47f26bbe036b2aa9abf81a004d45c2d72ef6673522de795ca66bcb496b85"
+        },
+        "postgres-stats.txt": {
+          "bytes": 224,
+          "sha256": "7f5bffbc1206036d8f81b155450c0bd92ffa793469a2e8302ce183090074d315"
+        },
+        "postgres.log": {
+          "bytes": 5761,
+          "sha256": "0de541aa238a3b102d4a6351f8f4fa621ffacb30439fc9394cf87440e3a743e6"
+        }
+      },
+      "authenticatedEvidence": {
+        "bytes": 9750,
+        "sha256": "bc285b5e3da0c8ca02a5302534dc4c39ba61db341cfee1bb5c44d165c71115fd"
+      },
+      "originalCompletedPhases": 6,
+      "originalFetchRows": 9727,
+      "originalFetches": 7,
+      "nativeDenseEstimate": {
+        "phase": 6,
+        "page": 0,
+        "bytes": 8724,
+        "sha256": "98a828ceae4a51dea4f566dba768738575a590824dfaf39b7e044b22edaba16d",
+        "nativeMs": 1.5515880000020843,
+        "operations": 1,
+        "nodes": 23,
+        "startupCost": 21.7,
+        "totalCost": 39.84,
+        "observedShape": "Person InitPlan index scan once; main Employment outer and matching Person CTE Scan inner with equality only in Nested Loop Join Filter",
+        "onePassPersonWitness": true,
+        "bulkJoinWitness": false,
+        "estimatedRowsEachMainSide": 1,
+        "originalDenseDeclareAdmitted": false,
+        "originalDenseFetchObserved": false,
+        "densePageStartMs": 15685.781144
+      },
+      "complete": false,
+      "settled": true,
+      "idleVerified": true,
+      "ownedPgStop": true
+    },
+    "caseCensus": {
+      "registered": 15,
+      "wholeBodies": 13,
+      "caseTimingArgumentsWhole": true,
+      "affectedCases": [
+        "preserves stable same-native-stream carry pages across fixed4096 fetch boundaries",
+        "keeps carry identity order and enrichment with absent, current and department-filtered assignments"
+      ],
+      "b1Phases": 7,
+      "b1Pages": 11,
+      "b1Fetches": 17,
+      "b1Rows": 30212,
+      "b1Events": 125,
+      "b1ActualStatuses": "UNOBSERVED"
+    },
+    "hostedNativeStatus": "UNOBSERVED",
+    "performanceQualified": false,
+    "releaseEligible": false,
+    "recordSection": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json#carrySearchedIdentityStream",
+    "recordPin": {
+      "gitBlob": "0275be8e9a174d830b2157f0f80267714f6a4439",
+      "bytes": 128044,
+      "sha256": "4b22bb14dbc0e51b878700af6ee304c04df14a625d92da3d50b3deefc573b770"
+    },
+    "wholeParentIndex": {
+      "gitRef": "a26a18a8769eccb37202b264e57027e29ffd6fb7:docs/qualification/analytics-carry-selection-source-20261109.json",
+      "gitBlob": "1870b2c07656ccfc0d4f14b3cfe92f90715ee6ef",
+      "bytes": 32956,
+      "sha256": "be7cbd26cf0ff83c9d2a7152789a5857e0dfb22f9d70d7fbee75503c20c39427"
+    }
   }
 }

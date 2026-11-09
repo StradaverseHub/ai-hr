@@ -348,10 +348,9 @@ type CarryBoundarySlot={kind:'fixture'|'command'|'read';epoch:number;armed:boole
 const CARRY_DECLARE_PREFIX = 'declare analytics_carry_identities no scroll cursor for\n      select ';
 const CARRY_EXPLAIN_PREFIX = 'explain(verbose,settings,format json) ';
 const CARRY_SCOPED_EMPLOYMENT = 'analytics_carry_scoped_employment';
-const CARRY_MATCHING_PERSON = 'analytics_carry_matching_person';
-const CARRY_MATCHING_PERSON_SQL = `"${CARRY_MATCHING_PERSON}" as materialized (`;
+const CARRY_IDENTITY_EVENTS_SQL = 'as "analytics_carry_identity_events"';
 const CARRY_ESTIMATE_CELL = {phase:6,page:0} as const;
-const CARRY_ESTIMATE_MEMBER = 'analytics-carry-dense-declaration-estimate-private.json';
+const CARRY_ESTIMATE_MEMBER = 'analytics-carry-dense-identity-stream-estimate-private.json';
 const CARRY_PLAN_BYTES = 1024 * 1024;
 const CARRY_CONTEXT_BYTES = 8 * 1024;
 const CARRY_FRAMING_BYTES = 4 * 1024;
@@ -404,98 +403,38 @@ function carryPlanPath(entry: CarryPlanEntry): CarryPlanEntry[] {
   return path;
 }
 
-function carryPlanAlias(entry: CarryPlanEntry) {
-  const alias=entry.node.Alias;
-  return typeof alias==='string' && /^[a-z_][a-z_0-9]{0,62}$/.test(alias) ? alias : undefined;
-}
+function carryIdentityStreamWitness(entries: CarryPlanEntry[]) {
+  const relationship = (entry: CarryPlanEntry) => entry.node['Parent Relationship'];
+  const main = (entry: CarryPlanEntry) => carryPlanPath(entry).every(step =>
+    relationship(step) !== 'InitPlan' && relationship(step) !== 'SubPlan');
+  const relation = (entry: CarryPlanEntry, name: string) =>
+    entry.node.Schema === 'public' && entry.node['Relation Name'] === name;
+  const mainEntries = entries.filter(main);
+  const windows = mainEntries.filter(entry => entry.node['Node Type'] === 'WindowAgg');
+  const people = entries.filter(entry => relation(entry, 'person'));
+  const employments = mainEntries.filter(entry => relation(entry, 'employment'));
+  const companies = mainEntries.filter(entry => relation(entry, 'company'));
+  const census = {windows: windows.length, personReads: people.length,
+    employmentReads: employments.length, companyReads: companies.length};
+  const refused = {accepted: false, ...census, appendKind: 'none'};
+  if (windows.length !== 1 || people.length !== 1 || employments.length !== 1 || companies.length !== 1 ||
+      !main(people[0]) || entries.some(entry => relation(entry, 'assignment') || relation(entry, 'department'))) return refused;
+  const [window] = windows, [person] = people, [employment] = employments, [company] = companies;
+  const scans = ['Seq Scan', 'Index Scan', 'Index Only Scan', 'Bitmap Heap Scan'];
+  if (![person, employment, company].every(entry => scans.includes(String(entry.node['Node Type'])))) return refused;
 
-// Match a required equality, including one contained in a mandatory AND term.
-function carryPlanEquality(condition:unknown,left:string,right:string) {
-  if(typeof condition!=='string' || condition.length>CARRY_CONTEXT_BYTES)return false;
-  const matches=(expression:string,depth:number):boolean=>{
-    if(depth>CARRY_PLAN_DEPTH)return false;
-    const text=expression.trim(),andAt:number[]=[];
-    let parens=0,outerClose=-1;
-    for(const token of text.matchAll(/"(?:[^"]|"")*"|'(?:[^'\\]|\\.|'')*'|[()]|\b(?:AND|OR|CASE|BETWEEN)\b/g)){
-      switch(token[0]){
-        case '(':parens++;break;
-        case ')':
-          if(--parens<0)return false;
-          if(!parens && outerClose===-1)outerClose=token.index!;
-          break;
-        case 'OR':case 'CASE':case 'BETWEEN':if(!parens)return false;break;
-        case 'AND':if(!parens)andAt.push(token.index!);break;
-      }
-    }
-    if(parens)return false;
-    if(text.startsWith('(')&&outerClose===text.length-1)return matches(text.slice(1,-1),depth+1);
-    if(andAt.length){
-      let start=0;
-      for(const end of andAt){
-        if(matches(text.slice(start,end),depth+1))return true;
-        start=end+3;
-      }
-      return matches(text.slice(start),depth+1);
-    }
-    const unquoted=text.replace(/"([a-z_][a-z_0-9]{0,62})"/g,'$1').replace(/\s+/g,' ');
-    return unquoted===`${left} = ${right}` || unquoted===`${right} = ${left}`;
-  };
-  return matches(condition,0);
-}
-
-function carryDenseJoinWitness(entries:CarryPlanEntry[]) {
-  const relationship=(entry:CarryPlanEntry)=>entry.node['Parent Relationship'];
-  const main=(entry:CarryPlanEntry)=>carryPlanPath(entry).every(step=>!['InitPlan','SubPlan'].includes(String(relationship(step))));
-  const repeatedInner=(entry:CarryPlanEntry)=>relationship(entry)==='Inner' && entry.parent?.node['Node Type']==='Nested Loop';
-  const relation=(entry:CarryPlanEntry,name:string)=>entry.node.Schema==='public' && entry.node['Relation Name']===name;
-  const producer=entries.filter(entry=>entry.node['Subplan Name']===`CTE ${CARRY_MATCHING_PERSON}`);
-  const personScans=entries.filter(entry=>entry.node['Relation Name']==='person');
-  const matchingScans=entries.filter(entry=>entry.node['CTE Name']===CARRY_MATCHING_PERSON);
-  const employmentScans=entries.filter(entry=>main(entry)&&relation(entry,'employment'));
-  const [producerEntry]=producer,[personScan]=personScans,[matching]=matchingScans,[employmentScan]=employmentScans;
-  const personPath=personScan ? carryPlanPath(personScan) : [];
-  const producerDepth=personPath.indexOf(producerEntry);
-  const onePass=producer.length===1 && relationship(producerEntry)==='InitPlan' &&
-    producerEntry.parent!==undefined && main(producerEntry.parent) && !carryPlanPath(producerEntry).some(repeatedInner) &&
-    personScans.length===1 && relation(personScan,'person') && producerDepth>=0 &&
-    personPath.slice(0,producerDepth).every(entry=>!['InitPlan','SubPlan'].includes(String(relationship(entry))) && !repeatedInner(entry)) &&
-    ['Seq Scan','Index Scan','Index Only Scan','Bitmap Heap Scan'].includes(String(personScan.node['Node Type'])) &&
-    matchingScans.length===1 && matching.node['Node Type']==='CTE Scan' && main(matching) &&
-    !entries.some(entry=>entry.node['CTE Name']===CARRY_SCOPED_EMPLOYMENT ||
-      entry.node['Subplan Name']===`CTE ${CARRY_SCOPED_EMPLOYMENT}` ||
-      relation(entry,'assignment') || relation(entry,'department'));
-  let join:'hash'|'merge'|'indexed-employment'|'none'='none';
-  if(onePass && employmentScans.length===1){
-    const personAlias=carryPlanAlias(matching),employmentAlias=carryPlanAlias(employmentScan);
-    const matchingPath=carryPlanPath(matching),employmentPath=carryPlanPath(employmentScan);
-    const joined=matchingPath.find(entry=>employmentPath.includes(entry));
-    if(personAlias && employmentAlias && personAlias!==employmentAlias && joined && joined.node['Join Type']==='Inner'){
-      const matchingChild=matchingPath[matchingPath.indexOf(joined)-1];
-      const employmentChild=employmentPath[employmentPath.indexOf(joined)-1];
-      const joinedPath=carryPlanPath(joined);
-      // A bulk join on a repeated inner path of an enclosing loop is not sufficient.
-      const repeated=joinedPath.some(repeatedInner) ||
-        matchingPath.slice(0,matchingPath.indexOf(joined)-1).some(repeatedInner) ||
-        employmentPath.slice(0,employmentPath.indexOf(joined)-1).some(repeatedInner);
-      const matchingKey=`${personAlias}.id`,employmentKey=`${employmentAlias}.person_id`;
-      if(!repeated && matchingChild && employmentChild){
-        const matchingSide=relationship(matchingChild),employmentSide=relationship(employmentChild);
-        const opposite=(matchingSide==='Outer' && employmentSide==='Inner') || (matchingSide==='Inner' && employmentSide==='Outer');
-        const nodeType=joined.node['Node Type'];
-        if(opposite && nodeType==='Hash Join' && carryPlanEquality(joined.node['Hash Cond'],matchingKey,employmentKey))join='hash';
-        if(opposite && nodeType==='Merge Join' && carryPlanEquality(joined.node['Merge Cond'],matchingKey,employmentKey))join='merge';
-        if(nodeType==='Nested Loop' && matchingSide==='Outer' && employmentSide==='Inner' &&
-          ['Index Scan','Index Only Scan'].includes(String(employmentScan.node['Node Type'])) &&
-          carryPlanEquality(employmentScan.node['Index Cond'],matchingKey,employmentKey) &&
-          employmentPath.slice(0,employmentPath.indexOf(joined)).every(step=>{
-            if(step.node['Node Type']!=='Memoize')return true;
-            const key=step.node['Cache Key'];
-            return typeof key==='string' && key.replace(/[()"]/g,'').trim()===matchingKey;
-          }))join='indexed-employment';
-      }
-    }
-  }
-  return {accepted:onePass && join!=='none',personScans:personScans.length,matchingScans:matchingScans.length,onePass,join};
+  const personPath = carryPlanPath(person), employmentPath = carryPlanPath(employment), companyPath = carryPlanPath(company);
+  const append = personPath.find(entry => employmentPath.includes(entry));
+  const appendKind = append?.node['Node Type'];
+  if (!append || (appendKind !== 'Append' && appendKind !== 'Merge Append') ||
+      !carryPlanPath(append).slice(1).includes(window)) return refused;
+  const member = (path: CarryPlanEntry[]) => path[path.indexOf(append) - 1];
+  const personMember = member(personPath), employmentMember = member(employmentPath);
+  const repeated = personPath.some(entry => relationship(entry) === 'Inner' && entry.parent?.node['Node Type'] === 'Nested Loop');
+  if (repeated || !personMember || !employmentMember || personMember === employmentMember ||
+      relationship(personMember) !== 'Member' || relationship(employmentMember) !== 'Member' ||
+      member(companyPath) !== employmentMember || mainEntries.filter(entry => entry.parent === append).length !== 2) return refused;
+  return {accepted: true, ...census, appendKind};
 }
 
 function carryEstimatePlan(raw: unknown) {
@@ -564,30 +503,33 @@ function carryEstimatePlan(raw: unknown) {
     startupCost: carryEstimatedNumber(root, 'Startup Cost'),
     totalCost: carryEstimatedNumber(root, 'Total Cost'),
     estimatedRows: carryEstimatedNumber(root, 'Plan Rows'),
-    personWitness:carryDenseJoinWitness(entries),
+    identityStreamWitness:carryIdentityStreamWitness(entries),
   };
 }
-function assertCarryDenseWitnessRefusals() {
-  const node=(type:string,fields:Record<string,unknown>={}):Record<string,unknown>=>({
-    'Node Type':type,'Startup Cost':0,'Total Cost':1,'Plan Rows':1,'Plan Width':16,...fields,
+function assertCarryIdentityStreamRefusals() {
+  const node = (type: string, fields: Record<string, unknown> = {}): Record<string, unknown> => ({
+    'Node Type': type, 'Startup Cost': 0, 'Total Cost': 1, 'Plan Rows': 1, 'Plan Width': 16, ...fields,
   });
-  const producer=node('Seq Scan',{'Subplan Name':`CTE ${CARRY_MATCHING_PERSON}`,'Parent Relationship':'InitPlan',Schema:'public','Relation Name':'person',Alias:'person'});
-  const matching=node('CTE Scan',{'CTE Name':CARRY_MATCHING_PERSON,'Parent Relationship':'Outer',Alias:'matching_person'});
-  const employmentNode=node('Index Scan',{'Parent Relationship':'Inner',Schema:'public','Relation Name':'employment',Alias:'employment_1'});
-  const equality='("matching_person"."id" = "employment_1"."person_id")';
-  const hash=node('Hash Join',{'Join Type':'Inner','Hash Cond':equality,Plans:[matching,employmentNode]});
-  const nested=node('Nested Loop',{'Join Type':'Inner',Plans:[matching,{...employmentNode,'Index Cond':equality}]});
-  const witness=(join:Record<string,unknown>,source=producer,other:Record<string,unknown>[]=[])=>
-    carryEstimatePlan([{Plan:node('Sort',{Plans:[source,join,...other]})}]).personWitness;
-  expect(witness(hash,{...producer,'Subplan Name':'unrelated'}).accepted).toBe(false);
-  expect(witness(hash,producer,[node('Seq Scan',{Schema:'public','Relation Name':'person'})]).accepted).toBe(false);
-  expect(witness(hash,{...producer,'Parent Relationship':'SubPlan'}).accepted).toBe(false);
-  expect(witness({...hash,'Hash Cond':'(matching_person.id = employment_1.id)','Join Filter':equality}).accepted).toBe(false);
-  expect(witness({...hash,'Hash Cond':`(${equality} OR (matching_person.id IS NOT NULL))`}).accepted).toBe(false);
-  expect(witness({...hash,'Hash Cond':`(CASE WHEN true AND ${equality} AND false THEN false ELSE true END)`}).accepted).toBe(false);
-  expect(witness({...hash,Plans:[matching,{...employmentNode,'Parent Relationship':'Outer'}]}).accepted).toBe(false);
-  expect(witness({...nested,Plans:[matching,{...employmentNode,'Index Cond':'(employment_1.tenant_id = $1)',Filter:equality}]}).accepted).toBe(false);
-  expect(witness({...nested,Plans:[{...matching,'Parent Relationship':'Inner'},{...employmentNode,'Parent Relationship':'Outer','Index Cond':equality}]}).accepted).toBe(false);
+  const person = node('Seq Scan', {'Parent Relationship': 'Member', Schema: 'public', 'Relation Name': 'person'});
+  const employment = node('Index Scan', {'Parent Relationship': 'Outer', Schema: 'public', 'Relation Name': 'employment'});
+  const company = node('Index Scan', {'Parent Relationship': 'Inner', Schema: 'public', 'Relation Name': 'company'});
+  const companyJoin = node('Nested Loop', {'Parent Relationship': 'Member', Plans: [employment, company]});
+  const append = node('Append', {'Parent Relationship': 'Outer', Plans: [person, companyJoin]});
+  const window = node('WindowAgg', {'Parent Relationship': 'Outer', Plans: [append]});
+  const witness = (plan: Record<string, unknown>) => carryEstimatePlan([{Plan: plan}]).identityStreamWitness;
+  const withMembers = (...members: Record<string, unknown>[]) => ({...window, Plans: [{...append, Plans: members}]});
+  expect(witness(withMembers({...person, 'Relation Name': 'unknown'}, companyJoin)).accepted).toBe(false);
+  expect(witness(withMembers(person, companyJoin, person)).accepted).toBe(false);
+  expect(witness(withMembers({...person, 'Parent Relationship': 'SubPlan'}, companyJoin)).accepted).toBe(false);
+  expect(witness({...window, 'Node Type': 'Result'}).accepted).toBe(false);
+  expect(witness({...window, Plans: [{...append, 'Node Type': 'Nested Loop', 'Join Filter': '(person.id = employment.person_id)'}]}).accepted).toBe(false);
+  expect(witness(withMembers(node('Result', {'Parent Relationship': 'Member', Plans: [person, companyJoin]}),
+    node('Result', {'Parent Relationship': 'Member'}))).accepted).toBe(false);
+  expect(witness(withMembers(person, companyJoin, node('Result', {'Parent Relationship': 'Member'}))).accepted).toBe(false);
+  expect(witness(node('Nested Loop', {Plans: [node('Result', {'Parent Relationship': 'Outer'}),
+    {...window, 'Parent Relationship': 'Inner'}]})).accepted).toBe(false);
+  expect(witness(withMembers(node('Result', {'Parent Relationship': 'Member', Plans: [person, company]}),
+    {...employment, 'Parent Relationship': 'Member'})).accepted).toBe(false);
 }
 
 type CarryEstimateSummary = {
@@ -609,7 +551,7 @@ type CarryEstimateSummary = {
   privateMemberSha256?: string;
   privateMemberBytes?: number;
   originalDeclarationAdmitted?: true;
-  personWitness?: ReturnType<typeof carryEstimatePlan>['personWitness'];
+  identityStreamWitness?: ReturnType<typeof carryEstimatePlan>['identityStreamWitness'];
   failure?: CarryFailureFact;
 };
 /** B1-only lifetime owner. Private native identities never enter the bounded receipt. */
@@ -842,13 +784,16 @@ class CarryBoundaryScope{
      if (!compiled.sql.startsWith(CARRY_DECLARE_PREFIX)) throw new Error('Carry estimate declaration prefix refused');
      const declaration=compiled.sql.replace(/\s+/g,' ');
      if(!expectedCompanyId||!isDeepStrictEqual(compiled.params,[expectedCompanyId,'%Carry boundary %%','%Carry boundary %%','2026-12-31','2026-01-01'])||
-       !declaration.includes('"full_name" as name from ( with "analytics_carry_scoped_employment" as not materialized (')||
-       !declaration.includes(CARRY_MATCHING_PERSON_SQL)||!declaration.includes('select "person"."id", "person"."full_name" from "person" where')||
-       !declaration.includes('inner join "analytics_carry_matching_person" as "matching_person" on "matching_person"."id" = "employment"."person_id"')||
+       !declaration.includes('"carried_name" as name from ( with "analytics_carry_scoped_employment" as not materialized (')||
+       !declaration.includes('max(person_name) over ( partition by person_id order by event_kind rows between unbounded preceding and current row ) as carried_name')||
+       !declaration.includes(CARRY_IDENTITY_EVENTS_SQL)||declaration.split(' union all ').length!==2||
+       !declaration.includes('select "person"."id" as person_id, 0 as event_kind, null::uuid as employment_id, "person"."full_name" as person_name from "person" where')||
+       !declaration.includes('union all select "employment"."person_id", 1, "employment"."id", null::text from "analytics_carry_scoped_employment" as "employment"')||
+       !declaration.includes('inner join "company" on "company"."id" = "employment"."company_id"')||
        !declaration.includes('"employment"."company_id" in ($1)')||
        !declaration.includes('"person"."full_name" ilike $2 or "person"."primary_email" ilike $3')||
        !declaration.includes('"employment"."hired_on" <= $4')||!declaration.includes('"employment"."terminated_on" >= $5')||
-       !declaration.endsWith('order by "employment"."id" ) "analytics_carry_population" order by "analytics_carry_population"."id"'))
+       !declaration.endsWith('where employment_id is not null and carried_name is not null ) "analytics_carry_population" order by "analytics_carry_population"."employment_id"'))
        throw new Error('Carry searched declaration witness refused');
      const explain = sql`explain(verbose,settings,format json) ${statement}`;
      const wrapped = dialect.sqlToQuery(explain);
@@ -871,10 +816,10 @@ class CarryBoundaryScope{
          Object.keys(result[0]).length !== 1 || this.denseEstimate.nativeOperations !== 1) {
        throw new Error('Carry estimate requires one native JSON row and operation');
      }
-     const {serialized, sha256, bytes, nodes, rootNodeType, startupCost, totalCost, estimatedRows, personWitness} =
+     const {serialized, sha256, bytes, nodes, rootNodeType, startupCost, totalCost, estimatedRows, identityStreamWitness} =
        carryEstimatePlan(result[0]['QUERY PLAN']);
      const frame = {
-       kind: 'NATIVE_CARRY_DENSE_DECLARE_ESTIMATE_COMPONENT_ONLY', releaseEligible: false,
+       kind: 'NATIVE_CARRY_DENSE_IDENTITY_STREAM_DECLARE_ESTIMATE_COMPONENT_ONLY', releaseEligible: false,
        source: process.env.AIHR_CI_HEAD, controller: process.env.AIHR_CI_CONTROL_HEAD,
        runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT, ...CARRY_ESTIMATE_CELL,
        planEncoding: 'POSTGRES_JSON_DECODED_AND_RESERIALIZED', planSha256: sha256, planBytes: bytes,
@@ -893,9 +838,9 @@ class CarryBoundaryScope{
      this.denseEstimate.status = 'CAPTURED';
      Object.assign(this.denseEstimate, {
        planSha256: sha256, planBytes: bytes, nodes, rootNodeType, startupCost, totalCost,
-       estimatedRows, personWitness, privateMemberBytes: payloadBytes, privateMemberSha256: carryEstimateHash(payload),
+       estimatedRows, identityStreamWitness, privateMemberBytes: payloadBytes, privateMemberSha256: carryEstimateHash(payload),
      });
-     if(!personWitness.accepted)throw new Error('Carry dense estimate lacks the one-pass Person and bulk join witness');
+     if (!identityStreamWitness.accepted) throw new Error('Carry dense estimate lacks separate Person and Employment identity streams under one window');
      const originalAgain = dialect.sqlToQuery(statement);
      if (originalAgain.sql !== compiled.sql || !isDeepStrictEqual(originalAgain.params, compiled.params)) {
        throw new Error('Carry declaration changed during estimate observation');
@@ -1095,7 +1040,7 @@ it('preserves stable same-native-stream carry pages across fixed4096 fetch bound
  const scope=new CarryBoundaryScope(context.signal);carryBoundaryScope=scope;
  context.onTestFinished(()=>scope.finish());
  await scope.run(async()=>{
- assertCarryDenseWitnessRefusals();
+ assertCarryIdentityStreamRefusals();
  scope.event('seed-start');await scope.prepare();
  const b=await seedBase(),ctx=adminCtx(b),probe=observeCarryCursor(false,scope,b.companyId);scope.setRestore(probe.restore);
  const seeded=await scope.fixture(tx=>seedRows(b,4095,{}, {tx,scope}));scope.event('seed-return');scope.event('pair-start');
@@ -1215,14 +1160,14 @@ it('keeps carry identity order and enrichment with absent, current and departmen
    expect(declarations).toHaveLength(1);
    expect(declarations[0].includes('left join "assignment"')).toBe(Boolean(departmentId));
    expect(declarations[0].includes('left join "department"')).toBe(Boolean(departmentId));
-   expect(declarations[0].includes(CARRY_MATCHING_PERSON_SQL)).toBe(!departmentId);
+   expect(declarations[0].includes(CARRY_IDENTITY_EVENTS_SQL)).toBe(!departmentId);
    expect(probe.declarationParameters).toEqual([[b.companyId,b.companyId,...(departmentId?[departmentId]:[]),
     `%${name}%`,`%${name}%`,'2026-12-31','2026-01-01']]);
   }finally{probe.restore();}
  }
- for(const {q,expected,materialized} of [
-  {q:' '+email+' ',expected:[{employmentId:historical,name}],materialized:true},
-  {q:'  ',expected:[{employmentId:excluded,name:excludedName},...[historical,finance,operations].sort().map(employmentId=>({employmentId,name}))],materialized:false},
+ for(const {q,expected,streamed} of [
+  {q:' '+email+' ',expected:[{employmentId:historical,name}],streamed:true},
+  {q:'  ',expected:[{employmentId:excluded,name:excludedName},...[historical,finance,operations].sort().map(employmentId=>({employmentId,name}))],streamed:false},
  ]){
   const input={year:2026,companyId:b.companyId,filter:{q}};
   const full=await carryForwardReport(ctx,scope,input),probe=observeCarryCursor();
@@ -1233,9 +1178,21 @@ it('keeps carry identity order and enrichment with absent, current and departmen
    expect(probe.rows.slice().sort((a,b)=>a.name.localeCompare(b.name))).toEqual(expected);
    const declarations=probe.queries.filter(query=>query.startsWith('declare analytics_carry_identities '));
    expect(declarations).toHaveLength(1);
-   expect(declarations[0].includes(CARRY_MATCHING_PERSON_SQL)).toBe(materialized);
-   expect(probe.declarationParameters).toEqual([[b.companyId,b.companyId,...(materialized?[`%${email}%`,`%${email}%`]:[]),
+   expect(declarations[0].includes(CARRY_IDENTITY_EVENTS_SQL)).toBe(streamed);
+   expect(probe.declarationParameters).toEqual([[b.companyId,b.companyId,...(streamed?[`%${email}%`,`%${email}%`]:[]),
     '2026-12-31','2026-01-01']]);
   }finally{probe.restore();}
  }
+ // A stored empty name is a real Person marker when the existing email predicate matches.
+ expect(await owner.db.update(person).set({fullName:''}).where(eq(person.id,historicalPerson))
+  .returning({id:person.id,name:person.fullName})).toEqual([{id:historicalPerson,name:''}]);
+ const input={year:2026,companyId:b.companyId,filter:{q:email}};
+ const full=await carryForwardReport(ctx,scope,input),probe=observeCarryCursor();
+ try{
+  const result=await carryForwardReportPage(ctx,scope,{...input,page:first});
+  expectCarryCursorPage(probe,first,result,1);
+  expect(probe.rows).toEqual([{employmentId:historical,name:''}]);
+  expect(result.rows[0].employeeName).toBe('');
+  expect(result.rows).toEqual(full);
+ }finally{probe.restore();}
 });
