@@ -85,7 +85,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-${{ inputs.candidate_ref }}
+  group: alpha-focused-${{ github.ref == 'refs/heads/codex/compiler-12800-whole-feasibility-20261109' && 'compiler-12800-whole-feasibility' || inputs.candidate_ref }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur

@@ -324,7 +324,7 @@ def service(unit, pending):
             phase = 'start'
             with (directory / 'compiler.raw.log').open('xb') as log:
                 require(time.monotonic_ns() < stop, 'service-launch-late')
-                with subprocess.Popen(['/usr/bin/time', '-v', str(pnpm), 'exec', 'tsc', '--noEmit'],
+                with subprocess.Popen(['/usr/bin/time', '-v', str(pnpm), 'exec', 'tsc', '--noEmit', '--incremental', 'false'],
                                       stdin=subprocess.DEVNULL, stdout=log, stderr=log) as compiler:
                     print('S', flush=True)
                     phase = 'compiler'
@@ -362,7 +362,7 @@ def run(workspace, temporary, controller, run_id):
     nonce = unit + '-' + os.urandom(16).hex()
     deadline = integer(os.environ['AIHR_COMPILER_FEASIBILITY_T0_NS']) + 1140 * 10 ** 9
     report = {'kind': 'WHOLE_COMPILER_HEAP_FEASIBILITY_NOT_RELEASE', 'candidateSha': SOURCE, 'controllerSha': controller,
-              'runId': run_id, 'attempt': 1, 'heapMiB': 12800, 'compilerExit': None, 'admitted': False,
+              'runId': run_id, 'attempt': 1, 'heapMiB': 12800, 'incremental': False, 'compilerExit': None, 'admitted': False,
               'grantSent': False,
               'complete': False, 'ownedCleanup': 'not-started', 'releaseEligible': False}
     wrapper = None
