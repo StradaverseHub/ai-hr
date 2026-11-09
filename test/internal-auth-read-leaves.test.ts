@@ -12,7 +12,7 @@ import { readRecord, writeRecord, deleteRecord, revokeCredentialsSessions, type 
 import { assertActiveCredential, type Credential } from '../lib/internal-auth/credential';
 import { InternalAuthError } from '../lib/internal-auth/errors';
 import { readActiveRelayTx } from '../lib/internal-auth/active-relay';
-import { decryptRecord, encryptRecord } from '../lib/internal-auth/crypto';
+import { decryptRecord, digest, encryptRecord } from '../lib/internal-auth/crypto';
 
 const credential: Credential = { subject:'11111111-1111-4111-8111-111111111111', tenantId:'22222222-2222-4222-8222-222222222222',
   issuer:'https://hr.test/auth/22222222-2222-4222-8222-222222222222', organization:'fictional', username:'reader', email:'reader@example.test',
@@ -68,6 +68,74 @@ describe('canonical record IO extraction', () => {
     await deleteRecord(tx,'credential:one');await revokeCredentialsSessions(tx,credential.subject);
     expect(unsafe).toHaveBeenCalledWith('select app.internal_auth_delete($1)',['credential:one']);
     expect(unsafe).toHaveBeenCalledWith('select app.internal_auth_revoke($1::uuid)',[credential.subject]);
+  });
+});
+
+describe('fixed-window rate transaction retry', () => {
+  const scope = 'login-global', window = 60_000;
+  const tryKey = "select pg_try_advisory_xact_lock(hashtextextended('internal-auth:'||$1,0)) as acquired";
+  it('retries only a settled empty miss, and keeps the original window key and encrypted count', async () => {
+    const start = Math.floor(Date.now() / window) * window, key = `rate:${digest(`${scope}:${start}`)}`;
+    const clock = vi.spyOn(Date, 'now').mockReturnValueOnce(start + window - 1).mockReturnValue(start + window + 1);
+    const missed = captured([{ acquired: false }]), won = captured();
+    won.unsafe.mockResolvedValueOnce([{ acquired: true }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    let settled = false;
+    singleton.begin.mockImplementationOnce(async fn => { const result = await fn(missed.tx); settled = true; return result; });
+    singleton.begin.mockImplementationOnce(fn => { expect(settled).toBe(true); return fn(won.tx); });
+    try {
+      await expect(legacyService.takeRate(scope, 120, window)).resolves.toBeUndefined();
+      expect(singleton.begin).toHaveBeenCalledTimes(2);
+      expect(missed.unsafe.mock.calls).toEqual([[tryKey, [key]]]);
+      expect(won.unsafe.mock.calls[0]).toEqual([tryKey, [key]]);
+      expect(won.unsafe.mock.calls[1]).toEqual(['select sealed from app.internal_auth_read($1,$2)', [key, true]]);
+      const [, values] = won.unsafe.mock.calls[2] as unknown as [string, string[]];
+      expect(values.slice(0, 2)).toEqual([key, null]);
+      expect(decryptRecord(values[2], key)).toEqual({ count: 1 });
+      expect(values[3]).toBe(new Date(start + 2 * window).toISOString());
+    } finally { clock.mockRestore(); }
+  });
+  it.each(['before sleep', 'before pool retry', 'after checkout', 'after claim'] as const)('refuses without counter work when the retry budget expires %s', async stage => {
+    const missed = captured([{ acquired: false }]), late = captured();
+    let elapsed = 0, reads = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => {
+      const call = reads++;
+      return (stage === 'before sleep' && call >= 1) || (stage === 'before pool retry' && call >= 2) ? 1000 : elapsed;
+    });
+    late.unsafe.mockImplementation(async () => { elapsed = 1000; return [{ acquired: true }]; });
+    singleton.begin.mockImplementationOnce(fn => fn(missed.tx));
+    const checkedOut = stage === 'after checkout' || stage === 'after claim';
+    if (checkedOut) singleton.begin.mockImplementationOnce(fn => {
+      if (stage === 'after checkout') elapsed = 1000;
+      return fn(late.tx);
+    });
+    try {
+      await expect(legacyService.takeRate(scope, 120, window)).rejects.toMatchObject({ code: 'unavailable' });
+      expect(singleton.begin).toHaveBeenCalledTimes(checkedOut ? 2 : 1);
+      expect(late.unsafe).toHaveBeenCalledTimes(stage === 'after claim' ? 1 : 0);
+    } finally { clock.mockRestore(); }
+  });
+  it('finishes the single admitted counter transaction when its read crosses the retry deadline', async () => {
+    const missed = captured([{ acquired: false }]), won = captured();
+    let elapsed = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
+    won.unsafe.mockResolvedValueOnce([{ acquired: true }]).mockImplementationOnce(async () => { elapsed = 1000; return []; });
+    singleton.begin.mockImplementationOnce(fn => fn(missed.tx)).mockImplementationOnce(fn => fn(won.tx));
+    try {
+      await expect(legacyService.takeRate(scope, 120, window)).resolves.toBeUndefined();
+      expect(singleton.begin).toHaveBeenCalledTimes(2);
+      expect(won.unsafe).toHaveBeenCalledTimes(3);
+    } finally { clock.mockRestore(); }
+  });
+  it.each(['try', 'counter read', 'counter commit', 'empty commit'] as const)('preserves an actual %s error without replay', async stage => {
+    const failure = Object.assign(new Error('synthetic storage failure'), { code: '55P03' }), attempt = captured();
+    if (stage === 'try') attempt.unsafe.mockRejectedValueOnce(failure);
+    else attempt.unsafe.mockResolvedValueOnce([{ acquired: stage !== 'empty commit' }]);
+    if (stage === 'counter read') attempt.unsafe.mockRejectedValueOnce(failure);
+    else if (stage === 'counter commit') attempt.unsafe.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    singleton.begin.mockImplementationOnce(async fn => { await fn(attempt.tx); throw failure; });
+    await expect(legacyService.takeRate(scope, 120, window)).rejects.toBe(failure);
+    expect(singleton.begin).toHaveBeenCalledTimes(1);
+    expect(attempt.unsafe).toHaveBeenCalledTimes(stage === 'counter commit' ? 3 : stage === 'counter read' ? 2 : 1);
   });
 });
 
