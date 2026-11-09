@@ -268,9 +268,8 @@ describe('Statutory identity — one card cannot blank another body\u2019s numbe
     expect(row?.lhdnEmployerNo).toBe('L-KEEP');
   });
 
-  it('the trimmed identity form (SSM + MyInvois only) leaves the three body numbers alone', async () => {
-    // What is LEFT on the Statutory tab after r226: the two registrations that are not a contribution
-    // body. It posts two fields, so it must write two columns.
+  it('a stale registration form preserves the SSM, MyInvois and body numbers', async () => {
+    // A previously rendered identity form cannot change the removed identifiers.
     await seedAllFive();
     await captureRedirect(() =>
       setCompanyStatutoryAction(
@@ -283,8 +282,8 @@ describe('Statutory identity — one card cannot blank another body\u2019s numbe
       ),
     );
     const row = await getCompanyStatutoryMY(adminCtx(base), base.companyId);
-    expect(row?.ssmRegistrationNo).toBe('R-NEW');
-    expect(row?.myinvoisTin).toBe('T-NEW');
+    expect(row?.ssmRegistrationNo).toBe('R-KEEP');
+    expect(row?.myinvoisTin).toBe('T-KEEP');
     expect(row?.epfEmployerNo, 'EPF is not on this form and must survive it').toBe('E-OLD');
     expect(row?.socsoEmployerCode).toBe('S-KEEP');
     expect(row?.lhdnEmployerNo).toBe('L-KEEP');

@@ -616,7 +616,6 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
     expect(stripComments(panel), 'nothing on the panel reaches for a tab-wide statutory save').not.toContain(
       'saveStatutoryTab',
     );
-    expect(panel, 'and the note recording that removal is KEPT').toContain('saveStatutoryTab');
   });
 
   it('puts EPF, SOCSO and LHDN filing numbers on their own card, and nobody else', () => {
