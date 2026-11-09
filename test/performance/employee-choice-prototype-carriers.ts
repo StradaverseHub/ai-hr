@@ -10,8 +10,8 @@ export function employeeChoicePrototypeCarriers(signal:AbortSignal,admit:()=>voi
  const nonce=randomUUID().slice(0,8),workName='employee_ascii_owner_work_'+nonce,cleanupName='employee_ascii_owner_cleanup_'+nonce;
  employeeChoiceOwnedUrl(process.env.TEST_DATABASE_URL!,'ai_hr_app',workName);
  const endpoint=new URL(employeeChoiceOwnedUrl(process.env.TEST_MIGRATION_DATABASE_URL!,'postgres',workName));endpoint.search='';
- const work=postgres(endpoint.href,{max:1,connect_timeout:2,connection:{application_name:workName,statement_timeout:'20s',lock_timeout:'300ms'}});
- const cleanup=postgres(endpoint.href,{max:1,connect_timeout:2,connection:{application_name:cleanupName,statement_timeout:'1s',lock_timeout:'300ms'}});
+ const work=postgres(endpoint.href,{max:1,connect_timeout:2,connection:{application_name:workName,statement_timeout:20000,lock_timeout:300}});
+ const cleanup=postgres(endpoint.href,{max:1,connect_timeout:2,connection:{application_name:cleanupName,statement_timeout:1000,lock_timeout:300}});
  const callbacks=employeeChoiceWorkRegistry(),resources=employeeChoiceCloseRegistry();
  let phase:'work'|'draining'|'probing'|'cleanup'|'closed'='work',stopped:Promise<void>|undefined,cleanupClose:Promise<void>|undefined,closing:Promise<void>|undefined;
  let cleanupDeadline=Infinity,timer:ReturnType<typeof setTimeout>|undefined;

@@ -21,8 +21,8 @@ export type FactoryStatement={carrier:'work'|'tx'|'cleanup';text:string;values:u
 export function employeeChoiceNativeFactoryFixture(signal:AbortSignal,deadline:number){
  const url=new URL(employeeChoiceOwnedUrl(process.env.TEST_MIGRATION_DATABASE_URL!,'postgres','factory','work'));url.search='';
  const id=randomUUID().slice(0,8),workName='employee_factory_work_'+id,cleanupName='employee_factory_cleanup_'+id;
- const work=postgres(url.href,{max:1,connect_timeout:2,connection:{application_name:workName,statement_timeout:'20s',lock_timeout:'300ms'}});
- const cleanup=postgres(url.href,{max:1,connect_timeout:2,connection:{application_name:cleanupName,statement_timeout:'1s',lock_timeout:'300ms'}});
+ const work=postgres(url.href,{max:1,connect_timeout:2,connection:{application_name:workName,statement_timeout:20000,lock_timeout:300}});
+ const cleanup=postgres(url.href,{max:1,connect_timeout:2,connection:{application_name:cleanupName,statement_timeout:1000,lock_timeout:300}});
  const callbacks=employeeChoiceWorkRegistry(),resources=employeeChoiceCloseRegistry(),statements:FactoryStatement[]=[];
  let phase:'work'|'cleanup'='work',stopped=false,closed=false,transactionDepth=0,closeCleanup:Promise<void>|undefined;
  const cleanupClose=()=>closeCleanup??=cleanup.end({timeout:0});

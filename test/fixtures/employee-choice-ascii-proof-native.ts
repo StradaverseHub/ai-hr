@@ -65,7 +65,7 @@ export function asciiNativeProofOwner(){
     check();const config=binding(),executable=asciiProofExecutable(),directory=evidenceDirectory();check();
     const report:Record<string,unknown>={kind:'DEVELOPMENT_ASCII_OBSERVATION_NOT_RELEASE',name,database:config.database,source:config.source,controller:config.controller,run:config.run,attempt:config.attempt,versions:{...process.versions},executable,
      sourceFiles:Object.fromEntries(files.map(file=>[file,asciiProofSha(asciiProofSourceBytes(file))])),host:{logicalCpus:cpus().length,ramBytes:totalmem()},releaseAuthorized:false};
-    const connection=postgres(config.url.href,{max:1,prepare:false,connect_timeout:2,connection:{statement_timeout:'20s',lock_timeout:'300ms',default_transaction_isolation:'repeatable read',default_transaction_read_only:'on'}});
+    const connection=postgres(config.url.href,{max:1,prepare:false,connect_timeout:2,connection:{statement_timeout:20000,lock_timeout:300,default_transaction_isolation:'repeatable read',default_transaction_read_only:true}});
     let closePromise:Promise<void>|undefined,failed=false,failure:unknown;
     const close=()=>closePromise??=connection.end({timeout:0});
     const abort=()=>{lifetime.poison(context.signal.reason);void close().catch(lifetime.poison);};context.signal.addEventListener('abort',abort,{once:true});if(context.signal.aborted)abort();

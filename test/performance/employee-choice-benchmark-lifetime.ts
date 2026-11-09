@@ -46,6 +46,7 @@ export function employeeChoiceBenchmarkLifetime(cancel:()=>Promise<void>,record:
  const drain=async()=>{
   const owned=pending;await owned?.catch(()=>{});await cancelling;emit('owned-work-drained');
  };
+ const clearWorkTimer=()=>{cancelWorkTimer?.();cancelWorkTimer=undefined;};
  const finish=(cleanup:()=>Promise<void>)=>{
   if(finishing)return finishing;
   // Register the completion promise BEFORE invoking cleanup or awaiting work.
@@ -59,11 +60,11 @@ export function employeeChoiceBenchmarkLifetime(cancel:()=>Promise<void>,record:
    if(failure!==undefined)observedFailures.add(failure);
    // New work was closed synchronously by finishing. Keep the840s cancellation
    // active while an owned phase drains; reserve time belongs only to cleanup.
-   cancelWorkTimer?.();cancelWorkTimer=undefined;
+   clearWorkTimer();
    try{await cleanup();}catch(error){uncertain=true;remember(error,'Benchmark drain and cleanup both failed');}
    // The900s guard can start cancellation DURING cleanup. Own that settlement too.
    try{await cancelling;}catch(error){remember(error,'Benchmark cleanup and deadline cancellation both failed');}
-   finished=true;cancelWorkTimer?.();cancelTotalTimer?.();
+   finished=true;clearWorkTimer();cancelTotalTimer?.();
    if(elapsed()>employeeChoiceBenchmarkBounds.totalMs){uncertain=true;failure??=Error('Benchmark cleanup exceeded the fixed900-second envelope');}
    emit(uncertain?'cleanup-uncertain':'file-finished');failure??=recordFailure;if(failure)throw failure;
   });void finishing.catch(()=>{});return finishing;
