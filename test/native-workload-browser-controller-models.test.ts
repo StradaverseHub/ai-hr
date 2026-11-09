@@ -112,6 +112,15 @@ const suites=[
     'test_third_has_only_fixed_python_probe_and_no_writable_role_view',
    ]],
   ]},
+ {name:'runs the 5 exact synthetic browser preimport gate source models',file:'.github/ci/native-workload-browser-preimport-gate.test.py',count:5,classes:[
+   ['SyntheticPreimportGateModels',[
+    'test_exact_pure_argv_and_closed_arguments',
+    'test_inline_rechecks_argv_role_identity_and_reciprocal_pipes_before_ready',
+    'test_one_ready_and_grant_restore_stdio_then_replace_exact_role_process',
+    'test_pregate_io_refuses_prequeued_short_wrong_and_surplus_packets',
+    'test_same_absolute_frontier_refuses_expired_future_and_late_grant',
+   ]],
+  ]},
 ] as const;
 
 it.each(suites)('$name',({file,count,classes})=>{
