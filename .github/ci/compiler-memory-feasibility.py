@@ -16,10 +16,10 @@ import sys
 import time
 
 
-SOURCE = '63a65d4d5f363d4a104170e3400a0e7582ea953b'
-SOURCE_TREE = 'ee93a4862cfb730b29ee4ebae64c4ed88d927f52'
+SOURCE = '9341d4fb996834fd5552816673b59337e4576a6c'
+SOURCE_TREE = 'b9f914ab9ffaaead553566cfe2456ea4e5ffff1a'
 SOURCE_BRANCH = 'codex/architecture-five-item-browser-convergence-20261109'
-BRANCH = 'codex/compiler-frozen-successor-13312-proof-20261110'
+BRANCH = 'codex/compiler-next-frozen-13312-proof-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 HEAP_MIB = 13 * 1024
@@ -41,8 +41,8 @@ PROGRESS_COUNTERS = ('cpuUsec', 'userUsec', 'systemUsec', 'cpuSomeUsec', 'cpuFul
 PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
 PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-13312-frozen-successor'
-UNIT_PREFIX = 'aihr-compiler-13312-successor-'
+DIRECTORY = 'compiler-13312-next-frozen'
+UNIT_PREFIX = 'aihr-compiler-13312-next-frozen-'
 UNIT_NAME = re.compile(rf'{re.escape(UNIT_PREFIX)}[1-9][0-9]{{0,15}}\.service')
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -59,7 +59,7 @@ STATE_FIELDS = ('buildInfoBytes', 'buildInfoSha256', 'nativeFiles', 'nativeRoots
 BASELINE_RUN = '42678892305'
 CALIBRATION_SOURCE = '06e499c211807981689c34c5e732b7dac488abbc'
 TRACKED_MEMBERS = 12964
-TRACKED_SHA256 = '3b610188340083a352f80aec9c72082e64e8297dec4cbf5e3bc4f4dafac0ce1b'
+TRACKED_SHA256 = '451ecc963bceeda6e29a75724824ce0b9558a99151a3aa3491c7d055fe1098db'
 BASELINE_INVENTORY = {
     'configuredRoots': 9205,
     'orderedRootSha256': '9fdad7b65530150218090b7b4378d6b647b0da6f856081ca898d2ed09a1349fc',
@@ -70,12 +70,16 @@ BASELINE_INVENTORY = {
 }
 BASELINE_NODE_SHA256 = 'fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48'
 BASELINE_ARGV_SHA256 = 'c24f853d33edb0cfbb3068197aba380b9869e89e762827bb0edf9fe72de8027d'
+LOCATION_POLICY = 'TRACKED_SOURCE_COMPILER_COORDINATES_V1'
+LOCATION_MAX_ROWS = 64
+LOCATION_GENERATED = {'next-env.d.ts', '.next/types/cache-life.d.ts', '.next/types/root-params.d.ts',
+                      '.next/types/routes.d.ts', '.next/types/validator.ts'}
 SOURCE_INPUTS = {
     'tsconfig.json': '0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a',
     'package.json': '7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c',
     'pnpm-lock.yaml': '0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd',
     'pnpm-workspace.yaml': '68505b5f88e6fbd9ef4a309ca131de8e64f1749939d846da2d81e88db14c9369',
-    'next.config.ts': 'a2e110533821502c36cd0b371960fe7cb73710ef9e253221bd188696560724f6',
+    'next.config.ts': 'bd74eab1c7b57d1d27ec240feaea84db60ca882b54c308434e5baa4104696d7c',
     'mobile/package.json': '03fd6692c2651a555672ee5025a008f447a8ed1443ba6933c3da03f7023a6a27',
     'mobile/package-lock.json': '6919f4b6fd6b0ac3fb8346fc9578d8c3a0ccbdb9538bed6e8fd43e3cb8eb9915',
 }
@@ -782,6 +786,81 @@ def compiler_log_evidence(raw):
             'compilerFiles': int(files[0]) if len(files) == 1 and len(files[0]) <= 6 else None}
 
 
+def read_owned_compiler_log(log):
+    fd = os.open(log, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as stream:
+        info = os.fstat(fd)
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1
+                and stat.S_IMODE(info.st_mode) == 0o600 and 0 < info.st_size <= MAX_LOG, 'log-bound')
+        raw = stream.read(MAX_LOG + 1)
+        require(len(raw) == info.st_size and identity(info) == identity(os.fstat(fd))
+                == identity(os.stat(log, follow_symlinks=False)), 'log-changed')
+        return raw
+
+
+def diagnostic_source(source, raw_name, line, column):
+    prefix = os.fsencode(source) + b'/'
+    if raw_name.startswith(prefix):
+        raw_name = raw_name[len(prefix):]
+    elif raw_name.startswith(b'./'):
+        raw_name = raw_name[2:]
+    require(re.fullmatch(rb'[A-Za-z0-9_.@+() \[\]/-]{1,384}', raw_name) is not None
+            and all(part not in (b'', b'.', b'..', b'.git') for part in raw_name.split(b'/')),
+            'diagnostic-source-name')
+    name = raw_name.decode('ascii')
+    path = source / name
+    require(path.resolve(strict=True) == path and path.suffix in {'.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'},
+            'diagnostic-source-path')
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as stream:
+        info = os.fstat(fd)
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1
+                and 0 < info.st_size <= MAX_LOG, 'diagnostic-source-member')
+        content = stream.read(MAX_LOG + 1)
+        require(len(content) == info.st_size and identity(info) == identity(os.fstat(fd))
+                == identity(path.lstat()), 'diagnostic-source-changed')
+    if name not in LOCATION_GENERATED:
+        result, found = command(['/usr/bin/git', '-C', str(source), '--literal-pathspecs', 'ls-files', '--stage', '-z', '--', name])
+        blob = hashlib.sha1(b'blob ' + str(len(content)).encode('ascii') + b'\0' + content).hexdigest().encode('ascii')
+        require(result == 0 and re.fullmatch(rb'100(?:644|755) ' + blob + rb' 0\t' + re.escape(raw_name) + rb'\0', found),
+                'diagnostic-source-tracked-blob')
+    lines = re.split(r'\r\n|\r|\n|\u2028|\u2029', content.decode('utf-8-sig'))
+    require(1 <= line <= len(lines) and 1 <= column <= len(lines[line-1].encode('utf-16-le')) // 2 + 1,
+            'diagnostic-source-coordinate')
+    return name
+
+
+def diagnostic_location_evidence(raw, source, report):
+    if report.get('complete') is True and report.get('compilerExit') == 0 and report.get('typescriptDiagnosticCount') == 0:
+        return {'status': 'none', 'rows': []}
+    count = report.get('typescriptDiagnosticCount')
+    if (report.get('compilerOutcome') != 'typescript-diagnostics' or report.get('compilerExit') != 2
+            or type(count) is not int or not 1 <= count <= LOCATION_MAX_ROWS or not same_baseline(report)
+            or not all(report.get(key) is True for key in ('admitted', 'grantSent', 'managedInputsReverified',
+                       'generatedTypesVerified', 'sourceReverified', 'zeroObservedOom', 'platformSwapPreserved'))
+            or report.get('ownedCleanup') != 'settled'
+            or not valid_fingerprint(report.get('nativeInputFingerprint'))
+            or report.get('compilerFiles') != report['nativeInputFingerprint']['loadedFiles']):
+        return {'status': 'unmatched-compiler-outcome', 'rows': []}
+    try:
+        require(isinstance(raw, bytes) and 0 < len(raw) <= MAX_LOG and report['compilerLog'] == {
+            'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}, 'diagnostic-log-identity')
+        fields = re.findall(rb'^([^\r\n]{1,384})\(([1-9][0-9]{0,6}),([1-9][0-9]{0,6})\): error TS([1-9][0-9]{3,4}):', raw, re.M)
+        require(len(fields) == count, 'diagnostic-location-count')
+        rows = []
+        counts = {}
+        for filename, line, column, code in fields:
+            line, column, code = int(line), int(column), int(code)
+            name = diagnostic_source(source, filename, line, column)
+            counts[code] = counts.get(code, 0) + 1
+            rows.append({'code': code, 'path': name, 'line': line, 'column': column})
+        require([[code, amount] for code, amount in sorted(counts.items())] == report['typescriptDiagnosticCodes'],
+                'diagnostic-location-codes')
+        return {'status': 'verified', 'rows': rows}
+    except (Refusal, OSError, ValueError, KeyError, subprocess.SubprocessError):
+        return {'status': 'location-projection-refused', 'rows': []}
+
+
 def compiler_outcome(report):
     if report.get('v8HeapFatalMarker') is True:
         return 'v8-heap-exhausted'
@@ -1122,16 +1201,9 @@ def run_stock(workspace, temporary, controller, run_id, directory):
                 report['platformSwapPreserved'] = True
         except (Refusal, OSError, ValueError, KeyError, subprocess.SubprocessError):
             report['platformSettlementRefused'] = True
+        raw = None
         try:
-            log = directory / 'compiler.raw.log'
-            fd = os.open(log, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
-            with os.fdopen(fd, 'rb') as stream:
-                info = os.fstat(fd)
-                require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1
-                        and stat.S_IMODE(info.st_mode) == 0o600 and 0 < info.st_size <= MAX_LOG, 'log-bound')
-                raw = stream.read(MAX_LOG + 1)
-                require(len(raw) == info.st_size and identity(info) == identity(os.fstat(fd))
-                        == identity(os.stat(log, follow_symlinks=False)), 'log-changed')
+            raw = read_owned_compiler_log(directory / 'compiler.raw.log')
             if report['ownedCleanup'] == 'settled':
                 report['compilerLog'] = {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
                 report.update(compiler_log_evidence(raw))
@@ -1162,10 +1234,14 @@ def run_stock(workspace, temporary, controller, run_id, directory):
                 os.close(cache_fd)
         report['complete'] = accepted_terminal(report, deadline)
         report['compilerOutcome'] = compiler_outcome(report)
+        report['diagnosticLocationPolicy'] = LOCATION_POLICY
+        report['diagnosticLocations'] = diagnostic_location_evidence(raw, source, report)
         own_json(directory / 'receipt.json', report)
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as stream:
             stream.write('evidence=true\n')
-        print(json.dumps(report, separators=(',', ':')), flush=True)
+        locations = report['diagnosticLocations']
+        console = {**report, 'diagnosticLocations': {'status': locations['status'], 'count': len(locations['rows'])}}
+        print(json.dumps(console, separators=(',', ':')), flush=True)
     return 0 if report['complete'] else 1
 
 
@@ -1178,6 +1254,7 @@ def independent_cleanup(workspace, temporary, controller, run_id):
         cleanup_cache(workspace / 'source', directory, controller, run_id)
         report = None
         input_fingerprint = None
+        locations_verified = False
         try:
             receipt = directory / 'receipt.json'
             if os.path.lexists(receipt):
@@ -1187,6 +1264,15 @@ def independent_cleanup(workspace, temporary, controller, run_id):
                     require(pinned_node_hash(node) == BASELINE_NODE_SHA256, 'pinned-node-changed')
                     input_fingerprint = compiler_fingerprint(workspace / 'source', node, directory / 'native-list.raw')
                     require(input_fingerprint == report['nativeInputFingerprint'], 'native-input-fingerprint-changed')
+                require(report.get('diagnosticLocationPolicy') == LOCATION_POLICY, 'diagnostic-location-policy')
+                raw = None
+                if report.get('compilerLog') is not None:
+                    raw = read_owned_compiler_log(directory / 'compiler.raw.log')
+                    require(report['compilerLog'] == {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()},
+                            'diagnostic-log-custody')
+                projected = diagnostic_location_evidence(raw, workspace / 'source', report)
+                require(projected == report.get('diagnosticLocations'), 'diagnostic-location-custody')
+                locations_verified = projected['status'] in ('verified', 'none')
         finally:
             for name in ('compiler.raw.log', 'manager.raw.log', 'native-list.raw'):
                 path = directory / name
@@ -1230,6 +1316,7 @@ def independent_cleanup(workspace, temporary, controller, run_id):
                   'unitAbsent': True, 'managedStateRemoved': True, 'platformSwapIdentityVerified': platform_verified,
                   'platformSwapBirthSha256': birth_digest, 'privateLogsRemoved': True,
                   'inputFingerprintIndependentlyVerified': input_fingerprint is not None,
+                  'diagnosticLocationsIndependentlyVerified': locations_verified,
                   'releaseEligible': False})
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as stream:
             stream.write('settled=true\n')

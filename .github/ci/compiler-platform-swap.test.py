@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import runpy
 import stat
+import subprocess
 import tempfile
 import time
 from types import SimpleNamespace
@@ -164,9 +165,11 @@ class SettlementModel(unittest.TestCase):
             'kind': model['MANAGED_KIND'], 'candidateSha': model['SOURCE'],
             'candidateTree': model['SOURCE_TREE'], 'controllerSha': CONTROLLER, 'runId': RUN, 'attempt': 1,
             'releaseEligible': False, 'compilerStateReusable': False, 'complete': True,
+            'diagnosticLocationPolicy': model['LOCATION_POLICY'],
+            'diagnosticLocations': {'status': 'none', 'rows': []},
             'heapMiB': model['HEAP_MIB'], 'residentCapBytes': CAP, 'swapCapBytes': SWAP,
             'platformSwapVerified': True, 'platformSwapPreserved': True,
-            'compilerExit': 0, **matched_input(), 'managedState': inventory_row(result=True, matched=True),
+            'compilerExit': 0, 'typescriptDiagnosticCount': 0, **matched_input(), 'managedState': inventory_row(result=True, matched=True),
             'compilerFiles': model['BASELINE_INVENTORY']['configuredRoots'] + 10, 'managedInputsReverified': True,
             'nativeInputFingerprint': fingerprint_row(),
             'workSeconds': model['WORK_SECONDS'], 'progressSeconds': model['PROGRESS_SECONDS'],
@@ -179,6 +182,7 @@ class SettlementModel(unittest.TestCase):
                 model['own_json'](member, fingerprint_row())
         else:
             report.pop('nativeInputFingerprint')
+            report['diagnosticLocations'] = {'status': 'unmatched-compiler-outcome', 'rows': []}
         model['own_json'](self.directory / 'receipt.json', report)
 
     def settle(self):
@@ -218,6 +222,26 @@ class SettlementModel(unittest.TestCase):
                 self.settle()
         self.assertFalse(self.output.exists())
 
+    def test_changed_compiler_log_or_projection_refuses_upload_and_deletes_raw(self):
+        raw = self.directory / 'compiler.raw.log'
+        compiler_log = b'sealed compiler details\n'
+        raw.write_bytes(compiler_log)
+        raw.chmod(0o600)
+        self.receipt(compilerLog={'bytes': len(compiler_log), 'sha256': '0' * 64})
+        with self.assertRaisesRegex(Refusal, 'diagnostic-log-custody'):
+            self.settle()
+        self.assertFalse(raw.exists())
+        self.assertFalse(self.output.exists())
+        (self.directory / 'receipt.json').unlink()
+        raw.write_bytes(compiler_log)
+        raw.chmod(0o600)
+        self.receipt(compilerLog={'bytes': len(compiler_log), 'sha256': hashlib.sha256(compiler_log).hexdigest()},
+                     diagnosticLocations={'status': 'verified', 'rows': []})
+        with self.assertRaisesRegex(Refusal, 'diagnostic-location-custody'):
+            self.settle()
+        self.assertFalse(raw.exists())
+        self.assertFalse(self.output.exists())
+
     def test_changed_platform_cleans_raw_without_admitting_upload(self):
         raw = self.directory / 'manager.raw.log'
         model['own_json'](raw, {'private': 'raw'})
@@ -251,6 +275,68 @@ class SettlementModel(unittest.TestCase):
         receipt = json.loads((self.directory / 'swap-settlement.json').read_text())
         self.assertFalse(receipt['platformSwapIdentityVerified'])
         self.assertEqual(receipt['platformSwapBirthSha256'], None)
+
+
+class DiagnosticLocationModel(unittest.TestCase):
+    def setUp(self):
+        owner = tempfile.TemporaryDirectory()
+        self.addCleanup(owner.cleanup)
+        self.source = Path(owner.name).resolve()
+        self.relative = 'app/(panel)/[user]/view.tsx'
+        self.path = self.source / self.relative
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text('abcdef\n💡ab\nabcd\nabcdef\nabcdef\n', encoding='utf-8')
+        self.git('init', '-q')
+        self.git('add', '--', self.relative)
+        self.raw = self.output()
+        self.report = {'compilerOutcome': 'typescript-diagnostics', 'compilerExit': 2, 'compilerFiles': fingerprint_row()['loadedFiles'],
+                       'typescriptDiagnosticCount': 2, 'typescriptDiagnosticCodes': [[2322, 1], [2769, 1]],
+                       'nativeInputFingerprint': fingerprint_row(),
+                       **matched_input(), 'ownedCleanup': 'settled'}
+        self.report.update({key: True for key in ('admitted', 'grantSent', 'managedInputsReverified',
+                           'generatedTypesVerified', 'sourceReverified', 'zeroObservedOom', 'platformSwapPreserved')})
+
+    def git(self, *args):
+        subprocess.run(['/usr/bin/git', '-C', str(self.source), *args], check=True, capture_output=True,
+                       env={**os.environ, 'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_CONFIG_NOSYSTEM': '1'})
+
+    def output(self, first=None):
+        return ''.join([first or f'{self.relative}(1,3): error TS2769: private-message-omit\n'] + [
+            f'{self.relative}({line},5): error TS2322: private-message-omit\n' for line in range(2, 3)]).encode()
+
+    def project(self, raw=None, **overrides):
+        if raw is None:
+            raw = self.raw
+        report = {**self.report, 'compilerLog': {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}, **overrides}
+        return model['diagnostic_location_evidence'](raw, self.source, report)
+
+    def test_exact_headers_project_public_tracked_coordinates_only(self):
+        expected = [{'code': 2769 if line == 1 else 2322, 'path': self.relative,
+                     'line': line, 'column': 3 if line == 1 else 5} for line in range(1, 3)]
+        normal = self.project()
+        self.assertEqual(normal, {'status': 'verified', 'rows': expected})
+        self.assertEqual(self.project(self.output(f'{self.path}(1,3): error TS2769: different message\r\n')), normal)
+        self.assertNotIn('private-message-omit', json.dumps(normal))
+        self.assertNotIn(str(self.source), json.dumps(normal))
+
+    def test_foreign_unknown_or_ambiguous_coordinates_fail_closed(self):
+        variants = [f'../{self.relative}(1,3): error TS2769: private\n',
+                    f'/absolute/private.ts(1,3): error TS2769: private\n',
+                    f'{self.relative}(999,3): error TS2769: private\n',
+                    f'{self.relative}(1,999): error TS2769: private\n',
+                    f'{self.relative}(1,3): error TS2345: private\n',
+                    'error TS2769: private\n']
+        unknown = self.source / 'untracked.ts'
+        unknown.write_text('abcdef\n')
+        variants.append('untracked.ts(1,3): error TS2769: private\n')
+        for first in variants:
+            with self.subTest(first=first):
+                self.assertEqual(self.project(self.output(first)), {'status': 'location-projection-refused', 'rows': []})
+        self.assertEqual(self.project(compilerLog={'bytes': len(self.raw), 'sha256': '0'*64})['rows'], [])
+        self.assertEqual(self.project(typescriptDiagnosticCount=model['LOCATION_MAX_ROWS']+1)['rows'], [])
+        self.assertEqual(self.project(compilerFiles=fingerprint_row()['loadedFiles'] + 1), {'status': 'unmatched-compiler-outcome', 'rows': []})
+        self.path.write_text('different contents\n')
+        self.assertEqual(self.project()['rows'], [])
 
 
 def inventory_row(*, result=False, matched=False):
@@ -498,7 +584,7 @@ class KernelModel(unittest.TestCase):
                       {'v8HeapFatalMarker': True}, {'typescriptDiagnosticCount': 1}, {'terminal': None},
                       {'sourceReverified': False}, {'compilerLog': {'bytes': 1}}, {'nativeInputFingerprint': None},
                       {'nativeInputFingerprint': {**fingerprint_row(), 'loadedFiles': 9205}},
-                      {'nativeInputFingerprint': {**fingerprint_row(), 'trackedSha256': '0' * 64}},
+                      {'nativeInputFingerprint': {**fingerprint_row(), 'trackedSha256': 'f' * 64}},
                       {'progress': []}, {'progress': [progress_row('start')]},
                       {'progress': [progress_row('start'), progress_row('deadline', elapsed=900000)]},
                       {'terminal': {**valid['terminal'], 'swapPeak': SWAP + 1}},
