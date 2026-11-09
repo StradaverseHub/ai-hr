@@ -960,9 +960,9 @@
     "releaseEligible": false,
     "recordSection": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json#carrySearchedIdentityStream",
     "recordPin": {
-      "gitBlob": "0275be8e9a174d830b2157f0f80267714f6a4439",
+      "gitBlob": "2a904c6c7ca61e9b3b8df178a08f55984c90a598",
       "bytes": 128044,
-      "sha256": "4b22bb14dbc0e51b878700af6ee304c04df14a625d92da3d50b3deefc573b770"
+      "sha256": "8839d3f1dc6414207f2ca2cc01296d674d0fbbdd7ef8bf5a8984c8d372c31381"
     },
     "wholeParentIndex": {
       "gitRef": "a26a18a8769eccb37202b264e57027e29ffd6fb7:docs/qualification/analytics-carry-selection-source-20261109.json",

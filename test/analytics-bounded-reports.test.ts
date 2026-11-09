@@ -347,7 +347,6 @@ type CarryTimedSubmission = {
 type CarryBoundarySlot={kind:'fixture'|'command'|'read';epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;estimateContext?:unknown;timedSubmission?:CarryTimedSubmission;cancel?:Promise<void>;tag:string};
 const CARRY_DECLARE_PREFIX = 'declare analytics_carry_identities no scroll cursor for\n      select ';
 const CARRY_EXPLAIN_PREFIX = 'explain(verbose,settings,format json) ';
-const CARRY_SCOPED_EMPLOYMENT = 'analytics_carry_scoped_employment';
 const CARRY_IDENTITY_EVENTS_SQL = 'as "analytics_carry_identity_events"';
 const CARRY_ESTIMATE_CELL = {phase:6,page:0} as const;
 const CARRY_ESTIMATE_MEMBER = 'analytics-carry-dense-identity-stream-estimate-private.json';

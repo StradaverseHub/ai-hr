@@ -2558,9 +2558,9 @@
       },
       "test/analytics-bounded-reports.test.ts": {
         "current": {
-          "gitBlob": "144ef5eff0eff974b4c29554cd3ac44e23ad798e",
-          "bytes": 93347,
-          "sha256": "b64c387ca3bf74410a425b9b8f2eed98a1c047b8838c02c4aeb032e634cfd2a7"
+          "gitBlob": "ec1dd23ab342408aa5794a6eb4e7e222dfae0396",
+          "bytes": 93278,
+          "sha256": "51b65127dfadca91074999fb3dedba51712565b7efa461937d79440655f3931d"
         },
         "wholeParent": {
           "gitRef": "a26a18a8769eccb37202b264e57027e29ffd6fb7:test/analytics-bounded-reports.test.ts",
@@ -2570,154 +2570,154 @@
         },
         "inverseHunks": [
           {
-            "parentStart": 31025,
+            "parentStart": 30956,
             "parentEnd": 31172,
-            "currentStart": 31025,
-            "currentEnd": 31099,
-            "parentSliceSha256": "a4e4341be59ca97ec854bf307bfefb1bddb70e37578db63acbfe550e27217337",
+            "currentStart": 30956,
+            "currentEnd": 31030,
+            "parentSliceSha256": "4a8a292065de717fb3450dae75eb2104847cb836b9dc3b4236a096471a336aba",
             "currentSliceSha256": "f16e828501326ea5c4ba2e6d3f153255ac293fd0260ba0444fbdea33536e001c"
           },
           {
             "parentStart": 31227,
             "parentEnd": 31316,
-            "currentStart": 31154,
-            "currentEnd": 31247,
+            "currentStart": 31085,
+            "currentEnd": 31178,
             "parentSliceSha256": "b72a1ca2d37d248ac70b36b07e06f7465a9a7b58ef89795e0acf2171103d2b2e",
             "currentSliceSha256": "240b911d9855ac6a022737d0ad655f056239a7658c178a7d27d9e397b9c61b73"
           },
           {
             "parentStart": 34097,
             "parentEnd": 34275,
-            "currentStart": 34028,
-            "currentEnd": 35575,
+            "currentStart": 33959,
+            "currentEnd": 35506,
             "parentSliceSha256": "de1693333e04cc22bd8a85ccc26966b3a6cb1d083853b62ef7cf8d265cefa661",
             "currentSliceSha256": "27704de7b87b63156af9bad3cc21291fc65defa0f56763a11298994316d983ae"
           },
           {
             "parentStart": 34276,
             "parentEnd": 40136,
-            "currentStart": 35576,
-            "currentEnd": 36642,
+            "currentStart": 35507,
+            "currentEnd": 36573,
             "parentSliceSha256": "1fadf95f2e66e6f06037fecd544f3ab91d175b4cf84bfe780f9c096f1da71b06",
             "currentSliceSha256": "12da97fc3711289515bfa88dfa5fcd0c0d25d9827c0637702b7664794463ecda"
           },
           {
             "parentStart": 43645,
             "parentEnd": 43695,
-            "currentStart": 40151,
-            "currentEnd": 40214,
+            "currentStart": 40082,
+            "currentEnd": 40145,
             "parentSliceSha256": "1e7be43e11e3c8a42da9ffe2d04ba634d244b559d86503276d89de8568dd75c8",
             "currentSliceSha256": "257ccf8ce0021f3b87f1ceac6ab5355cc6307af1282bc74ccec26c60eae13598"
           },
           {
             "parentStart": 43702,
             "parentEnd": 43928,
-            "currentStart": 40221,
-            "currentEnd": 40471,
+            "currentStart": 40152,
+            "currentEnd": 40402,
             "parentSliceSha256": "8fc5e7b2fa1b6a40e9cb732f38328c8472bfb1a18b9666bd150404cbeba830b7",
             "currentSliceSha256": "85da98e60d2d3645bc9081397bc4e0948e6d1b81720cc32a1c71fb725ec82ee9"
           },
           {
             "parentStart": 43934,
             "parentEnd": 45975,
-            "currentStart": 40477,
-            "currentEnd": 42557,
+            "currentStart": 40408,
+            "currentEnd": 42488,
             "parentSliceSha256": "fc4894db235364a7db58b09ca3298fe1b08211a182cdc8bd8b54795af79ab795",
             "currentSliceSha256": "6d776f0e5280938b594284e19645736cb11cabf27238bb2b424785e90dbc6477"
           },
           {
             "parentStart": 46559,
             "parentEnd": 46632,
-            "currentStart": 43141,
-            "currentEnd": 43230,
+            "currentStart": 43072,
+            "currentEnd": 43161,
             "parentSliceSha256": "ad38acb582ccc85d0e68e9a5699b2f9d710ddab1d0f2db6aae33f37dfde6a5d2",
             "currentSliceSha256": "3c9f1b17ed7b859ba9e3abb35f98372bdc8b2ae2ccb010b361862fab3d21d967"
           },
           {
             "parentStart": 65551,
             "parentEnd": 65975,
-            "currentStart": 62149,
-            "currentEnd": 62986,
+            "currentStart": 62080,
+            "currentEnd": 62917,
             "parentSliceSha256": "a1ce521cac6a7bdb0ca80ba79f23f68783107f3eb7dec5dc163af9c3ef4a04d8",
             "currentSliceSha256": "5745fe259da16670a49e42223d11bcd2c3ee5d46ab8cb468585eef2700d472e0"
           },
           {
             "parentStart": 66269,
             "parentEnd": 66403,
-            "currentStart": 63280,
-            "currentEnd": 63459,
+            "currentStart": 63211,
+            "currentEnd": 63390,
             "parentSliceSha256": "93f0df0f52c237e210230881c01b452a38f6477d903312215dd9c94d388307e0",
             "currentSliceSha256": "87c919c8636fd3979bba7fb9194903c429bf241992a89d0f787051f210b423f5"
           },
           {
             "parentStart": 67861,
             "parentEnd": 67977,
-            "currentStart": 64917,
-            "currentEnd": 65041,
+            "currentStart": 64848,
+            "currentEnd": 64972,
             "parentSliceSha256": "dcb536e3ecfc8a2cca40db6be8f56cf6dd894eaedb05cf5a3941e799aa60b908",
             "currentSliceSha256": "0b326846b4e0b4203872bd4f8b0cc61781f64154f33c3c18d1eb1e1f874c2406"
           },
           {
             "parentStart": 68049,
             "parentEnd": 68140,
-            "currentStart": 65113,
-            "currentEnd": 65220,
+            "currentStart": 65044,
+            "currentEnd": 65151,
             "parentSliceSha256": "5086976cb8bda7c7caa8325a3e8c3bba3c86b71673e18c679fe050b0ec75a9bc",
             "currentSliceSha256": "3a707a92482140dd96819bd94f30bd5ad9304634abd40adf54a3e5a2e8926f52"
           },
           {
             "parentStart": 69350,
             "parentEnd": 69470,
-            "currentStart": 66430,
-            "currentEnd": 66558,
+            "currentStart": 66361,
+            "currentEnd": 66489,
             "parentSliceSha256": "2a61c50dd59f3fb317e84aaec6fe35eb9aa716a334b6b064bb32390d07c5b0a0",
             "currentSliceSha256": "2049dbfe0b7225476da7039c5e1597bb95fb8b3ff6b9d3891c451d345bb19358"
           },
           {
             "parentStart": 69479,
             "parentEnd": 69600,
-            "currentStart": 66567,
-            "currentEnd": 66721,
+            "currentStart": 66498,
+            "currentEnd": 66652,
             "parentSliceSha256": "2488dd0f4e1fb4f60d0a664cd88c99980c61517d20adbe02cabddac232fb8f70",
             "currentSliceSha256": "6b4132b24d54c4f6b423ff26b1d0a08019f98661cf1609528c533ffab8f03cac"
           },
           {
             "parentStart": 84351,
             "parentEnd": 84387,
-            "currentStart": 81472,
-            "currentEnd": 81510,
+            "currentStart": 81403,
+            "currentEnd": 81441,
             "parentSliceSha256": "c4658ee49379ffbd017dec7d3b5375786c4c435d300d2a82360126c8b6612b66",
             "currentSliceSha256": "1d3bfa6c606d0896d771046dd3a6ed6993fefaf89febcd5f5667094b5300839a"
           },
           {
             "parentStart": 94083,
             "parentEnd": 94167,
-            "currentStart": 91206,
-            "currentEnd": 91290,
+            "currentStart": 91137,
+            "currentEnd": 91221,
             "parentSliceSha256": "65ed269fdae3989b75ea2e000b2bca62d3c326120a4e33c6e85e7243b6a63903",
             "currentSliceSha256": "45d01cbbb88ad75d31b219944a42a2a2d06112138cf3d6ff8b33bab15744899b"
           },
           {
             "parentStart": 94367,
             "parentEnd": 94657,
-            "currentStart": 91490,
-            "currentEnd": 91768,
+            "currentStart": 91421,
+            "currentEnd": 91699,
             "parentSliceSha256": "46622a140c106facc92b9b87e7a10b39cd0e1c169444955ac2817ecfb82d86ad",
             "currentSliceSha256": "b455d7037246aed1f785c33ef14137bfe460fa51fff8561b094a290dffbf7d2c"
           },
           {
             "parentStart": 95231,
             "parentEnd": 95437,
-            "currentStart": 92342,
-            "currentEnd": 92540,
+            "currentStart": 92273,
+            "currentEnd": 92471,
             "parentSliceSha256": "e60a525bdfb49e05801bce5ec598f763d50f5302799dca3b9c422c2cbc160b73",
             "currentSliceSha256": "74087fe4cc03188fec0defcfd3ea44ba1f65a544ba829e71a98e57f720e1f1ff"
           },
           {
             "parentStart": 95503,
             "parentEnd": 95503,
-            "currentStart": 92606,
-            "currentEnd": 93343,
+            "currentStart": 92537,
+            "currentEnd": 93274,
             "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "currentSliceSha256": "dc982fba5cfbfb7d359f577287be00e29b4971be42537419b2af92aeb58424ac"
           }
