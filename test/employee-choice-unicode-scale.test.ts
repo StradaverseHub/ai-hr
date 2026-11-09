@@ -202,7 +202,16 @@ const assertBackend=(identity:Realm)=>{
 };
 
 type PlanNode={ [key:string]:unknown; Plans?:PlanNode[] };
-function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,sparseCount?:number){
+const employmentTenantIndexName='company_org_employment_tenant_uq';
+type EmploymentPoint={employmentId:string;tenant:string};
+function usesEmploymentTenantPointIndex(node:PlanNode,point:EmploymentPoint){
+ return node['Node Type']==='Index Scan'&&node.Schema==='public'&&node['Relation Name']==='employment'&&node.Alias==='employment'&&
+  node['Index Name']===employmentTenantIndexName&&node['Actual Loops']===1&&node['Actual Rows']===1&&
+  node['Rows Removed by Filter']===0&&node['Rows Removed by Index Recheck']===0&&
+  node['Index Cond']===`((employment.id = ANY ('{${point.employmentId}}'::uuid[])) AND (employment.tenant_id = '${point.tenant}'::uuid))`;
+}
+
+function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,sparseCount?:number,point?:EmploymentPoint){
  if(!Array.isArray(raw)||raw.length!==1||!raw[0]||typeof raw[0]!=='object')throw new Error('Unexpected native facet plan envelope');
  const document=raw[0] as Record<string,unknown>;
  const measure=(value:unknown)=>{
@@ -244,10 +253,10 @@ function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:nu
  return {planningMs:measure(document['Planning Time']),executionMs:measure(document['Execution Time']),nodes,
   jitReported:Object.hasOwn(document,'JIT'),assignmentNodes:assignments.map(({qual:_qual,...value})=>value),correlatedWitnesses:witnesses,
   witnessLoops,indexPaths,sharedTraffic:measure(root['Shared Hit Blocks'])+measure(root['Shared Read Blocks']),
-  pathRefusals:sparseCount===undefined?[]:sparsePathRefusals(sparseCount,shapeNodes,root,measure)};
+  pathRefusals:sparseCount===undefined?[]:sparsePathRefusals(sparseCount,shapeNodes,root,measure,point)};
 }
 
-function sparsePathRefusals(expected:number,nodes:PlanNode[],root:PlanNode,measure:(value:unknown)=>number){
+function sparsePathRefusals(expected:number,nodes:PlanNode[],root:PlanNode,measure:(value:unknown)=>number,point?:EmploymentPoint){
  const active=nodes.filter(node=>measure(node['Actual Loops'])>0),refusals:string[]=[];
  const once=(matches:PlanNode[])=>matches.length===1&&measure(matches[0]['Actual Loops'])===1;
  const reads=(name:string)=>active.filter(node=>node['Node Type']==='CTE Scan'&&node['CTE Name']===name);
@@ -280,7 +289,8 @@ function sparsePathRefusals(expected:number,nodes:PlanNode[],root:PlanNode,measu
  const people=witnesses(authority[0],'person'),[personNode]=people;
  const employmentAlias=String(employmentNode?.Alias),personAlias=String(personNode?.Alias);
  if(!once(employments)||employmentNode['Actual Rows']!==expected||
-  !byIndex(employmentNode,['employment_pkey'],condition=>condition.startsWith('('+employmentAlias+'.id = ANY (')))
+  !(byIndex(employmentNode,['employment_pkey'],condition=>condition.startsWith('('+employmentAlias+'.id = ANY ('))||
+    expected===1&&point&&usesEmploymentTenantPointIndex(employmentNode,point)))
   refusals.push('sparse-employment-primary-path');
  if(people.length!==1||personNode['Actual Loops']!==expected||personNode['Actual Rows']!==1||
   !byIndex(personNode,['person_pkey'],condition=>equality(condition,personAlias+'.id',employmentAlias+'.person_id')))
@@ -295,7 +305,7 @@ function sparsePathRefusals(expected:number,nodes:PlanNode[],root:PlanNode,measu
 
 type FacetIndex={oid:string;name:string;namespace:string;relation:string;owner:string;method:string;definition:string;columns:string[];
  valid:boolean;ready:boolean;live:boolean;unique:boolean;exclusion:boolean};
-type PlannerCatalogue={assignmentOid:string;namedOid:string|null;indexes:FacetIndex[];relations:unknown[];columnStats:unknown[];
+type PlannerCatalogue={assignmentOid:string;namedOid:string|null;indexes:FacetIndex[];employmentTenantIndex:FacetIndex|null;relations:unknown[];columnStats:unknown[];
  extended:unknown[];policies:unknown[];memberships:unknown[];population:Record<string,number>};
 type StressLabel='one-id'|'twenty-five-ids';
 type PairEpoch='A0'|'B0'|'B1'|'A1';
@@ -309,12 +319,15 @@ function facetIndexes(connection:ReservedOwner){
    left join pg_attribute a on a.attrelid=i.indrelid and a.attnum=k.attnum order by position)) as columns,
   i.indisvalid as valid,i.indisready as ready,i.indislive as live,i.indisunique as unique,i.indisexclusion as exclusion
  from pg_index i join pg_class c on c.oid=i.indexrelid join pg_namespace n on n.oid=c.relnamespace
- join pg_am am on am.oid=c.relam where i.indrelid='public.assignment'::regclass order by c.oid limit 101`;
+ join pg_am am on am.oid=c.relam
+ where i.indrelid='public.assignment'::regclass
+  or (i.indrelid='public.employment'::regclass and n.nspname='public' and c.relname=${employmentTenantIndexName})
+ order by c.oid limit 102`;
 }
 
 async function readFacetPlannerCatalogue(connection:ReservedOwner,tenant:string,finance:string,empty:readonly string[],step:(label:string)=>void){
- step('Assignment index inventory');const indexes=Array.from(await facetIndexes(connection));
- step('planner catalogue');const [facts]=await connection<Omit<PlannerCatalogue,'indexes'>[]>`with relations as materialized (
+ step('Assignment index inventory');const inventory=Array.from(await facetIndexes(connection));
+ step('planner catalogue');const [facts]=await connection<Omit<PlannerCatalogue,'indexes'|'employmentTenantIndex'>[]>`with relations as materialized (
   select c.oid,c.relname,c.relowner,c.relacl,c.relrowsecurity,c.relforcerowsecurity,c.reltuples,c.relpages,c.relallvisible
   from pg_class c where c.oid in ('public.assignment'::regclass,'public.employment'::regclass,'public.person'::regclass,
    'public.company'::regclass,'public.department'::regclass)
@@ -356,11 +369,13 @@ async function readFacetPlannerCatalogue(connection:ReservedOwner,tenant:string,
     and valid_to is null and superseded_at is null),
    'emptyReferences',(select count(*)::int from public.assignment where tenant_id=${tenant}::uuid and department_id=any(${uuidArray(empty)}::uuid[])),
    'departments',(select count(*)::int from public.department where tenant_id=${tenant}::uuid)) as population`;
- if(!facts||facts.relations?.length!==5||!facts.columnStats?.length||
+ const indexes=inventory.filter(index=>index.relation===facts?.assignmentOid);
+ const employmentIndexes=inventory.filter(index=>index.relation!==facts?.assignmentOid);
+ if(!facts||employmentIndexes.length>1||facts.relations?.length!==5||!facts.columnStats?.length||
   [indexes,facts.columnStats,facts.extended,facts.policies,facts.memberships].some(rows=>!Array.isArray(rows)||rows.length>100))
   throw new Error('Bounded native planner catalogue refused');
  expect(facts.population).toEqual({employees:50000,people:50000,assignments:50000,finance:50000,financeCurrent:50000,emptyReferences:0,departments:10});
- return {...facts,indexes};
+ return {...facts,indexes,employmentTenantIndex:employmentIndexes[0]??null};
 }
 
 type Probe={b:Base;ctx:SessionContext;organisationTagSample:string[];captured:SQL[];dialect:PgDialect;report:Record<string,unknown>;
@@ -498,7 +513,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    await pending.callback?.catch(()=>{});
   }
  };
- const explain=async(tx:Tx,query:SQL,label:string,first:boolean,loops:number,sparseCount?:number)=>{
+ const explain=async(tx:Tx,query:SQL,label:string,first:boolean,loops:number,sparseCount?:number,point?:EmploymentPoint)=>{
   const started=performance.now();
   const rows=await tx.execute<{ 'QUERY PLAN':unknown }>(sql`explain(analyze,buffers,verbose,settings,timing off,format json) ${query}`);
   const wallMs=performance.now()-started;
@@ -507,7 +522,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   const bytes=Buffer.byteLength(JSON.stringify(raw));
   if(rawPlans.length>=10||bytes>1024*1024)throw new Error('Native facet plan inventory or size refused');
   rawPlans.push({label,raw});persist();
-  const summary=summarizePlan(raw,first,loops,sparseCount);
+  const summary=summarizePlan(raw,first,loops,sparseCount,point);
   state.plans.push({label,wallMs,...summary});persist();
   return summary;
  };
@@ -602,6 +617,16 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   expect(before.indexes.map(index=>index.name).sort()).toEqual(
    ['assignment_company_idx','assignment_employment_idx','assignment_no_overlap','assignment_pkey']);
   expect(before.indexes.every(index=>index.valid&&index.ready&&index.live)).toBe(true);
+  const employmentIndex=before.employmentTenantIndex;
+  const employmentRelation=before.relations.find(row=>Array.isArray(row)&&row[1]==='employment');
+  const expectedDefinitions=['public.employment','employment'].map(relation=>
+   `CREATE UNIQUE INDEX ${employmentTenantIndexName} ON ${relation} USING btree (id, tenant_id)`);
+  const tenantPointEligible=Array.isArray(employmentRelation)&&employmentIndex!==null&&
+   /^\d+$/.test(employmentIndex.oid)&&employmentIndex.relation===employmentRelation[0]&&
+   employmentIndex.name===employmentTenantIndexName&&employmentIndex.namespace==='public'&&
+   employmentIndex.method==='btree'&&employmentIndex.unique&&employmentIndex.valid&&employmentIndex.ready&&employmentIndex.live&&
+   !employmentIndex.exclusion&&employmentIndex.columns.length===2&&employmentIndex.columns[0]==='id'&&employmentIndex.columns[1]==='tenant_id'&&
+   expectedDefinitions.includes(employmentIndex.definition);
 
   const terminatedAfter=todayInKualaLumpur();
   expect(terminatedAfter>='2024-01-01').toBe(true);
@@ -623,7 +648,8 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    const compiled=dialect.sqlToQuery(baseline);
    expect(isDepartmentFacet(compiled.sql)).toBe(true);
    expect(compiled.params).toEqual(departmentFacetBinds(tenant,input));
-   return [label,{input,baseline,seal:Object.freeze(compiledSeal(compiled)),
+   const point=label==='one-id'&&tenantPointEligible?{employmentId:input.employmentIds[0],tenant}:undefined;
+   return [label,{input,baseline,point,seal:Object.freeze(compiledSeal(compiled)),
     productBinds:Object.freeze(sparseDepartmentFacetBinds(tenant,input))}] as const;
   }));
   type Observation={epoch:PairEpoch;label:StressLabel;departmentMs:number;wallMs:number;statements:number;rows:number;
@@ -639,7 +665,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    const order=epoch==='B0'||epoch==='A1'?[...profiles].reverse():profiles;
    for(const label of order){
     const scoped=subjects[label];
-    const {input,baseline,seal,productBinds}=references[label];
+    const {input,baseline,point,seal,productBinds}=references[label];
     const statements:{query:SQL;compiled:CompiledQuery}[]=[];
     const captured:{forwarded?:SQL;rows?:readonly unknown[];departmentMs:number}={departmentMs:NaN};
     const guarded=new Proxy(tx,{get(target,key,receiver){
@@ -675,7 +701,8 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
     expect(Array.from(captured.rows)).toEqual(proofRows);expect(page).toEqual(stressPage(b,scoped));
     entry.dtoVerified=true;
     metadata.activePair={epoch,label,stage:'explain'};persist();step(label+' native plan');
-    const plan=await explain(tx,forwarded,epoch+'-'+label,!candidateEpoch,10,candidateEpoch?scoped.length:undefined);
+    const plan=await explain(tx,forwarded,epoch+'-'+label,!candidateEpoch,10,
+     candidateEpoch?scoped.length:undefined,candidateEpoch?point:undefined);
     entry.explainMs=plan.executionMs;entry.sharedTraffic=plan.sharedTraffic;entry.pathRefusals=plan.pathRefusals;
     if(epoch==='A0')state.stress.push({label,wallMs,departmentMs,explainMs:plan.executionMs,total:page.total,statements:seals.length,rows:page.rows.length});
     delete metadata.activePair;persist();
