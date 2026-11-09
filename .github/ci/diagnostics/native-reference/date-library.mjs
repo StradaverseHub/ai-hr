@@ -155,10 +155,15 @@ function observeProgram(owner, program, source, outputRoot, check) {
     check();
     if (!records.has(file)) {
       const path = realpathSync(file.fileName);
-      const row = withinInputRoot(source, path)
-        ? observeLoadedNativeInput(ts, program, file, {source, dependencyRoot, configured, check})
-        : stableNativeInput(path, {root: outputRoot, check}).record;
-      if (!withinInputRoot(source, path)) assert.equal(ts.sys.readFile(path), file.text);
+      let row;
+      if (withinInputRoot(source, path)) {
+        row = observeLoadedNativeInput(ts, program, file, {source, dependencyRoot, configured, check});
+      } else {
+        const readOutput = () => stableNativeInput(path, {root: outputRoot, check}).record;
+        row = readOutput();
+        assert.equal(ts.sys.readFile(path), file.text, 'Actual native loaded date output text differs');
+        assert.deepEqual(readOutput(), row, 'Date output changed during native observation');
+      }
       bytes += row.bytes;
       assert(bytes <= REFERENCE_LIMITS.totalBytes, 'Date native input byte bound');
       records.set(file, row);
@@ -321,10 +326,14 @@ export async function runDateLibraryChild(signal) {
       const text = stableNativeInput(log, {root: out, maximum: REFERENCE_LIMITS.logBytes, check}).bytes.toString('utf8');
       return {result, text};
     }
-    const list = text => text.split(/\r?\n/).filter(line => line.startsWith('/')).map(path => realpathSync(path));
+    const diagnosticLine = /^(.+)\(([0-9]+),[0-9]+\): error TS([0-9]+):/;
+    const list = text => text.split(/\r?\n/).filter(line => line.startsWith('/') && !diagnosticLine.test(line))
+      .map(path => realpathSync(path));
     const diagnostics = text => {
-      const rows = [...text.matchAll(/^(.+)\(([0-9]+),[0-9]+\): error TS([0-9]+):/gm)]
-        .map(match => ({file: resolve(source, match[1]), line: Number(match[2]), code: Number(match[3])}));
+      const rows = text.split(/\r?\n/).flatMap(line => {
+        const match = diagnosticLine.exec(line);
+        return match ? [{file: resolve(source, match[1]), line: Number(match[2]), code: Number(match[3])}] : [];
+      });
       assert.equal(rows.length, [...text.matchAll(/error TS[0-9]+:/g)].length, 'Unowned date compiler diagnostic');
       return rows;
     };
@@ -349,7 +358,26 @@ export async function runDateLibraryChild(signal) {
     const allBaseline = sameFileList(restricted, baselineResult.text);
     assert.deepEqual(plan.base.files.map(path => restricted.read(restricted.fileFor(path))), stock.inputs);
     const baselineExternal = allBaseline.filter(row => row.readOnlyDependency);
-    assert.deepEqual(allBaseline.filter(row => !row.readOnlyDependency).map(row => row.path).sort(), [...plan.base.files].sort());
+    const baselineByLogicalPath = new Map(baselineExternal.map(row => [row.logicalPath, row]));
+    const baselinePackages = new Map(stock.packages.map(row => [row.path, row]));
+    assert.equal(baselineByLogicalPath.size, baselineExternal.length);
+    const assertLocalInputs = (loaded, allowed) => assert.deepEqual(
+      loaded.filter(row => !row.readOnlyDependency).map(row => row.path).sort(), [...allowed].sort(),
+      'Unexpected local date Program inputs');
+    function dependencyEvidence(observed, loaded) {
+      assert.deepEqual(observed.typeRoots, restricted.typeRoots);
+      assert.deepEqual(observed.automaticTypes, restricted.automaticTypes);
+      const dependencies = loaded.filter(row => row.readOnlyDependency);
+      for (const row of dependencies) {
+        assert.deepEqual(row, baselineByLogicalPath.get(row.logicalPath), 'Date dependency differs from the restricted baseline');
+      }
+      const packages = [...observed.packageRows.values()];
+      for (const row of packages) {
+        assert.deepEqual(row, baselinePackages.get(row.path), 'Date package manifest differs from the restricted baseline');
+      }
+      return {dependencies, packages, typeRoots: observed.typeRoots, automaticTypes: observed.automaticTypes};
+    }
+    assertLocalInputs(allBaseline, plan.base.files);
     done('restricted-stock', {result: baselineResult.result, files: allBaseline, context: actual, selectedSymbolsMatch: true});
     const files = plan.base.files.map(path => ({...restricted.read(restricted.fileFor(path)), id: relative(source, path), kind: 'implementation'}));
     const edges = [];
@@ -396,19 +424,24 @@ export async function runDateLibraryChild(signal) {
     assert.deepEqual(emittedTree(missing.emitted), []);
     verifyConfigs(); done('missing-reference', {result: absent.result, diagnostics: diagnostics(absent.text)});
     const emittedSeals = [];
+    const verifyOutputs = () => assert.deepEqual(emittedSeals.map(row => seal(row.path)), emittedSeals,
+      'Held date compiler output changed');
     for (const [index, phase] of ['producer', 'consumer'].entries()) {
       const project = layout.projects[index];
-      assert.deepEqual(emittedSeals.map(row => seal(row.path)), emittedSeals);
+      verifyOutputs();
       const built = await cli(phase, ['-p', project.config, '--listFiles', '--listEmittedFiles']);
       const current = built.text.split(/\r?\n/).filter(line => line.startsWith('TSFILE: ')).map(line => realpathSync(line.slice(8))).sort();
       const expected = [project.buildInfo, ...outputs.filter(row => row.projects.includes(index)).map(row => join(layout.emitted, row.path))].sort();
       assert.deepEqual(current, expected);
-      assert.deepEqual(emittedSeals.map(row => seal(row.path)), emittedSeals);
-      emittedSeals.push(...current.map(seal));
+      verifyOutputs();
+      const emitted = current.map(seal);
+      emittedSeals.push(...emitted);
       const program = nativeProgram(ts, project.config);
       const observed = observeProgram(owner, program, source, out, check);
       const loaded = sameFileList(observed, built.text);
       const allowed = [...project.files];
+      const jsxByFile = project.files.map(file => ({file, ...observed.packageAt(file, 'react/jsx-runtime', true)}));
+      assert.deepEqual(jsxByFile, actual.jsxByFile.filter(row => project.files.includes(row.file)));
       if (index === 1) {
         const declaration = join(layout.emitted, 'lib/hr-date.d.ts');
         allowed.push(declaration);
@@ -417,24 +450,23 @@ export async function runDateLibraryChild(signal) {
         assertDateLibraryConsumerContext(source, actual.consumer, next.consumer);
         assert.deepEqual([...observed.packageRows.values()], stock.packages);
         assert.deepEqual(loaded.filter(row => row.readOnlyDependency), baselineExternal);
-      } else {
-        assert.deepEqual(observed.typeRoots, restricted.typeRoots);
-        assert.deepEqual(observed.automaticTypes, restricted.automaticTypes);
-        for (const original of actual.jsxByFile.filter(row => plan.producer.includes(row.file))) {
-          const {file, ...expected} = original;
-          assert.deepEqual(observed.packageAt(file, 'react/jsx-runtime', true), expected);
-        }
       }
-      assert.deepEqual(loaded.filter(row => !row.readOnlyDependency).map(row => row.path).sort(), allowed.sort());
-      verifyConfigs(); done(phase, {result: built.result, loaded, emitted: current});
+      assertLocalInputs(loaded, allowed);
+      const {packages, typeRoots, automaticTypes} = dependencyEvidence(observed, loaded);
+      verifyInputs(); verifyConfigs(); verifyOutputs();
+      done(phase, {result: built.result, loaded, emitted: current, emittedSeals: emitted,
+        context: {packages, typeRoots, automaticTypes, jsxByFile}});
     }
     assert.deepEqual(emittedTree(layout.emitted).map(row => row.path).sort(), outputs.map(row => join(layout.emitted, row.path)).sort());
     const owned = emittedSeals.filter(row => /\.d\.[cm]?ts$/.test(row.path)).map(row => row.path);
     assert.equal(owned.length, plan.base.files.length);
     const declarationConfig = join(out, 'owned-declarations.json');
     privateConfig(declarationConfig, {extends: base, files: owned, include: [], compilerOptions: {skipLibCheck: false}});
+    const declarationConfigSeal = seal(declarationConfig);
+    verifyOutputs();
     const declarations = nativeProgram(ts, declarationConfig);
-    assert.equal(declarations.getCompilerOptions().skipLibCheck, false);
+    assert.deepEqual({...declarations.getCompilerOptions()},
+      {...restrictedOptions, configFilePath: declarationConfig, skipLibCheck: false});
     assert.deepEqual(declarations.getRootFileNames(), owned);
     const observedDeclarations = observeProgram(owner, declarations, source, out, check);
     assert(observedDeclarations.files.every(file => file.isDeclarationFile));
@@ -446,25 +478,65 @@ export async function runDateLibraryChild(signal) {
       declarationDiagnostics.push(...declarations.getSemanticDiagnostics(file));
     }
     assert.deepEqual(declarationDiagnostics, []);
-    done('owned-declarations', {files: owned.map(seal), config: seal(declarationConfig)});
+    const declarationLoaded = observedDeclarations.files.map(observedDeclarations.read);
+    assertLocalInputs(declarationLoaded, owned);
+    const declarationContext = dependencyEvidence(observedDeclarations, declarationLoaded);
+    assert.deepEqual(seal(declarationConfig), declarationConfigSeal);
+    verifyInputs(); verifyConfigs(); verifyOutputs();
+    done('owned-declarations', {files: owned.map(seal), config: declarationConfigSeal, context: declarationContext});
+
+    // Leave both checkouts immutable. The inherited type roots are unchanged;
+    // each private probe must natively reach the same installed declarations.
     const probe = join(out, 'alias-probe.ts');
-    writeFileSync(probe, "import {todayInKualaLumpur} from '@/lib/hr-date';\ntodayInKualaLumpur(new Date(0));\ntodayInKualaLumpur('not a Date');\n",
-      {flag: 'wx', mode: 0o600});
-    for (const [index, phase] of ['source-api-control', 'reference-api-control'].entries()) {
-      const path = join(out, phase + '.json');
+    const seed = Buffer.from("import {todayInKualaLumpur} from '@/lib/hr-date';\ntodayInKualaLumpur(new Date(0));\ntodayInKualaLumpur('not a Date');\n");
+    writeFileSync(probe, seed, {flag: 'wx', mode: 0o600});
+    const sealProbe = () => {
+      const {bytes, record} = stableNativeInput(probe, {root: out, maximum: seed.length, check});
+      assert(bytes.equals(seed), 'Date alias probe bytes differ');
+      assert.equal(BigInt(record.identity.uid), BigInt(process.getuid()));
+      assert.equal(BigInt(record.identity.mode) & 0o7777n, 0o600n);
+      return record;
+    };
+    const probeSeal = sealProbe();
+    const controls = ['source-api-control', 'reference-api-control'].map((phase, index) => {
+      const config = join(out, phase + '.json');
       const references = index === 0 ? [] : [{path: layout.projects[0].config}];
-      privateConfig(path, {extends: base, files: [probe], include: [], references,
+      privateConfig(config, {extends: base, files: [probe], include: [], references,
         compilerOptions: {disableSourceOfProjectReferenceRedirect: true, tsBuildInfoFile: join(out, phase + '.tsbuildinfo')}});
-      const negative = await cli(phase, ['-p', path, '--noEmit'], true);
-      assert.deepEqual(diagnostics(negative.text), [{file: probe, line: 3, code: 2345}]);
-      const program = nativeProgram(ts, path);
+      return {phase, config: seal(config)};
+    });
+    report.aliasInputs = {probe: probeSeal, controls};
+    save();
+    function verifyAliasInputs() {
+      assert.deepEqual(sealProbe(), probeSeal, 'Held date alias probe changed');
+      for (const {config} of controls) assert.deepEqual(seal(config.path), config, 'Held date alias config changed');
+      verifyInputs(); verifyConfigs(); verifyOutputs();
+    }
+    for (const [index, {phase, config}] of controls.entries()) {
+      verifyAliasInputs();
+      const negative = await cli(phase, ['-p', config.path, '--noEmit', '--listFiles'], true);
+      verifyAliasInputs();
+      const refused = diagnostics(negative.text);
+      assert.deepEqual(refused, [{file: probe, line: 3, code: 2345}]);
+      const program = nativeProgram(ts, config.path);
+      assert.deepEqual(program.getRootFileNames(), [probe]);
+      assert.deepEqual({...program.getCompilerOptions()}, {...restrictedOptions, configFilePath: config.path,
+        disableSourceOfProjectReferenceRedirect: true, tsBuildInfoFile: join(out, phase + '.tsbuildinfo')});
+      assert.deepEqual((program.getProjectReferences() ?? []).map(reference => reference.path),
+        index === 0 ? [] : [layout.projects[0].config]);
       const target = index === 0 ? join(source, 'lib/hr-date.ts') : join(layout.emitted, 'lib/hr-date.d.ts');
       importsTo(owner, program, probe, '@/lib/hr-date', target);
-      if (index === 1) assert(!plan.producer.some(path => program.getSourceFile(path)), 'Alias producer implementation fallback');
-      done(phase, {result: negative.result, diagnostics: diagnostics(negative.text), target});
+      const observed = observeProgram(owner, program, source, out, check);
+      const jsxRuntime = observed.packageAt(probe, 'react/jsx-runtime', true);
+      assert.deepEqual(jsxRuntime, actual.consumer.jsxRuntime, 'Date alias probe synthetic JSX context differs');
+      const loaded = sameFileList(observed, negative.text);
+      assertLocalInputs(loaded, [probe, ...(index === 0 ? plan.producer : [target])]);
+      const {packages, typeRoots, automaticTypes} = dependencyEvidence(observed, loaded);
+      verifyAliasInputs();
+      done(phase, {result: negative.result, diagnostics: refused, target, config, loaded,
+        context: {typeRoots, automaticTypes, packages, jsxRuntime}});
     }
-    verifyInputs(); verifyConfigs();
-    assert.deepEqual(emittedSeals.map(row => seal(row.path)), emittedSeals);
+    verifyAliasInputs();
     assert.deepEqual(report.phases.map(row => row.phase), phases);
     assert.deepEqual(report.attempts.map(row => row.phase), cliPhases);
     assert.deepEqual(identity(compilerProcIdentity(parent.pid)), identity(parent));
