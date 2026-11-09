@@ -1467,6 +1467,7 @@ export const REWARDS_NATIVE_SOURCES=Object.freeze([
  "packs/payroll/history.ts",
  "packs/payroll/pay-averages.ts",
  "packs/payroll/reward-provenance.ts",
+ "packs/payroll/individual-calculation.ts",
  "packs/payroll/service.ts",
  "packs/performance/mobile-review.ts",
  "packs/performance/onehr/admin-agent-service.ts",

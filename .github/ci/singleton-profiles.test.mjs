@@ -52,11 +52,14 @@ test('every registered infrastructure file remains exactly once in its native cl
  const database=['.github/ci/notification-catalogue-replay.mjs','db/schema.ts','drizzle.config.ts','lib/personnel-choice-vocabulary.ts','lib/profile-routing-policy.ts','packs/catalog.ts','scripts/lib/discard-premigration.ts','scripts/migrate-with-focused-prerequisites.ts','scripts/seed-catalogs.ts','test/global-setup.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts','test/profile.ts'];
  assert.equal(common.length,22);assert.equal(database.length,12);
  for(const file of [...common,...database])assert(all.includes(file),file);
+ const journal=JSON.parse(readFileSync(join(candidateRoot,journalPath),'utf8'));
+ const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');
  const sql=readdirSync(join(candidateRoot,'db/migrations')).filter(file=>file.endsWith('.sql')).map(file=>'db/migrations/'+file).sort();
- assert.equal(sql.length,755);assert.deepEqual(all.filter(file=>file.startsWith('db/migrations/')).sort(),[journalPath,...sql].sort());
+ assert(journalSql.includes('db/migrations/3900_individual_transaction_calculation_method.sql'));
+ assert.deepEqual(sql,journalSql.sort());assert.deepEqual(all.filter(file=>file.startsWith('db/migrations/')).sort(),[journalPath,...sql].sort());
  const archives=['test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql','test/fixtures/historical-migrations/3103_access_editor_presentation.sql'];for(const file of archives)assert(all.includes(file));
  assert.throws(()=>singletonSources(databaseFixture.unit));assert.throws(()=>validateSingletonBinding(databaseFixture.binding,databaseFixture.plan,databaseFixture.unit,databaseFixture.witness));
- const directory=realpathSync(mkdtempSync(join(tmpdir(),'shared-database-model-'))),journal=JSON.parse(readFileSync(join(candidateRoot,journalPath),'utf8'));
+ const directory=realpathSync(mkdtempSync(join(tmpdir(),'shared-database-model-')));
  const write=(file,bytes)=>{mkdirSync(join(directory,file,'..'),{recursive:true});writeFileSync(join(directory,file),bytes);};
  try{
   // NoDB/ordinary/missing context cannot read any journal, even in an empty root.
@@ -457,6 +460,7 @@ test('Rewards native policy and original read family retain complete isolated so
   "lib/identity/oidc.ts",
   "lib/workos.ts",
   "core/payroll-audit/reader-grant.ts",
+  "packs/payroll/individual-calculation.ts",
   "packs/rewards/preparation-model.ts",
   "packs/rewards/dashboard-model.ts",
   "test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts",
@@ -464,9 +468,9 @@ test('Rewards native policy and original read family retain complete isolated so
   "test/fixtures/notification-worker/replay-prefix-ownership.ts",
  ];
  const journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url)));
- assert.equal(journal.entries.length,755);const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');assert.equal(new Set(journalSql).size,755);
- const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,755);
- assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),[]);
+ const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');
+ const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);
+ assert.deepEqual(physicalSql,[...journalSql].sort());
  for(const file of files){
   const f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
   assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
@@ -517,14 +521,15 @@ test('shared module JIT diagnostic owns one unchanged controlled database and ca
  const file='test/module-read-jit-diagnostic.test.ts',f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
  assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
  assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);assert.equal(new Set(sources).size,sources.length);
- assert.equal(sources.length,1584);assert.equal(createHash('sha256').update(JSON.stringify(sources)).digest('hex'),'512189a8692016924f67081ede283316892f28f6ad580015d888324c936d8659');
+ assert.equal(sources.length,1586);assert.equal(createHash('sha256').update(JSON.stringify(sources)).digest('hex'),'489ea9de464aab73508c8ce48e445df4e43be58a8a72ae48bb64039d135a2056');
+ assert(sources.includes('packs/payroll/individual-calculation.ts'),'Actual Payroll calculation owner omitted');
  for(const required of ["core/ai-centre-control.ts", "db/migrations/3200_ai_centre_controls.sql", "db/migrations/3201_ai_centre_function_coverage.sql", "db/migrations/3500_ai_centre_architecture_compatibility.sql", "db/migrations/3501_ai_centre_mandate_write_order.sql", "lib/ai/centre-activity.ts", "test/helpers/native-read-observer.ts","lib/maybank-payment-settings.ts","localization/my/maybank-v74-file.ts","lib/attendance-formula-allocation.ts","lib/system-label-assignment.ts","packs/attendance/formula-sources.ts","lib/attendance-formula-catalog.ts","lib/attendance-formula-overtime.ts","core/attendance-formula-leave.ts","core/attendance-formula-measurements.ts","core/attendance-formulas.ts","lib/attendance-formula-model.ts","lib/attendance-formula-language.ts","lib/attendance-formula-periods.ts","lib/pay-component-company.ts","core/attendance-formula-ai.ts","lib/attendance-formula-ai.ts","lib/attendance-formula-bindings.ts","lib/attendance-formula-posting.ts","core/pay-component-company.ts","core/system-label-selection.ts"])assert(sources.includes(required),'Actual JIT read owner omitted: '+required);
  const journalBytes=readFileSync(new URL('../../'+journalPath,import.meta.url)),journal=JSON.parse(journalBytes.toString('utf8'));
  const inputs=Object.freeze({sources:Object.freeze(sources),journalSha256:createHash('sha256').update(journalBytes).digest('hex')});
- assert.equal(journal.entries.length,755);const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');assert.equal(new Set(journalSql).size,755);
- const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,755);
+ const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');
+ const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);
  for(const path of [...journalSql,...physicalSql])assert(sources.includes(path),'Actual canonical SQL/fingerprint input omitted: '+path);
- assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),[]);
+ assert.deepEqual(physicalSql,[...journalSql].sort());
  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
  const omissionHashes={...f.binding.sourceHashes};
  for(const source of sources){
