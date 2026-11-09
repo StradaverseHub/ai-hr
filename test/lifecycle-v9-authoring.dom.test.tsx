@@ -5,13 +5,14 @@ import { EmailDefinition } from '../app/lifecycle/v9/email-definition';
 import { newV9Email, newV9Template } from '../lib/lifecycle-v9-authoring';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import { parseV9Config } from '../lib/lifecycle-v9-validation';
+import { aiReviewDomHtml, captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 import type { Template } from '../lib/lifecycle-v9-model';
 const actor = { id: 'fixture-hr', name: 'Fictional HR' };
 const types: Template['type'][] = ['Form', 'Acknowledgement', 'Letter', 'Attachment'];
 const templates = types.map(type => newV9Template(type, actor, type, '2026-10-29T02:00:00Z'));
-function Editor() {
+function Editor({ showDefinition = true }: { showDefinition?: boolean }) {
   const [email, setEmail] = useState(newV9Email('email'));
-  return <><EmailDefinition email={email} templates={templates} disabled={false} change={update => setEmail(value => { const next = structuredClone(value); update(next); return next; })}/><output data-testid="definition">{JSON.stringify(email)}</output></>;
+  return <><EmailDefinition email={email} templates={templates} disabled={false} change={update => setEmail(value => { const next = structuredClone(value); update(next); return next; })}/>{showDefinition && <output data-testid="definition">{JSON.stringify(email)}</output>}</>;
 }
 function saved() { return JSON.parse(screen.getByTestId('definition').textContent!); }
 it('uses the source document transport rules and preserves the link when a letter PDF is unticked', () => {
@@ -52,3 +53,38 @@ it('keeps an explicit default CC mailbox separate from directory people', () => 
   fireEvent.click(screen.getByRole('checkbox', { name: 'Email: archive@fictional.invalid' }));
   expect(saved().cc).toEqual([]);
 });
+
+it('inserts allowed Personnel fields at the selected cursor range in the correct email input', () => {
+  render(<Editor/>);
+  const body = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Body' });
+  fireEvent.change(body, { target: { value: 'Hello replacement today' } });
+  body.focus();
+  body.setSelectionRange(6, 17);
+  fireEvent.blur(body);
+  fireEvent.click(screen.getByRole('button', { name: 'Insert field into body' }));
+  expect(screen.getByRole('button', { name: /Business unit · \{employee.businessUnit\}/ })).toBeVisible();
+  expect(screen.queryByRole('button', { name: /IC number|Passport number|Religion|Race/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /Position · \{employee.position\}/ }));
+  expect(saved().body).toBe('Hello {employee.position} today');
+  expect(screen.getByText('Position inserted into the body.')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Insert field into subject' }));
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search subject fields' }), { target: { value: 'date' } });
+  expect(screen.getByRole('button', { name: /Last working date/ })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: /Join date/ }));
+  expect(saved()).toMatchObject({ subject: '{joiner.joinDate}', body: 'Hello {employee.position} today' });
+});
+
+it('renders the Personnel field picker in the email template drawer', async () => {
+  const view = render(<div className="v9-workspace v9-workspace-global"><section className="v9-panel v9-stack">
+    <h1>Email template</h1><Editor showDefinition={false}/>
+  </section></div>);
+  fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Welcome, {employee.name}' } });
+  fireEvent.change(screen.getByLabelText('Body'), { target: { value: 'Welcome to {company.name}.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Insert field into body' }));
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search body fields' }), { target: { value: 'organisation' } });
+  expect(screen.getByRole('button', { name: /Business unit/ })).toBeVisible();
+  expect(screen.getByRole('button', { name: /Direct superior/ })).toBeVisible();
+  expect(screen.queryByRole('button', { name: /Nationality/ })).toBeNull();
+  await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'lifecycle-email-template',
+    'Actual template editor and filtered Personnel picker with fictional email content');
+}, 120_000);

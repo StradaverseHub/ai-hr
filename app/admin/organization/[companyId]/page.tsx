@@ -1,7 +1,5 @@
 import { formatsInGroup } from '@/app/payroll/payment-submission/registry';
 import { companyDisplayGroupOptions, companyDisplayGroups } from '@/core/company-display-group';
-import { companyRegistrationOverview } from '@/core/company-registration-readiness';
-import { RegistrationClassification } from '../registration-classification';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -28,7 +26,6 @@ import {
   setCompanyStatutoryAuthorityAction,
   setCompanyLogoAction,
   setCompanyParentAction,
-  setCompanyStatutoryAction,
   saveCompanyGeneralTabAction,
   updateCompanyAction,
   updateCompanyDefaultCycleAction,
@@ -60,11 +57,11 @@ export default async function CompanyMaintenancePage({
   searchParams,
 }: {
   params: Promise<{ companyId: string }>;
-  searchParams: Promise<{ error?: string; tab?: string; classificationSaved?:string }>;
+  searchParams: Promise<{ error?: string; tab?: string; }>;
 }) {
   const { s } = await scopedAdmin();
   const { companyId } = await params;
-  const { error, tab,classificationSaved } = await searchParams;
+  const { error, tab } = await searchParams;
   const t = await getTranslations('admin.organization');
 
   const [companies, tree] = await Promise.all([
@@ -75,7 +72,6 @@ export default async function CompanyMaintenancePage({
   // concerned. Resolved before any per-company read runs, so an out-of-scope id never even hits them.
   const c = companies.find((x) => x.id === companyId);
   if (!c) notFound();
-  const registration = (await companyRegistrationOverview(s)).find(row => row.id === companyId);
 
   /**
    * r298 (board ceb1c560) — THE DEFAULT PAYROLL CYCLE IS A PAYROLL SECTION, AND A TENANT WITHOUT PAYROLL
@@ -130,8 +126,6 @@ export default async function CompanyMaintenancePage({
         back={{ href: '/admin/organization', label: t('backToCompanies') }}
       />
       <ErrorBanner message={error} />
-      {classificationSaved==='1' && <p role="status" className="text-sm">{t('registration.saved')}</p>}
-      {registration && <RegistrationClassification companyId={companyId} value={registration.classification}/>}
 
       {/* 3783fd87 — THE WHITE CARD THE REST OF THE MODULE ALREADY HAS. The listing wraps each of its
           sections in a <Card>; this screen put the panel straight onto the page, whose ground is
@@ -178,7 +172,12 @@ export default async function CompanyMaintenancePage({
         // drops the archived ones: a code recycled from a company retired years ago is not a collision
         // worth a warning, and an archived company's name is not shipped to the browser for one either.
         codesInUse={companyCodeHolders(companies)}
-        statutory={statutory}
+        statutory={statutory ? {
+          epfEmployerNo: statutory.epfEmployerNo,
+          socsoEmployerCode: statutory.socsoEmployerCode,
+          lhdnEmployerNo: statutory.lhdnEmployerNo,
+          hrdfStatus: statutory.hrdfStatus,
+        } : null}
         bankProfiles={bankProfiles}
         salaryFileCapabilities={formatsInGroup('salary').flatMap(format => format.group === 'salary' ? [{ bankKey: format.bankKey, available: format.available }] : [])}
         statutoryAuthorities={authorities}
@@ -198,7 +197,6 @@ export default async function CompanyMaintenancePage({
           archiveCompany: archiveCompanyAction,
           deleteCompany: deleteCompanyAction,
           setParent: setCompanyParentAction,
-          setStatutory: setCompanyStatutoryAction,
           setBankProfile: setCompanyBankProfileAction,
           removeBankProfile: removeCompanyBankProfileAction,
           setStatutoryAuthority: setCompanyStatutoryAuthorityAction,
@@ -210,10 +208,6 @@ export default async function CompanyMaintenancePage({
           // is the r123 hazard, and this is the shape that is safe: the action is declared in a
           // `'use server'` module and passed by reference, never wrapped in a closure built here.
           saveGeneralTab: saveCompanyGeneralTabAction,
-          // 15e5bd93 rev 2 (r353) — `saveStatutoryTab` STOOD HERE. The reporter contested r352's in-tab
-          // statutory redesign, so the bodies moved to /admin/organization/[companyId]/statutory with a
-          // Save on each card, the consolidated statutory action is retired, and the registrations card on
-          // the Statutory tab has its own Save button again (components/company-panel.tsx).
         }}
       />
       </Card>

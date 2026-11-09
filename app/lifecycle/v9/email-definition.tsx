@@ -1,6 +1,7 @@
 'use client';
 import { managedEmailSenderProfiles, managedEmailSenderNames } from '@/lib/managed-email-policy';
 import { EmailAssets } from './email-assets';
+import { EmailMergeInput } from './email-merge-input';
 import { RecipientPicker } from './recipient-picker';
 import type { ReactNode } from 'react';
 import type { EmailTemplate, Template } from '@/lib/lifecycle-v9-model';
@@ -16,10 +17,9 @@ export function EmailDefinition({ email, templates, disabled, change, selectModu
     <Field label="Sender"><select value={email.sender} disabled={disabled} onChange={event => change(next => { next.sender = event.target.value; })}>{managedEmailSenderProfiles.map(profile => <option key={profile} value={profile}>{managedEmailSenderNames[profile]}</option>)}</select></Field>
     <label className="v9-actions"><input type="checkbox" checked={email.active} disabled={disabled || !email.subject.trim()} onChange={event => change(next => { next.active = event.target.checked; })}/>Active</label>
     </div>
-    <Field label="Subject"><input className="v9-input" maxLength={1000} value={email.subject} disabled={disabled} onChange={event => change(next => { next.subject = event.target.value; })}/></Field>
-    <Field label="Body"><textarea rows={12} maxLength={20000} value={email.body} disabled={disabled} onChange={event => change(next => { next.body = event.target.value; })}/></Field>
-
-    <p className="v9-muted">Merge fields use {'{employee.name}'}, {'{company.name}'}, {'{joiner.joinDate}'} and {'{leaver.lastDay}'}. Sensitive identity, tax and banking fields cannot be emailed.</p>
+    <EmailMergeInput label="Subject" value={email.subject} disabled={disabled} onChange={value => change(next => { next.subject = value; })}/>
+    <EmailMergeInput label="Body" value={email.body} disabled={disabled} onChange={value => change(next => { next.body = value; })}/>
+    <p className="v9-muted">Use Insert field to add the employee's details at the cursor. Sensitive identity, tax and banking fields can't be emailed, so they aren't listed.</p>
     <EmailAssets section="images" email={email} revision={revision} ready={uploadsReady} disabled={disabled} change={change}/>
     <h3>Default CC</h3><RecipientPicker label="CC by default" value={email.cc} groups={groups} users={users} disabled={disabled} change={value => change(next => { next.cc = value; })}/>
 

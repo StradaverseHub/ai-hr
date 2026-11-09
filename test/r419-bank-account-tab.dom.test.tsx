@@ -102,7 +102,6 @@ function panel(
             archiveCompany: noop,
             deleteCompany: noop,
             setParent: noop,
-            setStatutory: noop,
             setStatutoryAuthority: noop,
             removeStatutoryAuthority: noop,
             setCompanyLogo: noop,

@@ -17,6 +17,7 @@
  * a mocked `company_scope` cookie; §4 drives the services and raw SQL as a company-scoped administrator
  * against the migrated policy. Each section names the defect its assertions fail on when the fix is reverted.
  */
+import { captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -77,6 +78,9 @@ vi.mock('next-intl/server', async () => {
 
 import * as schema from '../db/schema';
 import { withTenant } from '../db/client';
+import { hireEmployee, updatePersonProfilePartial } from '../core/org';
+import { setPayrollPermissionGrant } from '../core/payroll-permissions-admin';
+import { POST as searchPersonnel } from '../app/admin/personnel/search/route';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import {
   createEmployeeDraftWithReservedCode,
@@ -227,6 +231,19 @@ async function renderPersonnel(sp: Record<string, string> = {}) {
 }
 
 describe('§2 the Personnel screen: list, Draft card and Filter options follow the top-bar company', () => {
+  it('shows the pager below the actual Personnel table', async () => {
+    SCOPE_COOKIE = A;
+    const { html } = await renderPersonnel({ bucket: 'draft' });
+    expect(html).toContain('Alpha Candidate');
+    expect(html.indexOf('data-ui-pager')).toBeGreaterThan(html.indexOf('</table>'));
+    expect(html).toContain('Export');
+    // Match the real shell's positioned scrolling main. Its containment keeps offscreen table
+    // accessibility labels from adding scrollable width to the document viewport.
+    const shell = '<div class="relative min-w-0 overflow-y-auto pb-1">' + html + '</div>';
+    await captureAiReviewScreenshots(shell, 'en', 'feedback-personnel-list-footer',
+      'Actual Personnel page, table and bottom pager backed by scoped fictional drafts');
+  }, 120_000);
+
   it('with company A selected, only A\'s draft is listed and the Draft card counts exactly it', async () => {
     SCOPE_COOKIE = A;
     const r = await renderPersonnel({ bucket: 'draft' });
@@ -279,6 +296,80 @@ describe('§3 the Excel export carries the same drafts as the screen', () => {
     expect(csv).not.toContain('Bravo Candidate');
     expect(csv).not.toContain('Unplaced Candidate');
   });
+
+  it('downloads the current page as a real workbook and preserves the company fence', async () => {
+    SCOPE_COOKIE = A;
+    const res = await exportPersonnel(new Request('http://x/admin/personnel/export?mode=page&page=0&size=25&bucket=draft&cols=code,name,company,status'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Disposition')).toMatch(/\.xlsx"$/);
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.read(await res.arrayBuffer(), { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toContain('ALPHA001');
+    expect(JSON.stringify(rows)).not.toMatch(/BRAVO001|Unplaced Candidate/);
+  });
+
+  it('filters and pages a populated list, and applies field grants to the all-details workbook', async () => {
+    SCOPE_COOKIE = A;
+    for (let i = 1; i <= 26; i++) {
+      const index = String(i).padStart(2, '0');
+      const hire = await hireEmployee(SESSION, {
+        companyId: A, departmentId: b.deptA, positionId: b.positionId,
+        employmentType: 'full_time', hiredOn: '2024-01-01', employeeCode: 'FOL-' + index,
+        person: { fullName: 'Fixture Employee ' + index, primaryEmail: index + '@example.test' },
+      });
+      if (i === 26) await updatePersonProfilePartial(SESSION, {
+        personId: hire.personId, personalEmail: 'fixture-detail@example.test',
+      });
+    }
+    const start = performance.now();
+    const opened = await renderPersonnel({ sort: 'name', direction: 'asc', size: '25' });
+    const openMs = performance.now() - start;
+    expect(opened.html).toContain('Fixture Employee 01');
+    expect(opened.html).not.toContain('Fixture Employee 26');
+    const pagingStart = performance.now();
+    const next = await renderPersonnel({ sort: 'name', direction: 'asc', page: '1', size: '25' });
+    const pagingMs = performance.now() - pagingStart;
+    expect(next.html).toContain('Fixture Employee 26');
+    expect(next.html).not.toContain('Fixture Employee 01');
+
+    const filterStart = performance.now();
+    const response = await searchPersonnel(new Request('http://x/admin/personnel/search', {
+      method: 'POST', headers: { Origin: 'http://x', Accept: 'application/json' },
+      body: new URLSearchParams({ 'field.name': 'Fixture Employee 26', size: '25' }),
+    }));
+    expect(response.status).toBe(200);
+    const { href } = await response.json() as { href: string };
+    expect(href).not.toContain('Fixture');
+    const parameters = new URL(href, 'http://x').searchParams;
+    expect(parameters.get('page')).toBeNull();
+    const filtered = await renderPersonnel(Object.fromEntries(parameters));
+    const filterMs = performance.now() - filterStart;
+    expect(filtered.html).toContain('Fixture Employee 26');
+    expect(filtered.html).not.toContain('Fixture Employee 01');
+    console.info('Personnel fixture timing (26 employments, ms)', { openMs, pagingMs, filterMs });
+
+    const workbookRows = async (query: string) => {
+      const result = await exportPersonnel(new Request('http://x/admin/personnel/export?' + query));
+      expect(result.status).toBe(200);
+      const XLSX = await import('xlsx');
+      const book = XLSX.read(await result.arrayBuffer(), { type: 'array' });
+      return XLSX.utils.sheet_to_json<string[]>(book.Sheets[book.SheetNames[0]], { header: 1 });
+    };
+    const page = await workbookRows('mode=page&page=1&size=25&cols=code,name,company&sort=name&direction=asc');
+    expect(page).toHaveLength(2);
+    expect(page[1]).toContain('FOL-26');
+    const detailQuery = 'mode=all&sort=name&direction=desc&search=' + parameters.get('search');
+    const details = await workbookRows(detailQuery);
+    expect(details).toHaveLength(2);
+    expect(details[1]).toContain('FOL-26');
+    expect(details[1]).toContain('fixture-detail@example.test');
+    await setPayrollPermissionGrant(SESSION, { companyId: A, permissionKey: 'report.read.personnel', role: 'hr_admin', allowed: false });
+    const denied = await workbookRows(detailQuery);
+    expect(denied[1]).toContain('FOL-26');
+    expect(denied[1]).not.toContain('fixture-detail@example.test');
+  }, 120_000);
 
   it('un-narrowed, the file carries every draft', async () => {
     const csv = await exportCsv('bucket=draft&cols=code,name,company,status');

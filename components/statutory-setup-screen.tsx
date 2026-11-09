@@ -178,8 +178,7 @@ export type StatutorySetupActions = {
  * STATUTORY IDENTITY (MY), AT THE TOP, READ-ONLY — so the reader can confirm whose configuration they are
  * about to edit before they touch it.
  *
- * Six facts in order: SSM registration no., MyInvois TIN, then the three filing numbers and HRD Corp's
- * rate. The three filing numbers are read out of `MY_FILING_FIELD` rather than spelled out here, so this
+ * The three filing numbers and HRD Corp's rate appear in body order. The three filing numbers are read out of `MY_FILING_FIELD` rather than spelled out here, so this
  * card and the per-body cards can never disagree about which number belongs to which body or what it is
  * called — the r226 fault in miniature.
  *
@@ -205,8 +204,6 @@ function IdentityCard({ statutory, filingCountry }: { statutory: PanelStatutory;
           : null;
 
   const facts: { key: string; label: string; value: string | null }[] = [
-    { key: 'ssmRegistrationNo', label: t('ssmRegistrationNo'), value: statutory?.ssmRegistrationNo || null },
-    { key: 'myinvoisTin', label: t('myinvoisTin'), value: statutory?.myinvoisTin || null },
     // The three filing numbers, in the controlled set's order, taken from the SHARED map so that adding a
     // body with a filing number puts it on this card automatically rather than silently omitting it.
     ...(filingCountry === 'MY'

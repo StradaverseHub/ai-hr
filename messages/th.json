@@ -822,6 +822,9 @@
       "absentEmployeeCategory": "หมวดพนักงาน",
       "absentEmployeeType": "ประเภทพนักงาน",
       "exportXlsx": "ส่งออก",
+      "exportCurrentPage": "ส่งออกข้อมูลหน้าปัจจุบัน",
+      "exportAllDetails": "ส่งออกรายละเอียดพนักงานทั้งหมด",
+      "exportEmpty": "ไม่มีข้อมูลพนักงานให้ส่งออก",
       "exportAria": "ส่งออกรายชื่อพนักงานที่กรองแล้วเป็น Excel",
       "exportTitle": "พนักงาน",
       "rejectReasonPlaceholder": "เหตุผลที่ปฏิเสธ (จำเป็น)",
@@ -36654,6 +36657,7 @@
     "groupingHint": "ตรวจสอบและเผยแพร่การจับคู่บริษัทก่อนจัดกลุ่มค่าตอบแทนหรือเงินเดือน ยังสามารถบันทึกข้อมูลการจ้างงานได้"
   },
   "personnelOrganisationFilters": {
+    "updatingResults": "กำลังอัปเดตผลลัพธ์…",
     "readBusy": "ระบบบุคลากรกำลังไม่ว่าง โปรดรอสักครู่แล้วลองอีกครั้ง",
     "retryRead": "ลองอีกครั้ง",
     "businessUnit": "หน่วยธุรกิจ",

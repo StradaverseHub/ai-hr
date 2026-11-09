@@ -35,13 +35,12 @@ describe('company-panel Payroll tab — payroll-cycle cross-link removed', () =>
    * again and its three non-bank sections moved to General — so the marker to look for is the Bank
    * Account tab's. The Payroll half of this case is untouched and still the point of the file.
    */
-  it('retains the statutory identity + bank disbursement forms', () => {
+  it('retains bank disbursement and the remaining statutory settings', () => {
     expect(src).toContain("t('bankProfileSave')");
     expect(src).toContain("t('bankProfilesHint')");
-    // General owns the registration form and submits it through its consolidated Save.
-    expect(src).toContain('data-save-section="registration"');
-    expect(src).toContain('name="ssmRegistrationNo"');
-    expect(src).toContain('name="myinvoisTin"');
+    expect(src).not.toContain('data-save-section="registration"');
+    expect(src).not.toContain('name="ssmRegistrationNo"');
+    expect(src).not.toContain('name="myinvoisTin"');
     // The Payroll tab is gone and has not come back under any of its successors' names.
     expect(src).toContain('{/* end Statutory tab */}');
     expect(src).toContain('{/* end Bank Account tab */}');
