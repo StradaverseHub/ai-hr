@@ -7,7 +7,7 @@ import { AuthRequiredError } from '../lib/auth-errors';
 
 const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), scope: vi.fn(), visibleCompanies: vi.fn(), navigation: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn(), requests: vi.fn(), accessCompanies: vi.fn(), accessEntry: vi.fn(), accessAdministration: vi.fn(), accessPermissions: vi.fn(), accessPersonalPages: vi.fn(), accessActivity: vi.fn(), session: vi.fn(), isOperator: vi.fn(), isDemoDeployment: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async (namespace: keyof typeof en = 'rewards') => (key: string) => key.split('.').reduce((v: any, k) => v[k], en[namespace]) }));
-const redirect = vi.hoisted(() => vi.fn(() => { throw new Error('redirect'); }));
+const redirect = vi.hoisted(() => vi.fn<typeof import('next/navigation').redirect>(() => { throw new Error('redirect'); }));
 const notFound = vi.hoisted(() => vi.fn(() => { throw new Error('not found'); }));
 vi.mock('next/navigation', async importOriginal => ({ ...await importOriginal<typeof import('next/navigation')>(), redirect, notFound, useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
@@ -101,7 +101,7 @@ describe('Rewards administration and review destinations', () => {
     expect(ports.requireModule).not.toHaveBeenCalled();
 
     ports.isOperator.mockReturnValueOnce(true);
-    await expect(rewardsBookmarkHead()).rejects.toThrow('redirect');
+    await expect(rewardsBookmarkHead(new Request(request, { method: 'HEAD' }))).rejects.toThrow('redirect');
     expect(redirect).toHaveBeenLastCalledWith('/operator');
     expect(ports.requireModule).not.toHaveBeenCalled();
 
