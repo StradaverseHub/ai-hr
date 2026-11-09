@@ -88,6 +88,85 @@ export const DEV_WORKLOAD_POSTGRES_READS = Object.freeze({
     ('pg_ident_file_mappings',NULL),('pg_config',NULL),('pg_replication_origin_status',NULL),
     ('pg_subscription','subconninfo')
   ) fixed(name,secret_column) JOIN catalogue c ON c.nspname='pg_catalog' AND c.relname::text=fixed.name
+ ), catalogue_routines AS (
+  SELECT p.oid,p.prokind,p.proowner,p.proacl,n.nspname
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname IN ('pg_catalog','information_schema') OR n.nspname ~ '^pg_(toast|temp)(_|$)'
+ ), restricted_routines AS (
+  SELECT p.oid FROM (VALUES
+    ('pg_catalog.pg_backup_start(text,boolean)'),
+    ('pg_catalog.pg_backup_stop(boolean)'),
+    ('pg_catalog.pg_create_restore_point(text)'),
+    ('pg_catalog.pg_switch_wal()'),
+    ('pg_catalog.pg_log_standby_snapshot()'),
+    ('pg_catalog.pg_wal_replay_pause()'),
+    ('pg_catalog.pg_wal_replay_resume()'),
+    ('pg_catalog.pg_rotate_logfile()'),
+    ('pg_catalog.pg_reload_conf()'),
+    ('pg_catalog.pg_current_logfile()'),
+    ('pg_catalog.pg_current_logfile(text)'),
+    ('pg_catalog.pg_promote(boolean,integer)'),
+    ('pg_catalog.pg_stat_reset()'),
+    ('pg_catalog.pg_stat_reset_shared(text)'),
+    ('pg_catalog.pg_stat_reset_slru(text)'),
+    ('pg_catalog.pg_stat_reset_single_table_counters(oid)'),
+    ('pg_catalog.pg_stat_reset_single_function_counters(oid)'),
+    ('pg_catalog.pg_stat_reset_replication_slot(text)'),
+    ('pg_catalog.pg_stat_have_stats(text,oid,oid)'),
+    ('pg_catalog.pg_stat_reset_subscription_stats(oid)'),
+    ('pg_catalog.lo_import(text)'),
+    ('pg_catalog.lo_import(text,oid)'),
+    ('pg_catalog.lo_export(oid,text)'),
+    ('pg_catalog.pg_ls_logdir()'),
+    ('pg_catalog.pg_ls_waldir()'),
+    ('pg_catalog.pg_ls_archive_statusdir()'),
+    ('pg_catalog.pg_ls_tmpdir()'),
+    ('pg_catalog.pg_ls_tmpdir(oid)'),
+    ('pg_catalog.pg_read_file(text)'),
+    ('pg_catalog.pg_read_file(text,boolean)'),
+    ('pg_catalog.pg_read_file(text,bigint,bigint)'),
+    ('pg_catalog.pg_read_file(text,bigint,bigint,boolean)'),
+    ('pg_catalog.pg_read_binary_file(text)'),
+    ('pg_catalog.pg_read_binary_file(text,boolean)'),
+    ('pg_catalog.pg_read_binary_file(text,bigint,bigint)'),
+    ('pg_catalog.pg_read_binary_file(text,bigint,bigint,boolean)'),
+    ('pg_catalog.pg_replication_origin_advance(text,pg_lsn)'),
+    ('pg_catalog.pg_replication_origin_create(text)'),
+    ('pg_catalog.pg_replication_origin_drop(text)'),
+    ('pg_catalog.pg_replication_origin_oid(text)'),
+    ('pg_catalog.pg_replication_origin_progress(text,boolean)'),
+    ('pg_catalog.pg_replication_origin_session_is_setup()'),
+    ('pg_catalog.pg_replication_origin_session_progress(boolean)'),
+    ('pg_catalog.pg_replication_origin_session_reset()'),
+    ('pg_catalog.pg_replication_origin_session_setup(text)'),
+    ('pg_catalog.pg_replication_origin_xact_reset()'),
+    ('pg_catalog.pg_replication_origin_xact_setup(pg_lsn,timestamp with time zone)'),
+    ('pg_catalog.pg_show_replication_origin_status()'),
+    ('pg_catalog.pg_stat_file(text)'),
+    ('pg_catalog.pg_stat_file(text,boolean)'),
+    ('pg_catalog.pg_ls_dir(text)'),
+    ('pg_catalog.pg_ls_dir(text,boolean,boolean)'),
+    ('pg_catalog.pg_log_backend_memory_contexts(integer)'),
+    ('pg_catalog.pg_ls_logicalsnapdir()'),
+    ('pg_catalog.pg_ls_logicalmapdir()'),
+    ('pg_catalog.pg_ls_replslotdir(text)'),
+    ('pg_catalog.pg_show_all_file_settings()'),
+    ('pg_catalog.pg_hba_file_rules()'),
+    ('pg_catalog.pg_ident_file_mappings()'),
+    ('pg_catalog.pg_config()')
+  ) fixed(signature) JOIN catalogue_routines p ON p.oid=pg_catalog.to_regprocedure(fixed.signature)
+  CROSS JOIN target t WHERE p.nspname='pg_catalog' AND p.prokind='f' AND p.proowner=t.postgres_owner
+ ), stock_stats_routines AS (
+  SELECT p.oid FROM catalogue_routines p CROSS JOIN target t
+  WHERE p.nspname='pg_catalog' AND p.prokind='f' AND p.proowner=t.postgres_owner AND p.oid IN (
+    pg_catalog.to_regprocedure('pg_catalog.pg_get_shmem_allocations()'),
+    pg_catalog.to_regprocedure('pg_catalog.pg_get_backend_memory_contexts()'))
+ ), catalogue_routine_grants AS (
+  SELECT stock.oid IS NOT NULL AND acl.grantee=t.stats AND acl.grantor=t.postgres_owner
+    AND acl.privilege_type='EXECUTE' AND NOT acl.is_grantable AS stock_stats_grant
+  FROM catalogue_routines p CROSS JOIN target t CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) acl
+  LEFT JOIN stock_stats_routines stock ON stock.oid=p.oid
+  WHERE acl.grantee IN (SELECT oid FROM effective_roles) OR (acl.grantee=0 AND stock.oid IS NOT NULL)
  ), stats_views AS (
   SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   JOIN pg_depend dep ON dep.classid='pg_class'::regclass AND dep.objid=c.oid AND dep.objsubid=0
@@ -148,6 +227,14 @@ export const DEV_WORKLOAD_POSTGRES_READS = Object.freeze({
     ELSE has_table_privilege(observer,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
       OR has_any_column_privilege(observer,c.oid,'INSERT,UPDATE,REFERENCES')
     END) AS "catalogueWriteRights",
+  (SELECT count(*)::int FROM catalogue_routines) AS "catalogueRoutinesChecked",
+  (SELECT count(*)::int FROM restricted_routines) AS "restrictedRoutinesChecked",
+  (SELECT count(*)::int FROM restricted_routines p
+    WHERE pg_catalog.has_function_privilege(observer,p.oid,'EXECUTE')) AS "restrictedRoutinesExecutable",
+  (SELECT count(*)::int FROM stock_stats_routines p
+    WHERE pg_catalog.has_function_privilege(observer,p.oid,'EXECUTE')) AS "executableStockStatsRoutines",
+  (SELECT count(*)::int FROM catalogue_routine_grants WHERE stock_stats_grant) AS "stockStatsRoutineGrants",
+  (SELECT count(*)::int FROM catalogue_routine_grants WHERE NOT stock_stats_grant) AS "unexpectedCatalogueRoutineGrants",
   (SELECT count(*)::int FROM pg_auth_members WHERE member=observer) AS "directMemberships",
   (SELECT count(*)::int FROM pg_roles r WHERE r.oid NOT IN (observer,stats)
     AND pg_has_role(observer,r.oid,'MEMBER')) AS "otherMemberships",
@@ -269,7 +356,9 @@ export function validateDevWorkloadObserverAcl(acl,physicalDatabaseOid,heldObser
   'readableStatsViews','creatableSchemas','unsafeRelations','callableDefiners','directMemberships','otherMemberships','exactStatsGrant',
   'inheritsStats','setsStats','canTemp','canCreateDatabaseObjects','resetExists','canReset',
   'ownsDatabase','ownedSchemas','ownedRelations','ownedFunctions','catalogueRelationsChecked','sensitiveCatalogueChecked',
-  'sensitiveCatalogueReadable','unexpectedCatalogueGrants','unexpectedCatalogueColumnGrants','catalogueWriteRights'],
+  'sensitiveCatalogueReadable','unexpectedCatalogueGrants','unexpectedCatalogueColumnGrants','catalogueWriteRights',
+  'catalogueRoutinesChecked','restrictedRoutinesChecked','restrictedRoutinesExecutable',
+  'executableStockStatsRoutines','stockStatsRoutineGrants','unexpectedCatalogueRoutineGrants'],
  'Closed dev workload observer ACL required');
  assert(oid(physicalDatabaseOid) && oid(heldObserverOid) && acl.databaseOid===physicalDatabaseOid && acl.observerOid===heldObserverOid,
   'Dev workload observer ACL identity refused');
@@ -286,6 +375,11 @@ export function validateDevWorkloadObserverAcl(acl,physicalDatabaseOid,heldObser
  assert(acl.sensitiveCatalogueReadable===0 && acl.unexpectedCatalogueGrants===0
   && acl.unexpectedCatalogueColumnGrants===0 && acl.catalogueWriteRights===0,
  'Dev workload observer catalogue access refused');
+ assert(integer(acl.catalogueRoutinesChecked,62,8192) && acl.restrictedRoutinesChecked===60,
+  'Dev workload observer routine census refused');
+ assert(acl.restrictedRoutinesExecutable===0 && acl.unexpectedCatalogueRoutineGrants===0
+  && acl.executableStockStatsRoutines===2 && acl.stockStatsRoutineGrants===2,
+  'Dev workload observer routine authority refused');
 }
 
 export function validateDevWorkloadStatistics(row,physicalDatabaseOid){

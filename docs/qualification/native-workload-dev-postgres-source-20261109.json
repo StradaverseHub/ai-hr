@@ -1,7 +1,7 @@
 {
   "kind": "DORMANT_NATIVE_WORKLOAD_DEV_POSTGRES_SOURCE_ONLY",
-  "parent": "e3a8c7127df49ae5fabd34588a021f9a93fbf26f",
-  "sourceRef": "codex/native-workload-dev-postgres-proof-20261109",
+  "parent": "19df6f84d356bb3486f907b1f777b04a896b9ed8",
+  "sourceRef": "codex/native-workload-dev-postgres-routine-acl-20261109",
   "design": {
     "bytes": 14837,
     "sha256": "4d2f693ed1fedc7ae273d724d50f7aaab31459538810f258bbde19919dee5fbe"
@@ -48,8 +48,8 @@
         "sha256": "07ddc154a110ce66a41d193cf7b44224f2ad257f65f617cd7e9164f1633423df"
       },
       "observerAcl": {
-        "bytes": 6949,
-        "sha256": "bb4b199f8fc7e4975059dd76da15d7a892103b33789732a53593c743805235e6"
+        "bytes": 11899,
+        "sha256": "25395706caa0a9036c31c7fa83a19898b150a6808a8edf49b1bffd3923e319ae"
       },
       "statistics": {
         "bytes": 599,
@@ -68,6 +68,7 @@
       "effective observer ACL refuses PUBLIC TEMP, unsafe role edges, table or definer rights and absent reset evidence",
       "ACL observations are bound to the held database and role and refuse unknown inventory bounds",
       "observer ownership and unsafe catalogue access refuse even when ordinary business ACL grants are absent",
+      "catalogue routine ACL refuses restored PUBLIC access or extra explicit edges while preserving exact stock stats grants",
       "only closed same-realm aggregate app observations with positive live activity can be retained",
       "actual refusal categories distinguish wrong auth, foreign realm and server-denied privileges",
       "successful observation cannot replace cleanup tied to the held physical birth",
@@ -199,26 +200,26 @@
   "sourceChanges": {
     ".github/ci/native-workload-dev-postgres.mjs": {
       "parent": {
-        "bytes": 15445,
-        "sha256": "90befe5cb578622bfbc52987d655b8334a11c62659a30d2b1c33e242c7d21bea",
-        "gitBlob": "e7e3de630bd61ef8abe32232b23b6d6de6a1bf77"
-      },
-      "current": {
         "bytes": 21726,
         "sha256": "666acd1646eb2bae4013b03bd58e1f6821b492ac85ea07c711f8dba28acd8f94",
         "gitBlob": "e336f4142ed1be15153574def759a5f968df8be9"
+      },
+      "current": {
+        "bytes": 27225,
+        "sha256": "f09569cb8a59362867caa8362fe713a1c5c444c12dd308fe11e5247decfc60c8",
+        "gitBlob": "c83978e9144886070d5a20ee08ecb6d0a26f2abe"
       }
     },
     ".github/ci/native-workload-dev-postgres.test.mjs": {
       "parent": {
-        "bytes": 11159,
-        "sha256": "7c60c3f4436b0c35b4368e317acb9223f0ee83c5b2b9078abf368f8d5fbd02d6",
-        "gitBlob": "503b85656efaccb193ff9f21d9843024caa37ec7"
-      },
-      "current": {
         "bytes": 14628,
         "sha256": "e41b64c9c88e95ba8693dc821277766cc6adbb396b7ed726740284849cf037a8",
         "gitBlob": "5330a38f8c116ad93cc0a3ee6bcf593fbff8de09"
+      },
+      "current": {
+        "bytes": 16745,
+        "sha256": "e0445bbc40c1e3163cb709d2d908494515db668f902e05fd3228477548d9eddb",
+        "gitBlob": "8db81b927f7b6e50b553960a07689168793741f6"
       }
     }
   },
@@ -258,11 +259,11 @@
     "releaseEligible": false
   },
   "historicalSourceRecord": {
-    "source": "e3a8c7127df49ae5fabd34588a021f9a93fbf26f",
+    "source": "19df6f84d356bb3486f907b1f777b04a896b9ed8",
     "path": "docs/qualification/native-workload-dev-postgres-source-20261109.json",
-    "bytes": 11033,
-    "sha256": "8bbe6532c0636d6a5dffa09bfb22d0dd0681d3ae67a870cee8c37f77ac21f471",
-    "gitBlob": "8be2432313791c687470e1c1decff4cb56791a71"
+    "bytes": 14574,
+    "sha256": "bb7de9abbb63bc3bc69cfaf04f824734ab1ecc395c5d03342f4a4be12224fce8",
+    "gitBlob": "f6b15c9ca8d4792b174c08fdd2276465b1ece4da"
   },
   "proofBindingCorrection": {
     "review": {
@@ -292,5 +293,39 @@
       }
     },
     "scope": "Local installed PostgreSQL 16 source and dormant source models. Hosted pinned-image role ACL, read-only transaction and physical privileges remain pending."
+  },
+  "observerRoutineAclCorrection": {
+    "independent19dfFinding": {
+      "bytes": 6198,
+      "sha256": "417e0f1e2f5f9ae6b7de8d0973f23aa7a6a7e6520c135b2c974f3da45326aed7"
+    },
+    "localStockPg16_14": {
+      "system_functions.sql": {
+        "bytes": 23315,
+        "sha256": "56b935b41d653a9dd7282b7d0871b37a4ecccd72bbfe03e79a89e05e0131347c"
+      },
+      "system_views.sql": {
+        "bytes": 50273,
+        "sha256": "1c47b3f1172e7ff8a0736d6747cd4487a3e970cc8f437705b1484baf2aae29e0"
+      },
+      "postgres.bki": {
+        "bytes": 944104,
+        "sha256": "e7ccf0cbdf9a993e2bbfd99e3c4bb2161036ad33233d66281756750c409c983f"
+      }
+    },
+    "fixedRestrictedCatalogueSignatures": {
+      "systemFunctions": 56,
+      "systemViews": 4,
+      "expected": 60,
+      "scope": "All pg_catalog routine signatures with stock PUBLIC EXECUTE revocation in the two sealed SQL files, apart from the separately exact two stats-role exceptions."
+    },
+    "exactStockStatsRoutines": [
+      "pg_catalog.pg_get_shmem_allocations()",
+      "pg_catalog.pg_get_backend_memory_contexts()"
+    ],
+    "explicitEdges": "Catalogue routine ACLs are checked for the observer and effective USAGE or SET roles. Only the exact two nongrantable PostgreSQL-owner EXECUTE edges to pg_read_all_stats are allowed. PUBLIC edges on those two are refused independently.",
+    "effectiveEdges": "Require actual EXECUTE false on all 60 present stock-restricted routines and true on both legitimate stats routines. Existing definer, role, reset and relation protections still apply. Other stock PUBLIC catalogue routines keep their ordinary rights.",
+    "output": "Six bounded aggregate facts added to the same observer ACL statement. No raw ACL rows, credentials, file contents or query text.",
+    "activationStillPending": "Validate the fixed inventory and exact grant shapes against the admitted image under a protected pg_catalog search path, with actual same-held transaction and bounded timings. Any actual server file refusal probe requires a separately admitted disposable fixture and fixed native negative owner. This source never executes a privileged routine or mutates an ACL."
   }
 }

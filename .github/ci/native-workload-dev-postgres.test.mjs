@@ -41,6 +41,8 @@ const acl={
  exactStatsGrant:true,inheritsStats:true,setsStats:false,canTemp:false,canCreateDatabaseObjects:false,resetExists:true,canReset:false,
  ownsDatabase:false,ownedSchemas:0,ownedRelations:0,ownedFunctions:0,catalogueRelationsChecked:410,sensitiveCatalogueChecked:11,
  sensitiveCatalogueReadable:0,unexpectedCatalogueGrants:0,unexpectedCatalogueColumnGrants:0,catalogueWriteRights:0,
+ catalogueRoutinesChecked:3500,restrictedRoutinesChecked:60,restrictedRoutinesExecutable:0,
+ executableStockStatsRoutines:2,stockStatsRoutineGrants:2,unexpectedCatalogueRoutineGrants:0,
 };
 const stats={databaseOid:birth.databaseOid,appBackends:1,appUngrantedLocks:0,appStatementRows:1};
 const refusals={
@@ -164,6 +166,31 @@ test('observer ownership and unsafe catalogue access refuse even when ordinary b
  assert.match(DEV_WORKLOAD_POSTGRES_READS.observerAcl,/\('pg_subscription','subconninfo'\)/);
  assert.match(DEV_WORKLOAD_POSTGRES_READS.observerAcl,/acl.grantee=stats AND acl.grantor=postgres_owner/);
  assert.match(DEV_WORKLOAD_POSTGRES_READS.observerAcl,/ext.extname='pg_stat_statements'/);
+});
+
+test('catalogue routine ACL refuses restored PUBLIC access or extra explicit edges while preserving exact stock stats grants',()=>{
+ validateDevWorkloadObserverAcl(acl,birth.databaseOid,'16012');
+ for(const change of [{catalogueRoutinesChecked:61},{catalogueRoutinesChecked:8193},
+  {restrictedRoutinesChecked:59},{restrictedRoutinesChecked:61}])
+  assert.throws(()=>validateDevWorkloadObserverAcl({...acl,...change},birth.databaseOid,'16012'),/routine census/);
+ for(const change of [{restrictedRoutinesExecutable:1},{unexpectedCatalogueRoutineGrants:1},
+  {executableStockStatsRoutines:1},{stockStatsRoutineGrants:1},{stockStatsRoutineGrants:3}])
+  assert.throws(()=>validateDevWorkloadObserverAcl({...acl,...change},birth.databaseOid,'16012'),/routine authority/);
+ const {restrictedRoutinesExecutable:missing,...incomplete}=acl;
+ assert.equal(missing,0);
+ assert.throws(()=>validateDevWorkloadObserverAcl(incomplete,birth.databaseOid,'16012'),/Closed/);
+ const sql=DEV_WORKLOAD_POSTGRES_READS.observerAcl;
+ const signatures=[...sql.matchAll(/\('pg_catalog\.(\w+\([^']*\))'\)/g)].map(match=>match[1]);
+ assert.equal(new Set(signatures).size,62);
+ assert(signatures.includes('pg_read_file(text,bigint,bigint)'));
+ assert(signatures.includes('pg_read_binary_file(text,bigint,bigint,boolean)'));
+ assert(signatures.includes('pg_show_all_file_settings()'));
+ assert.match(sql,/FROM restricted_routines p\s+WHERE pg_catalog\.has_function_privilege\(observer,p\.oid,'EXECUTE'\)/);
+ assert.match(sql,/pg_catalog\.aclexplode\(p\.proacl\)/);
+ assert.match(sql,/acl\.grantee=t\.stats AND acl\.grantor=t\.postgres_owner\s+AND acl\.privilege_type='EXECUTE' AND NOT acl\.is_grantable/);
+ assert.match(sql,/acl\.grantee IN \(SELECT oid FROM effective_roles\) OR \(acl\.grantee=0 AND stock\.oid IS NOT NULL\)/);
+ assert(signatures.includes('pg_get_shmem_allocations()'));
+ assert(signatures.includes('pg_get_backend_memory_contexts()'));
 });
 
 test('only closed same-realm aggregate app observations with positive live activity can be retained',()=>{
