@@ -170,34 +170,41 @@ def group_birth(descriptors):
 def group(unit, service_birth=None):
     with contextlib.ExitStack() as held:
         mount = read_at(None, '/proc/self/mountinfo', 131072)
-        relevant = [line.split() for line in mount.splitlines() if len(line.split()) > 6
-                    and (line.split()[4] == str(ROOT) or line.split()[4].startswith(str(ROOT) + '/'))]
+        rows = [line.split() for line in mount.splitlines() if len(line.split()) > 6]
         if service_birth is None:
+            relevant = [row for row in rows if row[4] == str(ROOT) or row[4].startswith(str(ROOT) + '/')]
             require(len(relevant) == 1 and relevant[0][3:5] == ['/', str(ROOT)]
                     and relevant[0][relevant[0].index('-') + 1] == 'cgroup2', 'cgroup-mount')
         descriptors = []
-        for name in (str(ROOT), 'system.slice', unit):
+        names = (str(ROOT), 'system.slice', unit)
+        for name in names:
             fd = os.open(name, CG_FLAGS, dir_fd=descriptors[-1] if descriptors else None)
             held.callback(os.close, fd)
-            st = os.fstat(fd)
-            if service_birth is not None:
-                require(st.st_uid == 0 and not st.st_mode & 0o022, 'cgroup-ownership')
-            else:
-                require(st.st_uid == 0 and not st.st_mode & 0o022
-                        and f'{os.major(st.st_dev)}:{os.minor(st.st_dev)}' == relevant[0][2], 'cgroup-ownership')
+            info = os.fstat(fd)
+            require(info.st_uid == 0 and not info.st_mode & 0o022, 'cgroup-ownership')
+            if service_birth is None:
+                require(f'{os.major(info.st_dev)}:{os.minor(info.st_dev)}' == relevant[0][2], 'cgroup-ownership')
             descriptors.append(fd)
         if service_birth is not None:
-            # ProtectControlGroups may present a different mount ID. The active
-            # readonly cover and all three underlying births must be the same tree.
-            ids = [mount_id(fd) for fd in descriptors]
-            device = os.fstat(descriptors[0]).st_dev
-            require(1 <= len(relevant) <= 2 and len({row[0] for row in relevant}) == len(relevant)
-                    and all(row[3:5] == ['/', str(ROOT)] and row[row.index('-') + 1] == 'cgroup2'
-                            and row[2] == f'{os.major(device)}:{os.minor(device)}' for row in relevant), 'service-cgroup-view')
-            covering = [row for row in relevant if row[0] == ids[0]]
-            require(len(covering) == 1 and all(value == ids[0] for value in ids)
-                    and 'ro' in covering[0][5].split(',') and 'rw' not in covering[0][5].split(','), 'service-cgroup-cover')
             require(group_birth(descriptors) == service_birth, 'service-cgroup-birth')
+            # systemd can stack and split mount views. Judge only the actual
+            # descriptor mounts against the parent's sealed physical directories.
+            current = ROOT
+            for index, fd in enumerate(descriptors):
+                if index:
+                    current /= names[index]
+                selected = mount_id(fd)
+                view = [row for row in rows if row[0] == selected]
+                require(len(view) == 1, 'service-cgroup-view')
+                row = view[0]
+                info = os.fstat(fd)
+                point = Path(row[4])
+                require(point.is_relative_to(ROOT) and current.is_relative_to(point)
+                        and row[row.index('-') + 1] == 'cgroup2'
+                        and row[2] == f'{os.major(info.st_dev)}:{os.minor(info.st_dev)}', 'service-cgroup-view')
+                options = row[5].split(',')
+                require('ro' in options and 'rw' not in options
+                        and os.fstatvfs(fd).f_flag & os.ST_RDONLY, 'service-cgroup-cover')
         yield descriptors
 
 
