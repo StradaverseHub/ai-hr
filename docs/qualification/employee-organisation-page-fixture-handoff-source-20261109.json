@@ -1,0 +1,99 @@
+{
+  "kind": "PERSONNEL_ORGANISATION_PAGE_FIXTURE_HANDOFF_SOURCE_ONLY",
+  "sourceBranch": "codex/employee-organisation-page-fixture-handoff-20261109",
+  "directParent": "7f98dd6780f780209ea3047a1c256fdd298879e5",
+  "fixture": {
+    "path": "test/performance/personnel-native-fixture.ts",
+    "preimage": {
+      "gitBlob": "57046e76314873112959932ea562b52aca77b40b",
+      "bytes": 5736,
+      "sha256": "3b72cd22e8e97c730192454bca58b87795e362654b6a26250a2fe3cf752bc4fa"
+    },
+    "postimage": {
+      "gitBlob": "933f1543bf2ea08aae446d805720272e597dacf0",
+      "bytes": 6122,
+      "sha256": "e81771adfc1c896cc5bc20363ecb75752609d11232855d0462e52f8ce6e77d17"
+    },
+    "exactPostimageSource": "e2275e1f60bdfa5a3ebbfaebab820fc93a6e285d",
+    "sourcePreimageAlsoPresentAt": "ecb921caab1aa1c20178a28477de2b0c7b3beffe",
+    "logicalIdSegmentRows": 5000,
+    "transactionRows": 500,
+    "employees": 50000
+  },
+  "observation": {
+    "path": "test/employee-choice-db.test.ts",
+    "preimage": {
+      "gitBlob": "7709865d1ff3ba4519e6d40fd25e8b0c62b7335a",
+      "bytes": 75299,
+      "sha256": "45260d9409fa45eac7821d4f2d684cc25867e807c3f84adac750fa46102be5e3"
+    },
+    "postimage": {
+      "gitBlob": "ba8a2057d0023aeaed2a6c710dabf831b066ce83",
+      "bytes": 75713,
+      "sha256": "c89169958df4185a9666ac468f50efa7647a033c6bba5180d79223fa550b79c5"
+    },
+    "caseCount": 10,
+    "receipt": "employee-choice-50k.json",
+    "field": "phaseElapsedMs",
+    "unit": "monotonic milliseconds since original case clock start",
+    "marks": {
+      "fixtureEntry": "Before the existing fixture helper including its internal reset",
+      "fixtureReady": "After fixture return and its native counts and role witness",
+      "ordinaryReadsComplete": "After the existing four ordinary reads and their parity assertions",
+      "comparisonEntry": "Immediately before the unchanged comparison call, present only on admitted exact course"
+    },
+    "beforeEachResetOutsideCaseClock": true
+  },
+  "unchangedQualification": {
+    "combinedCaseMs": 300000,
+    "prepareAdmissionRemainingMs": 110000,
+    "abbaAdmissionRemainingMs": 90000,
+    "ownerRestorationReserveMs": 25000,
+    "nativeStatementTimeoutMs": 20000,
+    "nativeLockTimeoutMs": 300,
+    "sequence": [
+      "A0",
+      "B0",
+      "B1",
+      "A1"
+    ],
+    "nativePlans": 16,
+    "productionPathsChanged": false
+  },
+  "observedSeparateUnicodeFixtureCourse": {
+    "source": "e2275e1f60bdfa5a3ebbfaebab820fc93a6e285d",
+    "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+    "run": 42561295761,
+    "attempt": 1,
+    "terminalJobs": 7,
+    "artifactId": 13649513439,
+    "artifactSha256": "81eb477e8d3b0b80491b1ed7868a07d6cffcc145cfb88826c0dff669379b7a56",
+    "fixtureReady": true,
+    "committedEmployees": 50000,
+    "retainedCounts": {
+      "employees": 50000,
+      "assignments": 50000
+    },
+    "wholeUnicodeCasePassed": true,
+    "wholeUnicodeCaseMs": 156456.978038,
+    "scope": "Whole separate case elapsed bounds its fixture time. The PAGE admission and comparison require their own result."
+  },
+  "originalPageNonpass": {
+    "source": "7f98dd6780f780209ea3047a1c256fdd298879e5",
+    "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+    "run": 42560449658,
+    "attempt": 1,
+    "terminalJobs": 7,
+    "passedCases": 9,
+    "failedCases": 1,
+    "artifactId": 13649034261,
+    "artifactSha256": "fc29e1983f3cc75df9b8b3a447218a7b2d9bab12a3fe012361618edb26b9d21c",
+    "fixtureReady": true,
+    "ordinaryExactNativeIdsAndCounts": true,
+    "comparisonPreparationEntered": false,
+    "rawComparisonPlans": 0,
+    "failedWholePageCaseMs": 225547.680873
+  },
+  "thisCandidateHostedResult": "pending",
+  "releaseEligible": false
+}
