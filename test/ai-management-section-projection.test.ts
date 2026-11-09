@@ -196,7 +196,7 @@ it('loads Worker diagnostics and registry while Access configuration is locked',
 
 it('loads an enabled shell launcher while Access is locked and preserves visibility guards',async()=>{
  await setModule(b.tenantId,'assistant','active');
- const admin=await entitledCtx(b);
+ const admin={...await entitledCtx(b),grants:group.grants};
  const hire=await hireEmployee(admin,{person:{fullName:'Fictional Launcher User',primaryEmail:'launcher@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const userId=await createAppUser(b.tenantId,hire.personId,'employee');
  const personId=hire.personId,settings={enabled:true,position:'bottom-left',hiddenAreas:['people','payroll']};
@@ -233,7 +233,7 @@ it('loads an enabled shell launcher while Access is locked and preserves visibil
  expect(await assistantShellFor({...ctx,personId:randomUUID()})).toEqual(hidden);
  const foreign=await seedBase();
  await setModule(foreign.tenantId,'assistant','active');
- const foreignAdmin=await entitledCtx(foreign);
+ const foreignAdmin:SessionContext={...await entitledCtx(foreign),grants:[{role:'hr_admin',companyId:null}]};
  await setAssistantLauncher(foreignAdmin,settings);
  await saveAiProviderConfig(foreignAdmin,{provider:'openai',model:'foreign-fictional-launcher',apiKey:'foreign-fictional-key',makeActive:true});
  expect(await assistantShellFor({...await entitledCtx(foreign,['employee']),userId,personId})).toEqual({allowed:false,launcher:null});
