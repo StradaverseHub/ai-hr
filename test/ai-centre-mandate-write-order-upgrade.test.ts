@@ -8,7 +8,7 @@ import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
 import {createDb,type SessionContext} from '../db/client';
-import {constructAiCentreSelectedPrefixOwner} from './helpers/ai-centre-compatibility-owner-constructor';
+import {constructAiCentreSelectedPrefixOwner,aiCentreSelectedUpgradeSource} from './helpers/ai-centre-compatibility-owner-constructor';
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
 const admission=admitSingletonTest('test/ai-centre-mandate-write-order-upgrade.test.ts');
 
@@ -28,9 +28,7 @@ const newTriggers=['aa_ai_centre_mandate_write_order','aaa_ai_centre_bound_tenan
 
 it('upgrades actual historical709 through3500 to3501 as the real non-super owner and proves guarded tenant-bound native writes',async context=>{
  const caseStartedAt=performance.now();
- const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'))as{entries:{idx:number;when:number;tag:string}[]};
- expect(journal.entries).toHaveLength(755);expect(journal.entries[717].tag).toBe('2103_system_performance_read_guards');
- expect(journal.entries.at(-1)).toMatchObject({idx:3437,when:1793330003737,tag:'3501_ai_centre_mandate_write_order'});
+ const {journal,boundaries}=aiCentreSelectedUpgradeSource();
  const token=randomUUID().replaceAll('-',''),database='ai_hr_ai_compat_'+token,role='aihr_ai_compat_'+token;
  const directory=mkdtempSync(join(tmpdir(),'aihr-ai-write-order-'));
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
@@ -43,7 +41,7 @@ it('upgrades actual historical709 through3500 to3501 as the real non-super owner
  let migration:ReturnType<typeof createDb>|undefined,created=false,roleCreated=false,primaryFailure:unknown;
  let databaseOid:string|undefined,roleOid:string|undefined,selectedCourse:Awaited<ReturnType<typeof constructAiCentreSelectedPrefixOwner>>|undefined;
  const report:Record<string,unknown>={kind:'NATIVE_AI_CENTRE_MANDATE_WRITE_ORDER_COMPONENT_ONLY',releaseAuthorized:false,complete:false,cleanupComplete:false,
-  historicalOriginals:historical,selectedSourceBoundaries:[710,717,754,755],phase:'constructor',resourceBound:{caseMs:300000,pools:4,maxPerPool:1,maximumConnections:4,extraOwnerLoginPools:1,
+  historicalOriginals:historical,selectedSourceBoundaries:[boundaries.historical,boundaries.alphaSeven,boundaries.payroll,boundaries.compatibility,boundaries.mandate],phase:'constructor',resourceBound:{caseMs:300000,pools:4,maxPerPool:1,maximumConnections:4,extraOwnerLoginPools:1,
    poolCloseSeconds:5,lockTimeoutMs:5000,statementTimeoutMs:10000,foreignDenialObservationMs:2500,observerPolls:100,observerPollMs:20}};
  const save=()=>{writeFileSync(join(admission.evidenceDirectory,'ai-centre-mandate-write-order-upgrade.json'),JSON.stringify(report,null,2));};
  const tenantId=randomUUID(),foreignTenant=randomUUID(),userId=randomUUID(),foreignUser=randomUUID();
@@ -67,7 +65,7 @@ it('upgrades actual historical709 through3500 to3501 as the real non-super owner
    if(original){expect(entry.when).toBe(original.when);expect(sha(readFileSync(path))).toBe(original.hash);}copyFileSync(path,join(directory,entry.tag+'.sql'));
   }
   const stage=(count:number)=>writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,count)}));
-  stage(710);await migrate(storage.db,{migrationsFolder:directory});
+  stage(boundaries.historical);await migrate(storage.db,{migrationsFolder:directory});
   await storage.client`insert into tenant(id,workos_org_id,name) values(${tenantId},${randomUUID()},'Fictional write-order group'),(${foreignTenant},${randomUUID()},'Fictional foreign group')`;
   await storage.client`insert into app_user(id,tenant_id,person_id,workos_user_id) values(${userId},${tenantId},null,${randomUUID()}),(${foreignUser},${foreignTenant},null,${randomUUID()})`;
   await storage.client`insert into role_assignment(tenant_id,app_user_id,role) values(${tenantId},${userId},'hr_admin')`;
@@ -80,28 +78,30 @@ it('upgrades actual historical709 through3500 to3501 as the real non-super owner
   const [actualOwner]=await migration.client`select current_user as role,session_user as login,current_database()as database,inet_server_addr()='127.0.0.1'::inet as loopback,
    r.rolsuper,r.rolinherit,r.rolcanlogin,r.rolreplication,r.rolbypassrls,r.rolcreatedb,r.rolcreaterole,r.rolconnlimit from pg_roles r where r.rolname=current_user`;
   expect(actualOwner).toEqual({role,login:role,database,loopback:true,rolsuper:false,rolinherit:true,rolcanlogin:true,rolreplication:false,rolbypassrls:false,rolcreatedb:false,rolcreaterole:false,rolconnlimit:-1});report.migrationOwner=actualOwner;
-  const initialLedger=await ledger(),initialCatalogue=await catalogue(),initialFacts=await facts();expect(initialLedger).toHaveLength(717);
-  expect(initialLedger.map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(journal.entries.slice(0,717).map(entry=>({hash:sha(readFileSync(join(directory,entry.tag+'.sql'))),created_at:String(entry.when)})));
+  const initialLedger=await ledger(),initialCatalogue=await catalogue(),initialFacts=await facts();expect(initialLedger).toHaveLength(boundaries.payroll);
+  expect(initialLedger.map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(journal.entries.slice(0,boundaries.payroll).map(entry=>({hash:sha(readFileSync(join(directory,entry.tag+'.sql'))),created_at:String(entry.when)})));
   for(const original of Object.values(historical))expect(initialLedger.find(row=>row.created_at===String(original.when))?.hash).toBe(original.hash);
   const originalVersion=initialCatalogue.functions.find(row=>row.row.proname==='teras_bump_version')!.definition as string;
   await storage.client.unsafe(originalVersion.replace('AS $function$','AS $function$\n-- unknown actual installed version owner'));
-  const drifted=await catalogue();stage(755);report.phase='whole38-pending-rollback';save();
+  const drifted=await catalogue();stage(boundaries.mandate);report.phase='whole38-pending-rollback';save();
   await expect(migrate(migration.db,{migrationsFolder:directory})).rejects.toMatchObject({cause:{code:'55000',message:'Unexpected AI Centre mandate predecessor: app.teras_bump_version()'}});
   expect(await ledger()).toEqual(initialLedger);expect(await catalogue()).toEqual(drifted);expect(await facts()).toEqual(initialFacts);
   expect((await storage.client`select to_regprocedure('app.ai_centre_mandate_write_order()')as helper,to_regclass('public.notification_event_processing')as queue`)[0]).toEqual({helper:null,queue:null});
   await storage.client.unsafe(originalVersion);report.whole38PendingRollback=true;
-  // Two honest positive stock phases expose and compare the exact populated746 boundary.
-  stage(754);await migrate(migration.db,{migrationsFolder:directory});const beforeLedger=await ledger();expect(beforeLedger).toHaveLength(754);
-  expect(beforeLedger.slice(0,717)).toEqual(initialLedger);expect(await catalogue()).toEqual(initialCatalogue);expect(await facts()).toEqual(initialFacts);
-  stage(755);await migrate(migration.db,{migrationsFolder:directory});const afterLedger=await ledger();expect(afterLedger).toHaveLength(755);
-  expect(afterLedger.slice(0,754)).toEqual(beforeLedger);expect(afterLedger.at(-1)).toMatchObject({created_at:'1793330003737',hash:sha(readFileSync(migrationFile))});
+  // First observe the complete compatibility phase, then apply only mandate write order.
+  stage(boundaries.compatibility);await migrate(migration.db,{migrationsFolder:directory});const beforeLedger=await ledger();expect(beforeLedger).toHaveLength(boundaries.compatibility);
+  expect(beforeLedger.slice(0,boundaries.payroll)).toEqual(initialLedger);expect(await catalogue()).toEqual(initialCatalogue);expect(await facts()).toEqual(initialFacts);
+  expect(beforeLedger.slice(boundaries.payroll).map(({hash,created_at})=>({hash,created_at}))).toEqual(
+   journal.entries.slice(boundaries.payroll,boundaries.compatibility).map(entry=>({hash:sha(readFileSync(join(directory,entry.tag+'.sql'))),created_at:String(entry.when)})));
+  stage(boundaries.mandate);await migrate(migration.db,{migrationsFolder:directory});const afterLedger=await ledger();expect(afterLedger).toHaveLength(boundaries.mandate);
+  expect(afterLedger.slice(0,boundaries.compatibility)).toEqual(beforeLedger);expect(afterLedger.at(-1)).toMatchObject({created_at:'1793330003737',hash:sha(readFileSync(migrationFile))});
   expect(await catalogue()).toEqual(initialCatalogue);expect(await facts()).toEqual(initialFacts);
   const newCatalogue=await storage.client`select p.oid::regprocedure::text as signature,p.proowner::regrole::text as owner,p.prosecdef,has_function_privilege('ai_hr_app',p.oid,'EXECUTE')as app_execute,
    (select count(*)::integer from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))))as acl_count from pg_proc p where p.oid=any(${newFunctions}::text[]::regprocedure[])order by signature`;
   expect(Array.from(newCatalogue)).toEqual(newFunctions.slice().sort().map(signature=>({signature,owner:role,prosecdef:false,app_execute:false,acl_count:1})));
   const triggers=await storage.client`select tgname,tgtype,tgenabled,pg_get_triggerdef(oid)as definition from pg_trigger where tgrelid='public.teras_mandate_control'::regclass and not tgisinternal order by tgname`;
   expect(triggers.map(row=>[row.tgname,row.tgtype,row.tgenabled])).toEqual([['aa_ai_centre_mandate_write_order',22,'O'],['aaa_ai_centre_bound_tenant',23,'O'],['aaa_ai_centre_control_lock',23,'O'],['teras_mandate_control_version',19,'O']]);
-  report.positiveStockPhases=[710,717,754,755];report.ledgerBeforeSha256=sha(Buffer.from(JSON.stringify(initialLedger)));report.ledgerAfterSha256=sha(Buffer.from(JSON.stringify(afterLedger)));
+  report.positiveStockPhases=[boundaries.historical,boundaries.alphaSeven,boundaries.payroll,boundaries.compatibility,boundaries.mandate];report.ledgerBeforeSha256=sha(Buffer.from(JSON.stringify(initialLedger)));report.ledgerAfterSha256=sha(Buffer.from(JSON.stringify(afterLedger)));
   report.predecessorCatalogueSha256=sha(Buffer.from(JSON.stringify(initialCatalogue)));report.newNativeCatalogue=newCatalogue;report.triggers=triggers;report.phase='guard-drifts';save();
   // Each mutation is real DDL inside its own rollback-only privileged constructor transaction.
   // The actual append guard then runs as the exact non-super native owner.

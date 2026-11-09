@@ -90,7 +90,7 @@ export async function constructAiCentreCompatibilityOwner(connection:Sql,databas
  return {realm,memberships,before,after,transferred:before.filter(row=>row.move).length,perKind:Object.fromEntries(['schema','relation','function','type','column'].map(kind=>[kind,before.filter(row=>row.kind===kind&&row.move).length]))};
 }
 
-/** Fixed selected755 job / historical710 -> real owner717 rehearsal.
+/** Fixed selected756 job / historical710 -> real owner717 -> Payroll718 rehearsal.
  * Source models return no capability. Native-changing entry points read their own
  * catalogue; no supplied JSON, flag, role map, URL or callback authorizes SQL. */
 type SelectedRole={oid:string;name:string;login:boolean;super:boolean;inherit:boolean;createRole:boolean;createDb:boolean;replication:boolean;bypassRls:boolean;connectionLimit:number;passwordNull:boolean;validUntil:string|null;config:string[]|null};
@@ -109,14 +109,21 @@ type SelectedSnapshot={connection:SelectedConnection;ledgerCount:number;ledgerRo
 export type AiCentreSelectedJobModel={evidence:'source-model-only'|'native-readonly';mode:'full'|'focused';cluster:SelectedCluster;source:{tuples:string;sql:string;fingerprint:string};roles:SelectedRole[];memberships:SelectedMember[];databases:SelectedDatabase[];owned:{database:string;databaseOid:string;role:string;roleOid:string};readers:SelectedSnapshot[];shared:Omit<SelectedShared,'identity'>[]};
 type SelectedFunctionSpec=Omit<SelectedFunction,'oid'|'parallel'|'leakproof'|'kind'|'acl'> & {source:string;aclGrantees:string[]};
 type SelectedPolicySpec={relation:string;name:string;role:string;command:string;using:'tenant'|null;check:'tenant'|'event'|null};
-type SelectedSourceOracle={tupleSha755:string;tupleSha717:string;tupleSha710:string;sqlPairSha755:string;sqlPairSha717:string;ledgerRowsSha755:string;templateFingerprint:string;N:string[];functions:SelectedFunctionSpec[];columns:Record<string,Record<string,Record<string,string[]>>>;columnTypes:Record<string,Record<string,string>>;policies:SelectedPolicySpec[];forceRls:Record<string,boolean>;dynamicAccessRecipients:string[];roleNames:string[];sequenceAcl:string[][];publicReviewPolicies:Record<string,string>;baselineFunctions:SelectedFunctionSpec[]};
+const selectedCheckpoints={
+ historical:{count:710,tuples:'0c1400ecff0da4595cbe4106e3aed49097ebf3398ddfaf33b19ef010d7319cc5',sql:'3901338ec742d9db535aeb1de7ade88acbd6eed026379459ccf163fd0c3fefd5'},
+ alphaSeven:{count:717,tuples:'1c09c88bea94c7f4966abe99a2c4d28fd49c5a1493ac61ccda0244a7a63c1530',sql:'9e2dd13f608f0178d26544d8eeade945f5b50dd18bd6444dda87bcdc0cb8f8a2'},
+ payroll:{count:718,tuples:'618d55e914cec137fa5e547a2169cc69ad1af6112496d346c9260ecb149b764e',sql:'3be2fe1ddf1f70703f8d74d0d1192c78a593753e7637db5268a100b7da24f071'},
+ compatibility:{count:755,tuples:'dfdaddc77558b0b5ae9d45cb63620410bad944fbd064f2b607f417cdd9b30b13',sql:'5fcf3797b868baaaab62ff56a049f4c762e0c0dc0aeaddb42296c430c2c167d9'},
+ mandate:{count:756,tuples:'9bb116c21ef24021f833d1e3aa9b9ed77ef5e7e29e639d43f0e2f57a32c06e9a',sql:'5ec30c17aaa57bb806bd349b55ca2aa1916761e6211531d0235984a43eb5a6f0'},
+}as const;
+const selectedTemplateFingerprint='3f5ec9397e4d17fe52f3d929de12f97e8ef238b8fa5980016f2bfc1aa83c0fcf';
+const selectedStockLedgerSha='901f19cdec69f1f2afe4a65238a61fe34110db2bf31b0957faabd204acfc8a9c';
+const selectedSourceBinding={tuples:selectedCheckpoints.mandate.tuples,sql:selectedCheckpoints.mandate.sql,fingerprint:selectedTemplateFingerprint};
+const selectedPayrollTag='3900_individual_transaction_calculation_method';
+const selectedCompatibilityTag='3500_ai_centre_architecture_compatibility';
+const selectedMandateTag='3501_ai_centre_mandate_write_order';
+type SelectedSourceOracle={N:string[];functions:SelectedFunctionSpec[];columns:Record<string,Record<string,Record<string,string[]>>>;columnTypes:Record<string,Record<string,string>>;policies:SelectedPolicySpec[];forceRls:Record<string,boolean>;dynamicAccessRecipients:string[];roleNames:string[];sequenceAcl:string[][];publicReviewPolicies:Record<string,string>;baselineFunctions:SelectedFunctionSpec[]};
 const selectedOracle:SelectedSourceOracle={
- "tupleSha755": "61e17a930609f92efd7cca2fa3c6f94b84df30820ea683ebe8d3b34f177ee888",
- "tupleSha717": "1c09c88bea94c7f4966abe99a2c4d28fd49c5a1493ac61ccda0244a7a63c1530",
- "tupleSha710": "0c1400ecff0da4595cbe4106e3aed49097ebf3398ddfaf33b19ef010d7319cc5",
- "sqlPairSha755": "b0fa881bcb5ce07a48dff4decb10531c20bd740e36db8dd45d4df32b6413e209",
- "sqlPairSha717": "9e2dd13f608f0178d26544d8eeade945f5b50dd18bd6444dda87bcdc0cb8f8a2",
- "templateFingerprint": "0ed592e16dd6a093b7e9f3e7558d7ecc55241958427fb3d3a4e2c5a0d8e05701",
  "N": [
   "ai_hr_reward_preparation_reader",
   "ai_hr_reward_preparation_invalidator",
@@ -862,7 +869,6 @@ const selectedOracle:SelectedSourceOracle={
    "USAGE"
   ]
  ],
- "ledgerRowsSha755": "48941a512cb3dec390d5cfab0ee5b8e7c5f84dfa35927bf5e70942ab4bb4d09d",
  "publicReviewPolicies": {
   "reward_uploaded_review_read": "tenant_id = app.current_tenant_id() AND app.reward_access(unit_id)",
   "reward_uploaded_review_write": "tenant_id = app.current_tenant_id() AND ('gr'::text = ANY ((ARRAY( SELECT app.reward_roles(reward_uploaded_review.unit_id) AS reward_roles)))) AND app.reward_not_viewing_as()"
@@ -1055,8 +1061,8 @@ function selectedSnapshot(snapshot:SelectedSnapshot,creator:string,cluster:Selec
   selectedEqual(snapshot.ledgerCount,0);selectedEqual(snapshot.ledgerRowsSha256,selectedDigest([]));selectedEqual(snapshot.fingerprints,null);selectedEqual(snapshot.emptyObjects,0);
   selectedEqual(snapshot.functions,[]);selectedEqual(snapshot.relations,[]);selectedEqual(snapshot.policies,[]);selectedEqual(snapshot.schemas,[]);selectedEqual(snapshot.sequence,null);selectedEqual(snapshot.shared,[]);return;
  }
- selectedEqual(snapshot.emptyObjects,null);selectedEqual(snapshot.ledgerCount,755);selectedEqual(snapshot.ledgerRowsSha256,selectedOracle.ledgerRowsSha755);
- if(connection.database==='ai_hr_dev')selectedEqual(snapshot.fingerprints,null);else selectedEqual(snapshot.fingerprints,[selectedOracle.templateFingerprint]);
+ selectedEqual(snapshot.emptyObjects,null);selectedEqual(snapshot.ledgerCount,selectedCheckpoints.mandate.count);selectedEqual(snapshot.ledgerRowsSha256,selectedStockLedgerSha);
+ if(connection.database==='ai_hr_dev')selectedEqual(snapshot.fingerprints,null);else selectedEqual(snapshot.fingerprints,[selectedTemplateFingerprint]);
  selectedNFootprint(snapshot,creator);
 }
 function selectedNFootprint(snapshot:SelectedSnapshot,creator:string){
@@ -1122,7 +1128,7 @@ export function assertAiCentreSelectedJobCatalogue(value:unknown):asserts value 
  selectedObject(model.cluster);selectedNeed(typeof model.cluster.systemIdentifier==='string'&&/^[1-9][0-9]*(?![\s\S])/.test(model.cluster.systemIdentifier)&&typeof model.cluster.startedAt==='string'&&model.cluster.startedAt.length<=80);
  selectedInt(model.cluster.version,160000);selectedNeed(model.cluster.version<170000);
  selectedEqual({jit:model.cluster.jit,available:model.cluster.jitAvailable,maxConnections:model.cluster.maxConnections,maxLocks:model.cluster.maxLocks},{jit:'on',available:true,maxConnections:100,maxLocks:256});
- selectedEqual(model.source,{tuples:selectedOracle.tupleSha755,sql:selectedOracle.sqlPairSha755,fingerprint:selectedOracle.templateFingerprint});
+ selectedEqual(model.source,selectedSourceBinding);
  selectedObject(model.owned);selectedNeed(/^ai_hr_ai_compat_[0-9a-f]{32}(?![\s\S])/.test(model.owned.database)&&/^aihr_ai_compat_[0-9a-f]{32}(?![\s\S])/.test(model.owned.role));selectedOid(model.owned.databaseOid);selectedOid(model.owned.roleOid);
  selectedNeed(model.owned.database.slice('ai_hr_ai_compat_'.length)===model.owned.role.slice('aihr_ai_compat_'.length));
  selectedArray(model.roles);model.roles.forEach(selectedRole);selectedUnique(model.roles.map(row=>row.name));selectedUnique(model.roles.map(row=>row.oid));
@@ -1198,8 +1204,8 @@ async function selectedCluster(q:ISql,budget:SelectedBudget){
 async function selectedGlobal(q:ISql,role:string|null,budget:SelectedBudget){
  const roles=await selectedRead<SelectedRole>(q,
   "SELECT jsonb_build_object('oid',r.oid::text,'name',r.rolname,'login',r.rolcanlogin,'super',r.rolsuper,'inherit',r.rolinherit,'createRole',r.rolcreaterole,'createDb',r.rolcreatedb,"+
-  "'replication',r.rolreplication,'bypassRls',r.rolbypassrls,'connectionLimit',r.rolconnlimit,'passwordNull',r.rolpassword IS NULL,'validUntil',r.rolvaliduntil::text,'config',r.rolconfig) AS value "+
-  "FROM pg_catalog.pg_authid r ORDER BY r.oid LIMIT 40001",budget);
+  "'replication',r.rolreplication,'bypassRls',r.rolbypassrls,'connectionLimit',r.rolconnlimit,'passwordNull',r.rolpassword IS NULL,'validUntil',r.rolvaliduntil::text,'config',settings.setconfig) AS value "+
+  "FROM pg_catalog.pg_authid r LEFT JOIN pg_catalog.pg_db_role_setting settings ON settings.setrole=r.oid AND settings.setdatabase=0 ORDER BY r.oid LIMIT 40001",budget);
  const memberships=await selectedRead<SelectedMember>(q,
   "SELECT jsonb_build_object('role',pg_get_userbyid(m.roleid),'member',pg_get_userbyid(m.member),'grantor',pg_get_userbyid(m.grantor),'inherit',m.inherit_option,'set',m.set_option,'admin',m.admin_option) AS value "+
   "FROM pg_catalog.pg_auth_members m ORDER BY m.roleid,m.member,m.grantor LIMIT 40001",budget);
@@ -1295,27 +1301,36 @@ function selectedRegular(path:string,maximum=4*1024*1024){
  selectedNeed(stat.isFile()&&!stat.isSymbolicLink()&&stat.nlink===1&&stat.size<=maximum);
  return readFileSync(path);
 }
-function selectedSource(){
+/** Closed current source profile. This file observation does not authorize native work. */
+export function aiCentreSelectedUpgradeSource(){
  const root=realpathSync(process.cwd());selectedEqual(root,resolve(process.cwd()));
  const journal=JSON.parse(selectedRegular(join(root,'db/migrations/meta/_journal.json')).toString('utf8'))as SelectedJournal;
- selectedNeed(journal&&Array.isArray(journal.entries)&&journal.entries.length===755);
- selectedEqual(selectedDigest(journal.entries),selectedOracle.tupleSha755);selectedEqual(selectedDigest(journal.entries.slice(0,717)),selectedOracle.tupleSha717);
+ selectedNeed(journal&&Array.isArray(journal.entries)&&journal.entries.length===selectedCheckpoints.mandate.count);
  const expected=journal.entries.map(row=>{
   selectedInt(row.idx);selectedInt(row.when,1);selectedNeed(typeof row.tag==='string'&&/^[A-Za-z0-9_-]{1,180}(?![\s\S])/.test(row.tag));
   selectedEqual(row.version,'7');selectedEqual(row.breakpoints,true);return row.tag+'.sql';
  });
  selectedUnique(expected);selectedEqual(readdirSync(join(root,'db/migrations')).filter(name=>name.endsWith('.sql')).sort(),[...expected].sort());
  const pairs=journal.entries.map(row=>[row.tag,selectedHash(selectedRegular(join(root,'db/migrations',row.tag+'.sql')))]);
- selectedEqual(selectedDigest(pairs),selectedOracle.sqlPairSha755);selectedEqual(selectedDigest(pairs.slice(0,717)),selectedOracle.sqlPairSha717);
+ for(const checkpoint of Object.values(selectedCheckpoints)){
+  selectedEqual(selectedDigest(journal.entries.slice(0,checkpoint.count)),checkpoint.tuples);
+  selectedEqual(selectedDigest(pairs.slice(0,checkpoint.count)),checkpoint.sql);
+ }
+ const position=(tag:string)=>journal.entries.findIndex(row=>row.tag===tag)+1;
+ const boundaries={historical:selectedCheckpoints.historical.count,alphaSeven:selectedCheckpoints.alphaSeven.count,
+  payroll:position(selectedPayrollTag),compatibility:position(selectedCompatibilityTag),mandate:position(selectedMandateTag)};
+ selectedEqual([boundaries.payroll,boundaries.compatibility,boundaries.mandate],
+  [selectedCheckpoints.payroll.count,selectedCheckpoints.compatibility.count,selectedCheckpoints.mandate.count]);
+ selectedEqual(journal.entries[boundaries.payroll].tag,'2103_system_performance_read_guards');
  const digest=createHash('sha256');
  for(const file of [...expected].sort())digest.update(file).update(selectedRegular(join(root,'db/migrations',file)));
  for(const file of ['db/migrations/meta/_journal.json','packs/catalog.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts'])digest.update(file).update(selectedRegular(join(root,file)));
- selectedEqual(digest.digest('hex'),selectedOracle.templateFingerprint);
+ selectedEqual(digest.digest('hex'),selectedTemplateFingerprint);
  for(const [tag,original]of Object.entries(selectedHistorical)){
   selectedEqual(selectedHash(selectedRegular(join(root,'.github/ci/historical-migrations',tag+'.sql'))),original.hash);
   selectedEqual(journal.entries.find(row=>row.tag===tag)?.when,original.when);
  }
- return {root,journal,pairs};
+ return {root,journal,pairs,boundaries};
 }
 function selectedConfiguration(){
  const env=process.env;selectedEqual(process.platform,'linux');selectedEqual(env.GITHUB_ACTIONS,'true');selectedEqual(env.RUNNER_ENVIRONMENT,'github-hosted');
@@ -1345,7 +1360,7 @@ function selectedConfiguration(){
  if(focused)selectedEqual(env.AIHR_FOCUSED_EVIDENCE_DIR,directory);
  return {mode:mode as 'full'|'focused',url,directory};
 }
-function selectedFolder(folder:string,source:ReturnType<typeof selectedSource>){
+function selectedFolder(folder:string,source:ReturnType<typeof aiCentreSelectedUpgradeSource>){
  selectedNeed(resolve(folder)===folder&&realpathSync(folder)===folder&&dirname(folder)===realpathSync(selectedTmpdir()));
  selectedNeed(/^aihr-ai-(?:compat|write-order)-[A-Za-z0-9]{6}(?![\s\S])/.test(basename(folder)));
  const stat=lstatSync(folder);selectedNeed(stat.isDirectory()&&!stat.isSymbolicLink()&&stat.uid===process.getuid!()&&(stat.mode&0o077)===0);
@@ -1355,14 +1370,43 @@ function selectedFolder(folder:string,source:ReturnType<typeof selectedSource>){
   const expected=original?.hash??source.pairs.find(row=>row[0]===tag)![1];
   selectedEqual(selectedHash(selectedRegular(join(folder,file))),expected);
  }
- for(const row of source.journal.entries.slice(0,717))selectedNeed(lstatSync(join(folder,row.tag+'.sql')).isFile());
+ for(const row of source.journal.entries.slice(0,source.boundaries.payroll))selectedNeed(lstatSync(join(folder,row.tag+'.sql')).isFile());
  selectedNeed(realpathSync(join(folder,'meta'))===join(folder,'meta')&&lstatSync(join(folder,'meta')).isDirectory());
 }
-function selectedPrivateLedger(ledger:SelectedLedger[],source:ReturnType<typeof selectedSource>,count:number,prefix?:SelectedLedger[]){
+function selectedPrivateLedger(ledger:SelectedLedger[],source:ReturnType<typeof aiCentreSelectedUpgradeSource>,count:number,prefix?:SelectedLedger[]){
  selectedEqual(ledger.length,count);if(prefix)selectedEqual(ledger.slice(0,prefix.length),prefix);
  selectedEqual(ledger.map(row=>({hash:row.hash,created_at:row.created_at})),source.journal.entries.slice(0,count).map(row=>({
   hash:selectedHistorical[row.tag as keyof typeof selectedHistorical]?.hash??source.pairs.find(pair=>pair[0]===row.tag)![1],created_at:String(row.when),
  })));
+}
+type SelectedPayrollState={
+ connection:{pid:number;backendStart:string;database:string;databaseOid:string;current:string;session:string;serverAddress:string;serverPort:number;clientAddress:string},
+ relation:{oid:string;kind:string;owner:string;acl:string;rls:boolean;force:boolean},
+ column:{text:boolean;nullable:boolean;hasDefault:boolean;defaultPresent:boolean;acl:string|null;readable:boolean;insertable:boolean;editable:boolean}|null,
+ constraint:{kind:string;validated:boolean;onlyMethodColumn:boolean;expression:string}|null,
+};
+async function selectedPayrollState(q:ISql,budget:SelectedBudget){
+ const rows=await selectedRead<SelectedPayrollState>(q,
+  "SELECT jsonb_build_object('connection',jsonb_build_object('pid',pg_backend_pid(),'backendStart',s.backend_start::text,'database',current_database(),"+
+  "'databaseOid',s.datid::text,'current',current_user,'session',session_user,'serverAddress',pg_catalog.host(inet_server_addr()),'serverPort',inet_server_port(),'clientAddress',pg_catalog.host(inet_client_addr())),"+
+  "'relation',jsonb_build_object('oid',c.oid::text,'kind',c.relkind,'owner',pg_get_userbyid(c.relowner),'acl',c.relacl::text,'rls',c.relrowsecurity,'force',c.relforcerowsecurity),"+
+  "'column',CASE WHEN a.attnum IS NOT NULL THEN jsonb_build_object('text',a.atttypid='pg_catalog.text'::regtype,'nullable',NOT a.attnotnull,'hasDefault',a.atthasdef,"+
+  "'defaultPresent',EXISTS(SELECT FROM pg_catalog.pg_attrdef d WHERE d.adrelid=c.oid AND d.adnum=a.attnum),'acl',a.attacl::text,"+
+  "'readable',has_column_privilege('ai_hr_app',c.oid,a.attnum,'SELECT'),'insertable',has_column_privilege('ai_hr_app',c.oid,a.attnum,'INSERT'),'editable',has_column_privilege('ai_hr_app',c.oid,a.attnum,'UPDATE')) END,"+
+  "'constraint',CASE WHEN k.oid IS NOT NULL THEN jsonb_build_object('kind',k.contype,'validated',k.convalidated,'onlyMethodColumn',k.conkey=ARRAY[a.attnum],'expression',pg_get_expr(k.conbin,c.oid)) END) AS value "+
+  "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_stat_activity s ON s.pid=pg_backend_pid() "+
+  "LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attname='calculation_method' AND a.attnum>0 AND NOT a.attisdropped "+
+  "LEFT JOIN pg_catalog.pg_constraint k ON k.conrelid=c.oid AND k.conname='payroll_individual_txn_calculation_method_check' "+
+  "WHERE c.oid='public.payroll_individual_txn'::regclass",budget);
+ selectedEqual(rows.length,1);return rows[0];
+}
+async function selectedPayrollFictionalFacts(q:ISql,budget:SelectedBudget){
+ // These are the only seeded business relations in the two selected fixtures.
+ // Preserve their pre/post contents without publishing row values.
+ const relations=['tenant','company','app_user','role_assignment','ai_model_run','teras_mandate_control'];
+ const rows=await selectedRead<{count:number;sha256:string}>(q,"SELECT jsonb_build_object('count',count(*)::integer,'sha256',encode(sha256(convert_to(coalesce(string_agg(value,E'\\n' ORDER BY value),''),'UTF8')),'hex')) AS value FROM ("+
+  relations.map(table=>"(SELECT '"+table+":'||to_jsonb(t)::text AS value FROM public."+table+" t LIMIT 8)").join(' UNION ALL ')+") facts",budget);
+ selectedEqual(rows.length,1);selectedEqual(rows[0].count,7);return rows[0];
 }
 async function selectedReadonly<T>(client:Sql,run:(q:ISql)=>Promise<T>):Promise<T>{
  return client.begin(async tx=>{
@@ -1396,7 +1440,7 @@ async function selectedJobCapture(storage:Sql,observer:Sql,database:string,role:
   const connection=await selectedConnection(q,budget),cluster=await selectedCluster(q,budget),global=await selectedGlobal(q,role,budget);
   selectedEqual({database:connection.database,current:connection.current,session:connection.session,owner:connection.owner},{database,current:'postgres',session:'postgres',owner:role});
   const owner=global.roles.find(row=>row.name===role);selectedNeed(owner);selectedBoundRole(owner!,role);
-  for(const name of selectedOracle.N){const n=global.roles.find(row=>row.name===name);selectedNeed(n,'Selected755 prelude role absent; provisioning is not this course');selectedBoundRole(n!,name);}
+  for(const name of selectedOracle.N){const n=global.roles.find(row=>row.name===name);selectedNeed(n,'Selected756 prelude role absent; provisioning is not this course');selectedBoundRole(n!,name);}
   const privateLedger=await selectedLedger(q,budget);
   return {connection,cluster,global,owner:owner!,privateLedger};
  });
@@ -1406,7 +1450,7 @@ async function selectedJobCapture(storage:Sql,observer:Sql,database:string,role:
  const owned={database,databaseOid:initial.connection.databaseOid,role,roleOid:initial.owner.oid};
  const readers=await selectedReaders(observer,configuration,initial.cluster,budget);
  const model:AiCentreSelectedJobModel={evidence:'native-readonly',mode:configuration.mode,cluster:initial.cluster,
-  source:{tuples:selectedOracle.tupleSha755,sql:selectedOracle.sqlPairSha755,fingerprint:selectedOracle.templateFingerprint},
+  source:{...selectedSourceBinding},
   ...initial.global,owned,readers};
  assertAiCentreSelectedJobCatalogue(model);selectedEqual(model.evidence,'native-readonly');
  return {model,privateLedger:initial.privateLedger};
@@ -1525,9 +1569,9 @@ async function selectedMutation(q:ISql,model:AiCentreSelectedJobModel,budget:Sel
 /** The only selected-prefix native-changing owner. Cancellation and the caller's
  * original case clock can refuse work; neither grants a native capability. */
 export async function constructAiCentreSelectedPrefixOwner(storage:Sql,admin:Sql,database:string,role:string,folder:string,signal:AbortSignal,caseStartedAt:number){
- const budget=selectedBudget(signal,caseStartedAt),source=selectedSource(),configuration=selectedConfiguration();selectedFolder(folder,source);budget.guard();
+ const budget=selectedBudget(signal,caseStartedAt),source=aiCentreSelectedUpgradeSource(),configuration=selectedConfiguration();selectedFolder(folder,source);budget.guard();
  const admission=await selectedJobCapture(storage,admin,database,role,configuration,budget),model=admission.model;
- selectedPrivateLedger(admission.privateLedger,source,710);
+ selectedPrivateLedger(admission.privateLedger,source,source.boundaries.historical);
  await storage.unsafe("SET statement_timeout='10s'");await storage.unsafe("SET lock_timeout='5s'");
  const noTriggers=await storage.unsafe<{count:number}[]>("SELECT count(*)::int AS count FROM pg_catalog.pg_event_trigger");budget.capture(noTriggers,1);selectedEqual(noTriggers,[{count:0}]);
  const construction=await constructAiCentreCompatibilityOwner(storage,database,role);budget.guard();
@@ -1542,7 +1586,7 @@ export async function constructAiCentreSelectedPrefixOwner(storage:Sql,admin:Sql
  selectedKnownFunction(originalView,{...selectedOracle.functions.find(row=>row.name==='reward_not_viewing_as')!,aclGrantees:['ai_hr_reward_view_reader','PUBLIC']},role);
  const originalPolicies=await storage.unsafe("SELECT to_jsonb(p) AS row FROM pg_catalog.pg_policies p WHERE schemaname IN('app','public','drizzle') ORDER BY schemaname,tablename,policyname");budget.capture(originalPolicies,originalPolicies.length);
  const originalTriggers=await storage.unsafe("SELECT to_jsonb(t) AS row FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('app','public','drizzle') ORDER BY t.oid");budget.capture(originalTriggers,originalTriggers.length);
- const originalData=await selectedDataDigest(storage,budget),privateLedger=await selectedLedger(storage,budget);selectedPrivateLedger(privateLedger,source,710);
+ const originalData=await selectedDataDigest(storage,budget),privateLedger=await selectedLedger(storage,budget);selectedPrivateLedger(privateLedger,source,source.boundaries.historical);
  selectedEqual(await selectedDefaultAcls(storage,budget),[]);
  await selectedMutation(storage,model,budget,'ALTER DEFAULT PRIVILEGES FOR ROLE '+quote(role)+' IN SCHEMA public GRANT SELECT,INSERT,UPDATE,DELETE ON TABLES TO ai_hr_app');
  await selectedMutation(storage,model,budget,'ALTER DEFAULT PRIVILEGES FOR ROLE '+quote(role)+' IN SCHEMA public GRANT SELECT,USAGE ON SEQUENCES TO ai_hr_app');
@@ -1613,7 +1657,7 @@ export async function constructAiCentreSelectedPrefixOwner(storage:Sql,admin:Sql
   const corrupt=originalRoles.definition.replace(marker,marker+'\n-- reward_roles_preparation_audience');
   budget.guard();await migration.client.unsafe(corrupt);budget.guard();
   const corruptRow=await selectedLegacyFunction(storage,role,'app.reward_roles(uuid)',budget);const expectedCorrupt=selectedPatchInventory(g1Inventory,[corruptRow]);
-  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...source.journal,entries:source.journal.entries.slice(0,717)}));
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...source.journal,entries:source.journal.entries.slice(0,source.boundaries.alphaSeven)}));
   await expect(migrate(migration.db,{migrationsFolder:folder})).rejects.toMatchObject({cause:{code:'P0001',message:'Preparation audience already installed'}});budget.guard();
   selectedEqual(await selectedLedger(storage,budget),privateLedger);
   const refused=await inventory(storage,'postgres',role);budget.capture(refused,refused.length);selectedEqual(stable(refused,'postgres',role),stable(expectedCorrupt,'postgres',role),'Whole alpha-seven catalogue rollback differs');
@@ -1623,21 +1667,40 @@ export async function constructAiCentreSelectedPrefixOwner(storage:Sql,admin:Sql
   budget.guard();await migration.client.unsafe(originalRoles.definition!);budget.guard();
   selectedEqual(await selectedLegacyFunction(storage,role,'app.reward_roles(uuid)',budget),originalRoles);
   budget.guard();await migrate(migration.db,{migrationsFolder:folder});budget.guard();
-  const alphaLedger=await selectedLedger(storage,budget);selectedPrivateLedger(alphaLedger,source,717,privateLedger);
+  const alphaLedger=await selectedLedger(storage,budget);selectedPrivateLedger(alphaLedger,source,source.boundaries.alphaSeven,privateLedger);
   const g2=await selectedOneFunction(storage,'reward_not_viewing_as',budget);selectedEqual({...g2,acl:originalView.acl},originalView);
   selectedAcl(g2.acl,[...g1.acl,{grantee:preparation,grantor:role,privilege:'EXECUTE',grantable:false}]);
   budget.guard();await storage.begin(async tx=>{await tx.unsafe('SET LOCAL ROLE '+quote(viewOwner));await tx.unsafe('GRANT EXECUTE ON FUNCTION '+viewIdentity+' TO '+quote(preparation));});
   const g3=await selectedOneFunction(storage,'reward_not_viewing_as',budget);selectedAcl(g3.acl,[...g2.acl,{grantee:preparation,grantor:viewOwner,privilege:'EXECUTE',grantable:false}]);
   await cleanupTemporary();
   const g5=await selectedOneFunction(storage,'reward_not_viewing_as',budget);selectedEqual({...g5,acl:originalView.acl},originalView);selectedAcl(g5.acl,[...originalView.acl,{grantee:preparation,grantor:viewOwner,privilege:'EXECUTE',grantable:false}]);
-  await selectedRoleDeltas(admin,model,budget,false);await selectedAppCreate(storage,budget,false);
+  const g5Roles=await selectedRoleDeltas(admin,model,budget,false);await selectedAppCreate(storage,budget,false);
   const privateAfter=await selectedReadonly(storage,q=>selectedSnapshotRead(q,budget));selectedNFootprint(privateAfter,role);selectedDefaults(await selectedDefaultAcls(storage,budget),role);
+  const payrollBefore=await selectedPayrollState(migration.client,budget);
+  selectedEqual(payrollBefore.connection,{pid:actual.pid,backendStart:actual.backendStart,database,databaseOid:model.owned.databaseOid,
+   current:role,session:role,serverAddress:'127.0.0.1',serverPort:5433,clientAddress:'127.0.0.1'});
+  selectedOid(payrollBefore.relation.oid);
+  selectedEqual({kind:payrollBefore.relation.kind,owner:payrollBefore.relation.owner,rls:payrollBefore.relation.rls,force:payrollBefore.relation.force},
+   {kind:'r',owner:role,rls:true,force:false});
+  selectedNeed(typeof payrollBefore.relation.acl==='string');
+  selectedEqual({column:payrollBefore.column,constraint:payrollBefore.constraint},{column:null,constraint:null});
+  const payrollFacts=await selectedPayrollFictionalFacts(migration.client,budget);
+  budget.guard();writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...source.journal,entries:source.journal.entries.slice(0,source.boundaries.payroll)}));
+  await migrate(migration.db,{migrationsFolder:folder});budget.guard();
+  const payrollLedger=await selectedLedger(storage,budget);selectedPrivateLedger(payrollLedger,source,source.boundaries.payroll,alphaLedger);
+  const payrollAfter=await selectedPayrollState(migration.client,budget);
+  selectedEqual(payrollAfter,{...payrollBefore,column:{text:true,nullable:true,hasDefault:false,defaultPresent:false,acl:null,readable:true,insertable:true,editable:true},
+   constraint:{kind:'c',validated:true,onlyMethodColumn:true,expression:"((calculation_method IS NULL) OR (calculation_method = ANY (ARRAY['amount'::text, 'formula'::text])))"}});
+  selectedEqual(await selectedPayrollFictionalFacts(migration.client,budget),payrollFacts);
+  selectedEqual(await selectedRoleDeltas(admin,model,budget,false),g5Roles);
   returned=true;
-  return {migration,construction,report:{kind:'FIXED_SOURCE755_PREEXISTING_NATIVE_JOB_710_TO_REAL_OWNER717',releaseAuthorized:false,platformAbsentRoleProvisioningQualified:false,
-   source:{tupleSha755:selectedOracle.tupleSha755,sqlPairSha755:selectedOracle.sqlPairSha755,templateFingerprint:selectedOracle.templateFingerprint},mode:configuration.mode,
+  return {migration,construction,report:{kind:'FIXED_SOURCE756_PREEXISTING_NATIVE_JOB_710_TO_REAL_OWNER718',releaseAuthorized:false,platformAbsentRoleProvisioningQualified:false,
+   source:{...selectedSourceBinding},mode:configuration.mode,
    cluster:model.cluster,owned:model.owned,globalRoleCount:model.roles.length,globalDatabaseCount:model.databases.length,serialReaders:model.readers.map(row=>row.connection.database),
    nativeTargetedPolicyCount:12,totalObservedPolicies:model.readers.filter(row=>row.emptyObjects===null).map(row=>({database:row.connection.database,count:row.policies.length,publicPreparationWrappers:2})),
-   alphaSevenRollback:true,publicCreateRollback:true,effectiveAppCreate:{g0:false,g1:true,g5:false},original710Rows:710,selectedAlphaRows:717,temporaryGrantChain:'G0-G5 native exact grantor/option/postimage verified',metadata:budget},
+   alphaSevenRollback:true,publicCreateRollback:true,effectiveAppCreate:{g0:false,g1:true,g5:false},original710Rows:source.boundaries.historical,selectedAlphaRows:alphaLedger.length,
+   payroll3900:{observed:true,rows:payrollLedger.length,ledgerRow:payrollLedger.at(-1),tableOid:payrollAfter.relation.oid,fictionalFactsSha256:payrollFacts.sha256},
+   temporaryGrantChain:'G0-G5 native exact grantor/option/postimage verified',metadata:budget},
    closeMigration:async()=>{try{if(migration)await selectedClose(migration.client,admin,ownerIdentity,budget);}catch(error){reservedPoisoned=true;throw error;}},
    verifyPositivePrivateBoundary:async()=>{budget.guard();await selectedPrivateIdentity(storage,model,budget);const value=await selectedReadonly(storage,q=>selectedSnapshotRead(q,budget));selectedNFootprint(value,role);selectedDefaults(await selectedDefaultAcls(storage,budget),role);},
    verifyCleanup:async()=>{
@@ -1701,7 +1764,7 @@ export function aiCentreSelectedJobSourceModel(mode:'full'|'focused'):AiCentreSe
   edge('ai_hr_reward_preparation_invalidator','pg_class',sequence.oid,0,'a',sequence.identity);
   for(const policy of policies)if(policy.roles[0]!=='PUBLIC')edge(policy.roles[0],'pg_policy',policy.oid,0,'r',policy.relation+'#'+policy.name);
   for(const {identity:_identity,...row}of dependencies)shared.push(row);
-  return {connection,ledgerCount:755,ledgerRowsSha256:selectedOracle.ledgerRowsSha755,fingerprints:name==='ai_hr_dev'?null:[selectedOracle.templateFingerprint],emptyObjects:null,functions,relations,policies,schemas,sequence,shared:dependencies};
+  return {connection,ledgerCount:selectedCheckpoints.mandate.count,ledgerRowsSha256:selectedStockLedgerSha,fingerprints:name==='ai_hr_dev'?null:[selectedTemplateFingerprint],emptyObjects:null,functions,relations,policies,schemas,sequence,shared:dependencies};
  });
- return {evidence:'source-model-only',mode,cluster,source:{tuples:selectedOracle.tupleSha755,sql:selectedOracle.sqlPairSha755,fingerprint:selectedOracle.templateFingerprint},roles,memberships,databases,owned:{database,databaseOid:databases.find(row=>row.name===database)!.oid,role,roleOid:'30000'},readers,shared};
+ return {evidence:'source-model-only',mode,cluster,source:{...selectedSourceBinding},roles,memberships,databases,owned:{database,databaseOid:databases.find(row=>row.name===database)!.oid,role,roleOid:'30000'},readers,shared};
 }
