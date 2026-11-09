@@ -15,8 +15,8 @@ export async function observeMeasuredLockConnection(sql){
  if(!settings?.readonly||!settings?.bounded)throw Error('Measured lock observer settings unavailable');
 }
 
-export async function observeDatabaseLockCore(sql,phase,accessLocks,categorized){
- const waitCategories=categorized?sql`,jsonb_build_object(
+function appWaitCategories(sql,categorized){
+ return categorized?sql`,jsonb_build_object(
       'advisory',count(*) filter(where usename='ai_hr_app' and wait_event='advisory'),
       'transactionid',count(*) filter(where usename='ai_hr_app' and wait_event='transactionid'),
       'tuple',count(*) filter(where usename='ai_hr_app' and wait_event='tuple'),
@@ -24,6 +24,10 @@ export async function observeDatabaseLockCore(sql,phase,accessLocks,categorized)
       'other',count(*) filter(where usename='ai_hr_app' and (wait_event is null or
        wait_event not in ('advisory','transactionid','tuple','relation')))
       ) as app_lock_wait_kinds`:sql``;
+}
+
+export async function observeDatabaseLockCore(sql,phase,accessLocks,categorized){
+ const waitCategories=appWaitCategories(sql,categorized);
  const activity=await sql`select state,coalesce(wait_event_type,'CPU-or-ready') as kind,count(*)::int as connections,
       (count(*) filter(where usename='ai_hr_app'))::int as app_connections${waitCategories}
      from pg_stat_activity where datname=current_database() and backend_type='client backend' group by 1,2`;
@@ -39,6 +43,61 @@ export async function observeDatabaseLockCore(sql,phase,accessLocks,categorized)
  return {activity,locks,activityCompletedMs,advisoryStartedMs,coreCompletedMs:performance.now()};
 }
 
+const activityFields=['state','kind','connections','app_connections'];
+const categoryFields=['advisory','transactionid','tuple','relation','other'];
+const lockFields=['pid','blockers','mode','granted','classid','objid','objsubid','app_session'];
+const validCount=value=>Number.isSafeInteger(value)&&value>=0&&value<=1024;
+const validPid=value=>Number.isSafeInteger(value)&&value>=0&&value<=2147483647;
+const validOid=value=>typeof value==='string'&&/^(0|[1-9][0-9]{0,9})$/.test(value)&&Number(value)<=4294967295;
+const exactKeys=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).length===keys.length&&keys.every(key=>Object.hasOwn(row,key));
+
+/** A malformed aggregate cannot turn into a clean sample. Only closed native fields cross the worker boundary. */
+function decodeCombinedPreflightLocks(rows,categorized){
+ const [row]=rows;
+ if(rows.length!==1||!exactKeys(row,['activity','locks']))throw Error('Combined lock probe envelope refused');
+ const {activity,locks}=row;
+ const fields=categorized?[...activityFields,'app_lock_wait_kinds']:activityFields;
+ if(!Array.isArray(activity)||activity.length<1||activity.length>128||!activity.every(entry=>{
+  if(!exactKeys(entry,fields)||!(entry.state===null||typeof entry.state==='string'&&/^[a-z][a-z ()-]{0,31}$/.test(entry.state))
+   ||typeof entry.kind!=='string'||!/^[A-Za-z][A-Za-z-]{0,31}$/.test(entry.kind)
+   ||!validCount(entry.connections)||entry.connections===0||!validCount(entry.app_connections)||entry.app_connections>entry.connections)return false;
+  if(!categorized)return true;
+  const counts=entry.app_lock_wait_kinds;
+  return exactKeys(counts,categoryFields)&&categoryFields.every(key=>validCount(counts[key]))
+   &&categoryFields.reduce((total,key)=>total+counts[key],0)===entry.app_connections;
+ }))throw Error('Combined lock probe activity census refused');
+ if(!Array.isArray(locks)||locks.length>40||!locks.every(entry=>exactKeys(entry,lockFields)&&validPid(entry.pid)&&entry.pid>0
+  &&(entry.mode==='ExclusiveLock'||entry.mode==='ShareLock')&&typeof entry.granted==='boolean'
+  &&validOid(entry.classid)&&validOid(entry.objid)&&(entry.objsubid===1||entry.objsubid===2)
+  &&(entry.app_session===null||typeof entry.app_session==='boolean')
+  &&(entry.granted?entry.blockers===null:Array.isArray(entry.blockers)&&entry.blockers.length<=1024&&entry.blockers.every(validPid)))){
+  throw Error('Combined lock probe advisory census refused');
+ }
+ return {activity,locks};
+}
+
+async function observeCombinedPreflightLocks(sql,accessLocks,categorized){
+ const waitCategories=appWaitCategories(sql,categorized);
+ const rows=await sql`with backends as materialized (
+   select pid,backend_type,state,wait_event_type,wait_event,usename from pg_stat_activity where datname=current_database()
+  ), activity as materialized (
+   select state,coalesce(wait_event_type,'CPU-or-ready') as kind,count(*)::int as connections,
+    (count(*) filter(where usename='ai_hr_app'))::int as app_connections${waitCategories}
+   from backends where backend_type='client backend' group by 1,2
+  ), advisory as materialized (
+   select a.pid,case when not l.granted then pg_blocking_pids(a.pid) end as blockers,l.mode,l.granted,
+    l.classid::text as classid,l.objid::text as objid,l.objsubid,
+    a.usename='ai_hr_app' as app_session from pg_locks l join backends a on a.pid=l.pid
+   where l.database=(select oid from pg_database where datname=current_database())
+    and l.locktype='advisory' and (not l.granted or (
+     concat(l.classid,':',l.objid,':',l.objsubid)=any(${accessLocks}::text[]) and l.mode='ExclusiveLock'
+    )) order by l.granted,a.pid limit 40
+  ) select coalesce((select jsonb_agg(to_jsonb(a)) from activity a),'[]'::jsonb) as activity,
+    coalesce((select jsonb_agg(to_jsonb(l) order by l.granted,l.pid) from advisory l),'[]'::jsonb) as locks`;
+ const coreCompletedMs=performance.now();
+ return {...decodeCombinedPreflightLocks(rows,categorized),coreCompletedMs,probeMode:'combined-statement'};
+}
+
 /** Run real serial probes on the observer thread, with no dependency on message delivery. */
 export function startMeasuredPreflightProbes({sql,accessLocks,categorized,token,stopped,onProbe,onFailure}){
  let sequence=0;
@@ -46,7 +105,7 @@ export function startMeasuredPreflightProbes({sql,accessLocks,categorized,token,
   if(Atomics.load(stopped,0)!==0)return;
   const attributionStart=Atomics.load(token,0),startedMs=performance.now();
   let observation;
-  try{observation=await observeDatabaseLockCore(sql,'preflight',accessLocks,categorized);}
+  try{observation=await observeCombinedPreflightLocks(sql,accessLocks,categorized);}
   catch(reason){observation={failure:driverErrorFact(reason),coreCompletedMs:performance.now()};}
   const attributionEnd=Atomics.load(token,0);
   onProbe({sequence:++sequence,startedMs,timing,attributionStart,attributionEnd,...observation});

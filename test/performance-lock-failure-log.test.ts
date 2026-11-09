@@ -4,7 +4,7 @@ import {Worker} from 'node:worker_threads';
 import {developmentPostgresLockWindow,postgresLockFailures} from '../scripts/performance/lock-failure-log.mjs';
 import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
 import {lockSampleEvidence,qualifyLockSampleCadence} from '../scripts/performance/driver-shutdown.mjs';
-import {createMeasuredPreflightObserver} from '../scripts/performance/measured-lock-observer.mjs';
+import {createMeasuredPreflightObserver,startMeasuredPreflightProbes} from '../scripts/performance/measured-lock-observer.mjs';
 
 const fictionalWaiter={app_session:true,pid:22,classid:'11',objid:'12',objsubid:1,mode:'ExclusiveLock',blockers:[84]};
 const fictionalBlocker={family:'access-configuration',waiterMode:'ExclusiveLock',blockerMode:'ShareLock',blockerState:'granted',
@@ -59,7 +59,7 @@ it('refuses a database other than the fixed fictional development observer befor
  }
 });
 
-it.each([false,true])('uses actual worker timestamps for cadence when the probe itself is slow=%s',async slowProbe=>{
+it.each([false,true])('uses one actual worker round trip per sample when the probe itself is slow=%s',async slowProbe=>{
  const control=new Int32Array(new SharedArrayBuffer(3*Int32Array.BYTES_PER_ELEMENT));
  const token=createMeasuredPreflightAttribution().token;
  const moduleUrl=new URL('../scripts/performance/measured-lock-observer.mjs',import.meta.url).href;
@@ -67,34 +67,38 @@ it.each([false,true])('uses actual worker timestamps for cadence when the probe 
   import {setTimeout as delay} from 'node:timers/promises';
   import {startMeasuredPreflightProbes} from ${JSON.stringify(moduleUrl)};
   const {control,token,slowProbe}=workerData;
-  let attempts=0,sampler,activityOpen=false;
+  let attempts=0,sampler,probeOpen=false;
   const sql=(parts)=>{
    const query=parts.join(' ');
    if(query.includes('jsonb_build_object'))return 'categories';
-   if(query.includes('from pg_stat_activity where')){
-    if(activityOpen)throw Error('Concurrent activity probe');
-    activityOpen=true;
+   if(query.includes('with backends as materialized')&&query.includes('from pg_stat_activity where')
+    &&query.includes('advisory as materialized')&&query.includes('from pg_locks')&&query.includes('limit 40')){
+    if(probeOpen)throw Error('Concurrent native probe');
+    probeOpen=true;
     return (async()=>{
      if(++attempts===2&&slowProbe){parentPort.postMessage({secondStarted:true});await delay(550);}
-     return [{state:'active',kind:'CPU-or-ready',connections:1,app_connections:1}];
+     probeOpen=false;
+     return [{activity:[{state:'active',kind:'CPU-or-ready',connections:1,app_connections:1,
+      app_lock_wait_kinds:{advisory:0,transactionid:0,tuple:0,relation:0,other:1}}],locks:[]}];
     })();
    }
-   if(query.includes('from pg_locks')&&activityOpen){activityOpen=false;return Promise.resolve([]);}
    throw Error('Unexpected probe SQL');
   };
   parentPort.on('message',async command=>{
    if(command==='start')sampler=startMeasuredPreflightProbes({sql,accessLocks:[],categorized:true,token,stopped:control,
     onProbe(probe){Atomics.add(control,1,1);parentPort.postMessage(probe);},onFailure(reason){throw reason;}});
-   else{await sampler.stop();if(activityOpen)throw Error('In-flight probe was not drained');parentPort.close();}
+   else{await sampler.stop();if(probeOpen||attempts!==sampler.samples())throw Error('Native probe was not drained once');parentPort.close();}
   });
   parentPort.postMessage({ready:true,timeOrigin:performance.timeOrigin});`;
  const worker=new Worker(new URL('data:text/javascript,'+encodeURIComponent(source)),{execArgv:[],workerData:{control,token,slowProbe}});
  const exited=once(worker,'exit');void exited.catch(()=>{});
  const first=Promise.withResolvers<void>(),second=Promise.withResolvers<void>(),secondStarted=Promise.withResolvers<void>();
  const samples:{state:string;startedMs:number;completedMs:number;locks:number;blockingAppSessions:number}[]=[];
+ const receipts:Record<string,unknown>[]=[];
  worker.on('message',probe=>{
   if(probe.ready)return;
   if(probe.secondStarted){secondStarted.resolve();return;}
+  receipts.push(probe);
   samples.push({state:probe.failure?'failed':'complete',startedMs:probe.startedMs,completedMs:probe.coreCompletedMs,
    locks:probe.locks?.length??0,blockingAppSessions:0});
   if(probe.sequence===1)first.resolve();
@@ -117,10 +121,36 @@ it.each([false,true])('uses actual worker timestamps for cadence when the probe 
   if(!slowProbe)stop();
   await expect(exited).resolves.toEqual([0]);
   expect(samples.length).toBe(Atomics.load(control,1));
+  expect(receipts.every(row=>row.probeMode==='combined-statement'&&!Object.hasOwn(row,'activityCompletedMs')
+   &&!Object.hasOwn(row,'advisoryStartedMs'))).toBe(true);
   expect(qualifyLockSampleCadence('preflight',samples,{startMs,endMs})).toMatchObject({
    maxGapUs:500000,coveragePass:!slowProbe,pass:!slowProbe,reason:slowProbe?'coverage-gap':null,
   });
  }finally{await worker.terminate();}
+});
+
+it('fails closed on malformed native activity partitions or advisory rows',async()=>{
+ const activity={state:'active',kind:'Lock',connections:1,app_connections:1,
+  app_lock_wait_kinds:{advisory:1,transactionid:0,tuple:0,relation:0,other:0}};
+ const waiter={...fictionalWaiter,granted:false};
+ const inputs=[
+  {activity:[{...activity,app_connections:0}],locks:[]},
+  {activity:[activity],locks:[{...waiter,query:'never a projected field'}]},
+  {activity:[],locks:[]},
+  {activity:[activity],locks:[{...waiter,blockers:[-1]}]},
+  {activity:[activity],locks:[waiter]},
+ ];
+ const observed:Record<string,unknown>[]=[];
+ const done=Promise.withResolvers<void>();
+ let queries=0;
+ const sampler=startMeasuredPreflightProbes({accessLocks:[],categorized:true,
+  token:createMeasuredPreflightAttribution().token,stopped:new Int32Array(new SharedArrayBuffer(4)),
+  sql(parts:TemplateStringsArray){return parts.join('').includes('with backends')?Promise.resolve([inputs[queries++]]):'categories';},
+  onProbe(probe:Record<string,unknown>){observed.push(probe);if(observed.length===inputs.length)done.resolve();},onFailure:done.reject});
+ try{await done.promise;}finally{await sampler.stop();}
+ expect(queries).toBe(inputs.length);
+ expect(observed.slice(0,-1).every(row=>Object.hasOwn(row,'failure')&&!Object.hasOwn(row,'activity')&&!Object.hasOwn(row,'locks'))).toBe(true);
+ expect(observed.at(-1)).toMatchObject({probeMode:'combined-statement',activity:[activity],locks:[waiter]});
 });
 
 it('partitions only the first probe and preserves an original positive on refused category evidence',()=>{

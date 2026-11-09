@@ -309,6 +309,26 @@ it.each([
  expect(rows.map(row=>row.startedMs)).toEqual([125,250]);
 });
 
+it.each([
+ {combinedMs:375,gapUs:500000,pass:true},
+ {combinedMs:376,gapUs:501000,pass:false},
+])('reports the actual combined statement duration at a $gapUs µs gap without changing qualification',({combinedMs,gapUs,pass})=>{
+ const first=legacyLockRow(125,125);
+ const second={...legacyLockRow(250,250+combinedMs),probeMode:'combined-statement',dueMs:250,timerStartedMs:250,attemptIntervalMs:125};
+ const window={startMs:0,endMs:250+combinedMs};
+ expect(qualifyLockSampleCadence('preflight',[first,second],window)).toMatchObject({
+  intervalMs:250,maxGapUs:500000,interiorGapUs:gapUs,pass,qualifiedSamples:2,observedBlockingSamples:0,
+  reason:pass?null:'coverage-gap',
+ });
+ expect(measuredPreflightLockTiming([first,second],window)).toEqual({
+  probeMode:'combined-statement',attemptIntervalMs:125,gapUs,openingGapUs:125000,tailGapUs:combinedMs*1000,
+  launchSpacingUs:125000,serialWaitPastDueUs:0,timerAfterReadyUs:0,callbackToProbeUs:0,combinedRoundTripUs:combinedMs*1000,
+ });
+ expect(measuredPreflightLockTiming([first,{...second,probeMode:'unknown'}],window)).toBeNull();
+ expect(measuredPreflightLockTiming([first,{...second,activityCompletedMs:250}],window)).toBeNull();
+ expect(measuredPreflightLockTiming([first,{...second,timerStartedMs:251}],window)).toBeNull();
+});
+
 it('refuses each missed coverage segment even when all observed lock counts are zero',()=>{
  const window={startMs:100,endMs:1200};
  for(const [segment,gapUs,samples] of [

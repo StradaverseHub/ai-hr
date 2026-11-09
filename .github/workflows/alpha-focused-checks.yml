@@ -494,10 +494,14 @@ jobs:
               return counts
 
           def project_private_preflight_timing(value, cadence):
-              keys = ('attemptIntervalMs', 'gapUs', 'openingGapUs', 'tailGapUs', 'launchSpacingUs',
-                      'serialWaitPastDueUs', 'timerAfterReadyUs', 'callbackToProbeUs',
-                      'activityRoundTripUs', 'betweenProbesUs', 'advisoryRoundTripUs')
-              if not closed(value, ' '.join(keys)) or number(value['attemptIntervalMs'], 200) not in (125, 200):
+              common = ('attemptIntervalMs', 'gapUs', 'openingGapUs', 'tailGapUs', 'launchSpacingUs',
+                        'serialWaitPastDueUs', 'timerAfterReadyUs', 'callbackToProbeUs')
+              combined = type(value) is dict and choice(value.get('probeMode'), ('combined-statement',)) is not None
+              durations = ('combinedRoundTripUs',) if combined else ('activityRoundTripUs', 'betweenProbesUs', 'advisoryRoundTripUs')
+              keys = (*common, *durations)
+              shape = (*keys, 'probeMode') if combined else keys
+              if (type(cadence) is not dict or not closed(value, ' '.join(shape))
+                      or number(value['attemptIntervalMs'], 200) not in (125, 200)):
                   return None
               facts = {key: number(value[key], 910000000) for key in keys}
               if None in facts.values():
@@ -505,9 +509,12 @@ jobs:
               gaps = {'gapUs': 'interiorGapUs', 'openingGapUs': 'openingGapUs', 'tailGapUs': 'tailGapUs'}
               if any(facts[key] != number(cadence.get(name), 910000000, 1) for key, name in gaps.items()):
                   return None
-              total = sum(facts[key] for key in ('launchSpacingUs', 'activityRoundTripUs', 'betweenProbesUs', 'advisoryRoundTripUs'))
-              if not facts['gapUs'] - 1 <= total <= facts['gapUs'] + 3:
+              total = sum(facts[key] for key in ('launchSpacingUs', *durations))
+              # Each duration rounds up. The whole gap rounds both endpoints outward.
+              if not facts['gapUs'] - 1 <= total <= facts['gapUs'] + len(durations):
                   return None
+              if combined:
+                  facts['probeMode'] = 'combined-statement'
               return facts
 
           def flag(value):

@@ -3,7 +3,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import postgres from 'postgres';
 import {expect,it} from 'vitest';
 import {workerDb} from './db-names';
-import {createMeasuredPreflightAttribution,measuredPreflightAttribution,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
+import {createMeasuredPreflightAttribution,firstAppLockWaitCategories,measuredPreflightAttribution,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
 import {createMeasuredPreflightObserver,measuredDevelopmentLockApplication,measuredDevelopmentLockUrl} from '../scripts/performance/measured-lock-observer.mjs';
 
 const selector='test/performance-measured-lock-observer.test.ts';
@@ -11,7 +11,7 @@ const appUrl='postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev';
 const hosted=process.env.GITHUB_ACTIONS==='true';
 
 type Lock={pid:number;mode:string;granted:boolean;classid:string;objid:string;objsubid:number;app_session:boolean;blockers?:number[]};
-type Probe={failure?:unknown;startedMs:number;locks:Lock[];activity:{kind:string;app_connections:number}[];attributionStart:number;attributionEnd:number};
+type Probe={failure?:unknown;startedMs:number;locks:Lock[];activity:{kind:string;app_connections:number}[];attributionStart:number;attributionEnd:number;probeMode:string};
 
 async function bounded<T>(work:Promise<T>):Promise<T>{
  const deadline=new AbortController();
@@ -91,7 +91,12 @@ it.skipIf(!hosted)('observes and drains a genuine PostgreSQL app wait through th
   const blocked=await bounded(Promise.race([proof.promise,failed.promise]));
   const [edge]=await holder<{blocked:boolean}[]>`select pg_blocking_pids(${actorIdentity.pid}::int)=array[pg_backend_pid()] as blocked`;
   expect(edge.blocked).toBe(true);
-  expect(blocked.activity.some(row=>row.kind==='Lock'&&row.app_connections>0)).toBe(true);
+  expect(blocked.probeMode).toBe('combined-statement');
+  expect(blocked).not.toHaveProperty('activityCompletedMs');
+  expect(blocked).not.toHaveProperty('advisoryStartedMs');
+  const waitingOnLock=blocked.activity.filter(row=>row.kind==='Lock').reduce((sum,row)=>sum+row.app_connections,0);
+  expect(waitingOnLock).toBeGreaterThan(0);
+  expect(firstAppLockWaitCategories(blocked.activity,waitingOnLock)?.advisory).toBeGreaterThan(0);
   expect(measuredPreflightAttribution(blocked.attributionStart,blocked.attributionEnd)).toEqual({phase:'browser-workflows',workloadStage:'personnel-profile'});
   expect(originalAdvisoryAttribution(blocked.locks,new Map([[ids.lockKey,'access-configuration:fixture-test']]))).toMatchObject({
    waiters:[{family:'access-configuration',mode:'ExclusiveLock'}],

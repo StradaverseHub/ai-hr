@@ -493,7 +493,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
   let coreComplete=false;
   try{
    if(probe?.failure){retain({state:'failed',startedMs,completedMs:probe.coreCompletedMs,...probe.failure});return;}
-   const {activity,locks,activityCompletedMs,advisoryStartedMs,coreCompletedMs}=probe??
+   const {activity,locks,activityCompletedMs,coreCompletedMs}=probe??
     await observeDatabaseLockCore(measureDevelopment?measuredLockDb:db,phase,accessLocks,false);
    const rows=activity.filter(row=>row.state==='active').map(({kind,connections})=>({kind,connections}));
    const appConnections={
@@ -516,8 +516,8 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
      advisoryWaiters:queuedLocks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))}:null;
    if(wait)waits.push(wait);
    const row={state:'complete',startedMs,completedMs:measureDevelopment?coreCompletedMs:performance.now(),locks:locks.length,blockingAppSessions,
-    holdersRequested:pids.length,holdersObserved:holders.length,...(measureDevelopment?{appSessions:appConnections.open,activityCompletedMs}:{}),
-    ...(measuredPreflight?{...probe.timing,advisoryStartedMs}:{})};
+    holdersRequested:pids.length,holdersObserved:holders.length,...(measureDevelopment?{appSessions:appConnections.open}:{}),
+    ...(measuredPreflight?{...probe.timing,probeMode:probe.probeMode}:measureDevelopment?{activityCompletedMs}:{})};
    retain(row);
    coreComplete=true;
    let attribution;

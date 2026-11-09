@@ -214,6 +214,26 @@ for malformed in (None, dict(timing, timestamp=1700000000000), dict(timing, acti
     assert project_private_preflight_timing(malformed, cadence) is None
 assert project_private_preflight_timing(timing, dict(cadence, interiorGapUs=None)) is None
 assert project_private_preflight_timing(timing, dict(cadence, openingGapUs=209732)) is None
+
+historical = dict(attemptIntervalMs=125, gapUs=582628, openingGapUs=132376, tailGapUs=75333,
+                  launchSpacingUs=125442, serialWaitPastDueUs=0, timerAfterReadyUs=447, callbackToProbeUs=21,
+                  activityRoundTripUs=122668, betweenProbesUs=1, advisoryRoundTripUs=334518)
+assert project_private_preflight_timing(historical, dict(interiorGapUs=582628, openingGapUs=132376, tailGapUs=75333)) == historical
+
+combined = dict(attemptIntervalMs=125, gapUs=500001, openingGapUs=125000, tailGapUs=375001,
+                launchSpacingUs=125000, serialWaitPastDueUs=0, timerAfterReadyUs=0,
+                callbackToProbeUs=0, probeMode='combined-statement', combinedRoundTripUs=375001)
+combined_cadence = dict(interiorGapUs=500001, openingGapUs=125000, tailGapUs=375001)
+assert project_private_preflight_timing(combined, combined_cadence) == combined
+for rounding in (375000, 375002):
+    assert project_private_preflight_timing(dict(combined, combinedRoundTripUs=rounding), combined_cadence) is not None
+for malformed in (dict(combined, combinedRoundTripUs=374999), dict(combined, combinedRoundTripUs=375003),
+                  dict(combined, combinedRoundTripUs=True), dict(combined, probeMode='two-statements'),
+                  dict(combined, probeMode='/private/source'), dict(combined, activityRoundTripUs=375001),
+                  dict(combined, advisoryRoundTripUs=0), {k: v for k, v in combined.items() if k != 'probeMode'}):
+    assert project_private_preflight_timing(malformed, combined_cadence) is None
+assert project_private_preflight_timing(combined, dict(combined_cadence, interiorGapUs=500000)) is None
+assert project_private_preflight_timing(combined, None) is None
 `;
   execFileSync('/usr/bin/python3', ['-I', '-B', '-c', control,
     fileURLToPath(new URL('../workflows/alpha-focused-checks.yml', import.meta.url))], { timeout: 5000 });

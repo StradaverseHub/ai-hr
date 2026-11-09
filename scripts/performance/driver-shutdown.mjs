@@ -163,17 +163,22 @@ export function measuredPreflightLockTiming(samples,window){
  }
  if(!widest)return null;
  const {row,gapUs}=widest;
- const {dueMs,timerStartedMs,startedMs,activityCompletedMs,advisoryStartedMs,completedMs,attemptIntervalMs}=row;
+ const {dueMs,timerStartedMs,startedMs,activityCompletedMs,advisoryStartedMs,completedMs,attemptIntervalMs,probeMode}=row;
  if(attemptIntervalMs!==preflightFastAttemptMs&&attemptIntervalMs!==MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS)return null;
+ const combined=probeMode==='combined-statement';
+ if(probeMode!==undefined&&(!combined||activityCompletedMs!==undefined||advisoryStartedMs!==undefined))return null;
  const readyMs=Math.max(dueMs,widest.previous.completedMs);
- const points=[readyMs,timerStartedMs,startedMs,activityCompletedMs,advisoryStartedMs,completedMs];
+ const points=combined?[readyMs,timerStartedMs,startedMs,completedMs]:
+  [readyMs,timerStartedMs,startedMs,activityCompletedMs,advisoryStartedMs,completedMs];
  if(points.some((point,index)=>!Number.isFinite(point)||index>0&&point<points[index-1]))return null;
  const elapsed=(from,to)=>Math.ceil((to-from)*1000);
- return {attemptIntervalMs,gapUs,openingGapUs:elapsed(startMs,first.completedMs),
+ const common={attemptIntervalMs,gapUs,openingGapUs:elapsed(startMs,first.completedMs),
   tailGapUs:elapsed(startMs,endMs)-Math.floor((previous.startedMs-startMs)*1000),
   launchSpacingUs:elapsed(widest.previous.startedMs,startedMs),serialWaitPastDueUs:elapsed(dueMs,readyMs),
   timerAfterReadyUs:elapsed(readyMs,timerStartedMs),
-  callbackToProbeUs:elapsed(timerStartedMs,startedMs),activityRoundTripUs:elapsed(startedMs,activityCompletedMs),
+  callbackToProbeUs:elapsed(timerStartedMs,startedMs)};
+ if(combined)return {...common,probeMode,combinedRoundTripUs:elapsed(startedMs,completedMs)};
+ return {...common,activityRoundTripUs:elapsed(startedMs,activityCompletedMs),
   betweenProbesUs:elapsed(activityCompletedMs,advisoryStartedMs),advisoryRoundTripUs:elapsed(advisoryStartedMs,completedMs)};
 }
 
