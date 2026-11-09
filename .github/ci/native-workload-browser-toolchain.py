@@ -48,6 +48,9 @@ MAX_EXPANDED = 512 * MIB
 MAX_MEMBER = 384 * MIB
 MAX_ENTRIES = 1024
 MAX_CENTRAL_DIRECTORY = 2 * MIB
+CENTRAL_HEADER = struct.Struct('<4s6H3I5H2I')
+END_HEADER = struct.Struct('<4s4H2IH')
+ZIP64_LOCATOR_BYTES = 20
 OBSERVATION_SECONDS = 150
 READ_SECONDS = 10
 CHUNK = 256 * KIB
@@ -272,10 +275,13 @@ def fetch_archive(opener, facts, archive, deadline):
     md5 = hashlib.md5(usedforsecurity=False)
     size = 0
     with request(opener, url, 'application/zip, application/octet-stream', deadline) as response:
-        need(header(response, 'Content-Length', True) == str(facts['bytes']) and
-             header(response, 'x-goog-generation', True) == facts['generation'] and
-             header(response, 'x-goog-metageneration') in (None, facts['metageneration']),
-             'publisher-media-identity')
+        length = header(response, 'Content-Length', True)
+        generation = header(response, 'x-goog-generation', True)
+        metageneration = header(response, 'x-goog-metageneration')
+        need(length == str(facts['bytes']) and generation == facts['generation']
+             and metageneration in (None, facts['metageneration']), 'publisher-media-identity')
+        media = {'url': url, 'status': response.status, 'contentLength': int(length), 'generation': generation,
+                 'metageneration': metageneration, 'contentEncoding': header(response, 'Content-Encoding')}
         while True:
             remaining(deadline)
             block = response.read(min(CHUNK, facts['bytes'] - size + 1))
@@ -290,18 +296,57 @@ def fetch_archive(opener, facts, archive, deadline):
     need(hmac.compare_digest(base64.b64encode(md5.digest()).decode('ascii'), facts['md5']),
          'publisher-media-md5')
     archive.flush()
-    return sha.hexdigest()
+    return sha.hexdigest(), media
 
 
-def archive_count(archive, size):
-    need(size >= 22, 'zip-central-directory')
-    archive.seek(size - 22)
-    marker, disk, central_disk, disk_count, count, central_size, offset, comment = struct.unpack(
-        '<4s4H2IH', archive.read(22),
+def classic_extra_fields(extra):
+    cursor = 0
+    while cursor < len(extra):
+        need(len(extra) - cursor >= 4, 'zip-central-extra')
+        kind, length = struct.unpack_from('<HH', extra, cursor)
+        need(kind != 0x0001, 'zip64-central-extra')
+        cursor += 4 + length
+        need(cursor <= len(extra), 'zip-central-extra')
+
+
+def archive_count(archive, size, deadline):
+    # Bound the bytes and actual records before ZipFile allocates its directory.
+    # CPython otherwise lets a locator override the validated classic EOCD.
+    archive.seek(0, os.SEEK_END)
+    need(archive.tell() == size, 'zip-archive-size')
+    end = size - END_HEADER.size
+    need(end >= ZIP64_LOCATOR_BYTES, 'zip-central-directory')
+    archive.seek(end - ZIP64_LOCATOR_BYTES)
+    need(archive.read(4) != b'PK\x06\x07', 'zip64-locator')
+    archive.seek(end)
+    marker, disk, central_disk, disk_count, count, central_size, offset, comment = END_HEADER.unpack(
+        archive.read(END_HEADER.size),
     )
     need(marker == b'PK\x05\x06' and disk == central_disk == comment == 0 and disk_count == count
          and 0 < count <= MAX_ENTRIES and 0 < central_size <= MAX_CENTRAL_DIRECTORY
-         and 0 <= offset < size and offset + central_size == size - 22, 'zip-central-directory')
+         and 0 < offset < end and offset + central_size == end, 'zip-central-directory')
+    archive.seek(offset)
+    expanded = 0
+    for _ in range(count):
+        remaining(deadline)
+        need(end - archive.tell() >= CENTRAL_HEADER.size, 'zip-central-record')
+        (marker, _created, needed, _flags, _method, _clock, _date, _crc, compressed, uncompressed,
+         name_length, extra_length, comment_length, disk_start, _internal, _external,
+         local_offset) = CENTRAL_HEADER.unpack(archive.read(CENTRAL_HEADER.size))
+        need(marker == b'PK\x01\x02', 'zip-central-record')
+        need(needed < 45 and disk_start == 0 and all(value != 0xffffffff for value in (
+            compressed, uncompressed, local_offset,
+        )), 'zip64-central-record')
+        need(0 < name_length <= 256 and name_length + extra_length + comment_length <= end - archive.tell()
+             and local_offset + 30 + compressed <= offset and uncompressed <= MAX_MEMBER, 'zip-central-record')
+        expanded += uncompressed
+        need(expanded <= MAX_EXPANDED, 'zip-expanded-bound')
+        archive.seek(name_length, os.SEEK_CUR)
+        extra = archive.read(extra_length)
+        need(len(extra) == extra_length, 'zip-central-extra')
+        classic_extra_fields(extra)
+        archive.seek(comment_length, os.SEEK_CUR)
+    need(archive.tell() == end, 'zip-central-record-count')
     return count
 
 
@@ -324,7 +369,7 @@ def member_identity(member):
 
 
 def archive_tree(archive, size, deadline):
-    expected_count = archive_count(archive, size)
+    expected_count = archive_count(archive, size, deadline)
     observed = {}
     expanded = 0
     with zipfile.ZipFile(archive) as contents:
@@ -369,7 +414,10 @@ def archive_tree(archive, size, deadline):
             need(directory[0] == 'directory', 'zip-path-collision')
     need(len(rows) <= MAX_ENTRIES, 'zip-tree-count')
     tree = [[name, *rows[name]] for name in sorted(rows)]
+    # The full archive digest binds the raw bytes. This projection describes
+    # the declared bytes decoded by stdlib, without admitting stream framing.
     return {'archiveMembers': expected_count, 'treeMembers': len(tree), 'expandedBytes': expanded,
+            'treeScope': 'STDLIB_DECLARED_DECODED_MEMBERS', 'strictMemberFramingVerified': False,
             'treeSha256': digest(canonical(tree)), 'rows': tree,
             'executable': {'path': EXECUTABLE, 'bytes': rows[EXECUTABLE][2], 'sha256': rows[EXECUTABLE][3]}}
 
@@ -391,7 +439,7 @@ def observe(temp, start, deadline):
         identity = os.fstat(archive.fileno())
         need(stat.S_ISREG(identity.st_mode) and identity.st_uid == os.getuid() and identity.st_nlink == 0
              and stat.S_IMODE(identity.st_mode) == 0o600, 'observation-scratch')
-        observed_sha = fetch_archive(opener, facts, archive, deadline)
+        observed_sha, media = fetch_archive(opener, facts, archive, deadline)
         need(published_sha is None or hmac.compare_digest(published_sha, observed_sha),
              'publisher-media-sha256')
         tree = archive_tree(archive, facts['bytes'], deadline)
@@ -399,7 +447,7 @@ def observe(temp, start, deadline):
     return {'catalog': {'url': CATALOG, **raw_evidence(catalog_raw)},
             'object': {'bucket': BUCKET, 'name': OBJECT, 'metadataUrl': OBJECT_METADATA,
                        'metadata': raw_evidence(metadata_raw), **facts},
-            'archive': {'sha256': observed_sha, 'publisherSha256': published_sha, **tree},
+            'archive': {'sha256': observed_sha, 'publisherSha256': published_sha, 'media': media, **tree},
             'archiveScratchClosed': archive.closed, 'durationMs': round((time.monotonic() - start) * 1000)}
 
 

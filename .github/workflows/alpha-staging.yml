@@ -61,10 +61,19 @@ jobs:
       sha: ${{ steps.candidate.outputs.sha }}
       branch: ${{ steps.candidate.outputs.branch }}
       base: ${{ steps.candidate.outputs.base }}
+      browser_toolchain_observation: ${{ steps.browser-toolchain-purpose.outputs.observation }}
     steps:
       - name: Refuse other purposes on the browser toolchain observation branch
-        if: ${{ github.ref == 'refs/heads/codex/native-browser-toolchain-observation-20261109' || github.workflow_ref == 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/codex/native-browser-toolchain-observation-20261109' }}
+        id: browser-toolchain-purpose
+        if: >-
+          ${{ github.ref == 'refs/heads/codex/native-browser-toolchain-observation-20261109'
+          || github.workflow_ref == 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/codex/native-browser-toolchain-observation-20261109'
+          || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+          && github.head_ref == 'codex/native-browser-toolchain-observation-20261109')
+          || (github.event_name == 'workflow_dispatch' && inputs.candidate_ref == 'codex/native-browser-toolchain-observation-20261109') }}
         env:
+          PR_HEAD: ${{ github.head_ref }}
+          PR_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
           REQUESTED_REF: ${{ inputs.candidate_ref }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
           PARALLELISM: ${{ inputs.test_parallelism }}
@@ -73,17 +82,27 @@ jobs:
           CONTROLLER_ONLY: ${{ inputs.controller_only }}
         shell: bash
         run: |
+          branch=codex/native-browser-toolchain-observation-20261109
+          ref="refs/heads/$branch"
+          workflow="StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@$ref"
+          # Expression comparisons ignore case. Keep distinct Git refs exact here.
+          if [[ "$GITHUB_REF" != "$ref" && "$GITHUB_WORKFLOW_REF" != "$workflow" ]] &&
+             ! [[ "$GITHUB_EVENT_NAME" = pull_request && "$PR_REPOSITORY_ID" = "$GITHUB_REPOSITORY_ID" && "$PR_HEAD" = "$branch" ]] &&
+             ! [[ "$GITHUB_EVENT_NAME" = workflow_dispatch && "$REQUESTED_REF" = "$branch" ]]; then
+            exit 0
+          fi
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_RUN_ATTEMPT" = 1
-          test "$GITHUB_REF" = refs/heads/codex/native-browser-toolchain-observation-20261109
-          test "$GITHUB_WORKFLOW_REF" = "StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@$GITHUB_REF"
-          test "$REQUESTED_REF" = codex/native-browser-toolchain-observation-20261109
+          test "$GITHUB_REF" = "$ref"
+          test "$GITHUB_WORKFLOW_REF" = "$workflow"
+          test "$REQUESTED_REF" = "$branch"
           test "$EXPECTED_SHA" = "$GITHUB_SHA"
           test "$EXPECTED_SHA" = "$GITHUB_WORKFLOW_SHA"
           test "$PARALLELISM" = 4
           test "$BUILD_ONLY" = false
           test "$DIAGNOSTICS_ONLY" = true
           test "$CONTROLLER_ONLY" = false
+          printf '%s\n' 'observation=true' >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.workflow_sha }}
@@ -256,10 +275,10 @@ jobs:
           path: automation
           persist-credentials: false
       - name: Observe the fixed publisher browser archive without executing it
-        if: ${{ github.ref == 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
+        if: ${{ needs.resolve.outputs.browser_toolchain_observation == 'true' }}
         working-directory: automation
         run: /usr/bin/python3 -I -B .github/ci/native-workload-browser-toolchain.py
-      - if: ${{ always() && github.ref == 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
+      - if: ${{ always() && needs.resolve.outputs.browser_toolchain_observation == 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: browser-toolchain-observation
@@ -267,27 +286,27 @@ jobs:
           if-no-files-found: error
           retention-days: 3
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        if: ${{ github.ref != 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
+        if: ${{ needs.resolve.outputs.browser_toolchain_observation != 'true' }}
         with:
           ref: ${{ needs.resolve.outputs.sha }}
           path: source
           fetch-depth: 0
           persist-credentials: false
       - name: Runner capacity before dependencies
-        if: ${{ github.ref != 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
+        if: ${{ needs.resolve.outputs.browser_toolchain_observation != 'true' }}
         run: |
           df -Pk . "$RUNNER_TEMP" /var/lib/docker
           for p in /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup; do
             if [ -d "$p" ]; then sudo du -sx -B1 "$p"; fi
           done
       - uses: ./automation/.github/actions/setup-alpha
-        if: ${{ github.ref != 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
+        if: ${{ needs.resolve.outputs.browser_toolchain_observation != 'true' }}
         with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - name: Record measured capacity and unused SDK sizes
-        if: ${{ github.ref != 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
+        if: ${{ needs.resolve.outputs.browser_toolchain_observation != 'true' }}
         run: node ../automation/.github/ci/runner-diagnostics.mjs
         env: {AIHR_CAPACITY_REPORT_PROFILE: "${{ github.run_attempt == 1 && 'bounded-suite-ready' || 'legacy' }}"}
-      - if: ${{ always() && github.ref != 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
+      - if: ${{ always() && needs.resolve.outputs.browser_toolchain_observation != 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: runner-resources
