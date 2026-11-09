@@ -179,6 +179,13 @@ class Admission(unittest.TestCase):
         ):
             self.assertEqual(owner.witness_failure_category(invalid),'unclassified-stage-failure')
 
+    def test_native_ledger_order_uses_integer_column_before_text_projection(self):
+        witness = Path(__file__).with_name('fictional-ai-source-upgrade.mts').read_text()
+        query = re.search(r'owner\.client<LedgerRow\[\]>`([^`]+)`',witness)
+        self.assertIsNotNone(query)
+        self.assertRegex(query.group(1),r'(?i)\bfrom\s+drizzle\.__drizzle_migrations\s+m\s+order\s+by\s+m\.id\s*$')
+        self.assertRegex(query.group(1),r'(?i)\bselect\s+m\.id::text\s+as\s+id\b')
+
     def test_engine_boundary_needs_role_receipt_for_exact_phase(self):
         path = self.event.parent/'roles.json'
         source = Path(__file__).resolve().parents[3]

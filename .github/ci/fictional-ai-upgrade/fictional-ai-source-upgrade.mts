@@ -96,8 +96,9 @@ async function main() {
       tag, created_at, hash:sourceSha256 ?? hash,
     }));
     enter('ledger-native');
-    const ledger = [...await owner.client<LedgerRow[]>`select id::text as id, hash, created_at::text as created_at
-      from drizzle.__drizzle_migrations order by id`];
+    // Sort by the native integer column because the unqualified output alias is text.
+    const ledger = [...await owner.client<LedgerRow[]>`select m.id::text as id, m.hash, m.created_at::text as created_at
+      from drizzle.__drizzle_migrations m order by m.id`];
     assert.equal(freshLedger.length, phase === 'prepare' ? 723 : 764);
     validateMigrationLedgerRows(freshLedger,ledger);
     enter('database-identity');
