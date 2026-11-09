@@ -116,6 +116,6 @@ export async function nativeReferenceFixture(){
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  assert.equal(process.argv.length,2);
- const {protectedViewPreflight}=await import('./protected-view.mjs');
- await protectedViewPreflight();
+ const {protectedViewCensus}=await import('./protected-view-census.mjs');
+ await protectedViewCensus();
 }

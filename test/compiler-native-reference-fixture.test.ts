@@ -1,10 +1,10 @@
-/** Isolated transport preflight using the existing closed native fixture owner. */
+/** Isolated transport capability census using the existing closed native fixture owner. */
 import {spawnClosed,type ClosedChildEnvironment} from './helpers/closed-child-process.mjs';
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {expect,it} from 'vitest';
 import {admitCompilerReference,publishCompilerReferenceClock} from '../.github/ci/diagnostics/native-reference/admission.mjs';
-it('qualifies the fixed read-only and no-egress transport for a later native reference experiment',async context=>{
+it('inventories existing Linux transport capabilities for a later native reference experiment',async context=>{
  const started=process.hrtime.bigint(),controller=new AbortController(),failures:unknown[]=[],output:Buffer[]=[];
  let child:ReturnType<typeof spawnClosed>|undefined,closed:Promise<{code:number|null;signal:NodeJS.Signals|null}>|undefined;
  let exited=false,finished=false,bytes=0,timer:ReturnType<typeof setTimeout>|undefined,killTimer:ReturnType<typeof setTimeout>|undefined,drainTimer:ReturnType<typeof setTimeout>|undefined;
@@ -38,11 +38,11 @@ it('qualifies the fixed read-only and no-egress transport for a later native ref
    }
    timer=setTimeout(()=>stop(Error('Native fixture aggregate budget exhausted')),Math.max(0,718000-elapsed()));
    const result=await closed;controller.signal.throwIfAborted();expect(failures).toEqual([]);expect(result.signal).toBeNull();expect(result.code,Buffer.concat(output).toString('utf8')).toBe(0);
-   const report=JSON.parse(readFileSync(join(proof.destination,'compiler-protected-view/report.json'),'utf8'));
-   expect(report).toMatchObject({kind:'NATIVE_REFERENCE_PROTECTED_VIEW_PREFLIGHT',source:proof.sourceHead,
-    controller:proof.controllerHead,run:proof.run,attempt:proof.attempt,transportQualified:true,privateScratchRemoved:true,
-    ordinaryCompilerQualified:false,applicationInventoryComplete:false,releaseAuthorized:false,stockNextInvoked:false,
-    strictCompilerInvoked:false,processSettlementRequired:true});
+   const report=JSON.parse(readFileSync(join(proof.destination,'compiler-protected-view-census/report.json'),'utf8'));
+   expect(report).toMatchObject({kind:'NATIVE_REFERENCE_PROTECTED_VIEW_CAPABILITY_CENSUS',source:proof.sourceHead,
+    controller:proof.controllerHead,run:proof.run,attempt:proof.attempt,censusComplete:true,transportQualified:false,
+    ordinaryCompilerQualified:false,releaseAuthorized:false,stockNextInvoked:false,strictCompilerInvoked:false,
+    containersCreated:0,imagesAcquired:0,hostPolicyChanges:0});
    expect(elapsed()).toBeLessThanOrEqual(720000);
   }catch(error){remember(error);}
   finally{

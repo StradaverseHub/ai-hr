@@ -176,7 +176,7 @@ export function runFocused(destination) {
     const raw=readFileSync(join(cwd,relativeManifest));if(!raw.equals(readFileSync(join(control,relativeManifest))))throw Error('Compiler source/controller declaration differs');
     const declaration=JSON.parse(raw);if(declaration.kind!==profile.kind)throw Error('Closed compiler source declaration required');
     if(declaration.protectedViewPilot){
-      const ref='refs/heads/codex/compiler-protected-view-preflight-20261109';
+      const ref='refs/heads/codex/compiler-protected-view-census-20261109';
       if(profile.purpose!=='reference'||process.env.GITHUB_REF!==ref||sha!==controller)
         throw Error('Protected view pilot requires its exact self-source branch');
     }
