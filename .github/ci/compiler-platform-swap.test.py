@@ -386,7 +386,7 @@ class ManagedResultModel(unittest.TestCase):
         baseline = matched_input()
         self.assertTrue(model['same_baseline'](baseline))
         for changes in ({'nodeSha256': '0' * 64}, {'managedArgvSha256': '0' * 64},
-                        {'inventory': {**baseline['inventory'], 'configuredRoots': 9204}},
+                        {'inventory': {**baseline['inventory'], 'configuredRoots': baseline['inventory']['configuredRoots'] - 1}},
                         {'inventory': {**baseline['inventory'], 'generatedSha256': '0' * 64}},
                         {'inventory': {**baseline['inventory'], 'orderedRootSha256': '0' * 64}}):
             with self.subTest(changes=changes):
@@ -598,7 +598,7 @@ class KernelModel(unittest.TestCase):
         for extra in ({'compilerExit': 2}, {'compilerExit': False}, {'platformSwapPreserved': False},
                       {'v8HeapFatalMarker': True}, {'typescriptDiagnosticCount': 1}, {'terminal': None},
                       {'sourceReverified': False}, {'compilerLog': {'bytes': 1}}, {'nativeInputFingerprint': None},
-                      {'nativeInputFingerprint': {**fingerprint_row(), 'loadedFiles': 9205}},
+                      {'nativeInputFingerprint': {**fingerprint_row(), 'loadedFiles': model['BASELINE_INVENTORY']['configuredRoots']}},
                       {'nativeInputFingerprint': {**fingerprint_row(), 'trackedSha256': 'f' * 64}},
                       {'progress': []}, {'progress': [progress_row('start')]},
                       {'progress': [progress_row('start'), progress_row('deadline', elapsed=1080000)]},

@@ -16,10 +16,10 @@ import sys
 import time
 
 
-SOURCE = '4e1654587b5b81d58a557d44799737a86853e141'
-SOURCE_TREE = 'fac5340b60fff5504e6906cdb3f607617baa4f88'
+SOURCE = 'ce0a4c3a0f1280bdf1506d4bd57bbb4f91ae2d9f'
+SOURCE_TREE = 'f144731155daf2906e021b564fac7a1bfda2be2b'
 SOURCE_BRANCH = 'codex/architecture-five-item-browser-convergence-20261109'
-BRANCH = 'codex/compiler-combined-13312-proof-20261110'
+BRANCH = 'codex/compiler-payroll-close-ce0a4c3a-13312-proof-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 HEAP_MIB = 13 * 1024
@@ -41,8 +41,8 @@ PROGRESS_COUNTERS = ('cpuUsec', 'userUsec', 'systemUsec', 'cpuSomeUsec', 'cpuFul
 PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
 PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-13312-combined'
-UNIT_PREFIX = 'aihr-compiler-13312-combined-'
+DIRECTORY = 'compiler-13312-payroll-close-ce0a4c3a'
+UNIT_PREFIX = 'aihr-compiler-13312-payroll-close-ce0a4c3a-'
 UNIT_NAME = re.compile(rf'{re.escape(UNIT_PREFIX)}[1-9][0-9]{{0,15}}\.service')
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -56,10 +56,10 @@ INVENTORY_FIELDS = ('configuredRoots', 'orderedRootSha256', 'rootSetSha256', 'ge
 STATE_FIELDS = ('buildInfoBytes', 'buildInfoSha256', 'nativeFiles', 'nativeRoots', 'nativeRootSetSha256')
 # The earlier managed command proves the tool, root census and route inputs on its own source.
 # Neither its typecheck result nor its compiler graph is adopted.
-BASELINE_RUN = '42690645676'
-CALIBRATION_SOURCE = '49c002be31358b36e46c19bea8d6d004e946c181'
+BASELINE_RUN = '42694578044'
+CALIBRATION_SOURCE = '4e1654587b5b81d58a557d44799737a86853e141'
 TRACKED_MEMBERS = 12965
-TRACKED_SHA256 = 'd74136dd49d388642839417418813e39075a0512beed65c1bc2b2caf4d38e41e'
+TRACKED_SHA256 = 'ef449b14e036a9f1a6c338623edff2c1763a4e85e762daeffc78a96ac0255a3b'
 BASELINE_INVENTORY = {
     'configuredRoots': 9205,
     'orderedRootSha256': '9fdad7b65530150218090b7b4378d6b647b0da6f856081ca898d2ed09a1349fc',
