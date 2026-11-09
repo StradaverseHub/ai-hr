@@ -114,8 +114,9 @@ class StageCourseModels(unittest.TestCase):
             held.enter_context(patch.object(os, 'umask', return_value=0o022))
             held.enter_context(patch.object(os, 'close', side_effect=lambda fd: self.events.append(('close', fd))))
             held.enter_context(patch.object(S.time, 'monotonic', side_effect=lambda: self.now))
+            held.enter_context(patch.object(self.course, 'create', self.create))
             held.enter_context(patch.multiple(
-                self.course, create=self.create, install_capsule=lambda _: self.events.append('seal'),
+                self.course, install_capsule=lambda _: self.events.append('seal'),
                 enter_private_mount_namespace=lambda: self.events.append('private'),
                 acquire=lambda: self.events.append('acquire'), dispose_mounts=self.dispose_mounts,
                 dispose_tree=self.dispose_tree,
