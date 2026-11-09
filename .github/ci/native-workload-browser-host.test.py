@@ -272,7 +272,7 @@ class BrowserHostSettlementModel(unittest.TestCase):
     def test_late_initial_readback_retains_protection_without_birth_proof(self):
         owner = H.Firewall('123', '0123456789abcdef')
         rows = kernel_rows()
-        chains = data([row for row in rows if 'chain' in row])
+        chains = data([])
         table = data(rows)
         readback = H.firewall_readback
         replies = iter((chains, b'', table))
