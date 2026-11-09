@@ -342,5 +342,84 @@
     "rawEventBytesPublished": false,
     "modelCount": 25,
     "nativeObservation": "UNRUN"
+  },
+  "downloaderIdentityCheckpointCorrection": {
+    "directParent": "78cd8d365bbfccacbf8c2a3e2e42097d83c91667",
+    "historicalRun": {
+      "runId": "42571557240",
+      "source": "78cd8d365bbfccacbf8c2a3e2e42097d83c91667",
+      "controller": "78cd8d365bbfccacbf8c2a3e2e42097d83c91667",
+      "attempt": 1,
+      "terminalJobs": 13,
+      "conclusion": "failure",
+      "artifactId": "13653955221",
+      "artifactZipSha256": "8fd8e7f33da9e21c8d836a60831c491364ad3b3211457456cb724ba80a81f387",
+      "receiptSha256": "67ed4621de04d0821f04ed9fc2229f9c841d404bebe5519532c766fe1bf63140",
+      "nativeLogSha256": "e64202e8ac717eebe22a0bfef2949ffd42e40b4ebeb4058c30b0a292b1d95273",
+      "failure": "fixed-archive-acquisition",
+      "failureReason": "download-identity",
+      "downloaderExit": 2,
+      "cleanup": "complete",
+      "preciseIdentityCheckpoint": "UNOBSERVED"
+    },
+    "wholeParentPreimages": [
+      {
+        "path": ".github/ci/native-workload-browser-tool-course.py",
+        "gitBlob": "002c478c60f52b647af09fbdc9cd82d449385e64",
+        "bytes": 58086,
+        "sha256": "0350c714d57f865dc7acd43e33e13f80bb496515f9d24c8ca1e84983c31cb34a"
+      },
+      {
+        "path": ".github/ci/native-controller-bootstrap.py",
+        "gitBlob": "0008aa5ce7f7cc9b145356a0bc26906f566ccd84",
+        "bytes": 47413,
+        "sha256": "a77d095fdd56fd7840f8be12d1f05511c28196a49e7cf5f9fadecbaf33c756da"
+      },
+      {
+        "path": ".github/ci/native-workload-browser-tool-course.test.py",
+        "gitBlob": "b01c58b2df999d23fa1ce54a16d8b9d0865d0aa7",
+        "bytes": 43946,
+        "sha256": "9440eeb4eea14e8e22e34a35ade00f04822b2e5b50061159f883d3deb401edb2"
+      },
+      {
+        "path": "docs/qualification/native-workload-browser-tool-course-source-20261109.json",
+        "gitBlob": "98bb9745c2a881b28511675e685cbb01c442c60c",
+        "bytes": 13954,
+        "sha256": "6228a1ed6c9f6522a3c960ca182a3f5fd950feee7ecff6826551b2481dc1b58d"
+      }
+    ],
+    "currentSourcePins": [
+      {
+        "path": ".github/ci/native-workload-browser-tool-course.py",
+        "gitBlob": "4f57f8e84a20f415c1baf2ac5d4d8760da7ffe2f",
+        "bytes": 59799,
+        "sha256": "569d2c080322ea30dd1b39b83425125bd2df7c62d5521b7c3905d42d8a884fc7"
+      },
+      {
+        "path": ".github/ci/native-controller-bootstrap.py",
+        "gitBlob": "2fc1de1b4e843504b1f11d276e8be210ef3c06f9",
+        "bytes": 48364,
+        "sha256": "b68d7941c5dec6e750f444c66bbf9799832fa2fee2297c9fb356cbbc09517aae"
+      },
+      {
+        "path": ".github/ci/native-workload-browser-tool-course.test.py",
+        "gitBlob": "541b7283ea78b8be8b8b554129e51f0b7c1b01f2",
+        "bytes": 49633,
+        "sha256": "3ec7739ee7dd8ca12c711bce0476011ab561ea1de510357d19f76d1f039ff8f9"
+      }
+    ],
+    "identityExitRange": [
+      8,
+      20
+    ],
+    "modeZeroOnlyAdmission": true,
+    "exactModeTwoRefusedSeparately": true,
+    "originalOperationAndShortCircuitOrderUnchanged": true,
+    "newReasonRequiresMatchingOwnedCommandFailureExit": true,
+    "rawSysctlStatusErrnoAndErrorDetailsPublished": false,
+    "existingExitCodesAndHistoricalReceiptShapePreserved": true,
+    "disposableNamespaceAndWritersUnchanged": true,
+    "modelCount": 27,
+    "nativeObservation": "UNRUN"
   }
 }

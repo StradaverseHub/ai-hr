@@ -360,6 +360,98 @@ class ToolIntentModels(unittest.TestCase):
 
 
 class ToolTransportModels(unittest.TestCase):
+    def test_identity_refusals_preserve_the_first_failed_operation_and_mode_zero_only(self):
+        empty_caps = b''.join(key + b':\t0000000000000000\n' for key in
+                              (b'CapInh', b'CapPrm', b'CapEff', b'CapAmb'))
+        status = empty_caps + b'NoNewPrivs:\t1\n'
+        steps = [
+            ('geteuid', (), 0), ('CDLL', (None,), None),
+            ('proc', ('/proc/sys/fs/suid_dumpable', 16), b'0\n'), ('prctl', (4, 0, 0, 0, 0), 0),
+            ('setgroups', ([],), None), ('setresgid', (1002,)*3, None), ('setresuid', (1001,)*3, None),
+            ('prctl', (3, 0, 0, 0, 0), 0), ('prctl', (38, 1, 0, 0, 0), 0),
+            ('getresuid', (), (1001,)*3), ('getresgid', (), (1002,)*3), ('getgroups', (), []),
+            ('proc', ('/proc/self/status', 65536), status),
+        ]
+        cases = [
+            (0, 1001, 'original'), (2, b'2\n', 'dump-policy-root-only'), (2, b'1\n', 'dump-policy'),
+            (2, b'fictional private value', 'dump-policy'), (2, OSError('private detail'), 'dump-policy'),
+            (3, -1, 'set-dumpable'), (4, OSError('private detail'), 'drop-groups'),
+            (5, OSError('private detail'), 'drop-gid'), (6, OSError('private detail'), 'drop-uid'),
+            (7, 2, 'post-dumpable'), (8, -1, 'set-no-new-privs'), (9, (0,)*3, 'post-ids'),
+            (10, (0,)*3, 'post-ids'), (11, [1002], 'post-ids'), (12, OSError('private detail'), 'status'),
+            (12, status.replace(b'CapEff:\t0', b'CapEff:\t1'), 'capabilities'),
+            (12, empty_caps + b'NoNewPrivs:\t0\n', 'observe-no-new-privs'), (None, None, None),
+        ]
+        for index, fault, reason in cases:
+            observed = []
+
+            def record(name, args):
+                position = len(observed)
+                expected_name, expected_args, result = steps[position]
+                self.assertEqual((name, args), (expected_name, expected_args))
+                observed.append(name)
+                if position == index:
+                    if isinstance(fault, OSError):
+                        raise fault
+                    return fault
+                return result
+
+            libc = SimpleNamespace(prctl=lambda *args: record('prctl', args))
+
+            def load_prctl(*args, use_errno):
+                self.assertIs(use_errno, True)
+                record('CDLL', args)
+                return libc
+
+            with self.subTest(index=index, reason=reason), ExitStack() as mocks:
+                for name in ('geteuid','setgroups','setresgid','setresuid','getresuid','getresgid','getgroups'):
+                    mocks.enter_context(patch.object(C.os, name, side_effect=lambda *args, name=name: record(name, args)))
+                mocks.enter_context(patch.object(C.ctypes, 'CDLL', side_effect=load_prctl))
+                mocks.enter_context(patch.object(C, 'bounded_proc', side_effect=lambda *args: record('proc', args)))
+                if reason is None:
+                    C._drop_downloader(1001, 1002)
+                    self.assertEqual(len(observed), len(steps))
+                else:
+                    with self.assertRaises(C.ToolRefusal) as failure:
+                        C._drop_downloader(1001, 1002)
+                    self.assertEqual(failure.exception.reason, 'download-identity-' + reason)
+                    self.assertEqual(str(failure.exception), 'Fixed TOOL operation refused')
+                    self.assertEqual(len(observed), index + 1)
+
+    def test_identity_reason_requires_the_exact_owned_downloader_exit_in_the_receipt(self):
+        reasons = ('original','dump-policy','dump-policy-root-only','set-dumpable','drop-groups','drop-gid','drop-uid',
+                   'post-dumpable','set-no-new-privs','post-ids','status','capabilities','observe-no-new-privs')
+        report = tool_owner_report()
+        report.update(complete=False, failure='fixed-archive-acquisition')
+        for key in ('transfer','materialized'):
+            del report[key]
+        outcomes = report['processOutcomes']
+        for operation in ('payload-bind','payload-remount','payload-unmount'):
+            del outcomes[operation]
+        downloader = outcomes['archive-downloader']
+        downloader.update(reason='command-failed', exit=2)
+        B._validate_tool_capture(B.canonical(report | {'failureReason':'download-identity'}), '1')
+        start = 1000
+        for code, reason in enumerate(reasons, 8):
+            label = 'download-identity-' + reason
+            course = C.Course('123', 1001, 1001, start)
+            course.kernel = Mock()
+            course.kernel.own_children.return_value = []
+            argv = ['/usr/bin/python3','-I','-B',str(course.path / 'code' / C.SOURCE), '--download',
+                    '1001','1001',repr(course.active), *map(str, range(3, 8))]
+            with self.subTest(code=code, reason=reason), patch.object(C.time, 'monotonic', return_value=start), \
+                 patch.object(C, 'quiet_command_stdio', nullcontext), \
+                 patch.object(C, '_run_tool_command', return_value=owned_result(reason='command-failed', commandExit=code)), \
+                 self.assertRaises(C.ToolRefusal) as failure:
+                course.command(argv, course.active, C.ACTIVE_SECONDS)
+            self.assertEqual(failure.exception.reason, label)
+            downloader.update(course.state['processOutcomes']['archive-downloader'])
+            accepted = report | {'failureReason':label}
+            B._validate_tool_capture(B.canonical(accepted), '1')
+            downloader['exit'] = 2
+            with self.assertRaisesRegex(ValueError, 'identity reason lacks its exact child exit'):
+                B._validate_tool_capture(B.canonical(accepted), '1')
+
     def test_incomplete_and_overcap_bodies_are_framing_refusals_before_overcap_write(self):
         now = time.monotonic()
         for headers, pieces, written, success in [

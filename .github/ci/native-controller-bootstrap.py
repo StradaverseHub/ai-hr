@@ -650,9 +650,14 @@ def _validate_tool_owner_capture(report):
         stages = ('root-parent-acquisition', 'root-acquisition', 'source-capsule', 'private-mount-namespace',
                   'fixed-archive-acquisition', 'strict-materialization', 'readonly-installation-readback',
                   'owner-finalization', 'owned-settlement')
+        identity_reasons = ('download-identity-original', 'download-identity-dump-policy',
+            'download-identity-dump-policy-root-only', 'download-identity-set-dumpable',
+            'download-identity-drop-groups', 'download-identity-drop-gid', 'download-identity-drop-uid',
+            'download-identity-post-dumpable', 'download-identity-set-no-new-privs', 'download-identity-post-ids',
+            'download-identity-status', 'download-identity-capabilities', 'download-identity-observe-no-new-privs')
         failure_reasons = reasons[1:] + ('host-io', 'contract-refused', 'download-identity', 'download-writer',
             'download-tls-transport', 'download-framing', 'download-deadline', 'download-write',
-            'strict-archive-pin', 'strict-archive-or-tree')
+            'strict-archive-pin', 'strict-archive-or-tree') + identity_reasons
         need(report['failure'] in stages and (report.get('failureReason') in failure_reasons
              or report['failure'] == 'owned-settlement' and 'failureReason' not in report)
              and ('cleanupReason' not in report or cleanup == 'refused' and report['cleanupReason'] in
@@ -660,6 +665,11 @@ def _validate_tool_owner_capture(report):
                    'handshake-refused', 'protocol-refused', 'command-failed', 'group-uncertain',
                    'descendants-survived', 'session-escaped')),
              'Returned TOOL failure reasons differ')
+        if report.get('failureReason') in identity_reasons:
+            downloader = outcomes.get('archive-downloader', {})
+            need(report['failure'] == 'fixed-archive-acquisition' and downloader.get('reason') == 'command-failed'
+                 and downloader.get('exit') == 8 + identity_reasons.index(report['failureReason']),
+                 'Returned TOOL identity reason lacks its exact child exit')
 
 
 def _validate_tool_capture(raw, status):

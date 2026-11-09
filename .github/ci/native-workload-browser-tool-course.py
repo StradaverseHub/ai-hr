@@ -48,7 +48,14 @@ TOP_LEVEL = frozenset(('code', 'incoming', 'inputs', 'payload'))
 PROCESS_REASONS = frozenset(('complete', 'command-failed', 'deadline', 'handshake-refused', 'descendants-survived',
                              'protocol-refused', 'owner-interrupted', 'group-uncertain', 'session-escaped'))
 DOWNLOAD_FAILURES = {2: 'download-identity', 3: 'download-writer', 4: 'download-tls-transport',
-                     5: 'download-framing', 6: 'download-deadline', 7: 'download-write'}
+                     5: 'download-framing', 6: 'download-deadline', 7: 'download-write',
+                     8: 'download-identity-original', 9: 'download-identity-dump-policy',
+                     10: 'download-identity-dump-policy-root-only', 11: 'download-identity-set-dumpable',
+                     12: 'download-identity-drop-groups', 13: 'download-identity-drop-gid',
+                     14: 'download-identity-drop-uid', 15: 'download-identity-post-dumpable',
+                     16: 'download-identity-set-no-new-privs', 17: 'download-identity-post-ids',
+                     18: 'download-identity-status', 19: 'download-identity-capabilities',
+                     20: 'download-identity-observe-no-new-privs'}
 
 
 class ToolRefusal(ValueError):
@@ -229,24 +236,41 @@ def _download_headers(response, maximum, browser):
 
 
 def _drop_downloader(uid, gid):
-    require(os.geteuid() == 0 and type(uid) is int and type(gid) is int and uid > 0 and gid > 0,
-            'TOOL downloader original identity differs')
+    with fixed_refusal('download-identity-original'):
+        require(os.geteuid() == 0 and type(uid) is int and type(gid) is int and uid > 0 and gid > 0,
+                'TOOL downloader original identity differs')
     libc = ctypes.CDLL(None, use_errno=True)
     # Linux resets dumpability to this sysctl during credential transitions.
     # Refuse before any transition that could expose a same-UID /proc/fd view.
-    require(bounded_proc('/proc/sys/fs/suid_dumpable', 16).strip() == b'0'
-            and libc.prctl(4, 0, 0, 0, 0) == 0, 'TOOL downloader descriptor privacy unavailable')
-    os.setgroups([])
-    os.setresgid(gid, gid, gid)
-    os.setresuid(uid, uid, uid)
-    require(libc.prctl(3, 0, 0, 0, 0) == 0 and libc.prctl(38, 1, 0, 0, 0) == 0 and os.getresuid() == (uid,)*3
-            and os.getresgid() == (gid,)*3 and not os.getgroups(), 'TOOL downloader UID/GID or no-new-privs differs')
-    status = bounded_proc('/proc/self/status', 65536)
-    for key in (b'CapInh', b'CapPrm', b'CapEff', b'CapAmb'):
-        require(re.findall(rb'^' + key + rb':\s+([0-9a-f]+)$', status, re.M) == [b'0000000000000000'],
-                'TOOL downloader capabilities differ')
-    require(re.findall(rb'^NoNewPrivs:\s+([0-9]+)$', status, re.M) == [b'1'],
-            'TOOL downloader no-new-privs differs')
+    with fixed_refusal('download-identity-dump-policy'):
+        policy = bounded_proc('/proc/sys/fs/suid_dumpable', 16).strip()
+        if policy == b'2':
+            raise ToolRefusal('Fixed TOOL operation refused', 'download-identity-dump-policy-root-only')
+        require(policy == b'0', 'TOOL downloader descriptor privacy unavailable')
+    with fixed_refusal('download-identity-set-dumpable'):
+        require(libc.prctl(4, 0, 0, 0, 0) == 0, 'TOOL downloader descriptor privacy unavailable')
+    with fixed_refusal('download-identity-drop-groups'):
+        os.setgroups([])
+    with fixed_refusal('download-identity-drop-gid'):
+        os.setresgid(gid, gid, gid)
+    with fixed_refusal('download-identity-drop-uid'):
+        os.setresuid(uid, uid, uid)
+    with fixed_refusal('download-identity-post-dumpable'):
+        require(libc.prctl(3, 0, 0, 0, 0) == 0, 'TOOL downloader UID/GID or no-new-privs differs')
+    with fixed_refusal('download-identity-set-no-new-privs'):
+        require(libc.prctl(38, 1, 0, 0, 0) == 0, 'TOOL downloader UID/GID or no-new-privs differs')
+    with fixed_refusal('download-identity-post-ids'):
+        require(os.getresuid() == (uid,)*3 and os.getresgid() == (gid,)*3 and not os.getgroups(),
+                'TOOL downloader UID/GID or no-new-privs differs')
+    with fixed_refusal('download-identity-status'):
+        status = bounded_proc('/proc/self/status', 65536)
+    with fixed_refusal('download-identity-capabilities'):
+        for key in (b'CapInh', b'CapPrm', b'CapEff', b'CapAmb'):
+            require(re.findall(rb'^' + key + rb':\s+([0-9a-f]+)$', status, re.M) == [b'0000000000000000'],
+                    'TOOL downloader capabilities differ')
+    with fixed_refusal('download-identity-observe-no-new-privs'):
+        require(re.findall(rb'^NoNewPrivs:\s+([0-9]+)$', status, re.M) == [b'1'],
+                'TOOL downloader no-new-privs differs')
 
 
 def download_slot(info):
