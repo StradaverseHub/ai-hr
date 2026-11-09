@@ -1,7 +1,7 @@
 {
   "kind": "CURRENT_CONTROLLER_ADMIT_TIMING_SOURCE_NOT_RUN_EVIDENCE",
   "base": "615274a2556686946610c66ccd1422506338946c",
-  "sourceRef": "codex/native-next-manager-inverse-carry-20261109",
+  "sourceRef": "codex/native-next-second-worker-settlement-20261109",
   "currentCount": 134,
   "sourceSha256": {
     ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
@@ -28,23 +28,23 @@
     ".github/ci/singleton-protocol.mjs": "1dfff5d0e14ccd748508f9cd1ba07541307e5f7fea944af9bdc9bb7cc7333403",
     ".github/workflows/alpha-staging.yml": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
     "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
-    "deploy/admission/next_bootstrap_session_inverse.json": "77ba657e5292bd832cbea0bc6bd9987c110586d97113dfd4b0d2f41ed7a7f62c",
+    "deploy/admission/next_bootstrap_session_inverse.json": "45266a6b0972304842ccec5095506a65255e183630e04b03c6451c2bcfdb3933",
     "deploy/admission/next_build_binding.py": "b21ba80bd5efd5bc38c1a0c7458d86e4ea90cb1c98901f60955c68658c079ec0",
     "deploy/admission/next_cgroup_control_guard_order_inverse.json": "540abe7754b110edb293e51aecfe2a8875a1bdfe07e0f838eddfce8ccfd26752",
     "deploy/admission/next_cleanup_57d.source": "b9cbb0e4adea6c7a0f8835fe92a1a96683e25d27037429b8b212ffa840cdbf28",
     "deploy/admission/next_cleanup_phase_inverse.json": "223d5afed26d5c9f8e8954c7d44e89e54184d3cc2e2c34a6ac535141c1e441da",
-    "deploy/admission/next_controller_admit_terminal_inverse.json": "c97663665bde78f549a052405806642988ea748f6c70d0d33e6204ce0a9314c0",
-    "deploy/admission/next_controller_admit_timing_inverse.json": "0bc245ffd4d09883117713263b020b24f95db8ef860e30cdbd49c23c79c40d0e",
+    "deploy/admission/next_controller_admit_terminal_inverse.json": "8f86d7c2b60eb061c30a62d665ac37b1617deee5761b4b2aa41b858f7f8a89cf",
+    "deploy/admission/next_controller_admit_timing_inverse.json": "8c5a9a8255d19f182d4e88c6f7b0b9433065833009e6168f5e75137d8e09eee7",
     "deploy/admission/next_cpu_weight_constructor_inverse.json": "0b8b934bdafc370311efc1bddbb5a4329e578b87afb42ccdd7bc1608837ff99a",
     "deploy/admission/next_dependency_probe.cjs": "04e62c6ecc41acc84bee60b8ff6829b74e9ddd139652a2c57fd650497cf462c8",
     "deploy/admission/next_environment_observation_inverse.json": "9a4d71493bb5a44b2027d8f69c500fba0a27a32b983dfc0cef185000b026756f",
     "deploy/admission/next_fixture_filesystem.py": "5d8a813ef012c82f79e9a4aa0d60ebb640f5549006d71ab380a9e7c5d5975b25",
     "deploy/admission/next_fixture_poststart.py": "79b408916df2ada1d7d5c7b9c6d16c722026573b1070abb1721df42210af3559",
     "deploy/admission/next_host_history_controller_inverse.json": "7657c27da9d577e3c2d49db285439b37e6970a517250691af70f0f495c08cbe6",
-    "deploy/admission/next_host_key_receipt_inverse.json": "c76880ab05c19b4e3963962018bff29d4d8afa930d293b0afc07fa115e8710c4",
+    "deploy/admission/next_host_key_receipt_inverse.json": "9a10c0302b0f97d83b472ecaebb94c8916c2ac438d14a29b70c92d91a3aed807",
     "deploy/admission/next_key_name_capability_inverse.json": "56fd02c366344647e7ca5c56f939d635bc5f54283abbcb2fc0d790b8cae385e5",
     "deploy/admission/next_key_name_digest_inverse.json": "809dd943aad7a409318cd741f99421d545a3e09185b23126b3acc3179dd46723",
-    "deploy/admission/next_manager_environment_inverse.json": "15c8793261b790c5fb9d91bae24f436b5d2452b2df4a8e0385da22974ea1cf8a",
+    "deploy/admission/next_manager_environment_inverse.json": "61627fa3536424c54564abf9b6b4fbc5b085421036d851cdebeb6faef4beb3d3",
     "deploy/admission/next_manager_tap_census_inverse.json": "848afbf2d907b5e4c539ad79d162f5acfa9cf96db60e82a5f6c678029c3bc2e0",
     "deploy/admission/next_native_package.py": "a1c38782d486e7e6ebbfd475fd1652c9ab3bd66ad1a23f1129eab0fe5ef2cbe0",
     "deploy/admission/next_phase_observation_inverse.json": "badd9a274642bed2a1ea9111a34f1c35078ad7e9ebbf725b25bbe6bae894dd63",
@@ -54,13 +54,13 @@
     "deploy/admission/next_profile.py": "80e32be041b80a007bceeb5af60bbf0d922cb490017950fc034057e30476f846",
     "deploy/admission/next_source.py": "0c170bb48b741f7e5dfa8db8001a8d366e24435c75401dab8cffd67429cfe2bb",
     "deploy/admission/test_controller_admit_timing.py": "3701d28c8ff31d8d2a18cc4fcd8b990878758fe320846fb48066974814b52d0e",
-    "deploy/admission/test_next_bootstrap_session.py": "2a4858007e8755cd8af16a1cd50aff10b7b58012c29b0f93c09929d6452255f6",
+    "deploy/admission/test_next_bootstrap_session.py": "82fc2001f7d757d487fab2bcbd0bf68b886769d5ca7d53e131635f282958c1f6",
     "deploy/admission/test_next_environment_observation.py": "d4937049466d650dea82e626c31fe99cd152e2d4f6656225a0d82b25cac81a36",
     "deploy/admission/test_next_failure_diagnostic.py": "5dced34e72083c5d0a9fb55991b6fc9a8fa62e9d0c7120d925bf3cd09edcd7f9",
     "deploy/admission/test_next_host_view.py": "6a30080018459a8965c732f3c96e542aa7492d692c6b76193ac2f15d4ea35754",
     "deploy/admission/test_next_host_view_native.py": "586227c6fb8f185d265ea7d567c231a7f7f289889431b5ad1062ed795ee855e4",
     "deploy/admission/test_next_manager_environment.py": "9f56ba5b625cd710c3979c65fa1afdb4c6d4f14b16c04387ee669f07e6893810",
-    "deploy/admission/test_next_native.py": "81d6ffeee3c73b52ae872d2cc4c45ff075babf4171de0da91bdf68c8f43b64bf",
+    "deploy/admission/test_next_native.py": "e080d3e403b571bb83762b10148dd2a17ba1879a3b453a1c9ac2a9a7c98aa773",
     "deploy/admission/test_next_plain_key_names.py": "092855fe3db242579e135f58051984d17592833021545e3fffc7f645acb33d78",
     "deploy/admission/test_next_profile.py": "ef1b8df8e45b3e5603e30f7b71d400736a445ccc858e53607af082f07b03bf7f",
     "docs/qualification/native-next-bootstrap-profile-session-8bad-source-historical-20261108.json": "6732891348a401a272475f5ac03ad1c3852fa86fbf7c0cb2d4eb302a153a3778",
@@ -177,7 +177,7 @@
     "deploy/admission/next_profile.py": "80e32be041b80a007bceeb5af60bbf0d922cb490017950fc034057e30476f846",
     "deploy/admission/test_native.py": "8f2b414395adfae4250f684e1c845815c4ca27c4b6c1818b824dc04ddcc3251f",
     "deploy/admission/test_next_host_view_native.py": "586227c6fb8f185d265ea7d567c231a7f7f289889431b5ad1062ed795ee855e4",
-    "deploy/admission/test_next_native.py": "81d6ffeee3c73b52ae872d2cc4c45ff075babf4171de0da91bdf68c8f43b64bf",
+    "deploy/admission/test_next_native.py": "e080d3e403b571bb83762b10148dd2a17ba1879a3b453a1c9ac2a9a7c98aa773",
     "scripts/gate-db-classify.ts": "cc77445ba5b8a702a5f8f4a4292bdcb99275d520ae4f13b16442a17e78f3f916",
     "test/helpers/ci-singleton-admission.ts": "52b21da08ae38fae1a51096213318841081042d109f6fed647bab23d3e8a755d",
     "test/runtime-next-host-view-native.test.ts": "6aa3a31ec85f404d15686e6d7f89a69ad965928899e73fc80b41d58b2b1e7217",
@@ -211,7 +211,7 @@
     "deploy/admission/next_native_package.py": "a1c38782d486e7e6ebbfd475fd1652c9ab3bd66ad1a23f1129eab0fe5ef2cbe0",
     "deploy/admission/next_profile.py": "80e32be041b80a007bceeb5af60bbf0d922cb490017950fc034057e30476f846",
     "deploy/admission/next_source.py": "0c170bb48b741f7e5dfa8db8001a8d366e24435c75401dab8cffd67429cfe2bb",
-    "deploy/admission/test_next_native.py": "81d6ffeee3c73b52ae872d2cc4c45ff075babf4171de0da91bdf68c8f43b64bf",
+    "deploy/admission/test_next_native.py": "e080d3e403b571bb83762b10148dd2a17ba1879a3b453a1c9ac2a9a7c98aa773",
     "scripts/lib/discard-premigration.ts": "ce856d78b3d3e02e3d086969acecf398c9bb28fd3df03ee22dc43c8b37af497f",
     "scripts/migrate-with-focused-prerequisites.ts": "54c2248593444232488028fd2713709081f030aaacef616bb9f8aa281c9d88cc",
     "scripts/performance/fixture-workload.mjs": "8bef41b3e403683dbb399b1fd0f4a4f2feb3c673e4f72c6a141b0666e0161c51",
@@ -1014,6 +1014,150 @@
     "allExecutableOwnersAndTestBodiesWhole": true,
     "hostHistoryInverseWhole": true,
     "testOrRuntimeVerified": false,
+    "historicalEvidenceTransferred": false,
+    "releaseEligible": false
+  },
+  "bootSecondWorkerPostStartSettlement": {
+    "parent": "f04858e3d3e5df3b580589f35607c03c0bb55894",
+    "sourceOnly": true,
+    "leasePaths": [
+      "deploy/admission/next_bootstrap_session_inverse.json",
+      "deploy/admission/next_controller_admit_terminal_inverse.json",
+      "deploy/admission/next_controller_admit_timing_inverse.json",
+      "deploy/admission/next_host_key_receipt_inverse.json",
+      "deploy/admission/next_manager_environment_inverse.json",
+      "deploy/admission/test_next_bootstrap_session.py",
+      "deploy/admission/test_next_native.py",
+      "docs/qualification/native-next-controller-admit-timing-source-20261109.json"
+    ],
+    "wholeParentGitPreimages": {
+      "deploy/admission/next_bootstrap_session_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "f9edbb720325714a6606847a859aaecb6026f2f3",
+        "bytes": 3196340,
+        "sha256": "77ba657e5292bd832cbea0bc6bd9987c110586d97113dfd4b0d2f41ed7a7f62c"
+      },
+      "deploy/admission/next_controller_admit_terminal_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "0f4d5084e5f1b89c2efc522a3be4ffb5c20a6e86",
+        "bytes": 22821454,
+        "sha256": "c97663665bde78f549a052405806642988ea748f6c70d0d33e6204ce0a9314c0"
+      },
+      "deploy/admission/next_controller_admit_timing_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "c21ee69d81419e6829273d252ea7ba1ef7d050a3",
+        "bytes": 8042258,
+        "sha256": "0bc245ffd4d09883117713263b020b24f95db8ef860e30cdbd49c23c79c40d0e"
+      },
+      "deploy/admission/next_host_key_receipt_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "dd15de3139e759a1d9cf95a4c8c087de4a30b361",
+        "bytes": 647320,
+        "sha256": "c76880ab05c19b4e3963962018bff29d4d8afa930d293b0afc07fa115e8710c4"
+      },
+      "deploy/admission/next_manager_environment_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "ff4b9f25a7bd0ccb8c8e5cf5611227df7123f891",
+        "bytes": 1368178,
+        "sha256": "15c8793261b790c5fb9d91bae24f436b5d2452b2df4a8e0385da22974ea1cf8a"
+      },
+      "deploy/admission/test_next_bootstrap_session.py": {
+        "gitMode": "100644",
+        "gitBlob": "5182ec1b61539f9dc91cf6640d17fe155fbe21a6",
+        "bytes": 28224,
+        "sha256": "2a4858007e8755cd8af16a1cd50aff10b7b58012c29b0f93c09929d6452255f6"
+      },
+      "deploy/admission/test_next_native.py": {
+        "gitMode": "100644",
+        "gitBlob": "e2578c531643373fcc4f2f3854d24245b06eff93",
+        "bytes": 154318,
+        "sha256": "81d6ffeee3c73b52ae872d2cc4c45ff075babf4171de0da91bdf68c8f43b64bf"
+      },
+      "docs/qualification/native-next-controller-admit-timing-source-20261109.json": {
+        "gitMode": "100644",
+        "gitBlob": "8f95e69543e77067034fbdf5ee31f9a6bc85d0d7",
+        "bytes": 57878,
+        "sha256": "3cfbdb7c9a8023a16f11943ce8607b4dc9e0a3c2928421b4c988b29dd2f4dddd"
+      }
+    },
+    "originalNativeFailure": {
+      "runId": 42556889391,
+      "attempt": 1,
+      "source": "f04858e3d3e5df3b580589f35607c03c0bb55894",
+      "controller": "f04858e3d3e5df3b580589f35607c03c0bb55894",
+      "authenticationSha256": "398fdd243cfc602d169a6abf90027a020ef653ddd63269efbb732d45f35f523f",
+      "nativeArtifactId": 13648615469,
+      "nativeReportSha256": "372d3db4f0e61f8d1200eb1502843d734b1e97d780213a8b266f85b22dcc12cd",
+      "firstHomeCompleted": true,
+      "committedOnboarding": true,
+      "coldBusinessRequests": 0,
+      "ownedRuntimeCleaned": true,
+      "firstFailure": "actual-browser-admit-second",
+      "statusNonzero": true,
+      "statusStderrObserved": false,
+      "worker2LockedSectionEnteredUs": 445633179,
+      "worker2PublicationReturnedUs": 448972696,
+      "worker2PostPublicationProofEnteredUs": 448972744,
+      "worker2PostPublicationProofTerminalObserved": false,
+      "worker1LockedSectionElapsedUs": 6552490
+    },
+    "recomposedActiveMaps": {
+      "deploy/admission/next_host_key_receipt_inverse.json": {
+        "target": "c0456f6a98e5f3feaf11ca4d759d57c8b76e25da",
+        "rowsVerified": 9,
+        "recomposedRows": {
+          "deploy/admission/test_next_native.py": 36
+        }
+      },
+      "deploy/admission/next_manager_environment_inverse.json": {
+        "target": "5383d212e073206db552d7f95a362895c3023323",
+        "rowsVerified": 8,
+        "recomposedRows": {
+          "deploy/admission/test_next_native.py": 27,
+          "deploy/admission/next_host_key_receipt_inverse.json": 55
+        }
+      },
+      "deploy/admission/next_bootstrap_session_inverse.json": {
+        "target": "249e9b0ce33dabb69e95b0c1887303e51487e8b9",
+        "rowsVerified": 9,
+        "recomposedRows": {
+          "deploy/admission/test_next_native.py": 20,
+          "deploy/admission/next_host_key_receipt_inverse.json": 56,
+          "deploy/admission/next_manager_environment_inverse.json": 60
+        }
+      },
+      "deploy/admission/next_controller_admit_timing_inverse.json": {
+        "target": "525e39cd1c6eac8d3c1547f764754a436bf41e12",
+        "rowsVerified": 15,
+        "recomposedRows": {
+          "deploy/admission/next_bootstrap_session_inverse.json": 45,
+          "deploy/admission/next_host_key_receipt_inverse.json": 63,
+          "deploy/admission/next_manager_environment_inverse.json": 68,
+          "deploy/admission/test_next_bootstrap_session.py": 26,
+          "deploy/admission/test_next_native.py": 15
+        }
+      },
+      "deploy/admission/next_controller_admit_terminal_inverse.json": {
+        "target": "96461c0fee5dddae990ac474d70f8f137d511148",
+        "rowsVerified": 11,
+        "recomposedRows": {
+          "deploy/admission/test_next_native.py": 13,
+          "deploy/admission/next_host_key_receipt_inverse.json": 75,
+          "deploy/admission/next_manager_environment_inverse.json": 86,
+          "deploy/admission/next_bootstrap_session_inverse.json": 73,
+          "deploy/admission/next_controller_admit_timing_inverse.json": 59
+        }
+      }
+    },
+    "hostHistoryInverseWhole": true,
+    "oldBootstrapSlots": 13,
+    "modelPythonCases": 27,
+    "oldBrowserAndNativeAcceptanceWrappersWhole": true,
+    "singleUnchangedAuthoritativeStatusAfterOwnedPostStartSettlement": true,
+    "sameReadinessDeadlineSeconds": 60,
+    "controllerWriterAndLockWhole": true,
+    "fixtureAndBrowserBudgetsWhole": true,
+    "testsOrRuntimeExecuted": false,
     "historicalEvidenceTransferred": false,
     "releaseEligible": false
   }

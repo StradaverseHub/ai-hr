@@ -23,6 +23,7 @@ class Harness:
         self.events, self.profiles, self.replies, self.fail, self.close_fail = [], [], [], fail, close_fail
         self.started, self.permit, self.finished = False, False, False
         self.ready_calls, self.workers, self.fs_calls = 0, 0, 0
+        self.second_manager_reads = 0
         self.ready_drift, self.identity_drift, self.exit_before_reply = ready_drift, identity_drift, exit_before_reply
         self.plan = {'candidate': 'a'*40, 'sourceDirectory': '/fixture/source', 'runnerUid': 1001, 'runnerGid': 1001,
             'runId': '123', 'nodePath': '/owned/node', 'browserInputPath': '/fixture/browser.json', 'evidenceDirectory': '/fixture/evidence'}
@@ -113,6 +114,48 @@ class Harness:
             if self.ready_drift and self.ready_calls == 3:return None
         return dict(self.rows[unit])
 
+    def properties(self, unit, **kwargs):
+        base = {'InvocationID': self.invocations[unit]}
+        if unit != F.UNITS[1] or not kwargs:
+            return base
+        assert self.permit and 0 < kwargs['timeout'] <= 30
+        self.second_manager_reads += 1
+        if self.second_manager_reads == 1:
+            self.events.append('second-post-start')
+            active, sub, control = 'activating', 'start-post', '44'
+        else:
+            self.events.append('second-running')
+            active, sub, control = 'active', 'running', '0'
+        actual = {**base, 'LoadState':'loaded', 'FragmentPath':'/etc/systemd/system/'+unit,
+                  'MainPID':'43', 'ControlGroup':'/second-owned', 'ControlPID':control,
+                  'ActiveState':active, 'SubState':sub}
+        if self.fail == 'second-control-pid':
+            actual['ControlPID'] = '44'
+        if self.fail == 'second-invocation':
+            actual['InvocationID'] = 'f'*32
+        if self.fail == 'second-birth':
+            self.processes[43]['start'] += 1
+        if self.fail == 'second-cgroup':
+            actual['ControlGroup'] = '/fictional-private-scope'
+        return actual
+
+    def control(self, operation, **kwargs):
+        assert operation == 'status' and kwargs['check'] is False and 0 < kwargs['timeout'] <= 60
+        assert self.events[-1] == 'second-running'
+        self.events.append('second-controller-status')
+        if self.fail == 'second-status-timeout':
+            raise F.subprocess.TimeoutExpired('fictional-private-command', kwargs['timeout'])
+        if self.fail in ('second-status-occupied', 'second-status-private'):
+            raw = b'Admission refused: Admission configuration is occupied\n'
+            if self.fail == 'second-status-private':
+                raw += b'fictional-private-output'
+            return types.SimpleNamespace(returncode=1, stderr=raw, stdout=b'')
+        row = dict(self.rows[F.UNITS[1]])
+        if self.fail == 'second-generation':
+            row['generation'] = 'fictional-private-generation'
+        snapshot = {'bootMatches':True, 'publicationPending':False, 'workers':[row]}
+        return types.SimpleNamespace(returncode=0, stderr=b'', stdout=json.dumps(snapshot).encode())
+
     def state(self):
         g = {'unit': F.UNITS[0], 'phase': 'READY', 'port': 3201, 'epoch': 'd'*32, 'profile': 'c'*64,
             'invocation': self.invocations[F.UNITS[0]], 'process': dict(self.processes[42])}
@@ -164,8 +207,10 @@ class Harness:
             for target,name,value in ((F,'report',report),(F,'browser',None),(F,'save',lambda:None),(F,'phase',lambda _name:None),
                 (F,'owned_invocations',dict(self.invocations)),(F,'owned_start',self.start),(F,'ready',self.ready),
                 (F,'state',self.state),(F,'until',lambda callback,*_args,**_kwargs: callback()),
-                (F,'run',self.run),(F,'props',lambda unit,**_kwargs:{'InvocationID':self.invocations[unit]}),
-                (F,'cold',lambda unit:dict(self.rows[unit])|{'phase':'WARMING','admitted':False}),
+                (F,'run',self.run),(F,'props',self.properties),(F,'control',self.control),
+                (F,'runtime_owned_declaration',lambda unit:unit==F.UNITS[1]),
+                (F,'cold',lambda unit:dict(self.rows[unit])|{'phase':'WARMING','admitted':False,
+                                                          'invocation':self.invocations[unit],'controlGroup':'/second-owned'}),
                 (F,'write',lambda *_args,**_kwargs:setattr(self,'permit',True)),(F,'regular',lambda *_args,**_kwargs:json.dumps(browser_report).encode()),
                 (F,'record_owned_invocation',lambda *_args,**_kwargs:True)):
                 stack.enter_context(patch.object(target,name,value))
@@ -260,6 +305,33 @@ class BootstrapSessionModels(unittest.TestCase):
             self.assertLess(h.events.index('first-home-onboarding-probe'),h.events.index('owned-start:'+F.UNITS[1]))
             self.assertLess(h.events.index('first-home-onboarding-initial-probe'),h.events.index('owned-start:'+F.UNITS[0]))
             self.assertEqual(h.postgres_inspects,4);self.assertIs(report['firstHomeOnboardingCommitted'],True)
+            pending, running, status = [h.events.index(name) for name in
+                ('second-post-start','second-running','second-controller-status')]
+            self.assertLess(pending,running);self.assertLess(running,status)
+            self.assertEqual(h.events.count('second-controller-status'),1)
+            self.assertEqual(h.events[status+1:status+3],['live-proof','source-check'])
+            self.assertEqual(h.replies[2],{'id':3,'ok':True,'result':{'port':3202}})
+            self.assertEqual(report['secondWorkerReadiness'],{'systemdPostStartSettled':True,'controllerStatus':'accepted'})
+        for fail, outcome in (
+            ('second-control-pid','not-attempted'),('second-invocation','not-attempted'),
+            ('second-birth','not-attempted'),('second-cgroup','not-attempted'),
+            ('second-status-occupied','admission-lock-occupied'),('second-status-private','nonzero'),
+            ('second-status-timeout','timeout'),('second-generation','invalid-result'),
+        ):
+            with self.subTest(fail=fail):
+                h=Harness(fail=fail)
+                with h.context() as report:
+                    with self.assertRaises((AssertionError,F.subprocess.TimeoutExpired)):
+                        F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
+                    attempted = outcome != 'not-attempted'
+                    self.assertEqual(h.events.count('second-controller-status'),int(attempted))
+                    self.assertEqual(h.events.count('owned-start:'+F.UNITS[1]),1)
+                    self.assertEqual(report['secondWorkerReadiness'],
+                                     {'systemdPostStartSettled':attempted,'controllerStatus':outcome})
+                    self.assertEqual(len(h.replies),2)
+                    self.assertTrue(h.profiles[0].closed)
+                    self.assertFalse(report['actualNextBootVerified'])
+                    self.assertNotIn('fictional-private',json.dumps(report))
         h=Harness(fail='onboarding-initial-already-complete')
         with h.context():
             with self.assertRaises(AssertionError):

@@ -569,15 +569,15 @@ def port(used):
     raise AssertionError('Cannot allocate bounded distinct fixture endpoints')
 
 
-def control(operation, unit=None, check=True, observer=None):
+def control(operation, unit=None, check=True, observer=None, *, timeout=60):
     if observer is None:
         result = run(['/usr/bin/python3', '-I', '-B', '/usr/local/lib/aihr-admission/controller.py', operation]
-                     + ([unit] if unit else []), check=False, timeout=60)
+                     + ([unit] if unit else []), check=False, timeout=timeout)
     else:
         require(operation == 'check-only' and unit is None, 'Observer accepts only fixed CHECKONLY')
         result = run(['/usr/bin/python3', '-I', '-B', str(pathlib.Path(__file__).absolute()), '--observe-check-only'],
                      input=(json.dumps(observer, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False) + '\n').encode(),
-                     check=False, timeout=60)
+                     check=False, timeout=timeout)
     require(not check or result.returncode == 0, 'Protected admission operation refused: ' + operation)
     return result
 
@@ -590,6 +590,69 @@ def ready(unit):
     row = next((row for row in status()['workers']
                 if row['unit'] == unit and row['phase'] == 'READY' and row['admitted']), None)
     return {**row, 'id': row['generation']} if row else None
+
+
+def second_worker_ready(C, cold_row, proof):
+    deadline = time.monotonic() + left(60)
+    unit = UNITS[1]
+    invocation = owned_invocations[unit]
+    process = proof['process']
+    require(cold_row['unit'] == proof['unit'] == unit
+            and cold_row['invocation'] == proof['invocation'] == invocation
+            and cold_row['port'] == proof['port'] and runtime_owned_declaration(unit),
+            'Second worker ownership differs before readiness settlement')
+
+    def remaining():
+        budget = deadline - time.monotonic()
+        require(budget > 0, 'Native deadline: second actual Next worker READY')
+        return budget
+
+    evidence = {'systemdPostStartSettled': False, 'controllerStatus': 'not-attempted'}
+    report['secondWorkerReadiness'] = evidence
+    while True:
+        actual = props(unit, timeout=min(30, remaining()))
+        require(actual.get('LoadState') == 'loaded' and actual.get('InvocationID') == invocation
+                and actual.get('FragmentPath') == '/etc/systemd/system/' + unit
+                and actual.get('MainPID') == str(process['pid'])
+                and actual.get('ControlGroup') == cold_row['controlGroup']
+                and C.process_identity(process['pid']) == process,
+                'Second worker identity changed while settling readiness')
+        service_phase = actual.get('ActiveState'), actual.get('SubState')
+        if service_phase == ('active', 'running'):
+            require(actual.get('ControlPID') == '0' and runtime_owned_declaration(unit),
+                    'Second worker post-start settlement is unverified')
+            break
+        require(service_phase == ('activating', 'start-post'), 'Second worker post-start did not settle')
+        time.sleep(min(0.05, remaining()))
+
+    # ExecStartPost owns the writer until it exits. Observe the same generation
+    # through the authoritative controller only after that writer has settled.
+    evidence['systemdPostStartSettled'] = True
+    try:
+        result = control('status', check=False, timeout=remaining())
+    except subprocess.TimeoutExpired:
+        evidence['controllerStatus'] = 'timeout'
+        raise
+    if result.returncode != 0:
+        evidence['controllerStatus'] = (
+            'signal' if result.returncode < 0 else
+            'admission-lock-occupied' if result.returncode == 1
+            and result.stderr == b'Admission refused: Admission configuration is occupied\n'
+            else 'nonzero')
+        require(False, 'Protected admission operation refused: status')
+    evidence['controllerStatus'] = 'invalid-result'
+    snapshot = json.loads(result.stdout)
+    require(snapshot['bootMatches'] is True and snapshot['publicationPending'] is False,
+            'Second worker publication is not current and settled')
+    rows = [row for row in snapshot['workers'] if row['unit'] == unit]
+    require(len(rows) == 1, 'Second worker admission row differs')
+    row = rows[0]
+    require(row['phase'] == 'READY' and row['admitted'] is True
+            and row['generation'] == cold_row['id'] and row['port'] == cold_row['port'],
+            'Cold generation changed during admission')
+    remaining()
+    evidence['controllerStatus'] = 'accepted'
+    return {**row, 'id': row['generation']}
 
 
 def state():
@@ -1531,7 +1594,7 @@ def browser_core(plan, binding, C, postgres_scope):
                     stderr=subprocess.DEVNULL, env=environment, start_new_session=True)
                 until(lambda: record_owned_invocation(BROWSER, transient=True), 'owned native browser invocation', seconds=5)
             expected = ['start-first', 'start-second-cold', 'admit-second', 'browser-core-finished']
-            completed, first, second, proofs = [], None, None, []
+            completed, first, second, second_proof, proofs = [], None, None, None, []
             selector = selectors.DefaultSelector()
             selector.register(browser.stdout, selectors.EVENT_READ)
             buffer = b''
@@ -1578,7 +1641,8 @@ def browser_core(plan, binding, C, postgres_scope):
                     owned_start(UNITS[1], nonblocking=True)
                     second = until(lambda: cold(UNITS[1]), 'second actual Next healthy but unpublished')
                     require(second['port'] != first['port'], 'Cold endpoint reused current peer endpoint')
-                    proofs.append(native_worker(C, second, plan, binding, profile, host))
+                    second_proof = native_worker(C, second, plan, binding, profile, host)
+                    proofs.append(second_proof)
                     result = {'port': second['port'], 'admitted': False}
                 elif operation == 'admit-second':
                     cold_state = state()
@@ -1588,9 +1652,11 @@ def browser_core(plan, binding, C, postgres_scope):
                     require(not cold_rows, 'Cold worker served business ingress traffic')
                     report['coldBusinessRequests'] = 0
                     write(pathlib.Path('/run/aihr-admission/permit-' + UNITS[1]), b'owned actual admission\n')
-                    admitted = until(lambda: ready(UNITS[1]), 'second actual Next worker READY')
-                    require(admitted['id'] == second['id'] and admitted['port'] == second['port'], 'Cold generation changed during admission')
-                    proofs.append(native_worker(C, admitted, plan, binding, profile, host))
+                    admitted = second_worker_ready(C, second, second_proof)
+                    admitted_proof = native_worker(C, admitted, plan, binding, profile, host)
+                    require(admitted_proof['process'] == second_proof['process'],
+                            'Second worker live identity changed before reply')
+                    proofs.append(admitted_proof)
                     result = {'port': admitted['port']}
                 else:
                     require(first and second, 'Two actual workers were not established')
