@@ -28,7 +28,7 @@
     ".github/ci/diagnostics/native-reference/process.mjs": "798b305f20088ee77c1ce0cc01c08427718671f769aec446d1946b0b844879ba",
     ".github/ci/diagnostics/native-reference/process.test.mjs": "c2df40d57fd9964a405326952c9c4543ad5da0d837db7761553cbc5b5ea57912",
     ".github/ci/diagnostics/native-reference/project-protected-next.py": "440276eb454bc4ce9626bd458eb0b793d378e11162cf2338b5aaade7d54dd636",
-    ".github/ci/diagnostics/native-reference/protected-db-client-compare.mjs": "45231a0bd5251194d46153bae473a57070452c08f44a0aa1c7b434683004790e",
+    ".github/ci/diagnostics/native-reference/protected-db-client-compare.mjs": "e54274eb4ec592b9557db5d659b99e1d8deaa88082073a1f09fb8dc6acb08625",
     ".github/ci/diagnostics/native-reference/protected-db-client-public-evidence.mjs": "ac4bffce6d49d257f29df628ba81ab11b711bceedf196bf95eb51a54d953f0af",
     ".github/ci/diagnostics/native-reference/protected-dependency-selection.mjs": "a70e1492e4ca694ff9d744ffe5d5f9a12a519470151bbc5257343f365cfcca2f",
     ".github/ci/diagnostics/native-reference/protected-docker-canary.mjs": "ee6583d861da66538f0da49edc442ae74dd3321494dc8b85648c021ddd04ecd7",

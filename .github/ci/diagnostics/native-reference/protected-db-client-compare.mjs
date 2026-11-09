@@ -318,17 +318,29 @@ function observeProgram(ts, program, check) {
     assert(file?.isDeclarationFile && program.isSourceFileFromExternalLibrary(file));
     const {path, bytes, sha256} = read(file);
     const {name, version, subModuleName, peerDependencies} = value.packageId;
-    const manifest = realpathSync(join(file.packageJsonScope.packageDirectory, 'package.json'));
-    assert(within(dependencyRoot, manifest));
-    if (!packageRows.has(manifest)) {
-      const before = seal(manifest, check);
-      const metadata = JSON.parse(readFileSync(manifest, 'utf8'));
-      assert.equal(metadata.name, name);
-      assert.equal(metadata.version, version);
-      assert.deepEqual(seal(manifest, check), before);
-      packageRows.set(manifest, before);
+    const subpath = subModuleName.split('/');
+    assert(subpath.every(part=>part && part!=='.' && part!=='..' && !part.includes('\\')));
+    const packageRoot = resolve(path, ...subpath.map(()=>'..'));
+    assert(within(dependencyRoot,packageRoot) && packageRoot.endsWith('/node_modules/'+name));
+    assert.equal(join(packageRoot,subModuleName),path);
+    const ownerManifest = join(packageRoot,'package.json');
+    // Native resolution owns package identity. A nested manifest can separately set module format.
+    const scopeManifest = realpathSync(join(file.packageJsonScope.packageDirectory,'package.json'));
+    assert(within(packageRoot,scopeManifest));
+    function manifestAt(manifest) {
+      if (!packageRows.has(manifest)) {
+        const before = seal(manifest,check);
+        const metadata = JSON.parse(readFileSync(manifest,'utf8'));
+        assert.deepEqual(seal(manifest,check),before);
+        packageRows.set(manifest,{seal:{bytes:before.bytes,sha256:before.sha256},metadata});
+      }
+      return packageRows.get(manifest);
     }
-    return {path, bytes, sha256, packageId: {name, version, subModuleName, peerDependencies: peerDependencies ?? null}};
+    const owner = manifestAt(ownerManifest);
+    assert.deepEqual([owner.metadata.name,owner.metadata.version],[name,version]);
+    const scope = manifestAt(scopeManifest);
+    return {path,bytes,sha256,packageId:{name,version,subModuleName,peerDependencies:peerDependencies??null},
+      ownerManifest:owner.seal,moduleScope:{path:relative(packageRoot,scopeManifest),...scope.seal}};
   }
   function moduleFor(path, name, synthetic) {
     const file = fileFor(path);
