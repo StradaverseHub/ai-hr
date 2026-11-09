@@ -541,7 +541,7 @@ def _tool_capture_hex(value, length):
     return type(value) is str and len(value) == length and re.fullmatch(r'[0-9a-f]+', value) is not None
 
 
-def _validate_tool_owner_capture(report):
+def _validate_tool_owner_capture(report, *, live=False):
     base = ('kind', 'complete', 'cleanup', 'source', 'controller', 'runId', 'attempt', 'job', 'eventSha256',
             'sourceMembers', 'sourceCapsuleSha256', 'platform', 'elapsedMs', 'ownedProcessesSettled')
     negative = ('browserStarted', 'applicationBuilt', 'databaseStarted', 'nativeWorkloadQualified', 'releaseAuthorized')
@@ -578,7 +578,10 @@ def _validate_tool_owner_capture(report):
     packages = ('playwright', 'playwright-core', 'postgres')
     if 'transfer' in report:
         transfer = report['transfer']
-        _tool_capture_keys(transfer, ('generation', 'lengths', 'privateWriters'))
+        _tool_capture_keys(transfer, ('generation', 'lengths', 'privateWriters'), ('writerHandoff',))
+        if live or 'writerHandoff' in transfer:
+            need(transfer.get('writerHandoff') in ('post-drop-nondumpable-policy-zero', 'post-drop-nondumpable-policy-root-only'),
+                 'Returned TOOL writer handoff differs')
         lengths = transfer['lengths']
         _tool_capture_keys(lengths, ('chromium.zip',) + tuple(name + '.tgz' for name in packages))
         need(transfer['generation'] == '1784092784777971' and transfer['privateWriters'] is True
@@ -678,7 +681,7 @@ def _validate_tool_owner_capture(report):
                  'Returned TOOL identity reason lacks its exact child exit')
 
 
-def _validate_tool_capture(raw, status):
+def _validate_tool_capture(raw, status, *, live=False):
     need(status in ('0', '1') and 0 < len(raw) <= 65536, 'Returned TOOL capture required')
     report = json.loads(raw)
     need(type(report) is dict and canonical(report) == raw
@@ -690,7 +693,7 @@ def _validate_tool_capture(raw, status):
     elif report.get('failure') == 'tool-bootstrap-refused':
         need(report == _tool_refusal('tool-bootstrap-refused'), 'Returned TOOL bootstrap refusal differs')
     else:
-        _validate_tool_owner_capture(report)
+        _validate_tool_owner_capture(report, live=live)
 
 
 def prepare_tool():
@@ -802,7 +805,7 @@ if __name__ == '__main__':
             with directory(pathlib.Path(os.environ['RUNNER_TEMP']) / 'aihr-native-tool-only') as folder:
                 raw, info = read(folder, 'native-workload-tool-only.json', 65536)
             need(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o600, 'TOOL capture owner differs')
-            _validate_tool_capture(raw, sys.argv[2])
+            _validate_tool_capture(raw, sys.argv[2], live=True)
         elif sys.argv[1:] == ['--seal-tool-only']:
             try:
                 report = seal_tool(_tool_request(0))

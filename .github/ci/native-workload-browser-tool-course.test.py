@@ -8,6 +8,7 @@ import os
 import pathlib
 import runpy
 import signal
+import socket
 import stat
 import sys
 import tempfile
@@ -15,7 +16,7 @@ import time
 import unittest
 from contextlib import ExitStack, nullcontext
 from types import ModuleType, SimpleNamespace
-from unittest.mock import Mock, call, patch
+from unittest.mock import MagicMock, Mock, call, patch
 
 
 def load(name, filename):
@@ -242,6 +243,16 @@ class ToolIntentModels(unittest.TestCase):
     def test_success_capture_requires_closed_owner_shape_and_positive_settlement(self):
         report = tool_owner_report()
         B._validate_tool_capture(B.canonical(report), '0')
+        with self.assertRaisesRegex(ValueError, 'writer handoff differs'):
+            B._validate_tool_capture(B.canonical(report), '0', live=True)
+        for handoff in (*C.DUMP_POLICIES.values(), 'foreign'):
+            with self.subTest(handoff=handoff):
+                live = report | {'transfer':report['transfer'] | {'writerHandoff':handoff}}
+                if handoff == 'foreign':
+                    with self.assertRaisesRegex(ValueError, 'writer handoff differs'):
+                        B._validate_tool_capture(B.canonical(live), '0', live=True)
+                else:
+                    B._validate_tool_capture(B.canonical(live), '0', live=True)
         bare = {'kind':'NATIVE_TOOL_ONLY_COMPONENT', 'complete':True, 'releaseAuthorized':False}
         with self.assertRaises(ValueError):
             B._validate_tool_capture(B.canonical(bare), '0')
@@ -360,7 +371,7 @@ class ToolIntentModels(unittest.TestCase):
 
 
 class ToolTransportModels(unittest.TestCase):
-    def test_identity_refusals_preserve_the_first_failed_operation_and_mode_zero_only(self):
+    def test_identity_refusals_preserve_order_and_require_zero_after_both_admitted_policies(self):
         empty_caps = b''.join(key + b':\t0000000000000000\n' for key in
                               (b'CapInh', b'CapPrm', b'CapEff', b'CapAmb'))
         status = empty_caps + b'NoNewPrivs:\t1\n'
@@ -368,19 +379,22 @@ class ToolTransportModels(unittest.TestCase):
             ('geteuid', (), 0), ('CDLL', (None,), None),
             ('proc', ('/proc/sys/fs/suid_dumpable', 16), b'0\n'), ('prctl', (4, 0, 0, 0, 0), 0),
             ('setgroups', ([],), None), ('setresgid', (1002,)*3, None), ('setresuid', (1001,)*3, None),
+            ('prctl', (3, 0, 0, 0, 0), 0), ('prctl', (4, 0, 0, 0, 0), 0),
             ('prctl', (3, 0, 0, 0, 0), 0), ('prctl', (38, 1, 0, 0, 0), 0),
             ('getresuid', (), (1001,)*3), ('getresgid', (), (1002,)*3), ('getgroups', (), []),
             ('proc', ('/proc/self/status', 65536), status),
         ]
         cases = [
-            (0, 1001, 'original'), (2, b'2\n', 'dump-policy-root-only'), (2, b'1\n', 'dump-policy'),
+            (0, 1001, 'original'), (2, b'1\n', 'dump-policy'),
             (2, b'fictional private value', 'dump-policy'), (2, OSError('private detail'), 'dump-policy'),
             (3, -1, 'set-dumpable'), (4, OSError('private detail'), 'drop-groups'),
             (5, OSError('private detail'), 'drop-gid'), (6, OSError('private detail'), 'drop-uid'),
-            (7, 2, 'post-dumpable'), (8, -1, 'set-no-new-privs'), (9, (0,)*3, 'post-ids'),
-            (10, (0,)*3, 'post-ids'), (11, [1002], 'post-ids'), (12, OSError('private detail'), 'status'),
-            (12, status.replace(b'CapEff:\t0', b'CapEff:\t1'), 'capabilities'),
-            (12, empty_caps + b'NoNewPrivs:\t0\n', 'observe-no-new-privs'), (None, None, None),
+            (7, 2, 'post-dumpable'), (8, -1, 'post-dumpable'), (9, 2, 'post-dumpable'),
+            (10, -1, 'set-no-new-privs'), (11, (0,)*3, 'post-ids'), (12, (0,)*3, 'post-ids'),
+            (13, [1002], 'post-ids'), (14, OSError('private detail'), 'status'),
+            (14, status.replace(b'CapEff:\t0', b'CapEff:\t1'), 'capabilities'),
+            (14, empty_caps + b'NoNewPrivs:\t0\n', 'observe-no-new-privs'),
+            (None, b'0', None), (None, b'2', None),
         ]
         for index, fault, reason in cases:
             observed = []
@@ -394,6 +408,10 @@ class ToolTransportModels(unittest.TestCase):
                     if isinstance(fault, OSError):
                         raise fault
                     return fault
+                if index is None and position == 2:
+                    return fault + b'\n'
+                if index is None and position == 7:
+                    return int(fault)
                 return result
 
             libc = SimpleNamespace(prctl=lambda *args: record('prctl', args))
@@ -409,7 +427,7 @@ class ToolTransportModels(unittest.TestCase):
                 mocks.enter_context(patch.object(C.ctypes, 'CDLL', side_effect=load_prctl))
                 mocks.enter_context(patch.object(C, 'bounded_proc', side_effect=lambda *args: record('proc', args)))
                 if reason is None:
-                    C._drop_downloader(1001, 1002)
+                    self.assertEqual(C._drop_downloader(1001, 1002), (fault, libc))
                     self.assertEqual(len(observed), len(steps))
                 else:
                     with self.assertRaises(C.ToolRefusal) as failure:
@@ -438,12 +456,12 @@ class ToolTransportModels(unittest.TestCase):
             course.kernel = Mock()
             course.kernel.own_children.return_value = []
             argv = ['/usr/bin/python3','-I','-B',str(course.path / 'code' / C.SOURCE), '--download',
-                    '1001','1001',repr(course.active), *map(str, range(3, 8))]
+                    '1001','1001',repr(course.active)]
             with self.subTest(code=code, reason=reason), patch.object(C.time, 'monotonic', return_value=start), \
                  patch.object(C, 'quiet_command_stdio', nullcontext), \
                  patch.object(C, '_run_tool_command', return_value=owned_result(reason='command-failed', commandExit=code)), \
                  self.assertRaises(C.ToolRefusal) as failure:
-                course.command(argv, course.active, C.ACTIVE_SECONDS)
+                course.command(argv, course.active, C.ACTIVE_SECONDS, download_slots=(12, (3, 4, 5, 6, 7), {}))
             self.assertEqual(failure.exception.reason, label)
             downloader.update(course.state['processOutcomes']['archive-downloader'])
             accepted = report | {'failureReason':label}
@@ -481,6 +499,165 @@ class ToolTransportModels(unittest.TestCase):
         for interrupted in ('deadline', 'owner-interrupted'):
             with patch.dict(downloader, reason=interrupted):
                 B._validate_tool_capture(B.canonical(accepted | {'failureReason':interrupted}), '1')
+
+    def test_writer_transport_delivers_exact_kernel_credentials_cloexec_and_terminal_eof(self):
+        with ExitStack() as held:
+            sender, receiver = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET | socket.SOCK_CLOEXEC)
+            held.enter_context(sender)
+            held.enter_context(receiver)
+            receiver.setsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED, 1)
+            inputs = [held.enter_context(tempfile.TemporaryFile()).fileno() for _ in C.DOWNLOAD_SLOTS]
+            deadline = time.monotonic() + 3
+            C._send_writer_message(sender, b'W', [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                                   b''.join(C.RIGHT.pack(fd) for fd in inputs))], deadline)
+            sender.close()
+            with C._writer_message(receiver, deadline) as (data, credentials, fds, records):
+                self.assertEqual((data, credentials, records), (b'W', [(os.getpid(), os.getuid(), os.getgid())], 1))
+                self.assertEqual(len(set(fds)), 5)
+                self.assertTrue(set(fds).isdisjoint(inputs))
+                self.assertEqual([C.birth(os.fstat(fd)) for fd in fds], [C.birth(os.fstat(fd)) for fd in inputs])
+                self.assertTrue(all(not os.get_inheritable(fd) for fd in fds))
+                with C._writer_message(receiver, deadline) as end:
+                    self.assertEqual(end, (b'', [], (), 0))
+            for fd in fds:
+                with self.assertRaises(OSError):
+                    os.fstat(fd)
+
+    def test_every_delivered_right_closes_before_framing_refusal(self):
+        rights = (socket.SOL_SOCKET, socket.SCM_RIGHTS)
+        for data, ancillary, flags in (
+            (b'', [(*rights, C.RIGHT.pack(31))], 0),
+            (b'W', [(*rights, C.RIGHT.pack(31) + b'x'), (*rights, C.RIGHT.pack(32))], 0),
+            (b'W', [(*rights, C.RIGHT.pack(31)), (*rights, C.RIGHT.pack(32))], socket.MSG_CTRUNC),
+            (b'W', [(*rights, C.RIGHT.pack(31)), (socket.SOL_SOCKET, socket.SCM_CREDENTIALS, b'x')], socket.MSG_TRUNC),
+        ):
+            endpoint = Mock()
+            endpoint.recvmsg.return_value = (data, ancillary, flags, None)
+            with self.subTest(data=data, flags=flags, records=len(ancillary)), \
+                 patch.object(C.select, 'select', return_value=([endpoint], [], [])), \
+                 patch.object(C.os, 'close') as close, \
+                 self.assertRaisesRegex(ValueError, 'writer channel framing differs'):
+                with C._writer_message(endpoint, time.monotonic() + 3):
+                    self.fail('malformed frame reached the writer grant')
+            expected = [31, 32] if len(ancillary) == 2 and ancillary[1][:2] == rights else [31]
+            self.assertCountEqual([item.args[0] for item in close.call_args_list], expected)
+
+    def test_writer_grant_requires_held_native_identity_slots_and_no_late_send(self):
+        birth = {'pid':77,'parent':25,'group':77,'session':77,'start':32,'state':'S'}
+        status = b'Uid:\t1001 1001 1001 1001\nGid:\t1002 1002 1002 1002\nGroups:\t\nNoNewPrivs:\t1\n'
+        status += b''.join(key + b':\t0000000000000000\n' for key in (b'CapInh', b'CapPrm', b'CapEff', b'CapAmb'))
+        slots = (12, (31, 32, 33, 34, 35), {name:(1, fd) for name, fd in zip(C.DOWNLOAD_SLOTS, range(31, 36))})
+        for case in ('valid', 'eof', 'foreign-peer', 'extra-right', 'wrong-fsuid', 'wrong-policy',
+                     'changed-birth', 'exited', 'foreign-slot', 'surplus', 'late', 'interrupted'):
+            channel, kernel = Mock(), Mock()
+            channel.sendmsg.return_value = 1
+            ready = (b'R2', [(77, 1001, 1002)], (), 0)
+            if case == 'eof':
+                ready = (b'', [], (), 0)
+            if case == 'foreign-peer':
+                ready = (b'R2', [(78, 1001, 1002)], (), 0)
+            if case == 'extra-right':
+                ready = (b'R2', [(77, 1001, 1002)], (55,), 1)
+            kernel.identity.side_effect = [birth, birth | {'start':33 if case == 'changed-birth' else 32}]
+
+            def metadata(fd):
+                return SimpleNamespace(st_dev=1, st_ino=fd, st_uid=0, st_gid=0, st_mode=stat.S_IFREG|0o600,
+                                       st_size=0, st_nlink=1, st_mtime_ns=0, st_ctime_ns=0)
+
+            def named(_folder, name):
+                return metadata(slots[2][name][1] + (1 if case == 'foreign-slot' else 0))
+
+            with self.subTest(case=case), ExitStack() as mocked:
+                mocked.enter_context(patch.object(C, '_writer_message', return_value=nullcontext(ready)))
+                mocked.enter_context(patch.object(C, 'bounded_proc', side_effect=[
+                    status.replace(b'1001\n', b'0\n') if case == 'wrong-fsuid' else status,
+                    b'1\n' if case == 'wrong-policy' else b'2\n']))
+                mocked.enter_context(patch.object(C.select, 'select', side_effect=lambda read, *_:
+                    (read if case == 'exited' or case == 'surplus' and read == [channel] else [], [], [])))
+                mocked.enter_context(patch.object(C, 'download_writers'))
+                mocked.enter_context(patch.object(C.os, 'fstat', side_effect=metadata))
+                mocked.enter_context(patch.object(C.os, 'get_inheritable', return_value=False))
+                mocked.enter_context(patch.object(C, 'named', side_effect=named))
+                deadline = time.monotonic() + (-1 if case == 'late' else 3)
+                args = (channel, deadline, lambda: case == 'interrupted', kernel, 11, birth, 1001, 1002, slots)
+                if case == 'valid':
+                    self.assertEqual(C._download_writer_handoff(*args), C.DUMP_POLICIES[b'2'])
+                    channel.sendmsg.assert_called_once_with([b'W'], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                        b''.join(C.RIGHT.pack(fd) for fd in slots[1]))], socket.MSG_DONTWAIT | socket.MSG_NOSIGNAL)
+                elif case == 'eof':
+                    self.assertIsNone(C._download_writer_handoff(*args))
+                    kernel.identity.assert_not_called()
+                else:
+                    with self.assertRaises(ValueError):
+                        C._download_writer_handoff(*args)
+                if case != 'valid':
+                    channel.sendmsg.assert_not_called()
+
+    def test_downloader_waits_for_exact_grant_and_terminal_channel_before_tls(self):
+        source = str(C.ROOT_PARENT / (C.ROOT_PREFIX + '123') / 'code' / C.SOURCE)
+        writers = (31, 32, 33, 34, 35)
+        for variant in ('valid', 'foreign-root', 'missing-right', 'inheritable', 'surplus', 'dumpable'):
+            channel = Mock(family=socket.AF_UNIX)
+            channel.getsockopt.side_effect = [socket.SOCK_SEQPACKET, 1]
+            libc = Mock()
+            libc.prctl.return_value = 2 if variant == 'dumpable' else 0
+            packet = (b'W', [(21 if variant == 'foreign-root' else 20, 0, 0)],
+                      writers[:-1] if variant == 'missing-right' else writers, 1)
+            ending = (b'W', [(20, 0, 0)], writers, 1) if variant == 'surplus' else (b'', [], (), 0)
+            deadline = time.monotonic() + 3
+            with self.subTest(variant=variant), ExitStack() as mocks:
+                mocks.enter_context(patch.object(C, '__file__', source))
+                mocks.enter_context(patch.object(C.socket, 'socket', return_value=nullcontext(channel)))
+                mocks.enter_context(patch.object(C.os, 'set_inheritable'))
+                mocks.enter_context(patch.object(C.os, 'get_inheritable', return_value=variant == 'inheritable'))
+                mocks.enter_context(patch.object(C.os, 'getppid', return_value=20))
+                drop = mocks.enter_context(patch.object(C, '_drop_downloader', return_value=(b'2', libc)))
+                message = mocks.enter_context(patch.object(C, '_writer_message', side_effect=map(nullcontext, (packet, ending))))
+                send = mocks.enter_context(patch.object(C, '_send_writer_message'))
+                check = mocks.enter_context(patch.object(C, 'download_writers', wraps=C.download_writers))
+                if variant != 'missing-right':
+                    check.side_effect = lambda _: None
+                transfer = mocks.enter_context(patch.object(C, '_download_archives'))
+                if variant == 'valid':
+                    C.download(1001, 1002, deadline, deadline, 30)
+                    self.assertEqual(message.call_count, 2)
+                    transfer.assert_called_once_with(writers, deadline)
+                else:
+                    with self.assertRaises(C.ToolRefusal) as caught:
+                        C.download(1001, 1002, deadline, deadline, 30)
+                    self.assertEqual(caught.exception.reason, 'download-writer')
+                    transfer.assert_not_called()
+                drop.assert_called_once_with(1001, 1002)
+                send.assert_called_once_with(channel, b'R2', [], deadline)
+
+    def test_pregrant_eof_keeps_the_owned_exit_and_cannot_succeed(self):
+        child = 4321
+        argv = ['/usr/bin/python3','-I','-B','/fixed/owner.py','--download','1001','1002','144.0']
+        slots = (12, (31, 32, 33, 34, 35), {})
+        for code, reason in ((10, 'command-failed'), (0, 'protocol-refused')):
+            kernel = Mock()
+            kernel.own_children.return_value = []
+            kernel.live_group.return_value = []
+            root, peer = MagicMock(), MagicMock()
+            admitted = {'pid':child}
+            with self.subTest(code=code), patch.object(C.time, 'monotonic', return_value=100), \
+                 patch.object(C.pathlib.Path, 'iterdir', return_value=iter([1])), \
+                 patch.object(C.signal, 'getsignal', return_value=signal.SIG_DFL), patch.object(C.signal, 'signal'), \
+                 patch.object(C.os, 'pipe', side_effect=[(10,11),(12,13)]), patch.object(C.os, 'close'), \
+                 patch.object(C.socket, 'socketpair', return_value=(root, peer)), \
+                 patch.object(C.os, 'fork', return_value=child), patch.object(C.os, 'pidfd_open', return_value=20), \
+                 patch.object(C, '_admit_tool_command', return_value=admitted) as admit, \
+                 patch.object(C, '_download_writer_handoff', return_value=None) as handoff, \
+                 patch.object(C, '_wait_tool_exit', return_value=True) as wait, \
+                 patch.object(C, '_stop_tool_command', return_value=(code, False)) as settle:
+                result = C._run_tool_command(kernel, argv, 144, download_slots=slots)
+            self.assertEqual(result, owned_result(reason=reason, commandExit=code))
+            self.assertEqual(admit.call_args.args[4], 103)
+            self.assertEqual(handoff.call_args.args[1], 103)
+            root.close.assert_called_once_with()
+            peer.close.assert_called_once_with()
+            wait.assert_called_once_with(child)
+            settle.assert_called_once_with(kernel, child, 20, admitted, 103, 106)
 
     def test_incomplete_and_overcap_bodies_are_framing_refusals_before_overcap_write(self):
         now = time.monotonic()
@@ -818,6 +995,8 @@ class ToolDisposalModels(unittest.TestCase):
                             materialized={'readOnly':True, 'noExec':True, 'entries':1}, mountsAbsent=True)
         self.assertFalse(C.course_complete(course, None, 'complete', start + 1))
         course.state['namespaceAbsent'] = True
+        self.assertFalse(C.course_complete(course, None, 'complete', start + 1))
+        course.state['transfer']['writerHandoff'] = C.DUMP_POLICIES[b'2']
         self.assertTrue(C.course_complete(course, None, 'complete', start + 1))
         self.assertFalse(C.course_complete(course, 'strict-materialization', 'complete', start + 1))
         self.assertFalse(C.course_complete(course, None, 'refused', start + 1))

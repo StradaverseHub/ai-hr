@@ -11,8 +11,10 @@ import pathlib
 import re
 import select
 import signal
+import socket
 import ssl
 import stat
+import struct
 import sys
 import time
 from contextlib import ExitStack, contextmanager
@@ -44,6 +46,9 @@ DOWNLOADS = (
 )
 ARCHIVES = frozenset(row[0] for row in DOWNLOADS)
 DOWNLOAD_SLOTS = tuple(row[0] for row in DOWNLOADS) + ('download.json',)
+DUMP_POLICIES = {b'0': 'post-drop-nondumpable-policy-zero', b'2': 'post-drop-nondumpable-policy-root-only'}
+UCREDS = struct.Struct('=iII')
+RIGHT = struct.Struct('=i')
 TOP_LEVEL = frozenset(('code', 'incoming', 'inputs', 'payload'))
 PROCESS_REASONS = frozenset(('complete', 'command-failed', 'deadline', 'handshake-refused', 'descendants-survived',
                              'protocol-refused', 'owner-interrupted', 'group-uncertain', 'session-escaped'))
@@ -244,9 +249,7 @@ def _drop_downloader(uid, gid):
     # Refuse before any transition that could expose a same-UID /proc/fd view.
     with fixed_refusal('download-identity-dump-policy'):
         policy = bounded_proc('/proc/sys/fs/suid_dumpable', 16).strip()
-        if policy == b'2':
-            raise ToolRefusal('Fixed TOOL operation refused', 'download-identity-dump-policy-root-only')
-        require(policy == b'0', 'TOOL downloader descriptor privacy unavailable')
+        require(policy in DUMP_POLICIES, 'TOOL downloader descriptor privacy unavailable')
     with fixed_refusal('download-identity-set-dumpable'):
         require(libc.prctl(4, 0, 0, 0, 0) == 0, 'TOOL downloader descriptor privacy unavailable')
     with fixed_refusal('download-identity-drop-groups'):
@@ -256,7 +259,8 @@ def _drop_downloader(uid, gid):
     with fixed_refusal('download-identity-drop-uid'):
         os.setresuid(uid, uid, uid)
     with fixed_refusal('download-identity-post-dumpable'):
-        require(libc.prctl(3, 0, 0, 0, 0) == 0, 'TOOL downloader UID/GID or no-new-privs differs')
+        require(libc.prctl(3, 0, 0, 0, 0) == int(policy) and libc.prctl(4, 0, 0, 0, 0) == 0
+                and libc.prctl(3, 0, 0, 0, 0) == 0, 'TOOL downloader post-drop dumpability differs')
     with fixed_refusal('download-identity-set-no-new-privs'):
         require(libc.prctl(38, 1, 0, 0, 0) == 0, 'TOOL downloader UID/GID or no-new-privs differs')
     with fixed_refusal('download-identity-post-ids'):
@@ -265,12 +269,21 @@ def _drop_downloader(uid, gid):
     with fixed_refusal('download-identity-status'):
         status = bounded_proc('/proc/self/status', 65536)
     with fixed_refusal('download-identity-capabilities'):
-        for key in (b'CapInh', b'CapPrm', b'CapEff', b'CapAmb'):
-            require(re.findall(rb'^' + key + rb':\s+([0-9a-f]+)$', status, re.M) == [b'0000000000000000'],
-                    'TOOL downloader capabilities differ')
+        _require_empty_capabilities(status)
     with fixed_refusal('download-identity-observe-no-new-privs'):
-        require(re.findall(rb'^NoNewPrivs:\s+([0-9]+)$', status, re.M) == [b'1'],
-                'TOOL downloader no-new-privs differs')
+        _require_no_new_privileges(status)
+    return policy, libc
+
+
+def _require_empty_capabilities(status):
+    for key in (b'CapInh', b'CapPrm', b'CapEff', b'CapAmb'):
+        require(re.findall(rb'^' + key + rb':[ \t]+([0-9a-f]+)$', status, re.M) == [b'0000000000000000'],
+                'TOOL downloader capabilities differ')
+
+
+def _require_no_new_privileges(status):
+    require(re.findall(rb'^NoNewPrivs:[ \t]+([0-9]+)$', status, re.M) == [b'1'],
+            'TOOL downloader no-new-privs differs')
 
 
 def download_slot(info):
@@ -292,6 +305,81 @@ def download_writers(writers):
         births.add(key)
 
 
+@contextmanager
+def _writer_message(channel, deadline):
+    # Take custody of every delivered descriptor before checking framing or credentials.
+    maximum = socket.CMSG_SPACE(UCREDS.size) + socket.CMSG_SPACE(len(DOWNLOAD_SLOTS) * RIGHT.size)
+    ready, _, _ = select.select([channel], [], [], left(deadline))
+    left(deadline)
+    require(ready == [channel], 'TOOL writer channel read timeout')
+    data, ancillary, flags, _ = channel.recvmsg(2, maximum, socket.MSG_CMSG_CLOEXEC | socket.MSG_DONTWAIT)
+    credentials, rights, rights_records, shape = [], [], 0, True
+    with ExitStack() as received:
+        for level, kind, value in ancillary:
+            if (level, kind) == (socket.SOL_SOCKET, socket.SCM_RIGHTS):
+                rights_records += 1
+                shape = shape and len(value) % RIGHT.size == 0
+                for offset in range(0, len(value) - RIGHT.size + 1, RIGHT.size):
+                    fd, = RIGHT.unpack_from(value, offset)
+                    if fd >= 0 and fd not in rights:
+                        received.callback(os.close, fd)
+                    shape = shape and fd >= 0
+                    rights.append(fd)
+            elif (level, kind) == (socket.SOL_SOCKET, socket.SCM_CREDENTIALS) and len(value) == UCREDS.size:
+                credentials.append(UCREDS.unpack(value))
+            else:
+                shape = False
+        require(shape and not flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC)
+                and (data or not ancillary), 'TOOL writer channel framing differs')
+        left(deadline)
+        yield data, credentials, tuple(rights), rights_records
+
+
+def _send_writer_message(channel, data, ancillary, deadline):
+    left(deadline)
+    require(channel.sendmsg([data], ancillary, socket.MSG_DONTWAIT | socket.MSG_NOSIGNAL) == len(data),
+            'TOOL writer channel write differs')
+
+
+def _download_writer_handoff(channel, deadline, interrupted, kernel, descriptor, admitted, uid, gid, slots):
+    child = admitted['pid']
+
+    def held():
+        require(not select.select([descriptor], [], [], 0)[0], 'TOOL downloader exited before writer grant')
+        actual = kernel.identity(child)
+        require(actual['state'] not in ('Z', 'X') and all(actual[key] == admitted[key]
+                for key in ('pid', 'parent', 'group', 'session', 'start')), 'TOOL downloader writer identity differs')
+
+    with _writer_message(channel, deadline) as (data, credentials, rights, records):
+        if not data:
+            return None  # Let the original owned wait adjudicate the child's actual refusal exit.
+        require(data[:1] == b'R' and data[1:] in DUMP_POLICIES and credentials == [(child, uid, gid)]
+                and not rights and records == 0, 'TOOL writer readiness differs')
+        policy = data[1:]
+    held()
+    status = bounded_proc(f'/proc/{child}/status', 65536)
+    fields = [line.split() for line in status.splitlines()]
+    for key, expected in ((b'Uid:', [str(uid).encode()] * 4), (b'Gid:', [str(gid).encode()] * 4), (b'Groups:', [])):
+        require([row[1:] for row in fields if row and row[0] == key] == [expected],
+                'TOOL downloader native writer credentials differ')
+    _require_empty_capabilities(status)
+    _require_no_new_privileges(status)
+    require(bounded_proc('/proc/sys/fs/suid_dumpable', 16).strip() == policy, 'TOOL writer policy differs')
+    folder, writers, births = slots
+    download_writers(writers)
+    for name, fd in zip(DOWNLOAD_SLOTS, writers, strict=True):
+        info = os.fstat(fd)
+        require(download_slot(info) == births[name] and identity(info) == identity(named(folder, name))
+                and not os.get_inheritable(fd), 'TOOL writer slot changed before grant')
+    held()
+    require(not select.select([channel], [], [], 0)[0], 'TOOL writer readiness surplus')
+    grant = [(socket.SOL_SOCKET, socket.SCM_RIGHTS, b''.join(RIGHT.pack(fd) for fd in writers))]
+    if interrupted():
+        raise ToolRefusal('TOOL owner interrupted before writer grant', 'owner-interrupted')
+    _send_writer_message(channel, b'W', grant, deadline)
+    return DUMP_POLICIES[policy]
+
+
 def _download_body(response, fd, maximum, browser, deadline):
     with fixed_refusal('download-framing', (ValueError, http.client.IncompleteRead)):
         expected = _download_headers(response, maximum, browser)
@@ -310,15 +398,33 @@ def _download_body(response, fd, maximum, browser, deadline):
         return total
 
 
-def download(uid, gid, deadline, writers):
+def download(uid, gid, deadline, ready_stop, channel_fd):
     here = pathlib.Path(__file__).absolute()
     root = here.parents[3]
     require(root.parent == ROOT_PARENT and re.fullmatch(ROOT_PREFIX + r'[1-9][0-9]{0,15}', root.name)
             and here == root / 'code' / SOURCE, 'Fixed TOOL downloader source required')
-    with fixed_refusal('download-identity'):
-        _drop_downloader(uid, gid)
-    with fixed_refusal('download-writer'):
-        download_writers(writers)
+    with ExitStack() as received:
+        with fixed_refusal('download-writer'), socket.socket(fileno=channel_fd) as channel:
+            os.set_inheritable(channel_fd, False)
+            require(channel.family == socket.AF_UNIX and channel.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) == socket.SOCK_SEQPACKET
+                    and channel.getsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED) == 1, 'TOOL writer endpoint differs')
+            parent = os.getppid()
+            require(parent > 1, 'TOOL writer parent unavailable')
+            with fixed_refusal('download-identity'):
+                policy, libc = _drop_downloader(uid, gid)
+            _send_writer_message(channel, b'R' + policy, [], ready_stop)
+            data, credentials, writers, records = received.enter_context(_writer_message(channel, ready_stop))
+            require(data == b'W' and credentials == [(parent, 0, 0)] and records == 1
+                    and os.getppid() == parent and all(not os.get_inheritable(fd) for fd in writers), 'TOOL writer grant differs')
+            download_writers(writers)
+            with _writer_message(channel, ready_stop) as (tail, creds, extra, count):
+                require(not (tail or creds or extra or count), 'TOOL writer channel surplus')
+            require(libc.prctl(3, 0, 0, 0, 0) == 0, 'TOOL writer dumpability changed')
+        left(ready_stop)
+        _download_archives(writers, deadline)
+
+
+def _download_archives(writers, deadline):
     left(deadline)
     lengths = {}
     with fixed_refusal('download-tls-transport', (OSError, http.client.HTTPException)):
@@ -420,7 +526,7 @@ def _stop_tool_command(kernel, child, descriptor, admitted, group_stop, final_st
     return os.waitstatus_to_exitcode(status), escaped
 
 
-def _run_tool_command(kernel, argv, stop):
+def _run_tool_command(kernel, argv, stop, *, download_slots=None):
     # Fixed root owner, with the same held identity and process-group primitives
     # as the historical kernel. Unlike its relative clock this stop is armed
     # before setup, and neither settlement phase can restart its allowance.
@@ -437,6 +543,7 @@ def _run_tool_command(kernel, argv, stop):
         os.close(fd)
 
     interrupted = False
+    writer_handoff = None
 
     def interrupt(_signum, _frame):
         nonlocal interrupted
@@ -450,6 +557,12 @@ def _run_tool_command(kernel, argv, stop):
             fds.update((ready, publish))
             grant, ack = os.pipe()
             fds.update((grant, ack))
+            if download_slots is not None:
+                root_channel, child_channel = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET | socket.SOCK_CLOEXEC)
+                for endpoint in (root_channel, child_channel):
+                    handlers.enter_context(endpoint)
+                for endpoint in (root_channel, child_channel):
+                    endpoint.setsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED, 1)
             child_env = os.environ.copy()
             if interrupted:
                 raise ToolRefusal('TOOL process owner was interrupted before fork', 'owner-interrupted')
@@ -468,6 +581,14 @@ def _run_tool_command(kernel, argv, stop):
                     # A parent descheduled just before writing ACK cannot extend
                     # the shorter admission boundary for the actual child exec.
                     left(ready_stop)
+                    if download_slots is not None:
+                        root_channel.close()
+                        for writer in download_slots[1]:
+                            os.close(writer)
+                        control = child_channel.fileno()
+                        os.set_inheritable(control, True)
+                        argv = [*argv, repr(ready_stop), str(control)]
+                        left(ready_stop)
                     os.execve(argv[0], argv, child_env)
                 except BaseException:
                     os._exit(125)
@@ -480,8 +601,15 @@ def _run_tool_command(kernel, argv, stop):
                 return result
             fds.add(descriptor)
             try:
+                if download_slots is not None:
+                    child_channel.close()
                 admitted = _admit_tool_command(kernel, child, ready, ack, ready_stop, lambda: interrupted)
                 result['admitted'] = True
+                if download_slots is not None:
+                    uid, gid = map(int, argv[5:7])
+                    writer_handoff = _download_writer_handoff(root_channel, ready_stop, lambda: interrupted,
+                                                              kernel, descriptor, admitted, uid, gid, download_slots)
+                    root_channel.close()
                 while not interrupted and not _wait_tool_exit(child):
                     time.sleep(min(.01, left(stop)))
                 left(stop)
@@ -516,6 +644,11 @@ def _run_tool_command(kernel, argv, stop):
                         result['reason'] = 'session-escaped' if escaped else 'command-failed'
                     if interrupted and result['reason'] == 'complete':
                         result['reason'] = 'owner-interrupted'
+                    if download_slots is not None and result['reason'] == 'complete':
+                        if writer_handoff is None:
+                            result['reason'] = 'protocol-refused'
+                        else:
+                            result['writerHandoff'] = writer_handoff
                 except BaseException:
                     pass
     finally:
@@ -643,7 +776,7 @@ class Course:
         materializer = '.github/ci/native-workload-browser-tool-installation.py'
         self.installer = source_module('aihr_tool_course_materializer', code / materializer, members[materializer])
 
-    def command(self, argv, deadline, maximum):
+    def command(self, argv, deadline, maximum, *, download_slots=None):
         payload = str(self.path / 'payload')
         mount_commands = ([MOUNT, '-i', '--make-rprivate', '/'], [MOUNT, '-i', '--bind', payload, payload],
                           [MOUNT, '-i', '-o', 'remount,bind,ro,nosuid,nodev,noexec', payload],
@@ -651,13 +784,13 @@ class Course:
         downloader = ['/usr/bin/python3', '-I', '-B', str(self.path / 'code' / SOURCE), '--download',
                       str(self.uid), str(self.gid), repr(self.active)]
         if argv in mount_commands:
-            require(maximum == 10 and deadline == (self.deadline if argv == mount_commands[-1] else self.active),
+            require(download_slots is None and maximum == 10
+                    and deadline == (self.deadline if argv == mount_commands[-1] else self.active),
                     'TOOL mount command bound differs')
             operation = ('namespace-private', 'payload-bind', 'payload-remount', 'payload-unmount')[mount_commands.index(argv)]
         else:
-            require(argv[:len(downloader)] == downloader and maximum == ACTIVE_SECONDS and deadline == self.active
-                    and len(argv) == len(downloader) + len(DOWNLOAD_SLOTS)
-                    and all(re.fullmatch(r'[1-9][0-9]{0,6}', part) for part in argv[len(downloader):]),
+            require(download_slots is not None and argv == downloader
+                    and maximum == ACTIVE_SECONDS and deadline == self.active,
                     'Fixed TOOL process command required')
             operation = 'archive-downloader'
         require(operation not in self.state.get('processOutcomes', {}), 'TOOL process operation repeated')
@@ -666,9 +799,12 @@ class Course:
             stop = min(now + maximum, deadline - PROCESS_SETTLEMENT)
             require(stop > now, 'TOOL process settlement reserve unavailable')
             if operation == 'archive-downloader':
-                argv = argv[:7] + [repr(stop)] + argv[8:]
+                argv = argv[:7] + [repr(stop)]
             self.processes_settled = False
-            result = _run_tool_command(self.kernel, argv, stop)
+            if operation == 'archive-downloader':
+                result = _run_tool_command(self.kernel, argv, stop, download_slots=download_slots)
+            else:
+                result = _run_tool_command(self.kernel, argv, stop)
         self.processes_settled = (result['reaped'] is True and result['groupQuiescent'] is True
                                   and self.kernel.own_children() == [])
         reason, code = result['reason'], result['commandExit']
@@ -687,6 +823,10 @@ class Course:
             raise ToolRefusal('TOOL owned command or settlement refused',
                               reason if reason != 'complete' else 'group-uncertain')
         left(deadline)
+        if operation == 'archive-downloader':
+            handoff = result.get('writerHandoff')
+            require(handoff in DUMP_POLICIES.values(), 'TOOL writer grant proof unavailable')
+            return handoff
 
     def observe_mounts(self, deadline, *, private=False):
         left(deadline)
@@ -729,11 +869,9 @@ class Course:
                 require(identity(info) == identity(named(folder, name)), 'TOOL created download slot changed')
                 writers.append(fd)
             download_writers(writers)
-            for fd in writers:
-                os.set_inheritable(fd, True)
-            self.command(['/usr/bin/python3', '-I', '-B', str(self.path / 'code' / SOURCE), '--download',
-                          str(self.uid), str(self.gid), repr(self.active), *map(str, writers)],
-                         self.active, ACTIVE_SECONDS)
+            handoff = self.command(['/usr/bin/python3', '-I', '-B', str(self.path / 'code' / SOURCE), '--download',
+                                    str(self.uid), str(self.gid), repr(self.active)], self.active, ACTIVE_SECONDS,
+                                   download_slots=(folder, tuple(writers), self.download_births))
             for name, fd in zip(DOWNLOAD_SLOTS, writers, strict=True):
                 require(download_slot(os.fstat(fd)) == self.download_births[name]
                         and identity(os.fstat(fd)) == identity(named(folder, name)), 'TOOL held download slot changed')
@@ -754,7 +892,7 @@ class Course:
                     and type(fact['lengths']) is dict and fact['lengths'].keys() == ARCHIVES, 'TOOL transfer facts differ')
             for name, _, _, maximum in DOWNLOADS:
                 self.copy_archive(source, destination, name, maximum, fact['lengths'][name])
-        self.state['transfer'] = fact
+        self.state['transfer'] = {**fact, 'writerHandoff': handoff}
 
     def copy_archive(self, source, destination, name, maximum, size):
         left(self.active)
@@ -1093,7 +1231,7 @@ def course_complete(course, primary, cleanup, ended):
             and course.processes_settled is True
             and course.state.get('mountsAbsent') is True and course.state.get('namespaceAbsent') is True
             and transfer.get('generation') == GENERATION and transfer.get('lengths', {}).keys() == ARCHIVES
-            and transfer.get('privateWriters') is True
+            and transfer.get('privateWriters') is True and transfer.get('writerHandoff') in DUMP_POLICIES.values()
             and installed.get('readOnly') is True and installed.get('noExec') is True
             and installed.get('entries', 0) > 0)
 
@@ -1150,13 +1288,15 @@ def run_course(run, source, uid, gid, members, rows, event_sha):
 
 if __name__ == '__main__':
     try:
-        require(len(sys.argv) == 5 + len(DOWNLOAD_SLOTS) and sys.argv[1] == '--download'
+        require(len(sys.argv) == 7 and sys.argv[1] == '--download'
                 and all(re.fullmatch(r'[1-9][0-9]{0,9}', part) for part in sys.argv[2:4]),
                 'Fixed TOOL downloader request required')
-        require(all(re.fullmatch(r'[1-9][0-9]{0,6}', part) for part in sys.argv[5:]), 'Fixed TOOL writer list required')
-        deadline = float(sys.argv[4])
-        require(0 < left(deadline) <= ACTIVE_SECONDS, 'Fixed TOOL downloader deadline differs')
-        download(int(sys.argv[2]), int(sys.argv[3]), deadline, tuple(map(int, sys.argv[5:])))
+        require(re.fullmatch(r'[1-9][0-9]{0,6}', sys.argv[6]) and 3 <= int(sys.argv[6]) < 1048576,
+                'Fixed TOOL writer endpoint required')
+        deadline, ready_stop = map(float, sys.argv[4:6])
+        require(0 < left(deadline) <= ACTIVE_SECONDS and 0 < left(ready_stop) <= HANDSHAKE_SECONDS
+                and ready_stop <= deadline, 'Fixed TOOL downloader deadline differs')
+        download(int(sys.argv[2]), int(sys.argv[3]), deadline, ready_stop, int(sys.argv[6]))
     except BaseException as error:
         sys.stderr.write('Fixed TOOL downloader refused\n')
         reason = refusal_reason(error)

@@ -421,5 +421,82 @@
     "disposableNamespaceAndWritersUnchanged": true,
     "modelCount": 27,
     "nativeObservation": "UNRUN"
+  },
+  "postDropWriterHandoff": {
+    "directParent": "1c823da0558e169ee0d248e9b3049ee9a1bee2d0",
+    "approvedPlanSha256": "af09097bd392b653f046b557896aa7eb518d95cad839dd4f505deed4d3d9d13c",
+    "historicalRun": {
+      "runId": "42573030123",
+      "source": "1c823da0558e169ee0d248e9b3049ee9a1bee2d0",
+      "controller": "1c823da0558e169ee0d248e9b3049ee9a1bee2d0",
+      "attempt": 1,
+      "terminalJobs": 13,
+      "conclusion": "failure",
+      "artifactId": "13654500045",
+      "artifactZipSha256": "510a8085bbcc97757b5bd00b012d471fa344b2ea48572cc5e3b3a612047922ec",
+      "receiptSha256": "3a38a09724e1b3c0ef38083735d5073606c0b75a6420971f4dbd8a4c006ba04a",
+      "failureReason": "download-identity-dump-policy-root-only",
+      "downloaderExit": 10,
+      "cleanup": "complete",
+      "postDropWriterGrant": "NOT_ENTERED"
+    },
+    "wholeParentPreimages": [
+      {
+        "path": ".github/ci/native-workload-browser-tool-course.py",
+        "bytes": 59799,
+        "sha256": "569d2c080322ea30dd1b39b83425125bd2df7c62d5521b7c3905d42d8a884fc7",
+        "gitBlob": "4f57f8e84a20f415c1baf2ac5d4d8760da7ffe2f"
+      },
+      {
+        "path": ".github/ci/native-controller-bootstrap.py",
+        "bytes": 48765,
+        "sha256": "2b38ec91ed36739043f47087897bd1ddb2bb618497ee1ee0dea1edd067954e6c",
+        "gitBlob": "41c4095b0e204533a69a2d51b146bd380a0df6ed"
+      },
+      {
+        "path": ".github/ci/native-workload-browser-tool-course.test.py",
+        "bytes": 51716,
+        "sha256": "7e31de668bde7b6f78a9e2090a1a7c8efc94614791aacd8626808089249b663f",
+        "gitBlob": "b86fe41ff64882c99448dbe58760e9d3ddcc3f41"
+      },
+      {
+        "path": "docs/qualification/native-workload-browser-tool-course-source-20261109.json",
+        "bytes": 17216,
+        "sha256": "18d0c01bc3fa71c87a78816128ccff915574e8d2d235a75cf1aa6b3d98e96d63",
+        "gitBlob": "cec0f190e1d3f8ac3b2e4c588356837abd3c1b8e"
+      }
+    ],
+    "currentSourcePins": [
+      {
+        "path": ".github/ci/native-workload-browser-tool-course.py",
+        "bytes": 67755,
+        "sha256": "72c1a9e190c58d42781e01d7cf4bb69b33ceea75a56b40eb425f78b5a7c454df",
+        "gitBlob": "16eb5106f1b32a26a16876600c789659346ae78f"
+      },
+      {
+        "path": ".github/ci/native-controller-bootstrap.py",
+        "bytes": 49073,
+        "sha256": "665172bc533a00f3389f48d3a1b91597e8268c863ded6c85b747011960228a8e",
+        "gitBlob": "c92397e7d51ac6e4b4dbbce20d70b645b0aee8b4"
+      },
+      {
+        "path": ".github/ci/native-workload-browser-tool-course.test.py",
+        "bytes": 63867,
+        "sha256": "fc43a66a00f579982949710e9a01bdc5d15450ed6f24cf815545afd21dff8305",
+        "gitBlob": "cbc22047ccbdc0dff2bdd4bfd9e03a1fbc2640e1"
+      }
+    ],
+    "safePolicyClasses": [
+      "zero",
+      "root-only"
+    ],
+    "writerTransfer": "One kernel credential checked post-drop SCM_RIGHTS message; exact five named root-owned write-only CLOEXEC inodes and live pidfd/start/state before grant",
+    "currentLiveTransferRequiresHandoffEnum": true,
+    "legacyReceiptHistoricalReadPreserved": true,
+    "globalDumpPolicyOrCoreConfigurationChanged": false,
+    "globalPolicyContinuityOrCoreAbsenceClaimed": false,
+    "originalClockAndOwnedSettlementPreserved": true,
+    "modelCount": 32,
+    "nativeObservation": "UNRUN"
   }
 }
