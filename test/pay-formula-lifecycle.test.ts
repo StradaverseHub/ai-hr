@@ -56,7 +56,11 @@ If {#Input} > 10 Then
   {#Explain}("Review this branch")
   Return {#Basic} / 26 * {#Input}
 ElseIf {#Input} > 0 Then
-  Return 20 * {#Input}
+  If {#Input} > 5 Then
+    Return 20 * {#Input}
+  Else
+    Return 10 * {#Input}
+  End If
 Else
   Return 1
 End If`;
@@ -70,7 +74,10 @@ End If`;
    {depth:1,text:'Add the note “Review this branch”.'},
    {depth:1,text:'The result is Basic salary ÷ 26 × Current input.'},
    {depth:0,text:'Otherwise, if Current input > 0:'},
-   {depth:1,text:'The result is 20 × Current input.'},
+   {depth:1,text:'If Current input > 5:'},
+   {depth:2,text:'The result is 20 × Current input.'},
+   {depth:1,text:'Otherwise:'},
+   {depth:2,text:'The result is 10 × Current input.'},
    {depth:0,text:'Otherwise:'},
    {depth:1,text:'The result is 1.'},
   ]},
@@ -81,6 +88,16 @@ End If`;
  expect(reopened?.explanation).toEqual([{depth:0,text:'The result is 9.'}]);
  expect((await listPayComponents(ctx)).find(item=>item.code==='EXPLANATION_ITEM')?.rule).toMatchObject({formulaId:'LINKED_EXPLANATION'});
  await expect(readPayItemFormulaOptions({...ctx,userId:undefined},t)).rejects.toThrow(/Formula access is unavailable/);
+
+ const [scopedUser]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'linked-explanation-'+randomUUID()}).returning();
+ const companyActor={...ctx,userId:scopedUser.id,personId:null};
+ await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:scopedUser.id,role:'hr_admin',companyId:base.companyId});
+ const scopedAdmin={...companyActor,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:base.companyId}]} satisfies SessionContext;
+ expect(await readPayItemFormulaOptions(scopedAdmin,t)).toContainEqual(reopened);
+ await owner.db.update(schema.roleAssignment).set({role:'payroll_partner'}).where(eq(schema.roleAssignment.appUserId,scopedUser.id));
+ const scopedPartner={...companyActor,roles:['payroll_partner'],grants:[{role:'payroll_partner',companyId:base.companyId}]} satisfies SessionContext;
+ await expect(readPayItemFormulaOptions(scopedPartner,t)).rejects.toThrow(/Formula access is unavailable/);
+
  const other=await seedBase();await setModule(other.tenantId,'typed_pay_components','active');
  expect(await readPayItemFormulaOptions(await entitledCtx(other),t)).toEqual([]);
 });
