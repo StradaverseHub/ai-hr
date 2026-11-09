@@ -41,7 +41,7 @@ const aiCentreHistoricalUpgradeArchives=Object.freeze({
  'test/ai-centre-mandate-write-order-upgrade.test.ts':'test/ai-centre-mandate-write-order-upgrade.archive.ts.txt',
 });
 const aiCentreUpgradeSourcePins=Object.freeze({
- [AI_CENTRE_CURRENT_UPGRADE_FILE]:'3b38fc3f6e769a4b96f3bb4eb006ce7271e6d15899ae28bf08d166c1e42ae4e5',
+ [AI_CENTRE_CURRENT_UPGRADE_FILE]:'af145e73c4f2f10a4d52d719015a69da08c55cbe4fb785c6384499a149676f8d',
  'test/fixtures/ai-centre-current-upgrade-source.ts':'70af7a1e6426990b7ffd50fe64ec945c590a5483a2801ad8703a33e054c9100e',
  'test/ai-centre-architecture-compatibility-upgrade.archive.ts.txt':'41034ea6f3d13e0001003e69e99d514b1a38f90a143ba24996837516f24c386a',
  'test/ai-centre-mandate-write-order-upgrade.archive.ts.txt':'32c773d04d67e1db720b0e78d9bb0af40d50eac9bac6f34ea9c54946149b085f',

@@ -34,7 +34,7 @@ const signatures = [
   'app.ai_centre_mandate_write_order()', 'app.ai_centre_mandate_bound_tenant()',
 ];
 type Identity = { database: string; dbOid: string; role: string; login: string; loopback: boolean; pid: number; started: string };
-type Procedure = { signature: string; oid: string; owner: string; attributes: Record<string, unknown>; body: string; definition: string; appExecute: boolean };
+type Procedure = { signature: string; oid: string; owner: string; attributes: Record<string, unknown>; body: string; definition: string; defaultExpression: string | null; appExecute: boolean };
 type LedgerRow = { id: string; hash: string; created_at: string };
 type RoleIdentity = { oid: string; rolname: string };
 type RoleEdge = { roleid: string; member: string; grantor: string; admin_option: boolean; inherit_option: boolean; set_option: boolean };
@@ -147,6 +147,7 @@ it('replays the populated current AI Centre checkpoint under the real fixture ow
   const procedures = async () => Array.from(await storage.client<Procedure[]>`
     select p.oid::regprocedure::text as signature,p.oid::text,p.proowner::regrole::text as owner,
       to_jsonb(p)-'prosrc'-'proconfig' as attributes,p.prosrc as body,pg_get_functiondef(p.oid) as definition,
+      pg_get_expr(p.proargdefaults,0) as "defaultExpression",
       has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as "appExecute"
     from pg_catalog.pg_proc p where p.oid in (select to_regprocedure(s) from unnest(${signatures}::text[]) as v(s))
     order by p.oid::regprocedure::text
@@ -418,8 +419,14 @@ it('replays the populated current AI Centre checkpoint under the real fixture ow
     ]);
     const afterProcs = await procedures();
     expect(afterProcs).toHaveLength(14);
-    const stable = ({ signature, oid, owner, appExecute, attributes }: Procedure) =>
-      ({ signature, oid, owner, appExecute, attributes });
+    // 2138 replaces this declaration with the same default at a different SQL offset.
+    const action = 'app.ai_action_unpaused(text,boolean)';
+    expect([beforeProcs, afterProcs].map(rows => rows.find(row => row.signature === action)?.defaultExpression))
+      .toEqual(['false', 'false']);
+    const stable = ({ signature, oid, owner, appExecute, attributes, defaultExpression }: Procedure) => ({
+      signature, oid, owner, appExecute,
+      attributes: signature === action ? { ...attributes, proargdefaults: defaultExpression } : attributes,
+    });
     expect(afterProcs.filter(row => beforeProcs.some(previous => previous.signature === row.signature)).map(stable))
       .toEqual(beforeProcs.map(stable));
     for (const signature of ['app.ai_centre_mandate_write_order()', 'app.ai_centre_mandate_bound_tenant()']) {
