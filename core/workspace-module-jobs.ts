@@ -27,7 +27,7 @@ export async function loadCanonicalModuleJob(ctx:SessionContext,input:unknown):P
    const result=await read.moduleWork(module),expected=MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module)![1];
    if(result.module!==module||result.capability!==expected||result.scope!=='current-caller')throw Error();
    return{presentation:presentCanonicalModuleData(module,result.data),specialist:executeCanonicalSpecialist({kind:'canonical_specialist_v1',module,playbook:'canonical_domain_v1'},result)};
-  });
+  },undefined,'presentation');
   view=Object.freeze({state:'ready',presentation:presentation.presentation,answerExplanations:specialistAnswerExplanations(presentation.specialist,presentation.presentation),specialist:presentation.specialist,specialistVersion:compactSpecialistWork(presentation.specialist,{mode:'baseline',version:0,configuration:{kind:'canonical_specialist_v1',module,playbook:'canonical_domain_v1'}}),checkedAt:Date.now(),viewId:randomUUID()});
  }catch{view=Object.freeze({state:'unavailable',module,checkedAt:Date.now(),viewId:randomUUID()});}
  owners.set(view,{principal:principal(captured),issuedAt:Date.now(),digest:assistantSourceDigest(view)});return view;

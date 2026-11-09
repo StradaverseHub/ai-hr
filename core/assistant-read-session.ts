@@ -89,7 +89,8 @@ async function guard(tx: Tx, ctx: SessionContext, module: string | null,presenta
  * outside this callback. This is a read prerequisite, not historical-answer or effect authority.
  */
 export async function withAssistantRead<T>(ctx: SessionContext, module: string | null,
-  consume: (session: AssistantReadSession) => Promise<T>, existing?: AssistantReadSession): Promise<T> {
+  consume: (session: AssistantReadSession) => Promise<T>, existing?: AssistantReadSession,
+  purpose:'command'|'presentation'='command'): Promise<T> {
   const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   try {
     if (existing) {
@@ -101,9 +102,10 @@ export async function withAssistantRead<T>(ctx: SessionContext, module: string |
     return await withTenant(captured, async tx => {
       // Session setup performs SELECT/set_config only; this is still before any write.
       await tx.execute(sql`SET TRANSACTION READ ONLY`);
-      const fresh = await guard(tx, captured, module);
-      const owner = { active: true, principal: principalKey(captured), tx, presentation:false };
-      const session = createReads(fresh, tx, () => owner.active);
+      const presentation=purpose==='presentation';
+      const fresh = await guard(tx, captured, module, presentation);
+      const owner = { active: true, principal: principalKey(captured), tx, presentation };
+      const session = createReads(fresh, tx, () => owner.active, presentation?{presentation:true}:undefined);
       owners.set(session, owner);
       try { return await consume(session); }
       finally { owner.active = false; }
