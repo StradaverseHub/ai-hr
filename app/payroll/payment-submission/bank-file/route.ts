@@ -1,23 +1,21 @@
 import { assertModuleEnabled } from '@/core/entitlements';
-import {DEFAULT_MAYBANK_PAYMENT_SETTINGS} from '@/lib/maybank-payment-settings';
 import { recordPayrollExport } from '@/core/payroll-audit/access-log';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withTenant } from '@/db/client';
-import { company,companyStatutoryAuthority } from '@/db/schema';
+import { company } from '@/db/schema';
 import { scopedAdmin } from '@/lib/scope';
 import { isCalendarDate } from '@/lib/calendar-date';
 import { isSameOriginBrowserRequest } from '@/lib/request-origin';
 import { readBoundedBody } from '@/lib/bounded-body';
-import { listCompanyBankProfiles } from '@/core/bank-profile';
-import { listBatches, listFilableRunsForPeriod } from '@/packs/payroll/service';
 import { packFor } from '@/localization/registry';
-import { BankPaymentFileError, type BankPaymentRequest } from '@/localization/country-pack';
+import { BANK_PAYMENT_CATEGORIES, BankPaymentFileError, type BankPaymentRequest } from '@/localization/country-pack';
 import { submissionFormat } from '../registry';
 
 export const runtime = 'nodejs';
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 const period = z.string().regex(/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/);
+const optionsQuery = z.object({ companyId: uuid, category: z.enum(BANK_PAYMENT_CATEGORIES) }).strict();
 const base = z.object({ companyId: uuid, formatId: z.string().min(1).max(64), periodKey: period }).strict();
 const request = base.extend({
   bankProfileId: uuid,
@@ -30,7 +28,7 @@ const generation = request.extend({ expectedDigest: z.string().regex(/^[0-9a-f]{
 const headers = { 'Cache-Control': 'private, no-store' };
 const failure = (message: string, status: number) => Response.json({ error: message }, { status, headers });
 
-function formatFor(p: BankPaymentRequest | z.infer<typeof base>) {
+function formatFor(p: { formatId: string }) {
   const format = submissionFormat(p.formatId);
   return format?.available && format.transport === 'bank-post' ? format : undefined;
 }
@@ -40,7 +38,7 @@ function validSelection(p: BankPaymentRequest) {
     && (f.testIndicator || p.testFile === false);
 }
 /** Scope, database permission and country contract are all checked before returning account/run data. */
-async function authorize(p: z.infer<typeof base>) {
+async function authorize(p: { companyId: string }) {
   const { s, scopeIds } = await scopedAdmin();
   if (!scopeIds.includes(p.companyId)) return null;
   try { assertModuleEnabled(s, 'payroll', p.companyId); } catch { return null; }
@@ -48,11 +46,11 @@ async function authorize(p: z.infer<typeof base>) {
     const [permission] = await tx.execute<{ ok: boolean }>(sql`select app.is_admin_for(${p.companyId}::uuid) as ok`);
     if (!permission?.ok) return null;
     const [row] = await tx.select({ country: company.country }).from(company)
-      .where(and(eq(company.id, p.companyId), eq(company.tenantId, s.tenantId))).limit(1);
+      .where(and(eq(company.id, p.companyId), eq(company.tenantId, s.tenantId), isNull(company.archivedAt))).limit(1);
     return row?.country;
   });
   const service = country ? packFor(country)?.bankPaymentFiles : undefined;
-  return service ? { s, scopeIds, service } : null;
+  return service ? { s, service } : null;
 }
 function errorResponse(error: unknown) {
   if (error instanceof BankPaymentFileError) return failure(error.message, error.status);
@@ -67,41 +65,18 @@ export async function GET(req: Request) {
   const operation = raw.operation;
   delete raw.operation;
   if (operation === 'options') {
-    const parsed = base.safeParse(raw);
+    const parsed = optionsQuery.safeParse(raw);
     if (!parsed.success) return failure('Invalid bank file request.', 400);
-    const format = formatFor(parsed.data);
-    if (!format) return failure('Not found', 404);
     const auth = await authorize(parsed.data);
     if (!auth) return failure('Not found', 404);
     try {
-      const [accounts, runs, batches] = await Promise.all([
-        listCompanyBankProfiles(auth.s, parsed.data.companyId),
-        listFilableRunsForPeriod(auth.s, { companyIds: auth.scopeIds, companyId: parsed.data.companyId, periodKey: parsed.data.periodKey }),
-        listBatches(auth.s, [parsed.data.companyId], parsed.data.periodKey),
-      ]);
-      const maybank=parsed.data.formatId.startsWith('my.maybank74.');
-      let mappedId = format.periodKind === 'month-cycle'
-        ? accounts.find(account => account.isPrimary)?.id ?? null : null;
-      if(maybank){
-        const category=parsed.data.formatId.split('.').at(-1)!;
-        if(category!=='salary')mappedId=await withTenant(auth.s,async tx=>{const [row]=await tx.select({id:companyStatutoryAuthority.bankProfileId}).from(companyStatutoryAuthority).where(and(eq(companyStatutoryAuthority.tenantId,auth.s.tenantId),eq(companyStatutoryAuthority.companyId,parsed.data.companyId),eq(companyStatutoryAuthority.authority,category==='kwsp'?'epf':category)));return row?.id??null;});
-      }
-      const contributing = batches.filter(batch => !batch.historyImportAttemptId &&
-        (batch.status === 'processed' || batch.status === 'closed'));
-      const ready = new Set(contributing.filter(batch => batch.status === 'closed' && !batch.needsRecalcAt)
-        .map(batch => batch.runSeq));
-      const availableAccounts = accounts.filter(account =>
-        account.bank === (maybank ? 'maybank' : 'ocbc_bank') && account.currency === 'MYR' &&
-        (!maybank || account.id === mappedId && (account.maybankPaymentSettings ?? DEFAULT_MAYBANK_PAYMENT_SETTINGS).version === '7.4'));
+      const options = await auth.service.submissionOptions(auth.s, parsed.data);
+      const periodKind = parsed.data.category === 'salary' ? 'month-cycle' : 'month';
+      const accounts = options.accounts.filter(account => formatFor(account)?.periodKind === periodKind);
       return Response.json({
-        accounts: availableAccounts.map(account => ({
-          id: account.id,
-          label: account.accountLabel || (maybank ? 'Maybank' : 'OCBC'),
-          accountNumber: account.debitAccountNo,
-        })),
-        configuredAccountId: availableAccounts.some(account => account.id === mappedId) ? mappedId : null,
-        runs: format.periodKind === 'month' && contributing.some(batch => !ready.has(batch.runSeq))
-          ? [] : runs.filter(run => ready.has(run.runSeq)),
+        ...options, accounts,
+        configuredAccountId: accounts.some(account => account.id === options.configuredAccountId) ? options.configuredAccountId : null,
+        accountIssue: options.accountIssue ?? (accounts.length ? null : 'incompatible'),
       }, { headers });
     } catch (error) { return errorResponse(error); }
   }

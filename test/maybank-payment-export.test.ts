@@ -4,7 +4,7 @@ import {eq} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {hireEmployee,setEmploymentPaymentMethod} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {createBatch,generatePayslips} from '../packs/payroll/service';
+import {closeBatch,createBatch,generatePayslips} from '../packs/payroll/service';
 import {upsertCompanyBankProfile} from '../core/bank-profile';
 import {upsertCompanyStatutoryAuthority} from '../core/statutory-authority';
 import {setStatutoryProfileMY,setBankProfileMY} from '../localization/my/statutory';
@@ -34,6 +34,24 @@ describe('Maybank configured category and immutable export owner',()=>{
   expect(await ocbcBankPaymentFiles.download(ctx,p)).toEqual(file);expect(file.content.split('\r\n')[1].split('|')).toHaveLength(337);
   expect(await owner.db.select().from(bankPaymentExport)).toHaveLength(1);expect(await owner.db.select().from(payslip).where(eq(payslip.batchId,batchId))).toEqual(before);
   const[batch]=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));expect(batch.status).toBe('processed');
+ });
+ it('selects the assigned statutory account ahead of the primary and preserves Maybank file bytes', async () => {
+  const {ctx,request,batchId}=await fixture();
+  const primary=await upsertCompanyBankProfile(ctx,{companyId:b.companyId,bank:'ocbc_bank',corporateId:'A999999',debitAccountNo:'9876543210',isPrimary:true});
+  await closeBatch(ctx,{batchId});
+  const selection={companyId:b.companyId,category:'socso'} as const;
+  expect(await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).toMatchObject({
+   accounts:[{id:request.bankProfileId,accountNumber:'123456789012',formatId:'my.maybank74.socso'}],
+   configuredAccountId:request.bankProfileId,usesStatutoryAccount:true,periods:[{periodKey:period,runs:[]}],
+  });
+  const {runSeq:_,...month}=request;
+  const input={...month,formatId:'my.maybank74.socso'};
+  const preview=await ocbcBankPaymentFiles.preview(ctx,input);
+  const selected={...input,closedPayrollOnly:true as const};
+  expect(await ocbcBankPaymentFiles.preview(ctx,selected)).toEqual(preview);
+  await expect(ocbcBankPaymentFiles.preview(ctx,{...selected,bankProfileId:primary.id,formatId:'my.ocbc.socso'})).rejects.toMatchObject({status:409});
+  const file=await ocbcBankPaymentFiles.download(ctx,{...selected,expectedDigest:preview.digest,requestKey:randomUUID()});
+  expect(file.content.trimEnd().split('\r\n').map(row=>row.split('|').length)).toEqual([42,136,28]);
  });
  it('uses the approved initial blank-hash default for an existing unconfigured Maybank account',async()=>{
   const {ctx,request,batchId}=await fixture(),before=await owner.db.select().from(payslip).where(eq(payslip.batchId,batchId));
