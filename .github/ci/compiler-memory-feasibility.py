@@ -16,10 +16,10 @@ import sys
 import time
 
 
-SOURCE = '6a71ae8b651fafdb845d92a47568ac3c5382322f'
-SOURCE_TREE = '853f28b988921a0f3b41035e2bb2bc4d653b75d1'
-SOURCE_BRANCH = 'codex/architecture-145e-compiler-test-fix-20261110'
-BRANCH = 'codex/compiler-6a71ae8b-whole-12800-platform-progress-20261110'
+SOURCE = '06e499c211807981689c34c5e732b7dac488abbc'
+SOURCE_TREE = '07eb0a9652ff94af91950de089df84e5e6fce2bd'
+SOURCE_BRANCH = 'codex/architecture-zero-busy-lock-qualification-20261109'
+BRANCH = 'codex/compiler-06e499c-managed-platform-swap-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 LIMIT = 13 * GIB
@@ -40,17 +40,27 @@ PROGRESS_COUNTERS = ('cpuUsec', 'userUsec', 'systemUsec', 'cpuSomeUsec', 'cpuFul
 PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
 PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-12800-platform-progress'
-UNIT_PREFIX = 'aihr-compiler-12800-progress-'
+DIRECTORY = 'compiler-12800-managed-platform'
+UNIT_PREFIX = 'aihr-compiler-12800-managed-'
 UNIT_NAME = re.compile(rf'{re.escape(UNIT_PREFIX)}[1-9][0-9]{{0,15}}\.service')
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-GENERATED = {
-    'next-env.d.ts': '1862ac4bbbc5192d4bf562161df66ea547ed3e67173100656ab606ae9797db2b',
-    '.next/types/cache-life.d.ts': '87384ad5954f65285fc17ba8ed39d010a8ef111edba114e493b0431d677e5faa',
-    '.next/types/root-params.d.ts': 'f3387dd7800eec3c34273f7a8efad13e864598c7e8f788d321e407390989bb59',
-    '.next/types/routes.d.ts': '52aeb68060ebdc801316e0a6880c848ee0fbc87542c452b65d963c1dafbb7432',
-    '.next/types/validator.ts': '860b54f3461834c458201cb58dbf3915fcafc89647b9a76abbe8d56242968124',
+MANAGED_KIND = 'WHOLE_MANAGED_COMMAND_PLATFORM_SWAP_DIAGNOSTIC_NOT_RELEASE'
+CACHE_RELATIVE = '.next/cache/compiler-transport/whole-project.tsbuildinfo'
+MAX_STATE = 64 * 1024 ** 2
+MAX_LOG = 4 * 1024 ** 2
+ORDINARY_BUDGET_MS = 900000
+INVENTORY_FIELDS = ('configuredRoots', 'orderedRootSha256', 'rootSetSha256', 'generatedCount',
+                    'generatedSha256', 'toolSha256')
+STATE_FIELDS = ('buildInfoBytes', 'buildInfoSha256', 'nativeFiles', 'nativeRoots', 'nativeRootSetSha256')
+SOURCE_INPUTS = {
+    'tsconfig.json': '0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a',
+    'package.json': '7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c',
+    'pnpm-lock.yaml': '0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd',
+    'pnpm-workspace.yaml': '68505b5f88e6fbd9ef4a309ca131de8e64f1749939d846da2d81e88db14c9369',
+    'next.config.ts': 'a2e110533821502c36cd0b371960fe7cb73710ef9e253221bd188696560724f6',
+    'mobile/package.json': '03fd6692c2651a555672ee5025a008f447a8ed1443ba6933c3da03f7023a6a27',
+    'mobile/package-lock.json': '6919f4b6fd6b0ac3fb8346fc9578d8c3a0ccbdb9538bed6e8fd43e3cb8eb9915',
 }
 
 
@@ -89,8 +99,8 @@ def pairs(raw):
     return result
 
 
-def command(argv):
-    deadline = time.monotonic() + 3
+def command(argv, *, timeout=3):
+    deadline = time.monotonic() + timeout
     child = subprocess.Popen(argv, env=BASE_ENV, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.DEVNULL)
     try:
@@ -510,7 +520,6 @@ def service(unit, pending):
     try:
         temporary = Path(os.environ['RUNNER_TEMP'])
         directory = temporary / DIRECTORY
-        pnpm = Path(pwd.getpwuid(os.getuid()).pw_dir) / 'setup-pnpm/node_modules/.bin/pnpm'
         require(UNIT_NAME.fullmatch(unit) and os.getuid() > 0
                 and temporary.is_absolute() and directory.resolve(strict=True) == directory, 'service-identity')
         pid = os.getpid()
@@ -533,7 +542,9 @@ def service(unit, pending):
             phase = 'start'
             with (directory / 'compiler.raw.log').open('xb') as log:
                 require(time.monotonic_ns() < stop, 'service-launch-late')
-                with subprocess.Popen(['/usr/bin/time', '-v', str(pnpm), 'exec', 'tsc', '--noEmit'],
+                source = Path.cwd()
+                node = Path(os.environ['AIHR_STOCK_NODE'])
+                with subprocess.Popen(compiler_command(source, node),
                                       stdin=subprocess.DEVNULL, stdout=log, stderr=log) as compiler:
                     print('S', flush=True)
                     phase = 'compiler'
@@ -566,13 +577,220 @@ def unit_name(run_id):
     return UNIT_PREFIX + run_id + '.service'
 
 
-def compiler_files(source):
-    require(set((source / '.next/types').iterdir()) == {source / name for name in GENERATED if name.startswith('.next/')}
-            and not os.path.lexists(source / '.next/dev'), 'typegen-root-inventory')
-    for name, digest in GENERATED.items():
-        member = source / name
-        require(member.resolve(strict=True) == member and member.is_file() and 0 < member.stat().st_size <= 4 * 1024 ** 2
-                and hashlib.sha256(member.read_bytes()).hexdigest() == digest, 'typegen-inputs')
+def compiler_command(source, node):
+    return ['/usr/bin/time', '-v', '/usr/bin/prlimit', '--fsize=67108864', '--', str(node),
+            str(source / 'node_modules/typescript/lib/tsc.js'), '--noEmit', '--pretty', 'false',
+            '--extendedDiagnostics', '--tsBuildInfoFile', str(source / CACHE_RELATIVE)]
+
+
+def pinned_node_hash(node):
+    fd = os.open(node, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as stream:
+        before = os.fstat(fd)
+        require(stat.S_ISREG(before.st_mode) and 0 < before.st_size <= 256 * 1024 ** 2, 'pinned-node-member')
+        digest = hashlib.sha256()
+        remaining = before.st_size
+        while remaining:
+            chunk = stream.read(min(1024 * 1024, remaining))
+            require(bool(chunk), 'pinned-node-member')
+            digest.update(chunk)
+            remaining -= len(chunk)
+        require(not stream.read(1) and identity(os.fstat(fd)) == identity(before)
+                == identity(node.lstat()), 'pinned-node-changed')
+        return digest.hexdigest()
+
+
+def verify_source_inputs(source):
+    for name, digest in SOURCE_INPUTS.items():
+        path = source / name
+        info = path.lstat()
+        require(path.resolve(strict=True) == path and stat.S_ISREG(info.st_mode)
+                and 0 < info.st_size <= 16 * 1024 ** 2, 'managed-source-input')
+        require(hashlib.sha256(path.read_bytes()).hexdigest() == digest, 'managed-source-input')
+
+
+def pre_typegen(source):
+    for name in ('next-env.d.ts', '.next/types', '.next/dev', 'tsconfig.tsbuildinfo', str(Path(CACHE_RELATIVE).parent)):
+        require(not os.path.lexists(source / name), 'managed-pre-typegen-not-fresh')
+
+
+def cache_birth(info):
+    require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+            and stat.S_IMODE(info.st_mode) == 0o700, 'managed-cache-directory')
+    return [info.st_dev, info.st_ino, info.st_uid, info.st_gid]
+
+
+def canonical_cache_parent(source, *, create=False):
+    parent = source / '.next/cache'
+    if create and not os.path.lexists(parent):
+        parent.mkdir(mode=0o700)
+    require(parent.resolve(strict=True) == parent, 'managed-cache-parent')
+    for path in (parent.parent, parent):
+        info = path.lstat()
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+                and not info.st_mode & 0o022, 'managed-cache-parent')
+    return parent
+
+
+def verify_cache(source, fd, birth, *, require_empty=False):
+    parent = canonical_cache_parent(source)
+    path = parent / Path(CACHE_RELATIVE).parent.name
+    require(cache_birth(os.fstat(fd)) == cache_birth(path.lstat()) == birth, 'managed-cache-replaced')
+    names = os.listdir(fd)
+    require(not names or (not require_empty and names == [Path(CACHE_RELATIVE).name]), 'managed-cache-members')
+    if names:
+        private_file_birth(os.stat(names[0], dir_fd=fd, follow_symlinks=False))
+    return names
+
+
+def create_cache(source, directory, controller, run_id):
+    parent = canonical_cache_parent(source, create=True)
+    path = parent / Path(CACHE_RELATIVE).parent.name
+    require(not os.path.lexists(path) and not os.path.lexists(source / 'tsconfig.tsbuildinfo'), 'managed-cache-not-cold')
+    pending = directory / 'cache-create.pending'
+    own_json(pending, run_identity(controller, run_id))
+    path.mkdir(mode=0o700)
+    fd = os.open(path, CG_FLAGS)
+    try:
+        birth = cache_birth(os.fstat(fd))
+        verify_cache(source, fd, birth, require_empty=True)
+        own_json(directory / 'cache-birth.json', {**run_identity(controller, run_id), 'birth': birth})
+        pending.unlink()
+        return fd, birth
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def cleanup_cache(source, directory, controller, run_id):
+    path = (source / CACHE_RELATIVE).parent
+    require(not os.path.lexists(directory / 'cache-create.pending'), 'managed-cache-creation-unsettled')
+    witness = directory / 'cache-birth.json'
+    if os.path.lexists(witness):
+        proof = read_intent(witness)
+        birth = proof.pop('birth')
+        require(proof == run_identity(controller, run_id) and type(birth) is list
+                and len(birth) == 4 and all(type(value) is int and value >= 0 for value in birth), 'managed-cache-witness')
+        parent = canonical_cache_parent(source)
+        with contextlib.ExitStack() as cleanup:
+            parent_fd = os.open(parent, CG_FLAGS)
+            cleanup.callback(os.close, parent_fd)
+            fd = os.open(path.name, CG_FLAGS, dir_fd=parent_fd)
+            cleanup.callback(os.close, fd)
+            for name in verify_cache(source, fd, birth):
+                os.unlink(name, dir_fd=fd)
+            verify_cache(source, fd, birth, require_empty=True)
+            os.rmdir(path.name, dir_fd=parent_fd)
+    require(not os.path.lexists(path) and not os.path.lexists(source / 'tsconfig.tsbuildinfo'), 'managed-cache-not-removed')
+
+
+def compiler_inventory(source, node, mode):
+    helper = Path(__file__).with_name('compiler-managed-inventory.mjs')
+    result, raw = command([str(node), '--max-old-space-size=512', str(helper), mode, str(source)], timeout=15)
+    require(result == 0 and 0 < len(raw) <= 4096, 'managed-native-inventory')
+    row = json.loads(raw)
+    require(valid_inventory(row, result=mode == 'post'), 'managed-native-inventory')
+    return row
+
+
+def valid_inventory(row, *, result=False):
+    fields = (*INVENTORY_FIELDS, *STATE_FIELDS) if result else INVENTORY_FIELDS
+    if type(row) is not dict or set(row) != set(fields):
+        return False
+    if not all(type(row[key]) is str and re.fullmatch(r'[0-9a-f]{64}', row[key])
+               for key in fields if key.endswith('Sha256')):
+        return False
+    if type(row['generatedCount']) is not int or row['generatedCount'] != 5:
+        return False
+    if type(row['configuredRoots']) is not int or not 5 <= row['configuredRoots'] <= 100000:
+        return False
+    return (not result or type(row['nativeRoots']) is int and row['nativeRoots'] == row['configuredRoots']
+            and row['nativeRootSetSha256'] == row['rootSetSha256']
+            and type(row['nativeFiles']) is int and row['nativeRoots'] <= row['nativeFiles'] <= 100000
+            and type(row['buildInfoBytes']) is int and 0 < row['buildInfoBytes'] <= MAX_STATE)
+
+
+def compiler_log_evidence(raw):
+    parsed = re.findall(rb'^(?:[^\r\n]+\([0-9]+,[0-9]+\): )?error TS([1-9][0-9]{3,4}):', raw, re.M)
+    diagnostics = re.findall(rb'\berror TS[0-9]+:', raw)
+    counts = {}
+    for number in parsed:
+        code = int(number)
+        counts[code] = counts.get(code, 0) + 1
+    rows = [[code, count] for code, count in sorted(counts.items())]
+    files = re.findall(rb'^Files:[ \t]+([1-9][0-9]*)[ \t]*\r?$', raw, re.M)
+    valid = len(parsed) == len(diagnostics) and len(rows) <= 128
+    return {'v8HeapFatalMarker': bool(re.search(
+                rb'^FATAL ERROR: [^\r\n]*JavaScript heap out of memory[^\r\n]*$', raw, re.M)),
+            'typescriptDiagnosticCount': len(diagnostics), 'typescriptDiagnosticCodes': rows if valid else [],
+            'diagnosticsParsed': valid,
+            'compilerFiles': int(files[0]) if len(files) == 1 and len(files[0]) <= 6 else None}
+
+
+def compiler_outcome(report):
+    if report.get('v8HeapFatalMarker') is True:
+        return 'v8-heap-exhausted'
+    if report.get('reason') == 'oom-observed':
+        return 'kernel-oom-observed'
+    if report.get('reason') == 'compiler-deadline':
+        return 'compiler-deadline'
+    if report.get('typescriptDiagnosticCount', 0) > 0:
+        return 'typescript-diagnostics' if report.get('diagnosticsParsed') is True else 'unparsed-diagnostics'
+    if report.get('compilerExit') is None:
+        return 'pre-grant-refusal' if not report.get('grantSent') else 'compiler-protocol-refusal'
+    if report['compilerExit'] != 0:
+        return 'other-compiler-nonzero'
+    if report.get('complete') is True:
+        return 'complete'
+    return 'zero-exit-evidence-refused'
+
+
+def valid_measurement(report):
+    inventory, state = report.get('inventory'), report.get('managedState')
+    if inventory is not None and not valid_inventory(inventory):
+        return False
+    if 'managedInputsReverified' in report and report['managedInputsReverified'] is not True:
+        return False
+    if state is not None and (report.get('managedInputsReverified') is not True
+                              or inventory is None or not valid_inventory(state, result=True)
+                              or any(inventory[key] != state[key] for key in INVENTORY_FIELDS)
+                              or report.get('compilerFiles') != state['nativeFiles']):
+        return False
+    if 'compilerWindowElapsedMs' in report:
+        elapsed = report['compilerWindowElapsedMs']
+        if (type(elapsed) is not int or not 0 <= elapsed < WORK_SECONDS * 1000
+                or report.get('terminalBeforeOrdinaryBudget') is not (elapsed < ORDINARY_BUDGET_MS)):
+            return False
+    elif 'terminalBeforeOrdinaryBudget' in report:
+        return False
+    if report.get('compilerLog') is not None:
+        log = report['compilerLog']
+        if (type(log) is not dict or set(log) != {'bytes', 'sha256'} or type(log['bytes']) is not int
+                or not 0 < log['bytes'] <= MAX_LOG or type(log['sha256']) is not str
+                or not re.fullmatch(r'[0-9a-f]{64}', log['sha256'])):
+            return False
+        rows, count = report.get('typescriptDiagnosticCodes'), report.get('typescriptDiagnosticCount')
+        if (type(rows) is not list or len(rows) > 128 or type(count) is not int or not 0 <= count <= log['bytes']
+                or type(report.get('diagnosticsParsed')) is not bool or type(report.get('v8HeapFatalMarker')) is not bool):
+            return False
+        if any(type(row) is not list or len(row) != 2 or any(type(value) is not int for value in row)
+               or not 1000 <= row[0] <= 99999 or not 0 < row[1] <= count for row in rows):
+            return False
+        codes = [row[0] for row in rows]
+        if codes != sorted(set(codes)):
+            return False
+        if report['diagnosticsParsed']:
+            if sum(row[1] for row in rows) != count:
+                return False
+        elif rows:
+            return False
+        files = report.get('compilerFiles')
+        if files is not None and (type(files) is not int or not 0 < files <= 100000):
+            return False
+    if any(key in report and (type(report[key]) is not str or not re.fullmatch(r'[0-9a-f]{64}', report[key]))
+           for key in ('managedArgvSha256', 'nodeSha256')):
+        return False
+    return report.get('compilerOutcome') == compiler_outcome(report)
 
 
 def verify_swap_live(expected, temporary, source):
@@ -593,13 +811,19 @@ def accepted_terminal(report, deadline):
             or not isinstance(log['sha256'], str) or not re.fullmatch(r'[a-f0-9]{64}', log['sha256'])):
         return False
     progress = report.get('progress')
-    return (valid_progress(progress) and bool(progress) and progress[-1]['phase'] == 'terminal'
+    inventory, state = report.get('inventory'), report.get('managedState')
+    return (valid_inventory(inventory) and valid_inventory(state, result=True)
+            and all(inventory[key] == state[key] for key in INVENTORY_FIELDS)
+            and report.get('compilerFiles') == state['nativeFiles']
+            and report.get('diagnosticsParsed') is True
+            and valid_progress(progress) and bool(progress) and progress[-1]['phase'] == 'terminal'
             and 'reason' not in report and report.get('admitted') is True and report.get('grantSent') is True
             and type(report.get('compilerExit')) is int and report['compilerExit'] == 0
             and type(report.get('managerExit')) is int and report['managerExit'] == 0
             and report.get('zeroObservedOom') is True and report.get('ownedCleanup') == 'settled'
             and report.get('platformSwapVerified') is True and report.get('platformSwapPreserved') is True
             and report.get('generatedTypesVerified') is True and report.get('sourceReverified') is True
+            and report.get('managedInputsReverified') is True
             and report.get('v8HeapFatalMarker') is False and report.get('typescriptDiagnosticCount') == 0
             and terminal['memoryMax'] == LIMIT and terminal['memorySwapMax'] == SWAP and 0 < terminal['peak'] <= LIMIT
             and 0 <= terminal['swapCurrent'] <= terminal['swapPeak'] <= SWAP
@@ -621,31 +845,36 @@ def run_stock(workspace, temporary, controller, run_id, directory):
     group_path = ROOT / 'system.slice' / unit
     nonce = unit + '-' + os.urandom(16).hex()
     deadline = integer(os.environ['AIHR_COMPILER_FEASIBILITY_T0_NS']) + JOB_SECONDS * 10 ** 9
-    report = {'kind': 'WHOLE_COMPILER_PLATFORM_SWAP_FEASIBILITY_NOT_RELEASE', 'candidateSha': SOURCE, 'candidateTree': SOURCE_TREE,
+    report = {'kind': MANAGED_KIND, 'candidateSha': SOURCE, 'candidateTree': SOURCE_TREE,
               'controllerSha': controller, 'residentCapBytes': LIMIT, 'swapCapBytes': SWAP,
               'runId': run_id, 'attempt': 1, 'heapMiB': 12800, 'compilerExit': None, 'admitted': False,
               'grantSent': False, 'workSeconds': WORK_SECONDS, 'progressSeconds': PROGRESS_SECONDS, 'progress': [],
               'complete': False, 'ownedCleanup': 'not-started', 'platformSwapVerified': False,
-              'platformSwapPreserved': False, 'releaseEligible': False}
+              'platformSwapPreserved': False, 'releaseEligible': False, 'compilerStateReusable': False}
     wrapper = None
     pidfd = None
     wrapper_pidfd = None
     holder_bound = False
     swap_birth = None
+    cache_fd = None
+    cache_seal = None
+    node = None
     try:
         require(deadline - time.monotonic_ns() >= WORK_NS + 45 * 10 ** 9, 'insufficient-job-budget')
         report['hostPrelaunch'] = ram()
         require(len(os.sched_getaffinity(0)) == 4 and report['hostPrelaunch']['MemAvailable'] >= 14 * GIB, 'host-prelaunch')
         require(show(unit)['LoadState'] == 'not-found' and not os.path.lexists(group_path), 'pre-existing-unit')
         tools = Path(os.environ['RUNNER_TOOL_CACHE']) / 'node/22.23.3/x64/bin'
-        pnpm = Path(os.environ['PNPM_HOME']) / 'pnpm'
-        require(pnpm.parent == Path(pwd.getpwuid(os.getuid()).pw_dir) / 'setup-pnpm/node_modules/.bin'
-                and pnpm.is_file() and (tools / 'node').is_file(), 'pinned-tool-path')
-        require(command([str(tools / 'node'), '--version']) == (0, b'v22.23.3\n')
-                and json.loads((source / 'node_modules/typescript/package.json').read_bytes())['version'] == '5.9.3'
-                and not os.path.lexists(source / 'tsconfig.tsbuildinfo'), 'cold-compiler-inputs')
-        compiler_files(source)
+        node = tools / 'node'
+        require(node.resolve(strict=True) == node and node.is_file()
+                and all(Path(path).is_file() for path in ('/usr/bin/time', '/usr/bin/prlimit')), 'pinned-tool-path')
+        require(command([str(node), '--version']) == (0, b'v22.23.3\n'), 'pinned-node-version')
+        report['nodeSha256'] = pinned_node_hash(node)
+        verify_source_inputs(source)
+        report['inventory'] = compiler_inventory(source, node, 'pre')
         report['generatedTypesVerified'] = True
+        report['managedArgvSha256'] = hashlib.sha256(json.dumps(compiler_command(source, node)).encode('ascii')).hexdigest()
+        cache_fd, cache_seal = create_cache(source, directory, controller, run_id)
         swap_birth = platform_swap(initial=True)
         own_json(directory / 'platform-swap.json', {**run_identity(controller, run_id), 'birth': swap_birth})
         verify_swap_live(swap_birth, temporary, source)
@@ -660,9 +889,10 @@ def run_stock(workspace, temporary, controller, run_id, directory):
                  'ProtectControlGroups=yes', 'PrivateNetwork=yes', 'LimitCORE=1', 'LimitFSIZE=67108864', 'UMask=0077', 'Delegate=no',
                  'KillMode=control-group', 'TimeoutStopSec=10s', f'RuntimeMaxSec={WORK_SECONDS + 24}s', 'Restart=no',
                  'WorkingDirectory=' + str(source), 'Description=' + nonce)
-        settings = {'PATH': f'{tools}:{pnpm.parent}:/usr/bin:/bin', 'HOME': pwd.getpwuid(os.getuid()).pw_dir,
+        settings = {'PATH': f'{tools}:/usr/bin:/bin', 'HOME': pwd.getpwuid(os.getuid()).pw_dir,
                     'LANG': 'en_US.UTF-8', 'LC_ALL': 'en_US.UTF-8', 'TZ': 'Asia/Kuala_Lumpur', 'CI': 'true',
-                    'NODE_OPTIONS': '--max-old-space-size=12800', 'RUNNER_TEMP': str(temporary)}
+                    'NODE_OPTIONS': '--max-old-space-size=12800', 'RUNNER_TEMP': str(temporary),
+                    'AIHR_STOCK_NODE': str(node)}
         for name in ('DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL'):
             settings[name] = 'postgres://nobody:nothing@127.0.0.1:1/no_database'
         argv = ['/usr/bin/sudo', '-n', '--', '/usr/bin/systemd-run', '--system', '--wait', '--pipe', '--quiet', '--collect',
@@ -704,6 +934,7 @@ def run_stock(workspace, temporary, controller, run_id, directory):
             now = time.monotonic_ns()
             require(now < pending and deadline - now >= WORK_NS + 25 * 10 ** 9 and wrapper.poll() is None, 'late-grant')
             stop = now + WORK_NS
+            verify_cache(source, cache_fd, cache_seal, require_empty=True)
             next_progress = now
             progress = report['progress']
             wrapper.stdin.write(f'G {stop} {birth_seal}\n'.encode('ascii'))
@@ -745,7 +976,8 @@ def run_stock(workspace, temporary, controller, run_id, directory):
             after = sample(descriptors)
             record_progress(progress, descriptors[-1], now, stamp, 'terminal', after)
             verify_swap_live(swap_birth, temporary, source)
-            compiler_files(source)
+            report['compilerWindowElapsedMs'] = (stamp - now) // 10 ** 6
+            report['terminalBeforeOrdinaryBudget'] = report['compilerWindowElapsedMs'] < ORDINARY_BUDGET_MS
             require(command(['/usr/bin/git', '-C', str(source), 'status', '--porcelain']) == (0, b''), 'checkout-source')
             report['sourceReverified'] = True
             report.update(terminal=after, minimumMemAvailable=min(minimum, after['memAvailable']))
@@ -823,18 +1055,36 @@ def run_stock(workspace, temporary, controller, run_id, directory):
             with os.fdopen(fd, 'rb') as stream:
                 info = os.fstat(fd)
                 require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1
-                        and stat.S_IMODE(info.st_mode) == 0o600 and 0 < info.st_size <= 4 * 1024 ** 2, 'log-bound')
-                raw = stream.read(4 * 1024 ** 2 + 1)
+                        and stat.S_IMODE(info.st_mode) == 0o600 and 0 < info.st_size <= MAX_LOG, 'log-bound')
+                raw = stream.read(MAX_LOG + 1)
                 require(len(raw) == info.st_size and identity(info) == identity(os.fstat(fd))
                         == identity(os.stat(log, follow_symlinks=False)), 'log-changed')
             if report['ownedCleanup'] == 'settled':
                 report['compilerLog'] = {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
-                report['v8HeapFatalMarker'] = bool(re.search(
-                    rb'^FATAL ERROR: [^\r\n]*JavaScript heap out of memory[^\r\n]*$', raw, re.M))
-                report['typescriptDiagnosticCount'] = len(re.findall(rb'\berror TS[0-9]+:', raw))
+                report.update(compiler_log_evidence(raw))
         except (Refusal, OSError):
             report['compilerLog'] = None
+        try:
+            if cache_fd is not None and report.get('compilerExit') is not None and report['ownedCleanup'] == 'settled':
+                verify_cache(source, cache_fd, cache_seal)
+                verify_source_inputs(source)
+                require(pinned_node_hash(node) == report['nodeSha256'], 'pinned-node-changed')
+                require(deadline - time.monotonic_ns() >= 20 * 10 ** 9, 'managed-result-budget')
+                success = report['compilerExit'] == 0
+                state = compiler_inventory(source, node, 'post' if success else 'pre')
+                verify_cache(source, cache_fd, cache_seal)
+                require(all(report['inventory'][key] == state[key] for key in INVENTORY_FIELDS), 'managed-result-identity')
+                report['managedInputsReverified'] = True
+                if success:
+                    require(report.get('compilerFiles') == state['nativeFiles'], 'managed-result-identity')
+                    report['managedState'] = state
+        except (Refusal, OSError, ValueError, KeyError, subprocess.SubprocessError):
+            report.setdefault('reason', 'managed-result-refused')
+        finally:
+            if cache_fd is not None:
+                os.close(cache_fd)
         report['complete'] = accepted_terminal(report, deadline)
+        report['compilerOutcome'] = compiler_outcome(report)
         own_json(directory / 'receipt.json', report)
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as stream:
             stream.write('evidence=true\n')
@@ -842,12 +1092,13 @@ def run_stock(workspace, temporary, controller, run_id, directory):
     return 0 if report['complete'] else 1
 
 
-def independent_cleanup(_workspace, temporary, controller, run_id):
+def independent_cleanup(workspace, temporary, controller, run_id):
     directory = temporary / DIRECTORY
     if not os.path.lexists(directory):
         return
     with owner_lock(directory):
         settle_manager(directory, unit_name(run_id), controller, run_id)
+        cleanup_cache(workspace / 'source', directory, controller, run_id)
         for name in ('compiler.raw.log', 'manager.raw.log'):
             path = directory / name
             if os.path.lexists(path):
@@ -868,12 +1119,14 @@ def independent_cleanup(_workspace, temporary, controller, run_id):
         if os.path.lexists(receipt):
             report = read_intent(receipt, maximum=64 * 1024)
             require([report.get(key) for key in ('kind', 'candidateSha', 'candidateTree', 'controllerSha', 'runId', 'attempt',
-                    'releaseEligible')] == ['WHOLE_COMPILER_PLATFORM_SWAP_FEASIBILITY_NOT_RELEASE', SOURCE, SOURCE_TREE,
-                                           controller, run_id, 1, False], 'swap-receipt-context')
+                    'releaseEligible', 'compilerStateReusable')] == [
+                        MANAGED_KIND, SOURCE, SOURCE_TREE, controller, run_id, 1, False, False], 'swap-receipt-context')
             require(report.get('workSeconds') == WORK_SECONDS and report.get('progressSeconds') == PROGRESS_SECONDS
                     and valid_progress(report.get('progress')), 'compiler-progress-witness')
+            require(valid_measurement(report), 'managed-measurement-witness')
             if report.get('complete') is True:
                 require(bool(report['progress']) and report['progress'][-1]['phase'] == 'terminal', 'compiler-progress-witness')
+                require(valid_inventory(report.get('managedState'), result=True), 'managed-measurement-witness')
             if report.get('platformSwapVerified') is True:
                 require(platform_verified and report.get('platformSwapBirthSha256') == birth_digest, 'platform-swap-witness')
             if report.get('complete') is True:
@@ -881,7 +1134,7 @@ def independent_cleanup(_workspace, temporary, controller, run_id):
                         'platform-swap-witness')
         own_json(directory / 'swap-settlement.json', {**run_identity(controller, run_id),
                   'kind': 'COMPILER_PLATFORM_SWAP_INDEPENDENT_SETTLEMENT_NOT_RELEASE',
-                  'unitAbsent': True, 'platformSwapIdentityVerified': platform_verified,
+                  'unitAbsent': True, 'managedStateRemoved': True, 'platformSwapIdentityVerified': platform_verified,
                   'platformSwapBirthSha256': birth_digest, 'privateLogsRemoved': True,
                   'releaseEligible': False})
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as stream:
@@ -894,13 +1147,15 @@ if __name__ == '__main__':
         if len(sys.argv) == 4 and sys.argv[1] == 'service':
             service(sys.argv[2], integer(sys.argv[3]))
         else:
-            require(sys.argv[1:] in (['admit'], ['run'], ['cleanup']), 'role')
+            require(sys.argv[1:] in (['admit'], ['pre-typegen'], ['run'], ['cleanup']), 'role')
             context = environment()
             if sys.argv[1] == 'run':
                 signal.signal(signal.SIGTERM, lambda *_: require(False, 'controller-interrupted'))
                 sys.exit(run(*context))
             if sys.argv[1] == 'cleanup':
                 independent_cleanup(*context)
+            if sys.argv[1] == 'pre-typegen':
+                pre_typegen(context[0] / 'source')
             if sys.argv[1] == 'admit':
                 require(disk_available(context[0], context[1]) >= 12 * GIB, 'compiler-disk-setup')
     except (Refusal, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:

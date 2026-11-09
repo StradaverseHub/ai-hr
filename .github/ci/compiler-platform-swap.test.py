@@ -113,7 +113,8 @@ class ServiceIdentityModel(unittest.TestCase):
         self.process.assert_called_once_with(os.getpid(), model['unit_name'](RUN))
 
     def test_predecessor_foreign_and_malformed_units_refuse_before_process_probe(self):
-        for unit in (f'aihr-compiler-12800-swap-{RUN}.service', f'foreign-{RUN}.service',
+        for unit in (f'aihr-compiler-12800-swap-{RUN}.service', f'aihr-compiler-12800-progress-{RUN}.service',
+                     f'foreign-{RUN}.service',
                      model['unit_name']('0'), model['unit_name']('0123'),
                      model['unit_name']('1' * 17), model['unit_name']('1/foreign'),
                      model['unit_name'](RUN) + '.foreign', model['unit_name'](RUN) + '\n'):
@@ -157,13 +158,18 @@ class SettlementModel(unittest.TestCase):
         return birth
 
     def receipt(self, **overrides):
-        model['own_json'](self.directory / 'receipt.json', {
-            'kind': 'WHOLE_COMPILER_PLATFORM_SWAP_FEASIBILITY_NOT_RELEASE', 'candidateSha': model['SOURCE'],
+        report = {
+            'kind': model['MANAGED_KIND'], 'candidateSha': model['SOURCE'],
             'candidateTree': model['SOURCE_TREE'], 'controllerSha': CONTROLLER, 'runId': RUN, 'attempt': 1,
-            'releaseEligible': False, 'complete': True, 'platformSwapVerified': True, 'platformSwapPreserved': True,
+            'releaseEligible': False, 'compilerStateReusable': False, 'complete': True,
+            'platformSwapVerified': True, 'platformSwapPreserved': True,
+            'compilerExit': 0, 'inventory': inventory_row(), 'managedState': inventory_row(result=True), 'compilerFiles': 8,
+            'managedInputsReverified': True,
             'workSeconds': model['WORK_SECONDS'], 'progressSeconds': model['PROGRESS_SECONDS'],
             'progress': [progress_row('start'), progress_row('terminal', elapsed=1)],
-            'platformSwapBirthSha256': hashlib.sha256(json.dumps(self.birth).encode('ascii')).hexdigest(), **overrides})
+            'platformSwapBirthSha256': hashlib.sha256(json.dumps(self.birth).encode('ascii')).hexdigest(), **overrides}
+        report.setdefault('compilerOutcome', model['compiler_outcome'](report))
+        model['own_json'](self.directory / 'receipt.json', report)
 
     def settle(self):
         model['independent_cleanup'](self.temp, self.temp, CONTROLLER, RUN)
@@ -187,6 +193,7 @@ class SettlementModel(unittest.TestCase):
         self.assertEqual(self.output.read_text(), 'settled=true\n')
         receipt = json.loads((self.directory / 'swap-settlement.json').read_text())
         self.assertTrue(receipt['platformSwapIdentityVerified'])
+        self.assertTrue(receipt['managedStateRemoved'])
         self.assertFalse(receipt['releaseEligible'])
 
     def test_unsettled_launch_and_live_manager_never_settle(self):
@@ -228,11 +235,99 @@ class SettlementModel(unittest.TestCase):
 
     def test_preflight_refusal_can_retain_closed_failure_without_platform_witness(self):
         self.platform.unlink()
-        self.receipt(complete=False, platformSwapVerified=False, platformSwapPreserved=False, progress=[])
+        self.receipt(complete=False, platformSwapVerified=False, platformSwapPreserved=False, progress=[],
+                     compilerExit=None, inventory=None, managedState=None, compilerFiles=None)
         self.settle()
         receipt = json.loads((self.directory / 'swap-settlement.json').read_text())
         self.assertFalse(receipt['platformSwapIdentityVerified'])
         self.assertEqual(receipt['platformSwapBirthSha256'], None)
+
+
+def inventory_row(*, result=False):
+    base = {'configuredRoots': 6, 'orderedRootSha256': 'a' * 64, 'rootSetSha256': 'b' * 64,
+            'generatedCount': 5, 'generatedSha256': 'c' * 64, 'toolSha256': 'd' * 64}
+    return {**base, 'buildInfoBytes': 20, 'buildInfoSha256': 'e' * 64, 'nativeFiles': 8,
+            'nativeRoots': 6, 'nativeRootSetSha256': 'b' * 64} if result else base
+
+
+class ManagedResultModel(unittest.TestCase):
+    def test_exact_canonical_command(self):
+        source = Path('/home/runner/work/ai-hr/ai-hr/source')
+        node = Path('/opt/hostedtoolcache/node/22.23.3/x64/bin/node')
+        self.assertEqual(model['compiler_command'](source, node), [
+            '/usr/bin/time', '-v', '/usr/bin/prlimit', '--fsize=67108864', '--', str(node),
+            str(source / 'node_modules/typescript/lib/tsc.js'), '--noEmit', '--pretty', 'false',
+            '--extendedDiagnostics', '--tsBuildInfoFile',
+            str(source / '.next/cache/compiler-transport/whole-project.tsbuildinfo')])
+
+    def test_bounded_typescript_codes_and_actual_failure_categories(self):
+        evidence = model['compiler_log_evidence'](b'private/file.ts(1,2): error TS2322: secret\n'
+                                                  b'error TS5058: secret\n'
+                                                  b'other.ts(3,4): error TS2322: secret\nFiles: 8\n')
+        self.assertEqual(evidence, {'v8HeapFatalMarker': False, 'typescriptDiagnosticCount': 3,
+                                    'typescriptDiagnosticCodes': [[2322, 2], [5058, 1]],
+                                    'diagnosticsParsed': True, 'compilerFiles': 8})
+        classify = model['compiler_outcome']
+        self.assertEqual(classify({**evidence, 'compilerExit': 2}), 'typescript-diagnostics')
+        for raw, expected in (
+                (b'FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory\n',
+                 'v8-heap-exhausted'),
+                (b'foreign error TS2322: synthetic\n', 'unparsed-diagnostics'),
+                (b'Command exited with non-zero status 134\n', 'other-compiler-nonzero')):
+            self.assertEqual(classify({**model['compiler_log_evidence'](raw), 'compilerExit': 134}), expected)
+        self.assertEqual(classify({'reason': 'oom-observed', 'compilerExit': None}), 'kernel-oom-observed')
+        self.assertEqual(classify({'reason': 'compiler-deadline', 'compilerExit': None}), 'compiler-deadline')
+        self.assertIsNone(model['compiler_log_evidence'](b'Files: 8\nFiles: 8\n')['compilerFiles'])
+
+    def test_closed_receipt_rejects_raw_and_inconsistent_fields(self):
+        report = {'inventory': inventory_row(), 'managedState': inventory_row(result=True), 'compilerExit': 0,
+                  'compilerOutcome': 'complete', 'complete': True, 'compilerFiles': 8, 'managedInputsReverified': True,
+                  'compilerWindowElapsedMs': 900000, 'terminalBeforeOrdinaryBudget': False,
+                  'compilerLog': {'bytes': 16, 'sha256': 'a' * 64},
+                  **model['compiler_log_evidence'](b'Files: 8\n')}
+        self.assertTrue(model['valid_measurement'](report))
+        for changes in ({'terminalBeforeOrdinaryBudget': True}, {'compilerOutcome': 'other-compiler-nonzero'},
+                        {'compilerFiles': 7}, {'typescriptDiagnosticCodes': [[2322, 1]]},
+                        {'managedState': {**report['managedState'], 'generatedSha256': 'f' * 64}},
+                        {'managedState': {**report['managedState'], 'raw': 'foreign'}}):
+            with self.subTest(changes=changes):
+                self.assertFalse(model['valid_measurement']({**report, **changes}))
+
+    def test_cold_owned_build_info_and_refuse_replaced_directory_or_foreign_members(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch).resolve()
+            source, out = root / 'source', root / 'out'
+            source.mkdir()
+            out.mkdir(mode=0o700)
+            (source / '.next').mkdir()
+            model['pre_typegen'](source)
+            cache = source / model['CACHE_RELATIVE']
+            fd, birth = model['create_cache'](source, out, CONTROLLER, RUN)
+            try:
+                self.assertEqual(model['verify_cache'](source, fd, birth, require_empty=True), [])
+                with self.assertRaisesRegex(Refusal, 'managed-cache-not-cold'):
+                    model['create_cache'](source, out, CONTROLLER, RUN)
+                with self.assertRaisesRegex(Refusal, 'managed-pre-typegen-not-fresh'):
+                    model['pre_typegen'](source)
+                foreign = cache.parent / 'foreign'
+                foreign.write_text('private')
+                with self.assertRaisesRegex(Refusal, 'managed-cache-members'):
+                    model['cleanup_cache'](source, out, CONTROLLER, RUN)
+                self.assertTrue(foreign.exists())
+                foreign.unlink()
+                old = cache.parent.with_name('old')
+                cache.parent.rename(old)
+                cache.parent.mkdir(mode=0o700)
+                with self.assertRaisesRegex(Refusal, 'managed-cache-replaced'):
+                    model['cleanup_cache'](source, out, CONTROLLER, RUN)
+                cache.parent.rmdir()
+                old.rename(cache.parent)
+                cache.write_text('private managed bytes')
+                cache.chmod(0o600)
+                model['cleanup_cache'](source, out, CONTROLLER, RUN)
+                self.assertFalse(cache.parent.exists())
+            finally:
+                os.close(fd)
 
 
 def progress_row(phase, *, elapsed=0, **overrides):
@@ -346,9 +441,11 @@ class KernelModel(unittest.TestCase):
     def test_invalid_terminal_never_becomes_complete(self):
         valid = dict(admitted=True, grantSent=True, compilerExit=0, managerExit=0, zeroObservedOom=True,
                      ownedCleanup='settled', platformSwapVerified=True, platformSwapPreserved=True,
-                     generatedTypesVerified=True, sourceReverified=True,
+                     generatedTypesVerified=True, sourceReverified=True, managedInputsReverified=True,
                      compilerLog={'bytes': 1, 'sha256': '0' * 64}, v8HeapFatalMarker=False,
-                     typescriptDiagnosticCount=0, progress=[progress_row('start'), progress_row('terminal', elapsed=1)],
+                     typescriptDiagnosticCount=0, diagnosticsParsed=True, compilerFiles=8,
+                     inventory=inventory_row(), managedState=inventory_row(result=True),
+                     progress=[progress_row('start'), progress_row('terminal', elapsed=1)],
                      initial=model['sample']([0, 1, 2], initial=True),
                      terminal=model['sample']([0, 1, 2]))
         deadline = time.monotonic_ns() + 100 * 10 ** 9
