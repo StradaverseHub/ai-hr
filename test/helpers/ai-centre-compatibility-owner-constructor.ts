@@ -197,6 +197,7 @@ const selectedOracle:SelectedSourceOracle={
    "rows": 0,
    "owner": "ai_hr_reward_preparation_reader",
    "aclGrantees": [
+    "$creator",
     "ai_hr_app",
     "ai_hr_reward_preparation_invalidator",
     "ai_hr_reward_preparation_reader"
@@ -938,10 +939,10 @@ function selectedEqual(actual:unknown,expected:unknown,message='Selected AI upgr
 }
 function selectedUnique(values:string[]){selectedNeed(new Set(values).size===values.length);}
 const selectedCreator=(name:string,creator:string)=>name==='$creator'?creator:name;
-function selectedAcl(actual:Acl[],expected:Acl[]){
+function selectedAcl(actual:Acl[],expected:Acl[],message='Selected native ACL/grantor/options differ'){
  selectedArray(actual);
  for(const row of actual){selectedObject(row);selectedNeed(typeof row.grantee==='string'&&typeof row.grantor==='string'&&typeof row.privilege==='string'&&typeof row.grantable==='boolean');}
- selectedEqual(selectedSorted(actual),selectedSorted(expected),'Selected native ACL/grantor/options differ');
+ selectedEqual(selectedSorted(actual),selectedSorted(expected),message);
  selectedUnique(actual.map(selectedCanonical));
 }
 function selectedRole(role:SelectedRole){
@@ -971,7 +972,8 @@ function selectedKnownFunction(row:SelectedFunction,spec:SelectedFunctionSpec,cr
  selectedNeed(Array.isArray(row.config)&&row.config.every(value=>typeof value==='string'));
  selectedEqual(row.config!.map(normalize),spec.config!.map(normalize));
  const owner=selectedCreator(spec.owner,creator);
- selectedAcl(row.acl,spec.aclGrantees.map(grantee=>({grantee:selectedCreator(grantee,creator),grantor:owner,privilege:'EXECUTE',grantable:false})));
+ selectedAcl(row.acl,spec.aclGrantees.map(grantee=>({grantee:selectedCreator(grantee,creator),grantor:owner,privilege:'EXECUTE',grantable:false})),
+  'Selected native ACL/grantor/options differ for '+spec.identity);
 }
 /** Only remove a parenthesis pair which encloses the complete expression. */
 function selectedOuter(value:string){
@@ -1402,11 +1404,12 @@ async function selectedPayrollState(q:ISql,budget:SelectedBudget){
 }
 async function selectedPayrollFictionalFacts(q:ISql,budget:SelectedBudget){
  // These are the only seeded business relations in the two selected fixtures.
- // Preserve their pre/post contents without publishing row values.
+ // Each fixture inserts seven rows, in addition to the system tenant seeded by 0151.
+ // A per-relation sentinel above that exact total refuses truncated observations.
  const relations=['tenant','company','app_user','role_assignment','ai_model_run','teras_mandate_control'];
  const rows=await selectedRead<{count:number;sha256:string}>(q,"SELECT jsonb_build_object('count',count(*)::integer,'sha256',encode(sha256(convert_to(coalesce(string_agg(value,E'\\n' ORDER BY value),''),'UTF8')),'hex')) AS value FROM ("+
-  relations.map(table=>"(SELECT '"+table+":'||to_jsonb(t)::text AS value FROM public."+table+" t LIMIT 8)").join(' UNION ALL ')+") facts",budget);
- selectedEqual(rows.length,1);selectedEqual(rows[0].count,7);return rows[0];
+  relations.map(table=>"(SELECT '"+table+":'||to_jsonb(t)::text AS value FROM public."+table+" t LIMIT 9)").join(' UNION ALL ')+") facts",budget);
+ selectedEqual(rows.length,1);selectedEqual(rows[0].count,8);return rows[0];
 }
 async function selectedReadonly<T>(client:Sql,run:(q:ISql)=>Promise<T>):Promise<T>{
  return client.begin(async tx=>{
@@ -1766,5 +1769,16 @@ export function aiCentreSelectedJobSourceModel(mode:'full'|'focused'):AiCentreSe
   for(const {identity:_identity,...row}of dependencies)shared.push(row);
   return {connection,ledgerCount:selectedCheckpoints.mandate.count,ledgerRowsSha256:selectedStockLedgerSha,fingerprints:name==='ai_hr_dev'?null:[selectedTemplateFingerprint],emptyObjects:null,functions,relations,policies,schemas,sequence,shared:dependencies};
  });
+ // 3701 grants the view to the creator through the notices function's owner.
+ // Check its explicit grantor and make omission or misattribution refuse.
+ const viewIdentity='app.reward_preparation_view(uuid)';
+ const spec=selectedOracle.functions.find(row=>row.identity===viewIdentity)!;
+ const view=readers[0].functions.find(row=>row.identity===viewIdentity)!;
+ const creatorGrant={grantee:'postgres',grantor:'ai_hr_reward_preparation_reader',privilege:'EXECUTE',grantable:false};
+ expect(view.acl).toContainEqual(creatorGrant);
+ const withoutCreator=view.acl.filter(row=>row.grantee!=='postgres');
+ for(const acl of [withoutCreator,[...withoutCreator,{...creatorGrant,grantor:'postgres'}]]){
+  expect(()=>selectedKnownFunction({...view,acl},spec,'postgres')).toThrow('Selected native ACL/grantor/options differ for '+viewIdentity);
+ }
  return {evidence:'source-model-only',mode,cluster,source:{...selectedSourceBinding},roles,memberships,databases,owned:{database,databaseOid:databases.find(row=>row.name===database)!.oid,role,roleOid:'30000'},readers,shared};
 }
