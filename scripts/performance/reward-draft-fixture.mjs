@@ -1,13 +1,15 @@
-/** Extra Rewards membership for the workflow-only synthetic fixture. */
+/** Extra Rewards membership for the isolated fictional browser workloads. */
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {approvedRewardFixtures} from '../fixtures/reward-approved.ts';
 import {saveRewardPlanConfiguration,saveRewardSetupPlan,submitRewardSetupPlan,approveRewardSetupPlan} from '../../packs/rewards/plan-configuration.ts';
 import {establishRewardMembership} from '../../test/rewards-shared-policy-fixture.ts';
 import {setCompensation} from '../../core/comp.ts';
+import {REWARDS_ORG_FIXTURE_NAME} from './fixture-workload.mjs';
 
 export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,companies,company,today,actor,expectedCompanyEmploymentIds}){
- assert.equal(process.env.PERF_HTTP_SUITE,'workflow-preflight','draft witness fixture must stay out of the load workload');
+ const suite=process.env.PERF_HTTP_SUITE;
+ assert(suite==='workflow-preflight'||suite==='whole-system','Rewards fixture requires an isolated browser workload');
  assert.equal(process.env.GITHUB_ACTIONS,'true');
  assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_dev');
  assert.equal(ctx.tenantId,tenant.tenantId);
@@ -28,6 +30,7 @@ export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,compani
  // This employee has no credentials and is created after the baseline Payroll fixture runs close.
  const person=await establishRewardMembership(ctx,{
   tenantId:tenant.tenantId,companyId:company.companyId,businessUnitId:unit.id,departmentId:company.departmentId,year,
+  ...(suite==='whole-system'?{hiredOn:today}:{}),
  });
  await setCompensation(ctx,{employmentId:person.employmentId,basicSalary:5000,effectiveFrom:today});
  const maker={...ctx,userId:actor.userId,personId:actor.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
@@ -42,6 +45,19 @@ export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,compani
  await approveRewardSetupPlan(checker,source.versionId,revision+1);
  // Company structure applies to all currently employed company members. The expected roster
  // is derived from the fixture's explicit hires, not from the Rewards projection under test.
- return {companyId:company.companyId,businessUnitId:unit.id,employmentId:person.employmentId,year,snapshotDate:today,
+ const rewardDraft={companyId:company.companyId,businessUnitId:unit.id,employmentId:person.employmentId,year,snapshotDate:today,
    planVersionId:source.versionId,planName:name,expectedEmploymentIds:[...expectedCompanyEmploymentIds,person.employmentId]};
+ if(suite==='workflow-preflight')return rewardDraft;
+ const members=await owner.client`select true as verified
+   from public.employment e join public.person p on p.id=e.person_id and p.tenant_id=e.tenant_id
+   where e.tenant_id=${tenant.tenantId}::uuid and e.id=${person.employmentId}::uuid
+     and e.company_id=${company.companyId}::uuid and p.full_name=${REWARDS_ORG_FIXTURE_NAME}
+     and e.hired_on=${today}::date and e.terminated_on is null
+     and not exists(select 1 from public.app_user u where u.tenant_id=e.tenant_id and u.person_id=e.person_id)
+     and not exists(select 1 from public.payslip s where s.tenant_id=e.tenant_id and s.employment_id=e.id)`;
+ assert(members.length===1&&members[0].verified===true,
+  'Rewards Org Explorer member differs from the independent fictional employment');
+ return {...rewardDraft,organisationMember:{
+  employmentId:person.employmentId,companyId:company.companyId,name:REWARDS_ORG_FIXTURE_NAME,
+ }};
 }

@@ -1,6 +1,40 @@
 /** Fictional workload dates. The caller supplies today through the native HR date owner. */
 import assert from 'node:assert/strict';
 export const MAX_IMPORT_LOOKBACK_DAYS=90;
+export const REWARDS_ORG_FIXTURE_NAME='Rewards scope fixture';
+
+/**
+ * Independent expected Org Explorer roster from the exact seeded people.
+ * @typedef {{employmentId:string,companyId:string,name:string}} OrgMember
+ * @param {{
+ *  users: Array<OrgMember & {tenant:number,tenantId:string,role:string}>,
+ *  tenants: Array<{
+ *   tenantId:string,companies:Array<{companyId:string}>,
+ *   rewardDraft?:{employmentId:string,companyId:string,organisationMember?:OrgMember}
+ *  }>
+ * }} fixture
+ * @param {number} tenantIndex
+ */
+export function wholeSystemOrgRoster(fixture,tenantIndex){
+ assert(tenantIndex===0||tenantIndex===1,'Invalid fictional organisation tenant');
+ const tenant=fixture.tenants[tenantIndex];
+ const cohort=fixture.users.filter(actor=>actor.tenant===tenantIndex);
+ assert.equal(cohort.length,250,'Unexpected fictional traffic population');
+ assert(cohort.every(actor=>actor.tenantId===tenant.tenantId),'Fictional traffic crossed the organisation tenant');
+ const people=cohort.map(({employmentId,companyId,name,role})=>({employmentId,companyId,name,role}));
+ const reward=tenant.rewardDraft;
+ if(tenantIndex===0){
+  const member=reward?.organisationMember;
+  assert(member&&typeof member.employmentId==='string'&&member.employmentId===reward.employmentId&&
+   member.companyId===reward.companyId&&member.companyId===tenant.companies[2].companyId&&
+   member.name===REWARDS_ORG_FIXTURE_NAME,'Missing or invalid fictional Rewards organisation member');
+  assert(!fixture.users.some(actor=>actor.employmentId===member.employmentId),'Fictional Rewards member duplicates a traffic actor');
+  people.push({employmentId:member.employmentId,companyId:member.companyId,name:member.name,role:'reward-fixture'});
+ }else{
+  assert.equal(reward,undefined,'Fictional Rewards member crossed the organisation tenant');
+ }
+ return people;
+}
 /** @param {string} today */
 export function performanceFixtureCalendar(today){
  assert(/^\d{4}-\d{2}-\d{2}$/.test(today));
