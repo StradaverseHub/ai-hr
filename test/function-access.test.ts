@@ -85,13 +85,33 @@ function hasClaimsFormsHandlerGuards(source: string): boolean {
         || !statement.modifiers.some(modifier => modifier.kind === ts.SyntaxKind.AsyncKeyword)) continue;
     const guarded = statement.body?.statements[0];
     if (!guarded || !ts.isTryStatement(guarded)) return false;
+    const identity = guarded.tryBlock.statements[0];
+    if (!identity || !ts.isVariableStatement(identity) || identity.declarationList.declarations.length !== 1
+        || !(identity.declarationList.flags & ts.NodeFlags.Const)) return false;
+    const binding = identity.declarationList.declarations[0];
+    const read = binding.initializer;
+    if (!ts.isIdentifier(binding.name) || !read || !ts.isAwaitExpression(read) || !ts.isCallExpression(read.expression)
+        || !ts.isIdentifier(read.expression.expression) || read.expression.expression.text !== 'getSession'
+        || read.expression.arguments.length !== 0) return false;
+
+    let sessionReads = 0;
+    const countReads = (node: ts.Node) => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'getSession') sessionReads++;
+      ts.forEachChild(node, countReads);
+    };
+    countReads(statement);
+    const sessionName = binding.name.text;
+    const isSession = (node: ts.Node) => ts.isIdentifier(node) && node.text === sessionName;
     const calls = guarded.tryBlock.statements.flatMap(line =>
       ts.isExpressionStatement(line) && ts.isAwaitExpression(line.expression)
         && ts.isCallExpression(line.expression.expression) ? [line.expression.expression] : []);
     const [module, admin] = calls;
-    return calls.length === 2 && ts.isIdentifier(module.expression) && module.expression.text === 'requireModule'
-      && module.arguments.length === 1 && ts.isStringLiteral(module.arguments[0]) && module.arguments[0].text === 'claims'
-      && ts.isIdentifier(admin.expression) && admin.expression.text === 'requireAdmin' && admin.arguments.length === 0;
+    return sessionReads === 1 && calls.length === 2
+      && ts.isIdentifier(module.expression) && module.expression.text === 'requireModule'
+      && module.arguments.length === 2 && ts.isStringLiteral(module.arguments[0]) && module.arguments[0].text === 'claims'
+      && isSession(module.arguments[1])
+      && ts.isIdentifier(admin.expression) && admin.expression.text === 'requireAdmin'
+      && admin.arguments.length === 1 && isSession(admin.arguments[0]);
   }
   return false;
 }
@@ -129,13 +149,17 @@ function getPath(obj: unknown, dotted: string): unknown {
 }
 
 describe('function-access registry (lib/permissions)', () => {
-  it('recognizes only the exported async Claims Forms GET with both awaited guards in order', () => {
+  it('recognizes only the exported Claims Forms GET with one session read and both guards in order', () => {
     const source = fs.readFileSync(path.join(APP, 'admin/claims/forms/route.ts'), 'utf8');
     expect(hasClaimsFormsHandlerGuards(source)).toBe(true);
-    expect(hasClaimsFormsHandlerGuards(source.replace("await requireModule('claims')", "requireModule('claims')"))).toBe(false);
-    expect(hasClaimsFormsHandlerGuards(source.replace("requireModule('claims')", "requireModule('rewards')"))).toBe(false);
+    expect(hasClaimsFormsHandlerGuards(source.replace('await requireModule', 'requireModule'))).toBe(false);
+    expect(hasClaimsFormsHandlerGuards(source.replace("requireModule('claims',", "requireModule('rewards',"))).toBe(false);
     expect(hasClaimsFormsHandlerGuards(source.replace('function GET', 'function POST'))).toBe(false);
-    expect(hasClaimsFormsHandlerGuards("export async function GET() { try { await requireAdmin(); await requireModule('claims'); } finally {} }")).toBe(false);
+    expect(hasClaimsFormsHandlerGuards(source.replace('requireAdmin(session)', 'requireAdmin()'))).toBe(false);
+    expect(hasClaimsFormsHandlerGuards(source.replace('requireAdmin(session)', 'requireAdmin(await getSession())'))).toBe(false);
+    expect(hasClaimsFormsHandlerGuards(source.replace(
+      "await requireModule('claims', session);\n    await requireAdmin(session);",
+      "await requireAdmin(session);\n    await requireModule('claims', session);"))).toBe(false);
   });
   it('recognizes the real inherited Assistant guard and rejects inert prose or an unawaited call',()=>{
     expect(hasAssistantSessionGuard('export default async function Layout(){await getBrowserCommandSession();return null;}')).toBe(true);

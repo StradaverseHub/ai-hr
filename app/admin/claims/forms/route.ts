@@ -10,8 +10,8 @@ export async function GET() {
     // Route handlers bypass the root and Claims layouts. Keep their decisions in the same order.
     const session = await getSession();
     if (isOperator(session) && !isDemoDeployment()) redirect('/operator');
-    await requireModule('claims');
-    await requireAdmin();
+    await requireModule('claims', session);
+    await requireAdmin(session);
   } catch (error) {
     if (error instanceof AuthRequiredError) redirect('/login');
     throw error;

@@ -19,22 +19,28 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET } from '../app/admin/claims/forms/route';
+import type { SessionContext } from '../db/client';
 import { AuthRequiredError } from '../lib/auth-errors';
+import { isOperator, requireAdmin, requireModule } from '@/lib/authz';
 
 const bookmark = vi.hoisted(() => ({
   getSession: vi.fn(),
-  isOperator: vi.fn(),
   isDemoDeployment: vi.fn(),
-  requireModule: vi.fn(),
-  requireAdmin: vi.fn(),
+  isModuleEnabled: vi.fn(),
 }));
 vi.mock('@/lib/session', () => ({ getSession: bookmark.getSession }));
 vi.mock('@/lib/demo-mode', () => ({ isDemoDeployment: bookmark.isDemoDeployment }));
-vi.mock('@/lib/authz', () => ({
-  isOperator: bookmark.isOperator,
-  requireModule: bookmark.requireModule,
-  requireAdmin: bookmark.requireAdmin,
-}));
+vi.mock('@/core/entitlements', () => ({ isModuleEnabled: bookmark.isModuleEnabled }));
+vi.mock('@/core/payroll-audit/reader-grant', () => ({ hasAuditReaderGrant: vi.fn() }));
+vi.mock('@/lib/authz', async importOriginal => {
+  const guards = await importOriginal<typeof import('@/lib/authz')>();
+  return {
+    ...guards,
+    isOperator: vi.fn(guards.isOperator),
+    requireModule: vi.fn(guards.requireModule),
+    requireAdmin: vi.fn(guards.requireAdmin),
+  };
+});
 vi.mock('next/navigation', () => ({
   redirect: (location: string) => { throw new Error(`redirect:${location}`); },
 }));
@@ -54,7 +60,7 @@ const capsPage = (cls: string) => /\bmx-auto\b/.test(cls) && /\bmax-w-\d*xl\b/.t
 // ─────────────────────── A. the four claim config screens that RENDER ───────────────────────
 
 /**
- * The tabs behind components/claims-tabs.tsx. `forms/page.tsx` is deliberately NOT here and section B
+ * The tabs behind components/claims-tabs.tsx. `forms/route.ts` is deliberately outside the page list and section B
  * says why — it is not an omission.
  */
 const WIDE_SCREENS = [
@@ -103,14 +109,22 @@ describe('e7eb5d83 rev 6 · A — the claim config module is full width', () => 
 // ─────────────────────── B. the fifth "screen" is not a screen ───────────────────────
 
 describe('/admin/claims/forms guarded bookmark', () => {
+  const session: SessionContext = {
+    tenantId: 'fictional-claims-tenant',
+    roles: ['hr_admin'],
+    entitlements: {
+      tenantId: 'fictional-claims-tenant', tenantStatus: 'active', enabledModules: ['claims'], scopedModules: {}, settings: {},
+    },
+  };
+
   beforeEach(() => {
-    vi.resetAllMocks();
-    bookmark.getSession.mockResolvedValue({ fictional: true });
-    bookmark.isOperator.mockReturnValue(false);
-    bookmark.isDemoDeployment.mockReturnValue(false);
+    vi.clearAllMocks();
+    bookmark.getSession.mockReset().mockResolvedValue(session);
+    bookmark.isDemoDeployment.mockReset().mockReturnValue(false);
+    bookmark.isModuleEnabled.mockReset().mockReturnValue(true);
   });
 
-  it('has no page markup and returns an empty, private permanent wire redirect after both guards', async () => {
+  it('returns an empty, private permanent wire redirect using one session for all guards', async () => {
     const source = read('app/admin/claims/forms/route.ts');
     expect(classNameLiterals(source)).toEqual([]);
     expect(source).not.toContain('pageWideCls');
@@ -119,43 +133,62 @@ describe('/admin/claims/forms guarded bookmark', () => {
     expect(response.headers.get('location')).toBe('/admin/claims');
     expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(await response.text()).toBe('');
-    expect(bookmark.requireModule).toHaveBeenCalledExactlyOnceWith('claims');
-    expect(bookmark.requireAdmin).toHaveBeenCalledExactlyOnceWith();
-    expect(bookmark.getSession.mock.invocationCallOrder[0]).toBeLessThan(bookmark.isOperator.mock.invocationCallOrder[0]);
-    expect(bookmark.isOperator.mock.invocationCallOrder[0]).toBeLessThan(bookmark.requireModule.mock.invocationCallOrder[0]);
-    expect(bookmark.requireModule.mock.invocationCallOrder[0]).toBeLessThan(bookmark.requireAdmin.mock.invocationCallOrder[0]);
+
+    const operator = vi.mocked(isOperator);
+    const moduleGuard = vi.mocked(requireModule);
+    const admin = vi.mocked(requireAdmin);
+    expect(bookmark.getSession).toHaveBeenCalledTimes(1);
+    expect(operator.mock.calls[0][0]).toBe(session);
+    expect(moduleGuard).toHaveBeenCalledExactlyOnceWith('claims', session);
+    expect(moduleGuard.mock.calls[0][1]).toBe(session);
+    expect(bookmark.isModuleEnabled.mock.calls[0][0]).toBe(session);
+    expect(admin.mock.calls[0][0]).toBe(session);
+    expect(bookmark.getSession.mock.invocationCallOrder[0]).toBeLessThan(operator.mock.invocationCallOrder[0]);
+    expect(operator.mock.invocationCallOrder[0]).toBeLessThan(moduleGuard.mock.invocationCallOrder[0]);
+    expect(moduleGuard.mock.invocationCallOrder[0]).toBeLessThan(admin.mock.invocationCallOrder[0]);
   });
 
   it('preserves the operator route before the module and admin guards outside demo', async () => {
-    bookmark.isOperator.mockReturnValue(true);
+    bookmark.getSession.mockResolvedValue({ ...session, grants: [{ role: 'operator', companyId: null }] });
     await expect(GET()).rejects.toThrow('redirect:/operator');
-    expect(bookmark.requireModule).not.toHaveBeenCalled();
-    expect(bookmark.requireAdmin).not.toHaveBeenCalled();
+    expect(requireModule).not.toHaveBeenCalled();
+    expect(requireAdmin).not.toHaveBeenCalled();
     bookmark.isDemoDeployment.mockReturnValue(true);
     expect((await GET()).status).toBe(308);
+    expect(bookmark.getSession).toHaveBeenCalledTimes(2);
   });
 
   it('keeps module denial ahead of admin denial', async () => {
-    const moduleDenied = new Error('redirect:/?moduleUnavailable=claims');
-    bookmark.requireModule.mockRejectedValueOnce(moduleDenied);
-    await expect(GET()).rejects.toBe(moduleDenied);
-    expect(bookmark.requireAdmin).not.toHaveBeenCalled();
-
-    const adminDenied = new Error('redirect:/');
-    bookmark.requireAdmin.mockRejectedValueOnce(adminDenied);
-    await expect(GET()).rejects.toBe(adminDenied);
+    bookmark.getSession.mockResolvedValue({ ...session, roles: ['employee'] });
+    bookmark.isModuleEnabled.mockReturnValueOnce(false);
+    await expect(GET()).rejects.toThrow('redirect:/?moduleUnavailable=claims');
+    expect(requireAdmin).not.toHaveBeenCalled();
+    await expect(GET()).rejects.toThrow('redirect:/');
+    expect(bookmark.getSession).toHaveBeenCalledTimes(2);
   });
 
   it('sends a stale identity to login and preserves unrelated failures', async () => {
     bookmark.getSession.mockRejectedValueOnce(new AuthRequiredError());
     await expect(GET()).rejects.toThrow('redirect:/login');
-    expect(bookmark.isOperator).not.toHaveBeenCalled();
-    expect(bookmark.requireModule).not.toHaveBeenCalled();
-    expect(bookmark.requireAdmin).not.toHaveBeenCalled();
+    expect(isOperator).not.toHaveBeenCalled();
+    expect(requireModule).not.toHaveBeenCalled();
+    expect(requireAdmin).not.toHaveBeenCalled();
 
     const unavailable = new Error('session owner unavailable');
     bookmark.getSession.mockRejectedValueOnce(unavailable);
     await expect(GET()).rejects.toBe(unavailable);
+  });
+
+  it('keeps default session resolution and the existing unknown entitlement behavior', async () => {
+    const unresolved = { tenantId: session.tenantId, roles: session.roles };
+    bookmark.getSession.mockResolvedValue(unresolved);
+    expect(await requireModule('claims')).toBe(unresolved);
+    expect(bookmark.isModuleEnabled).not.toHaveBeenCalled();
+    expect(await requireAdmin()).toBe(unresolved);
+
+    bookmark.isModuleEnabled.mockImplementationOnce(() => { throw new Error('malformed entitlement snapshot'); });
+    expect(await requireModule('claims', session)).toBe(session);
+    expect(bookmark.getSession).toHaveBeenCalledTimes(2);
   });
 });
 
