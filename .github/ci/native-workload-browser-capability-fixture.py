@@ -15,6 +15,7 @@ import os
 import re
 import secrets
 import select
+import signal
 import socket
 import ssl
 import stat
@@ -40,6 +41,9 @@ _HEADER_BYTES = 8192
 _TLS_FILE_BYTES = 16384
 _POLL = 0.05
 _CONNECTION_SECONDS = 3
+_NEGATIVES_FRONTIER = 42
+_CRYPTO_SECONDS = 5
+_CRYPTO_SETTLEMENT_SECONDS = 1
 
 
 class FixtureRefusal(RuntimeError):
@@ -83,7 +87,7 @@ def _request_kind(data, nonce):
     return 'probe'
 
 
-def _tls_context(deadline):
+def _tls_context(owner, deadline):
     # All child file writes target anonymous held fds. No path accepts a
     # caller-supplied argument, and no OpenSSL stdout/stderr leaves this owner.
     env = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C',
@@ -98,16 +102,12 @@ def _tls_context(deadline):
 
         def openssl(arguments, inputs, output=None):
             try:
-                result = subprocess.run(
-                    ['/usr/bin/prlimit', f'--fsize={_TLS_FILE_BYTES}', '--', '/usr/bin/openssl', *arguments],
-                    env=env, pass_fds=inputs, stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL if output is None else output, stderr=subprocess.DEVNULL,
-                    timeout=min(5, _remaining(deadline)), check=False,
-                )
-            except (OSError, subprocess.TimeoutExpired):
-                raise FixtureRefusal('fixture-tls-material') from None
-            _require(result.returncode == 0, 'fixture-tls-material')
-            _remaining(deadline)
+                owner._run_crypto(arguments, inputs, output, env, deadline)
+            finally:
+                if owner._crypto_unsettled():
+                    # The child may still hold an inherited writer. Retain our
+                    # descriptors and refuse physical fixture release.
+                    owner._crypto_files = files.pop_all()
 
         def seal(fd):
             before = os.fstat(fd)
@@ -171,6 +171,39 @@ def _write(stream, data, deadline, stop=None):
         pending = pending[sent:]
 
 
+def _require_no_queued_request_data(stream, deadline):
+    # SSL.pending only accounts for bytes already decrypted. Try the TLS
+    # reader even when it reports zero; a queued partial record is also a
+    # refusal. This is an observation before responding, not a future-byte
+    # promise for a peer we do not control.
+    _remaining(deadline)
+    readable = bool(select.select([stream], [], [], 0)[0])
+    try:
+        stream.recv(1)
+    except ssl.SSLWantReadError:
+        _require(not readable, 'fixture-http-framing')
+    else:
+        raise FixtureRefusal('fixture-http-framing')
+    _remaining(deadline)
+
+
+def _require_empty_tcp_probe(stream, deadline, stop):
+    while not stop.is_set():
+        ready, _, _ = select.select([stream], [], [], min(_POLL, _remaining(deadline)))
+        if ready:
+            _remaining(deadline)
+            _require(stream.recv(1) == b'', 'fixture-tcp-probe-data')
+            return
+    raise _Stopped
+
+
+def _finish_probe_tls(stream, deadline, stop=None):
+    # Only the independent peer participates in reciprocal authenticated TLS
+    # shutdown. Closing Chromium's response socket is a separate witness.
+    with _tls_io(stream, stream.unwrap, deadline, stop):
+        _remaining(deadline)
+
+
 def _open_listener(port):
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM | socket.SOCK_CLOEXEC)
     try:
@@ -206,6 +239,13 @@ class CapabilityFixture:
         self._changed = threading.Event()
         self._probe = threading.Event()
         self._browser = threading.Event()
+        self._tcp_probe_clock = None
+        self._tcp_probe_deadline = None
+        self._tcp_probe_observed = False
+        self._tcp_probe_confirmed = False
+        self._crypto_child = None
+        self._crypto_launch_uncertain = False
+        self._crypto_files = None
         self._served = 0
         self._failed = False
         self._started = False
@@ -244,6 +284,80 @@ class CapabilityFixture:
             _require(self._host.listener_inode(*tables, port, 0) == inode, 'fixture-listener-identity')
         _remaining(self._work)
 
+    def _crypto_unsettled(self):
+        return self._crypto_launch_uncertain or self._crypto_child is not None
+
+    def _crypto_has_no_children(self):
+        return not self._host._bounded_file(f'/proc/self/task/{os.getpid()}/children', 65536).strip()
+
+    def _settle_crypto(self, preparation_deadline):
+        child = self._crypto_child
+        deadline = min(preparation_deadline, time.monotonic() + _CRYPTO_SETTLEMENT_SECONDS)
+        try:
+            _remaining(deadline)
+            # The direct child is still unreaped, so its PID cannot identify a
+            # replacement group. Both IDs come from its new private session.
+            _require(child.returncode is None and os.getpgid(child.pid) == child.pid
+                     and os.getsid(child.pid) == child.pid, 'fixture-crypto-settlement')
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            code = child.wait(timeout=_remaining(deadline))
+            while True:
+                _remaining(deadline)
+                try:
+                    os.killpg(child.pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(min(_POLL, _remaining(deadline)))
+            _require(self._crypto_has_no_children(), 'fixture-crypto-settlement')
+            _remaining(deadline)
+        except (OSError, subprocess.TimeoutExpired):
+            raise FixtureRefusal('fixture-crypto-settlement') from None
+        self._crypto_child = None
+        return code
+
+    def _run_crypto(self, arguments, inputs, output, env, deadline):
+        # Called only by the three fixed OpenSSL commands during preparation.
+        # prlimit execs the fixed tool; no child process or reaper may share
+        # this owner. No numeric group signal is issued after leader reap.
+        _require(not self._crypto_unsettled() and threading.current_thread() is threading.main_thread()
+                 and signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
+                 and self._crypto_has_no_children(),
+                 'fixture-crypto-owner')
+        with os.scandir('/proc/self/task') as tasks:
+            _require(next(tasks, None) is not None and next(tasks, None) is None, 'fixture-crypto-owner')
+        stop = min(time.monotonic() + _CRYPTO_SECONDS, deadline - _CRYPTO_SETTLEMENT_SECONDS)
+        _remaining(stop)
+        self._crypto_launch_uncertain = True
+        try:
+            self._crypto_child = subprocess.Popen(
+                ['/usr/bin/prlimit', f'--fsize={_TLS_FILE_BYTES}', '--', '/usr/bin/openssl', *arguments],
+                env=env, pass_fds=inputs, stdin=subprocess.DEVNULL, close_fds=True, start_new_session=True,
+                stdout=subprocess.DEVNULL if output is None else output, stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            raise FixtureRefusal('fixture-tls-material') from None
+        self._crypto_launch_uncertain = False
+        try:
+            while True:
+                _remaining(stop)
+                status = os.waitid(os.P_PID, self._crypto_child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                if status is not None:
+                    _require(status.si_pid == self._crypto_child.pid, 'fixture-crypto-settlement')
+                    _remaining(stop)
+                    break
+                time.sleep(min(_POLL, _remaining(stop)))
+        except BaseException as primary:
+            try:
+                self._settle_crypto(deadline)
+            except BaseException:
+                primary.add_note('fixture-crypto-settlement')
+            raise
+        _require(self._settle_crypto(deadline) == 0, 'fixture-tls-material')
+        _remaining(deadline)
+
     def start(self):
         _require(not self._started and not self._closed and os.uname().sysname == 'Linux'
                  and os.getresuid() == (0, 0, 0) and os.getresgid() == (0, 0, 0), 'fixture-owner')
@@ -251,7 +365,7 @@ class CapabilityFixture:
         _remaining(self._preparation)
         self._namespace = _namespace()
         self._absent()
-        self._tls, self.certificate_der, self.spki = _tls_context(self._preparation)
+        self._tls, self.certificate_der, self.spki = _tls_context(self, self._preparation)
         self._nonce = secrets.token_hex(16).encode('ascii')
         for port in (INGRESS, TRIPWIRE):
             _remaining(self._preparation)
@@ -267,6 +381,23 @@ class CapabilityFixture:
         self.require_ready()
         _remaining(self._preparation)
 
+    def _serve_tls(self, raw, expected, deadline):
+        _require(expected is not None, 'fixture-request-order')
+        with self._tls.wrap_socket(raw, server_side=True, do_handshake_on_connect=False,
+                                   suppress_ragged_eofs=False) as tls:
+            _tls_io(tls, tls.do_handshake, deadline, self._stop)
+            data = bytearray()
+            while b'\r\n\r\n' not in data:
+                block = _tls_io(tls, lambda: tls.recv(_HEADER_BYTES + 1 - len(data)), deadline, self._stop)
+                _require(block and len(data) + len(block) <= _HEADER_BYTES, 'fixture-http-framing')
+                data.extend(block)
+            kind = _request_kind(bytes(data), self._nonce)
+            _require(kind == expected, 'fixture-request-order')
+            _require_no_queued_request_data(tls, deadline)
+            _write(tls, _RESPONSE, deadline, self._stop)
+            if kind == 'probe':
+                _finish_probe_tls(tls, deadline, self._stop)
+
     def _serve(self):
         ingress, tripwire = (self._listeners[port][0] for port in (INGRESS, TRIPWIRE))
         try:
@@ -278,24 +409,22 @@ class CapabilityFixture:
                     raise FixtureRefusal('fixture-tripwire-connection')
                 if ingress in ready:
                     raw, address = ingress.accept()
+                    tcp_probe = self._served == 1 and not self._tcp_probe_observed
                     with raw:
                         _require(address[0] == LOOPBACK and self._served < 2, 'fixture-connection-census')
                         raw.setblocking(False)
                         deadline = min(self._work, time.monotonic() + _CONNECTION_SECONDS)
-                        with self._tls.wrap_socket(raw, server_side=True, do_handshake_on_connect=False) as tls:
-                            _tls_io(tls, tls.do_handshake, deadline, self._stop)
-                            data = bytearray()
-                            while b'\r\n\r\n' not in data:
-                                block = _tls_io(tls, lambda: tls.recv(_HEADER_BYTES + 1 - len(data)), deadline, self._stop)
-                                _require(block and len(data) + len(block) <= _HEADER_BYTES, 'fixture-http-framing')
-                                data.extend(block)
-                            _require(tls.pending() == 0, 'fixture-http-framing')
-                            kind = _request_kind(bytes(data), self._nonce)
+                        if tcp_probe:
+                            _require(self._tcp_probe_deadline is not None, 'fixture-tcp-probe-order')
+                            _require_empty_tcp_probe(raw, min(deadline, self._tcp_probe_deadline), self._stop)
+                        else:
                             expected = 'probe' if self._served == 0 and self._probe.is_set() else (
                                 'browser' if self._served == 1 and self._browser.is_set() else None)
-                            _require(kind == expected, 'fixture-request-order')
-                            _write(tls, _RESPONSE, deadline, self._stop)
-                    self._served += 1
+                            self._serve_tls(raw, expected, deadline)
+                    if tcp_probe:
+                        self._tcp_probe_observed = True
+                    else:
+                        self._served += 1
                     self._changed.set()
         except BaseException:
             # The controlling owner sees only a boolean, never SSL or peer data.
@@ -316,7 +445,8 @@ class CapabilityFixture:
             raw.settimeout(_remaining(deadline))
             raw.connect((LOOPBACK, INGRESS))
             raw.setblocking(False)
-            with context.wrap_socket(raw, server_hostname=LOOPBACK, do_handshake_on_connect=False) as tls:
+            with context.wrap_socket(raw, server_hostname=LOOPBACK, do_handshake_on_connect=False,
+                                     suppress_ragged_eofs=False) as tls:
                 _tls_io(tls, tls.do_handshake, deadline)
                 peer_der = tls.getpeercert(binary_form=True)
                 _require(peer_der == self.certificate_der, 'fixture-peer-certificate')
@@ -327,7 +457,8 @@ class CapabilityFixture:
                     _require(block, 'fixture-probe-response')
                     data.extend(block)
                 _require(bytes(data) == _RESPONSE
-                         and not _tls_io(tls, lambda: tls.recv(1), deadline), 'fixture-probe-response')
+                         and _tls_io(tls, lambda: tls.recv(1), deadline) == b'', 'fixture-probe-response')
+                _finish_probe_tls(tls, deadline)
         self._wait_served(1, deadline)
         self._verified_probe = True
         return INGRESS_URL, 200, INGRESS_BODY, peer_der
@@ -340,9 +471,33 @@ class CapabilityFixture:
         _require(not self._failed and self._served == expected, 'fixture-request-census')
         _remaining(deadline)
 
+    def allow_browser_tcp_probe(self, clock):
+        """Arm exactly the existing issuer deny-go counter window."""
+        self.require_ready()
+        _require(type(clock) is self._host.Deadline and self._verified_probe and self._served == 1
+                 and self._tcp_probe_clock is None, 'fixture-tcp-probe-order')
+        clock.remaining(_NEGATIVES_FRONTIER)
+        self._tcp_probe_clock = clock
+        self._tcp_probe_deadline = min(self._work, clock.start + _NEGATIVES_FRONTIER)
+        _remaining(self._tcp_probe_deadline)
+
+    def require_browser_tcp_probe(self, clock):
+        """Called after the same issuer validates negatives-complete and its counter window."""
+        _require(clock is self._tcp_probe_clock and self._tcp_probe_deadline is not None
+                 and not self._tcp_probe_confirmed, 'fixture-tcp-probe-order')
+        while not self._tcp_probe_observed and not self._failed:
+            self._changed.clear()
+            if not self._tcp_probe_observed and not self._failed:
+                self._changed.wait(min(_POLL, _remaining(self._tcp_probe_deadline)))
+        _require(self._tcp_probe_observed and not self._failed and self._served == 1, 'fixture-tcp-probe-order')
+        clock.remaining(_NEGATIVES_FRONTIER)
+        self.require_ready()
+        _remaining(self._tcp_probe_deadline)
+        self._tcp_probe_confirmed = True
+
     def allow_browser_request(self):
         self.require_ready()
-        _require(self._verified_probe and self._served == 1 and not self._browser.is_set(),
+        _require(self._verified_probe and self._tcp_probe_confirmed and self._served == 1 and not self._browser.is_set(),
                  'fixture-browser-admission')
         self._browser.set()
 
@@ -378,6 +533,7 @@ class CapabilityFixture:
                     close_failed = True
         self._tls = self._nonce = None
         _require(not close_failed, 'fixture-listener-settlement')
+        _require(not self._crypto_unsettled() and self._crypto_files is None, 'fixture-crypto-settlement')
         self._absent()
         _remaining(self._cleanup)
         return {'listenersAbsent': True, 'serverHealthy': not self._failed}
