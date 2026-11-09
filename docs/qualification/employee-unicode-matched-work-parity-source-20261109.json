@@ -1,0 +1,174 @@
+{
+  "kind": "EMPLOYEE_UNICODE_MATCHED_WORK_PARITY_SOURCE_ONLY",
+  "directParent": "08028380b4ff27c81fca5a4072f59e0ff73a4a9a",
+  "selector": "test/employee-choice-unicode-scale.test.ts",
+  "testSource": {
+    "before": {
+      "blob": "028f24358231b16a50d0bddc3724b5daf0108fb7",
+      "bytes": 62986,
+      "sha256": "30a93e49300d40513e59084af0cc29154e0b99867c7c6fed8779491bbc001676"
+    },
+    "current": {
+      "blob": "85e0b19371b7939c7d9c0798bf2d875df5b83642",
+      "bytes": 68573,
+      "sha256": "6cf5e1b12e781e4cdf027814b2fb2b0130b72d58a4f2548a8dd5f834c2b3a29e"
+    },
+    "preserved": {
+      "sourceCases": 1,
+      "unchangedRegistrations": 3,
+      "sqlTagsWhole": 27,
+      "clockCallsWhole": 40,
+      "priorAssertionsWhole": 87,
+      "replacedPriorTimingOnlyGate": 1,
+      "currentAssertions": 93
+    }
+  },
+  "sourceInverse": {
+    "restore": "test/employee-choice-unicode-scale.test.ts",
+    "remove": "docs/qualification/employee-unicode-matched-work-parity-source-20261109.json",
+    "targetTree": "d70052426cbfcc5b4eb69a63f39c51e4e83b2b8b"
+  },
+  "protectedGitBlobs": {
+    "core/employee-choice.ts": "a772876f19acb9ba1e590ad9089842b13e410808",
+    "test/performance/employee-choice-department-pair-probe.ts": "a207a051ea485dc47ed2814fcc72f2afa1edce1e",
+    "test/performance/personnel-native-fixture.ts": "933f1543bf2ea08aae446d805720272e597dacf0",
+    "db/migrations/2126_company_organisation_tagging.sql": "1ca32335380bb7aedecad6942643a8ad836b505f",
+    "db/client.ts": "0c4f28e00393a763608b506d608a3cf7df542c57",
+    ".github/workflows/alpha-focused-checks.yml": "e993882d7e92f28bd4f75f31556f5a971dfe47f6"
+  },
+  "retainedFailure": {
+    "source": "db88dffc4de594329a95002c34999a18ba3dcde0",
+    "controller": "5aa20706fb7219e28bd077307d7d892996640e1a",
+    "run": 42567992502,
+    "attempt": 1,
+    "artifact": {
+      "id": 13652351265,
+      "digest": "sha256:879fe111ca86bd8b713d258711df8f9e29aeede5c088de3394cf690a02768944",
+      "size_in_bytes": 29537
+    },
+    "failure": {
+      "line": 767,
+      "onlyGate": {
+        "matched": "fail",
+        "sparseBaselineStress": "pass",
+        "sparseProductPairs": "pass"
+      },
+      "caseMs": 82235.55595400001,
+      "sourceFailure": {
+        "work": null,
+        "gates": [
+          {
+            "kind": "AssertionError",
+            "code": null,
+            "messageSha256": "b4ad862a85e9abd4d1609bc271acee43d95a40b1b10826f99ae8b44eecd8fa42"
+          }
+        ],
+        "cleanup": []
+      }
+    },
+    "matched": {
+      "observedOrdinaryMs": {
+        "old": 105.46977399999741,
+        "candidate": 106.5778769999888
+      },
+      "instrumentedMs": {
+        "old-matched": 110.052,
+        "candidate-matched": 108.162
+      },
+      "rawSqlSeals": {
+        "legacy": "95900f68e826391eea261670dbeff344a7ef75e2ba921090ceef1ed949de172e",
+        "candidate": "409eb5a90dbf1cc91340a9494dd0eb8599b118de5e490de61463b7f629fc8dbb",
+        "parameterCount": 6
+      },
+      "activeBaseAccessSame": [
+        {
+          "Schema": "public",
+          "Relation Name": "assignment",
+          "Alias": "assignment",
+          "Node Type": "Seq Scan",
+          "Index Name": null,
+          "Actual Loops": 2,
+          "Actual Rows": 0,
+          "Rows Removed by Filter": 25000,
+          "Rows Removed by Index Recheck": null
+        },
+        {
+          "Schema": "public",
+          "Relation Name": "company",
+          "Alias": "company",
+          "Node Type": "Seq Scan",
+          "Index Name": null,
+          "Actual Loops": 1,
+          "Actual Rows": 1,
+          "Rows Removed by Filter": 1,
+          "Rows Removed by Index Recheck": null
+        },
+        {
+          "Schema": "public",
+          "Relation Name": "department",
+          "Alias": "department",
+          "Node Type": "Seq Scan",
+          "Index Name": null,
+          "Actual Loops": 1,
+          "Actual Rows": 2,
+          "Rows Removed by Filter": 2,
+          "Rows Removed by Index Recheck": null
+        },
+        {
+          "Schema": "public",
+          "Relation Name": "employment",
+          "Alias": "employment",
+          "Node Type": "Index Scan",
+          "Index Name": "employment_pkey",
+          "Actual Loops": 1,
+          "Actual Rows": 1,
+          "Rows Removed by Filter": 0,
+          "Rows Removed by Index Recheck": 0
+        },
+        {
+          "Schema": "public",
+          "Relation Name": "person",
+          "Alias": "person",
+          "Node Type": "Index Scan",
+          "Index Name": "person_pkey",
+          "Actual Loops": 1,
+          "Actual Rows": 1,
+          "Rows Removed by Filter": 0,
+          "Rows Removed by Index Recheck": 0
+        }
+      ],
+      "rootWorkSame": {
+        "Actual Rows": 1,
+        "Actual Loops": 1,
+        "Shared Hit Blocks": 4527,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "activeProjectSetRowsAndLoops": [
+        [
+          1,
+          50000
+        ],
+        [
+          1,
+          50000
+        ]
+      ],
+      "plansIdentical": false,
+      "actualElapsedRegression": "inconclusive"
+    },
+    "sparseObservationsPassedInFailedCourse": true
+  },
+  "verification": {
+    "existingTwoDepartmentMatchedScope": "Distinct sealed SQL performs a positive existence lookup over the same native tenant/actor scope. Existing exact DTO, statement binding, candidate correlated witness, RR/RO and catalogue guards retain their behavior.",
+    "equivalentWork": "Exact active base access and executor counters, policy expansion counters, join-removal counters and root shared blocks for known in-memory, non-JIT plans. The result is explicitly equivalent-work. One elapsed sample per arm remains inconclusive.",
+    "changedWork": "Require the original strict lower elapsed time on both timing channels, strictly fewer Assignment loops and root shared buffers, no extra supporting base access and unchanged measured policy/join filters.",
+    "refusal": "Unknown or incomplete work shape, spill, new work, or non-improvement outside the exact parity path refuses the matched gate. No added SQL, timing margin, changed case cap or changed sparse ABBA.",
+    "qualificationScope": "Observed physical work on one fixed broad fallback fixture. No general CPU/latency equivalence or release claim."
+  },
+  "runtimeQualificationPending": true,
+  "releaseEligible": false
+}

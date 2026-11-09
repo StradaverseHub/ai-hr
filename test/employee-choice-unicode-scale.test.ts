@@ -211,7 +211,69 @@ function usesEmploymentTenantPointIndex(node:PlanNode,point:EmploymentPoint){
   node['Index Cond']===`((employment.id = ANY ('{${point.employmentId}}'::uuid[])) AND (employment.tenant_id = '${point.tenant}'::uuid))`;
 }
 
-function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,sparseCount?:number,point?:EmploymentPoint){
+const matchedRelations=['assignment','company','department','employment','person'] as const;
+const matchedScans=['Seq Scan','Index Scan'];
+const matchedNodes=['Sort','Result','Nested Loop','ProjectSet',...matchedScans];
+const planCounter=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
+type MatchedAccess={relation:string;kind:string;index:string|null;loops:number;rows:number;filtered:number;rechecked:number|null};
+type MatchedFacetWork={
+ access:MatchedAccess[];policy:[number,number][];joinRemovals:[number,number][];sharedHits:number;sharedReads:number;
+};
+
+function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:PlanNode[]):MatchedFacetWork|null{
+ if(root['Node Type']!=='Sort'||root['Actual Loops']!==1||root['Actual Rows']!==1||root['Sort Space Type']!=='Memory'||
+    Object.hasOwn(document,'JIT')||nodes.some(node=>!planCounter(node['Actual Loops'])))return null;
+ const active=nodes.filter(node=>(node['Actual Loops'] as number)>0);
+ if(active.some(node=>!matchedNodes.includes(String(node['Node Type']))||!planCounter(node['Actual Rows'])||
+    node['Parallel Aware']!==false||node['Async Capable']!==false||node['Temp Read Blocks']!==0||node['Temp Written Blocks']!==0||
+    node['Local Hit Blocks']!==0||node['Local Read Blocks']!==0||node['Local Dirtied Blocks']!==0||node['Local Written Blocks']!==0||
+    node['Shared Dirtied Blocks']!==0||node['Shared Written Blocks']!==0))return null;
+ const access=active.filter(node=>matchedScans.includes(String(node['Node Type'])));
+ if(access.length!==matchedRelations.length)return null;
+ const scans:MatchedAccess[]=[];
+ for(const relation of matchedRelations){
+  const matches=access.filter(node=>node['Relation Name']===relation);
+  if(matches.length!==1)return null;
+  const [node]=matches,kind=node['Node Type'],index=node['Index Name'],loops=node['Actual Loops'] as number;
+  const filtered=node['Rows Removed by Filter'],rechecked=node['Rows Removed by Index Recheck'];
+  if(node.Schema!=='public'||node.Alias!==relation||!planCounter(filtered)||
+     (kind==='Seq Scan'?index!==undefined||rechecked!==undefined:typeof index!=='string'||!planCounter(rechecked)))return null;
+  scans.push({relation,kind:String(kind),index:typeof index==='string'?index:null,loops,
+   rows:node['Actual Rows'] as number,filtered,rechecked:planCounter(rechecked)?rechecked:null});
+ }
+ const policy:MatchedFacetWork['policy']=[],joinRemovals:MatchedFacetWork['joinRemovals']=[];
+ for(const node of active){
+  const loops=node['Actual Loops'] as number,rows=node['Actual Rows'] as number;
+  if(node['Node Type']==='ProjectSet'){
+   const output=node.Output;
+   if(!Array.isArray(output)||output.length!==1||typeof output[0]!=='string'||!/^unnest\(\$\d+\)$/.test(output[0]))return null;
+   policy.push([loops,rows]);
+  }
+  if(node['Node Type']==='Nested Loop'){
+   const removed=node['Rows Removed by Join Filter']??0;
+   if(node['Join Type']!=='Inner'||!planCounter(removed))return null;
+   if(removed>0)joinRemovals.push([loops,removed]);
+  }
+ }
+ const sharedHits=root['Shared Hit Blocks'],sharedReads=root['Shared Read Blocks'];
+ if(!policy.length||!planCounter(sharedHits)||!planCounter(sharedReads))return null;
+ return {access:scans,policy:policy.sort(),joinRemovals:joinRemovals.sort(),sharedHits,sharedReads};
+}
+
+function matchedFacetOutcome(old:MatchedFacetWork|null,candidate:MatchedFacetWork|null,elapsed:{ordinary:boolean;instrumented:boolean}){
+ if(!old||!candidate)return 'refused';
+ if(JSON.stringify(old)===JSON.stringify(candidate))return 'equivalent-work';
+ if(candidate.access[0].loops<old.access[0].loops&&candidate.sharedHits+candidate.sharedReads<old.sharedHits+old.sharedReads&&
+    candidate.access.slice(1).every((entry,index)=>{
+     const previous=old.access[index+1];
+     return entry.loops<=previous.loops&&entry.rows<=previous.rows&&entry.filtered<=previous.filtered&&
+      (entry.rechecked??0)<=(previous.rechecked??0);
+    })&&JSON.stringify(candidate.policy)===JSON.stringify(old.policy)&&JSON.stringify(candidate.joinRemovals)===JSON.stringify(old.joinRemovals)&&
+    elapsed.ordinary&&elapsed.instrumented)return 'improved';
+ return 'refused';
+}
+
+function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,sparseCount?:number,point?:EmploymentPoint,matched=false){
  if(!Array.isArray(raw)||raw.length!==1||!raw[0]||typeof raw[0]!=='object')throw new Error('Unexpected native facet plan envelope');
  const document=raw[0] as Record<string,unknown>;
  const measure=(value:unknown)=>{
@@ -253,6 +315,7 @@ function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:nu
  return {planningMs:measure(document['Planning Time']),executionMs:measure(document['Execution Time']),nodes,
   jitReported:Object.hasOwn(document,'JIT'),assignmentNodes:assignments.map(({qual:_qual,...value})=>value),correlatedWitnesses:witnesses,
   witnessLoops,indexPaths,sharedTraffic:measure(root['Shared Hit Blocks'])+measure(root['Shared Read Blocks']),
+  ...(matched?{matchedWork:matchedFacetWork(document,root,shapeNodes)}:{}),
   pathRefusals:sparseCount===undefined?[]:sparsePathRefusals(sparseCount,shapeNodes,root,measure,point)};
 }
 
@@ -393,10 +456,11 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
  const state={source:admission.source,controller:admission.controller,complete:false,settled:false,unconfirmed:false,
   slotMilliseconds:[27000,5000,18000,10000],phase:'matched',plans:[] as Record<string,unknown>[],ordinaryMs:{} as Record<string,number>,
   matchedImprovement:{ordinary:false,instrumented:false},
+  matchedOutcome:'refused' as ReturnType<typeof matchedFacetOutcome>,
   stress:[] as {label:string;wallMs:number;departmentMs:number;explainMs?:number;total:number;statements:number;rows:number}[]};
  const pairStatus={complete:false,catalogueUnchanged:false,ownedStopRequired:false,
   twoDepartmentSparseProduct:'unobserved; original matched statements are retained'};
- const gateStatus:{matched:'unobserved'|'pass'|'fail';sparseBaselineStress:'unobserved'|'pass'|'fail';
+ const gateStatus:{matched:'unobserved'|'pass'|'fail'|'equivalent-work';sparseBaselineStress:'unobserved'|'pass'|'fail';
   sparseProductPairs:'unobserved'|'pass'|'fail'}={matched:'unobserved',sparseBaselineStress:'unobserved',sparseProductPairs:'unobserved'};
  report.facetCandidate=state;
  const historicalBroad={
@@ -522,7 +586,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   const bytes=Buffer.byteLength(JSON.stringify(raw));
   if(rawPlans.length>=10||bytes>1024*1024)throw new Error('Native facet plan inventory or size refused');
   rawPlans.push({label,raw});persist();
-  const summary=summarizePlan(raw,first,loops,sparseCount,point);
+  const summary=summarizePlan(raw,first,loops,sparseCount,point,label==='old-matched'||label==='candidate-matched');
   state.plans.push({label,wallMs,...summary});persist();
   return summary;
  };
@@ -557,6 +621,20 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    const {bound:_bound,...startFacts}=start;
    expect(after).toEqual({...startFacts,statementTimeout:'3s'});metadata.matchedFinal=after;
    state.matchedImprovement={ordinary:state.ordinaryMs.candidate<state.ordinaryMs.old,instrumented:candidatePlan.executionMs<oldPlan.executionMs};
+   const oldWork=oldPlan.matchedWork??null,candidateWork=candidatePlan.matchedWork??null;
+   state.matchedOutcome=matchedFacetOutcome(oldWork,candidateWork,state.matchedImprovement);
+   metadata.matchedWorkOutcome={outcome:state.matchedOutcome,
+    elapsed:state.matchedOutcome==='improved'?'both-faster-in-this-run':'single-pair-inconclusive'};
+   if(oldWork){
+    const opposed={ordinary:false,instrumented:true},bothFaster={ordinary:true,instrumented:true};
+    expect(matchedFacetOutcome(oldWork,oldWork,opposed)).toBe('equivalent-work');
+    expect(matchedFacetOutcome(oldWork,null,bothFaster)).toBe('refused');
+    expect(matchedFacetOutcome(oldWork,{...oldWork,sharedHits:oldWork.sharedHits+1},bothFaster)).toBe('refused');
+    const [assignment,...other]=oldWork.access;
+    const moreLoops={...oldWork,access:[{...assignment,loops:assignment.loops+1},...other],sharedHits:oldWork.sharedHits+1};
+    expect(matchedFacetOutcome(moreLoops,oldWork,opposed)).toBe('refused');
+    expect(matchedFacetOutcome(moreLoops,oldWork,bothFaster)).toBe('improved');
+   }
    matchedObserved=true;persist();
    fit(matchedEnd,3000,'matched transaction finalization');
   });
@@ -764,7 +842,10 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   });
  }catch(error){workFailed=true;workError=error;}
 
- if(matchedObserved)gate('matched',()=>expect(state.matchedImprovement).toEqual({ordinary:true,instrumented:true}));
+ if(matchedObserved){
+  gate('matched',()=>expect(state.matchedOutcome).not.toBe('refused'));
+  if(gateStatus.matched==='pass'&&state.matchedOutcome==='equivalent-work')gateStatus.matched='equivalent-work';
+ }
  if(state.stress.length===2)gate('sparseBaselineStress',()=>{
   for(const result of state.stress){
    expect(result.wallMs).toBeLessThanOrEqual(6000);expect(result.departmentMs).toBeLessThanOrEqual(1250);
