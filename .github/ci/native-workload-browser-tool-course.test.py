@@ -224,8 +224,29 @@ class ToolIntentModels(unittest.TestCase):
                 del outcomes['payload-unmount']
             else:
                 outcomes['payload-unmount'] = unmount
-            with self.subTest(unmount=unmount), self.assertRaisesRegex(ValueError, 'bounded positive closure'):
-                B._validate_tool_capture(B.canonical(changed), '1')
+            for cleanup in ('complete', 'refused'):
+                with self.subTest(unmount=unmount, cleanup=cleanup), self.assertRaisesRegex(ValueError, 'successful owned unmount'):
+                    B._validate_tool_capture(B.canonical(changed | {'cleanup':cleanup}), '1')
+
+        readback = copy.deepcopy(report)
+        del readback['materialized']
+        del readback['namespaceAbsent']
+        readback.update(cleanup='refused', cleanupReason='deadline')
+        B._validate_tool_capture(B.canonical(readback), '1')
+        del readback['processOutcomes']['payload-unmount']
+        with self.assertRaisesRegex(ValueError, 'successful owned unmount'):
+            B._validate_tool_capture(B.canonical(readback), '1')
+
+        del readback['processOutcomes']['payload-remount']
+        readback['processOutcomes']['payload-bind'].update(reason='command-failed', exit=1)
+        readback['failureReason'] = 'command-failed'
+        B._validate_tool_capture(B.canonical(readback), '1')
+        readback['processOutcomes']['payload-unmount'] = readback['processOutcomes']['payload-bind'].copy()
+        readback['cleanupReason'] = 'command-failed'
+        with self.assertRaisesRegex(ValueError, 'successful owned unmount'):
+            B._validate_tool_capture(B.canonical(readback), '1')
+        del readback['mountsAbsent']
+        B._validate_tool_capture(B.canonical(readback), '1')
 
         expired = report | {'elapsedMs':180000}
         with self.assertRaisesRegex(ValueError, 'bounded positive closure'):
@@ -252,8 +273,11 @@ class ToolIntentModels(unittest.TestCase):
         for key in ('transfer', 'materialized', 'processOutcomes', 'mountsAbsent', 'namespaceAbsent'):
             del unacquired[key]
         B._validate_tool_capture(B.canonical(unacquired), '1')
+        B._validate_tool_capture(B.canonical(unacquired | {'failure':'root-acquisition'}), '1')
         with self.assertRaisesRegex(ValueError, 'unacquired state'):
             B._validate_tool_capture(B.canonical(unacquired | {'ownedProcessesSettled':False}), '1')
+        with self.assertRaisesRegex(ValueError, 'unacquired state'):
+            B._validate_tool_capture(B.canonical(unacquired | {'failure':'source-capsule'}), '1')
 
 
 class ToolTransportModels(unittest.TestCase):

@@ -543,8 +543,8 @@ def _validate_tool_owner_capture(report):
                'protocol-refused', 'owner-interrupted', 'group-uncertain', 'session-escaped')
     successful_operations = set()
     all_reported_processes_quiescent = True
+    outcomes = report.get('processOutcomes', {})
     if 'processOutcomes' in report:
-        outcomes = report['processOutcomes']
         _tool_capture_keys(outcomes, operations if complete else (), () if complete else operations)
         need(bool(outcomes), 'Returned TOOL process census empty')
         for operation, row in outcomes.items():
@@ -571,14 +571,17 @@ def _validate_tool_owner_capture(report):
          and ('mountsAbsent' not in report or report['ownedProcessesSettled'])
          and (not report['ownedProcessesSettled'] or all_reported_processes_quiescent),
          'Returned TOOL cleanup fields differ')
+    # The producer attempts remount or unmount only after observing the owned mount ID.
+    if 'mountsAbsent' in report and ('payload-remount' in outcomes or 'payload-unmount' in outcomes):
+        need('payload-unmount' in successful_operations, 'Returned TOOL mount absence lacks successful owned unmount')
     if cleanup == 'complete':
         need(all(report.get(key) is True for key in closure) and 'cleanupReason' not in report
-             and report['elapsedMs'] < 180000
-             and ('materialized' not in report or operations[-1] in successful_operations),
+             and report['elapsedMs'] < 180000,
              'Returned TOOL cleanup lacks bounded positive closure')
     elif cleanup == 'not-acquired':
-        need(report['ownedProcessesSettled'] and not any(key in report for key in closure + observed + ('cleanupReason',)),
-             'Returned TOOL unacquired state contains owner observations')
+        need(report['ownedProcessesSettled'] and report.get('failure') in ('root-parent-acquisition', 'root-acquisition')
+             and not any(key in report for key in closure + observed + ('cleanupReason',)),
+             'Returned TOOL unacquired state differs')
     if complete:
         need(cleanup == 'complete' and successful_operations == set(operations),
              'Returned TOOL success lacks bounded cleanup and process completion')
