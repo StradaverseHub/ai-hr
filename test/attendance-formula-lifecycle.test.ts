@@ -76,6 +76,20 @@ it('uses one formula identity for two dated companies without exposing the other
  expect(execution.definition.eligibility.employmentIds).toEqual([second.employmentId]);
  expect(execution.definition).not.toHaveProperty('companyScope');
  await expect(calculateAttendanceFormulaResult(second.scoped,{...version,employmentId:f.employmentId,date:f.date,companyIds:[second.id]})).rejects.toThrow();
+
+ const {setModule,entitledCtx}=await import('./harness');
+ const {createBatch,transferAttendanceFormulaResults}=await import('../packs/payroll/service');
+ const {reviewAttendanceFormulaResult}=await import('../packs/attendance/service');
+ await setModule(base.tenantId,'typed_pay_components','active');
+ const payrollAdmin=await entitledCtx(base);
+ const firstResult=await calculateAttendanceFormulaResult(payrollAdmin,{...version,employmentId:f.employmentId,date:f.date});
+ for(const result of [firstResult,calculated]){
+  await reviewAttendanceFormulaResult(payrollAdmin,{resultId:result.id,command:'review',reason:'Checked Attendance evidence'});
+  await reviewAttendanceFormulaResult(payrollAdmin,{resultId:result.id,command:'approve',reason:'Approved company result'});
+  const {batchId}=await createBatch(payrollAdmin,{companyId:result.companyId,payPeriod:f.date.slice(0,7)});
+  const posted=await transferAttendanceFormulaResults(payrollAdmin,{batchId,resultIds:[result.id],reason:'Transfer company result'});
+  expect(posted.posted).toEqual([result.id]);
+ }
 });
 
 it('rejects incomplete All Companies coverage, a company-limited Pay Item and overlapping exclusive activation',async()=>{
