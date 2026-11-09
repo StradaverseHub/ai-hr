@@ -1,3 +1,19 @@
+# Home leave review presentation — 10 November 2026 (provisional)
+
+The architecture qualification candidate proposes `4203_home_leave_presentation_snapshot`
+at idx 3641 and when 1793330003941 after the 764-entry journal ending in 4202
+on `ba0d89d9e53bfe6663affe3e0ea3fff5fff20f47`. The append gives Home one native
+metadata projection for its three leave review lists. Existing custody,
+confirmation and retention routines keep their existing permissions and bytes.
+
+The read-only peer survey checked 3,757 public heads, 517 distinct locally
+readable committed journals and 348 readable journals among 1,625 registered
+or discovered worktree paths. Exact public reads resolved another 56 journals
+and confirmed the remaining evidence-only ref has no journal. The observed
+maximum was idx 3640 and when 1793330003940. Preserve all 764 preceding entries
+and their SQL bytes. Refresh peer allocations, accepted source and the actual
+installed ledger before release admission.
+
 # AI management presentation snapshot — 9 November 2026 (unapplied)
 
 Reserve `4202_ai_management_presentation_snapshot` at idx 3640 and when 1793330003940
