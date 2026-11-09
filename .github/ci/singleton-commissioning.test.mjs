@@ -137,7 +137,9 @@ test('native hybrid commissioning consumes one canonical build while ordinary un
  const setupBranch=launcher.slice(launcher.indexOf("if(operation==='setup')"),launcher.indexOf("if(operation==='ensure-main')"));
  assert(setupBranch.includes("execFileSync('pnpm',['install','--frozen-lockfile'],{env:child"));
  assert(setupBranch.includes("execFileSync('pnpm',['exec','playwright','install','--with-deps','chromium'],{env:child"));
- assert(native.includes('fail-fast: false'));assert(native.includes('timeout-minutes: 120'));assert(!native.includes('AIHR_FOCUSED'));
+ assert(native.includes('fail-fast: false'));
+ assert.deepEqual(native.match(/^    timeout-minutes:.*$/gm),['    timeout-minutes: ${{ inputs.native_tool_only && 10 || 120 }}']);
+ assert(!native.includes('AIHR_FOCUSED'));
  assert(ordinary.includes('needs: [resolve, plan]'));assert(!ordinary.includes('needs: [resolve, plan, build]'));
  assert(w.includes("needs.plan.outputs.has_native == 'true'"));assert(w.includes('test, native-test, browser]'));
  const owner=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');

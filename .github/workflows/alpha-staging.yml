@@ -95,7 +95,7 @@ jobs:
           TOOL_PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
         run: |
           [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_RUN_ATTEMPT" == 1 ]]
-          [[ "$GITHUB_REF" == refs/heads/codex/native-workload-tool-only-20261109 ]]
+          [[ "$GITHUB_REF" == refs/heads/codex/native-workload-tool-only-custody-repair-20261109 ]]
           [[ "$TOOL_CANDIDATE_REF" == "${GITHUB_REF#refs/heads/}" ]]
           [[ "$TOOL_EXPECTED_SHA" == "$TOOL_CONTROL_SHA" && "$TOOL_EXPECTED_SHA" == "$GITHUB_SHA" ]]
           [[ "$TOOL_DIAGNOSTICS_ONLY" == true && "$TOOL_CONTROLLER_ONLY" == false && "$TOOL_BUILD_ONLY" == false ]]
@@ -631,6 +631,7 @@ jobs:
           path: automation
           persist-credentials: false
       - name: Acquire, verify and dispose of the fixed private toolchain
+        id: tool
         if: ${{ inputs.native_tool_only && matrix.unit == 'tool-only' }}
         shell: bash
         working-directory: automation
@@ -644,12 +645,17 @@ jobs:
         run: |
           umask 077
           set -o noclobber
-          /usr/bin/python3 -I -B .github/ci/native-controller-bootstrap.py --tool-only > "$RUNNER_TEMP/native-workload-tool-only.json"
-      - if: ${{ always() && inputs.native_tool_only }}
+          mkdir -m 700 "$RUNNER_TEMP/aihr-native-tool-only"
+          status=0
+          /usr/bin/python3 -I -B .github/ci/native-controller-bootstrap.py --tool-only > "$RUNNER_TEMP/aihr-native-tool-only/native-workload-tool-only.json" || status=$?
+          /usr/bin/python3 -I -B .github/ci/native-controller-bootstrap.py --check-tool-capture "$status"
+          echo 'receipt=true' >> "$GITHUB_OUTPUT"
+          exit "$status"
+      - if: ${{ always() && inputs.native_tool_only && steps.tool.outputs.receipt == 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: native-workload-tool-only
-          path: ${{ runner.temp }}/native-workload-tool-only.json
+          path: ${{ runner.temp }}/aihr-native-tool-only/native-workload-tool-only.json
           if-no-files-found: error
           retention-days: 14
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803

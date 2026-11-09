@@ -1,11 +1,18 @@
 """Source models for the exclusive TOOL route. No network, sudo or native mount."""
 from __future__ import annotations
 
+import fcntl
+import io
+import os
 import pathlib
+import runpy
+import signal
+import stat
 import sys
+import tempfile
 import time
 import unittest
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock, call, patch
 
@@ -90,8 +97,68 @@ class ToolIntentModels(unittest.TestCase):
         self.assertIn(B.TOOL_SOURCE, B.TOOL_MEMBERS)
         self.assertNotIn('node_modules', B.TOOL_MEMBERS)
 
+    def test_receiver_requires_bounded_seekable_and_exactly_sealed_transport(self):
+        flags = os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
+        seals = fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
+        with C.owned_fd(os.memfd_create('tool-model', flags)) as fd:
+            raw = B.canonical({'fictional': True})
+            os.write(fd, raw)
+            os.lseek(fd, 0, os.SEEK_SET)
+            fcntl.fcntl(fd, fcntl.F_ADD_SEALS, fcntl.F_SEAL_WRITE)
+            with self.assertRaises(ValueError):
+                B._tool_request(fd)
+            fcntl.fcntl(fd, fcntl.F_ADD_SEALS, seals)
+            self.assertEqual(B._tool_request(fd), {'fictional': True})
+            with self.assertRaises(ValueError):
+                B._tool_request(fd)
+        with tempfile.TemporaryFile() as regular:
+            regular.write(raw)
+            regular.seek(0)
+            with self.assertRaises((OSError, ValueError)):
+                B._tool_request(regular.fileno())
+        reader, writer = os.pipe()
+        with C.owned_fd(reader), C.owned_fd(writer), self.assertRaises(ValueError):
+            B._tool_request(reader)
+
+    def test_returned_pre_root_refusal_is_bounded_and_kill_or_partial_is_not_a_receipt(self):
+        stdout = SimpleNamespace(buffer=io.BytesIO())
+        path = str(pathlib.Path(__file__).with_name('native-controller-bootstrap.py'))
+        with patch.object(sys, 'argv', [path, '--tool-only']), patch.object(sys, 'stdout', stdout), \
+             patch.dict(os.environ, clear=True), self.assertRaises(SystemExit) as exited:
+            runpy.run_path(path, run_name='__main__')
+        self.assertEqual(exited.exception.code, 1)
+        raw = stdout.buffer.getvalue()
+        self.assertEqual(raw, B.canonical({'kind':'NATIVE_TOOL_ONLY_COMPONENT', 'complete':False,
+                                           'failure':'tool-pre-root-refused', 'cleanup':'not-observed',
+                                           'releaseAuthorized':False}))
+        B._validate_tool_capture(raw, '1')
+        for malformed, status in [(raw, '0'), (raw, '137'), (b'', '1'), (raw[:-1], '1'), (raw[:-4], '1')]:
+            with self.subTest(status=status), self.assertRaises(ValueError):
+                B._validate_tool_capture(malformed, status)
+
 
 class ToolTransportModels(unittest.TestCase):
+    def test_writer_capabilities_require_five_fresh_disjoint_write_only_inodes(self):
+        with tempfile.TemporaryDirectory() as parent, ExitStack() as held:
+            paths = [pathlib.Path(parent) / name for name in C.DOWNLOAD_SLOTS]
+            writers = [held.enter_context(C.owned_fd(os.open(path, C.WRITE, 0o600))) for path in paths]
+            reader = held.enter_context(C.owned_fd(os.open(paths[-1], C.READ)))
+            fstat = os.fstat
+
+            def root_metadata(fd):
+                info = fstat(fd)
+                return SimpleNamespace(st_uid=0, st_gid=0, **{field:getattr(info, field) for field in
+                                       ('st_dev','st_ino','st_mode','st_nlink','st_size','st_mtime_ns','st_ctime_ns')})
+
+            with patch.object(C.os, 'fstat', side_effect=root_metadata):
+                C.download_writers(writers)
+                for invalid in (writers[:-1], writers[:-1]+[writers[0]], writers[:-1]+[reader]):
+                    with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                        C.download_writers(invalid)
+                os.write(writers[0], b'partial')
+                with self.assertRaises(ValueError):
+                    C.download_writers(writers)
+
     def test_exact_generation_and_length_and_fixed_npm_http_framing(self):
         headers = [('Content-Length',str(C.BROWSER_BYTES)), ('x-goog-generation',C.GENERATION)]
         self.assertEqual(C._download_headers(response(200, headers), C.BROWSER_BYTES, True), C.BROWSER_BYTES)
@@ -115,38 +182,168 @@ class ToolTransportModels(unittest.TestCase):
         start = 1000
         course = C.Course('123', 1001, 1001, start)
         kernel = Mock()
-        kernel.supervise.return_value = owned_result()
         kernel.own_children.return_value = []
         course.kernel = kernel
-        argv = ['/usr/bin/python3', '-I', '-B', '/fixed-source']
-        with patch.object(C.time, 'monotonic', return_value=start + 140), patch.object(C, 'quiet_command_stdio', nullcontext):
-            course.command(argv, course.active, 150)
-        self.assertEqual(kernel.supervise.call_args.args[:2], (argv, 4))
+        argv = [C.MOUNT, '-i', '--make-rprivate', '/']
+        with patch.object(C.time, 'monotonic', return_value=start + 140), patch.object(C, 'quiet_command_stdio', nullcontext), \
+             patch.object(C, '_run_tool_command', return_value=owned_result()) as run:
+            course.command(argv, course.active, 10)
+        run.assert_called_once_with(kernel, argv, start + 144)
         self.assertTrue(course.processes_settled)
-        kernel.supervise.reset_mock()
+        course = C.Course('123', 1001, 1001, start)
+        course.kernel = kernel
         with patch.object(C.time, 'monotonic', return_value=start + 144), patch.object(C, 'quiet_command_stdio', nullcontext), \
+             patch.object(C, '_run_tool_command') as run, \
              self.assertRaisesRegex(ValueError, 'settlement reserve'):
-            course.command(argv, course.active, 150)
-        kernel.supervise.assert_not_called()
+            course.command(argv, course.active, 10)
+        run.assert_not_called()
 
     def test_unreaped_or_still_live_child_never_permits_owned_disposal(self):
         start = time.monotonic()
         for result, children in [(owned_result(reaped=False), []), (owned_result(), [700])]:
             course = C.Course('123', 1001, 1001, start)
             course.kernel = Mock()
-            course.kernel.supervise.return_value = result
             course.kernel.own_children.return_value = children
             with self.subTest(result=result, children=children), patch.object(C, 'quiet_command_stdio', nullcontext), \
+                 patch.object(C, '_run_tool_command', return_value=result), \
                  self.assertRaisesRegex(ValueError, 'owned command'):
-                course.command(['/fixed'], course.active, 10)
+                course.command([C.MOUNT, '-i', '--make-rprivate', '/'], course.active, 10)
             self.assertFalse(course.processes_settled)
             with self.assertRaisesRegex(ValueError, 'ownership uncertain'):
                 course.dispose_mounts()
             with self.assertRaisesRegex(ValueError, 'requires native mount'):
                 course.dispose_tree({})
 
+    def test_setup_consumes_absolute_stop_before_ack_and_settles_with_original_reserve(self):
+        now = 107
+        child = 4321
+        kernel = Mock()
+        kernel.own_children.side_effect = [[], [child], []]
+        kernel.live_group.return_value = []
+
+        def pidfd_open(pid):
+            nonlocal now
+            self.assertEqual(pid, child)
+            now = 110
+            return 20
+
+        with patch.object(C.time, 'monotonic', side_effect=lambda: now), \
+             patch.object(C.pathlib.Path, 'iterdir', return_value=iter([1])), \
+             patch.object(C.signal, 'getsignal', return_value=signal.SIG_DFL), patch.object(C.signal, 'signal'), \
+             patch.object(C.os, 'pipe', side_effect=[(10,11),(12,13)]), patch.object(C.os, 'close'), \
+             patch.object(C.os, 'fork', return_value=child), patch.object(C.os, 'pidfd_open', side_effect=pidfd_open), \
+             patch.object(C.os, 'waitid', return_value=SimpleNamespace(si_pid=child)) as observed, \
+             patch.object(C.os, 'waitpid', return_value=(child, 0)) as waited, \
+             patch.object(C.os, 'write') as ack, patch.object(C.signal, 'pidfd_send_signal') as terminate:
+            result = C._run_tool_command(kernel, [C.MOUNT,'-i','--make-rprivate','/'], 110)
+        ack.assert_not_called()
+        terminate.assert_called_once_with(20, signal.SIGKILL)
+        observed.assert_called_with(os.P_PID, child, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        waited.assert_called_once_with(child, os.WNOHANG)
+        self.assertEqual(result, owned_result(admitted=False, reason='handshake-refused', commandExit=None))
+
+    def test_ready_identity_readback_at_active_edge_never_acknowledges(self):
+        child, now = 4321, 109
+        row = {'pid':child, 'parent':os.getpid(), 'group':child, 'session':child, 'start':22, 'state':'S'}
+        packet = C.canonical({'kind':'ready', **{key:value for key, value in row.items() if key != 'state'}})
+        kernel = Mock()
+
+        def identity(_pid):
+            nonlocal now
+            now = 110
+            return row
+
+        kernel.identity.side_effect = identity
+        with patch.object(C.time, 'monotonic', side_effect=lambda: now), \
+             patch.object(C.select, 'select', return_value=([10], [], [])), patch.object(C.os, 'read', return_value=packet), \
+             patch.object(C.os, 'write') as ack, self.assertRaisesRegex(C.ToolRefusal, 'elapsed boundary'):
+            C._admit_tool_command(kernel, child, 10, 13, 110, lambda: False)
+        ack.assert_not_called()
+
+    def test_absolute_settlement_bound_refuses_late_signal_or_late_reap(self):
+        child = 4321
+        kernel = Mock()
+        kernel.own_children.return_value = [child]
+        kernel.live_group.return_value = []
+        with patch.object(C.time, 'monotonic', return_value=113), patch.object(C.signal, 'pidfd_send_signal') as stop, \
+             patch.object(C.os, 'waitpid') as waited, self.assertRaises(C.ToolRefusal):
+            C._stop_tool_command(kernel, child, 20, None, 113, 116)
+        stop.assert_not_called()
+        waited.assert_not_called()
+
+        now = 110
+
+        def scan(_pid):
+            nonlocal now
+            if kernel.live_group.call_count == 2:
+                now = 116
+            return []
+
+        kernel.live_group.side_effect = scan
+        with patch.object(C.time, 'monotonic', side_effect=lambda: now), patch.object(C.signal, 'pidfd_send_signal') as stop, \
+             patch.object(C.os, 'waitid', return_value=SimpleNamespace(si_pid=child)), patch.object(C.os, 'waitpid') as waited, \
+             self.assertRaises(C.ToolRefusal):
+            C._stop_tool_command(kernel, child, 20, None, 113, 116)
+        stop.assert_called_once_with(20, signal.SIGKILL)
+        waited.assert_not_called()
+
+    def test_duplicate_or_foreign_adoption_census_cannot_signal_or_reap_foreign_pid(self):
+        child, foreign = 4321, 5432
+        for owned in ([child, foreign, foreign], [child, foreign]):
+            kernel = Mock()
+            kernel.own_children.return_value = owned
+            kernel.live_group.return_value = []
+            kernel.identity.return_value = {'pid':foreign, 'parent':os.getpid()+1}
+            with self.subTest(owned=owned), patch.object(C.time, 'monotonic', return_value=110), \
+                 patch.object(C.os, 'waitid', return_value=SimpleNamespace(si_pid=child)), \
+                 patch.object(C.signal, 'pidfd_send_signal') as stop, patch.object(C.os, 'pidfd_open') as bind, \
+                 patch.object(C.os, 'waitpid') as waited, self.assertRaisesRegex(ValueError, 'adopted process'):
+                C._stop_tool_command(kernel, child, 20, None, 113, 116)
+            stop.assert_called_once_with(20, signal.SIGKILL)
+            bind.assert_not_called()
+            waited.assert_not_called()
+
 
 class ToolDisposalModels(unittest.TestCase):
+    def test_partial_precreated_slot_can_be_reclaimed_but_same_name_replacement_is_preserved(self):
+        def root_metadata(info):
+            fields = ('st_dev','st_ino','st_mode','st_nlink','st_size','st_mtime_ns','st_ctime_ns')
+            return SimpleNamespace(st_uid=0, st_gid=0, **{field:getattr(info, field) for field in fields})
+
+        for replace in (False, True):
+            course = C.Course('123', 1001, 1001, time.monotonic())
+            course.check_root = Mock()
+            course.state['mountsAbsent'] = True
+            with self.subTest(replace=replace), tempfile.TemporaryDirectory() as parent:
+                root = pathlib.Path(parent) / course.name
+                root.mkdir(mode=0o700)
+                incoming = root / 'incoming'
+                incoming.mkdir(mode=0o700)
+                archive = incoming / C.DOWNLOAD_SLOTS[0]
+                with C.owned_fd(os.open(parent, C.DIR)) as outer, C.owned_fd(os.open(root, C.DIR)) as held, \
+                     C.owned_fd(os.open(archive, C.WRITE, 0o600)) as writer:
+                    os.write(writer, b'partial')
+                    course.parent, course.root = outer, held
+                    course.device = root.stat().st_dev
+                    course.births = {'': C.birth(root.stat()), 'incoming': C.birth(incoming.stat())}
+                    course.download_births[archive.name] = C.birth(os.fstat(writer))
+                    if replace:
+                        archive.unlink()
+                        with C.owned_fd(os.open(archive, C.WRITE, 0o600)) as substitute:
+                            os.write(substitute, b'foreign')
+                    original_named, original_fstat = C.named, os.fstat
+                    with patch.object(C, 'named', side_effect=lambda *args: root_metadata(original_named(*args))), \
+                         patch.object(C.os, 'fstat', side_effect=lambda fd: root_metadata(original_fstat(fd))):
+                        if replace:
+                            with self.assertRaisesRegex(ValueError, 'unowned disposal entry'):
+                                course.dispose_tree({})
+                            self.assertEqual(archive.read_bytes(), b'foreign')
+                            self.assertNotIn('namespaceAbsent', course.state)
+                        else:
+                            course.dispose_tree({})
+                            self.assertFalse(root.exists())
+                            self.assertTrue(course.state['namespaceAbsent'])
+
     def test_foreign_or_replaced_mount_never_triggers_unmount(self):
         for mount in [(32, 'payload'), (31, 'payload/foreign')]:
             course = C.Course('123', 1001, 1001, time.monotonic())
@@ -186,17 +383,20 @@ class ToolDisposalModels(unittest.TestCase):
         course.create = acquired
         course.install_capsule = called.install
         course.enter_private_mount_namespace = called.namespace
-        course.acquire = Mock(side_effect=ValueError('fictional original failure'))
+        course.acquire = Mock(side_effect=C.ToolRefusal('fictional original failure','download-framing'))
         course.dispose_mounts = called.mounts
         course.dispose_tree = called.tree
         called.tree.side_effect = ValueError('fictional cleanup failure')
         self.assertEqual(course.execute(123, {}), ('fixed-archive-acquisition','refused'))
         self.assertEqual(called.mock_calls, [call.install({}),call.namespace(),call.mounts(),call.tree({})])
+        self.assertEqual(course.state['failureReason'], 'download-framing')
+        self.assertEqual(course.state['cleanupReason'], 'contract-refused')
+        self.assertNotIn('fictional', repr(course.state))
 
     def test_complete_requires_both_actual_absence_facts_and_live_absolute_boundary(self):
         start = time.monotonic()
         course = C.Course('123', 1001, 1001, start)
-        course.state.update(transfer={'generation':C.GENERATION, 'lengths':dict.fromkeys(C.ARCHIVES, 1)},
+        course.state.update(transfer={'generation':C.GENERATION, 'lengths':dict.fromkeys(C.ARCHIVES, 1), 'privateWriters':True},
                             materialized={'readOnly':True, 'noExec':True, 'entries':1}, mountsAbsent=True)
         self.assertFalse(C.course_complete(course, None, 'complete', start + 1))
         course.state['namespaceAbsent'] = True

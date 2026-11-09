@@ -1,8 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "kind": "PROTECTED_NATIVE_TOOL_ONLY_SOURCE_NOT_RUNTIME",
-  "sourceRef": "codex/native-workload-tool-only-20261109",
-  "parent": "3a86e8cf98e43b4c95b737ae151e460e2c21dfed",
+  "sourceRef": "codex/native-workload-tool-only-custody-repair-20261109",
+  "parent": "7c4eb7c24117e6f3047c8625ad9e5ab517447de7",
   "normalCompositionParents": [
     "1d925e3f0e7945ac5bac1be84857178eaa264a70",
     "5bfcf553173cb566a97b28a2ba017de81cb09226"
@@ -12,46 +12,79 @@
   "currentSourcePins": [
     {
       "path": ".github/workflows/alpha-staging.yml",
-      "bytes": 45029,
-      "sha256": "068bca41bfd08565dfa675700cb80146a78a27b3490864e16e7f8c9b317640c8"
+      "bytes": 45418,
+      "sha256": "66c4c93f403ac841e1286d69e7b0348595e52be3f6aa3f5b1866911c2ece53d0"
     },
     {
       "path": ".github/ci/native-controller-bootstrap.py",
-      "bytes": 31971,
-      "sha256": "54fcf3b1a813064a8e7e643c7d3397a2c0f7022c819d13ac5d559fc15c18010b"
+      "bytes": 33565,
+      "sha256": "3f28de1ef59ef279ba2fc88863c58f6e1274053a11dd2f967664b81e1b6e13f7"
     },
     {
       "path": ".github/ci/native-workload-browser-tool-course.py",
-      "bytes": 42086,
-      "sha256": "7845835f9b36c0720929b5034663b256b64e0d6dda69639510e10f39ccbdb8ef"
+      "bytes": 57914,
+      "sha256": "2d382bab833ed6f686f11272bc477e265109ae0aae4f2cc80d24551ea75cfc82"
     },
     {
       "path": ".github/ci/native-workload-browser-tool-course.test.py",
-      "bytes": 11799,
-      "sha256": "2f76f99620e6aa96e2d1c16e48ce33813d0fb66932e89b6a236ce4d4beacc096"
+      "bytes": 23162,
+      "sha256": "cefd1fd1c6feab6a1889388c9c4a6ae61f3b6e3774b4d54b36c79cfa7799e7fe"
+    },
+    {
+      "path": ".github/ci/singleton-commissioning.test.mjs",
+      "bytes": 18609,
+      "sha256": "e31ef25c0a1c1cca44b0d843630e1b789c7f0319fa0eabfbcf4d802d28e01abb"
     }
   ],
   "exactWholeExistingPreimages": [
     {
       "path": ".github/workflows/alpha-staging.yml",
-      "bytes": 41369,
-      "sha256": "950aea0b0ef72f611ab65ebff1007a53013111417883b2f3647187548d4e2c9e",
-      "commit": "3a86e8cf98e43b4c95b737ae151e460e2c21dfed",
-      "gitBlob": "cbc7848d383ff3cb0d2e3b94c0913b20f4292fbc"
+      "bytes": 45029,
+      "sha256": "068bca41bfd08565dfa675700cb80146a78a27b3490864e16e7f8c9b317640c8",
+      "commit": "7c4eb7c24117e6f3047c8625ad9e5ab517447de7",
+      "gitBlob": "f4bff6fb62c89c90696cc11c7cce8a774ffefafc"
     },
     {
       "path": ".github/ci/native-controller-bootstrap.py",
-      "bytes": 22423,
-      "sha256": "1892e07813e688275d4aed7f903f1b87dc37007e2878d21ed19c85cd0a01d2f3",
-      "commit": "3a86e8cf98e43b4c95b737ae151e460e2c21dfed",
-      "gitBlob": "0b934bce71b3f20bf573bc90500ac7faa19943d6"
+      "bytes": 31971,
+      "sha256": "54fcf3b1a813064a8e7e643c7d3397a2c0f7022c819d13ac5d559fc15c18010b",
+      "commit": "7c4eb7c24117e6f3047c8625ad9e5ab517447de7",
+      "gitBlob": "9d673728e8bc8a2e78f943eed2ac2bf9c9bf3050"
+    },
+    {
+      "path": ".github/ci/native-workload-browser-tool-course.py",
+      "bytes": 42086,
+      "sha256": "7845835f9b36c0720929b5034663b256b64e0d6dda69639510e10f39ccbdb8ef",
+      "commit": "7c4eb7c24117e6f3047c8625ad9e5ab517447de7",
+      "gitBlob": "1b5201218cb6b642a7394225bc223ad7aa957a3e"
+    },
+    {
+      "path": ".github/ci/native-workload-browser-tool-course.test.py",
+      "bytes": 11799,
+      "sha256": "2f76f99620e6aa96e2d1c16e48ce33813d0fb66932e89b6a236ce4d4beacc096",
+      "commit": "7c4eb7c24117e6f3047c8625ad9e5ab517447de7",
+      "gitBlob": "ee3c9bebb86c10f33d9c7e5f43399d4570ca8b36"
+    },
+    {
+      "path": ".github/ci/singleton-commissioning.test.mjs",
+      "bytes": 18523,
+      "sha256": "05839eb701adecaf83f0ee69b817d24d1b9081fc1d5e966c30643cc7f28c203a",
+      "commit": "7c4eb7c24117e6f3047c8625ad9e5ab517447de7",
+      "gitBlob": "6cf1122d0d40a8b2bef4e94470bfe29cc3be220f"
+    },
+    {
+      "path": "docs/qualification/native-workload-browser-tool-course-source-20261109.json",
+      "bytes": 5190,
+      "sha256": "ec2645372c88bd95aa440abf8d9f536b4ed16c985020c0985fa54a887767050d",
+      "commit": "7c4eb7c24117e6f3047c8625ad9e5ab517447de7",
+      "gitBlob": "9c49a7d775031941b40f246e7d072b3e3066a3d6"
     }
   ],
   "closedCapsuleInputs": [
     {
       "path": ".github/ci/native-workload-browser-tool-course.py",
-      "bytes": 42086,
-      "sha256": "7845835f9b36c0720929b5034663b256b64e0d6dda69639510e10f39ccbdb8ef"
+      "bytes": 57914,
+      "sha256": "2d382bab833ed6f686f11272bc477e265109ae0aae4f2cc80d24551ea75cfc82"
     },
     {
       "path": ".github/ci/native-workload-browser-tool-installation.py",
@@ -90,17 +123,25 @@
     }
   ],
   "authoredUnrunOwnerModels": [
+    "test_absolute_settlement_bound_refuses_late_signal_or_late_reap",
     "test_actual_owned_process_summary_and_absolute_reserve_gate_success",
     "test_complete_requires_both_actual_absence_facts_and_live_absolute_boundary",
+    "test_duplicate_or_foreign_adoption_census_cannot_signal_or_reap_foreign_pid",
     "test_exact_generation_and_length_and_fixed_npm_http_framing",
     "test_foreign_event_and_incompatible_modes_refuse_before_acquisition",
     "test_foreign_or_replaced_mount_never_triggers_unmount",
     "test_observed_owned_mount_and_real_absence_are_both_required",
     "test_only_exact_real_native_job_and_manual_self_source_enter",
+    "test_partial_precreated_slot_can_be_reclaimed_but_same_name_replacement_is_preserved",
     "test_primary_operation_failure_survives_later_owned_settlement_refusal",
+    "test_ready_identity_readback_at_active_edge_never_acknowledges",
+    "test_receiver_requires_bounded_seekable_and_exactly_sealed_transport",
     "test_redirect_partial_encoding_duplicate_and_wrong_generation_refuse",
+    "test_returned_pre_root_refusal_is_bounded_and_kill_or_partial_is_not_a_receipt",
+    "test_setup_consumes_absolute_stop_before_ack_and_settles_with_original_reserve",
     "test_tool_capsule_binds_fixed_package_metadata_and_actual_git_blob_shape",
-    "test_unreaped_or_still_live_child_never_permits_owned_disposal"
+    "test_unreaped_or_still_live_child_never_permits_owned_disposal",
+    "test_writer_capabilities_require_five_fresh_disjoint_write_only_inodes"
   ],
   "workflowSourceFacts": {
     "inputCount": 8,
@@ -141,5 +182,35 @@
   "modelsExecuted": false,
   "nativeInstallationObserved": false,
   "browserQualified": false,
-  "releaseAuthorized": false
+  "releaseAuthorized": false,
+  "directParentCorrection": {
+    "independentReviewSha256": [
+      "6f045239f7b573549e5ff543e4cba4aa094c9af6123b8529953726ca686aa15e",
+      "3abdc00c812fc6d3214e850203ed7e459cf8c753f15193f01563bddcb1227e74"
+    ],
+    "workflowChangedJobsFromDirectParent": [
+      "resolve",
+      "native-test"
+    ],
+    "controllerIntegrityModelChanges": [
+      "native hybrid commissioning consumes one canonical build while ordinary units remain independent"
+    ],
+    "writerSlots": 5,
+    "writerSlotAuthority": "root-owned-inode-held-write-only-fd",
+    "sameUidDescriptorProtection": "kernel-nondumpable-before-and-after-credential-drop",
+    "unknownProcessOrInodeBlocksCleanup": true,
+    "processClock": {
+      "handshakeSeconds": 3,
+      "groupSettlementSeconds": 3,
+      "totalSettlementSeconds": 6,
+      "activeSeconds": 150,
+      "totalSeconds": 180,
+      "absoluteBeforeNativeAdmission": true,
+      "historicalKernelBytesUnchanged": true
+    },
+    "onlyClosedReturnedCaptureUploaded": true,
+    "preRootRefusalCleanup": "not-observed",
+    "receiverChecksActualTransportSeals": true,
+    "nativeObservation": "UNRUN"
+  }
 }

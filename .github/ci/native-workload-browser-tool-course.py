@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import ctypes
+import fcntl
 import hashlib
 import http.client
 import json
 import os
 import pathlib
 import re
+import select
 import signal
 import ssl
 import stat
@@ -25,6 +27,7 @@ BROWSER_BYTES = 120231126
 NPM_MAX = 16 * 1024**2
 CHUNK = 256 * 1024
 ACTIVE_SECONDS, TOTAL_SECONDS, PROCESS_SETTLEMENT = 150, 180, 6
+HANDSHAKE_SECONDS, GROUP_SETTLEMENT = 3, 3
 DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 READ = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
 WRITE = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -40,7 +43,18 @@ DOWNLOADS = (
     ('postgres.tgz', 'registry.npmjs.org', '/postgres/-/postgres-3.4.9.tgz', NPM_MAX),
 )
 ARCHIVES = frozenset(row[0] for row in DOWNLOADS)
+DOWNLOAD_SLOTS = tuple(row[0] for row in DOWNLOADS) + ('download.json',)
 TOP_LEVEL = frozenset(('code', 'incoming', 'inputs', 'payload'))
+PROCESS_REASONS = frozenset(('complete', 'command-failed', 'deadline', 'handshake-refused', 'descendants-survived',
+                             'protocol-refused', 'owner-interrupted', 'group-uncertain', 'session-escaped'))
+DOWNLOAD_FAILURES = {2: 'download-identity', 3: 'download-writer', 4: 'download-tls-transport',
+                     5: 'download-framing', 6: 'download-deadline', 7: 'download-write'}
+
+
+class ToolRefusal(ValueError):
+    def __init__(self, message, reason):
+        super().__init__(message)
+        self.reason = reason
 
 
 def require(ok, reason):
@@ -54,7 +68,8 @@ def canonical(value):
 
 def left(deadline):
     seconds = deadline - time.monotonic()
-    require(seconds > 0, 'TOOL elapsed boundary')
+    if not seconds > 0:
+        raise ToolRefusal('TOOL elapsed boundary', 'deadline')
     return seconds
 
 
@@ -162,6 +177,26 @@ def bounded_proc(path, maximum):
     return raw
 
 
+@contextmanager
+def fixed_refusal(reason, errors=(ValueError, OSError)):
+    try:
+        yield
+    except (ToolRefusal, InterruptedError):
+        raise
+    except errors as error:
+        raise ToolRefusal('Fixed TOOL operation refused', reason) from error
+
+
+def refusal_reason(error):
+    if isinstance(error, ToolRefusal):
+        return error.reason
+    if isinstance(error, InterruptedError):
+        return 'owner-interrupted'
+    if isinstance(error, OSError):
+        return 'host-io'
+    return 'contract-refused'
+
+
 def source_module(name, path, raw):
     module = ModuleType(name)
     module.__file__ = str(path)
@@ -197,10 +232,14 @@ def _drop_downloader(uid, gid):
     require(os.geteuid() == 0 and type(uid) is int and type(gid) is int and uid > 0 and gid > 0,
             'TOOL downloader original identity differs')
     libc = ctypes.CDLL(None, use_errno=True)
+    # Linux resets dumpability to this sysctl during credential transitions.
+    # Refuse before any transition that could expose a same-UID /proc/fd view.
+    require(bounded_proc('/proc/sys/fs/suid_dumpable', 16).strip() == b'0'
+            and libc.prctl(4, 0, 0, 0, 0) == 0, 'TOOL downloader descriptor privacy unavailable')
     os.setgroups([])
     os.setresgid(gid, gid, gid)
     os.setresuid(uid, uid, uid)
-    require(libc.prctl(38, 1, 0, 0, 0) == 0 and os.getresuid() == (uid,)*3
+    require(libc.prctl(3, 0, 0, 0, 0) == 0 and libc.prctl(38, 1, 0, 0, 0) == 0 and os.getresuid() == (uid,)*3
             and os.getresgid() == (gid,)*3 and not os.getgroups(), 'TOOL downloader UID/GID or no-new-privs differs')
     status = bounded_proc('/proc/self/status', 65536)
     for key in (b'CapInh', b'CapPrm', b'CapEff', b'CapAmb'):
@@ -210,28 +249,46 @@ def _drop_downloader(uid, gid):
             'TOOL downloader no-new-privs differs')
 
 
-def download(uid, gid, deadline):
+def download_slot(info):
+    require(stat.S_ISREG(info.st_mode) and stat.S_IMODE(info.st_mode) == 0o600
+            and info.st_uid == info.st_gid == 0 and info.st_nlink == 1, 'TOOL download slot custody differs')
+    return birth(info)
+
+
+def download_writers(writers):
+    require(len(writers) == len(DOWNLOAD_SLOTS) and len(set(writers)) == len(writers)
+            and all(3 <= fd < 1048576 for fd in writers), 'Fixed TOOL downloader writers required')
+    births = set()
+    for fd in writers:
+        info = os.fstat(fd)
+        key = download_slot(info)
+        require(key not in births and info.st_size == 0 and os.lseek(fd, 0, os.SEEK_CUR) == 0
+                and fcntl.fcntl(fd, fcntl.F_GETFL) & (os.O_ACCMODE | os.O_APPEND) == os.O_WRONLY,
+                'TOOL downloader writer is not a fresh private capability')
+        births.add(key)
+
+
+def download(uid, gid, deadline, writers):
     here = pathlib.Path(__file__).absolute()
     root = here.parents[3]
     require(root.parent == ROOT_PARENT and re.fullmatch(ROOT_PREFIX + r'[1-9][0-9]{0,15}', root.name)
             and here == root / 'code' / SOURCE, 'Fixed TOOL downloader source required')
-    _drop_downloader(uid, gid)
+    with fixed_refusal('download-identity'):
+        _drop_downloader(uid, gid)
+    with fixed_refusal('download-writer'):
+        download_writers(writers)
     left(deadline)
     lengths = {}
-    tls = ssl.create_default_context(cafile='/etc/ssl/certs/ca-certificates.crt')
-    incoming = root / 'incoming'
-    before = incoming.lstat()
-    with owned_fd(os.open(incoming, DIR)) as folder:
-        require_dir(before, uid, gid, 0o700, root.lstat().st_dev)
-        require(identity(os.fstat(folder)) == identity(before), 'TOOL downloader directory changed')
-        for name, host, target, maximum in DOWNLOADS:
+    with fixed_refusal('download-tls-transport', (OSError, http.client.HTTPException)):
+        tls = ssl.create_default_context(cafile='/etc/ssl/certs/ca-certificates.crt')
+        for (name, host, target, maximum), fd in zip(DOWNLOADS, writers[:-1], strict=True):
             connection = http.client.HTTPSConnection(host, timeout=min(10, left(deadline)), context=tls)
             try:
                 connection.request('GET', target, headers={'Accept-Encoding': 'identity', 'Connection': 'close'})
                 with connection.getresponse() as response:
-                    expected = _download_headers(response, maximum, name == 'chromium.zip')
-                    total = 0
-                    with owned_fd(os.open(name, WRITE, 0o600, dir_fd=folder)) as fd:
+                    with fixed_refusal('download-framing', (ValueError,)):
+                        expected = _download_headers(response, maximum, name == 'chromium.zip')
+                        total = 0
                         while True:
                             left(deadline)
                             block = response.read(min(CHUNK, maximum + 1 - total))
@@ -239,14 +296,209 @@ def download(uid, gid, deadline):
                                 break
                             total += len(block)
                             require(total <= maximum, 'TOOL transfer exceeds byte bound')
-                            write_all(fd, block, deadline)
+                            with fixed_refusal('download-write'):
+                                write_all(fd, block, deadline)
                         require(total > 0 and (expected is None or total == expected), 'TOOL HTTP body length differs')
                         lengths[name] = total
             finally:
                 connection.close()
-        with owned_fd(os.open('download.json', WRITE, 0o600, dir_fd=folder)) as fd:
-            write_all(fd, canonical({'lengths': lengths, 'generation': GENERATION}), deadline)
+    with fixed_refusal('download-write'):
+        write_all(writers[-1], canonical({'lengths': lengths, 'generation': GENERATION, 'privateWriters': True}), deadline)
     left(deadline)
+
+
+def _admit_tool_command(kernel, child, ready, ack, stop, interrupted):
+    buffer = b''
+    while True:
+        if interrupted():
+            raise ToolRefusal('TOOL process owner interrupted', 'owner-interrupted')
+        readable, _, _ = select.select([ready], [], [], min(.05, left(stop)))
+        if not readable:
+            continue
+        raw = os.read(ready, 513 - len(buffer))
+        require(raw, 'TOOL session anchor exited before readiness')
+        buffer += raw
+        require(len(buffer) <= 512, 'TOOL session packet exceeds bound')
+        if b'\n' in buffer:
+            break
+    actual = kernel.identity(child)
+    require(buffer.endswith(b'\n') and buffer.count(b'\n') == 1
+            and json.loads(buffer) == {'kind': 'ready', **{key: value for key, value in actual.items() if key != 'state'}}
+            and (actual['pid'], actual['parent'], actual['group'], actual['session']) == (child, os.getpid(), child, child)
+            and actual['state'] not in ('Z', 'X'), 'TOOL session anchor differs')
+    if interrupted():
+        raise ToolRefusal('TOOL process owner interrupted', 'owner-interrupted')
+    left(stop)
+    require(os.write(ack, b'A') == 1, 'TOOL session acknowledgement refused')
+    return actual
+
+
+def _wait_tool_exit(pid):
+    observed = os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    require(observed is None or observed.si_pid == pid, 'TOOL wait returned a different process')
+    return observed is not None
+
+
+def _stop_tool_command(kernel, child, descriptor, admitted, group_stop, final_stop):
+    if admitted is not None:
+        current = kernel.identity(child)
+        require((current['pid'], current['parent'], current['group'], current['session'], current['start'])
+                == (child, os.getpid(), child, child, admitted['start']), 'TOOL session ownership changed before stop')
+    left(group_stop)
+    try:
+        if admitted is None:
+            signal.pidfd_send_signal(descriptor, signal.SIGKILL)
+        else:
+            os.killpg(child, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    while True:
+        left(group_stop)
+        if not kernel.live_group(child) and _wait_tool_exit(child):
+            left(group_stop)
+            break
+        time.sleep(min(.01, left(group_stop)))
+    escaped = False
+    while True:
+        left(final_stop)
+        owned = kernel.own_children()
+        require(len(set(owned)) == len(owned) and child in owned, 'TOOL adopted process census differs')
+        if owned == [child]:
+            break
+        for pid in owned:
+            if pid == child:
+                continue
+            before = kernel.identity(pid)
+            require((before['pid'], before['parent']) == (pid, os.getpid()), 'TOOL adopted process is foreign')
+            with owned_fd(os.pidfd_open(pid)) as bound:
+                after = kernel.identity(pid)
+                require((after['pid'], after['parent'], after['start']) == (pid, os.getpid(), before['start']),
+                        'TOOL adopted process identity changed')
+                escaped = escaped or (after['group'], after['session']) != (child, child)
+                left(final_stop)
+                try:
+                    signal.pidfd_send_signal(bound, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                if _wait_tool_exit(pid):
+                    left(final_stop)
+                    require(os.waitpid(pid, os.WNOHANG)[0] == pid, 'TOOL adopted process reap refused')
+        time.sleep(min(.01, left(final_stop)))
+    require(not kernel.live_group(child) and _wait_tool_exit(child), 'TOOL session still live before reap')
+    left(final_stop)
+    waited, status = os.waitpid(child, os.WNOHANG)
+    require(waited == child, 'TOOL reserved session reap differs')
+    return os.waitstatus_to_exitcode(status), escaped
+
+
+def _run_tool_command(kernel, argv, stop):
+    # Fixed root owner, with the same held identity and process-group primitives
+    # as the historical kernel. Unlike its relative clock this stop is armed
+    # before setup, and neither settlement phase can restart its allowance.
+    ready_stop = min(stop, time.monotonic() + HANDSHAKE_SECONDS)
+    require(kernel.own_children() == [] and signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
+            and len(list(pathlib.Path('/proc/self/task').iterdir())) == 1, 'TOOL process owner is not exclusive')
+    previous = kernel.subreaper(True)
+    fds, child, admitted = set(), None, None
+    result = {'reason': 'handshake-refused', 'commandExit': None, 'admitted': False,
+              'reaped': False, 'groupQuiescent': False, 'escapedSession': False}
+
+    def close(fd):
+        fds.remove(fd)
+        os.close(fd)
+
+    interrupted = False
+
+    def interrupt(_signum, _frame):
+        nonlocal interrupted
+        interrupted = True
+
+    try:
+        with ExitStack() as handlers:
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                handlers.callback(signal.signal, sig, signal.signal(sig, interrupt))
+            ready, publish = os.pipe()
+            fds.update((ready, publish))
+            grant, ack = os.pipe()
+            fds.update((grant, ack))
+            child_env = os.environ.copy()
+            if interrupted:
+                raise ToolRefusal('TOOL process owner was interrupted before fork', 'owner-interrupted')
+            left(ready_stop)
+            child = os.fork()
+            if child == 0:
+                try:
+                    os.close(ready); os.close(ack)
+                    os.setsid()
+                    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+                    signal.signal(signal.SIGINT, signal.SIG_DFL)
+                    kernel.write_packet(publish, {'kind': 'ready', **{key: value for key, value in kernel.identity(os.getpid()).items() if key != 'state'}})
+                    os.close(publish)
+                    require(os.read(grant, 1) == b'A', 'TOOL session was not granted')
+                    os.close(grant)
+                    left(stop)
+                    os.execve(argv[0], argv, child_env)
+                except BaseException:
+                    os._exit(125)
+            close(publish); close(grant)
+            try:
+                descriptor = os.pidfd_open(child)
+            except OSError:
+                close(ack)  # EOF only; no guessed PID signal.
+                result['reason'] = 'protocol-refused'
+                return result
+            fds.add(descriptor)
+            try:
+                admitted = _admit_tool_command(kernel, child, ready, ack, ready_stop, lambda: interrupted)
+                result['admitted'] = True
+                while not interrupted and not _wait_tool_exit(child):
+                    time.sleep(min(.01, left(stop)))
+                left(stop)
+                result['reason'] = 'owner-interrupted' if interrupted else 'complete'
+                if not interrupted:
+                    followers_until = min(stop, time.monotonic() + 1)
+                    while followers := kernel.live_group(child):
+                        remaining = followers_until - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        time.sleep(min(.01, remaining))
+                    left(stop)
+                    if followers:
+                        result['reason'] = 'descendants-survived'
+            except ToolRefusal as error:
+                result['reason'] = ('handshake-refused' if admitted is None and error.reason == 'deadline'
+                                    else error.reason)
+            except BaseException:
+                result['reason'] = 'protocol-refused'
+            finally:
+                settle = min(stop if admitted is not None else ready_stop, time.monotonic())
+                try:
+                    code, escaped = _stop_tool_command(kernel, child, descriptor, admitted,
+                                                       settle + GROUP_SETTLEMENT, settle + PROCESS_SETTLEMENT)
+                    result['reaped'], result['escapedSession'] = True, escaped
+                    if admitted is not None:
+                        result['commandExit'] = code
+                    require(kernel.own_children() == [], 'TOOL final owned census differs')
+                    left(settle + PROCESS_SETTLEMENT)
+                    result['groupQuiescent'] = True
+                    if result['reason'] == 'complete' and (escaped or code != 0):
+                        result['reason'] = 'session-escaped' if escaped else 'command-failed'
+                    if interrupted and result['reason'] == 'complete':
+                        result['reason'] = 'owner-interrupted'
+                except BaseException:
+                    pass
+    finally:
+        close_failed = False
+        for fd in fds:
+            try:
+                os.close(fd)
+            except OSError:
+                close_failed = True
+        if child is None or result['groupQuiescent']:
+            kernel.subreaper(previous)
+        if close_failed and sys.exception() is None:
+            raise ToolRefusal('TOOL process descriptor close refused', 'host-io')
+    return result
 
 
 class Course:
@@ -259,6 +511,7 @@ class Course:
         self.creation_attempted = self.created = False
         self.device = None
         self.births = {}
+        self.download_births = {}
         self.processes_settled = True
         self.mount_uncertain = False
         self.owned_mount = None
@@ -360,16 +613,48 @@ class Course:
         self.installer = source_module('aihr_tool_course_materializer', code / materializer, members[materializer])
 
     def command(self, argv, deadline, maximum):
+        payload = str(self.path / 'payload')
+        mount_commands = ([MOUNT, '-i', '--make-rprivate', '/'], [MOUNT, '-i', '--bind', payload, payload],
+                          [MOUNT, '-i', '-o', 'remount,bind,ro,nosuid,nodev,noexec', payload],
+                          [UMOUNT, '-i', '--', payload])
+        downloader = ['/usr/bin/python3', '-I', '-B', str(self.path / 'code' / SOURCE), '--download',
+                      str(self.uid), str(self.gid), repr(self.active)]
+        if argv in mount_commands:
+            require(maximum == 10 and deadline == (self.deadline if argv == mount_commands[-1] else self.active),
+                    'TOOL mount command bound differs')
+            operation = ('namespace-private', 'payload-bind', 'payload-remount', 'payload-unmount')[mount_commands.index(argv)]
+        else:
+            require(argv[:len(downloader)] == downloader and maximum == ACTIVE_SECONDS and deadline == self.active
+                    and len(argv) == len(downloader) + len(DOWNLOAD_SLOTS)
+                    and all(re.fullmatch(r'[1-9][0-9]{0,6}', part) for part in argv[len(downloader):]),
+                    'Fixed TOOL process command required')
+            operation = 'archive-downloader'
+        require(operation not in self.state.get('processOutcomes', {}), 'TOOL process operation repeated')
         with quiet_command_stdio():
-            budget = min(maximum, left(deadline) - PROCESS_SETTLEMENT)
-            require(budget > 0, 'TOOL process settlement reserve unavailable')
+            now = time.monotonic()
+            stop = min(now + maximum, deadline - PROCESS_SETTLEMENT)
+            require(stop > now, 'TOOL process settlement reserve unavailable')
+            if operation == 'archive-downloader':
+                argv = argv[:7] + [repr(stop)] + argv[8:]
             self.processes_settled = False
-            result = self.kernel.supervise(argv, budget, lambda _event: None)
+            result = _run_tool_command(self.kernel, argv, stop)
         self.processes_settled = (result['reaped'] is True and result['groupQuiescent'] is True
                                   and self.kernel.own_children() == [])
-        require(self.processes_settled and result['admitted'] is True and result['reason'] == 'complete'
-                and result['commandExit'] == 0 and result['escapedSession'] is False,
-                'TOOL owned command or settlement refused')
+        reason, code = result['reason'], result['commandExit']
+        require(reason in PROCESS_REASONS and (code is None or type(code) is int and -64 <= code <= 255),
+                'TOOL process result differs')
+        outcomes = self.state.setdefault('processOutcomes', {})
+        outcomes[operation] = {'reason': reason, 'exit': code, 'admitted': result['admitted'] is True,
+                               'reaped': result['reaped'] is True, 'quiescent': self.processes_settled,
+                               'escapedSession': result['escapedSession'] is True}
+        if not self.processes_settled:
+            outcomes[operation]['settlementReason'] = 'group-uncertain'
+        if not (self.processes_settled and result['admitted'] is True and reason == 'complete'
+                and code == 0 and result['escapedSession'] is False):
+            if reason == 'command-failed' and operation == 'archive-downloader':
+                reason = DOWNLOAD_FAILURES.get(code, reason)
+            raise ToolRefusal('TOOL owned command or settlement refused',
+                              reason if reason != 'complete' else 'group-uncertain')
         left(deadline)
 
     def observe_mounts(self, deadline, *, private=False):
@@ -402,40 +687,39 @@ class Course:
     def acquire(self):
         self.add_directory('incoming')
         self.add_directory('inputs')
-        with owned_fd(self.child_directory('incoming')) as folder:
-            left(self.active)
-            os.fchown(folder, self.uid, self.gid)
-            require_dir(os.fstat(folder), self.uid, self.gid, 0o700, self.device)
-        left(self.active)
-        os.fchmod(self.root, 0o711)
-        self.check_root(0o711)
-        try:
+        self.check_root(0o700)
+        with owned_fd(self.child_directory('incoming')) as folder, ExitStack() as held:
+            writers = []
+            for name in DOWNLOAD_SLOTS:
+                left(self.active)
+                fd = held.enter_context(owned_fd(os.open(name, WRITE, 0o600, dir_fd=folder)))
+                info = os.fstat(fd)
+                self.download_births[name] = download_slot(info)
+                require(identity(info) == identity(named(folder, name)), 'TOOL created download slot changed')
+                writers.append(fd)
+            download_writers(writers)
+            for fd in writers:
+                os.set_inheritable(fd, True)
             self.command(['/usr/bin/python3', '-I', '-B', str(self.path / 'code' / SOURCE), '--download',
-                          str(self.uid), str(self.gid), repr(self.active)], self.active, ACTIVE_SECONDS)
-        finally:
-            active_error = sys.exception()
-            try:
-                # The named path becomes private even if a process kept an FD.
-                # An unknown process state still refuses disposal.
-                self.check_root(0o711)
-                left(self.deadline)
-                os.fchmod(self.root, 0o700)
-                self.check_root(0o700)
-            except BaseException:
-                if active_error is None:
-                    raise
-                active_error.add_note('TOOL original root privacy restoration refused')
-        with owned_fd(self.child_directory('incoming', self.uid, self.gid)) as source, \
+                          str(self.uid), str(self.gid), repr(self.active), *map(str, writers)],
+                         self.active, ACTIVE_SECONDS)
+            for name, fd in zip(DOWNLOAD_SLOTS, writers, strict=True):
+                require(download_slot(os.fstat(fd)) == self.download_births[name]
+                        and identity(os.fstat(fd)) == identity(named(folder, name)), 'TOOL held download slot changed')
+        self.check_root(0o700)
+        with owned_fd(self.child_directory('incoming')) as source, \
              owned_fd(self.child_directory('inputs')) as destination:
             names = set()
             with os.scandir(source) as entries:
                 for entry in entries:
-                    require(entry.name in ARCHIVES | {'download.json'} and entry.name not in names,
+                    require(entry.name in self.download_births and entry.name not in names
+                            and download_slot(named(source, entry.name)) == self.download_births[entry.name],
                             'TOOL download inventory differs')
                     names.add(entry.name)
-            require(names == ARCHIVES | {'download.json'}, 'TOOL download inventory incomplete')
-            fact = json.loads(read_file(source, 'download.json', self.uid, self.gid, 4096, self.active))
-            require(type(fact) is dict and set(fact) == {'generation', 'lengths'} and fact['generation'] == GENERATION
+            require(names == set(DOWNLOAD_SLOTS), 'TOOL download inventory incomplete')
+            fact = json.loads(read_file(source, 'download.json', 0, 0, 4096, self.active))
+            require(type(fact) is dict and set(fact) == {'generation', 'lengths', 'privateWriters'}
+                    and fact['generation'] == GENERATION and fact['privateWriters'] is True
                     and type(fact['lengths']) is dict and fact['lengths'].keys() == ARCHIVES, 'TOOL transfer facts differ')
             for name, _, _, maximum in DOWNLOADS:
                 self.copy_archive(source, destination, name, maximum, fact['lengths'][name])
@@ -444,7 +728,8 @@ class Course:
     def copy_archive(self, source, destination, name, maximum, size):
         left(self.active)
         info = named(source, name)
-        require_file(info, self.uid, self.gid, 0o600, maximum)
+        require_file(info, 0, 0, 0o600, maximum)
+        require(birth(info) == self.download_births[name], 'TOOL source slot differs')
         require(type(size) is int and size == info.st_size and (name != 'chromium.zip' or size == BROWSER_BYTES),
                 'TOOL transfer size differs from owned file')
         with owned_fd(os.open(name, READ, dir_fd=source)) as incoming, \
@@ -476,7 +761,17 @@ class Course:
                 stream = files.enter_context(os.fdopen(os.open(name, READ, dir_fd=source), 'rb'))
                 require(identity(os.fstat(stream.fileno())) == identity(info), 'TOOL protected input inode differs')
                 archives.append((name, stream, info))
-            staged = self.installer.materialize_toolchain(destination, *(row[1] for row in archives), self.active)
+            try:
+                staged = self.installer.materialize_toolchain(destination, *(row[1] for row in archives), self.active)
+            except self.installer._PARSER.ArchiveRefused as error:
+                if error.args == ('archive inspection deadline exhausted',):
+                    reason = 'deadline'
+                elif error.args in (('pinned browser archive SHA-256 differs',), ('locked package SHA-512 differs',),
+                                    ('parsed package SHA-512 differs',), ('pinned browser tree differs',)):
+                    reason = 'strict-archive-pin'
+                else:
+                    reason = 'strict-archive-or-tree'
+                raise ToolRefusal('Strict TOOL materialization refused', reason) from error
             for name, stream, info in archives:
                 require(identity(info) == identity(os.fstat(stream.fileno())) == identity(named(source, name)),
                         'TOOL protected input changed')
@@ -656,24 +951,28 @@ class Course:
             self.stage = 'readonly-installation-readback'
             self.seal_payload(staged)
             left(self.active)
-        except BaseException:
+        except BaseException as error:
             primary = self.stage
+            self.state['failureReason'] = refusal_reason(error)
         finally:
             if self.creation_attempted:
                 cleanup = 'refused'
+                if not self.created:
+                    self.state['cleanupReason'] = 'namespace-creation-unproved'
             if self.created:
                 cleanup = 'refused'
                 try:
                     self.dispose_mounts()
                     self.dispose_tree(members)
                     cleanup = 'complete'
-                except BaseException:
-                    pass
+                except BaseException as error:
+                    self.state['cleanupReason'] = refusal_reason(error)
             if self.root is not None:
                 try:
                     os.close(self.root)
                 except OSError:
                     cleanup = 'refused'
+                    self.state.setdefault('cleanupReason', 'host-io')
         return primary, cleanup
 
     def dispose_tree(self, members):
@@ -704,15 +1003,13 @@ class Course:
                     allowed = (
                         not relative and name in self.births and name in TOP_LEVEL
                         or top == 'code' and path[5:] in fixed_code_paths
-                        or relative == 'incoming' and name in ARCHIVES | {'download.json'}
+                        or relative == 'incoming' and name in self.download_births
+                        and download_slot(info) == self.download_births[name]
                         or relative == 'inputs' and name in ARCHIVES
                         or top == 'payload' and relative
                     )
-                    owners = {(self.uid, self.gid)} if top == 'incoming' else {(0, 0)}
-                    if path == 'incoming':
-                        owners.add((0, 0))
                     directory, regular = stat.S_ISDIR(info.st_mode), stat.S_ISREG(info.st_mode) and info.st_nlink == 1
-                    require(allowed and info.st_dev == self.device and (info.st_uid, info.st_gid) in owners
+                    require(allowed and info.st_dev == self.device and info.st_uid == info.st_gid == 0
                             and (directory or regular)
                             and (relative not in ('incoming', 'inputs') or regular)
                             and (top != 'code' or not relative or directory == (path[5:] not in members)),
@@ -765,6 +1062,7 @@ def course_complete(course, primary, cleanup, ended):
             and course.processes_settled is True
             and course.state.get('mountsAbsent') is True and course.state.get('namespaceAbsent') is True
             and transfer.get('generation') == GENERATION and transfer.get('lengths', {}).keys() == ARCHIVES
+            and transfer.get('privateWriters') is True
             and installed.get('readOnly') is True and installed.get('noExec') is True
             and installed.get('entries', 0) > 0)
 
@@ -796,14 +1094,16 @@ def run_course(run, source, uid, gid, members, rows, event_sha):
                 require(identity(os.fstat(child)) == identity(before), 'TOOL parent ancestry changed')
                 parent = child
             primary, cleanup = course.execute(parent, members)
-    except BaseException:
+    except BaseException as error:
         if course.creation_attempted:
             cleanup = 'refused'
         if primary is None:
             primary = 'owner-finalization'
+        course.state.setdefault('failureReason', refusal_reason(error))
     ended = time.monotonic()
     if ended >= course.deadline:
         cleanup = 'refused'
+        course.state.setdefault('cleanupReason', 'deadline')
     complete = course_complete(course, primary, cleanup, ended)
     report = {'kind': 'NATIVE_TOOL_ONLY_COMPONENT', 'complete': complete, 'cleanup': cleanup,
               'source': source, 'controller': source, 'runId': run, 'attempt': 1, 'job': 'native-test',
@@ -819,12 +1119,16 @@ def run_course(run, source, uid, gid, members, rows, event_sha):
 
 if __name__ == '__main__':
     try:
-        require(len(sys.argv) == 5 and sys.argv[1] == '--download'
+        require(len(sys.argv) == 5 + len(DOWNLOAD_SLOTS) and sys.argv[1] == '--download'
                 and all(re.fullmatch(r'[1-9][0-9]{0,9}', part) for part in sys.argv[2:4]),
                 'Fixed TOOL downloader request required')
+        require(all(re.fullmatch(r'[1-9][0-9]{0,6}', part) for part in sys.argv[5:]), 'Fixed TOOL writer list required')
         deadline = float(sys.argv[4])
         require(0 < left(deadline) <= ACTIVE_SECONDS, 'Fixed TOOL downloader deadline differs')
-        download(int(sys.argv[2]), int(sys.argv[3]), deadline)
-    except BaseException:
+        download(int(sys.argv[2]), int(sys.argv[3]), deadline, tuple(map(int, sys.argv[5:])))
+    except BaseException as error:
         sys.stderr.write('Fixed TOOL downloader refused\n')
-        sys.exit(1)
+        reason = refusal_reason(error)
+        if reason == 'deadline':
+            reason = 'download-deadline'
+        sys.exit(next((code for code, value in DOWNLOAD_FAILURES.items() if value == reason), 1))

@@ -359,7 +359,7 @@ def prepare():
 
 # Separate disposable TOOL course. This capsule has no normal bootstrap or
 # installed-controller authority and does not persist the checkout or Node.
-TOOL_BRANCH = 'codex/native-workload-tool-only-20261109'
+TOOL_BRANCH = 'codex/native-workload-tool-only-custody-repair-20261109'
 TOOL_SOURCE = '.github/ci/native-workload-browser-tool-course.py'
 TOOL_PACKAGE_PINS = {
     'package.json': '7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c',
@@ -441,6 +441,41 @@ def _tool_handoff(receiver, request):
     os.execve(command[0], command, SAFE)
 
 
+def _tool_request(fd):
+    import fcntl
+
+    seals = fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
+    before = os.fstat(fd)
+    need(stat.S_ISREG(before.st_mode) and 0 < before.st_size <= TOOL_REQUEST_MAX
+         and fcntl.fcntl(fd, fcntl.F_GET_SEALS) == seals and os.lseek(fd, 0, os.SEEK_CUR) == 0,
+         'Seekable sealed TOOL bootstrap request required')
+    with os.fdopen(os.dup(fd), 'rb') as stream:
+        raw = stream.read(TOOL_REQUEST_MAX + 1)
+    need(len(raw) == before.st_size and identity(os.fstat(fd)) == identity(before),
+         'Sealed TOOL bootstrap extent differs')
+    return json.loads(raw)
+
+
+def _tool_refusal(reason):
+    return {'kind': 'NATIVE_TOOL_ONLY_COMPONENT', 'complete': False, 'failure': reason,
+            'cleanup': 'not-observed', 'releaseAuthorized': False}
+
+
+def _write_tool_receipt(report):
+    encoded = canonical(report)
+    need(len(encoded) <= 65536, 'TOOL receipt exceeds bound')
+    sys.stdout.buffer.write(encoded)
+
+
+def _validate_tool_capture(raw, status):
+    need(status in ('0', '1') and 0 < len(raw) <= 65536, 'Returned TOOL capture required')
+    report = json.loads(raw)
+    need(type(report) is dict and canonical(report) == raw
+         and report.get('kind') == 'NATIVE_TOOL_ONLY_COMPONENT'
+         and report.get('complete') is (status == '0') and report.get('releaseAuthorized') is False,
+         'Returned TOOL capture differs')
+
+
 def prepare_tool():
     uid, gid = os.geteuid(), os.getegid()
     need(sys.platform == 'linux' and uid == os.getuid() and gid == os.getgid() and uid > 0 and gid > 0,
@@ -520,19 +555,22 @@ if __name__ == '__main__':
             need(0 < len(raw) <= MAX_REQUEST, 'Bounded bootstrap request required')
             print(json.dumps(seal(json.loads(raw))))
         elif sys.argv[1:] == ['--tool-only']:
-            prepare_tool()
+            try:
+                prepare_tool()
+            except Exception:
+                _write_tool_receipt(_tool_refusal('tool-pre-root-refused'))
+                sys.exit(1)
+        elif len(sys.argv) == 3 and sys.argv[1] == '--check-tool-capture':
+            with directory(pathlib.Path(os.environ['RUNNER_TEMP']) / 'aihr-native-tool-only') as folder:
+                raw, info = read(folder, 'native-workload-tool-only.json', 65536)
+            need(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o600, 'TOOL capture owner differs')
+            _validate_tool_capture(raw, sys.argv[2])
         elif sys.argv[1:] == ['--seal-tool-only']:
             try:
-                raw = sys.stdin.buffer.read(TOOL_REQUEST_MAX + 1)
-                need(0 < len(raw) <= TOOL_REQUEST_MAX, 'Bounded TOOL bootstrap request required')
-                report = seal_tool(json.loads(raw))
+                report = seal_tool(_tool_request(0))
             except BaseException:
-                report = {'kind': 'NATIVE_TOOL_ONLY_COMPONENT', 'complete': False,
-                          'failure': 'tool-bootstrap-refused', 'cleanup': 'not-observed',
-                          'releaseAuthorized': False}
-            encoded = canonical(report)
-            need(len(encoded) <= 65536, 'TOOL receipt exceeds bound')
-            sys.stdout.buffer.write(encoded)
+                report = _tool_refusal('tool-bootstrap-refused')
+            _write_tool_receipt(report)
             sys.exit(0 if report['complete'] else 1)
         else:
             need(sys.argv[1:] == [], 'No caller-selected bootstrap operation')
