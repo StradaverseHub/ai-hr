@@ -5,3 +5,7 @@ The staging candidate integrates the five approved feedback items on baseline `7
 The changed inputs cover Attendance formula configuration, company-scoped evaluation and Payroll posting, shared schema and country-pack types, Malaysia bank file selection, Rewards access and plan creation, and localized labels. The new closure member is the deterministic Rewards Analytics model. The Attendance drafting boundary still sends author-entered requirements and public grammar through its existing draft contract. The provider gateway, disclosure policy and transport have identical source. The bank account data and Rewards analytics exports are served through their scoped application routes.
 
 The requested renewal applies to the same 29 existing approved contracts. Keep both pending contracts, `structured_canonical_records_v1` and `attendance_trend_analysis_v1`, pending. Preserve contract IDs, statuses and original review metadata. The approval registry retains the old digest pending the owner’s exact-source review.
+
+## Owner approval
+
+On 9 November 2026 the repository owner answered **“Approve exact provider digest”** for review commit `35538d51550dacfb363bc6ee11de6cd17fb60d9b` and the digest above. Reversing the 29 digest substitutions reproduces the baseline registry byte for byte, including both pending contracts and the existing review metadata.
