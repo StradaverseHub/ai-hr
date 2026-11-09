@@ -135,7 +135,7 @@ test('a clean Git CRLF checkout cannot change a source member or generated preim
    commitAiManifestFixture(directory);
    // Materialize the member afresh so Git applies the new checkout attribute.
    unlinkSync(member);
-   fixtureGit(directory,'checkout-index','--force','--',path);
+   fixtureGit(directory,'checkout-index','--force','--index','--',path);
    assert.equal(fixtureGit(directory,'status','--porcelain'),'');
    assert.equal(fixtureGit(directory,'show','HEAD:'+path)+'\n',lf);
    assert.equal(readFileSync(member,'utf8'),lf.replaceAll('\n','\r\n'));
