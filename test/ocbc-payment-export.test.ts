@@ -2,7 +2,7 @@ import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {hireEmployee,setEmploymentPaymentMethod} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {closeBatch,createAdditionalRun,createBatch,generatePayslips,setPayrollInput} from '../packs/payroll/service';
@@ -56,7 +56,10 @@ describe('OCBC immutable generated bank artifacts',()=>{
   expect(await owner.db.select().from(bankPaymentExport)).toHaveLength(0);
  });
  it('withholds the statutory month while a sibling run is incomplete or open', async () => {
-  const {ctx,request,batchId,employee}=await fixture();
+  const {request,batchId,employee}=await fixture();
+  await setModule(b.tenantId,'payroll','active');
+  await setModule(b.tenantId,'multi_cycle_payroll','active');
+  const ctx={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin',companyId:null}]};
   const {batchId:bonusId}=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'});
   await closeBatch(ctx,{batchId});
   const [regular]=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));
