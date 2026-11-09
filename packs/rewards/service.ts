@@ -470,6 +470,9 @@ async function listRewardUnitsTx(tx:Tx,companyIds:string[]){
       verified: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id} and e.facts->>'reviewed'='true') end`,
       // 56595838: the shared configuration version the review started from, and whether its own settings changed since.
       policyOrigin: sql<{ versionId: string; revision: number; name: string; changed: boolean } | null>`app.reward_policy_unit_origin(${rewardUnit.id})`,
+      // An older review may reference the same settings without having been created from the approved plan.
+      creationPlanVersionId: sql<string | null>`(select setup.plan_version_id from reward_unit_setup setup
+        where setup.unit_id=${rewardUnit.id} and setup.tenant_id=${rewardUnit.tenantId})`,
       // 62e743ed: cancelRewardReview's guard, projected for the row actions (the service still decides).
       canCancel: sql<boolean>`${rewardUnit.status} not in ('posted','withdrawn','rejected') and (app.reward_admin(${rewardUnit.companyId}) or 'gr' in (select app.reward_roles(${rewardUnit.id})))` })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
