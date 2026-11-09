@@ -3,7 +3,7 @@
 import pathlib
 import stat
 import unittest
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
@@ -256,6 +256,45 @@ class LaunchViewModels(unittest.TestCase):
                     self.fail('foreign plan was yielded')
             self.assertEqual(model.opened, [])
             self.assertEqual(model.closed, [])
+
+    def test_empty_parent_checks_exact_held_birth_both_mounts_and_both_censuses(self):
+        for variant, reason in ((0o700, None), (0o711, None), (0o755, 'directory'),
+                                ('foreign-parent', 'backing-identity'), ('stale-held-mount', 'stage-mount'),
+                                ('manager-submount', 'foreign-mount'), ('manager-child', 'empty-parent'),
+                                ('late-local-child', 'empty-parent')):
+            model = NativeViewModel()
+            mode = variant if type(variant) is int else 0o700
+            model.info.update({fd: directory(5, mode, 7) for fd in (9, 24, 27, 42, 43)})
+            model.files.update({(24, '.'): 42, (27, '.'): 43, (14, '42'): 142, (14, '43'): 143})
+            model.fd_mounts.update({42: 42, 43: 92})
+            if variant == 'foreign-parent':
+                model.info[27] = directory(6, mode, 7)
+            if variant == 'stale-held-mount':
+                model.fd_mounts[9] = 92
+            model.foreign = variant == 'manager-submount'
+            scans = []
+
+            @contextmanager
+            def scan(fd):
+                scans.append(fd)
+                occupied = variant == 'manager-child' and fd == 43 or variant == 'late-local-child' and len(scans) == 3
+                yield iter(('foreign',) if occupied else ())
+
+            def check_view():
+                with V.held_empty_launch_parent(H, M, run_id='427', run_fd=9, deadline=110) as facts:
+                    self.assertIn(variant, (0o700, 0o711, 'late-local-child'))
+                    self.assertEqual(facts, ('/run/' + RUN, (7, 5), 42, 92))
+                    self.assertEqual(scans, [42, 43])
+
+            with self.subTest(variant=variant), model.mocks(), patch.object(V.os, 'scandir', side_effect=scan):
+                if reason is None:
+                    check_view()
+                    self.assertEqual(scans, [42, 43, 42, 43])
+                else:
+                    with self.assertRaisesRegex(ValueError, '^launch-view-' + reason + '$'):
+                        check_view()
+            model.assert_closed(self)
+            self.assertFalse(any(fd in (25, 28) for fd, _ in model.opened))
 
 
 if __name__ == '__main__':

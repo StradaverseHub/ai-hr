@@ -150,7 +150,6 @@ def _capacity(fd, planned_bytes, planned_entries):
              'launch-view-capacity')
 
 
-@contextmanager
 def held_launch_source(host, mounts, *, run_id, stage_fd, planned_bytes, planned_entries, deadline):
     """Compare a caller-held stage to fresh current and PID1 path views.
 
@@ -160,9 +159,20 @@ def held_launch_source(host, mounts, *, run_id, stage_fd, planned_bytes, planned
     admission before any future destructive operation.
     Mount IDs are compared only inside the namespace which supplied them.
     """
+    return _held_launch_view(host, mounts, run_id, stage_fd, planned_bytes, planned_entries, deadline,
+                             empty_parent=False)
+
+
+def held_empty_launch_parent(host, mounts, *, run_id, run_fd, deadline):
+    """Read-only proof for a run whose launch-source creation never began."""
+    return _held_launch_view(host, mounts, run_id, run_fd, 0, 0, deadline, empty_parent=True)
+
+
+@contextmanager
+def _held_launch_view(host, mounts, run_id, leaf_fd, planned_bytes, planned_entries, deadline, *, empty_parent):
     _require(type(run_id) is str and re.fullmatch(r'[1-9][0-9]{0,15}', run_id)
              and int(run_id) <= 9007199254740991, 'launch-view-run')
-    _require(type(stage_fd) is int and stage_fd > 2 and not os.get_inheritable(stage_fd), 'launch-view-stage-fd')
+    _require(type(leaf_fd) is int and leaf_fd > 2 and not os.get_inheritable(leaf_fd), 'launch-view-stage-fd')
     _require(type(planned_bytes) is int and type(planned_entries) is int
              and 0 <= planned_bytes <= _MAX_BYTES and 0 <= planned_entries <= _MAX_ENTRIES
              and (planned_bytes == 0 or planned_entries > 0), 'launch-view-copy-bound')
@@ -207,9 +217,16 @@ def held_launch_source(host, mounts, *, run_id, stage_fd, planned_bytes, planned
                 fd = held.enter_context(_own(os.open(name, os.O_RDONLY | os.O_CLOEXEC, dir_fd=ns)))
                 namespaces.append((ns, name, fd, _birth(os.fstat(fd))))
         _require(namespaces[0][3] == namespaces[2][3], 'launch-view-pid-namespace')
-        stage = (('run', None), (run_name, 0o711), ('launch-source', 0o700))
-        local = _walk_directories(held, local_root, stage, deadline)
-        manager = _walk_directories(held, manager_root, stage, deadline)
+        if empty_parent:
+            _check_clock(deadline)
+            leaf_mode = stat.S_IMODE(os.fstat(leaf_fd).st_mode)
+            _require(leaf_mode in (0o700, 0o711), 'launch-view-directory')
+            components = (('run', None), (run_name, leaf_mode))
+        else:
+            leaf_mode = 0o700
+            components = (('run', None), (run_name, 0o711), ('launch-source', leaf_mode))
+        local = _walk_directories(held, local_root, components, deadline)
+        manager = _walk_directories(held, manager_root, components, deadline)
         _require(tuple(row[3] for row in local) == tuple(row[3] for row in manager), 'launch-view-backing-identity')
 
         def current():
@@ -236,22 +253,30 @@ def held_launch_source(host, mounts, *, run_id, stage_fd, planned_bytes, planned
                      == _root_directory(os.stat('root', dir_fd=manager_proc)), 'launch-view-root-identity')
             for ns, name, fd, wanted in namespaces:
                 _require(_birth(os.fstat(fd)) == wanted == _birth(os.stat(name, dir_fd=ns)), 'launch-view-namespace')
-            _require(not os.get_inheritable(stage_fd) and _root_directory(os.fstat(stage_fd), 0o700) == local[-1][3],
+            _require(not os.get_inheritable(leaf_fd) and _root_directory(os.fstat(leaf_fd), leaf_mode) == local[-1][3],
                      'launch-view-stage-fd')
 
         def observe(bytes_needed, entries_needed):
             current()
             ids = (_observe_mount(mounts, self_proc, fdinfo, local, owned_root, deadline),
                    _observe_mount(mounts, manager_proc, fdinfo, manager, owned_root, deadline))
-            _require(_mount_id(fdinfo, stage_fd, deadline) == ids[0], 'launch-view-stage-mount')
-            for chain in (local, manager):
-                _capacity(chain[-1][2], bytes_needed, entries_needed)
+            _require(_mount_id(fdinfo, leaf_fd, deadline) == ids[0], 'launch-view-stage-mount')
+            for chain, mount_id in zip((local, manager), ids, strict=True):
+                if empty_parent:
+                    _check_clock(deadline)
+                    with _own(os.open('.', _DIRECTORY, dir_fd=chain[-1][2])) as scan:
+                        _require(_root_directory(os.fstat(scan), leaf_mode) == chain[-1][3]
+                                 and _mount_id(fdinfo, scan, deadline) == mount_id, 'launch-view-empty-parent')
+                        with os.scandir(scan) as entries:
+                            _require(next(entries, None) is None, 'launch-view-empty-parent')
+                else:
+                    _capacity(chain[-1][2], bytes_needed, entries_needed)
                 _check_chain(chain)
             current()
             _check_clock(deadline)
             return ids
 
         ids = observe(planned_bytes, planned_entries)
-        yield LaunchSourceView(owned_root + '/launch-source', local[-1][3][:2], *ids)
+        yield LaunchSourceView(owned_root if empty_parent else owned_root + '/launch-source', local[-1][3][:2], *ids)
         _require(observe(0, 0) == ids, 'launch-view-mount-changed')
     _check_clock(deadline)
