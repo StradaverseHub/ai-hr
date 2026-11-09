@@ -24,6 +24,7 @@ export const ICONS = {
   search: { ios: 'magnifyingglass', android: 'search' },
   phone: { ios: 'phone', android: 'call' },
   mail: { ios: 'envelope', android: 'mail' },
+  check: { ios: 'checkmark', android: 'check' },
   clock: { ios: 'clock', android: 'schedule' },
   sparkle: { ios: 'sparkles', android: 'auto_awesome' },
   away: { ios: 'airplane', android: 'flight' },

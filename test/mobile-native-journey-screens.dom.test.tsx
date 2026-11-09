@@ -29,7 +29,7 @@ function fixture(platform:'ios'|'android'='ios'){
   // The embedded native control is represented by a local wall-value input; opening it never launches an OS dialog.
   const androidOpen=vi.fn();
   const picker={default:(p:any)=><input aria-label={p.testID} data-presentation={p.presentation} value={p.mode==='date'?`${p.value.getFullYear()}-${String(p.value.getMonth()+1).padStart(2,'0')}-${String(p.value.getDate()).padStart(2,'0')}`:`${String(p.value.getHours()).padStart(2,'0')}:${String(p.value.getMinutes()).padStart(2,'0')}`} onChange={e=>{const v=e.target.value;const d=p.mode==='date'?new Date(Number(v.slice(0,4)),Number(v.slice(5,7))-1,Number(v.slice(8,10))):new Date(2000,0,1,Number(v.slice(0,2)),Number(v.slice(3,5)));p.onChange({type:'set'},d);}}/>,DateTimePickerAndroid:{open:androidOpen}};
-  const native={Alert:{alert},View,Text,Pressable,useWindowDimensions:()=>({width:320,height:568,scale:2.75,fontScale:1.3}),TextInput:(p:any)=><input aria-label={p.accessibilityLabel} disabled={!p.editable} value={p.value} onChange={e=>p.onChangeText(e.target.value)}/>,Image:()=>null,AppState:{currentState:'active'},Platform:{OS:platform}};
+  const native={StyleSheet:{create:(styles:unknown)=>styles,hairlineWidth:1},Alert:{alert},View,Text,Pressable,useWindowDimensions:()=>({width:320,height:568,scale:2.75,fontScale:1.3}),TextInput:(p:any)=><input aria-label={p.accessibilityLabel} disabled={!p.editable} value={p.value} onChange={e=>p.onChangeText(e.target.value)}/>,Image:()=>null,AppState:{currentState:'active'},Platform:{OS:platform}};
   const base={'react-native':native,'./session':{useSession:()=>session},'./config':{identityNamespace:()=> 'fixture-workplace'},
     './auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./motion': mobileMotionPorts, '../../lib/motion': mobileMotionPorts, './visual': mobileVisualPorts, './design':{DesignText:Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark')})},'./errors':errors,'./i18n':{appLocale:()=>'en',t:(s:string,v?:any)=>s==='awayToday'?`${s} ${v.n}/${v.total}`:s},'expo-crypto':{randomUUID:()=>`${String(++sequence).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`},'expo-router':{useRouter: () => ({push:vi.fn(),navigate:vi.fn()}), useFocusEffect:()=>{},router:{push:vi.fn(),navigate:vi.fn()}}};
   const provider=load('mobile/lib/journey-drafts.tsx',{...base,'expo-file-system':{File:class{exists=false},Directory:class{exists=false},Paths:{cache:'cache'}}});
@@ -55,20 +55,42 @@ function fixture(platform:'ios'|'android'='ios'){
   const engine={armOffline:vi.fn(),syncOffline:vi.fn(),beforeOnlinePunch:vi.fn(),afterOnlinePunch:vi.fn(),captureOfflinePunch:vi.fn(),offlineClaims:vi.fn(),removeUndeliverable:vi.fn(),subscribeOfflineForeground:vi.fn(),keepOfflineSynced:vi.fn()};
   const anchorRead=vi.fn(async()=>null);
   const offlineUi=load('mobile/lib/offline-clock.tsx',{...base,'./config':{offlineClockingBuild:false,config:{apiUrl:'https://hr.example.com'},identityNamespace:()=>'company'},'./offline-sync':engine,'./offline-anchor':{readOfflineAnchor:anchorRead},'./signed-clock':{openOwnedSignedClock:openSigned},'expo-symbols':{SymbolView:()=>null},'./ui':{...ui,colors:{warn:'#9A5B00',danger:'#B42318'}}});
-  const shared={...base,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'../../lib/mobile-api/v2/clock-review':v2clock,'./enrollment-journal':enrollment,'./signed-clock-journal':{SignedClockUnavailable},'./signed-clock':{openOwnedSignedClock:openSigned},'./submission-recovery':{useSubmissionRecovery:(_kind:string,_id:string,onRestore:(value:unknown)=>void)=>{
+  const clockDesign=load('mobile/lib/clock-tab-design.tsx',{...base,'./icon':{Icon:()=>null}});
+  const shared={...base,'./clock-tab-design':clockDesign,'./submission-journal':journal,'../../lib/mobile-api/contract':contract,'../../lib/mobile-api/v2/clock-review':v2clock,'./enrollment-journal':enrollment,'./signed-clock-journal':{SignedClockUnavailable},'./signed-clock':{openOwnedSignedClock:openSigned},'./submission-recovery':{useSubmissionRecovery:(_kind:string,_id:string,onRestore:(value:unknown)=>void)=>{
     React.useEffect(()=>{if(restoredClock){const value=restoredClock;if(value.entry.integrity)retained.add(value.entry.requestId);onRestore(value);}},[]);
     return {ready:true,error:null,reload:()=>{},stage,resolve,prepareClock,reportAttempt,hasSignedAttempt};
   }},'./journey-drafts':{...provider,removeLocalFile:remove},'./ui':ui,'./api':{apiGet:get,apiPostFormV2:(path:string,_schema:unknown,...args:unknown[])=>post(path,...args),apiPost:(path:string,...args:unknown[])=>path==='clock-location'?preview(...args):post(path,...args),useApi:(path:string)=>({data:path==='clock-attempts'?attemptsState:path==='team'?teamState:clockState,reload:path==='clock-attempts'?reloadAttempts:reload,loading:false,error:null}),useApiV2:(path:string)=>({data:path==='v2/team/availability'?teamState:null,reload,loading:false,error:null})},'../../lib/mobile-api/v2/team':v2team,'./capture':{capturePosition:capture,capturePhoto:photo,appendAttachment:()=>{}},'./device-registration':{readClockDevice:async()=>null,writeClockDevice:async()=>{},clearClockDevice:async()=>{}},'./shift-reminder-signal':{requestShiftReminderRefresh:()=>{}},'./slide-confirm':{SlideConfirm:(p:any)=><button disabled={p.disabled} onClick={p.onConfirm}>{p.label}</button>},'./offline-clock':offlineUi,'./home-cards':{cardFigure:(c:any)=>c.takenOnly?c.taken:c.isCurrentCycle?c.canApplyFor:c.balance},'expo-document-picker':{getDocumentAsync:async()=>({canceled:true})},'expo-file-system':{},'@expo/ui/community/datetime-picker':picker};
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
-  function App({kind,refreshToken=0,visible=true,notices,cards,opts=options,widgetAction,widgetIntent,widgetEmployment}:{kind:'clock'|'leave'|'team'|'homeClock';refreshToken?:number;visible?:boolean;widgetAction?:'in'|'out';widgetIntent?:string;widgetEmployment?:string;notices?:Record<string,{label:string;detail:string|null}>;cards?:any[];opts?:any}){return <provider.JourneyDraftProvider><Probe/>{!visible?null:kind==='homeClock'?<ClockPanel variant="home" refreshToken={refreshToken} renderHome={(v:any)=><div><button disabled={v.disabled||v.busy} onClick={v.clock}>{'home:'+v.action}</button>{v.busy&&<span>homeBusy</span>}{v.doneAt&&<span>{'homeDone:'+v.doneAt}</span>}{v.finishOnClockTab&&<span>finishOnClockTab</span>}</div>}/>:kind==='clock'?<ClockPanel refreshToken={refreshToken} initialAction={widgetAction} widgetIntent={widgetIntent} widgetEmployment={widgetEmployment}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={opts} today="2026-01-01" onSubmitted={reload} notices={notices} cards={cards}/>}</provider.JourneyDraftProvider>;}
+  function App({kind,refreshToken=0,visible=true,notices,cards,opts=options,widgetAction,widgetIntent,widgetEmployment}:{kind:'clock'|'clockTab'|'leave'|'team'|'homeClock';refreshToken?:number;visible?:boolean;widgetAction?:'in'|'out';widgetIntent?:string;widgetEmployment?:string;notices?:Record<string,{label:string;detail:string|null}>;cards?:any[];opts?:any}){return <provider.JourneyDraftProvider><Probe/>{!visible?null:kind==='homeClock'?<ClockPanel variant="home" refreshToken={refreshToken} renderHome={(v:any)=><div><button disabled={v.disabled||v.busy} onClick={v.clock}>{'home:'+v.action}</button>{v.busy&&<span>homeBusy</span>}{v.doneAt&&<span>{'homeDone:'+v.doneAt}</span>}{v.finishOnClockTab&&<span>finishOnClockTab</span>}</div>}/>:(kind==='clock'||kind==='clockTab')?<ClockPanel variant={kind==='clockTab'?'tab':'full'} refreshToken={refreshToken} initialAction={widgetAction} widgetIntent={widgetIntent} widgetEmployment={widgetEmployment}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={opts} today="2026-01-01" onSubmitted={reload} notices={notices} cards={cards}/>}</provider.JourneyDraftProvider>;}
   return {App,androidOpen,engine,anchorRead,session,post,signed,openSigned,alert,hasSignedAttempt,setSignedState:(value:SignedClockStatus)=>{signedState=value;},restoreClock:(value:unknown)=>{restoredClock=value;},preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
 }
 afterEach(cleanup);
 /** Start a request and choose its type in the leave-type list (nothing is pre-selected). */
 function startRequest(name='Annual leave'){fireEvent.click(screen.getByText('requestLeave'));fireEvent.click(screen.getByRole('button',{name:'leaveType, chooseLeaveType'}));fireEvent.click(screen.getByRole('radio',{name:new RegExp('^'+name)}));}
 describe('native clock job',()=>{
+  it.each([false,true])('uses the redesigned tab action once per punch with advisory support %s',async reviewExceptions=>{
+    const f=fixture();
+    Object.assign(f.clockState.state,{reviewExceptions,shift:{code:'W',start:'09:00',end:'18:00'}});
+    f.post.mockResolvedValueOnce({outcome:'accepted',receipt:{direction:'in',recordedAt:'2026-01-01T01:00:00Z'}});
+    f.post.mockResolvedValueOnce({outcome:'accepted',receipt:{direction:'out',recordedAt:'2026-01-01T01:01:00Z'}});
+    render(<f.App kind="clockTab"/>);
+    expect(screen.getByText('clockShiftTitle')).toBeTruthy();
+    expect(screen.getByText('09:00')).toBeTruthy();
+    expect(screen.getByText('18:00')).toBeTruthy();
+    expect(screen.queryByText('clockHistory')).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'clockIn'}));
+    await screen.findByText('clockStatusIn');
+    expect(screen.queryByText('slideRecord')).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'clockOut'}));
+    await screen.findByText('clockStatusOut');
+    expect(f.post.mock.calls.map(([path,form])=>[path,JSON.parse(form.get('command')).action])).toEqual([
+      [reviewExceptions?'v2/clock':'clock','in'],[reviewExceptions?'v2/clock':'clock','out'],
+    ]);
+    fireEvent.click(screen.getByRole('button',{name:'clockShowDetails'}));
+    expect(screen.getByText('clockHistory')).toBeTruthy();
+  });
   it('records an advisory clock-in with one tap and shows the clock-out action after a receipt',async()=>{
     const f=fixture();
     f.clockState.state.reviewExceptions=true;

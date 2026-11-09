@@ -29,6 +29,7 @@ const DetailContext = createContext(false);
 export function Screen({
   children,
   atmospheric = false,
+  surfaceColor,
   refreshing = false,
   onRefresh,
   back = false,
@@ -37,6 +38,7 @@ export function Screen({
 }: {
   children: ReactNode;
   atmospheric?: boolean;
+  surfaceColor?: string;
   refreshing?: boolean;
   onRefresh?: () => void;
   /** A detail screen: the compact header back arrow (HeaderBack) instead of a full-width "Back" button. */
@@ -49,7 +51,7 @@ export function Screen({
   const { status } = useSession();
   if (status !== 'signedIn') return <Redirect href="/sign-in" />;
   return (
-    <DetailContext.Provider value={back}><SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={[]}>
+    <DetailContext.Provider value={back}><SafeAreaView style={[styles.safe, { backgroundColor: surfaceColor ?? palette.bg }]} edges={[]}>
       <Atmosphere strong={atmospheric} />
       {back && <View style={{ paddingHorizontal: 16, backgroundColor: palette.bg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border }}><HeaderBack /></View>}
       <ScrollView

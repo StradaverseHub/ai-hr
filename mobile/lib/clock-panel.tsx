@@ -24,7 +24,8 @@ import { useSubmissionRecovery } from './submission-recovery';
 import { ClockCommand,ClockPreparation,ClockResult } from '../../lib/mobile-api/contract';
 import { ClockReviewCommand } from '../../lib/mobile-api/v2/clock-review';
 import {SubmissionJournalFull,PendingSubmissionConflict} from './submission-journal';
-import { Button,Card,InfoNote,LoadState,Muted,Row } from './ui';
+import { Button,Card,InfoNote,LoadState,Muted,Row,Screen,Title } from './ui';
+import { ClockShiftTicket, ClockTabAction, ClockTabDetails, useClockTabTheme } from './clock-tab-design';
 import {useOfflineClock,offlineClocking,offlineBlockedMessage,OfflineClockBanner,SavedOfflinePunches} from './offline-clock';
 const refusals={corrected_day:'correctedDay',clock_conflict:'clockConflict',location_required:'locationPermission',outside_geofence:'outsideGeofence',photo_required:'photoRequired',photo_invalid:'photoTooLarge',device_required:'registerDevice',mock_location:'mockLocation',integrity_required:'clockIntegrityRequired'} as const;
 const locationRefusals={location_required:'locationPermission',invalid_location:'locationInvalid',poor_accuracy:'locationPoorAccuracy',no_assigned_site:'locationNoSite',outside_site:'locationOutsideSite',stale_fix:'locationExpired',future_fix:'locationFuture'} as const;
@@ -40,12 +41,14 @@ export type HomeClockView={
  * tap. Advisory-capable workplaces submit directly after that tap. Older servers and signed
  * deployments can still require an evidence or registration step.
  */
-export function ClockPanel({refreshToken=0,variant='full',renderHome,afterControls,initialAction,widgetIntent,widgetEmployment}:{initialAction?:'in'|'out';widgetIntent?:string;widgetEmployment?:string;refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode;afterControls?:ReactNode}={}){
+export function ClockPanel({refreshToken=0,variant='full',renderHome,afterControls,initialAction,widgetIntent,widgetEmployment}:{initialAction?:'in'|'out';widgetIntent?:string;widgetEmployment?:string;refreshToken?:number;variant?:'full'|'home'|'tab';renderHome?:(view:HomeClockView)=>ReactNode;afterControls?:ReactNode}={}){
   const router = useRouter();
+  const clockTab=variant==='tab';
+  const theme=useClockTabTheme();
   const {employmentId,status:sessionStatus,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
   const [detailsOpen,setDetailsOpen]=useState(false);
-  const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut,{enabled:variant!=='home'&&(clock.data?.state?.reviewExceptions!==true||detailsOpen)});
+  const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut,{enabled:variant!=='home'&&(detailsOpen||!clockTab&&clock.data?.state?.reviewExceptions!==true)});
   const visited=useRef(false),detailsVisible=useRef(detailsOpen);
   detailsVisible.current=detailsOpen;
   useFocusEffect(useCallback(()=>{if(visited.current){clock.reload();if(detailsVisible.current)attempts.reload();}visited.current=true;},[clock.reload,attempts.reload]));
@@ -80,7 +83,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   // Pending journals stay with their original employment. Never display or submit another subject's draft.
   const draft=retainedDraft?.employmentId&&identity&&retainedDraft.employmentId!==identity?null:retainedDraft;
   const simplified=current?.reviewExceptions===true;
-  const receiptIsNewer=draft?.phase==='done'&&draft.clockProtocol==='review'&&!!draft.receiptTime&&
+  const receiptIsNewer=draft?.phase==='done'&&(clockTab||draft.clockProtocol==='review')&&!!draft.receiptTime&&
     (!current||Date.parse(draft.receiptTime)>Date.parse(current.serverNow));
   const defaultAction=receiptIsNewer?(draft.action==='in'?'out':'in'):((offline.clockedIn??current?.clockedIn)?'out':'in');
   const action=(draft&&draft.phase!=='done'?draft.action:undefined)??defaultAction;
@@ -235,7 +238,11 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
       }
       if(current.attendancePhotoSetting==='required'&&!photo){photo=await capturePhoto(operation(owner).assertCurrent)??undefined;assertAuthGeneration(owner);if(!photo)throw new Error(t('photoRequired'));}
       const deviceToken=(await readClockDevice(identity))??undefined;assertAuthGeneration(owner);
-      if(!putClock({...next,phase:'review',geo,locationAssessment,photo,deviceToken}))removeLocalFile(photo);
+      const prepared={...next,geo,locationAssessment,photo,deviceToken};
+      if(clockTab&&(!current.deviceRequired||deviceToken)){
+        operation(owner).assertCurrent();
+        await sendClock(prepared,owner);
+      }else if(!putClock({...prepared,phase:'review'}))removeLocalFile(photo);
     }catch(e){removeLocalFile(photo);putClock({...next,phase:'idle',message:e instanceof PendingSubmissionConflict?t('attemptReplacementBlocked'):e instanceof EnrollmentConflict||e instanceof SignedClockUnavailable||e instanceof UnavailableError?errorMessage(e):!next.requestId?t('attemptSaveFailed'):errorMessage(e),...(e instanceof LocationCaptureError?{locationIssue:e.issue}:{})});if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}
   }
@@ -433,8 +440,9 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending';
   const waitingForOtherClock=signedStatus?.status==='other_pending'&&!offline.otherExchange||
     signedStatus?.status==='offline_pending'&&!offlineClocking;
-  const directDisabled=pending||!recovery.ready||clock.loading||offline.mode==='sending'||waitingForOtherClock;
-  const directButton=!home&&simplified&&(!draft||['idle','preparing','submitting','done'].includes(draft.phase));
+  const directDisabled=!identity||pending||!recovery.ready||clock.loading||offline.mode==='sending'||waitingForOtherClock;
+  const showDetails=detailsOpen||!clockTab&&!simplified;
+  const directButton=!home&&(simplified||clockTab)&&(!draft||['idle','preparing','submitting','done'].includes(draft.phase));
   const homeContent=home?renderHome?.({current:current??null,loading:clock.loading,error:clock.error,reload:clock.reload,action,
     busy:pending,disabled:homeDisabled,doneAt:draft?.phase==='done'?draft.receiptTime??null:null,
     message:draft?.reviewReasons?.length?t('clockNeedsReview'):draft?.message??null,finishOnClockTab:false,clock:()=>void prepare(),phase:draft?.phase??null}):null;
@@ -442,8 +450,10 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   // The same evidence and recovery controls also work for existing server deployments.
   const showHomeJourney=!compactAttempt&&(!!draft&&(draft.phase!=='done'&&(draft.phase!=='idle'||!!draft.message))||registrationNeeded||!!recovery.error||offline.mode==='offline'||signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending');
   if(home&&clock.data&&!clock.data.enabled)return null;
-  if(clock.data&&!clock.data.enabled)return <Muted>{t('attendanceOff')}</Muted>;
-  return <View style={{gap:16}}>
+  const actionFooter=clockTab&&directButton&&(current||coldStart)&&clock.data?.enabled!==false
+    ? <ClockTabAction theme={theme} label={pending?t('preparingClock'):label} busy={pending} disabled={directDisabled} onPress={()=>void prepare()}/>
+    : undefined;
+  const body=clock.data&&!clock.data.enabled?<Muted>{t('attendanceOff')}</Muted>:<View style={{gap:16}}>
     {homeContent}
     {compactAttempt&&<View style={{gap:4,borderBottomWidth:1,borderColor:palette.border,paddingBottom:8}}>
       <Text accessibilityRole="alert" style={{color:palette.text,fontSize:14}}>{draft?.message&&draft.message!==t('attemptSavedNotSent')?draft.message:t('attemptNotRecorded')}</Text>
@@ -457,7 +467,10 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     {signedStatus?.status==='offline_pending'&&!offlineClocking&&<Muted>{t('signedClockOfflinePending')}</Muted>}
     {signedStatus?.status==='other_pending'&&!offline.otherExchange&&<Muted>{t('signedClockOtherPending')}</Muted>}
     {(current||coldStart)&&<>
-      {!home&&current&&simplified&&<View style={{alignItems:'center',gap:12,paddingVertical:12}}>
+      {clockTab&&current&&<ClockShiftTicket theme={theme} current={current}
+        action={action} receipt={receiptIsNewer&&draft.receiptTime?{action:draft.action,time:draft.receiptTime,review:!!draft.reviewReasons?.length}:undefined}
+        busy={pending} uncertain={draft?.phase==='uncertain'} />}
+      {!clockTab&&!home&&current&&simplified&&<View style={{alignItems:'center',gap:12,paddingVertical:12}}>
         <Text style={{color:palette.muted,textAlign:'center',fontSize:15}}>{new Date(current.date+'T12:00:00+08:00').toLocaleDateString(appLocale(),{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'Asia/Kuala_Lumpur'})}</Text>
         {directButton&&<Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{disabled:directDisabled,busy:pending}}
           disabled={directDisabled} onPress={()=>void prepare()}
@@ -466,26 +479,26 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
           </Pressable>}
         <Text style={{color:palette.text,textAlign:'center',fontSize:15}}>{current.shift.start&&current.shift.end?t('clockCurrentShift',{time:`${current.shift.start.slice(0,5)} – ${current.shift.end.slice(0,5)}`}):t('noShift')}</Text>
       </View>}
-      {!home&&current&&!simplified&&<View style={{gap:12,paddingTop:4,paddingBottom:8}}>
+      {!clockTab&&!home&&current&&!simplified&&<View style={{gap:12,paddingTop:4,paddingBottom:8}}>
         <View style={{flexDirection:'row',justifyContent:'space-between',gap:12}}><Text style={{color:palette.muted,fontSize:13}}>{current.shift.code?`${current.date} · ${current.shift.code}`:current.date}</Text><Text style={{color:palette.accent,fontSize:13,flexShrink:1,textAlign:'right'}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text></View>
         <TimeDisplay seconds={current.workedSeconds} label={t('workedTime',{hours:Math.floor(current.workedSeconds/3600),minutes:Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')})}/>
         <Text style={{color:palette.muted,fontSize:13,textAlign:'center'}}>{current.shift.start&&current.shift.end?`${current.shift.start.slice(0,5)} → ${current.shift.end.slice(0,5)}`:t('noShift')}</Text>
       </View>}
-      {draft?.phase==='done'&&simplified?<View accessibilityLiveRegion="polite" style={{alignItems:'center',gap:4}}>
+      {draft?.phase==='done'&&clockTab?null:draft?.phase==='done'&&simplified?<View accessibilityLiveRegion="polite" style={{alignItems:'center',gap:4}}>
         <Text style={{color:palette.text,fontSize:16,fontWeight:'600',textAlign:'center'}}>{t(draft.action==='in'?'clockedInAt':'clockedOutAt',{time:new Date(draft.receiptTime??current?.serverNow??Date.now()).toLocaleTimeString(appLocale(),{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kuala_Lumpur'})})}</Text>
         {!!draft.reviewReasons?.length&&<Muted>{t('clockNeedsReview')}</Muted>}
       </View>:draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
-        {!home&&!simplified&&(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:44,justifyContent:'center',borderRadius:2,backgroundColor:a===action?palette.card:'transparent',borderWidth:1,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.text:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
+        {!clockTab&&!home&&!simplified&&(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:44,justifyContent:'center',borderRadius:2,backgroundColor:a===action?palette.card:'transparent',borderWidth:1,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.text:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
         {draft?.message&&!restoredAttempt&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{draft.message}</Text>}
-        {(!simplified||detailsOpen)&&restoredAttempt&&<Pressable accessibilityRole="button" accessibilityLabel={t('pendingAttempt')} accessibilityState={{expanded:attemptExpanded}} onPress={()=>setExpandedAttempt(attemptExpanded?null:draft.requestId??null)} style={{minHeight:44,flexDirection:'row',alignItems:'center',gap:12}}><Text style={{flex:1,color:palette.muted,fontSize:13,lineHeight:18}}>{t('attemptNotRecorded')}</Text><Text style={{color:palette.accent,fontSize:20}}>{attemptExpanded?'−':'+'}</Text></Pressable>}
-        {(!simplified||detailsOpen)&&!!draft?.attemptStartedAt&&attemptExpanded&&!['done','uncertain','submitting'].includes(draft.phase)&&<Card>
+        {showDetails&&restoredAttempt&&<Pressable accessibilityRole="button" accessibilityLabel={t('pendingAttempt')} accessibilityState={{expanded:attemptExpanded}} onPress={()=>setExpandedAttempt(attemptExpanded?null:draft.requestId??null)} style={{minHeight:44,flexDirection:'row',alignItems:'center',gap:12}}><Text style={{flex:1,color:palette.muted,fontSize:13,lineHeight:18}}>{t('attemptNotRecorded')}</Text><Text style={{color:palette.accent,fontSize:20}}>{attemptExpanded?'−':'+'}</Text></Pressable>}
+        {showDetails&&!!draft?.attemptStartedAt&&attemptExpanded&&!['done','uncertain','submitting'].includes(draft.phase)&&<Card>
           <Text accessibilityRole="header" style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t('pendingAttempt')}</Text>
           <Muted>{t('attemptTimeClaim')}</Muted>
           <Row label={t('attemptClaimedAt')} value={new Date(draft.attemptStartedAt).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/>
           <Text selectable style={{color:palette.text}}>{draft.requestId}</Text>
           {draft.attemptReceiptTime?<><Muted>{t('attemptReported')}</Muted><Row label={t('attemptReceivedAt')} value={new Date(draft.attemptReceiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/></>:<Button title={t('sendAttemptRecord')} disabled={pending} kind="quiet" onPress={()=>void reportAttempt()}/>}
         </Card>}
-        {(!simplified||detailsOpen)&&draft?.phase==='idle'&&(!restoredAttempt||attemptExpanded)&&<Button title={t('reviewSavedAttempts')} kind="quiet" onPress={()=>router.push('/pending-submissions')}/>}
+        {showDetails&&draft?.phase==='idle'&&(!restoredAttempt||attemptExpanded)&&<Button title={t('reviewSavedAttempts')} kind="quiet" onPress={()=>router.push('/pending-submissions')}/>}
         {draft?.locationIssue&&['permission_blocked','approximate_permission','services_disabled'].includes(draft.locationIssue)&&<Button title={t('openLocationSettings')} kind="quiet" onPress={()=>{void Linking.openSettings().catch(()=>{});}}/>}
         {draft?.locationAssessment&&<Card>
           {draft.locationAssessment.siteName&&<Row label={t('assignedLocation')} value={draft.locationAssessment.siteName}/>}
@@ -506,20 +519,21 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
         </Card>}
         {draft?.phase==='uncertain'?<><Muted>{t('retrySameClock')}</Muted><Button title={t('checkReceipt')} onPress={()=>void recover()}/><Button title={t('retrySameClock')} disabled={!recovery.ready} onPress={()=>void submit()}/>
           {draft.clockProtocol==='signed'&&<Button title={t('pendingDiscard')} kind="quiet" onPress={()=>Alert.alert(t('pendingDiscard'),t('pendingDiscardConfirm'),[{text:t('cancel'),style:'cancel'},{text:t('pendingDiscard'),style:'destructive',onPress:()=>void recover(true)}])}/>}
-        </>:simplified&&draft?.phase==='review'&&draft.clockProtocol==='review'?<Button title={label} disabled={current?.deviceRequired&&!draft.deviceToken} onPress={()=>void submit()}/>:(!simplified||draft?.phase==='review')&&<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={(!current&&!coldStart)||pending||!recovery.ready||offline.mode==='sending'||waitingForOtherClock||(draft?.phase==='review'&&current?.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
+        </>:simplified&&draft?.phase==='review'&&draft.clockProtocol==='review'?<Button title={label} disabled={current?.deviceRequired&&!draft.deviceToken} onPress={()=>void submit()}/>:((!clockTab&&!simplified)||draft?.phase==='review')&&<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={(!current&&!coldStart)||pending||!recovery.ready||offline.mode==='sending'||waitingForOtherClock||(draft?.phase==='review'&&current?.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
         {draft&&draft.phase==='review'&&<Button title={t('cancel')} kind="quiet" onPress={cancel}/>}
-        {(!simplified||detailsOpen)&&offline.mode!=='offline'&&<InfoNote short={t('onlineClockShort')} detail={t('onlineClockOnly')}/>}
+        {showDetails&&offline.mode!=='offline'&&<InfoNote short={t('onlineClockShort')} detail={t('onlineClockOnly')}/>}
       </>}
       <SavedOfflinePunches offline={offline}/>
-      {!home&&simplified&&<Button kind="quiet" title={t(detailsOpen?'clockHideDetails':'clockShowDetails')} onPress={()=>setDetailsOpen(!detailsOpen)}/>}
-      {simplified&&detailsOpen&&directButton&&!pending&&<>
+      {clockTab?<ClockTabDetails theme={theme} expanded={detailsOpen} onPress={()=>setDetailsOpen(!detailsOpen)}/>:
+        !home&&simplified&&<Button kind="quiet" title={t(detailsOpen?'clockHideDetails':'clockShowDetails')} onPress={()=>setDetailsOpen(!detailsOpen)}/>}
+      {(simplified||clockTab)&&detailsOpen&&directButton&&!pending&&<>
         <Button kind="quiet" title={t(action==='in'?'switchToClockOut':'switchToClockIn')} onPress={()=>putClock({employmentId:identity??undefined,action:action==='in'?'out':'in',phase:'idle',...(draft?.phase==='idle'?{photo:draft.photo}:{})})}/>
         <Button kind="quiet" title={t('clockAllowLocation')} onPress={()=>void enableLocation()}/>
       </>}
-      {(!simplified||detailsOpen)&&afterControls}
-      {!home&&current&&(!simplified||detailsOpen)&&<>
-      {simplified&&current.attendancePhotoSetting!=='not_required'&&(!draft||draft.phase==='idle'||draft.phase==='done')&&<Button title={draft?.photo?t('retakePhoto'):t('addPhoto')} kind="quiet" onPress={()=>void takePhoto()}/>}
-      {simplified&&draft?.phase==='idle'&&draft.photo&&<Image source={{uri:draft.photo.uri}} style={{width:72,height:72,borderRadius:8}} accessibilityLabel={t('attendancePhoto')}/>}<View style={{gap:8,marginTop:8}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('clockHistory')}</Text>
+      {showDetails&&afterControls}
+      {!home&&current&&showDetails&&<>
+      {(simplified||clockTab)&&current.attendancePhotoSetting!=='not_required'&&(!draft||draft.phase==='idle'||draft.phase==='done')&&<Button title={draft?.photo?t('retakePhoto'):t('addPhoto')} kind="quiet" onPress={()=>void takePhoto()}/>}
+      {(simplified||clockTab)&&draft?.phase==='idle'&&draft.photo&&<Image source={{uri:draft.photo.uri}} style={{width:72,height:72,borderRadius:8}} accessibilityLabel={t('attendancePhoto')}/>}<View style={{gap:8,marginTop:8}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('clockHistory')}</Text>
         {current.legacy.map((c,i)=><Row key={`${c.direction}-${c.time}-${i}`} label={c.direction==='in'?t('clockIn'):t('clockOut')} value={c.time.slice(0,5)}/>)}
         {current.captures.map(c=><Row key={c.id} label={`${c.direction==='in'?t('clockIn'):t('clockOut')}${c.reviewReasons?.length?` · ${t('clockNeedsReview')}`:''}`} value={new Date(c.recordedAt).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kuala_Lumpur'})}/>)}
         {!current.captures.length&&!current.legacy.length&&<Muted>{t('noClockHistory')}</Muted>}
@@ -539,4 +553,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     </>}
     </>}
   </View>;
+  return clockTab
+    ? <Screen surfaceColor={theme.surface} footer={actionFooter}><Title>{t('tabClock')}</Title>{body}</Screen>
+    : body;
 }
