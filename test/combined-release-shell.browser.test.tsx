@@ -56,8 +56,8 @@ function Screen({theme,title='Fictional personnel',admin=true}:{theme:UiTheme;ti
    </header>
    <main className={geometry.main} data-testid="release-main"><div className="space-y-4">
     <PageHeader title={title} description="Fictional fixture: production components and CSS; no server session or HR data." actions={<><label className="sr-only" htmlFor="fixture-search">Find fictional rows</label><input id="fixture-search" aria-label="Find fictional rows" className="max-w-full rounded border px-2 py-1" defaultValue="Fictional"/><button type="button" className="rounded border px-2 py-1">Read-only action</button></>}/>
-    <ClientPager state={state}/>
     <table className="w-full text-sm"><thead><tr><th>Fictional row</th></tr></thead><tbody>{Array.from({length:25},(_,i)=><tr key={i} style={{height:40}}><td>{`Fictional row ${state.from+i}`}</td></tr>)}</tbody></table>
+    <div className="flex justify-end border-t border-border"><ClientPager state={state}/></div>
     <NavProbe/>
    </div></main>
   </div>
@@ -89,7 +89,7 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   await mount(theme,width,dark);
   const main=screen.getByTestId('release-main'),header=main.querySelector('[data-page-header]')!;
   expect(main.scrollHeight).toBeGreaterThan(main.clientHeight+250);expect(main.clientHeight).toBeGreaterThan(80);
-  if(!dark&&width===1280)await capture(`${theme}-initial-pager`,document.querySelector('[data-app-shell]')!);
+  if(!dark&&width===1280)await capture(`${theme}-initial-personnel`,document.querySelector('[data-app-shell]')!);
   main.scrollTop=420;await tick();expect(main.scrollTop).toBeGreaterThan(300);
   expect(getComputedStyle(header).position).toBe(width>=640?'sticky':'static');
   if(width>=640){expect(box(header).top).toBeGreaterThanOrEqual(box(main).top-1);expect(box(header).bottom).toBeLessThan(box(main).bottom);expect(box(screen.getByLabelText('Find fictional rows')).bottom).toBeLessThan(box(main).bottom);if(theme==='atelier')expect(getComputedStyle(header).boxShadow).not.toBe('none');}
@@ -99,7 +99,11 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
  for(const theme of themes)it(`${theme} preserves filters while the real pager advances to rows 26–50`,async()=>{
   const view=await mount(theme,1280);const pager=document.querySelector('[data-ui-pager]')!;
   const next=within(pager as HTMLElement).getByRole('button',{name:theme==='atelier'?en.pagination.nextPage:en.pagination.next});
-  expect(box(pager).bottom).toBeLessThanOrEqual(box(screen.getByRole('table')).top+1);fireEvent.click(next);
+  expect(box(pager).top).toBeGreaterThanOrEqual(box(screen.getByRole('table')).bottom-1);
+  const main=screen.getByTestId('release-main');
+  main.scrollTop=main.scrollHeight;await tick();
+  expect(box(pager).bottom).toBeLessThanOrEqual(box(main).bottom+1);
+  fireEvent.click(next);
   expect(ports.replace).toHaveBeenCalledOnce();const [url,options]=ports.replace.mock.calls[0];const sp=new URLSearchParams(String(url).slice(1));expect(Object.fromEntries(sp)).toEqual({q:'Fictional',size:'25',page:'1'});expect(options).toEqual({scroll:false});
   ports.search=String(url).slice(1);view.rerender(<Screen theme={theme}/>);expect(screen.getByText('Fictional row 26')).toBeVisible();expect(screen.queryByText('Fictional row 1')).toBeNull();
  });
