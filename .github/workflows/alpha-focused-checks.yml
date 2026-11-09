@@ -538,6 +538,45 @@ jobs:
                   observed = completed - invalid if invalid is not None else None
                   # A zero in the producer's empty ledger is not a measured zero.
                   blocking = number(locks.get('blockingSamples'), observed) if observed else None
+                  lock_diagnostic = record(driver.get('preflightLockDiagnostic'))
+                  first_positive_lock = None
+                  raw_samples = locks.get('samples')
+                  if (blocking and count(raw_samples)
+                          and lock_diagnostic.get('kind') == 'DEVELOPMENT_PREFLIGHT_LOCK_DIAGNOSTIC_V1'):
+                      first_index = next((index for index, item in enumerate(raw_samples, 1)
+                          if record(item).get('state') == 'complete'
+                          and number(item.get('blockingAppSessions'), 1024, 1) is not None), None)
+                      ordinal = number(lock_diagnostic.get('sampleOrdinal'), len(raw_samples), 1)
+                      started = number(lock_diagnostic.get('startedUs'), 1000000000)
+                      finished = number(lock_diagnostic.get('completedUs'), 1000000000)
+                      activity = number(lock_diagnostic.get('appActivityWaiters'), 1024)
+                      advisory = number(lock_diagnostic.get('appAdvisoryWaiters'), 1024)
+                      topology = choice(lock_diagnostic.get('topologyState'), {'observed', 'disappeared', 'ambiguous', 'unavailable'})
+                      lock_types = {'relation', 'extend', 'frozenid', 'page', 'tuple', 'transactionid',
+                                    'virtualxid', 'spectoken', 'object', 'userlock', 'advisory', 'applytransaction'}
+                      modes = {'AccessShareLock', 'RowShareLock', 'RowExclusiveLock', 'ShareUpdateExclusiveLock',
+                               'ShareLock', 'ShareRowExclusiveLock', 'ExclusiveLock', 'AccessExclusiveLock'}
+                      namespaces = {'access-configuration', 'payroll-history', 'pay-component-catalog', 'employment', 'audit-chain'}
+                      raw_rows = lock_diagnostic.get('rows')
+                      if (None not in (ordinal, started, finished, activity, advisory, topology)
+                              and ordinal == first_index and started <= finished
+                              and max(activity, advisory) == raw_samples[ordinal - 1]['blockingAppSessions']
+                              and count(raw_rows) is not None and len(raw_rows) <= 8):
+                          rows = []
+                          for raw_row in raw_rows:
+                              row = record(raw_row)
+                              arm = choice(row.get('arm'), {'advisory-census', 'active-lock-followup'})
+                              if arm is None:
+                                  break
+                              rows.append({'arm': arm, 'waitEvent': choice(row.get('waitEvent'), lock_types),
+                                           'lockType': choice(row.get('lockType'), lock_types), 'mode': choice(row.get('mode'), modes),
+                                           'namespace': choice(row.get('namespace'), namespaces),
+                                           'blockerCount': number(row.get('blockerCount'), 1024, 1)})
+                          if (len(rows) == len(raw_rows) and (topology != 'observed' or (rows and all(
+                                  None not in (row['lockType'], row['mode'], row['blockerCount']) for row in rows)))):
+                              first_positive_lock = {'kind': 'DEVELOPMENT_PREFLIGHT_LOCK_DIAGNOSTIC_V1', 'sampleOrdinal': ordinal,
+                                                     'startedUs': started, 'completedUs': finished, 'appActivityWaiters': activity,
+                                                     'appAdvisoryWaiters': advisory, 'topologyState': topology, 'rows': rows}
                   readiness = runner.get('workerReadiness')
                   ready = None
                   if count(readiness) in (0, 1, 2) and all(
@@ -564,6 +603,7 @@ jobs:
                       'firstFailedPilotRoute': {'role': choice(pilot.get('role'), roles), **route(pilot.get('route')),
                                                 'reason': choice(pilot.get('reason'), types | codes)} if pilot else None,
                       'firstFailedPilotCompatibility': compatibility_failure,
+                      'firstPositivePreflightLock': first_positive_lock,
                       'firstFailedBrowserVisit': {'phase': choice(visit.get('phase'), {'baseline', 'sign-in-preflight', 'loaded'}),
                                                   'role': choice(visit.get('role'), roles), **route(visit.get('path')),
                                                   'visitStage': choice(visit.get('visitStage'), visits),
