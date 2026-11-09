@@ -25,7 +25,8 @@ import { lockLeaveDependencyConfigurationTx, lockLeaveDependenciesTx } from '../
 import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import type { PackTaskItem } from '../../lib/assigned-work';
-import { calculateRewards, ratio, increase, type RewardMultiplierSuggestion } from './engine';
+import { calculateRewards, ratio, increase, payWindowReasons, type CalculatedEntry, type RewardMultiplierSuggestion } from './engine';
+import { analyticsTotals, emptyAnalyticsTotals, type AnalyticsRow } from './analytics-model';
 import {approvedPlanPolicyTx,assertIndependentReviewCreator} from './plan-configuration';
 import {latestConfirmedPatTx} from './pat-inputs';
 import {setupAuthority,setupLock} from './setup-data';
@@ -343,7 +344,7 @@ export function exportRewardReview(ctx:SessionContext,unitId:string,format:'revi
  * through this one function, so membership, entry visibility (visibleEntry, including the own-person
  * exclusion) and flag filtering are decided in one place.
  */
-async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,capability:import('./access-policy-model').RewardCapability='review.view') {
+async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,capability:import('./access-policy-model').RewardCapability='review.view', includeAnalytics = false) {
   {
     const { unit, roles, entries } = await load(tx, unitId,false,capability);
     const [caps]=await tx.execute<{value:{figuresEdit:boolean;reviewDecide:boolean;batch:boolean;dataCheck:boolean;snapshotRefresh:boolean;offcycleRaise:boolean;notesAdd:boolean;casesDecide:boolean}}>(sql`select jsonb_build_object('figuresEdit',app.reward_capability(${unitId}::uuid,'figures.edit') and (not exists(select 1 from app.reward_current_group_roles()) or app.reward_group_figures_stage_allowed(${unitId}::uuid)),'reviewDecide',app.reward_capability(${unitId}::uuid,'review.decide'),'batch',app.reward_capability(${unitId}::uuid,'review.batch'),'dataCheck',app.reward_capability(${unitId}::uuid,'data.check'),'snapshotRefresh',app.reward_capability(${unitId}::uuid,'snapshot.refresh'),'offcycleRaise',app.reward_capability(${unitId}::uuid,'offcycle.raise'),'notesAdd',app.reward_capability(${unitId}::uuid,'notes.add'),'casesDecide',app.reward_capability(${unitId}::uuid,'cases.decide')) as value`);
@@ -396,7 +397,10 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
       .where(and(eq(domainEvent.aggregateType, 'reward-unit'), eq(domainEvent.aggregateId, unitId), eq(domainEvent.eventType, 'reward-unit.lump-updated'))).orderBy(desc(domainEvent.occurredAt)).limit(1) : [];
     const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);
-    return { libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:{...caps.value,snapshotRefresh:!uploadedReview?.present&&caps.value.snapshotRefresh}}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.filter(row=>entries.some(e=>e.id===row.id&&e.uploadedAward!==null)).length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0),lumpCents:visible.reduce((n,e)=>n+e.lumpCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
+    const analytics = includeAnalytics ? await analyticsRowsTx(tx, ctx, {
+      unit, roles, rows: calculated.rows, flags, state, effectivePolicy, publicState, uploaded: !!uploadedReview?.present,
+    }) : null;
+    return { ...(analytics ? { analytics } : {}), libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:{...caps.value,snapshotRefresh:!uploadedReview?.present&&caps.value.snapshotRefresh}}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.filter(row=>entries.some(e=>e.id===row.id&&e.uploadedAward!==null)).length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0),lumpCents:visible.reduce((n,e)=>n+e.lumpCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
       rows: visible.map(e=>{const {uploadedAward:_award,groupEcDirectReport:_groupEc,...safe}=e as typeof e&{uploadedAward?:unknown;groupEcDirectReport?:boolean};return safe;}), flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
@@ -1814,7 +1818,111 @@ export async function withRewardReviewExtension<T>(ctx:SessionContext,unitId:str
 /** Read-only extension projection; unlike getRewardUnit it performs no access-observation write. */
 export function readOnlyRewardProjection(ctx:SessionContext,unitId:string){return withRewardsTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return reviewProjectionTx(tx,ctx,unitId);});}
 
-export async function rewardAnalyticsProjection(ctx:SessionContext,id:string){return withRewardsTenant(ctx,tx=>reviewProjectionTx(tx,ctx,id,'analytics.view'));}
+/** Analytics reads the same calculated snapshot as the unit review, with its own outbound privacy contract. */
+export async function rewardAnalyticsProjection(tx: Tx, ctx: SessionContext, id: string) {
+  const view = await reviewProjectionTx(tx, ctx, id, 'analytics.view', true);
+  if (!view.analytics) throw new RewardError('Rewards Analytics is unavailable.');
+  const board = boardRow(view, { cycle: view.cycle?.name ?? '', company: view.companyName }, todayInKualaLumpur());
+  return {
+    ...view.analytics,
+    revision: view.unit.revision,
+    updatedAt: view.unit.updatedAt.toISOString(),
+    reviewSalaryCents: board.salary?.increaseCents ?? 0,
+    reviewBonusCents: board.bonus?.totalCents ?? 0,
+    blockers: board.blocking,
+    staleBasis: view.flags.some(flag => flag.code === 'PAT-STALE'),
+    poolCents: view.uploaded ? null : board.bonus?.budgetCents ?? null,
+  };
+}
+
+async function analyticsRowsTx(tx: Tx, ctx: SessionContext, input: {
+  unit: typeof rewardUnit.$inferSelect; roles: RewardRole[];
+  rows: (CalculatedEntry & { groupEcDirectReport?: boolean })[]; flags: import('./model').RewardFlag[];
+  state: RewardGovernance | null; effectivePolicy: RewardPolicy; publicState: RewardPublicGovernance | null;
+  uploaded: boolean;
+}) {
+  const { unit, roles, rows, flags, state, effectivePolicy, publicState, uploaded } = input;
+  const privileged = maySeeSeniorAmounts(roles);
+  const visible = rows.filter(row => row.activeInReview && visibleEntry(row, roles, ctx.personId) &&
+    (privileged || !isSeniorPlanMember(unit.policy, row.facts, row.source.grade)));
+  const protectedBg = rows.filter(row => row.activeInReview && !privileged &&
+    roles.includes('bu') && !roles.includes('bg') && !visibleEntry(row, roles, ctx.personId) &&
+    row.source.personId !== ctx.personId && row.facts.reviewed && row.facts.confidentiality === 'bg' &&
+    row.source.confidentialityFloor === 'bg' && !row.groupEcDirectReport && !isSeniorPlanMember(unit.policy, row.facts, row.source.grade));
+  const departmentRows = visible.length ? await tx.execute<{ employmentId: string; id: string; name: string }>(sql`
+    select source.employment_id as "employmentId", d.id, d.name
+      from reward_entry source
+      join lateral (
+        select a.department_id
+          from assignment a
+         where a.tenant_id = source.tenant_id and a.employment_id = source.employment_id
+           and a.valid_from <= ${unit.snapshotDate}::date and (a.valid_to is null or a.valid_to > ${unit.snapshotDate}::date)
+           and a.superseded_at is null
+           and (source.source->>'assignmentId' is null or a.id::text = source.source->>'assignmentId')
+         order by a.valid_from desc, a.id desc
+         limit 1
+      ) a on true
+      join department d on d.tenant_id = source.tenant_id and d.id = a.department_id
+     where source.tenant_id = app.current_tenant_id() and source.unit_id = ${unit.id}::uuid
+       and source.id in (${sql.join(visible.map(row => sql`${row.id}::uuid`), sql`, `)})
+  `) : [];
+  const departments = new Map(departmentRows.map(({ employmentId, id, name }) => [employmentId, { id, name }]));
+  const entryFlags = new Map<string, { exceptions: number; blockers: number }>();
+  for (const flag of flags) {
+    if (!flag.entryId || (flag.severity !== 'exception' && flag.severity !== 'block')) continue;
+    const counts = entryFlags.get(flag.entryId) ?? { exceptions: 0, blockers: 0 };
+    if (flag.severity === 'exception') counts.exceptions++;
+    else counts.blockers++;
+    entryFlags.set(flag.entryId, counts);
+  }
+  const mapRow = (row: CalculatedEntry): AnalyticsRow => {
+    const { source, recommendation } = row;
+    const known = source.basicCents > 0 && source.currency === 'MYR' && !!source.compensationId && ['monthly', 'custom_period'].includes(source.payMode);
+    const grade = source.grade;
+    const excludedByPayWindow = payWindowReasons.includes(row.incrementReason);
+    const after = excludedByPayWindow ? source.basicCents : row.newBasicCents;
+    const afterGrade = recommendation.promotionGrade && (row.promotionCents > 0 || row.incrementEligible)
+      ? recommendation.promotionGrade : grade;
+    return {
+      id: row.id, unitId: unit.id, name: source.name, employeeCode: source.employeeCode,
+      grade, talent: row.facts.talent, performance: row.facts.performance,
+      department: departments.get(source.employmentId) ?? null,
+      beforeCents: known ? source.basicCents : null, afterCents: known ? after : null,
+      meritCents: known ? row.meritCents : 0, promotionCents: known ? row.promotionCents : 0, specialCents: known ? row.specialCents : 0,
+      beforeRange: grade === '23' ? null : effectivePolicy.ranges[grade] ?? null,
+      afterRange: afterGrade === '23' ? null : effectivePolicy.ranges[afterGrade] ?? null,
+      promoted: afterGrade !== grade, incrementRun: row.incrementEligible && known && !excludedByPayWindow, excludedByPayWindow,
+      bonusEligible: row.bonusEligible, bonusBasicCents: known && row.bonusBasicCents > 0 ? row.bonusBasicCents : null,
+      bonusCents: row.bonusCents, lumpCents: row.lumpCents,
+      pooled: uploaded || row.plan !== 'ec',
+      ...(entryFlags.get(row.id) ?? { exceptions: 0, blockers: 0 }),
+    };
+  };
+  let patPolicy = effectivePolicy;
+  let hasPatSource = !!state || !publicState;
+  // CTRO and EC use the native privileged setup projection. Its result never crosses this boundary.
+  if (privileged && !state && !uploaded && !roles.includes('gr')) {
+    const [preparation] = await tx.execute<{ state: RewardGovernance | null }>(sql`
+      select app.reward_preparation_view(${unit.id}::uuid)->'stateForSetup' as state
+    `);
+    if (preparation?.state) {
+      patPolicy = effectiveRewardPolicy(unit.policy, preparation.state);
+      hasPatSource = true;
+    } else if (!publicState) patPolicy = unit.policy;
+  }
+  const patAchievement = privileged && !uploaded && hasPatSource && publicState?.status !== 'not-set' && patPolicy.patTarget > 0
+    ? patPolicy.patActual / patPolicy.patTarget : null;
+  // Cohorts smaller than three are suppressed per unit. Combining or removing units cannot expose
+  // a singleton by subtraction. This contribution is never added to any identified slice or export row.
+  const canAggregateBg = protectedBg.length >= 3;
+  return {
+    rows: visible.map(mapRow),
+    protectedTotals: canAggregateBg ? analyticsTotals(protectedBg.map(mapRow)) : emptyAnalyticsTotals(),
+    protectedIncluded: canAggregateBg, protectedWithheld: protectedBg.length > 0 && !canAggregateBg,
+    canSeePat: privileged, patAchievement,
+    branchFactors: effectivePolicy.bonusStructure === 'branch',
+  };
+}
 
 /** Cross-unit nominations reuse the unit review's native row and senior confidentiality rules. */
 export async function rewardPromotionNominations(ctx: SessionContext, companyIds: string[], filters: {
