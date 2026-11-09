@@ -126,8 +126,15 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:folder});
   expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);
   // Rehearse from the combined staging baseline as well as the historical defect boundary.
-  const performanceStart=journal.entries.length-PERFORMANCE_MIGRATION_IDENTITIES.length;
+  const performanceStart=journal.entries.findIndex(row=>row.tag===PERFORMANCE_MIGRATION_IDENTITIES[0].tag);
+  expect(performanceStart).toBeGreaterThan(0);
+  expect(journal.entries.slice(performanceStart).map(row=>row.tag)).toEqual([
+   ...PERFORMANCE_MIGRATION_IDENTITIES.map(row=>row.tag),
+   '3500_ai_centre_architecture_compatibility',
+   '3501_ai_centre_mandate_write_order',
+  ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
+  expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
   for(const row of stagingPrefix.slice(prefix.length+TAIL.length)){
    copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
   }
@@ -135,6 +142,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   await migrateApprovedUpgrade(storage,folder);
   const beforePerformanceLedger=await ledger();
   expect(beforePerformanceLedger).toHaveLength(stagingPrefix.length);
+  expect(beforePerformanceLedger.slice(0,afterLedger.length)).toEqual(afterLedger);
+  expect(beforePerformanceLedger.slice(afterLedger.length).map(({hash,created_at})=>({hash,created_at}))).toEqual(
+   stagingPrefix.slice(afterLedger.length).map(row=>({hash:hash(readFileSync('db/migrations/'+row.tag+'.sql')),created_at:String(row.when)})));
   const beforePerformancePrivileges=await privileges();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const afterPerformancePrivileges=await privileges();
