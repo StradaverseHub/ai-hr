@@ -43,10 +43,20 @@ $$;
 REVOKE ALL ON FUNCTION app.attendance_formula_manage_scope(uuid,jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.attendance_formula_manage_scope(uuid,jsonb) TO ai_hr_app;
 
+-- These tables force RLS even for the migration owner. Only the owning role used by the
+-- narrowly scoped definers below may read the tenant's configuration across company anchors.
+DO $$ DECLARE t text; BEGIN
+ FOREACH t IN ARRAY ARRAY['attendance_formula','attendance_formula_revision','attendance_formula_event'] LOOP
+  EXECUTE format('CREATE POLICY attendance_formula_owner_read ON public.%I FOR SELECT USING(
+   current_user=pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid=%L::regclass))
+   AND tenant_id=app.current_tenant_id() AND app.attendance_policy_principal_current() AND app.is_admin())',t,'public.'||t);
+ END LOOP;
+END $$;
+
 -- Select the actual latest revision before checking authority. A scoped author must never edit a
 -- previously visible revision after another author expands the current formula to more companies.
 CREATE FUNCTION app.attendance_formula_author_current(p_formula uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app,pg_temp AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app,pg_temp SET row_security=on AS $$
  SELECT EXISTS(SELECT 1 FROM public.attendance_formula f
   JOIN LATERAL(SELECT definition FROM public.attendance_formula_revision v WHERE v.formula_id=f.id ORDER BY ordinal DESC LIMIT 1) latest ON true
   LEFT JOIN LATERAL(SELECT e.kind,e.revision_id FROM public.attendance_formula_event e WHERE e.formula_id=f.id
@@ -111,7 +121,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.attendance_formula_check_scope(uuid,jsonb,uuid) FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION app.attendance_formula_binding_guard() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app,pg_temp AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app,pg_temp SET row_security=on AS $$
 DECLARE f public.attendance_formula; r public.attendance_formula_revision; proof public.attendance_formula_test;
 BEGIN
  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.created_by IS DISTINCT FROM app.current_user_id()
@@ -179,7 +189,7 @@ CREATE FUNCTION app.attendance_formula_subject_versions(
  p_company uuid,p_employment uuid,p_date date,p_formula uuid DEFAULT NULL,p_result uuid DEFAULT NULL,
  p_item uuid DEFAULT NULL,p_include_overtime boolean DEFAULT false
 ) RETURNS SETOF public.attendance_formula_revision
-LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app,pg_temp AS $$
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app,pg_temp SET row_security=on AS $$
  SELECT (jsonb_populate_record(v,jsonb_build_object('company_id',p_company,'created_by',NULL,'definition',
   (v.definition-'companyScope')||jsonb_build_object('companyId',p_company::text,'eligibility',
     CASE WHEN v.definition->'eligibility'->>'mode'='selected'
