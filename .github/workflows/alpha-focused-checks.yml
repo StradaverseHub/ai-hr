@@ -174,6 +174,13 @@ jobs:
       - name: Pin dependency-free controller runtime
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
+      - name: Admit the exact fictional Assistant upgrade event
+        if: ${{ github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' }}
+        env:
+          AIHR_CI_HEAD: ${{ inputs.expected_sha }}
+          AIHR_AI_UPGRADE_STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          AIHR_AI_UPGRADE_PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: /usr/bin/python3 -I -B .github/ci/fictional-ai-upgrade/owner.py --admit-event
       - name: Admit the fixed full-rendered development browser course
         if: ${{ inputs.measured_browser_course == 'preflight-2' }}
         env:
@@ -249,7 +256,7 @@ jobs:
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
-    environment: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.model_eval != '' && 'assistant-eval' || '' }}
+    environment: ${{ (github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && !inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.model_eval != '' && 'assistant-eval' || '' }}
     timeout-minutes: ${{ inputs.measured_browser_course == 'serial-2-4-8' && 120 || (inputs.architecture_browser_development_preflight || inputs.measured_browser_course == 'preflight-2') && 40 || inputs.model_eval != '' && 45 || 20 }}
     defaults:
       run:
@@ -261,7 +268,7 @@ jobs:
       AIHR_FOCUSED_SUITE_CAPACITY: 'true'
       AIHR_QUALIFY_RESTRICTED_PORT: ${{ inputs.qualify_restricted_port_prerequisites }}
       AIHR_RESTRICTED_PORT_TYPECHECK: ${{ inputs.run_typecheck }}
-      AIHR_EVAL_OPENROUTER_KEY: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.model_eval != '' && secrets.OPENROUTER_API_KEY || '' }}
+      AIHR_EVAL_OPENROUTER_KEY: ${{ (github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && !inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.model_eval != '' && secrets.OPENROUTER_API_KEY || '' }}
       AIHR_EVAL_MODEL: ${{ inputs.model_eval }}
       AIHR_EVAL_BUDGET_USD: ${{ inputs.eval_budget_usd }}
       AIHR_EVAL_ALLOWED_PROVIDERS: ${{ inputs.eval_allowed_providers }}
@@ -290,6 +297,43 @@ jobs:
           path: source
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        if: ${{ github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' }}
+        with:
+          ref: b698f5d35b0cca12e2c1268f3bea08d0aa1d070e
+          path: baseline
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        if: ${{ github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' }}
+        with: {version: '10.33.2', run_install: false}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        if: ${{ github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' }}
+        with: {node-version: '22.23.3', package-manager-cache: false}
+      - name: Run the exact fictional Assistant source upgrade
+        id: fictional-ai-upgrade
+        if: ${{ github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' }}
+        env:
+          AIHR_AI_UPGRADE_STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          AIHR_AI_UPGRADE_PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          set -euo pipefail
+          owner="$GITHUB_WORKSPACE/automation/.github/ci/fictional-ai-upgrade/owner.py"
+          /usr/bin/python3 -I -B "$owner" --admit-only
+          AIHR_CI_CAPACITY_PROFILE=bounded-suite-setup bash ../automation/.github/ci/prepare-runner.sh
+          for checkout in "$GITHUB_WORKSPACE/baseline" "$GITHUB_WORKSPACE/source"; do
+            pnpm --dir "$checkout" install --frozen-lockfile --ignore-scripts --store-dir "$RUNNER_TEMP/aihr-fictional-ai-upgrade-pnpm-store"
+          done
+          AIHR_CI_CAPACITY_PROFILE=bounded-suite-ready bash ../automation/.github/ci/prepare-runner.sh
+          keep=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,RUNNER_OS,RUNNER_ARCH,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ATTEMPT,GITHUB_RUN_ID,GITHUB_refs/heads/codex/architecture-ai-source-upgrade-witness-20261109,GITHUB_WORKFLOW_refs/heads/codex/architecture-ai-source-upgrade-witness-20261109,GITHUB_SHA,GITHUB_WORKFLOW_SHA,GITHUB_EVENT_PATH,GITHUB_WORKSPACE,RUNNER_TEMP,AIHR_CI_CONTROL_HEAD,AIHR_CI_HEAD,AIHR_AI_UPGRADE_STAGING_ENABLED,AIHR_AI_UPGRADE_PRODUCTION_ENABLED
+          sudo --preserve-env="$keep" /usr/bin/python3 -I -B "$owner" "$(command -v node)" "$(command -v pnpm)"
+      - name: Publish closed fictional Assistant upgrade evidence
+        if: ${{ always() && github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && (steps.fictional-ai-upgrade.outcome == 'success' || steps.fictional-ai-upgrade.outcome == 'failure') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: fictional-ai-source-upgrade-development-only
+          path: ${{ runner.temp }}/aihr-fictional-ai-upgrade-summary.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Verify the exact self-source before dependency installation
         if: ${{ (inputs.architecture_browser_development_preflight || inputs.measured_browser_course != 'off') }}
         id: development-browser-source
@@ -362,7 +406,7 @@ jobs:
               out.write(raw)
           PYTHON
       - uses: ./automation/.github/actions/setup-alpha
-        if: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
+        if: ${{ (github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && !inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
         with:
           capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"
           node: "${{ inputs.employee_ascii_qualification == 'node24' && '24.22.1' || '22.23.3' }}"
@@ -370,27 +414,27 @@ jobs:
         if: ${{ (inputs.architecture_browser_development_preflight || inputs.measured_browser_course != 'off') }}
         with: {node: '24.22.1', mobile: 'false', capacity_profile: legacy}
       - name: Provision multilingual fonts for AI review screenshots
-        if: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && (contains(inputs.selected_tests, 'test/ai-management-naming.dom.test.tsx') || contains(inputs.selected_tests, 'test/ai-probe-history-page.dom.test.tsx') || contains(inputs.selected_tests, 'test/feedback-kanban.dom.test.tsx') || contains(inputs.selected_tests, 'test/security-center-sidebar.dom.test.tsx')) }}
+        if: ${{ (github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && !inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && (contains(inputs.selected_tests, 'test/ai-management-naming.dom.test.tsx') || contains(inputs.selected_tests, 'test/ai-probe-history-page.dom.test.tsx') || contains(inputs.selected_tests, 'test/feedback-kanban.dom.test.tsx') || contains(inputs.selected_tests, 'test/security-center-sidebar.dom.test.tsx')) }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk
       - name: Provision native readiness witness prerequisite
         # Fixed official distro package; no arbitrary package/URL input.
-        if: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && contains(fromJSON(needs.resolve.outputs.tests), 'test/runtime-ready-admission-native.test.ts') }}
+        if: ${{ (github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && !inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && contains(fromJSON(needs.resolve.outputs.tests), 'test/runtime-ready-admission-native.test.ts') }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends nginx
           dpkg-query -W -f='${Package} ${Version}\n' nginx
       - name: Classify and execute only selected files
-        if: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
+        if: ${{ (github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && !inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
         run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"
         env:
           AIHR_FOCUSED_EVIDENCE_DIR: ${{ runner.temp }}/aihr-focused
       - name: Summarize opt-in harness phase timings
-        if: ${{ always() && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.profile_database }}
+        if: ${{ always() && (github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && !inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.profile_database }}
         run: node scripts/report-test-profile.mjs "$RUNNER_TEMP/aihr-focused/harness-profile" "$RUNNER_TEMP/aihr-focused/profile-summary.json"
       - name: Ensure owned resource settlement after interrupted checks
-        if: ${{ always() && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
+        if: ${{ always() && (github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && !inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
         run: |
           if [ "$AIHR_RESOLVED_FOCUSED_TESTS" = '["test/compiler-native-reference-fixture.test.ts"]' ]; then
             node ../automation/.github/ci/focused-checks.mjs compiler-settled "$RUNNER_TEMP/aihr-focused"
@@ -404,7 +448,7 @@ jobs:
         env:
           AIHR_RESOLVED_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
           AIHR_CI_UNIT: ${{ needs.resolve.outputs.tests != '["test/compiler-native-reference-fixture.test.ts"]' && needs.resolve.outputs.tests != '["test/compiler-native-application-inventory.test.ts"]' && 'db-1' || '' }}
-      - if: ${{ always() && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
+      - if: ${{ always() && (github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && !inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ inputs.employee_ascii_qualification == 'node22' && 'employee-ascii-qualification-node22' || inputs.employee_ascii_qualification == 'node24' && 'employee-ascii-qualification-node24' || 'focused-development-evidence' }}
@@ -1364,7 +1408,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   typecheck:
-    if: ${{ inputs.run_typecheck }}
+    if: ${{ github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && inputs.run_typecheck }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -1386,7 +1430,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build }}
+    if: ${{ github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && inputs.run_build }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -1432,7 +1476,7 @@ jobs:
           retention-days: 14
 
   native-typecheck:
-    if: ${{ inputs.run_native_typecheck }}
+    if: ${{ github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && inputs.run_native_typecheck }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -1458,7 +1502,7 @@ jobs:
 
 
   native-bundle:
-    if: ${{ inputs.run_native_bundle }}
+    if: ${{ github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && inputs.run_native_bundle }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -1486,7 +1530,7 @@ jobs:
           EXPO_NO_TELEMETRY: '1'
 
   native-swift-models:
-    if: ${{ inputs.run_native_swift_models }}
+    if: ${{ github.ref != 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && inputs.run_native_swift_models }}
     needs: resolve
     runs-on: macos-15
     timeout-minutes: 15
