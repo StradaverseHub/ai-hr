@@ -80,9 +80,12 @@ jobs:
             wrapper=gradle/wrapper/gradle-wrapper.properties
             grep -Fxq 'distributionUrl=https\://services.gradle.org/distributions/gradle-9.4.1-bin.zip' "$wrapper"
             distribution="$RUNNER_TEMP/gradle-9.4.1-bin.zip"
-            curl --fail --location --silent --show-error --max-time 180 --retry 3 \
-              'https://downloads.gradle.org/distributions/gradle-9.4.1-bin.zip' --output "$distribution"
             checksum=2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb
+            if ! curl --fail --location --silent --show-error --max-time 90 \
+              'https://downloads.gradle.org/distributions/gradle-9.4.1-bin.zip' --output "$distribution"; then
+              curl --fail --location --silent --show-error --max-time 180 --retry 2 \
+                'https://repo.huaweicloud.com/gradle/gradle-9.4.1-bin.zip?onehr-check=20261109' --output "$distribution"
+            fi
             printf '%s  %s\n' "$checksum" "$distribution" | sha256sum --check
             sed -i -e '/^distributionUrl=/d' -e '/^distributionSha256Sum=/d' "$wrapper"
             printf '\ndistributionUrl=file\:%s\ndistributionSha256Sum=%s\n' "$distribution" "$checksum" >> "$wrapper"
