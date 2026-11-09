@@ -343,6 +343,168 @@ class RuntimeLayoutModel(unittest.TestCase):
                     layout.inspect_fixed(role_deadline=deadline)
             self.assertEqual(self.admissions[-1], (0, 0, deadline))
 
+    def test_disposal_removes_only_the_sealed_layout_in_reverse_birth_order(self):
+        with self.layout() as layout:
+            ready = layout.prepare()
+            calls = []
+            unlink, rmdir = os.unlink, os.rmdir
+
+            def remove(operation, name, *, dir_fd):
+                calls.append((name, dir_fd))
+                operation(name, dir_fd=dir_fd)
+
+            with (
+                patch.object(L.os, 'unlink', side_effect=lambda *a, **kw: remove(unlink, *a, **kw)),
+                patch.object(L.os, 'rmdir', side_effect=lambda *a, **kw: remove(rmdir, *a, **kw)),
+                patch.object(L.time, 'monotonic', return_value=self.started + 260),
+            ):
+                self.assertEqual(layout.dispose(cleanup_deadline=self.started + 900), 19)
+            expected = []
+            for path, _, _ in reversed(ready.journal.created):
+                parent, _, name = path.rpartition('/')
+                expected.append((name, layout.opened[parent] if parent else layout.run))
+            self.assertEqual(calls, expected)
+            self.assertEqual(self.admissions[-1], (0, 0, self.started + 285))
+            self.assertEqual(layout.journal(), ready.journal)
+            self.assertTrue(all(REAL_FSTAT(fd).st_nlink == 0 for fd in layout.opened.values()))
+            with self.assertRaisesRegex(ValueError, 'runtime-layout-disposal-attempted'):
+                layout.dispose(cleanup_deadline=self.started + 280)
+            with self.assertRaisesRegex(ValueError, 'runtime-layout-not-ready'):
+                layout.inspect_fixed()
+        self.assertEqual({p.name for p in self.root.iterdir()}, {'launch-source'})
+        self.assertEqual((self.stage / 'retained').read_bytes(), b'stage owner')
+
+    def test_disposal_refuses_nonempty_scratch_before_any_removal(self):
+        with self.layout() as layout:
+            ready = layout.prepare()
+            scratch = self.root / 'browser-home/scratch/foreign'
+            scratch.symlink_to(self.stage / 'retained')
+            with (
+                patch.object(L.os, 'unlink', side_effect=AssertionError('unlink with nonempty scratch')),
+                patch.object(L.os, 'rmdir', side_effect=AssertionError('rmdir with nonempty scratch')),
+            ):
+                with self.assertRaisesRegex(ValueError, 'runtime-layout-foreign-child'):
+                    layout.dispose(cleanup_deadline=self.started + 280)
+            self.assertEqual(layout.journal(), ready.journal)
+            self.assertTrue(scratch.is_symlink())
+            self.assertEqual((self.stage / 'retained').read_bytes(), b'stage owner')
+
+    def test_disposal_refuses_a_foreign_run_child_before_any_removal(self):
+        with self.layout() as layout:
+            ready = layout.prepare()
+            foreign = self.root / 'foreign'
+            foreign.write_bytes(b'foreign')
+            with (
+                patch.object(L.os, 'unlink', side_effect=AssertionError('unlink with foreign run child')),
+                patch.object(L.os, 'rmdir', side_effect=AssertionError('rmdir with foreign run child')),
+            ):
+                with self.assertRaisesRegex(ValueError, 'runtime-layout-foreign-run-child'):
+                    layout.dispose(cleanup_deadline=self.started + 280)
+            self.assertEqual(layout.journal(), ready.journal)
+            self.assertEqual(foreign.read_bytes(), b'foreign')
+
+    def test_disposal_refuses_same_content_replacement_before_any_removal(self):
+        with self.layout() as layout:
+            ready = layout.prepare()
+            canary = self.root / 'driver-home/canary'
+            canary.unlink()
+            canary.write_bytes(b'driver-canary\n')
+            canary.chmod(0o400)
+            with (
+                patch.object(L.os, 'unlink', side_effect=AssertionError('unlink with replaced birth')),
+                patch.object(L.os, 'rmdir', side_effect=AssertionError('rmdir with replaced birth')),
+            ):
+                with self.assertRaisesRegex(ValueError, 'runtime-layout-member-birth'):
+                    layout.dispose(cleanup_deadline=self.started + 280)
+            self.assertEqual(layout.journal(), ready.journal)
+            self.assertEqual(canary.read_bytes(), b'driver-canary\n')
+            self.assertEqual((self.root / 'private/observer').read_bytes(), ready.driver_credential[1])
+
+    def test_disposal_preserves_the_pending_and_known_births_of_incomplete_preparation(self):
+        def interrupted(path, *args, **kwargs):
+            if path == 'roles':
+                raise InterruptedError('fixture lost open')
+            return REAL_OPEN(path, *args, **kwargs)
+
+        with self.layout() as layout:
+            with patch.object(L.os, 'open', side_effect=interrupted):
+                with self.assertRaisesRegex(InterruptedError, 'fixture lost open'):
+                    layout.prepare()
+            partial = layout.journal()
+            with (
+                patch.object(L.os, 'unlink', side_effect=AssertionError('unlink with partial journal')),
+                patch.object(L.os, 'rmdir', side_effect=AssertionError('rmdir with partial journal')),
+            ):
+                with self.assertRaisesRegex(ValueError, 'runtime-layout-disposal-journal'):
+                    layout.dispose(cleanup_deadline=self.started + 280)
+            self.assertEqual(layout.journal(), partial)
+            self.assertEqual(partial.pending, ('runtime/roles', 'directory'))
+            self.assertEqual([row[0] for row in partial.created], ['runtime'])
+            self.assertEqual(len(self.admissions), 1)
+        self.assertTrue((self.root / 'runtime/roles').is_dir())
+
+    def test_disposal_preserves_first_removal_failure_and_never_retries(self):
+        with self.layout() as layout:
+            ready = layout.prepare()
+            with patch.object(L.os, 'rmdir', side_effect=InterruptedError('fixture uncertain removal')) as removed:
+                with self.assertRaisesRegex(InterruptedError, 'fixture uncertain removal'):
+                    layout.dispose(cleanup_deadline=self.started + 280)
+                removed.assert_called_once_with('private', dir_fd=layout.run)
+            self.assertFalse((self.root / 'private/observer').exists())
+            self.assertTrue((self.root / 'private').is_dir())
+            self.assertTrue((self.root / 'browser-home').is_dir())
+            self.assertEqual(layout.journal(), ready.journal)
+            with self.assertRaisesRegex(ValueError, 'runtime-layout-disposal-attempted'):
+                layout.dispose(cleanup_deadline=self.started + 280)
+
+    def test_disposal_rechecks_the_earlier_deadline_after_the_last_entry_guard(self):
+        with self.layout() as layout:
+            ready = layout.prepare()
+            now = [self.started + 260]
+            deadline = self.started + 261
+            check = layout._check
+            observer_checks = []
+
+            def cross(target, observation):
+                result = check(target, observation)
+                if target.path == 'private/observer':
+                    observer_checks.append(target.path)
+                    if len(observer_checks) == 2:
+                        now[0] = deadline
+                return result
+
+            with (
+                patch.object(L.time, 'monotonic', side_effect=lambda: now[0]),
+                patch.object(layout, '_check', side_effect=cross),
+                patch.object(L.os, 'unlink', side_effect=AssertionError('late unlink')),
+                patch.object(L.os, 'rmdir', side_effect=AssertionError('late rmdir')),
+            ):
+                with self.assertRaisesRegex(ValueError, 'runtime-layout-deadline-or-closed'):
+                    layout.dispose(cleanup_deadline=deadline)
+            self.assertEqual(len(observer_checks), 2)
+            self.assertEqual(self.admissions[-1], (0, 0, deadline))
+            self.assertEqual(layout.journal(), ready.journal)
+            self.assertEqual((self.root / 'private/observer').read_bytes(), ready.driver_credential[1])
+
+    def test_disposal_cannot_return_positive_after_the_final_manager_view_deadline(self):
+        with self.layout() as layout:
+            ready = layout.prepare()
+            deadline = self.started + 261
+            now = [deadline - 1]
+
+            def mark_late():
+                now[0] = deadline
+
+            self.after_view = mark_late
+            with patch.object(L.time, 'monotonic', side_effect=lambda: now[0]):
+                with self.assertRaisesRegex(ValueError, 'runtime-layout-deadline-or-closed'):
+                    layout.dispose(cleanup_deadline=deadline)
+            self.assertEqual(self.admissions[-1], (0, 0, deadline))
+            self.assertEqual(layout.journal(), ready.journal)
+            with self.assertRaisesRegex(ValueError, 'runtime-layout-disposal-attempted'):
+                layout.dispose(cleanup_deadline=self.started + 280)
+        self.assertEqual({p.name for p in self.root.iterdir()}, {'launch-source'})
+
 
 if __name__ == '__main__':
     unittest.main()

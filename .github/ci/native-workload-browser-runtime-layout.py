@@ -1,7 +1,8 @@
 """Fixed host-side targets for dormant synthetic browser roles.
 
 The protected caller owns the run parent, role credential census and any
-future manager submission. This owner never deletes files or starts services.
+future manager submission. This owner only removes its own settled layout and
+never starts services.
 """
 
 import math
@@ -112,6 +113,7 @@ class _Layout:
         self.opened, self.created = {}, {}
         self.pending = None
         self.attempted = self.ready = False
+        self.disposal_attempted = False
 
     def _left(self, deadline):
         _require(self.held is not None and time.monotonic() < deadline, 'runtime-layout-deadline-or-closed')
@@ -282,6 +284,60 @@ class _Layout:
         _require(self.ready, 'runtime-layout-not-ready')
         with self._admit(self._cleanup) as observation:
             return self._inspect(observation, empty_scratch=True)
+
+    def _require_run_entries(self, observation, expected):
+        self._scope(observation)
+        self._left(observation.deadline)
+        _require(os.lseek(self.run, 0, os.SEEK_SET) == 0, 'runtime-layout-directory-offset')
+        self._left(observation.deadline)
+        found = set()
+        with os.scandir(self.run) as entries:
+            for _ in range(len(expected) + 1):
+                self._left(observation.deadline)
+                entry = next(entries, None)
+                if entry is None:
+                    break
+                _require(entry.name in expected and entry.name not in found, 'runtime-layout-foreign-run-child')
+                found.add(entry.name)
+        _require(found == expected, 'runtime-layout-run-census')
+        self._scope(observation)
+
+    def dispose(self, *, cleanup_deadline):
+        """Remove the sealed layout after the protected caller proves role settlement.
+
+        The caller must hold exclusive layout mutation authority throughout and
+        independently prove no role ever started or that all roles and their
+        mounts have settled. A partial preparation or failed removal retains
+        the original birth journal. This method never removes the run or stage.
+        """
+        _require(type(cleanup_deadline) in (int, float) and 0 < cleanup_deadline < math.inf,
+                 'runtime-layout-cleanup-deadline')
+        frontier = min(self._cleanup, cleanup_deadline)
+        self._left(frontier)
+        _require(not self.disposal_attempted, 'runtime-layout-disposal-attempted')
+        _require(self.ready and self.pending is None and len(self.created) == _ENTRIES
+                 and self.created.keys() == self.opened.keys() == self.by_path.keys(),
+                 'runtime-layout-disposal-journal')
+        self.disposal_attempted = True
+        self.ready = False
+        with self._admit(frontier) as observation:
+            stage_only = {'launch-source'}
+            expected = stage_only | {row.path for row in self.targets if '/' not in row.path}
+            self._require_run_entries(observation, expected)
+            self._inspect(observation, empty_scratch=True)
+            for row in reversed(self.targets):
+                parent, name = self._parent(row.path, observation)
+                fd = self._check(row, observation)
+                self._left(observation.deadline)
+                if row.data is None:
+                    os.rmdir(name, dir_fd=parent)
+                else:
+                    os.unlink(name, dir_fd=parent)
+                self._left(observation.deadline)
+                _require(os.fstat(fd).st_nlink == 0 and _absent(parent, name),
+                         'runtime-layout-disposal-settlement')
+            self._require_run_entries(observation, stage_only)
+        return len(self.targets)
 
 
 @contextmanager

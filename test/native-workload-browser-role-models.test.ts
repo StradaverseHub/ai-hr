@@ -9,9 +9,17 @@ const root=fileURLToPath(new URL('..',import.meta.url));
 const prefix='.github/ci/native-workload-browser-';
 const env={PATH:'/usr/bin:/bin',LC_ALL:'C.UTF-8',TZ:'UTC'};
 const suites=[
- {name:'runs the 16 exact runtime layout source models',stem:'runtime-layout',count:16,owner:'RuntimeLayoutModel',methods:[
+ {name:'runs the 24 exact runtime layout source models',stem:'runtime-layout',count:24,owner:'RuntimeLayoutModel',methods:[
   'test_absolute_deadline_and_borrowed_fd_closure_do_not_admit_later_checks',
   'test_active_fixed_recheck_leaves_scratch_unknown_and_empty_check_refuses',
+  'test_disposal_cannot_return_positive_after_the_final_manager_view_deadline',
+  'test_disposal_preserves_first_removal_failure_and_never_retries',
+  'test_disposal_preserves_the_pending_and_known_births_of_incomplete_preparation',
+  'test_disposal_rechecks_the_earlier_deadline_after_the_last_entry_guard',
+  'test_disposal_refuses_a_foreign_run_child_before_any_removal',
+  'test_disposal_refuses_nonempty_scratch_before_any_removal',
+  'test_disposal_refuses_same_content_replacement_before_any_removal',
+  'test_disposal_removes_only_the_sealed_layout_in_reverse_birth_order',
   'test_exact_layout_matches_existing_bind_union_and_all_fixed_metadata',
   'test_existing_foreign_top_symlink_refuses_before_any_layout_write',
   'test_failed_final_manager_readback_cannot_publish_ready_layout',
