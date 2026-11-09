@@ -33,9 +33,21 @@ export const NATIVE_WORKLOAD_DATABASE_SETTINGS=Object.freeze({
  log_lock_waits:'on',deadlock_timeout:'1s',log_line_prefix:'%m [%p] %c %u@%d ',
  log_statement:'none',log_min_error_statement:'panic',log_parameter_max_length_on_error:'0',
 });
+export const AI_CENTRE_CURRENT_UPGRADE_FILE='test/ai-centre-current-prefix-upgrade.test.ts';
+// Complete cbc5b07d1e2256d00ede059977cd7fdacae37b2f sources. Historical
+// execution uses the original paths and controller on that revision.
+const aiCentreHistoricalUpgradeArchives=Object.freeze({
+ 'test/ai-centre-architecture-compatibility-upgrade.test.ts':'test/ai-centre-architecture-compatibility-upgrade.archive.ts.txt',
+ 'test/ai-centre-mandate-write-order-upgrade.test.ts':'test/ai-centre-mandate-write-order-upgrade.archive.ts.txt',
+});
+const aiCentreUpgradeSourcePins=Object.freeze({
+ [AI_CENTRE_CURRENT_UPGRADE_FILE]:'af145e73c4f2f10a4d52d719015a69da08c55cbe4fb785c6384499a149676f8d',
+ 'test/fixtures/ai-centre-current-upgrade-source.ts':'70af7a1e6426990b7ffd50fe64ec945c590a5483a2801ad8703a33e054c9100e',
+ 'test/ai-centre-architecture-compatibility-upgrade.archive.ts.txt':'41034ea6f3d13e0001003e69e99d514b1a38f90a143ba24996837516f24c386a',
+ 'test/ai-centre-mandate-write-order-upgrade.archive.ts.txt':'32c773d04d67e1db720b0e78d9bb0af40d50eac9bac6f34ea9c54946149b085f',
+});
 const measured=[
- 'test/ai-centre-architecture-compatibility-upgrade.test.ts',
- 'test/ai-centre-mandate-write-order-upgrade.test.ts',
+ AI_CENTRE_CURRENT_UPGRADE_FILE,
  'test/access-editor-native-owner-presentation.test.ts',
  'test/analytics-termination-lateral.test.ts',
  'test/attendance-shared-submission-bridge.test.ts',
@@ -73,13 +85,31 @@ export const nativeWorkloadDatabaseUnit=unit=>unit?.singleton?.profile===NATIVE_
 export const singletonControllerPath=(unit,workspace,runId)=>nativeNextUnit(unit)?'/var/lib/aihr-native-controller/'+runId+'/automation':workspace+'/automation';
 export const singletonJobName=unit=>nativeNextUnit(unit)?`native-test (${unit.id})`:unit.kind==='browser'?`browser (${unit.engine})`:`test (${unit.id})`;
 export const singletonKind=profile=>profile==='linux-systemd-nginx-v1'?'nodb':'db';
+/** The active candidate must carry the reviewed current course and both immutable
+ * archives. This is additional coverage, never a filter on the tracked suite. */
+export function assertAiCentreUpgradeCoverage(tracked,read){
+ const files=new Set(tracked);
+ assert.equal(singletonProfile(AI_CENTRE_CURRENT_UPGRADE_FILE),'controlled-database-v1','Current AI Centre upgrade must be controlled');
+ for(const file of Object.keys(aiCentreHistoricalUpgradeArchives))
+  assert(!files.has(file)&&read(file)===undefined,'Historical AI Centre upgrade path must be absent from the current candidate: '+file);
+ for(const [file,expected] of Object.entries(aiCentreUpgradeSourcePins)){
+  assert(files.has(file),'Required AI Centre upgrade source must be tracked: '+file);
+  const bytes=read(file);
+  assert(Buffer.isBuffer(bytes),'Required AI Centre upgrade source is missing: '+file);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'),expected,'Reviewed AI Centre upgrade source differs: '+file);
+ }
+}
 export function assertSingletonSelection(files){
+ assert(!files.some(file=>Object.hasOwn(aiCentreHistoricalUpgradeArchives,file)||Object.values(aiCentreHistoricalUpgradeArchives).includes(file)),
+  'Historical AI Centre upgrades require their original archived revision and controller');
  assert(!files.includes(NATIVE_WORKLOAD_DATABASE_FILE),'Native workload database requires the protected full-CI unit');
  assert(!files.some(file=>singletonProfile(file))||files.length===1,'Infrastructure-sensitive focused tests require an actual sole-file selection');
 }
 export function assertSingletonCoverage(suite,read){
  for(const file of suite){
   const text=read(file),profile=singletonProfile(file);
+  assert(!/admitSingletonTest\s*\(\s*(['"])test\/ai-centre-(?:architecture-compatibility|mandate-write-order)-upgrade\.test\.ts\1\s*\)/.test(text),
+   'Historical AI Centre admission cannot appear in the current suite: '+file);
   const focusedGuard=/AIHR_FOCUSED_(?:TESTS|SUITE_CAPACITY|EVIDENCE_DIR)/.test(text)&&/\.(?:skipIf|runIf)\s*\(/.test(text);
   assert(!focusedGuard,'Focused-only conditional cases require registered full-CI singleton admission: '+file);
   if(profile){
@@ -126,67 +156,49 @@ export function assertSingletonUnit(unit){
 // Fixed reviewed component closure. These are source bindings, not privileges,
 // new profiles, skip exemptions or permission to execute an arbitrary candidate.
 const componentSources=Object.freeze({
- "test/ai-centre-architecture-compatibility-upgrade.test.ts":Object.freeze([
-  ".github/ci/candidate-environment.mjs",
-  ".github/ci/employee-lifecycle-profile.mjs",
-  ".github/ci/employee-lifecycle-sources.mjs",
+ [AI_CENTRE_CURRENT_UPGRADE_FILE]:Object.freeze([
+  ...Object.keys(aiCentreUpgradeSourcePins),
+  // Reuse the established product roster for the shared module/catalogue import
+  // graph. This deliberately binds a bounded superset of those product owners.
+  // Canonical SQL comes only from this candidate's journal, not that old roster.
+  ...REWARDS_NATIVE_SOURCES.filter(file=>/^(?:core|db|i18n|lib|localization|messages|packs)\//.test(file)&&!file.startsWith('db/migrations/')),
+  ".github/ci/archive-downloads.mjs",
+  ".github/ci/browser-recovery-policy.mjs",
+  ".github/ci/build-artifact.mjs",
+  ".github/ci/build-heap.mjs",
+  ".github/ci/build-production.mjs",
+  ".github/ci/ci-install-grant.mjs",
+  ".github/ci/compiler-cache-protocol.mjs",
+  ".github/ci/employee-ascii-compiled-source.mjs",
+  ".github/ci/employee-lifecycle-api.mjs",
+  ".github/ci/employee-lifecycle-evidence.mjs",
+  ".github/ci/employee-lifecycle-native.mjs",
+  ".github/ci/employee-lifecycle-witness.mjs",
+  ".github/ci/employee-native-log-codec.mjs",
+  ".github/ci/employee-restoration-proof.mjs",
+  ".github/ci/focused-recovery-policy.mjs",
   ".github/ci/historical-migrations/0180_profile_option.sql",
   ".github/ci/historical-migrations/0212_dashboard_card_config.sql",
-  ".github/ci/native-next-helper-sources.mjs",
-  ".github/ci/native-next-installation.mjs",
-  ".github/ci/policy-version.mjs",
-  ".github/ci/postgres-evidence.mjs",
-  ".github/ci/rewards-native-sources.mjs",
-  ".github/ci/singleton-protocol.mjs",
-  "core/audit-chain-arming.ts",
-  "core/entitlement-types.ts",
-  "db/admission.ts",
-  "db/background-read-admission.ts",
-  "db/capacity.ts",
-  "db/client.ts",
-  "db/tenant-write-admission.ts",
-  "db/workload.ts",
-  "test/ai-centre-architecture-compatibility-upgrade.test.ts",
-  "test/db-names.ts",
-  "test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql",
-  "test/fixtures/historical-migrations/3103_access_editor_presentation.sql",
+  ".github/ci/manifest.mjs",
+  ".github/ci/migration-history.mjs",
+  ".github/ci/next-application-cache-protocol.mjs",
+  ".github/ci/next-build-cache-policy.mjs",
+  ".github/ci/pdf-tool-scope.mjs",
+  ".github/ci/pdf-tools.mjs",
+  ".github/ci/plan.mjs",
+  ".github/ci/release-policy.mjs",
+  ".github/ci/repair-recovery-policy.mjs",
+  ".github/ci/singleton-commissioning.mjs",
+  ".github/ci/staging-migration-ledger.mjs",
+  ".github/ci/unit-report-directories.mjs",
+  ".github/ci/verify-shards.mjs",
+  "lib/attendance-workflow-submission.ts",
+  "lib/employee-columns.ts",
+  "lib/personnel-list-controls.ts",
+  "test/fixtures/notification-worker/canonical-inventory.ts",
+  "test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts",
+  "test/fixtures/notification-worker/replay-prefix-ownership.ts",
   "test/helpers/ai-centre-compatibility-owner-constructor.ts",
-  "test/helpers/ci-singleton-admission.ts",
- // Candidate-migration prerequisite imports; the direct test closure above is25.
- "test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts",
- "test/fixtures/notification-worker/canonical-inventory.ts",
- "test/fixtures/notification-worker/replay-prefix-ownership.ts",
-]),
- "test/ai-centre-mandate-write-order-upgrade.test.ts":Object.freeze([
-  ".github/ci/candidate-environment.mjs",
-  ".github/ci/employee-lifecycle-profile.mjs",
-  ".github/ci/employee-lifecycle-sources.mjs",
-  ".github/ci/historical-migrations/0180_profile_option.sql",
-  ".github/ci/historical-migrations/0212_dashboard_card_config.sql",
-  ".github/ci/native-next-helper-sources.mjs",
-  ".github/ci/native-next-installation.mjs",
-  ".github/ci/policy-version.mjs",
-  ".github/ci/postgres-evidence.mjs",
-  ".github/ci/rewards-native-sources.mjs",
-  ".github/ci/singleton-protocol.mjs",
-  "core/audit-chain-arming.ts",
-  "core/entitlement-types.ts",
-  "db/admission.ts",
-  "db/background-read-admission.ts",
-  "db/capacity.ts",
-  "db/client.ts",
-  "db/tenant-write-admission.ts",
-  "db/workload.ts",
-  "test/ai-centre-mandate-write-order-upgrade.test.ts",
-  "test/db-names.ts",
-  "test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql",
-  "test/fixtures/historical-migrations/3103_access_editor_presentation.sql",
-  "test/helpers/ai-centre-compatibility-owner-constructor.ts",
-  "test/helpers/ci-singleton-admission.ts",
- // Candidate-migration prerequisite imports; the direct test closure above is25.
- "test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts",
- "test/fixtures/notification-worker/canonical-inventory.ts",
- "test/fixtures/notification-worker/replay-prefix-ownership.ts",
 ]),
  // Actual external-AST import graph plus explicit migration/duration/locked-install inputs.
  // The nine common singleton members are supplied below exactly once.
