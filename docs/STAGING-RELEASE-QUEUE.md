@@ -80,6 +80,14 @@ lease; `deploy` and `deploy-recovery` require the matching lease. The operator e
 and `arrived` without releasing the lease. Continue the existing human acceptance and capture process;
 use the same credential for `approve_staging.py`. Production remains separately authorized.
 
+A verified CI installation has a 30-minute installation grant. After the exact active build and
+original CI evidence are reverified, the operator can publish a separate short-lived cleanup
+authority under the same installation lease epoch. It authorizes only removal of the two owned
+installation trees after a fresh source checksum and the one-shot cleanup handshake. The original
+grant stays immutable. If the cleanup attempt is interrupted, retain the lease and original audit
+records and reconcile before taking further action. An already-started cleanup cannot be replayed.
+
+
 ```sh
 python3 scripts/staging/release_queue.py phase --actor CONTROLLER_ID --request /PRIVATE/accepting.json --lease-file /PRIVATE/new-lease.json --ssh-config /PRIVATE/ssh_config
 python3 scripts/staging/release_queue.py finish --actor CONTROLLER_ID --request /PRIVATE/handback.json --lease-file /PRIVATE/new-lease.json --ssh-config /PRIVATE/ssh_config
