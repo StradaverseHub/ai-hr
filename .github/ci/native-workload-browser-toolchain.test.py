@@ -10,6 +10,7 @@ import stat
 import struct
 import sys
 import tarfile
+import tempfile
 import time
 import unittest
 from unittest.mock import patch
@@ -187,6 +188,37 @@ class StrictToolchainArchiveModels(unittest.TestCase):
             with self.subTest(size=len(raw)), self.assertRaises(T.ArchiveRefused):
                 zip_rows(raw)
 
+        stored = ROOT + b'/headless_command_resources.pak'
+        central = bytes.fromhex('504b01021e030a000400000064b2ee5c1acdeaa1d90b0000d90b00003c001800'
+                                '0000000000000000a4818a6a6605')
+        local = bytes.fromhex('504b03040a000400000064b2ee5c1acdeaa1d90b0000d90b00003c001c00')
+        central_extra = struct.pack('<HH20x', 0x5455, 20)
+        local_extra = struct.pack('<HH24x', 0x5455, 24)
+        with tempfile.TemporaryFile() as archive:
+            archive.seek(90598026)
+            archive.write(local + stored + local_extra + bytes(3033))
+            directory = archive.tell()
+            archive.write(central + stored + central_extra)
+            archive.write(struct.pack('<4s4H2IH', b'PK\x05\x06', 0, 0, 1, 1,
+                                      len(central + stored + central_extra), directory, 0))
+            length = archive.tell()
+            entries, observed_directory = T.zip_directory(archive, length, deadline())
+            self.assertEqual(observed_directory, directory)
+            self.assertEqual(tuple(entries), (stored.decode(),))
+            self.assertEqual(T.zip_data_offset(archive, entries[stored.decode()], directory), 90598144)
+            archive.seek(90598026 + 6)
+            archive.write(b'\0')  # Different local flag with the exact central record.
+            with self.assertRaisesRegex(T.ArchiveRefused, 'ZIP local header differs'):
+                T.zip_data_offset(archive, entries[stored.decode()], directory)
+            for position, byte in ((8, 5), (8, 6), (16, 0), (len(central) + len(stored) - 1, ord('x'))):
+                record = bytearray(central + stored)
+                record[position] = byte
+                with self.subTest(position=position, byte=byte):
+                    archive.seek(directory)
+                    archive.write(record)
+                    with self.assertRaisesRegex(T.ArchiveRefused, 'unsupported ZIP central entry'):
+                        T.zip_directory(archive, length, deadline())
+
     def test_zip_refuses_dos_directory_and_volume_flags_on_regular_members(self):
         name = ROOT + b'/regular'
         self.assertIn(name.decode(), zip_rows(zipped([(name, b'v', {'dos_attributes':0x21})])))
@@ -281,6 +313,22 @@ class StrictToolchainArchiveModels(unittest.TestCase):
             self.assertEqual(getattr(tarfile.TarInfo.frombuf(forged,'ascii','strict'),field),0)
             with self.subTest(field=field, raw=raw.hex()), self.assertRaisesRegex(T.ArchiveRefused, 'non-octal'):
                 T.tar_header(forged)
+
+        empty_owners = with_tar_field(header, 108, bytes(16))
+        info = tarfile.TarInfo.frombuf(empty_owners, 'ascii', 'strict')
+        self.assertEqual((info.uid, info.gid), (0, 0))
+        self.assertEqual(T.tar_header(empty_owners), ('package/file', False, 0o444, 0))
+        rows, _ = package_rows(gzip.compress(empty_owners + bytes(1024), mtime=0))
+        self.assertEqual(tuple(rows), ('package/file',))
+        for position in (108, 116):
+            for invalid in (bytes(7) + b'1', b' ' * 8, b'\x80' + bytes(7)):
+                with self.subTest(position=position, invalid=invalid), self.assertRaisesRegex(T.ArchiveRefused, 'non-octal'):
+                    T.tar_header(with_tar_field(empty_owners, position, invalid))
+        for position, size in ((100, 8), (124, 12), (136, 12)):
+            with self.subTest(position=position), self.assertRaisesRegex(T.ArchiveRefused, 'non-octal'):
+                T.tar_header(with_tar_field(empty_owners, position, bytes(size)))
+        with self.assertRaisesRegex(T.ArchiveRefused, 'non-octal'):
+            T.tar_header(empty_owners[:148] + bytes(8) + empty_owners[156:])
 
     def test_tar_keeps_explicit_directory_and_rejects_v7_alias_and_reserved_bytes(self):
         explicit = tar_entry('package/explicit/',kind=tarfile.DIRTYPE,mode=0o755)

@@ -51,6 +51,11 @@ BROWSER_ROOT = 'chrome-headless-shell-linux64'
 BROWSER_EXECUTABLE = BROWSER_ROOT + '/chrome-headless-shell'
 BROWSER_EXECUTABLE_BYTES = 196975952
 BROWSER_EXECUTABLE_SHA = 'e11fc9ce65c96313476f7ee9844b6fb6a9220fb048693cfe9eee00acf4170a9f'
+# The pinned publisher ZIP carries flag 4 on exactly one stored entry.
+BROWSER_STORED_RESOURCE = BROWSER_ROOT.encode('ascii') + b'/headless_command_resources.pak'
+BROWSER_STORED_CENTRAL = ZIP_CENTRAL.pack(
+    b'PK\x01\x02', 798, 10, 4, 0, 45668, 23790, 2716519706, 3033, 3033,
+    len(BROWSER_STORED_RESOURCE), 24, 0, 0, 0, 2175008768, 90598026)
 PACKAGES = {
     'playwright': ('1.62.1', 'sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg=='),
     'playwright-core': ('1.62.1', 'sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw=='),
@@ -206,15 +211,19 @@ def zip_directory(source, size, deadline):
     for _ in range(count):
         remaining(deadline)
         require(source.tell() + ZIP_CENTRAL.size <= end, 'truncated ZIP central entry')
+        header = read_exact(source, ZIP_CENTRAL.size)
         (marker, _created, version, flags, method, clock, date, crc, compressed, decoded, name_size,
-         extra_size, comment_size, disk_start, _internal, external, local) = ZIP_CENTRAL.unpack(read_exact(source, ZIP_CENTRAL.size))
+         extra_size, comment_size, disk_start, _internal, external, local) = ZIP_CENTRAL.unpack(header)
         require(marker == b'PK\x01\x02' and 0 < version < 45 and disk_start == comment_size == 0
-                and method in (0, 8) and not flags & ~(0x0808 if method == 0 else 0x080e)
+                and method in (0, 8)
                 and 0 < name_size <= 255 and extra_size <= 4096
                 and source.tell() + name_size + extra_size <= end
                 and local + ZIP_LOCAL.size + compressed <= offset and decoded <= ZIP_MEMBER_MAX
                 and (method != 0 or compressed == decoded), 'unsupported ZIP central entry')
         name = read_exact(source, name_size)
+        require(not flags & ~(0x0808 if method == 0 else 0x080e)
+                or (header == BROWSER_STORED_CENTRAL and name == BROWSER_STORED_RESOURCE),
+                'unsupported ZIP central entry')
         zip_extras(read_exact(source, extra_size))
         path = relative_path(name, BROWSER_ROOT.encode())
         mode = external >> 16
@@ -379,8 +388,9 @@ def tar_header(header):
             and kind in (tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE)
             and not any(header[157:257]), 'unsupported tar entry')
     require(not any(header[500:512]), 'nonzero tar reserved padding')
-    raw = tuple(tar_octal(header[start:end]) for start, end in (
-        (100, 108), (108, 116), (116, 124), (124, 136), (136, 148), (148, 156)))
+    # The locked npm archives encode zero UID and GID as complete NUL fields.
+    raw = tuple(0 if start in (108, 116) and header[start:end] == bytes(8) else tar_octal(header[start:end])
+                for start, end in ((100, 108), (108, 116), (116, 124), (124, 136), (136, 148), (148, 156)))
     # Device fields are unused for the admitted kinds. Allow all-NUL fields
     # or the same complete-field octal encoding of zero.
     devices = tuple(tar_octal(field) if any(field) else 0 for field in (header[329:337], header[337:345]))

@@ -206,5 +206,106 @@
     "physicalSourceCustodyEstablished": false,
     "nativeExecutionVerified": false,
     "historicalEvidenceTransferred": false
+  },
+  "publisherArchiveCompatibilityCorrection": {
+    "parent": "f471e836d9f3128c081e5f6454d87e6abb432fad",
+    "sourceRef": "codex/native-workload-tool-only-archive-compatibility-20261109",
+    "currentSourceBytes": {
+      ".github/ci/native-workload-browser-toolchain.py": {
+        "bytes": 24989,
+        "sha256": "258594f27964a7f046a6c381525f9cb1766ef93f85f59205753b5a89e23683bc"
+      },
+      ".github/ci/native-workload-browser-toolchain.test.py": {
+        "bytes": 21550,
+        "sha256": "018a59009fb80108a9e764865f569dd45672262c47ae076faf5072e0eb92c2e2"
+      }
+    },
+    "wholeDirectParentGitPreimages": {
+      ".github/ci/native-workload-browser-toolchain.py": {
+        "gitMode": "100644",
+        "gitBlob": "164cc4bfbb56c3305f95ea715ef18df271254094",
+        "bytes": 24317,
+        "sha256": "16440458ebdebcea86631e93f06034cf93839f2d36c854471483b6c743a4f1fd"
+      },
+      ".github/ci/native-workload-browser-toolchain.test.py": {
+        "gitMode": "100644",
+        "gitBlob": "ecda159bdeb30a92d9a1cfbee2d7383fb7efa17a",
+        "bytes": 18382,
+        "sha256": "40afe4f2236d1336f5645f2c85d4a05c034705d9a544b7ba0919fadf32d04c8f"
+      },
+      "docs/qualification/native-workload-browser-toolchain-source-20261109.json": {
+        "gitMode": "100644",
+        "gitBlob": "a9a0f0d0c87a3cc3205a25fd0c739b555a067db3",
+        "bytes": 9180,
+        "sha256": "10b128538d1aa65c404d90e0c78f37e5c0dab7a3af88e098a7532bcb42028649"
+      }
+    },
+    "retainedHostedFailure": {
+      "source": "f471e836d9f3128c081e5f6454d87e6abb432fad",
+      "controller": "f471e836d9f3128c081e5f6454d87e6abb432fad",
+      "runId": 42575201702,
+      "attempt": 1,
+      "artifactId": 13654892401,
+      "artifactSha256": "240494c2e88b986308408aef30f138ba31751196500cac52350e145bed4a6b55",
+      "receiptSha256": "8ed2abb61a31712a9636bbc5166c7aaab6cf3f96d174e4a1f88b63822abfe6fc",
+      "firstFailureStage": "strict-materialization",
+      "firstFailureReason": "strict-archive-or-tree",
+      "mode2WriterHandoffObserved": true,
+      "cleanupCompleteObserved": true,
+      "installed": false
+    },
+    "independentPinnedPublisherData": {
+      "bytes": 2146,
+      "sha256": "d74c095555726cb1c0c1b6155da72627f6ac16bfe5074d70c43c73c8f47becc7"
+    },
+    "zip": {
+      "centralIndex": 5,
+      "path": "chrome-headless-shell-linux64/headless_command_resources.pak",
+      "flags": 4,
+      "method": 0,
+      "extractVersion": 10,
+      "crc32": 2716519706,
+      "compressed": 3033,
+      "expanded": 3033,
+      "localOffset": 90598026,
+      "centralIndexConvention": "one-based",
+      "centralOffset": 120196771,
+      "localPayloadOffset": 90598144,
+      "fullCentralHeaderBytes": 46,
+      "centralMemberNameBytes": 60,
+      "matchedWholeCentralHeaderAndName": true,
+      "decodedMemberSha256": "69dac576ca71db35e1716eefae2b4d7dac15012d18936d41c90e4222f4772583",
+      "otherFlagsAndExistingFramingWhole": true
+    },
+    "ustar": {
+      "zeroEncoding": "exact eight NUL bytes independently per owner field",
+      "fields": {
+        "uid": [
+          108,
+          116
+        ],
+        "gid": [
+          116,
+          124
+        ]
+      },
+      "otherNumericDecodingWhole": true,
+      "strictDecodedEqualityRequired": true,
+      "ownershipPolicyChanged": false,
+      "lockedArchiveHeaderCounts": {
+        "playwright-core.tgz": 111,
+        "playwright.tgz": 62,
+        "postgres.tgz": 37
+      }
+    },
+    "affectedExistingModelCases": [
+      "test_zip_refuses_hidden_central_members_zip64_extra_and_local_aliases",
+      "test_tar_octal_fields_match_native_decode_without_ignored_digits"
+    ],
+    "authoredModelCaseCount": 17,
+    "rawArchivesAddedToRepository": false,
+    "newBehaviorExecuted": false,
+    "newInstallQualified": false,
+    "releaseEligible": false
   }
 }
