@@ -9,7 +9,7 @@ import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
 import {createDb,type SessionContext} from '../db/client';
-import {aiCentreSelectedMetadataFrontierObservation,constructAiCentreSelectedPrefixOwner,assertAiCentreSelectedJobCatalogue,aiCentreSelectedJobSourceModel,aiCentreSelectedUpgradeSource} from './helpers/ai-centre-compatibility-owner-constructor';
+import {aiCentreSelectedMetadataDiagnosticIntent,aiCentreSelectedMetadataFrontierObservation,constructAiCentreSelectedPrefixOwner,assertAiCentreSelectedJobCatalogue,aiCentreSelectedJobSourceModel,aiCentreSelectedUpgradeSource} from './helpers/ai-centre-compatibility-owner-constructor';
 
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
 const admission=admitSingletonTest('test/ai-centre-architecture-compatibility-upgrade.test.ts');
@@ -101,10 +101,12 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(['127.0.0.1','localhost']).toContain(appUrl.hostname);
  expect(ownerUrl.username).toBe('postgres');expect(appUrl.username).toBe('ai_hr_app');
  expect(appUrl.hostname).toBe(ownerUrl.hostname);expect(appUrl.port).toBe(ownerUrl.port);expect(appUrl.password).toBe('');
- ownerUrl.pathname='/postgres';const admin=postgres(ownerUrl.toString(),{max:1,onnotice:()=>{}});
+ const metadataIntent=aiCentreSelectedMetadataDiagnosticIntent();
+ ownerUrl.pathname='/postgres';const admin=postgres(ownerUrl.toString(),{max:1,onnotice:()=>{},...metadataIntent?.adminOptions});
  ownerUrl.pathname='/'+database;appUrl.pathname='/'+database;
  const storage=createDb(ownerUrl.toString(),{max:1}),application=createDb(appUrl.toString(),{max:1});
  let migration:ReturnType<typeof createDb>|undefined;
+ let metadataExternalStop=false,metadataPending=false;
  let created=false,roleCreated=false,primaryFailure:unknown;
  let databaseOid:string|undefined,roleOid:string|undefined,selectedCourse:Awaited<ReturnType<typeof constructAiCentreSelectedPrefixOwner>>|undefined;
  const report:Record<string,unknown>={kind:'NATIVE_AI_CENTRE_HISTORICAL710_PAYROLL718_COMPATIBILITY_COMPONENT_ONLY',releaseAuthorized:false,
@@ -154,6 +156,7 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
   // Then the actual pending stock migrator uses a SEPARATE real owner LOGIN.
   const [{owner}]=await storage.client<{owner:string}[]>`select current_user as owner`;
   expect(owner).toBe('postgres');
+  if(metadataIntent){report.metadataFrontier=metadataIntent.pending;save();metadataPending=true;}
   const selected=await constructAiCentreSelectedPrefixOwner(storage.client,admin,database,role,directory,context.signal,caseStartedAt);selectedCourse=selected;migration=selected.migration;
   const construction=selected.construction;report.selectedPrefix=selected.report;
   report.constructor={realm:construction.realm,memberships:construction.memberships,perKind:construction.perKind,
@@ -289,10 +292,12 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
   primaryFailure=error;
   const metadataFrontier=aiCentreSelectedMetadataFrontierObservation(error);
   if(metadataFrontier)report.metadataFrontier=metadataFrontier;
+  metadataExternalStop=metadataFrontier?.externalOwnedStopRequired??metadataPending;
   throw error;
  }finally{
   const failures:unknown[]=[];
-  for(const close of [()=>application.client.end({timeout:5}),async()=>{if(selectedCourse)await selectedCourse.closeMigration();else await migration?.client.end({timeout:5});},()=>storage.client.end({timeout:5}),
+  if(metadataExternalStop){report.cleanupComplete=false;report.ownedJobCleanupRequired=true;}
+  else for(const close of [()=>application.client.end({timeout:5}),async()=>{if(selectedCourse)await selectedCourse.closeMigration();else await migration?.client.end({timeout:5});},()=>storage.client.end({timeout:5}),
    async()=>{if(created){expect(await admin`select oid::text as oid from pg_database where datname=${database}`).toEqual([{oid:databaseOid}]);await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);}},
    async()=>{if(roleCreated){expect(await admin`select oid::text as oid from pg_roles where rolname=${role}`).toEqual([{oid:roleOid}]);await admin.unsafe(`DROP ROLE "${role}"`);}},
    async()=>{if(selectedCourse)report.globalNativeCleanup=await selectedCourse.verifyCleanup();},

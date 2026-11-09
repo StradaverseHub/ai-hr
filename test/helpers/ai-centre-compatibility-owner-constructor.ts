@@ -1425,7 +1425,6 @@ async function selectedReadonly<T>(client:Sql,run:(q:ISql)=>Promise<T>):Promise<
 }
 async function selectedPidAbsent(observer:Sql,pid:number,start:string,deadline:number,budget:SelectedBudget){
  for(;;){
-  budget.guard();
   const rows=await observer.unsafe<{pid:number}[]>("SELECT pid FROM pg_catalog.pg_stat_activity WHERE pid="+pid+" AND backend_start::text="+selectedLiteral(start));
   budget.capture(rows,rows.length);if(rows.length===0)return;
   selectedNeed(performance.now()<deadline,'Selected reserved slot settlement uncertain');
@@ -1500,7 +1499,7 @@ async function selectedPrivateIdentity(q:ISql,model:AiCentreSelectedJobModel,bud
  const actual=await selectedConnection(q,budget);
  selectedEqual({database:actual.database,databaseOid:actual.databaseOid,owner:actual.owner,current:actual.current,session:actual.session,systemIdentifier:actual.systemIdentifier,startedAt:actual.startedAt},
  {database:model.owned.database,databaseOid:model.owned.databaseOid,owner:model.owned.role,current:'postgres',session:'postgres',systemIdentifier:model.cluster.systemIdentifier,startedAt:model.cluster.startedAt});
- const rows=await q.unsafe<{oid:string}[]>("SELECT oid::text AS oid FROM pg_catalog.pg_authid WHERE rolname="+selectedLiteral(model.owned.role));budget.capture(rows,rows.length);selectedEqual(rows,[{oid:model.owned.roleOid}]);return actual;
+ const rows=await q.unsafe<{oid:string}[]>("SELECT oid::text AS oid FROM pg_catalog.pg_authid WHERE rolname="+selectedLiteral(model.owned.role));budget.capture(rows,rows.length);selectedEqual(rows,[{oid:model.owned.roleOid}]);
 }
 async function selectedOneFunction(q:ISql,name:string,budget:SelectedBudget){
  const rows=await selectedFunctions(q,[name],budget);selectedEqual(rows.length,1);return rows[0];
@@ -1575,10 +1574,15 @@ async function selectedAppCreate(q:ISql,budget:SelectedBudget,allowed:boolean){
 async function selectedMutation(q:ISql,model:AiCentreSelectedJobModel,budget:SelectedBudget,query:string){
  budget.guard();await selectedPrivateIdentity(q,model,budget);await q.unsafe(query);budget.guard();
 }
-const selectedMetadataRef='refs/heads/codex/ai-centre-metadata-pre-admission-20261109';
+const selectedMetadataRef='refs/heads/codex/ai-centre-metadata-owned-settlement-20261109';
 const selectedMetadataWorkflow='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@'+selectedMetadataRef;
 const selectedMetadataLimit={rows:40000,bytes:64*1024*1024};
 const selectedMetadataReserve={rows:64,bytes:16384};
+const selectedMetadataCensusWindowMs=13000;
+const selectedMetadataSettlementWindowMs=5000;
+// Two 5s active caller closes, an idle app close and five exact cleanup commands.
+const selectedMetadataOuterWindowMs=85000;
+const selectedMetadataAdminLimits={connect_timeout:2,fetch_types:false,connection:{statement_timeout:10000,lock_timeout:5000}};
 const selectedMetadataSchemaScope='n.nspname IN('+selectedList(schemas)+')';
 const selectedMetadataCounts=[
  ['schema',`FROM pg_catalog.pg_namespace n WHERE ${selectedMetadataSchemaScope}`],
@@ -1600,7 +1604,7 @@ type SelectedMetadataFrontierObservation={
  mode:'full';stage:'before-ownership-transfer';prior:SelectedMetadataTotals;charged:SelectedMetadataTotals;
  reserved:SelectedMetadataTotals;settlementCharged:SelectedMetadataTotals;byKind:SelectedMetadataCount[];rows:ReturnType<typeof selectedMetadataProjection>;
  historicalBytes:'unobserved';futurePhaseFit:'unqualified';private710FixtureAlreadySeeded:true;
- ownedStorageSettlement:'settled'|'uncertain';measurement:'complete'|'incomplete';
+ ownedDiagnosticSettlement:'not-started'|'settled'|'uncertain';externalOwnedStopRequired:boolean;measurement:'complete'|'incomplete';
 };
 const selectedMetadataObservations=new WeakMap<object,SelectedMetadataFrontierObservation>();
 export function aiCentreSelectedMetadataFrontierObservation(error:unknown){
@@ -1616,70 +1620,128 @@ function selectedMetadataDiagnostic(mode:'full'|'focused'){
  'Selected metadata observation requires its exact self-source workflow');
  return true;
 }
-function selectedMetadataBudget(root:SelectedBudget,limit:SelectedMetadataTotals,workGuard:()=>void):SelectedBudget{
- const admit=(rows:number,bytes:number)=>{
-  selectedInt(rows);selectedInt(bytes);
-  selectedNeed(root.rows+rows<=limit.rows&&root.bytes+bytes<=limit.bytes,'Selected metadata observation partition refused');
- };
- return {get rows(){return root.rows;},get bytes(){return root.bytes;},cleanup:false,
-  guard(){if(this.cleanup)admit(1,32);else workGuard();},
-  objects(count){selectedNeed(!this.cleanup);admit(count,0);root.rows+=count;},
-  capture(value,count){
-   if(this.cleanup)selectedNeed(count<=1);
-   const json=JSON.stringify(value);selectedNeed(typeof json==='string');const bytes=Buffer.byteLength(json);admit(count,bytes);
-   // Charge completed observations even when there is no remaining admission window.
-   root.rows+=count;root.bytes+=bytes;
-  },
- };
+export function aiCentreSelectedMetadataDiagnosticIntent(){
+ if(!selectedMetadataDiagnostic('full'))return undefined;
+ return {adminOptions:selectedMetadataAdminLimits,pending:{kind:'SELECTED_METADATA_FRONTIER_PENDING',releaseAuthorized:false,
+  stage:'before-ownership-transfer',private710FixtureAlreadySeeded:true,ownedJobMustSettleOnInterruption:true}};
 }
-async function selectedInventoryFrontier(storage:Sql,admin:Sql,model:AiCentreSelectedJobModel,budget:SelectedBudget,caseStartedAt:number):Promise<never>{
- const prior={rows:budget.rows,bytes:budget.bytes},byKind:SelectedMetadataCount[]=[];
- const workLimit={rows:selectedMetadataLimit.rows-selectedMetadataReserve.rows,bytes:selectedMetadataLimit.bytes-selectedMetadataReserve.bytes};
- const timeRemaining=()=>caseStartedAt+300000-performance.now();
- const workGuard=()=>{budget.guard();selectedNeed(timeRemaining()>15000,'Selected metadata observation has no settled statement window');};
- selectedNeed(prior.rows+2<=workLimit.rows&&prior.bytes+16384<=workLimit.bytes&&timeRemaining()>35000,'Selected metadata observation reserve unavailable');
- const work=selectedMetadataBudget(budget,workLimit,workGuard);
- let identity:{pid:number;backendStart:string}|null=null,primary:unknown,failed=false;
- const held:{work?:Promise<void>}={};
- try{
-  await selectedReadonly(storage,q=>{
-   held.work=(async()=>{
-    identity=await selectedPrivateIdentity(q,model,work);
-    for(const [kind,selector] of selectedMetadataCounts){
-     work.guard();
-     const limit=workLimit.rows-work.rows-1;
-     if(limit<=0||workLimit.bytes-work.bytes<32)break;
-     const result=await q.unsafe<{count:number}[]>("SELECT count(*)::int AS count FROM (SELECT 1 "+selector+" LIMIT $1) selected_metadata",[limit]);
-     selectedEqual(result.length,1);const count=result[0].count;selectedInt(count);selectedNeed(count<=limit);
-     work.objects(count);work.capture(result,1);
-     const completeness=count===limit?'censored':'exact';byKind.push({kind,rows:count,completeness});
-     if(completeness==='censored')break;
-    }
-    budget.guard();
-   })();
-   return held.work;
-  });
-  budget.guard();
- }catch(error){failed=true;primary=error;}
- // postgres.js can refuse the outer transaction before its callback promise settles.
- try{await held.work;}catch(error){
-  if(!failed){failed=true;primary=error;}
-  else if(error!==primary)primary=new AggregateError([primary,error],'Selected metadata read and transaction refused');
+function selectedMetadataAdmissionAvailable(now:number,censusEnd:number,rows:number,bytes:number){
+ return now+selectedMetadataCensusWindowMs<censusEnd&&rows>1&&bytes>=4096;
+}
+function selectedMetadataConnection(configuration:ReturnType<typeof selectedConfiguration>,database:string,statementMs:10000|1000,lockMs:5000|500){
+ const url=new URL(configuration.url);url.pathname='/'+database;
+ return postgres(url.toString(),{max:1,connect_timeout:2,fetch_types:false,onnotice:()=>{},connection:{
+  statement_timeout:statementMs,lock_timeout:lockMs,default_transaction_read_only:true,default_transaction_isolation:'repeatable read',search_path:'pg_catalog,public',
+ }});
+}
+const selectedMetadataRealm=`pg_catalog.host(inet_server_addr())='127.0.0.1' AND inet_server_port()=5433
+ AND pg_catalog.host(inet_client_addr())='127.0.0.1' AND current_user='postgres' AND session_user='postgres'
+ AND (SELECT system_identifier::text FROM pg_catalog.pg_control_system())=$1 AND pg_catalog.pg_postmaster_start_time()::text=$2
+ AND current_setting('transaction_read_only')='on' AND current_setting('transaction_isolation')='repeatable read'`;
+function selectedMetadataCensusSql(){
+ const steps=selectedMetadataCounts.map(([_,selector],index)=>{
+  const input=index===0?'realm':'kind_'+(index-1);
+  const capacity=index===0?'remaining':'cap-observed';
+  return `kind_${index} AS MATERIALIZED (
+   SELECT bound.cap,counts.observed FROM ${input}
+   CROSS JOIN LATERAL (SELECT (${capacity}) AS cap WHERE (${capacity})>0) bound
+   CROSS JOIN LATERAL (SELECT count(*)::int AS observed FROM (SELECT 1 ${selector} LIMIT bound.cap) eligible) counts)`;
+ });
+ const counts=selectedMetadataCounts.map(([kind],index)=>`SELECT ${index} AS step,'${kind}' AS kind,observed AS rows,
+  CASE WHEN observed=cap THEN 'censored' ELSE 'exact' END AS completeness FROM kind_${index}`).join(' UNION ALL ');
+ return `WITH realm AS MATERIALIZED (
+  SELECT a.pid,extract(epoch FROM a.backend_start)::text AS backend_start,$7::int AS remaining
+  FROM pg_catalog.pg_stat_activity a JOIN pg_catalog.pg_database d ON d.oid=a.datid JOIN pg_catalog.pg_authid r ON r.oid=d.datdba
+  WHERE a.pid=pg_backend_pid() AND d.datname=current_database() AND d.datname=$3 AND d.oid::text=$4 AND r.rolname=$5 AND r.oid::text=$6
+   AND ${selectedMetadataRealm} AND current_setting('statement_timeout')='10s' AND current_setting('lock_timeout')='5s'
+   AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_event_trigger)),${steps.join(',')}
+  SELECT realm.pid,realm.backend_start AS "backendStart",(SELECT coalesce(jsonb_agg(jsonb_build_object('kind',k.kind,'rows',k.rows,
+   'completeness',k.completeness) ORDER BY k.step),'[]'::jsonb) FROM (${counts}) k) AS counts FROM realm`;
+}
+type SelectedMetadataIdentity={pid:number;backendStart:string};
+const selectedMetadataAbsenceSql=`SELECT observer.pid,extract(epoch FROM observer.backend_start)::text AS "backendStart",
+ NOT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity a
+ WHERE a.pid=$3::int AND extract(epoch FROM a.backend_start)::text=$4 AND a.datid=$5::oid) AS absent
+ FROM pg_catalog.pg_stat_activity observer
+ WHERE observer.pid=pg_backend_pid() AND observer.datname=current_database() AND current_database()='postgres'
+ AND ${selectedMetadataRealm} AND observer.pid<>$3::int
+ AND current_setting('statement_timeout')='1s' AND current_setting('lock_timeout')='500ms'`;
+async function selectedInventoryFrontier(configuration:ReturnType<typeof selectedConfiguration>,model:AiCentreSelectedJobModel,budget:SelectedBudget,caseStartedAt:number):Promise<never>{
+ const prior={rows:budget.rows,bytes:budget.bytes};
+ const byKind:SelectedMetadataCount[]=[];
+ const workRows=selectedMetadataLimit.rows-selectedMetadataReserve.rows-prior.rows;
+ const workBytes=selectedMetadataLimit.bytes-selectedMetadataReserve.bytes-prior.bytes;
+ const settlementEnd=caseStartedAt+300000-selectedMetadataOuterWindowMs;
+ const censusEnd=settlementEnd-selectedMetadataSettlementWindowMs;
+ let settlement:SelectedMetadataFrontierObservation['ownedDiagnosticSettlement']='not-started';
+ let identity:SelectedMetadataIdentity|undefined;
+ let primary:unknown,failed=false;
+ const note=(error:unknown)=>{
+  primary=failed?new AggregateError([primary,error],'Selected metadata observation has multiple native refusals'):error;failed=true;
+ };
+ const charge=(value:unknown,rows:number,rowLimit:number,byteLimit:number)=>{
+  const json=JSON.stringify(value);selectedNeed(typeof json==='string');const bytes=Buffer.byteLength(json);
+  selectedInt(rows);selectedNeed(rows<=rowLimit&&bytes<=byteLimit,'Selected metadata observation partition refused');
+  budget.rows+=rows;budget.bytes+=bytes;
+ };
+ if(selectedMetadataAdmissionAvailable(performance.now(),censusEnd,workRows,workBytes)){
+  const reader=selectedMetadataConnection(configuration,model.owned.database,10000,5000);
+  let observations:SelectedMetadataCount[]|undefined;
+  settlement='uncertain';
+  try{
+   budget.guard();selectedNeed(selectedMetadataAdmissionAvailable(performance.now(),censusEnd,workRows,workBytes),'Selected metadata census deadline refused');
+   const rows=await reader.unsafe<(SelectedMetadataIdentity&{counts:SelectedMetadataCount[]})[]>(selectedMetadataCensusSql(),[
+    model.cluster.systemIdentifier,model.cluster.startedAt,model.owned.database,model.owned.databaseOid,model.owned.role,model.owned.roleOid,workRows-1,
+   ]);
+   selectedEqual(rows.length,1);const row=rows[0];selectedInt(row.pid,2);
+   selectedNeed(typeof row.backendStart==='string'&&/^\d+(?:\.\d+)?(?![\s\S])/.test(row.backendStart));identity={pid:row.pid,backendStart:row.backendStart};
+   selectedArray(row.counts);selectedNeed(row.counts.length<=selectedMetadataCounts.length);
+   let countRows=0;
+   for(const [index,observed] of row.counts.entries()){
+    selectedObject(observed);selectedEqual(Object.keys(observed).sort(),['completeness','kind','rows']);
+    selectedEqual(observed.kind,selectedMetadataCounts[index][0]);selectedInt(observed.rows);
+    selectedNeed(observed.completeness==='exact'||(observed.completeness==='censored'&&index===row.counts.length-1));
+    const remaining=workRows-1-countRows;
+    selectedNeed(remaining>0&&(observed.completeness==='exact'?observed.rows<remaining:observed.rows===remaining));
+    countRows+=observed.rows;
+   }
+   selectedNeed(row.counts.length===selectedMetadataCounts.length||row.counts.at(-1)?.completeness==='censored');
+   charge(rows,countRows+1,workRows,workBytes);
+   budget.guard();selectedNeed(performance.now()<censusEnd,'Selected metadata census returned beyond its deadline');observations=row.counts;
+  }catch(error){note(error);}
+  try{await reader.end({timeout:1});}catch(error){identity=undefined;note(error);}
+  if(observations&&identity){
+   if(performance.now()<censusEnd)byKind.push(...observations);
+   else note(Error('Selected metadata census socket closed beyond its deadline'));
+  }
  }
- const beforeCleanup={rows:budget.rows,bytes:budget.bytes};
- const cleanupLimit={rows:beforeCleanup.rows+selectedMetadataReserve.rows,bytes:beforeCleanup.bytes+selectedMetadataReserve.bytes};
- const cleanup=selectedMetadataBudget(budget,cleanupLimit,workGuard);
- let settled=true,cleanupFailure:unknown;
- try{await selectedClose(storage,admin,identity,cleanup);}catch(error){settled=false;cleanupFailure=error;}
- const diagnostic=Error('Selected metadata observation only; ownership transfer not entered');
- const first=failed?primary:diagnostic;
- const outcome=settled?first:new AggregateError([first,cleanupFailure],'Selected metadata observation storage settlement uncertain');
+ const beforeSettlement={rows:budget.rows,bytes:budget.bytes};
+ if(identity&&performance.now()+4000<settlementEnd){
+  const observer=selectedMetadataConnection(configuration,'postgres',1000,500);
+  let absent=false;
+  try{
+   selectedNeed(performance.now()+4000<settlementEnd,'Selected metadata settlement admission refused');
+   const rows=await observer.unsafe<(SelectedMetadataIdentity&{absent:boolean})[]>(selectedMetadataAbsenceSql,[model.cluster.systemIdentifier,model.cluster.startedAt,
+    identity.pid,identity.backendStart,model.owned.databaseOid]);
+   charge(rows,rows.length,selectedMetadataReserve.rows,selectedMetadataReserve.bytes);
+   selectedNeed(performance.now()<settlementEnd,'Selected metadata absence returned beyond its deadline');
+   selectedEqual(rows.length,1);const actual=rows[0];selectedInt(actual.pid,2);
+   selectedNeed(actual.pid!==identity.pid&&typeof actual.backendStart==='string'&&/^\d+(?:\.\d+)?(?![\s\S])/.test(actual.backendStart));
+   selectedEqual(actual.absent,true);absent=true;
+  }catch(error){note(error);}
+  try{await observer.end({timeout:1});}catch(error){absent=false;note(error);}
+  if(absent&&performance.now()<settlementEnd)settlement='settled';
+ }
+ if(settlement==='uncertain')note(Error('Selected metadata native settlement requires owned job stop'));
+ const diagnostic=Error(settlement==='not-started'?'Selected metadata observation has no admitted slot':'Selected metadata observation only; ownership transfer not entered');
+ const outcome=failed?primary:diagnostic;
  if(outcome!==null&&typeof outcome==='object')selectedMetadataObservations.set(outcome,{
   kind:'SELECTED_METADATA_FRONTIER_OBSERVATION',version:1,releaseAuthorized:false,observationOnly:true,
   mode:'full',stage:'before-ownership-transfer',prior,charged:{rows:budget.rows-prior.rows,bytes:budget.bytes-prior.bytes},
-  reserved:{...selectedMetadataReserve},settlementCharged:{rows:budget.rows-beforeCleanup.rows,bytes:budget.bytes-beforeCleanup.bytes},
-  byKind,rows:selectedMetadataProjection(prior.rows,byKind),historicalBytes:'unobserved',futurePhaseFit:'unqualified',
-  private710FixtureAlreadySeeded:true,ownedStorageSettlement:settled?'settled':'uncertain',
+  reserved:{...selectedMetadataReserve},settlementCharged:{rows:budget.rows-beforeSettlement.rows,bytes:budget.bytes-beforeSettlement.bytes},
+  // The original no-event-trigger guard separately charged one metadata row.
+  byKind,rows:selectedMetadataProjection(prior.rows+1,byKind),historicalBytes:'unobserved',futurePhaseFit:'unqualified',
+  private710FixtureAlreadySeeded:true,ownedDiagnosticSettlement:settlement,externalOwnedStopRequired:settlement==='uncertain',
   measurement:!failed&&byKind.length===selectedMetadataCounts.length&&byKind.every(row=>row.completeness==='exact')?'complete':'incomplete',
  });
  throw outcome;
@@ -1691,9 +1753,9 @@ export async function constructAiCentreSelectedPrefixOwner(storage:Sql,admin:Sql
  const budget=selectedBudget(signal,caseStartedAt),source=aiCentreSelectedUpgradeSource(),configuration=selectedConfiguration();selectedFolder(folder,source);budget.guard();
  const admission=await selectedJobCapture(storage,admin,database,role,configuration,budget),model=admission.model;
  selectedPrivateLedger(admission.privateLedger,source,source.boundaries.historical);
+ if(selectedMetadataDiagnostic(configuration.mode))return selectedInventoryFrontier(configuration,model,budget,caseStartedAt);
  await storage.unsafe("SET statement_timeout='10s'");await storage.unsafe("SET lock_timeout='5s'");
  const noTriggers=await storage.unsafe<{count:number}[]>("SELECT count(*)::int AS count FROM pg_catalog.pg_event_trigger");budget.capture(noTriggers,1);selectedEqual(noTriggers,[{count:0}]);
- if(selectedMetadataDiagnostic(configuration.mode))return selectedInventoryFrontier(storage,admin,model,budget,caseStartedAt);
  const construction=await constructAiCentreCompatibilityOwner(storage,database,role);budget.guard();
  // The unchanged historical constructor performs three whole observations.
  // Count the verified equal intermediate observation, too, in this aggregate.
@@ -1846,15 +1908,10 @@ export function aiCentreSelectedJobSourceModel(mode:'full'|'focused'):AiCentreSe
  expect(selectedMetadataProjection(2500,exactCounts)).toEqual({status:'exact',objects:500,historicalThreeScanLowerBound:4000,classification:'rows-within-projection'});
  expect(selectedMetadataProjection(2500,[{kind:'schema',rows:12501,completeness:'censored'}])).toMatchObject({status:'censored',classification:'required-rows-exceed'});
  expect(selectedMetadataProjection(2500,[{kind:'schema',rows:3,completeness:'exact'}])).toMatchObject({status:'censored',classification:'unavailable'});
- const measurement=selectedBudget(new AbortController().signal,performance.now());
- measurement.rows=selectedMetadataLimit.rows-selectedMetadataReserve.rows;
- const reserved=selectedMetadataBudget(measurement,selectedMetadataLimit,()=>{throw Error('Source-only work frontier');});
- expect(()=>reserved.guard()).toThrow('Source-only work frontier');
- const used=selectedMetadataBudget(measurement,{rows:measurement.rows,bytes:selectedMetadataLimit.bytes},()=>{});
- expect(()=>used.objects(1)).toThrow('Selected metadata observation partition refused');
- reserved.cleanup=true;reserved.guard();reserved.capture([],0);
- expect({rows:measurement.rows,bytes:measurement.bytes}).toEqual({rows:39936,bytes:2});
- expect(()=>reserved.capture([{pid:1},{pid:2}],2)).toThrow();
+ expect(selectedMetadataAdmissionAvailable(10000,23000,2,4096)).toBe(false);
+ expect(selectedMetadataAdmissionAvailable(10000,23001,2,4096)).toBe(true);
+ expect(selectedMetadataAdmissionAvailable(10000,23001,1,4096)).toBe(false);
+ expect(selectedMetadataAdmissionAvailable(10000,23001,2,4095)).toBe(false);
  const token='0123456789abcdef0123456789abcdef',role='aihr_ai_compat_'+token,database='ai_hr_ai_compat_'+token;
  const cluster:SelectedCluster={systemIdentifier:'123456789',startedAt:'2026-11-09 00:00:00+00',version:160015,jit:'on',jitAvailable:true,maxConnections:100,maxLocks:256};
  const bound=(name:string,oid:string):SelectedRole=>({oid,name,login:name==='ai_hr_app'||name==='ai_hr_owner'||name===role,super:false,inherit:['ai_hr_app','ai_hr_owner','ai_hr_draft_discard_port',role].includes(name),createRole:false,createDb:false,replication:false,bypassRls:false,connectionLimit:-1,passwordNull:true,validUntil:null,config:null});

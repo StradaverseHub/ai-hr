@@ -8,7 +8,7 @@ import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
 import {createDb,type SessionContext} from '../db/client';
-import {aiCentreSelectedMetadataFrontierObservation,constructAiCentreSelectedPrefixOwner,aiCentreSelectedUpgradeSource} from './helpers/ai-centre-compatibility-owner-constructor';
+import {aiCentreSelectedMetadataDiagnosticIntent,aiCentreSelectedMetadataFrontierObservation,constructAiCentreSelectedPrefixOwner,aiCentreSelectedUpgradeSource} from './helpers/ai-centre-compatibility-owner-constructor';
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
 const admission=admitSingletonTest('test/ai-centre-mandate-write-order-upgrade.test.ts');
 
@@ -35,10 +35,12 @@ it('upgrades actual historical709 through3500 to3501 as the real non-super owner
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(['127.0.0.1','localhost']).toContain(appUrl.hostname);
  expect(ownerUrl.username).toBe('postgres');expect(appUrl.username).toBe('ai_hr_app');expect(appUrl.password).toBe('');
  expect(appUrl.hostname).toBe(ownerUrl.hostname);expect(appUrl.port).toBe(ownerUrl.port);
- ownerUrl.pathname='/postgres';const admin=postgres(ownerUrl.toString(),{max:1,onnotice:()=>{}});
+ const metadataIntent=aiCentreSelectedMetadataDiagnosticIntent();
+ ownerUrl.pathname='/postgres';const admin=postgres(ownerUrl.toString(),{max:1,onnotice:()=>{},...metadataIntent?.adminOptions});
  ownerUrl.pathname='/'+database;appUrl.pathname='/'+database;
  const storage=createDb(ownerUrl.toString(),{max:1}),application=createDb(appUrl.toString(),{max:1});
  let migration:ReturnType<typeof createDb>|undefined,created=false,roleCreated=false,primaryFailure:unknown;
+ let metadataExternalStop=false,metadataPending=false;
  let databaseOid:string|undefined,roleOid:string|undefined,selectedCourse:Awaited<ReturnType<typeof constructAiCentreSelectedPrefixOwner>>|undefined;
  const report:Record<string,unknown>={kind:'NATIVE_AI_CENTRE_MANDATE_WRITE_ORDER_COMPONENT_ONLY',releaseAuthorized:false,complete:false,cleanupComplete:false,
   historicalOriginals:historical,selectedSourceBoundaries:[boundaries.historical,boundaries.alphaSeven,boundaries.payroll,boundaries.compatibility,boundaries.mandate],phase:'constructor',resourceBound:{caseMs:300000,pools:4,maxPerPool:1,maximumConnections:4,extraOwnerLoginPools:1,
@@ -71,6 +73,7 @@ it('upgrades actual historical709 through3500 to3501 as the real non-super owner
   await storage.client`insert into role_assignment(tenant_id,app_user_id,role) values(${tenantId},${userId},'hr_admin')`;
   // Before3501 the source constructor can populate both fictional tenants without a binding.
   await storage.client`insert into teras_mandate_control(tenant_id,stopped,version,changed_by_user_id) values(${tenantId},true,7,${userId}),(${foreignTenant},true,11,${foreignUser})`;
+  if(metadataIntent){report.metadataFrontier=metadataIntent.pending;save();metadataPending=true;}
   const selected=await constructAiCentreSelectedPrefixOwner(storage.client,admin,database,role,directory,context.signal,caseStartedAt);selectedCourse=selected;migration=selected.migration;
   const construction=selected.construction;report.selectedPrefix=selected.report;
   report.constructor={realm:construction.realm,memberships:construction.memberships,perKind:construction.perKind,transferred:construction.transferred,
@@ -192,10 +195,12 @@ it('upgrades actual historical709 through3500 to3501 as the real non-super owner
   primaryFailure=error;
   const metadataFrontier=aiCentreSelectedMetadataFrontierObservation(error);
   if(metadataFrontier)report.metadataFrontier=metadataFrontier;
+  metadataExternalStop=metadataFrontier?.externalOwnedStopRequired??metadataPending;
   throw error;
  }finally{
   const failures:unknown[]=[];
-  for(const close of [()=>application.client.end({timeout:5}),async()=>{if(selectedCourse)await selectedCourse.closeMigration();else await migration?.client.end({timeout:5});},()=>storage.client.end({timeout:5}),
+  if(metadataExternalStop){report.cleanupComplete=false;report.ownedJobCleanupRequired=true;}
+  else for(const close of [()=>application.client.end({timeout:5}),async()=>{if(selectedCourse)await selectedCourse.closeMigration();else await migration?.client.end({timeout:5});},()=>storage.client.end({timeout:5}),
    async()=>{if(created){expect(await admin`select oid::text as oid from pg_database where datname=${database}`).toEqual([{oid:databaseOid}]);await admin.unsafe(`DROP DATABASE "${database}" WITH(FORCE)`);}},async()=>{if(roleCreated){expect(await admin`select oid::text as oid from pg_roles where rolname=${role}`).toEqual([{oid:roleOid}]);await admin.unsafe(`DROP ROLE "${role}"`);}},
    async()=>{if(selectedCourse)report.globalNativeCleanup=await selectedCourse.verifyCleanup();},
    async()=>{const[absence]=await admin`select not exists(select 1 from pg_database where datname=${database})as database_absent,not exists(select 1 from pg_roles where rolname=${role})as role_absent`;expect(absence).toEqual({database_absent:true,role_absent:true});report.cleanup=absence;report.cleanupComplete=!primaryFailure&&failures.length===0;},
