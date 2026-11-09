@@ -47,45 +47,47 @@ it('witnesses two native Rewards Return chooser transactions upgrading the same 
   return readRewardsReturnChoicesTx(tx,actor);
  },{readSignal:signal})));
  let timer:ReturnType<typeof setTimeout>|undefined;
+ let graph:readonly string[]|undefined;
  try{
   await Promise.race([ready,results.then(()=>{throw Error('Rewards readers exited before both held the shared lock');}),
    new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Rewards shared-lock holders did not start')),3000);})]);
   const [left,right]=pids;
   expect(left).not.toBe(right);
   const key='access-configuration:'+base.tenantId;
-  await owner.db.transaction(async tx=>{
+  const [held]=await owner.db.transaction(async tx=>{
    await tx.execute(sql`set transaction read only`);
    await tx.execute(sql`set local statement_timeout='850ms'`);
-   const [held]=await tx.execute<{holders:number}>(sql`select count(*)::integer as holders
+   return tx.execute<{holders:number;database:string;high:string;low:string}>(sql`select count(*)::integer as holders,
+    min(database::bigint)::text as database,min(classid::bigint)::text as high,min(objid::bigint)::text as low
     from pg_locks where locktype='advisory' and objsubid=1 and mode='ShareLock' and granted
     and database=(select oid from pg_database where datname=current_database())
     and pid in (${left},${right}) and ((classid::bigint<<32)|objid::bigint)=hashtextextended(${key},0)`);
-   expect(held.holders).toBe(2);
-   startChooser=true;
-   release();
-   let bothBlocked=false;
-   const deadline=performance.now()+850;
-   do{
-    const [observation]=await tx.execute<{waiters:number}>(sql`select count(*)::integer as waiters
-     from pg_locks l join pg_stat_activity a on a.pid=l.pid
-     where l.locktype='advisory' and l.objsubid=1 and l.mode='ExclusiveLock' and not l.granted
-     and l.database=(select oid from pg_database where datname=current_database())
-     and a.datname=current_database() and a.usename='ai_hr_app'
-     and ((l.classid::bigint<<32)|l.objid::bigint)=hashtextextended(${key},0)
-     and ((l.pid=${left} and ${right}::integer=any(pg_blocking_pids(l.pid)))
-      or (l.pid=${right} and ${left}::integer=any(pg_blocking_pids(l.pid))))`);
-    bothBlocked=performance.now()<deadline&&observation.waiters===2;
-    if(!bothBlocked)await new Promise(resolve=>setTimeout(resolve,10));
-   }while(!bothBlocked&&performance.now()<deadline);
-   expect(bothBlocked).toBe(true);
   });
+  expect(held.holders).toBe(2);
+  const lock=[held.database,held.high,held.low,1].join(',');
+  graph=[
+   'Process '+left+' waits for ExclusiveLock on advisory lock ['+lock+']; blocked by process '+right+'.',
+   'Process '+right+' waits for ExclusiveLock on advisory lock ['+lock+']; blocked by process '+left+'.',
+  ];
+  startChooser=true;
+  release();
  }finally{
   clearTimeout(timer);
   release();
   await results;
  }
  const outcomes=await results;
- const failures=outcomes.flatMap(result=>result.status==='rejected'?[pgSqlState(result.reason)]:[]);
- expect(failures.length).toBeGreaterThan(0);
- expect(failures.every(code=>code==='40P01'||code==='55P03')).toBe(true);
+ const failures=outcomes.filter((result):result is PromiseRejectedResult=>result.status==='rejected');
+ expect(failures.map(result=>pgSqlState(result.reason))).toContain('40P01');
+ expect(failures.every(result=>['40P01','55P03'].includes(pgSqlState(result.reason)??''))).toBe(true);
+ const deadlock=failures.find(result=>pgSqlState(result.reason)==='40P01')!;
+ type NativeCause={code?:unknown;detail?:unknown;cause?:unknown};
+ let cause=deadlock.reason as NativeCause|null;
+ let detail:unknown;
+ for(let depth=0;depth<4&&cause&&typeof cause==='object';depth++){
+  if(cause.code==='40P01'){detail=cause.detail;break;}
+  cause=cause.cause as NativeCause|null;
+ }
+ const observedEdges=typeof detail==='string'?detail.split('\n').map(line=>line.trim()):[];
+ expect(graph?.every(edge=>observedEdges.includes(edge))).toBe(true);
 },15000);
