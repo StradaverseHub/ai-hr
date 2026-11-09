@@ -120,6 +120,18 @@ def owned_fd(fd):
         os.close(fd)
 
 
+def _open_tool_parent(held):
+    parent = held.enter_context(owned_fd(os.open('/', DIR)))
+    for component in ROOT_PARENT.parts[1:]:
+        before = named(parent, component)
+        require(stat.S_ISDIR(before.st_mode) and before.st_uid == 0 and not before.st_mode & 0o022,
+                'TOOL parent ancestry is not protected')
+        child = held.enter_context(owned_fd(os.open(component, DIR, dir_fd=parent)))
+        require(identity(os.fstat(child)) == identity(before), 'TOOL parent ancestry changed')
+        parent = child
+    return parent
+
+
 @contextmanager
 def quiet_command_stdio():
     # Keep the original sealed request and receipt descriptors out of even the
@@ -719,6 +731,7 @@ class Course:
         self.processes_settled = True
         self.mount_uncertain = False
         self.owned_mount = None
+        self.private_mount_namespace = None
         self.mounts = None
         self.kernel = None
         self.stage = 'root-acquisition'
@@ -868,8 +881,15 @@ class Course:
             require(handoff in DUMP_POLICIES.values(), 'TOOL writer grant proof unavailable')
             return handoff
 
+    def check_private_mount_namespace(self):
+        require(self.private_mount_namespace is not None
+                and birth(os.stat('/proc/self/ns/mnt')) == self.private_mount_namespace,
+                'TOOL private mount namespace changed')
+
     def observe_mounts(self, deadline, *, private=False):
         left(deadline)
+        if private or self.private_mount_namespace is not None:
+            self.check_private_mount_namespace()
         with owned_fd(os.open('/proc/self', os.O_RDONLY | os.O_DIRECTORY)) as proc:
             raw = self.mounts.read_proc(proc, 'mountinfo', PROC_MAX, require)
         rows = self.mounts.parse_mountinfo(raw, require)
@@ -878,6 +898,8 @@ class Course:
                 fields = line.split(b' - ', 1)[0].split()
                 require(not any(field.startswith((b'shared:', b'master:', b'propagate_from:')) for field in fields[6:]),
                         'TOOL mount propagation is not private')
+        if private or self.private_mount_namespace is not None:
+            self.check_private_mount_namespace()
         left(deadline)
         return rows
 
@@ -889,8 +911,11 @@ class Course:
         require(not self.own_targets(self.observe_mounts(self.active)), 'Existing TOOL namespace mount')
         previous = birth(os.stat('/proc/self/ns/mnt'))
         left(self.active)
-        require(ctypes.CDLL(None, use_errno=True).unshare(0x00020000) == 0
-                and birth(os.stat('/proc/self/ns/mnt')) != previous, 'TOOL private mount namespace unavailable')
+        require(ctypes.CDLL(None, use_errno=True).unshare(0x00020000) == 0,
+                'TOOL private mount namespace unavailable')
+        current = birth(os.stat('/proc/self/ns/mnt'))
+        require(current != previous, 'TOOL private mount namespace unavailable')
+        self.private_mount_namespace = current
         self.command([MOUNT, '-i', '--make-rprivate', '/'], self.active, 10)
         require(not self.own_targets(self.observe_mounts(self.active, private=True)),
                 'Unexpected TOOL mount under private root')
@@ -1022,14 +1047,29 @@ class Course:
         require(len(rows) == 1 and rows[0]['target'] == target and rows[0]['id'] not in before_ids,
                 'TOOL unexpected mount identity')
         mount = rows[0]
-        with owned_fd(os.open('payload', DIR, dir_fd=self.root)) as fd:
+        # The backing FDs predate CLONE_NEWNS and still resolve on the old mount.
+        # Start this mounted lookup at the current namespace's absolute root.
+        with ExitStack() as held:
+            parent = _open_tool_parent(held)
+            parent_info = identity(os.fstat(self.parent))
+            require(identity(os.fstat(parent)) == parent_info, 'TOOL private mount parent differs')
+            root_info = identity(self.check_root(0o700))
+            root = held.enter_context(owned_fd(os.open(self.name, DIR, dir_fd=parent)))
+            require(identity(os.fstat(root)) == root_info == identity(named(parent, self.name)),
+                    'TOOL private mount root differs')
+            fd = held.enter_context(owned_fd(os.open('payload', DIR, dir_fd=root)))
             info = os.fstat(fd)
             require_dir(info, 0, 0, 0o555, self.device)
             fields = bounded_proc(f'/proc/self/fdinfo/{fd}', 65536)
             ids = re.findall(rb'^mnt_id:\s+([0-9]+)$', fields, re.M)
             require(ids == [str(mount['id']).encode()] and birth(info) == self.births['payload']
-                    and identity(info) == identity(named(self.root, 'payload')),
+                    and identity(info) == identity(os.fstat(fd)) == identity(named(root, 'payload')),
                     'TOOL opened mount identity differs')
+            require(identity(os.fstat(root)) == root_info == identity(named(parent, self.name))
+                    and identity(os.fstat(parent)) == parent_info == identity(os.fstat(self.parent)),
+                    'TOOL private mount ancestry changed')
+        self.check_private_mount_namespace()
+        left(deadline)
         self.owned_mount = mount['id']
         self.mount_uncertain = False
         return mount
@@ -1294,14 +1334,7 @@ def run_course(run, source, uid, gid, members, rows, event_sha):
 
             for signum in (signal.SIGINT, signal.SIGTERM):
                 parents.callback(signal.signal, signum, signal.signal(signum, interrupt))
-            parent = parents.enter_context(owned_fd(os.open('/', DIR)))
-            for component in ROOT_PARENT.parts[1:]:
-                before = named(parent, component)
-                require(stat.S_ISDIR(before.st_mode) and before.st_uid == 0 and not before.st_mode & 0o022,
-                        'TOOL parent ancestry is not protected')
-                child = parents.enter_context(owned_fd(os.open(component, DIR, dir_fd=parent)))
-                require(identity(os.fstat(child)) == identity(before), 'TOOL parent ancestry changed')
-                parent = child
+            parent = _open_tool_parent(parents)
             primary, cleanup = course.execute(parent, members)
     except BaseException as error:
         if course.creation_attempted:

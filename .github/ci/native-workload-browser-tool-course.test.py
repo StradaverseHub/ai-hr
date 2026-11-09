@@ -995,6 +995,80 @@ class ToolDisposalModels(unittest.TestCase):
                             self.assertFalse(root.exists())
                             self.assertTrue(course.state['namespaceAbsent'])
 
+    def test_private_mount_readback_reopens_the_current_namespace_before_owning_or_releasing(self):
+        def directory(ino, mode=0o755):
+            return SimpleNamespace(st_dev=1, st_ino=ino, st_uid=0, st_gid=0, st_mode=stat.S_IFDIR | mode,
+                                   st_nlink=2, st_size=4096, st_mtime_ns=1, st_ctime_ns=1)
+
+        for case in ('owned', 'old-mount-id', 'foreign-root', 'foreign-namespace', 'changed-namespace'):
+            course = C.Course('123', 1001, 1001, time.monotonic())
+            course.parent, course.root, course.device = 10, 11, 1
+            course.births = {'': (1, 4), 'payload': (1, 5)}
+            course.private_mount_namespace = (2, 41)
+            namespace = 41
+            target = str(course.path / 'payload')
+            bound = {'id': 31, 'target': target, 'options': {'rw'}}
+            readonly = {**bound, 'options': {'ro', 'nosuid', 'nodev', 'noexec'}}
+            before = [[], [bound], [readonly], [readonly], [readonly], []]
+            course.mounts = SimpleNamespace(read_proc=Mock(return_value=b'31 1 0:1 / /payload ro - ext4 device rw\n'),
+                                            parse_mountinfo=Mock(side_effect=before))
+            course.verify_mounted = Mock(return_value={'example': True})
+            mount = [C.MOUNT, '-i', '--bind', target, target]
+            remount = [C.MOUNT, '-i', '-o', 'remount,bind,ro,nosuid,nodev,noexec', target]
+            unmount = [C.UMOUNT, '-i', '--', target]
+            info = {10: directory(3), 11: directory(4, 0o700), 12: directory(5, 0o555),
+                    20: directory(1), 21: directory(2), 22: directory(3),
+                    23: directory(99 if case == 'foreign-root' else 4, 0o700), 24: directory(5, 0o555)}
+            descriptors = {('/', None): 20, ('var', 20): 21, ('lib', 21): 22, (course.name, 22): 23,
+                           ('payload', 23): 24, ('payload', 11): 12, ('/proc/self', None): 25}
+            names = {(20, 'var'): 21, (21, 'lib'): 22, (10, course.name): 11, (22, course.name): 11,
+                     (11, 'payload'): 12, (23, 'payload'): 24}
+
+            def command(argv, _deadline, _maximum):
+                nonlocal namespace
+                if argv == mount and case == 'foreign-namespace':
+                    namespace = 42
+
+            def fdinfo(path, maximum):
+                nonlocal namespace
+                self.assertEqual(maximum, 65536)
+                if case == 'changed-namespace':
+                    namespace = 42
+                return b'mnt_id:\t12\n' if path.endswith('/12') or case == 'old-mount-id' else b'mnt_id:\t31\n'
+
+            course.command = Mock(side_effect=command)
+            staged = object()
+            with self.subTest(case=case), \
+                 patch.object(C.os, 'open', side_effect=lambda path, flags, *, dir_fd=None: descriptors[(path, dir_fd)]) as opened, \
+                 patch.object(C.os, 'close') as closed, patch.object(C.os, 'fstat', side_effect=info.__getitem__), \
+                 patch.object(C.os, 'stat', side_effect=lambda path: SimpleNamespace(st_dev=2, st_ino=namespace)), \
+                 patch.object(C.pathlib.Path, 'lstat', return_value=info[10]), \
+                 patch.object(C, 'named', side_effect=lambda fd, name: info[names[(fd, name)]]), \
+                 patch.object(C, 'bounded_proc', side_effect=fdinfo) as read:
+                if case == 'owned':
+                    course.seal_payload(staged)
+                    self.assertEqual(course.owned_mount, 31)
+                    course.verify_mounted.assert_called_once_with(target, staged, 31)
+                    course.dispose_mounts()
+                    self.assertIs(course.state['mountsAbsent'], True)
+                    self.assertEqual(course.command.call_args_list, [call(mount, course.active, 10),
+                        call(remount, course.active, 10), call(unmount, course.deadline, 10)])
+                    self.assertEqual(read.call_args_list, [call('/proc/self/fdinfo/24', 65536)] * 3)
+                    self.assertEqual(opened.call_args_list.count(call('payload', C.DIR, dir_fd=23)), 3)
+                    self.assertEqual(closed.call_args_list.count(call(24)), 3)
+                else:
+                    reasons = {'old-mount-id': 'opened mount identity differs', 'foreign-root': 'private mount root differs',
+                               'foreign-namespace': 'mount namespace changed', 'changed-namespace': 'mount namespace changed'}
+                    with self.assertRaisesRegex(ValueError, reasons[case]):
+                        course.seal_payload(staged)
+                    self.assertIsNone(course.owned_mount)
+                    with self.assertRaisesRegex(ValueError, 'ownership uncertain'):
+                        course.dispose_mounts()
+                    course.command.assert_called_once_with(mount, course.active, 10)
+                    course.verify_mounted.assert_not_called()
+                    self.assertNotIn('mountsAbsent', course.state)
+                self.assertNotIn(call('payload', C.DIR, dir_fd=11), opened.call_args_list)
+
     def test_foreign_or_replaced_mount_never_triggers_unmount(self):
         for mount in [(32, 'payload'), (31, 'payload/foreign')]:
             course = C.Course('123', 1001, 1001, time.monotonic())
