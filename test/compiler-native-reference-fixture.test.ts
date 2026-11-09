@@ -1,13 +1,13 @@
 /** BLOCKED until root's exact closed hosted route/source registration. Native
  * miniature fixture qualification only; never ordinary compiler or release. */
-import {spawn} from 'node:child_process';
+import {spawnClosed,type ClosedChildEnvironment} from './helpers/closed-child-process.mjs';
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {expect,it} from 'vitest';
 import {admitCompilerReference,publishCompilerReferenceClock} from '../.github/ci/diagnostics/native-reference/admission.mjs';
 it('checks genuine native composite emission/reference/declaration fixture semantics',async context=>{
  const started=process.hrtime.bigint(),controller=new AbortController(),failures:unknown[]=[],output:Buffer[]=[];
- let child:ReturnType<typeof spawn>|undefined,closed:Promise<{code:number|null;signal:NodeJS.Signals|null}>|undefined;
+ let child:ReturnType<typeof spawnClosed>|undefined,closed:Promise<{code:number|null;signal:NodeJS.Signals|null}>|undefined;
  let exited=false,finished=false,bytes=0,timer:ReturnType<typeof setTimeout>|undefined,killTimer:ReturnType<typeof setTimeout>|undefined,drainTimer:ReturnType<typeof setTimeout>|undefined;
  const elapsed=()=>Number(process.hrtime.bigint()-started)/1e6;
  const remember=(error:unknown)=>{if(!failures.includes(error))failures.push(error);};
@@ -24,9 +24,9 @@ it('checks genuine native composite emission/reference/declaration fixture seman
    controller.signal.throwIfAborted();const proof=admitCompilerReference();
    await publishCompilerReferenceClock(proof,controller.signal,started);controller.signal.throwIfAborted();
    const keys=['PATH','HOME','RUNNER_TEMP','GITHUB_WORKSPACE','GITHUB_ACTIONS','CI','RUNNER_ENVIRONMENT','RUNNER_OS','GITHUB_REPOSITORY','GITHUB_WORKFLOW','GITHUB_JOB','GITHUB_EVENT_NAME','GITHUB_RUN_ATTEMPT','GITHUB_RUN_ID','AIHR_CI_HEAD','AIHR_CI_CONTROL_HEAD','AIHR_FOCUSED_TESTS','AIHR_FOCUSED_EVIDENCE_DIR']as const;
-   const env:NodeJS.ProcessEnv={LANG:'C',LC_ALL:'C',TZ:'UTC'};for(const key of keys)if(process.env[key]!==undefined)env[key]=process.env[key];
+   const env:ClosedChildEnvironment={LANG:'C',LC_ALL:'C',TZ:'UTC'};for(const key of keys)if(process.env[key]!==undefined)env[key]=process.env[key];
    expect(elapsed()).toBeLessThan(718000);
-   child=spawn(process.execPath,['--max-old-space-size=12288',join(proof.source,'.github/ci/diagnostics/native-reference/fixture.mjs')],{env,stdio:['ignore','pipe','pipe']});
+   child=spawnClosed(process.execPath,['--max-old-space-size=12288',join(proof.source,'.github/ci/diagnostics/native-reference/fixture.mjs')],{env,stdio:['ignore','pipe','pipe']});
    closed=new Promise(resolve=>{
     child!.once('error',remember);
     child!.once('exit',()=>{exited=true;if(killTimer)clearTimeout(killTimer);drainTimer=setTimeout(()=>{remember(Error('Fixture inherited pipe exceeded close budget'));closePipes();},Math.max(0,Math.min(1000,720000-elapsed())));});

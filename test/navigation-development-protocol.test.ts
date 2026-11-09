@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {execFileSync} from 'node:child_process';
+import {execFileClosedSync} from './helpers/closed-child-process.mjs';
 import {closeSync,copyFileSync,linkSync,mkdirSync,mkdtempSync,openSync,readFileSync,readSync,renameSync,rmSync,symlinkSync,unlinkSync,writeFileSync,writeSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -62,7 +62,7 @@ const repo=fileURLToPath(new URL('../',import.meta.url));
 const historyPins=()=>Array.from(readFileSync(new URL('../.github/ci/native-workload-navigation-source.py',import.meta.url),'utf8')
  .matchAll(/HistoryPin\('([^']+)', (\d+),\s*'([a-f0-9]{40})',\s*'([a-f0-9]{64})'\)/g),
  ([,path,size,blob,sha256])=>({path,size:Number(size),blob,sha256}));
-const sourceGit=(root:string,...args:string[])=>execFileSync('git',['-c','core.hooksPath=/dev/null',...args],
+const sourceGit=(root:string,...args:string[])=>execFileClosedSync('git',['-c','core.hooksPath=/dev/null',...args],
  {cwd:root,env:{PATH:process.env.PATH,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null'},maxBuffer:2*1024*1024,timeout:2000});
 const currentSource=(root:string)=>sourceGit(root,'rev-parse','HEAD').toString().trim();
 

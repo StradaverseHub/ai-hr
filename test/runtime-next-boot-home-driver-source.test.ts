@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
-import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { expect, it } from 'vitest';
 
+const { JSDOM }: { JSDOM: new (html: string) => { window: { document: Document; close(): void } } } =
+  createRequire(import.meta.url)('jsdom');
 const driver = new URL('../scripts/performance/native-next-boot-browser.mjs', import.meta.url);
 const source = ts.createSourceFile(driver.pathname, readFileSync(driver, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 

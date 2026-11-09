@@ -11,7 +11,7 @@ const probe=require('../deploy/admission/next_dependency_probe.cjs') as {
  admit:(facts:{platform:string;getuid:()=>number;argv:string[];env:Record<string,string>;cwd:()=>string})=>string;
 };
 const stages=['admission','next-version','sharp-image','font-layout','next-config','executable-maps'];
-const environment=()=>({NODE_ENV:'production',NEXT_TELEMETRY_DISABLED:'1',HOME:'/var/empty/aihr',PATH:'/usr/bin:/bin'});
+const environment=()=>({NODE_ENV:'production',NEXT_TELEMETRY_DISABLED:'1',HOME:'/var/empty/aihr',PATH:'/usr/bin:/bin'} satisfies Record<string,string>&Pick<NodeJS.ProcessEnv,'NODE_ENV'>);
 
 it('emits only the six closed owned stages and refuses private or unknown diagnostic values',()=>{
  expect(probe.STAGES).toEqual(stages);

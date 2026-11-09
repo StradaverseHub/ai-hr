@@ -1,5 +1,5 @@
 /** Bounded source models. These checks confer no native browser capability. */
-import {spawnSync} from 'node:child_process';
+import {spawnClosedTextSync} from './helpers/closed-child-process.mjs';
 import {fileURLToPath} from 'node:url';
 import {expect,it} from 'vitest';
 
@@ -108,7 +108,7 @@ it.each(suites)('$name',({file,count,classes})=>{
  const expected=classes.flatMap(([owner,methods])=>methods.map(method=>method+' (__main__.'+owner+'.'+method+') ... ok'));
  expect(expected).toHaveLength(count);
  expect(new Set(expected).size).toBe(count);
- const result=spawnSync('/usr/bin/python3',['-I','-B',file,'-v'],{
+ const result=spawnClosedTextSync('/usr/bin/python3',['-I','-B',file,'-v'],{
   cwd:root,env:{PATH:'/usr/bin:/bin',LC_ALL:'C.UTF-8',TZ:'UTC'},encoding:'utf8',
   timeout:10000,killSignal:'SIGKILL',maxBuffer:128*1024,stdio:['ignore','pipe','pipe'],
  });

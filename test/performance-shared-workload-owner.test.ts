@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {spawnSync} from 'node:child_process';
+import {spawnClosedTextSync,type ClosedChildEnvironment} from './helpers/closed-child-process.mjs';
 import {mkdtempSync,mkdirSync,readdirSync,realpathSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
@@ -17,24 +17,24 @@ type Course=typeof courses[number];
 const developmentUrl='postgres://performance_guard_never_provisioned@127.0.0.1:5433/ai_hr_dev';
 const nativeUrl='postgres://performance_guard_never_provisioned@127.0.0.1:5433/ai_hr_test_w1';
 
-function withScratch(run:(paths:{privateDir:string;evidenceDir:string;env:NodeJS.ProcessEnv})=>void){
+function withScratch(run:(paths:{privateDir:string;evidenceDir:string;env:ClosedChildEnvironment})=>void){
  const scratch=mkdtempSync(join(tmpdir(),'aihr-workload-entry-'));
  const privateDir=join(scratch,'private'),evidenceDir=join(scratch,'evidence');
  mkdirSync(privateDir);mkdirSync(evidenceDir);
  // No inherited DB/auth/Node options or browser credentials. Invalid entry controls must
  // stop before dynamic application imports; audit=false and absent fixture.json also
  // prevent these no-DB controls from ever entering a valid development workload.
- const env:NodeJS.ProcessEnv={PATH:process.env.PATH??'',HOME:scratch,TMPDIR:scratch,TMP:scratch,TEMP:scratch,LANG:'C',TZ:'UTC',
+ const env:ClosedChildEnvironment={PATH:process.env.PATH??'',HOME:scratch,TMPDIR:scratch,TMP:scratch,TEMP:scratch,LANG:'C',TZ:'UTC',
   GITHUB_ACTIONS:'true',AUTH_PROVIDER:'internal',DATABASE_URL:developmentUrl,MIGRATION_DATABASE_URL:developmentUrl,
   AUDIT_HASH_CHAIN_ENABLED:'false',PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:evidenceDir};
  try{run({privateDir,evidenceDir,env});}finally{rmSync(scratch,{recursive:true,force:true});}
 }
-function child(source:string,env:NodeJS.ProcessEnv){
- return spawnSync(process.execPath,['--import',tsx,'--input-type=module','-e',source],{
+function child(source:string,env:ClosedChildEnvironment){
+ return spawnClosedTextSync(process.execPath,['--import',tsx,'--input-type=module','-e',source],{
   cwd:root,env,encoding:'utf8',timeout:10000,maxBuffer:256*1024,
  });
 }
-function entryGuard(course:Course,env:NodeJS.ProcessEnv){
+function entryGuard(course:Course,env:ClosedChildEnvironment){
  const url=new URL('../scripts/performance/'+course.entry,import.meta.url).href;
  // Import the real fixed legacy entry, which actually invokes its owner. Preserve the
  // native assertion fields and stderr, with a distinct bounded failed-child status.
@@ -42,7 +42,7 @@ function entryGuard(course:Course,env:NodeJS.ProcessEnv){
  catch(error){if(error?.code!=='ERR_ASSERTION')throw error;console.error(error.stack);
  console.log(JSON.stringify({code:error.code,actual:error.actual,expected:error.expected,operator:error.operator}));process.exitCode=19;}`,env);
 }
-function expectGuard(course:Course,env:NodeJS.ProcessEnv,actual:string,expected:string){
+function expectGuard(course:Course,env:ClosedChildEnvironment,actual:string,expected:string){
  const result=entryGuard(course,env);
  expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,result.stderr).toBe(19);
  expect(JSON.parse(result.stdout.trim())).toEqual({code:'ERR_ASSERTION',actual,expected,operator:'strictEqual'});
@@ -67,7 +67,7 @@ it.each(courses)('imports the $name development owner without invoking the workl
 it('loads the Rewards draft fixture with the React server condition',()=>{
  withScratch(({privateDir,evidenceDir,env})=>{
   const url=new URL('../scripts/performance/reward-draft-fixture.mjs',import.meta.url).href;
-  const result=spawnSync(process.execPath,[
+  const result=spawnClosedTextSync(process.execPath,[
    '--conditions=react-server','--import',tsx,'--input-type=module','-e',
    `import assert from 'node:assert/strict';const fixture=await import(${JSON.stringify(url)});
  assert.equal(typeof fixture.prepareRewardDraftFixture,'function');console.log('REWARDS_DRAFT_FIXTURE_IMPORTED');`,

@@ -1,5 +1,7 @@
-/** Build the sole protected workload lock sample on an already held observer. */
-/** @param {import('postgres').Sql} sql */
+/** Build the sole protected workload lock sample on an already held observer.
+ * @template {Record<string,unknown>} Types
+ * @param {import('postgres').Sql<Types>} sql
+ */
 export function protectedLockObserverQuery(sql){
  return sql`with app_sessions as materialized (
     select pid,state,wait_event_type from pg_catalog.pg_stat_activity
