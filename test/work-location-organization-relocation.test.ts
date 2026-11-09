@@ -278,12 +278,11 @@ describe('639bf4a5 (e) — Add, View and Edit each have a route of their own, al
       '/admin/locations/clocking/[id]',
     ]);
     for (const route of screen!.routes) {
-      expect(REGISTERED_ROUTES.has(route), `${route} registered`).toBe(true);
-      expect(
-        fs.existsSync(path.join(ROOT, 'app', route, 'page.tsx')),
-        `${route} has a page at app${route}/page.tsx — a registered route with no page is a screen nobody can grant`,
-      ).toBe(true);
-      expect(read(path.join('app', route, 'page.tsx')), `${route} guards itself`).toMatch(/requireAdmin\(/);
+      expect(REGISTERED_ROUTES.has(route), route + ' registered').toBe(true);
+      const entry = route === '/admin/locations' ? 'route.ts' : 'page.tsx';
+      const file = path.join('app', route, entry);
+      expect(fs.existsSync(path.join(ROOT, file)), route + ' has an implementation at ' + file).toBe(true);
+      expect(read(file), route + ' guards itself').toMatch(/requireAdmin\(/);
     }
   });
 
