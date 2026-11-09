@@ -118,6 +118,8 @@ class SettlementModel(unittest.TestCase):
             'kind': 'WHOLE_COMPILER_PLATFORM_SWAP_FEASIBILITY_NOT_RELEASE', 'candidateSha': model['SOURCE'],
             'candidateTree': model['SOURCE_TREE'], 'controllerSha': CONTROLLER, 'runId': RUN, 'attempt': 1,
             'releaseEligible': False, 'complete': True, 'platformSwapVerified': True, 'platformSwapPreserved': True,
+            'workSeconds': model['WORK_SECONDS'], 'progressSeconds': model['PROGRESS_SECONDS'],
+            'progress': [progress_row('start'), progress_row('terminal', elapsed=1)],
             'platformSwapBirthSha256': hashlib.sha256(json.dumps(self.birth).encode('ascii')).hexdigest(), **overrides})
 
     def settle(self):
@@ -175,13 +177,72 @@ class SettlementModel(unittest.TestCase):
             self.settle()
         self.assertFalse(self.output.exists())
 
+    def test_malformed_telemetry_refuses_artifact_settlement(self):
+        self.receipt(progress=[progress_row('start', foreign='raw')])
+        with self.assertRaisesRegex(Refusal, 'compiler-progress-witness'):
+            self.settle()
+        self.assertFalse(self.output.exists())
+
     def test_preflight_refusal_can_retain_closed_failure_without_platform_witness(self):
         self.platform.unlink()
-        self.receipt(complete=False, platformSwapVerified=False, platformSwapPreserved=False)
+        self.receipt(complete=False, platformSwapVerified=False, platformSwapPreserved=False, progress=[])
         self.settle()
         receipt = json.loads((self.directory / 'swap-settlement.json').read_text())
         self.assertFalse(receipt['platformSwapIdentityVerified'])
         self.assertEqual(receipt['platformSwapBirthSha256'], None)
+
+
+def progress_row(phase, *, elapsed=0, **overrides):
+    counters = {key: 0 for key in (*model['PROGRESS_COUNTERS'], *model['PROGRESS_GAUGES'])}
+    return {'phase': phase, 'elapsedMs': elapsed, **counters,
+            'throttledPeriods': None, 'throttledUsec': None, **overrides}
+
+
+class ProgressModel(unittest.TestCase):
+    def test_native_cgroup_counters_are_closed_and_raw_fields_are_omitted(self):
+        zero_pressure = 'some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0'
+        values = {'cpu.stat': 'usage_usec 250\nuser_usec 200\nsystem_usec 50\nunknown_kernel_counter 100',
+                  'cpu.pressure': zero_pressure, 'io.pressure': zero_pressure}
+        memory = {'pressureMicros': {'full': 2}, 'current': 4096, 'peak': 8192,
+                  'swapCurrent': 0, 'swapPeak': 0, 'memAvailable': 15 * model['GIB']}
+        with patch.dict(model, {'read_at': lambda _, key: values[key]}):
+            row = model['compiler_progress'](2, 1, 'start', memory)
+            self.assertTrue(model['valid_progress']([row]))
+            self.assertEqual((row['cpuUsec'], row['userUsec'], row['systemUsec']), (250, 200, 50))
+            self.assertNotIn('unknown_kernel_counter', row)
+            self.assertIsNone(row['throttledUsec'])
+            values['cpu.stat'] += '\nnr_throttled 1\nthrottled_usec 2'
+            row = model['compiler_progress'](2, 1, 'start', memory)
+            self.assertEqual((row['throttledPeriods'], row['throttledUsec']), (1, 2))
+            values['cpu.stat'] += '\nusage_usec 1'
+            with self.assertRaisesRegex(Refusal, 'kernel-duplicate'):
+                model['compiler_progress'](2, 1, 'start', memory)
+            values['cpu.stat'] = 'usage_usec 250\nuser_usec 200\nsystem_usec 50\nnr_throttled 1'
+            with self.assertRaisesRegex(Refusal, 'compiler-cpu-counters'):
+                model['compiler_progress'](2, 1, 'start', memory)
+            values['cpu.stat'] = 'usage_usec 250\nuser_usec 200\nsystem_usec 50'
+            values['io.pressure'] = 'foreign'
+            with self.assertRaisesRegex(Refusal, 'cgroup-pressure'):
+                model['compiler_progress'](2, 1, 'start', memory)
+
+    def test_timeline_rejects_unbounded_nonmonotonic_or_foreign_evidence(self):
+        start = progress_row('start', cpuUsec=10)
+        running = progress_row('running', elapsed=30000, cpuUsec=20, ioSomeUsec=4)
+        terminal = progress_row('terminal', elapsed=30001, cpuUsec=21, ioSomeUsec=4)
+        deadline = {**terminal, 'phase': 'deadline', 'elapsedMs': 1080100}
+        self.assertTrue(model['valid_progress']([start, running, terminal]))
+        self.assertTrue(model['valid_progress']([start, running, deadline]))
+        self.assertTrue(model['valid_progress']([]))
+        for rows in ([start] * (model['PROGRESS_MAX_ROWS'] + 1), [running], [start, terminal, running],
+                     [start, {**running, 'elapsedMs': 29999}], [start, {**running, 'cpuUsec': 9}],
+                     [start, running, {**terminal, 'ioSomeUsec': 3}],
+                     [start, {**running, 'throttledUsec': 1}],
+                     [start, {**running, 'throttledUsec': 1, 'throttledPeriods': 1}],
+                     [start, {**running, 'swapPeakBytes': SWAP + 1}], [start, {**running, 'foreign': 'raw'}],
+                     [start, {**deadline, 'elapsedMs': 1079999}], [start, {**deadline, 'elapsedMs': 1081001}],
+                     [start, {**deadline, 'phase': 'terminal'}]):
+            with self.subTest(rows=rows):
+                self.assertFalse(model['valid_progress'](rows))
 
 
 class KernelModel(unittest.TestCase):
@@ -244,13 +305,16 @@ class KernelModel(unittest.TestCase):
                      ownedCleanup='settled', platformSwapVerified=True, platformSwapPreserved=True,
                      generatedTypesVerified=True, sourceReverified=True,
                      compilerLog={'bytes': 1, 'sha256': '0' * 64}, v8HeapFatalMarker=False,
-                     typescriptDiagnosticCount=0, initial=model['sample']([0, 1, 2], initial=True),
+                     typescriptDiagnosticCount=0, progress=[progress_row('start'), progress_row('terminal', elapsed=1)],
+                     initial=model['sample']([0, 1, 2], initial=True),
                      terminal=model['sample']([0, 1, 2]))
         deadline = time.monotonic_ns() + 100 * 10 ** 9
         self.assertTrue(model['accepted_terminal'](valid, deadline))
         for extra in ({'compilerExit': 2}, {'compilerExit': False}, {'platformSwapPreserved': False},
                       {'v8HeapFatalMarker': True}, {'typescriptDiagnosticCount': 1}, {'terminal': None},
                       {'sourceReverified': False}, {'compilerLog': {'bytes': 1}},
+                      {'progress': []}, {'progress': [progress_row('start')]},
+                      {'progress': [progress_row('start'), progress_row('deadline', elapsed=1080000)]},
                       {'terminal': {**valid['terminal'], 'swapPeak': SWAP + 1}},
                       {'terminal': {**valid['terminal'], 'swapEvents': {'fail': 1}}},
                       {'terminal': {**valid['terminal'], 'oom': {'oom': 1}}}):

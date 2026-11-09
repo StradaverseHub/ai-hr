@@ -19,7 +19,7 @@ import time
 SOURCE = '6a71ae8b651fafdb845d92a47568ac3c5382322f'
 SOURCE_TREE = '853f28b988921a0f3b41035e2bb2bc4d653b75d1'
 SOURCE_BRANCH = 'codex/architecture-145e-compiler-test-fix-20261110'
-BRANCH = 'codex/compiler-6a71ae8b-whole-12800-platform-swap-20261110'
+BRANCH = 'codex/compiler-6a71ae8b-whole-12800-platform-progress-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 LIMIT = 13 * GIB
@@ -28,9 +28,19 @@ PLATFORM_SWAP = Path('/swapfile')
 PLATFORM_SWAP_BYTES = 3 * GIB
 PLATFORM_SWAP_USABLE = PLATFORM_SWAP_BYTES - 4096
 SWAP_HOST_RESERVE = 512 * 1024 ** 2
-WORK_NS = 720 * 10 ** 9
+WORK_SECONDS = 1080
+JOB_SECONDS = 1680
+WORK_NS = WORK_SECONDS * 10 ** 9
+PROGRESS_SECONDS = 30
+PROGRESS_NS = PROGRESS_SECONDS * 10 ** 9
+PROGRESS_MAX_ROWS = WORK_SECONDS // PROGRESS_SECONDS + 1
+PROGRESS_TAIL_MS = 1000
+PROGRESS_COUNTERS = ('cpuUsec', 'userUsec', 'systemUsec', 'cpuSomeUsec', 'cpuFullUsec',
+                     'ioSomeUsec', 'ioFullUsec', 'memoryFullUsec', 'residentPeakBytes', 'swapPeakBytes')
+PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
+PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-12800-platform-swap'
+DIRECTORY = 'compiler-12800-platform-progress'
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 GENERATED = {
@@ -310,6 +320,78 @@ def group(unit, service_birth=None):
         yield descriptors
 
 
+def pressure_totals(descriptor, resource):
+    raw = read_at(descriptor, resource + '.pressure')
+    pressure = {}
+    for category in ('some', 'full'):
+        rows = re.findall(r'^' + category + r' avg10=[0-9.]+ avg60=[0-9.]+ avg300=[0-9.]+ total=([0-9]+)$', raw, re.M)
+        require(len(rows) == 1, 'cgroup-pressure')
+        pressure[category] = integer(rows[0])
+    require(pressure['full'] <= pressure['some'], 'cgroup-pressure')
+    return pressure
+
+
+def compiler_progress(descriptor, elapsed_ms, phase, memory):
+    cpu = pairs(read_at(descriptor, 'cpu.stat'))
+    required = ('usage_usec', 'user_usec', 'system_usec')
+    throttle = ('nr_throttled', 'throttled_usec')
+    require(all(key in cpu for key in required) and sum(key in cpu for key in throttle) in (0, 2), 'compiler-cpu-counters')
+    cpu_pressure = pressure_totals(descriptor, 'cpu')
+    io_pressure = pressure_totals(descriptor, 'io')
+    return {'phase': phase, 'elapsedMs': elapsed_ms,
+            'cpuUsec': integer(cpu['usage_usec']), 'userUsec': integer(cpu['user_usec']),
+            'systemUsec': integer(cpu['system_usec']),
+            'throttledPeriods': integer(cpu[throttle[0]]) if throttle[0] in cpu else None,
+            'throttledUsec': integer(cpu[throttle[1]]) if throttle[1] in cpu else None,
+            'cpuSomeUsec': cpu_pressure['some'], 'cpuFullUsec': cpu_pressure['full'],
+            'ioSomeUsec': io_pressure['some'], 'ioFullUsec': io_pressure['full'],
+            'memoryFullUsec': memory['pressureMicros']['full'], 'residentBytes': memory['current'],
+            'residentPeakBytes': memory['peak'], 'swapBytes': memory['swapCurrent'],
+            'swapPeakBytes': memory['swapPeak'], 'hostAvailableBytes': memory['memAvailable']}
+
+
+def valid_progress(rows):
+    if type(rows) is not list or len(rows) > PROGRESS_MAX_ROWS:
+        return False
+    fields = {*PROGRESS_COUNTERS, *PROGRESS_OPTIONAL_COUNTERS, *PROGRESS_GAUGES, 'phase', 'elapsedMs'}
+    previous = None
+    for index, row in enumerate(rows):
+        if type(row) is not dict or set(row) != fields:
+            return False
+        phase, elapsed = row['phase'], row['elapsedMs']
+        phases = ('start',) if index == 0 else (('running', 'terminal', 'deadline') if index == len(rows) - 1 else ('running',))
+        if phase not in phases or type(elapsed) is not int or not 0 <= elapsed <= WORK_SECONDS * 1000 + PROGRESS_TAIL_MS:
+            return False
+        if (phase == 'deadline') != (elapsed >= WORK_SECONDS * 1000):
+            return False
+        if any(type(row[key]) is not int or not 0 <= row[key] <= 2 ** 63 - 1 for key in (*PROGRESS_COUNTERS, *PROGRESS_GAUGES)):
+            return False
+        optional = [row[key] for key in PROGRESS_OPTIONAL_COUNTERS]
+        if optional != [None, None] and any(type(value) is not int or not 0 <= value <= 2 ** 63 - 1 for value in optional):
+            return False
+        if not (row['cpuFullUsec'] <= row['cpuSomeUsec'] and row['ioFullUsec'] <= row['ioSomeUsec']
+                and row['residentBytes'] <= row['residentPeakBytes'] <= LIMIT
+                and row['swapBytes'] <= row['swapPeakBytes'] <= SWAP):
+            return False
+        if previous is not None:
+            gap = elapsed - previous['elapsedMs']
+            if gap < (PROGRESS_SECONDS * 1000 if phase == 'running' else 0):
+                return False
+            if any(row[key] < previous[key] for key in PROGRESS_COUNTERS):
+                return False
+            if any((row[key] is None) != (previous[key] is None) or
+                   (row[key] is not None and row[key] < previous[key]) for key in PROGRESS_OPTIONAL_COUNTERS):
+                return False
+        previous = row
+    return True
+
+
+def record_progress(rows, descriptor, started, stamp, phase, memory):
+    next_row = compiler_progress(descriptor, (stamp - started) // 10 ** 6, phase, memory)
+    require(valid_progress([*rows, next_row]), 'compiler-progress-shape')
+    rows.append(next_row)
+
+
 def sample(descriptors, *, initial=False):
     host = ram()
     target = descriptors[-1]
@@ -322,13 +404,7 @@ def sample(descriptors, *, initial=False):
             and host['SwapTotal'] == PLATFORM_SWAP_USABLE and SWAP_HOST_RESERVE <= host['SwapFree'] <= PLATFORM_SWAP_USABLE, 'cgroup-swap')
     if initial:
         require(used == peak == 0 and host['SwapFree'] == PLATFORM_SWAP_USABLE, 'cgroup-swap')
-    pressure = {}
-    for category in ('some', 'full'):
-        rows = re.findall(r'^' + category + r' avg10=[0-9.]+ avg60=[0-9.]+ avg300=[0-9.]+ total=([0-9]+)$',
-                          read_at(target, 'memory.pressure'), re.M)
-        require(len(rows) == 1, 'cgroup-pressure')
-        pressure[category] = integer(rows[0])
-    require(pressure['full'] <= pressure['some'], 'cgroup-pressure')
+    pressure = pressure_totals(target, 'memory')
     require(integer(swap_events['fail']) == 0, 'cgroup-swap-failed')
     ancestors = []
     required = 14 * GIB if initial else GIB
@@ -485,7 +561,7 @@ def owned(row, unit, pid, nonce):
 
 
 def unit_name(run_id):
-    return 'aihr-compiler-12800-swap-' + run_id + '.service'
+    return 'aihr-compiler-12800-progress-' + run_id + '.service'
 
 
 def compiler_files(source):
@@ -514,7 +590,9 @@ def accepted_terminal(report, deadline):
     if (type(log['bytes']) is not int or not 0 < log['bytes'] <= 4 * 1024 ** 2
             or not isinstance(log['sha256'], str) or not re.fullmatch(r'[a-f0-9]{64}', log['sha256'])):
         return False
-    return ('reason' not in report and report.get('admitted') is True and report.get('grantSent') is True
+    progress = report.get('progress')
+    return (valid_progress(progress) and bool(progress) and progress[-1]['phase'] == 'terminal'
+            and 'reason' not in report and report.get('admitted') is True and report.get('grantSent') is True
             and type(report.get('compilerExit')) is int and report['compilerExit'] == 0
             and type(report.get('managerExit')) is int and report['managerExit'] == 0
             and report.get('zeroObservedOom') is True and report.get('ownedCleanup') == 'settled'
@@ -540,11 +618,11 @@ def run_stock(workspace, temporary, controller, run_id, directory):
     unit = unit_name(run_id)
     group_path = ROOT / 'system.slice' / unit
     nonce = unit + '-' + os.urandom(16).hex()
-    deadline = integer(os.environ['AIHR_COMPILER_FEASIBILITY_T0_NS']) + 1140 * 10 ** 9
+    deadline = integer(os.environ['AIHR_COMPILER_FEASIBILITY_T0_NS']) + JOB_SECONDS * 10 ** 9
     report = {'kind': 'WHOLE_COMPILER_PLATFORM_SWAP_FEASIBILITY_NOT_RELEASE', 'candidateSha': SOURCE, 'candidateTree': SOURCE_TREE,
               'controllerSha': controller, 'residentCapBytes': LIMIT, 'swapCapBytes': SWAP,
               'runId': run_id, 'attempt': 1, 'heapMiB': 12800, 'compilerExit': None, 'admitted': False,
-              'grantSent': False,
+              'grantSent': False, 'workSeconds': WORK_SECONDS, 'progressSeconds': PROGRESS_SECONDS, 'progress': [],
               'complete': False, 'ownedCleanup': 'not-started', 'platformSwapVerified': False,
               'platformSwapPreserved': False, 'releaseEligible': False}
     wrapper = None
@@ -578,7 +656,7 @@ def run_stock(workspace, temporary, controller, run_id, directory):
         props = ('User=' + str(os.getuid()), 'Group=' + str(os.getgid()), 'Type=exec', 'MemoryAccounting=yes',
                  'MemoryMax=' + str(LIMIT), 'MemorySwapMax=' + str(SWAP), 'OOMPolicy=kill', 'NoNewPrivileges=yes',
                  'ProtectControlGroups=yes', 'PrivateNetwork=yes', 'LimitCORE=1', 'LimitFSIZE=67108864', 'UMask=0077', 'Delegate=no',
-                 'KillMode=control-group', 'TimeoutStopSec=10s', 'RuntimeMaxSec=744s', 'Restart=no',
+                 'KillMode=control-group', 'TimeoutStopSec=10s', f'RuntimeMaxSec={WORK_SECONDS + 24}s', 'Restart=no',
                  'WorkingDirectory=' + str(source), 'Description=' + nonce)
         settings = {'PATH': f'{tools}:{pnpm.parent}:/usr/bin:/bin', 'HOME': pwd.getpwuid(os.getuid()).pw_dir,
                     'LANG': 'en_US.UTF-8', 'LC_ALL': 'en_US.UTF-8', 'TZ': 'Asia/Kuala_Lumpur', 'CI': 'true',
@@ -624,6 +702,8 @@ def run_stock(workspace, temporary, controller, run_id, directory):
             now = time.monotonic_ns()
             require(now < pending and deadline - now >= WORK_NS + 25 * 10 ** 9 and wrapper.poll() is None, 'late-grant')
             stop = now + WORK_NS
+            next_progress = now
+            progress = report['progress']
             wrapper.stdin.write(f'G {stop} {birth_seal}\n'.encode('ascii'))
             wrapper.stdin.flush()
             report['grantSent'] = True
@@ -651,8 +731,17 @@ def run_stock(workspace, temporary, controller, run_id, directory):
                         'cgroup-pressure-reset')
                 require(current['oom'] == before['oom'] and current['hostOomKill'] == before['hostOomKill']
                         and [a['oom'] for a in current['ancestors']] == [a['oom'] for a in before['ancestors']], 'oom-observed')
-            require(report['compilerExit'] is not None and time.monotonic_ns() < stop, 'compiler-deadline')
+                stamp = time.monotonic_ns()
+                if report['admitted'] and next_progress <= stamp < stop:
+                    record_progress(progress, descriptors[-1], now, stamp, 'running' if progress else 'start', current)
+                    next_progress = stamp + PROGRESS_NS
+            stamp = time.monotonic_ns()
+            if report['compilerExit'] is None and progress and stop <= stamp <= stop + PROGRESS_TAIL_MS * 10 ** 6:
+                with contextlib.suppress(Refusal, OSError, ValueError):
+                    record_progress(progress, descriptors[-1], now, stamp, 'deadline', report['lastSample'])
+            require(report['compilerExit'] is not None and stamp < stop, 'compiler-deadline')
             after = sample(descriptors)
+            record_progress(progress, descriptors[-1], now, stamp, 'terminal', after)
             verify_swap_live(swap_birth, temporary, source)
             compiler_files(source)
             require(command(['/usr/bin/git', '-C', str(source), 'status', '--porcelain']) == (0, b''), 'checkout-source')
@@ -779,6 +868,10 @@ def independent_cleanup(_workspace, temporary, controller, run_id):
             require([report.get(key) for key in ('kind', 'candidateSha', 'candidateTree', 'controllerSha', 'runId', 'attempt',
                     'releaseEligible')] == ['WHOLE_COMPILER_PLATFORM_SWAP_FEASIBILITY_NOT_RELEASE', SOURCE, SOURCE_TREE,
                                            controller, run_id, 1, False], 'swap-receipt-context')
+            require(report.get('workSeconds') == WORK_SECONDS and report.get('progressSeconds') == PROGRESS_SECONDS
+                    and valid_progress(report.get('progress')), 'compiler-progress-witness')
+            if report.get('complete') is True:
+                require(bool(report['progress']) and report['progress'][-1]['phase'] == 'terminal', 'compiler-progress-witness')
             if report.get('platformSwapVerified') is True:
                 require(platform_verified and report.get('platformSwapBirthSha256') == birth_digest, 'platform-swap-witness')
             if report.get('complete') is True:

@@ -85,7 +85,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-${{ (github.ref == 'refs/heads/codex/compiler-6a71ae8b-whole-12800-platform-swap-20261110' && 'compiler-6a71ae8b-whole-12800-platform-swap-20261110') || inputs.candidate_ref }}
+  group: alpha-focused-${{ (github.ref == 'refs/heads/codex/compiler-6a71ae8b-whole-12800-platform-progress-20261110' && 'compiler-6a71ae8b-whole-12800-platform-progress-20261110') || inputs.candidate_ref }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -104,7 +104,7 @@ env:
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
   resolve:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref != 'refs/heads/codex/compiler-6a71ae8b-whole-12800-platform-swap-20261110' }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref != 'refs/heads/codex/compiler-6a71ae8b-whole-12800-platform-progress-20261110' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -1116,16 +1116,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   compiler-memory-feasibility:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/compiler-6a71ae8b-whole-12800-platform-swap-20261110' && inputs.run_typecheck }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/compiler-6a71ae8b-whole-12800-platform-progress-20261110' && inputs.run_typecheck }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
     env:
       STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
       PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
     steps:
-      - name: Anchor the fixed compiler feasibility clock
+      - name: Anchor the fixed 18-minute compiler feasibility clock
         run: |
           /usr/bin/python3 -I -B - <<'PYTHON'
           import os, time
@@ -1163,10 +1163,10 @@ jobs:
         if: ${{ always() && steps.compiler-feasibility.outputs.evidence == 'true' && steps.compiler-swap-settlement.outcome == 'success' && steps.compiler-swap-settlement.outputs.settled == 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: whole-compiler-12800-platform-swap-evidence
+          name: whole-compiler-12800-platform-progress-evidence
           path: |
-            ${{ runner.temp }}/compiler-12800-platform-swap/receipt.json
-            ${{ runner.temp }}/compiler-12800-platform-swap/swap-settlement.json
+            ${{ runner.temp }}/compiler-12800-platform-progress/receipt.json
+            ${{ runner.temp }}/compiler-12800-platform-progress/swap-settlement.json
           if-no-files-found: error
           retention-days: 14
   typecheck:
