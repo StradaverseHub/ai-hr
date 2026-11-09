@@ -802,11 +802,12 @@ def _validate_browser_stage_capture(raw, status, environment):
         need(status == '1' and report == _browser_stage_refusal(failure, report.get('preRootCheckpoint')),
              'Returned browser stage bootstrap refusal differs')
         return
-    run, _ = context(environment)
+    runner_context = {key: environment[key] for key in ENVIRONMENT if key in environment}
+    run, _ = context(runner_context)
     required = ('kind', 'complete', 'source', 'controller', 'runId', 'attempt', 'job', 'eventSha256',
                 'sourceCapsuleSha256', 'elapsedMs', 'ownedProcessesSettled', 'cleanup', *BROWSER_STAGE_INACTIVE)
     _tool_capture_keys(report, required + (() if status == '0' else ('failure',)), ('stage',))
-    need(report['source'] == report['controller'] == environment['GITHUB_SHA']
+    need(report['source'] == report['controller'] == runner_context['GITHUB_SHA']
          and report['runId'] == run and report['job'] == 'native-test' and type(report['attempt']) is int
          and report['attempt'] == 1 and _tool_capture_int(report['elapsedMs'], 0, 180000)
          and type(report['ownedProcessesSettled']) is bool
@@ -816,12 +817,17 @@ def _validate_browser_stage_capture(raw, status, environment):
     _tool_capture_keys(cleanup, ('stage', 'archives'))
     need(all(value in ('not-acquired', 'complete', 'refused') for value in cleanup.values()),
          'Returned browser stage cleanup differs')
+    need((cleanup['stage'] == 'not-acquired' or cleanup['archives'] != 'not-acquired')
+         and (cleanup['archives'] != 'complete' or report['ownedProcessesSettled'] is True)
+         and (report['elapsedMs'] < 180000 or 'complete' not in cleanup.values()),
+         'Returned browser stage cleanup contradicts acquisition or settlement')
     if 'stage' in report:
         stage = report['stage']
         _tool_capture_keys(stage, ('treeSha256', 'entries', 'fileBytes', 'currentRootMatched', 'managerRootMatched'))
         need(_tool_capture_hex(stage['treeSha256'], 64) and _tool_capture_int(stage['entries'], 509, 509)
              and _tool_capture_int(stage['fileBytes'], 291895067, 560396058)
-             and stage['currentRootMatched'] is True and stage['managerRootMatched'] is True,
+             and stage['currentRootMatched'] is True and stage['managerRootMatched'] is True
+             and cleanup['stage'] != 'not-acquired' and cleanup['archives'] != 'not-acquired',
              'Returned browser stage readback differs')
     if status == '0':
         need('stage' in report and all(value == 'complete' for value in cleanup.values())

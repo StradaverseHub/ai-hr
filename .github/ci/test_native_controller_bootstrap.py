@@ -64,7 +64,7 @@ class BootstrapControls(unittest.TestCase):
         probe.assert_not_called()
 
     def test_browser_stage_capture_requires_positive_native_closure_and_excludes_release_authority(self):
-        env = browser_stage_environment()
+        env = {**browser_stage_environment(), 'PATH': '/usr/bin:/bin', 'TZ': 'UTC', 'LD_PRELOAD': ''}
         report = {'kind': 'NATIVE_BROWSER_SYNTHETIC_STAGE_COMPONENT', 'complete': True,
                   'source': 'b' * 40, 'controller': 'b' * 40, 'runId': '123', 'attempt': 1, 'job': 'native-test',
                   'eventSha256': 'd' * 64, 'sourceCapsuleSha256': 'e' * 64, 'elapsedMs': 3401,
@@ -84,6 +84,15 @@ class BootstrapControls(unittest.TestCase):
         M._validate_browser_stage_capture(M.canonical(refused), '1', env)
         with self.assertRaises(ValueError):
             M._validate_browser_stage_capture(M.canonical({**refused, 'preRootCheckpoint': 'invented'}), '1', env)
+        partial = {**report, 'complete': False, 'cleanup': {'stage': 'complete', 'archives': 'refused'},
+                   'failure': {'phase': 'archive-disposal', 'reason': 'contract-refused'}}
+        M._validate_browser_stage_capture(M.canonical(partial), '1', env)
+        for change in ({'cleanup': {'stage': 'not-acquired', 'archives': 'refused'}},
+                       {'cleanup': {'stage': 'refused', 'archives': 'not-acquired'}},
+                       {'ownedProcessesSettled': False, 'cleanup': {'stage': 'refused', 'archives': 'complete'}},
+                       {'elapsedMs': 180000}):
+            with self.subTest(partial_change=change), self.assertRaises(ValueError):
+                M._validate_browser_stage_capture(M.canonical({**partial, **change}), '1', env)
 
     def test_receiver_is_cached_before_even_controller_metadata_git(self):
         class StopBeforeExternalProgram(Exception):
