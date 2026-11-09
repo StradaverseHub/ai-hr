@@ -303,18 +303,22 @@ function taggedAuxiliaryWork(result:unknown,rows:number){
  expect(counter(root['Actual Rows'])).toBe(rows);
  let visibilityCalls=0,visibilityRows=0,visibilityHits=0,assignmentScans=0,assignmentLoops=0;
  const visibleFunction='app.visible_employment_ids()';
+ const mentionsVisibility=(value:unknown):boolean=>typeof value==='string'?/\bvisible_employment_ids"?\s*\(/.test(value):
+  value!==null&&typeof value==='object'&&Object.values(value).some(mentionsVisibility);
  const visit=(node:PagePlanNode,parent?:PagePlanNode)=>{
   const loops=counter(node['Actual Loops']);
   if(loops>0){
    if(node['Relation Name']==='assignment'){assignmentScans++;assignmentLoops+=loops;}
+   if(Object.entries(node).some(([key,value])=>key!=='Plans'&&key!=='Output'&&mentionsVisibility(value)))
+    throw new Error('Unpaired auxiliary visibility expression');
    const output=node.Output;
-   if(Array.isArray(output)&&output.some(value=>typeof value==='string'&&value.includes(visibleFunction))){
-    // Attribute inclusive buffers only to the observed set expansion of this
-    // exact native InitPlan parameter. Other ProjectSets are not evidence.
+   if(mentionsVisibility(output)){
+    // The paired ProjectSet supplies expansion rows. Attribute buffers to
+    // the exact function leaf, without including its sibling or parent.
     const name=node['Subplan Name'];
     const parameter=typeof name==='string'?/^InitPlan [1-9][0-9]* \(returns (\$(?:0|[1-9][0-9]*))\)$/.exec(name)?.[1]:undefined;
     const [initPlan,outer]=parent?.Plans??[];
-    if(output.length!==1||output[0]!==visibleFunction||node['Node Type']!=='Result'||
+    if(!Array.isArray(output)||output.length!==1||output[0]!==visibleFunction||node['Node Type']!=='Result'||
        node['Parent Relationship']!=='InitPlan'||loops!==1||counter(node['Actual Rows'])!==1||node.Plans?.length||
        !parent||parent['Node Type']!=='ProjectSet'||parent['Parent Relationship']!=='SubPlan'||
        parent.Plans?.length!==2||initPlan!==node||!outer||outer['Node Type']!=='Result'||
@@ -326,7 +330,7 @@ function taggedAuxiliaryWork(result:unknown,rows:number){
     if(expandedRows===0)throw new Error('Missing auxiliary visibility expansion rows');
     visibilityCalls++;
     visibilityRows+=expandedRows;
-    visibilityHits+=counter(parent['Shared Hit Blocks']);
+    visibilityHits+=counter(node['Shared Hit Blocks']);
    }
   }
   for(const child of node.Plans??[])visit(child,node);

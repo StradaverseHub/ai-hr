@@ -205,5 +205,36 @@
     "attribution": "Count only the one-shot exact app.visible_employment_ids() Result InitPlan and the immediately enclosing one-shot ProjectSet whose sole output unnests the same native parameter. An unrelated ProjectSet contributes no visibility work. An executed visibility expression without this exact witness refuses attribution. Each paired parent contributes inclusive hits once.",
     "unchanged": "Query and bound parameters, all ten cases and original assertions, native app snapshot and fixture cleanup, original and supplemental timing and plan gates. The exact diagnostic catalogue failure remains the primary result.",
     "runtimeObservation": "UNRUN"
+  },
+  "visibilityLeafCorrection": {
+    "directParent": "5bff7efc258cb917f4216497098585dabdd4e438",
+    "independentReviewSha256": "6a0c38e872e2fe1f842aa1aaa27826316f14dd63aa7357be56997ac8f1268adc",
+    "staticFalsifierSha256": "53ce5a942b62ac1f09dd79fd6c0f98c6ee6a34626b8bdee123285db34b9cdf48",
+    "wholeParentPreimages": [
+      {
+        "path": "test/employee-choice-db.test.ts",
+        "gitBlob": "f7448b942b5e5448db570a386828f6c8d094de38",
+        "bytes": 102520,
+        "sha256": "2159941f2a14a9cc92b6bc38ded683159e03bd5c2f37486df91fb2dacd94f2fb"
+      },
+      {
+        "path": "docs/qualification/employee-organisation-page-auxiliary-envelope-source-20261109.json",
+        "gitBlob": "97ac93aa8581fcd0ffa733733f1c25f9f1e743e5",
+        "bytes": 9263,
+        "sha256": "4ed19f52a981fc94c5997fe56679ea1d556dcd607b05f9f412684dd4dfbd8ef7"
+      }
+    ],
+    "currentTestPin": {
+      "path": "test/employee-choice-db.test.ts",
+      "gitBlob": "31fe9b21ac2a8dfcd36800a3c31e5b85e3105aa0",
+      "bytes": 102844,
+      "sha256": "d932997276f212bafb956ec4daca524bd24496bad9d27e02fe63519f956dc65a"
+    },
+    "inverseTargetGitTree": "b6547a2f2714f40a332ff613979911d7d6848b8c",
+    "attribution": "Count expanded rows from the paired ProjectSet and shared hits from its exact native function InitPlan leaf alone. A node-local direct visible-employment function reference outside the approved output refuses attribution when the node executed. Child plans are checked separately.",
+    "retainedHistoricalRun": 42567213983,
+    "retainedHistoricalPairedCalls": 7,
+    "retainedHistoricalLeafSharedHits": 12992,
+    "nativeObservation": "UNRUN"
   }
 }
