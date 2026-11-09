@@ -59,6 +59,48 @@ function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|und
 const bellElement=async(tree:React.ReactNode)=>ShellNotificationCenter(propsOf(tree,ShellNotificationCenter) as Parameters<typeof ShellNotificationCenter>[0]);
 const sidebarProps=(node:React.ReactNode)=>propsOf(node,Sidebar);
 const approvalSource=(node:React.ReactNode)=>propsOf(node,ShellApprovalFactsProvider)!.source as Promise<ShellApprovalResult>;
+
+describe('root layout admin document entry',()=>{
+ beforeEach(()=>{
+  m.session.mockClear();
+  m.operator.mockResolvedValue(false);
+  m.module.mockImplementation((_session,code)=>code==='payroll');
+ });
+
+ it.each([
+  ['/payroll','employee'],['/payroll','manager'],['/payroll','payroll_partner'],
+  ['/analytics','employee'],['/analytics','manager'],
+ ])('redirects %s for %s before shell reads',async(pathname,role)=>{
+  m.pathname=pathname;
+  m.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:[role],grants:[{role,companyId:'company'}],entitlements:{}});
+  await expect(Layout({children:null})).rejects.toMatchObject({digest:'NEXT_REDIRECT;replace;/;307;'});
+  expect(m.session).toHaveBeenCalledTimes(1);
+  expect(m.privateCases).not.toHaveBeenCalled();
+ });
+
+ it('keeps the Payroll entitlement explanation ahead of the role redirect',async()=>{
+  m.pathname='/payroll';
+  m.module.mockReturnValue(false);
+  m.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:['employee'],grants:[],entitlements:{}});
+  await expect(Layout({children:null})).rejects.toMatchObject({digest:'NEXT_REDIRECT;replace;/?moduleUnavailable=payroll;307;'});
+  expect(m.privateCases).not.toHaveBeenCalled();
+ });
+
+ it.each(['/payroll','/analytics'])('lets a company HR administrator reach %s',async pathname=>{
+  m.pathname=pathname;
+  m.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:'company'}],entitlements:{}});
+  expect(sidebarProps(await Layout({children:null}))).toBeDefined();
+  expect(m.session).toHaveBeenCalledTimes(1);
+ });
+
+ it('leaves specialized Payroll child routes to their own guards',async()=>{
+  m.pathname='/payroll/process';
+  m.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:['payroll_partner'],grants:[{role:'payroll_partner',companyId:'company'}],entitlements:{}});
+  expect(sidebarProps(await Layout({children:null}))).toBeDefined();
+  expect(m.module.mock.calls.some(([,code])=>code==='payroll')).toBe(false);
+ });
+});
+
 describe('root layout SMTP preview authority',()=>{
  it.each([[null,true],['company',false]] as const)('only attempts notification catch-up for group grants (%s)',async(companyId,expected)=>{
   const session={tenantId:'tenant',userId:'user',roles:['hr_admin'],grants:[{role:'hr_admin',companyId}]};
