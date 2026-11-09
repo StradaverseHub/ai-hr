@@ -25,6 +25,30 @@ def environment():
 
 
 class BootstrapControls(unittest.TestCase):
+    def test_browser_stage_intent_requires_its_exact_self_source_and_exclusive_mode(self):
+        branch = M.BROWSER_STAGE_BRANCH
+        ref = 'refs/heads/' + branch
+        env = {**environment(), 'AIHR_CI_HEAD': 'b' * 40, 'GITHUB_WORKFLOW_SHA': 'b' * 40,
+               'GITHUB_REF': ref, 'GITHUB_REF_NAME': branch, 'GITHUB_REF_TYPE': 'branch',
+               'GITHUB_WORKFLOW_REF': 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@' + ref}
+        inputs = {'candidate_ref': branch, 'expected_sha': 'b' * 40, 'test_parallelism': '4',
+                  'build_only': 'false', 'diagnostics_only': 'true', 'controller_only': 'false',
+                  'native_tool_only': 'false', 'native_browser_stage_only': 'true'}
+        event = {'ref': ref, 'repository': {'id': 1333414856, 'full_name': 'StradaverseHub/ai-hr'}, 'inputs': inputs}
+        self.assertEqual(M.browser_stage_intent(env, event), ('123', pathlib.Path(env['GITHUB_WORKSPACE'])))
+        self.assertEqual(len(M.BROWSER_STAGE_MEMBERS), 16)
+        self.assertEqual(len(set(M.BROWSER_STAGE_MEMBERS)), 16)
+        for invalid in ({'native_tool_only': 'true'}, {'native_browser_stage_only': 'false'},
+                        {'build_only': 'true'}, {'controller_only': 'true'}, {'diagnostics_only': 'false'},
+                        {'candidate_ref': M.TOOL_BRANCH}, {'expected_sha': 'c' * 40},
+                        {'test_parallelism': '8'}, {'commission_singleton_units': '[]'}, {'role': 'browser'}):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, 'dispatch inputs'):
+                M.browser_stage_intent(env, {**event, 'inputs': {**inputs, **invalid}})
+        with self.assertRaisesRegex(ValueError, 'self-source'):
+            M.browser_stage_intent({**env, 'GITHUB_REF': 'refs/heads/alpha'}, event)
+        with self.assertRaisesRegex(ValueError, 'event differs'):
+            M.browser_stage_intent(env, {**event, 'ref': M.TOOL_BRANCH})
+
     def test_receiver_is_cached_before_even_controller_metadata_git(self):
         class StopBeforeExternalProgram(Exception):
             pass

@@ -390,6 +390,15 @@ TOOL_MEMBERS = tuple(sorted((
 TOOL_MEMBER_MAX = 2 * 1024**2
 TOOL_REQUEST_MAX = 16 * 1024
 TOOL_EVENT_MAX = 1024**2
+BROWSER_STAGE_BRANCH = 'codex/native-synthetic-browser-stage-course-20261109'
+BROWSER_STAGE_SOURCE = '.github/ci/native-workload-browser-synthetic-stage-course.py'
+BROWSER_STAGE_MEMBERS = tuple(sorted((
+    *TOOL_MEMBERS, BROWSER_STAGE_SOURCE, '.github/ci/native-workload-browser-host.py',
+    '.github/ci/native-workload-browser-launch-view.py', '.github/ci/native-workload-browser-synthetic-stage.py',
+    '.github/ci/native-workload-browser-synthetic-stage-cleanup.py',
+    '.github/ci/native-workload-browser-synthetic-stage-owner.py',
+    'test/performance/native-workload-browser-driver.mjs', 'test/performance/native-workload-browser-server.mjs',
+)))
 TOOL_PRE_ROOT_CHECKPOINTS = (
     'runner-identity', 'runner-context', 'event-file', 'event-json', 'dispatch-contract',
     'controller-location', 'controller-directory', 'controller-script', 'controller-git-config',
@@ -467,6 +476,30 @@ def tool_intent(environment, event):
     if not (type(inputs) is dict and {'commission_singleton_units': '', **inputs} == expected):
         raise _ToolDispatchRefusal(_tool_dispatch_input_checkpoint(inputs, expected),
                                    'Exclusive fixed TOOL dispatch inputs required')
+    return run, workspace
+
+
+def browser_stage_intent(environment, event):
+    """Bind the one isolated staging component before acquiring root authority."""
+    run, workspace = context(environment)
+    ref = 'refs/heads/' + BROWSER_STAGE_BRANCH
+    sha = environment['GITHUB_SHA']
+    need(environment.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
+         and environment.get('GITHUB_REF') == ref and environment.get('GITHUB_REF_NAME') == BROWSER_STAGE_BRANCH
+         and environment.get('GITHUB_REF_TYPE') == 'branch'
+         and environment['GITHUB_WORKFLOW_SHA'] == environment['AIHR_CI_HEAD'] == sha
+         and environment.get('GITHUB_WORKFLOW_REF') == 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@' + ref,
+         'Exact browser stage self-source workflow required')
+    need(type(event) is dict and type(event.get('repository')) is dict
+         and event['repository'].get('id') == 1333414856
+         and event['repository'].get('full_name') == 'StradaverseHub/ai-hr'
+         and event.get('ref') in (ref, BROWSER_STAGE_BRANCH), 'Original browser stage event differs')
+    expected = {'candidate_ref': BROWSER_STAGE_BRANCH, 'expected_sha': sha, 'test_parallelism': '4',
+                'commission_singleton_units': '', 'build_only': 'false', 'diagnostics_only': 'true',
+                'controller_only': 'false', 'native_tool_only': 'false', 'native_browser_stage_only': 'true'}
+    inputs = event.get('inputs')
+    need(type(inputs) is dict and {'commission_singleton_units': '', **inputs} == expected,
+         'Exclusive fixed browser stage dispatch inputs required')
     return run, workspace
 
 
