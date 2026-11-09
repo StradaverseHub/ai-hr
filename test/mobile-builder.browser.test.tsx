@@ -128,7 +128,7 @@ describe('tenant mobile builder in a real browser', () => {
   for (const locale of Object.keys(catalogues) as (keyof typeof catalogues)[]) it(`renders the builder at 390px in ${locale}`, () => {
     const ui = mount(state(), locale, 390);
     expect(ui.getByRole('heading', { name: catalogues[locale].mobilePreview.builder.title })).toBeTruthy();
-    const phone = ui.container.querySelector('[aria-busy]') as HTMLElement;
+    const phone = ui.container.querySelector('[data-appearance][data-navigation]') as HTMLElement;
     expect(ui.container.scrollWidth).toBeLessThanOrEqual(ui.container.clientWidth + 1);
     expect(phone.clientWidth).toBeGreaterThan(280); expect(phone.scrollWidth).toBeLessThanOrEqual(phone.clientWidth + 1);
     expect(ui.container.textContent).not.toContain('mobilePreview.builder.');
