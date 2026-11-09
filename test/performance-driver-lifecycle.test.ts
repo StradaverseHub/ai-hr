@@ -9,7 +9,7 @@ import {afterEach,expect,it,vi} from 'vitest';
 import {acquireDriverResource,buildDevelopmentMeasurement,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
  createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,developmentDockerContext,developmentLockWindowEvidence,
  developmentPostgresBirthId,developmentPostgresSettlement,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
- MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS,measuredPreflightLockTiming,openDriverResponse,qualifyLockSampleCadence,settleDriverBrowser,
+ MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS,measuredPreflightLockAttemptMs,measuredPreflightLockTiming,openDriverResponse,qualifyLockSampleCadence,settleDriverBrowser,
  settleDriverLanes,settleDriverResources,startDriverInterval,startMeasuredLockInterval,validateDevelopmentMeasurement} from '../scripts/performance/driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts} from '../scripts/performance/protected-lock-observer.mjs';
 
@@ -244,6 +244,69 @@ it.each([
   callbackToProbeUs:0,activityRoundTripUs:0,betweenProbesUs:0,advisoryRoundTripUs:probeMs*1000});
  expect(measuredPreflightLockTiming(Array(4097).fill(rows[0]),window)).toBeNull();
  expect(measuredPreflightLockTiming([...rows].reverse(),window)).toBeNull();
+});
+
+it('bounds the serial preflight attempts across the entire 600-second driver budget',async()=>{
+ vi.useFakeTimers({now:0});
+ const starts:{dueMs:number;timerStartedMs:number;attemptIntervalMs:number}[]=[];
+ const sampler=startMeasuredLockInterval(measuredPreflightLockAttemptMs,(timing:typeof starts[number])=>{starts.push(timing);},vi.fn(),Date.now);
+ await vi.advanceTimersByTimeAsync(600000);
+ expect(starts).toHaveLength(4050);
+ expect(starts[0]).toEqual({dueMs:125,timerStartedMs:125,attemptIntervalMs:125});
+ expect(starts[2799]).toEqual({dueMs:350000,timerStartedMs:350000,attemptIntervalMs:125});
+ expect(starts[2800]).toEqual({dueMs:350200,timerStartedMs:350200,attemptIntervalMs:200});
+ expect(starts.at(-1)).toEqual({dueMs:600000,timerStartedMs:600000,attemptIntervalMs:200});
+ await sampler.stop();
+ await vi.advanceTimersByTimeAsync(1000);
+ expect(starts).toHaveLength(4050);
+});
+
+it('does not admit an early monotonic timer callback as an observation',async()=>{
+ vi.useFakeTimers({now:0});
+ let debtMs=0;
+ const sample=vi.fn();
+ const sampler=startMeasuredLockInterval(measuredPreflightLockAttemptMs,sample,vi.fn(),()=>Date.now()+debtMs);
+ debtMs=-1;
+ await vi.advanceTimersByTimeAsync(125);
+ expect(sample).not.toHaveBeenCalled();
+ await vi.advanceTimersByTimeAsync(1);
+ expect(sample).toHaveBeenCalledExactlyOnceWith({dueMs:125,timerStartedMs:125,attemptIntervalMs:125});
+ await sampler.stop();
+});
+
+it.each([
+ {activityMs:344,advisoryMs:3,blocking:0,gapUs:472000,pass:true,reason:null},
+ {activityMs:373,advisoryMs:3,blocking:0,gapUs:501000,pass:false,reason:'coverage-gap'},
+ {activityMs:344,advisoryMs:3,blocking:1,gapUs:472000,pass:false,reason:'blocking-observed'},
+])('keeps the strict gate for a $gapUs µs two-probe window with $blocking blocking',async({activityMs,advisoryMs,blocking,gapUs,pass,reason})=>{
+ vi.useFakeTimers({now:0});
+ const activity=deferred(),advisory=deferred();
+ const rows:(ReturnType<typeof legacyLockRow>&{dueMs:number;timerStartedMs:number;attemptIntervalMs:number;activityCompletedMs:number;advisoryStartedMs:number})[]=[];
+ let active=0,attempts=0;
+ const failed=vi.fn();
+ const sampler=startMeasuredLockInterval(measuredPreflightLockAttemptMs,async(timing:{dueMs:number;timerStartedMs:number;attemptIntervalMs:number})=>{
+  expect(active++).toBe(0);
+  const startedMs=Date.now(),second=++attempts===2;
+  if(second)await activity.promise;
+  const activityCompletedMs=Date.now(),advisoryStartedMs=Date.now();
+  if(second)await advisory.promise;
+  rows.push({...legacyLockRow(startedMs,Date.now(),second?blocking:0),...timing,activityCompletedMs,advisoryStartedMs});
+  active--;
+ },failed,Date.now);
+ await vi.advanceTimersByTimeAsync(250+activityMs);
+ expect(attempts).toBe(2);
+ expect(rows).toHaveLength(1);
+ activity.resolve();
+ await vi.advanceTimersByTimeAsync(advisoryMs);
+ const drain=sampler.stop();
+ advisory.resolve();
+ await drain;
+ const window={startMs:0,endMs:Date.now()};
+ const cadence=qualifyLockSampleCadence('preflight',rows,window);
+ expect(cadence).toMatchObject({intervalMs:250,maxGapUs:500000,interiorGapUs:gapUs,pass,reason,observedBlockingSamples:blocking,qualifiedSamples:2});
+ expect(measuredPreflightLockTiming(rows,window)).toMatchObject({attemptIntervalMs:125,gapUs,activityRoundTripUs:activityMs*1000,advisoryRoundTripUs:advisoryMs*1000});
+ expect(failed).not.toHaveBeenCalled();
+ expect(rows.map(row=>row.startedMs)).toEqual([125,250]);
 });
 
 it('refuses each missed coverage segment even when all observed lock counts are zero',()=>{

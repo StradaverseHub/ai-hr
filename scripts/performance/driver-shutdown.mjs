@@ -97,25 +97,33 @@ export function startDriverInterval(interval,run,recordFailure){
  return {stop(){stopped=true;clearInterval(timer);return pending??Promise.resolve();}};
 }
 
-// Observe preflight more often than the external 250ms cadence target. The
-// external uncertainty bound stays 500ms and uses actual query timestamps.
+// The external 250ms cadence target and actual 500ms bound stay unchanged.
+// A 600s measured preflight admits at most 2,800 fast + 1,250 standard starts.
 export const MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS=200;
+const preflightFastAttemptMs=125,preflightFastStarts=2800;
+export const measuredPreflightLockAttemptMs=started=>started<preflightFastStarts?preflightFastAttemptMs:MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS;
 
 /** One real probe at a time. After an overrun, use the next available timer turn. */
 export function startMeasuredLockInterval(interval,run,recordFailure,now=()=>performance.now()){
- let timer,pending,stopped=false;
- function schedule(due){
+ let timer,pending,stopped=false,starts=0;
+ function schedule(after){
   if(stopped)return;
-  timer=setTimeout(()=>{
+  const attemptIntervalMs=typeof interval==='function'?interval(starts):interval;
+  const due=after+attemptIntervalMs;
+  function arm(){timer=setTimeout(fire,Math.max(0,Math.ceil(due-now())));}
+  function fire(){
    if(stopped)return;
    const started=now();
-   pending=Promise.resolve().then(()=>run({dueMs:due,timerStartedMs:started})).catch(recordFailure).finally(()=>{
+   if(started<due){arm();return;}
+   starts++;
+   pending=Promise.resolve().then(()=>run({dueMs:due,timerStartedMs:started,attemptIntervalMs})).catch(recordFailure).finally(()=>{
     pending=undefined;
-    schedule(started+interval);
+    schedule(started);
    });
-  },Math.max(0,Math.ceil(due-now())));
+  }
+  arm();
  }
- schedule(now()+interval);
+ schedule(now());
  return {stop(){stopped=true;clearTimeout(timer);return pending??Promise.resolve();}};
 }
 
@@ -155,12 +163,13 @@ export function measuredPreflightLockTiming(samples,window){
  }
  if(!widest)return null;
  const {row,gapUs}=widest;
- const {dueMs,timerStartedMs,startedMs,activityCompletedMs,advisoryStartedMs,completedMs}=row;
+ const {dueMs,timerStartedMs,startedMs,activityCompletedMs,advisoryStartedMs,completedMs,attemptIntervalMs}=row;
+ if(attemptIntervalMs!==preflightFastAttemptMs&&attemptIntervalMs!==MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS)return null;
  const readyMs=Math.max(dueMs,widest.previous.completedMs);
  const points=[readyMs,timerStartedMs,startedMs,activityCompletedMs,advisoryStartedMs,completedMs];
  if(points.some((point,index)=>!Number.isFinite(point)||index>0&&point<points[index-1]))return null;
  const elapsed=(from,to)=>Math.ceil((to-from)*1000);
- return {attemptIntervalMs:MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS,gapUs,openingGapUs:elapsed(startMs,first.completedMs),
+ return {attemptIntervalMs,gapUs,openingGapUs:elapsed(startMs,first.completedMs),
   tailGapUs:elapsed(startMs,endMs)-Math.floor((previous.startedMs-startMs)*1000),
   launchSpacingUs:elapsed(widest.previous.startedMs,startedMs),serialWaitPastDueUs:elapsed(dueMs,readyMs),
   timerAfterReadyUs:elapsed(readyMs,timerStartedMs),

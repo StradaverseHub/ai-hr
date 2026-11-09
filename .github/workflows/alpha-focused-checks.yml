@@ -497,7 +497,7 @@ jobs:
               keys = ('attemptIntervalMs', 'gapUs', 'openingGapUs', 'tailGapUs', 'launchSpacingUs',
                       'serialWaitPastDueUs', 'timerAfterReadyUs', 'callbackToProbeUs',
                       'activityRoundTripUs', 'betweenProbesUs', 'advisoryRoundTripUs')
-              if not closed(value, ' '.join(keys)) or number(value['attemptIntervalMs'], 200, 200) is None:
+              if not closed(value, ' '.join(keys)) or number(value['attemptIntervalMs'], 200) not in (125, 200):
                   return None
               facts = {key: number(value[key], 910000000) for key in keys}
               if None in facts.values():

@@ -203,6 +203,9 @@ timing = dict(attemptIntervalMs=200, gapUs=508264, openingGapUs=209731, tailGapU
               callbackToProbeUs=1, activityRoundTripUs=4000, betweenProbesUs=1, advisoryRoundTripUs=8263)
 cadence = dict(interiorGapUs=508264, openingGapUs=209731, tailGapUs=130623)
 assert project_private_preflight_timing(timing, cadence) == timing
+fast_timing = dict(timing, attemptIntervalMs=125)
+assert project_private_preflight_timing(fast_timing, cadence) == fast_timing
+assert project_private_preflight_timing(dict(timing, attemptIntervalMs=126), cadence) is None
 assert project_private_preflight_timing(dict(timing, advisoryRoundTripUs=8266), cadence) is not None
 for malformed in (None, dict(timing, timestamp=1700000000000), dict(timing, activityRoundTripUs=-1),
                   dict(timing, advisoryRoundTripUs=8267), dict(timing, advisoryRoundTripUs=8261),

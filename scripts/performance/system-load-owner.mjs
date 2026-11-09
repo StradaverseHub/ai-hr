@@ -39,7 +39,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,
  developmentLockWindowEvidence,developmentSteadyLoadPass,buildDevelopmentMeasurement,developmentDockerContext,DEVELOPMENT_DOCKER_COMMAND,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,startMeasuredLockInterval,acquireDriverResource,
- MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS,measuredPreflightLockTiming,
+ measuredPreflightLockAttemptMs,measuredPreflightLockTiming,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {createPreflightLockWorkload,firstAppLockWaitCategories,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
@@ -465,7 +465,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
  const sampleDb=measureDevelopment?measuredLockDb:db;
  const schedule=measureDevelopment?startMeasuredLockInterval:startDriverInterval;
  const measuredPreflight=measureDevelopment&&phase==='preflight';
- const attemptInterval=measuredPreflight?MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS:interval;
+ const attemptInterval=measuredPreflight?measuredPreflightLockAttemptMs:interval;
  // Extra aggregate columns on the same preflight probe. Other courses retain their original query.
  const waitCategories=fullDevelopmentRoutes&&measuredPreflight?sampleDb`,jsonb_build_object(
       'advisory',count(*) filter(where usename='ai_hr_app' and wait_event='advisory'),
