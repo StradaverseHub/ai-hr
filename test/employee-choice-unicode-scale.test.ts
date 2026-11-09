@@ -611,60 +611,69 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   const profiles=['one-id','twenty-five-ids'] as const;
   const subjects={'one-id':activeSample.slice(0,1),'twenty-five-ids':activeSample};
   const epochs=['A0','B0','B1','A1'] as const;
+  type CompiledQuery=ReturnType<PgDialect['sqlToQuery']>;
   type Seal={sql:string;parameters:string};
+  const compiledSeal=({sql:text,params}:CompiledQuery):Seal=>({sql:digest(text),parameters:digest(JSON.stringify(params))});
+  // Build and attest each fixed reference outside every measured arm.
+  const references=Object.fromEntries(profiles.map(label=>{
+   const input=Object.freeze({companyIds:Object.freeze([b.companyId]),terminatedAfter,
+    employmentIds:Object.freeze(subjects[label].map(row=>row.employmentId)),limit:25});
+   const baseline=firstWitnessDepartmentFacet(tenant,input);
+   Object.freeze(baseline.queryChunks);Object.freeze(baseline);
+   const compiled=dialect.sqlToQuery(baseline);
+   expect(isDepartmentFacet(compiled.sql)).toBe(true);
+   expect(compiled.params).toEqual(departmentFacetBinds(tenant,input));
+   return [label,{input,baseline,seal:Object.freeze(compiledSeal(compiled)),
+    productBinds:Object.freeze(sparseDepartmentFacetBinds(tenant,input))}] as const;
+  }));
   type Observation={epoch:PairEpoch;label:StressLabel;departmentMs:number;wallMs:number;statements:number;rows:number;
    total:number;dtoVerified:boolean;executed:'product-forwarded'|'a293-first-witness-reference';explainMs?:number;sharedTraffic?:number;pathRefusals?:string[]};
   const productSeals:Partial<Record<StressLabel,Seal[]>>={};
-  const baselineSeals:Partial<Record<StressLabel,Seal>>={};
+  const baselineSeals=Object.fromEntries(profiles.map(label=>[label,references[label].seal]));
   const observations:Observation[]=[];
   const prepared:Partial<Record<PairEpoch,unknown[]>>={};
   metadata.pairObservations=observations;metadata.productQuerySeals=productSeals;metadata.baselineQuerySeals=baselineSeals;metadata.prepared=prepared;
   metadata.sparseProfiles=profiles.map(label=>({label,terminatedAfter,scopeSize:subjects[label].length}));
-  const compiledSeal=(query:SQL)=>{
-   const {sql:text,params}=dialect.sqlToQuery(query);
-   return {sql:digest(text),parameters:digest(JSON.stringify(params))};
-  };
   const stress=async(tx:Tx,epoch:PairEpoch,step:(operation:string,ms?:number)=>void)=>{
    const candidateEpoch=epoch==='B0'||epoch==='B1';
    const order=epoch==='B0'||epoch==='A1'?[...profiles].reverse():profiles;
    for(const label of order){
     const scoped=subjects[label];
-    const input={companyIds:[b.companyId],terminatedAfter,employmentIds:scoped.map(row=>row.employmentId),limit:25};
-    const seals:Seal[]=[];
-    const captured:{forwarded?:SQL;departmentMs:number}={departmentMs:NaN};
+    const {input,baseline,seal,productBinds}=references[label];
+    const statements:{query:SQL;compiled:CompiledQuery}[]=[];
+    const captured:{forwarded?:SQL;rows?:readonly unknown[];departmentMs:number}={departmentMs:NaN};
     const guarded=new Proxy(tx,{get(target,key,receiver){
      if(key==='execute')return async(statement:SQL)=>{
       step(label+' product statement');
-      const compiled=dialect.sqlToQuery(statement),position=seals.push(compiledSeal(statement));
+      const compiled=dialect.sqlToQuery(statement),position=statements.push({query:statement,compiled});
       const text=compiled.sql.trimStart();
       const permitted=[text.startsWith('select exists(select 1 from public.app_user'),text.startsWith('with employee_choice_page as materialized'),
        text.startsWith('select "company"."id" as "companyId",')&&!text.includes('cross join'),isSparseDepartmentFacet(text),
        text.startsWith('select "company"."id" as "companyId",')&&text.includes('cross join "business_unit"')];
       if(permitted[position-1]!==true)throw new Error('Unexpected borrowed stress statement at '+position);
-      if(epoch!=='A0')expect(seals[position-1]).toEqual(productSeals[label]?.[position-1]);
       if(position!==4)return target.execute(statement);
-      expect(compiled.params).toEqual(sparseDepartmentFacetBinds(tenant,input));
-      const forwarded=candidateEpoch?statement:firstWitnessDepartmentFacet(tenant,input);
-      if(!candidateEpoch){
-       expect(dialect.sqlToQuery(forwarded).params).toEqual(departmentFacetBinds(tenant,input));
-       const seal=compiledSeal(forwarded);
-       if(epoch==='A0')baselineSeals[label]=seal;else expect(seal).toEqual(baselineSeals[label]);
-      }
+      expect(compiled.params).toEqual(productBinds);
+      const forwarded=candidateEpoch?statement:baseline;
       const started=performance.now(),rows=await target.execute(forwarded);
-      captured.forwarded=forwarded;captured.departmentMs=performance.now()-started;
-      expect(Array.from(rows)).toEqual(proofRows);return rows;
+      captured.departmentMs=performance.now()-started;
+      captured.forwarded=forwarded;captured.rows=rows;return rows;
      };
      const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
     }});
     metadata.activePair={epoch,label,stage:'ordinary'};persist();
     const started=performance.now(),{contextId:_contextId,...page}=await readEmployeeChoicesTx(guarded,ctx,input,signal),wallMs=performance.now()-started;
     const {forwarded,departmentMs}=captured;
-    const entry:Observation={epoch,label,wallMs,departmentMs,total:page.total,statements:seals.length,rows:page.rows.length,dtoVerified:false,
+    const entry:Observation={epoch,label,wallMs,departmentMs,total:page.total,statements:statements.length,rows:page.rows.length,dtoVerified:false,
      executed:candidateEpoch?'product-forwarded':'a293-first-witness-reference'};
     observations.push(entry);persist();
-    expect(seals).toHaveLength(5);expect(page).toEqual(stressPage(b,scoped));
-    if(!forwarded)throw new Error('Actual department statement was not forwarded');
-    entry.dtoVerified=true;if(epoch==='A0')productSeals[label]=seals;
+    expect(statements).toHaveLength(5);
+    if(!forwarded||!captured.rows)throw new Error('Actual department statement was not forwarded');
+    const seals=statements.map(({compiled})=>compiledSeal(compiled));
+    if(epoch==='A0')productSeals[label]=seals;else expect(seals).toEqual(productSeals[label]);
+    expect(forwarded).toBe(candidateEpoch?statements[3].query:baseline);
+    expect(compiledSeal(dialect.sqlToQuery(forwarded))).toEqual(candidateEpoch?seals[3]:seal);
+    expect(Array.from(captured.rows)).toEqual(proofRows);expect(page).toEqual(stressPage(b,scoped));
+    entry.dtoVerified=true;
     metadata.activePair={epoch,label,stage:'explain'};persist();step(label+' native plan');
     const plan=await explain(tx,forwarded,epoch+'-'+label,!candidateEpoch,10,candidateEpoch?scoped.length:undefined);
     entry.explainMs=plan.executionMs;entry.sharedTraffic=plan.sharedTraffic;entry.pathRefusals=plan.pathRefusals;
