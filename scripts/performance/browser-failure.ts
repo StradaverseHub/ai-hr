@@ -11,7 +11,7 @@ export function browserFailureLocation(error:unknown){
 export function browserPreflightFailureLocation(error:unknown){
  const value=error as {stack?:unknown}|null;
  const stack=typeof value?.stack==='string'?value.stack.slice(0,8192):'';
- const frame=stack.match(/^\s+at [^\r\n]*?[/\\](system-load-owner\.mjs|navigation-browser-capture\.ts|navigation-protocol\.ts|navigation-entry\.ts|navigation-shell-browser\.ts|org-explorer-browser\.mjs|personnel-switcher-browser\.mjs|payroll-browser\.mjs|fixture-workload\.mjs):(\d{1,4}):(\d{1,4})(?:\))?$/m);
+ const frame=stack.match(/^\s+at [^\r\n]*?[/\\](system-load-owner\.mjs|navigation-browser-capture\.ts|navigation-protocol\.ts|navigation-entry\.ts|navigation-shell-browser\.ts|org-explorer-browser\.mjs|personnel-switcher-browser\.mjs|payroll-browser\.mjs|fixture-workload\.mjs|letter-draft-browser\.mjs):(\d{1,4}):(\d{1,4})(?:\))?$/m);
  return {sourceFile:frame?.[1]??null,sourceLine:frame?Number(frame[2]):null,sourceColumn:frame?Number(frame[3]):null};
 }
 

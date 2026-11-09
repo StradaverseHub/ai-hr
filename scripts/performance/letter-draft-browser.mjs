@@ -9,7 +9,7 @@ const timeout=90000;
 const dateInput='input[name="custom:effectiveDate:value"]';
 const batchRoute=/^\/letters\/generate\/([0-9a-f-]{36})$/i;
 
-export async function exerciseLetterDraft({base,context,withContext,notePrimary,noteEvidence,visit,fixture,db,report,save}){
+export async function exerciseLetterDraft({base,context,withContext,notePrimary,noteEvidence,notePreflightStageFailure,visit,fixture,db,report,save}){
  const tenant=fixture.tenants[0],seed=tenant.letterDraft;
  assert(seed,'E-Letter preflight requires a fictional approved template and disabled notifications');
  const author=fixture.users.find(user=>user.index===seed.authorIndex&&user.tenant===0&&user.companyId===seed.companyId&&user.role==='companyHR');
@@ -24,27 +24,27 @@ export async function exerciseLetterDraft({base,context,withContext,notePrimary,
  const initialDate=fixture.today;
  const editedDate=new Date(Date.parse(initialDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
  const reason='Fictional draft withdrawn before approval';
- const evidence={status:'running',actions:[],scope:[]};
+ const evidence={status:'running',currentAction:'open-author',actions:[],scope:[]};
  report.letterDraftBrowser=evidence;
  save();
 
  const authorContext=await context(author);
- await withContext(authorContext,async()=>{try{
-  const page=await authorContext.newPage(),main=page.locator('main');
-  const newPath='/letters/generate/new?versionId='+seed.versionId;
-  const toursBefore=report.onboardingTourDismissals??0;
+ await withContext(authorContext,async()=>{
+ let page;
+ try{
+  page=await authorContext.newPage();
+  const main=page.locator('main'),newPath='/letters/generate/new?versionId='+seed.versionId;
   await visit(page,author,newPath);
-  // This author has a fresh browser and has not dismissed the welcome tour.
-  // The client can mount its blocking overlay after the shared visit sees the heading.
-  if((report.onboardingTourDismissals??0)===toursBefore){
-   const tour=page.getByRole('dialog',{name:'Product tour',exact:true});
-   const skip=tour.getByRole('button',{name:'Skip',exact:true});
-   await skip.click({timeout});
-   await tour.waitFor({state:'hidden',timeout});
-   report.onboardingTourDismissals=toursBefore+1;
+  // Returning authors have no welcome dialog. Handle it only if a genuine late overlay appears
+  // during an action; the owned author context retires this one-shot handler with the page.
+  const tour=page.getByRole('dialog',{name:'Product tour',exact:true});
+  await page.addLocatorHandler(tour,async()=>{
+   await tour.getByRole('button',{name:'Skip',exact:true}).click({timeout});
+   report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;
    save();
-  }
+  },{times:1});
   await main.getByRole('heading',{name:formCopy.create,exact:true}).waitFor({state:'visible',timeout});
+  evidence.currentAction='find-recipient';
   await main.getByRole('textbox',{name:picker.search,exact:true}).fill(code);
   const [choices]=await Promise.all([
    page.waitForResponse(response=>response.request().method()==='GET'&&new URL(response.url()).pathname==='/letters/templates/options'&&new URL(response.url()).searchParams.get('q')===code,{timeout}),
@@ -76,6 +76,7 @@ export async function exerciseLetterDraft({base,context,withContext,notePrimary,
   }
 
   const batchPath=await submit('create','created',main.getByRole('button',{name:formCopy.create,exact:true}));
+  evidence.currentAction='inspect-created-record';
   const batchId=batchRoute.exec(batchPath)[1];
   const [batch]=await db`select tenant_id,company_id,template_version_id,created_by,operation_key,selection from letter_generation_batch where id=${batchId}::uuid`;
   assert.deepEqual({...batch},{tenant_id:tenant.tenantId,company_id:seed.companyId,template_version_id:seed.versionId,created_by:author.userId,operation_key:operationKey,
@@ -108,12 +109,14 @@ export async function exerciseLetterDraft({base,context,withContext,notePrimary,
   assert.equal(created.record.current_revision_id,created.revisions[0].id);
   await main.getByRole('heading',{name:created.record.reference,exact:true}).waitFor({state:'visible',timeout});
 
+  evidence.currentAction='open-draft-revision';
   const forms=action=>main.locator('form').filter({has:page.locator('input[name="action"][value="'+action+'"]')});
   await main.locator('summary').filter({hasText:letters.generate.page.correct}).click({timeout});
   const edit=forms('refresh');
   assert.equal(await edit.locator(dateInput).inputValue(),initialDate);
   await edit.locator(dateInput).fill(editedDate);
   await submit('edit','refresh',edit.locator('button[type="submit"]'),batchPath);
+  evidence.currentAction='verify-revision';
   const edited=await stored();
   assert.equal(edited.record.state,'draft');
   assert.equal(edited.record.lock_version,3);
@@ -123,6 +126,7 @@ export async function exerciseLetterDraft({base,context,withContext,notePrimary,
   assert.equal(edited.record.current_revision_id,edited.revisions[1].id);
   assert.notEqual(edited.revisions[1].content_hash,created.revisions[0].content_hash);
 
+  evidence.currentAction='scope-boundaries';
   for(const [scope,actor] of [['same-tenant-other-company',otherCompany],['other-tenant',otherTenant],['unissued-recipient',recipient]]){
    const deniedContext=await context(actor);
    await withContext(deniedContext,async()=>{
@@ -146,10 +150,12 @@ export async function exerciseLetterDraft({base,context,withContext,notePrimary,
   }
 
 
+  evidence.currentAction='open-withdrawal';
   await main.locator('summary').filter({hasText:letters.generate.page.remove}).click({timeout});
   const withdrawal=forms('withdraw');
   await withdrawal.locator('textarea[name="reason"]').fill(reason);
   await submit('withdraw','withdraw',withdrawal.locator('button[type="submit"]'),batchPath);
+  evidence.currentAction='verify-withdrawal';
   await main.getByText(letters.generate.page.withdrawn,{exact:true}).waitFor({state:'visible',timeout});
   assert.equal(await forms('refresh').count(),0);
   assert.equal(await forms('withdraw').count(),0);
@@ -172,6 +178,7 @@ export async function exerciseLetterDraft({base,context,withContext,notePrimary,
   save();
  }catch(error){
   notePrimary(error);
+  notePreflightStageFailure(error,'letter-draft-workflow',author,page);
   noteEvidence(()=>{evidence.status='failed';evidence.errorType=driverErrorFact(error).kind;save();});
   throw error;
  }

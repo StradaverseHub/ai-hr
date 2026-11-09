@@ -26,7 +26,7 @@ it('projects only reviewed preflight frames and fixed browser fingerprints',()=>
 
 it('attributes the first baseline workflow assertion to a reviewed frame without revealing its contents',()=>{
  const secret='fictional-session-and-person-detail';
- for(const file of ['org-explorer-browser.mjs','personnel-switcher-browser.mjs','payroll-browser.mjs','fixture-workload.mjs']){
+ for(const file of ['org-explorer-browser.mjs','personnel-switcher-browser.mjs','payroll-browser.mjs','fixture-workload.mjs','letter-draft-browser.mjs']){
   const stack='AssertionError: '+secret+'\n at helper (file:///private/'+secret+'/'+file+':84:7)\n at run (file:///private/system-load-owner.mjs:1172:5)';
   const location=browserPreflightFailureLocation({stack});
   expect(location).toEqual({sourceFile:file,sourceLine:84,sourceColumn:7});

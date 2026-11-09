@@ -1233,10 +1233,10 @@ jobs:
                       'legacy-navigation-capture', 'hidden-shell-capture', 'primary-route-observer',
                       'primary-route-navigation', 'primary-route-retirement', 'pre-render-settlement',
                       'legacy-navigation-seal', 'rendered-union-validation', 'org-explorer-workflow',
-                      'personnel-switcher-workflow', 'payroll-readiness-workflow'})
+                      'personnel-switcher-workflow', 'payroll-readiness-workflow', 'letter-draft-workflow'})
                   stage_file = choice(browser_stage.get('sourceFile'), {'system-load-owner.mjs', 'navigation-browser-capture.ts',
                       'navigation-protocol.ts', 'navigation-entry.ts', 'navigation-shell-browser.ts', 'org-explorer-browser.mjs',
-                      'personnel-switcher-browser.mjs', 'payroll-browser.mjs', 'fixture-workload.mjs'})
+                      'personnel-switcher-browser.mjs', 'payroll-browser.mjs', 'fixture-workload.mjs', 'letter-draft-browser.mjs'})
                   org_explorer_step = None
                   if stage_name == 'org-explorer-workflow':
                       org_explorer_step = choice(browser_stage.get('orgExplorerStep'), {
@@ -1244,6 +1244,11 @@ jobs:
                           'report-focus', 'manager-navigation', 'typed-connections', 'literal-person-search',
                           'rewards-member-search', 'selected-company', 'selected-company-people', 'other-company-search',
                           'rewards-member-outside-company', 'restore-all-companies', 'language-switch', 'translated-search-usable'})
+                  letter_draft_action = None
+                  if stage_name == 'letter-draft-workflow':
+                      letter_draft_action = choice(browser_stage.get('letterDraftAction'), {
+                          'open-author', 'find-recipient', 'create', 'inspect-created-record', 'open-draft-revision',
+                          'edit', 'verify-revision', 'scope-boundaries', 'open-withdrawal', 'withdraw', 'verify-withdrawal'})
                   stage_line = number(browser_stage.get('sourceLine'), 9999, 1)
                   stage_column = number(browser_stage.get('sourceColumn'), 4096, 1)
                   stage_role = choice(browser_stage.get('role'), roles)
@@ -1318,6 +1323,7 @@ jobs:
                       'browserStageFailure': {'stage': stage_name, 'role': stage_role,
                           **route(browser_stage.get('path')), 'errorType': choice(browser_stage.get('errorType'), types),
                           'legacyNavigation': legacy_navigation, 'orgExplorerStep': org_explorer_step,
+                          'letterDraftAction': letter_draft_action,
                           'clickObstruction': choice(browser_stage.get('clickObstruction'), {'pointer-intercepted',
                               'outside-viewport', 'element-unstable', 'element-invisible', 'element-disabled', 'element-detached', 'click-timeout'}),
                           'sourceFile': stage_file, 'sourceLine': stage_line if stage_file else None,

@@ -34,15 +34,43 @@ export async function credentialByLogin(organization: string, username: string) 
   const index = await readAuthRecord<{ subject: string }>(loginKey(canonicalOrg(organization), canonicalUsername(username)));
   return index ? readAuthRecord<Credential>(credentialKey(index.subject)) : null;
 }
+const RATE_LOCK_RETRY_MS = [20, 40, 80, 160, 240] as const;
+const RATE_LOCK_RETRY_BUDGET_MS = 750;
 export async function takeRate(scope: string, limit: number, window = 15 * 60_000) {
   const now = Date.now(), start = Math.floor(now / window) * window;
   const key = `rate:${digest(`${scope}:${start}`)}`;
-  const ok = await authTransaction(key, async tx => {
+  const attempt = (deadline?: number, signal?: AbortSignal) => withPoolWork('authentication', () => client.begin(async tx => {
+    if (deadline !== undefined && performance.now() >= deadline) return null;
+    const [lock] = await tx.unsafe<{ acquired: boolean }[]>(
+      "select pg_try_advisory_xact_lock(hashtextextended('internal-auth:'||$1,0)) as acquired", [key],
+    );
+    if (lock?.acquired === false) return null;
+    if (lock?.acquired !== true) throw new InternalAuthError('unavailable');
+    if (deadline !== undefined && performance.now() >= deadline) return null;
     const count = (await readRecord<{ count: number }>(tx, key, true))?.count || 0;
     if (count >= limit) return false;
-    await writeRecord(tx, key, { count: count + 1 }, null, start + 2 * window); return true;
-  });
-  if (!ok) throw new InternalAuthError('rateLimited');
+    await writeRecord(tx, key, { count: count + 1 }, null, start + 2 * window);
+    return true;
+  }), signal);
+
+  let result = await attempt();
+  const deadline = performance.now() + RATE_LOCK_RETRY_BUDGET_MS;
+  // A null miss has settled without touching the counter and returned the pool permit.
+  // Once counter work starts, its result or storage error escapes without replay.
+  for (const delay of RATE_LOCK_RETRY_MS) {
+    if (result !== null || performance.now() + delay >= deadline) break;
+    await new Promise<void>(resolve => setTimeout(resolve, delay));
+    const remaining = Math.floor(deadline - performance.now());
+    if (remaining <= 0) break;
+    const signal = AbortSignal.timeout(remaining);
+    try { result = await attempt(deadline, signal); }
+    catch (error) {
+      if (signal.aborted && error === signal.reason) break;
+      throw error;
+    }
+  }
+  if (result === null) throw new InternalAuthError('unavailable');
+  if (!result) throw new InternalAuthError('rateLimited');
 }
 async function audit(tx: AuthSql, c: Credential, event: string, refused = false, system = false) {
   const rows = await tx.unsafe('select app_user_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);

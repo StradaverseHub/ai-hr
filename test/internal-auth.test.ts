@@ -16,7 +16,7 @@ import { bootstrapInternalOwner } from '../lib/internal-auth/bootstrap';
 import { internalIssuer } from '../lib/internal-auth/config';
 import { digest } from '../lib/internal-auth/crypto';
 import { readRecord, writeRecord } from '../lib/internal-auth/store';
-import { changeInitialPassword, credentialByLogin, readSession, revokeSession, rotateRefresh, startLogin, verifyMfa, type AuthReply, type Credential } from '../lib/internal-auth/service';
+import { changeInitialPassword, credentialByLogin, readSession, revokeSession, rotateRefresh, startLogin, takeRate, verifyMfa, type AuthReply, type Credential } from '../lib/internal-auth/service';
 import { requestRecovery, completeRecovery, sendInternalRecovery } from '../lib/internal-auth/recovery';
 import { sendInternalInvitation,startInvitation, acceptInternalInvitation } from '../lib/internal-auth/invitations';
 import { createManualAccount, resumeManualAccount } from '../core/manual-identity';
@@ -253,6 +253,76 @@ describe('first-party authentication with real private storage and existing HR b
     await expect(startLogin(input)).resolves.toMatchObject({step:'password'});
     for(let n=1;n<10;n++)await expect(startLogin({...input,password:'invalid phrase'})).rejects.toMatchObject({code:'invalidLogin'});
     await expect(startLogin(input)).rejects.toMatchObject({code:'rateLimited'});clock.mockRestore();
+  });
+  async function holdRateKey(key: string, signal: AbortSignal, check: (pid: number) => Promise<void>) {
+    let announce!: (pid: number) => void, release!: () => void;
+    const ready = new Promise<number>(resolve => { announce = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    signal.addEventListener('abort', release, { once: true });
+    const holder = owner.client.begin(async tx => {
+      await tx.unsafe("select pg_advisory_xact_lock(hashtextextended('internal-auth:'||$1,0))", [key]);
+      const [row] = await tx<{ pid: number }[]>`select pg_backend_pid() as pid`;
+      announce(row.pid);
+      await held;
+    });
+    try { await check(await Promise.race([ready, holder.then(() => { throw Error('Rate holder exited before the witness'); })])); }
+    finally { signal.removeEventListener('abort', release); release(); await holder; }
+  }
+  const rateKey = (start: number) => `rate:${digest(`login-global:${start}`)}`;
+  const minute = 60_000;
+  async function rateLockState(pid: number) {
+    const [state] = await owner.client<{ held: boolean; waiting: boolean }[]>`select
+      exists(select 1 from pg_locks where pid=${pid} and locktype='advisory' and granted) as held,
+      exists(select 1 from pg_locks where locktype='advisory' and not granted and ${pid}::integer=any(pg_blocking_pids(pid))) as waiting`;
+    return state;
+  }
+  it('returns the app pool permits on held rate-key misses, then admits exactly the one remaining token', async ({ signal }) => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    const start = Math.floor(Date.now() / minute) * minute, key = rateKey(start);
+    await writeRecord(client, key, { count: 119 }, null, start + 2 * minute);
+    let finished = 0, announce!: () => void;
+    const settled = new Promise<void>(resolve => { announce = resolve; });
+    vi.stubGlobal('__aihrPerfBeginPoolWork', () => ({ acquired: () => {}, finished: () => { if (++finished >= 2) announce(); } }));
+    let contenders: Promise<PromiseSettledResult<void>[]> | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await holdRateKey(key, signal, async pid => {
+        // The old blocking expression still waits on exactly this native key.
+        const previous = await owner.client.begin(async tx => {
+          await tx`set local lock_timeout='50ms'`;
+          await tx.unsafe("select pg_advisory_xact_lock(hashtextextended('internal-auth:'||$1,0))", [key]);
+        }).then(() => null, (error: unknown) => error);
+        expect(pgSqlState(previous)).toBe('55P03');
+        contenders = Promise.allSettled([takeRate('login-global', 120, minute), takeRate('login-global', 120, minute)]);
+        await Promise.race([settled, new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(Error('Rate lock miss retained the app pool permit')), 350); })]);
+        expect(await rateLockState(pid)).toEqual({ held: true, waiting: false });
+        expect(await readRecord(client, key)).toEqual({ count: 119 });
+      });
+      const outcomes = await contenders;
+      expect(outcomes?.filter(row => row.status === 'fulfilled')).toHaveLength(1);
+      expect(outcomes?.find(row => row.status === 'rejected')).toMatchObject({ reason: { code: 'rateLimited' } });
+      expect(await readRecord(client, key)).toEqual({ count: 120 });
+    } finally { clearTimeout(timeout); await contenders; clock.mockRestore(); }
+  });
+  it('refuses a sustained global rate-key hold without guessing quota or starting any credential effects', async ({ signal }) => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    const start = Math.floor(Date.now() / minute) * minute, key = rateKey(start);
+    const usernameWindow = 15 * minute, usernameStart = Math.floor(Date.now() / usernameWindow) * usernameWindow;
+    const usernameKey = `rate:${digest(`login:alpha:owner:${usernameStart}`)}`;
+    await writeRecord(client, key, { count: 119 }, null, start + 2 * minute);
+    const challenges = () => owner.client`select count(*)::int as count from app_internal_auth_record where record_key like 'challenge:%'`;
+    const before = await challenges();
+    try {
+      await holdRateKey(key, signal, async pid => {
+        await expect(startLogin({ organization: 'alpha', username: 'owner', password: temp, native: false })).rejects.toMatchObject({ code: 'unavailable' });
+        expect(await rateLockState(pid)).toEqual({ held: true, waiting: false });
+        expect(await readRecord(client, key)).toEqual({ count: 119 });
+        expect(await readRecord(client, usernameKey)).toBeNull();
+        expect(await challenges()).toEqual(before);
+      });
+      await expect(takeRate('login-global', 120, minute)).resolves.toBeUndefined();
+      expect(await readRecord(client, key)).toEqual({ count: 120 });
+    } finally { clock.mockRestore(); }
   });
   it('blocks wrong passwords, unknown users, partial and forged handles and cross-carrier challenge completion' , async () => {
     for (const username of ['owner', 'missing']) await expect(startLogin({ organization: 'alpha', username, password: 'Wrong private passphrase 999!', native: false })).rejects.toMatchObject({ code: 'invalidLogin' });

@@ -6,6 +6,9 @@ import {hireEmployee,transferEmploymentCompanyTx} from '../core/org';
 import {createCostCenter,deleteCostCenter,listCostCenters,listCostCentersForLabels} from '../core/admin';
 import {setLabelCriteria} from '../core/system-labels';
 import {getEmploymentCostAllocations,previewEmploymentCostAllocations,saveEmploymentCostAllocations} from '../core/employment-cost-allocations';
+import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {assertWorkforceEmploymentTx,WorkforceAccessError} from '../core/workforce-access';
+import {pgSqlState} from '../lib/db-error';
 import {previewCostAllocationImport,costAllocationWorkbookReferences,previewCostAllocationUpload,confirmCostAllocationUpload} from '../core/cost-allocation-import';
 import {toCsv} from '../lib/csv';
 import {ALLOCATION_COLUMNS} from '../lib/employment-cost-allocation';
@@ -74,6 +77,69 @@ describe('Effective-dated employment cost allocation owner',()=>{
   await expect(saveEmploymentCostAllocations(a,input,{digest:p.digest})).rejects.toThrow(/changed/i);
   const next={...input,expectedRevision:1,rows:[{costCenterId:cc2,percentage:'100'}]};const q=await previewEmploymentCostAllocations(a,next);
   await owner.db.update(s.costCenter).set({archivedAt:new Date()}).where(eq(s.costCenter.id,cc2));await expect(saveEmploymentCostAllocations(a,next,{digest:q.digest})).rejects.toThrow(/inactive|unavailable/);expect((await read()).rows[0].costCenterId).toBe(cc1);
+ });
+ it('reads exact scoped allocations while another backend owns Access, while a write waits and fresh revoked reads refuse',async({signal})=>{
+  const [otherCompany]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Outside allocation scope'}).returning();
+  const userId=await createAppUser(b.tenantId,null,'hr_admin');
+  await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
+  const scoped={...a,userId,grants:[{role:'hr_admin',companyId:b.companyId}]};
+  await save([{costCenterId:cc1,percentage:'33.33'}],hireDate);
+  const original=await getEmploymentCostAllocations(scoped,employmentId);
+  expect(original).toMatchObject({employmentId,companyId:b.companyId,effectiveDate:today,revision:1,
+   rows:[{costCenterId:cc1,hundredths:3333}],total:3333,canEdit:true});
+  const input={employmentId,effectiveDate:today,expectedRevision:1,operation:'replace',rows:[{costCenterId:cc2,percentage:'100'}]};
+  const preview=await previewEmploymentCostAllocations(a,input);
+  let announce!:(pid:number)=>void,release!:()=>void;
+  const ready=new Promise<number>(resolve=>{announce=resolve;}),held=new Promise<void>(resolve=>{release=resolve;});
+  signal.addEventListener('abort',release,{once:true});
+  const holder=owner.withTenant(a,async tx=>{
+   await lockAccessConfigurationTx(tx,a.tenantId);
+   const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
+   announce(backend.pid);await held;
+  });
+  let deadline:ReturnType<typeof setTimeout>|undefined;
+  let pendingWrite:Promise<{ok:boolean}>|undefined;
+  try{
+   const blocker=await Promise.race([ready,holder.then(()=>{throw Error('Access holder exited before the witness');})]);
+   await expect(Promise.race([
+    Promise.all([getEmploymentCostAllocations(scoped,employmentId),getEmploymentCostAllocations(scoped,employmentId,today)]),
+    new Promise<never>((_,reject)=>{deadline=setTimeout(()=>reject(Error('Allocation presentation waited for Access')),3000);}),
+   ])).resolves.toEqual([original,original]);
+   // This is the exact first authority call used by the old presentation owner. The native 55P03
+   // makes the negative control independent of the successful projection and its elapsed time.
+   const previous=await withTenant(scoped,async tx=>{
+    await tx.execute(sql`set local lock_timeout='300ms'`);
+    await assertWorkforceEmploymentTx(tx,scoped,employmentId,'view');
+   }).then(()=>null,(error:unknown)=>error);
+   expect(pgSqlState(previous)).toBe('55P03');
+   pendingWrite=saveEmploymentCostAllocations(a,input,{digest:preview.digest}).then(()=>({ok:true}),()=>({ok:false}));
+   const until=Date.now()+3000;
+   let blocked=false;
+   while(Date.now()<until){
+    signal.throwIfAborted();
+    const [witness]=await owner.db.execute<{blocked:boolean}>(sql`select exists(
+     select 1 from pg_locks l join pg_stat_activity a on a.pid=l.pid
+     where l.locktype='advisory' and not l.granted and l.mode='ExclusiveLock' and a.usename='ai_hr_app'
+      and ${blocker}::integer=any(pg_blocking_pids(l.pid))) as blocked`);
+    if(witness.blocked){blocked=true;break;}
+    await new Promise(resolve=>setTimeout(resolve,10));
+   }
+   expect(blocked).toBe(true);
+   const [stored]=await owner.db.select({revision:s.employmentCostAllocationHead.revision}).from(s.employmentCostAllocationHead).where(eq(s.employmentCostAllocationHead.employmentId,employmentId));
+   expect(stored.revision).toBe(1);
+  }finally{
+   clearTimeout(deadline);signal.removeEventListener('abort',release);release();await holder;
+   if(pendingWrite)await pendingWrite;
+  }
+  expect(await pendingWrite).toEqual({ok:true});
+  expect(await getEmploymentCostAllocations(scoped,employmentId)).toMatchObject({revision:2,rows:[{costCenterId:cc2}],total:10000});
+  await owner.withTenant(a,async tx=>{
+   await lockAccessConfigurationTx(tx,a.tenantId);
+   await tx.update(s.roleAssignment).set({companyId:otherCompany.id}).where(eq(s.roleAssignment.appUserId,userId));
+  });
+  // A previously valid context must never replay its old company grant in the next snapshot.
+  await expect(getEmploymentCostAllocations(scoped,employmentId)).rejects.toBeInstanceOf(WorkforceAccessError);
+  await expect(getEmploymentCostAllocations({...scoped,grants:[{role:'hr_admin',companyId:otherCompany.id}]},employmentId,today)).rejects.toBeInstanceOf(WorkforceAccessError);
  });
  it('blocks deletion and active Criteria removal, but retains identity when a closed historical set is no longer applicable',async()=>{
   await save([{costCenterId:cc1,percentage:'100'}],hireDate);expect((await listCostCenters(a)).find(c=>c.id===cc1)?.inUse).toBe(true);expect((await listCostCentersForLabels(a)).find(c=>c.id===cc1)?.inUse).toBe(true);await expect(deleteCostCenter(a,{id:cc1})).rejects.toThrow(/in use/i);

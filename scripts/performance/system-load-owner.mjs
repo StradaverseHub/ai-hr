@@ -1128,7 +1128,8 @@ async function main(){
     errorType:driverErrorFact(reason).kind,...browserPreflightFailureLocation(reason),
     clickObstruction:browserPreflightClickObstruction(reason),
     legacyNavigation:stage==='legacy-navigation-capture'?legacyNavigationFailureFacts(reason):null,
-    orgExplorerStep:stage==='org-explorer-workflow'?report.orgExplorerJourneys?.at(-1)?.failure?.stage??null:null};
+    orgExplorerStep:stage==='org-explorer-workflow'?report.orgExplorerJourneys?.at(-1)?.failure?.stage??null:null,
+    letterDraftAction:stage==='letter-draft-workflow'?report.letterDraftBrowser?.currentAction??null:null};
   });
  }
  // Exercise real password/MFA before any capacity test; these results are never loaded proof.
@@ -1486,7 +1487,7 @@ async function main(){
  if(suite==='workflow-preflight'){
   assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys failed');
   requireNativeBusiness();
-  await exerciseLetterDraft({base,context,withContext,notePrimary,noteEvidence,visit,fixture,db,report,save});
+  await exerciseLetterDraft({base,context,withContext,notePrimary,noteEvidence,notePreflightStageFailure,visit,fixture,db,report,save});
   requireCleanDriver();
   const {exercisePerformanceRewardsDrafts}=await import('./performance-rewards-draft-browser.mjs');
   requireNativeBusiness();
