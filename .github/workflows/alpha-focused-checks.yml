@@ -374,10 +374,9 @@ jobs:
                   members.append(check_file(name))
               except FileNotFoundError:
                   pass
-          if not members:
-              raise SystemExit('No sanitized development browser evidence')
-
           if os.environ['COURSE_OUTCOME'] == 'success' and os.environ['CLEANUP_OUTCOME'] == 'success':
+              if not members:
+                  raise SystemExit('No sanitized development browser evidence')
               runner = json.loads(check_file('runner.json').read_bytes())
               driver = json.loads(check_file('http-browser.json').read_bytes())
               fixture = json.loads(check_file('fixture.json').read_bytes())
@@ -512,6 +511,11 @@ jobs:
                   visit = record(driver.get('browserFailedNavigation'))
                   pilot = first(driver.get('coverage'), lambda row: row.get('status') == 'failed')
                   locks = record(record(driver.get('lockSampling')).get('preflight'))
+                  completed = number(locks.get('completed'), 4096)
+                  invalid = number(locks.get('invalidBlockingCounts'), completed) if completed is not None else None
+                  observed = completed - invalid if invalid is not None else None
+                  # A zero in the producer's empty ledger is not a measured zero.
+                  blocking = number(locks.get('blockingSamples'), observed) if observed else None
                   readiness = runner.get('workerReadiness')
                   ready = None
                   if count(readiness) in (0, 1, 2) and all(
@@ -559,7 +563,7 @@ jobs:
                   }
                   receipt['observedCounts'].update(
                       baselineScenarios=number(record(driver.get('navigationCapture')).get('baselineScenarios'), 4096),
-                      lockSamplesCompleted=number(locks.get('completed'), 4096), lockSamplesBlocking=number(locks.get('blockingSamples'), 4096),
+                      lockSamplesCompleted=completed, lockSamplesObserved=observed, lockSamplesBlocking=blocking,
                       driverSecondaryFailures=count(driver_failures.get('secondary')))
                   receipt_name = 'browser-preflight-failure.json'
                   fd = os.open(receipt_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
