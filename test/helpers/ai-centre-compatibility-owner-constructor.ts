@@ -1198,8 +1198,8 @@ async function selectedCluster(q:ISql,budget:SelectedBudget){
 async function selectedGlobal(q:ISql,role:string|null,budget:SelectedBudget){
  const roles=await selectedRead<SelectedRole>(q,
   "SELECT jsonb_build_object('oid',r.oid::text,'name',r.rolname,'login',r.rolcanlogin,'super',r.rolsuper,'inherit',r.rolinherit,'createRole',r.rolcreaterole,'createDb',r.rolcreatedb,"+
-  "'replication',r.rolreplication,'bypassRls',r.rolbypassrls,'connectionLimit',r.rolconnlimit,'passwordNull',r.rolpassword IS NULL,'validUntil',r.rolvaliduntil::text,'config',r.rolconfig) AS value "+
-  "FROM pg_catalog.pg_authid r ORDER BY r.oid LIMIT 40001",budget);
+  "'replication',r.rolreplication,'bypassRls',r.rolbypassrls,'connectionLimit',r.rolconnlimit,'passwordNull',r.rolpassword IS NULL,'validUntil',r.rolvaliduntil::text,'config',settings.setconfig) AS value "+
+  "FROM pg_catalog.pg_authid r LEFT JOIN pg_catalog.pg_db_role_setting settings ON settings.setrole=r.oid AND settings.setdatabase=0 ORDER BY r.oid LIMIT 40001",budget);
  const memberships=await selectedRead<SelectedMember>(q,
   "SELECT jsonb_build_object('role',pg_get_userbyid(m.roleid),'member',pg_get_userbyid(m.member),'grantor',pg_get_userbyid(m.grantor),'inherit',m.inherit_option,'set',m.set_option,'admin',m.admin_option) AS value "+
   "FROM pg_catalog.pg_auth_members m ORDER BY m.roleid,m.member,m.grantor LIMIT 40001",budget);
