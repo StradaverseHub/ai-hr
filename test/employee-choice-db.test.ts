@@ -530,7 +530,8 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  type EnvelopePlan={position:Auxiliary|'envelope';seal:ReturnType<typeof seal>;summary:ReturnType<typeof taggedAuxiliaryWork>['summary']};
  const envelopeEvidence:{
   state:'unavailable'|'incomplete'|'settled';stage:EnvelopeStage;failure?:string|null;
-  origin?:'post-public-clean-snapshot';commitAcknowledgedWithinSlot?:true;outerFailure?:string|null;
+  origin?:'post-public-clean-snapshot';commitAcknowledged?:true;commitAcknowledgedWithinSlot?:true;outerFailure?:string|null;
+  acknowledgementRefusal?:'case-aborted'|'slot-elapsed';
   cleanBackend?:Pick<PageRealm,'pid'|'started'>;
   activeRemainingAtAdmissionMs?:number;postPublicElapsedMs?:number;
   catalogueBefore?:string;catalogueAfter?:string;fixtureOracle?:true;
@@ -875,13 +876,18 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
     envelopeEvidence.cleanBackend={pid:identity.pid,started:identity.started};
     await compareTaggedEnvelope(tx,identity,{deadline:nativeEnd,catalogue:reference.catalogue});
    })()),{readOnlySnapshot:true,readSignal:entrySignal});
-   signal.throwIfAborted();requireTime(settleBy,0,'post-public auxiliary settlement');
-   envelopeEvidence.commitAcknowledgedWithinSlot=true;
   }catch(error){
    envelopeEvidence.outerFailure=errorHash(error);
+   return;
   }finally{
    envelopeEvidence.postPublicElapsedMs=performance.now()-start;
   }
+  envelopeEvidence.commitAcknowledged=true;
+  if(signal.aborted||performance.now()>settleBy){
+   envelopeEvidence.acknowledgementRefusal=signal.aborted?'case-aborted':'slot-elapsed';
+   return;
+  }
+  envelopeEvidence.commitAcknowledgedWithinSlot=true;
  };
  type OwnerStep=(label:string,remaining?:number)=>void;
  type OwnerReceipt={outer:'pending'|'commit-acknowledged'|'unconfirmed';callback:'pending'|'not-entered'|'fulfilled'|'rejected';
@@ -931,6 +937,18 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  };
  const publicPortMs:Record<string,number>={};
  metadata.publicPortMs=publicPortMs;
+ const assessPrimaryTimings=()=>references.map(({label,total})=>{
+  const arms=epochs.map(epoch=>observations.find(row=>row.epoch===epoch&&row.label===label));
+  if(arms.some(arm=>!arm?.dtoVerified))throw new Error('Incomplete organisation page ABBA');
+  const [a0,b0,b1,a1]=arms as Sample[];
+  const kinds:Target[]=total===0?['page','count']:['page'];
+  const metric=(field:'ordinary'|'instrumented',kind:Target)=>Math.max(b0[field][kind]??Infinity,b1[field][kind]??Infinity)<
+   Math.min(a0[field][kind]??-Infinity,a1[field][kind]??-Infinity);
+  return {label,ordinary:kinds.every(kind=>metric('ordinary',kind)),instrumented:kinds.every(kind=>metric('instrumented',kind)),
+   wholeRead:Math.max(b0.wallMs,b1.wallMs)<Math.min(a0.wallMs,a1.wallMs),
+   targetMet:publicPortMs[label]<=1000&&Math.max(b0.wallMs,b1.wallMs)<=1000};
+ });
+ let primaryTimings:ReturnType<typeof assessPrimaryTimings>|undefined;
  try{
   save();active('owned fixture preparation',110000);
   const preparedOwner=await ownerTransaction('prepare',active,async(tx,ownedStep,id)=>{
@@ -1021,7 +1039,14 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    }
   }finally{publicSpy.mockRestore();}
   active('public port evidence completion',0);
-  if(cleanEnvelopeReference)await observeCleanEnvelope(actual,cleanEnvelopeReference);
+  if(cleanEnvelopeReference){
+   // Persist the timing verdict before any optional checkout. The final
+   // outcome still requires native settlement and fixture restoration.
+   primaryTimings=assessPrimaryTimings();
+   metadata.primaryTimingOutcomes=primaryTimings;
+   save();
+   await observeCleanEnvelope(actual,cleanEnvelopeReference);
+  }
  }catch(error){
   workFailed=true;workFailure=catalogueRefusal?catalogueRefusal.error:error;
   if(catalogueRefusal&&catalogueRefusal.error!==error){
@@ -1121,17 +1146,8 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  if(failures.length)throw new AggregateError(failures,'Native organisation page work or cleanup refused');
  expect(restored).toBe(true);
  expect(rawPlans).toHaveLength(16);
- const outcomes=references.map(({label,total})=>{
-  const arms=epochs.map(epoch=>observations.find(row=>row.epoch===epoch&&row.label===label));
-  if(arms.some(arm=>!arm?.dtoVerified))throw new Error('Incomplete organisation page ABBA');
-  const [a0,b0,b1,a1]=arms as Sample[];
-  const kinds:Target[]=total===0?['page','count']:['page'];
-  const metric=(field:'ordinary'|'instrumented',kind:Target)=>Math.max(b0[field][kind]??Infinity,b1[field][kind]??Infinity)<
-   Math.min(a0[field][kind]??-Infinity,a1[field][kind]??-Infinity);
-  return {label,ordinary:kinds.every(kind=>metric('ordinary',kind)),instrumented:kinds.every(kind=>metric('instrumented',kind)),
-   wholeRead:Math.max(b0.wallMs,b1.wallMs)<Math.min(a0.wallMs,a1.wallMs),
-   targetMet:publicPortMs[label]<=1000&&Math.max(b0.wallMs,b1.wallMs)<=1000};
- });
+ const outcomes=primaryTimings??assessPrimaryTimings();
+ delete metadata.primaryTimingOutcomes;
  metadata.outcomes=outcomes;save(true);
  expect(outcomes).toEqual(references.map(({label})=>({label,ordinary:true,instrumented:true,wholeRead:true,targetMet:true})));
 }
