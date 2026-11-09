@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { AiAllowanceError, AiGatewayError } from '../lib/ai/types';
 import { trackAiCentreFunctions } from '../lib/ai/centre-activity';
-import { assertAiPrincipalTx } from './ai-principal';
+import { assertAiCommandPrincipalTx, assertAiPrincipalTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
 import { assertModuleEnabled, resolveEntitlementsTx } from './entitlements';
 import { aiPresentationFunctionsEnabledTx, assertAiActionUnpausedTx, assertAiPresentationActionUnpausedTx } from './ai-governance';
@@ -75,7 +75,7 @@ export async function assistantFunctionAllowed(ctx: SessionContext, session: Ass
 }
 
 async function guard(tx: Tx, ctx: SessionContext, module: string | null,presentation=false) {
-  await assertAiPrincipalTx(tx, ctx);
+  await (presentation ? assertAiPrincipalTx : assertAiCommandPrincipalTx)(tx, ctx);
   const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
   await assertMayUseAssistant(fresh, tx);
   if (module !== null) assertModuleEnabled(fresh, module);

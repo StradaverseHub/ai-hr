@@ -13,7 +13,7 @@ export function isAiPrincipalCurrentTx(tx:Tx,supplied:SessionContext):Promise<bo
 export function isAiPresentationPrincipalCurrentTx(tx:Tx,supplied:SessionContext):Promise<boolean>{
  return readAiPrincipalTx(tx,supplied,'repeatable read');
 }
-async function readAiPrincipalTx(tx:Tx,supplied:SessionContext,isolation:'read committed'|'repeatable read'):Promise<boolean>{
+async function readAiPrincipalTx(tx:Tx,supplied:SessionContext,isolation:'read committed'|'repeatable read',requireExclusive=false):Promise<boolean>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
  if(!ctx.userId||ctx.entitlementsExempt!==undefined||ctx.statutoryOverride!==undefined)return false;
  const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
@@ -23,9 +23,8 @@ async function readAiPrincipalTx(tx:Tx,supplied:SessionContext,isolation:'read c
      and app.current_user_id()=${ctx.userId}::uuid and current_setting('transaction_isolation')='read committed' as matches,
      current_setting('transaction_read_only')='on' as read_only`);
   if(carrier?.matches!==true)return false;
-  // Only a database-enforced read-only transaction may share the revocation barrier.
-  // Command/admission/settlement callers remain exclusive.
-  await (carrier.read_only===true?lockAccessConfigurationReadTx:lockAccessConfigurationTx)(tx,ctx.tenantId);
+  // Only read-only carriers whose callers do not require exclusive Access may share the barrier.
+  await (!requireExclusive&&carrier.read_only===true?lockAccessConfigurationReadTx:lockAccessConfigurationTx)(tx,ctx.tenantId);
  }
  const requiredMode=isolation==='read committed'
   ? sql`current_setting('transaction_isolation')='read committed'`
@@ -43,6 +42,13 @@ async function readAiPrincipalTx(tx:Tx,supplied:SessionContext,isolation:'read c
 }
 export async function assertAiPrincipalTx(tx:Tx,supplied:SessionContext):Promise<void>{
  try{if(await isAiPrincipalCurrentTx(tx,supplied))return;}catch{/* Never continue the caller Tx after a storage failure. */}
+ throw new AiGatewayError('Current AI calling authority could not be confirmed.');
+}
+
+/** A command must take exclusive Access before reading principal facts, even on a read-only
+ * carrier. Otherwise two commands may each hold shared Access while waiting to upgrade. */
+export async function assertAiCommandPrincipalTx(tx:Tx,supplied:SessionContext):Promise<void>{
+ try{if(await readAiPrincipalTx(tx,supplied,'read committed',true))return;}catch{/* Never continue the caller Tx after a storage failure. */}
  throw new AiGatewayError('Current AI calling authority could not be confirmed.');
 }
 

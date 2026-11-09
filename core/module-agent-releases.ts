@@ -30,7 +30,7 @@ import { MODULE_AGENT_SOURCE_DIGEST } from '../lib/ai/module-agent-source-manife
 // expire through the normal promotion maintenance and job retention.
 import { captureTypedModulePlan, captureTypedRouteCandidate,
   ROUTING_ENGINE_DIGEST, ROUTING_POLICY_DIGEST, routingDigest } from '../lib/ai/module-agent-routing';
-import { assertAiPrincipalTx,isAiPrincipalCurrentTx } from './ai-principal';
+import { assertAiCommandPrincipalTx,assertAiPrincipalTx,isAiPrincipalCurrentTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
 import { assertAiActionUnpausedTx,assertAiPresentationActionUnpausedTx } from './ai-governance';
 import { resolveEntitlementsTx,assertModuleEnabled } from './entitlements';
@@ -57,7 +57,7 @@ const uuid = (value: string) => /^[a-f0-9-]{36}$/i.test(value);
 const capture = (ctx: SessionContext) => ({ ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) });
 const exact = (row: object, keys: string[]) => Object.keys(row).sort().join(',') === [...keys].sort().join(',');
 async function guard(tx: Tx, ctx: SessionContext, admin: boolean, admission: boolean|'presentation' = true) {
-  await assertAiPrincipalTx(tx, ctx);
+  await (admission === true ? assertAiCommandPrincipalTx : assertAiPrincipalTx)(tx, ctx);
   if (admin) {
     const [current] = await tx.execute<{ allowed: boolean }>(sql`select app.is_group_admin() as allowed`);
     if (!isGroupAdmin(ctx) || current?.allowed !== true) return fail();
@@ -1053,7 +1053,7 @@ async function conversationProgressTx(tx:Tx,ctx:SessionContext,id:string,provide
 }
 type ConversationEvaluationInvocation={id:string;receiptDigest:string;incarnation:string};
 async function assertConversationEvaluationInvocationTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow,providerFingerprint:string,invocation:ConversationEvaluationInvocation){
- // Every caller ran guard first, so this transaction holds EXCLUSIVE Access (assertAiPrincipalTx)
+ // Every caller ran the command guard first, so this transaction holds EXCLUSIVE Access
  // until it ends; every physical intent delete/copy needs Access TRY ownership in its DB trigger,
  // including direct SQL/FK/PDPA cleanup. A same-ID copy gets a fresh database incarnation.
  const [row]=await tx.execute<{receipt:string;incarnation:string}>(sql`select receipt,incarnation::text as incarnation from public.ai_assistant_answer_evaluation_intent where id=${invocation.id}::uuid and tenant_id=${ctx.tenantId}::uuid and candidate_id=${candidate.id}::uuid and evaluator_user_id=${ctx.userId}::uuid and evaluator_person_id is not distinct from ${ctx.personId??null}::uuid and state='pending' and source_digest=${MODULE_AGENT_SOURCE_DIGEST} and provider_fingerprint=${providerFingerprint} and suite_digest=${ASSISTANT_CONVERSATION_SUITE_DIGEST} and expires_at>clock_timestamp()`);if(!row||row.incarnation!==invocation.incarnation||rawReceiptDigest(row.receipt)!==invocation.receiptDigest)return fail();
