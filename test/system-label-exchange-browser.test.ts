@@ -4,8 +4,9 @@ import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
 import {createWriteStream,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {totalmem,availableParallelism} from 'node:os';
+import {performance} from 'node:perf_hooks';
 import {setTimeout as delay} from 'node:timers/promises';
-import {chromium,type Browser,type Page} from 'playwright';
+import {chromium,type Browser,type ConsoleMessage,type Page,type Request,type Response} from 'playwright';
 import {eq} from 'drizzle-orm';
 import {adminCtx,migrateTestDb,resetDb,seedBase,owner,closeAll} from './harness';
 import {createCompany} from '../core/admin';
@@ -59,6 +60,41 @@ describe('System Labels authenticated Excel browser journey',()=>{
     }
    }
   }
+  async function openImport(target:Page,role:'group-admin'|'company-admin',load?:()=>Promise<void>){
+   const counts={pageErrors:0,consoleErrors:0,scriptRequestFailures:0,scriptHttpErrors:0};
+   const localScript=(request:Request)=>request.resourceType()==='script'&&request.url().startsWith(origin+'/_next/static/');
+   const pageError=()=>{counts.pageErrors++;};
+   const consoleError=(message:ConsoleMessage)=>{if(message.type()==='error')counts.consoleErrors++;};
+   const requestFailed=(request:Request)=>{if(localScript(request))counts.scriptRequestFailures++;};
+   const responseError=(response:Response)=>{if(response.status()>=400&&localScript(response.request()))counts.scriptHttpErrors++;};
+   target.on('pageerror',pageError);target.on('console',consoleError);target.on('requestfailed',requestFailed);target.on('response',responseError);
+   let stage='document';
+   try{
+    if(load)await load();
+    const deadline=performance.now()+90000;
+    const remaining=()=>{
+     const ms=Math.floor(deadline-performance.now());
+     if(ms<=0)throw Error('System Labels upload opening deadline exceeded');
+     return ms;
+    };
+    stage='client-ready';
+    const trigger=target.locator('[data-label-import]').getByRole('button',{name:en.admin.systemLabels.excel.import,exact:true})
+     .and(target.locator('[data-label-import-ready="true"]'));
+    await trigger.waitFor({state:'visible',timeout:remaining()});
+    expect(await trigger.isEnabled({timeout:remaining()})).toBe(true);
+    stage='click';
+    await trigger.click({timeout:remaining()});
+    stage='dialog';
+    const dialog=target.getByRole('dialog',{name:en.labelsImportWizard.title,exact:true});
+    await dialog.waitFor({state:'visible',timeout:remaining()});
+    return dialog;
+   }catch(error){
+    console.error('System Labels upload opening diagnostics:',{role,stage,...counts});
+    throw error;
+   }finally{
+    target.off('pageerror',pageError);target.off('console',consoleError);target.off('requestfailed',requestFailed);target.off('response',responseError);
+   }
+  }
   // No production credentials or identity provider. This is the existing explicit developer identity route.
   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
    detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:`--max-old-space-size=${heapMiB}`},stdio:['ignore','pipe','pipe']});
@@ -96,8 +132,8 @@ describe('System Labels authenticated Excel browser journey',()=>{
    division:[{Code:'BROWSER_COMPANY_LABEL',Label:'Fictional scoped label',Company:other.id}],
    grade_groups:[{Code:'',Label:'',Name:'BROWSER_GROUP_LABEL'}],
   }});
-  await page.getByRole('button',{name:en.admin.systemLabels.excel.import,exact:true}).click();
-  await page.locator('input[type=file]').setInputFiles({name:'fictional-labels.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:bytes});
+  const importDialog=await openImport(page,'group-admin');
+  await importDialog.getByLabel(en.labelsImportWizard.upload,{exact:true}).setInputFiles({name:'fictional-labels.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:bytes});
   await page.getByRole('button',{name:en.labelsImportWizard.check,exact:true}).click();
   await page.getByRole('button',{name:'Import 3 new codes',exact:true}).waitFor();
   expect(await page.getByRole('dialog').innerText()).toContain(en.systemLabelExchange.global);
@@ -126,10 +162,22 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const restrictedContext=await browser.newContext({viewport:{width:1440,height:1050}});
   await restrictedContext.addCookies([{name:'dev_user',value:restricted.id,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
   const restrictedPage=await restrictedContext.newPage();restrictedPage.setDefaultTimeout(90000);
-  await navigate(restrictedPage,'/admin/settings/system-labels');
-  await restrictedPage.getByRole('button',{name:en.admin.systemLabels.excel.import,exact:true}).click();
+  const restrictedImportDialog=await openImport(restrictedPage,'company-admin',async()=>{
+   const response=await navigate(restrictedPage,'/admin/settings/system-labels');
+   if(!response)throw Error('System Labels company-admin navigation returned no document response');
+   expect(response.status()).toBe(200);
+   expect(restrictedPage.url()).toBe(origin+'/admin/settings/system-labels');
+   // Inspect the actual response before any client changes, without loading another page.
+   const serverTriggers=await restrictedPage.evaluate(html=>{
+    const template=document.createElement('template');
+    template.innerHTML=html;
+    return Array.from(template.content.querySelectorAll<HTMLButtonElement>('[data-label-import] button[data-label-import-ready]'),
+     button=>({disabled:button.disabled,ready:button.getAttribute('data-label-import-ready')}));
+   },await response.text());
+   expect(serverTriggers).toEqual([{disabled:true,ready:'false'}]);
+  });
   const refused=await buildSystemLabelWorkbook({kinds:['department'],rows:{department:[{Code:'BROWSER_FORBIDDEN_GLOBAL'}]},references:{companies:[],grades:[],employees:[]}});
-  await restrictedPage.locator('input[type=file]').setInputFiles({name:'forbidden-global.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:refused});
+  await restrictedImportDialog.getByLabel(en.labelsImportWizard.upload,{exact:true}).setInputFiles({name:'forbidden-global.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:refused});
   await restrictedPage.getByRole('button',{name:en.labelsImportWizard.check,exact:true}).click();
   await restrictedPage.getByText(en.labelsImportWizard.globalAdminRequired,{exact:true}).waitFor();
   expect(await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_FORBIDDEN_GLOBAL'))).toHaveLength(0);
