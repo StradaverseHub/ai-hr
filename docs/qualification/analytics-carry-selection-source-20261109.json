@@ -70,8 +70,8 @@
     {
       "path": "test/analytics-bounded-reports.test.ts",
       "current": {
-        "bytes": 75979,
-        "sha256": "45eb8f3edf116492c99a269d41d3b260ee607bc46cce4ac5fe0afff7509015c1"
+        "bytes": 79631,
+        "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
       },
       "wholeParent": {
         "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
@@ -130,8 +130,8 @@
         },
         {
           "currentStart": 27549,
-          "currentEnd": 75979,
-          "currentRangeSha256": "50900db157d9a302036394bf67536f85f0277b8adf5e389ecddbf10c988bda97",
+          "currentEnd": 79631,
+          "currentRangeSha256": "cdca27f9a8e573b605d549f96524709310b3e937c7dcaf1ee14af84807251384",
           "parentStart": 27037,
           "parentEnd": 27037,
           "parentText": ""
@@ -273,8 +273,8 @@
     {
       "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
       "current": {
-        "bytes": 23651,
-        "sha256": "72ff563852d94eedae9a0c4b41cbee055b3e54f305ef051ac233b6bfc3ae604f"
+        "bytes": 24611,
+        "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
       },
       "wholeParent": {
         "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
@@ -285,8 +285,8 @@
       "inverseHunks": [
         {
           "currentStart": 13334,
-          "currentEnd": 23651,
-          "currentRangeSha256": "c1938a4172f24e1c456e9d0833180f821f061200b55a321b48b2bbf6292a03a1",
+          "currentEnd": 24611,
+          "currentRangeSha256": "cd4f40628bef4a54cf336ed5d5cfdb2c60ad90f1294f318457d19e906e4f851e",
           "parentStart": 13334,
           "parentEnd": 13334,
           "parentText": ""
@@ -663,7 +663,7 @@
     "sourceOnly": true,
     "parentSource": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
     "recordPath": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json",
-    "recordSha256": "e6c4c8e893198c39d99eff72b33e15fd63f24d0492c05173067369f36cdb1801",
+    "recordSha256": "9ff32db5af680b34027f2b57d6666eb340b462cb78b9c0597f48de4c78388582",
     "historicalFca1CoursesNotRelabeled": true,
     "currentRuntimeQualification": false
   },
@@ -689,6 +689,22 @@
     "priorAuthenticationSha256": "ef1d529c2d2a76d44194576b630bb433d2af46346039b3ac80ffc73be0d047d6",
     "currentNativeEstimateStatus": "UNRUN",
     "sameSevenPredecessorTargetsRetained": true,
+    "currentRuntimeQualified": false
+  },
+  "firstFetchEstimateAdmissionCorrection": {
+    "sourceOnly": true,
+    "directParentSource": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+    "sourceRef": "codex/analytics-carry-estimate-admission-20261109",
+    "wholeParentIndex": {
+      "path": "docs/qualification/analytics-carry-selection-source-20261109.json",
+      "source": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+      "gitBlob": "185c9b9287f2cbfbda01663e3b4da7d4264ecfde",
+      "bytes": 25714,
+      "sha256": "913a188bb6217526e3dd7d66018d607fa19ebc30c84cdf40c30cb90cd76e012a"
+    },
+    "recordSection": "firstFetchEstimateAdmissionCorrection",
+    "independentSourceReviewSha256": "4926a07d21923b4ff5fda16bbb63a0da727509baf4e4e40da3df0cfcd5e37ae7",
+    "currentNativeEstimateStatus": "UNRUN",
     "currentRuntimeQualified": false
   }
 }

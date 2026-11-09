@@ -324,7 +324,13 @@ type CarryFailurePoint='entry'|'begin'|'bounds'|'identity'|'work'|'commit'|'roll
 type CarryFailureClass='Error'|'TypeError'|'RangeError'|'SyntaxError'|'ReferenceError'|'URIError'|'EvalError'|'AggregateError'|'AbortError'|'TimeoutError'|'PostgresError'|'DrizzleQueryError'|'NonError'|'Unknown';
 type CarryFailureFact={operation:CarryFailureOperation;point:CarryFailurePoint;exceptionClass:CarryFailureClass;sqlState:string|null;category:'postgres'|'constraint'|'transaction-rollback'|'lock-unavailable'|'query-cancelled'|'connection'|'deadline-or-cancel'|'javascript'|'non-error'|'unknown';stage:CarryBoundaryStage|'UNOBSERVED';phase:number;page:number};
 type CarryPrivateFailure={error:unknown;fact:CarryFailureFact};
-type CarryBoundarySlot={kind:'fixture'|'command'|'read';epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;estimateContext?:unknown;cancel?:Promise<void>;tag:string};
+type CarryTimedSubmission = {
+  kind: 'estimate' | 'declaration';
+  statement: SQL;
+  used?: true;
+  admitted?: true;
+};
+type CarryBoundarySlot={kind:'fixture'|'command'|'read';epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;estimateContext?:unknown;timedSubmission?:CarryTimedSubmission;cancel?:Promise<void>;tag:string};
 const CARRY_DECLARE_PREFIX = 'declare analytics_carry_identities no scroll cursor for\n      select ';
 const CARRY_EXPLAIN_PREFIX = 'explain(verbose,settings,format json) ';
 const CARRY_ESTIMATE_MEMBER = 'analytics-carry-first-fetch-estimate-private.json';
@@ -351,6 +357,12 @@ const CARRY_PLAN_TYPES = new Set([
   'Foreign Scan', 'Custom Scan', 'Nested Loop', 'Merge Join', 'Hash Join', 'Materialize', 'Memoize',
   'Sort', 'Incremental Sort', 'Group', 'Aggregate', 'WindowAgg', 'Unique', 'SetOp', 'LockRows', 'Limit', 'Hash',
 ]);
+const CARRY_ESTIMATE_DOCUMENT_FIELDS = new Set(['Plan', 'Settings', 'Query Identifier', 'JIT']);
+const CARRY_ESTIMATE_JIT_FIELDS = new Set(['Functions', 'Options']);
+const CARRY_ESTIMATE_JIT_OPTIONS = new Set(['Inlining', 'Optimization', 'Expressions', 'Deforming']);
+const CARRY_RUNTIME_PLAN_FIELDS = new Set([
+  'Workers', 'Workers Launched', 'Heap Fetches', 'Sort Method', 'Sort Space Used', 'Sort Space Type',
+]);
 class CarryEstimateOverflow extends Error {}
 const carryEstimateHash = (text: string) => createHash('sha256').update(text).digest('hex');
 function carryEstimateRecord(value: unknown): value is Record<string, unknown> {
@@ -364,11 +376,30 @@ function carryEstimatedNumber(node: Record<string, unknown>, key: string) {
   return value;
 }
 function carryEstimatePlan(raw: unknown) {
-  if (!Array.isArray(raw) || raw.length !== 1 || !carryEstimateRecord(raw[0]) ||
-      !carryEstimateRecord(raw[0].Plan) || 'Execution Time' in raw[0]) {
+  if (!Array.isArray(raw) || raw.length !== 1 || !carryEstimateRecord(raw[0])) {
     throw new Error('Carry estimate JSON envelope refused');
   }
-  const root = raw[0].Plan;
+  const document = raw[0];
+  const root = document.Plan;
+  if (!carryEstimateRecord(root) || Object.keys(document).some(key => !CARRY_ESTIMATE_DOCUMENT_FIELDS.has(key))) {
+    throw new Error('Carry estimate JSON envelope refused');
+  }
+  // PostgreSQL can expose JIT options and an ordinary driver-decoded query identifier in an estimate.
+  // Runtime timing and trigger sections are outside this fixed command's output contract.
+  const {Settings: settings, JIT: jit} = document;
+  const queryIdentifier = document['Query Identifier'];
+  if ((settings !== undefined && (!carryEstimateRecord(settings) || Object.values(settings).some(value => typeof value !== 'string'))) ||
+      (queryIdentifier !== undefined && (typeof queryIdentifier !== 'number' || !Number.isInteger(queryIdentifier)))) {
+    throw new Error('Carry estimate native settings or query identifier refused');
+  }
+  if (jit !== undefined) {
+    if (!carryEstimateRecord(jit) || Object.keys(jit).some(key => !CARRY_ESTIMATE_JIT_FIELDS.has(key)) ||
+        !carryEstimateRecord(jit.Options) || Object.entries(jit.Options).some(([key,value]) =>
+          !CARRY_ESTIMATE_JIT_OPTIONS.has(key) || typeof value !== 'boolean')) {
+      throw new Error('Carry estimate JIT section refused');
+    }
+    carryEstimatedNumber(jit, 'Functions');
+  }
   const pending: {node: unknown; depth: number}[] = [{node: root, depth: 0}];
   let nodes = 0;
   let rootNodeType = '';
@@ -381,7 +412,8 @@ function carryEstimatePlan(raw: unknown) {
     if (!carryEstimateRecord(node)) throw new Error('Carry estimate plan node unavailable');
     const nodeType = node['Node Type'];
     if (typeof nodeType !== 'string' || !CARRY_PLAN_TYPES.has(nodeType) ||
-        Object.keys(node).some(key => key.startsWith('Actual '))) {
+        Object.keys(node).some(key => key.startsWith('Actual ') || key.startsWith('Rows Removed by ') ||
+          CARRY_RUNTIME_PLAN_FIELDS.has(key))) {
       throw new Error('Carry estimate plan node refused');
     }
     if (nodes === 1) rootNodeType = nodeType;
@@ -409,7 +441,7 @@ function carryEstimatePlan(raw: unknown) {
   };
 }
 type CarryEstimateSummary = {
-  status: 'UNOBSERVED' | 'STARTED' | 'CAPTURED' | 'FAILED' | 'OVERFLOW' | 'UNAVAILABLE';
+  status: 'UNOBSERVED' | 'PREPARED' | 'STARTED' | 'CAPTURED' | 'FAILED' | 'OVERFLOW' | 'UNAVAILABLE';
   nativeOperations: number;
   nativeAwaitMs: number;
   elapsedMs?: number;
@@ -439,7 +471,6 @@ class CarryBoundaryScope{
  private readonly estimateDirectory = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
  private readonly firstEstimate: CarryEstimateSummary = {status:'UNOBSERVED', nativeOperations:0, nativeAwaitMs:0};
  private estimateEpoch?: number;
- private estimateAccounting = false;
  private evidenceFailed=false;private ownerDatabase='';private ownerLogin='';private cancellationIssued=false;private cancellationSettled=true;private cancellationResult:'not-issued'|'pending'|'no-match'|'accepted'|'refused'|'unavailable'='not-issued';
  private originalFailure?:CarryPrivateFailure;private secondaryControlFailure?:CarryPrivateFailure;private rollbackFailure?:CarryPrivateFailure;private abortFailure?:CarryPrivateFailure;private holderRetained=false;
  private observerInstalled=false;private observerRestored=false;private resolverInstalled=false;private resolverRestored=false;
@@ -535,30 +566,29 @@ class CarryBoundaryScope{
    this.cancellationResult=result.length===0?'no-match':result[0].cancelled?'accepted':'refused';
   },'control-cancel')).catch(error=>{this.cancellationResult='unavailable';this.poisoned=true;this.remember(error,'control-cancel','work');}).finally(()=>{this.cancellationSettled=true;this.save();});
  }
- private async native<T>(slot:CarryBoundarySlot,work:()=>Promise<T>):Promise<T>{
+ private async native<T>(slot: CarryBoundarySlot, work: () => Promise<T>, timed?: CarryTimedSubmission): Promise<T> {
   this.check();if(slot.closing||!slot.armed)throw new Error('Carry boundary transaction is closing');
   if(slot.active!==0){this.poisoned=true;throw new Error('Concurrent carry boundary native work');}
-  const estimate = this.estimateAccounting;
+  const estimate = timed?.kind === 'estimate';
   const started=performance.now();slot.active++;
-  const pending=Promise.resolve().then(()=>{
-    this.check();
-    if (estimate) this.firstEstimate.nativeOperations++;
-    return work();
-  });
+  const pending=Promise.resolve().then(()=>{this.check();return work();});
   slot.pending.add(pending);
   try {
     const result=await pending;
     this.check();
     return result;
   } catch (error) {
-    const operation = estimate ? 'native-estimate' : slot.kind==='fixture' ? 'native-fixture' :
+    const refusedDeclaration = timed?.kind === 'declaration' && !timed.admitted;
+    const operation = estimate || refusedDeclaration ? 'native-estimate' : slot.kind==='fixture' ? 'native-fixture' :
       slot.kind==='command' ? 'native-command' : 'native-read';
-    this.remember(error,operation,'work');
+    const point = refusedDeclaration ? 'entry' : 'work';
+    if (refusedDeclaration) this.firstEstimate.failure = this.failureFact(error, operation, point);
+    this.remember(error,operation,point);
     throw error;
   } finally {
-    if (estimate) {
+    if (estimate && timed?.admitted) {
       this.firstEstimate.nativeAwaitMs += performance.now() - started;
-    } else {
+    } else if (!estimate && (!timed || timed.admitted)) {
       this.nativeOperations++;
       this.nativeAwaitMs += performance.now() - started;
     }
@@ -566,13 +596,51 @@ class CarryBoundaryScope{
     slot.pending.delete(pending);
   }
  }
- private guard<T extends object>(value:T,slot:CarryBoundarySlot):T{
+ private admitEstimateSlot(remainingMs: 70000 | 50000) {
+  this.check();
+  if (120000 - (performance.now() - this.started) < remainingMs) {
+    throw new Error('Original carry case lifetime cannot admit its complete estimate slot');
+  }
+ }
+ private guard<T extends object>(value: T, slot: CarryBoundarySlot, timed?: CarryTimedSubmission): T {
   return new Proxy(value,{get:(target,key)=>{
    const member=Reflect.get(target,key,target);
-   if(key==='then'&&typeof member==='function')return(onFulfilled:unknown,onRejected:unknown)=>
-    Reflect.apply(Promise.prototype.then,this.native(slot,()=>Promise.resolve(target)),[onFulfilled,onRejected]);
-   if(typeof member!=='function')return member;
-   return(...args:unknown[])=>{this.check();const next=Reflect.apply(member,target,args);return next!==null&&typeof next==='object'?this.guard(next,slot):next;};
+   if (key === 'then' && typeof member === 'function') return (onFulfilled: unknown, onRejected: unknown) => {
+    if (timed?.used) throw new Error('Carry timed statement was already consumed');
+    if (timed) timed.used = true;
+    const work = timed ? () => new Promise<unknown>((resolve, reject) => {
+      if (!this.firstEstimatePage() || !this.slots.has(slot) || slot.epoch !== this.estimateEpoch ||
+          !slot.armed || slot.closing || slot.active !== 1 || slot.pending.size !== 1) {
+        throw new Error('Carry timed statement lost its first read epoch');
+      }
+      // PgRaw's genuine then starts the prepared query. Invoke it here to avoid another thenable
+      // assimilation turn after the final case-budget check. Reporter writes stay outside this work.
+      this.admitEstimateSlot(timed.kind === 'estimate' ? 70000 : 50000);
+      Reflect.apply(member, target, [resolve, reject]);
+      timed.admitted = true;
+      if (timed.kind === 'estimate') {
+        this.firstEstimate.nativeOperations++;
+        this.firstEstimate.status = 'STARTED';
+      } else {
+        this.firstEstimate.originalDeclarationAdmitted = true;
+      }
+    }) : () => Promise.resolve(target);
+    return Reflect.apply(Promise.prototype.then, this.native(slot, work, timed), [onFulfilled, onRejected]);
+   };
+   if (typeof member !== 'function') return member;
+   return (...args: unknown[]) => {
+    this.check();
+    const submission = key === 'execute' ? slot.timedSubmission : undefined;
+    if (submission && args[0] !== submission.statement) throw new Error('Carry timed statement identity changed');
+    const next = Reflect.apply(member, target, args);
+    if (submission) {
+      if (!next || typeof next !== 'object' || typeof Reflect.get(next, 'then', next) !== 'function') {
+        throw new Error('Carry timed statement native thenable unavailable');
+      }
+      slot.timedSubmission = undefined;
+    }
+    return next !== null && typeof next === 'object' ? this.guard(next, slot, submission) : next;
+   };
   }});
  }
  private firstEstimatePage() {
@@ -588,18 +656,11 @@ class CarryBoundaryScope{
      throw error;
    }
    const started = performance.now();
-   const admit = (remainingMs: number) => {
-     this.check();
-     if (120000 - (performance.now() - this.started) < remainingMs) {
-       throw new Error('Original carry case lifetime cannot admit its complete estimate slot');
-     }
-   };
    try {
-     admit(70000);
+     this.admitEstimateSlot(70000);
      const [slot] = this.slots;
      const identity = slot?.identity;
-     if (this.estimateAccounting || this.slots.size !== 1 ||
-         !slot || slot.kind !== 'read' || slot.epoch !== this.estimateEpoch || !slot.armed || slot.closing ||
+     if (this.slots.size !== 1 || !slot || slot.timedSubmission || slot.kind !== 'read' || slot.epoch !== this.estimateEpoch || !slot.armed || slot.closing ||
          slot.active !== 0 || slot.pending.size !== 0 || !identity || identity.pid !== observedPid ||
          identity.database !== this.ownerDatabase || identity.role !== 'ai_hr_app' || identity.login !== 'ai_hr_app' ||
          identity.isolation !== 'repeatable read' || !identity.readOnly) {
@@ -641,16 +702,10 @@ class CarryBoundaryScope{
      this.firstEstimate.estimateSqlSha256 = carryEstimateHash(wrapped.sql);
      this.firstEstimate.parameterCount = compiled.params.length;
      this.firstEstimate.contextVerified = true;
-     admit(70000);
-     this.firstEstimate.status = 'STARTED';
+     this.firstEstimate.status = 'PREPARED';
      this.save();
-     let result: readonly {"QUERY PLAN": unknown}[];
-     this.estimateAccounting = true;
-     try {
-       result = await target.execute<{"QUERY PLAN": unknown}>(explain);
-     } finally {
-       this.estimateAccounting = false;
-     }
+     slot.timedSubmission = {kind: 'estimate', statement: explain};
+     const result = await target.execute<{"QUERY PLAN": unknown}>(explain);
      if (!Array.isArray(result) || result.length !== 1 || !carryEstimateRecord(result[0]) ||
          Object.keys(result[0]).length !== 1 || this.firstEstimate.nativeOperations !== 1) {
        throw new Error('Carry estimate requires one native JSON row and operation');
@@ -683,8 +738,7 @@ class CarryBoundaryScope{
      if (originalAgain.sql !== compiled.sql || !isDeepStrictEqual(originalAgain.params, compiled.params)) {
        throw new Error('Carry declaration changed during estimate observation');
      }
-     admit(50000);
-     this.firstEstimate.originalDeclarationAdmitted = true;
+     slot.timedSubmission = {kind: 'declaration', statement};
    } catch (error) {
      if (this.firstEstimate.status !== 'CAPTURED') {
        this.firstEstimate.status = error instanceof CarryEstimateOverflow ? 'OVERFLOW' :
