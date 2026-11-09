@@ -72,7 +72,7 @@ test('v2 preserves failed source and retained report identities while replacing 
  const current=differentDatabaseRoot();try{
   const db=input(modelRoot),fresh=databaseModel(fixture(),current).expectedPlan,{fingerprint,...body}={...fresh,sha:db.plan.sha};db.plan={...body,fingerprint:hash(body)};
   assert.notDeepEqual(db.plan.singletonSources,db.sourcePlan.singletonSources);assert.throws(()=>verifyRepairRecovery(db));assert.throws(()=>verifyRepairRecovery({...db,sourceCandidateRoot:modelRoot}));
-  assert.equal(verifyRepairRecovery(db,modelRoot).tests,5);assert.throws(()=>verifyRepairRecovery(db,current),/Canonical journal bytes differ|deep/);
+  assert.equal(verifyRepairRecovery(db,modelRoot).tests,5);assert.throws(()=>verifyRepairRecovery(db,current),{code:'ERR_ASSERTION',message:/^Singleton source membership differs$/});
  }finally{modelRemove(current,{recursive:true,force:true});}
 });
 for(const [name,change] of [

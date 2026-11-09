@@ -65,7 +65,7 @@ function proof(){
 test('A complete same-policy witness validates without creating any local full receipt',()=>{assert.equal(validateRun(run(),expected),true);assert.equal(validateJobs(jobs(),proof().expectedPlan),true);assert.equal(validateArtifacts(artifacts(),expected,proof().expectedPlan),true);const v=validateProof(proof());assert.equal(v.tier,'ci');assert.equal(v.tests,11);assert.equal(v.suiteFiles,8);
  const p=proof();databaseModel({expectedPlan:p.plan,reports:p.reports,expected:p.p});p.expectedPlan=structuredClone(p.plan);p.receipt=verifyReports(p.plan,p.reports,{runId,attempt:1},modelRoot);
  assert.equal(validateProof(p,modelRoot).tests,p.receipt.tests);assert.throws(()=>validateProof(p));assert.throws(()=>validateProof({...p,candidateRoot:modelRoot}));
- const other=differentDatabaseRoot();try{assert.throws(()=>validateProof(p,other),/Canonical journal bytes differ|deep/);}finally{modelRemove(other,{recursive:true,force:true});}
+ const other=differentDatabaseRoot();try{assert.throws(()=>validateProof(p,other),{code:'ERR_ASSERTION',message:/^Singleton source membership differs$/});}finally{modelRemove(other,{recursive:true,force:true});}
 });
 for(const [name,change] of [
  ['wrong controller',r=>r.head_sha=candidate],['wrong workflow',r=>r.workflow_id=99],['fork',r=>r.head_repository.id=99],['wrong repository',r=>r.repository.id=99],['PR event',r=>r.event='pull_request'],['other controller branch',r=>r.head_branch='feature'],['partial rerun',r=>r.run_attempt=2],['unfinished run',r=>r.status='in_progress'],['failed run',r=>r.conclusion='failure'],['old run',r=>r.created_at='2020-01-01T00:00:00Z']
