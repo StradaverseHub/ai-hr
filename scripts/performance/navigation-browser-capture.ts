@@ -9,12 +9,13 @@ import type {Page,Response} from 'playwright';
 import {fixtureNavigationActor,navigationExpectedText,NAVIGATION_CAPTURE_MEMBER,NAVIGATION_CAPTURE_VERSION,validateNavigationCapture,
  NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,validateNativeShellBaseline,
  type NavigationCapture,type NavigationCaptureBundle,type NavigationObservation,type NavigationScenario,type NavigationFixtureTextBindings,
- type NativeHiddenShellCase,type NativeHiddenShellObservation,type NativeShellIdentity} from './navigation-protocol';
+ type NativeHiddenShellCase,type NativeHiddenShellObservation,type NativeShellIdentity,type NativeShellBaseline} from './navigation-protocol';
 import {navigationCleanHead,navigationSourceIdentity} from './navigation-source';
 import {readNavigationFixtureBindings} from './navigation-fixture-bindings';
 import {navigationScenarioEntry} from './navigation-entry';
 import {assertNativeShellDestinationHidden,clickNativeShellDestination} from './navigation-shell-browser';
 import {DEVELOPMENT_RENDERED_CAPTURE_MAX_BYTES} from './driver-shutdown.mjs';
+import {nativePreflightRoutePlan,requireNativeRenderedUnion} from './system-route-manifest.mjs';
 const BASE='https://localhost:3443';
 const failuresSelector={busy:'main[data-personnel-busy],main[data-page-busy],main [data-personnel-busy],main [data-page-busy]',
  unavailable:'main [data-read-unavailable],main [data-today-unavailable]',alerts:'main [role="alert"]'} as const;
@@ -50,11 +51,13 @@ type NativeDocumentSnapshot={id:string;origin:string;busy:number;unavailable:num
 
 /** One already-owned primary Page. The bridge can only record failures and
  * acknowledge retirement of a document the driver has independently observed. */
-export async function installNativePrimaryFailureObserver(page:Page){
- return (await installNativeDocumentFailureObserver(page,'primary')).retirement;
+export async function installNativePrimaryFailureObserver(page:Page,actorIndex?:number){
+ const capacity=actorIndex===undefined?72:nativePreflightRoutePlan().filter(row=>row.actorIndex===actorIndex).length;
+ assert(capacity>0,'Unknown primary route retirement actor');
+ return (await installNativeDocumentFailureObserver(page,'primary',capacity)).retirement;
 }
 
-async function installNativeDocumentFailureObserver(page:Page,scope:'primary'|'hidden-shell'){
+async function installNativeDocumentFailureObserver(page:Page,scope:'primary'|'hidden-shell',capacity:number){
  const primary=scope==='primary',pages=primary?nativePrimaryPages:nativeHiddenShellPages;
  assert(!pages.has(page),'Native document retirement observer already installed');pages.add(page);
  const binding=primary?nativePrimaryBinding:'__aihrNativeHiddenShellRetirementV1';
@@ -137,7 +140,7 @@ async function installNativeDocumentFailureObserver(page:Page,scope:'primary'|'h
    remaining();
    assert(read&&Object.keys(read).sort().join(',')==='alerts,busy,id,origin,unavailable'
     &&frame===page.mainFrame()&&new URL(frame.url()).origin===BASE&&read.origin===BASE
-    &&typeof read.id==='string'&&nativeDocumentId.test(read.id)&&!seen.has(read.id)&&seen.size<72,'Native document snapshot identity differs');
+    &&typeof read.id==='string'&&nativeDocumentId.test(read.id)&&!seen.has(read.id)&&seen.size<capacity,'Native document snapshot identity differs');
    for(const count of [read.busy,read.unavailable,read.alerts])assert(Number.isSafeInteger(count)&&count>=0,'Native DOM failure count invalid');
    seen.add(read.id);active=read.id;awaitingSnapshot=false;
    return{busy:read.busy,unavailable:read.unavailable,alerts:read.alerts};
@@ -160,7 +163,7 @@ async function installNativeDocumentFailureObserver(page:Page,scope:'primary'|'h
   assert(!primary,'Native primary observer remains bound to its Page lifetime');
   retirement.requireSettled(4);
   // The last tracked document is already retired at about:blank. Remove this
-  // scope before the same Page begins the independent 187-route observer.
+  // scope before the same Page begins the independent primary route observer.
   await script.dispose();await bridge.dispose();
  }};
 }
@@ -329,6 +332,59 @@ export function writeNavigationCaptureBundle(outputDirectory:string,baseline:Nav
  return bundle;
 }
 
+type RenderedRouteObservation=ReturnType<typeof nativePreflightRoutePlan>[number]&{
+ status:number;accountObserved:boolean;elapsedMs:number;failureCount:number;readiness:string;
+};
+type RetirementFacts=ReturnType<Awaited<ReturnType<typeof installNativePrimaryFailureObserver>>['facts']>;
+type PrimaryRetirement=RetirementFacts&{actorIndex:number;pageFailures:number};
+type LifecycleStaffTile={phase:string;role:string;open:number;pending:number};
+export const DEVELOPMENT_RENDERED_UNION_MEMBER='development-rendered-route-union.json';
+
+/** One separately sealed development-only projection after the owning browser settles. */
+export function writeDevelopmentRenderedRouteUnion(outputDirectory:string,baseline:NavigationCapture,
+ rows:readonly RenderedRouteObservation[],hidden:NativeShellBaseline,primary:readonly PrimaryRetirement[],
+ lifecycle:readonly LifecycleStaffTile[]){
+ assert(baseline.schemaVersion===1&&baseline.protocol===NAVIGATION_CAPTURE_VERSION&&baseline.releaseAuthorized===false
+  &&baseline.runAttempt===1&&baseline.complete&&baseline.phase==='baseline'&&baseline.observations.length===48,
+  'Complete legacy development baseline required');
+ const {candidateSha,controllerSha,runId,runAttempt,harnessSha256,scenarioSha256}=baseline;
+ assert(candidateSha===controllerSha,'Full development browser requires exact self-source');
+ validateNativeShellBaseline(hidden,{candidateSha,controllerSha,runId,harnessSha256,scenarioSha256});
+ const plan=nativePreflightRoutePlan(),counts=requireNativeRenderedUnion(rows);
+ assert.deepEqual(counts,{total:191,usable:16,scopedDenials:1,renderedOnly:174});
+ const urls=new Set(plan.map(row=>row.requested)).size;
+ assert.equal(urls,93,'Full development requested address census differs');
+ const ordered=plan.map(expected=>rows.find(row=>row.actorIndex===expected.actorIndex&&row.requested===expected.requested)!);
+ assert(ordered.every(Boolean),'Full development role route evidence missing');
+
+ const actors=[0,1,2,4];
+ assert.deepEqual(primary.map(row=>row.actorIndex).sort((a,b)=>a-b),actors,'Full development primary retirement actors differ');
+ const retirement=actors.map(actorIndex=>{
+  const row=primary.find(value=>value.actorIndex===actorIndex)!;
+  const expected=plan.filter(value=>value.actorIndex===actorIndex).length;
+  assert(row.admitted===expected&&row.retired===expected&&row.refusals===0&&row.finalBlank===true&&row.pageFailures===0,
+   'Full development primary retirement or Page settlement differs');
+  assert.deepEqual(row.markerDocuments,{busy:0,unavailable:0,alerts:0},'Full development late document failure observed');
+  return {actorIndex,admitted:row.admitted,retired:row.retired,pageFailures:0,refusals:0,finalBlank:true,
+   markerDocuments:{busy:0,unavailable:0,alerts:0}};
+ });
+ const tiles=[...lifecycle].sort((a,b)=>a.role.localeCompare(b.role));
+ assert.deepEqual(tiles,[{phase:'baseline',role:'companyHR',open:1,pending:1},{phase:'baseline',role:'groupHR',open:2,pending:1}],
+  'Full development Lifecycle scope evidence differs');
+
+ const raw=Buffer.from(JSON.stringify({
+  kind:'DEVELOPMENT_RENDERED_ROUTE_UNION_V1',complete:true,releaseEligible:false,protectedNative:false,dynamicNavigationComplete:false,
+  candidateSha,controllerSha,runId,runAttempt,harnessSha256,scenarioSha256,
+  counts:{...counts,urls},observations:ordered,primaryRetirement:retirement,lifecycleStaffTiles:tiles,
+  hiddenShell:{count:hidden.observations.length,retiredDocuments:hidden.retiredDocuments,
+   extensionSha256:hidden.extensionSha256,observations:hidden.observations},
+ },null,2)+'\n','utf8');
+ assert(raw.length>0&&raw.length<=DEVELOPMENT_RENDERED_CAPTURE_MAX_BYTES,'Full development route capture bound refused');
+ const sha256=createHash('sha256').update(raw).digest('hex');
+ writeFileSync(join(outputDirectory,DEVELOPMENT_RENDERED_UNION_MEMBER),raw,{mode:0o600,flag:'wx'});
+ return Object.freeze({sha256,bytes:raw.length});
+}
+
 const exactHome=BASE+'/';
 const nativePrivateContent={
  'shell.payrollProcess':'main [data-tour="payroll-batches"],main [data-tour="payroll-create"]',
@@ -354,7 +410,7 @@ function createNativeHiddenShellCollector(source:NativeShellIdentity,deadline:nu
    const rows=NATIVE_HIDDEN_SHELL_CASES.filter(row=>row.actorIndex===actorIndex);
    assert(rows.length===2,'Native shell actor differs');
    assert(performance.now()<deadline,'Owned native shell deadline closed before observation');started.add(actorIndex);
-   const observer=await installNativeDocumentFailureObserver(page,'hidden-shell');
+   const observer=await installNativeDocumentFailureObserver(page,'hidden-shell',4);
    const {retirement}=observer;
    for(const [index,row]of rows.entries()){
     const began=performance.now(),limit=Math.min(deadline,began+90000);
