@@ -1515,5 +1515,288 @@
     "hostedNativeStatus": "UNRUN",
     "performanceQualified": false,
     "productionHeld": true
+  },
+  "carryPersonPrimaryKeyWitness": {
+    "kind": "SOURCE_ONLY_SEARCHED_CARRY_PERSON_PRIMARY_KEY_WITNESS",
+    "directParent": "4bb7d91d380301b846a7d3f6e025063ed9e473b3",
+    "priorNativeFailure": {
+      "run": 42551697664,
+      "attempt": 1,
+      "source": "4bb7d91d380301b846a7d3f6e025063ed9e473b3",
+      "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "actualCases": 15,
+      "passedCases": 14,
+      "failedCases": 1,
+      "actualFirstFetchSqlState": "57014",
+      "firstFetchReturned": false,
+      "authentication": {
+        "bytes": 14736,
+        "sha256": "85d4b60e379fe91730986a042e71af820b8cd3f5bb67ee48846c1318684f7b25"
+      },
+      "actualPortalPlanObserved": false,
+      "cause": "UNRESOLVED"
+    },
+    "sourcePlanReview": {
+      "bytes": 10222,
+      "sha256": "3892596e16de2e2adfd1fe4abefb8d36938199c0f222351fd6ff11551478a502"
+    },
+    "externalAstAndDrizzleRendererDerivation": {
+      "bytes": 3809,
+      "sha256": "1b908323f878d7d70b9319dc3a279119d66cae8c46e2451d25751f9299411e15"
+    },
+    "currentSourceScope": [
+      "truthy existing trimmed q",
+      "no department filter",
+      "paged carry identity only"
+    ],
+    "currentSourceRows": {
+      "core/analytics.ts": {
+        "current": {
+          "bytes": 84414,
+          "sha256": "861f83ce8138bfa5daedd15734fd82f18e28f2790987da4a549f2ed0448015cf"
+        },
+        "parent": {
+          "gitRef": "4bb7d91d380301b846a7d3f6e025063ed9e473b3:core/analytics.ts",
+          "gitBlob": "68719eb443cc6bb7b50c0050c9cc964cb7a54a76",
+          "bytes": 83736,
+          "sha256": "51f41bbd865c367d0b8b7d81a32888b904faad5b6d7a3488c7bb4a9449b778fd"
+        },
+        "inverseHunks": [
+          {
+            "parentStart": 57717,
+            "parentEnd": 57717,
+            "currentStart": 57717,
+            "currentEnd": 58395,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "6d1872d380f366b2246a851f37c940401c1828ab7493d73f95f905fe6fe5ce90"
+          }
+        ]
+      },
+      "test/analytics-bounded-reports.test.ts": {
+        "current": {
+          "bytes": 86094,
+          "sha256": "a1a8b327d40f9e8ea10c8a246ae3f775031bd9f51561fa931accedc708cf58f7"
+        },
+        "parent": {
+          "gitRef": "4bb7d91d380301b846a7d3f6e025063ed9e473b3:test/analytics-bounded-reports.test.ts",
+          "gitBlob": "9feacf28f0ac6cc4afbe1f29fd5f0437dd592836",
+          "bytes": 81740,
+          "sha256": "a5e54c7cb74a20611c2ea6a814d1c8cf53725e7ab6ba32aa86ea5186ea075b00"
+        },
+        "inverseHunks": [
+          {
+            "parentStart": 29745,
+            "parentEnd": 29745,
+            "currentStart": 29745,
+            "currentEnd": 29942,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "4cc8533e66cadf7c4ec80a21d09c53a1f655412f73a9fe8154f17861c429cff7"
+          },
+          {
+            "parentStart": 33798,
+            "parentEnd": 33876,
+            "currentStart": 33995,
+            "currentEnd": 34302,
+            "parentSliceSha256": "13ade1a9b8797eec9b077ebabdfb9a869d197034b3afc42ada4128ca0af61ef6",
+            "currentSliceSha256": "1f73b6653017f840b657fff9c5529b92a124983452a5e9de4f93a056b3efb920"
+          },
+          {
+            "parentStart": 34649,
+            "parentEnd": 34649,
+            "currentStart": 35075,
+            "currentEnd": 35458,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "936e8789191b270a85eb4eb692d1d2497b3e70dd95319029fe0208be93cb7f6e"
+          },
+          {
+            "parentStart": 35069,
+            "parentEnd": 35160,
+            "currentStart": 35878,
+            "currentEnd": 36087,
+            "parentSliceSha256": "7dec2d3f08af4c66f7248461a051ae56055c7edfac88bda4be511ade7550058c",
+            "currentSliceSha256": "2eb387dfd33d4832c4d44b4a3810518e8fe7c7bf87a6433b5623310ccde657c7"
+          },
+          {
+            "parentStart": 35370,
+            "parentEnd": 35370,
+            "currentStart": 36297,
+            "currentEnd": 37022,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "f7769b4c1195a21402df1e91dde8e0801812d9d8dd3f268d40f9a7284fa4cfb3"
+          },
+          {
+            "parentStart": 35658,
+            "parentEnd": 35658,
+            "currentStart": 37310,
+            "currentEnd": 37445,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "cc8d7e5cf0abdaa015a702493fa5cb49664ac9541c84e5f2edcdaae1b05fecff"
+          },
+          {
+            "parentStart": 36246,
+            "parentEnd": 36246,
+            "currentStart": 38033,
+            "currentEnd": 38106,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "ad38acb582ccc85d0e68e9a5699b2f9d710ddab1d0f2db6aae33f37dfde6a5d2"
+          },
+          {
+            "parentStart": 52032,
+            "parentEnd": 52122,
+            "currentStart": 53892,
+            "currentEnd": 54021,
+            "parentSliceSha256": "588a5144faca0154ae622c38f9e2c5d63d5b2eab3cfa954a6658247344a158ec",
+            "currentSliceSha256": "bdb50081fc98fe36ec87e8974a197d10be0152132bc7d5c0c9fa8d4012d33fde"
+          },
+          {
+            "parentStart": 54834,
+            "parentEnd": 54834,
+            "currentStart": 56733,
+            "currentEnd": 57608,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "54c91fc65e84f64a60c080fd54472d3b7b188409f3402cd2dd8b573d37c68a88"
+          },
+          {
+            "parentStart": 56222,
+            "parentEnd": 56323,
+            "currentStart": 58996,
+            "currentEnd": 59112,
+            "parentSliceSha256": "eca164d50256dbb6e51230ab286643aadb25930ea3ffd76603dbd8aeb49d781a",
+            "currentSliceSha256": "dcb536e3ecfc8a2cca40db6be8f56cf6dd894eaedb05cf5a3941e799aa60b908"
+          },
+          {
+            "parentStart": 57697,
+            "parentEnd": 57802,
+            "currentStart": 60486,
+            "currentEnd": 60606,
+            "parentSliceSha256": "0ea0e053d43ce515d4546d6f8d9f8e374ce8701105d4099136dcf632807e8a26",
+            "currentSliceSha256": "2a61c50dd59f3fb317e84aaec6fe35eb9aa716a334b6b064bb32390d07c5b0a0"
+          },
+          {
+            "parentStart": 57811,
+            "parentEnd": 57811,
+            "currentStart": 60615,
+            "currentEnd": 60739,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "c0f17f2bb19ffc8c495e6102df0a5234475d44b4f7843d94155d1ad73a9ff72d"
+          },
+          {
+            "parentStart": 67592,
+            "parentEnd": 67674,
+            "currentStart": 70520,
+            "currentEnd": 70628,
+            "parentSliceSha256": "6b6e175d35ec4945a15e38b5b9e03d1d6c26b9ad493f08476374d4f893afedf6",
+            "currentSliceSha256": "78061c687dbc2e22dd87d92b60ffbf6ef6e20e72c396eb19d4c81dd58b7dad41"
+          },
+          {
+            "parentStart": 68659,
+            "parentEnd": 68802,
+            "currentStart": 71613,
+            "currentEnd": 71775,
+            "parentSliceSha256": "56280406b25c74f960fd0ed9f4dfedb55c92c55feb01eec85b64a040620b2215",
+            "currentSliceSha256": "14f2df1ee2a130fda69fd57e5ec5f6a39dadcbfff129c11e8de854f13e932802"
+          },
+          {
+            "parentStart": 72406,
+            "parentEnd": 72519,
+            "currentStart": 75379,
+            "currentEnd": 75504,
+            "parentSliceSha256": "01fe455eb9dede2394d672e7fd16865a0ef2f4cd6304b8041bf4c737156b8b77",
+            "currentSliceSha256": "d057c38e1fa20f321764ca35f8515fb09a1487ce3cb5d63ecf613383b3a6c528"
+          },
+          {
+            "parentStart": 79847,
+            "parentEnd": 79964,
+            "currentStart": 82832,
+            "currentEnd": 83285,
+            "parentSliceSha256": "46028a5adb6c75fe55a2971b7ee889123e5fc1b2af177efcf1398c7da9d489b7",
+            "currentSliceSha256": "1f5b06b4082d631f6b0191e76fcef3797881bfd8ee780398fdbd90b3d18abf6e"
+          },
+          {
+            "parentStart": 81704,
+            "parentEnd": 81704,
+            "currentStart": 85025,
+            "currentEnd": 86058,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "5b3c03675fa946e72143095217937dfe09f050b876f4cd9160818271be6657db"
+          }
+        ]
+      },
+      "docs/adr/2026-11-09-analytics-employment-aggregates.md": {
+        "current": {
+          "bytes": 28152,
+          "sha256": "e2706126efafb104bbfe149c940991aae3afd704600690da25c3ff155e665967"
+        },
+        "parent": {
+          "gitRef": "4bb7d91d380301b846a7d3f6e025063ed9e473b3:docs/adr/2026-11-09-analytics-employment-aggregates.md",
+          "gitBlob": "dd8167f2b898e75653d047c17f851bbda4474ea7",
+          "bytes": 26621,
+          "sha256": "680fa968362e3abc71cda9218169ea33803430bc79131f5190e97774bac33302"
+        },
+        "inverseHunks": [
+          {
+            "parentStart": 26621,
+            "parentEnd": 26621,
+            "currentStart": 26621,
+            "currentEnd": 28152,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "560f97507d20bc981a89a51e6435b382669c04e84b73a02334b861511e826f0d"
+          }
+        ]
+      }
+    },
+    "parentWholeObjects": {
+      "core/analytics.ts": {
+        "gitBlob": "68719eb443cc6bb7b50c0050c9cc964cb7a54a76",
+        "bytes": 83736,
+        "sha256": "51f41bbd865c367d0b8b7d81a32888b904faad5b6d7a3488c7bb4a9449b778fd"
+      },
+      "test/analytics-bounded-reports.test.ts": {
+        "gitBlob": "9feacf28f0ac6cc4afbe1f29fd5f0437dd592836",
+        "bytes": 81740,
+        "sha256": "a5e54c7cb74a20611c2ea6a814d1c8cf53725e7ab6ba32aa86ea5186ea075b00"
+      },
+      "docs/adr/2026-11-09-analytics-employment-aggregates.md": {
+        "gitBlob": "dd8167f2b898e75653d047c17f851bbda4474ea7",
+        "bytes": 26621,
+        "sha256": "680fa968362e3abc71cda9218169ea33803430bc79131f5190e97774bac33302"
+      },
+      "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json": {
+        "gitBlob": "1d274d0fd688a583ac376a20f8b4b263fdbcbe99",
+        "bytes": 73049,
+        "sha256": "f41e2fdad4c793994c7fe874d859ca76ab872e8330865064355be385b3360746"
+      },
+      "docs/qualification/analytics-carry-selection-source-20261109.json": {
+        "gitBlob": "ef8e59993220f7209494733a452f051b2f10dad5",
+        "bytes": 28749,
+        "sha256": "1c245dec006d869a2ddfa16a59338656f47870ef820f37c7d45c8404cf0aa900"
+      }
+    },
+    "caseCensus": {
+      "boundedCases": 15,
+      "wholeOtherRegisteredBodies": 13,
+      "ordinaryFourSelectors": 36,
+      "separateSoleJit": 3
+    },
+    "acceptedEstimate": "Exactly one public Person scan through person_pkey with the outer Employment Person UUID as its index condition. Any Memoize ancestor uses that same key.",
+    "declaredBindOrder": [
+      "existing seeded Company UUID",
+      "%Carry boundary %%",
+      "%Carry boundary %%",
+      "2026-12-31",
+      "2026-01-01"
+    ],
+    "bounds": {
+      "caseMs": 120000,
+      "statementMs": 20000,
+      "lockMs": 300,
+      "estimateAdmissionMs": 70000,
+      "declarationAdmissionMs": 50000,
+      "fetchSize": 4096,
+      "successfulEvents": 125
+    },
+    "hostedNativeStatus": "UNOBSERVED",
+    "performanceQualified": false,
+    "releaseEligible": false
   }
 }

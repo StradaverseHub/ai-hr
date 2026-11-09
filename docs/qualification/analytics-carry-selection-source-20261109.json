@@ -743,5 +743,43 @@
     "recordSection": "carryIdentityJoinElision",
     "currentRuntimeQualified": false,
     "originalEvidenceRelabeled": false
+  },
+  "carryPersonPrimaryKeyWitness": {
+    "directParent": "4bb7d91d380301b846a7d3f6e025063ed9e473b3",
+    "wholeParentIndex": {
+      "gitBlob": "ef8e59993220f7209494733a452f051b2f10dad5",
+      "bytes": 28749,
+      "sha256": "1c245dec006d869a2ddfa16a59338656f47870ef820f37c7d45c8404cf0aa900"
+    },
+    "recordSection": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json#carryPersonPrimaryKeyWitness",
+    "recordPin": {
+      "bytes": 84847,
+      "sha256": "39db5b8b9f7baf8d033bbedf676650f6dc2be64b2646fd7a1f0ca8e5aae91173"
+    },
+    "priorNativeFailure": {
+      "run": 42551697664,
+      "attempt": 1,
+      "source": "4bb7d91d380301b846a7d3f6e025063ed9e473b3",
+      "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "actualCases": 15,
+      "passedCases": 14,
+      "failedCases": 1,
+      "actualFirstFetchSqlState": "57014",
+      "firstFetchReturned": false,
+      "authentication": {
+        "bytes": 14736,
+        "sha256": "85d4b60e379fe91730986a042e71af820b8cd3f5bb67ee48846c1318684f7b25"
+      },
+      "actualPortalPlanObserved": false,
+      "cause": "UNRESOLVED"
+    },
+    "caseCensus": {
+      "boundedCases": 15,
+      "wholeOtherRegisteredBodies": 13,
+      "ordinaryFourSelectors": 36,
+      "separateSoleJit": 3
+    },
+    "hostedNativeStatus": "UNOBSERVED",
+    "performanceQualified": false
   }
 }

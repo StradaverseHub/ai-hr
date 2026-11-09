@@ -1097,6 +1097,15 @@ async function carryForwardReportPageTx(tx:Tx,scope:string[]|undefined,input:Car
     const populationAlias='analytics_carry_population';
     const population=input.filter?.departmentId
       ? carryForwardPopulationTx(tx,scope,input).as(populationAlias)
+      : input.filter?.q?.trim()
+      ? tx.select({employmentId:employment.id,name:sql<string>`${person.fullName}`.mapWith(person.fullName).as('full_name')})
+          .from(employment)
+          // Keep the Person UUID lookup inside the lateral boundary before applying the existing search.
+          .innerJoinLateral(sql`(select ${person.fullName}, ${person.primaryEmail} from ${person}
+            where ${person.id} = ${employment.personId} offset 0) as ${sql.identifier('person')}`,sql`true`)
+          .innerJoin(company,eq(company.id,employment.companyId))
+          .where(carryForwardPopulationWhere(scope,input))
+          .orderBy(employment.id).as(populationAlias)
       : tx.select({employmentId:employment.id,name:person.fullName})
           .from(employment)
           .innerJoin(person,eq(person.id,employment.personId))
