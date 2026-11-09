@@ -1,137 +1,366 @@
-name: alpha-staging-db-diagnostics
-run-name: DB diagnostic only · ${{ inputs.candidate_ref }}
+name: alpha-staging-ci
+run-name: V21 split controller Linux diagnostic 06e4
 on:
   workflow_dispatch:
     inputs:
-      candidate_ref: {description: Original frozen candidate branch, required: true, type: string}
-      expected_sha: {description: Exact original source commit, required: true, type: string}
-      memory_gib:
-        description: PostgreSQL memory cap for measured A/B comparison
-        required: false
-        default: '1'
+      candidate_ref:
+        description: Exact candidate source object for the isolated Linux diagnostic
+        default: '06e499c211807981689c34c5e732b7dac488abbc'
+        required: true
+        type: string
+      expected_sha:
+        description: Exact source commit for this isolated Linux diagnostic
+        required: true
+        type: string
+      test_parallelism:
+        description: Standard runner concurrency; complete test coverage stays unchanged
         type: choice
-        options: ['1', '2']
-      jit_mode:
-        description: Explicit JIT setting for controlled comparison only
+        default: '48'
+        options: ['4', '8', '16', '20', '32', '40', '48']
+      commission_singleton_units:
+        description: Development only; JSON array of 1–16 registered singleton unit IDs, never a complete gate
         required: false
-        default: 'on'
-        type: choice
-        options: ['on', 'off']
-      slow_suite:
-        description: One unchanged slow suite for controlled performance comparison
-        required: false
-        default: none
-        type: choice
-        options: [none, r395, attendance, attendance-split-benchmark, attendance-sql-profile, visibility-plan-benchmark]
-      plan_phases:
-        description: Paired baseline/prototype, or only a failed prototype repair; diagnostic only
-        required: false
-        default: both
-        type: choice
-        options: [both, prototype]
-      repaired_focus:
-        description: Exact resolved repaired candidate; three original DB regression files, development only
+        default: ''
+        type: string
+      build_only:
+        description: Canonical byte build only; never emits a gate PASS
         required: false
         default: false
         type: boolean
-      organization_only:
-        description: Only the unchanged original organization file
+      diagnostics_only:
+        description: Measure disposable runner resources without the full CI gate
         required: false
         default: false
         type: boolean
-      baseline_only:
-        description: Explicit released-c98 original organization-file comparison
+      controller_only:
+        description: Pure CI controller checks only; requires diagnostics_only and never supplies release evidence
         required: false
         default: false
         type: boolean
-      isolated_only:
-        description: Skip the original batch; compare only the two original isolated files
-        required: false
-        default: false
-        type: boolean
-permissions: {contents: read, actions: read}
+permissions:
+  contents: read
+  actions: read
 concurrency:
-  group: alpha-db-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.memory_gib }}-${{ inputs.baseline_only }}-${{ inputs.isolated_only }}-${{ inputs.jit_mode }}-${{ inputs.organization_only }}-${{ inputs.repaired_focus }}-${{ inputs.slow_suite }}
+  group: v21-split-linux-cd08-06e4-ordinals-20261110
   cancel-in-progress: false
 env:
+  PYTHONDONTWRITEBYTECODE: '1'
   TZ: Asia/Kuala_Lumpur
+  LANG: en_US.UTF-8
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
-  AIHR_CI_PG_JIT: ${{ inputs.jit_mode }}
-  AIHR_CI_PG_PROFILE: legacy-${{ inputs.memory_gib }}g
-  AIHR_CI_PG_MEMORY_GIB: ${{ inputs.memory_gib }}
+  AIHR_CI_PG_PROFILE: '2'
+  AIHR_CI_PG_CONFIGURED_CAP_BYTES: '2113929216'
+  AIHR_CI_PG_PEAK_BUDGET_BYTES: '2147483648'
+  AIHR_CI_PG_JIT: 'on'
 jobs:
   resolve:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      sha: ${{ steps.candidate.outputs.sha }}
+    timeout-minutes: 8
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
-      - name: Paired benchmark controller checks
-        if: ${{ inputs.slow_suite == 'attendance-split-benchmark' }}
-        run: node --test .github/ci/diagnostics/attendance-split-benchmark.test.mjs
-      - name: Selected SQL diagnostic controller checks
-        if: ${{ inputs.slow_suite == 'attendance-sql-profile' }}
-        run: node --test .github/ci/diagnostics/attendance-sql-profile.test.mjs
-      - name: Visibility plan prototype controller checks
-        if: ${{ inputs.slow_suite == 'visibility-plan-benchmark' }}
-        run: node --test .github/ci/diagnostics/visibility-plan-prototype.test.mjs .github/ci/diagnostics/visibility-plan-controls.test.mjs .github/ci/diagnostics/visibility-plan-benchmark.test.mjs
-      - id: candidate
+      - name: Admit one exact isolated workflow run
         env:
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
           GH_TOKEN: ${{ github.token }}
-          STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
-        run: node .github/ci/resolve.mjs
-  db-observation:
-    needs: resolve
-    env:
-      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.slow_suite == 'visibility-plan-benchmark' && 25 || inputs.slow_suite == 'attendance-sql-profile' && 12 || inputs.slow_suite == 'attendance-split-benchmark' && 30 || 75 }}
-    strategy:
-      fail-fast: false
-      matrix:
-        probe: ${{ fromJSON(inputs.slow_suite == 'visibility-plan-benchmark' && '["visibility-plan-benchmark"]' || inputs.slow_suite == 'attendance-sql-profile' && '["attendance-sql-profile"]' || inputs.slow_suite == 'attendance-split-benchmark' && '["attendance-split-benchmark"]' || inputs.slow_suite == 'r395' && '["slow-r395"]' || inputs.slow_suite == 'attendance' && '["slow-attendance"]' || inputs.repaired_focus && '["repaired-focused"]' || inputs.baseline_only && '["isolated-organization-baseline"]' || inputs.organization_only && '["isolated-organization"]' || inputs.isolated_only && '["isolated-r298","isolated-organization"]' || '["original-batch","isolated-r298","isolated-organization"]') }}
-    defaults: {run: {working-directory: source}}
-    steps:
+        run: |
+          /usr/bin/python3 -I -B - <<'PYTHON'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import stat
+          import subprocess
+          import sys
+
+          REPOSITORY = 'StradaverseHub/ai-hr'
+          REPOSITORY_ID = 1333414856
+          BRANCH = 'codex/v21-split-linux-cd08-06e4-ordinals-20261110'
+          WORKFLOW = '.github/workflows/alpha-staging-db-diagnostics.yml'
+          WORKFLOW_ID = 395851022
+          CANDIDATE = '06e499c211807981689c34c5e732b7dac488abbc'
+
+
+          def require(condition, reason):
+              if not condition:
+                  raise ValueError(reason)
+
+
+          def validate_host(env):
+              ref = 'refs/heads/' + BRANCH
+              required = {
+                  'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_JOB': 'resolve',
+                  'GITHUB_WORKFLOW': 'alpha-staging-ci', 'GITHUB_REF': ref, 'GITHUB_REF_NAME': BRANCH,
+                  'GITHUB_REPOSITORY': REPOSITORY, 'GITHUB_REPOSITORY_ID': str(REPOSITORY_ID),
+                  'GITHUB_WORKFLOW_REF': f'{REPOSITORY}/{WORKFLOW}@{ref}', 'GITHUB_RUN_ATTEMPT': '1',
+                  'RUNNER_ENVIRONMENT': 'github-hosted', 'RUNNER_OS': 'Linux', 'RUNNER_ARCH': 'X64',
+                  'STAGING_ENABLED': 'false', 'PRODUCTION_ENABLED': 'false',
+              }
+              require(all(env.get(key) == value for key, value in required.items()), 'workflow or deployment-hold identity')
+              sha = env.get('GITHUB_WORKFLOW_SHA', '')
+              require(re.fullmatch('[0-9a-f]{40}', sha) and env.get('GITHUB_SHA') == env.get('AIHR_CI_CONTROL_HEAD') == sha, 'controller identity')
+              run = env.get('GITHUB_RUN_ID', '')
+              require(re.fullmatch('[1-9][0-9]{0,15}', run) and int(run) <= 2**53 - 1, 'run identity')
+              return sha, int(run)
+
+
+          def validate_event(event):
+              repo = event['repository']
+              require(repo.get('id') == REPOSITORY_ID and repo.get('full_name') == REPOSITORY
+                      and repo.get('private') is False and repo.get('fork') is False and repo.get('default_branch') == 'main', 'event repository')
+              require(event.get('ref') in (BRANCH, 'refs/heads/' + BRANCH), 'event ref')
+              expected = {'candidate_ref': CANDIDATE, 'expected_sha': CANDIDATE, 'test_parallelism': '48',
+                          'commission_singleton_units': '', 'build_only': 'false', 'diagnostics_only': 'true', 'controller_only': 'true'}
+              require({'commission_singleton_units': '', **event['inputs']} == expected, 'dispatch intent')
+
+
+          def validate_inventory(inventory, sha, run_id):
+              rows = inventory['workflow_runs']
+              require(inventory.get('total_count') == 1 and isinstance(rows, list) and len(rows) == 1, 'one-shot run inventory')
+              row = rows[0]
+              require(row.get('id') == run_id and row.get('workflow_id') == WORKFLOW_ID and row.get('path') == WORKFLOW
+                      and row.get('run_attempt') == 1 and row.get('event') == 'workflow_dispatch' and row.get('status') == 'in_progress'
+                      and row.get('display_title') == 'V21 split controller Linux diagnostic 06e4'
+                      and row.get('head_branch') == BRANCH and row.get('head_sha') == sha
+                      and row.get('repository', {}).get('id') == REPOSITORY_ID
+                      and row.get('head_repository', {}).get('id') == REPOSITORY_ID, 'authenticated run identity')
+
+
+          def read_event(env):
+              path = Path(env['RUNNER_TEMP']) / '_github_workflow' / 'event.json'
+              require(path == Path(env['GITHUB_EVENT_PATH']) and path.resolve(strict=True) == path, 'event file path')
+              fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+              with os.fdopen(fd, 'rb') as file:
+                  before = os.fstat(file.fileno())
+                  require(stat.S_ISREG(before.st_mode) and before.st_uid == os.getuid() and before.st_nlink == 1
+                          and not before.st_mode & 0o022 and 0 < before.st_size <= 128 * 1024, 'event file custody')
+                  data = file.read(128 * 1024 + 1)
+                  after = os.fstat(file.fileno())
+                  identity = lambda info: (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+                  require(len(data) == before.st_size and identity(before) == identity(after) == identity(path.lstat()), 'event file changed')
+              return json.loads(data)
+
+
+          def main():
+              env = os.environ
+              sha, run_id = validate_host(env)
+              validate_event(read_event(env))
+              request = f'repos/{REPOSITORY}/actions/workflows/{WORKFLOW_ID}/runs?branch={BRANCH}&event=workflow_dispatch&per_page=2'
+              child = subprocess.run(['/usr/bin/gh', 'api', '--hostname', 'github.com', request], capture_output=True,
+                                     timeout=15, env={'PATH': '/usr/bin:/bin', 'GH_TOKEN': env['GH_TOKEN'], 'GH_PROMPT_DISABLED': '1'})
+              require(child.returncode == 0 and 0 < len(child.stdout) <= 128 * 1024, 'bounded workflow API response')
+              validate_inventory(json.loads(child.stdout), sha, run_id)
+              print('First-attempt split controller run admitted.')
+
+
+          if __name__ == '__main__':
+              try:
+                  main()
+              except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
+                  reason = str(error) if type(error) is ValueError else type(error).__name__
+                  print('Split controller admission refused: ' + reason, file=sys.stderr)
+                  sys.exit(1)
+          PYTHON
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
-      - uses: ./automation/.github/actions/setup-alpha
         with:
-          capacity_profile: ${{ (matrix.probe == 'visibility-plan-benchmark' || matrix.probe == 'attendance-sql-profile') && 'bounded-db-diagnostic' || 'legacy' }}
-      - name: Verify visibility copy fidelity using the installed candidate parser
-        if: ${{ matrix.probe == 'visibility-plan-benchmark' }}
-        run: node --test ../automation/.github/ci/diagnostics/visibility-plan-copies.test.mjs
-        env: {AIHR_TEST_TYPESCRIPT_ROOT: '${{ github.workspace }}/source'}
-      - name: Compare unchanged visibility predicate plan reuse with financial and actual reused-connection controls
-        if: ${{ matrix.probe == 'visibility-plan-benchmark' }}
-        run: node ../automation/.github/ci/diagnostics/visibility-plan-benchmark.mjs
-        env: {AIHR_PLAN_BENCHMARK_PHASES: '${{ inputs.plan_phases }}'}
-      - name: Paired attendance split comparison on one standard runner
-        if: ${{ matrix.probe == 'attendance-split-benchmark' }}
-        run: node ../automation/.github/ci/diagnostics/attendance-split-benchmark.mjs
-        env: {AIHR_CI_HEAD: '${{ needs.resolve.outputs.sha }}'}
-      - name: Profile one unchanged cash settlement case using owned PostgreSQL statistics
-        if: ${{ matrix.probe == 'attendance-sql-profile' }}
-        run: node ../automation/.github/ci/diagnostics/attendance-sql-profile.mjs
-      - name: Record original workload and PostgreSQL crash/recovery/resource evidence
-        if: ${{ matrix.probe != 'attendance-split-benchmark' && matrix.probe != 'attendance-sql-profile' && matrix.probe != 'visibility-plan-benchmark' }}
-        run: node ../automation/.github/ci/diagnostics/run-db.mjs "$PROBE"
-        env: {PROBE: '${{ matrix.probe }}'}
-      - name: Always remove the paired diagnostic owned database
-        if: ${{ always() && (matrix.probe == 'attendance-split-benchmark' || matrix.probe == 'attendance-sql-profile' || matrix.probe == 'visibility-plan-benchmark') }}
-        run: bash ../automation/.github/ci/postgres.sh stop
-        env: {AIHR_CI_UNIT: db-3}
-      - if: always()
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 06e499c211807981689c34c5e732b7dac488abbc
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Pin dependency-free controller runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3', package-manager-cache: false}
+      - name: Check the frozen candidate with trusted controller regressions
+        id: split_proof
+        working-directory: automation
+        env:
+          AIHR_CI_REGRESSION_CANDIDATE: '06e499c211807981689c34c5e732b7dac488abbc'
+          DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+          TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+          MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+          TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+        run: |
+          /usr/bin/python3 -I -B - <<'PYTHON'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import select
+          import signal
+          import subprocess
+          import sys
+          import tempfile
+          import time
+
+          PURE = ['node', '--experimental-strip-types', '--test', '.github/ci/build-source-binding.test.mjs', '.github/ci/ai-manifest-admission.test.mjs', '.github/ci/rsync-packet-capability.test.mjs', '.github/ci/pdf-tool-scope.test.mjs', '.github/ci/pdf-tools.test.mjs', '.github/ci/compiler-cache.test.mjs', '.github/ci/cache-artifact-discovery.test.mjs', '.github/ci/compiler-wrapper.test.mjs', '.github/ci/diagnostics/compiler-compatible.test.mjs', '.github/ci/diagnostics/compiler-state.test.mjs', '.github/ci/runner-capacity.test.mjs', '.github/ci/diagnostics/compiler-cleanup.test.mjs', '.github/ci/archive-downloads.test.mjs', '.github/ci/prefetch-ci.test.mjs', '.github/ci/migration-history.test.mjs', '.github/ci/manifest.test.mjs', '.github/ci/candidate-environment.test.mjs', '.github/ci/native-next-build-inputs.test.mjs', '.github/ci/db-scheduling.test.mjs', '.github/ci/duration-order.test.mjs', '.github/ci/r395-write-split.test.mjs', '.github/ci/attendance-unclocked-split.test.mjs', '.github/ci/postgres-evidence.test.mjs', '.github/ci/report-run-cost.test.mjs', '.github/ci/repair-impact.test.mjs', '.github/ci/build-production.test.mjs', '.github/ci/build-artifact.test.mjs', '.github/ci/build-transport.test.mjs', '.github/ci/ci-build-transport-policy.test.mjs', '.github/ci/next-application-cache.test.mjs', '.github/ci/next-build-cache-policy.test.mjs', '.github/ci/next-application-restore.test.mjs', '.github/ci/staging-transport.test.mjs', '.github/ci/staging-build-install.test.mjs', '.github/ci/staging-ci-promotion.test.mjs', '.github/ci/staging-migration-ledger.test.mjs', '.github/ci/staging-environment.test.mjs', '.github/ci/staging-preflight.test.mjs', '.github/ci/customer-runtime-transition.test.mjs', '.github/ci/customer-runtime-snapshot.test.mjs', '.github/ci/staging-cleanup-protocol.test.mjs', '.github/ci/normal-cleanup-session.test.mjs', '.github/ci/normal-cleanup-io.test.mjs', '.github/ci/repair-recovery-adapter.test.mjs', '.github/ci/build-heap.test.mjs', '.github/ci/orchestrator-browser.test.mjs']
+          SPLIT = ['node', '--experimental-strip-types', '--test', '.github/ci/controller-regression-roots.test.mjs', '.github/ci/ci.test.mjs', '.github/ci/singleton-profiles.test.mjs', '.github/ci/singleton-commissioning.test.mjs', '.github/ci/browser-recovery.test.mjs', '.github/ci/focused-recovery.test.mjs', '.github/ci/release-policy.test.mjs', '.github/ci/repair-recovery.test.mjs', '.github/ci/resume-assessment.test.mjs', '.github/ci/resume-repair.test.mjs', '.github/ci/resume-source.test.mjs', '.github/ci/native-next-build-packet.test.mjs']
+
+          PARENT = 'cd08b67890b65c22f6d2c804dd7658aee5eb9ef6'
+          CANDIDATE = '06e499c211807981689c34c5e732b7dac488abbc'
+          CANDIDATE_TREE = '07eb0a9652ff94af91950de089df84e5e6fce2bd'
+          LANE_WORKFLOW = '.github/workflows/alpha-staging-db-diagnostics.yml'
+          NORMAL_WORKFLOW = '.github/workflows/alpha-staging.yml'
+          NORMAL_WORKFLOW_SHA256 = '6a1f50ab8c9f0c9a29300f262c3064afa0bb60b310a998251cef37501156d70e'
+
+
+          def require(condition, reason):
+              if not condition:
+                  raise ValueError(reason)
+
+
+          def verify_source():
+              env = os.environ
+              workspace = Path(env['GITHUB_WORKSPACE'])
+              automation, source = workspace / 'automation', workspace / 'source'
+              require(Path.cwd() == automation, 'canonical controller workdir')
+              require(not any(name in env for name in ('GH_TOKEN', 'GITHUB_TOKEN', 'SSH_AUTH_SOCK')), 'test process inherited credential')
+              closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database'
+              require(all(env.get(name) == closed for name in ('DATABASE_URL', 'TEST_DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL')), 'database target')
+              git_env = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_CONFIG_NOSYSTEM': '1',
+                         'GIT_TERMINAL_PROMPT': '0', 'GIT_NO_LAZY_FETCH': '1', 'GIT_OPTIONAL_LOCKS': '0'}
+
+              def git(root, *args):
+                  return subprocess.check_output(['/usr/bin/git', '--no-replace-objects', '-c', 'core.fsmonitor=false',
+                                                  '-c', 'core.hooksPath=/dev/null', *args], cwd=root, env=git_env, timeout=10, stderr=subprocess.DEVNULL)
+
+              head = env['GITHUB_WORKFLOW_SHA']
+              require(git(automation, 'rev-list', '--parents', '-n', '1', 'HEAD').decode().strip() == f'{head} {PARENT}', 'lane parent differs')
+              require(git(automation, 'diff', '--no-renames', '--name-status', '-z', PARENT, head) == f'M\0{LANE_WORKFLOW}\0'.encode(), 'lane changed non-diagnostic source')
+              require(hashlib.sha256((automation / NORMAL_WORKFLOW).read_bytes()).hexdigest() == NORMAL_WORKFLOW_SHA256, 'normal workflow source differs')
+              require(git(source, 'rev-parse', 'HEAD', 'HEAD^{tree}').decode().splitlines() == [CANDIDATE, CANDIDATE_TREE], 'candidate source differs')
+              require(subprocess.check_output(['node', '--version'], timeout=5) == b'v22.23.3\n', 'Node identity')
+              result = subprocess.run(['node', '--input-type=module', '-e', "import {controllerRegressionRoots} from './.github/ci/controller-regression-roots.mjs'; controllerRegressionRoots();"], capture_output=True, timeout=30)
+              require(result.returncode == 0 and not result.stdout, 'exact clean split checkout refusal')
+              return head
+
+
+          def tap_counts(text):
+              keys = ('tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo')
+              count = {}
+              for key in keys:
+                  values = re.findall(rb'^# ' + key.encode() + rb' ([0-9]{1,4})$', text, re.M)
+                  if len(values) != 1:
+                      return None
+                  count[key] = int(values[0])
+              return count
+
+
+          def tap_failed_ordinals(text, counts, expected):
+              # Read the fixed TAP status and ordinal at column zero, never the test names or diagnostics.
+              if not counts or counts['tests'] != expected or not 0 <= counts['fail'] <= 32:
+                  return None
+              rows = re.findall(rb'^(ok|not ok) ([1-9][0-9]{0,3}) - ', text, re.M)
+              if len(rows) != expected:
+                  return None
+              failed = []
+              for index, (status, ordinal) in enumerate(rows, 1):
+                  if int(ordinal) != index:
+                      return None
+                  if status == b'not ok':
+                      failed.append(index)
+              return failed if len(failed) == counts['fail'] else None
+
+
+          def summarize_command(command, expected, directory, label):
+              maximum = 4 * 1024 * 1024
+              log = directory / (label + '.log')
+              with log.open('xb') as out, subprocess.Popen(
+                  ['/usr/bin/timeout', '--signal=TERM', '--kill-after=5s', '150s', *command],
+                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
+              ) as process:
+                  deadline = time.monotonic() + 160
+                  count = 0
+                  try:
+                      while True:
+                          remaining = deadline - time.monotonic()
+                          require(remaining > 0 and select.select([process.stdout], [], [], remaining)[0], 'test deadline')
+                          part = os.read(process.stdout.fileno(), min(65536, maximum + 1 - count))
+                          if not part:
+                              break
+                          count += len(part)
+                          require(count <= maximum, 'test log bound')
+                          out.write(part)
+                      status = process.wait(timeout=max(0, deadline - time.monotonic()))
+                  except BaseException:
+                      # Signal the owned group before the direct child is reaped.
+                      try:
+                          os.killpg(process.pid, signal.SIGKILL)
+                      except ProcessLookupError:
+                          pass
+                      raise
+              raw = log.read_bytes()
+              counts = tap_counts(raw)
+              target = {'tests': expected, 'pass': expected, 'fail': 0, 'cancelled': 0, 'skipped': 0, 'todo': 0}
+              failed = tap_failed_ordinals(raw, counts, expected)
+              return {'complete': status == 0 and counts == target and failed == [], 'exit': status,
+                      'counts': counts, 'failedOrdinals': failed, 'logBytes': len(raw), 'logSha256': hashlib.sha256(raw).hexdigest()}
+
+
+          def verify_native_source():
+              program = '''import {controllerRegressionRoots} from './.github/ci/controller-regression-roots.mjs';
+          import {nativeHelperClosure} from './.github/ci/native-next-build-packet.mjs';
+          import {readEmployeeLifecycleControllerFacts} from './.github/ci/employee-lifecycle-api.mjs';
+          import {admitAiManifests} from './.github/ci/ai-manifest-admission.mjs';
+          const {candidate}=controllerRegressionRoots(), sha=process.env.AIHR_CI_REGRESSION_CANDIDATE, controller=process.env.AIHR_CI_CONTROL_HEAD;
+          const helpers=nativeHelperClosure({sha,controller},candidate), employee=readEmployeeLifecycleControllerFacts(controller);
+          const manifest=admitAiManifests(candidate,sha);
+          console.log(JSON.stringify({helpers:Object.keys(helpers).length,employeePaths:Object.keys(employee.sourceHashes).length,manifests:manifest.checks}));'''
+              result = subprocess.run(['node', '--input-type=module', '-e', program], capture_output=True, timeout=120)
+              require(result.returncode == 0 and 0 < len(result.stdout) <= 16384, 'native source custody refusal')
+              value = json.loads(result.stdout)
+              require(set(value) == {'helpers', 'employeePaths', 'manifests'} and value['helpers'] == 11 and value['employeePaths'] == 75, 'native source inventory')
+              require(value['manifests'] == [
+                  {'script': 'scripts/ai-provider-data-source-manifest.mjs', 'files': 1513, 'digest': 'b007a7eb338bacad1ee2a67c58eafc6f260f5b9f4e6bf6ac0f55eb03c6b801a0'},
+                  {'script': 'scripts/ai-agent-source-manifest.mjs', 'files': 486, 'digest': 'f33172f954f2fa7ecd923f7b89bd497e1e783ebc9a123d5518962b8c0958971c'},
+              ], 'AI source manifest identity')
+              return value
+
+
+          def main():
+              os.umask(0o077)
+              head = verify_source()
+              receipt = {'kind': 'V21_SPLIT_LINUX_CONTROLLER_DIAGNOSTIC_NOT_RELEASE', 'parent': PARENT, 'controller': head,
+                         'candidate': CANDIDATE, 'candidateTree': CANDIDATE_TREE, 'runId': os.environ['GITHUB_RUN_ID'],
+                         'attempt': 1, 'ordinalSchema': 1, 'workflowPath': LANE_WORKFLOW, 'normalWorkflowSha256': NORMAL_WORKFLOW_SHA256,
+                         'complete': False, 'releaseAuthorized': False}
+              temporary = Path(os.environ['RUNNER_TEMP'])
+              try:
+                  with tempfile.TemporaryDirectory(dir=temporary, prefix='v21-split-private-') as owned:
+                      directory = Path(owned)
+                      receipt['pure'] = summarize_command(PURE, 448, directory, 'pure')
+                      receipt['split'] = summarize_command(SPLIT, 494, directory, 'split')
+                  receipt['custody'] = verify_native_source()
+                  require(verify_source() == head, 'controller changed after checks')
+                  receipt['complete'] = receipt['pure']['complete'] and receipt['split']['complete']
+              except (ValueError, OSError, KeyError, subprocess.SubprocessError) as error:
+                  receipt['refusal'] = str(error) if type(error) is ValueError else type(error).__name__
+              with (temporary / 'split-v21-linux.json').open('x', encoding='ascii') as handle:
+                  json.dump(receipt, handle, separators=(',', ':'))
+                  handle.write('\n')
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as output:
+                  output.write('evidence=true\n')
+              print(json.dumps(receipt, separators=(',', ':')))
+              return 0 if receipt['complete'] else 1
+
+
+          if __name__ == '__main__':
+              try:
+                  sys.exit(main())
+              except (ValueError, OSError, KeyError, subprocess.SubprocessError) as error:
+                  print('Split controller verification refused: ' + (str(error) if type(error) is ValueError else type(error).__name__), file=sys.stderr)
+                  sys.exit(1)
+          PYTHON
+      - name: Retain bounded diagnostic summary
+        if: ${{ always() && steps.split_proof.outputs.evidence == 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: diagnostic-db-${{ matrix.probe }}
-          path: |
-            ${{ runner.temp }}/diagnostic-db-*/
-            ${{ runner.temp }}/diagnostic-attendance-split/
-            ${{ runner.temp }}/diagnostic-attendance-sql/
-            ${{ runner.temp }}/diagnostic-visibility-plan/
+          name: split-v21-linux-diagnostic
+          path: ${{ runner.temp }}/split-v21-linux.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
