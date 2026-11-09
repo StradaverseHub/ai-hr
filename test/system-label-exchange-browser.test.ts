@@ -17,6 +17,7 @@ import {LOCALE_COOKIE,locales} from '../i18n/config';
 import en from '../messages/en.json';
 let server:ChildProcess|undefined,browserLaunch:Promise<Browser>|undefined,serverLog:ReturnType<typeof createWriteStream>|undefined;
 let serverClosed=false,serverSpawnFailed=false,logFailed=false;
+let serverStartTicks:string|undefined;
 let publishResult:(()=>void)|undefined;
 function logTail(path:string,limit:number){
  const fd=openSync(path,'r');
@@ -41,23 +42,46 @@ async function within(deadline:number,label:string,work:()=>Promise<void>){
   remaining(deadline,label);
  }finally{clearTimeout(timer);}
 }
+function detachedLeaderStart(child:ChildProcess){
+ const pid=child.pid;
+ if(process.platform!=='linux'||child!==server||!pid||serverClosed||serverSpawnFailed||child.exitCode!==null||child.signalCode!==null)return;
+ let stat:string;
+ try{stat=readFileSync(`/proc/${pid}/stat`,'utf8');}catch{return;}
+ const commandEnd=stat.lastIndexOf(') ');
+ if(!stat.startsWith(`${pid} (`)||commandEnd<0)return;
+ const fields=stat.slice(commandEnd+2).trim().split(/\s+/);
+ const [state,parent,group,session]=fields;
+ const start=fields[19];
+ if(!state||!['R','S','D','T','t','I'].includes(state)||parent!==String(process.pid)
+  ||group!==String(pid)||session!==String(pid)||!start||!/^[1-9]\d*$/.test(start))return;
+ return start;
+}
 function signalGroup(pid:number,signal:0|'SIGTERM'|'SIGKILL'){
  try{process.kill(-pid,signal);return true;}
  catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')return false;throw error;}
 }
 async function stopNext(deadline:number){
- if(!server)return;
- const pid=server.pid;
+ const child=server;
+ if(!child)return;
+ const pid=child.pid;
  if(!pid&&!serverSpawnFailed)throw new Error('System Labels Next process identity unavailable');
+ const signalOwnedLeader=(signal:'SIGTERM'|'SIGKILL')=>{
+  // Recheck the original detached leader immediately before either mutating group signal.
+  if(!pid||!serverStartTicks||detachedLeaderStart(child)!==serverStartTicks)return false;
+  remaining(deadline,'Next cleanup');
+  return signalGroup(pid,signal);
+ };
+ let groupPresent=pid?signalGroup(pid,0):false;
+ const sentTerm=groupPresent&&signalOwnedLeader('SIGTERM');
  const termEnd=performance.now()+5000;
- let groupPresent=pid?signalGroup(pid,'SIGTERM'):false;
  let escalated=false;
  while(groupPresent||!serverClosed){
   await delay(Math.min(100,remaining(deadline,'Next cleanup')));
   remaining(deadline,'Next cleanup');
-  if(groupPresent&&pid){
-   if(!escalated&&performance.now()>=termEnd){groupPresent=signalGroup(pid,'SIGKILL');escalated=true;}
-   else groupPresent=signalGroup(pid,0);
+  if(groupPresent&&pid)groupPresent=signalGroup(pid,0);
+  if(groupPresent&&sentTerm&&!escalated&&performance.now()>=termEnd){
+   escalated=true;
+   signalOwnedLeader('SIGKILL');
   }
  }
 }
@@ -208,8 +232,10 @@ describe('System Labels authenticated Excel browser journey',()=>{
   signal.throwIfAborted();
   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
    detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:`--max-old-space-size=${heapMiB}`},stdio:['ignore','pipe','pipe']});
-  server.once('error',()=>{serverSpawnFailed=true;});
-  server.once('close',()=>{serverClosed=true;});
+  const nextChild=server;
+  nextChild.once('spawn',()=>{serverStartTicks=detachedLeaderStart(nextChild);});
+  nextChild.once('error',()=>{serverSpawnFailed=true;});
+  nextChild.once('close',()=>{serverClosed=true;});
   server.stdout?.pipe(stream,{end:false});server.stderr?.pipe(stream,{end:false});
   let ready=false;
   for(let attempt=0;attempt<120;attempt++){
