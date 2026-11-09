@@ -925,10 +925,17 @@ jobs:
 
           def project_postgres_failures(row):
               failures = bounded_list(row.get('failures'), 64, project_postgres_failure)
+              if failures is None:
+                  return None
               runtime = matches(row.get('runtimeFrom'), r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z')
               window = choice(row.get('logWindow'), {'qualified-runtime', 'unqualified'})
-              return {'scope': 'Owned PostgreSQL log observations without native identifiers',
-                      'runtimeFrom': runtime, 'logWindow': window, 'failures': failures} if failures is not None else None
+              projected = {'scope': 'Owned PostgreSQL log observations without native identifiers',
+                           'runtimeFrom': runtime, 'failures': failures}
+              # The successful archive has a closed envelope. Preserve window diagnostics when
+              # there is a failure or the source cannot prove a qualified runtime window.
+              if failures or window != 'qualified-runtime' or runtime is None:
+                  projected['logWindow'] = window
+              return projected
 
 
           def publish(directory, name, raw):
@@ -1059,6 +1066,7 @@ jobs:
                   and capture_binding is not None
                   and (not full_course or (union_binding is not None and full_log_coverage
                       and len(baseline['observations']) == 48 and public.get('actor-tenancy.json') == exact_actors
+                      and closed(pg_failures, 'scope runtimeFrom failures')
                       and pg_failures.get('failures') == [] and pg_failures.get('runtimeFrom') is not None
                       and worker_failures.get('failures') == []))
                   and driver_capture.get('scope') == 'DEVELOPMENT_ONLY'
