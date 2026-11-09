@@ -78,7 +78,7 @@ function hasAssistantSessionGuard(source:string){
  const ast=ts.createSourceFile('layout.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let guarded=false;
  const visit=(node:ts.Node)=>{if(ts.isAwaitExpression(node)&&ts.isCallExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&node.expression.expression.text==='getBrowserCommandSession')guarded=true;ts.forEachChild(node,visit);};visit(ast);return guarded;
 }
-function hasClaimsFormsHandlerGuards(source: string): boolean {
+function hasBookmarkHandlerGuards(source: string, requiredModule?: 'claims'): boolean {
   const ast = ts.createSourceFile('route.ts', source, ts.ScriptTarget.Latest, true);
   for (const statement of ast.statements) {
     if (!ts.isFunctionDeclaration(statement) || statement.name?.text !== 'GET'
@@ -103,21 +103,25 @@ function hasClaimsFormsHandlerGuards(source: string): boolean {
     countReads(statement);
     const sessionName = binding.name.text;
     const isSession = (node: ts.Node) => ts.isIdentifier(node) && node.text === sessionName;
-    const calls = guarded.tryBlock.statements.flatMap(line =>
+    const operatorGuard = guarded.tryBlock.statements[1];
+    if (!operatorGuard || !ts.isIfStatement(operatorGuard)) return false;
+    const guardLines = guarded.tryBlock.statements.slice(2);
+    const calls = guardLines.flatMap(line =>
       ts.isExpressionStatement(line) && ts.isAwaitExpression(line.expression)
         && ts.isCallExpression(line.expression.expression) ? [line.expression.expression] : []);
-    const [module, admin] = calls;
-    return sessionReads === 1 && calls.length === 2
-      && ts.isIdentifier(module.expression) && module.expression.text === 'requireModule'
-      && module.arguments.length === 2 && ts.isStringLiteral(module.arguments[0]) && module.arguments[0].text === 'claims'
-      && isSession(module.arguments[1])
-      && ts.isIdentifier(admin.expression) && admin.expression.text === 'requireAdmin'
-      && admin.arguments.length === 1 && isSession(admin.arguments[0]);
+    const admin = calls.at(-1);
+    if (sessionReads !== 1 || calls.length !== guardLines.length || !admin || !ts.isIdentifier(admin.expression)
+        || admin.expression.text !== 'requireAdmin' || admin.arguments.length !== 1 || !isSession(admin.arguments[0])) return false;
+    if (!requiredModule) return calls.length === 1;
+    const [module] = calls;
+    return calls.length === 2 && ts.isIdentifier(module.expression) && module.expression.text === 'requireModule'
+      && module.arguments.length === 2 && ts.isStringLiteral(module.arguments[0]) && module.arguments[0].text === requiredModule
+      && isSession(module.arguments[1]);
   }
   return false;
 }
 
-/** Collect guarded pages and the single guarded Claims bookmark handler as normalized routes. */
+/** Collect guarded pages and the two exact guarded bookmark handlers. */
 function guardedRoutes(): string[] {
   const out: string[] = [];
   // This actual layout call guards every descendant, including pages whose data guards live in
@@ -144,9 +148,10 @@ function guardedRoutes(): string[] {
     }
   };
   walk(APP);
-  const claimsForms = path.join(APP, 'admin/claims/forms/route.ts');
-  if (fs.existsSync(claimsForms) && hasClaimsFormsHandlerGuards(fs.readFileSync(claimsForms, 'utf8'))) {
-    out.push('/admin/claims/forms');
+  const bookmarks = [['/admin/claims/forms', 'claims'], ['/admin/locations', undefined]] as const;
+  for (const [href, module] of bookmarks) {
+    const file = path.join(APP, href.slice(1), 'route.ts');
+    if (fs.existsSync(file) && hasBookmarkHandlerGuards(fs.readFileSync(file, 'utf8'), module)) out.push(href);
   }
   return out;
 }
@@ -159,16 +164,32 @@ function getPath(obj: unknown, dotted: string): unknown {
 
 describe('function-access registry (lib/permissions)', () => {
   it('recognizes only the exported Claims Forms GET with one session read and both guards in order', () => {
+    const hasClaimsFormsGuards = (candidate: string) => hasBookmarkHandlerGuards(candidate, 'claims');
     const source = fs.readFileSync(path.join(APP, 'admin/claims/forms/route.ts'), 'utf8');
-    expect(hasClaimsFormsHandlerGuards(source)).toBe(true);
-    expect(hasClaimsFormsHandlerGuards(source.replace('await requireModule', 'requireModule'))).toBe(false);
-    expect(hasClaimsFormsHandlerGuards(source.replace("requireModule('claims',", "requireModule('rewards',"))).toBe(false);
-    expect(hasClaimsFormsHandlerGuards(source.replace('function GET', 'function POST'))).toBe(false);
-    expect(hasClaimsFormsHandlerGuards(source.replace('requireAdmin(session)', 'requireAdmin()'))).toBe(false);
-    expect(hasClaimsFormsHandlerGuards(source.replace('requireAdmin(session)', 'requireAdmin(await getSession())'))).toBe(false);
-    expect(hasClaimsFormsHandlerGuards(source.replace(
+    expect(hasClaimsFormsGuards(source)).toBe(true);
+    expect(hasClaimsFormsGuards(source.replace('await requireModule', 'requireModule'))).toBe(false);
+    expect(hasClaimsFormsGuards(source.replace("requireModule('claims',", "requireModule('rewards',"))).toBe(false);
+    expect(hasClaimsFormsGuards(source.replace('function GET', 'function POST'))).toBe(false);
+    expect(hasClaimsFormsGuards(source.replace('requireAdmin(session)', 'requireAdmin()'))).toBe(false);
+    expect(hasClaimsFormsGuards(source.replace('requireAdmin(session)', 'requireAdmin(await getSession())'))).toBe(false);
+    expect(hasClaimsFormsGuards(source.replace(
       "await requireModule('claims', session);\n    await requireAdmin(session);",
       "await requireAdmin(session);\n    await requireModule('claims', session);"))).toBe(false);
+  });
+  it('recognizes the Locations bookmark only with the actual exported GET and existing admin guard', () => {
+    const source = fs.readFileSync(path.join(APP, 'admin/locations/route.ts'), 'utf8');
+    expect(hasBookmarkHandlerGuards(source)).toBe(true);
+    for (const changed of [
+      source.replace('function GET', 'function POST'),
+      source.replace('await getSession()', 'getSession()'),
+      source.replace('await requireAdmin(session)', 'requireAdmin(session)'),
+      source.replace('requireAdmin(session)', 'requireAdmin(await getSession())'),
+      source.replace('await requireAdmin(session)', "await requireModule('claims', session); await requireAdmin(session)"),
+      source.replace('await requireAdmin(session)', "requireModule('claims', session); await requireAdmin(session)"),
+    ]) {
+      expect(changed).not.toBe(source);
+      expect(hasBookmarkHandlerGuards(changed)).toBe(false);
+    }
   });
   it('recognizes the real inherited Assistant guard and rejects inert prose or an unawaited call',()=>{
     expect(hasAssistantSessionGuard('export default async function Layout(){await getBrowserCommandSession();return null;}')).toBe(true);

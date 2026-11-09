@@ -25,10 +25,11 @@ describe('product destination registry',()=>{
   expect(rows.length).toBeGreaterThan(80);
   expect(new Set(rows.map(row=>row.href)).size).toBe(rows.length);
  });
- it('names only real pages and the guarded Claim Forms bookmark',()=>{
+ it('names only real pages and the two guarded bookmarks',()=>{
   const routes=pageRoutes();expect(routes.length).toBeGreaterThan(100);
+  const bookmarks=new Set(['/admin/claims/forms','/admin/locations']);
   expect(rows.filter(row=>!routes.some(route=>route.test(pathOf(row.href)))
-   && !(row.href==='/admin/claims/forms'&&existsSync(join(app,'admin/claims/forms/route.ts')))).map(row=>row.href)).toEqual([]);
+   && !(bookmarks.has(row.href)&&existsSync(join(app,row.href.slice(1),'route.ts')))).map(row=>row.href)).toEqual([]);
  });
  it('has a label in every shipped locale',()=>{
   for(const [locale,messages] of Object.entries({en,ms,zh,vi,ta,th})){
