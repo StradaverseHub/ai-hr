@@ -133,6 +133,7 @@ it.each(suites)('$name',({stem,count,owner,methods})=>{
   cwd:root,env,encoding:'utf8',
   timeout:10000,killSignal:'SIGKILL',maxBuffer:128*1024,stdio:['ignore','pipe','pipe'],
  });
+ requireSource(sha);
  if(result.error||result.signal!==null||result.status!==0){
   reportFailure(owner,methods,result.stderr??'');
   throw Error('Browser manager model process failed');
@@ -142,6 +143,5 @@ it.each(suites)('$name',({stem,count,owner,methods})=>{
  const duration=new RegExp('^Ran '+count+' tests in [0-9]+\\.[0-9]{3}s$');
  expect(result.stdout===''&&transcript.length===count+6&&expected.every((line,index)=>line===transcript[index])
   &&spacer===''&&divider==='-'.repeat(70)&&duration.test(elapsed)&&blank===''&&summary==='OK'&&eof==='').toBe(true);
- requireSource(sha);
  process.stderr.write(result.stderr);
 },30000);
