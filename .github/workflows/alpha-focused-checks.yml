@@ -425,12 +425,12 @@ jobs:
               except OSError:
                   return 'refused', None
 
-          def json_member(directory, name, admitted):
+          def json_member(directory, name, admitted, value_type=dict):
               state, raw = read_member(directory, name)
               if raw is not None:
                   try:
-                      value = record(json.loads(raw, object_pairs_hook=unique_object, parse_constant=refuse_constant))
-                      if admitted(value):
+                      value = json.loads(raw, object_pairs_hook=unique_object, parse_constant=refuse_constant)
+                      if type(value) is value_type and admitted(value):
                           return state, value, raw
                   except (ValueError, RecursionError):
                       pass
@@ -498,11 +498,18 @@ jobs:
                       and all(lock[key] is None for key in ['reason', *lock_numbers, *lock_gaps]))
 
           def driver_receipt(value):
-              if (not closed(value, 'kind suite workCompleted identity busyResponses poolEvidence pageEvents locks settlement complete')
+              if (not closed(value, 'kind suite workCompleted identity busyResponses poolEvidence pageEvents locks settlement complete renderedCapture')
                       or value['kind'] != 'DEVELOPMENT_BROWSER_MEASUREMENT_V1' or value['suite'] != 'workflow-preflight'
                       or flag(value['workCompleted']) is None or flag(value['complete']) is None
                       or value['poolEvidence'] != pool_evidence or not nullable_counts(value, ['busyResponses'], 1000000)
                       or (not value['workCompleted'] and value['busyResponses'] == 0)):
+                  return False
+              binding = value['renderedCapture']
+              if value['complete']:
+                  if (not closed(binding, 'sha256 bytes') or not digest(binding['sha256'])
+                          or number(binding['bytes'], limit, 1) is None):
+                      return False
+              elif binding is not None:
                   return False
               source, pages, locks, settlement = (value[key] for key in ('identity', 'pageEvents', 'locks', 'settlement'))
               if (not closed(source, 'candidateSha controllerSha runId runAttempt harnessSha256 scenarioSha256')
@@ -562,6 +569,136 @@ jobs:
                   return None
               return receipt
 
+          # Fixed fixture and diagnostics projections. Never pass through raw optional payloads.
+          role_keys = 'employee manager companyHR groupHR'
+          timing_keys = 'hire identityAndSessionProvisioning historyAndCompensationSeed payrollGenerate50 payrollClose50'
+          module_codes = set(('employees org leave ess approvals knowledge_base payroll attendance claims performance '
+                              'rewards lifecycle notifications assistant system_explorer system_testing').split())
+          fixture_phase_names = set(('letter-draft-prerequisites claims-history attendance-history historical-payroll-generate '
+                                     'historical-payroll-close rewards-draft-prerequisites rewards-draft-import '
+                                     'payroll-readiness-after-organisation-publication attendance-workflow-tail '
+                                     'reporting-line-tail post-seed-counts audit-counts assistant-saved-history').split())
+          fixture_error_codes = set(('ERR_ASSERTION ERR_INVALID_ARG_TYPE ERR_INVALID_PACKAGE_CONFIG ERR_MODULE_NOT_FOUND '
+                                     'MODULE_NOT_FOUND ERR_PACKAGE_PATH_NOT_EXPORTED ERR_REQUIRE_ESM ERR_UNKNOWN_FILE_EXTENSION '
+                                     'ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX 22023 23502 23503 23505 23514 25006 25P02 40001 40P01 '
+                                     '42501 42703 42883 42P01 55P03 57014 P0001').split())
+          fixture_error_kinds = {'assertion-error', 'syntax-error', 'type-error', 'error', 'other'}
+          lock_modes = set(('AccessShareLock RowShareLock RowExclusiveLock ShareUpdateExclusiveLock ShareLock '
+                            'ShareRowExclusiveLock ExclusiveLock AccessExclusiveLock').split())
+
+          def projected_counts(value, keys, maximum=100000000):
+              row = record(value)
+              return {key: number(row.get(key), maximum) for key in keys.split()}
+
+          def duration(value, maximum):
+              return value if type(value) in (int, float) and 0 <= value <= maximum else None
+
+          def matches(value, pattern):
+              return value if type(value) is str and re.fullmatch(pattern, value) else None
+
+          def bounded_list(value, maximum, project):
+              if type(value) is not list or len(value) > maximum:
+                  return None
+              rows = [project(row) for row in value]
+              return rows if all(row is not None for row in rows) else None
+
+          def project_fixture(row):
+              summary = projected_counts(row, 'tenants companies users claimsPerEmployee attendanceDays')
+              summary.update(
+                  fictional=True, monthlyBasicSalary=number(row.get('monthlyBasicSalary'), 5000, 5000),
+                  fixtureVolumeKind=choice(row.get('fixtureVolumeKind'), {'workflow-preflight-only'}),
+                  historicalMonth=matches(row.get('historicalMonth'), r'[0-9]{4}-(0[1-9]|1[0-2])'),
+                  publicationMonth=matches(row.get('publicationMonth'), r'[0-9]{4}-(0[1-9]|1[0-2])'),
+                  attendanceBounds=projected_counts(row.get('attendanceBounds'), 'current_rows before_hire'),
+                  roles=projected_counts(row.get('roles'), role_keys),
+                  counts=projected_counts(row.get('counts'), 'claims attendance payslips'),
+                  auditHashChainRequested=flag(row.get('auditHashChainRequested')),
+                  auditHashChain=flag(row.get('auditHashChain')),
+                  auditCounts=bounded_list(row.get('auditCounts'), 2,
+                      lambda entry: projected_counts(entry, 'tenant events chained initialization_prefix') if type(entry) is dict else None),
+                  assistantHistoryFixture={
+                      **projected_counts(row.get('assistantHistoryFixture'), 'actors tenants threadsPerActor exchangesPerActor'),
+                      'rowsVerified': flag(record(row.get('assistantHistoryFixture')).get('rowsVerified'))},
+                  coreModules=bounded_list(row.get('coreModules'), len(module_codes), lambda code: choice(code, module_codes)),
+                  explicitActiveModules=bounded_list(row.get('explicitActiveModules'), 2,
+                      lambda entry: {'tenant': number(entry.get('tenant'), 1),
+                                     'modules': bounded_list(entry.get('modules'), len(module_codes), lambda code: choice(code, module_codes))}
+                      if type(entry) is dict else None),
+              )
+              timings = record(row.get('operationTimings'))
+              summary['operationTimings'] = {
+                  key: {'samples': number(record(timings[key]).get('samples'), 4096),
+                        **{field: duration(record(timings[key]).get(field), 3600000)
+                           for field in ('totalMs', 'p50Ms', 'p95Ms', 'maxMs')}}
+                  for key in timing_keys.split() if key in timings}
+              return summary
+
+          def project_actors(row):
+              projected = projected_counts(row, 'trafficActors tenants companies actorsPerTenant actorsPerCompany nativeSelectedRows nativeGrants')
+              roles = projected_counts(row.get('roles'), role_keys)
+              if (row.get('fictional') is not True or row.get('globalPopulationAsserted') is not False
+                      or any(value is None for value in (*projected.values(), *roles.values()))):
+                  return None
+              return {**projected, 'fictional': True, 'globalPopulationAsserted': False, 'roles': roles}
+
+          def project_fixture_phase(value):
+              row = record(value)
+              phase = choice(row.get('phase'), fixture_phase_names)
+              state = choice(row.get('status'), {'running', 'passed', 'failed'})
+              tenant = row.get('tenant')
+              if not phase or not state or 'tenant' not in row or (tenant is not None and number(tenant, 1) is None):
+                  return None
+              result = {'tenant': tenant, 'phase': phase, 'status': state, 'elapsedMs': duration(row.get('elapsedMs'), 910000)}
+              if state == 'failed':
+                  failure = record(row.get('failure'))
+                  result['failure'] = {'kind': choice(failure.get('kind'), fixture_error_kinds),
+                                       'code': choice(failure.get('code'), fixture_error_codes)}
+              return result
+
+          def project_fixture_phases(rows):
+              return bounded_list(rows, 64, project_fixture_phase)
+
+          def project_server_failure(value):
+              row = record(value)
+              worker = number(row.get('worker'), 1)
+              sqlstates = bounded_list(row.get('sqlStates'), 64, lambda code: matches(code, r'[0-9A-Z]{5}'))
+              if worker is None or sqlstates is None:
+                  return None
+              result = {'worker': worker, 'sqlStates': sqlstates}
+              if row.get('source') == 'public-error':
+                  return {**result, 'source': 'public-error'}
+              operation = choice(row.get('operation'), {'activate', 'delete'})
+              return {**result, 'operation': operation, **{key: flag(row.get(key)) for key in
+                  ('lockTimeoutMessage', 'statementTimeoutMessage', 'deadlockMessage', 'permissionDeniedMessage')}} if operation else None
+
+          def project_server_failures(row):
+              failures = bounded_list(row.get('failures'), 100, project_server_failure)
+              return {'scope': 'Closed worker diagnostics without raw logs or references', 'failures': failures} if failures is not None else None
+
+          def project_postgres_failure(value):
+              row = record(value)
+              kind = choice(row.get('kind'), {'observed heavyweight lock wait', 'deadlock detected', 'canceling statement due to lock timeout'})
+              waits, routines = row.get('waits'), row.get('routines')
+              if not kind or type(waits) is not list or len(waits) > 64 or type(routines) is not list or len(routines) > 32:
+                  return None
+              result = {'kind': kind, 'waitDetails': len(waits), 'routineFrames': len(routines)}
+              if kind == 'observed heavyweight lock wait':
+                  outcome = choice(row.get('outcome'), {'still waiting for', 'acquired', 'avoided deadlock for',
+                      'detected deadlock while waiting for', 'failed to acquire'})
+                  mode = choice(row.get('mode'), lock_modes)
+                  elapsed = duration(row.get('waitMs'), 1000000000000)
+                  if outcome is None or mode is None or elapsed is None:
+                      return None
+                  result.update(outcome=outcome, mode=mode, waitMs=elapsed)
+              return result
+
+          def project_postgres_failures(row):
+              failures = bounded_list(row.get('failures'), 64, project_postgres_failure)
+              runtime = matches(row.get('runtimeFrom'), r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z')
+              return {'scope': 'Owned PostgreSQL log observations without native identifiers',
+                      'runtimeFrom': runtime, 'failures': failures} if failures is not None else None
+
+
           def publish(directory, name, raw):
               fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=directory)
               with os.fdopen(fd, 'wb') as output:
@@ -571,9 +708,9 @@ jobs:
                       raise OSError('Published development evidence changed')
               members.append(name)
 
-          def publish_json(directory, name, value):
+          def publish_json(directory, name, value, maximum=8192):
               raw = (json.dumps(value, separators=(',', ':'), allow_nan=False) + '\n').encode()
-              if len(raw) > 8192:
+              if len(raw) > maximum:
                   raise OSError('Development receipt exceeds its closed projection bound')
               publish(directory, name, raw)
 
@@ -612,21 +749,31 @@ jobs:
                   row.get('kind') == 'HTTP_WORKFLOW_PREFLIGHT_ONLY' and row.get('suite') == 'workflow-preflight'
                   and number(row.get('users'), 0) == 0 and row.get('releaseEligible') is False)
               capture_state, capture, capture_bytes = json_member(directory, 'navigation-browser-capture.json', capture_source)
-              fixture_state, _, fixture_bytes = json_member(directory, 'fixture.json', lambda row:
-                  row.get('fictional') is True and row.get('claimsPerEmployee') == 200
-                  and record(row.get('counts')).get('claims') == 100000)
+              fixture_state, fixture, _ = json_member(directory, 'fixture.json', lambda row:
+                  row.get('fictional') is True and number(row.get('claimsPerEmployee'), 200, 200) == 200
+                  and number(record(row.get('counts')).get('claims'), 100000, 100000) == 100000)
               if directory_state == 'refused':
                   runner_state = driver_state = capture_state = fixture_state = 'refused'
 
-              public = []
-              if capture_bytes is not None:
-                  public.append(('navigation-browser-capture.json', capture_bytes))
-              if fixture_bytes is not None:
-                  public.append(('fixture.json', fixture_bytes))
-              for name in ('actor-tenancy.json', 'fixture-phases.json', 'server-native-failures.json', 'postgres-lock-failures.json'):
-                  state, raw = read_member(directory, name)
+              public = {}
+              legacy_states = {'fixture.json': fixture_state}
+              if fixture_state == 'observed':
+                  public['fixture.json'] = project_fixture(fixture)
+              for name, value_type, project in (
+                      ('actor-tenancy.json', dict, project_actors),
+                      ('fixture-phases.json', list, project_fixture_phases),
+                      ('server-native-failures.json', dict, project_server_failures),
+                      ('postgres-lock-failures.json', dict, project_postgres_failures)):
+                  state, value, _ = json_member(directory, name, lambda _: True, value_type)
+                  if directory_state == 'refused':
+                      state = 'refused'
                   if state == 'observed':
-                      public.append((name, raw))
+                      projected = project(value)
+                      if projected is None:
+                          state = 'refused'
+                      else:
+                          public[name] = projected
+                  legacy_states[name] = state
               if directory is not None and (identity(source_info) != identity(os.fstat(directory))
                       or identity(source_info) != identity(os.stat(source_name, dir_fd=temp_fd, follow_symlinks=False))):
                   raise SystemExit('Development browser evidence directory changed')
@@ -639,20 +786,21 @@ jobs:
               child = receipt['driver'] if receipt is not None else None
               settlement = receipt['settlement'] if receipt is not None else None
               baseline = record(capture.get('baseline'))
-              source_join = child is not None and capture_state == 'observed' and all(
-                  child['identity'][key] == baseline[key] for key in ('harnessSha256', 'scenarioSha256'))
-              capture_binding = ({
-                  'sha256': hashlib.sha256(capture_bytes).hexdigest(),
-                  'harnessSha256': baseline['harnessSha256'], 'scenarioSha256': baseline['scenarioSha256'],
-              } if source_join else None)
+              pinned_capture = child['renderedCapture'] if child is not None else None
+              capture_binding = None
+              if pinned_capture is not None and capture_state == 'observed' and all(
+                      child['identity'][key] == baseline[key] for key in ('harnessSha256', 'scenarioSha256')):
+                  if len(capture_bytes) == pinned_capture['bytes'] and hashlib.sha256(capture_bytes).hexdigest() == pinned_capture['sha256']:
+                      capture_binding = {**pinned_capture, **{key: baseline[key] for key in ('harnessSha256', 'scenarioSha256')}}
               topology = record(runner.get('topology'))
               expected_topology = {'workers': 2, 'poolPerWorker': 8, 'totalApplicationPool': 16,
                                    'heapMiBPerWorker': 2048, 'totalHeapMiB': 4096}
               driver_capture = record(driver.get('navigationCapture'))
+              driver_mirror = driver.get('developmentMeasurement')
               full_pass = (course_outcome == 'success' and receipt is not None and receipt['complete']
                   and all(number(topology.get(key), value, value) == value for key, value in expected_topology.items())
                   and driver_state == 'observed' and driver.get('preflightPassed') is True
-                  and driver.get('developmentMeasurement') == child and fixture_state == 'observed'
+                  and driver_receipt(driver_mirror) and driver_mirror == child and fixture_state == 'observed'
                   and capture_binding is not None
                   and driver_capture.get('scope') == 'DEVELOPMENT_ONLY'
                   and driver_capture.get('releaseEligible') is False
@@ -666,8 +814,10 @@ jobs:
               publish_info = os.fstat(publish_fd)
               if publish_info.st_uid != os.getuid() or stat.S_IMODE(publish_info.st_mode) != 0o700:
                   raise SystemExit('Development browser publication directory refused')
-              for name, raw in public:
-                  publish(publish_fd, name, raw)
+              if capture_binding is not None:
+                  publish(publish_fd, 'navigation-browser-capture.json', capture_bytes)
+              for name, projected in public.items():
+                  publish_json(publish_fd, name, projected, limit)
               publish_json(publish_fd, 'browser-preflight-measurement.json', {
                   'kind': 'DEVELOPMENT_BROWSER_PREFLIGHT_MEASUREMENT_V1', 'version': 1,
                   'complete': full_pass, 'releaseEligible': False, 'source': identity_fields, 'suite': 'workflow-preflight',
@@ -675,7 +825,7 @@ jobs:
                   'runnerReport': runner_state,
                   'terminalReceipt': terminal_state,
                   'driverReceipt': receipt['driverReceipt'] if receipt is not None else None,
-                  'capture': capture_binding,
+                  'capture': capture_binding, 'legacyEvidence': legacy_states,
                   'settlement': {'runner': settlement, 'driver': child['settlement'] if child else None},
                   'workCompleted': child['workCompleted'] if child else None,
                   'busyResponses': child['busyResponses'] if child else None,
