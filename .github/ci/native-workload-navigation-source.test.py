@@ -292,7 +292,11 @@ class NativeNavigationGitModel(unittest.TestCase):
                 root = Path(temporary).resolve()
                 for directory in ('.git/objects/info', '.git/objects/pack'):
                     (root / directory).mkdir(parents=True)
-                (root / path).symlink_to('/unused-external-store')
+                if path.endswith('.promisor'):
+                    (root / path).write_bytes(b'')
+                    self.assertTrue((root / path).is_file())
+                else:
+                    (root / path).symlink_to('/unused-external-store')
                 with I.PinnedTree(root) as tree, patch.object(H, '_git_navigation_pipe') as start:
                     with self.assertRaisesRegex(ValueError, 'alternate store|object pack catalogue'):
                         H._check_git_store(tree, self.deadline())
@@ -350,6 +354,113 @@ class NativeNavigationGitModel(unittest.TestCase):
                 with H._git_navigation_pipe((), monotonic_ns()):
                     pass
             start.assert_not_called()
+
+    def test_silent_unclosed_stderr_uses_work_cutoff_and_reserved_reap(self):
+        stdout_read, stdout_write = os.pipe()
+        stderr_read, stderr_write = os.pipe()
+        os.close(stdout_write)
+        native_select = H.select.select
+        deadline = 5_000_000_000
+        now = deadline - 2 * H._GIT_REAP_RESERVE_NS
+        selected_timeouts = []
+
+        def select_until(readers, writers, errors, timeout):
+            nonlocal now
+            selected_timeouts.append(timeout)
+            ready = native_select(readers, writers, errors, 0)
+            if not ready[0]:
+                now = deadline - H._GIT_REAP_RESERVE_NS
+            return ready
+
+        try:
+            with os.fdopen(stdout_read, 'rb', buffering=0) as stdout, os.fdopen(stderr_read, 'rb', buffering=0) as stderr:
+                child = Mock(stdin=None, stdout=stdout, stderr=stderr)
+                child.poll.return_value = None
+                child.wait.return_value = -9
+                with patch.object(H.subprocess, 'Popen', return_value=child), patch.object(
+                    H, 'monotonic_ns', side_effect=lambda: now,
+                ), patch.object(H.select, 'select', side_effect=select_until):
+                    with self.assertRaisesRegex(ValueError, 'deadline closed') as refused:
+                        with H._git_navigation_pipe((), deadline):
+                            pass
+                self.assertIsNone(getattr(refused.exception, '__notes__', None))
+                self.assertEqual(selected_timeouts, [1, 1])
+                child.kill.assert_called_once_with()
+                child.wait.assert_called_once_with(timeout=1)
+                self.assertTrue(stdout.closed and stderr.closed)
+        finally:
+            os.close(stderr_write)
+
+    def test_unproved_git_reap_keeps_first_error_and_original_deadline(self):
+        deadline = 5_000_000_000
+        note = 'Navigation Git child settlement unproved within original deadline'
+        for outcome in ('reaped', 'timeout', 'late', 'no-reserve'):
+            with self.subTest(outcome=outcome):
+                now = deadline - 2 * H._GIT_REAP_RESERVE_NS
+                child = Mock(stdin=None, stdout=Mock(), stderr=Mock())
+                child.poll.return_value = None
+                child.stdout.fileno.return_value = 7
+                child.stderr.fileno.return_value = 8
+                first = ValueError('primary Git model refusal')
+
+                def wait_for_child(timeout):
+                    nonlocal now
+                    self.assertEqual(timeout, 1)
+                    if outcome == 'timeout':
+                        raise subprocess.TimeoutExpired('model', timeout)
+                    if outcome == 'late':
+                        now = deadline
+                    return -9
+
+                child.wait.side_effect = wait_for_child
+                with patch.object(H.subprocess, 'Popen', return_value=child), patch.object(
+                    H.os, 'set_blocking',
+                ), patch.object(H, 'monotonic_ns', side_effect=lambda: now):
+                    with self.assertRaises(ValueError) as refused:
+                        with H._git_navigation_pipe((), deadline):
+                            now = deadline if outcome == 'no-reserve' else deadline - H._GIT_REAP_RESERVE_NS
+                            raise first
+                self.assertIs(refused.exception, first)
+                self.assertEqual(getattr(first, '__notes__', []), [] if outcome == 'reaped' else [note])
+                if outcome == 'no-reserve':
+                    child.poll.assert_not_called()
+                    child.kill.assert_not_called()
+                    child.wait.assert_not_called()
+                else:
+                    child.kill.assert_called_once_with()
+                    child.wait.assert_called_once_with(timeout=1)
+                child.stdout.close.assert_called_once_with()
+                child.stderr.close.assert_called_once_with()
+
+    def test_reap_returned_after_work_cutoff_cannot_admit_git_result(self):
+        stdout_read, stdout_write = os.pipe()
+        stderr_read, stderr_write = os.pipe()
+        os.close(stdout_write)
+        os.close(stderr_write)
+        deadline = 5_000_000_000
+        now = deadline - 2 * H._GIT_REAP_RESERVE_NS
+        with os.fdopen(stdout_read, 'rb', buffering=0) as stdout, os.fdopen(stderr_read, 'rb', buffering=0) as stderr:
+            child = Mock(stdin=None, stdout=stdout, stderr=stderr)
+            child.poll.return_value = 0
+
+            def reap_late(timeout):
+                nonlocal now
+                self.assertEqual(timeout, 1)
+                now = deadline - H._GIT_REAP_RESERVE_NS
+                return 0
+
+            child.wait.side_effect = reap_late
+            with patch.object(H.subprocess, 'Popen', return_value=child), patch.object(
+                H, 'monotonic_ns', side_effect=lambda: now,
+            ):
+                with self.assertRaisesRegex(ValueError, 'deadline closed') as refused:
+                    with H._git_navigation_pipe((), deadline):
+                        pass
+            self.assertIsNone(getattr(refused.exception, '__notes__', None))
+            child.wait.assert_called_once_with(timeout=1)
+            child.poll.assert_called_once_with()
+            child.kill.assert_not_called()
+            self.assertTrue(stdout.closed and stderr.closed)
 
 
 if __name__ == '__main__':

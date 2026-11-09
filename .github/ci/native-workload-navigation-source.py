@@ -342,6 +342,7 @@ _GIT_ENV = {
 }
 _PROTECTED_AUTOMATION = re.compile(r'/var/lib/aihr-native-controller/[1-9][0-9]{0,19}/automation')
 _GIT_CONFIG_MAX = 64 * 1024
+_GIT_REAP_RESERVE_NS = 1_000_000_000
 _GIT_CONFIG_KEYS = frozenset((
     b'core.repositoryformatversion', b'core.filemode', b'core.bare', b'core.logallrefupdates',
     b'core.ignorecase', b'core.precomposeunicode', b'core.symlinks', b'gc.auto',
@@ -361,15 +362,24 @@ class _NavigationGitPipe:
     def __init__(self, child, deadline_ns):
         self.child, self.deadline_ns = child, deadline_ns
         self.stdout, self.stderr = child.stdout.fileno(), child.stderr.fileno()
+        os.set_blocking(self.stdout, False)
+        os.set_blocking(self.stderr, False)
+
+    def _ready(self, descriptors):
+        ready, _, _ = select.select(descriptors, (), (), _git_seconds(self.deadline_ns))
+        _git_seconds(self.deadline_ns)
+        return ready
+
+    def _stderr_eof(self):
+        _require(not os.read(self.stderr, 1), 'navigation Git wrote an unexpected diagnostic')
+        self.stderr = None
 
     def read(self, size):
         while True:
             available = [self.stdout] if self.stderr is None else [self.stdout, self.stderr]
-            ready, _, _ = select.select(available, (), (), _git_seconds(self.deadline_ns))
-            _git_seconds(self.deadline_ns)
+            ready = self._ready(available)
             if self.stderr in ready:
-                _require(not os.read(self.stderr, 1), 'navigation Git wrote an unexpected diagnostic')
-                self.stderr = None
+                self._stderr_eof()
             if self.stdout in ready:
                 return os.read(self.stdout, size)
 
@@ -382,33 +392,74 @@ class _NavigationGitPipe:
         if self.child.stdin is not None:
             self.child.stdin.close()
         _require(not self.read(1), 'navigation Git response has trailing bytes')
-        _require(self.child.wait(timeout=_git_seconds(self.deadline_ns)) == 0, 'navigation Git child refused')
-        _require(not self.child.stderr.read(1), 'navigation Git wrote an unexpected diagnostic')
-        _git_seconds(self.deadline_ns)
+        while self.stderr is not None:
+            if self.stderr in self._ready((self.stderr,)):
+                self._stderr_eof()
+        _require(_wait_git_child(self.child, self.deadline_ns) == 0, 'navigation Git child refused')
+
+
+def _wait_git_child(child, deadline_ns):
+    try:
+        status = child.wait(timeout=_git_seconds(deadline_ns))
+    except subprocess.TimeoutExpired:
+        raise ValueError('navigation Git wait deadline closed') from None
+    _git_seconds(deadline_ns)
+    return status
+
+
+def _settle_failed_git_child(child, deadline_ns):
+    _git_seconds(deadline_ns)
+    if child.poll() is None:
+        _git_seconds(deadline_ns)
+        try:
+            child.kill()
+        except OSError:
+            # A concurrent exit can make the signal fail. Only the bounded
+            # native wait below establishes settlement.
+            pass
+        _wait_git_child(child, deadline_ns)
+    _git_seconds(deadline_ns)
 
 
 @contextmanager
 def _git_navigation_pipe(argv, deadline_ns, *, batch=False, pass_fds=()):
-    _git_seconds(deadline_ns)
-    # Fixed commands cannot dispatch helpers. Keep the child in the owning
-    # process scope. A failed child is killed and reaped before custody returns.
-    with subprocess.Popen((_GIT, *argv), cwd='/', env=_GIT_ENV, pass_fds=pass_fds,
-                          stdin=subprocess.PIPE if batch else subprocess.DEVNULL,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0) as child:
+    work_deadline = deadline_ns - _GIT_REAP_RESERVE_NS
+    _git_seconds(work_deadline)
+    # Keep the fixed Git child in the original outer process scope. Every
+    # child uses the same caller clock and its same final settlement reserve.
+    child = subprocess.Popen((_GIT, *argv), cwd='/', env=_GIT_ENV, pass_fds=pass_fds,
+                             stdin=subprocess.PIPE if batch else subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
+    primary = None
+    try:
+        if batch:
+            os.set_blocking(child.stdin.fileno(), False)
+        pipe = _NavigationGitPipe(child, work_deadline)
+        _git_seconds(work_deadline)
+        yield pipe
+        pipe.finish()
+    except BaseException as error:
+        primary = error
         try:
-            if batch:
-                os.set_blocking(child.stdin.fileno(), False)
-            pipe = _NavigationGitPipe(child, deadline_ns)
-            yield pipe
-            pipe.finish()
-        except BaseException as error:
+            _settle_failed_git_child(child, deadline_ns)
+        except BaseException:
+            error.add_note('Navigation Git child settlement unproved within original deadline')
+        raise
+    finally:
+        close_error = None
+        for stream in (child.stdin, child.stdout, child.stderr):
+            if stream is None:
+                continue
             try:
-                if child.poll() is None:
-                    child.kill()
-                child.wait()
-            except OSError as secondary:
-                error.add_note('Navigation Git child settlement refused: ' + type(secondary).__name__)
-            raise
+                stream.close()
+            except OSError as error:
+                if close_error is None:
+                    close_error = error
+        if close_error is not None:
+            if primary is None:
+                raise close_error
+            primary.add_note('Navigation Git pipe close refused')
+    _git_seconds(deadline_ns)
 
 
 def _read_git_output(pipe, maximum):
@@ -512,7 +563,8 @@ def acquire_navigation_git_sources(tree: PinnedTree, revision: str, deadline_ns:
     """Read committed Git bytes from the caller's already authenticated protected tree.
 
     The fixed outer owner must admit the exact commit and root mount before
-    calling this leaf and own the process scope through mandatory Git reaping.
+    calling this leaf and own the process scope through mandatory Git reaping,
+    including an unproved settlement at the original absolute deadline.
     No caller, launch authority or alternate view is installed here.
     """
     _require(sys.platform == 'linux' and os.geteuid() > 0 and _PROTECTED_AUTOMATION.fullmatch(str(tree.path)),
