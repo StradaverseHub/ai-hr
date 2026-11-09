@@ -346,7 +346,7 @@ export function createNavigationCaptureCollector({phase,sourceRoot=process.cwd()
  };
 }
 
-async function openNativePersonnelFilter(page:Page,remaining:()=>number){
+export async function openNativePersonnelFilter(page:Page,remaining:()=>number){
  const trigger=page.locator('main button[data-tour="people-search"]');
  await trigger.first().waitFor({state:'visible',timeout:remaining()});
  assert(await trigger.count()===1&&await trigger.isEnabled({timeout:remaining()})

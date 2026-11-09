@@ -39,6 +39,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,
  developmentLockWindowEvidence,developmentSteadyLoadPass,buildDevelopmentMeasurement,developmentDockerContext,DEVELOPMENT_DOCKER_COMMAND,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,startMeasuredLockInterval,acquireDriverResource,
+ MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS,measuredPreflightLockTiming,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
@@ -383,7 +384,8 @@ function recordLockSampling(){
  };
  report.lockSampling={strict:samplingRequired,scope:'Sampled application heavyweight lock waits, including advisory waits. Unobserved waits are outside this evidence.',
   preflight:measureDevelopment?qualified('preflight',preflight,preflightCadenceClosed):preflight,
-  loaded:measureDevelopment?qualified('loaded',loaded,loadedCadenceClosed):loaded};
+  loaded:measureDevelopment?qualified('loaded',loaded,loadedCadenceClosed):loaded,
+  ...(measureDevelopment?{privatePreflightTiming:measuredPreflightLockTiming(preflight.samples,preflight.window)}:{})};
 }
 function startPreflightLockSampling(lockScope){
  preflightWindow={startMs:performance.now()};
@@ -460,6 +462,8 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
  const rootStatements=new Map(),samples=[];
  const sampleDb=measureDevelopment?measuredLockDb:db;
  const schedule=measureDevelopment?startMeasuredLockInterval:startDriverInterval;
+ const measuredPreflight=measureDevelopment&&phase==='preflight';
+ const attemptInterval=measuredPreflight?MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS:interval;
  let attributedSamples=0,enrichmentPending=false;
  const retain=row=>{
   // A sentinel makes over-cap evidence ineligible without growing the ledger indefinitely.
@@ -479,7 +483,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    else noteEvidence(()=>writeFileSync(path,evidence));
   }catch{report.blockingStatementCaptureUnavailable=true;}
  }
- const timer=schedule(interval,async()=>{
+ const timer=schedule(attemptInterval,async timing=>{
   const startedMs=performance.now();
   const attributionPhase=preflightAttributionPhase;
   let coreComplete=false;
@@ -495,6 +499,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
     idleInTransaction:activity.filter(row=>row.state?.startsWith('idle in transaction')).reduce((total,row)=>total+row.app_connections,0),
     waitingOnLock:activity.filter(row=>row.state==='active'&&row.kind==='Lock').reduce((total,row)=>total+row.app_connections,0),
    };
+   const advisoryStartedMs=measuredPreflight?performance.now():null;
    const locks=await sampleDb`select a.pid,case when not l.granted then pg_blocking_pids(a.pid) end as blockers,l.mode,l.granted,l.classid::text,l.objid::text,l.objsubid,
      a.usename='ai_hr_app' as app_session from pg_locks l join pg_stat_activity a on a.pid=l.pid
      where a.datname=current_database()and l.database=(select oid from pg_database where datname=current_database())
@@ -517,7 +522,8 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
      advisoryWaiters:queuedLocks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))}:null;
    if(wait)waits.push(wait);
    const row={state:'complete',startedMs,completedMs:measureDevelopment?coreCompletedMs:performance.now(),locks:locks.length,blockingAppSessions,
-    holdersRequested:pids.length,holdersObserved:holders.length,...(measureDevelopment?{appSessions:appConnections.open,activityCompletedMs}:{})};
+    holdersRequested:pids.length,holdersObserved:holders.length,...(measureDevelopment?{appSessions:appConnections.open,activityCompletedMs}:{}),
+    ...(measuredPreflight?{...timing,advisoryStartedMs}:{})};
    retain(row);
    coreComplete=true;
    let attribution;

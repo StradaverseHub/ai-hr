@@ -97,6 +97,10 @@ export function startDriverInterval(interval,run,recordFailure){
  return {stop(){stopped=true;clearInterval(timer);return pending??Promise.resolve();}};
 }
 
+// Observe preflight more often than the external 250ms cadence target. The
+// external uncertainty bound stays 500ms and uses actual query timestamps.
+export const MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS=200;
+
 /** One real probe at a time. After an overrun, use the next available timer turn. */
 export function startMeasuredLockInterval(interval,run,recordFailure,now=()=>performance.now()){
  let timer,pending,stopped=false;
@@ -105,7 +109,7 @@ export function startMeasuredLockInterval(interval,run,recordFailure,now=()=>per
   timer=setTimeout(()=>{
    if(stopped)return;
    const started=now();
-   pending=Promise.resolve().then(run).catch(recordFailure).finally(()=>{
+   pending=Promise.resolve().then(()=>run({dueMs:due,timerStartedMs:started})).catch(recordFailure).finally(()=>{
     pending=undefined;
     schedule(started+interval);
    });
@@ -131,6 +135,38 @@ export function lockSampleEvidence(samples,window){
 const lockCadenceMs=Object.freeze({preflight:250,loaded:1000});
 const maxProtectedLockSamples=4096;
 const lockCount=value=>Number.isSafeInteger(value)&&value>=0;
+
+/** Private timing context for the widest observed preflight gap. Round trips
+ * include the client and event-loop continuation. Never supplies coverage facts. */
+export function measuredPreflightLockTiming(samples,window){
+ const {startMs,endMs}=window??{};
+ if(!Number.isFinite(startMs)||!Number.isFinite(endMs)||endMs<=startMs||!Array.isArray(samples)||samples.length>maxProtectedLockSamples)return null;
+ let first,previous,widest;
+ for(const row of samples){
+  if(row?.state!=='complete'||!Number.isFinite(row.startedMs)||!Number.isFinite(row.completedMs)
+   ||row.startedMs<startMs||row.completedMs<row.startedMs||row.completedMs>endMs)continue;
+  first??=row;
+  if(previous){
+   if(row.startedMs<=previous.startedMs||row.startedMs<previous.completedMs)return null;
+   const gapUs=Math.ceil((row.completedMs-startMs)*1000)-Math.floor((previous.startedMs-startMs)*1000);
+   if(!widest||gapUs>widest.gapUs)widest={previous,row,gapUs};
+  }
+  previous=row;
+ }
+ if(!widest)return null;
+ const {row,gapUs}=widest;
+ const {dueMs,timerStartedMs,startedMs,activityCompletedMs,advisoryStartedMs,completedMs}=row;
+ const readyMs=Math.max(dueMs,widest.previous.completedMs);
+ const points=[readyMs,timerStartedMs,startedMs,activityCompletedMs,advisoryStartedMs,completedMs];
+ if(points.some((point,index)=>!Number.isFinite(point)||index>0&&point<points[index-1]))return null;
+ const elapsed=(from,to)=>Math.ceil((to-from)*1000);
+ return {attemptIntervalMs:MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS,gapUs,openingGapUs:elapsed(startMs,first.completedMs),
+  tailGapUs:elapsed(startMs,endMs)-Math.floor((previous.startedMs-startMs)*1000),
+  launchSpacingUs:elapsed(widest.previous.startedMs,startedMs),serialWaitPastDueUs:elapsed(dueMs,readyMs),
+  timerAfterReadyUs:elapsed(readyMs,timerStartedMs),
+  callbackToProbeUs:elapsed(timerStartedMs,startedMs),activityRoundTripUs:elapsed(startedMs,activityCompletedMs),
+  betweenProbesUs:elapsed(activityCompletedMs,advisoryStartedMs),advisoryRoundTripUs:elapsed(advisoryStartedMs,completedMs)};
+}
 
 /** Qualify a closed work window from serial legacy query rows. Cadence bounds
  * sampled observations. Skipped timer ticks and waits between queries are unmeasured. */

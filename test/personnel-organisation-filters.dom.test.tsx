@@ -1,20 +1,26 @@
-import {afterEach,expect,it} from 'vitest';
+import {afterEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 import {PersonnelOrganisationFilters,PersonnelPrivateSearch} from '../app/admin/personnel/organisation-filters';
+import {PersonnelAutoFilters} from '../app/admin/personnel/auto-filter';
 import {PERSONNEL_PRIVATE_SEARCH_SELECTOR} from '../scripts/performance/navigation-protocol';
 import {EmployeeRow} from '../app/admin/personnel/employee-row';
 import {FilterChips,type FilterField} from '../components/filter-panel';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
-afterEach(cleanup);
+const navigation=vi.hoisted(()=>({replace:vi.fn()}));
+vi.mock('next/navigation',()=>({useRouter:()=>navigation}));
+afterEach(()=>{cleanup();vi.unstubAllGlobals();navigation.replace.mockReset();});
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',c='33333333-3333-4333-8333-333333333333';
-it('opens the only editable private search in the Personnel trigger’s portaled POST dialog',async()=>{
- const view=render(<NextIntlClientProvider locale="en" messages={en}><main>
-  <PersonnelOrganisationFilters fields={[]} values={{}} companies={[]} labels={{filter:'Filter',apply:'Apply',clearAll:'Clear all',activeCount:'0'}} companySearchLabel="Companies" dataTour="people-search"/>
+it('posts one private search after editing the Personnel trigger’s portaled field',async()=>{
+ const href='/admin/personnel?search='+'a'.repeat(43)+'&size=50';
+ const fetchMock=vi.fn().mockResolvedValue(Response.json({href}));
+ vi.stubGlobal('fetch',fetchMock);
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><main><PersonnelAutoFilters>
+  <PersonnelOrganisationFilters fields={[]} values={{}} companies={[]} labels={{filter:'Filter',apply:'Apply',clearAll:'Clear all',activeCount:'0'}} companySearchLabel="Companies" dataTour="people-search" pageSize="50"/>
   <form method="post" action="/admin/personnel/search"><input name="term" type="hidden" value="" readOnly/></form>
- </main></NextIntlClientProvider>);
+ </PersonnelAutoFilters></main></NextIntlClientProvider>);
  const trigger=view.container.querySelector('main button[data-tour="people-search"]')!;
  expect(trigger).toHaveAttribute('aria-expanded','false');
  expect(view.container.querySelector(PERSONNEL_PRIVATE_SEARCH_SELECTOR)).toBeNull();
@@ -25,6 +31,20 @@ it('opens the only editable private search in the Personnel trigger’s portaled
  expect(dialog.closest('main')).toBeNull();
  const terms=dialog.querySelectorAll(PERSONNEL_PRIVATE_SEARCH_SELECTOR);
  expect(terms).toHaveLength(1);expect(terms[0]).toBeVisible();expect(terms[0]).toBeEnabled();
+ const field=within(dialog).getByRole('textbox',{name:en.people.list.controls.employeeDetails});
+ expect(field).toBe(terms[0]);
+ fireEvent.change(field,{target:{value:'PERF0'}});
+ fireEvent.change(field,{target:{value:'PERF0250'}});
+ await waitFor(()=>expect(navigation.replace).toHaveBeenCalledExactlyOnceWith(href,{scroll:false}));
+ expect(fetchMock).toHaveBeenCalledTimes(1);
+ const [target,request]=fetchMock.mock.calls[0];
+ expect(target).toBe('/admin/personnel/search');
+ expect(request).toMatchObject({method:'POST',headers:{Accept:'application/json'},cache:'no-store',redirect:'error'});
+ expect(request.body.getAll('term')).toEqual(['PERF0250']);
+ expect(request.body.get('size')).toBe('50');
+ expect(href).not.toContain('PERF0250');
+ fireEvent.click(within(dialog).getByRole('button',{name:en.common.close}));
+ expect(screen.queryByRole('dialog')).toBeNull();
 });
 it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s renders one private employee search, independent company selection, removable chips and full BU names',async locale=>{
  const messages=catalogues[locale],copy=messages.personnelOrganisationFilters,base=messages.people.list;
