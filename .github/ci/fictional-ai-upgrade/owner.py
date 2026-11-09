@@ -1,4 +1,4 @@
-"""Development-only owner for the exact fictional b698 to 98ae witness."""
+"""Development-only owner for the exact fictional b698 to 6c05 witness."""
 import fcntl
 import hashlib
 import importlib.util
@@ -13,7 +13,7 @@ import sys
 import time
 
 BASE = 'b698f5d35b0cca12e2c1268f3bea08d0aa1d070e'
-CANDIDATE = '98ae49152781815433c604aac1758fb1841716b7'
+CANDIDATE = '6c05efc24242b8a5f50933e7cbb6709a276b286d'
 BRANCH = 'codex/architecture-ai-source-upgrade-witness-20261109'
 REPO = 'StradaverseHub/ai-hr'
 IMAGE = 'postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97'

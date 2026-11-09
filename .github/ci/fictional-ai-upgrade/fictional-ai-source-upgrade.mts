@@ -10,9 +10,9 @@ import type { Base } from '../test/harness';
 import {APP_URL, BASE, CANDIDATE, OWNER_URL, readCanonicalAdmission} from './fictional-ai-upgrade-canonical-admission.mjs';
 
 const BASE_MODULE = '7f15e132bb44c257e9a9615184e12625684556945f8edc9b75999657c3266d2e';
-const CANDIDATE_MODULE = '6cb154ed93c5a0503d5fc8f2adbfef532306655dca50fd0d70f01373cea4f7af';
+const CANDIDATE_MODULE = '9e45abb74a6035bd26d9eaef8fe2e06bc0a88de2704587ef1864a378b5c465a9';
 const BASE_PROVIDER = '020279efedc544846db0bcc91e6fba27b8c49725169178fa8307c1bc8b6b394c';
-const CANDIDATE_PROVIDER = '1f309046b52b684169ac404bff7c94cdeb95367e8a650c74de10ad8b6ad760d2';
+const CANDIDATE_PROVIDER = '51789bac0824dc0a33acee0dc0b3887f61bc94e40c67a5093f45fe0b5c91c432';
 const AI_TABLES = ['ai_agent_candidate', 'ai_agent_candidate_provenance', 'ai_agent_evaluation',
   'ai_agent_promotion', 'ai_agent_job_receipt', 'ai_agent_job_feedback', 'ai_agent_rollback'] as const;
 const TABLES = [...AI_TABLES, 'assistant_grant', 'person', 'employment', 'assignment', 'reporting_line', 'role_assignment', 'domain_event'] as const;

@@ -343,7 +343,7 @@ jobs:
           export PATH="$runtime/bin:$runtime/pnpm/node_modules/.bin:/usr/bin:/bin"
           for member in baseline source; do
             sha=b698f5d35b0cca12e2c1268f3bea08d0aa1d070e
-            if test "$member" = source; then sha=98ae49152781815433c604aac1758fb1841716b7; fi
+            if test "$member" = source; then sha=6c05efc24242b8a5f50933e7cbb6709a276b286d; fi
             checkout="$runtime/$member"
             test "$(git -C "$GITHUB_WORKSPACE/$member" rev-parse HEAD)" = "$sha"
             git init --quiet "$checkout"
