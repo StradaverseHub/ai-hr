@@ -1042,7 +1042,7 @@ def view_erofs(path):
         raise ValueError('View-probe mounted file was writable')
 
 
-def view_file_controls(mmap):
+def view_file_controls(mmap, active):
     with directory(pathlib.Path('/project')) as project:
         for name, seed in zip(('app/seed', 'node_modules/seed'), VIEW_SEEDS.values(), strict=True):
             raw, info = read(project, name, 64)
@@ -1055,10 +1055,13 @@ def view_file_controls(mmap):
                 need(mapped[:] == VIEW_SEEDS['dependencies/seed'], 'View-probe executable dependency mapping differs')
         finally:
             os.close(dep)
+        active()
         write(project, 'next-env.d.ts', VIEW_WRITTEN, 0o600)
         fd = os.open('next-env.d.ts', os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=project)
         os.close(fd)
+        active()
         os.mkdir('.next', 0o700, dir_fd=project)
+        active()
         write(project, '.next/probe', VIEW_WRITTEN, 0o600)
         for name in ('next-env.d.ts', '.next/probe'):
             raw, _ = read(project, name, 64)
@@ -1129,9 +1132,11 @@ def view_worker():
         for source, target, extra in (('source', 'app', VIEW_NOEXEC), ('dependencies', 'node_modules', 0)):
             old = os.fsencode(root / source)
             new = os.fsencode(root / 'jail/project' / target)
-            need(libc.mount(old, new, None, VIEW_BIND, None) == 0
-                 and libc.mount(None, new, None, VIEW_BIND | VIEW_REMOUNT | VIEW_RDONLY_NOSUID_NODEV | extra, None) == 0,
-                 'View worker bind or readonly remount refused')
+            active()
+            need(libc.mount(old, new, None, VIEW_BIND, None) == 0, 'View worker bind refused')
+            active()
+            need(libc.mount(None, new, None, VIEW_BIND | VIEW_REMOUNT | VIEW_RDONLY_NOSUID_NODEV | extra, None) == 0,
+                 'View worker readonly remount refused')
             active()
         rows = view_mount_check(view_mount_rows(parser, private=True), root)
         for row in rows:
@@ -1160,7 +1165,7 @@ def view_worker():
         view_drop(libc, uid, gid, cap_last, int(dump_policy))
         phase += 1
         active()
-        view_file_controls(mmap)
+        view_file_controls(mmap, active)
         active()
         with directory(pathlib.Path('/receipt')) as receipt:
             write(receipt, 'worker.json', canonical({'phases': list(VIEW_PHASES), 'ipv6RejectRows': reject_rows}), 0o600)
@@ -1216,7 +1221,37 @@ def view_cleanup(root, held, births, uid, gid, parser, original, stop, *, requir
         with parent(held, path) as (folder, leaf):
             info = os.stat(leaf, dir_fd=folder, follow_symlinks=False)
             need(view_birth(info) == visited[path], 'View-probe cleanup target changed')
+            need(time.monotonic() < stop, 'View-probe cleanup frontier closed')
             (os.rmdir if path in expected_dirs else os.unlink)(leaf, dir_fd=folder)
+
+
+def view_prefix(root, prefix, birth):
+    held = os.fstat(prefix)
+    named = os.stat(root.parent, follow_symlinks=False)
+    need(stat.S_ISDIR(held.st_mode) and held.st_uid == 0 and not held.st_mode & 0o022
+         and identity(held)[:5] == identity(named)[:5] and view_birth(held) == birth,
+         'View-probe original parent changed')
+
+
+def view_remove_root(root, prefix, prefix_birth, birth, parser, original, stop):
+    import time
+    need(time.monotonic() < stop and view_namespaces() == original
+         and not view_under(view_mount_rows(parser), root), 'View-probe final removal context differs')
+    view_prefix(root, prefix, prefix_birth)
+    info = os.stat(root.name, dir_fd=prefix, follow_symlinks=False)
+    need(view_birth(info) == birth and stat.S_ISDIR(info.st_mode)
+         and (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) == (0, 0, 0o700),
+         'View-probe final root identity differs')
+    need(time.monotonic() < stop, 'View-probe final removal frontier closed')
+    os.rmdir(root.name, dir_fd=prefix)
+    try:
+        os.stat(root.name, dir_fd=prefix, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    else:
+        raise ValueError('View-probe root remains')
+    view_prefix(root, prefix, prefix_birth)
+    need(time.monotonic() < stop and view_namespaces() == original, 'View-probe final absence frontier closed')
 
 
 def view_worker_result(raw):
@@ -1228,7 +1263,25 @@ def view_worker_result(raw):
     return value
 
 
-def view_report(failure, *, sha=None, run=None, event=None, process=None, worker=None, cleanup=False, elapsed=None):
+def view_settled(process):
+    return (type(process) is dict and process['reaped'] is True and process['groupQuiescent'] is True
+            and process['escapedSession'] is False)
+
+
+def view_success(process):
+    return (view_settled(process) and process['admitted'] is True and process['reason'] == 'complete'
+            and type(process['commandExit']) is int and process['commandExit'] == 0)
+
+
+def view_failed_phase(process):
+    if view_settled(process) and process['admitted'] is True and process['reason'] == 'command-failed':
+        code = process['commandExit']
+        if type(code) is int and 40 <= code < 40 + len(VIEW_PHASES):
+            return VIEW_PHASES[code - 40]
+    return None
+
+
+def view_report(failure, *, sha=None, run=None, event=None, attempted=False, process=None, worker=None, cleanup=False, elapsed=None):
     if failure in VIEW_PHASES:
         blocked = list(VIEW_PHASES[VIEW_PHASES.index(failure):])
     elif worker is None:
@@ -1236,7 +1289,8 @@ def view_report(failure, *, sha=None, run=None, event=None, process=None, worker
     else:
         blocked = []
     return {'version': 1, 'kind': VIEW_KIND, 'source': sha, 'run': run, 'eventSha256': event,
-            'complete': failure is None, 'failure': failure, 'unconfirmedPhases': blocked, 'process': process, 'worker': worker,
+            'complete': failure is None, 'failure': failure, 'unconfirmedPhases': blocked,
+            'workerAttempted': attempted, 'process': process, 'worker': worker,
             'cleanupComplete': cleanup, 'elapsedMs': elapsed, 'nextTypegenRun': False, 'networkEgressAttempted': False,
             'applicationBuilt': False, 'releaseAuthorized': False}
 
@@ -1263,8 +1317,12 @@ def view_run(run, sha, uid, gid, members, event_hash):
     try:
         with directory(root.parent, root_owned=True) as prefix:
             need(not view_under(view_mount_rows(parser), root), 'View-probe root has a host mount')
+            prefix_birth = view_birth(os.fstat(prefix))
+            view_prefix(root, prefix, prefix_birth)
+            tool.left(active)
             os.mkdir(root.name, 0o700, dir_fd=prefix)
             birth = view_birth(os.stat(root.name, dir_fd=prefix, follow_symlinks=False))
+            ready_to_remove = False
             with directory(root, root_owned=True) as held:
                 need(view_birth(os.fstat(held)) == birth, 'View-probe root changed')
                 def remember(path):
@@ -1274,19 +1332,25 @@ def view_run(run, sha, uid, gid, members, event_hash):
                     for path in VIEW_DIRS:
                         tool.left(active)
                         with parent(held, path) as (folder, leaf):
+                            tool.left(active)
                             os.mkdir(leaf, 0o700, dir_fd=folder)
                         remember(path)
                         if path in ('jail/project', 'jail/receipt', 'source', 'dependencies'):
                             with parent(held, path) as (folder, leaf):
+                                tool.left(active)
                                 os.chown(leaf, uid, gid, dir_fd=folder, follow_symlinks=False)
                         if path in ('jail', 'jail/project/app', 'jail/project/node_modules', 'source', 'dependencies'):
                             with parent(held, path) as (folder, leaf):
+                                tool.left(active)
                                 os.chmod(leaf, 0o755, dir_fd=folder)
                     for path, seed in VIEW_SEEDS.items():
+                        tool.left(active)
                         write(held, path, seed, 0o600)
                         remember(path)
                         with parent(held, path) as (folder, leaf):
+                            tool.left(active)
                             os.chown(leaf, uid, gid, dir_fd=folder, follow_symlinks=False)
+                    tool.left(active)
                     write(held, 'mountinfo.py', members[VIEW_MOUNTINFO], 0o600)
                     remember('mountinfo.py')
                     failure = 'owned-worker'
@@ -1300,39 +1364,35 @@ def view_run(run, sha, uid, gid, members, event_hash):
                         tool.left(active)
                         attempted = True
                         process = tool._run_tool_command(kernel, argv, active)
-                    need(type(process) is dict and process['reaped'] is True and process['groupQuiescent'] is True
-                         and not kernel.own_children(), 'View-probe process settlement refused')
-                    code = process['commandExit']
-                    if type(code) is int and 40 <= code < 40 + len(VIEW_PHASES):
-                        failure = VIEW_PHASES[code - 40]
-                    need(process['reason'] == 'complete' and code == 0 and process['admitted'] is True
-                         and process['escapedSession'] is False, 'View-probe owned worker refused')
+                    need(view_settled(process) and not kernel.own_children(), 'View-probe process settlement refused')
+                    failure = view_failed_phase(process) or failure
+                    need(view_success(process), 'View-probe owned worker refused')
                     failure = 'worker-receipt'
                     raw, info = read(held, VIEW_CREATED[3], 1024)
                     need((info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) == (uid, gid, 0o600),
                          'View-probe worker receipt owner differs')
                     worker = view_worker_result(raw)
                     failure = None
+                except BaseException:
+                    failure = failure or 'owned-worker'
                 finally:
-                    if not attempted or (process is not None and process['reaped'] is True
-                                         and process['groupQuiescent'] is True and not kernel.own_children()):
+                    if not attempted or (view_settled(process) and not kernel.own_children()):
                         try:
                             view_cleanup(root, held, births, uid, gid, parser, original, stop, require_outputs=worker is not None)
-                            need(view_birth(os.stat(root.name, dir_fd=prefix, follow_symlinks=False)) == birth,
-                                 'View-probe root cleanup birth changed')
-                            # directory() checks the named identity on exit.
-                            cleanup = True
+                            ready_to_remove = True
                         except BaseException:
                             failure = failure or 'cleanup'
-                if cleanup:
-                    cleanup = False
-                    os.rmdir(root.name, dir_fd=prefix)
-                    need(not tool.present(prefix, root.name) and time.monotonic() < stop, 'View-probe root remains')
-                    cleanup = True
+            if ready_to_remove:
+                view_remove_root(root, prefix, prefix_birth, birth, parser, original, stop)
     except BaseException:
         failure = failure or 'cleanup'
+    else:
+        # Both held directory scopes must have completed their exit readbacks.
+        cleanup = ready_to_remove
+    ended = time.monotonic()
+    cleanup = cleanup and ended < stop
     return view_report(failure or (None if cleanup else 'cleanup'), sha=sha, run=run, event=event_hash,
-                       process=process, worker=worker, cleanup=cleanup, elapsed=int((time.monotonic() - now) * 1000))
+                       attempted=attempted, process=process, worker=worker, cleanup=cleanup, elapsed=int((ended - now) * 1000))
 
 
 def seal_view_probe(request):
@@ -1369,35 +1429,51 @@ def validate_view_capture(raw, status):
     need(type(report) is dict and set(report) == set(view_report('pre-root'))
          and type(report['version']) is int and report['version'] == 1 and report['kind'] == VIEW_KIND
          and all(report[key] is False for key in ('nextTypegenRun', 'networkEgressAttempted', 'applicationBuilt', 'releaseAuthorized'))
-         and type(report['cleanupComplete']) is bool and type(report['complete']) is bool
+         and all(type(report[key]) is bool for key in ('cleanupComplete', 'complete', 'workerAttempted'))
          and ((status == '0') if report['complete'] else status == '1'), 'View-probe capture status differs')
     if report['source'] is None:
         need(all(report[key] is None for key in ('run', 'eventSha256', 'elapsedMs', 'process', 'worker'))
-             and report['cleanupComplete'] is False and report['failure'] in ('pre-root', 'root-admission'),
+             and not report['workerAttempted'] and not report['cleanupComplete']
+             and report['failure'] in ('pre-root', 'root-admission'),
              'View-probe pre-root capture contains physical claims')
     else:
         need(type(report['source']) is str and re.fullmatch(r'[a-f0-9]{40}', report['source'])
              and type(report['eventSha256']) is str and re.fullmatch(r'[a-f0-9]{64}', report['eventSha256'])
              and type(report['run']) is str and re.fullmatch(r'[1-9][0-9]{0,15}', report['run'])
-             and type(report['elapsedMs']) is int and 0 <= report['elapsedMs'] < 60000,
+             and type(report['elapsedMs']) is int and 0 <= report['elapsedMs'] < 60000
+             and report['failure'] not in ('pre-root', 'root-admission'),
              'View-probe physical capture provenance differs')
     process = report['process']
+    attempted, failure, worker = (report[key] for key in ('workerAttempted', 'failure', 'worker'))
     if process is not None:
         flags = ('admitted', 'reaped', 'groupQuiescent', 'escapedSession')
-        need(type(process) is dict and set(process) == {'reason', 'commandExit', *flags}
+        need(attempted and type(process) is dict and set(process) == {'reason', 'commandExit', *flags}
              and process['reason'] in {'complete', 'command-failed', 'deadline', 'handshake-refused', 'descendants-survived',
                                        'protocol-refused', 'owner-interrupted', 'group-uncertain', 'session-escaped'}
              and (process['commandExit'] is None or type(process['commandExit']) is int and -64 <= process['commandExit'] <= 255)
-             and all(type(process[key]) is bool for key in flags), 'View-probe process capture differs')
-    if report['worker'] is not None:
-        view_worker_result(canonical(report['worker']))
+             and all(type(process[key]) is bool for key in flags)
+             and (process['admitted'] or process['commandExit'] is None), 'View-probe process capture differs')
+    elif attempted:
+        need(failure == 'owned-worker', 'View-probe missing process evidence')
+    if report['cleanupComplete']:
+        need(report['elapsedMs'] < 25000 and (not attempted or view_settled(process)),
+             'View-probe cleanup lacks time or settlement evidence')
+    if failure in VIEW_PHASES:
+        need(failure == view_failed_phase(process), 'View-probe phase lacks the exact owned exit')
+    if worker is not None:
+        need(view_success(process) and failure in (None, 'cleanup'), 'View-probe full worker lacks successful owned exit')
+        view_worker_result(canonical(worker))
+    if failure == 'worker-receipt':
+        need(view_success(process) and worker is None, 'View-probe receipt refusal lacks successful owned exit')
+    if failure == 'root-setup':
+        need(not attempted, 'View-probe setup refusal cannot credit a worker')
+    if failure == 'cleanup':
+        need(worker is not None and not report['cleanupComplete'], 'View-probe cleanup refusal lacks full worker evidence')
     if report['complete']:
         need(report['failure'] is None and report['cleanupComplete'] is True and report['unconfirmedPhases'] == []
-             and type(report['elapsedMs']) is int and 0 <= report['elapsedMs'] < 25000
-             and report['process'] == {'reason': 'complete', 'commandExit': 0, 'admitted': True, 'reaped': True,
-                                      'groupQuiescent': True, 'escapedSession': False},
+             and view_success(process),
              'View-probe success lacks owned settlement')
-        need(report['worker'] is not None, 'View-probe physical worker report required')
+        need(worker is not None, 'View-probe physical worker report required')
     else:
         need(report['failure'] in {'pre-root', 'root-admission', 'root-setup', 'owned-worker', 'worker-receipt', 'cleanup', *VIEW_PHASES},
              'View-probe refusal class differs')

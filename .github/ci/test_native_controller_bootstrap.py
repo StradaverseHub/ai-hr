@@ -279,6 +279,82 @@ class ViewProbeControls(unittest.TestCase):
                 cleanup()
             self.assertEqual(list(root.iterdir()), [])
 
+    def test_owned_entry_expiring_during_lookup_is_preserved(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = pathlib.Path(folder)
+            (root / 'source').mkdir()
+            births = {'source': M.view_birth((root / 'source').lstat())}
+            with M.directory(root) as held, mock.patch.object(M, 'view_mount_rows', return_value=[]), \
+                 mock.patch.object(M, 'view_namespaces', return_value={}), \
+                 mock.patch('time.monotonic', side_effect=(0, 0, 0, 2)), mock.patch.object(M.os, 'rmdir') as remove:
+                with self.assertRaisesRegex(ValueError, 'frontier closed'):
+                    M.view_cleanup(root, held, births, os.getuid(), os.getgid(), None, {}, 1)
+                remove.assert_not_called()
+            self.assertTrue((root / 'source').is_dir())
+
+    def test_final_root_needs_same_birth_and_time_after_lookup(self):
+        import stat
+        from types import SimpleNamespace
+        root = M.view_scope('123')
+        observed = SimpleNamespace(st_dev=1, st_ino=2, st_mode=stat.S_IFDIR | 0o700, st_uid=0, st_gid=0)
+        with mock.patch.object(M, 'view_mount_rows', return_value=[]), mock.patch.object(M, 'view_namespaces', return_value={}), \
+             mock.patch.object(M, 'view_prefix'), mock.patch.object(M.os, 'stat', return_value=observed), \
+             mock.patch.object(M.os, 'rmdir') as remove:
+            with mock.patch('time.monotonic', return_value=0), self.assertRaisesRegex(ValueError, 'root identity'):
+                M.view_remove_root(root, 7, (9, 9), (1, 3), None, {}, 1)
+            with mock.patch('time.monotonic', side_effect=(0, 2)), self.assertRaisesRegex(ValueError, 'frontier closed'):
+                M.view_remove_root(root, 7, (9, 9), (1, 2), None, {}, 1)
+            remove.assert_not_called()
+
+    def test_final_root_absence_is_anchored_and_requires_enoent(self):
+        import stat
+        from types import SimpleNamespace
+        root = M.view_scope('123')
+        observed = SimpleNamespace(st_dev=1, st_ino=2, st_mode=stat.S_IFDIR | 0o700, st_uid=0, st_gid=0)
+        with mock.patch.object(M, 'view_mount_rows', return_value=[]), mock.patch.object(M, 'view_namespaces', return_value={}), \
+             mock.patch.object(M, 'view_prefix') as parent, mock.patch('time.monotonic', return_value=0), \
+             mock.patch.object(M.os, 'rmdir') as remove:
+            for outcome in (observed, PermissionError('unreadable'), FileNotFoundError('absent')):
+                with self.subTest(outcome=outcome), mock.patch.object(M.os, 'stat', side_effect=(observed, outcome)) as lookup:
+                    if isinstance(outcome, FileNotFoundError):
+                        M.view_remove_root(root, 7, (9, 9), (1, 2), None, {}, 1)
+                    else:
+                        with self.assertRaises((ValueError, PermissionError)):
+                            M.view_remove_root(root, 7, (9, 9), (1, 2), None, {}, 1)
+                    self.assertEqual(lookup.call_args_list, [mock.call(root.name, dir_fd=7, follow_symlinks=False)] * 2)
+            self.assertEqual(remove.call_args_list, [mock.call(root.name, dir_fd=7)] * 3)
+            self.assertEqual(parent.call_args_list, [mock.call(root, 7, (9, 9))] * 4)
+
+    def test_cleanup_credit_waits_for_both_scope_exits(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+        members = {key: b'' for key in M.VIEW_MEMBERS}
+        real_directory = M.directory
+        for failed_scope in ('precreate', 'owned', 'parent', None):
+            with self.subTest(failed_scope=failed_scope), tempfile.TemporaryDirectory() as folder:
+                root = pathlib.Path(folder).resolve() / 'exclusive'
+                call = 1 if failed_scope == 'precreate' else 2
+                members[M.VIEW_TOOL] = (f'calls = 0\ndef left(_stop):\n global calls\n calls += 1\n'
+                                        f' if calls == {call}: raise ValueError("setup refused")\n').encode()
+                @contextmanager
+                def scopes(path, *, root_owned=False):
+                    with real_directory(path) as held:
+                        yield held
+                    if (failed_scope == 'owned' and path == root) or (failed_scope == 'parent' and path == root.parent):
+                        raise ValueError('scope exit refused')
+                with mock.patch.object(M, 'view_scope', return_value=root), mock.patch.object(M, 'directory', scopes), \
+                     mock.patch.object(M, 'view_prefix'), mock.patch.object(M, 'view_namespaces', return_value={}), \
+                     mock.patch.object(M, 'view_mount_rows', return_value=[]), mock.patch.object(M.os, 'umask'), \
+                     mock.patch.object(M.os, 'uname', return_value=SimpleNamespace(machine='x86_64')), \
+                     mock.patch.object(M, 'view_proc', return_value=b'ID=ubuntu\nVERSION_ID="24.04"\n'), \
+                     mock.patch.object(M, 'view_remove_root', side_effect=lambda *_: root.rmdir()) as remove:
+                    report = M.view_run('123', 'a'*40, os.getuid(), os.getgid(), members, 'b'*64)
+                self.assertEqual(report['failure'], 'root-setup')
+                self.assertIs(report['cleanupComplete'], failed_scope is None)
+                self.assertIs(report['workerAttempted'], False)
+                self.assertEqual(remove.call_count, 0 if failed_scope in ('precreate', 'owned') else 1)
+                self.assertIs(root.exists(), failed_scope == 'owned')
+
     def test_closed_worker_receipt_requires_every_physical_phase(self):
         value = {'phases': list(M.VIEW_PHASES), 'ipv6RejectRows': 1}
         self.assertEqual(M.view_worker_result(M.canonical(value)), value)
@@ -292,11 +368,11 @@ class ViewProbeControls(unittest.TestCase):
                    'groupQuiescent': True, 'escapedSession': False}
         worker = {'phases': list(M.VIEW_PHASES), 'ipv6RejectRows': 0}
         row = M.view_report(None, sha='a'*40, run='123', event='b'*64, process=process,
-                            worker=worker, cleanup=True, elapsed=1234)
+                            attempted=True, worker=worker, cleanup=True, elapsed=1234)
         self.assertEqual(M.validate_view_capture(M.canonical(row), '0'), row)
         for changed in ({'process': process | {'reaped': False}}, {'process': process | {'escapedSession': True}},
                         {'process': process | {'reason': 'deadline'}}, {'cleanupComplete': False},
-                        {'releaseAuthorized': True}, {'worker': None}, {'elapsedMs': 25000}):
+                        {'releaseAuthorized': True}, {'worker': None}, {'elapsedMs': 25000}, {'workerAttempted': False}):
             with self.subTest(changed=changed), self.assertRaises(ValueError):
                 M.validate_view_capture(M.canonical(row | changed), '0')
         with self.assertRaises(ValueError):
@@ -306,11 +382,37 @@ class ViewProbeControls(unittest.TestCase):
         pre_root = M.view_report('pre-root')
         self.assertEqual(M.validate_view_capture(M.canonical(pre_root), '1'), pre_root)
         self.assertEqual(pre_root['unconfirmedPhases'], list(M.VIEW_PHASES))
-        native = M.view_report('network-route-census', sha='a'*40, run='123', event='b'*64, cleanup=True, elapsed=9)
+        exit_row = {'reason': 'command-failed', 'commandExit': 43, 'admitted': True, 'reaped': True,
+                    'groupQuiescent': True, 'escapedSession': False}
+        native = M.view_report('network-route-census', sha='a'*40, run='123', event='b'*64, attempted=True,
+                               process=exit_row, cleanup=True, elapsed=9)
         self.assertEqual(native['unconfirmedPhases'], list(M.VIEW_PHASES[3:]))
         self.assertEqual(M.validate_view_capture(M.canonical(native), '1'), native)
-        with self.assertRaises(ValueError):
-            M.validate_view_capture(M.canonical(native | {'unconfirmedPhases': []}), '1')
+        for changed in ({'unconfirmedPhases': []}, {'process': None}, {'workerAttempted': False},
+                        {'process': exit_row | {'commandExit': 42}}, {'process': exit_row | {'reason': 'deadline'}},
+                        {'process': exit_row | {'admitted': False}}, {'process': exit_row | {'escapedSession': True}}):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                M.validate_view_capture(M.canonical(native | changed), '1')
+
+    def test_refusal_credit_distinguishes_no_worker_unsettled_worker_and_successful_worker(self):
+        provenance = {'sha': 'a'*40, 'run': '123', 'event': 'b'*64, 'elapsed': 9}
+        success = {'reason': 'complete', 'commandExit': 0, 'admitted': True, 'reaped': True,
+                   'groupQuiescent': True, 'escapedSession': False}
+        worker = {'phases': list(M.VIEW_PHASES), 'ipv6RejectRows': 0}
+        for row in (M.view_report('root-setup', cleanup=True, **provenance),
+                    M.view_report('owned-worker', attempted=True, **provenance),
+                    M.view_report('worker-receipt', attempted=True, process=success, cleanup=True, **provenance),
+                    M.view_report('cleanup', attempted=True, process=success, worker=worker, **provenance)):
+            self.assertEqual(M.validate_view_capture(M.canonical(row), '1'), row)
+        timeout = success | {'reason': 'deadline', 'commandExit': -9, 'reaped': False, 'groupQuiescent': False}
+        for row in (M.view_report('owned-worker', attempted=True, cleanup=True, **provenance),
+                    M.view_report('owned-worker', attempted=True, process=timeout, cleanup=True, **provenance),
+                    M.view_report('cleanup', attempted=True, process=timeout, worker=worker, **provenance),
+                    M.view_report('cleanup', attempted=True, worker=worker, **provenance),
+                    M.view_report('worker-receipt', attempted=True, process=timeout, **provenance),
+                    M.view_report('root-setup', attempted=True, process=success, **provenance)):
+            with self.subTest(row=row), self.assertRaises(ValueError):
+                M.validate_view_capture(M.canonical(row), '1')
 
 if __name__ == '__main__':
     unittest.main()
