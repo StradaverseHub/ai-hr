@@ -35,7 +35,7 @@ import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironment,createDriverContexts,
  createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,
- developmentLockWindowEvidence,buildDevelopmentMeasurement,developmentDockerContext,DEVELOPMENT_DOCKER_COMMAND,
+ developmentLockWindowEvidence,developmentSteadyLoadPass,buildDevelopmentMeasurement,developmentDockerContext,DEVELOPMENT_DOCKER_COMMAND,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
@@ -177,7 +177,9 @@ const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report
 const nativeBrowserFailures=nativePreflight?createNativeBrowserFailureObservation():null;
 const measureDevelopment=!nativePreflight&&suite!=='claims-heavy';
 const developmentPageCensus=measureDevelopment?createDevelopmentPageCensus():null;
-let developmentNavigationBinding,developmentRenderedCapture,developmentWorkCompleted=false;
+let developmentNavigationBinding,developmentRenderedCapture,developmentWorkCompleted=false,developmentLoad=null;
+if(measureDevelopment)report.postgresWaitLogging={scope:'driver-observer-session-settings-only',
+ serverLogCoverage:'unqualified',start:null,end:null};
 const nativePrimaryDocuments=[];
 if(nativePreflight)report.nativeRenderedPreflight={kind:'NATIVE_PRIMARY_ROUTE_UNION',observations:[],union:null,workflowAndRenderedSlicePassed:false,
  pendingHiddenShellCases:NATIVE_HIDDEN_SHELL_CASES.map(row=>row.id),
@@ -303,6 +305,15 @@ async function observedMutation(user,operation,visible,send){
  }
 }
 const summary=values=>{const sorted=[...values].sort((a,b)=>a-b);return {samples:sorted.length,p50Ms:sorted[Math.ceil(sorted.length*.5)-1]??null,p95Ms:sorted[Math.ceil(sorted.length*.95)-1]??null,p99Ms:sorted[Math.ceil(sorted.length*.99)-1]??null,maxMs:sorted.at(-1)??null};};
+async function observePostgresWaitLogging(edge){
+ try{
+  const [row]=await db`select current_setting('log_lock_waits')='on' as "logLockWaits",
+    (select setting::int from pg_catalog.pg_settings where name='deadlock_timeout' and unit='ms') as "deadlockTimeoutMs"
+    where session_user='postgres' and current_user='postgres' and current_database()='ai_hr_dev'`;
+  if(typeof row?.logLockWaits==='boolean'&&Number.isSafeInteger(row.deadlockTimeoutMs)&&row.deadlockTimeoutMs>0)
+   report.postgresWaitLogging[edge]={logLockWaits:row.logLockWaits,deadlockTimeoutMs:row.deadlockTimeoutMs};
+ }catch{/* Unknown settings cannot qualify server-log coverage. */}
+}
 async function databaseSnapshot(label){
  const settings=await db`select current_setting('fsync')as fsync,current_setting('synchronous_commit')as synchronous_commit,current_setting('jit')as jit,current_setting('server_version')as server_version,current_setting('shared_buffers')as shared_buffers,current_setting('work_mem')as work_mem,current_setting('max_connections')as max_connections`;
  assert.equal(settings[0].fsync,'on');assert.equal(settings[0].synchronous_commit,'on');
@@ -477,7 +488,9 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
 }
 
 async function main(){
- requireNativeBusiness();save();await db`select pg_stat_statements_reset()`;
+ requireNativeBusiness();
+ if(measureDevelopment)await observePostgresWaitLogging('start');
+ save();await db`select pg_stat_statements_reset()`;
  const lockScope=nativePreflight?undefined:await prepareDatabaseLockScope();
  if(nativePreflight)await startProtectedPreflightLockSampling();
  else if(samplingRequired)startPreflightLockSampling(lockScope);
@@ -1539,6 +1552,10 @@ async function main(){
  report.trafficSettled=true;
  report.browserLoad={contexts:browserResults.length,completed:browserResults.filter(v=>v.status==='fulfilled').length,errors:browserResults.flatMap((v,index)=>v.status==='rejected'?[{index,error:errorLabel(v.reason)}]:[])};
  const loadedWindowReached=measureDevelopment&&performance.now()>=loadedWindow.endMs;
+ if(suite==='whole-system')developmentLoad={holdMs:steadyHoldMs,windowElapsed:loadedWindowReached,
+  firstFullConcurrencyUs:fullConcurrencyAt===null?null:Math.ceil((fullConcurrencyAt-started)*1000),
+  launched:progress.launched,peakActive:progress.peakActive,completed:progress.completed,failed:progress.failed,
+  activeAtSettlement:progress.active,earlyLaneExits,iterations:progress.iterations};
  const lockDrain=loadedSampler.stop(),progressDrain=sqlProgress.stop();
  clearInterval(progressTimer);progressTimer=null;report.progress={...progress,elapsedMs:performance.now()-started};
  report.functionalErrors=results.flatMap((value,index)=>value.status==='rejected'?[{user:index,error:errorLabel(value.reason)}]:[]);report.functionalAccountingComplete=true;
@@ -1561,14 +1578,14 @@ async function main(){
   reached500:fullConcurrencyAt!==null,
   rampOverrunMs:fullConcurrencyAt===null?null:Math.max(0,fullConcurrencyAt-steadyStart),
   earlyLaneExits,
- },roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,{
+ },...(developmentLoad?{load:developmentLoad}:{}),roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,{
   navigation:summary(pageInteractions.filter(v=>v.role===role&&v.startedMs>=steadyStart&&v.startedMs<steadyUntil).map(v=>v.durationMs)),
   read:summary(steady.filter(v=>v.role===role&&v.method==='GET').map(v=>v.durationMs)),
   write:summary(steady.filter(v=>v.role===role&&v.method==='POST').map(v=>v.durationMs)),
  }]))};
  report.steady.navigationCoverage=navigationScheduler?.snapshot()??null;
  report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],steadyStart,steadyUntil});
- report.latencyTargetMet=(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
+ report.latencyTargetMet=(suite!=='whole-system'||developmentSteadyLoadPass(developmentLoad))&&(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  await Promise.all([lockDrain,progressDrain]);
  if(measureDevelopment)loadedCadenceClosed=loadedWindowReached;
  recordLockSampling();
@@ -1586,6 +1603,7 @@ async function main(){
  await verifyAudit();save();
  assert(report.preflightHomeReady,'all four preflight sign-ins must load their dashboards');
  if(samplingRequired)assert(report.lockSampling.loaded.pass,'Load lock samples were incomplete or observed blocking');
+ if(suite==='whole-system')assert(developmentSteadyLoadPass(developmentLoad),'Whole-system steady load did not hold 500 on-time lanes for 300 seconds');
  if(rejectionResults?.[0].status==='rejected')throw rejectionResults[0].reason;
  if(suite==='whole-system'){
   const movement=report.browserMovementJourneys?.find(row=>row.phase==='loaded');
@@ -1693,6 +1711,7 @@ const driverResources={
  async database(){
   const diagnosticOutcomes=await diagnosticDrain;
   if(measureDevelopment)shutdown.diagnostics=diagnosticOutcomes.every(outcome=>outcome.status==='fulfilled')?'settled':'failed';
+  if(measureDevelopment&&db)await observePostgresWaitLogging('end');
   if(failureAtExit&&db&&!nativePreflight)await failures.attempt('failure-database-snapshot',()=>databaseSnapshot('failure'));
   shutdown.database=await closePerformanceDbPools(nativeAuditClient,db,failures);
   shutdown.nativeAuditPoolClosed=shutdown.database.audit==='settled';
@@ -1739,7 +1758,7 @@ if(measureDevelopment){
  const measurement=buildDevelopmentMeasurement({suite,identity,workCompleted:developmentWorkCompleted,clean:!failures.failed(),
   busyResponses:report.pageBusyResponses.length,pages:report.developmentBrowserPageEvents,
   preflight:report.lockSampling.preflight.cadence,loaded:report.lockSampling.loaded.cadence,shutdown,
-  renderedCapture:developmentRenderedCapture});
+  renderedCapture:developmentRenderedCapture,load:developmentLoad});
  report.developmentMeasurement=measurement;
  if(!measurement.complete&&developmentWorkCompleted&&!failures.failed())
   failures.record('development-terminal-evidence',Error('Development measurement evidence was incomplete or observed a failure'));
