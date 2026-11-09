@@ -30,6 +30,7 @@ const COMPILER_FILES=['node_modules/typescript/package.json','node_modules/types
  'node_modules/typescript/lib/_tsc.js','node_modules/typescript/lib/typescript.js'];
 const EXPORTS=Object.freeze(['report.json','inputs.json','resources.json','compiler.log','monitor.jsonl',
  'typegen.json','swap-cleanup.json','trace/trace.json','trace/types.json']);
+const SAFE_EXPORTS=Object.freeze(EXPORTS.filter(p=>!p.startsWith('trace/')));
 const RAW=Object.freeze([...EXPORTS.filter(p=>p!=='swap-cleanup.json'),'show-config.json','list-files.txt',
  'whole-project.tsbuildinfo']);
 function pin(p){exact(p,['path','bytes','sha256']);assert(typeof p.path==='string'&&Number.isSafeInteger(p.bytes)&&p.bytes>0&&HASH.test(p.sha256));}
@@ -57,6 +58,11 @@ export function validateTraceInputs(value,pair){
  for(const [k,v]of Object.entries(INPUT_DEFAULTS))assert.equal(value[k]===undefined?v:value[k],v,'Mixed operation/default');
  const cell=[pair.control,pair.candidate].find(c=>c.source===value.expected_sha);assert(cell,'Unfrozen trace source');
  assert.equal(value.candidate_ref,cell.branch);return cell;
+}
+export function validateWorkflowRef(value){
+ assert(value==='StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/heads/main'
+  ||value==='StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/heads/codex/compiler-full-stock-trace-mode-20261109',
+  'Unapproved workflow source ref');return value;
 }
 export function stageBudget(anchor,at,workMs){
  assert(typeof anchor==='bigint'&&typeof at==='bigint'&&anchor>0n&&at>=anchor,'Invalid native clock');
@@ -151,7 +157,7 @@ function context(){
  assert.equal(e.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(e.GITHUB_REPOSITORY_ID,'1333414856');
  assert.equal(e.GITHUB_EVENT_NAME,'workflow_dispatch');assert.equal(e.GITHUB_RUN_ATTEMPT,'1');assert(positive.test(e.GITHUB_RUN_ID??''));
  assert.equal(e.GITHUB_WORKFLOW,'alpha-focused-checks');assert.equal(e.GITHUB_JOB,'typecheck');
- assert.equal(e.GITHUB_WORKFLOW_REF,'StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/heads/main');
+ validateWorkflowRef(e.GITHUB_WORKFLOW_REF);
  assert.equal(e.AIHR_CI_CONTROL_HEAD,e.GITHUB_SHA);assert(COMMIT.test(e.GITHUB_SHA??''));
  assert.equal(process.versions.node,'22.23.3');
  assert.equal(process.arch,'x64');assert.equal(cpus().length,4);
@@ -381,6 +387,76 @@ export function traceState(path){
   return {present:true,endsWithClosingBracket:b.toString('utf8').trimEnd().endsWith(']'),jsonArrayValidity:'UNKNOWN_NOT_PARSED'};
  }finally{closeSync(fd);}
 }
+function memberLimit(path){
+ return path==='compiler.log'?LIMITS.logBytes:['report.json','typegen.json','swap-cleanup.json'].includes(path)?LIMITS.reportBytes:
+  ['inputs.json','resources.json','monitor.jsonl'].includes(path)?LIMITS.metadataBytes:LIMITS.fileBytes;
+}
+/** Fixed names only. Observation never reads a member payload or reflects unknown names. */
+function observeFixedMembers(root){
+ return EXPORTS.map(path=>{
+  const row={path,kind:'UNKNOWN',bytes:null,eligibility:'OBSERVATION_FAILED'};
+  try{const s=lstatSync(join(root,path));row.kind=s.isSymbolicLink()?'SYMLINK':s.isFile()?'REGULAR':s.isDirectory()?'DIRECTORY':'OTHER';
+   if(Number.isSafeInteger(s.size)&&s.size>=0)row.bytes=s.size;
+   row.eligibility=!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.uid!==process.getuid()||(s.mode&0o077)!==0?'UNSAFE_CUSTODY':
+    row.bytes===null?'OBSERVATION_FAILED':s.size>memberLimit(path)?'OVERSIZE':'ELIGIBLE';
+  }catch(e){if(e.code==='ENOENT'){row.kind='ABSENT';row.eligibility='ABSENT';}}
+  return row;
+ });
+}
+function closedRawDirectory(root){
+ const scan=(path,allowed)=>{const dir=opendirSync(path);try{let entry,count=0;
+  while((entry=dir.readSync())!==null){if(++count>allowed.length||!allowed.includes(entry.name))return false;}
+  return true;
+ }finally{dir.closeSync();}};
+ if(!scan(root,[...EXPORTS.filter(p=>!p.includes('/')),'show-config.json','list-files.txt','whole-project.tsbuildinfo','trace']))return false;
+ if(exists(join(root,'trace'))){directory(join(root,'trace'));if(!scan(join(root,'trace'),['trace.json','types.json']))return false;}
+ return true;
+}
+/** One fixed filesystem retention operation. It grants no producer, hosted or compiler authority.
+ * Production calls it only AFTER actual context/typegen binding; temp-FS controls exercise these exact copies.
+ * Every partial raw/safe staging copy remains outside the chosen upload tree. */
+export function retainTraceDiagnostics(root,pending,rawBlock=null){
+ assert([null,'PRODUCER_RECORD_REFUSED','SWAP_CLEANUP_REFUSED'].includes(rawBlock));directory(root);directory(pending);
+ const started=now(),inventory=observeFixedMembers(root),files=[],omitted=[],raw=join(pending,'raw'),safe=join(pending,'safe'),safeStage=join(pending,'safe-stage');
+ let firstFailure=rawBlock,refused=rawBlock!==null,retentionRoot=raw,trace=null,rawFailureFact=null,rawPoint='VALIDATE',rawPath=null;
+ const within=()=>assert(Number(now()-started)/1000000<LIMITS.collectMs,'Fixed retention frontier');
+ const fail=reason=>{firstFailure??=reason;refused=true;};
+ mkdirSync(raw,{mode:0o700});directory(raw);
+ try{
+  within();if(!closedRawDirectory(root))fail('UNKNOWN_RAW_MEMBER');
+ }catch{fail('RAW_DIRECTORY_REFUSED');}
+ for(const row of inventory)if(!['ELIGIBLE','ABSENT'].includes(row.eligibility))fail(row.eligibility==='OVERSIZE'?'MEMBER_OVERSIZE':'MEMBER_UNSAFE');
+ const eligible=inventory.filter(row=>row.eligibility==='ELIGIBLE');
+ if(eligible.reduce((n,row)=>n+row.bytes,0)+LIMITS.reportBytes>LIMITS.totalBytes)fail('AGGREGATE_LIMIT');
+ if(!refused){
+  try{for(const row of eligible){rawPoint='COPY';rawPath=row.path;within();
+   if(row.path.startsWith('trace/')&&!exists(join(raw,'trace')))mkdirSync(join(raw,'trace'),{mode:0o700});
+   const copied=copyHeld(join(root,row.path),join(raw,row.path),row.bytes);assert.equal(copied.bytes,row.bytes);
+   files.push({path:row.path,...copied});
+  }rawPoint='VALIDATE';rawPath=null;validateExportEntries(files);rawPoint='TRACE_TAIL';rawPath='trace/trace.json';
+   trace=traceState(join(raw,'trace/trace.json'));}catch{rawFailureFact={point:rawPoint,path:rawPath,reason:'RAW_COPY_REFUSED'};fail('RAW_COPY_REFUSED');}
+ }
+ if(refused){
+  // Never expose any partial raw tree, even if a previous member copied successfully.
+  files.length=0;retentionRoot=safe;mkdirSync(safe,{mode:0o700});directory(safe);mkdirSync(safeStage,{mode:0o700});directory(safeStage);
+  for(const row of inventory.filter(row=>SAFE_EXPORTS.includes(row.path))){
+   if(row.eligibility!=='ELIGIBLE')continue;
+   try{within();const total=files.reduce((n,r)=>n+r.bytes,0)+row.bytes+LIMITS.reportBytes;assert(total<=LIMITS.totalBytes);
+    const staged=join(safeStage,row.path),copied=copyHeld(join(root,row.path),staged,row.bytes);assert.equal(copied.bytes,row.bytes);
+    // Publish only a complete held copy. A failed copy stays in safe-stage, never in the upload root.
+    renameSync(staged,join(safe,row.path));files.push({path:row.path,...copied});
+   }catch{row.retentionFailure='SAFE_COPY_REFUSED';}
+  }
+  validateExportEntries(files);
+ }
+ for(const row of inventory)if(!files.some(file=>file.path===row.path))omitted.push({path:row.path,bytes:row.bytes,kind:row.kind,
+  reason:row.retentionFailure??(row.eligibility!=='ELIGIBLE'?row.eligibility:refused?'RAW_CAPTURE_REFUSED':'NOT_COPIED')});
+ const rawCaptureComplete=!refused&&['trace/trace.json','trace/types.json'].every(path=>files.some(file=>file.path===path));
+ if(!refused&&!rawCaptureComplete)firstFailure??='RAW_CAPTURE_INCOMPLETE';
+ return {retentionRoot,inventory,files,omitted,firstFailure,rawFailureFact,refused,rawCaptureComplete,complete:rawCaptureComplete,
+  safeMetadataRetained:refused&&files.length>0,trace:refused?null:trace,status:refused||!rawCaptureComplete?1:0,
+  compilerCompletion:'NOT_ADJUDICATED_BY_FILE_RETENTION',completionMeaning:'WHOLE_OBSERVED_FILE_BYTES_WITH_BOTH_TRACE_MEMBERS; NOT_JSON_VALIDITY_OR_NATIVE_OUTPUT_COMPLETION',collectionMs:Number(now()-started)/1000000};
+}
 function collect(){
  const started=now(),temp=realpathSync(process.env.RUNNER_TEMP),exportRoot=join(temp,'compiler-full-trace-export'),
   pending=join(temp,'compiler-full-trace-export-pending');
@@ -388,51 +464,50 @@ function collect(){
  mkdirSync(pending,{mode:0o700});directory(pending);
  const receipt={version:1,kind:'BOUNDED_STOCK_TRACE_EXPORT_NOT_ORDINARY_GATE',source:process.env.AIHR_CI_HEAD??null,
   controller:process.env.AIHR_CI_CONTROL_HEAD??null,runId:process.env.GITHUB_RUN_ID??null,attempt:process.env.GITHUB_RUN_ATTEMPT??null,
-  releaseAuthorized:false,ordinaryCompilerGatePass:false,files:[],omitted:[],complete:false,refused:false};
- let c;
+  releaseAuthorized:false,ordinaryCompilerGatePass:false,files:[],omitted:[],complete:false,rawCaptureComplete:false,refused:false};
+ let retentionRoot=null;
  try{
-  c=context();Object.assign(receipt,recordContext(c));receipt.kind='BOUNDED_STOCK_TRACE_EXPORT_NOT_ORDINARY_GATE';
+  const c=context();Object.assign(receipt,recordContext(c));receipt.kind='BOUNDED_STOCK_TRACE_EXPORT_NOT_ORDINARY_GATE';
   receipt.sourceRestored=true;receipt.controllerSourceRestored=true;
   stageBudget(c.clock.nativeNs,started,LIMITS.collectMs);directory(c.out);
   const typegenRecord=readHeld(join(c.out,'typegen.json'),LIMITS.reportBytes,true);
   const typegen=JSON.parse(typegenRecord.bytes.toString('utf8'));heldIdentity(c,typegen);
-  if(exists(join(c.out,'report.json'))){
-   const report=JSON.parse(readHeld(join(c.out,'report.json'),LIMITS.reportBytes,true).bytes.toString('utf8'));
-   heldIdentity(c,report);assert.equal(report.typegenSha256,typegenRecord.sha256,'Wrong prior typegen generation');
-  }
-  rawFiles(c.out);
-  const cleanup=join(c.temp,'compiler-transport-swap-cleanup.json');
-  if(exists(cleanup)){
-   const h=readHeld(cleanup,LIMITS.reportBytes,true),v=JSON.parse(h.bytes.toString('utf8'));
-   assert.equal(v.runId,c.identity.runId);assert.equal(v.attempt,c.identity.attempt);assert.equal(v.mode,'--full-trace');
-   assert(v.swapAbsent===true&&v.fileAbsent===true&&v.cleanupExit===0,'Owned swap cleanup failed');
-   writeFileSync(join(c.out,'swap-cleanup.json'),h.bytes,{flag:'wx',mode:0o600});
-  }else{
-   const required=cleanupReceiptRequired(typegen,{report:exists(join(c.out,'report.json')),inputs:exists(join(c.out,'inputs.json')),
-    trace:exists(join(c.out,'trace/trace.json')),cache:exists(join(c.out,'whole-project.tsbuildinfo'))});
-   assert(!required,'Structured owned-swap cleanup outcome missing');
-   receipt.swapCleanup='ABSENT_AFTER_FAILED_TYPEGEN; no check artifacts. Provider step authentication must confirm wrapper skipped; no cleanup PASS claimed.';
-  }
-  const entries=EXPORTS.filter(p=>exists(join(c.out,p))).map(path=>({path,...fileHash(join(c.out,path),LIMITS.fileBytes,true)}));
-  validateExportEntries(entries);
-  for(const r of entries){assert(Number(now()-started)/1000000<LIMITS.collectMs,'Collection deadline');
-   if(r.path.startsWith('trace/')&&!exists(join(pending,'trace')))mkdirSync(join(pending,'trace'),{mode:0o700});
-   const copied=copyHeld(join(c.out,r.path),join(pending,r.path),r.bytes);assert.deepEqual(copied,{bytes:r.bytes,sha256:r.sha256});receipt.files.push(r);}
-  receipt.trace=traceState(join(c.out,'trace/trace.json'));receipt.typesPresent=exists(join(c.out,'trace/types.json'));
-  receipt.complete=true;
- }catch(e){
-  receipt.refused=true;receipt.error=String(e);
-  // Pending partial raw copies stay private and OUTSIDE the upload root.
-  receipt.omitted=receipt.files.map(r=>({path:r.path,bytes:r.bytes,reason:'Raw export refused as one whole capture'}));
-  receipt.files=[];
+  // Observe all nine known members BEFORE optional producer-record/cleanup/raw validations can refuse.
+  receipt.initialInventory=observeFixedMembers(c.out);receipt.producerBound=true;let rawBlock=null;
+  try{if(exists(join(c.out,'report.json'))){
+    const report=JSON.parse(readHeld(join(c.out,'report.json'),LIMITS.reportBytes,true).bytes.toString('utf8'));
+    heldIdentity(c,report);assert.equal(report.typegenSha256,typegenRecord.sha256,'Wrong prior typegen generation');
+   }}catch{rawBlock='PRODUCER_RECORD_REFUSED';receipt.firstFailure=rawBlock;}
+  try{
+   const cleanup=join(c.temp,'compiler-transport-swap-cleanup.json');
+   if(exists(cleanup)){
+    const h=readHeld(cleanup,LIMITS.reportBytes,true),v=JSON.parse(h.bytes.toString('utf8'));
+    assert.equal(v.runId,c.identity.runId);assert.equal(v.attempt,c.identity.attempt);assert.equal(v.mode,'--full-trace');
+    writeFileSync(join(c.out,'swap-cleanup.json'),h.bytes,{flag:'wx',mode:0o600});
+    assert(v.swapAbsent===true&&v.fileAbsent===true&&v.cleanupExit===0,'Owned swap cleanup failed');
+   }else{
+    const required=cleanupReceiptRequired(typegen,{report:exists(join(c.out,'report.json')),inputs:exists(join(c.out,'inputs.json')),
+     trace:exists(join(c.out,'trace/trace.json')),cache:exists(join(c.out,'whole-project.tsbuildinfo'))});
+    assert(!required,'Structured owned-swap cleanup outcome missing');
+    receipt.swapCleanup='ABSENT_AFTER_FAILED_TYPEGEN; no check artifacts. Provider step authentication must confirm wrapper skipped; no cleanup PASS claimed.';
+   }
+  }catch{if(rawBlock!==null)receipt.secondaryFailure='SWAP_CLEANUP_REFUSED';rawBlock??='SWAP_CLEANUP_REFUSED';receipt.firstFailure??='SWAP_CLEANUP_REFUSED';}
+  const retained=retainTraceDiagnostics(c.out,pending,rawBlock);retentionRoot=retained.retentionRoot;
+  const {retentionRoot:privatePath,...facts}=retained;Object.assign(receipt,facts);
+ }catch{
+  receipt.refused=true;receipt.complete=false;receipt.rawCaptureComplete=false;receipt.firstFailure??='UNBOUND_OR_COLLECTION_REFUSED';
+  // An unexpected collection failure cannot publish an incomplete chosen tree or unbound diagnostics.
+  retentionRoot=null;receipt.files=[];
+  receipt.omitted=(receipt.initialInventory??[]).map(row=>({path:row.path,bytes:row.bytes,kind:row.kind,
+   reason:row.eligibility==='ELIGIBLE'?'COLLECTION_REFUSED':row.eligibility}));
  }finally{
   receipt.endedMonotonicNs=now().toString();receipt.collectionMs=Number(now()-started)/1000000;
-  if(receipt.refused){mkdirSync(exportRoot,{mode:0o700});directory(exportRoot);json(join(exportRoot,'export-manifest.json'),receipt);}
-  else{json(join(pending,'export-manifest.json'),receipt);assert(!exists(exportRoot));renameSync(pending,exportRoot);directory(exportRoot);}
-  // The upload step requires this actual collector-created root, including a refusal-only manifest.
+  if(retentionRoot===null){mkdirSync(exportRoot,{mode:0o700});directory(exportRoot);json(join(exportRoot,'export-manifest.json'),receipt);}
+  else{json(join(retentionRoot,'export-manifest.json'),receipt);assert(!exists(exportRoot));renameSync(retentionRoot,exportRoot);directory(exportRoot);}
+  // Only this actual collector creates the upload-ready root; fallback never changes failure to success.
   assert(process.env.GITHUB_OUTPUT);appendFileSync(process.env.GITHUB_OUTPUT,'export_ready=true\n');
  }
- assert(!receipt.refused&&receipt.complete,'Bounded trace export refused');
+ assert(!receipt.refused&&receipt.complete,'Bounded trace export refused or incomplete');
 }
 async function main(){
  process.umask(0o077);assert(process.argv.length<=3,'No extra diagnostic arguments');

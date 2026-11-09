@@ -1,7 +1,9 @@
 {
-  "kind": "CLOSED_STOCK_FULL_PROGRAM_TRACE_CONTROLLER_SOURCE_CUSTODY_UNRUN",
-  "parent": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
-  "sourceRef": "codex/compiler-full-stock-trace-mode-20261109",
+  "kind": "CLOSED_STOCK_FULL_TRACE_RECOVERY_SOURCE_CUSTODY_UNRUN",
+  "parent": "3f9f0db0fc4ebcdd5bdb900eb514fe520775bd6a",
+  "localRepairBranch": "codex/compiler-full-stock-trace-recovery-20261109",
+  "publicCommissioningBranch": "codex/compiler-full-stock-trace-mode-20261109",
+  "publicCommissioningControllerSha": "EXTERNALLY_FROZEN_AFTER_DUAL_REVIEW_NOT_SELF_PINNED",
   "scope": [
     ".github/ci/typecheck.sh",
     ".github/ci/compiler-wrapper.test.mjs",
@@ -9,6 +11,11 @@
     ".github/ci/diagnostics/compiler-full-trace.mjs",
     ".github/ci/diagnostics/compiler-full-trace.test.mjs",
     ".github/ci/diagnostics/compiler-full-trace-pair.json",
+    "docs/qualification/compiler-full-stock-trace-source-custody-20261109.json"
+  ],
+  "actualDeltaPaths": [
+    ".github/ci/diagnostics/compiler-full-trace.mjs",
+    ".github/ci/diagnostics/compiler-full-trace.test.mjs",
     "docs/qualification/compiler-full-stock-trace-source-custody-20261109.json"
   ],
   "currentSourcePinsExcludingSelf": [
@@ -29,13 +36,13 @@
     },
     {
       "path": ".github/ci/diagnostics/compiler-full-trace.mjs",
-      "bytes": 35603,
-      "sha256": "6a0de1bf90e33780cfea0f21d6fa765d6b0ddabb36eff6ebb3991b6338c98b0f"
+      "bytes": 41614,
+      "sha256": "af2bcb9b8e3e46d5d7e449573f6aaeac50782a0de8cc663b0fb96b297717c4ba"
     },
     {
       "path": ".github/ci/diagnostics/compiler-full-trace.test.mjs",
-      "bytes": 16447,
-      "sha256": "f6aa86afb835dc921e65f4b59dc4ccd9a389052b9426d6dca3c94f3ce2ba4e4e"
+      "bytes": 26139,
+      "sha256": "3a59450a26403dda0b6557b703f2a754e1cc002234e3b96bccb7f20279380b21"
     },
     {
       "path": ".github/ci/diagnostics/compiler-full-trace-pair.json",
@@ -43,181 +50,184 @@
       "sha256": "da8cee3b2fe058d37b1fd81beb76e7e849645c8cc6f7822a12dd6dc46a56f210"
     }
   ],
-  "actualWholeParentGitPreimages": [
+  "wholeImmediateParentGitPreimages": [
     {
       "path": ".github/ci/typecheck.sh",
-      "commit": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
-      "gitBlob": "8585738c336ddde9a0bc89b903e0bc1016dcda87",
-      "bytes": 3876,
-      "sha256": "cb410d168ff728c97cd5f819d103e0e13b88728b89c0e80fb8b8a4444ce8ae55"
+      "source": "3f9f0db0fc4ebcdd5bdb900eb514fe520775bd6a",
+      "gitBlob": "2b03411c146feab3544f8350d3e6a8e6286efaec",
+      "bytes": 4309,
+      "sha256": "519cde8c254afbdca2dadde8248533ab4ae5dc6c475b31ec7b7791ead0eb028f"
     },
     {
       "path": ".github/ci/compiler-wrapper.test.mjs",
-      "commit": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
-      "gitBlob": "aa8364ac439d6aeb7c54ebb88f98254acf9b0cab",
-      "bytes": 2764,
-      "sha256": "fc6c996fefc6174697c7690912d70951955bd143128c60574fdd1bca95749553"
+      "source": "3f9f0db0fc4ebcdd5bdb900eb514fe520775bd6a",
+      "gitBlob": "0177f716074584c2119a2a9be34498464ce5033d",
+      "bytes": 6879,
+      "sha256": "17914fb139350f6af0fb69fdf49e8ca8c150b8b7f845d4582f31f6bfeaa3c61f"
     },
     {
       "path": ".github/workflows/alpha-focused-checks.yml",
-      "commit": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
-      "gitBlob": "09a37d9dcfbe024178f481f2c4a2d45eae2f249d",
-      "bytes": 13301,
-      "sha256": "f834b7babc1894cbd83e31fb14b6f498f90c3702079d56d0d51b9efb364134c6"
+      "source": "3f9f0db0fc4ebcdd5bdb900eb514fe520775bd6a",
+      "gitBlob": "b579d5e6a787cbf184514b66e01742deec518c2d",
+      "bytes": 17332,
+      "sha256": "3b7c222aec05dca6bfc1b4e46696233d8f4e153feefe9a32c3fd751655a690fa"
+    },
+    {
+      "path": ".github/ci/diagnostics/compiler-full-trace.mjs",
+      "source": "3f9f0db0fc4ebcdd5bdb900eb514fe520775bd6a",
+      "gitBlob": "ba5bc5a40419e09e991298882c1285d3d57c54d7",
+      "bytes": 35603,
+      "sha256": "6a0de1bf90e33780cfea0f21d6fa765d6b0ddabb36eff6ebb3991b6338c98b0f"
+    },
+    {
+      "path": ".github/ci/diagnostics/compiler-full-trace.test.mjs",
+      "source": "3f9f0db0fc4ebcdd5bdb900eb514fe520775bd6a",
+      "gitBlob": "eecd52ba3a548974454956c3fbb8a2d841d8d77f",
+      "bytes": 16447,
+      "sha256": "f6aa86afb835dc921e65f4b59dc4ccd9a389052b9426d6dca3c94f3ce2ba4e4e"
+    },
+    {
+      "path": ".github/ci/diagnostics/compiler-full-trace-pair.json",
+      "source": "3f9f0db0fc4ebcdd5bdb900eb514fe520775bd6a",
+      "gitBlob": "97caf7350685c64c42a55f9a6718279855600b93",
+      "bytes": 2308,
+      "sha256": "da8cee3b2fe058d37b1fd81beb76e7e849645c8cc6f7822a12dd6dc46a56f210"
+    },
+    {
+      "path": "docs/qualification/compiler-full-stock-trace-source-custody-20261109.json",
+      "source": "3f9f0db0fc4ebcdd5bdb900eb514fe520775bd6a",
+      "gitBlob": "b8734450b8af8bbe21d6f165d54d57437882784b",
+      "bytes": 17469,
+      "sha256": "c43b90011047f5e2cecd3a74555f21ae5a466c101e1be9eb2a14e69c2e63b73b"
     }
   ],
   "genuineCurrentToWholeSameParentInverses": [
     {
-      "path": ".github/ci/typecheck.sh",
-      "currentSha256": "519cde8c254afbdca2dadde8248533ab4ae5dc6c475b31ec7b7791ead0eb028f",
-      "wholeParentSha256": "cb410d168ff728c97cd5f819d103e0e13b88728b89c0e80fb8b8a4444ce8ae55",
+      "path": ".github/ci/diagnostics/compiler-full-trace.mjs",
+      "currentSha256": "af2bcb9b8e3e46d5d7e449573f6aaeac50782a0de8cc663b0fb96b297717c4ba",
+      "wholeParentSha256": "6a0de1bf90e33780cfea0f21d6fa765d6b0ddabb36eff6ebb3991b6338c98b0f",
       "hunks": [
         {
-          "currentStart": 156,
-          "currentEnd": 328,
-          "currentRangeSha256": "26075bd6716600a70bf434639a6524c6bcd58544190fd1e50c08599e9b658fc4",
-          "parentStart": 156,
-          "parentEnd": 315,
-          "parentText": "case \"${1:-}\" in \"\"|--incremental-diagnostic|--state-transport-producer|--state-transport-consumer|--whole-cache) (( $# <= 1 )) || exit 2 ;; *) exit 2 ;; esac\n"
-        },
-        {
-          "currentStart": 351,
-          "currentEnd": 468,
-          "currentRangeSha256": "8f815ba7b43abf76af11061ea6cbea8d4542593274360f050c56e2c42258f830",
-          "parentStart": 338,
-          "parentEnd": 338,
+          "currentStart": 2416,
+          "currentEnd": 2494,
+          "currentRangeSha256": "9c16645d280fc7a8001646b38eb48110ec05130e7247edad246337705d0f92e7",
+          "parentStart": 2416,
+          "parentEnd": 2416,
           "parentText": ""
         },
         {
-          "currentStart": 605,
-          "currentEnd": 792,
-          "currentRangeSha256": "1fda5572cb0280abb6275f732125b92406baf57f98e73db5778276769240ea46",
-          "parentStart": 475,
-          "parentEnd": 626,
-          "parentText": "  if [[ \"$compiler_mode\" == --state-transport-producer || \"$compiler_mode\" == --state-transport-consumer || \"$compiler_mode\" == --whole-cache ]]; then\n"
-        },
-        {
-          "currentStart": 1980,
-          "currentEnd": 2144,
-          "currentRangeSha256": "cb4094291c46f400e0b305ec63894451102d306259cb947b9cb3234c6d2fd84a",
-          "parentStart": 1814,
-          "parentEnd": 1814,
+          "currentStart": 4734,
+          "currentEnd": 5064,
+          "currentRangeSha256": "46fb5fd125791163a23c84074543aba70194848bdd0667508bf94d43fe7bf7b8",
+          "parentStart": 4656,
+          "parentEnd": 4656,
           "parentText": ""
         },
         {
-          "currentStart": 3705,
-          "currentEnd": 3849,
-          "currentRangeSha256": "acc692072d6ce2d951c463de47295f2cfdd373b3abef67e78fc7e370695b35c7",
-          "parentStart": 3375,
-          "parentEnd": 3416,
-          "parentText": "if [[ \"${1:-}\" == --whole-cache ]]; then\n"
+          "currentStart": 11948,
+          "currentEnd": 11993,
+          "currentRangeSha256": "788eea40dda33b17c8e12062641e98f3a1c56469ee394ca01ce01f85438a7004",
+          "parentStart": 11540,
+          "parentEnd": 11660,
+          "parentText": " assert.equal(e.GITHUB_WORKFLOW_REF,'StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/heads/main');\n"
+        },
+        {
+          "currentStart": 31349,
+          "currentEnd": 36799,
+          "currentRangeSha256": "79519fcabea891e691a150fcb3471774cc123dcb0a577bc2d9ddeea680eec11f",
+          "parentStart": 31016,
+          "parentEnd": 31016,
+          "parentText": ""
+        },
+        {
+          "currentStart": 37384,
+          "currentEnd": 37542,
+          "currentRangeSha256": "f211b470386c8cae85b2af3dee8002fa1b34ece6154c735c076405dcb1e5722b",
+          "parentStart": 31601,
+          "parentEnd": 31717,
+          "parentText": "  releaseAuthorized:false,ordinaryCompilerGatePass:false,files:[],omitted:[],complete:false,refused:false};\n let c;\n"
+        },
+        {
+          "currentStart": 37548,
+          "currentEnd": 37669,
+          "currentRangeSha256": "6a467eecbc0c3039995a399673ab44c242b4d1df37f87ac0b2e03c11774a6c48",
+          "parentStart": 31723,
+          "parentEnd": 31838,
+          "parentText": "  c=context();Object.assign(receipt,recordContext(c));receipt.kind='BOUNDED_STOCK_TRACE_EXPORT_NOT_ORDINARY_GATE';\n"
+        },
+        {
+          "currentStart": 37987,
+          "currentEnd": 40348,
+          "currentRangeSha256": "5b5411c3e401533acacb5e4accacbca2d5abd856fd81a9aeea2c8e07798eb730",
+          "parentStart": 32156,
+          "parentEnd": 34373,
+          "parentText": "  if(exists(join(c.out,'report.json'))){\n   const report=JSON.parse(readHeld(join(c.out,'report.json'),LIMITS.reportBytes,true).bytes.toString('utf8'));\n   heldIdentity(c,report);assert.equal(report.typegenSha256,typegenRecord.sha256,'Wrong prior typegen generation');\n  }\n  rawFiles(c.out);\n  const cleanup=join(c.temp,'compiler-transport-swap-cleanup.json');\n  if(exists(cleanup)){\n   const h=readHeld(cleanup,LIMITS.reportBytes,true),v=JSON.parse(h.bytes.toString('utf8'));\n   assert.equal(v.runId,c.identity.runId);assert.equal(v.attempt,c.identity.attempt);assert.equal(v.mode,'--full-trace');\n   assert(v.swapAbsent===true&&v.fileAbsent===true&&v.cleanupExit===0,'Owned swap cleanup failed');\n   writeFileSync(join(c.out,'swap-cleanup.json'),h.bytes,{flag:'wx',mode:0o600});\n  }else{\n   const required=cleanupReceiptRequired(typegen,{report:exists(join(c.out,'report.json')),inputs:exists(join(c.out,'inputs.json')),\n    trace:exists(join(c.out,'trace/trace.json')),cache:exists(join(c.out,'whole-project.tsbuildinfo'))});\n   assert(!required,'Structured owned-swap cleanup outcome missing');\n   receipt.swapCleanup='ABSENT_AFTER_FAILED_TYPEGEN; no check artifacts. Provider step authentication must confirm wrapper skipped; no cleanup PASS claimed.';\n  }\n  const entries=EXPORTS.filter(p=>exists(join(c.out,p))).map(path=>({path,...fileHash(join(c.out,path),LIMITS.fileBytes,true)}));\n  validateExportEntries(entries);\n  for(const r of entries){assert(Number(now()-started)/1000000<LIMITS.collectMs,'Collection deadline');\n   if(r.path.startsWith('trace/')&&!exists(join(pending,'trace')))mkdirSync(join(pending,'trace'),{mode:0o700});\n   const copied=copyHeld(join(c.out,r.path),join(pending,r.path),r.bytes);assert.deepEqual(copied,{bytes:r.bytes,sha256:r.sha256});receipt.files.push(r);}\n  receipt.trace=traceState(join(c.out,'trace/trace.json'));receipt.typesPresent=exists(join(c.out,'trace/types.json'));\n  receipt.complete=true;\n }catch(e){\n  receipt.refused=true;receipt.error=String(e);\n  // Pending partial raw copies stay private and OUTSIDE the upload root.\n  receipt.omitted=receipt.files.map(r=>({path:r.path,bytes:r.bytes,reason:'Raw export refused as one whole capture'}));\n  receipt.files=[];\n"
+        },
+        {
+          "currentStart": 40455,
+          "currentEnd": 40854,
+          "currentRangeSha256": "d9812ca610f76c6c56329958420702d1d1c52c7161a251fb95f01a7291486b68",
+          "parentStart": 34480,
+          "parentEnd": 34857,
+          "parentText": "  if(receipt.refused){mkdirSync(exportRoot,{mode:0o700});directory(exportRoot);json(join(exportRoot,'export-manifest.json'),receipt);}\n  else{json(join(pending,'export-manifest.json'),receipt);assert(!exists(exportRoot));renameSync(pending,exportRoot);directory(exportRoot);}\n  // The upload step requires this actual collector-created root, including a refusal-only manifest.\n"
+        },
+        {
+          "currentStart": 40958,
+          "currentEnd": 41048,
+          "currentRangeSha256": "cc826554998bee0a905b87a9a0b0085fe2d8630edf9885f2cc1dbf7912153b83",
+          "parentStart": 34961,
+          "parentEnd": 35037,
+          "parentText": " assert(!receipt.refused&&receipt.complete,'Bounded trace export refused');\n"
         }
       ]
     },
     {
-      "path": ".github/ci/compiler-wrapper.test.mjs",
-      "currentSha256": "17914fb139350f6af0fb69fdf49e8ca8c150b8b7f845d4582f31f6bfeaa3c61f",
-      "wholeParentSha256": "fc6c996fefc6174697c7690912d70951955bd143128c60574fdd1bca95749553",
+      "path": ".github/ci/diagnostics/compiler-full-trace.test.mjs",
+      "currentSha256": "3a59450a26403dda0b6557b703f2a754e1cc002234e3b96bccb7f20279380b21",
+      "wholeParentSha256": "f6aa86afb835dc921e65f4b59dc4ccd9a389052b9426d6dca3c94f3ce2ba4e4e",
       "hunks": [
         {
-          "currentStart": 2764,
-          "currentEnd": 6879,
-          "currentRangeSha256": "2ac637c219ff9ea768596e1f2e54812780c8c4fafa3afbe56520fcc23f404300",
-          "parentStart": 2764,
-          "parentEnd": 2764,
-          "parentText": ""
-        }
-      ]
-    },
-    {
-      "path": ".github/workflows/alpha-focused-checks.yml",
-      "currentSha256": "3b7c222aec05dca6bfc1b4e46696233d8f4e153feefe9a32c3fd751655a690fa",
-      "wholeParentSha256": "f834b7babc1894cbd83e31fb14b6f498f90c3702079d56d0d51b9efb364134c6",
-      "hunks": [
-        {
-          "currentStart": 1253,
-          "currentEnd": 1435,
-          "currentRangeSha256": "e25bb69d76e5c92c38407c8168898dcf79c003ae8007cb7567738002609055d5",
-          "parentStart": 1253,
-          "parentEnd": 1253,
-          "parentText": ""
+          "currentStart": 198,
+          "currentEnd": 369,
+          "currentRangeSha256": "4166fe66543ea864974fc83a260f757bec432565b7b029da45488dd02b3287ff",
+          "parentStart": 198,
+          "parentEnd": 334,
+          "parentText": "import {readFileSync,writeFileSync,mkdtempSync,realpathSync,chmodSync,symlinkSync,linkSync,unlinkSync,rmSync,lstatSync} from 'node:fs';\n"
         },
         {
-          "currentStart": 3681,
-          "currentEnd": 3800,
-          "currentRangeSha256": "7ecf787177286b9528a209257005d5f36df2ba963b65e1a22060bc00b6208ea9",
-          "parentStart": 3499,
-          "parentEnd": 3549,
-          "parentText": "      tests: ${{ steps.selection.outputs.tests }}\n"
+          "currentStart": 433,
+          "currentEnd": 570,
+          "currentRangeSha256": "7f1fd376d6d6ed99aa1967ddf071a233ef4c3fe1e55af08d904cf4a711149962",
+          "parentStart": 398,
+          "parentEnd": 492,
+          "parentText": "import {LIMITS,validatePairData,validateTraceInputs,stageBudget,stockCommand,compilerOutcome,\n"
         },
         {
-          "currentStart": 4723,
-          "currentEnd": 4770,
-          "currentRangeSha256": "7c60af5ba1748f9ea16eb9c31646cdbddd081b6dd4d00efc242815b0ffd43b79",
-          "parentStart": 4472,
-          "parentEnd": 4472,
-          "parentText": ""
-        },
-        {
-          "currentStart": 4922,
-          "currentEnd": 5493,
-          "currentRangeSha256": "1b4d11ac1217c1ce74f524f87d6e3f74aa5467e3241b260d6634e21cef5709fe",
-          "parentStart": 4624,
-          "parentEnd": 4624,
-          "parentText": ""
-        },
-        {
-          "currentStart": 5743,
-          "currentEnd": 5786,
-          "currentRangeSha256": "6c52fc97c6c672830918a0b5f233e5995504a41d8e270ab783ffa7d358b2e1a8",
-          "parentStart": 4874,
-          "parentEnd": 4874,
-          "parentText": ""
-        },
-        {
-          "currentStart": 9068,
-          "currentEnd": 10135,
-          "currentRangeSha256": "bec5c1db5ee3f4df8fa40283df1ac359680d9a6fb129448d302780068f749723",
-          "parentStart": 8156,
-          "parentEnd": 8156,
-          "parentText": ""
-        },
-        {
-          "currentStart": 10399,
-          "currentEnd": 10446,
-          "currentRangeSha256": "7c60af5ba1748f9ea16eb9c31646cdbddd081b6dd4d00efc242815b0ffd43b79",
-          "parentStart": 8420,
-          "parentEnd": 8420,
-          "parentText": ""
-        },
-        {
-          "currentStart": 10568,
-          "currentEnd": 10833,
-          "currentRangeSha256": "d1cb3d9af450ec978921b00e15d6a2894a887c56595dcc1a9f942cdf55a24d2d",
-          "parentStart": 8542,
-          "parentEnd": 8542,
-          "parentText": ""
-        },
-        {
-          "currentStart": 10924,
-          "currentEnd": 10971,
-          "currentRangeSha256": "7c60af5ba1748f9ea16eb9c31646cdbddd081b6dd4d00efc242815b0ffd43b79",
-          "parentStart": 8633,
-          "parentEnd": 8633,
-          "parentText": ""
-        },
-        {
-          "currentStart": 11027,
-          "currentEnd": 12720,
-          "currentRangeSha256": "66dc0626af4b106379f7d6f40eb06dc33788ceaaecb64b2a1c680d5fa2e3f178",
-          "parentStart": 8689,
-          "parentEnd": 8689,
+          "currentStart": 16525,
+          "currentEnd": 26139,
+          "currentRangeSha256": "e497634558d744ec399137b60ad2f06fceb0f45f1dcbc8e539f2a7c818897053",
+          "parentStart": 16447,
+          "parentEnd": 16447,
           "parentText": ""
         }
       ]
     }
   ],
-  "pairSourceAcceptance": {
+  "wholeUnchangedLeasedOwners": [
+    ".github/ci/typecheck.sh",
+    ".github/ci/compiler-wrapper.test.mjs",
+    ".github/workflows/alpha-focused-checks.yml",
+    ".github/ci/diagnostics/compiler-full-trace-pair.json"
+  ],
+  "priorFullSourceRecord": {
+    "path": "docs/qualification/compiler-full-stock-trace-source-custody-20261109.json",
+    "source": "3f9f0db0fc4ebcdd5bdb900eb514fe520775bd6a",
+    "gitBlob": "b8734450b8af8bbe21d6f165d54d57437882784b",
+    "bytes": 17469,
+    "sha256": "c43b90011047f5e2cecd3a74555f21ae5a466c101e1be9eb2a14e69c2e63b73b"
+  },
+  "priorRecordMeaning": "Immutable whole3f record preserves original00a27 preimages/16inverses/plans/pair/history. It is historical source provenance, not refreshed runtime authority or nested embedded record. Original3f checkout/branch remains frozen.",
+  "acceptedSourcePair": {
     "control": "0be622808b1b7a07889fdf4ef2f273e43c740c38",
     "candidate": "2202245a62cabcd43ba193150a54dfabb5f71c43",
     "guard": {
@@ -229,66 +239,58 @@
     "noOldUnqualifiedPair": true,
     "noControllerSelfHashInPair": true
   },
-  "plansAndAcceptedSourceEvidence": [
+  "approvedRecoveryContractAndIndependentFinding": [
     {
-      "name": "aihr-compiler-full-stock-trace-mode-source-plan-20261109.md",
-      "bytes": 21636,
-      "sha256": "83b580a6b0d49ffe723d15ac1df1df2f241dfd909ba26eb0c0ec2590b171fd68"
+      "name": "aihr-compiler-full-trace-root-recovery-contract-amendment-20261109.md",
+      "bytes": 6990,
+      "sha256": "8264559bb7e09f9e0f048187b2a2a7816e8fa5933a9abb3e1ce844685eb5270d"
     },
     {
-      "name": "aihr-compiler-full-stock-trace-mode-typegen-clarification-20261109.md",
-      "bytes": 4407,
-      "sha256": "5fcf0ceea5062100597138f4ab70d597fcf3590b659c8e98d41eee167335aa38"
+      "name": "aihr-compiler-full-trace-independent-full-source-review-20261109.json",
+      "bytes": 10494,
+      "sha256": "9d6ec54cc0708faf60fb6f45a3f088ac18d9273e6fc85c69fd8fe8336386d9b1"
     },
     {
-      "name": "aihr-compiler-db-email-pair-root-dual-source-acceptance-20261109.json",
-      "bytes": 1031,
-      "sha256": "29b258cdf96d06f18bbc5cd4be0f95a7e7404b6f3539c885ca150185de1fe6ef"
-    },
-    {
-      "name": "aihr-compiler-db-email-pair-independent-full-source-review-20261109.json",
-      "bytes": 5299,
-      "sha256": "aea544d915485514cacf20cf6c5aff9fde1db20d39d53f06aa3aef66ad95f895"
+      "name": "aihr-compiler-full-trace-independent-commissioning-ref-assessment-20261109.json",
+      "bytes": 4657,
+      "sha256": "e4356d1b3e73a13b33e839dcd99591d60ec8e92052a0c370e7de19099713a7d8"
     }
   ],
+  "sourceSemantics": {
+    "commissioning": "Actual context calls the exact two-literal validateWorkflowRef adjudicator. Repository ID/fullname/event/attempt/job/host/actual controller SHA/clean automation/source/15input/pair/stock byte checks remain. No arbitrary branch/prefix/tag/source input. Local repair branch differs from ONE original remote commissioning branch; actual eventual controller SHA is external Git/provider admission only.",
+    "fixedFsSurface": "retainTraceDiagnostics(root,pending,rawBlock) is one nine-member/seven-safe-member fixed FS retention operation, no configurable selection/cap/program/decoder/authority callback. Actual collector invokes it only after actual context and held typegen producer/root/clock/source identity. Its public pure/FS surface grants no hosted authority; temp-FS controls exercise real copy paths without inventing a producer.",
+    "observation": "Nine fixed known-member kind/knownsize/eligibility or absent/unknown facts observed immediately after producer binding, BEFORE optional report/cleanup/raw validation. Operation reobserves before raw scan/size/aggregate/copy. Unknown extra names cause closed refusal without reflecting names.",
+    "rawRefusal": "First closed refusal cause retained. Full known-member inventory plus disjoint copied/omitted facts survive. Aggregate bound checked before any payload copy. All raw partial copies remain under private raw staging outside chosen upload root.",
+    "fallback": "After any raw/precondition refusal the seven fixed safe members are independently custody/size/hash-copied under existing cap. Each successful safe copy is promoted from separate private staging; a failed/partial copy is never selected. Unsafe/oversize/absent/unknown/copy-refused members have fixed-name enum omissions. Trace/types/buildinfo never enter fallback.",
+    "cleanup": "Run/attempt/mode-bound actual private cleanup bytes may be retained even when its native outcome refuses; refusal remains first failure/nonzero. Foreign/unsafe cleanup does not become authenticated diagnostics. Existing original swap wrapper and exit semantics are byte-whole.",
+    "failure": "refused remains true/status1/complete and rawCaptureComplete false after fallback. Missing native trace member produces incomplete/status1; no native compiler or JSON completion is inferred. Whole observed byte capture with both raw members is distinct from JSON validity/native output completion. Native compiler completion remains actual bound report only.",
+    "unbound": "Absent actual producer/context binding permits only bounded refusal manifest; no unbound data file becomes authenticated diagnostic. Unexpected collection failure clears candidate files and cannot expose a partial selected tree.",
+    "finally": "Actual collector alone creates and renames final upload root and emits ready output. Original20s external hard collector/native clock/reserve unchanged. Bounded safe omission facts do not replace original native log/report failure.",
+    "preserved": "Whole fixed pair, workflow, wrapper source and wrapper controls; stockCommand/stage/clock/budgets/limits/typegen/run/input/native checks/cleanup helpers all body-whole except context ref adjudicator. Original22 control callback bodies whole. No new CLI role or command. No cap/pool/resource/template/product owner change."
+  },
   "authoredSourceCensus": {
-    "helperCases": 18,
+    "oldCases": 22,
+    "newCases": 9,
+    "totalCases": 31,
+    "helperCases": 27,
     "wrapperCases": 4,
-    "oldWrapperCasesRetainedWhole": 1,
-    "totalSelectedControllerCases": 22,
-    "actualRuntimeOutcome": "UNRUN_NOT_PASS",
-    "actualNamesByOwner": {
-      ".github/ci/diagnostics/compiler-full-trace.test.mjs": [
-        "pair is the exact corrected CONTROL and direct CANDIDATE, not the unqualified original pair",
-        "pair schema refuses expanded roles, paths, duplicated source and placeholders",
-        "both exact fifteen-input selections and omitted optional defaults admit as data only",
-        "trace selection refuses mixed operations, missing required fields, nulls and foreign source",
-        "same clock parser refuses stale identities, missing native clock, future clock and unknown fields",
-        "same producer binding and real-typegen success adjudicators refuse relabelled or invented readiness data",
-        "missing swap receipt is failure unless failed typegen left no checking artifacts, with no invented cleanup PASS",
-        "stock command is fixed full-config CLI with no arbitrary checker, project or executable input",
-        "whole native slots fit exact independent boundaries and collector uses the reserved tail",
-        "OOM, timeout, missing count, diagnostics and unsettled native close never become completion",
-        "held private files use real bytes and refuse public modes, symlinks, hardlinks and oversize",
-        "same stability adjudicator rejects replaced inode, truncation, growth and timestamp drift as data",
-        "actual copy preserves incomplete stock trace bytes without a synthetic closing bracket",
-        "tail observation distinguishes presence from valid JSON or complete type catalogue",
-        "closed export limits include metadata, unique members and the reserved manifest byte bound",
-        "actual copy refuses unsafe raw files and never replaces an existing destination",
-        "same actual input postimage reader rejects changed bytes, missing input, unsafe path and expired frontier",
-        "workflow trace selection keeps default-off ordinary commands, original job cap and bounded failure collection"
-      ],
-      ".github/ci/compiler-wrapper.test.mjs": [
-        "actual whole-cache shell branch runs only its intended compiler helper and preserves nonzero exits",
-        "actual full-trace shell dispatch preserves exact helper and actual nonzero compiler exits",
-        "actual trace EXIT trap cannot turn unknown swap or foreign-file cleanup into successful compilation",
-        "unknown/extra trace arguments and incompatible capacity refuse before resource or compiler execution"
-      ]
-    },
-    "helperDataAndFilesystemExports": [
+    "old22CallbackBodiesWhole": true,
+    "newActualNames": [
+      "actual fixed retention omits unsafe raw member while preserving exact safe report/log and complete known-member facts",
+      "actual sparse over-cap raw member is refused before payload copy and other safe bytes survive",
+      "actual two sparse512MiB raw files refuse aggregate budget including manifest while safe metadata survives",
+      "actual fallback omits an unsafe safe member independently while other safe metadata remains exact",
+      "actual cleanup-refusal path keeps its first failure/nonzero status and never publishes raw trace or buildinfo",
+      "actual unknown raw-name refusal preserves all fixed omission facts without reflecting or copying the unknown path",
+      "actual fixed file operation copies both raw files exactly and distinguishes missing native output from completeness",
+      "actual workflow-ref adjudicator admits only main and one literal commissioning branch as data, never hosted authority",
+      "actual unreadable safe member causes raw copy refusal and isolated fallback retains other complete safe bytes"
+    ],
+    "helperExports": [
       "LIMITS",
       "validatePairData",
       "validateTraceInputs",
+      "validateWorkflowRef",
       "stageBudget",
       "stockCommand",
       "compilerOutcome",
@@ -301,78 +303,73 @@
       "verifyFileManifest",
       "validateExportEntries",
       "copyHeld",
-      "traceState"
+      "traceState",
+      "retainTraceDiagnostics"
     ],
-    "cliRoles": [
-      "--selection",
-      "--typegen",
-      "NOARGS stock trace",
-      "--collect"
+    "wholeOriginalHelperFunctions": [
+      "pin",
+      "validatePairData",
+      "validateTraceInputs",
+      "stageBudget",
+      "stockCommand",
+      "compilerOutcome",
+      "sameStat",
+      "directory",
+      "readHeld",
+      "fileHash",
+      "json",
+      "git",
+      "childEnvironment",
+      "pair",
+      "anchorIdentity",
+      "validateAnchorData",
+      "anchor",
+      "cleanSource",
+      "recordContext",
+      "rawFiles",
+      "logRange",
+      "stage",
+      "validateProducerFragment",
+      "validateTypegenSuccess",
+      "cleanupReceiptRequired",
+      "heldIdentity",
+      "generated",
+      "typegen",
+      "captureInputs",
+      "verifyFileManifest",
+      "run",
+      "validateExportEntries",
+      "copyHeld",
+      "traceState",
+      "main"
     ],
-    "workflowInputs": [
-      14,
-      15
-    ]
+    "selectors": [
+      "node --test .github/ci/diagnostics/compiler-full-trace.test.mjs .github/ci/compiler-wrapper.test.mjs"
+    ],
+    "outcome": "AUTHORED_UNRUN_NOT_PASS"
   },
-  "sourceSemantics": {
-    "defaultOff": "Whole original workflow object restored by external YAML OFF projection. Original shell default compiler command and all five old selectors remain. Only new mode takes new EXIT cleanup semantics. Original wrapper test body/prefix whole.",
-    "on": "Exact fixed two-source trace-only selection; no application tests/native/build/provider/DB mixed operation. Exact15-key allowed schema with legitimate omitted optional default serialization.",
-    "nativeCommands": "Only stock TS5.9.3/Node22.23.3 full config and real Next typegen. GNU fixed130s typegen/730s checking; same30min outer first-step clock and180s tail;20s hard collector. No custom Program/checker or generic execution inputs.",
-    "coldScope": "Fresh checking process/absent private buildinfo; setup/typegen/stock inventories can warm OS files and stock Node code caches. Stock tsc.js enables Node compile cache when available. No restored TypeScript semantic state or zero-OS/code-cache claim.",
-    "candidateExecutionHonesty": "Stock TSC input/checking child executes no candidate module. Existing setup/install hooks and metered Next typegen may execute next.config and imports.",
-    "inputCorroboration": "Stock showConfig/listFilesOnly with full old roots plus identical guard; held ordered files/config/compiler/generated Next declaration bytes checked after native command when full frontier fits. This is not an interception of checker reads or an invented Program census.",
-    "custody": "Exclusive private clock/raw roots; native source/controller/producer identity and stable inode checks; real native statuses; immutable phase fragments; incomplete trace preserved; no invented types. Pending copies never upload if refusal. Final export requires collector-created ready output.",
-    "swap": "New trace flag joins structured original swap cleanup, with explicit nonzero exit preservation and no blind active/unknown unlink. Failed typegen without check artifacts may export absence marked UNCONFIRMED wrapper-skip premise requiring provider-step authentication; never a cleanup PASS.",
-    "caps": "12GiB heap; exact standard4CPU/16GiB bounds;512MiB native file;16MiB log/metadata;1GiB hard export INCLUDING manifest;1000 monitor rows;20GiB initial/2GiB observed free floor. No raised job cap.",
-    "release": "Diagnostic compiler completion is never ordinary whole compiler gate PASS, cache witness, native context qualification, deployment or release authority."
+  "externalSourceAnalysis": {
+    "name": "aihr-compiler-trace-recovery-external-source-analysis-20261109.json",
+    "bytes": 7199,
+    "sha256": "e1e776c91322816d065956db368e9314c3a5ff8fb70819bb78ac56a69b25d530",
+    "meaning": "External installed Babel source parsing and data byte comparison only; no target import or execution."
   },
-  "sourceDataProofs": [
-    {
-      "name": "aihr-compiler-full-trace-actual-source-ast-20261109.json",
-      "bytes": 3412,
-      "sha256": "0fbbe8a7ab4dae5c709991c48cfb05592736c7aedfd20ef3e0b2569167793f35",
-      "meaning": "External syntax/data source analysis only; no candidate import or execution"
-    },
-    {
-      "name": "aihr-compiler-full-trace-static-workflow-proof-20261109.json",
-      "bytes": 427,
-      "sha256": "f7cbb124f185b3184ee0c2e530e93917cad89262ba78f6c7e4b744b4ff76a43e",
-      "meaning": "External syntax/data source analysis only; no candidate import or execution"
-    }
+  "acyclicity": "Self current pin excluded. Pair has no controller self hash. All7immediate-parent preimages are real immutable Git refs; two production/control current-to-whole3f inverses. Prior metadata wholeGit object, no recursive copied record. Public repaired controller SHA bound externally after freeze/review.",
+  "openGates": [
+    "Root and different-author FULL actual corrected source/data review",
+    "Separate authorized public publication and actual registry/path15input/remote ref/exact repaired controller verification",
+    "All31 actual controller pure/FS/shell controls in standard hosted execution",
+    "Exact matched fresh CONTROL/CANDIDATE stock full-project trace cells and native cleanup/input facts",
+    "Actual ordinary compiler and typed contract PASS; no source review or trace-only substitute"
   ],
-  "sourceClosure": {
-    "newHelperImports": "Node built-ins only; fixed pair JSON loaded at exact source URL. No target TypeScript/Drizzle/application module import.",
-    "unchangedWholePrimaryOwners": [
-      ".github/actions/setup-alpha/action.yml",
-      ".github/ci/resolve.mjs",
-      ".github/ci/focused-checks.mjs",
-      ".github/ci/runner-capacity.mjs",
-      ".github/ci/release-policy.mjs"
-    ],
-    "fixedExternalPrograms": [
-      "installed Node22.23.3",
-      "installed pnpm10.33.2 for unchanged Next typegen",
-      "GNU timeout/time/prlimit",
-      "local bounded Git reads"
-    ],
-    "runtimePathsNotLeased": [
-      "BOOT/startup",
-      "application4path pair",
-      "SQL/journal/migrations/DB roles",
-      "packages/configs/locales",
-      "optional documentation eighth path"
-    ]
-  },
-  "openPrerequisites": [
-    "root+different-peer full concrete source review",
-    "actual authored pure controls on standard hosted runner",
-    "authorized public controller publication and fresh workflow395862645/path15-input registry verification",
-    "actual matched full trace cells/native process/cleanup/input facts",
-    "actual type-contract and ordinary wholeTSC PASS"
-  ],
-  "acyclicity": "Self current hash excluded; no controller self identity in pair JSON; immutable immediate-parent Git refs and genuine whole-parent replay only. Source-only record is not native authority.",
-  "runtimeQualified": false,
-  "nativeContextQualified": false,
-  "releaseAuthorized": false,
-  "localCandidateImportsTestsCompilerBuildDbNetworkExecuted": false
+  "authority": {
+    "recordRuntimeRead": false,
+    "localTargetImportsTestsCompilerBuildDbNativeNetworkExecuted": false,
+    "publicPushUploadDispatch": false,
+    "rootAndPeerReviewAccepted": false,
+    "runtimeQualified": false,
+    "ordinaryCompilerGatePass": false,
+    "stagingQualified": false,
+    "productionHeld": true
+  }
 }
