@@ -224,7 +224,7 @@ describe('native identity and streamed navigation capture boundaries',()=>{
     return {href:url,documents:mode==='missing-document'?['/']:['/unit','/'],retired:mode==='missing-retirement'?0:1,
      busy:Number(mode==='retired-busy'),unavailable:0,alerts:0};
    },
-   locator(selector:string){return selector==='main [data-navigation-destination="submenu.unit"]'?{count:async()=>0}:locate(selector);},
+   locator(selector:string){return selector==='main [data-navigation-destination="submenu.unit"]'?{count:async():Promise<number>=>0}:locate(selector);},
   });
   const collector=createNavigationCaptureCollector({phase:'baseline'}),capture=collector.captureActor(page,4);
   if(error)await expect(capture).rejects.toThrow(error);
