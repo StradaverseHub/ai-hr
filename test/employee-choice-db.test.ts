@@ -6,6 +6,7 @@ import {eq,sql,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import {readEmployeeChoices,readEmployeeChoicesTx} from '../core/employee-choice';
+import {assertAiPresentationPrincipalTx} from '../core/ai-principal';
 import {isEmployeeChoicePage,type EmployeeChoice,type EmployeeChoicePage} from '../lib/employee-choice';
 import {listEmployees} from '../core/read';
 import {hireEmployee,setEmploymentAssignment,setReportingLine} from '../core/org';
@@ -521,11 +522,17 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   statements:{position:Auxiliary;seal:ReturnType<typeof seal>;executionMs:number;planningMs:number;jit:boolean}[];
  }={state:'unavailable',stage:'catalogue-mismatch-not-observed',statements:[]};
  type EnvelopeStage='requires-complete-tagged-diagnostic'|'admission'|'identity'|'fixture'|'initial-catalogue'|
-  'A0'|'B0'|'B1'|'A1'|'plans'|'terminal-catalogue'|'terminal-identity'|'capture-finished'|'native-settled';
+  'A0'|'B0'|'B1'|'A1'|'plans'|'terminal-catalogue'|'terminal-identity'|'capture-finished'|'native-settled'|
+  'post-public-slot-unavailable'|'post-public-entry'|'post-public-timeouts'|'post-public-principal'|'post-public-realm';
+ type CleanEnvelopeReference={identity:PageRealm;catalogue:unknown};
+ let cleanEnvelopeReference:CleanEnvelopeReference|undefined;
  type EnvelopeSample={arm:'A0'|'B0'|'B1'|'A1';wallMs:number;positions:{position:Auxiliary|'envelope';ms:number}[]};
  type EnvelopePlan={position:Auxiliary|'envelope';seal:ReturnType<typeof seal>;summary:ReturnType<typeof taggedAuxiliaryWork>['summary']};
  const envelopeEvidence:{
   state:'unavailable'|'incomplete'|'settled';stage:EnvelopeStage;failure?:string|null;
+  origin?:'post-public-clean-snapshot';commitAcknowledgedWithinSlot?:true;outerFailure?:string|null;
+  cleanBackend?:Pick<PageRealm,'pid'|'started'>;
+  activeRemainingAtAdmissionMs?:number;postPublicElapsedMs?:number;
   catalogueBefore?:string;catalogueAfter?:string;fixtureOracle?:true;
   sourceSeals?:{position:Auxiliary|'envelope';seal:ReturnType<typeof seal>}[];
   samples:EnvelopeSample[];plans:EnvelopePlan[];
@@ -634,26 +641,29 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   return work;
  };
  const errorHash=(error:unknown)=>error instanceof Error?organisationPageHash(error.message):null;
+ const sealedTaggedCalls=(terminalCatalogue:unknown)=>{
+  if(!fixtureCommitted||touched.length!==500||!terminalCatalogue||observations.length!==12||
+     observations.some(row=>!row.dtoVerified)||positionTimings.length!==12||
+     positionTimings.reduce((count,row)=>count+row.statements.length,0)!==76||rawPlans.length!==16||preTagCalls.length!==6||
+     taggedCalls.size!==4)throw new Error('Incomplete tagged auxiliary source census');
+  return pageAuxiliaryPositions.map((position,index)=>{
+   const held=taggedCalls.get(position);
+   if(!held)throw new Error('Missing held tagged auxiliary statement');
+   const matches=positionTimings.flatMap(row=>row.statements.filter(statement=>statement.position===position));
+   expect(matches).toHaveLength(12);
+   expect(seal(preTagCalls[index+2].compiled)).toEqual(held.seal);
+   for(const match of matches){
+    expect(match.source).toBe('product');
+    expect(match.seal).toEqual(held.seal);
+   }
+   expect(seal(dialect.sqlToQuery(held.query))).toEqual(held.seal);
+   return {position,...held};
+  });
+ };
  const observeTaggedAuxiliaries=async(tx:Tx,identity:PageRealm,terminalCatalogue:unknown)=>{
   taggedEvidence.stage='source-and-clock-admission';
   try{
-   if(!fixtureCommitted||touched.length!==500||!terminalCatalogue||observations.length!==12||
-      observations.some(row=>!row.dtoVerified)||positionTimings.length!==12||
-      positionTimings.reduce((count,row)=>count+row.statements.length,0)!==76||rawPlans.length!==16||preTagCalls.length!==6||
-      taggedCalls.size!==4)throw new Error('Incomplete tagged auxiliary source census');
-   const calls=pageAuxiliaryPositions.map((position,index)=>{
-    const held=taggedCalls.get(position);
-    if(!held)throw new Error('Missing held tagged auxiliary statement');
-    const matches=positionTimings.flatMap(row=>row.statements.filter(statement=>statement.position===position));
-    expect(matches).toHaveLength(12);
-    expect(seal(preTagCalls[index+2].compiled)).toEqual(held.seal);
-    for(const match of matches){
-     expect(match.source).toBe('product');
-     expect(match.seal).toEqual(held.seal);
-    }
-    expect(seal(dialect.sqlToQuery(held.query))).toEqual(held.seal);
-    return {position,...held};
-   });
+   const calls=sealedTaggedCalls(terminalCatalogue);
    // This setting command still runs under the existing 20-second limit.
    // Reserve it before starting the separate 12-second diagnostic window.
    taggedEvidence.catalogueBefore=organisationPageHash(JSON.stringify(terminalCatalogue));
@@ -704,22 +714,22 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    taggedEvidence.failure=errorHash(error);
   }
  };
- const compareTaggedEnvelope=async(tx:Tx,identity:PageRealm)=>{
-  // Only the original refusal path reaches here. The original diagnostic must
-  // have finished in this same held transaction with its exact shorter timeout.
-  if(taggedEvidence.stage!=='capture-finished'||taggedEvidence.failure!==undefined||
-     !taggedEvidence.catalogueStableDuringDiagnostic||taggedPlans.length!==4)return;
+ const compareTaggedEnvelope=async(tx:Tx,identity:PageRealm,clean?:{deadline:number;catalogue:unknown})=>{
+  // On the original refusal path, the earlier diagnostic must have finished in
+  // this same held transaction with its exact shorter timeout.
+  if(!clean&&(taggedEvidence.stage!=='capture-finished'||taggedEvidence.failure!==undefined||
+     !taggedEvidence.catalogueStableDuringDiagnostic||taggedPlans.length!==4))return;
   envelopeEvidence.stage='admission';
   try{
-   active('tagged auxiliary envelope admission',42000);
-   const end=performance.now()+42000;
+   if(!clean)active('tagged auxiliary envelope admission',42000);
+   const end=clean?.deadline??performance.now()+42000;
    const step=(stage:EnvelopeStage,remaining=2000)=>{
     envelopeEvidence.stage=stage;
     active('tagged auxiliary envelope '+stage,remaining);
     requireTime(end,remaining,'tagged auxiliary envelope '+stage);
    };
    envelopeEvidence.state='incomplete';
-   const originals=pageAuxiliaryPositions.map((position,index)=>{
+   const originals=clean?sealedTaggedCalls(clean.catalogue):pageAuxiliaryPositions.map((position,index)=>{
     const held=taggedCalls.get(position);
     if(!held||taggedEvidence.statements[index]?.position!==position)throw new Error('Missing sealed auxiliary comparison input');
     expect(held.seal).toEqual(taggedEvidence.statements[index].seal);
@@ -751,10 +761,12 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    step('fixture');
    const [shape]=await tx.execute<{units:number;tags:number}>(sql`select
     (select count(*)::int from public.business_unit where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid
-     and id=any(${organisationPageArray([represented,empty])}::uuid[])) as units,
+     and id=any(${organisationPageArray([represented,empty])}::uuid[])${clean?sql`
+     and (id,code,name) in (select id,code,name from jsonb_to_recordset(${JSON.stringify(units)}::jsonb) as expected(id uuid,code text,name text))`:sql``}) as units,
     (select count(*)::int from public.assignment where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid
      and department_id=${b.deptA}::uuid and business_unit_id=${represented}::uuid and valid_to is null
-     and superseded_at is null and employment_id=any(${sampleArray}::uuid[])) as tags`);
+     and superseded_at is null and employment_id=any(${sampleArray}::uuid[])${clean?sql`
+     and (id,employment_id) in (select id,"employmentId" from jsonb_to_recordset(${JSON.stringify(touched)}::jsonb) as expected(id uuid,"employmentId" uuid))`:sql``}) as tags`);
    step('fixture',0);
    expect(shape).toEqual({units:2,tags:500});
    step('initial-catalogue');
@@ -762,7 +774,8 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    step('initial-catalogue',0);
    if(!before)throw new Error('Missing initial auxiliary comparison catalogue');
    envelopeEvidence.catalogueBefore=organisationPageHash(JSON.stringify(before));
-   expect(envelopeEvidence.catalogueBefore).toBe(taggedEvidence.catalogueAfter);
+   if(clean)expect(before).toEqual(clean.catalogue);
+   else expect(envelopeEvidence.catalogueBefore).toBe(taggedEvidence.catalogueAfter);
    const run=async(call:typeof originals[number]|typeof alternate,arm:EnvelopeSample['arm'])=>{
     step(arm);
     const start=performance.now(),rows=await tx.execute(call.query),ms=performance.now()-start;
@@ -824,6 +837,50 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    step('capture-finished',0);
   }catch(error){
    envelopeEvidence.failure=errorHash(error);
+   if(clean)throw error;
+  }
+ };
+ const observeCleanEnvelope=async(open:typeof database.withTenant,reference:CleanEnvelopeReference)=>{
+  envelopeEvidence.origin='post-public-clean-snapshot';
+  const start=performance.now(),settleBy=start+72000;
+  envelopeEvidence.activeRemainingAtAdmissionMs=activeEnd-start;
+  if(signal.aborted||settleBy>activeEnd){
+   envelopeEvidence.stage='post-public-slot-unavailable';
+   return;
+  }
+  envelopeEvidence.stage='post-public-entry';
+  envelopeEvidence.state='incomplete';
+  const enterBy=start+18000,nativeEnd=settleBy-8000;
+  const entrySignal=AbortSignal.any([signal,AbortSignal.timeout(18000)]);
+  try{
+   // The checkout signal only governs admission. Always await the real driver
+   // settlement and retain an incomplete receipt if it exceeds this slot.
+   await open(ctx,tx=>track((async()=>{
+    entrySignal.throwIfAborted();requireTime(enterBy,2000,'post-public auxiliary entry');
+    envelopeEvidence.stage='post-public-timeouts';
+    await tx.execute(sql`select set_config('statement_timeout','2s',true),set_config('lock_timeout','300ms',true)`);
+    entrySignal.throwIfAborted();requireTime(enterBy,0,'post-public auxiliary timeouts');
+    const nativeStep=(stage:EnvelopeStage,remaining=2000)=>{
+     envelopeEvidence.stage=stage;
+     signal.throwIfAborted();requireTime(nativeEnd,remaining,'post-public auxiliary '+stage);
+    };
+    nativeStep('post-public-principal');
+    await assertAiPresentationPrincipalTx(tx,ctx);
+    nativeStep('post-public-principal',0);
+    nativeStep('post-public-realm');
+    const [identity]=await tx.execute<PageRealm>(pageRealm);
+    nativeStep('post-public-realm',0);
+    expect(identity.pid).toBeGreaterThan(0);expect(identity.started).toMatch(/^\d+(?:\.\d+)?$/);
+    expect(identity).toEqual({...reference.identity,pid:identity.pid,started:identity.started,statement_timeout:'2s'});
+    envelopeEvidence.cleanBackend={pid:identity.pid,started:identity.started};
+    await compareTaggedEnvelope(tx,identity,{deadline:nativeEnd,catalogue:reference.catalogue});
+   })()),{readOnlySnapshot:true,readSignal:entrySignal});
+   signal.throwIfAborted();requireTime(settleBy,0,'post-public auxiliary settlement');
+   envelopeEvidence.commitAcknowledgedWithinSlot=true;
+  }catch(error){
+   envelopeEvidence.outerFailure=errorHash(error);
+  }finally{
+   envelopeEvidence.postPublicElapsedMs=performance.now()-start;
   }
  };
  type OwnerStep=(label:string,remaining?:number)=>void;
@@ -943,6 +1000,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    }
    expect(await realm(tx,active,'ai_hr_app')).toEqual(identity);
    active('ABBA transaction completion',0);
+   cleanEnvelopeReference={identity,catalogue:terminalCatalogue};
   })()),{readOnlySnapshot:true,readSignal:signal});
   // Independently time the public port including its checkout and settlement.
   const actual=database.withTenant;
@@ -963,6 +1021,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    }
   }finally{publicSpy.mockRestore();}
   active('public port evidence completion',0);
+  if(cleanEnvelopeReference)await observeCleanEnvelope(actual,cleanEnvelopeReference);
  }catch(error){
   workFailed=true;workFailure=catalogueRefusal?catalogueRefusal.error:error;
   if(catalogueRefusal&&catalogueRefusal.error!==error){
@@ -1033,11 +1092,12 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  metadata.restored=restored;metadata.ownerStopRequired=organisationPageUnconfirmed;
  if(taggedEvidence.stage==='capture-finished'&&taggedEvidence.failure===undefined&&!appOuterRefusal&&restored&&metadata.nativeAppSettled===true){
   taggedEvidence.state='complete';taggedEvidence.stage='native-settled';
-  if(envelopeEvidence.stage==='capture-finished'&&envelopeEvidence.failure===undefined){
-   envelopeEvidence.state='settled';envelopeEvidence.stage='native-settled';
-   envelopeEvidence.meetsCausalGate=envelopeEvidence.matchesRetainedVisibility===true&&envelopeEvidence.reducesVisibilityWork===true&&
-    envelopeEvidence.boundedAssignment===true&&envelopeEvidence.noTempSpill===true&&envelopeEvidence.fasterAuxiliaries===true;
-  }
+ }
+ if((taggedEvidence.state==='complete'||envelopeEvidence.commitAcknowledgedWithinSlot===true)&&restored&&metadata.nativeAppSettled===true&&
+    envelopeEvidence.stage==='capture-finished'&&envelopeEvidence.failure===undefined){
+  envelopeEvidence.state='settled';envelopeEvidence.stage='native-settled';
+  envelopeEvidence.meetsCausalGate=envelopeEvidence.matchesRetainedVisibility===true&&envelopeEvidence.reducesVisibilityWork===true&&
+   envelopeEvidence.boundedAssignment===true&&envelopeEvidence.noTempSpill===true&&envelopeEvidence.fasterAuxiliaries===true;
  }
  const failures=[...(workFailed?[workFailure]:[]),...(appOuterRefusal?[appOuterRefusal.error]:[]),...(restoreFailed?[restoreFailure]:[])];
  metadata.positionTimings=positionTimings;

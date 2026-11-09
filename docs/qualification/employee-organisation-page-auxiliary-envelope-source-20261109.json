@@ -236,5 +236,48 @@
     "retainedHistoricalPairedCalls": 7,
     "retainedHistoricalLeafSharedHits": 12992,
     "nativeObservation": "UNRUN"
+  },
+  "postPublicCleanPath": {
+    "directParent": "d97e739f04dd9a625b8f9960b1bf0dee70dc8348",
+    "historicalRun": {
+      "runId": "42570719598",
+      "source": "d97e739f04dd9a625b8f9960b1bf0dee70dc8348",
+      "controller": "5aa20706fb7219e28bd077307d7d892996640e1a",
+      "attempt": 1,
+      "artifactId": "13652977383",
+      "artifactZipSha256": "c1770824be880759cfec610087c1d3fa1a8998d393e84230d6248cf19ef0c0b1",
+      "nativeReportSha256": "3174a99978003498e98245db394e43cf17a3713daea054d60e807f83641fc886",
+      "vitestReportSha256": "4c866b40b9d257cb0f38178ff3a1036aa7cd7e6618ecdd3d2635194e074d341b",
+      "terminalJobs": 7,
+      "conclusion": "failure",
+      "passedCases": 9,
+      "failedCases": 1,
+      "scaleCaseElapsedMs": 139299.143665,
+      "publicPortMs": {
+        "department-active": 1064.1198330000043,
+        "department-and-unit": 957.7958349999972,
+        "empty-unit": 1028.7718779999996
+      },
+      "originalCatalogueStable": true,
+      "originalCorrectnessAndRelativeGatesPassed": true,
+      "fixtureRestored": true,
+      "auxiliaryEnvelope": "Unavailable because the catalogue mismatch diagnostic was not entered"
+    },
+    "admission": "After the original catalogue and native identity checks, all public timers, and public spy restoration. Open one extra read-only repeatable-read transaction through the same application owner and pool. Require fresh native presentation authority, the same worker, tenant, actor, restricted app role and planner settings, and exact new-transaction backend identity through both arms. The new snapshot may reuse the earlier physical backend.",
+    "clock": {
+      "caseMs": 300000,
+      "originalRestoreReserveMs": 25000,
+      "minimumActiveTimeBeforeOpeningMs": 72000,
+      "entryAndSetupMs": 18000,
+      "boundedNativeWindowMs": 46000,
+      "boundedStatements": 22,
+      "statementMs": 2000,
+      "lockMs": 300,
+      "settlementMarginMs": 8000,
+      "limitations": "The reservation is an admission and evidence frontier. The checkout signal prevents queued admission and guards entry. It does not cancel an in-flight driver startup, socket or COMMIT/ROLLBACK. Await the actual owner, reject late evidence, then use the original no-active-app and restoration gates."
+    },
+    "witness": "Use the four exact captured original objects and ordered-bind seals against the unchanged names-mode envelope in A/B/B/A. Require exact original catalogue and matching terminal catalogue, both owned unit ID/code/name rows and the 500 owned assignment ID/employment pairs, and the same independent four-row DTO oracle and plan gates.",
+    "primaryEvidence": "Original catalogue-mismatch branch, public timing and one-second gate retain their prior authority. An unavailable, failed or settled supplemental receipt cannot replace an original outcome or qualify a public read.",
+    "runtimeObservation": "UNRUN"
   }
 }
