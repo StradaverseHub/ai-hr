@@ -1,3 +1,11 @@
+# AI management presentation snapshot — 9 November 2026 (unapplied)
+
+Reserve `4202_ai_management_presentation_snapshot` at idx 3640 and when 1793330003940
+after the 763-entry architecture journal ending in 4201. The append enables
+provider metadata and spend status reads inside the same read-only snapshot.
+Preserve all 763 earlier entries and their SQL bytes. Refresh peer allocations
+and verify the installed ledger before release admission.
+
 # Assistant Annual Rewards Return snapshot — 9 November 2026 (unapplied)
 
 Reserve `4200_assistant_rewards_return_presentation_snapshot` at idx 3638 and

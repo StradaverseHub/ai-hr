@@ -7,13 +7,14 @@ import { isAdmin, isGroupAdmin } from '../lib/authz-model';
 import { AI_FEATURES, isAiFeature, type AiFeatureId } from '../lib/ai/features';
 import { resolveEntitlementsTx, isModuleEnabled, getSetting } from './entitlements';
 import { SETTING_CATALOG } from '../packs/catalog';
-import { getAiConfigView, resolveActiveAiConfig } from './ai-config';
+import { readAiConfigPresentationTx } from './ai-config';
+import { readAiProviderPresentationTx } from './ai-provider-snapshot';
 import { grantAssistant, revokeAssistant } from './assistant-grant';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { setTenantSetting } from './tenant-settings';
-import { assertAiPrincipalTx } from './ai-principal';
+import { assertAiPresentationPrincipalTx, assertAiPrincipalTx } from './ai-principal';
 import { isZeroCapped } from './ai-zero-cap';
-import {aiSpendStatusTx} from './ai-spend-management';
+import {aiSpendPresentationStatusTx} from './ai-spend-management';
 import { agentSwitchStatesTx, type AgentFeature } from './agent-principal';
 import {AI_MANAGEMENT_SECTIONS,type AiManagementSection} from '../lib/ai/management-sections';
 
@@ -119,17 +120,16 @@ export type AiManagementAllowanceUser=FullManagementView['users'][number];
 /** One existing query/derivation owner. The purpose only excludes unused page detail reads. */
 async function readAiManagement(ctx:SessionContext,search:string,runFilter:AiRunFilter,purpose:'full'|'allowances'|'status') {
   ctx=captureControlContext(ctx);assertAdmin(ctx);
-  // Tenant key/routing configuration needs fresh group-wide authority (getAiConfigView). A company
-  // administrator still manages its own scope here and sees only the provider/model its resolved
-  // configuration would use, never the tenant configuration view.
-  const provider = isGroupAdmin(ctx) ? await getAiConfigView(ctx) : null;
   return withTenant(ctx, async tx => {
-    await currentControlAdminTx(tx,ctx,false);
+    await assertAiPresentationPrincipalTx(tx,ctx);
+    // A scoped administrator sees usable provider/model metadata for the tenant, with group-wide
+    // key/routing metadata reserved for the group administrator under this same snapshot.
+    const provider = isGroupAdmin(ctx) ? await readAiConfigPresentationTx(tx,ctx) : null;
     const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
     const policies = await tx.select().from(aiControlPolicy).orderBy(asc(aiControlPolicy.scopeKey));
     const activeProvider = provider?.providers.find(p => p.isActive);
-    let resolved: Pick<NonNullable<Awaited<ReturnType<typeof resolveActiveAiConfig>>>,'provider'|'model'> | null = null;
-    try { const cfg = await resolveActiveAiConfig(tx,ctx); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }
+    let resolved: Awaited<ReturnType<typeof readAiProviderPresentationTx>> = null;
+    try { resolved = await readAiProviderPresentationTx(tx,ctx); } catch { /* Render unavailable without exposing key/decryption errors. */ }
     const usable = resolved !== null;
     const selectedProvider = !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved;
     // Only provider/model metadata crosses to the view, after checking that its key can be resolved.
@@ -244,8 +244,8 @@ async function readAiManagement(ctx:SessionContext,search:string,runFilter:AiRun
       blocked: activity.filter(r=>Number(r.blocked_today)>0).map(r=>({id:r.id,label:r.label,count:Number(r.blocked_today),reason:r.last_reason}))
         .sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label)),
     };
-    return {spend:await aiSpendStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
-  });
+    return {spend:await aiSpendPresentationStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
+  }, {readOnlySnapshot:true});
 }
 
 export async function setAiFeature(ctx: SessionContext, feature: AiFeatureId, enabled: boolean) {

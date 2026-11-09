@@ -134,6 +134,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '3501_ai_centre_mandate_write_order',
    '4200_assistant_rewards_return_presentation_snapshot',
    '4201_assistant_rewards_calendar_cancel_presentation_snapshot',
+   '4202_ai_management_presentation_snapshot',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

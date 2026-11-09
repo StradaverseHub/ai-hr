@@ -35,8 +35,8 @@ import {
   type ValidateResult,
 } from '../lib/ai';
 import { encryptSecret, keyLast4 } from '../lib/ai/crypto';
-import { currentAiProviderAdminTx } from './ai-provider-authority';
-import { activateOpenRouterCandidateTx, providerCandidatesTx, removeOpenRouterCandidateTx, saveOpenRouterCandidateTx } from './ai-provider-readiness';
+import { currentAiProviderAdminTx, currentAiProviderPresentationAdminTx } from './ai-provider-authority';
+import { activateOpenRouterCandidateTx, providerCandidatesPresentationTx, providerCandidatesTx, removeOpenRouterCandidateTx, saveOpenRouterCandidateTx } from './ai-provider-readiness';
 import { readOpenRouterOptions, type OpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { readGatewayOptions } from '../lib/ai/providers/gateway-options';
 import { OpenRouterModel } from '../lib/ai/providers/openrouter-transport';
@@ -100,50 +100,56 @@ export type AiConfigView = {
 /** Admin-only. The settings-page model: one entry per provider, NEVER including the ciphertext. */
 export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
-    await assertConfigurationAdminTx(tx,ctx);
-    // Explicit column list — the ciphertext is not even granted to the app role, but be unambiguous.
-    const rows = await tx
-      .select({
-        provider: aiProviderConfig.provider,
-        model: aiProviderConfig.model,
-        keyLast4: aiProviderConfig.keyLast4,
-        isActive: aiProviderConfig.isActive,
-        providerOptions: aiProviderConfig.providerOptions,
-      })
-      .from(aiProviderConfig);
-    const byProvider = new Map(rows.map((r) => [r.provider, r]));
-    const candidate = (await providerCandidatesTx(tx, ctx))[0];
-    const providers: AiProviderView[] = PROVIDERS.map((p) => {
-      const meta = PROVIDER_META[p];
-      const row = byProvider.get(p), draft = p === 'openrouter' ? candidate : undefined;
-      return {
-        provider: p,
-        label: meta.label,
-        models: meta.models,
-        defaultModel: meta.defaultModel,
-        configured: Boolean(draft || row),
-        model: draft?.model ?? row?.model ?? meta.defaultModel,
-        keyLast4: draft?.keyLast4 ?? row?.keyLast4 ?? null,
-        isActive: row?.isActive ?? false,
-        providerOptions: draft?.providerOptions ?? (p==='openrouter'&&row?routingOptions(row.providerOptions):null),
-        gatewayBaseUrl: p==='ai_gateway'&&row ? (()=>{ try { return readGatewayOptions(row.providerOptions).baseUrl; } catch { return null; } })() : null,
-        candidateSaved: Boolean(draft),
-        candidateId: draft?.id ?? null,
-        candidateVersion: draft?.version ?? null,
-        activeModel: row?.isActive ? row.model : null,
-        envKeyPresent: meta.envKeyVars.some((v) => Boolean(process.env[v]?.trim())),
-      };
-    });
-    const env = envFallbackConfig();
-    const anyActive = providers.some((p) => p.isActive);
+  return withTenant(ctx, tx => readAiConfigPresentationTx(tx, ctx), { readOnlySnapshot: true });
+}
+
+/** Shares the management page's current read-only snapshot when nested. */
+export async function readAiConfigPresentationTx(tx: Tx, ctx: SessionContext): Promise<AiConfigView> {
+  assertAdmin(ctx);
+  if (!(await currentAiProviderPresentationAdminTx(tx, ctx))) {
+    throw new AiConfigError('Only a current group-wide administrator can manage AI configuration.');
+  }
+  // Explicit column list — the ciphertext is not even granted to the app role, but be unambiguous.
+  const rows = await tx
+    .select({
+      provider: aiProviderConfig.provider,
+      model: aiProviderConfig.model,
+      keyLast4: aiProviderConfig.keyLast4,
+      isActive: aiProviderConfig.isActive,
+      providerOptions: aiProviderConfig.providerOptions,
+    })
+    .from(aiProviderConfig);
+  const byProvider = new Map(rows.map((r) => [r.provider, r]));
+  const candidate = (await providerCandidatesPresentationTx(tx, ctx))[0];
+  const providers: AiProviderView[] = PROVIDERS.map((p) => {
+    const meta = PROVIDER_META[p];
+    const row = byProvider.get(p), draft = p === 'openrouter' ? candidate : undefined;
     return {
-      storable: isSecretStorable(),
-      providers,
-      envFallback: env ? { provider: env.provider, model: env.model } : null,
-      usingEnvFallback: !anyActive && Boolean(env),
+      provider: p,
+      label: meta.label,
+      models: meta.models,
+      defaultModel: meta.defaultModel,
+      configured: Boolean(draft || row),
+      model: draft?.model ?? row?.model ?? meta.defaultModel,
+      keyLast4: draft?.keyLast4 ?? row?.keyLast4 ?? null,
+      isActive: row?.isActive ?? false,
+      providerOptions: draft?.providerOptions ?? (p==='openrouter'&&row?routingOptions(row.providerOptions):null),
+      gatewayBaseUrl: p==='ai_gateway'&&row ? (()=>{ try { return readGatewayOptions(row.providerOptions).baseUrl; } catch { return null; } })() : null,
+      candidateSaved: Boolean(draft),
+      candidateId: draft?.id ?? null,
+      candidateVersion: draft?.version ?? null,
+      activeModel: row?.isActive ? row.model : null,
+      envKeyPresent: meta.envKeyVars.some((v) => Boolean(process.env[v]?.trim())),
     };
   });
+  const env = envFallbackConfig();
+  const anyActive = providers.some((p) => p.isActive);
+  return {
+    storable: isSecretStorable(),
+    providers,
+    envFallback: env ? { provider: env.provider, model: env.model } : null,
+    usingEnvFallback: !anyActive && Boolean(env),
+  };
 }
 
 /**

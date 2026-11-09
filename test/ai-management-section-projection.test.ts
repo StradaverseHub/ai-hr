@@ -4,11 +4,12 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
-import type {SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {aiManagementPageView,aiManagementView,setAiAllowance,setGroupAllowance,setAiFeature} from '../core/ai-management';
 import {aiManagementAlerts,aiInventoryView,aiRunHistory} from '../core/ai-inventory';
-import {saveAiProviderConfig} from '../core/ai-config';
+import {getAiConfigView,saveAiProviderConfig} from '../core/ai-config';
+import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {setAiSpendBudget} from '../core/ai-spend-management';
 import {hireEmployee,terminateEmployment} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -19,6 +20,7 @@ import {anthropicAdapter} from '../lib/ai/providers/anthropic';
 import {googleAdapter} from '../lib/ai/providers/google';
 import {gatewayAdapter} from '../lib/ai/providers/gateway';
 import {openrouterAdapter} from '../lib/ai/providers/openrouter';
+import {readOpenRouterOptions} from '../lib/ai/providers/openrouter-configuration';
 import {observeNativeRead,type NativeReadQuery} from './helpers/native-read-observer';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
@@ -93,8 +95,8 @@ it('preserves all eight group-admin page projections and removes only their unus
   expect(result.probe.queries.length).toBe(baseline.probe.queries.length-(section==='allowances'?1:3));
   const memberships=result.probe.queries.filter(q=>classify(q.sql)==='user-memberships');expect(memberships).toHaveLength(1);
   if(section!=='allowances'){expect(memberships[0].rows).toBe(2);expect(memberships[0].params).toContain(f.heavy);expect(memberships[0].params).toContain(f.quiet);}
-  expect(result.probe.properties).toHaveLength(baseline.probe.properties.length);
-  expect(result.probe.properties.every(p=>p.role==='ai_hr_app'&&p.isolation==='read committed'&&p.readOnly===false)).toBe(true);
+  expect(baseline.probe.properties).toHaveLength(1);expect(result.probe.properties).toHaveLength(1);
+  expect(result.probe.properties.every(p=>p.role==='ai_hr_app'&&p.isolation==='repeatable read'&&p.readOnly===true)).toBe(true);
   expect(result.probe.state).toEqual({active:0,maxActive:1});
  }
  expect(baseline.value.attention.users.map(u=>u.id)).toEqual([f.heavy,f.quiet]);
@@ -117,6 +119,49 @@ it('preserves company-scoped projections without returning group users, runs or 
   expect(visible).not.toContain(otherCompany.id);expect(visible).not.toContain(f.heavy);expect(visible).not.toContain(f.quiet);
  }
  const page=await aiManagementPageView(ctx,'features');expect((await aiInventoryView(ctx,page)).scope).toBe('registry');expect(await aiManagementAlerts(ctx,page)).toEqual({status:'not_shown'});
+});
+
+it('completes group and scoped AI presentation while the tenant Access write lock is held',async()=>{
+ await saveAiProviderConfig(group,{provider:'openai',model:'fictional-lock-test',apiKey:'fictional-lock-test-key',makeActive:true});
+ await saveAiProviderConfig(group,{provider:'openrouter',model:'fictional/candidate',apiKey:'fictional-candidate-key',
+  providerOptions:readOpenRouterOptions({version:1,routing:{allowedProviders:['approved-a']}})});
+ await setAiSpendBudget(group,{kind:'tenant',monthlyUsd:'0',rootUsd:''});
+ const [login]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'projection-lock-scoped-admin'}).returning();
+ await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:login.id,companyId:b.companyId,role:'hr_admin'});
+ const scoped:SessionContext={...group,userId:login.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
+ const adminSnapshot=await aiManagementPageView(group,'overview'),scopedSnapshot=await aiManagementPageView(scoped,'allowances');
+ const configSnapshot=await getAiConfigView(group);
+ expect(configSnapshot.providers.find(provider=>provider.provider==='openrouter')).toMatchObject({candidateSaved:true,model:'fictional/candidate'});
+ expect(adminSnapshot.spend?.budgets).toContainEqual({scopeKey:'tenant',monthlyNanos:'0',rootNanos:null});
+ expect(scopedSnapshot.spend).toBeNull();
+ expect(adminSnapshot.provider).toEqual({provider:'openai',model:'fictional-lock-test'});
+
+ let deadline:ReturnType<typeof setTimeout>|undefined;
+ let reads:Promise<unknown>|undefined;
+ try{
+  await withTenant(group,async tx=>{
+   await lockAccessConfigurationTx(tx,b.tenantId);
+   reads=Promise.all([aiManagementPageView(group,'overview'),aiManagementPageView(scoped,'allowances'),getAiConfigView(group)]);
+   const timeout=new Promise<never>((_,reject)=>{
+    deadline=setTimeout(()=>reject(new Error('AI presentation waited for the held Access lock')),4000);
+   });
+   expect(await Promise.race([reads,timeout])).toEqual([adminSnapshot,scopedSnapshot,configSnapshot]);
+  });
+ }finally{
+  clearTimeout(deadline);
+  await reads?.catch(()=>{});
+ }
+
+ // The read-only path cannot access the provider evaluation key or group-private projections as scoped HR.
+ await expect(withTenant(group,tx=>tx.execute(sql`select * from app.ai_provider_evaluation_candidate_v1('openrouter')`),{readOnlySnapshot:true}))
+  .rejects.toMatchObject({cause:{code:'P0001',message:'AI candidate unavailable'}});
+ await expect(getAiConfigView(scoped)).rejects.toThrow('Only a current group-wide administrator');
+ await expect(withTenant(scoped,tx=>tx.execute(sql`select app.ai_optional_spend_status()`),{readOnlySnapshot:true}))
+  .rejects.toMatchObject({cause:{code:'P0001',message:'AI spend administration unavailable'}});
+ await expect(withTenant(group,async tx=>{
+  await tx.execute(sql`select set_config('app.agent_principal_id', ${randomUUID()}, true)`);
+  return tx.execute(sql`select * from app.ai_provider_candidate_view_v1()`);
+ },{readOnlySnapshot:true})).rejects.toMatchObject({cause:{code:'P0001',message:'AI candidate unavailable'}});
 });
 
 it('keeps zero and null caps, quiet zero-capped users, held tokens and switch attribution exact',async()=>{
