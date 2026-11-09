@@ -1181,7 +1181,9 @@ def run_stock(workspace, temporary, controller, run_id, directory):
         own_json(directory / 'receipt.json', report)
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as stream:
             stream.write('evidence=true\n')
-        print(json.dumps(report, separators=(',', ':')), flush=True)
+        locations = report['diagnosticLocations']
+        console = {**report, 'diagnosticLocations': {'status': locations['status'], 'count': len(locations['rows'])}}
+        print(json.dumps(console, separators=(',', ':')), flush=True)
     return 0 if report['complete'] else 1
 
 
