@@ -108,7 +108,7 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
   }
   async function launch(options:{pauseAfterCommit?:boolean;moduleKill?:string}={}){
    const evidence=processEvidence();
-   const child=spawn(process.execPath,['--import','tsx','test/fixtures/notification-worker/process-child.ts'],{cwd:process.cwd(),env:{PATH:process.env.PATH,TZ:'UTC',LANG:'en_US.UTF-8',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',MODULE_KILL:options.moduleKill??'',SETTING_KILL:''},stdio:['ignore','pipe','pipe','ipc']});
+   const child=spawn(process.execPath,['--import','tsx','test/fixtures/notification-worker/process-child.ts'],{cwd:process.cwd(),env:{PATH:process.env.PATH,NODE_ENV:'test',TZ:'UTC',LANG:'en_US.UTF-8',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',MODULE_KILL:options.moduleKill??'',SETTING_KILL:''},stdio:['ignore','pipe','pipe','ipc']});
    const messages:Message[]=[],waiters=new Set<()=>void>();let output='';
    child.stdout?.on('data',value=>{output+=String(value);if(output.length>16384)child.kill('SIGKILL');});child.stderr?.on('data',value=>{output+=String(value);if(output.length>16384)child.kill('SIGKILL');});
    child.on('message',raw=>{if(raw&&typeof raw==='object'&&'kind'in raw&&typeof raw.kind==='string'){const message=raw as Message;messages.push(message);evidence.transition(message);for(const wake of waiters)wake();}});

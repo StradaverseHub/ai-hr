@@ -33,10 +33,10 @@ export async function prepareNotificationCatalogueReplay(admission:FullCiRoleAdm
  const url=new URL(admission.admin);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/postgres');assert.equal(url.username,'postgres');assert.equal(url.password,'');assert.equal(url.search,'');assert.equal(url.hash,'');
  const sourceHashes=Object.fromEntries(Object.entries(CATALOGUE_REPLAY_SOURCES).map(([key,path])=>{
   const bytes=readFileSync(path);assert(bytes.length>0&&bytes.length<=4*1024*1024);
-  const committed=execFileSync('git',['-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','show','HEAD:'+path],{env:nativePreparationEnvironment(process.env),maxBuffer:4*1024*1024});assert(bytes.equals(committed));
+  const committed=execFileSync('git',['-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','show','HEAD:'+path],{env:{...nativePreparationEnvironment(process.env),NODE_ENV:'test'},maxBuffer:4*1024*1024});assert(bytes.equals(committed));
   return[key,createHash('sha256').update(bytes).digest('hex')];
  }));
- const connection=postgres(admission.admin,{max:1,connect_timeout:2,idle_timeout:2,onnotice:()=>{},connection:{application_name:'aihr-catalogue-replay-prerequisite',statement_timeout:'20s',lock_timeout:'300ms',search_path:'pg_catalog'}});
+ const connection=postgres(admission.admin,{max:1,connect_timeout:2,idle_timeout:2,onnotice:()=>{},connection:{application_name:'aihr-catalogue-replay-prerequisite',statement_timeout:20000,lock_timeout:300,search_path:'pg_catalog'}});
  let observer:ReturnType<typeof postgres>|undefined,observerClose:Promise<void>|undefined,closeWork:Promise<void>|undefined;
  let identity:{pid:number;backendStart:string;postmasterStart:string}|undefined,draft:Record<string,unknown>|undefined;
  const close=()=>closeWork??=connection.end({timeout:0});
@@ -84,7 +84,7 @@ export async function prepareNotificationCatalogueReplay(admission:FullCiRoleAdm
   assert(Buffer.byteLength(JSON.stringify(receipt,null,2)+'\n')<=32768);draft=receipt;return receipt;
  })),close,async active=>{
   assert(identity,'Native replay backend identity missing');active();
-  observer=postgres(admission.admin,{max:1,connect_timeout:2,idle_timeout:2,onnotice:()=>{},connection:{application_name:'aihr-catalogue-replay-absence',statement_timeout:'20s',lock_timeout:'300ms',search_path:'pg_catalog',default_transaction_read_only:'on'}});active();
+  observer=postgres(admission.admin,{max:1,connect_timeout:2,idle_timeout:2,onnotice:()=>{},connection:{application_name:'aihr-catalogue-replay-absence',statement_timeout:20000,lock_timeout:300,search_path:'pg_catalog',default_transaction_read_only:true}});active();
   for(;;){
    active();const [proof]=await observer<{sameCluster:boolean;ownedPresent:boolean;observerPid:number;observerStart:string;observedAt:string;postmasterStart:string}[]>`select current_database()='postgres' and session_user='postgres' and current_user='postgres' and inet_server_addr()='127.0.0.1'::inet and current_setting('transaction_read_only')='on' and current_setting('statement_timeout')='20s' and current_setting('lock_timeout')='300ms'
     and to_char(pg_postmaster_start_time() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')=${identity.postmasterStart} as "sameCluster",

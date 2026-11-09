@@ -47,7 +47,7 @@ beforeEach(async()=>{
 afterEach(()=>fixtureOwner.finishCase());
 afterAll(()=>fixtureOwner.clearStage());
 async function sourceFacts(){
- const counts=await owner.client`select (select count(*) from public.notification) as notifications,(select count(*) from public.notification_delivery) as deliveries,
+ const counts=await owner.client<{employees:string;people:string}[]>`select (select count(*) from public.notification) as notifications,(select count(*) from public.notification_delivery) as deliveries,
  (select count(*) from public.domain_event) as events,(select count(*) from public.employment) as employees,(select count(*) from public.person) as people,
  (select count(*) from public.role_assignment) as roles,(select count(*) from public.payslip) as payslips,
  (select coalesce(jsonb_agg(to_jsonb(p) order by p.event_id,p.consumer),'[]') from public.notification_event_processing p) as receipts,

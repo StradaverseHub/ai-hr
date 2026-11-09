@@ -47,7 +47,7 @@ it('captures every canonical helper and exact CI source/prerequisite/ledger in o
  const abort=()=>{if(connection)stopping=connection.end({timeout:0}).catch(error=>{closeRefused=true;closeFailure=error;});};context.signal.addEventListener('abort',abort,{once:true});
  try{
   context.signal.throwIfAborted();members.push(writeInventoryEvidence(directory,'notification-canonical-source.json',{...identity,...source}));
-  phase='native-read-only-snapshot';connection=postgres(binding.migrationUrl.href,{max:1,connect_timeout:2,idle_timeout:2,prepare:false,connection:{application_name:'aihr-canonical-inventory',statement_timeout:'20s',lock_timeout:'300ms',default_transaction_read_only:'on',default_transaction_isolation:'repeatable read',search_path:'pg_catalog'}});
+  phase='native-read-only-snapshot';connection=postgres(binding.migrationUrl.href,{max:1,connect_timeout:2,idle_timeout:2,prepare:false,connection:{application_name:'aihr-canonical-inventory',statement_timeout:20000,lock_timeout:300,default_transaction_read_only:true,default_transaction_isolation:'repeatable read',search_path:'pg_catalog'}});
   if(context.signal.aborted){abort();context.signal.throwIfAborted();}
   const captured=await connection.begin('isolation level repeatable read read only',async tx=>{
    context.signal.throwIfAborted();

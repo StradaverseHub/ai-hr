@@ -157,7 +157,7 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   changes.push(()=>({kind:'skip',other:'changed'}),()=>({kind:'skip',outcome:null}),()=>({kind:'skip',outcome:'changed',extra:true}));
   for(const change of changes){
    await expect(begin(run,base.tenantId,async(tx,batch)=>{const {proposal}=await validProposal(tx,batch,row.sourceEventId!);
-    await tx`select notification_worker.prepare_assessment(${batch}::uuid,${row.sourceEventId}::uuid,${tx.json(change(proposal))}::jsonb)`;
+    await tx`select notification_worker.prepare_assessment(${batch}::uuid,${row.sourceEventId}::uuid,${JSON.stringify(change(proposal))}::jsonb)`;
    })).rejects.toSatisfy((error:unknown)=>pgSqlState(error)==='22023');
    expect(await preparationEffects(row,run)).toEqual(before);
   }

@@ -14,7 +14,7 @@ beforeEach(()=>ownership.beforeCase());afterAll(()=>ownership.drain());
 function owned(context:TestContext,work:(call:(value:unknown,version:2|3)=>Promise<NativeVector>)=>Promise<void>){
  return ownership.run(context,async()=>{
   const binding=notificationWorkerFixtureDatabase();assert.equal(binding.appUrl.username,'ai_hr_app');assert.equal(binding.appUrl.password,'');
-  const connection=postgres(binding.appUrl.href,{max:1,connect_timeout:2,prepare:false,connection:{search_path:'pg_catalog, pg_temp',statement_timeout:'20s',lock_timeout:'300ms',default_transaction_isolation:'repeatable read',default_transaction_read_only:'on'}});
+  const connection=postgres(binding.appUrl.href,{max:1,connect_timeout:2,prepare:false,connection:{search_path:'pg_catalog, pg_temp',statement_timeout:20000,lock_timeout:300,default_transaction_isolation:'repeatable read',default_transaction_read_only:true}});
   let closing:Promise<void>|undefined,failed=false,failure:unknown;
   const close=()=>closing??=connection.end({timeout:0});
   const abort=()=>{void close().catch(()=>{});};

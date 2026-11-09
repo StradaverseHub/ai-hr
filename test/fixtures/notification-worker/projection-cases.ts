@@ -52,7 +52,7 @@ async function fixture(base:Base){
  return{base,a,other,batch,line,notice,cases:new Map<string,string>()};
 }
 type Fixture=Awaited<ReturnType<typeof fixture>>;
-async function event(base:Base,type:string,subject:string|null,payload:Record<string,unknown>={},aggregateId=randomUUID(),aggregateType='fixture'){
+async function event(base:Base,type:string,subject:string|null,payload:Record<string,unknown>={},aggregateId:string=randomUUID(),aggregateType='fixture'){
  const [ev]=await owner.db.insert(s.domainEvent).values({tenantId:base.tenantId,aggregateType,aggregateId,eventType:type,actorType:'system',subjectEmploymentId:subject,payload}).returning();return ev;
 }
 async function cases(f:Fixture){

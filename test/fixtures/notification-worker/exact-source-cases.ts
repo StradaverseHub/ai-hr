@@ -43,7 +43,7 @@ export function registerExactSourceCases(fixture:NotificationWorkerFixtureOwner)
   const [facts]=await owner.client`select count(*)::int as n,count(*)filter(where c.body_source is null or(md5(c.body_source)collate "C")is distinct from(c.body_md5 collate "C")or(c.body_source collate "C")is distinct from(p.prosrc collate "C"))::int as drift,
    sum(octet_length(c.body_source))::text as bytes from notification_worker_private.helper_contract c left join pg_proc p on p.oid=c.signature`;
   const [binary]=await owner.client`select ('é'collate "C")is distinct from(${'e\u0301'}::text collate "C")as distinct`;expect(binary.distinct).toBe(true);
-  expect(facts.n).toBe(2300);expect(facts.drift).toBe(0);expect(BigInt(facts.bytes)).toBeGreaterThan(0n);
+  expect(facts.n).toBe(2300);expect(facts.drift).toBe(0);expect(BigInt(facts.bytes)).toBeGreaterThan(BigInt(0));
   const before=await owner.client`select signature,body_md5,md5(body_source)as captured from notification_worker_private.helper_contract order by signature::oid`;
   await rolledBack(async tx=>{const b=fixture.binding;await tx`select set_config('aihr.notification_fixture.database',${b.database},true),set_config('aihr.notification_fixture.namespace',${b.namespace},true),set_config('aihr.notification_fixture.pool_id',${b.poolId},true)`;
    const error=await refused(tx.unsafe(source),'55000');expect(error instanceof Error?error.message:'').toContain('inactive');});

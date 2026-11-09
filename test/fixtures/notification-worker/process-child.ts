@@ -3,8 +3,8 @@ import postgres from 'postgres';
 import {z} from 'zod';
 import {runNotificationProcess,type NotificationProcessTransition} from '../../../lib/notification-worker/process';
 const start=z.object({kind:z.literal('start'),database:z.string(),workerUrl:z.string(),pauseAfterCommit:z.boolean()}).strict();
-if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||!process.send)throw Error('Owned hosted process fixture required');
-const permitted=new Set(['PATH','TZ','LANG','GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','MODULE_KILL','SETTING_KILL']);
+if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||process.env.NODE_ENV!=='test'||!process.send)throw Error('Owned hosted process fixture required');
+const permitted=new Set(['PATH','NODE_ENV','TZ','LANG','GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','MODULE_KILL','SETTING_KILL']);
 if(Object.keys(process.env).some(key=>!permitted.has(key)))throw Error('Unsealed process fixture environment');
 globalThis.fetch=async()=>{throw Error('Process fixture cannot call network/providers');};
 const send=(message:NotificationProcessTransition|{kind:'ready'}|{kind:'refused'})=>new Promise<void>((resolve,reject)=>{
