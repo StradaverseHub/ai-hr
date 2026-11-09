@@ -1,4 +1,4 @@
-/** Real disposable historical709 upgrade through the stock migrator; no provider/HR data.
+/** Real disposable historical710 upgrade through Payroll718 and compatibility; no provider/HR data.
  * Protected constructor custody and actual non-super owner LOGIN are distinct courses. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -9,7 +9,7 @@ import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
 import {createDb,type SessionContext} from '../db/client';
-import {constructAiCentreSelectedPrefixOwner,assertAiCentreSelectedJobCatalogue,aiCentreSelectedJobSourceModel} from './helpers/ai-centre-compatibility-owner-constructor';
+import {constructAiCentreSelectedPrefixOwner,assertAiCentreSelectedJobCatalogue,aiCentreSelectedJobSourceModel,aiCentreSelectedUpgradeSource} from './helpers/ai-centre-compatibility-owner-constructor';
 
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
 const admission=admitSingletonTest('test/ai-centre-architecture-compatibility-upgrade.test.ts');
@@ -53,7 +53,7 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
    ['cluster-identifier-lf',v=>{v.cluster.systemIdentifier+='\n';}],
    ['owned-name-lf',v=>{v.owned.database+='\n';}],
    ['ledger-order-or-hash',v=>{v.readers[0].ledgerRowsSha256='f'.repeat(64);}],
-   ['ledger-count',v=>{v.readers[0].ledgerCount=754;}],
+   ['ledger-count',v=>{v.readers[0].ledgerCount=755;}],
    ['fingerprint-missing',v=>{v.readers[2].fingerprints=null;}],
    ['fingerprint-multiple',v=>{v.readers[2].fingerprints!.push(v.readers[2].fingerprints![0]);}],
    ['base-not-empty',v=>{v.readers[1].emptyObjects=1;}],
@@ -92,12 +92,9 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
   ];
   for(const [label,mutate]of cases){const negative=structuredClone(positive);mutate(negative);expect(()=>assertAiCentreSelectedJobCatalogue(negative),mode+'/'+label).toThrow();sourceModelControls.push(mode+'/'+label);}
  }
- const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{idx:number;when:number;tag:string}[]};
- // This qualified component owns the exact3500 boundary; the separate3501 fixture
- // executes and checks the later write-order append against its selected755 boundary.
- journal.entries=journal.entries.slice(0,journal.entries.findIndex(row=>row.tag==='3500_ai_centre_architecture_compatibility')+1);
- const boundary=journal.entries.findIndex(row=>row.tag==='2103_system_performance_read_guards');expect(boundary).toBe(717);
- expect(journal.entries.at(-1)).toMatchObject({idx:3436,when:1793330003736,tag:'3500_ai_centre_architecture_compatibility'});
+ const {journal:sourceJournal,boundaries}=aiCentreSelectedUpgradeSource();
+ // This case stops at 3500. The mandate case alone applies 3501.
+ const journal={...sourceJournal,entries:sourceJournal.entries.slice(0,boundaries.compatibility)};
  const token=randomUUID().replaceAll('-',''),database='ai_hr_ai_compat_'+token,role='aihr_ai_compat_'+token;
  const directory=mkdtempSync(join(tmpdir(),'aihr-ai-compat-'));
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
@@ -110,8 +107,8 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
  let migration:ReturnType<typeof createDb>|undefined;
  let created=false,roleCreated=false,primaryFailure:unknown;
  let databaseOid:string|undefined,roleOid:string|undefined,selectedCourse:Awaited<ReturnType<typeof constructAiCentreSelectedPrefixOwner>>|undefined;
- const report:Record<string,unknown>={kind:'NATIVE_AI_CENTRE_HISTORICAL709_COMPATIBILITY_COMPONENT_ONLY',releaseAuthorized:false,
-  complete:false,cleanupComplete:false,phase:'constructor',historicalOriginals:historical,selectedSourceBoundaries:[710,717,754],
+ const report:Record<string,unknown>={kind:'NATIVE_AI_CENTRE_HISTORICAL710_PAYROLL718_COMPATIBILITY_COMPONENT_ONLY',releaseAuthorized:false,
+  complete:false,cleanupComplete:false,phase:'constructor',historicalOriginals:historical,selectedSourceBoundaries:[boundaries.historical,boundaries.alphaSeven,boundaries.payroll,boundaries.compatibility],
   sourceModelControls,resourceBound:{caseMs:300000,pools:4,maxPerPool:1,maximumConnections:4,extraOwnerLoginPools:1,poolCloseSeconds:5,raceLockTimeoutMs:5000,raceStatementTimeoutMs:10000}};
  const save=()=>{writeFileSync(join(admission.evidenceDirectory,'ai-centre-compatibility-populated-upgrade.json'),JSON.stringify(report,null,2));};
  const tenantId=randomUUID(),companyId=randomUUID(),userId=randomUUID(),foreignTenant=randomUUID(),foreignCompany=randomUUID();
@@ -145,9 +142,9 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
    if(original){expect(entry.when).toBe(original.when);expect(sha(readFileSync(path))).toBe(original.hash);}
    copyFileSync(path,join(directory,entry.tag+'.sql'));
   }
-  writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,710)}));
+  writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,boundaries.historical)}));
   await migrate(storage.db,{migrationsFolder:directory});
-  report.phase='populated709';save();
+  report.phase='populated710';save();
   await storage.client`insert into tenant(id,workos_org_id,name) values(${tenantId},${randomUUID()},'Fictional AI compatibility'),(${foreignTenant},${randomUUID()},'Fictional foreign group')`;
   await storage.client`insert into company(id,tenant_id,legal_name) values(${companyId},${tenantId},'Fictional AI employer'),(${foreignCompany},${foreignTenant},'Fictional foreign employer')`;
   await storage.client`insert into app_user(id,tenant_id,person_id,workos_user_id) values(${userId},${tenantId},null,${randomUUID()})`;
@@ -168,10 +165,10 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
    r.rolsuper,r.rolinherit,r.rolcanlogin,r.rolreplication,r.rolbypassrls,r.rolcreatedb,r.rolcreaterole,r.rolconnlimit from pg_roles r where r.rolname=current_user`;
   expect(actualOwner).toEqual({role,login:role,database,loopback:true,rolsuper:false,rolinherit:true,rolcanlogin:true,rolreplication:false,rolbypassrls:false,rolcreatedb:false,rolcreaterole:false,rolconnlimit:-1});
   report.migrationOwner=actualOwner;
-  const baseline=await beforeCatalogue(),originalLedger=await ledger(),originalFacts=await facts();expect(originalLedger).toHaveLength(717);
+  const baseline=await beforeCatalogue(),originalLedger=await ledger(),originalFacts=await facts();expect(originalLedger).toHaveLength(boundaries.payroll);
   const tableState=()=>storage.client`select relowner::regrole::text as owner,relacl::text as acl,relrowsecurity as rls,relforcerowsecurity as force from pg_class where oid='public.teras_mandate_control'::regclass`;
   const controlTable=await tableState();expect(controlTable[0]).toMatchObject({owner:role,rls:true,force:false});
-  expect(originalLedger.map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(journal.entries.slice(0,717).map(entry=>({
+  expect(originalLedger.map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(journal.entries.slice(0,boundaries.payroll).map(entry=>({
    hash:sha(readFileSync(join(directory,entry.tag+'.sql'))),created_at:String(entry.when),
   })));
   for(const [tag,original]of Object.entries(historical))expect(originalLedger.find(row=>row.created_at===String(original.when))?.hash,tag).toBe(original.hash);
@@ -189,13 +186,13 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
   expect(await ledger()).toEqual(originalLedger);expect(await beforeCatalogue()).toEqual(drifted);expect(await facts()).toEqual(originalFacts);
   expect((await storage.client`select to_regprocedure(${helper}) as helper,to_regclass('public.notification_event_processing') as queue`)[0]).toEqual({helper:null,queue:null});
   await storage.client.unsafe(oldContext.definition);
-  report.wholePendingBatchRollback=true;report.phase='stock-upgrade';save();
+  report.wholePendingBatchRollback=true;report.rolledBackPendingRows=boundaries.compatibility-boundaries.payroll;report.phase='stock-upgrade';save();
   await migrate(migration.db,{migrationsFolder:directory});
-  const upgraded=await catalogue(),afterLedger=await ledger();expect(afterLedger).toHaveLength(754);
+  const upgraded=await catalogue(),afterLedger=await ledger();expect(afterLedger).toHaveLength(boundaries.compatibility);
   // Compare ACTUAL before rows. The installed staging0180/0212 hash exceptions
   // must never be replaced by a universal source/ledger hash identity assertion.
-  expect(afterLedger.slice(0,717)).toEqual(originalLedger);expect(await facts()).toEqual(originalFacts);
-  for(const [i,entry]of journal.entries.slice(717).entries())expect(afterLedger[717+i]).toMatchObject({created_at:String(entry.when),hash:sha(readFileSync('db/migrations/'+entry.tag+'.sql'))});
+  expect(afterLedger.slice(0,boundaries.payroll)).toEqual(originalLedger);expect(await facts()).toEqual(originalFacts);
+  for(const [i,entry]of journal.entries.slice(boundaries.payroll).entries())expect(afterLedger[boundaries.payroll+i]).toMatchObject({created_at:String(entry.when),hash:sha(readFileSync('db/migrations/'+entry.tag+'.sql'))});
   expect(upgraded.find(row=>row.signature===context)?.definition).toBe(oldWrapper.definition);
   expect(upgraded.find(row=>row.signature===agent)?.definition).toBe(oldAgent.definition);
   for(const previous of baseline){const current=upgraded.find(row=>row.signature===previous.signature)!;expect(current.oid).toBe(previous.oid);expect(current.attributes).toEqual(previous.attributes);expect(current.owner).toBe(role);expect(current.app_execute).toBe(previous.app_execute);}
