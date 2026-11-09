@@ -212,14 +212,16 @@ it('enforces effectiveOFF thirteen-report Analytics under each parent mode and p
  for(const [sample,mode]of (['on','off','off','on']as JitMode[]).entries()){
   const page=parsePageQuery();const result=await probe.run('analytics-whole-'+(sample+1),mode,()=>analyticsDashboard(fixture.ctx,[fixture.b.companyId],{
    from:'2020-01-01',to:'2026-01-01',year:2020,filters:{},pages:{hires:page,terms:page,changeJobs:page,carryForward:page}}));
-  assertDashboard(result.value);expect(result.receipt).toMatchObject({complete:true,requestedJit:mode,effectiveJitAfterProductPolicy:'off',effectiveJitAtCompletion:'off',policyCommandCount:1,census:{statements:122,rows:90089,unknownRows:0,failed:0},defaultsRestoredSamePid:true,transactionCalls:1});
+  assertDashboard(result.value);expect(result.receipt).toMatchObject({complete:true,requestedJit:mode,effectiveJitAfterProductPolicy:'off',effectiveJitAtCompletion:'off',policyCommandCount:1,census:{statements:36,rows:50097,unknownRows:0,failed:0},defaultsRestoredSamePid:true,transactionCalls:1});
+  const carryFetch=result.queries.filter(query=>query.classification==='carry-identities-fetch');
+  expect(carryFetch).toHaveLength(13);expect(carryFetch.reduce((total,query)=>total+(query.rows??0),0)).toBe(50000);
   const policy=result.queries.filter(query=>query.text==='set local jit=off');expect(policy).toHaveLength(1);expect(policy[0]).toMatchObject({params:[],rows:0,ordinal:2});
   const nationality=result.queries.filter(q=>q.classification==='nationality');expect(nationality).toHaveLength(1);expect(nationality[0].rows).toBe(1);
   if(baseline){expect(result.value).toEqual(baseline);expect(probe.sameQueries(statements!,result.queries)).toBe(true);}else{baseline=result.value;statements=result.queries;}
   result.receipt.completeDtoAndQueryParameterParity=true;result.receipt.independentKnownFacts=true;save();
  }
  assert(statements);const expectedDigests={nationality:'1e056a14bef2f1ec68b8556dc5bc2463ee87ebd29426dba2176c59085b6a97fe',
-  'demographic-dimensions':'185cde653c89db22339422934d86773e3748c8a76141988bcbd208b474f83771',
+  'demographic-dimensions':'5433b7f7e0e8b53b3bcbb226a007b21e47e18245c84caee59f80eaf7512685b7',
   'master-count':'d6f279c1c028da663622ab8e5cb2408530b268e765d2bb7a1eff7740a00dd45b'};
  const shapes=(['nationality','demographic-dimensions','master-count']as const).map(label=>{
   const found=statements!.filter(q=>q.classification===label);expect(found).toHaveLength(1);expect(found[0].digest).toBe(expectedDigests[label]);return found[0];

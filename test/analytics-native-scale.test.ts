@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {cpus,totalmem} from 'node:os';
 import {sql,type SQL} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
@@ -11,14 +12,14 @@ import {
  masterDataCount,masterDataExport,newHires,newHiresPage,terminationsPage,
 } from '../core/analytics';
 import {parsePageQuery} from '../lib/pagination';
-import {closeAll,migrateTestDb} from './harness';
+import {closeAll,migrateTestDb,owner} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 import {observeNativeRead} from './helpers/native-read-observer';
 import {originalEmploymentAggregatesTx} from './helpers/analytics-employment-aggregates-original';
 
 // Structural statement shapes from the actual canonical read bodies. This labels
 // observations, never chooses a query/permission or infers a slow business report.
-const analyticsStatementClassifierVersion='analytics-statement-shapes/v4';
+const analyticsStatementClassifierVersion='analytics-statement-shapes/v5';
 function classifyAnalyticsStatement(text:string):string{
  const query=text.toLowerCase().replace(/\s+/g,' ');
  if(text==='set local jit=off')return 'presentation-jit-policy';
@@ -29,7 +30,7 @@ function classifyAnalyticsStatement(text:string):string{
   ['analytics_master_count','master-count'],
  ]as const)if(query.includes(marker))return label;
  if(query.startsWith('declare analytics_carry_identities '))return 'carry-identities-declare';
- if(query.startsWith('fetch forward 512 from analytics_carry_identities'))return 'carry-identities-fetch';
+ if(query.startsWith('fetch forward 512 from analytics_carry_identities')||query.startsWith('fetch forward 4096 from analytics_carry_identities'))return 'carry-identities-fetch';
  if(query.startsWith('close analytics_carry_identities'))return 'carry-identities-close';
  if(query.includes('analytics_carry_population'))return 'carry-population';
  if(query.includes('analytics_turnover_leavers'))return 'turnover-aggregate';
@@ -52,6 +53,7 @@ type CapturedSelect={statement:SQL;text:string;digest:string};
 /** Capture actual public builder SQL objects; never reconstruct SQL/parameters
  * from a string or introduce a product hook. Objects stay in test memory only. */
 function captureSelects(tx:Tx,captured:CapturedSelect[]):Tx{
+ const dialect=new PgDialect();
  const wrap=(query:object):object=>new Proxy(query,{get(target,key,receiver){
   const value=Reflect.get(target,key,receiver);
   if(key==='then'&&typeof value==='function')return (resolve:(rows:unknown)=>unknown,reject:(error:unknown)=>unknown)=>{
@@ -64,6 +66,15 @@ function captureSelects(tx:Tx,captured:CapturedSelect[]):Tx{
  }});
  return new Proxy(tx,{get(target,key,receiver){
   if(key==='select'||key==='selectDistinct')return (...args:unknown[])=>wrap(Reflect.apply(target[key],target,args));
+  // One fixed product CTE now uses public execute. Capture that actual SQL
+  // object only, not arbitrary control/identity/cursor statements.
+  if(key==='execute')return (statement:SQL)=>{
+   const text=dialect.sqlToQuery(statement).sql;
+   if(/^\s*with analytics_changeJobTransactions_page as materialized \(/.test(text)){
+    expect(captured.length).toBeLessThan(128);captured.push({statement,text,digest:createHash('sha256').update(text).digest('hex')});
+   }
+   return target.execute(statement);
+  };
   const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
  }});
 }
@@ -96,7 +107,7 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
   try{const result=await read();(report.timings as Record<string,number>)[name]=performance.now()-start;save();return result;}
   catch(error){report.failedPhase=name;report.failure=error instanceof Error?error.message:'Unknown failure';save();throw error;}
  };
- const {b,ctx,expectedLast}=await seedPersonnelNativeFixture(50000,report,()=>{},save);
+ const {b,ctx,expectedFirst,expectedLast}=await seedPersonnelNativeFixture(50000,report,()=>{},save);
  const page=parsePageQuery(),hired={from:'2020-01-01',to:'2020-12-31'},ended={from:'2024-01-01',to:'2024-12-31'};
  const manager=await timed('selectedManagerMs',()=>analyticsManagerSelection(ctx,[b.companyId],expectedLast.at(-1)));
  expect(manager).toEqual({employmentId:expectedLast.at(-1),name:'Fictional retained Personnel 000050000'});
@@ -164,9 +175,20 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
  expect(telemetry.totals.failed).toBe(0);expect(telemetry.totals.unknownRowCounts).toBe(0);
  // Same thirteen reports/cursor and one fixed JIT command; only the two
  // employment aggregates replace their original five SELECTs.
+ // The empty change-job page now returns its one count envelope instead
+ // of an empty page SELECT followed by a separate count SELECT.
  // Nationality retains its single independently expected Unknown bucket.
- expect(telemetry.totals.statements).toBe(122);
- expect(telemetry.totals.returnedRows).toBe(90089);
+ // Fixed4096 carry batches retain all50,000 identities. The demographics
+ // fixture has one raw value per dimension plus the overall total.
+ expect(telemetry.totals.statements).toBe(36);
+ expect(telemetry.totals.returnedRows).toBe(50097);
+ const demographicCounts=telemetry.summaries.filter(row=>row.classification==='demographic-dimensions');
+ expect(demographicCounts).toHaveLength(1);
+ expect(demographicCounts[0]).toMatchObject({count:1,returnedRows:8,unknownRowCounts:0,failed:0});
+ const carryFetch=telemetry.summaries.filter(row=>row.classification==='carry-identities-fetch');
+ expect(carryFetch).toHaveLength(1);expect(carryFetch[0]).toMatchObject({count:13,returnedRows:50000,unknownRowCounts:0,failed:0});
+ const changeJobSummary=telemetry.summaries.filter(row=>row.classification==='change-jobs-page');
+ expect(changeJobSummary).toHaveLength(1);expect(changeJobSummary[0]).toMatchObject({count:1,returnedRows:1,failed:0});
  const employmentAggregates=telemetry.summaries.filter(row=>row.classification==='turnover-aggregate'||row.classification==='movement-aggregate');
  expect(employmentAggregates.map(row=>({classification:row.classification,count:row.count,rows:row.returnedRows}))).toEqual([
   {classification:'turnover-aggregate',count:1,rows:1},{classification:'movement-aggregate',count:1,rows:2},
@@ -255,5 +277,81 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
  }
  finally{experimentSpy.mockRestore();aggregateExperiment.transactions=experimentTransactions;save();}
  expect(aggregateExperiment.complete).toBe(true);expect(aggregateExperiment.arms).toHaveLength(4);expect(aggregateExperiment.plans).toHaveLength(7);
+ // Only after every original 50k timing, arm, plan and assertion has settled,
+ // diagnose the actual envelope in two explicitly separate fixture populations.
+ const envelopeExperiment:Record<string,unknown>={kind:'CHANGE_JOB_ENVELOPE_NATIVE_PLANS_ONLY',complete:false,
+  includesSqlParametersResultsOrErrors:false,newPools:0,limits:{courses:2,plans:2,planNodesEach:256,unchangedCaseMs:300000},
+  populationPhases:['original-50000-empty','same-50000-two-owned-histories'],courses:[],ownedFixtureRestored:false,
+  limitations:'Warm separate diagnosis after original courses; not whole-dashboard speed or JIT ON/OFF evidence'};
+ report.changeJobEnvelopeExperiment=envelopeExperiment;save();
+ const envelopeCourse=async(kind:'empty'|'populated')=>{
+  const receipt:Record<string,unknown>={population:kind==='empty'?'original-50000-empty':'same-50000-two-owned-histories',
+   started:true,callbackComplete:false,transactionSettled:false,complete:false};
+  (envelopeExperiment.courses as unknown[]).push(receipt);save();let transactions=0;
+  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(supplied:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actualWithTenant(supplied,async tx=>{
+   transactions++;expect(transactions).toBe(1);expect(options).toEqual({readOnlySnapshot:true});
+   const current:CapturedSelect[]=[],value=await read(captureSelects(tx,current));
+   const facts=value as Awaited<ReturnType<typeof analyticsDashboard>>;
+   expect(facts.hc.total).toBe(40000);expect(facts.masterCount).toBe(40000);expect(Object.keys(facts)).toHaveLength(13);
+   if(kind==='empty')expect(facts).toEqual(dashboard);
+   else{
+    expect(facts.changeJobs.state.total).toBe(2);expect(facts.changeJobs.rows).toEqual([1,2].map(n=>({
+     name:'Fictional retained Personnel '+String(n).padStart(9,'0'),company:'Acme Sdn Bhd',fromDepartment:'Finance',toDepartment:'Operations',fromPosition:null,toPosition:null,effectiveOn:'2021-05-01',
+    })));
+   }
+   const [identity]=await tx.execute<{pid:number;role:string;login:string;isolation:string;readOnly:boolean;jit:string;rls:string}>(sql`select pg_backend_pid()as pid,current_user as role,session_user as login,current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')='on'as "readOnly",current_setting('jit')as jit,current_setting('row_security')as rls`);
+   expect(identity).toMatchObject({role:'ai_hr_app',login:'ai_hr_app',isolation:'repeatable read',readOnly:true,jit:'off',rls:'on'});receipt.identity=identity;
+   const statements=current.filter(query=>/^\s*with analytics_changeJobTransactions_page as materialized \(/.test(query.text));expect(statements).toHaveLength(1);
+   const query=statements[0];receipt.productEnvelopeStatements=statements.length;receipt.businessTotal=facts.changeJobs.state.total;
+   receipt.businessRows=facts.changeJobs.rows.length;receipt.expectedTransportRows=kind==='empty'?1:2;
+   const rows=await tx.execute<Record<string,unknown>>(query.statement);expect(rows).toHaveLength(kind==='empty'?1:2);
+   expect(rows.every(row=>Number(row.total)===(kind==='empty'?0:2))).toBe(true);
+   if(kind==='empty')expect(rows[0]).toMatchObject({assignmentId:null,name:null,company:null,fromDepartment:null,toDepartment:null,fromPosition:null,toPosition:null,effectiveOn:null});
+   else expect(rows.every(row=>typeof row.assignmentId==='string'&&row.assignmentId.length===36)).toBe(true);
+   receipt.actualTransportRows=rows.length;save();
+   const planRows=await tx.execute<Record<string,unknown>>(sql`explain(analyze,buffers,timing on,settings,format json) ${query.statement}`);
+   const raw=planRows[0]?.['QUERY PLAN'];let producers=0,consumers=0;
+   const inspect=(node:Record<string,unknown>)=>{
+    if(node['Subplan Name']==='CTE analytics_changejobtransactions_page')producers++;
+    if(node['CTE Name']==='analytics_changejobtransactions_page')consumers++;
+    for(const child of (node.Plans??[])as Record<string,unknown>[])inspect(child);
+   };
+   const sanitized=aggregateNativePlan(raw);inspect((raw as Record<string,unknown>[])[0].Plan as Record<string,unknown>);
+   expect(producers).toBe(1);expect(consumers).toBe(2);
+   receipt.plan={digest:query.digest,...sanitized,materializedProducerNodes:producers,consumerNodes:consumers,complete:true};
+   const [after]=await tx.execute<typeof identity>(sql`select pg_backend_pid()as pid,current_user as role,session_user as login,current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')='on'as "readOnly",current_setting('jit')as jit,current_setting('row_security')as rls`);
+   expect(after).toEqual(identity);receipt.sameNativeIdentityAtCompletion=true;receipt.callbackComplete=true;save();return value;
+  },options));
+  try{
+   await timed('changeJobEnvelope'+(kind==='empty'?'Empty':'Populated')+'NativePlanMs',()=>analyticsDashboard(ctx,[b.companyId],{from:'2020-01-01',to:'2026-01-01',year:2020,filters:{},pages:{hires:page,terms:page,changeJobs:page,carryForward:page}}));
+   expect(receipt.callbackComplete).toBe(true);receipt.transactionSettled=true;receipt.complete=true;
+  }finally{spy.mockRestore();receipt.transactions=transactions;save();}
+ };
+ await envelopeCourse('empty');
+ const subjects=await owner.client`select a.id,a.employment_id from assignment a where a.tenant_id=${b.tenantId}::uuid and a.employment_id in(${expectedFirst[0]}::uuid,${expectedFirst[1]}::uuid) and a.valid_from='2020-01-01' and a.valid_to is null and a.superseded_at is null order by a.employment_id`;
+ expect(subjects).toHaveLength(2);let insertedIds:string[]=[];
+ try{
+  insertedIds=await owner.client.begin(async writer=>{
+   const closed=await writer`update assignment set valid_to='2021-05-01' where tenant_id=${b.tenantId}::uuid and id in(${subjects[0].id}::uuid,${subjects[1].id}::uuid) and valid_to is null returning id`;
+   expect(closed).toHaveLength(2);
+   const inserted=await writer`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from)
+    values(${b.tenantId}::uuid,${expectedFirst[0]}::uuid,${b.companyId}::uuid,${b.deptB}::uuid,'full_time','2021-05-01'),
+     (${b.tenantId}::uuid,${expectedFirst[1]}::uuid,${b.companyId}::uuid,${b.deptB}::uuid,'full_time','2021-05-01') returning id`;
+   expect(inserted).toHaveLength(2);return inserted.map(row=>String(row.id));
+  });
+  const [population]=await owner.client`select count(*)::int as employees,(select count(*)::int from assignment where tenant_id=${b.tenantId}::uuid)as assignments from employment where tenant_id=${b.tenantId}::uuid`;
+  expect(population).toEqual({employees:50000,assignments:50002});envelopeExperiment.populatedFixtureFacts=population;save();
+  await envelopeCourse('populated');
+ }finally{
+  if(insertedIds.length){
+   await owner.client.begin(async writer=>{
+    const removed=await writer`delete from assignment where tenant_id=${b.tenantId}::uuid and id in(${insertedIds[0]}::uuid,${insertedIds[1]}::uuid) returning id`;expect(removed).toHaveLength(2);
+    const reopened=await writer`update assignment set valid_to=null where tenant_id=${b.tenantId}::uuid and id in(${subjects[0].id}::uuid,${subjects[1].id}::uuid) and valid_to='2021-05-01' returning id`;expect(reopened).toHaveLength(2);
+   });
+  }
+  const [restored]=await owner.client`select (select count(*)::int from employment where tenant_id=${b.tenantId}::uuid)as employees,(select count(*)::int from assignment where tenant_id=${b.tenantId}::uuid)as assignments,(select count(*)::int from assignment where tenant_id=${b.tenantId}::uuid and valid_to is not null)as closed`;
+  expect(restored).toEqual({employees:50000,assignments:50000,closed:0});envelopeExperiment.restoredFixtureFacts=restored;envelopeExperiment.ownedFixtureRestored=true;save();
+ }
+ expect(envelopeExperiment.courses).toHaveLength(2);envelopeExperiment.complete=true;save();
  report.exactNativePopulationAndResults=true;report.complete=true;save();
 },300000);

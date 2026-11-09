@@ -1,0 +1,1215 @@
+{
+  "kind": "ANALYTICS_CARRY_B1_OWNED_SETTLEMENT_SOURCE_ONLY",
+  "parentSource": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+  "leasedPaths": [
+    "test/analytics-bounded-reports.test.ts",
+    "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+    "docs/qualification/analytics-carry-selection-source-20261109.json",
+    "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json"
+  ],
+  "currentSourceRows": [
+    {
+      "path": "test/analytics-bounded-reports.test.ts",
+      "current": {
+        "bytes": 79631,
+        "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+      },
+      "wholeParent": {
+        "source": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+        "gitBlob": "7d13cfcc23b07e86e3bc458de84b2425bac4062b",
+        "bytes": 37575,
+        "sha256": "ced902cb89e515db8708489826872c9b0b8263525b33f6feaca33858c165d091"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 0,
+          "currentEnd": 167,
+          "currentRangeSha256": "8462f89952706acce45cce1dde6ffa8d5f92b97c7169d2d12d6927a5dd36402c",
+          "parentStart": 0,
+          "parentEnd": 40,
+          "parentText": "import {randomUUID} from 'node:crypto';\n"
+        },
+        {
+          "currentStart": 1000,
+          "currentEnd": 1057,
+          "currentRangeSha256": "0a5d4782cd01789df0ad1c3e39c33c18f5e168844ba2cd9ef0247c28f0a1cdf0",
+          "parentStart": 873,
+          "parentEnd": 917,
+          "parentText": "import {pgSqlState} from '../lib/db-error';\n"
+        },
+        {
+          "currentStart": 1230,
+          "currentEnd": 1411,
+          "currentRangeSha256": "4f1dd75454c739679550565fe319f075872fdcd2b7d3dd66cef0cd02738c5154",
+          "parentStart": 1090,
+          "parentEnd": 1155,
+          "parentText": "beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);\n"
+        },
+        {
+          "currentStart": 1491,
+          "currentEnd": 1642,
+          "currentRangeSha256": "41a8d2a80e5415df2b71f7201baf655cfc66c5c081207036cb943181d1547497",
+          "parentStart": 1235,
+          "parentEnd": 1346,
+          "parentText": "async function seedRows(b:Base,n:number,p:{terminatedOn?:string;name?:(i:number)=>string;hiredOn?:string}={}){\n"
+        },
+        {
+          "currentStart": 2183,
+          "currentEnd": 2561,
+          "currentRangeSha256": "3924cff6b434dc0f4d2f6d427912bdbd32cbe56f0c8bc152eb954a4880685cdb",
+          "parentStart": 1887,
+          "parentEnd": 2214,
+          "parentText": "  await owner.db.insert(person).values(personRows);\n  await owner.db.insert(employment).values(employmentRows);\n  await owner.db.insert(assignment).values(employmentRows.map(row=>({tenantId:b.tenantId,employmentId:row.id,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time' as const,validFrom:row.hiredOn})));\n"
+        },
+        {
+          "currentStart": 2653,
+          "currentEnd": 2718,
+          "currentRangeSha256": "b94d87d956b178ede1c4a6e3bb607bff8ee119b074888ac58e5883c740578dcb",
+          "parentStart": 2306,
+          "parentEnd": 2306,
+          "parentText": ""
+        },
+        {
+          "currentStart": 27550,
+          "currentEnd": 67261,
+          "currentRangeSha256": "18bd394ae1bf29ebe8110a65effd888fa39234fd391da96b0db39f3806960e7d",
+          "parentStart": 27138,
+          "parentEnd": 27138,
+          "parentText": ""
+        },
+        {
+          "currentStart": 67592,
+          "currentEnd": 67674,
+          "currentRangeSha256": "6b6e175d35ec4945a15e38b5b9e03d1d6c26b9ad493f08476374d4f893afedf6",
+          "parentStart": 27469,
+          "parentEnd": 27525,
+          "parentText": "function observeCarryCursor(failAfterFirstFetch=false){\n"
+        },
+        {
+          "currentStart": 68129,
+          "currentEnd": 68147,
+          "currentRangeSha256": "861b63ef917c9b25219f76c098e203b7b0bbff731425c31675357280aef0c1da",
+          "parentStart": 27980,
+          "parentEnd": 27980,
+          "parentText": ""
+        },
+        {
+          "currentStart": 68379,
+          "currentEnd": 68497,
+          "currentRangeSha256": "9ffc3d6534ac586c4380793ea682f39cde4cdb0115f09eac356be45a28f60226",
+          "parentStart": 28212,
+          "parentEnd": 28292,
+          "parentText": "  properties.push(facts);\n  return read(new Proxy(tx,{get(target,key,receiver){\n"
+        },
+        {
+          "currentStart": 68659,
+          "currentEnd": 68802,
+          "currentRangeSha256": "56280406b25c74f960fd0ed9f4dfedb55c92c55feb01eec85b64a040620b2215",
+          "parentStart": 28454,
+          "parentEnd": 28454,
+          "parentText": ""
+        },
+        {
+          "currentStart": 68905,
+          "currentEnd": 68995,
+          "currentRangeSha256": "a030244cbad0d47d93bf137b3d90e484548bafaf29c01f466419aab0974741b2",
+          "parentStart": 28557,
+          "parentEnd": 28609,
+          "parentText": "     let result:Awaited<ReturnType<Tx['execute']>>;\n"
+        },
+        {
+          "currentStart": 69181,
+          "currentEnd": 69269,
+          "currentRangeSha256": "0f040ff31d1baf1bd266d6a8d89349926d0f3dec2d630b727e328df81f99091c",
+          "parentStart": 28795,
+          "parentEnd": 28795,
+          "parentText": ""
+        },
+        {
+          "currentStart": 69725,
+          "currentEnd": 69838,
+          "currentRangeSha256": "a233bfe3d71200b8c97f95ca41a901deee9eda41ddfde7521672476a0b35c650",
+          "parentStart": 29251,
+          "parentEnd": 29251,
+          "parentText": ""
+        },
+        {
+          "currentStart": 70249,
+          "currentEnd": 70341,
+          "currentRangeSha256": "0338f3f5411656f047087d66b4345273d59f5564b1e524a94705f80caec39c00",
+          "parentStart": 29662,
+          "parentEnd": 29662,
+          "parentText": ""
+        },
+        {
+          "currentStart": 70355,
+          "currentEnd": 70651,
+          "currentRangeSha256": "ec34a2f610fb038ecf99685c2c4079bd916da9d37c98b2fd4344a122a3b4903a",
+          "parentStart": 29676,
+          "parentEnd": 29781,
+          "parentText": " return {rows,batches,queries,properties,state,get originalFetchFailure(){return originalFetchFailure;},\n"
+        },
+        {
+          "currentStart": 72100,
+          "currentEnd": 72644,
+          "currentRangeSha256": "1b67c2e134ce04a2ca15049b2d6ce49dec3a002be950c0bfd28d5bc11fc3dff6",
+          "parentStart": 31230,
+          "parentEnd": 31401,
+          "parentText": "it('preserves stable same-native-stream carry pages across fixed4096 fetch boundaries',async()=>{\n const b=await seedBase(),ctx=adminCtx(b),seeded=await seedRows(b,4095);\n"
+        },
+        {
+          "currentStart": 73030,
+          "currentEnd": 73318,
+          "currentRangeSha256": "5610e85dbc9f0d747145d89bc526d9e8789eef9c023d31010af1738c6dc5c5ec",
+          "parentStart": 31787,
+          "parentEnd": 31968,
+          "parentText": " const ordered=await owner.db.select({employmentId:employment.id,personId:employment.personId}).from(employment).where(eq(employment.companyId,b.companyId)).orderBy(employment.id);\n"
+        },
+        {
+          "currentStart": 73814,
+          "currentEnd": 73846,
+          "currentRangeSha256": "e038eca95e475b9eb3b3bc72ba2c3068de73393f7ee1b4eb8d754e1043854672",
+          "parentStart": 32464,
+          "parentEnd": 32464,
+          "parentText": ""
+        },
+        {
+          "currentStart": 73852,
+          "currentEnd": 73997,
+          "currentRangeSha256": "b8731f42a5bd26fdb4f9770503e979a3ce6d2403ec47957f9a9ed8ad95c02a1b",
+          "parentStart": 32470,
+          "parentEnd": 32520,
+          "parentText": "  for(const n of [0,511,512,513,4095,4096,4097]){\n"
+        },
+        {
+          "currentStart": 74274,
+          "currentEnd": 74791,
+          "currentRangeSha256": "ee8682f9d02e406e670b34d40ba3ad4bb9397fe8153677c733147192e00ba43c",
+          "parentStart": 32797,
+          "parentEnd": 33142,
+          "parentText": "   await owner.db.update(person).set({fullName:sql`'Excluded carry ' || ${person.id}::text`}).where(eq(person.tenantId,b.tenantId));\n   for(let start=0;start<activePeople.length;start+=500)await owner.db.update(person).set({fullName:sql`'Carry boundary z ' || ${person.id}::text`}).where(inArray(person.id,activePeople.slice(start,start+500)));\n"
+        },
+        {
+          "currentStart": 74880,
+          "currentEnd": 75244,
+          "currentRangeSha256": "19691c4fe739307fb3555e43d763557a3044c47acdada0825d264270c59cd162",
+          "parentStart": 33231,
+          "parentEnd": 33565,
+          "parentText": "   for(const [index,name]of unicode.entries())if(unicodePeople[index])await owner.db.update(person).set({fullName:'Carry boundary '+name}).where(eq(person.id,unicodePeople[index]));\n   if(activePeople.includes(latePerson))await owner.db.update(person).set({fullName:'Carry boundary 000 late winner'}).where(eq(person.id,latePerson));\n"
+        },
+        {
+          "currentStart": 75431,
+          "currentEnd": 75582,
+          "currentRangeSha256": "6d95096986ca8a60942ad2e9f7cd12414fdaa9bcb59a69422897ff5ccf04fbd4",
+          "parentStart": 33752,
+          "parentEnd": 33815,
+          "parentText": "    selectedBatches.length=0;const probe=observeCarryCursor();\n"
+        },
+        {
+          "currentStart": 75649,
+          "currentEnd": 75918,
+          "currentRangeSha256": "531fd88d3946159fb422cb58285382c8e38ff27e4b2e1ceb006e2b36b9609b9b",
+          "parentStart": 33882,
+          "parentEnd": 34019,
+          "parentText": "    try{result=await carryForwardReportPage(ctx,[b.companyId],{year:2026,filter:{q:'Carry boundary %'},page});}finally{probe.restore();}\n"
+        },
+        {
+          "currentStart": 76881,
+          "currentEnd": 76970,
+          "currentRangeSha256": "68e01371077648278760d4dead7b0821df3a7fe77f078bb9e06898fa8388b058",
+          "parentStart": 34982,
+          "parentEnd": 34982,
+          "parentText": ""
+        },
+        {
+          "currentStart": 76975,
+          "currentEnd": 77009,
+          "currentRangeSha256": "9c6ebe997fdc4f2da67c686985af83e0ae1281c9818cdf5e344919bbf7d3fdb6",
+          "parentStart": 34987,
+          "parentEnd": 34987,
+          "parentText": ""
+        },
+        {
+          "currentStart": 77013,
+          "currentEnd": 77082,
+          "currentRangeSha256": "f28f3700643186e3deb9cbe63413a0914f2ff2fde42b09868d07f56dd97d1574",
+          "parentStart": 34991,
+          "parentEnd": 35026,
+          "parentText": " }finally{resolver.mockRestore();}\n"
+        }
+      ]
+    },
+    {
+      "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+      "current": {
+        "bytes": 24611,
+        "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+      },
+      "wholeParent": {
+        "source": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+        "gitBlob": "e36ad16aebe30300c33ccff53ecb8c8ce8f4770e",
+        "bytes": 15935,
+        "sha256": "fd58d4087e994df4a2318656cf8359eb22ac2505a14b0bf525c08e9b32f308ea"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 15935,
+          "currentEnd": 24611,
+          "currentRangeSha256": "05fb3e2506338b8015ca1524c44f377cd0cda57e7db50fd64bc1176ad1763140",
+          "parentStart": 15935,
+          "parentEnd": 15935,
+          "parentText": ""
+        }
+      ]
+    }
+  ],
+  "indexWholeParent": {
+    "source": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+    "gitBlob": "f755388245d97cc4a25f41134bac5083795af74b",
+    "bytes": 22556,
+    "sha256": "1142b0a85dfef0d1b5997c0a57f4d048ed1f512fa3e28d97a587a08789233635"
+  },
+  "indexReconstruction": "Whole original index bytes are immutable in this Git blob; current index is independently source-authenticated. No current index digest or self-referential hunk is embedded here.",
+  "protectedAllOtherTrackedPaths": "Whole parent Git bytes; only four leased paths may differ.",
+  "sourceContract": {
+    "minimalPlanSha256": "2127bf3f137d7d340ae9c1583642256f2a8d6f140246d108e072ca0a4eb2521a",
+    "mandatoryClosingClarificationSha256": "010e3b241d5af826a05fc5ba347a8d3c5cb4b57b95c48b8c48290deea0ead3f7",
+    "lifetime": "Owned pending body before initial await; existing-owner dedicated reserved control; real held transaction/native target observation; same callback closing/disarm then native/issued-cancel settlement before release; whole body and idle proof before reset/close.",
+    "nativeApi": "Existing postgres3.4.9 public reserve/tagged SQL/release, same owner pool/max/authority. Its runtime reserve result lacks the begin method promised by types; private control SQL BEGIN/COMMIT/awaited ROLLBACK owns that physical reservation. Uncertain rollback retains the target callback until external owned cleanup. Actual native qualification pending.",
+    "evidence": "Fixed closed20stage enum;125 full-success events or126 with abort, max128/64KiB. No PII/SQL/IDs/parameters/raw errors.",
+    "caps": "Original B1 120000ms/hook30000ms/outer20m; native20s statement/300ms lock and one bounded cancellation SELECT; metadata/control statements use1s LOCAL bounds. No new watchdog.",
+    "data": "All original seven N, eleven pages,30212 same-stream oracle rows/60424 row-type checks, Unicode/ties/legal duplicate employments retained.",
+    "unknownFailure": "Poisoned holder remains; no reset/close or timeout-race backend reuse; existing external owned-job cleanup responsible."
+  },
+  "caseCensus": {
+    "directCases": 14,
+    "wholeOtherCallbackBodies": 13,
+    "changedCallbacks": [
+      "preserves stable same-native-stream carry pages across fixed4096 fetch boundaries"
+    ],
+    "all142OriginalExpectSubtreesIdentical": true,
+    "nativeExecution": false
+  },
+  "historicalEvidence": {
+    "ordinaryRun": 42526765409,
+    "source": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+    "rawStatuses": {
+      "passed": 34,
+      "failed": 1
+    },
+    "failedCase": "preserves stable same-native-stream carry pages across fixed4096 fetch boundaries",
+    "timeoutMs": 120993.640559,
+    "actualInnerPhase": "UNKNOWN",
+    "separateUnhandledDriverErrors": 1,
+    "ordinaryAuthenticationSha256": "014ed86f76572abb37a634f6e331b8dccd6f3d855f7bca2cbfb828a1196e627c",
+    "unhandledSupplementSha256": "bf4af303bfcf6d949a3305485170e46153bd5073d36bb11bd65cc2ecbb09bcbe",
+    "separateJitRun": 42526767636,
+    "separateJitAuthenticationSha256": "8f862cf216cb179625ce58e3ee74f28c0380b468a607c9a28cd8bc06c4b1487e",
+    "currentSourceQualified": false,
+    "cause": "UNKNOWN"
+  },
+  "authority": {
+    "recordRuntimeRead": false,
+    "repoImports": false,
+    "testsExecuted": false,
+    "typecheck": false,
+    "native": false,
+    "upload": false,
+    "stagingQualified": false,
+    "productionHeld": true
+  },
+  "originalFailureDiagnosticsRepair": {
+    "directParentSource": "b73f67703fa740d6f3ab742cc4ae6bd2cd1c2336",
+    "independentReviewSha256": "0798ab2cf826b36d05f67c6c86fecc3e61d2d4b913f8edae6570ba24dfe4028c",
+    "priorWholeSourceRecord": {
+      "source": "b73f67703fa740d6f3ab742cc4ae6bd2cd1c2336",
+      "gitBlob": "312d31196060b047a0dd7840860ef3510c100e20",
+      "bytes": 26520,
+      "sha256": "8409acdd624bd3838cd00aa236d4af19715250d1d1251b63e6998a65434c3880"
+    },
+    "priorWholeSourceIndex": {
+      "source": "b73f67703fa740d6f3ab742cc4ae6bd2cd1c2336",
+      "gitBlob": "1c6e9bf350bf77a6f1efc8af8e0201a9421cf807",
+      "bytes": 27235,
+      "sha256": "16c838959d87c4467bbe6dc49fa97be68608b7e7fd87f742f52b7cd05bcbc763"
+    },
+    "directParentRows": [
+      {
+        "path": "test/analytics-bounded-reports.test.ts",
+        "current": {
+          "bytes": 79631,
+          "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+        },
+        "wholeParent": {
+          "source": "b73f67703fa740d6f3ab742cc4ae6bd2cd1c2336",
+          "gitBlob": "242fa140de9cb400b0e4c21652e607d19aaceed1",
+          "bytes": 54510,
+          "sha256": "558807fcbf40ea2f1e81f55e5b285ab25645fff64d656bfa8c38a893c77c965f"
+        },
+        "inverseHunks": [
+          {
+            "currentStart": 71,
+            "currentEnd": 167,
+            "currentRangeSha256": "aefe684997bffd2e264e4b7192f0d5638b89ee18520d9e8abc2f06a505f5d2a3",
+            "parentStart": 71,
+            "parentEnd": 111,
+            "parentText": "import {randomUUID} from 'node:crypto';\n"
+          },
+          {
+            "currentStart": 1000,
+            "currentEnd": 1057,
+            "currentRangeSha256": "0a5d4782cd01789df0ad1c3e39c33c18f5e168844ba2cd9ef0247c28f0a1cdf0",
+            "parentStart": 944,
+            "parentEnd": 988,
+            "parentText": "import {pgSqlState} from '../lib/db-error';\n"
+          },
+          {
+            "currentStart": 28189,
+            "currentEnd": 36279,
+            "currentRangeSha256": "f895e94329ea1f7ca6435d29f8897a35490bd6820882621f190bfebc3194ff94",
+            "parentStart": 28120,
+            "parentEnd": 28298,
+            "parentText": "type CarryBoundarySlot={epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;cancel?:Promise<void>;tag:string};\n"
+          },
+          {
+            "currentStart": 37021,
+            "currentEnd": 37247,
+            "currentRangeSha256": "6521b5ad0da2b2b77f8589c465558121ec0151893bf87f4e1f39e16306e74ea6",
+            "parentStart": 29040,
+            "parentEnd": 29040,
+            "parentText": ""
+          },
+          {
+            "currentStart": 37500,
+            "currentEnd": 37716,
+            "currentRangeSha256": "6a21f258573619566a02942cc7d9b702be8d1f00b739fcb3b0e1ac853644c0e8",
+            "parentStart": 29293,
+            "parentEnd": 29293,
+            "parentText": ""
+          },
+          {
+            "currentStart": 37844,
+            "currentEnd": 38064,
+            "currentRangeSha256": "74df2d946bc652f3260b56dccc1d03dcdc7344341feb6bd2210d8c1349867191",
+            "parentStart": 29421,
+            "parentEnd": 29538,
+            "parentText": " private readonly abort=()=>{this.stopped=true;this.event('abort');for(const slot of this.slots)this.cancel(slot);};\n"
+          },
+          {
+            "currentStart": 39089,
+            "currentEnd": 39579,
+            "currentRangeSha256": "eef934903edd2c63fe1e5f4d6200e01a5b46ea32a1a269a6ed98f8c03969418f",
+            "parentStart": 30563,
+            "parentEnd": 30563,
+            "parentText": ""
+          },
+          {
+            "currentStart": 40641,
+            "currentEnd": 43621,
+            "currentRangeSha256": "4e672ded2090373bc8ecb443a5bf7c532e43b43fbc09584dd59ef40f90336182",
+            "parentStart": 31625,
+            "parentEnd": 31625,
+            "parentText": ""
+          },
+          {
+            "currentStart": 44253,
+            "currentEnd": 44277,
+            "currentRangeSha256": "17a94373e27e14e6f213b047fd3b7d4021211a419085a5633fe26d7c88b13946",
+            "parentStart": 32257,
+            "parentEnd": 32263,
+            "parentText": "  });\n"
+          },
+          {
+            "currentStart": 44632,
+            "currentEnd": 44719,
+            "currentRangeSha256": "11dff1226c634b94ce84a8b2a5dc764b2ba3faf3e182b34397cf6c3211483f7f",
+            "parentStart": 32618,
+            "parentEnd": 32667,
+            "parentText": "  }catch(error){this.poisoned=true;throw error;}\n"
+          },
+          {
+            "currentStart": 44812,
+            "currentEnd": 45232,
+            "currentRangeSha256": "0ff65922e23024bba816b120da8a1ae2de35c1818ad745827b8519f4b2639d7f",
+            "parentStart": 32760,
+            "parentEnd": 33042,
+            "parentText": " private async controlTransaction<T>(work:(connection:Awaited<ReturnType<typeof owner.client.reserve>>)=>Promise<T>):Promise<T>{\n  const control=this.control;if(!control){this.controlUncertain=true;this.poisoned=true;throw new Error('Carry boundary reserved control unavailable');}\n"
+          },
+          {
+            "currentStart": 45239,
+            "currentEnd": 45419,
+            "currentRangeSha256": "a47355578bdaab2d5a768d8fef49bac685f9c99f43863c4dc0653b3655212e77",
+            "parentStart": 33049,
+            "parentEnd": 33197,
+            "parentText": "   await control`begin`;await control`set local statement_timeout='1s'`;await control`set local lock_timeout='300ms'`;\n   if(this.controlIdentity){\n"
+          },
+          {
+            "currentStart": 46015,
+            "currentEnd": 46116,
+            "currentRangeSha256": "fd78a8cb0fcb0345d07121fc6ac2a58dd8d4ffa113e670a646538d17c4a5f264",
+            "parentStart": 33793,
+            "parentEnd": 33866,
+            "parentText": "   const result=await work(control);await control`commit`;return result;\n"
+          },
+          {
+            "currentStart": 46133,
+            "currentEnd": 46392,
+            "currentRangeSha256": "1bf81217bb24e71e28a004e95b121145ccbb20a613ec12f4c66e6e7674196b72",
+            "parentStart": 33883,
+            "parentEnd": 34019,
+            "parentText": "   this.controlUncertain=true;this.poisoned=true;\n   try{await control`rollback`;}catch{this.controlUncertain=true;this.poisoned=true;}\n"
+          },
+          {
+            "currentStart": 46576,
+            "currentEnd": 46727,
+            "currentRangeSha256": "292d8930059c46db86546dd48f9386c4ed254733774b419b14adfbfbdd0ab10b",
+            "parentStart": 34203,
+            "parentEnd": 34342,
+            "parentText": "  this.cancellationIssued=true;this.cancellationSettled=false;this.cancellationResult='pending';const identity=slot.identity,tag=slot.tag;\n"
+          },
+          {
+            "currentStart": 46816,
+            "currentEnd": 47024,
+            "currentRangeSha256": "58427ec3081994670747a9b4dc2088b6e9cca74cf3e615eb9a48b3c2281e81d0",
+            "parentStart": 34431,
+            "parentEnd": 34528,
+            "parentText": "  const control=this.control;if(!control){this.controlUncertain=true;this.poisoned=true;return;}\n"
+          },
+          {
+            "currentStart": 47707,
+            "currentEnd": 47908,
+            "currentRangeSha256": "b75d3a18886ae7e6ad664c37892a16d00ea076426ed41926935338fb61867189",
+            "parentStart": 35211,
+            "parentEnd": 35335,
+            "parentText": "  })).catch(()=>{this.cancellationResult='unavailable';this.poisoned=true;}).finally(()=>{this.cancellationSettled=true;});\n"
+          },
+          {
+            "currentStart": 47911,
+            "currentEnd": 48029,
+            "currentRangeSha256": "66a747b3aabaff07d31ed1d2b916ba337e225663e2d4f45bef17120a02b4644f",
+            "parentStart": 35338,
+            "parentEnd": 35419,
+            "parentText": " private async native<T>(slot:CarryBoundarySlot,work:()=>Promise<T>):Promise<T>{\n"
+          },
+          {
+            "currentStart": 48231,
+            "currentEnd": 49340,
+            "currentRangeSha256": "1db788dccfe99b677c5b36e42703a8573602140e58914df3c8495013a6e62817",
+            "parentStart": 35621,
+            "parentEnd": 35952,
+            "parentText": "  const started=performance.now();slot.active++;const pending=Promise.resolve().then(()=>{this.check();return work();});slot.pending.add(pending);\n  try{const result=await pending;this.check();return result;}finally{this.nativeOperations++;this.nativeAwaitMs+=performance.now()-started;slot.active--;slot.pending.delete(pending);}\n"
+          },
+          {
+            "currentStart": 49343,
+            "currentEnd": 49686,
+            "currentRangeSha256": "d25b6f4e8d318be76034c6a50f4bd426ed22c6e906b1c1a4549561a03fbfda84",
+            "parentStart": 35955,
+            "parentEnd": 36023,
+            "parentText": " private guard<T extends object>(value:T,slot:CarryBoundarySlot):T{\n"
+          },
+          {
+            "currentStart": 49780,
+            "currentEnd": 51804,
+            "currentRangeSha256": "18297e308257801a59bf866f793d2a7f3c39810478bc966bfd21dc81125ef51e",
+            "parentStart": 36117,
+            "parentEnd": 36537,
+            "parentText": "   if(key==='then'&&typeof member==='function')return(onFulfilled:unknown,onRejected:unknown)=>\n    Reflect.apply(Promise.prototype.then,this.native(slot,()=>Promise.resolve(target)),[onFulfilled,onRejected]);\n   if(typeof member!=='function')return member;\n   return(...args:unknown[])=>{this.check();const next=Reflect.apply(member,target,args);return next!==null&&typeof next==='object'?this.guard(next,slot):next;};\n"
+          },
+          {
+            "currentStart": 51814,
+            "currentEnd": 58634,
+            "currentRangeSha256": "b15c6ee96bbd48753b0abef08b35dfc93ab0e67597ea2ef7edfecfd1e45171d3",
+            "parentStart": 36547,
+            "parentEnd": 36547,
+            "parentText": ""
+          },
+          {
+            "currentStart": 58730,
+            "currentEnd": 59077,
+            "currentRangeSha256": "537b7653dbf9226bb0ba37d92d3cea35c49876f81e7708b27ea5e13a9d7a46c0",
+            "parentStart": 36643,
+            "parentEnd": 36822,
+            "parentText": "  this.check();const slot:CarryBoundarySlot={epoch:++this.nextEpoch,armed:false,closing:false,active:0,pending:new Set(),tag:'carry-boundary-'+randomUUID()};this.slots.add(slot);\n"
+          },
+          {
+            "currentStart": 59339,
+            "currentEnd": 61841,
+            "currentRangeSha256": "03baba489c6bbbb53e20c08ac342fe1c8161c1bfce6731c594f28deacbb35dd2",
+            "parentStart": 37084,
+            "parentEnd": 37405,
+            "parentText": "   const [identity]=await tx.execute<CarryBoundaryIdentity>(sql`select pg_backend_pid() as pid,a.backend_start::text as started,current_database() as database,\n    session_user as login,current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only')='on' as \"readOnly\"\n"
+          },
+          {
+            "currentStart": 62972,
+            "currentEnd": 63395,
+            "currentRangeSha256": "68d835f96e3a1520b1b97119f0c4c0b4c77e6349092277f3da02953e158d9c9c",
+            "parentStart": 38536,
+            "parentEnd": 38788,
+            "parentText": "   });this.visibleTargets++;\n   slot.identity=identity;this.identities.push(identity);slot.armed=true;this.check();outcome={ok:true,value:await body(this.guard(tx,slot))};\n  }catch(error){if(!slot.identity)this.poisoned=true;outcome={ok:false,error};}\n"
+          },
+          {
+            "currentStart": 63621,
+            "currentEnd": 63898,
+            "currentRangeSha256": "d37a899d46af210a7295cd97c5ceb97b4655cdb8fe717e60a1f345a3c3257007",
+            "parentStart": 39014,
+            "parentEnd": 39125,
+            "parentText": "  if(slot.active!==0||this.controlUncertain){this.poisoned=true;this.save();await new Promise<never>(()=>{});}\n"
+          },
+          {
+            "currentStart": 64393,
+            "currentEnd": 64523,
+            "currentRangeSha256": "a5d8c2e311ed5138edfd8248f365ae959e10feac3b75e319786447fef97ffb7c",
+            "parentStart": 39620,
+            "parentEnd": 39715,
+            "parentText": "  this.pending=Promise.resolve().then(body).catch(error=>{this.bodyFailed=true;throw error;});\n"
+          },
+          {
+            "currentStart": 65621,
+            "currentEnd": 65708,
+            "currentRangeSha256": "da24ecb204d90f1c0870edcf19d77b07b26ff6b2e9c6e08bfd8332e3bd805048",
+            "parentStart": 40813,
+            "parentEnd": 40885,
+            "parentText": "    });this.idleVerified=true;control.release();this.control=undefined;\n"
+          },
+          {
+            "currentStart": 66044,
+            "currentEnd": 66199,
+            "currentRangeSha256": "378a799ac46becb36399534cc0bb928307d0a764a70437fd20dd58c08b014fdc",
+            "parentStart": 41221,
+            "parentEnd": 41221,
+            "parentText": ""
+          },
+          {
+            "currentStart": 68659,
+            "currentEnd": 68802,
+            "currentRangeSha256": "56280406b25c74f960fd0ed9f4dfedb55c92c55feb01eec85b64a040620b2215",
+            "parentStart": 43681,
+            "parentEnd": 43681,
+            "parentText": ""
+          }
+        ]
+      },
+      {
+        "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+        "current": {
+          "bytes": 24611,
+          "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+        },
+        "wholeParent": {
+          "source": "b73f67703fa740d6f3ab742cc4ae6bd2cd1c2336",
+          "gitBlob": "48cfa3775877c76ca954ba33bd3631d6627633a2",
+          "bytes": 19437,
+          "sha256": "ed090e41b830b34c9c7c34006058f7b668991bbd991e0bb20f3a5137627efc62"
+        },
+        "inverseHunks": [
+          {
+            "currentStart": 19437,
+            "currentEnd": 24611,
+            "currentRangeSha256": "bcceeb328c64c2b9bbef3d304d3ce88a0a3397a6e618df2e5e7508bdaa9b7f7f",
+            "parentStart": 19437,
+            "parentEnd": 19437,
+            "parentText": ""
+          }
+        ]
+      }
+    ],
+    "firstError": "Exact FIRST error object retained privately; bounded fact never replaced.",
+    "publicFailureFactFields": [
+      "closed operation",
+      "closed control point",
+      "allowlisted known exception class",
+      "validated5charSQLSTATE or null",
+      "closed category",
+      "existing stage/phase/page"
+    ],
+    "secondaryFacts": "At most one separate control failure and one rollback failure, even if driver reuses the original object; actual abort fact separate.",
+    "privacy": "No raw error/message/name/SQL/parameter/internalID/credential serialized.",
+    "failureObservation": "First fact persisted before rollback waits and poisoned indefinite hold; failed holder remains retained.",
+    "branchQualification": "Cancellation/control-uncertainty/retained-holder remain UNOBSERVED unless actually entered; ordinary success and source review do not qualify them.",
+    "sourcePreservation": {
+      "all14DirectB73CallbackBodiesWhole": true,
+      "all158ExpectSubtreesWhole": true,
+      "all24NativeTaggedSqlSubtreesWhole": true,
+      "allNonclassHelpersWhole": true,
+      "sameEventAndByteCaps": true,
+      "noDeadlinePoolPermissionOrBusinessChange": true
+    },
+    "nativeExecuted": false,
+    "currentSourceQualified": false,
+    "historicalRepairSource": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+    "activeInverseScope": "The active directParentRows restore the current candidate to the same complete b73 source bytes. All source-preservation and authored execution facts in this subsection describe the original 9e83 repair."
+  },
+  "firstFetchEstimateFollowup": {
+    "kind": "FOCUSED_FIRST_FETCH_DECLARE_ESTIMATE_SOURCE_ONLY",
+    "directParentSource": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+    "sourceRef": "codex/analytics-carry-first-fetch-estimate-20261109",
+    "reviewedPlanSha256": "20089c767451eed45105ff17256fab22f81a33bc2f5f2af538808d56cf119259",
+    "reviewedDataSha256": "943f994ad31d22c22314ead56f2168267e9a19495f68e56b792b1bcb6095cc67",
+    "independentPlanReviewSha256": "f86fff5f6c61dd8bb35aa6b961c00f317da35fe6b274cbb48f1c2ac4d5bc6a22",
+    "wholeDirectParentObjects": [
+      {
+        "path": "test/analytics-bounded-reports.test.ts",
+        "source": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+        "gitBlob": "36cc08f88dfdb4a63219f9465cad76e754f7c7f1",
+        "bytes": 60345,
+        "sha256": "f7a1d89e0c44c93103dab5f58a5acbb00868bcefafff430280ba1f775c19756d"
+      },
+      {
+        "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+        "source": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+        "gitBlob": "2915e4a7f6808fe8d331db5b6ded8a601307d656",
+        "bytes": 20868,
+        "sha256": "40692f1df8e323c2a772dd2ae803680922b15f71aaa620c9f47fdaeb6f6c44cf"
+      },
+      {
+        "path": "docs/qualification/analytics-carry-selection-source-20261109.json",
+        "source": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+        "gitBlob": "7ef6c10e176facf55d763b0e4883cb2802cdc53a",
+        "bytes": 25142,
+        "sha256": "8942d35fe0fd8e833a19361d204b445ec4da1b7bfacce2473aca2f33a8ab8253"
+      },
+      {
+        "path": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json",
+        "source": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+        "gitBlob": "7899523b2e7feb9169b96d2c41a880ba9f4e82a1",
+        "bytes": 26342,
+        "sha256": "59209876e167ae5996d63599ec8fefb9d1531329dc3ae9ba71c73ca90d9d3545"
+      }
+    ],
+    "directParentRows": [
+      {
+        "path": "test/analytics-bounded-reports.test.ts",
+        "current": {
+          "bytes": 79631,
+          "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+        },
+        "wholeParent": {
+          "source": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+          "gitBlob": "36cc08f88dfdb4a63219f9465cad76e754f7c7f1",
+          "bytes": 60345,
+          "sha256": "f7a1d89e0c44c93103dab5f58a5acbb00868bcefafff430280ba1f775c19756d"
+        },
+        "inverseHunks": [
+          {
+            "currentStart": 71,
+            "currentEnd": 167,
+            "currentRangeSha256": "aefe684997bffd2e264e4b7192f0d5638b89ee18520d9e8abc2f06a505f5d2a3",
+            "parentStart": 71,
+            "parentEnd": 111,
+            "parentText": "import {randomUUID} from 'node:crypto';\n"
+          },
+          {
+            "currentStart": 28189,
+            "currentEnd": 28440,
+            "currentRangeSha256": "9ac93ff3aaabaa746eafaae67f702b7b61cd223ada0e8d49b7eb673446b07d8b",
+            "parentStart": 28133,
+            "parentEnd": 28366,
+            "parentText": "type CarryFailureOperation='prepare'|'control-prepare'|'control-visibility'|'control-cancel'|'control-idle'|'native-fixture'|'native-command'|'native-read'|'held-fixture'|'held-command'|'held-read'|'body'|'holder-uncertain'|'abort';\n"
+          },
+          {
+            "currentStart": 29177,
+            "currentEnd": 36279,
+            "currentRangeSha256": "a770805a28afadf386c721a781ba593ffe891f2f4a1d4faee0606e0ff7d67846",
+            "parentStart": 29103,
+            "parentEnd": 29313,
+            "parentText": "type CarryBoundarySlot={kind:'fixture'|'command'|'read';epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;cancel?:Promise<void>;tag:string};\n"
+          },
+          {
+            "currentStart": 37021,
+            "currentEnd": 37247,
+            "currentRangeSha256": "6521b5ad0da2b2b77f8589c465558121ec0151893bf87f4e1f39e16306e74ea6",
+            "parentStart": 30055,
+            "parentEnd": 30055,
+            "parentText": ""
+          },
+          {
+            "currentStart": 39089,
+            "currentEnd": 39579,
+            "currentRangeSha256": "eef934903edd2c63fe1e5f4d6200e01a5b46ea32a1a269a6ed98f8c03969418f",
+            "parentStart": 31897,
+            "parentEnd": 32349,
+            "parentText": "   originalFailure:this.originalFailure?.fact??'UNOBSERVED',secondaryControlFailure:this.secondaryControlFailure?.fact??'UNOBSERVED',rollbackFailure:this.rollbackFailure?.fact??'UNOBSERVED',abortObservation:this.abortFailure?.fact??'UNOBSERVED',branchObservations:{cancellation:this.cancellationIssued?'OBSERVED':'UNOBSERVED',controlUncertainty:this.controlUncertain?'OBSERVED':'UNOBSERVED',retainedHolder:this.holderRetained?'OBSERVED':'UNOBSERVED'},\n"
+          },
+          {
+            "currentStart": 47911,
+            "currentEnd": 48029,
+            "currentRangeSha256": "66a747b3aabaff07d31ed1d2b916ba337e225663e2d4f45bef17120a02b4644f",
+            "parentStart": 40681,
+            "parentEnd": 40762,
+            "parentText": " private async native<T>(slot:CarryBoundarySlot,work:()=>Promise<T>):Promise<T>{\n"
+          },
+          {
+            "currentStart": 48231,
+            "currentEnd": 49340,
+            "currentRangeSha256": "1db788dccfe99b677c5b36e42703a8573602140e58914df3c8495013a6e62817",
+            "parentStart": 40964,
+            "parentEnd": 41441,
+            "parentText": "  const started=performance.now();slot.active++;const pending=Promise.resolve().then(()=>{this.check();return work();});slot.pending.add(pending);\n  try{const result=await pending;this.check();return result;}catch(error){this.remember(error,slot.kind==='fixture'?'native-fixture':slot.kind==='command'?'native-command':'native-read','work');throw error;}finally{this.nativeOperations++;this.nativeAwaitMs+=performance.now()-started;slot.active--;slot.pending.delete(pending);}\n"
+          },
+          {
+            "currentStart": 49343,
+            "currentEnd": 49686,
+            "currentRangeSha256": "d25b6f4e8d318be76034c6a50f4bd426ed22c6e906b1c1a4549561a03fbfda84",
+            "parentStart": 41444,
+            "parentEnd": 41512,
+            "parentText": " private guard<T extends object>(value:T,slot:CarryBoundarySlot):T{\n"
+          },
+          {
+            "currentStart": 49780,
+            "currentEnd": 51804,
+            "currentRangeSha256": "18297e308257801a59bf866f793d2a7f3c39810478bc966bfd21dc81125ef51e",
+            "parentStart": 41606,
+            "parentEnd": 42026,
+            "parentText": "   if(key==='then'&&typeof member==='function')return(onFulfilled:unknown,onRejected:unknown)=>\n    Reflect.apply(Promise.prototype.then,this.native(slot,()=>Promise.resolve(target)),[onFulfilled,onRejected]);\n   if(typeof member!=='function')return member;\n   return(...args:unknown[])=>{this.check();const next=Reflect.apply(member,target,args);return next!==null&&typeof next==='object'?this.guard(next,slot):next;};\n"
+          },
+          {
+            "currentStart": 51811,
+            "currentEnd": 58631,
+            "currentRangeSha256": "39b6c870e6a705be6dd2580f89d30d00a0bf05b694862919b1e7803760070624",
+            "parentStart": 42033,
+            "parentEnd": 42033,
+            "parentText": ""
+          },
+          {
+            "currentStart": 58914,
+            "currentEnd": 59077,
+            "currentRangeSha256": "12235e5a09aca96e9c9ac687fa367fb834e9b737151c38ac2f75a93e6257ede6",
+            "parentStart": 42316,
+            "parentEnd": 42316,
+            "parentText": ""
+          },
+          {
+            "currentStart": 59339,
+            "currentEnd": 61841,
+            "currentRangeSha256": "03baba489c6bbbb53e20c08ac342fe1c8161c1bfce6731c594f28deacbb35dd2",
+            "parentStart": 42578,
+            "parentEnd": 42899,
+            "parentText": "   const [identity]=await tx.execute<CarryBoundaryIdentity>(sql`select pg_backend_pid() as pid,a.backend_start::text as started,current_database() as database,\n    session_user as login,current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only')='on' as \"readOnly\"\n"
+          },
+          {
+            "currentStart": 63022,
+            "currentEnd": 63211,
+            "currentRangeSha256": "643da54e5ac6e7880668c57501f136a091762649c6e366af0750270c0c94a106",
+            "parentStart": 44080,
+            "parentEnd": 44223,
+            "parentText": "   slot.identity=identity;this.identities.push(identity);slot.armed=true;this.check();outcome={ok:true,value:await body(this.guard(tx,slot))};\n"
+          },
+          {
+            "currentStart": 66044,
+            "currentEnd": 66199,
+            "currentRangeSha256": "378a799ac46becb36399534cc0bb928307d0a764a70437fd20dd58c08b014fdc",
+            "parentStart": 47056,
+            "parentEnd": 47056,
+            "parentText": ""
+          },
+          {
+            "currentStart": 68659,
+            "currentEnd": 68802,
+            "currentRangeSha256": "56280406b25c74f960fd0ed9f4dfedb55c92c55feb01eec85b64a040620b2215",
+            "parentStart": 49516,
+            "parentEnd": 49516,
+            "parentText": ""
+          }
+        ]
+      },
+      {
+        "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+        "current": {
+          "bytes": 24611,
+          "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+        },
+        "wholeParent": {
+          "source": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+          "gitBlob": "2915e4a7f6808fe8d331db5b6ded8a601307d656",
+          "bytes": 20868,
+          "sha256": "40692f1df8e323c2a772dd2ae803680922b15f71aaa620c9f47fdaeb6f6c44cf"
+        },
+        "inverseHunks": [
+          {
+            "currentStart": 20868,
+            "currentEnd": 24611,
+            "currentRangeSha256": "e05eb226488e6b3954f6e0c47959db8211156654f382b51b3f909f2f90713880",
+            "parentStart": 20868,
+            "parentEnd": 20868,
+            "parentText": ""
+          }
+        ]
+      }
+    ],
+    "priorActualFailure": {
+      "source": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+      "controller": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
+      "runId": 42534758273,
+      "attempt": 1,
+      "allSevenTerminal": true,
+      "selectedPassed": 13,
+      "selectedFailed": 1,
+      "sqlState": "57014",
+      "statement": "first original FETCH",
+      "serverReason": "statement timeout",
+      "phase": 0,
+      "page": 0,
+      "caseMs": 33301.224301999995,
+      "settledAndIdle": true,
+      "unhandledReported": false,
+      "authenticationSha256": "ef1d529c2d2a76d44194576b630bb433d2af46346039b3ac80ffc73be0d047d6",
+      "artifactId": 13639301041,
+      "zipSha256": "1ead66a7e2f08f38a576e9ec73367f38a2cb3a4e2d2150e62be38d5491f7b9f2",
+      "nativeEstimatePresent": false,
+      "queryCostCause": "UNKNOWN"
+    },
+    "observation": {
+      "optIn": "Existing owned AIHR_FOCUSED_EVIDENCE_DIR and first B1 phase0/page0 read epoch",
+      "sql": "Exactly one added non-ANALYZE EXPLAIN (VERBOSE, SETTINGS, FORMAT JSON) around the whole actual forwarded DECLARE SQL object",
+      "parameters": "Same ordered compiled parameters are checked before and after the estimate. Structured evidence emits only the count.",
+      "context": "Fixed settings, same guarded app RRRO transaction, role, same original PID, actual backend start and tenant/user plus row_security_active for the five population relations. Extend the existing identity SELECT only for the first read.",
+      "nativeAccounting": "One separate admitted operation and await duration inside the same pending/active/cancel/disarm settlement owner. Original statement metrics and event ledger use their original meaning.",
+      "interpretation": "An estimate for the actual DECLARE at observation time. Subsequent portal plan-object identity and query work cost remain unobserved. Whole case wall time includes instrumentation."
+    },
+    "bounds": {
+      "caseMs": 120000,
+      "hookMs": 30000,
+      "jobMs": 1200000,
+      "originalStatementMs": 20000,
+      "originalLockMs": 300,
+      "remainingBeforeEstimateMs": 70000,
+      "remainingAfterEstimateMs": 50000,
+      "reserveForDrainMs": 10000,
+      "maximumPlanBytes": 1048576,
+      "maximumMetadataBytes": 8192,
+      "maximumFramingBytes": 4096,
+      "maximumPlanNodes": 2048,
+      "maximumPlanDepth": 64,
+      "maximumCompiledSqlBytes": 65536,
+      "maximumParameterCount": 64,
+      "existingEventLimit": 128,
+      "existingSuccessEvents": 125
+    },
+    "evidenceBoundary": {
+      "member": "analytics-carry-first-fetch-estimate-private.json",
+      "runnerLocalFileMode": "0600 exclusive creation",
+      "planEncoding": "Pinned driver JSON decode followed by serialization with exact embedded bytes and SHA256. Query Identifier has ordinary JS numeric precision.",
+      "privacy": "Structured member and summary exclude separate compiled SQL, parameter arrays and raw error strings. Native plan expressions and existing Vitest/PostgreSQL reporters can retain fictional literals.",
+      "boundsMeaning": "Returned-value and publication checks after native driver decoding.",
+      "failure": "Exact first native error object propagates through existing rollback and drain. The estimate has a separate status. The original case retains its own outcome.",
+      "status": "UNRUN"
+    },
+    "sourceCensus": {
+      "all14ImmediateParentCallbacksWhole": true,
+      "original125EventsSevenPhasesElevenPagesSeventeenFetchesAnd30212OracleRowsRetained": true,
+      "existingOther13CasesWhole": true,
+      "originalDeclareFetchCloseWhole": true,
+      "noEvidencePathUsesOriginalStatements": true,
+      "nativeEstimateStatementsAdded": 1,
+      "separateMetadataStatementsAdded": 0,
+      "legacyControlUncertaintyCancellationRetainedHolderUnobservedUntilActuallyEntered": true
+    },
+    "authority": {
+      "localRepoImportsTestsTypecheckNativeExecuted": false,
+      "hostedExecutionAuthorizedByRecord": false,
+      "publicUploadAuthorizedByRecord": false,
+      "nativeEvidenceObserved": false,
+      "currentRuntimeQualified": false,
+      "productionHeld": true
+    },
+    "authoredEstimateSource": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+    "activeInverseScope": "The directParentRows reconstruct the current candidate to the same whole 9e83 estimate base. Original design and authored status fields describe the 6aafd estimate lineage."
+  },
+  "firstFetchEstimateAdmissionCorrection": {
+    "kind": "SOURCE_ONLY_ESTIMATE_HANDOFF_AND_JSON_REFUSAL_CORRECTION",
+    "sourceRef": "codex/analytics-carry-estimate-admission-20261109",
+    "directParentSource": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+    "wholeDirectParentObjects": [
+      {
+        "path": "test/analytics-bounded-reports.test.ts",
+        "source": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+        "gitBlob": "7804fbdcf37fb53f3c96ba98c34393b5edda80dd",
+        "bytes": 75979,
+        "sha256": "45eb8f3edf116492c99a269d41d3b260ee607bc46cce4ac5fe0afff7509015c1"
+      },
+      {
+        "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+        "source": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+        "gitBlob": "50edc4bb2ad5718659284d6607e5ac0642c20687",
+        "bytes": 23651,
+        "sha256": "72ff563852d94eedae9a0c4b41cbee055b3e54f305ef051ac233b6bfc3ae604f"
+      },
+      {
+        "path": "docs/qualification/analytics-carry-selection-source-20261109.json",
+        "source": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+        "gitBlob": "185c9b9287f2cbfbda01663e3b4da7d4264ecfde",
+        "bytes": 25714,
+        "sha256": "913a188bb6217526e3dd7d66018d607fa19ebc30c84cdf40c30cb90cd76e012a"
+      },
+      {
+        "path": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json",
+        "source": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+        "gitBlob": "c6d2a9a2db84ef66738e691770321d5d9909d86c",
+        "bytes": 41851,
+        "sha256": "e6c4c8e893198c39d99eff72b33e15fd63f24d0492c05173067369f36cdb1801"
+      }
+    ],
+    "directParentRows": [
+      {
+        "path": "test/analytics-bounded-reports.test.ts",
+        "current": {
+          "bytes": 79631,
+          "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+        },
+        "wholeParent": {
+          "source": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+          "gitBlob": "7804fbdcf37fb53f3c96ba98c34393b5edda80dd",
+          "bytes": 75979,
+          "sha256": "45eb8f3edf116492c99a269d41d3b260ee607bc46cce4ac5fe0afff7509015c1"
+        },
+        "inverseHunks": [
+          {
+            "currentStart": 29177,
+            "currentEnd": 29571,
+            "currentRangeSha256": "d25a565cede27243931ffca2f5b8eff02d019e884b8210888fa58cba2c53dc29",
+            "parentStart": 29177,
+            "parentEnd": 29412,
+            "parentText": "type CarryBoundarySlot={kind:'fixture'|'command'|'read';epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;estimateContext?:unknown;cancel?:Promise<void>;tag:string};\n"
+          },
+          {
+            "currentStart": 31313,
+            "currentEnd": 31731,
+            "currentRangeSha256": "26aabad774e0959b2f974aec4624ade69ec9b9c5493a22e65ded0cb7447c35eb",
+            "parentStart": 31154,
+            "parentEnd": 31154,
+            "parentText": ""
+          },
+          {
+            "currentStart": 32345,
+            "currentEnd": 32426,
+            "currentRangeSha256": "7b6c29b285eff800ad7e943f1da38235e122bb97492c27df3ea5b5de48dc41a1",
+            "parentStart": 31768,
+            "parentEnd": 31922,
+            "parentText": "  if (!Array.isArray(raw) || raw.length !== 1 || !carryEstimateRecord(raw[0]) ||\n      !carryEstimateRecord(raw[0].Plan) || 'Execution Time' in raw[0]) {\n"
+          },
+          {
+            "currentStart": 32491,
+            "currentEnd": 33798,
+            "currentRangeSha256": "8028ac635e092bc85daf5eb8fa9e0635e57b972b150758991fe2e7999e186650",
+            "parentStart": 31987,
+            "parentEnd": 32015,
+            "parentText": "  const root = raw[0].Plan;\n"
+          },
+          {
+            "currentStart": 34384,
+            "currentEnd": 34538,
+            "currentRangeSha256": "ed00d2df396a796fb96fa2dca93d08170be4b2fc80b0b4c1d76839bc3e1789bf",
+            "parentStart": 32601,
+            "parentEnd": 32669,
+            "parentText": "        Object.keys(node).some(key => key.startsWith('Actual '))) {\n"
+          },
+          {
+            "currentStart": 35695,
+            "currentEnd": 35797,
+            "currentRangeSha256": "f0a2e3b5797e0590d256652446f33fc6ad373a65948ad6bb6c9afa2d37bf4376",
+            "parentStart": 33826,
+            "parentEnd": 33915,
+            "parentText": "  status: 'UNOBSERVED' | 'STARTED' | 'CAPTURED' | 'FAILED' | 'OVERFLOW' | 'UNAVAILABLE';\n"
+          },
+          {
+            "currentStart": 37247,
+            "currentEnd": 37247,
+            "currentRangeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "parentStart": 35365,
+            "parentEnd": 35402,
+            "parentText": " private estimateAccounting = false;\n"
+          },
+          {
+            "currentStart": 47911,
+            "currentEnd": 48029,
+            "currentRangeSha256": "66a747b3aabaff07d31ed1d2b916ba337e225663e2d4f45bef17120a02b4644f",
+            "parentStart": 46066,
+            "parentEnd": 46147,
+            "parentText": " private async native<T>(slot:CarryBoundarySlot,work:()=>Promise<T>):Promise<T>{\n"
+          },
+          {
+            "currentStart": 48231,
+            "currentEnd": 48278,
+            "currentRangeSha256": "26df5c37b09162747b3d463132310a06893d1830ef2cd22c238ac26800b2297c",
+            "parentStart": 46349,
+            "parentEnd": 46393,
+            "parentText": "  const estimate = this.estimateAccounting;\n"
+          },
+          {
+            "currentStart": 48327,
+            "currentEnd": 48402,
+            "currentRangeSha256": "422ae3212ee73eb0de7d92d053e7c9f99b0e9f7d803f31af65a7eade4adace9c",
+            "parentStart": 46442,
+            "parentEnd": 46587,
+            "parentText": "  const pending=Promise.resolve().then(()=>{\n    this.check();\n    if (estimate) this.firstEstimate.nativeOperations++;\n    return work();\n  });\n"
+          },
+          {
+            "currentStart": 48528,
+            "currentEnd": 48727,
+            "currentRangeSha256": "701d0f03e68e2eb9712ed1a1ef329b30970d7806423a32b99917bf31d0ba4218",
+            "parentStart": 46713,
+            "parentEnd": 46809,
+            "parentText": "    const operation = estimate ? 'native-estimate' : slot.kind==='fixture' ? 'native-fixture' :\n"
+          },
+          {
+            "currentStart": 48791,
+            "currentEnd": 48990,
+            "currentRangeSha256": "107bb07bb27039262567a8710e450ac34ebb677e6b2201e5c76e17fffc936ef7",
+            "parentStart": 46873,
+            "parentEnd": 46916,
+            "parentText": "    this.remember(error,operation,'work');\n"
+          },
+          {
+            "currentStart": 49021,
+            "currentEnd": 49060,
+            "currentRangeSha256": "6f42149789e4bcc73896a7363ff02df75b78acaf436125b658ae139c0c03ad89",
+            "parentStart": 46947,
+            "parentEnd": 46967,
+            "parentText": "    if (estimate) {\n"
+          },
+          {
+            "currentStart": 49131,
+            "currentEnd": 49189,
+            "currentRangeSha256": "04d2cb8458d1eb0e83c0ec9b118aa27478fea51d51a51759fea472daf71337a0",
+            "parentStart": 47038,
+            "parentEnd": 47051,
+            "parentText": "    } else {\n"
+          },
+          {
+            "currentStart": 49343,
+            "currentEnd": 49686,
+            "currentRangeSha256": "d25b6f4e8d318be76034c6a50f4bd426ed22c6e906b1c1a4549561a03fbfda84",
+            "parentStart": 47205,
+            "parentEnd": 47273,
+            "parentText": " private guard<T extends object>(value:T,slot:CarryBoundarySlot):T{\n"
+          },
+          {
+            "currentStart": 49780,
+            "currentEnd": 51804,
+            "currentRangeSha256": "18297e308257801a59bf866f793d2a7f3c39810478bc966bfd21dc81125ef51e",
+            "parentStart": 47367,
+            "parentEnd": 47787,
+            "parentText": "   if(key==='then'&&typeof member==='function')return(onFulfilled:unknown,onRejected:unknown)=>\n    Reflect.apply(Promise.prototype.then,this.native(slot,()=>Promise.resolve(target)),[onFulfilled,onRejected]);\n   if(typeof member!=='function')return member;\n   return(...args:unknown[])=>{this.check();const next=Reflect.apply(member,target,args);return next!==null&&typeof next==='object'?this.guard(next,slot):next;};\n"
+          },
+          {
+            "currentStart": 52482,
+            "currentEnd": 52482,
+            "currentRangeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "parentStart": 48465,
+            "parentEnd": 48707,
+            "parentText": "   const admit = (remainingMs: number) => {\n     this.check();\n     if (120000 - (performance.now() - this.started) < remainingMs) {\n       throw new Error('Original carry case lifetime cannot admit its complete estimate slot');\n     }\n   };\n"
+          },
+          {
+            "currentStart": 52491,
+            "currentEnd": 52527,
+            "currentRangeSha256": "8e5091da2fd0c1662a1d17c3f9fa93e05177e4e8cc9e5de12e42cd320aed211e",
+            "parentStart": 48716,
+            "parentEnd": 48735,
+            "parentText": "     admit(70000);\n"
+          },
+          {
+            "currentStart": 52597,
+            "currentEnd": 52756,
+            "currentRangeSha256": "43f1889f56daa05d6995894d7b32871756600641299e92cf178069da9cebeea4",
+            "parentStart": 48805,
+            "parentEnd": 48976,
+            "parentText": "     if (this.estimateAccounting || this.slots.size !== 1 ||\n         !slot || slot.kind !== 'read' || slot.epoch !== this.estimateEpoch || !slot.armed || slot.closing ||\n"
+          },
+          {
+            "currentStart": 55737,
+            "currentEnd": 55782,
+            "currentRangeSha256": "9cc32a316970dac3ec0a604bd4f6df756b8653b0dacf087e193cf2e39eac8efe",
+            "parentStart": 51957,
+            "parentEnd": 52020,
+            "parentText": "     admit(70000);\n     this.firstEstimate.status = 'STARTED';\n"
+          },
+          {
+            "currentStart": 55800,
+            "currentEnd": 55944,
+            "currentRangeSha256": "bd8e8e3bfc7c9e717c960ff286c6a54729597d015ac24904f412d4f9c2439b78",
+            "parentStart": 52038,
+            "parentEnd": 52275,
+            "parentText": "     let result: readonly {\"QUERY PLAN\": unknown}[];\n     this.estimateAccounting = true;\n     try {\n       result = await target.execute<{\"QUERY PLAN\": unknown}>(explain);\n     } finally {\n       this.estimateAccounting = false;\n     }\n"
+          },
+          {
+            "currentStart": 58065,
+            "currentEnd": 58127,
+            "currentRangeSha256": "b4032a3ae954d1bd0738ae8665be52d9afa3437d29ff8a474eae3461db89a577",
+            "parentStart": 54396,
+            "parentEnd": 54475,
+            "parentText": "     admit(50000);\n     this.firstEstimate.originalDeclarationAdmitted = true;\n"
+          }
+        ]
+      },
+      {
+        "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+        "current": {
+          "bytes": 24611,
+          "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+        },
+        "wholeParent": {
+          "source": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+          "gitBlob": "50edc4bb2ad5718659284d6607e5ac0642c20687",
+          "bytes": 23651,
+          "sha256": "72ff563852d94eedae9a0c4b41cbee055b3e54f305ef051ac233b6bfc3ae604f"
+        },
+        "inverseHunks": [
+          {
+            "currentStart": 23651,
+            "currentEnd": 24611,
+            "currentRangeSha256": "fc5ac3c1c5521820b229609187da32f88b90aa064ff02ac7ed26cae63d8598df",
+            "parentStart": 23651,
+            "parentEnd": 23651,
+            "parentText": ""
+          }
+        ]
+      }
+    ],
+    "independentSourceReviewSha256": "4926a07d21923b4ff5fda16bbb63a0da727509baf4e4e40da3df0cfcd5e37ae7",
+    "reviewFindingsClosedBySource": [
+      "P2: Both fixed reserves are rechecked after evidence writes and preparation, in the existing guarded pending microtask immediately before the exact native thenable handoff.",
+      "P3: The fixed estimate JSON envelope and untimed JIT shape refuse runtime-only sections. Plan nodes refuse actual timing/row fields, runtime worker results and other explicit execution counters."
+    ],
+    "admission": {
+      "sameCaseClockAndActualSignal": true,
+      "estimateRemainingMs": 70000,
+      "originalDeclarationRemainingMs": 50000,
+      "oneShotExactSqlObjectAndLiveFirstReadEpoch": true,
+      "beforeCheck": "Existing synchronous receipt/plan writes, statement comparison, and PgRaw construction have returned.",
+      "finalHandoff": "The existing owned pending microtask checks the original case reserve and directly calls the genuine PgRaw then with its native receiver and promise continuations.",
+      "betweenFinalGuardAndHandoff": "No evidence write, SQL rendering, or extra thenable assimilation turn.",
+      "afterHandoff": "In-memory admission marks are set only after the native then returns. Existing failure/settlement/reporting persists them at its normal frontier.",
+      "refusal": "A captured estimate retains its payload and digest when the original declaration misses its slot. The original declaration admission flag stays unset and the exact refusal propagates.",
+      "scope": "Application handoff to the pinned driver. Driver-internal microtasks and socket scheduling are separate."
+    },
+    "estimateDocument": {
+      "stockPostgresql16Fields": [
+        "Plan",
+        "Settings",
+        "Query Identifier",
+        "JIT"
+      ],
+      "untimedJitFields": [
+        "Functions",
+        "Options"
+      ],
+      "actualRuntimeSectionsAccepted": false,
+      "decodedPlanHashMeaningUnchanged": true,
+      "primarySource": "https://raw.githubusercontent.com/postgres/postgres/REL_16_15/src/backend/commands/explain.c"
+    },
+    "preservedSource": {
+      "all14OriginalTestDeclarationsWhole": true,
+      "allImmediateParentSqlTaggedTemplatesWhole": true,
+      "exactOneAdditionalExplainFromEstimateBaseRetained": true,
+      "sameFourOwners": true,
+      "sameAllThresholdsAndPublicationCaps": true,
+      "sameOwnerCancellationFirstErrorAndDrainSemantics": true,
+      "noEvidenceAndNoScopeRoutesPreserved": true,
+      "existingHistoricalNativeEvidenceIdentityUnchanged": true
+    },
+    "sourceOnly": true,
+    "nativeEstimateStatus": "UNRUN",
+    "currentRuntimeQualified": false,
+    "productionHeld": true
+  }
+}

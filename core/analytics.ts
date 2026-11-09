@@ -746,68 +746,75 @@ export async function changeJobTransactionsPage(ctx:SessionContext,scopeIds:stri
   return withAnalyticsPresentation(ctx,tx=>changeJobTransactionsPageTx(tx,scope,input,page));
 }
 
+type ChangeJobPageEnvelope = {total:number} & (
+  | ({assignmentId:string} & ChangeJobRow)
+  | {assignmentId:null;name:null;company:null;fromDepartment:null;toDepartment:null;fromPosition:null;toPosition:null;effectiveOn:null}
+);
+
+/** The LEFT JOIN's absent assignment is transport only; never a business row.
+ * Raw execute bypasses select-field decoding, so retain the column's date decoder. */
+function changeJobPageRow(row:ChangeJobPageEnvelope):ChangeJobRow|null {
+  if(row.assignmentId===null)return null;
+  return {name:row.name,company:row.company,fromDepartment:row.fromDepartment,toDepartment:row.toDepartment,
+    fromPosition:row.fromPosition,toPosition:row.toPosition,effectiveOn:assignment.validFrom.mapFromDriverValue(row.effectiveOn)};
+}
+
 async function changeJobTransactionsPageTx(tx:Tx,scope:string[]|undefined,input:PeriodReportInput,page:PageQuery):Promise<AnalyticsReportPage<ChangeJobRow>> {
-    const source=changeJobTransactionsRowsTx(tx,scope,input).as('analytics_changeJobTransactions_page');
-    const rows=await tx.select({
-      name:source.name,
-      company:source.company,
-      fromDepartment:source.fromDepartment,
-      toDepartment:source.toDepartment,
-      fromPosition:source.fromPosition,
-      toPosition:source.toPosition,
-      effectiveOn:source.effectiveOn,
-      total:sql<number>`count(*) over()::int`,
-    }).from(source).orderBy(desc(source.effectiveOn),source.name,source.employmentId,source.assignmentId).limit(page.limit).offset(page.offset);
-    // An empty page still reports the full population (including an out-of-range page).
-    const total=rows.length?Number(rows[0].total):Number((await tx.select({total:count()}).from(source))[0]?.total??0);
-    return {rows:rows.map(({total,...row})=>row),state:pageState(page,total,rows.length)};
+    const source=changeJobTransactionsRowsTx(tx,scope,input);
+    // Exactly one evaluation of the unchanged relation feeds both the exact
+    // population count and the bounded page, including an empty/past-end page.
+    const envelope=await tx.execute<ChangeJobPageEnvelope>(sql`
+      with analytics_changeJobTransactions_page as materialized (${source.getSQL()})
+      select population.total, selected.assignment_id as "assignmentId", selected.name, selected.company,
+        selected."fromDepartment", selected."toDepartment", selected."fromPosition", selected."toPosition", selected."effectiveOn"
+      from (select count(*)::int as total from analytics_changeJobTransactions_page) population
+      left join (
+        select * from analytics_changeJobTransactions_page
+        order by "effectiveOn" desc, name, employment_id, assignment_id
+        limit ${page.limit} offset ${page.offset}
+      ) selected on true
+      order by selected."effectiveOn" desc, selected.name, selected.employment_id, selected.assignment_id
+    `);
+    const rows=envelope.map(changeJobPageRow).filter((row):row is ChangeJobRow=>row!==null);
+    return {rows,state:pageState(page,Number(envelope[0].total),rows.length)};
 }
 // ───────────────────────── Dimension distributions (visual charts) ─────────────────────────
-// Every distribution is filter-aware and tallied in JS (small result sets) so the Unknown / Unassigned
-// bucketing logic lives in one place. Person-level dimensions (gender / marital / age) sum to the
-// total headcount INCLUDING the explicit "Unknown" bucket (NULL value); they don't depend on the
-// current assignment so they never need an Unassigned bucket. Assignment-derived dimensions
-// (cost-centre / department / 5-way status come from the current assignment) count rows with no current
-// assignment into an explicit "Unassigned" bucket so the design narrows intentionally and the chart
-// still sums to the total headcount.
+// Every distribution is filter-aware and shares one native population. Count each raw value in
+// PostgreSQL, then fold those counts into the existing presentation buckets in JavaScript.
 //
 // Bucket sentinel keys are returned as machine codes; the UI maps them to localized labels.
 export const UNKNOWN_BUCKET = '__unknown__';
 export const UNASSIGNED_BUCKET = '__unassigned__';
 
-/** Tally a list of (nullable) string keys into a sorted DimensionCount[], folding null → nullBucket. */
-function tally(rows: (string | null)[], nullBucket = UNKNOWN_BUCKET): DimensionCount[] {
-  const m = new Map<string, number>();
-  for (const r of rows) {
-    const name = r ?? nullBucket;
-    m.set(name, (m.get(name) ?? 0) + 1);
-  }
-  return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-}
+const demographicFields = [
+  'gender', 'maritalStatus', 'dateOfBirth', 'workState', 'costCenterName', 'employmentStatus', 'departmentName',
+] as const;
+type DemographicField = (typeof demographicFields)[number];
+type DemographicCountRow = Record<DemographicField, string | null> & { groupingMask: number; count: string };
+const demographicTotalMask = (1 << demographicFields.length) - 1;
+const demographicFieldByMask = new Map(demographicFields.map((field, index) =>
+  [demographicTotalMask ^ (1 << (demographicFields.length - 1 - index)), field] as const,
+));
 
-/** The base row set for person-level dimensions: one row per active-as-of-asOf employment matching the
- *  filters, carrying the person attributes + the current assignment's dept/costCentre/status. */
-function dimensionRowsTx(tx:Tx,scopeIds:string[]|undefined,filters:AnalyticsFilters,asOf:string) {
+/** The original visible employment population supplies every dimension. */
+function dimensionRowsTx(tx: Tx, scopeIds: string[] | undefined, filters: AnalyticsFilters, asOf: string) {
   return tx
-      .select({
-        gender: person.gender,
-        maritalStatus: person.maritalStatus,
-        dateOfBirth: person.dateOfBirth,
-        workState: employment.workState,
-        costCenterName: costCenter.name,
-        // 9cbf5e0d — the DERIVED Employee Status as of asOf, so the chart shows what the Personnel screens
-        // show. The legacy stored assignment.status is not read here any more.
-        employmentStatus: employmentStatusSql(asOf),
-        departmentName: department.name,
-      })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(assignment, currentAssignment)
-      .leftJoin(department, eq(department.id, assignment.departmentId))
-      .leftJoin(costCenter, eq(costCenter.id, assignment.costCenterId))
-      .where(
-        analyticsWhere({ ...filters, lifecycleStatus: filters.lifecycleStatus ?? 'active' }, scopeIds, { asOf }),
-      );
+    .select({
+      // A bytewise equality grouping retains the original distinct JS string keys.
+      gender: sql<string | null>`${person.gender}::text collate "C"`.as('gender'),
+      maritalStatus: sql<string | null>`${person.maritalStatus}::text collate "C"`.as('maritalStatus'),
+      dateOfBirth: sql<string | null>`${person.dateOfBirth}::text collate "C"`.as('dateOfBirth'),
+      workState: sql<string | null>`${employment.workState}::text collate "C"`.as('workState'),
+      costCenterName: sql<string | null>`${costCenter.name}::text collate "C"`.as('costCenterName'),
+      employmentStatus: sql<string>`(${employmentStatusSql(asOf)})::text collate "C"`.as('employmentStatus'),
+      departmentName: sql<string | null>`${department.name}::text collate "C"`.as('departmentName'),
+    })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .leftJoin(assignment, currentAssignment)
+    .leftJoin(department, eq(department.id, assignment.departmentId))
+    .leftJoin(costCenter, eq(costCenter.id, assignment.costCenterId))
+    .where(analyticsWhere({ ...filters, lifecycleStatus: filters.lifecycleStatus ?? 'active' }, scopeIds, { asOf }));
 }
 
 /** Bucket a date-of-birth (ISO) into an age band as of `asOf`; null DOB → UNKNOWN_BUCKET. */
@@ -849,24 +856,49 @@ export async function workforceDemographics(
 ): Promise<Demographics> {
   return withTenant(ctx,tx=>workforceDemographicsTx(tx,scopeIds,opts));
 }
-async function workforceDemographicsTx(tx:Tx,scopeIds:string[]|undefined,opts:{asOf:string;filters?:AnalyticsFilters}):Promise<Demographics> {
-  const filters = opts.filters ?? {};
-  const rows = await dimensionRowsTx(tx, scopeIds, filters, opts.asOf);
-  const byAgeBand = tally(rows.map((r) => ageBand(r.dateOfBirth, opts.asOf))).sort(
-    (a, b) => AGE_ORDER.indexOf(a.name) - AGE_ORDER.indexOf(b.name),
-  );
+async function workforceDemographicsTx(
+  tx: Tx, scopeIds: string[] | undefined, opts: { asOf: string; filters?: AnalyticsFilters },
+): Promise<Demographics> {
+  const population = dimensionRowsTx(tx, scopeIds, opts.filters ?? {}, opts.asOf).as('demographic_population');
+  const columns = demographicFields.map(field => sql.identifier(field));
+  const columnList = sql.join(columns, sql`, `);
+  const groups = sql.join(columns.map(column => sql`(${column})`), sql`, `);
+  // GROUPING distinguishes a real NULL bucket from an absent dimension or the total.
+  const rows = await tx.execute<DemographicCountRow>(sql`
+    select grouping(${columnList}) as "groupingMask", ${columnList}, count(*)::text as count
+    from ${population}
+    group by grouping sets ((), ${groups})
+  `);
+
+  const tallies = new Map(demographicFields.map(field => [field, new Map<string, number>()] as const));
+  let total = 0;
+  for (const row of rows) {
+    const count = Number(row.count);
+    if (row.groupingMask === demographicTotalMask) {
+      total = count;
+      continue;
+    }
+    const field = demographicFieldByMask.get(row.groupingMask);
+    if (!field) throw new Error('Unexpected workforce demographic grouping');
+    const value = row[field];
+    const nullBucket = field === 'costCenterName' || field === 'departmentName' ? UNASSIGNED_BUCKET : UNKNOWN_BUCKET;
+    // Keep the original date interpretation and fold raw DOB counts into the age bands here.
+    const name = field === 'dateOfBirth' ? ageBand(value, opts.asOf) : value ?? nullBucket;
+    const buckets = tallies.get(field)!;
+    buckets.set(name, (buckets.get(name) ?? 0) + count);
+  }
+  const dimension = (field: DemographicField) =>
+    [...tallies.get(field)!].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+  const byAgeBand = dimension('dateOfBirth').sort((a, b) => AGE_ORDER.indexOf(a.name) - AGE_ORDER.indexOf(b.name));
   return {
-    total: rows.length,
-    byGender: tally(rows.map((r) => r.gender)),
-    byMarital: tally(rows.map((r) => r.maritalStatus)),
+    total,
+    byGender: dimension('gender'),
+    byMarital: dimension('maritalStatus'),
     byAgeBand,
-    byLocation: tally(rows.map((r) => r.workState)),
-    // assignment-derived → no current assignment folds to UNASSIGNED_BUCKET (so the chart sums to total).
-    byCostCentre: tally(rows.map((r) => r.costCenterName), UNASSIGNED_BUCKET),
-    byDepartment: tally(rows.map((r) => r.departmentName), UNASSIGNED_BUCKET),
-    // Derived from the employment's own lifecycle, so — unlike the other assignment-derived dimensions —
-    // an employee with no current assignment still lands in a real bucket, never "Unassigned".
-    byEmploymentStatus: tally(rows.map((r) => r.employmentStatus)),
+    byLocation: dimension('workState'),
+    byCostCentre: dimension('costCenterName'),
+    byDepartment: dimension('departmentName'),
+    byEmploymentStatus: dimension('employmentStatus'),
   };
 }
 
@@ -1030,34 +1062,71 @@ export function carryForwardReport(ctx:SessionContext,scopeIds:string[]|undefine
 }
 
 /** Calculate only the requested rows, retaining the existing localeCompare order.
- * Identity sorting is intentionally O(population) minimal names/IDs, not a claim
- * of fully bounded native collation. Expensive ledger/template reads are page-only. */
+ * Every identity is scanned and counted; only the requested rank prefix is retained.
+ * Deep pages can still retain the population. Ledger/template reads are page-only. */
 export async function carryForwardReportPage(ctx:SessionContext,scopeIds:string[]|undefined,p:CarryForwardInput&{page:PageQuery}):Promise<AnalyticsReportPage<CarryForwardReportRow>>{
   const page=validatedReportPage(p.page),scope=scopeIds?.slice(),input={year:p.year,companyId:p.companyId,filter:p.filter?{...p.filter}:undefined};
   return withAnalyticsPresentation(ctx,tx=>carryForwardReportPageTx(tx,scope,input,page));
+}
+
+type CarryPageIdentity = {employmentId:string;name:string};
+type RankedCarryPageIdentity = CarryPageIdentity & {sourceOrdinal:number};
+
+/** The old stable name sort used the cursor's UUID order to break equal comparisons. */
+function carryPageIdentityOrder(a:RankedCarryPageIdentity,b:RankedCarryPageIdentity):number {
+  return a.name.localeCompare(b.name)||a.sourceOrdinal-b.sourceOrdinal;
+}
+function carryPageRetentionLimit(page:PageQuery):number {
+  return page.offset>Number.MAX_SAFE_INTEGER-page.limit?Number.MAX_SAFE_INTEGER:page.offset+page.limit;
+}
+/** A max heap retains the earliest rank prefix without allocating the requested size. */
+function retainCarryPageIdentity(heap:RankedCarryPageIdentity[],candidate:RankedCarryPageIdentity,retain:number):void {
+  if(heap.length<retain){
+    let index=heap.length;heap.push(candidate);
+    while(index>0){
+      const parent=Math.floor((index-1)/2);
+      if(carryPageIdentityOrder(heap[parent],candidate)>=0)break;
+      heap[index]=heap[parent];index=parent;
+    }
+    heap[index]=candidate;
+    return;
+  }
+  if(carryPageIdentityOrder(candidate,heap[0])>=0)return;
+  let index=0;
+  for(;;){
+    const left=index*2+1;if(left>=heap.length)break;
+    const right=left+1,child=right<heap.length&&carryPageIdentityOrder(heap[right],heap[left])>0?right:left;
+    if(carryPageIdentityOrder(heap[child],candidate)<=0)break;
+    heap[index]=heap[child];index=child;
+  }
+  heap[index]=candidate;
 }
 
 async function carryForwardReportPageTx(tx:Tx,scope:string[]|undefined,input:CarryForwardInput,page:PageQuery):Promise<AnalyticsReportPage<CarryForwardReportRow>> {
     const [annual]=await tx.select({id:leaveType.id}).from(leaveType).where(eq(leaveType.code,'ANNUAL')).limit(1);
     if(!annual)return {rows:[],state:pageState(page,0,0)};
     const population=carryForwardPopulationTx(tx,scope,input).as('analytics_carry_population');
-    const identities:{employmentId:string;name:string}[]=[];
+    const identities:RankedCarryPageIdentity[]=[],retain=carryPageRetentionLimit(page);
+    let total=0;
     await tx.execute(sql`declare analytics_carry_identities no scroll cursor for
       select ${population.employmentId} as "employmentId",${population.name} as name from ${population}
       order by ${population.employmentId}`);
     for(;;){
-      const batch=await tx.execute<{employmentId:string;name:string}>(sql`fetch forward 512 from analytics_carry_identities`);
-      identities.push(...batch);
-      if(batch.length<512)break;
+      const batch=await tx.execute<CarryPageIdentity>(sql`fetch forward 4096 from analytics_carry_identities`);
+      for(const identity of batch){
+        if(!Number.isSafeInteger(total+1))throw new Error('Analytics population count exceeds safe integer');
+        retainCarryPageIdentity(identities,{...identity,sourceOrdinal:total},retain);total++;
+      }
+      if(batch.length<4096)break;
     }
     await tx.execute(sql`close analytics_carry_identities`);
     // At year-end December, every valid hire month is <= the as-of month.
     // earnedCycleStart therefore starts in input.year for calendar AND anniversary
     // populations admitted above. No financial eligibility is inferred from a cap.
-    identities.sort((a,b)=>a.name.localeCompare(b.name));
-    const selected=identities.slice(page.offset,page.offset+page.limit).map(row=>row.employmentId);
+    identities.sort(carryPageIdentityOrder);
+    const selected=identities.slice(page.offset,retain).map(row=>row.employmentId);
     const rows=selected.length?await carryForwardRowsTx(tx,scope,input,selected):[];
-    return {rows,state:pageState(page,identities.length,rows.length)};
+    return {rows,state:pageState(page,total,rows.length)};
 }
 async function carryForwardRowsTx(tx:Tx,scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]):Promise<CarryForwardReportRow[]>{
   if(selectedIds?.length===0)return [];

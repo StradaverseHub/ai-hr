@@ -1,0 +1,710 @@
+{
+  "kind": "ANALYTICS_CARRY_SELECTION_CURRENT_SOURCE_OVERLAY_NOT_RUNTIME_OR_RELEASE_EVIDENCE",
+  "parentSource": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+  "scope": "Carry page only; demographic and shared-facts proposals remain unimplemented.",
+  "implementedSourceOnly": true,
+  "currentSourceRows": [
+    {
+      "path": "core/analytics.ts",
+      "current": {
+        "bytes": 82993,
+        "sha256": "e7941bdb952c25334bea0dfcd85402a20ae293c45f82a9c924a517f0be2227da"
+      },
+      "wholeParent": {
+        "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+        "gitBlob": "fa9acad295258ec2a78910ba234edef3182aa227",
+        "bytes": 81339,
+        "sha256": "9ead5dfa7bb1b8adc657a5e7d9993b29170eb8d546875dacef6ffc92c3769aa8"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 54834,
+          "currentEnd": 55007,
+          "currentRangeSha256": "52970c73d822049939877049084467fa57f6fc04f00a03d887465cdce3a99483",
+          "parentStart": 54834,
+          "parentEnd": 55004,
+          "parentText": " * Identity sorting is intentionally O(population) minimal names/IDs, not a claim\n * of fully bounded native collation. Expensive ledger/template reads are page-only. */\n"
+        },
+        {
+          "currentStart": 55429,
+          "currentEnd": 56876,
+          "currentRangeSha256": "cc7982efc80ca184da75144506c327cd51ca88fb54f1fc2ad5678166ebab1c97",
+          "parentStart": 55426,
+          "parentEnd": 55426,
+          "parentText": ""
+        },
+        {
+          "currentStart": 57314,
+          "currentEnd": 57419,
+          "currentRangeSha256": "8fc53fbab1405b51d52f5d2cc1f98a5712a80becc4361a27d5edeeb55424817a",
+          "parentStart": 55864,
+          "parentEnd": 55925,
+          "parentText": "    const identities:{employmentId:string;name:string}[]=[];\n"
+        },
+        {
+          "currentStart": 57662,
+          "currentEnd": 58056,
+          "currentRangeSha256": "175616b3a4b7bdc19002c423da3f3cee8a508daa087c6f80ce9ace3ba7fc3c5a",
+          "parentStart": 56168,
+          "parentEnd": 56361,
+          "parentText": "      const batch=await tx.execute<{employmentId:string;name:string}>(sql`fetch forward 512 from analytics_carry_identities`);\n      identities.push(...batch);\n      if(batch.length<512)break;\n"
+        },
+        {
+          "currentStart": 58366,
+          "currentEnd": 58495,
+          "currentRangeSha256": "e28809f5844e9d6a8b5fa5c2fc8e1bf9e70fb4dc3d974192458093421c0f0e00",
+          "parentStart": 56671,
+          "parentEnd": 56829,
+          "parentText": "    identities.sort((a,b)=>a.name.localeCompare(b.name));\n    const selected=identities.slice(page.offset,page.offset+page.limit).map(row=>row.employmentId);\n"
+        },
+        {
+          "currentStart": 58580,
+          "currentEnd": 58639,
+          "currentRangeSha256": "32c91403e3a3c50766c4ff55f8bcecba9aaf580547870b5bb630ae29f19e7761",
+          "parentStart": 56914,
+          "parentEnd": 56985,
+          "parentText": "    return {rows,state:pageState(page,identities.length,rows.length)};\n"
+        }
+      ]
+    },
+    {
+      "path": "test/analytics-bounded-reports.test.ts",
+      "current": {
+        "bytes": 79631,
+        "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+      },
+      "wholeParent": {
+        "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+        "gitBlob": "15bc2f106a185474e76b6d0d6bb87dddc7a6be39",
+        "bytes": 27037,
+        "sha256": "0187abf271c1318ad9c49a56d7b66ba47b1925eecff5c20c3c05d2a746b4d062"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 0,
+          "currentEnd": 267,
+          "currentRangeSha256": "d795292664a66a334e5f1c5a50f1bdbab95869f0527e96bbb448b3d89907d2c9",
+          "parentStart": 0,
+          "parentEnd": 84,
+          "parentText": "import {randomUUID} from 'node:crypto';\nimport {eq,inArray,sql} from 'drizzle-orm';\n"
+        },
+        {
+          "currentStart": 1000,
+          "currentEnd": 1057,
+          "currentRangeSha256": "0a5d4782cd01789df0ad1c3e39c33c18f5e168844ba2cd9ef0247c28f0a1cdf0",
+          "parentStart": 817,
+          "parentEnd": 817,
+          "parentText": ""
+        },
+        {
+          "currentStart": 1230,
+          "currentEnd": 1411,
+          "currentRangeSha256": "4f1dd75454c739679550565fe319f075872fdcd2b7d3dd66cef0cd02738c5154",
+          "parentStart": 990,
+          "parentEnd": 1055,
+          "parentText": "beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);\n"
+        },
+        {
+          "currentStart": 1491,
+          "currentEnd": 1642,
+          "currentRangeSha256": "41a8d2a80e5415df2b71f7201baf655cfc66c5c081207036cb943181d1547497",
+          "parentStart": 1135,
+          "parentEnd": 1246,
+          "parentText": "async function seedRows(b:Base,n:number,p:{terminatedOn?:string;name?:(i:number)=>string;hiredOn?:string}={}){\n"
+        },
+        {
+          "currentStart": 2183,
+          "currentEnd": 2561,
+          "currentRangeSha256": "3924cff6b434dc0f4d2f6d427912bdbd32cbe56f0c8bc152eb954a4880685cdb",
+          "parentStart": 1787,
+          "parentEnd": 2114,
+          "parentText": "  await owner.db.insert(person).values(personRows);\n  await owner.db.insert(employment).values(employmentRows);\n  await owner.db.insert(assignment).values(employmentRows.map(row=>({tenantId:b.tenantId,employmentId:row.id,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time' as const,validFrom:row.hiredOn})));\n"
+        },
+        {
+          "currentStart": 2653,
+          "currentEnd": 2718,
+          "currentRangeSha256": "b94d87d956b178ede1c4a6e3bb607bff8ee119b074888ac58e5883c740578dcb",
+          "parentStart": 2206,
+          "parentEnd": 2206,
+          "parentText": ""
+        },
+        {
+          "currentStart": 27549,
+          "currentEnd": 79631,
+          "currentRangeSha256": "cdca27f9a8e573b605d549f96524709310b3e937c7dcaf1ee14af84807251384",
+          "parentStart": 27037,
+          "parentEnd": 27037,
+          "parentText": ""
+        }
+      ]
+    },
+    {
+      "path": "test/analytics-dashboard-composition.test.ts",
+      "current": {
+        "bytes": 22025,
+        "sha256": "5ea752056565a32fcc849aa2158197736388d4deeb68ad9e500672d539c68c9b"
+      },
+      "wholeParent": {
+        "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+        "gitBlob": "be5be875a917149e193eace0e7345fc3ac41e5fb",
+        "bytes": 17797,
+        "sha256": "a418c7c83865d99344204c928434f2c2cab1ff599eb812ed126b4be6fdb978f7"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 111,
+          "currentEnd": 203,
+          "currentRangeSha256": "5ad4177ebe4165da7de60c802e41712ca3f01030f787ff29177320224110ede8",
+          "parentStart": 111,
+          "parentEnd": 147,
+          "parentText": "import {eq,sql} from 'drizzle-orm';\n"
+        },
+        {
+          "currentStart": 1020,
+          "currentEnd": 1064,
+          "currentRangeSha256": "1019cfc33cbf01e065581f626544d4c897960fb2ce2b9b023b530bdb1f39d0ac",
+          "parentStart": 964,
+          "parentEnd": 964,
+          "parentText": ""
+        },
+        {
+          "currentStart": 17897,
+          "currentEnd": 22025,
+          "currentRangeSha256": "2ea57595a4a9616eef9fbab4828535c20a2db75999c3dda3bc6f1b1556e6432e",
+          "parentStart": 17797,
+          "parentEnd": 17797,
+          "parentText": ""
+        }
+      ]
+    },
+    {
+      "path": "test/analytics-native-scale.test.ts",
+      "current": {
+        "bytes": 33631,
+        "sha256": "0147e1d4cf767a654995b5130866316218177eb35dedbd514a908b1f70067c10"
+      },
+      "wholeParent": {
+        "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+        "gitBlob": "60fb62dc50593fe3de1806bcb1cd1d3beeddd77a",
+        "bytes": 33180,
+        "sha256": "3ec089935fd75c17873045538af0f0d719cfc9c3a52af84cd076995b8b476f47"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 1163,
+          "currentEnd": 1238,
+          "currentRangeSha256": "af695fc6d8d0147da601987646b536523082885d23bac2648d75fc63f0a8bd8b",
+          "parentStart": 1163,
+          "parentEnd": 1238,
+          "parentText": "const analyticsStatementClassifierVersion='analytics-statement-shapes/v4';\n"
+        },
+        {
+          "currentStart": 1889,
+          "currentEnd": 2068,
+          "currentRangeSha256": "5fffc672c5d3fb81f02d5238bcffc62819eeafb809649d538b6610acefc3b8a2",
+          "parentStart": 1889,
+          "parentEnd": 1996,
+          "parentText": " if(query.startsWith('fetch forward 512 from analytics_carry_identities'))return 'carry-identities-fetch';\n"
+        },
+        {
+          "currentStart": 15136,
+          "currentEnd": 15333,
+          "currentRangeSha256": "66ae7dbd98a77c66594c3573d31db01016fbb135d38f335423f76a1f7aa4c5fc",
+          "parentStart": 15064,
+          "parentEnd": 15112,
+          "parentText": " expect(telemetry.totals.statements).toBe(121);\n"
+        },
+        {
+          "currentStart": 15385,
+          "currentEnd": 15615,
+          "currentRangeSha256": "f181e870b1f7eeb323aa49a5204e86d89e34c006ed0452ac096637dd10ad1640",
+          "parentStart": 15164,
+          "parentEnd": 15164,
+          "parentText": ""
+        }
+      ]
+    },
+    {
+      "path": "test/performance/module-read-jit-probe.ts",
+      "current": {
+        "bytes": 25575,
+        "sha256": "0dbe2a0dbd9f35a1d7cb196e8c1131d0c3b1860b2d218ae78ddd8a37171e59a2"
+      },
+      "wholeParent": {
+        "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+        "gitBlob": "d5426e22b8e4dd9f034fb469eab23a9f4d29d919",
+        "bytes": 25507,
+        "sha256": "49efc0fd9630b782a550b046f151edbbe54f919d32c6c7cb36ebadd48c98be9b"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 2613,
+          "currentEnd": 2784,
+          "currentRangeSha256": "0943aa465f71cd4f1630f2455090dcfc9d33032f521ea4e2c95e5930739bd2d9",
+          "parentStart": 2613,
+          "parentEnd": 2716,
+          "parentText": " if(q.startsWith('fetch forward 512 from analytics_carry_identities'))return 'carry-identities-fetch';\n"
+        }
+      ]
+    },
+    {
+      "path": "test/module-read-jit-diagnostic.test.ts",
+      "current": {
+        "bytes": 21894,
+        "sha256": "612ff33a86e7e2720f6ecf90fb477b8ca4f171d7cd2c3e4c6f305e27bbdd8090"
+      },
+      "wholeParent": {
+        "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+        "gitBlob": "6ecb95d32aa54e075b3990078a95c751d6c20a42",
+        "bytes": 21680,
+        "sha256": "344bbc0fe3eaa79f09e71d668c76d699a76f045852376ec66b225e2b92e2a224"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 19654,
+          "currentEnd": 20168,
+          "currentRangeSha256": "9d621c80efe13888b327a674b213aa0ca8ad43ba10a1937a9532fa7f4a2ae27e",
+          "parentStart": 19654,
+          "parentEnd": 19954,
+          "parentText": "  assertDashboard(result.value);expect(result.receipt).toMatchObject({complete:true,requestedJit:mode,effectiveJitAfterProductPolicy:'off',effectiveJitAtCompletion:'off',policyCommandCount:1,census:{statements:121,rows:90089,unknownRows:0,failed:0},defaultsRestoredSamePid:true,transactionCalls:1});\n"
+        }
+      ]
+    },
+    {
+      "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+      "current": {
+        "bytes": 24611,
+        "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+      },
+      "wholeParent": {
+        "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+        "gitBlob": "abbd3b844b3b190141997abe78299b0dc1b43683",
+        "bytes": 13334,
+        "sha256": "8f4f0c22acae929c4af50a05fe440db9e2e5aec39eb441e939f25f96e15f7abb"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 13334,
+          "currentEnd": 24611,
+          "currentRangeSha256": "cd4f40628bef4a54cf336ed5d5cfdb2c60ad90f1294f318457d19e906e4f851e",
+          "parentStart": 13334,
+          "parentEnd": 13334,
+          "parentText": ""
+        }
+      ]
+    }
+  ],
+  "protectedWholeFiles": [
+    {
+      "path": "core/leave.ts",
+      "bytes": 731397,
+      "sha256": "22c6b592b0d878fb43919746e0220e0ca01731178f53dafb23f982d41ab86d50",
+      "gitBlob": "b8bbcf224253c2225f33f4558d92d90ae85609c1"
+    },
+    {
+      "path": "lib/hr-date.ts",
+      "bytes": 4757,
+      "sha256": "bcd1a856837061eb50adf459e4c3512ccb0bd145967bfcf7bf496b1f46c84823",
+      "gitBlob": "b109878e178c1175aced19e8512e6aff0226da62"
+    },
+    {
+      "path": "lib/pagination.ts",
+      "bytes": 11602,
+      "sha256": "60581e70659b37da8777dd633d4f17f32cc1dd4dcd050ed66a378e0625141fad",
+      "gitBlob": "091115b5d7caf0e0e7e26d19bab0b61140706d62"
+    },
+    {
+      "path": "db/client.ts",
+      "bytes": 22595,
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f",
+      "gitBlob": "0c4f28e00393a763608b506d608a3cf7df542c57"
+    },
+    {
+      "path": "db/schema.ts",
+      "bytes": 820303,
+      "sha256": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112",
+      "gitBlob": "c80eb3180eebc7bf9fb9a30367e4b00746b22592"
+    },
+    {
+      "path": "db/migrations/0001_rls_grants_constraints.sql",
+      "bytes": 8922,
+      "sha256": "d095267b25cfb696b808b05ff33baf64b19ab2b948fb45e86ee45fa21748ef87",
+      "gitBlob": "57971441c1decc342c0a286ca2ca22a3c3b1bf29"
+    },
+    {
+      "path": "db/migrations/0004_slice1_comp_statutory_rls.sql",
+      "bytes": 1969,
+      "sha256": "a3df25aa9cf8d5b567b8d9015bfbd8b7fd1aaf81c6d2f24c67984bd0016a62df",
+      "gitBlob": "dc0a786cec8339884ff33bf3d968628a48a3908f"
+    },
+    {
+      "path": "db/migrations/2701_personnel_typed_overview_filter_fields.sql",
+      "bytes": 8314,
+      "sha256": "87b1b0a0dd532eda1211dddcd5af2a8b14013a66615527cffa3c1be449d0daf8",
+      "gitBlob": "61083db8f97376aa067f1e1d00e973aeaee6591f"
+    },
+    {
+      "path": "test/helpers/native-read-observer.ts",
+      "bytes": 5384,
+      "sha256": "401bd549ee1ff0ad4ae7241743860682dd8a081ee71e9ee401056b0dc95787d5",
+      "gitBlob": "fdf10e2b00b0ad0f65d34c17787c0a115961fd26"
+    },
+    {
+      "path": "test/carry-forward-report.test.ts",
+      "bytes": 17329,
+      "sha256": "9dd23e608a8860839c0c73fab81f15b40672e1f804f9fe78fb2bff907c868334",
+      "gitBlob": "6aa61a6bb56bfa9821b1be99f8fa5b3b1c6f6c01"
+    }
+  ],
+  "protectedWholeCoreFunctions": [
+    {
+      "name": "analyticsDateRange",
+      "sha256": "014d85980aabc5a4ac1f8810146fb3f114109729d8e1f84da9920e0aad98d88c"
+    },
+    {
+      "name": "parseReportYear",
+      "sha256": "3a9386efc7d3e81aa52e87423453dd635fed6f1fa8623b1d124d6ca489849aa6"
+    },
+    {
+      "name": "parseAnalyticsFilters",
+      "sha256": "5dcbc39c5a4f4a5bf35254bf2bb9d9a1f86ff8ccfe3a54c6fc3c2677356e1a81"
+    },
+    {
+      "name": "analyticsWhere",
+      "sha256": "2f1bb8a13dddf904a6a5577137676d8e50454eec54b241a7d9c45037dc803adf"
+    },
+    {
+      "name": "headcountSourceRowsTx",
+      "sha256": "bb89a157dd01eefd00942acd9cfc3affb62abf096b4103ce197118a481aabb8c"
+    },
+    {
+      "name": "headcountSummaryTx",
+      "sha256": "f5950945e78fe88b54db2804c701a9c016329686e14d632c51a87b562d4b34bc"
+    },
+    {
+      "name": "headcountSummary",
+      "sha256": "3163a864591966f794fea38435b36a35f47991b22f972619577cccae7f50dbc9"
+    },
+    {
+      "name": "workforceHeadcountSourceTx",
+      "sha256": "73c59fd9b6da0e70a0a39523ca75cafa6634ed28fc02773252707861e7126b68"
+    },
+    {
+      "name": "masterDataRowsTx",
+      "sha256": "bf131742ed9732b2a32b7d08ddfcd004e32944e767702abf1b24e6b5e1284ba2"
+    },
+    {
+      "name": "masterDataCount",
+      "sha256": "b5d0e48da317df7f57c4eaed7555f29e47f4cf500572485e0df462f0adddcc73"
+    },
+    {
+      "name": "masterDataCountTx",
+      "sha256": "71c73fa16fd7c421d902de4a15554ee189b1e7fa4f1cdcde497c6044b7577ed0"
+    },
+    {
+      "name": "masterDataExport",
+      "sha256": "b09460b3a185465a7249a11988ddb32db598c2b6c38110fc0f46ab6977008318"
+    },
+    {
+      "name": "withAnalyticsPresentation",
+      "sha256": "850db0eee8ab5a55e728fc93ace74353ea48cf7de87eb2b9ac7b6c100bd09ab4"
+    },
+    {
+      "name": "analyticsManagerSelection",
+      "sha256": "4d0d777276ab49e238cae470b95962a209707b4eed474b190358937cc4af58c2"
+    },
+    {
+      "name": "validatedReportPage",
+      "sha256": "9d479294d2a9a6713afa396178206b5764bc264a05b21d49d0f5029beb779b2f"
+    },
+    {
+      "name": "newHiresRowsTx",
+      "sha256": "f7d456850849c232023115be46f01601f20ddd3fdcb22a820a5e9cf8f677839b"
+    },
+    {
+      "name": "newHires",
+      "sha256": "d26edfe258fe726ac8498d6b92cf2cc8e72b3b6bf75a50bad6b85f437bdd0a99"
+    },
+    {
+      "name": "newHiresPage",
+      "sha256": "25b249447935de74b21fe0a491100eef6cff337c736920bf833266201bd081a6"
+    },
+    {
+      "name": "newHiresPageTx",
+      "sha256": "092d558e4690635296480bb171d8cc4987187ece24c2be3fc455a5415abb3586"
+    },
+    {
+      "name": "terminationsRowsTx",
+      "sha256": "ff4ebed95f13e60e7a692ffa642e58b42658455ba29ddd5717f7ce116278abeb"
+    },
+    {
+      "name": "terminations",
+      "sha256": "6d628550528d83035936394bd09ec19df6b5cf23be76de5b5b2dbc4af5feb7af"
+    },
+    {
+      "name": "terminationsPage",
+      "sha256": "1a80c9c29a730860ee6be7dc94e1c0f18ac1349b17386cda9a01cfa882490f60"
+    },
+    {
+      "name": "terminationsPageTx",
+      "sha256": "e22a67b63ccc872ac2cb9ddafef109c3991fbe8db7cd475e5b090eda61921b10"
+    },
+    {
+      "name": "turnoverRate",
+      "sha256": "8484951b32ba955c182b8ffaa0105e9a2e3fb6480b2e525a477d617e116bedb0"
+    },
+    {
+      "name": "changeJobTransactionsRowsTx",
+      "sha256": "81f1c9c0604abf78e5cc1a2c1868f9f250df21f75a1119ac463d2b3b351eb510"
+    },
+    {
+      "name": "changeJobTransactions",
+      "sha256": "584f47231d68c4027c0e74b4c2ad4173c925afda080b35c977dbedfda86496ec"
+    },
+    {
+      "name": "changeJobTransactionsPage",
+      "sha256": "f2fd6411fad9e177dbe6d936a1256bd77b85f3f00c2e354ca2166e2e15d6cc16"
+    },
+    {
+      "name": "changeJobPageRow",
+      "sha256": "b3949bcc2f9aa51ce4000005c9f322fbf2d435b97b66ff5bf6670ed5f4968959"
+    },
+    {
+      "name": "changeJobTransactionsPageTx",
+      "sha256": "163916dd82cd9747d7028e28a250f6e00f447777d58200e40179e7c9d1552dfd"
+    },
+    {
+      "name": "tally",
+      "sha256": "e1d9b992c88cf27466655eeaea7c0d700a501cd434c15c6d23fef4d87d2071ed"
+    },
+    {
+      "name": "dimensionRowsTx",
+      "sha256": "9188f6696f4433bbedc2b59a9fe7d9baebba98df8363737248499b1ca9af95fc"
+    },
+    {
+      "name": "ageBand",
+      "sha256": "02d3280c4d6f17b20f4198cf9d154e393581297f0ff7a48bff34df36ce0e09da"
+    },
+    {
+      "name": "workforceDemographics",
+      "sha256": "219d80d41dd4db3931af143c8d150ce293b7cad8ecb8d1c41a2fa89479290dc4"
+    },
+    {
+      "name": "workforceDemographicsTx",
+      "sha256": "91c3b4ac90ab5a48d7558ca074419b3af2871cc161ab7aa69469cb85b7008859"
+    },
+    {
+      "name": "demographicsByNationality",
+      "sha256": "5746ceefdbedd3f94b8a844e1cd7cd1c22815e9d5bfe448f76d1c512399781fd"
+    },
+    {
+      "name": "demographicsByNationalityTx",
+      "sha256": "551fff9f92ae37a123aced4832fe832be7925e0a6b465f00fff338b5dcbe0d70"
+    },
+    {
+      "name": "leaveUtilisation",
+      "sha256": "8b3f4c8c8f06a158aa951efb8d31405e569164bfacc33c5151b894982939778b"
+    },
+    {
+      "name": "leaveUtilisationTx",
+      "sha256": "ec35262bd124bf119941cdc2490c2b7445a05b4646c291add497e8be006f9461"
+    },
+    {
+      "name": "carryForwardPopulationTx",
+      "sha256": "14cf502795049488e12a9bb98effacd9d843329d6b8141aa5de267df695f3d51"
+    },
+    {
+      "name": "carryForwardReport",
+      "sha256": "9a70d171a374d4cdd73cb310c4e5f77c2025189f633757071750e1bb71e9adc3"
+    },
+    {
+      "name": "carryForwardReportPage",
+      "sha256": "05afe1dbc1ab63a27a5032a83567f19a4586c6bc3093580c484105a95067c859"
+    },
+    {
+      "name": "carryForwardRowsTx",
+      "sha256": "602f8c2a0660f458126aa6810945832bb2d3e60361e25056a6210fe042ede477"
+    },
+    {
+      "name": "leaveBalancesSummary",
+      "sha256": "4add61b2f887a21bc317355236bc24d70c7917677cc2ae0d3252512f4172c390"
+    },
+    {
+      "name": "leaveBalancesSummaryTx",
+      "sha256": "87d126d6521f40726b4f921a900653282ebaff57402c50bf6a1fa58ff0f2331e"
+    },
+    {
+      "name": "sickLeaveTrend",
+      "sha256": "6f2a01fd21ecccab4f747c60b2ad3be330d0aa15738e4d5bb909b806bc9387b5"
+    },
+    {
+      "name": "sickLeaveTrendTx",
+      "sha256": "2fabed86345cc0ed9baf9856e270e520936f90bbb0e6ff8a4b9ad6476d41bb20"
+    },
+    {
+      "name": "movementByMonth",
+      "sha256": "fc0144c310c8bcbd73e3ff4daa0b52eae545882ad3cd0a3e74767d07aece2755"
+    },
+    {
+      "name": "movementByMonthTx",
+      "sha256": "63e886ae866166acad74521f399387a5f0d4809a75bfdcd538a52aca83f00d07"
+    },
+    {
+      "name": "turnoverRateFiltered",
+      "sha256": "3718f054eb94df9eec34624aea632339d334d11714d49c03e500e115a23812a3"
+    },
+    {
+      "name": "turnoverRateFilteredTx",
+      "sha256": "d0b5f71788a36722c901a316db0247539eecc23ead088e14d1bcf5130eefe271"
+    },
+    {
+      "name": "dashboardTurnoverAggregateTx",
+      "sha256": "56cf2e38780897163f297e5c01f66f25fc6a8d3cdaae23fc89b82e881f275efa"
+    },
+    {
+      "name": "dashboardMovementAggregateTx",
+      "sha256": "8f683a7157592bb017ba78824203e5aa4b39f0de22ee12ba53f15e1ef0b49257"
+    },
+    {
+      "name": "analyticsDashboard",
+      "sha256": "0fb88b834eaf0d3c53bc32a8ce0774c70b01fcde9fe0ae4582ac72153d1b5651"
+    }
+  ],
+  "changedFunction": {
+    "name": "carryForwardReportPageTx",
+    "parent": {
+      "name": "carryForwardReportPageTx",
+      "sha256": "5b4c9d9d1e1ab5ae179175ce562d67ffd26cd2ad0011f348b69a47742bd7fac4",
+      "startByte": 55429,
+      "endByte": 56986
+    },
+    "current": {
+      "name": "carryForwardReportPageTx",
+      "sha256": "044e782244d1aaea56cb4c69d80d0bb729e50351d761ea14dd5e993f10c4b4fd",
+      "startByte": 56879,
+      "endByte": 58640
+    },
+    "wholeParentFileViaInverse": 0
+  },
+  "newPrivateHelpers": [
+    "carryPageIdentityOrder",
+    "carryPageRetentionLimit",
+    "retainCarryPageIdentity"
+  ],
+  "newPrivateTypes": [
+    "CarryPageIdentity",
+    "RankedCarryPageIdentity"
+  ],
+  "sourceControls": {
+    "all53OtherCoreFunctionsAndOtherTopLevelStatementsWhole": true,
+    "all20OriginalBoundedAndCompositionCallbacksWhole": true,
+    "nativeWholeRestoresViaOnlyLeasedClassifierCensusAndCarryAssertions": true,
+    "allSevenAggregateAndTwoEnvelopeNativePlansWhole": true,
+    "jitWholeRestoresViaOnlyLeasedCensusAndCarryAssertions": true,
+    "allTwentyJitPlansAndFiveSqlShapeDigestsWhole": true,
+    "probeOnlyAddsFixed4096Alongside512": true,
+    "all10FinancialCallbacksWhole": true,
+    "allOriginalLimitsAndTimeoutsWhole": true,
+    "productionRuntimeImportClosureUnchanged": true
+  },
+  "caseCensus": {
+    "parent": {
+      "bounded": 11,
+      "composition": 9,
+      "native": 1,
+      "jit": 3,
+      "financial": 10
+    },
+    "current": {
+      "bounded": 14,
+      "composition": 10,
+      "native": 1,
+      "jit": 3,
+      "financial": 10
+    },
+    "ordinaryFourSelectors": 35,
+    "separateSoleJit": 3,
+    "executed": false
+  },
+  "prospectiveSameFixtureCensus": {
+    "parentStatements": 121,
+    "parentFetches": 98,
+    "unchangedOtherStatements": 23,
+    "newFetches": 13,
+    "newStatements": 36,
+    "driverRows": 90089,
+    "identityRows": 50000,
+    "observed": false
+  },
+  "historicalEvidence": {
+    "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+    "ordinaryRun": 42521789720,
+    "jitRun": 42521798146,
+    "combinedReceiptSha256": "11be4ee4a82d77c2594003ab72d07fa4383a9127027bfb83b0be876e72f075e2",
+    "adoptedOntoCurrentSource": false
+  },
+  "bindingMeaning": "These seven actual current pins supersede their immediate-parent roles only for this source overlay. Existing component indices remain historical; normal integrated closure and required commissioning are still open.",
+  "authority": {
+    "recordRuntimeRead": false,
+    "recordGrantsExecution": false,
+    "repoImports": false,
+    "testsExecuted": false,
+    "typecheck": false,
+    "native": false,
+    "network": false,
+    "upload": false,
+    "oneSecondQualified": false,
+    "browserPreflight": false,
+    "workerTests": false,
+    "stagingQualified": false,
+    "productionHeld": true
+  },
+  "ownedSettlementFollowup": {
+    "sourceOnly": true,
+    "parentSource": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+    "recordPath": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json",
+    "recordSha256": "9ff32db5af680b34027f2b57d6666eb340b462cb78b9c0597f48de4c78388582",
+    "historicalFca1CoursesNotRelabeled": true,
+    "currentRuntimeQualification": false
+  },
+  "originalFailureDiagnosticsRepair": {
+    "directParentSource": "b73f67703fa740d6f3ab742cc4ae6bd2cd1c2336",
+    "independentReviewSha256": "0798ab2cf826b36d05f67c6c86fecc3e61d2d4b913f8edae6570ba24dfe4028c",
+    "sourceOnly": true,
+    "runtimeBranches": "UNOBSERVED until actually entered",
+    "currentRuntimeQualified": false
+  },
+  "firstFetchEstimateFollowup": {
+    "sourceOnly": true,
+    "directParentSource": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+    "wholeParentIndex": {
+      "path": "docs/qualification/analytics-carry-selection-source-20261109.json",
+      "source": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+      "gitBlob": "7ef6c10e176facf55d763b0e4883cb2802cdc53a",
+      "bytes": 25142,
+      "sha256": "8942d35fe0fd8e833a19361d204b445ec4da1b7bfacce2473aca2f33a8ab8253"
+    },
+    "recordSection": "firstFetchEstimateFollowup",
+    "priorActualRun": 42534758273,
+    "priorAuthenticationSha256": "ef1d529c2d2a76d44194576b630bb433d2af46346039b3ac80ffc73be0d047d6",
+    "currentNativeEstimateStatus": "UNRUN",
+    "sameSevenPredecessorTargetsRetained": true,
+    "currentRuntimeQualified": false
+  },
+  "firstFetchEstimateAdmissionCorrection": {
+    "sourceOnly": true,
+    "directParentSource": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+    "sourceRef": "codex/analytics-carry-estimate-admission-20261109",
+    "wholeParentIndex": {
+      "path": "docs/qualification/analytics-carry-selection-source-20261109.json",
+      "source": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
+      "gitBlob": "185c9b9287f2cbfbda01663e3b4da7d4264ecfde",
+      "bytes": 25714,
+      "sha256": "913a188bb6217526e3dd7d66018d607fa19ebc30c84cdf40c30cb90cd76e012a"
+    },
+    "recordSection": "firstFetchEstimateAdmissionCorrection",
+    "independentSourceReviewSha256": "4926a07d21923b4ff5fda16bbb63a0da727509baf4e4e40da3df0cfcd5e37ae7",
+    "currentNativeEstimateStatus": "UNRUN",
+    "currentRuntimeQualified": false
+  }
+}
