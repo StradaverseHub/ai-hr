@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 export const BASE = 'b698f5d35b0cca12e2c1268f3bea08d0aa1d070e';
-export const CANDIDATE = '6c05efc24242b8a5f50933e7cbb6709a276b286d';
+export const CANDIDATE = '145e527f45be53fd6b587691d7a82a9240a0e456';
 export const BRANCH = 'codex/architecture-ai-source-upgrade-witness-20261109';
 export const IMAGE = 'postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97';
 export const APP_URL = 'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev';
