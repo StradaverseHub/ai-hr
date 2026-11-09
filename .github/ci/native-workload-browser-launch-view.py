@@ -15,7 +15,7 @@ _PROC_FILE = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
 _MOUNTINFO_LIMIT = 4 * 1024**2
 _MAX_ENTRIES = 509
 # Projected Chromium and two Playwright packages, original Node cap, three role files.
-_MAX_BYTES = 291895066 + 256 * 1024**2 + 45947
+_MAX_BYTES = 291895066 + 256 * 1024**2 + 64 * 1024
 _RESERVE_BYTES = 32 * 1024**2
 _RESERVE_INODES = 128
 _PREPARATION_SECONDS = 180

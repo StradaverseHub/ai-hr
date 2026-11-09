@@ -17,7 +17,8 @@ from typing import NamedTuple
 
 
 _NODE_MAX = 256 * 1024**2
-_ROLE_MAX = 45947
+# The protected issuer separately verifies the exact three source files and sizes.
+_ROLE_MAX = 64 * 1024
 _ROLES = ('native-workload-browser-driver.mjs', 'native-workload-browser-server.mjs',
           'native-workload-browser-host.py')
 

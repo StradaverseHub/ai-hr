@@ -210,7 +210,7 @@ def dispose_synthetic_stage(installer, launch_view, host, mounts, *, run_id, run
                 owned.scan(scan, '', mount_id, expected)
             byte_count = sum(value[2] for value in owned.captured.values() if stat.S_ISREG(value[0][4]))
             _require(owned.captured.keys() == expected.keys() and owned._scope(mount_id) == before
-                     and byte_count <= installer._SYNTHETIC_BYTES + 256 * 1024**2 + 45947,
+                     and byte_count <= installer._SYNTHETIC_BYTES + 256 * 1024**2 + 64 * 1024,
                      'synthetic cleanup census differs')
             owned.remove(stage_fd, '', mount_id)
             _require(not owned.captured, 'synthetic cleanup entries remain')
