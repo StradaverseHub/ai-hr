@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
+import {notFound} from 'next/navigation';
 import {requireModule} from '@/lib/authz';
 import {scopedSession,getScopeIds} from '@/lib/scope';
 import {rewardAccessRequests,rewardAccessAdministration} from '@/packs/rewards/service';
 import {RewardPersonalPages} from './personal-pages';
-import {rewardPermissions,rewardPersonalPages,rewardAccessPageCompanies,rewardSetupEntry} from '@/packs/rewards/access-policy';
+import {rewardPermissions,rewardPersonalPages,rewardAccessPageEntry,rewardSetupEntry} from '@/packs/rewards/access-policy';
 import {PageHeader,ErrorBanner} from '@/components/ui';
 import {RewardAccessEditor} from './access-editor';
 import {RewardAccessRequests} from './requests';
@@ -17,14 +18,19 @@ export default async function RewardAccessPage({searchParams}:{searchParams:Prom
  const setup=await rewardSetupEntry(s);
  const setupLink=setup.bootstrap?<Link href="/admin/rewards/setup-access" className="text-sm text-primary underline">{(await getTranslations('nav'))('rewardsManageSetup')}</Link>:null;
  const groupRoles=setup.bootstrap?<WholeGroupRoles session={s} error={sp.groupRoleError}/>:null;
- const companies=await rewardAccessPageCompanies(s).catch(error=>{
-  if(setup.bootstrap)return [];
-  throw error;
- });
- if(!companies.length)return <div className="space-y-6"><PageHeader title={t('title')}/>{setupLink}{groupRoles}</div>;
- const permissions=await rewardPermissions(s).catch(()=>null),scopeIds=await getScopeIds(companies.map(c=>c.id));
- const pages=await rewardPersonalPages(s);
+ const {companies,groupRewards}=await rewardAccessPageEntry(s);
+ if(!companies.length){
+  if(!setup.bootstrap)notFound();
+  return <div className="space-y-6"><PageHeader title={t('title')}/>{setupLink}{groupRoles}</div>;
+ }
+ const scopeIds=await getScopeIds(companies.map(c=>c.id));
  const value=await rewardAccessAdministration(s,scopeIds),requests=(await rewardAccessRequests(s)).filter(q=>q.changes.every(c=>value.reviews.some(r=>r.id===c.unitId)));
+ if(!groupRewards)return <div className="w-full space-y-6">
+  <PageHeader title={t('title')} description={p('intro')}/>{setupLink}{groupRoles}
+  <RewardAccessRequests requests={requests} value={value}/>
+  <RewardAccessEditor value={value} requests={requests} showPolicyTools={false}/>
+ </div>;
+ const permissions=await rewardPermissions(s).catch(()=>null),pages=await rewardPersonalPages(s);
  const tab=sp.tab==='activity'?'activity':sp.tab==='matrix'?'matrix':!permissions||sp.tab==='users'?'users':'roles',count=new Set(value.members.filter(m=>!m.disabled).map(m=>m.userId)).size;
  return <div className="w-full space-y-6"><PageHeader title={t('title')} description={p('intro')}/>{setupLink}
   {sp.policyError&&<ErrorBanner message={p('error')}/>}<RewardAccessRequests requests={requests} value={value}/>

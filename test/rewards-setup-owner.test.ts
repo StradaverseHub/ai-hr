@@ -70,13 +70,14 @@ it('runs the real GR-only library, checked plan, dated roster and atomic draft P
  const after=await previewRewardPlanCreation(maker,plan);
  expect(after.rows).toMatchObject([{companyId:b.companyId,status:'skip',reason:'already-reviewed',existingUnitId:id}]);
  expect(await createRewardPlanReviews(maker,plan,after.digest)).toMatchObject({created:[],skipped:after.rows});
- const events=await owner.db.execute(sql`select aggregate_id,event_type,payload from domain_event
+ const events=await owner.db.execute<{event_type:string;aggregate_id:string;payload:unknown}>(sql`select aggregate_id,event_type,payload from domain_event
   where tenant_id=${b.tenantId}::uuid and (aggregate_id=${plan}::uuid and event_type='rewards-setup.review.skipped'
-    or aggregate_id=${id}::uuid and event_type='reward-unit.approved-plan-admitted') order by event_type`);
- expect(events).toMatchObject([
-  {aggregate_id:id,event_type:'reward-unit.approved-plan-admitted',payload:{planVersionId:plan}},
-  {aggregate_id:plan,event_type:'rewards-setup.review.skipped',payload:{companyId:b.companyId,reason:'already-reviewed',existingUnitId:id}},
- ]);
+    or aggregate_id=${id}::uuid and event_type='reward-unit.approved-plan-admitted')`);
+ expect(events).toHaveLength(2);
+ expect(Object.fromEntries(events.map(event=>[event.event_type,event]))).toMatchObject({
+  'reward-unit.approved-plan-admitted':{aggregate_id:id,payload:{planVersionId:plan}},
+  'rewards-setup.review.skipped':{aggregate_id:plan,payload:{companyId:b.companyId,reason:'already-reviewed',existingUnitId:id}},
+ });
  const unit=await getRewardUnit(maker,id);expect(unit.rows.map(r=>r.source.employeeCode)).toEqual(['PAT-BASIS']);expect(unit.roles).toContain('gr');const [origin]=await withTenant(maker,tx=>tx.execute<{value:{changed:boolean}}>(sql`select app.reward_policy_unit_origin(${id}::uuid) as value`));expect(origin.value.changed).toBe(false);expect(unit.rows[0].source.payChanges).toEqual([{on:'2026-02-01',basicCents:520000,kind:'promotion'}]);
  await expect(saveRewardPolicy(maker,id,unit.unit.revision,{...unit.unit.policy,ranges:{...unit.unit.policy.ranges,'12':[1,2,3]}})).rejects.toThrow(/read-only/);
  await saveRewardEntry(maker,id,unit.unit.revision,unit.rows[0].id,emptyRecommendation(),{...emptyFacts(),performance:'ME',reviewed:true});
