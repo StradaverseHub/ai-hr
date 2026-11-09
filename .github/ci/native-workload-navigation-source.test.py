@@ -71,7 +71,7 @@ class NativeNavigationHistoryModel(unittest.TestCase):
         )
         for inventory, message in variants:
             with self.subTest(message=message):
-                tree = Mock()
+                tree = Mock(spec_set=I.PinnedTree)
                 with self.assertRaisesRegex(ValueError, message):
                     H.capture_navigation_history(tree, inventory, tick)
                 tree.open_regular.assert_not_called()
@@ -149,7 +149,8 @@ class NativeNavigationHistoryModel(unittest.TestCase):
                 with path.open('wb') as stream:
                     stream.truncate(FIRST.size)
             checked_while_open = 0
-            with I.PinnedTree(root) as tree:
+            with self.assertRaisesRegex(ValueError, 'inventory directory changed|history changed while reading') as refused, \
+                 I.PinnedTree(root) as tree:
                 def replace_after_first_chunk():
                     nonlocal checked_while_open
                     if FIRST.path in tree.files:
@@ -157,8 +158,8 @@ class NativeNavigationHistoryModel(unittest.TestCase):
                     if checked_while_open == 2:
                         replacement.replace(leaf)
 
-                with self.assertRaisesRegex(ValueError, 'inventory directory changed|history changed while reading'):
-                    H.capture_navigation_history(tree, INVENTORY, replace_after_first_chunk)
+                H.capture_navigation_history(tree, INVENTORY, replace_after_first_chunk)
+            self.assertIn('Inventory final identity proof refused: ValueError', refused.exception.__notes__)
             self.assertFalse(replacement.exists())
 
 
