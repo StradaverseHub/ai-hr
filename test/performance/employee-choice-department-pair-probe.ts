@@ -1,6 +1,7 @@
-/** Test-only represented Department pairs. Runs through the caller's native Tx. */
-import {sql,type SQL} from 'drizzle-orm';
+/** Test-only first-witness reference for the native sparse Department comparison. */
+import {sql} from 'drizzle-orm';
 import type {readEmployeeChoicesTx} from '../../core/employee-choice';
+import {assignment,company,department,employment,person} from '../../db/schema';
 
 type Scope=Pick<Parameters<typeof readEmployeeChoicesTx>[2],'companyIds'|'employmentIds'|'terminatedAfter'|'labelMode'>;
 const uuidArray=(ids:readonly string[])=>'{'+ids.join(',')+'}';
@@ -11,33 +12,30 @@ export function departmentFacetBinds(tenant:string,input:Scope){
   ...(input.terminatedAfter===undefined?[]:[input.terminatedAfter]),...(input.employmentIds?.length?[uuidArray(input.employmentIds)]:[])];
 }
 
-/** The caller builds this only after the unchanged reader admits and compiles the original scope. */
-export function representedDepartmentFacet(tenant:string,input:Scope){
- const {companyIds,employmentIds,terminatedAfter,labelMode}=input;
- const sparse=employmentIds!==undefined&&employmentIds.length<=25;
- const scope=sql`e.tenant_id=${tenant}::uuid
-  ${companyIds.length?sql`and e.company_id=any(${uuidArray(companyIds)}::uuid[])`:sql``}
-  ${terminatedAfter===undefined?sql``:sql`and (e.terminated_on is null or e.terminated_on>${terminatedAfter}::date)`}
-  ${employmentIds===undefined?sql``:employmentIds.length?sql`and e.id=any(${uuidArray(employmentIds)}::uuid[])`:sql`and false`}`;
- const open=sql`a.tenant_id=${tenant}::uuid and a.valid_to is null and a.superseded_at is null and a.department_id is not null`;
- const assignmentKeys=sparse?sql``:sql`open_assignment_keys as materialized (
-  select a.employment_id,a.department_id from public.assignment a where ${open}
- ),`;
- const membership=sparse?sql`join lateral (
-  select a.department_id from public.assignment a where a.employment_id=m.employment_id and ${open} offset 0
- ) k on true`:sql`join open_assignment_keys k on k.employment_id=m.employment_id`;
- const labels=labelMode==='labels';
- return sql`with authorized_members as materialized (
-  select e.id as employment_id,e.company_id from public.employment e
-  join public.person p on p.id=e.person_id and p.tenant_id=${tenant}::uuid where ${scope}
- ), ${assignmentKeys} represented_department_pairs as materialized (
-  select m.company_id,k.department_id from authorized_members m ${membership} group by m.company_id,k.department_id
- ) select c.id as "companyId",c.legal_name as company,d.id as "departmentId",
-  ${labels?sql`d.name`:sql`null::text`} as "departmentCode",
-  ${labels?sql`coalesce(nullif(trim(d.label),''),nullif(trim(d.description),''),d.name)`:sql`d.name`} as department,
+export const isSparseDepartmentFacet=(text:string)=>text.startsWith('with authorized_members as materialized (')&&
+ text.includes('), represented_department_pairs as materialized (')&&text.includes('join lateral (');
+
+export function sparseDepartmentFacetBinds(tenant:string,input:Scope){
+ return [tenant,tenant,...departmentFacetBinds(tenant,input).slice(5),tenant,tenant,tenant];
+}
+
+/** Exact a293 first-witness statement and captured server-scope layout. */
+export function firstWitnessDepartmentFacet(tenantId:string,input:Scope){
+ const {companyIds,employmentIds,terminatedAfter,labelMode}=input,labels=labelMode==='labels';
+ let scope=sql`${employment.tenantId}=${tenantId}::uuid and ${companyIds.length?sql`${employment.companyId}=any(${uuidArray(companyIds)}::uuid[])`:sql`true`}`;
+ if(terminatedAfter!==undefined)scope=sql`${scope} and (${employment.terminatedOn} is null or ${employment.terminatedOn}>${terminatedAfter}::date)`;
+ if(employmentIds!==undefined)scope=sql`${scope} and ${employmentIds.length?sql`${employment.id}=any(${uuidArray(employmentIds)}::uuid[])`:sql`false`}`;
+ return sql`select ${company.id} as "companyId",${company.legalName} as company,${department.id} as "departmentId",${labels?sql`${department.name}`:sql`null::text`} as "departmentCode",
+  ${labels?sql`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`:sql`${department.name}`} as department,
   null::uuid as "businessUnitId",null::text as "businessUnitCode",null::text as "businessUnit"
- from represented_department_pairs r
- join public.company c on c.id=r.company_id and c.tenant_id=${tenant}::uuid
- join public.department d on d.id=r.department_id and d.tenant_id=${tenant}::uuid
- order by "companyId","departmentId"`;
+ from ${company} cross join ${department}
+ where ${company.tenantId}=${tenantId}::uuid and ${department.tenantId}=${tenantId}::uuid
+  and exists(select 1 from ${assignment}
+   where ${assignment.tenantId}=${tenantId}::uuid and ${assignment.validTo} is null
+    and ${assignment.supersededAt} is null and ${assignment.departmentId}=${department.id}
+    and exists(select 1 from ${employment} join ${person}
+     on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
+     where ${employment.id}=${assignment.employmentId} and ${scope} and ${employment.companyId}=${company.id}
+     offset 0)
+   offset 0) order by "companyId","departmentId"`;
 }

@@ -8,6 +8,7 @@ import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import {readEmployeeChoices,readEmployeeChoicesTx} from '../core/employee-choice';
 import {isEmployeeChoicePage,type EmployeeChoice,type EmployeeChoicePage} from '../lib/employee-choice';
 import {listEmployees} from '../core/read';
+import {rosterPopulationReview,rosterWindowPage} from '../core/roster-presentation';
 import {hireEmployee,setEmploymentAssignment,setReportingLine} from '../core/org';
 import {archiveDepartment,assignRole,createCompany,createDepartment,revokeRole} from '../core/admin';
 import {setAppUserArchived} from '../core/auth';
@@ -18,7 +19,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 import {createAssignmentAuthorityFixture} from './performance/employee-choice-assignment-authority';
-import {departmentFacetBinds,isDepartmentFacet,representedDepartmentFacet} from './performance/employee-choice-department-pair-probe';
+import {firstWitnessDepartmentFacet,isDepartmentFacet,isSparseDepartmentFacet,sparseDepartmentFacetBinds} from './performance/employee-choice-department-pair-probe';
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(resetDb);
 
 it('preserves native scope, exact JavaScript Unicode search, facets and independent deep selection',async()=>{
@@ -275,20 +276,26 @@ it('keeps manager and department hierarchy facets inside native effective report
  ],[acme],departments));
 },120000);
 
-it('compares represented Department pairs under actual native scope and independent table denials',async()=>{
+it('compares product sparse Department pairs with the first witness under native scope and independent denials',async()=>{
  const f=await createAssignmentAuthorityFixture(),{b,otherCompany,alpha,gamma,transferred,unassigned}=f;
  const dialect=new PgDialect(),tenantPairs=[[b.companyId,b.deptA],[b.companyId,b.deptB],[otherCompany,b.deptB]];
  const sorted=(rows:string[][])=>rows.map(row=>row.join('/')).sort();
  type Input=Parameters<typeof readEmployeeChoicesTx>[2];
- const read=async(tx:Tx,ctx:SessionContext,input:Input,replacement:boolean)=>{
+ const read=async(tx:Tx,ctx:SessionContext,input:Input,baseline:boolean)=>{
   const capture:{original?:SQL;forwarded?:SQL;pairs?:string[][]}={};
   const proxy=new Proxy(tx,{get(target,key,receiver){
    if(key==='execute')return async(query:SQL)=>{
-    const {sql:text,params}=dialect.sqlToQuery(query);
-    if(!isDepartmentFacet(text.trimStart()))return target.execute(query);
+    const compiled=dialect.sqlToQuery(query),text=compiled.sql.trimStart();
+    const sparse=isSparseDepartmentFacet(text);
+    if(!sparse&&!isDepartmentFacet(text))return target.execute(query);
     if(capture.original)throw new Error('Multiple native Department statements');
-    capture.original=query;expect(params).toEqual(departmentFacetBinds(ctx.tenantId,input));
-    const forwarded=replacement?representedDepartmentFacet(ctx.tenantId,input):query;
+    const populationSize=input.employmentIds?.length??0;
+    expect(sparse).toBe(populationSize>0&&populationSize<=25);
+    const reference=firstWitnessDepartmentFacet(ctx.tenantId,input);
+    if(sparse)expect(compiled.params).toEqual(sparseDepartmentFacetBinds(ctx.tenantId,input));
+    else expect(compiled).toEqual(dialect.sqlToQuery(reference));
+    capture.original=query;
+    const forwarded=baseline?reference:query;
     capture.forwarded=forwarded;
     const rows=await target.execute<{companyId:string;departmentId:string}>(forwarded);
     capture.pairs=rows.map(row=>[row.companyId,row.departmentId]);return rows;
@@ -311,7 +318,7 @@ it('compares represented Department pairs under actual native scope and independ
    (select bool_and(row_security_active(c.oid)) and count(*)=5 from pg_class c where c.oid in
     ('public.assignment'::regclass,'public.employment'::regclass,'public.person'::regclass,'public.company'::regclass,'public.department'::regclass)) as rls`);
   expect(identity).toEqual({role:'ai_hr_app',login:'ai_hr_app',tenant:ctx.tenantId,actor:ctx.userId,isolation:'repeatable read',read_only:'on',limited:true,rls:true});
-  const before=await read(tx,ctx,input,false),after=await read(tx,ctx,input,true);
+  const before=await read(tx,ctx,input,true),after=await read(tx,ctx,input,false);
   expect(after.original).toEqual(before.original);
   expect(choicesWithoutContext(after.page)).toEqual(choicesWithoutContext(before.page));
   expect(after.page.total).toBe(total);
@@ -355,6 +362,10 @@ it('compares represented Department pairs under actual native scope and independ
  const limited=[alpha.id,transferred.id,...Array.from({length:23},()=>randomUUID())];
  const limitedPairs=[[b.companyId,b.deptA],[otherCompany,b.deptB]];
  await compare(f.ctx,{companyIds:[],employmentIds:limited},2,limitedPairs);
+ const sparseLabels=await compare(f.ctx,{companyIds:[],employmentIds:limited,companyId:otherCompany,labelMode:'labels',selectedId:gamma.id},1,limitedPairs);
+ expect(sparseLabels.selected).toBeNull();
+ expect(sparseLabels.departmentOptions).toEqual([{id:b.deptB,name:'Paired 人'}]);
+ expect(sparseLabels.allDepartmentOptions).toEqual([{id:b.deptA,name:'Paired 人 (Finance)'},{id:b.deptB,name:'Paired 人 (Operations)'}]);
  await compare(f.ctx,{companyIds:[],employmentIds:[...limited,alpha.id]},2,limitedPairs);
  await compare(f.ctx,{companyIds:[],employmentIds:[]},0,[]);
  const closed={id:f.closedUnassigned,employmentId:unassigned.id,departmentId:b.deptA,validTo:'2021-01-01',supersededAt:null};
@@ -367,7 +378,9 @@ it('compares represented Department pairs under actual native scope and independ
    {id:f.supersededAlpha,employmentId:alpha.id,departmentId:b.deptB,validTo:null,supersededAt:new Date('2022-01-01T00:00:00Z')});
  }finally{await owner.db.update(assignment).set({validTo:'2021-01-01'}).where(eq(assignment.id,f.supersededAlpha));}
  await compare(f.scopedCtx,{companyIds:[otherCompany]},0,[]);
+ await compare(f.scopedCtx,{companyIds:[otherCompany],employmentIds:[transferred.id]},0,[]);
  await compare(f.managerCtx,{companyIds:[b.companyId]},2,tenantPairs.slice(0,2));
+ await compare(f.managerCtx,{companyIds:[b.companyId],employmentIds:[alpha.id,gamma.id]},1,[[b.companyId,b.deptA]]);
  await compare(f.selfCtx,{companyIds:[otherCompany],employmentIds:[transferred.id,transferred.id]},1,[[otherCompany,b.deptB]]);
  await compare(adminCtx(f.foreign),{companyIds:[b.companyId],employmentIds:[alpha.id]},0,[]);
  for(const partner of f.partners){
@@ -380,17 +393,30 @@ it('compares represented Department pairs under actual native scope and independ
   await compare(f.ctx,{companyIds:[otherCompany]},0,[],[true,false,true]);
   await compare(f.ctx,{companyIds:[otherCompany],employmentIds:[transferred.id]},0,[],[true,false,true]);
  }finally{await owner.db.update(person).set({voidedAt:null}).where(eq(person.id,transferred.personId));}
+ const editScope={companyIds:[b.companyId],employmentIds:[gamma.id],from:'2027-01-04',to:'2027-01-10',offset:0,limit:1};
  await owner.db.update(employment).set({terminatedOn:'2024-01-01'}).where(eq(employment.id,gamma.id));
  try{
   await compare(f.ctx,{companyIds:[b.companyId],employmentIds:[gamma.id],terminatedAfter:'2024-01-01'},0,[]);
   await compare(f.ctx,{companyIds:[b.companyId],employmentIds:[gamma.id],terminatedAfter:'2023-12-31'},1,[[b.companyId,b.deptA]]);
+  const endedEdit=await rosterWindowPage(f.ctx,editScope);
+  expect(endedEdit).toMatchObject({total:0,employees:[],departmentOptions:[]});
  }finally{await owner.db.update(employment).set({terminatedOn:null}).where(eq(employment.id,gamma.id));}
+ const activeEdit=await rosterWindowPage(f.ctx,editScope);
+ expect(activeEdit.total).toBe(1);
+ expect(activeEdit.employees.map(row=>row.employmentId)).toEqual([gamma.id]);
+ expect(activeEdit.departmentOptions).toEqual([{id:b.deptA,name:'Paired 人'}]);
+ const prepared=await rosterPopulationReview(f.ctx,{companyIds:[b.companyId],employmentIds:[alpha.id,gamma.id]});
+ expect(prepared.ids).toEqual([alpha.id,gamma.id]);
+ expect(prepared.page).toMatchObject({total:2,rows:[{employmentId:alpha.id},{employmentId:gamma.id}]});
+ if(!('departmentOptions' in prepared.page))throw new Error('Missing ordinary roster review page');
+ expect(prepared.page.departmentOptions).toEqual([{id:b.deptA,name:'Paired 人'}]);
  const grant=await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,f.employeeUser)).returning();
  try{
   expect(grant).toHaveLength(1);
   await database.withTenant(f.employeeCtx,async tx=>{
    await expect(read(tx,f.employeeCtx,{companyIds:[]},false)).rejects.toThrow('calling authority');
    await expect(read(tx,f.employeeCtx,{companyIds:[]},true)).rejects.toThrow('calling authority');
+   await expect(read(tx,f.employeeCtx,{companyIds:[],employmentIds:[alpha.id]},false)).rejects.toThrow('calling authority');
   },{readOnlySnapshot:true});
  }finally{if(grant.length)await owner.db.insert(roleAssignment).values(grant);}
 },120000);

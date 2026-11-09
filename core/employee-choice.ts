@@ -125,7 +125,8 @@ async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerI
   signal?.throwIfAborted();
   const selected=p.selectedId&&uuid.test(p.selectedId)?(await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=${p.selectedId}::uuid order by ${person.fullName},${employment.id},${assignment.id} limit 1`))[0]??null:null;
   signal?.throwIfAborted();
-  const options=await readOptions(tx,scoped,labelMode==='labels',ctx.tenantId,signal);
+  const populationSize=p.employmentIds?.length??0;
+  const options=await readOptions(tx,scoped,labelMode==='labels',ctx.tenantId,populationSize>0&&populationSize<=25,signal);
   signal?.throwIfAborted();
   const inSelectedCompany=filters.companyId?options.filter(row=>row.companyId===filters.companyId):options;
   const companies=new Map(options.map(row=>[row.companyId,row.company]));
@@ -181,7 +182,7 @@ type ChoiceOptions=Pick<EmployeeChoice,'companyId'|'company'|'departmentId'|'dep
  * Independent options need no employee-by-organisation tuple cross product.
  * OFFSET 0 retains correlated existence: PostgreSQL must not first aggregate
  * the whole authorized population when only a first matching member is needed. */
-async function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string,signal?:AbortSignal){
+async function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string,sparseDepartment:boolean,signal?:AbortSignal){
  const members=sql`from ${employment} join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
   where ${scope} and ${employment.companyId}=${company.id}`;
  const assignedMembers=sql`from ${assignment} join ${employment} on ${employment.id}=${assignment.employmentId}
@@ -193,9 +194,24 @@ async function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string,signal
   null::uuid as "businessUnitId",null::text as "businessUnitCode",null::text as "businessUnit"
  from ${company} where ${company.tenantId}=${tenantId}::uuid and exists(select 1 ${members} offset 0) order by "companyId"`);
  signal?.throwIfAborted();
- // Keep the department match outside the Employment/Person witness so an empty department
- // can finish without probing Assignment once per visible Employment.
- const departments=await tx.execute<ChoiceOptions>(sql`select ${company.id} as "companyId",${company.legalName} as company,${department.id} as "departmentId",${labels?sql`${department.name}`:sql`null::text`} as "departmentCode",
+ // The bounded scope can probe its own current Assignment keys. The other path
+ // keeps the department match outside the Employment/Person witness.
+ const departments=await tx.execute<ChoiceOptions>(sparseDepartment?sql`with authorized_members as materialized (
+  select ${employment.id} as employment_id,${employment.companyId} from ${employment}
+  join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid where ${scope}
+ ), represented_department_pairs as materialized (
+  select m.company_id,k.department_id from authorized_members m
+  join lateral (
+   select a.department_id from ${assignment} a where a.employment_id=m.employment_id and a.tenant_id=${tenantId}::uuid
+    and a.valid_to is null and a.superseded_at is null and a.department_id is not null offset 0
+  ) k on true group by m.company_id,k.department_id
+ ) select ${company.id} as "companyId",${company.legalName} as company,${department.id} as "departmentId",${labels?sql`${department.name}`:sql`null::text`} as "departmentCode",
+  ${labels?sql`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`:sql`${department.name}`} as department,
+  null::uuid as "businessUnitId",null::text as "businessUnitCode",null::text as "businessUnit"
+ from represented_department_pairs r
+ join ${company} on ${company.id}=r.company_id and ${company.tenantId}=${tenantId}::uuid
+ join ${department} on ${department.id}=r.department_id and ${department.tenantId}=${tenantId}::uuid
+ order by "companyId","departmentId"`:sql`select ${company.id} as "companyId",${company.legalName} as company,${department.id} as "departmentId",${labels?sql`${department.name}`:sql`null::text`} as "departmentCode",
   ${labels?sql`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`:sql`${department.name}`} as department,
   null::uuid as "businessUnitId",null::text as "businessUnitCode",null::text as "businessUnit"
  from ${company} cross join ${department}

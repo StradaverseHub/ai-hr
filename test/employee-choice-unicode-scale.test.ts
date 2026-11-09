@@ -10,12 +10,13 @@ import {readEmployeeChoices,readEmployeeChoicesTx} from '../core/employee-choice
 import {assertAiPresentationPrincipalTx} from '../core/ai-principal';
 import {assignment,company,department,employment,person} from '../db/schema';
 import {isEmployeeChoicePage,type EmployeeChoicePage} from '../lib/employee-choice';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import {applicationDatabaseBudget} from '../db/capacity';
 import {closeAll,migrateTestDb,owner,type Base} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
-import {departmentFacetBinds,isDepartmentFacet,representedDepartmentFacet} from './performance/employee-choice-department-pair-probe';
+import {departmentFacetBinds,firstWitnessDepartmentFacet,isDepartmentFacet,isSparseDepartmentFacet,sparseDepartmentFacetBinds} from './performance/employee-choice-department-pair-probe';
 // This additional course is selected only by the existing focused controller. Other
 // Vitest runs keep the original setup and measurement, with their original URLs.
 const facetAdmission=await vi.hoisted(async()=>{
@@ -111,7 +112,7 @@ it('measures exact full and missing searches over the real 50k Unicode populatio
  if(facetAdmission){
   expect(statements).toHaveLength(305);
   expect(captured).toHaveLength(4);
-  await probeDepartmentFacet({b,ctx,expectedFirst,captured,dialect,report,save,actual,caseStart,signal:context.signal},facetAdmission);
+  await probeDepartmentFacet({b,ctx,organisationTagSample,captured,dialect,report,save,actual,caseStart,signal:context.signal},facetAdmission);
  }
  });
  ownedWork=pending;
@@ -120,6 +121,7 @@ it('measures exact full and missing searches over the real 50k Unicode populatio
 },300000);
 
 const legacyHash='95900f68e826391eea261670dbeff344a7ef75e2ba921090ceef1ed949de172e';
+const firstWitnessHash='409eb5a90dbf1cc91340a9494dd0eb8599b118de5e490de61463b7f629fc8dbb';
 const facetIndexName='employee_choice_department_probe_20261109';
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
 const uuidArray=(ids:readonly string[])=>'{'+ids.join(',')+'}';
@@ -151,14 +153,15 @@ function legacyDepartmentFacet(tenantId:string,companyId:string){
   and exists(select 1 ${assignedMembers} and ${assignment.departmentId}=${department.id} offset 0) order by "companyId","departmentId"`;
 }
 
-function stressPage(b:Base,ids:readonly string[],total:number):Omit<EmployeeChoicePage,'contextId'>{
+type SparseSubject={employmentId:string;ordinal:number};
+function stressPage(b:Base,subjects:readonly SparseSubject[]):Omit<EmployeeChoicePage,'contextId'>{
  const finance={id:b.deptA,name:'Finance'};
- return {rows:ids.map((employmentId,index)=>{
-  const ordinal=index+1,number=String(ordinal).padStart(9,'0');
+ return {rows:subjects.map(({employmentId,ordinal})=>{
+  const number=String(ordinal).padStart(9,'0');
   return {employmentId,name:'Fictional retained Personnel 人員 '+number,employeeCode:'PERF'+number,
    company:'Acme Sdn Bhd',companyId:b.companyId,department:'Finance',departmentId:b.deptA,departmentCode:null,
-   businessUnit:null,businessUnitId:null,businessUnitCode:null,status:ordinal%5===0?'ended':'active'};
- }),selected:null,total,offset:0,limit:25,labelMode:'names',filters:{query:'',companyId:'',departmentId:'',businessUnitId:'',status:''},
+   businessUnit:null,businessUnitId:null,businessUnitCode:null,status:'active'};
+ }),selected:null,total:subjects.length,offset:0,limit:25,labelMode:'names',filters:{query:'',companyId:'',departmentId:'',businessUnitId:'',status:''},
  companyOptions:[{id:b.companyId,name:'Acme Sdn Bhd'}],departmentOptions:[finance],allDepartmentOptions:[finance],businessUnitOptions:[]};
 }
 
@@ -199,7 +202,7 @@ const assertBackend=(identity:Realm)=>{
 };
 
 type PlanNode={ [key:string]:unknown; Plans?:PlanNode[] };
-function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,pairProfile?:StressLabel){
+function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,sparseCount?:number){
  if(!Array.isArray(raw)||raw.length!==1||!raw[0]||typeof raw[0]!=='object')throw new Error('Unexpected native facet plan envelope');
  const document=raw[0] as Record<string,unknown>;
  const measure=(value:unknown)=>{
@@ -241,47 +244,52 @@ function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:nu
  return {planningMs:measure(document['Planning Time']),executionMs:measure(document['Execution Time']),nodes,
   jitReported:Object.hasOwn(document,'JIT'),assignmentNodes:assignments.map(({qual:_qual,...value})=>value),correlatedWitnesses:witnesses,
   witnessLoops,indexPaths,sharedTraffic:measure(root['Shared Hit Blocks'])+measure(root['Shared Read Blocks']),
-  pathRefusals:pairProfile?representedPathRefusals(pairProfile,shapeNodes,root,measure):[]};
+  pathRefusals:sparseCount===undefined?[]:sparsePathRefusals(sparseCount,shapeNodes,root,measure)};
 }
 
-function representedPathRefusals(profile:StressLabel,nodes:PlanNode[],root:PlanNode,measure:(value:unknown)=>number){
- const active=nodes.filter(node=>measure(node['Actual Loops'])>0);
- const assignments=active.filter(node=>node['Relation Name']==='assignment');
- const refusals:string[]=[];
+function sparsePathRefusals(expected:number,nodes:PlanNode[],root:PlanNode,measure:(value:unknown)=>number){
+ const active=nodes.filter(node=>measure(node['Actual Loops'])>0),refusals:string[]=[];
  const once=(matches:PlanNode[])=>matches.length===1&&measure(matches[0]['Actual Loops'])===1;
  const reads=(name:string)=>active.filter(node=>node['Node Type']==='CTE Scan'&&node['CTE Name']===name);
+ const authority=active.filter(node=>node['Subplan Name']==='CTE authorized_members');
  const pairs=active.filter(node=>node['Subplan Name']==='CTE represented_department_pairs');
+ const members=reads('authorized_members');
  if(!once(pairs)||pairs[0]['Actual Rows']!==1||root['Actual Rows']!==1)refusals.push('pair-output');
- if(!once(reads('authorized_members')))refusals.push('repeated-authority-read');
+ if(!once(authority)||authority[0]['Actual Rows']!==expected||!once(members)||members[0]['Actual Rows']!==expected)
+  refusals.push('bounded-authority-read');
  if(active.some(node=>measure(node['Temp Read Blocks'])>0||measure(node['Temp Written Blocks'])>0||
    (typeof node['Hash Batches']==='number'&&node['Hash Batches']>1)||
    (typeof node['Disk Usage']==='number'&&node['Disk Usage']>0)))refusals.push('temporary-work');
- if(profile==='broad'){
-  if(!once(assignments)||assignments[0]['Actual Rows']!==50000||assignments[0]['Node Type']!=='Seq Scan')refusals.push('broad-assignment-scan');
-  if(!once(reads('open_assignment_keys')))refusals.push('repeated-assignment-keys-read');
-  const bulk=active.filter(node=>['Hash Join','Merge Join'].includes(String(node['Node Type']))&&
-   /\bk\.employment_id\b/.test(String(node['Hash Cond']??node['Merge Cond']))&&
-   /\bm\.employment_id\b/.test(String(node['Hash Cond']??node['Merge Cond'])));
-  if(!once(bulk)||bulk[0]['Actual Rows']!==50000)refusals.push('missing-bulk-employment-key-join');
-  const personJoin=active.filter(node=>['Hash Join','Merge Join'].includes(String(node['Node Type']))&&
-   /\be\.person_id\b/.test(String(node['Hash Cond']??node['Merge Cond']))&&
-   /\bp\.id\b/.test(String(node['Hash Cond']??node['Merge Cond'])));
-  if(!once(personJoin)||personJoin[0]['Actual Rows']!==50000)refusals.push('missing-bulk-person-witness');
-  for(const [relation,alias]of [['employment','e'],['person','p']] as const){
-   if(!once(active.filter(node=>node['Relation Name']===relation&&node.Alias===alias))||
-    active.some(node=>node['Relation Name']===relation&&node['Node Type']==='Seq Scan'&&measure(node['Actual Loops'])>1))
-    refusals.push('repeated-'+relation+'-witness');
-  }
- }else{
-  const hasEmploymentIndex=(node:PlanNode)=>['assignment_employment_idx','assignment_no_overlap'].includes(String(node['Index Name']))&&
-   /\ba\.employment_id\s*=\s*m\.employment_id\b/.test(String(node['Index Cond']));
-  const indexed=(node:PlanNode)=>hasEmploymentIndex(node)||node['Node Type']==='Bitmap Heap Scan'&&
-   node.Plans?.length===1&&hasEmploymentIndex(node.Plans[0])&&node.Plans[0]['Actual Loops']===node['Actual Loops'];
-  const [members]=reads('authorized_members');
-  const admitted=members?measure(members['Actual Rows']):0;
-  if(admitted!==25||assignments.length!==1||assignments.some(node=>!indexed(node)||measure(node['Actual Loops'])>admitted))
-   refusals.push('sparse-employment-key-path');
- }
+ // CTE producers are InitPlans. Within each producer, policy subplans are separate
+ // from its physical witness tree, even when PostgreSQL reuses a relation alias.
+ const witnessNodes=(node:PlanNode):PlanNode[]=>[node,...(node.Plans??[])
+  .filter(child=>!['InitPlan','SubPlan'].includes(String(child['Parent Relationship']))).flatMap(witnessNodes)];
+ const witnesses=(producer:PlanNode|undefined,relation:string)=>producer
+  ?witnessNodes(producer).filter(node=>node['Relation Name']===relation&&measure(node['Actual Loops'])>0):[];
+ const byIndex=(node:PlanNode,indexes:readonly string[],condition:(text:string)=>boolean)=>{
+  const matches=(entry:PlanNode)=>indexes.includes(String(entry['Index Name']))&&condition(String(entry['Index Cond']));
+  return (node['Node Type']==='Index Scan'||node['Node Type']==='Index Only Scan')&&matches(node)||
+   node['Node Type']==='Bitmap Heap Scan'&&node.Plans?.some(child=>child['Node Type']==='Bitmap Index Scan'&&
+    child['Actual Loops']===node['Actual Loops']&&matches(child))===true;
+ };
+ const equality=(text:string,left:string,right:string)=>{
+  const condition=text.replace(/[()\s]/g,'');
+  return condition===left+'='+right||condition===right+'='+left;
+ };
+ const employments=witnesses(authority[0],'employment'),[employmentNode]=employments;
+ const people=witnesses(authority[0],'person'),[personNode]=people;
+ const employmentAlias=String(employmentNode?.Alias),personAlias=String(personNode?.Alias);
+ if(!once(employments)||employmentNode['Actual Rows']!==expected||
+  !byIndex(employmentNode,['employment_pkey'],condition=>condition.startsWith('('+employmentAlias+'.id = ANY (')))
+  refusals.push('sparse-employment-primary-path');
+ if(people.length!==1||personNode['Actual Loops']!==expected||personNode['Actual Rows']!==1||
+  !byIndex(personNode,['person_pkey'],condition=>equality(condition,personAlias+'.id',employmentAlias+'.person_id')))
+  refusals.push('sparse-person-primary-path');
+ const assignments=witnesses(pairs[0],'assignment'),[assignmentNode]=assignments;
+ if(assignments.length!==1||assignmentNode['Actual Loops']!==expected||assignmentNode['Actual Rows']!==1||
+  !byIndex(assignmentNode,['assignment_employment_idx','assignment_no_overlap'],
+   condition=>equality(condition,String(assignmentNode.Alias)+'.employment_id',String(members[0]?.Alias)+'.employment_id')))
+  refusals.push('sparse-employment-key-path');
  return refusals;
 }
 
@@ -289,7 +297,7 @@ type FacetIndex={oid:string;name:string;namespace:string;relation:string;owner:s
  valid:boolean;ready:boolean;live:boolean;unique:boolean;exclusion:boolean};
 type PlannerCatalogue={assignmentOid:string;namedOid:string|null;indexes:FacetIndex[];relations:unknown[];columnStats:unknown[];
  extended:unknown[];policies:unknown[];memberships:unknown[];population:Record<string,number>};
-type StressLabel='broad'|'sparse';
+type StressLabel='one-id'|'twenty-five-ids';
 type PairEpoch='A0'|'B0'|'B1'|'A1';
 type ReservedOwner=Awaited<ReturnType<typeof owner.client.reserve>>;
 type OwnerRealm=Realm&{cluster:string;boundStatement:string;boundLock:string};
@@ -355,7 +363,7 @@ async function readFacetPlannerCatalogue(connection:ReservedOwner,tenant:string,
  return {...facts,indexes};
 }
 
-type Probe={b:Base;ctx:SessionContext;expectedFirst:string[];captured:SQL[];dialect:PgDialect;report:Record<string,unknown>;
+type Probe={b:Base;ctx:SessionContext;organisationTagSample:string[];captured:SQL[];dialect:PgDialect;report:Record<string,unknown>;
  save:()=>void;actual:typeof database.withTenant;caseStart:number;signal:AbortSignal};
 
 async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAdmission>){
@@ -372,11 +380,17 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   matchedImprovement:{ordinary:false,instrumented:false},
   stress:[] as {label:string;wallMs:number;departmentMs:number;explainMs?:number;total:number;statements:number;rows:number}[]};
  const pairStatus={complete:false,catalogueUnchanged:false,ownedStopRequired:false,
-  twoDepartmentCandidate:'unobserved: retained original matched reads and prioritized ten-department ABBA'};
- const gateStatus:{matched:'unobserved'|'pass'|'fail';baselineStress:'unobserved'|'pass'|'fail';
-  representedPairs:'unobserved'|'pass'|'fail'}={matched:'unobserved',baselineStress:'unobserved',representedPairs:'unobserved'};
+  twoDepartmentSparseProduct:'unobserved; original matched statements are retained'};
+ const gateStatus:{matched:'unobserved'|'pass'|'fail';sparseBaselineStress:'unobserved'|'pass'|'fail';
+  sparseProductPairs:'unobserved'|'pass'|'fail'}={matched:'unobserved',sparseBaselineStress:'unobserved',sparseProductPairs:'unobserved'};
  report.facetCandidate=state;
- const rawPlans:{label:string;raw:unknown}[]=[],metadata:Record<string,unknown>={pairStatus,gateStatus,startup:{
+ const historicalBroad={
+  source:'a2936e6ba64695c4f92e277a69545e3d66c7673b',runId:42556631701,
+  artifactSha256:'4938a1d1bc8f7a84ea615cfe96813b730fc5b56acfe2b32bd03182d8f74a5c62',
+  gateStatus:{baselineStress:'pass',representedPairs:'fail'},
+  broad:'Ordinary, instrumented and whole-page relative times failed; both structural refusals misread the native Employment alias.',
+ };
+ const rawPlans:{label:string;raw:unknown}[]=[],metadata:Record<string,unknown>={pairStatus,gateStatus,historicalBroad,startup:{
   app:{poolMax:database.client.options.max,connectMs:1000,fetchTypes:database.client.options.fetch_types,nativeBootstrapMs:1500},
   owner:{poolMax:owner.client.options.max,connectMs:2000,fetchTypes:owner.client.options.fetch_types,authenticatedWarmupMs:10000,authenticatedSetupMs:10000},
   preparedStatements:database.client.options.prepare,
@@ -388,7 +402,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   const plans=JSON.stringify(rawPlans);
   if(Buffer.byteLength(plans)>4*1024*1024)throw new Error('Private facet plans exceed 4MiB');
   const path=join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'employee-choice-department-pairs-private.json');
-  writeFileSync(path,JSON.stringify({kind:'FICTIONAL_NATIVE_REPRESENTED_DEPARTMENT_PAIRS_DIAGNOSTIC',metadata,rawPlans}),{mode:0o600});
+  writeFileSync(path,JSON.stringify({kind:'FICTIONAL_NATIVE_SPARSE_PRODUCT_DEPARTMENT_PAIRS_DIAGNOSTIC',metadata,rawPlans}),{mode:0o600});
   save();
  };
  const fit=(deadline:number,ms:number,operation:string,cleanup=false)=>{
@@ -401,7 +415,8 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
  expect(Buffer.byteLength(old.sql)).toBe(934);expect(digest(old.sql)).toBe(legacyHash);
  expect(old.params).toEqual([tenant,tenant,tenant,tenant,companyArray,tenant]);
  expect(compiled.params).toEqual([tenant,tenant,tenant,tenant,tenant,companyArray]);
- expect(isDepartmentFacet(compiled.sql)).toBe(true);
+ expect(isDepartmentFacet(compiled.sql)).toBe(true);expect(digest(compiled.sql)).toBe(firstWitnessHash);
+ expect(compiled).toEqual(dialect.sqlToQuery(firstWitnessDepartmentFacet(tenant,{companyIds:[b.companyId]})));
  expect(p.captured.map(query=>dialect.sqlToQuery(query))).toEqual(p.captured.map(()=>compiled));
  metadata.sql={legacy:legacyHash,candidate:digest(compiled.sql),parameterCount:6};
  const proofRows=[{companyId:b.companyId,company:'Acme Sdn Bhd',departmentId:b.deptA,departmentCode:null,department:'Finance',
@@ -483,7 +498,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    await pending.callback?.catch(()=>{});
   }
  };
- const explain=async(tx:Tx,query:SQL,label:string,first:boolean,loops:number,pairProfile?:StressLabel)=>{
+ const explain=async(tx:Tx,query:SQL,label:string,first:boolean,loops:number,sparseCount?:number)=>{
   const started=performance.now();
   const rows=await tx.execute<{ 'QUERY PLAN':unknown }>(sql`explain(analyze,buffers,verbose,settings,timing off,format json) ${query}`);
   const wallMs=performance.now()-started;
@@ -492,7 +507,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   const bytes=Buffer.byteLength(JSON.stringify(raw));
   if(rawPlans.length>=10||bytes>1024*1024)throw new Error('Native facet plan inventory or size refused');
   rawPlans.push({label,raw});persist();
-  const summary=summarizePlan(raw,first,loops,pairProfile);
+  const summary=summarizePlan(raw,first,loops,sparseCount);
   state.plans.push({label,wallMs,...summary});persist();
   return summary;
  };
@@ -588,16 +603,23 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    ['assignment_company_idx','assignment_employment_idx','assignment_no_overlap','assignment_pkey']);
   expect(before.indexes.every(index=>index.valid&&index.ready&&index.live)).toBe(true);
 
-  const profiles=['broad','sparse'] as const;
+  const terminatedAfter=todayInKualaLumpur();
+  expect(terminatedAfter>='2024-01-01').toBe(true);
+  const activeSample=p.organisationTagSample.map((employmentId,index)=>({employmentId,ordinal:index+1}))
+   .filter(({ordinal})=>ordinal%5!==0).slice(0,25);
+  expect(activeSample).toHaveLength(25);
+  const profiles=['one-id','twenty-five-ids'] as const;
+  const subjects={'one-id':activeSample.slice(0,1),'twenty-five-ids':activeSample};
   const epochs=['A0','B0','B1','A1'] as const;
   type Seal={sql:string;parameters:string};
   type Observation={epoch:PairEpoch;label:StressLabel;departmentMs:number;wallMs:number;statements:number;rows:number;
-   total:number;dtoVerified:boolean;explainMs?:number;sharedTraffic?:number;pathRefusals?:string[]};
+   total:number;dtoVerified:boolean;executed:'product-forwarded'|'a293-first-witness-reference';explainMs?:number;sharedTraffic?:number;pathRefusals?:string[]};
   const productSeals:Partial<Record<StressLabel,Seal[]>>={};
-  const pairSeals:Partial<Record<StressLabel,Seal>>={};
+  const baselineSeals:Partial<Record<StressLabel,Seal>>={};
   const observations:Observation[]=[];
   const prepared:Partial<Record<PairEpoch,unknown[]>>={};
-  metadata.pairObservations=observations;metadata.productQuerySeals=productSeals;metadata.pairQuerySeals=pairSeals;metadata.prepared=prepared;
+  metadata.pairObservations=observations;metadata.productQuerySeals=productSeals;metadata.baselineQuerySeals=baselineSeals;metadata.prepared=prepared;
+  metadata.sparseProfiles=profiles.map(label=>({label,terminatedAfter,scopeSize:subjects[label].length}));
   const compiledSeal=(query:SQL)=>{
    const {sql:text,params}=dialect.sqlToQuery(query);
    return {sql:digest(text),parameters:digest(JSON.stringify(params))};
@@ -606,7 +628,8 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    const candidateEpoch=epoch==='B0'||epoch==='B1';
    const order=epoch==='B0'||epoch==='A1'?[...profiles].reverse():profiles;
    for(const label of order){
-    const sparse=label==='sparse',input=sparse?{companyIds:[b.companyId],employmentIds:p.expectedFirst,limit:25}:{companyIds:[],limit:25};
+    const scoped=subjects[label];
+    const input={companyIds:[b.companyId],terminatedAfter,employmentIds:scoped.map(row=>row.employmentId),limit:25};
     const seals:Seal[]=[];
     const captured:{forwarded?:SQL;departmentMs:number}={departmentMs:NaN};
     const guarded=new Proxy(tx,{get(target,key,receiver){
@@ -615,32 +638,35 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
       const compiled=dialect.sqlToQuery(statement),position=seals.push(compiledSeal(statement));
       const text=compiled.sql.trimStart();
       const permitted=[text.startsWith('select exists(select 1 from public.app_user'),text.startsWith('with employee_choice_page as materialized'),
-       text.startsWith('select "company"."id" as "companyId",')&&!text.includes('cross join'),isDepartmentFacet(text),
+       text.startsWith('select "company"."id" as "companyId",')&&!text.includes('cross join'),isSparseDepartmentFacet(text),
        text.startsWith('select "company"."id" as "companyId",')&&text.includes('cross join "business_unit"')];
       if(permitted[position-1]!==true)throw new Error('Unexpected borrowed stress statement at '+position);
       if(epoch!=='A0')expect(seals[position-1]).toEqual(productSeals[label]?.[position-1]);
       if(position!==4)return target.execute(statement);
-      expect(compiled.params).toEqual(departmentFacetBinds(tenant,input));
-      const forwarded=candidateEpoch?representedDepartmentFacet(tenant,input):statement;
-      if(candidateEpoch){
+      expect(compiled.params).toEqual(sparseDepartmentFacetBinds(tenant,input));
+      const forwarded=candidateEpoch?statement:firstWitnessDepartmentFacet(tenant,input);
+      if(!candidateEpoch){
+       expect(dialect.sqlToQuery(forwarded).params).toEqual(departmentFacetBinds(tenant,input));
        const seal=compiledSeal(forwarded);
-       if(epoch==='B0')pairSeals[label]=seal;else expect(seal).toEqual(pairSeals[label]);
+       if(epoch==='A0')baselineSeals[label]=seal;else expect(seal).toEqual(baselineSeals[label]);
       }
       const started=performance.now(),rows=await target.execute(forwarded);
-      captured.forwarded=forwarded;captured.departmentMs=performance.now()-started;return rows;
+      captured.forwarded=forwarded;captured.departmentMs=performance.now()-started;
+      expect(Array.from(rows)).toEqual(proofRows);return rows;
      };
      const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
     }});
     metadata.activePair={epoch,label,stage:'ordinary'};persist();
     const started=performance.now(),{contextId:_contextId,...page}=await readEmployeeChoicesTx(guarded,ctx,input,signal),wallMs=performance.now()-started;
     const {forwarded,departmentMs}=captured;
-    const entry:Observation={epoch,label,wallMs,departmentMs,total:page.total,statements:seals.length,rows:page.rows.length,dtoVerified:false};
+    const entry:Observation={epoch,label,wallMs,departmentMs,total:page.total,statements:seals.length,rows:page.rows.length,dtoVerified:false,
+     executed:candidateEpoch?'product-forwarded':'a293-first-witness-reference'};
     observations.push(entry);persist();
-    expect(seals).toHaveLength(5);expect(page).toEqual(stressPage(b,p.expectedFirst,sparse?25:50000));
+    expect(seals).toHaveLength(5);expect(page).toEqual(stressPage(b,scoped));
     if(!forwarded)throw new Error('Actual department statement was not forwarded');
     entry.dtoVerified=true;if(epoch==='A0')productSeals[label]=seals;
     metadata.activePair={epoch,label,stage:'explain'};persist();step(label+' native plan');
-    const plan=await explain(tx,forwarded,epoch+'-'+label,!candidateEpoch,10,candidateEpoch?label:undefined);
+    const plan=await explain(tx,forwarded,epoch+'-'+label,!candidateEpoch,10,candidateEpoch?scoped.length:undefined);
     entry.explainMs=plan.executionMs;entry.sharedTraffic=plan.sharedTraffic;entry.pathRefusals=plan.pathRefusals;
     if(epoch==='A0')state.stress.push({label,wallMs,departmentMs,explainMs:plan.executionMs,total:page.total,statements:seals.length,rows:page.rows.length});
     delete metadata.activePair;persist();
@@ -696,13 +722,14 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   metadata.pairOutcomes=outcomes;persist();
   fit(activeEnd,0,'represented pair evidence completion');
   pairStatus.complete=true;
-  gate('representedPairs',()=>{
-   for(const {label,...outcome} of outcomes)expect(outcome,label).toEqual({ordinary:true,instrumented:true,traffic:true,wholeRead:true,path:true,stressLimits:true});
+  gate('sparseProductPairs',()=>{
+   const expected={ordinary:true,instrumented:true,traffic:true,wholeRead:true,path:true,stressLimits:true};
+   expect(outcomes).toEqual(profiles.map(label=>({label,...expected})));
   });
  }catch(error){workFailed=true;workError=error;}
 
  if(matchedObserved)gate('matched',()=>expect(state.matchedImprovement).toEqual({ordinary:true,instrumented:true}));
- if(state.stress.length===2)gate('baselineStress',()=>{
+ if(state.stress.length===2)gate('sparseBaselineStress',()=>{
   for(const result of state.stress){
    expect(result.wallMs).toBeLessThanOrEqual(6000);expect(result.departmentMs).toBeLessThanOrEqual(1250);
    expect(result.explainMs).toBeLessThanOrEqual(1000);
