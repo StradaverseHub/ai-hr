@@ -147,7 +147,7 @@ it.each(['count','cursor'] as const)('stops further SQL after a disconnected %s 
    const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
   },
  })),options));
- try{await expect(readEmployeeChoices(ctx,{companyIds:[b.companyId],query:mode==='cursor'?'cancelled search':undefined},controller.signal)).rejects.toBe(stop);}
+ try{await expect(readEmployeeChoices(ctx,{companyIds:[b.companyId],query:mode==='cursor'?'cancelled 人 search':undefined},controller.signal)).rejects.toBe(stop);}
  finally{spy.mockRestore();}
  expect(sawRead).toBe(true);expect(afterAbort).toBe(0);
  expect((await readEmployeeChoices(ctx,{companyIds:[b.companyId]})).total).toBe(0);

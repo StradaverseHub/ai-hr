@@ -37,8 +37,8 @@
       "wholeOriginalSha256": "a8ce69b0e4919e0df561676714523705daa9bc0df5d402ac36cdb2be977f53b4"
     },
     "test/employee-choice-db.test.ts": {
-      "currentBytes": 28619,
-      "currentSha256": "45b2a8634990948278a9ed102441d225809d9384bca4dc0ec5cd9a7ed78cd803",
+      "currentBytes": 28623,
+      "currentSha256": "c7742246ff7d9181c07abc61a9cf63fb2c4b69c865a4fb883b2ad4b3ec1a44f9",
       "wholeOriginalGitRef": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d:test/employee-choice-db.test.ts",
       "wholeOriginalBlob": "7b95bef78820d6aa49f22686bef4a68a3de19afa",
       "wholeOriginalBytes": 15373,
@@ -144,5 +144,58 @@
     "preparedDriverBehavior": "UNCHANGED",
     "priorRuntimeFailureObserved": false,
     "ownerWarmupContract": "ONE_AUTHENTICATED_SCALAR_QUERY_THEN_IMMEDIATE_RESERVE_SAME_BACKEND_BEFORE_SESSION_CHANGES"
+  },
+  "disconnectFixtureCorrection": {
+    "directParent": "3c2ce8b8a12734867286c92ae3cf465c249163ac",
+    "scope": "ONE_INHERITED_CURSOR_SEARCH_LITERAL",
+    "parentWholePreimages": {
+      "test/employee-choice-db.test.ts": {
+        "wholeGitRef": "3c2ce8b8a12734867286c92ae3cf465c249163ac:test/employee-choice-db.test.ts",
+        "gitBlob": "5f4c8f7fd341e0d9a094819524b4d7e4980e2e5b",
+        "bytes": 28619,
+        "sha256": "45b2a8634990948278a9ed102441d225809d9384bca4dc0ec5cd9a7ed78cd803"
+      },
+      "docs/qualification/employee-choice-department-existence-source-20261109.json": {
+        "wholeGitRef": "3c2ce8b8a12734867286c92ae3cf465c249163ac:docs/qualification/employee-choice-department-existence-source-20261109.json",
+        "gitBlob": "669b288b8cb206f4e63db2630f1b3960905f6920",
+        "bytes": 6663,
+        "sha256": "e6fc9143252521b14fc9e9c6ef34768a82d99154af3bae50c7edbb6795810c5d"
+      }
+    },
+    "cursorNeedle": "cancelled \u4eba search",
+    "sourceReason": "The non-ASCII needle reaches the existing exact cursor path regardless of hosted ASCII optimization eligibility.",
+    "unchangedControls": [
+      "count case needle",
+      "real FETCH and abort trigger",
+      "exact abort error identity",
+      "zero later product SQL",
+      "subsequent native query",
+      "three added DTO case bodies",
+      "50k scale code and speed thresholds"
+    ],
+    "retainedCorrectness": {
+      "source": "3c2ce8b8a12734867286c92ae3cf465c249163ac",
+      "run": 42550692858,
+      "attempt": 1,
+      "authenticationSha256": "6182c3f7a320d54d4d06bf79763225234c6bdb9f1d2a7b906782280741842b22",
+      "passed": 8,
+      "failed": 1,
+      "result": "FAILURE",
+      "failureCase": "stops further SQL after a disconnected cursor and releases the native transaction"
+    },
+    "retainedScale": {
+      "source": "3c2ce8b8a12734867286c92ae3cf465c249163ac",
+      "run": 42550790661,
+      "attempt": 1,
+      "authenticationSha256": "da7931aaf9b4edc63d70f67ebb240f85c1245a049f8434de52fde3b7ad8f58da",
+      "result": "FAILURE",
+      "matchedImprovement": {
+        "ordinary": false,
+        "instrumented": false
+      },
+      "performanceQualified": false
+    },
+    "currentHostedOutcome": "UNOBSERVED",
+    "historicalEvidenceTransferred": false
   }
 }
