@@ -155,6 +155,7 @@
         "noSpend": "无 AI 费用：这些循环只使用规则，从不调用模型。"
       },
       "openWaiting": "{open} 项未处理 · {waiting} 项等待中",
+      "companySettings": "公司设置",
       "pause": {
         "title": "为公司暂停",
         "help": "暂停后，循环不会在该公司运行，也不会显示其卡片。关闭开关会在所有公司停止它。",
@@ -286,6 +287,7 @@
         "records": "每个数字都来自记录：循环卡片、结果记录和薪资异常发现，并按您自己的权限读取。不使用任何行业平均值估算。"
       },
       "baseline": {
+        "set": "设置基线",
         "notSet": "尚未设定基线",
         "notSetBody": "节省小时数以您在 Autopilot 启动前自己的人工时间为基准衡量。设定基线后即可查看；事件日志会测量它能测量的部分，您再补充它无法得知的分钟数。",
         "missingSome": "{count, plural, other {# 家公司尚未设定基线，因此其工作计为已完成，但不计入节省时间。}}",
@@ -308,6 +310,7 @@
         "periodEndsToday": "此处尚未启动 Autopilot，因此期间结束于今天。",
         "daysLabel": "长度",
         "daysOption": "{days} 天",
+        "changePeriod": "更改期间",
         "usePeriod": "使用此期间",
         "period": "期间：{from} 至 {to}。",
         "step2": "2. 事件日志测得的数据",

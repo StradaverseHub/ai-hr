@@ -70,7 +70,7 @@ export async function CapacityLedgerSection({ session, query }: { session: Sessi
         </div>
         <nav aria-label={t('periodLabel')} data-capacity-period className="flex flex-wrap gap-1.5">
           {CAPACITY_PERIODS.map((period: CapacityPeriod) => (
-            <Link key={period} href={href({ period, company })} aria-current={period === view.period ? 'true' : undefined}
+            <Link key={period} href={href({ period, company, pdays: query.pdays })} aria-current={period === view.period ? 'true' : undefined}
               className={cn(btnGhost, target, period === view.period && 'border-primary bg-primary/10 text-foreground')}>{t(`periods.${period}`)}</Link>
           ))}
         </nav>
@@ -95,28 +95,33 @@ export async function CapacityLedgerSection({ session, query }: { session: Sessi
       {error && <ErrorBanner message={t(`baseline.errors.${error}`, { max: MAX_ITEM_MINUTES })} />}
 
       {view.companies.length === 0 ? <p className="text-sm text-muted-foreground">{t('noCompanies')}</p> : <>
-        {ledger.freedMinutes === null ? (
-          <Card className="space-y-3 p-4" data-baseline-missing>
-            <h3 className="font-semibold">{t('baseline.notSet')}</h3>
-            <p className="text-sm text-muted-foreground">{t('baseline.notSetBody')}</p>
-            <ul className="flex flex-wrap gap-2">
-              {ledger.companiesWithoutBaseline.map(id => (
-                <li key={id}><Link href={href({ period: view.period, company, setup: id })} className={cn(btnPrimary, target)}>{t('baseline.setFor', { company: nameOf(id) })}</Link></li>
-              ))}
-            </ul>
+        {ledger.companiesWithoutBaseline.length > 0 && !setup && (
+          <Card className="space-y-3 p-4" {...(ledger.freedMinutes === null ? { 'data-baseline-missing': true } : { 'data-baseline-partial': true })}>
+            {ledger.freedMinutes === null && <h3 className="font-semibold">{t('baseline.notSet')}</h3>}
+            <p className="text-sm text-muted-foreground">{ledger.freedMinutes === null
+              ? t('baseline.notSetBody') : t('baseline.missingSome', { count: ledger.companiesWithoutBaseline.length })}</p>
+            {ledger.companiesWithoutBaseline.length === 1 ? (
+              <Link href={href({ period: view.period, company, setup: ledger.companiesWithoutBaseline[0], pdays: query.pdays }) + '#capacity-setup'}
+                className={cn(btnGhost, target)}>{t('baseline.setFor', { company: nameOf(ledger.companiesWithoutBaseline[0]) })}</Link>
+            ) : (
+              <form method="get" action="/assistant#capacity-setup" className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="view" value="insights" />
+                <input type="hidden" name="period" value={view.period} />
+                {company && <input type="hidden" name="company" value={company} />}
+                {query.pdays && <input type="hidden" name="pdays" value={query.pdays} />}
+                <label className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">{t('companyLabel')}</span>
+                  <select name="setup" className={cn(inputCls, 'max-w-full', target)}>
+                    {ledger.companiesWithoutBaseline.map(id => <option key={id} value={id}>{nameOf(id)}</option>)}
+                  </select>
+                </label>
+                <button type="submit" className={cn(btnGhost, target)}>{t('baseline.set')}</button>
+              </form>
+            )}
           </Card>
-        ) : ledger.companiesWithoutBaseline.length > 0 && (
-          <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm" data-baseline-partial>
-            <p>{t('baseline.missingSome', { count: ledger.companiesWithoutBaseline.length })}</p>
-            <ul className="mt-2 flex flex-wrap gap-2">
-              {ledger.companiesWithoutBaseline.map(id => (
-                <li key={id}><Link href={href({ period: view.period, company, setup: id })} className={cn('inline-flex min-h-9 items-center text-primary hover:underline', target)}>{t('baseline.setFor', { company: nameOf(id) })}</Link></li>
-              ))}
-            </ul>
-          </div>
         )}
 
-        {setup && <BaselineSetupForm setup={setup} period={view.period} company={company} t={t} itemName={itemName} day={day} one={one} />}
+        {setup && <BaselineSetupForm setup={setup} period={view.period} company={company} pdays={query.pdays} t={t} itemName={itemName} day={day} one={one} />}
 
         <StatCells cells={[
           { label: t('tiles.freed'), value: freedHours === null
@@ -190,8 +195,8 @@ export async function CapacityLedgerSection({ session, query }: { session: Sessi
 }
 
 type T = Awaited<ReturnType<typeof getTranslations<'aiCentre.capacity'>>>;
-function BaselineSetupForm({ setup, period, company, t, itemName, day, one }: {
-  setup: BaselineSetup; period: CapacityPeriod; company: string | null; t: T; itemName: (item: CapacityItem) => string; day: (date: string) => string; one: (n: number) => string;
+function BaselineSetupForm({ setup, period, company, pdays, t, itemName, day, one }: {
+  setup: BaselineSetup; period: CapacityPeriod; company: string | null; pdays?: string; t: T; itemName: (item: CapacityItem) => string; day: (date: string) => string; one: (n: number) => string;
 }) {
   const current = setup.current;
   const lastDay = addDays(setup.periodTo, -1);
@@ -203,24 +208,29 @@ function BaselineSetupForm({ setup, period, company, t, itemName, day, one }: {
         {current && <p className="mt-1 text-sm text-muted-foreground">{t('setup.current', { version: current.version, from: day(current.periodFrom), to: day(addDays(current.periodTo, -1)) })}</p>}
       </div>
 
-      <form method="get" action="/assistant" className="space-y-2">
-        <h4 className="text-sm font-medium">{t('setup.step1')}</h4>
-        <input type="hidden" name="view" value="insights" />
-        <input type="hidden" name="period" value={period} />
-        {company && <input type="hidden" name="company" value={company} />}
-        <input type="hidden" name="setup" value={setup.company.id} />
-        <p className="text-sm">{setup.autopilotStart ? t('setup.periodEnds', { date: day(setup.autopilotStart) }) : t('setup.periodEndsToday')}</p>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('setup.daysLabel')}</span>
-            <select name="days" defaultValue={String(setup.days)} className={cn(inputCls, 'min-w-40', target)}>
-              {BASELINE_DAYS.map(days => <option key={days} value={days}>{t('setup.daysOption', { days })}</option>)}
-            </select>
-          </label>
-          <button type="submit" className={cn(btnGhost, target)}>{t('setup.usePeriod')}</button>
-        </div>
-        <p className="text-sm text-muted-foreground" data-baseline-period>{t('setup.period', { from: day(setup.periodFrom), to: day(lastDay) })}</p>
-      </form>
+      <div className="space-y-2">
+        <p className="text-sm" data-baseline-period>{t('setup.period', { from: day(setup.periodFrom), to: day(lastDay) })}</p>
+        <details>
+          <summary className="w-fit cursor-pointer rounded-sm text-sm text-primary focus-visible:ring-2 focus-visible:ring-ring">{t('setup.changePeriod')}</summary>
+          <form method="get" action="/assistant#capacity-setup" className="mt-2 space-y-2">
+            <input type="hidden" name="view" value="insights" />
+            <input type="hidden" name="period" value={period} />
+            {company && <input type="hidden" name="company" value={company} />}
+            <input type="hidden" name="setup" value={setup.company.id} />
+            {pdays && <input type="hidden" name="pdays" value={pdays} />}
+            <p className="text-sm">{setup.autopilotStart ? t('setup.periodEnds', { date: day(setup.autopilotStart) }) : t('setup.periodEndsToday')}</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">{t('setup.daysLabel')}</span>
+                <select name="days" defaultValue={String(setup.days)} className={cn(inputCls, 'min-w-40', target)}>
+                  {BASELINE_DAYS.map(days => <option key={days} value={days}>{t('setup.daysOption', { days })}</option>)}
+                </select>
+              </label>
+              <button type="submit" className={cn(btnGhost, target)}>{t('setup.usePeriod')}</button>
+            </div>
+          </form>
+        </details>
+      </div>
 
       <div className="space-y-2">
         <h4 className="text-sm font-medium">{t('setup.step2')}</h4>
@@ -264,7 +274,7 @@ function BaselineSetupForm({ setup, period, company, t, itemName, day, one }: {
         <p className="text-xs text-muted-foreground">{t('setup.blankHelp', { max: MAX_ITEM_MINUTES })}</p>
         <div className="flex flex-wrap gap-2">
           <ActionButton type="submit" className={cn(btnPrimary, target)}>{t('setup.save')}</ActionButton>
-          <Link href={href({ period, company })} className={cn(btnGhost, target)}>{t('setup.cancel')}</Link>
+          <Link href={href({ period, company, pdays })} className={cn('inline-flex items-center px-2 text-sm text-muted-foreground hover:underline', target)}>{t('setup.cancel')}</Link>
         </div>
       </form>
     </Card>

@@ -4,7 +4,7 @@ import { RefreshControl, ScrollView, View } from 'react-native';
 import { ComposedPage } from '../../lib/composed-page';
 import { useTenantDesign } from '../../lib/design';
 import { BalanceStrip, HomeHero, NeedsYouBanner, PayslipCard, QuickActions, Reveal, SectionHeader, useHomeSummary, type QuickAction } from '../../lib/home-hero';
-import { homeNeedsView } from '../../lib/inbox';
+import { HomeLoopActions, homeNeedsView } from '../../lib/inbox';
 import { TeamPanel } from '../../lib/team-panel';
 /**
  * Home — the Mobile WOW round. A tenant that composed its own pages (schema 2) keeps its published composition; every
@@ -49,7 +49,7 @@ function BrandedHome() {
     <HomeHero name={me.data?.person.name ?? null} unread={unread} refreshToken={refreshToken} />
     <View style={{ paddingHorizontal: 16, paddingTop: 20, gap: 26 }}>
       {me.error && <LoadState loading={false} hasData={me.data != null} error={me.error} onRetry={me.reload} />}
-      <Reveal index={0}><NeedsYouBanner summary={summary} /></Reveal>
+      <Reveal index={0}><View style={{ gap: 8 }}><NeedsYouBanner summary={summary} /><HomeLoopActions summary={summary} /></View></Reveal>
       <Reveal index={1}><View style={{ gap: 14 }}><SectionHeader title={t('homeQuickActions')} /><QuickActions actions={actions} /></View></Reveal>
       <Reveal index={2}><BalanceStrip refreshToken={refreshToken} /></Reveal>
       <Reveal index={3}><View style={{ gap: 4 }}><SectionHeader title={t('homeWhosAway')} action={t('qaTeamCalendar')} onAction={() => router.push('/team-calendar')} /><TeamPanel refreshToken={refreshToken} compact hideTitle /></View></Reveal>

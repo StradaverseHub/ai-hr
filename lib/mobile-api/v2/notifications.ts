@@ -76,6 +76,15 @@ export type NotificationReadResult = z.infer<typeof NotificationReadResult>;
 const unavailable = z.object({ status: z.literal('unavailable') });
 export const HomeSummaryV2 = z.object({
   tasks: z.discriminatedUnion('status', [z.object({ status: z.literal('ok'), count }), unavailable]),
+  // Additive so installed clients can keep reading the two original parts.
+  loopActions: z.discriminatedUnion('status', [
+    z.object({ status: z.literal('ok'), items: z.array(z.object({
+      id: z.uuid(),
+      kind: z.enum(['clockOut', 'record', 'passport']),
+      date: z.iso.date().nullable(),
+    })) }),
+    unavailable,
+  ]).optional(),
   inbox: z.discriminatedUnion('status', [z.object({ status: z.literal('ok'), enabled: z.boolean(), unreadCount: count }), unavailable]),
 });
 export type HomeSummaryV2 = z.infer<typeof HomeSummaryV2>;

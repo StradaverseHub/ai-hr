@@ -7,9 +7,9 @@ import type { LoopId } from '@/core/loops/types';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../operations-tabs';
-import { setLoopPauseAction, setLoopSwitchAction } from '../actions';
+import { setLoopSwitchAction } from '../actions';
 import { loopAutonomyDetail } from '@/core/loops/autonomy-views';
-import { AUTONOMY_NOTICES, LoopActionsCard, LoopAutonomyFigures, LoopGuardsAndOwner, LoopLevelBadges, LoopLevelsCard, LoopSamplesCard } from '@/components/ai-centre/loop-autonomy';
+import { AUTONOMY_NOTICES, LoopActionsCard, LoopAutonomyFigures, LoopGuardsAndOwner, LoopAutonomyFeedback, LoopCompanySettings, LoopSamplesCard } from '@/components/ai-centre/loop-autonomy';
 
 /** AI v2 W8 — one loop's page (approved Phase 2 mock-up Main.dc.html "Loop detail", simplified to the Prepare level):
  * what done means, its four steps, its figures for the last 30 days, a pause per company the viewer administers, its
@@ -61,13 +61,13 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
       <OperationsTabs session={s} active="loops" />
       <PageHeader back={{ href: '/control-tower/loops', label: t('back') }} title={name} description={t('doneMeansLine', { done: t(`doneMeans.${id}`) })}
         actions={<div className="flex flex-wrap items-center gap-3">
-          {await LoopLevelBadges({ autonomy })}
           <span data-loop-switch={row.on ? 'on' : 'off'} className="text-sm">{row.stopped ? t('stopped') : row.on ? t('on') : t('off')}</span>
           {detail.canSwitch && <form action={setLoopSwitchAction}>
             <input type="hidden" name="loop" value={id} /><input type="hidden" name="from" value="detail" /><input type="hidden" name="enabled" value={String(!row.on)} />
             <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(row.on ? 'turnOff' : 'turnOn')} · ${name}`}>{t(row.on ? 'turnOff' : 'turnOn')}</ActionButton>
           </form>}
         </div>} />
+      {notice && await LoopAutonomyFeedback({ notice })}
       {error && <ErrorBanner message={t(`errors.${error}`)} />}
       {(query.saved === 'switch' || query.saved === 'pause') && <p role="status" className="rounded-lg border border-border bg-muted/50 p-3 text-sm">{t('saved')}</p>}
 
@@ -89,31 +89,8 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
       <p className="text-xs text-muted-foreground">{t('figures.noSpend')}</p>
       {await LoopAutonomyFigures({ autonomy })}
 
-      {await LoopLevelsCard({ autonomy, loop: id, notice })}
       {await LoopActionsCard({ autonomy, loop: id })}
       {await LoopSamplesCard({ autonomy, loop: id })}
-
-      <Card className="overflow-hidden">
-        <SectionHeader title={t('pause.title')} />
-        <p className="px-4 pb-3 text-sm text-muted-foreground">{t('pause.help')}</p>
-        {detail.companies.length === 0 ? <p className="px-4 pb-4 text-sm text-muted-foreground">{t('pause.none')}</p> : (
-          <ul className="divide-y divide-border border-t border-border">
-            {detail.companies.map(item => (
-              <li key={item.companyId} data-loop-company={item.companyId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
-                <span className="min-w-0 break-words">{item.companyName}</span>
-                <span className="flex items-center gap-3">
-                  <span className={cn('text-xs', item.paused ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>{item.paused ? t('pause.paused') : t('pause.running')}</span>
-                  <form action={setLoopPauseAction}>
-                    <input type="hidden" name="loop" value={id} /><input type="hidden" name="from" value="detail" />
-                    <input type="hidden" name="company" value={item.companyId} /><input type="hidden" name="paused" value={String(!item.paused)} />
-                    <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(item.paused ? 'pause.resume' : 'pause.pause')} · ${item.companyName}`}>{t(item.paused ? 'pause.resume' : 'pause.pause')}</ActionButton>
-                  </form>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
 
       <Card className="overflow-hidden">
         <SectionHeader title={t('cases.title')} />
@@ -155,6 +132,8 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
           </ul>
         )}
       </Card>
+
+      {await LoopCompanySettings({ autonomy, loop: id, companies: detail.companies, status: row.stopped ? 'stopped' : row.on ? 'pause.running' : 'off' })}
     </div>
   );
 }

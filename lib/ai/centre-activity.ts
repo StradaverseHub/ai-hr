@@ -27,6 +27,6 @@ export async function runAiCentreActivity<T>(tenantId:string,generation:number,w
 export function aiCentreEvent(eventType:string):boolean{
  return eventType.startsWith('automatic-chase.')||[
   'readiness.nudge-raised','claim-request.triage-queried','teras-loop.action.applied',
-  'teras-loop.request.sent','teras-loop.cut-off-reminder',
+  'teras-loop.request.sent','teras-loop.cut-off-reminder','teras-loop.employee-digest-queued',
  ].includes(eventType);
 }

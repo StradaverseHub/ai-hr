@@ -155,6 +155,7 @@
         "noSpend": "No AI spend: these loops use rules only, never a model."
       },
       "openWaiting": "{open} open · {waiting} waiting",
+      "companySettings": "Company settings",
       "pause": {
         "title": "Pause for a company",
         "help": "A paused loop neither runs nor shows its cards in that company. Switching it off stops it everywhere.",
@@ -286,6 +287,7 @@
         "records": "Every figure comes from the records: loop cards, outcome records and payroll anomaly findings, read with your own access. Nothing is estimated from industry averages."
       },
       "baseline": {
+        "set": "Set baseline",
         "notSet": "Baseline not set",
         "notSetBody": "Hours freed are measured against your own manual time before Autopilot started. Set the baseline to see them; the event log measures what it can, and you add the minutes it cannot know.",
         "missingSome": "{count, plural, one {# company has no baseline yet, so its work counts as done without freeing time.} other {# companies have no baseline yet, so their work counts as done without freeing time.}}",
@@ -308,6 +310,7 @@
         "periodEndsToday": "Autopilot has not started here yet, so it ends today.",
         "daysLabel": "Length",
         "daysOption": "{days} days",
+        "changePeriod": "Change period",
         "usePeriod": "Use this period",
         "period": "Period: {from} to {to}.",
         "step2": "2. What the event log measured",

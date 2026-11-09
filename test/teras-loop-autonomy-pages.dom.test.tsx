@@ -133,7 +133,8 @@ describe('loop pages preserve review-only attendance and the remaining acting lo
   state.session=SESSIONS.groupAdmin;state.canChange=true;state.levelA=storedLevel;
   const view=wrap('en',await detail('loop_missed_clock_outs'));
   expect(state.reads).toEqual(['detail:loop_missed_clock_outs','autonomy:loop_missed_clock_outs']);
-  expect([...view.container.querySelectorAll('[data-page-header] [data-loop-level]')].map(text)).toEqual(['Prepare · 2 companies']);
+  expect(view.container.querySelector('[data-page-header] [data-loop-level]')).toBeNull();
+  expect(view.container.querySelector('[data-loop-company-settings]')?.nextElementSibling).toBeNull();
   expect([...view.container.querySelectorAll('[data-loop-level-company] [data-loop-level]')].map(text)).toEqual(['Level 1 · Prepare','Level 1 · Prepare']);
   expect(view.container.querySelectorAll('[data-loop-level-company] a')).toHaveLength(0);
   expect(text(view.container.querySelector('[data-loop-autonomy-help]'))).toBe(messagesFor('en').aiCentre.autonomy.clockOutReviewOnly);
@@ -164,7 +165,7 @@ describe('loop pages preserve review-only attendance and the remaining acting lo
  it('keeps generic missing-data action controls, request limits and sponsorship visible',async()=>{
   state.session=SESSIONS.groupAdmin;state.canChange=true;
   const view=wrap('en',await detail('loop_missing_employee_data'));
-  expect([...view.container.querySelectorAll('[data-page-header] [data-loop-level]')].map(text)).toEqual(['Act within limits · Fictional A Sdn Bhd','Prepare · 1 company']);
+  expect([...view.container.querySelectorAll('[data-loop-company-settings] [data-loop-level]')].map(text)).toEqual(['Level 2 · Act within limits','Level 1 · Prepare']);
   const table=view.container.querySelector('[data-loop-actions]')!;
   expect(text(table)).toContain('Request sent to fill in 3 details');
   const forms=[...table.querySelectorAll('form')];expect(forms.map(inputs)).toEqual([['loop=loop_missing_employee_data','action=a1']]);

@@ -1101,6 +1101,16 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   // reader's own language (components/notification-center.tsx, payrollReadiness.reminder.* in all six catalogues), like the
   // greeting and letter notices: the title says how soon, the body whether items of their own, requests to decide, or
   // both wait. Never a pay figure, an amount, a count of someone else's or another person's name. It opens Today.
+  'teras-loop.employee-digest-queued': {
+    kind: 'teras-loop.employee-digest',
+    category: 'readiness',
+    render: () => ({
+      severity: 'action',
+      title: 'Your daily action digest',
+      body: 'Open Today to review the items that need your attention.',
+      linkPath: '/#today-needs-you',
+    }),
+  },
   'teras-loop.cut-off-reminder': {
     kind: 'teras-loop.cut-off-reminder',
     category: null,

@@ -169,7 +169,7 @@ describe('HR capacity, as an administrator',()=>{
   // One company has no baseline yet: said, with its guided way to set it.
   const partial=rendered.container.querySelector('[data-baseline-partial]')!;
   expect(text(partial)).toContain('1 company has no baseline yet, so its work counts as done without freeing time.');
-  expect(within(partial as HTMLElement).getByRole('link',{name:'Set the baseline for Fictional Beta Sdn Bhd'})).toHaveAttribute('href',`/assistant?view=insights&period=last30&setup=${C2}`);
+  expect(within(partial as HTMLElement).getByRole('link',{name:'Set the baseline for Fictional Beta Sdn Bhd'})).toHaveAttribute('href',`/assistant?view=insights&period=last30&setup=${C2}#capacity-setup`);
   // The chart: the shared chart, one bar per month to scale from zero, labelled, with the Autopilot mark in September.
   const svg=rendered.container.querySelector('[data-capacity-chart] svg[role="img"]')!;
   expect(svg.getAttribute('aria-label')).toBe('HR time freed by month: June 0 hours; July 0 hours; August 0 hours; September 14.5 hours; October 27 hours; November 38.5 hours. Autopilot started in September.');
@@ -209,9 +209,10 @@ describe('HR capacity, as an administrator',()=>{
   const missing=rendered.container.querySelector('[data-baseline-missing]')!;
   expect(within(missing as HTMLElement).getByRole('heading',{level:3,name:'Baseline not set'})).toBeTruthy();
   expect(text(missing)).toContain('Hours freed are measured against your own manual time before Autopilot started.');
-  expect(within(missing as HTMLElement).getAllByRole('link').map(link=>[text(link),link.getAttribute('href')])).toEqual([
-   ['Set the baseline for Fictional Alpha Sdn Bhd',`/assistant?view=insights&period=last30&setup=${C1}`],
-   ['Set the baseline for Fictional Beta Sdn Bhd',`/assistant?view=insights&period=last30&setup=${C2}`]]);
+  expect([...missing.querySelectorAll('select[name="setup"] option')].map(option => [option.getAttribute('value'), text(option)])).toEqual([
+   [C1, 'Fictional Alpha Sdn Bhd'], [C2, 'Fictional Beta Sdn Bhd'],
+  ]);
+  expect(within(missing as HTMLElement).getAllByRole('button', { name: 'Set baseline' })).toHaveLength(1);
   const tile=rendered.container.querySelector('[data-stat-cells] > div')!;
   expect(parts(tile.querySelector('dd')!)).toBe('Baseline not set Set a baseline to measure it');
   expect([...rendered.container.querySelectorAll('[data-capacity-table] tbody tr')].map(row=>[...row.querySelectorAll('th,td')].map(parts))).toEqual([

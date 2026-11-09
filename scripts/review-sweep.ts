@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 // `review:sweep` (0110) — automated probation/contract/internship review opener, run out-of-band
 // (CLI/cron) like accrue-earned.ts. Enumerates tenants with the owner role, then runs sweepDueReviews
 // per tenant with the legacy no-login hr_admin engine context; engine effects use `system`.
@@ -52,6 +53,7 @@ import { todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
 import { isModuleEnabled, resolveEntitlementsTx } from '../core/entitlements';
 import { NOTIFICATION_ROLE_MISSING, notificationDowngradeReady } from './lib/notification-sweep-role';
+import { queueEmployeeLoopDigests } from '../core/loops/employee-action-digest';
 import { runLoopsForTenant } from '../core/loops/run';
 import { runPayrollAuditLoop } from '../core/payroll-audit/run';
 import { runPayrollLearning } from '../core/payroll-learning/recompute';
@@ -209,7 +211,19 @@ async function main() {
 
       // AI v2 W8: the loops, as the same named principal. A switched-off loop does not run; a sponsor who lost their
       // authority or a failed owner read is recorded by the loop and counted here, never silently skipped.
+      const digestGeneration = isModuleEnabled(ctx, 'notifications')
+        ? await owner.withTenant(ctx, async tx => (await tx.execute<{ generation: number | null }>(
+          sql`select app.ai_centre_assert_running() as generation`))[0]?.generation ?? null)
+        : null;
       const loops = await runLoopsForTenant({ tenantId: t.id, principalId, entitlements, today });
+      if (digestGeneration !== null) {
+        try {
+          await queueEmployeeLoopDigests(ctx, owner, { principalId, today, generation: digestGeneration, runs: loops });
+        } catch {
+          failures++;
+          console.error('  Employee loop digest could not be queued.');
+        }
+      }
       for (const loop of loops) {
         if (loop.status === 'ran') {
           loopRuns++;

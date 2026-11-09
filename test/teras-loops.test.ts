@@ -13,7 +13,7 @@ import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixt
  *  5. No model is called by any loop (the gateway is replaced by one that counts and refuses).
  * Expected values are written out from the fixtures, never re-derived from the loops' own helpers. */
 import {randomUUID} from 'node:crypto';
-import {and,eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 
 const model=vi.hoisted(()=>({calls:0}));
@@ -34,7 +34,11 @@ import {checkIn,checkOut,decideAttendanceCorrection,requestAttendanceCorrection,
 import {assignDefaultShift,createShift} from '../core/roster';
 import {decideProfileChange} from '../core/profile';
 import {runLoop,runLoopsForTenant} from '../core/loops/run';
-import {readLoopCards} from '../core/loops/cards';
+import {readEmployeeLoopCards,readLoopCards} from '../core/loops/cards';
+import {queueEmployeeLoopDigests} from '../core/loops/employee-action-digest';
+import {dispatchNotificationsFromSweep,notificationStillTargets} from '../core/notifications';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {addHrDays} from '../lib/today/audience';
 import {LoopControlRefused,setLoopPause} from '../core/loops/controls';
 import {LoopViewRefused,loopDetail,loopsOverview} from '../core/loops/views';
 import type {LoopId} from '../core/loops/types';
@@ -296,7 +300,7 @@ describe('loop 3: missing employee data',()=>{
   const key=`record:${e.employmentId}`;
   // No compensation is HR's to fill: only the bank account is on the employee's card.
   expect(await caseOf('loop_missing_employee_data',key)).toMatchObject({state:'open',recipient:'employee',facts:{gaps:['no_bank_account'],tabs:['bankStatutory'],pending:0}});
-  expect(await cards(e,false)).toEqual([{kind:'record',caseId:expect.any(String),gaps:['no_bank_account'],href:'/me?tab=bankStatutory#section-request-bankStatutory'}]);
+  expect(await cards(e,false)).toEqual([{kind:'record',caseId:expect.any(String),gaps:['no_bank_account'],href:`/me?tab=bankStatutory&employmentId=${e.employmentId}#section-request-bankStatutory`}]);
   // The card is the employee's own: an administrator's Today shows only their own record card, never this one.
   const caseId=(await caseOf('loop_missing_employee_data',key))!.id;
   expect((await cards(group,true)).filter(item=>item.kind==='record').map(item=>item.caseId)).not.toContain(caseId);
@@ -334,7 +338,7 @@ describe('loop 4: missed clock-outs',()=>{
   const wed=`clockout:${e.employmentId}:${YESTERDAY}`,tue=`clockout:${e.employmentId}:${TUESDAY}`;
   expect(await caseOf('loop_missed_clock_outs',wed)).toMatchObject({state:'open',recipient:'employee',facts:{date:YESTERDAY,checkIn:'09:02',proposedCheckOut:'18:00',shiftStart:'09:00'}});
   expect((await cards(e,false)).map(card=>card.kind==='clockOut'?[card.date,card.checkIn,card.proposedCheckOut,card.href]:null)).toEqual([
-   [TUESDAY,'08:55','18:00','/attendance/my-records/2026-06-30?checkOut=18%3A00'],[YESTERDAY,'09:02','18:00','/attendance/my-records/2026-07-01?checkOut=18%3A00']]);
+   [TUESDAY,'08:55','18:00',`/attendance/my-records/2026-06-30?checkOut=18%3A00&employmentId=${e.employmentId}&home=1`],[YESTERDAY,'09:02','18:00',`/attendance/my-records/2026-07-01?checkOut=18%3A00&employmentId=${e.employmentId}&home=1`]]);
   expect((await cards(group,true)).filter(card=>card.kind==='clockOut')).toEqual([]);
   expect(await cards(m,false)).toEqual([]);
   // Nothing was written to the attendance record.
@@ -395,7 +399,7 @@ describe('loop 5: passports expiring',()=>{
   expect(await run('loop_document_expiry')).toMatchObject({status:'ran',totals:{opened:1}});
   const key=`passport:${e.employmentId}`;
   expect(await caseOf('loop_document_expiry',key)).toMatchObject({state:'open',recipient:'employee',facts:{expiresOn:'2026-08-11'}});
-  expect(await cards(e,false)).toEqual([{kind:'passport',caseId:expect.any(String),expiresOn:'2026-08-11',href:'/me?tab=profile'}]);
+  expect(await cards(e,false)).toEqual([{kind:'passport',caseId:expect.any(String),expiresOn:'2026-08-11',href:`/me?tab=profile&employmentId=${e.employmentId}`}]);
   expect(await cards(group,true)).toEqual([{kind:'passports',count:1,first:'2026-08-11',href:'/personnel'}]);
   // Renewed: the next run closes it, and both cards are gone.
   await owner.db.update(schema.employeeStatutoryMy).set({passportExpiryDate:day(400)}).where(eq(schema.employeeStatutoryMy.personId,e.personId));
@@ -406,5 +410,41 @@ describe('loop 5: passports expiring',()=>{
   await owner.db.update(schema.employeeStatutoryMy).set({passportExpiryDate:day(20)}).where(eq(schema.employeeStatutoryMy.personId,e.personId));
   expect(await run('loop_document_expiry')).toMatchObject({status:'ran',totals:{reopened:1}});
   expect(await caseOf('loop_document_expiry',key)).toMatchObject({state:'open',reopenCount:1,facts:{expiresOn:'2026-07-22'}});
+ });
+});
+
+describe('employee action digest',()=>{
+ it('groups fresh own cases into one daily notification and rechecks pending delivery',async()=>{
+  await setModule(b.tenantId,'notifications','active');
+  const recipient=await login(b,'Fictional Digest Recipient','employee');
+  const peer=await login(b,'Fictional Digest Peer','employee');
+  const today=todayInKualaLumpur();
+  await owner.db.insert(schema.employeeStatutoryMy).values({tenantId:b.tenantId,personId:recipient.personId,
+   passportNumber:randomUUID(),passportExpiryDate:addHrDays(today,40),epfNumber:'EPF',socsoNumber:'SOCSO',taxNumber:'TAX'});
+  await on('loop_missing_employee_data');
+  await on('loop_document_expiry');
+  const snapshot=await entitlements();
+  const maintenance:SessionContext={tenantId:b.tenantId,roles:['hr_admin'],entitlements:snapshot};
+  const [control]=await owner.withTenant(maintenance,tx=>tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running() as generation`));
+  const runs=await runLoopsForTenant({tenantId:b.tenantId,principalId,entitlements:snapshot,today});
+  const actions=await readEmployeeLoopCards(recipient);
+  expect(actions.map(card=>card.kind)).toEqual(['record','passport']);
+  expect((await readEmployeeLoopCards(peer)).map(card=>card.caseId)).not.toContain(actions[1].caseId);
+  const input={principalId,today,generation:control.generation,runs};
+  expect(await queueEmployeeLoopDigests(maintenance,owner,input)).toBeGreaterThan(0);
+  expect(await queueEmployeeLoopDigests(maintenance,owner,input)).toBe(0);
+  await dispatchNotificationsFromSweep(maintenance,owner);
+  const notices=await owner.db.select().from(schema.notification).where(and(
+   eq(schema.notification.tenantId,b.tenantId),eq(schema.notification.recipientEmploymentId,recipient.employmentId),
+   eq(schema.notification.kind,'teras-loop.employee-digest')));
+  expect(notices).toHaveLength(1);
+  expect(notices[0]).toMatchObject({linkPath:'/#today-needs-you',severity:'action'});
+  const target=()=>withTenant(maintenance,tx=>notificationStillTargets(tx,notices[0].sourceEventId!,'teras-loop.employee-digest','readiness',recipient.employmentId));
+  expect(await target()).toBe(true);
+  await setLoopPause(group,{workerId:'loop_missing_employee_data',companyId:b.companyId,paused:true});
+  expect(await target()).toBe(true);
+  await setLoopPause(group,{workerId:'loop_document_expiry',companyId:b.companyId,paused:true});
+  expect(await target()).toBe(false);
+  expect(await readEmployeeLoopCards(recipient)).toEqual([]);
  });
 });

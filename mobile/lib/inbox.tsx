@@ -10,13 +10,13 @@
  * available". Screens are only reachable unlocked: the root Gate (mobile/app/_layout.tsx) renders no route while the
  * session is locked, and a command refuses while the app is not in the foreground (api.ts).
  *
- * HOME NEVER GUESSES. "Nothing needs you" shows only when BOTH the task count and the inbox count were read, are zero
+ * HOME NEVER GUESSES. "Nothing needs you" shows only when the counts and employee loop actions are empty
  * and are not being refreshed. Loading shows loading; a part that could not be read shows "Couldn't check — retry".
  *
  * Nothing is kept: rows, counts and read marks live in this screen's memory only.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { DesignText as Text, useTenantDesign } from './design';
@@ -175,12 +175,40 @@ export function useHomeSummary(onSignInRequired: () => void, refreshToken = 0): 
 }
 
 export type HomeNeedsView = { tasks: 'loading' | 'failed' | number; inbox: 'loading' | 'failed' | 'off' | number; allClear: boolean };
-/** What Home may say. All clear ONLY when both parts were read, both are zero (or the inbox is off) and nothing is in flight. */
+/** What Home may say. All clear requires empty successful reads and no refresh in flight. */
 export function homeNeedsView(read: Pick<Read<HomeSummaryV2>, 'data' | 'error' | 'loading'>): HomeNeedsView {
   if (!read.data) { const s = read.error ? 'failed' : 'loading'; return { tasks: s, inbox: s, allClear: false }; }
   const tasks = read.data.tasks.status === 'ok' ? read.data.tasks.count : 'failed';
   const inbox = read.data.inbox.status !== 'ok' ? 'failed' : read.data.inbox.enabled ? read.data.inbox.unreadCount : 'off';
-  return { tasks, inbox, allClear: !read.loading && !read.error && tasks === 0 && (inbox === 'off' || inbox === 0) };
+  const loopActions = read.data.loopActions;
+  const noLoopActions = !loopActions || (loopActions.status === 'ok' && loopActions.items.length === 0);
+  return { tasks, inbox, allClear: noLoopActions && !read.loading && !read.error && tasks === 0 && (inbox === 'off' || inbox === 0) };
+}
+
+const LOOP_ACTION_LABEL = { clockOut: 'homeLoopClockOut', record: 'homeLoopRecord', passport: 'homeLoopPassport' } as const;
+
+export function HomeLoopActions({ summary }: { summary: Read<HomeSummaryV2> }) {
+  const { palette } = useTenantDesign();
+  const actions = summary.data?.loopActions;
+  const [openFailed, setOpenFailed] = useState(false);
+  if (actions?.status === 'unavailable' && !summary.loading) {
+    return <Button title={t('homeCheckFailed')} kind="quiet" onPress={summary.reload} />;
+  }
+  if (actions?.status !== 'ok' || !actions.items.length) return null;
+  return <Card>
+    <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 16, fontWeight: '700' }}>{t('homeLoopActions')}</Text>
+    {actions.items.map(item => (
+      <View key={item.id} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, paddingVertical: 8 }}>
+        <Text style={{ flex: 1, color: palette.text }}>{t(LOOP_ACTION_LABEL[item.kind])}</Text>
+        {item.date && <Muted>{new Intl.DateTimeFormat(appLocale(), { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(item.date))}</Muted>}
+      </View>
+    ))}
+    {openFailed && <Text accessibilityRole="alert" style={{ color: palette.text }}>{t('homeLoopOpenFailed')}</Text>}
+    <Button title={t('homeLoopOpen')} kind="quiet" onPress={() => {
+      setOpenFailed(false);
+      void Linking.openURL(config.apiUrl + '/#today-needs-you').catch(() => setOpenFailed(true));
+    }} />
+  </Card>;
 }
 
 /**
@@ -192,13 +220,16 @@ export function HomeNeeds({ refreshToken = 0 }: { refreshToken?: number }) {
   const summary = useHomeSummary(signOut, refreshToken);
   const v = homeNeedsView(summary);
   const failed = v.tasks === 'failed' || v.inbox === 'failed';
-  return <Card>
-    <LoadState loading={summary.loading} hasData={summary.data != null} error={null} onRetry={summary.reload} />
-    {typeof v.tasks === 'number' && v.tasks > 0 ? <ListRow label={t('approvalsTitle')} value={t('homeTasksCount', { n: v.tasks })} onPress={() => router.push('/approvals')} /> : null}
-    {typeof v.inbox === 'number' && v.inbox > 0 ? <ListRow label={t('tabInbox')} value={t('unreadCount', { n: v.inbox })} onPress={() => router.navigate('/inbox')} /> : null}
-    {failed && !summary.loading ? <Button title={t('homeCheckFailed')} kind="quiet" onPress={summary.reload} /> : null}
-    {v.allClear ? <Muted>{t('nothingNeedsYou')}</Muted> : null}
-    {/* The count could not be read: the way to the list itself stays. */}
-    {v.tasks === 'failed' ? <ListRow label={t('openApprovals')} onPress={() => router.push('/approvals')} /> : null}
-  </Card>;
+  return <View style={{ gap: 8 }}>
+    <Card>
+      <LoadState loading={summary.loading} hasData={summary.data != null} error={null} onRetry={summary.reload} />
+      {typeof v.tasks === 'number' && v.tasks > 0 ? <ListRow label={t('approvalsTitle')} value={t('homeTasksCount', { n: v.tasks })} onPress={() => router.push('/approvals')} /> : null}
+      {typeof v.inbox === 'number' && v.inbox > 0 ? <ListRow label={t('tabInbox')} value={t('unreadCount', { n: v.inbox })} onPress={() => router.navigate('/inbox')} /> : null}
+      {failed && !summary.loading ? <Button title={t('homeCheckFailed')} kind="quiet" onPress={summary.reload} /> : null}
+      {v.allClear ? <Muted>{t('nothingNeedsYou')}</Muted> : null}
+      {/* The count could not be read: the way to the list itself stays. */}
+      {v.tasks === 'failed' ? <ListRow label={t('openApprovals')} onPress={() => router.push('/approvals')} /> : null}
+    </Card>
+    <HomeLoopActions summary={summary} />
+  </View>;
 }

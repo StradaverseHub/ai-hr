@@ -12,11 +12,17 @@ import {company,employment,person} from '../../db/schema';
 import {terasLoopCase,terasLoopPause} from '../../db/teras-schema';
 import {terasLoopLevel} from '../../db/teras-autonomy-schema';
 import {assignedApprovalHref} from '../../lib/assigned-approval-focus';
-import {workerRunGatesTx} from '../agent-registry/controls';
+import {workerModule,workerRunGatesTx} from '../agent-registry/controls';
+import {isModuleEnabled} from '../entitlements';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {PAYROLL_INPUTS_LEAD_DAYS,daysBetween} from './period';
 import {LOOP_IDS,type LoopFacts,type LoopId} from './types';
 import {readAutonomyCardsTx,type AutonomyCard} from './autonomy-cards';
+
+export type EmployeeLoopCard=Readonly<
+ |{kind:'clockOut';caseId:string;date:string;checkIn:string;proposedCheckOut:string;href:string}
+ |{kind:'record';caseId:string;gaps:readonly string[];href:string}
+ |{kind:'passport';caseId:string;expiresOn:string;href:string}>;
 
 export type LoopCard=Readonly<
  /** `reviewId`: the probation review the case found, when one is open (Today shows a review already waiting as an
@@ -25,13 +31,10 @@ export type LoopCard=Readonly<
  |{kind:'payroll';caseId:string;companyName:string|null;payPeriod:string;cutOff:string;missing:readonly string[];blockers:number;href:string;
   /** AI v2 P2-2a: the Pre-salary checks still open or waiting (core/loops/pre-salary-checks.ts keys), set-up excluded. */
   checks:readonly string[]}
- |{kind:'passports';count:number;first:string;href:string}
- |{kind:'clockOut';caseId:string;date:string;checkIn:string;proposedCheckOut:string;href:string}
- |{kind:'record';caseId:string;gaps:readonly string[];href:string}
- |{kind:'passport';caseId:string;expiresOn:string;href:string}>
+ |{kind:'passports';count:number;first:string;href:string}> | EmployeeLoopCard
  /** AI v2 Phase 2 P2-1: a clock-out the loop set on the viewer's own day (with Undo), and a loop that moved itself down. */
  |AutonomyCard;
-/** At most this many cards of one kind on one view; the loop's page lists every case. */
+/** Cap administrative summaries. Every open self-service case is shown to its employee. */
 export const LOOP_CARD_LIMIT=5;
 
 const str=(facts:LoopFacts,key:string)=>typeof facts[key]==='string'?facts[key] as string:null;
@@ -49,23 +52,24 @@ export const LOOP_CARD_HREF=Object.freeze({
  payroll:(companyId:string,payPeriod:string)=>`/control-tower/loops/payroll-cycle?${new URLSearchParams({company:companyId,period:payPeriod})}`,
  passports:()=>'/personnel',
  // The slice 1 correction's own form: the person's attendance day, the proposed clock-out in its box.
- clockOut:(date:string,proposedCheckOut:string)=>`/attendance/my-records/${date}?${new URLSearchParams({checkOut:proposedCheckOut})}`,
+ clockOut:(date:string,proposedCheckOut:string,employmentId?:string)=>`/attendance/my-records/${date}?${new URLSearchParams({checkOut:proposedCheckOut,...(employmentId?{employmentId,home:'1'}:{})})}`,
  // The person's own profile change request section (the readiness work list's own link).
- record:(tab:string)=>`/me?tab=${tab}#section-request-${tab}`,
- passport:()=>'/me?tab=profile',
+ record:(tab:string,employmentId?:string)=>`/me?${new URLSearchParams({tab,...(employmentId?{employmentId}:{})})}#section-request-${tab}`,
+ passport:(employmentId?:string)=>`/me?${new URLSearchParams({tab:'profile',...(employmentId?{employmentId}:{})})}`,
 });
 
 /** `admin`: the viewer's Today shows HR cards for the companies in `scopeIds`; everyone sees their own cards. `today`
  * (default the HR day): the Pre-salary card shows only in the last PAYROLL_INPUTS_LEAD_DAYS before its cut-off. */
-export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:readonly string[];admin:boolean;today?:string}>):Promise<readonly LoopCard[]>{
- if(!ctx.userId||ctx.agent)return [];
+export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:readonly string[];admin:boolean;today?:string;employeeOnly?:true}>):Promise<readonly LoopCard[]>{
+ if(!ctx.userId||ctx.agent||(p.employeeOnly&&!ctx.personId))return [];
  const today=p.today??todayInKualaLumpur();
  return withTenant(ctx,async tx=>{
   // P2-1: open undo windows and automatic moves down are shown whether or not the loop still runs.
-  const autonomy=await readAutonomyCardsTx(tx,ctx,{scopeIds:p.scopeIds,admin:p.admin});
+  const autonomy=p.employeeOnly?[]:await readAutonomyCardsTx(tx,ctx,{scopeIds:p.scopeIds,admin:p.admin});
   // Every loop's gate, each as workerRunGateTx answers it, read in one pass (AI Centre navigation speed, 4 Nov 2026).
   const gates=await workerRunGatesTx(tx,ctx,LOOP_IDS);
-  const live:LoopId[]=LOOP_IDS.filter(id=>gates.get(id)?.gate.run===true);
+  const live:LoopId[]=LOOP_IDS.filter(id=>gates.get(id)?.gate.run===true &&
+   (!p.employeeOnly || id==='loop_missed_clock_outs'||id==='loop_missing_employee_data'||id==='loop_document_expiry'));
   if(!live.length)return autonomy;
   const paused=new Set((await tx.select({workerId:terasLoopPause.workerId,companyId:terasLoopPause.companyId}).from(terasLoopPause)
    .where(and(eq(terasLoopPause.tenantId,ctx.tenantId),eq(terasLoopPause.paused,true)))).map(row=>`${row.workerId}:${row.companyId}`));
@@ -73,29 +77,32 @@ export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:read
    recipient:terasLoopCase.recipient,facts:terasLoopCase.facts,personId:employment.personId,name:person.fullName,companyName:company.legalName})
    .from(terasLoopCase).leftJoin(employment,eq(employment.id,terasLoopCase.employmentId)).leftJoin(person,eq(person.id,employment.personId))
    .leftJoin(company,eq(company.id,terasLoopCase.companyId))
-   .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.state,'open'),inArray(terasLoopCase.workerId,live))))
+   .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.state,'open'),inArray(terasLoopCase.workerId,live),
+    p.employeeOnly ? and(eq(terasLoopCase.recipient,'employee'),eq(employment.personId,ctx.personId!)) : undefined)))
    .filter(row=>!paused.has(`${row.workerId}:${row.companyId}`));
   // P2-1: a loop at Watch for a company observes and records there, and shows nobody a card.
   const watching=new Set((await tx.select({workerId:terasLoopLevel.workerId,companyId:terasLoopLevel.companyId}).from(terasLoopLevel)
    .where(and(eq(terasLoopLevel.tenantId,ctx.tenantId),eq(terasLoopLevel.level,0)))).map(row=>`${row.workerId}:${row.companyId}`));
-  const rows=fetched.filter(row=>!watching.has(`${row.workerId}:${row.companyId}`));
+  const rows=fetched.filter(row=>!watching.has(`${row.workerId}:${row.companyId}`)&&isModuleEnabled(ctx,workerModule(row.workerId),row.companyId));
   const scope=new Set(p.scopeIds),own=(row:typeof rows[number])=>row.recipient==='employee'&&!!ctx.personId&&row.personId===ctx.personId;
   const hr=(row:typeof rows[number])=>p.admin&&scope.has(row.companyId)&&!own(row);
   const cards:LoopCard[]=[];
-  const take=<T extends LoopCard>(items:T[],order:(card:T)=>string)=>cards.push(...items.sort((a,b)=>order(a).localeCompare(order(b))).slice(0,LOOP_CARD_LIMIT));
+  const take=<T extends LoopCard>(items:T[],order:(card:T)=>string,limit=LOOP_CARD_LIMIT)=>{
+   cards.push(...items.sort((a,b)=>order(a).localeCompare(order(b))).slice(0,limit));
+  };
   // The employee's own cards.
   take(rows.filter(row=>own(row)&&row.workerId==='loop_missed_clock_outs').flatMap(row=>{
    const date=str(row.facts,'date'),checkIn=str(row.facts,'checkIn'),out=str(row.facts,'proposedCheckOut');
-   return isDate(date)&&isClock(checkIn)&&isClock(out)?[{kind:'clockOut' as const,caseId:row.id,date,checkIn,proposedCheckOut:out,href:LOOP_CARD_HREF.clockOut(date,out)}]:[];
-  }),card=>card.date);
+   return isDate(date)&&isClock(checkIn)&&isClock(out)?[{kind:'clockOut' as const,caseId:row.id,date,checkIn,proposedCheckOut:out,href:LOOP_CARD_HREF.clockOut(date,out,row.employmentId ?? undefined)}]:[];
+  }),card=>card.date,Infinity);
   take(rows.filter(row=>own(row)&&row.workerId==='loop_missing_employee_data').flatMap(row=>{
    const gaps=list(row.facts,'gaps'),tab=list(row.facts,'tabs').find(value=>TABS.has(value));
-   return gaps.length&&tab?[{kind:'record' as const,caseId:row.id,gaps,href:LOOP_CARD_HREF.record(tab)}]:[];
-  }),card=>card.caseId);
+   return gaps.length&&tab?[{kind:'record' as const,caseId:row.id,gaps,href:LOOP_CARD_HREF.record(tab,row.employmentId ?? undefined)}]:[];
+  }),card=>card.caseId,Infinity);
   take(rows.filter(row=>own(row)&&row.workerId==='loop_document_expiry').flatMap(row=>{
    const expiresOn=str(row.facts,'expiresOn');
-   return isDate(expiresOn)?[{kind:'passport' as const,caseId:row.id,expiresOn,href:LOOP_CARD_HREF.passport()}]:[];
-  }),card=>card.expiresOn);
+   return isDate(expiresOn)?[{kind:'passport' as const,caseId:row.id,expiresOn,href:LOOP_CARD_HREF.passport(row.employmentId ?? undefined)}]:[];
+  }),card=>card.expiresOn,Infinity);
   // HR's cards, for the companies in the viewer's current scope.
   take(rows.filter(row=>hr(row)&&row.workerId==='loop_probation_ending'&&row.employmentId).flatMap(row=>{
    const endDate=str(row.facts,'endDate'),raw=str(row.facts,'stage'),stage=raw==='with_hr'||raw==='with_manager'?raw:'none';
@@ -114,4 +121,10 @@ export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:read
   if(expiring.length)cards.push({kind:'passports',count:expiring.length,first:expiring[0],href:LOOP_CARD_HREF.passports()});
   return Object.freeze([...cards,...autonomy]);
  });
+}
+
+export async function readEmployeeLoopCards(ctx:SessionContext):Promise<readonly EmployeeLoopCard[]>{
+ if(!ctx.personId)return [];
+ const cards=await readLoopCards(ctx,{scopeIds:[],admin:false,employeeOnly:true});
+ return cards.filter((card):card is EmployeeLoopCard=>card.kind==='clockOut'||card.kind==='record'||card.kind==='passport');
 }

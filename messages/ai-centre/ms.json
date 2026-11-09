@@ -155,6 +155,7 @@
         "noSpend": "Tiada perbelanjaan AI: gelung ini menggunakan peraturan sahaja, tidak pernah model."
       },
       "openWaiting": "{open} terbuka · {waiting} menunggu",
+      "companySettings": "Tetapan syarikat",
       "pause": {
         "title": "Jeda untuk syarikat",
         "help": "Gelung yang dijeda tidak berjalan dan tidak menunjukkan kadnya di syarikat itu. Mematikannya menghentikannya di semua syarikat.",
@@ -286,6 +287,7 @@
         "records": "Setiap angka datang daripada rekod: kad gelung, rekod hasil dan penemuan anomali gaji, dibaca dengan akses anda sendiri. Tiada apa-apa dianggarkan daripada purata industri."
       },
       "baseline": {
+        "set": "Tetapkan garis dasar",
         "notSet": "Garis dasar belum ditetapkan",
         "notSetBody": "Jam dijimatkan diukur berbanding masa manual anda sendiri sebelum Autopilot bermula. Tetapkan garis dasar untuk melihatnya; log peristiwa mengukur apa yang boleh, dan anda menambah minit yang tidak dapat diketahuinya.",
         "missingSome": "{count, plural, other {# syarikat belum mempunyai garis dasar, jadi kerjanya dikira sebagai selesai tanpa menjimatkan masa.}}",
@@ -308,6 +310,7 @@
         "periodEndsToday": "Autopilot belum bermula di sini, jadi ia berakhir hari ini.",
         "daysLabel": "Panjang",
         "daysOption": "{days} hari",
+        "changePeriod": "Tukar tempoh",
         "usePeriod": "Guna tempoh ini",
         "period": "Tempoh: {from} hingga {to}.",
         "step2": "2. Apa yang diukur oleh log peristiwa",
