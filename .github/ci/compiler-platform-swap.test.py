@@ -1,6 +1,7 @@
 """Model closed compiler swap controls without reading or changing host swap."""
-from contextlib import ExitStack
+from contextlib import ExitStack, redirect_stdout
 import hashlib
+from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -10,7 +11,7 @@ import tempfile
 import time
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 loaded = runpy.run_path(str(Path(__file__).with_name('compiler-memory-feasibility.py')))
 model = loaded['platform_swap'].__globals__
@@ -89,6 +90,48 @@ class PlatformModel(unittest.TestCase):
                 with patch.object(self.file.info, key, value):
                     with self.assertRaisesRegex(Refusal, 'platform-swap-file'):
                         model['platform_swap']()
+
+
+class ServiceIdentityModel(unittest.TestCase):
+    def setUp(self):
+        resources = ExitStack()
+        self.addCleanup(resources.close)
+        temporary = Path(resources.enter_context(tempfile.TemporaryDirectory())).resolve()
+        (temporary / model['DIRECTORY']).mkdir(mode=0o700)
+        resources.enter_context(patch.dict(os.environ, {'RUNNER_TEMP': str(temporary)}))
+        self.process = Mock(side_effect=Refusal('process-not-live'))
+        resources.enter_context(patch.dict(model, {'process_identity': self.process}))
+
+    def refusal(self, unit, reason):
+        output = StringIO()
+        with redirect_stdout(output), self.assertRaisesRegex(Refusal, reason):
+            model['service'](unit, 0)
+        self.assertEqual(output.getvalue(), f'F identity {reason}\n')
+
+    def test_parent_generated_unit_reaches_service_process_proof(self):
+        self.refusal(model['unit_name'](RUN), 'process-not-live')
+        self.process.assert_called_once_with(os.getpid(), model['unit_name'](RUN))
+
+    def test_predecessor_foreign_and_malformed_units_refuse_before_process_probe(self):
+        for unit in (f'aihr-compiler-12800-swap-{RUN}.service', f'foreign-{RUN}.service',
+                     model['unit_name']('0'), model['unit_name']('0123'),
+                     model['unit_name']('1' * 17), model['unit_name']('1/foreign'),
+                     model['unit_name'](RUN) + '.foreign', model['unit_name'](RUN) + '\n'):
+            with self.subTest(unit=unit):
+                self.refusal(unit, 'service-identity')
+        self.process.assert_not_called()
+
+    def test_relative_and_symlinked_owner_paths_refuse_before_process_probe(self):
+        with patch.dict(os.environ, {'RUNNER_TEMP': 'relative'}):
+            self.refusal(model['unit_name'](RUN), 'service-identity')
+        with tempfile.TemporaryDirectory() as scratch:
+            temporary = Path(scratch).resolve()
+            foreign = temporary / 'foreign'
+            foreign.mkdir()
+            (temporary / model['DIRECTORY']).symlink_to(foreign)
+            with patch.dict(os.environ, {'RUNNER_TEMP': str(temporary)}):
+                self.refusal(model['unit_name'](RUN), 'service-identity')
+        self.process.assert_not_called()
 
 
 class SettlementModel(unittest.TestCase):

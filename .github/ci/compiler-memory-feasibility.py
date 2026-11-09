@@ -41,6 +41,8 @@ PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
 PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
 DIRECTORY = 'compiler-12800-platform-progress'
+UNIT_PREFIX = 'aihr-compiler-12800-progress-'
+UNIT_NAME = re.compile(rf'{re.escape(UNIT_PREFIX)}[1-9][0-9]{{0,15}}\.service')
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 GENERATED = {
@@ -509,7 +511,7 @@ def service(unit, pending):
         temporary = Path(os.environ['RUNNER_TEMP'])
         directory = temporary / DIRECTORY
         pnpm = Path(pwd.getpwuid(os.getuid()).pw_dir) / 'setup-pnpm/node_modules/.bin/pnpm'
-        require(re.fullmatch(r'aihr-compiler-12800-swap-[1-9][0-9]{0,15}\.service', unit) and os.getuid() > 0
+        require(UNIT_NAME.fullmatch(unit) and os.getuid() > 0
                 and temporary.is_absolute() and directory.resolve(strict=True) == directory, 'service-identity')
         pid = os.getpid()
         process_identity(pid, unit)
@@ -561,7 +563,7 @@ def owned(row, unit, pid, nonce):
 
 
 def unit_name(run_id):
-    return 'aihr-compiler-12800-progress-' + run_id + '.service'
+    return UNIT_PREFIX + run_id + '.service'
 
 
 def compiler_files(source):
