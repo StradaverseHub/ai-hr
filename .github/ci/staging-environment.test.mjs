@@ -5,6 +5,11 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,real
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fingerprintStagingEnvironment,stagingEnvironmentProbeCommand} from './staging-environment.mjs';
+const safeAdmissionDirectory=()=>({uid:0,mode:0o40755,isDirectory:()=>true,isSymbolicLink:()=>false});
+const missingAdmissionProfile=name=>{
+ if(name==='/etc/aihr-admission'){const error=new Error('fixture missing');error.code='ENOENT';throw error;}
+ return safeAdmissionDirectory();
+};
 function fixture(t){
  const root=realpathSync(mkdtempSync(join(tmpdir(),'staging-env-'))),source=join(root,'source');mkdirSync(source,{mode:0o700});t.after(()=>rmSync(root,{recursive:true,force:true}));
  const unit=join(root,'aihr.service'),external=join(root,'runtime.env');
@@ -16,8 +21,28 @@ function fixture(t){
  let manager='PATH=/usr/bin\nSERVER_TOKEN=never-export-secret\n',pid=1;
  const systemctl=args=>args[0]==='show-environment'?manager:Object.entries({...values,ExecStart:values.ExecStart.replace('pid=1','pid='+pid++)}).map(([k,v])=>k+'='+v).join('\n')+'\n';
  const busctl=args=>args[0]==='call'?{type:'o',data:['/org/freedesktop/systemd1/unit/aihr_2eservice']}:{type:args.at(-1).startsWith('Set')?'a(say)':'a(ss)',data:values[args.at(-1)]===''||values[args.at(-1)]==='[unprintable]'?[]:[['fixture','never-export-secret']]};
- return {root,source,unit,external,values,systemctl,busctl,setManager:value=>manager=value,fingerprint:()=>fingerprintStagingEnvironment(source,{systemctl,busctl})};
+ return {root,source,unit,external,values,systemctl,busctl,setManager:value=>manager=value,fingerprint:()=>fingerprintStagingEnvironment(source,{systemctl,busctl,admissionLstat:missingAdmissionProfile})};
 }
+test('legacy installation accepts only verified missing admission profile below safe parents',t=>{
+ const f=fixture(t),check=admissionLstat=>fingerprintStagingEnvironment(f.source,{systemctl:f.systemctl,busctl:f.busctl,admissionLstat});
+ assert.equal(check(missingAdmissionProfile),f.fingerprint());
+ const absentFile=name=>{if(name.endsWith('/profile.json')){const e=new Error('missing');e.code='ENOENT';throw e;}return safeAdmissionDirectory();};
+ assert.equal(check(absentFile),f.fingerprint());
+ for(const code of ['EACCES','EPERM','ELOOP','ENOTDIR','EIO'])assert.throws(()=>check(name=>{
+  if(name==='/etc/aihr-admission'){const error=new Error('private never-export-secret');error.code=code;throw error;}return safeAdmissionDirectory();
+ }),error=>!error.message.includes('never-export-secret'));
+ for(const bad of [
+  {...safeAdmissionDirectory(),uid:1000}, {...safeAdmissionDirectory(),mode:0o40777},
+  {...safeAdmissionDirectory(),isSymbolicLink:()=>true}, {...safeAdmissionDirectory(),isDirectory:()=>false}
+ ])assert.throws(()=>check(name=>name==='/etc'?bad:safeAdmissionDirectory()),/Unsafe legacy admission profile parent/);
+ // Existing ordinary files and both valid/dangling symlinks all count as present.
+ for(const profile of [safeAdmissionDirectory(),{isSymbolicLink:()=>true}])assert.throws(()=>check(name=>name.endsWith('/profile.json')?profile:safeAdmissionDirectory()),/qualified installation contract/);
+ let missingCalls=0;
+ assert.throws(()=>check(name=>{
+  if(name==='/etc/aihr-admission'&&++missingCalls===1){const e=new Error('missing');e.code='ENOENT';throw e;}
+  return safeAdmissionDirectory();
+ }),/qualified installation contract/);
+});
 test('stable configuration and changing execution-only PID fields produce one digest without exposing values',t=>{
  const f=fixture(t),a=f.fingerprint();assert.match(a,/^[a-f0-9]{64}$/);assert.equal(f.fingerprint(),a);assert(!a.includes('never-export-secret'));
  const command=stagingEnvironmentProbeCommand();assert(command.includes(fingerprintStagingEnvironment.toString()));assert(command.includes("<<'AIHR_STAGING_ENV_NODE'"));assert(!command.includes('never-export-secret'));
