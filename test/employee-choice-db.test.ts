@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {availableParallelism,cpus,totalmem} from 'node:os';
@@ -15,11 +15,21 @@ import {setLabelCriteria} from '../core/system-labels';
 import {appUser,assignment,businessUnit,company,department,employment,labelCompanyAssignment,person,reportingLine,roleAssignment} from '../db/schema';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
+import {workerDb} from './db-names';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 import {createAssignmentAuthorityFixture} from './performance/employee-choice-assignment-authority';
 import {departmentFacetBinds,isDepartmentFacet,representedDepartmentFacet} from './performance/employee-choice-department-pair-probe';
-beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(resetDb);
+let organisationPageUnconfirmed=false;
+beforeAll(migrateTestDb);
+afterAll(async()=>{
+ if(organisationPageUnconfirmed)throw new Error('Unconfirmed organisation page settlement requires the owned-job stop');
+ await closeAll();
+});
+beforeEach(async()=>{
+ if(organisationPageUnconfirmed)throw new Error('Unconfirmed organisation page settlement blocks another database case');
+ await resetDb();
+});
 
 it('preserves native scope, exact JavaScript Unicode search, facets and independent deep selection',async()=>{
  const b=await seedBase(),ctx=adminCtx(b);
@@ -103,7 +113,10 @@ it('finishes behind an Access writer with exact native data and performs no audi
  expect(after).toEqual(before);
 });
 
-it('pages the real 50k population without retaining whole employee DTOs or losing deep selection',async()=>{
+it('pages the real 50k population without retaining whole employee DTOs or losing deep selection',context=>{
+ const caseEnd=performance.now()+300000;
+ const pending=(async()=>{
+ const course=organisationPageCourse();
  const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_COMPONENT_ONLY',releaseEligible:false,employees:50000,host:{node:process.version,logicalCpus:availableParallelism(),memoryBytes:totalmem(),cpuModels:[...new Set(cpus().map(cpu=>cpu.model))]}};
  const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'employee-choice-50k.json'),JSON.stringify(report,null,2));};
  report.policies=await owner.client`select schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check from pg_policies where schemaname='public' and tablename in ('employment','person','assignment','company','department','business_unit') order by tablename,policyname`;save();
@@ -133,7 +146,447 @@ it('pages the real 50k population without retaining whole employee DTOs or losin
  expect(isEmployeeChoicePage(JSON.parse(JSON.stringify(filtered)))).toBe(true);expect(filtered.total).toBe(40000);expect(filtered.rows.map(row=>row.employmentId)).toEqual(organisationTagSample.filter((_,index)=>(index+1)%5!==0).slice(0,25));expect(filtered.selected?.employmentId).toBe(expectedLast.at(-1));
  report.timings=timings;report.maxPageRows=Math.max(first.rows.length,deep.rows.length,found.rows.length,filtered.rows.length);report.exactNativeIdsAndCounts=true;save();
  }finally{spy.mockRestore();save();}
+ if(course)await compareOrganisationPage({b,ctx,expectedLast,organisationTagSample},course,caseEnd,context.signal);
+ })();
+ context.onTestFinished(async()=>{await pending.catch(()=>{});});
+ return pending;
 },300000);
+
+function organisationPageCourse(){
+ if(process.env.AIHR_FOCUSED_TESTS!==JSON.stringify(['test/employee-choice-db.test.ts']))return undefined;
+ const sha=/^[0-9a-f]{40}$/,source=process.env.AIHR_CI_HEAD,controller=process.env.AIHR_CI_CONTROL_HEAD;
+ const pool=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;
+ const directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+ if(process.env.CI!=='true'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||
+    process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||process.platform!=='linux'||process.env.TEST_DB_NAMESPACE!=='aifocus'||
+    process.env.WORKER_DB==='0'||!/^[12]$/.test(pool??'')||!source||!sha.test(source)||!controller||!sha.test(controller)||
+    !/^\d+$/.test(process.env.GITHUB_RUN_ID??'')||!/^\d+$/.test(process.env.GITHUB_RUN_ATTEMPT??'')||!directory)
+  throw new Error('Organisation page comparison requires its hosted focused worker');
+ const expectedDatabase=workerDb(pool!);
+ for(const [client,user] of [[database.client,'ai_hr_app'],[owner.client,'postgres']] as const)
+  expect(client.options).toMatchObject({database:expectedDatabase,user,host:['127.0.0.1'],port:[5433]});
+ return {source,controller,directory,database:expectedDatabase};
+}
+const organisationPageHash=(text:string)=>createHash('sha256').update(text).digest('hex');
+const organisationPageArray=(ids:readonly string[])=>'{'+ids.join(',')+'}';
+
+type OrganisationPageInput={companyIds:[string];departmentId:string;businessUnitId?:string;status?:'active';selectedId:string};
+function previousOrganisationPage(tenant:string,input:OrganisationPageInput){
+ const from=sql`from ${employment}
+ join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenant}::uuid
+ join ${company} on ${company.id}=${employment.companyId} and ${company.tenantId}=${tenant}::uuid
+ left join lateral (select ${assignment.id},${assignment.departmentId},${assignment.businessUnitId}
+  from ${assignment} where ${assignment.employmentId}=${employment.id} and ${assignment.validTo} is null
+   and ${assignment.supersededAt} is null and ${assignment.tenantId}=${tenant}::uuid offset 0) as ${sql.identifier('assignment')} on true
+ left join ${department} on ${department.id}=${assignment.departmentId} and ${department.tenantId}=${tenant}::uuid
+ left join ${businessUnit} on ${businessUnit.id}=${assignment.businessUnitId} and ${businessUnit.tenantId}=${tenant}::uuid`;
+ const where=sql`${employment.tenantId}=${tenant}::uuid and ${employment.companyId}=any(${organisationPageArray(input.companyIds)}::uuid[]) and true
+  and ${input.businessUnitId?sql`${assignment.businessUnitId}=${input.businessUnitId}::uuid`:sql`true`}
+  and ${assignment.departmentId}=${input.departmentId}::uuid
+  and ${input.status?sql`${employment.terminatedOn} is null`:sql`true`}`;
+ const page=sql`select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode",
+ ${company.legalName} as company,${employment.companyId} as "companyId",${assignment.departmentId} as "departmentId",
+ null::text as "departmentCode",${department.name} as department,
+ ${assignment.businessUnitId} as "businessUnitId",null::text as "businessUnitCode",
+ ${businessUnit.name} as "businessUnit",
+ case when ${employment.terminatedOn} is null then 'active' else 'ended' end as status,(count(*) over())::int as total ${from}
+    where ${where} order by ${person.fullName},${employment.id},${assignment.id} limit ${25} offset ${0}`;
+ return {page,count:sql`select count(*)::int as total ${from} where ${where}`};
+}
+
+type PagePlanNode={ [key:string]:unknown;Plans?:PagePlanNode[] };
+function organisationPagePlan(raw:unknown,candidate:boolean,kind:'page'|'count',pageRows:number,assignmentKeys:number){
+ if(!Array.isArray(raw)||raw.length!==1||!raw[0]||typeof raw[0]!=='object')throw new Error('Unexpected organisation page plan');
+ const document=raw[0] as Record<string,unknown>,root=document.Plan as PagePlanNode;
+ const number=(value:unknown)=>{
+  if(typeof value!=='number'||!Number.isFinite(value)||value<0)throw new Error('Invalid organisation page plan counter');
+  return value;
+ };
+ const active:{node:PagePlanNode;ancestors:PagePlanNode[]}[]=[];
+ let visited=0;
+ const walk=(node:PagePlanNode,ancestors:PagePlanNode[])=>{
+  if(!node||typeof node!=='object'||typeof node['Node Type']!=='string'||++visited>2048||ancestors.length>64||
+     (node.Plans!==undefined&&!Array.isArray(node.Plans)))throw new Error('Organisation page plan exceeds the node envelope');
+  if(number(node['Actual Loops'])>0)active.push({node,ancestors});
+  for(const child of node.Plans??[])walk(child,[...ancestors,node]);
+ };
+ walk(root,[]);
+ expect(number(root['Actual Rows'])).toBe(kind==='page'?pageRows:1);
+ const assignments=active.filter(({node})=>node['Relation Name']==='assignment');
+ if(candidate){
+  const membership=assignments.filter(({node:scan,ancestors})=>{
+   const route=[...ancestors,scan];
+   const subplan=route.findLastIndex(node=>node['Parent Relationship']==='SubPlan'&&/^SubPlan \d+$/.test(String(node['Subplan Name'])));
+   const owner=route.slice(0,Math.max(0,subplan)).findLast(node=>node['Relation Name']==='employment');
+   const source=route[subplan];
+   return Boolean(owner&&source&&source['Actual Loops']===1&&source['Actual Rows']===assignmentKeys&&
+    String(owner.Filter).includes('(hashed '+String(source['Subplan Name'])+') IS TRUE'));
+  });
+  expect(membership).toHaveLength(1);
+  expect(membership[0].node).toMatchObject({'Actual Loops':1,'Actual Rows':assignmentKeys});
+  expect(number(membership[0].node['Actual Rows'])+number(membership[0].node['Rows Removed by Filter']??0)).toBeLessThanOrEqual(50000);
+  const hydrations=assignments.filter(entry=>entry!==membership[0]);
+  expect(hydrations).toHaveLength(kind==='page'&&pageRows>0?1:0);
+  for(const {node} of hydrations){
+   expect(['assignment_no_overlap','assignment_employment_idx']).toContain(node['Index Name']);
+   expect(number(node['Actual Loops'])).toBeLessThanOrEqual(pageRows);
+   expect(String(node['Index Cond'])).toMatch(/\bemployment_id\s*=\s*[a-z_][a-z0-9_]*\.id\b/);
+  }
+  for(const {node,ancestors} of active){
+   if(['department','business_unit'].includes(String(node['Relation Name']))&&
+      !ancestors.some(parent=>parent['Parent Relationship']==='SubPlan'))
+    expect(number(node['Actual Loops'])).toBeLessThanOrEqual(kind==='page'?pageRows:0);
+   if(node['Node Type']==='CTE Scan'&&node['CTE Name']==='employee_choice_page')expect(node['Actual Loops']).toBe(1);
+  }
+ }
+ return {executionMs:number(document['Execution Time']),planningMs:number(document['Planning Time']),
+  sharedHits:number(root['Shared Hit Blocks']),sharedReads:number(root['Shared Read Blocks']),
+  tempReads:number(root['Temp Read Blocks']),tempWrites:number(root['Temp Written Blocks']),jit:document.JIT??null,
+  assignment:assignments.map(({node})=>({node:node['Node Type'],index:node['Index Name'],loops:node['Actual Loops'],
+   rows:node['Actual Rows'],removed:node['Rows Removed by Filter']??0})),
+  person:active.filter(({node})=>node['Relation Name']==='person').map(({node})=>({loops:node['Actual Loops'],rows:node['Actual Rows']}))};
+}
+
+type PageFixture=Pick<Awaited<ReturnType<typeof seedPersonnelNativeFixture>>,'b'|'ctx'|'expectedLast'|'organisationTagSample'>;
+const pageRealm=sql`select current_database() as database, d.oid::text as oid, inet_server_addr()::text as address,
+ inet_server_port() as port, extract(epoch from pg_postmaster_start_time())::text as cluster,
+ current_user as role, session_user as login, pg_backend_pid() as pid, extract(epoch from a.backend_start)::text as started,
+ current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as read_only,
+ current_setting('statement_timeout') as statement_timeout,current_setting('lock_timeout') as lock_timeout,
+ app.current_tenant_id()::text as tenant,app.current_user_id()::text as actor,
+ not (r.rolsuper or r.rolbypassrls) as restricted,
+ (select bool_and(row_security_active(t.oid)) and count(*)=6 from pg_class t where t.oid in
+  ('public.employment'::regclass,'public.person'::regclass,'public.assignment'::regclass,
+   'public.company'::regclass,'public.department'::regclass,'public.business_unit'::regclass)) as rls,
+ (select jsonb_object_agg(name,setting) from pg_settings where category like 'Query Tuning%' or
+  name in ('row_security','work_mem','hash_mem_multiplier','search_path','plan_cache_mode')) as planner
+ from pg_database d join pg_roles r on r.rolname=current_user
+ join pg_stat_activity a on a.pid=pg_backend_pid() where d.datname=current_database()`;
+type PageRealm={database:string;oid:string;address:string;port:number;cluster:string;role:string;login:string;
+ pid:number;started:string;isolation:string;read_only:string;statement_timeout:string;lock_timeout:string;
+ tenant:string|null;actor:string|null;restricted:boolean;rls:boolean;planner:Record<string,string>};
+const pageCatalogue=sql`select jsonb_build_object(
+ 'indexes',(select jsonb_agg(jsonb_build_array(c.oid::text,c.relname,i.indisvalid,i.indisready,i.indislive,pg_get_indexdef(c.oid)) order by c.oid)
+   from pg_index i join pg_class c on c.oid=i.indexrelid where i.indrelid='public.assignment'::regclass),
+ 'policies',(select jsonb_agg(to_jsonb(p) order by p.tablename,p.policyname) from pg_policies p
+   where p.schemaname='public' and p.tablename in ('employment','person','assignment','company','department','business_unit')),
+ 'relations',(select jsonb_agg(jsonb_build_array(t.oid::text,t.relacl::text,t.relrowsecurity,t.relforcerowsecurity,
+  t.reltuples,t.relpages,t.relallvisible) order by t.oid) from pg_class t where t.oid in
+  ('public.employment'::regclass,'public.person'::regclass,'public.assignment'::regclass,
+   'public.company'::regclass,'public.department'::regclass,'public.business_unit'::regclass)),
+ 'exclusion',(select jsonb_build_object('kind',c.contype,'validated',c.convalidated,'deferred',c.condeferred,
+   'deferrable',c.condeferrable,'definition',pg_get_constraintdef(c.oid)) from pg_constraint c
+   where c.conrelid='public.assignment'::regclass and c.conname='assignment_no_overlap')) as facts`;
+const pagePrepared=sql`select count(*)::int as total,coalesce(sum(generic_plans),0)::int as generic
+ from pg_prepared_statements where statement like '%employee_choice_page as materialized%'
+ or statement like '%count(*) over())::int as total from "employment"%'
+ or statement like 'select count(*)::int as total from "employment"%'`;
+
+async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<ReturnType<typeof organisationPageCourse>>,caseEnd:number,signal:AbortSignal){
+ const {b,ctx,expectedLast,organisationTagSample}=fixture,tenant=b.tenantId,dialect=new PgDialect();
+ const activeEnd=caseEnd-25000,ownerDeadline=caseEnd;
+ const requireTime=(deadline:number,remaining:number,phase:string)=>{
+  if(performance.now()+remaining>deadline)throw new Error('Organisation page slot refused before '+phase);
+ };
+ const active=(phase:string,remaining=20000)=>{signal.throwIfAborted();requireTime(activeEnd,remaining,phase);};
+ const cleanup=(phase:string)=>requireTime(ownerDeadline,20000,phase);
+ const limit=async(tx:Tx,step:(label:string)=>void)=>{
+  step('transaction limits');
+  await tx.execute(sql`select set_config('statement_timeout','20s',true),set_config('lock_timeout','300ms',true)`);
+ };
+ const realm=async(tx:Tx,step:(label:string)=>void,role:'postgres'|'ai_hr_app')=>{
+  step('native '+role+' identity');
+  const [id]=await tx.execute<PageRealm>(pageRealm);
+  expect(id).toMatchObject({database:course.database,address:'127.0.0.1',port:5433,role,login:role,statement_timeout:'20s',lock_timeout:'300ms'});
+  expect(id.oid).toMatch(/^\d+$/);expect(id.cluster).toMatch(/^\d+(?:\.\d+)?$/);
+  expect(id.started).toMatch(/^\d+(?:\.\d+)?$/);expect(id.pid).toBeGreaterThan(0);
+  if(role==='ai_hr_app')expect(id).toMatchObject({isolation:'repeatable read',read_only:'on',tenant,actor:ctx.userId,restricted:true,rls:true});
+  return id;
+ };
+ const sameWorker=(left:PageRealm,right:PageRealm)=>expect([left.database,left.oid,left.address,left.port,left.cluster])
+  .toEqual([right.database,right.oid,right.address,right.port,right.cluster]);
+ const sample=organisationTagSample.map((id,index)=>({id,ordinal:index+1}));
+ expect(sample).toHaveLength(500);expect(new Set(sample.map(row=>row.id)).size).toBe(500);
+ const represented=randomUUID(),empty=randomUUID(),sampleArray=organisationPageArray(organisationTagSample);
+ const representedName='Fictional organisation subset',emptyName='Fictional unrepresented unit';
+ const units=[{id:represented,code:'ORG-SUBSET',name:representedName},{id:empty,code:'ORG-EMPTY',name:emptyName}];
+ const selectedId=expectedLast.at(-1)!;
+ expect(selectedId).toBeTruthy();expect(organisationTagSample).not.toContain(selectedId);
+ const activeRows=sample.filter(({ordinal})=>ordinal%5!==0).slice(0,25);
+ const baseInput:OrganisationPageInput={companyIds:[b.companyId],departmentId:b.deptA,status:'active',selectedId};
+ const profiles=[
+  {label:'department-active',input:baseInput,total:40000,keys:50000,rows:activeRows,
+   pageHash:'d1188796a341620b55226579fd316e66cf2a152afdb07a7a8a81b4879377739e'},
+  {label:'department-and-unit',input:{...baseInput,businessUnitId:represented},total:400,keys:500,rows:activeRows,
+   pageHash:'68afee9a56c7f04e8a7a065ee72a305f77838d084c7177f8d92a1ea0905750bf'},
+  {label:'empty-unit',input:{...baseInput,businessUnitId:empty,status:undefined},total:0,keys:0,rows:[],
+   pageHash:'8aea24203fe5571c0ea0533b8194a025bbd24e03d4e168c112f8d22b05b3127d'},
+ ] as const;
+ type Compiled=ReturnType<PgDialect['sqlToQuery']>;
+ const seal=({sql:text,params}:Compiled)=>({sql:organisationPageHash(text),params:organisationPageHash(JSON.stringify(params))});
+ const expectedRow=({id,ordinal}:{id:string;ordinal:number},unit:boolean)=>{
+  const n=String(ordinal).padStart(9,'0'),row=choiceRow(id,'Fictional retained Personnel '+n,'PERF'+n,b.companyId,'Acme Sdn Bhd',
+   b.deptA,'Finance',ordinal%5===0?'ended':'active');
+  return unit?{...row,businessUnitId:represented,businessUnit:representedName}:row;
+ };
+ const references=profiles.map(profile=>{
+  Object.freeze(profile.input.companyIds);Object.freeze(profile.input);
+  const old=previousOrganisationPage(tenant,profile.input),page=dialect.sqlToQuery(old.page),count=dialect.sqlToQuery(old.count);
+  const before=[tenant,tenant,tenant,tenant,tenant,tenant,organisationPageArray(profile.input.companyIds),
+   ...(profile.input.businessUnitId?[profile.input.businessUnitId]:[]),b.deptA];
+  expect(page.params).toEqual([...before,25,0]);expect(count.params).toEqual(before);
+  expect(seal(page).sql).toBe(profile.pageHash);
+  if(profile.total===0)expect(seal(count).sql).toBe('72c52c3260b4df4181d8c508c9563d70a94189b04a35195e6ae1779d95e84101');
+  Object.freeze(old.page.queryChunks);Object.freeze(old.page);Object.freeze(old.count.queryChunks);Object.freeze(old.count);
+  const expected=choicePage(profile.rows.map(row=>expectedRow(row,true)),[{id:b.companyId,name:'Acme Sdn Bhd'}],[{id:b.deptA,name:'Finance'}],{
+   total:profile.total,selected:expectedRow({id:selectedId,ordinal:50000},false),
+   businessUnitOptions:[{id:represented,name:representedName}],
+   filters:{...emptyFilters,departmentId:b.deptA,businessUnitId:profile.input.businessUnitId??'',status:profile.input.status??''},
+  });
+  const identityBinds=[tenant,tenant,tenant,organisationPageArray(profile.input.companyIds),tenant,b.deptA,
+   ...(profile.input.businessUnitId?[profile.input.businessUnitId]:[])];
+  const productBinds={page:[...identityBinds,25,0,tenant,tenant,tenant,tenant,tenant,tenant,organisationPageArray(profile.input.companyIds)],
+   count:identityBinds};
+  return {...profile,old,oldSeals:{page:seal(page),count:seal(count)},productBinds,expected};
+ });
+ const epochs=['A0','B0','B1','A1'] as const;
+ type Epoch=typeof epochs[number];
+ type Target='page'|'count';
+ type Times=Partial<Record<Target,number>>;
+ type Sample={epoch:Epoch;label:string;wallMs:number;ordinary:Times;instrumented:Times;dtoVerified:boolean};
+ const observations:Sample[]=[],rawPlans:{epoch:Epoch;label:string;kind:Target;raw:unknown}[]=[];
+ const planSummaries:Record<string,unknown>[]=[];
+ const metadata:Record<string,unknown>={kind:'FICTIONAL_NATIVE_ORGANISATION_PAGE_COMPONENT_ONLY',releaseEligible:false,
+  source:course.source,controller:course.controller,caseEnd,activeEnd,epochs,observations,planSummaries,
+  historical:{run:42387710131,source:'1de4d9047a7e8d58f79693ba614b2e5e0a586a43',wholePortTargetMet:false},
+  priorCurrent:{run:42555973651,source:'a2936e6ba64695c4f92e277a69545e3d66c7673b',pageStatement:17},
+  profiles:references.map(({label,total,keys,oldSeals})=>({label,total,keys,oldSeals}))};
+ const save=()=>{
+  const facts=JSON.stringify(metadata),plans=JSON.stringify(rawPlans);
+  if(Buffer.byteLength(facts)>65536||Buffer.byteLength(plans)>4*1024*1024)throw new Error('Organisation page evidence exceeds its byte cap');
+  writeFileSync(join(course.directory,'employee-choice-organisation-page-private.json'),JSON.stringify({metadata,rawPlans}),{mode:0o600});
+ };
+ const runRead=async(tx:Tx,epoch:Epoch,profile:typeof references[number])=>{
+  const product=epoch==='B0'||epoch==='B1',count=profile.total===0;
+  const positions=['principal','page',...(count?['count']:[]),'selected','company','department','unit'];
+  const calls:{position:string;compiled:Compiled;original:SQL;forwarded:SQL;ms:number}[]=[];
+  const guarded=new Proxy(tx,{get(target,key,receiver){
+   if(key==='execute')return async(query:SQL)=>{
+    active('product '+profile.label+' statement');
+    const compiled=dialect.sqlToQuery(query),text=compiled.sql.trimStart(),position=positions[calls.length];
+    const matches=position==='principal'?text.startsWith('select exists(select 1 from public.app_user'):
+     position==='page'?text.startsWith('with employee_choice_page as materialized(select')&&text.includes(')) is true'):
+     position==='count'?text.startsWith('select count(*)::int as total from "employment"')&&text.includes(')) is true'):
+     position==='selected'?text.startsWith('select "employment"."id" as "employmentId",')&&text.endsWith('limit 1'):
+     position==='company'?text.startsWith('select "company"."id" as "companyId",')&&!text.includes('cross join'):
+     position==='department'?isDepartmentFacet(text):
+     position==='unit'?text.startsWith('select "company"."id" as "companyId",')&&text.includes('cross join "business_unit"'):false;
+    if(!matches)throw new Error('Unexpected organisation page product statement '+position);
+    const timed=position==='page'||position==='count';
+    if(timed)expect(compiled.params).toEqual(profile.productBinds[position]);
+    const forwarded=!product&&timed?profile.old[position]:query;
+    const started=performance.now(),rows=await target.execute(forwarded);
+    calls.push({position,compiled,original:query,forwarded,ms:performance.now()-started});
+    return rows;
+   };
+   const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
+  }});
+  active(profile.label+' ordinary port');
+  const started=performance.now(),result=await readEmployeeChoicesTx(guarded,ctx,profile.input,signal),wallMs=performance.now()-started;
+  const observation:Sample={epoch,label:profile.label,wallMs,ordinary:{},instrumented:{},dtoVerified:false};
+  observations.push(observation);save();
+  expect(calls.map(call=>call.position)).toEqual(positions);
+  expect(choicesWithoutContext(result)).toEqual(profile.expected);
+  const seals=calls.map(({compiled})=>seal(compiled));
+  const allSeals=(metadata.productSeals??={}) as Record<string,ReturnType<typeof seal>[]>;
+  if(epoch==='A0')allSeals[profile.label]=seals;else expect(seals).toEqual(allSeals[profile.label]);
+  observation.dtoVerified=true;
+  for(const call of calls){
+   if(call.position!=='page'&&call.position!=='count')continue;
+   const kind=call.position;
+   expect(call.forwarded).toBe(product?call.original:profile.old[kind]);
+   expect(seal(dialect.sqlToQuery(call.forwarded))).toEqual(product?seal(call.compiled):profile.oldSeals[kind]);
+   observation.ordinary[kind]=call.ms;save();
+   active(profile.label+' native '+kind+' plan');
+   const [row]=await tx.execute<{'QUERY PLAN':unknown}>(sql`explain (analyze,buffers,verbose,settings,timing off,format json) ${call.forwarded}`);
+   const raw=row?.['QUERY PLAN'];
+   if(!raw||rawPlans.length>=16||Buffer.byteLength(JSON.stringify(raw))>1024*1024)throw new Error('Organisation page raw plan inventory exceeded');
+   rawPlans.push({epoch,label:profile.label,kind,raw});save();
+   const details=organisationPagePlan(raw,product,kind,profile.rows.length,profile.keys);
+   observation.instrumented[kind]=details.executionMs;
+   planSummaries.push({epoch,label:profile.label,kind,...details});save();
+  }
+ };
+ type FixtureHistory={published:number;classifications:number;events:number;organisationRevision:string|null};
+ const fixtureHistory=sql`select
+  (select count(*)::int from public.company_organisation_run where tenant_id=${tenant}::uuid and state='published') as published,
+  (select count(*)::int from public.employment_organisation_classification where tenant_id=${tenant}::uuid) as classifications,
+  (select count(*)::int from public.domain_event where tenant_id=${tenant}::uuid) as events,
+  (select revision::text from public.company_organisation_source_epoch where tenant_id=${tenant}::uuid) as "organisationRevision"`;
+ let historyBefore:FixtureHistory|undefined,ownerIdentity:PageRealm|undefined,touched:{id:string;employmentId:string}[]=[];
+ let fixtureCommitted=false,restored=false,workFailed=false,restoreFailed=false;
+ let workFailure:unknown,restoreFailure:unknown;
+ const readSnapshots=new Set<Promise<unknown>>();
+ const track=<T>(work:Promise<T>)=>{
+  readSnapshots.add(work);
+  void work.then(()=>readSnapshots.delete(work),()=>readSnapshots.delete(work));
+  return work;
+ };
+ const publicPortMs:Record<string,number>={};
+ metadata.publicPortMs=publicPortMs;
+ try{
+  save();active('owned fixture preparation',110000);
+  const preparedOwner=await owner.db.transaction(async tx=>{
+   await limit(tx,active);
+   const id=await realm(tx,active,'postgres');
+   ownerIdentity=id;metadata.owner=id;
+   active('exact empty fixture unit baseline');
+   const [initial]=await tx.execute<{units:number;assignments:number;eligible:number}>(sql`select
+    (select count(*)::int from public.business_unit where tenant_id=${tenant}::uuid) as units,
+    (select count(*)::int from public.assignment where tenant_id=${tenant}::uuid) as assignments,
+    (select count(*)::int from public.assignment where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid
+     and department_id=${b.deptA}::uuid and employment_id=any(${sampleArray}::uuid[])
+     and valid_to is null and superseded_at is null and business_unit_id is null) as eligible`);
+   expect(initial).toEqual({units:0,assignments:50000,eligible:500});
+   active('fictional legacy organisation history');
+   [historyBefore]=await tx.execute<FixtureHistory>(fixtureHistory);
+   expect(historyBefore).toMatchObject({published:0,classifications:0});
+   active('fictional unit insertion');
+   const inserted=await tx.execute<{id:string;code:string;name:string}>(sql`insert into public.business_unit(id,tenant_id,company_id,code,name)
+    select u.id,${tenant}::uuid,${b.companyId}::uuid,u.code,u.name
+    from jsonb_to_recordset(${JSON.stringify(units)}::jsonb) as u(id uuid,code text,name text) returning id::text,code,name`);
+   expect(Array.from(inserted).sort((a,c)=>a.id.localeCompare(c.id))).toEqual([...units].sort((a,c)=>a.id.localeCompare(c.id)));
+   active('exact fictional Assignment tags');
+   touched=Array.from(await tx.execute<{id:string;employmentId:string}>(sql`update public.assignment set business_unit_id=${represented}::uuid
+    where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid and department_id=${b.deptA}::uuid
+     and employment_id=any(${sampleArray}::uuid[]) and valid_to is null and superseded_at is null and business_unit_id is null
+    returning id::text,employment_id::text as "employmentId"`));
+   expect(touched.map(row=>row.employmentId).sort()).toEqual([...organisationTagSample].sort());
+   return id;
+  });
+  fixtureCommitted=true;metadata.fixture={units:2,tagged:touched.length,committed:true};save();
+  active('ABBA admission with cleanup reserved',90000);
+  await database.withTenant(ctx,tx=>track((async()=>{
+   await limit(tx,active);
+   const identity=await realm(tx,active,'ai_hr_app');
+   sameWorker(identity,preparedOwner);expect(identity.pid).not.toBe(preparedOwner.pid);
+   metadata.app=identity;
+   active('initial planner catalogue');
+   const [catalogue]=await tx.execute<{facts:{indexes:unknown[][];policies:{tablename:string;policyname:string;qual:string}[];
+    exclusion:{kind:string;validated:boolean;deferred:boolean;deferrable:boolean;definition:string}}}>(pageCatalogue);
+   const {indexes,policies,exclusion}=catalogue.facts;
+   expect(indexes.map(row=>row[1]).sort()).toEqual(['assignment_company_idx','assignment_employment_idx','assignment_no_overlap','assignment_pkey']);
+   expect(indexes.every(row=>row[2]===true&&row[3]===true&&row[4]===true)).toBe(true);
+   expect(exclusion).toMatchObject({kind:'x',validated:true,deferred:false,deferrable:false});
+   expect(exclusion.definition).toContain("employment_id WITH =, daterange(valid_from, valid_to, '[)'::text) WITH &&");
+   expect(exclusion.definition).toContain('superseded_at IS NULL');
+   for(const relation of ['assignment','employment'])
+    expect(policies.find(row=>row.tablename===relation&&row.policyname===relation+'_rls')?.qual).toContain('unnest');
+   metadata.catalogue=catalogue.facts;save();
+   for(const epoch of epochs){
+    const ordered=epoch==='B0'||epoch==='A1'?[...references].reverse():references;
+    for(const profile of ordered)await runRead(tx,epoch,profile);
+   }
+   active('prepared statement evidence');
+   const [prepared]=await tx.execute<{total:number;generic:number}>(pagePrepared);
+   expect(prepared.total).toBeLessThanOrEqual(100);expect(prepared.generic).toBe(0);metadata.prepared=prepared;
+   active('final planner catalogue');
+   expect((await tx.execute(pageCatalogue))[0]).toEqual(catalogue);
+   expect(await realm(tx,active,'ai_hr_app')).toEqual(identity);
+   active('ABBA transaction completion',0);
+  })()),{readOnlySnapshot:true,readSignal:signal});
+  // Independently time the public port including its checkout and settlement.
+  const actual=database.withTenant;
+  const publicSpy=vi.spyOn(database,'withTenant').mockImplementation(<T>(session:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>
+   actual(session,tx=>track((async()=>{
+    await limit(tx,active);
+    return read(new Proxy(tx,{get(target,key,receiver){
+     if(key==='execute')return (query:SQL)=>{active('public page statement');return target.execute(query);};
+     const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
+    }}));
+   })()),options));
+  try{
+   for(const profile of references){
+    active('public '+profile.label+' port');
+    const started=performance.now(),page=await readEmployeeChoices(ctx,profile.input,signal);
+    publicPortMs[profile.label]=performance.now()-started;save();
+    expect(choicesWithoutContext(page)).toEqual(profile.expected);
+   }
+  }finally{publicSpy.mockRestore();}
+  active('public port evidence completion',0);
+ }catch(error){workFailed=true;workFailure=error;}
+ finally{
+  await Promise.allSettled([...readSnapshots]);
+  const admitted=ownerIdentity;
+  if(admitted)try{
+   cleanup('owned fixture restoration');
+   await owner.db.transaction(async tx=>{
+    await limit(tx,cleanup);
+    const id=await realm(tx,cleanup,'postgres');sameWorker(id,admitted);
+    cleanup('native app settlement');
+    const [settlement]=await tx.execute<{transactions:number}>(sql`select count(*)::int as transactions from pg_stat_activity
+     where datname=current_database() and usename='ai_hr_app' and xact_start is not null`);
+    expect(settlement.transactions).toBe(0);metadata.nativeAppSettled=true;
+    cleanup('exact fixture ownership');
+    const owned=Array.from(await tx.execute<{id:string;code:string;name:string}>(sql`select id::text,code,name from public.business_unit
+     where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid and id=any(${organisationPageArray(units.map(unit=>unit.id))}::uuid[])
+     order by code`));
+    expect(owned).toEqual(owned.length>0||fixtureCommitted?[units[1],units[0]]:[]);
+    cleanup('native Assignment restoration');
+    const ids=organisationPageArray(touched.map(row=>row.id));
+    const reverted=Array.from(await tx.execute<{id:string;employmentId:string}>(sql`update public.assignment set business_unit_id=null
+     where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid and department_id=${b.deptA}::uuid
+      and id=any(${ids}::uuid[]) and employment_id=any(${sampleArray}::uuid[]) and valid_to is null and superseded_at is null
+      and business_unit_id=${represented}::uuid returning id::text,employment_id::text as "employmentId"`));
+    expect(reverted.sort((a,c)=>a.id.localeCompare(c.id))).toEqual(owned.length?[...touched].sort((a,c)=>a.id.localeCompare(c.id)):[]);
+    cleanup('owned fixture unit removal');
+    const removed=await tx.execute<{id:string}>(sql`delete from public.business_unit where tenant_id=${tenant}::uuid
+     and company_id=${b.companyId}::uuid and id=any(${organisationPageArray(units.map(unit=>unit.id))}::uuid[]) returning id::text`);
+    expect(Array.from(removed,row=>row.id).sort()).toEqual(owned.map(row=>row.id).sort());
+    cleanup('original fixture verification');
+    const [original]=await tx.execute<{units:number;tags:number}>(sql`select
+     (select count(*)::int from public.business_unit where tenant_id=${tenant}::uuid) as units,
+     (select count(*)::int from public.assignment where tenant_id=${tenant}::uuid
+      and employment_id=any(${sampleArray}::uuid[]) and business_unit_id is null and valid_to is null and superseded_at is null) as tags`);
+    expect(original).toEqual({units:0,tags:500});metadata.restoredFixture=original;
+    if(historyBefore){
+     cleanup('fictional organisation history verification');
+     const [historyAfter]=await tx.execute<FixtureHistory>(fixtureHistory);
+     const {organisationRevision:beforeRevision,...beforeBusinessHistory}=historyBefore;
+     const {organisationRevision:afterRevision,...afterBusinessHistory}=historyAfter;
+     expect(afterBusinessHistory).toEqual(beforeBusinessHistory);
+     if(fixtureCommitted)expect(BigInt(afterRevision??0)>BigInt(beforeRevision??0)).toBe(true);
+     // Native dependency epochs advance on fixture writes; their owner is the disposable worker teardown.
+     metadata.fixtureHistory={before:historyBefore,after:historyAfter};
+    }
+    requireTime(ownerDeadline,0,'fixture restoration before commit');
+   });
+   requireTime(ownerDeadline,0,'acknowledged fixture restoration');
+   restored=true;
+  }catch(error){restoreFailed=true;restoreFailure=error;organisationPageUnconfirmed=true;}
+ }
+ const errorHash=(error:unknown)=>error instanceof Error?organisationPageHash(error.message):null;
+ metadata.failures={work:errorHash(workFailure),cleanup:errorHash(restoreFailure)};
+ metadata.restored=restored;
+ const failures=[...(workFailed?[workFailure]:[]),...(restoreFailed?[restoreFailure]:[])];
+ try{save();}catch(error){failures.push(error);}
+ if(failures.length)throw new AggregateError(failures,'Native organisation page work or cleanup refused');
+ expect(restored).toBe(true);
+ expect(rawPlans).toHaveLength(16);
+ const outcomes=references.map(({label,total})=>{
+  const arms=epochs.map(epoch=>observations.find(row=>row.epoch===epoch&&row.label===label));
+  if(arms.some(arm=>!arm?.dtoVerified))throw new Error('Incomplete organisation page ABBA');
+  const [a0,b0,b1,a1]=arms as Sample[];
+  const kinds:Target[]=total===0?['page','count']:['page'];
+  const metric=(field:'ordinary'|'instrumented',kind:Target)=>Math.max(b0[field][kind]??Infinity,b1[field][kind]??Infinity)<
+   Math.min(a0[field][kind]??-Infinity,a1[field][kind]??-Infinity);
+  return {label,ordinary:kinds.every(kind=>metric('ordinary',kind)),instrumented:kinds.every(kind=>metric('instrumented',kind)),
+   wholeRead:Math.max(b0.wallMs,b1.wallMs)<Math.min(a0.wallMs,a1.wallMs),
+   targetMet:publicPortMs[label]<=1000&&Math.max(b0.wallMs,b1.wallMs)<=1000};
+ });
+ metadata.outcomes=outcomes;save();
+ expect(outcomes).toEqual(references.map(({label})=>({label,ordinary:true,instrumented:true,wholeRead:true,targetMet:true})));
+}
 
 it.each(['count','cursor'] as const)('stops further SQL after a disconnected %s and releases the native transaction',async(mode)=>{
  const b=await seedBase(),ctx=adminCtx(b),controller=new AbortController(),stop=Error('Controlled choice disconnect');
@@ -250,6 +703,14 @@ it('retains current Assignment facets across dates, native exclusion, archived l
   const sparse=await readEmployeeChoicesTx(tx,ctx,{companyIds:[acme.id],terminatedAfter:'2023-12-31',employmentIds:[ended.id]});
   expect(choicesWithoutContext(sparse)).toEqual(choicePage([endedRow],[acme],[operations]));
   expect(choicesWithoutContext(await readEmployeeChoicesTx(tx,ctx,{companyIds:[],employmentIds:[]}))).toEqual(choicePage([],[],[]));
+  const past=await readEmployeeChoicesTx(tx,ctx,{companyIds:[acme.id],terminatedAfter:'2024-01-01',
+   employmentIds:[future.employmentId,ended.id,unassigned.id],departmentId:b.deptA,offset:1,selectedId:unassigned.id});
+  expect(choicesWithoutContext(past)).toEqual(choicePage([],[acme],[finance],{
+   total:1,selected:missing,offset:1,filters:{...emptyFilters,departmentId:b.deptA},
+  }));
+  const denied=await readEmployeeChoicesTx(tx,ctx,{companyIds:[acme.id],terminatedAfter:'2024-01-01',
+   employmentIds:[ended.id],departmentId:b.deptB,selectedId:ended.id});
+  expect(choicesWithoutContext(denied)).toEqual(choicePage([],[],[],{filters:{...emptyFilters,departmentId:b.deptB}}));
  },{readOnlySnapshot:true});
 },120000);
 
