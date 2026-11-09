@@ -285,21 +285,31 @@ class NativeNavigationGitModel(unittest.TestCase):
             self.assertEqual(actual[path].sha256, hashlib.sha256(raw).hexdigest())
 
     def test_alternate_worktree_and_promisor_inputs_refuse_before_git(self):
-        for path in ('.git/commondir', '.git/gitdir', '.git/config.worktree',
-                     '.git/objects/info/alternates', '.git/objects/info/http-alternates',
-                     '.git/objects/pack/pack-model.promisor'):
-            with self.subTest(path=path), tempfile.TemporaryDirectory() as temporary:
+        for path, marker, contents, shape in (
+            ('.git/commondir', 'common-directory', None, 'nonregular'),
+            ('.git/gitdir', 'git-directory', None, 'nonregular'),
+            ('.git/config.worktree', 'worktree-config', None, 'nonregular'),
+            ('.git/config.worktree', 'worktree-config', b'', 'regular-empty'),
+            ('.git/config.worktree', 'worktree-config', b'[core]\n\tsparseCheckout = false\n', 'regular-nonempty'),
+            ('.git/objects/info/alternates', 'object-alternates', None, 'nonregular'),
+            ('.git/objects/info/http-alternates', 'object-http-alternates', None, 'nonregular'),
+            ('.git/objects/pack/pack-model.promisor', None, b'', None),
+        ):
+            with self.subTest(path=path, shape=shape), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary).resolve()
                 for directory in ('.git/objects/info', '.git/objects/pack'):
                     (root / directory).mkdir(parents=True)
-                if path.endswith('.promisor'):
-                    (root / path).write_bytes(b'')
+                if contents is not None:
+                    (root / path).write_bytes(contents)
                     self.assertTrue((root / path).is_file())
                 else:
                     (root / path).symlink_to('/unused-external-store')
                 with I.PinnedTree(root) as tree, patch.object(H, '_git_navigation_pipe') as start:
-                    with self.assertRaisesRegex(ValueError, 'alternate store|object pack catalogue'):
+                    reason = 'alternate store or worktree refused' if marker else 'object pack catalogue refused'
+                    with self.assertRaisesRegex(ValueError, reason) as refused:
                         H._check_git_store(tree, self.deadline())
+                    notes = [f'Navigation Git alias marker {marker} {shape}'] if marker else []
+                    self.assertEqual(getattr(refused.exception, '__notes__', []), notes)
                     start.assert_not_called()
 
     def test_local_configuration_refuses_external_helpers_includes_and_duplicates(self):

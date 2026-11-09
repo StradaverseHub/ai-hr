@@ -113,7 +113,12 @@ function stockGitFailure(detail:string[]){
  }
  const terminal=trace.findLast(line=>line.startsWith('ValueError: '))?.slice('ValueError: '.length);
  const reason=terminal===undefined?'unclassified':stockGitRefusals.get(terminal)??'unclassified';
- return ' [stage='+stage+'; reason='+reason+']';
+ const labels=reason==='object-store-alias' ? trace.flatMap(line=>{
+  const note=/^Navigation Git alias marker (common-directory|git-directory|worktree-config|object-alternates|object-http-alternates) (nonregular|regular-empty|regular-nonempty)$/.exec(line);
+  return note?[{marker:note[1],shape:note[2]}]:[];
+ }):[];
+ const detailSuffix=labels.length===1?'; marker='+labels[0].marker+'; shape='+labels[0].shape:'';
+ return ' [stage='+stage+'; reason='+reason+detailSuffix+']';
 }
 
 function modelFailure(stderr:string){

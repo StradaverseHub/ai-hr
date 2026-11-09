@@ -9,6 +9,7 @@ import hashlib
 import os
 import re
 import select
+import stat
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -495,17 +496,22 @@ def _check_git_config(tree, deadline_ns):
 
 def _check_git_store(tree, deadline_ns):
     for directory, forbidden in (
-        ('.git', ('commondir', 'gitdir', 'config.worktree')),
-        ('.git/objects/info', ('alternates', 'http-alternates')),
+        ('.git', (('commondir', 'common-directory'), ('gitdir', 'git-directory'), ('config.worktree', 'worktree-config'))),
+        ('.git/objects/info', (('alternates', 'object-alternates'), ('http-alternates', 'object-http-alternates'))),
     ):
         with tree.directory(directory) as fd:
-            for name in forbidden:
+            for name, marker in forbidden:
                 _git_seconds(deadline_ns)
                 try:
-                    os.stat(name, dir_fd=fd, follow_symlinks=False)
+                    info = os.stat(name, dir_fd=fd, follow_symlinks=False)
                 except FileNotFoundError:
                     continue
-                raise ValueError('navigation Git alternate store or worktree refused')
+                shape = 'nonregular'
+                if stat.S_ISREG(info.st_mode):
+                    shape = 'regular-nonempty' if info.st_size else 'regular-empty'
+                refusal = ValueError('navigation Git alternate store or worktree refused')
+                refusal.add_note('Navigation Git alias marker ' + marker + ' ' + shape)
+                raise refusal
     with tree.directory('.git/objects/pack') as fd, os.scandir(fd) as entries:
         for count, entry in enumerate(entries, 1):
             _git_seconds(deadline_ns)
