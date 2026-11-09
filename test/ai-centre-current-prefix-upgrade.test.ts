@@ -142,7 +142,7 @@ it('replays the populated current AI Centre checkpoint under the real fixture ow
   };
   let admittedGlobal: Awaited<ReturnType<typeof roleGraph>> | undefined;
   const ledger = async () => Array.from(await storage.client<LedgerRow[]>`
-    select id::text,hash,created_at::text from drizzle.__drizzle_migrations order by id
+    select m.id::text as id,m.hash,m.created_at::text as created_at from drizzle.__drizzle_migrations as m order by m.id
   `);
   const procedures = async () => Array.from(await storage.client<Procedure[]>`
     select p.oid::regprocedure::text as signature,p.oid::text,p.proowner::regrole::text as owner,
