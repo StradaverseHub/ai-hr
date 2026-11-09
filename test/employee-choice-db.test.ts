@@ -167,6 +167,33 @@ it.each(['count','cursor'] as const)('stops further SQL after a disconnected %s 
  expect((await readEmployeeChoices(ctx,{companyIds:[b.companyId]})).total).toBe(0);
 });
 
+it('disables JIT only in the owned organisation-filtered picker snapshot without a search',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b);
+ const input={companyIds:[b.companyId],departmentId:b.deptA};
+ const actual=database.withTenant;
+ const observed:string[]=[];
+ const jit=sql`select current_setting('jit') as setting`;
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(session:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>
+  actual(session,async tx=>{
+   await tx.execute(sql`SET LOCAL jit = on`);
+   const result=await read(tx);
+   const [row]=await tx.execute<{setting:string}>(jit);
+   observed.push(row.setting);
+   return result;
+  },options));
+ try{
+  expect(await readEmployeeChoices(ctx,input)).toMatchObject({rows:[],total:0});
+  await readEmployeeChoices(ctx,{companyIds:input.companyIds});
+  await readEmployeeChoices(ctx,{...input,query:'search'});
+ }finally{spy.mockRestore();}
+ expect(observed).toEqual(['off','on','on']);
+ await actual(ctx,async tx=>{
+  await tx.execute(sql`SET LOCAL jit = on`);
+  expect(await readEmployeeChoicesTx(tx,ctx,input)).toMatchObject({rows:[],total:0});
+  expect((await tx.execute<{setting:string}>(jit))[0].setting).toBe('on');
+ },{readOnlySnapshot:true});
+});
+
 const emptyFilters={query:'',companyId:'',departmentId:'',businessUnitId:'',status:''};
 const choicesWithoutContext=({contextId:_contextId,...page}:EmployeeChoicePage)=>page;
 const choiceRow=(employmentId:string,name:string,employeeCode:string|null,companyId:string,company:string,

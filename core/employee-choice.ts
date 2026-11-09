@@ -73,20 +73,29 @@ function prepareChoices(ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPa
 export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInput&{companyIds:string[]},signal?:AbortSignal):Promise<EmployeeChoicePage>{
  if('terminatedAfter' in p||'employmentIds' in p)throw new EmployeeChoiceInputError('Server population requires an explicit presentation transaction');
  const captured=captureContext(ctx),input=captureInput(p);
- return withTenant(captured,tx=>readChoicePageTx(tx,captured,input,EMPLOYEE_CHOICE_MAX_PAGE_SIZE,signal),{readOnlySnapshot:true,readSignal:signal});
+ return withTenant(captured,tx=>readChoicePageTx(tx,captured,input,EMPLOYEE_CHOICE_MAX_PAGE_SIZE,{signal,ownedSnapshot:true}),{readOnlySnapshot:true,readSignal:signal});
 }
 /** Borrow only an actual enforced RR/READ ONLY human presentation transaction.
  * The module still admits its own purpose. Its transport must derive population afresh.
  * One complete count/facet read and one bounded page support the shared All ceiling.
  * Await every started reader before the borrowing owner ends its transaction. */
 export async function readEmployeeChoicesTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerInput,signal?:AbortSignal):Promise<EmployeeChoicePage>{
- return readChoicePageTx(tx,captureContext(ctx),captureInput(p),ALL_ROW_CEILING,signal);
+ return readChoicePageTx(tx,captureContext(ctx),captureInput(p),ALL_ROW_CEILING,{signal});
 }
-async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPageSize:number,signal?:AbortSignal):Promise<EmployeeChoicePage>{
+async function readChoicePageTx(
+ tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPageSize:number,
+ {signal,ownedSnapshot}:{signal?:AbortSignal;ownedSnapshot?:true},
+):Promise<EmployeeChoicePage>{
  const {filters,offset,limit,labelMode,q,from,organisationFilter,scoped,inCompany,inStatus,where}=prepareChoices(ctx,p,maximumPageSize);
  signal?.throwIfAborted();
   await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
   if(labelMode==='labels'&&!isAdmin(ctx))throw new EmployeeChoiceAccessError('Employee catalogue labels require current administration access');
+  if(ownedSnapshot&&!q&&organisationFilter){
+   // JIT compilation added several hundred milliseconds in the native fixture.
+   // The dedicated read-only transaction discards this setting when it ends.
+   await tx.execute(sql`SET LOCAL jit = off`);
+   signal?.throwIfAborted();
+  }
   const exactAscii=employeeChoiceExactAsciiPredicate(sql`${person.fullName}`,sql`coalesce(${employment.employeeCode},'')`,q);
   const base=sql`select ${columns(labelMode==='labels')} ${from}`;
   let rows:EmployeeChoice[]=[],total=0;
