@@ -1,4 +1,4 @@
-"""Stream four fixed startup inverse blobs through an already held source tree.
+"""Measure bounded navigation source through an already held source tree.
 
 The caller owns the exact Git inventory, source view, clock and authorization.
 These facts neither attest the inventory nor admit execution.
@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -89,13 +89,13 @@ def _require(condition, message):
         raise ValueError(message)
 
 
-def _partition(inventory, check_clock):
+def _read_inventory(inventory, check_clock):
     check_clock()
     _require(type(inventory) is bytes and len(inventory) <= MAX_INVENTORY and inventory.endswith(b'\0'),
              'invalid bounded navigation Git inventory')
     _require(0 < inventory.count(b'\0') <= MAX_MEMBERS, 'navigation inventory member limit exceeded')
     pins = {pin.path: pin for pin in HISTORY_PINS}
-    files, ordinary, history, total = set(), [], set(), 0
+    files, members, history, total = set(), [], set(), 0
     for raw in inventory[:-1].split(b'\0'):
         check_clock()
         match = TREE_ROW.fullmatch(raw)
@@ -116,11 +116,20 @@ def _partition(inventory, check_clock):
         else:
             total += size
             _require(size <= MAX_FILE and total <= MAX_TOTAL, 'navigation harness source exceeds bounds')
-            ordinary.append(BoundedHarnessMember(path, mode, size, oid))
+        members.append(BoundedHarnessMember(path, mode, size, oid))
     _require(history == pins.keys(), 'fixed navigation history inventory incomplete')
     _require(REQUIRED_ORDINARY <= files, 'navigation harness source inventory incomplete')
     check_clock()
-    return tuple(sorted(ordinary))
+    return tuple(members)
+
+
+def _ordinary_members(members):
+    history = {pin.path for pin in HISTORY_PINS}
+    return tuple(member for member in members if member.path not in history)
+
+
+def _partition(inventory, check_clock):
+    return tuple(sorted(_ordinary_members(_read_inventory(inventory, check_clock))))
 
 
 def _file_identity(info):
@@ -163,3 +172,152 @@ def capture_navigation_history(tree: PinnedTree, inventory: bytes,
     tree.assert_unchanged()
     check_clock()
     return NativeNavigationHistoryFacts(ordinary, history)
+
+
+class NavigationOrdinaryGitObject(NamedTuple):
+    """Expected raw Git object facts supplied by the separately authenticated owner."""
+    member: BoundedHarnessMember
+    sha256: str
+
+
+class ObservedNavigationOrdinary(NamedTuple):
+    path: str
+    mode: str
+    size: int
+    git_blob: str
+    sha256: str
+
+
+class NativeNavigationOrdinaryFacts(NamedTuple):
+    ordinary: tuple[ObservedNavigationOrdinary, ...]
+    scenario: bytes
+
+
+_SCENARIO_PATH = 'scripts/performance/navigation-scenarios.json'
+_RAW_SHA256 = re.compile(r'[a-f0-9]{64}')
+
+
+def _stream_ordinary(tree, member, expected_sha256, check_clock):
+    check_clock()
+    sha256 = hashlib.sha256()
+    git_blob = hashlib.sha1(f'blob {member.size}\0'.encode('ascii'), usedforsecurity=False)
+    scenario = bytearray() if member.path == _SCENARIO_PATH else None
+    with tree.open_regular(member.path, member.size, context='ordinary navigation source') as (source, before):
+        original = _file_identity(before)
+        mode = before.st_mode
+        executable = bool(mode & 0o100) if member.mode == '100755' else not mode & 0o111
+        # Git stores the owner execute distinction. A read-only projection can
+        # remove write bits; privileged or externally writable modes refuse.
+        _require(before.st_size == member.size and before.st_nlink == 1
+                 and mode & 0o400 and not mode & 0o7022 and executable,
+                 'ordinary navigation checkout metadata differs')
+        _require(_file_identity(os.fstat(source.fileno())) == original,
+                 'ordinary navigation descriptor differs before reading')
+        remaining = member.size
+        while remaining:
+            check_clock()
+            block = source.read(min(READ_CHUNK, remaining))
+            _require(0 < len(block) <= remaining, 'ordinary navigation source length changed')
+            remaining -= len(block)
+            sha256.update(block)
+            git_blob.update(block)
+            if scenario is not None:
+                scenario.extend(block)
+        check_clock()
+        _require(not source.read(1), 'ordinary navigation source grew')
+        _require(_file_identity(os.fstat(source.fileno())) == original
+                 == _file_identity(tree.metadata(member.path)),
+                 'ordinary navigation source changed while reading')
+    check_clock()
+    sha, oid = sha256.hexdigest(), git_blob.hexdigest()
+    _require(oid == member.git_blob and sha == expected_sha256,
+             'ordinary navigation checkout bytes differ from Git object evidence')
+    return ObservedNavigationOrdinary(member.path, member.mode, member.size, oid, sha), scenario
+
+
+def capture_navigation_ordinary(tree: PinnedTree, inventory: bytes,
+                                git_objects: tuple[NavigationOrdinaryGitObject, ...],
+                                check_clock: Callable[[], None]) -> NativeNavigationOrdinaryFacts:
+    """Compare one held checkout to its independently authenticated Git objects.
+
+    The caller owns complete inventory and Git-object authentication. Returned
+    rows use the existing partition's path order, with no execution authority.
+    """
+    facts = _capture_ordinary(tree, _partition(inventory, check_clock), git_objects, check_clock)
+    check_clock()
+    tree.assert_unchanged()
+    check_clock()
+    return facts
+
+
+def _capture_ordinary(tree, ordinary, git_objects, check_clock):
+    _require(type(git_objects) is tuple and len(git_objects) == len(ordinary),
+             'ordinary navigation Git object evidence count differs')
+    by_path = {member.path: member for member in ordinary}
+    expected = {}
+    for obj in git_objects:
+        check_clock()
+        _require(type(obj) is NavigationOrdinaryGitObject and type(obj.member) is BoundedHarnessMember
+                 and type(obj.member.path) is str and 0 < len(obj.member.path) <= 4096
+                 and type(obj.member.mode) is str and obj.member.mode in ('100644', '100755')
+                 and type(obj.member.size) is int and 0 <= obj.member.size <= MAX_FILE
+                 and type(obj.member.git_blob) is str and len(obj.member.git_blob) == 40
+                 and type(obj.sha256) is str and _RAW_SHA256.fullmatch(obj.sha256) is not None,
+                 'invalid ordinary navigation Git object evidence')
+        path = obj.member.path
+        _require(path not in expected, 'duplicate ordinary navigation Git object evidence')
+        _require(by_path.get(path) == obj.member, 'ordinary navigation Git object metadata differs')
+        expected[path] = obj.sha256
+
+    observed, scenario = [], None
+    for member in ordinary:
+        fact, content = _stream_ordinary(tree, member, expected[member.path], check_clock)
+        observed.append(fact)
+        if content is not None:
+            scenario = bytes(content)
+    _require(scenario is not None, 'ordinary navigation scenario bytes missing')
+    return NativeNavigationOrdinaryFacts(tuple(observed), scenario)
+
+
+class ObservedNavigationSourceMember(NamedTuple):
+    ordinal: int
+    path: str
+    mode: str
+    size: int
+    git_blob: str
+    sha256: str
+    role: Literal['ordinary', 'startup-history']
+
+
+class NativeNavigationSourceFacts(NamedTuple):
+    """Immutable held-byte facts for the caller's separate protected handoff."""
+
+    inventory_sha256: str
+    members: tuple[ObservedNavigationSourceMember, ...]
+    scenario: bytes
+
+
+def capture_navigation_handoff(tree: PinnedTree, inventory: bytes,
+                               git_objects: tuple[NavigationOrdinaryGitObject, ...],
+                               check_clock: Callable[[], None]) -> NativeNavigationSourceFacts:
+    """Bind one authenticated inventory and held checkout in original Git traversal order.
+
+    The caller supplies the complete immutable Git inventory and independently
+    authenticated raw ordinary-object facts. This function does not open Git,
+    attest a run or source revision, or authorize delivery of these facts.
+    """
+    members = _read_inventory(inventory, check_clock)
+    ordinary = _capture_ordinary(tree, _ordinary_members(members), git_objects, check_clock)
+    histories = tuple(_stream_history(tree, pin, check_clock) for pin in HISTORY_PINS)
+    observed: dict[str, tuple[str, Literal['ordinary', 'startup-history']]] = {
+        fact.path: (fact.sha256, 'ordinary') for fact in ordinary.ordinary
+    }
+    observed.update((fact.path, (fact.sha256, 'startup-history')) for fact in histories)
+    facts = tuple(ObservedNavigationSourceMember(
+        ordinal, member.path, member.mode, member.size, member.git_blob, *observed[member.path],
+    ) for ordinal, member in enumerate(members))
+    inventory_sha256 = hashlib.sha256(inventory).hexdigest()
+    check_clock()
+    tree.assert_unchanged()
+    check_clock()
+    return NativeNavigationSourceFacts(inventory_sha256, facts, ordinary.scenario)

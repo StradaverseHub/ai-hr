@@ -1,4 +1,5 @@
-"""Fixed history custody controls with tracked and synthetic file bytes only."""
+"""Navigation source custody controls with tracked and synthetic file bytes only."""
+import hashlib
 import importlib.util
 import os
 from pathlib import Path
@@ -6,7 +7,7 @@ import re
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.dont_write_bytecode = True
 
@@ -159,6 +160,100 @@ class NativeNavigationHistoryModel(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'inventory directory changed|history changed while reading'):
                     H.capture_navigation_history(tree, INVENTORY, replace_after_first_chunk)
             self.assertFalse(replacement.exists())
+
+
+SCENARIO = 'scripts/performance/navigation-scenarios.json'
+COLLECTOR = 'scripts/performance/navigation-browser-capture.ts'
+
+
+def ordinary_object(path, content):
+    git_blob = hashlib.sha1(f'blob {len(content)}\0'.encode() + content, usedforsecurity=False).hexdigest()
+    return H.NavigationOrdinaryGitObject(
+        H.BoundedHarnessMember(path, '100644', len(content), git_blob),
+        hashlib.sha256(content).hexdigest(),
+    )
+
+
+def ordinary_row(value):
+    member = value.member
+    return row(member.path, member.size, member.git_blob, member.mode)
+
+
+class NativeNavigationHandoffModel(unittest.TestCase):
+    def test_handoff_binds_the_raw_scenario_and_four_real_histories_in_inventory_order(self):
+        scenario_bytes = (ROOT / SCENARIO).read_bytes()
+        scenario = ordinary_object(SCENARIO, scenario_bytes)
+        collector = ordinary_object(COLLECTOR, (ROOT / COLLECTOR).read_bytes())
+        inventory = HISTORY[0] + ordinary_row(scenario) + b''.join(HISTORY[1:]) + ordinary_row(collector)
+        with I.PinnedTree(ROOT) as tree:
+            result = H.capture_navigation_handoff(tree, inventory, (collector, scenario), tick)
+
+        self.assertEqual(result.inventory_sha256, hashlib.sha256(inventory).hexdigest())
+        self.assertEqual(result.scenario, scenario_bytes)
+        expected = (
+            (FIRST.path, '100644', FIRST.size, FIRST.git_blob, FIRST.sha256, 'startup-history'),
+            (*scenario.member, scenario.sha256, 'ordinary'),
+            *((pin.path, '100644', pin.size, pin.git_blob, pin.sha256, 'startup-history')
+              for pin in H.HISTORY_PINS[1:]),
+            (*collector.member, collector.sha256, 'ordinary'),
+        )
+        self.assertEqual(result.members, tuple((index, *member) for index, member in enumerate(expected)))
+
+    def test_handoff_refuses_incomplete_or_duplicate_object_evidence_before_opening_any_file(self):
+        scenario = ordinary_object(SCENARIO, b'{}')
+        collector = ordinary_object(COLLECTOR, b'source')
+        inventory = b''.join(HISTORY) + ordinary_row(collector) + ordinary_row(scenario)
+        for objects, reason in (
+            ((scenario,), 'evidence count differs'),
+            ((scenario, scenario), 'duplicate ordinary navigation Git object evidence'),
+            ((scenario, collector._replace(member=collector.member._replace(size=7))), 'metadata differs'),
+        ):
+            with self.subTest(reason=reason):
+                tree = Mock()
+                with self.assertRaisesRegex(ValueError, reason):
+                    H.capture_navigation_handoff(tree, inventory, objects, tick)
+                tree.open_regular.assert_not_called()
+                tree.assert_unchanged.assert_not_called()
+
+    def test_handoff_refuses_same_size_ordinary_bytes_and_earlier_member_change_at_final_walk(self):
+        scenario = ordinary_object(SCENARIO, b'original')
+        collector = ordinary_object(COLLECTOR, b'source')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            for path, data in ((SCENARIO, b'changed!'), (COLLECTOR, b'source')):
+                leaf = root / path
+                leaf.parent.mkdir(parents=True, exist_ok=True)
+                leaf.write_bytes(data)
+            ordinary = ordinary_row(scenario) + ordinary_row(collector)
+            with I.PinnedTree(root) as tree, self.assertRaisesRegex(ValueError, 'checkout bytes differ'):
+                H.capture_navigation_handoff(tree, ordinary + b''.join(HISTORY), (scenario, collector), tick)
+
+            # Small synthetic inverse files let the real terminal walk observe a
+            # change to the already read scenario during the last history read.
+            (root / SCENARIO).write_bytes(b'original')
+            pins = []
+            for index, original in enumerate(H.HISTORY_PINS):
+                data = f'synthetic {index}'.encode()
+                leaf = root / original.path
+                leaf.parent.mkdir(parents=True, exist_ok=True)
+                leaf.write_bytes(data)
+                evidence = ordinary_object(original.path, data)
+                pins.append(H.HistoryPin(original.path, len(data), evidence.member.git_blob, evidence.sha256))
+            inventory = ordinary + b''.join(row(pin.path, pin.size, pin.git_blob) for pin in pins)
+            changed = False
+            with patch.object(H, 'HISTORY_PINS', tuple(pins)), I.PinnedTree(root) as tree:
+                def change_earlier_member():
+                    nonlocal changed
+                    if not changed and pins[-1].path in tree.files:
+                        scenario_file = root / SCENARIO
+                        before = scenario_file.stat()
+                        scenario_file.write_bytes(b'changed!')
+                        os.utime(scenario_file, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
+                        changed = True
+
+                with self.assertRaisesRegex(ValueError, 'inventory file changed after reading'):
+                    H.capture_navigation_handoff(tree, inventory, (scenario, collector), change_earlier_member)
+            self.assertTrue(changed)
 
 
 if __name__ == '__main__':
