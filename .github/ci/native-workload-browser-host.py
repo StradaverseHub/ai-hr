@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 
 DRIVER, BROWSER, THIRD = 62120, 62121, 65534
 CONTROL, INGRESS, POSTGRES = 3444, 3443, 5433
@@ -200,32 +201,6 @@ def firewall_readback(name, data):
     return tuple(handles), counters
 
 
-def _nft(args, deadline, data=None):
-    require(os.geteuid() == 0, 'firewall-root-owner-required')
-    with tempfile.TemporaryFile() as source:
-        if data is not None:
-            require(len(data) <= 32768, 'firewall-input-bound')
-            source.write(data)
-            source.seek(0)
-        with subprocess.Popen(['/usr/sbin/nft', '-j', *args], stdin=source, stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL, env={'PATH': '/usr/bin:/bin', 'LANG': 'C'},
-                              close_fds=True) as child:
-            raw = bytearray()
-            try:
-                while True:
-                    require(bool(select.select([child.stdout], [], [], deadline())[0]), 'firewall-command-timeout')
-                    block = os.read(child.stdout.fileno(), 16384)
-                    if not block:
-                        break
-                    raw.extend(block)
-                    require(len(raw) <= MAX_NFT, 'firewall-output-bound')
-                require(child.wait(timeout=deadline()) == 0, 'firewall-command-refused')
-            finally:
-                if child.poll() is None:
-                    child.kill()
-            return bytes(raw)
-
-
 class Firewall:
     """Own only one exact table. Without proven birth/shape retain protection."""
     def __init__(self, run_id, nonce):
@@ -233,34 +208,94 @@ class Firewall:
         self.handles = None
         self.counters = None
         self.attempted = False
+        self.removal_attempted = False
+        self._child = None
+
+    def _reap_failed_child(self, deadline):
+        child = self._child
+        if child.poll() is None:
+            deadline.remaining(75)
+            try:
+                child.kill()
+            except ProcessLookupError:
+                pass
+            child.wait(timeout=deadline.remaining(75))
+        self._child = None
+
+    def _nft(self, args, deadline, frontier, data=None):
+        require(os.geteuid() == 0, 'firewall-root-owner-required')
+        require(self._child is None, 'firewall-child-settlement-unproved')
+        deadline.remaining(frontier)
+        with tempfile.TemporaryFile() as source:
+            if data is not None:
+                require(len(data) <= 32768, 'firewall-input-bound')
+                source.write(data)
+                source.seek(0)
+            deadline.remaining(frontier)
+            child = self._child = subprocess.Popen(['/usr/sbin/nft', '-j', *args], stdin=source,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env={'PATH': '/usr/bin:/bin', 'LANG': 'C'},
+                close_fds=True)
+            raw = bytearray()
+            try:
+                while True:
+                    ready, _, _ = select.select([child.stdout], [], [], deadline.remaining(frontier))
+                    require(bool(ready), 'firewall-command-timeout')
+                    block = os.read(child.stdout.fileno(), min(16384, MAX_NFT + 1 - len(raw)))
+                    if not block:
+                        break
+                    raw.extend(block)
+                    require(len(raw) <= MAX_NFT, 'firewall-output-bound')
+                try:
+                    status = child.wait(timeout=deadline.remaining(frontier))
+                except subprocess.TimeoutExpired:
+                    raise Refused('firewall-command-timeout') from None
+                self._child = None
+                require(status == 0, 'firewall-command-refused')
+            except BaseException as primary:
+                try:
+                    child.stdout.close()
+                except BaseException:
+                    primary.add_note('firewall-output-close-unproved')
+                if self._child is not None:
+                    try:
+                        self._reap_failed_child(deadline)
+                    except BaseException:
+                        primary.add_note('firewall-child-settlement-unproved')
+                raise
+            child.stdout.close()
+            return bytes(raw)
 
     def install(self, deadline):
         require(not self.attempted, 'firewall-install-already-attempted')
-        require_terminal_hooks(_nft(['list', 'chains'], deadline))
+        require_terminal_hooks(self._nft(['list', 'chains'], deadline, 16))
         rows = firewall_spec(self.name)
         batch = [{('create' if kind != 'rule' else 'add'): {kind: row}} for kind, row in rows]
         self.attempted = True
-        _nft(['-f', '-'], deadline, json.dumps({'nftables': batch}).encode())
-        self.handles, self.counters = firewall_readback(self.name, _nft(['-a', 'list', 'table', 'inet', self.name], deadline))
-        self.observe(deadline)
+        self._nft(['-f', '-'], deadline, 16, json.dumps({'nftables': batch}).encode())
+        self.handles, self.counters = firewall_readback(self.name,
+            self._nft(['-a', 'list', 'table', 'inet', self.name], deadline, 16))
+        self.observe(deadline, 16)
 
-    def observe(self, deadline):
+    def observe(self, deadline, frontier=60):
         require(self.handles is not None, 'firewall-birth-unproved')
-        require_terminal_hooks(_nft(['list', 'chains'], deadline), self.name)
-        handles, counters = firewall_readback(self.name, _nft(['-a', 'list', 'table', 'inet', self.name], deadline))
+        require_terminal_hooks(self._nft(['list', 'chains'], deadline, frontier), self.name)
+        handles, counters = firewall_readback(self.name,
+            self._nft(['-a', 'list', 'table', 'inet', self.name], deadline, frontier))
         require(handles == self.handles and all(counters[k][field] >= self.counters[k][field]
                 for k in counters for field in ('packets', 'bytes')), 'firewall-identity-drift')
         self.counters = counters
         return {key: value['packets'] for key, value in counters.items()}
 
     def remove_after_quiescence(self, deadline):
-        require_role_credentials_absent()
+        require(not self.removal_attempted, 'firewall-removal-already-attempted')
+        require_role_credentials_absent(deadline, 75)
         for port in (CONTROL, INGRESS):
             require(not _listeners_on(_bounded_file('/proc/net/tcp', 1024 * 1024),
                                       _bounded_file('/proc/net/tcp6', 1024 * 1024), port), 'native-listener-still-present')
-        self.observe(deadline)
-        _nft(['delete', 'table', 'inet', self.name], deadline)
-        rows = _nft_rows(_nft(['list', 'tables'], deadline))
+        self.observe(deadline, 75)
+        self.removal_attempted = True
+        self._nft(['delete', 'table', 'inet', self.name], deadline, 75)
+        rows = _nft_rows(self._nft(['list', 'tables'], deadline, 75))
         require(all(type(row) is dict and set(row) == {'table'} and type(row['table']) is dict for row in rows),
                 'invalid-terminal-table-inventory')
         require(all(row['table'].get('name') != self.name for row in rows), 'firewall-not-removed')
@@ -324,11 +359,19 @@ def role_properties(role):
             'MemoryMax': f'{memory}M', 'TasksMax': str(tasks)}
 
 
+def _bounded_bytes(source, limit):
+    data = bytearray()
+    while True:
+        block = source.read(min(16384, limit + 1 - len(data)))
+        require(type(block) is bytes and len(data) + len(block) <= limit, 'native-file-bound')
+        if not block:
+            return bytes(data)
+        data.extend(block)
+
+
 def _bounded_file(path, limit):
     with open(path, 'rb', buffering=0) as source:
-        data = source.read(limit + 1)
-    require(len(data) <= limit, 'native-file-bound')
-    return data
+        return _bounded_bytes(source, limit)
 
 
 def _process_birth(raw, pid):
@@ -456,21 +499,106 @@ def _role_credentials(raw):
     return set.union(*result.values())
 
 
-def require_role_credentials_absent():
-    require(os.geteuid() == 0, 'credential-census-root-owner-required')
-    for index, process in enumerate(pathlib.Path('/proc').iterdir()):
-        require(index < 4096, 'credential-census-bound')
-        if not process.name.isdecimal():
-            continue
-        try:
-            credentials = _role_credentials(_bounded_file(process / 'status', 32768))
-        except FileNotFoundError:
-            try:
-                process.lstat()
-            except FileNotFoundError:
+MAX_PROC_IDS = 4096
+PROC_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+
+def _directory_id(info):
+    require(stat.S_ISDIR(info.st_mode), 'native-proc-directory-differs')
+    return info.st_dev, info.st_ino
+
+
+def _directory_birth(path, dir_fd=None):
+    try:
+        current = os.stat(path, dir_fd=dir_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    return _directory_id(current)
+
+
+@contextmanager
+def _hold_proc_directory(path, dir_fd=None):
+    fd = os.open(path, PROC_DIRECTORY_FLAGS, dir_fd=dir_fd)
+    try:
+        yield fd, _directory_id(os.fstat(fd))
+    finally:
+        os.close(fd)
+
+
+def _task_census_budget(check_clock):
+    count = 0
+    def charge():
+        nonlocal count
+        check_clock()
+        count += 1
+        require(count <= MAX_PROC_IDS, 'credential-task-census-bound')
+    return charge
+
+
+def _task_births(directory, charge):
+    births = {}
+    # A fresh directory description starts the second enumeration at its beginning.
+    with _hold_proc_directory('.', directory) as (scan, _), os.scandir(scan) as entries:
+        for entry in entries:
+            charge()
+            require(re.fullmatch(r'[1-9][0-9]{0,6}', entry.name), 'credential-task-name-differs')
+            birth = _directory_birth(entry.name, scan)
+            if birth is not None:
+                births[entry.name] = birth
+    return births
+
+
+def _task_credentials(task):
+    fd = os.open('status', os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=task)
+    with os.fdopen(fd, 'rb', buffering=0) as source:
+        return _role_credentials(_bounded_bytes(source, 32768))
+
+
+def _require_proc_credentials_absent(proc_root, check_clock):
+    observe, verify = _task_census_budget(check_clock), _task_census_budget(check_clock)
+    with os.scandir(proc_root) as processes:
+        for index, process in enumerate(processes):
+            check_clock()
+            require(index < MAX_PROC_IDS, 'credential-census-bound')
+            if not re.fullmatch(r'[1-9][0-9]{0,6}', process.name):
                 continue
-            raise Refused('credential-census-ambiguous-process')
-        require(not credentials & {DRIVER, BROWSER}, 'capability-role-process-present')
+            path = pathlib.Path(process.path)
+            birth = _directory_birth(path)
+            if birth is None:
+                continue
+            try:
+                with _hold_proc_directory(path) as (group, held_birth):
+                    require(held_birth == birth, 'credential-process-birth-differs')
+                    with _hold_proc_directory('task', group) as (directory, task_dir_birth):
+                        tasks = _task_births(directory, observe)
+                        for name, task_birth in tasks.items():
+                            check_clock()
+                            try:
+                                with _hold_proc_directory(name, directory) as (task, held_task_birth):
+                                    require(held_task_birth == task_birth, 'credential-task-birth-differs')
+                                    credentials = _task_credentials(task)
+                            except FileNotFoundError:
+                                require(_directory_birth(name, directory) is None, 'credential-census-ambiguous-task')
+                                continue
+                            require(_directory_birth(name, directory) in (None, task_birth), 'credential-task-birth-differs')
+                            require(not credentials & {DRIVER, BROWSER}, 'capability-role-process-present')
+                        after = _task_births(directory, verify)
+                    require(_directory_birth('task', group) in (None, task_dir_birth), 'credential-task-directory-differs')
+            except FileNotFoundError:
+                require(_directory_birth(path) is None, 'credential-census-ambiguous-process')
+                continue
+            final_birth = _directory_birth(path)
+            if final_birth is None:
+                continue
+            require(final_birth == birth and _directory_birth(path / 'task') == task_dir_birth,
+                    'credential-process-birth-differs')
+            require(bool(tasks) and bool(after) and all(tasks.get(name) == task_birth for name, task_birth in after.items()),
+                    'credential-task-membership-differs')
+
+
+def require_role_credentials_absent(deadline, frontier):
+    require(os.geteuid() == 0, 'credential-census-root-owner-required')
+    _require_proc_credentials_absent('/proc', lambda: deadline.remaining(frontier))
 
 
 def require_role_listener(pidfd, observed, port, uid):

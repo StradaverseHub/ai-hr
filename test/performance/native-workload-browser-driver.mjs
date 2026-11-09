@@ -41,17 +41,27 @@ async function driverRole() {
   const root = readFrames(process.stdin);
   let pool, observer, browser, context, page, failure;
   try {
-    pool = postgres(url, {max: 1, connect_timeout: 4, connection: {application_name: tag, statement_timeout: 2500}});
-    observer = await pool.reserve();
-    const [facts] = await observer`select pg_backend_pid() as pid, session_user as login, current_user as role,
+    pool = postgres(url, {max: 1, connect_timeout: 4, fetch_types: false,
+      connection: {application_name: tag, statement_timeout: 2500}});
+    const observerIdentity = (sql, reserved) => sql`select pg_backend_pid() as pid, session_user as login, current_user as role,
       current_database() as database, current_setting('transaction_read_only') as read_only,
-      r.rolconnlimit as cap, pg_has_role(current_user, 'pg_read_all_stats', 'USAGE') as stats
-      from pg_roles r where r.rolname=current_user`;
-    assert(facts && Number.isSafeInteger(facts.pid) && facts.pid > 1);
-    assert.deepEqual(facts, {pid: facts.pid, login: 'ai_hr_workload_observer', role: 'ai_hr_workload_observer',
-      database: 'ai_hr_test_w1', read_only: 'on', cap: 2, stats: true});
-    await observer`select count(*) from pg_stat_statements`;
-    writeFrame({op: 'observer-ready', pid: facts.pid, tag});
+      r.rolconnlimit as cap, pg_has_role(current_user, 'pg_read_all_stats', 'USAGE') as stats,
+      host(inet_server_addr()) as address, inet_server_port() as port,
+      extract(epoch from a.backend_start)::text as backend_start
+      ${reserved ? sql`, (select count(*)::text from pg_stat_statements) as statement_count` : sql``}
+      from pg_roles r cross join pg_stat_activity a where r.rolname=current_user and a.pid=pg_backend_pid()`;
+    // postgres.js 3.4.9 needs a normal cold query to enter its open queue with type discovery disabled.
+    const [warm] = await observerIdentity(pool, false);
+    assert(warm && Number.isSafeInteger(warm.pid) && warm.pid > 1 && /^\d+(?:\.\d+)?$/.test(warm.backend_start));
+    assert.deepEqual(warm, {pid: warm.pid, login: 'ai_hr_workload_observer', role: 'ai_hr_workload_observer',
+      database: 'ai_hr_test_w1', read_only: 'on', cap: 2, stats: true, address: '127.0.0.1', port: 5433,
+      backend_start: warm.backend_start});
+    observer = await pool.reserve();
+    const [reserved] = await observerIdentity(observer, true);
+    assert(reserved && typeof reserved.statement_count === 'string' && /^\d+$/.test(reserved.statement_count));
+    const {statement_count, ...identity} = reserved;
+    assert.deepEqual(identity, warm);
+    writeFrame({op: 'observer-ready', pid: identity.pid, tag});
     await expectFrame(root, 'connect');
     browser = await chromium.connect(CONTROL_URL, {timeout: 8000});
     writeFrame({op: 'websocket-ready'});
