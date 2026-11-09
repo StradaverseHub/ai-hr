@@ -18,19 +18,28 @@ vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: async
 vi.mock('../packs/rewards/service', async () => ({ listRewardReviewStatus: async () => ({ rows: await ports.list(), year, emptyReason: null }), rewardCoverageForUnits: async () => [], rewardPolicyMemberships:vi.fn(async()=>[{companyId:'company',businessUnitId:'bu-1'},{companyId:'company',businessUnitId:'bu-2'}]),rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
+vi.mock('../app/admin/rewards/plans/actions', () => ({ planAction: vi.fn() }));
 import ReviewsPage from '../app/rewards/reviews/page';
 import { RewardReviewCreateForm } from '../app/admin/rewards/create-review-form';
+import { RewardPlanCreationPreview } from '../app/admin/rewards/plans/creation-preview';
+import type { PlanCreationPreview } from '../packs/rewards/plan-configuration';
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 /** Resolve nested async server components (the row actions) before rendering. */
 async function resolve(node: ReactNode): Promise<ReactNode> {
   if (Array.isArray(node)) return Promise.all(node.map(resolve));
-  if (!isValidElement<{ children?: ReactNode }>(node)) return node;
+  if (!isValidElement<{ children?: ReactNode; maintenanceActions?: ReadonlyMap<string, ReactNode> }>(node)) return node;
   if (typeof node.type === 'function' && node.type.constructor.name === 'AsyncFunction') return resolve(await (node.type as any)(node.props));
-  return node.props.children === undefined ? node : cloneElement(node, { children: await resolve(node.props.children) });
+  const actions = node.props.maintenanceActions;
+  return cloneElement(node, {
+    children: await resolve(node.props.children),
+    ...(actions ? { maintenanceActions: new Map(await Promise.all(
+      [...actions].map(async ([key, value]) => [key, await resolve(value)] as const)
+    )) } : {}),
+  });
 }
 const page = async (searchParams: Record<string, string>) => resolve(await ReviewsPage({ searchParams: Promise.resolve(searchParams) }));
-const wrap = (node: ReactNode) => <NextIntlClientProvider locale="en" messages={en}>{node}</NextIntlClientProvider>;
+const wrap = (node: ReactNode) => <NextIntlClientProvider locale="en-GB" messages={en}>{node}</NextIntlClientProvider>;
 const base = { kind: 'annual', year: 2026, cycleId: 'cycle-1', cycle: '2026 Annual Compensation Review', companyId: 'company', company: 'Sample Trading Sdn Bhd', returnedTo: null, revision: 2, canConfigure: true, deletionReason: 'recommendations', bgOrigin: false, effectiveFrom: '2027-01-01', due: null, daysUntilDue: null, policyOrigin: null, canCancel: true, cancellation: null, roles: ['gr'], waiting: false, salary: null, bonus: null, blocking: 0, exceptions: 0, laterSeats: [] };
 const rows = [
   { ...base, id: 'r1', businessUnitId: 'bu-1', unit: 'Northern Sales', status: 'draft', people: 42, verified: 30, seat: 'bu', holders: ['Abel Lim'], due: '2026-11-15', daysUntilDue: 18 },
@@ -67,6 +76,31 @@ describe('Rewards configuration list (7a8102a7)', () => {
     const filters = screen.getByRole('form', { name: en.rewards.reviewList.filters });
     for (const name of [en.rewards.cycle, en.rewards.company, en.rewards.unit, en.rewards.stage]) expect(within(filters).getByRole('combobox', { name })).toBeTruthy();
     expect(within(filters).getByRole<HTMLSelectElement>('combobox', { name: en.rewards.unit }).value).toBe('bu-2');
+  });
+});
+
+describe('Approved plan review preview', () => {
+  it('shows a ready company, a skipped company and the stored outcome, then disables creation for the approver', async () => {
+    const input: PlanCreationPreview[] = [
+      { companyId: 'company', businessUnitId: 'bu-1', salaryVersionId: 'salary', bonusVersionId: 'bonus',
+        branchAcknowledged: false, patVersionId: 'pat', status: 'ready', reason: 'ready', existingUnitId: null },
+      { companyId: 'company-2', businessUnitId: 'bu-2', salaryVersionId: 'salary', bonusVersionId: 'bonus',
+        branchAcknowledged: false, patVersionId: null, status: 'skip', reason: 'pat-not-confirmed', existingUnitId: null },
+    ];
+    const props = { names: new Map([['company', 'Fictional Engineering'], ['company-2', 'Fictional Retail']]),
+      units: new Map([['bu-1', 'Engineering'], ['bu-2', 'Retail']]), createdCount: 2 };
+    const preview = { versionId: 'plan', rows: input, digest: 'fresh', mayCreate: true };
+    render(wrap(await resolve(await RewardPlanCreationPreview({ ...props, preview }))));
+    const ready = screen.getByRole('row', { name: /Fictional Engineering/ });
+    expect(within(ready).getByText(en.rewardSetup.creationReady)).toBeTruthy();
+    expect(within(screen.getByRole('row', { name: /Fictional Retail/ })).getByText(en.rewardSetup['pat-not-confirmed'])).toBeTruthy();
+    expect(screen.getByText('2 reviews created')).toBeTruthy();
+    expect(screen.getByRole('link', { name: en.rewardSetup.openCreatedReviews })).toHaveAttribute('href', '/rewards/reviews?plan=plan');
+    expect(screen.getByRole('button', { name: 'Create 1 unit review' })).toBeEnabled();
+    cleanup();
+    render(wrap(await resolve(await RewardPlanCreationPreview({ ...props, preview: { ...preview, mayCreate: false } }))));
+    expect(screen.getByRole('button', { name: 'Create 1 unit review' })).toBeDisabled();
+    expect(screen.getByText(en.rewardSetup.independentCreateHelp)).toBeTruthy();
   });
 });
 

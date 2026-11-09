@@ -23480,6 +23480,7 @@
     }
   },
   "rewards": {
+    "promotionNominationsHelp": "Xem các đề cử từ những đợt xét đãi ngộ hằng năm trong phạm vi của bạn.",
     "compaRatio": "Tỷ lệ lương so với trung điểm",
     "compaRatioBefore": "Lương so với trung điểm trước điều chỉnh",
     "compaRatioAfter": "Lương so với trung điểm sau điều chỉnh",
@@ -35702,7 +35703,14 @@
     "already-reviewed": "Công ty đã có đánh giá hằng năm cho năm này.",
     "pat-not-confirmed": "Xác nhận dữ liệu PAT công ty trước khi tạo đợt đánh giá.",
     "company-unavailable": "Công ty không khả dụng cho năm đãi ngộ này.",
-    "createReviews": "Tạo đợt đánh giá sẵn sàng",
+    "createReviews": "Tạo đợt xét cho đơn vị",
+    "createReviewsCount": "Tạo {count} đợt xét cho đơn vị",
+    "reviewsCreated": "Đã tạo {count} đợt xét",
+    "openCreatedReviews": "Mở trong Xét duyệt đãi ngộ của nhóm",
+    "manageRewardPlans": "Quản lý kế hoạch",
+    "creationOutcome": "Kết quả",
+    "creationReady": "Dữ liệu đã xác nhận",
+    "plan-assignment-changed": "Công ty được gán cho một phiên bản kế hoạch khác.",
     "independentCreateHelp": "Một người dùng phụ trách đãi ngộ tập đoàn khác phải tạo các đợt xét từ kế hoạch đã được phê duyệt này.",
     "useApprovedPlan": "Tạo đánh giá hằng năm từ kế hoạch đãi ngộ đã được phê duyệt",
     "newVersion": "Tạo phiên bản tiếp theo",
@@ -36564,6 +36572,7 @@
     "locked": "Quản trị viên tập đoàn có thể thay đổi công ty áp dụng. Các thiết lập khoản lương khác vẫn có thể lưu."
   },
   "rewardDashboard": {
+    "purpose": "Theo dõi đợt xét, ngân sách và các mục đang chờ bạn xử lý.",
     "greeting": "Chào mừng đến Bàn làm việc thưởng",
     "salary": "Ngân sách tăng lương",
     "bonus": "Ngân sách thưởng",

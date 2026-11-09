@@ -5027,6 +5027,13 @@
       "when": 1793330003500,
       "tag": "3900_individual_transaction_calculation_method",
       "breakpoints": true
+    },
+    {
+      "idx": 3500,
+      "version": "7",
+      "when": 1793330003800,
+      "tag": "4100_rewards_review_creator_independence",
+      "breakpoints": true
     }
   ]
 }

@@ -191,7 +191,7 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   await expect(getRewardUnit(admin,unitId)).rejects.toThrow();
   expect(await withTenant(admin,tx=>tx.select({source:schema.rewardEntry.source}).from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)))).toEqual([]);
   const administration=await rewardAccessAdministration(admin,[base.companyId]);expect(administration.reviews.map(row=>row.id)).toContain(unitId);
-  expect(await rewardNavigation(admin,false)).toContain('/admin/rewards/access');
+  expect(await rewardNavigation(admin)).toContain('/admin/rewards/access');
   expect(JSON.stringify(administration.reviews)).not.toContain('basicCents');expect(JSON.stringify(administration.reviews)).not.toContain('policy');
   const input={unitId,revision:(await getRewardUnit(gr,unitId)).unit.revision,before:null,after:{userId:checkerLogin,role:'gr'},reason:'Fictional HR administrator proposes another preparation checker'};
   const preview=await previewRewardAccessChange(admin,input);const saved=await saveRewardAccessChange(admin,input,preview.digest);

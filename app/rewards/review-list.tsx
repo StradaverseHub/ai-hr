@@ -28,6 +28,7 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
   <Link href={rewardReviewHref({...filters,waiting:filters.waiting==='1'?undefined:'1'})} aria-current={filters.waiting==='1'?'page':undefined} className="inline-flex rounded-md border px-4 py-3 font-medium text-primary hover:bg-accent">{t('reviewList.waiting',{count:waiting})}</Link>
   {rewardReviewUpcoming(all).map(({seat,count})=><p key={seat} className="text-sm text-muted-foreground">{t('reviewList.upcoming',{count,stage:t(`board.seat.${seat}`)})}</p>)}
   {all.length>0&&<form method="get" className="flex flex-wrap items-end gap-3" aria-label={t('reviewList.filters')}>
+   {filters.plan&&<input type="hidden" name="plan" value={filters.plan}/>}
    {([['cycle',choices('cycleId','cycle')],['company',choices('companyId','company')],['unit',choices('businessUnitId','unit')]] as const).map(([key,options])=><label key={key} className="space-y-1 text-sm"><span className="block">{t(key)}</span><select name={key} defaultValue={filters[key]??''} className={inputCls}><option value="">{t('reviewList.all')}</option>{options.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>)}
    {groupOptions.length>0&&<label className="space-y-1 text-sm">
      <span className="block">{t('reviewList.businessGroup')}</span>

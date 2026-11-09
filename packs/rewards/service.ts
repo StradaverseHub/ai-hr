@@ -10,6 +10,7 @@ import {employedByCompanyDuring} from '../../core/employment-company';
 import {mobileRewardPersonBlock} from './mobile-review-projection';
 import type { Tx as AiReadTx } from '../../db/client';
 import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
+import { lockAccessConfigurationTx } from '../../core/access-configuration-lock';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, or, gt, sql } from 'drizzle-orm';
@@ -469,6 +470,9 @@ async function listRewardUnitsTx(tx:Tx,companyIds:string[]){
       verified: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id} and e.facts->>'reviewed'='true') end`,
       // 56595838: the shared configuration version the review started from, and whether its own settings changed since.
       policyOrigin: sql<{ versionId: string; revision: number; name: string; changed: boolean } | null>`app.reward_policy_unit_origin(${rewardUnit.id})`,
+      // An older review may reference the same settings without having been created from the approved plan.
+      creationPlanVersionId: sql<string | null>`(select setup.plan_version_id from reward_unit_setup setup
+        where setup.unit_id=${rewardUnit.id} and setup.tenant_id=${rewardUnit.tenantId})`,
       // 62e743ed: cancelRewardReview's guard, projected for the row actions (the service still decides).
       canCancel: sql<boolean>`${rewardUnit.status} not in ('posted','withdrawn','rejected') and (app.reward_admin(${rewardUnit.companyId}) or 'gr' in (select app.reward_roles(${rewardUnit.id})))` })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
@@ -607,6 +611,7 @@ export async function createRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitI
 /** Internal transaction seam used by approved bulk creation; SQL rechecks all authority and frozen bindings. */
 export async function createRewardUnitTx(tx:Tx,ctx:SessionContext,raw:PlannedRewardUnitInput){
  const version=idSchema.parse(raw.approvedPlanVersionId),companyId=idSchema.parse(raw.companyId),businessUnitId=idSchema.parse(raw.businessUnitId);
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
  await setupLock(tx,ctx,'plans');
  await setupLock(tx,ctx,'pat:'+companyId+':'+setupYear.parse(raw.year));
  const resolved=await approvedPlanPolicyTx(tx,ctx,version,companyId,businessUnitId);

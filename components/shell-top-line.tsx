@@ -28,14 +28,16 @@ export function ShellRoutePath() {
   // a rail heading with no page of its own, so it stays text. Every link is a rail destination this viewer
   // already sees, and each still enforces its own route guard.
   const activePath = active?.href.split('?')[0] ?? null;
-  const below = atelier && !!activePath && pathname !== activePath;
+  const rewards = pathname === '/rewards' || pathname?.startsWith('/rewards/') || pathname?.startsWith('/admin/rewards/');
+  const showBreadcrumb = atelier || rewards;
+  const onSharedPlans = activePath === '/admin/rewards/shared' && pathname === '/admin/rewards/plans';
+  const below = showBreadcrumb && !!activePath && pathname !== activePath && !onSharedPlans;
   const pageTitle = usePageTitle(below ? pathname : null);
-  if (atelier) {
-    if (!active) return null;
+  if (showBreadcrumb && active) {
     const parentLink = active.parentHref && active.parentHref.split('?')[0] !== pathname ? active.parentHref : null;
     return (
-      <nav aria-label={tTop('breadcrumb')} className="atelier-crumb" data-shell-path>
-        {active.section && <span className="contents">{active.section}<i aria-hidden>/</i></span>}
+      <nav aria-label={tTop('breadcrumb')} className={atelier ? "atelier-crumb" : "flex min-w-0 shrink items-center gap-1 overflow-hidden whitespace-nowrap"} data-shell-path>
+        {active.section && <span className="contents">{active.section}<i aria-hidden className="not-italic">/</i></span>}
         {active.parent && (
           <span className="contents">
             {parentLink ? <Link href={parentLink}>{active.parent}</Link> : active.parent}
@@ -46,10 +48,10 @@ export function ShellRoutePath() {
           <>
             <Link href={active.href}>{active.label}</Link>
             <i aria-hidden>/</i>
-            <b aria-current="page">{pageTitle ?? tTop('details')}</b>
+            <b className="min-w-0 truncate" aria-current="page">{pageTitle ?? tTop('details')}</b>
           </>
         ) : (
-          <b aria-current="page">{active.label}</b>
+          <b className="min-w-0 truncate" aria-current="page">{active.label}</b>
         )}
       </nav>
     );

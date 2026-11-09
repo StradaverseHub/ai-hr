@@ -54,6 +54,19 @@ describe('Rewards review overview',()=>{
   expect(screen.getByRole<HTMLSelectElement>('combobox',{name:'Company'}).value).toBe('co2');
   expect(rewardReviewUpcoming([second,{...second,id:'r3',laterSeats:['ec','ec']}])).toEqual([{seat:'ec',count:2}]);
  });
+ it('opens only reviews bound to the selected plan and exposes readiness only to authorised roles',()=>{
+  const plan={versionId:'version-a',revision:2,name:'First plan',changed:false};
+  const scopedRow={...second,people:6,verified:4,policyOrigin:plan,creationPlanVersionId:plan.versionId};
+  const other={...base,people:19,verified:11,policyOrigin:plan,creationPlanVersionId:null};
+  show([scopedRow,other],{plan:plan.versionId});
+  expect(screen.getByRole('columnheader',{name:'Data check'})).toBeTruthy();
+  expect(screen.getByText('4 of 6 verified')).toBeTruthy();
+  expect(screen.queryByText('Fictional Trading')).toBeNull();
+  cleanup();
+  show([other]);
+  expect(screen.queryByRole('columnheader',{name:'Data check'})).toBeNull();
+  expect(screen.queryByText('11 of 19 verified')).toBeNull();
+ });
  it('shows a truthful filter miss and never substitutes no-role for it',()=>{show([base],{unit:'missing'});expect(screen.getByText(en.rewards.reviewList.noMatches)).toBeTruthy();expect(screen.queryByText(en.rewards.reviewList.empty.noRole)).toBeNull();});
  it.each(['noScope','noCycle','noRole','otherScope'] as const)('explains %s without disclosing inaccessible cycle names',reason=>{
   show([],{},reason,reason==='noCycle');const words=en.rewards.reviewList.empty[reason].replace('{year}','2026');expect(screen.getByText(words)).toBeTruthy();

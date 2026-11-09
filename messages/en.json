@@ -23480,6 +23480,7 @@
     }
   },
   "rewards": {
+    "promotionNominationsHelp": "Review nominations from the annual rewards reviews you can access.",
     "compaRatio": "Compa-ratio",
     "compaRatioBefore": "Salary vs midpoint before",
     "compaRatioAfter": "Salary vs midpoint after",
@@ -35702,7 +35703,14 @@
     "already-reviewed": "An annual review already exists for this company and year.",
     "pat-not-confirmed": "Confirm company PAT inputs before creating its review.",
     "company-unavailable": "The company is unavailable for this reward year.",
-    "createReviews": "Create ready reviews",
+    "createReviews": "Create unit reviews",
+    "createReviewsCount": "Create {count, plural, one {# unit review} other {# unit reviews}}",
+    "reviewsCreated": "{count, plural, one {# review created} other {# reviews created}}",
+    "openCreatedReviews": "Open in Reviewing Team Rewards",
+    "manageRewardPlans": "Manage plans",
+    "creationOutcome": "Outcome",
+    "creationReady": "Confirmed inputs",
+    "plan-assignment-changed": "The company is assigned to a different plan version.",
     "independentCreateHelp": "A different Group Rewards user must create reviews from this approved plan.",
     "useApprovedPlan": "Create annual reviews from an approved Rewards plan",
     "newVersion": "Create next version",
@@ -36564,6 +36572,7 @@
     "locked": "A group administrator can change company applicability. Other Pay Item settings can still be saved."
   },
   "rewardDashboard": {
+    "purpose": "Track reviews, budgets and items waiting for your action.",
     "greeting": "Welcome to your Reward Desk",
     "salary": "Salary increase budget",
     "bonus": "Bonus budget",

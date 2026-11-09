@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { requireModule } from '@/lib/authz';
 import { getScopeIds, scopedSession } from '@/lib/scope';
 import { Card, PageHeader, btnPrimary, inputCls } from '@/components/ui';
-import { rewardVisibleCompanies } from '@/packs/rewards/access-policy';
+import { rewardNavigation, rewardVisibleCompanies } from '@/packs/rewards/access-policy';
 import { rewardPromotionNominations } from '@/packs/rewards/service';
 
 export default async function RewardPromotionsPage({ searchParams }: {
@@ -21,12 +21,12 @@ export default async function RewardPromotionsPage({ searchParams }: {
   const year = typeof filters.year === 'string' && /^20[0-9]{2}$/.test(filters.year) ? Number(filters.year) : undefined;
   const requested = typeof filters.page === 'string' && /^\d{1,5}$/.test(filters.page) ? Number(filters.page) : 1;
   const { year: selectedYear, page, maxPage, nominations, companies: choices } = await rewardPromotionNominations(s, scope, { companyId, year, page: requested });
-  if (!choices.length) notFound();
+  if (!choices.length && !(await rewardNavigation(s)).includes('/rewards/promotions')) notFound();
   const url = (page: number) => '/rewards/promotions?' + new URLSearchParams({
     ...(companyId ? { company: companyId } : {}), year: String(selectedYear), page: String(page),
   });
   return <div className="space-y-5">
-    <PageHeader title={t('promotionNominations')} description={t('description')} />
+    <PageHeader title={t('promotionNominations')} description={t('promotionNominationsHelp')} />
     <Card className="space-y-4 p-4">
       <form method="get" className="flex flex-wrap items-end gap-3">
         <label className="grid gap-1 text-sm">{t('company')}

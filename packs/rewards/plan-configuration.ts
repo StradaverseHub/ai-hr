@@ -43,13 +43,104 @@ export async function assertIndependentReviewCreator(tx:Tx,ctx:SessionContext,pl
 }
 export async function approvedPlanPolicyTx(tx:Tx,ctx:SessionContext,versionId:string,companyId:string,businessUnitId:string){const p=await setupPlanTx(tx,ctx,versionId),source=await setupPolicySourceTx(tx,versionId);if(!p||p.state!=='approved')throw new RewardSetupError('invalid','Create reviews from an independently approved shared rewards plan.');const [assigned]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from reward_plan_company where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid and year=${p.year} and plan_version_id=${versionId}::uuid) as ok`);if(!assigned?.ok)throw new RewardSetupError('changed','Use the current approved company-year plan assignment.');const binding=p.bindings.find(b=>b.companyId===companyId&&b.businessUnitId===businessUnitId);if(!binding)throw new RewardSetupError('invalid','The company and Business unit are not assigned to this approved plan.');await setupAuthority(tx,companyId,'manage');await setupCompanyEligible(tx,companyId,p.year);const [structure]=await tx.execute<{tags:{status:string;businessUnitId:string|null}}>(sql`select app.reward_company_structure(${companyId}::uuid,${p.snapshotDate}::date) as tags`);if(structure?.tags?.status!=='ready'||structure.tags.businessUnitId!==businessUnitId)throw new RewardSetupError('missing','Confirm the company Business unit at the plan snapshot date.');const [salary,bonus]=await Promise.all([libraryVersionTx(tx,ctx,binding.salaryVersionId,true),libraryVersionTx(tx,ctx,binding.bonusVersionId,true)]),pat=await latestConfirmedPatTx(tx,ctx,companyId,p.year);if(salary.data.kind!=='salary'||bonus.data.kind!=='bonus'||!pat||patProjection(pat.inputs).status==='not-set')throw new RewardSetupError('missing','Confirm the company PAT inputs and both library versions before creating reviews.');const policy=policySchema.parse({...source.policy,...libraryPolicyProjection(salary.data,bonus.data),patTarget:pat.inputs.targetCents!,patActual:Math.max(0,pat.inputs.actualCents??pat.inputs.forecastCents??0),targetMonthsBp:pat.inputs.targetMonthsBp,multiplierBp:bonus.data.type==='branch'?10000:null});return{setup:p,source,binding,pat,policy};}
 export async function appliedPublicReferencesTx(tx:Tx,unitId:string){const[r]=await tx.execute<{value:unknown}>(sql`select app.reward_applied_public_references(${setupUuid.parse(unitId)}::uuid) as value`);return r?.value??null;}
-export type PlanCreationPreview={companyId:string;businessUnitId:string;salaryVersionId:string;bonusVersionId:string;patVersionId:string|null;status:'ready'|'skip';reason:string;existingUnitId:string|null};
-async function creationPreviewTx(tx:Tx,ctx:SessionContext,versionId:string){const plan=await setupPlanTx(tx,ctx,versionId),source=await setupPolicySourceTx(tx,versionId);if(!plan||plan.state!=='approved')throw new RewardSetupError('invalid','Approve the shared rewards plan before creating reviews.');const rows:PlanCreationPreview[]=[];
- for(const b of plan.bindings){await setupAuthority(tx,b.companyId,'manage');const [existing]=await tx.execute<{review:{exists:boolean;unitId:string|null}}>(sql`select app.reward_setup_company_review(${b.companyId}::uuid,${plan.year}) as review`);let patId:string|null=null,why='';const [structure]=await tx.execute<{tags:{status:string;businessUnitId:string|null}}>(sql`select app.reward_company_structure(${b.companyId}::uuid,${plan.snapshotDate}::date) as tags`);if(existing?.review.exists)why='already-reviewed';else if(structure?.tags?.status!=='ready'||structure.tags.businessUnitId!==b.businessUnitId)why='structure-not-ready';else{try{const resolved=await approvedPlanPolicyTx(tx,ctx,versionId,b.companyId,b.businessUnitId);patId=resolved.pat.id;}catch(e){if(e instanceof RewardSetupError)why=e.code==='missing'?'pat-not-confirmed':e.code==='invalid'?'company-unavailable':e.code;else throw e;}}
- rows.push({...b,patVersionId:patId,status:why?'skip':'ready',reason:why,existingUnitId:existing?.review.unitId??null});}
- return{versionId,planRevision:plan.revision,cycleName:plan.cycleName,snapshotDate:plan.snapshotDate,year:plan.year,rows,digest:digest({versionId,planRevision:plan.revision,snapshotDate:plan.snapshotDate,rows,sourceRevision:source.revision})};}
-export function previewRewardPlanCreation(ctx:SessionContext,versionId:string){return setupTenant(ctx,tx=>creationPreviewTx(tx,ctx,setupUuid.parse(versionId)));}
-export function createRewardPlanReviews(ctx:SessionContext,versionId:string,expectedDigest:string){return setupTenant(ctx,async tx=>{await setupLock(tx,ctx,'plans');const preview=await creationPreviewTx(tx,ctx,setupUuid.parse(versionId));const plan=await setupPlanTx(tx,ctx,versionId);if(!plan)throw new RewardSetupError('changed','The approved plan is unavailable.');await assertIndependentReviewCreator(tx,ctx,plan);if(preview.digest!==expectedDigest)throw new RewardSetupError('changed','The creation preview changed. Review it again.');const created:string[]=[];const{createRewardUnitTx}=await import('./service');for(const row of preview.rows){if(row.status==='skip'){await setupEvent(tx,ctx,'review.skipped',versionId,{companyId:row.companyId,reason:row.reason,existingUnitId:row.existingUnitId});continue;}const id=await createRewardUnitTx(tx,ctx,{name:preview.cycleName,year:preview.year,companyId:row.companyId,businessUnitId:row.businessUnitId,snapshotDate:preview.snapshotDate,approvedPlanVersionId:versionId});created.push(id);}return{created,skipped:preview.rows.filter(r=>r.status==='skip')};});}
+export type PlanCreationPreview = RewardPlanBinding & {
+  patVersionId: string | null;
+  status: 'ready' | 'skip';
+  reason: 'ready' | 'already-reviewed' | 'structure-not-ready' | 'pat-not-confirmed' | 'company-unavailable' | 'plan-assignment-changed';
+  existingUnitId: string | null;
+};
+
+async function creationPreviewTx(tx: Tx, ctx: SessionContext, versionId: string) {
+  const plan = await setupPlanTx(tx, ctx, versionId);
+  const source = await setupPolicySourceTx(tx, versionId);
+  if (!plan || plan.state !== 'approved') {
+    throw new RewardSetupError('invalid', 'Approve the shared rewards plan before creating reviews.');
+  }
+
+  const rows: PlanCreationPreview[] = [];
+  for (const binding of plan.bindings) {
+    await setupAuthority(tx, binding.companyId, 'manage');
+    const [existing] = await tx.execute<{review: {exists: boolean; unitId: string | null}}>(
+      sql`select app.reward_setup_company_review(${binding.companyId}::uuid,${plan.year}) as review`,
+    );
+    let patVersionId: string | null = null;
+    let reason: PlanCreationPreview['reason'] = 'ready';
+    if (existing?.review.exists) {
+      reason = 'already-reviewed';
+    } else {
+      const [structure] = await tx.execute<{tags: {status: string; businessUnitId: string | null}}>(
+        sql`select app.reward_company_structure(${binding.companyId}::uuid,${plan.snapshotDate}::date) as tags`,
+      );
+      if (structure?.tags?.status !== 'ready' || structure.tags.businessUnitId !== binding.businessUnitId) {
+        reason = 'structure-not-ready';
+      } else {
+        try {
+          patVersionId = (await approvedPlanPolicyTx(tx, ctx, versionId, binding.companyId, binding.businessUnitId)).pat.id;
+        } catch (error) {
+          if (!(error instanceof RewardSetupError)) throw error;
+          if (error.code === 'missing') reason = 'pat-not-confirmed';
+          else if (error.code === 'invalid') reason = 'company-unavailable';
+          else if (error.code === 'changed') reason = 'plan-assignment-changed';
+          else throw error;
+        }
+      }
+    }
+    rows.push({ ...binding, patVersionId, status: reason === 'ready' ? 'ready' : 'skip', reason,
+      existingUnitId: existing?.review.unitId ?? null });
+  }
+  return { plan, rows, digest: digest({ versionId, planRevision: plan.revision,
+    snapshotDate: plan.snapshotDate, rows, sourceRevision: source.revision }) };
+}
+
+export function previewRewardPlanCreation(ctx: SessionContext, versionId: string) {
+  return setupTenant(ctx, async tx => {
+    const { plan, rows, digest } = await creationPreviewTx(tx, ctx, setupUuid.parse(versionId));
+    const actorPersonId = await setupPersonTx(tx);
+    return { versionId, rows, digest, mayCreate: !!plan.approvedBy && !!plan.approvedByPersonId &&
+      plan.approvedBy !== ctx.userId && plan.approvedByPersonId !== actorPersonId };
+  });
+}
+
+/** Count only reviews whose authoritative creation binding names this exact plan version. */
+export function rewardApprovedPlanReviewSummaries(ctx: SessionContext) {
+  return setupTenant(ctx, async tx => Array.from(await tx.execute<{
+    versionId: string; cycleName: string; revision: number; year: number; createdCount: number;
+  }>(sql`
+    select p.version_id as "versionId", p.cycle_name as "cycleName",
+      (app.reward_setup_policy_source(p.version_id)->>'revision')::int as revision, p.year,
+      count(u.id)::int as "createdCount"
+    from reward_plan_setup p
+    left join reward_unit_setup binding on binding.tenant_id=p.tenant_id and binding.plan_version_id=p.version_id
+    left join reward_unit u on u.tenant_id=binding.tenant_id and u.id=binding.unit_id and u.deleted_at is null
+    where p.tenant_id=${ctx.tenantId}::uuid and p.state='approved'
+      and p.version_id in (select app.reward_setup_plan_ids())
+    group by p.version_id,p.cycle_name,p.year
+    order by p.year desc,p.cycle_name,revision desc,p.version_id
+  `)));
+}
+
+export function createRewardPlanReviews(ctx: SessionContext, versionId: string, expectedDigest: string) {
+  return setupTenant(ctx, async tx => {
+    await setupLock(tx, ctx, 'plans');
+    const { plan, rows, digest } = await creationPreviewTx(tx, ctx, setupUuid.parse(versionId));
+    await assertIndependentReviewCreator(tx, ctx, plan);
+    if (digest !== expectedDigest) throw new RewardSetupError('changed', 'The creation preview changed. Review it again.');
+    const created: string[] = [];
+    const { createRewardUnitTx } = await import('./service');
+    for (const row of rows) {
+      if (row.status === 'skip') {
+        await setupEvent(tx, ctx, 'review.skipped', versionId, { companyId: row.companyId,
+          reason: row.reason, existingUnitId: row.existingUnitId });
+        continue;
+      }
+      created.push(await createRewardUnitTx(tx, ctx, {
+        name: plan.cycleName, year: plan.year, companyId: row.companyId, businessUnitId: row.businessUnitId,
+        snapshotDate: plan.snapshotDate, approvedPlanVersionId: versionId,
+      }));
+    }
+    return { created, skipped: rows.filter(row => row.status === 'skip') };
+  });
+}
 export function rewardPlanSuggestions(ctx:SessionContext,year:number,companyIds:readonly string[],asOf?:string){setupYear.parse(year);return setupTenant(ctx,async tx=>{const companies=await rewardSetupCompaniesTx(tx,ctx,year),libraries=await tx.execute<{id:string}>(sql`select v.id from reward_library l join reward_library_version v on v.library_id=l.id and v.tenant_id=l.tenant_id where l.tenant_id=${ctx.tenantId}::uuid and l.year=${year} and v.state='confirmed' order by l.name,v.revision desc`);const versions:RewardLibraryVersion[]=[];for(const row of libraries)versions.push(await libraryVersionTx(tx,ctx,row.id,true));const candidates=libraryCandidates(versions),rows=[];
  for(const company of companies.filter(c=>companyIds.includes(c.id))){if(asOf){const [r]=await tx.execute<{tags:{status:string;businessUnitId:string|null;businessUnitName:string|null}}>(sql`select app.reward_company_structure(${company.id}::uuid,${z.iso.date().parse(asOf)}::date) as tags`);company.structureStatus=r?.tags?.status??'pending';company.businessUnitId=r?.tags?.businessUnitId??null;company.businessUnitName=r?.tags?.businessUnitName??null;}const [prior]=await tx.execute<{salaryLibraryId:string;bonusLibraryId:string}>(sql`select sv.library_id as "salaryLibraryId",bv.library_id as "bonusLibraryId" from reward_plan_company p join reward_library_version sv on sv.id=p.salary_version_id and sv.tenant_id=p.tenant_id join reward_library_version bv on bv.id=p.bonus_version_id and bv.tenant_id=p.tenant_id where p.tenant_id=${ctx.tenantId}::uuid and p.company_id=${company.id}::uuid and p.year=${year-1}`);const bu=company.structureStatus==='ready'&&company.businessUnitId&&company.businessUnitName?{id:company.businessUnitId,name:company.businessUnitName}:undefined;rows.push({company,salary:suggestRewardLibrary(candidates,{kind:'salary',year,businessUnit:bu?.name??'',previousLibraryId:prior?.salaryLibraryId??null,branchAllowed:false}),bonus:suggestRewardLibrary(candidates,{kind:'bonus',year,businessUnit:bu?.name??'',previousLibraryId:prior?.bonusLibraryId??null,branchAllowed:false}),businessUnitId:bu?.id??null});}
  return rows;});}

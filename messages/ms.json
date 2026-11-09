@@ -23480,6 +23480,7 @@
     }
   },
   "rewards": {
+    "promotionNominationsHelp": "Semak pencalonan daripada semakan ganjaran tahunan dalam skop anda.",
     "compaRatio": "Nisbah kompa",
     "compaRatioBefore": "Gaji berbanding titik tengah sebelum",
     "compaRatioAfter": "Gaji berbanding titik tengah selepas",
@@ -35702,7 +35703,14 @@
     "already-reviewed": "Semakan tahunan sudah wujud bagi syarikat dan tahun ini.",
     "pat-not-confirmed": "Sahkan input PAT syarikat sebelum mencipta semakannya.",
     "company-unavailable": "Syarikat tidak tersedia bagi tahun ganjaran ini.",
-    "createReviews": "Cipta semakan yang sedia",
+    "createReviews": "Cipta semakan unit",
+    "createReviewsCount": "Cipta {count} semakan unit",
+    "reviewsCreated": "{count} semakan dicipta",
+    "openCreatedReviews": "Buka dalam Semakan Ganjaran Pasukan",
+    "manageRewardPlans": "Urus pelan",
+    "creationOutcome": "Hasil",
+    "creationReady": "Input disahkan",
+    "plan-assignment-changed": "Syarikat diperuntukkan kepada versi pelan yang lain.",
     "independentCreateHelp": "Pengguna Ganjaran Kumpulan yang lain mesti mencipta semakan daripada pelan yang diluluskan ini.",
     "useApprovedPlan": "Cipta semakan tahunan daripada pelan Ganjaran yang diluluskan",
     "newVersion": "Cipta versi seterusnya",
@@ -36564,6 +36572,7 @@
     "locked": "Pentadbir kumpulan boleh mengubah tetapan syarikat. Tetapan Item Gaji lain masih boleh disimpan."
   },
   "rewardDashboard": {
+    "purpose": "Jejaki semakan, belanjawan dan tindakan yang menanti anda.",
     "greeting": "Selamat datang ke Meja Ganjaran anda",
     "salary": "Bajet kenaikan gaji",
     "bonus": "Bajet bonus",
