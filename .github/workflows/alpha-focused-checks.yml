@@ -85,7 +85,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-${{ github.ref == 'refs/heads/codex/compiler-12800-whole-feasibility-20261109' && 'compiler-12800-whole-feasibility' || inputs.candidate_ref }}
+  group: alpha-focused-${{ github.ref == 'refs/heads/codex/compiler-12800-whole-feasibility-20261109' && 'compiler-12800-whole-feasibility' || github.ref == 'refs/heads/codex/compiler-2357c75d-partition-feasibility-20261109' && 'compiler-2357c75d-partition-feasibility-20261109' || inputs.candidate_ref }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -104,7 +104,7 @@ env:
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
   resolve:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' && !(github.ref == 'refs/heads/codex/compiler-8a5d-partition-feasibility-20261109' && inputs.run_typecheck) }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && !(github.ref == 'refs/heads/codex/compiler-2357c75d-partition-feasibility-20261109' && inputs.run_typecheck) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -1116,7 +1116,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   compiler-memory-feasibility:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/compiler-8a5d-partition-feasibility-20261109' && inputs.run_typecheck }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/compiler-2357c75d-partition-feasibility-20261109' && inputs.run_typecheck }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -1144,7 +1144,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 8a5d0fbdad4146ce3c9277a9ec830e7119a38432
+          ref: 2357c75d413909b6b67ec954ec8b29f5e5ebcc90
           path: source
           persist-credentials: false
       - name: Admit the exact compiler feasibility event before dependency setup

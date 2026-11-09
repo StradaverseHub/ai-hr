@@ -19,7 +19,7 @@ const localContext = {
   '.next/types/routes.d.ts': '52aeb68060ebdc801316e0a6880c848ee0fbc87542c452b65d963c1dafbb7432',
   'next-env.d.ts': '1862ac4bbbc5192d4bf562161df66ea547ed3e67173100656ab606ae9797db2b',
   'scripts/feedback-plan.ts': 'ae931dc997528695a4d62d6fc75d3597451b49bd3d0eab58c46047a69925f9f1',
-  'test/browser-setup.ts': '68470a79ae343d0cda79d3a4a779742ef8834d91acb929d6ea7253b465e3de8a',
+  'test/browser-setup.ts': '898d6bcf840236bf2006520de11e7c1f8593db575355d1a32d142b275da9cb35',
   'types/fontkit.d.ts': 'f630880cb7f3ceeb04aafc975b18ca4bace078589bb15def4dc2f109e4dfd771',
 };
 const otherGenerated = {
