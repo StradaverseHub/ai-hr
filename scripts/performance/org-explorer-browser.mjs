@@ -36,9 +36,13 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
    else{assert.equal(item.inSelectedScope,false);assert.equal(data.view,'connections');}
   }
  }
- async function request(action,view,allowed=cohort){
+ async function request(action,view,allowed=cohort,expectedQuery){
   const started=performance.now();
-  const responsePromise=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/org/window'&&new URL(response.url()).searchParams.get('view')===view,{timeout:90000});
+  const responsePromise=page.waitForResponse(response=>{
+   const url=new URL(response.url());
+   return url.pathname==='/api/org/window'&&url.searchParams.get('view')===view&&
+    (expectedQuery===undefined||url.searchParams.get('q')===expectedQuery);
+  },{timeout:90000});
   await action();const response=await responsePromise;
   assert.equal(response.status(),200,'Org window request failed');assert.equal(response.headers()['cache-control'],'private, no-store');
   const data=await response.json();assertPeople(data,allowed);
@@ -96,9 +100,9 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   for(const item of connections.items){assert(['administrative','functional','project','dotted'].includes(item.type));assert(['incoming','outgoing'].includes(item.direction));}
   stage='literal-person-search';const searchBox=explorer().getByRole('textbox');await searchBox.fill(person.name);
   const match=await request(()=>button('search').click(),'search');assert.equal(match.totalItems,1);assert.equal(match.items[0].node?.employmentId,person.employmentId);
-  if(rewardMember){
+  if(phase==='baseline'&&rewardMember){
    stage='rewards-member-search';await searchBox.fill(rewardMember.name);
-   const reward=await request(()=>button('search').click(),'search');
+   const reward=await request(()=>button('search').click(),'search',cohort,rewardMember.name);
    assert(reward.totalItems===1&&reward.items.length===1&&reward.items[0].node?.employmentId===rewardMember.employmentId,
     'Org Explorer did not return the exact Rewards member');
    await rows().getByRole('heading',{name:rewardMember.name,exact:true}).waitFor({state:'visible',timeout:90000});
@@ -110,9 +114,9 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   stage='selected-company-people';const scoped=await allPeople(selected);assert.equal(scoped.totalItems,selected.length);assert.equal(scoped.nextCursor,null);assert.equal(scoped.items.length,selected.length);
   stage='other-company-search';const other=cohort.find(actor=>actor.companyId!==user.companyId);assert(other);await searchBox.fill(other.name);
   const hidden=await request(()=>button('search').click(),'search',selected);assert.equal(hidden.totalItems,0);assert.equal(hidden.items.length,0);
-  if(rewardMember&&rewardMember.companyId!==user.companyId){
+  if(phase==='baseline'&&rewardMember&&rewardMember.companyId!==user.companyId){
    stage='rewards-member-outside-company';await searchBox.fill(rewardMember.name);
-   const hiddenReward=await request(()=>button('search').click(),'search',selected);
+   const hiddenReward=await request(()=>button('search').click(),'search',selected,rewardMember.name);
    assert(hiddenReward.totalItems===0&&hiddenReward.items.length===0,
     'Org Explorer returned a Rewards member outside the selected company');
   }

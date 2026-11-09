@@ -30,5 +30,6 @@ company 0 scope still contains 50. The workflow preflight keeps its existing
 Rewards fixture and the claims workload keeps its existing fixture. This
 source change requires hosted fixture and browser verification. Org Explorer
 must show the exact Rewards member in a rendered search result and refuse
-that search after narrowing to another company. The fixture member check
+that search after narrowing to another company. Both baseline observations
+bind the actual requested search text. The fixture member check
 returns a boolean witness and reports a fixed refusal on a mismatch.
