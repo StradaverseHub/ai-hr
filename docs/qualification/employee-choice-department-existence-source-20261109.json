@@ -197,5 +197,100 @@
     },
     "currentHostedOutcome": "UNOBSERVED",
     "historicalEvidenceTransferred": false
+  },
+  "assignmentFirstIndexDiagnostic": {
+    "directParent": "2129536d53fd4433b6cc91246150004b3e328916",
+    "parentWholePreimages": {
+      "docs/adr/2026-11-07-employee-choice-organisation-plan.md": {
+        "gitRef": "2129536d53fd4433b6cc91246150004b3e328916:docs/adr/2026-11-07-employee-choice-organisation-plan.md",
+        "gitBlob": "ebc13e738fbb8454bec1a44abfdb27d05747b491",
+        "bytes": 5180,
+        "sha256": "ba1a26acb6ce32fb921234c962281b54ff1ad73115d232c91621e808d668b150"
+      },
+      "docs/qualification/employee-choice-department-existence-source-20261109.json": {
+        "gitRef": "2129536d53fd4433b6cc91246150004b3e328916:docs/qualification/employee-choice-department-existence-source-20261109.json",
+        "gitBlob": "b878324d98c07b7eba06c6823226011564e1b236",
+        "bytes": 8942,
+        "sha256": "4a88626fac87f34f36ce646ee3305de85b1ca62585121dbccd3cbe75ab4ddbf4"
+      },
+      "test/employee-choice-unicode-scale.test.ts": {
+        "gitRef": "2129536d53fd4433b6cc91246150004b3e328916:test/employee-choice-unicode-scale.test.ts",
+        "gitBlob": "dacf1de8830dafe6fec1238c2d89d74eec2d9111",
+        "bytes": 37944,
+        "sha256": "c872ac7e1af49292522f443f638e37cc29e25dac9634c97f532692d55a257a8c"
+      }
+    },
+    "sourcePinsExcludingThisRecord": {
+      "docs/adr/2026-11-07-employee-choice-organisation-plan.md": {
+        "bytes": 6731,
+        "sha256": "5ddb7fd3d45edd628ab43f5eb4494f80dcef7eac8d6091d0c1f2ea9878059203"
+      },
+      "test/employee-choice-unicode-scale.test.ts": {
+        "bytes": 61125,
+        "sha256": "c8ad79042581a8866f87dcbf9cb8bdf63a63449c9758f1d9bba9a792ad544d45"
+      }
+    },
+    "frozenPrivatePlan": {
+      "bytes": 10303,
+      "sha256": "0e6805c7679ba2047f48ab940a76ed58762d20ec9fddab66a798877defec8c7d"
+    },
+    "authenticatedNativeComparison": {
+      "bytes": 15705,
+      "sha256": "6c77ac3727a58e62360ac4806e62e6744ec0037586431aff99f423b7cce7fcb2"
+    },
+    "externalSourceParser": {
+      "bytes": 1461,
+      "sha256": "b8c74d812013e7662288f90d606e51b5f935cf626ae22ed26609eebc5cd4560e"
+    },
+    "historicalNativeRuns": {
+      "legacyIndexUnused": {
+        "run": 42535097408,
+        "source": "8bfee48a889af200aa035859ab41cc083c0c2eff",
+        "authenticationSha256": "28b2d5573122daccf7af71c2fe72c46ae30d946ec8fc6a4f63c944ff41161699"
+      },
+      "matchedNonpass": {
+        "run": 42550790661,
+        "source": "3c2ce8b8a12734867286c92ae3cf465c249163ac",
+        "authenticationSha256": "da7931aaf9b4edc63d70f67ebb240f85c1245a049f8434de52fde3b7ad8f58da",
+        "matchedOrdinaryImprovement": false,
+        "matchedExplainImprovement": false
+      }
+    },
+    "phases": [
+      "B0 whole product and EXPLAIN",
+      "I1 indexed whole product and EXPLAIN",
+      "I2 indexed exact captured department statement and EXPLAIN",
+      "B1 restored whole product and EXPLAIN"
+    ],
+    "profiles": [
+      "broad",
+      "sparse"
+    ],
+    "absoluteCaseMilliseconds": 300000,
+    "extraIndexAdmissionMilliseconds": 65000,
+    "activeSlotMilliseconds": [
+      7000,
+      23000,
+      5000,
+      20000
+    ],
+    "cleanupMilliseconds": 10000,
+    "stressCeilingMilliseconds": {
+      "whole": 6000,
+      "department": 1250,
+      "explain": 1000
+    },
+    "statementMilliseconds": 1000,
+    "lockMilliseconds": 300,
+    "rawPlanCount": 10,
+    "onePlanByteCap": 1048576,
+    "aggregatePlanByteCap": 4194304,
+    "metadataByteCap": 65536,
+    "nativeDdl": [
+      "drop index public.employee_choice_department_probe_20261109",
+      "create index employee_choice_department_probe_20261109 on public.assignment(tenant_id,department_id,employment_id) where valid_to is null and superseded_at is null"
+    ],
+    "disposition": "SOURCE_ONLY_HOSTED_OUTCOME_UNOBSERVED",
+    "releaseEligible": false
   }
 }

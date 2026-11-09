@@ -75,3 +75,27 @@ scalar query before immediately reserving its connection. The reservation must
 have the same backend identity before setting limits. Ordinary runs keep their
 connection settings. The five stress statements count product calls. Driver
 protocol messages and prepared-query retries have separate semantics.
+
+Run `42550790661` retained a failed matched comparison. PostgreSQL put
+Assignment first in the legacy statement and used two sequential scans. The
+Assignment-first candidate did the same scan work in this fixture. The sampled
+planner inputs do not identify why the legacy plan changed. On ten departments
+the candidate ran ten Assignment scans while each of its two authority
+witnesses still read the full visible employment set.
+
+The next hosted diagnostic keeps that matched gate and tests the same captured
+Assignment-first statements against one disposable partial index. It records the
+broad and sparse product results before creation, while indexed, and after
+drop, plus a second indexed read of each exact captured department statement.
+The sparse scope can encounter Finance witnesses in a different order under the
+index. The comparison requires the original DTOs and limits, actual tenant and
+department index conditions, and lower ordinary time, EXPLAIN execution time and
+buffer traffic against both no-index observations.
+
+The reserved owner records the native index identity before commit and removes
+only that identity. A fresh read of the owned realm and catalogue verifies the
+original statistics, policies, grants and index inventory after drop. The test
+records the matched, stress and index outcomes separately and keeps native
+rollback and handback within the original 300-second case. The new comparison
+requires 65 seconds of remaining case time, including 10 for cleanup. The
+source comparison has no observed hosted outcome.
