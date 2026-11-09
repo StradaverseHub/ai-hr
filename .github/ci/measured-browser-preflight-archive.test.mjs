@@ -39,6 +39,8 @@ function model() {
     [captureName]: capture, [unionName]: renderedUnion,
     'fixture.json': json({ fictional: true, claimsPerEmployee: 200, counts: { claims: 100000 } }),
     'actor-tenancy.json': json({ fictional: true, trafficActors: 500, nativeSelectedRows: 500, nativeGrants: 544 }),
+    'postgres-lock-failures.json': json({ failures: [] }),
+    'server-native-failures.json': json({ failures: [] }),
   };
 }
 
@@ -95,12 +97,20 @@ test('refuses missing, mixed raw or failed archive members and path aliases', ()
   assert.throws(() => inspect(zip(withoutUnion, { extra: [[unionName, 'elsewhere', 'symlink']] })), /ZIP refused/);
 });
 
-test('accepts only settled optional diagnostics in a successful archive', () => {
+test('requires both empty native failure members and admits only settled optional fixture phases', () => {
   const files = model();
   files['fixture-phases.json'] = json([{ status: 'passed' }]);
   files['server-native-failures.json'] = json({ failures: [] });
   files['postgres-lock-failures.json'] = json({ failures: [] });
-  assert.equal(inspect(zip(files)).measurement.complete, true);
+  const result = inspect(zip(files));
+  assert.equal(result.measurement.complete, true);
+  assert.deepEqual(result.postgresFailures.failures, []);
+  assert.deepEqual(result.workerFailures.failures, []);
+  for (const name of ['postgres-lock-failures.json', 'server-native-failures.json']) {
+    const missing = { ...files };
+    delete missing[name];
+    assert.throws(() => inspect(zip(missing)), /ZIP refused/);
+  }
   assert.throws(() => inspect(zip({ ...files, 'postgres-lock-failures.json': json({ failures: [{}] }) })), /ZIP refused/);
   assert.throws(() => inspect(zip({ ...files, 'fixture-phases.json': json([{ status: 'running' }]) })), /ZIP refused/);
 });

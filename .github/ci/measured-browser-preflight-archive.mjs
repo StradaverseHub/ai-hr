@@ -20,7 +20,7 @@ const maximumMemberBytes = 4 * 1024 ** 2;
 const maximumReceiptBytes = 8192;
 const members = [
   'browser-preflight-measurement.json', 'navigation-browser-capture.json', 'development-rendered-route-union.json',
-  'fixture.json', 'actor-tenancy.json',
+  'fixture.json', 'actor-tenancy.json', 'postgres-lock-failures.json', 'server-native-failures.json',
 ];
 const environment = Object.freeze({ PATH: '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C' });
 const authenticated = new WeakMap();
@@ -34,8 +34,9 @@ receipt_cap = 8192
 required = (
     'browser-preflight-measurement.json', 'navigation-browser-capture.json',
     'development-rendered-route-union.json', 'fixture.json', 'actor-tenancy.json',
+    'postgres-lock-failures.json', 'server-native-failures.json',
 )
-allowed = set(required) | {'fixture-phases.json', 'server-native-failures.json', 'postgres-lock-failures.json'}
+allowed = set(required) | {'fixture-phases.json'}
 
 def require(ok):
     if not ok:
@@ -142,13 +143,13 @@ export function inspectMeasuredPreflightArchiveBytes(bytes, { source, runId }, t
   try {
     raw = execFileSync('/usr/bin/python3', ['-I', '-B', '-c', extract], {
       input: bytes, timeout: timeoutMs, killSignal: 'SIGKILL', env: environment,
-      maxBuffer: 4 * maximumMemberBytes + maximumReceiptBytes + 20, stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: (members.length - 1) * maximumMemberBytes + maximumReceiptBytes + 4 * members.length, stdio: ['pipe', 'pipe', 'pipe'],
     });
   } catch {
     throw Error('Measured preflight ZIP refused');
   }
   let offset = 0;
-  const [receiptBytes, captureBytes, unionBytes, fixtureBytes, actorBytes] = members.map((_, index) => {
+  const [receiptBytes, captureBytes, unionBytes, fixtureBytes, actorBytes, postgresBytes, workerBytes] = members.map((_, index) => {
     assert(offset + 4 <= raw.length, 'Measured preflight ZIP frame refused');
     const size = raw.readUInt32BE(offset);
     offset += 4;
@@ -159,7 +160,8 @@ export function inspectMeasuredPreflightArchiveBytes(bytes, { source, runId }, t
     return member;
   });
   assert(offset === raw.length, 'Unexpected measured preflight ZIP frame');
-  const [measurement, capture, renderedUnion, fixture, actors] = [receiptBytes, captureBytes, unionBytes, fixtureBytes, actorBytes].map(json);
+  const [measurement, capture, renderedUnion, fixture, actors, postgresFailures, workerFailures] =
+    [receiptBytes, captureBytes, unionBytes, fixtureBytes, actorBytes, postgresBytes, workerBytes].map(json);
   assert(measurement?.kind === 'DEVELOPMENT_BROWSER_MEASURED_COURSE_V2' && measurement.version === 2
     && measurement.course === 'preflight-2' && measurement.suite === 'workflow-preflight'
     && measurement.complete === true && measurement.releaseEligible === false
@@ -191,7 +193,7 @@ export function inspectMeasuredPreflightArchiveBytes(bytes, { source, runId }, t
   assert(fixture?.fictional === true && fixture.claimsPerEmployee === 200 && fixture.counts?.claims === 100000
     && actors?.fictional === true && actors.trafficActors === 500 && actors.nativeSelectedRows === 500
     && actors.nativeGrants === 544, 'Measured preflight fictional fixture envelope refused');
-  return { measurement, capture, renderedUnion, fixture, actors };
+  return { measurement, capture, renderedUnion, fixture, actors, postgresFailures, workerFailures };
 }
 
 function remaining(deadline, maximum = 15000) {
