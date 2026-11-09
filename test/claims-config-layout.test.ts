@@ -17,7 +17,27 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { GET } from '../app/admin/claims/forms/route';
+import { AuthRequiredError } from '../lib/auth-errors';
+
+const bookmark = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  isOperator: vi.fn(),
+  isDemoDeployment: vi.fn(),
+  requireModule: vi.fn(),
+  requireAdmin: vi.fn(),
+}));
+vi.mock('@/lib/session', () => ({ getSession: bookmark.getSession }));
+vi.mock('@/lib/demo-mode', () => ({ isDemoDeployment: bookmark.isDemoDeployment }));
+vi.mock('@/lib/authz', () => ({
+  isOperator: bookmark.isOperator,
+  requireModule: bookmark.requireModule,
+  requireAdmin: bookmark.requireAdmin,
+}));
+vi.mock('next/navigation', () => ({
+  redirect: (location: string) => { throw new Error(`redirect:${location}`); },
+}));
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -82,17 +102,60 @@ describe('e7eb5d83 rev 6 · A — the claim config module is full width', () => 
 
 // ─────────────────────── B. the fifth "screen" is not a screen ───────────────────────
 
-describe('e7eb5d83 rev 6 · B — /admin/claims/forms is a redirect, not a narrow page', () => {
-  it('renders no markup at all, so it has nothing to widen', () => {
-    // The plan counted five claim config pages with zero uses of pageWideCls and asked for all five to be
-    // widened. Four of those zeroes mean "capped"; this one means "renders nothing" — the file is a
-    // guarded permanent redirect kept alive for bookmarks and for lib/permissions.ts. Adding pageWideCls
-    // here would be a class on a component that never returns an element.
-    const src = read('app/admin/claims/forms/page.tsx');
-    expect(src).toMatch(/permanentRedirect\('\/admin\/claims'\)/);
-    expect(src).toMatch(/requireAdmin/);
-    expect(classNameLiterals(src)).toEqual([]);
-    expect(src).not.toContain('pageWideCls');
+describe('/admin/claims/forms guarded bookmark', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    bookmark.getSession.mockResolvedValue({ fictional: true });
+    bookmark.isOperator.mockReturnValue(false);
+    bookmark.isDemoDeployment.mockReturnValue(false);
+  });
+
+  it('has no page markup and returns an empty, private permanent wire redirect after both guards', async () => {
+    const source = read('app/admin/claims/forms/route.ts');
+    expect(classNameLiterals(source)).toEqual([]);
+    expect(source).not.toContain('pageWideCls');
+    const response = await GET();
+    expect(response.status).toBe(308);
+    expect(response.headers.get('location')).toBe('/admin/claims');
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(await response.text()).toBe('');
+    expect(bookmark.requireModule).toHaveBeenCalledExactlyOnceWith('claims');
+    expect(bookmark.requireAdmin).toHaveBeenCalledExactlyOnceWith();
+    expect(bookmark.getSession.mock.invocationCallOrder[0]).toBeLessThan(bookmark.isOperator.mock.invocationCallOrder[0]);
+    expect(bookmark.isOperator.mock.invocationCallOrder[0]).toBeLessThan(bookmark.requireModule.mock.invocationCallOrder[0]);
+    expect(bookmark.requireModule.mock.invocationCallOrder[0]).toBeLessThan(bookmark.requireAdmin.mock.invocationCallOrder[0]);
+  });
+
+  it('preserves the operator route before the module and admin guards outside demo', async () => {
+    bookmark.isOperator.mockReturnValue(true);
+    await expect(GET()).rejects.toThrow('redirect:/operator');
+    expect(bookmark.requireModule).not.toHaveBeenCalled();
+    expect(bookmark.requireAdmin).not.toHaveBeenCalled();
+    bookmark.isDemoDeployment.mockReturnValue(true);
+    expect((await GET()).status).toBe(308);
+  });
+
+  it('keeps module denial ahead of admin denial', async () => {
+    const moduleDenied = new Error('redirect:/?moduleUnavailable=claims');
+    bookmark.requireModule.mockRejectedValueOnce(moduleDenied);
+    await expect(GET()).rejects.toBe(moduleDenied);
+    expect(bookmark.requireAdmin).not.toHaveBeenCalled();
+
+    const adminDenied = new Error('redirect:/');
+    bookmark.requireAdmin.mockRejectedValueOnce(adminDenied);
+    await expect(GET()).rejects.toBe(adminDenied);
+  });
+
+  it('sends a stale identity to login and preserves unrelated failures', async () => {
+    bookmark.getSession.mockRejectedValueOnce(new AuthRequiredError());
+    await expect(GET()).rejects.toThrow('redirect:/login');
+    expect(bookmark.isOperator).not.toHaveBeenCalled();
+    expect(bookmark.requireModule).not.toHaveBeenCalled();
+    expect(bookmark.requireAdmin).not.toHaveBeenCalled();
+
+    const unavailable = new Error('session owner unavailable');
+    bookmark.getSession.mockRejectedValueOnce(unavailable);
+    await expect(GET()).rejects.toBe(unavailable);
   });
 });
 

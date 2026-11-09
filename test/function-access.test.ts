@@ -6,7 +6,7 @@
  * pin the two properties that matter for a TRANSPARENCY screen — completeness in both directions:
  *
  *   1. Forward completeness: every role has a defined access answer for every screen (no blank cells).
- *   2. Reverse completeness: every guarded app/**\/page.tsx route on disk is covered by a screen column,
+ *   2. Reverse completeness: every guarded page and the reviewed Claims bookmark handler is covered by a screen column,
  *      so a NEW screen shipped without a matrix column FAILS the build (the under-reporting failure mode
  *      — the grid silently omitting a screen users can reach — which is the dangerous one for a security
  *      view). Implemented as a filesystem glob vs the registry's REGISTERED_ROUTES set (no RLS parsing).
@@ -77,7 +77,26 @@ function hasAssistantSessionGuard(source:string){
  const ast=ts.createSourceFile('layout.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let guarded=false;
  const visit=(node:ts.Node)=>{if(ts.isAwaitExpression(node)&&ts.isCallExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&node.expression.expression.text==='getBrowserCommandSession')guarded=true;ts.forEachChild(node,visit);};visit(ast);return guarded;
 }
-/** Recursively collect every `page.tsx` under app/ whose CODE calls a page guard, as a normalized route. */
+function hasClaimsFormsHandlerGuards(source: string): boolean {
+  const ast = ts.createSourceFile('route.ts', source, ts.ScriptTarget.Latest, true);
+  for (const statement of ast.statements) {
+    if (!ts.isFunctionDeclaration(statement) || statement.name?.text !== 'GET'
+        || !statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)
+        || !statement.modifiers.some(modifier => modifier.kind === ts.SyntaxKind.AsyncKeyword)) continue;
+    const guarded = statement.body?.statements[0];
+    if (!guarded || !ts.isTryStatement(guarded)) return false;
+    const calls = guarded.tryBlock.statements.flatMap(line =>
+      ts.isExpressionStatement(line) && ts.isAwaitExpression(line.expression)
+        && ts.isCallExpression(line.expression.expression) ? [line.expression.expression] : []);
+    const [module, admin] = calls;
+    return calls.length === 2 && ts.isIdentifier(module.expression) && module.expression.text === 'requireModule'
+      && module.arguments.length === 1 && ts.isStringLiteral(module.arguments[0]) && module.arguments[0].text === 'claims'
+      && ts.isIdentifier(admin.expression) && admin.expression.text === 'requireAdmin' && admin.arguments.length === 0;
+  }
+  return false;
+}
+
+/** Collect guarded pages and the single guarded Claims bookmark handler as normalized routes. */
 function guardedRoutes(): string[] {
   const out: string[] = [];
   // This actual layout call guards every descendant, including pages whose data guards live in
@@ -96,6 +115,10 @@ function guardedRoutes(): string[] {
     }
   };
   walk(APP);
+  const claimsForms = path.join(APP, 'admin/claims/forms/route.ts');
+  if (fs.existsSync(claimsForms) && hasClaimsFormsHandlerGuards(fs.readFileSync(claimsForms, 'utf8'))) {
+    out.push('/admin/claims/forms');
+  }
   return out;
 }
 
@@ -106,6 +129,14 @@ function getPath(obj: unknown, dotted: string): unknown {
 }
 
 describe('function-access registry (lib/permissions)', () => {
+  it('recognizes only the exported async Claims Forms GET with both awaited guards in order', () => {
+    const source = fs.readFileSync(path.join(APP, 'admin/claims/forms/route.ts'), 'utf8');
+    expect(hasClaimsFormsHandlerGuards(source)).toBe(true);
+    expect(hasClaimsFormsHandlerGuards(source.replace("await requireModule('claims')", "requireModule('claims')"))).toBe(false);
+    expect(hasClaimsFormsHandlerGuards(source.replace("requireModule('claims')", "requireModule('rewards')"))).toBe(false);
+    expect(hasClaimsFormsHandlerGuards(source.replace('function GET', 'function POST'))).toBe(false);
+    expect(hasClaimsFormsHandlerGuards("export async function GET() { try { await requireAdmin(); await requireModule('claims'); } finally {} }")).toBe(false);
+  });
   it('recognizes the real inherited Assistant guard and rejects inert prose or an unawaited call',()=>{
     expect(hasAssistantSessionGuard('export default async function Layout(){await getBrowserCommandSession();return null;}')).toBe(true);
     for(const source of ['', '// await getBrowserCommandSession();', 'const label="await getBrowserCommandSession()";', 'function Layout(){getBrowserCommandSession();return null;}'])expect(hasAssistantSessionGuard(source)).toBe(false);
@@ -191,7 +222,7 @@ describe('function-access registry (lib/permissions)', () => {
     }
   });
 
-  it('reverse completeness: every guarded page.tsx route on disk has a screen column', () => {
+  it('reverse completeness: every guarded page or reviewed bookmark handler on disk has a screen column', () => {
     const onDisk = guardedRoutes();
     expect(onDisk.length, 'expected to find guarded routes on disk').toBeGreaterThan(0);
     const missing = onDisk.filter((r) => !REGISTERED_ROUTES.has(r));
