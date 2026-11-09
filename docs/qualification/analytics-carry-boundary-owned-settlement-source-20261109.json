@@ -11,8 +11,8 @@
     {
       "path": "test/analytics-bounded-reports.test.ts",
       "current": {
-        "bytes": 79631,
-        "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+        "bytes": 81740,
+        "sha256": "a5e54c7cb74a20611c2ea6a814d1c8cf53725e7ab6ba32aa86ea5186ea075b00"
       },
       "wholeParent": {
         "source": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
@@ -236,14 +236,22 @@
           "parentStart": 34991,
           "parentEnd": 35026,
           "parentText": " }finally{resolver.mockRestore();}\n"
+        },
+        {
+          "currentStart": 79631,
+          "currentEnd": 81740,
+          "currentRangeSha256": "72d06946e844dd732d5f37a35a202d78e7e863349b923cc9a0a576d38ae59a54",
+          "parentStart": 37575,
+          "parentEnd": 37575,
+          "parentText": ""
         }
       ]
     },
     {
       "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
       "current": {
-        "bytes": 24611,
-        "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+        "bytes": 26621,
+        "sha256": "680fa968362e3abc71cda9218169ea33803430bc79131f5190e97774bac33302"
       },
       "wholeParent": {
         "source": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
@@ -254,8 +262,8 @@
       "inverseHunks": [
         {
           "currentStart": 15935,
-          "currentEnd": 24611,
-          "currentRangeSha256": "05fb3e2506338b8015ca1524c44f377cd0cda57e7db50fd64bc1176ad1763140",
+          "currentEnd": 26621,
+          "currentRangeSha256": "1e4059c1c51a7e9bd57959fbe187dfbc14afcb0cb234aa643e570f3efb85a3f0",
           "parentStart": 15935,
           "parentEnd": 15935,
           "parentText": ""
@@ -337,8 +345,8 @@
       {
         "path": "test/analytics-bounded-reports.test.ts",
         "current": {
-          "bytes": 79631,
-          "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+          "bytes": 81740,
+          "sha256": "a5e54c7cb74a20611c2ea6a814d1c8cf53725e7ab6ba32aa86ea5186ea075b00"
         },
         "wholeParent": {
           "source": "b73f67703fa740d6f3ab742cc4ae6bd2cd1c2336",
@@ -586,14 +594,22 @@
             "parentStart": 43681,
             "parentEnd": 43681,
             "parentText": ""
+          },
+          {
+            "currentStart": 79631,
+            "currentEnd": 81740,
+            "currentRangeSha256": "72d06946e844dd732d5f37a35a202d78e7e863349b923cc9a0a576d38ae59a54",
+            "parentStart": 54510,
+            "parentEnd": 54510,
+            "parentText": ""
           }
         ]
       },
       {
         "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
         "current": {
-          "bytes": 24611,
-          "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+          "bytes": 26621,
+          "sha256": "680fa968362e3abc71cda9218169ea33803430bc79131f5190e97774bac33302"
         },
         "wholeParent": {
           "source": "b73f67703fa740d6f3ab742cc4ae6bd2cd1c2336",
@@ -604,8 +620,8 @@
         "inverseHunks": [
           {
             "currentStart": 19437,
-            "currentEnd": 24611,
-            "currentRangeSha256": "bcceeb328c64c2b9bbef3d304d3ce88a0a3397a6e618df2e5e7508bdaa9b7f7f",
+            "currentEnd": 26621,
+            "currentRangeSha256": "15ac20db13d536dd65d4df41d2eea3cb62693d1efa7cfb8084a7c678f50220fd",
             "parentStart": 19437,
             "parentEnd": 19437,
             "parentText": ""
@@ -680,8 +696,8 @@
       {
         "path": "test/analytics-bounded-reports.test.ts",
         "current": {
-          "bytes": 79631,
-          "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+          "bytes": 81740,
+          "sha256": "a5e54c7cb74a20611c2ea6a814d1c8cf53725e7ab6ba32aa86ea5186ea075b00"
         },
         "wholeParent": {
           "source": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
@@ -809,14 +825,22 @@
             "parentStart": 49516,
             "parentEnd": 49516,
             "parentText": ""
+          },
+          {
+            "currentStart": 79631,
+            "currentEnd": 81740,
+            "currentRangeSha256": "72d06946e844dd732d5f37a35a202d78e7e863349b923cc9a0a576d38ae59a54",
+            "parentStart": 60345,
+            "parentEnd": 60345,
+            "parentText": ""
           }
         ]
       },
       {
         "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
         "current": {
-          "bytes": 24611,
-          "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+          "bytes": 26621,
+          "sha256": "680fa968362e3abc71cda9218169ea33803430bc79131f5190e97774bac33302"
         },
         "wholeParent": {
           "source": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
@@ -827,8 +851,8 @@
         "inverseHunks": [
           {
             "currentStart": 20868,
-            "currentEnd": 24611,
-            "currentRangeSha256": "e05eb226488e6b3954f6e0c47959db8211156654f382b51b3f909f2f90713880",
+            "currentEnd": 26621,
+            "currentRangeSha256": "f0b5204ba934e1da94d4a4aa177c7d35ee0ad6ff8c64777a33530bfe5c7007c7",
             "parentStart": 20868,
             "parentEnd": 20868,
             "parentText": ""
@@ -953,8 +977,8 @@
       {
         "path": "test/analytics-bounded-reports.test.ts",
         "current": {
-          "bytes": 79631,
-          "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+          "bytes": 81740,
+          "sha256": "a5e54c7cb74a20611c2ea6a814d1c8cf53725e7ab6ba32aa86ea5186ea075b00"
         },
         "wholeParent": {
           "source": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
@@ -1138,14 +1162,22 @@
             "parentStart": 54396,
             "parentEnd": 54475,
             "parentText": "     admit(50000);\n     this.firstEstimate.originalDeclarationAdmitted = true;\n"
+          },
+          {
+            "currentStart": 79631,
+            "currentEnd": 81740,
+            "currentRangeSha256": "72d06946e844dd732d5f37a35a202d78e7e863349b923cc9a0a576d38ae59a54",
+            "parentStart": 75979,
+            "parentEnd": 75979,
+            "parentText": ""
           }
         ]
       },
       {
         "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
         "current": {
-          "bytes": 24611,
-          "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+          "bytes": 26621,
+          "sha256": "680fa968362e3abc71cda9218169ea33803430bc79131f5190e97774bac33302"
         },
         "wholeParent": {
           "source": "6aafd09dd24dd9c81e4e67a2261a36e6e0db7a43",
@@ -1156,8 +1188,8 @@
         "inverseHunks": [
           {
             "currentStart": 23651,
-            "currentEnd": 24611,
-            "currentRangeSha256": "fc5ac3c1c5521820b229609187da32f88b90aa064ff02ac7ed26cae63d8598df",
+            "currentEnd": 26621,
+            "currentRangeSha256": "bdc6025025732ca8c3cb8c0496a36cb0c8fb765605af74e8c0ff53e981544e02",
             "parentStart": 23651,
             "parentEnd": 23651,
             "parentText": ""
@@ -1210,6 +1242,278 @@
     "sourceOnly": true,
     "nativeEstimateStatus": "UNRUN",
     "currentRuntimeQualified": false,
+    "productionHeld": true,
+    "authoredCorrectionSource": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+    "activeInverseScope": "The directParentRows reconstruct the current candidate to the same whole 6aafd correction base. Other claims in this section describe the a963 estimate admission correction."
+  },
+  "carryIdentityJoinElision": {
+    "kind": "SOURCE_ONLY_UNFILTERED_CARRY_IDENTITY_JOIN_ELISION",
+    "sourceRef": "codex/analytics-carry-identity-join-elision-20261109",
+    "directParentSource": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+    "wholeDirectParentObjects": [
+      {
+        "path": "core/analytics.ts",
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "gitBlob": "e856df53ec481ec8aa5ef77cb8943f4abeee3b9f",
+        "bytes": 82993,
+        "sha256": "e7941bdb952c25334bea0dfcd85402a20ae293c45f82a9c924a517f0be2227da"
+      },
+      {
+        "path": "test/analytics-bounded-reports.test.ts",
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "gitBlob": "f5c08f3b804aed5bf92d3e723e294b5f094fea22",
+        "bytes": 79631,
+        "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+      },
+      {
+        "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "gitBlob": "9271aa037af9b588bcafe28dc1c13a6c5c29dbf2",
+        "bytes": 24611,
+        "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+      },
+      {
+        "path": "docs/qualification/analytics-carry-selection-source-20261109.json",
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "gitBlob": "15167bf0b39c4cf588372bd0e155aa878238e1a8",
+        "bytes": 26518,
+        "sha256": "8eb89a38f239d4cfb5f35d6838cb98b657c4d9d8a56f9af6c617049543ab2cbc"
+      },
+      {
+        "path": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json",
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "gitBlob": "a9483e9c4395cdfa5e1829b60c3e0b0054360d36",
+        "bytes": 59525,
+        "sha256": "9ff32db5af680b34027f2b57d6666eb340b462cb78b9c0597f48de4c78388582"
+      }
+    ],
+    "directParentRows": [
+      {
+        "path": "core/analytics.ts",
+        "current": {
+          "bytes": 83736,
+          "sha256": "51f41bbd865c367d0b8b7d81a32888b904faad5b6d7a3488c7bb4a9449b778fd"
+        },
+        "wholeParent": {
+          "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+          "gitBlob": "e856df53ec481ec8aa5ef77cb8943f4abeee3b9f",
+          "bytes": 82993,
+          "sha256": "e7941bdb952c25334bea0dfcd85402a20ae293c45f82a9c924a517f0be2227da"
+        },
+        "inverseHunks": [
+          {
+            "currentStart": 53110,
+            "currentEnd": 53219,
+            "currentRangeSha256": "8e39440ad4444d796330852687e7d5df252c9a78be76720929947b86f0f4b948",
+            "parentStart": 53110,
+            "parentEnd": 53301,
+            "parentText": "/** One dated native population for complete export and paged presentation. */\nfunction carryForwardPopulationTx(tx:Tx,scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]){\n"
+          },
+          {
+            "currentStart": 53282,
+            "currentEnd": 53914,
+            "currentRangeSha256": "5c62de418add69d54c3ace01ec31880e91e3f90d19488aabaac0ffc5a2361b49",
+            "parentStart": 53364,
+            "parentEnd": 53364,
+            "parentText": ""
+          },
+          {
+            "currentStart": 54515,
+            "currentEnd": 54612,
+            "currentRangeSha256": "e7e49ebeec396b70df0ad0364e745d9e703e64c873b152f9b2ceaac05911008a",
+            "parentStart": 53965,
+            "parentEnd": 54473,
+            "parentText": "      .where(\n        and(\n          scopeWhere(scopeIds),\n          selectedIds ? inArray(employment.id,selectedIds) : undefined,\n          p.companyId ? eq(employment.companyId, p.companyId) : undefined,\n          p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,\n          qWhere(p.filter),\n          lte(employment.hiredOn, yearEnd),\n          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),\n        ),\n      ).orderBy(employment.id);\n"
+          },
+          {
+            "currentStart": 57357,
+            "currentEnd": 58057,
+            "currentRangeSha256": "a8477c8ae357dee8c6acf1323e3c523865e567563a363fc1dd0b6bb892f7554c",
+            "parentStart": 57218,
+            "parentEnd": 57314,
+            "parentText": "    const population=carryForwardPopulationTx(tx,scope,input).as('analytics_carry_population');\n"
+          }
+        ]
+      },
+      {
+        "path": "test/analytics-bounded-reports.test.ts",
+        "current": {
+          "bytes": 81740,
+          "sha256": "a5e54c7cb74a20611c2ea6a814d1c8cf53725e7ab6ba32aa86ea5186ea075b00"
+        },
+        "wholeParent": {
+          "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+          "gitBlob": "f5c08f3b804aed5bf92d3e723e294b5f094fea22",
+          "bytes": 79631,
+          "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+        },
+        "inverseHunks": [
+          {
+            "currentStart": 79631,
+            "currentEnd": 81740,
+            "currentRangeSha256": "72d06946e844dd732d5f37a35a202d78e7e863349b923cc9a0a576d38ae59a54",
+            "parentStart": 79631,
+            "parentEnd": 79631,
+            "parentText": ""
+          }
+        ]
+      },
+      {
+        "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+        "current": {
+          "bytes": 26621,
+          "sha256": "680fa968362e3abc71cda9218169ea33803430bc79131f5190e97774bac33302"
+        },
+        "wholeParent": {
+          "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+          "gitBlob": "9271aa037af9b588bcafe28dc1c13a6c5c29dbf2",
+          "bytes": 24611,
+          "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+        },
+        "inverseHunks": [
+          {
+            "currentStart": 24611,
+            "currentEnd": 26621,
+            "currentRangeSha256": "cde3813f0a7640e777a903b48e7477931abe43599085e38050d83886f240e8d5",
+            "parentStart": 24611,
+            "parentEnd": 24611,
+            "parentText": ""
+          }
+        ]
+      }
+    ],
+    "actualConstraintSources": [
+      {
+        "path": "db/migrations/0000_luxuriant_anita_blake.sql",
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "gitBlob": "e5c3167f05a73029df549c8f05135edcf48fb9f6",
+        "bytes": 16085,
+        "sha256": "dbdefe63e22e7cfb3b95532b86bd1cf3a37c7c6b079ef9e57f0d68a7fa6b6fac"
+      },
+      {
+        "path": "db/migrations/0001_rls_grants_constraints.sql",
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "gitBlob": "57971441c1decc342c0a286ca2ca22a3c3b1bf29",
+        "bytes": 8922,
+        "sha256": "d095267b25cfb696b808b05ff33baf64b19ab2b948fb45e86ee45fa21748ef87"
+      },
+      {
+        "path": "db/migrations/0440_assignment_company.sql",
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "gitBlob": "8b09dd91d923387b4a5fafc5c4ca1e41b8ec1715",
+        "bytes": 3349,
+        "sha256": "be217e6dc45ff93534340a965411ee4384a74a41ec5c3f5d2740af0e8e968d86"
+      },
+      {
+        "path": "db/migrations/2403_personnel_bounded_overview.sql",
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "gitBlob": "9263fe96a9db7fd767d891e84629a283b894a6e9",
+        "bytes": 13044,
+        "sha256": "1eac5d0a075e4505f69ac75f19e99e19f24fd189c93f82fd35b1c49f97ba228f"
+      },
+      {
+        "path": "db/migrations/2701_personnel_typed_overview_filter_fields.sql",
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "gitBlob": "61083db8f97376aa067f1e1d00e973aeaee6591f",
+        "bytes": 8314,
+        "sha256": "87b1b0a0dd532eda1211dddcd5af2a8b14013a66615527cffa3c1be449d0daf8"
+      },
+      {
+        "path": "db/schema.ts",
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "gitBlob": "c80eb3180eebc7bf9fb9a30367e4b00746b22592",
+        "bytes": 820303,
+        "sha256": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112"
+      }
+    ],
+    "populationProof": {
+      "currentAssignment": "Same employment ID, valid_to IS NULL, superseded_at IS NULL.",
+      "assignmentCardinality": "Required valid_from and the existing immediate assignment_no_overlap exclusion prevent two non-superseded open ranges for the same employment.",
+      "departmentCardinality": "department.id is a primary key. Each left join yields one row per incoming identity, including a null-extended row when no right row is visible.",
+      "scope": "Same Employment, Person, Company, native access context, date, scope, company and name/email predicates; the WHERE owner is shared with the original joined population.",
+      "order": "Employment UUID order and the existing stable name tie break.",
+      "selection": "No-department identity projection only. Filtered identities, selected-row enrichment and complete export retain the original joins."
+    },
+    "currentCoreFunctions": [
+      {
+        "name": "carryForwardPopulationTx",
+        "parent": {
+          "name": "carryForwardPopulationTx",
+          "sha256": "14cf502795049488e12a9bb98effacd9d843329d6b8141aa5de267df695f3d51",
+          "startByte": 53189,
+          "endByte": 54474
+        },
+        "current": {
+          "name": "carryForwardPopulationTx",
+          "sha256": "873c9d4f8c82e4580a28b725240cb71d57edf7927facfddc10c7db952e3626a7",
+          "startByte": 53802,
+          "endByte": 54613
+        }
+      },
+      {
+        "name": "carryForwardReportPageTx",
+        "parent": {
+          "name": "carryForwardReportPageTx",
+          "sha256": "044e782244d1aaea56cb4c69d80d0bb729e50351d761ea14dd5e993f10c4b4fd",
+          "startByte": 56879,
+          "endByte": 58640
+        },
+        "current": {
+          "name": "carryForwardReportPageTx",
+          "sha256": "55eb08589ab1263796a3f293677ff7d7ba768325308cc9724c885876b1d9c5d4",
+          "startByte": 57018,
+          "endByte": 59383
+        }
+      }
+    ],
+    "addedPrivateHelpers": [
+      {
+        "name": "carryForwardPopulationWhere",
+        "sha256": "d5a379038df475d8cf8340b2556cf5a9ee7819107af834af59631e1e83350044",
+        "startByte": 53110,
+        "endByte": 53698
+      }
+    ],
+    "sourceCensus": {
+      "originalBoundedCasesWhole": 14,
+      "currentBoundedCases": 15,
+      "originalExpectExpressionsWhole": 158,
+      "allOriginalTestHelpersAndTaggedSqlWhole": true,
+      "allOriginalCoreTaggedSqlWhole": true,
+      "onlyTwoExistingCoreFunctionsChanged": true,
+      "oneAddedPrivateWhereHelper": true,
+      "newCase": {
+        "name": "keeps carry identity order and enrichment with absent, current and department-filtered assignments",
+        "line": 1023,
+        "sha256": "feac35e14a734a428cae9419b1fe64958791dbc543f27fcbe1dff03825e13b54",
+        "newExpectExpressions": 8
+      },
+      "sameAllOriginalTimingCancellationAndEvidenceBounds": true,
+      "strictExternalAstSha256": "9da590144744c2f394da9e6cee4a8edcde005a07e3aaf59a4099c69398c3c9aa"
+    },
+    "historicalNativeObservations": {
+      "directParent": {
+        "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+        "run": 42549809195,
+        "authenticationSha256": "16c3cd84237565bf4f4a50b54f95c9c7e7ee81f289fc6fbe045bb8dfe6932f30",
+        "estimateMemberSha256": "1ca2dcb4499e86f6e610623f251cf4e21d8e1bc3f923e17746014c6b314e63bc",
+        "assignmentIndexScanObserved": true,
+        "originalFirstFetchSettled": true
+      },
+      "scale": {
+        "source": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+        "run": 42526765409,
+        "memberSha256": "23989c7f76730766edb004beffa36d987fe9b4440aee386a3dbbb8c034d80fea",
+        "employees": 50000,
+        "standaloneCarryPageMs": 1043.1129510000173
+      },
+      "priorTimeoutCause": "UNKNOWN",
+      "adoptedOntoCurrentSource": false
+    },
+    "activeInverseScope": "Every existing active row reconstructs its same whole 817f, fca1, b73, 9e83 or 6aafd target. Earlier design and evidence sections retain their original authored scopes.",
+    "sourceOnly": true,
+    "hostedNativeStatus": "UNRUN",
+    "performanceQualified": false,
     "productionHeld": true
   }
 }

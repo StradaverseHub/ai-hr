@@ -1019,3 +1019,32 @@ it('propagates an actual native carry FETCH failure and settles its borrowed tra
  const full=await carryForwardReport(ctx,[b.companyId],{year:2026}),fresh=await carryForwardReportPage(ctx,[b.companyId],{year:2026,page:first});
  expect(fresh.state.total).toBe(4096);expect(fresh.rows).toEqual(full.slice(0,25));
 },120000);
+
+it('keeps carry identity order and enrichment with absent, current and department-filtered assignments',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b),scope=[b.companyId],name='Fictional tied carry identity';
+ const {ids:[historical,finance,operations]}=await seedRows(b,4,{name:i=>i===3?'Fictional excluded employee':name});
+ expect(await owner.db.update(assignment).set({validTo:'2024-01-01'}).where(eq(assignment.employmentId,historical))
+  .returning({employmentId:assignment.employmentId,validTo:assignment.validTo})).toEqual([{employmentId:historical,validTo:'2024-01-01'}]);
+ expect(await owner.db.update(assignment).set({departmentId:b.deptB}).where(eq(assignment.employmentId,operations))
+  .returning({employmentId:assignment.employmentId,departmentId:assignment.departmentId})).toEqual([{employmentId:operations,departmentId:b.deptB}]);
+
+ const departmentById=new Map<string,string|null>([[historical,null],[finance,'Finance'],[operations,'Operations']]);
+ for(const departmentId of [undefined,b.deptA]){
+  const input={year:2026,companyId:b.companyId,filter:{q:name,departmentId}};
+  const full=await carryForwardReport(ctx,scope,input);
+  const expectedIds=departmentId?[finance]:[historical,finance,operations].sort();
+  const probe=observeCarryCursor();
+  try{
+   const result=await carryForwardReportPage(ctx,scope,{...input,page:first});
+   expectCarryCursorPage(probe,first,result,expectedIds.length);
+   expect(probe.rows).toEqual(expectedIds.map(employmentId=>({employmentId,name})));
+   expect(result.rows).toEqual(full);
+   expect(result.rows.map(({employmentId,department})=>({employmentId,department})))
+    .toEqual(expectedIds.map(employmentId=>({employmentId,department:departmentById.get(employmentId)})));
+   const declarations=probe.queries.filter(query=>query.startsWith('declare analytics_carry_identities '));
+   expect(declarations).toHaveLength(1);
+   expect(declarations[0].includes('left join "assignment"')).toBe(Boolean(departmentId));
+   expect(declarations[0].includes('left join "department"')).toBe(Boolean(departmentId));
+  }finally{probe.restore();}
+ }
+});

@@ -7,8 +7,8 @@
     {
       "path": "core/analytics.ts",
       "current": {
-        "bytes": 82993,
-        "sha256": "e7941bdb952c25334bea0dfcd85402a20ae293c45f82a9c924a517f0be2227da"
+        "bytes": 83736,
+        "sha256": "51f41bbd865c367d0b8b7d81a32888b904faad5b6d7a3488c7bb4a9449b778fd"
       },
       "wholeParent": {
         "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
@@ -18,48 +18,72 @@
       },
       "inverseHunks": [
         {
-          "currentStart": 54834,
-          "currentEnd": 55007,
+          "currentStart": 53110,
+          "currentEnd": 53219,
+          "currentRangeSha256": "8e39440ad4444d796330852687e7d5df252c9a78be76720929947b86f0f4b948",
+          "parentStart": 53110,
+          "parentEnd": 53301,
+          "parentText": "/** One dated native population for complete export and paged presentation. */\nfunction carryForwardPopulationTx(tx:Tx,scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]){\n"
+        },
+        {
+          "currentStart": 53282,
+          "currentEnd": 53914,
+          "currentRangeSha256": "5c62de418add69d54c3ace01ec31880e91e3f90d19488aabaac0ffc5a2361b49",
+          "parentStart": 53364,
+          "parentEnd": 53364,
+          "parentText": ""
+        },
+        {
+          "currentStart": 54515,
+          "currentEnd": 54612,
+          "currentRangeSha256": "e7e49ebeec396b70df0ad0364e745d9e703e64c873b152f9b2ceaac05911008a",
+          "parentStart": 53965,
+          "parentEnd": 54473,
+          "parentText": "      .where(\n        and(\n          scopeWhere(scopeIds),\n          selectedIds ? inArray(employment.id,selectedIds) : undefined,\n          p.companyId ? eq(employment.companyId, p.companyId) : undefined,\n          p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,\n          qWhere(p.filter),\n          lte(employment.hiredOn, yearEnd),\n          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),\n        ),\n      ).orderBy(employment.id);\n"
+        },
+        {
+          "currentStart": 54973,
+          "currentEnd": 55146,
           "currentRangeSha256": "52970c73d822049939877049084467fa57f6fc04f00a03d887465cdce3a99483",
           "parentStart": 54834,
           "parentEnd": 55004,
           "parentText": " * Identity sorting is intentionally O(population) minimal names/IDs, not a claim\n * of fully bounded native collation. Expensive ledger/template reads are page-only. */\n"
         },
         {
-          "currentStart": 55429,
-          "currentEnd": 56876,
-          "currentRangeSha256": "cc7982efc80ca184da75144506c327cd51ca88fb54f1fc2ad5678166ebab1c97",
-          "parentStart": 55426,
-          "parentEnd": 55426,
+          "currentStart": 55571,
+          "currentEnd": 57018,
+          "currentRangeSha256": "a2d114323c6fca5d51bc4f4a2d5e6dcd4c745411e95b2af9e482ce5864d13c1b",
+          "parentStart": 55429,
+          "parentEnd": 55429,
           "parentText": ""
         },
         {
-          "currentStart": 57314,
-          "currentEnd": 57419,
-          "currentRangeSha256": "8fc53fbab1405b51d52f5d2cc1f98a5712a80becc4361a27d5edeeb55424817a",
-          "parentStart": 55864,
+          "currentStart": 57357,
+          "currentEnd": 58162,
+          "currentRangeSha256": "3cb83057a66e97cf0959bdbc9b7bff560728a25c78ee4054a9e7abd75d22b18a",
+          "parentStart": 55768,
           "parentEnd": 55925,
-          "parentText": "    const identities:{employmentId:string;name:string}[]=[];\n"
+          "parentText": "    const population=carryForwardPopulationTx(tx,scope,input).as('analytics_carry_population');\n    const identities:{employmentId:string;name:string}[]=[];\n"
         },
         {
-          "currentStart": 57662,
-          "currentEnd": 58056,
+          "currentStart": 58405,
+          "currentEnd": 58799,
           "currentRangeSha256": "175616b3a4b7bdc19002c423da3f3cee8a508daa087c6f80ce9ace3ba7fc3c5a",
           "parentStart": 56168,
           "parentEnd": 56361,
           "parentText": "      const batch=await tx.execute<{employmentId:string;name:string}>(sql`fetch forward 512 from analytics_carry_identities`);\n      identities.push(...batch);\n      if(batch.length<512)break;\n"
         },
         {
-          "currentStart": 58366,
-          "currentEnd": 58495,
+          "currentStart": 59109,
+          "currentEnd": 59238,
           "currentRangeSha256": "e28809f5844e9d6a8b5fa5c2fc8e1bf9e70fb4dc3d974192458093421c0f0e00",
           "parentStart": 56671,
           "parentEnd": 56829,
           "parentText": "    identities.sort((a,b)=>a.name.localeCompare(b.name));\n    const selected=identities.slice(page.offset,page.offset+page.limit).map(row=>row.employmentId);\n"
         },
         {
-          "currentStart": 58580,
-          "currentEnd": 58639,
+          "currentStart": 59323,
+          "currentEnd": 59382,
           "currentRangeSha256": "32c91403e3a3c50766c4ff55f8bcecba9aaf580547870b5bb630ae29f19e7761",
           "parentStart": 56914,
           "parentEnd": 56985,
@@ -70,8 +94,8 @@
     {
       "path": "test/analytics-bounded-reports.test.ts",
       "current": {
-        "bytes": 79631,
-        "sha256": "d67bb62d013584a491d3bc0165dbc2dbccab1e6fbd7edf16c63ab24cc75e1689"
+        "bytes": 81740,
+        "sha256": "a5e54c7cb74a20611c2ea6a814d1c8cf53725e7ab6ba32aa86ea5186ea075b00"
       },
       "wholeParent": {
         "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
@@ -130,8 +154,8 @@
         },
         {
           "currentStart": 27549,
-          "currentEnd": 79631,
-          "currentRangeSha256": "cdca27f9a8e573b605d549f96524709310b3e937c7dcaf1ee14af84807251384",
+          "currentEnd": 81740,
+          "currentRangeSha256": "1297c8bd0107e418ee9508ebb47e149ce558e59f4d3d54917facef14c5a7144c",
           "parentStart": 27037,
           "parentEnd": 27037,
           "parentText": ""
@@ -273,8 +297,8 @@
     {
       "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
       "current": {
-        "bytes": 24611,
-        "sha256": "a4716f258b7da59f0f09ffc35137ab9020a01382bb612836c77e563a45d18dd6"
+        "bytes": 26621,
+        "sha256": "680fa968362e3abc71cda9218169ea33803430bc79131f5190e97774bac33302"
       },
       "wholeParent": {
         "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
@@ -285,8 +309,8 @@
       "inverseHunks": [
         {
           "currentStart": 13334,
-          "currentEnd": 24611,
-          "currentRangeSha256": "cd4f40628bef4a54cf336ed5d5cfdb2c60ad90f1294f318457d19e906e4f851e",
+          "currentEnd": 26621,
+          "currentRangeSha256": "7fa75769f7445478cd0c29668a7688fdc839ae55b0835df3d1968fde8e15b5c3",
           "parentStart": 13334,
           "parentEnd": 13334,
           "parentText": ""
@@ -510,10 +534,6 @@
       "sha256": "ec35262bd124bf119941cdc2490c2b7445a05b4646c291add497e8be006f9461"
     },
     {
-      "name": "carryForwardPopulationTx",
-      "sha256": "14cf502795049488e12a9bb98effacd9d843329d6b8141aa5de267df695f3d51"
-    },
-    {
       "name": "carryForwardReport",
       "sha256": "9a70d171a374d4cdd73cb310c4e5f77c2025189f633757071750e1bb71e9adc3"
     },
@@ -580,23 +600,23 @@
     },
     "current": {
       "name": "carryForwardReportPageTx",
-      "sha256": "044e782244d1aaea56cb4c69d80d0bb729e50351d761ea14dd5e993f10c4b4fd",
-      "startByte": 56879,
-      "endByte": 58640
+      "sha256": "55eb08589ab1263796a3f293677ff7d7ba768325308cc9724c885876b1d9c5d4",
+      "startByte": 57018,
+      "endByte": 59383
     },
     "wholeParentFileViaInverse": 0
   },
   "newPrivateHelpers": [
     "carryPageIdentityOrder",
     "carryPageRetentionLimit",
-    "retainCarryPageIdentity"
+    "retainCarryPageIdentity",
+    "carryForwardPopulationWhere"
   ],
   "newPrivateTypes": [
     "CarryPageIdentity",
     "RankedCarryPageIdentity"
   ],
   "sourceControls": {
-    "all53OtherCoreFunctionsAndOtherTopLevelStatementsWhole": true,
     "all20OriginalBoundedAndCompositionCallbacksWhole": true,
     "nativeWholeRestoresViaOnlyLeasedClassifierCensusAndCarryAssertions": true,
     "allSevenAggregateAndTwoEnvelopeNativePlansWhole": true,
@@ -605,7 +625,9 @@
     "probeOnlyAddsFixed4096Alongside512": true,
     "all10FinancialCallbacksWhole": true,
     "allOriginalLimitsAndTimeoutsWhole": true,
-    "productionRuntimeImportClosureUnchanged": true
+    "productionRuntimeImportClosureUnchanged": true,
+    "all52OtherBaselineCoreFunctionsWhole": true,
+    "prior14BoundedCaseDeclarationsWhole": true
   },
   "caseCensus": {
     "parent": {
@@ -616,13 +638,13 @@
       "financial": 10
     },
     "current": {
-      "bounded": 14,
+      "bounded": 15,
       "composition": 10,
       "native": 1,
       "jit": 3,
       "financial": 10
     },
-    "ordinaryFourSelectors": 35,
+    "ordinaryFourSelectors": 36,
     "separateSoleJit": 3,
     "executed": false
   },
@@ -663,7 +685,7 @@
     "sourceOnly": true,
     "parentSource": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
     "recordPath": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json",
-    "recordSha256": "9ff32db5af680b34027f2b57d6666eb340b462cb78b9c0597f48de4c78388582",
+    "recordSha256": "f41e2fdad4c793994c7fe874d859ca76ab872e8330865064355be385b3360746",
     "historicalFca1CoursesNotRelabeled": true,
     "currentRuntimeQualification": false
   },
@@ -706,5 +728,20 @@
     "independentSourceReviewSha256": "4926a07d21923b4ff5fda16bbb63a0da727509baf4e4e40da3df0cfcd5e37ae7",
     "currentNativeEstimateStatus": "UNRUN",
     "currentRuntimeQualified": false
+  },
+  "carryIdentityJoinElision": {
+    "sourceOnly": true,
+    "directParentSource": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+    "sourceRef": "codex/analytics-carry-identity-join-elision-20261109",
+    "wholeParentIndex": {
+      "path": "docs/qualification/analytics-carry-selection-source-20261109.json",
+      "source": "a963db677ac061e2fee690cd0ce3f9173bdb5906",
+      "gitBlob": "15167bf0b39c4cf588372bd0e155aa878238e1a8",
+      "bytes": 26518,
+      "sha256": "8eb89a38f239d4cfb5f35d6838cb98b657c4d9d8a56f9af6c617049543ab2cbc"
+    },
+    "recordSection": "carryIdentityJoinElision",
+    "currentRuntimeQualified": false,
+    "originalEvidenceRelabeled": false
   }
 }

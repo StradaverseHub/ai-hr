@@ -1008,9 +1008,21 @@ const isAnniversaryEarned = (leaveCycle: string | null, method: string | undefin
   leaveCycle === 'anniversary' && isEarnedMethod(method);
 
 type CarryForwardInput = {year:number;filter?:ReportFilter;companyId?:string};
-/** One dated native population for complete export and paged presentation. */
-function carryForwardPopulationTx(tx:Tx,scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]){
+function carryForwardPopulationWhere(scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]){
   const yearStart=`${p.year}-01-01`,yearEnd=`${p.year}-12-31`;
+  return and(
+    scopeWhere(scopeIds),
+    selectedIds ? inArray(employment.id,selectedIds) : undefined,
+    p.companyId ? eq(employment.companyId, p.companyId) : undefined,
+    p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,
+    qWhere(p.filter),
+    lte(employment.hiredOn, yearEnd),
+    or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+  );
+}
+
+/** The joined population for exports, selected-row enrichment and department-filtered identities. */
+function carryForwardPopulationTx(tx:Tx,scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]){
   return tx
       .select({
         employmentId: employment.id,
@@ -1027,17 +1039,8 @@ function carryForwardPopulationTx(tx:Tx,scopeIds:string[]|undefined,p:CarryForwa
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(assignment, currentAssignment)
       .leftJoin(department, eq(department.id, assignment.departmentId))
-      .where(
-        and(
-          scopeWhere(scopeIds),
-          selectedIds ? inArray(employment.id,selectedIds) : undefined,
-          p.companyId ? eq(employment.companyId, p.companyId) : undefined,
-          p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,
-          qWhere(p.filter),
-          lte(employment.hiredOn, yearEnd),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
-        ),
-      ).orderBy(employment.id);
+      .where(carryForwardPopulationWhere(scopeIds,p,selectedIds))
+      .orderBy(employment.id);
 }
 
 /** Complete historical report: page limits never apply to exports. */
@@ -1089,7 +1092,17 @@ function retainCarryPageIdentity(heap:RankedCarryPageIdentity[],candidate:Ranked
 async function carryForwardReportPageTx(tx:Tx,scope:string[]|undefined,input:CarryForwardInput,page:PageQuery):Promise<AnalyticsReportPage<CarryForwardReportRow>> {
     const [annual]=await tx.select({id:leaveType.id}).from(leaveType).where(eq(leaveType.code,'ANNUAL')).limit(1);
     if(!annual)return {rows:[],state:pageState(page,0,0)};
-    const population=carryForwardPopulationTx(tx,scope,input).as('analytics_carry_population');
+    // assignment_no_overlap allows at most one open, non-superseded assignment per employment.
+    // Department's primary key makes the second left join cardinality-preserving as well.
+    const populationAlias='analytics_carry_population';
+    const population=input.filter?.departmentId
+      ? carryForwardPopulationTx(tx,scope,input).as(populationAlias)
+      : tx.select({employmentId:employment.id,name:person.fullName})
+          .from(employment)
+          .innerJoin(person,eq(person.id,employment.personId))
+          .innerJoin(company,eq(company.id,employment.companyId))
+          .where(carryForwardPopulationWhere(scope,input))
+          .orderBy(employment.id).as(populationAlias);
     const identities:RankedCarryPageIdentity[]=[],retain=carryPageRetentionLimit(page);
     let total=0;
     await tx.execute(sql`declare analytics_carry_identities no scroll cursor for
