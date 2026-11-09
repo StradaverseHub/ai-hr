@@ -112,7 +112,7 @@ jobs:
           import json, os, re
 
           repository = 'StradaverseHub/ai-hr'
-          branch = 'codex/architecture-combined-browser-development-20261109'
+          branch = 'codex/architecture-five-item-browser-convergence-20261109'
           ref = 'refs/heads/' + branch
           workflow = repository + '/.github/workflows/alpha-focused-checks.yml@' + ref
           sha = os.environ.get('GITHUB_WORKFLOW_SHA', '')
@@ -244,6 +244,7 @@ jobs:
             test "$(git -C "$checkout" remote get-url origin)" = https://github.com/StradaverseHub/ai-hr
           done
           git merge-base --is-ancestor 9e9db2e5453663a627217513299b0e8307141a74 "$EXPECTED_SOURCE"
+          git merge-base --is-ancestor b698f5d35b0cca12e2c1268f3bea08d0aa1d070e "$EXPECTED_SOURCE"
           for member in .github/workflows/alpha-focused-checks.yml .github/actions/setup-alpha/action.yml \
             .github/ci/postgres.sh package.json pnpm-lock.yaml scripts/performance/system-runner.mjs \
             scripts/performance/system-load.mjs scripts/performance/system-fixture.mjs; do
