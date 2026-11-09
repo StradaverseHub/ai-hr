@@ -79,7 +79,8 @@ describe('approved attendance clock-data corrections', () => {
     await owner.db.insert(schema.attendanceCorrection).values(later);
     expect(await oldPending()).toBe(false);
     expect(await pending()).toBe(false);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await expect(decideAttendanceCorrection(a, { correctionId, decision: 'approved' })).rejects.toMatchObject({ code: 'stale' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     expect(await pending()).toBe(false);
   });
   it('edits retain original evidence and all effective readers agree with the corrected day', async () => {
@@ -124,7 +125,7 @@ describe('approved attendance clock-data corrections', () => {
     try {
       const completed = await withTenant(a, async tx => {
         await lockAccessConfigurationReadTx(tx, a.tenantId);
-        approval = decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+        approval = decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
           return await Promise.race([approval, new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 3000); })]);
@@ -149,7 +150,7 @@ describe('approved attendance clock-data corrections', () => {
     });
     const firstRequest = await request(employmentId);
     const secondRequest = await request(second.employmentId);
-    const approve = (correctionId: string) => decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    const approve = (correctionId: string) => decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     const timings = globalThis as typeof globalThis & {
       __aihrPerfBeginAttendanceApproval?: () => { acquired: () => void; finished: () => void };
     };
@@ -192,7 +193,7 @@ describe('approved attendance clock-data corrections', () => {
     const { correctionId } = await requestAttendanceCorrection(a, {
       employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'One verified correction',
     });
-    const decide = () => decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    const decide = () => decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     const outcomes = await Promise.allSettled([decide(), decide()]);
     expect(outcomes.filter(outcome => outcome.status === 'fulfilled')).toHaveLength(1);
     expect(outcomes.filter(outcome => outcome.status === 'rejected')).toHaveLength(1);
@@ -234,7 +235,7 @@ describe('approved attendance clock-data corrections', () => {
           };
         };
         command = approval
-          ? decideAttendanceCorrection(actor, { correctionId: approval.correctionId, decision: 'approved' })
+          ? decideAttendanceCorrection(actor, { expectedStageIndex: 0, correctionId: approval.correctionId, decision: 'approved' })
           : requestAttendanceCorrection(actor, input);
         void command.catch(() => {});
         // The blocking fallback appears only after the two distinct try transactions ended.
@@ -269,7 +270,7 @@ describe('approved attendance clock-data corrections', () => {
     ));
     expect(events).toHaveLength(1);
   }, 20000);
-  it('reads the original clock and workflow setting once per ordinary submission', async () => {
+  it('reads the original clock and active workflow template once per ordinary submission', async () => {
     const { a, employmentId } = await fixture();
     const statements: string[] = [];
     const nativeBegin = client.begin;
@@ -293,7 +294,8 @@ describe('approved attendance clock-data corrections', () => {
       begin.mockRestore();
     }
     expect(statements.filter(query => query.includes('xmin::text') && query.includes('from "attendance"'))).toHaveLength(1);
-    expect(statements.filter(query => query.includes('from "attendance_workflow_setting"'))).toHaveLength(1);
+    expect(statements.filter(query => query.includes('from "attendance_workflow_template"'))).toHaveLength(1);
+    expect(statements.filter(query => query.includes('from "attendance_workflow_setting"'))).toHaveLength(0);
   });
   it('rejects stale approval atomically when new clocking arrived after the request', async () => {
     const { a, employmentId } = await fixture();
