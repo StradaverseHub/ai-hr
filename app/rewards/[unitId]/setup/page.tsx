@@ -4,6 +4,7 @@ import { SourceRefresh } from '../source-refresh';
 import { PayWindowExcluded } from '../pay-window';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import Link from 'next/link';
+import { RewardUnitViews } from '../review-views';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
@@ -30,7 +31,7 @@ export default async function RewardUnitSetup({params,searchParams}:{params:Prom
  const review=await getRewardUnit(s,unitId),rt=await getTranslations('rewards'),onehr=await getTranslations('onehr');
  return <div className="w-full space-y-5">
   <PageHeader title={t('title')} description={`${review.companyName} · ${review.name} · ${t('description')}`}/>
-  <nav aria-label={t('tabs')} className="flex gap-4 border-b border-border pb-3 text-sm"><Link href={`/rewards/${unitId}`} className="text-muted-foreground hover:underline">{t('review')}</Link><Link href={`/rewards/${unitId}/setup`} aria-current="page" className="font-semibold text-primary">{t('setup')}</Link></nav>
+  <RewardUnitViews unitId={unitId} selected="setup" setupVisible/>
   <ErrorBanner message={error}/>
   {!access.required&&<p role="note" className="text-sm text-muted-foreground">{t('legacy')}</p>}
   {!canEdit&&<p role="note" className="text-sm text-muted-foreground">{t('readOnly')}</p>}

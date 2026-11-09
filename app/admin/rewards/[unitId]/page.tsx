@@ -36,7 +36,6 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
   const userName = (id: string) => choices.users.find(u => u.id === id)?.name ?? t('assignedUser');
   const fields = <><input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={unit.revision} /></>;
   return <div className="w-full space-y-6">
-    {choices.companies.length > 0 && <Link href="/admin/rewards" className="text-sm text-primary hover:underline">← {t('adminTitle')}</Link>}
     <PageHeader title={`${t('configuration')} · ${v.cycle?.name ?? t('title')} · ${v.name}`} description={`${t(`kinds.${unit.kind}`)} · ${unit.kind === 'annual' && unit.status === 'withdrawn' ? tc('cancelled') : t(`stages.${unit.status}`)}`} />
     <ErrorBanner message={error} />
     {readOnly&&<p className="rounded-md border p-3 text-sm">{td('viewHelp')}</p>}

@@ -2,13 +2,14 @@ import React from 'react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
+import type { AbstractIntlMessages } from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 import {LeaveCreditRequestTable,type LeaveCreditDayFacts,type LeaveCreditHrMode} from '../components/leave/leave-credit-request-table';
 import type {LeaveCreditDayFactsResult} from '../lib/leave-credit-day-facts-result';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const today=todayInKualaLumpur(),facts:LeaveCreditDayFacts={kind:'rest_day',shiftStart:null,shiftEnd:null,actualClockIn:'09:00',actualClockOut:'19:01',measuredExtendedMinutes:0,approvedOtPlan:null};
 const hr:LeaveCreditHrMode={employmentId:'picked-employee',help:'Fixture',submitLabel:'Grant',consentLabel:'Consent',pickEmployeeFirst:'Choose',alreadyCredited:'Already',overtimeNote:()=>'',blocked:false};
-function mount(action:(date:string)=>Promise<LeaveCreditDayFactsResult<LeaveCreditDayFacts>>,hrMode?:LeaveCreditHrMode,locale='en',messages=en){
+function mount(action:(date:string)=>Promise<LeaveCreditDayFactsResult<LeaveCreditDayFacts>>,hrMode?:LeaveCreditHrMode,locale='en',messages:AbstractIntlMessages=en){
  return render(<NextIntlClientProvider locale={locale} messages={messages}><LeaveCreditRequestTable replacementType={{id:'replacement',name:'Replacement'}} submitAction={async()=>{}} today={today} dayFactsAction={action} claimReviewAction={async()=>({basis:'legacy'})} tiers={{extendedHalfDayMinutes:240,extendedFullDayMinutes:480,extendedBreakMinutes:0,extendedGraceMinutes:0}} ordinaryDayAllowed={true} hr={hrMode}/></NextIntlClientProvider>);
 }
 afterEach(cleanup);

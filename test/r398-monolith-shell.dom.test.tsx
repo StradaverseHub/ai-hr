@@ -44,6 +44,7 @@ import { IntentBar } from '../components/intent-bar';
 import { CommandBar } from '../components/command-bar';
 import { NotificationCenter } from '../components/notification-center';
 import { ShellRoutePath, ShellStatusLine } from '../components/shell-top-line';
+import { NavIndexProvider, usePublishNavIndex, type NavIndexEntry } from '../components/nav-index-context';
 
 const setTheme = (theme: 'monolith' | 'classic' | 'atelier' | null) => {
   if (theme === null) document.documentElement.removeAttribute('data-ui-theme');
@@ -242,6 +243,23 @@ describe('the intent bar is the command bar made visible', () => {
 });
 
 describe('the top line and the status line', () => {
+  it.each(['classic', 'monolith', 'atelier'] as const)('shows the Rewards breadcrumb in %s from the admitted rail row', theme => {
+    pathname = '/rewards/analytics';
+    setTheme(theme);
+    const active: NavIndexEntry = {
+      href: pathname, label: messages.nav.rewardsAnalytics, section: messages.nav.workspaceStrata,
+      parent: messages.nav.rewards, parentHref: '/rewards',
+    };
+    function PublishRewardsRoute() {
+      usePublishNavIndex([active], active);
+      return <ShellRoutePath />;
+    }
+    wrap(<NavIndexProvider><PublishRewardsRoute /></NavIndexProvider>);
+    const crumb = screen.getByRole('navigation', { name: messages.topbar.breadcrumb });
+    expect(within(crumb).getByRole('link', { name: messages.nav.rewards })).toHaveAttribute('href', '/rewards');
+    expect(crumb.querySelector('[aria-current="page"]')).toHaveTextContent(messages.nav.rewardsAnalytics);
+  });
+
   it('Monolith shows the route path and the scope; Classic shows neither', () => {
     pathname = '/leave';
     const companies = [

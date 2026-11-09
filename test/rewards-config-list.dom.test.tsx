@@ -10,27 +10,37 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 const ports = vi.hoisted(() => ({ list: vi.fn(), choices: vi.fn(), shared: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en-GB', getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as 'rewards' }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
-vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: { tenantId: 'tenant', userId: 'actor' }, scopeIds: ['company'] }) }));
+vi.mock('../lib/scope', () => ({ scopedSession: async () => ({ s: { tenantId: 'tenant', userId: 'actor' }, scopeIds: ['company'] }), getScopeIds: async (ids: string[]) => ids }));
 vi.mock('../lib/session', () => ({ getSession: async () => ({ tenantId: 'tenant', userId: 'actor' }) }));
-vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupSetupCompanies: async () => [] }));
-vi.mock('../lib/authz', () => ({ requireModule: vi.fn() }));
-vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardCoverageForUnits: async () => [], rewardPolicyMemberships:vi.fn(async()=>[{companyId:'company',businessUnitId:'bu-1'},{companyId:'company',businessUnitId:'bu-2'}]),rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
+vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupPlans: async () => [], rewardReviewCompanyGroups: async () => ({}) }));
+vi.mock('../lib/authz', () => ({ requireModule: vi.fn(), isAdmin: () => false }));
+vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: async () => [{ id: 'company', wholeGroup: true }, { id: 'company-2', wholeGroup: true }], rewardNavigation: async () => ['/rewards'] }));
+vi.mock('../packs/rewards/service', async () => ({ listRewardReviewStatus: async () => ({ rows: await ports.list(), year, emptyReason: null }), rewardCoverageForUnits: async () => [], rewardPolicyMemberships:vi.fn(async()=>[{companyId:'company',businessUnitId:'bu-1'},{companyId:'company',businessUnitId:'bu-2'}]),rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
-import AdminPage from '../app/admin/rewards/page';
+vi.mock('../app/admin/rewards/plans/actions', () => ({ planAction: vi.fn() }));
+import ReviewsPage from '../app/rewards/reviews/page';
 import { RewardReviewCreateForm } from '../app/admin/rewards/create-review-form';
+import { RewardPlanCreationPreview } from '../app/admin/rewards/plans/creation-preview';
+import type { PlanCreationPreview } from '../packs/rewards/plan-configuration';
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 /** Resolve nested async server components (the row actions) before rendering. */
 async function resolve(node: ReactNode): Promise<ReactNode> {
   if (Array.isArray(node)) return Promise.all(node.map(resolve));
-  if (!isValidElement<{ children?: ReactNode }>(node)) return node;
+  if (!isValidElement<{ children?: ReactNode; maintenanceActions?: ReadonlyMap<string, ReactNode> }>(node)) return node;
   if (typeof node.type === 'function' && node.type.constructor.name === 'AsyncFunction') return resolve(await (node.type as any)(node.props));
-  return node.props.children === undefined ? node : cloneElement(node, { children: await resolve(node.props.children) });
+  const actions = node.props.maintenanceActions;
+  return cloneElement(node, {
+    children: await resolve(node.props.children),
+    ...(actions ? { maintenanceActions: new Map(await Promise.all(
+      [...actions].map(async ([key, value]) => [key, await resolve(value)] as const)
+    )) } : {}),
+  });
 }
-const page = async (searchParams: Record<string, string>) => resolve(await AdminPage({ searchParams: Promise.resolve(searchParams) }));
-const wrap = (node: ReactNode) => <NextIntlClientProvider locale="en" messages={en}>{node}</NextIntlClientProvider>;
-const base = { kind: 'annual', year: 2026, cycleId: 'cycle-1', cycle: '2026 Annual Compensation Review', companyId: 'company', company: 'Sample Trading Sdn Bhd', returnedTo: null, revision: 2, canConfigure: true, deletionReason: 'recommendations', bgOrigin: false, effectiveFrom: '2027-01-01', due: null, daysUntilDue: null, policyOrigin: null, canCancel: true, cancellation: null };
+const page = async (searchParams: Record<string, string>) => resolve(await ReviewsPage({ searchParams: Promise.resolve(searchParams) }));
+const wrap = (node: ReactNode) => <NextIntlClientProvider locale="en-GB" messages={en}>{node}</NextIntlClientProvider>;
+const base = { kind: 'annual', year: 2026, cycleId: 'cycle-1', cycle: '2026 Annual Compensation Review', companyId: 'company', company: 'Sample Trading Sdn Bhd', returnedTo: null, revision: 2, canConfigure: true, deletionReason: 'recommendations', bgOrigin: false, effectiveFrom: '2027-01-01', due: null, daysUntilDue: null, policyOrigin: null, canCancel: true, cancellation: null, roles: ['gr'], waiting: false, salary: null, bonus: null, blocking: 0, exceptions: 0, laterSeats: [] };
 const rows = [
   { ...base, id: 'r1', businessUnitId: 'bu-1', unit: 'Northern Sales', status: 'draft', people: 42, verified: 30, seat: 'bu', holders: ['Abel Lim'], due: '2026-11-15', daysUntilDue: 18 },
   { ...base, id: 'r2', businessUnitId: 'bu-2', unit: 'Precast', company: 'Sample Industries Sdn Bhd', companyId: 'company-2', status: 'bg', people: 18, verified: 18, seat: 'bg', holders: [] },
@@ -46,17 +56,14 @@ describe('Rewards configuration list (7a8102a7)', () => {
   it('shows the cycle once with its subline, people, the seat holders, due date and data check', async () => {
     render(wrap(await page({})));
     const [first, second] = screen.getAllByRole('row').slice(1);
-    expect(within(first).getAllByText('2026 Annual Compensation Review')).toHaveLength(1);
-    expect(within(first).queryByText(/Annual review/)).toBeNull();
-    expect(within(first).getByText('Reward year 2026 · effective 01/01/2027')).toBeTruthy();
+    expect(within(first).getByText(/2026 Annual Compensation Review/)).toBeTruthy();
     expect(within(first).getByText('42')).toBeTruthy();
-    expect(within(first).getByText('With BU CEO: Abel Lim')).toBeTruthy();
-    expect(within(first).getByText('15/11/2026')).toBeTruthy();
+    expect(within(first).getByText('Abel Lim')).toBeTruthy();
+    expect(within(first).getByText(/15 Nov 2026/)).toBeTruthy();
     expect(within(first).getByText('in 18 days')).toBeTruthy();
     expect(within(first).getByText('30 of 42 verified')).toBeTruthy();
-    expect(within(second).getByText('With BG CEO / authorised proxy: nobody holds this seat')).toBeTruthy();
     expect(within(second).getByText('All verified')).toBeTruthy();
-    for (const name of ['Review cycle', 'Company / Business unit', 'People', 'Approval stage / with', 'Stage due', 'Data check']) expect(screen.getByRole('columnheader', { name })).toBeTruthy();
+    for (const name of ['People', 'Stage due', 'Data check']) expect(screen.getByRole('columnheader', { name })).toBeTruthy();
   });
   it('filters the list by company, business unit, cycle and stage through the URL', async () => {
     render(wrap(await page({ stage: 'bg' })));
@@ -65,10 +72,35 @@ describe('Rewards configuration list (7a8102a7)', () => {
     expect(within(screen.getAllByRole('row')[1]).getByText('Precast')).toBeTruthy();
     cleanup();
     render(wrap(await page({ company: 'company', unit: 'bu-2' })));
-    expect(screen.getByText('No reviews match these filters.')).toBeTruthy();
-    const filters = screen.getByRole('form', { name: 'Filter reviews' });
-    for (const name of ['Review cycle', 'Company', 'Business unit', 'Approval stage']) expect(within(filters).getByRole('combobox', { name })).toBeTruthy();
-    expect(within(filters).getByRole<HTMLSelectElement>('combobox', { name: 'Business unit' }).value).toBe('bu-2');
+    expect(screen.getByText(en.rewards.reviewList.noMatches)).toBeTruthy();
+    const filters = screen.getByRole('form', { name: en.rewards.reviewList.filters });
+    for (const name of [en.rewards.cycle, en.rewards.company, en.rewards.unit, en.rewards.stage]) expect(within(filters).getByRole('combobox', { name })).toBeTruthy();
+    expect(within(filters).getByRole<HTMLSelectElement>('combobox', { name: en.rewards.unit }).value).toBe('bu-2');
+  });
+});
+
+describe('Approved plan review preview', () => {
+  it('shows a ready company, a skipped company and the stored outcome, then disables creation for the approver', async () => {
+    const input: PlanCreationPreview[] = [
+      { companyId: 'company', businessUnitId: 'bu-1', salaryVersionId: 'salary', bonusVersionId: 'bonus',
+        branchAcknowledged: false, patVersionId: 'pat', status: 'ready', reason: 'ready', existingUnitId: null },
+      { companyId: 'company-2', businessUnitId: 'bu-2', salaryVersionId: 'salary', bonusVersionId: 'bonus',
+        branchAcknowledged: false, patVersionId: null, status: 'skip', reason: 'pat-not-confirmed', existingUnitId: null },
+    ];
+    const props = { names: new Map([['company', 'Fictional Engineering'], ['company-2', 'Fictional Retail']]),
+      units: new Map([['bu-1', 'Engineering'], ['bu-2', 'Retail']]), createdCount: 2 };
+    const preview = { versionId: 'plan', rows: input, digest: 'fresh', mayCreate: true };
+    render(wrap(await resolve(await RewardPlanCreationPreview({ ...props, preview }))));
+    const ready = screen.getByRole('row', { name: /Fictional Engineering/ });
+    expect(within(ready).getByText(en.rewardSetup.creationReady)).toBeTruthy();
+    expect(within(screen.getByRole('row', { name: /Fictional Retail/ })).getByText(en.rewardSetup['pat-not-confirmed'])).toBeTruthy();
+    expect(screen.getByText('2 reviews created')).toBeTruthy();
+    expect(screen.getByRole('link', { name: en.rewardSetup.openCreatedReviews })).toHaveAttribute('href', '/rewards/reviews?plan=plan');
+    expect(screen.getByRole('button', { name: 'Create 1 unit review' })).toBeEnabled();
+    cleanup();
+    render(wrap(await resolve(await RewardPlanCreationPreview({ ...props, preview: { ...preview, mayCreate: false } }))));
+    expect(screen.getByRole('button', { name: 'Create 1 unit review' })).toBeDisabled();
+    expect(screen.getByText(en.rewardSetup.independentCreateHelp)).toBeTruthy();
   });
 });
 
@@ -101,7 +133,7 @@ describe('Row actions by stage (62e743ed)', () => {
     ports.list.mockResolvedValue([{ ...rows[0], ...row }]);
     render(wrap(await page({})));
     const cell = within(screen.getAllByRole('row')[1]).getAllByRole('cell').at(-1)!;
-    return [...cell.querySelectorAll('a,button')].map(e => e.textContent);
+    return [...cell.querySelectorAll('a,button')].map(e => e.textContent).filter(label => label !== en.rewards.openReview);
   };
   it.each([
     ['unused draft', { status: 'draft', deletionReason: null, canConfigure: true }, ['View', 'Edit', 'Delete']],

@@ -1,11 +1,12 @@
 import {afterAll,beforeAll,beforeEach,describe,it,expect} from 'vitest';
+import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
-import {seedPayComponentCatalog} from '../core/pay-components';
+import {createPayComponent,seedPayComponentCatalog} from '../core/pay-components';
 import {checkIn,checkOut,setAttendancePolicy,saveAttendanceFormula,testAttendanceFormula,activateAttendanceFormula,changeAttendanceFormulaStatus,getAttendanceFormula,attendanceFormulaSetup,listAttendanceFormulas,searchAttendanceFormulaEmployees,readAttendanceFormulaTest} from '../packs/attendance/service';
-import {attendanceFormula,attendanceFormulaRevision,payComponent} from '../db/schema';
+import {attendanceFormula,attendanceFormulaEvent,attendanceFormulaRevision,payComponent} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {AttendanceFormulaConfiguration} from '../lib/attendance-formula-model';
 let base:Base;
@@ -36,4 +37,111 @@ it('distinguishes the current saved revision from a still-active prior version',
  const f=await saved(),proof=await testAttendanceFormula(f.ctx,{...f});await activateAttendanceFormula(f.ctx,{...f,testId:proof.id});
  await saveAttendanceFormula(f.ctx,{id:f.id,expectedRevisionId:f.revisionId,configuration:{...f.configuration,description:'Fictional next-version draft'}});
  const view=await getAttendanceFormula(f.ctx,f.id);expect(view.latest.ordinal).toBe(2);expect(view.activeOrdinal).toBe(1);expect(view.activeRevisionId).toBe(f.revisionId);
+});
+
+async function secondEmployer(f: Awaited<ReturnType<typeof fixture>>) {
+ const {company,department,appUser,roleAssignment}=await import('../db/schema');
+ const [employer]=await owner.db.insert(company).values({tenantId:base.tenantId,legalName:'Fictional formula company B'}).returning();
+ const [dept]=await owner.db.insert(department).values({tenantId:base.tenantId,companyId:employer.id,name:'Operations'}).returning();
+ const worker=await hireEmployee(f.ctx,{person:{fullName:'Fictional company B employee',primaryEmail:'formula-company-b@example.test'},companyId:employer.id,departmentId:dept.id,employmentType:'full_time',hiredOn:'2024-01-01'});
+ const [user]=await owner.db.insert(appUser).values({tenantId:base.tenantId,workosUserId:'fictional-attendance-company-b'}).returning();
+ await owner.db.insert(roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,companyId:employer.id,role:'hr_admin'});
+ const scoped={...f.ctx,userId:user.id,grants:[{role:'hr_admin' as const,companyId:employer.id}]};
+ await setAttendancePolicy(f.ctx,{companyId:employer.id,workStart:'09:00',workEnd:'17:00',breakMinutes:0,lateAfter:'09:00',halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7]});
+ await checkIn(f.ctx,{employmentId:worker.employmentId,date:f.date,time:'09:00'});
+ await checkOut(f.ctx,{employmentId:worker.employmentId,date:f.date,time:'17:00'});
+ return {id:employer.id,employmentId:worker.employmentId,scoped};
+}
+
+it('uses one formula identity for two dated companies without exposing the other company’s authoring and test records',async()=>{
+ const f=await fixture(),second=await secondEmployer(f);
+ const {attendanceFormulaChoicesForDay,calculateAttendanceFormulaResult,listAttendanceFormulaResults}=await import('../packs/attendance/service');
+ const companyIds=[base.companyId,second.id].sort();
+ expect((await attendanceFormulaSetup(f.ctx,companyIds)).canSelectAll).toBe(true);
+ expect((await attendanceFormulaSetup(second.scoped,[second.id])).canSelectAll).toBe(false);
+ const configuration={...f.configuration,companyScope:{mode:'all' as const,companyIds},
+  eligibility:{mode:'selected' as const,employmentIds:[f.employmentId,second.employmentId]}};
+ const version=await saveAttendanceFormula(f.ctx,{configuration});
+ const proof=await testAttendanceFormula(f.ctx,{...version,employmentId:second.employmentId,date:f.date});
+ expect(proof.companyId).toBe(second.id);
+ await activateAttendanceFormula(f.ctx,{...version,testId:proof.id});
+ expect((await getAttendanceFormula(f.ctx,version.id)).latest.definition.companyScope).toEqual(configuration.companyScope);
+ await expect(getAttendanceFormula(second.scoped,version.id)).rejects.toThrow(/scope/);
+ const choices=await attendanceFormulaChoicesForDay(second.scoped,{employmentId:second.employmentId,date:f.date,companyIds:[second.id]});
+ expect(choices.map(row=>row.id)).toEqual([version.id]);
+ const calculated=await calculateAttendanceFormulaResult(second.scoped,{...version,employmentId:second.employmentId,date:f.date,companyIds:[second.id]});
+ expect(calculated).toMatchObject({formulaId:version.id,companyId:second.id,amount:'80.00'});
+ expect((await listAttendanceFormulaResults(second.scoped,{employmentId:second.employmentId,date:f.date}))[0].code).toBe(configuration.code);
+ const [execution]=await withTenant(second.scoped,tx=>tx.execute<{definition:{eligibility:{employmentIds:string[]};companyScope?:unknown}}>(sql`
+  select definition from app.attendance_formula_subject_versions(${second.id}::uuid,${second.employmentId}::uuid,${f.date}::date)`));
+ expect(execution.definition.eligibility.employmentIds).toEqual([second.employmentId]);
+ expect(execution.definition).not.toHaveProperty('companyScope');
+ await expect(calculateAttendanceFormulaResult(second.scoped,{...version,employmentId:f.employmentId,date:f.date,companyIds:[second.id]})).rejects.toThrow();
+
+ const {setModule,entitledCtx}=await import('./harness');
+ const {createBatch,transferAttendanceFormulaResults}=await import('../packs/payroll/service');
+ const {reviewAttendanceFormulaResult}=await import('../packs/attendance/service');
+ await setModule(base.tenantId,'typed_pay_components','active');
+ const payrollAdmin=await entitledCtx(base);
+ const firstResult=await calculateAttendanceFormulaResult(payrollAdmin,{...version,employmentId:f.employmentId,date:f.date});
+ for(const result of [firstResult,calculated]){
+  await reviewAttendanceFormulaResult(payrollAdmin,{resultId:result.id,command:'review',reason:'Checked Attendance evidence'});
+  await reviewAttendanceFormulaResult(payrollAdmin,{resultId:result.id,command:'approve',reason:'Approved company result'});
+  const {batchId}=await createBatch(payrollAdmin,{companyId:result.companyId,payPeriod:f.date.slice(0,7)});
+  const posted=await transferAttendanceFormulaResults(payrollAdmin,{batchId,resultIds:[result.id],reason:'Transfer company result'});
+  expect(posted.posted).toEqual([result.id]);
+ }
+});
+
+it('rejects incomplete All Companies coverage, a company-limited Pay Item and overlapping exclusive activation',async()=>{
+ const f=await fixture(),second=await secondEmployer(f);
+ const companyIds=[base.companyId,second.id];
+ const all={...f.configuration,companyScope:{mode:'all' as const,companyIds}};
+ await expect(saveAttendanceFormula(f.ctx,{configuration:{...all,companyScope:{mode:'all',companyIds:[base.companyId]}}}))
+  .rejects.toMatchObject({cause:expect.objectContaining({code:'AF002'})});
+ const limited=await createPayComponent(f.ctx,{code:'LIMITED_FORMULA_PAY',name:'Company A earning',label:'Company A',kind:'allowance',
+  includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,
+  appliedCompanyIds:[base.companyId]});
+ await expect(saveAttendanceFormula(f.ctx,{configuration:{...all,payItemId:limited.id}})).rejects.toThrow(/every selected company/);
+ const first=await saveAttendanceFormula(f.ctx,{configuration:all});
+ const firstProof=await testAttendanceFormula(f.ctx,{...first,employmentId:f.employmentId,date:f.date});
+ await activateAttendanceFormula(f.ctx,{...first,testId:firstProof.id});
+ const code='SECOND_RULE';
+ const duplicate=await saveAttendanceFormula(f.ctx,{configuration:{...f.configuration,code,companyScope:{mode:'selected',companyIds:[second.id]},library:{formulas:[{code,source:'Return 1'}],conditions:[]}}});
+ const proof=await testAttendanceFormula(f.ctx,{...duplicate,employmentId:second.employmentId,date:f.date});
+ await expect(activateAttendanceFormula(f.ctx,{...duplicate,testId:proof.id})).rejects.toThrow(/overlaps/);
+ expect((await getAttendanceFormula(f.ctx,duplicate.id)).status).toBe('inactive');
+});
+
+it('projects a company’s active version through FORCE RLS under the restricted migration owner',async()=>{
+ const f=await fixture(),second=await secondEmployer(f);
+ // The scoped user administers the identity's anchor but not the other company in the revision.
+ const shared=await saveAttendanceFormula(f.ctx,{configuration:{...f.configuration,companyId:second.id,
+  companyScope:{mode:'selected',companyIds:[base.companyId,second.id]}}});
+ const proof=await testAttendanceFormula(f.ctx,{...shared,employmentId:second.employmentId,date:f.date});
+ await activateAttendanceFormula(f.ctx,{...shared,testId:proof.id});
+ expect((await getAttendanceFormula(f.ctx,shared.id)).events.map(event=>event.kind)).toEqual(['activated','tested','saved','created']);
+
+ const role='formula_owner_'+randomUUID().replaceAll('-',''),rollback=new Error('Rollback restricted formula owner fixture');
+ await expect(owner.withTenant(second.scoped,async tx=>{
+  await tx.execute(sql.raw(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT`));
+  await tx.execute(sql.raw(`GRANT USAGE,CREATE ON SCHEMA public,app TO ${role}`));
+  for(const table of ['company','employment','assignment','attendance_formula','attendance_formula_revision','attendance_formula_event','attendance_formula_result']){
+   await tx.execute(sql.raw(`ALTER TABLE public.${table} OWNER TO ${role}`));
+  }
+  await tx.execute(sql.raw(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO ${role}`));
+  for(const signature of ['attendance_formula_author_current(uuid)','attendance_formula_subject_versions(uuid,uuid,date,uuid,uuid,uuid,boolean)']){
+   await tx.execute(sql.raw(`ALTER FUNCTION app.${signature} OWNER TO ${role}`));
+  }
+  await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);
+  const [authority]=await tx.execute<{author:boolean}>(sql`SELECT app.attendance_formula_author_current(${shared.id}::uuid) AS author`);
+  expect(authority.author).toBe(false);
+  const revisions=await tx.execute<{id:string;company_id:string}>(sql`SELECT id,company_id
+   FROM app.attendance_formula_subject_versions(${second.id}::uuid,${second.employmentId}::uuid,${f.date}::date)`);
+  expect([...revisions]).toEqual([{id:shared.revisionId,company_id:second.id}]);
+  expect(await tx.select().from(attendanceFormula)).toEqual([]);
+  expect(await tx.select().from(attendanceFormulaEvent)).toEqual([]);
+  expect(await tx.select().from(attendanceFormulaRevision)).toEqual([]);
+  throw rollback;
+ })).rejects.toBe(rollback);
 });

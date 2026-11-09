@@ -2,14 +2,14 @@ import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {hireEmployee,setEmploymentPaymentMethod} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {createBatch,generatePayslips} from '../packs/payroll/service';
+import {closeBatch,createAdditionalRun,createBatch,generatePayslips,setPayrollInput} from '../packs/payroll/service';
 import {upsertCompanyBankProfile} from '../core/bank-profile';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {ocbcBankPaymentFiles} from '../localization/my/ocbc-payment';
-import {appUser,bankPaymentExport,companyBankProfile,companyStatutoryAuthority,companyStatutoryMy,employeeStatutoryMy,payrollBatch,payslip} from '../db/schema';
+import {appUser,bankPaymentExport,companyBankProfile,companyStatutoryAuthority,companyStatutoryMy,employeeStatutoryMy,payPeriod,payrollBatch,payslip} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {BankPaymentRequest} from '../localization/country-pack';
 describe('OCBC immutable generated bank artifacts',()=>{
@@ -30,6 +30,61 @@ describe('OCBC immutable generated bank artifacts',()=>{
   expect(preview.recordCount).toBe(1);expect(await owner.db.select().from(bankPaymentExport)).toHaveLength(0);
   const input={...request,expectedDigest:preview.digest,requestKey:randomUUID()},one=await ocbcBankPaymentFiles.download(ctx,input),two=await ocbcBankPaymentFiles.download(ctx,input);
   expect(two).toEqual(one);const rows=await owner.db.select().from(bankPaymentExport).orderBy(bankPaymentExport.tapeId);expect(rows).toHaveLength(1);expect(rows[0].tapeId).toBe(1);expect(rows[0].content).toBe(one.content);expect(rows[0].totalCents).toBe(preview.totalCents);
+ });
+ it('uses the same closed-run and primary-account rules for options, preview and generation', async () => {
+  const {ctx,request,batchId}=await fixture();
+  const selection={companyId:b.companyId,category:'salary'} as const;
+  const closedRequest={...request,closedPayrollOnly:true as const};
+  const open=await ocbcBankPaymentFiles.submissionOptions(ctx,selection);
+  expect(open.periods).toEqual([]);
+  expect(open.configuredAccountId).toBeNull();
+  expect(open.accounts).toMatchObject([{id:request.bankProfileId,accountNumber:'1234567890',formatId:'my.ocbc.salary'}]);
+  await expect(ocbcBankPaymentFiles.preview(ctx,closedRequest)).rejects.toMatchObject({status:409});
+  await closeBatch(ctx,{batchId});
+  const closed=await ocbcBankPaymentFiles.submissionOptions(ctx,selection);
+  expect(closed.periods).toMatchObject([{periodKey:period,runs:[{runSeq:1,runType:'regular'}]}]);
+  const preview=await ocbcBankPaymentFiles.preview(ctx,closedRequest);
+  expect(preview).toEqual(await ocbcBankPaymentFiles.preview(ctx,request));
+  await expect(ocbcBankPaymentFiles.preview(ctx,{...closedRequest,runSeq:2})).rejects.toMatchObject({status:409});
+
+  const primary=await upsertCompanyBankProfile(ctx,{companyId:b.companyId,bank:'ocbc_bank',corporateId:'A999999',debitAccountNo:'0123456789',isPrimary:true});
+  expect(await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).toMatchObject({
+   configuredAccountId:primary.id,accounts:[{id:primary.id,accountNumber:'0123456789',formatId:'my.ocbc.salary'}],
+  });
+  await expect(ocbcBankPaymentFiles.download(ctx,{...closedRequest,expectedDigest:preview.digest,requestKey:randomUUID()})).rejects.toMatchObject({status:409});
+  await expect(ocbcBankPaymentFiles.preview(ctx,{...closedRequest,bankProfileId:primary.id,formatId:'my.maybank74.salary'})).rejects.toMatchObject({status:409});
+  expect(await owner.db.select().from(bankPaymentExport)).toHaveLength(0);
+ });
+ it('withholds the statutory month while a sibling run is incomplete or open', async () => {
+  const {request,batchId,employee}=await fixture();
+  await setModule(b.tenantId,'payroll','active');
+  await setModule(b.tenantId,'multi_cycle_payroll','active');
+  const ctx={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin',companyId:null}]};
+  const {batchId:bonusId}=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'});
+  await closeBatch(ctx,{batchId});
+  const [regular]=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));
+  const monthStatus=async ()=>(await owner.db.select({status:payPeriod.status}).from(payPeriod).where(eq(payPeriod.id,regular.payPeriodId)))[0].status;
+  const selection={companyId:b.companyId,category:'socso'} as const;
+  const {runSeq:_,...monthly}=request;
+  const requestForMonth={...monthly,formatId:'my.ocbc.socso',closedPayrollOnly:true as const};
+
+  // A draft sibling has no paid rows, but a whole-month file must still wait for the month to close.
+  expect(await monthStatus()).toBe('open');
+  expect((await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).periods).toEqual([]);
+  await expect(ocbcBankPaymentFiles.preview(ctx,requestForMonth)).rejects.toMatchObject({status:409});
+  const salary=(await ocbcBankPaymentFiles.submissionOptions(ctx,{...selection,category:'salary'})).periods;
+  expect(salary.map(month=>[month.periodKey,month.runs.map(run=>run.runSeq)])).toEqual([[period,[1]]]);
+
+  await setPayrollInput(ctx,{batchId:bonusId,employmentId:employee.employmentId,overtimeAmount:0,bonusAmount:100});
+  await generatePayslips(ctx,{batchId:bonusId});
+  expect(await monthStatus()).toBe('open');
+  expect((await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).periods).toEqual([]);
+  await expect(ocbcBankPaymentFiles.preview(ctx,requestForMonth)).rejects.toMatchObject({status:409});
+
+  await closeBatch(ctx,{batchId:bonusId});
+  expect(await monthStatus()).toBe('closed');
+  expect((await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).periods)
+   .toEqual([{periodKey:period,runs:[]}]);
  });
  it('separate requests atomically reserve distinct value-date tapes',async()=>{
   const {ctx,request}=await fixture(),preview=await ocbcBankPaymentFiles.preview(ctx,request);

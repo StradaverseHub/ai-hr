@@ -1,3 +1,15 @@
+# Approved Rewards and Attendance follow-ups — 9 November 2026 (unapplied)
+
+The approved-item coordinator reserves `4100_rewards_review_creator_independence`
+at idx 3500 / when 1793330003800 and `4101_attendance_formula_company_scope`
+at idx 3501 / when 1793330003801, in that order in the combined source.
+ The staging release merge preserves the 721 installed entries through
+`4002_attendance_prepare_review_only` (1793330003602) on `7f3230330`. The
+refreshed audit found no competing reservation at either position across 6,891
+refs, 1,076 committed journal blobs, and 920 readable worktree journals.
+Preserve the complete source prefix and all applied SQL bytes. Recheck peer
+claims and the exact installed ledger before release admission.
+
 # Board 3 after payroll — 9 November 2026 (unapplied reallocation)
 
 The agreed release order is the six-item Board batch, payroll PR236, then Board 3 PR238.

@@ -3,6 +3,7 @@ import React from 'react';
 import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {createTranslator,NextIntlClientProvider} from 'next-intl';
+import type { AbstractIntlMessages } from 'next-intl';
 import {ReviewedDecisionBatch} from '../components/assistant/reviewed-decision-batch';
 import {ASSIGNED_CLAIM_DECISION_ACTION as action} from '../lib/assistant-actions/assigned-decision-contract';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
@@ -16,7 +17,7 @@ const completed=(id:string)=>({kind:'completed',receipt:{action,contractVersion:
 const json=(body:unknown)=>new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}});
 let fetcher:ReturnType<typeof vi.fn>;const packets=()=>fetcher.mock.calls.map(call=>JSON.parse(call[1].body));
 function configure(count=2,loseSecond=false){fetcher.mockImplementation(async(_url:unknown,init:RequestInit)=>{const p=JSON.parse(String(init.body));if(p.operation==='list')return json({kind:'claim_decision_review_index',reviews:ids.slice(0,count).map(actionId=>({action,contractVersion:1,actionId,state:'awaiting_confirmation',createdAt:stamp(-1000),expiresAt:stamp(600000)}))});if(p.operation==='reopen')return json(review(p.actionId));if(p.operation==='confirm'){if(loseSecond&&p.confirmation.actionId===ids[1])throw Error('lost after possible native commit');return json(completed(p.confirmation.actionId));}throw Error('Unexpected command');});}
-function mount(locale='en',messages:typeof en=en){return render(<NextIntlClientProvider locale={locale} messages={messages} timeZone="Asia/Kuala_Lumpur" onError={error=>{throw error;}}><main className="mx-auto max-w-4xl space-y-5"><ReviewedDecisionBatch action={action} leaveChoices={{kind:'unavailable'}}/></main></NextIntlClientProvider>);}
+function mount(locale='en',messages:AbstractIntlMessages=en){return render(<NextIntlClientProvider locale={locale} messages={messages} timeZone="Asia/Kuala_Lumpur" onError={error=>{throw error;}}><main className="mx-auto max-w-4xl space-y-5"><ReviewedDecisionBatch action={action} leaveChoices={{kind:'unavailable'}}/></main></NextIntlClientProvider>);}
 beforeEach(()=>{fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);});afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 it('loads at most twenty saved reviews with no selection or implicit reopen/prepare/confirm',async()=>{
  configure(25);mount();expect(fetcher).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.bulkDecisions.load}));

@@ -3,6 +3,7 @@ import { BonusBudgetCards } from './bonus-budget';
 import { RewardSubmit } from '../submit-button';
 import { ScopedCommandIndex } from '@/components/scoped-command-index';
 import Link from 'next/link';
+import { RewardUnitViews } from './review-views';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
@@ -38,7 +39,6 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   await requireModule('rewards'); const { s, scopeIds } = await scopedSession();
   const { unitId } = await params; const sp = await searchParams; const t = await getTranslations('rewards');
   if (sp.view === 'configuration') redirect(`/admin/rewards/${encodeURIComponent(unitId)}`);
-  const nav = await getTranslations('nav');
   const preparation = await getRewardPreparationStatus(s,unitId);
   const prepText=await getTranslations('rewardsPreparation');
   if(!preparation.released&&!preparation.setupVisible&&!(preparation.uploaded&&preparation.canInspect))return <div className="space-y-4"><PageHeader title={prepText('review')}/><p role="status">{prepText('preparing')}</p><p className="text-sm text-muted-foreground">{preparation.expectedRelease?prepText('expectedOn',{date:preparation.expectedRelease}):prepText('datePending')}</p><Link href="/rewards" className="text-primary hover:underline">{prepText('back')}</Link></div>;
@@ -87,19 +87,15 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   return <div className="w-full space-y-5">
     <ScopedCommandIndex entries={v.rows.map(row=>({href:`/rewards/${unitId}?person=${row.id}`,label:row.source.name,context:row.source.employeeCode??''}))}/>
 
-    <Link href="/rewards" className="text-sm text-primary hover:underline">← {nav('rewardsReviewing')}</Link>
     <PageHeader title={rewardReviewTitle(v.cycle?.name ?? t('title'), v.companyName, v.name)} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)}${v.due ? ` · ${t('dueOn', { date: v.due })}` : ''} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
-    {!annual&&((v.roles.includes('gr') && v.capabilities?.dataCheck!==false) || v.roles.includes('pbp')) && <Link href={`/rewards/${unitId}/data-check`} className="text-sm font-medium text-primary hover:underline">{t('prelaunchDataCheck')}</Link>}
-    <ErrorBanner message={sp.error} /><Link href={`/rewards/rules?unit=${unitId}`} className="inline-block text-sm text-primary underline underline-offset-2">{t('rules')}</Link>
-    <div className="flex flex-wrap gap-4 text-sm">{v.uploaded?<Link href={`/rewards/${unitId}/uploaded`} className="text-primary underline">{u('open')}</Link>:annual&&v.libraryBound&&<Link href={`/rewards/${unitId}/advisor`} className="text-primary underline">{a('title')}</Link>}</div>
+    <ErrorBanner message={sp.error} />
     {v.uploadedSummary&&<Card className="p-5"><h2 className="font-semibold">{u('summary',{people:v.uploadedSummary.people,increment:(v.uploadedSummary.incrementCents/100).toFixed(2),bonus:(v.uploadedSummary.bonusCents/100).toFixed(2)})}</h2><p className="mt-1 text-sm tabular-nums">{u('lump')}: {(v.uploadedSummary.lumpCents/100).toFixed(2)}</p></Card>}
     {v.returned && <ReturnedBanner returned={v.returned} />}
-    {!annual&&(v.roles.includes('gr') || choices.companies.some(c => c.id === unit.companyId)) && <Link href={`/admin/rewards/${unitId}`} className="inline-block text-sm font-medium text-primary hover:underline">{t('adminTitle')}</Link>}
     {!annual&&<nav aria-label={t('sections')} className="flex flex-wrap gap-1 border-b border-border pb-2">{['review', 'budget', 'approvals', ...(v.roles.includes('gr') ? ['data'] : []), ...(v.roles.includes('gr') && annual ? ['excluded'] : []), 'rules'].map(key => <Link key={key} href={`/rewards/${unitId}?view=${key}`} aria-current={tab === key ? 'page' : undefined} className={`rounded-md px-3 py-2 text-sm ${tab === key ? 'bg-primary/10 font-semibold text-primary' : 'text-muted-foreground hover:bg-accent'}`}>{t(key)}</Link>)}</nav>}
     {v.hiddenCount > 0 && <p className="max-w-3xl text-sm text-muted-foreground">{t('privacyNote')}</p>}
     {annual && v.hiddenCount > 0 && <p role="note" className="max-w-3xl rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">{t('desk.hiddenRows', { count: v.hiddenCount })}</p>}
     {!annual && <Card className="space-y-3 p-5"><h2 className="font-semibold">{t('offcycleFunding')}</h2><p className="text-sm text-muted-foreground">{t('offcycleFundingHelp')}</p>{(['standard', 'h'] as const).map(plan => <p key={plan} className="text-sm tabular-nums">{t(plan)}: {rm(v.budgets[plan].used[0])} / {rm(v.budgets[plan].pools[0])}</p>)}{unit.offcycle?.exceptionReason && <p className="text-sm">{t('budgetException')}: {unit.offcycle.exceptionReason}</p>}<Link className="text-sm text-primary hover:underline" href={`/rewards/${unit.parentUnitId}`}>{t('annualSource')}</Link></Card>}
-    {annual&&<nav aria-label={prepText('tabs')} className="flex gap-4 border-b border-border pb-3 text-sm"><Link href={`/rewards/${unitId}`} aria-current="page" className="font-semibold text-primary">{prepText('review')}</Link>{preparation.setupVisible&&<Link href={`/rewards/${unitId}/setup`} className="text-muted-foreground hover:underline">{prepText('setup')}</Link>}</nav>}
+    {annual&&<RewardUnitViews unitId={unitId} selected="review" setupVisible={preparation.setupVisible}/>}
     {annual&&preparation.preparation?.releasedAt&&<p className="text-sm text-muted-foreground">{prepText('setupChanged',{date:preparation.preparation.releasedAt.slice(0,10)})} {preparation.setupVisible&&<Link href={`/rewards/${unitId}/setup#preparation-history`} className="text-primary hover:underline">{prepText('changeLog')}</Link>}</p>}
     {annual&&!v.uploaded&&<SummaryStrip value={v} holders={listMeta?.holders??[]}/>}
     <div className={annual?'grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]':''}><div className="min-w-0 space-y-6">
@@ -161,6 +157,18 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     {open && <PersonDrawer title={open.source.name} description={`${open.source.employeeCode} · ${t('grade')} ${open.source.grade} · ${t(open.plan === 'ec' ? 'ecPlan' : open.plan)}`} prevId={rows[openIndex - 1]?.id ?? null} nextId={rows[openIndex + 1]?.id ?? null} position={{ index: openIndex + 1, total: rows.length }} editHref={`/rewards/${unitId}/people/${open.id}`}>
       <PersonCalculation row={open} hidden={hidden(open)} flags={rowFlags(open.id)} t={t} rm={rm} pct={pct} payPosition={[payPosition(open,open.source.basicCents),payPosition(open,open.newBasicCents)]} />
     </PersonDrawer>}
+    <section className="rounded-lg border border-border p-3">
+      <h2 className="text-sm font-medium">{t('sections')}</h2>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+        <Link href={`/rewards/rules?unit=${unitId}`} className="text-primary underline">{t('rules')}</Link>
+        {!annual&&((v.roles.includes('gr') && v.capabilities?.dataCheck!==false) || v.roles.includes('pbp')) &&
+          <Link href={`/rewards/${unitId}/data-check`} className="text-primary underline">{t('prelaunchDataCheck')}</Link>}
+        {!annual&&(v.roles.includes('gr') || choices.companies.some(c => c.id === unit.companyId)) &&
+          <Link href={`/admin/rewards/${unitId}`} className="text-primary underline">{t('adminTitle')}</Link>}
+        {v.uploaded ? <Link href={`/rewards/${unitId}/uploaded`} className="text-primary underline">{u('open')}</Link>
+          : annual&&v.libraryBound&&<Link href={`/rewards/${unitId}/advisor`} className="text-primary underline">{a('title')}</Link>}
+      </div>
+    </section>
   </div>;
 }
 

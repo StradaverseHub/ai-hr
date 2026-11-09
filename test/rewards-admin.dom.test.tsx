@@ -4,18 +4,27 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 
-const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), scope: vi.fn(), visibleCompanies: vi.fn(), navigation: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn(), requests: vi.fn(), accessCompanies: vi.fn() }));
+const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), scope: vi.fn(), visibleCompanies: vi.fn(), navigation: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn(), requests: vi.fn(), accessCompanies: vi.fn(), accessEntry: vi.fn(), accessAdministration: vi.fn(), accessPermissions: vi.fn(), accessPersonalPages: vi.fn(), accessActivity: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async (namespace: keyof typeof en = 'rewards') => (key: string) => key.split('.').reduce((v: any, k) => v[k], en[namespace]) }));
+const redirect = vi.hoisted(() => vi.fn(() => { throw new Error('redirect'); }));
+const notFound = vi.hoisted(() => vi.fn(() => { throw new Error('not found'); }));
+vi.mock('next/navigation', async importOriginal => ({ ...await importOriginal<typeof import('next/navigation')>(), redirect, notFound, useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession, getScopeIds: ports.scope }));
-vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: ports.visibleCompanies, rewardNavigation: ports.navigation, rewardAccessPageCompanies: ports.accessCompanies }));
+vi.mock('../packs/rewards/access-policy', () => ({
+  rewardVisibleCompanies: ports.visibleCompanies, rewardNavigation: ports.navigation, rewardAccessPageCompanies: ports.accessCompanies,
+  rewardAccessPageEntry: ports.accessEntry, rewardPermissions: ports.accessPermissions, rewardPersonalPages: ports.accessPersonalPages,
+  rewardSetupEntry: async () => ({ bootstrap: false }),
+}));
+vi.mock('../packs/rewards/activity', () => ({ rewardReviewActivity: ports.accessActivity }));
 vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupPlans: async () => [], rewardReviewCompanyGroups: async () => ({}), rewardWholeGroupSetupCompanies: async () => [] }));
 vi.mock('../lib/session', () => ({ getSession: async () => ({ tenantId: 'tenant' }) }));
 vi.mock('../lib/authz', () => ({ requireModule: ports.requireModule, isAdmin: () => false }));
-vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, listRewardReviewStatus: ports.reviewStatus, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared, rewardPolicyMemberships: ports.memberships, getRewardCalendar: async () => ({ revision: 1, canEdit: true, values: { due: { bu: '2026-12-11' }, caseDue: null, offcycleDays: {} } }), rewardAccessRequests: ports.requests, rewardCalendarStages: ['bu'], rewardOffcycleSlaStages: ['bg'] }));
+vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, listRewardReviewStatus: ports.reviewStatus, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared, rewardPolicyMemberships: ports.memberships, getRewardCalendar: async () => ({ revision: 1, canEdit: true, values: { due: { bu: '2026-12-11' }, caseDue: null, offcycleDays: {} } }), rewardAccessRequests: ports.requests, rewardAccessAdministration: ports.accessAdministration, rewardCalendarStages: ['bu'], rewardOffcycleSlaStages: ['bg'] }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn(), calendarAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
 import AdminPage from '../app/admin/rewards/page';
+import RewardAccessPage from '../app/admin/rewards/access/page';
 import ConfigurationPage from '../app/admin/rewards/[unitId]/page';
 import ReviewsPage from '../app/rewards/reviews/page';
 import { PolicyForm, RewardPolicyFields } from '../app/rewards/[unitId]/policy-form';
@@ -27,10 +36,16 @@ const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale
 /** Resolve only the known nested server fields; keep the real form and visible controls. */
 async function resolvePolicyFields(node: ReactNode): Promise<ReactNode> {
   if (Array.isArray(node)) return Promise.all(node.map(resolvePolicyFields));
-  if (!isValidElement<{ children?: ReactNode }>(node)) return node;
+  if (!isValidElement<{ children?: ReactNode; maintenanceActions?: ReadonlyMap<string, ReactNode> }>(node)) return node;
   if (typeof node.type === 'function' && node.type.constructor.name === 'AsyncFunction') return resolvePolicyFields(await (node.type as any)(node.props));
   if (node.type === RewardPolicyFields) return RewardPolicyFields(node.props as ComponentProps<typeof RewardPolicyFields>);
-  return cloneElement(node, { children: await resolvePolicyFields(node.props.children) });
+  const actions = node.props.maintenanceActions;
+  return cloneElement(node, {
+    children: await resolvePolicyFields(node.props.children),
+    ...(actions ? { maintenanceActions: new Map(await Promise.all(
+      [...actions].map(async ([key, value]) => [key, await resolvePolicyFields(value)] as const)
+    )) } : {}),
+  });
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -50,26 +65,38 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Rewards administration and review destinations', () => {
-  it('links the admin hub to approved plan creation and scopes existing reviews to administrative companies', async () => {
-    show(await resolvePolicyFields(await AdminPage({ searchParams: Promise.resolve({}) })));
-    expect(screen.getByRole('heading', { name: 'Review Cycles' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'View' }).getAttribute('href')).toBe('/admin/rewards/review?mode=view');
-    expect(screen.getByRole('link', { name: 'Edit' }).getAttribute('href')).toBe('/admin/rewards/review');
-    expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Create annual reviews from an approved Rewards plan' }).getAttribute('href')).toBe('/admin/rewards/plans');
-    expect(screen.queryByRole('button', { name: 'Create unit review' })).toBeNull();
-    expect(screen.queryByLabelText('Snapshot date')).toBeNull();
-    expect(ports.scopedAdmin).toHaveBeenCalledOnce();
-    expect(ports.requireModule).toHaveBeenCalledWith('rewards');
-    expect(ports.list).toHaveBeenCalledWith(session, ['company']);
-    expect(ports.shared).toHaveBeenCalledWith(session, ['company']);
-    expect(ports.memberships).toHaveBeenCalledWith(session, ['company']);
+  it('redirects legacy Review Cycles to the approved plan workspace with the selected version', async () => {
+    await expect(AdminPage({ searchParams: Promise.resolve({ version: 'approved', year: '2026' }) })).rejects.toThrow('redirect');
+    expect(redirect).toHaveBeenCalledWith('/admin/rewards/plans?version=approved&year=2026');
+    expect(ports.list).not.toHaveBeenCalled();
+  });
+  it('opens scoped access maintenance without loading policy, activity or exports', async () => {
+    ports.accessEntry.mockResolvedValue({ companies: [{ id: 'company' }], groupRewards: false });
+    ports.accessAdministration.mockResolvedValue({ reviews: [], members: [], users: [], candidates: [], suggestions: [] });
+
+    show(await RewardAccessPage({ searchParams: Promise.resolve({ tab: 'activity', review: 'foreign-review' }) }));
+
+    expect(ports.scope).toHaveBeenCalledWith(['company']);
+    expect(ports.accessAdministration).toHaveBeenCalledWith(session, ['company']);
+    expect(screen.getByRole('heading', { name: en.rewardsAccess.title })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: en.rewardAccessPolicy.tabs })).toBeNull();
+    expect(screen.queryByText(en.rewardsAccess.permissionsTitle)).toBeNull();
+    expect(document.querySelector('a[href="/admin/rewards/access/export"]')).toBeNull();
+    expect(ports.accessPermissions).not.toHaveBeenCalled();
+    expect(ports.accessPersonalPages).not.toHaveBeenCalled();
+    expect(ports.accessActivity).not.toHaveBeenCalled();
+  });
+  it('rejects a direct access URL when there is no authorized company', async () => {
+    ports.accessEntry.mockResolvedValue({ companies: [], groupRewards: false });
+    await expect(RewardAccessPage({ searchParams: Promise.resolve({}) })).rejects.toThrow('not found');
+    expect(ports.accessAdministration).not.toHaveBeenCalled();
   });
   it('shows authorized review shortcuts and leaves configuration in the menu', async () => {
-    show(await ReviewsPage({ searchParams: Promise.resolve({}) }));
+    show(await resolvePolicyFields(await ReviewsPage({ searchParams: Promise.resolve({}) })));
     expect(screen.getAllByRole('link', { name: 'Open review' }).map(link => link.getAttribute('href'))).toContain('/rewards/review');
-    expect(screen.getByRole('heading', { name: 'Reviewing Team Rewards' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Rules' }).getAttribute('href')).toBe('/rewards/rules');
+    expect(screen.getByRole('heading', { name: en.nav.rewardsAllReviews })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Rules' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'View' }).getAttribute('href')).toBe('/admin/rewards/review?mode=view');
     expect(screen.queryByRole('link', { name: 'Rewards Analytics' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Review Cycles' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Create unit review' })).toBeNull();

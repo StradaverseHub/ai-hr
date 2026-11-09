@@ -9,7 +9,7 @@ vi.mock('next/navigation',()=>({useRouter:()=>({replace:mocks.replace})}));
 vi.mock('../app/admin/attendance/settings/formula-builder/actions',()=>({draftAttendanceFormulaAction:mocks.draft,saveAttendanceFormulaAction:mocks.save,testAttendanceFormulaAction:mocks.test,activateAttendanceFormulaAction:mocks.activate,statusAttendanceFormulaAction:mocks.status,readAttendanceFormulaTestAction:mocks.read,searchAttendanceFormulaEmployeesAction:mocks.search}));
 vi.mock('../app/admin/attendance-allowance/actions',()=>({searchAllowanceEmployees:vi.fn(async()=>({rows:[],total:0,unavailable:[]})),searchAllowanceEmployeeValues:vi.fn(async()=>({rows:[],hasMore:false}))}));
 const companyId='10000000-0000-4000-8000-000000000001',payItemId='20000000-0000-4000-8000-000000000001';
-const options={companies:[{id:companyId,label:'Fictional formula company',currency:'MYR'}],payItems:[{id:payItemId,code:'ATTENDANCE',name:'Fictional attendance earning',kind:'allowance' as const,companyIds:[companyId]}]};
+const options={canSelectAll:false,companies:[{id:companyId,label:'Fictional formula company',currency:'MYR'}],payItems:[{id:payItemId,code:'ATTENDANCE',name:'Fictional attendance earning',kind:'allowance' as const,companyIds:[companyId]}]};
 const catalogs={en,ms,zh,vi:viMessages,ta,th};
 function mount(locale:keyof typeof catalogs='en'){const errors:unknown[]=[];render(<NextIntlClientProvider locale={locale} messages={catalogs[locale]} onError={error=>errors.push(error)}><AttendanceFormulaEditor initial={null} options={options} today="2026-11-08"/></NextIntlClientProvider>);return errors;}
 afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();});
@@ -76,4 +76,20 @@ it('indents the next source line without intercepting Tab navigation',()=>{
  mount();const input=screen.getByRole('textbox',{name:en.attendanceFormula.formulaExpression}) as HTMLTextAreaElement;
  fireEvent.change(input,{target:{value:'If True Then'}});input.setSelectionRange(12,12);fireEvent.keyDown(input,{key:'Enter'});expect(input.value).toBe('If True Then\n    ');
  expect(fireEvent.keyDown(input,{key:'Tab'})).toBe(true);expect(mocks.save).not.toHaveBeenCalled();
+});
+
+it('defaults authorised whole-organisation drafts to all companies and filters Pay Items against every selected company',()=>{
+ const other='10000000-0000-4000-8000-000000000002',limited='20000000-0000-4000-8000-000000000002',t=en.attendanceFormula;
+ const groupOptions={canSelectAll:true,companies:[...options.companies,{id:other,label:'Fictional company B',currency:'MYR'}],
+  payItems:[{...options.payItems[0],companyIds:[companyId,other]},
+   {id:limited,code:'LIMITED',name:'Company A only',kind:'allowance' as const,companyIds:[companyId]}]};
+ render(<NextIntlClientProvider locale="en" messages={en}><AttendanceFormulaEditor initial={null} options={groupOptions} today="2026-11-08"/></NextIntlClientProvider>);
+ const all=screen.getByRole('checkbox',{name:t.allCompanies});
+ expect(all).toBeChecked();
+ expect(within(screen.getByLabelText(t.payItem)).queryByRole('option',{name:/LIMITED/})).toBeNull();
+ fireEvent.click(all);
+ const company=screen.getByLabelText('Fictional company B');
+ expect(company).toBeChecked();
+ fireEvent.click(company);
+ expect(within(screen.getByLabelText(t.payItem)).getByRole('option',{name:/LIMITED/})).toBeTruthy();
 });

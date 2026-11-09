@@ -221,9 +221,20 @@ export type ConfigSectionDescriptor = {
  * one month's file cannot name it differently.
  */
 export class BankPaymentFileError extends Error { constructor(message:string,public readonly status:404|409|422=422){super(message);this.name='BankPaymentFileError';} }
-export type BankPaymentRequest = {companyId:string;bankProfileId:string;formatId:string;periodKey:string;paymentDate:string;runSeq?:number;testFile:boolean;reference:string};
+export type BankPaymentRequest = {companyId:string;bankProfileId:string;formatId:string;periodKey:string;paymentDate:string;runSeq?:number;testFile:boolean;reference:string;closedPayrollOnly?:true};
 export type BankPaymentPreview = {digest:string;recordCount:number;totalCents:number;companyName:string;paymentDate:string;periodKey:string};
+export const BANK_PAYMENT_CATEGORIES = ['salary', 'kwsp', 'socso', 'lhdn', 'zakat'] as const;
+export type BankPaymentCategory = (typeof BANK_PAYMENT_CATEGORIES)[number];
+export type BankPaymentOptions = {
+  accounts: { id: string; bankName: string; label: string; accountNumber: string; formatId: string }[];
+  configuredAccountId: string | null;
+  usesStatutoryAccount: boolean;
+  accountIssue: 'missing' | 'incompatible' | 'multiple-primary' | 'statutory-account' | null;
+  periods: { periodKey: string; runs: { runSeq: number; cycleName: string | null; runType: string }[] }[];
+};
 export type BankPaymentFiles = {
+ /** Operator-only selection data. Account numbers stay inside the authorised download dialog. */
+ submissionOptions:(ctx:SessionContext,p:{companyId:string;category:BankPaymentCategory})=>Promise<BankPaymentOptions>;
  preview:(ctx:SessionContext,p:BankPaymentRequest)=>Promise<BankPaymentPreview>;
  download:(ctx:SessionContext,p:BankPaymentRequest & {expectedDigest:string;requestKey:string})=>Promise<{content:string;filename:string}>;
  /** AI v2 P2-2a — one payroll run's salary bank file as the Salary payroll loop checks it: the pack picks the company's

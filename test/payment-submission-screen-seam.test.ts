@@ -106,14 +106,22 @@ beforeEach(() => {
 });
 
 describe('20f6c6a8 (b) — the registry drives the screen', () => {
-  it('hands bank formats to the bank preview/download dialog through registry declarations', async () => {
-    const common = fmt({ id: 'test.bank', group: 'salary', rank: 1 });
-    formats = [{ ...common, available: true, transport: 'bank-post', testIndicator: false, periodKind: 'month-cycle' }];
+  it('consolidates bank registry formats into one download dialog for each payment group', async () => {
+    const bank = (id: string, group: 'salary' | 'bankStatutory'): SubmissionFormat => ({
+      ...fmt({ id, group, rank: 1 }), available: true, transport: 'bank-post', testIndicator: false,
+      periodKind: group === 'salary' ? 'month-cycle' : 'month',
+    });
+    formats = [
+      bank('test.bank.one', 'salary'), bank('test.bank.two', 'salary'),
+      bank('test.bank.three', 'bankStatutory'), bank('test.bank.four', 'bankStatutory'),
+      fmt({ id: 'test.gov', group: 'governmentStatutory', rank: 10 }),
+    ];
     const tree = await render();
-    expect(propValues(tree, 'endpoint')).toEqual(['/payroll/payment-submission/bank-file']);
-    expect(propValues(tree, 'formatId')).toEqual(['test.bank']);
-    expect(propValues(tree, 'periodKind')).toEqual(['month-cycle']);
-    expect(propValues(tree, 'action')).toEqual([]);
+    expect(propValues(tree, 'endpoint')).toEqual(Array(2).fill('/payroll/payment-submission/bank-file'));
+    expect(propValues(tree, 'group')).toEqual(['salary', 'bankStatutory']);
+    expect(propValues(tree, 'formatId')).toEqual(['test.gov']);
+    expect(propValues(tree, 'data-format')).toEqual(['test.gov']);
+    expect(propValues(tree, 'action')).toEqual(['/payroll/payment-submission/download']);
   });
 
   it('renders exactly the formats the registry declares, and one card each', async () => {
@@ -140,16 +148,11 @@ describe('20f6c6a8 (b) — the registry drives the screen', () => {
     expect(after).toEqual(['test.alpha']);
   });
 
-  it('a format lands on the shelf it declares, not the one it was written next to', async () => {
-    formats = [
-      fmt({ id: 'test.gov', group: 'governmentStatutory', rank: 10 }),
-      fmt({ id: 'test.bank', group: 'bankStatutory', rank: 10 }),
-      fmt({ id: 'test.salary', group: 'salary', rank: 10 }),
-    ];
+  it('keeps all three payment groups in their declared order', async () => {
+    formats = [fmt({ id: 'test.gov', group: 'governmentStatutory', rank: 10 })];
     const tree = await render();
-    // SUBMISSION_GROUPS is real, and declares salary → bankStatutory → governmentStatutory. The rendered
-    // order must be the GROUPS' order, not the array order above (which is deliberately the reverse).
-    expect(propValues(tree, 'data-format')).toEqual(['test.salary', 'test.bank', 'test.gov']);
+    expect(propValues(tree, 'data-group')).toEqual(['salary', 'bankStatutory', 'governmentStatutory']);
+    expect(propValues(tree, 'data-format')).toEqual(['test.gov']);
   });
 
   it('within a shelf the order is the declared RANK, never the array position', async () => {
