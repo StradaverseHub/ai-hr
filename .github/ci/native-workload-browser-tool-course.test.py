@@ -155,15 +155,42 @@ class ToolIntentModels(unittest.TestCase):
             env = environment() | {'GITHUB_EVENT_PATH':'/home/runner/work/_temp/_github_workflow/event.json'}
             base = {'kind':'NATIVE_TOOL_ONLY_COMPONENT', 'complete':False, 'failure':'tool-pre-root-refused',
                     'cleanup':'not-observed', 'releaseAuthorized':False}
-            wrong_intent = event() | {'inputs':{}}
-            for supplied, checkpoint in ((OSError('fictional private path'), 'event-file'),
-                                         (b'{fictional private bytes', 'event-json'),
-                                         (B.canonical(wrong_intent), 'dispatch-contract')):
-                with self.subTest(checkpoint=checkpoint), patch.dict(os.environ, env, clear=True), \
+            dispatch = event()
+            inputs = dispatch['inputs']
+            omitted = {key:value for key, value in inputs.items() if key != 'commission_singleton_units'}
+            typed = {'build_only':False, 'diagnostics_only':True, 'controller_only':False, 'native_tool_only':True}
+            payload = B.canonical(dispatch)
+            cases = [
+                (OSError('fictional private path'), {}, 'event-file'),
+                (b'{fictional private bytes', {}, 'event-json'),
+                (payload, {'GITHUB_REF_NAME':'main'}, 'dispatch-runner-ref'),
+                (payload, {'GITHUB_WORKFLOW_SHA':'b'*40}, 'dispatch-runner-source'),
+                (payload, {'GITHUB_WORKFLOW_REF':env['GITHUB_WORKFLOW_REF'].replace(REF, 'refs/heads/main')},
+                 'dispatch-runner-workflow'),
+                (B.canonical(dispatch | {'repository':{'id':5, 'full_name':'StradaverseHub/ai-hr'}}), {},
+                 'dispatch-event-repository'),
+                (B.canonical(dispatch | {'ref':'refs/heads/main'}), {}, 'dispatch-event-ref'),
+            ]
+            for actual, checkpoint in (([], 'dispatch-input-map'), ({}, 'dispatch-input-keys'),
+                                       (inputs | {'extra':'fictional private bytes'}, 'dispatch-input-keys'),
+                                       (inputs | {'test_parallelism':'8'}, 'dispatch-input-values'),
+                                       (inputs | typed | {'controller_only':True}, 'dispatch-input-types'),
+                                       (omitted, 'dispatch-commission-omitted'),
+                                       (inputs | typed, 'dispatch-typed-booleans'),
+                                       (omitted | typed, 'dispatch-commission-omitted-and-typed-booleans')):
+                cases.append((B.canonical(dispatch | {'inputs':actual}), {}, checkpoint))
+            for supplied, environment_changes, checkpoint in cases:
+                with self.subTest(checkpoint=checkpoint), patch.dict(os.environ, env | environment_changes, clear=True), \
                      patch.object(B, '_tool_event', side_effect=[supplied]):
                     receipt = B.prepare_tool()
                     self.assertEqual(receipt, base | {'preRootCheckpoint':checkpoint})
                     B._validate_tool_capture(B.canonical(receipt), '1')
+            with patch.dict(os.environ, env, clear=True), patch.object(B, '_tool_event', return_value=payload), \
+                 patch.object(B, 'context', side_effect=[('123', pathlib.Path(env['GITHUB_WORKSPACE'])),
+                                                        OSError('fictional private second context error')]):
+                receipt = B.prepare_tool()
+                self.assertEqual(receipt, base | {'preRootCheckpoint':'dispatch-runner-context'})
+                B._validate_tool_capture(B.canonical(receipt), '1')
         self.assertEqual(exited.exception.code, 1)
         raw = stdout.buffer.getvalue()
         self.assertEqual(raw, B.canonical(base | {'preRootCheckpoint':'runner-context'}))

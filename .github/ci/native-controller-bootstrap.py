@@ -377,28 +377,78 @@ TOOL_PRE_ROOT_CHECKPOINTS = (
     'runner-identity', 'runner-context', 'event-file', 'event-json', 'dispatch-contract',
     'controller-location', 'controller-directory', 'controller-script', 'controller-git-config',
     'controller-commit', 'capsule-members', 'controller-stability', 'sealed-handoff', 'unknown',
+    'dispatch-runner-context', 'dispatch-runner-ref', 'dispatch-runner-source', 'dispatch-runner-workflow',
+    'dispatch-event-repository', 'dispatch-event-ref', 'dispatch-input-map', 'dispatch-input-keys',
+    'dispatch-input-types', 'dispatch-input-values', 'dispatch-commission-omitted',
+    'dispatch-typed-booleans', 'dispatch-commission-omitted-and-typed-booleans',
 )
 
 
+class _ToolDispatchRefusal(ValueError):
+    def __init__(self, checkpoint, message):
+        super().__init__(message)
+        self.checkpoint = checkpoint
+
+
+def _tool_dispatch_need(condition, checkpoint, message):
+    if not condition:
+        raise _ToolDispatchRefusal(checkpoint, message)
+
+
+def _tool_dispatch_input_checkpoint(inputs, expected):
+    # This comparison is reached only after exact input admission has refused.
+    if type(inputs) is not dict:
+        return 'dispatch-input-map'
+    commission = 'commission_singleton_units'
+    omitted = commission not in inputs
+    keys = expected.keys() - {commission} if omitted else expected.keys()
+    if inputs.keys() != keys:
+        return 'dispatch-input-keys'
+    flags = ('build_only', 'diagnostics_only', 'controller_only', 'native_tool_only')
+    typed = [key for key in flags if type(inputs[key]) is bool]
+    comparable = {**inputs, **{key: 'true' if inputs[key] else 'false' for key in typed}}
+    if omitted:
+        comparable[commission] = ''
+    if comparable == expected:
+        if omitted and typed:
+            return 'dispatch-commission-omitted-and-typed-booleans'
+        if omitted:
+            return 'dispatch-commission-omitted'
+        if typed:
+            return 'dispatch-typed-booleans'
+    if any(type(value) is not str for value in inputs.values()):
+        return 'dispatch-input-types'
+    return 'dispatch-input-values'
+
+
 def tool_intent(environment, event):
-    run, workspace = context(environment)
+    try:
+        run, workspace = context(environment)
+    except Exception as error:
+        raise _ToolDispatchRefusal('dispatch-runner-context', 'Actual bootstrap context required') from error
     ref = 'refs/heads/' + TOOL_BRANCH
     sha = environment['GITHUB_SHA']
-    need(environment.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
-         and environment.get('GITHUB_REF') == ref and environment.get('GITHUB_REF_NAME') == TOOL_BRANCH
-         and environment.get('GITHUB_REF_TYPE') == 'branch'
-         and environment.get('GITHUB_WORKFLOW_SHA') == environment['AIHR_CI_HEAD'] == sha
-         and environment.get('GITHUB_WORKFLOW_REF') == 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@' + ref,
-         'Exact prehook TOOL self-source workflow required')
-    need(type(event) is dict and type(event.get('repository')) is dict
-         and event['repository'].get('id') == 1333414856
-         and event['repository'].get('full_name') == 'StradaverseHub/ai-hr'
-         and event.get('ref') in (ref, TOOL_BRANCH), 'Original TOOL dispatch event differs')
+    self_source = 'Exact prehook TOOL self-source workflow required'
+    _tool_dispatch_need(environment.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
+                        and environment.get('GITHUB_REF') == ref and environment.get('GITHUB_REF_NAME') == TOOL_BRANCH
+                        and environment.get('GITHUB_REF_TYPE') == 'branch', 'dispatch-runner-ref', self_source)
+    _tool_dispatch_need(environment.get('GITHUB_WORKFLOW_SHA') == environment['AIHR_CI_HEAD'] == sha,
+                        'dispatch-runner-source', self_source)
+    _tool_dispatch_need(environment.get('GITHUB_WORKFLOW_REF') == 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@' + ref,
+                        'dispatch-runner-workflow', self_source)
+    event_identity = 'Original TOOL dispatch event differs'
+    _tool_dispatch_need(type(event) is dict and type(event.get('repository')) is dict
+                        and event['repository'].get('id') == 1333414856
+                        and event['repository'].get('full_name') == 'StradaverseHub/ai-hr',
+                        'dispatch-event-repository', event_identity)
+    _tool_dispatch_need(event.get('ref') in (ref, TOOL_BRANCH), 'dispatch-event-ref', event_identity)
     expected = {'candidate_ref': TOOL_BRANCH, 'expected_sha': sha, 'test_parallelism': '4',
                 'commission_singleton_units': '', 'build_only': 'false', 'diagnostics_only': 'true',
                 'controller_only': 'false', 'native_tool_only': 'true'}
     inputs = event.get('inputs')
-    need(type(inputs) is dict and inputs == expected, 'Exclusive fixed TOOL dispatch inputs required')
+    if not (type(inputs) is dict and inputs == expected):
+        raise _ToolDispatchRefusal(_tool_dispatch_input_checkpoint(inputs, expected),
+                                   'Exclusive fixed TOOL dispatch inputs required')
     return run, workspace
 
 
@@ -641,7 +691,11 @@ def prepare_tool():
         checkpoint = 'event-json'
         event_payload = json.loads(event)
         checkpoint = 'dispatch-contract'
-        tool_intent(environment, event_payload)
+        try:
+            tool_intent(environment, event_payload)
+        except _ToolDispatchRefusal as error:
+            checkpoint = error.checkpoint
+            raise
         checkpoint = 'controller-location'
         controller = workspace / 'automation'
         need(pathlib.Path(__file__).absolute() == controller / SCRIPT and pathlib.Path.cwd() == controller,

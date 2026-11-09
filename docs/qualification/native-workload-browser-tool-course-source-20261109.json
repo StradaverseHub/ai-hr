@@ -1,8 +1,8 @@
 {
-  "version": 6,
+  "version": 7,
   "kind": "PROTECTED_NATIVE_TOOL_ONLY_SOURCE_NOT_RUNTIME",
-  "sourceRef": "codex/native-workload-tool-only-pre-root-checkpoint-20261109",
-  "parent": "461bb5d85f1c8696f971111ec2341998d61f8eb3",
+  "sourceRef": "codex/native-workload-tool-only-dispatch-checkpoint-20261109",
+  "parent": "97c27549d48db3a9e04a1f3b6ac6113da43c5892",
   "normalCompositionParents": [
     "1d925e3f0e7945ac5bac1be84857178eaa264a70",
     "5bfcf553173cb566a97b28a2ba017de81cb09226"
@@ -17,8 +17,8 @@
     },
     {
       "path": ".github/ci/native-controller-bootstrap.py",
-      "bytes": 44679,
-      "sha256": "4a431615132f4fa648450232e982f083dbde0228978ca445e48ef70648a73953"
+      "bytes": 47296,
+      "sha256": "6da936bbe486c480d00d0710283df921b90863bbb0ae0da575ff7b703ea5175f"
     },
     {
       "path": ".github/ci/native-workload-browser-tool-course.py",
@@ -27,8 +27,8 @@
     },
     {
       "path": ".github/ci/native-workload-browser-tool-course.test.py",
-      "bytes": 39048,
-      "sha256": "c6abcc8f2baa9c0e84aa397234615c99446167045a3daf1ca7396e748d3ac546"
+      "bytes": 41209,
+      "sha256": "36073f45500d3b61aa836cd222bd663cb70aa5eb11eb9783a6b2b54ab7c769eb"
     },
     {
       "path": ".github/ci/singleton-commissioning.test.mjs",
@@ -39,24 +39,24 @@
   "exactWholeExistingPreimages": [
     {
       "path": ".github/ci/native-controller-bootstrap.py",
-      "bytes": 43092,
-      "sha256": "aa85b57efd617b95175f864642fccb12dbdcb13c97373b75e5c2ee9b246d25d6",
-      "commit": "461bb5d85f1c8696f971111ec2341998d61f8eb3",
-      "gitBlob": "bb2533218510d5872cfb37d0b6a74ad5ecc7df4d"
+      "bytes": 44679,
+      "sha256": "4a431615132f4fa648450232e982f083dbde0228978ca445e48ef70648a73953",
+      "commit": "97c27549d48db3a9e04a1f3b6ac6113da43c5892",
+      "gitBlob": "01027f69fa9c5e25bc24491ce4890894ee944d50"
     },
     {
       "path": ".github/ci/native-workload-browser-tool-course.test.py",
-      "bytes": 37416,
-      "sha256": "fc4e7f16ada9a297606c336cfee0eac62dfba374d498126d141eb6981b3cdb7a",
-      "commit": "461bb5d85f1c8696f971111ec2341998d61f8eb3",
-      "gitBlob": "52721194e3efb8a85b63f488a1fb22e53ed7765a"
+      "bytes": 39048,
+      "sha256": "c6abcc8f2baa9c0e84aa397234615c99446167045a3daf1ca7396e748d3ac546",
+      "commit": "97c27549d48db3a9e04a1f3b6ac6113da43c5892",
+      "gitBlob": "633f322cd3e148cedb2f374102f0be44ee8a12f9"
     },
     {
       "path": "docs/qualification/native-workload-browser-tool-course-source-20261109.json",
-      "bytes": 9953,
-      "sha256": "3ce1cf7803090036cebb0a33ca62fdc81e369d884b5f25505190696212ecfd26",
-      "commit": "461bb5d85f1c8696f971111ec2341998d61f8eb3",
-      "gitBlob": "6210ea1b95bde181fc9375793ce0469a25beee34"
+      "bytes": 11291,
+      "sha256": "241f658597d721e39e48a14b5111ad9a87555683e276ec62e329a3c25760a881",
+      "commit": "97c27549d48db3a9e04a1f3b6ac6113da43c5892",
+      "gitBlob": "9461e217e45bfd2480e67875aab5fb340c50de82"
     }
   ],
   "closedCapsuleInputs": [
@@ -276,6 +276,45 @@
     "reportsExceptionDetails": false,
     "rootBootstrapReceiptUnchanged": true,
     "physicalOwnerUnchanged": true,
+    "modelCount": 25,
+    "nativeObservation": "UNRUN"
+  },
+  "dispatchCheckpointCorrection": {
+    "historicalRun": {
+      "runId": "42569371800",
+      "source": "97c27549d48db3a9e04a1f3b6ac6113da43c5892",
+      "controller": "97c27549d48db3a9e04a1f3b6ac6113da43c5892",
+      "attempt": 1,
+      "artifactId": "13652746805",
+      "terminalJobs": 13,
+      "conclusion": "failure",
+      "nativeLogSha256": "7c89870bbc9ce8faa20f191359706e9e04ca969f00d78bba53c9a608a24e167c",
+      "artifactZipSha256": "db907de4ec1fb86f7af55df44a9b3711ef2e5aefa7bcf1cff39b9bef3d006d46",
+      "receiptSha256": "ddc8da80055527410c2954a738516cc393f2fb680620d0972e50f8df2b63742e",
+      "receiptBytes": 180,
+      "observedCheckpoint": "dispatch-contract",
+      "exactDispatchPredicate": "UNOBSERVED"
+    },
+    "dispatchCheckpoints": [
+      "dispatch-runner-context",
+      "dispatch-runner-ref",
+      "dispatch-runner-source",
+      "dispatch-runner-workflow",
+      "dispatch-event-repository",
+      "dispatch-event-ref",
+      "dispatch-input-map",
+      "dispatch-input-keys",
+      "dispatch-input-types",
+      "dispatch-input-values",
+      "dispatch-commission-omitted",
+      "dispatch-typed-booleans",
+      "dispatch-commission-omitted-and-typed-booleans"
+    ],
+    "closedParentCheckpointFallback": "dispatch-contract",
+    "acceptedContractUnchanged": true,
+    "nearMatchesRemainRefused": true,
+    "rawEventBytesPublished": false,
+    "resolvePassedExpressionIntentDoesNotProveNativeRepresentation": true,
     "modelCount": 25,
     "nativeObservation": "UNRUN"
   }
