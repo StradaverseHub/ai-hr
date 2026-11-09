@@ -1129,6 +1129,25 @@ jobs:
                   if line is not None and column is not None:
                       source_file = (choice(visit['sourceFile'], {'system-load-owner.mjs'})
                                      if 'sourceFile' in visit else 'system-load.mjs')
+                  browser_stage = record(driver.get('preflightBrowserStageFailure'))
+                  stage_name = choice(browser_stage.get('stage'), {
+                      'legacy-navigation-capture', 'hidden-shell-capture', 'primary-route-observer',
+                      'primary-route-navigation', 'primary-route-retirement', 'pre-render-settlement',
+                      'legacy-navigation-seal', 'rendered-union-validation'})
+                  stage_file = choice(browser_stage.get('sourceFile'), {'system-load-owner.mjs', 'navigation-browser-capture.ts',
+                      'navigation-protocol.ts', 'navigation-entry.ts', 'navigation-shell-browser.ts'})
+                  stage_line = number(browser_stage.get('sourceLine'), 9999, 1)
+                  stage_column = number(browser_stage.get('sourceColumn'), 4096, 1)
+                  browser_signals = []
+                  if type(driver.get('browserErrors')) is list:
+                      for item in driver['browserErrors'][:6]:
+                          row = record(item)
+                          event = choice(row.get('kind'), {'pageerror', 'console'})
+                          fingerprint = choice(row.get('fingerprint'), {'react-minified-418', 'react-minified-422',
+                              'react-minified-423', 'react-minified-425', 'next-server-component-render', 'other'})
+                          if event and fingerprint:
+                              browser_signals.append({'kind': event, 'role': choice(row.get('role'), roles),
+                                  **route(row.get('path')), 'fingerprint': fingerprint})
                   receipt = {
                       'kind': 'INCOMPLETE_DEVELOPMENT_BROWSER_FAILURE', 'version': 1, 'complete': False, 'releaseEligible': False,
                       'courseOutcome': choice(os.environ['COURSE_OUTCOME'], {'success', 'failure', 'cancelled', 'skipped'}),
@@ -1150,6 +1169,11 @@ jobs:
                                                   'errorCode': choice(visit.get('errorCode'), {'ERR_ASSERTION'}),
                                                   'sourceFile': source_file, 'sourceLine': line if source_file else None,
                                                   'sourceColumn': column if source_file else None} if visit else None,
+                      'browserStageFailure': {'stage': stage_name, 'role': choice(browser_stage.get('role'), roles),
+                          **route(browser_stage.get('path')), 'errorType': choice(browser_stage.get('errorType'), types),
+                          'sourceFile': stage_file, 'sourceLine': stage_line if stage_file else None,
+                          'sourceColumn': stage_column if stage_file else None} if stage_name else None,
+                      'browserErrorSignals': browser_signals,
                       'milestones': {'workerReadinessRows': count(readiness), 'readyWorkers': ready,
                                      'browserVersionObserved': True if type(driver.get('browserVersion')) is str and driver['browserVersion'] else None,
                                      'browserAcquisition': choice(record(shutdown.get('acquisition')).get('browser'), {'absent', 'acquired', 'failed'}),
