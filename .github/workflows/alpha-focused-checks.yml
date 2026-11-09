@@ -902,7 +902,8 @@ jobs:
               complete = flag(row.get('allParsedEdgesRetained'))
               if None in (phase, edges, routines, complete):
                   return None
-              return {'phase': phase, 'edges': edges, 'allParsedEdgesRetained': complete, 'victimRoutines': routines}
+              return {'phase': phase, 'waitFamily': choice(row.get('waitFamily'), lock_families),
+                      'edges': edges, 'allParsedEdgesRetained': complete, 'victimRoutines': routines}
 
           def project_postgres_failure(value):
               row = record(value)

@@ -69,7 +69,7 @@ it('projects only closed lock families, ordinal topology and explicit log phase'
  PL/pgSQL function app.unknown_private_routine(text) line 9 at PERFORM`;
  const options={runtimeFrom:'2026-11-09T06:00:00.001Z',advisoryKeys:new Map([['90:42:77:1','access-configuration']])};
  const evidence=postgresLockFailures(log,options)[0].diagnostic;
- expect(evidence).toEqual({phase:'before-runtime-start',allParsedEdgesRetained:true,victimRoutines:['ai-centre-running'],edges:[
+ expect(evidence).toEqual({phase:'before-runtime-start',waitFamily:null,allParsedEdgesRetained:true,victimRoutines:['ai-centre-running'],edges:[
   {waiter:1,blocker:2,resource:1,mode:'ExclusiveLock',family:'access-configuration',waiterCall:'direct-advisory-exclusive',blockerCall:null},
   {waiter:2,blocker:1,resource:1,mode:'ExclusiveLock',family:'access-configuration',waiterCall:null,blockerCall:'direct-advisory-exclusive'},
  ]});
@@ -82,4 +82,19 @@ it('projects only closed lock families, ordinal topology and explicit log phase'
  const long=log+'\n'+Array.from({length:16},(_,i)=>` Process ${100+i} waits for ShareLock on transaction ${i}; blocked by process 98.`).join('\n');
  const bounded=postgresLockFailures(long,options)[0].diagnostic;
  expect(bounded?.edges).toHaveLength(8);expect(bounded?.allParsedEdgesRetained).toBe(false);
+});
+
+it('identifies heavyweight wait families from the header even without graph edges',()=>{
+ const lines=[
+  'process 98 still waiting for ExclusiveLock on advisory lock [90,42,77,1] after 100.070 ms',
+  'process 98 acquired ExclusiveLock on advisory lock [90,42,77,1] after 402.465 ms',
+  'process 98 avoided deadlock for ShareLock on transaction 1234 by rearranging queue order after 100.100 ms',
+  'process 98 acquired ShareLock on unexpected private-value after 101.000 ms',
+ ];
+ const log=lines.map(line=>'2026-11-09 14:00:00.000 +08 [98] abcdef01.62 ai_hr_app@ai_hr_dev LOG:  '+line).join('\n');
+ const options={bracketed:true,advisoryKeys:new Map([['90:42:77:1','access-configuration']])};
+ const rows=postgresLockFailures(log,options);
+ expect(rows.map(row=>row.diagnostic?.waitFamily)).toEqual(['access-configuration','access-configuration','transaction',null]);
+ expect(rows.map(row=>row.diagnostic?.edges)).toEqual([[],[],[],[]]);
+ expect(JSON.stringify(rows.map(row=>row.diagnostic))).not.toMatch(/private-value|1234|\b(?:90|42|77|98)\b/);
 });
