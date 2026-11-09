@@ -275,8 +275,11 @@ class Firewall:
         batch = [{('create' if kind != 'rule' else 'add'): {kind: row}} for kind, row in rows]
         self.attempted = True
         self._nft(['-f', '-'], deadline, 16, json.dumps({'nftables': batch}).encode())
-        self.handles, self.counters = firewall_readback(self.name,
+        handles, counters = firewall_readback(self.name,
             self._nft(['-a', 'list', 'table', 'inet', self.name], deadline, 16))
+        # A late readback does not establish ownership for activation or deletion.
+        deadline.remaining(16)
+        self.handles, self.counters = handles, counters
         self.observe(deadline, 16)
 
     def observe(self, deadline, frontier=60):

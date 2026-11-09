@@ -269,6 +269,50 @@ class BrowserHostSettlementModel(unittest.TestCase):
                 child.poll.assert_not_called()
                 child.kill.assert_not_called()
 
+    def test_late_initial_readback_retains_protection_without_birth_proof(self):
+        owner = H.Firewall('123', '0123456789abcdef')
+        rows = kernel_rows()
+        chains = data([row for row in rows if 'chain' in row])
+        table = data(rows)
+        readback = H.firewall_readback
+        replies = iter((chains, b'', table))
+        with patch.object(H.time, 'monotonic', return_value=100) as now:
+            clock = H.Deadline()
+
+            def native_reply(_args, active_clock, frontier, _input=None):
+                self.assertIs(active_clock, clock)
+                self.assertEqual(frontier, 16)
+                active_clock.remaining(frontier)
+                return next(replies)
+
+            def late_initial_readback(name, raw):
+                result = readback(name, raw)
+                now.return_value = 116
+                return result
+
+            with (patch.object(owner, '_nft', side_effect=native_reply) as native,
+                  patch.object(H, 'firewall_readback', side_effect=late_initial_readback) as parse,
+                  patch.object(H, 'require_role_credentials_absent') as census,
+                  patch.object(H, '_bounded_file', return_value=HEADER)):
+                with self.assertRaisesRegex(H.Refused, '^capability-deadline$'):
+                    owner.install(clock)
+                with self.assertRaisesRegex(H.Refused, '^firewall-install-already-attempted$'):
+                    owner.install(clock)
+                with self.assertRaisesRegex(H.Refused, '^firewall-birth-unproved$'):
+                    owner.remove_after_quiescence(clock)
+
+        self.assertEqual([entry.args[:3] for entry in native.call_args_list], [
+            (['list', 'chains'], clock, 16),
+            (['-f', '-'], clock, 16),
+            (['-a', 'list', 'table', 'inet', NAME], clock, 16),
+        ])
+        parse.assert_called_once_with(NAME, table)
+        census.assert_called_once_with(clock, 75)
+        self.assertTrue(owner.attempted)
+        self.assertFalse(owner.removal_attempted)
+        self.assertIsNone(owner.handles)
+        self.assertIsNone(owner.counters)
+
     def test_late_readback_does_not_publish_new_counters(self):
         owner = H.Firewall('123', '0123456789abcdef')
         rows = kernel_rows()
