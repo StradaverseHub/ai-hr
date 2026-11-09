@@ -5,7 +5,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
 import {attendanceCorrectionForm} from './attendance-rejection-browser.mjs';
 import {exerciseConcurrentPayrollClose} from './payroll-close-concurrency.mjs';
-export async function prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs}){
+export async function prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs,withLockWorkload}){
  const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[],capturedTransport:[],captureProtocol:'new click request and response headers; UI and persisted outcomes checked separately'};
  const failedAttendanceActions=[];
  async function capture(page,click,kind){
@@ -240,7 +240,7 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    evidence.push({workflow:'payroll close and employee publication',persisted:true,employees:50,unpublishedRefused:true,ownPublishedStatement:true,foreignDocumentRefusals:2});save();
   });
  }
- if(report.suite==='workflow-preflight')await exerciseConcurrentPayrollClose({context,closeContext,notePrimary,noteEvidence,visit,fixture,db,request,capture,assertProcessed,report,save});
+ if(report.suite==='workflow-preflight')await exerciseConcurrentPayrollClose({context,closeContext,notePrimary,noteEvidence,visit,fixture,db,request,capture,assertProcessed,report,save,withLockWorkload});
  const {importDate}=performanceFixtureCalendar(fixture.today);
  const importText=(user,date)=>clockingFixtureText(fixture.users,user.tenant,user.company,date);
  async function assertImported(user,fileName,date){

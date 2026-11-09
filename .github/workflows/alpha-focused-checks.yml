@@ -913,6 +913,14 @@ jobs:
           sampled_advisory_families = (lock_families - {'transaction', 'tuple', 'relation', 'advisory-unclassified'}) | {'unclassified'}
           sampled_advisory_modes = {'ShareLock', 'ExclusiveLock'}
 
+          def project_lock_workload_stage(value, phase):
+              if phase != 'browser-workflows':
+                  return None
+              return choice(value, {'ai-baseline', 'org-explorer', 'personnel-switcher', 'payroll-readiness',
+                  'movement', 'payroll-register', 'saved-reports', 'mixed-workflows', 'payroll-close-pair',
+                  'attendance-rejection', 'personnel-profile', 'letter-draft', 'performance-rewards-drafts',
+                  'audit-verification', 'assistant-compatibility', 'transition'})
+
           def project_sampled_waiter(value):
               row = record(value)
               waiter = {'family': choice(row.get('family'), sampled_advisory_families), 'mode': choice(row.get('mode'), sampled_advisory_modes)}
@@ -1326,6 +1334,9 @@ jobs:
                           if bucket:
                               signal['appAdvisoryAttribution'] = {'phase': bucket, 'waiters': bounded_list(attribution.get('waiters'), 8, project_sampled_waiter),
                                                                   'edges': bounded_list(attribution.get('edges'), 8, project_sampled_blocker)}
+                              workload_stage = project_lock_workload_stage(attribution.get('workloadStage'), bucket)
+                              if workload_stage is not None:
+                                  signal['appAdvisoryAttribution']['workloadStage'] = workload_stage
                           blocking_signals.append(signal)
                           if len(blocking_signals) == 6:
                               break

@@ -42,7 +42,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS,measuredPreflightLockTiming,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
-import {firstAppLockWaitCategories,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
+import {createPreflightLockWorkload,firstAppLockWaitCategories,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
  nativePreflightRoutePlan,nativePreflightRouteFor,nativePreflightContentWitness,nativePreflightReadiness,
  assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,requireNativeRenderedUnion,readManifestRoute} from './system-route-manifest.mjs';
@@ -458,6 +458,8 @@ async function prepareDatabaseLockScope(){
 
 const waits=[];
 let preflightAttributionPhase='pilot-http';
+const preflightLockWorkload=createPreflightLockWorkload();
+const withLockWorkload=fullDevelopmentRoutes?preflightLockWorkload.within:(_stage,work)=>work();
 function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
  const rootStatements=new Map(),samples=[];
  const sampleDb=measureDevelopment?measuredLockDb:db;
@@ -495,6 +497,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
  const timer=schedule(attemptInterval,async timing=>{
   const startedMs=performance.now();
   const attributionPhase=preflightAttributionPhase;
+  const workloadAtStart=preflightLockWorkload.snapshot();
   let coreComplete=false;
   try{
    const activity=await sampleDb`select state,coalesce(wait_event_type,'CPU-or-ready') as kind,count(*)::int as connections,
@@ -538,7 +541,9 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    let attribution;
    if(wait&&fullDevelopmentRoutes&&phase==='preflight'&&blockingAppSessions>0&&attributedSamples<6){
     attributedSamples++;
-    attribution={phase:attributionPhase===preflightAttributionPhase?attributionPhase:'transition',...originalAdvisoryAttribution(locks,lockLabels)};
+    const observedPhase=attributionPhase===preflightAttributionPhase?attributionPhase:'transition';
+    attribution={phase:observedPhase,workloadStage:observedPhase==='browser-workflows'?preflightLockWorkload.stageAfter(workloadAtStart):null,
+     ...originalAdvisoryAttribution(locks,lockLabels)};
     wait.appAdvisoryAttribution=attribution;
     wait.firstAppLockWaitCategories=firstAppLockWaitCategories(activity,appConnections.waitingOnLock);
    }
@@ -1197,10 +1202,10 @@ async function main(){
   report.preflightBrowserSignIns?.some(row=>row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0));
  save();
  const aiBrowserActors=fixture.assistantHistory?[employee,hr,fixture.users[254],fixture.users[251]]:[employee,hr];
- const aiBaseline=await runLanes(aiBrowserActors,async user=>{
+ const aiBaseline=await withLockWorkload('ai-baseline',()=>runLanes(aiBrowserActors,async user=>{
   const ctx=await context(user);
   await withContext(ctx,async()=>{const page=await ctx.newPage();await aiCentreJourney(page,user,'baseline');});
- });
+ }));
  report.aiBaselineFailures=aiBaseline.flatMap((result,index)=>result.status==='rejected'
   ?[{role:aiBrowserActors[index].role,userIndex:aiBrowserActors[index].index,error:errorLabel(result.reason)}]:[]);
  save();
@@ -1211,13 +1216,13 @@ async function main(){
    let stage='org-explorer-workflow';
    try{
     requireNativeBusiness();
-    await exerciseOrgExplorer({page,user:group,fixture,report,save,phase:'baseline'});
+    await withLockWorkload('org-explorer',()=>exerciseOrgExplorer({page,user:group,fixture,report,save,phase:'baseline'}));
     stage='personnel-switcher-workflow';
     requireNativeBusiness();
-    await exercisePersonnelSwitcher({page,user:group,fixture,report,save,phase:'baseline'});
+    await withLockWorkload('personnel-switcher',()=>exercisePersonnelSwitcher({page,user:group,fixture,report,save,phase:'baseline'}));
     stage='payroll-readiness-workflow';
     requireNativeBusiness();
-    await exercisePayrollBrowser({base,page,user:group,fixture,report,save,phase:'baseline'});
+    await withLockWorkload('payroll-readiness',()=>exercisePayrollBrowser({base,page,user:group,fixture,report,save,phase:'baseline'}));
    }catch(reason){notePreflightStageFailure(reason,stage,group,page);throw reason;}
   });
   requireCleanDriver();
@@ -1226,18 +1231,18 @@ async function main(){
   const ctx=await context(group);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
    requireNativeBusiness();
-   await exerciseMovement({base,page,actor:group,subject:employee,fixture,db,report,save,phase:'baseline',recordEvent:suite==='workflow-preflight'});
+   await withLockWorkload('movement',()=>exerciseMovement({base,page,actor:group,subject:employee,fixture,db,report,save,phase:'baseline',recordEvent:suite==='workflow-preflight'}));
    requireNativeBusiness();
-   await exercisePayrollRegister({base,page,user:group,fixture,db,request,report,save});
+   await withLockWorkload('payroll-register',()=>exercisePayrollRegister({base,page,user:group,fixture,db,request,report,save}));
    requireNativeBusiness();
-   await exerciseSavedReport({page,user:group,fixture,db,base,phase:'baseline',thinkTimeMs,report,save});
+   await withLockWorkload('saved-reports',()=>exerciseSavedReport({page,user:group,fixture,db,base,phase:'baseline',thinkTimeMs,report,save}));
   });
   requireCleanDriver();
   const foreignGroup=fixture.users.find(user=>user.role==='groupHR'&&user.tenant!==group.tenant);
   assert(foreignGroup,'Payroll register needs a foreign group HR boundary actor');
   for(const actor of [hr,foreignGroup]){
    const boundaryContext=await context(actor);
-   await withContext(boundaryContext,async()=>{const boundaryPage=await boundaryContext.newPage();await verifyPayrollRegisterBoundary({base,page:boundaryPage,actor,owner:group,fixture,report,save});});
+   await withContext(boundaryContext,async()=>{const boundaryPage=await boundaryContext.newPage();await withLockWorkload('payroll-register',()=>verifyPayrollRegisterBoundary({base,page:boundaryPage,actor,owner:group,fixture,report,save}));});
    requireCleanDriver();
   }
  }
@@ -1252,7 +1257,7 @@ async function main(){
   }
   if(suite==='whole-system'||strictRenderedPreflight){
    requireNativeBusiness();
-   await exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'});
+   await withLockWorkload('payroll-readiness',()=>exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'}));
   }
   });
   requireCleanDriver();
@@ -1437,14 +1442,14 @@ async function main(){
  }
  if(suite!=='claims-heavy'){
   requireNativeBusiness();
-  mixedWorkflows=await prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
+  mixedWorkflows=await withLockWorkload('mixed-workflows',()=>prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs,withLockWorkload}));
  }
  requireCleanDriver();
  let loadedAttendanceRejection;
  if(attendanceRejectionProbeEnabled&&suite!=='claims-heavy'){
   const baseline=await prepareAttendanceRejection({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,db,report,save,phase:'baseline'});
   requireNativeBusiness();
-  await baseline.run();
+  await withLockWorkload('attendance-rejection',()=>baseline.run());
   requireCleanDriver();
   if(suite==='whole-system')loadedAttendanceRejection=await prepareAttendanceRejection({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,db,report,save,phase:'loaded'});
  }
@@ -1480,7 +1485,7 @@ async function main(){
  }
  if(suite==='workflow-preflight'){
   const ctx=await context(hr);
-  await withContext(ctx,async()=>{const page=await ctx.newPage();await exerciseLivePersonnelProfile({page,user:hr,fixture,db,request,report,save,phase:'baseline'});});
+  await withContext(ctx,async()=>{const page=await ctx.newPage();await withLockWorkload('personnel-profile',()=>exerciseLivePersonnelProfile({page,user:hr,fixture,db,request,report,save,phase:'baseline'}));});
   requireCleanDriver();
  }
  assert.equal(report.browserErrors.length,0,'mutation/processing browser runtime errors');
@@ -1497,15 +1502,15 @@ async function main(){
  if(suite==='workflow-preflight'){
   assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys failed');
   requireNativeBusiness();
-  await exerciseLetterDraft({base,context,withContext,notePrimary,noteEvidence,notePreflightStageFailure,visit,fixture,db,report,save});
+  await withLockWorkload('letter-draft',()=>exerciseLetterDraft({base,context,withContext,notePrimary,noteEvidence,notePreflightStageFailure,visit,fixture,db,report,save}));
   requireCleanDriver();
   const {exercisePerformanceRewardsDrafts}=await import('./performance-rewards-draft-browser.mjs');
   requireNativeBusiness();
-  await exercisePerformanceRewardsDrafts({base,context,withContext,fixture,db,report,save});
+  await withLockWorkload('performance-rewards-drafts',()=>exercisePerformanceRewardsDrafts({base,context,withContext,fixture,db,report,save}));
   requireCleanDriver();
-  await verifyAudit();save();
+  await withLockWorkload('audit-verification',verifyAudit);save();
   const redirectContext=await context(employee);
-  await withContext(redirectContext,async()=>{
+  await withLockWorkload('assistant-compatibility',()=>withContext(redirectContext,async()=>{
    const page=await redirectContext.newPage();
    for(const [alias,target] of [['/assistant?view=jobs','/assistant'],['/assistant?view=insights','/me/payroll-readiness']]){
     await visit(page,employee,alias);
@@ -1513,7 +1518,7 @@ async function main(){
     assert.equal(new URL(page.url()).search,'','AI Centre compatibility redirect kept stale view');
    }
    report.aiCompatibilityRedirectsVerified=true;save();
-  });
+  }));
   requireCleanDriver();
   assert(report.preflightHomeReady,'all four preflight sign-ins must load their dashboards');
   assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure');

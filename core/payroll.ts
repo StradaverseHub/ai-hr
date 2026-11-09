@@ -19,7 +19,10 @@ import {isDeepStrictEqual} from 'node:util';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {lockPayrollPeriodsTx,lockPayrollBatchPeriodTx,lockNativePayrollPeriodsTx,lockNativePayrollBatchPeriodTx} from './payroll-period-lock';
+import {
+  lockPayrollPeriodsTx, lockPayrollBatchPeriodTx, lockNativePayrollPeriodsTx,
+  lockNativePayrollBatchPeriodTx, tryLockNativePayrollClosePeriodTx, PayrollPeriodOwnershipUnavailable,
+} from './payroll-period-lock';
 import { lockPayrollOvertimeBatchContextTx, readPayrollOvertimePatternCashTx, readPayrollOvertimeCoverageTx, composePayrollOvertime, OvertimePayrollError } from './payroll-overtime-pattern';
 import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendance/service';
 import {readPcbExemptions, type PcbExemptionRow} from './pcb-exemptions';
@@ -31,6 +34,8 @@ import { attendanceOvertimeSource, overtimeSourceSettlement, payrollAttendanceAl
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
 import { createHash, randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
+import { applicationDatabaseBudget } from '../db/capacity';
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { pageState, type PageQuery } from '../lib/pagination';
 import { type SessionContext, type Tx } from '../db/client';
@@ -8995,13 +9000,36 @@ export async function payrollCloseCompanyIdsTx(
 }
 
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
-  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
-  return withTenant(ctx, async (tx) => {
-    await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
-    const prepared=await preparePayrollCloseTx(tx,ctx,p);
-    await applyPayrollCloseTx(tx,ctx,p,prepared);
+  p = structuredClone(p);
+  ctx = capturePayrollCloseContext(ctx);
+  const attempt = (deadline?: number, signal?: AbortSignal) => withTenant(ctx, async tx => {
+    if (deadline !== undefined && performance.now() >= deadline) throw new PayrollPeriodOwnershipUnavailable();
+    if (!await tryLockNativePayrollClosePeriodTx(tx, ctx, p.batchId)) return false;
+    if (deadline !== undefined && performance.now() >= deadline) throw new PayrollPeriodOwnershipUnavailable();
+    const prepared = await preparePayrollCloseTx(tx, ctx, p);
+    await applyPayrollCloseTx(tx, ctx, p, prepared);
+    return true;
+  }, { readSignal: signal });
 
-  });
+  // Retry only a cleanly settled Access miss, after returning the connection to the pool.
+  // A close or transaction error escapes unchanged.
+  if (await attempt()) return;
+  const deadline = performance.now() + applicationDatabaseBudget(process.env).waitMs;
+  for (let backoff = 25; ; backoff = Math.min(400, backoff * 2)) {
+    const timeLeft = deadline - performance.now();
+    if (timeLeft <= 0) break;
+    await delay(Math.min(timeLeft, backoff + Math.floor(Math.random() * 25)));
+    const checkoutBudget = Math.floor(deadline - performance.now());
+    if (checkoutBudget <= 0) break;
+    const signal = AbortSignal.timeout(checkoutBudget);
+    try {
+      if (await attempt(deadline, signal)) return;
+    } catch (error) {
+      if (signal.aborted && error === signal.reason) break;
+      throw error;
+    }
+  }
+  throw new PayrollPeriodOwnershipUnavailable();
 }
 
 const capturePayrollCloseContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});

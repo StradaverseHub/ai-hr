@@ -10,6 +10,26 @@ const lockFamily=(key,labels)=>{
  return families.has(family)?family:'unclassified';
 };
 
+const preflightWorkloads=new Set(['ai-baseline','org-explorer','personnel-switcher','payroll-readiness',
+ 'movement','payroll-register','saved-reports','mixed-workflows','payroll-close-pair','attendance-rejection',
+ 'personnel-profile','letter-draft','performance-rewards-drafts','audit-verification','assistant-compatibility']);
+
+/** Mark only serial driver scopes. A new token on exit detects a nested stage that came and went mid-probe. */
+export function createPreflightLockWorkload(){
+ let current=Object.freeze({stage:null});
+ return {
+  snapshot:()=>current,
+  stageAfter:started=>started===current?current.stage:'transition',
+  async within(stage,work){
+   if(!preflightWorkloads.has(stage))return work();
+   const prior=current.stage;
+   current=Object.freeze({stage});
+   try{return await work();}
+   finally{current=Object.freeze({stage:prior});}
+  },
+ };
+}
+
 const waitKinds=['advisory','transactionid','tuple','relation','other'];
 
 /** Use only a closed partition of the original pg_stat_activity wait count. */

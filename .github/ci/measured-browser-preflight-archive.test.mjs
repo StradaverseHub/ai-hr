@@ -168,7 +168,7 @@ test('refuses mixed source or run even when replacement seals match the bytes', 
   assert.throws(() => inspectMeasuredPreflightArchiveBytes(zip(model()), { source: 'd'.repeat(40), runId }), /terminal receipt refused/);
 });
 
-test('failure-only projection closes first-probe lock categories and monotonic gap durations', () => {
+test('failure-only projection closes first-probe lock categories, workload stages and monotonic gap durations', () => {
   // Compile only the actual pure Python projection functions from the workflow.
   const control = String.raw`
 import ast, re, sys, textwrap
@@ -178,7 +178,8 @@ workflow = Path(sys.argv[1]).read_text()
 script = next(block for block in re.findall(r"<<'PYTHON'\n(.*?)^          PYTHON$", workflow, re.S | re.M)
               if 'def project_first_app_lock_wait_categories' in block)
 definitions = ast.parse(textwrap.dedent(script))
-names = {'closed', 'number', 'project_first_app_lock_wait_categories', 'project_private_preflight_timing'}
+names = {'closed', 'choice', 'number', 'project_first_app_lock_wait_categories', 'project_private_preflight_timing',
+         'project_lock_workload_stage'}
 body = [node for node in definitions.body if isinstance(node, ast.FunctionDef) and node.name in names]
 assert {node.name for node in body} == names
 exec(compile(ast.Module(body=body, type_ignores=[]), 'workflow-projections', 'exec'))
@@ -190,6 +191,13 @@ for malformed in (None, dict(kinds, other=0), dict(kinds, advisory=True), dict(k
 assert project_first_app_lock_wait_categories(kinds, True) is None
 assert project_first_app_lock_wait_categories(kinds, 0) is None
 assert project_first_app_lock_wait_categories(kinds, 1025) is None
+for valid in ('payroll-close-pair', 'ai-baseline', 'transition'):
+    assert project_lock_workload_stage(valid, 'browser-workflows') == valid
+    assert project_lock_workload_stage(valid, 'pilot-http') is None
+    assert project_lock_workload_stage(valid, 'transition') is None
+for unsafe in (None, 'payroll-close-pair/tenant123', '/admin/personnel', 'select * from hr', {'actor': 1}):
+    assert project_lock_workload_stage(unsafe, 'browser-workflows') is None
+
 timing = dict(attemptIntervalMs=200, gapUs=508264, openingGapUs=209731, tailGapUs=130623,
               launchSpacingUs=496000, serialWaitPastDueUs=0, timerAfterReadyUs=296000,
               callbackToProbeUs=1, activityRoundTripUs=4000, betweenProbesUs=1, advisoryRoundTripUs=8263)

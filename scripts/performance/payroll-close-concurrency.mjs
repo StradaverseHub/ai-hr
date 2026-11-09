@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {performance} from 'node:perf_hooks';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 
-export async function exerciseConcurrentPayrollClose({context,closeContext,notePrimary,noteEvidence,visit,fixture,db,request,capture,assertProcessed,report,save}){
+export async function exerciseConcurrentPayrollClose({context,closeContext,notePrimary,noteEvidence,visit,fixture,db,request,capture,assertProcessed,report,save,withLockWorkload=(_stage,work)=>work()}){
  const tenant=fixture.tenants[0];
  const {publicationMonth,historicalMonth}=performanceFixtureCalendar(fixture.today);
  assert(publicationMonth<historicalMonth&&historicalMonth<fixture.month,'concurrent close needs a reserved past Payroll month');
@@ -43,7 +43,7 @@ export async function exerciseConcurrentPayrollClose({context,closeContext,noteP
   result.status='closing';
   save();
   const started=performance.now();
-  const settled=await Promise.allSettled(lanes.map(async lane=>{
+  const settled=await withLockWorkload('payroll-close-pair',()=>Promise.allSettled(lanes.map(async lane=>{
    const observeRequest=req=>{
     if(req.method()==='POST'&&req.headers()['next-action']&&new URL(req.url()).pathname==='/payroll/'+lane.batchId&&req.postData()?.includes(lane.batchId)){
      lane.closeRequest=req;
@@ -78,7 +78,7 @@ export async function exerciseConcurrentPayrollClose({context,closeContext,noteP
     noteEvidence(()=>lane.page.off('request',observeRequest));
     noteEvidence(()=>lane.page.off('response',observeResponse));
    }
-  }));
+  })));
   const failures=settled.filter(outcome=>outcome.status==='rejected');
   if(failures.length)throw new AggregateError(failures.map(outcome=>outcome.reason),'Payroll close/publication lane failed');
   result.overlapMs=Math.min(...lanes.map(lane=>lane.responseMs))-Math.max(...lanes.map(lane=>lane.requestMs));

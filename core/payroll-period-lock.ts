@@ -6,7 +6,7 @@
 import {eq,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {payrollBatch,payPeriod} from '../db/schema';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,tryLockAccessConfigurationTx} from './access-configuration-lock';
 import {isCarrierPrincipalCurrentTx} from './carrier-principal';
 /** Ordinary authenticated kernel owners may carry statutory/bootstrap metadata. Those markers
  * grant NOTHING here. AI source owners apply their stricter no-marker prerequisite separately.
@@ -58,9 +58,12 @@ export async function lockPayrollBatchPeriodTx(tx:Tx,supplied:SessionContext,bat
  * keeps SYSTEM semantics. No payroll-scope or month-shape refusal is added: the native writer's existing
  * RLS, granular permission and period rules stay the authority and keep their outcomes and messages. A
  * month the screens cannot validate keys on its exact stored text, the identity pay_period compares on. */
+async function assertNativePeriodPrincipalTx(tx:Tx,ctx:SessionContext){
+ if(ctx.userId&&!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new PayrollPeriodOwnershipUnavailable();
+}
 async function nativePeriodCarrierTx(tx:Tx,ctx:SessionContext){
  await lockAccessConfigurationTx(tx,ctx.tenantId);
- if(ctx.userId&&!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new PayrollPeriodOwnershipUnavailable();
+ await assertNativePeriodPrincipalTx(tx,ctx);
 }
 async function lockNativePeriodKeysTx(tx:Tx,ctx:SessionContext,selections:readonly PayrollPeriodSelection[]){
  const captured=selections.filter(p=>typeof p?.companyId==='string'&&typeof p?.payPeriod==='string').map(p=>({companyId:p.companyId,payPeriod:p.payPeriod})),keys:string[]=[];
@@ -81,6 +84,23 @@ export async function lockNativePayrollBatchPeriodTx(tx:Tx,supplied:SessionConte
  const rawContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},id=batchId;
  if(typeof id!=='string')return null;
  const ctx=await canonicalPeriodContextTx(tx,rawContext);await nativePeriodCarrierTx(tx,ctx);
+ return lockOwnedNativePayrollBatchPeriodTx(tx,ctx,id);
+}
+
+/** Close can give back the connection on an Access miss before any payroll reads or effects.
+ * A missing or invisible batch still reaches the existing Close validation. */
+export async function tryLockNativePayrollClosePeriodTx(tx:Tx,supplied:SessionContext,batchId:string):Promise<boolean>{
+ if(typeof batchId!=='string')return true;
+ const ctx=await canonicalPeriodContextTx(tx,supplied);
+ const acquired=await tryLockAccessConfigurationTx(tx,ctx.tenantId);
+ if(acquired===false)return false;
+ if(acquired!==true)throw new PayrollPeriodOwnershipUnavailable();
+ await assertNativePeriodPrincipalTx(tx,ctx);
+ await lockOwnedNativePayrollBatchPeriodTx(tx,ctx,batchId);
+ return true;
+}
+
+async function lockOwnedNativePayrollBatchPeriodTx(tx:Tx,ctx:SessionContext,id:string){
  const read=()=>tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod,payPeriodId:payrollBatch.payPeriodId}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1);
  const [nominee]=await read();if(!nominee)return null;
  await lockNativePeriodKeysTx(tx,ctx,[nominee]);

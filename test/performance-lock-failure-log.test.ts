@@ -1,11 +1,36 @@
 import {expect,it} from 'vitest';
 import {developmentPostgresLockWindow,postgresLockFailures} from '../scripts/performance/lock-failure-log.mjs';
-import {firstAppLockWaitCategories,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
+import {createPreflightLockWorkload,firstAppLockWaitCategories,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
 import {lockSampleEvidence} from '../scripts/performance/driver-shutdown.mjs';
 
 const fictionalWaiter={app_session:true,pid:22,classid:'11',objid:'12',objsubid:1,mode:'ExclusiveLock',blockers:[84]};
 const fictionalBlocker={family:'access-configuration',waiterMode:'ExclusiveLock',blockerMode:'ShareLock',blockerState:'granted',
  waiterCategory:'advisory-exclusive',blockerCategory:'rewards-library'};
+
+it('attributes only an unchanged closed workload during the two original probes',async()=>{
+ const owner=createPreflightLockWorkload(),outside=owner.snapshot();
+ expect(owner.stageAfter(outside)).toBeNull();
+ let finish!:()=>void;
+ const held=new Promise<void>(resolve=>{finish=resolve;});
+ await owner.within('mixed-workflows',async()=>{
+  const beforePair=owner.snapshot();
+  const concurrent=owner.within('payroll-close-pair',()=>Promise.allSettled([held,held]));
+  const withinPair=owner.snapshot();
+  expect(owner.stageAfter(withinPair)).toBe('payroll-close-pair');
+  expect(owner.stageAfter(beforePair)).toBe('transition');
+  finish();
+  await expect(concurrent).resolves.toEqual([{status:'fulfilled',value:undefined},{status:'fulfilled',value:undefined}]);
+  expect(owner.stageAfter(owner.snapshot())).toBe('mixed-workflows');
+  expect(owner.stageAfter(beforePair)).toBe('transition');
+  await expect(owner.within('letter-draft',async()=>{throw Error('owned action failed');})).rejects.toThrow('owned action failed');
+  expect(owner.stageAfter(owner.snapshot())).toBe('mixed-workflows');
+  const stable=owner.snapshot();
+  await owner.within('private actor or route',async()=>expect(owner.stageAfter(stable)).toBe('mixed-workflows'));
+  expect(owner.stageAfter(stable)).toBe('mixed-workflows');
+ });
+ expect(owner.stageAfter(outside)).toBe('transition');
+ expect(owner.stageAfter(owner.snapshot())).toBeNull();
+});
 
 it('partitions only the first probe and preserves an original positive on refused category evidence',()=>{
  const categories={advisory:1,transactionid:2,tuple:0,relation:1,other:1};
