@@ -1,0 +1,123 @@
+{
+  "kind": "PERSONNEL_ORGANISATION_PAGE_TAGGED_AUXILIARY_PLAN_SOURCE_ONLY",
+  "directParent": "457b3d1834e644837ec9a830a7e8e0fe3e35901c",
+  "selector": "test/employee-choice-db.test.ts",
+  "testSource": {
+    "parent": {
+      "gitBlob": "cccdcf6d67eb847cd9575e7560985a7727b9f397",
+      "bytes": 79757,
+      "sha256": "b1c6c16af282d228f48a0fe824dd5a20a373e907d522d28dc79124170911e191"
+    },
+    "current": {
+      "gitBlob": "fdb04c6ef6537175733fcffe6526d57cf04b095e",
+      "bytes": 86492,
+      "sha256": "2b3bfd5b57334bede41a423bfc93784815b01cac7a5f34fdde659639ab1b6beb"
+    },
+    "preserved": {
+      "sourceCasesExpanded": 10,
+      "unchangedRegistrations": 9,
+      "functions": 5,
+      "changedFunctions": [
+        "compareOrganisationPage"
+      ],
+      "expectCounts": {
+        "prior": 161,
+        "current": 170,
+        "originalExact": 160,
+        "originalEquivalent": 1
+      },
+      "sqlTemplateCounts": {
+        "prior": 32,
+        "current": 34
+      },
+      "preservedAdmissionCalls": 25,
+      "newSqlTemplates": [
+        "sql`set local statement_timeout='2s'`",
+        "sql`explain (analyze,buffers,verbose,settings,timing off,format json) ${call.query}`"
+      ]
+    }
+  },
+  "sourceInverse": {
+    "restore": "test/employee-choice-db.test.ts",
+    "remove": "docs/qualification/employee-organisation-page-auxiliary-plans-source-20261109.json",
+    "targetGitTree": "efead00e4db686c16024d67010e0888c28c99979"
+  },
+  "protectedGitBlobs": {
+    "docs/qualification/employee-organisation-page-statement-timings-source-20261109.json": "0452ca84534a12207b064692e77e296cc3802424",
+    "core/employee-choice.ts": "06c19151cd686b538e4f3c8c42a7a827b563d81c",
+    "db/client.ts": "0c4f28e00393a763608b506d608a3cf7df542c57",
+    "test/global-setup.ts": "526193c2dc39ad7a9298161fff0c95ca9e62f1f6",
+    "test/performance/personnel-native-fixture.ts": "933f1543bf2ea08aae446d805720272e597dacf0",
+    "test/performance/employee-choice-department-pair-probe.ts": "ffb918d4ce3ae2f4a7addce4b843bdc1d7baf292",
+    ".github/workflows/alpha-focused-checks.yml": "e993882d7e92f28bd4f75f31556f5a971dfe47f6",
+    ".github/ci/postgres.sh": "8d9cdd60ca3bf666e5717c17efd3841ecb3879fb"
+  },
+  "retainedHostedFailure": {
+    "source": "457b3d1834e644837ec9a830a7e8e0fe3e35901c",
+    "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+    "run": 42564978820,
+    "attempt": 1,
+    "terminalJobs": 7,
+    "artifactId": 13650684807,
+    "artifactSha256": "41ad70234f852bc01075f5e0b3521fc5fce3cf1f18e65b3a9b2db0e4fb5f764e",
+    "pageMemberSha256": "b442a3d0eda24a31bcb02a1e9eb503866a9b910aa1d475ab60c4e9399cf62397",
+    "selectedLogSha256": "ec18eb065e214bd036d0bfa670db702e92b2138ec3e318caac174ba7d054cec0",
+    "reportedCases": {
+      "passed": 9,
+      "failed": 1
+    },
+    "matchedReads": 12,
+    "positionTimings": 76,
+    "pageAndCountPlans": 16,
+    "publicPortSamples": 0,
+    "firstFailure": {
+      "line": 585,
+      "reason": "Final exact planner catalogue equality refused before public-port timing.",
+      "sha256": "4a8207a3868a28787ec03fee9e0762f8b0105a352907d837edcae8d98ed2c797"
+    },
+    "nativeAppSettled": true,
+    "fixtureRestored": true,
+    "cleanupStep": "success",
+    "candidateAuxiliaryMs": [
+      658.5993110000272,
+      711.9653769999568
+    ],
+    "candidateAuxiliarySharePercent": [
+      51.42158090238243,
+      56.502330555174865
+    ]
+  },
+  "diagnostic": {
+    "fixedTrigger": "The existing exact terminal catalogue comparison throws after the original matched reads and page/count plans. The original error remains primary.",
+    "heldSource": "Four original product SQL objects from B1 department-active, recompiled and sealed with all twelve matched SQL/bind pairs and the four pre-tag calls. The original estimate-only plans do not establish a tagged execution plan.",
+    "sameSnapshot": "Already-held native app repeatable-read read-only transaction. The role, tenant, actor, RLS, backend birth/PID and planner settings are rechecked in that transaction. The two units and 500 tags remain in the same committed fictional fixture. No diagnostic checkout, owner mutation, settings outside the app transaction or new pool.",
+    "positions": [
+      "selected",
+      "company",
+      "department",
+      "unit"
+    ],
+    "maximumNewCommands": 7,
+    "limits": {
+      "caseMs": 300000,
+      "activeMs": 275000,
+      "cleanupTailMs": 25000,
+      "setupExistingStatementTimeoutMs": 20000,
+      "minimumActiveMsBeforeSetter": 32000,
+      "afterSetterWindowMs": 12000,
+      "diagnosticStatementTimeoutMs": 2000,
+      "lockTimeoutMs": 300
+    },
+    "receiptCaps": {
+      "metadataBytes": 65536,
+      "aggregateRawPlanBytes": 4194304,
+      "perRawPlanBytes": 1048576,
+      "originalPageAndCountPlans": 16,
+      "maxAuxiliaryPlans": 4
+    },
+    "evidence": "Each bounded actual plan includes native execution counters, nodes, buffers and JIT presence. The diagnostic has independent catalogue fingerprints before and after. Any missing position or unsettled native app/fixture remains incomplete or unavailable.",
+    "scope": "If the original catalogue passes, no diagnostic SQL is issued and the independent public-port path is unchanged. No causal JIT claim, latency qualification or deployment authority."
+  },
+  "runtimeQualificationPending": true,
+  "releaseEligible": false
+}

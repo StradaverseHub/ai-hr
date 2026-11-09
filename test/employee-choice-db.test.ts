@@ -397,15 +397,41 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  const planSummaries:Record<string,unknown>[]=[];
  type PositionTiming={position:PagePosition;ms:number;source:'product'|'previous';seal:ReturnType<typeof seal>};
  const positionTimings:{epoch:Epoch;label:string;statements:PositionTiming[]}[]=[];
+ type Auxiliary=typeof pageAuxiliaryPositions[number];
+ const taggedCalls=new Map<Auxiliary,{query:SQL;seal:ReturnType<typeof seal>}>();
+ const taggedPlans:{position:Auxiliary;raw:unknown}[]=[];
+ type TaggedStage=Auxiliary|'catalogue-mismatch-not-observed'|'source-and-clock-admission'|'set-local-timeout'|
+  'same-held-native-identity'|'terminal-catalogue'|'capture-finished'|'native-settled'|'metadata-cap';
+ const taggedEvidence:{
+  state:'unavailable'|'incomplete'|'complete';
+  stage:TaggedStage;
+  catalogueBefore?:string;
+  catalogueAfter?:string;
+  catalogueStableDuringDiagnostic?:boolean;
+  failure?:string|null;
+  outerFailure?:string|null;
+  statements:{position:Auxiliary;seal:ReturnType<typeof seal>;executionMs:number;planningMs:number;jit:boolean}[];
+ }={state:'unavailable',stage:'catalogue-mismatch-not-observed',statements:[]};
  const metadata:Record<string,unknown>={kind:'FICTIONAL_NATIVE_ORGANISATION_PAGE_COMPONENT_ONLY',releaseEligible:false,
   source:course.source,controller:course.controller,caseEnd,activeEnd,epochs,observations,planSummaries,
   historical:{run:42387710131,source:'1de4d9047a7e8d58f79693ba614b2e5e0a586a43',wholePortTargetMet:false},
   priorCurrent:{run:42555973651,source:'a2936e6ba64695c4f92e277a69545e3d66c7673b',pageStatement:17},
   profiles:references.map(({label,total,keys,oldSeals})=>({label,total,keys,oldSeals}))};
- const save=()=>{
+ const save=(includeTaggedEvidence=false)=>{
   const facts=JSON.stringify(metadata),plans=JSON.stringify(rawPlans);
   if(Buffer.byteLength(facts)>65536||Buffer.byteLength(plans)>4*1024*1024)throw new Error('Organisation page evidence exceeds its byte cap');
-  writeFileSync(join(course.directory,'employee-choice-organisation-page-private.json'),JSON.stringify({metadata,rawPlans}),{mode:0o600});
+  const report:{metadata:typeof metadata;rawPlans:typeof rawPlans;taggedAuxiliary?:{
+   evidence:typeof taggedEvidence;rawPlans:typeof taggedPlans
+  }}={metadata,rawPlans};
+  if(includeTaggedEvidence){
+   if(Buffer.byteLength(JSON.stringify([metadata,taggedEvidence]))<=65536)report.taggedAuxiliary={evidence:taggedEvidence,rawPlans:taggedPlans};
+   else{
+    const unavailable:typeof taggedEvidence={state:'unavailable',stage:'metadata-cap',statements:[]};
+    if(Buffer.byteLength(JSON.stringify([metadata,unavailable]))<=65536)report.taggedAuxiliary={evidence:unavailable,rawPlans:[]};
+    else console.warn('Organisation page tagged auxiliary evidence unavailable (metadata cap)');
+   }
+  }
+  writeFileSync(join(course.directory,'employee-choice-organisation-page-private.json'),JSON.stringify(report),{mode:0o600});
  };
  const runRead=async(tx:Tx,epoch:Epoch,profile:typeof references[number])=>{
   const product=epoch==='B0'||epoch==='B1',count=profile.total===0;
@@ -446,6 +472,10 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    if(!product&&(position==='page'||position==='count'))return {position,ms,source:'previous',seal:profile.oldSeals[position]};
    return {position,ms,source:'product',seal:seals[index]};
   })});
+  if(epoch==='B1'&&profile.label==='department-active')for(const position of pageAuxiliaryPositions){
+   const call=calls.find(row=>row.position===position);
+   if(call&&call.original===call.forwarded)taggedCalls.set(position,{query:call.original,seal:seal(call.compiled)});
+  }
   for(const call of calls){
    if(call.position!=='page'&&call.position!=='count')continue;
    const kind=call.position;
@@ -471,6 +501,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  let historyBefore:FixtureHistory|undefined,ownerIdentity:PageRealm|undefined,touched:{id:string;employmentId:string}[]=[];
  let fixtureCommitted=false,restored=false,workFailed=false,restoreFailed=false;
  let workFailure:unknown,restoreFailure:unknown;
+ let catalogueRefusal:{error:unknown}|undefined,appOuterRefusal:{error:unknown}|undefined;
  const readSnapshots=new Set<Promise<unknown>>();
  const track=<T>(work:Promise<T>)=>{
   readSnapshots.add(work);
@@ -478,6 +509,76 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   return work;
  };
  const errorHash=(error:unknown)=>error instanceof Error?organisationPageHash(error.message):null;
+ const observeTaggedAuxiliaries=async(tx:Tx,identity:PageRealm,terminalCatalogue:unknown)=>{
+  taggedEvidence.stage='source-and-clock-admission';
+  try{
+   if(!fixtureCommitted||touched.length!==500||!terminalCatalogue||observations.length!==12||
+      observations.some(row=>!row.dtoVerified)||positionTimings.length!==12||
+      positionTimings.reduce((count,row)=>count+row.statements.length,0)!==76||rawPlans.length!==16||preTagCalls.length!==6||
+      taggedCalls.size!==4)throw new Error('Incomplete tagged auxiliary source census');
+   const calls=pageAuxiliaryPositions.map((position,index)=>{
+    const held=taggedCalls.get(position);
+    if(!held)throw new Error('Missing held tagged auxiliary statement');
+    const matches=positionTimings.flatMap(row=>row.statements.filter(statement=>statement.position===position));
+    expect(matches).toHaveLength(12);
+    expect(seal(preTagCalls[index+2].compiled)).toEqual(held.seal);
+    for(const match of matches){
+     expect(match.source).toBe('product');
+     expect(match.seal).toEqual(held.seal);
+    }
+    expect(seal(dialect.sqlToQuery(held.query))).toEqual(held.seal);
+    return {position,...held};
+   });
+   // This setting command still runs under the existing 20-second limit.
+   // Reserve it before starting the separate 12-second diagnostic window.
+   taggedEvidence.catalogueBefore=organisationPageHash(JSON.stringify(terminalCatalogue));
+   active('tagged auxiliary timeout and plans',32000);
+   taggedEvidence.state='incomplete';
+   taggedEvidence.stage='set-local-timeout';
+   await tx.execute(sql`set local statement_timeout='2s'`);
+   const diagnosticEnd=performance.now()+12000;
+   active('tagged auxiliary clock',12000);
+   const step=(stage:TaggedStage,remaining=2000)=>{
+    taggedEvidence.stage=stage;
+    active('tagged auxiliary '+stage,remaining);
+    requireTime(diagnosticEnd,remaining,'tagged auxiliary '+stage);
+   };
+   step('same-held-native-identity');
+   const [held]=await tx.execute<PageRealm>(pageRealm);
+   expect(held).toEqual({...identity,statement_timeout:'2s'});
+   for(const call of calls){
+    const compiled=dialect.sqlToQuery(call.query);
+    expect(seal(compiled)).toEqual(call.seal);
+    const explain=sql`explain (analyze,buffers,verbose,settings,timing off,format json) ${call.query}`;
+    const wrapped=dialect.sqlToQuery(explain);
+    expect(wrapped.sql).toBe('explain (analyze,buffers,verbose,settings,timing off,format json) '+compiled.sql);
+    expect(seal(wrapped).params).toBe(call.seal.params);
+    step(call.position);
+    const result=await tx.execute<{'QUERY PLAN':unknown}>(explain);
+    step(call.position,0);
+    const raw=result[0]?.['QUERY PLAN'];
+    if(!Array.isArray(raw)||raw.length!==1||!raw[0]||typeof raw[0]!=='object'||
+       Buffer.byteLength(JSON.stringify(raw))>1024*1024)throw new Error('Unexpected tagged auxiliary plan envelope');
+    const plan=organisationPagePreTagPlan(result);
+    const executionMs:unknown=raw[0]['Execution Time'],planningMs:unknown=raw[0]['Planning Time'];
+    if(typeof executionMs!=='number'||!Number.isFinite(executionMs)||executionMs<0||
+       typeof planningMs!=='number'||!Number.isFinite(planningMs)||planningMs<0)throw new Error('Missing tagged auxiliary execution counters');
+    const entry={position:call.position,raw};
+    if(Buffer.byteLength(JSON.stringify([rawPlans,[...taggedPlans,entry]]))>4*1024*1024)
+     throw new Error('Tagged auxiliary aggregate plan evidence exceeds its byte cap');
+    taggedPlans.push(entry);
+    taggedEvidence.statements.push({position:call.position,seal:call.seal,executionMs,planningMs,jit:plan.jit});
+   }
+   step('terminal-catalogue');
+   const [after]=await tx.execute(pageCatalogue);
+   if(!after)throw new Error('Missing tagged auxiliary terminal catalogue');
+   taggedEvidence.catalogueAfter=organisationPageHash(JSON.stringify(after));
+   taggedEvidence.catalogueStableDuringDiagnostic=taggedEvidence.catalogueAfter===taggedEvidence.catalogueBefore;
+   step('capture-finished',0);
+  }catch(error){
+   taggedEvidence.failure=errorHash(error);
+  }
+ };
  type OwnerStep=(label:string,remaining?:number)=>void;
  type OwnerReceipt={outer:'pending'|'commit-acknowledged'|'unconfirmed';callback:'pending'|'not-entered'|'fulfilled'|'rejected';
   backend?:PageRealm;outerFailure?:string|null;callbackFailure?:string|null};
@@ -582,7 +683,14 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    const [prepared]=await tx.execute<{total:number;generic:number}>(pagePrepared);
    expect(prepared.total).toBeLessThanOrEqual(100);expect(prepared.generic).toBe(0);metadata.prepared=prepared;
    active('final planner catalogue');
-   expect((await tx.execute(pageCatalogue))[0]).toEqual(catalogue);
+   const [terminalCatalogue]=await tx.execute(pageCatalogue);
+   try{expect(terminalCatalogue).toEqual(catalogue);}
+   catch(error){
+    // Preserve the exact original mismatch even if collecting the later plans refuses.
+    catalogueRefusal={error};
+    try{await observeTaggedAuxiliaries(tx,identity,terminalCatalogue);}
+    finally{throw error;}
+   }
    expect(await realm(tx,active,'ai_hr_app')).toEqual(identity);
    active('ABBA transaction completion',0);
   })()),{readOnlySnapshot:true,readSignal:signal});
@@ -605,7 +713,12 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    }
   }finally{publicSpy.mockRestore();}
   active('public port evidence completion',0);
- }catch(error){workFailed=true;workFailure=error;}
+ }catch(error){
+  workFailed=true;workFailure=catalogueRefusal?catalogueRefusal.error:error;
+  if(catalogueRefusal&&catalogueRefusal.error!==error){
+   appOuterRefusal={error};taggedEvidence.outerFailure=errorHash(error);
+  }
+ }
  finally{
   await Promise.allSettled([...readSnapshots]);
   const admitted=ownerIdentity;
@@ -668,7 +781,10 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  }
  metadata.failures={work:errorHash(workFailure),cleanup:errorHash(restoreFailure)};
  metadata.restored=restored;metadata.ownerStopRequired=organisationPageUnconfirmed;
- const failures=[...(workFailed?[workFailure]:[]),...(restoreFailed?[restoreFailure]:[])];
+ if(taggedEvidence.stage==='capture-finished'&&taggedEvidence.failure===undefined&&!appOuterRefusal&&restored&&metadata.nativeAppSettled===true){
+  taggedEvidence.state='complete';taggedEvidence.stage='native-settled';
+ }
+ const failures=[...(workFailed?[workFailure]:[]),...(appOuterRefusal?[appOuterRefusal.error]:[]),...(restoreFailed?[restoreFailure]:[])];
  metadata.positionTimings=positionTimings;
  try{
   if(preTagCalls.length!==6)throw new Error('Unexpected pre-tag organisation statement census');
@@ -686,7 +802,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
     return {position,seal:sourceSeal,matchedSamples:matches.length,...organisationPagePreTagPlan(entry.plan)};
    }):[]};
  }catch(error){failures.push(error);}
- try{save();}catch(error){failures.push(error);}
+ try{save(true);}catch(error){failures.push(error);}
  if(failures.length)throw new AggregateError(failures,'Native organisation page work or cleanup refused');
  expect(restored).toBe(true);
  expect(rawPlans).toHaveLength(16);
@@ -701,7 +817,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    wholeRead:Math.max(b0.wallMs,b1.wallMs)<Math.min(a0.wallMs,a1.wallMs),
    targetMet:publicPortMs[label]<=1000&&Math.max(b0.wallMs,b1.wallMs)<=1000};
  });
- metadata.outcomes=outcomes;save();
+ metadata.outcomes=outcomes;save(true);
  expect(outcomes).toEqual(references.map(({label})=>({label,ordinary:true,instrumented:true,wholeRead:true,targetMet:true})));
 }
 
