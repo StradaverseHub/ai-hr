@@ -15,9 +15,9 @@ import sys
 import time
 
 
-SOURCE = '6c05efc24242b8a5f50933e7cbb6709a276b286d'
-SOURCE_BRANCH = 'codex/architecture-zero-busy-lock-qualification-20261109'
-BRANCH = 'codex/compiler-6c05efc2-partition-feasibility-20261109'
+SOURCE = '6a71ae8b651fafdb845d92a47568ac3c5382322f'
+SOURCE_BRANCH = 'codex/architecture-145e-compiler-test-fix-20261110'
+BRANCH = 'codex/compiler-6a71ae8b-partition-feasibility-20261110'
 PARTITION_CELLS = ('build', 'test-tooling-first', 'test-tooling-second')
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
