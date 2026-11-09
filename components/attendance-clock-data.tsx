@@ -72,6 +72,9 @@ export function AttendanceClockData({ data, employmentId, date, action }: {
     ? <p className="mt-1 max-w-sm text-xs text-muted-foreground">{t('received', { datetime: timestamp(row.receivedAt) })}</p>
     : null;
 
+  const disposition=(row?:Data['rows'][number])=>t(row?.voidedAt?'removed':row?.exclusion==='minimumInterval'
+    ?'excludedByMinimumInterval':row?.exclusion==='intermediatePunch'?'excludedByPairing':'used');
+
   return (
     <Card className="overflow-hidden" data-clock-data-editor>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
@@ -112,7 +115,7 @@ export function AttendanceClockData({ data, employmentId, date, action }: {
                   </select>
                 ) : t(entry.direction)}</td>
                 <td className="p-3">{source(entry)}{received(unchangedRow(entry))}</td>
-                <td className="p-3">{t(editing ? 'proposed' : 'used')}</td>
+                <td className="p-3">{editing?t('proposed'):disposition(unchangedRow(entry))}</td>
                 {editing && <td className="p-3"><Button type="button" variant="outline"
                   onClick={() => setEntries(old => old.filter((_, n) => n !== i))}>{t('remove')}</Button></td>}
               </tr>)}
@@ -142,13 +145,18 @@ export function AttendanceClockData({ data, employmentId, date, action }: {
           <Button type="button" variant="outline" onClick={() => raw.current?.close()}>{t('close')}</Button>
         </div>
         <p className="mb-4 text-sm text-muted-foreground">{t('rawHint')}</p>
+        {data.clockPolicy&&<div className="mb-4 space-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+          <p>{t('clockPolicyApplied',{revision:data.clockPolicy.ordinal,effectiveFrom:data.clockPolicy.effectiveFrom,
+            pairing:t(data.clockPolicy.pairing==='auto'?'clockPolicyAuto':'clockPolicyFirstInLastOut'),interval:data.clockPolicy.minimumIntervalMinutes})}</p>
+          {data.clockPolicy.requiresReview&&<p role="status">{t('clockPolicyNeedsReview')}</p>}
+        </div>}
         <div className={tableWrapCls}>
           <table className="w-full text-sm">
             <thead className={theadCls}><tr>
               {['time', 'direction', 'source', 'evidence', 'status', 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}
             </tr></thead>
             <tbody className={tbodyCls}>{data.rows.map(row => <tr key={row.id}>
-              <td className="p-3 tabular-nums">{row.punchAt}</td>
+              <td className="p-3 tabular-nums" title={row.effectiveAt??row.receivedAt??undefined}>{row.punchAt}</td>
               <td className="p-3">{t(row.direction)}</td>
               <td className="p-3">{rowSource(row)}{received(row)}</td>
               <td className="p-3">
@@ -158,7 +166,7 @@ export function AttendanceClockData({ data, employmentId, date, action }: {
                 {row.importRun && <a className="text-primary underline" href={'/attendance/import/logs/' + row.importRun}>{row.importFile || t('import')}</a>}
               </td>
               <td className="p-3">
-                {t(row.voidedAt ? 'removed' : 'used')}
+                {disposition(row)}
                 {row.voidedAt && <p className="mt-1 max-w-sm text-xs text-muted-foreground">
                   {row.voidedBy} · {timestamp(row.voidedAt)}<br />{row.voidReason}
                 </p>}

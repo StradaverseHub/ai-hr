@@ -541,8 +541,8 @@ describe('§3 the Schedule Assignment screens', () => {
     const emp = await makeEmp('Ann');
     await assignDefaultShift(a, { employmentId: emp, shiftId: allowed.id });
     await setEmploymentScheduleGroup(a, { employmentId: emp, attendanceRuleId: group.id });
-    // Remove the actual allowed membership; the shift's default group is a separate fact.
-    await setRuleShifts(a, { ruleId: group.id, shiftIds: [] });
+    // Reconstruct a historical mismatch. The current pool writer protects this live assignment.
+    await owner.db.delete(schema.attendanceRuleShift).where(eq(schema.attendanceRuleShift.ruleId,group.id));
 
     const html = await renderDetail(emp);
     expect(html, 'what is on file is still displayed').toContain('ZzAllowedShift');

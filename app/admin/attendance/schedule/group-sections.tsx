@@ -1,13 +1,15 @@
 import { scheduleGroupControls } from '@/core/schedule-group-controls';
 import { saveScheduleGroupControlAction } from './actions';
 import { ScheduleGroupTabs } from '@/components/schedule-group-tabs';
+import { ScheduleDraftShiftPicker } from '@/components/schedule-shift-picker';
+import { ScheduleClockFields, type ScheduleClockCompany } from '@/components/schedule-clock-fields';
 import type { ReactNode } from 'react';
 import { ScheduleOvertimeDraftFields } from '@/components/schedule-overtime-draft-fields';
 import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
-import { countEmploymentsInRule, type AttendanceRuleView } from '@/core/attendance-rule';
+import { attendanceRuleOvertimeSnapshot, type AttendanceRuleView } from '@/core/attendance-rule';
 import { listShiftsForTenant } from '@/core/roster';
 import {
   Badge,
@@ -22,16 +24,14 @@ import {
   theadCls,
   thCls,
 } from '@/components/ui';
-import { RuleForm } from '../../attendance-policy/rules/rule-form';
-import { ruleShiftChoices } from '../../attendance-policy/rules/shift-choices';
+import { RuleForm, renderScheduleOvertimeBands } from '../../attendance-policy/rules/rule-form';
 import {
-  SCHEDULE_SECTION_KEYS,
-  sectionAnchor,
   type ScheduleSectionKey,
 } from './sections';
 import { scheduleGroupEditPath } from '../../attendance-policy/schedule-panel';
 import {
   saveScheduleGroupAttendanceAction,
+  saveScheduleGroupAllowedShiftsAction,
   saveScheduleGroupOvertimeAction,
 } from './actions';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
@@ -89,24 +89,9 @@ import {rotationVersionOn,type RotationCycle} from '@/core/week-pattern';
 export type ScheduleSectionMode = 'view' | 'edit';
 
 const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
-const DAY_KEY: Record<number, string> = {
-  1: 'dayMon',
-  2: 'dayTue',
-  3: 'dayWed',
-  4: 'dayThu',
-  5: 'dayFri',
-  6: 'daySat',
-  7: 'daySun',
-};
 /** The four-way row, exactly as `shift` carries it since migration 0429 and `attendance_rule` since 0483. */
 const DAY_KINDS = ['full', 'half', 'off', 'rest'] as const;
 type DayKind = (typeof DAY_KINDS)[number];
-const DAY_KIND_KEY: Record<DayKind, string> = {
-  full: 'dayKindFull',
-  half: 'dayKindHalf',
-  off: 'dayKindOff',
-  rest: 'dayKindRest',
-};
 /** The compact echo `failScheduleGroup` carries back, one character per weekday. See ./actions.ts weekParam. */
 const CHAR_KIND: Record<string, DayKind> = { F: 'full', H: 'half', O: 'off', R: 'rest' };
 
@@ -140,13 +125,14 @@ const hhmm = (v: string | null | undefined) => (v ? v.slice(0, 5) : '—');
 export async function ScheduleGroupSections({
   s,
   rule,
-  rules,
   mode,
   error,
   section,
   typedWeek,
   savedSection,
   savedReceipt,
+  clockCompanies = [],
+  canEditShared = true,
 }: {
   s: SessionContext;
   rule: AttendanceRuleView;
@@ -159,15 +145,17 @@ export async function ScheduleGroupSections({
   typedWeek?: string;
   savedSection?: ScheduleSectionKey | null;
   savedReceipt?: string;
+  clockCompanies?: ScheduleClockCompany[];
+  canEditShared?: boolean;
 }) {
   const t = await getTranslations('admin.scheduleConfig');
   const otWorkspace = await getTranslations('overtimePatterns');
   const tr = await getTranslations('admin.attendanceRule');
-  const tp = await getTranslations('admin.attendancePolicy');
-  const trs = await getTranslations('roster');
+  const te = await getTranslations('scheduleGroupEditor');
 
   const rotationT = await getTranslations('admin.rotation');
   const editing = mode === 'edit';
+  const today=todayInKualaLumpur();
   const tb=await getTranslations('boardSchedule');
   const controls=await scheduleGroupControls(s,rule.id);
   const pendingException=controls.revisions.reduce<typeof controls.revisions[number]|null>((a,b)=>!a||b.effectiveFrom>a.effectiveFrom?b:a,null);
@@ -175,12 +163,12 @@ export async function ScheduleGroupSections({
   const shifts = await listShiftsForTenant(s, { includeArchived: true });
   const rotationState = await getScheduleRotation(s, rule.id);
   const kinds = dayKindsOf(rule, typedWeek);
-  const declaresWeek = ISO_DAYS.some((d) => kinds[d] !== 'rest');
-  // r429 (f6819e19) · D7 — "Shifts in this group" (shift.rule_id = group; for Standard, rule_id NULL on
-  // every shift that never joined one — this filter already reads that correctly, nothing special-cased).
-  const membershipIds=new Set(rotationVersionOn(rotationState.versions,todayInKualaLumpur())?.allowedShiftIds??rotationState.memberships.map(m=>m.shiftId));
-  const groupShifts = shifts.filter((sh) => membershipIds.has(sh.id));
-  const groupEmploymentCount = await countEmploymentsInRule(s, rule.id);
+  const currentRotation=rotationVersionOn(rotationState.versions,today);
+  const latest=rotationState.versions.at(-1);
+  const membershipIds=new Set(currentRotation?.allowedShiftIds??rotationState.memberships.map(m=>m.shiftId));
+  const groupShifts=shifts.filter(shift=>membershipIds.has(shift.id));
+  const draftPool=editing?(latest?.allowedShiftIds??[...membershipIds]):[...membershipIds];
+  const availableShifts=shifts.map(sh=>({id:sh.id,name:sh.name,code:sh.code,archived:!!sh.archivedAt,available:!sh.archivedAt}));
 
   /** A refusal is shown INSIDE the section it belongs to, and nowhere else, so it is never printed twice. */
   const bannerFor = (key: ScheduleSectionKey) => (section === key ? error : undefined);
@@ -196,18 +184,18 @@ export async function ScheduleGroupSections({
     attendance: t('sectionAttendance'),
     request: t('sectionRequest'),
     notification: t('sectionNotification'),
-    workingDay: t('sectionWorkingDay'),
+    workingDay: te('dutyRoster'),
   };
 
   /** The Schedule Group's own identity + ladder — rules/rule-form.tsx, or a read-only mirror of it. */
-  const general = editing ? (
+  const identity = editing ? (
     <RuleForm
       rule={rule}
       hideAllowedShifts
       generalOnly
       saveScope
       savedReceipt={savedSection === 'general' ? savedReceipt : undefined}
-      shifts={ruleShiftChoices(shifts, rules, rule.id)}
+      shifts={[]}
       error={bannerFor('general')}
       /* No Cancel: the page header's Back already is the way out that writes nothing, and a "Cancel"
          beside one of four Saves would read as "cancel the whole page". */
@@ -248,9 +236,38 @@ export async function ScheduleGroupSections({
         </dl>
       </Card>
 
+    </>
+  );
+
+  const shiftEditor = <Card className="space-y-3 p-4">
+    <h3 className="font-semibold">{te('shiftAllowed')}</h3>
+    <p className="text-sm text-muted-foreground">{te('shiftHelp')}</p>
+    {latest
+      ? <><p className="text-sm text-muted-foreground">{te('rotationPoolSave',{date:latest.effectiveFrom})}</p>
+        <ScheduleDraftShiftPicker shifts={availableShifts}/></>
+      : <AttendanceSettingsActionForm submitAction={saveScheduleGroupAllowedShiftsAction}
+          data-attendance-save-scope="" data-schedule-control="shift-pool" data-attendance-saved-receipt={savedSection==='general'?savedReceipt:undefined}
+          className="space-y-3">
+          <input type="hidden" name="ruleId" value={rule.id}/>
+          <input type="hidden" name="allowedShiftsEditor" value="1"/>
+          <ScheduleDraftShiftPicker base shifts={availableShifts}/>
+          <AttendanceSettingsSaveButton className={btnPrimary}>{te('saveShiftPool')}</AttendanceSettingsSaveButton>
+        </AttendanceSettingsActionForm>}
+  </Card>;
+  const general = <>
+    {identity}
+    <Card className="space-y-2 p-4">
+      <h3 className="font-semibold">{t('sectionWorkingDay')}</h3>
+      {currentRotation ? <p className="text-sm text-muted-foreground">
+        {te('currentRotation',{days:currentRotation.days.length,date:currentRotation.effectiveFrom})}
+      </p> : [rule.weeklyPattern,rule.halfPattern,rule.offPattern].some(days=>days?.length)
+        ? <p className="text-sm text-muted-foreground">{ISO_DAYS.map(day=>`${rotationT(`weekday${day}`)} · ${rotationT(kinds[day])}`).join(' / ')}</p>
+        : <p className="text-sm text-muted-foreground">{te('newPattern')}</p>}
+    </Card>
+    {editing && canEditShared ? shiftEditor : (
       <Card>
         <SectionHeader
-          title={tr('shiftsAllowedTitle')}
+          title={te('shiftAllowed')}
           count={groupShifts.length}
           subtitle={rotationT('poolHint')}
         />
@@ -275,8 +292,9 @@ export async function ScheduleGroupSections({
         )}
       </Card>
 
-      {/* The overtime LADDER — boundaries, pattern and both rates. Read-only here because it is money and
-          carries the continuous-ladder validation; it is edited in the form on Edit Schedule. */}
+)}
+  </>;
+  const overtimeLadderView = (
       <Card>
         <SectionHeader title={tr('otSectionTitle')} count={rule.otRows.length} />
         {rule.otRows.length === 0 ? (
@@ -305,9 +323,9 @@ export async function ScheduleGroupSections({
                     <td className="px-3 py-2">
                       {row.ratePattern === 'flat' ? tr('otPatternFlat') : tr('otPatternVariable')}
                     </td>
-                    <td className="px-3 py-2">{row.rate == null ? tr('otRateUnset') : Number(row.rate).toFixed(1)}</td>
+                    <td className="px-3 py-2">{row.rate == null ? tr('otRateUnset') : Number(row.rate).toFixed(2)}</td>
                     <td className="px-3 py-2">
-                      {row.phRate == null ? tr('otPhRateNone') : Number(row.phRate).toFixed(1)}
+                      {row.phRate == null ? tr('otPhRateNone') : Number(row.phRate).toFixed(2)}
                     </td>
                   </tr>
                 ))}
@@ -316,13 +334,11 @@ export async function ScheduleGroupSections({
           </div>
         )}
       </Card>
-    </>
-  );
+);
 
   // Legacy groups retain their weekly pattern until a future-dated cycle is saved.
   // The immutable version owns both its allowed pool and every day of the cycle.
-  const tomorrow = new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`) + 86_400_000).toISOString().slice(0,10);
-  const latest = rotationState.versions.reduce<(typeof rotationState.versions)[number] | null>((a,b)=>!a||b.effectiveFrom>a.effectiveFrom?b:a,null);
+  const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0,10);
   const minimumDate = latest && latest.effectiveFrom >= tomorrow
     ? new Date(Date.parse(`${latest.effectiveFrom}T00:00:00Z`)+86_400_000).toISOString().slice(0,10) : tomorrow;
   const monday = new Date(Date.parse(`${minimumDate}T00:00:00Z`));
@@ -337,7 +353,7 @@ export async function ScheduleGroupSections({
     <Card><SectionHeader title={SECTION_LABEL.workingDay} subtitle={rotationT('title')}/>
       {rule.isDefault ? <>{editing&&<AttendanceSettingsNavigation/>}<p className="p-4 text-sm text-muted-foreground">{rotationT('standard')}</p></>
       : <ScheduleRotationEditor ruleId={rule.id} revision={rotationState.revision}
-          minimumDate={minimumDate} initial={initialRotation} editing={editing}
+          minimumDate={minimumDate} initial={initialRotation} editing={editing&&canEditShared} poolInGeneral useSavedPool={!latest}
           shifts={shifts.map(sh=>{const input={type:sh.type,start:sh.startTime,end:sh.endTime,crosses:sh.crossesMidnight,
             breakMinutes:sh.breakMinutes,roundingMinutes:sh.normalHoursRoundingMinutes,normalMinutesOverride:sh.normalMinutesOverride};
             const full=workingShiftSchedule(input,'full'),half=workingShiftSchedule(input,'half');
@@ -398,37 +414,14 @@ export async function ScheduleGroupSections({
 
   const attendanceBody = (
     <>
-      <Card>
-        <SectionHeader title={t('graceTitle')} subtitle={t('graceHint', { group: rule.name })} />
-        <div className="grid gap-3 p-4 sm:grid-cols-2">
-          <Field label={t('graceLate')}>
-            {editing ? (
-              <input
-                type="number"
-                min={0}
-                name="lateGracePeriodMinutes"
-                defaultValue={rule.lateGracePeriodMinutes}
-                className={inputCls}
-              />
-            ) : (
-              <p className="text-sm">{t('minutes', { n: rule.lateGracePeriodMinutes })}</p>
-            )}
-          </Field>
-          <Field label={t('graceEarly')}>
-            {editing ? (
-              <input
-                type="number"
-                min={0}
-                name="earlyGracePeriodMinutes"
-                defaultValue={rule.earlyGracePeriodMinutes}
-                className={inputCls}
-              />
-            ) : (
-              <p className="text-sm">{t('minutes', { n: rule.earlyGracePeriodMinutes })}</p>
-            )}
-          </Field>
-        </div>
-      </Card>
+      <ScheduleClockFields companies={clockCompanies} today={today} editing={editing}
+        grace={<div className="space-y-3">
+        <h3 className="font-semibold">{t('graceTitle')}</h3>
+        <Field label={te('lateGrace')}>{editing ? <input type="number" min={0} name="lateGracePeriodMinutes"
+          defaultValue={rule.lateGracePeriodMinutes} className={inputCls}/> : <p className="text-sm">{t('minutes',{n:rule.lateGracePeriodMinutes})}</p>}</Field>
+        <Field label={te('earlyGrace')}>{editing ? <input type="number" min={0} name="earlyGracePeriodMinutes"
+          defaultValue={rule.earlyGracePeriodMinutes} className={inputCls}/> : <p className="text-sm">{t('minutes',{n:rule.earlyGracePeriodMinutes})}</p>}</Field>
+      </div>}/>
 
       <Card>
         <SectionHeader title={t('recordRulesTitle')} subtitle={t('recordRulesHint')} />
@@ -462,7 +455,7 @@ export async function ScheduleGroupSections({
         <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('notPayNote')}</p>
         {editing && (
           <div className="flex items-center gap-3 border-t border-border px-4 py-3">
-            <AttendanceSettingsSaveButton className={btnPrimary}>{tr('save')}</AttendanceSettingsSaveButton>
+            <AttendanceSettingsSaveButton className={btnPrimary}>{te('saveAttendance')}</AttendanceSettingsSaveButton>
           </div>
         )}
       </Card>
@@ -524,130 +517,35 @@ export async function ScheduleGroupSections({
    * action rebuilds the band table from the STORED rows and overlays rounding matched by the band's
    * "From" boundary, so nothing here can move a boundary or a rate.
    */
-  const overtimeIdentity=JSON.stringify(rule.otRows.map(row=>({fromMinutes:row.fromMinutes,toMinutes:row.toMinutes,
-    ratePattern:row.ratePattern,rate:Number(row.rate),phRate:row.phRate==null?null:Number(row.phRate)})));
-  const overtimeBody = (
-    <>
-      <p className="text-sm text-muted-foreground">{otWorkspace('legacyContext')} <Link href="/admin/attendance/settings/overtime-patterns" className="text-primary hover:underline">{otWorkspace('openWorkspace')}</Link></p>
-      {editing&&<input type="hidden" name="otBandSnapshot" value={overtimeIdentity}/>}
+  const overtimeIdentity=attendanceRuleOvertimeSnapshot(rule.otRows,rule.applyToEarlyOt);
+  const overtimeLink=<p className="text-sm text-muted-foreground">{otWorkspace('legacyContext')}{' '}
+    <Link href="/admin/attendance/settings/overtime-patterns" className="text-primary hover:underline">{otWorkspace('openWorkspace')}</Link></p>;
+  const overtime = <>
+    <ErrorBanner message={bannerFor('overtime')}/>
+    {overtimeLink}
+    {editing ? <AttendanceSettingsActionForm submitAction={saveScheduleGroupOvertimeAction} data-attendance-save-scope=""
+      data-attendance-saved-receipt={savedSection==='overtime'?savedReceipt:undefined} className="space-y-4">
+      <input type="hidden" name="ruleId" value={rule.id}/>
+      <ScheduleOvertimeDraftFields identity={overtimeIdentity} savedReceipt={savedSection==='overtime'?savedReceipt:undefined}>
+        <input type="hidden" name="otBandSnapshot" data-attendance-guard-meta value={overtimeIdentity}/>
+        <input type="hidden" name="overtimeFullEditor" value="1"/>
+        {await renderScheduleOvertimeBands(rule)}
+      </ScheduleOvertimeDraftFields>
+      <AttendanceSettingsSaveButton className={btnPrimary}>{tr('save')}</AttendanceSettingsSaveButton>
+    </AttendanceSettingsActionForm> : <>
+      {overtimeLadderView}
       <Card>
-        <SectionHeader title={t('otEarlyTitle')} subtitle={t('otEarlyHint')} />
-        <div className="px-4 py-3">
-          {editing ? (
-            <label className="flex cursor-pointer items-center gap-2 text-sm has-[:checked]:text-primary">
-              <input
-                type="checkbox"
-                name="applyToEarlyOt"
-                defaultChecked={rule.applyToEarlyOt}
-                className="h-3.5 w-3.5 accent-primary"
-              />
-              {t('otEarlyLabel')}
-            </label>
-          ) : (
-            <p className="text-sm">
-              {t('otEarlyLabel')} — {rule.applyToEarlyOt ? t('settingOn') : t('settingOff')}
-            </p>
-          )}
-        </div>
+        <SectionHeader title={t('otEarlyTitle')}/>
+        <p className="p-4 text-sm">{t('otEarlyLabel')} · {rule.applyToEarlyOt?t('settingOn'):t('settingOff')}</p>
+        {rule.otRows.length>0&&<ul className="divide-y divide-border px-4">
+          {rule.otRows.map(row=><li key={row.id} className="py-2 text-sm">
+            {t('minutes',{n:row.fromMinutes})} · {tr(row.roundingMode==='up'?'roundingModeUp':row.roundingMode==='down'?'roundingModeDown':'roundingModeNone')}
+            {row.roundToMinutes!=null&&` · ${t('minutes',{n:row.roundToMinutes})}`}
+          </li>)}
+        </ul>}
       </Card>
-
-      <Card>
-        <SectionHeader title={t('otRoundingTitle')} count={rule.otRows.length} subtitle={t('otRoundingHint')} />
-        {rule.otRows.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">{t('otRoundingEmpty')}</p>
-        ) : (
-          <div className={tableWrapCls}>
-            <table className="w-full text-sm">
-              <thead className={theadCls}>
-                <tr>
-                  <th className={thCls}>{t('colBand')}</th>
-                  <th className={thCls}>{t('colRoundingMode')}</th>
-                  <th className={thCls}>{t('colRoundTo')}</th>
-                </tr>
-              </thead>
-              <tbody className={tbodyCls}>
-                {rule.otRows.map((row) => (
-                  // General/Attendance saves replace database ids; retain the independent rounding draft.
-                  <tr key={row.fromMinutes}>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {row.toMinutes <= row.fromMinutes
-                        ? t('bandOpenEnded', { from: row.fromMinutes })
-                        : t('bandRange', { from: row.fromMinutes, to: row.toMinutes })}
-                    </td>
-                    <td className="px-3 py-2">
-                      {/* ⚠️ KEYED ON THE BAND'S "FROM" BOUNDARY — not on its position, and NOT on `row.id`.
-                          `updateAttendanceRule` replaces the band table wholesale, so every row id changes
-                          on every save of this rule; an id-keyed field silently stops matching after any
-                          save made since this page was rendered, and the rounding edit would be discarded
-                          without a word. The "From" boundary is unique per rule (the continuous-ladder
-                          validation guarantees it) and survives the re-insert. See ./actions.ts. */}
-                      {editing ? (
-                        <select
-                          name={`roundingMode_${row.fromMinutes}`}
-                          defaultValue={row.roundingMode}
-                          aria-label={t('colRoundingMode')}
-                          className={inputCls}
-                        >
-                          <option value="none">{tr('roundingModeNone')}</option>
-                          <option value="down">{tr('roundingModeDown')}</option>
-                          <option value="up">{tr('roundingModeUp')}</option>
-                        </select>
-                      ) : row.roundingMode === 'down' ? (
-                        tr('roundingModeDown')
-                      ) : row.roundingMode === 'up' ? (
-                        tr('roundingModeUp')
-                      ) : (
-                        tr('roundingModeNone')
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {editing ? (
-                        <input
-                          type="number"
-                          min={0}
-                          name={`roundToMinutes_${row.fromMinutes}`}
-                          defaultValue={row.roundToMinutes ?? ''}
-                          aria-label={t('colRoundTo')}
-                          className={inputCls}
-                        />
-                      ) : row.roundToMinutes == null ? (
-                        '—'
-                      ) : (
-                        t('minutes', { n: row.roundToMinutes })
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {editing && (
-          <div className="flex items-center gap-3 border-t border-border px-4 py-3">
-            <AttendanceSettingsSaveButton className={btnPrimary}>{tr('save')}</AttendanceSettingsSaveButton>
-          </div>
-        )}
-      </Card>
-    </>
-  );
-
-  const overtime = (
-    <>
-      <ErrorBanner message={bannerFor('overtime')} />
-      {editing ? (
-        <AttendanceSettingsActionForm submitAction={saveScheduleGroupOvertimeAction} data-attendance-save-scope="" data-attendance-saved-receipt={savedSection === 'overtime' ? savedReceipt : undefined} className="space-y-6">
-          <input type="hidden" name="ruleId" value={rule.id} />
-          {/* ⚠️ THE MARKER, read as a VALUE by the action and never by presence. A browser omits an
-              unchecked checkbox, so without this "turned off" and "this form did not carry the control"
-              are the same bytes — the trap 7c834696 hit on this exact setting. */}
-          <input type="hidden" name="earlyOtEditor" value="1" />
-          <ScheduleOvertimeDraftFields identity={overtimeIdentity}>{overtimeBody}</ScheduleOvertimeDraftFields>
-        </AttendanceSettingsActionForm>
-      ) : (
-        <div className="space-y-6">{overtimeBody}</div>
-      )}
-    </>
-  );
+    </>}
+  </>;
 
   /** holiday · request · notification — named, and empty, and they say so. Not placeholders for settings
    *  that exist: each will be defined and built as its own piece of work. */
@@ -671,8 +569,8 @@ export async function ScheduleGroupSections({
   return (
     <div className="space-y-8">
       <ErrorBanner message={orphanError} />
-      <ScheduleGroupTabs initial={section ?? savedSection} ariaLabel={t('sectionsAria')}
-        tabs={(['general','attendance','overtime','workingDay'] as const).map(key=>({id:key,label:SECTION_LABEL[key],body:bodyFor[key]}))}/>
+      <ScheduleGroupTabs initial={section ?? savedSection} ariaLabel={t('sectionsAria')} initialPool={editing&&canEditShared?draftPool:undefined}
+        tabs={(['general','workingDay','attendance','overtime'] as const).map(key=>({id:key,label:SECTION_LABEL[key],body:bodyFor[key]}))}/>
       {mode === 'view' && (
         <div className="flex items-center gap-3">
           <Link href={scheduleGroupEditPath(rule.id)} className={btnPrimary}>

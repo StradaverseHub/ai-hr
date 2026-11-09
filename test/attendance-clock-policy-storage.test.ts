@@ -124,3 +124,22 @@ it('allows canonical employee reads of the employer policy and limits history an
  expect(await ruleCompanyInUse(employee,base.companyId)).toBe(false);
  expect(await ruleCompanyInUse(scoped,other.id)).toBe(false);
 });
+
+it('lets financial replay read its employer clock policy without Workforce authority',async()=>{
+ const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional unrelated payroll employer'}).returning();
+ const saved=await scheduleAttendanceClockPolicy(admin,input());
+ await scheduleAttendanceClockPolicy(admin,{...input(),companyId:other.id});
+ const [account]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'fixture_'+randomUUID()}).returning();
+ await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:account.id,companyId:base.companyId,role:'payroll_partner'});
+ const payroll:SessionContext={...admin,userId:account.id,roles:['payroll_partner'],
+  grants:[{role:'payroll_partner',companyId:base.companyId}]};
+ const [scope]=await withTenant(payroll,tx=>tx.execute(sql`select
+  app.can_admin_payroll_for(${base.companyId}::uuid) as "payroll",
+  app.is_admin_for(${base.companyId}::uuid) as "admin",
+  coalesce(cardinality(app.visible_employment_ids()::uuid[]),0) as "workforceRows"`));
+ expect(scope).toMatchObject({payroll:true,admin:false,workforceRows:0});
+ expect(await resolve(payroll,base.companyId,day(3))).toEqual({...saved,policy});
+ expect(await resolve(payroll,other.id,day(3))).toBeNull();
+ await expect(attendanceClockPolicyHistory(payroll,input())).rejects.toThrow(/scope/i);
+ await expect(scheduleAttendanceClockPolicy(payroll,{...input(),expectedOrdinal:1,effectiveFrom:day(5)})).rejects.toThrow();
+});

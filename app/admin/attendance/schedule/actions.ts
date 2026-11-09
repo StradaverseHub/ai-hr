@@ -1,5 +1,10 @@
 'use server';
 import { saveScheduleGroupControl } from '@/core/schedule-group-controls';
+import { withTenant } from '@/db/client';
+import { lockAccessConfigurationTx } from '@/core/access-configuration-lock';
+import { lockAttendanceClockPolicyConfigurationTx, scheduleAttendanceClockPolicy } from '@/packs/attendance/service';
+import { readScheduleClockPolicyFields } from './clock-policy-fields';
+import { parseOtRows } from './overtime-fields';
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
@@ -8,6 +13,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
   getAttendanceRule,
+  setRuleShifts,
   updateAttendanceRule,
   updateAttendanceRuleSection,
   type AttendanceSectionFields,
@@ -182,7 +188,15 @@ export async function saveScheduleGroupAttendanceAction(fd: FormData) {
       fields.includeGraceInLateness=fd.get('includeGraceInLateness')==='on';
       fields.includeGraceInEarlyOut=fd.get('includeGraceInEarlyOut')==='on';
     }
-    await updateAttendanceRuleSection(s,{ruleId,section:'attendance',fields});
+    const clock=readScheduleClockPolicyFields(fd);
+    if(clock) {
+      await withTenant(s, async tx=>{
+        await lockAccessConfigurationTx(tx,s.tenantId);
+        await lockAttendanceClockPolicyConfigurationTx(tx,s);
+        await updateAttendanceRuleSection(s,{ruleId,section:'attendance',fields},tx);
+        await scheduleAttendanceClockPolicy(s,{...clock,ruleId},tx);
+      });
+    } else await updateAttendanceRuleSection(s,{ruleId,section:'attendance',fields});
   } catch (e) {
     failScheduleGroup(e, ruleId, 'attendance');
   }
@@ -227,6 +241,10 @@ export async function saveScheduleGroupOvertimeAction(fd: FormData) {
   const ruleId = String(fd.get('ruleId') ?? '');
   const { s } = await loadRule(ruleId);
   try {
+    if(fd.get('overtimeFullEditor')==='1') {
+      await updateAttendanceRuleSection(s,{ruleId,section:'overtimeFull',expected:String(fd.get('otBandSnapshot')??''),
+        bands:parseOtRows(String(fd.get('otRows')??''),true),applyToEarlyOt:fd.get('applyToEarlyOt')==='on'});
+    } else {
     const snapshot: unknown=JSON.parse(String(fd.get('otBandSnapshot')??'null'));
     if(!Array.isArray(snapshot))throw new Error('The overtime bands changed. Reopen this schedule before saving overtime settings.');
     const postedKeys=Array.from(fd.keys()).filter(key=>/^roundingMode_\d+$/.test(key));
@@ -248,6 +266,7 @@ export async function saveScheduleGroupOvertimeAction(fd: FormData) {
     await updateAttendanceRuleSection(s,{ruleId,section:'overtime',bands,
       ...(fd.get('earlyOtEditor')==='1'?{applyToEarlyOt:fd.get('applyToEarlyOt')==='on'}:{}),
     });
+    }
   } catch (e) {
     failScheduleGroup(e, ruleId, 'overtime');
   }
@@ -358,4 +377,23 @@ export async function saveScheduleGroupControlAction(fd:FormData) {
  revalidatePath('/admin/attendance/schedule');
  const t=await getTranslations('admin.scheduleConfig');
  okScheduleGroup(ruleId,t('savedToast'),section,String(fd.get('__attendanceSaveNonce')??''));
+}
+
+/** The base pool is editable only until the first dated rotation is saved. */
+export async function saveScheduleGroupAllowedShiftsAction(fd: FormData) {
+  const ruleId = String(fd.get('ruleId') ?? '');
+  const { s } = await loadRule(ruleId);
+  try {
+    const expected: unknown = JSON.parse(String(fd.get('expectedShiftIds') ?? 'null'));
+    if (fd.get('allowedShiftsEditor') !== '1' || !Array.isArray(expected) ||
+      expected.some(id => typeof id !== 'string') || new Set(expected).size !== expected.length) {
+      throw new Error('Reopen this Schedule Group before saving its allowed shifts.');
+    }
+    await setRuleShifts(s, {ruleId, shiftIds: fd.getAll('allowedShiftIds').map(String), expectedShiftIds: expected});
+  } catch (e) {
+    failScheduleGroup(e, ruleId, 'general');
+  }
+  revalidatePath(SCHEDULE_GROUPS);
+  const t = await getTranslations('admin.scheduleConfig');
+  okScheduleGroup(ruleId, t('savedToast'), 'general', String(fd.get('__attendanceSaveNonce') ?? ''));
 }

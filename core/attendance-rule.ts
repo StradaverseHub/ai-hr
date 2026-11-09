@@ -19,6 +19,7 @@ import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 // "how many days does this week actually schedule" (core/week-pattern.ts, a leaf module with no imports
 // precisely so this service can use it without a cycle through core/attendance.ts).
 import { weekPatternWorkingDayCount,rotationVersionOn } from './week-pattern';
+import { assertSchedulePoolExclusionsTx } from './attendance-rotation';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -26,6 +27,7 @@ import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependencyConfigurationTx } from '../packs/leave/service';
 import {
   ATTENDANCE_OT_ROUNDING_MODES,
+  attendanceClockPolicyRevision,
   attendancePolicy,
   attendanceRule,
   attendanceRuleShift,
@@ -252,12 +254,14 @@ export async function countEmploymentsInRule(ctx: SessionContext, ruleId: string
 }
 
 /** Replace only this group's allowed pool. A shared shift keeps every other membership and default. */
-export function setRuleShifts(ctx:SessionContext,p:{ruleId:string;shiftIds:readonly string[]}):Promise<{attached:number;detached:number}> {
+export function setRuleShifts(ctx:SessionContext,p:{ruleId:string;shiftIds:readonly string[];expectedShiftIds?:readonly string[]},existingTx?:Tx):Promise<{attached:number;detached:number}> {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- return withTenant(ctx,async tx=>{
+ const save=async (tx:Tx)=>{
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+  const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.principal_snapshot_current() and app.is_group_admin() as allowed`);
+  if(!authority?.allowed)throw new Error('A group-wide HR administrator is required to change allowed shifts.');
   const [rule]=await tx.select().from(attendanceRule).where(eq(attendanceRule.id,p.ruleId)).for('update');
   if(!rule)throw new Error('Schedule Group not found');
   if(new Set(p.shiftIds).size!==p.shiftIds.length)throw new Error('Select each shift once.');
@@ -267,13 +271,18 @@ export function setRuleShifts(ctx:SessionContext,p:{ruleId:string;shiftIds:reado
   const known=new Map(all.map(sh=>[sh.id,sh]));
   const current=await tx.select({shiftId:attendanceRuleShift.shiftId}).from(attendanceRuleShift).where(eq(attendanceRuleShift.ruleId,p.ruleId));
   const old=new Set(current.map(r=>r.shiftId)), wanted=new Set(p.shiftIds);
+  if(p.expectedShiftIds && (new Set(p.expectedShiftIds).size!==old.size || p.expectedShiftIds.some(id=>!old.has(id)))) {
+    throw new Error('The allowed shifts changed. Reopen this Schedule Group before saving.');
+  }
   for(const id of wanted){const sh=known.get(id);if(!sh)throw new Error('A selected shift is unavailable in this tenant.');if(sh.archivedAt&&!old.has(id))throw new Error('An archived shift cannot be newly allowed. Choose an active shift.');}
   const attach=[...wanted].filter(id=>!old.has(id)),detach=[...old].filter(id=>!wanted.has(id));
+  await assertSchedulePoolExclusionsTx(tx,p.ruleId,detach,todayInKualaLumpur());
   if(attach.length)await tx.insert(attendanceRuleShift).values(attach.map(shiftId=>({tenantId:ctx.tenantId,ruleId:p.ruleId,shiftId})));
   if(detach.length)await tx.delete(attendanceRuleShift).where(and(eq(attendanceRuleShift.ruleId,p.ruleId),inArray(attendanceRuleShift.shiftId,detach)));
   if(attach.length||detach.length)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-rule',aggregateId:p.ruleId,eventType:'attendance-rule.shifts-assigned',actor:actorOf(ctx),payload:{attached:attach,detached:detach}});
   return {attached:attach.length,detached:detach.length};
- });
+ };
+ return existingTx ? save(existingTx) : withTenant(ctx,save);
 }
 
 export function listScheduleGroupMemberships(ctx:SessionContext) {
@@ -667,11 +676,11 @@ const isUniqueViolation = (e: unknown): boolean => {
 };
 
 /** Create a (non-default) rule + its OT rows. Appends attendance-rule.created. */
-export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput): Promise<{ id: string }> {
+export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput, existingTx?:Tx): Promise<{ id: string }> {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const n = normalizeInput(p);
-  return withTenant(ctx, async (tx) => {
+  const create = async (tx:Tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     let ruleId: string;
@@ -730,7 +739,8 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
       },
     });
     return { id: ruleId };
-  });
+  };
+  return existingTx ? create(existingTx) : withTenant(ctx,create);
 }
 
 /** Update a rule (name/description/status editable on Standard too) + replace its OT rows. Appends
@@ -749,20 +759,32 @@ export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } 
 export type AttendanceSectionFields = Pick<AttendanceRuleInput, 'lateGracePeriodMinutes' | 'lateAfterMinutes' | 'lateDeductMinutes' | 'includeGraceInLateness' | 'earlyGracePeriodMinutes' | 'earlyAfterMinutes' | 'earlyDeductMinutes' | 'includeGraceInEarlyOut'>;
 type GeneralBand = Pick<OtRowInput, 'fromMinutes' | 'toMinutes' | 'ratePattern' | 'rate' | 'phRate'>;
 export type AttendanceRuleSectionUpdate = { ruleId: string } & (
-  | { section: 'general'; label?: string|null; name: string; description: string | null; status: 'active' | 'inactive'; applyDeductions: boolean; otRows: GeneralBand[] }
+  | { section: 'general'; label?: string|null; name: string; description: string | null; status: 'active' | 'inactive'; applyDeductions: boolean; otRows?: GeneralBand[] }
   | { section: 'attendance'; fields: Partial<AttendanceSectionFields> }
   | { section: 'overtime'; applyToEarlyOt?: boolean; bands: OtRowInput[] }
+  | { section: 'overtimeFull'; applyToEarlyOt: boolean; bands: OtRowInput[]; expected: string }
 );
+
+export function attendanceRuleOvertimeSnapshot(rows: readonly {
+  fromMinutes:number; toMinutes:number; ratePattern:string; rate:number|string|null; phRate:number|string|null;
+  roundingMode:string; roundToMinutes:number|null;
+}[], applyToEarlyOt:boolean) {
+  return JSON.stringify({ applyToEarlyOt, bands:rows.map(row=>({
+    from:row.fromMinutes, to:row.toMinutes, pattern:row.ratePattern,
+    rate:row.rate===null?null:Number(row.rate), holidayRate:row.phRate===null?null:Number(row.phRate),
+    rounding:row.roundingMode, step:row.roundToMinutes,
+  })) });
+}
 
 /** Section ownership is enforced here, never by a posted marker. Read/merge/write uses one row lock,
  * including the current bands, so independent requests cannot carry a stale full-rule snapshot.
  * General: identity/status/deduction switch + ladder boundaries/rates. Attendance: six timing values + two Include Grace flags.
  * Overtime: early inclusion + rounding only, against the exact displayed ladder boundaries, pattern and rates (not generated row IDs).
  * No section can write the week, allowed shift pool or immutable rotations. */
-export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRuleSectionUpdate): Promise<{ id: string }> {
+export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRuleSectionUpdate, existingTx?:Tx): Promise<{ id: string }> {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async tx => {
+  const save = async (tx:Tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [rule] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1).for('update');
@@ -781,7 +803,7 @@ export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRu
     };
     if (p.section === 'general') {
       merged.name=p.name;if(p.label!==undefined)merged.label=p.label;merged.description=p.description;merged.status=p.status;merged.applyDeductions=p.applyDeductions;
-      merged.otRows=p.otRows.map(row=>{
+      if(p.otRows)merged.otRows=p.otRows.map(row=>{
         const current=currentRows.find(band=>band.fromMinutes===row.fromMinutes);
         return {fromMinutes:row.fromMinutes,toMinutes:row.toMinutes,ratePattern:row.ratePattern,rate:row.rate,phRate:row.phRate,
           roundingMode:current?.roundingMode??'none',roundToMinutes:current?.roundToMinutes??null};
@@ -796,6 +818,12 @@ export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRu
         const value=p.fields[key];
         if (value !== undefined) merged[key]=value;
       }
+    } else if (p.section === 'overtimeFull') {
+      if(p.expected!==attendanceRuleOvertimeSnapshot(currentRows,rule.applyToEarlyOt)) {
+        throw new Error('The overtime settings changed. Reopen this schedule before saving overtime settings.');
+      }
+      merged.otRows=p.bands;
+      merged.applyToEarlyOt=p.applyToEarlyOt;
     } else if (p.section === 'overtime') {
       const keys=p.bands.map(band=>band.fromMinutes);
       if(new Set(keys).size!==keys.length || keys.length!==currentRows.length || currentRows.some(row=>{
@@ -813,7 +841,8 @@ export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRu
       throw new Error('Unknown attendance settings section.');
     }
     return updateAttendanceRuleTx(ctx,tx,{ruleId:p.ruleId,...merged});
-  });
+  };
+  return existingTx ? save(existingTx) : withTenant(ctx,save);
 }
 
 async function updateAttendanceRuleTx(ctx: SessionContext, tx: Tx, p: { ruleId: string } & AttendanceRuleInput): Promise<{ id: string }> {
@@ -1116,6 +1145,11 @@ export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string })
     if (rotation) throw new Error('This Schedule Group has saved rotation history. Mark it inactive instead of deleting it.');
     const [revision]=await tx.select({id:attendanceExceptionRevision.id}).from(attendanceExceptionRevision).where(eq(attendanceExceptionRevision.ruleId,p.ruleId)).limit(1);
     if(revision)throw new Error('This Schedule Group has exception history. Mark it inactive instead of deleting it.');
+    const [clockPolicy] = await tx.select({ id: attendanceClockPolicyRevision.id })
+      .from(attendanceClockPolicyRevision)
+      .where(and(eq(attendanceClockPolicyRevision.tenantId, ctx.tenantId), eq(attendanceClockPolicyRevision.ruleId, p.ruleId)))
+      .limit(1);
+    if (clockPolicy) throw new Error('This Schedule Group has saved clock policy history. Mark it inactive instead of deleting it.');
     const [member]=await tx.select({id:employment.id}).from(employment).where(eq(employment.attendanceRuleId,p.ruleId)).limit(1);
     if(member)throw new Error('Employees are assigned to this Schedule Group. Reassign them before deleting it.');
     // ad52212d round 2 — the NAMES, not just "is there one". Deliberately UNCAPPED: the message quotes

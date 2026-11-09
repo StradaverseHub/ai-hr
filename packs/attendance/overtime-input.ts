@@ -15,7 +15,7 @@ import {assignment, attendance, attendanceCorrection, attendancePolicyRequestCon
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {compensationEffectiveOn} from '../../core/comp';
 import {isAttendanceTrace} from '../../core/attendance-trace';
-import {attendancePolicyExecutionContextTx} from '../../core/attendance';
+import {recordedIndependentClockPolicyAgreesTx,attendancePolicyExecutionContextTx} from '../../core/attendance';
 import {assertModuleGate} from '../../core/module-gate';
 import {currencyMinorScale, isCurrencyCode} from '../../lib/currencies';
 import {todayInKualaLumpur} from '../../lib/hr-date';
@@ -72,6 +72,18 @@ export function recordedOvertimeWorkIntervals(day: typeof attendance.$inferSelec
   const trace = isAttendanceTrace(day.calcTrace) ? day.calcTrace : null;
   if (!trace || !Array.isArray(trace.punch.calculationIntervals) || !trace.punch.calculationIntervals.length || !day.checkOutAt) return null;
   const intervals = trace.punch.calculationIntervals;
+  if(trace.clockPolicy){
+    // Only the native writer's dated calculation disposition can remove a punch from this
+    // financial projection. Raw punches, including exclusions, remain in the source digest.
+    const {attendanceDate,requiresReview,exclusions}=trace.clockPolicy;
+    if(attendanceDate!==day.attendanceDate||requiresReview||!Array.isArray(exclusions))return null;
+    const all=new Set(punches.map(row=>row.id));
+    const excluded=new Set(exclusions.map(row=>row.punchId));
+    const filtered=new Set(exclusions.filter(row=>row.reason==='minimumInterval').map(row=>row.punchId));
+    if(excluded.size!==exclusions.length||exclusions.some(row=>!all.has(row.punchId)
+      ||(row.reason==='minimumInterval'&&(!all.has(row.afterPunchId)||filtered.has(row.afterPunchId)))))return null;
+    punches=punches.filter(row=>!excluded.has(row.id));
+  }
   // An old elapsed-envelope calculation does not become multiple physical sessions by inference.
   if (trace.punch.intervalSource !== 'closedPunchPairs' && (punches.length !== 2 || punches.filter(row => row.direction === 'in').length !== 1)) return null;
   if (intervals.length > 64 || punches.length !== intervals.length * 2) return null;
@@ -155,6 +167,9 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
   const policyClockSource=selectedPolicy?await recordedPolicyClockSourceTx(tx,ctx,{attendanceId:day.id,employmentId:p.employmentId,date:p.date,punches}):undefined;
   const assigned = assignments[0], salary = salaries.length === 1 ? salaries[0] : null;
   const trace = isAttendanceTrace(day.calcTrace) ? day.calcTrace : null;
+  if(!selectedPolicy&&trace?.clockPolicy&&!await recordedIndependentClockPolicyAgreesTx(tx,ctx,{
+    ...p,attendanceId:day.id,companyId:proof!.companyId!,trace,punches,
+  }))unavailable();
   let policyExecutionContext:CanonicalOvertimeSnapshot['policyExecutionContext'];
   if(selectedPolicy){
     const resolved=await attendancePolicyExecutionContextTx(tx,ctx,p);
@@ -278,7 +293,7 @@ async function readCanonicalInputsTx(tx: Tx, ctx: SessionContext, p: {employment
       policyPricingFacts[date]=recordedSalaryFacts(rows.length===1?rows[0]:null,entity.currency,date);
     }
   }
-  const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, legacyManualRows} : null}, assignment: assigned, salary, context, punches,
+  const inputDigest = fingerprint({day: {id: day.id, date: day.attendanceDate, checkIn: day.checkInAt, checkOut: day.checkOutAt, status: day.status, dayType: day.dayType, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, calculation: trace ? {v: trace.v, schedule: trace.schedule, punch: trace.punch, lateness: trace.lateness, ...(trace.clockPolicy&&{clockPolicy:trace.clockPolicy}), legacyManualRows} : null}, assignment: assigned, salary, context, punches,
     ...(selectedPolicy?{policyExecutionContext,policyClockSource,policyClockReview,policyRawEffectSource,policyClockMeasurements,policyWorkInput,policyExecutionProposal,...(policyMoneyScope?{policyMoneyScope}:{}),...(policyPlanQuantityScope?{policyPlanQuantityScope}:{}),...(policyPricingFacts?{policyPricingFacts}:{})}:{})});
   const source = {tenantId: ctx.tenantId, employmentId: p.employmentId, attendanceId: day.id, date: p.date, inputDigest, approvalDigest};
   return {

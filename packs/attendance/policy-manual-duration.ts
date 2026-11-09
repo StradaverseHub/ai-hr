@@ -5,7 +5,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {resolveApprovedOt,type AttendancePolicyExecutionContext} from '../../core/attendance';
 import type {PolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyWorkInput,type PolicyWorkInput} from './policy-work-input';
-import {attendancePolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
+import {policyClockEvidence} from './policy-clock-evidence';
 import {attendancePolicyPlanInput,type PolicyPlanInput} from './policy-plan-input';
 import type {RecordedPolicyClockSource} from './policy-clock-input';
 import {attendancePolicyFinalRawAgreement,type PolicyRawCurrent} from './policy-final-raw-input';
@@ -81,7 +81,7 @@ export function attendancePolicyManualDurationInput(context:AttendancePolicyExec
  }else{
   const agreement=attendancePolicyFinalRawAgreement(context,request,tenantId,raw.clocks,raw.current);
   if(agreement.state!=='known'||raw.clocks?.state!=='known')return refuse('sourceUnavailable');
-  const clocks=attendancePolicyClockMillisecondEvidence(raw.clocks.clocks,context.resolvedClock,work.periodMinutes);
+  const clocks=policyClockEvidence(context,raw.clocks.clocks,work.periodMinutes);
   if(!isDeepStrictEqual(attendancePolicyWorkInput(context,clocks),work))return refuse('sourceUnavailable');
  }
  const selection=selectAttendancePolicyCandidate({eligibleIntervals:work.eligibleActualIntervals,unpaidIntervals:work.unpaidIntervals,

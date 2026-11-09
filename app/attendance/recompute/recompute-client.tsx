@@ -157,7 +157,7 @@ export function RecomputeClient({
   const statusText = (v: string) =>
     v === 'present' ? t('statusPresent') : v === 'late' ? t('statusLate') : v === 'half_day' ? t('statusHalfDay') : v;
   const reasonText = (r: RecomputeFlag['reason']) =>
-    r === 'missing-clock-out' ? t('whyNoClockOut') : r === 'no-clock-in' ? t('whyNoClockIn') : t('whyStoredAbsent');
+    r === 'clock-policy-review' ? t('whyClockPolicyReview') : r === 'missing-clock-out' ? t('whyNoClockOut') : r === 'no-clock-in' ? t('whyNoClockIn') : t('whyStoredAbsent');
 
   /** The overtime cell: one line per non-empty rate bucket, "hours × rate". Empty is an em dash. */
   const otCell = (f: RecomputeFigures) => {

@@ -397,10 +397,11 @@ describe('C2. an open rounding form survives an unrelated settings save', () => 
       pathJoin(rootDir, 'app/admin/attendance/schedule/group-sections.tsx'),
       'utf8',
     );
-    expect(page, 'the rounding select is keyed on the band boundary').toContain('roundingMode_${row.fromMinutes}');
-    expect(page, 'and so is the step input').toContain('roundToMinutes_${row.fromMinutes}');
-    expect(page, 'the form boundary/snapshot contract survives replacement of changed band definitions').not.toContain('roundingMode_${row.id}');
-    expect(page, 'the form boundary/snapshot contract survives replacement of changed band definitions').not.toContain('roundToMinutes_${row.id}');
+    expect(page).toContain('name="otBandSnapshot"');
+    expect(page).toContain('name="overtimeFullEditor"');
+    expect(page).toContain('renderScheduleOvertimeBands(rule)');
+    const editor=readFileSync(pathJoin(rootDir,'components/attendance-rule-ot-editor.tsx'),'utf8');
+    expect(editor).toContain('name="otRows"');
   });
 });
 

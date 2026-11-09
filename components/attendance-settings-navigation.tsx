@@ -5,13 +5,35 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { registerUnsavedGuard, UNSAVED_GUARD_IGNORE_SELECTOR } from '@/lib/unsaved-changes';
 
-const snapshot = (form: HTMLFormElement) => JSON.stringify(Array.from(form.elements).flatMap<unknown[]>(element => {
-  if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) || !element.name || (element.name.startsWith('$ACTION_') || element.name === '__attendanceSaveNonce') || ['submit', 'button', 'reset'].includes(element.type)) return [];
+type SnapshotField=[name:string,...values:unknown[]];
+const fields = (form: HTMLFormElement) => Array.from(form.elements).flatMap<SnapshotField>(element => {
+  if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) || !element.name || element.hasAttribute('data-attendance-guard-meta') || (element.name.startsWith('$ACTION_') || element.name === '__attendanceSaveNonce') || ['submit', 'button', 'reset'].includes(element.type)) return [];
   if (element instanceof HTMLInputElement && (element.type === 'checkbox' || element.type === 'radio')) return [[element.name, element.value, element.checked]];
   if (element instanceof HTMLInputElement && element.type === 'file') return [[element.name, Array.from(element.files ?? []).map(f => [f.name, f.size, f.lastModified])]];
   if (element instanceof HTMLSelectElement && element.multiple) return [[element.name, Array.from(element.selectedOptions).map(o => o.value)]];
   return [[element.name, element.value]];
-}));
+});
+const snapshot = (form: HTMLFormElement) => JSON.stringify(fields(form));
+
+/** Some settings fields intentionally clear after their own accepted revision. Other edits stay
+ * tied to the exact submitted values so changes made while saving remain dirty. */
+function acknowledgedSnapshot(form:HTMLFormElement, submitted:string) {
+  const reset=new Set(Array.from(form.elements).flatMap(element=>{
+    if(!element.closest('[data-attendance-reset-on-save]')||
+      !(element instanceof HTMLInputElement||element instanceof HTMLSelectElement||element instanceof HTMLTextAreaElement))return [];
+    return [element.name];
+  }));
+  if(!reset.size)return submitted;
+  const submittedFields=JSON.parse(submitted) as SnapshotField[];
+  const trigger=form.querySelector<HTMLInputElement>('input[data-attendance-reset-on-save-trigger]');
+  if(!trigger||trigger.checked||!submittedFields.some(([name,,checked])=>name===trigger.name&&checked===true))return submitted;
+  const pending=submittedFields.filter(([name])=>!reset.has(name));
+  return JSON.stringify(fields(form).flatMap(field=>{
+    if(reset.has(field[0]))return [field];
+    const index=pending.findIndex(([name])=>name===field[0]);
+    return index<0?[]:pending.splice(index,1);
+  }).concat(pending));
+}
 
 /** Independent forms retain independent save scopes. GET filters are navigation, not edits.
  * A client action increments savedRevision only after persistence succeeds for formId. */
@@ -37,7 +59,7 @@ export function AttendanceSettingsNavigation({ formId, savedRevision }: { formId
       const submitted = submissions.get(form);
       if (submitted && receipt === submitted.nonce) {
         submissions.delete(form); // A receipt is consumed once, and only by the form that submitted it.
-        baselines.set(form, submitted.snapshot); // Edits after submission remain dirty.
+        baselines.set(form, acknowledgedSnapshot(form,submitted.snapshot));
       }
     });
     observeForms();

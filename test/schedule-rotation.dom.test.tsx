@@ -9,6 +9,10 @@ const {router}=vi.hoisted(()=>({router:{push:vi.fn()}}));
 vi.mock('next/navigation',()=>({useRouter:()=>router,usePathname:()=>'/admin/attendance/schedule/group/edit'}));
 vi.mock('../app/admin/attendance/schedule/rotation-actions',()=>({saveRotationAction:vi.fn()}));
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.mocked(saveRotationAction).mockReset();router.push.mockReset();});
+function includeNight(){
+  fireEvent.click(screen.getByRole('checkbox',{name:/Night/}));
+  fireEvent.click(screen.getByRole('button',{name:/Include 1 selected/}));
+}
 const date=new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`)+86_400_000).toISOString().slice(0,10);
 function mount(other=false){return render(<NextIntlClientProvider locale="en" messages={messages}><a href="/admin/attendance/settings">Back to settings</a><ScheduleRotationEditor
   ruleId="group" revision="revision" minimumDate={date} editing
@@ -17,7 +21,7 @@ function mount(other=false){return render(<NextIntlClientProvider locale="en" me
 describe('integrated allowed-shift and cycle editor',()=>{
   it('does not treat a shift search as an unsaved business edit',()=>{
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);mount();
-    fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Night'}});
+    fireEvent.change(screen.getByRole('searchbox',{name:'Search excluded shifts'}),{target:{value:'Night'}});
     const link=screen.getByRole('link',{name:'Back to settings'});let intercepted:boolean|null=null;
     link.addEventListener('click',event=>{intercepted=event.defaultPrevented;event.preventDefault();},{once:true});
     fireEvent.click(link);
@@ -26,15 +30,15 @@ describe('integrated allowed-shift and cycle editor',()=>{
   });
   it('protects bulk-selected filtered shifts as unsaved edits and submits the complete hidden pool',()=>{
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(false),{container}=mount();
-    fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Night'}});
-    fireEvent.click(screen.getByRole('button',{name:'Select all search results'}));
+    fireEvent.change(screen.getByRole('searchbox',{name:'Search excluded shifts'}),{target:{value:'Night'}});
+    includeNight();
     const values=new FormData(container.querySelector('#attendance-rotation-group') as HTMLFormElement).getAll('allowedShiftIds');
     expect(values).toEqual(['a','b']);
     fireEvent.click(screen.getByRole('link',{name:'Back to settings'}));expect(confirm).toHaveBeenCalled();expect(router.push).not.toHaveBeenCalled();
   });
   it('makes an unsaved allowed shift immediately available in cycle selectors',()=>{
     const {container}=mount();
-    fireEvent.click(screen.getByRole('checkbox',{name:/Night/}));
+    includeNight();
     const select=screen.getByRole('combobox',{name:'Shift 1'});
     expect(within(select).getByRole('option',{name:'b · Night'})).toBeTruthy();
     fireEvent.change(select,{target:{value:'b'}});
@@ -56,7 +60,7 @@ describe('integrated allowed-shift and cycle editor',()=>{
   });
   it('rebases a successful save without a false navigation prompt',async()=>{
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
-    const {container}=mount();fireEvent.click(screen.getByRole('checkbox',{name:/Night/}));
+    const {container}=mount();includeNight();
     vi.mocked(saveRotationAction).mockResolvedValueOnce({saved:true,revision:'fresh-revision',savedVersionId:'version-1',savedEffectiveFrom:date});
     fireEvent.submit(container.querySelector('#attendance-rotation-group')!);
     await waitFor(()=>expect((container.querySelector('[name="revision"]') as HTMLInputElement).value).toBe('fresh-revision'));
@@ -66,11 +70,11 @@ describe('integrated allowed-shift and cycle editor',()=>{
     link.addEventListener('click',event=>{intercepted=event.defaultPrevented;event.preventDefault();},{once:true});
     fireEvent.click(link);
     expect(confirm).not.toHaveBeenCalled();expect(intercepted).toBe(false);expect(router.push).not.toHaveBeenCalled();
-    expect((screen.getByRole('checkbox',{name:/Night/}) as HTMLInputElement).checked).toBe(true);
+    expect(within(screen.getByRole('region',{name:/^Included/})).getByText(/Night/)).toBeVisible();
     expect((container.querySelector('[name="cycle"]') as HTMLInputElement).value).toContain('\"shiftId\":\"a\"');
   });
   it('posts the fresh optimistic revision on the second save',async()=>{
-    const {container}=mount();fireEvent.click(screen.getByRole('checkbox',{name:/Night/}));
+    const {container}=mount();includeNight();
     vi.mocked(saveRotationAction).mockResolvedValueOnce({saved:true,revision:'fresh-revision',savedVersionId:'version-1',savedEffectiveFrom:date})
       .mockResolvedValueOnce({saved:true,revision:'next-revision',savedVersionId:'version-2'});
     const form=container.querySelector('#attendance-rotation-group')!;fireEvent.submit(form);
@@ -85,7 +89,7 @@ describe('integrated allowed-shift and cycle editor',()=>{
   });
   it('keeps failed saves dirty and protects navigation',async()=>{
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
-    const {container}=mount();fireEvent.click(screen.getByRole('checkbox',{name:/Night/}));
+    const {container}=mount();includeNight();
     vi.mocked(saveRotationAction).mockResolvedValueOnce({error:'Save refused'});fireEvent.submit(container.querySelector('#attendance-rotation-group')!);
     await screen.findByText('Save refused');fireEvent.click(screen.getByRole('link',{name:'Back to settings'}));
     expect(confirm).toHaveBeenCalled();expect(router.push).not.toHaveBeenCalled();
@@ -94,14 +98,14 @@ describe('integrated allowed-shift and cycle editor',()=>{
   it('refuses submission when another dirty form has not been approved for leaving',()=>{
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
     const {container}=mount(true);fireEvent.change(screen.getByRole('textbox',{name:'Other form'}),{target:{value:'Unsaved'}});
-    fireEvent.click(screen.getByRole('checkbox',{name:/Night/}));
+    includeNight();
     expect(fireEvent.submit(container.querySelector('#attendance-rotation-group')!)).toBe(false);
     expect(confirm).toHaveBeenCalled();expect(saveRotationAction).not.toHaveBeenCalled();
   });
   it('keeps another independent form dirty after the rotation save succeeds',async()=>{
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);
     const {container}=mount(true);fireEvent.change(screen.getByRole('textbox',{name:'Other form'}),{target:{value:'Unsaved'}});
-    fireEvent.click(screen.getByRole('checkbox',{name:/Night/}));
+    includeNight();
     vi.mocked(saveRotationAction).mockResolvedValueOnce({saved:true,revision:'fresh-revision',savedVersionId:'version-1',savedEffectiveFrom:date});
     fireEvent.submit(container.querySelector('#attendance-rotation-group')!);
     await waitFor(()=>expect((container.querySelector('[name="revision"]') as HTMLInputElement).value).toBe('fresh-revision'));

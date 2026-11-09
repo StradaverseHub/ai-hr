@@ -256,7 +256,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  ctx = adminCtx(b);
+  ctx = {...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
   const made = await createAttendanceRule(ctx!, ruleInput({ name: 'Plant crew' }));
   ruleId = made.id;
 });
@@ -563,7 +563,7 @@ describe('F. the screen — Edit edits it, View shows it, and "no week" is a sen
       expect(html, `every day can be set to ${kind}`).toContain(`<option value="${kind}"`);
     }
     // The words come from the namespace that already owns them, not a second copy under this screen's.
-    for (const word of [en.roster.dayKindFull, en.roster.dayKindHalf, en.roster.dayKindOff, en.roster.dayKindRest]) {
+    for (const word of [en.admin.rotation.full, en.admin.rotation.half, en.admin.rotation.off, en.admin.rotation.rest]) {
       expect(html).toContain(esc(word));
     }
   });
@@ -576,9 +576,9 @@ describe('F. the screen — Edit edits it, View shows it, and "no week" is a sen
     expect(html, 'no editable day control on a read-only page').not.toContain('name="dayKind_1"');
     expect(html, 'nor the marker that would let one post').not.toContain('name="weekEditor"');
     // …and it still SAYS the week, so "read-only" is not "absent".
-    const section = html.slice(html.indexOf('id="section-workingDay"'));
-    expect(section).toContain(esc(en.admin.attendancePolicy.dayMon));
-    expect(section).toContain(esc(en.roster.dayKindHalf));
+    const section = html.slice(html.indexOf('id="section-general"'));
+    expect(section).toContain(esc(en.admin.rotation.weekday1));
+    expect(section).toContain(esc(en.admin.rotation.half));
   });
 
   it('a group that declares no week says so in words, on both pages', async () => {

@@ -160,7 +160,25 @@ export type TraceAttendancePolicyBinding={
  ordinal:number;effectiveFrom:string;activation:{epoch:number;actorUserId:string;recordedAt:string};pairing:'auto'|'firstInLastOut';
 };
 
+/** Raw clocking explanation stamped by the independent clock revision at calculation time. */
+export type TraceClockPolicy = {
+  revisionId: string;
+  ordinal: number;
+  effectiveFrom: string;
+  attendanceDate: string;
+  dayClass: 'normal' | 'rest' | 'off' | 'publicHoliday';
+  pairing: 'auto' | 'firstInLastOut';
+  minimumIntervalMinutes: number;
+  positioning?: { startMinute:number; cutoffMinute:number|null; crossesMidnight:boolean };
+  requiresReview: boolean;
+  exclusions: (
+    | { punchId: string; reason: 'minimumInterval'; afterPunchId: string }
+    | { punchId: string; reason: 'intermediatePunch' }
+  )[];
+};
+
 export type AttendanceTraceV1 = {
+  clockPolicy?: TraceClockPolicy;
   executionPolicy?:TraceAttendancePolicyBinding;
   formulaBreaks?:{v:1;actualBefore:number;actualAfter:number;actualShift:number};
   /** Exact calculation-time schedule details for formula evidence. Absent on older rows; readers

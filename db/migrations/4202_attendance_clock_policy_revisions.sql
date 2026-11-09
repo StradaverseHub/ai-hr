@@ -38,11 +38,12 @@ ALTER TABLE public.attendance_clock_policy_revision FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON public.attendance_clock_policy_revision FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT ON public.attendance_clock_policy_revision TO ai_hr_app;
 
--- The internal reader takes a canonical dated employer and group. Company history is
--- further restricted to company administrators by the owner service.
+-- The internal reader takes a canonical dated employer and group. Payroll may replay the
+-- policy for its authorized employer. Configuration history remains company-admin-only.
 CREATE POLICY attendance_clock_policy_read ON public.attendance_clock_policy_revision FOR SELECT
  USING(tenant_id=app.current_tenant_id() AND (SELECT app.attendance_policy_principal_current()) AND (
   app.is_admin_for(company_id)
+  OR app.can_admin_payroll_for(company_id)
   OR EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=attendance_clock_policy_revision.tenant_id
    AND e.company_id=attendance_clock_policy_revision.company_id AND e.id=ANY((SELECT app.visible_employment_ids())::uuid[]))
   OR EXISTS(SELECT 1 FROM public.assignment a WHERE a.tenant_id=attendance_clock_policy_revision.tenant_id

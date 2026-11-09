@@ -41,6 +41,7 @@ const BOUNDARIES = [
   'core/attendance-derive',
   'core/attendance-device',
   'core/attendance-clock',
+  'core/attendance-clock-policy',
   'core/attendance-clock-read',
   'core/attendance-clock-data',
   'core/attendance-punch-change',

@@ -1,3 +1,4 @@
+import {clockPolicyTrace} from './policy-clock-evidence';
 import {attendancePolicyTraceBinding} from './policy-trace-binding';
 /** One raw-day projection from canonical policy evidence. No OT approval or financial authority. */
 import type {AttendanceTraceV1,DeductionTrace} from '../../core/attendance-trace';
@@ -37,6 +38,8 @@ export function attendancePolicyRawDay(raw:Raw,p:{rule:ResolvedAttendanceRule|nu
   const binding=attendancePolicyTraceBinding(raw.context);
   if(!binding)throw Error('Canonical raw Attendance policy binding is unavailable.');
   trace.executionPolicy=binding;
+  const clockPolicy=clockPolicyTrace(raw.context,proof);
+  if(clockPolicy)trace.clockPolicy=clockPolicy;
   const boundary=raw.context.clockPlacement??raw.context.placement;
   trace.schedule.breakSpanned=figures.workedMinutes===null?null:
    proof.minuteIntervals.reduce((sum,row)=>sum+row.outAbs-row.inAbs,0)-figures.workedMinutes;

@@ -7,13 +7,16 @@ import { saveRotationAction, type RotationActionState } from '@/app/admin/attend
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { AttendanceSettingsActionForm } from '@/components/attendance-settings-action-form';
 import {ScheduleShiftPicker} from '@/components/schedule-shift-picker';
+import {useSchedulePoolDraft} from './schedule-pool-draft';
 import { btnPrimary, inputCls } from '@/components/ui';
 type ShiftChoice = { id: string; name: string; code: string | null; startTime: string | null; endTime: string | null;
   fullMinutes: number; halfMinutes: number; halfEnd: string | null; archived: boolean; available: boolean; selected: boolean };
-export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minimumDate, editing}: {
-  ruleId: string; revision: string; initial: RotationCycle; shifts: ShiftChoice[]; minimumDate: string; editing: boolean;
+export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minimumDate, editing, creating = false, poolInGeneral = false, useSavedPool = false}: {
+  ruleId: string; revision: string; initial: RotationCycle; shifts: ShiftChoice[]; minimumDate: string; editing: boolean; creating?:boolean; poolInGeneral?:boolean; useSavedPool?:boolean;
 }) {
   const t = useTranslations('admin.rotation');
+  const te=useTranslations('scheduleGroupEditor');
+  const [createRotation,setCreateRotation]=useState(false);
   const formId=`attendance-rotation-${ruleId}`;
   const [expectedRevision,setExpectedRevision]=useState(revision);
   const [savedRevision,setSavedRevision]=useState('');
@@ -21,14 +24,24 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
   const [cycle,setCycle] = useState(initial);
   const [unit,setUnit] = useState(initial.unit);
   const [length,setLength] = useState(String(initial.length));
-  const [pool,setPool] = useState(shifts.filter(s=>s.selected).map(s=>s.id));
+  const draft = useSchedulePoolDraft();
+  const [localPool,setLocalPool] = useState(shifts.filter(s=>s.selected).map(s=>s.id));
+  const pool = (useSavedPool ? draft?.saved : draft?.selected) ?? localPool;
+  const [savedPool,setSavedPool] = useState(pool);
+  const poolChanged = pool.length!==savedPool.length || pool.some(id=>!savedPool.includes(id));
   const [dirty,setDirty] = useState(false);
   const [generateError,setGenerateError] = useState('');
   const [state,action,pending] = useActionState<RotationActionState,FormData>(saveRotationAction,{});
+  const savedBasePool=draft?.saved;
+  useEffect(()=>{
+    if(!useSavedPool||!savedBasePool||state.saved)return;
+    setExpectedRevision(revision);
+    setSavedPool(savedBasePool);
+  },[useSavedPool,savedBasePool,revision,state.saved]);
   useEffect(()=>{
     if(state.saved&&state.revision&&state.savedVersionId){
       setExpectedRevision(state.revision);setSavedRevision(state.savedVersionId);
-      setLastSavedDate(state.savedEffectiveFrom??'');setDirty(false);
+      setLastSavedDate(state.savedEffectiveFrom??'');setSavedPool(pool);setDirty(false);
     }
   },[state]);
   const afterSaved=lastSavedDate?new Date(Date.parse(`${lastSavedDate}T00:00:00Z`)+86_400_000).toISOString().slice(0,10):minimumDate;
@@ -44,17 +57,7 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
     mark({...cycle,unit,length:n,days});setGenerateError('');
   };
   const changeDay=(index:number,day:RotationDay)=>mark({...cycle,days:cycle.days.map((d,i)=>i===index?day:d)});
-  return <>{editing&&<AttendanceSettingsNavigation formId={formId} savedRevision={savedRevision}/>}<AttendanceSettingsActionForm id={formId} submitAction={async data => { action(data); }} className="space-y-4 p-4">
-    <input type="hidden" name="ruleId" value={ruleId}/><input type="hidden" name="revision" value={expectedRevision}/>
-    <input type="hidden" name="cycle" value={JSON.stringify(cycle)}/>
-    {state.error&&<p role="alert" className="text-sm text-destructive">{state.error}</p>}
-    {state.saved&&<p role="status" className="text-sm">{t('saved')}</p>}
-    <p className="text-sm text-muted-foreground">{editing?t('futureHint'):t('viewHint')}</p>
-    <fieldset disabled={!editing||pending} className="min-w-0 space-y-3">
-      <legend className="text-sm font-medium">{t('pool')}</legend>
-      <p className="text-xs text-muted-foreground">{t('poolHint')}</p>
-      <ScheduleShiftPicker shifts={shifts} selected={pool} editing={editing} disabled={pending}
-        onChange={next=>{setPool(next);setDirty(true);}}/>
+  const fields=<>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">{t('basedOn')}<select name="rotationUnitDraft" className={inputCls} value={unit} onChange={e=>{setUnit(e.target.value as 'week'|'day');setDirty(true);}}><option value="week">{t('week')}</option><option value="day">{t('day')}</option></select></label>
         <label className="text-sm">{t('length')}<input name="rotationLengthDraft" type="number" min={1} max={unit==='week'?52:366} step={1} value={length} className={inputCls} onChange={e=>{setLength(e.target.value);setDirty(true);}}/></label>
@@ -76,7 +79,37 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
           <td className="p-2 whitespace-nowrap">{sh?`${(sh.startTime?.slice(0,5)??'—')}–${((day.kind==='half'?sh.halfEnd:sh.endTime)?.slice(0,5)??'—')} · ${t('minutes',{n:day.kind==='half'?sh.halfMinutes:sh.fullMinutes})}`:'—'}</td>
         </tr>;})}</tbody>
       </table></div>
+
+  </>;
+  if(creating)return <div className="space-y-4 p-4">
+    <label className="flex items-start gap-2 text-sm">
+      <input type="checkbox" name="createRotation" value="1" checked={createRotation}
+        onChange={event=>setCreateRotation(event.target.checked)} className="mt-0.5 accent-primary"/>
+      {te('createRotation')}
+    </label>
+    {createRotation&&<>
+      <p className="text-sm text-muted-foreground">{t('futureHint')}</p>
+      <input type="hidden" name="cycle" value={JSON.stringify(cycle)}/>
+      <fieldset className="min-w-0 space-y-3">{fields}</fieldset>
+      {validation&&<p role="alert" className="text-sm text-destructive">{validation}</p>}
+    </>}
+  </div>;
+  return <>{editing&&<AttendanceSettingsNavigation formId={formId} savedRevision={savedRevision||(useSavedPool?revision:undefined)}/>}<AttendanceSettingsActionForm id={formId} submitAction={async data => { action(data); }} className="space-y-4 p-4">
+    <input type="hidden" name="ruleId" value={ruleId}/><input type="hidden" name="revision" data-attendance-guard-meta value={expectedRevision}/>
+    <input type="hidden" name="cycle" value={JSON.stringify(cycle)}/>
+    {draft&&pool.map(id=><input key={id} type="hidden" name="allowedShiftIds" value={id}/>)}
+    {state.error&&<p role="alert" className="text-sm text-destructive">{state.error}</p>}
+    {state.saved&&<p role="status" className="text-sm">{t('saved')}</p>}
+    <p className="text-sm text-muted-foreground">{editing?t('futureHint'):t('viewHint')}</p>
+    <fieldset disabled={!editing||pending} className="min-w-0 space-y-3">
+      {!draft && !poolInGeneral && <>
+        <legend className="text-sm font-medium">{t('pool')}</legend>
+        <p className="text-xs text-muted-foreground">{t('poolHint')}</p>
+        <ScheduleShiftPicker shifts={shifts} selected={pool} editing={editing} disabled={pending}
+          onChange={setLocalPool}/>
+      </>}
+      {fields}
     </fieldset>
-    {editing&&<>{validation&&<p role="alert" className="text-sm text-destructive">{validation}</p>}<ActionButton guardNavigation aria-busy={pending} className={btnPrimary} disabled={pending||!dirty||!!validation||unit!==cycle.unit||Number(length)!==cycle.length}>{pending?t('saving'):t('save')}</ActionButton></>}
+    {editing&&<>{validation&&<p role="alert" className="text-sm text-destructive">{validation}</p>}<ActionButton guardNavigation aria-busy={pending} className={btnPrimary} disabled={pending||!dirty&&!poolChanged||!!validation||unit!==cycle.unit||Number(length)!==cycle.length}>{pending?t('saving'):t('save')}</ActionButton></>}
   </AttendanceSettingsActionForm></>;
 }

@@ -8,9 +8,11 @@ import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './at
 import { clockScheduleForTx, resolveGeofence,OutsideGeofenceError,GeofenceQualityError } from './attendance';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { clockCommandContext } from '../lib/clock-command-context';
+import { anchorAttendanceClockMinute } from './attendance-timeline';
 import { clockCaptureInstantTx } from './attendance-clock';
 
 type ClockGeo={lat:number;lng:number;accuracy:number};
+type LiveClockPunch={id?:string;direction:'in'|'out';time:string;captureId:string|null;recordedAt:Date|null;instant:number};
 
 /** Explanatory only: the authoritative writer rechecks live policy and never trusts this result. */
 export async function previewOwnClockLocation(ctx:SessionContext,selectedEmploymentId:string,geo:ClockGeo&{sampledAt:number}){
@@ -42,21 +44,29 @@ async function ownClockCoreTx(tx:Tx,employmentId:string,geo?:ClockGeo){
     const [openDay] = await tx.select({ date: attendance.attendanceDate }).from(attendance).where(and(eq(attendance.employmentId, employmentId), isNotNull(attendance.checkInAt), isNull(attendance.checkOutAt))).orderBy(desc(attendance.attendanceDate)).limit(1);
     if (openDay && openDay.date === todayInKualaLumpur(new Date(now.getTime() - 86400000)) && (await clockScheduleForTx(tx, employmentId, openDay.date)).crossesMidnight) date = openDay.date;
     const schedule = await clockScheduleForTx(tx, employmentId, date);
-    const [day] = await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt, checkInMethod: attendance.checkInMethod }).from(attendance).where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date))).limit(1);
+    const [day] = await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt, checkInMethod: attendance.checkInMethod,trace:attendance.calcTrace }).from(attendance).where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date))).limit(1);
     // A capture's true instant orders and times the day: an offline capture's server_recorded_at is its arrival.
     // Typed nullable: a raw SQL field is not widened by the left join, and a punch without a capture reads NULL.
     const captureInstant = await clockCaptureInstantTx(tx);
-    const punches = day ? await tx.select({ direction: attendancePunch.direction, time: attendancePunch.punchAt, captureId: attendancePunch.clockCaptureId, recordedAt: captureInstant as SQL<Date | null> }).from(attendancePunch).leftJoin(attendanceClockCapture, eq(attendanceClockCapture.id, attendancePunch.clockCaptureId)).where(and(eq(attendancePunch.attendanceId, day.id), isNull(attendancePunch.voidedAt))).orderBy(asc(attendancePunch.createdAt), asc(attendancePunch.id)) : [];
+    const punches = day ? await tx.select({ id:attendancePunch.id,direction: attendancePunch.direction, time: attendancePunch.punchAt, captureId: attendancePunch.clockCaptureId, recordedAt: captureInstant as SQL<Date | null> }).from(attendancePunch).leftJoin(attendanceClockCapture, eq(attendanceClockCapture.id, attendancePunch.clockCaptureId)).where(and(eq(attendancePunch.attendanceId, day.id), isNull(attendancePunch.voidedAt))).orderBy(asc(attendancePunch.createdAt), asc(attendancePunch.id)) : [];
+    const clockPolicy=day?.trace?.clockPolicy?.attendanceDate===date?day.trace.clockPolicy:undefined;
     const toInstant = (time: string) => {
       const clock = time.slice(0,8).padEnd(8, ':00');
       let ms = new Date(`${date}T${clock}+08:00`).getTime();
-      if (schedule.crossesMidnight && schedule.start && time.slice(0,5) < schedule.start.slice(0,5)) ms += 86400000;
+      const positioning=clockPolicy?.positioning;
+      if(positioning&&(positioning.crossesMidnight||positioning.cutoffMinute!==null)){
+        const minute=Number(time.slice(0,2))*60+Number(time.slice(3,5));
+        ms+=(anchorAttendanceClockMinute(minute,positioning.startMinute,positioning.cutoffMinute)-minute)*60_000;
+      }else if(!positioning&&schedule.crossesMidnight&&schedule.start&&time.slice(0,5)<schedule.start.slice(0,5))ms+=86400000;
       return ms;
     };
-    let live = punches.map(p => ({ ...p, instant: p.recordedAt?.getTime() ?? toInstant(p.time) })).sort((a,b) => a.instant-b.instant);
+    const raw = punches.map(p => ({ ...p, instant: p.recordedAt?.getTime() ?? toInstant(p.time) })).sort((a,b) => a.instant-b.instant);
+    const exclusions=new Set(clockPolicy?.exclusions.map(row=>row.punchId));
+    let live:LiveClockPunch[] = raw.filter(punch=>!exclusions.has(punch.id));
     // A correction changes the authoritative pair without re-attributing its original photos.
+    // The new policy trace already explains why a retained raw boundary can differ from the aggregate.
     const firstIn = live.find(p=>p.direction==='in'), lastOut = live.filter(p=>p.direction==='out').at(-1);
-    if (day && (firstIn?.time.slice(0,5) !== day.checkIn?.slice(0,5) || (lastOut?.time.slice(0,5)??null) !== (day.checkOut?.slice(0,5)??null))) live=[];
+    if (!clockPolicy&&day&&(firstIn?.time.slice(0,5) !== day.checkIn?.slice(0,5) || (lastOut?.time.slice(0,5)??null) !== (day.checkOut?.slice(0,5)??null))) live=[];
     if (!live.length && day?.checkIn) {
       live.push({direction:'in', time:day.checkIn, captureId:null, recordedAt:null, instant:toInstant(day.checkIn)});
       if (day.checkOut) live.push({direction:'out', time:day.checkOut, captureId:null, recordedAt:null, instant:toInstant(day.checkOut)});
@@ -81,7 +91,7 @@ async function ownClockCoreTx(tx:Tx,employmentId:string,geo?:ClockGeo){
     if (geo && [geo.lat,geo.lng,geo.accuracy].every(Number.isFinite) && Math.abs(geo.lat)<=90 && Math.abs(geo.lng)<=180 && geo.accuracy>=0) {
       try { const result = await resolveGeofence(tx,{employmentId:employmentId,date,time:new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',hour12:false}).format(now),lat:geo.lat,lng:geo.lng,accuracy:geo.accuracy,punch:anchor==null?'in':'out'}); locationValid = result.enforced ? !!result.clockingLocationId : true; } catch { /* explanatory prerequisite; command rechecks */ }
     }
- return {date,live,crossesMidnight:schedule.crossesMidnight,summary:{serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,locationAvailable,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end}}};
+ return {date,live:clockPolicy?raw:live,crossesMidnight:schedule.crossesMidnight,summary:{serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,locationAvailable,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end}}};
 }
 
 /** The live clock state ownClockToday reports (clocking date, clocked in, open-since instant), in the caller's

@@ -1,11 +1,15 @@
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { getTranslations } from 'next-intl/server';
-import { requireAdmin } from '@/lib/authz';
+import { isGroupAdmin } from '@/lib/authz';
+import { scopedAdmin } from '@/lib/scope';
+import { scheduleClockCompanies } from '../clock-policy-options';
 import { listAttendanceRules } from '@/core/attendance-rule';
 import { listShiftsForTenant } from '@/core/roster';
+import { workingShiftSchedule } from '@/packs/attendance/service';
 import { PageHeader } from '@/components/ui';
 import { SCHEDULE } from '../../../attendance-policy/schedule-panel';
 import { RuleForm } from '../../../attendance-policy/rules/rule-form';
+import { resolveSection } from '../sections';
 import { ruleShiftChoices } from '../../../attendance-policy/rules/shift-choices';
 
 /** 7500c083 supersedes the old reading-width cap. Schedule configuration uses the available width;
@@ -44,20 +48,30 @@ import { ruleShiftChoices } from '../../../attendance-policy/rules/shift-choices
 export default async function AddScheduleGroupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; section?:string }>;
 }) {
-  const s = await requireAdmin();
+  const {s,scopeIds} = await scopedAdmin();
   const t = await getTranslations('admin.scheduleConfig');
+  const te = await getTranslations('scheduleGroupEditor');
   const tr = await getTranslations('admin.attendanceRule');
   const sp = await searchParams;
 
-  const [rules, shifts] = await Promise.all([listAttendanceRules(s), listShiftsForTenant(s)]);
+  const [rules, shifts, clockCompanies] = await Promise.all([listAttendanceRules(s), isGroupAdmin(s)?listShiftsForTenant(s):[], scheduleClockCompanies(s,scopeIds)]);
 
+  const shiftById=new Map(shifts.map(shift=>[shift.id,shift]));
+  const choices=ruleShiftChoices(shifts,rules,null).map(choice=>{
+    const shift=shiftById.get(choice.id)!;
+    const input={type:shift.type,start:shift.startTime,end:shift.endTime,crosses:shift.crossesMidnight,
+      breakMinutes:shift.breakMinutes,roundingMinutes:shift.normalHoursRoundingMinutes,normalMinutesOverride:shift.normalMinutesOverride};
+    const full=workingShiftSchedule(input,'full'),half=workingShiftSchedule(input,'half');
+    return {...choice,startTime:shift.startTime,endTime:full.shiftEnd,halfEnd:half.shiftEnd,
+      fullMinutes:full.normalMinutes,halfMinutes:half.normalMinutes};
+  });
   return (
     <div className="w-full min-w-0 space-y-6">
       <AttendanceSettingsNavigation />
       <PageHeader
-        title={t('addTitle')}
+        title={te('addTitle')}
         description={t('addSubtitle')}
         back={{ href: SCHEDULE, label: t('backToList') }}
       />
@@ -66,8 +80,11 @@ export default async function AddScheduleGroupPage({
           tick it (ruleShiftChoices, 870b79e2). */}
       <RuleForm
         rule={null}
-        shifts={ruleShiftChoices(shifts, rules, null)}
+        shifts={choices}
         error={sp.error}
+        initialSection={resolveSection(sp.section)}
+        clockCompanies={clockCompanies}
+        canEditShared={isGroupAdmin(s)}
         cancel={{ href: SCHEDULE, label: tr('cancel') }}
       />
     </div>

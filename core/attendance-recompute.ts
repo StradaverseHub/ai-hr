@@ -42,6 +42,8 @@ import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import type { TraceClockPolicy } from './attendance-trace';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 // ADR-0080 D9/D11 — attendance and payroll services are consumed through their PACK FACADES, not
@@ -60,7 +62,8 @@ export type RecomputeFlagReason =
   | 'no-clock-in'
   /** A stored `absent` row. Nothing in the tree writes this status and deriveAttendance cannot produce it,
    *  so this is a defensive skip rather than a case with a producer. */
-  | 'stored-absent';
+  | 'stored-absent'
+  | 'clock-policy-review';
 
 /** The calculated figures of one day — the complete set this feature may rewrite, and therefore the
  *  complete set the preview shows side by side. Deliberately mirrors the attendance columns 1:1. */
@@ -97,6 +100,7 @@ export type RecomputeRow = {
   after: RecomputeFigures;
   /** True when a human-approved OT figure was kept and only its per-rate split recut (ADR-0069). */
   otPreserved: boolean;
+  clockPolicy?:{before:TraceClockPolicy|null;after:TraceClockPolicy|null};
 };
 
 /** A day left exactly as it is, and why. */
@@ -297,6 +301,7 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
         status: attendance.status,
         dayType: attendance.dayType,
         workedMinutes: attendance.workedMinutes,
+        calcTrace: attendance.calcTrace,
         otMinutes: attendance.otMinutes,
         lateMinutes: attendance.lateMinutes,
         earlyOutMinutes: attendance.earlyOutMinutes,
@@ -370,9 +375,14 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
         checkOutAt: r.checkOutAt,
         approvedOtMinutes: approvedOt.get(`${r.employmentId}|${r.date}`) ?? null,
       });
+      if(d.clockPolicyReview){
+        flags.push({...idOf(id),date:r.date,checkInAt:r.checkInAt,checkOutAt:r.checkOutAt,reason:'clock-policy-review'});
+        continue;
+      }
       const before = figuresOf(r);
       const after = figuresOf(d.columns);
-      if (sameFigures(before, after)) {
+      const clockBefore=r.calcTrace?.clockPolicy??null,clockAfter=d.columns.calcTrace?.clockPolicy??null;
+      if (sameFigures(before, after) && isDeepStrictEqual(clockBefore,clockAfter)) {
         unchanged += 1;
         continue;
       }
@@ -388,6 +398,7 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
           before,
           after,
           otPreserved: d.otPreserved,
+          ...(clockBefore||clockAfter?{clockPolicy:{before:clockBefore,after:clockAfter}}:{}),
         },
       });
     }
@@ -460,7 +471,7 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
         actor: actorOf(ctx),
         subjectEmploymentId: c.row.employmentId,
         // Minutes only — the same precedent attendance.amended already sets (ADR-0030 Layer 0).
-        payload: { runId, date: c.row.date, before: c.row.before, after: c.row.after },
+        payload: { runId, date: c.row.date, before: c.row.before, after: c.row.after, ...(c.row.clockPolicy&&{clockPolicy:c.row.clockPolicy}) },
       });
     }
     // The run event. It carries the WHOLE per-day array because that array is the run history: the screen

@@ -13,11 +13,17 @@ import {
   updateAttendanceRule,
   updateAttendanceRuleSection,
   type AttendanceRuleInput,
-  type OtRowInput,
 } from '@/core/attendance-rule';
 import { getTranslations } from 'next-intl/server';
 import { SCHEDULE, scheduleGroupEditPath, scheduleGroupNewPath } from './schedule-panel';
 import { failScheduleGroup, okScheduleGroup } from '../_redirects';
+import { withTenant } from '@/db/client';
+import { lockAccessConfigurationTx } from '@/core/access-configuration-lock';
+import { sql } from 'drizzle-orm';
+import { getScheduleRotation, lockAttendanceClockPolicyConfigurationTx, saveScheduleRotation, scheduleAttendanceClockPolicy } from '@/packs/attendance/service';
+import { readScheduleClockPolicyFields } from '../attendance/schedule/clock-policy-fields';
+import { parseOtRows } from '../attendance/schedule/overtime-fields';
+import type { RotationCycle } from '@/core/week-pattern';
 
 /**
  * 88e94371 · Server actions for the "Lateness, Early Out & Overtime Settings" rule library. Writes are
@@ -70,33 +76,6 @@ const bool = (fd: FormData, key: string): boolean => {
   return v != null && v !== '';
 };
 
-/** Parse the OT-rows hidden JSON field into typed rows. Invalid / empty ⇒ []. */
-function parseOtRows(raw: string): OtRowInput[] {
-  if (!raw) return [];
-  try {
-    const arr: unknown = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
-      .map((x) => ({
-        fromMinutes: Math.trunc(Number(x.fromMinutes ?? 0)) || 0,
-        toMinutes: Math.trunc(Number(x.toMinutes ?? 0)) || 0,
-        ratePattern: x.ratePattern === 'variable' ? 'variable' : 'flat',
-        // 7c834696 contested — an ABSENT rate stays absent. `Number(x.rate ?? 0) || 0` used to turn "the
-        // admin has not typed a rate" into a stored 0.00, which is a real and different setting ("record
-        // the hours, pay nothing"). Now the band that was never filled in is refused on save with a message
-        // naming the row, instead of being paid at a number nobody chose.
-        rate: x.rate == null || x.rate === '' ? null : Number(x.rate) || 0,
-        phRate: x.phRate == null || x.phRate === '' ? null : Number(x.phRate) || 0,
-        // 0439 — three modes. Anything else (including the pre-0439 booleans, if a stale tab posts one)
-        // normalises to 'none' in core/attendance-rule.ts, which cannot change what a band pays.
-        roundingMode: x.roundingMode === 'down' || x.roundingMode === 'up' ? x.roundingMode : 'none',
-        roundToMinutes: x.roundToMinutes == null || x.roundToMinutes === '' ? null : Math.trunc(Number(x.roundToMinutes)) || null,
-      }));
-  } catch {
-    return [];
-  }
-}
 
 function ruleFields(fd: FormData): AttendanceRuleInput {
   return {
@@ -140,27 +119,51 @@ function allowedShiftIds(fd: FormData): string[] | null {
 
 export async function createAttendanceRuleAction(fd: FormData) {
   const s = await getSession();
-  // ⚠️ TWO SEPARATE try BLOCKS, NOT ONE NESTED PAIR. `redirect()` works by THROWING, so a redirect written
-  // inside a try whose catch also redirects would be swallowed by that catch and turned into an error
-  // banner reading NEXT_REDIRECT. Same shape as copyAttendanceRuleAction below, and for the same reason.
   let created: { id: string };
+  let section: 'general' | 'attendance' | 'workingDay' = 'general';
   try {
-    created = await createAttendanceRule(s, ruleFields(fd));
+    if(fd.get('scheduleClockPolicy')==='1') section='attendance';
+    const clock = readScheduleClockPolicyFields(fd);
+    const shiftIds = allowedShiftIds(fd);
+    const weekdays = Array.from({length:7}, (_,index)=>String(fd.get(`createDayKind_${index+1}`)??''));
+    if (weekdays.some(kind=>!['','full','half','off','rest'].includes(kind))) throw new Error('Choose a valid schedule for each day.');
+    const week=weekdays.some(Boolean)?{
+      weeklyPattern: weekdays.flatMap((kind,index)=>kind==='full'?[index+1]:[]),
+      halfPattern: weekdays.flatMap((kind,index)=>kind==='half'?[index+1]:[]),
+      offPattern: weekdays.flatMap((kind,index)=>kind==='off'?[index+1]:[]),
+    }:null;
+    section='general';
+    created = await withTenant(s, async tx => {
+      await lockAccessConfigurationTx(tx,s.tenantId);
+      if (clock) await lockAttendanceClockPolicyConfigurationTx(tx, s);
+      if(week){
+        const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.principal_snapshot_current() and app.is_group_admin() as allowed`);
+        if(!authority?.allowed)throw new Error('A group-wide HR administrator is required to set a shared working week.');
+      }
+      const result = await createAttendanceRule(s, {...ruleFields(fd),...week}, tx);
+      if (shiftIds?.length) await setRuleShifts(s, {ruleId: result.id, shiftIds, expectedShiftIds:[]}, tx);
+      if (fd.get('createRotation')==='1') {
+        section='workingDay';
+        const raw=String(fd.get('cycle')??'');
+        if(raw.length>100_000)throw new Error('The rotation is too large.');
+        const cycle=JSON.parse(raw) as RotationCycle;
+        const postedUnit=fd.get('rotationUnitDraft'), postedLength=fd.get('rotationLengthDraft');
+        if((postedUnit!=null&&postedUnit!==cycle.unit)||(postedLength!=null&&Number(postedLength)!==cycle.length)){
+          throw new Error('Generate the rotation again before saving the changed unit or length.');
+        }
+        const {revision}=await getScheduleRotation(s,result.id,tx);
+        await saveScheduleRotation(s,{ruleId:result.id,expectedRevision:revision,allowedShiftIds:shiftIds??[],cycle},tx);
+      }
+      if (clock) {
+        section = 'attendance';
+        await scheduleAttendanceClockPolicy(s, {...clock, ruleId: result.id}, tx);
+      }
+      return result;
+    });
   } catch (e) {
-    // 665de026 — back to Add Schedule, the page that raised it. It is the one refusal here that has no
-    // record to return to: the group was never created.
-    redirect(`${scheduleGroupNewPath()}?error=${encodeURIComponent(publicErrorMessage(e))}`);
-  }
-  // 870b79e2 — the group's shifts are written AFTER the rule exists, because shift.rule_id needs an id to
-  // point at. A failure here surfaces on the new rule's OWN edit form: the rule was created, so sending
-  // the operator back to a blank New form would invite them to create it a second time.
-  const shiftIds = allowedShiftIds(fd);
-  if (shiftIds) {
-    try {
-      await setRuleShifts(s, { ruleId: created.id, shiftIds });
-    } catch (e) {
-      failScheduleGroup(e, created.id, 'general');
-    }
+    const query = new URLSearchParams({error: publicErrorMessage(e)});
+    if(section!=='general')query.set('section',section);
+    redirect(`${scheduleGroupNewPath()}?${query}${section!=='general'?`#section-${section}`:''}`);
   }
   revalidatePath(LIST);
   const t = await getTranslations('admin.scheduleConfig');
@@ -176,7 +179,7 @@ export async function saveScheduleGroupGeneralAction(fd: FormData) {
     await updateAttendanceRuleSection(s, {ruleId,section:'general',
       name:String(fd.get('name')??'').trim(),label:String(fd.get('label')??'').trim()||null,description:String(fd.get('description')??'').trim()||null,
       status:fd.get('status')==='inactive'?'inactive':'active',applyDeductions:bool(fd,'applyDeductions'),
-      otRows:parseOtRows(String(fd.get('otRows')??'')),
+      ...(fd.has('otRows') ? {otRows: parseOtRows(String(fd.get('otRows')))} : {}),
     });
   } catch(e) {failScheduleGroup(e,ruleId,'general');}
   const t=await getTranslations('admin.scheduleConfig');

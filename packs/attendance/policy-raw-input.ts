@@ -5,7 +5,7 @@ import {attendance,attendancePunch} from '../../db/schema';
 import {attendancePolicyExecutionContextTx} from '../../core/attendance';
 import {recordedPolicyClockSourceTx} from './policy-clock-input';
 import {legacyApplicationForAttendancePolicyTx} from './policy-selection';
-import {attendancePolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
+import {policyClockEvidence} from './policy-clock-evidence';
 import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
 import {attendancePolicyWorkInput} from './policy-work-input';
 import {assertModuleGate} from '../../core/module-gate';
@@ -32,7 +32,7 @@ export async function attendancePolicyRawInputTx(tx:Tx,ctx:SessionContext,p:{emp
  const punches=await tx.select().from(attendancePunch).where(and(eq(attendancePunch.tenantId,ctx.tenantId),
   eq(attendancePunch.attendanceId,day.id),isNull(attendancePunch.voidedAt))).orderBy(asc(attendancePunch.id)).limit(129);
  const source=await recordedPolicyClockSourceTx(tx,ctx,{attendanceId:day.id,employmentId:p.employmentId,date:p.date,punches});
- const clocks=source.state==='known'?attendancePolicyClockMillisecondEvidence(source.clocks,context.resolvedClock,4320):undefined;
+ const clocks=source.state==='known'?policyClockEvidence(context,source.clocks):undefined;
  const [principal]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
  if(!principal?.allowed)throw Error('Current Attendance principal required.');
  return {state:'policy' as const,attendanceId:day.id,context,source,clocks,

@@ -16,6 +16,7 @@ export * from './my-calendar';
 export * from '../../core/attendance-allowance';
 export * from '../../core/attendance-calc';
 export * from '../../core/attendance-group-policy';
+export {attendanceClockPolicyHistory, lockAttendanceClockPolicyConfigurationTx, scheduleAttendanceClockPolicy} from '../../core/attendance-clock-policy';
 export * from '../../core/attendance-derive';
 export * from '../../core/attendance-device';
 export * from '../../core/attendance-rule';
@@ -76,6 +77,8 @@ export {deriveAttendancePolicyDurationProposal,deriveAttendancePolicyClockDurati
 export {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
 // Prospective source seam for the canonical raw writer; no figure, approval or settlement write.
 export {attendancePolicyRawInputTx} from './policy-raw-input';
+export { recordedPolicyClockSourceTx, type AttendanceClockSourcePunch } from './policy-clock-input';
+export { clockPolicyTrace } from './policy-clock-evidence';
 export {attendancePolicyRawFigures,type PolicyRawFigures} from './policy-raw-figures';
 
 export {attendancePolicyRawDay,attendancePolicyUncapturedRawDay} from './policy-raw-day';

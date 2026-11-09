@@ -9,13 +9,13 @@ import type { AttendanceRuleView } from '../core/attendance-rule';
 const { router } = vi.hoisted(() => ({ router: { push: vi.fn() } }));
 vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/admin/attendance/schedule/group/edit' }));
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages, namespace: namespace as never, onError: e => { throw e; } }) }));
-vi.mock('../core/attendance-rule', () => ({ countEmploymentsInRule: async () => 0 }));
+
 vi.mock('../core/schedule-group-controls', () => ({scheduleGroupControls:async()=>({label:null,dutyRosterControl:false,revisions:[]})}));
 vi.mock('../core/roster', () => ({ listShiftsForTenant: async () => [] }));
 vi.mock('../packs/attendance/service', () => ({ getScheduleRotation: async () => ({ versions: [],memberships:[], revision: 'r1' }) }));
 vi.mock('../app/admin/attendance-policy/rule-actions', () => ({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
 vi.mock('../components/schedule-rotation-editor', () => ({ ScheduleRotationEditor: () => null }));
-vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn(),saveScheduleGroupControlAction:vi.fn() }));
+vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn(),saveScheduleGroupControlAction:vi.fn(),saveScheduleGroupAllowedShiftsAction:vi.fn() }));
 
 import { RuleForm } from '../app/admin/attendance-policy/rules/rule-form';
 import { saveScheduleGroupGeneralAction } from '../app/admin/attendance-policy/rule-actions';
@@ -83,8 +83,9 @@ describe('independent Schedule Group forms after a server refresh', () => {
     expect(general).not.toBeVisible();
     expect(label.isConnected).toBe(true);
     expect(screen.getAllByRole('tabpanel',{hidden:true})).toEqual(panels);
-    const attendanceTab=screen.getByRole('tab',{selected:true});
-    fireEvent.keyDown(attendanceTab,{key:'ArrowLeft'});
+    const dutyTab=screen.getByRole('tab',{selected:true});
+    expect(dutyTab).toHaveTextContent(messages.scheduleGroupEditor.dutyRoster);
+    fireEvent.keyDown(dutyTab,{key:'ArrowLeft'});
     expect(screen.getByRole('tabpanel')).toBe(general);
     expect(general.querySelector('input[name="label"]')).toBe(label);
     expect(label.value).toBe('OFFICE-UNSAVED');
@@ -123,8 +124,8 @@ describe('independent Schedule Group forms after a server refresh', () => {
     const view=render(await page('original-band-id'));
     const general=screen.getByRole('form',{name:'general'}) as HTMLFormElement;
     const overtime=screen.getByRole('form',{name:'overtime'}) as HTMLFormElement;
-    fireEvent.change(overtime.querySelector('[name="roundingMode_0"]')!,{target:{value:'up'}});
-    fireEvent.change(overtime.querySelector('[name="roundToMinutes_0"]')!,{target:{value:'30'}});
+    fireEvent.change(overtime.querySelector('select[aria-label="Rounding"]')!,{target:{value:'up'}});
+    fireEvent.change(overtime.querySelector('input[aria-label="Round To"]')!,{target:{value:'30'}});
     vi.mocked(saveScheduleGroupOvertimeAction).mockImplementationOnce(async data=>{
       view.rerender(await page('new-band-id',String(data.get('__attendanceSaveNonce')),'overtime',{
         applyToEarlyOt:true,otRows:[{...rule.otRows[0],roundingMode:'up',roundToMinutes:30}]}));
@@ -140,12 +141,10 @@ describe('independent Schedule Group forms after a server refresh', () => {
     const posted=vi.mocked(saveScheduleGroupGeneralAction).mock.calls[0][0];
     expect(posted.get('name')).toBe('Renamed group');
     for(const key of ['lateGracePeriodMinutes','earlyGracePeriodMinutes','includeGraceInLateness','includeGraceInEarlyOut','applyToEarlyOt'])expect(posted.has(key)).toBe(false);
-    const bands=JSON.parse(String(posted.get('otRows'))) as Record<string,unknown>[];
-    expect(bands).toHaveLength(1);expect(bands[0].rate).toBe(1.5);
-    expect(bands[0]).not.toHaveProperty('roundingMode');expect(bands[0]).not.toHaveProperty('roundToMinutes');
+    expect(posted.has('otRows')).toBe(false);
   });
 
-  it('retains Overtime fields and identity with visible guidance after General reshapes the ladder',async()=>{
+  it('retains Overtime fields and identity with guidance after another administrator reshapes the ladder',async()=>{
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
     const view=render(await page('original-band-id'));
     const overtime=screen.getByRole('form',{name:'overtime'}) as HTMLFormElement;
@@ -156,8 +155,8 @@ describe('independent Schedule Group forms after a server refresh', () => {
       otRows:[{...rule.otRows[0],toMinutes:60,rate:'2.0'},
         {...rule.otRows[0],id:'second-band',fromMinutes:61,toMinutes:0,roundingMode:'none',roundToMinutes:null}]})));
     expect(screen.getByRole('alert')).toHaveTextContent(messages.scheduleDrafts.staleLadder);
-    expect(overtime.querySelector('[name="roundingMode_0"]')).toBe(rounding);
-    expect(rounding.value).toBe('up');expect(overtime.querySelector('[name="roundingMode_61"]')).toBeNull();
+    expect(overtime.querySelector('select[aria-label="Rounding"]')).toBe(rounding);
+    expect(rounding.value).toBe('up');expect(overtime.querySelectorAll('select[aria-label="Rounding"]')).toHaveLength(1);
     expect(new FormData(overtime).get('otBandSnapshot')).toBe(identity);
     expect(hasUnsavedChanges()).toBe(true);
     fireEvent.click(screen.getByRole('button',{name:messages.scheduleDrafts.reload}));
@@ -185,8 +184,8 @@ describe('independent Schedule Group forms after a server refresh', () => {
   it('retains an unsaved overtime rounding draft when an Attendance save replaces every band id', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const view = render(await page('original-band-id'));
-    const rounding = screen.getByRole('combobox', { name: messages.admin.scheduleConfig.colRoundingMode }) as HTMLSelectElement;
-    const step = screen.getByRole('spinbutton', { name: messages.admin.scheduleConfig.colRoundTo }) as HTMLInputElement;
+    const rounding = screen.getByRole('combobox', { name: messages.admin.attendanceRule.otColRounding }) as HTMLSelectElement;
+    const step = screen.getByRole('spinbutton', { name: messages.admin.attendanceRule.otColRoundTo }) as HTMLInputElement;
     fireEvent.change(rounding, { target: { value: 'up' } });
     fireEvent.change(step, { target: { value: '30' } });
     expect(hasUnsavedChanges()).toBe(true);
@@ -213,10 +212,10 @@ describe('independent Schedule Group forms after a server refresh', () => {
     await waitFor(() => expect(saveButton.disabled).toBe(false));
     expect(grace.value).toBe('7');
     // Same DOM nodes and posted draft values survive the unrelated successful save.
-    expect(screen.getByRole('combobox', { name: messages.admin.scheduleConfig.colRoundingMode })).toBe(rounding);
+    expect(screen.getByRole('combobox', { name: messages.admin.attendanceRule.otColRounding })).toBe(rounding);
     expect(rounding.value).toBe('up'); expect(step.value).toBe('30');
     const posted = new FormData(screen.getByRole('form', { name: 'overtime' }) as HTMLFormElement);
-    expect(posted.get('roundingMode_0')).toBe('up'); expect(posted.get('roundToMinutes_0')).toBe('30');
+    expect(JSON.parse(String(posted.get('otRows')))[0]).toMatchObject({roundingMode:'up',roundToMinutes:30});
     expect(hasUnsavedChanges()).toBe(true);
     confirm.mockClear().mockReturnValue(false);
     fireEvent.click(screen.getByText('Back'));

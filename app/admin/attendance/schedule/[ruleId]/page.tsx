@@ -1,7 +1,8 @@
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { requireAdmin } from '@/lib/authz';
+import { scopedAdmin } from '@/lib/scope';
+import { scheduleClockCompanies } from '../clock-policy-options';
 import { listAttendanceRules } from '@/core/attendance-rule';
 import { Card, PageHeader } from '@/components/ui';
 import { SCHEDULE, scheduleGroupEditPath } from '../../../attendance-policy/schedule-panel';
@@ -43,7 +44,7 @@ export default async function ViewScheduleGroupPage({
   params: Promise<{ ruleId: string }>;
   searchParams: Promise<{ error?: string; section?: string }>;
 }) {
-  const s = await requireAdmin();
+  const {s,scopeIds} = await scopedAdmin();
   const t = await getTranslations('admin.scheduleConfig');
   const { ruleId } = await params;
   const sp = await searchParams;
@@ -79,6 +80,7 @@ export default async function ViewScheduleGroupPage({
       <ScheduleGroupSections
         s={s}
         rule={rule}
+        clockCompanies={await scheduleClockCompanies(s,scopeIds,rule.id)}
         rules={rules}
         mode="view"
         error={sp.error}

@@ -12,10 +12,12 @@ import {isCalendarDate} from '../lib/calendar-date';
 import {summarizeOvertimeRecords,type FormulaOvertimeRecord,type OvertimeRecordSummary} from '../lib/overtime-records';
 import { exceptionDecisionsTx } from './schedule-group-controls';
 import { provenCompanyDatesTx } from './employment-company';
+import { attendanceClockPolicyOnTx, hasAttendanceClockPoliciesTx } from './attendance-clock-policy';
+import { attendanceClockPolicyEvidence, type ClockCalculationPolicy } from '../lib/attendance-policy-clocks';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx, readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
+import { retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx, readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, clockPolicyTrace, recordedPolicyClockSourceTx, type AttendanceClockSourcePunch, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -61,7 +63,7 @@ import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './a
 // A leaf module with no imports, so the rule service can enforce the write-side half of the same
 // rule without a cycle through this file. Re-exported below for every caller that had it from here.
 import { weekDayKindFor, weekPatternFor, type WeekDayKind, type WeekPattern } from './week-pattern';
-import { isAttendanceTrace, ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1, type TraceOtWindow } from './attendance-trace';
+import { isAttendanceTrace, ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1, type TraceClockPolicy, type TraceOtWindow } from './attendance-trace';
 // 7c834696 stage 1 — the pure per-day arithmetic lives in its own module so the release gate ("no bands,
 // deductions off ⇒ every figure byte-identical") can be asserted on the functions directly, without
 // fixtures. The two measurement helpers are aliased because `earlyOutMinutes` is also a local variable name
@@ -620,6 +622,7 @@ const spannedBreakMinutes = (
   breakMinutes: number,
   w: PunchWindow,
   cutoffAbs?: number | null,
+  intervals: readonly ClosedClockInterval[] = [w],
 ): number | null => {
   if (!periods || periods.length === 0) return null;
   const overlap = periods
@@ -630,7 +633,7 @@ const spannedBreakMinutes = (
       // comparing minutes that never met.
       const bs = anchorToShift(toMinutes(bp.start), w.startAbs, cutoffAbs);
       const be = anchorToShift(toMinutes(bp.end), w.startAbs, cutoffAbs);
-      return acc + Math.max(0, Math.min(w.outAbs, be) - Math.max(w.inAbs, bs));
+      return acc + overlapWithIntervals(intervals, bs, be);
     }, 0);
   return Math.min(overlap, breakMinutes);
 };
@@ -665,9 +668,12 @@ const perRowBreakMinutes = (
   w: PunchWindow,
   cutoffAbs: number | null | undefined,
   span: number,
+  intervals: readonly ClosedClockInterval[] = [w],
 ): number | null => {
-  return perRowAttendanceBreakMinutes(periods,breakMinutes,[{inAbs:w.inAbs,outAbs:w.outAbs}],w.startAbs,cutoffAbs,span);
+  return perRowAttendanceBreakMinutes(periods,breakMinutes,intervals,w.startAbs,cutoffAbs,span);
 };
+const overlapWithIntervals = (intervals:readonly ClosedClockInterval[], from:number, to:number) =>
+  intervals.reduce((minutes, interval) => minutes + Math.max(0, Math.min(interval.outAbs,to)-Math.max(interval.inAbs,from)),0);
 
 // ADR-0032 Phase C: the schedule the engine derives against for one (employee, date) — resolved from the
 // employee's roster when present, else the company policy (today's behaviour, byte-identical).
@@ -1339,6 +1345,7 @@ function deriveAttendance(
   checkOutAt: string | null,
   attendanceDate: string,
   closedIntervals?: readonly ClosedClockInterval[],
+  positioned?: { inAbs:number; outAbs:number|null; intervals:readonly ClosedClockInterval[]; clockPolicy:TraceClockPolicy },
 ): DerivedDay {
   // r274 (439565ff) — A DURATION-BASED FLEXI DAY HAS NO FIXED ARRIVAL PENALTY. `lateAfter` is still resolved (it is
   // shift start + grace, and the column is NOT NULL), but on this type the shift's start is the earliest
@@ -1354,7 +1361,7 @@ function deriveAttendance(
   // 7c834696 — the schedule's own timeline, resolved on every branch. anchorToShift is the SAME placement
   // rule the OT window uses, so a 00:30 arrival on a 22:00 shift reads as 2.5h late rather than 21.5h early.
   const schedStartAbs = s.scheduledStart != null ? toMinutes(s.scheduledStart) : null;
-  const inAbsSched = schedStartAbs != null ? anchorToShift(toMinutes(checkInAt), schedStartAbs, s.dailyCutoffMinutes) : null;
+  const inAbsSched = schedStartAbs != null ? positioned?.inAbs ?? anchorToShift(toMinutes(checkInAt), schedStartAbs, s.dailyCutoffMinutes) : null;
   // The gate on the only downward-capable figures in this change. FALSE for every rule at release, and
   // FALSE for any date before the rule's switch-on date, forever.
   const deductible = deductionsApplyOn(s.rule, attendanceDate) && !exceptionActive;
@@ -1371,6 +1378,7 @@ function deriveAttendance(
           includeGrace: s.rule?.includeGraceInLateness ?? false,
         })
       : null;
+  if(positioned&&lateMinutes!==null)status=lateMinutes>0?'late':'present';
   const lateDeduct: number | null =
     lateMinutes == null
       ? null
@@ -1380,7 +1388,7 @@ function deriveAttendance(
 
   // ── 7c834696 POINT 3 · the trace. Built from the values ALREADY computed above; it reads them and
   // writes nothing back, so no figure this function returns can depend on it. ────────────────────────
-  const inAbsRaw = toMinutes(checkInAt);
+  const inAbsRaw = positioned?.inAbs ?? toMinutes(checkInAt);
   const traceLateness: AttendanceTraceV1['lateness'] =
     lateMinutes == null || schedStartAbs == null || inAbsSched == null
       ? null
@@ -1406,6 +1414,7 @@ function deriveAttendance(
         };
   const baseTrace = (): AttendanceTraceV1 => ({
     v: ATTENDANCE_TRACE_VERSION,
+    ...(positioned&&{clockPolicy:positioned.clockPolicy}),
     formulaSchedule:{v:1,flexiDuration:s.flexiDuration,durationOnly:s.durationOnly===true,
       flexibleBreakMinutes:s.flexibleBreakMinutes,halfDayBefore:s.halfDayBefore,
       weeklyPattern:s.displayWeeklyPattern?.slice()??null,shiftCode:s.displayShiftCode??null,shiftName:s.displayShiftName??null,scheduleDayKind:s.scheduleDayKind??null,
@@ -1465,18 +1474,18 @@ function deriveAttendance(
   ) {
     status = 'half_day';
   }
-  const intervals=s.durationOnly?(closedIntervals??[{inAbs:toMinutes(checkInAt),outAbs:toMinutes(checkInAt)+spanMinutes(checkInAt,checkOutAt)}]):undefined;
+  const intervals=positioned?.intervals??(s.durationOnly?(closedIntervals??[{inAbs:toMinutes(checkInAt),outAbs:toMinutes(checkInAt)+spanMinutes(checkInAt,checkOutAt)}]):undefined);
   const span = intervals?intervals.reduce((n,p)=>n+p.outAbs-p.inAbs,0):spanMinutes(checkInAt, checkOutAt);
   // b7b886e2 — with a resolved SHIFT we know where each minute fell, not just how many there were.
   const w: PunchWindow | null =
     s.shiftStart && s.shiftEnd
       ? (() => {
           const startAbs = toMinutes(s.shiftStart);
-          const inAbs = anchorToShift(toMinutes(checkInAt), startAbs, s.dailyCutoffMinutes);
+          const inAbs = positioned?.inAbs ?? anchorToShift(toMinutes(checkInAt), startAbs, s.dailyCutoffMinutes);
           // The punch LENGTH stays spanMinutes (the established, tested contract); only its placement is new.
           return {
             inAbs,
-            outAbs: inAbs + span,
+            outAbs: positioned?.outAbs ?? inAbs + span,
             startAbs,
             endAbs: s.crossesMidnight ? toMinutes(s.shiftEnd) + MINS_PER_DAY : toMinutes(s.shiftEnd),
           };
@@ -1504,17 +1513,20 @@ function deriveAttendance(
     bp.breakType !== 'before_shift' && bp.breakType !== 'after_shift') : s.breakPeriods;
   const externalDeductions = w ? external.flatMap(bp => {
     const { from, to } = externalBreakBounds(bp, w.startAbs, w.endAbs);
-    const inAbs = Math.max(w.inAbs, from);
-    const overlap = Math.max(0, Math.min(w.outAbs, to) - inAbs);
-    const minutes = bp.flexible && bp.flexibleMinutes != null ? Math.min(overlap, bp.flexibleMinutes) : overlap;
-    return minutes > 0 ? [{ inAbs, outAbs: inAbs + minutes, type: bp.breakType }] : [];
+    let allowance = bp.flexible && bp.flexibleMinutes != null ? bp.flexibleMinutes : Infinity;
+    return (positioned?.intervals ?? [w]).flatMap(interval => {
+      const inAbs = Math.max(interval.inAbs, from);
+      const minutes = Math.min(allowance, Math.max(0, Math.min(interval.outAbs, to) - inAbs));
+      allowance -= minutes;
+      return minutes > 0 ? [{ inAbs, outAbs: inAbs + minutes, type: bp.breakType }] : [];
+    });
   }).sort((a, b) => a.inAbs - b.inAbs) : [];
   const beforeBreak = externalDeductions.filter(row => row.type === 'before_shift').reduce((sum, row) => sum + row.outAbs - row.inAbs, 0);
   const afterBreak = externalDeductions.filter(row => row.type === 'after_shift').reduce((sum, row) => sum + row.outAbs - row.inAbs, 0);
-  const perRowBreak = w ? perRowBreakMinutes(regularBreaks, s.breakMinutes, w, s.dailyCutoffMinutes, span) : null;
+  const perRowBreak = w ? perRowBreakMinutes(regularBreaks, s.breakMinutes, w, s.dailyCutoffMinutes, span, positioned?.intervals) : null;
   const spannedBreak =
-    flexibleBreak ?? perRowBreak ?? (w ? spannedBreakMinutes(regularBreaks, s.breakMinutes, w, s.dailyCutoffMinutes) : null);
-  const durationBreak=intervals?fullFlexiBreakMinutes(intervals,s.breakPeriods,s.breakMinutes,s.flexibleBreakMinutes):null;
+    flexibleBreak ?? perRowBreak ?? (w ? spannedBreakMinutes(regularBreaks, s.breakMinutes, w, s.dailyCutoffMinutes, positioned?.intervals) : null);
+  const durationBreak=s.durationOnly&&intervals?fullFlexiBreakMinutes(intervals,s.breakPeriods,s.breakMinutes,s.flexibleBreakMinutes):null;
   const regularWorked = durationBreak != null ? Math.max(0, span - durationBreak) :
     spannedBreak != null ? Math.max(0, span - spannedBreak) : workedFromSpan(span, s.breakMinutes);
   const workedMinutes = Math.max(0, regularWorked - beforeBreak - afterBreak);
@@ -1536,7 +1548,7 @@ function deriveAttendance(
   if (s.dayType !== 'workday') {
     otMinutes = workedMinutes;
     otBasis = 'nonWorkday';
-  } else if ((w || intervals) && s.otWindows && s.otWindows.length > 0) {
+  } else if ((w || intervals?.length) && s.otWindows && s.otWindows.length > 0) {
     // cf21e554 stage 2 — the shift declares its overtime BY CLOCK TIME ("05:00–08:00", "17:00–23:59"), so
     // those windows decide which minutes count and the duration/past-the-end comparisons below do not run.
     //
@@ -1548,18 +1560,21 @@ function deriveAttendance(
     //
     // Pre-shift minutes are NOT folded in on this branch: a before-shift window (the reporter's 05:00–08:00)
     // already counts them, and adding them again through the rule's applyToEarlyOt would pay them twice.
-    earlyOtMinutes = w?Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs):0;
+    earlyOtMinutes = w ? overlapWithIntervals(positioned?.intervals ?? [w],w.inAbs,w.startAbs) : 0;
     const firstInterval=intervals?.[0];
     let qualifyingIntervals = intervals;
     if (w && externalDeductions.length) {
-      let cursor = w.inAbs;
-      const remaining: ClosedClockInterval[] = [];
-      for (const deduction of externalDeductions) {
-        if (cursor < deduction.inAbs) remaining.push({ inAbs: cursor, outAbs: deduction.inAbs });
-        cursor = Math.max(cursor, deduction.outAbs);
-      }
-      if (cursor < w.outAbs) remaining.push({ inAbs: cursor, outAbs: w.outAbs });
-      qualifyingIntervals = remaining;
+      qualifyingIntervals = (positioned?.intervals ?? [w]).flatMap(interval => {
+        let cursor = interval.inAbs;
+        const remaining: ClosedClockInterval[] = [];
+        for (const deduction of externalDeductions) {
+          const from = Math.min(interval.outAbs,deduction.inAbs);
+          if (cursor < from) remaining.push({ inAbs: cursor, outAbs: from });
+          cursor = Math.max(cursor, deduction.outAbs);
+        }
+        if (cursor < interval.outAbs) remaining.push({ inAbs: cursor, outAbs: interval.outAbs });
+        return remaining;
+      });
     }
     const fromWindows = otMinutesFromWindows(s.otWindows, w?{inAbs:w.inAbs,outAbs:w.outAbs}:firstInterval!, w?.startAbs??firstInterval!.inAbs,qualifyingIntervals);
     otMinutes = fromWindows.total;
@@ -1570,8 +1585,8 @@ function deriveAttendance(
     // to be past, so it never takes this branch. In practice its override is required, which would route
     // it to `duration` anyway; the flag is checked here too so the basis cannot silently change if a shift
     // is ever saved without one.
-    otMinutes = Math.max(0, w.outAbs - Math.max(w.inAbs, w.endAbs) - afterBreak);
-    earlyOtMinutes = Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs - beforeBreak);
+    otMinutes = Math.max(0, overlapWithIntervals(positioned?.intervals ?? [w],w.endAbs,w.outAbs) - afterBreak);
+    earlyOtMinutes = Math.max(0, overlapWithIntervals(positioned?.intervals ?? [w],w.inAbs,w.startAbs) - beforeBreak);
     otBasis = 'window';
   } else {
     otMinutes = Math.max(0, workedMinutes - (s.normalMinutesOverride ?? s.scheduledMinutes));
@@ -1615,7 +1630,7 @@ function deriveAttendance(
         ? toMinutes(s.scheduledEnd) + MINS_PER_DAY
         : toMinutes(s.scheduledEnd)
       : null;
-  const outAbsSched = inAbsSched != null ? inAbsSched + span : null;
+  const outAbsSched = positioned?.outAbs ?? (inAbsSched != null ? inAbsSched + span : null);
   let earlyOut: number | null = null;
   let under: number | null = null;
   if (s.dayType === 'workday') {
@@ -1652,9 +1667,9 @@ function deriveAttendance(
   trace.schedule.breakSpanned = durationBreak ?? spannedBreak;
   trace.formulaBreaks={v:1,actualBefore:beforeBreak,actualAfter:afterBreak,actualShift:Math.max(0,span-regularWorked)};
   trace.punch = {
-    inAbs: inAbsRaw, outAbs: inAbsRaw + span, spanMinutes: span, workedMinutes,
+    inAbs: inAbsRaw, outAbs: positioned?.outAbs ?? inAbsRaw + span, spanMinutes: span, workedMinutes,
     calculationIntervals: (intervals ?? [{inAbs: w?.inAbs ?? inAbsRaw, outAbs: (w?.inAbs ?? inAbsRaw) + span}]).map(part => ({...part})),
-    intervalSource: intervals && closedIntervals ? 'closedPunchPairs' : 'elapsedEnvelope',
+    intervalSource: positioned?.clockPolicy.pairing==='auto' || intervals&&closedIntervals ? 'closedPunchPairs' : 'elapsedEnvelope',
   };
   trace.earlyOut =
     earlyOut == null || schedEndAbs == null || outAbsSched == null
@@ -1961,6 +1976,119 @@ function punchGeoValues(geo: GeofenceCheck) {
   };
 }
 
+type ClockRevision = NonNullable<Awaited<ReturnType<typeof attendanceClockPolicyOnTx>>>;
+type ClockDayPoint = {employmentId:string;date:string;schedule:ResolvedSchedule};
+
+async function clockRevisionForDayTx(tx:Tx,ctx:SessionContext,p:ClockDayPoint,companyId?:string){
+  const ruleId=p.schedule.rule?.id;
+  if(!ruleId)return null;
+  if(!companyId){
+    if(!await hasAttendanceClockPoliciesTx(tx,ctx,p.date))return null;
+    const proof=(await provenCompanyDatesTx(tx,[p])).get(`${p.employmentId}|${p.date}`);
+    if(!proof?.companyId||proof.reason)throw Error('The dated company for this Attendance day is unavailable.');
+    companyId=proof.companyId;
+  }
+  return attendanceClockPolicyOnTx(tx,ctx,{companyId,ruleId,date:p.date});
+}
+
+function clockDayClass(schedule:Pick<ResolvedSchedule,'source'|'dayType'>):TraceClockPolicy['dayClass']{
+  const kind=workedDayKindForSchedule(schedule);
+  return kind==='holiday'?'publicHoliday':kind==='rest_day'?'rest':kind==='off_day'?'off':'normal';
+}
+
+type IndependentClockSource={
+  employmentId:string;date:string;attendanceId:string;punches:readonly AttendanceClockSourcePunch[];
+};
+type ClockPositioning=NonNullable<TraceClockPolicy['positioning']>;
+
+/** Valid recorded captures stay exact. Label-only evidence remains useful to the legacy calculation
+ * owner; anchoring those labels to the resolved shift never promotes them to capture receipts. */
+async function independentClockEvidenceTx(tx:Tx,ctx:SessionContext,p:IndependentClockSource,
+  positioning:ClockPositioning,policy:ClockCalculationPolicy){
+  const captures=p.punches.filter(punch=>punch.clockCaptureId!==null);
+  const source=captures.length ? await recordedPolicyClockSourceTx(tx,ctx,{
+    attendanceId:p.attendanceId,employmentId:p.employmentId,date:p.date,punches:captures,
+  }) : null;
+  if(source&&source.state!=='known')throw Error('Captured clocking evidence is unavailable.');
+  const exact=new Map(source?.clocks.map(punch=>[punch.id,punch.atMilliseconds] as const));
+  const inputs=p.punches.map(punch=>{
+    if(!/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?)?$/.test(punch.punchAt))
+      throw Error('A stored clock time is invalid.');
+    const minute=toMinutes(punch.punchAt);
+    const absoluteMinute=positioning.crossesMidnight||positioning.cutoffMinute!==null
+      ? anchorToShift(minute,positioning.startMinute,positioning.cutoffMinute) : minute;
+    const seconds=Number(punch.punchAt.split(':')[2]??0);
+    return {id:punch.id,direction:punch.direction,atMilliseconds:exact.get(punch.id)??absoluteMinute*60_000+Math.floor(seconds*1000)};
+  });
+  return {inputs,evidence:attendanceClockPolicyEvidence(inputs,policy,4320)};
+}
+
+async function deriveIndependentClockDayTx(tx:Tx,ctx:SessionContext,p:ClockDayPoint&IndependentClockSource,revision:ClockRevision){
+  if(!p.punches.length)return null;
+  const schedule=p.schedule,start=schedule.shiftStart??schedule.scheduledStart;
+  const positioning={startMinute:start?toMinutes(start):0,cutoffMinute:schedule.dailyCutoffMinutes,crossesMidnight:schedule.crossesMidnight};
+  const dayClass=clockDayClass(schedule),pairing=revision.policy.pairing[dayClass];
+  const minimumIntervalMinutes=revision.policy.minimumIntervalMinutes;
+  const {inputs,evidence}=await independentClockEvidenceTx(tx,ctx,p,positioning,{pairing,minimumIntervalMinutes});
+  const clockPolicy:TraceClockPolicy={
+    revisionId:revision.id,ordinal:revision.ordinal,effectiveFrom:revision.effectiveFrom,attendanceDate:p.date,
+    dayClass,pairing,minimumIntervalMinutes,positioning,requiresReview:evidence.requiresReview,exclusions:evidence.exclusions,
+  };
+  const inputLabel=(direction:'in'|'out',instant:number|null)=>{
+    const input=inputs.find(row=>row.direction===direction&&row.atMilliseconds===instant);
+    return p.punches.find(row=>row.id===input?.id)?.punchAt??null;
+  };
+  const checkInAt=inputLabel('in',evidence.checkInMillisecond);
+  const checkOutAt=evidence.complete||!checkInAt?inputLabel('out',evidence.checkOutMillisecond):null;
+  if(!checkInAt)return {set:attendancePolicyUncapturedRawDay({fallbackIn:null,fallbackOut:checkOutAt}),clockPolicy,derived:null};
+  const first=Math.floor(evidence.checkInMillisecond!/60_000),last=evidence.complete&&evidence.checkOutMillisecond!==null
+    ?Math.floor(evidence.checkOutMillisecond/60_000):null;
+  const day=deriveAttendance(schedule,checkInAt,checkOutAt,p.date,undefined,{
+    inAbs:first,outAbs:last,intervals:evidence.minuteIntervals,clockPolicy,
+  });
+  if(!evidence.firstInIsArrival){
+    day.status='present';day.lateMinutes=null;day.lateDeductMinutes=null;
+    day.trace.lateness=null;day.trace.latenessDeduction=null;
+  }
+  return {set:{checkInAt,checkOutAt,status:day.status,workedMinutes:day.workedMinutes,otMinutes:day.otMinutes,...stage1Columns(day)},clockPolicy,derived:day};
+}
+
+/** Legacy Overtime must independently replay any new disposition against all raw punches before
+ * it can interpret the stored calculation intervals. The trace retains label placement, while
+ * actual capture instants are read from their original receipts as on the write path. */
+export async function recordedIndependentClockPolicyAgreesTx(tx:Tx,ctx:SessionContext,p:IndependentClockSource&{
+  companyId:string;trace:AttendanceTraceV1;
+}){
+  const saved=p.trace.clockPolicy,ruleId=p.trace.schedule.ruleId;
+  if(!saved?.positioning||!ruleId||saved.attendanceDate!==p.date)return false;
+  const dayClass=clockDayClass(p.trace.schedule);
+  const revision=await attendanceClockPolicyOnTx(tx,ctx,{companyId:p.companyId,ruleId,date:p.date});
+  if(!revision||revision.id!==saved.revisionId||revision.ordinal!==saved.ordinal||revision.effectiveFrom!==saved.effectiveFrom
+    ||saved.dayClass!==dayClass||revision.policy.pairing[dayClass]!==saved.pairing
+    ||revision.policy.minimumIntervalMinutes!==saved.minimumIntervalMinutes)return false;
+  const {evidence}=await independentClockEvidenceTx(tx,ctx,p,saved.positioning,saved);
+  return evidence.requiresReview===saved.requiresReview&&isDeepStrictEqual(evidence.exclusions,saved.exclusions)
+    &&isDeepStrictEqual(evidence.minuteIntervals,p.trace.punch.calculationIntervals??[]);
+}
+
+async function currentIndependentClockDayTx(tx:Tx,ctx:SessionContext,p:ClockDayPoint){
+  const revision=await clockRevisionForDayTx(tx,ctx,p);
+  if(!revision)return null;
+  const punches=(await punchesForCorrectionTx(tx,p.employmentId,p.date)).filter(punch=>!punch.voidedAt);
+  if(!punches.length)return null;
+  return deriveIndependentClockDayTx(tx,ctx,{...p,attendanceId:punches[0].attendanceId,punches},revision);
+}
+
+async function retainClockPolicyWithoutTraceTx(tx:Tx,ctx:SessionContext,p:{
+  attendanceId:string;employmentId:string;clockPolicy?:TraceClockPolicy;punches:readonly AttendanceClockSourcePunch[];
+}) {
+  if(!p.clockPolicy)return;
+  await appendEvent(tx,{
+    tenantId:ctx.tenantId,aggregateType:'attendance',aggregateId:p.attendanceId,eventType:'attendance.clock-policy.projected',
+    actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{clockPolicy:p.clockPolicy,punchIds:p.punches.map(punch=>punch.id).sort()},
+  });
+}
+
 /** Shared policy projection. Current-schedule classification is used only by canonical schedule/
  * calendar recompute owners; ordinary clock mutations retain the day classification already stored.
  * The helper does not write a raw day or grant approval and never accepts a posted day type. */
@@ -1979,7 +2107,7 @@ async function policyRawDayProjectionTx(tx:Tx,ctx:SessionContext,p:{employmentId
     ?deriveAttendance({...sched,manualOtRows:{}},inLabel,null,p.date).trace:null;
   const columns=attendancePolicyRawDay(raw,{rule:sched.rule,template,dayType:sched.dayType,
     halfDayBefore:toMinutes(sched.halfDayBefore),fallbackIn:p.fallbackIn,fallbackOut:p.fallbackOut});
-  return {state:'policy' as const,schedule:sched,columns};
+  return {state:'policy' as const,schedule:sched,columns,clockPolicy:raw.clocks?clockPolicyTrace(raw.context,raw.clocks):undefined};
 }
 
 /**
@@ -2005,9 +2133,10 @@ async function recomputeDayFromPunches(
   checkInAt: string | null;
   checkOutAt: string | null;
   policyRaw:boolean;
+  clockPolicy?:TraceClockPolicy;
 }> {
   const punches = await tx
-    .select({ punchAt: attendancePunch.punchAt, direction: attendancePunch.direction })
+    .select()
     .from(attendancePunch)
     .where(and(eq(attendancePunch.attendanceId, p.attendanceId), isNull(attendancePunch.voidedAt)));
   const ins=punches.filter(row=>row.direction==='in').map(row=>row.punchAt).sort();
@@ -2017,7 +2146,16 @@ async function recomputeDayFromPunches(
   if(projected.state==='policy'){
     const set=projected.columns;
     await tx.update(attendance).set(set).where(and(eq(attendance.id,p.attendanceId),eq(attendance.tenantId,ctx.tenantId)));
-    return {status:set.status,workedMinutes:set.workedMinutes,otMinutes:set.otMinutes,checkInAt:set.checkInAt,checkOutAt:set.checkOutAt,policyRaw:true};
+    return {status:set.status,workedMinutes:set.workedMinutes,otMinutes:set.otMinutes,checkInAt:set.checkInAt,checkOutAt:set.checkOutAt,policyRaw:true,clockPolicy:projected.clockPolicy};
+  }
+  const point={employmentId:p.employmentId,date:p.attendanceDate,schedule:p.sched};
+  const revision=await clockRevisionForDayTx(tx,ctx,point);
+  const independent=revision?await deriveIndependentClockDayTx(tx,ctx,{...point,attendanceId:p.attendanceId,punches},revision):null;
+  if(independent){
+    const set=independent.set;
+    await tx.update(attendance).set(set).where(and(eq(attendance.id,p.attendanceId),eq(attendance.tenantId,ctx.tenantId)));
+    if(!set.calcTrace)await retainClockPolicyWithoutTraceTx(tx,ctx,{...p,clockPolicy:independent.clockPolicy,punches});
+    return {status:set.status,workedMinutes:set.workedMinutes,otMinutes:set.otMinutes,checkInAt:set.checkInAt,checkOutAt:set.checkOutAt,policyRaw:false,clockPolicy:independent.clockPolicy};
   }
   const { set, result } = deriveDayFromPunchList(p.sched, p.attendanceDate, punches, p.fallbackCheckInAt);
   if (set) await tx.update(attendance).set(set).where(eq(attendance.id, p.attendanceId));
@@ -2391,7 +2529,7 @@ export async function checkOutTx(
     // recomputeDayFromPunches above has just overwritten ot_minutes from the punches, which would otherwise
     // quietly erase what a human approved. Returns null (and changes nothing) when there is no plan, which
     // is every ordinary day.
-    const plannedOt = derived.policyRaw?null:await applyApprovedOtPlanTx(tx, ctx, {
+    const plannedOt = derived.policyRaw||derived.clockPolicy?.requiresReview?null:await applyApprovedOtPlanTx(tx, ctx, {
       employmentId: p.employmentId,
       date: p.date,
       attendanceId: rec.id,
@@ -4351,27 +4489,35 @@ export async function decideAttendanceCorrection(
         // Manually entered labels do not acquire capture provenance merely because HR approved them.
         const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
         if(raw.state==='unavailable')throw Error('Canonical corrected Attendance inputs are unavailable.');
-        const policyDerived=raw.state==='policy'?await recomputeDayFromPunches(tx,ctx,{employmentId:cor.employmentId,
+        const clockRevision=raw.state==='policy'?null:await clockRevisionForDayTx(tx,ctx,{
+          employmentId:cor.employmentId,date:cor.attendanceDate,schedule:sched,
+        });
+        const rederived=raw.state==='policy'||clockRevision?await recomputeDayFromPunches(tx,ctx,{employmentId:cor.employmentId,
           attendanceId:amended.id,attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:cor.proposedCheckIn}):null;
-        if(policyDerived)otMinutes=policyDerived.otMinutes;
-        if (!hasOtRequest&&!policyDerived) {
+        if(rederived){
+          if(hasOtRequest&&!rederived.policyRaw){
+            await tx.update(attendance).set({otMinutes,...otSplitColumns(otMinutes===null?null:splitOtMinutes(otMinutes,dayType,sched.rule))})
+              .where(eq(attendance.id,amended.id));
+          }else otMinutes=rederived.otMinutes;
+        }
+        if (!hasOtRequest&&!rederived?.policyRaw&&!rederived?.clockPolicy?.requiresReview) {
           const planned = await applyApprovedOtPlanTx(tx, ctx, {
             employmentId: cor.employmentId,
             date: cor.attendanceDate,
             attendanceId: amended.id,
             sched,
-            systemOtMinutes: d.otMinutes,
+            systemOtMinutes: rederived ? rederived.otMinutes : d.otMinutes,
           });
           if (planned != null) otMinutes = planned;
         }
         eventPayload = {
           correctionId: cor.id,
           date: cor.attendanceDate,
-          checkIn: cor.proposedCheckIn,
-          checkOut: cor.proposedCheckOut,
-          status: policyDerived?.status??d.status,
+          checkIn: rederived ? rederived.checkInAt : cor.proposedCheckIn,
+          checkOut: rederived ? rederived.checkOutAt : cor.proposedCheckOut,
+          status: rederived?.status??d.status,
           dayType,
-          workedMinutes: policyDerived?policyDerived.workedMinutes:d.workedMinutes,
+          workedMinutes: rederived?rederived.workedMinutes:d.workedMinutes,
           otMinutes,
         };
       } else {
@@ -4838,7 +4984,7 @@ export function dayTypeFor(ctx: SessionContext, employmentId: string, date: stri
  * labelled, not what kind of day a date is — and this question is the latter.
  */
 export type WorkedDayKind = 'workday' | 'rest_day' | 'off_day' | 'holiday';
-function workedDayKindForSchedule(s:ResolvedSchedule):WorkedDayKind {
+function workedDayKindForSchedule(s:Pick<ResolvedSchedule,'source'|'dayType'>):WorkedDayKind {
   if (s.dayType === 'holiday') return 'holiday';
   if (s.dayType === 'rest_day') return 'rest_day';
   if (s.source === 'default-shift-rest') return 'off_day';
@@ -4905,6 +5051,7 @@ export type AttendancePolicyExecutionContext=
   |{state:'policy';employmentId:string;date:string;companyId:string;timeZone:typeof HR_LOCAL_TZ;
     selected:ResolvedAttendanceGroupPolicy;
     resolvedClock:ResolvedAttendanceGroupPolicy['policy']['clock'];
+    clockRevision?:Omit<TraceClockPolicy,'requiresReview'|'exclusions'>;
     schedule:{source:ResolvedSchedule['source'];shiftId:string|null;ruleId:string;start:string|null;end:string|null;
       crossesMidnight:boolean;dailyCutoffMinutes:number|null;durationOnly:boolean;flexiDuration:boolean;
       normalMinutes:number;breakMinutes:number;breakPeriods:BreakPeriod[]|null;flexibleBreakMinutes:number|null};
@@ -4954,12 +5101,19 @@ export async function attendancePolicyExecutionContextTx(tx:Tx,ctx:SessionContex
   const [overrides]=schedule.displayShiftId?await tx.select({late:shift.lateGraceMinutes,early:shift.earlyLeaveGraceMinutes})
     .from(shift).where(eq(shift.id,schedule.displayShiftId)).limit(1):[];
   const fixed=schedule.dayType==='workday'&&!schedule.flexiDuration&&!schedule.durationOnly;
+  const revision=await clockRevisionForDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,schedule},company.companyId);
+  const dayClass=clockDayClass(schedule);
+  const clockRevision=revision?{
+    revisionId:revision.id,ordinal:revision.ordinal,effectiveFrom:revision.effectiveFrom,attendanceDate:p.date,
+    dayClass,pairing:revision.policy.pairing[dayClass],minimumIntervalMinutes:revision.policy.minimumIntervalMinutes,
+  }:undefined;
   const resolvedClock={...selected.policy.clock,
+    ...(clockRevision&&{pairing:clockRevision.pairing,minimumIntervalMinutes:clockRevision.minimumIntervalMinutes}),
     lateGraceMinutes:fixed?overrides?.late??selected.policy.clock.lateGraceMinutes:0,
     earlyGraceMinutes:fixed?overrides?.early??selected.policy.clock.earlyGraceMinutes:0};
   const dates=selected.policy.overtime.splitAtMidnight?[p.date,addDays(p.date,1),addDays(p.date,2)]:[p.date];
   const calendar=await attendancePolicyCalendarTx(tx,{employmentId:p.employmentId,dates});
-  return {state:'policy',employmentId:p.employmentId,date:p.date,companyId:company.companyId,timeZone:HR_LOCAL_TZ,selected,resolvedClock,
+  return {state:'policy',employmentId:p.employmentId,date:p.date,companyId:company.companyId,timeZone:HR_LOCAL_TZ,selected,resolvedClock,...(clockRevision&&{clockRevision}),
     schedule:{source:schedule.source,shiftId:schedule.displayShiftId??null,ruleId:schedule.rule.id,start:schedule.scheduledStart,end:schedule.scheduledEnd,
       crossesMidnight:schedule.crossesMidnight,dailyCutoffMinutes:schedule.dailyCutoffMinutes,durationOnly:schedule.durationOnly===true,flexiDuration:schedule.flexiDuration,
       normalMinutes:schedule.normalMinutesOverride??schedule.scheduledMinutes,breakMinutes:schedule.breakMinutes,
@@ -6586,12 +6740,14 @@ export async function addImportedPunchesBatchTx(
         policyPlanRequestedOn.set(key,todayInKualaLumpur(c.createdAt));
     }
   }
-  type Kid = { punchAt: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' | 'mobile_offline' };
+  type Kid = AttendanceClockSourcePunch & {method:'web'|'import'|'admin'|'mobile_offline'};
   const kidsBy = new Map<string, Kid[]>();
   const wanted = days.map((d) => rowBy.get(keyOf(d.employmentId, d.day))?.id).filter((x): x is string => !!x);
   for (const ids of chunk(wanted, 1000)) {
     for (const k of await tx
-      .select({ attendanceId: attendancePunch.attendanceId, punchAt: attendancePunch.punchAt, direction: attendancePunch.direction, method: attendancePunch.method })
+      .select({ id:attendancePunch.id,tenantId:attendancePunch.tenantId,employmentId:attendancePunch.employmentId,
+        attendanceDate:attendancePunch.attendanceDate,clockCaptureId:attendancePunch.clockCaptureId,
+        attendanceId: attendancePunch.attendanceId, punchAt: attendancePunch.punchAt, direction: attendancePunch.direction, method: attendancePunch.method })
       .from(attendancePunch)
       .where(and(inArray(attendancePunch.attendanceId, ids), isNull(attendancePunch.voidedAt)))) {
       const arr = kidsBy.get(k.attendanceId) ?? [];
@@ -6613,9 +6769,27 @@ export async function addImportedPunchesBatchTx(
   if(policyRoutes&&days.some(d=>!policyRoutes.has(keyOf(d.employmentId,d.day))||policyRoutes.get(keyOf(d.employmentId,d.day))==='unavailable'))
     throw Error('Canonical import policy inputs are unavailable.');
 
+  const clockConfigured=await hasAttendanceClockPoliciesTx(tx,ctx,to);
+  const clockPoints=clockConfigured?days.filter(day=>!!schedules.get(keyOf(day.employmentId,day.day))?.rule):[];
+  const clockProof=new Map<string,{companyId:string|null;reason?:unknown}>();
+  for(const part of chunk(clockPoints,1000)){
+    for(const [key,proof] of await provenCompanyDatesTx(tx,part.map(day=>({employmentId:day.employmentId,date:day.day}))))
+      clockProof.set(key,proof);
+  }
+  const revisions=new Map<string,ClockRevision|null>();
+  const clockRevisionForImport=async(employmentId:string,date:string,schedule:ResolvedSchedule)=>{
+    if(!clockConfigured||!schedule.rule)return null;
+    const proof=clockProof.get(keyOf(employmentId,date));
+    if(!proof?.companyId||proof.reason)throw Error('The dated company for this imported Attendance day is unavailable.');
+    const key=`${proof.companyId}|${schedule.rule.id}|${date}`;
+    if(!revisions.has(key))revisions.set(key,await clockRevisionForDayTx(tx,ctx,{employmentId,date,schedule},proof.companyId));
+    return revisions.get(key)??null;
+  };
+
   // 2 · Work every day out in memory.
   const newRows: (typeof attendance.$inferInsert)[] = [];
   const punchRows: (typeof attendancePunch.$inferInsert)[] = [];
+  const traceFreeClockAudits: Parameters<typeof retainClockPolicyWithoutTraceTx>[2][] = [];
   const updates: { id: string; set: Partial<typeof attendance.$inferInsert> }[] = [];
   const otDays: { employmentId: string; day: string; attendanceId: string; sched: ResolvedSchedule; systemOt: number | null }[] = [];
   const results = new Map<ImportedDayInput, { attendanceId: string; punchIds: string[]; checkInAt: string | null; checkOutAt: string | null }>();
@@ -6628,10 +6802,10 @@ export async function addImportedPunchesBatchTx(
     const all: Kid[] = [...(existing ? (kidsBy.get(existing.id) ?? []) : [])];
     if (existing && all.length === 0) {
       if (existing.checkInAt) {
-        const method = existing.checkInMethod ?? ('web' as const);
+        const method = existing.checkInMethod ?? ('web' as const),id=randomUUID();
         punchRows.push({
           ...base,
-          id: randomUUID(),
+          id,
           punchAt: existing.checkInAt,
           direction: 'in',
           method,
@@ -6642,13 +6816,13 @@ export async function addImportedPunchesBatchTx(
           geofenceStatus: existing.checkInGeofenceStatus,
           radiusM: existing.checkInRadiusM,
         });
-        all.push({ punchAt: existing.checkInAt, direction: 'in', method });
+        all.push({...base,id,clockCaptureId:null,punchAt:existing.checkInAt,direction:'in',method});
       }
       if (existing.checkOutAt) {
-        const method = existing.checkOutMethod ?? existing.checkInMethod ?? ('web' as const);
+        const method = existing.checkOutMethod ?? existing.checkInMethod ?? ('web' as const),id=randomUUID();
         punchRows.push({
           ...base,
-          id: randomUUID(),
+          id,
           punchAt: existing.checkOutAt,
           direction: 'out',
           method,
@@ -6659,7 +6833,7 @@ export async function addImportedPunchesBatchTx(
           geofenceStatus: existing.checkOutGeofenceStatus,
           radiusM: existing.checkOutRadiusM,
         });
-        all.push({ punchAt: existing.checkOutAt, direction: 'out', method });
+        all.push({...base,id,clockCaptureId:null,punchAt:existing.checkOutAt,direction:'out',method});
       }
     }
     const punchIds: string[] = [];
@@ -6667,15 +6841,22 @@ export async function addImportedPunchesBatchTx(
       const id = randomUUID();
       punchIds.push(id);
       punchRows.push({ ...base, id, punchAt: x.time, direction: x.direction, method: 'import' });
-      all.push({ punchAt: x.time, direction: x.direction, method: 'import' });
+      all.push({...base,id,clockCaptureId:null,punchAt:x.time,direction:x.direction,method:'import'});
     }
-    const legacy=deriveDayFromPunchList(sched,d.day,all,existing?.checkInAt??d.punches[0].time);
+    const clockRevision=policyRaw?null:await clockRevisionForImport(d.employmentId,d.day,sched);
+    const independent=clockRevision?await deriveIndependentClockDayTx(tx,ctx,{
+      employmentId:d.employmentId,date:d.day,schedule:sched,attendanceId,punches:all,
+    },clockRevision):null;
+    const legacy=!independent?deriveDayFromPunchList(sched,d.day,all,existing?.checkInAt??d.punches[0].time):null;
     // Every imported child has no capture receipt. Retain actual labels, including an unmatched
     // Out, but do not reuse the legacy envelope's numeric work, deductions, OT or trace.
     const raw=policyRaw?attendancePolicyUncapturedRawDay({fallbackIn:all.filter(k=>k.direction==='in').map(k=>k.punchAt).sort()[0]??null,
       fallbackOut:all.filter(k=>k.direction==='out').map(k=>k.punchAt).sort().at(-1)??null}):null;
-    const set=raw??legacy.set;
-    const result=raw?{status:raw.status,workedMinutes:raw.workedMinutes,otMinutes:raw.otMinutes,checkInAt:raw.checkInAt,checkOutAt:raw.checkOutAt}:legacy.result;
+    const set=raw??independent?.set??legacy?.set??null;
+    const result=raw??independent?.set??legacy!.result;
+    if(independent&&!independent.set.calcTrace)traceFreeClockAudits.push({
+      attendanceId,employmentId:d.employmentId,clockPolicy:independent.clockPolicy,punches:all,
+    });
     // The aggregate's method / geo columns describe the clocking that supplies each end NOW. When an
     // imported clocking has become the day's first in or last out, that end carries no geofence reading.
     const endFrom = (dir: 'in' | 'out', at: string | null) => (at == null ? [] : all.filter((k) => k.direction === dir && k.punchAt === at));
@@ -6724,7 +6905,7 @@ export async function addImportedPunchesBatchTx(
     } else if (set || Object.keys(ends).length) {
       updates.push({ id: attendanceId, set: { ...(set ?? {}), ...ends } });
     }
-    if (!policyRaw&&otKeys.has(keyOf(d.employmentId, d.day))) {
+    if (!policyRaw&&!independent?.clockPolicy.requiresReview&&otKeys.has(keyOf(d.employmentId, d.day))) {
       otDays.push({ employmentId: d.employmentId, day: d.day, attendanceId, sched, systemOt: result.otMinutes });
     }
     results.set(d, { attendanceId, punchIds, checkInAt: result.checkInAt, checkOutAt: result.checkOutAt });
@@ -6734,6 +6915,7 @@ export async function addImportedPunchesBatchTx(
   for (const part of chunk(newRows, 500)) await tx.insert(attendance).values(part);
   for (const part of chunk(punchRows, 1000)) await tx.insert(attendancePunch).values(part);
   for (const u of updates) await tx.update(attendance).set(u.set).where(eq(attendance.id, u.id));
+  for (const audit of traceFreeClockAudits) await retainClockPolicyWithoutTraceTx(tx,ctx,audit);
 
   // 4 · 1e9145d4 — an imported day is a worked day, so an overtime plan approved ahead of it lands here on
   // the same terms as a clock-out (and is re-asserted, not re-landed, when it already has). Only on commit:
@@ -6843,12 +7025,16 @@ export async function recomputeDayFigures(
     // Clock labels are outside the range-recompute contract. A scalar historical OT approval cannot
     // replace this policy owner's future positioned receipt and independent financial replay.
     const {checkInAt,checkOutAt,...columns}=projected.columns;
+    const clockPolicyReview=!!projected.clockPolicy&&(projected.clockPolicy.requiresReview||checkInAt!==p.checkInAt||checkOutAt!==p.checkOutAt);
     return {dayType:projected.schedule.dayType,source:projected.schedule.source,
-      shiftCode:projected.schedule.displayShiftCode??null,otPreserved:false,
+      shiftCode:projected.schedule.displayShiftCode??null,otPreserved:false,clockPolicyReview,
       columns:{...columns,dayType:projected.schedule.dayType}};
   }
   const sched = await scheduleFor(tx, p.employmentId, p.date);
-  const d = await deriveStoredAttendanceTx(tx, sched, p);
+  const independent=await currentIndependentClockDayTx(tx,ctx,{...p,schedule:sched});
+  const clockPolicyReview=!!independent&&(independent.clockPolicy.requiresReview
+    ||independent.set.checkInAt!==p.checkInAt||independent.set.checkOutAt!==p.checkOutAt);
+  const d=independent?.derived??await deriveStoredAttendanceTx(tx,sched,p);
   const keepOt = p.approvedOtMinutes != null;
   const approvedRows=keepOt?effectiveOvertimeRows(p.approvedOtMinutes!,sched.dayType,sched.rule,sched.manualOtRows):null;
   const otMinutes=approvedRows?.total??d.otMinutes;
@@ -6862,7 +7048,7 @@ export async function recomputeDayFigures(
     dayType: sched.dayType,
     source: sched.source,
     shiftCode: sched.displayShiftCode ?? null,
-    otPreserved: keepOt,
+    otPreserved: keepOt,clockPolicyReview,
     /** Exactly the columns a recompute may write: status, day type, the two totals and every stage-1
      *  figure. `check_in_at` / `check_out_at` are absent by construction — see the header above. */
     columns: {
@@ -7031,8 +7217,10 @@ export async function attendanceDayCalculationTx(tx:Tx,ctx:SessionContext,employ
     fallbackIn:day.checkInAt,fallbackOut:day.checkOutAt,classification:'currentSchedule'}):null;
   if(projected?.state==='policy')schedule=projected.schedule;
   const policyRaw=projected?.state==='policy';
+  const calculationSchedule={...schedule,manualOtRows:{}};
+  const independent=day?.checkInAt&&!policyRaw?await currentIndependentClockDayTx(tx,ctx,{employmentId,date,schedule:calculationSchedule}):null;
   const automatic=projected?.state==='policy'?{...projected.columns,trace:projected.columns.calcTrace,otSplit:null}:
-    day?.checkInAt?await deriveStoredAttendanceTx(tx,{...schedule,manualOtRows:{}},{employmentId,date,checkInAt:day.checkInAt,checkOutAt:day.checkOutAt}):null;
+    independent?independent.derived:day?.checkInAt?await deriveStoredAttendanceTx(tx,calculationSchedule,{employmentId,date,checkInAt:day.checkInAt,checkOutAt:day.checkOutAt}):null;
   const automaticMinutes=automatic?.otMinutes??0;
   const approvedOtMinutes=policyRaw?null:approved?.minutes??null;
   return {day:day??null,approvedOtMinutes,automatic,policyRaw,

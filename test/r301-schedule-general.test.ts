@@ -120,6 +120,8 @@ vi.mock('next-intl/server', async () => {
 
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { listAttendancePolicies, setAttendancePolicy } from '../core/attendance';
+import { getScheduleRotation } from '../core/attendance-rotation';
+import { attendanceClockPolicyHistory } from '../core/attendance-clock-policy';
 import {
   createAttendanceRule,
   ensureStandardRule,
@@ -511,6 +513,37 @@ describe('D. Schedule Group Delete asks first; Standard has none; an in-use grou
 // ── E ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('E. every writer stays on the record — and the two row actions that have none return to the list', () => {
+  it('creates the allowed shift pool, first rotation and clock revision in one transaction', async () => {
+    const shift=await createShift(ADMIN,{companyId:b.companyId,name:'Atomic Add shift',code:'ATOMIC',startTime:'08:00:00',
+      endTime:'17:00:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
+    const date=new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+86_400_000).toISOString().slice(0,10);
+    const form=fd({
+      name:'Atomic Schedule Group',allowedShiftsEditor:'1',allowedShiftIds:shift.id,createRotation:'1',
+      createDayKind_1:'full',lateGracePeriodMinutes:'5',scheduleClockPolicy:'1',
+      clockCompanyId:b.companyId,clockExpectedOrdinal:'0',clockEffectiveFrom:date,clockReason:'Launch',
+      clockPairing_normal:'auto',clockPairing_rest:'firstInLastOut',clockPairing_off:'auto',
+      clockPairing_publicHoliday:'firstInLastOut',clockMinimumInterval:'2',
+      cycle:JSON.stringify({effectiveFrom:date,anchorDate:date,unit:'day',length:1,days:[{kind:'full',shiftId:shift.id}]}),
+    });
+    const success=await redirectOf(()=>createAttendanceRuleAction(form));
+    expect(queryOf(success).get('error')).toBeNull();
+    const group=(await listAttendanceRules(ADMIN)).find(row=>row.name==='Atomic Schedule Group')!;
+    expect(group.weeklyPattern).toEqual([1]);
+    expect(group.lateGracePeriodMinutes).toBe(5);
+    const rotation=await getScheduleRotation(ADMIN,group.id);
+    expect(rotation.memberships).toEqual([{shiftId:shift.id}]);
+    expect(rotation.versions).toMatchObject([{effectiveFrom:date,allowedShiftIds:[shift.id]}]);
+    expect(await attendanceClockPolicyHistory(ADMIN,{companyId:b.companyId,ruleId:group.id})).toMatchObject([
+      {effectiveFrom:date,policy:{pairing:{rest:'firstInLastOut'},minimumIntervalMinutes:2}},
+    ]);
+
+    form.set('name','Rolled Back Schedule Group');
+    form.set('clockReason','');
+    const refusal=await redirectOf(()=>createAttendanceRuleAction(form));
+    expect(queryOf(refusal).get('error')).toContain('reason');
+    expect((await listAttendanceRules(ADMIN)).some(row=>row.name==='Rolled Back Schedule Group')).toBe(false);
+  });
+
   it('Schedule Group: create, update, status, duplicate (lands on the copy), and a refusal stays on the form', async () => {
     // 665de026 — THE SECOND HALF OF THE ITEM, in the reporter's words: "Saving KEEPS YOU WHERE YOU ARE
     // with a confirmation — it does not throw you back to the list." Every assertion below used to read
@@ -683,14 +716,14 @@ describe('G. General has scoped ownership; standalone and create forms retain fu
       }),
     );
     const panel = elementById(await renderEdit(group.id), 'section-general');
-    expect(oldEdit.length).toBeGreaterThan(2000);
-    expect(panel, 'General uses the scoped identity/deduction/ladder form').toContain(oldEdit);
+    expect(oldEdit.length).toBeGreaterThan(1200);
+    expect(panel, 'General uses the scoped identity and deduction form').toContain(oldEdit);
     // Pin the submitted fields positively; two empty renders cannot satisfy this contract.
-    for (const name of ['ruleId', 'name', 'status', 'description', 'applyDeductions', 'otRows']) {
+    for (const name of ['ruleId', 'name', 'status', 'description', 'applyDeductions']) {
       expect(panel, `the editor posts ${name}`).toContain(`name="${name}"`);
     }
 
-    for (const name of ['lateGracePeriodMinutes','earlyGracePeriodMinutes','includeGraceInLateness','includeGraceInEarlyOut','applyToEarlyOt']) {
+    for (const name of ['lateGracePeriodMinutes','earlyGracePeriodMinutes','includeGraceInLateness','includeGraceInEarlyOut','applyToEarlyOt','otRows']) {
       expect(panel, `${name} has one owner outside General`).not.toContain(`name="${name}"`);
     }
     expect(panel).not.toContain(`aria-label="${esc(en.admin.attendanceRule.otColRounding)}"`);
@@ -698,7 +731,7 @@ describe('G. General has scoped ownership; standalone and create forms retain fu
     const full = await toMarkup(await RuleForm({rule:await getAttendanceRule(ADMIN,group.id),shifts:[],cancel:null}));
     expect(full).toContain('name="lateGracePeriodMinutes"');
     expect(full).toContain('name="applyToEarlyOt"');
-    expect(panel, 'allowed shifts now save atomically with the dated cycle, outside General').not.toContain('name="allowedShiftsEditor"');
+    expect(panel, 'legacy groups can save the base pool from General').toContain('name="allowedShiftsEditor"');
     const workingDay = elementById(await renderEdit(group.id), 'section-workingDay');
     expect(workingDay).toContain('name="allowedShiftIds"');
     expect(workingDay).toContain('name="cycle"');
@@ -713,7 +746,12 @@ describe('G. General has scoped ownership; standalone and create forms retain fu
         cancel: { href: SCHEDULE, label: en.admin.attendanceRule.cancel },
       }),
     );
-    expect(await renderNew()).toContain(oldNew);
+    const add = await renderNew();
+    expect(oldNew).toContain('id="section-workingDay"');
+    for(const section of ['general','workingDay','attendance','overtime']) {
+      expect(add).toContain(`id="section-${section}"`);
+    }
+    expect(add).toContain('name="createRotation"');
   });
 
   it('the policy Edit panel is that company’s WorkScheduleForm, and only that company’s', async () => {
