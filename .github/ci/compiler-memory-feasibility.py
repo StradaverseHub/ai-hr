@@ -15,9 +15,9 @@ import sys
 import time
 
 
-SOURCE = 'fa87650fd724c0eebfd701a4245c1cba0039df95'
-SOURCE_BRANCH = 'codex/architecture-ai-management-snapshot-20261109'
-BRANCH = 'codex/compiler-fa87650f-whole-12800-20261109'
+SOURCE = '6c05efc24242b8a5f50933e7cbb6709a276b286d'
+SOURCE_BRANCH = 'codex/architecture-zero-busy-lock-qualification-20261109'
+BRANCH = 'codex/compiler-6c05efc2-whole-12800-20261109'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 LIMIT = 13 * GIB
