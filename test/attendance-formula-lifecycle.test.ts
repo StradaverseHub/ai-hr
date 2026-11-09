@@ -6,7 +6,7 @@ import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {createPayComponent,seedPayComponentCatalog} from '../core/pay-components';
 import {checkIn,checkOut,setAttendancePolicy,saveAttendanceFormula,testAttendanceFormula,activateAttendanceFormula,changeAttendanceFormulaStatus,getAttendanceFormula,attendanceFormulaSetup,listAttendanceFormulas,searchAttendanceFormulaEmployees,readAttendanceFormulaTest} from '../packs/attendance/service';
-import {attendanceFormula,attendanceFormulaRevision,payComponent} from '../db/schema';
+import {attendanceFormula,attendanceFormulaEvent,attendanceFormulaRevision,payComponent} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {AttendanceFormulaConfiguration} from '../lib/attendance-formula-model';
 let base:Base;
@@ -115,10 +115,12 @@ it('rejects incomplete All Companies coverage, a company-limited Pay Item and ov
 
 it('projects a company’s active version through FORCE RLS under the restricted migration owner',async()=>{
  const f=await fixture(),second=await secondEmployer(f);
- const shared=await saveAttendanceFormula(f.ctx,{configuration:{...f.configuration,
+ // The scoped user administers the identity's anchor but not the other company in the revision.
+ const shared=await saveAttendanceFormula(f.ctx,{configuration:{...f.configuration,companyId:second.id,
   companyScope:{mode:'selected',companyIds:[base.companyId,second.id]}}});
  const proof=await testAttendanceFormula(f.ctx,{...shared,employmentId:second.employmentId,date:f.date});
  await activateAttendanceFormula(f.ctx,{...shared,testId:proof.id});
+ expect((await getAttendanceFormula(f.ctx,shared.id)).events.map(event=>event.kind)).toEqual(['activated','tested','saved','created']);
 
  const role='formula_owner_'+randomUUID().replaceAll('-',''),rollback=new Error('Rollback restricted formula owner fixture');
  await expect(owner.withTenant(second.scoped,async tx=>{
@@ -137,6 +139,8 @@ it('projects a company’s active version through FORCE RLS under the restricted
   const revisions=await tx.execute<{id:string;company_id:string}>(sql`SELECT id,company_id
    FROM app.attendance_formula_subject_versions(${second.id}::uuid,${second.employmentId}::uuid,${f.date}::date)`);
   expect([...revisions]).toEqual([{id:shared.revisionId,company_id:second.id}]);
+  expect(await tx.select().from(attendanceFormula)).toEqual([]);
+  expect(await tx.select().from(attendanceFormulaEvent)).toEqual([]);
   expect(await tx.select().from(attendanceFormulaRevision)).toEqual([]);
   throw rollback;
  })).rejects.toBe(rollback);
