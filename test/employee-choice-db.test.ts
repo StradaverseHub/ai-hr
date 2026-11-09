@@ -583,6 +583,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  const splitEvidence:{
   state:'unavailable'|'incomplete'|'settled';
   stage:'reserve'|'snapshot'|'jit-setting'|'ordinary'|'plans'|'terminal'|'capture-finished'|'native-settled';
+  nativeSavepoint?:'awaiting'|'fulfilled'|'refused';
   failure?:string|null;samples:SplitSample[];plans:SplitPlan[];
   sameEnvelopeWork?:boolean;fasterEnvelopeWithoutJit?:boolean;fasterSplitAtDefaultJit?:boolean;
   selectedPoint?:true;noTempSpill?:true;
@@ -781,6 +782,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   };
   try{
    step('snapshot');
+   splitEvidence.nativeSavepoint='awaiting';
    await tx.transaction(async held=>{
     const realm=sql`select r.*,pg_current_snapshot()::text as snapshot from (${pageRealm}) r`;
     step('snapshot');
@@ -916,9 +918,16 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
     splitEvidence.fasterEnvelopeWithoutJit=Math.max(...times('B','off'))<Math.min(...times('B','on'));
     splitEvidence.fasterSplitAtDefaultJit=Math.max(...times('C','on'))<Math.min(...originalTimes);
    });
+   splitEvidence.nativeSavepoint='fulfilled';
    step('capture-finished',0);
   }catch(error){
    splitEvidence.failure=errorHash(error);
+   // The driver can reject SAVEPOINT or ROLLBACK TO itself. Returning
+   // normally here could leave the outer transaction aborted.
+   if(splitEvidence.nativeSavepoint==='awaiting'){
+    splitEvidence.nativeSavepoint='refused';
+    throw error;
+   }
   }
  };
  const compareTaggedEnvelope=async(tx:Tx,identity:PageRealm,clean?:{deadline:number;catalogue:unknown})=>{
@@ -1045,7 +1054,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    await compareSplitAuxiliaries(tx,heldIdentity,after,end,originals[0],alternate,expected);
   }catch(error){
    envelopeEvidence.failure=errorHash(error);
-   if(clean)throw error;
+   if(clean||splitEvidence.nativeSavepoint==='refused')throw error;
   }
  };
  const observeCleanEnvelope=async(open:typeof database.withTenant,reference:CleanEnvelopeReference)=>{
@@ -1331,7 +1340,8 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   envelopeEvidence.meetsCausalGate=envelopeEvidence.matchesRetainedVisibility===true&&envelopeEvidence.reducesVisibilityWork===true&&
    envelopeEvidence.boundedAssignment===true&&envelopeEvidence.noTempSpill===true&&envelopeEvidence.fasterAuxiliaries===true;
  }
- if(envelopeEvidence.state==='settled'&&splitEvidence.stage==='capture-finished'&&splitEvidence.failure===undefined){
+ if(envelopeEvidence.state==='settled'&&splitEvidence.nativeSavepoint==='fulfilled'&&
+    splitEvidence.stage==='capture-finished'&&splitEvidence.failure===undefined){
   splitEvidence.state='settled';splitEvidence.stage='native-settled';
  }
  const failures=[...(workFailed?[workFailure]:[]),...(appOuterRefusal?[appOuterRefusal.error]:[]),...(restoreFailed?[restoreFailure]:[])];
