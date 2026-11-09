@@ -32,7 +32,7 @@ import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironment,createDriverContexts,
  createDriverFailures,createDriverSockets,createDriverWork,driverErrorFact,lockSampleEvidence,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
- settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
+ drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes} from './system-route-manifest.mjs';
 export async function runDevelopmentSystemLoad(){
 const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
@@ -43,9 +43,9 @@ const acquired={observer:'absent',agent:'absent',browser:'absent',audit:'absent'
 const failures=createDriverFailures(),contexts=createDriverContexts(failures),sockets=createDriverSockets(failures);
 const lanes=createDriverWork(),requests=createDriverWork(),transports=createDriverWork(),diagnostics=createDriverWork();
 const lifecycleRefused=Error('An owned development driver resource failed');
-const requireCleanDriver=()=>{if(failures.resourceFailed())throw lifecycleRefused;};
-const closeContext=contexts.close;
-const noteEvidence=failures.evidence;
+const requireCleanDriver=()=>{if(failures.resourceFailed()||contexts.hasPendingClose())throw lifecycleRefused;};
+const {withContext,waitForClose:closeContext}=contexts;
+const {notePrimary,evidence:noteEvidence}=failures;
 const runLane=async work=>{try{return await work();}catch(reason){failures.notePrimary(reason);throw reason;}};
 const runLanes=(values,run)=>lanes.run(()=>Promise.allSettled(values.map(value=>runLane(()=>run(value)))));
 const errorLabel=reason=>{const {kind,code}=driverErrorFact(reason);return code??kind;};
@@ -96,9 +96,12 @@ const samples=[],pageInteractions=[];
 const busyScreenSelector='main[data-personnel-busy], main[data-page-busy], main [data-personnel-busy], main [data-page-busy]';
 report.pageBusyResponses=[];
 function rejectBusyPage(user,path,channel){
- report.pageBusyResponses.push({role:user.role,route:readRouteForMeasurement(path),channel});
- save();
- assert.fail('A page returned a Busy response before becoming usable');
+ try{assert.fail('A page returned a Busy response before becoming usable');}
+ catch(reason){
+  notePrimary(reason);
+  noteEvidence(()=>{report.pageBusyResponses.push({role:user.role,route:readRouteForMeasurement(path),channel});save();});
+  throw reason;
+ }
 }
 
 const homeHttp=createHomeHttpReplay({base,request,report});
@@ -320,8 +323,9 @@ async function main(){
   report.browserPendingSnapshot={at:new Date().toISOString(),requests:[...(pendingBrowserRequests.get(lastPage)?.values()??[])].slice(0,50).map(row=>({...row,elapsedMs:performance.now()-row.startedMs}))};save();
  }),5000);
  async function context(user,locale='en',signIn=false){
-  const context=contexts.register(await browser.newContext({ignoreHTTPSErrors:true,locale}));
+  let context;
   try{
+  context=contexts.register(await browser.newContext({ignoreHTTPSErrors:true,locale}));
   await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:base}]);
   if(!signIn)await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'}]);
   context.on('page',page=>noteEvidence(()=>{
@@ -348,7 +352,7 @@ async function main(){
    observe('console',message=>{if(message.type()==='error')report.browserErrors.push({...errorContext(),kind:'console',error:message.text().slice(0,300)});});
   }));
   return context;
-  }catch(reason){failures.notePrimary(reason);await closeContext(context);throw reason;}
+  }catch(reason){notePrimary(reason);if(context)await closeContext(context);throw reason;}
  }
  async function signInToHome(page,user){
   await page.goto(base+'/login?returnTo=%2F',{waitUntil:'domcontentloaded',timeout:90000});
@@ -616,11 +620,11 @@ async function main(){
  // Route/role assertions, per-request deadlines and the overall driver deadline stay unchanged.
  await lanes.run(()=>settleDriverLanes([employee,manager,hr,group,fixture.users[254],fixture.users[251]],async user=>{
   const ctx=await context(user);
-  try{const page=await ctx.newPage();
+  await withContext(ctx,async()=>{const page=await ctx.newPage();
   for(const route of suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});
-  }finally{await closeContext(ctx);}
- }));
+  });
+ },failures));
  preflightWindow.endMs=performance.now();
  await preflightSampler.stop();
  recordLockSampling();
@@ -629,14 +633,13 @@ async function main(){
  // Additional concrete pages have explicit rendered checks, separate from HTTP route counts.
  await lanes.run(()=>settleDriverLanes([employee,manager,hr,group],async user=>{
   const ctx=await context(user);
-  try{const page=await ctx.newPage();for(const path of additionalBrowserRoutes[user.role]){
+  await withContext(ctx,async()=>{const page=await ctx.newPage();for(const path of additionalBrowserRoutes[user.role]){
    // The full workload already rendered these exact role/path pairs above. Keep each
    // required rendered check, without paying for an identical duplicate document load.
    if(!report.browser.some(row=>row.phase==='baseline'&&row.role===user.role&&row.path===path))await visit(page,user,path);
    assert(report.browser.some(row=>row.phase==='baseline'&&row.role===user.role&&row.path===path),'required rendered role/path missing');
-  }}
-  finally{await closeContext(ctx);}
- }));
+  }});
+ },failures));
  requireCleanDriver();
  async function aiCentreJourney(page,user,phase){
   await visit(page,user,'/assistant',phase);
@@ -709,13 +712,13 @@ async function main(){
  // Exercise real password/MFA before any capacity test; these results are never loaded proof.
  const signInPreflight=await runLanes([employee,manager,hr,group],async user=>{
   const ctx=await context(user,'en',true);
-  try{const page=await ctx.newPage();
+  await withContext(ctx,async()=>{const page=await ctx.newPage();
    await visit(page,user,'/','sign-in-preflight',true);
    if(baselineNavigation)await baselineNavigation.captureActor(page,user.index);
-  }finally{await closeContext(ctx);}
+  });
  });
- // Settle every owned context before reporting failure; a failed actor must not
- // leave a still-running browser producer behind the failed preflight.
+ // Finish every admitted sign-in body. On failure the terminal sweep still owns
+ // every native context-close outcome.
  for(const result of signInPreflight)if(result.status==='rejected')throw result.reason;
  requireCleanDriver();
  const baselineCapture=baselineNavigation?.finish();
@@ -728,65 +731,64 @@ async function main(){
  const aiBrowserActors=fixture.assistantHistory?[employee,hr,fixture.users[254],fixture.users[251]]:[employee,hr];
  const aiBaseline=await runLanes(aiBrowserActors,async user=>{
   const ctx=await context(user);
-  try{const page=await ctx.newPage();await aiCentreJourney(page,user,'baseline');}finally{await closeContext(ctx);}
+  await withContext(ctx,async()=>{const page=await ctx.newPage();await aiCentreJourney(page,user,'baseline');});
  });
- requireCleanDriver();
  report.aiBaselineFailures=aiBaseline.flatMap((result,index)=>result.status==='rejected'
   ?[{role:aiBrowserActors[index].role,userIndex:aiBrowserActors[index].index,error:errorLabel(result.reason)}]:[]);
  save();
+ requireCleanDriver();
  if(suite==='whole-system'){
   const ctx=await context(group);
-  try{const page=await ctx.newPage();
+  await withContext(ctx,async()=>{const page=await ctx.newPage();
    await exerciseOrgExplorer({page,user:group,fixture,report,save,phase:'baseline'});
    await exercisePersonnelSwitcher({page,user:group,fixture,report,save,phase:'baseline'});
    await exercisePayrollBrowser({base,page,user:group,fixture,report,save,phase:'baseline'});
-  }finally{await closeContext(ctx);}
+  });
   requireCleanDriver();
  }
  if(suite==='whole-system'||suite==='workflow-preflight'){
   const ctx=await context(group);
-  try{const page=await ctx.newPage();
+  await withContext(ctx,async()=>{const page=await ctx.newPage();
    await exerciseMovement({base,page,actor:group,subject:employee,fixture,db,report,save,phase:'baseline',recordEvent:suite==='workflow-preflight'});
    await exercisePayrollRegister({base,page,user:group,fixture,db,request,report,save});
    await exerciseSavedReport({page,user:group,fixture,db,base,phase:'baseline',thinkTimeMs,report,save});
-  }finally{await closeContext(ctx);}
+  });
   requireCleanDriver();
   const foreignGroup=fixture.users.find(user=>user.role==='groupHR'&&user.tenant!==group.tenant);
   assert(foreignGroup,'Payroll register needs a foreign group HR boundary actor');
   for(const actor of [hr,foreignGroup]){
    const boundaryContext=await context(actor);
-   try{const boundaryPage=await boundaryContext.newPage();await verifyPayrollRegisterBoundary({base,page:boundaryPage,actor,owner:group,fixture,report,save});}
-   finally{await closeContext(boundaryContext);}
+   await withContext(boundaryContext,async()=>{const boundaryPage=await boundaryContext.newPage();await verifyPayrollRegisterBoundary({base,page:boundaryPage,actor,owner:group,fixture,report,save});});
    requireCleanDriver();
   }
  }
  // Tenant-wide AI spend and provider configuration keep their group-administrator guards.
  {
   const ctx=await context(hr);
-  try{const page=await ctx.newPage();for(const path of ['/control-tower/agents/spending','/control-tower/agents/provider']){
+  await withContext(ctx,async()=>{const page=await ctx.newPage();for(const path of ['/control-tower/agents/spending','/control-tower/agents/provider']){
    await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});
    await page.waitForURL(url=>url.pathname==='/control-tower/agents',{timeout:90000});
    report.boundaries.push({kind:'AI group-administrator-only route',role:hr.role,path,redirectDenied:true});save();
   }
   if(suite==='whole-system')await exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'});
-  }finally{await closeContext(ctx);}
+  });
   requireCleanDriver();
  }
  // Locale projection and real client navigation must work before any capacity claim.
  for(const locale of ['en','ms','zh','ta','th','vi']){
   const ctx=await context(employee,locale);
-  try{const page=await ctx.newPage();await visit(page,employee,'/claims');
+  await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,employee,'/claims');
   const messages=JSON.parse(readFileSync(new URL('../../messages/'+locale+'.json',import.meta.url),'utf8'));
   const fallback=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
   const title=messages.claims?.title||fallback.claims.title;
   await page.getByRole('heading',{level:1,name:title,exact:true}).waitFor({state:'visible',timeout:90000});
   report.browser.at(-1).locale=locale;
-  }finally{await closeContext(ctx);}
+  });
   requireCleanDriver();
  }
  {
   const ctx=await context(employee);
-  try{const page=await ctx.newPage();await visit(page,employee,'/leave');
+  await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,employee,'/leave');
   const documents=[];page.on('request',request=>{if(request.resourceType()==='document')documents.push(request.url());});
   await Promise.all([page.waitForURL(url=>url.pathname==='/claims',{timeout:90000}),page.locator('a[href="/claims"]:visible').first().click()]);
   const catalog=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
@@ -798,12 +800,12 @@ async function main(){
   assert(await main.locator('tbody tr:visible').count()>0,'client route has no visible Claims rows');
   assert((await main.innerText()).includes(catalog.claims.typeLabel),'client form lost route translations');
   report.browser.push({workflow:'client navigation',from:'/leave',to:'/claims',documentRequests:0,passed:true});
-  }finally{await closeContext(ctx);}
+  });
   requireCleanDriver();save();
  }
  for(const [user,path]of [[employee,'/claims'],[hr,'/admin/personnel']]){
   const ctx=await context(user);
-  try{const page=await ctx.newPage();await visit(page,user,path);await languageJourney(page,user,path,'baseline');}finally{await closeContext(ctx);}
+  await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,user,path);await languageJourney(page,user,path,'baseline');});
   requireCleanDriver();
  }
  // Capture progressive-enhancement action metadata from the actual built form. No hardcoded action ID.
@@ -842,7 +844,7 @@ async function main(){
  }
  {
   const ctx=await context(employee);
-  try{const page=await ctx.newPage();contextTemplates=await browserClaimJourney(page,employee,'PERF_BROWSER_DRAFT','baseline');}finally{await closeContext(ctx);}
+  await withContext(ctx,async()=>{const page=await ctx.newPage();contextTemplates=await browserClaimJourney(page,employee,'PERF_BROWSER_DRAFT','baseline');});
   requireCleanDriver();
  }
  const {createTemplate,deleteTemplate}=contextTemplates;
@@ -884,18 +886,18 @@ async function main(){
   await request(victim,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:victim.employmentId,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
   assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
  }
- if(suite!=='claims-heavy')mixedWorkflows=await prepareMixedWorkflows({context,closeContext,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
+ if(suite!=='claims-heavy')mixedWorkflows=await prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
  requireCleanDriver();
  let loadedAttendanceRejection;
  if(attendanceRejectionProbeEnabled&&suite!=='claims-heavy'){
-  const baseline=await prepareAttendanceRejection({context,closeContext,noteEvidence,visit,fixture,db,report,save,phase:'baseline'});
+  const baseline=await prepareAttendanceRejection({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,db,report,save,phase:'baseline'});
   await baseline.run();
   requireCleanDriver();
-  if(suite==='whole-system')loadedAttendanceRejection=await prepareAttendanceRejection({context,closeContext,noteEvidence,visit,fixture,db,report,save,phase:'loaded'});
+  if(suite==='whole-system')loadedAttendanceRejection=await prepareAttendanceRejection({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,db,report,save,phase:'loaded'});
  }
  if(suite!=='claims-heavy'){
   const ctx=await context(employee);
-  try{
+  await withContext(ctx,async()=>{
   const page=await ctx.newPage();let automaticPdfRequests=0;
   const observe=req=>{if(req.method()==='GET'&&/^\/me\/payslip\/[^/]+\/pdf$/.test(new URL(req.url()).pathname))automaticPdfRequests++;};
   page.on('request',observe);
@@ -917,12 +919,12 @@ async function main(){
     const denied=await ctx.request.get(base+'/me/payslip/'+slip.id+'/pdf');assert.equal(denied.status(),404,'foreign own-only PDF was accessible');report.boundaries.push({kind:'foreign-own-payslip-pdf',scope:target.tenant===employee.tenant?'same-company-other-person':'other-tenant',passed:true});
    }
    report.payslipDocument={nativeDownload:true,automaticPdfRequests,bytes,pages,ownIdentity:true,foreignBoundaries:2};save();
-  }finally{await closeContext(ctx);}
+  });
   requireCleanDriver();
  }
  if(suite==='workflow-preflight'){
   const ctx=await context(hr);
-  try{const page=await ctx.newPage();await exerciseLivePersonnelProfile({page,user:hr,fixture,db,request,report,save,phase:'baseline'});}finally{await closeContext(ctx);}
+  await withContext(ctx,async()=>{const page=await ctx.newPage();await exerciseLivePersonnelProfile({page,user:hr,fixture,db,request,report,save,phase:'baseline'});});
   requireCleanDriver();
  }
  assert.equal(report.browserErrors.length,0,'mutation/processing browser runtime errors');
@@ -937,14 +939,14 @@ async function main(){
  assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys must pass before load');
  if(suite==='workflow-preflight'){
   assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys failed');
-  await exerciseLetterDraft({base,context,closeContext,noteEvidence,visit,fixture,db,report,save});
+  await exerciseLetterDraft({base,context,withContext,notePrimary,noteEvidence,visit,fixture,db,report,save});
   requireCleanDriver();
   const {exercisePerformanceRewardsDrafts}=await import('./performance-rewards-draft-browser.mjs');
-  await exercisePerformanceRewardsDrafts({base,context,closeContext,fixture,db,report,save});
+  await exercisePerformanceRewardsDrafts({base,context,withContext,fixture,db,report,save});
   requireCleanDriver();
   await verifyAudit();save();
   const redirectContext=await context(employee);
-  try{
+  await withContext(redirectContext,async()=>{
    const page=await redirectContext.newPage();
    for(const [alias,target] of [['/assistant?view=jobs','/assistant'],['/assistant?view=insights','/me/payroll-readiness']]){
     await visit(page,employee,alias);
@@ -952,7 +954,7 @@ async function main(){
     assert.equal(new URL(page.url()).search,'','AI Centre compatibility redirect kept stale view');
    }
    report.aiCompatibilityRedirectsVerified=true;save();
-  }finally{await closeContext(redirectContext);}
+  });
   requireCleanDriver();
   assert(report.preflightHomeReady,'all four preflight sign-ins must load their dashboards');
   assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure');
@@ -1015,7 +1017,7 @@ async function main(){
  const browserLoad=runLanes([employee,manager,hr,group,fixture.users[254],fixture.users[251]],async user=>{
   const signIn=[employee,manager,hr,group].some(actor=>actor.index===user.index);
   const ctx=await context(user,'en',signIn);
-  try{
+  await withContext(ctx,async()=>{try{
   const page=await ctx.newPage();
   const routes=user.role==='employee'?['/','/claims','/leave','/attendance/individual']
    :user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/',...(suite==='whole-system'?architectureHrReadRoutes:[]),'/admin/personnel','/payroll','/claims'];
@@ -1040,13 +1042,15 @@ async function main(){
   }
   if(signIn&&loadedNavigation)await loadedNavigation.captureActor(page,user.index,loadState);
   }catch(error){
+   notePrimary(error);
    noteEvidence(()=>{const errorType=driverErrorFact(error).kind;(report.browserJourneyFailures??=[]).push({role:user.role,user:user.index,phase:'loaded',errorType,...browserFailureLocation(error),timeout:errorType==='TimeoutError'});save();});throw error;
-  }finally{await closeContext(ctx);}
+  }
+  });
  });
  // Independent pages let each Payroll readiness surface start at steady load.
  const payrollBrowserLoad=suite==='whole-system'?runLanes([null],async()=>{
   const ctx=await context(group);
-  try{
+  return withContext(ctx,async()=>{
    const pages=await Promise.all(payrollReadinessSurfaces.map(()=>ctx.newPage()));
    await waitForSteadyUsers();
    const start=loadState();
@@ -1054,26 +1058,26 @@ async function main(){
    return await Promise.allSettled(payrollReadinessSurfaces.map((surface,index)=>
     runLane(()=>exercisePayrollBrowser({base,page:pages[index],user:group,fixture,report,save,phase:'loaded',loadState,surface}))
    ));
-  }finally{await closeContext(ctx);}
+  });
  }):null;
  const attendanceRejectionLoad=loadedAttendanceRejection
   ?runLanes([loadedAttendanceRejection],owner=>owner.run({loadState:()=>({active:progress.active,launched:progress.launched}),steadyUntil}))
   :null;
  const movementLoad=suite==='whole-system'?runLanes([null],async()=>{
   const ctx=await context(group);
-  try{
+  await withContext(ctx,async()=>{
    const page=await ctx.newPage();
    await waitForSteadyUsers();
    await exerciseMovement({base,page,actor:group,subject:employee,fixture,db,report,save,phase:'loaded',recordEvent:true,loadState});
-  }finally{await closeContext(ctx);}
+  });
  }):null;
  const savedReportsLoad=suite==='whole-system'?runLanes([null],async()=>{
   const ctx=await context(group);
-  try{
+  await withContext(ctx,async()=>{
    const page=await ctx.newPage();
    await exerciseSavedReport({page,user:group,fixture,db,base,phase:'loaded',thinkTimeMs,report,save,
     loadState,waitForFirstWrite:waitForSteadyUsers});
-  }finally{await closeContext(ctx);}
+  });
  }):null;
  const results=await runLanes(fixture.users.map((user,i)=>({user,i})),async({user,i})=>{
   await pause(i*20);progress.launched++;progress.active++;progress.peakActive=Math.max(progress.peakActive,progress.active);
@@ -1249,16 +1253,14 @@ try{
 }
 
 const diagnosticDrain=stopDiagnosticAdmission();
-lanes.seal();
-await lanes.drain();
-requests.seal();
+await drainDriverLanes(lanes,requests);
 const failureAtExit=failures.failed();
 const shutdown=report.shutdown={acquisition:acquired,browserClosed:false,nativeAuditPoolClosed:false,driverPoolClosed:false};
 await settleDriverResources(failures,{
  async browser(){
   if(failureAtExit&&lastPage)await failures.attempt('browser-failure-capture',async()=>{
    report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));
-   if(!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false});
+   if(!contexts.hasPendingClose()&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false});
   });
   const settled=await settleDriverBrowser(browser,ownedBrowser,contexts,failures);
   shutdown.browser={close:settled.close,unexpectedDisconnect:settled.unexpectedDisconnect};

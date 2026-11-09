@@ -23,7 +23,7 @@ export function attendanceCorrectionForm(page){
  }).filter({visible:true});
 }
 
-export async function prepareAttendanceRejection({context,closeContext,noteEvidence,visit,fixture,db,report,save,phase}){
+export async function prepareAttendanceRejection({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,db,report,save,phase}){
  const {attendanceHistory,components}=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
  const subject=attendanceRejectionSubjects(fixture.users)[phase==='loaded'?1:0];
  const approver=fixture.users.find(user=>user.tenant===subject.tenant&&user.company===subject.company&&['companyHR','groupHR'].includes(user.role));
@@ -60,7 +60,7 @@ export async function prepareAttendanceRejection({context,closeContext,noteEvide
  assert.deepEqual(before.punches.map(punch=>punch.direction).sort(),['in','out']);
  assert(before.punches.every(punch=>punch.voided_at===null));
  const employeeContext=await context(subject);
- try{
+ await withContext(employeeContext,async()=>{
   const page=await employeeContext.newPage(),path='/attendance/my-records/'+date;
   await visit(page,subject,path,'attendance-rejection-setup');
   await handleWelcomeTour(page);
@@ -92,7 +92,7 @@ export async function prepareAttendanceRejection({context,closeContext,noteEvide
   assert([200,303].includes(response.status()),'Native Attendance creation response failed');
   if(evidence.creationOutcome)assert(evidence.creationOutcome.corrected,
    'Native Attendance creation did not report success: '+JSON.stringify(evidence.creationOutcome));
- }finally{await closeContext(employeeContext);}
+ });
  const rows=await db`select c.id,c.request_kind,c.requested_ot_minutes,c.status,w.id as workflow_id,w.routing_version,w.current_stage
    from attendance_correction c left join attendance_workflow_request w on w.correction_id=c.id and w.tenant_id=c.tenant_id
    where c.tenant_id=${tenantId}::uuid and c.employment_id=${subject.employmentId}::uuid
@@ -119,7 +119,7 @@ export async function prepareAttendanceRejection({context,closeContext,noteEvide
 
   return {
    async run({loadState=()=>({active:0,launched:0}),steadyUntil}={}){
-    try{
+    await withContext(reviewerContext,async()=>{try{
      if(phase==='loaded'){
       assert(Number.isFinite(steadyUntil));
       while(performance.now()<steadyUntil){
@@ -179,9 +179,11 @@ export async function prepareAttendanceRejection({context,closeContext,noteEvide
      Object.assign(evidence,{status:'passed',persisted:true,workflowDecisionVerified:true,linkedAuditEvents:2,unchangedPunches:2,unchangedAttendanceDay:true});
      save();
     }catch(error){
+     notePrimary(error);
      noteEvidence(()=>{evidence.status='failed';evidence.failure=driverErrorFact(error).kind;save();});throw error;
-    }finally{await closeContext(reviewerContext);}
+    }
+    });
    },
   };
- }catch(error){await closeContext(reviewerContext);throw error;}
+ }catch(error){notePrimary(error);await closeContext(reviewerContext);throw error;}
 }

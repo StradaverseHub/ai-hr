@@ -4,7 +4,7 @@ import {PassThrough} from 'node:stream';
 import {gzipSync} from 'node:zlib';
 import {afterEach,expect,it,vi} from 'vitest';
 import {acquireDriverResource,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
- createDriverFailures,createDriverSockets,createDriverWork,lockSampleEvidence,observeDriverBrowser,
+ createDriverFailures,createDriverSockets,createDriverWork,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
  openDriverResponse,settleDriverBrowser,settleDriverLanes,settleDriverResources,startDriverInterval} from '../scripts/performance/driver-shutdown.mjs';
 
 function deferred<T=void>(){
@@ -31,14 +31,39 @@ it('closes the child environment and refuses the parent remote selection without
 
 it('retains the first temporal rejection and waits for the other admitted lane',async()=>{
  const slower=deferred(),firstFailure=deferred();
- const joined=settleDriverLanes([slower.promise,firstFailure.promise],(work:Promise<void>)=>work);
+ const failures=createDriverFailures(),contexts=createDriverContexts(failures),nativeClose=deferred();
+ const firstContext=contexts.register({close:vi.fn(()=>nativeClose.promise)});
+ const secondContext=contexts.register({close:vi.fn()});
+ const joined=settleDriverLanes([secondContext,firstContext],(context:typeof firstContext)=>
+  contexts.withContext(context,()=>context===firstContext?firstFailure.promise:slower.promise),failures);
  const result=disposition(joined);
  let settled=false;void result.then(()=>{settled=true;});
  firstFailure.reject(undefined);
- await Promise.resolve();
+ await failures.whenFailed;
+ expect(failures.primary()).toEqual({failed:true,reason:undefined});
+ expect(firstContext.close).toHaveBeenCalledTimes(1);
+ expect(contexts.hasPendingClose()).toBe(true);
  expect(settled).toBe(false);
  slower.reject(Error('later lane failed'));
  expect(await result).toEqual({ok:false,reason:undefined});
+ const closeFailure=Error('native context close failed');
+ nativeClose.reject(closeFailure);
+ await contexts.closeAll();
+ expect(failures.privateFailures().secondary).toEqual([{stage:'context-close',reason:closeFailure}]);
+ expect(contexts.summary()).toEqual({acquired:2,attempted:2,settled:1,failed:1});
+});
+
+it('keeps normal browser work waiting for its actual local close',async()=>{
+ const failures=createDriverFailures(),contexts=createDriverContexts(failures),nativeClose=deferred(),started=deferred();
+ const context=contexts.register({close:vi.fn(()=>{started.resolve();return nativeClose.promise;})});
+ let settled=false;
+ const result=contexts.withContext(context,()=>42).then(value=>{settled=true;return value;});
+ await started.promise;
+ expect(settled).toBe(false);
+ expect(contexts.hasPendingClose()).toBe(true);
+ nativeClose.resolve();
+ expect(await result).toBe(42);
+ expect(contexts.hasPendingClose()).toBe(false);
 });
 
 it('retains actually admitted work while later admission is closed',async()=>{
@@ -173,6 +198,43 @@ it('starts every context close before browser close and retains an earlier disco
   unexpectedDisconnect:true,contexts:{acquired:2,attempted:2,settled:2,failed:0}});
  expect(order).toEqual(['context A','context B','browser']);
  expect(failures.publicFailures().secondary.map(row=>row.stage)).toEqual(['browser-disconnected']);
+});
+
+it('reaches the owned browser close after failed lane work and preserves sibling restoration',async()=>{
+ const failures=createDriverFailures(),contexts=createDriverContexts(failures);
+ const lanes=createDriverWork(),requests=createDriverWork(),order:string[]=[];
+ const body=deferred(),restore=deferred(),nativeClose=deferred(),browserStarted=deferred();
+ const a=contexts.register({close:vi.fn(()=>{order.push('context A');return nativeClose.promise;})});
+ const b=contexts.register({close:vi.fn(()=>{order.push('context B');})});
+ const browser=Object.assign(new EventEmitter(),{contexts:()=>[a,b],isConnected:()=>true,
+  close:vi.fn(()=>{order.push('browser');browserStarted.resolve();})});
+ const tracked=observeDriverBrowser(browser,failures);
+ const group=disposition(lanes.run(()=>settleDriverLanes([a,b],(context:typeof a)=>contexts.withContext(context,async()=>{
+  if(context===a)return body.promise;
+  await restore.promise;
+  await requests.run(async()=>{order.push('restoration');});
+ }),failures)));
+ const primary=Error('first browser body failed');
+ body.reject(primary);
+ await failures.whenFailed;
+ let completed=false;
+ const cleanup=drainDriverLanes(lanes,requests).then(()=>settleDriverBrowser(browser,tracked,contexts,failures))
+  .then(result=>{completed=true;return result;});
+ expect(order).toEqual(['context A']);
+ expect(browser.close).not.toHaveBeenCalled();
+ restore.resolve();
+ await browserStarted.promise;
+ expect(await group).toEqual({ok:false,reason:primary});
+ expect(order).toEqual(['context A','restoration','context B','browser']);
+ expect(()=>requests.run(()=>undefined)).toThrow('Driver work admission is closed');
+ expect(completed).toBe(false);
+ expect(contexts.hasPendingClose()).toBe(true);
+ nativeClose.resolve();
+ expect(await cleanup).toEqual({close:'settled',unexpectedDisconnect:false,
+  contexts:{acquired:2,attempted:2,settled:2,failed:0}});
+ expect(a.close).toHaveBeenCalledTimes(1);
+ expect(b.close).toHaveBeenCalledTimes(1);
+ expect(browser.close).toHaveBeenCalledTimes(1);
 });
 
 it('keeps a disconnect from its own browser close distinct from a runtime disconnect',async()=>{

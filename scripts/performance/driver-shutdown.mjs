@@ -15,14 +15,18 @@ export function driverErrorFact(reason){
 
 export function createDriverFailures(){
  let primary={failed:false,reason:undefined};
+ let signalFailure;
+ const whenFailed=new Promise(resolve=>{signalFailure=resolve;});
  const secondary=[];
  const record=(stage,reason)=>{
   secondary.push({stage,reason});
+  signalFailure();
   return {state:'failed',reason};
  };
  return {
   primary:()=>primary,
-  notePrimary(reason){if(!primary.failed)primary={failed:true,reason};},
+  whenFailed,
+  notePrimary(reason){if(!primary.failed){primary={failed:true,reason};signalFailure();}},
   record,
   async attempt(stage,work){try{return {state:'settled',value:await work()};}catch(reason){return record(stage,reason);}},
   evidence(work){try{return {state:'settled',value:work()};}catch(reason){return record('evidence',reason);}},
@@ -68,13 +72,18 @@ export function createDriverWork(){
 }
 
 /** Preserve temporal failure order when replacing an early fail-fast join. */
-export async function settleDriverLanes(values,run){
- let failed=false,first;
+export async function settleDriverLanes(values,run,failures){
  const results=await Promise.allSettled(values.map(async value=>{
-  try{return await run(value);}catch(reason){if(!failed){failed=true;first=reason;}throw reason;}
+  try{return await run(value);}catch(reason){failures.notePrimary(reason);throw reason;}
  }));
- if(failed)throw first;
+ if(results.some(result=>result.status==='rejected'))throw failures.primary().reason;
  return results;
+}
+
+export async function drainDriverLanes(lanes,requests){
+ lanes.seal();
+ await lanes.drain();
+ requests.seal();
 }
 
 export function startDriverInterval(interval,run,recordFailure){
@@ -125,7 +134,17 @@ export function createDriverContexts(failures){
   }
   return entry.pending;
  };
- return {register,close,closeAll:()=>Promise.all([...entries.keys()].map(close)),summary:()=>{
+ // A failed lifetime may release the lane's wait, while the registry still
+ // owns the native close promise and the final browser sweep still awaits it.
+ const waitForClose=context=>Promise.race([close(context),failures.whenFailed]);
+ const withContext=async(context,work)=>{
+  try{return await work();}
+  catch(reason){failures.notePrimary(reason);throw reason;}
+  finally{await waitForClose(context);}
+ };
+ return {register,close,waitForClose,withContext,
+  hasPendingClose:()=>[...entries.values()].some(entry=>entry.state==='attempted'),
+  closeAll:()=>Promise.all([...entries.keys()].map(close)),summary:()=>{
   const counts={acquired:entries.size,attempted:0,settled:0,failed:0};
   for(const entry of entries.values()){
    if(entry.pending)counts.attempted++;
