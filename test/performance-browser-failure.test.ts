@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {browserFailureLocation} from '../scripts/performance/browser-failure';
+import {browserFailureLocation,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from '../scripts/performance/browser-failure';
 it('locates driver assertions without copying sensitive messages, stack paths or arbitrary error codes',()=>{
  const secret='fixture-password-and-session-value';
  const result=browserFailureLocation({code:'ERR_ASSERTION',message:secret,stack:'Error: '+secret+'\n at visit (file:///private/'+secret+'/system-load.mjs:241:17)'});
@@ -7,6 +7,21 @@ it('locates driver assertions without copying sensitive messages, stack paths or
  expect(JSON.stringify(result)).not.toContain(secret);
  expect(browserFailureLocation({code:secret,stack:'Error: '+secret+'\n at signIn (file:///private/other.mjs:10:2)'})).toEqual({errorCode:null,sourceLine:null,sourceColumn:null});
  expect(browserFailureLocation(null)).toEqual({errorCode:null,sourceLine:null,sourceColumn:null});
+});
+
+it('projects only reviewed preflight frames and fixed browser fingerprints',()=>{
+ const secret='fixture-session-token';
+ const location=browserPreflightFailureLocation({stack:'Error: '+secret+'\n at capture (file:///private/'+secret+'/navigation-browser-capture.ts:310:11)\n at run (file:///private/'+secret+'/system-load-owner.mjs:1040:8)'});
+ expect(location).toEqual({sourceFile:'navigation-browser-capture.ts',sourceLine:310,sourceColumn:11});
+ expect(JSON.stringify(location)).not.toContain(secret);
+ expect(browserPreflightFailureLocation({stack:'Error: /navigation-browser-capture.ts:310:11\n at unsafe (/tmp/not-navigation-browser-capture.ts:2:3)'}))
+  .toEqual({sourceFile:null,sourceLine:null,sourceColumn:null});
+ for(const code of [418,422,423,425]){
+  expect(browserPreflightErrorFingerprint('Minified React error #'+code+'; visit /?args='+secret)).toBe('react-minified-'+code);
+ }
+ expect(browserPreflightErrorFingerprint('Minified React error #4188; '+secret)).toBe('other');
+ expect(browserPreflightErrorFingerprint('An error occurred in the Server Components render. '+secret)).toBe('next-server-component-render');
+ expect(browserPreflightErrorFingerprint(secret)).toBe('other');
 });
 
 it('binds the first owner frame to its exact public filename while preserving private stack redaction',()=>{

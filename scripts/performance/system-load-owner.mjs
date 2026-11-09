@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHomeHttpReplay} from './home-http.mjs';
-import {browserFailureLocation} from './browser-failure.ts';
+import {browserFailureLocation,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
@@ -597,8 +597,10 @@ async function main(){
    observe('response',response=>{if(homeRequest(response.request())&&!response.ok())report.browserHomeRequests.push({role:user.role,path:new URL(response.url()).pathname,status:response.status(),outcome:'http-error'});});
    // Associate failures with a route and monotonic time without publishing query parameters.
    const errorContext=()=>{let path='<unavailable>';try{const url=new URL(page.url());path=url.origin===base?url.pathname:'<external>';}catch{}return {role:user.role,locale,path,atMs:performance.now()};};
-   observe('pageerror',error=>report.browserErrors.push({...errorContext(),kind:'pageerror',error:error.name+': '+error.message.slice(0,300)}));
-   observe('console',message=>{if(message.type()==='error')report.browserErrors.push({...errorContext(),kind:'console',error:message.text().slice(0,300)});});
+   const recordError=(kind,message,error)=>report.browserErrors.push({...errorContext(),kind,error,
+    ...(fullDevelopmentRoutes?{fingerprint:browserPreflightErrorFingerprint(message)}:{})});
+   observe('pageerror',error=>recordError('pageerror',error.message,error.name+': '+error.message.slice(0,300)));
+   observe('console',message=>{if(message.type()==='error'){const value=message.text();recordError('console',value,value.slice(0,300));}});
   }));
   return context;
   }catch(reason){notePrimary(reason);if(context)await closeContext(context);throw reason;}
@@ -1029,35 +1031,67 @@ async function main(){
    finally{noteEvidence(()=>{page.off('request',observe);(report.assistantHistoryTraffic??=[]).push({phase,role:user.role,...traffic});save();});}
   }
  }
+ function notePreflightStageFailure(reason,stage,user=null,page=null){
+  if(!fullDevelopmentRoutes)return;
+  notePrimary(reason);
+  if(failures.primary().reason!==reason)return;
+  noteEvidence(()=>{
+   let path=null;
+   if(page){
+    const url=new URL(page.url());
+    if(url.origin===base)path=url.pathname;
+   }
+   report.preflightBrowserStageFailure??={stage,role:user?.role??null,path,
+    errorType:driverErrorFact(reason).kind,...browserPreflightFailureLocation(reason)};
+  });
+ }
  // Exercise real password/MFA before any capacity test; these results are never loaded proof.
  const signInPreflight=await runLanes(primaryActors,async user=>{
   const ctx=await context(user,'en',true);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
    await visit(page,user,'/','sign-in-preflight',true);
-   requireNativeBusiness();
-   if(baselineNavigation)await baselineNavigation.captureActor(page,user.index);
-   if(strictRenderedPreflight){
+   let stage='legacy-navigation-capture';
+   try{
     requireNativeBusiness();
-    const failuresBefore=fullDevelopmentRoutes?renderedPageEvents.pageCount(page):null;
-    if(NATIVE_HIDDEN_SHELL_CASES.some(row=>row.actorIndex===user.index))await nativeShell.captureActor(page,user.index);
-    const nativeDom=await installNativePrimaryFailureObserver(page,user.index),paths=routePool(user);
-    nativePrimaryDocuments.push({actorIndex:user.index,expected:paths.length,nativeDom,page,failuresBefore});
-    for(const path of paths){
-     const route=nativePreflightRouteFor(user.role,user.index,path);
-     await visit(page,user,path,'baseline',false,undefined,route,nativeDom);
+    if(baselineNavigation)await baselineNavigation.captureActor(page,user.index);
+    if(strictRenderedPreflight){
+     stage='hidden-shell-capture';
+     requireNativeBusiness();
+     const failuresBefore=fullDevelopmentRoutes?renderedPageEvents.pageCount(page):null;
+     if(NATIVE_HIDDEN_SHELL_CASES.some(row=>row.actorIndex===user.index))await nativeShell.captureActor(page,user.index);
+     stage='primary-route-observer';
+     const nativeDom=await installNativePrimaryFailureObserver(page,user.index),paths=routePool(user);
+     nativePrimaryDocuments.push({actorIndex:user.index,expected:paths.length,nativeDom,page,failuresBefore});
+     stage='primary-route-navigation';
+     for(const path of paths){
+      const route=nativePreflightRouteFor(user.role,user.index,path);
+      await visit(page,user,path,'baseline',false,undefined,route,nativeDom);
+     }
+     stage='primary-route-retirement';
+     const retirementDeadline=Math.min(renderedDeadline,performance.now()+90000);
+     await nativeDom.finish(()=>nativeRemaining(retirementDeadline));
     }
-    const retirementDeadline=Math.min(renderedDeadline,performance.now()+90000);
-    await nativeDom.finish(()=>nativeRemaining(retirementDeadline));
+   }catch(reason){
+    notePreflightStageFailure(reason,stage,user,page);
+    throw reason;
    }
   });
  });
  // Finish every admitted sign-in body. On failure the terminal sweep still owns
  // every native context-close outcome.
  for(const result of signInPreflight)if(result.status==='rejected')throw result.reason;
- requireCleanDriver();
- const baselineCapture=baselineNavigation?.finish();
- if(measureDevelopment&&baselineCapture)developmentNavigationBinding=baselineCapture;
- if(strictRenderedPreflight)renderedReport.union=requireNativeRenderedUnion(renderedReport.observations);
+ let baselineCapture,sealStage='pre-render-settlement';
+ try{
+  requireCleanDriver();
+  sealStage='legacy-navigation-seal';
+  baselineCapture=baselineNavigation?.finish();
+  if(measureDevelopment&&baselineCapture)developmentNavigationBinding=baselineCapture;
+  sealStage='rendered-union-validation';
+  if(strictRenderedPreflight)renderedReport.union=requireNativeRenderedUnion(renderedReport.observations);
+ }catch(reason){
+  notePreflightStageFailure(reason,sealStage);
+  throw reason;
+ }
  report.navigationCapture={scope:'DEVELOPMENT_ONLY',releaseEligible:false,baselineScenarios:baselineCapture?.observations.length??0,loadedScenarios:0};save();
  // Handled card failures remain a failed acceptance gate. Keep collecting the
  // isolated workload evidence after every role completed a real sign-in.
