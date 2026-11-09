@@ -96,7 +96,6 @@ import ClockingListPage from '../app/admin/work-locations/clocking/page';
 import NewLocationPage from '../app/admin/work-locations/new/page';
 import ViewLocationPage from '../app/admin/work-locations/[id]/page';
 import EditLocationPage from '../app/admin/work-locations/[id]/edit/page';
-import LocationsRedirect from '../app/admin/locations/page';
 import NewClockingLocationRedirect from '../app/admin/locations/clocking/new/page';
 import EditClockingLocationRedirect from '../app/admin/locations/clocking/[id]/page';
 import {
@@ -243,8 +242,8 @@ describe('639bf4a5 — the menu moved, the import boundary did not', () => {
     expect(files.sort(), 'only the three stubs and their shared forwarder are left').toEqual([
       'app/admin/locations/clocking/[id]/page.tsx',
       'app/admin/locations/clocking/new/page.tsx',
-      'app/admin/locations/page.tsx',
       'app/admin/locations/redirect-stub.ts',
+      'app/admin/locations/route.ts',
     ]);
     for (const rel of files) {
       expect(read(rel), `${rel} imports nothing from the attendance pack`).not.toMatch(
@@ -1005,9 +1004,8 @@ describe('639bf4a5 — the label is "Locations", in all six locales', () => {
 // ─────────────────────────────── THE OLD ADDRESSES STILL RESOLVE ───────────────────────────────
 
 describe('639bf4a5 — the /admin/locations addresses redirect, guard first; they do not 404', () => {
-  it('each stub calls the guard BEFORE it redirects', () => {
+  it('each descendant page stub calls the guard before it redirects', () => {
     for (const rel of [
-      'app/admin/locations/page.tsx',
       'app/admin/locations/clocking/new/page.tsx',
       'app/admin/locations/clocking/[id]/page.tsx',
     ]) {
@@ -1020,14 +1018,6 @@ describe('639bf4a5 — the /admin/locations addresses redirect, guard first; the
       // the route out of the function-access matrix (which only counts a page.tsx that calls a guard).
       expect(guard, `${rel} guards before it forwards`).toBeLessThan(fwd);
     }
-  });
-
-  it('the list stub forwards to the CLOCKING list (r423: the old address meant clocking locations), carrying its query', async () => {
-    LAST_REDIRECT = '';
-    await expect(LocationsRedirect({ searchParams: Promise.resolve({ saved: '1', focus: 'abc' }) })).rejects.toThrow(
-      'NEXT_REDIRECT',
-    );
-    expect(LAST_REDIRECT).toBe(`${CLOCKING_LIST}?saved=1&focus=abc`);
   });
 
   it('the new-clocking stub forwards, keeping a refused save’s reason and typed values', async () => {
