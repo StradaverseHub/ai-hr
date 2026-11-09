@@ -1183,7 +1183,7 @@ async function selectedRead<T>(q:ISql,query:string,budget:SelectedBudget):Promis
 }
 async function selectedConnection(q:ISql,budget:SelectedBudget){
  const rows=await selectedRead<SelectedConnection&{pid:number;backendStart:string}>(q,
-  "SELECT jsonb_build_object('serverAddress',inet_server_addr()::text,'serverPort',inet_server_port(),'clientAddress',inet_client_addr()::text,'database',current_database(),'databaseOid',d.oid::text,'owner',pg_get_userbyid(d.datdba),'current',current_user,'session',session_user,"+
+  "SELECT jsonb_build_object('serverAddress',pg_catalog.host(inet_server_addr()),'serverPort',inet_server_port(),'clientAddress',pg_catalog.host(inet_client_addr()),'database',current_database(),'databaseOid',d.oid::text,'owner',pg_get_userbyid(d.datdba),'current',current_user,'session',session_user,"+
   "'systemIdentifier',(SELECT system_identifier::text FROM pg_catalog.pg_control_system()),'startedAt',pg_catalog.pg_postmaster_start_time()::text,'pid',pg_backend_pid(),'backendStart',a.backend_start::text) AS value "+
   "FROM pg_catalog.pg_database d JOIN pg_catalog.pg_stat_activity a ON a.pid=pg_backend_pid() WHERE d.datname=current_database()",budget);
  selectedEqual(rows.length,1);selectedInt(rows[0].pid,2);selectedNeed(typeof rows[0].backendStart==='string');
