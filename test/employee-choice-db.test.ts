@@ -289,7 +289,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   if(performance.now()+remaining>deadline)throw new Error('Organisation page slot refused before '+phase);
  };
  const active=(phase:string,remaining=20000)=>{signal.throwIfAborted();requireTime(activeEnd,remaining,phase);};
- const cleanup=(phase:string)=>requireTime(ownerDeadline,20000,phase);
+ const cleanup=(phase:string,remaining=20000)=>requireTime(ownerDeadline,remaining,phase);
  const limit=async(tx:Tx,step:(label:string)=>void)=>{
   step('transaction limits');
   await tx.execute(sql`select set_config('statement_timeout','20s',true),set_config('lock_timeout','300ms',true)`);
@@ -432,15 +432,60 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   void work.then(()=>readSnapshots.delete(work),()=>readSnapshots.delete(work));
   return work;
  };
+ const errorHash=(error:unknown)=>error instanceof Error?organisationPageHash(error.message):null;
+ type OwnerStep=(label:string,remaining?:number)=>void;
+ type OwnerReceipt={outer:'pending'|'commit-acknowledged'|'unconfirmed';callback:'pending'|'not-entered'|'fulfilled'|'rejected';
+  backend?:PageRealm;outerFailure?:string|null;callbackFailure?:string|null};
+ const ownerReceipts:Partial<Record<'prepare'|'restore',OwnerReceipt>>={};
+ metadata.ownerTransactions=ownerReceipts;
+ let ownerUnconfirmed=false;
+ const ownerTransaction=async<T>(phase:'prepare'|'restore',step:OwnerStep,work:(tx:Tx,ownedStep:OwnerStep,id:PageRealm)=>Promise<T>)=>{
+  const receipt:OwnerReceipt={outer:'pending',callback:'not-entered'};
+  ownerReceipts[phase]=receipt;save();
+  let pending:Promise<T>|undefined,outerFailure:{error:unknown}|undefined;
+  const ownedStep:OwnerStep=(label,remaining)=>{
+   if(ownerUnconfirmed)throw new Error('Organisation page owner transaction is unconfirmed');
+   step(label,remaining);
+  };
+  try{
+   const value=await owner.db.transaction(tx=>{
+    receipt.callback='pending';
+    pending=Promise.resolve().then(async()=>{
+     await limit(tx,ownedStep);
+     const id=await realm(tx,ownedStep,'postgres');
+     receipt.backend=id;save();
+     return work(tx,ownedStep,id);
+    });
+    return pending;
+   });
+   if(!pending||!receipt.backend)throw new Error('Organisation page owner transaction returned without its native witness');
+   receipt.outer='commit-acknowledged';
+   return value;
+  }catch(error){
+   // postgres.js can reject on connection close before its callback or native
+   // rollback settles. No later owner work is safe without the outer acknowledgement.
+   receipt.outer='unconfirmed';ownerUnconfirmed=true;organisationPageUnconfirmed=true;
+   receipt.outerFailure=errorHash(error);outerFailure={error};
+   throw error;
+  }finally{
+   if(pending){
+    const [settled]=await Promise.allSettled([pending]);
+    receipt.callback=settled.status;
+    if(settled.status==='rejected'){
+     receipt.callbackFailure=errorHash(settled.reason);
+     if(outerFailure&&outerFailure.error!==settled.reason)
+      throw new AggregateError([outerFailure.error,settled.reason],'Organisation page owner '+phase+' and callback refused');
+    }
+   }
+  }
+ };
  const publicPortMs:Record<string,number>={};
  metadata.publicPortMs=publicPortMs;
  try{
   save();active('owned fixture preparation',110000);
-  const preparedOwner=await owner.db.transaction(async tx=>{
-   await limit(tx,active);
-   const id=await realm(tx,active,'postgres');
+  const preparedOwner=await ownerTransaction('prepare',active,async(tx,ownedStep,id)=>{
    ownerIdentity=id;metadata.owner=id;
-   active('exact empty fixture unit baseline');
+   ownedStep('exact empty fixture unit baseline');
    const [initial]=await tx.execute<{units:number;assignments:number;eligible:number}>(sql`select
     (select count(*)::int from public.business_unit where tenant_id=${tenant}::uuid) as units,
     (select count(*)::int from public.assignment where tenant_id=${tenant}::uuid) as assignments,
@@ -448,20 +493,21 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
      and department_id=${b.deptA}::uuid and employment_id=any(${sampleArray}::uuid[])
      and valid_to is null and superseded_at is null and business_unit_id is null) as eligible`);
    expect(initial).toEqual({units:0,assignments:50000,eligible:500});
-   active('fictional legacy organisation history');
+   ownedStep('fictional legacy organisation history');
    [historyBefore]=await tx.execute<FixtureHistory>(fixtureHistory);
    expect(historyBefore).toMatchObject({published:0,classifications:0});
-   active('fictional unit insertion');
+   ownedStep('fictional unit insertion');
    const inserted=await tx.execute<{id:string;code:string;name:string}>(sql`insert into public.business_unit(id,tenant_id,company_id,code,name)
     select u.id,${tenant}::uuid,${b.companyId}::uuid,u.code,u.name
     from jsonb_to_recordset(${JSON.stringify(units)}::jsonb) as u(id uuid,code text,name text) returning id::text,code,name`);
    expect(Array.from(inserted).sort((a,c)=>a.id.localeCompare(c.id))).toEqual([...units].sort((a,c)=>a.id.localeCompare(c.id)));
-   active('exact fictional Assignment tags');
+   ownedStep('exact fictional Assignment tags');
    touched=Array.from(await tx.execute<{id:string;employmentId:string}>(sql`update public.assignment set business_unit_id=${represented}::uuid
     where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid and department_id=${b.deptA}::uuid
      and employment_id=any(${sampleArray}::uuid[]) and valid_to is null and superseded_at is null and business_unit_id is null
     returning id::text,employment_id::text as "employmentId"`));
    expect(touched.map(row=>row.employmentId).sort()).toEqual([...organisationTagSample].sort());
+   ownedStep('fixture preparation before commit',0);
    return id;
   });
   fixtureCommitted=true;metadata.fixture={units:2,tagged:touched.length,committed:true};save();
@@ -518,39 +564,49 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  finally{
   await Promise.allSettled([...readSnapshots]);
   const admitted=ownerIdentity;
-  if(admitted)try{
+  if(admitted&&!ownerUnconfirmed)try{
+   const preparation=ownerReceipts.prepare;
+   if(preparation?.outer!=='commit-acknowledged'||preparation.callback!=='fulfilled')
+    throw new Error('Organisation page preparation settlement is unconfirmed');
    cleanup('owned fixture restoration');
-   await owner.db.transaction(async tx=>{
-    await limit(tx,cleanup);
-    const id=await realm(tx,cleanup,'postgres');sameWorker(id,admitted);
-    cleanup('native app settlement');
-    const [settlement]=await tx.execute<{transactions:number}>(sql`select count(*)::int as transactions from pg_stat_activity
-     where datname=current_database() and usename='ai_hr_app' and xact_start is not null`);
+   await ownerTransaction('restore',cleanup,async(tx,ownedStep,id)=>{
+    sameWorker(id,admitted);
+    ownedStep('native app and preparation settlement');
+    type OwnerObservation={state:string;outside:boolean};
+    const [settlement]=await tx.execute<{transactions:number;preparation:OwnerObservation|null}>(sql`select
+     (select count(*)::int from pg_stat_activity where datname=current_database() and usename='ai_hr_app' and xact_start is not null) as transactions,
+     (select jsonb_build_object('state',state,'outside',xact_start is null) from pg_stat_activity
+      where datname=current_database() and usename='postgres' and pid=${admitted.pid}::int
+       and extract(epoch from backend_start)::text=${admitted.started}) as preparation`);
     expect(settlement.transactions).toBe(0);metadata.nativeAppSettled=true;
-    cleanup('exact fixture ownership');
+    const sameBackend=id.pid===admitted.pid&&id.started===admitted.started;
+    if(sameBackend)expect(settlement.preparation).toEqual({state:'active',outside:false});
+    else if(settlement.preparation)expect(settlement.preparation).toEqual({state:'idle',outside:true});
+    metadata.preparationSettlement={sameBackend,observed:settlement.preparation};
+    ownedStep('exact fixture ownership');
     const owned=Array.from(await tx.execute<{id:string;code:string;name:string}>(sql`select id::text,code,name from public.business_unit
      where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid and id=any(${organisationPageArray(units.map(unit=>unit.id))}::uuid[])
      order by code`));
     expect(owned).toEqual(owned.length>0||fixtureCommitted?[units[1],units[0]]:[]);
-    cleanup('native Assignment restoration');
+    ownedStep('native Assignment restoration');
     const ids=organisationPageArray(touched.map(row=>row.id));
     const reverted=Array.from(await tx.execute<{id:string;employmentId:string}>(sql`update public.assignment set business_unit_id=null
      where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid and department_id=${b.deptA}::uuid
       and id=any(${ids}::uuid[]) and employment_id=any(${sampleArray}::uuid[]) and valid_to is null and superseded_at is null
       and business_unit_id=${represented}::uuid returning id::text,employment_id::text as "employmentId"`));
     expect(reverted.sort((a,c)=>a.id.localeCompare(c.id))).toEqual(owned.length?[...touched].sort((a,c)=>a.id.localeCompare(c.id)):[]);
-    cleanup('owned fixture unit removal');
+    ownedStep('owned fixture unit removal');
     const removed=await tx.execute<{id:string}>(sql`delete from public.business_unit where tenant_id=${tenant}::uuid
      and company_id=${b.companyId}::uuid and id=any(${organisationPageArray(units.map(unit=>unit.id))}::uuid[]) returning id::text`);
     expect(Array.from(removed,row=>row.id).sort()).toEqual(owned.map(row=>row.id).sort());
-    cleanup('original fixture verification');
+    ownedStep('original fixture verification');
     const [original]=await tx.execute<{units:number;tags:number}>(sql`select
      (select count(*)::int from public.business_unit where tenant_id=${tenant}::uuid) as units,
      (select count(*)::int from public.assignment where tenant_id=${tenant}::uuid
       and employment_id=any(${sampleArray}::uuid[]) and business_unit_id is null and valid_to is null and superseded_at is null) as tags`);
     expect(original).toEqual({units:0,tags:500});metadata.restoredFixture=original;
     if(historyBefore){
-     cleanup('fictional organisation history verification');
+     ownedStep('fictional organisation history verification');
      const [historyAfter]=await tx.execute<FixtureHistory>(fixtureHistory);
      const {organisationRevision:beforeRevision,...beforeBusinessHistory}=historyBefore;
      const {organisationRevision:afterRevision,...afterBusinessHistory}=historyAfter;
@@ -559,15 +615,14 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
      // Native dependency epochs advance on fixture writes; their owner is the disposable worker teardown.
      metadata.fixtureHistory={before:historyBefore,after:historyAfter};
     }
-    requireTime(ownerDeadline,0,'fixture restoration before commit');
+    ownedStep('fixture restoration before commit',0);
    });
    requireTime(ownerDeadline,0,'acknowledged fixture restoration');
    restored=true;
   }catch(error){restoreFailed=true;restoreFailure=error;organisationPageUnconfirmed=true;}
  }
- const errorHash=(error:unknown)=>error instanceof Error?organisationPageHash(error.message):null;
  metadata.failures={work:errorHash(workFailure),cleanup:errorHash(restoreFailure)};
- metadata.restored=restored;
+ metadata.restored=restored;metadata.ownerStopRequired=organisationPageUnconfirmed;
  const failures=[...(workFailed?[workFailure]:[]),...(restoreFailed?[restoreFailure]:[])];
  try{save();}catch(error){failures.push(error);}
  if(failures.length)throw new AggregateError(failures,'Native organisation page work or cleanup refused');
