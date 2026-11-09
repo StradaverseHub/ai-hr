@@ -1,4 +1,4 @@
-/** Disposable owner-shape rehearsal for the unchanged 4100/4101 stock transaction. */
+/** Disposable owner-shape rehearsal for the unchanged Rewards 4100 stock transaction. */
 import { createHash } from 'node:crypto';
 import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,7 +9,6 @@ import { expect } from 'vitest';
 
 const pending = [
   { tag: '4100_rewards_review_creator_independence', when: 1793330003800, hash: '2b985ae73e3da8c1ce3e7015829734632bff6ac550021dc644c59b9603083dff' },
-  { tag: '4101_attendance_formula_company_scope', when: 1793330003801, hash: '60d18c40db8d2f8392c81fa5ccb7cf05c12d6448321e744ebbc31605574e28f4' },
 ] as const;
 
 type Reader = Pick<postgres.Sql, 'unsafe'>;
@@ -61,13 +60,8 @@ export async function rehearseRewardsCreatorOwnerUpgrade(
   await fixture`alter schema drizzle owner to ai_hr_owner`;
   await fixture`alter table drizzle.__drizzle_migrations owner to ai_hr_owner`;
   await fixture`alter table public.reward_unit_setup owner to ai_hr_owner`;
-  for (const relation of ['attendance_formula', 'attendance_formula_revision', 'attendance_formula_test',
-    'attendance_formula_result', 'attendance_formula_event', 'payroll_attendance_allowance_source']) {
-    await fixture.unsafe(`alter table public.${relation} owner to ai_hr_owner`);
-  }
-  for (const name of ['binding_guard', 'result_guard', 'ot_settlement_guard']) {
-    await fixture.unsafe(`alter function app.attendance_formula_${name}() owner to ai_hr_owner`);
-  }
+  // Attendance 4101 and later migrations use the ordinary full fixture route below
+  // this rehearsal. They have a separate ownership graph and install transaction.
 
   const [role] = await ordinaryOwner`select current_database() as db, session_user as login, current_user as effective`;
   expect(role).toEqual({ db: identity.db, login: 'ai_hr_owner', effective: 'ai_hr_owner' });
