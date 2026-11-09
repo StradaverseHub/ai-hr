@@ -1,6 +1,7 @@
 /** Authored UNRUN protocol cases; mocks are not real login, canonical effects or browser proof. */
 import {describe,it,expect,vi} from 'vitest';
 import {createModuleActionBrowserHandler,ModuleActionBrowserPacket,parseModuleActionBrowserResult} from '../lib/assistant-actions/module-action-http';
+import {CostAllocationMaintenance} from '../lib/assistant-actions/cost-allocation-maintenance-contract';
 const origin='https://fixture.test',id='11111111-1111-4111-8111-111111111111',employmentId='22222222-2222-4222-8222-222222222222',action='notifications.email_preferences.save' as const,digest='a'.repeat(64);
 const confirmation={action,contractVersion:1,actionId:id,reviewedDigest:digest};
 const index={kind:'module_review_index',reviews:[]};
@@ -14,6 +15,13 @@ function fixture(policy:{publicOrigin:string|undefined}={publicOrigin:origin}){
 function request(body:unknown={operation:'list'},extra:Record<string,string>={},url='http://127.0.0.1:3000/api/assistant/module-actions',method='POST'){
  return new Request(url,{method,headers:{origin,'content-type':'application/json','sec-fetch-site':'same-origin',...extra},...(method==='POST'?{body:JSON.stringify(body)}:{})});
 }
+function paddedRequest(packet:object,bytes:number){
+ const json=JSON.stringify(packet),encoder=new TextEncoder();
+ const body=json+' '.repeat(bytes-encoder.encode(json).byteLength);
+ expect(encoder.encode(body).byteLength).toBe(bytes);
+ return new Request(origin+'/api/assistant/module-actions',{method:'POST',body,
+  headers:{origin,'content-type':'application/json','sec-fetch-site':'same-origin'}});
+}
 describe('closed configured-origin human module transport',()=>{
  it('uses configured public origin behind an internal listener and returns only private bounded index data',async()=>{const f=fixture(),r=await f.handle(request(undefined,{host:'attacker.test','x-forwarded-host':'attacker.test'}));expect(r.status).toBe(200);expect(await r.json()).toEqual(index);expect(r.headers.get('cache-control')).toBe('private, no-store');expect(f.owners.authenticate).toHaveBeenCalledOnce();expect(f.owners.list).toHaveBeenCalledOnce();});
  it.each([undefined,'','not a URL','https://fixture.test/','https://user@fixture.test'])('refuses invalid server origin %s before identity/source work',async publicOrigin=>{const f=fixture({publicOrigin});expect((await f.handle(request())).status).toBe(403);expect(f.owners.authenticate).not.toHaveBeenCalled();expect(f.owners.list).not.toHaveBeenCalled();});
@@ -26,4 +34,33 @@ describe('closed configured-origin human module transport',()=>{
  it('passes only an immutable source-independent confirmation packet to its fixed human owner once',async()=>{const f=fixture();const r=await f.handle(request({operation:'confirm',confirmation}));expect(r.status).toBe(200);expect(await r.json()).toEqual(retired);expect(f.owners.confirm).toHaveBeenCalledExactlyOnceWith({serverOnly:'actual-session-placeholder'},confirmation);expect(f.owners.prepare).not.toHaveBeenCalled();});
  it('returns bounded authentication/source failures without diagnostic causes or retrying an uncertain effect',async()=>{const f=fixture();f.owners.authenticate.mockRejectedValueOnce(Error('PRIVATE_SESSION_DETAIL'));const denied=await f.handle(request());expect(denied.status).toBe(401);expect(await denied.json()).toEqual({error:'unavailable'});f.owners.confirm.mockRejectedValueOnce(Error('PRIVATE_QUERY_PARAMETERS'));const failed=await f.handle(request({operation:'confirm',confirmation}));expect(failed.status).toBe(503);expect(await failed.json()).toEqual({error:'unavailable'});expect(f.owners.confirm).toHaveBeenCalledOnce();});
  it('keeps a completed-confirmation response distinct from a prepared review',()=>{expect(()=>parseModuleActionBrowserResult('confirm',prepared)).toThrow();expect(()=>ModuleActionBrowserPacket.parse({operation:'discard',confirmation:{...confirmation,sourceEventId:id}})).toThrow();});
+ it('enforces the 20 KiB limit on otherwise valid default requests before authentication',async()=>{
+  const {handle,owners}=fixture(),packet={operation:'list'};
+  const denied=await handle(paddedRequest(packet,20481));
+  expect(denied.status).toBe(400);
+  expect(owners.authenticate).not.toHaveBeenCalled();
+  expect(owners.list).not.toHaveBeenCalled();
+  const allowed=await handle(paddedRequest(packet,20480));
+  expect(allowed.status).toBe(200);
+  expect(await allowed.json()).toEqual(index);
+  expect(owners.authenticate).toHaveBeenCalledOnce();
+  expect(owners.list).toHaveBeenCalledExactlyOnceWith({serverOnly:'actual-session-placeholder'});
+ });
+ it('enforces the 64 KiB limit on otherwise valid Cost Allocation requests before authentication',async()=>{
+  const {owners}=fixture(),choice={kind:'unavailable'},choices=vi.fn(async()=>choice);
+  const {authenticate,...operations}=owners;
+  const handle=createModuleActionBrowserHandler({...owners,costAllocationMaintenance:{...operations,choices}},{publicOrigin:origin});
+  const selection={query:'',employmentId,effectiveDate:'2025-01-01'};
+  const packet={action:CostAllocationMaintenance.action,operation:'choices',selection};
+  const denied=await handle(paddedRequest(packet,65537));
+  expect(denied.status).toBe(400);
+  expect(authenticate).not.toHaveBeenCalled();
+  expect(choices).not.toHaveBeenCalled();
+  const allowed=await handle(paddedRequest(packet,65536));
+  expect(allowed.status).toBe(200);
+  expect(await allowed.json()).toEqual(choice);
+  expect(authenticate).toHaveBeenCalledOnce();
+  expect(choices).toHaveBeenCalledExactlyOnceWith({serverOnly:'actual-session-placeholder'},selection);
+  expect(owners.list).not.toHaveBeenCalled();
+ });
 });

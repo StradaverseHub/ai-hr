@@ -694,6 +694,33 @@ export type RegisteredModuleActionBrowserOwnerKey=Exclude<AgentActionBrowserOwne
 export type RegisteredModuleActionBrowserOwners<Session>=ModuleActionBrowserOwners<Session>&Required<Pick<ModuleActionBrowserOwners<Session>,RegisteredModuleActionBrowserOwnerKey>>;
 const responseHeaders={'Cache-Control':'private, no-store','Vary':'Cookie, Authorization','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
 const unavailable=(status:number)=>Response.json({error:'unavailable'},{status,headers:responseHeaders});
+function has64KiBModuleActionRequest(action:string):boolean{
+ switch(action){
+  case PX.action:
+  case CS.action:
+  case CP.action:
+  case CC.action:
+  case GA.action:
+  case FM.action:
+  case BM.action:
+  case TP.action:
+  case CA.action:
+  case PY.action:
+  case PR.action:
+  case RP.action:
+  case EC.action:
+  case PM.action:
+  case FA.action:
+  case DM.action:
+  case QM.action:
+  case CM.action:
+  case EM.action:
+  case WP.action:
+   return true;
+  default:
+   return false;
+ }
+}
 /** Fixed byte/fragment/time bounds before identity/source work. Once confirmation starts, transport
  * loss is uncertain; the client must reopen the SAME saved action rather than create/retry effects. */
 async function packet(request:Request):Promise<SharedBrowserPacket>{
@@ -704,7 +731,7 @@ async function packet(request:Request):Promise<SharedBrowserPacket>{
  const abort=()=>{rejectAbort();void reader.cancel().catch(()=>{});};request.signal.addEventListener('abort',abort,{once:true});if(request.signal.aborted)abort();const timer=setTimeout(abort,5000);
  try{for(;;){if(++fragments>8192)throw Error();const part=await Promise.race([reader.read(),stopped]);if(part.done)break;bytes+=part.value.byteLength;if(bytes>TESTING_ACTION_TRANSPORT_BYTES)throw Error();chunks.push(part.value);}
   if(request.signal.aborted)throw Error();const body=new Uint8Array(bytes);let offset=0;for(const chunk of chunks){body.set(chunk,offset);offset+=chunk.byteLength;}
-  const parsed=SharedBrowserPacket.parse(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(body)));const extended='action' in parsed&&parsed.action===MODULE_TESTING_EXECUTION_ACTION&&parsed.operation==='prepare',knowledge='action' in parsed&&parsed.action===KNOWLEDGE_ARTICLE_ACTION&&parsed.operation==='prepare',toil='action' in parsed&&parsed.action===TOIL_ACTION&&parsed.operation==='prepare',attendance='action' in parsed&&parsed.action===ATTENDANCE_ACTION&&parsed.operation==='prepare',countryStatutory='action' in parsed&&parsed.action===COUNTRY_STATUTORY_ACTION&&parsed.operation==='prepare',payComponent='action' in parsed&&parsed.action===PAY_COMPONENT_ACTION&&parsed.operation==='prepare',multiCycle='action' in parsed&&parsed.action===MULTI_CYCLE_RUN_ACTION&&parsed.operation==='prepare',bound='action' in parsed&&(parsed.action===PX.action||parsed.action===CS.action||parsed.action===CP.action||parsed.action===CC.action||parsed.action===GA.action||parsed.action===FM.action||parsed.action===BM.action||parsed.action===TP.action||parsed.action===CA.action||parsed.action===PY.action||parsed.action===PR.action||parsed.action===RP.action||parsed.action===EC.action||parsed.action===PM.action||parsed.action===FA.action||parsed.action===DM.action||parsed.action===QM.action||parsed.action===CM.action||parsed.action===EM.action||parsed.action===WP.action)?65536:countryStatutory?COUNTRY_STATUTORY_ACTION_REQUEST_BYTES:multiCycle?MULTI_CYCLE_RUN_PREPARE_BYTES:payComponent?PAY_COMPONENT_ACTION_REQUEST_BYTES:knowledge?KNOWLEDGE_ACTION_TRANSPORT_BYTES:toil?TOIL_ACTION_PREPARE_BYTES:attendance?ATTENDANCE_ACTION_BYTES:20480,fragmentBound=countryStatutory||multiCycle||payComponent||knowledge||toil||attendance?1024:512;if(!extended&&(bytes>bound||fragments>fragmentBound||length!==null&&Number(length)>bound))throw Error();return parsed;
+  const parsed=SharedBrowserPacket.parse(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(body)));const extended='action' in parsed&&parsed.action===MODULE_TESTING_EXECUTION_ACTION&&parsed.operation==='prepare',knowledge='action' in parsed&&parsed.action===KNOWLEDGE_ARTICLE_ACTION&&parsed.operation==='prepare',toil='action' in parsed&&parsed.action===TOIL_ACTION&&parsed.operation==='prepare',attendance='action' in parsed&&parsed.action===ATTENDANCE_ACTION&&parsed.operation==='prepare',countryStatutory='action' in parsed&&parsed.action===COUNTRY_STATUTORY_ACTION&&parsed.operation==='prepare',payComponent='action' in parsed&&parsed.action===PAY_COMPONENT_ACTION&&parsed.operation==='prepare',multiCycle='action' in parsed&&parsed.action===MULTI_CYCLE_RUN_ACTION&&parsed.operation==='prepare',bound='action' in parsed&&has64KiBModuleActionRequest(parsed.action)?65536:countryStatutory?COUNTRY_STATUTORY_ACTION_REQUEST_BYTES:multiCycle?MULTI_CYCLE_RUN_PREPARE_BYTES:payComponent?PAY_COMPONENT_ACTION_REQUEST_BYTES:knowledge?KNOWLEDGE_ACTION_TRANSPORT_BYTES:toil?TOIL_ACTION_PREPARE_BYTES:attendance?ATTENDANCE_ACTION_BYTES:20480,fragmentBound=countryStatutory||multiCycle||payComponent||knowledge||toil||attendance?1024:512;if(!extended&&(bytes>bound||fragments>fragmentBound||length!==null&&Number(length)>bound))throw Error();return parsed;
  }catch{void reader.cancel().catch(()=>{});throw Error();}finally{clearTimeout(timer);request.signal.removeEventListener('abort',abort);reader.releaseLock();}
 }
 /** Trusted server construction only. Undefined/invalid configured origins refuse; request Host,
