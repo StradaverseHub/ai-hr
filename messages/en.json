@@ -36757,6 +36757,11 @@
     "residencyHelp": "Record the bank payee’s residency for payment reporting, including a custom account holder. This is separate from employee tax residency."
   },
   "attendanceFormula": {
+    "allCompanies": "All Companies",
+    "selectedCompanies": "Selected companies ({count})",
+    "allCompanySnapshot": "This version covers {count} active companies. Review new companies before adding them.",
+    "refreshCompanies": "Review current company list",
+    "employeeCompany": "Company for employee selection",
     "title": "Attendance formulas",
     "subtitle": "Build, test and review attendance calculations before activation.",
     "settings": "Attendance settings",

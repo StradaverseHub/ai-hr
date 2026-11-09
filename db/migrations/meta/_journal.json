@@ -5034,6 +5034,13 @@
       "when": 1793330003800,
       "tag": "4100_rewards_review_creator_independence",
       "breakpoints": true
+    },
+    {
+      "idx": 3501,
+      "version": "7",
+      "when": 1793330003801,
+      "tag": "4101_attendance_formula_company_scope",
+      "breakpoints": true
     }
   ]
 }

@@ -34,6 +34,7 @@ it('refuses inactive and not-yet-effective processing, and a real other tenant c
  const proof=await testAttendanceFormula(f.ctx,f);await activateAttendanceFormula(f.ctx,{...f,testId:proof.id});const result=await calculateAttendanceFormulaResult(f.ctx,f);
  const foreign=adminCtx(await seedBase());expect(await listAttendanceFormulaResults(foreign,{employmentId:f.employmentId,date:f.date})).toEqual([]);
  await expect(reviewAttendanceFormulaResult(foreign,{resultId:result.id,command:'review',reason:'Foreign review'})).rejects.toThrow();
+ await changeAttendanceFormulaStatus(f.ctx,{id:f.id,command:'deactivate',reason:'Isolate future-effective processing from overlapping activation.'});
  const future=await saveAttendanceFormula(f.ctx,{configuration:{...f.configuration,code:'FUTURE_RULE',effectiveFrom:'2099-01-01',library:{conditions:[],formulas:[{code:'FUTURE_RULE',source:'Return 1'}]}}});const validation=await testAttendanceFormula(f.ctx,{...f,...future});await activateAttendanceFormula(f.ctx,{...future,testId:validation.id});await expect(calculateAttendanceFormulaResult(f.ctx,{...f,id:future.id})).rejects.toThrow(/effective/);
 });
 it('posts an approved earning through the native source projector once and refuses stale Payroll replay',async()=>{

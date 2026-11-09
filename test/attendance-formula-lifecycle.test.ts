@@ -37,3 +37,62 @@ it('distinguishes the current saved revision from a still-active prior version',
  await saveAttendanceFormula(f.ctx,{id:f.id,expectedRevisionId:f.revisionId,configuration:{...f.configuration,description:'Fictional next-version draft'}});
  const view=await getAttendanceFormula(f.ctx,f.id);expect(view.latest.ordinal).toBe(2);expect(view.activeOrdinal).toBe(1);expect(view.activeRevisionId).toBe(f.revisionId);
 });
+
+async function secondEmployer(f: Awaited<ReturnType<typeof fixture>>) {
+ const {company,department,appUser,roleAssignment}=await import('../db/schema');
+ const [employer]=await owner.db.insert(company).values({tenantId:base.tenantId,legalName:'Fictional formula company B'}).returning();
+ const [dept]=await owner.db.insert(department).values({tenantId:base.tenantId,companyId:employer.id,name:'Operations'}).returning();
+ const worker=await hireEmployee(f.ctx,{person:{fullName:'Fictional company B employee',primaryEmail:'formula-company-b@example.test'},companyId:employer.id,departmentId:dept.id,employmentType:'full_time',hiredOn:'2024-01-01'});
+ const [user]=await owner.db.insert(appUser).values({tenantId:base.tenantId,workosUserId:'fictional-attendance-company-b'}).returning();
+ await owner.db.insert(roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,companyId:employer.id,role:'hr_admin'});
+ const scoped={...f.ctx,userId:user.id,grants:[{role:'hr_admin' as const,companyId:employer.id}]};
+ await setAttendancePolicy(f.ctx,{companyId:employer.id,workStart:'09:00',workEnd:'17:00',breakMinutes:0,lateAfter:'09:00',halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7]});
+ await checkIn(f.ctx,{employmentId:worker.employmentId,date:f.date,time:'09:00'});
+ await checkOut(f.ctx,{employmentId:worker.employmentId,date:f.date,time:'17:00'});
+ return {id:employer.id,employmentId:worker.employmentId,scoped};
+}
+
+it('uses one formula identity for two dated companies without exposing the other company’s authoring and test records',async()=>{
+ const f=await fixture(),second=await secondEmployer(f);
+ const {attendanceFormulaChoicesForDay,calculateAttendanceFormulaResult,listAttendanceFormulaResults}=await import('../packs/attendance/service');
+ const companyIds=[base.companyId,second.id].sort();
+ expect((await attendanceFormulaSetup(f.ctx,companyIds)).canSelectAll).toBe(true);
+ expect((await attendanceFormulaSetup(second.scoped,[second.id])).canSelectAll).toBe(false);
+ const configuration={...f.configuration,companyScope:{mode:'all' as const,companyIds},
+  eligibility:{mode:'selected' as const,employmentIds:[f.employmentId,second.employmentId]}};
+ const version=await saveAttendanceFormula(f.ctx,{configuration});
+ const proof=await testAttendanceFormula(f.ctx,{...version,employmentId:second.employmentId,date:f.date});
+ expect(proof.companyId).toBe(second.id);
+ await activateAttendanceFormula(f.ctx,{...version,testId:proof.id});
+ expect((await getAttendanceFormula(f.ctx,version.id)).latest.definition.companyScope).toEqual(configuration.companyScope);
+ await expect(getAttendanceFormula(second.scoped,version.id)).rejects.toThrow(/scope/);
+ const choices=await attendanceFormulaChoicesForDay(second.scoped,{employmentId:second.employmentId,date:f.date,companyIds:[second.id]});
+ expect(choices.map(row=>row.id)).toEqual([version.id]);
+ const calculated=await calculateAttendanceFormulaResult(second.scoped,{...version,employmentId:second.employmentId,date:f.date,companyIds:[second.id]});
+ expect(calculated).toMatchObject({formulaId:version.id,companyId:second.id,amount:'80.00'});
+ expect((await listAttendanceFormulaResults(second.scoped,{employmentId:second.employmentId,date:f.date}))[0].code).toBe(configuration.code);
+ const [execution]=await withTenant(second.scoped,tx=>tx.execute<{definition:{eligibility:{employmentIds:string[]};companyScope?:unknown}}>(sql`
+  select definition from app.attendance_formula_subject_versions(${second.id}::uuid,${second.employmentId}::uuid,${f.date}::date)`));
+ expect(execution.definition.eligibility.employmentIds).toEqual([second.employmentId]);
+ expect(execution.definition).not.toHaveProperty('companyScope');
+ await expect(calculateAttendanceFormulaResult(second.scoped,{...version,employmentId:f.employmentId,date:f.date,companyIds:[second.id]})).rejects.toThrow();
+});
+
+it('rejects incomplete All Companies coverage, a company-limited Pay Item and overlapping exclusive activation',async()=>{
+ const f=await fixture(),second=await secondEmployer(f);
+ const companyIds=[base.companyId,second.id];
+ const all={...f.configuration,companyScope:{mode:'all' as const,companyIds}};
+ await expect(saveAttendanceFormula(f.ctx,{configuration:{...all,companyScope:{mode:'all',companyIds:[base.companyId]}}}))
+  .rejects.toMatchObject({cause:expect.objectContaining({code:'AF002'})});
+ await owner.db.update(payComponent).set({appliedCompanyIds:[base.companyId]}).where(eq(payComponent.id,f.configuration.payItemId));
+ await expect(saveAttendanceFormula(f.ctx,{configuration:all})).rejects.toThrow(/every selected company/);
+ await owner.db.update(payComponent).set({appliedCompanyIds:null}).where(eq(payComponent.id,f.configuration.payItemId));
+ const first=await saveAttendanceFormula(f.ctx,{configuration:all});
+ const firstProof=await testAttendanceFormula(f.ctx,{...first,employmentId:f.employmentId,date:f.date});
+ await activateAttendanceFormula(f.ctx,{...first,testId:firstProof.id});
+ const code='SECOND_RULE';
+ const duplicate=await saveAttendanceFormula(f.ctx,{configuration:{...f.configuration,code,companyScope:{mode:'selected',companyIds:[second.id]},library:{formulas:[{code,source:'Return 1'}],conditions:[]}}});
+ const proof=await testAttendanceFormula(f.ctx,{...duplicate,employmentId:second.employmentId,date:f.date});
+ await expect(activateAttendanceFormula(f.ctx,{...duplicate,testId:proof.id})).rejects.toThrow(/overlaps/);
+ expect((await getAttendanceFormula(f.ctx,duplicate.id)).status).toBe('inactive');
+});

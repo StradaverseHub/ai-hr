@@ -36635,6 +36635,11 @@
     "residencyHelp": "Ghi nhận tình trạng cư trú của người nhận để báo cáo thanh toán, gồm cả chủ tài khoản tùy chỉnh. Thông tin này tách biệt với tình trạng cư trú thuế của nhân viên."
   },
   "attendanceFormula": {
+    "allCompanies": "Tất cả công ty",
+    "selectedCompanies": "Công ty đã chọn ({count})",
+    "allCompanySnapshot": "Phiên bản này áp dụng cho {count} công ty đang hoạt động. Hãy xem xét công ty mới trước khi thêm.",
+    "refreshCompanies": "Xem lại danh sách công ty hiện tại",
+    "employeeCompany": "Công ty để chọn nhân viên",
     "title": "Công thức chấm công",
     "subtitle": "Tạo, kiểm thử và xem xét phép tính chấm công trước khi kích hoạt.",
     "settings": "Cài đặt chấm công",

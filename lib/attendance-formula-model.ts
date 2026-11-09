@@ -3,8 +3,9 @@ import {isCalendarDate} from './calendar-date';
 import {validateAllowanceEmployeeExpression,type AllowanceEmployeeGroup} from './allowance-employee-expression';
 import {compileAttendanceFormulaLibrary,type AttendanceFormulaLibrary} from './attendance-formula-language';
 export type AttendanceFormulaEligibility={mode:'all'}|{mode:'selected';employmentIds:string[]}|{mode:'criteria';expression:AllowanceEmployeeGroup};
+export type AttendanceFormulaCompanyScope={mode:'all'|'selected';companyIds:string[]};
 export type AttendanceFormulaConfiguration={
- code:string;description:string;companyId:string;payItemId:string;effectiveFrom:string;
+ code:string;description:string;companyId:string;companyScope?:AttendanceFormulaCompanyScope;payItemId:string;effectiveFrom:string;
  period:{method:'daily'}|{method:'weekly';cutoff:number}|{method:'monthly';cutoff:number};
  outputUnit:'amount'|'minutes'|'hours'|'days';purpose:'earning'|'deduction'|'overtime';
  eligibility:AttendanceFormulaEligibility;
@@ -15,8 +16,13 @@ const code=z.string().trim().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/);
 const expression=z.string().min(1).max(24000);
 const formula=z.object({code,source:expression}).strict();
 const period=z.discriminatedUnion('method',[z.object({method:z.literal('daily')}).strict(),z.object({method:z.literal('weekly'),cutoff:z.number().int().min(1).max(7)}).strict(),z.object({method:z.literal('monthly'),cutoff:z.number().int().min(1).max(31)}).strict()]);
+const companyScope=z.object({
+ mode:z.enum(['all','selected']),
+ companyIds:z.array(z.uuid().transform(value=>value.toLowerCase())).min(1).max(500)
+  .refine(ids=>new Set(ids).size===ids.length,'Choose each company once.').transform(ids=>ids.sort()),
+}).strict();
 const configuration=z.object({
- code,description:z.string().trim().min(1).max(1000),companyId:z.uuid().transform(value=>value.toLowerCase()),payItemId:z.uuid().transform(value=>value.toLowerCase()),effectiveFrom:z.string().refine(isCalendarDate,'Choose a real effective date.'),period,
+ code,description:z.string().trim().min(1).max(1000),companyId:z.uuid().transform(value=>value.toLowerCase()),companyScope:companyScope.optional(),payItemId:z.uuid().transform(value=>value.toLowerCase()),effectiveFrom:z.string().refine(isCalendarDate,'Choose a real effective date.'),period,
  outputUnit:z.enum(['amount','minutes','hours','days']),purpose:z.enum(['earning','deduction','overtime']),
  eligibility:z.discriminatedUnion('mode',[z.object({mode:z.literal('all')}).strict(),z.object({mode:z.literal('selected'),employmentIds:z.array(z.uuid().transform(value=>value.toLowerCase())).min(1).max(2000).refine(ids=>new Set(ids.map(id=>id.toLowerCase())).size===ids.length,'Choose each employee once.')}).strict(),z.object({mode:z.literal('criteria'),expression:z.unknown().transform(value=>validateAllowanceEmployeeExpression(value))}).strict()]),
  posting:z.discriminatedUnion('kind',[z.object({kind:z.literal('exclusive')}).strict(),z.object({kind:z.literal('sum')}).strict(),z.object({kind:z.literal('priority'),priority:z.number().int().min(1).max(10000)}).strict()]),
@@ -30,4 +36,9 @@ export function validateAttendanceFormulaConfiguration(raw:unknown):AttendanceFo
  if(value.purpose==='overtime'&&!['minutes','hours','amount'].includes(value.outputUnit))throw Error('Overtime must produce time or a canonical checked amount.');
  compileAttendanceFormulaLibrary(value.library,value.code);
  return value;
+}
+
+/** companyId is the immutable identity anchor. Legacy revisions use it as their sole execution company. */
+export function attendanceFormulaCompanyIds(value:Pick<AttendanceFormulaConfiguration,'companyId'|'companyScope'>):string[]{
+ return value.companyScope?.companyIds??[value.companyId];
 }

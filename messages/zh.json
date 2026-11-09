@@ -36635,6 +36635,11 @@
     "residencyHelp": "请记录收款人的居民身份以供付款申报，包括自定义账户持有人。此资料与员工税务居民身份分开。"
   },
   "attendanceFormula": {
+    "allCompanies": "所有公司",
+    "selectedCompanies": "所选公司（{count} 家）",
+    "allCompanySnapshot": "此版本涵盖 {count} 家有效公司。添加新公司前请先审核。",
+    "refreshCompanies": "审核当前公司列表",
+    "employeeCompany": "员工选择所属公司",
     "title": "考勤公式",
     "subtitle": "建立、测试并审核考勤计算后再启用。",
     "settings": "考勤设置",

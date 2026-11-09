@@ -48,6 +48,7 @@ import {
   integer,
   smallint,
   index,
+  unique,
   uniqueIndex,
   primaryKey,
   check,
@@ -7481,7 +7482,9 @@ export const payrollAttendanceAllowanceSource = pgTable('payroll_attendance_allo
   payMonth:text('pay_month').notNull(),periodKey:text('period_key').notNull(),
   amount:numeric('amount',{precision:12,scale:2}).notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('payroll_attendance_allowance_source_uq').on(t.tenantId,t.policyId,t.employmentId,t.periodKey),
-  index('payroll_attendance_allowance_batch_idx').on(t.batchId,t.employmentId,t.componentId)]);
+  index('payroll_attendance_allowance_batch_idx').on(t.batchId,t.employmentId,t.componentId),
+  foreignKey({name:'attendance_contribution_formula_owner_fk',columns:[t.formulaId,t.tenantId],foreignColumns:[attendanceFormula.id,attendanceFormula.tenantId]}),
+]);
 export const attendanceAllowanceTransfer = pgTable('attendance_allowance_transfer', {
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
   policyId:uuid('policy_id').notNull().references(()=>attendanceAllowancePolicy.id),
@@ -11717,25 +11720,38 @@ export const orgChartRoot=pgTable('org_chart_root',{
 export const attendanceFormula = pgTable('attendance_formula', {
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),code:text('code').notNull(),
  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
-},t=>[uniqueIndex('attendance_formula_code_uq').on(t.tenantId,t.companyId,sql`lower(${t.code})`)]);
+},t=>[
+ uniqueIndex('attendance_formula_code_uq').on(t.tenantId,t.companyId,sql`lower(${t.code})`),
+ unique('attendance_formula_identity_tenant_uq').on(t.id,t.tenantId),
+]);
 export const attendanceFormulaRevision = pgTable('attendance_formula_revision', {
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),formulaId:uuid('formula_id').notNull().references(()=>attendanceFormula.id),ordinal:integer('ordinal').notNull(),
  payComponentId:uuid('pay_component_id').notNull().references(()=>payComponent.id),definition:jsonb('definition').$type<import('../lib/attendance-formula-model').AttendanceFormulaConfiguration>().notNull(),
  registryVersion:text('registry_version').notNull(),evaluatorVersion:text('evaluator_version').notNull(),contentHash:text('content_hash').notNull(),readRequirements:jsonb('read_requirements').$type<{financial:boolean;workforce:boolean}>().notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
-},t=>[uniqueIndex('attendance_formula_revision_ordinal_uq').on(t.formulaId,t.ordinal)]);
+},t=>[
+ uniqueIndex('attendance_formula_revision_ordinal_uq').on(t.formulaId,t.ordinal),
+ unique('attendance_formula_revision_identity_uq').on(t.id,t.formulaId,t.tenantId),
+]);
 export const attendanceFormulaTest = pgTable('attendance_formula_test', {
- id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),formulaId:uuid('formula_id').notNull().references(()=>attendanceFormula.id),revisionId:uuid('revision_id').notNull().references(()=>attendanceFormulaRevision.id),
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),formulaId:uuid('formula_id').notNull(),revisionId:uuid('revision_id').notNull(),
  employmentId:uuid('employment_id').notNull().references(()=>employment.id),periodFrom:date('period_from').notNull(),periodTo:date('period_to').notNull(),passed:boolean('passed').notNull(),sourceHash:text('source_hash').notNull(),payload:jsonb('payload').$type<Record<string,unknown>>().notNull(),
  createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
-});
+},t=>[
+ unique('attendance_formula_test_identity_uq').on(t.id,t.formulaId,t.revisionId,t.tenantId),
+ foreignKey({name:'attendance_formula_test_revision_fk',columns:[t.revisionId,t.formulaId,t.tenantId],foreignColumns:[attendanceFormulaRevision.id,attendanceFormulaRevision.formulaId,attendanceFormulaRevision.tenantId]}),
+]);
 export const attendanceFormulaEvent = pgTable('attendance_formula_event', {
  id:id(),sequence:bigserial('sequence',{mode:'number'}).notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),formulaId:uuid('formula_id').notNull().references(()=>attendanceFormula.id),
- revisionId:uuid('revision_id').references(()=>attendanceFormulaRevision.id),testId:uuid('test_id').references(()=>attendanceFormulaTest.id),kind:text('kind').notNull().$type<'created'|'saved'|'tested'|'activated'|'deactivated'|'archived'>(),detail:jsonb('detail').$type<Record<string,unknown>>().notNull().default({}),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
-});
+ revisionId:uuid('revision_id').references(()=>attendanceFormulaRevision.id),testId:uuid('test_id'),kind:text('kind').notNull().$type<'created'|'saved'|'tested'|'activated'|'deactivated'|'archived'>(),detail:jsonb('detail').$type<Record<string,unknown>>().notNull().default({}),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[
+ foreignKey({name:'attendance_formula_event_test_fk',columns:[t.testId,t.formulaId,t.revisionId,t.tenantId],foreignColumns:[attendanceFormulaTest.id,attendanceFormulaTest.formulaId,attendanceFormulaTest.revisionId,attendanceFormulaTest.tenantId]}),
+]);
 
 export const attendanceFormulaResult = pgTable('attendance_formula_result', {
- id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),formulaId:uuid('formula_id').notNull().references(()=>attendanceFormula.id),revisionId:uuid('revision_id').notNull().references(()=>attendanceFormulaRevision.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),periodFrom:date('period_from').notNull(),periodTo:date('period_to').notNull(),payComponentId:uuid('pay_component_id').notNull().references(()=>payComponent.id),quantity:text('quantity').notNull(),unit:text('unit').notNull().$type<'amount'|'minutes'|'hours'|'days'>(),rate:text('rate'),amount:numeric('amount',{precision:12,scale:2}).notNull(),sourceHash:text('source_hash').notNull(),readRequirements:jsonb('read_requirements').$type<{financial:boolean;workforce:boolean}>().notNull(),payload:jsonb('payload').$type<Record<string,unknown>>().notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
-});
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),formulaId:uuid('formula_id').notNull(),revisionId:uuid('revision_id').notNull(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),periodFrom:date('period_from').notNull(),periodTo:date('period_to').notNull(),payComponentId:uuid('pay_component_id').notNull().references(()=>payComponent.id),quantity:text('quantity').notNull(),unit:text('unit').notNull().$type<'amount'|'minutes'|'hours'|'days'>(),rate:text('rate'),amount:numeric('amount',{precision:12,scale:2}).notNull(),sourceHash:text('source_hash').notNull(),readRequirements:jsonb('read_requirements').$type<{financial:boolean;workforce:boolean}>().notNull(),payload:jsonb('payload').$type<Record<string,unknown>>().notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[
+ foreignKey({name:'attendance_formula_result_revision_fk',columns:[t.revisionId,t.formulaId,t.tenantId],foreignColumns:[attendanceFormulaRevision.id,attendanceFormulaRevision.formulaId,attendanceFormulaRevision.tenantId]}),
+]);
 export const attendanceFormulaResultEvent = pgTable('attendance_formula_result_event', {
  id:id(),sequence:bigserial('sequence',{mode:'number'}).notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),resultId:uuid('result_id').notNull().references(()=>attendanceFormulaResult.id),kind:text('kind').notNull().$type<'calculated'|'reviewed'|'approved'|'superseded'|'posted'|'reversed'>(),reason:text('reason').notNull(),batchId:uuid('batch_id').references(()=>payrollBatch.id),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
 });
