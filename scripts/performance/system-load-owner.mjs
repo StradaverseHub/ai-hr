@@ -40,6 +40,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
+import {observeSampledAdvisoryBlockers} from './lock-sample-attribution.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
  nativePreflightRoutePlan,nativePreflightRouteFor,nativePreflightContentWitness,nativePreflightReadiness,
  assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,requireNativeRenderedUnion,readManifestRoute} from './system-route-manifest.mjs';
@@ -453,14 +454,17 @@ async function prepareDatabaseLockScope(){
 }
 
 const waits=[];
+let preflightAttributionPhase='pilot-http';
 function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
  const rootStatements=new Map(),samples=[];
+ let attributedSamples=0;
  const retain=row=>{
   // A sentinel makes over-cap evidence ineligible without growing the ledger indefinitely.
   if(!measureDevelopment||samples.length<=4096)samples.push(row);
  };
  const timer=startDriverInterval(interval,async()=>{
   const startedMs=performance.now();
+  const attributionPhase=preflightAttributionPhase;
   let coreComplete=false;
   try{
    const activity=await db`select state,coalesce(wait_event_type,'CPU-or-ready') as kind,count(*)::int as connections,
@@ -489,12 +493,22 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    // Native holder state and normalized query IDs only; never capture statement parameters.
    const holders=pids.length?await db.unsafe('select pid,state,wait_event_type,wait_event,query_id::text,extract(epoch from(clock_timestamp()-xact_start))as transaction_age_seconds from pg_stat_activity where datname=current_database()and pid in('+pids.map((_,i)=>'$'+(i+1)).join(',')+')',pids):[];
    const blockingAppSessions=Math.max(appConnections.waitingOnLock,appConnections.sampledAdvisoryWaiters);
-   if(phase!=='preflight'||locks.length||blockingAppSessions)waits.push({at:Date.now(),phase,rows,appConnections,blockingSessions:holders,
+   const wait=phase!=='preflight'||locks.length||blockingAppSessions?{at:Date.now(),phase,rows,appConnections,blockingSessions:holders,
      grantedAccessHolders:locks.filter(row=>row.granted).map(row=>({pid:row.pid,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)})),
-     advisoryWaiters:queuedLocks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
+     advisoryWaiters:queuedLocks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))}:null;
+   if(wait)waits.push(wait);
    retain({state:'complete',startedMs,completedMs:performance.now(),locks:locks.length,blockingAppSessions,
     holdersRequested:pids.length,holdersObserved:holders.length,...(measureDevelopment?{appSessions:appConnections.open}:{})});
    coreComplete=true;
+   if(wait&&fullDevelopmentRoutes&&phase==='preflight'&&blockingAppSessions>0&&attributedSamples<6){
+    attributedSamples++;
+    const attribution={phase:attributionPhase===preflightAttributionPhase?attributionPhase:'transition',edges:null};
+    wait.appAdvisoryAttribution=attribution;
+    // Schedule separately after retaining the original sample. An attribution error cannot erase or fail it.
+    try{void diagnostics.run(async()=>{
+     attribution.edges=await observeSampledAdvisoryBlockers(db,queuedLocks,lockLabels);
+    }).catch(()=>{});}catch{/* Optional work may already be sealed. */}
+   }
    // The top-statement summary can omit rare root holders. Resolve only sampled root IDs,
    // never queued waiters or parameters; all data belongs to the fictional runner fixture.
    const queued=new Set(queuedLocks.map(row=>row.pid));
@@ -569,6 +583,7 @@ async function main(){
   const response=await request(actor,'/api/personnel/search?q='+encodeURIComponent(target.name));
   assert.deepEqual(JSON.parse(response.content).rows,[]);report.boundaries.push({kind:'company-or-tenant-search',role:actor.role,passed:true});
  }
+ preflightAttributionPhase='browser-sign-in-navigation';
  try{
   requireNativeBusiness();
   browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined,
@@ -1115,6 +1130,7 @@ async function main(){
  // Finish every admitted sign-in body. On failure the terminal sweep still owns
  // every native context-close outcome.
  for(const result of signInPreflight)if(result.status==='rejected')throw result.reason;
+ preflightAttributionPhase='browser-workflows';
  let baselineCapture,sealStage='pre-render-settlement';
  try{
   requireCleanDriver();

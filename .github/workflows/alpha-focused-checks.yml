@@ -884,6 +884,17 @@ jobs:
                            'assistant-own-leave-expiry'}
           lock_calls = lock_routines | {'direct-advisory-exclusive', 'direct-advisory-shared'}
 
+          def project_sampled_blocker(value):
+              row = record(value)
+              categories = {'advisory-exclusive', 'advisory-shared', 'rewards-authority', 'rewards-library',
+                            'rewards-company', 'audit-append', 'ai-action-pause', 'unknown'}
+              modes = {'ShareLock', 'ExclusiveLock'}
+              edge = {'family': choice(row.get('family'), (lock_families - {'transaction', 'tuple', 'relation', 'advisory-unclassified'}) | {'unclassified'}),
+                      'waiterMode': choice(row.get('waiterMode'), modes), 'blockerMode': choice(row.get('blockerMode'), modes),
+                      'blockerState': choice(row.get('blockerState'), {'granted', 'queued'}),
+                      'waiterCategory': choice(row.get('waiterCategory'), categories), 'blockerCategory': choice(row.get('blockerCategory'), categories)}
+              return edge if None not in edge.values() else None
+
           def project_lock_edge(value):
               row = record(value)
               waiter, blocker = (number(row.get(key), 16, 1) for key in ('waiter', 'blocker'))
@@ -1228,6 +1239,10 @@ jobs:
                                   if type(name) is str:
                                       names.add(choice(name.partition(':')[0], families) or 'unclassified')
                               signal['observedAdvisoryFamilies'] = sorted(names)
+                          attribution = record(row.get('appAdvisoryAttribution'))
+                          bucket = choice(attribution.get('phase'), {'pilot-http', 'browser-sign-in-navigation', 'browser-workflows', 'transition'})
+                          if bucket:
+                              signal['appAdvisoryAttribution'] = {'phase': bucket, 'edges': bounded_list(attribution.get('edges'), 8, project_sampled_blocker)}
                           blocking_signals.append(signal)
                           if len(blocking_signals) == 6:
                               break

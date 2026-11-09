@@ -1,5 +1,33 @@
 import {expect,it} from 'vitest';
 import {developmentPostgresLockWindow,postgresLockFailures} from '../scripts/performance/lock-failure-log.mjs';
+import {observeSampledAdvisoryBlockers} from '../scripts/performance/lock-sample-attribution.mjs';
+import {lockSampleEvidence} from '../scripts/performance/driver-shutdown.mjs';
+
+const fictionalWaiter={app_session:true,pid:22,classid:'11',objid:'12',objsubid:1,mode:'ExclusiveLock',blockers:[84]};
+const fictionalBlocker={family:'access-configuration',waiterMode:'ExclusiveLock',blockerMode:'ShareLock',blockerState:'granted',
+ waiterCategory:'advisory-exclusive',blockerCategory:'rewards-library'};
+
+it('attributes only app waiters and emits closed blocker facts without native identities',async()=>{
+ const inputs:unknown[][]=[];
+ const query=async (_text:TemplateStringsArray,...values:unknown[])=>{
+  inputs.push(values);
+  return [{...fictionalBlocker,pid:84,key:'private-key',query:'private SQL'}];
+ };
+ const edges=await observeSampledAdvisoryBlockers(query,[fictionalWaiter,{...fictionalWaiter,app_session:false,pid:83}],new Map([['11:12:1','access-configuration:fixture-tenant-0']]));
+ expect(inputs).toEqual([[JSON.stringify([{pid:22,key:'11:12:1',mode:'ExclusiveLock',family:'access-configuration',blockers:[84]}]),8]]);
+ expect(edges).toEqual([fictionalBlocker]);
+});
+
+it('keeps the positive lock gate when attribution refuses, disappears or overruns its bound',async()=>{
+ const sample={state:'complete',startedMs:1,completedMs:2,locks:1,blockingAppSessions:1};
+ const window={startMs:0,endMs:3};
+ const queries=[async()=>{throw Error('private diagnostic failure');},async()=>[],
+  async()=>[{...fictionalBlocker,blockerCategory:'private category'}],async()=>Array(9).fill(fictionalBlocker)];
+ for(const query of queries){
+  expect(await observeSampledAdvisoryBlockers(query,[fictionalWaiter],new Map())).toBeNull();
+  expect(lockSampleEvidence([sample],window)).toMatchObject({coveragePass:true,blockingSamples:1,pass:false});
+ }
+});
 it('keeps bounded lock graphs and routine names while excluding SQL, values and unknown errors',()=>{
  const log=`2026-11-04 14:00:00.000 +08 [98] ERROR:  deadlock detected
 2026-11-04 14:00:00.000 +08 [98] DETAIL:  Process 98 waits for ExclusiveLock on advisory lock [1, 2, 3, 1]; blocked by process 99.
