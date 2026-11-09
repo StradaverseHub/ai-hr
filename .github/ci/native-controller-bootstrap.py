@@ -805,6 +805,22 @@ VIEW_FILE_MAX = 32768
 VIEW_RECEIVER_MAX = 96 * 1024
 VIEW_PHASES = ('namespace', 'private-propagation', 'read-only-mounts', 'network-route-census',
                'privilege-drop', 'physical-file-controls')
+VIEW_NETWORK_EXITS = {
+    'work-frontier': 50,
+    'loopback-flags-read': 51,
+    'interface-census-read': 52,
+    'interface-census-differs': 53,
+    'loopback-flags-differ': 54,
+    'ipv4-proc-read': 55,
+    'ipv4-proc-empty': 56,
+    'ipv4-extra-row': 57,
+    'ipv4-header-differs': 58,
+    'ipv6-proc-absent': 59,
+    'ipv6-proc-read': 60,
+    'ipv6-row-shape': 61,
+    'ipv6-row-not-loopback-reject': 62,
+    'identity-readback': 63,
+}
 VIEW_DIRS = ('source', 'dependencies', 'jail', 'jail/project', 'jail/project/app',
              'jail/project/node_modules', 'jail/receipt')
 VIEW_SEEDS = {'source/seed': b'fictional source\n', 'dependencies/seed': b'fictional dependency\n'}
@@ -984,17 +1000,30 @@ def view_proc(path, maximum):
         os.close(fd)
 
 
+class ViewNetworkRefusal(ValueError):
+    def __init__(self, reason):
+        self.code = VIEW_NETWORK_EXITS[reason]
+        super().__init__(reason)
+
+
+def view_network_need(condition, reason):
+    if not condition:
+        raise ViewNetworkRefusal(reason)
+
+
 def view_routes(interfaces, flags, ipv4, ipv6):
-    need(interfaces == [(1, 'lo')] and flags & 0x8 and not flags & 0x1, 'View-probe loopback is not isolated')
+    view_network_need(interfaces == [(1, 'lo')], 'interface-census-differs')
+    view_network_need(flags & 0x8 and not flags & 0x1, 'loopback-flags-differ')
     route = ipv4.splitlines()
-    need(len(route) == 1 and route[0].split()[:2] == [b'Iface', b'Destination'], 'View-probe IPv4 route exists')
+    view_network_need(route, 'ipv4-proc-empty')
+    view_network_need(len(route) == 1, 'ipv4-extra-row')
+    view_network_need(route[0].split()[:2] == [b'Iface', b'Destination'], 'ipv4-header-differs')
     rows = ipv6.splitlines()
-    need(len(rows) <= 8, 'View-probe IPv6 route count differs')
+    view_network_need(len(rows) <= 8, 'ipv6-row-shape')
     for line in rows:
         fields = line.split()
-        need(len(fields) == 10 and fields[-1] == b'lo'
-             and re.fullmatch(rb'[a-f0-9]{8}', fields[8]) and int(fields[8], 16) & 0x200,
-             'View-probe usable IPv6 route exists')
+        view_network_need(len(fields) == 10 and re.fullmatch(rb'[a-f0-9]{8}', fields[8]), 'ipv6-row-shape')
+        view_network_need(fields[-1] == b'lo' and int(fields[8], 16) & 0x200, 'ipv6-row-not-loopback-reject')
     return len(rows)
 
 
@@ -1002,10 +1031,22 @@ def view_network():
     import fcntl
     import socket
     import struct
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM | socket.SOCK_CLOEXEC) as handle:
-        raw = fcntl.ioctl(handle.fileno(), 0x8913, struct.pack('16sH22x', b'lo', 0))
-    return view_routes(socket.if_nameindex(), struct.unpack_from('H', raw, 16)[0],
-                       view_proc('/proc/self/net/route', 65536), view_proc('/proc/self/net/ipv6_route', 65536))
+    reason = 'loopback-flags-read'
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM | socket.SOCK_CLOEXEC) as handle:
+            raw = fcntl.ioctl(handle.fileno(), 0x8913, struct.pack('16sH22x', b'lo', 0))
+        flags = struct.unpack_from('H', raw, 16)[0]
+        reason = 'interface-census-read'
+        interfaces = socket.if_nameindex()
+        reason = 'ipv4-proc-read'
+        ipv4 = view_proc('/proc/self/net/route', 65536)
+        reason = 'ipv6-proc-read'
+        ipv6 = view_proc('/proc/self/net/ipv6_route', 65536)
+    except (OSError, ValueError, struct.error) as error:
+        if reason == 'ipv6-proc-read' and isinstance(error, FileNotFoundError):
+            reason = 'ipv6-proc-absent'
+        raise ViewNetworkRefusal(reason) from error
+    return view_routes(interfaces, flags, ipv4, ipv6)
 
 
 def view_drop(libc, uid, gid, cap_last, dump_policy):
@@ -1148,10 +1189,13 @@ def view_worker():
                      and view_birth(os.fstat(held)) == view_birth(source.lstat())
                      and os.fstatvfs(held).f_flag & os.ST_RDONLY, 'View worker opened mount identity differs')
         phase += 1
-        active()
+        view_network_need(time.monotonic() < stop, 'work-frontier')
         reject_rows = view_network()
-        need(view_namespaces() == private and view_parent_identity(int(issuer)) == issuer_start,
-             'View worker namespace or root parent changed during census')
+        try:
+            same_identity = view_namespaces() == private and view_parent_identity(int(issuer)) == issuer_start
+        except (OSError, ValueError) as error:
+            raise ViewNetworkRefusal('identity-readback') from error
+        view_network_need(same_identity, 'identity-readback')
         phase += 1
         active()
         cap_last = int(view_proc('/proc/sys/kernel/cap_last_cap', 16).strip())
@@ -1171,6 +1215,8 @@ def view_worker():
             write(receipt, 'worker.json', canonical({'phases': list(VIEW_PHASES), 'ipv6RejectRows': reject_rows}), 0o600)
         active()
         return 0
+    except ViewNetworkRefusal as error:
+        return error.code if phase == 3 else 40 + phase
     except BaseException:
         return 40 + phase
 
@@ -1276,8 +1322,11 @@ def view_success(process):
 def view_failed_phase(process):
     if view_settled(process) and process['admitted'] is True and process['reason'] == 'command-failed':
         code = process['commandExit']
-        if type(code) is int and 40 <= code < 40 + len(VIEW_PHASES):
-            return VIEW_PHASES[code - 40]
+        if type(code) is int:
+            if 40 <= code < 40 + len(VIEW_PHASES):
+                return VIEW_PHASES[code - 40]
+            if code in VIEW_NETWORK_EXITS.values():
+                return 'network-route-census'
     return None
 
 
@@ -1458,8 +1507,9 @@ def validate_view_capture(raw, status):
     if report['cleanupComplete']:
         need(report['elapsedMs'] < 25000 and (not attempted or view_settled(process)),
              'View-probe cleanup lacks time or settlement evidence')
-    if failure in VIEW_PHASES:
-        need(failure == view_failed_phase(process), 'View-probe phase lacks the exact owned exit')
+    phase = view_failed_phase(process)
+    if failure in VIEW_PHASES or phase == 'network-route-census':
+        need(failure == phase, 'View-probe phase lacks the exact owned exit')
     if worker is not None:
         need(view_success(process) and failure in (None, 'cleanup'), 'View-probe full worker lacks successful owned exit')
         view_worker_result(canonical(worker))

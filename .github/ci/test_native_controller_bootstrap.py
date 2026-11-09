@@ -215,6 +215,47 @@ class ViewProbeControls(unittest.TestCase):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 M.view_routes(*args)
 
+    def test_route_row_refusals_keep_distinct_closed_codes(self):
+        loopback, header = [(1, 'lo')], b'Iface Destination Gateway Flags\n'
+        reject = b'0 00 0 00 0 0 0 0 00200200 lo\n'
+        cases = ((53, loopback + [(2, 'eth0')], 8, header, reject),
+                 (54, loopback, 9, header, reject),
+                 (56, loopback, 8, b'', reject),
+                 (57, loopback, 8, header + b'eth0 row\n', reject),
+                 (58, loopback, 8, b'not a header\n', reject),
+                 (61, loopback, 8, header, reject * 9),
+                 (61, loopback, 8, header, reject.replace(b'00200200', b'wrong')),
+                 (62, loopback, 8, header, reject.replace(b'00200200', b'00200000')),
+                 (62, loopback, 8, header, reject.replace(b'lo', b'eth0')))
+        self.assertEqual(M.view_routes(loopback, 8, header, b''), 0)
+        for code, *args in cases:
+            with self.subTest(code=code):
+                with self.assertRaises(M.ViewNetworkRefusal) as caught:
+                    M.view_routes(*args)
+                self.assertEqual(caught.exception.code, code)
+
+    def test_route_native_read_refusals_distinguish_missing_ipv6_from_other_io(self):
+        import struct
+        header = b'Iface Destination Gateway Flags\n'
+        with mock.patch('socket.socket'), mock.patch('fcntl.ioctl') as flags, \
+             mock.patch('socket.if_nameindex') as interfaces, mock.patch.object(M, 'view_proc') as proc:
+            for code in (None, 51, 52, 55, 59, 60):
+                with self.subTest(code=code):
+                    flags.return_value = struct.pack('16sH22x', b'lo', 8)
+                    flags.side_effect = PermissionError() if code == 51 else None
+                    interfaces.return_value = [(1, 'lo')]
+                    interfaces.side_effect = OSError() if code == 52 else None
+                    proc.side_effect = (OSError(),) if code == 55 else (
+                        header, FileNotFoundError() if code == 59 else PermissionError() if code == 60 else b'')
+                    if code is None:
+                        self.assertEqual(M.view_network(), 0)
+                        self.assertEqual(proc.call_args_list, [
+                            mock.call('/proc/self/net/route', 65536), mock.call('/proc/self/net/ipv6_route', 65536)])
+                    else:
+                        with self.assertRaises(M.ViewNetworkRefusal) as caught:
+                            M.view_network()
+                        self.assertEqual(caught.exception.code, code)
+
     def test_exact_mount_census_separates_source_noexec_from_dependency_exec(self):
         root = M.view_scope('123')
         paths = [str(root / 'jail/project' / name) for name in ('app', 'node_modules')]
@@ -393,6 +434,30 @@ class ViewProbeControls(unittest.TestCase):
                         {'process': exit_row | {'admitted': False}}, {'process': exit_row | {'escapedSession': True}}):
             with self.subTest(changed=changed), self.assertRaises(ValueError):
                 M.validate_view_capture(M.canonical(native | changed), '1')
+
+    def test_route_subreason_exit_requires_exact_settled_owned_phase(self):
+        self.assertEqual(M.VIEW_NETWORK_EXITS, {
+            'work-frontier': 50, 'loopback-flags-read': 51, 'interface-census-read': 52,
+            'interface-census-differs': 53, 'loopback-flags-differ': 54, 'ipv4-proc-read': 55,
+            'ipv4-proc-empty': 56, 'ipv4-extra-row': 57, 'ipv4-header-differs': 58,
+            'ipv6-proc-absent': 59, 'ipv6-proc-read': 60, 'ipv6-row-shape': 61,
+            'ipv6-row-not-loopback-reject': 62, 'identity-readback': 63,
+        })
+        for code in range(50, 64):
+            with self.subTest(code=code):
+                exit_row = {'reason': 'command-failed', 'commandExit': code, 'admitted': True,
+                            'reaped': True, 'groupQuiescent': True, 'escapedSession': False}
+                native = M.view_report('network-route-census', sha='a'*40, run='123', event='b'*64, attempted=True,
+                                       process=exit_row, cleanup=True, elapsed=9)
+                self.assertEqual(M.validate_view_capture(M.canonical(native), '1'), native)
+                for changed in ({'commandExit': 49}, {'commandExit': 64}, {'reaped': False},
+                                {'groupQuiescent': False}, {'escapedSession': True}, {'admitted': False},
+                                {'reason': 'deadline'}):
+                    with self.assertRaises(ValueError):
+                        M.validate_view_capture(M.canonical(native | {'process': exit_row | changed}), '1')
+                wrong = native | {'failure': 'owned-worker', 'unconfirmedPhases': list(M.VIEW_PHASES)}
+                with self.assertRaises(ValueError):
+                    M.validate_view_capture(M.canonical(wrong), '1')
 
     def test_refusal_credit_distinguishes_no_worker_unsettled_worker_and_successful_worker(self):
         provenance = {'sha': 'a'*40, 'run': '123', 'event': 'b'*64, 'elapsed': 9}
