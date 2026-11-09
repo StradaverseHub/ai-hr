@@ -18,12 +18,18 @@
     "databaseClassification": "SOURCE_EXPECTED_DB"
   },
   "parentReplay": {
-    "operation": "REMOVE_EXACT_TWO_ADDITIONS",
+    "operation": "REMOVE_EXACT_TWO_ADDITIONS_AND_RESTORE_FIXTURE_PREIMAGE",
     "addedPaths": [
       "test/analytics-carry-searched-native-scale.test.ts",
       "docs/qualification/analytics-carry-searched-native-scale-20261109.json"
     ],
-    "targetGitTree": "e861634d9759db4ad2cbc167d1cd62e7fe514382"
+    "targetGitTree": "e861634d9759db4ad2cbc167d1cd62e7fe514382",
+    "restore": {
+      "path": "test/performance/personnel-native-fixture.ts",
+      "gitBlob": "57046e76314873112959932ea562b52aca77b40b",
+      "bytes": 5736,
+      "sha256": "3b72cd22e8e97c730192454bca58b87795e362654b6a26250a2fe3cf752bc4fa"
+    }
   },
   "unchangedSourceOwners": [
     {
@@ -67,12 +73,6 @@
       "gitBlob": "a0e00ec9c94037da16c08b90030d6f10e2f9e762",
       "bytes": 33631,
       "sha256": "0147e1d4cf767a654995b5130866316218177eb35dedbd514a908b1f70067c10"
-    },
-    {
-      "path": "test/performance/personnel-native-fixture.ts",
-      "gitBlob": "57046e76314873112959932ea562b52aca77b40b",
-      "bytes": 5736,
-      "sha256": "3b72cd22e8e97c730192454bca58b87795e362654b6a26250a2fe3cf752bc4fa"
     },
     {
       "path": "test/helpers/native-read-observer.ts",
@@ -161,8 +161,6 @@
   },
   "course": {
     "seedEmployees": 50000,
-    "seedBatches": 10,
-    "seedBatchSize": 5000,
     "year": 2020,
     "page": 0,
     "pageSize": 25,
@@ -208,7 +206,11 @@
     "fetchCount": 15,
     "cursorRows": 50010,
     "closeCount": 3,
-    "analyzedReplays": 1
+    "analyzedReplays": 1,
+    "logicalUuidSegments": 10,
+    "logicalUuidSegmentRows": 5000,
+    "seedTransactions": 100,
+    "seedTransactionRows": 500
   },
   "limits": {
     "caseMs": 300000,
@@ -230,7 +232,7 @@
     "Ordinary wall and FETCH timings include the observer. Sort, spill and executor detail apply to the separate analyzed replay.",
     "Existing fixture setup and driver bootstrap retain inherited custody. The leaf checks seed boundaries and enforces native caps on entered measured statements.",
     "The separate 170-second fixture setup cutoff allows a maximum 120-second measured read window from fixture readiness and preserves 10 seconds of settlement within the 300-second case. The global active cutoff is 290 seconds. The searched fixture fit remains unverified.",
-    "The sibling 50k qualification failed inside the shared unchanged seed before measurements. This leaf retains that fixture dependency.",
+    "The older sibling run failed before measurements using the prior fixture. The adopted fixture file passed a separate exact Unicode component course. This searched-scale composition remains unrun.",
     "The decoded plan and its serialization exist before the byte check. The limit gates acceptance and receipt output.",
     "Incremental Sort plans refuse because this receipt does not adjudicate their group-level telemetry.",
     "No historical artifact supplies a 50000 searched baseline. Browser, compiler, staging and release require separate evidence."
@@ -288,5 +290,60 @@
       "separateFixtureTimingObserved": false,
       "use": "Setup budget corroboration on a different exact source and profile. Fixture bytes remain unchanged in the present correction."
     }
+  },
+  "fixtureTransfer": {
+    "directParent": "38d6df3abb20bfdff1bff8b321f67f0830f5fefb",
+    "fixturePath": "test/performance/personnel-native-fixture.ts",
+    "wholeFixturePostimageSource": "e2275e1f60bdfa5a3ebbfaebab820fc93a6e285d",
+    "wholeFixturePostimage": {
+      "gitBlob": "933f1543bf2ea08aae446d805720272e597dacf0",
+      "bytes": 6122,
+      "sha256": "e81771adfc1c896cc5bc20363ecb75752609d11232855d0462e52f8ce6e77d17"
+    },
+    "wholeDirectParentPreimages": {
+      "test/performance/personnel-native-fixture.ts": {
+        "gitBlob": "57046e76314873112959932ea562b52aca77b40b",
+        "bytes": 5736,
+        "sha256": "3b72cd22e8e97c730192454bca58b87795e362654b6a26250a2fe3cf752bc4fa"
+      },
+      "docs/qualification/analytics-carry-searched-native-scale-20261109.json": {
+        "gitBlob": "307b602a25068f5c12f0741a7a1ec27c1bf1c2b1",
+        "bytes": 10686,
+        "sha256": "e5b37e3f3682ca2e4fc2a3b8a79a21a474b7224e2fcd069a980276afefcac422"
+      }
+    },
+    "directParentTree": "95ebfeef6daa18f737083640667dc701d4c194ee",
+    "reviewedUnchangedSearchedTest": {
+      "path": "test/analytics-carry-searched-native-scale.test.ts",
+      "gitBlob": "4a4058f6a2691ce7143603f0d4c530d82b967486",
+      "bytes": 36960,
+      "sha256": "94f1edec3bf28eea9f05b4d1ab6805f4d3f989fcc46f4f40c3d86ed17628b5a6",
+      "independentParentReview": {
+        "bytes": 3863,
+        "sha256": "39268b62675afa44025513ba04874aeef2ef6cc1ed4c500cba1b75a27dc8c407"
+      }
+    },
+    "independentHistoricalFixtureAuthentication": {
+      "bytes": 18939,
+      "sha256": "5f2339086070f34cdd9de872874921257e16a592be578a47701fd0ea8f61a1e7"
+    },
+    "retainedSeparateUnicodeEvidence": {
+      "source": "e2275e1f60bdfa5a3ebbfaebab820fc93a6e285d",
+      "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "run": 42561295761,
+      "attempt": 1,
+      "artifact": {
+        "id": 13649513439,
+        "bytes": 29369,
+        "sha256": "81eb477e8d3b0b80491b1ed7868a07d6cffcc145cfb88826c0dff669379b7a56"
+      },
+      "caseWallMsUpperBoundForFixture": 156456.978038,
+      "ownedFixtureReady": true,
+      "retainedCounts": {
+        "employments": 50000,
+        "assignments": 50000
+      }
+    },
+    "currentClaims": "Exact source transplant. The default-name searched fixture and full searched course still require an independent hosted result under the unchanged test clocks."
   }
 }
