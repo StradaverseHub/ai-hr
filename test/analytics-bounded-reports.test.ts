@@ -106,10 +106,24 @@ it('keeps native tenant/company RLS, selected identities outside page and curren
  expect(await analyticsManagerSelection(ctx,[otherCompany.id],ids[0])).toBeNull();
  expect(await analyticsManagerSelection(ctx,[],otherEmployment)).toEqual({employmentId:otherEmployment,name:'Fictional other company person'});
  expect(await analyticsManagerSelection(ctx,[],'malformed')).toBeNull();
+ const searchedCarry={year:2026,filter:{q:'Fictional report 00000'},page:first};
+ const otherCarry={year:2026,filter:{q:'Fictional other company person'},page:first};
+ const ownGroupCarry=await carryForwardReportPage(ctx,[],searchedCarry);
+ expect(ownGroupCarry.state.total).toBe(1);
+ expect(ownGroupCarry.rows.map(row=>row.employmentId)).toEqual([ids[0]]);
+ const ownCompanyCarry=await carryForwardReportPage(scoped,[],searchedCarry);
+ expect(ownCompanyCarry.state.total).toBe(1);
+ expect(ownCompanyCarry.rows.map(row=>row.employmentId)).toEqual([ids[0]]);
+ expect((await carryForwardReportPage(ctx,[otherCompany.id],{...otherCarry,companyId:otherCompany.id})).rows.map(row=>row.employmentId))
+  .toEqual([otherEmployment]);
+ expect((await carryForwardReportPage(ctx,[b.companyId],{...otherCarry,companyId:otherCompany.id})).state.total).toBe(0);
+ expect((await carryForwardReportPage(scoped,[otherCompany.id],{...otherCarry,companyId:otherCompany.id})).state.total).toBe(0);
+ expect((await carryForwardReportPage(ctx,[foreign.companyId],{...searchedCarry,companyId:foreign.companyId})).state.total).toBe(0);
  const employeeUser=await createAppUser(b.tenantId,people[0],'employee');
  const employeeCtx:SessionContext={tenantId:b.tenantId,userId:employeeUser,personId:people[0],roles:['employee']};
  expect((await newHiresPage(employeeCtx,[],{...period,page:first})).rows.map(row=>row.name)).toEqual(['Fictional report 00000']);
  await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,user));
+ await expect(carryForwardReportPage(scoped,[],searchedCarry)).rejects.toThrow('calling authority');
  for(const read of [()=>newHiresPage(scoped,[],{...period,page:first}),()=>terminationsPage(scoped,[],{...period,page:first}),()=>changeJobTransactionsPage(scoped,[],{...period,page:first}),()=>carryForwardReportPage(scoped,[],{year:2026,page:first}),()=>masterDataCount(scoped,[]),()=>analyticsManagerSelection(scoped,[],ids[0])]){
   await expect(read()).rejects.toThrow('calling authority');
  }
@@ -333,7 +347,9 @@ type CarryTimedSubmission = {
 type CarryBoundarySlot={kind:'fixture'|'command'|'read';epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;estimateContext?:unknown;timedSubmission?:CarryTimedSubmission;cancel?:Promise<void>;tag:string};
 const CARRY_DECLARE_PREFIX = 'declare analytics_carry_identities no scroll cursor for\n      select ';
 const CARRY_EXPLAIN_PREFIX = 'explain(verbose,settings,format json) ';
-const CARRY_ESTIMATE_MEMBER = 'analytics-carry-first-fetch-estimate-private.json';
+const CARRY_IDENTITY_EVENTS_SQL = 'as "analytics_carry_identity_events"';
+const CARRY_ESTIMATE_CELL = {phase:6,page:0} as const;
+const CARRY_ESTIMATE_MEMBER = 'analytics-carry-dense-identity-stream-estimate-private.json';
 const CARRY_PLAN_BYTES = 1024 * 1024;
 const CARRY_CONTEXT_BYTES = 8 * 1024;
 const CARRY_FRAMING_BYTES = 4 * 1024;
@@ -375,6 +391,51 @@ function carryEstimatedNumber(node: Record<string, unknown>, key: string) {
   }
   return value;
 }
+type CarryPlanEntry = {
+  node: Record<string, unknown>;
+  parent?: CarryPlanEntry;
+};
+
+function carryPlanPath(entry: CarryPlanEntry): CarryPlanEntry[] {
+  const path: CarryPlanEntry[] = [];
+  for(let cursor: CarryPlanEntry | undefined=entry;cursor;cursor=cursor.parent)path.push(cursor);
+  return path;
+}
+
+function carryIdentityStreamWitness(entries: CarryPlanEntry[]) {
+  const relationship = (entry: CarryPlanEntry) => entry.node['Parent Relationship'];
+  const main = (entry: CarryPlanEntry) => carryPlanPath(entry).every(step =>
+    relationship(step) !== 'InitPlan' && relationship(step) !== 'SubPlan');
+  const relation = (entry: CarryPlanEntry, name: string) =>
+    entry.node.Schema === 'public' && entry.node['Relation Name'] === name;
+  const mainEntries = entries.filter(main);
+  const windows = mainEntries.filter(entry => entry.node['Node Type'] === 'WindowAgg');
+  const people = entries.filter(entry => relation(entry, 'person'));
+  const employments = mainEntries.filter(entry => relation(entry, 'employment'));
+  const companies = mainEntries.filter(entry => relation(entry, 'company'));
+  const census = {windows: windows.length, personReads: people.length,
+    employmentReads: employments.length, companyReads: companies.length};
+  const refused = {accepted: false, ...census, appendKind: 'none'};
+  if (windows.length !== 1 || people.length !== 1 || employments.length !== 1 || companies.length !== 1 ||
+      !main(people[0]) || entries.some(entry => relation(entry, 'assignment') || relation(entry, 'department'))) return refused;
+  const [window] = windows, [person] = people, [employment] = employments, [company] = companies;
+  const scans = ['Seq Scan', 'Index Scan', 'Index Only Scan', 'Bitmap Heap Scan'];
+  if (![person, employment, company].every(entry => scans.includes(String(entry.node['Node Type'])))) return refused;
+
+  const personPath = carryPlanPath(person), employmentPath = carryPlanPath(employment), companyPath = carryPlanPath(company);
+  const append = personPath.find(entry => employmentPath.includes(entry));
+  const appendKind = append?.node['Node Type'];
+  if (!append || (appendKind !== 'Append' && appendKind !== 'Merge Append') ||
+      !carryPlanPath(append).slice(1).includes(window)) return refused;
+  const member = (path: CarryPlanEntry[]) => path[path.indexOf(append) - 1];
+  const personMember = member(personPath), employmentMember = member(employmentPath);
+  const repeated = personPath.some(entry => relationship(entry) === 'Inner' && entry.parent?.node['Node Type'] === 'Nested Loop');
+  if (repeated || !personMember || !employmentMember || personMember === employmentMember ||
+      relationship(personMember) !== 'Member' || relationship(employmentMember) !== 'Member' ||
+      member(companyPath) !== employmentMember || mainEntries.filter(entry => entry.parent === append).length !== 2) return refused;
+  return {accepted: true, ...census, appendKind};
+}
+
 function carryEstimatePlan(raw: unknown) {
   if (!Array.isArray(raw) || raw.length !== 1 || !carryEstimateRecord(raw[0])) {
     throw new Error('Carry estimate JSON envelope refused');
@@ -400,7 +461,8 @@ function carryEstimatePlan(raw: unknown) {
     }
     carryEstimatedNumber(jit, 'Functions');
   }
-  const pending: {node: unknown; depth: number}[] = [{node: root, depth: 0}];
+  const pending: {node: unknown; depth: number; parent?:CarryPlanEntry}[] = [{node: root, depth: 0}];
+  const entries:CarryPlanEntry[]=[];
   let nodes = 0;
   let rootNodeType = '';
   while (pending.length) {
@@ -417,13 +479,15 @@ function carryEstimatePlan(raw: unknown) {
       throw new Error('Carry estimate plan node refused');
     }
     if (nodes === 1) rootNodeType = nodeType;
+    const current={node,parent:entry.parent};
+    entries.push(current);
     for (const key of ['Startup Cost', 'Total Cost', 'Plan Rows', 'Plan Width']) carryEstimatedNumber(node, key);
     if (node.Plans !== undefined) {
       if (!Array.isArray(node.Plans)) throw new Error('Carry estimate child plans refused');
       if (node.Plans.length > CARRY_PLAN_NODES - nodes - pending.length) {
         throw new CarryEstimateOverflow('Carry estimate child plan count exceeds its bound');
       }
-      for (const child of node.Plans) pending.push({node: child, depth: entry.depth + 1});
+      for (const child of node.Plans) pending.push({node: child, depth: entry.depth + 1, parent:current});
     }
   }
   const serialized = JSON.stringify(raw);
@@ -438,8 +502,35 @@ function carryEstimatePlan(raw: unknown) {
     startupCost: carryEstimatedNumber(root, 'Startup Cost'),
     totalCost: carryEstimatedNumber(root, 'Total Cost'),
     estimatedRows: carryEstimatedNumber(root, 'Plan Rows'),
+    identityStreamWitness:carryIdentityStreamWitness(entries),
   };
 }
+function assertCarryIdentityStreamRefusals() {
+  const node = (type: string, fields: Record<string, unknown> = {}): Record<string, unknown> => ({
+    'Node Type': type, 'Startup Cost': 0, 'Total Cost': 1, 'Plan Rows': 1, 'Plan Width': 16, ...fields,
+  });
+  const person = node('Seq Scan', {'Parent Relationship': 'Member', Schema: 'public', 'Relation Name': 'person'});
+  const employment = node('Index Scan', {'Parent Relationship': 'Outer', Schema: 'public', 'Relation Name': 'employment'});
+  const company = node('Index Scan', {'Parent Relationship': 'Inner', Schema: 'public', 'Relation Name': 'company'});
+  const companyJoin = node('Nested Loop', {'Parent Relationship': 'Member', Plans: [employment, company]});
+  const append = node('Append', {'Parent Relationship': 'Outer', Plans: [person, companyJoin]});
+  const window = node('WindowAgg', {'Parent Relationship': 'Outer', Plans: [append]});
+  const witness = (plan: Record<string, unknown>) => carryEstimatePlan([{Plan: plan}]).identityStreamWitness;
+  const withMembers = (...members: Record<string, unknown>[]) => ({...window, Plans: [{...append, Plans: members}]});
+  expect(witness(withMembers({...person, 'Relation Name': 'unknown'}, companyJoin)).accepted).toBe(false);
+  expect(witness(withMembers(person, companyJoin, person)).accepted).toBe(false);
+  expect(witness(withMembers({...person, 'Parent Relationship': 'SubPlan'}, companyJoin)).accepted).toBe(false);
+  expect(witness({...window, 'Node Type': 'Result'}).accepted).toBe(false);
+  expect(witness({...window, Plans: [{...append, 'Node Type': 'Nested Loop', 'Join Filter': '(person.id = employment.person_id)'}]}).accepted).toBe(false);
+  expect(witness(withMembers(node('Result', {'Parent Relationship': 'Member', Plans: [person, companyJoin]}),
+    node('Result', {'Parent Relationship': 'Member'}))).accepted).toBe(false);
+  expect(witness(withMembers(person, companyJoin, node('Result', {'Parent Relationship': 'Member'}))).accepted).toBe(false);
+  expect(witness(node('Nested Loop', {Plans: [node('Result', {'Parent Relationship': 'Outer'}),
+    {...window, 'Parent Relationship': 'Inner'}]})).accepted).toBe(false);
+  expect(witness(withMembers(node('Result', {'Parent Relationship': 'Member', Plans: [person, company]}),
+    {...employment, 'Parent Relationship': 'Member'})).accepted).toBe(false);
+}
+
 type CarryEstimateSummary = {
   status: 'UNOBSERVED' | 'PREPARED' | 'STARTED' | 'CAPTURED' | 'FAILED' | 'OVERFLOW' | 'UNAVAILABLE';
   nativeOperations: number;
@@ -459,6 +550,7 @@ type CarryEstimateSummary = {
   privateMemberSha256?: string;
   privateMemberBytes?: number;
   originalDeclarationAdmitted?: true;
+  identityStreamWitness?: ReturnType<typeof carryEstimatePlan>['identityStreamWitness'];
   failure?: CarryFailureFact;
 };
 /** B1-only lifetime owner. Private native identities never enter the bounded receipt. */
@@ -469,7 +561,7 @@ class CarryBoundaryScope{
  private control?:Awaited<ReturnType<typeof owner.client.reserve>>;private readonly identities:CarryBoundaryIdentity[]=[];private idleVerified=false;private controlUncertain=false;private controlIdentity?:CarryBoundaryIdentity;private visibleTargets=0;
  nativeOperations=0;nativeAwaitMs=0;
  private readonly estimateDirectory = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
- private readonly firstEstimate: CarryEstimateSummary = {status:'UNOBSERVED', nativeOperations:0, nativeAwaitMs:0};
+ private readonly denseEstimate: CarryEstimateSummary = {status:'UNOBSERVED', nativeOperations:0, nativeAwaitMs:0};
  private estimateEpoch?: number;
  private evidenceFailed=false;private ownerDatabase='';private ownerLogin='';private cancellationIssued=false;private cancellationSettled=true;private cancellationResult:'not-issued'|'pending'|'no-match'|'accepted'|'refused'|'unavailable'='not-issued';
  private originalFailure?:CarryPrivateFailure;private secondaryControlFailure?:CarryPrivateFailure;private rollbackFailure?:CarryPrivateFailure;private abortFailure?:CarryPrivateFailure;private holderRetained=false;
@@ -485,7 +577,7 @@ class CarryBoundaryScope{
   const directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR;if(!directory)return;
   const report={kind:'NATIVE_CARRY_BOUNDARY_PHASES_COMPONENT_ONLY',releaseEligible:false,source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,
    runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,complete:this.settled&&!this.bodyFailed&&!this.poisoned&&!this.evidenceFailed,
-   firstFetchEstimate:this.firstEstimate,originalFailure:this.originalFailure?.fact??'UNOBSERVED',secondaryControlFailure:this.secondaryControlFailure?.fact??'UNOBSERVED',rollbackFailure:this.rollbackFailure?.fact??'UNOBSERVED',abortObservation:this.abortFailure?.fact??'UNOBSERVED',branchObservations:{cancellation:this.cancellationIssued?'OBSERVED':'UNOBSERVED',controlUncertainty:this.controlUncertain?'OBSERVED':'UNOBSERVED',retainedHolder:this.holderRetained?'OBSERVED':'UNOBSERVED'},
+   denseDeclarationEstimate:{...CARRY_ESTIMATE_CELL,...this.denseEstimate},originalFailure:this.originalFailure?.fact??'UNOBSERVED',secondaryControlFailure:this.secondaryControlFailure?.fact??'UNOBSERVED',rollbackFailure:this.rollbackFailure?.fact??'UNOBSERVED',abortObservation:this.abortFailure?.fact??'UNOBSERVED',branchObservations:{cancellation:this.cancellationIssued?'OBSERVED':'UNOBSERVED',controlUncertainty:this.controlUncertain?'OBSERVED':'UNOBSERVED',retainedHolder:this.holderRetained?'OBSERVED':'UNOBSERVED'},
    stopped:this.stopped,settled:this.settled,poisoned:this.poisoned,cancellationIssued:this.cancellationIssued,cancellationSettled:this.cancellationSettled,cancellationResult:this.cancellationResult,observerInstalled:this.observerInstalled,observerRestored:this.observerRestored,resolverInstalled:this.resolverInstalled,resolverRestored:this.resolverRestored,idleVerified:this.idleVerified,controlUncertain:this.controlUncertain,nativeIdentities:this.identities.length,nativeOperations:this.nativeOperations,nativeAwaitMs:this.nativeAwaitMs,rowTypeChecks:this.events.filter(event=>event.stage==='fetch-return').reduce((n,event)=>n+2*(event.rows??0),0),distinctControlVerified:this.controlIdentity!==undefined&&this.visibleTargets===this.identities.length,active:[...this.slots].reduce((n,s)=>n+s.active,0),held:this.slots.size,events:this.events};
   try{const bytes=JSON.stringify(report);if(Buffer.byteLength(bytes)>65536){this.evidenceFailed=true;return;}writeFileSync(join(directory,'analytics-carry-boundaries.json'),bytes);}catch{this.evidenceFailed=true;}
  }
@@ -582,12 +674,12 @@ class CarryBoundaryScope{
     const operation = estimate || refusedDeclaration ? 'native-estimate' : slot.kind==='fixture' ? 'native-fixture' :
       slot.kind==='command' ? 'native-command' : 'native-read';
     const point = refusedDeclaration ? 'entry' : 'work';
-    if (refusedDeclaration) this.firstEstimate.failure = this.failureFact(error, operation, point);
+    if (refusedDeclaration) this.denseEstimate.failure = this.failureFact(error, operation, point);
     this.remember(error,operation,point);
     throw error;
   } finally {
     if (estimate && timed?.admitted) {
-      this.firstEstimate.nativeAwaitMs += performance.now() - started;
+      this.denseEstimate.nativeAwaitMs += performance.now() - started;
     } else if (!estimate && (!timed || timed.admitted)) {
       this.nativeOperations++;
       this.nativeAwaitMs += performance.now() - started;
@@ -609,9 +701,9 @@ class CarryBoundaryScope{
     if (timed?.used) throw new Error('Carry timed statement was already consumed');
     if (timed) timed.used = true;
     const work = timed ? () => new Promise<unknown>((resolve, reject) => {
-      if (!this.firstEstimatePage() || !this.slots.has(slot) || slot.epoch !== this.estimateEpoch ||
+      if (!this.denseEstimatePage() || !this.slots.has(slot) || slot.epoch !== this.estimateEpoch ||
           !slot.armed || slot.closing || slot.active !== 1 || slot.pending.size !== 1) {
-        throw new Error('Carry timed statement lost its first read epoch');
+        throw new Error('Carry timed statement lost its dense read epoch');
       }
       // PgRaw's genuine then starts the prepared query. Invoke it here to avoid another thenable
       // assimilation turn after the final case-budget check. Reporter writes stay outside this work.
@@ -619,10 +711,10 @@ class CarryBoundaryScope{
       Reflect.apply(member, target, [resolve, reject]);
       timed.admitted = true;
       if (timed.kind === 'estimate') {
-        this.firstEstimate.nativeOperations++;
-        this.firstEstimate.status = 'STARTED';
+        this.denseEstimate.nativeOperations++;
+        this.denseEstimate.status = 'STARTED';
       } else {
-        this.firstEstimate.originalDeclarationAdmitted = true;
+        this.denseEstimate.originalDeclarationAdmitted = true;
       }
     }) : () => Promise.resolve(target);
     return Reflect.apply(Promise.prototype.then, this.native(slot, work, timed), [onFulfilled, onRejected]);
@@ -643,15 +735,15 @@ class CarryBoundaryScope{
    };
   }});
  }
- private firstEstimatePage() {
-   return Boolean(this.estimateDirectory) && this.phase === 0 && this.page === 0;
+ private denseEstimatePage() {
+   return Boolean(this.estimateDirectory) && this.phase === CARRY_ESTIMATE_CELL.phase && this.page === CARRY_ESTIMATE_CELL.page;
  }
- async estimateFirstDeclaration(target: Tx, context: SessionContext, observedPid: number | undefined,
-     statement: SQL, dialect: PgDialect, compiled: ReturnType<PgDialect['sqlToQuery']>) {
+ async estimateDenseDeclaration(target: Tx, context: SessionContext, observedPid: number | undefined,
+     statement: SQL, dialect: PgDialect, compiled: ReturnType<PgDialect['sqlToQuery']>, expectedCompanyId: string | undefined) {
    const directory = this.estimateDirectory;
-   if (!directory || !this.firstEstimatePage()) return;
-   if (this.firstEstimate.status !== 'UNOBSERVED') {
-     const error = new Error('Carry estimate already attempted in the first read epoch');
+   if (!directory || !this.denseEstimatePage()) return;
+   if (this.denseEstimate.status !== 'UNOBSERVED') {
+     const error = new Error('Carry estimate already attempted in the dense read epoch');
      this.remember(error, 'native-estimate', 'entry');
      throw error;
    }
@@ -664,7 +756,7 @@ class CarryBoundaryScope{
          slot.active !== 0 || slot.pending.size !== 0 || !identity || identity.pid !== observedPid ||
          identity.database !== this.ownerDatabase || identity.role !== 'ai_hr_app' || identity.login !== 'ai_hr_app' ||
          identity.isolation !== 'repeatable read' || !identity.readOnly) {
-       throw new Error('Carry estimate requires the first owned read epoch');
+       throw new Error('Carry estimate requires the dense owned read epoch');
      }
      const packet = slot.estimateContext;
      if (!carryEstimateRecord(packet) || Object.keys(packet).length !== 5 ||
@@ -689,6 +781,19 @@ class CarryBoundaryScope{
      const metadataBytes = Buffer.byteLength(JSON.stringify(metadata));
      if (metadataBytes > CARRY_CONTEXT_BYTES) throw new CarryEstimateOverflow('Carry estimate context exceeds its byte bound');
      if (!compiled.sql.startsWith(CARRY_DECLARE_PREFIX)) throw new Error('Carry estimate declaration prefix refused');
+     const declaration=compiled.sql.replace(/\s+/g,' ');
+     if(!expectedCompanyId||!isDeepStrictEqual(compiled.params,[expectedCompanyId,'%Carry boundary %%','%Carry boundary %%','2026-12-31','2026-01-01'])||
+       !declaration.includes('"carried_name" as name from ( with "analytics_carry_scoped_employment" as not materialized (')||
+       !declaration.includes('max(person_name) over ( partition by person_id order by event_kind rows between unbounded preceding and current row ) as carried_name')||
+       !declaration.includes(CARRY_IDENTITY_EVENTS_SQL)||declaration.split(' union all ').length!==2||
+       !declaration.includes('select "person"."id" as person_id, 0 as event_kind, null::uuid as employment_id, "person"."full_name" as person_name from "person" where')||
+       !declaration.includes('union all select "employment"."person_id", 1, "employment"."id", null::text from "analytics_carry_scoped_employment" as "employment"')||
+       !declaration.includes('inner join "company" on "company"."id" = "employment"."company_id"')||
+       !declaration.includes('"employment"."company_id" in ($1)')||
+       !declaration.includes('"person"."full_name" ilike $2 or "person"."primary_email" ilike $3')||
+       !declaration.includes('"employment"."hired_on" <= $4')||!declaration.includes('"employment"."terminated_on" >= $5')||
+       !declaration.endsWith('where employment_id is not null and carried_name is not null ) "analytics_carry_population" order by "analytics_carry_population"."employment_id"'))
+       throw new Error('Carry searched declaration witness refused');
      const explain = sql`explain(verbose,settings,format json) ${statement}`;
      const wrapped = dialect.sqlToQuery(explain);
      if (Buffer.byteLength(compiled.sql) > CARRY_SQL_BYTES || Buffer.byteLength(wrapped.sql) > CARRY_SQL_BYTES ||
@@ -698,27 +803,27 @@ class CarryBoundaryScope{
      if (wrapped.sql !== CARRY_EXPLAIN_PREFIX + compiled.sql || !isDeepStrictEqual(wrapped.params, compiled.params)) {
        throw new Error('Carry estimate did not retain the complete declaration and parameters');
      }
-     this.firstEstimate.originalSqlSha256 = carryEstimateHash(compiled.sql);
-     this.firstEstimate.estimateSqlSha256 = carryEstimateHash(wrapped.sql);
-     this.firstEstimate.parameterCount = compiled.params.length;
-     this.firstEstimate.contextVerified = true;
-     this.firstEstimate.status = 'PREPARED';
+     this.denseEstimate.originalSqlSha256 = carryEstimateHash(compiled.sql);
+     this.denseEstimate.estimateSqlSha256 = carryEstimateHash(wrapped.sql);
+     this.denseEstimate.parameterCount = compiled.params.length;
+     this.denseEstimate.contextVerified = true;
+     this.denseEstimate.status = 'PREPARED';
      this.save();
      slot.timedSubmission = {kind: 'estimate', statement: explain};
      const result = await target.execute<{"QUERY PLAN": unknown}>(explain);
      if (!Array.isArray(result) || result.length !== 1 || !carryEstimateRecord(result[0]) ||
-         Object.keys(result[0]).length !== 1 || this.firstEstimate.nativeOperations !== 1) {
+         Object.keys(result[0]).length !== 1 || this.denseEstimate.nativeOperations !== 1) {
        throw new Error('Carry estimate requires one native JSON row and operation');
      }
-     const {serialized, sha256, bytes, nodes, rootNodeType, startupCost, totalCost, estimatedRows} =
+     const {serialized, sha256, bytes, nodes, rootNodeType, startupCost, totalCost, estimatedRows, identityStreamWitness} =
        carryEstimatePlan(result[0]['QUERY PLAN']);
      const frame = {
-       kind: 'NATIVE_CARRY_FIRST_FETCH_DECLARE_ESTIMATE_COMPONENT_ONLY', releaseEligible: false,
+       kind: 'NATIVE_CARRY_DENSE_IDENTITY_STREAM_DECLARE_ESTIMATE_COMPONENT_ONLY', releaseEligible: false,
        source: process.env.AIHR_CI_HEAD, controller: process.env.AIHR_CI_CONTROL_HEAD,
-       runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT, phase: 0, page: 0,
+       runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT, ...CARRY_ESTIMATE_CELL,
        planEncoding: 'POSTGRES_JSON_DECODED_AND_RESERIALIZED', planSha256: sha256, planBytes: bytes,
-       originalSqlSha256: this.firstEstimate.originalSqlSha256, estimateSqlSha256: this.firstEstimate.estimateSqlSha256,
-       parameterCount: this.firstEstimate.parameterCount, metadata,
+       originalSqlSha256: this.denseEstimate.originalSqlSha256, estimateSqlSha256: this.denseEstimate.estimateSqlSha256,
+       parameterCount: this.denseEstimate.parameterCount, metadata,
      };
      const header = JSON.stringify(frame);
      const payload = header.slice(0, -1) + ',"plan":' + serialized + '}';
@@ -729,32 +834,33 @@ class CarryBoundaryScope{
      }
      this.check();
      writeFileSync(join(directory, CARRY_ESTIMATE_MEMBER), payload, {flag: 'wx', mode: 0o600});
-     this.firstEstimate.status = 'CAPTURED';
-     Object.assign(this.firstEstimate, {
+     this.denseEstimate.status = 'CAPTURED';
+     Object.assign(this.denseEstimate, {
        planSha256: sha256, planBytes: bytes, nodes, rootNodeType, startupCost, totalCost,
-       estimatedRows, privateMemberBytes: payloadBytes, privateMemberSha256: carryEstimateHash(payload),
+       estimatedRows, identityStreamWitness, privateMemberBytes: payloadBytes, privateMemberSha256: carryEstimateHash(payload),
      });
+     if (!identityStreamWitness.accepted) throw new Error('Carry dense estimate lacks separate Person and Employment identity streams under one window');
      const originalAgain = dialect.sqlToQuery(statement);
      if (originalAgain.sql !== compiled.sql || !isDeepStrictEqual(originalAgain.params, compiled.params)) {
        throw new Error('Carry declaration changed during estimate observation');
      }
      slot.timedSubmission = {kind: 'declaration', statement};
    } catch (error) {
-     if (this.firstEstimate.status !== 'CAPTURED') {
-       this.firstEstimate.status = error instanceof CarryEstimateOverflow ? 'OVERFLOW' :
-         this.firstEstimate.nativeOperations ? 'FAILED' : 'UNAVAILABLE';
+     if (this.denseEstimate.status !== 'CAPTURED') {
+       this.denseEstimate.status = error instanceof CarryEstimateOverflow ? 'OVERFLOW' :
+         this.denseEstimate.nativeOperations ? 'FAILED' : 'UNAVAILABLE';
      }
-     this.firstEstimate.failure = this.failureFact(error, 'native-estimate', 'work');
+     this.denseEstimate.failure = this.failureFact(error, 'native-estimate', 'work');
      this.remember(error, 'native-estimate', 'work');
      throw error;
    } finally {
-     this.firstEstimate.elapsedMs = performance.now() - started;
+     this.denseEstimate.elapsedMs = performance.now() - started;
      this.save();
    }
  }
  async held<T>(tx:Tx,kind:'fixture'|'command'|'read',body:(guarded:Tx)=>Promise<T>):Promise<T>{
   this.check();const slot:CarryBoundarySlot={kind,epoch:++this.nextEpoch,armed:false,closing:false,active:0,pending:new Set(),tag:'carry-boundary-'+randomUUID()};this.slots.add(slot);
-  const observeEstimate = kind === 'read' && this.firstEstimatePage() && this.estimateEpoch === undefined;
+  const observeEstimate = kind === 'read' && this.denseEstimatePage() && this.estimateEpoch === undefined;
   if (observeEstimate) this.estimateEpoch = slot.epoch;
   let outcome:{ok:true;value:T}|{ok:false;error:unknown};
   try{
@@ -847,7 +953,7 @@ class CarryBoundaryScope{
    this.signal.removeEventListener('abort',this.abort);this.restore?.();this.observerRestored=this.observerInstalled;this.restore=undefined;
    this.event('drain-complete');this.event('final');
    if(!this.bodyFailed){
-    if (this.estimateDirectory && (this.firstEstimate.status !== 'CAPTURED' || !this.firstEstimate.originalDeclarationAdmitted)) this.evidenceFailed=true;
+    if (this.estimateDirectory && (this.denseEstimate.status !== 'CAPTURED' || !this.denseEstimate.originalDeclarationAdmitted)) this.evidenceFailed=true;
     const count=(stage:CarryBoundaryStage)=>this.events.filter(event=>event.stage===stage).length;
     const rows=(stage:CarryBoundaryStage)=>this.events.filter(event=>event.stage===stage).reduce((n,event)=>n+(event.rows??0),0);
     if(this.stopped||!this.observerRestored||!this.resolverRestored||!this.cancellationSettled||this.events.length!==125||count('phase-complete')!==7||count('page-start')!==11||count('fetch-return')!==17||count('oracle-complete')!==11
@@ -866,8 +972,9 @@ type ObservedCarryIdentity={employmentId:string;name:string};
 type ObservedCarryProperties={role:string;isolation:string;readOnly:boolean;pid:number};
 /** Case-private observation of the actual app cursor; rows never leave test memory.
  * The original RowList is returned unchanged, and the oracle below sorts this SAME stream. */
-function observeCarryCursor(failAfterFirstFetch=false,scope?:CarryBoundaryScope){
+function observeCarryCursor(failAfterFirstFetch=false,scope?:CarryBoundaryScope,expectedCompanyId?:string){
  const actual=database.withTenant,dialect=new PgDialect(),rows:ObservedCarryIdentity[]=[],batches:number[]=[],queries:string[]=[],properties:ObservedCarryProperties[]=[];
+ const declarationParameters:unknown[][]=[];
  const state={active:0,maxActive:0};let originalFetchFailure:unknown,controlClosed=false;
  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{
   scope?.check();
@@ -877,7 +984,10 @@ function observeCarryCursor(failAfterFirstFetch=false,scope?:CarryBoundaryScope)
   const invoke=(native:Tx)=>read(new Proxy(native,{get(target,key,receiver){
    if(key==='execute')return async(statement:SQL)=>{
     const compiled=dialect.sqlToQuery(statement),text=compiled.sql.trim().toLowerCase().replace(/\s+/g,' ');
-    if (scope && text.startsWith('declare ')) await scope.estimateFirstDeclaration(target, context, facts?.pid, statement, dialect, compiled);
+    if(text.startsWith('declare ')){
+     declarationParameters.push(compiled.params.slice());
+     if(scope)await scope.estimateDenseDeclaration(target,context,facts?.pid,statement,dialect,compiled,expectedCompanyId);
+    }
     queries.push(text);state.active++;state.maxActive=Math.max(state.maxActive,state.active);
     try{
      let result:Awaited<ReturnType<Tx['execute']>>;const nativeStarted=performance.now();
@@ -906,7 +1016,7 @@ function observeCarryCursor(failAfterFirstFetch=false,scope?:CarryBoundaryScope)
   }}));
   return scope?scope.held(tx,options?.readOnlySnapshot?'read':'command',invoke):invoke(tx);
  },options));
- return {rows,batches,queries,properties,state,resetPage(){if(state.active!==0)throw new Error('Carry boundary observer still active');rows.length=0;batches.length=0;queries.length=0;properties.length=0;state.active=0;state.maxActive=0;},get originalFetchFailure(){return originalFetchFailure;},
+ return {rows,batches,queries,properties,state,declarationParameters,resetPage(){if(state.active!==0)throw new Error('Carry boundary observer still active');rows.length=0;batches.length=0;queries.length=0;properties.length=0;declarationParameters.length=0;state.active=0;state.maxActive=0;},get originalFetchFailure(){return originalFetchFailure;},
   get controlClosed(){return controlClosed;},restore:()=>spy.mockRestore()};
 }
 function expectCarryCursorPage(probe:ReturnType<typeof observeCarryCursor>,page:ReturnType<typeof parsePageQuery>,result:Awaited<ReturnType<typeof carryForwardReportPage>>,total:number){
@@ -929,8 +1039,9 @@ it('preserves stable same-native-stream carry pages across fixed4096 fetch bound
  const scope=new CarryBoundaryScope(context.signal);carryBoundaryScope=scope;
  context.onTestFinished(()=>scope.finish());
  await scope.run(async()=>{
+ assertCarryIdentityStreamRefusals();
  scope.event('seed-start');await scope.prepare();
- const b=await seedBase(),ctx=adminCtx(b),probe=observeCarryCursor(false,scope);scope.setRestore(probe.restore);
+ const b=await seedBase(),ctx=adminCtx(b),probe=observeCarryCursor(false,scope,b.companyId);scope.setRestore(probe.restore);
  const seeded=await scope.fixture(tx=>seedRows(b,4095,{}, {tx,scope}));scope.event('seed-return');scope.event('pair-start');
  const paired=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01',
   person:{fullName:'Excluded carry paired',primaryEmail:randomUUID()+'@example.invalid'}});
@@ -1019,3 +1130,68 @@ it('propagates an actual native carry FETCH failure and settles its borrowed tra
  const full=await carryForwardReport(ctx,[b.companyId],{year:2026}),fresh=await carryForwardReportPage(ctx,[b.companyId],{year:2026,page:first});
  expect(fresh.state.total).toBe(4096);expect(fresh.rows).toEqual(full.slice(0,25));
 },120000);
+
+it('keeps carry identity order and enrichment with absent, current and department-filtered assignments',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b),scope=[b.companyId],name='Fictional tied carry identity';
+ const excludedName='Fictional excluded employee',email='carry-historical-witness@example.invalid';
+ const {ids:[historical,finance,operations,excluded],people:[historicalPerson]}=await seedRows(b,4,{name:i=>i===3?excludedName:name});
+ expect(await owner.db.update(person).set({primaryEmail:email}).where(eq(person.id,historicalPerson))
+  .returning({id:person.id,primaryEmail:person.primaryEmail})).toEqual([{id:historicalPerson,primaryEmail:email}]);
+ expect(await owner.db.update(assignment).set({validTo:'2024-01-01'}).where(eq(assignment.employmentId,historical))
+  .returning({employmentId:assignment.employmentId,validTo:assignment.validTo})).toEqual([{employmentId:historical,validTo:'2024-01-01'}]);
+ expect(await owner.db.update(assignment).set({departmentId:b.deptB}).where(eq(assignment.employmentId,operations))
+  .returning({employmentId:assignment.employmentId,departmentId:assignment.departmentId})).toEqual([{employmentId:operations,departmentId:b.deptB}]);
+
+ const departmentById=new Map<string,string|null>([[historical,null],[finance,'Finance'],[operations,'Operations']]);
+ for(const departmentId of [undefined,b.deptA]){
+  const input={year:2026,companyId:b.companyId,filter:{q:name,departmentId}};
+  const full=await carryForwardReport(ctx,scope,input);
+  const expectedIds=departmentId?[finance]:[historical,finance,operations].sort();
+  const probe=observeCarryCursor();
+  try{
+   const result=await carryForwardReportPage(ctx,scope,{...input,page:first});
+   expectCarryCursorPage(probe,first,result,expectedIds.length);
+   expect(probe.rows).toEqual(expectedIds.map(employmentId=>({employmentId,name})));
+   expect(result.rows).toEqual(full);
+   expect(result.rows.map(({employmentId,department})=>({employmentId,department})))
+    .toEqual(expectedIds.map(employmentId=>({employmentId,department:departmentById.get(employmentId)})));
+   const declarations=probe.queries.filter(query=>query.startsWith('declare analytics_carry_identities '));
+   expect(declarations).toHaveLength(1);
+   expect(declarations[0].includes('left join "assignment"')).toBe(Boolean(departmentId));
+   expect(declarations[0].includes('left join "department"')).toBe(Boolean(departmentId));
+   expect(declarations[0].includes(CARRY_IDENTITY_EVENTS_SQL)).toBe(!departmentId);
+   expect(probe.declarationParameters).toEqual([[b.companyId,b.companyId,...(departmentId?[departmentId]:[]),
+    `%${name}%`,`%${name}%`,'2026-12-31','2026-01-01']]);
+  }finally{probe.restore();}
+ }
+ for(const {q,expected,streamed} of [
+  {q:' '+email+' ',expected:[{employmentId:historical,name}],streamed:true},
+  {q:'  ',expected:[{employmentId:excluded,name:excludedName},...[historical,finance,operations].sort().map(employmentId=>({employmentId,name}))],streamed:false},
+ ]){
+  const input={year:2026,companyId:b.companyId,filter:{q}};
+  const full=await carryForwardReport(ctx,scope,input),probe=observeCarryCursor();
+  try{
+   const result=await carryForwardReportPage(ctx,scope,{...input,page:first});
+   expectCarryCursorPage(probe,first,result,expected.length);
+   expect(result.rows).toEqual(full);
+   expect(probe.rows.slice().sort((a,b)=>a.name.localeCompare(b.name))).toEqual(expected);
+   const declarations=probe.queries.filter(query=>query.startsWith('declare analytics_carry_identities '));
+   expect(declarations).toHaveLength(1);
+   expect(declarations[0].includes(CARRY_IDENTITY_EVENTS_SQL)).toBe(streamed);
+   expect(probe.declarationParameters).toEqual([[b.companyId,b.companyId,...(streamed?[`%${email}%`,`%${email}%`]:[]),
+    '2026-12-31','2026-01-01']]);
+  }finally{probe.restore();}
+ }
+ // A stored empty name is a real Person marker when the existing email predicate matches.
+ expect(await owner.db.update(person).set({fullName:''}).where(eq(person.id,historicalPerson))
+  .returning({id:person.id,name:person.fullName})).toEqual([{id:historicalPerson,name:''}]);
+ const input={year:2026,companyId:b.companyId,filter:{q:email}};
+ const full=await carryForwardReport(ctx,scope,input),probe=observeCarryCursor();
+ try{
+  const result=await carryForwardReportPage(ctx,scope,{...input,page:first});
+  expectCarryCursorPage(probe,first,result,1);
+  expect(probe.rows).toEqual([{employmentId:historical,name:''}]);
+  expect(result.rows[0].employeeName).toBe('');
+  expect(result.rows).toEqual(full);
+ }finally{probe.restore();}
+});
