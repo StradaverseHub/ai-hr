@@ -214,18 +214,14 @@ function usesEmploymentTenantPointIndex(node:PlanNode,point:EmploymentPoint){
 const matchedRelations=['assignment','company','department','employment','person'] as const;
 const matchedScans=['Seq Scan','Index Scan'];
 const matchedNodes=['Sort','Result','Nested Loop','ProjectSet',...matchedScans];
-const knownMatchedPairs={
- 'equivalent-work':{
-  'old-matched':'d7725d1f6e9483cfe3c4127524d68a17a3051cf18f011e4ad46e031d677b7f74',
-  'candidate-matched':'160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96',
- },
- improved:{
-  'old-matched':'89400a082d46fb1d76e97635b382f8c5bef20ea8ce88a5c6f15098420e7b73cb',
-  'candidate-matched':'ccdbf6250eff201c6570ededb10fd765a9bcdd4735affb3e4c7fa1dc1d49941f',
- },
+const knownMatchedPaths={
+ 'old-assignment-first':'d7725d1f6e9483cfe3c4127524d68a17a3051cf18f011e4ad46e031d677b7f74',
+ 'old-employment-first':'89400a082d46fb1d76e97635b382f8c5bef20ea8ce88a5c6f15098420e7b73cb',
+ 'candidate-assignment-first-primary-key':'160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96',
+ 'candidate-assignment-first-tenant-key':'ccdbf6250eff201c6570ededb10fd765a9bcdd4735affb3e4c7fa1dc1d49941f',
 } as const;
-type MatchedPair=keyof typeof knownMatchedPairs;
-type MatchedScope={label:keyof typeof knownMatchedPairs[MatchedPair];tenant:string;company:string};
+type MatchedPath=keyof typeof knownMatchedPaths;
+type MatchedScope={label:'old-matched'|'candidate-matched';tenant:string;company:string};
 const matchedVariableCounters=new Set(['Startup Cost','Total Cost','Plan Rows','Plan Width','Shared Hit Blocks','Shared Read Blocks',
  'Rows Removed by Filter','Rows Removed by Index Recheck']);
 const planCounter=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
@@ -233,10 +229,10 @@ type MatchedAccess={relation:string;kind:string;index:string|null;loops:number;r
 type MatchedFacetWork={
  access:MatchedAccess[];policy:[number,number][];joinRemovals:[number,number][];sharedHits:number;sharedReads:number;
 };
-type MatchedFacetArm={pair:MatchedPair;label:MatchedScope['label'];work:MatchedFacetWork};
+type MatchedFacetArm={path:MatchedPath;label:MatchedScope['label'];work:MatchedFacetWork};
 
-/** Identify an arm within a reviewed pair while retaining native reference relationships. */
-function knownMatchedPair(root:PlanNode,scope:MatchedScope):MatchedPair|null{
+/** Identify a reviewed access path while retaining native reference relationships. */
+function knownMatchedPath(root:PlanNode,scope:MatchedScope):MatchedPath|null{
  const references=new Map<string,number>(),shape:unknown[]=[];
  const normalize=(value:unknown):unknown=>{
   if(Array.isArray(value))return value.map(normalize);
@@ -264,8 +260,13 @@ function knownMatchedPair(root:PlanNode,scope:MatchedScope):MatchedPair|null{
  }
  if(!walk(root,0))return null;
  const hash=digest(JSON.stringify(shape));
- if(hash===knownMatchedPairs['equivalent-work'][scope.label])return 'equivalent-work';
- if(hash===knownMatchedPairs.improved[scope.label])return 'improved';
+ if(scope.label==='old-matched'){
+  if(hash===knownMatchedPaths['old-assignment-first'])return 'old-assignment-first';
+  if(hash===knownMatchedPaths['old-employment-first'])return 'old-employment-first';
+ }else if(scope.label==='candidate-matched'){
+  if(hash===knownMatchedPaths['candidate-assignment-first-primary-key'])return 'candidate-assignment-first-primary-key';
+  if(hash===knownMatchedPaths['candidate-assignment-first-tenant-key'])return 'candidate-assignment-first-tenant-key';
+ }
  return null;
 }
 
@@ -277,8 +278,10 @@ function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:Pl
     node['Parallel Aware']!==false||node['Async Capable']!==false||node['Temp Read Blocks']!==0||node['Temp Written Blocks']!==0||
     node['Local Hit Blocks']!==0||node['Local Read Blocks']!==0||node['Local Dirtied Blocks']!==0||node['Local Written Blocks']!==0||
     node['Shared Dirtied Blocks']!==0||node['Shared Written Blocks']!==0))return null;
- const pair=knownMatchedPair(root,scope);
- if(!pair)return null;
+ const path=knownMatchedPath(root,scope);
+ if(!path)return null;
+ const opposite=scope.label==='old-matched'?'candidate-matched':'old-matched';
+ expect(knownMatchedPath(root,{...scope,label:opposite})).toBeNull();
  const [result]=root.Plans??[],[join]=result.Plans??[];
  const withoutCounter={...result};delete withoutCounter['Shared Hit Blocks'];
  for(const changed of [
@@ -286,7 +289,7 @@ function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:Pl
   {...root,Plans:[{...result,Plans:[join,{...join,Plans:[]}]}]},
   {...root,Plans:[{...result,'One-Time Filter':String(result['One-Time Filter'])+' AND true'}]},
   {...root,Plans:[withoutCounter]},
- ])expect(knownMatchedPair(changed,scope)).toBeNull();
+ ])expect(knownMatchedPath(changed,scope)).toBeNull();
  const access=active.filter(node=>matchedScans.includes(String(node['Node Type'])));
  if(access.length!==matchedRelations.length)return null;
  const scans:MatchedAccess[]=[];
@@ -316,7 +319,7 @@ function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:Pl
  }
  const sharedHits=root['Shared Hit Blocks'],sharedReads=root['Shared Read Blocks'];
  if(!policy.length||!planCounter(sharedHits)||!planCounter(sharedReads))return null;
- return {pair,label:scope.label,work:{access:scans,policy:policy.sort(),joinRemovals:joinRemovals.sort(),sharedHits,sharedReads}};
+ return {path,label:scope.label,work:{access:scans,policy:policy.sort(),joinRemovals:joinRemovals.sort(),sharedHits,sharedReads}};
 }
 
 function matchedFacetOutcome(old:MatchedFacetWork|null,candidate:MatchedFacetWork|null,elapsed:{ordinary:boolean;instrumented:boolean}){
@@ -333,9 +336,14 @@ function matchedFacetOutcome(old:MatchedFacetWork|null,candidate:MatchedFacetWor
 }
 
 function correlatedMatchedOutcome(old:MatchedFacetArm|null,candidate:MatchedFacetArm|null,elapsed:{ordinary:boolean;instrumented:boolean}){
- if(!old||!candidate||old.label!=='old-matched'||candidate.label!=='candidate-matched'||old.pair!==candidate.pair)return 'refused';
+ if(!old||!candidate||old.label!=='old-matched'||candidate.label!=='candidate-matched')return 'refused';
+ const parity=old.path==='old-assignment-first'&&candidate.path==='candidate-assignment-first-primary-key';
+ const changedWork=old.path==='old-employment-first'&&
+  (candidate.path==='candidate-assignment-first-primary-key'||candidate.path==='candidate-assignment-first-tenant-key');
+ if(!parity&&!changedWork)return 'refused';
  const outcome=matchedFacetOutcome(old.work,candidate.work,elapsed);
- return outcome===old.pair?outcome:'refused';
+ if((parity&&outcome==='equivalent-work')||(changedWork&&outcome==='improved'))return outcome;
+ return 'refused';
 }
 
 function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,sparseCount?:number,point?:EmploymentPoint,matched?:MatchedScope){
@@ -690,7 +698,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    const oldArm=oldPlan.matchedWork??null,candidateArm=candidatePlan.matchedWork??null;
    state.matchedOutcome=correlatedMatchedOutcome(oldArm,candidateArm,state.matchedImprovement);
    metadata.matchedWorkOutcome={outcome:state.matchedOutcome,
-    oldPair:oldArm?.pair??null,candidatePair:candidateArm?.pair??null,
+    oldPath:oldArm?.path??null,candidatePath:candidateArm?.path??null,
     elapsed:state.matchedOutcome==='improved'?'both-faster-in-this-run':'single-pair-inconclusive'};
    const oldWork=oldArm?.work;
    if(oldWork){
@@ -702,13 +710,24 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
     const moreLoops={...oldWork,access:[{...assignment,loops:assignment.loops+1},...other],sharedHits:oldWork.sharedHits+1};
     expect(matchedFacetOutcome(moreLoops,oldWork,opposed)).toBe('refused');
     expect(matchedFacetOutcome(moreLoops,oldWork,bothFaster)).toBe('improved');
-   }
-   if(oldArm&&candidateArm){
-    const otherPair:MatchedPair=oldArm.pair==='equivalent-work'?'improved':'equivalent-work';
-    const bothFaster={ordinary:true,instrumented:true};
-    expect(correlatedMatchedOutcome(oldArm,{...candidateArm,pair:otherPair},bothFaster)).toBe('refused');
-    expect(correlatedMatchedOutcome(candidateArm,oldArm,bothFaster)).toBe('refused');
-    expect(correlatedMatchedOutcome({...oldArm,pair:'improved'},{...candidateArm,pair:'improved',work:oldArm.work},bothFaster)).toBe('refused');
+    // Model the eligibility matrix using the observed counters. The real verdict above only uses native arms.
+    const oldLight:MatchedFacetArm={path:'old-assignment-first',label:'old-matched',work:oldWork};
+    const oldHeavy:MatchedFacetArm={...oldLight,path:'old-employment-first',work:moreLoops};
+    const primaryKey:MatchedFacetArm={path:'candidate-assignment-first-primary-key',label:'candidate-matched',work:oldWork};
+    const tenantKey:MatchedFacetArm={...primaryKey,path:'candidate-assignment-first-tenant-key'};
+    expect(correlatedMatchedOutcome(oldLight,primaryKey,opposed)).toBe('equivalent-work');
+    expect(correlatedMatchedOutcome(oldLight,tenantKey,bothFaster)).toBe('refused');
+    expect(correlatedMatchedOutcome(primaryKey,oldHeavy,bothFaster)).toBe('refused');
+    expect(correlatedMatchedOutcome(null,primaryKey,bothFaster)).toBe('refused');
+    expect(correlatedMatchedOutcome({...oldHeavy,work:oldWork},primaryKey,bothFaster)).toBe('refused');
+    expect(correlatedMatchedOutcome({...oldLight,work:moreLoops},primaryKey,bothFaster)).toBe('refused');
+    for(const light of [primaryKey,tenantKey]){
+     expect(correlatedMatchedOutcome(oldHeavy,light,bothFaster)).toBe('improved');
+     expect(correlatedMatchedOutcome(oldHeavy,light,opposed)).toBe('refused');
+     expect(correlatedMatchedOutcome(oldHeavy,light,{ordinary:true,instrumented:false})).toBe('refused');
+     const supportingRegression={...light.work,access:light.work.access.map((entry,index)=>index===1?{...entry,loops:entry.loops+1}:entry)};
+     expect(correlatedMatchedOutcome(oldHeavy,{...light,work:supportingRegression},bothFaster)).toBe('refused');
+    }
    }
    matchedObserved=true;persist();
    fit(matchedEnd,3000,'matched transaction finalization');

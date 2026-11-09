@@ -298,5 +298,90 @@
     },
     "independentShapeReviewSha256": "0adc986f598067311a355c622c5810580112e4a5083648560fbc28dc7f3f0e3c",
     "refusal": "A missing arm, unknown fingerprint, wrong arm direction, mixed pair, or mismatch between known family and measured-work outcome refuses. Prior failed hosted courses remain failed."
+  },
+  "physicalMatchedArmEligibility": {
+    "directParent": "9a52cf7eb8b878ad714a3343d34ae1e7e5060a93",
+    "parentTree": "5245cd53dc7ffe347007f4d9317f058de79d0668",
+    "preimages": [
+      {
+        "path": "test/employee-choice-unicode-scale.test.ts",
+        "blob": "ead578e2b7ce917380de759a8996fbccec5dbca2",
+        "bytes": 72894,
+        "sha256": "68b053437dc21c57c897c8b41731bb3839e8d3bfb36c0090d85b9db7eb06ed27"
+      },
+      {
+        "path": "docs/qualification/employee-unicode-matched-work-parity-source-20261109.json",
+        "blob": "d6422aa44818240ad942876b2a03dacf006e25c8",
+        "bytes": 12354,
+        "sha256": "cae4d84e4e68a48069b352602387c762d626c5096fa2c671ccd5a45e81be28cf"
+      }
+    ],
+    "currentTestSource": {
+      "bytes": 74880,
+      "sha256": "710694211ab3700a59d4379fdaf535876dde49b990526935e33b1a92f537102c"
+    },
+    "historicalRun": {
+      "source": "9a52cf7eb8b878ad714a3343d34ae1e7e5060a93",
+      "controller": "5aa20706fb7219e28bd077307d7d892996640e1a",
+      "run": 42571105752,
+      "attempt": 1,
+      "conclusion": "failure",
+      "terminalJobs": {
+        "success": 1,
+        "failure": 1,
+        "skipped": 5
+      },
+      "selectedJob": 129008595788
+    },
+    "historicalArtifact": {
+      "id": 13653067413,
+      "bytes": 29931,
+      "sha256": "2f3081463c27aed0fbca65b64f392d1b8ee62f2d4b82764a618b963739a5e2ce"
+    },
+    "independentNativeAuthSha256": "0f99ef048ddced148c20d3946f7061a0c3f00e7dda2ddda64c84227fee1f3166",
+    "sourcePlanSha256": "2da7e74d04f2046df784399e5ed58bc028b0ee1ad54159476d52d2e98eff2a55",
+    "historicalMatchedRefusal": {
+      "outcome": "refused",
+      "oldPair": "improved",
+      "candidatePair": "equivalent-work",
+      "elapsed": "single-pair-inconclusive"
+    },
+    "historicalMatchedWork": {
+      "ordinaryMs": {
+        "old": 977.818340999991,
+        "candidate": 116.14555099999416
+      },
+      "nativeExecutionMs": {
+        "old-matched": 978.274,
+        "candidate-matched": 123.274
+      },
+      "assignmentLoops": {
+        "old-matched": 50001,
+        "candidate-matched": 2
+      },
+      "rootSharedHits": {
+        "old-matched": 811135,
+        "candidate-matched": 4609
+      },
+      "normalizedShapeSha256": {
+        "old-matched": "89400a082d46fb1d76e97635b382f8c5bef20ea8ce88a5c6f15098420e7b73cb",
+        "candidate-matched": "160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96"
+      }
+    },
+    "historicalOtherGates": {
+      "sparseBaselineStress": "pass",
+      "sparseProductPairs": "pass",
+      "catalogueUnchanged": true,
+      "settled": true
+    },
+    "observedDifferenceFromEarlierCandidate": "The one active Employment lookup uses employment_pkey and checks tenant in its filter. The other retained plan uses company_org_employment_tenant_uq and checks tenant in the index condition. Both are Assignment-first and keep the same observed supporting-work contract.",
+    "currentEligibility": {
+      "equivalentWork": "Old Assignment-first with the candidate primary-key shape, requiring full work equality. Single-pair elapsed comparison remains inconclusive.",
+      "improved": "Old Employment-first with either proved candidate Assignment-first shape, requiring the unchanged strict work and both elapsed improvements.",
+      "refused": "Unknown or wrong-direction shape, old Assignment-first with the candidate tenant-key shape, and eligible shapes without their required measured-work outcome."
+    },
+    "newShapePins": 0,
+    "nativeObservation": "UNRUN",
+    "releaseEligible": false
   }
 }
