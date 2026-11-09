@@ -2,8 +2,9 @@ import {existsSync,readFileSync} from 'node:fs';
 import {expect,it} from 'vitest';
 import {validateNavigationScenarioPlan,type NavigationFixtureRole,type NavigationScenario} from '../scripts/performance/navigation-protocol';
 import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
+import {isNativeOwnPayslipPdfPath,requireNativePreflightFixtureDay} from '../scripts/performance/native-preflight-content';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
- nativePreflightRouteFor,assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from '../scripts/performance/system-route-manifest.mjs';
+ nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to an existing page',()=>{
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
  for(const [role,paths]of Object.entries(routePools)){
@@ -14,7 +15,7 @@ it('counts the actual distinct route pools and binds every concrete path to an e
 });
 
 const nativeRenderedRows=()=>nativePreflightRoutePlan().map(row=>({...row,status:200,accountObserved:true,
- elapsedMs:100,failureCount:0,readiness:row.witness?'usable-content':'rendered-only'}));
+ elapsedMs:100,failureCount:0,readiness:nativePreflightReadiness(row.witness)}));
 
 it('requires the complete current native role union on exactly the four primary actors',()=>{
  const plan=nativePreflightRoutePlan(),byRole=[['employee',4,30],['manager',2,16],['companyHR',1,69],['groupHR',0,72]]as const;
@@ -23,7 +24,7 @@ it('requires the complete current native role union on exactly the four primary 
   const rows=plan.filter(row=>row.role===role);expect(rows).toHaveLength(count);
   expect(rows.map(row=>row.requested)).toEqual(routePools[role]);expect(rows.every(row=>row.actorIndex===actor)).toBe(true);
  }
- const observed=nativeRenderedRows();expect(requireNativeRenderedUnion(observed)).toEqual({total:187,usable:10,renderedOnly:177});
+ const observed=nativeRenderedRows();expect(requireNativeRenderedUnion(observed)).toEqual({total:187,usable:16,scopedDenials:1,renderedOnly:170});
  expect(observed.filter(row=>row.view!==null)).toHaveLength(14);
  expect(observed.filter(row=>row.redirectStatus!==null)).toHaveLength(4);
  expect(()=>requireNativeRenderedUnion(observed.slice(1))).toThrow(/incomplete/);
@@ -43,6 +44,55 @@ it('refuses route substitution, silent redirect and usability without an actual 
  const roster=rows.find(item=>item.role==='groupHR'&&item.requested==='/roster')!;
  expect(()=>assertNativeRenderedVisit({...roster,witness:null,readiness:'rendered-only'})).toThrow(/witness/);
  expect(()=>assertNativeRenderedVisit({...roster,witness:'analytics-fixture-metrics'})).toThrow(/witness/);
+});
+
+it('binds cross-module content and the explicit AI scope denial to the existing exact role routes',()=>{
+ const rows=nativeRenderedRows();
+ const expected=[
+  ['employee',4,'/me/payslip','own-released-payslip','usable-content'],
+  ['employee',4,'/leave','own-annual-leave-controls','usable-content'],
+  ['employee',4,'/attendance/individual','own-individual-attendance-picker','usable-content'],
+  ['groupHR',0,'/control-tower/agents/runs','ai-runs-group-history-controls','usable-content'],
+  ['companyHR',1,'/control-tower/agents/runs','ai-runs-company-scope','scope-denial'],
+  ['groupHR',0,'/admin/rewards/shared','rewards-shared-company-scope','usable-content'],
+  ['employee',4,'/me','own-profile-identity','usable-content'],
+ ] as const;
+ for(const [role,actorIndex,requested,witness,readiness]of expected){
+  const matching=rows.filter(row=>row.witness===witness);
+  expect(matching).toHaveLength(1);
+  const [row]=matching;
+  expect(row).toMatchObject({role,actorIndex,requested,final:requested,readiness});
+  expect(assertNativeRenderedVisit(row)).toBe(nativePreflightRouteFor(role,actorIndex,requested));
+  for(const delta of [{witness:null},{readiness:'rendered-only'},{actorIndex:254},{final:'/other'},{status:403},{failureCount:1}])
+   expect(()=>assertNativeRenderedVisit({...row,...delta})).toThrow();
+ }
+ const company=rows.find(row=>row.witness==='ai-runs-company-scope')!;
+ const group=rows.find(row=>row.witness==='ai-runs-group-history-controls')!;
+ expect(()=>assertNativeRenderedVisit({...company,readiness:'usable-content'})).toThrow(/readiness/);
+ expect(()=>assertNativeRenderedVisit({...group,readiness:'scope-denial'})).toThrow(/readiness/);
+ expect(()=>assertNativeRenderedVisit({...company,witness:group.witness,readiness:group.readiness})).toThrow(/witness/);
+});
+
+it('requires the same sealed Kuala Lumpur day at both calendar observation boundaries',()=>{
+ const fixtureDay='2026-11-09';
+ const beforeMidnight=new Date('2026-11-09T15:59:59.999Z');
+ const atMidnight=new Date('2026-11-09T16:00:00.000Z');
+ for(const witness of ['own-annual-leave-controls','own-individual-attendance-picker']){
+  expect(()=>requireNativePreflightFixtureDay(witness,fixtureDay,beforeMidnight)).not.toThrow();
+  expect(()=>requireNativePreflightFixtureDay(witness,fixtureDay,atMidnight)).toThrow(/current Kuala Lumpur day/);
+  expect(()=>requireNativePreflightFixtureDay(witness,'2026-11-10',atMidnight)).not.toThrow();
+ }
+ expect(()=>requireNativePreflightFixtureDay('own-released-payslip',fixtureDay,atMidnight)).not.toThrow();
+});
+
+it('accepts only a canonical own payslip PDF address with one exact UUID',()=>{
+ const uuid='10000000-0000-4000-8000-000000000004';
+ const href='/me/payslip/'+uuid+'/pdf';
+ expect(isNativeOwnPayslipPdfPath(href)).toBe(true);
+ for(const bad of [null,'/me/payslip/'+'-'.repeat(36)+'/pdf','/me/payslip/'+uuid.replace('-','a')+'/pdf',
+  href+'?disposition=inline',href+'#pdf',href+'\n','https://localhost:3443'+href,'/payroll'+href]){
+  expect(isNativeOwnPayslipPdfPath(bad)).toBe(false);
+ }
 });
 
 it('retains both guarded compatibility requests and their distinct exact canonical destinations',()=>{

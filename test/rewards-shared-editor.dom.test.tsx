@@ -2,6 +2,8 @@
 import type {ReactNode} from 'react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react';
+import {hydrateRoot} from 'react-dom/client';
+import {renderToString} from 'react-dom/server';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {RewardCompanyClassificationPanel} from '../app/admin/rewards/shared/classification';
@@ -46,6 +48,45 @@ describe('shared configuration pair picker',()=>{
   expect(screen.getByRole('checkbox',{name:'Fictional Company A · Unit A'})).toBeTruthy();expect(screen.getByRole('checkbox',{name:'Fictional Company A · Shared global'})).toBeTruthy();
   expect(screen.queryByRole('checkbox',{name:/Fictional Company B|Alias company/})).toBeNull();
   const unassigned=screen.getByRole('region',{name:en.rewards.companyPicker.unassigned});expect(within(unassigned).getByText('Unassigned A')).toBeVisible();expect(within(unassigned).getByText('Unassigned B')).toBeVisible();
+ });
+ it('marks the existing designation button after hydration and keeps disclosure and cancellation local',async()=>{
+  const saveAction=vi.fn();
+  const node=<NextIntlClientProvider locale="en" timeZone="Asia/Kuala_Lumpur" messages={en}>
+   <RewardCompanyClassificationPanel companies={companies} rows={[]} saveAction={saveAction}/>
+  </NextIntlClientProvider>;
+  const host=document.createElement('div');
+  const onRecoverableError=vi.fn();
+  let root:ReturnType<typeof hydrateRoot>|undefined;
+  let primaryFailure:{error:unknown}|undefined;
+  try{
+   host.innerHTML=renderToString(node);document.body.append(host);
+   const review=within(host).getByRole<HTMLButtonElement>('button',{name:en.rewards.companyPicker.reviewDesignation,exact:true});
+   expect(review.getAttribute('data-reward-classification-ready')).toBe('false');
+   expect(review.disabled).toBe(false);
+   await act(async()=>{root=hydrateRoot(host,node,{onRecoverableError});});
+   expect(within(host).getByRole('button',{name:en.rewards.companyPicker.reviewDesignation,exact:true})).toBe(review);
+   expect(review.getAttribute('data-reward-classification-ready')).toBe('true');
+   expect(review.disabled).toBe(false);
+   fireEvent.click(review);
+   expect(within(host).getByLabelText(en.rewards.companyPicker.designation)).toBeVisible();
+   fireEvent.click(within(host).getByRole('button',{name:en.rewards.companyPicker.cancel,exact:true}));
+   expect(within(host).queryByLabelText(en.rewards.companyPicker.designation)).toBeNull();
+   expect(saveAction).not.toHaveBeenCalled();
+   expect(onRecoverableError).not.toHaveBeenCalled();
+  }catch(error){
+   primaryFailure={error};
+   throw error;
+  }finally{
+   try{
+    const hydrated=root;
+    if(hydrated)await act(async()=>{hydrated.unmount();});
+   }catch(error){
+    if(primaryFailure)throw new AggregateError([primaryFailure.error,error],'Designation hydration test and unmount failed');
+    throw error;
+   }finally{
+    host.remove();
+   }
+  }
  });
  it('requires explicit identity review, a canonical company and supporting reason before an alias designation can submit',()=>{
   render(wrap(<RewardCompanyClassificationPanel companies={companies} rows={[]} saveAction={vi.fn()}/>));

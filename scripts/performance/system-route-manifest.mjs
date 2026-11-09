@@ -49,13 +49,26 @@ const usableWitness=new Map([
  ['/', 'home-card-inventory'],['/analytics','analytics-fixture-metrics'],
  ['/roster','roster-scoped-employments'],['/admin/job-descriptions','job-description-controls'],
 ]);
+const scopedDenialWitness='ai-runs-company-scope';
+const roleContentWitness=new Map([
+ ['employee:/me/payslip','own-released-payslip'],
+ ['employee:/leave','own-annual-leave-controls'],
+ ['employee:/attendance/individual','own-individual-attendance-picker'],
+ ['groupHR:/control-tower/agents/runs','ai-runs-group-history-controls'],
+ ['companyHR:/control-tower/agents/runs',scopedDenialWitness],
+ ['groupHR:/admin/rewards/shared','rewards-shared-company-scope'],
+ ['employee:/me','own-profile-identity'],
+]);
+export function nativePreflightContentWitness(role,requested){
+ return roleContentWitness.get(role+':'+requested)??null;
+}
 const expectedCounts=Object.freeze({employee:30,manager:16,companyHR:69,groupHR:72});
 const nativeRoutes=Object.freeze(Object.entries(routePools).flatMap(([role,routes])=>
  routes.map(requested=>{
   const compatibility=compatibilityRoutes.get(requested);
   return Object.freeze({role,actorIndex:primaryActor[role],requested,
    final:compatibility?.final??requested,redirectStatus:compatibility?.status??null,
-   view:assistantViews.get(requested)??null,witness:usableWitness.get(requested)??null});
+   view:assistantViews.get(requested)??null,witness:nativePreflightContentWitness(role,requested)??usableWitness.get(requested)??null});
  })));
 
 export function nativePreflightRoutePlan(){
@@ -78,6 +91,11 @@ export function assertNativePreflightRedirect(requested,status,location){
  assert(location===expected.final||location===origin+expected.final,'Native compatibility redirect location differs');
 }
 
+export function nativePreflightReadiness(witness){
+ if(witness===scopedDenialWitness)return 'scope-denial';
+ return witness?'usable-content':'rendered-only';
+}
+
 /** Data adjudication only. Native route/account/failure facts come from the owned page. */
 export function assertNativeRenderedVisit(row){
  assert(row&&typeof row==='object');
@@ -89,16 +107,18 @@ export function assertNativeRenderedVisit(row){
  assert.equal(row.status,200);assert.equal(row.accountObserved,true);assert.equal(row.failureCount,0);
  assert(Number.isFinite(row.elapsedMs)&&row.elapsedMs>=0&&row.elapsedMs<=90000,'Native rendered-route deadline exceeded');
  assert.equal(row.witness,expected.witness,'Native preflight usable-content witness differs');
- assert.equal(row.readiness,expected.witness?'usable-content':'rendered-only','Native preflight readiness exceeds observed content');
+ assert.equal(row.readiness,nativePreflightReadiness(expected.witness),'Native preflight readiness exceeds observed content');
  return expected;
 }
 
 export function requireNativeRenderedUnion(rows){
  assert(Array.isArray(rows)&&rows.length===nativePreflightRoutePlan().length,'Native rendered route union incomplete');
- const seen=new Set();let usable=0;
+ const seen=new Set();let usable=0,scopedDenials=0;
  for(const row of rows){
   const expected=assertNativeRenderedVisit(row);assert(!seen.has(expected),'Duplicate native rendered actor/route pair');seen.add(expected);
-  if(expected.witness)usable++;
+  const readiness=nativePreflightReadiness(expected.witness);
+  if(readiness==='usable-content')usable++;
+  if(readiness==='scope-denial')scopedDenials++;
  }
- return{total:seen.size,usable,renderedOnly:seen.size-usable};
+ return{total:seen.size,usable,scopedDenials,renderedOnly:seen.size-usable-scopedDenials};
 }
