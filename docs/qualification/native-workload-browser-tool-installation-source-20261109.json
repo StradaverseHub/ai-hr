@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "kind": "PRIVATE_BROWSER_TOOL_MATERIALIZATION_SOURCE_ONLY",
+  "sourceRef": "codex/native-workload-private-tool-materialization-20261109",
+  "parent": "1a0e5e8ac8cfdd0dd1f5da6cba32e9eaa0bb4441",
+  "currentSource": [
+    {
+      "path": ".github/ci/native-workload-browser-toolchain.py",
+      "bytes": 24317,
+      "sha256": "16440458ebdebcea86631e93f06034cf93839f2d36c854471483b6c743a4f1fd"
+    },
+    {
+      "path": ".github/ci/native-workload-browser-tool-installation.py",
+      "bytes": 12094,
+      "sha256": "680a96df4376938b107c22878473954ef6006ae4d0b4260b0336b413fdbaafdd"
+    },
+    {
+      "path": ".github/ci/native-workload-browser-tool-installation.test.py",
+      "bytes": 12010,
+      "sha256": "30df22961bcd025f9605aa35c7f75fccc627fceedb6a559d5a444bdfbff05fbf"
+    }
+  ],
+  "wholeParserPreimage": {
+    "path": ".github/ci/native-workload-browser-toolchain.py",
+    "bytes": 23113,
+    "sha256": "795e5d53a96b0dcfbbe03c95ef1f3cc3bd5d4e28a0ba04b4bfc342245abcaea7",
+    "gitBlob": "3fda782c2ec9905cd51b81a86f85af95f9305d8e"
+  },
+  "historicalInputsWhole": [
+    {
+      "path": ".github/ci/native-workload-browser-toolchain.test.py",
+      "bytes": 18382,
+      "sha256": "40afe4f2236d1336f5645f2c85d4a05c034705d9a544b7ba0919fadf32d04c8f"
+    },
+    {
+      "path": ".github/ci/native-workload-browser-host.py",
+      "bytes": 33063,
+      "sha256": "4f9145631d7be9abe37f3b668259cc43156ece5d3978013d103e65f78d3a84e4"
+    },
+    {
+      "path": ".github/ci/native-workload-browser-host.test.py",
+      "bytes": 28131,
+      "sha256": "202672a424671a53f93ca72bdb1dcf18f0e9eafebbb3117ba09d1b445c19b742"
+    },
+    {
+      "path": "test/native-workload-browser-controller-models.test.ts",
+      "bytes": 4791,
+      "sha256": "349f194c3495d7a5c08dcf0e2f00cbee4d76ad05f451863aae4e0feb80f1fe67"
+    },
+    {
+      "path": "docs/qualification/native-workload-browser-toolchain-source-20261109.json",
+      "bytes": 9180,
+      "sha256": "10b128538d1aa65c404d90e0c78f37e5c0dab7a3af88e098a7532bcb42028649"
+    }
+  ],
+  "priorHostedModels": {
+    "run": 42561934416,
+    "source": "1a0e5e8ac8cfdd0dd1f5da6cba32e9eaa0bb4441",
+    "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+    "artifactId": 13650165957,
+    "artifactSha256": "2a745b13f383110500143999112f11bcb66d77ca3da2c8b216da7edaa132fc34",
+    "authenticationSha256": "abd252afb91033bcd4c48d970a3be284786a297507e6e83aa68005091c44b6dd",
+    "actualModels": [
+      17,
+      25
+    ],
+    "currentPassTransfer": false
+  },
+  "sourceModelMethods": [
+    "test_actual_readback_rejects_same_size_change_replacement_and_extra_name",
+    "test_elapsed_deadline_refuses_initially_and_after_complete_filesystem_readback",
+    "test_entry_bound_counts_implicit_directories_before_creating_file",
+    "test_file_ancestor_collision_never_opens_a_conflicting_path",
+    "test_fixed_four_archive_bytes_and_staging_modes_reconcile_every_installed_member",
+    "test_foreign_entry_or_symlink_refuses_before_mutating_held_root",
+    "test_hardlink_and_symlink_refuse_readback_without_touching_external_bytes",
+    "test_unpinned_browser_refuses_before_creating_staged_outputs",
+    "test_valid_sri_with_late_bad_tar_padding_never_returns_a_tree",
+    "test_wrong_root_kind_or_mode_refuses_before_any_archive_read"
+  ],
+  "privateTree": {
+    "fixedLayout": [
+      "chromium/chrome-headless-shell-linux64",
+      "node_modules/playwright",
+      "node_modules/playwright-core",
+      "node_modules/postgres"
+    ],
+    "directoryMode": "0700",
+    "fileMode": "0600",
+    "maximumEntriesBelowRoot": 5122,
+    "maximumStreamChunkBytes": 262144,
+    "singleCallerDeadline": true,
+    "completeFdRelativeReadback": true
+  },
+  "callerObligations": [
+    "Hold a fresh empty private directory exclusively and immutable input archive bytes throughout.",
+    "Settle positively owned partial private staging after any refusal. No partial output is authority.",
+    "Independently qualify root acquisition, pinned transfer, publication, real read-only mounts and runtime isolation in the later protected owner."
+  ],
+  "modelBehaviorExecuted": false,
+  "publisherArchivesRead": false,
+  "installedOrPublished": false,
+  "runtimeRegistered": false,
+  "browserOrReleaseQualified": false
+}
