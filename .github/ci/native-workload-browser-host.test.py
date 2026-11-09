@@ -243,6 +243,85 @@ class BrowserHostSettlementModel(unittest.TestCase):
             owner._nft(['list', 'chains'], clock, 16)
         launch.assert_not_called()
 
+    def test_late_zero_wait_refuses_after_clearing_the_proven_reap(self):
+        for frontier in (16, 60, 75):
+            with self.subTest(frontier=frontier):
+                owner = H.Firewall('123', '0123456789abcdef')
+                with patch.object(H.time, 'monotonic', return_value=100) as now:
+                    clock = H.Deadline()
+                    def wait(*, timeout):
+                        self.assertEqual(timeout, frontier)
+                        now.return_value = 100 + frontier
+                        return 0
+                    child = SimpleNamespace(stdout=Mock(), poll=Mock(), kill=Mock(), wait=Mock(side_effect=wait))
+                    child.stdout.fileno.return_value = 8
+                    with (patch.object(H.os, 'geteuid', return_value=0),
+                          patch.object(H.tempfile, 'TemporaryFile', return_value=io.BytesIO()),
+                          patch.object(H.subprocess, 'Popen', return_value=child) as launch,
+                          patch.object(H.select, 'select', return_value=([child.stdout], [], [])),
+                          patch.object(H.os, 'read', side_effect=(b'{}', b'')),
+                          self.assertRaisesRegex(H.Refused, '^capability-deadline$')):
+                        owner._nft(['list', 'tables'], clock, frontier)
+                launch.assert_called_once()
+                child.wait.assert_called_once_with(timeout=frontier)
+                child.stdout.close.assert_called_once_with()
+                self.assertIsNone(owner._child)
+                child.poll.assert_not_called()
+                child.kill.assert_not_called()
+
+    def test_late_readback_does_not_publish_new_counters(self):
+        owner = H.Firewall('123', '0123456789abcdef')
+        rows = kernel_rows()
+        readback = H.firewall_readback
+        owner.handles, owner.counters = readback(NAME, data(rows))
+        prior_counters = owner.counters
+        for row in rows:
+            if 'rule' in row:
+                row['rule']['expr'][-2]['counter'] = {'packets': 2, 'bytes': 120}
+        chains = data([row for row in rows if 'chain' in row])
+        with patch.object(H.time, 'monotonic', return_value=100) as now:
+            clock = H.Deadline()
+            def late_readback(name, raw):
+                result = readback(name, raw)
+                now.return_value = 160
+                return result
+            with (patch.object(owner, '_nft', side_effect=(chains, data(rows))) as native,
+                  patch.object(H, 'firewall_readback', side_effect=late_readback),
+                  self.assertRaisesRegex(H.Refused, '^capability-deadline$')):
+                owner.observe(clock)
+        self.assertEqual(native.call_args_list, [
+            call(['list', 'chains'], clock, 60), call(['-a', 'list', 'table', 'inet', NAME], clock, 60)])
+        self.assertIs(owner.counters, prior_counters)
+
+    def test_late_absence_inventory_keeps_last_proven_handles_and_delete_attempt(self):
+        owner = H.Firewall('123', '0123456789abcdef')
+        rows = kernel_rows()
+        owner.handles, owner.counters = H.firewall_readback(NAME, data(rows))
+        prior_handles = owner.handles
+        chains = data([row for row in rows if 'chain' in row])
+        absence = data([])
+        parse = H._nft_rows
+        with patch.object(H.time, 'monotonic', return_value=100) as now:
+            clock = H.Deadline()
+            def late_inventory(raw):
+                result = parse(raw)
+                if raw is absence:
+                    now.return_value = 175
+                return result
+            with (patch.object(H, 'require_role_credentials_absent'),
+                  patch.object(H, '_bounded_file', return_value=HEADER),
+                  patch.object(owner, '_nft', side_effect=(chains, data(rows), b'', absence)) as native,
+                  patch.object(H, '_nft_rows', side_effect=late_inventory)):
+                with self.assertRaisesRegex(H.Refused, '^capability-deadline$'):
+                    owner.remove_after_quiescence(clock)
+                with self.assertRaisesRegex(H.Refused, '^firewall-removal-already-attempted$'):
+                    owner.remove_after_quiescence(clock)
+        self.assertEqual(native.call_args_list, [
+            call(['list', 'chains'], clock, 75), call(['-a', 'list', 'table', 'inet', NAME], clock, 75),
+            call(['delete', 'table', 'inet', NAME], clock, 75), call(['list', 'tables'], clock, 75)])
+        self.assertIs(owner.handles, prior_handles)
+        self.assertTrue(owner.removal_attempted)
+
     def test_uncertain_firewall_delete_cannot_retry_the_native_mutation(self):
         owner = H.Firewall('123', '0123456789abcdef')
         clock = SimpleNamespace(remaining=Mock(return_value=0.5))

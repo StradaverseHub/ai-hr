@@ -263,7 +263,10 @@ class Firewall:
                         primary.add_note('firewall-child-settlement-unproved')
                 raise
             child.stdout.close()
-            return bytes(raw)
+        result = bytes(raw)
+        # A timed wait can reap the child after the active frontier.
+        deadline.remaining(frontier)
+        return result
 
     def install(self, deadline):
         require(not self.attempted, 'firewall-install-already-attempted')
@@ -283,8 +286,10 @@ class Firewall:
             self._nft(['-a', 'list', 'table', 'inet', self.name], deadline, frontier))
         require(handles == self.handles and all(counters[k][field] >= self.counters[k][field]
                 for k in counters for field in ('packets', 'bytes')), 'firewall-identity-drift')
+        packets = {key: value['packets'] for key, value in counters.items()}
+        deadline.remaining(frontier)
         self.counters = counters
-        return {key: value['packets'] for key, value in counters.items()}
+        return packets
 
     def remove_after_quiescence(self, deadline):
         require(not self.removal_attempted, 'firewall-removal-already-attempted')
@@ -299,6 +304,7 @@ class Firewall:
         require(all(type(row) is dict and set(row) == {'table'} and type(row['table']) is dict for row in rows),
                 'invalid-terminal-table-inventory')
         require(all(row['table'].get('name') != self.name for row in rows), 'firewall-not-removed')
+        deadline.remaining(75)
         self.handles = None
 
 
