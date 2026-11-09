@@ -57,14 +57,16 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3004,when:1793330003304,tag:'3704_attendance_formula_results'},
  {idx:3005,when:1793330003305,tag:'3705_attendance_formula_payroll_source'},
  {idx:3006,when:1793330003306,tag:'3706_attendance_formula_overtime_binding'},
+ {idx:3200,when:1793330003500,tag:'3900_individual_transaction_calculation_method'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '3900_individual_transaction_calculation_method':'f6f4a31109f66bc5c9038315e249829c2655b870db98a9cbb1ede9cfdab958d4',
  '3400_system_label_company_scope':'58067b76694141c5fc824c66acc24fda05c273dd7d3d85654418e0f52a01b69e',
  '3706_attendance_formula_overtime_binding':'4a46111e9d07cdf8a2167e430ee6c79c78e9c049c79c6c13544ffc68ad39d153',
  '3705_attendance_formula_payroll_source':'50263e2c7628a10a894c4f2ea7e9f912faa7d5b83331ea5b8e7d542cff8e31cc',
  '3704_attendance_formula_results':'f238d8b8893833ec71cd08691856b68b452c37e4444eccbbd241bdf73d3c391b',
- '3703_attendance_formula_versions':'0d98a960b648854e94c943d3c10f022c578861e7f53efe174fc850185d0229f6',
+ '3703_attendance_formula_versions':'d77ce2a318d153b61f3804defe9858d33649db14ceb19764448d8c2a501a4702',
  '3702_maybank_payment_arrangement':'19334a66cee1af68b561a8a8795dc74748e5825507f268d0138f7aff7cd91dfa',
  '3700_pay_item_company_applicability':'ff67d0990fce26f759b7d0e07a6805aced04e70af893c98dcf41c23774aa9c3c',
  '3701_rewards_unit_preparation':'4d8969bfc0b8f134f8cc01c42a738eb6cc4babdcb1ccfb0ec824a61d9b9fee11',

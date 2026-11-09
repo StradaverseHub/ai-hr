@@ -242,6 +242,7 @@ not allocate migrations or grant employee rights.
 | `attendance.work_location_and_shift_arrangement.changedat` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `bank_statutory.bank_information.bankname` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
 | `bank_statutory.bank_information.bankaccountno` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.bank_information.bankpayeeresidency` | Bank & Statutory | Protected | specialist | Bank-file arrangement requires authorised HR review; no employee self-service writer is granted. |
 | `bank_statutory.bank_information.enablecustomholdername` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
 | `bank_statutory.bank_information.customholdername` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
 | `bank_statutory.bank_information.enablecustomholderid` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |

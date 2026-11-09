@@ -69,6 +69,7 @@ export default async function IndividualTransactionPage({
     code: c.code,
     name: c.name,
     kind: c.kind,
+    formulaBuilder: c.rule?.kind === 'formula_builder',
     derives: payRuleDerivesAmount(c.rule as PayRule | null),
     inputUnit: payRuleInputUnit(c.rule as PayRule | null),
     // c11e81aa — the THIRD question, and the same discipline: whether a day can be worth something

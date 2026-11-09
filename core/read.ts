@@ -506,8 +506,15 @@ async function workforcePersonnelPageTx(
     : [];
   const filters = workforceListWhere(input, columns, duplicateIds);
   const key=isEmployeeColumnKey(input.columnSort)?input.columnSort:undefined;
-  const sortValue=key==='status'?columns.status:key&&PERSONNEL_DATE_COLUMNS.has(key)?workforceListDate(PERSONNEL_COLUMN_SOURCES[key]):key?sql`lower(${workforceListValue(PERSONNEL_COLUMN_SOURCES[key])})`:input.sort==='company'?sql`lower(${workforceListValue('company')})`:sql`lower(${columns.name})`;
-  const order=sql.join([sql`${sortValue} ${input.sortDirection==='desc'?sql`desc`:sql`asc`} nulls last`,workforceListUuid('employmentId')],sql`, `);
+  const sortValue = key === 'status' ? columns.status
+    : key && PERSONNEL_DATE_COLUMNS.has(key) ? workforceListDate(PERSONNEL_COLUMN_SOURCES[key])
+    : key ? sql`lower(${workforceListValue(PERSONNEL_COLUMN_SOURCES[key])})` : undefined;
+  const sort = sortValue
+    ? [sql`${sortValue} ${input.sortDirection === 'desc' ? sql`desc` : sql`asc`} nulls last`]
+    : input.sort === 'company'
+      ? [sql`lower(${workforceListValue('company')})`, sql`lower(${columns.name})`]
+      : [columns.name];
+  const order = sql.join([...sort, workforceListUuid('employmentId')], sql`, `);
   // The projection evaluates dated organisation and access policy for every admitted employee.
   // Evaluate it once even when the requested page is empty. The count is independent of pagination.
   const source = sql`personnel_source as workforce_row`;

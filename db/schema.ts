@@ -7535,6 +7535,8 @@ export const payrollIndividualTxn = pgTable(
     quantity: numeric('quantity', { precision: 12, scale: 2 }),
     // One of TXN_UNITS ('amount'|'qty'|'hours'|'days'|'units'); validated app-side (mirror ROUNDING_METHODS).
     unit: text('unit'),
+    // NULL retains legacy raw formula input. Explicit methods store the final transaction amount.
+    calculationMethod: text('calculation_method').$type<'amount' | 'formula'>(),
     notes: text('notes'),
     // 49e7e0a2 (0403) — when this row was last CHANGED. Null on every legacy row and on a row that has
     // never been edited since it was keyed, so `created_at` remains the only timestamp for those. It

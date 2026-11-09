@@ -379,6 +379,7 @@ export function PayRuleEditor({
         return;
       }
       if (res.rule) {
+        if(!['fixed','formula','formula_builder'].includes(res.rule.kind)){toast.error(t('builderUseSaved'));return;}
         applyRule(res.rule);
         setAiDraftNeedsPreview(true);
         setLastPreviewIdentity(null);
@@ -425,9 +426,9 @@ export function PayRuleEditor({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label={t('kindLabel')}>
           <select value={kind} onChange={(e) => setKind(e.target.value as PayRuleKind)} className={inputCls}>
-            {PAY_RULE_KINDS.filter(k=>k!=='formula_builder'||builderEnabled||initialRule?.kind==='formula_builder').map((k) => (
+            {PAY_RULE_KINDS.filter(k=>(['fixed','formula','formula_builder'].includes(k)||k===initialRule?.kind||k===pendingInputKind)&&(k!=='formula_builder'||builderEnabled||initialRule?.kind==='formula_builder')).map((k) => (
               <option key={k} value={k}>
-                {t(`kind_${k}`)}
+                {t(`kind_${k}`)}{!['fixed','formula','formula_builder'].includes(k)?' · '+t('legacyInputType'):''}
               </option>
             ))}
           </select>
@@ -442,6 +443,7 @@ export function PayRuleEditor({
               {activeFormulas.map(formula => <option key={formula.formulaId} value={formula.formulaId}>{formula.formulaId} — {formula.description}</option>)}
             </select>
           </Field>
+          {formulaId && <Field label={t('builderDescription')}><p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">{activeFormulas.find(formula=>formula.formulaId===formulaId)?.description?.trim() || t('builderDescriptionUnavailable')}</p></Field>}
           {activeFormulas.length === 0 && <p className="text-xs text-muted-foreground">{t('builderNoneEligible')}</p>}
         </div>}
         {(builderEnabled||initialRule?.kind==='formula_builder')&&<details className="rounded-lg border border-border p-3 sm:col-span-3" open={kind==='formula_builder'||undefined}><summary className="cursor-pointer text-sm font-medium">{t('builderBindings')}</summary><div className="mt-3 grid gap-3 sm:grid-cols-3">
