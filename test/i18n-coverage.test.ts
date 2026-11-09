@@ -192,19 +192,20 @@ describe('i18n coverage', () => {
         })),
       ]),
     ]);
+    const catalogues = (['en', ...LOCALES] as const).map(locale => [locale, locale === 'en' ? en : load(locale)] as const);
     for(const [code,fields]of Object.entries(PAY_FORMULA_FIELD_TYPES))for(const field of Object.keys(fields)){
       if(getPath(en,`payFormula.fields.${field}`)!==undefined)continue;
       const descriptor=personnelFormulaFieldDescriptor(code==='profile'?'EmployeeProfile':'EmployeeInformation',field);
       expect(descriptor,`${code}:${field}`).toBeTruthy();
-      for(const locale of ['en',...LOCALES]){
-        const value=getPath(load(locale),descriptor!.labelKey);
+      for(const [locale,catalogue] of catalogues){
+        const value=getPath(catalogue,descriptor!.labelKey);
         expect(typeof value,`${locale}:${descriptor!.labelKey}`).toBe('string');
         expect((value as string).trim()).not.toBe('');
       }
     }
     expect(PAY_FORMULA_FUNCTIONS.length).toBeGreaterThan(20);
-    for(const locale of ['en',...LOCALES])for(const key of keys){
-      const value=getPath(load(locale),`payFormula.${key}`);
+    for(const [locale,catalogue] of catalogues)for(const key of keys){
+      const value=getPath(catalogue,`payFormula.${key}`);
       expect(typeof value,`${locale}:payFormula.${key}`).toBe('string');
       expect((value as string).trim(),`${locale}:payFormula.${key}`).not.toBe('');
     }

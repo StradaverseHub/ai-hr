@@ -218,6 +218,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/api/mobile/v2/claims/drafts/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/claims/drafts/submit/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/claims/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/clock/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/documents/share-events/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/integrity/android/clock/begin/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/integrity/android/clock/complete/route.ts#route":{"POST":"internal:other_client_same_service"},
