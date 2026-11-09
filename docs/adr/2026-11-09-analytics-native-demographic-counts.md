@@ -1,8 +1,9 @@
 # Count Analytics demographic values in PostgreSQL
 
 The native 50,000-employee dashboard run transferred 40,000 demographic rows
-to JavaScript. That statement took 386 ms of the 3.47-second dashboard
-observation. The same native scope and joins now supply one grouped statement
+to JavaScript. That statement took 386 ms in the 3.45-second instrumented
+dashboard run. The separate ordinary run took 3.47 seconds. The same native
+scope and joins now supply one grouped statement
 for all seven dimensions and the overall count. The 40,000 active employees
 in that fixture have one raw value per dimension, so the expected transfer
 is eight rows. Native verification must confirm the count and measure the
