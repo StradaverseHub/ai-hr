@@ -10,6 +10,9 @@ import {aiManagementPageView,aiManagementView,setAiAllowance,setGroupAllowance,s
 import {aiManagementAlerts,aiInventoryView,aiRunHistory} from '../core/ai-inventory';
 import {getAiConfigView,saveAiProviderConfig} from '../core/ai-config';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {agentStatuses} from '../core/control-domains';
+import {agreementView} from '../core/control-tower';
+import {listWorkers,workerDetail} from '../core/agent-registry/views';
 import {setAiSpendBudget} from '../core/ai-spend-management';
 import {hireEmployee,terminateEmployment} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -162,6 +165,31 @@ it('completes group and scoped AI presentation while the tenant Access write loc
   await tx.execute(sql`select set_config('app.agent_principal_id', ${randomUUID()}, true)`);
   return tx.execute(sql`select * from app.ai_provider_candidate_view_v1()`);
  },{readOnlySnapshot:true})).rejects.toMatchObject({cause:{code:'P0001',message:'AI candidate unavailable'}});
+});
+
+it('loads Worker diagnostics and registry while Access configuration is locked',async()=>{
+ await saveAiProviderConfig(group,{provider:'openai',model:'fictional-workers-model',apiKey:'fictional-workers-key',makeActive:true});
+ const read=()=>Promise.all([agentStatuses(group),agreementView(group),listWorkers(group),workerDetail(group,'payroll_anomaly_narrator')] as const);
+ const expected=await read();
+ expect(expected[0].find(row=>row.id==='narrator')).toMatchObject({active:true});
+ expect(expected[1].blockedBy).not.toContain('no_provider');
+ expect(expected[2].find(row=>row.id==='payroll_anomaly_narrator')).toMatchObject({switch:{on:true,owner:'ai_provider'}});
+
+ let reads:ReturnType<typeof read>|undefined;
+ let deadline:ReturnType<typeof setTimeout>|undefined;
+ try{
+  await withTenant(group,async tx=>{
+   await lockAccessConfigurationTx(tx,b.tenantId);
+   reads=read();
+   const timeout=new Promise<never>((_,reject)=>{
+    deadline=setTimeout(()=>reject(new Error('Worker diagnostics waited for the held Access lock')),4000);
+   });
+   expect(await Promise.race([reads,timeout])).toEqual(expected);
+  });
+ }finally{
+  clearTimeout(deadline);
+  await reads?.catch(()=>{});
+ }
 });
 
 it('keeps zero and null caps, quiet zero-capped users, held tokens and switch attribution exact',async()=>{

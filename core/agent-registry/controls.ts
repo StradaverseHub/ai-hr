@@ -16,6 +16,7 @@ import {terasMandateControl,terasWorkerControl,type TerasAttestedProvider,type T
 import {isGroupAdmin} from '../../lib/authz-model';
 import {agentSwitchStatesTx} from '../agent-principal';
 import {resolveActiveAiConfig} from '../ai-config';
+import {readAiProviderPresentationTx} from '../ai-provider-snapshot';
 import {isModuleEnabled} from '../entitlements';
 import {readMandateKeysTx} from '../mandates/mandates';
 import {newRunId,writeOutcomeRecordTx} from '../outcome-record/record';
@@ -49,14 +50,25 @@ export type WorkerSwitchState=Readonly<{on:boolean;
  detail:'off'|'on'|'unattributed'}>;
 
 /** The worker's switch as of this transaction. */
-export async function workerSwitchStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration):Promise<WorkerSwitchState>{
+export function workerSwitchStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration):Promise<WorkerSwitchState>{
+ return readWorkerSwitchStateTx(tx,ctx,worker,async feature=>(await resolveActiveAiConfig(tx,ctx,feature))!=null);
+}
+
+/** Registry display uses the read-only snapshot and never prepares a worker configuration. */
+export function workerSwitchPresentationStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration):Promise<WorkerSwitchState>{
+ return readWorkerSwitchStateTx(tx,ctx,worker,async()=>(await readAiProviderPresentationTx(tx,ctx))!=null);
+}
+
+type ProviderSwitch = Extract<WorkerDeclaration['switch'],{kind:'ai_provider'}>;
+async function readWorkerSwitchStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration,
+ providerUsable:(feature:ProviderSwitch['feature'])=>Promise<boolean>):Promise<WorkerSwitchState>{
  const sw=worker.switch;
  if(sw.kind==='tenant_setting'){
   const state=(await agentSwitchStatesTx(tx,ctx)).find(row=>row.feature===sw.feature);
   const detail=state?.state==='attributed'?'on':state?.state==='unattributed'?'unattributed':'off';
   return Object.freeze({on:detail==='on',owner:'tenant_setting',detail});
  }
- if(sw.kind==='ai_provider'){const on=(await resolveActiveAiConfig(tx,ctx,sw.feature))!=null;return Object.freeze({on,owner:'ai_provider',detail:on?'on':'off'});}
+ if(sw.kind==='ai_provider'){const on=await providerUsable(sw.feature);return Object.freeze({on,owner:'ai_provider',detail:on?'on':'off'});}
  if(sw.kind==='job_type'){const on=(await readMandateKeysTx(tx,ctx.tenantId,sw.jobType)).enablement?.enabled===true;return Object.freeze({on,owner:'job_type',detail:on?'on':'off'});}
  const [row]=await tx.select({enabled:terasWorkerControl.enabled}).from(terasWorkerControl)
   .where(and(eq(terasWorkerControl.tenantId,ctx.tenantId),eq(terasWorkerControl.workerId,sw.workerId))).limit(1);
