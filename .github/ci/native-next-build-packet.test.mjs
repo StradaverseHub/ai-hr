@@ -1,6 +1,5 @@
 import test from 'node:test';
-import {realpathSync} from 'node:fs';
-import {fileURLToPath} from 'node:url';
+import {controllerRegressionRoots} from './controller-regression-roots.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {validateNativeBuildMetadata,provisionNativeNextBuild,captureNativeNextInstallation,nativeHelperClosure,NATIVE_HELPER_SOURCES} from './native-next-build-packet.mjs';
@@ -65,7 +64,7 @@ test('private archives, packet and binding stay outside uploaded evidence, and o
 test('privileged helper closure is finite, committed on both sides and sealed before returning candidate hints',()=>{
  assert.equal(Object.keys(NATIVE_HELPER_SOURCES).length,11);
  const file='test/runtime-next-admission-native.test.ts',unit={kind:'db',files:[file],singleton:singletonDescriptor(file)};
- const sources=singletonSources(unit,realpathSync(fileURLToPath(new URL('../../',import.meta.url))));assert(sources.includes('db/migrations/meta/_journal.json'));for(const path of Object.values(NATIVE_HELPER_SOURCES))assert(sources.includes(path));
+ const sources=singletonSources(unit,controllerRegressionRoots().candidate);assert(sources.includes('db/migrations/meta/_journal.json'));for(const path of Object.values(NATIVE_HELPER_SOURCES))assert(sources.includes(path));
  assert(sources.includes('.github/ci/native-next-helper-sources.mjs'));
  assert.throws(()=>nativeHelperClosure({sha:'HEAD',controller:'HEAD'},'/caller'),/Exact native helper/);
  const source=readFileSync(new URL('./native-next-build-packet.mjs',import.meta.url),'utf8');

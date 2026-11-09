@@ -1,3 +1,4 @@
+import {controllerRegressionRoots} from './controller-regression-roots.mjs';
 import test from 'node:test';
 import {realpathSync} from 'node:fs';
 import assert from 'node:assert/strict';
@@ -11,9 +12,9 @@ import {buildUnits,CI_EXECUTION} from './manifest.mjs';
 import {protocolHash,singletonDescriptor,singletonKind,singletonSources} from './singleton-protocol.mjs';
 import {EMPLOYEE_LIFECYCLE_PROFILE,employeeLifecycleMatrixRow} from './employee-lifecycle-profile.mjs';
 import {COMMISSION_TITLE,commissioningIntent,selectCommissioning,summarizeCommissioning} from './singleton-commissioning.mjs';
-const candidateRoot=realpathSync(fileURLToPath(new URL('../../',import.meta.url)));
+const {candidate:candidateRoot}=controllerRegressionRoots();
 const journalPath='db/migrations/meta/_journal.json';
-const journalHash=createHash('sha256').update(readFileSync(new URL('../../'+journalPath,import.meta.url))).digest('hex');
+const journalHash=createHash('sha256').update(readFileSync(join(candidateRoot,journalPath))).digest('hex');
 const browser=['test/fictional.browser.test.tsx'];
 function fixture(file='test/runtime-ready-admission-native.test.ts'){
  const kind=singletonKind(singletonDescriptor(file).profile),units=buildUnits([file],{db:kind==='db'?[file]:[],nodb:kind==='nodb'?[file]:[]},browser),unit=units[0];

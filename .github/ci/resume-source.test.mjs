@@ -1,6 +1,6 @@
 import test from 'node:test';
-import {realpathSync,readFileSync as readModelSource} from 'node:fs';
-import {fileURLToPath as modelFileURLToPath} from 'node:url';
+import {readFileSync as readModelSource} from 'node:fs';
+import {controllerRegressionRoots} from './controller-regression-roots.mjs';
 import {createHash as modelCreateHash} from 'node:crypto';
 import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
 import {singletonSources} from './singleton-protocol.mjs';
@@ -11,7 +11,7 @@ import {fixture, put, remove, time} from './resume-test-fixtures.mjs';
 
 
 // Source-data model only: actual hosted/source authentication belongs to the real adapters.
-const modelRoot=realpathSync(modelFileURLToPath(new URL('../../',import.meta.url)));
+const {candidate:modelRoot}=controllerRegressionRoots();
 function databaseModel(f,root=modelRoot){
  const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
  const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');

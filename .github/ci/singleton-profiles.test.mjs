@@ -1,5 +1,6 @@
 import test from 'node:test';
 import {realpathSync} from 'node:fs';
+import {controllerRegressionRoots} from './controller-regression-roots.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync,lstatSync,readdirSync,mkdtempSync,mkdirSync,writeFileSync,rmSync,rmdirSync,unlinkSync,symlinkSync,copyFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -17,9 +18,9 @@ import {NATIVE_WORKLOAD_DATABASE_CASE,NATIVE_WORKLOAD_DATABASE_FILE,NATIVE_WORKL
  NATIVE_WORKLOAD_OBSERVER_URL,nativeWorkloadDatabaseUnit,validateNativeWorkloadDatabaseUrls,validateNativeWorkloadObserverUrl} from './singleton-protocol.mjs';
 import {prepareNativeWorkloadPostgres} from './native-workload-postgres.mjs';
 import {requiredHostedSingletons} from '../../scripts/gate-singleton-scope.mjs';
-const candidateRoot=realpathSync(fileURLToPath(new URL('../../',import.meta.url)));
+const {candidate:candidateRoot}=controllerRegressionRoots();
 const journalPath='db/migrations/meta/_journal.json';
-const journalHash=createHash('sha256').update(readFileSync(new URL('../../'+journalPath,import.meta.url))).digest('hex');
+const journalHash=createHash('sha256').update(readFileSync(join(candidateRoot,journalPath))).digest('hex');
 const browser=['test/fictional.browser.test.tsx'];
 function fixture(file='test/runtime-ready-admission-native.test.ts'){
  const kind=singletonKind(singletonDescriptor(file).profile),units=buildUnits([file],{db:kind==='db'?[file]:[],nodb:kind==='nodb'?[file]:[]},browser),unit=units[0];
@@ -253,11 +254,11 @@ test('strict unit verifier requires the complete source-bound singleton invocati
  assert.throws(()=>verifyUnitReport(f.plan,report));
 });
 test('source admissions and full workflow never manufacture focused variables or omit controlled cases',()=>{
- const run=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8'),admission=readFileSync(new URL('../../test/helpers/ci-singleton-admission.ts',import.meta.url),'utf8');
+ const run=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8'),admission=readFileSync(join(candidateRoot,'test/helpers/ci-singleton-admission.ts'),'utf8');
  assert(run.includes('env.AIHR_CI_SINGLETON_BINDING=singleton.path'));assert(!/env\.AIHR_FOCUSED_[A-Z_]+\s*=/.test(run));assert(admission.includes('execFileSync(process.execPath,[script]'));
- const root=fileURLToPath(new URL('../../',import.meta.url)),tracked=new Set(execFileSync('git',['ls-files','test'],{cwd:root,encoding:'utf8'}).trim().split('\n'));
+ const root=candidateRoot,tracked=new Set(execFileSync('git',['ls-files','test'],{cwd:root,encoding:'utf8'}).trim().split('\n'));
  for(const [file,profile]of Object.entries(SINGLETON_FILES))if(profile==='controlled-database-v1'&&tracked.has(file)){
-  const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');assertSingletonCoverage([file],path=>readFileSync(new URL('../../'+path,import.meta.url),'utf8'));assert(!text.includes('.skipIf('));assert(!text.includes('AIHR_FOCUSED_EVIDENCE_DIR'));
+  const text=readFileSync(join(candidateRoot,file),'utf8');assertSingletonCoverage([file],path=>readFileSync(join(candidateRoot,path),'utf8'));assert(!text.includes('.skipIf('));assert(!text.includes('AIHR_FOCUSED_EVIDENCE_DIR'));
  }
 });
 test('discovered future focused-only guards fail planning until their actual full admission is implemented',()=>{
@@ -269,8 +270,8 @@ test('discovered future focused-only guards fail planning until their actual ful
  const notification='test/notification-worker-lifecycle.test.ts';
  assert.throws(()=>assertSingletonCoverage([notification],()=>"it('required',()=>{});"));
  assertSingletonCoverage([notification],()=>"beforeAll(()=>admitSingletonTest('test/notification-worker-lifecycle.test.ts')); ");
- const root=fileURLToPath(new URL('../../',import.meta.url)),files=execFileSync('git',['ls-files','test'],{cwd:root,encoding:'utf8'}).trim().split('\n').filter(f=>/\.test\.ts$|\.dom\.test\.tsx$/.test(f));
- assertSingletonCoverage(files,file=>readFileSync(new URL('../../'+file,import.meta.url),'utf8'));
+ const root=candidateRoot,files=execFileSync('git',['ls-files','test'],{cwd:root,encoding:'utf8'}).trim().split('\n').filter(f=>/\.test\.ts$|\.dom\.test\.tsx$/.test(f));
+ assertSingletonCoverage(files,file=>readFileSync(join(candidateRoot,file),'utf8'));
  assertSingletonSelection(['test/runtime-ready-admission-native.test.ts']);assertSingletonSelection(['test/ordinary-a.test.ts','test/ordinary-b.test.ts']);
  for(const file of Object.keys(SINGLETON_FILES))assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));
 });
@@ -278,7 +279,7 @@ test('the real local scope guard refuses a complete native inventory rather than
  const script=fileURLToPath(new URL('../../scripts/gate-singleton-scope.mjs',import.meta.url));
  const ordinary=spawnSync(process.execPath,[script],{encoding:'utf8',input:'test/ordinary.test.ts\n'});assert.equal(ordinary.status,0);
  const native=spawnSync(process.execPath,[script],{encoding:'utf8',input:'test/ordinary.test.ts\ntest/runtime-ready-admission-native.test.ts\n'});assert.equal(native.status,2);assert(native.stderr.includes('authenticated hosted singleton units'));assert(native.stderr.includes('test/runtime-ready-admission-native.test.ts'));
- const scriptSource=readFileSync(new URL('../../scripts/gate-chunked.sh',import.meta.url),'utf8');assert(scriptSource.indexOf('node scripts/gate-singleton-scope.mjs')<scriptSource.indexOf('node --import tsx scripts/gate-db-classify.ts'));
+ const scriptSource=readFileSync(join(candidateRoot,'scripts/gate-chunked.sh'),'utf8');assert(scriptSource.indexOf('node scripts/gate-singleton-scope.mjs')<scriptSource.indexOf('node --import tsx scripts/gate-db-classify.ts'));
 });
 
 test('hybrid capability binds the conjunction of actual host, owned database and identical same-run build',()=>{
@@ -322,7 +323,7 @@ test('Access native-owner and paired notification diagnostics retain isolated au
   const f=fixture(file);assert.deepEqual(f.unit.singleton,{version:1,profile,workers:1,isolation:'job-postgres-cluster'});assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);
   validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);const actual=singletonSources(f.unit,candidateRoot);assert.equal(new Set(actual).size,actual.length);
   for(const source of owned){
-   assert(actual.includes(source));assert(readFileSync(new URL('../../'+source,import.meta.url)).length>0);
+   assert(actual.includes(source));assert(readFileSync(join(candidateRoot,source)).length>0);
    // Even a self-consistent plan/binding cannot omit a reviewed closure owner.
    const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
    const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
@@ -330,9 +331,9 @@ test('Access native-owner and paired notification diagnostics retain isolated au
   }
   assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
  }
- const diagnostic=readFileSync(new URL('../../test/notification-worker-native-plan-diagnostic.test.ts',import.meta.url),'utf8');
+ const diagnostic=readFileSync(join(candidateRoot,'test/notification-worker-native-plan-diagnostic.test.ts'),'utf8');
  assert(diagnostic.includes('admitSingletonTest(filename)'));assert(diagnostic.includes('diagnosticAdmission.evidenceDirectory'));assert(!diagnostic.includes('process.env.AIHR_FOCUSED_'));assert(!/\.(?:skipIf|runIf)\s*\(/.test(diagnostic));
- const access=readFileSync(new URL('../../test/fixtures/access-editor-native-owner.ts',import.meta.url),'utf8');assert(access.includes("readFileSync('test/fixtures/access-editor-original739-journal.json'"));assert(!access.includes("readFileSync('db/migrations/meta/_journal.json'"));
+ const access=readFileSync(join(candidateRoot,'test/fixtures/access-editor-native-owner.ts'),'utf8');assert(access.includes("readFileSync('test/fixtures/access-editor-original739-journal.json'"));assert(!access.includes("readFileSync('db/migrations/meta/_journal.json'"));
 });
 
 test('Attendance owned child and pidfd proof cannot share a job or omit its actual Python/SQL/source owners',()=>{
@@ -351,14 +352,14 @@ test('Attendance owned child and pidfd proof cannot share a job or omit its actu
  ];
  const sources=singletonSources(f.unit,candidateRoot);assert.equal(new Set(sources).size,sources.length);
  for(const source of owners){
-  assert(sources.includes(source));assert(readFileSync(new URL('../../'+source,import.meta.url)).length>0);
+  assert(sources.includes(source));assert(readFileSync(join(candidateRoot,source)).length>0);
   const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
   const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
   assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot));
  }
  assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));
  assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
- const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+ const text=readFileSync(join(candidateRoot,file),'utf8');
  assert(text.indexOf("admitSingletonTest('"+file+"')")<text.indexOf('beforeAll(async()=>'));
  assert(!/\.(?:skipIf|runIf)\s*\(/.test(text));
 });
@@ -377,23 +378,23 @@ test('singleton source limits grant only the exact Tamil member a bounded 8 MiB 
  assert(!(tamil+1<=singletonSourceMaximum('messages/ta.json')));
  assert.equal(SINGLETON_FILES['messages/ta.json'],undefined); // A size bound is not test/profile admission.
  const planner=readFileSync(new URL('./plan.mjs',import.meta.url),'utf8');
- const admission=readFileSync(new URL('../../test/helpers/ci-singleton-admission.ts',import.meta.url),'utf8');
+ const admission=readFileSync(join(candidateRoot,'test/helpers/ci-singleton-admission.ts'),'utf8');
  assert(planner.includes('lstatSync(path).size>singletonSourceMaximum(file)'));
  assert(admission.includes('regular(join(source,path),singletonSourceMaximum(path))'));
  assert(!planner.includes('size>4194304'));assert(!admission.includes('regular(join(source,path),4194304)'));
 });
 test('both Rewards jobs retain and hash the complete large Tamil dependency without a generic limit increase',()=>{
- const root=fileURLToPath(new URL('../../',import.meta.url)),file='messages/ta.json';
- const raw=readFileSync(new URL('../../'+file,import.meta.url)),info=lstatSync(new URL('../../'+file,import.meta.url));
+ const root=candidateRoot,file='messages/ta.json';
+ const raw=readFileSync(join(candidateRoot,file)),info=lstatSync(join(candidateRoot,file));
  assert(info.isFile()&&!info.isSymbolicLink());assert.equal(raw.length,info.size);
  assert(raw.length>4*1024*1024&&raw.length<=singletonSourceMaximum(file));
  const committed=execFileSync('git',['show','HEAD:'+file],{cwd:root,maxBuffer:8*1024*1024});
  assert(raw.equals(committed));assert.equal(createHash('sha256').update(raw).digest('hex'),createHash('sha256').update(committed).digest('hex'));
  for(const selected of ['test/rewards-audit-policy-native.test.ts','test/rewards-audited-read-prototype.test.ts']){
   const sources=singletonSources(fixture(selected).unit,candidateRoot);assert.equal(sources.filter(path=>path===file).length,1);
-  const large=sources.filter(path=>lstatSync(new URL('../../'+path,import.meta.url)).size>4*1024*1024);
+  const large=sources.filter(path=>lstatSync(join(candidateRoot,path)).size>4*1024*1024);
   assert.deepEqual(large,[file]);
-  for(const path of sources)assert(lstatSync(new URL('../../'+path,import.meta.url)).size<=singletonSourceMaximum(path),path);
+  for(const path of sources)assert(lstatSync(join(candidateRoot,path)).size<=singletonSourceMaximum(path),path);
  }
 });
 test('Rewards native policy and original read family retain complete isolated source-bound jobs',()=>{
@@ -463,9 +464,9 @@ test('Rewards native policy and original read family retain complete isolated so
   "test/fixtures/notification-worker/canonical-inventory.ts",
   "test/fixtures/notification-worker/replay-prefix-ownership.ts",
  ];
- const journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url)));
+ const journal=JSON.parse(readFileSync(join(candidateRoot,'db/migrations/meta/_journal.json')));
  const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');
- const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);
+ const physicalSql=readdirSync(join(candidateRoot,'db/migrations/')).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);
  assert.deepEqual(physicalSql,[...journalSql].sort());
  for(const file of files){
   const f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
@@ -475,25 +476,25 @@ test('Rewards native policy and original read family retain complete isolated so
   for(const entry of journal.entries)assert(sources.includes('db/migrations/'+entry.tag+'.sql'));
   for(const path of physicalSql)assert(sources.includes(path),'Actual Rewards SQL/fingerprint input omitted: '+path);
   for(const source of critical){
-   assert(sources.includes(source),source);assert(readFileSync(new URL('../../'+source,import.meta.url)).length>0);
+   assert(sources.includes(source),source);assert(readFileSync(join(candidateRoot,source)).length>0);
    const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
    const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
    assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot));
   }
   assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));
   assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
-  const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+  const text=readFileSync(join(candidateRoot,file),'utf8');
   assert(text.includes("admitSingletonTest('"+file+"')"));assert(!/AIHR_FOCUSED_|\.(?:skipIf|runIf)\s*\(/.test(text));
  }
- const wrapper=readFileSync(new URL('../../test/rewards-audit-policy-native.test.ts',import.meta.url),'utf8');
+ const wrapper=readFileSync(join(candidateRoot,'test/rewards-audit-policy-native.test.ts'),'utf8');
  assert(wrapper.indexOf("admitSingletonTest('")<wrapper.indexOf('registerRewardsAuditPolicyNativeCases();'));
- const existing=readFileSync(new URL('../../test/rewards-audited-read-prototype.test.ts',import.meta.url),'utf8');
+ const existing=readFileSync(join(candidateRoot,'test/rewards-audited-read-prototype.test.ts'),'utf8');
  assert(existing.indexOf("admitSingletonTest('")<existing.indexOf('beforeAll(async()=>'));
 });
 
 test('only the exact five delegated entries may use the shared FIRST actual singleton admission owner',async()=>{
  const {EMPLOYEE_LIFECYCLE_PROFILE}=await import('./employee-lifecycle-profile.mjs');
- const helper='test/performance/employee-choice-lifecycle-admission.ts',read=path=>readFileSync(new URL('../../'+path,import.meta.url),'utf8');
+ const helper='test/performance/employee-choice-lifecycle-admission.ts',read=path=>readFileSync(join(candidateRoot,path),'utf8');
  for(const {file}of EMPLOYEE_LIFECYCLE_PROFILE.files){
   assertSingletonCoverage([file],read);
   const delegates={'test/employee-choice-native-purpose-plan.test.ts':'classic','test/employee-choice-exact-ascii-plan.test.ts':'exact-ascii'};
@@ -524,16 +525,16 @@ test('shared module JIT diagnostic owns one unchanged controlled database and ca
  for(const required of ['lib/attendance-workflow-submission.ts','lib/employee-columns.ts','lib/personnel-list-controls.ts'])
   assert(sources.includes(required),'Actual Board 3 JIT read owner omitted: '+required);
  for(const required of ["core/attendance-clock-policy.ts","lib/attendance-clock-policy.ts","packs/attendance/policy-clock-evidence.ts","core/ai-centre-control.ts", "db/migrations/3200_ai_centre_controls.sql", "db/migrations/3201_ai_centre_function_coverage.sql", "db/migrations/3500_ai_centre_architecture_compatibility.sql", "db/migrations/3501_ai_centre_mandate_write_order.sql", "lib/ai/centre-activity.ts", "test/helpers/native-read-observer.ts","lib/maybank-payment-settings.ts","localization/my/maybank-v74-file.ts","lib/system-label-assignment.ts","core/attendance-formulas.ts","lib/pay-component-company.ts","core/attendance-formula-ai.ts","core/pay-component-company.ts","core/system-label-selection.ts"])assert(sources.includes(required),'Actual JIT read owner omitted: '+required);
- const journalBytes=readFileSync(new URL('../../'+journalPath,import.meta.url)),journal=JSON.parse(journalBytes.toString('utf8'));
+ const journalBytes=readFileSync(join(candidateRoot,journalPath)),journal=JSON.parse(journalBytes.toString('utf8'));
  const inputs=Object.freeze({sources:Object.freeze(sources),journalSha256:createHash('sha256').update(journalBytes).digest('hex')});
  const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');
- const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);
+ const physicalSql=readdirSync(join(candidateRoot,'db/migrations/')).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);
  for(const path of [...journalSql,...physicalSql])assert(sources.includes(path),'Actual canonical SQL/fingerprint input omitted: '+path);
  assert.deepEqual(physicalSql,[...journalSql].sort());
  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
  const omissionHashes={...f.binding.sourceHashes};
  for(const source of sources){
-  const bytes=readFileSync(new URL('../../'+source,import.meta.url));assert(bytes.length>0&&bytes.length<=singletonSourceMaximum(source),source);
+  const bytes=readFileSync(join(candidateRoot,source));assert(bytes.length>0&&bytes.length<=singletonSourceMaximum(source),source);
   assert(Object.hasOwn(omissionHashes,source),source);
   const digest=omissionHashes[source];delete omissionHashes[source];
   try{assert.throws(()=>assertSingletonSourceHashes(omissionHashes,inputs),/Singleton source membership differs/,source);}
@@ -559,10 +560,10 @@ test('shared module JIT diagnostic owns one unchanged controlled database and ca
   assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot),reason,label);
  }
  assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
- const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+ const text=readFileSync(join(candidateRoot,file),'utf8');
  assert(text.indexOf("admitSingletonTest('"+file+"')")<text.indexOf('beforeAll(migrateTestDb)'));
  assert(!/AIHR_FOCUSED_|\.(?:skipIf|runIf)\s*\(/.test(text));
- assertSingletonCoverage([file],path=>readFileSync(new URL('../../'+path,import.meta.url),'utf8'));
+ assertSingletonCoverage([file],path=>readFileSync(join(candidateRoot,path),'utf8'));
 });
 
 
@@ -643,7 +644,7 @@ test('host cache conformance owns a distinct complete host-only source-bound sin
  const borrowed=fixture();assert.notEqual(f.unit.id,borrowed.unit.id);
  assert.throws(()=>validateSingletonBinding(borrowed.binding,f.plan,f.unit,f.witness));
  assert.throws(()=>validateSingletonBinding({...f.binding,prerequisites:{kind:'fresh-job-postgres-cluster',workers:1,database:{}}},f.plan,f.unit,f.witness));
- const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+ const source=readFileSync(join(candidateRoot,file),'utf8');
  assert(source.includes("admitSingletonTest('"+file+"')"));assert(source.includes('timeout:30000'));assert(source.includes('},35000)'));
  assert(!source.includes('240000'));assert(source.includes("'next_preparation.py','deploy/admission/test_next_native.py'"));assert(!source.includes('.skipIf('));
 });

@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import {realpathSync,readFileSync as readModelSource} from 'node:fs';
-import {fileURLToPath as modelFileURLToPath} from 'node:url';
+import {readFileSync as readModelSource} from 'node:fs';
+import {controllerRegressionRoots} from './controller-regression-roots.mjs';
 import {createHash as modelCreateHash} from 'node:crypto';
 import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
 import {singletonSources} from './singleton-protocol.mjs';
@@ -12,7 +12,7 @@ import {verifyReports} from './verify-shards.mjs';
 import {candidateRequest,repository} from './resolve.mjs';
 
 // Source-data model only: actual hosted/source authentication belongs to the real adapters.
-const modelRoot=realpathSync(modelFileURLToPath(new URL('../../',import.meta.url)));
+const {controller:automationRoot,candidate:modelRoot}=controllerRegressionRoots();
 function databaseModel(f,root=modelRoot){
  const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
  const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
@@ -57,7 +57,8 @@ test('Reject fork, draft and wrong-target PRs',()=>{const pr={draft:false,head:{
 
 test('manual workflow input inventories stay nonempty, unique and within GitHub 25-input limit',()=>{
  for(const name of ['alpha-staging.yml','alpha-staging-diagnostics.yml']){
-  const source=readFileSync(new URL('../workflows/'+name,import.meta.url),'utf8'),start=source.indexOf('    inputs:\n'),end=source.indexOf('\npermissions:',start);
+  const root=name==='alpha-staging.yml'?automationRoot:modelRoot;
+  const source=readFileSync(modelJoin(root,'.github/workflows',name),'utf8'),start=source.indexOf('    inputs:\n'),end=source.indexOf('\npermissions:',start);
   assert(start>=0&&end>start+50,'Complete manual-input source boundary required');
   const names=[...source.slice(start,end).matchAll(/^      ([A-Za-z_][A-Za-z0-9_]*):$/gm)].map(m=>m[1]);
   assert(names.length>0&&names.length<=25,'Manual workflow exceeds GitHub input limit: '+name);assert.equal(new Set(names).size,names.length);
@@ -96,7 +97,7 @@ function cleanupGuardPredicate(source){
  return facts=>{assert(facts&&typeof facts.phase==='string'&&typeof facts.activation==='boolean'&&typeof facts.repository==='string');const value=predicate(facts);assert.equal(typeof value,'boolean');return value;};
 }
 test('normal cleanup diagnostic selects only the explicit non-activation phase',()=>{
- const workflow=readFileSync(new URL('../workflows/alpha-staging-diagnostics.yml',import.meta.url),'utf8');
+ const workflow=readFileSync(modelJoin(modelRoot,'.github/workflows/alpha-staging-diagnostics.yml'),'utf8');
  const job=workflow.match(/^  normal-cleanup:\n    if: \$\{\{ (.+) \}\}/m);assert(job,'Normal cleanup diagnostic must have an explicit routing guard');
  const normal=cleanupGuardPredicate(job[1]);
  const options=workflow.match(/options: \[([^\n]+)\]/);assert(options,'Fixed installer phase choices required');

@@ -62,6 +62,9 @@ jobs:
     if: ${{ github.repository == 'StradaverseHub/ai-hr' && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: automation
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
       branch: ${{ steps.candidate.outputs.branch }}
@@ -70,6 +73,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.workflow_sha }}
+          path: automation
           persist-credentials: false
       - name: Pin dependency-free controller runtime
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
@@ -92,7 +96,7 @@ jobs:
           CONTROLLER_ONLY: ${{ inputs.controller_only }}
         run: test "$EVENT" = workflow_dispatch && test "$DIAGNOSTICS_ONLY" = false && test "$CONTROLLER_ONLY" = false
       - name: CI integrity regression checks
-        run: node --experimental-strip-types --test .github/ci/build-source-binding.test.mjs .github/ci/ai-manifest-admission.test.mjs .github/ci/rsync-packet-capability.test.mjs .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/diagnostics/compiler-state.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/prefetch-ci.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/singleton-profiles.test.mjs .github/ci/singleton-commissioning.test.mjs .github/ci/native-next-build-packet.test.mjs .github/ci/candidate-environment.test.mjs .github/ci/native-next-build-inputs.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/build-transport.test.mjs .github/ci/ci-build-transport-policy.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-preflight.test.mjs .github/ci/customer-runtime-transition.test.mjs .github/ci/customer-runtime-snapshot.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/normal-cleanup-session.test.mjs .github/ci/normal-cleanup-io.test.mjs .github/ci/focused-recovery.test.mjs .github/ci/repair-recovery.test.mjs .github/ci/repair-recovery-adapter.test.mjs .github/ci/browser-recovery.test.mjs .github/ci/build-heap.test.mjs .github/ci/orchestrator-browser.test.mjs
+        run: node --experimental-strip-types --test .github/ci/build-source-binding.test.mjs .github/ci/ai-manifest-admission.test.mjs .github/ci/rsync-packet-capability.test.mjs .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/diagnostics/compiler-state.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/prefetch-ci.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/candidate-environment.test.mjs .github/ci/native-next-build-inputs.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/build-transport.test.mjs .github/ci/ci-build-transport-policy.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-preflight.test.mjs .github/ci/customer-runtime-transition.test.mjs .github/ci/customer-runtime-snapshot.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/normal-cleanup-session.test.mjs .github/ci/normal-cleanup-io.test.mjs .github/ci/repair-recovery-adapter.test.mjs .github/ci/build-heap.test.mjs .github/ci/orchestrator-browser.test.mjs
       - name: Build byte transport regression checks
         run: |
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/staging -p "test_*.py"
@@ -111,6 +115,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
         run: node .github/ci/resolve.mjs
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ steps.candidate.outputs.sha }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Check the frozen candidate with trusted controller regressions
+        env:
+          AIHR_CI_REGRESSION_CANDIDATE: ${{ steps.candidate.outputs.sha }}
+        run: |
+          node --experimental-strip-types --test .github/ci/controller-regression-roots.test.mjs .github/ci/ci.test.mjs .github/ci/singleton-profiles.test.mjs .github/ci/singleton-commissioning.test.mjs .github/ci/browser-recovery.test.mjs .github/ci/focused-recovery.test.mjs .github/ci/release-policy.test.mjs .github/ci/repair-recovery.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-repair.test.mjs .github/ci/resume-source.test.mjs .github/ci/native-next-build-packet.test.mjs
+          node --input-type=module -e "import {controllerRegressionRoots} from './.github/ci/controller-regression-roots.mjs'; controllerRegressionRoots();"
       - name: Reconstruct complete current source manifest without application dependencies
         if: ${{ inputs.controller_only }}
         env:
