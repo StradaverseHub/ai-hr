@@ -985,7 +985,8 @@ jobs:
 
           def exact_legacy_navigation_scenarios():
               try:
-                  raw = subprocess.check_output(('/usr/bin/git', '--no-replace-objects', '-C', 'automation',
+                  controller = Path(os.environ['GITHUB_WORKSPACE']) / 'automation'
+                  raw = subprocess.check_output(('/usr/bin/git', '--no-replace-objects', '-C', str(controller),
                       'show', sha + ':scripts/performance/navigation-scenarios.json'), timeout=2, stderr=subprocess.DEVNULL)
                   if not 0 < len(raw) <= 128 * 1024:
                       return []
