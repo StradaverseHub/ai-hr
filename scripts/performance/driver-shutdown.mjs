@@ -128,6 +128,64 @@ export function createProtectedWorkAdmission({assertIngress,sealIngress,noteFail
  };
 }
 
+const claimScopes=Object.freeze({
+ browser:['create','edit','delete'],http:['create','delete'],
+ 'same-company':['create','foreign-own','foreign-other','delete'],
+ 'other-company':['create','foreign-own','foreign-other','delete'],
+ 'other-tenant':['create','foreign-own','foreign-other','delete'],
+});
+const claimUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Own each fixed fictional Claims lifecycle until verified absence or private handoff. */
+export function createProtectedClaimCustody(){
+ const entries=new Map();
+ const disposition=entry=>entry.pending||entry.draft?'unconfirmed':entry.last==='delete'?'restored':'not-dispatched';
+ return {
+  register(scope,{actorIndex,employmentId,marker}){
+   if(!Object.hasOwn(claimScopes,scope)||entries.has(scope)||!Number.isSafeInteger(actorIndex)||actorIndex<0||actorIndex>=500||
+      !claimUuid.test(employmentId)||!/^PERF_(?:BROWSER_DRAFT|HTTP_PREFLIGHT|BOUNDARY_[0-9]{1,3})$/.test(marker))
+    throw Error('Protected Claims custody refused');
+   const entry={scope,actorIndex,employmentId,marker,draft:null,pending:null,last:null,senderIndex:null,restorationReserved:false,attempted:new Set()};
+   entries.set(scope,entry);
+   const canRestore=()=>entry.draft!==null&&entry.pending===null&&!entry.restorationReserved;
+   return {
+    reserveRestore(draft){
+     if(!canRestore()||draft!==entry.draft)throw Error('Protected Claims restoration state refused');
+     entry.restorationReserved=true;
+    },
+    begin(stage,senderIndex=actorIndex){
+     const allowed=claimScopes[scope];
+     const foreign=stage==='foreign-own'||stage==='foreign-other';
+     if(!allowed.includes(stage)||entry.pending||entry.attempted.has(stage)||
+        !Number.isSafeInteger(senderIndex)||senderIndex<0||senderIndex>=500||(foreign?senderIndex===actorIndex:senderIndex!==actorIndex)||
+        (stage==='delete'?!entry.restorationReserved:entry.restorationReserved)||
+        (stage==='create'?entry.last!==null:entry.draft===null)||
+        (stage!=='delete'&&stage!=='create'&&allowed[allowed.indexOf(stage)-1]!==entry.last))
+      throw Error('Protected Claims mutation state refused');
+     entry.attempted.add(stage);entry.pending=stage;entry.senderIndex=senderIndex;
+    },
+    /**
+     * @param {string} stage
+     * @param {string} [draft]
+     */
+    verify(stage,draft){
+     if(entry.pending!==stage||(stage==='create'&&!claimUuid.test(draft))||(stage!=='create'&&draft!==undefined))
+      throw Error('Protected Claims mutation proof refused');
+     if(stage==='create')entry.draft=draft;
+     if(stage==='delete')entry.draft=null;
+     entry.last=stage;entry.pending=null;entry.senderIndex=null;
+    },
+    canRestore,
+   };
+  },
+  publicFacts:()=>[...entries.values()].map(entry=>({scope:entry.scope,
+   stage:entry.pending??(entry.restorationReserved?'delete':entry.last??'create'),disposition:disposition(entry)})),
+  privateUnconfirmed:()=>[...entries.values()].filter(entry=>disposition(entry)==='unconfirmed').map(
+   ({scope,actorIndex,employmentId,marker,draft,pending,last,senderIndex,restorationReserved})=>
+    ({scope,actorIndex,employmentId,marker,draft,pending,last,senderIndex,restorationReserved})),
+ };
+}
+
 export function protectedLockObserverCounts(row,expected){
  if(!row||!expected||!Number.isSafeInteger(expected.pid)||expected.pid<=1
   ||typeof expected.backendStart!=='string'||!/^\d+(?:\.\d+)?$/.test(expected.backendStart)
@@ -148,15 +206,17 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
  const sampleLimit=Math.min(maxProtectedLockSamples,Math.ceil(cutoffUs/(interval*1000))+2);
  const maxGapUs=interval*2000,stamp=(round=Math.floor)=>round((now()-origin)*1000);
  const samples=[];
- let state='not-started',startUs=null,endUs=null,timer,watchdog,pending,closing,live,missedTicks=0,reason=null;
+ let state='not-started',startUs=null,endUs=null,timer,watchdog,gapWatchdog,pending,closing,live,missedTicks=0,reason=null;
+ let lastObservedStartUs=null;
  let observerSettlement='not-entered';
 
  function fail(code,error){
   if(reason!==null)return;
   reason=code;
   clearInterval(timer);
-  onFailure(error);
-  live?.abort();
+  clearTimeout(watchdog);
+  clearTimeout(gapWatchdog);
+  try{onFailure(error);}finally{live?.abort();}
  }
  function checkDeadline(){
   if(now()<deadline)return true;
@@ -167,6 +227,17 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
   if(!checkDeadline())return;
   watchdog=setTimeout(watchDeadline,Math.min(2**31-1,Math.max(1,Math.ceil(deadline-now()))));
  }
+ function checkGap(){
+  if(lastObservedStartUs===null||stamp(Math.ceil)-lastObservedStartUs<=maxGapUs)return true;
+  fail('coverage-gap',Error('Protected lock observation gap exceeded'));
+  return false;
+ }
+ function watchGap(){
+  clearTimeout(gapWatchdog);
+  if(reason!==null||!checkDeadline()||!checkGap())return;
+  const gapEnd=origin+(lastObservedStartUs+maxGapUs)/1000;
+  gapWatchdog=setTimeout(watchGap,Math.max(1,Math.ceil(gapEnd-now())));
+ }
  function sample(position){
   if(samples.length>=sampleLimit){
    fail('sample-limit',Error('Protected lock sample bound exceeded'));
@@ -174,6 +245,7 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
   }
   pending=Promise.resolve().then(async()=>{
    if((position==='opening'&&state!=='opening')||(position==='periodic'&&state!=='active'))return;
+   if(reason!==null||!checkGap())return;
    const startedUs=stamp();
    if(!lockCount(startedUs)||startedUs>=cutoffUs){
     fail('deadline',Error('Protected lock observer deadline closed'));
@@ -211,6 +283,10 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
    samples.push({position,startedUs,completedUs,state:'observed',appSessions,blockingAppSessions});
    if(blockingAppSessions>0)fail(position==='opening'?'opening-blocking':'blocking-observed',Error('Protected lock observation found blocking'));
    else if(previous&&completedUs-previous.startedUs>maxGapUs)fail('coverage-gap',Error('Protected lock observation gap exceeded'));
+   else if(reason===null&&position!=='closing'){
+    lastObservedStartUs=startedUs;
+    watchGap();
+   }
   }).finally(()=>{pending=undefined;});
   return pending;
  }
@@ -235,6 +311,9 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
  }
 
  return {
+  requireOpen(){
+   if(state!=='active'||reason!==null||!checkDeadline()||!checkGap())throw Error('Protected lock coverage no longer admits work');
+  },
   async start(){
    if(state!=='not-started')throw Error('Protected lock observation already started');
    state='opening';
@@ -249,7 +328,7 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
    }
    state='active';
    timer=setInterval(()=>{
-    if(!checkDeadline())return;
+    if(!checkDeadline()||!checkGap())return;
     if(pending){missedTicks++;return;}
     void sample('periodic');
    },interval);
@@ -260,7 +339,7 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
    if(active)endUs=stamp();
    state='closing';
    clearInterval(timer);
-   if(workSettled!==true){reason??='work-incomplete';live?.abort();}
+   if(workSettled!==true){reason??='work-incomplete';clearTimeout(gapWatchdog);live?.abort();}
    closing=(async()=>{
     await pending;
     if(active&&workSettled===true&&reason===null){
@@ -270,9 +349,8 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
      reason??='work-incomplete';
      state='incomplete';
     }
-    clearTimeout(watchdog);
     return evidence();
-   })();
+   })().finally(()=>{clearTimeout(watchdog);clearTimeout(gapWatchdog);});
    return closing;
   },
   evidence,

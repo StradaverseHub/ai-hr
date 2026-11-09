@@ -32,7 +32,7 @@ import {chromium} from 'playwright';
 import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironment,createDriverContexts,
- createDriverFailures,createDriverSockets,createDriverWork,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,protectedLockObserverCounts,
+ createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,protectedLockObserverCounts,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
@@ -65,8 +65,12 @@ const acquired={observer:'absent',agent:'absent',browser:'absent',audit:'absent'
 const failures=createDriverFailures(),contexts=createDriverContexts(failures),sockets=createDriverSockets(failures);
 const lanes=createDriverWork(),requests=createDriverWork(),transports=createDriverWork(),diagnostics=createDriverWork();
 const lifecycleRefused=Error('An owned development driver resource failed');
+const claimCustody=nativePreflight?createProtectedClaimCustody():undefined;
 const nativeAdmission=nativePreflight?createProtectedWorkAdmission({
- assertIngress(){nativeRemaining(nativeDeadline);assert.equal(nativeIngress.assertBusinessOpen(),true,'Owned protected business ingress refused');},
+ assertIngress(){
+  protectedSampler?.requireOpen();nativeRemaining(nativeDeadline);
+  assert.equal(nativeIngress.assertBusinessOpen(),true,'Owned protected business ingress refused');
+ },
  sealIngress(){assert.equal(nativeIngress.sealBusiness(),true,'Owned protected business ingress did not seal');},
  noteFailure:failures.notePrimary,noteSealFailure:reason=>failures.record('native-ingress-seal',reason),
 }):undefined;
@@ -79,7 +83,12 @@ function requireNativeClaimRestoration(user,draft){
  nativeRemaining(nativeDeadline);
  assert.equal(nativeIngress.assertClaimRestoration(user.index,draft),true,'Owned claim restoration refused');
 }
-const requireCleanDriver=()=>{if(failures.resourceFailed()||contexts.hasPendingClose())throw lifecycleRefused;requireNativeBusiness();};
+const requireCleanDriver=()=>{
+ if(failures.resourceFailed()||contexts.hasPendingClose()){
+  nativeAdmission?.close(lifecycleRefused);throw lifecycleRefused;
+ }
+ requireNativeBusiness();
+};
 const {waitForClose:closeContext}=contexts;
 const withContext=(context,work)=>contexts.withContext(context,()=>{requireNativeBusiness();return work();});
 const {notePrimary,evidence:noteEvidence}=failures;
@@ -151,15 +160,16 @@ function rejectBusyPage(user,path,channel){
 const claimRestorationKey=Symbol('owned claim restoration');
 const homeHttp=createHomeHttpReplay({base,request,report});
 function request(...args){requireNativeBusiness();return requests.run(()=>requestBody(...args));}
-async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action,restoration){
+async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action,claimAttempt){
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
  if(Array.isArray(fields)){body=Buffer.from(JSON.stringify(fields));contentType='text/plain;charset=UTF-8';}
  else if(fields){const encoded=new Response(actionFormData(fields,fieldOrder));contentType=encoded.headers.get('content-type');body=Buffer.from(await encoded.arrayBuffer());}
  let responseHeaders;
  const transport=openDriverResponse({body,startedMs:started,observeSocket:sockets.observe,recordFailure:failures.record,
   start:()=>{
-   if(restoration?.key===claimRestorationKey)requireNativeClaimRestoration(user,restoration.draft);
+   if(claimAttempt?.key===claimRestorationKey)requireNativeClaimRestoration(user,claimAttempt.draft);
    else requireNativeBusiness();
+   claimAttempt?.beforeDispatch();
    return https.request(base+path,{agent,signal:AbortSignal.timeout(nativePreflight?Math.min(90000,nativeRemaining(nativeDeadline)):90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
     Cookie:`__Host-aihr_internal=${user?.token??''}; NEXT_LOCALE=en`,'Accept-Encoding':'gzip',...actionHeaders,...(body?{'Content-Type':contentType,'Content-Length':body.length}:{})}});
   },
@@ -1011,49 +1021,66 @@ async function main(){
   assert(headers['next-action'],'browser server action header missing');
   return {fields,fieldOrder,prefix,headers,status:response.status()};
  }
+ async function ownClaimDraft(scope,user,description,work,restore){
+  if(!claimCustody)return work();
+  const custody=claimCustody.register(scope,{actorIndex:user.index,employmentId:user.employmentId,marker:description});
+  try{return await work(custody);}
+  catch(reason){
+   nativeAdmission.close(reason);
+   if(custody.canRestore())await failures.attempt('claim-restoration',()=>restore(custody));
+   throw reason;
+  }
+ }
+ function claimRequest(user,template,fields,custody,stage){
+  const attempt=custody?{beforeDispatch:()=>custody.begin(stage,user.index)}:undefined;
+  return request(user,'/claims',fields,template.status,false,template.headers,template.fieldOrder,undefined,attempt);
+ }
  async function browserClaimJourney(page,user,description,phase){
   await visit(page,user,'/claims',phase);const timings=[],form=claimDraftForm(page);
   const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000});
   await form.locator('[name="claimTypeId"]:visible').selectOption(user.claimTypeId);await form.locator('[name="amount"]:visible').fill('1');await form.locator('[name="incurredOn"]:visible').fill(fixture.today);
   await form.locator('textarea[name="description"]:visible').fill(description);
-  let started=performance.now();
-  requireNativeBusiness();
-  const [createResponse]=await Promise.all([browserAction(),form.locator('button[name="intent"][value="draft"]:visible').click()]);const createTemplate=await capturedAction(createResponse);
-  await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'create',visibleByMs:performance.now()-started});
-  const [draft]=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description}`;assert(draft,'browser create did not persist');
-  let editPending=false,deleteAttempted=false,deleteTemplate;
+  let started,draft,deleteTemplate;
   const requireRestore=()=>requireNativeClaimRestoration(user,draft.id);
-  async function deleteDraft(){
+  async function deleteDraft(custody){
    requireRestore();
    await page.locator('main form:visible').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).getByRole('button').click();started=performance.now();
    requireRestore();
-   deleteAttempted=true;
+   custody?.begin('delete');
    const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);
    deleteTemplate=await capturedAction(deleteResponse);
    await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted',{timeout:90000});timings.push({operation:'delete',visibleByMs:performance.now()-started});
    assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
+   custody?.verify('delete');
   }
-  try{
+  return ownClaimDraft('browser',user,description,async custody=>{
+   started=performance.now();
+   requireNativeBusiness();
+   custody?.begin('create');
+   const [createResponse]=await Promise.all([browserAction(),form.locator('button[name="intent"][value="draft"]:visible').click()]);const createTemplate=await capturedAction(createResponse);
+   await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'create',visibleByMs:performance.now()-started});
+   const drafts=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description}`;
+   [draft]=drafts;assert(draft,'browser create did not persist');
+   if(custody)assert.equal(drafts.length,1,'Protected browser draft identity is ambiguous');
+   custody?.verify('create',draft.id);
    if(phase==='loaded')await pause(thinkTimeMs);
    requireNativeBusiness();
    await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await form.locator('[name="amount"]:visible').fill('2');started=performance.now();
    requireNativeBusiness();
-   editPending=true;
+   custody?.begin('edit');
    await form.locator('button[name="intent"][value="draft"]:visible').click();await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'edit',visibleByMs:performance.now()-started});
    const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
-   editPending=false;
+   custody?.verify('edit');
    if(phase==='loaded')await pause(thinkTimeMs);
-   await deleteDraft();
-  }catch(reason){if(nativePreflight)failures.notePrimary(reason);throw reason;}
-  finally{
-   if(nativePreflight&&editPending)failures.record('browser-claim-settlement',Error('Owned claim edit settlement is unproved'));
-   else if(nativePreflight&&!deleteAttempted)await failures.attempt('browser-claim-restoration',async()=>{
+   custody?.reserveRestore(draft.id);
+   await deleteDraft(custody);
+   report.browser.push({phase,role:user.role,workflow:'claim create/edit/delete',persisted:true,timings});save();return {createTemplate,deleteTemplate};
+  },async custody=>{
+    custody.reserveRestore(draft.id);
     requireRestore();
     await page.goto(base+'/claims',{waitUntil:'domcontentloaded',timeout:Math.min(90000,nativeRemaining(nativeDeadline))});
-    await deleteDraft();
-   });
-  }
-  report.browser.push({phase,role:user.role,workflow:'claim create/edit/delete',persisted:true,timings});save();return {createTemplate,deleteTemplate};
+    await deleteDraft(custody);
+  });
  }
  {
   const ctx=await context(employee);
@@ -1061,11 +1088,14 @@ async function main(){
   requireCleanDriver();
  }
  const {createTemplate,deleteTemplate}=contextTemplates;
- function restoreKnownClaimDraft(user,draft){
+ async function restoreKnownClaimDraft(user,draft,custody){
   const fields={...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:user.employmentId,[deleteTemplate.prefix+'id']:draft.id};
-  if(!nativePreflight)return request(user,'/claims',fields,deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
-  return requests.run(()=>requestBody(user,'/claims',fields,deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder,undefined,
-   {key:claimRestorationKey,draft:draft.id}));
+  custody?.reserveRestore(draft.id);
+  if(!custody)await request(user,'/claims',fields,deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
+  else await requests.run(()=>requestBody(user,'/claims',fields,deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder,undefined,
+   {key:claimRestorationKey,draft:draft.id,beforeDispatch:()=>custody.begin('delete',user.index)}));
+  assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
+  custody?.verify('delete');
  }
  assert.equal(report.browserErrors.length,0,'baseline browser errors must be fixed before load');
  const actionProtocol=template=>({fieldNames:Object.keys(template.fields),fieldOrder:template.fieldOrder,prefix:template.prefix,status:template.status,
@@ -1076,14 +1106,18 @@ async function main(){
   const description='PERF_HTTP_PREFLIGHT',fields={...createTemplate.fields};
   for(const [key,value]of Object.entries({employmentId:employee.employmentId,claimTypeId:employee.claimTypeId,amount:'1',incurredOn:fixture.today,description,intent:'draft'}))fields[createTemplate.prefix+key]=value;
   delete fields[createTemplate.prefix+'draftId'];
-  const response=await request(employee,'/claims',fields,createTemplate.status,false,createTemplate.headers,createTemplate.fieldOrder);
-  report.actionPreflight={status:response.status,redirect:response.headers['x-action-redirect']??response.headers.location??null,
-   publicErrors:[...response.content.matchAll(/"error":"([^"\n]{1,300})"/g)].map(match=>match[1]).filter(value=>value!=='$undefined')};save();
-  const [draft]=await db`select id from claim_request where employment_id=${employee.employmentId}::uuid and status='draft'and description=${description}`;
-  assert(draft,'same-actor HTTP action preflight did not persist');
-  await restoreKnownClaimDraft(employee,draft);
-  assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
-  report.actionPreflight.persisted=true;save();
+  let draft;
+  await ownClaimDraft('http',employee,description,async custody=>{
+   const response=await claimRequest(employee,createTemplate,fields,custody,'create');
+   report.actionPreflight={status:response.status,redirect:response.headers['x-action-redirect']??response.headers.location??null,
+    publicErrors:[...response.content.matchAll(/"error":"([^"\n]{1,300})"/g)].map(match=>match[1]).filter(value=>value!=='$undefined')};save();
+   const drafts=await db`select id from claim_request where employment_id=${employee.employmentId}::uuid and status='draft'and description=${description}`;
+   [draft]=drafts;assert(draft,'same-actor HTTP action preflight did not persist');
+   if(custody)assert.equal(drafts.length,1,'Protected HTTP draft identity is ambiguous');
+   custody?.verify('create',draft.id);
+   await restoreKnownClaimDraft(employee,draft,custody);
+   report.actionPreflight.persisted=true;save();
+  },custody=>restoreKnownClaimDraft(employee,draft,custody));
  }
  // Real server actions must reject another employee's draft even for broadly visible HR actors.
  // Provision and clean up through the owner's HTTP action; the independent DB oracle only reads.
@@ -1091,33 +1125,27 @@ async function main(){
   const description='PERF_BOUNDARY_'+actor.index,fields={...createTemplate.fields};
   for(const [key,value]of Object.entries({employmentId:victim.employmentId,claimTypeId:victim.claimTypeId,amount:'7',incurredOn:fixture.today,description,intent:'draft'}))fields[createTemplate.prefix+key]=value;
   delete fields[createTemplate.prefix+'draftId'];
-  await request(victim,'/claims',fields,createTemplate.status,false,createTemplate.headers,createTemplate.fieldOrder);
-  const [protectedDraft]=await db`select id from claim_request where employment_id=${victim.employmentId}::uuid and status='draft' and description=${description}`;
-  assert(protectedDraft,'boundary fixture did not persist through HTTP');
-  let foreignPending=false,deleteAttempted=false;
-  try{
+  const scope=actor.tenant!==victim.tenant?'other-tenant':actor.company!==victim.company?'other-company':'same-company';
+  let protectedDraft;
+  await ownClaimDraft(scope,victim,description,async custody=>{
+   await claimRequest(victim,createTemplate,fields,custody,'create');
+   const drafts=await db`select id from claim_request where employment_id=${victim.employmentId}::uuid and status='draft' and description=${description}`;
+   [protectedDraft]=drafts;assert(protectedDraft,'boundary fixture did not persist through HTTP');
+   if(custody)assert.equal(drafts.length,1,'Protected boundary draft identity is ambiguous');
+   custody?.verify('create',protectedDraft.id);
    for(const selector of [actor.employmentId,victim.employmentId]){
     requireNativeBusiness();
-    foreignPending=true;
-    const response=await request(actor,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:selector,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
+    const stage=selector===actor.employmentId?'foreign-own':'foreign-other';
+    const response=await claimRequest(actor,deleteTemplate,{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:selector,[deleteTemplate.prefix+'id']:protectedDraft.id},custody,stage);
     const redirect=new URL(String(response.headers['x-action-redirect']??response.headers.location).split(';')[0],base);
     assert(redirect.searchParams.get('error'),'foreign draft deletion was not explicitly refused');
     const [unchanged]=await db`select employment_id,amount,status from claim_request where id=${protectedDraft.id}::uuid`;
     assert(unchanged);assert.equal(unchanged.employment_id,victim.employmentId);assert.equal(Number(unchanged.amount),7);assert.equal(unchanged.status,'draft');
-    foreignPending=false;
+    custody?.verify(stage);
     report.boundaries.push({kind:'foreign-draft-delete',role:actor.role,scope:actor.tenant!==victim.tenant?'other-tenant':actor.company!==victim.company?'other-company':'other-person',selector:selector===actor.employmentId?'own':'foreign',passed:true});
    }
-   deleteAttempted=true;
-   await restoreKnownClaimDraft(victim,protectedDraft);
-  }catch(reason){if(nativePreflight)failures.notePrimary(reason);throw reason;}
-  finally{
-   if(nativePreflight&&foreignPending)failures.record('claim-pilot-settlement',Error('Owned claim boundary settlement is unproved'));
-   else if(nativePreflight&&!deleteAttempted)await failures.attempt('claim-pilot-restoration',async()=>{
-    await restoreKnownClaimDraft(victim,protectedDraft);
-    assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
-   });
-  }
-  assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
+   await restoreKnownClaimDraft(victim,protectedDraft,custody);
+  },custody=>restoreKnownClaimDraft(victim,protectedDraft,custody));
  }
  if(suite!=='claims-heavy'){
   requireNativeBusiness();
@@ -1507,6 +1535,16 @@ try{
 const diagnosticDrain=stopDiagnosticAdmission();
 const protectedAbort=nativePreflight&&!preflightComplete?protectedSampler?.close(false):undefined;
 await drainDriverLanes(lanes,requests);
+const unconfirmedClaims=claimCustody?.privateUnconfirmed();
+if(claimCustody){
+ const entries=claimCustody.publicFacts();
+ const ownerStopRequired=unconfirmedClaims.length>0;
+ report.protectedClaimCustody={entries,ownerStopRequired};
+ if(ownerStopRequired)failures.record('claim-custody-unconfirmed',Error('Protected Claims restitution requires owned realm stop'));
+ else if(preflightComplete&&entries.filter(entry=>entry.disposition==='restored').length!==5)
+  failures.record('claim-custody-census',Error('Protected Claims restoration census differs'));
+ noteEvidence(save);
+}
 const failureAtExit=failures.failed();
 const shutdown=report.shutdown={acquisition:acquired,browserClosed:false,nativeAuditPoolClosed:false,driverPoolClosed:false};
 const driverResources={
@@ -1574,8 +1612,10 @@ if(!nativePreflight&&preflightComplete&&!failures.failed())report.preflightPasse
 noteEvidence(save);
 if(failures.failed()){
  // The outer runner publishes a bounded child log tail. Keep the actual reasons in its private directory.
+ const privateFacts=failures.privateFailures();
  noteEvidence(()=>writeFileSync(join(process.env.PERF_PRIVATE_DIR,'driver-failures.log'),
-  inspect(failures.privateFailures(),{customInspect:false,getters:false,depth:4,maxArrayLength:80,maxStringLength:1200}).slice(0,32000),{mode:0o600}));
+  inspect(unconfirmedClaims?.length?{protectedClaims:unconfirmedClaims,...privateFacts}:privateFacts,
+   {customInspect:false,getters:false,depth:4,maxArrayLength:80,maxStringLength:1200}).slice(0,32000),{mode:0o600}));
  throw Error('Owned development workload or settlement failed');
 }
 }

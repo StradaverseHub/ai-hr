@@ -4,7 +4,7 @@ import {PassThrough} from 'node:stream';
 import {gzipSync} from 'node:zlib';
 import {afterEach,expect,it,vi} from 'vitest';
 import {acquireDriverResource,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
- createDriverFailures,createDriverSockets,createDriverWork,createProtectedLockSampler,createProtectedWorkAdmission,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
+ createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
  openDriverResponse,protectedLockObserverCounts,settleDriverBrowser,settleDriverLanes,settleDriverResources,startDriverInterval} from '../scripts/performance/driver-shutdown.mjs';
 
 function deferred<T=void>(){
@@ -206,9 +206,12 @@ it('fails conservative protected gaps in both fixed cadences even when each samp
  vi.useFakeTimers();
  for(const [phase,interval] of [['preflight',250],['loaded',1000]] as const){
   let now=100;
-  const observe=vi.fn(async()=>protectedObservation(2,0));
+  const late=deferred<ReturnType<typeof protectedObservation>>();
+  const observe=vi.fn().mockResolvedValueOnce(protectedObservation(2,0)).mockImplementationOnce(()=>late.promise);
   const sampler=createProtectedLockSampler({phase,deadline:4000,observe,onFailure:vi.fn(),now:()=>now});
-  await sampler.start();now+=2*interval+1;await vi.advanceTimersByTimeAsync(interval);
+  await sampler.start();now+=interval;await vi.advanceTimersByTimeAsync(interval);
+  now+=interval+1;late.resolve(protectedObservation(2,0));
+  await vi.advanceTimersByTimeAsync(0);
   now+=1;
   expect(await sampler.close(true)).toMatchObject({phase,intervalMs:interval,maxGapUs:interval*2000,
    observedGapUs:interval*2000+1000,state:'incomplete',reason:'coverage-gap',blockingSamples:null,pass:false});
@@ -330,13 +333,100 @@ it('rounds a fractional excess outward in both protected observation gaps',async
  vi.useFakeTimers();
  for(const [phase,interval] of [['preflight',250],['loaded',1000]] as const){
   let now=100;
-  const observe=vi.fn(async()=>protectedObservation(2,0));
+  const late=deferred<ReturnType<typeof protectedObservation>>();
+  const observe=vi.fn().mockResolvedValueOnce(protectedObservation(2,0)).mockImplementationOnce(()=>late.promise);
   const sampler=createProtectedLockSampler({phase,deadline:4000,observe,onFailure:vi.fn(),now:()=>now});
   now=100.0004;await sampler.start();
-  now=100+2*interval+0.0006;await vi.advanceTimersByTimeAsync(interval);
+  now=100+interval;await vi.advanceTimersByTimeAsync(interval);
+  now=100+2*interval+0.0006;late.resolve(protectedObservation(2,0));
+  await vi.advanceTimersByTimeAsync(0);
   now+=1;
   expect(await sampler.close(true)).toMatchObject({observedGapUs:interval*2000+1,reason:'coverage-gap',blockingSamples:null,pass:false});
  }
+});
+
+it('seals an impossible gap before a held periodic or closing sample settles',async()=>{
+ vi.useFakeTimers();
+ for(const position of ['periodic','closing']){
+  let now=100,signal:AbortSignal|undefined;
+  const held=deferred<{settlement:'stopped'|'uncertain'}>();
+  const observe=vi.fn().mockResolvedValueOnce(protectedObservation(2,0));
+  if(position==='closing')observe.mockResolvedValueOnce(protectedObservation(2,0));
+  observe.mockImplementationOnce((lease:{signal:AbortSignal})=>{signal=lease.signal;return held.promise;});
+  const failures=createDriverFailures(),sealIngress=vi.fn();
+  const gate=createProtectedWorkAdmission({assertIngress:vi.fn(),sealIngress,noteFailure:failures.notePrimary,noteSealFailure:vi.fn()});
+  const sampler=createProtectedLockSampler({phase:'preflight',deadline:10000,observe,onFailure:gate.close,now:()=>now});
+  await sampler.start();now=350;await vi.advanceTimersByTimeAsync(250);
+  let closed=position==='closing'?sampler.close(true):undefined;
+  await Promise.resolve();await Promise.resolve();
+  const exact=position==='closing'?850:600;
+  now=exact;await vi.advanceTimersByTimeAsync(exact-350);
+  expect(signal?.aborted).toBe(false);
+  if(position==='periodic')expect(()=>sampler.requireOpen()).not.toThrow();
+  now=exact+0.0006;await vi.advanceTimersByTimeAsync(1);
+  expect(signal?.aborted).toBe(true);
+  expect(sealIngress).toHaveBeenCalledTimes(1);
+  expect(()=>gate.requireOpen()).toThrow('Protected workload admission is closed');
+  closed??=sampler.close(true);
+  let returned=false;void closed.then(()=>{returned=true;});
+  await Promise.resolve();expect(returned).toBe(false);
+  const settlement=position==='closing'?'uncertain':'stopped';
+  held.resolve({settlement});
+  expect(await closed).toMatchObject({state:'incomplete',reason:'coverage-gap',observerSettlement:settlement,blockingSamples:null,pass:false});
+ }
+});
+
+it('retains pre-dispatch custody and refuses a second ambiguous claim mutation',()=>{
+ const claims=createProtectedClaimCustody(),employmentId='00000000-0000-0000-0000-000000000001';
+ const browser=claims.register('browser',{actorIndex:0,employmentId,marker:'PERF_BROWSER_DRAFT'});
+ const http=claims.register('http',{actorIndex:0,employmentId,marker:'PERF_HTTP_PREFLIGHT'});
+ expect(claims.publicFacts()).toEqual([
+  {scope:'browser',stage:'create',disposition:'not-dispatched'},{scope:'http',stage:'create',disposition:'not-dispatched'},
+ ]);
+ browser.begin('create');
+ const failedSend=vi.fn(()=>{
+  expect(claims.publicFacts()[0]).toEqual({scope:'browser',stage:'create',disposition:'unconfirmed'});
+  throw Error('transport disposition is unproved');
+ });
+ expect(failedSend).toThrow('transport disposition is unproved');
+ expect(browser.canRestore()).toBe(false);
+ expect(()=>browser.begin('create')).toThrow('mutation state refused');
+ expect(failedSend).toHaveBeenCalledTimes(1);
+ http.begin('create');http.verify('create','00000000-0000-0000-0000-000000000002');
+ expect(http.canRestore()).toBe(true);
+ expect(()=>http.reserveRestore(employmentId)).toThrow('restoration state refused');
+ http.reserveRestore('00000000-0000-0000-0000-000000000002');
+ expect(()=>http.reserveRestore('00000000-0000-0000-0000-000000000002')).toThrow('restoration state refused');
+ http.begin('delete');
+ expect(http.canRestore()).toBe(false);
+ expect(()=>http.begin('delete')).toThrow('mutation state refused');
+ expect(claims.privateUnconfirmed()).toMatchObject([
+  {scope:'browser',marker:'PERF_BROWSER_DRAFT',pending:'create',draft:null},
+  {scope:'http',marker:'PERF_HTTP_PREFLIGHT',pending:'delete',draft:'00000000-0000-0000-0000-000000000002'},
+ ]);
+ expect(claims.publicFacts()).toEqual([
+  {scope:'browser',stage:'create',disposition:'unconfirmed'},{scope:'http',stage:'delete',disposition:'unconfirmed'},
+ ]);
+ http.verify('delete');
+ expect(http.canRestore()).toBe(false);
+ expect(claims.publicFacts()[1]).toEqual({scope:'http',stage:'delete',disposition:'restored'});
+});
+
+it('keeps the original claim failure when its one authorized restitution fails',async()=>{
+ const failures=createDriverFailures(),claims=createProtectedClaimCustody();
+ const claim=claims.register('same-company',{actorIndex:5,employmentId:'00000000-0000-0000-0000-000000000001',marker:'PERF_BOUNDARY_0'});
+ const original=Error('original failed action'),restoration=Error('private failed delete');
+ claim.begin('create',5);claim.verify('create','00000000-0000-0000-0000-000000000002');
+ expect(()=>claim.begin('foreign-own',5)).toThrow('mutation state refused');
+ claim.begin('foreign-own',0);claim.verify('foreign-own');
+ expect(claim.canRestore()).toBe(true);
+ failures.notePrimary(original);
+ const restore=vi.fn(()=>{claim.reserveRestore('00000000-0000-0000-0000-000000000002');claim.begin('delete',5);throw restoration;});
+ await failures.attempt('claim-restoration',restore);
+ expect(restore).toHaveBeenCalledTimes(1);
+ expect(claim.canRestore()).toBe(false);
+ expect(failures.privateFailures()).toEqual({primary:{failed:true,reason:original},secondary:[{stage:'claim-restoration',reason:restoration}]});
+ expect(claims.publicFacts()).toEqual([{scope:'same-company',stage:'delete',disposition:'unconfirmed'}]);
 });
 
 it('retains actual startup and cleanup outcomes and keeps raw reasons private',async()=>{
