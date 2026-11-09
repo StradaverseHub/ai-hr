@@ -10,7 +10,7 @@ export const GET = mobileRoute(ClockResponse,async(s,req)=>{
   const enabled=isModuleEnabled(s,'attendance');
   if(!enabled||!employmentId)return {enabled,employmentId,state:null};
   const [state,deviceRequired]=await Promise.all([ownClockToday(s,undefined,employmentId),deviceGateRequired(s,employmentId)]);
-  return {enabled,employmentId,state:{...state,deviceRequired,captures:state.captures.map(c=>({...c,date:state.date}))}};
+  return {enabled,employmentId,state:{...state,deviceRequired,reviewExceptions:true,captures:state.captures.map(c=>({...c,date:state.date}))}};
 });
 export const POST = mobileRoute(ClockResult,async(s,req):Promise<ClockResult>=>{
   const employmentId=await mobileEmployment(s,req);

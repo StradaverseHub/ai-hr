@@ -4190,6 +4190,16 @@
     "clockEvidenceGeofenced": "{site} · jarak {distance} m daripada {radius} m yang dibenarkan",
     "clockEvidenceLocationUnavailable": "Lokasi tidak direkodkan — tidak tersedia",
     "clockEvidenceNotRequired": "Geopagar tidak diperlukan",
+    "clockEvidenceReview": "Perlu semakan",
+    "clockReviewReasons": {
+      "location_missing": "Lokasi tidak tersedia",
+      "location_stale": "Lokasi tidak terkini",
+      "location_accuracy": "Ketepatan lokasi rendah",
+      "outside_site": "Di luar tapak kerja yang ditetapkan",
+      "no_assigned_site": "Tiada tapak kerja ditetapkan",
+      "photo_missing": "Foto yang diperlukan tiada",
+      "photo_invalid": "Foto tidak dapat disahkan"
+    },
     "colAbsent": "Tidak hadir",
     "colAction": "Tindakan",
     "colActualHours": "Jam Sebenar",

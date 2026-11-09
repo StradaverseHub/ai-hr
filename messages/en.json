@@ -4190,6 +4190,16 @@
     "clockEvidenceGeofenced": "{site} · distance {distance} m of {radius} m allowed",
     "clockEvidenceLocationUnavailable": "Location not recorded — unavailable",
     "clockEvidenceNotRequired": "Geofencing not required",
+    "clockEvidenceReview": "Needs review",
+    "clockReviewReasons": {
+      "location_missing": "Location unavailable",
+      "location_stale": "Location too old",
+      "location_accuracy": "Low location accuracy",
+      "outside_site": "Outside assigned worksite",
+      "no_assigned_site": "No worksite assigned",
+      "photo_missing": "Required photo missing",
+      "photo_invalid": "Photo could not be verified"
+    },
     "colAbsent": "Absent",
     "colAction": "Action",
     "colActualHours": "Actual Hours",

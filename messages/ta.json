@@ -4190,6 +4190,16 @@
     "clockEvidenceGeofenced": "{site} · தூரம் {distance} மீ ({radius} மீ அனுமதி)",
     "clockEvidenceLocationUnavailable": "இருப்பிடம் பதிவு செய்யப்படவில்லை — கிடைக்கவில்லை",
     "clockEvidenceNotRequired": "புவிவேலி தேவையில்லை",
+    "clockEvidenceReview": "மதிப்பாய்வு தேவை",
+    "clockReviewReasons": {
+      "location_missing": "இருப்பிடம் கிடைக்கவில்லை",
+      "location_stale": "இருப்பிடத் தகவல் பழையது",
+      "location_accuracy": "இருப்பிடத் துல்லியம் குறைவு",
+      "outside_site": "ஒதுக்கப்பட்ட பணியிடத்திற்கு வெளியே",
+      "no_assigned_site": "பணியிடம் ஒதுக்கப்படவில்லை",
+      "photo_missing": "தேவையான படம் இல்லை",
+      "photo_invalid": "படத்தைச் சரிபார்க்க முடியவில்லை"
+    },
     "colAbsent": "வரவில்லை",
     "colAction": "செயல்",
     "colActualHours": "உண்மையான நேரம்",
