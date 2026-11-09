@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {APP_URL,BASE,BRANCH,CANDIDATE,IMAGE,OWNER_URL,SOURCE_PINS,validateCanonicalAdmission} from './fictional-ai-upgrade-canonical-admission.mjs';
+import {APP_URL,BASE,BRANCH,CANDIDATE,IMAGE,OWNER_URL,SOURCE_PINS,assertPristineAuthTenant,validateCanonicalAdmission} from './fictional-ai-upgrade-canonical-admission.mjs';
 
 const control = 'c'.repeat(40), run = '12345', repo = 'StradaverseHub/ai-hr';
 function fixture(phase) {
@@ -27,6 +27,16 @@ function fixture(phase) {
 }
 test('accepts only matching baseline and candidate phase identities',()=>{
   for (const phase of ['prepare','compare']) assert.equal(validateCanonicalAdmission(fixture(phase)).runId,run);
+});
+test('requires the exact migration-created auth tenant and refuses all other rows',()=>{
+  const id='00000000-0000-0000-0000-000000000000';
+  const sentinel={id,workosOrgId:'org_system_auth_audit',name:'System (auth audit)'};
+  assert.doesNotThrow(()=>assertPristineAuthTenant([sentinel],id));
+  for (const rows of [
+    [], [sentinel,{...sentinel,id:'11111111-1111-1111-1111-111111111111'}],
+    [{...sentinel,id:'11111111-1111-1111-1111-111111111111'}],
+    [{...sentinel,workosOrgId:'fictional-alternate'}], [{...sentinel,name:'Fictional alternate'}],
+  ]) assert.throws(()=>assertPristineAuthTenant(rows,id));
 });
 for (const [name,mutate] of [
   ['wrong source',x=>{x.source=BASE;}],

@@ -34,6 +34,15 @@ PINS = {
 ROLE_SOURCES = {'helperSha256':'test/helpers/personnel-draft-discard-ci-role-fixture.ts',
                 'wrapperSha256':'scripts/migrate-with-focused-prerequisites.ts',
                 'orchestrationSha256':'scripts/lib/discard-premigration.ts'}
+WITNESS_STEPS = frozenset('''
+environment private-scratch source-checkout controller-custody source-manifests ledger-sources ledger-native
+database-identity baseline-receipt pristine-baseline receipt-key app-imports fixture-tenant fixture-actors
+fixture-reporting baseline-candidate baseline-evaluations baseline-promotion baseline-job baseline-feedback
+baseline-replay baseline-row-hashes baseline-reporting-facts baseline-receipt-write candidate-actors retained-facts
+stale-review stale-actions fallback-job fallback-replay fallback-retirement current-candidate
+current-unauthorized-actions current-evaluations current-promotion-separation current-promotion current-promoted-job
+current-replay current-row-hashes result-write
+'''.split())
 
 
 def need(ok):
@@ -154,6 +163,15 @@ def migration_failure_category(excerpt, role_recorded):
         if re.search(pattern,excerpt):
             return category
     return 'migration-engine-failed' if role_recorded else 'unclassified-stage-failure'
+
+
+def witness_failure_category(excerpt):
+    markers = re.findall(rb'(?m)^fictional-upgrade-witness-failed:([^\r\n]*)$',excerpt)
+    if len(markers) == 1 and re.fullmatch(rb'[a-z-]{1,40}',markers[0]):
+        step = markers[0].decode()
+        if step in WITNESS_STEPS:
+            return 'witness-'+step
+    return migration_failure_category(excerpt,False)
 
 
 def phase_role_bytes(path,source,sha,controller,run):
@@ -619,7 +637,9 @@ def main():
             failure_category = 'child-deadline'
         elif active_log is not None:
             try:
-                failure_category = migration_failure_category(failure_excerpt(active_log),failed.endswith('-migration-engine'))
+                excerpt = failure_excerpt(active_log)
+                failure_category = (witness_failure_category(excerpt) if failed.endswith('-witness') else
+                                    migration_failure_category(excerpt,failed.endswith('-migration-engine')))
             except (OSError,ValueError):
                 failure_category = 'private-log-unavailable'
     finally:

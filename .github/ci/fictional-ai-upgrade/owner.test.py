@@ -160,6 +160,19 @@ class Admission(unittest.TestCase):
                 self.assertEqual(owner.migration_failure_category(excerpt,False),category)
         self.assertEqual(owner.migration_failure_category(b'fictional private SQL details',True),'migration-engine-failed')
 
+    def test_witness_markers_use_closed_domain_steps(self):
+        witness = Path(__file__).with_name('fictional-ai-source-upgrade.mts').read_text()
+        self.assertEqual(set(re.findall(r"enter\('([a-z-]+)'\)",witness)),owner.WITNESS_STEPS)
+        self.assertEqual(owner.witness_failure_category(
+            b'fictional-upgrade-witness-failed:pristine-baseline\n'),'witness-pristine-baseline')
+        for invalid in (
+            b'fictional-upgrade-witness-failed:unknown-closed-looking-label\n',
+            b'fictional-upgrade-witness-failed:pristine-baseline secret\n',
+            b'fictional-upgrade-witness-failed:baseline-candidate\nfictional-upgrade-witness-failed:baseline-job\n',
+            b'fictional-upgrade-witness-failed:private data or SQL text\n',
+        ):
+            self.assertEqual(owner.witness_failure_category(invalid),'unclassified-stage-failure')
+
     def test_engine_boundary_needs_role_receipt_for_exact_phase(self):
         path = self.event.parent/'roles.json'
         source = Path(__file__).resolve().parents[3]

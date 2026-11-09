@@ -11,6 +11,11 @@ export const BRANCH = 'codex/architecture-ai-source-upgrade-witness-20261109';
 export const IMAGE = 'postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97';
 export const APP_URL = 'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev';
 export const OWNER_URL = 'postgres://postgres@127.0.0.1:5433/ai_hr_dev';
+export function assertPristineAuthTenant(rows,systemTenantId) {
+  // Exact fresh migration 0151 sentinel. Demo, lookalike and additional tenants all refuse.
+  assert.deepEqual([...rows],[{id:systemTenantId,workosOrgId:'org_system_auth_audit',name:'System (auth audit)'}],
+    'Pristine migration-created auth tenant required');
+}
 export const SOURCE_PINS = Object.freeze({
   prepare: Object.freeze({
     helperSha256: '32aaff3dc2f8a80bfe3e69769422b234e0f607a5dad7c0f4b4cb27e5946a3c54',
