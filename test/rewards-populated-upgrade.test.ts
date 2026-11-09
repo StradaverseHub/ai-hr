@@ -1,4 +1,5 @@
 import {migrateApprovedUpgrade,retainedUpgradeSnapshot} from './helpers/approved-upgrade';
+import {rehearseRewardsCreatorOwnerUpgrade} from './helpers/rewards-creator-owner-upgrade';
 /** Ordinary journal upgrade of existing Rewards/letter rows on a disposable CI database.
  * No draft installer, disabled trigger, manufactured migration receipt or production database. */
 import {randomUUID} from 'node:crypto';
@@ -89,7 +90,27 @@ it('preserves populated Rewards history, seats, shared policies and both notific
   });
   const before=await unchangedRows();expect(before.units).toHaveLength(1);expect(before.members).toHaveLength(2);expect(before.decisions).toHaveLength(1);expect(before.audit.length).toBeGreaterThan(1);expect(before.groups).toHaveLength(1);expect(before.versions).toHaveLength(1);expect(before.targets).toHaveLength(1);expect(before.notifications).toHaveLength(2);expect(before.letterJobs).toHaveLength(1);expect(before.letters).toHaveLength(1);
   const [migrationClock]=await storage.client`select (now() at time zone 'Asia/Kuala_Lumpur')::date::text as day`;
-  const approvedUpgrade=await migrateApprovedUpgrade(storage);
+  // The focused runner provisions the literal restricted owner and a job-owned trust cluster.
+  // Other test contexts retain the original whole-source populated upgrade course.
+  const ownerShapedRehearsal=process.env.GITHUB_ACTIONS==='true'&&process.env.GITHUB_WORKFLOW==='alpha-focused-checks';
+  const approvedUpgrade=await (async()=>{
+   if(!ownerShapedRehearsal)return migrateApprovedUpgrade(storage);
+   expect(ownerUrl).toMatchObject({hostname:'127.0.0.1',port:'5433',username:'postgres',password:'',search:'',hash:''});
+   const beforeCreator=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='4100_rewards_review_creator_independence');
+   expect(beforeCreator).toBe(721);
+   for(const entry of journal.entries.slice(start,beforeCreator))copyFileSync('db/migrations/'+entry.tag+'.sql',join(directory,entry.tag+'.sql'));
+   writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,beforeCreator)}));
+   const witness=await migrateApprovedUpgrade(storage,directory);
+   const beforeCreatorRows=await unchangedRows();
+   const migrationUrl=new URL(ownerUrl);migrationUrl.username='ai_hr_owner';
+   const restricted=postgres(migrationUrl.toString(),{max:1,connect_timeout:3,onnotice:()=>{}});
+   const observer=postgres(ownerUrl.toString(),{max:1,connect_timeout:3,onnotice:()=>{}});
+   try{await rehearseRewardsCreatorOwnerUpgrade(storage.client,restricted,observer,directory);}
+   finally{await Promise.all([restricted.end({timeout:3}),observer.end({timeout:3})]);}
+   expect(await unchangedRows()).toEqual(beforeCreatorRows);
+   await migrate(storage.db,{migrationsFolder:'db/migrations'});
+   return witness;
+  })();
   expect(await storage.client`select uploaded_award_digest from reward_unit where id=${ids.unit}`).toEqual([{uploaded_award_digest:null}]);
   expect(retainedUpgradeSnapshot(await unchangedRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
   const seats=await storage.client`select id,valid_from::text,valid_to,covers_user_id,restored_reason,restored_fingerprint from reward_member where unit_id=${ids.unit} order by id`;
