@@ -1,8 +1,9 @@
 """Strict archive data inspection for one fixed browser toolchain.
 
 Callers must supply exclusively held, immutable, seekable archive bytes.
-This module cannot establish that custody and performs no transfer,
-extraction, installation, or executable admission.
+This module cannot establish that custody. Public inspection never writes.
+The private materializer can receive decoded blocks for a non-executable
+owned staging tree. Nothing here transfers or admits executable bytes.
 """
 import base64
 import hashlib
@@ -15,6 +16,7 @@ import struct
 import tarfile
 import time
 import zlib
+from contextlib import nullcontext
 from dataclasses import dataclass
 
 MIB = 1024 * 1024
@@ -275,6 +277,10 @@ def verify_elf(prefix, size):
 
 
 def zip_rows(source, size, deadline):
+    return _zip_rows(source, size, deadline, None)
+
+
+def _zip_rows(source, size, deadline, sink):
     entries, central_start = zip_directory(source, size, deadline)
     ordered = sorted(entries, key=lambda path: entries[path].offset)
     require(entries[ordered[0]].offset == 0, 'ZIP has a local preamble')
@@ -290,25 +296,32 @@ def zip_rows(source, size, deadline):
             data = inflate(data, -zlib.MAX_WBITS, entry.expanded, deadline)
         length, crc = 0, 0
         digest, prefix = hashlib.sha256(), bytearray()
-        for block in data:
-            length += len(block)
-            crc = zlib.crc32(block, crc)
-            digest.update(block)
-            if path == BROWSER_EXECUTABLE and len(prefix) < ELF_PREFIX_MAX:
-                prefix.extend(block[:ELF_PREFIX_MAX - len(prefix)])
-        require(length == entry.expanded and crc == entry.crc and source.tell() == start + entry.compressed,
-                'ZIP member length, consumption or CRC differs')
-        if path == BROWSER_EXECUTABLE:
-            require(entry.mode == 0o555, 'browser ELF is not executable')
-            verify_elf(prefix, length)
+        with (nullcontext() if sink is None else sink(path, entry.expanded)) as write:
+            for block in data:
+                length += len(block)
+                crc = zlib.crc32(block, crc)
+                digest.update(block)
+                if path == BROWSER_EXECUTABLE and len(prefix) < ELF_PREFIX_MAX:
+                    prefix.extend(block[:ELF_PREFIX_MAX - len(prefix)])
+                if write is not None:
+                    write(block)
+            require(length == entry.expanded and crc == entry.crc and source.tell() == start + entry.compressed,
+                    'ZIP member length, consumption or CRC differs')
+            if path == BROWSER_EXECUTABLE:
+                require(entry.mode == 0o555, 'browser ELF is not executable')
+                verify_elf(prefix, length)
         rows[path] = (path, 'file', entry.mode, length, digest.hexdigest())
     return rows
 
 
 def inspect_chromium(source, deadline):
+    return _inspect_chromium(source, deadline, None)
+
+
+def _inspect_chromium(source, deadline, sink):
     size, digest = archive_hash(source, ZIP_MAX, 'sha256', deadline, BROWSER_ARCHIVE_BYTES)
     require(hmac.compare_digest(digest.hex(), BROWSER_ARCHIVE_SHA), 'pinned browser archive SHA-256 differs')
-    files = zip_rows(source, size, deadline)
+    files = zip_rows(source, size, deadline) if sink is None else _zip_rows(source, size, deadline, sink)
     rows = with_parents(files, ZIP_COUNT_MAX)
     executable = files.get(BROWSER_EXECUTABLE)
     require(len(files) == BROWSER_ARCHIVE_FILES and len(rows) == BROWSER_TREE_ENTRIES
@@ -389,6 +402,10 @@ def tar_header(header):
 
 
 def package_rows(source, archive_size, deadline, expected_digest, maximum=PACKAGE_COUNT_MAX):
+    return _package_rows(source, archive_size, deadline, expected_digest, maximum, None)
+
+
+def _package_rows(source, archive_size, deadline, expected_digest, maximum, sink):
     source.seek(0)
     consumed_digest = hashlib.sha512()
 
@@ -416,14 +433,17 @@ def package_rows(source, archive_size, deadline, expected_digest, maximum=PACKAG
         require(not wanted or size <= MANIFEST_MAX, 'tool manifest bound exceeded')
         digest, manifest = hashlib.sha256(), bytearray()
         length = size
-        while length:
-            remaining(deadline)
-            data = stream.take(min(CHUNK, length))
-            length -= len(data)
-            digest.update(data)
-            if wanted:
-                manifest.extend(data)
-        require(not any(stream.take((-size) % 512)), 'nonzero tar member padding')
+        with (nullcontext() if sink is None else sink(path, size)) as write:
+            while length:
+                remaining(deadline)
+                data = stream.take(min(CHUNK, length))
+                length -= len(data)
+                digest.update(data)
+                if wanted:
+                    manifest.extend(data)
+                if write is not None:
+                    write(data)
+            require(not any(stream.take((-size) % 512)), 'nonzero tar member padding')
         rows[path] = (path, 'file', mode, size, digest.hexdigest())
         if wanted:
             manifests[path] = bytes(manifest)
@@ -489,13 +509,20 @@ def package_entrypoints(name, version, rows, manifests):
 
 
 def inspect_package(name, source, deadline, *, maximum=PACKAGE_COUNT_MAX):
+    return _inspect_package(name, source, deadline, maximum, None)
+
+
+def _inspect_package(name, source, deadline, maximum, sink):
     require(type(name) is str and name in PACKAGES, 'unknown tool package')
     require(type(maximum) is int and 0 < maximum <= PACKAGE_COUNT_MAX, 'tool package entry budget exhausted')
     version, integrity = PACKAGES[name]
     size, digest = archive_hash(source, PACKAGE_MAX, 'sha512', deadline)
     require(hmac.compare_digest('sha512-' + base64.b64encode(digest).decode('ascii'), integrity),
             'locked package SHA-512 differs')
-    files, manifests = package_rows(source, size, deadline, digest, maximum)
+    if sink is None:
+        files, manifests = package_rows(source, size, deadline, digest, maximum)
+    else:
+        files, manifests = _package_rows(source, size, deadline, digest, maximum, sink)
     package_entrypoints(name, version, files, manifests)
     rows = with_parents(files, maximum)
     remaining(deadline)
