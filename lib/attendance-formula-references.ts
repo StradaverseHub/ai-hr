@@ -141,7 +141,7 @@ End If`,
     examples: [{ basis: 'monthly', values: { ...monthlyExcessExample, MY_APPLIES_PAID_HOLIDAY: true } }],
   },
   {
-    code: 'MY_REST_DAY_PIECES', name: 'restDayPieces', provision: '60(3)(d)', dayType: 'restDay', purpose: 'earning',
+    code: 'MY_REST_DAY_PIECE_PAY', name: 'restDayPieces', provision: '60(3)(d)', dayType: 'restDay', purpose: 'earning',
     inputs: ['MY_APPLIES_REST_DAY', 'MY_ORDINARY_PIECE_RATE', 'MY_REST_DAY_PIECES'],
     source: `If ${appliesRest} Then
     Return 2 * ${pieceRate} * ${input('MY_REST_DAY_PIECES')}
