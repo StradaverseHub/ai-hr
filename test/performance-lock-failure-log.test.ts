@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {postgresLockFailures} from '../scripts/performance/lock-failure-log.mjs';
+import {developmentPostgresLockWindow,postgresLockFailures} from '../scripts/performance/lock-failure-log.mjs';
 it('keeps bounded lock graphs and routine names while excluding SQL, values and unknown errors',()=>{
  const log=`2026-11-04 14:00:00.000 +08 [98] ERROR:  deadlock detected
 2026-11-04 14:00:00.000 +08 [98] DETAIL:  Process 98 waits for ExclusiveLock on advisory lock [1, 2, 3, 1]; blocked by process 99.
@@ -39,4 +39,21 @@ it('recognizes a still-blocked, acquired or failed heavyweight wait without reta
   {kind:'observed heavyweight lock wait',pid:101,outcome:'avoided deadlock for',mode:'ExclusiveLock',waitMs:1002.444,waits:[],routines:[]},
  ]);
  expect(JSON.stringify(failures)).not.toMatch(/1234|5000|9999|ai_hr|abcdef01/);
+});
+
+it('qualifies only the exact bracketed PostgreSQL log window and retains blocking evidence',()=>{
+ const nonce='0123456789abcdef0123456789abcdef';
+ const marker=(phase:string,pid=98,sessionPid='62',actor='postgres@ai_hr_dev')=>
+  '2026-11-09 14:00:00.000 +08 ['+pid+'] abcdef01.'+sessionPid+' '+actor+' LOG:  AIHR_LOCK_WINDOW_V1 '+nonce+' '+phase;
+ const wait='2026-11-09 14:00:00.100 +08 [101] abcdef01.65 ai_hr_app@ai_hr_dev LOG:  process 101 still waiting for ShareLock on transaction 789 after 100.135 ms';
+ const log=(...lines:string[])=>lines.join('\n');
+ expect(developmentPostgresLockWindow(log(wait,marker('begin'),marker('end',99,'63'),wait),nonce))
+  .toEqual({thresholdMs:100,failures:[]});
+ expect(developmentPostgresLockWindow(log(marker('begin'),wait,marker('end',99,'63')),nonce))
+  .toEqual({thresholdMs:100,failures:[{kind:'observed heavyweight lock wait',pid:101,outcome:'still waiting for',mode:'ShareLock',waitMs:100.135,waits:[],routines:[]}]});
+ for(const rejected of [
+  log(marker('begin'),wait),log(marker('end'),marker('begin')),log(marker('begin'),marker('end'),marker('end')),
+  log(marker('begin'),marker('end',99,'62')),log(marker('begin'),marker('end',99,'63','ai_hr_app@ai_hr_dev')),
+  log(marker('begin'),marker('end')+' unexpected'),log(marker('begin'),marker('end').replace(nonce,'0'.repeat(32))),
+ ])expect(developmentPostgresLockWindow(rejected,nonce)).toBeNull();
 });

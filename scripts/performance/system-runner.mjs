@@ -9,7 +9,7 @@ import http from 'node:http';
 import os from 'node:os';
 import net from 'node:net';
 import {setTimeout as pause} from 'node:timers/promises';
-import {postgresLockFailures} from './lock-failure-log.mjs';
+import {developmentPostgresLockWindow,postgresLockFailures} from './lock-failure-log.mjs';
 import {admissionFailureMarkers} from './admission-failure-log.mjs';
 import {runtimeAcceptance} from './runtime-acceptance.mjs';
 import {createDriverFailures,createDriverSockets,validateDevelopmentMeasurement,DEVELOPMENT_DOCKER_COMMAND,
@@ -44,6 +44,7 @@ const ports=Array.from({length:workers},(_,index)=>3174+index);
 const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha,controller:process.env.AIHR_CI_CONTROL_HEAD,
  run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool,heapMiBPerWorker:heapPerWorker,totalHeapMiB,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host,cpuAdmission,phases:[],exitCode:1};
 const measureDevelopment=['workflow-preflight','whole-system'].includes(env.PERF_HTTP_SUITE);
+const lockLogNonce=measureDevelopment?randomBytes(16).toString('hex'):null;
 const measurementIdentity={candidateSha:sha,controllerSha:report.controller,runId:Number(report.run),
  runAttempt:Number(process.env.GITHUB_RUN_ATTEMPT),suite:env.PERF_HTTP_SUITE};
 const measurement=measureDevelopment?report.developmentMeasurement={kind:'DEVELOPMENT_BROWSER_RUNNER_MEASUREMENT_V1',complete:false,
@@ -243,6 +244,17 @@ function captureDevelopmentPostgres(id){
   &&readFileSync('/proc/'+row.pid+'/cgroup','utf8')===cgroup,'Development PostgreSQL birth changed');
  return {id,pid:row.pid,started:row.started,volume:row.volume,birth,path,cgroupDevice:String(state.dev),cgroupInode:String(state.ino)};
 }
+function markDevelopmentLockLog(phase){
+ assert(phase==='begin'||phase==='end','Invalid development PostgreSQL lock log marker');
+ const held=developmentPostgresBirth,current=captureDevelopmentPostgres(held.id);
+ assert.deepEqual(current,held,'Development PostgreSQL log marker birth changed');
+ const sql="DO $aihr$ BEGIN IF current_setting('log_lock_waits') <> 'on' OR current_setting('deadlock_timeout') <> '100ms'"
+  +" OR current_setting('log_destination') <> 'stderr' OR current_setting('logging_collector') <> 'off'"
+  +" THEN RAISE EXCEPTION 'Development PostgreSQL lock logging settings refused'; END IF;"
+  +" RAISE LOG 'AIHR_LOCK_WINDOW_V1 "+lockLogNonce+" "+phase+"'; END; $aihr$;";
+ assert.equal(dockerQuery(['exec',held.id,'psql','-XAtq','--no-password','-v','ON_ERROR_STOP=1',
+  '-h','127.0.0.1','-p','5433','-U','postgres','-d','ai_hr_dev','-c',sql]),'');
+}
 function confirmDevelopmentPostgresAbsent(held){
  const containerAbsent=dockerContainerIds(`id=${held.id}`).length===0&&namedContainer().length===0;
  const processAbsent=processBirth(held.pid)!==held.birth;
@@ -261,7 +273,8 @@ try{
    &&realpathSync(privateDir)===privateDir,'Development PostgreSQL reset scope refused');
   mkdirSync(join(privateDir,'docker-config'),{mode:0o700});
   assert(namedContainer().length===0,'Development PostgreSQL pre-reset absence refused');
-  const resetEnv={...developmentDocker().env,AIHR_DEVELOPMENT_DB_NAME:container};
+  const resetEnv={...developmentDocker().env,AIHR_DEVELOPMENT_DB_NAME:container,
+   AIHR_CI_PG_DEVELOPMENT_LOCK_LOG:'1',GITHUB_JOB:env.GITHUB_JOB};
   for(const key of ['GITHUB_ACTIONS','CI','GITHUB_EVENT_NAME','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','AIHR_CI_UNIT',
    'AIHR_CI_PG_PROFILE','AIHR_CI_PG_CONFIGURED_CAP_BYTES','AIHR_CI_PG_PEAK_BUDGET_BYTES','AIHR_CI_PG_MEMORY_GIB',
    'AIHR_CI_PG_JIT','AIHR_CI_PG_DURABLE','AIHR_CI_PG_STATEMENTS','AIHR_CI_PG_STATEMENTS_OWNER'])
@@ -285,6 +298,7 @@ try{
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(privateDir,'key.pem'),'-out',join(privateDir,'cert.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost']);
  mkdirSync(join(out,'cpu'),{recursive:true});
  report.applicationRuntimeFrom=new Date().toISOString();save();
+ if(measureDevelopment)markDevelopmentLockLog('begin');
  for(const [index,port]of ports.entries()){
   const fd=openSync(join(privateDir,'server-'+index+'.log'),'w',0o600);appFds.push(fd);
   const app=spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'--import',resolve('scripts/performance/profile-exit.mjs'),'--import',resolve('scripts/performance/transaction-timing.mjs'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',PERF_TX_TIMING_PATH:join(out,'app-transactions-'+index+'.json'),AIHR_DB_POOL_MAX:String(poolPerWorker),AIHR_APP_WORKERS:String(workers),AIHR_DB_TOTAL_CONNECTIONS:String(totalApplicationPool),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]});
@@ -396,8 +410,8 @@ finally{
   }catch{report.postgresResourceSummaryUnavailable=true;report.exitCode=1;}
   try{
    if(measureDevelopment){
-    assert(namedContainer()[0]===developmentPostgresBirth.id&&observeDevelopmentPostgres(developmentPostgresBirth.id).running,
-     'Owned development PostgreSQL identity changed');
+    assert(namedContainer()[0]===developmentPostgresBirth.id,'Owned development PostgreSQL identity changed');
+    if(report.applicationRuntimeFrom)markDevelopmentLockLog('end');
    }
    else{
     const owner=execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',container],{encoding:'utf8',timeout:10000}).trim();
@@ -411,7 +425,15 @@ finally{
      logContext?developmentPostgresBirth.id:container],
     {encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024,...(logContext?{env:logContext.env,killSignal:'SIGKILL'}:{})});
    assert.equal(logs.status,0);
-   postgresRuntimeFailures=postgresLockFailures((logs.stdout??'')+'\n'+(logs.stderr??''));
+   const log=(logs.stdout??'')+'\n'+(logs.stderr??'');
+   const window=measureDevelopment?developmentPostgresLockWindow(log,lockLogNonce):null;
+   postgresRuntimeFailures=window?.failures??postgresLockFailures(log);
+   if(measureDevelopment){
+    if(window)assert.deepEqual(captureDevelopmentPostgres(developmentPostgresBirth.id),developmentPostgresBirth,
+     'Development PostgreSQL lock log capture birth changed');
+    report.postgresWaitLogCoverage=window?{kind:'development-heavyweight-lock-log',thresholdMs:window.thresholdMs,
+     observedEvents:window.failures.length}:null;
+   }
    writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:'Owned disposable database during application runtime only; bounded lock topology and routine frames; SQL/values/raw logs excluded',runtimeFrom:report.applicationRuntimeFrom??null,failures:postgresRuntimeFailures},null,2));
   }catch{report.postgresLockFailureSummaryUnavailable=true;}
  }
@@ -427,6 +449,7 @@ finally{
     sameBirth=current.pid===held.pid&&processBirth(current.pid)===held.birth&&cgroup.isDirectory()
      &&String(cgroup.dev)===held.cgroupDevice&&String(cgroup.ino)===held.cgroupInode;
    }catch{sameBirth=false;}
+   assert(sameBirth,'Development PostgreSQL removal birth refused');
    const context=developmentDocker();
    try{await run('cleanup',DEVELOPMENT_DOCKER_COMMAND,[...context.args,'rm','-fv',developmentReset.id],context.env,25000);}
    catch{report.exitCode=1;}
@@ -439,7 +462,8 @@ finally{
  report.runtimeAcceptance=runtimeAcceptance({workers,
   workerDiagnostics:report.nativeFailureSummaryUnavailable?undefined:report.workerFatalDiagnostics,
   nativeFailures:report.nativeFailureSummaryUnavailable?undefined:report.nativeRuntimeFailures,postgresFailures:postgresRuntimeFailures,
-  postgresRuntimeScoped:Boolean(report.applicationRuntimeFrom)&&!report.postgresLockFailureSummaryUnavailable,
+  postgresRuntimeScoped:Boolean(report.applicationRuntimeFrom)&&!report.postgresLockFailureSummaryUnavailable
+   &&(!measureDevelopment||Boolean(report.postgresWaitLogCoverage)),
   profileShutdown:report.profileShutdown,poolBudgetVerified:report.poolBudgetEvidence?.verified});
  if(!report.runtimeAcceptance.pass){
   if(report.exitCode===0)report.error='Application runtime diagnostics failed acceptance';

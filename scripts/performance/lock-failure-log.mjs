@@ -28,3 +28,21 @@ export function postgresLockFailures(log){
  }
  return failures;
 }
+
+/** Bound the disposable-server log by settings-checked, same-birth markers.
+ * @param {string} log
+ * @param {string|null} nonce */
+export function developmentPostgresLockWindow(log,nonce){
+ if(typeof log!=='string'||typeof nonce!=='string'||!/^[a-f0-9]{32}$/.test(nonce))return null;
+ const lines=log.split('\n');
+ const markers=[];
+ for(let index=0;index<lines.length;index++){
+  const line=lines[index];
+  if(!line.includes('AIHR_LOCK_WINDOW_V1 '+nonce+' '))continue;
+  const marker=line.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} [A-Z0-9+-]+ \[([1-9]\d{0,9})\] [0-9a-f]{1,16}\.([0-9a-f]{1,8}) postgres@ai_hr_dev LOG:\s+AIHR_LOCK_WINDOW_V1 ([a-f0-9]{32}) (begin|end)$/);
+  if(!marker||marker[3]!==nonce||Number(marker[1])!==Number.parseInt(marker[2],16))return null;
+  markers.push({index,phase:marker[4]});
+ }
+ if(markers.length!==2||markers[0].phase!=='begin'||markers[1].phase!=='end')return null;
+ return {thresholdMs:100,failures:postgresLockFailures(lines.slice(markers[0].index+1,markers[1].index).join('\n'))};
+}

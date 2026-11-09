@@ -37,6 +37,18 @@ fi
 name="aihr-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${AIHR_CI_UNIT}"
 auth_args=(-e POSTGRES_HOST_AUTH_METHOD=trust)
 workload_args=()
+case "${AIHR_CI_PG_DEVELOPMENT_LOCK_LOG:-0}" in
+  0) ;;
+  1)
+    [[ "$operation" == reset && "${GITHUB_JOB:-}" == selected-tests && "${GITHUB_EVENT_NAME:-}" == workflow_dispatch &&
+      "${GITHUB_RUN_ATTEMPT:-}" == 1 && "$AIHR_CI_UNIT" == db-1 && "$AIHR_CI_PG_PROFILE" == 2 &&
+      "${AIHR_CI_PG_DURABLE:-}" == 1 && "${AIHR_CI_PG_STATEMENTS_OWNER:-}" == system-http-profile ]] || exit 2
+    workload_args=(-c log_lock_waits=on -c deadlock_timeout=100ms -c log_destination=stderr -c logging_collector=off
+      -c 'log_line_prefix=%m [%p] %c %u@%d ' -c log_statement=none -c log_min_error_statement=panic
+      -c log_parameter_max_length_on_error=0)
+    ;;
+  *) exit 2 ;;
+esac
 if [[ "$operation" == reset-native-workload ]]; then
   # This operation belongs to the protected native run-unit and its exact source plan.
   [[ "$#" == 3 && "${GITHUB_JOB:-}" == native-test && "${GITHUB_RUN_ATTEMPT:-}" == 1 && "$AIHR_CI_PG_PROFILE" == 2 && "$AIHR_CI_UNIT" =~ ^db-[a-f0-9]{16}$ ]] || exit 2
