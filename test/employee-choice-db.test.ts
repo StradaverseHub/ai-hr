@@ -269,6 +269,40 @@ function taggedAuxiliaryEnvelope(tenant:string,input:OrganisationPageInput){
  select position,value from facts order by ordinal,company_id,facet_id`;
 }
 
+// Counterfactual facets retain native visibility and omit only selected-row work.
+function taggedAuxiliaryFacetEnvelope(tenant:string,input:OrganisationPageInput){
+ return sql`with admitted as materialized (
+  select e.id,e.company_id
+  from public.employment e join public.person p on p.id=e.person_id and p.tenant_id=${tenant}::uuid
+  where e.tenant_id=${tenant}::uuid and e.company_id=any(${organisationPageArray(input.companyIds)}::uuid[])
+ ), represented as materialized (
+  select e.company_id,a.department_id,a.business_unit_id
+  from public.assignment a join admitted e on e.id=a.employment_id
+  where a.tenant_id=${tenant}::uuid and a.valid_to is null and a.superseded_at is null
+ ), facts(ordinal,position,company_id,facet_id,value) as (
+  select 1, 'company', c.id, null::uuid,
+   jsonb_build_object('companyId',c.id,'company',c.legal_name,'departmentId',null,'departmentCode',null,
+    'department',null,'businessUnitId',null,'businessUnitCode',null,'businessUnit',null)
+  from (select distinct company_id from admitted) e
+  join public.company c on c.id=e.company_id and c.tenant_id=${tenant}::uuid
+  union all
+  select 2, 'department', c.id, d.id,
+   jsonb_build_object('companyId',c.id,'company',c.legal_name,'departmentId',d.id,'departmentCode',null,
+    'department',d.name,'businessUnitId',null,'businessUnitCode',null,'businessUnit',null)
+  from (select distinct company_id,department_id from represented where department_id is not null) a
+  join public.company c on c.id=a.company_id and c.tenant_id=${tenant}::uuid
+  join public.department d on d.id=a.department_id and d.tenant_id=${tenant}::uuid
+  union all
+  select 3, 'unit', c.id, u.id,
+   jsonb_build_object('companyId',c.id,'company',c.legal_name,'departmentId',null,'departmentCode',null,
+    'department',null,'businessUnitId',u.id,'businessUnitCode',null,'businessUnit',u.name)
+  from (select distinct company_id,business_unit_id from represented where business_unit_id is not null) a
+  join public.company c on c.id=a.company_id and c.tenant_id=${tenant}::uuid
+  join public.business_unit u on u.id=a.business_unit_id and u.tenant_id=${tenant}::uuid
+ )
+ select position,value from facts order by ordinal,company_id,facet_id`;
+}
+
 function organisationPagePreTagPlan(result:unknown){
  if(!Array.isArray(result)||result.length!==1)throw new Error('Missing pre-tag organisation plan row');
  const raw:unknown=result[0]?.['QUERY PLAN'];
@@ -541,6 +575,19 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   noTempSpill?:boolean;fasterAuxiliaries?:boolean;meetsCausalGate?:boolean;
  }={state:'unavailable',stage:'requires-complete-tagged-diagnostic',samples:[],plans:[]};
  const envelopePlans:{position:Auxiliary|'envelope';raw:ReturnType<typeof taggedAuxiliaryWork>['raw']}[]=[];
+ type SplitJit='on'|'off';
+ type SplitPosition='envelope'|'selected'|'facets';
+ type SplitSample={epoch:'O0'|'F0'|'F1'|'O1';jit:SplitJit;arm:'B'|'C';wallMs:number;positions:{position:SplitPosition;ms:number}[]};
+ type SplitPlan={jit:SplitJit;position:SplitPosition;seal:ReturnType<typeof seal>;
+  summary:ReturnType<typeof taggedAuxiliaryWork>['summary'];jitTimingMs:Record<string,number>|null};
+ const splitEvidence:{
+  state:'unavailable'|'incomplete'|'settled';
+  stage:'reserve'|'snapshot'|'jit-setting'|'ordinary'|'plans'|'terminal'|'capture-finished'|'native-settled';
+  failure?:string|null;samples:SplitSample[];plans:SplitPlan[];
+  sameEnvelopeWork?:boolean;fasterEnvelopeWithoutJit?:boolean;fasterSplitAtDefaultJit?:boolean;
+  selectedPoint?:true;noTempSpill?:true;
+ }={state:'unavailable',stage:'reserve',samples:[],plans:[]};
+ const splitPlans:{jit:SplitJit;position:SplitPosition;raw:ReturnType<typeof taggedAuxiliaryWork>['raw']}[]=[];
  const metadata:Record<string,unknown>={kind:'FICTIONAL_NATIVE_ORGANISATION_PAGE_COMPONENT_ONLY',releaseEligible:false,
   source:course.source,controller:course.controller,caseEnd,activeEnd,epochs,observations,planSummaries,
   historical:{run:42387710131,source:'1de4d9047a7e8d58f79693ba614b2e5e0a586a43',wholePortTargetMet:false},
@@ -551,7 +598,8 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   if(Buffer.byteLength(facts)>65536||Buffer.byteLength(plans)>4*1024*1024)throw new Error('Organisation page evidence exceeds its byte cap');
   const report:{metadata:typeof metadata;rawPlans:typeof rawPlans;taggedAuxiliary?:{
    evidence:typeof taggedEvidence;rawPlans:typeof taggedPlans
-  };auxiliaryEnvelope?:{evidence:typeof envelopeEvidence;rawPlans:typeof envelopePlans}}={metadata,rawPlans};
+  };auxiliaryEnvelope?:{evidence:typeof envelopeEvidence;rawPlans:typeof envelopePlans};
+   splitAuxiliary?:{evidence:typeof splitEvidence;rawPlans:typeof splitPlans}}={metadata,rawPlans};
   if(includeTaggedEvidence){
    if(Buffer.byteLength(JSON.stringify([metadata,taggedEvidence]))<=65536)report.taggedAuxiliary={evidence:taggedEvidence,rawPlans:taggedPlans};
    else{
@@ -563,6 +611,9 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
       Buffer.byteLength(JSON.stringify([metadata,taggedEvidence,envelopeEvidence]))<=65536)
     report.auxiliaryEnvelope={evidence:envelopeEvidence,rawPlans:envelopePlans};
    else console.warn('Organisation page auxiliary envelope evidence unavailable (metadata cap)');
+   if(report.auxiliaryEnvelope&&
+      Buffer.byteLength(JSON.stringify([metadata,taggedEvidence,envelopeEvidence,splitEvidence]))<=65536)
+    report.splitAuxiliary={evidence:splitEvidence,rawPlans:splitPlans};
   }
   writeFileSync(join(course.directory,'employee-choice-organisation-page-private.json'),JSON.stringify(report),{mode:0o600});
  };
@@ -715,6 +766,161 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    taggedEvidence.failure=errorHash(error);
   }
  };
+ const compareSplitAuxiliaries=async(tx:Tx,identity:PageRealm,catalogue:unknown,end:number,
+  selected:{query:SQL;seal:ReturnType<typeof seal>},envelope:{query:SQL;seal:ReturnType<typeof seal>},
+  expected:readonly {position:string;value:unknown}[])=>{
+  // This stays in the held comparison transaction. In particular, no new
+  // checkout can follow the original catalogue refusal or its rollback.
+  const splitEnd=Math.min(end,activeEnd);
+  if(signal.aborted||performance.now()+24000>splitEnd)return;
+  splitEvidence.state='incomplete';
+  const step=(stage:typeof splitEvidence.stage,remaining=2000)=>{
+   splitEvidence.stage=stage;
+   active('split auxiliary '+stage,remaining);
+   requireTime(splitEnd-4000,remaining,'split auxiliary '+stage);
+  };
+  try{
+   step('snapshot');
+   await tx.transaction(async held=>{
+    const realm=sql`select r.*,pg_current_snapshot()::text as snapshot from (${pageRealm}) r`;
+    step('snapshot');
+    const [initial]=await held.execute<PageRealm&{snapshot:string}>(realm);
+    step('snapshot',0);
+    const {snapshot,...heldIdentity}=initial;
+    expect(snapshot).toMatch(/^\d+:\d+:(?:\d+(?:,\d+)*)?$/);
+    expect(heldIdentity).toEqual(identity);
+    expect(identity.planner.jit).toBe('on');
+
+    const input=references[0].input,facetsQuery=taggedAuxiliaryFacetEnvelope(tenant,input),facetsCompiled=dialect.sqlToQuery(facetsQuery);
+    expect(facetsCompiled.params).toEqual([tenant,tenant,organisationPageArray(input.companyIds),tenant,tenant,tenant,tenant,tenant,tenant]);
+    const calls={
+     selected:{...selected,position:'selected' as const},envelope:{...envelope,position:'envelope' as const},
+     facets:{query:facetsQuery,position:'facets' as const,seal:seal(facetsCompiled)},
+    };
+    const statements=Object.values(calls).map(call=>dialect.sqlToQuery(call.query).sql);
+    const readPrepared=async()=>{
+     step('snapshot');
+     const [prepared]=await held.execute<{count:number}>(sql`select count(*)::int as count from pg_prepared_statements
+      where statement in (select jsonb_array_elements_text(${JSON.stringify(statements)}::jsonb))`);
+     step('snapshot',0);
+     expect(prepared.count).toBe(0);
+    };
+    await readPrepared();
+
+    let jit:SplitJit='on';
+    const setJit=async(wanted:SplitJit)=>{
+     if(wanted===jit)return;
+     step('jit-setting');
+     await held.execute(wanted==='on'?sql`set local jit = on`:sql`set local jit = off`);
+     step('jit-setting');
+     const [current]=await held.execute<PageRealm&{snapshot:string}>(realm);
+     step('jit-setting',0);
+     expect(current).toEqual({...identity,snapshot,planner:{...identity.planner,jit:wanted}});
+     jit=wanted;
+    };
+    const checked=async(call:typeof calls[SplitPosition])=>{
+     step('ordinary');
+     const start=performance.now(),rows=await held.execute(call.query),ms=performance.now()-start;
+     step('ordinary',0);
+     return {position:call.position,rows,ms};
+    };
+    const matrix=[
+     ['O0','on',['B','C']],['F0','off',['C','B']],['F1','off',['B','C']],['O1','on',['C','B']],
+    ] as const;
+    for(const [epoch,mode,arms] of matrix){
+     await setJit(mode);
+     for(const arm of arms){
+      const ordered=arm==='B'?[calls.envelope]:[calls.selected,calls.facets];
+      for(const call of ordered)expect(seal(dialect.sqlToQuery(call.query))).toEqual(call.seal);
+      const start=performance.now(),measured=[];
+      for(const call of ordered)measured.push(await checked(call));
+      const wallMs=performance.now()-start;
+      if(arm==='C')expect(measured[0].rows).toHaveLength(1);
+      const facts=arm==='B'?measured[0].rows.map(row=>({...row})):
+       [{position:'selected',value:{...measured[0].rows[0]}},...measured[1].rows.map(row=>({...row}))];
+      expect(facts).toStrictEqual(expected);
+      splitEvidence.samples.push({epoch,jit:mode,arm,wallMs,positions:measured.map(({position,ms})=>({position,ms}))});
+     }
+    }
+
+    for(const [mode,position] of [['on','envelope'],['off','envelope'],['on','selected'],['on','facets']] as const){
+     await setJit(mode);
+     const call=calls[position],compiled=dialect.sqlToQuery(call.query);
+     expect(seal(compiled)).toEqual(call.seal);
+     const explain=sql`explain (analyze,buffers,verbose,settings,timing on,format json) ${call.query}`;
+     const wrapped=dialect.sqlToQuery(explain);
+     expect(wrapped.sql).toBe('explain (analyze,buffers,verbose,settings,timing on,format json) '+compiled.sql);
+     expect(seal(wrapped).params).toBe(call.seal.params);
+     step('plans');
+     const result=await held.execute<{'QUERY PLAN':unknown}>(explain);
+     step('plans',0);
+     const {raw,summary}=taggedAuxiliaryWork(result,position==='envelope'?4:position==='facets'?3:1);
+     if(position==='envelope')expect(summary.jit).toBe(mode==='on');
+     const document=raw[0],jitTiming=(document.JIT as {Timing?:Record<string,unknown>}|undefined)?.Timing;
+     let jitTimingMs:Record<string,number>|null=null;
+     if(jitTiming!==undefined){
+      jitTimingMs={};
+      for(const phase of ['Generation','Inlining','Optimization','Emission','Total']){
+       const time=jitTiming[phase];
+       if(typeof time!=='number'||!Number.isFinite(time)||time<0)throw new Error('Invalid auxiliary JIT timing');
+       jitTimingMs[phase]=time;
+      }
+     }
+     if(position==='selected'){
+      const conditions={
+       employment:['company_org_employment_tenant_uq',`((employment.id = '${input.selectedId}'::uuid) AND (employment.tenant_id = '${tenant}'::uuid))`],
+       person:['person_pkey','(person.id = employment.person_id)'],
+       assignment:['assignment_no_overlap','(assignment.employment_id = employment.id)'],
+      };
+      const targets:PagePlanNode[]=[];
+      const visit=(node:PagePlanNode)=>{
+       if(Number(node['Actual Loops'])>0){
+        expect(node['Node Type']).not.toBe('CTE Scan');
+        if(typeof node['Relation Name']==='string'&&Object.hasOwn(conditions,node['Relation Name']))targets.push(node);
+       }
+       for(const child of node.Plans??[])visit(child);
+      };
+      visit(document.Plan as PagePlanNode);
+      expect(targets).toHaveLength(3);
+      for(const [relation,[index,condition]] of Object.entries(conditions)){
+       const matches=targets.filter(node=>node['Relation Name']===relation);
+       expect(matches).toHaveLength(1);
+       expect(matches[0]).toMatchObject({'Node Type':'Index Scan','Index Name':index,'Index Cond':condition,'Actual Loops':1,'Actual Rows':1});
+       expect(matches[0]['Rows Removed by Filter']??0).toBe(0);
+      }
+      splitEvidence.selectedPoint=true;
+     }
+     const entry={jit:mode,position,raw};
+     if(Buffer.byteLength(JSON.stringify([rawPlans,taggedPlans,envelopePlans,[...splitPlans,entry]]))>4*1024*1024)
+      throw new Error('Split auxiliary aggregate plan evidence exceeds its byte cap');
+     splitPlans.push(entry);
+     splitEvidence.plans.push({jit:mode,position,seal:call.seal,summary,jitTimingMs});
+    }
+
+    await readPrepared();
+    step('terminal');
+    const [terminal]=await held.execute(pageCatalogue);
+    step('terminal');
+    const [last]=await held.execute<PageRealm&{snapshot:string}>(realm);
+    step('terminal',0);
+    expect(terminal).toEqual(catalogue);
+    expect(last).toEqual({...identity,snapshot});
+    expect(splitEvidence.plans.every(({summary})=>summary.tempReads===0&&summary.tempWrites===0)).toBe(true);
+    splitEvidence.noTempSpill=true;
+    const shape=(plan:typeof splitPlans[number])=>JSON.stringify(plan.raw[0].Plan,(key,value)=>
+     key==='Actual Startup Time'||key==='Actual Total Time'||key.endsWith('I/O Read Time')||key.endsWith('I/O Write Time')?undefined:value);
+    splitEvidence.sameEnvelopeWork=shape(splitPlans[0])===shape(splitPlans[1]);
+    const times=(arm:'B'|'C',mode:SplitJit)=>splitEvidence.samples.filter(sample=>sample.arm===arm&&sample.jit===mode).map(sample=>sample.wallMs);
+    const originalTimes=envelopeEvidence.samples.filter(sample=>sample.arm==='A0'||sample.arm==='A1').map(sample=>sample.wallMs);
+    expect(originalTimes).toHaveLength(2);
+    splitEvidence.fasterEnvelopeWithoutJit=Math.max(...times('B','off'))<Math.min(...times('B','on'));
+    splitEvidence.fasterSplitAtDefaultJit=Math.max(...times('C','on'))<Math.min(...originalTimes);
+   });
+   step('capture-finished',0);
+  }catch(error){
+   splitEvidence.failure=errorHash(error);
+  }
+ };
  const compareTaggedEnvelope=async(tx:Tx,identity:PageRealm,clean?:{deadline:number;catalogue:unknown})=>{
   // On the original refusal path, the earlier diagnostic must have finished in
   // this same held transaction with its exact shorter timeout.
@@ -836,6 +1042,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    envelopeEvidence.noTempSpill=candidate.tempReads===0&&candidate.tempWrites===0;
    envelopeEvidence.fasterAuxiliaries=Math.max(b0.wallMs,b1.wallMs)<Math.min(a0.wallMs,a1.wallMs);
    step('capture-finished',0);
+   await compareSplitAuxiliaries(tx,heldIdentity,after,end,originals[0],alternate,expected);
   }catch(error){
    envelopeEvidence.failure=errorHash(error);
    if(clean)throw error;
@@ -1123,6 +1330,9 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   envelopeEvidence.state='settled';envelopeEvidence.stage='native-settled';
   envelopeEvidence.meetsCausalGate=envelopeEvidence.matchesRetainedVisibility===true&&envelopeEvidence.reducesVisibilityWork===true&&
    envelopeEvidence.boundedAssignment===true&&envelopeEvidence.noTempSpill===true&&envelopeEvidence.fasterAuxiliaries===true;
+ }
+ if(envelopeEvidence.state==='settled'&&splitEvidence.stage==='capture-finished'&&splitEvidence.failure===undefined){
+  splitEvidence.state='settled';splitEvidence.stage='native-settled';
  }
  const failures=[...(workFailed?[workFailure]:[]),...(appOuterRefusal?[appOuterRefusal.error]:[]),...(restoreFailed?[restoreFailure]:[])];
  metadata.positionTimings=positionTimings;
