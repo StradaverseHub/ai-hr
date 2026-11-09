@@ -1,6 +1,7 @@
+import {createHash} from 'node:crypto';
 import {existsSync,readFileSync} from 'node:fs';
 import {expect,it,vi} from 'vitest';
-import {validateNavigationScenarioPlan,type NavigationFixtureRole,type NavigationScenario} from '../scripts/performance/navigation-protocol';
+import {nativeHiddenShellCasesSha256,validateNavigationScenarioPlan,type NavigationFixtureRole,type NavigationScenario} from '../scripts/performance/navigation-protocol';
 import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
 import {isNativeOwnPayslipPdfPath,requireNativePreflightFixtureDay} from '../scripts/performance/native-preflight-content';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
@@ -12,6 +13,15 @@ it('counts the actual distinct route pools and binds every concrete path to its 
   for(const path of paths){const url=new URL(path,'https://fixture.invalid');expect(url.origin).toBe('https://fixture.invalid');expect(url.pathname).toMatch(/^\/(?:[a-z0-9/-]*)$/);const entry=url.pathname==='/admin/claims/forms'?'/route.ts':'/page.tsx';expect(existsSync(new URL('../app'+(url.pathname==='/'?'':url.pathname)+entry,import.meta.url)),path).toBe(true);}
  }
  for(const [role,paths]of Object.entries(additionalBrowserRoutes))for(const path of paths)expect(routePools[role as keyof typeof routePools],role).toContain(path);
+});
+
+it('binds the hosted full-preflight adjudicator to the exact route and hidden plans',()=>{
+ const rows=nativePreflightRoutePlan().map(({role,actorIndex,requested,final,redirectStatus,view,witness})=>
+  [role,actorIndex,requested,final,redirectStatus,view,witness]);
+ const workflow=readFileSync(new URL('../.github/workflows/alpha-focused-checks.yml',import.meta.url),'utf8');
+ const routeDigest=createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+ expect(workflow).toContain("expected_route_tuples = '"+routeDigest+"'");
+ expect(workflow).toContain("expected_hidden_plan = '"+nativeHiddenShellCasesSha256()+"'");
 });
 
 const nativeRenderedRows=()=>nativePreflightRoutePlan().map(row=>({...row,status:200,accountObserved:true,

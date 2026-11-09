@@ -593,7 +593,9 @@ jobs:
                       or count(row['observations']) != 191):
                   return False
               roles = {'employee': (4, 30), 'manager': (2, 16), 'companyHR': (1, 71), 'groupHR': (0, 74)}
-              paths, readiness, visited = set(), Counter(), Counter()
+              paths, readiness, visited, tuples = set(), Counter(), Counter(), []
+              expected_route_tuples = '091d065fc229aeaba438dea386a71f378d6bf4f171bab2972be6e3358da44ba4'
+              expected_hidden_plan = '36b86d2561088d2063db0431652b3418c8dee1ec558eeadc5a970bccc9a9fa74'
               route_pattern = r'/(?:[a-z0-9-]+(?:/[a-z0-9-]+)*)?(?:\?view=(?:how|privacy|tools|insights))?'
               redirects = {'/admin/claims/forms': (308, '/admin/claims'),
                            '/admin/locations': (307, '/admin/work-locations/clocking'),
@@ -617,9 +619,12 @@ jobs:
                           or visit['readiness'] != expected_readiness):
                       return False
                   paths.add((role, requested))
+                  tuples.append([role, visit['actorIndex'], requested, visit['final'], visit['redirectStatus'], visit['view'], witness])
                   visited[role] += 1
                   readiness[expected_readiness] += 1
-              if (len({requested for _, requested in paths}) != 93
+              canonical_routes = json.dumps(tuples, separators=(',', ':'), allow_nan=False).encode('utf-8')
+              if (hashlib.sha256(canonical_routes).hexdigest() != expected_route_tuples
+                      or len({requested for _, requested in paths}) != 93
                       or visited != Counter({role: facts[1] for role, facts in roles.items()})
                       or readiness != Counter({'usable-content': 16, 'scope-denial': 1, 'rendered-only': 174})):
                   return False
@@ -636,7 +641,7 @@ jobs:
               hidden = row['hiddenShell']
               if (not closed(hidden, 'count retiredDocuments extensionSha256 observations')
                       or hidden['count'] != 4 or hidden['retiredDocuments'] != 8
-                      or not digest(hidden['extensionSha256']) or count(hidden['observations']) != 4):
+                      or hidden['extensionSha256'] != expected_hidden_plan or count(hidden['observations']) != 4):
                   return False
               for observation, (destination, href, role, actor) in zip(hidden['observations'], (
                       ('shell.payrollProcess', '/payroll', 'employee', 4), ('shell.payrollProcess', '/payroll', 'manager', 2),
