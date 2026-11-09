@@ -62,6 +62,28 @@ jobs:
       branch: ${{ steps.candidate.outputs.branch }}
       base: ${{ steps.candidate.outputs.base }}
     steps:
+      - name: Refuse other purposes on the browser toolchain observation branch
+        if: ${{ github.ref == 'refs/heads/codex/native-browser-toolchain-observation-20261109' || github.workflow_ref == 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/codex/native-browser-toolchain-observation-20261109' }}
+        env:
+          REQUESTED_REF: ${{ inputs.candidate_ref }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          PARALLELISM: ${{ inputs.test_parallelism }}
+          BUILD_ONLY: ${{ inputs.build_only }}
+          DIAGNOSTICS_ONLY: ${{ inputs.diagnostics_only }}
+          CONTROLLER_ONLY: ${{ inputs.controller_only }}
+        shell: bash
+        run: |
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_REF" = refs/heads/codex/native-browser-toolchain-observation-20261109
+          test "$GITHUB_WORKFLOW_REF" = "StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@$GITHUB_REF"
+          test "$REQUESTED_REF" = codex/native-browser-toolchain-observation-20261109
+          test "$EXPECTED_SHA" = "$GITHUB_SHA"
+          test "$EXPECTED_SHA" = "$GITHUB_WORKFLOW_SHA"
+          test "$PARALLELISM" = 4
+          test "$BUILD_ONLY" = false
+          test "$DIAGNOSTICS_ONLY" = true
+          test "$CONTROLLER_ONLY" = false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.workflow_sha }}
@@ -233,24 +255,39 @@ jobs:
           ref: ${{ github.workflow_sha }}
           path: automation
           persist-credentials: false
+      - name: Observe the fixed publisher browser archive without executing it
+        if: ${{ github.ref == 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
+        working-directory: automation
+        run: /usr/bin/python3 -I -B .github/ci/native-workload-browser-toolchain.py
+      - if: ${{ always() && github.ref == 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-toolchain-observation
+          path: ${{ runner.temp }}/aihr-browser-toolchain-observation.json
+          if-no-files-found: error
+          retention-days: 3
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        if: ${{ github.ref != 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
         with:
           ref: ${{ needs.resolve.outputs.sha }}
           path: source
           fetch-depth: 0
           persist-credentials: false
       - name: Runner capacity before dependencies
+        if: ${{ github.ref != 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
         run: |
           df -Pk . "$RUNNER_TEMP" /var/lib/docker
           for p in /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup; do
             if [ -d "$p" ]; then sudo du -sx -B1 "$p"; fi
           done
       - uses: ./automation/.github/actions/setup-alpha
+        if: ${{ github.ref != 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
         with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - name: Record measured capacity and unused SDK sizes
+        if: ${{ github.ref != 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
         run: node ../automation/.github/ci/runner-diagnostics.mjs
         env: {AIHR_CAPACITY_REPORT_PROFILE: "${{ github.run_attempt == 1 && 'bounded-suite-ready' || 'legacy' }}"}
-      - if: always()
+      - if: ${{ always() && github.ref != 'refs/heads/codex/native-browser-toolchain-observation-20261109' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: runner-resources
