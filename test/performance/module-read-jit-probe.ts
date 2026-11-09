@@ -163,6 +163,7 @@ export async function createModuleReadJitProbe(ctx:SessionContext,save:()=>void)
  };
  let busy=false,poisoned=false,closed=false,mode:JitMode='on',calls=0;
  let policyCommandCount=0,policyObservationMs=0,policyHookMs=0,policyFacts:Settings|undefined;
+ const observedPolicyJit=()=>policyFacts?.jit??null;
  let afterPolicy:((tx:Tx,facts:Settings)=>Promise<void>)|undefined;
  let queries:CapturedStatement[]=[],identities:unknown[]=[];const pending=new Set<Promise<unknown>>(),owned=new Set<Promise<unknown>>();
  const receipts:Record<string,unknown>[]=[],plans:Record<string,unknown>[]=[];
@@ -174,7 +175,7 @@ export async function createModuleReadJitProbe(ctx:SessionContext,save:()=>void)
  }
  const wrap=(query:object):object=>new Proxy(query,{get(target,key,receiver){
   const value=Reflect.get(target,key,receiver);
-  if(key==='then')return (resolve:(rows:unknown)=>unknown,reject:(error:unknown)=>unknown)=>observe((target as{getSQL:()=>SQL}).getSQL(),()=>Reflect.apply(value,target,[(rows:unknown)=>rows])).then(resolve,reject);
+  if(key==='then')return (resolve:(rows:unknown)=>unknown,reject:(error:unknown)=>unknown)=>observe((target as{getSQL:()=>SQL}).getSQL(),()=>Promise.resolve(Reflect.apply(value,target,[(rows:unknown)=>rows]))).then(resolve,reject);
   return typeof value==='function'?(...args:unknown[])=>{const result=Reflect.apply(value,target,args);return result&&typeof result==='object'&&'then'in result?wrap(result):result;}:value;
  }});
  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>{
@@ -231,8 +232,8 @@ export async function createModuleReadJitProbe(ctx:SessionContext,save:()=>void)
    finally{
     await Promise.allSettled([...pending]);
     receipt.identities=identities;receipt.transactionCalls=calls;receipt.policyCommandCount=policyCommandCount;
-    receipt.jitAtAdmission=identities.length?jit:null;receipt.effectiveJitAfterProductPolicy=policyFacts?.jit??null;
-    receipt.effectiveJitAtCompletion=receipt.complete===true?(policyFacts?.jit??jit):null;
+    receipt.jitAtAdmission=identities.length?jit:null;receipt.effectiveJitAfterProductPolicy=observedPolicyJit();
+    receipt.effectiveJitAtCompletion=receipt.complete===true?(observedPolicyJit()??jit):null;
     receipt.policyOrdinal=queries.find(query=>query.text==='set local jit=off')?.ordinal??null;
     receipt.policyObservationMs=policyObservationMs;receipt.policyHookMs=policyHookMs;
     receipt.callbackTimingIncludesPolicyObservationAndHook=true;

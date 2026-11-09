@@ -58,7 +58,7 @@ export function observeNativeRead(options:{
   const value=Reflect.get(target,key,receiver);
   if(key==='then')return (resolve:(rows:unknown)=>unknown,reject:(error:unknown)=>unknown)=>{
    const prepared=(target as {toSQL:()=>NativeReadQuery}).toSQL();
-   return run(prepared,()=>Reflect.apply(value,target,[(rows:unknown)=>rows])).then(resolve,reject);
+   return run(prepared,()=>Promise.resolve(Reflect.apply(value,target,[(rows:unknown)=>rows]))).then(resolve,reject);
   };
   return typeof value==='function'? (...args:unknown[])=>{
    const result=Reflect.apply(value,target,args);return result&&typeof result==='object'&&'then' in result?wrap(result):result;

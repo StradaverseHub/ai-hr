@@ -60,16 +60,16 @@ describe('shared configuration pair picker',()=>{
   let primaryFailure:{error:unknown}|undefined;
   try{
    host.innerHTML=renderToString(node);document.body.append(host);
-   const review=within(host).getByRole<HTMLButtonElement>('button',{name:en.rewards.companyPicker.reviewDesignation,exact:true});
+   const review=within(host).getByRole<HTMLButtonElement>('button',{name:en.rewards.companyPicker.reviewDesignation});
    expect(review.getAttribute('data-reward-classification-ready')).toBe('false');
    expect(review.disabled).toBe(false);
    await act(async()=>{root=hydrateRoot(host,node,{onRecoverableError});});
-   expect(within(host).getByRole('button',{name:en.rewards.companyPicker.reviewDesignation,exact:true})).toBe(review);
+   expect(within(host).getByRole('button',{name:en.rewards.companyPicker.reviewDesignation})).toBe(review);
    expect(review.getAttribute('data-reward-classification-ready')).toBe('true');
    expect(review.disabled).toBe(false);
    fireEvent.click(review);
    expect(within(host).getByLabelText(en.rewards.companyPicker.designation)).toBeVisible();
-   fireEvent.click(within(host).getByRole('button',{name:en.rewards.companyPicker.cancel,exact:true}));
+   fireEvent.click(within(host).getByRole('button',{name:en.rewards.companyPicker.cancel}));
    expect(within(host).queryByLabelText(en.rewards.companyPicker.designation)).toBeNull();
    expect(saveAction).not.toHaveBeenCalled();
    expect(onRecoverableError).not.toHaveBeenCalled();

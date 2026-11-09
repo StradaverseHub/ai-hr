@@ -101,7 +101,7 @@ describe('Rewards administration and review destinations', () => {
     expect(ports.requireModule).not.toHaveBeenCalled();
 
     ports.isOperator.mockReturnValueOnce(true);
-    await expect(rewardsBookmarkHead(request)).rejects.toThrow('redirect');
+    await expect(rewardsBookmarkHead()).rejects.toThrow('redirect');
     expect(redirect).toHaveBeenLastCalledWith('/operator');
     expect(ports.requireModule).not.toHaveBeenCalled();
 
