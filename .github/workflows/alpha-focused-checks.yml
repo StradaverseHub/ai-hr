@@ -229,7 +229,9 @@ jobs:
             .github/ci/measured-browser-preflight-archive.test.mjs \
             .github/ci/measured-browser-preflight-semantics.test.mjs \
             .github/ci/measured-browser-worker-prerequisite.test.mjs \
-            scripts/performance/worker-comparison-build.test.mjs
+            scripts/performance/worker-comparison-build.test.mjs \
+            scripts/performance/worker-comparison-custody.test.mjs
+          /usr/bin/python3 -I -B .github/ci/worker-comparison-family.test.py
       - name: Validate bounded manifest
         if: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
         id: selection
@@ -353,6 +355,8 @@ jobs:
           assert str(receipt['runId']) == os.environ['PREFLIGHT_RUN']
           temp = Path(os.environ['RUNNER_TEMP'])
           assert temp.is_absolute() and temp.resolve(strict=True) == temp and temp.stat().st_uid == os.getuid()
+          for name in ('system-worker-comparison-evidence', 'system-worker-comparison-private'):
+              assert not os.path.lexists(temp / name)
           path = temp / 'aihr-worker-comparison-admission.json'
           with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'wb') as out:
               out.write(raw)
@@ -1207,17 +1211,20 @@ jobs:
           export AIHR_WORKER_COMPARISON_T0_MS="$(( AIHR_FOCUSED_JOB_MONOTONIC_NS / 1000000 ))"
           /usr/bin/python3 -I -B .github/ci/worker-comparison-family.py
       - name: Verify worker comparison evidence ownership
-        if: ${{ always() && inputs.measured_browser_course == 'serial-2-4-8' && (steps.worker-comparison.outcome == 'success' || steps.worker-comparison.outcome == 'failure') }}
+        if: ${{ always() && inputs.measured_browser_course == 'serial-2-4-8' && steps.worker-comparison.outputs.published == 'true' && steps.worker-comparison.outputs.summary_sha256 != '' }}
         id: worker-comparison-evidence
         env:
           COMPARISON_OUTCOME: ${{ steps.worker-comparison.outcome }}
+          COMPARISON_SUMMARY_SHA256: ${{ steps.worker-comparison.outputs.summary_sha256 }}
         run: |
           /usr/bin/python3 -I -B - <<'PYTHON'
-          import json, os, stat
+          import hashlib, json, os, re, stat
           from pathlib import Path
 
           temp = Path(os.environ['RUNNER_TEMP'])
           assert temp.is_absolute() and temp.resolve(strict=True) == temp and temp.stat().st_uid == os.getuid()
+          digest = os.environ['COMPARISON_SUMMARY_SHA256']
+          assert re.fullmatch(r'[a-f0-9]{64}', digest)
           directory = temp / 'system-worker-comparison-evidence'
           path = directory / 'summary.json'
           if not os.path.lexists(path):
@@ -1225,17 +1232,23 @@ jobs:
               raise SystemExit('Owned worker comparison summary unavailable')
           parent = directory.lstat()
           assert stat.S_ISDIR(parent.st_mode) and stat.S_IMODE(parent.st_mode) == 0o700 and parent.st_uid == os.getuid()
+          def identity(info):
+              return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid, info.st_nlink,
+                      info.st_size, info.st_mtime_ns, info.st_ctime_ns)
           with os.fdopen(os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW), 'rb') as stream:
               before = os.fstat(stream.fileno())
               assert stat.S_ISREG(before.st_mode) and stat.S_IMODE(before.st_mode) == 0o600
               assert before.st_uid == os.getuid() and before.st_nlink == 1 and 0 < before.st_size <= 131072
               raw = stream.read(131073)
-              assert len(raw) == before.st_size and before == os.fstat(stream.fileno()) == path.lstat()
+              assert len(raw) == before.st_size
+              assert identity(before) == identity(os.fstat(stream.fileno())) == identity(path.lstat())
+          assert hashlib.sha256(raw).hexdigest() == digest
           result = json.loads(raw)
           assert set(result) == {'kind','releaseEligible','identity','prerequisite','frontiers','buildSeal','seedSettlement',
               'cells','complete','steadyPairPassed','host','productionEquivalent','eightWorkerScope','comparability','processOwner'}
           assert result['identity'] == {'candidateSha': os.environ['AIHR_CI_HEAD'],
               'controllerSha': os.environ['GITHUB_WORKFLOW_SHA'], 'runId': int(os.environ['GITHUB_RUN_ID']), 'runAttempt': 1}
+          assert result['kind'] == 'HOSTED_WORKER_COMPARISON_V1'
           assert result['releaseEligible'] is False and result['productionEquivalent'] is False
           owner = result['processOwner']
           assert set(owner) == {'settled','cellBarriers','runnerExitCode'} and owner['settled'] is True
@@ -1243,7 +1256,7 @@ jobs:
           if os.environ['COMPARISON_OUTCOME'] == 'success':
               assert result['complete'] is True and owner['cellBarriers'] == 3 and owner['runnerExitCode'] == 0
           else:
-              assert result['complete'] is False
+              assert result['complete'] is False and owner['runnerExitCode'] != 0
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as out:
               out.write('owned_summary=true\n')
           PYTHON
