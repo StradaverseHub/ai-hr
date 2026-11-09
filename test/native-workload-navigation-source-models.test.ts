@@ -66,6 +66,56 @@ function exceptionKind(lines:string[]){
  return 'unclassified';
 }
 
+const stockGitCase='NativeNavigationGitModel.test_fixed_commands_capture_committed_navigation_inventory_and_raw_blobs';
+const stockGitRefusals=new Map([
+ ['navigation Git configuration custody differs','config-custody'],
+ ['navigation Git configuration exceeds bounds','config-bounds'],
+ ['navigation Git configuration contains an unsupported setting','config-setting'],
+ ['navigation Git repository configuration differs','config-repository'],
+ ['navigation Git alternate store or worktree refused','object-store-alias'],
+ ['navigation Git object pack catalogue refused','object-store-pack'],
+ ['navigation Git wrote an unexpected diagnostic','child-diagnostic'],
+ ['navigation Git child refused','child-exit'],
+ ['navigation Git deadline closed','deadline'],
+ ['navigation Git wait deadline closed','deadline'],
+ ['navigation Git output exceeds bounds','output-bounds'],
+ ['navigation Git response has trailing bytes','trailing-response'],
+ ['invalid bounded navigation Git inventory','inventory-framing'],
+ ['navigation inventory member limit exceeded','inventory-bounds'],
+ ['navigation inventory row differs from regular Git blob','inventory-row'],
+ ['navigation inventory path outside fixed roots','inventory-root'],
+ ['fixed navigation history Git metadata differs','inventory-history'],
+ ['fixed navigation history inventory incomplete','inventory-history'],
+ ['navigation harness source inventory incomplete','inventory-required'],
+ ['navigation Git request incomplete','batch-request'],
+ ['navigation Git object response truncated','batch-truncated'],
+ ['navigation Git object header differs','batch-header'],
+ ['navigation Git object framing or bytes differ','batch-object'],
+]);
+
+function stockGitFailure(detail:string[]){
+ const trace=detail.slice(detail.lastIndexOf('Traceback (most recent call last):')+1);
+ let stage='unclassified';
+ for(let index=0;index<trace.length;index++){
+  const frame=/^  File "[^"\r\n]{1,4096}\/native-workload-navigation-source\.py", line [1-9][0-9]{0,5}, in ([A-Za-z_][A-Za-z_0-9]{0,63})$/.exec(trace[index])?.[1];
+  if(frame==='_check_git_store')stage='object-store';
+  if(frame==='_check_git_config')stage='git-config';
+  if(frame==='_read_inventory')stage='inventory-validation';
+  if(frame==='_read_git_objects')stage='ordinary-batch';
+  if(frame!=='_acquire_navigation_git_sources')continue;
+  const statement=trace[index+1]?.trim();
+  if(statement==="with tree.directory('.git') as fd:")stage='object-store';
+  if(statement?.startsWith("with _git_navigation_pipe((*prefix, 'ls-tree',")||
+     statement==='inventory = _read_git_output(pipe, MAX_INVENTORY)')stage='tree-inventory';
+  if(statement?.startsWith("with _git_navigation_pipe((*prefix, 'cat-file',")||
+     statement==='facts = _read_git_objects(pipe, ordinary)')stage='ordinary-batch';
+  if(statement==='tree.assert_unchanged()'||statement==='_git_seconds(deadline_ns)')stage='source-settlement';
+ }
+ const terminal=trace.findLast(line=>line.startsWith('ValueError: '))?.slice('ValueError: '.length);
+ const reason=terminal===undefined?'unclassified':stockGitRefusals.get(terminal)??'unclassified';
+ return ' [stage='+stage+'; reason='+reason+']';
+}
+
 function modelFailure(stderr:string){
  const [preamble,...blocks]=stderr.split('\n'+'='.repeat(70)+'\n');
  const failed=new Map<string,string>();
@@ -77,7 +127,12 @@ function modelFailure(stderr:string){
   // A unittest subtest can append its parameters. Only the fixed parent name is reported.
   const known=cases.find(row=>description===row.description
    || description.startsWith(row.description+' (')&&description.endsWith(')'));
-  if(known&&!failed.has(known.name))failed.set(known.name,kind+' '+known.name+' ['+exceptionKind(detail)+']');
+  if(known&&!failed.has(known.name)){
+   const category=exceptionKind(detail);
+   const diagnostic=known.name===stockGitCase&&description===known.description&&kind==='ERROR'&&category==='ValueError'
+    ?stockGitFailure(detail):'';
+   failed.set(known.name,kind+' '+known.name+' ['+category+']'+diagnostic);
+  }
  }
  return failed.size?[...failed.values()].join(', '):'no named case ['+exceptionKind(preamble.split('\n'))+']';
 }
