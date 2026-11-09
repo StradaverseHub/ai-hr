@@ -1,11 +1,15 @@
 """Deterministic controls over the inert owner. No commands, sockets, proc or DB."""
+import ast
 import copy
+import fcntl
 import importlib.util
 import io
 import json
 import pathlib
+import stat
 import tempfile
 import unittest
+from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
@@ -465,5 +469,287 @@ class BrowserHostSettlementModel(unittest.TestCase):
         self.assertEqual([source.index(marker) for marker in markers], sorted(source.index(marker) for marker in markers))
 
 
+class MainProcessKernel:
+    def __init__(self, role='driver'):
+        self.role = role
+        self.uid = {'driver': H.DRIVER, 'browser': H.BROWSER, 'third': H.THIRD}[role]
+        self.start = 100
+        self.group_inode = 33
+        self.dead = False
+        self.foreign_namespace = None
+        self.proc_group = f'0::/system.slice/aihrbc-{role}-123.service\n'.encode()
+        self.root_read, self.root_write = 44, 45
+        self.child_pipes = (45, 44)
+        self.child_flags = (b'00', b'01')
+        self.child_fdinfo = (None, None)
+        self.replace_input_after_output_read = False
+        self.inheritable = set()
+        self.inherited_capabilities = b'0'
+        self.clock = SimpleNamespace(remaining=Mock(return_value=1))
+        self.held = {11: self.info(11, stat.S_IFDIR), 12: self.info(33, stat.S_IFDIR),
+                     41: self.info(141, stat.S_IFREG | 0o755), 42: self.info(142, stat.S_IFREG | 0o555),
+                     44: self.info(144, stat.S_IFIFO), 45: self.info(145, stat.S_IFIFO),
+                     46: self.info(146, stat.S_IFIFO)}
+        self.executable = self.held[41]
+        runtime = '/run/aihr-browser-capability-123/runtime'
+        if role == 'third':
+            self.gate = None
+            self.argv = ('/usr/bin/python3', '-I', '-B', runtime + '/roles/native-workload-browser-host.py', 'probe-third')
+            self.node = None
+        else:
+            tree = ast.parse(PATH.with_name('native-workload-browser-preimport-gate.py').read_bytes())
+            source = next(row.value.func.value.value.lstrip() for row in tree.body
+                          if isinstance(row, ast.Assign) and row.targets[0].id == '_SOURCE')
+            self.gate = ('/usr/bin/python3', '-I', '-B', '-S', '-c', source, role, '123', '321')
+            if role == 'browser':
+                argument, script = 'A' * 43 + '=', 'native-workload-browser-server.mjs'
+                self.gate = (*self.gate, argument)
+            else:
+                argument, script = '--capability-only', 'native-workload-browser-driver.mjs'
+            self.argv = self.gate
+            self.node = (runtime + '/node', runtime + '/roles/' + script, argument)
+        self.link = '/usr/bin/python3.12'
+        self.readers = {}
+        self.pins = []
+        self.next_fd = 100
+        self.closed = []
+
+    @staticmethod
+    def info(inode, mode=stat.S_IFREG):
+        return SimpleNamespace(st_dev=5, st_ino=inode, st_mode=mode, st_uid=0, st_gid=0,
+                               st_size=10, st_mtime_ns=11, st_ctime_ns=12)
+
+    def open(self, path, flags, *, dir_fd=None):
+        if dir_fd is None and not path.startswith('/proc/self/fdinfo/'):
+            assert flags == H.os.O_PATH | H.os.O_DIRECTORY | H.os.O_NOFOLLOW | H.os.O_CLOEXEC
+            return {'/proc/31': 11, f'/sys/fs/cgroup/system.slice/aihrbc-{self.role}-123.service': 12}[path]
+        fd = self.next_fd
+        self.next_fd += 1
+        if path in ('fd/0', 'fd/1'):
+            assert dir_fd == 11 and flags == H.os.O_PATH | H.os.O_CLOEXEC
+            self.held[fd] = self.held[self.child_pipes[int(path[-1])]]
+            self.pins.append(fd)
+        else:
+            assert flags == H.os.O_RDONLY | H.os.O_CLOEXEC | H.os.O_NOFOLLOW
+            assert ((dir_fd == 11 and path in ('stat', 'status', 'cgroup', 'cmdline', 'fdinfo/0', 'fdinfo/1'))
+                    or (dir_fd is None and path.startswith('/proc/self/fdinfo/')))
+            self.readers[fd] = path
+        return fd
+
+    def stat(self, path, *, dir_fd=None, follow_symlinks=True):
+        if dir_fd is None and not follow_symlinks:
+            if path == '/proc/31':
+                return self.held[11]
+            assert path == f'/sys/fs/cgroup/system.slice/aihrbc-{self.role}-123.service'
+            return self.info(self.group_inode, stat.S_IFDIR)
+        if path == 'exe' and dir_fd == 11:
+            return self.executable
+        if path in ('fd/0', 'fd/1') and dir_fd == 11:
+            return self.held[self.child_pipes[int(path[-1])]]
+        assert path.startswith(('/proc/1/ns/', '/proc/self/ns/', 'ns/'))
+        name = path.rsplit('/', 1)[-1]
+        inode = 200 + ('user', 'pid', 'time', 'net', 'mnt').index(name)
+        if dir_fd == 11 and name in ('mnt', self.foreign_namespace):
+            inode += 20
+        return self.info(inode)
+
+    def fdopen(self, fd, mode, *, buffering, closefd):
+        assert mode == 'rb' and buffering == 0 and closefd is False
+        path = self.readers[fd]
+        if path.startswith('/proc/self/fdinfo/'):
+            pin = int(path.rsplit('/', 1)[-1])
+            assert pin in self.pins and pin not in self.closed
+            return self.fdinfo(self.held[pin].st_ino, 17, f'{H.os.O_PATH | H.os.O_CLOEXEC:o}'.encode())
+        if path in ('fdinfo/0', 'fdinfo/1'):
+            assert len(self.pins) >= 2 and not set(self.pins[-2:]).intersection(self.closed)
+            number = int(path[-1])
+            identity = self.child_fdinfo[number] or (self.held[self.child_pipes[number]].st_ino, 17)
+            if number == 1 and self.replace_input_after_output_read:
+                self.child_pipes = (46, self.child_pipes[1])
+            return self.fdinfo(*identity, self.child_flags[number])
+        uid = str(self.uid).encode()
+        ids = b' '.join([uid] * 4)
+        status = (b'Uid:\t' + ids + b'\nGid:\t' + ids + b'\nGroups:\t' + uid
+                  + b'\nNoNewPrivs:\t1\nCapEff:\t0\nCapPrm:\t0\nCapBnd:\t0\nCapAmb:\t0\nSeccomp:\t2\nSeccomp_filters:\t3\n'
+                  + b'CapInh:\t' + self.inherited_capabilities + b'\n')
+        files = {'stat': b'31 (model command) S ' + b'0 ' * 18 + str(self.start).encode(),
+                 'status': status, 'cgroup': self.proc_group,
+                 'cmdline': b'\0'.join(part.encode('ascii') for part in self.argv) + b'\0'}
+        return io.BytesIO(files[path])
+
+    @staticmethod
+    def fdinfo(ino, mount, flags):
+        return io.BytesIO(b'pos:\t0\nflags:\t' + flags + f'\nmnt_id:\t{mount}\nino:\t{ino}\n'.encode())
+
+    def fcntl(self, fd, operation):
+        assert operation == fcntl.F_GETFL
+        return {44: H.os.O_RDONLY, 45: H.os.O_WRONLY}[fd] | H.os.O_NONBLOCK
+
+    @contextmanager
+    def native(self):
+        poll = Mock()
+        poll.poll.side_effect = lambda _timeout: [(10, H.select.POLLIN)] if self.dead else []
+        with ExitStack() as stack:
+            for owner, name, value in (
+                (H.os, 'geteuid', lambda: 0), (H.os, 'open', self.open), (H.os, 'stat', self.stat),
+                (H.os, 'fstat', lambda fd: self.held[fd] if fd in self.held else self.info(fd)),
+                (H.os, 'fdopen', self.fdopen), (H.os, 'readlink', lambda path, *, dir_fd: self.link),
+                (H.os, 'get_inheritable', lambda fd: fd in self.inheritable), (H.os, 'close', self.closed.append),
+                (fcntl, 'fcntl', self.fcntl), (H.select, 'poll', lambda: poll),
+            ):
+                stack.enter_context(patch.object(owner, name, side_effect=value))
+            stack.enter_context(patch.object(H.os, 'O_PATH', getattr(H.os, 'O_PATH', 0o10000000), create=True))
+            pidfd = stack.enter_context(patch.object(H.os, 'pidfd_open', return_value=10, create=True))
+            yield pidfd, poll
+
+    def observe(self):
+        return H.held_synthetic_main(31, self.role, '123', python_fd=41, node_fd=42 if self.node else None,
+                                     root_read_fd=self.root_read, root_write_fd=self.root_write,
+                                     gate_argv=self.gate, clock=self.clock)
+
+    def exec_node(self):
+        self.executable = self.held[42]
+        self.argv = self.node
+        self.link = self.argv[0]
+
+
+class BrowserHostMainProcessModel(unittest.TestCase):
+    def test_both_roles_hold_one_pidfd_and_immutable_identity_through_exact_node_exec(self):
+        for role in ('driver', 'browser'):
+            with self.subTest(role=role):
+                kernel = MainProcessKernel(role)
+                kernel.child_flags = tuple(f'{int(flag, 8) | H.os.O_NONBLOCK:o}'.encode() for flag in kernel.child_flags)
+                with kernel.native() as (pidfd_open, poll):
+                    with kernel.observe() as (fd, initial, current):
+                        self.assertEqual((fd, initial.identity.pid, initial.executable_birth), (10, 31, (5, 141)))
+                        self.assertEqual(current(), initial)
+                        with self.assertRaises(AttributeError):
+                            initial.identity.start = 101
+                        kernel.exec_node()
+                        kernel.child_flags = (b'00', b'01')
+                        after = current(post_exec=True)
+                        self.assertEqual(after.identity, initial.identity)
+                        self.assertEqual(after.executable_birth, (5, 142))
+                        self.assertNotIn(10, kernel.closed)
+                    with self.assertRaisesRegex(H.Refused, 'synthetic-main-exec-phase'):
+                        current(post_exec=True)
+                    pidfd_open.assert_called_once_with(31)
+                    poll.register.assert_called_once_with(10, H.select.POLLIN)
+                self.assertEqual(kernel.closed[-3:], [12, 11, 10])
+                self.assertTrue(kernel.pins and all(kernel.closed.count(pin) == 1 for pin in kernel.pins))
+                self.assertTrue({41, 42, 44, 45}.isdisjoint(kernel.closed))
+                self.assertGreater(kernel.clock.remaining.call_count, 0)
+                self.assertEqual(kernel.clock.remaining.call_args_list, [call(32)] * kernel.clock.remaining.call_count)
+
+    def test_third_has_only_original_python_path_and_requires_its_own_uid(self):
+        kernel = MainProcessKernel('third')
+        with kernel.native(), kernel.observe() as (_, initial, current):
+            self.assertEqual(current(), initial)
+            with self.assertRaisesRegex(H.Refused, 'synthetic-main-exec-phase'):
+                current(post_exec=True)
+            kernel.uid = H.DRIVER
+            with self.assertRaisesRegex(H.Refused, 'native-role-credentials-differ'):
+                current()
+        self.assertGreater(kernel.clock.remaining.call_count, 0)
+        self.assertEqual(kernel.clock.remaining.call_args_list, [call(42)] * kernel.clock.remaining.call_count)
+
+    def test_refuses_same_executable_path_with_foreign_inode_or_changed_exact_argv(self):
+        for changed in ('inode', 'argv', 'gate'):
+            with self.subTest(changed=changed):
+                kernel = MainProcessKernel()
+                if changed == 'inode':
+                    kernel.executable = kernel.info(999, stat.S_IFREG | 0o755)
+                elif changed == 'argv':
+                    kernel.argv = (*kernel.argv, 'extra')
+                else:
+                    kernel.gate = (*kernel.gate[:5], kernel.gate[5] + '\n', *kernel.gate[6:])
+                with kernel.native(), self.assertRaisesRegex(H.Refused, 'synthetic-main-executable-or-argv|synthetic-main-gate-argv'):
+                    with kernel.observe():
+                        self.fail('unexpected owner')
+
+    def test_refuses_swapped_aliased_wrong_mode_and_inheritable_pipe(self):
+        for changed in ('swap', 'alias', 'mode', 'inherit'):
+            with self.subTest(changed=changed):
+                kernel = MainProcessKernel()
+                if changed == 'swap':
+                    kernel.child_pipes = (44, 45)
+                elif changed == 'alias':
+                    kernel.child_pipes = (45, 45)
+                elif changed == 'mode':
+                    kernel.child_flags = (b'01', b'01')
+                else:
+                    kernel.inheritable.add(44)
+                with kernel.native(), self.assertRaisesRegex(H.Refused, 'synthetic-main-(pipe-pair|child-pipe|root-pipe)'):
+                    with kernel.observe():
+                        self.fail('unexpected owner')
+
+    def test_refuses_foreign_fdinfo_inode_or_mount_even_when_named_pipe_is_exact(self):
+        for changed, identity in (('inode', (146, 17)), ('mount', (145, 18))):
+            with self.subTest(changed=changed):
+                kernel = MainProcessKernel()
+                kernel.child_fdinfo = (identity, None)
+                with kernel.native(), self.assertRaisesRegex(H.Refused, 'synthetic-main-child-pipe'):
+                    with kernel.observe():
+                        self.fail('unexpected owner')
+                self.assertEqual(len(kernel.pins), 2)
+                self.assertTrue(all(kernel.closed.count(pin) == 1 for pin in kernel.pins))
+
+    def test_refuses_child_cloexec_on_either_endpoint(self):
+        for endpoint in (0, 1):
+            with self.subTest(endpoint=endpoint):
+                kernel = MainProcessKernel()
+                flags = list(kernel.child_flags)
+                flags[endpoint] = f'{int(flags[endpoint], 8) | H.os.O_CLOEXEC:o}'.encode()
+                kernel.child_flags = tuple(flags)
+                with kernel.native(), self.assertRaisesRegex(H.Refused, 'synthetic-main-child-pipe'):
+                    with kernel.observe():
+                        self.fail('unexpected owner')
+
+    def test_refuses_input_replaced_during_output_observation_and_closes_both_pins(self):
+        kernel = MainProcessKernel()
+        kernel.replace_input_after_output_read = True
+        with kernel.native(), self.assertRaisesRegex(H.Refused, 'synthetic-main-child-pipe'):
+            with kernel.observe():
+                self.fail('unexpected owner')
+        self.assertEqual(len(kernel.pins), 2)
+        self.assertTrue(all(kernel.closed.count(pin) == 1 for pin in kernel.pins))
+        self.assertTrue({44, 45, 46}.isdisjoint(kernel.closed))
+
+    def test_refuses_reused_birth_changed_cgroup_and_pidfd_terminal(self):
+        for changed, reason in (('start', 'identity-changed'), ('group_inode', 'cgroup-or-proc'), ('dead', 'process-exited')):
+            with self.subTest(changed=changed):
+                kernel = MainProcessKernel()
+                with kernel.native(), kernel.observe() as (_, _, current):
+                    kernel.exec_node()
+                    setattr(kernel, changed, {'start': 101, 'group_inode': 34, 'dead': True}[changed])
+                    with self.assertRaisesRegex(H.Refused, 'synthetic-main-' + reason):
+                        current(post_exec=True)
+                self.assertEqual(kernel.closed[-3:], [12, 11, 10])
+
+    def test_refuses_foreign_initial_user_pid_time_or_network_namespace(self):
+        for name in ('user', 'pid', 'time', 'net'):
+            with self.subTest(name=name):
+                kernel = MainProcessKernel()
+                kernel.foreign_namespace = name
+                with kernel.native(), self.assertRaisesRegex(H.Refused, 'synthetic-main-namespaces'):
+                    with kernel.observe():
+                        self.fail('unexpected owner')
+
+    def test_refuses_inherited_capabilities_even_when_current_sets_are_zero(self):
+        kernel = MainProcessKernel()
+        kernel.inherited_capabilities = b'1'
+        with kernel.native(), self.assertRaisesRegex(H.Refused, 'synthetic-main-inherited-credentials'):
+            with kernel.observe():
+                self.fail('unexpected owner')
+
+    def test_late_native_observation_cannot_return_and_still_releases_owned_fds(self):
+        kernel = MainProcessKernel()
+        kernel.clock.remaining.side_effect = [1, 1, 1, 1, 1, H.Refused('capability-deadline')]
+        with kernel.native(), self.assertRaisesRegex(H.Refused, 'capability-deadline'):
+            with kernel.observe():
+                self.fail('unexpected owner')
+        self.assertEqual(kernel.closed[-3:], [12, 11, 10])
+
+
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(defaultTest=('BrowserHostModel', 'BrowserHostSettlementModel'))

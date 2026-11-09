@@ -203,13 +203,41 @@ const suites=[
     'test_wrong_new_content_preserves_known_nonexecutable_inode',
    ]],
   ]},
+ {name:'runs the 11 exact owned role process source models',file:'.github/ci/native-workload-browser-host.test.py',count:11,selector:'BrowserHostMainProcessModel',classes:[
+   ['BrowserHostMainProcessModel',[
+    'test_both_roles_hold_one_pidfd_and_immutable_identity_through_exact_node_exec',
+    'test_late_native_observation_cannot_return_and_still_releases_owned_fds',
+    'test_refuses_child_cloexec_on_either_endpoint',
+    'test_refuses_foreign_fdinfo_inode_or_mount_even_when_named_pipe_is_exact',
+    'test_refuses_foreign_initial_user_pid_time_or_network_namespace',
+    'test_refuses_inherited_capabilities_even_when_current_sets_are_zero',
+    'test_refuses_input_replaced_during_output_observation_and_closes_both_pins',
+    'test_refuses_reused_birth_changed_cgroup_and_pidfd_terminal',
+    'test_refuses_same_executable_path_with_foreign_inode_or_changed_exact_argv',
+    'test_refuses_swapped_aliased_wrong_mode_and_inheritable_pipe',
+    'test_third_has_only_original_python_path_and_requires_its_own_uid',
+   ]],
+  ]},
+ {name:'runs the 6 exact synthetic stage cleanup source models',file:'.github/ci/native-workload-browser-synthetic-stage-cleanup.test.py',count:6,classes:[
+   ['SyntheticStageCleanupModels',[
+    'test_known_partial_installer_output_can_be_removed_without_finalizer',
+    'test_member_on_another_mount_refuses_before_any_removal',
+    'test_pending_creation_or_unknown_entry_preserves_the_whole_stage',
+    'test_removes_only_exact_stage_after_positive_fresh_view_recheck',
+    'test_replaced_inode_refuses_even_if_bytes_and_mode_match',
+    'test_root_name_survives_failed_manager_view_recheck',
+   ]],
+  ]},
 ] as const;
 
-it.each(suites)('$name',({file,count,classes})=>{
+it.each(suites)('$name',suite=>{
+ const {file,count,classes}=suite;
  const expected=classes.flatMap(([owner,methods])=>methods.map(method=>method+' (__main__.'+owner+'.'+method+') ... ok'));
  expect(expected).toHaveLength(count);
  expect(new Set(expected).size).toBe(count);
- const result=spawnSync('/usr/bin/python3',['-I','-B',file,'-v'],{
+ const args=['-I','-B',file,'-v'];
+ if('selector' in suite)args.push(suite.selector);
+ const result=spawnSync('/usr/bin/python3',args,{
   cwd:root,env:{PATH:'/usr/bin:/bin',LC_ALL:'C.UTF-8',TZ:'UTC'},encoding:'utf8',
   timeout:10000,killSignal:'SIGKILL',maxBuffer:128*1024,stdio:['ignore','pipe','pipe'],
  });

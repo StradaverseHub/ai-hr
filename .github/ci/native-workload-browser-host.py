@@ -14,7 +14,8 @@ import subprocess
 import sys
 import tempfile
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
+from typing import NamedTuple
 
 DRIVER, BROWSER, THIRD = 62120, 62121, 65534
 CONTROL, INGRESS, POSTGRES = 3444, 3443, 5433
@@ -460,6 +461,229 @@ def held_role_process(pid, role, control_group):
     except BaseException:
         os.close(fd)
         raise
+
+
+_PREIMPORT_SOURCE_SHA256 = '754db444f2be56a7b36943c18fd0ed6d006c60ba50ede09d5bc3bb318a9ac8b7'
+_MAIN_NAMESPACES = ('user', 'pid', 'time', 'net', 'mnt')
+
+
+class _MainIdentity(NamedTuple):
+    pid: int
+    start: int
+    cgroup_birth: tuple[int, int]
+    namespaces: tuple[tuple[int, int], ...]
+    seccomp_filters: int
+    input_birth: tuple[int, int]
+    output_birth: tuple[int, int]
+
+
+class _MainSnapshot(NamedTuple):
+    identity: _MainIdentity
+    executable_birth: tuple[int, int]
+
+
+def _main_commands(role, run_id, gate_argv):
+    import hashlib
+
+    runtime = '/run/aihr-browser-capability-' + run_id + '/runtime'
+    if role == 'third':
+        require(gate_argv is None, 'unexpected-third-preimport-gate')
+        return ('/usr/bin/python3', '-I', '-B', runtime + '/roles/native-workload-browser-host.py', 'probe-third'), None
+    require(type(gate_argv) is tuple and len(gate_argv) == (10 if role == 'browser' else 9)
+            and all(type(part) is str and 0 < len(part) <= 4096 and part.isascii() for part in gate_argv)
+            and gate_argv[:5] == ('/usr/bin/python3', '-I', '-B', '-S', '-c')
+            and len(gate_argv[5]) <= 4096
+            and hashlib.sha256(gate_argv[5].encode('ascii')).hexdigest() == _PREIMPORT_SOURCE_SHA256
+            and gate_argv[6:8] == (role, run_id)
+            and re.fullmatch(r'[1-9][0-9]{0,18}', gate_argv[8])
+            and int(gate_argv[8]) <= 9223372036854775807, 'synthetic-main-gate-argv')
+    if role == 'browser':
+        spki = gate_argv[9]
+        require(re.fullmatch(r'[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=', spki), 'synthetic-main-spki')
+        script, argument = 'native-workload-browser-server.mjs', spki
+    else:
+        script, argument = 'native-workload-browser-driver.mjs', '--capability-only'
+    return gate_argv, (runtime + '/node', runtime + '/roles/' + script, argument)
+
+
+@contextmanager
+def _main_owned_fd(fd):
+    try:
+        yield fd
+    except BaseException as primary:
+        try:
+            os.close(fd)
+        except OSError:
+            primary.add_note('synthetic-main-fd-close-unproved')
+        raise
+    else:
+        os.close(fd)
+
+
+def _main_proc_read(proc, name, limit):
+    with _main_owned_fd(os.open(name, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW, dir_fd=proc)) as fd:
+        require(stat.S_ISREG(os.fstat(fd).st_mode), 'synthetic-main-proc-file')
+        with os.fdopen(fd, 'rb', buffering=0, closefd=False) as source:
+            return _bounded_bytes(source, limit)
+
+
+def _main_birth(info):
+    return info.st_dev, info.st_ino
+
+
+def _main_exec_stamp(info):
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == info.st_gid == 0 and info.st_size > 0
+            and info.st_mode & stat.S_IXUSR and not info.st_mode & (stat.S_ISUID | stat.S_ISGID | 0o022),
+            'synthetic-main-executable-mode')
+    return (*_main_birth(info), info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _main_root_pipe(fd, mode):
+    import fcntl
+
+    flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+    info = os.fstat(fd)
+    require(stat.S_ISFIFO(info.st_mode) and flags & os.O_ACCMODE == mode
+            and flags & os.O_NONBLOCK and not flags & os.O_PATH and not os.get_inheritable(fd),
+            'synthetic-main-root-pipe')
+    return _main_birth(info)
+
+
+def _main_pipe_fdinfo(proc, name):
+    fields = {}
+    patterns = {b'ino': rb'[1-9][0-9]{0,19}', b'mnt_id': rb'[1-9][0-9]{0,9}', b'flags': rb'[0-7]{1,16}'}
+    for line in _main_proc_read(proc, name, 4096).splitlines():
+        key, _, value = line.partition(b':')
+        if key in patterns:
+            value = value.strip()
+            require(key not in fields and re.fullmatch(patterns[key], value), 'synthetic-main-pipe-fdinfo')
+            fields[key] = value
+    require(fields.keys() == patterns.keys(), 'synthetic-main-pipe-fdinfo')
+    return int(fields[b'ino']), int(fields[b'mnt_id']), int(fields[b'flags'], 8)
+
+
+def _main_child_pipes(proc, input_birth, output_birth):
+    # Follow only the two fixed proc magic links. O_PATH pins their inodes
+    # without adding a live pipe reader or writer that could delay EOF.
+    flags = os.O_PATH | os.O_CLOEXEC
+    with (
+        _main_owned_fd(os.open('fd/0', flags, dir_fd=proc)) as child_in,
+        _main_owned_fd(os.open('fd/1', flags, dir_fd=proc)) as child_out,
+    ):
+        ends = ((0, child_in, input_birth, os.O_RDONLY), (1, child_out, output_birth, os.O_WRONLY))
+        pins = []
+        for _, fd, birth, _ in ends:
+            info = os.fstat(fd)
+            ino, mount, flag = _main_pipe_fdinfo(None, f'/proc/self/fdinfo/{fd}')
+            require(stat.S_ISFIFO(info.st_mode) and _main_birth(info) == birth and ino == info.st_ino
+                    and flag & flags == flags, 'synthetic-main-pipe-pair')
+            pins.append((ino, mount))
+
+        # fdinfo produces inode, mount and flags from one native file lookup.
+        # The mount match refers to this same pipe object through its magic link.
+        for _ in range(2):
+            for (number, _, birth, mode), pin in zip(ends, pins):
+                ino, mount, flag = _main_pipe_fdinfo(proc, f'fdinfo/{number}')
+                named = os.stat(f'fd/{number}', dir_fd=proc)
+                require(stat.S_ISFIFO(named.st_mode) and _main_birth(named) == birth and (ino, mount) == pin
+                        and flag & os.O_ACCMODE == mode and not flag & flags, 'synthetic-main-child-pipe')
+
+
+@contextmanager
+def held_synthetic_main(pid, role, run_id, *, python_fd, node_fd, root_read_fd, root_write_fd, gate_argv, clock):
+    """Observe only the known transient main. The manager owner must prove its invocation separately.
+
+    Yields a borrowed pidfd, an immutable initial snapshot and a bounded recheck.
+    The caller retains the original executable and root pipe descriptors.
+    """
+    require(os.geteuid() == 0 and type(pid) is int and 1 < pid <= 4194304
+            and type(role) is str and role in ('driver', 'browser', 'third') and type(run_id) is str
+            and re.fullmatch(r'[1-9][0-9]{0,15}', run_id) and int(run_id) <= 9007199254740991,
+            'synthetic-main-owner')
+    descriptors = (python_fd, root_read_fd, root_write_fd)
+    if role != 'third':
+        descriptors = (*descriptors, node_fd)
+    require(all(type(fd) is int and fd > 2 for fd in descriptors) and len(set(descriptors)) == len(descriptors)
+            and (role != 'third' or node_fd is None), 'synthetic-main-held-descriptors')
+    python_argv, node_argv = _main_commands(role, run_id, gate_argv)
+    uid = {'driver': DRIVER, 'browser': BROWSER, 'third': THIRD}[role]
+    control_group = f'/system.slice/aihrbc-{role}-{run_id}.service'
+    proc_path, group_path = f'/proc/{pid}', '/sys/fs/cgroup' + control_group
+    frontier = 42 if role == 'third' else 32
+    directory_flags = os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+    clock.remaining(frontier)
+    with ExitStack() as held:
+        pidfd = held.enter_context(_main_owned_fd(os.pidfd_open(pid)))
+        poll = select.poll()
+        poll.register(pidfd, select.POLLIN)
+        require(not poll.poll(0), 'synthetic-main-process-exited')
+        proc = held.enter_context(_main_owned_fd(os.open(proc_path, directory_flags)))
+        group = held.enter_context(_main_owned_fd(os.open(group_path, directory_flags)))
+        proc_birth = _main_birth(os.fstat(proc))
+        group_birth = _main_birth(os.fstat(group))
+        expected_group = f'0::{control_group}\n'.encode('ascii')
+        executables = {fd: _main_exec_stamp(os.fstat(fd)) for fd in descriptors
+                       if fd in (python_fd, node_fd)}
+        require(all(not os.get_inheritable(fd) for fd in executables)
+                and (node_fd is None or executables[python_fd][:2] != executables[node_fd][:2]),
+                'synthetic-main-held-executable')
+
+        def sample(executable_fd, argv):
+            clock.remaining(frontier)
+            require(not poll.poll(0), 'synthetic-main-process-exited')
+            require(_main_birth(os.stat(proc_path, follow_symlinks=False)) == proc_birth
+                    and _main_birth(os.stat(group_path, follow_symlinks=False)) == group_birth
+                    and _main_proc_read(proc, 'cgroup', 8192) == expected_group, 'synthetic-main-cgroup-or-proc')
+            start = _process_birth(_main_proc_read(proc, 'stat', 8192), pid)
+            host = tuple(_main_birth(os.stat('/proc/1/ns/' + name)) for name in _MAIN_NAMESPACES)
+            namespaces = tuple(_main_birth(os.stat('ns/' + name, dir_fd=proc)) for name in _MAIN_NAMESPACES)
+            require(namespaces[:-1] == host[:-1] and namespaces[-1] != host[-1]
+                    and all(_main_birth(os.stat('/proc/self/ns/' + name)) == birth
+                            for name, birth in zip(_MAIN_NAMESPACES[:-1], host[:-1])), 'synthetic-main-namespaces')
+            status = _main_proc_read(proc, 'status', 32768)
+            filters = _role_status(status, uid, True)
+            inherited = [line.partition(b':')[2].strip() for line in status.splitlines() if line.startswith(b'CapInh:')]
+            require(_status_fields(status)[b'Groups'] in ([], [str(uid).encode('ascii')])
+                    and len(inherited) == 1 and re.fullmatch(rb'0+', inherited[0]),
+                    'synthetic-main-inherited-credentials')
+            link = os.readlink('exe', dir_fd=proc)
+            executable = executables[executable_fd]
+            require(link.startswith('/') and not link.endswith(' (deleted)') and not os.get_inheritable(executable_fd)
+                    and _main_exec_stamp(os.fstat(executable_fd)) == executable
+                    and _main_exec_stamp(os.stat('exe', dir_fd=proc)) == executable
+                    and _main_proc_read(proc, 'cmdline', 8192) == b'\0'.join(part.encode('ascii') for part in argv) + b'\0',
+                    'synthetic-main-executable-or-argv')
+            input_birth = _main_root_pipe(root_write_fd, os.O_WRONLY)
+            output_birth = _main_root_pipe(root_read_fd, os.O_RDONLY)
+            require(input_birth != output_birth, 'synthetic-main-pipe-pair')
+            _main_child_pipes(proc, input_birth, output_birth)
+            require(_main_root_pipe(root_write_fd, os.O_WRONLY) == input_birth
+                    and _main_root_pipe(root_read_fd, os.O_RDONLY) == output_birth, 'synthetic-main-root-pipe-changed')
+            clock.remaining(frontier)
+            return _MainSnapshot(_MainIdentity(pid, start, group_birth, namespaces, filters, input_birth, output_birth),
+                                 executable[:2])
+
+        def observe(executable_fd, argv):
+            observed = sample(executable_fd, argv)
+            require(sample(executable_fd, argv) == observed and not poll.poll(0), 'synthetic-main-snapshot-changed')
+            clock.remaining(frontier)
+            return observed
+
+        initial = observe(python_fd, python_argv)
+        active = True
+
+        def current(*, post_exec=False):
+            require(active and type(post_exec) is bool and (not post_exec or node_argv is not None),
+                    'synthetic-main-exec-phase')
+            observation = observe(node_fd, node_argv) if post_exec else observe(python_fd, python_argv)
+            require(observation.identity == initial.identity, 'synthetic-main-identity-changed')
+            return observation
+
+        try:
+            yield pidfd, initial, current
+        finally:
+            active = False
 
 
 def require_renderer(renderer, launcher, chromium):
