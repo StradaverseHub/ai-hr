@@ -1,4 +1,4 @@
-/** Fixed nonroot driver role. Only this role can open the systemd observer credential. */
+/** Fixed nonroot driver role for the observer and synthetic browser courses. */
 import assert from 'node:assert/strict';
 import {closeSync, constants, fstatSync, openSync, readSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
@@ -27,19 +27,45 @@ function readFixedFile(path, limit) {
   }
 }
 
+function credentialPath(runId, env) {
+  const credentials = `/run/credentials/aihrbc-driver-${runId}.service`;
+  assert.equal(process.env.CREDENTIALS_DIRECTORY, credentials);
+  assert.equal(readFixedFile(`${env.HOME}/canary`, 32), 'driver-canary\n');
+  return `${credentials}/observer`;
+}
+
+async function browserTransport(root, chromium, owned) {
+  await expectFrame(root, 'connect');
+  owned.browser = await chromium.connect(CONTROL_URL, {timeout: 8000});
+  writeFrame({op: 'websocket-ready'});
+  await expectFrame(root, 'request');
+  owned.context = await owned.browser.newContext();
+  owned.page = await owned.context.newPage();
+  const response = await owned.page.goto(INGRESS_URL, {waitUntil: 'load', timeout: 8000});
+  assert(response && response.url() === INGRESS_URL && owned.page.url() === INGRESS_URL
+    && response.status() === 200 && response.request().redirectedFrom() === null);
+  assert.equal(response.headers()['content-length'], String(Buffer.byteLength(INGRESS_BODY)));
+  assert.equal(await response.text(), INGRESS_BODY);
+  assert.equal(await owned.page.locator('body').innerText({timeout: 1000}), INGRESS_BODY.trim());
+  writeFrame({op: 'ingress-complete', status: 200});
+  await expectFrame(root, 'stop');
+}
+
+function browserClosers({page, context, browser}) {
+  return [page && (() => page.close()), context && (() => context.close()), browser && (() => browser.close())];
+}
+
 async function driverRole() {
   const {runId, env} = roleEnvironment('driver');
   const tag = process.argv[2];
   assert(process.argv.length === 3 && /^aihrbc_[0-9a-f]{16}$/.test(tag));
-  const credentials = `/run/credentials/aihrbc-driver-${runId}.service`;
-  assert.equal(process.env.CREDENTIALS_DIRECTORY, credentials);
-  assert.equal(readFixedFile(`${env.HOME}/canary`, 32), 'driver-canary\n');
-  const url = readFixedFile(`${credentials}/observer`, 256);
+  const url = readFixedFile(credentialPath(runId, env), 256);
   assert(/^postgres:\/\/ai_hr_workload_observer:[0-9a-f]{64}@127\.0\.0\.1:5433\/ai_hr_test_w1$/.test(url));
   const {default: postgres} = await import(new URL('../node_modules/postgres/src/index.js', import.meta.url).href);
   const {chromium} = await import(new URL('../node_modules/playwright/index.mjs', import.meta.url).href);
   const root = readFrames(process.stdin);
-  let pool, observer, browser, context, page, failure;
+  const owned = {};
+  let pool, observer, failure;
   try {
     pool = postgres(url, {max: 1, connect_timeout: 4, fetch_types: false,
       connection: {application_name: tag, statement_timeout: 2500}});
@@ -62,26 +88,38 @@ async function driverRole() {
     const {statement_count, ...identity} = reserved;
     assert.deepEqual(identity, warm);
     writeFrame({op: 'observer-ready', pid: identity.pid, tag});
-    await expectFrame(root, 'connect');
-    browser = await chromium.connect(CONTROL_URL, {timeout: 8000});
-    writeFrame({op: 'websocket-ready'});
-    await expectFrame(root, 'request');
-    context = await browser.newContext();
-    page = await context.newPage();
-    const response = await page.goto(INGRESS_URL, {waitUntil: 'load', timeout: 8000});
-    assert(response && response.url() === INGRESS_URL && page.url() === INGRESS_URL
-      && response.status() === 200 && response.request().redirectedFrom() === null);
-    assert.equal(response.headers()['content-length'], String(Buffer.byteLength(INGRESS_BODY)));
-    assert.equal(await response.text(), INGRESS_BODY);
-    assert.equal(await page.locator('body').innerText({timeout: 1000}), INGRESS_BODY.trim());
-    writeFrame({op: 'ingress-complete', status: 200});
-    await expectFrame(root, 'stop');
+    await browserTransport(root, chromium, owned);
   } catch (error) {
     failure = error;
   } finally {
-    for (const close of [page && (() => page.close()), context && (() => context.close()),
-      browser && (() => browser.close()), observer && (() => observer.release()),
-      pool && (() => pool.end())]) {
+    for (const close of [...browserClosers(owned), observer && (() => observer.release()), pool && (() => pool.end())]) {
+      if (close) {
+        try { await close(); } catch (error) { failure ??= error; }
+      }
+    }
+  }
+  if (failure) throw failure;
+  writeFrame({op: 'driver-closed'});
+  assert((await root.next()).done);
+}
+
+async function capabilityOnlyRole() {
+  const {runId, env} = roleEnvironment('driver');
+  // The other role probes this same credential slot. Its contents prove only
+  // isolation for this run and can never be a connection string.
+  const decoy = readFixedFile(credentialPath(runId, env), 64);
+  assert.equal(decoy, `aihr-browser-isolation-v1:${runId}\n`);
+  const {chromium} = await import(new URL('../node_modules/playwright/index.mjs', import.meta.url).href);
+  const root = readFrames(process.stdin);
+  const owned = {};
+  let failure;
+  try {
+    writeFrame({op: 'driver-ready'});
+    await browserTransport(root, chromium, owned);
+  } catch (error) {
+    failure = error;
+  } finally {
+    for (const close of browserClosers(owned)) {
       if (close) {
         try { await close(); } catch (error) { failure ??= error; }
       }
@@ -93,5 +131,8 @@ async function driverRole() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  try { await driverRole(); } catch { process.exitCode = 19; }
+  try {
+    if (process.argv.length === 3 && process.argv[2] === '--capability-only') await capabilityOnlyRole();
+    else await driverRole();
+  } catch { process.exitCode = 19; }
 }
