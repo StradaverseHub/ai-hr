@@ -22,13 +22,16 @@ import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture
 import {createAssignmentAuthorityFixture} from './performance/employee-choice-assignment-authority';
 import {departmentFacetBinds,isDepartmentFacet,representedDepartmentFacet} from './performance/employee-choice-department-pair-probe';
 let organisationPageUnconfirmed=false;
+let organisationPageStatisticsPending=false;
 beforeAll(migrateTestDb);
 afterAll(async()=>{
- if(organisationPageUnconfirmed)throw new Error('Unconfirmed organisation page settlement requires the owned-job stop');
+ if(organisationPageUnconfirmed||organisationPageStatisticsPending)
+  throw new Error('Unconfirmed organisation page settlement requires the owned-job stop');
  await closeAll();
 });
 beforeEach(async()=>{
- if(organisationPageUnconfirmed)throw new Error('Unconfirmed organisation page settlement blocks another database case');
+ if(organisationPageUnconfirmed||organisationPageStatisticsPending)
+  throw new Error('Unconfirmed organisation page settlement blocks another database case');
  await resetDb();
 });
 
@@ -1224,8 +1227,9 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
     statisticsReceipt.state='held';
     ready(id);
     await releasing;
+    // Reserve two seconds for the elective readback and two for rollback.
     // On an expired or aborted case only restitution remains admitted.
-    if(!signal.aborted&&!statisticsEnded&&performance.now()+2000<=activeEnd){
+    if(!signal.aborted&&!statisticsEnded&&performance.now()+4000<=activeEnd){
      statisticsReceipt.terminal=await locks(tx,id);
      expect(statisticsReceipt.terminal).toEqual(statisticsReceipt.initial);
      statisticsReceipt.terminalWithinSlot=performance.now()<=activeEnd;
@@ -1317,6 +1321,9 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   fixtureCommitted=true;metadata.fixture={units:2,tagged:touched.length,committed:true};save();
   statisticsWork=true;
   active('statistics holder admission with ABBA reserved',90000);
+  // Vitest's drain hook has its own timeout. Keep reset/close fenced even
+  // if that hook gives up while the app callback or owner is still pending.
+  organisationPageStatisticsPending=true;
   statisticsHolder=holdStatistics(preparedOwner);
   const statisticsBackend=await statisticsHolder.ready;
   active('ABBA admission with cleanup reserved',90000);
@@ -1469,25 +1476,35 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    });
    requireTime(ownerDeadline,0,'acknowledged fixture restoration');
    restored=true;
+   if(statisticsReceipt.settlement==='rollback-acknowledged'&&statisticsReceipt.locksAbsent===true)
+    organisationPageStatisticsPending=false;
   }catch(error){restoreFailed=true;restoreFailure=error;organisationPageUnconfirmed=true;}
  }
  metadata.failures={work:errorHash(workFailure),statistics:errorHash(statisticsFailure?.error),cleanup:errorHash(restoreFailure)};
- metadata.restored=restored;metadata.ownerStopRequired=organisationPageUnconfirmed;
- if(taggedEvidence.stage==='capture-finished'&&taggedEvidence.failure===undefined&&!appOuterRefusal&&restored&&metadata.nativeAppSettled===true){
-  taggedEvidence.state='complete';taggedEvidence.stage='native-settled';
- }
- if((taggedEvidence.state==='complete'||envelopeEvidence.commitAcknowledgedWithinSlot===true)&&restored&&metadata.nativeAppSettled===true&&
-    envelopeEvidence.stage==='capture-finished'&&envelopeEvidence.failure===undefined){
-  envelopeEvidence.state='settled';envelopeEvidence.stage='native-settled';
-  envelopeEvidence.meetsCausalGate=envelopeEvidence.matchesRetainedVisibility===true&&envelopeEvidence.reducesVisibilityWork===true&&
-   envelopeEvidence.boundedAssignment===true&&envelopeEvidence.noTempSpill===true&&envelopeEvidence.fasterAuxiliaries===true;
- }
- if(envelopeEvidence.state==='settled'&&splitEvidence.nativeSavepoint==='fulfilled'&&
-    splitEvidence.stage==='capture-finished'&&splitEvidence.failure===undefined){
-  splitEvidence.state='settled';splitEvidence.stage='native-settled';
+ metadata.restored=restored;
+ metadata.ownerStopRequired=organisationPageUnconfirmed||organisationPageStatisticsPending;
+ const statisticsContinuityVerified=!signal.aborted&&statisticsReceipt.state==='rollback-acknowledged'&&
+  statisticsReceipt.terminalWithinSlot===true&&statisticsReceipt.rollbackWithinSlot===true&&statisticsReceipt.locksAbsent===true;
+ metadata.statisticsContinuityVerified=statisticsContinuityVerified;
+ if(statisticsContinuityVerified&&restored&&metadata.nativeAppSettled===true){
+  if(taggedEvidence.stage==='capture-finished'&&taggedEvidence.failure===undefined&&!appOuterRefusal){
+   taggedEvidence.state='complete';taggedEvidence.stage='native-settled';
+  }
+  if((taggedEvidence.state==='complete'||envelopeEvidence.commitAcknowledgedWithinSlot===true)&&
+     envelopeEvidence.stage==='capture-finished'&&envelopeEvidence.failure===undefined){
+   envelopeEvidence.state='settled';envelopeEvidence.stage='native-settled';
+   envelopeEvidence.meetsCausalGate=envelopeEvidence.matchesRetainedVisibility===true&&envelopeEvidence.reducesVisibilityWork===true&&
+    envelopeEvidence.boundedAssignment===true&&envelopeEvidence.noTempSpill===true&&envelopeEvidence.fasterAuxiliaries===true;
+  }
+  if(envelopeEvidence.state==='settled'&&splitEvidence.nativeSavepoint==='fulfilled'&&
+     splitEvidence.stage==='capture-finished'&&splitEvidence.failure===undefined){
+   splitEvidence.state='settled';splitEvidence.stage='native-settled';
+  }
  }
  const failures=[...(workFailed?[workFailure]:[]),...(appOuterRefusal?[appOuterRefusal.error]:[]),
   ...(statisticsFailure?[statisticsFailure.error]:[]),...(restoreFailed?[restoreFailure]:[])];
+ if(!failures.length&&!statisticsContinuityVerified)
+  failures.push(new Error('Organisation page statistics continuity is unconfirmed'));
  metadata.positionTimings=positionTimings;
  try{
   if(preTagCalls.length!==6)throw new Error('Unexpected pre-tag organisation statement census');
