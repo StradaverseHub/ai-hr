@@ -10,6 +10,7 @@ import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {assistantConversationScopeDigest,ownAssistantConversationContext,resumeOwnAssistantConversation} from '../core/assistant-conversation-context';
 import {ownAssistantClarification} from '../core/assistant-clarification';
 import {listOwnAssistantChats,loadOwnAssistantChat} from '../core/assistant-threads';
+import {loadAiWorkspace} from '../core/ai-workspace';
 import {sealAssistantDisclosure} from '../lib/ai/assistant-disclosure';
 import {setAgentActionPause} from '../core/ai-inventory';
 import * as proposalCatalogueOwner from '../core/assistant-action-catalogue';
@@ -31,7 +32,20 @@ describe('saved owned chats',()=>{
   const receipt=sealAssistantDisclosure({tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:id,question,answer},[],proposal,{threadId:id,scopeDigest:assistantConversationScopeDigest(ctx)})!;
   await owner.db.insert(s.assistantExchange).values({id,tenantId:ctx.tenantId,appUserId:ctx.userId!,question,answer,disclosureReceipt:receipt,stop:'end',toolCalls:[]});
   const reopen=async()=>{const chat=await loadOwnAssistantChat(ctx,{exchangeId:id});expect(chat.turns).toHaveLength(1);expect(chat.turns[0].answer).toBeNull();return chat.turns[0].grounded?.conversation;};
-  expect(await reopen()).toEqual({plan:proposal,facts:[]});
+  const replay=proposalCatalogueOwner.assistantProposalCallerTx;
+  const bounded=vi.spyOn(proposalCatalogueOwner,'assistantProposalCallerTx').mockImplementation(async(tx,...args)=>{
+   await tx.execute(sql`set local lock_timeout='500ms'`);
+   return replay(tx,...args);
+  });
+  try{
+   await owner.client.begin(async holder=>{
+    await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+ctx.tenantId},0))`;
+    await holder`select pg_advisory_xact_lock_shared(hashtext('ai-control'),hashtext(${ctx.tenantId}))`;
+    const [saved,workspace]=await Promise.all([reopen(),loadAiWorkspace(ctx,{selectedExchangeId:id,includePlanning:false,includeGovernance:false})]);
+    expect(saved).toEqual({plan:proposal,facts:[]});
+    expect(workspace.history.find(exchange=>exchange.id===id)?.grounded?.conversation).toEqual(saved);
+   });
+  }finally{bounded.mockRestore();}
   await setAgentActionPause(admin,'leave.cancel',true);
   expect(await reopen()).toEqual({plan:proposal,proposalStale:true,facts:[]});
   await setAgentActionPause(admin,'leave.cancel',false);

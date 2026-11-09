@@ -24,7 +24,8 @@ import { AI_FEATURES,isAiFeature,isTemplateOnlyAiFeature,type AiFeatureId } from
 import { resolveEntitlementsTx, getSetting } from './entitlements';
 import { assertAiProviderSnapshot, assertAiProviderSnapshotFeature, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
 import type { AiAdmission,AiGovernance } from '../lib/ai/governance';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from './access-configuration-lock';
+import {aiCentreActivity} from '../lib/ai/centre-activity';
 import {captureStrictAiSpendRoot,requiresAiTaskRoot,type StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 export type {StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 import {aiSpendAdmissionStep,resolveAiSpendPolicyTx,resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from './ai-spend-capability';
@@ -48,18 +49,47 @@ async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promi
 export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
  await lockAccessConfigurationTx(tx,ctx.tenantId);
- // WP13: template-only scheduled agents have no model admission at all.
- if(isTemplateOnlyAiFeature(feature))throw new AiGatewayError('This feature makes no model call.');
- const forcedPause=await forcedPauseTx(tx,ctx,feature);
- const [control]=await tx.execute<{unpaused:boolean}>(sql`select app.ai_action_unpaused(${feature},${forcedPause}) as unpaused`);
- if(control?.unpaused===false)throw new AiAllowanceError('paused');
- if(control?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
+ await assertFeatureUnpausedTx(tx,ctx,feature);
  await assertAiCentreRunningTx(tx,ctx);
  // WP12 (R8): inside an Assistant review-route command, that action's own pause key under hr_assistant (0696).
  // A review-route command whose action could not be named fails closed.
  const route=currentAgentActionScope();
  if(route&&route.action===null)throw new AiAllowanceError('paused');
  if(route?.action&&feature==='hr_assistant')await assertAgentActionUnpausedTx(tx,route.action);
+}
+
+/** Presentation-only offer/replay check. The native RC/RO policy uses shared AI control and
+ * checks Stop under that barrier. The command's generation and action scopes are not valid here. */
+export async function assertAiPresentationActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
+ if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
+ if(!ctx.userId||ctx.agent||ctx.entitlementsExempt!==undefined||ctx.statutoryOverride!==undefined||aiCentreActivity(ctx.tenantId)||currentAgentActionScope())
+  throw new AiGatewayError('AI presentation controls could not be confirmed.');
+ const [carrier]=await tx.execute<{allowed:boolean}>(sql`select
+  current_setting('transaction_isolation')='read committed' and current_setting('transaction_read_only')='on'
+  and nullif(current_setting('app.agent_principal_id',true),'') is null
+  and app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id()=${ctx.userId}::uuid as allowed`);
+ if(carrier?.allowed!==true)throw new AiGatewayError('AI presentation controls could not be confirmed.');
+ await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+ await assertFeatureUnpausedTx(tx,ctx,feature);
+}
+
+/** Read per-function settings after the presentation owner holds shared AI control and has
+ * checked Stop. The locking native command predicate remains the effect owner. */
+export async function aiPresentationFunctionsEnabledTx(tx:Tx,keys:readonly string[]):Promise<boolean>{
+ if(!keys.length||keys.some(key=>!/^(read|module):[a-z][a-z0-9_-]{0,99}$/.test(key)))return false;
+ const rows=await tx.execute<{function_key:string;enabled:boolean}>(sql`select function_key,enabled
+  from app.ai_centre_read_controls() where current_setting('transaction_isolation')='read committed'
+  and current_setting('transaction_read_only')='on' and function_key in (${sql.join(keys.map(key=>sql`${key}`),sql`,`)})`);
+ return keys.every(key=>rows.some(row=>row.function_key===key&&row.enabled===true));
+}
+
+async function assertFeatureUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
+ // WP13: template-only scheduled agents have no model admission at all.
+ if(isTemplateOnlyAiFeature(feature))throw new AiGatewayError('This feature makes no model call.');
+ const forcedPause=await forcedPauseTx(tx,ctx,feature);
+ const [control]=await tx.execute<{unpaused:boolean}>(sql`select app.ai_action_unpaused(${feature},${forcedPause}) as unpaused`);
+ if(control?.unpaused===false)throw new AiAllowanceError('paused');
+ if(control?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
 }
 
 /** Trusted command checks are additional refusal conditions, never model-supplied capabilities.

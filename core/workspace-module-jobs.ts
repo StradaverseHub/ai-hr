@@ -82,7 +82,7 @@ export async function loadGovernedSpecialistToolJob(ctx:SessionContext,tx:Tx,inp
   // card is withheld as unavailable, never shown as a success. The workspace owner has already proved
   // its principal under the Access interval it holds; a refusal here withholds only this card.
   let read:Awaited<ReturnType<typeof readGovernedSpecialistToolResultTx>>|null=null;
-  try{read=await tx.transaction(savepoint=>readGovernedSpecialistToolResultTx(savepoint,current,jobId,module));}catch{read=null;}
+  try{read=await tx.transaction(savepoint=>readGovernedSpecialistToolResultTx(savepoint,current,jobId,module,true));}catch{read=null;}
   try{if(!read||assistantSourceDigest(read.outcome)!==expectedDigest)throw Error();const presentation=presentGroundedToolOutcome('my_module_work',read.outcome);if(!presentation)throw Error();view=Object.freeze({state:'ready',presentation,checkedAt:Date.now(),viewId:randomUUID(),toolName:'my_module_work',answerExplanations:specialistAnswerExplanations(read.assessment,presentation),specialist:read.assessment,specialistVersion:read.outcome.specialistWork});}
   catch{view=Object.freeze({state:'unavailable',module:null,checkedAt:Date.now(),viewId:randomUUID()});}
  }

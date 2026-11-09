@@ -6,7 +6,7 @@ import { trackAiCentreFunctions } from '../lib/ai/centre-activity';
 import { assertAiPrincipalTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
 import { assertModuleEnabled, resolveEntitlementsTx } from './entitlements';
-import { assertAiActionUnpausedTx } from './ai-governance';
+import { aiPresentationFunctionsEnabledTx, assertAiActionUnpausedTx, assertAiPresentationActionUnpausedTx } from './ai-governance';
 import * as reads from './read';
 import { employeeClaimTypesTx, ownClaimStatuses } from '../packs/claims/service';
 import { createModuleAgentReaders } from './module-agent-readers';
@@ -19,20 +19,21 @@ export type AssistantModuleInterpreter=(module:AgentModuleCode,canonical:()=>Pro
 
 const unavailable = (): never => { throw new AiGatewayError('Assistant data access could not be confirmed.'); };
 const principalKey = (ctx: SessionContext) => JSON.stringify([ctx.tenantId, ctx.userId, ctx.personId ?? null, ctx.roles ?? null, ctx.grants ?? null]);
-const owners = new WeakMap<object, { active: boolean; principal: string; tx: Tx }>();
+const owners = new WeakMap<object, { active: boolean; principal: string; tx: Tx; presentation: boolean }>();
+type ReadOptions={interpret?:AssistantModuleInterpreter;presentation?:true};
 
-function createReads(ctx: SessionContext, tx: Tx, active: () => boolean,interpret?:AssistantModuleInterpreter) {
+function createReads(ctx: SessionContext, tx: Tx, active: () => boolean,options:ReadOptions={}) {
   const checked = async <T>(read: () => Promise<T>): Promise<T> => {
     if (!active()) return unavailable();
     const result = await read();
     if (!active()) return unavailable();
     return result;
   };
-  const canonical=createModuleAgentReaders(ctx,tx,active);
+  const canonical=createModuleAgentReaders(ctx,tx,active,options.presentation);
   return Object.freeze({
     ...canonical,
     moduleSpecialistWork:(module:AgentModuleCode)=>checked(async()=>{
-      if(interpret)return interpret(module,()=>canonical.moduleWork(module));
+      if(options.interpret)return options.interpret(module,()=>canonical.moduleWork(module));
       const result=await canonical.moduleWork(module),configuration={kind:'canonical_specialist_v1' as const,module,playbook:'canonical_domain_v1' as const};
       return{...result,specialistWork:compactSpecialistWork(executeCanonicalSpecialist(configuration,result),{mode:'baseline',version:0,configuration})};
     }),
@@ -64,20 +65,21 @@ export async function assistantFunctionAllowed(ctx: SessionContext, session: Ass
   const owner = owners.get(session), principal = principalKey(ctx);
   if (!owner?.active || owner.principal !== principal) return unavailable();
   try {
-    const [row] = await owner.tx.execute<{ allowed: boolean }>(sql`select app.ai_centre_read_allowed(${key}) as allowed`);
+    const allowed=owner.presentation?await aiPresentationFunctionsEnabledTx(owner.tx,[key]):
+      (await owner.tx.execute<{allowed:boolean}>(sql`select app.ai_centre_read_allowed(${key}) as allowed`))[0]?.allowed;
     if (!owner.active || owner.principal !== principal) return unavailable();
-    if(row?.allowed!==true)return false;
+    if(allowed!==true)return false;
     trackAiCentreFunctions(ctx.tenantId,[key]);
     return true;
   } catch { return unavailable(); }
 }
 
-async function guard(tx: Tx, ctx: SessionContext, module: string | null) {
+async function guard(tx: Tx, ctx: SessionContext, module: string | null,presentation=false) {
   await assertAiPrincipalTx(tx, ctx);
   const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
   await assertMayUseAssistant(fresh, tx);
   if (module !== null) assertModuleEnabled(fresh, module);
-  await assertAiActionUnpausedTx(tx, fresh, 'hr_assistant');
+  await (presentation?assertAiPresentationActionUnpausedTx:assertAiActionUnpausedTx)(tx, fresh, 'hr_assistant');
   return fresh;
 }
 
@@ -93,14 +95,14 @@ export async function withAssistantRead<T>(ctx: SessionContext, module: string |
     if (existing) {
       const owner = owners.get(existing);
       if (!owner?.active || owner.principal !== principalKey(captured)) return unavailable();
-      await guard(owner.tx, captured, module);
+      await guard(owner.tx, captured, module, owner.presentation);
       return await consume(existing);
     }
     return await withTenant(captured, async tx => {
       // Session setup performs SELECT/set_config only; this is still before any write.
       await tx.execute(sql`SET TRANSACTION READ ONLY`);
       const fresh = await guard(tx, captured, module);
-      const owner = { active: true, principal: principalKey(captured), tx };
+      const owner = { active: true, principal: principalKey(captured), tx, presentation:false };
       const session = createReads(fresh, tx, () => owner.active);
       owners.set(session, owner);
       try { return await consume(session); }
@@ -116,14 +118,14 @@ export async function withAssistantRead<T>(ctx: SessionContext, module: string |
  * the transaction remains private to the trusted source/admission owner.
  */
 async function withBoundAssistantReadsTx<T>(ctx: SessionContext, tx: Tx, modeExpected: 'on' | 'off',
-  consume: (session: AssistantReadSession) => Promise<T>,interpret?:AssistantModuleInterpreter): Promise<T> {
+  consume: (session: AssistantReadSession) => Promise<T>,options:ReadOptions={}): Promise<T> {
   const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   try {
     const [mode] = await tx.execute<{ readonly: string }>(sql`select current_setting('transaction_read_only') as readonly`);
     if (mode?.readonly !== modeExpected) return unavailable();
-    const fresh = await guard(tx, captured, null);
-    const owner = { active: true, principal: principalKey(captured), tx };
-    const session = createReads(fresh, tx, () => owner.active,interpret);
+    const fresh = await guard(tx, captured, null,options.presentation);
+    const owner = { active: true, principal: principalKey(captured), tx, presentation:options.presentation===true };
+    const session = createReads(fresh, tx, () => owner.active,options);
     owners.set(session, owner);
     try { return await consume(session); }
     finally { owner.active = false; }
@@ -137,6 +139,12 @@ async function withBoundAssistantReadsTx<T>(ctx: SessionContext, tx: Tx, modeExp
 export function withAssistantReadTx<T>(ctx: SessionContext, tx: Tx,
   consume: (session: AssistantReadSession) => Promise<T>): Promise<T> {
   return withBoundAssistantReadsTx(ctx, tx, 'on', consume);
+}
+
+/** A display-only historical read carries shared policy through all nested tools. */
+export function withAssistantPresentationReadTx<T>(ctx:SessionContext,tx:Tx,
+  consume:(session:AssistantReadSession)=>Promise<T>):Promise<T>{
+  return withBoundAssistantReadsTx(ctx,tx,'on',consume,{presentation:true});
 }
 
 /** Canonical provider admission must write only its own reservation after source checks. Its trusted
@@ -154,5 +162,5 @@ export function withAssistantAdmissionReadsTx<T>(ctx: SessionContext, tx: Tx,
  */
 export function withAssistantJobReadsTx<T>(ctx: SessionContext, tx: Tx,
   consume: (session: AssistantReadSession) => Promise<T>,interpret?:AssistantModuleInterpreter): Promise<T> {
-  return withBoundAssistantReadsTx(ctx, tx, 'off', consume,interpret);
+  return withBoundAssistantReadsTx(ctx, tx, 'off', consume,{interpret});
 }
