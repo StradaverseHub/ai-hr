@@ -5,7 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync,realpathSync,lstatSync,openSync,fstatSync,closeSync,constants} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
-import {singletonProfile,singletonKind,singletonSources,singletonSourceMaximum,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls} from '../../.github/ci/singleton-protocol.mjs';
+import {NATIVE_WORKLOAD_DATABASE_PROFILE,nativeNextProfile,singletonProfile,singletonKind,singletonSources,singletonSourceMaximum,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,validateNativeWorkloadDatabaseUrls} from '../../.github/ci/singleton-protocol.mjs';
 import {workerDb} from '../db-names';
 import {readProtectedBootstrap} from '../../.github/ci/native-next-installation.mjs';
 import {nativePreparationEnvironment} from '../../.github/ci/candidate-environment.mjs';
@@ -20,15 +20,18 @@ function regular(path:string,maximum:number,privateFile=false){
 export function admitSingletonTest(file:string){
  const profile=singletonProfile(file);assert(profile,'Unregistered singleton test');
  const env=process.env;assert.equal(process.platform,'linux');assert.equal(env.GITHUB_ACTIONS,'true');assert.equal(env.RUNNER_ENVIRONMENT,'github-hosted');assert.equal(env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');
+ const workload=profile===NATIVE_WORKLOAD_DATABASE_PROFILE;
+ if(workload)assert(env.GITHUB_JOB==='native-test'&&env.AIHR_CI_SINGLETON_BINDING,'Native workload database requires the protected full-CI unit');
  const source=realpathSync(process.cwd()),temp=realpathSync(env.RUNNER_TEMP!),candidate=git(source,'rev-parse','HEAD');assert.equal(candidate,env.AIHR_CI_HEAD);assert.equal(git(source,'status','--porcelain'),'');
  if(singletonKind(profile)==='db'){
-  const pool=env.VITEST_POOL_ID??env.VITEST_WORKER_ID;assert(pool&&/^[1-9][0-9]*$/.test(pool));assert.notEqual(env.WORKER_DB,'0');validateSingletonDatabaseUrls(env,workerDb(pool));
+  const pool=env.VITEST_POOL_ID??env.VITEST_WORKER_ID;assert(pool&&/^[1-9][0-9]*$/.test(pool));assert.notEqual(env.WORKER_DB,'0');
+  if(workload)validateNativeWorkloadDatabaseUrls(env,workerDb(pool));else validateSingletonDatabaseUrls(env,workerDb(pool));
  }
  const hints=Object.keys(env).filter(key=>key.startsWith('AIHR_CI_SINGLETON_'));
  if(hints.length){
   assert.deepEqual(hints,['AIHR_CI_SINGLETON_BINDING']);assert(!Object.keys(env).some(key=>key.startsWith('AIHR_FOCUSED_')),'Mixed singleton/focused intent');
   assert.equal(env.VITEST_MAX_WORKERS,'1');assert.equal(env.VITEST_MAX_WORKERS_NODB,'1');
-  const bootstrap=profile==='linux-next-postgres-v1'?readProtectedBootstrap(env):null;
+  const bootstrap=nativeNextProfile(profile)?readProtectedBootstrap(env):null;
   const workspace=realpathSync(env.GITHUB_WORKSPACE!),automation=realpathSync(bootstrap?.automation??join(workspace,'automation')),directory=join(temp,'aihr-ci');
   assert.equal(source,join(workspace,'source'));assert.equal(automation,bootstrap?.automation??join(workspace,'automation'));
   const bindingPath=env.AIHR_CI_SINGLETON_BINDING!;assert.equal(resolve(bindingPath),bindingPath);assert.equal(realpathSync(directory),directory);assert.equal(join(directory,resolve(bindingPath).split('/').at(-1)!),bindingPath);
@@ -47,7 +50,12 @@ export function admitSingletonTest(file:string){
   validateSingletonBinding(binding,plan,unit,{runId:env.GITHUB_RUN_ID,attempt:env.GITHUB_RUN_ATTEMPT},source);
   for(const path of singletonSources(unit,source))assert.equal(createHash('sha256').update(regular(join(source,path),singletonSourceMaximum(path))).digest('hex'),binding.sourceHashes[path]);
   if(typeof unit.id!=='string')throw Error('Actual singleton unit ID must be a string');
-  return {mode:'full-ci-singleton' as const,evidenceDirectory:directory,databaseUnit:unit.id};
+  return {mode:'full-ci-singleton' as const,evidenceDirectory:directory,databaseUnit:unit.id,
+   ...(workload?{workloadDatabase:binding.prerequisites.workloadDatabase,workloadContext:{
+    source:binding.candidate,controller:binding.controller,runId:binding.runId,attempt:binding.attempt,fingerprint:binding.fingerprint,
+    buildArtifactId:binding.prerequisites.build.artifactId,buildProducerJobId:binding.prerequisites.build.producerJobId,
+    buildArchiveSha256:binding.prerequisites.build.archiveSha256,
+   }}:{})};
  }
  assert.equal(env.GITHUB_WORKFLOW,'alpha-focused-checks');assert.equal(env.GITHUB_JOB,'selected-tests');assert.equal(env.GITHUB_RUN_ATTEMPT,'1');assert.equal(env.AIHR_FOCUSED_SUITE_CAPACITY,'true');
  assert.deepEqual(JSON.parse(env.AIHR_FOCUSED_TESTS??'null'),[file],'A real exact sole-file focused invocation is required');
