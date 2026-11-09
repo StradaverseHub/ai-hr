@@ -1,7 +1,8 @@
 """Strict archive data inspection for one fixed browser toolchain.
 
-Inputs are seekable byte streams already held by the caller. This module
-performs no transfer, extraction, installation, or executable admission.
+Callers must supply exclusively held, immutable, seekable archive bytes.
+This module cannot establish that custody and performs no transfer,
+extraction, installation, or executable admission.
 """
 import base64
 import hashlib
@@ -215,6 +216,7 @@ def zip_directory(source, size, deadline):
         zip_extras(read_exact(source, extra_size))
         path = relative_path(name, BROWSER_ROOT.encode())
         mode = external >> 16
+        require(not external & 0x18, 'ZIP DOS type disagrees with regular member')
         require(path not in entries and stat.S_IFMT(mode) in (0, stat.S_IFREG), 'duplicate or nonregular ZIP member')
         expanded += decoded
         require(expanded <= ZIP_EXPANDED_MAX, 'expanded ZIP bound exceeded')
@@ -352,17 +354,33 @@ def tar_text(field):
     return value
 
 
+def tar_octal(field):
+    match = re.fullmatch(rb' *([0-7]+)[ \0]+', field)
+    require(match is not None, 'non-octal tar field')
+    return int(match[1], 8)
+
+
 def tar_header(header):
-    require(header[257:265] == b'ustar\0' + b'00' and header[156:157] in (b'0', b'\0', b'5')
+    kind = header[156:157]
+    require(len(header) == 512 and header[257:265] == b'ustar\0' + b'00'
+            and kind in (tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE)
             and not any(header[157:257]), 'unsupported tar entry')
-    for start, end in ((100, 108), (108, 116), (116, 124), (124, 136), (136, 148), (148, 156)):
-        require(re.fullmatch(rb'[0-7]+', header[start:end].strip(b' \0')), 'non-octal tar field')
+    require(not any(header[500:512]), 'nonzero tar reserved padding')
+    raw = tuple(tar_octal(header[start:end]) for start, end in (
+        (100, 108), (108, 116), (116, 124), (124, 136), (136, 148), (148, 156)))
+    # Device fields are unused for the admitted kinds. Allow all-NUL fields
+    # or the same complete-field octal encoding of zero.
+    devices = tuple(tar_octal(field) if any(field) else 0 for field in (header[329:337], header[337:345]))
+    require(devices == (0, 0), 'tar device fields must be zero')
     try:
         info = tarfile.TarInfo.frombuf(header, 'ascii', 'strict')
     except (tarfile.HeaderError, UnicodeError, ValueError):
         raise ArchiveRefused('invalid tar header') from None
+    require(raw == (info.mode, info.uid, info.gid, info.size, info.mtime, info.chksum)
+            and devices == (info.devmajor, info.devminor), 'tar decoded numeric fields differ')
+    require(info.type == kind, 'tar entry type was reinterpreted')
     name, prefix = tar_text(header[:100]), tar_text(header[345:500])
-    directory = info.isdir()
+    directory = kind == tarfile.DIRTYPE
     path = relative_path(prefix + b'/' + name if prefix else name, b'package', directory=directory)
     require('node_modules' not in path.split('/') and 0 <= info.size <= PACKAGE_MEMBER_MAX
             and (not directory or info.size == 0), 'unsupported tar member extent')
@@ -370,9 +388,17 @@ def tar_header(header):
     return path, directory, 0o555 if directory else mode, info.size
 
 
-def package_rows(source, size, deadline, maximum=PACKAGE_COUNT_MAX):
+def package_rows(source, archive_size, deadline, expected_digest, maximum=PACKAGE_COUNT_MAX):
     source.seek(0)
-    stream = TarStream(inflate(chunks(source, size, deadline), 16 + zlib.MAX_WBITS, TAR_MAX, deadline))
+    consumed_digest = hashlib.sha512()
+
+    def compressed_blocks():
+        for block in chunks(source, archive_size, deadline):
+            immutable = bytes(block)
+            consumed_digest.update(immutable)
+            yield immutable
+
+    stream = TarStream(inflate(compressed_blocks(), 16 + zlib.MAX_WBITS, TAR_MAX, deadline))
     rows, manifests = {}, {}
     while True:
         remaining(deadline)
@@ -402,6 +428,9 @@ def package_rows(source, size, deadline, maximum=PACKAGE_COUNT_MAX):
         if wanted:
             manifests[path] = bytes(manifest)
     require(rows, 'empty tool package')
+    remaining(deadline)
+    require(source.read(1) == b'', 'package compressed extent changed')
+    require(hmac.compare_digest(consumed_digest.digest(), expected_digest), 'parsed package SHA-512 differs')
     return rows, manifests
 
 
@@ -466,7 +495,7 @@ def inspect_package(name, source, deadline, *, maximum=PACKAGE_COUNT_MAX):
     size, digest = archive_hash(source, PACKAGE_MAX, 'sha512', deadline)
     require(hmac.compare_digest('sha512-' + base64.b64encode(digest).decode('ascii'), integrity),
             'locked package SHA-512 differs')
-    files, manifests = package_rows(source, size, deadline, maximum)
+    files, manifests = package_rows(source, size, deadline, digest, maximum)
     package_entrypoints(name, version, files, manifests)
     rows = with_parents(files, maximum)
     remaining(deadline)

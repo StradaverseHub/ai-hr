@@ -67,8 +67,8 @@ def zipped(entries, *, preamble=b'', gap=b'', locator=b'', count=None):
             local += struct.pack('<III', *opts.get('descriptor_values', values))
         mode = opts.get('mode', stat.S_IFREG | 0o644)
         central += struct.pack('<4s6H3I5H2I', b'PK\x01\x02', 0x314, 20, flags, method, clock,
-                               date, *values, len(name), len(extra), 0, 0, 0, mode << 16,
-                               opts.get('offset', position))
+                               date, *values, len(name), len(extra), 0, 0, 0,
+                               mode << 16 | opts.get('dos_attributes', 0), opts.get('offset', position))
         central += name + extra
     local += gap
     count = len(entries) if count is None else count
@@ -92,8 +92,32 @@ def raw_tar(entries, end=bytes(1024)):
     return b''.join(tar_entry(*item) for item in entries) + end
 
 
+def with_tar_field(header, start, value):
+    result = bytearray(header)
+    result[start:start + len(value)] = value
+    result[148:156] = b' ' * 8
+    result[148:156] = f'{sum(result):06o}'.encode() + b'\0 '
+    return bytes(result)
+
+
 def package_rows(raw):
-    return T.package_rows(io.BytesIO(raw), len(raw), deadline())
+    return T.package_rows(io.BytesIO(raw), len(raw), deadline(), hashlib.sha512(raw).digest())
+
+
+class ReplayedArchive(io.BytesIO):
+    def __init__(self, original, replay):
+        super().__init__(original)
+        self.replay = replay
+        self.rewinds = 0
+
+    def seek(self, offset, whence=0):
+        if offset == whence == 0:
+            self.rewinds += 1
+            if self.rewinds == 2:
+                super().seek(0)
+                super().truncate()
+                super().write(self.replay)
+        return super().seek(offset, whence)
 
 
 def sri(raw):
@@ -163,6 +187,13 @@ class StrictToolchainArchiveModels(unittest.TestCase):
             with self.subTest(size=len(raw)), self.assertRaises(T.ArchiveRefused):
                 zip_rows(raw)
 
+    def test_zip_refuses_dos_directory_and_volume_flags_on_regular_members(self):
+        name = ROOT + b'/regular'
+        self.assertIn(name.decode(), zip_rows(zipped([(name, b'v', {'dos_attributes':0x21})])))
+        for attributes in (0x08, 0x10, 0x18):
+            with self.subTest(attributes=attributes), self.assertRaisesRegex(T.ArchiveRefused, 'ZIP DOS type'):
+                zip_rows(zipped([(name, b'v', {'dos_attributes':attributes})]))
+
     def test_raw_deflate_requires_natural_exact_end_and_independent_crc(self):
         name = ROOT + b'/member'
         payload = b'payload' * 100
@@ -212,12 +243,55 @@ class StrictToolchainArchiveModels(unittest.TestCase):
                 T.inspect_package('other', io.BytesIO(raw), deadline())
         parser.assert_not_called()
 
+    def test_parse_consumed_package_bytes_must_match_the_initial_locked_digest_and_extent(self):
+        version, members = model_package('postgres')
+        original = gzip.compress(raw_tar(members), compresslevel=0, mtime=0)
+        path, content = members[-1]
+        altered = gzip.compress(raw_tar([*members[:-1], (path, content.replace(b'postgres', b'postgrez'))]),
+                                compresslevel=0, mtime=0)
+        new_timestamp = original[:4] + b'\x01\0\0\0' + original[8:]
+        self.assertEqual(len(original), len(altered))
+        self.assertNotEqual(package_rows(original)[0], package_rows(altered)[0])
+        self.assertEqual(package_rows(original), package_rows(new_timestamp))
+        for replay, reason in ((altered, 'parsed package SHA-512'), (new_timestamp, 'parsed package SHA-512'),
+                               (original+b'extra', 'package compressed extent changed'),
+                               (original[:-1], 'truncated archive extent')):
+            source = ReplayedArchive(original, replay)
+            with self.subTest(reason=reason), patch.dict(T.PACKAGES, {'postgres':(version, sri(original))}), \
+                 self.assertRaisesRegex(T.ArchiveRefused, reason):
+                T.inspect_package('postgres', source, deadline())
+            self.assertEqual(source.rewinds, 2)
+
     def test_tar_end_cannot_hide_a_gzip_suffix_second_member_or_invalid_footer(self):
         base = gzip.compress(raw_tar([('package/a', b'a')]), mtime=0)
         for raw in (base+b'extra', base+gzip.compress(b'',mtime=0), base[:-1],
                     base[:-8]+b'\0'*8):
             with self.subTest(size=len(raw)), self.assertRaises(T.ArchiveRefused):
                 package_rows(raw)
+
+    def test_tar_octal_fields_match_native_decode_without_ignored_digits(self):
+        header = tar_entry('package/file')
+        valid = with_tar_field(header, 100, b'   644\0 ')
+        self.assertEqual(T.tar_header(valid), ('package/file',False,0o444,0))
+        for start, raw, field in ((100,b'\0' + b'004755' + b'\0','mode'),
+                                  (124,b'\0' + b'0000000001' + b'\0','size'),
+                                  (100,b'00\0 2\0  ','mode')):
+            forged = with_tar_field(header, start, raw)
+            # Independent checksum-valid stdlib decoding witnesses the old ambiguity.
+            self.assertEqual(getattr(tarfile.TarInfo.frombuf(forged,'ascii','strict'),field),0)
+            with self.subTest(field=field, raw=raw.hex()), self.assertRaisesRegex(T.ArchiveRefused, 'non-octal'):
+                T.tar_header(forged)
+
+    def test_tar_keeps_explicit_directory_and_rejects_v7_alias_and_reserved_bytes(self):
+        explicit = tar_entry('package/explicit/',kind=tarfile.DIRTYPE,mode=0o755)
+        self.assertEqual(T.tar_header(explicit), ('package/explicit',True,0o555,0))
+        alias = tar_entry('package/implicit/',kind=tarfile.AREGTYPE,mode=0o755)
+        self.assertEqual(tarfile.TarInfo.frombuf(alias,'ascii','strict').type,tarfile.DIRTYPE)
+        with self.assertRaisesRegex(T.ArchiveRefused, 'type was reinterpreted'):
+            T.tar_header(alias)
+        for position in (500,511):
+            with self.subTest(position=position), self.assertRaisesRegex(T.ArchiveRefused, 'reserved padding'):
+                T.tar_header(with_tar_field(explicit,position,b'\x01'))
 
     def test_tar_refuses_extended_entries_links_privilege_duplicates_and_nonzero_padding(self):
         regular = ('package/file',b'x')

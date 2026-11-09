@@ -1,9 +1,9 @@
 {
   "kind": "STRICT_BROWSER_TOOL_ARCHIVE_SOURCE_ONLY_NO_INSTALL_AUTHORITY",
   "version": 1,
-  "parent": "705e92409e0a1b5d3023d55cdd2d21a0087b9c1a",
+  "parent": "7f337f106748e6453f692c1b799738b53b0108bf",
   "previousCustody": "869681b4bd9f933725b82401f6a49f4134e48ace",
-  "sourceRef": "codex/native-workload-strict-tool-leaf-20261109",
+  "sourceRef": "codex/native-workload-strict-tool-identity-20261109",
   "leasePaths": [
     ".github/ci/native-workload-browser-toolchain.py",
     ".github/ci/native-workload-browser-toolchain.test.py",
@@ -11,12 +11,12 @@
   ],
   "exactNewSourceBytes": {
     ".github/ci/native-workload-browser-toolchain.py": {
-      "bytes": 21682,
-      "sha256": "8f41e89fb3eda7d37d0f5ae8ba119fb6ccd83e73e3c1de9d5dc75115495be5a5"
+      "bytes": 23113,
+      "sha256": "795e5d53a96b0dcfbbe03c95ef1f3cc3bd5d4e28a0ba04b4bfc342245abcaea7"
     },
     ".github/ci/native-workload-browser-toolchain.test.py": {
-      "bytes": 14210,
-      "sha256": "baf9a3857095b3055b41831472f8920b40bc20fbf28892be1e9f84adea271854"
+      "bytes": 18382,
+      "sha256": "40afe4f2236d1336f5645f2c85d4a05c034705d9a544b7ba0919fadf32d04c8f"
     }
   },
   "parentToolInputs": {
@@ -130,12 +130,16 @@
     "test_complete_zip_checks_actual_bytes_modes_and_both_classic_descriptor_shapes",
     "test_zip_refuses_bad_local_identity_overlap_preamble_and_descriptor",
     "test_zip_refuses_hidden_central_members_zip64_extra_and_local_aliases",
+    "test_zip_refuses_dos_directory_and_volume_flags_on_regular_members",
     "test_raw_deflate_requires_natural_exact_end_and_independent_crc",
     "test_executable_program_table_and_tree_parent_are_independent_checks",
     "test_browser_rejects_synthetic_transfer_before_parser_even_at_expected_size",
     "test_three_fictional_lock_sri_archives_admit_exact_known_package_entrypoints",
     "test_package_sri_identity_precedes_any_tar_parsing",
+    "test_parse_consumed_package_bytes_must_match_the_initial_locked_digest_and_extent",
     "test_tar_end_cannot_hide_a_gzip_suffix_second_member_or_invalid_footer",
+    "test_tar_octal_fields_match_native_decode_without_ignored_digits",
+    "test_tar_keeps_explicit_directory_and_rejects_v7_alias_and_reserved_bytes",
     "test_tar_refuses_extended_entries_links_privilege_duplicates_and_nonzero_padding",
     "test_sri_match_alone_cannot_substitute_package_or_browser_manifest",
     "test_combined_tree_budget_accounts_for_implicit_parents_before_each_package",
@@ -146,5 +150,61 @@
   "strictPublisherBytesAccepted": false,
   "runtimeRegistered": false,
   "installed": false,
-  "releaseEligible": false
+  "releaseEligible": false,
+  "parserIdentityCorrection": {
+    "initialToolLeafBase": "705e92409e0a1b5d3023d55cdd2d21a0087b9c1a",
+    "priorLeaf": "7f337f106748e6453f692c1b799738b53b0108bf",
+    "priorIndependentReview": {
+      "bytes": 5921,
+      "sha256": "044d6b24fc79de793db78f813e646f837de378a99c2fe08b6aced254d2d3bdcf"
+    },
+    "priorFrozenProof": {
+      "bytes": 3233,
+      "sha256": "05796e478454053c2ad037e70b1bf625843a5c325d6936aa6be64ac83c47d5da"
+    },
+    "wholeDirectParentGitPreimages": {
+      ".github/ci/native-workload-browser-toolchain.py": {
+        "gitMode": "100644",
+        "gitBlob": "bef17427965d7016662e37f3513b800ef29620d5",
+        "bytes": 21682,
+        "sha256": "8f41e89fb3eda7d37d0f5ae8ba119fb6ccd83e73e3c1de9d5dc75115495be5a5"
+      },
+      ".github/ci/native-workload-browser-toolchain.test.py": {
+        "gitMode": "100644",
+        "gitBlob": "198060be1a860c22c4553c921ae96afa416fae0a",
+        "bytes": 14210,
+        "sha256": "baf9a3857095b3055b41831472f8920b40bc20fbf28892be1e9f84adea271854"
+      },
+      "docs/qualification/native-workload-browser-toolchain-source-20261109.json": {
+        "gitMode": "100644",
+        "gitBlob": "25132be781d7da225ca51b3445b627ec2b629b27",
+        "bytes": 6522,
+        "sha256": "791ab996385b1d59ce20f89d46d705f56f27a7a857f33beb17b1286e931a3558"
+      }
+    },
+    "syntheticModelMethodsAdded": [
+      "test_zip_refuses_dos_directory_and_volume_flags_on_regular_members",
+      "test_parse_consumed_package_bytes_must_match_the_initial_locked_digest_and_extent",
+      "test_tar_octal_fields_match_native_decode_without_ignored_digits",
+      "test_tar_keeps_explicit_directory_and_rejects_v7_alias_and_reserved_bytes"
+    ],
+    "rawTar": {
+      "completeOctalFieldAndStdlibAgreement": true,
+      "explicitDirectoryTypeOnly": true,
+      "reservedPaddingAndUnusedDeviceFieldsZero": true
+    },
+    "zip": {
+      "refusesDirectoryAndVolumeDosFlagsOnRegularMember": true,
+      "otherZipParserFramingWhole": true
+    },
+    "package": {
+      "initialLockedSRIBeforeParsing": true,
+      "digestUsesActualCompressedDecoderInput": true,
+      "exactParsedCompressedExtent": true
+    },
+    "immutableExclusivelyHeldSourceRequired": true,
+    "physicalSourceCustodyEstablished": false,
+    "nativeExecutionVerified": false,
+    "historicalEvidenceTransferred": false
+  }
 }
