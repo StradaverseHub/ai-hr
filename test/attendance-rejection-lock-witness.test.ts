@@ -12,6 +12,7 @@ import {endReportingLine,hireEmployee,setReportingLine} from '../core/org';
 import {LeaveDependencyUnavailable} from '../core/leave-dependency-lock';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
+import {restoreHistoricalAttendanceSubmission} from './helpers/attendance-submission-fixture';
 
 beforeAll(migrateTestDb);
 afterAll(closeAll);
@@ -89,17 +90,21 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
   const base=await seedBase();
   const admin=adminCtx(base);
   await setModule(base.tenantId,'attendance','active');
-  const makeRequest=async(name:string,requestedOtMinutes?:number)=>{
+  const restoreRequest=async(name:string,requestedOtMinutes:number|null=null)=>{
     const subject=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},
       companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
-    const employee:SessionContext={...admin,userId:await createAppUser(base.tenantId,subject.personId,'employee'),
-      personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:base.companyId}]};
-    const {correctionId}=await requestAttendanceCorrection(employee,{employmentId:subject.employmentId,date:todayInKualaLumpur(),
-      checkIn:'09:00',checkOut:'18:00',requestedOtMinutes,reason:'Fictional legacy request'});
-    return {correctionId,employmentId:subject.employmentId};
+    // Keep the original clock-pair shape and restore the pending row that predates mandatory routing.
+    const {id}=await restoreHistoricalAttendanceSubmission(base,{
+      employmentId:subject.employmentId,attendanceDate:todayInKualaLumpur(),status:'pending',requestKind:'other',
+      proposedCheckIn:'09:00',proposedCheckOut:'18:00',requestedOtMinutes,reason:'Fictional legacy request',
+      originalClockSnapshot:{version:1,attendanceId:null,originalCheckIn:null,originalCheckOut:null,capturedAt:new Date().toISOString()},
+    });
+    return {correctionId:id,employmentId:subject.employmentId};
   };
-  const first=await makeRequest('Fictional rejection subject A');
-  const second=await makeRequest('Fictional rejection subject B');
+  const first=await restoreRequest('Fictional rejection subject A');
+  const second=await restoreRequest('Fictional rejection subject B');
+  expect(await owner.db.select({id:attendanceWorkflowRequest.id}).from(attendanceWorkflowRequest)
+    .where(eq(attendanceWorkflowRequest.tenantId,base.tenantId))).toEqual([]);
   const rollback=new Error('rollback only');
   async function reject(request:typeof first,shared:boolean,onSubjectLocked?:()=>Promise<void>){
     let snapshot:unknown;
@@ -233,7 +238,7 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
   expect(await owner.db.select({id:domainEvent.id}).from(domainEvent)
     .where(and(eq(domainEvent.tenantId,base.tenantId),eq(domainEvent.eventType,'attendance-correction.rejected')))).toHaveLength(2);
 
-  const overtime=await makeRequest('Fictional overtime rejection subject',60);
+  const overtime=await restoreRequest('Fictional overtime rejection subject',60);
   const holdingAccess=barrier(),releaseAccess=barrier();
   let accessHolderPid=0;
   const accessHolder=owner.client.begin(async tx=>{
