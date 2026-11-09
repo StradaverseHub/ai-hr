@@ -55,11 +55,17 @@ control. The tour is a source-backed explanation for an account-click timeout.
 The original evidence does not show that the driver reached that click.
 
 The BOOT driver now checks the first Home card inventory, loading, Today content,
-headcount and tenant isolation before it uses the real Skip button. It observes a
-successful same-origin Home Next Action response and waits for the tour to hide.
-The account-menu hydration check stays in place. Later full group HR navigations
-check that the tour remains dismissed, and the employee Home check confirms
-that it does not auto-open there. No fixture sets a completion flag in advance.
+headcount and tenant isolation before it uses the real Skip button. It waits for
+the full same-origin Home Next Action response to finish, verifies its successful
+status and waits for the tour to hide. The account-menu hydration check stays in
+place. Later full group HR and employee Home navigations check that the dialog
+is absent after hydration. Committed onboarding state has its own verification
+boundary. The fixture starts with the normal unset completion flag.
+
+The closed Busy and unavailable markers are checked on the main container and
+its descendants before the Home checks and again after account hydration. The
+normal loading skeleton still settles through the existing wait. The existing
+alert and network error checks continue to apply.
 
 An append-only first Home trace records each fixed phase before its work. The
 18 phases cover navigation, visible identity, card discovery and completion,

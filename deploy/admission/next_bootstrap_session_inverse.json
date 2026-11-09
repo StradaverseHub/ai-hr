@@ -82,105 +82,111 @@
       ]
     },
     "scripts/performance/native-next-boot-browser.mjs": {
-      "currentSha256": "26e0956d1ce836a19ef4d13629fdec481872f8e92cb8c2a7f83287ff88f909c0",
+      "currentSha256": "89ed288238609baac6c476a56555ec70704de968271009edd40603e0d8e09063",
       "originalSha256": "59ace1764c5187987287e27cf94c203eeb00b12c33474ce91c8e265a80e569bb",
       "originalBase64": "LyoqIEZpcnN0IGFjdHVhbDItd29ya2VyIGJvb3QvYXV0aC9Ib21lIHdpdG5lc3Mgb25seTsgbm90IHRoZTUwMC11c2VyL2Z1bGwgam91cm5leSBnYXRlLiAqLwppbXBvcnQgYXNzZXJ0IGZyb20gJ25vZGU6YXNzZXJ0L3N0cmljdCc7CmltcG9ydCB7cmVhZEZpbGVTeW5jLHdyaXRlRmlsZVN5bmMsbHN0YXRTeW5jLHJlYWxwYXRoU3luYyxvcGVuU3luYyxmc3RhdFN5bmMsY2xvc2VTeW5jLGNvbnN0YW50c30gZnJvbSAnbm9kZTpmcyc7CmltcG9ydCB7am9pbn0gZnJvbSAnbm9kZTpwYXRoJzsKaW1wb3J0IHtjcmVhdGVJbnRlcmZhY2V9IGZyb20gJ25vZGU6cmVhZGxpbmUnOwppbXBvcnQge3BlcmZvcm1hbmNlfSBmcm9tICdub2RlOnBlcmZfaG9va3MnOwppbXBvcnQge2Nocm9taXVtfSBmcm9tICdwbGF5d3JpZ2h0JzsKaW1wb3J0IHtnZW5lcmF0ZX0gZnJvbSAnb3RwbGliJzsKYXNzZXJ0LmVxdWFsKHByb2Nlc3MucGxhdGZvcm0sJ2xpbnV4Jyk7YXNzZXJ0KHByb2Nlc3MuZ2V0dWlkKCk+MCk7YXNzZXJ0LmVxdWFsKHByb2Nlc3MuYXJndi5sZW5ndGgsMyk7CmNvbnN0IGZpbGU9cHJvY2Vzcy5hcmd2WzJdLGluZm89bHN0YXRTeW5jKGZpbGUpOwphc3NlcnQoaW5mby5pc0ZpbGUoKSYmIWluZm8uaXNTeW1ib2xpY0xpbmsoKSYmaW5mby51aWQ9PT1wcm9jZXNzLmdldHVpZCgpJiYoaW5mby5tb2RlJjBvNzc3KT09PTBvNjAwJiZpbmZvLnNpemU+MCYmaW5mby5zaXplPD0yKjEwMjQqKjIpOwpjb25zdCBmZD1vcGVuU3luYyhmaWxlLGNvbnN0YW50cy5PX1JET05MWXxjb25zdGFudHMuT19OT0ZPTExPVyk7bGV0IGlucHV0Owp0cnl7Y29uc3QgYWN0dWFsPWZzdGF0U3luYyhmZCk7YXNzZXJ0LmVxdWFsKGFjdHVhbC5kZXYsaW5mby5kZXYpO2Fzc2VydC5lcXVhbChhY3R1YWwuaW5vLGluZm8uaW5vKTthc3NlcnQuZXF1YWwoYWN0dWFsLnNpemUsaW5mby5zaXplKTsKIGlucHV0PUpTT04ucGFyc2UocmVhZEZpbGVTeW5jKGZkLCd1dGY4JykpO2Fzc2VydC5lcXVhbChmc3RhdFN5bmMoZmQpLm10aW1lTXMsYWN0dWFsLm10aW1lTXMpO2Fzc2VydC5lcXVhbChsc3RhdFN5bmMoZmlsZSkuaW5vLGFjdHVhbC5pbm8pOwp9ZmluYWxseXtjbG9zZVN5bmMoZmQpO30KY29uc3QgYmFzZT0naHR0cHM6Ly9sb2NhbGhvc3Q6MzQ0Myc7CmFzc2VydC5kZWVwRXF1YWwoT2JqZWN0LmtleXMoaW5wdXQpLnNvcnQoKSxbJ2J1ZGdldE1zJywnZXZpZGVuY2VEaXJlY3RvcnknLCdmaXh0dXJlJywna2luZCcsJ3ZlcnNpb24nXSk7CmFzc2VydC5lcXVhbChpbnB1dC52ZXJzaW9uLDEpO2Fzc2VydC5lcXVhbChpbnB1dC5raW5kLCdQUklWQVRFX05BVElWRV9ORVhUX0JPT1RfQlJPV1NFUl9JTlBVVCcpOwphc3NlcnQuZXF1YWwoaW5wdXQuZml4dHVyZS5raW5kLCdGSUNUSU9OQUxfTkFUSVZFX05FWFRfU01PS0VfT05MWScpO2Fzc2VydC5lcXVhbChpbnB1dC5maXh0dXJlLmFjdG9ycy5sZW5ndGgsOCk7CmFzc2VydC5lcXVhbChpbnB1dC5maXh0dXJlLnByZWlzc3VlZFNlc3Npb25zLDApO2Fzc2VydC5lcXVhbChpbnB1dC5maXh0dXJlLnByb3ZpZGVyc0NvbmZpZ3VyZWQsMCk7CmFzc2VydChOdW1iZXIuaXNTYWZlSW50ZWdlcihpbnB1dC5idWRnZXRNcykmJmlucHV0LmJ1ZGdldE1zPjAmJmlucHV0LmJ1ZGdldE1zPD0zMDAwMDApOwphc3NlcnQuZXF1YWwocmVhbHBhdGhTeW5jKGlucHV0LmV2aWRlbmNlRGlyZWN0b3J5KSxpbnB1dC5ldmlkZW5jZURpcmVjdG9yeSk7CmNvbnN0IFthZG1pbiwsLGVtcGxveWVlXT1pbnB1dC5maXh0dXJlLmFjdG9ycyxmb3JlaWduPWlucHV0LmZpeHR1cmUuYWN0b3JzWzVdOwphc3NlcnQuZXF1YWwoYWRtaW4ucm9sZSwnZ3JvdXBIUicpO2Fzc2VydC5lcXVhbChlbXBsb3llZS5yb2xlLCdlbXBsb3llZScpO2Fzc2VydC5ub3RFcXVhbChhZG1pbi50ZW5hbnRJZCxmb3JlaWduLnRlbmFudElkKTsKY29uc3QgZGVhZGxpbmU9cGVyZm9ybWFuY2Uubm93KCkraW5wdXQuYnVkZ2V0TXMsZXJyb3JzPVtdLHJlcG9ydD17dmVyc2lvbjoxLGtpbmQ6J0FDVFVBTF9ORVhUX1RXT19XT1JLRVJfQk9PVF9BVVRIX0hPTUVfT05MWScsCiBjb21wbGV0ZTpmYWxzZSxyZWxlYXNlRWxpZ2libGU6ZmFsc2UsZnVsbEFwcGxpY2F0aW9uSm91cm5leXNWZXJpZmllZDpmYWxzZSxmaXh0dXJlVXNlcnM6OCxwcmVpc3N1ZWRTZXNzaW9uczowLAogbG9naW5zOltdLGhvbWU6W10saHlkcmF0ZWRBY2NvdW50Q29udHJvbHM6MCxjb2xkQnVzaW5lc3NSZXF1ZXN0czpbXSxzZXJ2ZWRQb3J0czpbXSwKIHJlbWFpbmluZzpbJ2FjdGlvbnMtYW5kLXJlc3BvbnNlLWxvc3MnLCdmcmVzaG5lc3MtYW5kLXBlcm1pc3Npb24tZGVjcmVhc2UnLCdpbWFnZS1jYWNoZS1hbmQtUERGJywndXBsb2Fkcy1hbmQtc3RyZWFtaW5nJywKICAnZnVsbC1tb2R1bGUtYnJvd3Nlci1wcmVmbGlnaHQnLCc1MDAtYWN0b3Itd29ya2VyLWxvYWQnLCdwcm90ZWN0ZWQtaW5zdGFsbGF0aW9uLWFuZC1jcm9zcy1idWlsZC1jb21wYXRpYmlsaXR5J119Owpjb25zdCBzYXZlPSgpPT53cml0ZUZpbGVTeW5jKGpvaW4oaW5wdXQuZXZpZGVuY2VEaXJlY3RvcnksJ25hdGl2ZS1uZXh0LWJvb3QtYnJvd3Nlci5qc29uJyksSlNPTi5zdHJpbmdpZnkocmVwb3J0LG51bGwsMikrJ1xuJyx7bW9kZTowbzYwMH0pO3NhdmUoKTsKY29uc3QgcmVtYWluaW5nPSgpPT57Y29uc3QgdmFsdWU9TWF0aC5mbG9vcihkZWFkbGluZS1wZXJmb3JtYW5jZS5ub3coKSk7YXNzZXJ0KHZhbHVlPjAsJ05hdGl2ZSBicm93c2VyIGJ1ZGdldCBleGhhdXN0ZWQnKTtyZXR1cm4gTWF0aC5taW4odmFsdWUsOTAwMDApO307CmNvbnN0IGxpbmVzPWNyZWF0ZUludGVyZmFjZSh7aW5wdXQ6cHJvY2Vzcy5zdGRpbixjcmxmRGVsYXk6SW5maW5pdHl9KSx3YWl0aW5nPW5ldyBNYXAoKTtsZXQgbmV4dElkPTA7CmxpbmVzLm9uKCdsaW5lJyxsaW5lPT57YXNzZXJ0KEJ1ZmZlci5ieXRlTGVuZ3RoKGxpbmUpPD02NTUzNik7Y29uc3QgdmFsdWU9SlNPTi5wYXJzZShsaW5lKSxwZW5kaW5nPXdhaXRpbmcuZ2V0KHZhbHVlLmlkKTsKIGFzc2VydChwZW5kaW5nJiZ2YWx1ZS5vaz09PXRydWUmJk9iamVjdC5rZXlzKHZhbHVlKS5zb3J0KCkuam9pbignfCcpPT09J2lkfG9rfHJlc3VsdCcpO3dhaXRpbmcuZGVsZXRlKHZhbHVlLmlkKTtwZW5kaW5nKHZhbHVlLnJlc3VsdCk7fSk7CmFzeW5jIGZ1bmN0aW9uIGhvc3Qob3BlcmF0aW9uKXtjb25zdCBpZD0rK25leHRJZDtsZXQgdGltZXI7CiB0cnl7cmV0dXJuIGF3YWl0IFByb21pc2UucmFjZShbbmV3IFByb21pc2UocmVzb2x2ZT0+e3dhaXRpbmcuc2V0KGlkLHJlc29sdmUpO3Byb2Nlc3Muc3Rkb3V0LndyaXRlKEpTT04uc3RyaW5naWZ5KHtpZCxvcGVyYXRpb259KSsnXG4nKTt9KSwKICBuZXcgUHJvbWlzZSgoXyxyZWplY3QpPT57dGltZXI9c2V0VGltZW91dCgoKT0+cmVqZWN0KEVycm9yKCdOYXRpdmUgaG9zdCBvcGVyYXRpb24gdGltZWQgb3V0JykpLHJlbWFpbmluZygpKTt9KV0pO30KIGZpbmFsbHl7Y2xlYXJUaW1lb3V0KHRpbWVyKTt3YWl0aW5nLmRlbGV0ZShpZCk7fQp9CmNvbnN0IHdvcmtlcj1yZXNwb25zZT0+e2NvbnN0IHZhbHVlPXJlc3BvbnNlLmhlYWRlcnMoKVsneC1haWhyLWZpeHR1cmUtd29ya2VyJ107YXNzZXJ0KC9eMTI3XC4wXC4wXC4xOlswLTldKyQvLnRlc3QodmFsdWU/PycnKSk7cmV0dXJuIE51bWJlcih2YWx1ZS5zcGxpdCgnOicpWzFdKTt9OwpmdW5jdGlvbiB3YXRjaChjb250ZXh0KXtjb250ZXh0Lm9uKCdwYWdlJyxwYWdlPT57cGFnZS5vbigncGFnZWVycm9yJywoKT0+ZXJyb3JzLnB1c2goJ1BBR0VfRVJST1InKSk7CiBwYWdlLm9uKCdjb25zb2xlJyxtZXNzYWdlPT57aWYobWVzc2FnZS50eXBlKCk9PT0nZXJyb3InKWVycm9ycy5wdXNoKCdDT05TT0xFX0VSUk9SJyk7fSk7CiBwYWdlLm9uKCdyZXNwb25zZScscmVzcG9uc2U9PntpZihyZXNwb25zZS5zdGF0dXMoKT49NTAwKWVycm9ycy5wdXNoKCdIVFRQXzVYWCcpO30pO30pO30KYXN5bmMgZnVuY3Rpb24gaWRlbnRpdHkocGFnZSxhY3Rvcil7CiBjb25zdCBhY2NvdW50PXBhZ2UubG9jYXRvcignYnV0dG9uW2RhdGEtdG91cj0iYWNjb3VudCJdJyk7YXdhaXQgYWNjb3VudC53YWl0Rm9yKHtzdGF0ZTondmlzaWJsZScsdGltZW91dDpyZW1haW5pbmcoKX0pO2Fzc2VydC5lcXVhbChhd2FpdCBhY2NvdW50LmNvdW50KCksMSk7CiBjb25zdCBuYW1lPWFjY291bnQuZ2V0QnlUZXh0KGFjdG9yLm5hbWUse2V4YWN0OnRydWV9KTthd2FpdCBuYW1lLndhaXRGb3Ioe3RpbWVvdXQ6cmVtYWluaW5nKCl9KTthc3NlcnQuZXF1YWwoYXdhaXQgbmFtZS5jb3VudCgpLDEpO2Fzc2VydC5lcXVhbChhd2FpdCBuYW1lLmlubmVyVGV4dCgpLGFjdG9yLm5hbWUpOwogYXNzZXJ0LmVxdWFsKGF3YWl0IHBhZ2UubG9jYXRvcignbWFpbiBbZGF0YS1wYWdlLWJ1c3ldLG1haW4gW2RhdGEtcGVyc29ubmVsLWJ1c3ldLG1haW4gW2RhdGEtcmVhZC11bmF2YWlsYWJsZV0sbWFpbiBbZGF0YS10b2RheS11bmF2YWlsYWJsZV0nKS5jb3VudCgpLDApOwogYXNzZXJ0LmVxdWFsKGVycm9ycy5sZW5ndGgsMCk7Cn0KYXN5bmMgZnVuY3Rpb24gaG9tZShwYWdlLGFjdG9yKXsKIGNvbnN0IHJlc3BvbnNlPWF3YWl0IHBhZ2UuZ290byhiYXNlKycvJyx7d2FpdFVudGlsOidkb21jb250ZW50bG9hZGVkJyx0aW1lb3V0OnJlbWFpbmluZygpfSk7YXNzZXJ0LmVxdWFsKHJlc3BvbnNlPy5zdGF0dXMoKSwyMDApO2F3YWl0IGlkZW50aXR5KHBhZ2UsYWN0b3IpOwogY29uc3QgcGVyc29uYWw9YWN0b3Iucm9sZT09PSdlbXBsb3llZScsYXR0cmlidXRlPXBlcnNvbmFsPydkYXRhLWhvbWUtY2FyZCc6J2RhdGEtZGFzaGJvYXJkLWNhcmQnO2F3YWl0IHBhZ2UubG9jYXRvcignbWFpbiBbJythdHRyaWJ1dGUrJ10nKS5maXJzdCgpLndhaXRGb3Ioe3RpbWVvdXQ6cmVtYWluaW5nKCl9KTsKIGF3YWl0IHBhZ2Uud2FpdEZvckZ1bmN0aW9uKChba2V5LGNvdW50XSk9PmRvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoJ21haW4gWycra2V5KyddJykubGVuZ3RoPT09Y291bnQsW2F0dHJpYnV0ZSxwZXJzb25hbD84OjExXSx7dGltZW91dDpyZW1haW5pbmcoKX0pOwogYXdhaXQgcGFnZS53YWl0Rm9yRnVuY3Rpb24oKCk9PmRvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoJ21haW4gW2FyaWEtYnVzeT0idHJ1ZSJdJykubGVuZ3RoPT09MCx7fSx7dGltZW91dDpyZW1haW5pbmcoKX0pOwogY29uc3QgY2FyZHM9YXdhaXQgcGFnZS5sb2NhdG9yKCdtYWluIFsnK2F0dHJpYnV0ZSsnXScpLmV2YWx1YXRlQWxsKChlbGVtZW50cyxrZXkpPT5lbGVtZW50cy5tYXAoZWxlbWVudD0+ZWxlbWVudC5nZXRBdHRyaWJ1dGUoa2V5KSkuc29ydCgpLGF0dHJpYnV0ZSk7CiBhc3NlcnQuZGVlcEVxdWFsKGNhcmRzLChwZXJzb25hbD9bJ2NhbGVuZGFyJywnY2VsZWJyYXRpb25zJywnbm90aWNlcycsJ3N1bW1hcnknLCd0YXNrcycsJ3RlYW0nLCd0aW1lT2ZmJywndG9kYXknXToKICBbJ2F0dGVuZGFuY2VPdmVydmlldycsJ2NvbXBhbmllcycsJ2hlYWRjb3VudCcsJ2hlYWRjb3VudEJ5Q29tcGFueScsJ2xhdGVzdFBheXJvbGwnLCdsYXRlc3RQYXlyb2xsUnVuJywnbm90aWNlQm9hcmQnLCdwZW5kaW5nTGVhdmUnLCdyZWNlbnRBY3Rpdml0eScsJ3JlY2VudGx5Sm9pbmVkJywndXBjb21pbmdFdmVudHMnXSkuc29ydCgpKTsKIGF3YWl0IHBhZ2UubG9jYXRvcignbWFpbiBbZGF0YS10b2RheS1zZWN0aW9uXScpLmZpcnN0KCkud2FpdEZvcih7dGltZW91dDpyZW1haW5pbmcoKX0pO2Fzc2VydCgoYXdhaXQgcGFnZS5sb2NhdG9yKCdtYWluIFtkYXRhLXRvZGF5LXNlY3Rpb25dJykuZmlyc3QoKS5pbm5lclRleHQoKSkudHJpbSgpLmxlbmd0aD4wKTthc3NlcnQuZXF1YWwoYXdhaXQgcGFnZS5sb2NhdG9yKCdtYWluIFtyb2xlPSJhbGVydCJdJykuY291bnQoKSwwKTsKIGlmKCFwZXJzb25hbClhd2FpdCBwYWdlLmxvY2F0b3IoJ1tkYXRhLWRhc2hib2FyZC1jYXJkPSJoZWFkY291bnQiXScpLmdldEJ5VGV4dCgnNCcse2V4YWN0OnRydWV9KS5maXJzdCgpLndhaXRGb3Ioe3RpbWVvdXQ6cmVtYWluaW5nKCl9KTsKIGFzc2VydCghKGF3YWl0IHBhZ2UubG9jYXRvcignYm9keScpLmlubmVyVGV4dCgpKS5pbmNsdWRlcyhmb3JlaWduLm5hbWUpKTsKIGNvbnN0IGFjY291bnQ9cGFnZS5sb2NhdG9yKCdidXR0b25bZGF0YS10b3VyPSJhY2NvdW50Il0nKTthd2FpdCBhY2NvdW50LmNsaWNrKHt0aW1lb3V0OnJlbWFpbmluZygpfSk7CiBhc3NlcnQuZXF1YWwoYXdhaXQgYWNjb3VudC5nZXRBdHRyaWJ1dGUoJ2FyaWEtZXhwYW5kZWQnKSwndHJ1ZScpO2F3YWl0IHBhZ2UuZ2V0QnlSb2xlKCdtZW51Jykud2FpdEZvcih7dGltZW91dDpyZW1haW5pbmcoKX0pOwogYXdhaXQgYWNjb3VudC5jbGljayh7dGltZW91dDpyZW1haW5pbmcoKX0pO2Fzc2VydC5lcXVhbChhd2FpdCBhY2NvdW50LmdldEF0dHJpYnV0ZSgnYXJpYS1leHBhbmRlZCcpLCdmYWxzZScpO3JlcG9ydC5oeWRyYXRlZEFjY291bnRDb250cm9scysrOwogY29uc3QgcG9ydD13b3JrZXIocmVzcG9uc2UpO3JlcG9ydC5ob21lLnB1c2goe3JvbGU6YWN0b3Iucm9sZSxjYXJkczpjYXJkcy5sZW5ndGgscG9ydCxzb3VyY2VEYXRhVmVyaWZpZWQ6dHJ1ZX0pO3NhdmUoKTtyZXR1cm4gcG9ydDsKfQphc3luYyBmdW5jdGlvbiBsb2dpbihwYWdlLGFjdG9yKXsKIGF3YWl0IHBhZ2UuZ290byhiYXNlKycvbG9naW4/cmV0dXJuVG89JTJGJyx7d2FpdFVudGlsOidkb21jb250ZW50bG9hZGVkJyx0aW1lb3V0OnJlbWFpbmluZygpfSk7Y29uc3QgdXNlcm5hbWU9cGFnZS5sb2NhdG9yKCdpbnB1dFtuYW1lPSJ1c2VybmFtZSJdJyk7CiBpZighYXdhaXQgdXNlcm5hbWUuaXNWaXNpYmxlKCkpe2NvbnN0IG9yZ2FuaXphdGlvbj1wYWdlLmxvY2F0b3IoJ2lucHV0W25hbWU9Im9yZ2FuaXphdGlvbiJdOnZpc2libGUnKTthd2FpdCBvcmdhbml6YXRpb24uZmlsbChhY3Rvci5vcmdhbml6YXRpb24pOwogIGF3YWl0IHBhZ2UubG9jYXRvcignZm9ybScpLmZpbHRlcih7aGFzOm9yZ2FuaXphdGlvbn0pLmxvY2F0b3IoJ2J1dHRvblt0eXBlPSJzdWJtaXQiXScpLmNsaWNrKHt0aW1lb3V0OnJlbWFpbmluZygpfSk7fQogYXdhaXQgdXNlcm5hbWUuZmlsbChhY3Rvci51c2VybmFtZSk7Y29uc3QgcGFzc3dvcmQ9cGFnZS5sb2NhdG9yKCdpbnB1dFtuYW1lPSJwYXNzd29yZCJdJyk7YXdhaXQgcGFzc3dvcmQuZmlsbChhY3Rvci5wYXNzd29yZCk7CiBhd2FpdCBwYWdlLmxvY2F0b3IoJ2Zvcm0nKS5maWx0ZXIoe2hhczpwYXNzd29yZH0pLmxvY2F0b3IoJ2J1dHRvblt0eXBlPSJzdWJtaXQiXScpLmNsaWNrKHt0aW1lb3V0OnJlbWFpbmluZygpfSk7CiBjb25zdCBjb2RlPXBhZ2UubG9jYXRvcignaW5wdXRbbmFtZT0iY29kZSJdJyk7YXdhaXQgY29kZS53YWl0Rm9yKHtzdGF0ZTondmlzaWJsZScsdGltZW91dDpyZW1haW5pbmcoKX0pO2F3YWl0IGNvZGUuZmlsbChhd2FpdCBnZW5lcmF0ZSh7c3RyYXRlZ3k6J3RvdHAnLHNlY3JldDphY3Rvci5zZWNyZXR9KSk7CiBhd2FpdCBwYWdlLmxvY2F0b3IoJ2Zvcm0nKS5maWx0ZXIoe2hhczpjb2RlfSkubG9jYXRvcignYnV0dG9uW3R5cGU9InN1Ym1pdCJdJykuY2xpY2soe3RpbWVvdXQ6cmVtYWluaW5nKCl9KTthd2FpdCBwYWdlLndhaXRGb3JVUkwodXJsPT51cmwub3JpZ2luPT09YmFzZSYmdXJsLnBhdGhuYW1lPT09Jy8nLHt0aW1lb3V0OnJlbWFpbmluZygpfSk7CiBjb25zdCBjb29raWU9KGF3YWl0IHBhZ2UuY29udGV4dCgpLmNvb2tpZXMoKSkuZmluZChyb3c9PnJvdy5uYW1lPT09J19fSG9zdC1haWhyX2ludGVybmFsJyk7CiBhc3NlcnQoY29va2llPy52YWx1ZSYmY29va2llLnNlY3VyZSYmY29va2llLmh0dHBPbmx5JiZjb29raWUucGF0aD09PScvJyYmY29va2llLnNhbWVTaXRlPT09J0xheCcpO3JlcG9ydC5sb2dpbnMucHVzaCh7cm9sZTphY3Rvci5yb2xlLHJlYWxQYXNzd29yZFRvdHA6dHJ1ZSxuZXdTZXNzaW9uOnRydWV9KTsKIHJldHVybiBob21lKHBhZ2UsYWN0b3IpOwp9CmxldCBicm93c2VyLGNvbnRleHRzPVtdLHN1Y2NlZWRlZD1mYWxzZTsKdHJ5ewogYnJvd3Nlcj1hd2FpdCBjaHJvbWl1bS5sYXVuY2goe2hlYWRsZXNzOnRydWV9KTtjb25zdCBjb250ZXh0PWF3YWl0IGJyb3dzZXIubmV3Q29udGV4dCh7aWdub3JlSFRUUFNFcnJvcnM6dHJ1ZSxsb2NhbGU6J2VuLVVTJ30pO2NvbnRleHRzLnB1c2goY29udGV4dCk7d2F0Y2goY29udGV4dCk7CiBhd2FpdCBjb250ZXh0LmFkZENvb2tpZXMoW3tuYW1lOidORVhUX0xPQ0FMRScsdmFsdWU6J2VuJyx1cmw6YmFzZX1dKTtjb25zdCBwYWdlPWF3YWl0IGNvbnRleHQubmV3UGFnZSgpLGZpcnN0PWF3YWl0IGhvc3QoJ3N0YXJ0LWZpcnN0Jyk7CiBhc3NlcnQuZXF1YWwoYXdhaXQgbG9naW4ocGFnZSxhZG1pbiksZmlyc3QucG9ydCk7Y29uc3QgY29sZD1hd2FpdCBob3N0KCdzdGFydC1zZWNvbmQtY29sZCcpO2Fzc2VydC5lcXVhbChjb2xkLmFkbWl0dGVkLGZhbHNlKTthc3NlcnQubm90RXF1YWwoY29sZC5wb3J0LGZpcnN0LnBvcnQpOwogZm9yKGxldCBpbmRleD0wO2luZGV4PDM7aW5kZXgrKyl7Y29uc3QgcG9ydD1hd2FpdCBob21lKHBhZ2UsYWRtaW4pO2Fzc2VydC5lcXVhbChwb3J0LGZpcnN0LnBvcnQpO3JlcG9ydC5jb2xkQnVzaW5lc3NSZXF1ZXN0cy5wdXNoKHtvYnNlcnZlZFBvcnQ6cG9ydCxjb2xkUG9ydDpjb2xkLnBvcnR9KTt9CiBjb25zdCBzZWNvbmQ9YXdhaXQgaG9zdCgnYWRtaXQtc2Vjb25kJykscG9ydHM9bmV3IFNldCgpO2Fzc2VydC5lcXVhbChzZWNvbmQucG9ydCxjb2xkLnBvcnQpOwogZm9yKGxldCBpbmRleD0wO2luZGV4PDEyJiZwb3J0cy5zaXplPDI7aW5kZXgrKylwb3J0cy5hZGQoYXdhaXQgaG9tZShwYWdlLGFkbWluKSk7CiBhc3NlcnQuZGVlcEVxdWFsKFsuLi5wb3J0c10uc29ydCgoYSxiKT0+YS1iKSxbZmlyc3QucG9ydCxzZWNvbmQucG9ydF0uc29ydCgoYSxiKT0+YS1iKSk7cmVwb3J0LnNlcnZlZFBvcnRzPVsuLi5wb3J0c10uc29ydCgoYSxiKT0+YS1iKTsKIGNvbnN0IG93bj1hd2FpdCBicm93c2VyLm5ld0NvbnRleHQoe2lnbm9yZUhUVFBTRXJyb3JzOnRydWUsbG9jYWxlOidlbi1VUyd9KTtjb250ZXh0cy5wdXNoKG93bik7d2F0Y2gob3duKTsKIGF3YWl0IG93bi5hZGRDb29raWVzKFt7bmFtZTonTkVYVF9MT0NBTEUnLHZhbHVlOidlbicsdXJsOmJhc2V9XSk7Y29uc3Qgb3duUGFnZT1hd2FpdCBvd24ubmV3UGFnZSgpO2F3YWl0IGxvZ2luKG93blBhZ2UsZW1wbG95ZWUpOwogY29uc3QgcmVzcG9uc2U9YXdhaXQgb3duUGFnZS5nb3RvKGJhc2UrJy9tZS9wYXlzbGlwJyx7d2FpdFVudGlsOidkb21jb250ZW50bG9hZGVkJyx0aW1lb3V0OnJlbWFpbmluZygpfSk7YXNzZXJ0LmVxdWFsKHJlc3BvbnNlPy5zdGF0dXMoKSwyMDApO2F3YWl0IGlkZW50aXR5KG93blBhZ2UsZW1wbG95ZWUpOwogY29uc3QgdGV4dD1hd2FpdCBvd25QYWdlLmxvY2F0b3IoJ21haW4nKS5pbm5lclRleHQoKTthc3NlcnQodGV4dC5pbmNsdWRlcyhlbXBsb3llZS5uYW1lKSYmdGV4dC5pbmNsdWRlcyhlbXBsb3llZS5lbXBsb3llZUNvZGUpJiYvNSwwMDBcLjAwLy50ZXN0KHRleHQpKTsKIGF3YWl0IG93blBhZ2UuZ2V0QnlSb2xlKCdsaW5rJyx7bmFtZTonRG93bmxvYWQgUERGJyxleGFjdDp0cnVlfSkud2FpdEZvcih7dGltZW91dDpyZW1haW5pbmcoKX0pO3JlcG9ydC5ub25lbXB0eU93blBheXJvbGxWaWV3PXRydWU7CiBhc3NlcnQuZXF1YWwocmVwb3J0LmxvZ2lucy5sZW5ndGgsMik7YXNzZXJ0LmVxdWFsKGVycm9ycy5sZW5ndGgsMCk7YXdhaXQgaG9zdCgnYnJvd3Nlci1jb3JlLWZpbmlzaGVkJyk7c3VjY2VlZGVkPXRydWU7Cn1jYXRjaHtwcm9jZXNzLnN0ZGVyci53cml0ZSgnTmF0aXZlIE5leHQgYm9vdCBicm93c2VyIHJlZnVzZWRcbicpO3JlcG9ydC5mYWlsdXJlPSdCT09UX0JST1dTRVJfQVNTRVJUSU9OJztwcm9jZXNzLmV4aXRDb2RlPTE7fQpmaW5hbGx5ewogbGV0IGNsb3NlZD10cnVlO2Zvcihjb25zdCBjb250ZXh0IG9mIGNvbnRleHRzKXRyeXthd2FpdCBjb250ZXh0LmNsb3NlKCk7fWNhdGNoe2Nsb3NlZD1mYWxzZTt9CiB0cnl7YXdhaXQgYnJvd3Nlcj8uY2xvc2UoKTt9Y2F0Y2h7Y2xvc2VkPWZhbHNlO31saW5lcy5jbG9zZSgpOwogcmVwb3J0LmNvbXBsZXRlPXN1Y2NlZWRlZCYmY2xvc2VkJiZlcnJvcnMubGVuZ3RoPT09MDtyZXBvcnQudW5leHBlY3RlZEJyb3dzZXJFcnJvcnM9ZXJyb3JzLmxlbmd0aDsKIGlmKCFyZXBvcnQuY29tcGxldGUpe3Byb2Nlc3MuZXhpdENvZGU9MTtyZXBvcnQuZmFpbHVyZT8/PSdCT09UX0JST1dTRVJfQ0xFQU5VUF9PUl9MQVRFX0ZBSUxVUkUnO31zYXZlKCk7Cn0K",
       "changes": [
         {
-          "start": 189,
-          "end": 190,
+          "start": 202,
+          "end": 203,
           "before": "",
           "after": " if(report.firstHostRequestTiming)report.firstHostRequestTiming.driverFinalElapsedMs=Math.floor(performance.now()-driverStartedAt);\n"
         },
         {
-          "start": 182,
-          "end": 186,
+          "start": 193,
+          "end": 199,
           "before": "}catch{process.stderr.write('Native Next boot browser refused\\n');report.failure='BOOT_BROWSER_ASSERTION';process.exitCode=1;}\n",
-          "after": "}catch(error){\n firstHomeProgress?.fail(error instanceof playwrightErrors.TimeoutError?'timeout':error instanceof assert.AssertionError?'assertion':'other');\n process.stderr.write('Native Next boot browser refused\\n');report.failure='BOOT_BROWSER_ASSERTION';process.exitCode=1;\n}\n"
+          "after": "}catch(error){\n process.stderr.write('Native Next boot browser refused\\n');report.failure='BOOT_BROWSER_ASSERTION';process.exitCode=1;\n try{\n  firstHomeProgress?.fail(error instanceof playwrightErrors.TimeoutError?'timeout':error instanceof assert.AssertionError?'assertion':'other');\n }catch{/* The existing browser refusal stays primary if the trace cannot be written. */}\n}\n"
         },
         {
-          "start": 170,
-          "end": 172,
+          "start": 181,
+          "end": 183,
           "before": " assert.equal(await login(page,admin),first.port);const cold=await host('start-second-cold');assert.equal(cold.admitted,false);assert.notEqual(cold.port,first.port);\n",
           "after": " assert.equal(await login(page,admin,true),first.port);firstHomeProgress.complete();\n const cold=await host('start-second-cold');assert.equal(cold.admitted,false);assert.notEqual(cold.port,first.port);\n"
         },
         {
-          "start": 163,
-          "end": 165,
+          "start": 174,
+          "end": 176,
           "before": " return home(page,actor);\n",
           "after": " if(traceFirstHome)firstHomeProgress=newFirstHomeProgress();\n return home(page,actor,traceFirstHome?firstHomeProgress:undefined);\n"
         },
         {
-          "start": 152,
-          "end": 154,
+          "start": 163,
+          "end": 165,
           "before": "async function login(page,actor){\n",
           "after": "let firstHomeProgress;\nasync function login(page,actor,traceFirstHome=false){\n"
         },
         {
-          "start": 141,
-          "end": 150,
+          "start": 150,
+          "end": 161,
           "before": " assert.equal(await account.getAttribute('aria-expanded'),'true');await page.getByRole('menu').waitFor({timeout:remaining()});\n await account.click({timeout:remaining()});assert.equal(await account.getAttribute('aria-expanded'),'false');report.hydratedAccountControls++;\n",
-          "after": " assert.equal(await account.getAttribute('aria-expanded'),'true');\n progress?.enter('menu-visible');\n await page.getByRole('menu').waitFor({timeout:remaining()});\n progress?.enter('account-close');\n await account.click({timeout:remaining()});assert.equal(await account.getAttribute('aria-expanded'),'false');\n // These full navigations hydrate the normal account menu. The group HR tour\n // must stay dismissed and the personal Home never auto-opens it.\n assert.equal(await productTour(page).count(),0);report.hydratedAccountControls++;\n progress?.enter('worker-match');\n"
+          "after": " assert.equal(await account.getAttribute('aria-expanded'),'true');\n progress?.enter('menu-visible');\n await page.getByRole('menu').waitFor({timeout:remaining()});\n progress?.enter('account-close');\n await account.click({timeout:remaining()});assert.equal(await account.getAttribute('aria-expanded'),'false');\n // These full navigations hydrate the normal account menu. The group HR tour\n // must stay dismissed and the personal Home never auto-opens it.\n assert.equal(await productTour(page).count(),0);\n await assertNoHomeFailureMarkers(page);assert.equal(errors.length,0);\n report.hydratedAccountControls++;\n progress?.enter('worker-match');\n"
         },
         {
-          "start": 138,
-          "end": 140,
+          "start": 147,
+          "end": 149,
           "before": "",
           "after": " if(progress)await skipWelcomeTour(page,progress);\n progress?.enter('account-open');\n"
         },
         {
-          "start": 136,
-          "end": 137,
+          "start": 145,
+          "end": 146,
           "before": "",
           "after": " progress?.enter('tenant-scope');\n"
         },
         {
-          "start": 130,
-          "end": 135,
+          "start": 139,
+          "end": 144,
           "before": " await page.locator('main [data-today-section]').first().waitFor({timeout:remaining()});assert((await page.locator('main [data-today-section]').first().innerText()).trim().length>0);assert.equal(await page.locator('main [role=\"alert\"]').count(),0);\n",
           "after": " progress?.enter('today-visible');\n await page.locator('main [data-today-section]').first().waitFor({timeout:remaining()});\n progress?.enter('today-content');\n assert((await page.locator('main [data-today-section]').first().innerText()).trim().length>0);assert.equal(await page.locator('main [role=\"alert\"]').count(),0);\n progress?.enter('headcount');\n"
         },
         {
-          "start": 126,
-          "end": 127,
+          "start": 135,
+          "end": 136,
           "before": "",
           "after": " progress?.enter('card-keys');\n"
         },
         {
-          "start": 124,
-          "end": 125,
+          "start": 133,
+          "end": 134,
           "before": "",
           "after": " progress?.enter('loading-settled');\n"
         },
         {
-          "start": 122,
-          "end": 123,
+          "start": 131,
+          "end": 132,
           "before": "",
           "after": " progress?.enter('card-count');\n"
         },
         {
-          "start": 115,
-          "end": 121,
+          "start": 124,
+          "end": 130,
           "before": "async function home(page,actor){\n const response=await page.goto(base+'/',{waitUntil:'domcontentloaded',timeout:remaining()});assert.equal(response?.status(),200);await identity(page,actor);\n",
           "after": "async function home(page,actor,progress){\n progress?.enter('home-navigate');\n const response=await page.goto(base+'/',{waitUntil:'domcontentloaded',timeout:remaining()});\n progress?.status(response?.status()??null);\n assert.equal(response?.status(),200);await identity(page,actor,progress);\n progress?.enter('first-card-visible');\n"
         },
         {
-          "start": 110,
-          "end": 111,
+          "start": 121,
+          "end": 122,
+          "before": " assert.equal(await page.locator('main [data-page-busy],main [data-personnel-busy],main [data-read-unavailable],main [data-today-unavailable]').count(),0);\n",
+          "after": " await assertNoHomeFailureMarkers(page);\n"
+        },
+        {
+          "start": 119,
+          "end": 120,
           "before": "",
           "after": " progress?.enter('account-identity');\n"
         },
         {
-          "start": 107,
-          "end": 109,
+          "start": 112,
+          "end": 118,
           "before": "async function identity(page,actor){\n",
-          "after": "async function identity(page,actor,progress){\n progress?.enter('account-visible');\n"
+          "after": "async function assertNoHomeFailureMarkers(page){\n const markers='[data-page-busy],[data-personnel-busy],[data-read-unavailable],[data-today-unavailable]';\n assert.equal(await page.locator(`main:is(${markers}),main :is(${markers})`).count(),0);\n}\nasync function identity(page,actor,progress){\n progress?.enter('account-visible');\n"
         },
         {
           "start": 45,
-          "end": 104,
+          "end": 109,
           "before": "",
-          "after": "// Only the first real group HR Home attempt uses this finite trace. Persist each\n// entered phase before awaiting so a parent timeout still leaves the frontier.\nfunction makeFirstHomeProgress(emit){\n const stages=['home-navigate','account-visible','account-identity','first-card-visible','card-count','loading-settled','card-keys',\n  'today-visible','today-content','headcount','tenant-scope','welcome-visible','welcome-action','welcome-hidden','account-open',\n  'menu-visible','account-close','worker-match'];\n let index=-1,finished=false,statusRecorded=false;\n return {\n  enter(stage){\n   assert(!finished&&index+1<stages.length&&stage===stages[index+1]);\n   index++;statusRecorded=false;emit({stage,state:'entered'});\n  },\n  status(status){\n   const stage=stages[index];\n   assert(!finished&&!statusRecorded&&(stage==='home-navigate'||stage==='welcome-action')&&\n    (status===null||Number.isInteger(status)&&status>=100&&status<=599));\n   statusRecorded=true;emit({stage,state:'http-status',status});\n  },\n  complete(){\n   assert(!finished&&index===stages.length-1);\n   finished=true;emit({stage:stages[index],state:'returned'});\n  },\n  fail(type){\n   if(finished)return;\n   assert(index>=0&&['timeout','assertion','other'].includes(type));\n   finished=true;emit({stage:stages[index],state:'refused',type});\n  },\n };\n}\nfunction newFirstHomeProgress(){\n const path=join(input.evidenceDirectory,'native-next-boot-first-home-progress.jsonl');\n let first=true;\n return makeFirstHomeProgress(row=>{\n  writeFileSync(path,JSON.stringify(row)+'\\n',{flag:first?'ax':'a',mode:0o600});\n  first=false;\n });\n}\nconst productTour=page=>page.getByRole('dialog',{name:'Product tour',exact:true});\nasync function skipWelcomeTour(page,progress){\n const tour=productTour(page),skip=tour.getByRole('button',{name:'Skip',exact:true});\n progress.enter('welcome-visible');\n await skip.waitFor({state:'visible',timeout:remaining()});\n progress.enter('welcome-action');\n const [response,click]=await Promise.allSettled([\n  page.waitForResponse(result=>{\n   const request=result.request(),url=new URL(result.url());\n   return url.origin===base&&url.pathname==='/'&&request.method()==='POST'&&Boolean(request.headers()['next-action']);\n  },{timeout:remaining()}),\n  skip.click({timeout:remaining()}),\n ]);\n if(response.status==='fulfilled')progress.status(response.value.status());\n if(click.status==='rejected')throw click.reason;\n if(response.status==='rejected')throw response.reason;\n assert.equal(response.value.status(),200);\n assert(response.value.headers()['content-type']?.startsWith('text/x-component'));\n progress.enter('welcome-hidden');\n await tour.waitFor({state:'hidden',timeout:remaining()});\n}\n\n"
+          "after": "// Only the first real group HR Home attempt uses this finite trace. Persist each\n// entered phase before awaiting so a parent timeout still leaves the frontier.\nfunction makeFirstHomeProgress(emit){\n const stages=['home-navigate','account-visible','account-identity','first-card-visible','card-count','loading-settled','card-keys',\n  'today-visible','today-content','headcount','tenant-scope','welcome-visible','welcome-action','welcome-hidden','account-open',\n  'menu-visible','account-close','worker-match'];\n let index=-1,finished=false,statusRecorded=false;\n return {\n  enter(stage){\n   assert(!finished&&index+1<stages.length&&stage===stages[index+1]);\n   index++;statusRecorded=false;emit({stage,state:'entered'});\n  },\n  status(status){\n   const stage=stages[index];\n   assert(!finished&&!statusRecorded&&(stage==='home-navigate'||stage==='welcome-action')&&\n    (status===null||Number.isInteger(status)&&status>=100&&status<=599));\n   statusRecorded=true;emit({stage,state:'http-status',status});\n  },\n  complete(){\n   assert(!finished&&index===stages.length-1);\n   finished=true;emit({stage:stages[index],state:'returned'});\n  },\n  fail(type){\n   if(finished)return;\n   assert(index>=0&&['timeout','assertion','other'].includes(type));\n   finished=true;emit({stage:stages[index],state:'refused',type});\n  },\n };\n}\nfunction newFirstHomeProgress(){\n const path=join(input.evidenceDirectory,'native-next-boot-first-home-progress.jsonl');\n let first=true;\n return makeFirstHomeProgress(row=>{\n  writeFileSync(path,JSON.stringify(row)+'\\n',{flag:first?'ax':'a',mode:0o600});\n  first=false;\n });\n}\nconst productTour=page=>page.getByRole('dialog',{name:'Product tour',exact:true});\nasync function skipWelcomeTour(page,progress){\n const tour=productTour(page),skip=tour.getByRole('button',{name:'Skip',exact:true});\n progress.enter('welcome-visible');\n await skip.waitFor({state:'visible',timeout:remaining()});\n progress.enter('welcome-action');\n const [finished,click]=await Promise.allSettled([\n  page.waitForEvent('requestfinished',{\n   predicate:request=>{\n    const url=new URL(request.url());\n    return url.origin===base&&url.pathname==='/'&&request.method()==='POST'&&Boolean(request.headers()['next-action']);\n   },\n   timeout:remaining(),\n  }),\n  skip.click({timeout:remaining()}),\n ]);\n // The completed request already has its response. Do not start another wait.\n const response=finished.status==='fulfilled'?finished.value.existingResponse():null;\n if(finished.status==='fulfilled')progress.status(response?.status()??null);\n if(click.status==='rejected')throw click.reason;\n if(finished.status==='rejected')throw finished.reason;\n assert.equal(response?.status(),200);\n assert(response.headers()['content-type']?.startsWith('text/x-component'));\n progress.enter('welcome-hidden');\n await tour.waitFor({state:'hidden',timeout:remaining()});\n}\n\n"
         },
         {
           "start": 34,

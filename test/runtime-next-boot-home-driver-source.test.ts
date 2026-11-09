@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { expect, it } from 'vitest';
 
@@ -70,17 +71,21 @@ it('records the exact finite success sequence without accepting status in a non-
 });
 
 const base = 'https://localhost:3443';
-function actionResponse(origin: string, path: string, method: string, action: boolean, status: number) {
+function actionRequest(origin: string, path: string, method: string, action: boolean, status: number | null, seen: string[]) {
   return {
     url: () => origin + path,
-    request: () => ({ method: () => method, headers: () => action ? { 'next-action': 'fictional-private-action-id' } : {} }),
-    status: () => status,
-    headers: () => ({ 'content-type': 'text/x-component' }),
+    method: () => method,
+    headers: () => action ? { 'next-action': 'fictional-private-action-id' } : {},
+    existingResponse: () => {
+      expect(seen.at(-1)).toBe('request-finished');
+      seen.push('cached-response');
+      return status === null ? null : { status: () => status, headers: () => ({ 'content-type': 'text/x-component' }) };
+    },
   };
 }
-type FakeResponse = ReturnType<typeof actionResponse>;
+type FakeRequest = ReturnType<typeof actionRequest>;
 
-async function runSkip(status: number) {
+async function runSkip(status: number | null) {
   const seen: string[] = [];
   const trace: (string | number | null)[] = [];
   const tour = {
@@ -93,7 +98,7 @@ async function runSkip(status: number) {
         },
         async click(input: object) {
           expect(input).toEqual({ timeout: 90000 });
-          expect(seen).toEqual(['skip-visible', 'response-listener']);
+          expect(seen).toEqual(['skip-visible', 'completion-listener']);
           seen.push('click');
         },
       };
@@ -104,17 +109,18 @@ async function runSkip(status: number) {
     },
   };
   const page = {
-    waitForResponse(predicate: (response: FakeResponse) => boolean, options: object) {
-      expect(options).toEqual({ timeout: 90000 });
-      seen.push('response-listener');
+    waitForEvent(event: string, { predicate, timeout }: { predicate: (request: FakeRequest) => boolean; timeout: number }) {
+      expect([event, timeout]).toEqual(['requestfinished', 90000]);
+      seen.push('completion-listener');
       return Promise.resolve().then(() => {
-        expect(seen).toEqual(['skip-visible', 'response-listener', 'click']);
-        expect(predicate(actionResponse('https://foreign.invalid', '/', 'POST', true, 200))).toBe(false);
-        expect(predicate(actionResponse(base, '/other', 'POST', true, 200))).toBe(false);
-        expect(predicate(actionResponse(base, '/', 'GET', true, 200))).toBe(false);
-        expect(predicate(actionResponse(base, '/', 'POST', false, 200))).toBe(false);
-        const result = actionResponse(base, '/', 'POST', true, status);
+        expect(seen).toEqual(['skip-visible', 'completion-listener', 'click']);
+        expect(predicate(actionRequest('https://foreign.invalid', '/', 'POST', true, 200, seen))).toBe(false);
+        expect(predicate(actionRequest(base, '/other', 'POST', true, 200, seen))).toBe(false);
+        expect(predicate(actionRequest(base, '/', 'GET', true, 200, seen))).toBe(false);
+        expect(predicate(actionRequest(base, '/', 'POST', false, 200, seen))).toBe(false);
+        const result = actionRequest(base, '/', 'POST', true, status, seen);
         expect(predicate(result)).toBe(true);
+        seen.push('request-finished');
         return result;
       });
     },
@@ -129,13 +135,36 @@ async function runSkip(status: number) {
 it('binds the actual Skip owner to the matching same-origin Next action before the ordinary click', async () => {
   const { result, seen, trace } = await runSkip(200);
   await expect(result).resolves.toBeUndefined();
-  expect(seen).toEqual(['skip-visible', 'response-listener', 'click', 'tour-hidden']);
+  expect(seen).toEqual(['skip-visible', 'completion-listener', 'click', 'request-finished', 'cached-response', 'tour-hidden']);
   expect(trace).toEqual(['welcome-visible', 'welcome-action', 200, 'welcome-hidden']);
 });
 
 it('refuses a matching failed server action without claiming the tour is dismissed', async () => {
-  const { result, seen, trace } = await runSkip(500);
-  await expect(result).rejects.toMatchObject({ code: 'ERR_ASSERTION' });
-  expect(seen).toEqual(['skip-visible', 'response-listener', 'click']);
-  expect(trace).toEqual(['welcome-visible', 'welcome-action', 500]);
+  for (const status of [500, null]) {
+    const { result, seen, trace } = await runSkip(status);
+    await expect(result).rejects.toMatchObject({ code: 'ERR_ASSERTION' });
+    expect(seen).toEqual(['skip-visible', 'completion-listener', 'click', 'request-finished', 'cached-response']);
+    expect(trace).toEqual(['welcome-visible', 'welcome-action', status]);
+  }
+});
+
+
+it('refuses closed failure markers on main and inside it without rejecting a normal loading skeleton', async () => {
+  const guard = sourceFunction<(page: object) => Promise<void>>('assertNoHomeFailureMarkers');
+  const dom = new JSDOM('<aside data-page-busy></aside><main aria-busy="true"><section aria-busy="true"></section></main>');
+  try {
+    const { document } = dom.window;
+    const page = { locator: (selector: string) => ({ count: async () => document.querySelectorAll(selector).length }) };
+    await expect(guard(page)).resolves.toBeUndefined();
+    for (const target of document.querySelectorAll('main, main section')) {
+      for (const marker of ['data-page-busy', 'data-personnel-busy', 'data-read-unavailable', 'data-today-unavailable']) {
+        target.setAttribute(marker, '');
+        await expect(guard(page)).rejects.toMatchObject({ code: 'ERR_ASSERTION' });
+        target.removeAttribute(marker);
+      }
+    }
+    await expect(guard(page)).resolves.toBeUndefined();
+  } finally {
+    dom.window.close();
+  }
 });

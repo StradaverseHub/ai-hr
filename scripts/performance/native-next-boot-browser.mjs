@@ -86,18 +86,23 @@ async function skipWelcomeTour(page,progress){
  progress.enter('welcome-visible');
  await skip.waitFor({state:'visible',timeout:remaining()});
  progress.enter('welcome-action');
- const [response,click]=await Promise.allSettled([
-  page.waitForResponse(result=>{
-   const request=result.request(),url=new URL(result.url());
-   return url.origin===base&&url.pathname==='/'&&request.method()==='POST'&&Boolean(request.headers()['next-action']);
-  },{timeout:remaining()}),
+ const [finished,click]=await Promise.allSettled([
+  page.waitForEvent('requestfinished',{
+   predicate:request=>{
+    const url=new URL(request.url());
+    return url.origin===base&&url.pathname==='/'&&request.method()==='POST'&&Boolean(request.headers()['next-action']);
+   },
+   timeout:remaining(),
+  }),
   skip.click({timeout:remaining()}),
  ]);
- if(response.status==='fulfilled')progress.status(response.value.status());
+ // The completed request already has its response. Do not start another wait.
+ const response=finished.status==='fulfilled'?finished.value.existingResponse():null;
+ if(finished.status==='fulfilled')progress.status(response?.status()??null);
  if(click.status==='rejected')throw click.reason;
- if(response.status==='rejected')throw response.reason;
- assert.equal(response.value.status(),200);
- assert(response.value.headers()['content-type']?.startsWith('text/x-component'));
+ if(finished.status==='rejected')throw finished.reason;
+ assert.equal(response?.status(),200);
+ assert(response.headers()['content-type']?.startsWith('text/x-component'));
  progress.enter('welcome-hidden');
  await tour.waitFor({state:'hidden',timeout:remaining()});
 }
@@ -105,12 +110,16 @@ async function skipWelcomeTour(page,progress){
 function watch(context){context.on('page',page=>{page.on('pageerror',()=>errors.push('PAGE_ERROR'));
  page.on('console',message=>{if(message.type()==='error')errors.push('CONSOLE_ERROR');});
  page.on('response',response=>{if(response.status()>=500)errors.push('HTTP_5XX');});});}
+async function assertNoHomeFailureMarkers(page){
+ const markers='[data-page-busy],[data-personnel-busy],[data-read-unavailable],[data-today-unavailable]';
+ assert.equal(await page.locator(`main:is(${markers}),main :is(${markers})`).count(),0);
+}
 async function identity(page,actor,progress){
  progress?.enter('account-visible');
  const account=page.locator('button[data-tour="account"]');await account.waitFor({state:'visible',timeout:remaining()});assert.equal(await account.count(),1);
  progress?.enter('account-identity');
  const name=account.getByText(actor.name,{exact:true});await name.waitFor({timeout:remaining()});assert.equal(await name.count(),1);assert.equal(await name.innerText(),actor.name);
- assert.equal(await page.locator('main [data-page-busy],main [data-personnel-busy],main [data-read-unavailable],main [data-today-unavailable]').count(),0);
+ await assertNoHomeFailureMarkers(page);
  assert.equal(errors.length,0);
 }
 async function home(page,actor,progress){
@@ -146,7 +155,9 @@ async function home(page,actor,progress){
  await account.click({timeout:remaining()});assert.equal(await account.getAttribute('aria-expanded'),'false');
  // These full navigations hydrate the normal account menu. The group HR tour
  // must stay dismissed and the personal Home never auto-opens it.
- assert.equal(await productTour(page).count(),0);report.hydratedAccountControls++;
+ assert.equal(await productTour(page).count(),0);
+ await assertNoHomeFailureMarkers(page);assert.equal(errors.length,0);
+ report.hydratedAccountControls++;
  progress?.enter('worker-match');
  const port=worker(response);report.home.push({role:actor.role,cards:cards.length,port,sourceDataVerified:true});save();return port;
 }
@@ -181,8 +192,10 @@ try{
  await ownPage.getByRole('link',{name:'Download PDF',exact:true}).waitFor({timeout:remaining()});report.nonemptyOwnPayrollView=true;
  assert.equal(report.logins.length,2);assert.equal(errors.length,0);await host('browser-core-finished');succeeded=true;
 }catch(error){
- firstHomeProgress?.fail(error instanceof playwrightErrors.TimeoutError?'timeout':error instanceof assert.AssertionError?'assertion':'other');
  process.stderr.write('Native Next boot browser refused\n');report.failure='BOOT_BROWSER_ASSERTION';process.exitCode=1;
+ try{
+  firstHomeProgress?.fail(error instanceof playwrightErrors.TimeoutError?'timeout':error instanceof assert.AssertionError?'assertion':'other');
+ }catch{/* The existing browser refusal stays primary if the trace cannot be written. */}
 }
 finally{
  let closed=true;for(const context of contexts)try{await context.close();}catch{closed=false;}
