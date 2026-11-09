@@ -61,9 +61,13 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3300,when:1793330003600,tag:'4000_attendance_workflow_lifecycle_scope'},
  {idx:3301,when:1793330003601,tag:'4001_personnel_employment_filter_projection'},
  {idx:3302,when:1793330003602,tag:'4002_attendance_prepare_review_only'},
+ {idx:3500,when:1793330003800,tag:'4100_rewards_review_creator_independence'},
+ {idx:3501,when:1793330003801,tag:'4101_attendance_formula_company_scope'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '4100_rewards_review_creator_independence':'2b985ae73e3da8c1ce3e7015829734632bff6ac550021dc644c59b9603083dff',
+ '4101_attendance_formula_company_scope':'60d18c40db8d2f8392c81fa5ccb7cf05c12d6448321e744ebbc31605574e28f4',
  '4000_attendance_workflow_lifecycle_scope':'62759d27e18adc62dd458a18d7f1525f9ed2ac498ae58d7d3884f9f200cc0b1f',
  '4001_personnel_employment_filter_projection':'a7cd7536bca8d1b271d6f08eecd11242c4b56e9ba492e57e4b50053737d1c9fd',
  '4002_attendance_prepare_review_only':'c4b5b39f6eb241744e11eb49c96eff188efb11aa3cd5120f4195d2c1052bec36',

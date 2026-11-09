@@ -151,7 +151,7 @@ const under=(route:string,area:string)=>route===area||route.startsWith(area+'/')
 /** AI Centre restructure (owner decisions 26–29, 4 Nov 2026): the guarded forward stubs of removed pages. Each only runs
  * its guard and forwards to the page that owns the fact now, so it is not a link target; a reply links the owner. */
 export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/control-tower/actions','/control-tower/opportunities','/payroll/reports',
- '/control-tower/agents/inventory','/control-tower/agents/orchestrator']);
+ '/control-tower/agents/inventory','/control-tower/agents/orchestrator','/admin/rewards']);
 /** Native workflow grants and an active View As session cannot be inferred from a coarse role or module. */
 export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/admin/attendance/settings/offline-clocking',
@@ -215,7 +215,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/payroll-policy','admin',null],['/admin/personnel','admin',null],['/admin/personnel/child-relief','admin',null],
  ['/admin/personnel/duplicates','admin',null],['/admin/personnel/import','admin',null],['/admin/personnel/import/history','admin',null],
  ['/admin/personnel/new','admin',null],['/admin/personnel/profile-changes','admin',null],['/admin/personnel/settings','admin',null],
- ['/admin/privacy','admin',null],['/admin/privacy/case-handlers','admin',null],['/admin/rewards','admin','rewards'],['/admin/rewards/access','admin','rewards'],
+ ['/admin/privacy','admin',null],['/admin/privacy/case-handlers','admin',null],['/admin/rewards/access','admin','rewards'],
  ['/admin/rewards/shared','admin','rewards'],['/admin/scheduled-actions','admin',null],['/admin/security-center','admin',null],['/admin/security-center/password-policy','admin',null],
  ['/admin/settings','admin',null],['/admin/settings/dashboard','admin',null],['/admin/settings/email','admin',null],
  ['/admin/settings/email-templates','admin',null],['/admin/settings/employee-id','admin',null],['/admin/settings/entra','admin',null],['/admin/settings/hiring-defaults','admin',null],

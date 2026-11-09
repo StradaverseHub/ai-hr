@@ -9,3 +9,9 @@ The requested renewal applies to the same 29 existing approved contracts. Keep b
 ## Owner approval
 
 On 9 November 2026 the repository owner answered **“Approve exact provider digest”** for review commit `35538d51550dacfb363bc6ee11de6cd17fb60d9b` and the digest above. Reversing the 29 digest substitutions reproduces the baseline registry byte for byte, including both pending contracts and the existing review metadata.
+
+## Release check repair review
+
+The full gate identified incomplete Rewards Analytics locale coverage and an obsolete Rewards Configuration destination. Within the 1,488-file provider source closure, the repair fills the five locale dictionaries and removes the retired redirect from the setup link index. The other changes refresh the walkthrough and update tests for the consolidated Payment Submission controls and the two pinned migration hashes. Provider gateway, disclosure policy, transport and draft inputs retain their previous bytes.
+
+The requested renewal replaces `c8f06f8f1de6efe669111a0a04f2dd7efdec1ff9f2f86f967b6a1655cda90db6` with `020279efedc544846db0bcc91e6fba27b8c49725169178fa8307c1bc8b6b394c` for the same 29 approved contracts. Both pending contracts and the existing review metadata are preserved. The registry retains the previously approved digest pending this decision.

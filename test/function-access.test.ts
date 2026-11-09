@@ -70,7 +70,8 @@ function codeWithoutComments(src: string): string {
  * A route belongs here ONLY if it reads no session and no data. Anything that reads gets a real guard.
  */
 // '/admin/ai' forwards to AI management › Provider, where the requireAdmin guard applies.
-const REDIRECT_ONLY_ROUTES = ['/admin/ai', '/payroll/transactions/tp1/[year]'] as const;
+// The former Rewards Configuration page forwards to the guarded Shared Rewards Configuration.
+const REDIRECT_ONLY_ROUTES = ['/admin/ai', '/admin/rewards', '/payroll/transactions/tp1/[year]'] as const;
 
 /** An actual awaited call, not a comment/string bearing an auth helper's name. */
 function hasAssistantSessionGuard(source:string){
@@ -83,11 +84,19 @@ function guardedRoutes(): string[] {
   // This actual layout call guards every descendant, including pages whose data guards live in
   // server sections. A removed/renamed guard makes registered Assistant routes fail the stale set.
   const layout=path.join(APP,'assistant/layout.tsx'),assistantGuard=fs.existsSync(layout)&&hasAssistantSessionGuard(fs.readFileSync(layout,'utf8'));
+  // The Analytics page and download share a report loader that requires the module and scoped session.
+  const analyticsReport = codeWithoutComments(fs.readFileSync(path.join(APP, 'rewards/analytics/report.ts'), 'utf8'));
+  const analyticsGuard = /\bawait requireModule\('rewards'\)/.test(analyticsReport) && /\bawait scopedSession\(\)/.test(analyticsReport);
   const walk = (dir: string) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) walk(p);
-      else if (e.name === 'page.tsx' && (GUARD_RE.test(codeWithoutComments(fs.readFileSync(p, 'utf8')))||assistantGuard&&path.relative(APP,p).split(path.sep)[0]==='assistant')) {
+      else if (e.name === 'page.tsx') {
+        const source = codeWithoutComments(fs.readFileSync(p, 'utf8'));
+        const guardedAssistant = assistantGuard && path.relative(APP, p).split(path.sep)[0] === 'assistant';
+        const guardedAnalytics = analyticsGuard && p === path.join(APP, 'rewards/analytics/page.tsx')
+          && /from '\.\/report'/.test(source) && /\bloadRewardsAnalytics\s*\(/.test(source);
+        if (!GUARD_RE.test(source) && !guardedAssistant && !guardedAnalytics) continue;
         // app/foo/bar/page.tsx -> /foo/bar ; app/page.tsx -> /
         const rel = path.relative(APP, p).replace(/\\/g, '/'); // e.g. "foo/bar/page.tsx" or "page.tsx"
         const route = rel.replace(/(^|\/)page\.tsx$/, '');

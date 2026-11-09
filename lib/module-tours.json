@@ -784,12 +784,12 @@
     "steps": [
       {
         "id": "1",
-        "route": "/admin/rewards",
+        "route": "/admin/rewards/plans",
         "target": null,
         "placement": "center",
         "text": {
           "title": "Prepare a rewards review",
-          "body": "Set up the cycle, unit, policy and reviewed employee facts before the assigned reviewers decide compensation changes.",
+          "body": "Start in Shared Rewards Configuration to prepare the plan, confirm its employee snapshot and choose the companies that will use it.",
           "lang": "en"
         },
         "roles": [
@@ -799,12 +799,12 @@
       },
       {
         "id": "2",
-        "route": "/admin/rewards",
+        "route": "/admin/rewards/plans",
         "target": "[data-tour=\"rewards-configuration\"]",
         "placement": "bottom",
         "text": {
-          "title": "Check setup and shared configuration",
-          "body": "Check the company, business unit, year and snapshot date. Shared rewards configuration versions apply to future reviews. Company exclusions cover the whole reward year, require a reason and prevent new unit reviews; they do not remove existing reviews.",
+          "title": "Preview review creation",
+          "body": "Open an approved plan and choose Create unit reviews. Check the included and skipped companies before confirming. Group Rewards requires different people to approve the plan and create its reviews.",
           "lang": "en"
         },
         "roles": [
@@ -814,12 +814,12 @@
       },
       {
         "id": "3",
-        "route": "/admin/rewards",
-        "target": "[data-tour=\"rewards-admin-units\"]",
+        "route": "/admin/rewards/access",
+        "target": "[data-tour=\"rewards-access\"]",
         "placement": "bottom",
         "text": {
           "title": "Check review access and coverage",
-          "body": "Use Rewards access for exact review roles, dates and temporary cover. Preview and save an access request, then have a different authorized administrator approve it. People changes can suspend eligibility. Check required-role coverage before submission; payroll posting remains a separate authorized action.",
+          "body": "Check the people assigned to each review and their effective dates. Preview and save access changes for independent approval. Open Reviewing Team Rewards to check review progress and required-role coverage.",
           "lang": "en"
         },
         "roles": [
