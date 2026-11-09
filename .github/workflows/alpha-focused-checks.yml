@@ -141,10 +141,16 @@ jobs:
               'run_native_bundle': 'false', 'run_build': 'false', 'model_eval': '', 'eval_budget_usd': '20',
               'eval_allowed_providers': '',
           }
+          inputs = event.get('inputs')
+          if type(inputs) is not dict:
+              raise SystemExit('Development browser dispatch inputs refused')
+          # GitHub can omit explicitly supplied empty optional strings from the event.
+          inputs.setdefault('model_eval', '')
+          inputs.setdefault('eval_allowed_providers', '')
           if (event.get('ref') not in (branch, ref) or repo.get('full_name') != repository
                   or repo.get('id') != 1333414856 or repo.get('private') is not False
                   or repo.get('fork') is not False or repo.get('default_branch') != 'main'
-                  or event.get('inputs') != expected_inputs):
+                  or inputs != expected_inputs):
               raise SystemExit('Development browser dispatch inputs refused')
           PYTHON
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
