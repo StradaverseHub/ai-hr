@@ -6,6 +6,7 @@ import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {fixtureAuditCounts,assertFixtureAudit} from './fixture-audit.ts';
 import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
+import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
 import {attendanceRejectionProbeEnabled,attendanceRejectionSubjects} from './attendance-rejection-browser.mjs';
 export async function runDevelopmentSystemFixture(){
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.AUTH_PROVIDER,'internal');
@@ -14,6 +15,7 @@ for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
 }
 const auditRequested=process.env.AUDIT_HASH_CHAIN_ENABLED==='true';
 assert(auditRequested,'the production workload requires audit chaining');
+const fullDevelopmentRoutes=fullDevelopmentBrowserRouteCourse(process.env);
 const {seedBase,entitledCtx,owner,closeAll,setModule}=await import('../../test/harness.ts');
 // The ordinary unit harness deliberately clears deployment gates. Restore this fixture's
 // explicit opt-in before seeding any domain events; production app/driver already retain it.
@@ -110,7 +112,7 @@ try{
   }
   tenants[t]={tenantId:b.tenantId,organization,claimTypeId:type.id,clockingMappingId,companies};
   // Two companies make the staff hub's open count distinguish group and company scope.
-  if(process.env.PERF_HTTP_SUITE==='whole-system')await fixturePhase(t,'lifecycle-hub',()=>owner.db.insert(s.itRequisition).values([
+  if(process.env.PERF_HTTP_SUITE==='whole-system'||fullDevelopmentRoutes)await fixturePhase(t,'lifecycle-hub',()=>owner.db.insert(s.itRequisition).values([
    {tenantId:b.tenantId,companyId:companies[0].companyId,number:'REQ-PERF-PENDING',kind:'standalone',status:'open',approvalStatus:'pending',approvalLevels:1,fullName:'Fictional pending requisition',employeeNo:'PERF-REQ-01'},
    {tenantId:b.tenantId,companyId:companies[1].companyId,number:'REQ-PERF-APPROVED',kind:'standalone',status:'open',approvalStatus:'approved',approvalLevels:1,fullName:'Fictional approved requisition',employeeNo:'PERF-REQ-02'},
    {tenantId:b.tenantId,companyId:companies[0].companyId,number:'REQ-PERF-CANCELLED',kind:'standalone',status:'cancelled',approvalStatus:'pending',approvalLevels:1,fullName:'Fictional cancelled requisition',employeeNo:'PERF-REQ-03'},

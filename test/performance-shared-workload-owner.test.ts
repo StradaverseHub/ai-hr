@@ -1,10 +1,11 @@
 import {expect,it} from 'vitest';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync,mkdirSync,readdirSync,rmSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readdirSync,realpathSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {fullDevelopmentBrowserRouteCourse} from '../scripts/performance/development-browser-route-course.mjs';
 
 const root=fileURLToPath(new URL('..',import.meta.url));
 const tsx=createRequire(import.meta.url).resolve('tsx');
@@ -111,3 +112,53 @@ it.each([
   expect(readdirSync(privateDir)).toEqual([]);expect(readdirSync(evidenceDir)).toEqual([]);
  });
 },15000);
+
+
+it('admits only the exact self-source development event and never a steady or ordinary route selection',()=>{
+ withScratch(({privateDir})=>{
+  const repository='StradaverseHub/ai-hr',branch='codex/architecture-five-item-browser-convergence-20261109';
+  const ref='refs/heads/'+branch,sha='a'.repeat(40),temp=realpathSync(privateDir);
+  const eventDir=join(temp,'_github_workflow'),eventPath=join(eventDir,'event.json');
+  mkdirSync(eventDir);
+  const env={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux',RUNNER_ARCH:'X64',
+   GITHUB_REPOSITORY:repository,GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',
+   GITHUB_WORKFLOW:'alpha-focused-checks',GITHUB_JOB:'selected-tests',GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'1234',
+   GITHUB_REF:ref,GITHUB_REF_NAME:branch,GITHUB_WORKFLOW_REF:repository+'/.github/workflows/alpha-focused-checks.yml@'+ref,
+   GITHUB_SHA:sha,GITHUB_WORKFLOW_SHA:sha,AIHR_CI_CONTROL_HEAD:sha,AIHR_CI_HEAD:sha,
+   RUNNER_TEMP:temp,GITHUB_EVENT_PATH:eventPath,PERF_HTTP_SUITE:'workflow-preflight',
+   PERF_APP_WORKERS:'2',PERF_APP_POOL_CONNECTIONS:'16',PERF_APP_TOTAL_HEAP_MIB:'4096',PERF_ATTENDANCE_DAYS:'180',
+   PERF_HTTP_THINK_MS:'1000',PERF_HTTP_HOLD_MS:'30000'};
+  const inputs={candidate_ref:branch,expected_sha:sha,selected_tests:'[]',architecture_browser_development_preflight:'true',
+   employee_ascii_qualification:'off',qualify_restricted_port_prerequisites:'false',profile_database:'false',duration_order:'false',
+   run_typecheck:'false',run_native_typecheck:'false',run_native_swift_models:'false',run_native_bundle:'false',
+   run_build:'false',eval_budget_usd:'20'};
+  const repo={id:1333414856,full_name:repository,private:false,fork:false,default_branch:'main'};
+  const event={ref:branch,repository:repo,inputs};
+  const write=(value:unknown)=>writeFileSync(eventPath,JSON.stringify(value),{mode:0o600});
+  write(event);
+  expect(fullDevelopmentBrowserRouteCourse(env)).toBe(true);
+  write({...event,inputs:{...inputs,model_eval:'',eval_allowed_providers:''}});
+  expect(fullDevelopmentBrowserRouteCourse(env)).toBe(true);
+  for(const suite of ['claims-heavy','whole-system','native-rendered-preflight'])
+   expect(fullDevelopmentBrowserRouteCourse({...env,PERF_HTTP_SUITE:suite})).toBe(false);
+  expect(fullDevelopmentBrowserRouteCourse({...env,GITHUB_REF:'refs/heads/main',GITHUB_REF_NAME:'main'})).toBe(false);
+  for(const wrong of [{GITHUB_JOB:'resolve'},{GITHUB_RUN_ATTEMPT:'2'},{GITHUB_RUN_ID:'0'},{AIHR_CI_HEAD:'b'.repeat(40)},
+   {GITHUB_REF:'refs/tags/other'},{PERF_APP_WORKERS:'4'},{PERF_APP_POOL_CONNECTIONS:'32'},{PERF_HTTP_HOLD_MS:'60000'}])
+   expect(()=>fullDevelopmentBrowserRouteCourse({...env,...wrong})).toThrow(/hosted identity refused/);
+  for(const wrong of [{model_eval:'preview'},{eval_allowed_providers:null},{selected_tests:'["test/wrong.test.ts"]'},
+   {run_build:true},{expected_sha:'b'.repeat(40)},{unknown:'false'}]){
+   write({...event,inputs:{...inputs,...wrong}});
+   expect(()=>fullDevelopmentBrowserRouteCourse(env)).toThrow(/dispatch inputs refused/);
+  }
+  const {run_typecheck:_required,...omitted}=inputs;
+  write({...event,inputs:omitted});
+  expect(()=>fullDevelopmentBrowserRouteCourse(env)).toThrow(/dispatch inputs refused/);
+  write({...event,repository:{...repo,private:true}});
+  expect(()=>fullDevelopmentBrowserRouteCourse(env)).toThrow(/event refused/);
+  write(event);const alternate=join(eventDir,'alternate.json');symlinkSync(eventPath,alternate);
+  expect(()=>fullDevelopmentBrowserRouteCourse({...env,GITHUB_EVENT_PATH:alternate})).toThrow(/event path refused/);
+  rmSync(eventPath);symlinkSync(alternate,eventPath);
+  rmSync(alternate);writeFileSync(alternate,JSON.stringify(event),{mode:0o600});
+  expect(()=>fullDevelopmentBrowserRouteCourse(env)).toThrow(/event path refused/);
+ });
+});

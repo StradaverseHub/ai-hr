@@ -17,7 +17,9 @@ vi.mock('../scripts/performance/navigation-source',()=>({
  }]}}),
 }));
 vi.mock('../scripts/performance/navigation-fixture-bindings',()=>({readNavigationFixtureBindings:()=>new Map([[4,{actorName:'PERF Person 0004',actorEmployeeCode:'PERF0004',firstCompanyPersonName:'PERF Person 0000',activeHeadcount:'50',historicalPayrollMonth:'2026-07',seedToday:'2026-11-07',seedMonth:'2026-11',rosterScope:{}}]])}));
-import {createNavigationCaptureCollector,installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,writeNavigationCaptureBundle} from '../scripts/performance/navigation-browser-capture';
+import {createNavigationCaptureCollector,installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,writeNavigationCaptureBundle,
+ DEVELOPMENT_RENDERED_UNION_MEMBER,writeDevelopmentRenderedRouteUnion} from '../scripts/performance/navigation-browser-capture';
+import {nativePreflightReadiness,nativePreflightRoutePlan} from '../scripts/performance/system-route-manifest.mjs';
 import {NAVIGATION_CAPTURE_MEMBER,NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,
  validateNativeShellBaseline,type NativeShellBaseline} from '../scripts/performance/navigation-protocol';
 
@@ -445,4 +447,65 @@ describe('separate fixed native shell baseline data and driver controls',()=>{
   await expect(native.captureActor(model.page,4)).rejects.toThrow(reason);
   expect(model.disposals).toEqual([]);
  });
+});
+
+
+it('retains all 74 group primary documents and refuses a 75th or an unlisted actor',async()=>{
+ const id=(index:number)=>'12345678-1234-4234-8234-'+String(index).padStart(12,'0');
+ async function observe(count:number){
+  const fixture=retirementPage();
+  const observer=await installNativePrimaryFailureObserver(fixture.page,0);
+  for(let index=1;index<=count;index++){
+   observer.beforeNavigation();
+   fixture.next(()=>{if(index>1)expect(fixture.receive(fixture.receipt(id(index-1)))).toBe(true);});
+   await fixture.page.goto(ingress+'/');
+   fixture.read(()=>({id:id(index),origin:ingress,busy:0,unavailable:0,alerts:0}));
+   await observer.snapshot(()=>1000);
+  }
+  fixture.next(()=>{expect(fixture.receive(fixture.receipt(id(count)))).toBe(true);});
+  await observer.finish(()=>1000);
+  observer.requireSettled(count);
+  return observer.facts();
+ }
+ expect(await observe(74)).toMatchObject({admitted:74,retired:74,finalBlank:true});
+ await expect(observe(75)).rejects.toThrow(/snapshot identity differs/);
+ await expect(installNativePrimaryFailureObserver(retirementPage().page,3)).rejects.toThrow(/Unknown primary route retirement actor/);
+});
+
+it('seals the separate development route union only with exact route, hidden and settled role facts',async()=>{
+ const collector=createNavigationCaptureCollector({phase:'baseline'});
+ await collector.captureActor(fictionalPage().page,4);
+ const old=collector.finish();
+ // The legacy producer owns actual complete observations. This writer model uses
+ // their type and count; it supplies no application or native coverage claim.
+ const hidden={...modeledShellBaseline(),controllerSha:source.sha};
+ const baseline={...old,complete:true,controllerSha:source.sha,scenarioSha256:hidden.scenarioSha256,
+  observations:Array.from({length:48},()=>old.observations[0])};
+ const rows=nativePreflightRoutePlan().map(row=>({...row,status:200,accountObserved:true,elapsedMs:10,failureCount:0,
+  readiness:nativePreflightReadiness(row.witness)}));
+ const primary=[{actorIndex:0,documents:74},{actorIndex:1,documents:71},{actorIndex:2,documents:16},{actorIndex:4,documents:30}]
+  .map(({actorIndex,documents})=>({actorIndex,admitted:documents,retired:documents,refusals:0,finalBlank:true,pageFailures:0,
+   markerDocuments:{busy:0,unavailable:0,alerts:0}}));
+ const tiles=[{phase:'baseline',role:'groupHR',open:2,pending:1},{phase:'baseline',role:'companyHR',open:1,pending:1}];
+ const output=mkdtempSync(join(tmpdir(),'aihr-development-union-'));
+ const member=join(output,DEVELOPMENT_RENDERED_UNION_MEMBER);
+ try{
+  expect(()=>writeDevelopmentRenderedRouteUnion(output,baseline,rows.slice(1),hidden,primary,tiles)).toThrow(/route union incomplete/);
+  expect(()=>writeDevelopmentRenderedRouteUnion(output,baseline,[...rows.slice(1),rows[1]],hidden,primary,tiles)).toThrow(/Duplicate/);
+  expect(()=>writeDevelopmentRenderedRouteUnion(output,baseline,rows,{...hidden,observations:hidden.observations.slice(1)},primary,tiles)).toThrow(/shell baseline identity/);
+  expect(()=>writeDevelopmentRenderedRouteUnion(output,baseline,rows,hidden,[{...primary[0],pageFailures:1},...primary.slice(1)],tiles))
+   .toThrow(/retirement or Page settlement differs/);
+  expect(()=>writeDevelopmentRenderedRouteUnion(output,baseline,rows,hidden,primary,[{...tiles[0],open:1},tiles[1]])).toThrow(/Lifecycle scope/);
+  expect(()=>writeDevelopmentRenderedRouteUnion(output,{...baseline,controllerSha:source.controller},rows,hidden,primary,tiles)).toThrow(/self-source/);
+  expect(existsSync(member)).toBe(false);
+  const seal=writeDevelopmentRenderedRouteUnion(output,baseline,[...rows].reverse(),hidden,primary,tiles);
+  const bytes=readFileSync(member);
+  expect(seal).toEqual({sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length});
+  const actual=JSON.parse(bytes.toString('utf8'));
+  expect(actual).toMatchObject({kind:'DEVELOPMENT_RENDERED_ROUTE_UNION_V1',complete:true,releaseEligible:false,protectedNative:false,
+   dynamicNavigationComplete:false,counts:{total:191,urls:93,usable:16,scopedDenials:1,renderedOnly:174},hiddenShell:{count:4,retiredDocuments:8},
+   candidateSha:source.sha,controllerSha:source.sha,runId:123,runAttempt:1});
+  expect(actual.observations).toEqual(rows);expect(actual.primaryRetirement).toEqual(primary);
+  expect(()=>writeDevelopmentRenderedRouteUnion(output,baseline,rows,hidden,primary,tiles)).toThrow(/EEXIST/);
+ }finally{rmSync(output,{recursive:true,force:true});}
 });
