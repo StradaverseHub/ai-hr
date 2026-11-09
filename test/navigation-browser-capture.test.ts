@@ -1,4 +1,5 @@
 /** Collector behavior contracts with a mocked page/source, never executed app coverage. */
+import {EventEmitter} from 'node:events';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {Page} from 'playwright';
 const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40)}));
@@ -10,7 +11,7 @@ vi.mock('../scripts/performance/navigation-source',()=>({
  }]}}),
 }));
 vi.mock('../scripts/performance/navigation-fixture-bindings',()=>({readNavigationFixtureBindings:()=>new Map([[4,{actorName:'PERF Person 0004',actorEmployeeCode:'PERF0004',firstCompanyPersonName:'PERF Person 0000',activeHeadcount:'50',historicalPayrollMonth:'2026-07',seedToday:'2026-11-07',seedMonth:'2026-11',rosterScope:{}}]])}));
-import {createNavigationCaptureCollector,installFailureObserver} from '../scripts/performance/navigation-browser-capture';
+import {createNavigationCaptureCollector,installNativePrimaryFailureObserver,createNativeBrowserFailureObservation} from '../scripts/performance/navigation-browser-capture';
 const actorName='PERF Person 0004',otherActorName='PERF Person 0005';
 function fictionalPage({accountName=actorName,accountCount=1,anchorCount=1,detailsCount=1}:{accountName?:string;accountCount?:number;anchorCount?:number;detailsCount?:number}={}){
  let now=0;const waited=new Set<string>(),waits:{selector:string;timeout:number}[]=[],operations:string[]=[];
@@ -60,16 +61,57 @@ beforeEach(()=>{
 });
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 describe('native identity and streamed navigation capture boundaries',()=>{
- it('installs root and nested failure selectors once on the native primary page only',async()=>{
-  const {page:development}=fictionalPage();await installFailureObserver(development);
-  const legacy=vi.mocked(development.addInitScript).mock.calls[0][1]as {unavailable:string;alerts:string};
-  expect(legacy.unavailable).not.toContain(',main[data-read-unavailable]');
-  expect(legacy.alerts).toBe('main [role="alert"]');
-  const {page:native}=fictionalPage();await installFailureObserver(native,true);await installFailureObserver(native);
-  expect(native.addInitScript).toHaveBeenCalledTimes(1);
-  const strict=vi.mocked(native.addInitScript).mock.calls[0][1]as {unavailable:string;alerts:string};
-  expect(strict.unavailable).toContain('main [data-read-unavailable]');expect(strict.unavailable).toContain(',main[data-read-unavailable]');
-  expect(strict.alerts).toBe('main [role="alert"],main[role="alert"]');
+ it('keeps legacy and native observers separate and retains transient native marker attributes',async()=>{
+  const {page}=fictionalPage(),collector=createNavigationCaptureCollector({phase:'baseline'});
+  await collector.captureActor(page,4);expect(collector.finish().observations).toHaveLength(1);
+  await installNativePrimaryFailureObserver(page);await installNativePrimaryFailureObserver(page);
+  expect(page.addInitScript).toHaveBeenCalledTimes(2);
+  const [legacy,native]=vi.mocked(page.addInitScript).mock.calls;
+  expect(legacy[1]).toMatchObject({alerts:'main [role="alert"]'});
+  expect(native[1]).toMatchObject({selectors:{alerts:'main [role="alert"],main[role="alert"]'}});
+  type AttributeRecord={type:'attributes';target:FixtureElement;attributeName:string;oldValue:string|null;addedNodes:[]};
+  class FixtureElement{constructor(readonly inMain=true){}closest(){return this.inMain?this:null;}}
+  const observers:{deliver:(records:AttributeRecord[])=>void;options?:MutationObserverInit}[]=[];
+  class FixtureObserver{
+   entry:{deliver:(records:AttributeRecord[])=>void;options?:MutationObserverInit};
+   constructor(deliver:(records:AttributeRecord[])=>void){this.entry={deliver};observers.push(this.entry);}
+   observe(_document:unknown,options:MutationObserverInit){this.entry.options=options;}
+  }
+  const windowState:Record<string,unknown>={};
+  vi.stubGlobal('window',windowState);vi.stubGlobal('document',{querySelectorAll:()=>[]});
+  vi.stubGlobal('Element',FixtureElement);vi.stubGlobal('MutationObserver',FixtureObserver);
+  try{
+   for(const [script,input]of [legacy,native]){expect(typeof script).toBe('function');(script as (input:unknown)=>void)(input);}
+   expect(observers[0].options?.attributeOldValue).toBeUndefined();
+   expect(observers[1].options?.attributeOldValue).toBe(true);
+   const inMain=new FixtureElement(),outside=new FixtureElement(false);
+   const change=(target:FixtureElement,attributeName:string,oldValue:string|null):AttributeRecord=>({type:'attributes',target,attributeName,oldValue,addedNodes:[]});
+   const records=[change(inMain,'data-page-busy',null),change(inMain,'data-page-busy',''),
+    change(inMain,'data-read-unavailable','true'),change(inMain,'role','alert'),change(inMain,'role','status'),change(outside,'data-page-busy','')];
+   for(const observer of observers)observer.deliver(records);
+   expect(windowState.__aihrNavigationFailureCaptureV1).toEqual({busy:0,unavailable:0,alerts:0});
+   expect(windowState.__aihrNativePrimaryFailureCaptureV1).toEqual({busy:1,unavailable:1,alerts:1});
+  }finally{vi.unstubAllGlobals();}
+ });
+ it('counts actual bound Page event classes and refuses a failure delivered after a clean route snapshot',()=>{
+  const first=new EventEmitter(),second=new EventEmitter(),one=first as unknown as Page,two=second as unknown as Page;
+  const observation=createNativeBrowserFailureObservation();
+  expect(()=>observation.pageCount(one)).toThrow(/Unobserved/);
+  observation.observe(one);observation.observe(two);
+  expect(()=>observation.observe(one)).toThrow(/already observed/);
+  const cleanVisit=observation.pageCount(one);expect(cleanVisit).toBe(0);expect(()=>observation.requireClean()).not.toThrow();
+  const failedRequest=(origin:string,errorText:string)=>({url:()=>origin+'/asset',failure:()=>({errorText})});
+  const response=(origin:string,status:number)=>({url:()=>origin+'/asset',status:()=>status});
+  first.emit('requestfailed',failedRequest('https://other.invalid','net::ERR_CONNECTION_RESET'));
+  first.emit('response',response('https://localhost:3443',404));first.emit('console',{type:()=> 'warning'});
+  expect(observation.pageCount(one)).toBe(cleanVisit);
+  first.emit('requestfailed',failedRequest('https://localhost:3443','net::ERR_ABORTED'));
+  expect(observation.pageCount(one)-cleanVisit).toBe(1);expect(()=>observation.requireClean()).toThrow(/settlement/);
+  second.emit('requestfailed',failedRequest('https://localhost:3443','net::ERR_CONNECTION_RESET'));
+  second.emit('response',response('https://localhost:3443',503));second.emit('pageerror',Error('private message'));
+  second.emit('console',{type:()=> 'error'});second.emit('crash');
+  expect(observation.pageCount(two)).toBe(5);
+  expect(observation.facts()).toEqual({aborted:1,transport:1,http5xx:1,pageError:1,consoleError:1,crash:1});
  });
  it('binds exact identity to the unique account button and waits for streamed anchors/disclosures inside one budget',async()=>{
   const {page,waits,operations}=fictionalPage(),collector=createNavigationCaptureCollector({phase:'baseline'});

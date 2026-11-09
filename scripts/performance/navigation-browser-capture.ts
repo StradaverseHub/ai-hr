@@ -16,11 +16,8 @@ const failuresSelector={busy:'main[data-personnel-busy],main[data-page-busy],mai
  unavailable:'main [data-read-unavailable],main [data-today-unavailable]',alerts:'main [role="alert"]'} as const;
 type LoadState={active:number;inSteadyWindow:boolean};
 const instrumented=new WeakSet<Page>();
-export {installFailureObserver,capturedFailures};
-async function installFailureObserver(page:Page,nativePrimary=false){
+async function installFailureObserver(page:Page){
  if(instrumented.has(page))return;instrumented.add(page);
- const selectors=nativePrimary?{...failuresSelector,unavailable:failuresSelector.unavailable+',main[data-read-unavailable],main[data-today-unavailable]',
-  alerts:failuresSelector.alerts+',main[role="alert"]'}:failuresSelector;
  await page.addInitScript((selectors)=>{
   const counts={busy:0,unavailable:0,alerts:0};
   Object.defineProperty(window,'__aihrNavigationFailureCaptureV1',{value:counts});
@@ -28,13 +25,70 @@ async function installFailureObserver(page:Page,nativePrimary=false){
   new MutationObserver(records=>{inspect();for(const record of records)for(const node of record.addedNodes)if(node instanceof Element){
    for(const key of ['busy','unavailable','alerts']as const)if(node.matches(selectors[key])||node.querySelector(selectors[key]))counts[key]++;
   }}).observe(document,{childList:true,subtree:true,attributes:true});inspect();
- },selectors);
+ },failuresSelector);
 }
 async function capturedFailures(page:Page){
  return page.evaluate(()=>{
   const counts=(window as unknown as {__aihrNavigationFailureCaptureV1?:{busy:number;unavailable:number;alerts:number}}).__aihrNavigationFailureCaptureV1;
   if(!counts)throw Error('Native failure-state observer missing');return {...counts};
  });
+}
+
+const nativePrimaryPages=new WeakSet<Page>();
+const nativePrimaryProperty='__aihrNativePrimaryFailureCaptureV1';
+const nativeMarkerAttributes={'data-personnel-busy':'busy','data-page-busy':'busy',
+ 'data-read-unavailable':'unavailable','data-today-unavailable':'unavailable',role:'alerts'}as const;
+export async function installNativePrimaryFailureObserver(page:Page){
+ if(nativePrimaryPages.has(page))return;
+ const selectors={...failuresSelector,unavailable:failuresSelector.unavailable+',main[data-read-unavailable],main[data-today-unavailable]',
+  alerts:failuresSelector.alerts+',main[role="alert"]'};
+ await page.addInitScript(({selectors,property,attributes})=>{
+  const counts={busy:0,unavailable:0,alerts:0};
+  Object.defineProperty(window,property,{value:counts});
+  const kinds=['busy','unavailable','alerts']as const;
+  const inspect=()=>{for(const kind of kinds)counts[kind]=Math.max(counts[kind],document.querySelectorAll(selectors[kind]).length);};
+  new MutationObserver(records=>{
+   inspect();
+   for(const record of records){
+    if(record.type==='attributes'&&record.target instanceof Element&&record.target.closest('main')){
+     const name=record.attributeName as keyof typeof attributes;
+     if(Object.hasOwn(attributes,name)&&(name==='role'?record.oldValue==='alert':record.oldValue!==null))counts[attributes[name]]++;
+    }
+    for(const node of record.addedNodes)if(node instanceof Element){
+     for(const kind of kinds)if(node.matches(selectors[kind])||node.querySelector(selectors[kind]))counts[kind]++;
+    }
+   }
+  }).observe(document,{childList:true,subtree:true,attributes:true,attributeOldValue:true,attributeFilter:Object.keys(attributes)});
+  inspect();
+ },{selectors,property:nativePrimaryProperty,attributes:nativeMarkerAttributes});
+ nativePrimaryPages.add(page);
+}
+export async function capturedNativePrimaryFailures(page:Page){
+ assert(nativePrimaryPages.has(page),'Native primary failure observer not installed');
+ return page.evaluate(property=>{
+  const counts=(window as unknown as Record<string,{busy:number;unavailable:number;alerts:number}|undefined>)[property];
+  if(!counts)throw Error('Native primary failure-state observer missing');return {...counts};
+ },nativePrimaryProperty);
+}
+
+const browserFailureCounts=()=>({aborted:0,transport:0,http5xx:0,pageError:0,consoleError:0,crash:0});
+/** Browser events on already-owned Pages. Observations confer no admission. */
+export function createNativeBrowserFailureObservation(){
+ const pages=new WeakMap<Page,ReturnType<typeof browserFailureCounts>>(),total=browserFailureCounts();
+ return {
+  observe(page:Page){
+   assert(!pages.has(page),'Native browser Page already observed');const counts=browserFailureCounts();pages.set(page,counts);
+   const add=(kind:keyof typeof counts)=>{counts[kind]++;total[kind]++;};
+   page.on('requestfailed',request=>{if(new URL(request.url()).origin===BASE)add(request.failure()?.errorText==='net::ERR_ABORTED'?'aborted':'transport');});
+   page.on('response',response=>{if(new URL(response.url()).origin===BASE&&response.status()>=500)add('http5xx');});
+   page.on('pageerror',()=>add('pageError'));
+   page.on('console',message=>{if(message.type()==='error')add('consoleError');});
+   page.on('crash',()=>add('crash'));
+  },
+  pageCount(page:Page){const counts=pages.get(page);assert(counts,'Unobserved native browser Page');return Object.values(counts).reduce((sum,count)=>sum+count,0);},
+  facts(){return {...total};},
+  requireClean(){assert(Object.values(total).every(count=>count===0),'Native browser failures observed through settlement');},
+ };
 }
 export type NavigationCaptureCollector=ReturnType<typeof createNavigationCaptureCollector>;
 function fixtureRealm(){

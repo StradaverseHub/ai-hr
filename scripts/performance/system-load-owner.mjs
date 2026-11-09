@@ -6,7 +6,8 @@ import {browserFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
-import {createNavigationCaptureCollector,writeNavigationCaptureBundle,installFailureObserver,capturedFailures} from './navigation-browser-capture.ts';
+import {createNavigationCaptureCollector,writeNavigationCaptureBundle,installNativePrimaryFailureObserver,
+ capturedNativePrimaryFailures,createNativeBrowserFailureObservation} from './navigation-browser-capture.ts';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
 import {attendanceRejectionProbeEnabled,prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
@@ -34,7 +35,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
- nativePreflightRoutePlan,nativePreflightRouteFor,assertNativeClaimsFormsRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from './system-route-manifest.mjs';
+ nativePreflightRoutePlan,nativePreflightRouteFor,assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from './system-route-manifest.mjs';
 export async function runDevelopmentSystemLoad(){
  return runSystemLoad();
 }
@@ -75,6 +76,7 @@ const report={suite,kind:nativePreflight?'NATIVE_RENDERED_UNION_WORKFLOW_SLICE':
  workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],browserMutations:suite==='claims-heavy'?[]:['Generic Reports saved-definition create/edit/delete (group HR, baseline'+(suite==='whole-system'?' and loaded':'')+')','Service Movement Secondment (group HR, '+(suite==='whole-system'?'loaded':'preflight')+')'],preflightOnly:suite==='workflow-preflight'?['Active Personnel contact edit/restore','E-Letter draft create/edit/withdraw','Concurrent Payroll close/publish','Performance review-cycle draft creation','Rewards annual unit draft creation']:[],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['Navigation destinations outside the reviewed scenario plan',...(suite==='workflow-preflight'?[]:['concurrent Payroll close/publish','active Personnel contact edit/restore','E-Letter draft mutations']),'Lifecycle mutations',...(suite==='workflow-preflight'?['Performance and Rewards mutations beyond draft creation']:['Performance mutations','Rewards mutations']),'large Personnel imports',...(suite==='claims-heavy'?['report-definition CRUD']:['Employee Master and Payroll Comparison definition CRUD','500-principal Reports write mix']),'long-running document jobs','external email delivery'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
+const nativeBrowserFailures=nativePreflight?createNativeBrowserFailureObservation():null;
 if(nativePreflight)report.nativeRenderedPreflight={kind:'NATIVE_PRIMARY_ROUTE_UNION',observations:[],union:null,workflowAndRenderedSlicePassed:false,
  pendingHiddenShellCases:['shell.payrollProcess.employee.hidden-denied','shell.payrollProcess.manager.hidden-denied',
   'shell.analytics.employee.hidden-denied','shell.analytics.manager.hidden-denied'],
@@ -330,8 +332,8 @@ async function main(){
    slowPilotTimers.add(diagnostic);
    try{
     const intended=nativePreflight?nativePreflightRouteFor(user.role,user.index,route):null;
-    const response=intended?.redirectStatus===308?await request(user,route,undefined,308):await request(user,route);
-    if(intended?.redirectStatus===308)assertNativeClaimsFormsRedirect(response.status,response.headers.location);
+    const response=intended?.redirectStatus!=null?await request(user,route,undefined,intended.redirectStatus):await request(user,route);
+    if(intended?.redirectStatus!=null)assertNativePreflightRedirect(route,response.status,response.headers.location);
     report.coverage.push({role:user.role,route,status:'passed',durationMs:response.durationMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes,
      ...(intended?{actorIndex:user.index,httpStatus:response.status,redirectStatus:intended.redirectStatus}:{})});
    }
@@ -367,6 +369,7 @@ async function main(){
   await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:base}]);
   if(!signIn)await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'}]);
   context.on('page',page=>noteEvidence(()=>{
+   nativeBrowserFailures?.observe(page);
    const observe=(name,callback)=>page.on(name,(...args)=>noteEvidence(()=>callback(...args)));
    const pending=new Map(),pdfRequests=[];pendingBrowserRequests.set(page,pending);browserPdfRequests.set(page,pdfRequests);
    const pdfRequest=req=>new URL(req.url()).origin===base&&new URL(req.url()).pathname.endsWith('/pdf');
@@ -446,16 +449,11 @@ async function main(){
   const start=performance.now();let response,signInTiming,visitFailed=false,visitStage=signIn?'sign-in':'navigation';
   const deadline=nativeRoute?Math.min(nativeDeadline,start+90000):null;
   const timeout=(limit=90000)=>deadline===null?limit:Math.min(limit,nativeRemaining(deadline));
-  let nativeFailures=0,witness=null,redirectStatus=null;
-  const nativeResponse=row=>{if(new URL(row.url()).origin===base&&row.status()>=500)nativeFailures++;};
-  const nativePageError=()=>{nativeFailures++;};
-  const nativeConsole=message=>{if(message.type()==='error')nativeFailures++;};
+  let witness=null,redirectStatus=null;
   const startedWith=loadState?.();
   try{
-   if(nativeRoute){
-    assert(!signIn);
-    page.on('response',nativeResponse);page.on('pageerror',nativePageError);page.on('console',nativeConsole);
-   }
+   const browserFailuresBefore=nativeRoute?nativeBrowserFailures.pageCount(page):0;
+   if(nativeRoute)assert(!signIn);
    if(signIn)signInTiming=await signInToHome(page,user);
    // Readiness is proved below. Network-idle adds an unrelated500ms quiet window.
    else response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:timeout()});
@@ -464,10 +462,10 @@ async function main(){
    if(nativeRoute){
     assert(response&&response.url()===base+nativeRoute.final,'Native rendered response address differs');
     const prior=response.request().redirectedFrom();
-    if(nativeRoute.redirectStatus===308){
-     assert(prior&&!prior.redirectedFrom()&&prior.url()===base+path,'Native Claims Forms redirect chain differs');
-     const redirect=await prior.response();assert(redirect,'Native Claims Forms redirect response missing');
-     assertNativeClaimsFormsRedirect(redirect.status(),redirect.headers().location);redirectStatus=redirect.status();
+    if(nativeRoute.redirectStatus!==null){
+     assert(prior&&!prior.redirectedFrom()&&prior.url()===base+path,'Native compatibility redirect chain differs');
+     const redirect=await prior.response();assert(redirect,'Native compatibility redirect response missing');
+     assertNativePreflightRedirect(path,redirect.status(),redirect.headers().location);redirectStatus=redirect.status();
     }else assert(!prior,'Unexpected native preflight route redirect');
    }
    assert(!new URL(page.url()).pathname.startsWith('/login'));
@@ -602,11 +600,18 @@ async function main(){
    await signedInName.first().waitFor({state:'visible',timeout:timeout()});
    assert(await account.count()===1&&await account.isEnabled({timeout:timeout()})&&await signedInName.count()===1
     &&await signedInName.innerText({timeout:timeout()})===user.name,'Native rendered route account differs');
+   let view=null;
+   if(nativeRoute.view!==null){
+    const views=page.locator('main [data-ai-centre]:visible');
+    await views.first().waitFor({state:'visible',timeout:timeout()});
+    assert.equal(await views.count(),1,'Native Assistant selected view is ambiguous');
+    view=await views.first().getAttribute('data-ai-centre',{timeout:timeout()});
+   }
+   const observed=await capturedNativePrimaryFailures(page);timeout();
    assert.equal(page.url(),base+nativeRoute.final,'Native rendered route or query changed after readiness');
-   const observed=await capturedFailures(page);timeout();
    const row={role:user.role,actorIndex:user.index,requested:path,final:page.url().slice(base.length),status:response.status(),redirectStatus,
-    accountObserved:true,readiness:witness?'usable-content':'rendered-only',witness,elapsedMs:performance.now()-start,
-    failureCount:nativeFailures+observed.busy+observed.unavailable+observed.alerts};
+    accountObserved:true,readiness:witness?'usable-content':'rendered-only',witness,view,elapsedMs:performance.now()-start,
+    failureCount:nativeBrowserFailures.pageCount(page)-browserFailuresBefore+observed.busy+observed.unavailable+observed.alerts};
    assertNativeRenderedVisit(row);report.nativeRenderedPreflight.observations.push(row);
   }
   if(signIn){
@@ -646,7 +651,6 @@ async function main(){
    });
    throw error;
   }finally{
-   if(nativeRoute){page.off('response',nativeResponse);page.off('pageerror',nativePageError);page.off('console',nativeConsole);}
    const home=noteEvidence(stopHomeTracking);
    const prefetch=trackHomePrefetch?noteEvidence(()=>{
     page.off('request',observePrefetch);
@@ -789,12 +793,14 @@ async function main(){
  const signInPreflight=await runLanes(primaryActors,async user=>{
   const ctx=await context(user,'en',true);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
-   if(nativePreflight)await installFailureObserver(page,true);
    await visit(page,user,'/','sign-in-preflight',true);
    if(baselineNavigation)await baselineNavigation.captureActor(page,user.index);
-   if(nativePreflight)for(const path of routePool(user)){
-    const route=nativePreflightRouteFor(user.role,user.index,path);
-    await visit(page,user,path,'baseline',false,undefined,route);
+   if(nativePreflight){
+    await installNativePrimaryFailureObserver(page);
+    for(const path of routePool(user)){
+     const route=nativePreflightRouteFor(user.role,user.index,path);
+     await visit(page,user,path,'baseline',false,undefined,route);
+    }
    }
   });
  });
@@ -1369,6 +1375,15 @@ await settleDriverResources(failures,{
  },
 });
 recordLockSampling();
+if(nativePreflight){
+ report.nativeRenderedPreflight.browserFailures=nativeBrowserFailures.facts();
+ if(preflightComplete)await failures.attempt('native-post-settlement',()=>{
+  nativeBrowserFailures.requireClean();
+  assert.equal(report.browserErrors.length,0,'Native late browser runtime errors');
+  nativeRemaining(nativeDeadline);
+  if(!failures.failed())report.nativeRenderedPreflight.workflowAndRenderedSlicePassed=true;
+ });
+}
 report.driverFailures=failures.publicFailures();
 if(failures.failed()){
  report.error=report.driverFailures.primary?.code??report.driverFailures.primary?.kind??'Owned driver settlement failed';
@@ -1376,10 +1391,7 @@ if(failures.failed()){
  noteEvidence(()=>writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits)));
 }
 report.driverFailures=failures.publicFailures();
-if(preflightComplete&&!failures.failed()){
- if(nativePreflight)report.nativeRenderedPreflight.workflowAndRenderedSlicePassed=true;
- else report.preflightPassed=true;
-}
+if(!nativePreflight&&preflightComplete&&!failures.failed())report.preflightPassed=true;
 noteEvidence(save);
 if(failures.failed()){
  // The outer runner publishes a bounded child log tail. Keep the actual reasons in its private directory.
