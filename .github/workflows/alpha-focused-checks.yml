@@ -374,10 +374,9 @@ jobs:
                   members.append(check_file(name))
               except FileNotFoundError:
                   pass
-          if not members:
-              raise SystemExit('No sanitized development browser evidence')
-
           if os.environ['COURSE_OUTCOME'] == 'success' and os.environ['CLEANUP_OUTCOME'] == 'success':
+              if not members:
+                  raise SystemExit('No sanitized development browser evidence')
               runner = json.loads(check_file('runner.json').read_bytes())
               driver = json.loads(check_file('http-browser.json').read_bytes())
               fixture = json.loads(check_file('fixture.json').read_bytes())
@@ -405,6 +404,183 @@ jobs:
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
                   summary.write('Two-worker fictional functional browser preflight passed. '
                                 'No steady load, release authority or deployment.\n')
+          else:
+              # Never upload the private source reports. Project only fixed diagnostics,
+              # with absent/refused inputs distinct from an observed zero or false.
+              def record(value):
+                  return value if type(value) is dict else {}
+
+              def choice(value, allowed):
+                  return value if type(value) is str and value in allowed else None
+
+              def number(value, maximum, minimum=0):
+                  return value if type(value) is int and minimum <= value <= maximum else None
+
+              def flag(value):
+                  return value if type(value) is bool else None
+
+              def count(value):
+                  return number(len(value), 4096) if type(value) is list else None
+
+              def first(value, condition):
+                  return next((row for row in value if type(row) is dict and condition(row)), {}) if count(value) is not None else {}
+
+              def identity(info):
+                  return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_nlink,
+                          info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+              def private_report(directory, name, admitted):
+                  try:
+                      fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=directory)
+                  except FileNotFoundError:
+                      return 'absent', {}
+                  except OSError:
+                      return 'refused', {}
+                  try:
+                      with os.fdopen(fd, 'rb') as stream:
+                          info = os.fstat(fd)
+                          limit = 4 * 1024**2
+                          if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                                  or info.st_nlink != 1 or not 0 < info.st_size <= limit):
+                              return 'refused', {}
+                          raw = stream.read(limit + 1)
+                          if (len(raw) != info.st_size or identity(info) != identity(os.fstat(fd))
+                                  or identity(info) != identity(os.stat(name, dir_fd=directory, follow_symlinks=False))):
+                              return 'refused', {}
+                      value = record(json.loads(raw))
+                      return ('observed', value) if admitted(value) else ('refused', {})
+                  except (OSError, ValueError, RecursionError):
+                      return 'refused', {}
+
+              roles = {'employee', 'manager', 'companyHR', 'groupHR'}
+              types = {'Error', 'AssertionError', 'TimeoutError', 'AbortError', 'TypeError', 'AggregateError', 'unclassified'}
+              codes = {'ERR_ASSERTION', 'ABORT_ERR', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE',
+                       'Z_DATA_ERROR', 'Z_BUF_ERROR', '57014', '55P03', '53300', '08006', '42501', '23514', '25P02', '57P01'}
+              visits = {'sign-in', 'navigation', 'page-content', 'heading', 'table-data', 'personnel-access-lock',
+                        'personnel-statement-timeout', 'payslip-statement', 'analytics-metrics', 'roster-scoped-grid',
+                        'job-description-read-controls', 'lifecycle-staff-tiles', 'home-cards', 'navigation-timing',
+                        'native-primary-rendered-evidence'}
+              routes = set((
+                  '/ /admin/attendance/file-mappings /admin/attendance/schedule /admin/claims /admin/claims/forms '
+                  '/admin/claims/limits /admin/claims/mileage /admin/claims/reimbursements /admin/holidays /admin/holidays/groups '
+                  '/admin/job-descriptions /admin/locations /admin/notice-board /admin/personnel /admin/rewards /admin/rewards/shared '
+                  '/admin/security-center /admin/settings/movement /admin/settings/system-labels /admin/settings/system-labels/profile-options '
+                  '/analytics /approvals /approvals/history /assistant /attendance /attendance/daily /attendance/individual /claims '
+                  '/control-tower/agents /control-tower/agents/allowances /control-tower/agents/assistant /control-tower/agents/build-list '
+                  '/control-tower/agents/features /control-tower/agents/provider /control-tower/agents/runs /control-tower/agents/spending '
+                  '/control-tower/exceptions /control-tower/loops /control-tower/loops/payroll-cycle /control-tower/readiness '
+                  '/delegations /feedback /knowledge-base /leave /leave/credit /leave/credit-details /leave/employee-balances '
+                  '/leave/employee-records /leave/history /leave/tracker /letters/approval /letters/fields /letters/register /letters/reports '
+                  '/letters/settings /letters/templates /letters/templates/new /lifecycle /lifecycle/offboarding /lifecycle/onboarding '
+                  '/me /me/calendar /me/ea /me/letters /me/notifications /me/payroll-readiness /me/payslip /me/tax-relief /me/tp3 '
+                  '/notices /org /payroll /payroll/formula-builder /payroll/formula-builder/new /performance /performance/home '
+                  '/personnel /policies /reports /reports/employee-master /rewards /rewards/approvals /roster /roster/exceptions '
+                  '/roster/import /system-testing /tasks'
+              ).split())
+              assistant_views = {'/assistant?view=' + name: name for name in ('how', 'privacy', 'tools', 'insights', 'jobs')}
+
+              def route(value):
+                  view = assistant_views.get(value) if type(value) is str else None
+                  return {'path': '/assistant' if view else choice(value, routes), 'assistantView': view}
+
+              try:
+                  directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+              except OSError:
+                  raise SystemExit('Development browser failure evidence directory refused') from None
+              try:
+                  runner_state, runner = private_report(directory, 'runner.json', lambda row:
+                      row.get('kind') == 'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY'
+                      and row.get('sha') == row.get('controller') == os.environ['AIHR_CI_HEAD']
+                      and row.get('run') == os.environ['GITHUB_RUN_ID'] and row.get('releaseEligible') is False
+                      and row.get('productionEquivalent') is False)
+                  driver_state, driver = private_report(directory, 'http-browser.json', lambda row:
+                      row.get('kind') == 'HTTP_WORKFLOW_PREFLIGHT_ONLY' and row.get('suite') == 'workflow-preflight'
+                      and type(row.get('users')) is int and row['users'] == 0 and row.get('releaseEligible') is False)
+                  labels = ('postgres', 'migrate', 'organisation-admission-verifier', 'catalogs', 'fixture',
+                            'build', 'certificate', 'http-and-browser', 'cleanup')
+                  phases = {}
+                  for label in labels:
+                      row = first(runner.get('phases'), lambda item: item.get('label') == label)
+                      phases[label] = {'exitCode': number(row.get('exitCode'), 255), 'elapsedMs': number(row.get('elapsedMs'), 910000),
+                                       'timedOut': flag(row.get('timedOut')), 'signal': choice(row.get('exitSignal'),
+                                           {'SIGTERM', 'SIGKILL', 'SIGINT', 'SIGABRT', 'SIGSEGV', 'SIGBUS', 'SIGPIPE'})} if row else None
+                  shutdown = record(driver.get('shutdown'))
+                  driver_failures = record(driver.get('driverFailures'))
+                  primary = record(driver_failures.get('primary'))
+                  secondary = first(driver_failures.get('secondary'), lambda row: True)
+                  visit = record(driver.get('browserFailedNavigation'))
+                  pilot = first(driver.get('coverage'), lambda row: row.get('status') == 'failed')
+                  locks = record(record(driver.get('lockSampling')).get('preflight'))
+                  completed = number(locks.get('completed'), 4096)
+                  invalid = number(locks.get('invalidBlockingCounts'), completed) if completed is not None else None
+                  observed = completed - invalid if invalid is not None else None
+                  # A zero in the producer's empty ledger is not a measured zero.
+                  blocking = number(locks.get('blockingSamples'), observed) if observed else None
+                  readiness = runner.get('workerReadiness')
+                  ready = None
+                  if count(readiness) in (0, 1, 2) and all(
+                          flag(record(row).get('health')) is not None and flag(record(row).get('login')) is not None
+                          for row in readiness):
+                      ready = sum(row['health'] and row['login'] for row in readiness)
+                  line, column = number(visit.get('sourceLine'), 2000, 1), number(visit.get('sourceColumn'), 4096, 1)
+                  source_file = None
+                  if line is not None and column is not None:
+                      source_file = (choice(visit['sourceFile'], {'system-load-owner.mjs'})
+                                     if 'sourceFile' in visit else 'system-load.mjs')
+                  receipt = {
+                      'kind': 'INCOMPLETE_DEVELOPMENT_BROWSER_FAILURE', 'version': 1, 'complete': False, 'releaseEligible': False,
+                      'courseOutcome': choice(os.environ['COURSE_OUTCOME'], {'success', 'failure', 'cancelled', 'skipped'}),
+                      'cleanupOutcome': choice(os.environ['CLEANUP_OUTCOME'], {'success', 'failure', 'cancelled', 'skipped'}),
+                      'runnerReport': runner_state, 'driverReport': driver_state, 'runnerPhases': phases,
+                      'primaryFailure': {'errorType': choice(primary.get('kind'), types), 'errorCode': choice(primary.get('code'), codes)} if primary else None,
+                      'firstSecondaryFailure': {'stage': choice(secondary.get('stage'), {
+                          'evidence', 'visit-diagnostic', 'claim-restoration', 'lock-sample-diagnostic', 'browser-failure-capture',
+                          'failure-database-snapshot', 'browser-settlement', 'https-settlement', 'database-settlement',
+                          'browser-disconnected', 'browser-connection-state', 'browser-close', 'context-close', 'context-inventory',
+                          'late-socket', 'agent-queue', 'request-destroy', 'agent-destroy', 'socket-destroy'}),
+                          'errorType': choice(secondary.get('kind'), types), 'errorCode': choice(secondary.get('code'), codes)} if secondary else None,
+                      'firstFailedPilotRoute': {'role': choice(pilot.get('role'), roles), **route(pilot.get('route')),
+                                                'reason': choice(pilot.get('reason'), types | codes)} if pilot else None,
+                      'firstFailedBrowserVisit': {'phase': choice(visit.get('phase'), {'baseline', 'sign-in-preflight', 'loaded'}),
+                                                  'role': choice(visit.get('role'), roles), **route(visit.get('path')),
+                                                  'visitStage': choice(visit.get('visitStage'), visits),
+                                                  'errorType': choice(visit.get('errorType'), types),
+                                                  'errorCode': choice(visit.get('errorCode'), {'ERR_ASSERTION'}),
+                                                  'sourceFile': source_file, 'sourceLine': line if source_file else None,
+                                                  'sourceColumn': column if source_file else None} if visit else None,
+                      'milestones': {'workerReadinessRows': count(readiness), 'readyWorkers': ready,
+                                     'browserVersionObserved': True if type(driver.get('browserVersion')) is str and driver['browserVersion'] else None,
+                                     'browserAcquisition': choice(record(shutdown.get('acquisition')).get('browser'), {'absent', 'acquired', 'failed'}),
+                                     'homeReady': flag(driver.get('preflightHomeReady')),
+                                     'browserClosed': flag(shutdown.get('browserClosed')),
+                                     'nativeAuditPoolClosed': flag(shutdown.get('nativeAuditPoolClosed')),
+                                     'driverPoolClosed': flag(shutdown.get('driverPoolClosed')),
+                                     'compatibilityRedirectsVerified': flag(driver.get('aiCompatibilityRedirectsVerified'))},
+                      'observedCounts': {name: count(driver.get(name)) for name in (
+                          'coverage', 'boundaries', 'browser', 'preflightBrowserSignIns', 'browserVisitFailures', 'homeCardFailures',
+                          'browserErrors', 'pageBusyResponses', 'aiBaselineFailures', 'browserMovementJourneys', 'browserSavedReportJourneys',
+                          'browserPayrollReadiness', 'browserDraftWrites', 'auditVerification')},
+                  }
+                  receipt['observedCounts'].update(
+                      baselineScenarios=number(record(driver.get('navigationCapture')).get('baselineScenarios'), 4096),
+                      lockSamplesCompleted=completed, lockSamplesObserved=observed, lockSamplesBlocking=blocking,
+                      driverSecondaryFailures=count(driver_failures.get('secondary')))
+                  receipt_name = 'browser-preflight-failure.json'
+                  fd = os.open(receipt_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                               0o600, dir_fd=directory)
+                  with os.fdopen(fd, 'w', encoding='utf-8') as output:
+                      json.dump(receipt, output, separators=(',', ':'))
+                      output.write('\n')
+                      output.flush()
+                      written = identity(os.fstat(fd))
+                  member = check_file(receipt_name)
+                  if identity(member.lstat()) != written:
+                      raise SystemExit('Development browser failure receipt replaced')
+                  members.append(member)
+              except OSError:
+                  raise SystemExit('Development browser failure receipt refused') from None
+              finally:
+                  os.close(directory)
           # The full runner/driver records, SQL samples, screenshots, profiles and logs stay on the runner.
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
               output.write('paths<<DEVELOPMENT_EVIDENCE\n' + '\n'.join(map(str, members)) + '\nDEVELOPMENT_EVIDENCE\n')
