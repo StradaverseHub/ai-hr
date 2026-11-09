@@ -1,3 +1,14 @@
+# Schedule Group clock policy — 10 November 2026 MYT (unapplied)
+
+Reserve `4202_attendance_clock_policy_revisions` at idx 3602 and when
+1793330003902, after the joint candidate's 4200 employee digest and 4201
+Attendance Formula retirement. The allocation survey found no competing claim
+across 3,813 distinct Git heads, 516 committed journal blobs and 348 readable
+worktree journals. The staging source `5c990a639` was observed healthy with an
+exact 723-entry applied ledger ending at 4101. Recheck the published baseline,
+ordered ledger and peer claims before admission. The reservation grants no
+installation authority.
+
 # Approved Rewards and Attendance follow-ups — 9 November 2026 (unapplied)
 
 The approved-item coordinator reserves `4100_rewards_review_creator_independence`

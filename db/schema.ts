@@ -6,6 +6,7 @@ import type { PendingPayInputKind } from '../lib/pay-component-contract';
 import type { EmployeeMasterSpec } from '../lib/employee-master-report';
 import type { AttendanceAdminAmendment, AttendanceDayKindOverride, ManualOtRows } from '../lib/attendance-day-adjustment';
 import type {AttendanceGroupPolicy,AttendancePolicyDayClass} from '../lib/attendance-group-policy';
+import type {AttendanceClockPolicy} from '../lib/attendance-clock-policy';
 import type {AttendancePolicyInterval} from '../lib/attendance-policy-intervals';
 import type {PolicyMoneyDay} from '../lib/attendance-policy-calendar';
 import type {EmployeeHomeConfiguration} from '../lib/employee-home';
@@ -4485,6 +4486,7 @@ export const attendanceRule = pgTable(
     // names tenant-wide (both replaced the per-company indexes from 0204).
     uniqueIndex('attendance_rule_tenant_default_uq').on(t.tenantId).where(sql`is_default`),
     uniqueIndex('attendance_rule_tenant_name_uq').on(t.tenantId, sql`lower(${t.name})`),
+    uniqueIndex('attendance_rule_id_tenant_clock_policy_uq').on(t.id,t.tenantId),
     // 07ebd04d (0483) — the 0429 invariant, moved with the columns. COALESCE because weekly_pattern is
     // nullable and one NULL would make the whole predicate NULL, silently un-constraining the table.
     check(
@@ -10988,6 +10990,21 @@ export const attendanceGroupPolicyRevision=pgTable('attendance_group_policy_revi
  reason:text('reason').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_group_policy_revision_ordinal_uq').on(t.tenantId,t.companyId,t.ruleId,t.ordinal),
  uniqueIndex('attendance_group_policy_revision_date_uq').on(t.tenantId,t.companyId,t.ruleId,t.effectiveFrom)]);
+
+/** Independent append-only clock configuration. Existing overtime policy revisions stay intact. */
+export const attendanceClockPolicyRevision=pgTable('attendance_clock_policy_revision',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull(),ruleId:uuid('rule_id').notNull(),
+ ordinal:integer('ordinal').notNull(),effectiveFrom:date('effective_from').notNull(),
+ policy:jsonb('policy').$type<AttendanceClockPolicy>().notNull(),reason:text('reason').notNull(),
+ createdByUserId:uuid('created_by_user_id').notNull(),createdAt:createdAt(),
+},t=>[
+ foreignKey({name:'attendance_clock_policy_company_fk',columns:[t.companyId,t.tenantId],foreignColumns:[company.id,company.tenantId]}).onDelete('restrict'),
+ foreignKey({name:'attendance_clock_policy_rule_fk',columns:[t.ruleId,t.tenantId],foreignColumns:[attendanceRule.id,attendanceRule.tenantId]}).onDelete('restrict'),
+ foreignKey({name:'attendance_clock_policy_actor_fk',columns:[t.createdByUserId,t.tenantId],foreignColumns:[appUser.id,appUser.tenantId]}).onDelete('restrict'),
+ uniqueIndex('attendance_clock_policy_revision_ordinal_uq').on(t.tenantId,t.companyId,t.ruleId,t.ordinal),
+ uniqueIndex('attendance_clock_policy_revision_date_uq').on(t.tenantId,t.companyId,t.ruleId,t.effectiveFrom),
+ index('attendance_clock_policy_tenant_date_idx').on(t.tenantId,t.effectiveFrom),
+]);
 
 /** Owner-issued policy visibility at submission; it is not an approval or final-effect capability. */
 export const attendancePolicyRequestContract=pgTable('attendance_policy_request_contract',{
