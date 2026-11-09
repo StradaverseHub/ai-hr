@@ -187,7 +187,7 @@ describe('topbar — the right cluster has a budget and it is full', () => {
     const components = [...new Set([...cluster.matchAll(/<([A-Z][A-Za-z]*)/g)].map((m) => m[1]))];
     // Adding to this list is allowed — but only together with a re-measurement in
     // test/topbar-identity-width.browser.test.tsx, which is what proves the name still renders.
-    expect(components).toEqual(['NotificationCenter', 'LanguageSwitcher', 'ThemeToggle', 'UserMenu']);
+    expect(components.filter(name => name !== 'Suspense')).toEqual(['ShellNotificationCenter', 'LanguageSwitcher', 'ThemeToggle', 'UserMenu']);
   });
 
   it('keeps the company switcher and the tour launcher OUT of it', () => {

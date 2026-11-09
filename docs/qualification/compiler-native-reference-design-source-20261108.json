@@ -1,0 +1,25 @@
+{
+  "kind": "NATIVE_COMPILER_REFERENCE_ARCHITECTURE_DESIGN_NOT_QUALIFICATION",
+  "base": "e07518e904dae859e6eff936f54bf2884cae4bd7",
+  "retainedApplicationSource": "13d5a5d64512d1daa026836b34cb0b043b4a24cf",
+  "retainedDiagnosticRun": 42423098585,
+  "sourceRef": "codex/compiler-native-reference-design-20261108",
+  "sourceSha256": {
+    "docs/adr/2026-11-08-native-compiler-reference-boundaries.md": "c3ab9f632950d2f791364ab310bc40a26b0ef0a6dcf2a5d66b0c209ce435b432",
+    ".github/ci/diagnostics/compiler-boundary.mjs": "5fa67c973118053b1760e7adc288d8e429834b468ac38f28040a1e3cd74195d8",
+    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "cf1aef49f7aad7394e3a8de31e1b31e1da80667fbbc9c8f2da16db5795c28ed7",
+    ".github/ci/diagnostics/compiler-boundary-worker.mjs": "5d1986d983cc0a2f5d87670704cb83acaaaf41a26d8068958c83ba89e727c00e",
+    "tsconfig.json": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a",
+    "tsconfig.build.json": "1c989c374f21f205e7aeb51842cc6032307bc91075faf5a6feccc945fcda49bf",
+    "pnpm-lock.yaml": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd",
+    ".github/ci/typecheck.sh": "cb410d168ff728c97cd5f819d103e0e13b88728b89c0e80fb8b8a4444ce8ae55",
+    ".github/ci/compiler-cache.mjs": "bde4c1ce0b952dd80373f0801d0aa523c0d044e7748ce3e17c3cb6f381c8b5e6"
+  },
+  "implementationStarted": false,
+  "checksExecuted": false,
+  "ordinaryCompilerQualified": false,
+  "releaseAuthorized": false,
+  "productionHeld": true,
+  "nativeJsonEmission": "ordinary native JS+JSON+declarations, private output only; no bespoke asset copy",
+  "ownedDeclarationValidation": "fresh native public Program API with UNMODIFIED default CompilerHost, disk-only native references, complete owned semantic diagnostics under skipLibCheck=false; original external semantic policy unchanged"
+}

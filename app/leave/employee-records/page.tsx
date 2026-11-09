@@ -8,16 +8,15 @@ import { Button, Card, EmployeeName, PageHeader, inputCls } from '@/components/u
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
-  type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
 import { TableFullscreen } from '@/components/leave/table-fullscreen';
 import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 import { adminCancelLeaveAction } from '@/app/leave/actions';
-import { sortInquiryEmployees } from '@/lib/leave-inquiry';
+import {leaveInquiryPickerInput} from '@/lib/leave-inquiry-picker';
 import { parseInquiryQuery, InquiryQueryError } from '@/lib/leave-inquiry-query';
-import { leaveInquiryContext, leaveInquiryRecordsPage, type LeaveInquiryContext } from '@/packs/leave/service';
+import { leaveInquirySnapshot,readLeaveInquiryPickerTx,type LeaveInquiryPickerPage, leaveInquiryRecordsPageTx, type LeaveInquiryContext } from '@/packs/leave/service';
 import { durationLabel } from '@/lib/leave-duration';
 // 4a1abc4a: this screen printed the raw day count ("3") beside Employee Balances' "3.00" — the reported
 // drift, between two tabs of the same Leave Inquiry nav. One formatter for both.
@@ -97,38 +96,27 @@ export default async function EmployeeLeaveRecordPage({
 
   let query: ReturnType<typeof parseInquiryQuery>;
   let inquiry: LeaveInquiryContext;
+  let picker:LeaveInquiryPickerPage;
+  let result:Awaited<ReturnType<typeof leaveInquiryRecordsPageTx>>;
   try {
     query = parseInquiryQuery(sp, 'records');
-    inquiry = await leaveInquiryContext(session, scopeIds, query);
+    const frame=await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)=>({
+      picker:await readLeaveInquiryPickerTx(tx,session,scope.companyIds,leaveInquiryPickerInput(sp,scope.selected?.employmentId),locale),
+      inquiry:scope,result:await leaveInquiryRecordsPageTx(tx,session,scope,query),
+    }),{selectionOnly:true});
+    inquiry=frame.inquiry;result=frame.result;picker=frame.picker;
   } catch (error) {
     if (!(error instanceof InquiryQueryError)) throw error;
     return <Card><p role="alert" className="p-6">{tInq('invalidQuery')}</p><Link href="/leave/employee-records" className="p-6 text-primary">{tInq('resetInquiry')}</Link></Card>;
   }
-  const employees = sortInquiryEmployees(inquiry.employees, locale);
   const selected = inquiry.selected;
-  /** The panel is fed from the SAME `listEmployees` read — a `.map`, never a second, wider employee source. */
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.department,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnit,
-    businessUnitId: e.businessUnitId,
-    // DERIVED ON THE SERVER: the browser gets this wrong by a day across MYT midnight.
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
+  const employeeCount=picker.populationTotal;
   /** Read on the SERVER, so the first paint is already right rather than opening and folding (r320). */
   const panelCookies = await cookies();
   const panelDefaultOpen = !selected || (panelCookies.get(`${PANEL_COOKIE}-selected`)?.value === selected.employmentId && panelCookies.get(PANEL_COOKIE)?.value === '1');
 
   const { typeIds, statuses, q, from, to, sort, dir, pq, dateMode } = query;
-  const [leaveTypes, result] = await Promise.all([
-    listLeaveTypes(session, { locale }),
-    leaveInquiryRecordsPage(session, inquiry, query),
-  ]);
+  const leaveTypes=await listLeaveTypes(session,{locale});
   const { rows, total } = result;
 
   const params = () => {
@@ -327,7 +315,7 @@ export default async function EmployeeLeaveRecordPage({
                 {t('requestsCountTotal', { count: total })}
               </span>
             </div>
-          ) : <span className="text-sm font-semibold">{tInq('allEmployeesHeader', { count: employees.length, companies: inquiry.companies.map(c => c.name).join(', ') })}</span>
+          ) : <span className="text-sm font-semibold">{tInq('allEmployeesHeader', { count: employeeCount, companies: inquiry.companies.map(c => c.name).join(', ') })}</span>
         }
         panel={
           <Card className="p-4">
@@ -335,7 +323,7 @@ export default async function EmployeeLeaveRecordPage({
             <p className="mt-1 text-xs text-muted-foreground">{tInq('panelHint')}</p>
             <div className="mt-3">
               <EmployeeScopePanel
-                employees={panelEmployees}
+                remote={{initial:picker,endpoint:'/api/leave/inquiry/employees'}}
                 selectedId={selected?.employmentId ?? null}
                 basePath="/leave/employee-records"
                 selectParam="emp"
@@ -418,7 +406,7 @@ export default async function EmployeeLeaveRecordPage({
           <LeaveInquiryNav active="records" employmentId={selected?.employmentId} carry={{ ...panelPreserve, q, type: typeIds }} />
 
           {/* 23e87eef: All is an explicit authorized view; empty scope remains distinct. */}
-          {employees.length === 0 ? (
+          {employeeCount === 0 ? (
             <Card className="overflow-hidden">
               <p className="px-4 py-10 text-center text-sm text-muted-foreground" data-testid="pick-employee">
                 {tInq('noEmployees')}
@@ -433,7 +421,7 @@ export default async function EmployeeLeaveRecordPage({
             />
             <TableFullscreen
               title={tInq('employeeLeaveRecord')}
-              subtitle={selected ? `${selected.name} · ${selected.company}` : tInq('allEmployeesHeader', { count: employees.length, companies: inquiry.companies.map(c => c.name).join(', ') })}
+              subtitle={selected ? `${selected.name} · ${selected.company}` : tInq('allEmployeesHeader', { count: employeeCount, companies: inquiry.companies.map(c => c.name).join(', ') })}
               openLabel={tInq('fullScreen')}
               closeLabel={tInq('fullScreenClose')}
               escHint={tInq('fullScreenEsc')}

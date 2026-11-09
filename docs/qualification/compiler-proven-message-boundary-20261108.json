@@ -1,0 +1,119 @@
+{
+  "kind": "COMPLETE_COMPILER_EVIDENCE_AND_NARROW_MESSAGE_SOURCE_REPAIR",
+  "releaseAuthorized": false,
+  "base": "05bde1cbb023f8d523a18774e92efe9fc2e295bc",
+  "original05": {
+    "runId": "42396515501",
+    "source": "05bde1cbb023f8d523a18774e92efe9fc2e295bc",
+    "controller": "af584365c54165b1bddd88316d766a9d5f55bd67",
+    "heapMiB": 12288,
+    "cpus": 4,
+    "ramBytes": 16760344576,
+    "node": "22.23.3",
+    "typescript": "5.9.3",
+    "tsconfigSha256": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a",
+    "lockSha256": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd",
+    "compilerSha256": "e8f349eabd48486bdb2bf9dc1a00c89d58297270c54b745838879e2859194419",
+    "inventoryFiles": 11268,
+    "inventorySha256": "64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd",
+    "inventoryCode": 0,
+    "sourceRestored": true,
+    "controllerRestored": true,
+    "elapsedMs": 548200,
+    "sampledPeakRssKiB": 12834148,
+    "signal": "SIGABRT",
+    "v8HeapFailure": true,
+    "stoppedBecause": null,
+    "compilerCompleted": false,
+    "completedCheckSourceFiles": 6888,
+    "tracedCheckExpressionEvents": 62121,
+    "recursiveDepthLimitEvents": 2143,
+    "largestDepthLimitOwners": {
+      "core/profile-edit.ts": 312,
+      "core/letters.ts": 307,
+      "test/overtime-toil-duration.test.ts": 141,
+      "packs/performance/onehr/evidence-reading.ts": 114,
+      "core/org.ts": 96
+    },
+    "completedFileSeconds": {
+      "test/agent-principal.test.ts": 0.1952761670000255,
+      "test/r422-profile-dates.test.ts": 2.3709696919999717,
+      "test/rewards-approvals-board.test.ts": 34.46229962699997
+    },
+    "artifactSha256": {
+      "report.json": "61e96703c6ded1d6560ab43a4f05c376f7d338325a30579da6aca0cdc4f0bb9f",
+      "trace/trace.json": "007d93f900511600c89bf9b19ed6bd34a7463d44fa485477a3ada7e0e8986a04",
+      "compiler-samples.jsonl": "aa6a66376a91e2b8ad8bd5dfbebc2e0be0167a5c62794a538a1a07f77b75084d"
+    }
+  },
+  "originalFe26": {
+    "runId": "42392198414",
+    "source": "fe26d003b9750478e4d434cc9dd22b59092ae830",
+    "controller": "ea3aad7e84d27868b400cd7c5ef02a5259b5ad34",
+    "heapMiB": 12288,
+    "cpus": 4,
+    "ramBytes": 16760348672,
+    "node": "22.23.3",
+    "typescript": "5.9.3",
+    "tsconfigSha256": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a",
+    "lockSha256": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd",
+    "compilerSha256": "e8f349eabd48486bdb2bf9dc1a00c89d58297270c54b745838879e2859194419",
+    "inventoryFiles": 11268,
+    "inventorySha256": "64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd",
+    "inventoryCode": 0,
+    "sourceRestored": true,
+    "controllerRestored": true,
+    "elapsedMs": 634501,
+    "sampledPeakRssKiB": 12860052,
+    "signal": "SIGABRT",
+    "v8HeapFailure": true,
+    "stoppedBecause": null,
+    "compilerCompleted": false,
+    "completedCheckSourceFiles": 6613,
+    "tracedCheckExpressionEvents": 52680,
+    "recursiveDepthLimitEvents": 2143,
+    "largestDepthLimitOwners": {
+      "core/profile-edit.ts": 312,
+      "core/letters.ts": 307,
+      "test/overtime-toil-duration.test.ts": 141,
+      "packs/performance/onehr/evidence-reading.ts": 114,
+      "core/org.ts": 96
+    },
+    "completedFileSeconds": {
+      "test/agent-principal.test.ts": 79.12723261199999,
+      "test/r422-profile-dates.test.ts": 26.109021333000005,
+      "test/rewards-approvals-board.test.ts": 0.21332644299995898
+    },
+    "artifactSha256": {
+      "report.json": "7d8840f3757947dd3dc166748badda6263ea2b68d8499f91b9e2e0daf9671003",
+      "trace/trace.json": "6b578864918d0e5db9c0243eb860de3114de15bf66a9784b5e6e55055c7ecc84",
+      "compiler-samples.jsonl": "1f95a0b714c1a301167d657436a07ce8ec7078a98f886b55994b4af682067437"
+    }
+  },
+  "measuredConstructor": {
+    "path": "test/rewards-approvals-board.test.ts",
+    "lineAtBase": 383,
+    "namespace": "rewards.board",
+    "callExpressionSeconds": 34.303510796999994,
+    "originalMessagePaths": 34669,
+    "projectedMessagePaths": 87,
+    "keyOwner": "packs/rewards/calendar.ts:rewardDueWording",
+    "keys": [
+      "overdue",
+      "dueToday",
+      "dueTomorrow",
+      "dueIn"
+    ],
+    "rootCatalogueBytesUnchanged": true,
+    "sourceSha256": "e558601754cbc218a96d63ac68623ca6ab43f5002c3fff2d93fdb37b2dd75a0a"
+  },
+  "interpretation": [
+    "Both original complete compiler attempts failed; earlier focused passes and a diagnostic trace are not compiler acceptance.",
+    "05 completes275 more checkSourceFile pairs and removes the two earlier expensive constructor boundaries, but distributed retained type graph still exceeds the same12GiB heap.",
+    "Trace duration includes GC and nested events; totals of overlapping X durations cannot be added as wall time. Sampled RSS is not retained per-type heap attribution.",
+    "The crash did not emit types.json or successful final extendedDiagnostics; no complete type-ID/instantiation count or sole root cause is claimed.",
+    "UI useTranslations calls have no AppConfig.Messages augmentation and do not infer full en; their larger completed file times alone do not justify narrowing dynamic keys.",
+    "The same2143 recursive structural depth events remain; Drizzle structural relation work and parsing/binding the11268-file graph are unresolved aggregate costs."
+  ],
+  "qualification": "PENDING independent review, existing affected behavior/i18n tests and normal complete12GiB compiler on standard hosted runners; no local app/compiler/runtime checks."
+}

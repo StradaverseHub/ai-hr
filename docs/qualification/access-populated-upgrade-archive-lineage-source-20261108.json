@@ -1,0 +1,19 @@
+{
+  "kind": "HISTORICAL_ACCESS_COMPONENT_ARCHIVE_NOT_INSTALLED_CHAIN",
+  "base": "4c8372706f2985f17dcf1517aeeb2b45fb465b83",
+  "sourceRef": "codex/access-upgrade-archive-lineage-20261108",
+  "selector": "test/access-editor-populated-upgrade.test.ts",
+  "nativeCases": 1,
+  "caseMs": 300000,
+  "actual706707Rehearsal": false,
+  "original3103OrCurrentJournalChanged": false,
+  "sourceSha256": {
+    "test/access-editor-populated-upgrade.test.ts": "82c01e90c0129c6611274f1866f223f2b4597bbb645f5a54470ecc0a6c1f2a0f",
+    "docs/qualification/access-populated-upgrade-archive-lineage-20261108.md": "109ddcc688c87dfc8184d0e971bd3f5cec82e3cd25e3ccab18633ce83c8385b9",
+    "test/fixtures/access-editor-original739-journal.json": "881d1d8debe355e83c242b1dcdbc5de2e51e303dcbffbdf14cb22e0e27067b21",
+    "db/migrations/3103_access_editor_presentation.sql": "bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47"
+  },
+  "qualification": "NOT_RUN",
+  "releaseAuthorized": false,
+  "production": "HELD"
+}

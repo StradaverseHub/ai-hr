@@ -52,7 +52,7 @@ export default async function ScheduledActionsPage() {
     return `${number.format(Math.round(ms / 6000) / 10)} ${t('unitMinutes')}`;
   };
 
-  const outcomeVariant = (o: string) => (o === 'success' ? 'success' : o === 'partial' ? 'warning' : 'danger');
+  const outcomeVariant = (o: string) => (o === 'success' ? 'success' : (o === 'partial' || o === 'running') ? 'warning' : 'danger');
   const outcomeLabel = (o: string) => (t.has(`outcome.${o}`) ? t(`outcome.${o}`) : o);
 
   /**
@@ -60,10 +60,11 @@ export default async function ScheduledActionsPage() {
    * NEVER coerced to integers — expire-carry reports forfeited DAYS as a float, so 12.5 must
    * not display as 12. An unrecognised counter falls back to its raw key rather than throwing.
    */
-  const changed = (result: Record<string, number> | null): string => {
+  const changed = (result: Record<string, number> | null, jobKey: string): string => {
     if (!result) return '—';
     const parts = Object.entries(result)
-      .filter(([, v]) => typeof v === 'number')
+      .filter(([key, v]) => typeof v === 'number' && (jobKey !== 'notifications.project' ||
+        ['processedEvents','createdNotifications','committedBatches','pendingEvents','oldestPendingSeconds','cappedTenants','emailAttempted','emailSkipped','emailUnavailableTenants','emailCappedTenants'].includes(key)))
       .map(([k, v]) => `${t.has(`counters.${k}`) ? t(`counters.${k}`) : k}: ${number.format(v)}`);
     return parts.length ? parts.join(' · ') : '—';
   };
@@ -88,6 +89,7 @@ export default async function ScheduledActionsPage() {
                     <div className="min-w-0">
                       <div className="font-medium">{t(`jobs.${job.i18nKey}.name`)}</div>
                       <p className="mt-0.5 text-sm text-muted-foreground">{t(`jobs.${job.i18nKey}.description`)}</p>
+                      {job.key === 'notifications.project' && <p className="mt-1 text-xs text-muted-foreground">{t('notificationEvidenceUnverified')}</p>}
                       {job.key === 'reports.employee-master.deliver' && !reportEmailEnabled &&
                         <p className="mt-1 text-xs text-muted-foreground">{reportSchedule('unavailable')}</p>}
                     </div>
@@ -110,7 +112,7 @@ export default async function ScheduledActionsPage() {
                       </div>
                       <div>
                         <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t('colChanged')}</dt>
-                        <dd>{changed(last.result)}</dd>
+                        <dd>{changed(last.result, last.jobKey)}</dd>
                       </div>
                       <div>
                         <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t('colTenants')}</dt>
@@ -155,7 +157,7 @@ export default async function ScheduledActionsPage() {
                               <td className="py-2 pr-4">
                                 <Badge variant={outcomeVariant(r.outcome)}>{outcomeLabel(r.outcome)}</Badge>
                               </td>
-                              <td className="py-2 pr-4">{changed(r.result)}</td>
+                              <td className="py-2 pr-4">{changed(r.result, r.jobKey)}</td>
                               <td className="py-2 text-muted-foreground">{r.error ?? '—'}</td>
                             </tr>
                           ))}

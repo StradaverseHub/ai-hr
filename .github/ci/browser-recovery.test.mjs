@@ -1,4 +1,10 @@
 import test from 'node:test';
+import {realpathSync,readFileSync as readModelSource} from 'node:fs';
+import {fileURLToPath as modelFileURLToPath} from 'node:url';
+import {createHash as modelCreateHash} from 'node:crypto';
+import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
+import {singletonSources} from './singleton-protocol.mjs';
+import {join as modelJoin} from 'node:path';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
@@ -9,6 +15,25 @@ import {validateBrowserControllerDelta,validateBrowserHistory} from './browser-r
 import {operatorRelease} from './operator-release.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
+
+// Source-data model only: actual hosted/source authentication belongs to the real adapters.
+const modelRoot=realpathSync(modelFileURLToPath(new URL('../../',import.meta.url)));
+function databaseModel(f,root=modelRoot){
+ const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
+ const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
+ const unit=buildDatabaseModelUnits([file],{db:[file],nodb:[]},browser.files)[0],report=f.reports.find(report=>report.id===oldId),runId=f.expected.runId??100;
+ f.expected.runId=runId;plan.suite=[...plan.suite.filter(path=>!old.files.includes(path)),file].sort();plan.units=plan.units.map(row=>row.id===oldId?unit:row);
+ const journal='db/migrations/meta/_journal.json',journalHash=modelCreateHash('sha256').update(readModelSource(modelJoin(root,journal))).digest('hex');
+ plan.singletonSources={[unit.id]:Object.fromEntries(singletonSources(unit,root).map(path=>[path,path===journal?journalHash:'c'.repeat(64)]))};
+ const {fingerprint,...body}=plan;plan.fingerprint=modelCreateHash('sha256').update(JSON.stringify(body)).digest('hex');
+ report.id=unit.id;report.files=unit.files;report.batches[0].result.testResults=[{name:report.cwd+'/'+file,status:'passed',assertionResults:[{status:'passed'}]}];
+ report.batches[0].result.numTotalTests=1;report.batches[0].result.numPassedTests=1;
+ const resource=report.databaseTerminalEvidence;resource.name=`aihr-ci-${runId}-1-${unit.id}`;report.batches[0].databaseEvidence=structuredClone(resource);
+ report.singleton={schemaVersion:1,mode:'full-ci-singleton',candidate:plan.sha,controller:plan.controller,runId:String(runId),attempt:'1',unit:unit.id,fingerprint:plan.fingerprint,file,profile:unit.singleton.profile,sourceHashes:plan.singletonSources[unit.id],evidenceDirectory:'/tmp/model/aihr-ci',prerequisites:{kind:'fresh-job-postgres-cluster',workers:1,database:structuredClone(resource)}};
+ for(const row of f.reports)row.fingerprint=plan.fingerprint;
+ if(f.jobs)f.jobs.find(job=>job.name===`test (${oldId})`).name=`test (${unit.id})`;
+ return f;
+}
 const branch='codex/recovery',candidateBranch='codex/source',controller='e'.repeat(40),lock='f'.repeat(64);
 function metadata(){
  const f=fixture(),run={...f.run,id:200,head_sha:controller,head_branch:branch,workflow_id:BROWSER_WORKFLOW_ID,path:'.github/workflows/alpha-staging-browser-checks.yml',display_title:`Tooling transport only · ${candidateBranch}`,conclusion:'success',created_at:time(4.5),updated_at:time(.5)};
@@ -16,16 +41,18 @@ function metadata(){
  const artifacts=['browser-recovery-runtime-firefox','diagnostic-complete-image-browser-firefox'].map((name,i)=>({id:400+i,name,size_in_bytes:100,digest:'sha256:'+'f'.repeat(64),expired:false,created_at:time(2),expires_at:time(-60),workflow_run:{id:200,repository_id:1333414856,head_repository_id:1333414856,head_sha:controller,head_branch:branch}}));
  return {run,jobs,artifacts,expected:{runId:200,controller,branch,candidateBranch,after:time(5)},now};
 }
-function input(){
- const f=fixture(),plan=f.expectedPlan,{fingerprint,...body}={...plan,controller},freshPlan={...body,fingerprint:hash(body)},report=structuredClone(f.reports.find(r=>r.id==='browser-firefox'));
+function input(root){
+ const f=root?databaseModel(fixture(),root):fixture(),plan=f.expectedPlan,{fingerprint,...body}={...plan,controller},freshPlan={...body,fingerprint:hash(body)},report=structuredClone(f.reports.find(r=>r.id==='browser-firefox'));
  report.fingerprint=freshPlan.fingerprint;report.healthBefore={platform:'linux',ok:true,availableDiskBytes:25*1024**3,reasons:[],at:time(3)};report.healthAfter={...report.healthBefore,at:time(2.5)};
  const failed=f.reports.find(r=>r.id==='browser-firefox');Object.assign(failed,{exitCode:1,batches:[],healthBefore:{ok:false,availableDiskBytes:8*1024**3,reasons:['Less than 20 GiB available on the worktree volume']},error:'Error: Runner disk headroom too low: diagnostic'});
  f.jobs.find(j=>j.name==='browser (firefox)').conclusion='failure';
- const assessment={...assessResumeCoverage({expectedPlan:plan,reports:f.reports,expected:f.expected}),sourceRun:{id:100},observations:[{id:'browser-firefox',conclusion:'failure'}]};for(const r of assessment.reusable)r.source={runId:100,jobId:123,artifactId:456,digest:'sha256:'+'a'.repeat(64)};
+ const assessment={...assessResumeCoverage({expectedPlan:plan,reports:f.reports,expected:f.expected},root),sourceRun:{id:100},observations:[{id:'browser-firefox',conclusion:'failure'}]};for(const r of assessment.reusable)r.source={runId:100,jobId:123,artifactId:456,digest:'sha256:'+'a'.repeat(64)};
  const m=metadata(),fresh={...m,report,producer:m.jobs[3],binding:{kind:'PINNED_OFFICIAL_IMAGE_TOOLING_NOT_TEST_OR_RELEASE_PASS',releaseAuthorized:false,image:BROWSER_IMAGE,playwrightVersion:'1.62.1',nodeVersion:'22.23.3',candidate:plan.sha,controller,baseline:plan.migrationBase,engine:'firefox',runId:'200',attempt:'1',runtime:plan.runtime,lang:'en_US.UTF-8',tz:'Asia/Kuala_Lumpur',browsersPath:'/ms-playwright',lockSha256:lock}};
  return {plan,freshPlan,assessment,run:f.run,jobs:f.jobs,reports:f.reports,fresh,verificationController:controller,verificationDiagnostic:{runId:500,controller},producerDiagnostic:{runId:501,controller},lockSha256:lock};
 }
-test('Complete Firefox replacement preserves original failure, all retained sources and both plan fingerprints',()=>{const f=input(),before=structuredClone(f),c=verifyBrowserRecovery(f);assert.deepEqual(f,before);assert.equal(c.originalConclusion,'failure');assert.equal(c.tests,5);assert.equal(c.units.length,f.plan.units.length);assert.equal(c.units.filter(u=>u.kind==='browser-capacity-recovery').length,1);assert.notEqual(c.sourceFingerprint,c.replacementFingerprint);});
+test('Complete Firefox replacement preserves original failure, all retained sources and both plan fingerprints',()=>{const f=input(),before=structuredClone(f),c=verifyBrowserRecovery(f);assert.deepEqual(f,before);assert.equal(c.originalConclusion,'failure');assert.equal(c.tests,5);assert.equal(c.units.length,f.plan.units.length);assert.equal(c.units.filter(u=>u.kind==='browser-capacity-recovery').length,1);assert.notEqual(c.sourceFingerprint,c.replacementFingerprint);
+ const db=input(modelRoot);assert.throws(()=>verifyBrowserRecovery(db));const bound=verifyBrowserRecovery(db,modelRoot);assert.equal(bound.tests,5);assert.notEqual(db.plan.controller,db.freshPlan.controller);assert.equal(db.plan.sha,db.freshPlan.sha);assert.throws(()=>verifyBrowserRecovery({...db,candidateRoot:modelRoot}));
+});
 for(const [name,mutate] of [
  ['source identity',f=>f.assessment.sha='b'.repeat(40)],['missing source assessment',f=>f.assessment.sourceRun.id++],['relabelled source',f=>f.run.conclusion='success'],['second original attempt',f=>f.run.run_attempt=2],
  ['other failed area',f=>f.assessment.rerun.push({id:'browser-webkit'})],['missing retained unit',f=>f.assessment.reusable.pop()],['duplicate retained unit',f=>f.assessment.reusable[0]=f.assessment.reusable[1]],
@@ -62,4 +89,10 @@ test('Pending source verification, mutated build and wrong reviewed operator can
  assert.throws(()=>createInstallGrant({...g,evidence:e,run,producer}));
  requireReviewedBrowserController({execute:false,controller});assert.throws(()=>requireReviewedBrowserController({execute:true,controller}));assert.throws(()=>requireReviewedBrowserController({execute:true,controller,reviewedController:'d'.repeat(40)}));assert.doesNotThrow(()=>requireReviewedBrowserController({execute:true,controller,reviewedController:controller}));
  f.reviewedController=controller;const c2=verifyBrowserRecovery(f),e2={...e,...c2,recovery:c2,fingerprint:hash(c2),build:{...e.build,source:'d'.repeat(40)}};assert.throws(()=>createInstallGrant({...g,evidence:e2,run,producer}));
+});
+
+test('Browser recovery permits only the explicitly skipped commissioning job',()=>{
+ const f=input();f.jobs.push({...f.jobs[0],id:9999,name:'commission-summary',conclusion:'skipped'});
+ assert.doesNotThrow(()=>verifyBrowserRecovery(f));
+ f.jobs.at(-1).conclusion='success';assert.throws(()=>verifyBrowserRecovery(f));
 });

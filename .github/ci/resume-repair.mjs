@@ -11,8 +11,8 @@ const safePath = value => typeof value === 'string' && value.length > 0 && !valu
  * Both plans and impactContext MUST be independently reconstructed from Git source by the caller.
  * This assessor authenticates no API snapshots and proves no dependency graph/ancestry on its own.
  */
-export function assessRepairCoverage({sourceEvidence, candidatePlan, candidate, impactContext}) {
-  const original = assessResumeSource(sourceEvidence), sourcePlan = sourceEvidence.expectedPlan;
+export function assessRepairCoverage({sourceEvidence, candidatePlan, candidate, impactContext},sourceCandidateRoot) {
+  const original = assessResumeSource(sourceEvidence,sourceCandidateRoot), sourcePlan = sourceEvidence.expectedPlan;
   const expected = {...sourceEvidence.expected, candidate};
   assessResumeCoverage({expectedPlan: candidatePlan, expected, reports: []});
   if (candidate === sourcePlan.sha) fail('a repair requires a different candidate');

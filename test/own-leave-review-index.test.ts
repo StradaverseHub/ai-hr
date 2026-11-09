@@ -9,6 +9,9 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {listOwnLeaveReviewsTx,prepareOwnLeaveReviewTx,reopenOwnLeaveReviewTx} from '../core/assistant-actions/own-leave-store';
+import {leaveCancellationReviews} from '../core/assistant-actions/leave-change-review-store';
+import {listLeaveDecisionReviews} from '../core/assistant-actions/leave-decision-review-store';
+import {readHomeOwnLeaveReviewIndex,readHomeLeaveCancellationReviewIndex,readHomeLeaveDecisionReviewIndex} from '../core/home-leave-review-presentation';
 import {createOwnLeaveBrowserHandler,OwnLeaveReviewIndexResult} from '../lib/assistant-actions/own-leave-http';
 import {OwnLeaveContentUnavailable} from '../core/assistant-actions/own-leave-content';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -42,6 +45,7 @@ describe('own authenticated metadata discovery',()=>{
   const who=await subject(),review=await prepared(who),result=await list(who);
   expect(result.kind).toBe('review_index');expect(result.reviews).toHaveLength(1);
   expect(result.reviews[0]).toEqual({actionId:review.actionId,state:'awaiting_confirmation',createdAt:review.createdAt,expiresAt:review.expiresAt});
+  expect(await readHomeOwnLeaveReviewIndex(who.ctx)).toEqual(result);
   expect(Object.keys(result.reviews[0]).sort()).toEqual(['actionId','createdAt','expiresAt','state']);
   const serialized=JSON.stringify(result);for(const secret of ['PRIVATE INDEX',who.personId,who.employmentId,who.companyId,base.tenantId,who.ctx.userId!,base.annualLeaveTypeId,review.reviewedDigest])expect(serialized).not.toContain(secret);
   expect(await owner.db.select().from(schema.leaveRequest)).toHaveLength(0);expect(await owner.db.select().from(schema.aiModelRun)).toHaveLength(0);
@@ -84,12 +88,106 @@ describe('own authenticated metadata discovery',()=>{
   await terminal(who,new Date(Date.now()-31*86400000));
   const result=await list(who);expect(result.reviews).toEqual(expected.sort((a,b)=>b.actionId.localeCompare(a.actionId)).slice(0,25));
   expect(await list(who)).toEqual(result);
+  expect(await readHomeOwnLeaveReviewIndex(who.ctx)).toEqual(result);
  });
  it('exposes only its fixed SQL projection and refuses ordinary app-role table scans',async()=>{
   const who=await subject();await terminal(who,new Date(Date.now()-5000));
   const raw=await withTenant(who.ctx,tx=>tx.execute(sql`select * from app.assistant_own_leave_reviews_index()`));
   expect(Object.keys(raw[0]).sort()).toEqual(['action_id','created_at','expires_at','state']);
   await expect(withTenant(who.ctx,tx=>tx.execute(sql`select * from app.assistant_own_leave_review`))).rejects.toThrow();
+ });
+});
+const homeIndexes=(ctx:SessionContext)=>Promise.all([
+ readHomeOwnLeaveReviewIndex(ctx),readHomeLeaveCancellationReviewIndex(ctx),readHomeLeaveDecisionReviewIndex(ctx),
+]);
+
+describe('Home leave metadata snapshot',()=>{
+ it('matches all three original indices during a held Access relink, then refuses the stale person',async({signal})=>{
+  const who=await subject(),other=await subject(),foreign=await subject(await seedBase());
+  const now=new Date(Date.now()-60000),old=new Date(Date.now()-31*86400000);
+  const own=await terminal(who,now),otherOwn=await terminal(other,now);
+  async function terminalAction(action:'leave.cancel'|'approvals.leave.decide',createdAt:Date,login=who.ctx){
+   const id=randomUUID(),expiresAt=new Date(createdAt.getTime()+600000);
+   const references=action==='leave.cancel'
+    ?sql`receipt_subject_kind,receipt_subject_id`
+    :sql`decision_request_id,decision_subject_person_id`;
+   const values=action==='leave.cancel'?sql`'leave_request',${randomUUID()}::uuid`:sql`${randomUUID()}::uuid,${other.personId}::uuid`;
+   await owner.db.execute(sql`insert into app.assistant_own_leave_review(action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,state,created_at,expires_at,${references})
+    values(${action},${id}::uuid,${base.tenantId}::uuid,${login.userId}::uuid,${login.personId??null}::uuid,${who.employmentId}::uuid,${who.companyId}::uuid,'discarded',${createdAt.toISOString()}::timestamptz,${expiresAt.toISOString()}::timestamptz,${values})`);
+   return {action,contractVersion:1,actionId:id,state:'discarded',createdAt:createdAt.toISOString(),expiresAt:expiresAt.toISOString()};
+  }
+  const cancellation=await terminalAction('leave.cancel',now);
+  await terminalAction('leave.cancel',old);
+  const decision=await terminalAction('approvals.leave.decide',old);
+  const original=await Promise.all([list(who),leaveCancellationReviews.list(who.ctx),listLeaveDecisionReviews(who.ctx)]);
+  expect(original.map(index=>index.reviews)).toEqual([[own],[cancellation],[decision]]);
+  expect(await homeIndexes(who.ctx)).toEqual(original);
+  const suspended={...who.ctx,entitlements:{...who.ctx.entitlements!,tenantStatus:'suspended' as const}};
+  await expect(list({...who,ctx:suspended})).rejects.toThrow();
+  await expect(listLeaveDecisionReviews(suspended)).rejects.toThrow();
+  await expect(readHomeOwnLeaveReviewIndex(suspended)).rejects.toThrow('Leave review index unavailable.');
+  await expect(readHomeLeaveDecisionReviewIndex(suspended)).rejects.toThrow('Leave review index unavailable.');
+  expect(await readHomeLeaveCancellationReviewIndex(suspended)).toEqual(await leaveCancellationReviews.list(suspended));
+  expect((await homeIndexes(other.ctx)).map(index=>index.reviews)).toEqual([[otherOwn],[],[]]);
+  expect((await homeIndexes(foreign.ctx)).map(index=>index.reviews)).toEqual([[],[],[]]);
+  const personless={...adminCtx(base),userId:await createAppUser(base.tenantId,null,'hr_admin')};
+  const personlessDecision=await terminalAction('approvals.leave.decide',now,personless);
+  const originalPersonless=await listLeaveDecisionReviews(personless);
+  expect(originalPersonless.reviews).toEqual([personlessDecision]);
+  expect(await readHomeLeaveDecisionReviewIndex(personless)).toEqual(originalPersonless);
+  await expect(readHomeOwnLeaveReviewIndex(personless)).rejects.toThrow('Leave review index unavailable.');
+  await expect(readHomeLeaveCancellationReviewIndex(personless)).rejects.toThrow('Leave review index unavailable.');
+
+  let release!:()=>void,entered!:(pid:number)=>void;
+  const ready=new Promise<number>(resolve=>{entered=resolve;});
+  const done=new Promise<void>(resolve=>{release=resolve;});
+  const writer=owner.client.begin(async tx=>{
+   await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+base.tenantId},0))`;
+   await tx`update app_user set person_id=${other.personId}::uuid where id=${who.ctx.userId}::uuid`;
+   const [row]=await tx`select pg_backend_pid() as pid`;entered(row.pid);
+   await done;
+  });
+  signal.addEventListener('abort',release,{once:true});
+  try{
+   const pid=await Promise.race([ready,writer.then(()=>{throw Error('Access writer exited before acquiring the lock');})]);
+   signal.throwIfAborted();
+   expect(await homeIndexes(who.ctx)).toEqual(original);
+   const [proof]=await owner.client`select exists(select 1 from pg_locks where pid=${pid} and locktype='advisory' and mode='ExclusiveLock' and granted) as held`;
+   expect(proof.held).toBe(true);
+   await expect(withTenant(who.ctx,async tx=>{
+    await tx.execute(sql`set local lock_timeout='250ms'`);
+    return tx.execute(sql`select * from app.assistant_own_leave_reviews_index()`);
+   })).rejects.toMatchObject({cause:{code:'55P03'}});
+  }finally{release();signal.removeEventListener('abort',release);await writer;}
+  await expect(homeIndexes(who.ctx)).rejects.toThrow('Leave review index unavailable.');
+  expect((await homeIndexes({...who.ctx,personId:other.personId})).map(index=>index.reviews)).toEqual([[],[],[]]);
+ },30000);
+
+ it('refuses an unsafe carrier, forged grant, foreign tenant and unknown kind without widening native privileges',async()=>{
+  const who=await subject(),foreign=await seedBase();
+  await terminal(who,new Date(Date.now()-5000));
+  const call=(kind:string)=>sql`select * from app.home_leave_presentation_index(${kind})`;
+  await expect(withTenant(who.ctx,tx=>tx.execute(call('leave.apply')))).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(withTenant(who.ctx,async tx=>{
+   await tx.execute(sql`set transaction read only`);
+   return tx.execute(call('leave.apply'));
+  })).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(withTenant(who.ctx,tx=>tx.execute(call('leave.edit')),{readOnlySnapshot:true})).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(withTenant(who.ctx,async tx=>{
+   await tx.execute(sql`select set_config('app.agent_principal_id',${randomUUID()},true)`);
+   return tx.execute(call('leave.apply'));
+  },{readOnlySnapshot:true})).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(homeIndexes({...who.ctx,tenantId:foreign.tenantId})).rejects.toThrow('Leave review index unavailable.');
+  await expect(homeIndexes({...who.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]})).rejects.toThrow('Leave review index unavailable.');
+  const rows=await withTenant(who.ctx,tx=>tx.execute(call('leave.apply')),{readOnlySnapshot:true});
+  expect(rows).toHaveLength(1);
+  expect(Object.keys(rows[0]).sort()).toEqual(['action','action_id','created_at','expires_at','state']);
+  await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,who.ctx.userId!));
+  await expect(homeIndexes(who.ctx)).rejects.toThrow('Leave review index unavailable.');
+  const current={...who.ctx,roles:[],grants:[]};
+  expect((await readHomeOwnLeaveReviewIndex(current)).reviews).toHaveLength(1);
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,who.ctx.userId!));
+  await expect(homeIndexes(current)).rejects.toThrow('Leave review index unavailable.');
  });
 });
 const request=(body:unknown)=>new Request('https://fixture.test/api/assistant/own-leave',{method:'POST',headers:{origin:'https://fixture.test',host:'fixture.test','content-type':'application/json','sec-fetch-site':'same-origin'},body:JSON.stringify(body)});

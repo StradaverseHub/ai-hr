@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl';
 // 9cbf5e0d — the Employee Status filter offers the five DERIVED buckets, labelled from the ONE shared
 // vocabulary (people.employeeStatus), so the dashboard can never name a status differently from Personnel.
 import { EMPLOYMENT_STATUSES } from '@/core/employment-status';
+import { EmployeeChoiceField } from '@/components/employee-choice-field';
 
 type Opt = { value: string; label: string };
 
@@ -36,17 +37,21 @@ export type FilterBarProps = {
     companies: Opt[];
     departments: Opt[];
     costCentres: Opt[];
-    managers: Opt[];
     locations: Opt[];
   };
+  managerSelection: {employmentId:string;name:string}|null;
+  preservedParams?:Record<string,string|undefined>;
 };
 
 const GENDERS = ['male', 'female', 'undisclosed'];
 const NATIONALITIES = ['citizen', 'pr', 'non_citizen'];
 const LIFECYCLE = ['active', 'terminated'];
 
-export function FilterBar({ from, to, values, options }: FilterBarProps) {
+export function FilterBar({ from, to, values, options, managerSelection, preservedParams }: FilterBarProps) {
   const t = useTranslations('analytics');
+  // Only the native submit button carries prior report state. Normal GET submissions gain no fields.
+  const contextKeys=['companyId','departmentId','costCenterId','lifecycleStatus','assignmentStatus','gender','nationality','workState','from','to','q','year','hirePage','hireSize','termPage','termSize','changePage','changeSize','carryPage','carrySize'];
+  const nativeContext=JSON.stringify(Object.fromEntries(contextKeys.filter(key=>typeof preservedParams?.[key]==='string').map(key=>[key,preservedParams![key]])));
   const tStatus = useTranslations('people.employeeStatus');
   const inputCls =
     'h-9 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40';
@@ -75,6 +80,8 @@ export function FilterBar({ from, to, values, options }: FilterBarProps) {
 
   return (
     <form method="get" className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4">
+      {/* HTML implicit Enter uses the first submitter; retain the ordinary GET report action. */}
+      <button type="submit" tabIndex={-1} aria-hidden="true" className="sr-only">{t('apply')}</button>
       <label className="space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('filterCompany')}</span>
         <Select name="companyId" value={values.companyId} allLabel={t('allCompanies')} opts={options.companies} />
@@ -87,10 +94,8 @@ export function FilterBar({ from, to, values, options }: FilterBarProps) {
         <span className="text-xs font-medium text-muted-foreground">{t('filterCostCentre')}</span>
         <Select name="costCenterId" value={values.costCenterId} allLabel={t('allCostCentres')} opts={options.costCentres} />
       </label>
-      <label className="space-y-1">
-        <span className="text-xs font-medium text-muted-foreground">{t('filterManager')}</span>
-        <Select name="managerEmploymentId" value={values.managerEmploymentId} allLabel={t('allManagers')} opts={options.managers} />
-      </label>
+      <EmployeeChoiceField key={values.managerEmploymentId??''} name="managerEmploymentId" label={t('filterManager')}
+        allLabel={t('allManagers')} selectedId={values.managerEmploymentId} selected={managerSelection} fallbackAction="/analytics/manager-choices" fallbackContext={nativeContext} />
       <label className="space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('filterLifecycleStatus')}</span>
         <Select

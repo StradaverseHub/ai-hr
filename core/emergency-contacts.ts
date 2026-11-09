@@ -19,7 +19,7 @@ import {lockProfileValueWritesTx} from './access-configuration-lock';
  * spells out why the two must not be conflated).
  *
  * SINGLE-CONTACT READERS — the screens that show "the" emergency contact (core/read.ts employeeDetail,
- * core/profile.ts myProfile, and hence /me) resolve through primaryEmergencyContactSql below: the live
+ * core/profile.ts myProfile, and hence /me) use the same ordering below: the live
  * 'primary' row, falling back to the next priority and then the oldest record. So every existing surface
  * keeps working while the fuller list lives on the Personnel (Admin) profile.
  *
@@ -105,6 +105,21 @@ export function primaryEmergencyContactSql(
     order by case ec.priority when 'primary' then 0 when 'secondary' then 1 else 2 end, ec.created_at, ec.id
     limit 1
   )`;
+}
+
+/** One correlated lookup for callers projecting several fields of the same contact. */
+export function primaryEmergencyContactRow(tx: Tx) {
+  return tx.select({
+    fullName: personEmergencyContact.fullName,
+    relationship: personEmergencyContact.relationship,
+    mobilePhone: personEmergencyContact.mobilePhone,
+    homePhone: personEmergencyContact.homePhone,
+    address: personEmergencyContact.address,
+  }).from(personEmergencyContact)
+    .where(and(eq(personEmergencyContact.personId, sql`"person"."id"`), isNull(personEmergencyContact.archivedAt)))
+    .orderBy(PRIORITY_RANK, asc(personEmergencyContact.createdAt), asc(personEmergencyContact.id))
+    .limit(1)
+    .as('primary_emergency_contact');
 }
 
 /**

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "kind": "DESIGN_SOURCE_OWNER_INDEX_NOT_RUNTIME_ADMISSION",
+  "base": "37ac19d9155d0de29f8eb6018ae09234c479f68c",
+  "sourceOwnerCount": 48,
+  "sourceOwners": {
+    ".github/workflows/alpha-staging.yml": "950aea0b0ef72f611ab65ebff1007a53013111417883b2f3647187548d4e2c9e",
+    ".github/ci/singleton-protocol.mjs": "997e3bcd38bb4afadd06a85ce7545f7f99a41c4fe4eb9b37ac08ce177f1ae095",
+    ".github/ci/singleton-profiles.mjs": "b1edfd129049b0a027675ff1888a1481f8f023f011652070079f227d421a32cb",
+    ".github/ci/singleton-commissioning.mjs": "3b793c3cf660179acff986a0b515ce951ad2785a678dfcc26f98afef0d53b166",
+    ".github/ci/manifest.mjs": "6fd081b890148a35014927200e1b0ae9053d565895b68b400eab08e49b858143",
+    ".github/ci/plan.mjs": "c8579a354b03654e453f83990561255f28217110ee1d6a14d3e19510830d2952",
+    ".github/ci/run-unit.mjs": "8048da93f5563509f41414a86c0232bc0de9a36e9759db7a4772ee273111ffd2",
+    ".github/ci/policy-version.mjs": "cbb9871c2e11c3f7434bdcb0fe25cd2c8323f683d588d892ec9dbff194232c97",
+    ".github/ci/verify-shards.mjs": "2117efbd40830b9cb6439093803d46167e98bd62eacf9f21e27007a6aee39236",
+    ".github/ci/unit-report-directories.mjs": "bed0801e6862c54cb8dd7db286cdb71794a31b821534269c2045fe98c6577b16",
+    ".github/ci/release-ci.mjs": "9f1809ee5b302b5074f40089febaaee1bed385199bd08b1e959fe2767642b4b8",
+    ".github/ci/release-policy.mjs": "b765b495801c2211af68fd76108cfa8630b6c58c142680c8d0363a43063e73fb",
+    ".github/ci/archive-downloads.mjs": "b575b2bd899444556ae952569dc62c07df878bc4347075e262b65c614b0abf30",
+    ".github/ci/extract-artifact.py": "f9d0817536d1a9a013b978c979ec14c71ca57c2557b64a25f7fe06f350e4f8df",
+    ".github/ci/pdf-tool-scope.mjs": "7487b56ce9b567fd5ad03f430af456a6144a8024372c6409443b53a951c3e69f",
+    ".github/ci/pdf-tools.mjs": "8ee29b81c9cc79922268cfe192552a0bec9e4ec344611cd3f11aaf7ca8e01b8e",
+    ".github/ci/candidate-environment.mjs": "638d7af878bb04866872464d026484895ef5c110343986965d15db95987c2ec4",
+    ".github/ci/prepare-runner.sh": "b929a8a2729af63e3091e1a9f7fac7a5a2552bd0a5c88998117fba3ed79e3af5",
+    ".github/ci/compiler-reference-supervisor.py": "9516b7ecaca0d504b403fc62703d47613aebfb3fbece25250ffd20c9d61597a6",
+    ".github/ci/owned-process.py": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129",
+    ".github/ci/employee-lifecycle-api.mjs": "1e12a46150a2ce29d26c9d0770ddb9dccab7c3cfd9c20713a3f7f8b2f21c7ca0",
+    ".github/ci/employee-lifecycle-witness.mjs": "8ea5635eb7b236685adcf7aca02e2589ba3538585c89026a3843d5aa846ba294",
+    ".github/ci/native-next-installation.mjs": "f56836062d0bd6d94274a559dc5fbd75ecf33704445a3200fcd49296bdd4ac53",
+    ".github/ci/diagnostics/native-reference/admission.mjs": "57ae1c1cdd1e8949f337acdd0b2031b72b9d9a4609e8be33ea736fc6b84b42db",
+    ".github/ci/diagnostics/native-reference/fixture.mjs": "9542df648d16320338174d1f692fd243696142b2e91dfa7e95184acba0712c84",
+    ".github/ci/diagnostics/native-reference/application-inventory.mjs": "5743026bf5cd081b60ffd8e6e88f994111c5ab9399fe850089030a5309f7a592",
+    ".github/ci/diagnostics/native-reference/application-worker.mjs": "0cac72dadaba92a8ba4811bfa64aa75932a78ffe74cdbb95b24796ad6dea3869",
+    ".github/ci/diagnostics/native-reference/application-mode.mjs": "b8dee0b836e1047d3574cf5ca30515c521096fef383741aa87d56202243957dd",
+    ".github/ci/diagnostics/native-reference/config.mjs": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95",
+    ".github/ci/diagnostics/native-reference/worker.mjs": "a0599b5ea4dc2b4bc32c59049408d50d62129f92043b61b1623a6c18b8ecd10a",
+    "test/helpers/ci-singleton-admission.ts": "e8fe3d04b3aca8c25960d0faaa6f674adb192ecdd49fde76ca5c4cc1a9dfbfb8",
+    "test/compiler-native-reference-fixture.test.ts": "d3d4eb099a881a08f309779bc045188e4888c384ad05d41c448eb8333ad86ea3",
+    "test/compiler-native-application-inventory.test.ts": "ce54419739e2b498fd75213b3ef3dca93f1b66056189fc6e9269cfa2a2d656db",
+    "vitest.config.ts": "a2d0d96b3a1f18c322ea76a208de4a0b217b13258cff01f48e3a1f754dba318d",
+    "vitest.nodb.config.ts": "594bae2433c451ae3a1f83139fe4cce0fbe8415c751e374dcf4359814a2f429d",
+    "scripts/gate-chunked.sh": "05db1c2cd7ce3e58e557f87df5f7ed429261b1b35d68d1788ce0cc38cea6ca5b",
+    "scripts/gate-singleton-scope.mjs": "2bb9ee27128c3f6c2569fb6eeb784b82dfe8fec46dc14b61c8decadd22540be7",
+    "scripts/gate-db-classify.ts": "2a8c7a347ffc0ac6c090de12def4c8f6f3a055db2780f90d7fdf596e4c76b654",
+    "test/r417-gate-db-classify.test.ts": "3e98f97f697900c55784ff2de4c898314e6899fbd1cded922469c4fba0d6282b",
+    "test/gate-db-classify-cycle-regression.test.ts": "842dfd47a4305bb170c7cc53d3a104b1b613844ade12ff97a642a1aedc535ac0",
+    "test/gate-db-classify-graph.test.ts": "b8b076969d51701e9d9b81d67274e36ab0bc2277dea8df886fbb089eaec028ec",
+    "test/gate-db-classify-reader.test.ts": "bc37494aef70d0913512e198c2e1c8529361c96857323bbd9e7d5faf5aa20cff",
+    "docs/qualification/db-classifier-complete-witness-design-20261108.md": "33bb74b47ee38ea41d61293a962b358b9be6603ceed8b74fb91de3e6da4aaa7f",
+    "docs/qualification/db-classifier-complete-witness-source-owners-20261108.md": "69ef434de4a1c18b98d227eac7c3394667ec5a33b974e6c70389ee08512c0dc4",
+    "docs/qualification/compiler-classifier-development-convergence-source-20261108.json": "b8718c2912efed5b3ce1667f440e7fca6a8315f843467c0c67922b0ba11ec8d9",
+    "docs/qualification/compiler-classifier-development-convergence-20261108.md": "2ae46ff3d74f4ee15146da936054001edb8f74ba72100a3d3d73ad809f0b1461",
+    "docs/qualification/compiler-native-application-inventory-source-20261108.json": "b520dae8249860c646e6e600db6e7c6428a365096125849d761aba6fc282628d",
+    "docs/qualification/compiler-reference-owned-source-20261108.json": "837069a38e0a7b687508683b7936a92df744efb329df9b0e108de5983132c224"
+  },
+  "designs": [
+    {
+      "commit": "2e9e1f622f42ad6080095ece0f70d5f0436a61cd",
+      "path": "docs/qualification/compiler-normal-adoption-design-20261108.md",
+      "sha256": "54c643e2d7432df06a5d2671bcd8b702d2fb9f9a9f4e10910cd9843783f22a56"
+    },
+    {
+      "commit": "4808c1d4210edf41ead3096a5b73588b19da8d9e",
+      "path": "docs/qualification/db-classifier-complete-witness-design-20261108.md",
+      "sha256": "33bb74b47ee38ea41d61293a962b358b9be6603ceed8b74fb91de3e6da4aaa7f"
+    },
+    {
+      "commit": "233e760787b216dbd41792cf33db3703196ab1cf",
+      "path": "docs/qualification/db-classifier-failure-custody-design-20261108.md",
+      "sha256": "248a56049ea561886dd68d47df861923ca9c41399b819ef2f1f3628a721d2e03"
+    }
+  ],
+  "currentSuite": {
+    "count": 3639,
+    "jsonSha256": "37ca6802c5693d7d83506daf76873f189cbbd2e06a13ae81883c41d2b372babd",
+    "lfSha256": "6b98aa053c7e49ca9e41321690c8f11c9f8d9f335b5648301b7afacb1234beeb"
+  },
+  "proposedSelectors": [
+    "test/gate-db-classifier-semantic-witness.test.ts",
+    "test/gate-db-classifier-cli-b.test.ts",
+    "test/gate-db-classifier-cli-c.test.ts"
+  ],
+  "document": {
+    "path": "docs/qualification/normal-nodb-five-owner-design-20261108.md",
+    "sha256": "06dd36aa56faeabd7fbd1bc89f36064aba8bc64d4df89e2d9938c17774976990"
+  },
+  "notes": [
+    "Owner index is a finite documentary seam list, not the full dynamic runtime closure or a capability.",
+    "All source owner bytes match exact37ac. External immutable designs are source leads, not current admissions.",
+    "Future native/protocol/attachment freezes and full source closure/inverses must converge before implementation admission."
+  ],
+  "implemented": false,
+  "policyAllocated": false,
+  "releaseAuthorized": false
+}

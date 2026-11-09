@@ -1,0 +1,45 @@
+{
+  "kind": "COPIED_RUNTIME_NONROOT_PROBE_BOUNDARY_SOURCE_ONLY",
+  "base": "ebd4bb8df651cc64c3cd18f128142fbaf195fdaa",
+  "sourceRef": "codex/native-next-probe-boundary-20261108",
+  "qualification": "NOT_RUN; fresh reviews before hosted source/controller and new-source canonical-build commission",
+  "selectors": [
+    "test/runtime-next-prepackage-diagnostic.test.ts",
+    "test/runtime-next-dependency-probe.test.ts"
+  ],
+  "nativeSelector": "test/runtime-next-admission-native.test.ts",
+  "nativeUnit": "db-ef098640eeb0a97b",
+  "declaredDiagnosticModels": 17,
+  "declaredCjsCliModels": 5,
+  "probeSeconds": 30,
+  "probeHeapMiB": 256,
+  "fixtureSeconds": 480,
+  "fixedCwd": "/var/lib/aihr-admission/release",
+  "fixedHome": "/var/empty/aihr",
+  "inheritedEnvironmentAdded": false,
+  "sharedFormat2InventoryControllerProfileChanged": false,
+  "retainedFailure": {
+    "run": 42423865389,
+    "source": "ebd4bb8df651cc64c3cd18f128142fbaf195fdaa",
+    "nativeMs": 127215.52518,
+    "nativeFailed": 1,
+    "nativeSkipped": 0,
+    "currentPhase": "nonroot-stock-native-dependency-probe",
+    "actualChildStageObserved": false,
+    "format2ReceiverPassed": true,
+    "v2InstallationMatched": true,
+    "actualNextBootVerified": false,
+    "ownedRuntimeCleaned": true
+  },
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "sourceSha256": {
+    "deploy/admission/next_dependency_probe.cjs": "04e62c6ecc41acc84bee60b8ff6829b74e9ddd139652a2c57fd650497cf462c8",
+    "deploy/admission/test_next_native.py": "fde9242808dd61ccee6e2755ae34b2fcd649928c8907948c39692bfe9bfd27e4",
+    "deploy/admission/test_next_prepackage_diagnostic.py": "0e68c49a82813f18489ddd65fa1cd939f353efcbadba742a552315ff9e24ae93",
+    "test/runtime-next-admission-native.test.ts": "4e7a922c856357c93a016afa6249ff918682f44e48554c988700af790761a26f",
+    "test/runtime-next-prepackage-diagnostic.test.ts": "260da9bf7587dd0406ebb342e30358783030d84c41c1bd54e055f3433945a61c",
+    "test/runtime-next-dependency-probe.test.ts": "9efd2a7de8013e68b813b78e2b1b7d522f2af9c08704e6e5bf3ec16bc55a4a04",
+    "docs/qualification/native-next-probe-boundary-20261108.md": "5e306c674044d4ae70c77613d85183268ba981d225a2026ee07f69660afbf4c3"
+  }
+}

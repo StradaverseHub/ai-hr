@@ -43,9 +43,12 @@ describe('Home Notice card',()=>{
  it('refreshes canonical read and acknowledgement state on return from the full reader',async()=>{
   mount();await screen.findByRole('link',{name:en.employeeHome.notices.reviewAcknowledge});
   fetcher.mockResolvedValueOnce(Response.json({...value,unread:21,acknowledgementRequired:0,items:[{...value.items[0],firstViewedAt:new Date().toISOString(),acknowledgedAt:new Date().toISOString()}]}));
-  fireEvent(window,new Event('focus'));await screen.findByText(en.notices.acknowledgedOn.replace('{date}',''),{exact:false});
+  fireEvent(window,new Event('focus'));
+  fireEvent(document,new Event('visibilitychange'));
+  await screen.findByText(en.notices.acknowledgedOn.replace('{date}',''),{exact:false});
   await waitFor(()=>expect(screen.queryByRole('link',{name:en.employeeHome.notices.reviewAcknowledge})).toBeNull());
   expect(screen.queryByText(en.notices.newBadge)).toBeNull();
+  expect(fetcher).toHaveBeenCalledTimes(2);
  });
  it('refuses an unbounded metadata response instead of silently trimming it',async()=>{
   fetcher.mockResolvedValueOnce(Response.json({...value,items:Array.from({length:6},(_,i)=>({...value.items[0],id:id.slice(0,-1)+i}))}));

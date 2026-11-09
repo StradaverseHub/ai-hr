@@ -1,0 +1,55 @@
+{
+  "kind": "POST_TRANSLATOR_WHOLE_COMPILER_DIAGNOSTIC_NOT_RELEASE",
+  "controllerBase": "2de6aac1fe369543c9220c292c162845022503a1",
+  "controllerRef": "codex/compiler-post-translator-whole-trace-20261108",
+  "source": "13d5a5d64512d1daa026836b34cb0b043b4a24cf",
+  "sourceRef": "codex/compiler-traced-translator-boundaries-20261108",
+  "inputs": {
+    "candidate_ref": "codex/compiler-traced-translator-boundaries-20261108",
+    "expected_sha": "13d5a5d64512d1daa026836b34cb0b043b4a24cf",
+    "filesystem_activation_probe": false,
+    "installer_fixture_phase": "full",
+    "plan_probe": false,
+    "build_transport_probe": false,
+    "transport_origin_run": "",
+    "transport_origin_sha": "",
+    "transport_origin_artifact": "",
+    "transport_origin_digest": "",
+    "compiler_transport_probe": false,
+    "next_build_cache_phase": "disabled",
+    "next_build_cache_origin": "",
+    "managed_compiler_probe": false,
+    "managed_compiler_force_invalid": false,
+    "compiler_compatible_probe": false,
+    "compiler_origin_run": "",
+    "compiler_origin_sha": "",
+    "compiler_origin_artifact": "",
+    "compiler_origin_digest": "",
+    "compiler_probe": true,
+    "statutory_probe": false,
+    "nodb_probe": false,
+    "instrument_copies": false,
+    "layout_probe": false
+  },
+  "expectedJobs": [
+    "resolve",
+    "compiler-attribution"
+  ],
+  "artifact": "diagnostic-compiler-attribution",
+  "controllerSelectors": [
+    "test/compiler-diagnostic-controller.test.ts"
+  ],
+  "sourceSha256": {
+    ".github/ci/diagnostics/compiler-attribution.mjs": "78ce1ae3cc579856c1c933a347cca4c214ac4d60049112133a0061a5b3c07c71",
+    ".github/ci/diagnostics/compiler-attribution.test.mjs": "0dc8bd8013482cfdb07316fc52cd97ec554b0484a9a77eb80b1cf27b77947e62",
+    ".github/workflows/alpha-staging-diagnostics.yml": "15106067287787e896b7b34273c95ee7968f386d0111af8ffbf88814a27e9872",
+    "docs/qualification/compiler-selected-consumer-trace-request-20261108.json": "2a5a7ae77d50fd4ccafb617d14373c47f31708afaf7b330e226031a64763baf4",
+    "docs/qualification/compiler-post-translator-whole-trace-20261108.md": "d0452666e85fa6adbadc305fac11601b2da34f3fb2adcba81a95d51a8f638366"
+  },
+  "retainedOrdinaryFailure": 42419333404,
+  "retainedDomPass": 40,
+  "qualification": "NOT_RUN",
+  "ordinaryCompilerQualified": false,
+  "releaseAuthorized": false,
+  "production": "HELD"
+}

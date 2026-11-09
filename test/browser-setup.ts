@@ -12,6 +12,10 @@
  * substitution of `process.env` across every module, which silently rewrites application code, whereas
  * this only supplies the global that a browser is missing.
  */
+// The Playwright provider augments vitest/browser options. Keep those types
+// available when the browser tests are checked separately from their config.
+import type {} from '@vitest/browser-playwright';
+
 // `as unknown as` on purpose: @types/node declares globalThis.process as the FULL Node Process, and a
 // browser shim can never satisfy 60-odd stream and signal members it has no business providing. Widening
 // through unknown says "this is a stand-in", rather than pretending the browser has a Node process.

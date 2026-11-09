@@ -16,7 +16,7 @@ import {MyPayrollReadiness} from '@/components/pre-salary/payroll-readiness';
 export default async function MyPayrollReadinessPage(){
  const {s,scopeIds}=await scopedSession();
  const [t,locale]=await Promise.all([getTranslations('payrollReadiness'),getLocale()]);
- const readiness=await readMyPayrollReadiness(s,{scopeIds,locale}).catch(()=>null);
+ const readiness=await readMyPayrollReadiness(s,{scopeIds,locale,approvalPreview:true}).catch(()=>null);
  return <div data-my-payroll-readiness-page className="mx-auto max-w-5xl space-y-5">
   <Link href="/" className="inline-flex min-h-11 items-center text-sm text-primary underline underline-offset-4">{t('backToToday')}</Link>
   <MyPayrollReadiness readiness={readiness} locale={locale} headingLevel={1}/>

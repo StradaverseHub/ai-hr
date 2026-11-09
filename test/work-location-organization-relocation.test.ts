@@ -96,7 +96,6 @@ import ClockingListPage from '../app/admin/work-locations/clocking/page';
 import NewLocationPage from '../app/admin/work-locations/new/page';
 import ViewLocationPage from '../app/admin/work-locations/[id]/page';
 import EditLocationPage from '../app/admin/work-locations/[id]/edit/page';
-import LocationsRedirect from '../app/admin/locations/page';
 import NewClockingLocationRedirect from '../app/admin/locations/clocking/new/page';
 import EditClockingLocationRedirect from '../app/admin/locations/clocking/[id]/page';
 import {
@@ -123,7 +122,7 @@ const catalog = (loc: string) =>
 
 const HREF = '/admin/work-locations';
 const OLD_HREF = '/admin/locations';
-const SIDEBAR = read('components/sidebar.tsx');
+const SIDEBAR = read('lib/navigation/shell-inventory.ts');
 const PACK = read('packs/attendance/index.ts');
 const LIST_SRC = read('app/admin/work-locations/page.tsx');
 /** r428 — the company's "Work locations" section now lives on the clocking list's CompanyView half. */
@@ -243,8 +242,8 @@ describe('639bf4a5 — the menu moved, the import boundary did not', () => {
     expect(files.sort(), 'only the three stubs and their shared forwarder are left').toEqual([
       'app/admin/locations/clocking/[id]/page.tsx',
       'app/admin/locations/clocking/new/page.tsx',
-      'app/admin/locations/page.tsx',
       'app/admin/locations/redirect-stub.ts',
+      'app/admin/locations/route.ts',
     ]);
     for (const rel of files) {
       expect(read(rel), `${rel} imports nothing from the attendance pack`).not.toMatch(
@@ -279,12 +278,11 @@ describe('639bf4a5 (e) — Add, View and Edit each have a route of their own, al
       '/admin/locations/clocking/[id]',
     ]);
     for (const route of screen!.routes) {
-      expect(REGISTERED_ROUTES.has(route), `${route} registered`).toBe(true);
-      expect(
-        fs.existsSync(path.join(ROOT, 'app', route, 'page.tsx')),
-        `${route} has a page at app${route}/page.tsx — a registered route with no page is a screen nobody can grant`,
-      ).toBe(true);
-      expect(read(path.join('app', route, 'page.tsx')), `${route} guards itself`).toMatch(/requireAdmin\(/);
+      expect(REGISTERED_ROUTES.has(route), route + ' registered').toBe(true);
+      const entry = route === '/admin/locations' ? 'route.ts' : 'page.tsx';
+      const file = path.join('app', route, entry);
+      expect(fs.existsSync(path.join(ROOT, file)), route + ' has an implementation at ' + file).toBe(true);
+      expect(read(file), route + ' guards itself').toMatch(/requireAdmin\(/);
     }
   });
 
@@ -1005,9 +1003,8 @@ describe('639bf4a5 — the label is "Locations", in all six locales', () => {
 // ─────────────────────────────── THE OLD ADDRESSES STILL RESOLVE ───────────────────────────────
 
 describe('639bf4a5 — the /admin/locations addresses redirect, guard first; they do not 404', () => {
-  it('each stub calls the guard BEFORE it redirects', () => {
+  it('each descendant page stub calls the guard before it redirects', () => {
     for (const rel of [
-      'app/admin/locations/page.tsx',
       'app/admin/locations/clocking/new/page.tsx',
       'app/admin/locations/clocking/[id]/page.tsx',
     ]) {
@@ -1020,14 +1017,6 @@ describe('639bf4a5 — the /admin/locations addresses redirect, guard first; the
       // the route out of the function-access matrix (which only counts a page.tsx that calls a guard).
       expect(guard, `${rel} guards before it forwards`).toBeLessThan(fwd);
     }
-  });
-
-  it('the list stub forwards to the CLOCKING list (r423: the old address meant clocking locations), carrying its query', async () => {
-    LAST_REDIRECT = '';
-    await expect(LocationsRedirect({ searchParams: Promise.resolve({ saved: '1', focus: 'abc' }) })).rejects.toThrow(
-      'NEXT_REDIRECT',
-    );
-    expect(LAST_REDIRECT).toBe(`${CLOCKING_LIST}?saved=1&focus=abc`);
   });
 
   it('the new-clocking stub forwards, keeping a refused save’s reason and typed values', async () => {

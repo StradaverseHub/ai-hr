@@ -1,0 +1,53 @@
+{
+  "kind": "PARTIAL_EXPLICIT_NOTIFICATION_RECIPE_METADATA_NOT_NATIVE_ADOPTION",
+  "base": "4c8372706f2985f17dcf1517aeeb2b45fb465b83",
+  "sourceRef": "codex/notification-explicit-recipe-authority-20261108",
+  "qualification": "NOT_RUN; root+independent review before four pure models",
+  "pureSelector": "test/notification-recipe-authority.test.ts",
+  "declaredModels": 4,
+  "currentCanonicalRecipeCases": 63,
+  "declaredReaderPorts": 31,
+  "nativeSupportedReaderPorts": 13,
+  "nativeUnsupportedReaderPorts": 18,
+  "canonicalSourceInverseExact": true,
+  "originalCanonicalSha256": "5e7d26a407b7749f6028c2bf0b4e0944b96a430ba38b01d52f8613bb1f3dab2d",
+  "nativeSealOrProfileChanged": false,
+  "completeNativeGapClosed": false,
+  "migrationAllocated": false,
+  "applicationAdopted": false,
+  "localApplicationChecksExecuted": false,
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "sourceSha256": {
+    "core/notification-registry.ts": "4088823e7c4d694826ad1a4102b728e5a4234ddab6a55c3a3ffd54fda4ea0d11",
+    "lib/notification-worker/projection.ts": "10d14a1d2ab2fe859060f80352e2736147660cde2e2d2f13a938f53068ac4935",
+    "test/notification-recipe-authority.test.ts": "9d6411e6b9dfb0636e17bac35b61a3e352cbef5fac418e8a6e99c28146158f23",
+    "docs/qualification/notification-explicit-recipe-metadata-checkpoint-20261108.md": "dd5c52d9f6eeba14ac5360876dc5f6281aa5f0b3fdb3d043f4d41a2059d4522d",
+    "docs/qualification/notification-full-ci-helper-inventory-diagnosis-20261108.md": "b4fdc7697c4a354298a4823d3503eb51806232a3290038e72f31f06f97ac48bf"
+  },
+  "unchangedSourceSha256": {
+    "core/notifications.ts": "1d12b96bc502a0094973b3a1294a0a8182b2119a90d5a14c1301d38305150d4a",
+    "lib/notification-worker/lifecycle.ts": "b895d5ca866f42321e6c57860eb8696b931da7e025a8e785ad9690df08c91910",
+    "lib/notification-worker/reminder.ts": "20d49b0e3dcce334fe4c4ad936d086b7d579f40d793759073e0e57c8e473814e",
+    "lib/notification-worker/process.ts": "8236c48b43d6139793a9d85fbf1f35568dd3c81bd4828fa4c7778e971eebd8d3",
+    "test/fixtures/notification-worker/lifecycle.sql": "ba87f475a0962dc1652db47976a1947becffb39de9d6294608438baa7f3918f1",
+    "test/fixtures/notification-worker/projection.sql": "6973be154cec863908cc6439cf4edbe9de8b571a1ee1484d25f25fe1ed3ca9f9",
+    "test/fixtures/notification-worker/assessment.sql": "cf029fdae7af2eeeae723a200d21943f3cbc8a4c873ad03d3f9a3f63f14e43ff",
+    "test/fixtures/notification-worker/process.sql": "6d112effc849efc8395505ba28c5b52a30aee62bd32372d8389b6829a4cb0442",
+    "test/fixtures/notification-worker/query-shape.sql": "11808452a8c5448391b946f60c24e55d595e97fea575ba0fdecf37e55828d34b",
+    "test/fixtures/notification-worker/exact-source.sql": "722509efb633ec5e5d09b8f5de0e82816952aacf2b46ec68e08d57fdd534b816",
+    "test/fixtures/notification-worker/owner-fixture.ts": "671434f60cb1ebbadb2ff7a5006e1917d67b9f64bb4b6ac2a8dc3024c7d5278e",
+    "test/notification-worker-native-plan-diagnostic.test.ts": "6a5426b4ffa4a78fb76a09102e5f8d8841ddb72872d6e135bc4fd52577fee2ad",
+    "test/fixtures/notification-worker/admission-plan-summary.ts": "b1eef02cbd8c073734292f45f308875f027c9f4d79b71520b0f0f1dcab112b4e"
+  },
+  "retained4cPairedFailure": {
+    "run": 42423355366,
+    "artifactId": 13593554801,
+    "zipSha256": "8088237e0086d3907e2797eb936922b4477c0792135bfd8f7654127bbb04434f",
+    "baselinePassed": 0,
+    "baselineFailed": 3,
+    "candidatePending": 3,
+    "actualHelperRows": 2302,
+    "originalOracleExpectedRows": 2300
+  }
+}

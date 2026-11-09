@@ -17,7 +17,7 @@ vi.mock('next-intl/server',()=>({
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_admin'],grants:[]}),isGroupAdmin:()=>data.groupAdmin,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,code:string)=>['employees','leave','payroll'].includes(code)}));
 vi.mock('../core/ai-inventory',()=>({aiInventoryView:async()=>({scope:'registry',rows:[]}),aiManagementAlerts:async()=>({status:'ok',alerts:[]}),aiRunHistory:async()=>({range:{from:'2026-10-01',to:'2026-10-30',page:1},hasMore:false,rows:[]})}));
-vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>data.view,bulkAssistantDepartments:async()=>[{id:'44444444-4444-4444-8444-444444444444',label:'Fictional Finance · Fictional Zero Cap Sdn Bhd'}],previewBulkAssistantAccess:async()=>({matched:3,changing:2})}));
+vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementPageView: async(_ctx:unknown,section:string)=>{const full=await (async()=>data.view)();if(!full||typeof full!=='object'||!('users' in full)||!('moreUsers' in full)||!('legacyBudget' in full)||!('runs' in full)||!('runFilter' in full))throw new Error('AI management page fixture is missing');const {users,moreUsers,legacyBudget,runs:_runs,runFilter:_filter,...common}=full;return {...common,section,allowances:section==='allowances'?{users,moreUsers,legacyBudget}:null};},bulkAssistantDepartments:async()=>[{id:'44444444-4444-4444-8444-444444444444',label:'Fictional Finance · Fictional Zero Cap Sdn Bhd'}],previewBulkAssistantAccess:async()=>({matched:3,changing:2})}));
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
 vi.mock('../lib/ai/spend-allocation',()=>({nanosToUsd:(value:string)=>value}));
@@ -44,7 +44,7 @@ const session={tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_adm
 async function show(spend:{heldNanos:string;confirmedNanos:string|null},section:AiManagementSection='spending',search:Record<string,string>={},mayWriteUsers=true){
   data.view={...view(spend),mayWriteUsers};
   const page=await AiManagementScreen({session:session as never,section,searchParams:Promise.resolve(search)});
-  return render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
+  return render(<NextIntlClientProvider locale="en" messages={enWithAiCentre}>{page}</NextIntlClientProvider>);
 }
 
 describe('USD display of stored nano-USD',()=>{
@@ -92,7 +92,7 @@ describe('AI management page',()=>{
     data.view={...view({heldNanos:'0',confirmedNanos:null}),policies:[{scopeKey:'feature:pay_rule_draft',kind:'feature',featureId:'pay_rule_draft',subjectId:null,enabled:true,dailyRequests:0,monthlyTokens:5000,maxConcurrent:null}],
       usage:[{feature_id:'pay_rule_draft',daily_requests:'3',monthly_tokens:'1200',held_tokens:'0',blocked:'1',failed:'0'}]};
     const page=await AiManagementScreen({session:session as never,section:'allowances',searchParams:Promise.resolve({})});
-    const {container,unmount}=render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
+    const {container,unmount}=render(<NextIntlClientProvider locale="en" messages={enWithAiCentre}>{page}</NextIntlClientProvider>);
     const caps=container.querySelector('#feature-limits') as HTMLElement;
     expect(within(caps).getByText(en.aiManagement.featureCapsTitle)).toBeTruthy();
     expect([...caps.querySelectorAll('input[name="feature"]')].map(input=>(input as HTMLInputElement).value).sort()).toEqual(['hr_assistant','module_agent_evaluation','module_agent_planning','pay_rule_draft','payroll_explanation','performance_assistant','personnel_import_mapping','provider_evaluation','report_insight']);
@@ -135,7 +135,7 @@ describe('AI management sub-menu',()=>{
     try{
       data.view={...view({heldNanos:'0',confirmedNanos:null}),spend:null,mayWriteUsers:false};
       const page=await AiManagementScreen({session:session as never,section:'overview',searchParams:Promise.resolve({})});
-      render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
+      render(<NextIntlClientProvider locale="en" messages={enWithAiCentre}>{page}</NextIntlClientProvider>);
       expect(screen.queryByRole('link',{name:en.aiManagement.configureProvider})).toBeNull();
       expect(document.querySelector('a[href^="/control-tower/agents/provider"]')).toBeNull();
       // The map still states which provider the company's calls would use.
@@ -153,7 +153,7 @@ describe('AI management sub-menu',()=>{
       {id:'readiness_reminders',kind:'agent',state:'ready',enabled:true,mayWrite:true},{id:'claims_triage',kind:'agent',state:'paused',enabled:false,mayWrite:true},
       {id:'payroll_explanation',kind:'feature',state:'provider',enabled:true,mayWrite:true}]};
     const page=await AiManagementScreen({session:session as never,section:'overview',searchParams:Promise.resolve({})});
-    render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
+    render(<NextIntlClientProvider locale="en" messages={enWithAiCentre}>{page}</NextIntlClientProvider>);
     const map=document.querySelector('#ai-map')!;
     expect(map.textContent).toContain(en.aiManagement.noProvider);
     // Independent expectation: three of the twenty modules are enabled in this fixture.
@@ -168,7 +168,7 @@ describe('AI management sub-menu',()=>{
       {id:'payroll_hypotheses',kind:'agent',state:'paused',enabled:false,mayWrite:true}],
       agentSwitches:{readiness_reminders:{state:'attributed',by:'Fictional Group Admin',at:new Date('2026-10-29T02:00:00Z')},claims_triage:{state:'unattributed'}}};
     const page=await AiManagementScreen({session:session as never,section:'features',searchParams:Promise.resolve({})});
-    render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
+    render(<NextIntlClientProvider locale="en" messages={enWithAiCentre}>{page}</NextIntlClientProvider>);
     try{
       const row=(id:string)=>document.querySelector(`#ai-feature-${id}`)!.textContent!;
       expect(row('readiness_reminders')).toContain('Runs as the HR agent account, switched on by Fictional Group Admin on Oct 29, 2026.');
@@ -181,7 +181,7 @@ describe('AI management sub-menu',()=>{
   data.view={...view({heldNanos:'0',confirmedNanos:null}),users:[{id:'55555555-5555-4555-8555-555555555555',label:'Fictional Grouped Person',source:'group',group:{kind:'group_department',count:1,scopeKey:'group_department:44444444-4444-4444-8444-444444444444'},...use(10),assistantGranted:false}],
    groups:[{kind:'group_department',scopeKey:'group_department:44444444-4444-4444-8444-444444444444',subjectId:'44444444-4444-4444-8444-444444444444',enabled:true,dailyRequests:10,monthlyTokens:null,maxConcurrent:null}]};
   const page=await AiManagementScreen({session:session as never,section:'allowances',searchParams:Promise.resolve({bulk:'grant',bulkWho:'role:manager'})});
-  render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale="en" messages={enWithAiCentre}>{page}</NextIntlClientProvider>);
   expect(screen.getByText('Follows the Fictional Finance · Fictional Zero Cap Sdn Bhd (department) allowance')).toBeTruthy();
   expect(screen.getByText('This will give 2 people access to the HR assistant.')).toBeTruthy();
   const confirm=screen.getByRole('button',{name:'Give 2 people access'}).closest('form')!;

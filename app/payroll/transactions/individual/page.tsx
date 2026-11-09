@@ -48,17 +48,12 @@ export default async function IndividualTransactionPage({
   // earning/deduction options accordingly; the service re-enforces (ComponentRequiredError).
   const individualTxnPayOn = settingEnabledOrDefault(s, 'payroll.individual_txn_pay_enabled');
 
-  const [allBatches, employees, companies, payComponents] = await Promise.all([
-    listBatches(s, scopeIds),
+  const [writableBatches, employees, companies, payComponents] = await Promise.all([
+    listBatches(s, scopeIds, undefined, ['draft', 'processed']),
     listEmployees(s, scopeIds),
     listCompanies(s),
     listPayComponents(s, { readyOnly: true }), // Payroll Item Master — the form's item picker is sourced from these active items.
   ]);
-  // 49e7e0a2 — the form used to be handed DRAFT runs only, which is why a processed run could not even be
-  // named as a target. Both writable statuses are offered now; `closed` is not, because the service
-  // refuses it and the 0011 database triggers refuse it underneath, so listing one would only produce a
-  // save that always fails. The status rides along so the form can warn before it lands on a processed run.
-  const writableBatches = allBatches.filter((b) => b.status === 'draft' || b.status === 'processed');
   // 2da9937a — the two things the entry form needs to know about a pay item's rule, resolved on the SERVER
   // with the same pure predicates the write path uses. The rule VALUE never crosses to the client: the
   // form's questions are only "is the Amount box mine to fill?" and "which quantity does it want?", and

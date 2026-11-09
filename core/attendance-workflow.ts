@@ -9,7 +9,8 @@ import { company, attendanceWorkflowTemplate as template, attendanceWorkflowSett
 import { approversOf } from '../lib/leave-approval-kinds';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { resolveOrgCriteriaTargets } from './org-criteria';
-import { assertCanDecide } from './approvals';
+import { ownPersonPredicate } from './own-person';
+import { assertCanDecide,decisionEmploymentAuthorityTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
 import { labelUsableByCompany } from './system-labels';
@@ -308,9 +309,14 @@ export async function prepareAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionConte
     const [subject] = await tx.select({ companyId: employment.companyId }).from(employment).where(eq(employment.id, employmentId)).limit(1);
     if (!subject)
         throw new AttendanceWorkflowError('scope', 'The employee is not visible.');
-    // Match the lifecycle owner's exclusive lock before any company lock.
+    // Match the lifecycle scope before the shared company key used by the request trigger.
     await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${ctx.tenantId + ':attendance-workflow-scope:' + applicationType},0))`);
-    await companyLock(tx, ctx.tenantId, subject.companyId, applicationType);
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(
+        ${ctx.tenantId + ':attendance-workflow:' + subject.companyId + ':' + applicationType},0))`);
+    return resolveAttendanceWorkflowSnapshotTx(tx,ctx,subject,employmentId,applicationType);
+}
+/** Resolve one route from the caller's database view. Commands hold configuration locks; own previews use a read-only snapshot. */
+async function resolveAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionContext,subject:{companyId:string},employmentId:string,applicationType:AttendanceApplicationType){
     const candidates = await tx.select().from(template).where(and(applies(subject.companyId), eq(template.applicationType, applicationType), eq(template.active, true), isNull(template.supersededAt), isNull(template.retiredAt))).orderBy(asc(template.priority), asc(template.id));
     const matches: typeof candidates = [];
     for (const row of candidates)
@@ -335,10 +341,15 @@ export async function prepareAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionConte
 }
 export async function ownAttendanceSubmissionRoute(ctx:SessionContext, employmentId:string, applicationType:AttendanceApplicationType) {
   return withTenant(ctx,async tx=>{
-    const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
-    if(!ctx.personId || subject?.personId!==ctx.personId) throw new AttendanceWorkflowError('scope','The employee is not visible.');
+    if(!ctx.userId||!ctx.personId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(employmentId))
+      throw new AttendanceWorkflowError('scope','The employee is not visible.');
+    const [subject]=await tx.select({companyId:employment.companyId}).from(employment).where(and(
+      eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),
+      ownPersonPredicate(ctx),sql`app.principal_snapshot_current()`,
+    )).limit(1);
+    if(!subject)throw new AttendanceWorkflowError('scope','The employee is not visible.');
     try {
-      const route=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);
+      const route=await resolveAttendanceWorkflowSnapshotTx(tx,ctx,subject,employmentId,applicationType);
       const first=route.stages[0];
       const firstApprovers=(first.mode==='sequential'?first.approvers.slice(0,1):first.approvers).map(({kind,name})=>({kind,name}));
       if(first.hrAlternative&&!firstApprovers.some(actor=>actor.kind==='hr_admin'))firstApprovers.push({kind:'hr_admin',name:'HR administrators'});
@@ -347,7 +358,7 @@ export async function ownAttendanceSubmissionRoute(ctx:SessionContext, employmen
       if(error instanceof AttendanceWorkflowSubmissionError) return {available:false as const,reason:error.reason};
       throw error;
     }
-  });
+  },{readOnlySnapshot:true});
 }
 export async function snapshotAttendanceWorkflowTx(tx: Tx, ctx: SessionContext, correctionId: string, employmentId: string, applicationType: AttendanceApplicationType, expectedFingerprint?:string) {
     const prepared=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);
@@ -374,6 +385,44 @@ export async function assertCanDecideAttendanceApplicationTx(tx: Tx, ctx: Sessio
     }
     await assertCanDecide(tx, ctx, employmentId, 'attendance application', scopeOf('attendance.correction'));
 }
+/** Read-only task projection using the same live decision owners as the scalar command guard.
+ * Caller validates its native principal first. This set never authorizes a command or survives
+ * the transaction; every command retains assertCanDecideAttendanceApplicationTx above.
+ */
+export async function actionableAttendanceApplicationIdsTx(tx:Tx,ctx:SessionContext,rows:readonly {id:string;employmentId:string}[]){
+ const allowed=new Set<string>();
+ // Bound transport parameters, never the number of returned tasks.
+ for(let offset=0;offset<rows.length;offset+=1000){
+  const chunk=rows.slice(offset,offset+1000);
+  // Resolve the routed version and its native decision proof in one statement.
+  const flows=await tx.select({
+   correctionId:request.correctionId,
+   employmentId:request.employmentId,
+   version:request.routingVersion,
+   allowed:sql<boolean|null>`case
+    when ${request.routingVersion}=2 then app.attendance_workflow_v2_decide(${request.correctionId})
+    when ${request.routingVersion} in (3,4) then app.attendance_workflow_v3_decision_slot(${request.correctionId}) is not null
+    else null end`,
+  }).from(request).where(inArray(request.correctionId,chunk.map(row=>row.id)));
+  const byId=new Map(flows.map(flow=>[flow.correctionId,flow]));
+  const legacy=[];
+  for(const row of chunk){
+   const flow=byId.get(row.id);
+   if(!flow||![2,3,4].includes(flow.version)){
+    legacy.push(row);
+    continue;
+   }
+   if(flow.employmentId!==row.employmentId)
+    throw new AttendanceWorkflowError('scope','The application subject does not match its frozen workflow.');
+   if(flow.allowed)allowed.add(row.id);
+  }
+  if(legacy.length){
+   const authority=await decisionEmploymentAuthorityTx(tx,ctx,legacy.map(row=>row.employmentId),scopeOf('attendance.correction'));
+   for(const row of legacy)if(authority.allowed.has(row.employmentId)&&!authority.self.has(row.employmentId))allowed.add(row.id);
+  }
+ }
+ return allowed;
+}
 async function effectiveStageTx(tx: Tx, flow: typeof request.$inferSelect, index: number) {
     const stage = flow.stages[index];
     if (!stage) return stage;
@@ -398,10 +447,13 @@ export type AttendanceStageResult = {
 };
 /** V3 records each required person before considering the existing stage-completion grain. */
 async function decideAttendanceParticipantTx(tx: Tx, ctx: SessionContext, flow: typeof request.$inferSelect, p: {
-    correctionId: string; employmentId: string; decision: 'approved' | 'rejected'; remarks?: string; expectedParticipantSlot?: string;
+    correctionId: string; employmentId: string; decision: 'approved' | 'rejected'; remarks?: string; expectedParticipantSlot?: string; expectedStageIndex?: number;
 }): Promise<AttendanceStageResult> {
     const [authority] = await tx.execute(sql`select app.attendance_workflow_v3_decision_slot(${p.correctionId}::uuid) as actor`) as unknown as { actor: { slot: string; assigned: AttendanceResolvedApprover; actingMode: 'assigned' | 'delegate' } | null }[];
-    if (!authority?.actor || authority.actor.slot !== p.expectedParticipantSlot) throw new AttendanceWorkflowError('stale', 'The pending participant changed. Reload before deciding this application.');
+    if (!authority?.actor) throw new AttendanceWorkflowError('notApprover', 'Only the next distinct authorized participant may decide this frozen attendance request.');
+    if (p.expectedStageIndex !== flow.currentStage)
+        throw new AttendanceWorkflowError('stale', 'The pending approval stage changed. Reload the application before deciding it.');
+    if (authority.actor.slot !== p.expectedParticipantSlot) throw new AttendanceWorkflowError('stale', 'The pending participant changed. Reload before deciding this application.');
     if (!ctx.userId || !ctx.personId) throw new AttendanceWorkflowError('notApprover', 'A linked live participant identity is required.');
     const assigned = authority.actor.assigned;
     const actualEmploymentId = authority.actor.actingMode === 'assigned' ? assigned.employmentId : null;
@@ -451,12 +503,16 @@ export async function decideAttendanceWorkflowStageTx(tx: Tx, ctx: SessionContex
     expectedParticipantSlot?: string;
 }): Promise<AttendanceStageResult> {
     const [flow] = await tx.select().from(request).where(eq(request.correctionId, p.correctionId)).limit(1).for('update');
+    if (flow?.routingVersion === 3 || flow?.routingVersion === 4) {
+        if (flow.employmentId !== p.employmentId) throw new AttendanceWorkflowError('scope', 'The application subject does not match its frozen workflow.');
+        // Resolve the live slot once for this locked request, before trusting its stage.
+        return decideAttendanceParticipantTx(tx, ctx, flow, p);
+    }
+    await assertCanDecideAttendanceApplicationTx(tx, ctx, p.correctionId, p.employmentId);
     if (!flow)
         return { routed: false, final: true };
     if (p.expectedStageIndex !== flow.currentStage)
         throw new AttendanceWorkflowError('stale', 'The pending approval stage changed. Reload the application before deciding it.');
-    await assertCanDecideAttendanceApplicationTx(tx, ctx, p.correctionId, p.employmentId);
-    if ((flow.routingVersion === 3 || flow.routingVersion === 4)) return decideAttendanceParticipantTx(tx, ctx, flow, p);
     const stage = await effectiveStageTx(tx, flow, flow.currentStage);
     if (!stage)
         throw new AttendanceWorkflowError('stale', 'This workflow has already completed.');

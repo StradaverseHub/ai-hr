@@ -1,11 +1,11 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,it,expect,vi} from 'vitest';
 import {NextRequest} from 'next/server';
-import {client} from '../db/client';
+import {client,withPoolWork} from '../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {provisionEntraTestOrganization} from './entra-fixture';
 import {saveConnector} from '../lib/entra/store';
-import {createEntraSession,readEntraSession,touchEntraSession} from '../lib/entra/sessions';
+import {createEntraSession,readEntraSession,touchEntraSession,rotateEntraRefresh,revokeEntraSession} from '../lib/entra/sessions';
 import {issuerFor,type EntraConfig} from '../lib/entra/model';
 import {digest} from '../lib/internal-auth/crypto';
 import {readRecord,writeRecord} from '../lib/internal-auth/store';
@@ -29,6 +29,33 @@ afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});afterAll(closeAll);
 const advance=(minutes:number)=>{now+=minutes*60_000;};
 async function policy(minutes:number){await saveSessionPolicy({...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]},minutes,0);forgetIdleTimeout(base.tenantId);}
 describe('combined Microsoft sign-in and shared idle-session policy',()=>{
+ it.each(['web-read','web-touch','native-read','refresh','logout','refresh-only-logout'] as const)('admits %s before any raw SQL while preserving the real native outcome',async operation=>{
+  const native=!operation.startsWith('web-'),session=await createEntraSession(config,object,native);
+  let release!:()=>void,admitted!:()=>void,started=0;
+  const held=new Promise<void>(done=>{release=done;}),ready=new Promise<void>(done=>{admitted=done;});
+  const holders=Array.from({length:client.options.max},(_,i)=>withPoolWork(`entra-admission-fixture-${i}`,async()=>{
+   if(++started===client.options.max)admitted();await held;
+  }));
+  let request:Promise<unknown>|undefined;
+  try{
+   await Promise.race([ready,Promise.all(holders).then(()=>{throw Error('Admission holders ended before the pool was held');})]);
+   const rawSql=vi.spyOn(client,'unsafe');
+   request=operation==='web-touch'?touchEntraSession(session.access_token):operation==='refresh'?rotateEntraRefresh(session.refresh_token!):
+    operation==='logout'?revokeEntraSession(session.access_token,true):operation==='refresh-only-logout'?revokeEntraSession(undefined,true,session.refresh_token):readEntraSession(session.access_token,native);
+   let settled=false;void request.then(()=>{settled=true;},()=>{settled=true;});
+   await new Promise<void>(done=>setImmediate(done));
+   expect(rawSql).not.toHaveBeenCalled();expect(settled).toBe(false);
+   release();await Promise.all(holders);const result=await request;
+   if(operation==='web-touch')expect(result).toMatchObject({idleTimeoutSeconds:900,remainingSeconds:900});
+   else if(operation==='refresh'){
+    expect(result).toMatchObject({step:'complete'});
+    expect(await readEntraSession((result as {access_token:string}).access_token,true)).toMatchObject({subject:object});
+   }else if(operation.endsWith('logout'))expect(await readEntraSession(session.access_token,true)).toBeNull();
+   else expect(result).toMatchObject({issuer:issuerFor(config.directoryTenantId),subject:object});
+  }finally{
+   release();await Promise.allSettled([...holders,...(request?[request]:[])]);
+  }
+ },20000);
  it('keeps a fresh Microsoft cookie on the real activity endpoint rather than returning 401 within seconds',async()=>{
   const session=await createEntraSession(config,object,false);now+=5000;
   const response=await POST(new NextRequest('https://hr.test/login/api/activity',{method:'POST',headers:{origin:'https://hr.test','content-type':'application/json',cookie:`__Host-aihr_internal=${session.access_token}`},body:'{}'}),{params:Promise.resolve({operation:'activity'})});

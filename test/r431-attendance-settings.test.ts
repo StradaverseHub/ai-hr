@@ -114,8 +114,8 @@ describe('r431: the Attendance menu', () => {
     expect(settingsRow.adminOnly).toBe(true);
     expect(settingsRow.labelKey).toBe('attendanceSettingsPage');
     expect(settingsRow.labelKey, 'its own key, not Payroll’s').not.toBe('payrollSettings');
-    // MODULE_OF_HREF (components/sidebar.tsx) is built by flatMap over these children.
-    expect(read('components/sidebar.tsx')).toContain('flatMap');
+    // The extracted MODULE_OF_HREF owner derives the attendance gates from these same children.
+    expect(read('lib/navigation/shell-inventory.ts')).toContain("...ATTENDANCE_NODES.flatMap((n) => n.children.map((c) => [c.href, 'attendance'] as const))");
   });
 
   it('Card Assignment and Schedule Assignment STAY as rows', () => {

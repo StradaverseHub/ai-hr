@@ -26,6 +26,7 @@ import { EMPLOYEE_HOME_CARDS, defaultEmployeeHomePreferences, readEmployeeHomePr
   validateEmployeeHomePreferences,employeeHomeLayoutInput, type EmployeeHomePreferences } from '../lib/employee-home';
 
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {listEmployeeHomeCardsTx} from './dashboard-card-config';
 import {
   extractRoleLayout,
   mergeRoleLayout,
@@ -109,20 +110,44 @@ export function resetDashboardLayout(
 }
 
 
+function homeDisplayPreferences(raw: unknown) {
+  const metadata=raw&&typeof raw==='object'&&!Array.isArray(raw)?(raw as Record<string,unknown>).homeDisplay:null;
+  const {timeZone,weekStartsOn}=readEmployeeHomePreferences({
+    ...defaultEmployeeHomePreferences(),...(metadata&&typeof metadata==='object'&&!Array.isArray(metadata)?metadata:{}),
+  });
+  return {timeZone,weekStartsOn};
+}
+
+/** Calendar and greeting use the same saved display metadata without loading the card catalogue. */
+export function getEmployeeHomeDisplayPreferences(ctx: SessionContext, outerTx?: Tx): Promise<Pick<EmployeeHomePreferences,'timeZone'|'weekStartsOn'>> {
+  if (!ctx.userId) return Promise.resolve(homeDisplayPreferences(null));
+  const read = async (tx: Tx) => homeDisplayPreferences(await readRawLayout(tx));
+  return outerTx ? read(outerTx) : withTenant(ctx, read);
+}
+
 /** Home reads card selection/order from the SAME employee-role layout as the existing dashboard.
  * Only display timezone/week-start are metadata; the business-day clock and permissions stay canonical. */
 export function getEmployeeHomePreferences(ctx: SessionContext, cards: readonly DashboardCardChoice[]): Promise<EmployeeHomePreferences> {
   if (!ctx.userId) return Promise.resolve(defaultEmployeeHomePreferences());
-  return withTenant(ctx, async tx => {
-    const raw=await readRawLayout(tx);
-    const metadata=raw&&typeof raw==='object'&&!Array.isArray(raw)?(raw as Record<string,unknown>).homeDisplay:null;
-    const defaults=defaultEmployeeHomePreferences();
-    const display=readEmployeeHomePreferences({...defaults,...(metadata&&typeof metadata==='object'&&!Array.isArray(metadata)?metadata:{})});
-    const layout=normalizeDashboardLayout(employeeHomeLayoutInput(extractRoleLayout(raw,'employee'),cards.filter(card=>card.mandatory||card.defaultDisplay).map(card=>card.cardKey)),cards);
-    const ordered=layout.order.filter((key):key is EmployeeHomePreferences['cardOrder'][number]=>EMPLOYEE_HOME_CARDS.some(card=>card===key));
-    return {version:1,timeZone:display.timeZone,weekStartsOn:display.weekStartsOn,
-      cardOrder:[...ordered,...EMPLOYEE_HOME_CARDS.filter(key=>!ordered.includes(key))],
-      hiddenCards:EMPLOYEE_HOME_CARDS.filter(key=>key!=='summary'&&!layout.selected.includes(key))};
+  return withTenant(ctx, tx => readEmployeeHomePreferencesTx(tx,cards));
+}
+
+async function readEmployeeHomePreferencesTx(tx:Tx,cards:readonly DashboardCardChoice[]):Promise<EmployeeHomePreferences>{
+  const raw=await readRawLayout(tx);
+  const display=homeDisplayPreferences(raw);
+  const layout=normalizeDashboardLayout(employeeHomeLayoutInput(extractRoleLayout(raw,'employee'),cards.filter(card=>card.mandatory||card.defaultDisplay).map(card=>card.cardKey)),cards);
+  const ordered=layout.order.filter((key):key is EmployeeHomePreferences['cardOrder'][number]=>EMPLOYEE_HOME_CARDS.some(card=>card===key));
+  return {version:1,timeZone:display.timeZone,weekStartsOn:display.weekStartsOn,
+    cardOrder:[...ordered,...EMPLOYEE_HOME_CARDS.filter(key=>!ordered.includes(key))],
+    hiddenCards:EMPLOYEE_HOME_CARDS.filter(key=>key!=='summary'&&!layout.selected.includes(key))};
+}
+
+/** Use one tenant transaction for the catalogue and the layout it constrains. */
+export function getEmployeeHomePresentation(ctx:SessionContext){
+  return withTenant(ctx,async tx=>{
+    const catalogue=await listEmployeeHomeCardsTx(tx);
+    const preferences=ctx.userId?await readEmployeeHomePreferencesTx(tx,catalogue):defaultEmployeeHomePreferences();
+    return {catalogue,preferences};
   });
 }
 

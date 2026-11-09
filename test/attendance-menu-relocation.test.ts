@@ -270,7 +270,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // What survived every inversion is the PROTECTION: an administrative screen is never reachable
     // because the rail happened to hide its link. The it.each above proves that directly, and it has not
     // changed.
-    const sidebar = read('components/sidebar.tsx');
+    const sidebar = read('lib/navigation/shell-inventory.ts');
     expect(sidebar, 'the pre-merge admin node stays gone').not.toContain('ATTENDANCE_ADMIN_NODE');
 
     // Ops/Strata replaces audience positions with module ownership. Source pack gates stay intact.
@@ -378,7 +378,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // MODULE_OF_HREF is built from the nav NODES' children. /roster and /attendance/import left the nodes,
     // so without an explicit navLinks line they would drop out of the map and stop being gated by the
     // attendance module entitlement — an un-gating hidden inside a menu move.
-    const sidebar = read('components/sidebar.tsx');
+    const sidebar = read('lib/navigation/shell-inventory.ts');
     expect(sidebar).toContain("(modulePackById('attendance')!.navLinks ?? []).map((l) => [l.href, 'attendance'] as const)");
   });
 

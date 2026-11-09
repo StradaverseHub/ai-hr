@@ -1,0 +1,20 @@
+{
+  "kind": "UNINSTALLED_REWARDS_NATIVE_CORRECTNESS_RECOVERY_SOURCE_ONLY",
+  "releaseAuthorized": false,
+  "base": "8a2fd2454e7c52dae78a4683462d8c963dc82b45",
+  "state": "UNRUN root+independent review required",
+  "nativeCases": 16,
+  "ownershipCases": 3,
+  "legacyFiles": 31,
+  "oldProjectorBodyMd5": "f313c19ebaa565960dfe32ababc092d6",
+  "fixedProjectorBodyMd5": "4963dbd09d8ed17b35521600cac4fe06",
+  "caseMs": 30000,
+  "statementMs": 20000,
+  "lockMs": 300,
+  "checkpointMs": 5000,
+  "sourceSha256": {
+    "test/prototypes/rewards-audited-read.sql": "20da373a1bafb5a8175cd6ea6225300d2fa5db06bcc41fd02d6a44e809e87dff",
+    "test/prototypes/rewards-audit-projection-race.ts": "2e292a3178188e184b11bb55f79a5dbdd4c44a54c82b624618aeac28bf949674",
+    "test/rewards-audited-read-prototype.test.ts": "01e6e8e203d39f905df726def0ef6f6a48dc688e90dbfe12f08bf8a72ca6201a"
+  }
+}

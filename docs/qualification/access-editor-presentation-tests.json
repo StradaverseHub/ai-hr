@@ -1,0 +1,13 @@
+[
+  "test/access-editor-presentation-boundary.test.ts",
+  "test/access-editor-presentation.test.ts",
+  "test/access-editor-populated-upgrade.test.ts",
+  "test/access-configuration-storage.test.ts",
+  "test/access-configuration-owner.test.ts",
+  "test/access-configuration-command.test.ts",
+  "test/access-owner-state.test.ts",
+  "test/access-editor-data.test.ts",
+  "test/access-configuration-editor.dom.test.tsx",
+  "test/access-configuration-actions.test.ts",
+  "test/access-configuration-navigation.dom.test.tsx"
+]

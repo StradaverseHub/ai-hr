@@ -1058,10 +1058,8 @@ export function getReviewDocument(
 }
 
 
-export function pendingReviewTaskMetadata(ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
-  return withTenant(ctx,async tx=>{
-    await assertAssignedWorkPrincipalTx(tx,ctx);
-    const rows=await tx.select({id:employmentReview.id,employmentId:employmentReview.employmentId,personId:employmentReview.personId,
+function pendingReviewHeadersQuery(tx:Tx,ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[]){
+  return tx.select({id:employmentReview.id,employmentId:employmentReview.employmentId,personId:employmentReview.personId,
       employee:person.fullName,createdAt:employmentReview.createdAt,dueDate:employmentReview.dueDate,managerEmploymentId:employmentReview.managerEmploymentId})
       .from(employmentReview)
       .innerJoin(employment,and(eq(employment.id,employmentReview.employmentId),eq(employment.tenantId,employmentReview.tenantId)))
@@ -1071,6 +1069,16 @@ export function pendingReviewTaskMetadata(ctx:SessionContext,stage:'manager'|'hr
         stage==='manager'?sql`EXISTS (SELECT 1 FROM public.employment AS manager WHERE manager.id=${employmentReview.managerEmploymentId}
           AND manager.tenant_id=${employmentReview.tenantId} AND app.is_self_person(manager.person_id))`:undefined))
       .orderBy(desc(employmentReview.createdAt),employmentReview.id);
+}
+
+export function pendingReviewCandidatesExistSql(tx:Tx,ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[]){
+  return sql<boolean>`exists (${pendingReviewHeadersQuery(tx,ctx,stage,companyIds).getSQL()})`;
+}
+
+export function pendingReviewTaskMetadata(ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+  return withTenant(ctx,async tx=>{
+    await assertAssignedWorkPrincipalTx(tx,ctx);
+    const rows=await pendingReviewHeadersQuery(tx,ctx,stage,companyIds);
     const result:AssignedApprovalMetadata[]=[];
     for(const row of rows){
       try{

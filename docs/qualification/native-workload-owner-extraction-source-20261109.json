@@ -1,0 +1,334 @@
+{
+  "kind": "NATIVE_WORKLOAD_OWNER_MECHANICAL_EXTRACTION_SOURCE_ONLY_UNRUN",
+  "parentCommit": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+  "sourceRef": "codex/native-workload-owner-extraction-20261109",
+  "exactChangedPaths": [
+    "scripts/performance/system-fixture.mjs",
+    "scripts/performance/system-load.mjs",
+    "scripts/performance/system-fixture-owner.mjs",
+    "scripts/performance/system-load-owner.mjs",
+    "test/performance-shared-workload-owner.test.ts",
+    "docs/adr/2026-11-09-native-workload-owner-extraction.md",
+    "docs/qualification/native-workload-owner-extraction-source-20261109.json",
+    "scripts/performance/browser-failure.ts",
+    "test/performance-browser-failure.test.ts",
+    "test/performance-route-scheduling.test.ts"
+  ],
+  "currentSourceSha256": {
+    "scripts/performance/system-fixture.mjs": "fc2e253251b3252181c256dc8d6266775bd725bbd409ed7b46c0bce7b2b17afd",
+    "scripts/performance/system-load.mjs": "17a26184a7e01e1d38c51a1bd626b542b33c472894ab03a43608eda2f48c6c15",
+    "scripts/performance/system-fixture-owner.mjs": "43457fa85fdd0b2838aaeb15341049bda26cd93b31935d0018edd418626f463c",
+    "scripts/performance/system-load-owner.mjs": "bb97dbc687bd9bf8b27a78e613b074d6225a8e0d8eeac11534199bf6c167731c",
+    "test/performance-shared-workload-owner.test.ts": "31df37084b9fc551bf17d1610802f2f517176b7e82794193a90299b332f979a3",
+    "docs/adr/2026-11-09-native-workload-owner-extraction.md": "41b5b74f7623d75cefd6936fb1f6cbbae9dabaf7d435573e33fed358da0b2bd0",
+    "scripts/performance/browser-failure.ts": "16f09a90ccc46f9ce5f384d462d2b6552538461b881f75c514365fd57c5623a4",
+    "test/performance-browser-failure.test.ts": "a5a1973f3bf3aa9a75783b878aaed7763c2df2c6668bac1d8ed8df365e8403b6",
+    "test/performance-route-scheduling.test.ts": "4eb7f50c7b8a7c76d8f77c903f4a10689f0d9ce763b6a9477de25b26436a63cb"
+  },
+  "selfExcluded": "docs/qualification/native-workload-owner-extraction-source-20261109.json",
+  "wholeOriginalModuleExtractions": [
+    {
+      "legacyPath": "scripts/performance/system-fixture.mjs",
+      "ownerPath": "scripts/performance/system-fixture-owner.mjs",
+      "exportName": "runDevelopmentSystemFixture",
+      "wholeOriginalModule": {
+        "path": "scripts/performance/system-fixture.mjs",
+        "bytes": 25092,
+        "sha256": "4109fb3a4e65eee74310fdde0eda8fc55ede340573edd059363fc2be4bfdad0b",
+        "commit": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+        "gitBlob": "554975e19f879480de020429ad830a9f40f51065",
+        "mode": "100644"
+      },
+      "currentOwner": {
+        "path": "scripts/performance/system-fixture-owner.mjs",
+        "bytes": 25147,
+        "sha256": "43457fa85fdd0b2838aaeb15341049bda26cd93b31935d0018edd418626f463c"
+      },
+      "currentFixedEntry": {
+        "path": "scripts/performance/system-fixture.mjs",
+        "bytes": 109,
+        "sha256": "fc2e253251b3252181c256dc8d6266775bd725bbd409ed7b46c0bce7b2b17afd"
+      },
+      "sameDirectory": true,
+      "ownerEnvelope": {
+        "originalPrefixEnd": 594,
+        "openingStart": 594,
+        "openingEnd": 647,
+        "opening": "export async function runDevelopmentSystemFixture(){\n",
+        "originalBodyStartInOwner": 647,
+        "originalBodyEndInOwner": 25145,
+        "closing": "}\n",
+        "closingStart": 25145
+      },
+      "wholeParentInverse": "Concatenate owner[0:originalPrefixEnd] + owner[originalBodyStartInOwner:originalBodyEndInOwner]; this reconstructs the ENTIRE original Git module and restores the old wrapper. No embedded duplicate body or decoder.",
+      "wholeOriginalBodySha256": "69f9cdffa718989eccbbcd7d34caf28e646518db7ad009d4bb65f90e704fed3e",
+      "staticImportDeclarations": 8,
+      "allOriginalBodyNodesWhole": 3996,
+      "allOriginalCallsWhole": 250,
+      "allOriginalAwaitsWhole": 74,
+      "allOriginalTaggedTemplatesWhole": 8,
+      "allOriginalImportMetaWhole": 0
+    },
+    {
+      "legacyPath": "scripts/performance/system-load.mjs",
+      "ownerPath": "scripts/performance/system-load-owner.mjs",
+      "exportName": "runDevelopmentSystemLoad",
+      "wholeOriginalModule": {
+        "path": "scripts/performance/system-load.mjs",
+        "bytes": 99091,
+        "sha256": "fafc4cdbf6e1ebbff2231efccaf80a8823945fa7d2349e3e7bc8a916c37f10e3",
+        "commit": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+        "gitBlob": "ace516679159cf2644d357a4530e7c7a96086929",
+        "mode": "100644"
+      },
+      "currentOwner": {
+        "path": "scripts/performance/system-load-owner.mjs",
+        "bytes": 99143,
+        "sha256": "bb97dbc687bd9bf8b27a78e613b074d6225a8e0d8eeac11534199bf6c167731c"
+      },
+      "currentFixedEntry": {
+        "path": "scripts/performance/system-load.mjs",
+        "bytes": 100,
+        "sha256": "17a26184a7e01e1d38c51a1bd626b542b33c472894ab03a43608eda2f48c6c15"
+      },
+      "sameDirectory": true,
+      "ownerEnvelope": {
+        "originalPrefixEnd": 2150,
+        "openingStart": 2150,
+        "openingEnd": 2200,
+        "opening": "export async function runDevelopmentSystemLoad(){\n",
+        "originalBodyStartInOwner": 2200,
+        "originalBodyEndInOwner": 99141,
+        "closing": "}\n",
+        "closingStart": 99141
+      },
+      "wholeParentInverse": "Concatenate owner[0:originalPrefixEnd] + owner[originalBodyStartInOwner:originalBodyEndInOwner]; this reconstructs the ENTIRE original Git module and restores the old wrapper. No embedded duplicate body or decoder.",
+      "wholeOriginalBodySha256": "b236e797195d5ab2c42b86a1469bdafa3869b7e51453a594512d70c17809dafd",
+      "staticImportDeclarations": 31,
+      "allOriginalBodyNodesWhole": 16750,
+      "allOriginalCallsWhole": 1332,
+      "allOriginalAwaitsWhole": 303,
+      "allOriginalTaggedTemplatesWhole": 26,
+      "allOriginalImportMetaWhole": 4
+    }
+  ],
+  "wholeConsumerParentInverses": [
+    {
+      "path": "scripts/performance/browser-failure.ts",
+      "wholeParent": {
+        "path": "scripts/performance/browser-failure.ts",
+        "bytes": 482,
+        "sha256": "461f927b7e64f6d32cdd02cb65dbeb3485970f7f69e7304e7cfa58224fca0a99",
+        "commit": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+        "gitBlob": "fadd6caa7872253b4b68890cfb93e3419a4df250",
+        "mode": "100644"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 206,
+          "currentEnd": 353,
+          "currentRangeSha256": "864ce6d821a090504d5f249cea6357c878814724b3b2f2bf6121760631662408",
+          "parentStart": 206,
+          "parentEnd": 325,
+          "parentText": " const frame=typeof value?.stack==='string'?value.stack.match(/system-load\\.mjs:(\\d{1,6}):(\\d{1,6})(?:\\)|\\s|$)/):null;\n"
+        },
+        {
+          "currentStart": 424,
+          "currentEnd": 602,
+          "currentRangeSha256": "e31c1279fd7ebfe1e283b9aca4f9acb49456b2b5bd1f1df18f51c09d32a9dc8c",
+          "parentStart": 396,
+          "parentEnd": 480,
+          "parentText": "  sourceLine:frame?Number(frame[1]):null,sourceColumn:frame?Number(frame[2]):null};\n"
+        }
+      ]
+    },
+    {
+      "path": "test/performance-browser-failure.test.ts",
+      "wholeParent": {
+        "path": "test/performance-browser-failure.test.ts",
+        "bytes": 863,
+        "sha256": "ea30e1df1fcdd183afa0f5b957c97690add3d4c0d421ba26e0291571edc45f79",
+        "commit": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+        "gitBlob": "04d12a8ef7c25a27b119cf74c10dc516e3037ad5",
+        "mode": "100644"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 863,
+          "currentEnd": 2337,
+          "currentRangeSha256": "38143c0cdd01c0a5841155738b85187ab4eaa52a8e8d66aed2b1d01ed30fb4bd",
+          "parentStart": 863,
+          "parentEnd": 863,
+          "parentText": ""
+        }
+      ]
+    },
+    {
+      "path": "test/performance-route-scheduling.test.ts",
+      "wholeParent": {
+        "path": "test/performance-route-scheduling.test.ts",
+        "bytes": 8886,
+        "sha256": "9ecc0b6d6e80436ea7e2dc30d5907b02fcc54fd08ebb2177778975411ae48829",
+        "commit": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+        "gitBlob": "e64a9e259a799728e4f9dfb6ddfdccffb5369991",
+        "mode": "100644"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 6969,
+          "currentEnd": 7174,
+          "currentRangeSha256": "bcda6933e2fde1f73742d70ca75d1e5b32723fb33a801e6a6acd807e38abb701",
+          "parentStart": 6969,
+          "parentEnd": 7168,
+          "parentText": " const driver=readFileSync(new URL('../scripts/performance/system-load.mjs',import.meta.url),'utf8'),mixed=readFileSync(new URL('../scripts/performance/mixed-workflows.mjs',import.meta.url),'utf8');\n"
+        }
+      ]
+    }
+  ],
+  "newAbsentFromParent": [
+    "scripts/performance/system-fixture-owner.mjs",
+    "scripts/performance/system-load-owner.mjs",
+    "test/performance-shared-workload-owner.test.ts",
+    "docs/adr/2026-11-09-native-workload-owner-extraction.md",
+    "docs/qualification/native-workload-owner-extraction-source-20261109.json"
+  ],
+  "actorsAuthorityState": {
+    "actor": "Unchanged owned GitHub development workload; no new native admitted purpose.",
+    "authority": "Original guards and dynamic application service/principal/command owners unchanged. Export is parameterless DEV work, not native capability.",
+    "state": "Owner import declares function; fixed legacy entry imports and awaits it exactly once. Original internal workload order unchanged.",
+    "failure": "Original workload assertions, catch/finally, pool/browser cleanup and known gaps remain whole. Only diagnostic filename binding and scheduling source reader adapt."
+  },
+  "consumerChanges": {
+    "scheduling": "One actual source-read target follows driver owner; all other bytes and assertions remain whole.",
+    "diagnostic": "First exact legacy OR owner filename, existing six-digit numbers/assertion code; only owner result adds fixed sourceFile discriminator. Legacy/null shapes whole, no path/message/URL/arbitrary code reflection.",
+    "diagnosticTests": "Original control whole plus owner-first/wrapper-later privacy and closed filename/number bounds cases."
+  },
+  "sourceParity": {
+    "entireTwoParentModulesRecovered": true,
+    "originalStaticPrefixesWhole": true,
+    "allRemainingOldBytesOnceInsideSingleAsyncEnvelope": true,
+    "sameDirectoryRelativeImportAndImportMetaResolution": true,
+    "originalBodyAstAndEveryNodeSliceWhole": true,
+    "reviewedRoutePoolAndBothPilotConsumersWhole": true,
+    "oldBrowserFailureTestWhole": true,
+    "schedulingAllAssertionsWhole": true
+  },
+  "authoredNotExecutedCensus": {
+    "newEntryControls": {
+      "registrations": 3,
+      "expandedCases": 9,
+      "perCaseCapMs": 15000,
+      "childCapMs": 10000,
+      "realNodeTsxChildren": true,
+      "uninvokedOwnerImports": 2,
+      "realFixedEntryCiRefusals": 2,
+      "exactHostnamePortAndNativeRealmRefusals": 5,
+      "noFakeDatabaseOrAuthority": true,
+      "scope": "Entry/import controls only. No database/native workload execution and no native PASS."
+    },
+    "browserFailure": {
+      "oldWholeCases": 1,
+      "newCases": 2
+    },
+    "changedSchedulingBodies": 1,
+    "changedSchedulingAssertions": 0
+  },
+  "currentClosure": {
+    "source": "External static/literal-dynamic source graph from both fixed entries plus actual assistant-history child, not runtime/native closure.",
+    "files": 990,
+    "localEdges": 3883,
+    "applicationFiles": 892,
+    "externalEdges": 827,
+    "unresolved": 0,
+    "byRoot": {
+      "scripts/performance/system-fixture.mjs": 948,
+      "scripts/performance/system-load.mjs": 52,
+      "scripts/performance/assistant-history-seed.mjs": 788
+    },
+    "newRuntimeLeaves": [
+      "scripts/performance/system-fixture-owner.mjs",
+      "scripts/performance/system-load-owner.mjs"
+    ],
+    "onlyChangedOldGraphPins": [
+      "scripts/performance/browser-failure.ts",
+      "scripts/performance/system-fixture.mjs",
+      "scripts/performance/system-load.mjs"
+    ],
+    "wholePriorV2GraphReplay": true,
+    "syntacticDatabaseSites": 168,
+    "poolConstructorSites": 5,
+    "runtimeSites": 9,
+    "knownConditionalAndRuntimeDataLimitsPreserved": true,
+    "currentGraphAndDisclosureBinding": "OPEN",
+    "noBlanketApprovalOrHistoricalHashRebind": true
+  },
+  "privateSourceEvidence": [
+    {
+      "basename": "source-parity-private.json",
+      "bytes": 2360,
+      "sha256": "5143199b51fbb4debd1ebf1b45383e9a3ecb72f2f489cfaca4759c081d1529ff"
+    },
+    {
+      "basename": "closure-review-private.json",
+      "bytes": 1546,
+      "sha256": "5622759a24356b228684a732a9774e32b229a30e83f731b268637e4dca8930a1"
+    },
+    {
+      "basename": "source-db-import-inventory-private.json",
+      "bytes": 1182841,
+      "sha256": "469a08dfd770a3a1063ecb33f3f8a89267846c783669acbbf457c29bff85be66"
+    }
+  ],
+  "reviewedPlan": [
+    {
+      "basename": "CONTRACT.md",
+      "bytes": 20759,
+      "sha256": "beb954a97cea23c056245df6a527d7eb0f9328e62771d01864f2006b85086f1e"
+    },
+    {
+      "basename": "contract-source-proof-private.json",
+      "bytes": 15040,
+      "sha256": "b51ba7d9b6ac5579ea8f5d5fab1da2525d4434f77dde3a839a88d579b9db7c79"
+    }
+  ],
+  "preservation": {
+    "allOtherParentTreeEntriesWhole": "Verified in private frozen commit proof.",
+    "allExistingQualificationRecordsWholeHistoricalNotCurrentRebound": true,
+    "allCiAdmissionSchemaPrincipalServicesWhole": true,
+    "allPoolsGuardsWorkloadQueriesActionsCleanupSourceBytesWhole": true,
+    "newNativePurposeOptionsOrAdmission": false,
+    "noNativeSqlSchemaRoleFlagsOrTransport": true
+  },
+  "remainingSeparateGaps": [
+    "fixture actor tenantId missing",
+    "closed admitted native full-volume/workflow union and exact Rewards extra Org employment",
+    "driver late/default pool ownership",
+    "complete browser/pool/sampler cleanup settlement",
+    "required successful lock sampling witness",
+    "closed Chromium environment",
+    "same-artifact native boot and source/physical/authority bindings",
+    "real browser preflight then 2/4 steady load; 8 oversubscribed preflight is not 8 steady capacity",
+    "fresh production resource match unknown"
+  ],
+  "proposedHostedSelectors": [
+    "test/performance-shared-workload-owner.test.ts",
+    "test/performance-browser-failure.test.ts",
+    "test/performance-route-scheduling.test.ts",
+    "test/performance-worker-budget.test.ts",
+    "test/performance-route-manifest.test.ts",
+    "test/performance-runtime-acceptance.test.ts",
+    "test/navigation-fixture-bindings.test.ts",
+    "test/navigation-development-protocol.test.ts",
+    "test/navigation-browser-capture.test.ts",
+    "test/gate-db-classify-graph.test.ts",
+    "test/gate-impact-selection.test.ts"
+  ],
+  "qualification": {
+    "source": "AUTHORED_UNRUN_ROOT_AND_DIFFERENT_PEER_FULL_REVIEW_REQUIRED",
+    "repositoryImportsTestsCompilerBuildDbNativeNetworkUploadDispatch": false,
+    "nativeBrowserLoadRelease": "OPEN",
+    "staging": "HELD",
+    "production": "HELD"
+  },
+  "acyclicity": "Only current source pins excluding self; immutable whole Git parent references plus bounded extraction/consumer inverse ranges. No nested prior-record copy, runtime reader, decoder, automatic disclosure transfer or authority endpoint."
+}

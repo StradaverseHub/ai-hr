@@ -1,5 +1,5 @@
 /** Company-specific clock policies are independent of overtime activation and pattern versions. */
-import {and,asc,desc,eq,lte,sql} from 'drizzle-orm';
+import {and,desc,eq,lte,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {attendanceClockPolicyRevision,company} from '../db/schema';
@@ -54,14 +54,14 @@ export async function attendanceClockPolicyHistory(
   ctx:SessionContext,p:ClockPolicyScope,
 ):Promise<(AttendanceClockPolicyVersion & {reason:string})[]> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  p={...p};
-  const where=scopedRevision(ctx,p);
+  const companyId=overtimeUuid(p.companyId,'companyId'),ruleId=overtimeUuid(p.ruleId,'ruleId');
   return withAttendanceTenant(ctx,async tx=>{
-    await requireCompanyAdminTx(tx,ctx,p.companyId);
-    const rows=await tx.select({...summary,reason:attendanceClockPolicyRevision.reason}).from(attendanceClockPolicyRevision)
-      .where(where).orderBy(asc(attendanceClockPolicyRevision.ordinal)).limit(501);
+    await requireCompanyAdminTx(tx,ctx,companyId);
+    const rows=await tx.execute<{id:string;ordinal:number;effectiveFrom:string;policy:unknown;reason:string}>(sql`
+      select id,ordinal,effective_from::text as "effectiveFrom",policy,reason
+      from app.attendance_clock_policy_history(${companyId}::uuid,${ruleId}::uuid) order by ordinal`);
     if(rows.length>500)throw new Error('This clock policy history exceeds the supported review limit.');
-    await requireCompanyAdminTx(tx,ctx,p.companyId);
+    await requireCompanyAdminTx(tx,ctx,companyId);
     return rows.map(row=>({...row,policy:validateAttendanceClockPolicy(row.policy)}));
   });
 }

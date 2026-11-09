@@ -102,6 +102,11 @@ describe('topbar menus stay inside a short window', () => {
     expect(last.bottom, 'the last company is reachable by scrolling the list').toBeLessThanOrEqual(box.bottom + 1);
     expect(last.top).toBeGreaterThanOrEqual(box.top - 1);
     expect(selectAll.getBoundingClientRect().top, 'Select all scrolled away with the list').toBe(selectAllTop);
+
+    // A real pointer click must reach the open trigger, not the dismiss backdrop.
+    await page.getByRole('button', { name: '2 companies', exact: true }).click();
+    expect(container.querySelector('[data-company-switcher]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('form')).toBeNull();
   });
 
   it('account menu fits the window and scrolls when it cannot', async () => {

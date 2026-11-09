@@ -58,6 +58,7 @@ import {
 /** The session every action resolves. Swapped per test between an administrator and a supervisor. */
 let SESSION: SessionContext;
 vi.mock('@/lib/session', () => ({ getSession: async () => SESSION }));
+vi.mock('next/headers',()=>({cookies:async()=>({get:()=>undefined})}));
 vi.mock('next/cache', () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 
 /** next/navigation's redirect() signals by THROWING; a stub that merely records would let the action
@@ -103,10 +104,10 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  admin = adminCtx(b);
+  admin = {...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
   // A REAL non-admin session: the same tenant and the same logged-in user, holding a role that is not
   // hr_admin / super_admin. This is exactly what a supervisor's session context looks like.
-  supervisor = { ...admin, roles: ['manager'] };
+  supervisor = { ...adminCtx(b), roles: ['manager'] };
   // The DEFAULT session for this file is the supervisor — the caller the blocker is about. The last
   // describe overrides it with the administrator in its own beforeEach, which runs after this one.
   SESSION = supervisor;
@@ -264,7 +265,7 @@ describe('the guard must not refuse everything — an administrator still roster
 
   it('generateRosterAction still redirects with its summary', async () => {
     await expect(
-      generateRosterAction(formOf({ companyId: b.companyId, shiftId, from: FUTURE, to: FUTURE_MONTH_END, employmentIds: [employmentId] })),
+      generateRosterAction(formOf({ companyId: b.companyId, shiftId, from: FUTURE, to: FUTURE_MONTH_END, selectionIds: JSON.stringify([employmentId]) })),
     ).rejects.toThrow('NEXT_REDIRECT');
     expect(LAST_REDIRECT).toContain('generated=');
     expect(LAST_REDIRECT).not.toContain('error=');

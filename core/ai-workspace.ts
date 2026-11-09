@@ -8,15 +8,16 @@ import { resolveEntitlementsTx } from './entitlements';
 import {assistantReadableModules} from './assistant-readable-modules';
 import { toolsFor } from './assistant-tools';
 import { workspaceTasksFor } from '../lib/ai/workspace-tasks';
-import { withAssistantReadTx } from './assistant-read-session';
+import { withAssistantPresentationReadTx } from './assistant-read-session';
 import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
 import { agentReviewWorkspaceTx,specialistReviewWorkspaceTx,reopenOwnModulePlanTx,issueOwnModulePlanPermitTx,type OwnModulePlanView } from './module-agent-releases';
 import {loadGovernedWorkspaceJobTx} from './workspace-module-jobs';
 import {workspaceGroundedAnswers} from './workspace-grounded-answers';
 import {assistantProposalCallerTx} from './assistant-action-catalogue';
 
-export async function loadAiWorkspace(ctx: SessionContext, options:{includeHistory?:boolean;includeGovernance?:boolean;selectedExchangeId?:string;governedJobId?:string;proposalId?:string}={}) {
+export async function loadAiWorkspace(ctx: SessionContext, options:{includeHistory?:boolean;includeGovernance?:boolean;includePlanning?:boolean;selectedExchangeId?:string;governedJobId?:string;proposalId?:string}={}) {
   const includeHistory=options.includeHistory!==false,includeGovernance=options.includeGovernance!==false,selectedExchangeId=options.selectedExchangeId,governedJobId=options.governedJobId,proposalId=options.proposalId;
+  const includePlanning=options.includePlanning!==false;
   const captured = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   if (!captured.userId) return { access: { allowed: false, reason: 'no_user' } as AssistantAccess, taskIds: [], history: [],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null,planningAvailability:'resting' as const };
   const userId = captured.userId;
@@ -30,11 +31,14 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     // A suggestion needs a configured provider. Without one the planner is not broken, it is not set up:
     // say so calmly and issue no permit for a request that could never be sent. The savepoint keeps a
     // failed provider read from aborting the rest of this read; unknown is never "configured".
-    let planningProvider:boolean|null=null;try{planningProvider=await tx.transaction(async savepoint=>(await resolveAiProviderSnapshotTx(savepoint,fresh))!==null);}catch{/* Unknown provider state. */}
-    let planningPermit:string|null=null;if(planningProvider!==false)try{planningPermit=await issueOwnModulePlanPermitTx(tx,fresh);}catch{/* Issuance never falls back to a browser nonce. */}
+    // Ask navigation does not render the planner. Defer its configuration/permit work until
+    // the caller requests that surface; principal and Assistant access above always run.
+    let planningProvider:boolean|null=null;if(includePlanning)try{planningProvider=await tx.transaction(async savepoint=>(await resolveAiProviderSnapshotTx(savepoint,fresh))!==null);}catch{/* Unknown provider state. */}
+    // A failed optional SQL read must roll back its savepoint before the workspace continues.
+    let planningPermit:string|null=null;if(includePlanning&&planningProvider!==false)try{planningPermit=await tx.transaction(savepoint=>issueOwnModulePlanPermitTx(savepoint,fresh));}catch{/* Issuance never falls back to a browser nonce. */}
     const planningAvailability=planningPermit?'ready' as const:planningProvider===false?'no_provider' as const:'resting' as const;
     const governedJob=governedJobId?await loadGovernedWorkspaceJobTx(fresh,tx,governedJobId):null;
-    let proposal:OwnModulePlanView|null=null;if(proposalId)try{proposal=await reopenOwnModulePlanTx(tx,fresh,proposalId);}catch{/* Bounded current-owner refusal; no existence oracle. */}
+    let proposal:OwnModulePlanView|null=null;if(proposalId)try{proposal=await tx.transaction(savepoint=>reopenOwnModulePlanTx(savepoint,fresh,proposalId));}catch{/* Bounded current-owner refusal; no existence oracle. */}
     const taskIds = workspaceTasksFor(toolsFor(fresh).map(tool => tool.spec.name));
     // HR visibility is broader than personal conversation custody. Keep the explicit actual-user
     // predicate even when RLS could let an administrator read other users' exchange rows.
@@ -55,8 +59,8 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     // Review R6: a replayed proposal is re-adjudicated against the caller's CURRENT registry-derived
     // catalogue, read in this request; only a selected exchange can replay one. null = could not be checked
     // right now: the card shows a neutral retry, never "out of date" and never a preparable card.
-    const proposalCaller=includeHistory&&selectedExchangeId?await assistantProposalCallerTx(tx,fresh).catch(()=>null):null;
-    const history = includeHistory?await withAssistantReadTx(fresh, tx, async session => {
+    const proposalCaller=includeHistory&&selectedExchangeId?await assistantProposalCallerTx(tx,fresh,'replay').catch(()=>null):null;
+    const history = includeHistory?await withAssistantPresentationReadTx(fresh, tx, async session => {
       const replay = workspaceGroundedAnswers(fresh, session,tx,proposalCaller);
       const history = [];
       for (const row of rows) {

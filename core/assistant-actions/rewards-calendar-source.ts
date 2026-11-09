@@ -3,8 +3,9 @@ import {pgSqlState} from '../../lib/db-error';
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
-import {withTenant,type SessionContext,type Tx} from '../../db/client';
+import type {SessionContext,Tx} from '../../db/client';
 import {withAgentActionGuard} from './agent-action-guard';
+import {readRewardsPresentationChoices} from './rewards-presentation';
 import {saveRewardCalendarTx} from '../../packs/rewards/service';
 import {REWARDS_CALENDAR_ACTION as action,RewardsCalendarHuman,RewardsCalendarReview,RewardsCalendarReceipt,RewardsCalendarChoices} from '../../lib/assistant-actions/rewards-calendar-contract';
 export const rewardsCalendarUnavailable=():never=>{throw new Error('Please reopen this review on the native Rewards screen.');};
@@ -31,8 +32,6 @@ export async function confirmRewardsCalendarSourceTx(tx:Tx,ctx:SessionContext,va
 export async function reconcileRewardsCalendarSourceTx(tx:Tx,ctx:SessionContext,reference:{unitId:string;eventId:string}){
  const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_rewards_calendar_receipt(${reference.unitId}::uuid,${reference.eventId}::uuid) as receipt`);return RewardsCalendarReceipt.parse(row?.receipt);
 }
-export async function readRewardsCalendarChoicesTx(tx:Tx,ctx:SessionContext){return withRewardsCalendarBoundsTx(tx,async()=>{await assertRewardsCalendarActorTx(tx,ctx);const [row]=await tx.execute<{choices:unknown}>(sql`select app.assistant_rewards_calendar_choices() as choices`);const result=RewardsCalendarChoices.parse(row?.choices);if(Buffer.byteLength(JSON.stringify(result))>49152)return rewardsCalendarUnavailable();return result;});}
-
 /** Same per-lock bound as the existing Rewards post adapter, preserving shorter caller limits. */
 export async function withRewardsCalendarBoundsTx<T>(tx:Tx,work:()=>Promise<T>):Promise<T>{
  const [prior]=await tx.execute<{saved:string;milliseconds:number;unit:string}>(sql`select current_setting('lock_timeout') as saved,setting::integer as milliseconds,unit from pg_settings where name='lock_timeout'`);
@@ -42,4 +41,5 @@ export async function withRewardsCalendarBoundsTx<T>(tx:Tx,work:()=>Promise<T>):
  await tx.execute(sql`select set_config('lock_timeout',${prior.saved},true)`);return result;
 }
 
-export const readRewardsCalendarChoices=(ctx:SessionContext)=>withTenant(ctx,tx=>readRewardsCalendarChoicesTx(tx,ctx));
+export const readRewardsCalendarChoices=(ctx:SessionContext)=>readRewardsPresentationChoices(ctx,action,
+ sql`select app.assistant_rewards_calendar_presentation_choices_v1() as choices`,RewardsCalendarChoices,rewardsCalendarUnavailable);

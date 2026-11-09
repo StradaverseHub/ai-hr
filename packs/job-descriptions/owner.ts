@@ -3,6 +3,7 @@ import { withTenant, type SessionContext, type Tx } from '@/db/client';
 import { actorOf, appendEvent } from '@/db/events';
 import { organisationChoiceLabel as label, organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { lockAccessConfigurationTx } from '@/core/access-configuration-lock';
+import { isAiPresentationPrincipalCurrentTx } from '@/core/ai-principal';
 import { businessUnit, company, department, jobGrade, location, position, profileOption } from '@/db/schema';
 import { labelCompanyIdsSql, labelUsableByCompany, lockLabelCriteriaTx, visibleLabelIdsCondition } from '@/core/system-labels';
 import { DEFAULT_FORM, JobDocumentError, normalizedJobCode, projectJobAnswers, validDate, validateDefinition, validateInput, type FormDefinition, type JobInput, type OrgAssignment } from './model';
@@ -95,6 +96,16 @@ function actor(ctx: SessionContext) { if (!ctx.userId || !UUID.test(ctx.userId) 
 async function jobTenant<T>(ctx:SessionContext, fn:(tx:Tx)=>Promise<T>):Promise<T>{
  return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return fn(tx);});
 }
+/** Display roots own one native read-only snapshot. Login proof grants no document authority;
+ * scope(), actor labels and the unchanged RLS policies still authorize every disclosed row.
+ * Command helpers keep jobTenant and its Read Committed revocation barrier. */
+async function jobPresentation<T>(supplied:SessionContext, fn:(tx:Tx,ctx:SessionContext)=>Promise<T>):Promise<T>{
+ const ctx=structuredClone(supplied);actor(ctx);
+ return withTenant(ctx,async tx=>{
+  if(!await isAiPresentationPrincipalCurrentTx(tx,ctx))throw new JobDocumentError('Job documentation requires an authorized HR user');
+  return fn(tx,ctx);
+ },{readOnlySnapshot:true});
+}
 async function rows<T>(tx: Tx, q: ReturnType<typeof sql>): Promise<T[]> { return await tx.execute(q) as unknown as T[]; }
 async function scope(tx: Tx, ctx: SessionContext, companyId: string, operation: 'view'|'maintain'='maintain'): Promise<void> { uuid(companyId); const [r] = await rows<{
     ok: boolean;
@@ -102,7 +113,7 @@ async function scope(tx: Tx, ctx: SessionContext, companyId: string, operation: 
     throw new JobDocumentError('Job record not available'); }
 export async function getJobMasters(ctx: SessionContext): Promise<Masters> {
     actor(ctx);
-    return jobTenant(ctx, async (tx) => {
+    return jobPresentation(ctx, async (tx,ctx) => {
         const companies = await tx.select({ value: company.id, label: company.legalName }).from(company).where(and(eq(company.tenantId, ctx.tenantId), isNull(company.archivedAt), sql `app.access_workforce_company(${company.id},'workforce.view')`)).orderBy(asc(company.legalName), asc(company.id));
         if(!companies.length)return{companies:[],businessUnit:[],department:[],position:[],grade:[],location:[],section:[],team:[],family:[],employmentType:[],people:[]};
         const ids = companies.map(v => v.value);
@@ -127,7 +138,7 @@ export async function getJobMasters(ctx: SessionContext): Promise<Masters> {
 async function definitionTx(tx: Tx, ctx: SessionContext, companyId: string): Promise<FormDefinition> { const [r] = await rows<{
     definition: FormDefinition;
 }>(tx, sql `select definition from job_document_form where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid order by version desc limit 1`); return r?.definition ?? structuredClone(DEFAULT_FORM); }
-export async function getJobForm(ctx: SessionContext, companyId: string) { actor(ctx); return jobTenant(ctx, async (tx) => { await scope(tx, ctx, companyId,'view'); return definitionTx(tx, ctx, companyId); }); }
+export async function getJobForm(ctx: SessionContext, companyId: string) { actor(ctx); return jobPresentation(ctx, async (tx,ctx) => { await scope(tx, ctx, companyId,'view'); return definitionTx(tx, ctx, companyId); }); }
 export async function configureJobForm(ctx: SessionContext, companyId: string, expectedVersion: number, definition: FormDefinition) { const by = actor(ctx); const def = validateDefinition(definition); return jobTenant(ctx, async (tx) => { await scope(tx, ctx, companyId); const [config] = await rows<{ok:boolean}>(tx,sql`select app.access_configuration_not_denied() as ok`);if(!config?.ok)throw new JobDocumentError('Form configuration permission is unavailable'); await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${`${ctx.tenantId}:job-form:${companyId}`},0))`); const current = await definitionTx(tx, ctx, companyId); if (current.version !== expectedVersion || def.version !== expectedVersion + 1)
     throw new JobDocumentError('The form changed. Reopen configuration before saving'); await tx.execute(sql `insert into job_document_form(tenant_id,company_id,version,definition,created_by) values(${ctx.tenantId}::uuid,${companyId}::uuid,${def.version},${JSON.stringify(def)}::jsonb,${by}::uuid)`); await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'job-document-form', aggregateId: companyId, eventType: 'job-document.form.configured', actor: actorOf(ctx), payload: { companyId, fromVersion: expectedVersion, toVersion: def.version } }); return def; }); }
 async function assignedUser(tx:Tx,ctx:SessionContext,userId:string,companyId:string){
@@ -257,7 +268,7 @@ export async function saveJobDraft(ctx: SessionContext, input: JobInput, existin
         return { jobId, revisionId: saved.id };
     });
 }
-export async function readJobDocument(ctx: SessionContext, id: string, revisionId?: string) { actor(ctx); return jobTenant(ctx, async (tx) => { const found = await getTx(tx, ctx, id, revisionId); const history = await rows<JobRevision>(tx, sql `select * from job_document_revision where job_id=${id}::uuid order by version desc,id`); const reviews = await rows<Review>(tx, sql `select r.*,coalesce(app.job_document_actor_label(${id}::uuid,r.reviewer_id),'') as name from job_document_review r where r.revision_id=${found.revision.id}::uuid order by r.id`); const attachments = await rows<Attachment>(tx, sql `select id,filename,mime_type,octet_length(content) as size,created_at from job_document_attachment where revision_id=${found.revision.id}::uuid order by created_at,id`); const events = await rows<Audit>(tx, sql `select id,action,actor_id,created_at,before_value,after_value from job_document_audit where job_id=${id}::uuid order by created_at desc,id desc limit 200`); const principals = await rows<{ id: string; name: string|null }>(tx, sql`select u.id::text as id, app.job_document_actor_label(${id}::uuid,u.id) as name from app_user u where u.tenant_id=${ctx.tenantId}::uuid and (u.id in (select prepared_by from job_document_revision where job_id=${id}::uuid union select last_edited_by from job_document_revision where job_id=${id}::uuid union select approver_id from job_document_revision where job_id=${id}::uuid union select submitted_by from job_document_revision where job_id=${id}::uuid union select approved_by from job_document_revision where job_id=${id}::uuid) or u.id in (select reviewer_id from job_document_review where revision_id=${found.revision.id}::uuid)) order by u.id`);
+export async function readJobDocument(ctx: SessionContext, id: string, revisionId?: string) { actor(ctx); return jobPresentation(ctx, async (tx,ctx) => { const found = await getTx(tx, ctx, id, revisionId); const history = await rows<JobRevision>(tx, sql `select * from job_document_revision where job_id=${id}::uuid order by version desc,id`); const reviews = await rows<Review>(tx, sql `select r.*,coalesce(app.job_document_actor_label(${id}::uuid,r.reviewer_id),'') as name from job_document_review r where r.revision_id=${found.revision.id}::uuid order by r.id`); const attachments = await rows<Attachment>(tx, sql `select id,filename,mime_type,octet_length(content) as size,created_at from job_document_attachment where revision_id=${found.revision.id}::uuid order by created_at,id`); const events = await rows<Audit>(tx, sql `select id,action,actor_id,created_at,before_value,after_value from job_document_audit where job_id=${id}::uuid order by created_at desc,id desc limit 200`); const principals = await rows<{ id: string; name: string|null }>(tx, sql`select u.id::text as id, app.job_document_actor_label(${id}::uuid,u.id) as name from app_user u where u.tenant_id=${ctx.tenantId}::uuid and (u.id in (select prepared_by from job_document_revision where job_id=${id}::uuid union select last_edited_by from job_document_revision where job_id=${id}::uuid union select approver_id from job_document_revision where job_id=${id}::uuid union select submitted_by from job_document_revision where job_id=${id}::uuid union select approved_by from job_document_revision where job_id=${id}::uuid) or u.id in (select reviewer_id from job_document_review where revision_id=${found.revision.id}::uuid)) order by u.id`);
         return { ...found, history, reviews, attachments, events, principals: Object.fromEntries(principals.filter((p):p is {id:string;name:string}=>!!p.name).map(p => [p.id,p.name])) }; }); }
 export type JobFilters={q?:string;company?:string;businessUnit?:string;department?:string;grade?:string;family?:string;status?:string;page?:string};
 export type JobSummary=Job&{revision:Pick<JobRevision,'id'|'title'|'version'|'status'|'org'|'org_labels'|'updated_at'>};
@@ -270,8 +281,8 @@ function filtersSql(ctx:SessionContext,f:JobFilters){
  ${sql.join((['businessUnit','department','grade','family'] as const).filter(k=>f[k]).map(k=>sql`and r.org->>${k}=${f[k]}`),sql` `)}`;
 }
 export async function getJobDocumentPage(ctx:SessionContext,filters:JobFilters={}){
- actor(ctx);const page=Math.max(1,Math.min(20000,Number.parseInt(filters.page??'1',10)||1));const pageSize=50;
- return jobTenant(ctx,async tx=>{
+ filters={...filters};actor(ctx);const page=Math.max(1,Math.min(20000,Number.parseInt(filters.page??'1',10)||1));const pageSize=50;
+ return jobPresentation(ctx,async (tx,ctx)=>{
  const match=filtersSql(ctx,filters);const from=sql`from job_document j join company c on c.id=j.company_id and c.tenant_id=j.tenant_id join lateral(select id,title,version,status,org,org_labels,updated_at from job_document_revision where job_id=j.id order by version desc limit 1) r on true where ${match}`;
  const rowsFound=await rows<JobSummary>(tx,sql`select j.*,c.legal_name as company_name,to_jsonb(r) as revision ${from} order by j.updated_at desc,j.id limit ${pageSize} offset ${(page-1)*pageSize}`);
  const [count]=await rows<{total:number}>(tx,sql`select count(*)::int as total ${from}`);
@@ -402,7 +413,7 @@ export async function removeJobAttachment(ctx: SessionContext, p: {
     filename: string;
 }>(tx, sql `delete from job_document_attachment where id=${p.attachmentId}::uuid and revision_id=${r.id}::uuid returning id,filename`); if (!a)
     throw new JobDocumentError('Attachment not available'); await tx.execute(sql `update job_document_revision set lock_version=lock_version+1,last_edited_by=${ctx.userId}::uuid,updated_at=now() where id=${r.id}::uuid`); await audit(tx, ctx, job.id, r.id, 'attachment.removed', a, null); }); }
-export async function downloadJobAttachment(ctx: SessionContext, id: string) { actor(ctx); uuid(id); return jobTenant(ctx, async (tx) => { const [a] = await rows<{
+export async function downloadJobAttachment(ctx: SessionContext, id: string) { actor(ctx); uuid(id); return jobPresentation(ctx, async (tx,ctx) => { const [a] = await rows<{
     filename: string;
     mime_type: string;
     hex: string;

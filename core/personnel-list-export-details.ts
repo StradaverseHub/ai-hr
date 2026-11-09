@@ -5,7 +5,7 @@ import { defaultMasterColumn, runEmployeeMasterProjection, type EmployeeMasterSp
 import type { PersonnelFieldDescriptor } from '../lib/personnel-field-registry';
 import { MasterReportAccessError, masterReportFieldsTx } from './employee-master-access';
 import { employeeMasterSubjectsTx } from './employee-master-projection';
-import { withPersonnelRead } from './personnel-read-bounds';
+import { withPersonnelPresentationReadTx } from './personnel-read-bounds';
 
 const DETAILS_BATCH_SIZE = 1000;
 const MAX_DETAIL_CELLS = 500_000;
@@ -23,10 +23,10 @@ export async function readPersonnelListExportDetails(
   const cells = new Map<string, MasterCell[]>();
   if (!companyIds.length) return { fields: [], cells };
 
-  return withPersonnelRead(ctx, async tx => {
+  return withPersonnelPresentationReadTx(ctx, existingTx, async (tx, current) => {
     let catalogue: PersonnelFieldDescriptor[];
     try {
-      catalogue = await masterReportFieldsTx(tx, ctx, companyIds);
+      catalogue = await masterReportFieldsTx(tx, current, companyIds);
     } catch (error) {
       if (error instanceof MasterReportAccessError) return { fields: [], cells };
       throw error;
@@ -45,10 +45,10 @@ export async function readPersonnelListExportDetails(
     };
     for (let offset = 0; offset < rows.length; offset += DETAILS_BATCH_SIZE) {
       const employmentIds = rows.slice(offset, offset + DETAILS_BATCH_SIZE).map(row => row.employmentId);
-      const subjects = await employeeMasterSubjectsTx(tx, ctx, spec, fields, catalogue, { employmentIds });
+      const subjects = await employeeMasterSubjectsTx(tx, current, spec, fields, catalogue, { employmentIds });
       const projection = runEmployeeMasterProjection(spec, fields, subjects, today);
       for (const row of projection.sections[0]?.rows ?? []) cells.set(row.subjectId, row.cells);
     }
     return { fields, cells };
-  }, { existingTx });
+  });
 }

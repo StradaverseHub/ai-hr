@@ -1,0 +1,19 @@
+{
+  "kind": "ACTUAL_NEXT_TWO_WORKER_BOOT_SOURCE_NOT_QUALIFIED",
+  "base": "98ec4cdd8556d2c5a6c6b1d4696081f6c648003b",
+  "qualification": "NOT_RUN",
+  "production": "HELD",
+  "releaseEligible": false,
+  "hostInstallationVerified": false,
+  "fullApplicationJourneysVerified": false,
+  "requiredCiProfile": "linux-next-postgres-v1",
+  "requiredUnitKind": "db",
+  "requiredIsolation": "job-host-and-postgres-cluster",
+  "selectors": ["test/runtime-next-admission-native.test.ts"],
+  "sourceOnlySelectors": ["test/runtime-next-dependency-inventory.test.ts"],
+  "resourceClaims": {"webWorkers": 2, "webCpuQuotaPercent": 400, "webMemoryHighMiB": 7168, "webMemoryMaxMiB": 8192, "webHeapMiB": 4096, "webConnections": 16, "webWaitBudget": 2048, "browserMemoryMaxMiB": 2048, "rootFixtureSeconds": 480, "browserSeconds": 300, "testSeconds": 600, "capacityQualified": false},
+  "sealedHelpers": ["test_next_native.py", "next_build_binding.py", "next_source.py", "next_native_package.py", "next_profile.py", "controller.py", "next_fixture_poststart.py", "next_fixture_filesystem.py", "next_dependency_probe.cjs", "runtime_inventory.py", "build-bundle.py"],
+  "newDirectSingletonSourceDependencies": ["test/helpers/native-next-fixture.ts", "scripts/performance/next-source-proof.mjs", "scripts/performance/native-next-boot-browser.mjs", "deploy/admission/next_source.py", "deploy/admission/next_native_package.py", "deploy/admission/next_fixture_poststart.py", "deploy/admission/next_fixture_filesystem.py", "deploy/admission/next_dependency_probe.cjs", "deploy/admission/next_build_binding.py"],
+  "rootOwnedIntegrationRequired": ["reviewed API-owner sealed packet/helper handoff", "pre-candidate trusted hosted installation capture/seal", "exact native selector registration and source-hash inventory", "same-run sole build dependency and dedicated host/DB provisioning"],
+  "pending": ["hosted first actual boot", "existing actions and replacement", "post-commit response loss", "cross-worker freshness and authority decrease", "real image/PDF/upload/streaming/RSC/locales", "all-module browser preflight", "500-actor 2/4-worker steady load", "8-worker oversubscription preflight", "protected installation", "cross-build compatibility"]
+}

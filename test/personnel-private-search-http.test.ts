@@ -4,6 +4,7 @@ const create=vi.hoisted(()=>vi.fn());
 vi.mock('../lib/workforce-authz',()=>({requireWorkforceAccess:async()=>({s:scope.ctx,scopeIds:[scope.company]})}));
 vi.mock('../core/personnel-private-search',()=>({createPersonnelPrivateSearch:create,privateSearchHash:()=>null,personnelPrivateSearchAvailable:async()=>false,PersonnelSearchLimitError:class extends Error{}}));
 import {POST} from '../app/admin/personnel/search/route';
+import {PersonnelSearchLimitError} from '../core/personnel-private-search';
 beforeEach(()=>{create.mockReset();create.mockResolvedValue('a'.repeat(43));});
 const request=(body:string,origin='https://fixture.invalid')=>new Request('https://fixture.invalid/admin/personnel/search',{method:'POST',headers:{origin,host:'fixture.invalid','content-type':'application/x-www-form-urlencoded'},body});
 it('posts all text privately, returns only opaque membership and validated ordinary filters',async()=>{
@@ -15,9 +16,20 @@ it('rejects cross-origin and oversized bodies before accessing native search',as
  expect((await POST(request('term=private','https://foreign.invalid'))).status).toBe(403);expect(create).not.toHaveBeenCalled();
  expect((await POST(request('term='+('x'.repeat(132000))))).status).toBe(413);expect(create).not.toHaveBeenCalled();
 });
-it('never echoes an underlying source failure or supplied search text',async()=>{
+it('reports an unexpected source failure as 500 without echoing the failure or search text',async()=>{
  create.mockRejectedValue(new Error('private backend sentinel'));const response=await POST(request('term=private-input-sentinel'));
- expect(response.status).toBe(400);expect(await response.text()).toBe('Search unavailable. Try again.');
+ expect(response.status).toBe(500);expect(response.headers.get('cache-control')).toBe('private, no-store');
+ expect(await response.text()).toBe('Search unavailable. Try again.');
+});
+it('keeps malformed form input and the typed search limit as no-store 400 responses',async()=>{
+ for(const form of [new URLSearchParams({term:'x'.repeat(201)}),new URLSearchParams({'field.joinDate':'invalid-date'})]){
+  const response=await POST(request(form.toString()));expect(response.status).toBe(400);
+  expect(response.headers.get('cache-control')).toBe('private, no-store');expect(await response.text()).toBe('Search unavailable. Try again.');
+ }
+ expect(create).not.toHaveBeenCalled();
+ const limit=new PersonnelSearchLimitError();limit.message='Narrow the requested scope.';create.mockRejectedValue(limit);
+ const response=await POST(request('term=private-input-sentinel'));expect(response.status).toBe(400);
+ expect(response.headers.get('cache-control')).toBe('private, no-store');expect(await response.text()).toBe(limit.message);
 });
 
 it('keeps column filter text out of the redirect and passes conjunctive filters to the private owner',async()=>{

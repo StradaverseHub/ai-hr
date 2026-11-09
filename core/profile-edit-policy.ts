@@ -1,7 +1,7 @@
 /** Same policy advisory key for every canonical settings writer and profile mutation. */
 import {profileVisibilityFingerprint} from '../lib/profile-policy-fingerprint';
 import {sql} from 'drizzle-orm';
-import {assertAiPrincipalTx} from './ai-principal';
+import {assertAiPrincipalTx,assertAiPresentationPrincipalTx} from './ai-principal';
 import {resolveEssVisibleIds} from '../lib/personnel-ess-visibility';
 import {lockProfileValueWritesTx} from './access-configuration-lock';
 import type {SessionContext,Tx} from '../db/client';
@@ -13,6 +13,16 @@ export async function lockProfileEditPolicyTx(tx:Tx,tenantId:string){
 }
 export async function freshProfileEditPolicyTx(tx:Tx,ctx:SessionContext){
  await lockProfileEditPolicyTx(tx,ctx.tenantId);
+ return profilePolicyValuesTx(tx,ctx);
+}
+
+/** Complete display transaction only: native admission refuses write and stale snapshot carriers. */
+export async function freshProfilePresentationPolicyTx(tx:Tx,ctx:SessionContext){
+ await tx.execute(sql`select app.access_profile_policy_read_lock()`);
+ return profilePolicyValuesTx(tx,ctx);
+}
+
+async function profilePolicyValuesTx(tx:Tx,ctx:SessionContext){
  const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};
  const raw=getSetting(fresh,'ess.profile_change_fields');
  return {ctx:fresh,editable:resolveEssEditableIds(raw),legacyPrimary:resolveEssPrimaryEditableIds(raw),visible:resolveEssVisibleIds(raw)};
@@ -90,7 +100,21 @@ import {isProfileVisibilityPolicyValue,profileTabPolicyKey,profileSectionPolicyK
 import {essVisibleFields} from '../lib/personnel-ess-contract';
 
 /** One immutable policy generation for the initial own-profile presentation. Independent actions re-read. */
-export function readProfilePresentationPolicy(ctx:SessionContext){return withTenant(ctx,tx=>freshProfileEditPolicyTx(tx,ctx));}
+export function readProfilePresentationPolicy(ctx:SessionContext,signal?:AbortSignal){return withTenant(ctx,async tx=>{
+ await tx.execute(sql`SET TRANSACTION READ ONLY`);
+ return freshProfilePresentationPolicyTx(tx,ctx);
+},{readSignal:signal});}
+/** Displaying a quick-action choice admits one consistent policy snapshot. Submission,
+ * approval and binary photo readers retain their separate current-policy contracts. */
+export function readProfilePresentationSnapshotPolicy(ctx:SessionContext,signal?:AbortSignal){
+ ctx=capturePolicyContext(ctx);
+ return withTenant(ctx,tx=>readProfilePresentationSnapshotPolicyTx(tx,ctx),{readOnlySnapshot:true,readSignal:signal});
+}
+/** Pure policy metadata on the caller's enforced snapshot; never a write capability. */
+export async function readProfilePresentationSnapshotPolicyTx(tx:Tx,ctx:SessionContext){
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ return profilePolicyValuesTx(tx,ctx);
+}
 export type ProfilePresentationPolicy=Awaited<ReturnType<typeof freshProfileEditPolicyTx>>;
 
 /** Disabling submission withdraws pending photos in the same locked policy transaction. */

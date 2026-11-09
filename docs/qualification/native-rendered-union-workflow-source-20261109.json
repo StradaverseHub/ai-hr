@@ -1,0 +1,751 @@
+{
+  "kind": "NATIVE_RENDERED_UNION_AND_SHELL_DESTINATION_IDENTITY_SOURCE_NOT_QUALIFICATION",
+  "parent": "890207be334a47533c50df3d259aef93d4e63320",
+  "sourceRef": "codex/native-shell-destination-identity-20261109",
+  "addedPaths": [],
+  "sourcePlanSha256": "36903c05bbac12b0c00fd9ca8753453879dac4a5a6f4749e370373e2520546ea",
+  "sourceCensusSha256": "7fa74353c61730ba4ac82e308aa2c84539ef4b77bd825c439ea4c2adc12f8042",
+  "scope": {
+    "nativeCourseIssuable": false,
+    "publicDriverExport": "runDevelopmentSystemLoad",
+    "privateCourseCallSites": [
+      {
+        "owner": "runDevelopmentSystemLoad",
+        "argumentCount": 0
+      }
+    ],
+    "primaryActorRoutes": {
+      "employee": {
+        "actorIndex": 4,
+        "routes": 30
+      },
+      "manager": {
+        "actorIndex": 2,
+        "routes": 16
+      },
+      "companyHR": {
+        "actorIndex": 1,
+        "routes": 69
+      },
+      "groupHR": {
+        "actorIndex": 0,
+        "routes": 72
+      }
+    },
+    "requestedRouteStrings": 91,
+    "actorRoutes": 187,
+    "plannedUsableWitnesses": 10,
+    "plannedRenderedOnly": 177,
+    "deadlineMsPerRoute": 90000,
+    "legacyScenarioCasesWhole": 48,
+    "staticLedgerEntriesStillUncovered": 222,
+    "dynamicFamilyPlanningRows": 46,
+    "parameterizedPageFiles": 120,
+    "lifecycleStaffTileParityPending": true,
+    "existingWorkflowMutationAndRestoreOwnersWhole": true,
+    "compatibilityTransport": {
+      "/admin/claims/forms": {
+        "requiredHttpStatus": 308,
+        "requiredFinal": "/admin/claims",
+        "rows": 2
+      },
+      "/admin/locations": {
+        "requiredHttpStatus": 307,
+        "requiredFinal": "/admin/work-locations/clocking",
+        "rows": 2
+      },
+      "actualTransportUnobserved": true,
+      "streamingRedirectNotAdmitted": true
+    },
+    "exactAssistantViewRows": 14,
+    "assistantMarkers": [
+      "how",
+      "privacy",
+      "tools",
+      "insights"
+    ],
+    "nativeBrowserEventKinds": [
+      "aborted",
+      "transport",
+      "http5xx",
+      "pageError",
+      "consoleError",
+      "crash"
+    ],
+    "legacyObserverFunctionBodiesRestoredFrom499f": true,
+    "nativeObserverSeparateRegistration": true,
+    "nativeObserverTracksExistingNodeAttributeOldValue": true,
+    "browserEventSettlementScope": "Registered owned Page events until existing context/browser close, same-ingress transport and all observed Page errors, console errors and crashes.",
+    "allObservedSameIngressAbortsRefused": true,
+    "terminalDeadlineCheckedAfterOwnedDrains": true,
+    "protectedGlobalWatchdogIssued": false,
+    "nativePrimaryDocumentRetirement": {
+      "binding": "__aihrNativePrimaryRetirementV1",
+      "bindingAdmission": "One owned Page, its bound Context and main Frame, one closed record and a Page-local key, matching only the exact previously observed document.",
+      "snapshotAdmission": "Driver-observed native primary navigation with exact ingress, one fresh document ID, and the existing native route readiness and final URL guards.",
+      "documentScope": "Top-level native primary documents at the fixed HTTPS ingress. Flush queued DOM mutations and scan connected main in the trusted pagehide callback, then disconnect. This closes the document observation window at that callback.",
+      "retiredDocumentsRequired": 187,
+      "admittedDocumentCapPerPage": 72,
+      "finalInertNavigationsRequired": 4,
+      "finalInertDestination": "about:blank",
+      "productRouteRowsAdded": 0,
+      "missingInvalidDuplicateOrBfcacheReceipt": "Refuse",
+      "receiptWait": "At most one outstanding wait per Page, charged to the remaining fixed 90-second navigation budget and the protected native course clock.",
+      "transportLimits": "Installed Playwright binding registration, init scripts and evaluate rely on the still-unissued protected process watchdog. An execution-context-disposed reply does not acknowledge transport. Only the received Node callback may acknowledge an exact retiring document.",
+      "payloadStored": "Only per-Page counts of admission, retirement, refusal, inert completion and documents with each marker kind. No document IDs, key, page text, selector contents or raw binding records.",
+      "outOfScope": "Changes occurring after the pagehide callback or discarded before MutationObserver/current connected-main inspection are outside this DOM observation. Existing Page transport/JS listeners remain through owned cleanup.",
+      "actualTransportUnobserved": true,
+      "pinnedPlaywrightCoreSource": {
+        "version": "1.62.1",
+        "coreBundle": {
+          "bytes": 3425603,
+          "sha256": "9393fa79e1c67c74edc26b610d65a4f7ed73d345a762465cc88340a33a2454ac"
+        },
+        "types": {
+          "bytes": 1110840,
+          "sha256": "6c688250f2b7061cec3a17ab8797671137b653f8c4e81a6df3190cb112a7579a"
+        },
+        "inspectedCoordinates": {
+          "registerBinding": [
+            21888,
+            21903
+          ],
+          "initScriptOrder": [
+            22360,
+            22364
+          ],
+          "bindingTransportAndSource": [
+            22489,
+            22506
+          ],
+          "dispatcher": [
+            53273,
+            53280
+          ],
+          "clientDelivery": [
+            61052,
+            61059
+          ],
+          "clientExposeBinding": [
+            61157,
+            61161
+          ]
+        }
+      }
+    },
+    "nativeShellBaseline": {
+      "protocol": "aihr-native-shell-baseline/v1",
+      "sourceAndCases": {
+        "legacy": 48,
+        "additional": 4,
+        "total": 52,
+        "role": {
+          "companyHR": 14,
+          "groupHR": 14,
+          "employee": 12,
+          "manager": 12
+        },
+        "outcome": {
+          "usable": 36,
+          "denied": 16
+        },
+        "entry": {
+          "canonical-link": 32,
+          "ai-centre-tab": 8,
+          "shell-menu": 12
+        },
+        "destinations": 14
+      },
+      "legacyScenarioSha256": "6dae3cc787e5da49e8f00eb30e0d093f7669f8fff3f87aa5f966a00d9397ca7a",
+      "extensionSha256": "36b86d2561088d2063db0431652b3418c8dee1ec558eeadc5a970bccc9a9fa74",
+      "fixedExtension": [
+        {
+          "id": "shell.payrollProcess.employee.hidden-denied",
+          "role": "employee",
+          "actorIndex": 4,
+          "originHref": "/",
+          "href": "/payroll",
+          "entry": "shell-menu",
+          "outcome": "denied",
+          "shellVisibility": "hidden"
+        },
+        {
+          "id": "shell.payrollProcess.manager.hidden-denied",
+          "role": "manager",
+          "actorIndex": 2,
+          "originHref": "/",
+          "href": "/payroll",
+          "entry": "shell-menu",
+          "outcome": "denied",
+          "shellVisibility": "hidden"
+        },
+        {
+          "id": "shell.analytics.employee.hidden-denied",
+          "role": "employee",
+          "actorIndex": 4,
+          "originHref": "/",
+          "href": "/analytics",
+          "entry": "shell-menu",
+          "outcome": "denied",
+          "shellVisibility": "hidden"
+        },
+        {
+          "id": "shell.analytics.manager.hidden-denied",
+          "role": "manager",
+          "actorIndex": 2,
+          "originHref": "/",
+          "href": "/analytics",
+          "entry": "shell-menu",
+          "outcome": "denied",
+          "shellVisibility": "hidden"
+        }
+      ],
+      "firstAttemptSameSourceControllerHarnessAndRunRequired": true,
+      "strictDirectDenial": {
+        "requestedStatus": 307,
+        "location": "/",
+        "finalStatus": 200,
+        "finalHref": "/",
+        "streamedAdmitted": false
+      },
+      "exactTransportAndIdentity": "A fresh fixed same-origin main-frame GET from signed-in Home. Two linked native Request objects, exact direct-route and final Home responses, no additional hop, and the same unique account control at origin and final.",
+      "boundedObservation": "For each added case one 90-second maximum bounded by the remaining native course clock. Preserve existing shell traversal limits and do not click the denied anchor.",
+      "rolePageOrder": "On the two existing non-HR Pages, after the complete per-role v2 captures and before the independent 187-route primary observer. No additional Page, context, login or retry.",
+      "retiredDocumentsRequired": 8,
+      "inertTransitionsRequired": 2,
+      "retirementScope": "Use the same bound retirement implementation with a separate Page-local binding and init script. Prove four clean retirements per role including the final inert transition. Remove the hidden-scope script and binding before primary observation. Keep Page browser failure listeners through context and browser settlement.",
+      "playwrightDisposableSource": {
+        "samePinnedPlaywrightCoreAsPrimary": true,
+        "typeAndClientContract": [
+          "Page.exposeBinding",
+          "Page.addInitScript",
+          "Disposable.dispose"
+        ],
+        "serverScriptRegistration": [
+          22158,
+          22173
+        ],
+        "serverBindingRemoval": [
+          21903,
+          21912
+        ]
+      },
+      "legacyWriterStill48": true,
+      "independentProtectedVerifierPending": true,
+      "actualBrowserObservationsUnobserved": true,
+      "mountedDestinationIdentity": {
+        "attribute": "data-shell-destination",
+        "canonicalValue": "Existing sidebar item.href",
+        "renderBranches": [
+          "Monolith flat row",
+          "Atelier flat row",
+          "Classic and responsive drawer flat row"
+        ],
+        "absenceObservation": "Refuse a mounted exact href anchor or a matching canonical destination marker, including the real disabled span in the same native shell roots.",
+        "malformedObservation": "Reject invalid static selector inputs and mounted disabled spans with absent or invalid identity under the same deadline.",
+        "activation": "Existing visible enabled link and exact actual href only.",
+        "existingRoleCasesAndRetirementWhole": true
+      }
+    }
+  },
+  "uncommissioned": [
+    "protected native driver issuer and independent source/build/run/fixture identity",
+    "native ingress trust and owned process lifetime",
+    "isolated driver credential/observer/DB and profile admission",
+    "authenticated hosted runtime route/alias observations and fit",
+    "authenticated native 52-case browser evidence and independent protected verifier binding"
+  ],
+  "sourceTestCallsites": {
+    "test/performance-route-manifest.test.ts": {
+      "old": 9,
+      "current": 12,
+      "oldBodiesWhole": true
+    },
+    "test/performance-shared-workload-owner.test.ts": {
+      "old": 3,
+      "current": 4,
+      "oldBodiesWhole": true
+    },
+    "test/navigation-browser-capture.test.ts": {
+      "old": 8,
+      "current": 11,
+      "oldBodiesWhole": true,
+      "parentCases": 18,
+      "currentCases": 26,
+      "newCallsites": 3,
+      "newExpandedCases": 8,
+      "addedNames": [
+        "binds only the four reviewed actor and route pairs to the distinct native shell scope",
+        "keeps the original v2 collector separate and requires the same Page, clean retirement and whole legacy census",
+        "refuses %s even with an ordinary signed-in baseline"
+      ]
+    },
+    "test/navigation-shell-browser.dom.test.tsx": {
+      "old": 8,
+      "current": 12,
+      "oldBodiesWhole": true,
+      "parentCases": 8,
+      "currentCases": 12,
+      "newCallsites": 4,
+      "newExpandedCases": 4,
+      "addedNames": [
+        "rejects the actual disabled span shape in each mounted sidebar or flyout root",
+        "keeps destination identity exact and scoped, and follows only actual hrefs when clicking",
+        "refuses malformed disabled identities and selector inputs before clicking disclosures",
+        "rechecks mounted disabled spans after the final visible-count snapshot"
+      ]
+    }
+  },
+  "qualification": {
+    "testsExecuted": false,
+    "browserExecuted": false,
+    "nativeMutationCourseExecuted": false,
+    "completeNavigationQualified": false,
+    "ordinaryCompilerQualified": false,
+    "releaseAuthorized": false
+  },
+  "inverseFormat": "zero-based current line offsets with line endings, applied last edit first to replay complete Git parent bytes",
+  "files": {
+    "components/sidebar.tsx": {
+      "parent": {
+        "bytes": 54891,
+        "sha256": "dc49c5ab768eb5d55f6fbee1c3e4f0b0bdbdc18a529c7b38fa13a6a6eb758755",
+        "gitBlob": "3ecd5f41f5b0d731741ceefebd7a117af8fb2f6e"
+      },
+      "current": {
+        "bytes": 55101,
+        "sha256": "656c7b9b9fd0c6431d016536f12f8a2ea1262798118b2e725e25f391da423cbf",
+        "gitBlob": "59ff6b82a02bee4e42f0d140b0496364e8c282bb"
+      },
+      "inverse": [
+        {
+          "currentStart": 474,
+          "current": [
+            "                    <span key={item.href} data-shell-destination={item.href} aria-disabled=\"true\" title={tWorkspace('planLocked')} className={cn(railRow, 'cursor-not-allowed hover:border-transparent hover:text-mid')}>\n"
+          ],
+          "original": [
+            "                    <span key={item.href} aria-disabled=\"true\" title={tWorkspace('planLocked')} className={cn(railRow, 'cursor-not-allowed hover:border-transparent hover:text-mid')}>\n"
+          ]
+        },
+        {
+          "currentStart": 485,
+          "current": [
+            "                      href={item.navigationHref ?? item.href} data-shell-destination={item.href}\n"
+          ],
+          "original": [
+            "                      href={item.navigationHref ?? item.href}\n"
+          ]
+        },
+        {
+          "currentStart": 609,
+          "current": [
+            "                      <span key={item.href} data-shell-destination={item.href} aria-disabled=\"true\" title={collapsed ? `${label} \u2014 ${tWorkspace('planLocked')}` : tWorkspace('planLocked')} className=\"atelier-row cursor-not-allowed text-muted-foreground\">\n"
+          ],
+          "original": [
+            "                      <span key={item.href} aria-disabled=\"true\" title={collapsed ? `${label} \u2014 ${tWorkspace('planLocked')}` : tWorkspace('planLocked')} className=\"atelier-row cursor-not-allowed text-muted-foreground\">\n"
+          ]
+        },
+        {
+          "currentStart": 615,
+          "current": [
+            "                      <Link prefetchOnIntentOnly key={item.href} href={item.navigationHref ?? item.href} data-shell-destination={item.href} onClick={()=>setMobileNavigationOpen(false)} data-tour={item.tour}\n"
+          ],
+          "original": [
+            "                      <Link prefetchOnIntentOnly key={item.href} href={item.navigationHref ?? item.href} onClick={()=>setMobileNavigationOpen(false)} data-tour={item.tour}\n"
+          ]
+        },
+        {
+          "currentStart": 800,
+          "current": [
+            "                  <span key={item.href} data-shell-destination={item.href} aria-disabled=\"true\" title={tWorkspace('planLocked')}\n"
+          ],
+          "original": [
+            "                  <span key={item.href} aria-disabled=\"true\" title={tWorkspace('planLocked')}\n"
+          ]
+        },
+        {
+          "currentStart": 816,
+          "current": [
+            "                    href={item.navigationHref ?? item.href} data-shell-destination={item.href}\n"
+          ],
+          "original": [
+            "                    href={item.navigationHref ?? item.href}\n"
+          ]
+        }
+      ]
+    },
+    "scripts/performance/navigation-shell-browser.ts": {
+      "parent": {
+        "bytes": 4577,
+        "sha256": "4cd97d9caac1bf1475121b40917e394ccbfad39cbece2051ffcfc00a73ea10ca",
+        "gitBlob": "ab0e60cf6a28d7fdf28f6e13fc9e75acf27ef654"
+      },
+      "current": {
+        "bytes": 5491,
+        "sha256": "e76a46e3ef16a14aa3c2833e93ba202d28759f141fd6d2d85aa19e8708f4160a",
+        "gitBlob": "baeee5b9455b5148f43d04c623468c1360121bef"
+      },
+      "inverse": [
+        {
+          "currentStart": 5,
+          "current": [
+            "const staticShellHref=(value:unknown):value is string=>typeof value==='string'&&/^\\/[a-z0-9-]+(?:\\/[a-z0-9-]+)*(?![\\s\\S])/.test(value);\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 13,
+          "current": [
+            " assert(staticShellHref(href),'Only reviewed static shell destinations are supported');\n"
+          ],
+          "original": [
+            " assert(/^\\/[a-z0-9/-]+$/.test(href),'Only reviewed static shell destinations are supported');\n"
+          ]
+        },
+        {
+          "currentStart": 16,
+          "current": [
+            " const value=JSON.stringify(href);\n",
+            " const anchors=roots.map(root=>root+' a[href='+value+']');\n",
+            " // Only absence uses the identity of a mounted row. Clicks still require the actual href.\n",
+            " const target=page.locator((mode==='hidden'?[...anchors,...roots.map(root=>root+' [data-shell-destination='+value+']')]:anchors).join(','));\n",
+            " const disabled=mode==='hidden'?page.locator(roots.map(root=>root+' span[aria-disabled]').join(',')):undefined;\n",
+            " const assertHidden=async(message:string)=>{\n",
+            "  if(disabled){\n",
+            "   const count=await disabled.count();\n",
+            "   assert(count<=128,'Native shell disabled destination inventory exceeds its bound');\n",
+            "   for(let i=0;i<count;i++){\n",
+            "    const span=disabled.nth(i);\n",
+            "    assert(await span.getAttribute('aria-disabled',{timeout:remaining()})==='true'&&\n",
+            "     staticShellHref(await span.getAttribute('data-shell-destination',{timeout:remaining()})),\n",
+            "    'Native shell disabled destination has no valid identity');\n",
+            "   }\n",
+            "  }\n",
+            "  assert(await target.count()===0,message);\n",
+            " };\n"
+          ],
+          "original": [
+            " const target=page.locator(roots.map(root=>root+' a[href='+JSON.stringify(href)+']').join(','));\n"
+          ]
+        },
+        {
+          "currentStart": 54,
+          "current": [
+            "   // Count mounted destinations, including disabled rows in collapsed or alternate workspaces.\n",
+            "   if(mode==='hidden')await assertHidden('Denied destination is still rendered in the native shell');\n"
+          ],
+          "original": [
+            "   // A retained hidden/disabled anchor is not permission-filtered absence. Check\n",
+            "   // every mounted native shell, including collapsed and alternate workspaces.\n",
+            "   if(mode==='hidden')assert(await target.count()===0,'Denied destination is still rendered in the native shell');\n"
+          ]
+        },
+        {
+          "currentStart": 75,
+          "current": [
+            "  if(mode==='hidden')await assertHidden('Denied destination appeared before native workspace observation completed');\n"
+          ],
+          "original": [
+            "  if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native workspace observation completed');\n"
+          ]
+        },
+        {
+          "currentStart": 77,
+          "current": [
+            " if(mode==='hidden')await assertHidden('Denied destination appeared before native shell observation completed');\n"
+          ],
+          "original": [
+            " if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native shell observation completed');\n"
+          ]
+        }
+      ]
+    },
+    "test/navigation-shell-browser.dom.test.tsx": {
+      "parent": {
+        "bytes": 7999,
+        "sha256": "bccdd4111795af2c08ce693f0a67f25a97d51443474bbb0125fa05c2584366a6",
+        "gitBlob": "917507b04da32c6bd30afafaed3a06c581e4d184"
+      },
+      "current": {
+        "bytes": 12009,
+        "sha256": "cadfc7e5290b2c13fc448736f3d302cb410933075b076b6cce8038c70325b0c0",
+        "gitBlob": "6ff763025a87caffa4e162b26d4e57898b2bd927"
+      },
+      "inverse": [
+        {
+          "currentStart": 93,
+          "current": [
+            "\n",
+            "function appendDisabledDestination(root:Element,href:string){\n",
+            " const row=document.createElement('span');\n",
+            " row.setAttribute('aria-disabled','true');\n",
+            " row.setAttribute('data-shell-destination',href);\n",
+            " const label=document.createElement('span');\n",
+            " label.textContent='Locked destination';row.append(label);root.append(row);\n",
+            " return row;\n",
+            "}\n",
+            "it('rejects the actual disabled span shape in each mounted sidebar or flyout root',async()=>{\n",
+            " for(const selector of ['aside nav','#nav-flyout-insights nav','#atelier-flyout-insights nav']){\n",
+            "  const clicks=fixture({denied:true});\n",
+            "  if(selector.startsWith('#atelier'))document.body.insertAdjacentHTML('beforeend','<div id=\"atelier-flyout-insights\" hidden><nav></nav></div>');\n",
+            "  const row=appendDisabledDestination(document.querySelector(selector)!,'/analytics');\n",
+            "  expect(row.tagName).toBe('SPAN');expect(row.hasAttribute('href')).toBe(false);\n",
+            "  await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');\n",
+            "  expect(clicks).toEqual([]);\n",
+            " }\n",
+            "});\n",
+            "it('keeps destination identity exact and scoped, and follows only actual hrefs when clicking',async()=>{\n",
+            " const clicks=fixture({denied:true});\n",
+            " const rail=document.querySelector('aside nav')!;\n",
+            " appendDisabledDestination(rail,'/analytics-settings');\n",
+            " appendDisabledDestination(rail,'/insights/analytics');\n",
+            " appendDisabledDestination(document.querySelector('main')!,'/analytics');\n",
+            " await assertNativeShellDestinationHidden(page(),'/analytics',()=>90000);\n",
+            " expect(clicks).toEqual(['workspace','nav-flyout-insights','nested']);\n",
+            "\n",
+            " const aliasClicks=fixture({denied:true});\n",
+            " const alias=document.createElement('a');alias.href='/another-route';alias.setAttribute('data-shell-destination','/analytics');\n",
+            " alias.addEventListener('click',event=>{event.preventDefault();aliasClicks.push('alias');});document.querySelector('aside nav')!.append(alias);\n",
+            " await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');\n",
+            " await expect(clickNativeShellDestination(page(),'/analytics',()=>90000)).rejects.toThrow('absent');\n",
+            " expect(aliasClicks).not.toContain('alias');\n",
+            " alias.setAttribute('href','/analytics');alias.setAttribute('data-shell-destination','/another-route');\n",
+            " await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');\n",
+            "});\n",
+            "it('refuses malformed disabled identities and selector inputs before clicking disclosures',async()=>{\n",
+            " for(const identity of [null,'','//analytics','/analytics/','/analytics\\n','/analytics\"]']){\n",
+            "  const clicks=fixture({denied:true});\n",
+            "  const row=appendDisabledDestination(document.querySelector('aside nav')!,identity??'/analytics');\n",
+            "  if(identity===null)row.removeAttribute('data-shell-destination');\n",
+            "  await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('no valid identity');\n",
+            "  if(identity)await expect(assertNativeShellDestinationHidden(page(),identity,()=>90000)).rejects.toThrow('reviewed static');\n",
+            "  expect(clicks).toEqual([]);\n",
+            " }\n",
+            " const clicks=fixture({denied:true});\n",
+            " const wrongState=appendDisabledDestination(document.querySelector('aside nav')!,'/another-route');\n",
+            " wrongState.setAttribute('aria-disabled','false');\n",
+            " await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('no valid identity');\n",
+            " expect(clicks).toEqual([]);\n",
+            "});\n",
+            "it('rechecks mounted disabled spans after the final visible-count snapshot',async()=>{\n",
+            " const clicks=fixture({denied:true});let targetReads=0;\n",
+            " const racingPage=page(count=>{\n",
+            "  if(++targetReads!==2)return;\n",
+            "  expect(count).toBe(0);\n",
+            "  const row=appendDisabledDestination(document.querySelector('aside nav')!,'/analytics');\n",
+            "  row.hidden=true;\n",
+            "  row.addEventListener('click',()=>clicks.push('disabled-destination'));\n",
+            " });\n",
+            " await expect(assertNativeShellDestinationHidden(racingPage,'/analytics',()=>90000)).rejects.toThrow('before native workspace observation completed');\n",
+            " expect(targetReads).toBe(3);expect(clicks).toEqual([]);\n",
+            "});\n"
+          ],
+          "original": []
+        }
+      ]
+    }
+  },
+  "protectedSources": {
+    "scripts/performance/system-load.mjs": {
+      "bytes": 100,
+      "sha256": "17a26184a7e01e1d38c51a1bd626b542b33c472894ab03a43608eda2f48c6c15"
+    },
+    "scripts/performance/system-fixture.mjs": {
+      "bytes": 109,
+      "sha256": "fc2e253251b3252181c256dc8d6266775bd725bbd409ed7b46c0bce7b2b17afd"
+    },
+    "scripts/performance/system-fixture-owner.mjs": {
+      "bytes": 31589,
+      "sha256": "5c8a031a3dd78cea4f9fa67a3e0426855f37383dd38e2680bd2fb219273f8659"
+    },
+    "scripts/performance/system-runner.mjs": {
+      "bytes": 18638,
+      "sha256": "3a7a78372799134475fc7b9566ddfe0967d9584ee3e342c184000a64ae77938a"
+    },
+    "scripts/performance/navigation-scenarios.json": {
+      "bytes": 33134,
+      "sha256": "6dae3cc787e5da49e8f00eb30e0d093f7669f8fff3f87aa5f966a00d9397ca7a"
+    },
+    "scripts/performance/navigation-entry.ts": {
+      "bytes": 1568,
+      "sha256": "af01bdaec1bcd89272b7ae517b76a70dee974226d1d78f88c7717a63a9a0f919"
+    },
+    "scripts/performance/navigation-source.ts": {
+      "bytes": 2337,
+      "sha256": "8a43261888b9065e64ced5bca410a0c07917d3e9ee6215f57dcb3b8910467f9d"
+    },
+    "scripts/performance/navigation-coverage-ledger.json": {
+      "bytes": 89071,
+      "sha256": "e096a2f9c5bbec4953840debbe1e04674c39abf7d96dc35496825fa0f026bcc2"
+    },
+    "scripts/performance/navigation-capture-verifier.ts": {
+      "bytes": 10584,
+      "sha256": "406ea9d6e8f748b8f9917a443ede9fb4633f015c292b207cce07caf9a2019889"
+    },
+    "scripts/performance/navigation-fixture-bindings.ts": {
+      "bytes": 6631,
+      "sha256": "22a465d202dc2db0fa4319033ccc82ed92a7142f0372052fd1537dc85482e2fb"
+    },
+    "scripts/performance/mixed-workflows.mjs": {
+      "bytes": 28857,
+      "sha256": "e4d1ba6cf8f879c15b774eb3a7bfd23e43e1da9f7c8ac7092dd36fa713308276"
+    },
+    "scripts/performance/payroll-close-concurrency.mjs": {
+      "bytes": 5930,
+      "sha256": "89e22367ef469c0e10dda764f2baaa607cc5c66c83f1d8129eb99c4b9d9c83bc"
+    },
+    "scripts/performance/payroll-register-browser.mjs": {
+      "bytes": 6533,
+      "sha256": "aeecb26e12dfe3c29a4b1a3cdd47708f44e7c9ad6d1981595e6433d5fe20c4ac"
+    },
+    "scripts/performance/movement-browser.mjs": {
+      "bytes": 4827,
+      "sha256": "d4582455cce4250664c06018600aeb27135d039bd461b042bb2420ec29712f84"
+    },
+    "scripts/performance/reports-browser.mjs": {
+      "bytes": 8304,
+      "sha256": "28c4c8d19a703f5485cba564c6b1863f0c923dbb44afc62d870ac28053b055d5"
+    },
+    "scripts/performance/letter-draft-browser.mjs": {
+      "bytes": 11220,
+      "sha256": "2dfb421cd1bad7fd906e72e7eac3b4f9f1505478662f2c568283fd359a08fb21"
+    },
+    "scripts/performance/personnel-live-profile-browser.mjs": {
+      "bytes": 12154,
+      "sha256": "f2ec0d7360391fbdc8ac78207f212318a78b76ca76943213e673608409b0bfab"
+    },
+    "scripts/performance/performance-rewards-draft-browser.mjs": {
+      "bytes": 11971,
+      "sha256": "ce09583bac6306228d7f3d97d63d70d1c5da6a2b10beccb498e7b13297a38027"
+    },
+    "scripts/performance/driver-shutdown.mjs": {
+      "bytes": 13177,
+      "sha256": "68af4b010ac89638d071f68e93c9f06784ead2fc67fd289756b7471215b7ea99"
+    },
+    "scripts/performance/route-scheduling.mjs": {
+      "bytes": 9378,
+      "sha256": "e390f352a001d7490c4f87c0caeeee27b902cd4c3164e84b90f8fcf7ecc5f37f"
+    },
+    "scripts/performance/runtime-acceptance.mjs": {
+      "bytes": 1753,
+      "sha256": "8af675969cd9663a94f3fd0ba6ba9bade37d9fbf4758bf3279784c957bda7ed0"
+    },
+    ".github/workflows/alpha-focused-checks.yml": {
+      "bytes": 16493,
+      "sha256": "d9ed6026eae9d56904b42bcddb6644bc0132943e27142a415dc3bb8c78c47765"
+    },
+    "deploy/admission/test_next_native.py": {
+      "bytes": 89490,
+      "sha256": "8a22a9ebdaab88fccaf53a47ec517763e52073880877672074840f72d41cf181"
+    },
+    "app/admin/claims/forms/page.tsx": {
+      "bytes": 1373,
+      "sha256": "050735a2de5c44063a7a880f8307c1d1628ed4e58277ff7fd747b08b4fd58f3a"
+    },
+    "app/admin/locations/page.tsx": {
+      "bytes": 2072,
+      "sha256": "be08700d045020db545c5f9c846b6d08b5d3a57e4731d9403dfcb718711a30c0"
+    },
+    "app/admin/locations/redirect-stub.ts": {
+      "bytes": 1278,
+      "sha256": "e0ba882994e0395cfd129ee54dba0c3b31906a3e6c603afa161d23cfa9f61488"
+    },
+    "app/admin/work-locations/clocking/form-fields.ts": {
+      "bytes": 6934,
+      "sha256": "f94c20f62c742c9d610d6b9b260004094940db496e2573e412ccb070d892cf11"
+    },
+    "app/admin/work-locations/clocking/page.tsx": {
+      "bytes": 28882,
+      "sha256": "a0a1d68050e2f75eacba448486d8108ee88481fa3ba8162a54d17c37777ce6b4"
+    },
+    "app/assistant/page.tsx": {
+      "bytes": 22426,
+      "sha256": "327e8bc69317f19595cbeda33376361e6404a5c7088299791ae507fdba0b9960"
+    },
+    "scripts/performance/system-route-manifest.mjs": {
+      "bytes": 7652,
+      "sha256": "49b803a2a5d7ae3b841ee4d778f3a23deab192900b3bb02c17f5b2d210428589",
+      "gitBlob": "4df64b7aaf400b6aba32365045428667edc7bbb3"
+    },
+    "test/performance-route-manifest.test.ts": {
+      "bytes": 10642,
+      "sha256": "031faa76e0939ecc3d01d96750936b11992dfeed78b3bdbbc04ee0af880aeb33",
+      "gitBlob": "be717f733411ccdd01fe81b1fedbded6d63183c4"
+    },
+    "test/performance-shared-workload-owner.test.ts": {
+      "bytes": 7017,
+      "sha256": "b68935a68ea8c7cfaf99b2ae12946461e113aec17c8625cf01db95c647762a5b",
+      "gitBlob": "3f2925b2a3afbb5c22cd614a8fe8640f67f79575"
+    },
+    "app/payroll/page.tsx": {
+      "bytes": 33277,
+      "sha256": "020be4d61b24c677c5ae1428789ea8702cbcbe0256e0af7efabe5b4e6855d87d",
+      "gitBlob": "4568c4a746aa6600a8424e499444823fe56d3b9a"
+    },
+    "app/analytics/page.tsx": {
+      "bytes": 23153,
+      "sha256": "7f0c84a179e815b6c567347fbf5305b2bff6be4b29c8ae25e3312ab23aafbd03",
+      "gitBlob": "374f9d6e97d1ef740e1c1aa81844bde6d5a92e9f"
+    },
+    "lib/scope.ts": {
+      "bytes": 3497,
+      "sha256": "21b4eafd954753bd583da124ac1b029a03b638b73f8cd2381189f67bf2104897",
+      "gitBlob": "be579f0f1799c58e7364f41f04aecb89a433a182"
+    },
+    "lib/authz.ts": {
+      "bytes": 4399,
+      "sha256": "e83017da78add1970d8e67798e61c4e32a1df78173c0be8d993e1db46b2e5322",
+      "gitBlob": "d4f84d9d757733007487d34f306aaca870d60164"
+    },
+    "components/user-menu.tsx": {
+      "bytes": 13572,
+      "sha256": "32e5d2b4c7dfd9f9f3b3f63389920010db4feb2c6fe22674f4d2cc2d06f84195",
+      "gitBlob": "928c199c032d4b659026103ac39074a117e9c1ce"
+    },
+    "scripts/performance/navigation-browser-capture.ts": {
+      "bytes": 31644,
+      "sha256": "0dbc544be4e6a51459501a7abd5c37c3d9b56b7de3393d2947643a265690861a",
+      "gitBlob": "49937e9557d40823e493bc3ea6796ea31f8962cf"
+    },
+    "scripts/performance/navigation-protocol.ts": {
+      "bytes": 16981,
+      "sha256": "fb90131d158da44b0ffea2d503e0dcc01fdef42cf1fb7298717f005c55d9e997",
+      "gitBlob": "bba9adbf6df97cbab79093f52d93bc16625b080e"
+    },
+    "scripts/performance/system-load-owner.mjs": {
+      "bytes": 114036,
+      "sha256": "9bfc1178b51e2184c3708f06b6abaebcea8dac63ed371d488b8eb591ee1eeaa2",
+      "gitBlob": "4f8057e97178297962dd3c9cc041775125389594"
+    },
+    "test/navigation-browser-capture.test.ts": {
+      "bytes": 26365,
+      "sha256": "4c471b9810f1f765c0d647a0f9242fa7b9e4c64354212645f95cd42a72415746",
+      "gitBlob": "16beb58728167fd145bb3c7f227b8bd666def212"
+    },
+    "components/nav-flyout.tsx": {
+      "bytes": 12593,
+      "sha256": "c4e5878a2e8a3a47783c2dbda964d19ed172de4be23b60969d58941178102349",
+      "gitBlob": "a9d97dbe40ad99253c10027b8d894e00b8d5b4f5"
+    },
+    "components/intent-link.tsx": {
+      "bytes": 2658,
+      "sha256": "830514be0624a2be70b8ea407c5fde6bb4b02d2989fdd2889e0c6025cdf13835",
+      "gitBlob": "234cf696421e1c9df01a2271a829486aa7f6e3de"
+    },
+    "lib/navigation/shell-resolver.ts": {
+      "bytes": 11921,
+      "sha256": "86218cb5f5e9d6e5b68b9553d236f0b2138ffc3d06f8057e3f222f004028cc75",
+      "gitBlob": "f812b9f0ac0d1d47a09ec896634cdea1611c60d6"
+    }
+  },
+  "originalIntegrationBase": "499f49f2d7c62d91e0b141bea237d77d75079ac8",
+  "historicalSourceRecord": {
+    "path": "docs/qualification/native-rendered-union-workflow-source-20261109.json",
+    "commit": "890207be334a47533c50df3d259aef93d4e63320",
+    "bytes": 66991,
+    "sha256": "da45f5673d4d1a0d783b51e7b2c66a42f404ba257c831942cf589f0e7f42550e",
+    "gitBlob": "ec48fce8f43fc9bf689ac7c28a6a2ee7652625bf"
+  },
+  "independentParentSourceReviewSha256": "bcc72ba7f22dfddb18eab9f961483cc47d88cc5ecde65c79ba9af56b4e1c0245",
+  "reviewedShellSourceEvidenceSha256": "576a69d8b84d779701b8c75d4d01b2d68250ebcb6d6ea48c2912b839487c18b7"
+}

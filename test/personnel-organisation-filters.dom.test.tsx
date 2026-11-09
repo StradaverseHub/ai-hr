@@ -3,12 +3,29 @@ import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/r
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 import {PersonnelOrganisationFilters,PersonnelPrivateSearch} from '../app/admin/personnel/organisation-filters';
+import {PERSONNEL_PRIVATE_SEARCH_SELECTOR} from '../scripts/performance/navigation-protocol';
 import {EmployeeRow} from '../app/admin/personnel/employee-row';
 import {FilterChips,type FilterField} from '../components/filter-panel';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
 afterEach(cleanup);
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',c='33333333-3333-4333-8333-333333333333';
+it('opens the only editable private search in the Personnel trigger’s portaled POST dialog',async()=>{
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><main>
+  <PersonnelOrganisationFilters fields={[]} values={{}} companies={[]} labels={{filter:'Filter',apply:'Apply',clearAll:'Clear all',activeCount:'0'}} companySearchLabel="Companies" dataTour="people-search"/>
+  <form method="post" action="/admin/personnel/search"><input name="term" type="hidden" value="" readOnly/></form>
+ </main></NextIntlClientProvider>);
+ const trigger=view.container.querySelector('main button[data-tour="people-search"]')!;
+ expect(trigger).toHaveAttribute('aria-expanded','false');
+ expect(view.container.querySelector(PERSONNEL_PRIVATE_SEARCH_SELECTOR)).toBeNull();
+ fireEvent.click(trigger);
+ const dialog=await screen.findByRole('dialog');
+ expect(trigger).toHaveAttribute('aria-controls',dialog.id);
+ expect(trigger).toHaveAttribute('aria-expanded','true');
+ expect(dialog.closest('main')).toBeNull();
+ const terms=dialog.querySelectorAll(PERSONNEL_PRIVATE_SEARCH_SELECTOR);
+ expect(terms).toHaveLength(1);expect(terms[0]).toBeVisible();expect(terms[0]).toBeEnabled();
+});
 it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s renders one private employee search, independent company selection, removable chips and full BU names',async locale=>{
  const messages=catalogues[locale],copy=messages.personnelOrganisationFilters,base=messages.people.list;
  const longUnit=copy.businessUnit+' · Fictional shared manufacturing and property services organisation';

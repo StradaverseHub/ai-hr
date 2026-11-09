@@ -2,7 +2,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
 import {dashboardCardConfig,person} from '../db/schema';
 import {listEmployeeHomeCards,seedEmployeeHomeCardCatalog,listCards,updateCard,setStatus,deleteCard} from '../core/dashboard-card-config';
-import {getEmployeeHomePreferences,setEmployeeHomePreferences} from '../core/dashboard-prefs';
+import {getEmployeeHomePresentation,getEmployeeHomePreferences,setEmployeeHomePreferences} from '../core/dashboard-prefs';
 import {EMPLOYEE_HOME_CARDS,EMPLOYEE_HOME_CARD_DEFAULTS,defaultEmployeeHomePreferences} from '../lib/employee-home';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import type {SessionContext} from '../db/client';
@@ -25,6 +25,7 @@ describe('Home slots reuse the canonical editable Dashboard Card Master',()=>{
   await updateCard(a,{id:rows.find(row=>row.cardKey==='team')!.id,audience:['hr_admin']});
   const cards=await listEmployeeHomeCards(a);expect(cards.map(row=>row.cardKey)).not.toContain('timeOff');expect(cards.map(row=>row.cardKey)).not.toContain('team');
   const preferences=await getEmployeeHomePreferences(a,cards);expect(preferences.hiddenCards).toEqual(['timeOff','team']);
+  expect(await getEmployeeHomePresentation(a)).toEqual({catalogue:cards,preferences});
   await owner.db.transaction(tx=>seedEmployeeHomeCardCatalog(tx,b.tenantId));
   expect((await listCards(a)).find(row=>row.cardKey==='timeOff')?.status).toBe('inactive');
  });

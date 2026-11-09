@@ -1,15 +1,9 @@
 /**
- * Shared helpers for the sidebar source-text tests (a4e49748).
- *
- * `GROUPS` and the collapsible node consts are module-private in a `'use client'` component, so the
- * sidebar-structure tests read components/sidebar.tsx as text rather than importing it (no need to
- * render next-intl/lucide in a node test, and no behavior change to the component). These two helpers
- * were previously re-derived inline by each such test (test/sidebar-attendance-group.test.ts,
- * test/sidebar-personnel-manage.test.ts); new tests should import them from here. The existing tests
- * deliberately keep their inline copies for now — they can migrate opportunistically.
- *
- * Framework-free on purpose (no vitest import): callers assert on the return values with their own
- * failure messages.
+ * Source helpers for declared shell-inventory assertions. Read lib/navigation/shell-inventory.ts
+ * for rows/pack mounting and lib/navigation/shell-resolver.ts for visibility policy. Render and
+ * interaction assertions still inspect/render components/sidebar.tsx. Do not concatenate the owners
+ * to satisfy an assertion about one file: select the file that actually owns the fact.
+ * Framework-free so callers supply their own assertions and failure messages.
  */
 
 /** Count occurrences of the QUOTED needle so e.g. '/admin/attendance' does not match its
