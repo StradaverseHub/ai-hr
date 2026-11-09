@@ -67,7 +67,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-${{ (github.ref == 'refs/heads/codex/compiler-extended-13312-proof-20261110' && 'compiler-extended-13312-proof-20261110') || inputs.candidate_ref }}
+  group: alpha-focused-${{ (github.ref == 'refs/heads/codex/compiler-combined-13312-proof-20261110' && 'compiler-combined-13312-proof-20261110') || inputs.candidate_ref }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -85,7 +85,7 @@ env:
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
   resolve:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref != 'refs/heads/codex/compiler-extended-13312-proof-20261110' }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref != 'refs/heads/codex/compiler-combined-13312-proof-20261110' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -171,7 +171,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   compiler-memory-feasibility:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/compiler-extended-13312-proof-20261110' && inputs.run_typecheck }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/compiler-combined-13312-proof-20261110' && inputs.run_typecheck }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -194,7 +194,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 49c002be31358b36e46c19bea8d6d004e946c181
+          ref: 4e1654587b5b81d58a557d44799737a86853e141
           path: source
           persist-credentials: false
       - name: Admit the exact compiler feasibility event before dependency setup
@@ -224,10 +224,10 @@ jobs:
         if: ${{ always() && steps.compiler-feasibility.outputs.evidence == 'true' && steps.compiler-swap-settlement.outcome == 'success' && steps.compiler-swap-settlement.outputs.settled == 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: whole-managed-compiler-13312-extended-proof
+          name: whole-managed-compiler-13312-combined-proof
           path: |
-            ${{ runner.temp }}/compiler-13312-extended/receipt.json
-            ${{ runner.temp }}/compiler-13312-extended/swap-settlement.json
+            ${{ runner.temp }}/compiler-13312-combined/receipt.json
+            ${{ runner.temp }}/compiler-13312-combined/swap-settlement.json
           if-no-files-found: error
           retention-days: 14
   typecheck:
