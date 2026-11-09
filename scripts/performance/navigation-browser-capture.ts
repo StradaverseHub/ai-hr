@@ -26,10 +26,12 @@ async function installFailureObserver(page:Page){
  await page.addInitScript((selectors)=>{
   const counts={busy:0,unavailable:0,alerts:0};
   Object.defineProperty(window,'__aihrNavigationFailureCaptureV1',{value:counts});
-  const inspect=()=>{for(const key of ['busy','unavailable','alerts']as const)counts[key]=Math.max(counts[key],document.querySelectorAll(selectors[key]).length);};
-  new MutationObserver(records=>{inspect();for(const record of records)for(const node of record.addedNodes)if(node instanceof Element){
+  // Playwright serializes this callback. Method shorthand keeps tsx from
+  // inserting a reference to its module-local function-name helper.
+  const state={inspect(){for(const key of ['busy','unavailable','alerts']as const)counts[key]=Math.max(counts[key],document.querySelectorAll(selectors[key]).length);}};
+  new MutationObserver(records=>{state.inspect();for(const record of records)for(const node of record.addedNodes)if(node instanceof Element){
    for(const key of ['busy','unavailable','alerts']as const)if(node.matches(selectors[key])||node.querySelector(selectors[key]))counts[key]++;
-  }}).observe(document,{childList:true,subtree:true,attributes:true});inspect();
+  }}).observe(document,{childList:true,subtree:true,attributes:true});state.inspect();
  },failuresSelector);
 }
 async function capturedFailures(page:Page){
@@ -87,31 +89,34 @@ async function installNativeDocumentFailureObserver(page:Page,scope:'primary'|'h
   if(typeof send!=='function')throw Error('Native primary retirement binding missing');
   const id=crypto.randomUUID(),counts={busy:0,unavailable:0,alerts:0};
   const kinds=['busy','unavailable','alerts']as const;
-  const inspect=()=>{for(const kind of kinds)counts[kind]=Math.max(counts[kind],document.querySelectorAll(selectors[kind]).length);};
-  const observe=(records:MutationRecord[])=>{
-   inspect();
-   for(const record of records){
-    if(record.type==='attributes'&&record.target instanceof Element&&record.target.closest('main')){
-     const name=record.attributeName as keyof typeof attributes;
-     if(Object.hasOwn(attributes,name)&&(name==='role'?record.oldValue==='alert':record.oldValue!==null))counts[attributes[name]]++;
+  // Keep this serialized browser callback independent of tsx's Node scope.
+  const state={
+   inspect(){for(const kind of kinds)counts[kind]=Math.max(counts[kind],document.querySelectorAll(selectors[kind]).length);},
+   observe(records:MutationRecord[]){
+    state.inspect();
+    for(const record of records){
+     if(record.type==='attributes'&&record.target instanceof Element&&record.target.closest('main')){
+      const name=record.attributeName as keyof typeof attributes;
+      if(Object.hasOwn(attributes,name)&&(name==='role'?record.oldValue==='alert':record.oldValue!==null))counts[attributes[name]]++;
+     }
+     for(const node of record.addedNodes)if(node instanceof Element){
+      for(const kind of kinds)if(node.matches(selectors[kind])||node.querySelector(selectors[kind]))counts[kind]++;
+     }
     }
-    for(const node of record.addedNodes)if(node instanceof Element){
-     for(const kind of kinds)if(node.matches(selectors[kind])||node.querySelector(selectors[kind]))counts[kind]++;
-    }
-   }
+   },
+   snapshot(){state.observe(observer.takeRecords());return{id,origin:location.origin,...counts};},
   };
-  const observer=new MutationObserver(observe);
+  const observer=new MutationObserver(state.observe);
   observer.observe(document,{childList:true,subtree:true,attributes:true,attributeOldValue:true,attributeFilter:Object.keys(attributes)});
-  const snapshot=()=>{observe(observer.takeRecords());return{id,origin:location.origin,...counts};};
-  Object.defineProperty(window,property,{value:snapshot});
+  Object.defineProperty(window,property,{value:state.snapshot});
   window.addEventListener('pagehide',event=>{
-   const final=snapshot();observer.disconnect();
+   const final=state.snapshot();observer.disconnect();
    const mask=Number(final.busy>0)+2*Number(final.unavailable>0)+4*Number(final.alerts>0);
    // A retired document may be disposed before the RPC returns. Only receipt
    // in the driver counts. Transport failure leaves its retirement missing.
    void Promise.resolve(send({id,key,mask,terminal:event.isTrusted&&!event.persisted})).catch(()=>{});
   },{once:true});
-  inspect();
+  state.inspect();
  },{selectors,property,attributes:nativeMarkerAttributes,ingress:BASE,binding,key});
 
  const beginRetirement=()=>{

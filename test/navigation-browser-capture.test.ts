@@ -6,6 +6,7 @@ import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {runInNewContext} from 'node:vm';
+import {transformSync} from 'esbuild';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {Page} from 'playwright';
 const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40),scenarioSha256:'d'.repeat(64)}));
@@ -202,27 +203,31 @@ describe('native identity and streamed navigation capture boundaries',()=>{
   const windowState:Record<string,unknown>={__aihrNativePrimaryRetirementV1:fixture.receive,
    addEventListener(name:string,listener:typeof pagehide){expect(name).toBe('pagehide');pagehide=listener;}};
   windowState.top=windowState;
-  vi.stubGlobal('window',windowState);vi.stubGlobal('document',{querySelectorAll:()=>[]});
-  vi.stubGlobal('location',{origin:ingress});vi.stubGlobal('crypto',{randomUUID:()=>firstDocument});
-  vi.stubGlobal('Element',FixtureElement);vi.stubGlobal('MutationObserver',FixtureObserver);
-  try{
-   observer.beforeNavigation();
-   for(const [script,input]of [legacy,native]){expect(typeof script).toBe('function');(script as (input:unknown)=>void)(input);}
-   expect(observers[0].options?.attributeOldValue).toBeUndefined();
-   expect(observers[1].options?.attributeOldValue).toBe(true);
-   fixture.read(windowState.__aihrNativePrimaryFailureCaptureV1 as ()=>unknown);
-   expect(await observer.snapshot(()=>1000)).toEqual({busy:0,unavailable:0,alerts:0});
-   const inMain=new FixtureElement(),outside=new FixtureElement(false);
-   const change=(target:FixtureElement,attributeName:string,oldValue:string|null):AttributeRecord=>({type:'attributes',target,attributeName,oldValue,addedNodes:[]});
-   observers[1].pending.push(change(inMain,'data-page-busy',null),change(inMain,'data-page-busy',''),
-    change(inMain,'data-read-unavailable','true'),change(inMain,'role','alert'),change(inMain,'role','status'),change(outside,'data-page-busy',''));
-   fixture.next(()=>{expect(page.url()).toBe('about:blank');pagehide({isTrusted:true,persisted:false});});
-   await observer.finish(()=>1000);
-   expect(observers[1].disconnected).toBe(true);
-   expect(windowState.__aihrNavigationFailureCaptureV1).toEqual({busy:0,unavailable:0,alerts:0});
-   expect(observer.facts()).toEqual({admitted:1,retired:1,refusals:0,finalBlank:true,markerDocuments:{busy:1,unavailable:1,alerts:1}});
-   expect(()=>observer.requireSettled(1)).toThrow(/failure observed through document retirement/);
-  }finally{vi.unstubAllGlobals();}
+  const browser={window:windowState,document:{querySelectorAll:()=>[]},location:{origin:ingress},
+   crypto:{randomUUID:()=>firstDocument},Element:FixtureElement,MutationObserver:FixtureObserver};
+  observer.beforeNavigation();
+  for(const [script,input]of [legacy,native]){
+   expect(typeof script).toBe('function');
+   // Model tsx's keepNames transform and Playwright's transfer of only the
+   // resulting function text to a document with no Node module bindings.
+   const compiled=transformSync('const callback=('+String(script)+');',{keepNames:true}).code;
+   const serialized=runInNewContext(compiled+'\ncallback.toString()',{})as string;
+   runInNewContext('('+serialized+')(input)',{...browser,input});
+  }
+  expect(observers[0].options?.attributeOldValue).toBeUndefined();
+  expect(observers[1].options?.attributeOldValue).toBe(true);
+  fixture.read(windowState.__aihrNativePrimaryFailureCaptureV1 as ()=>unknown);
+  expect(await observer.snapshot(()=>1000)).toEqual({busy:0,unavailable:0,alerts:0});
+  const inMain=new FixtureElement(),outside=new FixtureElement(false);
+  const change=(target:FixtureElement,attributeName:string,oldValue:string|null):AttributeRecord=>({type:'attributes',target,attributeName,oldValue,addedNodes:[]});
+  observers[1].pending.push(change(inMain,'data-page-busy',null),change(inMain,'data-page-busy',''),
+   change(inMain,'data-read-unavailable','true'),change(inMain,'role','alert'),change(inMain,'role','status'),change(outside,'data-page-busy',''));
+  fixture.next(()=>{expect(page.url()).toBe('about:blank');pagehide({isTrusted:true,persisted:false});});
+  await observer.finish(()=>1000);
+  expect(observers[1].disconnected).toBe(true);
+  expect(windowState.__aihrNavigationFailureCaptureV1).toEqual({busy:0,unavailable:0,alerts:0});
+  expect(observer.facts()).toEqual({admitted:1,retired:1,refusals:0,finalBlank:true,markerDocuments:{busy:1,unavailable:1,alerts:1}});
+  expect(()=>observer.requireSettled(1)).toThrow(/failure observed through document retirement/);
  });
  it('requires two distinct receipts and one exact inert navigation before native primary settlement',async()=>{
   const fixture=retirementPage(),{page}=fixture,observer=await installNativePrimaryFailureObserver(page);
