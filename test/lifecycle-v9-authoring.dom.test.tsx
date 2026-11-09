@@ -5,6 +5,7 @@ import { EmailDefinition } from '../app/lifecycle/v9/email-definition';
 import { newV9Email, newV9Template } from '../lib/lifecycle-v9-authoring';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import { parseV9Config } from '../lib/lifecycle-v9-validation';
+import { aiReviewDomHtml, captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 import type { Template } from '../lib/lifecycle-v9-model';
 const actor = { id: 'fixture-hr', name: 'Fictional HR' };
 const types: Template['type'][] = ['Form', 'Acknowledgement', 'Letter', 'Attachment'];
@@ -72,3 +73,18 @@ it('inserts allowed Personnel fields at the selected cursor range in the correct
   fireEvent.click(screen.getByRole('button', { name: /Join date/ }));
   expect(saved()).toMatchObject({ subject: '{joiner.joinDate}', body: 'Hello {employee.position} today' });
 });
+
+it('renders the Personnel field picker in the email template drawer', async () => {
+  const view = render(<div className="v9-shell"><section className="v9-panel v9-stack">
+    <h1>Email template</h1><Editor/>
+  </section></div>);
+  fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Welcome, {employee.name}' } });
+  fireEvent.change(screen.getByLabelText('Body'), { target: { value: 'Welcome to {company.name}.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Insert field into body' }));
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search body fields' }), { target: { value: 'organisation' } });
+  expect(screen.getByRole('button', { name: /Business unit/ })).toBeVisible();
+  expect(screen.getByRole('button', { name: /Direct superior/ })).toBeVisible();
+  expect(screen.queryByRole('button', { name: /Nationality/ })).toBeNull();
+  await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'lifecycle-email-template',
+    'Actual template editor and filtered Personnel picker with fictional email content');
+}, 120_000);

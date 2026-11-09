@@ -1,3 +1,4 @@
+import { captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 /**
  * Item 15e5bd93 REVISION 4 (r372) — THE STATUTORY PAYMENT SETUP SCREEN, RENDERED FOR REAL, IN ALL SIX
  * LOCALES.
@@ -612,3 +613,11 @@ describe('15e5bd93 rev 4 — the source decisions the measurements traced back t
     expect(src, 'and no half-width span').not.toMatch(/col-span-2(?![0-9])/);
   });
 });
+
+it('captures Statutory setup with only the remaining filing settings', async () => {
+  const html = render('en', richProps);
+  expect(identity(html)).toContain('E123');
+  expect(identity(html)).not.toContain('MyInvois TIN');
+  await captureAiReviewScreenshots(html, 'en', 'feedback-company-statutory-settings',
+    'Actual statutory setup and filing cards for a fictional company');
+}, 120_000);

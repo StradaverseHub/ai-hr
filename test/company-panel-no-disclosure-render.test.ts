@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextIntlClientProvider } from 'next-intl';
 import { CompanyPanel, type PanelCompany } from '../components/company-panel';
+import { captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 import { STATUTORY_AUTHORITIES } from '../lib/statutory-authorities';
 
 /**
@@ -504,3 +505,13 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     expect(html, 'not even as a value left behind').not.toContain('gone-person');
   });
 });
+
+it('captures Company General after removing the retired controls', async () => {
+  const html = render('en', { ...richProps, initialTab: 'general' });
+  expect(html).toContain('Demo Sdn Bhd');
+  expect(html).not.toContain('name="ssmRegistrationNo"');
+  expect(html).not.toContain('name="myinvoisTin"');
+  expect(html).not.toContain('name="isTestEntity"');
+  await captureAiReviewScreenshots(html, 'en', 'company-registration',
+    'Actual Company General panel with a fictional company and bank settings');
+}, 120_000);
