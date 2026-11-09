@@ -8,7 +8,7 @@ import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
 import {createDb,type SessionContext} from '../db/client';
-import {constructAiCentreSelectedPrefixOwner,aiCentreSelectedUpgradeSource} from './helpers/ai-centre-compatibility-owner-constructor';
+import {aiCentreSelectedMetadataFrontierObservation,constructAiCentreSelectedPrefixOwner,aiCentreSelectedUpgradeSource} from './helpers/ai-centre-compatibility-owner-constructor';
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
 const admission=admitSingletonTest('test/ai-centre-mandate-write-order-upgrade.test.ts');
 
@@ -188,7 +188,12 @@ it('upgrades actual historical709 through3500 to3501 as the real non-super owner
   expect(await facts()).toEqual(beforeIllegal);expect(await catalogue()).toEqual(initialCatalogue);
   await migrate(migration.db,{migrationsFolder:directory});expect(await ledger()).toEqual(afterLedger);
   report.ownerBoundMaintenance=true;report.originalRlsDenial=true;await selectedCourse!.verifyPositivePrivateBoundary();report.complete=true;report.phase='cleanup';save();
- }catch(error){primaryFailure=error;throw error;}finally{
+ }catch(error){
+  primaryFailure=error;
+  const metadataFrontier=aiCentreSelectedMetadataFrontierObservation(error);
+  if(metadataFrontier)report.metadataFrontier=metadataFrontier;
+  throw error;
+ }finally{
   const failures:unknown[]=[];
   for(const close of [()=>application.client.end({timeout:5}),async()=>{if(selectedCourse)await selectedCourse.closeMigration();else await migration?.client.end({timeout:5});},()=>storage.client.end({timeout:5}),
    async()=>{if(created){expect(await admin`select oid::text as oid from pg_database where datname=${database}`).toEqual([{oid:databaseOid}]);await admin.unsafe(`DROP DATABASE "${database}" WITH(FORCE)`);}},async()=>{if(roleCreated){expect(await admin`select oid::text as oid from pg_roles where rolname=${role}`).toEqual([{oid:roleOid}]);await admin.unsafe(`DROP ROLE "${role}"`);}},

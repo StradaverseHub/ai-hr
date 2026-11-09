@@ -1425,6 +1425,7 @@ async function selectedReadonly<T>(client:Sql,run:(q:ISql)=>Promise<T>):Promise<
 }
 async function selectedPidAbsent(observer:Sql,pid:number,start:string,deadline:number,budget:SelectedBudget){
  for(;;){
+  budget.guard();
   const rows=await observer.unsafe<{pid:number}[]>("SELECT pid FROM pg_catalog.pg_stat_activity WHERE pid="+pid+" AND backend_start::text="+selectedLiteral(start));
   budget.capture(rows,rows.length);if(rows.length===0)return;
   selectedNeed(performance.now()<deadline,'Selected reserved slot settlement uncertain');
@@ -1499,7 +1500,7 @@ async function selectedPrivateIdentity(q:ISql,model:AiCentreSelectedJobModel,bud
  const actual=await selectedConnection(q,budget);
  selectedEqual({database:actual.database,databaseOid:actual.databaseOid,owner:actual.owner,current:actual.current,session:actual.session,systemIdentifier:actual.systemIdentifier,startedAt:actual.startedAt},
  {database:model.owned.database,databaseOid:model.owned.databaseOid,owner:model.owned.role,current:'postgres',session:'postgres',systemIdentifier:model.cluster.systemIdentifier,startedAt:model.cluster.startedAt});
- const rows=await q.unsafe<{oid:string}[]>("SELECT oid::text AS oid FROM pg_catalog.pg_authid WHERE rolname="+selectedLiteral(model.owned.role));budget.capture(rows,rows.length);selectedEqual(rows,[{oid:model.owned.roleOid}]);
+ const rows=await q.unsafe<{oid:string}[]>("SELECT oid::text AS oid FROM pg_catalog.pg_authid WHERE rolname="+selectedLiteral(model.owned.role));budget.capture(rows,rows.length);selectedEqual(rows,[{oid:model.owned.roleOid}]);return actual;
 }
 async function selectedOneFunction(q:ISql,name:string,budget:SelectedBudget){
  const rows=await selectedFunctions(q,[name],budget);selectedEqual(rows.length,1);return rows[0];
@@ -1574,6 +1575,116 @@ async function selectedAppCreate(q:ISql,budget:SelectedBudget,allowed:boolean){
 async function selectedMutation(q:ISql,model:AiCentreSelectedJobModel,budget:SelectedBudget,query:string){
  budget.guard();await selectedPrivateIdentity(q,model,budget);await q.unsafe(query);budget.guard();
 }
+const selectedMetadataRef='refs/heads/codex/ai-centre-metadata-pre-admission-20261109';
+const selectedMetadataWorkflow='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@'+selectedMetadataRef;
+const selectedMetadataLimit={rows:40000,bytes:64*1024*1024};
+const selectedMetadataReserve={rows:64,bytes:16384};
+const selectedMetadataSchemaScope='n.nspname IN('+selectedList(schemas)+')';
+const selectedMetadataCounts=[
+ ['schema',`FROM pg_catalog.pg_namespace n WHERE ${selectedMetadataSchemaScope}`],
+ ['relation',`FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE ${selectedMetadataSchemaScope} AND c.relkind IN('r','p','S','v','m','f')`],
+ ['function',`FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE ${selectedMetadataSchemaScope}`],
+ ['type',`FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace LEFT JOIN pg_catalog.pg_class c ON c.oid=t.typrelid WHERE ${selectedMetadataSchemaScope}`],
+ ['column',`FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE ${selectedMetadataSchemaScope} AND c.relkind IN('r','p','v','m','f') AND a.attnum>0 AND NOT a.attisdropped`],
+] as const;
+type SelectedMetadataCount={kind:typeof selectedMetadataCounts[number][0];rows:number;completeness:'exact'|'censored'};
+type SelectedMetadataTotals={rows:number;bytes:number};
+function selectedMetadataProjection(priorRows:number,byKind:SelectedMetadataCount[]){
+ const objects=byKind.reduce((total,row)=>total+row.rows,0),historicalThreeScanLowerBound=priorRows+3*objects;
+ const status=byKind.length===selectedMetadataCounts.length&&byKind.every(row=>row.completeness==='exact')?'exact':'censored';
+ const classification=historicalThreeScanLowerBound>selectedMetadataLimit.rows?'required-rows-exceed':status==='exact'?'rows-within-projection':'unavailable';
+ return {status,objects,historicalThreeScanLowerBound,classification};
+}
+type SelectedMetadataFrontierObservation={
+ kind:'SELECTED_METADATA_FRONTIER_OBSERVATION';version:1;releaseAuthorized:false;observationOnly:true;
+ mode:'full';stage:'before-ownership-transfer';prior:SelectedMetadataTotals;charged:SelectedMetadataTotals;
+ reserved:SelectedMetadataTotals;settlementCharged:SelectedMetadataTotals;byKind:SelectedMetadataCount[];rows:ReturnType<typeof selectedMetadataProjection>;
+ historicalBytes:'unobserved';futurePhaseFit:'unqualified';private710FixtureAlreadySeeded:true;
+ ownedStorageSettlement:'settled'|'uncertain';measurement:'complete'|'incomplete';
+};
+const selectedMetadataObservations=new WeakMap<object,SelectedMetadataFrontierObservation>();
+export function aiCentreSelectedMetadataFrontierObservation(error:unknown){
+ return error!==null&&typeof error==='object'?selectedMetadataObservations.get(error):undefined;
+}
+function selectedMetadataDiagnostic(mode:'full'|'focused'){
+ const env=process.env;
+ if(env.GITHUB_REF!==selectedMetadataRef&&env.GITHUB_WORKFLOW_REF!==selectedMetadataWorkflow)return false;
+ const source=env.AIHR_CI_HEAD??'';
+ selectedNeed(mode==='full'&&env.GITHUB_EVENT_NAME==='workflow_dispatch'&&env.GITHUB_REF===selectedMetadataRef&&
+  env.GITHUB_WORKFLOW_REF===selectedMetadataWorkflow&&/^[a-f0-9]{40}(?![\s\S])/.test(source)&&
+  env.AIHR_CI_CONTROL_HEAD===source&&env.GITHUB_SHA===source&&env.GITHUB_WORKFLOW_SHA===source,
+ 'Selected metadata observation requires its exact self-source workflow');
+ return true;
+}
+function selectedMetadataBudget(root:SelectedBudget,limit:SelectedMetadataTotals,workGuard:()=>void):SelectedBudget{
+ const admit=(rows:number,bytes:number)=>{
+  selectedInt(rows);selectedInt(bytes);
+  selectedNeed(root.rows+rows<=limit.rows&&root.bytes+bytes<=limit.bytes,'Selected metadata observation partition refused');
+ };
+ return {get rows(){return root.rows;},get bytes(){return root.bytes;},cleanup:false,
+  guard(){if(this.cleanup)admit(1,32);else workGuard();},
+  objects(count){selectedNeed(!this.cleanup);admit(count,0);root.rows+=count;},
+  capture(value,count){
+   if(this.cleanup)selectedNeed(count<=1);
+   const json=JSON.stringify(value);selectedNeed(typeof json==='string');const bytes=Buffer.byteLength(json);admit(count,bytes);
+   // Charge completed observations even when there is no remaining admission window.
+   root.rows+=count;root.bytes+=bytes;
+  },
+ };
+}
+async function selectedInventoryFrontier(storage:Sql,admin:Sql,model:AiCentreSelectedJobModel,budget:SelectedBudget,caseStartedAt:number):Promise<never>{
+ const prior={rows:budget.rows,bytes:budget.bytes},byKind:SelectedMetadataCount[]=[];
+ const workLimit={rows:selectedMetadataLimit.rows-selectedMetadataReserve.rows,bytes:selectedMetadataLimit.bytes-selectedMetadataReserve.bytes};
+ const timeRemaining=()=>caseStartedAt+300000-performance.now();
+ const workGuard=()=>{budget.guard();selectedNeed(timeRemaining()>15000,'Selected metadata observation has no settled statement window');};
+ selectedNeed(prior.rows+2<=workLimit.rows&&prior.bytes+16384<=workLimit.bytes&&timeRemaining()>35000,'Selected metadata observation reserve unavailable');
+ const work=selectedMetadataBudget(budget,workLimit,workGuard);
+ let identity:{pid:number;backendStart:string}|null=null,primary:unknown,failed=false;
+ const held:{work?:Promise<void>}={};
+ try{
+  await selectedReadonly(storage,q=>{
+   held.work=(async()=>{
+    identity=await selectedPrivateIdentity(q,model,work);
+    for(const [kind,selector] of selectedMetadataCounts){
+     work.guard();
+     const limit=workLimit.rows-work.rows-1;
+     if(limit<=0||workLimit.bytes-work.bytes<32)break;
+     const result=await q.unsafe<{count:number}[]>("SELECT count(*)::int AS count FROM (SELECT 1 "+selector+" LIMIT $1) selected_metadata",[limit]);
+     selectedEqual(result.length,1);const count=result[0].count;selectedInt(count);selectedNeed(count<=limit);
+     work.objects(count);work.capture(result,1);
+     const completeness=count===limit?'censored':'exact';byKind.push({kind,rows:count,completeness});
+     if(completeness==='censored')break;
+    }
+    budget.guard();
+   })();
+   return held.work;
+  });
+  budget.guard();
+ }catch(error){failed=true;primary=error;}
+ // postgres.js can refuse the outer transaction before its callback promise settles.
+ try{await held.work;}catch(error){
+  if(!failed){failed=true;primary=error;}
+  else if(error!==primary)primary=new AggregateError([primary,error],'Selected metadata read and transaction refused');
+ }
+ const beforeCleanup={rows:budget.rows,bytes:budget.bytes};
+ const cleanupLimit={rows:beforeCleanup.rows+selectedMetadataReserve.rows,bytes:beforeCleanup.bytes+selectedMetadataReserve.bytes};
+ const cleanup=selectedMetadataBudget(budget,cleanupLimit,workGuard);
+ let settled=true,cleanupFailure:unknown;
+ try{await selectedClose(storage,admin,identity,cleanup);}catch(error){settled=false;cleanupFailure=error;}
+ const diagnostic=Error('Selected metadata observation only; ownership transfer not entered');
+ const first=failed?primary:diagnostic;
+ const outcome=settled?first:new AggregateError([first,cleanupFailure],'Selected metadata observation storage settlement uncertain');
+ if(outcome!==null&&typeof outcome==='object')selectedMetadataObservations.set(outcome,{
+  kind:'SELECTED_METADATA_FRONTIER_OBSERVATION',version:1,releaseAuthorized:false,observationOnly:true,
+  mode:'full',stage:'before-ownership-transfer',prior,charged:{rows:budget.rows-prior.rows,bytes:budget.bytes-prior.bytes},
+  reserved:{...selectedMetadataReserve},settlementCharged:{rows:budget.rows-beforeCleanup.rows,bytes:budget.bytes-beforeCleanup.bytes},
+  byKind,rows:selectedMetadataProjection(prior.rows,byKind),historicalBytes:'unobserved',futurePhaseFit:'unqualified',
+  private710FixtureAlreadySeeded:true,ownedStorageSettlement:settled?'settled':'uncertain',
+  measurement:!failed&&byKind.length===selectedMetadataCounts.length&&byKind.every(row=>row.completeness==='exact')?'complete':'incomplete',
+ });
+ throw outcome;
+}
+
 /** The only selected-prefix native-changing owner. Cancellation and the caller's
  * original case clock can refuse work; neither grants a native capability. */
 export async function constructAiCentreSelectedPrefixOwner(storage:Sql,admin:Sql,database:string,role:string,folder:string,signal:AbortSignal,caseStartedAt:number){
@@ -1582,6 +1693,7 @@ export async function constructAiCentreSelectedPrefixOwner(storage:Sql,admin:Sql
  selectedPrivateLedger(admission.privateLedger,source,source.boundaries.historical);
  await storage.unsafe("SET statement_timeout='10s'");await storage.unsafe("SET lock_timeout='5s'");
  const noTriggers=await storage.unsafe<{count:number}[]>("SELECT count(*)::int AS count FROM pg_catalog.pg_event_trigger");budget.capture(noTriggers,1);selectedEqual(noTriggers,[{count:0}]);
+ if(selectedMetadataDiagnostic(configuration.mode))return selectedInventoryFrontier(storage,admin,model,budget,caseStartedAt);
  const construction=await constructAiCentreCompatibilityOwner(storage,database,role);budget.guard();
  // The unchanged historical constructor performs three whole observations.
  // Count the verified equal intermediate observation, too, in this aggregate.
@@ -1730,6 +1842,19 @@ export async function constructAiCentreSelectedPrefixOwner(storage:Sql,admin:Sql
  * native-changing owner and cannot attest a server, permission or installation. */
 export function aiCentreSelectedJobSourceModel(mode:'full'|'focused'):AiCentreSelectedJobModel{
  selectedNeed(mode==='full'||mode==='focused');
+ const exactCounts:SelectedMetadataCount[]=selectedMetadataCounts.map(([kind])=>({kind,rows:100,completeness:'exact'}));
+ expect(selectedMetadataProjection(2500,exactCounts)).toEqual({status:'exact',objects:500,historicalThreeScanLowerBound:4000,classification:'rows-within-projection'});
+ expect(selectedMetadataProjection(2500,[{kind:'schema',rows:12501,completeness:'censored'}])).toMatchObject({status:'censored',classification:'required-rows-exceed'});
+ expect(selectedMetadataProjection(2500,[{kind:'schema',rows:3,completeness:'exact'}])).toMatchObject({status:'censored',classification:'unavailable'});
+ const measurement=selectedBudget(new AbortController().signal,performance.now());
+ measurement.rows=selectedMetadataLimit.rows-selectedMetadataReserve.rows;
+ const reserved=selectedMetadataBudget(measurement,selectedMetadataLimit,()=>{throw Error('Source-only work frontier');});
+ expect(()=>reserved.guard()).toThrow('Source-only work frontier');
+ const used=selectedMetadataBudget(measurement,{rows:measurement.rows,bytes:selectedMetadataLimit.bytes},()=>{});
+ expect(()=>used.objects(1)).toThrow('Selected metadata observation partition refused');
+ reserved.cleanup=true;reserved.guard();reserved.capture([],0);
+ expect({rows:measurement.rows,bytes:measurement.bytes}).toEqual({rows:39936,bytes:2});
+ expect(()=>reserved.capture([{pid:1},{pid:2}],2)).toThrow();
  const token='0123456789abcdef0123456789abcdef',role='aihr_ai_compat_'+token,database='ai_hr_ai_compat_'+token;
  const cluster:SelectedCluster={systemIdentifier:'123456789',startedAt:'2026-11-09 00:00:00+00',version:160015,jit:'on',jitAvailable:true,maxConnections:100,maxLocks:256};
  const bound=(name:string,oid:string):SelectedRole=>({oid,name,login:name==='ai_hr_app'||name==='ai_hr_owner'||name===role,super:false,inherit:['ai_hr_app','ai_hr_owner','ai_hr_draft_discard_port',role].includes(name),createRole:false,createDb:false,replication:false,bypassRls:false,connectionLimit:-1,passwordNull:true,validUntil:null,config:null});

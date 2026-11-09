@@ -9,7 +9,7 @@ import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
 import {createDb,type SessionContext} from '../db/client';
-import {constructAiCentreSelectedPrefixOwner,assertAiCentreSelectedJobCatalogue,aiCentreSelectedJobSourceModel,aiCentreSelectedUpgradeSource} from './helpers/ai-centre-compatibility-owner-constructor';
+import {aiCentreSelectedMetadataFrontierObservation,constructAiCentreSelectedPrefixOwner,assertAiCentreSelectedJobCatalogue,aiCentreSelectedJobSourceModel,aiCentreSelectedUpgradeSource} from './helpers/ai-centre-compatibility-owner-constructor';
 
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
 const admission=admitSingletonTest('test/ai-centre-architecture-compatibility-upgrade.test.ts');
@@ -285,7 +285,12 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
   await application.withTenant(ctx,tx=>tx.execute(sql`select app.ai_agent_action_pause_set('claims.cancel',true)`));expect((await check())[0]).toEqual({allowed:false,agent:false});
   await migrate(migration.db,{migrationsFolder:directory});expect(await ledger()).toEqual(afterLedger);expect(await catalogue()).toEqual(upgraded);
   await selectedCourse!.verifyPositivePrivateBoundary();report.complete=true;report.phase='cleanup';save();
- }catch(error){primaryFailure=error;throw error;}finally{
+ }catch(error){
+  primaryFailure=error;
+  const metadataFrontier=aiCentreSelectedMetadataFrontierObservation(error);
+  if(metadataFrontier)report.metadataFrontier=metadataFrontier;
+  throw error;
+ }finally{
   const failures:unknown[]=[];
   for(const close of [()=>application.client.end({timeout:5}),async()=>{if(selectedCourse)await selectedCourse.closeMigration();else await migration?.client.end({timeout:5});},()=>storage.client.end({timeout:5}),
    async()=>{if(created){expect(await admin`select oid::text as oid from pg_database where datname=${database}`).toEqual([{oid:databaseOid}]);await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);}},
