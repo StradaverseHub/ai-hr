@@ -191,6 +191,33 @@ jobs:
       - name: Focused controller regression checks
         if: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
         run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
+      - name: Verify dormant worker custody models on the isolated branch
+        if: ${{ github.ref == 'refs/heads/codex/architecture-five-item-worker-custody-models-20261109' }}
+        env:
+          EXACT_CANDIDATE: ${{ inputs.expected_sha }}
+          EXACT_CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          PROVIDER_MODEL: ${{ inputs.model_eval }}
+          MEASURED_COURSE: ${{ inputs.measured_browser_course }}
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$EXACT_CANDIDATE_REF" = codex/architecture-five-item-worker-custody-models-20261109
+          test "$GITHUB_SHA" = "$GITHUB_WORKFLOW_SHA"
+          test "$GITHUB_SHA" = "$EXACT_CANDIDATE"
+          test "$(git rev-parse HEAD)" = "$EXACT_CANDIDATE"
+          test -z "$PROVIDER_MODEL"
+          test "$MEASURED_COURSE" = off
+          test "$STAGING_ENABLED" = false
+          test "$PRODUCTION_ENABLED" = false
+          node --experimental-strip-types --test \
+            .github/ci/measured-browser-worker-contract.test.mjs \
+            .github/ci/measured-browser-preflight-archive.test.mjs \
+            .github/ci/measured-browser-preflight-semantics.test.mjs \
+            scripts/performance/worker-comparison-build.test.mjs
       - name: Validate bounded manifest
         if: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
         id: selection
