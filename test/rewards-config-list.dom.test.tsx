@@ -16,7 +16,7 @@ vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupPlans: async ()
 vi.mock('../lib/authz', () => ({ requireModule: vi.fn(), isAdmin: () => false }));
 vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: ports.visible, rewardNavigation: async () => ['/rewards'] }));
 vi.mock('../packs/rewards/service', async () => ({
-  listRewardReviewStatus: async (ctx: unknown, ids: string[]) => ({ rows: await ports.list(ctx, ids), year, emptyReason: ids.length ? null : 'noScope' }),
+  listRewardReviewStatus: async (ctx: unknown, ids: string[], options?: { includeCreationPlan?: boolean }) => ({ rows: await ports.list(ctx, ids, options), year, emptyReason: ids.length ? null : 'noScope' }),
   rewardCoverageForUnits: async () => [], rewardPolicyMemberships: ports.memberships, rewardSetupChoices: ports.choices,
   rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording,
 }));
@@ -222,20 +222,22 @@ describe('All Reviews uses company-only setup choices and the scoped review stat
     ]);
     render(wrap(await page({})));
     expect(ports.choices).toHaveBeenCalledExactlyOnceWith(session, ['company', 'company-2'], { fields: [] });
-    expect(ports.list).toHaveBeenCalledExactlyOnceWith(session, ['company', 'company-2']);
+    expect(ports.list).toHaveBeenCalledExactlyOnceWith(session, ['company', 'company-2'], { includeCreationPlan: false });
     expect(ports.memberships).not.toHaveBeenCalled();
     expect(ports.shared).not.toHaveBeenCalled();
     const [, managed, other] = screen.getAllByRole('row');
     expect(within(managed).getByRole('link', { name: en.rewardsDeletion.view })).toBeTruthy();
     expect(within(other).queryByRole('link', { name: en.rewardsDeletion.view })).toBeNull();
     cleanup();
+    ports.list.mockClear();
 
     render(wrap(await page({ plan: 'approved-plan' })));
+    expect(ports.list).toHaveBeenCalledExactlyOnceWith(session, ['company', 'company-2'], { includeCreationPlan: true });
     expect(screen.getAllByRole('row')).toHaveLength(2);
     const review = screen.getAllByRole('row')[1];
     expect(within(review).getByText('Northern Sales')).toBeTruthy();
-    expect(within(review).getByText('Group Standard 2026 · Version 3')).toBeTruthy();
-    expect(within(review).getByText('changed in this review')).toBeTruthy();
+    const changedBadge = within(review).getByText('changed in this review');
+    expect(changedBadge.parentElement).toHaveTextContent(/^Group Standard 2026 · Version 3 · changed in this review$/);
     const form = screen.getByRole('form', { name: en.rewards.reviewList.filters });
     expect(form.querySelector('input[name="plan"]')).toHaveValue('approved-plan');
   });
@@ -247,7 +249,7 @@ describe('All Reviews uses company-only setup choices and the scoped review stat
     ports.list.mockResolvedValue([]);
     render(wrap(await page({})));
     expect(ports.choices).toHaveBeenCalledExactlyOnceWith(session, [], { fields: [] });
-    expect(ports.list).toHaveBeenCalledExactlyOnceWith(session, []);
+    expect(ports.list).toHaveBeenCalledExactlyOnceWith(session, [], { includeCreationPlan: false });
     expect(ports.memberships).not.toHaveBeenCalled();
     expect(ports.shared).not.toHaveBeenCalled();
     expect(screen.getByText(en.rewards.reviewList.empty.noScope)).toBeTruthy();
