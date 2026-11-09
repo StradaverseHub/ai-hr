@@ -10,6 +10,20 @@ const lockFamily=(key,labels)=>{
  return families.has(family)?family:'unclassified';
 };
 
+const waitKinds=['advisory','transactionid','tuple','relation','other'];
+
+/** Use only a closed partition of the original pg_stat_activity wait count. */
+export function firstAppLockWaitCategories(activity,waitingAppBackends){
+ if(!Array.isArray(activity)||!Number.isSafeInteger(waitingAppBackends)||waitingAppBackends<1||waitingAppBackends>1024)return null;
+ const locks=activity.filter(row=>row.state==='active'&&row.kind==='Lock');
+ if(locks.length!==1||locks[0].app_connections!==waitingAppBackends)return null;
+ const counts=locks[0].app_lock_wait_kinds;
+ if(!counts||typeof counts!=='object'||Object.keys(counts).length!==waitKinds.length)return null;
+ if(!waitKinds.every(key=>Object.hasOwn(counts,key)&&Number.isSafeInteger(counts[key])&&counts[key]>=0&&counts[key]<=waitingAppBackends))return null;
+ if(waitKinds.reduce((total,key)=>total+counts[key],0)!==waitingAppBackends)return null;
+ return Object.fromEntries(waitKinds.map(key=>[key,counts[key]]));
+}
+
 /** Pair only rows from the retained native query and its own pg_blocking_pids result. */
 export function originalAdvisoryAttribution(locks,labels){
  try{

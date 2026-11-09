@@ -484,6 +484,32 @@ jobs:
           def number(value, maximum, minimum=0):
               return value if type(value) is int and minimum <= value <= maximum else None
 
+          def project_first_app_lock_wait_categories(value, expected):
+              keys = ('advisory', 'transactionid', 'tuple', 'relation', 'other')
+              if number(expected, 1024, 1) is None or not closed(value, ' '.join(keys)):
+                  return None
+              counts = {key: number(value[key], expected) for key in keys}
+              if None in counts.values() or sum(counts.values()) != expected:
+                  return None
+              return counts
+
+          def project_private_preflight_timing(value, cadence):
+              keys = ('attemptIntervalMs', 'gapUs', 'openingGapUs', 'tailGapUs', 'launchSpacingUs',
+                      'serialWaitPastDueUs', 'timerAfterReadyUs', 'callbackToProbeUs',
+                      'activityRoundTripUs', 'betweenProbesUs', 'advisoryRoundTripUs')
+              if not closed(value, ' '.join(keys)) or number(value['attemptIntervalMs'], 200, 200) is None:
+                  return None
+              facts = {key: number(value[key], 910000000) for key in keys}
+              if None in facts.values():
+                  return None
+              gaps = {'gapUs': 'interiorGapUs', 'openingGapUs': 'openingGapUs', 'tailGapUs': 'tailGapUs'}
+              if any(facts[key] != number(cadence.get(name), 910000000, 1) for key, name in gaps.items()):
+                  return None
+              total = sum(facts[key] for key in ('launchSpacingUs', 'activityRoundTripUs', 'betweenProbesUs', 'advisoryRoundTripUs'))
+              if not facts['gapUs'] - 1 <= total <= facts['gapUs'] + 3:
+                  return None
+              return facts
+
           def flag(value):
               return value if type(value) is bool else None
 
@@ -1211,7 +1237,9 @@ jobs:
                   secondary = first(driver_failures.get('secondary'), lambda row: True)
                   visit = record(driver.get('browserFailedNavigation'))
                   pilot = first(driver.get('coverage'), lambda row: row.get('status') == 'failed')
-                  locks = record(record(driver.get('lockSampling')).get('preflight'))
+                  lock_sampling = record(driver.get('lockSampling'))
+                  locks = record(lock_sampling.get('preflight'))
+                  gap_timing = project_private_preflight_timing(lock_sampling.get('privatePreflightTiming'), record(locks.get('cadence')))
                   completed = number(locks.get('completed'), 4096)
                   invalid = number(locks.get('invalidBlockingCounts'), completed) if completed is not None else None
                   observed = completed - invalid if invalid is not None else None
@@ -1282,6 +1310,9 @@ jobs:
                           if waiting is None or advisory is None or not max(waiting, advisory):
                               continue
                           signal = {'waitingAppBackends': waiting, 'sampledAdvisoryAppBackends': advisory}
+                          categories = project_first_app_lock_wait_categories(row.get('firstAppLockWaitCategories'), waiting)
+                          if categories is not None:
+                              signal['firstProbeAppWaitCategories'] = categories
                           waiters = row.get('advisoryWaiters')
                           if type(waiters) is list and len(waiters) <= 40:
                               names = set()
@@ -1330,6 +1361,7 @@ jobs:
                           'sourceColumn': stage_column if stage_file else None} if stage_name else None,
                       'browserErrorSignals': browser_signals,
                       'sampledBlockingSignals': {'evidence': wait_state, 'samples': blocking_signals},
+                      'preflightLockGapTiming': gap_timing,
                       'milestones': {'workerReadinessRows': count(readiness), 'readyWorkers': ready,
                                      'browserVersionObserved': True if type(driver.get('browserVersion')) is str and driver['browserVersion'] else None,
                                      'browserAcquisition': choice(record(shutdown.get('acquisition')).get('browser'), {'absent', 'acquired', 'failed'}),

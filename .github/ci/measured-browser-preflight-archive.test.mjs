@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { inspectMeasuredPreflightArchiveBytes, readAuthenticatedMeasuredPreflightArchive } from './measured-browser-preflight-archive.mjs';
 
@@ -165,4 +166,44 @@ test('refuses mixed source or run even when replacement seals match the bytes', 
   changeReceipt(files, { renderedUnion: seal(files[unionName]) });
   assert.throws(() => inspect(zip(files)), /capture source refused/);
   assert.throws(() => inspectMeasuredPreflightArchiveBytes(zip(model()), { source: 'd'.repeat(40), runId }), /terminal receipt refused/);
+});
+
+test('failure-only projection closes first-probe lock categories and monotonic gap durations', () => {
+  // Compile only the actual pure Python projection functions from the workflow.
+  const control = String.raw`
+import ast, re, sys, textwrap
+from pathlib import Path
+
+workflow = Path(sys.argv[1]).read_text()
+script = next(block for block in re.findall(r"<<'PYTHON'\n(.*?)^          PYTHON$", workflow, re.S | re.M)
+              if 'def project_first_app_lock_wait_categories' in block)
+definitions = ast.parse(textwrap.dedent(script))
+names = {'closed', 'number', 'project_first_app_lock_wait_categories', 'project_private_preflight_timing'}
+body = [node for node in definitions.body if isinstance(node, ast.FunctionDef) and node.name in names]
+assert {node.name for node in body} == names
+exec(compile(ast.Module(body=body, type_ignores=[]), 'workflow-projections', 'exec'))
+kinds = dict(advisory=1, transactionid=2, tuple=0, relation=1, other=1)
+assert project_first_app_lock_wait_categories(kinds, 5) == kinds
+for malformed in (None, dict(kinds, other=0), dict(kinds, advisory=True), dict(kinds, other=-1),
+                  dict(kinds, native_id=123), dict(kinds, advisory=6), dict(kinds, other=1.0)):
+    assert project_first_app_lock_wait_categories(malformed, 5) is None
+assert project_first_app_lock_wait_categories(kinds, True) is None
+assert project_first_app_lock_wait_categories(kinds, 0) is None
+assert project_first_app_lock_wait_categories(kinds, 1025) is None
+timing = dict(attemptIntervalMs=200, gapUs=508264, openingGapUs=209731, tailGapUs=130623,
+              launchSpacingUs=496000, serialWaitPastDueUs=0, timerAfterReadyUs=296000,
+              callbackToProbeUs=1, activityRoundTripUs=4000, betweenProbesUs=1, advisoryRoundTripUs=8263)
+cadence = dict(interiorGapUs=508264, openingGapUs=209731, tailGapUs=130623)
+assert project_private_preflight_timing(timing, cadence) == timing
+assert project_private_preflight_timing(dict(timing, advisoryRoundTripUs=8266), cadence) is not None
+for malformed in (None, dict(timing, timestamp=1700000000000), dict(timing, activityRoundTripUs=-1),
+                  dict(timing, advisoryRoundTripUs=8267), dict(timing, advisoryRoundTripUs=8261),
+                  dict(timing, gapUs=500000), dict(timing, attemptIntervalMs=250),
+                  dict(timing, betweenProbesUs=True), dict(timing, timerAfterReadyUs=910000001)):
+    assert project_private_preflight_timing(malformed, cadence) is None
+assert project_private_preflight_timing(timing, dict(cadence, interiorGapUs=None)) is None
+assert project_private_preflight_timing(timing, dict(cadence, openingGapUs=209732)) is None
+`;
+  execFileSync('/usr/bin/python3', ['-I', '-B', '-c', control,
+    fileURLToPath(new URL('../workflows/alpha-focused-checks.yml', import.meta.url))], { timeout: 5000 });
 });

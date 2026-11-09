@@ -1,11 +1,32 @@
 import {expect,it} from 'vitest';
 import {developmentPostgresLockWindow,postgresLockFailures} from '../scripts/performance/lock-failure-log.mjs';
-import {mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
+import {firstAppLockWaitCategories,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
 import {lockSampleEvidence} from '../scripts/performance/driver-shutdown.mjs';
 
 const fictionalWaiter={app_session:true,pid:22,classid:'11',objid:'12',objsubid:1,mode:'ExclusiveLock',blockers:[84]};
 const fictionalBlocker={family:'access-configuration',waiterMode:'ExclusiveLock',blockerMode:'ShareLock',blockerState:'granted',
  waiterCategory:'advisory-exclusive',blockerCategory:'rewards-library'};
+
+it('partitions only the first probe and preserves an original positive on refused category evidence',()=>{
+ const categories={advisory:1,transactionid:2,tuple:0,relation:1,other:1};
+ const row={state:'active',kind:'Lock',app_connections:5,app_lock_wait_kinds:categories};
+ const ignored={...row,state:'idle',app_connections:17};
+ expect(firstAppLockWaitCategories([ignored,row],5)).toEqual(categories);
+ const sample={state:'complete',startedMs:1,completedMs:2,locks:0,blockingAppSessions:5};
+ const variants=[
+  {...categories,rawWaitEvent:'fictional secret'}, {...categories,advisory:true},
+  {...categories,other:0}, {...categories,other:6}, {...categories,other:-1},
+  {...categories,tuple:0.5}, {advisory:1,transactionid:2,tuple:0,relation:1,unknown:1}, null,
+ ];
+ for(const malformed of variants){
+  expect(firstAppLockWaitCategories([{...row,app_lock_wait_kinds:malformed}],5)).toBeNull();
+  expect(lockSampleEvidence([sample],{startMs:0,endMs:3})).toMatchObject({blockingSamples:1,pass:false});
+ }
+ expect(firstAppLockWaitCategories([row,row],5)).toBeNull();
+ expect(firstAppLockWaitCategories([ignored],5)).toBeNull();
+ expect(firstAppLockWaitCategories([row],0)).toBeNull();
+ expect(firstAppLockWaitCategories([row],1025)).toBeNull();
+});
 
 it('attributes only app waiters and emits closed blocker facts without native identities',async()=>{
  const inputs:unknown[][]=[];

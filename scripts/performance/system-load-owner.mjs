@@ -42,7 +42,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS,measuredPreflightLockTiming,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
-import {mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
+import {firstAppLockWaitCategories,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
  nativePreflightRoutePlan,nativePreflightRouteFor,nativePreflightContentWitness,nativePreflightReadiness,
  assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,requireNativeRenderedUnion,readManifestRoute} from './system-route-manifest.mjs';
@@ -464,6 +464,15 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
  const schedule=measureDevelopment?startMeasuredLockInterval:startDriverInterval;
  const measuredPreflight=measureDevelopment&&phase==='preflight';
  const attemptInterval=measuredPreflight?MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS:interval;
+ // Extra aggregate columns on the same preflight probe. Other courses retain their original query.
+ const waitCategories=fullDevelopmentRoutes&&measuredPreflight?sampleDb`,jsonb_build_object(
+      'advisory',count(*) filter(where usename='ai_hr_app' and wait_event='advisory'),
+      'transactionid',count(*) filter(where usename='ai_hr_app' and wait_event='transactionid'),
+      'tuple',count(*) filter(where usename='ai_hr_app' and wait_event='tuple'),
+      'relation',count(*) filter(where usename='ai_hr_app' and wait_event='relation'),
+      'other',count(*) filter(where usename='ai_hr_app' and (wait_event is null or
+       wait_event not in ('advisory','transactionid','tuple','relation')))
+      ) as app_lock_wait_kinds`:sampleDb``;
  let attributedSamples=0,enrichmentPending=false;
  const retain=row=>{
   // A sentinel makes over-cap evidence ineligible without growing the ledger indefinitely.
@@ -489,7 +498,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
   let coreComplete=false;
   try{
    const activity=await sampleDb`select state,coalesce(wait_event_type,'CPU-or-ready') as kind,count(*)::int as connections,
-      (count(*) filter(where usename='ai_hr_app'))::int as app_connections
+      (count(*) filter(where usename='ai_hr_app'))::int as app_connections${waitCategories}
      from pg_stat_activity where datname=current_database() and backend_type='client backend' group by 1,2`;
    const activityCompletedMs=performance.now();
    const rows=activity.filter(row=>row.state==='active').map(({kind,connections})=>({kind,connections}));
@@ -531,6 +540,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
     attributedSamples++;
     attribution={phase:attributionPhase===preflightAttributionPhase?attributionPhase:'transition',...originalAdvisoryAttribution(locks,lockLabels)};
     wait.appAdvisoryAttribution=attribution;
+    wait.firstAppLockWaitCategories=firstAppLockWaitCategories(activity,appConnections.waitingOnLock);
    }
    if(!measureDevelopment){await captureRootStatements(db,holders,queuedLocks);return;}
    // Keep at most one optional lookup in flight per phase. The sampled lock counts already stand.
