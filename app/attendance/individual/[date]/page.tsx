@@ -285,6 +285,13 @@ export default async function IndividualAttendanceDayPage({
                   {(() => {
                     const ev = p.clockCaptureId ? evidence.get(p.clockCaptureId) : undefined;
                     if (!ev) return null;
+                    if (ev.reviewReasons.length) {
+                      return (
+                        <span data-clock-evidence="review" className="text-[11px] text-muted-foreground">
+                          {t('clockEvidenceReview')} · {ev.reviewReasons.map(reason => t(`clockReviewReasons.${reason}`)).join(' · ')}
+                        </span>
+                      );
+                    }
                     if (ev.geofenced) {
                       return (
                         <span data-clock-evidence="geofenced" className="text-[11px] text-muted-foreground">

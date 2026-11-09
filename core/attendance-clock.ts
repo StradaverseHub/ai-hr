@@ -1,3 +1,4 @@
+import { readClockReviewReasons, type ClockReviewReason } from '../lib/clock-review-reasons';
 import { LOCATION_CAPTURE_STATUSES, type LocationCaptureStatus } from '../lib/attendance-removal';
 /** Employee web command. A private capture and the existing attendance writer share one transaction. */
 import { createHash, randomUUID } from 'node:crypto';
@@ -66,10 +67,12 @@ export async function ownNativeClockReceipt(ctx:SessionContext,employmentId:stri
 }
 async function nativeClockReceiptTx(tx:Tx,ctx:SessionContext,employmentId:string,requestId:string){
   if(!ctx.userId)return null;
-  const [row]=await tx.select({capture:attendanceClockCapture}).from(attendanceClockCapture)
+  const [row]=await tx.select({capture:attendanceClockCapture, payload:domainEvent.payload}).from(attendanceClockCapture)
       .innerJoin(domainEvent,and(eq(domainEvent.aggregateId,attendanceClockCapture.id),eq(domainEvent.aggregateType,'attendance-clock-capture'),eq(domainEvent.eventType,'attendance.clock.captured')))
       .where(and(eq(attendanceClockCapture.employmentId,employmentId),eq(attendanceClockCapture.requestId,requestId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.actorId,ctx.userId))).limit(1);
-  return row?publicReceipt(row.capture):null;
+  if (!row) return null;
+  const reviewReasons = readClockReviewReasons(row.payload);
+  return { ...publicReceipt(row.capture), ...(reviewReasons.length ? { reviewReasons } : {}) };
 }
 export async function ownNativeClockDisposition(ctx:SessionContext,employmentId:string,requestId:string){
   if(!ctx.userId||!UUID.test(requestId)||!(await myEmployments(ctx)).some(e=>e.employmentId===employmentId))return {receipt:null};
@@ -116,7 +119,7 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
   }
 }
 
-type NativeCarrier = { employmentId: string; deviceToken?: string; sampledAt: number };
+type NativeCarrier = { employmentId: string; deviceToken?: string; sampledAt: number | null; reviewExceptions?: boolean };
 type JoinedCarrier = { tx: Tx; requireNew: boolean };
 /** Who records the punch. An online instant is read where it always was, after the subject lock and the request
  * lookup, never at the call site (a tab that waited on the lock must still order after its sibling). An offline
@@ -134,7 +137,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
   if (!['in', 'out'].includes(p.action) || !UUID.test(p.requestId)) throw new Error('Invalid clock request');
   const point = clockLocation(p);
   if(p.locationStatus!=null&&(!LOCATION_CAPTURE_STATUSES.includes(p.locationStatus)||(p.locationStatus==='recorded')!==!!point))throw new ClockLocationError('Location status must agree with the supplied coordinates.');
-  if (native && !point) throw new ClockLocationError('Native clocking requires a sampled location');
+  if (native && !native.reviewExceptions && !point) throw new ClockLocationError('Native clocking requires a sampled location');
   const execute=async(tx:Tx)=>{
     const plan=await planClockTx(tx,ctx,me,p,point,native?{source:'native_online'}:{source:'web'},native,joined);
     if(plan.kind==='recorded')return plan.receipt;
@@ -174,21 +177,43 @@ async function planClockTx(tx:Tx,ctx:SessionContext,me:ClockSubject,p:ClockInten
     // never decoded or stored even if the client sent one.
     const [empRow] = await tx.select({ attendancePhotoSetting: employment.attendancePhotoSetting }).from(employment).where(eq(employment.id, me.employmentId)).limit(1);
     const photoSetting = empRow?.attendancePhotoSetting ?? 'not_required';
-    if (photoSetting === 'required' && !p.photo) throw new AttendancePhotoRequiredError();
-    const photo = photoSetting !== 'not_required' && p.photo ? await decodeClockPhoto(p.photo, p.mime ?? 'image/jpeg') : null;
+    const reviewReasons: ClockReviewReason[] = [];
+    if (photoSetting === 'required' && !p.photo) {
+      if (!native?.reviewExceptions) throw new AttendancePhotoRequiredError();
+      reviewReasons.push('photo_missing');
+    }
+    let photo: Awaited<ReturnType<typeof decodeClockPhoto>> | null = null;
+    if (photoSetting !== 'not_required' && p.photo) {
+      try { photo = await decodeClockPhoto(p.photo, p.mime ?? 'image/jpeg'); }
+      catch (error) {
+        if (!native?.reviewExceptions || !(error instanceof ClockPhotoError)) throw error;
+        reviewReasons.push('photo_invalid');
+      }
+    }
     // An offline command is its signed claim: same digest whatever the photo setting did, and never an online one's.
-    const commandDigest = createHash('sha256').update(JSON.stringify(offline?['mobile_offline',clock.claimDigest]:[p.action, p.lat, p.lng, p.accuracy, photo?.photoDigest ?? '',...(p.locationStatus?[p.locationStatus]:[])])).digest('hex');
+    const commandDigest = createHash('sha256').update(JSON.stringify(offline ? ['mobile_offline', clock.claimDigest] : native?.reviewExceptions
+      ? ['native_review', p.action, p.lat, p.lng, p.accuracy, native.sampledAt, p.photo ? createHash('sha256').update(p.photo).digest('hex') : null]
+      : [p.action, p.lat, p.lng, p.accuracy, photo?.photoDigest ?? '', ...(p.locationStatus ? [p.locationStatus] : [])])).digest('hex');
     const [accepted] = await tx.select().from(attendanceClockCapture).where(and(eq(attendanceClockCapture.employmentId, me.employmentId), eq(attendanceClockCapture.requestId, p.requestId))).limit(1);
     if (accepted) {
       // A new proof must never retroactively upgrade a capture accepted through another carrier.
       // The signed-command owner recovers its committed receipt before invoking this writer again.
       if(joined?.requireNew)throw new ClockConflictError('This clock reference already recorded before this proof');
       if (accepted.commandDigest !== commandDigest) throw new ClockConflictError('This request already recorded a different clock action');
+      if (native?.reviewExceptions) {
+        const receipt = await nativeClockReceiptTx(tx, ctx, me.employmentId, p.requestId);
+        if (!receipt) throw new ClockConflictError('This request belongs to another clocking actor');
+        return { kind: 'recorded' as const, receipt };
+      }
       return { kind: 'recorded' as const, receipt: publicReceipt(accepted) };
     }
     if(!joined)await assertLegacySelfServiceClockTx(tx,ctx,me.employmentId);
     const now = offline ? clock.at : new Date(), recordedAt = offline ? new Date() : now;
-    if (native && (!Number.isFinite(native.sampledAt) || Math.abs(now.getTime()-native.sampledAt)>120000)) throw new ClockLocationError('Capture a fresh location before clocking');
+    const stale = !!native && (native.sampledAt == null || !Number.isFinite(native.sampledAt) || Math.abs(now.getTime() - native.sampledAt) > 120000);
+    if (native?.reviewExceptions) {
+      if (!point) reviewReasons.push('location_missing');
+      else if (stale) reviewReasons.push('location_stale');
+    } else if (stale) throw new ClockLocationError('Capture a fresh location before clocking');
     // Offline skips the fresh-sample rule; its instant must be a whole second (as online punch_at is) not after receipt.
     if (offline && (!Number.isFinite(now.getTime()) || now.getTime() % 1000 !== 0 || now.getTime() > recordedAt.getTime())) throw new OfflineClockPlanRefusal('effective_time_invalid', 'The offline instant must be a whole second before its receipt');
     const date = await clockAttendanceDateTx(tx, me.employmentId, p.action, now, await openClockSessionDateTx(tx, me.employmentId));
@@ -217,7 +242,10 @@ async function planClockTx(tx:Tx,ctx:SessionContext,me:ClockSubject,p:ClockInten
     const sameMinute = priorPunches.filter(punch=>minute(punch.time)===minute(time));
     const legacyAggregateAnchor = p.action==='out' && !priorPunches.length && day?.checkIn && minute(day.checkIn)===minute(time);
     const preciseOrder = !legacyAggregateAnchor && sameMinute.every(punch=>punch.captureId!=null);
-    const geo = await resolveGeofence(tx, { employmentId: me.employmentId, date, time, lat: point?.lat, lng: point?.lng,accuracy:point?.accuracy, punch: p.action });
+    const assessedPoint = stale ? null : point;
+    const geo = await resolveGeofence(tx, { employmentId: me.employmentId, date, time, lat: assessedPoint?.lat, lng: assessedPoint?.lng,
+      accuracy: assessedPoint?.accuracy, punch: p.action, reviewExceptions: native?.reviewExceptions });
+    if (!geo.enforced && geo.review && !reviewReasons.includes(geo.review) && !(stale && geo.review === 'location_missing')) reviewReasons.push(geo.review);
     // Geofenced → a matched site with its distance and radius, or resolveGeofence has already thrown. Not
     // geofenced → the three are stored NULL together (0517) and the position alone is the record.
     if (geo.enforced && (!geo.clockingLocationId || geo.radiusM == null || geo.distanceM == null)) throw new Error('An assigned clocking location is required');
@@ -226,28 +254,28 @@ async function planClockTx(tx:Tx,ctx:SessionContext,me:ClockSubject,p:ClockInten
     // would, keeps the online error order and lets an offline plan refuse before any write.
     const order = clockPunchOrderRefusal({ direction: p.action, time, preciseOrder, crossesMidnight: schedule.crossesMidnight, durationOnly: schedule.durationOnly, dayExists: !!day, punchTimes: priorPunches.map(punch=>punch.time), checkInAt: day?.checkIn ?? null });
     if (order) throw offline ? new ClockConflictError(order) : new Error(order);
-    return { kind: 'plan' as const, me, p, point, clock, native, now, recordedAt, date, time, photo, commandDigest, geo, site, preciseOrder, nativeDevice };
+    return { kind: 'plan' as const, me, p, point, clock, native, now, recordedAt, date, time, photo, commandDigest, geo, site, preciseOrder, nativeDevice, reviewReasons };
 }
 type ClockPlan = Extract<Awaited<ReturnType<typeof planClockTx>>, { kind: 'plan' }>;
 type CaptureValues = typeof attendanceClockCapture.$inferInsert & { id: string };
 
 /** The writes of a planned clocking, in its caller's transaction: capture, canonical punch and audit. */
 async function applyClockTx(tx:Tx,ctx:SessionContext,plan:ClockPlan) {
-    const { me, p, point, clock, native, now, recordedAt, date, time, photo, commandDigest, geo, site, preciseOrder, nativeDevice } = plan;
+    const { me, p, point, clock, native, now, recordedAt, date, time, photo, commandDigest, geo, site, preciseOrder, nativeDevice, reviewReasons } = plan;
     const offline = clock.source === 'mobile_offline';
     const captureId = randomUUID();
     // r430 — the six photo columns are spread ONLY when a photo exists (nullable since 0520; CHECK enforces
     // they land null together). deviceId is never set any more for a Web Clocking capture (nullable since
     // 0520 too) — there is no registered device to attribute it to.
-    const values: CaptureValues = { id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: recordedAt, ...(nativeDevice ? { deviceId:nativeDevice.id } : {}), ...(photo ? { photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo } : {}), lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, locationCaptureStatus:p.locationStatus??(point?'recorded':null),geofencingRequired:geo.enforced,commandDigest };
+    const values: CaptureValues = { id: captureId, tenantId: ctx.tenantId, employmentId: me.employmentId, attendanceDate: date, direction: p.action, requestId: p.requestId, serverRecordedAt: recordedAt, ...(nativeDevice && point ? { deviceId:nativeDevice.id } : {}), ...(photo ? { photoCapturedAt: now, photoMimeType: 'image/jpeg', ...photo } : {}), lat: p.lat, lng: p.lng, accuracyM: p.accuracy, ...site, locationCaptureStatus:p.locationStatus??(point?'recorded':null),geofencingRequired:geo.enforced || !!geo.review,commandDigest };
     const [capture] = offline ? [await insertOfflineCaptureTx(tx, values, now)] : await tx.insert(attendanceClockCapture).values(values).returning();
     // r430 — deviceGateExempt:true: Web Clocking's own self-capture path is fully exempt from the
     // registered-device policy regardless of whether any tenant has it ON (ADR-0070 amendment). The
     // any other caller (the administrator's manual checkIn/checkOut, which has no screen since r435) never
     // sets this and stays fully policy-gated.
-    await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: point ?? undefined, deviceGateExempt: clock.source === 'web', deviceToken: native?.deviceToken, clockCaptureId: captureId, preciseOrder, ...(offline ? { method: 'mobile_offline' as const } : {}) }, tx);
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { ...(native ? { clientSource: 'native_online', clientLocationTimestamp: native.sampledAt } : {}), ...(offline ? { clientSource: 'mobile_offline', effectiveAt: now.toISOString() } : {}), captureId, direction: p.action, serverRecordedAt: recordedAt.toISOString(), clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : 'not_enforced' } });
-    return publicReceipt(capture);
+    await (p.action === 'in' ? checkInTx : checkOutTx)(ctx, { employmentId: me.employmentId, date, time, geo: point ?? undefined, deviceGateExempt: clock.source === 'web', deviceToken: native?.deviceToken, clockCaptureId: captureId, ...(native?.reviewExceptions ? { capturedGeofence: geo } : {}), preciseOrder, ...(offline ? { method: 'mobile_offline' as const } : {}) }, tx);
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-clock-capture', aggregateId: captureId, eventType: 'attendance.clock.captured', actor: actorOf(ctx), subjectEmploymentId: me.employmentId, payload: { ...(native ? { clientSource: 'native_online', clientLocationTimestamp: native.sampledAt } : {}), ...(offline ? { clientSource: 'mobile_offline', effectiveAt: now.toISOString() } : {}), captureId, direction: p.action, serverRecordedAt: recordedAt.toISOString(), clockingLocationId: site.clockingLocationId, geofence: geo.enforced ? 'pass' : geo.review ? 'review' : 'not_enforced', ...(reviewReasons.length ? { reviewReasons } : {}), ...(nativeDevice && !point ? { registeredDevice: true } : {}) } });
+    return { ...publicReceipt(capture), ...(reviewReasons.length ? { reviewReasons } : {}) };
 }
 
 // Draft 0647's column, named explicitly: db/schema.ts declares it only once 0647 is journaled (see the note there).
@@ -371,6 +399,13 @@ export async function captureNativeClock(ctx: SessionContext, p: ClockIntent & {
   catch (e) { if (e instanceof OutsideGeofenceError) await appendGeofenceBlockedEvent(ctx, e); throw e; }
 }
 
+/** Native advisory punch. The unsigned rollout policy and device gate still apply. */
+export async function captureNativeClockForReview(ctx: SessionContext, p: ClockIntent & NativeCarrier) {
+  return captureEmployeeClockTx(ctx, p, {
+    employmentId: p.employmentId, deviceToken: p.deviceToken, sampledAt: p.sampledAt, reviewExceptions: true,
+  });
+}
+
 /** Internal signed-command seam. The parent owns an attendance-gated tenant transaction, verifies
  * proof and recovers committed receipts. This creates only a NEW capture, with all existing rules;
  * any throw must escape that parent so proof counters and attendance roll back together. */
@@ -427,6 +462,7 @@ export type ClockCaptureEvidence = {
   lat: number | null;
   lng: number | null;
   accuracyM: number | null;
+  reviewReasons: ClockReviewReason[];
 };
 
 export async function clockCaptureEvidence(ctx: SessionContext, captureIds: readonly string[]): Promise<Map<string, ClockCaptureEvidence>> {
@@ -445,9 +481,12 @@ export async function clockCaptureEvidence(ctx: SessionContext, captureIds: read
         lat: attendanceClockCapture.lat,
         lng: attendanceClockCapture.lng,
         accuracyM: attendanceClockCapture.accuracyM,
+        reviewPayload: domainEvent.payload,
       })
       .from(attendanceClockCapture)
       .leftJoin(clockingLocation, eq(clockingLocation.id, attendanceClockCapture.clockingLocationId))
+      .leftJoin(domainEvent, and(eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.aggregateId, attendanceClockCapture.id),
+        eq(domainEvent.aggregateType, 'attendance-clock-capture'), eq(domainEvent.eventType, 'attendance.clock.captured')))
       .where(inArray(attendanceClockCapture.id, ids)),
   );
   for (const r of rows) {
@@ -461,6 +500,7 @@ export async function clockCaptureEvidence(ctx: SessionContext, captureIds: read
       lat: r.lat,
       lng: r.lng,
       accuracyM: r.accuracyM,
+      reviewReasons: readClockReviewReasons(r.reviewPayload),
     });
   }
   return out;

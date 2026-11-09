@@ -1,3 +1,4 @@
+import { ClockReviewReasons } from '../clock-review-reasons';
 /**
  * The mobile API contract, v1 (ADR-0088 §2). ONE owner for the shape of every response: the route
  * handlers parse their output through these schemas, and the Expo app imports the inferred types.
@@ -152,12 +153,12 @@ export type MobileDesignResponse = z.infer<typeof MobileDesignResponse>;
 
 
 // Native journeys. Every request is strict: identities/policy flags are never body fields.
-export const ClockReceipt = z.object({ id: z.string().uuid(), direction: z.enum(['in', 'out']), recordedAt: z.string(), date: isoDate, photoAvailable: z.boolean() });
+export const ClockReceipt = z.object({ id: z.string().uuid(), direction: z.enum(['in', 'out']), recordedAt: z.string(), date: isoDate, photoAvailable: z.boolean(), reviewReasons: ClockReviewReasons.optional() });
 export const ClockResponse = z.object({
   enabled: z.boolean(), employmentId: z.string().uuid().nullable(),
   state: z.object({
     serverNow: z.string(), date: isoDate, clockedIn: z.boolean(), openSince: z.string().nullable(), workedSeconds: z.number().nonnegative(),
-    geofencingRequired: z.boolean(), attendancePhotoSetting: z.enum(['required','optional','not_required']), deviceRequired: z.boolean(),
+    geofencingRequired: z.boolean(), reviewExceptions: z.boolean().optional(), attendancePhotoSetting: z.enum(['required','optional','not_required']), deviceRequired: z.boolean(),
     shift: z.object({code:z.string().nullable(),start:z.string().nullable(),end:z.string().nullable()}),
     captures: z.array(ClockReceipt.extend({requestId:z.string().uuid(), locationName:z.string().nullable()})),
     legacy:z.array(z.object({direction:z.string(),time:z.string()})),

@@ -4100,6 +4100,16 @@
     "clockEvidenceGeofenced": "{site} · ระยะ {distance} ม. จากที่อนุญาต {radius} ม.",
     "clockEvidenceLocationUnavailable": "ไม่ได้บันทึกตำแหน่ง — ไม่มีข้อมูล",
     "clockEvidenceNotRequired": "ไม่ต้องใช้เขตพื้นที่",
+    "clockEvidenceReview": "ต้องตรวจสอบ",
+    "clockReviewReasons": {
+      "location_missing": "ไม่มีข้อมูลตำแหน่ง",
+      "location_stale": "ข้อมูลตำแหน่งเก่าเกินไป",
+      "location_accuracy": "ตำแหน่งมีความแม่นยำต่ำ",
+      "outside_site": "อยู่นอกสถานที่ทำงานที่กำหนด",
+      "no_assigned_site": "ยังไม่ได้กำหนดสถานที่ทำงาน",
+      "photo_missing": "ไม่มีรูปภาพที่จำเป็น",
+      "photo_invalid": "ไม่สามารถตรวจสอบรูปภาพได้"
+    },
     "colAbsent": "ขาดงาน",
     "colAction": "การดำเนินการ",
     "colActualHours": "ชั่วโมงจริง",
