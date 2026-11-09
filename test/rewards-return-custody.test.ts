@@ -1,6 +1,9 @@
 import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {pgSqlState} from '../lib/db-error';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {setAgentActionPause} from '../core/ai-inventory';
+import {setAiFeature} from '../core/ai-management';
+import {setMandateStopSwitch} from '../core/mandates/mandates';
 import * as vault from '../lib/pii/vault';
 import {rewardsReturnReviews as reviews} from '../core/assistant-actions/rewards-return-review-store';
 import {REWARDS_RETURN_ACTION as action} from '../lib/assistant-actions/rewards-return-contract';
@@ -13,7 +16,7 @@ import {configureRewardFixture,refreshRewardFixtureBudget} from './rewards-gover
 import {setRewardMember} from './rewards-access-fixture';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {db,withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -75,12 +78,65 @@ describe('Encrypted annual Rewards return custody', () => {
   it('loads actual annual choices and own metadata alongside a reader without changing native return custody',async()=>{
     const r=await prepare(),before=await view(),expectedIndex=await reviews.list(admin),expectedChoices=await readRewardsReturnChoices(admin);
     expect(expectedIndex.reviews.map(row=>row.actionId)).toEqual([r.actionId]);expect(expectedChoices.units.map(row=>row.unitId)).toContain(unitId);
+    const legacyChoices=await withTenant(admin,async tx=>{
+      await tx.execute(sql`set transaction read only`);
+      const [row]=await tx.execute<{choices:unknown}>(sql`select app.assistant_rewards_return_choices() as choices`);
+      return row.choices;
+    });
+    expect(expectedChoices).toEqual(legacyChoices);
     await owner.client.begin(async holder=>{
       await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
       expect(await reviews.list(admin)).toEqual(expectedIndex);expect(await readRewardsReturnChoices(admin)).toEqual(expectedChoices);
     });
     expect(await view()).toEqual(before);expect(await custody(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
     expect((await reviews.confirm(admin,confirmation(r))).kind).toBe('completed');expect((await view()).unit.status).toBe('draft');
+  });
+  it('lets two real chooser readers finish while a writer holds Access and AI policy, then observes the committed seat revocation',async()=>{
+    const r=await prepare(),bg=actors.bg!;
+    await enable(bg);
+    const expected=await readRewardsReturnChoices(admin);
+    expect(expected.units.map(row=>row.unitId)).toContain(unitId);
+    await owner.client.begin(async writer=>{
+      await writer`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+      await writer`select pg_advisory_xact_lock(hashtext('ai-control'),hashtext(${b.tenantId}))`;
+      const removed=await writer`delete from public.reward_member where unit_id=${unitId} and user_id=${admin.userId!} and role='gr' returning id`;
+      expect(removed).toHaveLength(1);
+      const [grChoices,bgChoices]=await Promise.all([readRewardsReturnChoices(admin),readRewardsReturnChoices(bg)]);
+      expect(grChoices).toEqual(expected);
+      expect(bgChoices).toEqual({kind:'choices',truncated:false,units:[]});
+    });
+    expect(await readRewardsReturnChoices(admin)).toEqual({kind:'choices',truncated:false,units:[]});
+    await expect(reviews.confirm(admin,confirmation(r))).rejects.toThrow();
+    expect((await view()).unit.status).toBe('gr');
+  });
+  it('requires the exact native snapshot and a current human login, grant and controls',async()=>{
+    await prepare();
+    const query=sql`select app.assistant_rewards_return_presentation_choices_v1()`;
+    const snapshot={readOnlySnapshot:true} as const;
+    const refused=async (read:Promise<unknown>)=>await expect(read.catch(error=>pgSqlState(error))).resolves.toBe('42501');
+    await refused(withTenant(admin,async tx=>{await tx.execute(sql`set transaction read only`);return tx.execute(query);}));
+    await refused(db.transaction(async tx=>{
+      await tx.execute(sql`select set_config('app.tenant_id',${admin.tenantId},true),set_config('app.user_id',${admin.userId!},true),
+        set_config('app.roles','hr_admin',true),set_config('app.grants','[{"role":"hr_admin","companyId":null}]',true)`);
+      return tx.execute(query);
+    },{isolationLevel:'repeatable read',accessMode:'read write'}));
+    await refused(withTenant({...admin,userId:undefined},tx=>tx.execute(query),snapshot));
+    await refused(withTenant({...admin,userId:randomUUID()},tx=>tx.execute(query),snapshot));
+    await refused(withTenant(admin,tx=>tx.execute(sql`select app._assistant_rewards_return_choice_payload_v1()`),snapshot));
+    await setAgentActionPause(admin,action,true);
+    await refused(withTenant(admin,tx=>tx.execute(query),snapshot));
+    await expect(readRewardsReturnChoices(admin)).rejects.toThrow();
+    await setAgentActionPause(admin,action,false);
+    await setAiFeature(admin,'hr_assistant',false);
+    await refused(withTenant(admin,tx=>tx.execute(query),snapshot));
+    await setAiFeature(admin,'hr_assistant',true);
+    await setMandateStopSwitch(admin,true);
+    await refused(withTenant(admin,tx=>tx.execute(query),snapshot));
+    await setMandateStopSwitch(admin,false);
+    expect((await readRewardsReturnChoices(admin)).units.map(row=>row.unitId)).toContain(unitId);
+    await revokeAssistant(admin,{appUserId:admin.userId!});
+    await refused(withTenant(admin,tx=>tx.execute(query),snapshot));
+    await expect(readRewardsReturnChoices(admin)).rejects.toThrow();
   });
   it('uses real encrypted custody and SAME native return, captures every actual participant and replays without another effect',async()=>{const r=await prepare(),before=await view(),pending=await custody(r.actionId);expect(pending).toMatchObject({state:'awaiting_confirmation',bodies:1,rewards_return_snapshot:expect.any(Object)});expect(JSON.stringify(r)).not.toMatch(/Fictional Reward Employee|basicSalary|nativeDecisionDigest|unitStableHash|wrappedDek|ciphertext/);const [sealed]=await owner.db.execute<{ciphertext:string}>(sql`select ciphertext from app.assistant_own_leave_review_content where action_id=${r.actionId}::uuid`);expect(sealed.ciphertext).not.toContain(reason);const done=await reviews.confirm(admin,confirmation(r));if(done.kind!=='completed')throw Error('Expected completed annual return');expect(done.receipt.receipt).toMatchObject({unitId,returnedRevision:r.content.revision,currentRevision:r.content.revision+1,currentStatus:'draft'});const after=await view();expect(after.unit.status).toBe('draft');expect(after.rows).toEqual(before.rows);expect(await custody(r.actionId)).toMatchObject({state:'completed',bodies:0,rewards_return_snapshot:null,rewards_review_person_ids:null,sealed_xid:expect.any(String)});const targets=await owner.db.execute<{kind:string;id:string}>(sql`select t.kind,t.target_id id from app.native_outcome_source_target t join app.native_outcome_source_capture c on c.id=t.capture_id where c.source_id=${r.actionId}::uuid order by t.kind,t.target_id`);expect(targets.length).toBeGreaterThan(0);const actual=await owner.db.execute<{kind:string;id:string}>(sql`select 'employment' kind,e.id from employment e join reward_entry re on re.employment_id=e.id and re.tenant_id=e.tenant_id where re.unit_id=${unitId}::uuid union select 'person' kind,e.person_id id from employment e join reward_entry re on re.employment_id=e.id and re.tenant_id=e.tenant_id where re.unit_id=${unitId}::uuid union select 'person' kind,${admin.personId}::uuid id order by kind,id`);expect(Array.from(targets)).toEqual(Array.from(actual));expect(await reviews.confirm(admin,confirmation(r))).toEqual(done);expect(await reviews.reopen(admin,r.actionId)).toEqual(done);await expect(reviews.discard(admin,retirement(r))).rejects.toThrow();});
   it('admits actual BG seat without an HR title and never grants another stage seat an override',async()=>{await enable(actors.bg!);const revision=await submit(),human={action,contractVersion:1 as const,unitId,revision,reason,confirmWholeAnnualReview:true as const};await expect(reviews.prepare(admin,human)).rejects.toThrow();const r=await reviews.prepare(actors.bg!,human);if(r.kind!=='prepared')throw Error();expect((await reviews.confirm(actors.bg!,confirmation(r.review))).kind).toBe('completed');});
