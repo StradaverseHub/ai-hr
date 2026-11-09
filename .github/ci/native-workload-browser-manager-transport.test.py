@@ -326,6 +326,118 @@ class BusModel:
         return None
 
 
+class TypedBusModel(BusModel):
+    """Same fake bus with a real bounded nested-field model for typed Gets."""
+
+    def __init__(self, test):
+        super().__init__(test)
+        self.properties = {}
+        self.containers = []
+        self.typed = False
+        self.before_reply = None
+        self.after_reply = None
+
+    def _frame(self, member):
+        self.containers.clear()
+        self.typed = member == 'Get' and self.next_body[-1:] != ['InvocationID']
+        if self.typed:
+            return self.properties[tuple(self.next_body)]
+        return super()._frame(member)
+
+    def process(self, bus, unused):
+        if self.typed and self.before_reply:
+            self.before_reply()
+        result = super().process(bus, unused)
+        if self.typed and self.after_reply:
+            self.after_reply()
+        return result
+
+    def _field(self):
+        fields, index = self.containers[-1] if self.containers else (self.frame.fields, self.cursor)
+        return fields[index] if index < len(fields) else None
+
+    def _advance(self):
+        if self.containers:
+            self.containers[-1][1] += 1
+        else:
+            self.cursor += 1
+
+    def message_enter_container(self, message, tag, contents):
+        if not self.typed:
+            return super().message_enter_container(message, tag, contents)
+        field = self._field()
+        if tag == b'v' and not self.containers and field and field[0].encode('ascii') == contents:
+            fields = (field,)
+        elif (tag, contents) == (b'r', b'uo') and len(self.containers) == 1 and field and field[0] == '(uo)':
+            fields = field[1]
+        else:
+            return 0
+        self._advance()
+        self.containers.append([fields, 0])
+        return 1
+
+    def message_read_basic(self, message, type_code, output):
+        if not self.typed:
+            return super().message_read_basic(message, type_code, output)
+        field = self._field()
+        if not field or field[0].encode('ascii') != type_code:
+            return 0
+        self._advance()
+        value = field[1]
+        if type_code in (b'u', b'i', b't'):
+            number_type = {b'u': C.c_uint32, b'i': C.c_int32, b't': C.c_uint64}[type_code]
+            self.test.assertIs(type(output._obj), number_type)
+            set_value(output, number_type, value)
+        else:
+            self.test.assertIn(type_code, (b's', b'o'))
+            set_value(output, C.c_void_p, self._cstring(value))
+        return 1
+
+    def message_exit_container(self, message):
+        if not self.typed:
+            return super().message_exit_container(message)
+        if not self.containers or self._field() is not None:
+            return -errno.EBUSY
+        self.containers.pop()
+        return 1
+
+    def message_at_end(self, message, complete):
+        self.test.assertEqual(self.containers, [])
+        return super().message_at_end(message, complete)
+
+
+SERVICE_IFACE = 'org.freedesktop.systemd1.Service'
+UNIT_IFACE = 'org.freedesktop.systemd1.Unit'
+MAIN_PID = 4321
+MAIN_START = START // 1000 + 10
+MAIN_EXIT = MAIN_START + 1000
+STATE_CHANGE = MAIN_EXIT + 1
+LIVE_FIELDS = (
+    (UNIT_IFACE, 'InvocationID', 'ay', INVOCATION),
+    (SERVICE_IFACE, 'MainPID', 'u', MAIN_PID),
+    (SERVICE_IFACE, 'ExecMainPID', 'u', MAIN_PID),
+    (SERVICE_IFACE, 'ExecMainStartTimestampMonotonic', 't', MAIN_START),
+    (UNIT_IFACE, 'InvocationID', 'ay', INVOCATION),
+)
+TERMINAL_BRACKET = (
+    (UNIT_IFACE, 'InvocationID', 'ay', INVOCATION),
+    (UNIT_IFACE, 'StateChangeTimestampMonotonic', 't', STATE_CHANGE),
+    (UNIT_IFACE, 'Job', '(uo)', (('u', 0), ('o', '/'))),
+)
+TERMINAL_FIELDS = TERMINAL_BRACKET + (
+    (UNIT_IFACE, 'ActiveState', 's', 'inactive'),
+    (UNIT_IFACE, 'SubState', 's', 'dead'),
+    (SERVICE_IFACE, 'MainPID', 'u', 0),
+    (SERVICE_IFACE, 'ControlPID', 'u', 0),
+    (SERVICE_IFACE, 'ExecMainPID', 'u', MAIN_PID),
+    (SERVICE_IFACE, 'ExecMainCode', 'i', 1),
+    (SERVICE_IFACE, 'ExecMainStatus', 'i', 0),
+    (SERVICE_IFACE, 'ExecMainStartTimestampMonotonic', 't', MAIN_START),
+    (SERVICE_IFACE, 'ExecMainExitTimestampMonotonic', 't', MAIN_EXIT),
+    (SERVICE_IFACE, 'Result', 's', 'success'),
+) + TERMINAL_BRACKET
+
+
 class ManagerTransportModels(unittest.TestCase):
     def setUp(self):
         self.now = START
@@ -617,6 +729,154 @@ class ManagerTransportModels(unittest.TestCase):
                 self.assertEqual((self.abi.hello_processed, self.abi.python_closes, self.abi.requests), (0, 0, []))
                 self.assertEqual(self.abi.native_closes, int(settled))
                 self.assertEqual(transport.closed_confirmed, settled)
+
+    def typed_transport(self):
+        self.now = START
+        self.abi = TypedBusModel(self)
+        return self.transport()
+
+    def typed_fields(self, fields):
+        self.abi.properties = {(interface, name): Frame(MANAGER, 'v', ((signature, value),))
+                               for interface, name, signature, value in fields}
+
+    def test_typed_live_and_terminal_wire_stays_on_one_fd_with_exact_deadlines(self):
+        transport = self.typed_transport()
+        with transport as owner:
+            owner.before_launch('driver', 16)
+            self.abi.loaded = True
+            owner.retain('driver', INVOCATION, 32)
+            self.now = START + 20_000
+            rows_start, live_now = len(self.abi.requests), self.now
+            elapsed_ns = 2500
+            native_call = self.abi.call_async
+
+            def elapsed_call(bus, *args):
+                self.assertIs(bus, transport._bus)
+                self.assertEqual((self.abi.native_fd, self.connected.fileno(), self.abi.probes), (FD, -1, 0))
+                self.assertEqual(self.abi.release, ['slot', 'message'] * len(self.abi.requests))
+                result = native_call(bus, *args)
+                self.now += elapsed_ns
+                return result
+
+            self.abi.call_async = elapsed_call
+            self.typed_fields(LIVE_FIELDS)
+            main = owner.bind_live_main('driver', INVOCATION, MAIN_PID, START + 9999, 32)
+            self.assertEqual((main.pid, main.start_us, main.invocation), (MAIN_PID, MAIN_START, INVOCATION))
+            self.now = (STATE_CHANGE + 2) * 1000
+            terminal_now = self.now
+            self.typed_fields(TERMINAL_FIELDS)
+            terminal = owner.observe_terminal('driver', INVOCATION, 75)
+            self.assertTrue(terminal.normal)
+            self.assertEqual((terminal.main, terminal.code, terminal.status, terminal.exit_us,
+                              terminal.state_change_us), (main, 1, 0, MAIN_EXIT, STATE_CHANGE))
+            broker = (BROKER, '/org/freedesktop/DBus', BROKER, 'GetNameOwner', ('org.freedesktop.systemd1',))
+            expected = []
+            for fields, frontier, now in ((LIVE_FIELDS, 32, live_now), (TERMINAL_FIELDS, 75, terminal_now)):
+                for index, (interface, name, _signature, _value) in enumerate(fields):
+                    get = (MANAGER, UNIT, BROKER + '.Properties', 'Get', (interface, name))
+                    expected.extend((*row, (START + frontier * SECOND - now - (index * 3 + offset) * elapsed_ns) // 1000)
+                                    for offset, row in enumerate((broker, get, broker)))
+            self.assertEqual(self.abi.requests[rows_start:], expected)
+            self.assertEqual(len(expected), 63)
+            self.assertEqual(self.abi.release, ['slot', 'message'] * len(self.abi.requests))
+            self.assertEqual(owner.phase('driver'), 'held')
+        self.assertTrue(transport.closed_confirmed)
+        self.assertEqual((self.abi.native_fd_closes, self.abi.python_closes), (1, 0))
+
+    def test_transport_reads_literal_signed_unsigned_and_nested_wire_values(self):
+        transport = self.typed_transport()
+        with transport as owner:
+            rows = (
+                (R._Operation.MAIN_PID, SERVICE_IFACE, 'MainPID', 'u', (1 << 32) - 1, (1 << 32) - 1),
+                (R._Operation.MAIN_CODE, SERVICE_IFACE, 'ExecMainCode', 'i', -(1 << 31), -(1 << 31)),
+                (R._Operation.MAIN_EXIT_US, SERVICE_IFACE, 'ExecMainExitTimestampMonotonic',
+                 't', (1 << 64) - 1, (1 << 64) - 1),
+                (R._Operation.RESULT, SERVICE_IFACE, 'Result', 's', 'x' * 64, 'x' * 64),
+                (R._Operation.JOB, UNIT_IFACE, 'Job', '(uo)', (('u', 19), ('o', '/job/19')), (19, '/job/19')),
+                (R._Operation.INVOCATION, UNIT_IFACE, 'InvocationID', 'ay', INVOCATION, INVOCATION),
+            )
+            for operation, interface, name, signature, raw, expected in rows:
+                with self.subTest(operation=operation):
+                    self.typed_fields(((interface, name, signature, raw),))
+                    request = owner._request(operation, 'driver')
+                    observed = transport._exchange(request, START + 32 * SECOND)
+                    self.assertEqual((observed.sender, observed.kind, observed.signature, observed.body,
+                                      observed.error_name), (MANAGER, 'return', 'v', (signature, expected), None))
+                    self.assertEqual(self.members()[-3:], ['GetNameOwner', 'Get', 'GetNameOwner'])
+                    self.assertEqual(self.abi.requests[-2][4], (interface, name))
+            self.assertEqual(self.abi.release, ['slot', 'message'] * len(self.abi.requests))
+        self.assertTrue(transport.closed_confirmed)
+
+    def test_typed_property_forgery_and_third_overrun_refuse_before_any_method(self):
+        transport = self.typed_transport()
+        with transport as owner:
+            valid = owner._request(R._Operation.MAIN_PID, 'driver')
+            before = list(self.abi.requests)
+            for forged in (valid._replace(destination=':1.8'), valid._replace(path='/foreign'),
+                           valid._replace(interface=SERVICE_IFACE), valid._replace(member='GetAll'),
+                           valid._replace(signature='s'), valid._replace(body=(SERVICE_IFACE, 'Environment')),
+                           valid._replace(body=(UNIT_IFACE, 'MainPID')),
+                           valid._replace(body=(SERVICE_IFACE, 'ControlPID')),
+                           valid._replace(operation=R._Operation.RESULT)):
+                with self.subTest(forged=forged), self.assertRaisesRegex(T.Refused, '^manager-transport-operation$'):
+                    transport._exchange(forged, START + 32 * SECOND)
+            third = owner._request(R._Operation.JOB, 'third')
+            with self.assertRaisesRegex(T.Refused, '^manager-transport-frontier$'):
+                transport._exchange(third, START + 75 * SECOND)
+            self.assertEqual(self.abi.requests, before)
+        self.assertTrue(transport.closed_confirmed)
+
+    def test_typed_wire_refuses_malformed_variants_trailing_fields_and_wrong_identity(self):
+        good = Frame(MANAGER, 'v', (('(uo)', (('u', 0), ('o', '/'))),))
+        for field, frame in (
+            ('Job', good._replace(sender=':1.5')),
+            ('Job', good._replace(serial=1234)),
+            ('Job', good._replace(signature='o')),
+            ('Job', good._replace(fields=(('u', 0),))),
+            ('Job', good._replace(fields=(('(uo)', (('u', 0),)),))),
+            ('Job', good._replace(fields=(('(uo)', (('u', 0), ('s', '/'))),))),
+            ('Job', good._replace(fields=(('(uo)', (('u', 0), ('o', '/'), ('s', 'surplus'))),))),
+            ('Job', good._replace(fields=good.fields + (('u', 7),))),
+            ('Job', Frame(MANAGER, 's', ('missing',), 'org.freedesktop.systemd1.NoSuchUnit')),
+            ('Result', Frame(MANAGER, 'v', (('s', 'x' * 65),))),
+        ):
+            with self.subTest(field=field, frame=frame):
+                transport = self.typed_transport()
+                with transport as owner:
+                    operation, interface = ((R._Operation.JOB, UNIT_IFACE) if field == 'Job'
+                                            else (R._Operation.RESULT, SERVICE_IFACE))
+                    self.abi.properties[(interface, field)] = frame
+                    request = owner._request(operation, 'driver')
+                    before = len(self.abi.requests)
+                    with self.assertRaisesRegex(T.Refused, '^manager-transport-reply-refused$'):
+                        transport._exchange(request, START + 32 * SECOND)
+                    with self.assertRaisesRegex(T.Refused, '^manager-transport-unavailable$'):
+                        transport._exchange(request, START + 32 * SECOND)
+                    self.assertEqual(self.members()[before:], ['GetNameOwner', 'Get'])
+                    self.assertEqual(self.abi.release[-4:], ['slot', 'message'] * 2)
+                self.assertTrue(transport.closed_confirmed)
+
+    def test_typed_wire_refuses_late_reply_or_manager_drift_without_retry(self):
+        for late in (True, False):
+            with self.subTest(late=late):
+                transport = self.typed_transport()
+                with transport as owner:
+                    self.typed_fields(((SERVICE_IFACE, 'MainPID', 'u', MAIN_PID),))
+                    if late:
+                        self.abi.before_reply = lambda: setattr(self, 'now', START + 32 * SECOND)
+                    else:
+                        self.abi.after_reply = lambda: setattr(self.abi, 'manager_name', ':1.9')
+                    request = owner._request(R._Operation.MAIN_PID, 'driver')
+                    before = len(self.abi.requests)
+                    reason = 'deadline' if late else 'owner-changed'
+                    with self.assertRaisesRegex(T.Refused, '^manager-transport-' + reason + '$'):
+                        transport._exchange(request, START + 32 * SECOND)
+                    with self.assertRaisesRegex(T.Refused, '^manager-transport-unavailable$'):
+                        transport._exchange(request, START + 32 * SECOND)
+                    expected = ['GetNameOwner', 'Get'] if late else ['GetNameOwner', 'Get', 'GetNameOwner']
+                    self.assertEqual(self.members()[before:], expected)
+                    self.assertEqual(self.abi.release, ['slot', 'message'] * len(self.abi.requests))
+                self.assertTrue(transport.closed_confirmed)
 
 
 if __name__ == '__main__':

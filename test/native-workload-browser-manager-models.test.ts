@@ -29,7 +29,7 @@ const suites=[
   'test_typed_terminal_refuses_mixed_identity_jobs_raw_shape_or_nonterminal_state',
   'test_uncertain_unref_preserves_attempt_and_does_not_admit_collection',
  ]},
- {name:'runs the 14 exact manager transport source models',stem:'transport',count:14,owner:'ManagerTransportModels',methods:[
+ {name:'runs the 19 exact manager transport source models',stem:'transport',count:19,owner:'ManagerTransportModels',methods:[
   'test_async_hello_and_same_socket_close_around_fixed_reference_course',
   'test_changed_fd_refuses_native_close_without_touching_other_file',
   'test_changed_pid1_or_manager_name_never_admits_a_role_call',
@@ -44,6 +44,11 @@ const suites=[
   'test_refuses_wrong_socket_peer_and_manager_credentials_before_role_calls',
   'test_set_fd_failure_distinguishes_uninstalled_and_native_owned_fd',
   'test_start_failure_distinguishes_retained_closed_and_unproved_native_fd',
+  'test_transport_reads_literal_signed_unsigned_and_nested_wire_values',
+  'test_typed_live_and_terminal_wire_stays_on_one_fd_with_exact_deadlines',
+  'test_typed_property_forgery_and_third_overrun_refuse_before_any_method',
+  'test_typed_wire_refuses_late_reply_or_manager_drift_without_retry',
+  'test_typed_wire_refuses_malformed_variants_trailing_fields_and_wrong_identity',
  ]},
 ] as const;
 const sources=[

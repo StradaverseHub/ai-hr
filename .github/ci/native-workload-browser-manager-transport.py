@@ -16,6 +16,7 @@ import struct
 import sys
 from threading import get_ident
 from time import monotonic_ns
+from types import MappingProxyType
 from typing import NamedTuple
 
 
@@ -25,6 +26,7 @@ _DBUS_PATH = '/org/freedesktop/DBus'
 _SYSTEMD = 'org.freedesktop.systemd1'
 _SYSTEMD_PATH = '/org/freedesktop/systemd1'
 _UNIT = _SYSTEMD + '.Unit'
+_SERVICE = _SYSTEMD + '.Service'
 _ABSENT = _SYSTEMD + '.NoSuchUnit'
 _MAX_REMAINING_NS = 75_000_000_000
 _P = C.c_void_p
@@ -33,6 +35,24 @@ _I = C.c_int
 _U64 = C.c_uint64
 _STR = C.c_char_p
 _HANDLER = C.CFUNCTYPE(_I, _P, _P, _P)
+
+# Independently reconstruct the exact allowed wire request, including the
+# expected variant shape. The reference cannot supply a property or signature.
+_ROLE_PROPERTIES = MappingProxyType({
+    'MAIN_PID': (_SERVICE, 'MainPID', 'u'),
+    'CONTROL_PID': (_SERVICE, 'ControlPID', 'u'),
+    'EXEC_MAIN_PID': (_SERVICE, 'ExecMainPID', 'u'),
+    'MAIN_START_US': (_SERVICE, 'ExecMainStartTimestampMonotonic', 't'),
+    'MAIN_EXIT_US': (_SERVICE, 'ExecMainExitTimestampMonotonic', 't'),
+    'MAIN_CODE': (_SERVICE, 'ExecMainCode', 'i'),
+    'MAIN_STATUS': (_SERVICE, 'ExecMainStatus', 'i'),
+    'RESULT': (_SERVICE, 'Result', 's'),
+    'ACTIVE_STATE': (_UNIT, 'ActiveState', 's'),
+    'SUB_STATE': (_UNIT, 'SubState', 's'),
+    'STATE_CHANGE_US': (_UNIT, 'StateChangeTimestampMonotonic', 't'),
+    'JOB': (_UNIT, 'Job', '(uo)'),
+})
+_PROPERTY_INTEGERS = MappingProxyType({'u': C.c_uint32, 'i': C.c_int32, 't': _U64})
 
 
 class Refused(RuntimeError):
@@ -226,7 +246,29 @@ class ManagerTransport:
         _need(self._abi.message_read_basic(message, type_code, C.byref(value)) > 0, 'manager-transport-field')
         return _text(value.value, limit)
 
-    def _decode(self, message, sender, result_type, allow_absent):
+    def _read_property_integer(self, message, signature):
+        value = _PROPERTY_INTEGERS[signature]()
+        _need(self._abi.message_read_basic(message, signature.encode('ascii'), C.byref(value)) > 0,
+              'manager-transport-property-field')
+        return value.value
+
+    def _read_property_variant(self, message, signature):
+        abi = self._abi
+        _need(abi.message_enter_container(message, b'v', signature.encode('ascii')) > 0,
+              'manager-transport-property-variant')
+        if signature == '(uo)':
+            _need(abi.message_enter_container(message, b'r', b'uo') > 0, 'manager-transport-property-job')
+            value = (self._read_property_integer(message, 'u'), self._read_text(message, b'o', 96))
+            _success(abi.message_exit_container(message), 'manager-transport-property-job')
+        elif signature == 's':
+            value = self._read_text(message, b's', 64)
+        else:
+            value = self._read_property_integer(message, signature)
+        # Stock exit_container refuses unread members of structs and variants.
+        _success(abi.message_exit_container(message), 'manager-transport-property-variant')
+        return signature, value
+
+    def _decode(self, message, sender, result_type, allow_absent, variant):
         abi = self._abi
         type_code = C.c_uint8()
         _success(abi.message_get_type(message, C.byref(type_code)), 'manager-transport-message-type')
@@ -247,6 +289,8 @@ class ManagerTransport:
             value = C.c_uint32()
             _need(abi.message_read_basic(message, b'u', C.byref(value)) > 0, 'manager-transport-field')
             body = (value.value,)
+        elif signature == 'v' and variant is not None:
+            body = self._read_property_variant(message, variant)
         elif signature == 'v':
             pointer, size = _P(), C.c_size_t()
             _need(abi.message_enter_container(message, b'v', b'ay') > 0
@@ -257,7 +301,7 @@ class ManagerTransport:
         _need(abi.message_at_end(message, 1) == 1, 'manager-transport-trailing-field')
         return _Response(sender, 'return', signature, body, None)
 
-    def _call(self, spec, sender, result_type, deadline, *, allow_absent=False):
+    def _call(self, spec, sender, result_type, deadline, *, allow_absent=False, variant=None):
         abi, message, slot, cookie = self._abi, _P(), _P(), _U64()
         response, invalid = None, False
 
@@ -270,7 +314,7 @@ class ManagerTransport:
                 _need(reply and response is None and not invalid and cookie.value > 0
                       and abi.message_get_reply_cookie(reply, C.byref(reply_cookie)) >= 0
                       and reply_cookie.value == cookie.value, 'manager-transport-reply-cookie')
-                response = self._decode(reply, sender, result_type, allow_absent)
+                response = self._decode(reply, sender, result_type, allow_absent, variant)
                 _left(deadline)
             except BaseException:
                 # No exception or native message crosses the ctypes callback boundary.
@@ -326,6 +370,7 @@ class ManagerTransport:
         op = self._reference._Operation
         _need(type(request) is self._reference._Request and type(request.operation) is op,
               'manager-transport-operation')
+        property_slot = _ROLE_PROPERTIES.get(request.operation.name)
         for role in ('driver', 'browser', 'third'):
             unit = f'aihrbc-{role}-{self._run}.service'
             path = f'{_SYSTEMD_PATH}/unit/aihrbc_2d{role}_2d{self._run}_2eservice'
@@ -335,11 +380,15 @@ class ManagerTransport:
                 spec = (path, _DBUS + '.Properties', 'Get', 'ss', (_UNIT, 'InvocationID'))
             elif request.operation is op.REF:
                 spec = (path, _UNIT, 'Ref', '', ())
+            elif property_slot is not None:
+                interface, name, _ = property_slot
+                spec = (path, _DBUS + '.Properties', 'Get', 'ss', (interface, name))
             else:
                 _need(request.operation is op.UNREF, 'manager-transport-operation')
                 spec = (path, _UNIT, 'Unref', '', ())
             if request[1:] == (self._binding.manager, *spec):
-                return _Message(self._binding.manager, spec[0], spec[1], spec[2], spec[4])
+                variant = property_slot[2] if property_slot is not None else None
+                return _Message(self._binding.manager, spec[0], spec[1], spec[2], spec[4]), variant, role
         raise Refused('manager-transport-operation')
 
     def _exchange(self, request, deadline):
@@ -348,14 +397,17 @@ class ManagerTransport:
         _need(type(deadline) is int and any(deadline == self._started + second * self._reference._SECOND
                                           for second in self._reference._FRONTIERS),
               'manager-transport-frontier')
-        spec = self._role_message(request)
+        spec, variant, role = self._role_message(request)
+        if variant is not None and role == 'third':
+            _need(deadline <= self._started + 42_000_000_000, 'manager-transport-frontier')
         op = self._reference._Operation
         self._busy = True
         try:
             self._prove_binding(deadline)
-            result_type = {op.GET_UNIT: 'o', op.INVOCATION: 'v', op.REF: '', op.UNREF: ''}[request.operation]
+            result_type = ('v' if variant is not None else
+                           {op.GET_UNIT: 'o', op.INVOCATION: 'v', op.REF: '', op.UNREF: ''}[request.operation])
             reply = self._call(spec, self._binding.manager, result_type, deadline,
-                               allow_absent=request.operation is op.GET_UNIT)
+                               allow_absent=request.operation is op.GET_UNIT, variant=variant)
             self._prove_binding(deadline)
             return self._reference.ManagerReply(self._binding, *reply)
         except BaseException:
