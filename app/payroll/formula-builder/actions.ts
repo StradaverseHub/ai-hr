@@ -2,7 +2,7 @@
 import {revalidatePath} from 'next/cache';
 import {getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
-import {registerPayFormulaPersonnelField,getPayFormula,savePayFormula,testPayFormula,samplePayFormula,setPayFormulaActive,deletePayFormula,saveFormulaAccumulationGroup} from '@/packs/payroll/service';
+import {registerPayFormulaPersonnelField,getPayFormula,savePayFormula,testPayFormula,samplePayFormula,deletePayFormula,saveFormulaAccumulationGroup} from '@/packs/payroll/service';
 import {PAY_FORMULA_SAMPLE_VARIABLES,payFormulaSampleFields,type PayFormulaSampleValues} from '@/lib/pay-formula-sample';
 import {PayFormulaError,type PayFormulaContext,type PayFormulaMethod} from '@/lib/pay-formula-model';
 import {PayFormulaError as FormulaLanguageError} from '@/lib/pay-formula-language';
@@ -27,7 +27,7 @@ export async function sampleFormulaAction(input:{source:string;values:PayFormula
  return execute(async()=>{const values:PayFormulaSampleValues={};for(const name of PAY_FORMULA_SAMPLE_VARIABLES){const value=input?.values?.[name];if(typeof value==='string')values[name]=value.slice(0,40);}const source=String(input?.source??'');values.fields={};for(const field of payFormulaSampleFields(source)){const raw=input?.values?.fields?.[field.key];if(typeof raw==='string')values.fields[field.key]=raw.slice(0,501);}return samplePayFormula(await getSession(),{source,values});});
 }
 export async function formulaStateAction(input:{id:string;revisionId?:string;testId?:string;active:boolean}){
- return execute(async()=>{const ctx=await getSession();await setPayFormulaActive(ctx,{id:input.id,revisionId:input.revisionId,testId:input.testId,active:input.active});revalidatePath(PAGE);revalidatePath(PAGE+'/'+input.id);revalidatePath(PAY_ITEMS,'layout');return await getPayFormula(ctx,input.id);});
+ return execute(async()=>{await getSession();throw new PayFormulaError('Saved formulas are available immediately. Formula status changes are no longer supported.');});
 }
 export async function deleteFormulaAction(input:{id:string;reason:string}){
  return execute(async()=>{await deletePayFormula(await getSession(),{id:input.id,reason:input.reason});revalidatePath(PAGE);revalidatePath(PAY_ITEMS,'layout');return {id:input.id};});

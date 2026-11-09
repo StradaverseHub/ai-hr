@@ -58,12 +58,14 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3004,when:1793330003304,tag:'3704_attendance_formula_results'},
  {idx:3005,when:1793330003305,tag:'3705_attendance_formula_payroll_source'},
  {idx:3006,when:1793330003306,tag:'3706_attendance_formula_overtime_binding'},
+ {idx:3200,when:1793330003500,tag:'3900_individual_transaction_calculation_method'},
  ...PERFORMANCE_MIGRATION_IDENTITIES.map(({idx,when,tag})=>({idx,when,tag})),
  {idx:3436,when:1793330003736,tag:'3500_ai_centre_architecture_compatibility'},
  {idx:3437,when:1793330003737,tag:'3501_ai_centre_mandate_write_order'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '3900_individual_transaction_calculation_method':'f6f4a31109f66bc5c9038315e249829c2655b870db98a9cbb1ede9cfdab958d4',
  '3400_system_label_company_scope':'58067b76694141c5fc824c66acc24fda05c273dd7d3d85654418e0f52a01b69e',
  '3706_attendance_formula_overtime_binding':'4a46111e9d07cdf8a2167e430ee6c79c78e9c049c79c6c13544ffc68ad39d153',
  '3705_attendance_formula_payroll_source':'50263e2c7628a10a894c4f2ea7e9f912faa7d5b83331ea5b8e7d542cff8e31cc',

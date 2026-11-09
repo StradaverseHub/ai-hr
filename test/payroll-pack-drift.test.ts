@@ -62,6 +62,8 @@ const BOUNDARIES = [
   'core/payroll-policy',
   'core/payroll-policy-config',
   'core/payroll-individual-txn',
+  // Pack-local entry pricing is private too; outside callers still use the service facade.
+  'packs/payroll/individual-calculation',
   'core/payroll-run-group',
   'core/payroll-view',
   'core/payroll-readiness',
@@ -157,11 +159,14 @@ describe('ADR-0080 D9: payroll pack import ratchet (rung 7 — the money path)',
       writeFileSync(join(fixture,'core/payroll-overtime-pattern.ts'),"import {policy} from './payroll-policy'; export const formula=policy;\n");
       writeFileSync(join(fixture,'core/pay-formula-personnel.ts'),"import {policy} from './payroll-policy'; export const personnel=policy;\n");
       writeFileSync(join(fixture,'core/payroll-policy.ts'),'export const policy=1;\n');
+      writeFileSync(join(fixture,'packs/payroll/individual-calculation.ts'),"import {policy} from '../../core/payroll-policy'; export const entry=policy;\n");
       writeFileSync(join(fixture,'packs/payroll/service.ts'),"export * from '../../core/payroll-overtime-pattern';\n");
       const outside=join(fixture,'app/outside.ts');writeFileSync(outside,"import {formula} from '@/core/payroll-overtime-pattern';\n");
       const scan=()=>[...new Set(BOUNDARIES.flatMap(boundary=>runImportRatchet({root:fixture,scan:['app','core','packs'],boundary,allowedImporters:isPackImporter,allowlist:[]}).violations))].sort();
       expect(scan()).toEqual(['app/outside.ts']);
       writeFileSync(outside,"import {personnel} from '@/core/pay-formula-personnel';\n");
+      expect(scan()).toEqual(['app/outside.ts']);
+      writeFileSync(outside,"import {entry} from '@/packs/payroll/individual-calculation';\n");
       expect(scan()).toEqual(['app/outside.ts']);
       // The outsider must consume the facade; it is never added to debt or the pack implementation set.
       writeFileSync(outside,"import {formula} from '@/packs/payroll/service';\n");expect(scan()).toEqual([]);

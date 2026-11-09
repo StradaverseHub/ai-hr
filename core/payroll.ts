@@ -5340,7 +5340,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 kind: t.compKind ?? t.kind,
                 amount: amt,
                 formulaInput:t.amount,
-                rounding: t.compRounding ?? 'none',
+                rounding: t.calculationMethod!=null?'none':t.compRounding ?? 'none',
                 epf: t.compEpf ?? false,
                 socso: t.compSocso ?? false,
                 pcb: t.compPcb ?? false,
@@ -5354,16 +5354,16 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 // ORP must not thereby have a single keyed one-off raise a daily rate for one month.
                 orpOvertime: false,
                 orpUnpaidLeave: false,
-                prorates: postEmploymentIds.has(t.employmentId)?false:(t.compProrates ?? false),
+                prorates: t.calculationMethod!=null||postEmploymentIds.has(t.employmentId)?false:(t.compProrates ?? false),
                 prorateOverride: null,
-                rule: t.compRule?.kind==='formula_builder'?t.compRule:null, // keyed amount is authoritative — never re-derive via a catalog rule
+                rule: t.compRule?.kind==='formula_builder'&&(t.calculationMethod==null)?t.compRule:null, // keyed amount is authoritative — never re-derive via a catalog rule
                 // r168 verification — a BATCH row. Forcing rule:null here is what let it satisfy the
                 // fixed_allowances aggregate; this says plainly that it is a one-off, not a recurring
                 // catalog allowance, so the aggregate skips it.
                 oneOff: true,
                 // 61bf109d — a null rule short-circuits to `amount`, so the rank is inert here; 0 keeps the
                 // one-off row in the first resolution group, exactly where an unranked row belonged before.
-                resolutionOrder:t.compRule?.kind==='formula_builder'?(t.compResolutionOrder??0):0,
+                resolutionOrder:t.compRule?.kind==='formula_builder'&&(t.calculationMethod==null)?(t.compResolutionOrder??0):0,
                 // LHDN PCB 2026 classification rides the catalog row (feedback 09b554e9).
                 epfBonus2012: t.compEpfBonus2012 ?? false,
                 pcbRemunerationType: t.compPcbRemunerationType ?? null,

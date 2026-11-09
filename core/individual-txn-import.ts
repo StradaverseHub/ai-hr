@@ -25,6 +25,13 @@ async function scope(ctx:SessionContext,ids:string[],tx?:Tx){
 const safePreview=(p:TxnImportPreview):TxnImportPreview=>({...p,rows:p.rows.map(row=>row.reason==='unexpected'?{...row,detail:undefined}:row)});
 const digest=(s:string)=>createHash('sha256').update(s).digest('hex');
 const snapshot=(row:typeof payrollIndividualTxn.$inferSelect)=>JSON.parse(JSON.stringify(row)) as Record<string,unknown>;
+function matchesImportedSnapshot(row:typeof payrollIndividualTxn.$inferSelect,recorded:Record<string,unknown>|undefined){
+ const current=snapshot(row);
+ // Receipts written before explicit input methods have no calculationMethod key. NULL retains
+ // that exact legacy interpretation; an explicit method must still invalidate reversal.
+ if(recorded&&!Object.hasOwn(recorded,'calculationMethod')&&current.calculationMethod===null)delete current.calculationMethod;
+ return isDeepStrictEqual(current,recorded);
+}
 type IndividualAnalysis=Extract<Awaited<ReturnType<typeof analyzeTxnImport>>,{kind:'individual'}>;
 type ResolvedRow=IndividualAnalysis['resolved'] extends Map<number,infer Row>?Row:never;
 function canonicalBinding(r:ResolvedRow):PayrollTxnImportBinding{return {
@@ -147,7 +154,7 @@ export async function revertIndividualImport(ctx:SessionContext,p:{id:string;sco
   if(rows.length!==ids.length||rows.some(row=>row.batchId&&!batchIds.includes(row.batchId)))throw new IndividualImportError('importRowsChanged');
   for(const row of rows){
    const original=imported.find(o=>o.transactionId===row.id)!;
-   if(!row.companyId||!p.scopeIds.includes(row.companyId)||!isDeepStrictEqual(snapshot(row),original.snapshot)||!isDeepStrictEqual(await eventIds(tx,row.id),original.eventIds))throw new IndividualImportError('importRowsChanged');
+   if(!row.companyId||!p.scopeIds.includes(row.companyId)||!matchesImportedSnapshot(row,original.snapshot)||!isDeepStrictEqual(await eventIds(tx,row.id),original.eventIds))throw new IndividualImportError('importRowsChanged');
    if(row.batchId){const b=await loadWritableBatch(tx,row.batchId);if(b.status==='processed'&&!p.confirmProcessed)throw new IndividualImportError('confirmProcessedRevert');}
   }
   for(const row of rows)await deleteIndividualTxnTx(tx,ctx,{id:row.id});
