@@ -7433,7 +7433,7 @@ export const attendanceAllowancePolicy = pgTable(
     policyType: text('policy_type').notNull().default('earning'),
     version: integer('version').notNull().default(1),
     // NULL retains the original monthly criteria/scope semantics until explicitly edited.
-    rules: jsonb('rules').$type<import('../lib/attendance-allowance-rules').AllowanceRules>(),
+    rules: jsonb('rules').$type<import('../lib/attendance-allowance-rule-types').AllowanceRules>(),
     criteria: jsonb('criteria').$type<AttendanceAllowanceCriteria>().notNull().default({}),
     scope: jsonb('scope').$type<AttendanceAllowanceScope>().notNull().default({}),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -9168,7 +9168,7 @@ export const feedbackRequest = pgTable(
     blockedReason: text('blocked_reason'),
     buildRef: text('build_ref'), // PR / branch link once a build agent runs (F4)
     /** Operator-attested release evidence for this exact feedback cycle and build. */
-    release: jsonb('release').$type<import('../lib/feedback-release').FeedbackRelease | null>(),
+    release: jsonb('release').$type<import('../lib/feedback-release-types').FeedbackRelease | null>(),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -10928,7 +10928,7 @@ export const assessmentInsight = pgTable('performance_assessment_insight', {
 // Reviewer-owned summaries of submitted evidence; never a rating or decision authority.
 export const assessmentSummary = pgTable('performance_assessment_summary', {
  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),contextId:uuid('context_id').notNull(),visibilityKey:text('visibility_key'),kind:text('kind').notNull(),
- fingerprint:text('fingerprint').notNull(),source:text('source').notNull(),data:jsonb('data').$type<import('../packs/performance/onehr/competency-insight-model').CompetencyInsight|import('../packs/performance/onehr/idp-fit-model').IdpFitInsight|import('../packs/performance/onehr/potential-insight-model').PotentialInsight|import('../packs/performance/onehr/talent-insight-model').TalentInsight>().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+ fingerprint:text('fingerprint').notNull(),source:text('source').notNull(),data:jsonb('data').$type<import('../packs/performance/onehr/competency-insight-model').CompetencyInsight|import('../packs/performance/onehr/idp-fit-model').IdpFitInsight|import('../packs/performance/onehr/potential-insight-model').PotentialInsight|import('../packs/performance/onehr/talent-insight-types').TalentInsight>().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('performance_assessment_summary_actor_uq').on(t.reviewId,t.actorUserId,t.kind,t.contextId)]);
 // Authoritative PM overall remarks. The legacy review column is a guarded derived projection.
 export const assessmentReviewerRemark = pgTable('performance_assessment_reviewer_remark', {
