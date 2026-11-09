@@ -102,6 +102,16 @@ const suites=[
     'test_unsettled_thread_does_not_authorize_closing_either_held_listener',
    ]],
   ]},
+ {name:'runs the 6 exact synthetic browser launch plan source models',file:'.github/ci/native-workload-browser-launch-plan.test.py',count:6,classes:[
+   ['SyntheticLaunchPlanModels',[
+    'test_browser_has_fixed_server_probe_and_chromium_view_without_driver_files',
+    'test_driver_has_only_fixed_synthetic_credential_and_playwright_view',
+    'test_driver_refuses_wrong_path_or_decoy_and_other_roles_refuse_credentials',
+    'test_non_synthetic_scope_malformed_identity_and_sibling_stage_refuse',
+    'test_only_browser_accepts_one_canonical_spki',
+    'test_third_has_only_fixed_python_probe_and_no_writable_role_view',
+   ]],
+  ]},
 ] as const;
 
 it.each(suites)('$name',({file,count,classes})=>{
