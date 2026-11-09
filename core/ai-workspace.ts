@@ -8,7 +8,7 @@ import { resolveEntitlementsTx } from './entitlements';
 import {assistantReadableModules} from './assistant-readable-modules';
 import { toolsFor } from './assistant-tools';
 import { workspaceTasksFor } from '../lib/ai/workspace-tasks';
-import { withAssistantReadTx } from './assistant-read-session';
+import { withAssistantPresentationReadTx } from './assistant-read-session';
 import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
 import { agentReviewWorkspaceTx,specialistReviewWorkspaceTx,reopenOwnModulePlanTx,issueOwnModulePlanPermitTx,type OwnModulePlanView } from './module-agent-releases';
 import {loadGovernedWorkspaceJobTx} from './workspace-module-jobs';
@@ -59,8 +59,8 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     // Review R6: a replayed proposal is re-adjudicated against the caller's CURRENT registry-derived
     // catalogue, read in this request; only a selected exchange can replay one. null = could not be checked
     // right now: the card shows a neutral retry, never "out of date" and never a preparable card.
-    const proposalCaller=includeHistory&&selectedExchangeId?await assistantProposalCallerTx(tx,fresh).catch(()=>null):null;
-    const history = includeHistory?await withAssistantReadTx(fresh, tx, async session => {
+    const proposalCaller=includeHistory&&selectedExchangeId?await assistantProposalCallerTx(tx,fresh,'replay').catch(()=>null):null;
+    const history = includeHistory?await withAssistantPresentationReadTx(fresh, tx, async session => {
       const replay = workspaceGroundedAnswers(fresh, session,tx,proposalCaller);
       const history = [];
       for (const row of rows) {

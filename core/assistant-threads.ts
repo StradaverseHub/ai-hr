@@ -10,7 +10,7 @@ import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {assistantConversationScopeDigest,resumeOwnAssistantConversation} from './assistant-conversation-context';
 import {openAssistantAnswerDisclosure} from '../lib/ai/assistant-disclosure';
 import {decryptSecret,encryptSecret,isSecretStorable} from '../lib/ai/crypto';
-import {withAssistantReadTx} from './assistant-read-session';
+import {withAssistantPresentationReadTx} from './assistant-read-session';
 import {workspaceGroundedAnswers} from './workspace-grounded-answers';
 import {assistantProposalCallerTx} from './assistant-action-catalogue';
 export const ASSISTANT_THREAD_LIMITS=Object.freeze({chats:20,scan:100,turns:50});
@@ -108,8 +108,8 @@ export async function loadOwnAssistantChat(supplied:SessionContext,options:{exch
    rows.reverse();
    // Saved-chat replay carries the same fresh catalogue fence as the selected workspace exchange.
    // An unavailable catalogue yields neutral retry controls, never an authorized old proposal.
-   const proposalCaller=await assistantProposalCallerTx(tx,fresh).catch(()=>null);
-   const turns=await withAssistantReadTx(fresh,tx,async session=>{const replay=workspaceGroundedAnswers(fresh,session,tx,proposalCaller);const turns=[];
+   const proposalCaller=await assistantProposalCallerTx(tx,fresh,'replay').catch(()=>null);
+   const turns=await withAssistantPresentationReadTx(fresh,tx,async session=>{const replay=workspaceGroundedAnswers(fresh,session,tx,proposalCaller);const turns=[];
     for(const row of rows){const grounded=row.answer?await replay({tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:row.id,question:row.question,answer:row.answer},row.receipt):null;
      turns.push({id:row.id,question:row.question,answer:null,hasAnswer:Boolean(row.answer),grounded,answerVisibility:row.answer?((grounded?.mode==='grounded'||grounded?.conversation)?'current' as const:'unavailable' as const):'none' as const,stop:row.stop,hitTurnCap:row.hitTurnCap,askedAt:row.askedAt,toolCalls:(grounded?.tools??[]).map(name=>({name})),error:row.error});
     }return turns;});
