@@ -196,10 +196,10 @@ docker() {
 source .github/ci/postgres.sh reset
 `;
 const developmentDocker=()=>developmentDockerContext(privateDir);
-function dockerQuery(args,maximum=4096){
+function dockerQuery(args,maximum=4096,timeout=10000){
  const context=developmentDocker();
  return execFileSync(DEVELOPMENT_DOCKER_COMMAND,[...context.args,...args],
-  {env:context.env,encoding:'utf8',timeout:10000,killSignal:'SIGKILL',maxBuffer:maximum}).trim();
+  {env:context.env,encoding:'utf8',timeout,killSignal:'SIGKILL',maxBuffer:maximum}).trim();
 }
 function dockerContainerIds(filter){
  const raw=dockerQuery(['container','ls','--all','--quiet','--no-trunc','--filter',filter]);
@@ -249,17 +249,32 @@ function assertDevelopmentLockLogDriver(id){
  assert(config.Type==='json-file'&&config.Config.mode==='blocking'&&config.Config['max-size']==='16m'
   &&config.Config['max-file']==='1','Development PostgreSQL Docker log delivery refused');
 }
-function markDevelopmentLockLog(phase){
+const developmentDatabaseBackends="select exists(select from pg_stat_activity where datname=current_database() and backend_type='client backend' and pid<>pg_backend_pid())";
+function developmentPostgresControl(held,sql){
+ return dockerQuery(['exec',held.id,'psql','-XAtq','--no-password','-v','ON_ERROR_STOP=1',
+  '-h','/var/run/postgresql','-p','5433','-U','postgres','-d','ai_hr_dev','-c',sql],4096,2000);
+}
+async function markDevelopmentLockLog(phase){
  assert(phase==='begin'||phase==='end','Invalid development PostgreSQL lock log marker');
  const held=developmentPostgresBirth,current=captureDevelopmentPostgres(held.id);
  assert.deepEqual(current,held,'Development PostgreSQL log marker birth changed');
  assertDevelopmentLockLogDriver(held.id);
+ if(phase==='end'){
+  const deadline=performance.now()+5000;
+  while(true){
+   const active=developmentPostgresControl(held,developmentDatabaseBackends);
+   if(active==='f')break;
+   assert(active==='t'&&performance.now()<deadline,'Development PostgreSQL application backends did not drain');
+   await pause(50);
+  }
+ }
+ const drainCheck=phase==='end'?" IF ("+developmentDatabaseBackends
+  +") THEN RAISE EXCEPTION 'Development PostgreSQL application backend still active'; END IF;":"";
  const sql="BEGIN READ ONLY; DO $aihr$ BEGIN IF current_setting('log_lock_waits') <> 'on' OR current_setting('deadlock_timeout') <> '100ms'"
   +" OR current_setting('log_destination') <> 'stderr' OR current_setting('logging_collector') <> 'off'"
   +" THEN RAISE EXCEPTION 'Development PostgreSQL lock logging settings refused'; END IF;"
-  +" RAISE LOG 'AIHR_LOCK_WINDOW_V1 "+lockLogNonce+" "+phase+"'; END; $aihr$; ROLLBACK;";
- assert.equal(dockerQuery(['exec',held.id,'psql','-XAtq','--no-password','-v','ON_ERROR_STOP=1',
-  '-h','/var/run/postgresql','-p','5433','-U','postgres','-d','ai_hr_dev','-c',sql]),'');
+  +drainCheck+" RAISE LOG 'AIHR_LOCK_WINDOW_V1 "+lockLogNonce+" "+phase+"'; END; $aihr$; ROLLBACK;";
+ assert.equal(developmentPostgresControl(held,sql),'');
 }
 function confirmDevelopmentPostgresAbsent(held){
  const containerAbsent=dockerContainerIds(`id=${held.id}`).length===0&&namedContainer().length===0;
@@ -304,7 +319,7 @@ try{
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(privateDir,'key.pem'),'-out',join(privateDir,'cert.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost']);
  mkdirSync(join(out,'cpu'),{recursive:true});
  report.applicationRuntimeFrom=new Date().toISOString();save();
- if(measureDevelopment)markDevelopmentLockLog('begin');
+ if(measureDevelopment)await markDevelopmentLockLog('begin');
  for(const [index,port]of ports.entries()){
   const fd=openSync(join(privateDir,'server-'+index+'.log'),'w',0o600);appFds.push(fd);
   const app=spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'--import',resolve('scripts/performance/profile-exit.mjs'),'--import',resolve('scripts/performance/transaction-timing.mjs'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',PERF_TX_TIMING_PATH:join(out,'app-transactions-'+index+'.json'),AIHR_DB_POOL_MAX:String(poolPerWorker),AIHR_APP_WORKERS:String(workers),AIHR_DB_TOTAL_CONNECTIONS:String(totalApplicationPool),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]});
@@ -417,7 +432,8 @@ finally{
   try{
    if(measureDevelopment){
     assert(namedContainer()[0]===developmentPostgresBirth.id,'Owned development PostgreSQL identity changed');
-    if(report.applicationRuntimeFrom)markDevelopmentLockLog('end');
+    if(report.applicationRuntimeFrom)try{await markDevelopmentLockLog('end');}
+    catch{report.postgresLockWindowEndUnavailable=true;}
    }
    else{
     const owner=execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',container],{encoding:'utf8',timeout:10000}).trim();
@@ -432,15 +448,17 @@ finally{
     {encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024,...(logContext?{env:logContext.env,killSignal:'SIGKILL'}:{})});
    assert.equal(logs.status,0);
    const log=measureDevelopment?(logs.stderr??''):(logs.stdout??'')+'\n'+(logs.stderr??'');
-   const window=measureDevelopment?developmentPostgresLockWindow(log,lockLogNonce):null;
+   const window=measureDevelopment&&!report.postgresLockWindowEndUnavailable?developmentPostgresLockWindow(log,lockLogNonce):null;
    postgresRuntimeFailures=window?.failures??postgresLockFailures(log);
    if(measureDevelopment){
     if(window)assert.deepEqual(captureDevelopmentPostgres(developmentPostgresBirth.id),developmentPostgresBirth,
      'Development PostgreSQL lock log capture birth changed');
     report.postgresWaitLogCoverage=window?{kind:'development-heavyweight-lock-log',thresholdMs:window.thresholdMs,
-     retainedFailures:window.failures.length}:null;
+     retainedFailures:window.failures.length,databaseBackendsSettled:true}:null;
    }
-   writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:'Owned disposable database during application runtime only; bounded lock topology and routine frames; SQL/values/raw logs excluded',runtimeFrom:report.applicationRuntimeFrom??null,failures:postgresRuntimeFailures},null,2));
+   const scope=measureDevelopment&&!window?'Unqualified retained disposable database stderr; setup may be included':
+    'Owned disposable database during application runtime only';
+   writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:scope+'; bounded lock topology and routine frames; SQL/values/raw logs excluded',runtimeFrom:report.applicationRuntimeFrom??null,failures:postgresRuntimeFailures},null,2));
   }catch{report.postgresLockFailureSummaryUnavailable=true;}
  }
  if(measurement&&developmentReset.admitted){
