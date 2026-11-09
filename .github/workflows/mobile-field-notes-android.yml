@@ -77,6 +77,15 @@ jobs:
             cd mobile
             npm exec --offline -- expo prebuild --platform android --no-install
             cd android
+            wrapper=gradle/wrapper/gradle-wrapper.properties
+            grep -Fxq 'distributionUrl=https\://services.gradle.org/distributions/gradle-9.4.1-bin.zip' "$wrapper"
+            distribution="$RUNNER_TEMP/gradle-9.4.1-bin.zip"
+            curl --fail --location --silent --show-error --max-time 180 --retry 3 \
+              'https://downloads.gradle.org/distributions/gradle-9.4.1-bin.zip' --output "$distribution"
+            checksum=2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb
+            printf '%s  %s\n' "$checksum" "$distribution" | sha256sum --check
+            sed -i -e '/^distributionUrl=/d' -e '/^distributionSha256Sum=/d' "$wrapper"
+            printf '\ndistributionUrl=file\:%s\ndistributionSha256Sum=%s\n' "$distribution" "$checksum" >> "$wrapper"
             ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m' -x lint -x test > "$RUNNER_TEMP/onehr-android-build.log" 2>&1 || {
               tail -140 "$RUNNER_TEMP/onehr-android-build.log"
               exit 1
