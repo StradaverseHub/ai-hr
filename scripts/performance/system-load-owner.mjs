@@ -196,8 +196,19 @@ let preflightSampler,loadedSampler,preflightWindow,loadedWindow,preflightComplet
 const slowPilotTimers=new Set();
 const samplingRequired=suite!=='claims-heavy';
 function recordLockSampling(){
- report.lockSampling={strict:samplingRequired,preflight:lockSampleEvidence(preflightSampler?.samples??[],preflightWindow),
+ report.lockSampling={strict:samplingRequired,scope:'Sampled application heavyweight lock waits, including advisory waits. Unobserved waits are outside this evidence.',
+  preflight:lockSampleEvidence(preflightSampler?.samples??[],preflightWindow),
   loaded:lockSampleEvidence(loadedSampler?.samples??[],loadedWindow)};
+}
+function startPreflightLockSampling(lockScope){
+ preflightWindow={startMs:performance.now()};
+ preflightSampler=sampleDatabaseLocks(lockScope,'preflight',250);
+}
+async function finishPreflightLockSampling(){
+ preflightWindow.endMs??=performance.now();
+ await preflightSampler.stop();
+ recordLockSampling();
+ if(samplingRequired)assert(report.lockSampling.preflight.pass,'Preflight lock samples were incomplete or observed blocking');
 }
 function stopDiagnosticAdmission(){
  for(const timer of slowPilotTimers)clearTimeout(timer);
@@ -257,10 +268,11 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    ])].filter(pid=>Number.isSafeInteger(pid)&&pid>0).slice(0,20);
    // Native holder state and normalized query IDs only; never capture statement parameters.
    const holders=pids.length?await db.unsafe('select pid,state,wait_event_type,wait_event,query_id::text,extract(epoch from(clock_timestamp()-xact_start))as transaction_age_seconds from pg_stat_activity where datname=current_database()and pid in('+pids.map((_,i)=>'$'+(i+1)).join(',')+')',pids):[];
-   if(phase!=='preflight'||locks.length)waits.push({at:Date.now(),phase,rows,appConnections,blockingSessions:holders,
+   const blockingAppSessions=Math.max(appConnections.waitingOnLock,appConnections.sampledAdvisoryWaiters);
+   if(phase!=='preflight'||locks.length||blockingAppSessions)waits.push({at:Date.now(),phase,rows,appConnections,blockingSessions:holders,
      grantedAccessHolders:locks.filter(row=>row.granted).map(row=>({pid:row.pid,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)})),
      advisoryWaiters:queuedLocks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
-   samples.push({state:'complete',startedMs,completedMs:performance.now(),locks:locks.length,
+   samples.push({state:'complete',startedMs,completedMs:performance.now(),locks:locks.length,blockingAppSessions,
     holdersRequested:pids.length,holdersObserved:holders.length});
    coreComplete=true;
    // The top-statement summary can omit rare root holders. Resolve only sampled root IDs,
@@ -283,6 +295,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
 async function main(){
  save();await db`select pg_stat_statements_reset()`;
  const lockScope=await prepareDatabaseLockScope();
+ if(samplingRequired)startPreflightLockSampling(lockScope);
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
  // Bound independent preflight roles to four lanes; every role still visits its full route pool.
  const pilotResults=await runLanes([employee,manager,hr,group],async user=>{
@@ -614,8 +627,7 @@ async function main(){
    (report.browserLanguageSwitches??=[]).push({role:user.role,path,phase,locale,startedWith,usableWith:loadState?.(),elapsedMs:performance.now()-start,translatedHeading:true,usable:true,draftRetained:!!draft,draftReadyWaitMs});save();
   }
  }
- preflightWindow={startMs:performance.now()};
- preflightSampler=sampleDatabaseLocks(lockScope,'preflight',250);
+ if(!samplingRequired)startPreflightLockSampling(lockScope);
  // These six independent read-only contexts run concurrently, matching the loaded browser bound.
  // Route/role assertions, per-request deadlines and the overall driver deadline stay unchanged.
  await lanes.run(()=>settleDriverLanes([employee,manager,hr,group,fixture.users[254],fixture.users[251]],async user=>{
@@ -625,10 +637,7 @@ async function main(){
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});
   });
  },failures));
- preflightWindow.endMs=performance.now();
- await preflightSampler.stop();
- recordLockSampling();
- if(samplingRequired)assert(report.lockSampling.preflight.pass,'Early preflight lock samples are missing or failed');
+ if(!samplingRequired)await finishPreflightLockSampling();
  requireCleanDriver();
  // Additional concrete pages have explicit rendered checks, separate from HTTP route counts.
  await lanes.run(()=>settleDriverLanes([employee,manager,hr,group],async user=>{
@@ -962,12 +971,13 @@ async function main(){
   assert.equal(report.pageBusyResponses.length,0,'preflight page Busy responses');
   assert(baselineCapture,'Reviewed navigation baseline capture is missing');
   writeNavigationCaptureBundle(out,baselineCapture);
+  await finishPreflightLockSampling();
   preflightComplete=true;return;
  }
  const navigationPlan=suite==='whole-system'?planSteadyRouteCoverage({pools:routePools,users:fixture.users,thinkTimeMs,steadyHoldMs}):null;
  report.navigationCapacityPlan=navigationPlan; // Planning is not measured acceptance.
  requireCleanDriver();
- await preflightSampler.stop();
+ await finishPreflightLockSampling();
  await db`select pg_stat_statements_reset()`;
  loadedSampler=sampleDatabaseLocks(lockScope,'loaded',1000);
  const resourceCpuBefore=resourceCpu(),appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
@@ -1189,7 +1199,7 @@ async function main(){
  }
  await verifyAudit();save();
  assert(report.preflightHomeReady,'all four preflight sign-ins must load their dashboards');
- if(samplingRequired)assert(report.lockSampling.loaded.pass,'Steady lock samples are missing or failed');
+ if(samplingRequired)assert(report.lockSampling.loaded.pass,'Load lock samples were incomplete or observed blocking');
  if(rejectionResults?.[0].status==='rejected')throw rejectionResults[0].reason;
  if(suite==='whole-system'){
   const movement=report.browserMovementJourneys?.find(row=>row.phase==='loaded');

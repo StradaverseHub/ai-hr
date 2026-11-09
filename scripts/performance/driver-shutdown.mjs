@@ -99,8 +99,13 @@ export function lockSampleEvidence(samples,window){
  const completed=samples.filter(sample=>sample.state==='complete');
  const qualified=window?completed.filter(sample=>sample.startedMs>=window.startMs&&sample.completedMs<=window.endMs):[];
  const failures=samples.length-completed.length;
+ const observed=completed.filter(sample=>Number.isSafeInteger(sample.blockingAppSessions)&&sample.blockingAppSessions>=0);
+ const invalidBlockingCounts=completed.length-observed.length;
+ const blockingSamples=observed.filter(sample=>sample.blockingAppSessions>0).length;
+ const coveragePass=qualified.length>0&&failures===0&&invalidBlockingCounts===0;
  return {window:window??null,completed:completed.length,qualified:qualified.length,failures,
-  validEmpty:qualified.filter(sample=>sample.locks===0).length,pass:qualified.length>0&&failures===0,samples};
+  validEmpty:qualified.filter(sample=>sample.locks===0&&sample.blockingAppSessions===0).length,
+  invalidBlockingCounts,blockingSamples,coveragePass,pass:coveragePass&&blockingSamples===0,samples};
 }
 
 export function closedChromiumEnvironment(source,runnerHome){

@@ -129,14 +129,24 @@ it('keeps admitted slow-pilot and progress work owned through independent teardo
 
 it('distinguishes a complete empty sample, a late drain, missing work and an actual failure',()=>{
  const window={startMs:100,endMs:200};
- const empty={state:'complete',startedMs:101,completedMs:199,locks:0};
- const late={state:'complete',startedMs:150,completedMs:201,locks:0};
- const outside={state:'complete',startedMs:99,completedMs:175,locks:0};
+ const empty={state:'complete',startedMs:101,completedMs:199,locks:0,blockingAppSessions:0};
+ const late={state:'complete',startedMs:150,completedMs:201,locks:0,blockingAppSessions:0};
+ const outside={state:'complete',startedMs:99,completedMs:175,locks:0,blockingAppSessions:0};
  expect(lockSampleEvidence([empty,late,outside],window)).toMatchObject({completed:3,qualified:1,failures:0,validEmpty:1,pass:true});
  expect(lockSampleEvidence([late],window)).toMatchObject({completed:1,qualified:0,validEmpty:0,pass:false});
  expect(lockSampleEvidence([],window)).toMatchObject({completed:0,qualified:0,failures:0,pass:false});
  expect(lockSampleEvidence([empty,{state:'failed',startedMs:130,completedMs:150,code:'57014'}],window))
   .toMatchObject({completed:1,qualified:1,failures:1,pass:false});
+});
+
+it('requires valid lock counts and rejects an observed blocking session even without advisory rows',()=>{
+ const window={startMs:100,endMs:200};
+ const clean={state:'complete',startedMs:110,completedMs:120,locks:1,blockingAppSessions:0};
+ const blocked={...clean,startedMs:190,completedMs:210,locks:0,blockingAppSessions:1};
+ expect(lockSampleEvidence([clean],window)).toMatchObject({coveragePass:true,blockingSamples:0,pass:true});
+ expect(lockSampleEvidence([clean,blocked],window)).toMatchObject({coveragePass:true,blockingSamples:1,validEmpty:0,pass:false});
+ expect(lockSampleEvidence([{...clean,blockingAppSessions:undefined}],window))
+  .toMatchObject({coveragePass:false,invalidBlockingCounts:1,pass:false});
 });
 
 it('retains actual startup and cleanup outcomes and keeps raw reasons private',async()=>{

@@ -2689,5 +2689,187 @@
       "nativeBrowserEnvironmentOrCleanupResult": null,
       "releaseQualification": false
     }
+  },
+  "lockCoverage": {
+    "kind": "workload-heavyweight-lock-acceptance-source-v1",
+    "parent": "f52edc22a7db96631749839d6ca1414d8663ee79",
+    "branch": "codex/performance-complete-lock-acceptance-20261109",
+    "owners": {
+      "docs/adr/2026-11-09-performance-driver-lifecycle.md": {
+        "parentGitBlob": "ebe81013ea5cebba74304ffd5b44de361a127c4e",
+        "parentBytes": 4467,
+        "parentSha256": "b40fa60e5d1b3db6d4201bf5bf2de284d29dca4f1975d991d5f3acb2618e0b89",
+        "currentGitBlob": "8d87f5bd71c47b6cc6f2a9252f157ac16a92df6c",
+        "currentBytes": 5007,
+        "currentSha256": "da62dde4e12b003663613841fd0753ce2e1deef7d82058a9bd4f5b863c341e10",
+        "inverse": [
+          {
+            "parentStart": 3209,
+            "parentEnd": 3209,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentStart": 3209,
+            "currentEnd": 3749,
+            "currentSliceSha256": "fd580a00aea39b9524c24051e289343cdfea7970f61f1d939d3de8172f06a4b4"
+          }
+        ],
+        "wholeParentReplayVerified": true
+      },
+      "scripts/performance/driver-shutdown.mjs": {
+        "parentGitBlob": "9a364c150b23a8388e2503774086b0facb5e0e80",
+        "parentBytes": 12738,
+        "parentSha256": "e153d8fdef17e0f4953cf97de49b114da593586d53108d5a9321b4607c93ff5c",
+        "currentGitBlob": "4ea27826b9edd6fb14002e485e9eccfb8ebd2fb7",
+        "currentBytes": 13177,
+        "currentSha256": "68af4b010ac89638d071f68e93c9f06784ead2fc67fd289756b7471215b7ea99",
+        "inverse": [
+          {
+            "parentStart": 4002,
+            "parentEnd": 4002,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentStart": 4002,
+            "currentEnd": 4354,
+            "currentSliceSha256": "dd3ad19d0c1da98604c1af2514747aba52711027b936957638c50b5302a5bef5"
+          },
+          {
+            "parentStart": 4095,
+            "parentEnd": 4206,
+            "parentSliceSha256": "ddd4bae16efa06e10ad34528cfb65204f2384687a6fe90189db1f51fc3c4d1d1",
+            "currentStart": 4447,
+            "currentEnd": 4645,
+            "currentSliceSha256": "ae716dcae83dffb6faeff469989494943f35f887ac48d3493c805a904a486821"
+          }
+        ],
+        "wholeParentReplayVerified": true
+      },
+      "scripts/performance/system-load-owner.mjs": {
+        "parentGitBlob": "421a4f44d61103e33a62f91ba92c6a87407685e8",
+        "parentBytes": 105827,
+        "parentSha256": "bff7cf058ac0eb9e91b5b5a734e53edf298329d22bc48fa056ceaa2659c18945",
+        "currentGitBlob": "93d41a0ba72f505e4175379e85b243941ed957e2",
+        "currentBytes": 106447,
+        "currentSha256": "097e895e625c37c9712873f57a4b12a9979904c724c1d359418320d3a501f6d2",
+        "inverse": [
+          {
+            "parentStart": 18908,
+            "parentEnd": 19031,
+            "parentSliceSha256": "4801d1e60eb635dd380a1ac718d37e8b9b3ebd4e55d3246b008b8049dcdf4d32",
+            "currentStart": 18908,
+            "currentEnd": 19156,
+            "currentSliceSha256": "8b2a653b7946ad7f5d06047683aa3bd0309251f4cf6d71d80c0dda48ef9e9846"
+          },
+          {
+            "parentStart": 19102,
+            "parentEnd": 19102,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentStart": 19227,
+            "currentEnd": 19663,
+            "currentSliceSha256": "07d4789bd5424cf333deb90cb048c18c29b8510adc52437718aa835963f9be92"
+          },
+          {
+            "parentStart": 23618,
+            "parentEnd": 23736,
+            "parentSliceSha256": "a5f54227d4a7b972fd70c7d7f00c670eba3e5563ab864c2ceb63f68c52a0e0d4",
+            "currentStart": 24179,
+            "currentEnd": 24425,
+            "currentSliceSha256": "f1ece2ab2666840c7cf1aa44349fce4f3bfadbd2b76b0ede3144adc734c36e7d"
+          },
+          {
+            "parentStart": 24086,
+            "parentEnd": 24180,
+            "parentSliceSha256": "95fc16592ea36a0bf5319dec5734fd8e76d120a5ed3299fbc7bfe367e5395731",
+            "currentStart": 24775,
+            "currentEnd": 24889,
+            "currentSliceSha256": "ca3e16457cc2e1425e6f58eba26a423e1c2e08f527d7cca5d7fd5a6b4ce85ded"
+          },
+          {
+            "parentStart": 25886,
+            "parentEnd": 25886,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentStart": 26595,
+            "currentEnd": 26655,
+            "currentSliceSha256": "64779272319b6e4d5daf26fce5d565db63bc82e68660412c367ecaf3e381249a"
+          },
+          {
+            "parentStart": 50107,
+            "parentEnd": 50219,
+            "parentSliceSha256": "9d7441df5631138b17cdb36566122bcddf5d23e5cbcbf2279b069695fe4fcad6",
+            "currentStart": 50876,
+            "currentEnd": 50937,
+            "currentSliceSha256": "d7b17558f5f8ca9d747ad78ac6026c882fd5c6f63b642293f440c9bd4597bf63"
+          },
+          {
+            "parentStart": 51024,
+            "parentEnd": 51239,
+            "parentSliceSha256": "89953784a1d1c990b9f4cf7a3ed8c8031f83e5f0aba5918368d76bfe6f0bc134",
+            "currentStart": 51742,
+            "currentEnd": 51801,
+            "currentSliceSha256": "f6fece9a0df9fa552736dd4b8a947305723b2b5d29690a5579ef72c18baed2af"
+          },
+          {
+            "parentStart": 79237,
+            "parentEnd": 79237,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentStart": 79799,
+            "currentEnd": 79838,
+            "currentSliceSha256": "554a5dba5b9964249b50fa646bd5487388b343ec21fcffcd88ebb3f3c786e94e"
+          },
+          {
+            "parentStart": 79523,
+            "parentEnd": 79555,
+            "parentSliceSha256": "2272706592d27ab6adfa9e9d79807f1b2cfd9687cd9da8fc9992ec0c931aa3aa",
+            "currentStart": 80124,
+            "currentEnd": 80162,
+            "currentSliceSha256": "00cde9a5ebc3b7ae565c2c15a26e1c3400f0e921f1aac1beaef60801eb00a4b1"
+          },
+          {
+            "parentStart": 97543,
+            "parentEnd": 97649,
+            "parentSliceSha256": "d943d674d6e21e25004075b72aa23ce1297083c8349336f786e6a2e26e294baf",
+            "currentStart": 98150,
+            "currentEnd": 98269,
+            "currentSliceSha256": "d50ee35518d1069f086f8b60f90f8f8f866d6a324ae269c69e615a87f1c4fbc7"
+          }
+        ],
+        "wholeParentReplayVerified": true
+      },
+      "test/performance-driver-lifecycle.test.ts": {
+        "parentGitBlob": "84b84dadf182ffc5dc5b2293b2a4f789a309c61f",
+        "parentBytes": 21497,
+        "parentSha256": "65d64bd4250ac1dd781f52beaa7b49a93f5bdc687777bdbc61f8449e9b49bfff",
+        "currentGitBlob": "db7027274459eb619b547779a36cf94d1c1961b5",
+        "currentBytes": 22285,
+        "currentSha256": "ff57e7d956749e5c259eef1900fc36f05bf7dc488dd23db8d4efd53fe2302493",
+        "inverse": [
+          {
+            "parentStart": 7126,
+            "parentEnd": 7339,
+            "parentSliceSha256": "c8159d7e31b2d847a425f11861b88c15fe0bc83c79081898420bc8117f8ff201",
+            "currentStart": 7126,
+            "currentEnd": 7405,
+            "currentSliceSha256": "61d5904f0381a3932ac35263dbdd862c9fb170cf6f440a42e1b4e938893ce839"
+          },
+          {
+            "parentStart": 7855,
+            "parentEnd": 7855,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentStart": 7921,
+            "currentEnd": 8643,
+            "currentSliceSha256": "964bd7f2ec519bb520c64fe0c19091226ff0cfe753a89438f48574b0d7463713"
+          }
+        ],
+        "wholeParentReplayVerified": true
+      }
+    },
+    "windows": {
+      "workflowPreflightAndWholeSystem": "First HTTP probe through final baseline work",
+      "historicalClaimsHeavy": "Original early browser window",
+      "loaded": "Original sampler lifetime, including samples drained after steady window"
+    },
+    "criterion": "A complete sample in the planned window, no failed or invalid samples and zero observed blocked application sessions across the entire sampler lifetime. Observations do not cover all transient waits.",
+    "verificationState": {
+      "nativeSampleOrWorkloadExecuted": false,
+      "hostedControlsExecuted": false,
+      "releaseEligible": false
+    }
   }
 }
