@@ -62,11 +62,11 @@ export function validateCanonicalAdmission({env, phase, uid, platform, source, w
     && packet.prerequisiteSha256 === prerequisiteSha256, 'Owned source or prerequisite receipt changed');
   const host = packet.host;
   assert(host && Object.keys(host).sort().join() === [
-    'containerId','containerName','image','networkPolicy','nftTable','postmasterEpoch','postgresSystemId','uid',
+    'containerId','containerName','image','networkPolicy','netNamespace','postmasterEpoch','postgresSystemId','uid',
   ].sort().join(), 'Closed PostgreSQL and network owner required');
   assert(digest(host.containerId) && host.containerName === 'aihr-ci-'+run+'-1-db-1' && host.image === IMAGE
-    && host.uid === uid && host.networkPolicy === 'ipv4-loopback-postgres-only-v1'
-    && typeof host.nftTable === 'string' && new RegExp('^aihrup_'+run+'_[a-f0-9]{16}$').test(host.nftTable)
+    && host.uid === uid && host.networkPolicy === 'docker-none-loopback-v1'
+    && typeof host.netNamespace === 'string' && /^net:\[[1-9][0-9]{0,19}\]$/.test(host.netNamespace)
     && id(host.postgresSystemId) && typeof host.postmasterEpoch === 'string' && /^[1-9][0-9]{9}\.[0-9]{1,6}$/.test(host.postmasterEpoch),
   'PostgreSQL container, birth, UID or egress custody differs');
   assert(prerequisite && prerequisite.kind === 'PERSONNEL_DRAFT_DISCARD_PREMIGRATION_ROLE_PREREQUISITES'

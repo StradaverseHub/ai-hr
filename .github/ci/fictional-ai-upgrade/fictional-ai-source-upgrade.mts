@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SessionContext } from '../db/client';
@@ -22,7 +22,7 @@ type Login = { userId: string; personId: string };
 type Before = {
   baseline: string; candidate: string; script: string; database: string; base: Base;
   controller: string; runId: string; containerId: string; postgresSystemId: string; postmasterEpoch: string;
-  executionUid: number; nftTable: string;
+  executionUid: number; netNamespace: string;
   prerequisiteSha256: string;
   author: Login; reviewer: Login; secondReviewer: Login; promoter: Login; outsider: Login; employmentId: string;
   candidateId: string; promotionId: string; jobId: string; feedbackId: string; nonce: string;
@@ -52,6 +52,7 @@ assert(git('rev-parse','HEAD') === expectedCommit && git('status','--porcelain',
   && realpathSync(process.cwd()) === git('rev-parse','--show-toplevel'), 'Exact clean source checkout required');
 const script = hash(readFileSync(fileURLToPath(import.meta.url)));
 const custody = readCanonicalAdmission({env,phase,uid:process.getuid?.(),platform:process.platform,source:expectedCommit,witnessSha256:script});
+assert.equal(readlinkSync('/proc/self/ns/net'),custody.host.netNamespace);
 const beforePath = join(privateDirectory,'before.json'), afterPath = join(privateDirectory,'after.json');
 const keyPath = join(privateDirectory,'receipt-key');
 assert(!existsSync(afterPath) && (phase === 'prepare' ? !existsSync(beforePath) && !existsSync(keyPath) : existsSync(beforePath)), 'Preserve existing or incomplete evidence');
@@ -98,7 +99,7 @@ async function main() {
       assert.equal(before.controller,custody.controller); assert.equal(before.runId,custody.runId);
       assert.equal(before.containerId,custody.host.containerId); assert.equal(before.postgresSystemId,postgresSystemId);
       assert.equal(before.postmasterEpoch,postmasterEpoch);
-      assert.equal(before.executionUid,custody.host.uid); assert.equal(before.nftTable,custody.host.nftTable);
+      assert.equal(before.executionUid,custody.host.uid); assert.equal(before.netNamespace,custody.host.netNamespace);
       assert(before.prerequisiteSha256 !== custody.prerequisiteSha256,'A fresh candidate prerequisite receipt is required');
       assert.equal(before.ledger.length,723);
       assert.deepEqual(ledger.slice(0,723),before.ledger);
@@ -179,7 +180,7 @@ async function main() {
       assert.equal(rows.ai_agent_rollback.length,0);
       const saved: Before = {baseline:BASE,candidate:CANDIDATE,script,database:db,base,
         controller:custody.controller,runId:custody.runId,containerId:custody.host.containerId,postgresSystemId,postmasterEpoch,
-        executionUid:custody.host.uid,nftTable:custody.host.nftTable,prerequisiteSha256:custody.prerequisiteSha256,
+        executionUid:custody.host.uid,netNamespace:custody.host.netNamespace,prerequisiteSha256:custody.prerequisiteSha256,
         author:authorActor.login,reviewer:reviewerActor.login,secondReviewer:secondActor.login,promoter:promoterActor.login,
         outsider:outsiderActor.login,employmentId:authorActor.employmentId,
         candidateId,promotionId,jobId:job.jobId,feedbackId,nonce,facts:(await facts(authorCtx,authorActor.employmentId)).digest,rows,ledger};

@@ -16,7 +16,7 @@ function fixture(phase) {
   };
   const witnessSha256='1'.repeat(64), admissionSha256='2'.repeat(64), prerequisiteSha256=(phase === 'prepare' ? '3' : '4').repeat(64);
   const host={containerId:'b'.repeat(64),containerName:'aihr-ci-'+run+'-1-db-1',image:IMAGE,
-    networkPolicy:'ipv4-loopback-postgres-only-v1',nftTable:'aihrup_'+run+'_0123456789abcdef',
+    networkPolicy:'docker-none-loopback-v1',netNamespace:'net:[4026532456]',
     postmasterEpoch:'1794300000.123456',postgresSystemId:'7559430318764467066',uid:47001};
   const packet={kind:'AIHR_FICTIONAL_AI_UPGRADE_DISPOSABLE_CUSTODY',version:1,releaseAuthorized:false,phase,source,
     baseline:BASE,candidate:CANDIDATE,controller:control,runId:run,attempt:1,witnessSha256,admissionSha256,prerequisiteSha256,host};
@@ -40,6 +40,7 @@ for (const [name,mutate] of [
   ['wrong role source bytes',x=>{x.prerequisite.wrapperSha256='d'.repeat(64);}],
   ['wrong witness bytes',x=>{x.packet.witnessSha256='f'.repeat(64);}],
   ['unfenced network',x=>{x.packet.host.networkPolicy='internet';}],
+  ['unsealed network namespace',x=>{x.packet.host.netNamespace='net:[0]';}],
   ['wrong process owner',x=>{x.packet.host.uid=47002;}],
   ['wrong container birth marker',x=>{x.packet.host.postmasterEpoch='unknown';}],
   ['unknown custody payload',x=>{x.packet.extra=true;}],

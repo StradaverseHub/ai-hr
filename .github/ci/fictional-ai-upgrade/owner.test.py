@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import tempfile
 import unittest
+from unittest.mock import patch
 
 loader = importlib.util.spec_from_file_location('fictional_owner',Path(__file__).with_name('owner.py'))
 owner = importlib.util.module_from_spec(loader)
@@ -63,11 +64,44 @@ class Admission(unittest.TestCase):
         step = workflow.read_text().split('id: fictional-ai-upgrade\n',1)[1]
         step = step.split('      - name: Publish closed fictional Assistant upgrade evidence',1)[0]
         entries = re.findall(r'^\s+keep=(\S+)\s*$',step,re.M)
-        self.assertEqual(len(entries),1)
-        keys = entries[0].split(',')
-        self.assertTrue(all(re.fullmatch(r'[A-Z_][A-Z0-9_]*',key) for key in keys))
-        self.assertCountEqual(keys,required)
-        self.assertRegex(step,r'(?m)^\s+sudo --preserve-env="\$keep" /usr/bin/python3 ')
+        self.assertEqual(len(entries),2)
+        for entry in entries:
+            keys = entry.split(',')
+            self.assertTrue(all(re.fullmatch(r'[A-Z_][A-Z0-9_]*',key) for key in keys))
+            self.assertCountEqual(keys,required)
+        self.assertEqual(len(re.findall(r'(?m)^\s+sudo --preserve-env="\$keep" /usr/bin/python3 ',step)),2)
+
+    def test_database_start_uses_closed_network_and_empty_copy_canary(self):
+        argv = owner.start_argv('fictional','nonce')
+        self.assertEqual(argv[argv.index('--network')+1],'none')
+        self.assertNotIn('--publish',argv)
+        self.assertNotIn('--privileged',argv)
+        self.assertIn('--pull=never',argv)
+        canary = owner.copy_program_canary()
+        self.assertTrue(canary.startswith(b'COPY (SELECT NULL::text WHERE FALSE) TO PROGRAM'))
+        self.assertIn(b'/dev/tcp/127.0.0.1/5433',canary)
+        self.assertIn(b'/dev/tcp/192.0.2.1/443',canary)
+        self.assertIn(b'/dev/tcp/2001:db8::1/443',canary)
+
+    def test_missing_container_still_requires_absent_host_listener(self):
+        with patch.object(owner,'owned_container',return_value=None), patch.object(owner,'docker') as docker:
+            with patch.object(owner,'listener',return_value=b'LISTEN 127.0.0.1:5433') as listener:
+                with self.assertRaises(ValueError):
+                    owner.stop_owned('fixture','nonce')
+                listener.assert_called_once()
+            with patch.object(owner,'listener',return_value=b'') as listener:
+                owner.stop_owned('fixture','nonce')
+                listener.assert_called_once()
+            docker.assert_not_called()
+
+    def test_reused_session_pid_refuses_without_signalling(self):
+        custody = self.event.parent
+        (custody/'active-session.json').write_text(json.dumps({'kind':'session-admitted','pid':42,'start':20}))
+        with patch.object(owner,'root_file',side_effect=Path.read_bytes), patch.object(owner,'current_process',
+                return_value={'pid':42,'session':42,'start':25,'state':'S'}), patch.object(owner.os,'pidfd_open',create=True) as pidfd:
+            with self.assertRaises(ValueError):
+                owner.settle_interrupted(custody)
+            pidfd.assert_not_called()
 
     def test_mixed_course_or_source_refuses(self):
         for key,wrong in [('model_eval','paid-model'),('run_build','true'),

@@ -324,11 +324,23 @@ jobs:
           for checkout in "$GITHUB_WORKSPACE/baseline" "$GITHUB_WORKSPACE/source"; do
             pnpm --dir "$checkout" install --frozen-lockfile --ignore-scripts --store-dir "$RUNNER_TEMP/aihr-fictional-ai-upgrade-pnpm-store"
           done
+          docker pull postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
           AIHR_CI_CAPACITY_PROFILE=bounded-suite-ready bash ../automation/.github/ci/prepare-runner.sh
           keep=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,RUNNER_OS,RUNNER_ARCH,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ATTEMPT,GITHUB_RUN_ID,GITHUB_REF,GITHUB_WORKFLOW_REF,GITHUB_SHA,GITHUB_WORKFLOW_SHA,GITHUB_EVENT_PATH,GITHUB_WORKSPACE,RUNNER_TEMP,AIHR_CI_CONTROL_HEAD,AIHR_CI_HEAD,AIHR_AI_UPGRADE_STAGING_ENABLED,AIHR_AI_UPGRADE_PRODUCTION_ENABLED
           sudo --preserve-env="$keep" /usr/bin/python3 -I -B "$owner" "$(command -v node)" "$(command -v pnpm)"
+      - name: Settle the owned fictional Assistant upgrade resources
+        id: fictional-ai-upgrade-recovery
+        if: ${{ always() && github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && steps.fictional-ai-upgrade.outcome != '' && steps.fictional-ai-upgrade.outcome != 'skipped' }}
+        env:
+          AIHR_AI_UPGRADE_STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          AIHR_AI_UPGRADE_PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          set -euo pipefail
+          owner="$GITHUB_WORKSPACE/automation/.github/ci/fictional-ai-upgrade/owner.py"
+          keep=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,RUNNER_OS,RUNNER_ARCH,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ATTEMPT,GITHUB_RUN_ID,GITHUB_REF,GITHUB_WORKFLOW_REF,GITHUB_SHA,GITHUB_WORKFLOW_SHA,GITHUB_EVENT_PATH,GITHUB_WORKSPACE,RUNNER_TEMP,AIHR_CI_CONTROL_HEAD,AIHR_CI_HEAD,AIHR_AI_UPGRADE_STAGING_ENABLED,AIHR_AI_UPGRADE_PRODUCTION_ENABLED
+          sudo --preserve-env="$keep" /usr/bin/python3 -I -B "$owner" --recover
       - name: Publish closed fictional Assistant upgrade evidence
-        if: ${{ always() && github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && (steps.fictional-ai-upgrade.outcome == 'success' || steps.fictional-ai-upgrade.outcome == 'failure') }}
+        if: ${{ always() && github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && steps.fictional-ai-upgrade-recovery.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: fictional-ai-source-upgrade-development-only

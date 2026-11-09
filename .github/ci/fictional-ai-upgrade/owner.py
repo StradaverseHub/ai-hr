@@ -1,4 +1,5 @@
 """Development-only owner for the exact fictional b698 to 98ae witness."""
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -9,6 +10,7 @@ import signal
 import stat
 import subprocess
 import sys
+import time
 
 BASE = 'b698f5d35b0cca12e2c1268f3bea08d0aa1d070e'
 CANDIDATE = '98ae49152781815433c604aac1758fb1841716b7'
@@ -20,6 +22,8 @@ ADMIN = 'postgres://postgres@127.0.0.1:5433/'
 ROLE = 'personnel-draft-discard-premigration-role-prerequisites.json'
 UID = 47106
 SELECTED = '["test/module-specialist-release-lifecycle.test.ts"]'
+OWNER_ROOT = Path('/var/lib/aihr-fictional-upgrade')
+SYSTEM_ENV = {'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C.UTF-8'}
 PINS = {
     'package.json': '7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c',
     'pnpm-lock.yaml': '0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd',
@@ -55,6 +59,193 @@ def capture(argv, *, cwd=None, data=None, env=None, timeout=25):
                             stderr=subprocess.DEVNULL, env=env, timeout=timeout)
     need(result.returncode == 0 and len(result.stdout) <= 4 * 1024**2)
     return result.stdout
+
+
+def docker(*args):
+    return capture(['/usr/bin/docker',*args],env=SYSTEM_ENV)
+
+
+def listener(prefix=()):
+    return capture([*prefix,'/usr/bin/ss','-H','-ltn','sport = :5433'],env=SYSTEM_ENV).strip()
+
+
+def container_name(run):
+    return 'aihr-ci-'+run+'-1-db-1'
+
+
+def owned_container(name, nonce):
+    ids = docker('container','ls','-aq','--no-trunc','--filter','name=^/'+name+'$').decode().split()
+    if not ids:
+        return None
+    need(len(ids) == 1 and re.fullmatch(r'[a-f0-9]{64}',ids[0]))
+    row, = json.loads(docker('container','inspect',ids[0]))
+    labels = row['Config']['Labels']
+    host = row['HostConfig']
+    need(row['Id'] == ids[0] and row['Name'] == '/'+name and row['Config']['Image'] == IMAGE
+         and labels.get('aihr-owner') == name and labels.get('aihr-fictional-upgrade') == nonce
+         and host['NetworkMode'] == 'none' and host['Privileged'] is False
+         and not host.get('Binds') and not host.get('PortBindings') and not host.get('CapAdd')
+         and any(option in ('no-new-privileges','no-new-privileges=true') for option in host.get('SecurityOpt',[]))
+         and host.get('PublishAllPorts') is False and set(row['NetworkSettings']['Networks']) <= {'none'}
+         and all(m['Type'] == 'volume' and m['Destination'] == '/var/lib/postgresql/data' for m in row['Mounts'])
+         and host['RestartPolicy']['Name'] in ('','no'))
+    return row
+
+
+def start_argv(name,nonce):
+    return ['/usr/bin/docker','run','-d','--pull=never','--name',name,
+            '--label','aihr-owner='+name,'--label','aihr-fictional-upgrade='+nonce,
+            '--network','none','--security-opt','no-new-privileges',
+            '--memory','2113929216','--memory-swap','2113929216','--shm-size','128m',
+            '-e','POSTGRES_HOST_AUTH_METHOD=trust','-e','TZ=Asia/Kuala_Lumpur',IMAGE,
+            '-c','listen_addresses=127.0.0.1','-c','port=5433','-c','max_wal_senders=0',
+            '-c','fsync=off','-c','synchronous_commit=off','-c','full_page_writes=off','-c','wal_level=minimal',
+            '-c','jit=on','-c','shared_buffers=128MB','-c','max_connections=100','-c','max_locks_per_transaction=256']
+
+
+def copy_program_canary():
+    # Empty input, no shell interpolation from callers, and reserved TEST-NET destinations only.
+    program = ('/bin/bash -c \'exec 3<>/dev/tcp/127.0.0.1/5433 || exit 72; '
+               'if { exec 4<>/dev/tcp/192.0.2.1/443; } 2>/dev/null; then exit 73; fi; '
+               'if { exec 5<>/dev/tcp/2001:db8::1/443; } 2>/dev/null; then exit 74; fi\'')
+    return ("COPY (SELECT NULL::text WHERE FALSE) TO PROGRAM '"+program.replace("'","''")+"';").encode()
+
+
+def root_file(path):
+    need(path.lstat().st_uid == 0 and path.lstat().st_mode & 0o022 == 0)
+    return plain(path)
+
+
+def stop_owned(name, nonce):
+    row = owned_container(name,nonce)
+    if row:
+        docker('container','rm','-fv',row['Id'])
+    # A missing container never waives the native listener check.
+    need(owned_container(name,nonce) is None and not listener())
+
+
+def current_process(pid):
+    try:
+        raw = Path(f'/proc/{pid}/stat').read_text()
+        fields = raw[raw.rindex(')')+2:].split()
+        return {'pid':pid,'session':int(fields[3]),'start':int(fields[19]),'state':fields[0]}
+    except (FileNotFoundError,ProcessLookupError):
+        return None
+
+
+def settle_interrupted(custody):
+    active = custody/'active-session.json'
+    if not active.exists():
+        return
+    recorded = json.loads(root_file(active))
+    need(set(recorded) == {'kind','pid','start'} and recorded['kind'] == 'session-admitted'
+         and all(type(recorded[key]) is int and recorded[key] > 0 for key in ('pid','start')))
+    anchor = current_process(recorded['pid'])
+    need(anchor is None or (anchor['session'] == recorded['pid'] and anchor['start'] == recorded['start']))
+    deadline = time.monotonic()+10
+    while time.monotonic() < deadline:
+        members = [row for pid in Path('/proc').iterdir() if pid.name.isdecimal()
+                   if (row := current_process(int(pid.name))) and row['session'] == recorded['pid']
+                   and row['state'] not in ('Z','X')]
+        if not members:
+            active.unlink()
+            return
+        anchor = current_process(recorded['pid'])
+        need(anchor and anchor['session'] == recorded['pid'] and anchor['start'] == recorded['start'])
+        for row in [member for member in members if member['pid'] != recorded['pid']] or members:
+            need(row['start'] >= recorded['start'])
+            try:
+                fd = os.pidfd_open(row['pid'])
+            except ProcessLookupError:
+                continue
+            try:
+                now = current_process(row['pid'])
+                if now and now['session'] == row['session'] and now['start'] == row['start']:
+                    signal.pidfd_send_signal(fd,signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            finally:
+                os.close(fd)
+        time.sleep(.03)
+    need(False)
+
+
+def namespace_child(pid, namespace):
+    try:
+        directory = Path(f'/proc/{pid}')
+        if not re.search(r'^Uid:\s+'+str(UID)+r'\s+'+str(UID)+r'\b',(directory/'status').read_text(),re.M):
+            return None
+        if os.readlink(directory/'ns/net') != namespace:
+            return None
+        row = current_process(pid)
+        return row if row and row['state'] not in ('Z','X') else None
+    except (FileNotFoundError,ProcessLookupError):
+        return None
+
+
+def settle_namespace_children(custody):
+    receipt = custody/'network-id'
+    if not receipt.exists():
+        return
+    namespace = root_file(receipt).decode()
+    need(re.fullmatch(r'net:\[[1-9][0-9]{0,19}\]',namespace) and namespace != os.readlink('/proc/self/ns/net'))
+    deadline = time.monotonic()+8
+    while time.monotonic() < deadline:
+        rows = [row for path in Path('/proc').iterdir() if path.name.isdecimal()
+                if (row := namespace_child(int(path.name),namespace))]
+        if not rows:
+            return
+        for row in rows:
+            try:
+                fd = os.pidfd_open(row['pid'])
+            except ProcessLookupError:
+                continue
+            try:
+                current = namespace_child(row['pid'],namespace)
+                if current and current['start'] == row['start']:
+                    signal.pidfd_send_signal(fd,signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            finally:
+                os.close(fd)
+        time.sleep(.03)
+    need(False)
+
+
+def recover():
+    need(os.getuid() == 0 and sys.platform == 'linux')
+    run,controller,_ = admit(os.environ)
+    custody = OWNER_ROOT/run
+    name = container_name(run)
+    intent = custody/'launch.json'
+    if not intent.exists():
+        # Early owner failure may have admitted nothing. Do not claim a foreign named container.
+        need(not docker('container','ls','-aq','--filter','name=^/'+name+'$').strip() and not listener())
+        return
+    need(custody.resolve(strict=True) == custody and custody.stat().st_uid == 0 and custody.stat().st_mode & 0o022 == 0)
+    launch = json.loads(root_file(intent))
+    need(launch == {'controller':controller,'runId':run,'name':name,'nonce':launch.get('nonce'),
+                    'boot':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}
+         and re.fullmatch(r'[a-f0-9]{32}',launch['nonce']))
+    lease = custody/'owner.lock'
+    need(lease.lstat().st_uid == 0 and stat.S_ISREG(lease.lstat().st_mode) and lease.lstat().st_nlink == 1)
+    fd = os.open(lease,os.O_RDONLY|os.O_NOFOLLOW)
+    try:
+        fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        settle_interrupted(custody)
+        settle_namespace_children(custody)
+        stop_owned(name,launch['nonce'])
+        temp = Path(os.environ['RUNNER_TEMP'])
+        need(temp.resolve(strict=True) == temp and str(temp.stat().st_uid) == os.environ.get('SUDO_UID'))
+        summary = temp/'aihr-fictional-ai-upgrade-summary.json'
+        if not summary.exists():
+            output = {'status':'FAIL','baseline':BASE,'candidate':CANDIDATE,'controller':controller,'runId':run,
+                      'attempt':1,'firstFailedStage':'owner-interrupted','settled':True,'releaseAuthorized':False}
+            write(summary,(json.dumps(output,separators=(',',':'))+'\n').encode(),0o644)
+        else:
+            root_file(summary)
+    finally:
+        os.close(fd)
 
 
 def admit(e, job='selected-tests'):
@@ -144,7 +335,7 @@ def main():
 
     witness_dir, focus = temp/'aihr-fictional-ai-upgrade-private', temp/'aihr-focused'
     public = temp/'aihr-fictional-ai-upgrade-summary.json'
-    root = Path('/var/lib/aihr-fictional-upgrade')
+    root = OWNER_ROOT
     if not root.exists():
         root.mkdir(mode=0o755)
     need(root.resolve(strict=True) == root and root.stat().st_uid == 0 and root.stat().st_mode & 0o022 == 0)
@@ -159,13 +350,21 @@ def main():
             write(path/'scripts'/filename,source_bytes,0o444)
     common = {**base_env,**job,'GITHUB_RUN_ID':run,'RUNNER_TEMP':str(temp),'NODE_ENV':'test',
               'HOME':str(witness_dir),'TSX_DISABLE_CACHE':'1','GIT_CONFIG_NOSYSTEM':'1'}
-    pg = {**common,'AIHR_CI_UNIT':'db-1','AIHR_CI_PG_PROFILE':'2','AIHR_CI_PG_JIT':'on',
-          'AIHR_CI_PG_CONFIGURED_CAP_BYTES':'2113929216','AIHR_CI_PG_PEAK_BUDGET_BYTES':'2147483648'}
-    pg_script = control/'.github/ci/postgres.sh'
-    name = 'aihr-ci-'+run+'-1-db-1'
-    table = 'aihrup_'+run+'_'+os.urandom(8).hex()
-    installed = False
-    started = False
+    name, nonce = container_name(run), os.urandom(16).hex()
+    lease = os.open(custody/'owner.lock',os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_RDWR,0o600)
+    fcntl.flock(lease,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    # The lease belongs to the controller alone. Forked supervisors must not retain it after owner death.
+    inherited_lease = [lease]
+    def close_forked_lease():
+        if inherited_lease:
+            os.close(inherited_lease.pop())
+    os.register_at_fork(after_in_child=close_forked_lease)
+    launch = {'controller':controller,'runId':run,'name':name,'nonce':nonce,
+              'boot':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}
+    write(custody/'launch.json',json.dumps(launch).encode())
+    session_receipt = custody/'active-session.json'
+    namespace_fd = None
+    namespace_prefix = []
     uncertain = False
     failed = None
     output = None
@@ -173,14 +372,20 @@ def main():
     def owned(label, cwd, argv, env, seconds, *, unpriv=True):
         nonlocal uncertain
         env = {**env,'PWD':str(cwd),'GIT_CONFIG_COUNT':'1','GIT_CONFIG_KEY_0':'safe.directory','GIT_CONFIG_VALUE_0':str(cwd)}
-        prefix = ['/usr/bin/setpriv','--reuid='+str(UID),'--regid='+str(UID),'--clear-groups','--no-new-privs'] if unpriv else []
+        if unpriv:
+            need(namespace_fd is not None)
+        prefix = [*namespace_prefix,'/usr/bin/setpriv','--reuid='+str(UID),'--regid='+str(UID),
+                  '--clear-groups','--no-new-privs'] if unpriv else []
         cmd = [*prefix,'/usr/bin/env','-i',*(f'{key}={value}' for key,value in env.items()),*map(str,argv)]
         fds = [os.dup(1),os.dup(2)]
         prev = Path.cwd()
         log = os.open(custody/(label+'.log'),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
         try:
             os.dup2(log,1); os.dup2(log,2); os.chdir(cwd)
-            result = supervisor.supervise(cmd,seconds,lambda _: None)
+            def record(event):
+                if event['kind'] == 'session-admitted':
+                    write(session_receipt,json.dumps(event).encode())
+            result = supervisor.supervise(cmd,seconds,record)
         except BaseException:
             uncertain = True
             raise
@@ -189,45 +394,37 @@ def main():
             for fd, target in zip(fds,(1,2)):
                 os.dup2(fd,target); os.close(fd)
         uncertain = not result['groupQuiescent']
+        if not uncertain and session_receipt.exists():
+            session_receipt.unlink()
         need(not uncertain and result['reason'] == 'complete' and result['commandExit'] == 0)
 
-    docker = lambda *args: capture(['/usr/bin/docker',*args],env=base_env)
-    nft = lambda *args, data=None: capture(['/usr/sbin/nft',*args],data=data,env=base_env)
-
-    def container():
-        rows = json.loads(docker('container','inspect',name))
-        need(len(rows) == 1)
-        row = rows[0]
-        need(row['Name'] == '/'+name and row['Config']['Labels'].get('aihr-owner') == name and
-             row['Config']['Image'] == IMAGE and re.fullmatch(r'[a-f0-9]{64}',row['Id']))
+    def database():
+        row = owned_container(name,nonce)
+        need(row and row['State']['Running'] is True and type(row['State']['Pid']) is int and row['State']['Pid'] > 0)
         return row
 
+    def socket_psql(container_id,database,sql):
+        return capture(['/usr/bin/docker','exec','-i',container_id,'psql','-X','-Atq','-U','postgres','-p','5433','-d',database,
+                        '-v','ON_ERROR_STOP=1'],data=sql,env=SYSTEM_ENV,timeout=20)
+
     def db_identity():
-        row = container()
-        need(row['State']['Running'] is True and row['HostConfig']['NetworkMode'] == 'host')
-        fields = docker('exec',row['Id'],'psql','-X','-Atq','-U','postgres','-p','5433','-d','ai_hr_dev','-c',
-            "select system_identifier::text,extract(epoch from pg_postmaster_start_time())::text,"
-            "current_setting('listen_addresses'),current_setting('port') from pg_control_system()").decode().strip().split('|')
-        need(len(fields) == 4 and fields[2:] == ['127.0.0.1','5433'] and fields[0].isdigit())
-        return {'containerId':row['Id'],'containerName':name,'image':IMAGE,'uid':UID,'nftTable':table,
-                'postgresSystemId':fields[0],'postmasterEpoch':fields[1],'networkPolicy':'ipv4-loopback-postgres-only-v1'}
-
-    def rules():
-        rows = json.loads(nft('-j','list','table','inet',table))['nftables']
-        for entry in rows:
-            if 'rule' in entry:
-                for expression in entry['rule']['expr']:
-                    if 'counter' in expression:
-                        expression['counter'] = None
-        return rows
-
-    def assert_terminal_hook():
-        rows = json.loads(nft('-j','list','chains'))['nftables']
-        need(all('chain' not in r or r['chain'].get('hook') != 'output'
-                 or r['chain'].get('prio',0) < 2147483646 or r['chain'].get('table') == table for r in rows))
-
-    def postgres_listener():
-        return capture(['/usr/bin/ss','-H','-ltn','sport = :5433'],env=base_env).strip()
+        row = database()
+        ns = os.readlink(f"/proc/{row['State']['Pid']}/ns/net")
+        need(ns != os.readlink('/proc/self/ns/net') and re.fullmatch(r'net:\[[1-9][0-9]+\]',ns))
+        need(namespace_fd is not None and ns == os.readlink(f'/proc/self/fd/{namespace_fd}'))
+        links = json.loads(capture([*namespace_prefix,'/usr/sbin/ip','-j','link','show'],env=SYSTEM_ENV))
+        need(len(links) == 1 and links[0]['ifname'] == 'lo' and 'LOOPBACK' in links[0]['flags'] and 'UP' in links[0]['flags'])
+        for family in ('-4','-6'):
+            routes = json.loads(capture([*namespace_prefix,'/usr/sbin/ip','-j',family,'route','show','table','all'],env=SYSTEM_ENV))
+            need(all(route.get('dev') == 'lo' and route.get('type','unicast') in ('local','broadcast','unicast')
+                     and route.get('dst') not in ('default','0.0.0.0/0','::/0') for route in routes))
+        fields = socket_psql(row['Id'],'ai_hr_dev',
+            b"select system_identifier::text,extract(epoch from pg_postmaster_start_time())::text,"
+            b"current_setting('listen_addresses'),current_setting('port') from pg_control_system();").decode().strip().split('|')
+        need(len(fields) == 4 and fields[2:] == ['127.0.0.1','5433'] and fields[0].isdigit()
+             and b'127.0.0.1:5433' in listener(namespace_prefix) and not listener())
+        return {'containerId':row['Id'],'containerName':name,'image':IMAGE,'uid':UID,'netNamespace':ns,
+                'postgresSystemId':fields[0],'postmasterEpoch':fields[1],'networkPolicy':'docker-none-loopback-v1'}
 
     def interrupt(_signum,_frame):
         raise InterruptedError('Owned fictional run interrupted')
@@ -235,35 +432,37 @@ def main():
     for sig in (signal.SIGINT,signal.SIGTERM):
         signal.signal(sig,interrupt)
     try:
-        stage = 'network'
-        assert_terminal_hook()
-        nft('-f','-',data=(f'add table inet {table}\n'
-            f'add chain inet {table} output {{ type filter hook output priority 2147483646; policy accept; }}\n'
-            f'add rule inet {table} output meta skuid {UID} oifname "lo" ip saddr 127.0.0.1 ip daddr 127.0.0.1 '
-            'tcp dport 5433 ct original ip daddr 127.0.0.1 ct original proto-dst 5433 counter accept\n'
-            f'add rule inet {table} output meta skuid {UID} counter reject with icmpx type admin-prohibited\n').encode())
-        installed = True
-        fence = rules()
-        need(len([row for row in fence if 'rule' in row]) == 2)
         stage = 'postgres'
-        need(not postgres_listener() and not docker('container','ls','-a','--filter','name=^/'+name+'$','--format','{{.ID}}').strip())
-        started = True
-        owned('postgres-start',control,['/usr/bin/bash',pg_script,'reset'],pg,90,unpriv=False)
+        need(not listener() and owned_container(name,nonce) is None)
+        owned('postgres-start',control,start_argv(name,nonce),common,90,unpriv=False)
+        row = database()
+        for _ in range(60):
+            ready = subprocess.run(['/usr/bin/docker','exec',row['Id'],'pg_isready','-h','127.0.0.1','-U','postgres','-p','5433'],
+                env=SYSTEM_ENV,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=5)
+            if ready.returncode == 0:
+                break
+            time.sleep(1)
+        else:
+            need(False)
+        socket_psql(row['Id'],'postgres',
+            b'CREATE ROLE ai_hr_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;\n'
+            b'CREATE DATABASE ai_hr_dev OWNER ai_hr_app;\nCREATE DATABASE ai_hr_test OWNER ai_hr_app;\n')
+        namespace_fd = os.open(f"/proc/{row['State']['Pid']}/ns/net",os.O_RDONLY|os.O_CLOEXEC)
+        namespace_prefix = ['/usr/bin/nsenter',f'--net=/proc/{os.getpid()}/fd/{namespace_fd}','--']
+        stage = 'network'
         born = db_identity()
-        # All canaries are fixed and use only loopback or reserved documentation addresses.
-        canary = 'import socket\nfor host,port,ok in [("127.0.0.1",5433,True),("127.0.0.1",5432,False),("192.0.2.1",443,False),("2001:db8::1",443,False)]:\n try:\n  with socket.create_connection((host,port),2): actual=True\n except OSError: actual=False\n if actual!=ok: raise SystemExit(1)\n'
+        write(custody/'network-id',born['netNamespace'].encode())
+        # Verify the privileged SQL program path as well as the app-side namespace.
+        socket_psql(row['Id'],'ai_hr_dev',copy_program_canary())
+        canary = 'import socket; c=socket.create_connection(("127.0.0.1",5433),2); c.close()'
         owned('network-canary',control,['/usr/bin/python3','-I','-B','-c',canary],common,12)
-        native_rules = [r['rule'] for r in json.loads(nft('-j','list','table','inet',table))['nftables'] if 'rule' in r]
-        counters = [next(e['counter']['packets'] for e in rule['expr'] if 'counter' in e) for rule in native_rules]
-        need(counters[0] >= 1 and counters[1] >= 2)
         for phase, source in sources.items():
             stage = phase+'-migration'
             sha = BASE if phase == 'prepare' else CANDIDATE
             env = {**common,'AIHR_CI_HEAD':sha,'TEST_DB_NAMESPACE':'aifocus','AIHR_FOCUSED_SUITE_CAPACITY':'true',
                    'AIHR_FOCUSED_EVIDENCE_DIR':str(focus),'DATABASE_URL':APP+'ai_hr_dev','MIGRATION_DATABASE_URL':ADMIN+'ai_hr_dev',
                    'TEST_DATABASE_URL':APP+'ai_hr_test','TEST_MIGRATION_DATABASE_URL':ADMIN+'ai_hr_test'}
-            need(rules() == fence and db_identity() == born and not (focus/ROLE).exists())
-            assert_terminal_hook()
+            need(db_identity() == born and not (focus/ROLE).exists())
             owned(stage,source,[pnpm,'db:migrate'],env,360)
             if phase == 'prepare':
                 owned('catalogs',source,[pnpm,'exec','tsx','scripts/seed-catalogs.ts'],env,80)
@@ -282,11 +481,11 @@ def main():
                 'admissionSha256':digest(plain(controlled/'fictional-ai-upgrade-canonical-admission.mjs'))}
             write(custody/(phase+'-custody.json'),json.dumps(packet).encode(),0o444)
             stage = phase+'-witness'
-            need(rules() == fence and db_identity() == born)
+            need(db_identity() == born)
             owned(stage,source,[node,'--conditions=react-server','--import','tsx','scripts/fictional-ai-source-upgrade.mts',phase],
                   {**common,'AIHR_CI_HEAD':sha,'AIHR_AI_UPGRADE_ARTIFACT_DIR':str(witness_dir),
                    'TEST_DATABASE_URL':APP+'ai_hr_dev','TEST_MIGRATION_DATABASE_URL':ADMIN+'ai_hr_dev'},120)
-            need(rules() == fence and db_identity() == born)
+            need(db_identity() == born)
         stage = 'result'
         output = json.loads(plain(witness_dir/'after.json'))
         need(output == {'status':'PASS','baseline':BASE,'candidate':CANDIDATE,'controller':controller,'runId':run,
@@ -298,14 +497,9 @@ def main():
     finally:
         try:
             need(not uncertain)
-            if started and docker('container','ls','-a','--filter','name=^/'+name+'$','--format','{{.ID}}').strip():
-                container()
-                owned('postgres-stop',control,['/usr/bin/bash',pg_script,'stop'],pg,30,unpriv=False)
-                need(not postgres_listener() and not docker('container','ls','-a','--filter','name=^/'+name+'$','--format','{{.ID}}').strip())
-            if installed:
-                nft('delete','table','inet',table)
-                need(not any(row.get('table',{}).get('name') == table
-                             for row in json.loads(nft('-j','list','tables'))['nftables']))
+            stop_owned(name,nonce)
+            if namespace_fd is not None:
+                need(not listener(namespace_prefix))
         except BaseException:
             failed = failed or 'settlement'
             uncertain = True
@@ -315,6 +509,9 @@ def main():
     else:
         output['settled'] = True
     write(public,(json.dumps(output,separators=(',',':'))+'\n').encode(),0o644)
+    if namespace_fd is not None:
+        os.close(namespace_fd)
+    os.close(lease)
     return 1 if failed else 0
 
 
@@ -324,6 +521,8 @@ if __name__ == '__main__':
             admit(os.environ,'resolve' if sys.argv[1] == '--admit-event' else 'selected-tests')
             if sys.argv[1] == '--admit-only':
                 verify_dependency_pins(Path(os.environ['GITHUB_WORKSPACE']))
+        elif sys.argv[1:] == ['--recover']:
+            recover()
         else:
             raise SystemExit(main())
     except Exception:
