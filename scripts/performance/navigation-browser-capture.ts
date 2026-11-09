@@ -47,6 +47,86 @@ const nativePrimaryPages=new WeakSet<Page>();
 const nativeHiddenShellPages=new WeakSet<Page>();
 const nativeMarkerAttributes={'data-personnel-busy':'busy','data-page-busy':'busy',
  'data-read-unavailable':'unavailable','data-today-unavailable':'unavailable',role:'alerts'}as const;
+
+/** Legacy denials may start a streamed document and redirect while it is still
+ * being parsed. Seal its evidence synchronously on pagehide, then read once
+ * from Home and compare against the independently observed document responses. */
+async function installLegacyDenialObserver(page:Page,deniedPath:string){
+ const key='__aihrLegacyDenial:'+randomUUID(),frame=page.mainFrame(),documents:string[]=[];
+ let invalidResponse=false;
+ const observeResponse=(response:Response)=>{
+  const request=response.request();
+  if(!request.isNavigationRequest()||request.resourceType()!=='document')return;
+  try{
+   if(request.frame()!==frame)return;
+   const url=new URL(response.url()),path=url.pathname+url.search,status=response.status();
+   if(url.origin!==BASE||request.method()!=='GET'||response.fromServiceWorker()){invalidResponse=true;return;}
+   if(status>=300&&status<400)return;
+   if(status!==200||documents.length===2||(path!==deniedPath&&path!=='/')){invalidResponse=true;return;}
+   documents.push(path);
+  }catch{invalidResponse=true;}
+ };
+ const script=await page.addInitScript(({ingress,key,selectors,markers,attributes})=>{
+  if(window.top!==window||location.origin!==ingress)return;
+  const prior=sessionStorage.getItem(key);
+  const ledger=prior===null?{documents:[] as string[],retired:0,busy:0,unavailable:0,alerts:0}:
+   JSON.parse(prior) as {documents:string[];retired:number;busy:number;unavailable:number;alerts:number};
+  if(ledger.retired!==ledger.documents.length||ledger.documents.length>=2)return;
+  ledger.documents.push(location.pathname+location.search);
+  sessionStorage.setItem(key,JSON.stringify(ledger));
+  const counts={busy:0,unavailable:0,alerts:0},kinds=['busy','unavailable','alerts'] as const;
+  const state={
+   observe(records:MutationRecord[]){
+    for(const kind of kinds)if(document.querySelector(selectors[kind]))counts[kind]=1;
+    for(const record of records){
+     if(record.type==='attributes'&&record.target instanceof Element&&record.target.closest('main')){
+      const name=record.attributeName as keyof typeof attributes;
+      if(Object.hasOwn(attributes,name)&&(name==='role'?record.oldValue==='alert':record.oldValue!==null))counts[attributes[name]]=1;
+     }
+     const insideMain=record.target instanceof Element&&record.target.closest('main');
+     for(const nodes of [record.addedNodes,record.removedNodes])for(const node of nodes)if(node instanceof Element){
+      for(const kind of kinds){
+       const selector=insideMain?markers[kind]:selectors[kind];
+       if(node.matches(selector)||node.querySelector(selector))counts[kind]=1;
+      }
+     }
+    }
+   },
+   snapshot(){
+    state.observe(observer.takeRecords());
+    return {...ledger,href:location.href,busy:ledger.busy+counts.busy,unavailable:ledger.unavailable+counts.unavailable,alerts:ledger.alerts+counts.alerts};
+   },
+  };
+  const observer=new MutationObserver(state.observe);
+  observer.observe(document,{childList:true,subtree:true,attributes:true,attributeOldValue:true,attributeFilter:Object.keys(attributes)});
+  Object.defineProperty(window,key,{value:state.snapshot});
+  window.addEventListener('pagehide',event=>{
+   if(!event.isTrusted||event.persisted)return;
+   const {href:_,...sealed}=state.snapshot();
+   sealed.retired++;sessionStorage.setItem(key,JSON.stringify(sealed));observer.disconnect();
+  },{once:true});
+ },{ingress:BASE,key,selectors:{...failuresSelector,unavailable:failuresSelector.unavailable+',main[data-read-unavailable],main[data-today-unavailable]',
+  alerts:failuresSelector.alerts+',main[role="alert"]'},markers:{busy:'[data-personnel-busy],[data-page-busy]',
+  unavailable:'[data-read-unavailable],[data-today-unavailable]',alerts:'[role="alert"]'},attributes:nativeMarkerAttributes});
+ page.on('response',observeResponse);
+ return {
+  async snapshot(){
+   const read=await page.evaluate(key=>{
+    const snapshot=(window as unknown as Record<string,(()=>{documents:string[];retired:number;href:string;busy:number;unavailable:number;alerts:number})|undefined>)[key];
+    if(!snapshot)throw Error('Native legacy denial observer missing');return snapshot();
+   },key);
+   assert(!invalidResponse&&frame===page.mainFrame()&&page.url()===BASE+'/'&&read.href===BASE+'/'
+    &&documents.length>0&&documents.length<=2&&read.retired===documents.length-1,
+    'Native legacy denial document census differs');
+   assert.deepEqual(read.documents,documents,'Native legacy denial lost a document observation');
+   if(documents.length===2)assert(documents[0]===deniedPath&&documents[1]==='/','Native legacy denial redirect document order differs');
+   for(const value of [read.busy,read.unavailable,read.alerts])assert(Number.isSafeInteger(value)&&value>=0&&value<=documents.length,'Native legacy denial marker census differs');
+   return {busy:read.busy,unavailable:read.unavailable,alerts:read.alerts};
+  },
+  async dispose(){page.off('response',observeResponse);await script.dispose();},
+ };
+}
+
 const nativeDocumentId=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 type Retirement={id:string;received:boolean;wake?:()=>void};
 type NativeDocumentSnapshot={id:string;origin:string;busy:number;unavailable:number;alerts:number};
@@ -246,13 +326,18 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
  const pageError=()=>{failures.pageErrors++;};
  const consoleError=(message:{type():string})=>{if(message.type()==='error')failures.pageErrors++;};
  page.on('response',response);page.on('pageerror',pageError);page.on('console',consoleError);
+ let denial:Awaited<ReturnType<typeof installLegacyDenialObserver>>|undefined;
  try{
-  await installFailureObserver(page);
+  if(scenario.outcome==='denied')denial=await installLegacyDenialObserver(page,scenario.href);
+  else await installFailureObserver(page);
   const cookies=await page.context().cookies(BASE);
   assert(cookies.some(cookie=>cookie.name==='__Host-aihr_internal'&&cookie.value&&cookie.secure&&cookie.httpOnly&&cookie.path==='/'),'Native authenticated fixture session missing');
   const origin=await page.goto(BASE+(scenario.outcome==='denied'?scenario.href:scenario.originHref),{waitUntil:'domcontentloaded',timeout:remaining()});
   assert(origin?.status()===200,'Navigation origin did not finish successfully');
-  const originFailures=await capturedFailures(page);for(const key of ['busy','unavailable','alerts']as const)failures[key]+=originFailures[key];
+  if(!denial){
+   const originFailures=await capturedFailures(page);
+   for(const key of ['busy','unavailable','alerts']as const)failures[key]+=originFailures[key];
+  }
   if(scenario.outcome==='usable'&&entry.kind==='shell-menu')await clickNativeShellDestination(page,scenario.href,remaining);
   if(scenario.outcome==='usable'&&entry.selector){
    const anchor=page.locator(entry.selector);
@@ -307,13 +392,17 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
    else if(check.kind==='attribute')assert(await visible[0].getAttribute(check.name)===check.expected,'Reviewed native control attribute differs');
    checks.push({id:check.id,passed:true,observedCount:visible.length});
   }
-  const observed=await capturedFailures(page);for(const key of ['busy','unavailable','alerts']as const)failures[key]+=observed[key];
+  const observed=denial?await denial.snapshot():await capturedFailures(page);
+  for(const key of ['busy','unavailable','alerts']as const)failures[key]+=observed[key];
   assert(Object.values(failures).every(count=>count===0),'Navigation rendered failure state or browser/server error');
   const usableWith=sample();remaining();
   return {entry:entry.kind,scenarioId:scenario.id,destinationId:scenario.destinationId,role:actor.role,actorIndex,href:scenario.href,outcome:scenario.outcome,readiness:scenario.readiness,
    status:200,finalPath:target.pathname,internalSessionObserved:true,fixtureIdentityObserved:true,elapsedMs:performance.now()-started,checks,failures,
    ...(startedWith?{startedWith}:{}),...(usableWith?{usableWith}:{})};
- }finally{page.off('response',response);page.off('pageerror',pageError);page.off('console',consoleError);}
+ }finally{
+  page.off('response',response);page.off('pageerror',pageError);page.off('console',consoleError);
+  await denial?.dispose();
+ }
 }
 /** The runner retains both phases in the same fixed artifact member. No credentials/content. */
 export function writeNavigationCaptureBundle(outputDirectory:string,baseline:NavigationCapture,loaded?:NavigationCapture):NavigationCaptureBundle;

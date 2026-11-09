@@ -9,12 +9,13 @@ import {runInNewContext} from 'node:vm';
 import {transformSync} from 'esbuild';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {Page} from 'playwright';
-const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40),scenarioSha256:'d'.repeat(64)}));
+const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40),scenarioSha256:'d'.repeat(64),legacyDenied:false}));
 vi.mock('../scripts/performance/navigation-source',()=>({
  navigationCleanHead:()=>source.sha,
  navigationSourceIdentity:()=>({harnessSha256:'c'.repeat(64),scenarioSha256:source.scenarioSha256,plan:{schemaVersion:1,fixture:'system-load-v1',engine:'chromium',scope:'Unit collector contract only',scenarios:[{
-  id:'unit.employee',destinationId:'submenu.unit',role:'employee',href:'/unit',originHref:'/unit',outcome:'usable',readiness:'controls',
-  steps:[{kind:'open-details',selector:'main details:has(input[name="unit"])'}],checks:[{id:'input',kind:'enabled',tag:'input',selector:'main input[name="unit"]'}],
+  id:'unit.employee',destinationId:'submenu.unit',role:'employee',href:'/unit',originHref:'/unit',outcome:source.legacyDenied?'denied':'usable',readiness:'controls',
+  steps:source.legacyDenied?[]:[{kind:'open-details',selector:'main details:has(input[name="unit"])'}],
+  checks:source.legacyDenied?[]:[{id:'input',kind:'enabled',tag:'input',selector:'main input[name="unit"]'}],
  }]}}),
 }));
 vi.mock('../scripts/performance/navigation-fixture-bindings',()=>({readNavigationFixtureBindings:()=>new Map([[4,{actorName:'PERF Person 0004',actorEmployeeCode:'PERF0004',firstCompanyPersonName:'PERF Person 0000',activeHeadcount:'50',historicalPayrollMonth:'2026-07',seedToday:'2026-11-07',seedMonth:'2026-11',rosterScope:{}}]])}));
@@ -145,7 +146,7 @@ beforeEach(()=>{
  vi.stubEnv('AIHR_PERFORMANCE_ROLE_FIXTURE','true');vi.stubEnv('DATABASE_URL','postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev');
  vi.stubEnv('AIHR_CI_HEAD',source.sha);vi.stubEnv('AIHR_CI_CONTROL_HEAD',source.controller);vi.stubEnv('GITHUB_RUN_ID','123');vi.stubEnv('GITHUB_RUN_ATTEMPT','1');
 });
-afterEach(()=>{source.scenarioSha256='d'.repeat(64);vi.restoreAllMocks();vi.unstubAllEnvs();});
+afterEach(()=>{source.scenarioSha256='d'.repeat(64);source.legacyDenied=false;vi.restoreAllMocks();vi.unstubAllEnvs();});
 it('binds the exact written UTF-8 rendered capture and refuses oversized or failed exclusive writes',async()=>{
  const collector=createNavigationCaptureCollector({phase:'baseline'});
  await collector.captureActor(fictionalPage().page,4);
@@ -180,6 +181,45 @@ it('binds the exact written UTF-8 rendered capture and refuses oversized or fail
 });
 
 describe('native identity and streamed navigation capture boundaries',()=>{
+ it.each([
+  ['clean',null],['missing-document',/lost a document observation/],['missing-retirement',/document census differs/],
+  ['retired-busy',/rendered failure state/],['page-error',/browser\/server error/],
+ ] as const)('seals streamed legacy denial before reading Home (%s)',async(mode,error)=>{
+  source.legacyDenied=true;
+  const {page}=fictionalPage(),events=new EventEmitter(),locate=page.locator.bind(page);
+  const frame={},disposed=vi.fn();
+  let url=ingress+'/unit';
+  Object.assign(page,{
+   mainFrame:()=>frame,url:()=>url,on:events.on.bind(events),off:events.off.bind(events),
+   addInitScript:async()=>({dispose:disposed}),
+   async goto(address:string){
+    expect(address).toBe(url);
+    for(const path of ['/unit','/'])events.emit('response',{
+     request:()=>({isNavigationRequest:()=>true,resourceType:()=> 'document',method:()=> 'GET',frame:()=>frame}),
+     status:()=>200,url:()=>ingress+path,fromServiceWorker:()=>false,
+    });
+    return {status:()=>200};
+   },
+   async waitForURL(predicate:(url:URL)=>boolean){
+    url=ingress+'/';expect(predicate(new URL(url))).toBe(true);
+    if(mode==='page-error')events.emit('pageerror',Error('fictional error'));
+   },
+   async evaluate(){
+    expect(url).toBe(ingress+'/');
+    return {href:url,documents:mode==='missing-document'?['/']:['/unit','/'],retired:mode==='missing-retirement'?0:1,
+     busy:Number(mode==='retired-busy'),unavailable:0,alerts:0};
+   },
+   locator(selector:string){return selector==='main [data-navigation-destination="submenu.unit"]'?{count:async()=>0}:locate(selector);},
+  });
+  const collector=createNavigationCaptureCollector({phase:'baseline'}),capture=collector.captureActor(page,4);
+  if(error)await expect(capture).rejects.toThrow(error);
+  else {
+   await capture;
+   expect(collector.finish().observations).toMatchObject([{outcome:'denied',finalPath:'/',failures:{busy:0,pageErrors:0}}]);
+  }
+  expect(disposed).toHaveBeenCalledTimes(1);
+  expect(events.listenerCount('response')).toBe(0);
+ });
  it('keeps legacy separate and refuses markers queued after a clean snapshot when the document retires',async()=>{
   const {page}=fictionalPage(),collector=createNavigationCaptureCollector({phase:'baseline'});
   await collector.captureActor(page,4);expect(collector.finish().observations).toHaveLength(1);
