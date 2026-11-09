@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {fixtureNavigationActor,localNavigationHref,navigationExpectedText,NAVIGATION_CAPTURE_VERSION,NAVIGATION_HARNESS_ROOTS,NAVIGATION_SCENARIO_FILE,
+ PERSONNEL_PRIVATE_SEARCH_SELECTOR,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,
  validateNavigationCapture,validateNavigationScenarioPlan,type NavigationScenarioPlan} from '../scripts/performance/navigation-protocol';
 import {navigationSha256,navigationSourceIdentity} from '../scripts/performance/navigation-source';
 const readPlan=()=>JSON.parse(readFileSync(new URL('../scripts/performance/navigation-scenarios.json',import.meta.url),'utf8'));
@@ -40,6 +41,22 @@ describe('closed source-reviewed navigation development protocol (not authentica
    (p:any)=>p.scenarios[0].steps[0].kind='submit',(p:any)=>p.scenarios.push(p.scenarios[0])]){
    const plan=readPlan();edit(plan);expect(()=>validateNavigationScenarioPlan(plan)).toThrow();
   }
+ });
+ it('requires one real private POST input for both existing Personnel shell witnesses',()=>{
+  const plan=validateNavigationScenarioPlan(readPlan());
+  const personnel=plan.scenarios.filter(row=>row.destinationId==='shell.personnelAdmin');
+  expect(personnel.map(row=>row.role)).toEqual(['companyHR','groupHR']);
+  for(const row of personnel)expect(row.checks).toEqual([
+   {id:'native-personnel-table',kind:'text',selector:'main [data-tour="people-table"] tbody',expected:'$fixture.firstCompanyPersonName'},
+   {id:'native-private-search',kind:'personnel-private-search',selector:PERSONNEL_PRIVATE_SEARCH_SELECTOR,tag:'input'},
+  ]);
+  const wrong=structuredClone(plan);
+  wrong.scenarios.find(row=>row.destinationId==='shell.personnelAdmin')!.role='employee';
+  expect(()=>validateNavigationScenarioPlan(wrong)).toThrow(/Personnel private search/);
+  const result=capture(plan),observed=result.observations.find(row=>row.destinationId==='shell.personnelAdmin')!;
+  observed.checks.find(check=>check.id==='native-private-search')!.observedCount=2;
+  expect(()=>validateNavigationCapture(result,plan,expected)).toThrow(/check coverage/);
+  expect(navigationSha256(readFileSync(new URL('../'+NAVIGATION_SCENARIO_FILE,import.meta.url)))).toBe(NATIVE_SHELL_LEGACY_SCENARIO_SHA256);
  });
  it('refuses cross-source/role claims, missing checks, handled failures, and incomplete captures',()=>{
   const plan=validateNavigationScenarioPlan(readPlan());

@@ -7,8 +7,10 @@ export const NAVIGATION_CAPTURE_MEMBER='navigation-browser-capture.json';
 export const NAVIGATION_SCENARIO_FILE='scripts/performance/navigation-scenarios.json';
 export const NAVIGATION_HARNESS_ROOTS=['scripts/performance','lib/navigation','lib/navigation-workspaces.ts','lib/ai-centre/centre-nav.ts','lib/security-center-navigation.ts','packs/performance/onehr/tab-model.ts','deploy/admission','.github/workflows/alpha-focused-checks.yml','components/sidebar.tsx','components/nav-flyout.tsx','components/navigation-submenus.tsx','components/system-labels-tabs.tsx','components/claims-tabs.tsx','components/attendance-tabs.tsx','components/holiday-tabs.tsx','components/statutory-tabs.tsx','packs/rewards/index.ts','components/leave/leave-inquiry-nav.tsx'] as const;
 export type NavigationFixtureRole='employee'|'manager'|'companyHR'|'groupHR';
+export const PERSONNEL_PRIVATE_SEARCH_SELECTOR='form[method="post"][action="/admin/personnel/search"] input[type="text"][name="term"]';
 export type NavigationCheck={id:string;selector:string}&(
  {kind:'enabled';tag:'a'|'button'|'input'|'select'|'textarea'}|
+ {kind:'personnel-private-search';tag:'input'}|
  {kind:'count'|'fixture-roster-rows';minimum:number;maximum?:number}|
  {kind:'text'|'text-exact';expected:string}|{kind:'value';expected:string}|
  {kind:'attribute';name:'href'|'aria-current'|'data-testid';expected:string}
@@ -65,6 +67,10 @@ export function validateNavigationScenarioPlan(value:unknown):NavigationScenario
    checks.add(check.id);
    if(check.kind==='enabled'){
     if(!closed(check,['id','selector','kind','tag'])||!['a','button','input','select','textarea'].includes(check.tag))throw Error('Invalid navigation control check');
+   }else if(check.kind==='personnel-private-search'){
+    if(!closed(check,['id','selector','kind','tag'])||check.id!=='native-private-search'||check.tag!=='input'
+     ||check.selector!==PERSONNEL_PRIVATE_SEARCH_SELECTOR||row.destinationId!=='shell.personnelAdmin'||row.href!=='/admin/personnel'
+     ||row.outcome!=='usable'||(row.role!=='companyHR'&&row.role!=='groupHR'))throw Error('Invalid Personnel private search check');
    }else if(check.kind==='count'||check.kind==='fixture-roster-rows'){
     if(!closed(check,['id','selector','kind','minimum','maximum'])||!Number.isSafeInteger(check.minimum)||check.minimum<1||check.maximum!==undefined&&(!Number.isSafeInteger(check.maximum)||check.maximum<check.minimum))throw Error('Invalid navigation count check');
    }else if(check.kind==='text'||check.kind==='text-exact'||check.kind==='value'){
@@ -94,6 +100,7 @@ export function validateNavigationCapture(value:unknown,plan:NavigationScenarioP
    ||!row.failures||!closed(row.failures,['busy','unavailable','alerts','http500','pageErrors'])||(['busy','unavailable','alerts','http500','pageErrors']as const).some(key=>row.failures[key]!==0))throw Error('Navigation scenario did not prove usable native content');
   seen.add(row.scenarioId);
   if(new Set(row.checks.map(check=>check.id)).size!==row.checks.length||scenario.checks.some(check=>!row.checks.some(result=>closed(result,['id','passed','observedCount'])&&result.id===check.id&&result.passed===true&&Number.isSafeInteger(result.observedCount)&&result.observedCount>=1
+   &&(check.kind!=='personnel-private-search'||result.observedCount===1)
    &&(check.kind!=='count'&&check.kind!=='fixture-roster-rows'||result.observedCount>=check.minimum&&(check.maximum===undefined||result.observedCount<=check.maximum)))))throw Error('Navigation check coverage differs');
   if([row.startedWith,row.usableWith].some(state=>state!==undefined&&(!state||!closed(state,['active','inSteadyWindow'])||!Number.isSafeInteger(state.active)||state.active<0||typeof state.inSteadyWindow!=='boolean')))throw Error('Invalid navigation traffic state');
   if(capture.phase==='loaded'&&![row.startedWith,row.usableWith].every(state=>state?.active===500&&state.inSteadyWindow===true))throw Error('Navigation content was not usable during steady 500-user traffic');
@@ -103,7 +110,7 @@ export function validateNavigationCapture(value:unknown,plan:NavigationScenarioP
 
 // Separate native-only observations. The v2 development contract above stays 48.
 export const NATIVE_SHELL_BASELINE_VERSION='aihr-native-shell-baseline/v1' as const;
-export const NATIVE_SHELL_LEGACY_SCENARIO_SHA256='6dae3cc787e5da49e8f00eb30e0d093f7669f8fff3f87aa5f966a00d9397ca7a';
+export const NATIVE_SHELL_LEGACY_SCENARIO_SHA256='8e050c1edb048358c55757d81463250ee10e2fc74d4a85428336e870a14a7a84';
 const nativeShellCases=[
  {id:'shell.payrollProcess.employee.hidden-denied',destinationId:'shell.payrollProcess',role:'employee',href:'/payroll',actorIndex:4},
  {id:'shell.payrollProcess.manager.hidden-denied',destinationId:'shell.payrollProcess',role:'manager',href:'/payroll',actorIndex:2},

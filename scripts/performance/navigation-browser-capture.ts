@@ -341,6 +341,22 @@ export function createNavigationCaptureCollector({phase,sourceRoot=process.cwd()
   },
  };
 }
+
+async function openNativePersonnelFilter(page:Page,remaining:()=>number){
+ const trigger=page.locator('main button[data-tour="people-search"]');
+ await trigger.first().waitFor({state:'visible',timeout:remaining()});
+ assert(await trigger.count()===1&&await trigger.isEnabled({timeout:remaining()})
+  &&await trigger.getAttribute('aria-expanded',{timeout:remaining()})==='false','Native Personnel filter trigger differs');
+ const controls=await trigger.getAttribute('aria-controls',{timeout:remaining()});
+ assert(controls&&/^[A-Za-z0-9_:-]{1,128}$/.test(controls),'Native Personnel filter has no reviewed dialog identity');
+ await trigger.click({timeout:remaining()});
+ const dialog=page.locator('[role="dialog"][id='+JSON.stringify(controls)+']');
+ await dialog.first().waitFor({state:'visible',timeout:remaining()});
+ assert(await dialog.count()===1&&await trigger.getAttribute('aria-expanded',{timeout:remaining()})==='true',
+  'Native Personnel filter did not open its owned dialog');
+ return dialog;
+}
+
 async function captureScenario(page:Page,actorIndex:number,scenario:NavigationScenario,phase:'baseline'|'loaded',bindings:Readonly<NavigationFixtureTextBindings>,loadState?:()=>LoadState):Promise<NavigationObservation>{
  const actor=fixtureNavigationActor(actorIndex),entry=navigationScenarioEntry(scenario),started=performance.now(),deadline=started+90000;
  const remaining=()=>{const ms=Math.floor(deadline-performance.now());assert(ms>0,'Navigation scenario deadline exceeded');return ms;};
@@ -397,9 +413,14 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   }
   const checks:NavigationObservation['checks']=[];
   for(const check of scenario.checks){
-   const matches=page.locator(check.selector);await matches.first().waitFor({state:'visible',timeout:remaining()});
+   // Personnel's editable term is in the actual portaled filter, not the hidden
+   // retained term under the table form. The preceding table witness is read first.
+   const scope=check.kind==='personnel-private-search'?await openNativePersonnelFilter(page,remaining):page;
+   const matches=scope.locator(check.selector);await matches.first().waitFor({state:'visible',timeout:remaining()});
    const visible=[];for(const match of await matches.all())if(await match.isVisible())visible.push(match);
    assert(visible.length>0,'Reviewed usable-content selector has no visible result');
+   if(check.kind==='personnel-private-search')assert(await matches.count()===1&&visible.length===1
+    &&await visible[0].isEditable({timeout:remaining()}),'Native Personnel private search is ambiguous or read-only');
    if(check.kind==='count'||check.kind==='fixture-roster-rows')assert(visible.length>=check.minimum&&(check.maximum===undefined||visible.length<=check.maximum),'Usable-content count differs');
    if(check.kind==='fixture-roster-rows'){
     const ids=new Set<string>();
@@ -408,7 +429,7 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
      assert(id&&!ids.has(id)&&Object.hasOwn(bindings.rosterScope,id),'Roster rendered an unknown, duplicate or out-of-scope native fixture employment');ids.add(id);
      const expected=bindings.rosterScope[id];if(expected!==null)assert((await row.innerText({timeout:remaining()})).includes(expected),'Roster omitted the independently seeded employee identity');
     }
-   }else if(check.kind==='enabled'){
+   }else if(check.kind==='enabled'||check.kind==='personnel-private-search'){
     assert(await visible[0].evaluate(element=>element.tagName.toLowerCase())===check.tag&&await visible[0].isEnabled(),'Reviewed native control is unavailable');
    }else if(check.kind==='text-exact')assert((await visible[0].innerText({timeout:remaining()})).trim()===navigationExpectedText(check.expected,actorIndex,bindings),'Expected exact native fixture content differs');
    else if(check.kind==='text')assert((await visible[0].innerText({timeout:remaining()})).includes(navigationExpectedText(check.expected,actorIndex,bindings)),'Expected independent fixture content missing');

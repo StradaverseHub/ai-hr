@@ -880,8 +880,8 @@
         },
         {
           "id": "native-private-search",
-          "kind": "enabled",
-          "selector": "main form[action=\"/admin/personnel/search\"] input[name=\"term\"]",
+          "kind": "personnel-private-search",
+          "selector": "form[method=\"post\"][action=\"/admin/personnel/search\"] input[type=\"text\"][name=\"term\"]",
           "tag": "input"
         }
       ],
@@ -905,8 +905,8 @@
         },
         {
           "id": "native-private-search",
-          "kind": "enabled",
-          "selector": "main form[action=\"/admin/personnel/search\"] input[name=\"term\"]",
+          "kind": "personnel-private-search",
+          "selector": "form[method=\"post\"][action=\"/admin/personnel/search\"] input[type=\"text\"][name=\"term\"]",
           "tag": "input"
         }
       ],
