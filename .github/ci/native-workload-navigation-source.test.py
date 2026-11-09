@@ -241,7 +241,9 @@ class NativeNavigationHandoffModel(unittest.TestCase):
                 pins.append(H.HistoryPin(original.path, len(data), evidence.member.git_blob, evidence.sha256))
             inventory = ordinary + b''.join(row(pin.path, pin.size, pin.git_blob) for pin in pins)
             changed = False
-            with patch.object(H, 'HISTORY_PINS', tuple(pins)), I.PinnedTree(root) as tree:
+            with (patch.object(H, 'HISTORY_PINS', tuple(pins)),
+                  self.assertRaisesRegex(ValueError, 'inventory file changed after reading') as refusal,
+                  I.PinnedTree(root) as tree):
                 def change_earlier_member():
                     nonlocal changed
                     if not changed and pins[-1].path in tree.files:
@@ -251,9 +253,9 @@ class NativeNavigationHandoffModel(unittest.TestCase):
                         os.utime(scenario_file, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
                         changed = True
 
-                with self.assertRaisesRegex(ValueError, 'inventory file changed after reading'):
-                    H.capture_navigation_handoff(tree, inventory, (scenario, collector), change_earlier_member)
+                H.capture_navigation_handoff(tree, inventory, (scenario, collector), change_earlier_member)
             self.assertTrue(changed)
+            self.assertIn('Inventory final identity proof refused: ValueError', refusal.exception.__notes__)
 
 
 if __name__ == '__main__':
