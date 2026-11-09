@@ -55,6 +55,14 @@ export async function rehearseRewardsCreatorOwnerUpgrade(
   const [identity] = await fixture`select current_database() as db, session_user as login`;
   expect(identity.login).toBe('postgres');
   expect(identity.db).toMatch(/^ai_hr_rewards_upgrade_[0-9a-f]{32}$/);
+  const ownership = (client: Reader) => client.unsafe(`select
+    pg_get_userbyid((select datdba from pg_database where datname=current_database())) as db,
+    pg_get_userbyid((select nspowner from pg_namespace where oid='app'::regnamespace)) as app,
+    pg_get_userbyid((select nspowner from pg_namespace where oid='drizzle'::regnamespace)) as drizzle,
+    pg_get_userbyid((select relowner from pg_class where oid='drizzle.__drizzle_migrations'::regclass)) as ledger,
+    pg_get_userbyid((select relowner from pg_class where oid='public.reward_unit_setup'::regclass)) as setup`);
+  const fixtureOwners = [{ db: 'postgres', app: 'postgres', drizzle: 'postgres', ledger: 'postgres', setup: 'postgres' }];
+  expect(await ownership(fixture)).toEqual(fixtureOwners);
   await fixture.unsafe(`alter database "${identity.db}" owner to ai_hr_owner`);
   await fixture`alter schema app owner to ai_hr_owner`;
   await fixture`alter schema drizzle owner to ai_hr_owner`;
@@ -123,4 +131,18 @@ export async function rehearseRewardsCreatorOwnerUpgrade(
   const replacement = await writer(observer, 'reward_create_planned_unit');
   expect(replacement).toMatchObject({ owner: 'ai_hr_reward_setup_reader', definer: true, app_execute: true, public_execute: false });
   expect(replacement.oid).not.toBe(original.oid);
+
+  // Restore the disposable fixture's original owners before the independent
+  // stock upgrade of the remaining migrations under its ordinary fixture login.
+  await fixture.begin(async tx => {
+    await tx`alter table public.reward_unit_setup owner to postgres`;
+    await tx`alter table drizzle.__drizzle_migrations owner to postgres`;
+    await tx`alter schema drizzle owner to postgres`;
+    await tx`alter schema app owner to postgres`;
+    await tx.unsafe(`alter database "${identity.db}" owner to postgres`);
+  });
+  expect(await ownership(observer)).toEqual(fixtureOwners);
+  expect(await ledger(observer)).toEqual([...initial, ...expectedTail]);
+  expect(await writer(observer, 'reward_create_planned_unit')).toEqual(replacement);
+  expect(await writer(observer, 'reward_create_planned_unit_bound')).toEqual({ ...original, app_execute: false });
 }
