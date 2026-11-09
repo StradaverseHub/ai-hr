@@ -717,7 +717,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   state.phase='index-observations';persist();
   const indexed=await catalogue('I',ownerStep(indexedEnd));
   expect(indexed.namedOid).toBe(created.oid);expect(requireIndex(indexed.indexes)).toEqual(created);
-  expect(comparable(indexed)).toEqual(before);
+  expect(comparable(indexed)).toEqual(comparable(before));
   await snapshot(indexedEnd,1000,async(tx,assertPhase)=>{
    const step=(operation:string,ms=1000)=>{assertPhase();fit(indexedEnd,ms+1000,operation);};
    sameAppBackend(await stressIdentity(tx,step));

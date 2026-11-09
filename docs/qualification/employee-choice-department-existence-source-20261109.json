@@ -292,5 +292,40 @@
     ],
     "disposition": "SOURCE_ONLY_HOSTED_OUTCOME_UNOBSERVED",
     "releaseEligible": false
+  },
+  "indexedCatalogueProjectionCorrection": {
+    "directParent": "a4e67a33551ea435dba171ee594bf7ce8633d114",
+    "finding": "Use the same catalogue projection on indexed and baseline facts. Native namedOid checks and the full restored catalogue comparison retain their original scope.",
+    "priorAuthorSourceProof": {
+      "bytes": 20588,
+      "sha256": "be94ead4425323f3ddfd410cd7e56e248630760aba4b0482a8702e1f036c3e6e"
+    },
+    "priorIndependentReview": {
+      "bytes": 9924,
+      "sha256": "6a9db209a8d900ff08ef44aa84aa4f193231cc7620e99ee2e17d1cb2eecb6a74"
+    },
+    "parentWholePreimages": {
+      "test/employee-choice-unicode-scale.test.ts": {
+        "gitRef": "a4e67a33551ea435dba171ee594bf7ce8633d114:test/employee-choice-unicode-scale.test.ts",
+        "gitBlob": "01565c96921f6f58785061c1ac330cb1e1bc676d",
+        "bytes": 61125,
+        "sha256": "c8ad79042581a8866f87dcbf9cb8bdf63a63449c9758f1d9bba9a792ad544d45"
+      },
+      "docs/qualification/employee-choice-department-existence-source-20261109.json": {
+        "gitRef": "a4e67a33551ea435dba171ee594bf7ce8633d114:docs/qualification/employee-choice-department-existence-source-20261109.json",
+        "gitBlob": "080b17b91390cf06a10cccbf55171987d723bd10",
+        "bytes": 12745,
+        "sha256": "da08ed9e5937e5a498c737c971a9647434c1221f628285abca147e060ba2bd0e"
+      }
+    },
+    "sourcePinsExcludingThisRecord": {
+      "test/employee-choice-unicode-scale.test.ts": {
+        "bytes": 61137,
+        "sha256": "87c6e9d47402f58965e6c322ed818ecf16e09941e395a422dfc8251751f6cadd"
+      }
+    },
+    "previousNativeMatchedNonpassPreserved": 42550790661,
+    "hostedOutcome": "UNOBSERVED",
+    "releaseEligible": false
   }
 }
