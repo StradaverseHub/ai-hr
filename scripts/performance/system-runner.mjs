@@ -244,16 +244,22 @@ function captureDevelopmentPostgres(id){
   &&readFileSync('/proc/'+row.pid+'/cgroup','utf8')===cgroup,'Development PostgreSQL birth changed');
  return {id,pid:row.pid,started:row.started,volume:row.volume,birth,path,cgroupDevice:String(state.dev),cgroupInode:String(state.ino)};
 }
+function assertDevelopmentLockLogDriver(id){
+ const config=JSON.parse(dockerQuery(['inspect','--type','container','--format','{{json .HostConfig.LogConfig}}',id]));
+ assert(config.Type==='json-file'&&config.Config.mode==='blocking'&&config.Config['max-size']==='16m'
+  &&config.Config['max-file']==='1','Development PostgreSQL Docker log delivery refused');
+}
 function markDevelopmentLockLog(phase){
  assert(phase==='begin'||phase==='end','Invalid development PostgreSQL lock log marker');
  const held=developmentPostgresBirth,current=captureDevelopmentPostgres(held.id);
  assert.deepEqual(current,held,'Development PostgreSQL log marker birth changed');
- const sql="DO $aihr$ BEGIN IF current_setting('log_lock_waits') <> 'on' OR current_setting('deadlock_timeout') <> '100ms'"
+ assertDevelopmentLockLogDriver(held.id);
+ const sql="BEGIN READ ONLY; DO $aihr$ BEGIN IF current_setting('log_lock_waits') <> 'on' OR current_setting('deadlock_timeout') <> '100ms'"
   +" OR current_setting('log_destination') <> 'stderr' OR current_setting('logging_collector') <> 'off'"
   +" THEN RAISE EXCEPTION 'Development PostgreSQL lock logging settings refused'; END IF;"
-  +" RAISE LOG 'AIHR_LOCK_WINDOW_V1 "+lockLogNonce+" "+phase+"'; END; $aihr$;";
+  +" RAISE LOG 'AIHR_LOCK_WINDOW_V1 "+lockLogNonce+" "+phase+"'; END; $aihr$; ROLLBACK;";
  assert.equal(dockerQuery(['exec',held.id,'psql','-XAtq','--no-password','-v','ON_ERROR_STOP=1',
-  '-h','127.0.0.1','-p','5433','-U','postgres','-d','ai_hr_dev','-c',sql]),'');
+  '-h','/var/run/postgresql','-p','5433','-U','postgres','-d','ai_hr_dev','-c',sql]),'');
 }
 function confirmDevelopmentPostgresAbsent(held){
  const containerAbsent=dockerContainerIds(`id=${held.id}`).length===0&&namedContainer().length===0;
@@ -421,18 +427,18 @@ finally{
    // independent. No tail truncation: exceeding the bounded capture fails evidence closed.
    const logContext=measureDevelopment?developmentDocker():null;
    const logs=spawnSync(logContext?DEVELOPMENT_DOCKER_COMMAND:'docker',
-    [...(logContext?.args??[]),'logs',...(report.applicationRuntimeFrom?['--since',report.applicationRuntimeFrom]:[]),
+    [...(logContext?.args??[]),'logs',...(!measureDevelopment&&report.applicationRuntimeFrom?['--since',report.applicationRuntimeFrom]:[]),
      logContext?developmentPostgresBirth.id:container],
     {encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024,...(logContext?{env:logContext.env,killSignal:'SIGKILL'}:{})});
    assert.equal(logs.status,0);
-   const log=(logs.stdout??'')+'\n'+(logs.stderr??'');
+   const log=measureDevelopment?(logs.stderr??''):(logs.stdout??'')+'\n'+(logs.stderr??'');
    const window=measureDevelopment?developmentPostgresLockWindow(log,lockLogNonce):null;
    postgresRuntimeFailures=window?.failures??postgresLockFailures(log);
    if(measureDevelopment){
     if(window)assert.deepEqual(captureDevelopmentPostgres(developmentPostgresBirth.id),developmentPostgresBirth,
      'Development PostgreSQL lock log capture birth changed');
     report.postgresWaitLogCoverage=window?{kind:'development-heavyweight-lock-log',thresholdMs:window.thresholdMs,
-     observedEvents:window.failures.length}:null;
+     retainedFailures:window.failures.length}:null;
    }
    writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:'Owned disposable database during application runtime only; bounded lock topology and routine frames; SQL/values/raw logs excluded',runtimeFrom:report.applicationRuntimeFrom??null,failures:postgresRuntimeFailures},null,2));
   }catch{report.postgresLockFailureSummaryUnavailable=true;}
@@ -445,9 +451,7 @@ finally{
    if(!held&&current.running)try{held=captureDevelopmentPostgres(developmentReset.id);}catch{}
    let sameBirth=held&&current.started===held.started&&current.volume===held.volume;
    if(sameBirth&&current.running)try{
-    const cgroup=lstatSync(held.path,{bigint:true});
-    sameBirth=current.pid===held.pid&&processBirth(current.pid)===held.birth&&cgroup.isDirectory()
-     &&String(cgroup.dev)===held.cgroupDevice&&String(cgroup.ino)===held.cgroupInode;
+    assert.deepEqual(captureDevelopmentPostgres(developmentReset.id),held);
    }catch{sameBirth=false;}
    assert(sameBirth,'Development PostgreSQL removal birth refused');
    const context=developmentDocker();

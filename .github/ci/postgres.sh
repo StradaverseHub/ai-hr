@@ -37,12 +37,14 @@ fi
 name="aihr-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${AIHR_CI_UNIT}"
 auth_args=(-e POSTGRES_HOST_AUTH_METHOD=trust)
 workload_args=()
+development_log_args=()
 case "${AIHR_CI_PG_DEVELOPMENT_LOCK_LOG:-0}" in
   0) ;;
   1)
     [[ "$operation" == reset && "${GITHUB_JOB:-}" == selected-tests && "${GITHUB_EVENT_NAME:-}" == workflow_dispatch &&
       "${GITHUB_RUN_ATTEMPT:-}" == 1 && "$AIHR_CI_UNIT" == db-1 && "$AIHR_CI_PG_PROFILE" == 2 &&
       "${AIHR_CI_PG_DURABLE:-}" == 1 && "${AIHR_CI_PG_STATEMENTS_OWNER:-}" == system-http-profile ]] || exit 2
+    development_log_args=(--log-driver json-file --log-opt mode=blocking --log-opt max-size=16m --log-opt max-file=1)
     workload_args=(-c log_lock_waits=on -c deadlock_timeout=100ms -c log_destination=stderr -c logging_collector=off
       -c 'log_line_prefix=%m [%p] %c %u@%d ' -c log_statement=none -c log_min_error_statement=panic
       -c log_parameter_max_length_on_error=0)
@@ -81,7 +83,7 @@ fi
 # Data lives on the disposable runner disk, not a RAM disk. Removal also removes its anonymous volume.
 docker run -d --name "$name" --label "aihr-owner=$name" --network host \
   --memory="$memory_bytes" --memory-swap="$memory_bytes" --shm-size=128m \
-  "${auth_args[@]}" -e TZ=Asia/Kuala_Lumpur postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97 \
+  "${auth_args[@]}" "${development_log_args[@]}" -e TZ=Asia/Kuala_Lumpur postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97 \
   -c listen_addresses=127.0.0.1 -c port=5433 -c max_wal_senders=0 \
   "${durability_args[@]}" \
   ${jit_args[@]+"${jit_args[@]}"} \
