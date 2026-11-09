@@ -27,6 +27,7 @@ const classes=[
   'test_alternate_worktree_and_promisor_inputs_refuse_before_git',
   'test_batch_raw_oid_and_member_framing_fail_closed',
   'test_deadline_and_unprotected_view_refuse_without_a_child',
+  'test_disabled_sparse_worktree_file_is_inert_only_without_extension',
   'test_fixed_commands_capture_committed_navigation_inventory_and_raw_blobs',
   'test_local_configuration_refuses_external_helpers_includes_and_duplicates',
   'test_reap_returned_after_work_cutoff_cannot_admit_git_result',
@@ -178,7 +179,7 @@ function requireSource(sha:string){
  expect(git(['hash-object','--no-filters','--',...paths],5000)).toBe(blobs.join('\n')+'\n');
 }
 
-it('runs the 18 exact held navigation source byte models',()=>{
+it('runs the 19 exact held navigation source byte models',()=>{
  expect(process.platform).toBe('linux');
  expect(process.env.GITHUB_ACTIONS).toBe('true');
  expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
@@ -188,8 +189,8 @@ it('runs the 18 exact held navigation source byte models',()=>{
  expect(sha).toMatch(/^[a-f0-9]{40}$/);
  requireSource(sha);
  const expected=cases.map(row=>row.description+' ... ok');
- expect(expected).toHaveLength(18);
- expect(new Set(expected).size).toBe(18);
+ expect(expected).toHaveLength(19);
+ expect(new Set(expected).size).toBe(19);
  // A nondirectory cache prefix and -B force the stock interpreter to read source.
  expect(lstatSync('/dev/null').isCharacterDevice()).toBe(true);
  const result=spawnSync('/usr/bin/python3',['-I','-B','-X','pycache_prefix=/dev/null',file,'-v'],{
@@ -207,7 +208,7 @@ it('runs the 18 exact held navigation source byte models',()=>{
  if(result.status!==0)throw Error('Navigation source model child returned an unexpected status');
  const timing=result.stderr.split('\n').at(-4)??'';
  const transcript=[...expected,'',rule,timing,'','OK',''].join('\n');
- if(result.stdout!==''||!/^Ran 18 tests in [0-9]+\.[0-9]{3}s$(?![\s\S])/.test(timing)||result.stderr!==transcript)
+ if(result.stdout!==''||!/^Ran 19 tests in [0-9]+\.[0-9]{3}s$(?![\s\S])/.test(timing)||result.stderr!==transcript)
   throw Error('Navigation source model success transcript refused');
  process.stderr.write(transcript);
 },30000);

@@ -343,6 +343,13 @@ _GIT_ENV = {
 }
 _PROTECTED_AUTOMATION = re.compile(r'/var/lib/aihr-native-controller/[1-9][0-9]{0,19}/automation')
 _GIT_CONFIG_MAX = 64 * 1024
+_GIT_WORKTREE_CONFIG_MAX = 128
+_DISABLED_SPARSE_CONFIG = re.compile(
+    rb'\[core\]\n[ \t]+sparsecheckout[ \t]*=[ \t]*false\n'
+    rb'(?:[ \t]+sparsecheckoutcone[ \t]*=[ \t]*false\n)?'
+    rb'(?:\[index\]\n[ \t]+sparse[ \t]*=[ \t]*false\n)?',
+    re.IGNORECASE,
+)
 _GIT_REAP_RESERVE_NS = 1_000_000_000
 _GIT_CONFIG_KEYS = frozenset((
     b'core.repositoryformatversion', b'core.filemode', b'core.bare', b'core.logallrefupdates',
@@ -494,6 +501,23 @@ def _check_git_config(tree, deadline_ns):
              'navigation Git repository configuration differs')
 
 
+def _is_inert_worktree_config(tree, info, deadline_ns):
+    if not (0 < info.st_size <= _GIT_WORKTREE_CONFIG_MAX and info.st_nlink == 1
+            and info.st_mode & 0o400 and not info.st_mode & 0o7133):
+        return False
+    _git_seconds(deadline_ns)
+    path = '.git/config.worktree'
+    with tree.open_regular(path, _GIT_WORKTREE_CONFIG_MAX, context='navigation worktree configuration') as (source, before):
+        original = _file_identity(info)
+        _require(_file_identity(before) == original, 'navigation worktree configuration identity changed')
+        raw = source.read(_GIT_WORKTREE_CONFIG_MAX + 1)
+        _require(len(raw) == before.st_size and not source.read(1)
+                 and _file_identity(os.fstat(source.fileno())) == original == _file_identity(tree.metadata(path)),
+                 'navigation worktree configuration identity changed')
+    _git_seconds(deadline_ns)
+    return _DISABLED_SPARSE_CONFIG.fullmatch(raw) is not None
+
+
 def _check_git_store(tree, deadline_ns):
     for directory, forbidden in (
         ('.git', (('commondir', 'common-directory'), ('gitdir', 'git-directory'), ('config.worktree', 'worktree-config'))),
@@ -509,6 +533,10 @@ def _check_git_store(tree, deadline_ns):
                 shape = 'nonregular'
                 if stat.S_ISREG(info.st_mode):
                     shape = 'regular-nonempty' if info.st_size else 'regular-empty'
+                # Checkout leaves disabled sparse flags after removing the extension.
+                # The main config check below still refuses the extension itself.
+                if marker == 'worktree-config' and shape == 'regular-nonempty' and _is_inert_worktree_config(tree, info, deadline_ns):
+                    continue
                 refusal = ValueError('navigation Git alternate store or worktree refused')
                 refusal.add_note('Navigation Git alias marker ' + marker + ' ' + shape)
                 raise refusal

@@ -285,12 +285,19 @@ class NativeNavigationGitModel(unittest.TestCase):
             self.assertEqual(actual[path].sha256, hashlib.sha256(raw).hexdigest())
 
     def test_alternate_worktree_and_promisor_inputs_refuse_before_git(self):
+        core = b'[core]\n\tsparseCheckout = false\n'
         for path, marker, contents, shape in (
             ('.git/commondir', 'common-directory', None, 'nonregular'),
             ('.git/gitdir', 'git-directory', None, 'nonregular'),
             ('.git/config.worktree', 'worktree-config', None, 'nonregular'),
             ('.git/config.worktree', 'worktree-config', b'', 'regular-empty'),
-            ('.git/config.worktree', 'worktree-config', b'[core]\n\tsparseCheckout = false\n', 'regular-nonempty'),
+            ('.git/config.worktree', 'worktree-config', core.replace(b'false', b'true'), 'regular-nonempty'),
+            ('.git/config.worktree', 'worktree-config', core + b'\tsparseCheckoutCone = true\n', 'regular-nonempty'),
+            ('.git/config.worktree', 'worktree-config', core + b'[index]\n\tsparse = true\n', 'regular-nonempty'),
+            ('.git/config.worktree', 'worktree-config', core + b'[include]\n\tpath = outside\n', 'regular-nonempty'),
+            ('.git/config.worktree', 'worktree-config', core + b'\tsparseCheckout = false\n', 'regular-nonempty'),
+            ('.git/config.worktree', 'worktree-config', core + b'\tworktree = outside\n', 'regular-nonempty'),
+            ('.git/config.worktree', 'worktree-config', b'x' * 129, 'regular-nonempty'),
             ('.git/objects/info/alternates', 'object-alternates', None, 'nonregular'),
             ('.git/objects/info/http-alternates', 'object-http-alternates', None, 'nonregular'),
             ('.git/objects/pack/pack-model.promisor', None, b'', None),
@@ -311,6 +318,40 @@ class NativeNavigationGitModel(unittest.TestCase):
                     notes = [f'Navigation Git alias marker {marker} {shape}'] if marker else []
                     self.assertEqual(getattr(refused.exception, '__notes__', []), notes)
                     start.assert_not_called()
+
+    def test_disabled_sparse_worktree_file_is_inert_only_without_extension(self):
+        core = b'[core]\n\tsparseCheckout = false\n'
+        stock = core + b'\tsparseCheckoutCone = false\n[index]\n\tsparse = false\n'
+        baseline = (b'[core]\nrepositoryformatversion=0\nbare=false\n'
+                    b'[remote "origin"]\nurl=https://github.com/StradaverseHub/ai-hr\n')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            for directory in ('.git/objects/info', '.git/objects/pack'):
+                (root / directory).mkdir(parents=True)
+            config, worktree = root / '.git/config', root / '.git/config.worktree'
+            config.write_bytes(baseline)
+            for raw in (core, stock):
+                worktree.write_bytes(raw)
+                with I.PinnedTree(root) as tree:
+                    H._check_git_store(tree, self.deadline())
+                    tree.assert_unchanged()
+
+            alias = root / '.git/worktree-fixture-link'
+            os.link(worktree, alias)
+            with I.PinnedTree(root) as tree, patch.object(H, '_git_navigation_pipe') as start:
+                with self.assertRaisesRegex(ValueError, 'alternate store or worktree refused'):
+                    H._check_git_store(tree, self.deadline())
+                start.assert_not_called()
+            alias.unlink()
+
+            config.write_bytes(baseline + b'[extensions]\nworktreeConfig = true\n')
+            with I.PinnedTree(root) as tree, self.assertRaisesRegex(ValueError, 'unsupported setting'):
+                H._check_git_store(tree, self.deadline())
+            config.write_bytes(baseline)
+
+            with self.assertRaisesRegex(ValueError, 'inventory member changed'), I.PinnedTree(root) as tree:
+                H._check_git_store(tree, self.deadline())
+                worktree.write_bytes(stock + b'\n')
 
     def test_local_configuration_refuses_external_helpers_includes_and_duplicates(self):
         baseline = (b'[core]\nrepositoryformatversion=0\nbare=false\n'
