@@ -32,7 +32,7 @@ import {chromium} from 'playwright';
 import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironment,createDriverContexts,
- createDriverFailures,createDriverSockets,createDriverWork,driverErrorFact,lockSampleEvidence,
+ createDriverFailures,createDriverSockets,createDriverWork,createProtectedLockSampler,driverErrorFact,lockSampleEvidence,protectedLockObserverCounts,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
@@ -215,10 +215,16 @@ const primaryActors=[employee,manager,hr,group];
 const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const ordinal=roleCounts.get(user.role)??0;roleCounts.set(user.role,ordinal+1);return [user.index,ordinal];}));
 const pendingBrowserRequests=new WeakMap(),browserPdfRequests=new WeakMap();
 let progressTimer,sqlProgress,browserDiagnosticTimer,contextTemplates,lastPage,mixedWorkflows;
-let preflightSampler,loadedSampler,preflightWindow,loadedWindow,preflightComplete=false;
+let preflightSampler,loadedSampler,preflightWindow,loadedWindow,protectedSampler,preflightComplete=false;
 const slowPilotTimers=new Set();
 const samplingRequired=suite!=='claims-heavy';
 function recordLockSampling(){
+ if(nativePreflight){
+  report.lockSampling={strict:true,scope:'Sampled application heavyweight lock waits, including advisory waits. Unobserved waits are outside this evidence.',
+   preflight:protectedSampler?.evidence()??{phase:'preflight',state:'not-started',blockingSamples:null,pass:false},
+   loaded:{phase:'loaded',state:'not-applicable',blockingSamples:null}};
+  return;
+ }
  report.lockSampling={strict:samplingRequired,scope:'Sampled application heavyweight lock waits, including advisory waits. Unobserved waits are outside this evidence.',
   preflight:lockSampleEvidence(preflightSampler?.samples??[],preflightWindow),
   loaded:lockSampleEvidence(loadedSampler?.samples??[],loadedWindow)};
@@ -232,6 +238,39 @@ async function finishPreflightLockSampling(){
  await preflightSampler.stop();
  recordLockSampling();
  if(samplingRequired)assert(report.lockSampling.preflight.pass,'Preflight lock samples were incomplete or observed blocking');
+}
+async function startProtectedPreflightLockSampling(){
+ // The protected owner retains the reservation. This phase borrows only its
+ // held stats connection and awaits all admitted queries before returning it.
+ const {sql,identity}=nativeCourse.lockObserver??{};
+ assert(typeof sql==='function'&&identity,'A held protected lock observer is required');
+ const expected=Object.freeze({pid:identity.pid,backendStart:identity.backendStart,databaseOid:identity.databaseOid});
+ protectedSampler=createProtectedLockSampler({phase:'preflight',deadline:nativeDeadline,
+  async observe(){
+   const rows=await sql`with app_sessions as materialized (
+    select pid,state,wait_event_type from pg_catalog.pg_stat_activity
+    where datid=(select oid from pg_catalog.pg_database where datname=current_database())
+     and usename='ai_hr_app' and backend_type='client backend'
+   ), queued as materialized (
+    select distinct l.pid from pg_catalog.pg_locks l join app_sessions a on a.pid=l.pid where not l.granted
+   )
+   select pg_backend_pid() as pid,session_user as login,current_user as role,current_database() as database,
+    a.datid::text as "databaseOid",extract(epoch from a.backend_start)::text as "backendStart",
+    host(inet_server_addr()) as address,inet_server_port() as port,
+    current_setting('transaction_read_only') as "readOnly",current_setting('track_activities') as "trackActivities",
+    pg_has_role(current_user,'pg_read_all_stats','USAGE') as "canReadStats",
+    (select count(*)::int from app_sessions) as "appSessions",
+    (select count(*)::int from app_sessions where state is null or state='disabled') as "invisibleAppSessions",
+    (select count(*)::int from app_sessions s left join queued q on q.pid=s.pid
+      where s.wait_event_type='Lock' or q.pid is not null) as "blockingAppSessions"
+   from pg_catalog.pg_stat_activity a where a.pid=pg_backend_pid()`;
+   assert.equal(rows.length,1,'Protected lock observer result differs');
+   return protectedLockObserverCounts(rows[0],expected);
+  },onFailure(reason){
+   failures.notePrimary(reason);
+   recordLockSampling();noteEvidence(save);
+  }});
+ await protectedSampler.start();
 }
 function stopDiagnosticAdmission(){
  for(const timer of slowPilotTimers)clearTimeout(timer);
@@ -317,8 +356,9 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
 
 async function main(){
  save();await db`select pg_stat_statements_reset()`;
- const lockScope=await prepareDatabaseLockScope();
- if(samplingRequired)startPreflightLockSampling(lockScope);
+ const lockScope=nativePreflight?undefined:await prepareDatabaseLockScope();
+ if(nativePreflight)await startProtectedPreflightLockSampling();
+ else if(samplingRequired)startPreflightLockSampling(lockScope);
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
  // Bound independent preflight roles to four lanes; every role still visits its full route pool.
  const pilotResults=await runLanes(primaryActors,async user=>{
@@ -1060,7 +1100,7 @@ async function main(){
    nativeRemaining(nativeDeadline);
   }
   writeNavigationCaptureBundle(out,baselineCapture);
-  await finishPreflightLockSampling();
+  if(!nativePreflight)await finishPreflightLockSampling();
   preflightComplete=true;return;
  }
  const navigationPlan=suite==='whole-system'?planSteadyRouteCoverage({pools:routePools,users:fixture.users,thinkTimeMs,steadyHoldMs}):null;
@@ -1352,10 +1392,11 @@ try{
 }
 
 const diagnosticDrain=stopDiagnosticAdmission();
+const protectedAbort=nativePreflight&&!preflightComplete?protectedSampler?.close(false):undefined;
 await drainDriverLanes(lanes,requests);
 const failureAtExit=failures.failed();
 const shutdown=report.shutdown={acquisition:acquired,browserClosed:false,nativeAuditPoolClosed:false,driverPoolClosed:false};
-await settleDriverResources(failures,{
+const driverResources={
  async browser(){
   if(failureAtExit&&lastPage)await failures.attempt('browser-failure-capture',async()=>{
    report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));
@@ -1379,7 +1420,17 @@ await settleDriverResources(failures,{
   shutdown.nativeAuditPoolClosed=shutdown.database.audit==='settled';
   shutdown.driverPoolClosed=shutdown.database.observer==='settled';
  },
-});
+};
+if(nativePreflight){
+ await Promise.all([failures.attempt('browser-settlement',driverResources.browser),failures.attempt('https-settlement',driverResources.https)]);
+ await failures.attempt('native-lock-settlement',async()=>{
+  const settled=preflightComplete&&!failures.failed()&&shutdown.browserClosed&&shutdown.http?.state==='settled';
+  const lockEvidence=await (protectedAbort??protectedSampler?.close(settled));
+  recordLockSampling();noteEvidence(save);
+  if(preflightComplete&&!failures.failed())assert(lockEvidence?.pass===true,'Protected preflight lock evidence incomplete or observed blocking');
+ });
+ await failures.attempt('database-settlement',driverResources.database);
+}else await settleDriverResources(failures,driverResources);
 recordLockSampling();
 if(nativePreflight){
  report.nativeRenderedPreflight.browserFailures=nativeBrowserFailures.facts();

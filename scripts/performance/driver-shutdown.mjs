@@ -108,6 +108,142 @@ export function lockSampleEvidence(samples,window){
   invalidBlockingCounts,blockingSamples,coveragePass,pass:coveragePass&&blockingSamples===0,samples};
 }
 
+const lockCadenceMs=Object.freeze({preflight:250,loaded:1000});
+const maxProtectedLockSamples=4096;
+const lockCount=value=>Number.isSafeInteger(value)&&value>=0;
+
+export function protectedLockObserverCounts(row,expected){
+ if(!row||!expected||!Number.isSafeInteger(expected.pid)||expected.pid<=1
+  ||typeof expected.backendStart!=='string'||!/^\d+(?:\.\d+)?$/.test(expected.backendStart)
+  ||typeof expected.databaseOid!=='string'||!/^[1-9]\d{0,9}$/.test(expected.databaseOid)
+  ||row.pid!==expected.pid||row.backendStart!==expected.backendStart||row.databaseOid!==expected.databaseOid
+  ||row.login!=='ai_hr_workload_observer'||row.role!==row.login||row.database!=='ai_hr_test_w1'
+  ||row.address!=='127.0.0.1'||row.port!==5433||row.readOnly!=='on'||row.trackActivities!=='on'
+  ||row.canReadStats!==true||row.invisibleAppSessions!==0){
+  throw Error('Protected lock observer identity or visibility differed');
+ }
+ return {appSessions:row.appSessions,blockingAppSessions:row.blockingAppSessions};
+}
+
+export function createProtectedLockSampler({phase,deadline,observe,onFailure,now=()=>performance.now()}){
+ const interval=Object.hasOwn(lockCadenceMs,phase)?lockCadenceMs[phase]:null;
+ const origin=now(),cutoffUs=Math.floor((deadline-origin)*1000);
+ if(interval===null||!Number.isSafeInteger(cutoffUs)||cutoffUs<=0)throw Error('Protected lock observation window refused');
+ const sampleLimit=Math.min(maxProtectedLockSamples,Math.ceil(cutoffUs/(interval*1000))+2);
+ const maxGapUs=interval*2000,stamp=()=>Math.floor((now()-origin)*1000);
+ const samples=[];
+ let state='not-started',startUs=null,endUs=null,timer,pending,closing,missedTicks=0,reason=null;
+
+ function fail(code,error){
+  if(reason!==null)return;
+  reason=code;
+  clearInterval(timer);
+  onFailure(error);
+ }
+ function sample(position){
+  if(samples.length>=sampleLimit){
+   fail('sample-limit',Error('Protected lock sample bound exceeded'));
+   return;
+  }
+  pending=Promise.resolve().then(async()=>{
+   if((position==='opening'&&state!=='opening')||(position==='periodic'&&state!=='active'))return;
+   const startedUs=stamp();
+   if(!lockCount(startedUs)||startedUs>=cutoffUs){
+    fail('deadline',Error('Protected lock observer deadline closed'));
+    return;
+   }
+   let counts;
+   try{
+    counts=await observe();
+   }catch(error){
+    const completedUs=stamp();
+    samples.push({position,startedUs,completedUs:lockCount(completedUs)&&completedUs>=startedUs?completedUs:null,state:'failed'});
+    fail('observer-failed',error);
+    return;
+   }
+   const completedUs=stamp();
+   if(!lockCount(completedUs)||completedUs<startedUs||completedUs>=cutoffUs){
+    samples.push({position,startedUs,completedUs:null,state:'failed'});
+    fail('deadline',Error('Protected lock observer returned outside its window'));
+    return;
+   }
+   const {appSessions,blockingAppSessions}=counts??{};
+   if(!lockCount(appSessions)||!lockCount(blockingAppSessions)||blockingAppSessions>appSessions){
+    samples.push({position,startedUs,completedUs,state:'failed'});
+    fail('sample-invalid',Error('Protected lock observation counts refused'));
+    return;
+   }
+   samples.push({position,startedUs,completedUs,state:'observed',appSessions,blockingAppSessions});
+  }).finally(()=>{pending=undefined;});
+  return pending;
+ }
+
+ function evidence(){
+  const rows=Object.freeze(samples.map(row=>Object.freeze({...row}))),observed=rows.filter(row=>row.state==='observed');
+  const observedBlockingSamples=observed.filter(row=>row.blockingAppSessions>0).length;
+  const appObservedDuringWork=observed.some(row=>row.position==='periodic'&&row.appSessions>0
+   &&row.startedUs>=startUs&&row.completedUs<=endUs);
+  const ordered=observed.every((row,i)=>i===0||observed[i-1].completedUs<=row.startedUs);
+  const observedGapUs=ordered&&observed.length>=2?Math.max(...observed.slice(1).map((row,i)=>row.completedUs-observed[i].startedUs)):null;
+  const coveragePass=state==='sealed'&&reason===null&&ordered&&rows.length===observed.length&&appObservedDuringWork
+   &&lockCount(startUs)&&lockCount(endUs)&&startUs<=endUs
+   &&observed[0]?.position==='opening'&&observed[0].completedUs<=startUs
+   &&observed.at(-1)?.position==='closing'&&endUs<=observed.at(-1).startedUs
+   &&observedGapUs!==null&&observedGapUs<=maxGapUs;
+  const coverageReason=state==='sealed'&&!coveragePass?(appObservedDuringWork?'coverage-gap':'app-unobserved'):null;
+  return Object.freeze({phase,state:coveragePass?'complete':state==='not-started'?'not-started':'incomplete',reason:reason??coverageReason,
+   intervalMs:interval,maxGapUs,observedGapUs,cutoffUs,sampleLimit,window:startUs===null?null:Object.freeze({startUs,endUs}),missedTicks,
+   observedBlockingSamples,blockingSamples:coveragePass?observedBlockingSamples:null,coveragePass,
+   pass:coveragePass&&observedBlockingSamples===0,samples:rows});
+ }
+
+ return {
+  async start(){
+   if(state!=='not-started')throw Error('Protected lock observation already started');
+   state='opening';
+   await sample('opening');
+   if(reason!==null||state!=='opening')throw Error('Protected lock opening observation refused');
+   if(samples[0].blockingAppSessions>0){
+    const error=Error('Protected lock opening observation found blocking');
+    fail('opening-blocking',error);
+    throw error;
+   }
+   startUs=stamp();
+   if(!lockCount(startUs)||startUs>=cutoffUs){
+    const error=Error('Protected lock phase deadline closed before ingress');
+    fail('deadline',error);
+    throw error;
+   }
+   state='active';
+   timer=setInterval(()=>{
+    if(stamp()>=cutoffUs){fail('deadline',Error('Protected lock observer deadline closed'));return;}
+    if(pending){missedTicks++;return;}
+    void sample('periodic');
+   },interval);
+  },
+  close(workSettled){
+   if(closing)return closing;
+   const active=state==='active';
+   if(active)endUs=stamp();
+   state='closing';
+   clearInterval(timer);
+   closing=(async()=>{
+    await pending;
+    if(active&&workSettled===true&&reason===null){
+     await sample('closing');
+     state='sealed';
+    }else{
+     reason??='work-incomplete';
+     state='incomplete';
+    }
+    return evidence();
+   })();
+   return closing;
+  },
+  evidence,
+ };
+}
+
 export function closedChromiumEnvironment(source,runnerHome){
  if(source.SELENIUM_REMOTE_URL)throw Error('Remote Chromium launch is outside the owned development driver');
  if(typeof runnerHome!=='string'||!runnerHome.startsWith('/'))throw Error('Runner account home is unavailable');
