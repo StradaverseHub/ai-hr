@@ -443,7 +443,7 @@ class ViewProbeControls(unittest.TestCase):
             'ipv6-proc-absent': 59, 'ipv6-proc-read': 60, 'ipv6-row-shape': 61,
             'ipv6-row-not-loopback-reject': 62, 'identity-readback': 63,
         })
-        for code in range(50, 64):
+        for code in (43, *range(50, 64)):
             with self.subTest(code=code):
                 exit_row = {'reason': 'command-failed', 'commandExit': code, 'admitted': True,
                             'reaped': True, 'groupQuiescent': True, 'escapedSession': False}
@@ -455,9 +455,8 @@ class ViewProbeControls(unittest.TestCase):
                                 {'reason': 'deadline'}):
                     with self.assertRaises(ValueError):
                         M.validate_view_capture(M.canonical(native | {'process': exit_row | changed}), '1')
-                wrong = native | {'failure': 'owned-worker', 'unconfirmedPhases': list(M.VIEW_PHASES)}
-                with self.assertRaises(ValueError):
-                    M.validate_view_capture(M.canonical(wrong), '1')
+                earlier = native | {'failure': 'owned-worker', 'unconfirmedPhases': list(M.VIEW_PHASES)}
+                self.assertEqual(M.validate_view_capture(M.canonical(earlier), '1'), earlier)
 
     def test_refusal_credit_distinguishes_no_worker_unsettled_worker_and_successful_worker(self):
         provenance = {'sha': 'a'*40, 'run': '123', 'event': 'b'*64, 'elapsed': 9}

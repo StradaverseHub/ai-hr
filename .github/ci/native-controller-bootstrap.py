@@ -1507,9 +1507,9 @@ def validate_view_capture(raw, status):
     if report['cleanupComplete']:
         need(report['elapsedMs'] < 25000 and (not attempted or view_settled(process)),
              'View-probe cleanup lacks time or settlement evidence')
-    phase = view_failed_phase(process)
-    if failure in VIEW_PHASES or phase == 'network-route-census':
-        need(failure == phase, 'View-probe phase lacks the exact owned exit')
+    # The parent can retain the child exit before its own readback has succeeded.
+    if failure in VIEW_PHASES:
+        need(failure == view_failed_phase(process), 'View-probe phase lacks the exact owned exit')
     if worker is not None:
         need(view_success(process) and failure in (None, 'cleanup'), 'View-probe full worker lacks successful owned exit')
         view_worker_result(canonical(worker))
