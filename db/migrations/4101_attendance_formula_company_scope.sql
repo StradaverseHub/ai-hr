@@ -69,6 +69,16 @@ $$;
 REVOKE ALL ON FUNCTION app.attendance_formula_author_current(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.attendance_formula_author_current(uuid) TO ai_hr_app;
 
+-- Native identity and event reads require the full current author scope. The table owner follows
+-- its own SELECT policy above; the CASE prevents the definer from invoking itself through RLS.
+DO $$ DECLARE target record; BEGIN
+ FOR target IN SELECT * FROM (VALUES('attendance_formula','id'),('attendance_formula_event','formula_id')) v(table_name,id_column) LOOP
+  EXECUTE format('CREATE POLICY attendance_formula_current_author_read ON public.%I AS RESTRICTIVE FOR SELECT USING(
+   CASE WHEN current_user=pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid=%L::regclass))
+    THEN true ELSE app.attendance_formula_author_current(%I) END)',target.table_name,'public.'||target.table_name,target.id_column);
+ END LOOP;
+END $$;
+
 ALTER POLICY attendance_formula_read ON public.attendance_formula_revision
  USING(tenant_id=app.current_tenant_id() AND app.attendance_formula_manage_scope(company_id,definition));
 ALTER POLICY attendance_formula_insert ON public.attendance_formula_revision

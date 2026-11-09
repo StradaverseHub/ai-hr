@@ -25,13 +25,14 @@ function actor(ctx:SessionContext){if(!ctx.userId||!uuid.test(ctx.userId))throw 
 async function scope(tx:Tx,companyId:string){if(!uuid.test(companyId))throw Error('Choose a formula company.');const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.attendance_policy_principal_current() and app.is_admin_for(c.id) as ok from public.company c where c.id=${companyId}::uuid and c.tenant_id=app.current_tenant_id()`);if(!allowed?.ok)throw Error('Company administration access is required.');}
 export async function assertAttendanceFormulaAuthorTx(tx:Tx,ctx:SessionContext,companyId:string){actor(ctx);await scope(tx,companyId);}
 async function lock(tx:Tx,ctx:SessionContext,id:string){if(!uuid.test(id))throw Error('Formula is unavailable.');await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId.toLowerCase()+':attendance-formula:'+id.toLowerCase()},0))`);}
-async function identity(tx:Tx,id:string){if(!uuid.test(id))throw Error('Formula is unavailable.');const [formula]=await tx.select().from(attendanceFormula).where(and(eq(attendanceFormula.id,id),sql`app.attendance_formula_author_current(${attendanceFormula.id})`));if(!formula)throw Error('Formula or company scope is unavailable.');return formula;}
+async function identity(tx:Tx,id:string){if(!uuid.test(id))throw Error('Formula is unavailable.');const [formula]=await tx.select().from(attendanceFormula).where(eq(attendanceFormula.id,id));if(!formula)throw Error('Formula or company scope is unavailable.');return formula;}
 async function events(tx:Tx,id:string){return tx.select().from(attendanceFormulaEvent).where(eq(attendanceFormulaEvent.formulaId,id)).orderBy(desc(attendanceFormulaEvent.sequence)).limit(100);}
 async function latest(tx:Tx,id:string){const [revision]=await tx.select().from(attendanceFormulaRevision).where(eq(attendanceFormulaRevision.formulaId,id)).orderBy(desc(attendanceFormulaRevision.ordinal)).limit(1);if(!revision)throw Error('Save a formula version first.');return revision;}
 async function lifecycle(tx:Tx,id:string){const history=await events(tx,id);const [state]=await tx.select().from(attendanceFormulaEvent).where(and(eq(attendanceFormulaEvent.formulaId,id),inArray(attendanceFormulaEvent.kind,['activated','deactivated','archived']))).orderBy(desc(attendanceFormulaEvent.sequence)).limit(1);return {history,state};}
 async function writable(tx:Tx,id:string){const current=await lifecycle(tx,id);if(current.state?.kind==='archived')throw Error('An archived formula retains its history and cannot change.');return current;}
 async function item(tx:Tx,configuration:AttendanceFormulaConfiguration){const [component]=await tx.select().from(payComponent).where(eq(payComponent.id,configuration.payItemId));if(!component||component.archivedAt||component.isNonPayable||!['allowance','deduction'].includes(component.kind)||!attendanceFormulaCompanyIds(configuration).every(id=>payComponentAppliesToCompany(component,id)))throw Error('Choose an active Pay Item available in every selected company.');assertPayComponentReady(component);if((component.kind==='deduction')!==(configuration.purpose==='deduction'))throw Error('The Pay Item must match the earning or deduction purpose.');return component;}
-async function event(tx:Tx,ctx:SessionContext,formula:typeof attendanceFormula.$inferSelect,kind:typeof attendanceFormulaEvent.$inferInsert.kind,p:{revisionId?:string;testId?:string;detail?:Record<string,unknown>}={}){await tx.insert(attendanceFormulaEvent).values({tenantId:ctx.tenantId,companyId:formula.companyId,formulaId:formula.id,createdBy:actor(ctx),kind,...p});await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-formula',aggregateId:formula.id,eventType:'attendance-formula.'+kind,actor:actorOf(ctx),payload:{companyId:formula.companyId,revisionId:p.revisionId??null,testId:p.testId??null}});}
+type FormulaIdentity=Pick<typeof attendanceFormula.$inferSelect,'id'|'companyId'|'code'>;
+async function event(tx:Tx,ctx:SessionContext,formula:FormulaIdentity,kind:typeof attendanceFormulaEvent.$inferInsert.kind,p:{revisionId?:string;testId?:string;detail?:Record<string,unknown>}={}){await tx.insert(attendanceFormulaEvent).values({tenantId:ctx.tenantId,companyId:formula.companyId,formulaId:formula.id,createdBy:actor(ctx),kind,...p});await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-formula',aggregateId:formula.id,eventType:'attendance-formula.'+kind,actor:actorOf(ctx),payload:{companyId:formula.companyId,revisionId:p.revisionId??null,testId:p.testId??null}});}
 export function saveAttendanceFormula(ctx:SessionContext,input:{id?:string;expectedRevisionId?:string;configuration:unknown}){
  const configuration=validateAttendanceFormulaConfiguration(input.configuration);
  return withAttendanceTenant(ctx,async tx=>{
@@ -44,9 +45,14 @@ export function saveAttendanceFormula(ctx:SessionContext,input:{id?:string;expec
     throw Error('Every selected employee must belong to a formula company on the effective date.');
   }
   const id=input.id??randomUUID();await lock(tx,ctx,id);
-  let formula:typeof attendanceFormula.$inferSelect;
+  let formula:FormulaIdentity;
   if(input.id){formula=await identity(tx,id);if(formula.companyId!==configuration.companyId||formula.code!==configuration.code)throw Error('Keep the saved company and Formula ID; create another formula for a new identity.');await writable(tx,id);if((await latest(tx,id)).id!==input.expectedRevisionId)throw Error('The formula changed. Reopen its current version before saving.');}
-  else {const [created]=await tx.insert(attendanceFormula).values({id,tenantId:ctx.tenantId,companyId:configuration.companyId,code:configuration.code,createdBy:userId}).returning();formula=created;await event(tx,ctx,formula,'created');}
+  else {
+   formula={id,companyId:configuration.companyId,code:configuration.code};
+   // The owner can validate the creation event, but application reads start with the first revision.
+   await tx.insert(attendanceFormula).values({...formula,tenantId:ctx.tenantId,createdBy:userId});
+   await event(tx,ctx,formula,'created');
+  }
   const component=await item(tx,configuration),compiled=compileAttendanceFormulaLibrary(configuration.library,configuration.code),requirements={...compiled.requirements,workforce:compiled.requirements.workforce||configuration.eligibility.mode==='criteria'};
   const prior=await tx.select().from(attendanceFormulaRevision).where(eq(attendanceFormulaRevision.formulaId,id)).orderBy(desc(attendanceFormulaRevision.ordinal)).limit(1);
   const contentHash=hash({configuration,requirements,registry:ATTENDANCE_FORMULA_CATALOG_VERSION,evaluator:PAY_FORMULA_EVALUATOR_VERSION});if(prior[0]?.contentHash===contentHash)return {id,revisionId:prior[0].id,ordinal:prior[0].ordinal};
@@ -116,7 +122,7 @@ export function listAttendanceFormulas(ctx:SessionContext,p:{companyIds:string[]
  from attendance_formula f join company c on c.id=f.company_id and c.tenant_id=f.tenant_id
  join lateral(select ordinal,definition from attendance_formula_revision where formula_id=f.id and tenant_id=f.tenant_id order by ordinal desc limit 1)r on true
  left join lateral(select kind from attendance_formula_event where formula_id=f.id and tenant_id=f.tenant_id and kind in('activated','deactivated','archived') order by sequence desc limit 1)state on true
- where app.attendance_formula_author_current(f.id) and app.attendance_formula_companies(f.company_id,r.definition)<@array[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]
+ where app.attendance_formula_companies(f.company_id,r.definition)<@array[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]
  and(f.code ilike ${term} or r.definition->>'description' ilike ${term})
  and(${p.status??null}::text is null or case when state.kind='archived' then 'archived' when state.kind='activated' then 'active' else 'inactive' end=${p.status??null})
  order by f.code,f.id limit 501`);
