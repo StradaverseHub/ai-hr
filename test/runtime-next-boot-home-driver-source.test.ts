@@ -23,6 +23,7 @@ function sourceFunction<T>(name: string, context: Record<string, unknown> = {}):
 type Progress = {
   enter(stage: string): void;
   status(status: number | null): void;
+  action(fact: string, statusClass?: number | null): void;
   complete(): void;
   fail(type: string): void;
 };
@@ -85,9 +86,11 @@ function actionRequest(origin: string, path: string, method: string, action: boo
 }
 type FakeRequest = ReturnType<typeof actionRequest>;
 
-async function runSkip(status: number | null) {
+async function runSkip(status: number | null, networkFailure?: Error, clickFailure?: Error) {
   const seen: string[] = [];
   const trace: (string | number | null)[] = [];
+  const actionFacts: [string, number | null][] = [];
+  const listeners = new Map<string, (value: unknown) => void>();
   const tour = {
     getByRole(role: string, options: object) {
       expect([role, options]).toEqual(['button', { name: 'Skip', exact: true }]);
@@ -100,6 +103,7 @@ async function runSkip(status: number | null) {
           expect(input).toEqual({ timeout: 90000 });
           expect(seen).toEqual(['skip-visible', 'completion-listener']);
           seen.push('click');
+          if (clickFailure) throw clickFailure;
         },
       };
     },
@@ -109,6 +113,14 @@ async function runSkip(status: number | null) {
     },
   };
   const page = {
+    on(event: string, listener: (value: unknown) => void) {
+      expect(listeners.has(event)).toBe(false);
+      listeners.set(event, listener);
+    },
+    off(event: string, listener: (value: unknown) => void) {
+      expect(listeners.get(event)).toBe(listener);
+      listeners.delete(event);
+    },
     waitForEvent(event: string, { predicate, timeout }: { predicate: (request: FakeRequest) => boolean; timeout: number }) {
       expect([event, timeout]).toEqual(['requestfinished', 90000]);
       seen.push('completion-listener');
@@ -119,24 +131,42 @@ async function runSkip(status: number | null) {
         expect(predicate(actionRequest(base, '/', 'GET', true, 200, seen))).toBe(false);
         expect(predicate(actionRequest(base, '/', 'POST', false, 200, seen))).toBe(false);
         const result = actionRequest(base, '/', 'POST', true, status, seen);
+        const unrelated = actionRequest(base, '/elsewhere', 'POST', true, 500, seen);
         expect(predicate(result)).toBe(true);
+        listeners.get('request')?.(unrelated);
+        listeners.get('request')?.(result);
+        listeners.get('response')?.({ request: () => unrelated, status: () => 500 });
+        if (status !== null) listeners.get('response')?.({ request: () => result, status: () => status });
+        if (networkFailure) {
+          listeners.get('requestfailed')?.(result);
+          throw networkFailure;
+        }
+        listeners.get('requestfinished')?.(result);
         seen.push('request-finished');
         return result;
       });
     },
   };
-  const skip = sourceFunction<(page: object, progress: Pick<Progress, 'enter' | 'status'>) => Promise<void>>(
+  const skip = sourceFunction<(page: object, progress: Pick<Progress, 'enter' | 'status' | 'action'>) => Promise<void>>(
     'skipWelcomeTour', { base, remaining: () => 90000, productTour: () => tour, URL },
   );
-  const result = skip(page, { enter: value => trace.push(value), status: value => trace.push(value) });
-  return { seen, trace, result };
+  const result = skip(page, {
+    enter: value => trace.push(value),
+    status: value => trace.push(value),
+    action: (fact, statusClass = null) => actionFacts.push([fact, statusClass]),
+  });
+  return { seen, trace, result, actionFacts, listeners };
 }
 
 it('binds the actual Skip owner to the matching same-origin Next action before the ordinary click', async () => {
-  const { result, seen, trace } = await runSkip(200);
+  const { result, seen, trace, actionFacts, listeners } = await runSkip(200);
   await expect(result).resolves.toBeUndefined();
   expect(seen).toEqual(['skip-visible', 'completion-listener', 'click', 'request-finished', 'cached-response', 'tour-hidden']);
   expect(trace).toEqual(['welcome-visible', 'welcome-action', 200, 'welcome-hidden']);
+  expect(actionFacts).toEqual([
+    ['click-entered', null], ['post-seen', null], ['post-response', 2], ['post-finished', null], ['click-returned', null],
+  ]);
+  expect(listeners.size).toBe(0);
 });
 
 it('refuses a matching failed server action without claiming the tour is dismissed', async () => {
@@ -148,6 +178,37 @@ it('refuses a matching failed server action without claiming the tour is dismiss
   }
 });
 
+
+it('retains finite matched POST failure facts and the original refusal without raw request data', async () => {
+  const original = new Error('fictional private network failure');
+  const { result, seen, trace, actionFacts, listeners } = await runSkip(null, original);
+  await expect(result).rejects.toBe(original);
+  expect(seen).toEqual(['skip-visible', 'completion-listener', 'click']);
+  expect(trace).toEqual(['welcome-visible', 'welcome-action']);
+  expect(actionFacts).toEqual([
+    ['click-entered', null], ['post-seen', null], ['post-failed', null], ['click-returned', null],
+  ]);
+  expect(listeners.size).toBe(0);
+
+  const clickError = new Error('fictional private click refusal');
+  const click = await runSkip(null, original, clickError);
+  await expect(click.result).rejects.toBe(clickError);
+  expect(click.actionFacts).toEqual([
+    ['click-entered', null], ['post-seen', null], ['post-failed', null], ['click-refused', null],
+  ]);
+  expect(click.listeners.size).toBe(0);
+  const rows: Record<string, unknown>[] = [];
+  const progress = makeProgress(row => rows.push(row));
+  expect(() => progress.action('post-seen')).toThrow();
+  for (const stage of stages.slice(0, stages.indexOf('welcome-action') + 1)) progress.enter(stage);
+  expect(() => progress.action('fictional-private-action-id')).toThrow();
+  expect(() => progress.action('post-response', 200)).toThrow();
+  expect(() => progress.action('post-failed', 5)).toThrow();
+  progress.action('post-response', 2);
+  expect(() => progress.action('post-response', 5)).toThrow();
+  expect(rows.at(-1)).toEqual({ stage: 'welcome-action', state: 'observation', fact: 'post-response', statusClass: 2 });
+  expect(JSON.stringify(rows)).not.toContain('fictional');
+});
 
 it('refuses closed failure markers on main and inside it without rejecting a normal loading skeleton', async () => {
   const guard = sourceFunction<(page: object) => Promise<void>>('assertNoHomeFailureMarkers');

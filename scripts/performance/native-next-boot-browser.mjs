@@ -49,6 +49,7 @@ function makeFirstHomeProgress(emit){
  const stages=['home-navigate','account-visible','account-identity','first-card-visible','card-count','loading-settled','card-keys',
   'today-visible','today-content','headcount','tenant-scope','welcome-visible','welcome-action','welcome-hidden','account-open',
   'menu-visible','account-close','worker-match'];
+ const actionFacts=new Set();
  let index=-1,finished=false,statusRecorded=false;
  return {
   enter(stage){
@@ -60,6 +61,13 @@ function makeFirstHomeProgress(emit){
    assert(!finished&&!statusRecorded&&(stage==='home-navigate'||stage==='welcome-action')&&
     (status===null||Number.isInteger(status)&&status>=100&&status<=599));
    statusRecorded=true;emit({stage,state:'http-status',status});
+  },
+  action(fact,statusClass=null){
+   assert(!finished&&stages[index]==='welcome-action'&&!actionFacts.has(fact)&&
+    ['click-entered','click-returned','click-refused','post-seen','post-response','post-failed','post-finished'].includes(fact));
+   assert(fact==='post-response'?Number.isInteger(statusClass)&&statusClass>=1&&statusClass<=5:statusClass===null);
+   actionFacts.add(fact);
+   emit({stage:'welcome-action',state:'observation',fact,...(fact==='post-response'?{statusClass}:{})});
   },
   complete(){
    assert(!finished&&index===stages.length-1);
@@ -86,16 +94,44 @@ async function skipWelcomeTour(page,progress){
  progress.enter('welcome-visible');
  await skip.waitFor({state:'visible',timeout:remaining()});
  progress.enter('welcome-action');
- const [finished,click]=await Promise.allSettled([
-  page.waitForEvent('requestfinished',{
-   predicate:request=>{
-    const url=new URL(request.url());
-    return url.origin===base&&url.pathname==='/'&&request.method()==='POST'&&Boolean(request.headers()['next-action']);
-   },
-   timeout:remaining(),
-  }),
-  skip.click({timeout:remaining()}),
- ]);
+ const matches=request=>{
+  const url=new URL(request.url());
+  return url.origin===base&&url.pathname==='/'&&request.method()==='POST'&&Boolean(request.headers()['next-action']);
+ };
+ // Diagnostics are independent of the existing completed-request assertion.
+ // Track one matching Request object and emit only a bounded closed vocabulary.
+ const note=(fact,statusClass=null)=>{
+  try{progress.action(fact,statusClass);}catch{/* Keep the original action outcome primary. */}
+ };
+ let firstPost;
+ const listeners=[
+  ['request',request=>{
+   if(!firstPost&&matches(request)){firstPost=request;note('post-seen');}
+  }],
+  ['response',response=>{
+   if(firstPost&&response.request()===firstPost)note('post-response',Math.floor(response.status()/100));
+  }],
+  ['requestfailed',request=>{if(request===firstPost)note('post-failed');}],
+  ['requestfinished',request=>{if(request===firstPost)note('post-finished');}],
+ ].map(([event,observe])=>[event,value=>{
+  try{observe(value);}catch{/* A diagnostic cannot interrupt a Playwright event. */}
+ }]);
+ let finished,click;
+ try{
+  for(const [event,listener] of listeners)page.on(event,listener);
+  [finished,click]=await Promise.allSettled([
+   page.waitForEvent('requestfinished',{predicate:matches,timeout:remaining()}),
+   (async()=>{
+    note('click-entered');
+    try{
+     await skip.click({timeout:remaining()});
+     note('click-returned');
+    }catch(error){note('click-refused');throw error;}
+   })(),
+  ]);
+ }finally{
+  for(const [event,listener] of listeners)page.off(event,listener);
+ }
  // The completed request already has its response. Do not start another wait.
  const response=finished.status==='fulfilled'?finished.value.existingResponse():null;
  if(finished.status==='fulfilled')progress.status(response?.status()??null);
