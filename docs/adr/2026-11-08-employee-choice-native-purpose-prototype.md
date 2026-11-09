@@ -45,3 +45,10 @@ The controlled selector currently accepts only the genuine, sole temporary focus
 - PostgreSQL 16 [function SET and invoker semantics](https://www.postgresql.org/docs/16/sql-createfunction.html).
 - PostgreSQL 16 [RETURN QUERY tuplestore behavior](https://www.postgresql.org/docs/16/plpgsql-control-structures.html).
 - PostgreSQL 16 [auto_explain options](https://www.postgresql.org/docs/16/auto-explain.html) and its [shipped implementation](https://github.com/postgres/postgres/blob/REL_16_STABLE/contrib/auto_explain/auto_explain.c).
+
+
+## Historical reader custody and current semantics
+
+The disposable installer verifies the whole relocated historical comparison reader and the fixed native SQL bytes before its first native query. Its earlier assertion on the live production reader used the historical digest and would refuse legitimate later reader changes before the native cases could run. The installer now binds the historical fixture at its own path. The independent source control reverses only the one added comment and eight relocated imports, recovering the complete reader from `f1515376df082438ca025fb65d01a8a3330a8796` with SHA256 `ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5`. This establishes historical reader bytes. The relocated comparison continues to use the current test runtime and dependencies.
+
+Current candidate source remains part of the exact hosted lifecycle plan. The bounded-search and exact ASCII native cases still call the live reader and compare its results with their native courses. The benchmark retains its explicitly frozen historical control. The installer retains the same worker, role, SQL, RLS, ACL and restoration checks. Earlier measurements stay attached to their original sources. The correction requires its own hosted verification.

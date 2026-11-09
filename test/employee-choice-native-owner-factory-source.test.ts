@@ -28,3 +28,35 @@ export async function employeeChoiceNativeSecurity(){return legacy.security();}
 export async function installEmployeeChoiceNativePrototype(adopt?:(value:EmployeeChoiceNativeInstallation)=>void):Promise<EmployeeChoiceNativeInstallation>{return legacy.install(adopt);}
 `);
 });
+
+function restoreHistoricalReader(bytes:Buffer){
+ if(createHash('sha256').update(bytes).digest('hex')!=='fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816')
+  throw Error('Frozen relocated reader differs');
+ const source=bytes.toString('utf8');
+ const end=source.indexOf('\n\n');
+ const [comment,...imports]=source.slice(0,end).split('\n');
+ expect(comment).toBe('/** Exact current-root f151 reader; frozen test-only comparison, never a production owner. */');
+ expect(imports).toHaveLength(10);
+ const relocations=[
+  ['../../db/client','../db/client'],
+  ['../../db/schema','../db/schema'],
+  ['../../core/ai-principal','./ai-principal'],
+  ['../../lib/organisation-choice-label','../lib/organisation-choice-label'],
+  ['../../lib/authz-model','../lib/authz-model'],
+  ['../../lib/calendar-date','../lib/calendar-date'],
+  ['../../lib/pagination','../lib/pagination'],
+  ['../../lib/employee-choice','../lib/employee-choice'],
+ ] as const;
+ for(const [index,[relocated,original]] of relocations.entries()){
+  const suffix="'"+relocated+"';",line=imports[index+2];
+  expect(line.endsWith(suffix)).toBe(true);
+  imports[index+2]=line.slice(0,-suffix.length)+"'"+original+"';";
+ }
+ return imports.join('\n')+source.slice(end);
+}
+it('reconstructs the whole historical f151 reader from the separately frozen comparison bytes',()=>{
+ const bytes=readFileSync('test/performance/employee-choice-native-current-baseline.ts'),source=bytes.toString('utf8');
+ expect(sha(restoreHistoricalReader(bytes))).toBe('ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5');
+ expect(()=>restoreHistoricalReader(Buffer.from(source.replace("from '../../db/client'","from '../../db/schema'")))).toThrow('Frozen relocated reader differs');
+ expect(()=>restoreHistoricalReader(Buffer.from(source.replace('EmployeeChoiceInputError extends Error','EmployeeChoiceInputError extends TypeError')))).toThrow('Frozen relocated reader differs');
+});

@@ -20,7 +20,6 @@ export type EmployeeChoiceNativeInstallation={database:string;sourceSha256:strin
  * work→cleanup transition; this creates no pool or authorization token. */
 export function employeeChoiceNativePrototypeOwner(getQuery:()=>Sql){
 async function install(adopt?:(value:EmployeeChoiceNativeInstallation)=>void):Promise<EmployeeChoiceNativeInstallation>{
- expect(sha('core/employee-choice.ts')).toBe('ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5');
  expect(sha('test/performance/employee-choice-native-current-baseline.ts')).toBe('fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816');
  expect(sha('test/fixtures/employee-choice-native-purpose.sql')).toBe(employeeChoicePrototypeSqlSha256);
  const pool=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(pool).toMatch(/^[1-9][0-9]*$/);expect(process.env.WORKER_DB).not.toBe('0');

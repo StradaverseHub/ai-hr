@@ -274,8 +274,14 @@
     },
     "test/employee-choice-native-owner-factory-source.test.ts": {
       "parentSha256": "471f3cb7b08165cb9928819086a1a739591d4434877924e0d1e795b00efafc54",
-      "currentSha256": "5c8a442b67ea31bdbb22f065e59cd7898d08d0de7e7666df866a585877da7bd8",
+      "currentSha256": "7c6c8fad7e2a024f2e841340eecf2a7169093c1817dc9f5a8a0fdf75aaa579fd",
       "changes": [
+        {
+          "startLine": 30,
+          "endLine": 62,
+          "before": "",
+          "after": "\nfunction restoreHistoricalReader(bytes:Buffer){\n if(createHash('sha256').update(bytes).digest('hex')!=='fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816')\n  throw Error('Frozen relocated reader differs');\n const source=bytes.toString('utf8');\n const end=source.indexOf('\\n\\n');\n const [comment,...imports]=source.slice(0,end).split('\\n');\n expect(comment).toBe('/** Exact current-root f151 reader; frozen test-only comparison, never a production owner. */');\n expect(imports).toHaveLength(10);\n const relocations=[\n  ['../../db/client','../db/client'],\n  ['../../db/schema','../db/schema'],\n  ['../../core/ai-principal','./ai-principal'],\n  ['../../lib/organisation-choice-label','../lib/organisation-choice-label'],\n  ['../../lib/authz-model','../lib/authz-model'],\n  ['../../lib/calendar-date','../lib/calendar-date'],\n  ['../../lib/pagination','../lib/pagination'],\n  ['../../lib/employee-choice','../lib/employee-choice'],\n ] as const;\n for(const [index,[relocated,original]] of relocations.entries()){\n  const suffix=\"'\"+relocated+\"';\",line=imports[index+2];\n  expect(line.endsWith(suffix)).toBe(true);\n  imports[index+2]=line.slice(0,-suffix.length)+\"'\"+original+\"';\";\n }\n return imports.join('\\n')+source.slice(end);\n}\nit('reconstructs the whole historical f151 reader from the separately frozen comparison bytes',()=>{\n const bytes=readFileSync('test/performance/employee-choice-native-current-baseline.ts'),source=bytes.toString('utf8');\n expect(sha(restoreHistoricalReader(bytes))).toBe('ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5');\n expect(()=>restoreHistoricalReader(Buffer.from(source.replace(\"from '../../db/client'\",\"from '../../db/schema'\")))).toThrow('Frozen relocated reader differs');\n expect(()=>restoreHistoricalReader(Buffer.from(source.replace('EmployeeChoiceInputError extends Error','EmployeeChoiceInputError extends TypeError')))).toThrow('Frozen relocated reader differs');\n});\n"
+        },
         {
           "startLine": 17,
           "endLine": 18,
@@ -490,43 +496,49 @@
     },
     "test/performance/employee-choice-native-purpose-owner-factory.ts": {
       "parentSha256": "481e5f20b38d02325570147c146428066213560d9066aa3141869454924a3e13",
-      "currentSha256": "65c9b170f78eac82f0db5baa69f59e260d53b8b917f7e0c154a9b7acab4e9a76",
+      "currentSha256": "3b52cb0436b9f5c5712b5988406af896f958b1d725c2e961f6e14a0dfa063666",
       "changes": [
         {
-          "startLine": 78,
-          "endLine": 80,
+          "startLine": 77,
+          "endLine": 79,
           "before": "   expect(await readNativeSecurity(getQuery())).toEqual(security);\n  }};\n",
           "after": "   expect(await readNativeSecurity(getQuery())).toEqual(security);await restored();removed=true;\n  },async restoration(){if(!removed)throw Error('Native removal has not settled');return restored();}};\n"
         },
         {
-          "startLine": 76,
-          "endLine": 77,
+          "startLine": 75,
+          "endLine": 76,
           "before": "   await getQuery().unsafe('drop function '+employeeChoicePrototypeSignature);removed=true;\n",
           "after": "   await getQuery().unsafe('drop function '+employeeChoicePrototypeSignature);\n"
         },
         {
-          "startLine": 74,
-          "endLine": 75,
+          "startLine": 73,
+          "endLine": 74,
           "before": "   if(present.count===0){expect(await readNativeSecurity(getQuery())).toEqual(security);removed=true;return;}\n",
           "after": "   if(present.count===0){await restored();removed=true;return;}\n"
         },
         {
-          "startLine": 70,
-          "endLine": 71,
+          "startLine": 69,
+          "endLine": 70,
           "before": "   if(removed)return;\n",
           "after": "   if(removed){await restored();return;}\n"
         },
         {
-          "startLine": 66,
-          "endLine": 68,
+          "startLine": 65,
+          "endLine": 67,
           "before": " installed=created;\n resource={database,sourceSha256:createHash('sha256').update(source).digest('hex'),installed:created,security,\n",
           "after": " installed=structuredClone(created);\n resource={database,sourceSha256:createHash('sha256').update(source).digest('hex'),installed:structuredClone(created),security:structuredClone(security),\n"
         },
         {
-          "startLine": 41,
-          "endLine": 49,
+          "startLine": 40,
+          "endLine": 48,
           "before": "",
           "after": " const restored=async()=>{\n  if(!installed)throw Error('Native prototype witness missing');\n  const [identity]=await getQuery()`select current_user as role,session_user as login,current_database() as database,(select oid::text from pg_database where datname=current_database())as \"databaseOid\",inet_server_addr()='127.0.0.1'::inet as loopback`;\n  const [absence]=await getQuery()`select to_regprocedure(${employeeChoicePrototypeSignature})is null as absent,(select count(*)::int from pg_proc where pronamespace='app'::regnamespace and proname='employee_choice_native_prototype')as overloads`;\n  const after=await readNativeSecurity(getQuery());\n  const value={version:1,kind:'NATIVE_EMPLOYEE_PROTOTYPE_RESTORATION_NOT_RELEASE',database,identity,sourceSha256:employeeChoicePrototypeSqlSha256,installed:structuredClone(installed),installedSha256:employeeRestorationHash(installed),beforeSecurity:structuredClone(security),afterSecurity:after,beforeSecuritySha256:employeeRestorationHash(security),afterSecuritySha256:employeeRestorationHash(after),securityCounts:Object.fromEntries(Object.entries(security).map(([name,rows])=>[name,rows.length])),signatureAbsent:absence.absent,overloads:absence.overloads};\n  return verifyEmployeePrototypeRestoration(value,{database,sourceSha256:employeeChoicePrototypeSqlSha256,installedSha256:employeeRestorationHash(installed),securitySha256:employeeRestorationHash(security)});\n };\n"
+        },
+        {
+          "startLine": 22,
+          "endLine": 22,
+          "before": " expect(sha('core/employee-choice.ts')).toBe('ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5');\n",
+          "after": ""
         },
         {
           "startLine": 17,
