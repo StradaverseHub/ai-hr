@@ -40,6 +40,39 @@ test('Verified raw archives produce a non-authoritative assessment, preserving a
   assert.equal(r.observations.length, f.expectedPlan.units.length); assert(r.freshPrerequisites.includes('build'));
   const db=databaseModel(fixture());assert.throws(()=>assessResumeSource(db),/Explicit candidate root/);assert.throws(()=>assessResumeSource({...db,candidateRoot:modelRoot}),/Explicit candidate root/);assert.equal(assessResumeSource(db,modelRoot).reusable.length,5);
 });
+test('replaced database archives keep unique fresh IDs and reach the actual root and plan guards', () => {
+  const f = fixture(), before = new Map(f.artifacts.map(artifact => [artifact.name, artifact.id]));
+  const old = f.expectedPlan.units.find(unit => unit.kind === 'db'), oldName = 'unit-' + old.id;
+  const db = databaseModel(f), unit = db.expectedPlan.units.find(row => row.singleton), name = 'unit-' + unit.id;
+  const current = db.artifacts.find(artifact => artifact.name === name);
+  assert(current); assert(!db.archives.has(oldName)); assert(db.archives.has(name));
+  assert(current.id > Math.max(...before.values()));
+  assert(db.artifacts.every(artifact => Number.isSafeInteger(artifact.id) && artifact.id > 0));
+  assert.equal(new Set(db.artifacts.map(artifact => artifact.id)).size, db.artifacts.length);
+  for (const artifact of db.artifacts) if (artifact.name !== name) assert.equal(artifact.id, before.get(artifact.name));
+  assert.throws(() => assessResumeSource(db), /Explicit candidate root/);
+  assert.throws(() => assessResumeSource({...db, candidateRoot: modelRoot}), /Explicit candidate root/);
+  assert.equal(assessResumeSource(db, modelRoot).reusable.length, 5);
+  const planId = db.artifacts.find(artifact => artifact.name === 'gate-plan').id;
+  put(db, 'gate-plan', 'ci-plan.json', {...db.expectedPlan, candidateRoot: modelRoot});
+  assert.equal(db.artifacts.find(artifact => artifact.name === 'gate-plan').id, planId);
+  assert.throws(() => assessResumeSource(db, modelRoot), /plan/);
+
+  const malformed = fixture(); malformed.artifacts[0].id = 0;
+  put(malformed, 'gate-plan', 'ci-plan.json', malformed.expectedPlan);
+  assert.equal(malformed.artifacts[0].id, 0);
+  assert.throws(() => assessResumeSource(malformed), /invalid, foreign, duplicate or expired artifact/);
+  for (const invalid of [0, -1, 1.5, '2000', true, NaN, Infinity, undefined, null, Number.MAX_SAFE_INTEGER]) {
+    const bad = fixture(); bad.artifacts[0].id = invalid;
+    const artifactCount = bad.artifacts.length, archiveCount = bad.archives.size;
+    assert.throws(() => put(bad, 'additional-model-archive', 'model.json', {}));
+    assert.equal(bad.artifacts.length, artifactCount); assert.equal(bad.archives.size, archiveCount);
+    assert.equal(bad.artifacts[0].id, invalid);
+  }
+  const duplicate = fixture(); duplicate.artifacts[1].id = duplicate.artifacts[0].id;
+  assert.throws(() => put(duplicate, 'additional-model-archive', 'model.json', {}));
+  assert.throws(() => assessResumeSource(duplicate), /invalid, foreign, duplicate or expired artifact/);
+});
 test('A failed producing job overrides a green payload; it is never selected from an earlier green', () => {
   const f = fixture(), unit = f.expectedPlan.units.find(u => u.kind === 'db');
   f.jobs.find(j => j.name === `test (${unit.id})`).conclusion = 'failure';
