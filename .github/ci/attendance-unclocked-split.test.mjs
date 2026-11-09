@@ -8,6 +8,7 @@ import {readUnclockedSplitSources,verifyUnclockedSplit} from './attendance-unclo
 const root=fileURLToPath(new URL('../../',import.meta.url));
 test('all32original registrations retain exact table values, callbacks, financial controls and per-case resets',()=>{
  const p=verifyUnclockedSplit(readUnclockedSplitSources(root));assert.equal(p.remainingCases+p.financialCases,p.originalCases);assert.equal(p.originalCases,32);assert.equal(p.releaseAuthorized,false);
+ assert.equal(p.boardSubmissionFixtureBound,true);
 });
 test('actual case-registration expression gives disjoint cash/TOIL rows with the exact original18-row union',()=>{
  const s=readUnclockedSplitSources(root);
@@ -34,3 +35,15 @@ for(const [label,key,from,to] of [
  ['changed other owner-scope assertion','remaining',"it('requires real financial scope", "it.skip('requires real financial scope"],
  ['modified source oracle','baseline','updateLeaveType','editedLeaveType'],
 ])test('refuse '+label,()=>{const s=readUnclockedSplitSources(root);assert(s[key].includes(from),'Negative-control boundary is nonempty');s[key]=s[key].replace(from,to);assert.throws(()=>verifyUnclockedSplit(s));});
+test('refuse an omitted Board 3 import, the historical unconfigured reset or changed routing fixture source',()=>{
+ for(const [key,from,to,reason] of [
+  ['remaining',"import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';\n",'',/Exact Board 3 submission fixture import required/],
+  ['remaining','b=await seedAttendanceSubmissionBase();','b=await seedBase();',/Exact Board 3 submission fixture reset hook required/],
+  ['boardFixture','priority: 9000','priority: 9001',/Changed Board 3 submission fixture source/],
+ ]){
+  const s=readUnclockedSplitSources(root);
+  assert.equal(s[key].split(from).length,2,'Board 3 negative-control boundary is unique');
+  s[key]=s[key].replace(from,to);
+  assert.throws(()=>verifyUnclockedSplit(s),reason);
+ }
+});
