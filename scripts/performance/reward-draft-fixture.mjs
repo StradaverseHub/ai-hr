@@ -48,16 +48,15 @@ export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,compani
  const rewardDraft={companyId:company.companyId,businessUnitId:unit.id,employmentId:person.employmentId,year,snapshotDate:today,
    planVersionId:source.versionId,planName:name,expectedEmploymentIds:[...expectedCompanyEmploymentIds,person.employmentId]};
  if(suite==='workflow-preflight')return rewardDraft;
- const members=await owner.client`select e.id as "employmentId",e.company_id as "companyId",p.full_name as name,
-   e.hired_on::text as "hiredOn",e.terminated_on is null as active,
-   exists(select 1 from app_user u where u.tenant_id=e.tenant_id and u.person_id=e.person_id) as "hasLogin",
-   exists(select 1 from payslip s where s.tenant_id=e.tenant_id and s.employment_id=e.id) as "hasPayslip"
-   from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id
-   where e.tenant_id=${tenant.tenantId}::uuid and e.id=${person.employmentId}::uuid`;
- assert.deepEqual(members.map(row=>({...row})),[{
-  employmentId:person.employmentId,companyId:company.companyId,name:REWARDS_ORG_FIXTURE_NAME,hiredOn:today,
-  active:true,hasLogin:false,hasPayslip:false,
- }],'Rewards Org Explorer member differs from the independent fictional employment');
+ const members=await owner.client`select true as verified
+   from public.employment e join public.person p on p.id=e.person_id and p.tenant_id=e.tenant_id
+   where e.tenant_id=${tenant.tenantId}::uuid and e.id=${person.employmentId}::uuid
+     and e.company_id=${company.companyId}::uuid and p.full_name=${REWARDS_ORG_FIXTURE_NAME}
+     and e.hired_on=${today}::date and e.terminated_on is null
+     and not exists(select 1 from public.app_user u where u.tenant_id=e.tenant_id and u.person_id=e.person_id)
+     and not exists(select 1 from public.payslip s where s.tenant_id=e.tenant_id and s.employment_id=e.id)`;
+ assert(members.length===1&&members[0].verified===true,
+  'Rewards Org Explorer member differs from the independent fictional employment');
  return {...rewardDraft,organisationMember:{
   employmentId:person.employmentId,companyId:company.companyId,name:REWARDS_ORG_FIXTURE_NAME,
  }};

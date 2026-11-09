@@ -28,4 +28,7 @@ Explorer expects 251 people in tenant 0 and 250 in tenant 1. Company 2 in
 tenant 0 contains 51 people, including the known Rewards employment. The
 company 0 scope still contains 50. The workflow preflight keeps its existing
 Rewards fixture and the claims workload keeps its existing fixture. This
-source change requires hosted fixture and browser verification.
+source change requires hosted fixture and browser verification. Org Explorer
+must show the exact Rewards member in a rendered search result and refuse
+that search after narrowing to another company. The fixture member check
+returns a boolean witness and reports a fixed refusal on a mismatch.
