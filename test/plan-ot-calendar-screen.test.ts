@@ -160,13 +160,10 @@ describe('B · the refusals the approved plan owes the reporter', () => {
     expect(LIST).toContain('isCalendar ? otPlanCalendarMonth(s, me.employmentId, month) : Promise.resolve([])');
   });
 
-  it('the warnings still only warn — nothing on either screen disables Submit', () => {
-    for (const [name, src] of [
-      ['apply', code(APPLY)],
-      ['fields', code(FIELDS)],
-    ] as const) {
-      expect(/\bdisabled\b/.test(src), `${name}: a genuine month-end must still be submittable`).toBe(false);
-    }
+  it('keeps month-end and long-plan warnings nonblocking when an approval route is available', () => {
+    // The approved routing change is the only guard on Submit. Warnings must not become a second guard.
+    expect(code(APPLY).match(/\bdisabled\b(?:=\{[^}]*\})?/g)).toEqual(['disabled={!route.available}']);
+    expect(code(FIELDS)).not.toMatch(/\bdisabled\b/);
   });
 });
 
