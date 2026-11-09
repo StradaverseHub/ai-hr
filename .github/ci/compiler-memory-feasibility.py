@@ -15,9 +15,9 @@ import sys
 import time
 
 
-SOURCE = '54fe69ffdf952eac087c91ad6050bf9fdb36d116'
-SOURCE_BRANCH = 'codex/architecture-five-item-browser-convergence-20261109'
-BRANCH = 'codex/compiler-12800-whole-feasibility-20261109'
+SOURCE = 'fa87650fd724c0eebfd701a4245c1cba0039df95'
+SOURCE_BRANCH = 'codex/architecture-ai-management-snapshot-20261109'
+BRANCH = 'codex/compiler-fa87650f-whole-12800-20261109'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 LIMIT = 13 * GIB
