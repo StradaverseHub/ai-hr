@@ -36,7 +36,7 @@ export function analyticsQuery(filters: RewardsAnalyticsFilters): URLSearchParam
   for (const [key, value] of [
     ['group', filters.groupId], ['review', filters.unitId], ['cycle', filters.cycleId],
     ['company', filters.companyId], ['unit', filters.businessUnitId],
-  ]) if (value) result.set(key, value);
+  ] as const) if (value) result.set(key, value);
   return result;
 }
 

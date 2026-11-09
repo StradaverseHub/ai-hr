@@ -7,7 +7,7 @@ import en from '../messages/en.json';import ms from '../messages/ms.json';import
 const state=vi.hoisted(()=>({locale:'en'}));
 // Imported catalogues initialize normally; including them in the hoisted declaration accesses
 // Vitest's transformed import binding before initialization and prevents every suite case running.
-const copies:Record<string,typeof en>={en,ms,zh,ta,th,vi:viCopy};
+const copies:Record<string,Pick<typeof en,'assistant'>>={en,ms,zh,ta,th,vi:viCopy};
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace?:string)=>(key:string)=>{
  let value:unknown=copies[state.locale];for(const part of [...(namespace?namespace.split('.'):[]),...key.split('.')])value=(value as Record<string,unknown>)[part];
  if(typeof value!=='string')throw Error('Missing handoff translation');return value;
