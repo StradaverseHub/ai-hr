@@ -1,10 +1,10 @@
-/** Closed stock Next typegen prequalification. No date A/B or release evidence. */
+/** Bounded protected stock Next and real TP1 reference comparison. */
 import {spawnClosed,type ClosedChildEnvironment} from './helpers/closed-child-process.mjs';
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {expect,it} from 'vitest';
 import {admitCompilerReference,publishCompilerReferenceClock} from '../.github/ci/diagnostics/native-reference/admission.mjs';
-it('generates stock Next route types in the protected exact-source view',async context=>{
+it('checks source and native date declaration paths for the real protected TP1 route',async context=>{
  const started=process.hrtime.bigint(),controller=new AbortController(),failures:unknown[]=[],output:Buffer[]=[];
  let child:ReturnType<typeof spawnClosed>|undefined,closed:Promise<{code:number|null;signal:NodeJS.Signals|null}>|undefined;
  let exited=false,finished=false,bytes=0,timer:ReturnType<typeof setTimeout>|undefined,killTimer:ReturnType<typeof setTimeout>|undefined,drainTimer:ReturnType<typeof setTimeout>|undefined;
@@ -47,6 +47,14 @@ it('generates stock Next route types in the protected exact-source view',async c
     settlement:{containerAbsent:true,processAbsent:true,cgroupAbsent:true,imageAbsent:true,privatePayloadRemoved:true,
      identityRetainedForSettlement:true}});
    expect(Object.keys(report.typegen.generated)).toHaveLength(5);
+   const comparison=JSON.parse(readFileSync(join(proof.destination,'compiler-protected-tp1/report.json'),'utf8'));
+   expect(comparison).toMatchObject({kind:'PROTECTED_TP1_DATE_COMPARISON_A139',source:proof.sourceHead,controller:proof.controllerHead,
+    run:proof.run,attempt:proof.attempt,productSource:'a1397fa78ed35188849445962d35bdf48087b7a4',productInputsMounted:true,
+    transportQualified:true,stockNextInvoked:false,strictCompilerInvoked:true,ordinaryCompilerQualified:false,releaseAuthorized:false,
+    comparison:{complete:true,generatedPhysicalReadOnly:true,resourceLimits:{memoryBytes:8589934592,swapBytes:0,pids:64,cpuQuota:'200000 100000',oomKills:0}},
+    settlement:{containerAbsent:true,processAbsent:true,cgroupAbsent:true,imageAbsent:true,privatePayloadRemoved:true,
+     identityRetainedForSettlement:true}});
+   expect(comparison.sameRunGeneratedSeals).toEqual(report.typegen.generated);
    expect(elapsed()).toBeLessThanOrEqual(720000);
   }catch(error){remember(error);}
   finally{

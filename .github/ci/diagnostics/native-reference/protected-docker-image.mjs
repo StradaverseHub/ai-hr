@@ -30,9 +30,11 @@ function tar(entries){
  }
  return Buffer.concat([...chunks,Buffer.alloc(1024)]);
 }
-export function sealedScratchImage(owner){
+export function sealedScratchImage(owner,role='typegen'){
+ assert(role==='typegen'||role==='tp1');
  assert(/^[a-f0-9]{64}$/.test(owner));
- const layer=tar([...directories,...placeholders].map(path=>[path,Buffer.alloc(0)]));
+ const ownedPlaceholders=role==='tp1'?[...placeholders,'probe/compare.mjs']:placeholders;
+ const layer=tar([...directories,...ownedPlaceholders].map(path=>[path,Buffer.alloc(0)]));
  const diffId='sha256:'+protectedHash(layer),created='1970-01-01T00:00:00Z';
  const config=json({created,architecture:'amd64',os:'linux',config:{Labels:{[protectedOwnerLabel]:owner}},
   rootfs:{type:'layers',diff_ids:[diffId]},history:[{created,created_by:'AIHR fixed synthetic mountpoints'}]});

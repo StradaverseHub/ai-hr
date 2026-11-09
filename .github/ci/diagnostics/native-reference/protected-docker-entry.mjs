@@ -7,9 +7,9 @@ import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 
 const roles=['mnt','net','pid','ipc','uts','cgroup'];
-const readOnly=['/','/input','/dependency','/probe/entry.mjs','/probe/plan.json','/runtime/node','/lib/x86_64-linux-gnu',
- '/lib64/ld-linux-x86-64.so.2','/etc/hostname','/etc/hosts','/etc/resolv.conf','/project','/project/node_modules','/probe/next.mjs'];
-const writable=['/work','/project/.next','/project/next-env.d.ts'];
+const baseReadOnly=['/','/input','/dependency','/probe/entry.mjs','/probe/plan.json','/runtime/node','/lib/x86_64-linux-gnu',
+ '/lib64/ld-linux-x86-64.so.2','/etc/hostname','/etc/hosts','/etc/resolv.conf','/project','/project/node_modules'];
+const generated=['/project/.next','/project/next-env.d.ts'];
 const pseudo=['/proc','/proc/acpi','/proc/asound','/proc/bus','/proc/fs','/proc/interrupts','/proc/irq','/proc/kcore',
  '/proc/keys','/proc/latency_stats','/proc/scsi','/proc/sched_debug','/proc/sys','/proc/sysrq-trigger','/proc/timer_list',
  '/proc/timer_stats','/dev','/dev/pts','/dev/mqueue','/sys','/sys/firmware','/sys/fs/cgroup','/sys/devices/virtual/powercap'];
@@ -26,7 +26,10 @@ export function fileBirth(path){
 export function canarySeal(path){
  return {...fileBirth(path),sha256:createHash('sha256').update(readFileSync(path)).digest('hex')};
 }
-export function assertDockerMounts(text){
+export function assertDockerMounts(text,role='typegen'){
+ assert(role==='typegen'||role==='tp1');
+ const readOnly=role==='tp1'?[...baseReadOnly,'/probe/compare.mjs',...generated]:[...baseReadOnly,'/probe/next.mjs'];
+ const writable=role==='tp1'?['/work']:['/work',...generated];
  const observed=new Map();
  for(const line of text.trimEnd().split('\n')){
   const [left,right]=line.split(' - '),fields=left.split(' ');
@@ -56,13 +59,12 @@ async function assertNoEgress(port){
   socket.once('error',error=>['ECONNREFUSED','ENETUNREACH','EHOSTUNREACH','EADDRNOTAVAIL'].includes(error.code)?resolve(error.code):reject(error));
  });
 }
-async function run(){
+async function run(plan){
  let phase='identity';
  try{
   assert.equal(process.pid,1);
   assert.equal(process.versions.node,'22.23.3');
   assert.deepEqual(process.argv,['/runtime/node','/probe/entry.mjs']);
-  const plan=JSON.parse(readFileSync('/probe/plan.json','utf8'));
   assert.equal(process.getuid(),plan.uid);assert.equal(process.getgid(),plan.gid);assert(process.getuid()>0&&process.getgid()>0);
   assert.deepEqual(Object.fromEntries(Object.entries(process.env).sort()),Object.fromEntries(Object.entries(plan.env).sort()));
   const ns=namespaceIds();
@@ -75,7 +77,13 @@ async function run(){
   assert.match(status,/^NoNewPrivs:\s+1$/m);
   assert.match(status,/^Seccomp:\s+2$/m);
   phase='mounts';
-  const mounts=assertDockerMounts(readFileSync('/proc/self/mountinfo','utf8'));
+  const mounts=assertDockerMounts(readFileSync('/proc/self/mountinfo','utf8'),plan.role);
+  let generatedMutationRefusals=0;
+  if(plan.role==='tp1'){
+   assert.throws(()=>writeFileSync('/project/.next/forbidden','blocked',{flag:'wx'}),{code:'EROFS'});
+   assert.throws(()=>writeFileSync('/project/next-env.d.ts','blocked',{flag:constants.O_WRONLY}),{code:'EROFS'});
+   generatedMutationRefusals=2;
+  }
   for(const path of ['/etc/hostname','/etc/hosts','/etc/resolv.conf'])assert.equal(readFileSync(path,'utf8'),'');
   for(const path of [plan.hiddenPath,'/run/docker.sock','/var/run/docker.sock','/run/containerd/containerd.sock','/input/.git'])
    assert(!existsSync(path),'Forbidden host name exposed');
@@ -103,21 +111,34 @@ async function run(){
    assert(rows.every(line=>line.trim().split(/\s+/).at(-1)==='lo'));
   }
   const loopbackRefusal=await assertNoEgress(plan.port);
-  publish('/work/ready.json',{nonce:plan.nonce,ns,mounts,loopbackRefusal,sourceMutationRefusals:4,
+  publish('/work/ready.json',{nonce:plan.nonce,ns,mounts,loopbackRefusal,sourceMutationRefusals:4,generatedMutationRefusals,
    seccomp:true,apparmor:true,noNewPrivs:true,zeroCapabilities:true});
   phase='host-grant';
   const until=performance.now()+15000;
   while(!existsSync('/work/grant.json')){assert(performance.now()<until);await delay(20);}
   assert.deepEqual(JSON.parse(readFileSync('/work/grant.json','utf8')),{nonce:plan.nonce});
-  phase='protected-stock-next';
-  const {runProtectedNextTypegen}=await import('/probe/next.mjs');
-  runProtectedNextTypegen();
+  if(plan.role==='typegen'){
+   phase='protected-stock-next';
+   const {runProtectedNextTypegen}=await import('/probe/next.mjs');
+   runProtectedNextTypegen();
+  }else{
+   phase='protected-tp1-compare';
+   const {runProtectedTp1Comparison}=await import('/probe/compare.mjs');
+   await runProtectedTp1Comparison({reportRoot:'/work/tp1',deadlineMs:performance.now()+120000,expectedGenerated:plan.generated});
+   publish('/work/compare-ready.json',{nonce:plan.nonce,complete:true});
+   phase='protected-tp1-close-grant';
+   const closeBy=performance.now()+15000;
+   while(!existsSync('/work/compare-close.json')){assert(performance.now()<closeBy);await delay(20);}
+   assert.deepEqual(JSON.parse(readFileSync('/work/compare-close.json','utf8')),{nonce:plan.nonce});
+  }
  }catch(error){
   publish('/work/refused.json',{phase,code:typeof error.code==='string'?error.code:null});
   throw error;
  }
 }
 if(process.argv[1]==='/probe/entry.mjs'){
- const watchdog=setTimeout(()=>process.exit(88),30000);
- try{await run();}finally{clearTimeout(watchdog);}
+ const plan=JSON.parse(readFileSync('/probe/plan.json','utf8'));
+ assert(plan.role==='typegen'||plan.role==='tp1');
+ const watchdog=setTimeout(()=>process.exit(88),plan.role==='tp1'?155000:30000);
+ try{await run(plan);}finally{clearTimeout(watchdog);}
 }

@@ -176,9 +176,9 @@ export function runFocused(destination) {
     const raw=readFileSync(join(cwd,relativeManifest));if(!raw.equals(readFileSync(join(control,relativeManifest))))throw Error('Compiler source/controller declaration differs');
     const declaration=JSON.parse(raw);if(declaration.kind!==profile.kind)throw Error('Closed compiler source declaration required');
     if(declaration.protectedViewPilot){
-      const ref='refs/heads/codex/compiler-protected-next-typegen-a139-20261109';
+      const ref='refs/heads/codex/compiler-protected-tp1-ab-a139-20261109';
       if(profile.purpose!=='reference'||process.env.GITHUB_REF!==ref||sha!==controller)
-        throw Error('Protected Next typegen requires its exact self-source branch');
+        throw Error('Protected TP1 comparison requires its exact self-source branch');
     }
     for(const [path,wanted]of Object.entries(declaration.componentSources))if(hash(readFileSync(join(cwd,path)))!==wanted||hash(readFileSync(join(control,path)))!==wanted)throw Error('Compiler source/controller bytes differ');
     const self=compilerProcIdentity(process.pid);
@@ -349,7 +349,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   else if(command === 'compiler-settled' && process.argv.length === 4){
     try{process.exitCode=cleanupCompilerReference(process.argv[3]);}
     finally{
-      if(process.env.GITHUB_REF==='refs/heads/codex/compiler-protected-next-typegen-a139-20261109'){
+      if(process.env.GITHUB_REF==='refs/heads/codex/compiler-protected-tp1-ab-a139-20261109'){
         const {settleProtectedDockerCanary}=await import('./diagnostics/native-reference/protected-docker-canary.mjs');
         settleProtectedDockerCanary(process.argv[3]);
       }

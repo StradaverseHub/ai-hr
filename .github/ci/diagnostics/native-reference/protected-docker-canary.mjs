@@ -14,11 +14,12 @@ import {protectedDigest,protectedHash,protectedLimits,protectedOwnerLabel,protec
 
 import {generatedNames,generatedSeals,protectedAppSource,protectedAppTree,protectedLock} from './protected-next-typegen.mjs';
 
-export const protectedDockerRef='refs/heads/codex/compiler-protected-next-typegen-a139-20261109';
+export const protectedDockerRef='refs/heads/codex/compiler-protected-tp1-ab-a139-20261109';
 const ownModule='.github/ci/diagnostics/native-reference/protected-docker-canary.mjs';
 const entryName='.github/ci/diagnostics/native-reference/protected-docker-entry.mjs';
 const typegenName='.github/ci/diagnostics/native-reference/protected-next-typegen.mjs';
 const projectName='.github/ci/diagnostics/native-reference/project-protected-next.py';
+const compareName='.github/ci/diagnostics/native-reference/protected-tp1-compare.mjs';
 const manifest='docs/qualification/compiler-reference-owned-source-20261108.json';
 const socket='/run/docker.sock';
 const cli='/usr/bin/docker';
@@ -73,10 +74,20 @@ export function classifyDockerCreateFailure(result,mounts,elapsedMs){
  return {category,status,clientError,signal,mountRole,stderrObserved:stderr.length>0,elapsedMs:milliseconds};
 }
 const reportPath='compiler-protected-docker';
+const comparisonReportPath='compiler-protected-tp1';
+const roleProfiles=Object.freeze({
+ typegen:Object.freeze({memory:protectedLimits.memory,memoryArgument:'1g',cpus:1,envelopeMs:120000}),
+ tp1:Object.freeze({memory:8*1024**3,memoryArgument:'8g',cpus:2,envelopeMs:200000}),
+});
+const isRole=role=>role==='typegen'||role==='tp1';
 const write=(path,value)=>writeFileSync(path,JSON.stringify(value)+'\n',{flag:'wx',mode:0o600});
 const publish=(path,value)=>{write(path+'.pending',value);renameSync(path+'.pending',path);};
 const exists=path=>{try{lstatSync(path);return true;}catch(error){if(error.code==='ENOENT')return false;throw error;}};
-const config=(path)=>{const row=lstatSync(path);assert(row.isFile()&&row.uid===process.getuid()&&row.nlink===1&&(row.mode&0o777)===0o600&&row.size>0&&row.size<=16384);return JSON.parse(readFileSync(path,'utf8'));};
+const config=(path,max=16384)=>{
+ const row=lstatSync(path);
+ assert(row.isFile()&&row.uid===process.getuid()&&row.nlink===1&&(row.mode&0o777)===0o600&&row.size>0&&row.size<=max);
+ return JSON.parse(readFileSync(path,'utf8'));
+};
 const ownDirectory=path=>{const row=lstatSync(path);assert(row.isDirectory()&&row.uid===process.getuid()&&(row.mode&0o777)===0o700&&realpathSync(path)===path);};
 const makeDirectory=path=>{mkdirSync(path,{mode:0o700});ownDirectory(path);};
 const identityEnv=()=>{
@@ -87,8 +98,8 @@ const identityEnv=()=>{
   process.env.GITHUB_JOB==='selected-tests'&&process.env.GITHUB_EVENT_NAME==='workflow_dispatch');
  return {source,controller,run,attempt};
 };
-const tempRoot=context=>join(realpathSync(process.env.RUNNER_TEMP),'aihr-protected-docker-'+context.run+'-'+context.attempt);
-const containerName=context=>'aihr-protected-compiler-'+context.run+'-'+context.attempt;
+const tempRoot=(context,role)=>join(realpathSync(process.env.RUNNER_TEMP),'aihr-protected-docker-'+context.run+'-'+context.attempt+(role==='tp1'?'-tp1':''));
+const containerName=(context,role)=>'aihr-protected-compiler-'+context.run+'-'+context.attempt+(role==='tp1'?'-tp1':'');
 const cgroupPath=id=>'/system.slice/docker-'+id+'.scope';
 const cgroupDir=id=>'/sys/fs/cgroup'+cgroupPath(id);
 
@@ -158,31 +169,33 @@ function liveBirth(pid,id){
  assert.deepEqual(fileBirth(cgroupDir(id)),directory);
  return {pid,start:row.start,cgroup:directory};
 }
-function resourceFacts(id,pid){
+function resourceFacts(id,pid,profile){
  const read=name=>readFileSync(join(cgroupDir(id),name),'utf8').trim();
  assert.equal(read('cgroup.procs'),String(pid));
- assert.equal(read('memory.max'),String(protectedLimits.memory));assert.equal(read('memory.swap.max'),'0');
- assert.equal(read('pids.max'),String(protectedLimits.pids));assert.equal(read('cpu.max'),'100000 100000');
+ assert.equal(read('memory.max'),String(profile.memory));assert.equal(read('memory.swap.max'),'0');
+ assert.equal(read('pids.max'),String(protectedLimits.pids));
+ const cpuQuota=(profile.cpus*100000)+' 100000';assert.equal(read('cpu.max'),cpuQuota);
  const events=Object.fromEntries(read('memory.events').split('\n').map(line=>line.split(' ')));
  assert(events.oom==='0'&&events.oom_kill==='0');
- return {memoryBytes:protectedLimits.memory,swapBytes:0,pids:protectedLimits.pids,cpuQuota:'100000 100000',oomKills:0};
+ return {memoryBytes:profile.memory,swapBytes:0,pids:protectedLimits.pids,cpuQuota,oomKills:0};
 }
-function loadIntent(root,context){
+function loadIntent(root,context,role){
  const owner=config(join(root,'intent.json'));
  assert.deepEqual([owner.source,owner.controller,owner.run,owner.attempt],[context.source,context.controller,context.run,context.attempt]);
- assert(owner.name===containerName(context)&&idPattern.test(owner.nonce)&&protectedDigest.test(owner.imageId));
- const sealed=sealedScratchImage(owner.nonce);
+ assert(owner.role===role&&owner.name===containerName(context,role)&&idPattern.test(owner.nonce)&&protectedDigest.test(owner.imageId));
+ const sealed=sealedScratchImage(owner.nonce,role);
  assert.deepEqual([owner.imageId,owner.diffId,owner.archiveSha256],[sealed.id,sealed.diffId,sealed.sha256]);
  return owner;
 }
-function closeOwned(root,context,deadline,{retainIdentity=false}={}){
+function closeOwned(root,context,deadline,{retainIdentity=false,role='typegen'}={}){
+ assert(isRole(role));
  if(!exists(root))return {containerAbsent:true,processAbsent:true,cgroupAbsent:true,imageAbsent:true,privateScratchRemoved:true};
  ownDirectory(root);
  if(!exists(join(root,'intent.json'))){
   rmSync(root,{recursive:true});
   return {containerAbsent:true,processAbsent:true,cgroupAbsent:true,imageAbsent:true,privateScratchRemoved:true,noCreateIntent:true};
  }
- const owner=loadIntent(root,context),client=engine(root,deadline),id=byName(client,owner.name);
+ const owner=loadIntent(root,context,role),client=engine(root,deadline),id=byName(client,owner.name);
  const containerFile=join(root,'container.json'),birthFile=join(root,'birth.json');
  const recordedId=exists(containerFile)?config(containerFile).id:undefined;
  const heldBirth=exists(birthFile)?config(birthFile):undefined;
@@ -231,14 +244,14 @@ function bindArgs(mounts){
   return ['--mount','type=bind,source='+source+',destination='+dest+',bind-propagation=rprivate,bind-recursive=disabled'+(readonly?',readonly':'')];
  });
 }
-function verifyContainer(row,owner,mounts,uid,gid){
+function verifyContainer(row,owner,mounts,uid,gid,profile){
  const host=row.HostConfig,c=row.Config;
  assert.deepEqual([host.NetworkMode,host.ReadonlyRootfs,host.Privileged,host.IpcMode,host.CgroupnsMode,host.Runtime,host.PidMode,
   host.PidMode==='host',host.RestartPolicy.Name,host.LogConfig.Type],['none',true,false,'none','private','runc','',false,'no','none']);
  assert.deepEqual(host.CapDrop,['ALL']);assert((host.CapAdd??[]).length===0);
  assert.deepEqual(host.SecurityOpt,['no-new-privileges=true']);
- assert.equal(host.Memory,protectedLimits.memory);assert.equal(host.MemorySwap,protectedLimits.memory);
- assert.equal(host.PidsLimit,protectedLimits.pids);assert.equal(host.NanoCpus,protectedLimits.cpuNano);
+ assert.equal(host.Memory,profile.memory);assert.equal(host.MemorySwap,profile.memory);
+ assert.equal(host.PidsLimit,protectedLimits.pids);assert.equal(host.NanoCpus,profile.cpus*1e9);
  assert(!host.PublishAllPorts&&Object.keys(host.PortBindings??{}).length===0&&(host.Devices??[]).length===0&&(host.GroupAdd??[]).length===0);
  assert(c.User===uid+':'+gid&&c.WorkingDir==='/work'&&!c.OpenStdin&&!c.Tty);
  assert.deepEqual(c.Entrypoint,['/runtime/node']);assert.deepEqual(c.Cmd,['--max-old-space-size=12288','/probe/entry.mjs']);
@@ -248,15 +261,45 @@ function verifyContainer(row,owner,mounts,uid,gid){
   mounts.map(mount=>['bind',mount.source,mount.dest,!mount.readonly,'rprivate']).sort());
  assert.equal(row.Image,owner.imageId);
 }
-export async function protectedDockerCanary(){
+const comparisonPhases=['original-list-only','producer','source-0','reference-0','reference-1','source-1','missing-reference'];
+function retainComparison(root,out,complete){
+ const directory=join(root,'work','tp1'),path=join(directory,'report.json');
+ const comparison=config(path,16*1024**2);
+ assert.equal(comparison.kind,'PROTECTED_TP1_DATE_REFERENCE_COMPARISON');
+ if(complete)assert.equal(comparison.complete,true);
+ const evidence=join(out,complete?'semantic-evidence':'partial-semantic-evidence');
+ makeDirectory(evidence);
+ const expected=['report.json',...comparisonPhases.map(name=>name+'.log')];
+ const sealed={};
+ let total=0;
+ for(const name of expected){
+  const input=join(directory,name);
+  if(!exists(input)){assert(!complete,'Missing complete comparison evidence');continue;}
+  const before=lstatSync(input);
+  assert(before.isFile()&&before.nlink===1&&before.uid===process.getuid()&&(before.mode&0o022)===0&&
+   realpathSync(input)===input&&before.size>0&&before.size<=16*1024**2);
+  total+=before.size;assert(total<=48*1024**2);
+  const target=join(evidence,name),digest=protectedHash(readFileSync(input));
+  copyFileSync(input,target,constants.COPYFILE_EXCL);
+  const after=lstatSync(input);
+  for(const key of ['dev','ino','size','mtimeMs','ctimeMs'])assert.equal(after[key],before[key]);
+  assert.equal(protectedHash(readFileSync(target)),digest);
+  sealed[name]={bytes:before.size,sha256:digest};
+ }
+ return {comparison,files:sealed};
+}
+async function runProtectedStage(role,freshGenerated){
+ assert(isRole(role));
+ const profile=roleProfiles[role];
+ assert(role==='typegen'?freshGenerated===undefined:freshGenerated&&freshGenerated.stockNextInvoked&&freshGenerated.transportQualified);
  const proof=admitCompilerReference('fixture'),clock=readCompilerReferenceClock(proof),context=identityEnv();
  assert.equal(proof.sourceHead,context.source);assert.equal(proof.controllerHead,context.controller);
  assert.equal(proof.sourceHashes[ownModule],protectedHash(readFileSync(fileURLToPath(import.meta.url))));
- const out=join(proof.destination,reportPath),root=tempRoot(context);
+ const out=join(proof.destination,role==='tp1'?comparisonReportPath:reportPath),root=tempRoot(context,role);
  makeDirectory(out);makeDirectory(root);
- const report={kind:'PROTECTED_NEXT_TYPEGEN_A139',...context,productSource:protectedAppSource,productTree:protectedAppTree,transportQualified:false,productInputsMounted:false,
+ const report={kind:role==='tp1'?'PROTECTED_TP1_DATE_COMPARISON_A139':'PROTECTED_NEXT_TYPEGEN_A139',...context,role,productSource:protectedAppSource,productTree:protectedAppTree,transportQualified:false,productInputsMounted:false,
   stockNextInvoked:false,strictCompilerInvoked:false,ordinaryCompilerQualified:false,releaseAuthorized:false};
- const end=performance.now()+Math.min(120000,720000-Number(process.hrtime.bigint()-BigInt(clock.startNs))/1e6-3000);
+ const end=performance.now()+Math.min(profile.envelopeMs,720000-Number(process.hrtime.bigint()-BigInt(clock.startNs))/1e6-3000);
  const workEnd=end-26000;
  const abort=new AbortController(),stop=()=>abort.abort(Error('Docker canary interrupted'));
  process.on('SIGTERM',stop);process.on('SIGINT',stop);
@@ -266,7 +309,7 @@ export async function protectedDockerCanary(){
   for(const name of ['home','tmp','cache','generated'])makeDirectory(join(root,'work',name));
   for(const name of ['input','dependency','host-only'])writeFileSync(join(root,name,'canary'),randomBytes(32),{flag:'wx',mode:0o600});
   writeFileSync(join(root,'empty-etc'),Buffer.alloc(0),{flag:'wx',mode:0o444});
-  const nonce=randomBytes(32).toString('hex'),image=sealedScratchImage(nonce),owner={...context,name:containerName(context),nonce,
+  const nonce=randomBytes(32).toString('hex'),image=sealedScratchImage(nonce,role),owner={...context,role,name:containerName(context,role),nonce,
    imageId:image.id,diffId:image.diffId,archiveSha256:image.sha256};
   const client=engine(root,workEnd);
   assert(!byName(client,owner.name)&&!inspectImage(client,owner),'Owned scratch name/image already exists');
@@ -275,8 +318,9 @@ export async function protectedDockerCanary(){
   const node=realpathSync(process.execPath),entry=join(proof.source,entryName),uid=process.getuid(),gid=process.getgid();
   assert.equal(protectedHash(readFileSync(entry)),proof.sourceHashes[entryName]);
   const projected=join(root,'project'),nextOutput=join(root,'next-output'),nextEnv=join(root,'next-env-output');
-  const generator=join(proof.source,projectName),typegen=join(proof.source,typegenName),dependencies=join(proof.source,'node_modules');
-  for(const [name,path]of [[projectName,generator],[typegenName,typegen]])assert.equal(protectedHash(readFileSync(path)),proof.sourceHashes[name]);
+  const generator=join(proof.source,projectName),courseName=role==='tp1'?compareName:typegenName;
+  const course=join(proof.source,courseName),dependencies=join(proof.source,'node_modules');
+  for(const [name,path]of [[projectName,generator],[courseName,course]])assert.equal(protectedHash(readFileSync(path)),proof.sourceHashes[name]);
   assert.equal(realpathSync(dependencies),dependencies);
   assert.equal(protectedHash(readFileSync(join(proof.source,'pnpm-lock.yaml'))),protectedLock);
   for(const name of ['.next','next-env.d.ts'])assert(!exists(join(proof.source,name)));
@@ -289,7 +333,19 @@ export async function protectedDockerCanary(){
    [protectedAppSource,protectedAppTree,12962,334836843]);
   report.productProjection=projectedProof;
   makeDirectory(nextOutput);
-  writeFileSync(nextEnv,Buffer.alloc(0),{flag:'wx',mode:0o600});
+  if(role==='typegen')writeFileSync(nextEnv,Buffer.alloc(0),{flag:'wx',mode:0o600});
+  else{
+   const retained=join(proof.destination,reportPath,'generated');
+   assert.deepEqual([freshGenerated.source,freshGenerated.controller,freshGenerated.run,freshGenerated.attempt],
+    [context.source,context.controller,context.run,context.attempt]);
+   assert.equal(freshGenerated.productSource,protectedAppSource);
+   assert.equal(freshGenerated.productTree,protectedAppTree);
+   makeDirectory(join(nextOutput,'types'));
+   copyFileSync(join(retained,'next-env.d.ts'),nextEnv,constants.COPYFILE_EXCL);
+   for(const name of generatedNames)copyFileSync(join(retained,'types',name),join(nextOutput,'types',name),constants.COPYFILE_EXCL);
+   assert.deepEqual(generatedSeals(projected,nextOutput,nextEnv),freshGenerated.typegen.generated);
+   report.sameRunGeneratedSeals=freshGenerated.typegen.generated;
+  }
   const productPaths=['package.json','pnpm-lock.yaml','next.config.ts','tsconfig.build.json','app/payroll/transactions/tp1/[year]/page.tsx',
    'lib/hr-date.ts','lib/calendar-date.ts','lib/date-time-formatter.ts'];
   const productSeals=()=>Object.fromEntries(productPaths.map(name=>[name,canarySeal(join(projected,name))]));
@@ -300,8 +356,8 @@ export async function protectedDockerCanary(){
    ro(realpathSync('/lib64/ld-linux-x86-64.so.2'),'/lib64/ld-linux-x86-64.so.2'),ro(entry,'/probe/entry.mjs'),
    ro(join(root,'plan.json'),'/probe/plan.json'),ro(join(root,'input'),'/input'),ro(join(root,'dependency'),'/dependency'),
    ...['hostname','hosts','resolv.conf'].map(name=>ro(join(root,'empty-etc'),'/etc/'+name)),{source:join(root,'work'),dest:'/work',readonly:false},
-   ro(projected,'/project'),ro(dependencies,'/project/node_modules'),ro(typegen,'/probe/next.mjs'),
-   {source:nextOutput,dest:'/project/.next',readonly:false},{source:nextEnv,dest:'/project/next-env.d.ts',readonly:false}];
+   ro(projected,'/project'),ro(dependencies,'/project/node_modules'),ro(course,role==='tp1'?'/probe/compare.mjs':'/probe/next.mjs'),
+   {source:nextOutput,dest:'/project/.next',readonly:role==='tp1'},{source:nextEnv,dest:'/project/next-env.d.ts',readonly:role==='tp1'}];
   let accepted=0;
   server=createServer(connection=>{accepted++;connection.destroy();});
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen({host:'127.0.0.1',port:0,exclusive:true},resolve);});
@@ -312,7 +368,8 @@ export async function protectedDockerCanary(){
    socket.once('close',resolve);
   });
   assert.equal(accepted,1);
-  const plan={nonce,uid,gid,port,node:fileBirth(node),hostNamespaces:namespaceIds(),hostUserNamespace:readlinkSync('/proc/self/ns/user'),
+  const plan={role,nonce,uid,gid,port,node:fileBirth(node),hostNamespaces:namespaceIds(),hostUserNamespace:readlinkSync('/proc/self/ns/user'),
+   ...(role==='tp1'?{generated:report.sameRunGeneratedSeals}:{}),
    env:protectedRuntimeEnv,hiddenPath:join(root,'host-only','canary'),input:canarySeal(join(root,'input','canary')),
    dependency:canarySeal(join(root,'dependency','canary'))};
   write(join(root,'plan.json'),plan);
@@ -325,14 +382,14 @@ export async function protectedDockerCanary(){
   abort.signal.throwIfAborted();
   const id=client.required(['container','create','--pull=never','--name',owner.name,'--label',protectedOwnerLabel+'='+nonce,
    '--network=none','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges=true','--ipc=none','--cgroupns=private',
-   '--runtime=runc','--restart=no','--no-healthcheck','--log-driver=none','--pids-limit=64','--memory=1g','--memory-swap=1g',
-   '--cpus=1','--hostname',protectedRuntimeEnv.HOSTNAME,'--user',uid+':'+gid,'--workdir','/work','--entrypoint','/runtime/node',
+   '--runtime=runc','--restart=no','--no-healthcheck','--log-driver=none','--pids-limit=64',
+   '--memory='+profile.memoryArgument,'--memory-swap='+profile.memoryArgument,'--cpus='+profile.cpus,'--hostname',protectedRuntimeEnv.HOSTNAME,'--user',uid+':'+gid,'--workdir','/work','--entrypoint','/runtime/node',
    ...Object.entries(protectedRuntimeEnv).flatMap(([key,value])=>['--env',key+'='+value]),...bindArgs(mounts),
    image.id,'--max-old-space-size=12288','/probe/entry.mjs'],(result,elapsedMs)=>{
     report.createDiagnostic=classifyDockerCreateFailure(result,mounts,elapsedMs);
    });
   assert(idPattern.test(id));publish(join(root,'container.json'),{id});
-  assert.equal(byName(client,owner.name),id);verifyContainer(inspectContainer(client,id,owner),owner,mounts,uid,gid);
+  assert.equal(byName(client,owner.name),id);verifyContainer(inspectContainer(client,id,owner),owner,mounts,uid,gid,profile);
   phase='start';
   abort.signal.throwIfAborted();
   client.required(['container','start',id]);
@@ -345,15 +402,16 @@ export async function protectedDockerCanary(){
   }
   phase='observe';
   const ready=config(readyPath),live=inspectContainer(client,id,owner),pid=live.State.Pid;
-  verifyContainer(live,owner,mounts,uid,gid);
+  verifyContainer(live,owner,mounts,uid,gid,profile);
   assert(live.State.Running&&live.AppArmorProfile==='docker-default'&&!live.State.OOMKilled&&Number.isSafeInteger(pid)&&pid>1);
   const birth=liveBirth(pid,id);publish(join(root,'birth.json'),{id,birth});
   assert.equal(ready.nonce,nonce);assert.equal(ready.sourceMutationRefusals,4);
+  assert.equal(ready.generatedMutationRefusals,role==='tp1'?2:0);
   for(const key of ['seccomp','apparmor','noNewPrivs','zeroCapabilities'])assert.equal(ready[key],true);
   assert.deepEqual(namespaceIds(pid),ready.ns);
   for(const [key,value]of Object.entries(ready.ns))assert.notEqual(value,plan.hostNamespaces[key]);
   assert.deepEqual(fileBirth('/proc/'+pid+'/exe'),plan.node);
-   assert.deepEqual(liveBirth(pid,id),birth);
+  assert.deepEqual(liveBirth(pid,id),birth);
   assert.equal(accepted,1);
   for(const role of ['input','dependency']){
    assert.deepEqual(readdirSync(join(root,role)),['canary']);
@@ -361,9 +419,40 @@ export async function protectedDockerCanary(){
   }
   for(const name of ['home','tmp','cache','generated'])assert.equal(readFileSync(join(root,'work',name,'canary'),'utf8'),'private output\n');
   const {nonce:_,...observed}=ready;
-  report.observed={...observed,pidBirth:{pid,start:birth.start},cgroupBirth:birth.cgroup,resourceLimits:resourceFacts(id,pid),hostLoopbackPositive:true,
+  report.observed={...observed,pidBirth:{pid,start:birth.start},cgroupBirth:birth.cgroup,resourceLimits:resourceFacts(id,pid,profile),hostLoopbackPositive:true,
    imageId:image.id,archiveSha256:image.sha256,layerDiffId:image.diffId};
   publish(join(root,'work','grant.json'),{nonce});
+  if(role==='tp1'){
+   phase='tp1-hold';
+   const complete=join(root,'work','compare-ready.json');
+   while(!exists(complete)){
+    abort.signal.throwIfAborted();assert(performance.now()<workEnd-3000,'Protected TP1 work frontier closed');
+    if(exists(refusedPath)){report.innerRefusal=config(refusedPath);throw Error('Protected TP1 comparison refused');}
+    await delay(30);
+   }
+   assert.deepEqual(config(complete),{nonce,complete:true});
+   assert.deepEqual(liveBirth(pid,id),birth);
+   const finalResources=resourceFacts(id,pid,profile),peak=Number(readFileSync(join(cgroupDir(id),'memory.peak'),'utf8'));
+   assert(Number.isSafeInteger(peak)&&peak>0&&peak<=profile.memory);
+   assert.deepEqual(liveBirth(pid,id),birth);
+   assert.deepEqual(generatedSeals(projected,nextOutput,nextEnv),report.sameRunGeneratedSeals);
+   const semantic=retainComparison(root,out,true);
+   assert.equal(semantic.comparison.product,protectedAppSource);
+   for(const field of ['ordinaryCompilerQualified','releaseAuthorized','generatedValidatorSemanticRequested']){
+    assert.equal(semantic.comparison[field],false);
+   }
+   assert.deepEqual(semantic.comparison.generated,report.sameRunGeneratedSeals);
+   assert.deepEqual(semantic.comparison.attempts.map(row=>row.phase),comparisonPhases);
+   assert.deepEqual(semantic.comparison.phases.map(row=>row.phase),[...comparisonPhases,'owned-declarations-and-context']);
+   for(const attempt of semantic.comparison.attempts){
+    const actual=semantic.files[attempt.phase+'.log'];
+    assert.deepEqual(actual,{bytes:attempt.log.bytes,sha256:attempt.log.sha256});
+   }
+   report.comparison={complete:true,files:semantic.files,groupPeakBytes:peak,resourceLimits:finalResources,
+    generatedPhysicalReadOnly:true,generatedValidatorSemanticRequested:false};
+   report.strictCompilerInvoked=true;
+   publish(join(root,'work','compare-close.json'),{nonce});
+  }
   phase='wait';
   const waited=client.required(['container','wait',id]),executionPath=join(root,'work','typegen-execution.json');
   if(exists(executionPath)){report.typegenExecution=config(executionPath);report.stockNextInvoked=report.typegenExecution.exit!==null||report.typegenExecution.signal!==null;}
@@ -371,29 +460,35 @@ export async function protectedDockerCanary(){
   assert.equal(waited,'0');
   const exited=inspectContainer(client,id,owner);
   assert(!exited.State.Running&&!exited.State.OOMKilled&&exited.State.ExitCode===0&&exited.State.Pid===0);
-  assert(report.stockNextInvoked&&report.typegenExecution.exit===0);
-  const result=config(join(root,'work','typegen-result.json'));
-  assert.deepEqual([result.kind,result.source,result.tree,result.routeSemanticCoverage,result.releaseEligible],
-   ['PROTECTED_STOCK_NEXT_TYPEGEN',protectedAppSource,protectedAppTree,false,false]);
-  assert(result.dependencies.gnuElfLoaded&&result.dependencies.swcVersion==='16.4.1');
-  assert.deepEqual(generatedSeals(projected,nextOutput,nextEnv),result.generated);
+  if(role==='typegen'){
+   assert(report.stockNextInvoked&&report.typegenExecution.exit===0);
+   const result=config(join(root,'work','typegen-result.json'));
+   assert.deepEqual([result.kind,result.source,result.tree,result.routeSemanticCoverage,result.releaseEligible],
+    ['PROTECTED_STOCK_NEXT_TYPEGEN',protectedAppSource,protectedAppTree,false,false]);
+   assert(result.dependencies.gnuElfLoaded&&result.dependencies.swcVersion==='16.4.1');
+   assert.deepEqual(generatedSeals(projected,nextOutput,nextEnv),result.generated);
+   const retained=join(out,'generated');
+   makeDirectory(retained);makeDirectory(join(retained,'types'));
+   copyFileSync(nextEnv,join(retained,'next-env.d.ts'),constants.COPYFILE_EXCL);
+   for(const name of generatedNames)copyFileSync(join(nextOutput,'types',name),join(retained,'types',name),constants.COPYFILE_EXCL);
+   // The evidence tree uses a visible types directory so the standard uploader retains it.
+   for(const [name,value]of Object.entries(result.generated)){
+    const relativeName=name.startsWith('.next/')?name.slice(6):name;
+    const path=join(retained,relativeName);
+    assert.equal(lstatSync(path).size,value.bytes);
+    assert.equal(protectedHash(readFileSync(path)),value.sha256);
+   }
+   report.typegen=result;
+  }else{
+   assert(report.comparison?.complete&&!report.stockNextInvoked);
+   assert.deepEqual(generatedSeals(projected,nextOutput,nextEnv),report.sameRunGeneratedSeals);
+  }
   assert.deepEqual(productSeals(),productBefore);
   for(const name of ['.next','next-env.d.ts'])assert(!exists(join(proof.source,name)));
   assert.deepEqual(readdirSync(join(projected,'.next')),[]);
   assert.equal(lstatSync(join(projected,'next-env.d.ts')).size,0);
-  const retained=join(out,'generated');
-  makeDirectory(retained);makeDirectory(join(retained,'types'));
-  copyFileSync(nextEnv,join(retained,'next-env.d.ts'),constants.COPYFILE_EXCL);
-  for(const name of generatedNames)copyFileSync(join(nextOutput,'types',name),join(retained,'types',name),constants.COPYFILE_EXCL);
-  // The evidence tree uses a visible types directory so the standard uploader retains it.
-  for(const [name,value]of Object.entries(result.generated)){
-   const relativeName=name.startsWith('.next/')?name.slice(6):name;
-   const path=join(retained,relativeName);
-   assert.equal(lstatSync(path).size,value.bytes);
-   assert.equal(protectedHash(readFileSync(path)),value.sha256);
-  }
   assert.deepEqual(readCompilerReferenceClock(admitCompilerReference('fixture')),clock);
-  report.typegen=result;report.transportQualified=true;
+  report.transportQualified=true;
  }catch(error){
   primary=error;report.refusal={phase,code:typeof error.code==='string'?error.code:null};
  }finally{
@@ -405,9 +500,17 @@ export async function protectedDockerCanary(){
      report.typegenExecution=config(execution);
      report.stockNextInvoked=report.typegenExecution.exit!==null||report.typegenExecution.signal!==null;
     }
-    if(server?.listening)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
+    if(role==='tp1'&&!report.comparison&&exists(join(root,'work','tp1','report.json'))){
+     const partial=retainComparison(root,out,false);
+     report.partialComparison={complete:partial.comparison.complete,files:partial.files};
+     report.strictCompilerInvoked=Object.keys(partial.files).some(name=>name.endsWith('.log'));
+    }
    }finally{
-    report.settlement=closeOwned(root,context,end,{retainIdentity:true});
+    try{
+     if(server?.listening)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
+    }finally{
+     report.settlement=closeOwned(root,context,end,{retainIdentity:true,role});
+    }
    }
   }catch(error){
    report.transportQualified=false;report.settlementRefused=true;
@@ -419,6 +522,14 @@ export async function protectedDockerCanary(){
  }
  if(primary)throw primary;
  assert(report.transportQualified&&report.settlement.privatePayloadRemoved&&report.settlement.identityRetainedForSettlement);
+ return report;
+}
+export async function protectedDockerCanary(){
+ const fresh=await runProtectedStage('typegen');
+ for(const field of ['containerAbsent','processAbsent','cgroupAbsent','imageAbsent','privatePayloadRemoved']){
+  assert.equal(fresh.settlement[field],true);
+ }
+ return await runProtectedStage('tp1',fresh);
 }
 export function settleProtectedDockerCanary(destination){
  const context=identityEnv();
@@ -429,12 +540,17 @@ export function settleProtectedDockerCanary(destination){
  assert.deepEqual(source,controller);
  assert.equal(controller.sourceRef,protectedDockerRef.slice(11));
  const members=[ownModule,entryName,'.github/ci/diagnostics/native-reference/protected-docker-image.mjs',
-  typegenName,projectName,'.github/ci/focused-checks.mjs','scripts/performance/driver-shutdown.mjs'];
+  typegenName,projectName,compareName,'.github/ci/focused-checks.mjs','scripts/performance/driver-shutdown.mjs'];
  for(const member of members){
   assert.equal(controller.componentSources[member],protectedHash(readFileSync(join(automation,member))));
   assert.equal(source.componentSources[member],protectedHash(readFileSync(join(workspace,'source',member))));
  }
- const settlement=closeOwned(tempRoot(context),context,performance.now()+35000);
- write(join(destination,'protected-docker-settlement.json'),{kind:'SYNTHETIC_PROTECTED_DOCKER_INDEPENDENT_SETTLEMENT',...context,
-  ...settlement,releaseAuthorized:false});
+ const settlements={},failures=[];
+ for(const role of ['tp1','typegen']){
+  try{settlements[role]=closeOwned(tempRoot(context,role),context,performance.now()+35000,{role});}
+  catch(error){failures.push(error);}
+ }
+ write(join(destination,'protected-docker-settlement.json'),{kind:'PROTECTED_TP1_DOCKER_INDEPENDENT_SETTLEMENT',...context,
+  stages:settlements,complete:failures.length===0,releaseAuthorized:false});
+ if(failures.length)throw new AggregateError(failures,'Protected TP1 resource settlement refused');
 }
