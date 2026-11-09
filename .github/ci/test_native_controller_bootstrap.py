@@ -5,6 +5,8 @@ import os
 import pathlib
 import tempfile
 import unittest
+from contextlib import nullcontext
+from types import SimpleNamespace
 from unittest import mock
 
 spec = importlib.util.spec_from_file_location('bootstrap_source_controls', pathlib.Path(__file__).with_name('native-controller-bootstrap.py'))
@@ -82,6 +84,61 @@ class BootstrapControls(unittest.TestCase):
                 M.prepare()
             self.assertTrue(observed)
             self.assertEqual(set(observed), {controller})
+
+    def test_pinned_node_capture_preserves_the_exact_probe_and_bytes(self):
+        facts = {'node': '22.23.3', 'abi': '127', 'platform': 'linux', 'arch': 'x64', 'glibc': '2.39'}
+        expression = ('JSON.stringify({node:process.versions.node,abi:process.versions.modules,'
+                      'platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime})')
+        with tempfile.TemporaryDirectory() as folder:
+            node = pathlib.Path(folder).resolve() / 'node'
+            raw = b'\x7fELF fictional Node source model\n'
+            node.write_bytes(raw)
+            node.chmod(0o755)
+            with mock.patch.object(M.shutil, 'which', return_value=str(node)) as which, \
+                 mock.patch.object(M.subprocess, 'run', return_value=SimpleNamespace(stdout=M.canonical(facts))) as run:
+                self.assertEqual(M._capture_pinned_node(), (node, raw))
+                which.assert_called_once_with('node')
+                run.assert_called_once_with([str(node), '-p', expression], env=M.SAFE, timeout=10,
+                                            capture_output=True, check=True)
+                run.return_value.stdout = M.canonical(facts | {'abi': '126'})
+                with self.assertRaisesRegex(ValueError, 'Exact pinned setup-node runtime required'):
+                    M._capture_pinned_node()
+
+    def test_pinned_node_row_refuses_any_other_path_and_extra_fields(self):
+        path = pathlib.Path('/opt/hostedtoolcache/node/22.23.3/x64/bin/node')
+        row = {'path': str(path), 'bytes': 64, 'sha256': 'a'*64}
+        with mock.patch.object(pathlib.Path, 'resolve', autospec=True, side_effect=lambda self: self):
+            M._require_pinned_node_row(row)
+            for changed in ({'path': '/usr/bin/node'}, {'args': []}, {'bytes': True}, {'sha256': 'a'*63}):
+                with self.subTest(changed=changed), self.assertRaises(ValueError):
+                    M._require_pinned_node_row(row | changed)
+        with mock.patch.object(pathlib.Path, 'resolve', return_value=path.parent / 'replacement'):
+            with self.assertRaisesRegex(ValueError, 'Exact pinned setup-node executable required'):
+                M._require_pinned_node_row(row)
+
+    def test_pinned_node_reread_uses_fixed_location_and_exact_owner_hash_and_elf(self):
+        def row(raw):
+            return {'path': str(M._PINNED_NODE_PATH), 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+
+        with tempfile.TemporaryDirectory() as folder:
+            model = pathlib.Path(folder).resolve()
+            node = model / 'node'
+            raw = b'\x7fELF fictional Node source model\n'
+            node.write_bytes(raw)
+            node.chmod(0o755)
+            with M.directory(model) as source, mock.patch.object(M, 'directory', return_value=nullcontext(source)) as directory:
+                self.assertEqual(M._read_pinned_node(row(raw), os.getuid()), raw)
+                directory.assert_called_once_with(M._PINNED_NODE_PATH.parent)
+                for changed in ({'bytes': len(raw) + 1}, {'sha256': '0'*64}):
+                    with self.subTest(changed=changed), self.assertRaisesRegex(ValueError, 'Controller snapshot bytes changed'):
+                        M._read_pinned_node(row(raw) | changed, os.getuid())
+                with mock.patch.object(M, 'read', return_value=(raw, SimpleNamespace(st_uid=os.getuid() + 1))):
+                    with self.assertRaisesRegex(ValueError, 'Actual installed Node ELF required'):
+                        M._read_pinned_node(row(raw), os.getuid())
+                foreign = b'fictional non-ELF bytes\n'
+                node.write_bytes(foreign)
+                with self.assertRaisesRegex(ValueError, 'Actual installed Node ELF required'):
+                    M._read_pinned_node(row(foreign), os.getuid())
 
     def test_scope_refuses_non_native_later_attempt_foreign_context_and_credential_fields(self):
         self.assertEqual(M.context(environment()), ('123', pathlib.Path('/home/runner/work/ai-hr/ai-hr')))

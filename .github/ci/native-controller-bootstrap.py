@@ -202,6 +202,34 @@ def write(folder, relative, data, mode):
             os.close(fd)
 
 
+_PINNED_NODE_PATH = pathlib.Path('/opt/hostedtoolcache/node/22.23.3/x64/bin/node')
+
+
+def _capture_pinned_node():
+    original_node = pathlib.Path(shutil.which('node')).resolve()
+    with directory(original_node.parent) as root:
+        raw, _ = read(root, original_node.name, MAX_FILE)
+    facts = subprocess.run([str(original_node), '-p', 'JSON.stringify({node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime})'],
+                           env=SAFE, timeout=10, capture_output=True, check=True)
+    need(json.loads(facts.stdout) == {'node': '22.23.3', 'abi': '127', 'platform': 'linux', 'arch': 'x64', 'glibc': '2.39'}, 'Exact pinned setup-node runtime required')
+    return original_node, raw
+
+
+def _require_pinned_node_row(node):
+    need(isinstance(node, dict) and set(node) == {'path', 'sha256', 'bytes'} and type(node['bytes']) is int
+         and 0 < node['bytes'] <= MAX_FILE and re.fullmatch(r'[a-f0-9]{64}', node['sha256']), 'Exact pinned Node facts required')
+    node_path = pathlib.Path(node['path'])
+    need(str(node_path.resolve()) == str(node_path)
+         and str(node_path) == str(_PINNED_NODE_PATH), 'Exact pinned setup-node executable required')
+
+
+def _read_pinned_node(node, uid):
+    with directory(_PINNED_NODE_PATH.parent) as source:
+        raw, info = read(source, _PINNED_NODE_PATH.name, MAX_FILE, {'size': node['bytes'], 'sha256': node['sha256']})
+        need(info.st_uid in (0, uid) and raw.startswith(b'\x7fELF'), 'Actual installed Node ELF required')
+    return raw
+
+
 def seal(request):
     need(sys.platform == 'linux' and os.geteuid() == 0, 'Root Linux receiver required')
     need(isinstance(request, dict) and set(request) == {'environment', 'runnerUid', 'runnerGid', 'rows', 'node', 'toolBins', 'event'}, 'Closed bootstrap request required')
@@ -226,11 +254,7 @@ def seal(request):
             total += row['size']
     need([row['path'] for row in rows] == sorted(seen) and total <= MAX_TOTAL, 'Controller coverage/bytes differ')
     node = request['node']
-    need(isinstance(node, dict) and set(node) == {'path', 'sha256', 'bytes'} and type(node['bytes']) is int
-         and 0 < node['bytes'] <= MAX_FILE and re.fullmatch(r'[a-f0-9]{64}', node['sha256']), 'Exact pinned Node facts required')
-    node_path = pathlib.Path(node['path'])
-    need(str(node_path.resolve()) == str(node_path)
-         and str(node_path) == '/opt/hostedtoolcache/node/22.23.3/x64/bin/node', 'Exact pinned setup-node executable required')
+    _require_pinned_node_row(node)
     bins = request['toolBins']
     need(isinstance(bins, list) and 0 < len(bins) <= 2 and bins == sorted(set(bins))
          and all(isinstance(value, str) and value.startswith('/home/runner/') or isinstance(value, str) and value.startswith('/opt/hostedtoolcache/') for value in bins), 'Closed initial toolchain directories required')
@@ -260,9 +284,7 @@ def seal(request):
                 else:
                     raw, _ = read(source, row['path'], MAX_FILE, row)
                     write(output, row['path'], raw, row['mode'])
-        with directory(node_path.parent) as source:
-            raw, info = read(source, node_path.name, MAX_FILE, {'size': node['bytes'], 'sha256': node['sha256']})
-            need(info.st_uid in (0, uid) and raw.startswith(b'\x7fELF'), 'Actual installed Node ELF required')
+        raw = _read_pinned_node(node, uid)
         with directory(destination, True) as output:
             write(output, 'node', raw, 0o555)
             with directory(event_path.parent) as source:
@@ -331,12 +353,7 @@ def prepare():
         need(re.fullmatch(rb'100(?:644|755) [a-f0-9]{40} 0', header), 'Tracked controller links/submodules refuse')
         tracked.append(name(relative.decode()))
     rows, _ = snapshot(controller, [name(value) for value in tracked])
-    original_node = pathlib.Path(shutil.which('node')).resolve()
-    with directory(original_node.parent) as root:
-        raw, _ = read(root, original_node.name, MAX_FILE)
-    facts = subprocess.run([str(original_node), '-p', 'JSON.stringify({node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime})'],
-                           env=SAFE, timeout=10, capture_output=True, check=True)
-    need(json.loads(facts.stdout) == {'node': '22.23.3', 'abi': '127', 'platform': 'linux', 'arch': 'x64', 'glibc': '2.39'}, 'Exact pinned setup-node runtime required')
+    original_node, raw = _capture_pinned_node()
     pnpm = shutil.which('pnpm')
     need(pnpm, 'Pinned pnpm setup must precede protection')
     bins = sorted({str(pathlib.Path(pnpm).parent.resolve()), str(original_node.parent)})
