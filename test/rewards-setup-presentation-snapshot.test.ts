@@ -9,11 +9,14 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {setupReadTenant,setupTenant} from '../packs/rewards/setup-data';
-import {rewardLibraries,rewardLibraryGradeChoices,rewardLibraryHistory} from '../packs/rewards/libraries';
+import {confirmRewardLibrary,rewardLibraries,rewardLibraryGradeChoices,rewardLibraryHistory,rewardPlanLibraryChoices,saveRewardLibrary,submitRewardLibrary} from '../packs/rewards/libraries';
 import {previewNewRewardPlan,previewRewardPlanCreation,previewRewardPlanSplit,previewRewardUncoveredPlans,rewardPlanSettings,rewardPlanSuggestions,rewardSetupPlan,rewardSetupPlanChoices,saveRewardPlanSettings} from '../packs/rewards/plan-configuration';
-import {rewardPatInputs} from '../packs/rewards/pat-inputs';
+import {rewardPatInputs,rewardPlanCompanyChoices} from '../packs/rewards/pat-inputs';
+import {rewardPlanCompanyChoicesQueryTx,rewardPlanLibraryChoicesQueryTx} from '../packs/rewards/setup-query-owner';
+import {legacyRewardSetupQueryPort} from '../packs/rewards/setup-legacy-query-port';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
-import {createApprovedRewardUnit} from './rewards-setup-fixture';
+import {createApprovedRewardUnit,setupChecker} from './rewards-setup-fixture';
+import {observeNativeRead} from './helpers/native-read-observer';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 async function fixture(){
@@ -97,4 +100,70 @@ it('rechecks native setup grants and actual login grants with retained contexts 
  expect((await rewardSetupPlanChoices(f.ctx)).map(p=>p.source.versionId)).toEqual([f.binding.plan_version_id]);
  await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,f.ctx.userId!));
  await expect(rewardSetupPlanChoices(f.ctx)).rejects.toThrow(/not available/);
+},30000);
+
+
+it('keeps Plans dropdown labels and durable audit events while withholding matrices and PAT values',async context=>{
+ const f=await fixture(),checker=await setupChecker(f.ctx);
+ const [legacyBonus]=await rewardLibraries(f.ctx,'bonus',f.year);
+ if(legacyBonus?.data.kind!=='bonus')throw Error('Fictional bonus fixture is missing');
+ const input={libraryId:null,versionId:null,expectedLock:0,name:'A fictional branch matrix',year:f.year,tags:[],groupDefault:false,previousLibraryId:null,
+  data:{...legacyBonus.data,type:'branch',segments:[{name:'Fictional branch',factors:[0,10000,10000,10000,10000]}]},reason:'Fictional selector branch fixture'};
+ const branchId=await saveRewardLibrary(f.ctx,input);
+ await submitRewardLibrary(f.ctx,branchId,1);await confirmRewardLibrary(checker,branchId);
+ const draftId=await saveRewardLibrary(f.ctx,{...input,name:'Unconfirmed fictional matrix'});
+ const libraries=await rewardLibraries(f.ctx,undefined,f.year),pats=await rewardPatInputs(f.ctx,f.year);
+ expect(pats[0]?.current?.inputs).toBeDefined();
+ const expected={
+  libraries:libraries.filter(row=>row.state==='confirmed').map(({id,libraryId,kind,name,version,data})=>({id,libraryId,kind,name,version,bonusType:data.kind==='bonus'?data.type:null})),
+  companies:pats.map(({company:{id,name}})=>({id,name})),
+ };
+ expect(expected.libraries).toEqual(expect.arrayContaining([expect.objectContaining({id:branchId,bonusType:'branch'})]));
+ expect(expected.libraries.some(row=>row.id===draftId)).toBe(false);
+ const snapshot=()=>setupReadTenant(f.ctx,async tx=>({
+  libraries:await rewardPlanLibraryChoicesQueryTx(tx,f.ctx,f.year,legacyRewardSetupQueryPort),
+  companies:await rewardPlanCompanyChoicesQueryTx(tx,f.ctx,f.year,legacyRewardSetupQueryPort),
+ }));
+ const before=await events(f.b.tenantId),probe=observeNativeRead();
+ try{
+  expect(await snapshot()).toEqual(expected);
+  expect(probe.properties).toEqual([expect.objectContaining({isolation:'repeatable read',readOnly:true,role:'ai_hr_app'})]);
+  const statements=probe.queries.map(query=>query.sql).join(' ');
+  expect(statements).toContain('reward_library_version');
+  expect(statements).not.toMatch(/reward_private_pat_history|reward_pat_version|v\.data\s*(?:,|as)|reward_library_used_by|reward_library_locked/);
+ }finally{probe.restore();}
+ const spy=budgets();
+ try{
+  await held(f.b.tenantId,'access',context.signal,async pid=>{
+   expect(await snapshot()).toEqual(expected);
+   const [proof]=await owner.client`select exists(select 1 from pg_locks where pid=${pid} and locktype='advisory' and granted) as held`;
+   expect(proof.held).toBe(true);
+   await expect(rewardPlanLibraryChoices(f.ctx,f.year)).rejects.toMatchObject({cause:{code:'55P03'}});
+   await expect(rewardPlanCompanyChoices(f.ctx,f.year)).rejects.toMatchObject({cause:{code:'55P03'}});
+  });
+  expect(await events(f.b.tenantId)).toEqual(before);
+  expect(await rewardPlanLibraryChoices(f.ctx,f.year)).toEqual(expected.libraries);
+  expect(await rewardPlanCompanyChoices(f.ctx,f.year)).toEqual(expected.companies);
+  const added=(await events(f.b.tenantId)).filter(row=>!before.some(previous=>row.id===previous.id));
+  expect(added.map(({event_type,payload})=>({event_type,payload})).sort((a,b)=>a.event_type.localeCompare(b.event_type))).toEqual([
+   {event_type:'rewards-setup.libraries.viewed',payload:{kind:null,year:f.year}},
+   {event_type:'rewards-setup.pat.viewed',payload:{year:f.year}},
+  ]);
+ }finally{spy.mockRestore();}
+},30000);
+
+it('refuses Plans selector and audit calls for foreign tenants and company-scoped Rewards grants',async()=>{
+ const f=await fixture(),foreign=await seedBase();
+ await setModule(foreign.tenantId,'rewards','active');
+ const expected=await events(f.b.tenantId);
+ const refuse=async(ctx:SessionContext)=>{
+  await expect(rewardPlanLibraryChoices(ctx,f.year)).rejects.toThrow();
+  await expect(rewardPlanCompanyChoices(ctx,f.year)).rejects.toThrow();
+ };
+ await refuse(adminCtx(foreign));await refuse({...f.ctx,tenantId:foreign.tenantId});
+ await owner.client`update reward_setup_grant set company_id=${f.b.companyId}::uuid where tenant_id=${f.b.tenantId}::uuid and user_id=${f.ctx.userId!}::uuid`;
+ await refuse(f.ctx);
+ await expect(setupReadTenant(f.ctx,tx=>rewardPlanLibraryChoicesQueryTx(tx,f.ctx,f.year,legacyRewardSetupQueryPort))).rejects.toThrow(/not available/);
+ await expect(setupReadTenant(f.ctx,tx=>rewardPlanCompanyChoicesQueryTx(tx,f.ctx,f.year,legacyRewardSetupQueryPort))).rejects.toThrow(/not available/);
+ expect(await events(f.b.tenantId)).toEqual(expected);
 },30000);

@@ -6,7 +6,7 @@ import type {SessionContext,Tx} from '../../db/client';
 import {setupPersonTx,setupAuthority,setupTenant,setupReadTenant,setupLock,setupEvent} from './setup-data';
 import {validateRewardLibrary,gradeCodeForLibrary,setupUuid,setupYear,setupReason,RewardSetupError,type RewardLibrary,type LibraryCandidate} from './setup-model';
 export type {RewardLibraryVersion} from './setup-query-owner';
-import {libraryVersionQueryTx,rewardLibrariesQueryTx,type RewardLibraryVersion} from './setup-query-owner';
+import {libraryVersionQueryTx,rewardLibrariesQueryTx,rewardPlanLibraryChoicesQueryTx,type RewardLibraryVersion} from './setup-query-owner';
 import {legacyRewardSetupQueryPort} from './setup-legacy-query-port';
 /** Descriptive page access only: protected reads and every command re-admit authority.
  * The native manage predicate returns false for denial; database failures propagate
@@ -20,7 +20,21 @@ export function rewardLibraryPageAccess(ctx:SessionContext){
 }
 export async function libraryVersionTx(tx:Tx,ctx:SessionContext,id:string,requireConfirmed=false):Promise<RewardLibraryVersion>{return libraryVersionQueryTx(tx,ctx,id,requireConfirmed,legacyRewardSetupQueryPort);}
 async function checkGradeIds(tx:Tx,_ctx:SessionContext,data:RewardLibrary){const grades=await tx.execute<{id:string;code:string}>(sql`select id,code from app.reward_setup_grade_choices()`);for(const g of data.rows)if(!grades.some(row=>row.id===g.gradeId&&gradeCodeForLibrary(row.code)===g.grade))throw new RewardSetupError('invalid','A library grade must match the active Grade Ladder identity.');}
-export function rewardLibraries(ctx:SessionContext,kind?:'salary'|'bonus',year?:number){if(year!==undefined)setupYear.parse(year);return setupTenant(ctx,async tx=>{const result=await rewardLibrariesQueryTx(tx,ctx,kind,year,legacyRewardSetupQueryPort);await setupEvent(tx,ctx,'libraries.viewed',null,{kind:kind??null,year:year??null});return result;});}
+function auditedLibraryRead<T>(ctx:SessionContext,kind:'salary'|'bonus'|undefined,year:number|undefined,read:(tx:Tx)=>Promise<T>){
+ if(year!==undefined)setupYear.parse(year);
+ return setupTenant(ctx,async tx=>{
+  const result=await read(tx);
+  await setupEvent(tx,ctx,'libraries.viewed',null,{kind:kind??null,year:year??null});
+  return result;
+ });
+}
+export function rewardLibraries(ctx:SessionContext,kind?:'salary'|'bonus',year?:number){
+ return auditedLibraryRead(ctx,kind,year,tx=>rewardLibrariesQueryTx(tx,ctx,kind,year,legacyRewardSetupQueryPort));
+}
+/** Plans keeps its existing committed view event for the narrower selector. */
+export function rewardPlanLibraryChoices(ctx:SessionContext,year:number){
+ return auditedLibraryRead(ctx,undefined,year,tx=>rewardPlanLibraryChoicesQueryTx(tx,ctx,year,legacyRewardSetupQueryPort));
+}
 export function saveRewardLibrary(ctx:SessionContext,raw:unknown){const p=z.object({libraryId:setupUuid.nullable(),versionId:setupUuid.nullable(),expectedLock:z.number().int().nonnegative(),name:z.string().trim().min(1).max(100),year:setupYear,tags:z.array(z.string().trim().min(1).max(80)).max(20),groupDefault:z.boolean(),previousLibraryId:setupUuid.nullable(),sourcePolicyVersionId:setupUuid.nullable().optional(),data:z.unknown(),reason:setupReason}).strict().parse(raw);const data=validateRewardLibrary(p.data);return setupTenant(ctx,async tx=>{await setupAuthority(tx,null,'manage');await setupPersonTx(tx);await setupLock(tx,ctx,'library');await checkGradeIds(tx,ctx,data);let libraryId=p.libraryId;
  if(!libraryId){if(p.sourcePolicyVersionId){if(p.previousLibraryId)throw new RewardSetupError('invalid','Choose one source for the new library.');const {setupPolicySourceTx}=await import('./plan-configuration'),source=await setupPolicySourceTx(tx,p.sourcePolicyVersionId);if(source.policy.year>p.year)throw new RewardSetupError('invalid','Choose a shared source from this year or an earlier year.');}if(p.previousLibraryId){const [prior]=await tx.execute<{kind:string;year:number}>(sql`select kind,year from reward_library where tenant_id=${ctx.tenantId}::uuid and id=${p.previousLibraryId}::uuid`);if(!prior||prior.kind!==data.kind||prior.year>p.year)throw new RewardSetupError('invalid','Choose a prior library of the same kind.');}libraryId=randomUUID();await tx.execute(sql`insert into reward_library(id,tenant_id,kind,name,year,tags,group_default,previous_library_id,source_policy_version_id,created_by) values(${libraryId}::uuid,${ctx.tenantId}::uuid,${data.kind},${p.name},${p.year},ARRAY[${sql.join(p.tags.map(tag=>sql`${tag}`),sql`, `)}]::text[],${p.groupDefault},${p.previousLibraryId}::uuid,${p.sourcePolicyVersionId??null}::uuid,${ctx.userId}::uuid)`);}
  else{const[r]=await tx.execute<{kind:string;name:string;year:number}>(sql`select kind,name,year from reward_library where id=${libraryId}::uuid and tenant_id=${ctx.tenantId}::uuid`);if(!r||r.kind!==data.kind||r.name!==p.name||r.year!==p.year)throw new RewardSetupError('invalid','Existing library identity is fixed; duplicate it to change its name or year.');}

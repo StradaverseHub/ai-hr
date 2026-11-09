@@ -7,11 +7,25 @@ import {appendEvent,actorOf} from '../../db/events';
 import {setupPersonTx,setupAuthority,setupTenant,setupLock,setupEvent,setupCompanyEligible} from './setup-data';
 import {patInputSchema,patProjection,setupUuid,setupYear,setupReason,RewardSetupError,type PatInput} from './setup-model';
 export type {PatVersion,PatCompany} from './setup-query-owner';
-import {rewardSetupCompaniesQueryTx,rewardPatInputsQueryTx,type PatVersion,type PatCompany} from './setup-query-owner';
+import {rewardSetupCompaniesQueryTx,rewardPatInputsQueryTx,rewardPlanCompanyChoicesQueryTx,type PatVersion,type PatCompany} from './setup-query-owner';
 import {legacyRewardSetupQueryPort} from './setup-legacy-query-port';
 export async function rewardSetupCompaniesTx(tx:Tx,ctx:SessionContext,year:number):Promise<PatCompany[]>{return rewardSetupCompaniesQueryTx(tx,ctx,year,legacyRewardSetupQueryPort);}
 export async function latestConfirmedPatTx(tx:Tx,ctx:SessionContext,companyId:string,year:number):Promise<PatVersion|null>{await setupAuthority(tx,companyId,'manage');const [r]=await tx.execute<PatVersion>(sql`select id,company_id as "companyId",year,revision,inputs,state,created_by as "createdBy",confirmed_by as "confirmedBy",confirmed_at::text as "confirmedAt",reason from reward_pat_version where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid and year=${year} and state='confirmed' order by revision desc limit 1`);if(r)patInputSchema.parse(r.inputs);return r??null;}
-export function rewardPatInputs(ctx:SessionContext,year:number){setupYear.parse(year);return setupTenant(ctx,async tx=>{const rows=await rewardPatInputsQueryTx(tx,ctx,year,legacyRewardSetupQueryPort);await setupEvent(tx,ctx,'pat.viewed',null,{year});return rows;});}
+function auditedPatRead<T>(ctx:SessionContext,year:number,read:(tx:Tx)=>Promise<T>){
+ setupYear.parse(year);
+ return setupTenant(ctx,async tx=>{
+  const rows=await read(tx);
+  await setupEvent(tx,ctx,'pat.viewed',null,{year});
+  return rows;
+ });
+}
+export function rewardPatInputs(ctx:SessionContext,year:number){
+ return auditedPatRead(ctx,year,tx=>rewardPatInputsQueryTx(tx,ctx,year,legacyRewardSetupQueryPort));
+}
+/** Plans keeps the historical PAT view event and reads only eligible company labels. */
+export function rewardPlanCompanyChoices(ctx:SessionContext,year:number){
+ return auditedPatRead(ctx,year,tx=>rewardPlanCompanyChoicesQueryTx(tx,ctx,year,legacyRewardSetupQueryPort));
+}
 export function proposeRewardPat(ctx:SessionContext,raw:unknown,providedTx?:Tx){const p=z.object({companyId:setupUuid,year:setupYear,expectedRevision:z.number().int().nonnegative(),inputs:patInputSchema,reason:setupReason}).strict().parse(raw);const operation=async(tx:Tx)=>{await setupAuthority(tx,p.companyId,'manage');await setupPersonTx(tx);await setupCompanyEligible(tx,p.companyId,p.year);await setupLock(tx,ctx,'pat:'+p.companyId+':'+p.year);const [current]=await tx.execute<{revision:number;state:string}>(sql`select revision,state from reward_pat_version where tenant_id=${ctx.tenantId}::uuid and company_id=${p.companyId}::uuid and year=${p.year} order by revision desc limit 1`);if((current?.revision??0)!==p.expectedRevision||current?.state==='pending')throw new RewardSetupError('changed','A newer or pending PAT proposal exists. Reopen it before entering another change.');
  const [locked]=await tx.execute<{locked:boolean}>(sql`select exists(select 1 from reward_unit u join reward_cycle c on c.id=u.cycle_id and c.tenant_id=u.tenant_id join reward_unit_setup binding on binding.unit_id=u.id and binding.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.company_id=${p.companyId}::uuid and c.year=${p.year} and u.deleted_at is null and u.status in('ec','approved','posted')) as locked`);if(locked?.locked)throw new RewardSetupError('locked','PAT figures are locked once an affected review reaches EC approval.');
  const id=randomUUID();await tx.execute(sql`insert into reward_pat_version(id,tenant_id,company_id,year,revision,inputs,created_by,reason) values(${id}::uuid,${ctx.tenantId}::uuid,${p.companyId}::uuid,${p.year},${p.expectedRevision+1},${JSON.stringify(p.inputs)}::jsonb,${ctx.userId}::uuid,${p.reason})`);await setupEvent(tx,ctx,'pat.proposed',id,{companyId:p.companyId,year:p.year,revision:p.expectedRevision+1,privateVersion:true});return id;};return providedTx?operation(providedTx):setupTenant(ctx,operation);}

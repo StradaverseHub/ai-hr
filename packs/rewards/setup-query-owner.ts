@@ -29,5 +29,32 @@ export async function libraryVersionQueryTx(tx:Tx,ctx:SessionContext,id:string,r
 
 export async function rewardLibrariesQueryTx(tx:Tx,ctx:SessionContext,kind:'salary'|'bonus'|undefined,year:number|undefined,port:RewardSetupQueryPort){await port.authority(tx,null,'library_view');const rows=await tx.execute<{id:string}>(sql`select v.id from reward_library l join reward_library_version v on v.library_id=l.id and v.tenant_id=l.tenant_id where l.tenant_id=${ctx.tenantId}::uuid ${kind?sql`and l.kind=${kind}`:sql``} ${year!==undefined?sql`and l.year=${year}`:sql``} order by l.year desc,l.name,v.revision desc`);const result=[];for(const row of rows)result.push(await libraryVersionQueryTx(tx,ctx,row.id,false,port));return result;}
 
+export type RewardPlanLibraryChoice={id:string;libraryId:string;kind:'salary'|'bonus';name:string;version:number;bonusType:'standard'|'branch'|null};
+
+/** Plans only needs library labels and the bonus variant. Full library validation and
+ * access to row matrices remain in the existing protected library and command owners. */
+export async function rewardPlanLibraryChoicesQueryTx(tx:Tx,ctx:SessionContext,year:number,port:RewardSetupQueryPort):Promise<RewardPlanLibraryChoice[]>{
+ setupYear.parse(year);
+ await port.authority(tx,null,'manage');
+ await port.authority(tx,null,'library_view');
+ const rows=await tx.execute<Omit<RewardPlanLibraryChoice,'bonusType'>&{selectionKind:'salary'|'standard'|'branch'|null}>(sql`
+  select v.id,l.id as "libraryId",l.kind,l.name,v.revision as version,
+   case when l.kind='salary' and v.data->>'kind'='salary' then 'salary'
+        when l.kind='bonus' and v.data->>'kind'='bonus' and v.data->>'type' in ('standard','branch') then v.data->>'type'
+   end as "selectionKind"
+  from reward_library l join reward_library_version v on v.library_id=l.id and v.tenant_id=l.tenant_id
+  where l.tenant_id=${ctx.tenantId}::uuid and l.year=${year} and v.state='confirmed'
+  order by l.year desc,l.name,v.revision desc`);
+ return rows.map(({selectionKind,id,libraryId,kind,name,version})=>{
+  if(selectionKind===null)throw new RewardSetupError('invalid','A confirmed library has invalid selection metadata.');
+  return{id,libraryId,kind,name,version,bonusType:selectionKind==='salary'?null:selectionKind};
+ });
+}
+
 export async function rewardSetupCompaniesQueryTx(tx:Tx,ctx:SessionContext,year:number,port:RewardSetupQueryPort):Promise<PatCompany[]>{setupYear.parse(year);await port.authority(tx,null,'manage');const rows=await port.companies(tx,year);const result:PatCompany[]=[];const at=year<Number(todayInKualaLumpur().slice(0,4))?`${year}-12-31`:todayInKualaLumpur();for(const company of rows){const [r]=await port.structure(tx,company.id,at);result.push({...company,businessGroupId:r?.tags?.businessGroupId??null,businessGroupName:r?.tags?.businessGroupName??null,businessUnitId:r?.tags?.businessUnitId??null,businessUnitName:r?.tags?.businessUnitName??null,structureStatus:r?.tags?.status??'legacy'});}return result.sort((a,b)=>(a.businessGroupName??a.parentName??'').localeCompare(b.businessGroupName??b.parentName??'')||(a.businessUnitName??'').localeCompare(b.businessUnitName??'')||a.name.localeCompare(b.name)||a.id.localeCompare(b.id));}
+/** Preserve the authorized company order without reading any PAT version or value. */
+export async function rewardPlanCompanyChoicesQueryTx(tx:Tx,ctx:SessionContext,year:number,port:RewardSetupQueryPort){
+ return (await rewardSetupCompaniesQueryTx(tx,ctx,year,port)).map(({id,name})=>({id,name}));
+}
+
 export async function rewardPatInputsQueryTx(tx:Tx,ctx:SessionContext,year:number,port:RewardSetupQueryPort){await port.authority(tx,null,'manage');const companies=await rewardSetupCompaniesQueryTx(tx,ctx,year,port),rows:({company:PatCompany;current:PatVersion|null;pending:PatVersion|null;history:PatVersion[]})[]=[];for(const company of companies){const versions=await port.patHistory(tx,company.id,year),all=versions.map(v=>v.value);rows.push({company,current:all.find(v=>v.state==='confirmed')??null,pending:all.find(v=>v.state==='pending')??null,history:all});}return rows;}
