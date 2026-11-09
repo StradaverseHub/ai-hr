@@ -7,15 +7,26 @@ import {join} from 'node:path';
 import {performance} from 'node:perf_hooks';
 import {wholeSystemOrgRoster} from './fixture-workload.mjs';
 
+const orgOrigin='https://localhost:3443';
+
 export async function exerciseOrgExplorer({page,user,fixture,report,save,phase}){
  assert.equal(user.role,'groupHR','Org explorer journey needs the fixture group HR actor');
  assert(['baseline','loaded','preflight'].includes(phase));
  const cohort=wholeSystemOrgRoster(fixture,user.tenant);
  const known=new Map(cohort.map(actor=>[actor.employmentId,actor]));
  const rewardMember=cohort.find(actor=>actor.role==='reward-fixture');
+ const companyIds=fixture.tenants[user.tenant].companies.map(company=>company.companyId).sort();
  const catalog=locale=>JSON.parse(readFileSync(new URL(`../../messages/${locale}.json`,import.meta.url),'utf8'));
  const results=[];let stage='navigation',locale='en';
  const explorer=()=>page.locator('[data-org-explorer]');
+ const picker=page.locator('[data-company-switcher]');
+ const companyInputs='input[type="checkbox"][name="companyId"]';
+ let scopePosts=0;
+ const isScopePost=request=>{
+  const url=new URL(request.url());
+  return request.method()==='POST'&&url.origin===orgOrigin&&url.pathname==='/org';
+ };
+ const observeScopePost=request=>{if(isScopePost(request))scopePosts++;};
  const button=key=>explorer().getByRole('button',{name:catalog(locale).org.explorer[key],exact:true});
  const rows=()=>explorer().locator('[data-org-item]');
  const record=(action,started,extra={})=>{results.push({action,elapsedMs:performance.now()-started,...extra});save();};
@@ -40,7 +51,7 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   const started=performance.now();
   const responsePromise=page.waitForResponse(response=>{
    const url=new URL(response.url());
-   return url.pathname==='/api/org/window'&&url.searchParams.get('view')===view&&
+   return url.origin===orgOrigin&&url.pathname==='/api/org/window'&&url.searchParams.get('view')===view&&
     (expectedQuery===undefined||url.searchParams.get('q')===expectedQuery);
   },{timeout:90000});
   await action();const response=await responsePromise;
@@ -56,7 +67,7 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   record(stage,started,{view,renderedRows:await rows().count(),totalPeople:data.totalPeople,totalItems:data.totalItems,responseJsonBytes:Buffer.byteLength(JSON.stringify(data)),hasMore:!!data.nextCursor});
   return data;
  }
- async function allPeople(allowed=cohort){return request(()=>button('allPeople').click(),'search',allowed);}
+ async function allPeople(allowed=cohort){return request(()=>button('allPeople').click(),'search',allowed,'');}
  async function switchLocale(next){
   const names={zh:'简体中文',en:'English'};
   await page.getByRole('button',{name:'Change language',exact:true}).click();
@@ -70,11 +81,34 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   assert.equal(await explorer().getAttribute('data-org-view'),'roots','Language change retained the old explorer state');
   record('language-switch',started,{locale:next,translatedHeading:true,usable:true});
  }
- async function closeScopePopover(){
-  const picker=page.locator('[data-company-switcher]');if(await picker.getAttribute('aria-expanded')==='true')await picker.click();
+ async function openCompanyScope(){
+  assert.equal(await picker.getAttribute('aria-expanded'),'false','Company selector unexpectedly open');
+  await picker.click();
+  const form=picker.locator('..').locator('form').filter({has:page.locator(companyInputs)});
+  await form.waitFor({state:'visible',timeout:90000});
+  assert.equal(await picker.getAttribute('aria-expanded'),'true','Company selector did not open');
+  return form;
+ }
+ async function commitCompanyScope(action,expectedIds,expectedPeople){
+  const before=scopePosts;
+  const [response]=await Promise.all([
+   page.waitForResponse(response=>isScopePost(response.request()),{timeout:90000}),
+   action(),
+  ]);
+  assert(response.ok(),'Company selection request failed');
+  const request=response.request(),headers=request.headers(),type=headers['content-type'],body=request.postDataBuffer();
+  assert(headers['next-action']&&type?.startsWith('multipart/form-data')&&body,'Company selection did not post the native form');
+  const form=await new Request(request.url(),{method:'POST',headers:{'content-type':type},body}).formData();
+  // React's Flight encoding prefixes each field in the FormData argument with its part number.
+  const submittedIds=[...form].filter(([name])=>/^_\d+_companyId$/.test(name)).map(([,value])=>value).sort();
+  assert.deepEqual(submittedIds,expectedIds,'Company selection posted a different scope');
+  await ready(expectedPeople);
+  assert.equal(scopePosts,before+1,'Company selection did not post exactly once');
+  assert.equal(await explorer().getAttribute('data-org-view'),'roots','Company change retained the previous Org Explorer state');
+  if(await picker.getAttribute('aria-expanded')==='true')await picker.click();
  }
  try{
-  const started=performance.now();await page.goto('https://localhost:3443/org',{waitUntil:'domcontentloaded',timeout:90000});
+  const started=performance.now();await page.goto(orgOrigin+'/org',{waitUntil:'domcontentloaded',timeout:90000});
   assert.equal(new URL(page.url()).pathname,'/org');await page.getByRole('heading',{level:1,name:catalog('en').org.title,exact:true}).waitFor({timeout:90000});
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});if(await skip.isVisible())await skip.click();
   await page.locator('[data-org-tree] [data-org-node]').first().waitFor({state:'visible',timeout:90000});
@@ -85,7 +119,7 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   await page.waitForURL(url=>url.pathname==='/org'&&url.searchParams.get('view')==='explorer',{timeout:90000});
   await ready(cohort.length);assert.equal(await explorer().getAttribute('data-org-view'),'roots');record('navigation-to-usable',explorerStarted,{mode:'explorer',renderedRows:await rows().count(),totalPeople:cohort.length});
   stage='all-people-first-page';const first=await allPeople();assert.equal(first.totalItems,cohort.length);assert.equal(first.items.length,50);assert(first.nextCursor);
-  stage='all-people-next-page';const next=await request(()=>button('next').click(),'search');
+  stage='all-people-next-page';const next=await request(()=>button('next').click(),'search',cohort,'');
   assert(first.items.every(item=>!next.items.some(other=>other.key===item.key)),'Org paging repeated an item');
   stage='focus-and-reports';let person=next.items.find(item=>item.node&&known.get(item.node.employmentId)?.role==='manager')?.node;assert(person);
   const children=await request(()=>rows().filter({has:page.getByRole('heading',{name:person.name,exact:true})}).getByRole('button',{name:catalog(locale).org.explorer.explore,exact:true}).click(),'children');
@@ -99,7 +133,7 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   entry.connectorTypesObserved=[...new Set(connections.items.map(item=>item.type))];
   for(const item of connections.items){assert(['administrative','functional','project','dotted'].includes(item.type));assert(['incoming','outgoing'].includes(item.direction));}
   stage='literal-person-search';const searchBox=explorer().getByRole('textbox');await searchBox.fill(person.name);
-  const match=await request(()=>button('search').click(),'search');assert.equal(match.totalItems,1);assert.equal(match.items[0].node?.employmentId,person.employmentId);
+  const match=await request(()=>button('search').click(),'search',cohort,person.name);assert.equal(match.totalItems,1);assert.equal(match.items[0].node?.employmentId,person.employmentId);
   if(phase==='baseline'&&rewardMember){
    stage='rewards-member-search';await searchBox.fill(rewardMember.name);
    const reward=await request(()=>button('search').click(),'search',cohort,rewardMember.name);
@@ -108,22 +142,39 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
    await rows().getByRole('heading',{name:rewardMember.name,exact:true}).waitFor({state:'visible',timeout:90000});
   }
   stage='selected-company';const selected=cohort.filter(actor=>actor.companyId===user.companyId);
-  await page.locator('[data-company-switcher]').click();await page.getByRole('button',{name:catalog(locale).topbar.deselectAll,exact:true}).click();
-  const scopedStarted=performance.now();await page.locator(`input[name="companyId"][value="${user.companyId}"]`).check();
-  await ready(selected.length);await closeScopePopover();assert.equal(await explorer().getAttribute('data-org-view'),'roots');record(stage,scopedStarted,{mode:'explorer',totalPeople:selected.length,stateReset:true});
+  const scopeCopy=catalog(locale).topbar,scopeForm=await openCompanyScope();
+  const checkedIds=form=>form.locator(companyInputs+':checked').evaluateAll(inputs=>inputs.map(input=>input.value).sort());
+  assert.deepEqual(await checkedIds(scopeForm),companyIds,'Company selector initial scope differs from the fixture');
+  page.on('request',observeScopePost);
+  await scopeForm.getByRole('button',{name:scopeCopy.chooseCompanies,exact:true}).click();
+  await scopeForm.getByRole('status').filter({hasText:scopeCopy.pendingCompanySelection}).waitFor({state:'visible',timeout:90000});
+  assert.deepEqual(await checkedIds(scopeForm),[],'Company selector did not clear the draft');
+  assert(await picker.getByText(scopeCopy.allCompanies,{exact:true}).isVisible(),'Clearing draft changed the committed company label');
+  await ready(cohort.length);
+  assert.equal(await explorer().getAttribute('data-org-view'),'search','Clearing draft changed the committed Org Explorer view');
+  assert.equal(scopePosts,0,'Clearing company draft sent a scope request');
+  const scopedStarted=performance.now();
+  await commitCompanyScope(()=>scopeForm.locator(`${companyInputs}[value="${user.companyId}"]`).check(),[user.companyId],selected.length);
+  record(stage,scopedStarted,{mode:'explorer',totalPeople:selected.length,stateReset:true});
   stage='selected-company-people';const scoped=await allPeople(selected);assert.equal(scoped.totalItems,selected.length);assert.equal(scoped.nextCursor,null);assert.equal(scoped.items.length,selected.length);
   stage='other-company-search';const other=cohort.find(actor=>actor.companyId!==user.companyId);assert(other);await searchBox.fill(other.name);
-  const hidden=await request(()=>button('search').click(),'search',selected);assert.equal(hidden.totalItems,0);assert.equal(hidden.items.length,0);
+  const hidden=await request(()=>button('search').click(),'search',selected,other.name);assert.equal(hidden.totalItems,0);assert.equal(hidden.items.length,0);
   if(phase==='baseline'&&rewardMember&&rewardMember.companyId!==user.companyId){
    stage='rewards-member-outside-company';await searchBox.fill(rewardMember.name);
    const hiddenReward=await request(()=>button('search').click(),'search',selected,rewardMember.name);
    assert(hiddenReward.totalItems===0&&hiddenReward.items.length===0,
     'Org Explorer returned a Rewards member outside the selected company');
   }
-  stage='restore-all-companies';await page.locator('[data-company-switcher]').click();await page.getByRole('button',{name:catalog(locale).topbar.selectAll,exact:true}).click();await ready(cohort.length);await closeScopePopover();
+  stage='restore-all-companies';const restoreForm=await openCompanyScope();
+  assert.deepEqual(await checkedIds(restoreForm),[user.companyId],'Company selector did not retain the committed scope');
+  await commitCompanyScope(()=>restoreForm.getByRole('button',{name:scopeCopy.selectAll,exact:true}).click(),companyIds,cohort.length);
+  assert(await picker.getByText(scopeCopy.allCompanies,{exact:true}).isVisible(),'Company selector did not restore the committed company label');
+  assert.equal(scopePosts,2,'Company scope journey must submit only the select and restore actions');
+  page.off('request',observeScopePost);
   stage='language-switch';await switchLocale('zh');await switchLocale('en');
   stage='translated-search-usable';await allPeople();
   await page.screenshot({path:join(process.env.PERF_EVIDENCE_DIR,`org-explorer-${phase}-${user.index}.png`),fullPage:false});
   entry.status='passed';entry.coverage={readOnly:true,freshNativeAuthorization:true,boundedDom:true,search:true,paging:true,focus:true,connections:true,scope:true,locale:true};save();
  }catch(error){entry.status='failed';entry.failure={stage,error:String(error.message).slice(0,200)};save();throw error;}
+ finally{page.off('request',observeScopePost);}
 }

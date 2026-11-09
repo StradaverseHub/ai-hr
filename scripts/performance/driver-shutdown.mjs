@@ -97,6 +97,24 @@ export function startDriverInterval(interval,run,recordFailure){
  return {stop(){stopped=true;clearInterval(timer);return pending??Promise.resolve();}};
 }
 
+/** One real probe at a time. After an overrun, use the next available timer turn. */
+export function startMeasuredLockInterval(interval,run,recordFailure,now=()=>performance.now()){
+ let timer,pending,stopped=false;
+ function schedule(due){
+  if(stopped)return;
+  timer=setTimeout(()=>{
+   if(stopped)return;
+   const started=now();
+   pending=Promise.resolve().then(run).catch(recordFailure).finally(()=>{
+    pending=undefined;
+    schedule(started+interval);
+   });
+  },Math.max(0,Math.ceil(due-now())));
+ }
+ schedule(now()+interval);
+ return {stop(){stopped=true;clearTimeout(timer);return pending??Promise.resolve();}};
+}
+
 export function lockSampleEvidence(samples,window){
  const completed=samples.filter(sample=>sample.state==='complete');
  const qualified=window?completed.filter(sample=>sample.startedMs>=window.startMs&&sample.completedMs<=window.endMs):[];
@@ -763,10 +781,11 @@ export function openDriverResponse({start,body,startedMs,onHeaders,observeSocket
 }
 
 /** Independent five-second API attempts after the exact driver DB work is drained. */
-export async function closePerformanceDbPools(nativeAuditClient,driver,failures){
+export async function closePerformanceDbPools(nativeAuditClient,driver,failures,measuredLockObserver){
  const close=(client,stage)=>client?failures.attempt(stage,()=>client.end({timeout:5})):Promise.resolve({state:'absent'});
- const [audit,observer]=await Promise.all([close(nativeAuditClient,'audit-pool-end'),close(driver,'observer-pool-end')]);
- return {audit:audit.state,observer:observer.state};
+ const [audit,observer,locks]=await Promise.all([close(nativeAuditClient,'audit-pool-end'),close(driver,'observer-pool-end'),
+  close(measuredLockObserver,'measured-lock-pool-end')]);
+ return {audit:audit.state,observer:locks.state==='failed'?'failed':observer.state};
 }
 
 /** tsx can expose destructured TS exports through CommonJS default on the hosted Node runtime. */

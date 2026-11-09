@@ -9,7 +9,7 @@ import {afterEach,expect,it,vi} from 'vitest';
 import {acquireDriverResource,buildDevelopmentMeasurement,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
  createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,developmentDockerContext,developmentLockWindowEvidence,
  developmentPostgresBirthId,developmentPostgresSettlement,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
- openDriverResponse,qualifyLockSampleCadence,settleDriverBrowser,settleDriverLanes,settleDriverResources,startDriverInterval,validateDevelopmentMeasurement} from '../scripts/performance/driver-shutdown.mjs';
+ openDriverResponse,qualifyLockSampleCadence,settleDriverBrowser,settleDriverLanes,settleDriverResources,startDriverInterval,startMeasuredLockInterval,validateDevelopmentMeasurement} from '../scripts/performance/driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts} from '../scripts/performance/protected-lock-observer.mjs';
 
 function deferred<T=void>(){
@@ -156,6 +156,39 @@ it('requires valid lock counts and rejects an observed blocking session even wit
 
 const legacyLockRow=(startedMs:number,completedMs:number,blockingAppSessions=0)=>
  ({state:'complete',startedMs,completedMs,locks:0,blockingAppSessions,holdersRequested:0,holdersObserved:0});
+
+it.each([320,520])('settles serial probes after a %s ms overrun without hiding missed coverage',async duration=>{
+ vi.useFakeTimers({now:0});
+ const first=deferred(),second=deferred(),starts:number[]=[],rows:ReturnType<typeof legacyLockRow>[]=[];
+ const onFailure=vi.fn();
+ const sampler=startMeasuredLockInterval(250,async()=>{
+  const start=Date.now();starts.push(start);
+  await (starts.length===1?first.promise:second.promise);
+  rows.push(legacyLockRow(start,Date.now()));
+ },onFailure,Date.now);
+ await vi.advanceTimersByTimeAsync(250+duration);
+ expect(starts).toEqual([250]);
+ first.resolve();
+ await vi.advanceTimersByTimeAsync(2);
+ expect(starts).toHaveLength(2);
+ expect(starts[1]).toBeGreaterThanOrEqual(250+duration);
+ expect(starts[1]).toBeLessThanOrEqual(252+duration);
+ const stop=sampler.stop();
+ const close=vi.fn(),settled=stop.then(close);
+ await vi.advanceTimersByTimeAsync(3);
+ expect(close).not.toHaveBeenCalled();
+ second.resolve();await settled;
+ const endMs=Date.now()+1;
+ await vi.advanceTimersByTimeAsync(1000);
+ expect(starts).toHaveLength(2);
+ expect(rows.map(row=>row.startedMs)).toEqual(starts);
+ expect(onFailure).not.toHaveBeenCalled();
+ expect(qualifyLockSampleCadence('preflight',rows,{startMs:100,endMs})).toMatchObject({
+  maxGapUs:500000,observedBlockingSamples:0,qualifiedSamples:2,
+  ...(duration===320?{coveragePass:true,pass:true,blockingSamples:0}:
+   {coveragePass:false,pass:false,blockingSamples:null,reason:'coverage-gap'}),
+ });
+});
 
 it('qualifies the measured opening, interior and tail at each fixed lock cadence',()=>{
  for(const [phase,intervalMs] of [['preflight',250],['loaded',1000]] as const){
@@ -785,6 +818,14 @@ it('attempts the other actual pool when the first end rejects',async()=>{
  expect(audit.end).toHaveBeenCalledWith({timeout:5});
  expect(observer.end).toHaveBeenCalledWith({timeout:5});
  expect(failures.privateFailures().secondary).toEqual([{stage:'audit-pool-end',reason:error}]);
+});
+
+it('withholds observer settlement when the dedicated measured lock pool cannot close',async()=>{
+ const failures=createDriverFailures(),error=Error('measured lock pool refused');
+ const audit={end:vi.fn()},observer={end:vi.fn()},measured={end:vi.fn().mockRejectedValue(error)};
+ expect(await closePerformanceDbPools(audit,observer,failures,measured)).toEqual({audit:'settled',observer:'failed'});
+ for(const pool of [audit,observer,measured])expect(pool.end).toHaveBeenCalledWith({timeout:5});
+ expect(failures.privateFailures().secondary).toEqual([{stage:'measured-lock-pool-end',reason:error}]);
 });
 
 it('shares a pending context close and never retries its real rejection',async()=>{
