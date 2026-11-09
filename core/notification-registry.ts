@@ -24,6 +24,9 @@ export type NotificationRecipientReaders<Reader>={
  rewardUploadChecker:NotificationRecipientReader<Reader>;
  rewardUploadReady:NotificationRecipientReader<Reader>;
  rewardRouted:NotificationRecipientReader<Reader>;
+ rewardPreparationReleased:NotificationRecipientReader<Reader>;
+ rewardPreparationChanged:NotificationRecipientReader<Reader>;
+ rewardPreparationInvalidated:NotificationRecipientReader<Reader>;
  rewardPoolChanged:NotificationRecipientReader<Reader>;
  rewardApproved:NotificationRecipientReader<Reader>;
  leaveSubmitted:NotificationRecipientReader<Reader>;
@@ -134,6 +137,21 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     kind: 'rewards.review', category: 'rewards',
     render: (p, ev) => renderRewardRouted(p, ev),
     recipientPort:'rewardRouted',recipients:readers.rewardRouted,
+  },
+  'reward-unit.preparation-released': {recipientAudience:'reader',
+    kind:'rewards.preparation-released',category:'rewards',
+    recipientPort:'rewardPreparationReleased',recipients:readers.rewardPreparationReleased,
+    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.releaseNotificationTitle',body:'rewardsPreparation.releaseNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
+  },
+  'reward-unit.preparation-changed': {recipientAudience:'reader',
+    kind:'rewards.preparation-changed',category:'rewards',
+    recipientPort:'rewardPreparationChanged',recipients:readers.rewardPreparationChanged,
+    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.changeNotificationTitle',body:'rewardsPreparation.changeNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
+  },
+  'reward-unit.preparation-invalidated': {recipientAudience:'reader',
+    kind:'rewards.preparation-invalidated',category:'rewards',
+    recipientPort:'rewardPreparationInvalidated',recipients:readers.rewardPreparationInvalidated,
+    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.changeNotificationTitle',body:'rewardsPreparation.changeNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
   },
   'reward-unit.final-pool-changed': {recipientAudience:'reader',
     kind:'rewards.final-pool-changed',category:'rewards',

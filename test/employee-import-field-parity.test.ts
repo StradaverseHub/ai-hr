@@ -355,6 +355,7 @@ const REGISTRY: Record<string, RegistryTable> = {
     },
     excluded: [
       { reason: PLUMBING, fields: ['id', 'tenantId', 'personId', 'createdAt', 'updatedAt'] },
+      { reason: 'Bank payee residency is an explicit bank-file arrangement choice on the Bank Information card; never inferred from tax residency or employee citizenship by the employee import.', fields:['bankPayeeResidency'] },
       { reason: 'Detailed circumstance is an explicit Personnel tax choice; the numeric import remains legacy. Applicability epoch is assigned by that owner, never by a spreadsheet.', fields: ['taxCircumstance','taxApplicabilityEpoch'] },
       {
         reason:

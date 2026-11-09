@@ -11,6 +11,8 @@ import {EMPLOYEE_LIFECYCLE_PROFILE,employeeLifecycleFile} from './employee-lifec
 import {EMPLOYEE_LIFECYCLE_SOURCES,assertEmployeeLifecycleSourceClosure} from './employee-lifecycle-sources.mjs';
 export const SINGLETON_VERSION=1;
 const measured=[
+ 'test/ai-centre-architecture-compatibility-upgrade.test.ts',
+ 'test/ai-centre-mandate-write-order-upgrade.test.ts',
  'test/access-editor-native-owner-presentation.test.ts',
  'test/analytics-termination-lateral.test.ts',
  'test/attendance-shared-submission-bridge.test.ts',
@@ -93,6 +95,68 @@ export function assertSingletonUnit(unit){
 // Fixed reviewed component closure. These are source bindings, not privileges,
 // new profiles, skip exemptions or permission to execute an arbitrary candidate.
 const componentSources=Object.freeze({
+ "test/ai-centre-architecture-compatibility-upgrade.test.ts":Object.freeze([
+  ".github/ci/candidate-environment.mjs",
+  ".github/ci/employee-lifecycle-profile.mjs",
+  ".github/ci/employee-lifecycle-sources.mjs",
+  ".github/ci/historical-migrations/0180_profile_option.sql",
+  ".github/ci/historical-migrations/0212_dashboard_card_config.sql",
+  ".github/ci/native-next-helper-sources.mjs",
+  ".github/ci/native-next-installation.mjs",
+  ".github/ci/policy-version.mjs",
+  ".github/ci/postgres-evidence.mjs",
+  ".github/ci/rewards-native-sources.mjs",
+  ".github/ci/singleton-protocol.mjs",
+  "core/audit-chain-arming.ts",
+  "core/entitlement-types.ts",
+  "db/admission.ts",
+  "db/background-read-admission.ts",
+  "db/capacity.ts",
+  "db/client.ts",
+  "db/tenant-write-admission.ts",
+  "db/workload.ts",
+  "test/ai-centre-architecture-compatibility-upgrade.test.ts",
+  "test/db-names.ts",
+  "test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql",
+  "test/fixtures/historical-migrations/3103_access_editor_presentation.sql",
+  "test/helpers/ai-centre-compatibility-owner-constructor.ts",
+  "test/helpers/ci-singleton-admission.ts",
+ // Candidate-migration prerequisite imports; the direct test closure above is25.
+ "test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts",
+ "test/fixtures/notification-worker/canonical-inventory.ts",
+ "test/fixtures/notification-worker/replay-prefix-ownership.ts",
+]),
+ "test/ai-centre-mandate-write-order-upgrade.test.ts":Object.freeze([
+  ".github/ci/candidate-environment.mjs",
+  ".github/ci/employee-lifecycle-profile.mjs",
+  ".github/ci/employee-lifecycle-sources.mjs",
+  ".github/ci/historical-migrations/0180_profile_option.sql",
+  ".github/ci/historical-migrations/0212_dashboard_card_config.sql",
+  ".github/ci/native-next-helper-sources.mjs",
+  ".github/ci/native-next-installation.mjs",
+  ".github/ci/policy-version.mjs",
+  ".github/ci/postgres-evidence.mjs",
+  ".github/ci/rewards-native-sources.mjs",
+  ".github/ci/singleton-protocol.mjs",
+  "core/audit-chain-arming.ts",
+  "core/entitlement-types.ts",
+  "db/admission.ts",
+  "db/background-read-admission.ts",
+  "db/capacity.ts",
+  "db/client.ts",
+  "db/tenant-write-admission.ts",
+  "db/workload.ts",
+  "test/ai-centre-mandate-write-order-upgrade.test.ts",
+  "test/db-names.ts",
+  "test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql",
+  "test/fixtures/historical-migrations/3103_access_editor_presentation.sql",
+  "test/helpers/ai-centre-compatibility-owner-constructor.ts",
+  "test/helpers/ci-singleton-admission.ts",
+ // Candidate-migration prerequisite imports; the direct test closure above is25.
+ "test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts",
+ "test/fixtures/notification-worker/canonical-inventory.ts",
+ "test/fixtures/notification-worker/replay-prefix-ownership.ts",
+]),
  // Actual external-AST import graph plus explicit migration/duration/locked-install inputs.
  // The nine common singleton members are supplied below exactly once.
  'test/module-read-jit-diagnostic.test.ts':Object.freeze([
@@ -414,7 +478,7 @@ const componentSources=Object.freeze({
   "db/migrations/2207_reward_advisor.sql","db/migrations/2208_rewards_uploaded_awards.sql","db/migrations/2209_company_registration_classification.sql",
   "db/migrations/2210_personnel_projection_reuse.sql","db/migrations/2211_company_retention_approved_expansion.sql","db/migrations/2212_payroll_audit_claim_lookup_indexes.sql",
   "db/migrations/2250_rewards_whole_group_grants.sql","db/migrations/2251_company_display_group.sql","db/migrations/2252_probation_navigation_capability_probe.sql",
-  "db/migrations/2300_retire_job_architecture_workflows.sql","db/migrations/2301_attendance_workflow_submission_shared_lock.sql","db/migrations/2302_company_ancestry_early_exit.sql",
+  "db/migrations/2300_retire_job_architecture_workflows.sql","test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql","db/migrations/2302_company_ancestry_early_exit.sql",
   "db/migrations/2303_admin_grant_direct_scan.sql","db/migrations/2304_payroll_grant_direct_scan.sql","db/migrations/2403_personnel_bounded_overview.sql",
   "db/migrations/2404_payroll_reconciliation_remark.sql","db/migrations/2405_rewards_review_activity.sql","db/migrations/2406_payroll_reconciliation_generation.sql",
   "db/migrations/2450_personnel_search_projection.sql","db/migrations/2451_personnel_company_filter_choices.sql","db/migrations/2460_payroll_individual_import_queue.sql",
@@ -423,7 +487,7 @@ const componentSources=Object.freeze({
   "db/migrations/2509_principal_statement_plan_reuse.sql","db/migrations/2510_capability_statement_plan_reuse.sql","db/migrations/2600_onboarding_current_personnel.sql",
   "db/migrations/2701_personnel_typed_overview_filter_fields.sql","db/migrations/2903_notification_receipt_cycle_authority.sql","db/migrations/3001_employment_membership_initplan.sql",
   "db/migrations/3100_pay_formula_saved_availability.sql","db/migrations/3101_attendance_shared_workflow.sql","db/migrations/3102_assignment_membership_initplan.sql",
-  "db/migrations/3103_access_editor_presentation.sql","db/migrations/3110_attendance_workflow_owner_rls.sql","db/migrations/3200_ai_centre_controls.sql","db/migrations/3201_ai_centre_function_coverage.sql","db/migrations/3210_attendance_shared_workflow_submission_lock.sql",
+  "test/fixtures/historical-migrations/3103_access_editor_presentation.sql","db/migrations/3110_attendance_workflow_owner_rls.sql","db/migrations/3200_ai_centre_controls.sql","db/migrations/3201_ai_centre_function_coverage.sql","db/migrations/3210_attendance_shared_workflow_submission_lock.sql",
   "db/migrations/3211_access_editor_native_owner_presentation.sql","db/migrations/3500_ai_centre_architecture_compatibility.sql","db/migrations/3501_ai_centre_mandate_write_order.sql","db/migrations/meta/_journal.json","db/payroll-audit-schema.ts",
   "db/schema.ts","db/tenant-mutation.ts","db/tenant-write-admission.ts",
   "db/workload.ts","drizzle.config.ts","i18n/config.ts",
@@ -610,6 +674,27 @@ const componentSources=Object.freeze({
   "test/harness-reset-errors.ts","test/harness.ts","test/helpers/native-read-observer.ts","test/helpers/personnel-draft-discard-ci-role-fixture.ts",
   "test/performance/module-read-jit-probe.ts","test/performance/personnel-native-fixture.ts","test/profile.ts",
   "tsconfig.json",
+ // Selected-alpha executable product imports (20), separate from existing prerequisites.
+ "lib/maybank-payment-settings.ts",
+ "localization/my/maybank-v74-file.ts",
+ "lib/attendance-formula-allocation.ts",
+ "lib/system-label-assignment.ts",
+ "packs/attendance/formula-sources.ts",
+ "lib/attendance-formula-catalog.ts",
+ "lib/attendance-formula-overtime.ts",
+ "core/attendance-formula-leave.ts",
+ "core/attendance-formula-measurements.ts",
+ "core/attendance-formulas.ts",
+ "lib/attendance-formula-model.ts",
+ "lib/attendance-formula-language.ts",
+ "lib/attendance-formula-periods.ts",
+ "lib/pay-component-company.ts",
+ "core/attendance-formula-ai.ts",
+ "lib/attendance-formula-ai.ts",
+ "lib/attendance-formula-bindings.ts",
+ "lib/attendance-formula-posting.ts",
+ "core/pay-component-company.ts",
+ "core/system-label-selection.ts",
  ]),
  ...Object.fromEntries(EMPLOYEE_LIFECYCLE_PROFILE.files.map(({file})=>[file,assertEmployeeLifecycleSourceClosure(EMPLOYEE_LIFECYCLE_SOURCES)])),
  'test/rewards-audit-policy-native.test.ts':Object.freeze(['.github/ci/rewards-native-sources.mjs',...REWARDS_NATIVE_SOURCES]),
@@ -625,7 +710,7 @@ const componentSources=Object.freeze({
  ]),
  'test/access-editor-native-owner-presentation.test.ts':Object.freeze([
   'db/migrations/3211_access_editor_native_owner_presentation.sql',
-  'test/fixtures/access-editor-native-owner.ts','test/fixtures/access-editor-cleanup-lifetime.ts','test/fixtures/access-editor-catalogue-diagnostic.ts','test/fixtures/access-editor-owner-dependencies.ts',
+  'test/fixtures/access-editor-native-owner.ts','test/fixtures/historical-migrations/source-path.ts','test/fixtures/access-editor-cleanup-lifetime.ts','test/fixtures/access-editor-catalogue-diagnostic.ts','test/fixtures/access-editor-owner-dependencies.ts',
   'test/fixtures/access-editor-owned-work.ts','test/fixtures/access-editor-original739-journal.json',
   'test/fixtures/access-editor-locked-baseline.ts',
  ]),
@@ -661,10 +746,11 @@ const databasePrerequisiteSources=Object.freeze([
  'test/global-setup.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts','test/profile.ts',
 ]);
 const canonicalJournal='db/migrations/meta/_journal.json';
-// These are fingerprint inputs, not an extra migration execution list.
-const physicalOnlySql=Object.freeze([
- 'db/migrations/2301_attendance_workflow_submission_shared_lock.sql',
- 'db/migrations/3103_access_editor_presentation.sql',
+// Historical payload inputs remain outside the active migration namespace.
+// These are fingerprints for fixed fixtures, never an execution list.
+const historicalArchiveSources=Object.freeze([
+ 'test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql',
+ 'test/fixtures/historical-migrations/3103_access_editor_presentation.sql',
 ]);
 function canonicalPrerequisiteFile(candidateRoot,file){
  const path=join(candidateRoot,file);
@@ -706,12 +792,13 @@ function canonicalDatabasePrerequisiteSources(candidateRoot){
   return 'db/migrations/'+entry.tag+'.sql';
  });
  assert.equal(new Set(ordered).size,ordered.length,'Duplicate canonical migration tag');
- assert(physicalOnlySql.every(file=>!ordered.includes(file)),'Fingerprint-only SQL is not a journal migration');
- const sql=[...ordered,...physicalOnlySql].sort();
+  assert(historicalArchiveSources.every(file=>!ordered.includes('db/migrations/'+file.slice(file.lastIndexOf('/')+1))),
+   'Historical SQL is not a canonical journal migration');
+  const sql=[...ordered].sort();
  const physical=readdirSync(directory).filter(name=>name.endsWith('.sql')).map(name=>'db/migrations/'+name).sort();
  assert.deepEqual(physical,sql,'Canonical journal and physical SQL inputs differ');
- for(const file of sql)canonicalPrerequisiteFile(candidateRoot,file);
- return {sources:[canonicalJournal,...sql],journalSha256:createHash('sha256').update(bytes).digest('hex')};
+  for(const file of [...sql,...historicalArchiveSources])canonicalPrerequisiteFile(candidateRoot,file);
+  return {sources:[canonicalJournal,...sql,...historicalArchiveSources],journalSha256:createHash('sha256').update(bytes).digest('hex')};
 }
 function singletonSourceInputs(unit,candidateRoot){
  assertSingletonUnit(unit);

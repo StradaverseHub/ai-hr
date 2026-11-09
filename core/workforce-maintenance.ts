@@ -1,3 +1,4 @@
+import {withSystemLabelCompanyTx} from './system-label-selection';
 /** Purpose-bound positive maintenance. No role mutation, raw-row grant or financial detail read. */
 import {z} from 'zod';
 import {and,asc,eq,inArray,sql} from 'drizzle-orm';
@@ -34,8 +35,9 @@ export async function workforceEditorTx(tx:Tx,employmentId:string):Promise<Workf
  const [row]=await tx.execute<{editor:unknown}>(sql`select app.access_workforce_editor(${employmentId}::uuid) as editor`);
  if(row?.editor==null)return null;
  const parsed=editorSchema.parse(row.editor);
+ const [scope]=await tx.execute<{company:string|null}>(sql`select app.system_label_employment_company(${employmentId}::uuid) as company`);
  const options=await tx.select({category:profileOption.category,value:profileOption.value,label:profileOption.label}).from(profileOption)
-  .where(and(inArray(profileOption.category,[...CATEGORIES]),eq(profileOption.isActive,true))).orderBy(asc(profileOption.sortOrder),asc(profileOption.value)).limit(4001);
+  .where(and(inArray(profileOption.category,[...CATEGORIES]),eq(profileOption.isActive,true),sql`app.system_label_scope_applies(${profileOption.scopeCompanyIds},${scope?.company??null}::uuid)`)).orderBy(asc(profileOption.sortOrder),asc(profileOption.value)).limit(4001);
  if(options.length>4000)throw new WorkforceMaintenanceUnavailableError();
  return {...parsed,profile:parsed.profile as WorkforceProfile,registers:parsed.registers as WorkforceEditorRow[],options};
 }
@@ -49,6 +51,9 @@ export async function maintainWorkforceRecord(ctx:SessionContext,p:{employmentId
   await lockProfileValueWritesTx(tx,ctx.tenantId);
   const workspace=await workforceEditorTx(tx,p.employmentId);
   if(!workspace||!(p.kind==='qualification'?workspace.employmentMaintain:workspace.sharedMaintain))throw new WorkforceAccessError();
+  const [scope]=await tx.execute<{company:string|null}>(sql`select app.system_label_employment_company(${p.employmentId}::uuid) as company`);
+  if(!scope?.company)throw new WorkforceAccessError();
+  return withSystemLabelCompanyTx(tx,scope.company,async()=>{
   const existing=p.rowId?workspace.registers.find(row=>row.id===p.rowId&&row.kind===p.kind):null;
   if(p.kind!=='person'&&p.operation!=='add'&&!existing)throw new WorkforceRecordChangedError();
   if(p.operation!=='add'&&p.expectedVersion!==(p.kind==='person'?workspace.profileVersion:existing!.version))throw new WorkforceRecordChangedError();
@@ -92,6 +97,7 @@ export async function maintainWorkforceRecord(ctx:SessionContext,p:{employmentId
   if(!result?.result||typeof result.result.id!=='string'||typeof result.result.changed!=='boolean')throw new Error('Workforce command result unavailable');
   if(result.result.hrReviewNotice!==undefined&&typeof result.result.hrReviewNotice!=='boolean')throw new Error('Workforce consequence result unavailable');
   return result.result;
+  });
  };return outerTx?await run(outerTx):await withTenant(ctx,run);}catch(error){
   const state=pgSqlState(error);
   if(state==='42501')throw new WorkforceAccessError();

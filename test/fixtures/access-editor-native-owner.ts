@@ -13,6 +13,7 @@ import {accessCleanupBounds,accessCleanupLifetime,requireAccessCleanupOid} from 
 import {accessEditorCatalogueDiagnostic,writeAccessEditorCatalogueDiagnostic} from './access-editor-catalogue-diagnostic';
 import {accessOwnerDependencyExpectation,assertAccessOwnerDependencies,accessSharedDependency} from './access-editor-owner-dependencies';
 import {z} from 'zod';
+import {historicalMigrationSourcePath} from './historical-migrations/source-path';
 const sha=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
 export async function accessEditorNativeOwnerFixture(signal:AbortSignal,poison:(error:Error)=>void,evidenceDirectory:string){
@@ -99,8 +100,8 @@ export async function accessEditorNativeOwnerFixture(signal:AbortSignal,poison:(
   active();await admin.unsafe('CREATE DATABASE '+quote(name)+' OWNER '+quote(role));databaseOid=Number((await admin`select oid::int as oid from pg_database where datname=${name}`)[0].oid);
   const journal=JSON.parse(readFileSync('test/fixtures/access-editor-original739-journal.json','utf8')),prefix=journal.entries;expect(prefix).toHaveLength(739);
   expect(sha(JSON.stringify(prefix))).toBe('2f2bf63ad7197b2b9042dee26f1a701539addc7f146cce14914fdc8ec1006a05');
-  expect(sha(JSON.stringify(prefix.map((entry:{tag:string})=>[entry.tag,sha(readFileSync('db/migrations/'+entry.tag+'.sql'))])))).toBe('feb775454a5577ca5ec1b8e86a56bf5a57f3b27d7f7b4aa47735142e678a5d00');
-  mkdirSync(join(folder,'meta'));for(const entry of prefix){active();copyFileSync('db/migrations/'+entry.tag+'.sql',join(folder,entry.tag+'.sql'));}
+  expect(sha(JSON.stringify(prefix.map((entry:{tag:string})=>[entry.tag,sha(readFileSync(historicalMigrationSourcePath(entry.tag)))])))).toBe('feb775454a5577ca5ec1b8e86a56bf5a57f3b27d7f7b4aa47735142e678a5d00');
+  mkdirSync(join(folder,'meta'));for(const entry of prefix){active();copyFileSync(historicalMigrationSourcePath(entry.tag),join(folder,entry.tag+'.sql'));}
   const globalRoles=async()=>({roles:Array.from(await admin`select oid,rolname,rolsuper,rolinherit,rolcreaterole,rolcreatedb,rolcanlogin,rolreplication,rolbypassrls,rolconnlimit,rolvaliduntil,rolconfig from pg_roles order by oid`),edges:Array.from(await admin`select * from pg_auth_members order by roleid,member`)});
   const beforePrefixRoles=await globalRoles();
   writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:prefix}));active();await migrate(drizzle(construction),{migrationsFolder:folder});active();

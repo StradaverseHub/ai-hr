@@ -386,7 +386,7 @@ export default async function EmployeePage({
     readMovementEditorChoices ? readOrganisationOptions(emp.companyId) : emptyOrganisationOptions,
     readProfileCards ? reportingLinesFor(s, employmentId) : {managers:[],reports:[]},
     readMovementEditorChoices || movementPage === 'correct-hire' ? listWorkforcePickOptions(s) : [],
-    readMovementEditorChoices ? listJobGrades(s) : [],
+    readMovementEditorChoices ? listJobGrades(s, { companyId: orgScopeCompanyId }) : [],
     readProfileCards ? delegationsFor(s, employmentId) : [],
   ]);
   const [departments, positions, businessUnits, locations] = currentOrganisationOptions;
@@ -706,7 +706,7 @@ export default async function EmployeePage({
   // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
   // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
   const profileOptions = readMovementEditorChoices
-    ? await listAllProfileOptions(s, { activeOnly: true })
+    ? await listAllProfileOptions(s, { activeOnly: true, companyId: orgScopeCompanyId })
     : ({
         religion: [],
         race: [],
@@ -2901,6 +2901,7 @@ export default async function EmployeePage({
         bankName: statutory?.bankName ?? null,
         bankAccountNo: statutory?.bankAccountNo ?? null,
         enableCustomHolderName: statutory?.enableCustomHolderName ?? false,
+        bankPayeeResidency: statutory?.bankPayeeResidency ?? null,
         customHolderName: statutory?.customHolderName ?? null,
         enableCustomHolderId: statutory?.enableCustomHolderId ?? false,
         customHolderId: statutory?.customHolderId ?? null,

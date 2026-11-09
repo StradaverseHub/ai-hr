@@ -15,19 +15,26 @@ import {readAccessConfigurationEditor} from '../core/access-configuration-editor
 import {readAccessConfigurationEditor as readLockedEditor} from './fixtures/access-editor-locked-baseline';
 import {pgSqlState} from '../lib/db-error';
 import {workerDb} from './db-names';
+import {historicalMigrationSourcePath} from './fixtures/historical-migrations/source-path';
 const sha=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 const append={idx:2403,version:'7',when:1793330002703,tag:'3103_access_editor_presentation',breakpoints:true};
 const appendHash='bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47';
 type FunctionRow={signature:string;definition:string;details:Record<string,unknown>};
 it('preserves populated permissions/history and atomically refuses a drifted predecessor before the real append',async context=>{
+ expect(historicalMigrationSourcePath('0000_init')).toBe('db/migrations/0000_init.sql');
+ expect(historicalMigrationSourcePath('2301_attendance_workflow_submission_shared_lock')).toBe('test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql');
+ expect(historicalMigrationSourcePath(append.tag)).toBe('test/fixtures/historical-migrations/3103_access_editor_presentation.sql');
+ for(const invalid of [undefined,null,0,{},[],false,'','0000_init\n','0000_init\r\n','0000_init\r','0000_init\u2028','0000_init\u2029','0000_é','0000_😀','../0000_init','0000_nested/tag','0000_nested\\tag','0000_init.sql',' 0000_init','0000_init ','0000_'+''.padEnd(176,'a')]){
+  expect(()=>historicalMigrationSourcePath(invalid)).toThrow(TypeError);
+ }
  expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
  const pool=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(pool).toBeTruthy();expect(process.env.WORKER_DB).not.toBe('0');
  const source=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);expect(source.hostname).toBe('127.0.0.1');expect(source.pathname).toBe('/'+workerDb(pool!));expect(source.username).not.toBe('ai_hr_app');
  const journal=JSON.parse(readFileSync('test/fixtures/access-editor-original739-journal.json','utf8')),prefix=journal.entries,componentJournal={...journal,entries:[...prefix,append]};
  expect(prefix).toHaveLength(739);expect(componentJournal.entries).toHaveLength(740);expect(componentJournal.entries.at(-1)).toEqual(append);
  expect(sha(JSON.stringify(prefix))).toBe('2f2bf63ad7197b2b9042dee26f1a701539addc7f146cce14914fdc8ec1006a05');
- expect(sha(JSON.stringify(prefix.map((entry:{tag:string})=>[entry.tag,sha(readFileSync('db/migrations/'+entry.tag+'.sql'))])))).toBe('feb775454a5577ca5ec1b8e86a56bf5a57f3b27d7f7b4aa47735142e678a5d00');
- expect(sha(readFileSync('db/migrations/'+append.tag+'.sql'))).toBe(appendHash);
+ expect(sha(JSON.stringify(prefix.map((entry:{tag:string})=>[entry.tag,sha(readFileSync(historicalMigrationSourcePath(entry.tag)))])))).toBe('feb775454a5577ca5ec1b8e86a56bf5a57f3b27d7f7b4aa47735142e678a5d00');
+ expect(sha(readFileSync(historicalMigrationSourcePath(append.tag)))).toBe(appendHash);
  const name='ai_hr_access_upgrade_'+randomUUID().replaceAll('-',''),folder=mkdtempSync(join(tmpdir(),'aihr-access-upgrade-'));
  source.pathname='/postgres';const admin=postgres(source.toString(),{max:1,onnotice:()=>{}});source.pathname='/'+name;
  const storage=database.createDb(source.toString(),{max:4});let created=false;
@@ -70,7 +77,7 @@ it('preserves populated permissions/history and atomically refuses a drifted pre
  const pending=(async()=>{try{
   context.signal.throwIfAborted();const [identity]=await admin`select current_user as owner`;expect(identity.owner).toBe('postgres');
   context.signal.throwIfAborted();await admin.unsafe('CREATE DATABASE "'+name+'"');created=true;mkdirSync(join(folder,'meta'));
-  for(const entry of componentJournal.entries)copyFileSync('db/migrations/'+entry.tag+'.sql',join(folder,entry.tag+'.sql'));
+  for(const entry of componentJournal.entries)copyFileSync(historicalMigrationSourcePath(entry.tag),join(folder,entry.tag+'.sql'));
   writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:prefix}));context.signal.throwIfAborted();await migrate(storage.db,{migrationsFolder:folder});
   const [databaseIdentity]=await storage.client`select current_database() as name,current_user as owner`;expect(databaseIdentity).toEqual({name,owner:'postgres'});
   context.signal.throwIfAborted();const root=await actor(),delegated=await actor(false,'employee',root.ctx.tenantId),firstUse=await actor(true);

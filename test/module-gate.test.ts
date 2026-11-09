@@ -529,7 +529,10 @@ describe('r294 — the audit is pinned in source, on both sides', () => {
     const bridge = fs.readFileSync(path.join(ROOT, 'core/payroll-attendance-allowance.ts'), 'utf8');
     expect(bridge).toContain("assertModuleEnabled(ctx,'payroll')");
     expect(bridge).toContain('export function listAttendanceAllowancePayCodes');
-    const catalogBody = bridge.slice(bridge.indexOf('export function listAttendanceAllowancePayCodes'));
+    const catalogStart=bridge.indexOf('export function listAttendanceAllowancePayCodes');
+    const catalogEnd=bridge.indexOf('export function ',catalogStart+1);
+    expect(catalogEnd).toBeGreaterThan(catalogStart);
+    const catalogBody=bridge.slice(catalogStart,catalogEnd);
     expect(catalogBody).toContain('return withTenant(ctx');
     expect(catalogBody).not.toContain('assertModuleEnabled');
     expect(MODULE_CATALOG.find(m => m.code === 'attendance')?.isCore).toBe(false);

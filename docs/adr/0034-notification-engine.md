@@ -215,3 +215,22 @@ real protected unit/entrypoint, dedicated identity, role downgrade, no duplicate
 effect, restart persistence and received failure/recovery/missed-run alerts. Missing, mismatched, stale,
 interrupted or unverified evidence must refuse acceptance; source deployment alone commissions nothing.
 The current page catch-up remains until that prerequisite exists and is accepted on the installation.
+
+
+### Current alpha composition — 9 November 2026 (source only)
+
+The current-alpha composition retains the extracted pure notification registry and
+adds the existing Rewards preparation released, changed and invalidated recipes.
+Their render values and links remain the upstream values. Three explicit reader
+ports bind the web adapter to the existing current-file/checker recipient owner:
+release includes its release audience; change and invalidation use its change
+course. No submitted amount, salary, budget or private reason enters the notice.
+
+The uncommissioned fixed-API native worker has no corresponding preparation fact
+owner. Its three ports therefore remain explicitly unsupported in both projection
+contracts, without reusing the older general Rewards audience. Unsupported metadata
+or an attempted unsupported reader rejects the batch before event acknowledgment;
+the existing transaction owns rollback. This source composition neither installs
+native facts nor qualifies the worker. Existing recipe tests retain all old cases
+and add exact preparation rendering/port and refusal-before-acknowledgment checks.
+Hosted/native/browser qualification and current source binding remain pending.

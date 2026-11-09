@@ -58,10 +58,10 @@ function cleanState(v: string | null | undefined, companyCountry: string | null 
  *
  * Null/blank clears the mapping. Runs inside the caller's tx so it shares the RLS session.
  */
-async function cleanBranch(tx: Tx, v: string | null | undefined, legacy: string | null): Promise<string | null> {
+async function cleanBranch(tx: Tx, v: string | null | undefined, legacy: string | null,companyId:string): Promise<string | null> {
   const s = (v ?? '').replace(/\s+/g, ' ').trim();
   if (!s) return null;
-  await assertProfileValueAllowed(tx, 'branch', s, legacy);
+  await assertProfileValueAllowed(tx, 'branch', s, legacy,companyId);
   return s;
 }
 
@@ -217,7 +217,7 @@ export async function createLocation(ctx: SessionContext, p: CreateLocationInput
       // rather than validating against a company the caller cannot see.
       const state = cleanState(p.state, await companyCountryOf(tx, p.companyId));
       // No legacy value on a create — an out-of-catalogue branch is refused outright.
-      const branch = await cleanBranch(tx, p.branch, null);
+      const branch = await cleanBranch(tx, p.branch, null,p.companyId);
       let row: { id: string };
       try {
         [row] = await tx
@@ -295,7 +295,7 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
       const state = p.state === undefined ? before.state : cleanState(p.state, await companyCountryOf(tx, companyId));
       // Legacy-value tolerance: re-saving a location whose branch was recorded before the catalogue tightened
       // must never fail on the value it already had — the same rule setEmploymentInfo applies to org_branch.
-      const branch = await cleanBranch(tx, p.branch, before.branch);
+      const branch = await cleanBranch(tx, p.branch, before.branch,companyId);
       try {
         await tx
           .update(location)

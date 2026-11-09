@@ -8,6 +8,7 @@ export type {PersonnelImportChoice} from './import-sections';
  * Unknown reasons remain visible verbatim; the exact coverage test requires their translation.
  */
 const REASON_KEYS:Readonly<Record<string,string>>={
+  'Bank payee residency is selected explicitly on Bank Information; employee imports never infer it from tax residency or citizenship.':'bankPayeeResidency',
   'Classification metadata is retained for safety rules; Personnel and generic import do not maintain this flag.':'testRecord',
   'Resignation dates are controlled by applicable Movement events; use the Movement import or lifecycle workflow.':'resignationDates',
   'Use the grouped Cost Center Allocations worksheet or dedicated allocation import; scalar employee rows cannot replace a dated set.':'costAllocation',

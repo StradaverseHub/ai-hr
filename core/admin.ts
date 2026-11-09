@@ -885,7 +885,7 @@ export async function createJobGrade(
   ctx: SessionContext,
   // `description` (e3c733df): optional display-only detail, mirroring profile_option.description. Omitted
   // ⇒ NULL, so every existing caller is unchanged.
-  p: { code: string; name: string; rank?: number; description?: string | null; active?: boolean },
+  p: { code: string; name: string; rank?: number; description?: string | null; active?: boolean; scopeCompanyIds?:string[]|null },
   existingTx?: Tx,
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
@@ -939,7 +939,7 @@ export async function createJobGrade(
     }
     const [row] = await tx
       .insert(jobGrade)
-      .values({ tenantId: ctx.tenantId, code, name, rank, description, archivedAt: p.active === false ? sql`now()` : null })
+      .values({ tenantId: ctx.tenantId, code, name, rank, description, scopeCompanyIds:p.scopeCompanyIds??null, archivedAt: p.active === false ? sql`now()` : null })
       .returning({ id: jobGrade.id })
       .catch((e) => {
         // Grade Management (728a7db6): two partial-unique indexes now guard the row — map each to its own
@@ -956,7 +956,7 @@ export async function createJobGrade(
       aggregateId: row.id,
       eventType: 'job-grade.created',
       actor: actorOf(ctx),
-      payload: { code, name, rank, active: p.active ?? true },
+      payload: { code, name, rank, active: p.active ?? true,scopeCompanyIds:p.scopeCompanyIds??null },
     });
     return row;
   });

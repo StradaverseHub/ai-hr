@@ -2579,7 +2579,8 @@ export type PendingMoneyDoor =
 
 /** Exact immutable cash evidence; presentation does not create or reprice a contribution. */
 export type PendingOvertimeCashEvidence = {
-  sourceId: string; calculationId: string; sourceRevision: number; settlementId: string;
+  sourceId: string; calculationId: string;
+  formulaBindingId?: string; sourceRevision: number; settlementId: string;
   lineId: string; earningItemId: string; date: string; currency: string; minorScale: number; amountMinorUnits: string;
 };
 export type PendingOvertimeReview =
@@ -2732,6 +2733,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
         return {...who, door: 'overtime', itemName: line.earningItemName, amount: Number(line.amountMinorUnits) / 100,
           note: null, overtimeCash: {sourceId: line.sourceId, calculationId: line.calculationId,
             sourceRevision: line.sourceRevision, settlementId: line.settlementId, lineId: line.lineId,
+            ...(line.formulaBindingId?{formulaBindingId:line.formulaBindingId}:{}),
             earningItemId: line.earningItemId, date: line.date, currency: line.evidence.mapping.currency,
             minorScale: 2, amountMinorUnits: line.amountMinorUnits}};
       });

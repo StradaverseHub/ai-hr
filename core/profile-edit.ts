@@ -1,3 +1,4 @@
+import {withSystemLabelCompanyTx} from './system-label-selection';
 import {appendEvent,actorOf} from '../db/events';
 import {profileFieldApproval,profileLegacyPrimaryApprovalRequired} from '../lib/profile-edit-policy-value';
 import {splitProfileSubmission} from '../lib/profile-submission-policy';
@@ -164,6 +165,7 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
   if(!row)throw new EssProfileError('unavailable');if(row.personId===ctx.personId)throw new EssProfileError('permission');subject=row;
   const [p]=await tx.select().from(person).where(eq(person.id,row.personId)).limit(1).for('update');if(!p)throw new EssProfileError('unavailable');master=p;
  }else({subject,master}=await ownProfileSubjectTx(tx,policy.ctx,employmentId));
+ return withSystemLabelCompanyTx(tx,subject.companyId,async()=>{
  const rows=await mastersTx(tx,policy.ctx,subject);
  const current:Record<string,EssScalar>={...registryValues('person',master),...registryValues('compliance',master)};
  if(rows.stat)for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(current,registryValues(owner,rows.stat));
@@ -195,7 +197,7 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
  if(childCount&&rows.stat?.childReliefMode&&rows.stat.childReliefMode!=='manual')throw new EssProfileError('invalid',[childCount.fieldId]);
  for(const change of fields){const f=personnelField(change.fieldId)!;
   if(f.ess.binding?.owner!=='person'&&f.ess.binding?.owner!=='compliance'&&!rows.pack)throw new EssProfileError('unavailable',[f.id]);
-  if(f.allowedValuesOwner?.startsWith('profile_option:'))await assertProfileValueAllowed(tx,f.allowedValuesOwner.slice(15) as Parameters<typeof assertProfileValueAllowed>[1],text(change,'value')??null,text(current,change.fieldId)??null);
+  if(f.allowedValuesOwner?.startsWith('profile_option:'))await assertProfileValueAllowed(tx,f.allowedValuesOwner.slice(15) as Parameters<typeof assertProfileValueAllowed>[1],text(change,'value')??null,text(current,change.fieldId)??null,subject.companyId);
  }
  const bankChanges=fields.filter(change=>personnelField(change.fieldId)!.ess.binding!.owner==='bank');
  if(bankChanges.length){
@@ -249,6 +251,7 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
  }
  if(approval&&immediateRegisters.length)throw new EssProfileError('invalid');
  return {ctx:policy.ctx,proposal:{v:2 as const,fields,registers},immediateRegisters,subject,master,rows};
+ });
 }
 function personInput(values:Record<string,EssScalar>):PersonProfileFields{
  return {salutation:text(values,'salutation'),firstName:text(values,'firstName'),lastName:text(values,'lastName'),preferredName:text(values,'preferredName'),nationality:text(values,'nationality'),religion:text(values,'religion'),race:text(values,'race'),personalEmail:text(values,'personalEmail'),homePhone:text(values,'homePhone'),permanentAddressLine1:text(values,'permanentAddressLine1'),permanentAddressLine2:text(values,'permanentAddressLine2'),permanentAddressLine3:text(values,'permanentAddressLine3'),permanentPostcode:text(values,'permanentPostcode'),permanentCity:text(values,'permanentCity'),permanentState:text(values,'permanentState'),permanentCountry:text(values,'permanentCountry'),correspondenceAddressLine1:text(values,'correspondenceAddressLine1'),correspondenceAddressLine2:text(values,'correspondenceAddressLine2'),correspondenceAddressLine3:text(values,'correspondenceAddressLine3'),correspondencePostcode:text(values,'correspondencePostcode'),correspondenceCity:text(values,'correspondenceCity'),correspondenceState:text(values,'correspondenceState'),correspondenceCountry:text(values,'correspondenceCountry'),correspondenceMobilePhone:text(values,'correspondenceMobilePhone'),correspondenceHomePhone:text(values,'correspondenceHomePhone')};
@@ -279,14 +282,18 @@ async function applyRegisterTx(tx:Tx,ctx:SessionContext,subject:{id:string;perso
 }
 export async function applyProfileProposalTx(tx:Tx,ctx:SessionContext,employmentId:string,raw:unknown){
  const prepared=await prepareProfileProposalTx(tx,ctx,employmentId,raw,true);
+ return withSystemLabelCompanyTx(tx,prepared.subject.companyId,async()=>{
  await applyScalarFieldsTx(tx,prepared,prepared.proposal.fields);
  for(const row of prepared.proposal.registers)await applyRegisterTx(tx,prepared.ctx,prepared.subject,row);
  return prepared.proposal;
+ });
 }
 /** Compatibility for stored rows only; caller has already authorized the decision and legacy keys. */
 export async function applyStoredLegacyProfileProposalTx(tx:Tx,ctx:SessionContext,employmentId:string,raw:unknown){
  const prepared=await prepareProfileProposalTx(tx,ctx,employmentId,raw,true,true);
+ return withSystemLabelCompanyTx(tx,prepared.subject.companyId,async()=>{
  await applyScalarFieldsTx(tx,prepared,prepared.proposal.fields);
+ });
 }
 async function applyScalarFieldsTx(tx:Tx,prepared:Awaited<ReturnType<typeof prepareProfileProposalTx>>,fields:EssFieldChange[]){
  const {ctx,subject,master,rows}=prepared;
@@ -316,6 +323,7 @@ export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;p
  p=structuredClone(p); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  const run=async(tx:Tx)=>{
   const prepared=await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposal);
+  return withSystemLabelCompanyTx(tx,prepared.subject.companyId,async()=>{
   const raw=getSetting(prepared.ctx,'ess.profile_change_fields');
   const {immediate,waiting}=splitProfileSubmission(raw,prepared.proposal);
   if(immediate.fields.length||immediate.registers.length){
@@ -327,6 +335,7 @@ export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;p
   for(const row of prepared.immediateRegisters)await applyRegisterTx(tx,prepared.ctx,prepared.subject,row);
   const result=waiting.fields.length||waiting.registers.length?await requestProfileChange(prepared.ctx,{employmentId:prepared.subject.id,proposed:waiting,attachments:p.attachments},tx):null;
   return {saved:immediate.fields.map(field=>field.fieldId).concat(immediate.registers.flatMap(row=>row.fields.map(field=>field.fieldId)),prepared.immediateRegisters.flatMap(row=>row.fields.map(field=>field.fieldId))),waiting:waiting.fields.map(field=>field.fieldId).concat(waiting.registers.flatMap(row=>row.fields.map(field=>field.fieldId))),requestId:result?.requestId??null};
+  });
  };
  return existingTx?run(existingTx):withTenant(ctx,run);
 }

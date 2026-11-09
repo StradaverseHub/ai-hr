@@ -132,7 +132,7 @@ describe('System Labels populated workbook round trip',()=>{
   await updateProfileOption(adminCtx(b),{id:record.id,label:'Changed after preview',sortOrder:7});
   await expect(applySystemLabelImport(adminCtx(b),{bytes:changed,mode:'merge',token:preview.token,confirmUpdates:true})).rejects.toThrow('changed since preview');
   const refreshed=await previewSystemLabelImport(adminCtx(b),changed,'update');
-  expect(await applySystemLabelImport(adminCtx(b),{bytes:changed,mode:'update',token:refreshed.token,confirmUpdates:true})).toMatchObject({imported:1,updated:0,skipped:1});
+  expect(await applySystemLabelImport(adminCtx(b),{bytes:changed,mode:'update',token:refreshed.token,confirmUpdates:true})).toMatchObject({imported:1,updated:0,skipped:0,failed:1});
   expect((await owner.db.select().from(s.profileOption).where(eq(s.profileOption.id,record.id)))[0].label).toBe('Changed after preview');
  });
  it('accepts literal formula-looking text without changing it and refuses oversized lists',async()=>{

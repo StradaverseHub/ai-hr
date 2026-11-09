@@ -28,49 +28,67 @@
     },
     ".github/ci/employee-lifecycle-sources.mjs": {
       "parentSha256": "80db405706af787565e9f827f3688d2c1dfad3cd62b2cd7e393f87297ffa63ec",
-      "currentSha256": "9f8a598bbbe8245eb2f619dcb38f4532492e98611ed81979ee766f3d5862c36f",
+      "currentSha256": "e10360f6488e6dc51a1cdf3bef2e4f552b70d142a206a1ee0d1537d13c98117a",
       "changes": [
         {
-          "startLine": 3534,
-          "endLine": 3562,
+          "startLine": 3576,
+          "endLine": 3644,
           "before": " \"test/performance/employee-choice-lifecycle-admission.ts\"\n",
-          "after": " \"test/performance/employee-choice-lifecycle-admission.ts\",\n \"core/employee-choice-ascii.ts\",\n \"test/performance/employee-choice-benchmark-contract.ts\",\n \"test/performance/employee-choice-benchmark-harness.ts\",\n \".github/ci/employee-ascii-compiled-source.mjs\",\n \".github/ci/employee-ascii-compiled-source.test.mjs\",\n \".github/ci/employee-ascii-runtime-qualification.mjs\",\n \".github/ci/employee-ascii-runtime-qualification.test.mjs\",\n \"test/employee-ascii-runtime-qualification-model.test.ts\",\n \"test/employee-choice-inline-ascii-native.test.ts\",\n \"test/fixtures/employee-choice-ascii-proof-native.ts\",\n \"test/fixtures/employee-choice-ascii-observation.ts\",\n \"test/fixtures/employee-choice-ascii-proof-lifetime.ts\",\n \"test/fixtures/employee-choice-ascii-scalar-corpus.sql\",\n \"test/fixtures/employee-choice-ascii-vectors.sql\",\n \"test/employee-choice-exact-ascii-proof.test.ts\",\n \"test/employee-choice-ascii-observation.test.ts\",\n \"test/fixtures/unicode-17.0.0/LICENSE.txt\",\n \"test/fixtures/unicode-17.0.0/UnicodeData.txt\",\n \"test/fixtures/unicode-17.0.0/SpecialCasing.txt\",\n \".github/ci/focused-checks.mjs\",\n \".github/workflows/alpha-focused-checks.yml\",\n \".github/ci/restricted-port-qualification.mjs\",\n \".github/ci/diagnostics/native-reference/admission.mjs\",\n \"lib/ai/centre-activity.ts\",\n \"lib/ai/management-sections.ts\",\n \"core/ai-centre-control.ts\",\n \".github/ci/compiler-file-window-inverse.json\"\n"
+          "after": " \"test/performance/employee-choice-lifecycle-admission.ts\",\n \"core/employee-choice-ascii.ts\",\n \"test/performance/employee-choice-benchmark-contract.ts\",\n \"test/performance/employee-choice-benchmark-harness.ts\",\n \".github/ci/employee-ascii-compiled-source.mjs\",\n \".github/ci/employee-ascii-compiled-source.test.mjs\",\n \".github/ci/employee-ascii-runtime-qualification.mjs\",\n \".github/ci/employee-ascii-runtime-qualification.test.mjs\",\n \"test/employee-ascii-runtime-qualification-model.test.ts\",\n \"test/employee-choice-inline-ascii-native.test.ts\",\n \"test/fixtures/employee-choice-ascii-proof-native.ts\",\n \"test/fixtures/employee-choice-ascii-observation.ts\",\n \"test/fixtures/employee-choice-ascii-proof-lifetime.ts\",\n \"test/fixtures/employee-choice-ascii-scalar-corpus.sql\",\n \"test/fixtures/employee-choice-ascii-vectors.sql\",\n \"test/employee-choice-exact-ascii-proof.test.ts\",\n \"test/employee-choice-ascii-observation.test.ts\",\n \"test/fixtures/unicode-17.0.0/LICENSE.txt\",\n \"test/fixtures/unicode-17.0.0/UnicodeData.txt\",\n \"test/fixtures/unicode-17.0.0/SpecialCasing.txt\",\n \".github/ci/focused-checks.mjs\",\n \".github/workflows/alpha-focused-checks.yml\",\n \".github/ci/restricted-port-qualification.mjs\",\n \".github/ci/diagnostics/native-reference/admission.mjs\",\n \"lib/ai/centre-activity.ts\",\n \"lib/ai/management-sections.ts\",\n \"core/ai-centre-control.ts\",\n \".github/ci/compiler-file-window-inverse.json\",\n // Independent required owners for the selected-alpha product import edges.\n \"lib/attendance-formula-allocation.ts\",\n \"core/module-presentation-read.ts\",\n \"lib/maybank-payment-settings.ts\",\n \"localization/my/maybank-v74-file.ts\",\n \"lib/system-label-assignment.ts\",\n \"core/system-label-selection.ts\",\n \"packs/attendance/formula-sources.ts\",\n \"lib/attendance-formula-catalog.ts\",\n \"lib/attendance-formula-overtime.ts\",\n \"core/attendance-formula-leave.ts\",\n \"core/attendance-formula-measurements.ts\",\n \"core/attendance-formulas.ts\",\n \"lib/attendance-formula-model.ts\",\n \"lib/attendance-formula-language.ts\",\n \"lib/attendance-formula-periods.ts\",\n \"lib/pay-component-company.ts\",\n \"core/attendance-formula-ai.ts\",\n \"lib/attendance-formula-ai.ts\",\n \"lib/attendance-formula-bindings.ts\",\n \"lib/attendance-formula-posting.ts\",\n \"core/pay-component-company.ts\",\n \"components/ui/action-button.tsx\",\n \"app/admin/pay-components/company-applicability.tsx\",\n \"components/export-download-link.tsx\",\n \"components/use-export-download.ts\",\n \"lib/export-download.ts\",\n \"packs/rewards/preparation-model.ts\",\n \"packs/rewards/dashboard-model.ts\",\n \"components/system-label-export-button.tsx\",\n \"components/system-label-scope.tsx\",\n \"components/attendance-formula-pay-items.tsx\",\n \"app/admin/attendance/settings/formula-builder/editor.tsx\",\n \"components/formula-source-editor.tsx\",\n \"components/allowance-employee-picker.tsx\",\n \"components/allowance-employee-expression-editor.tsx\",\n \"lib/attendance-formula-guide.ts\",\n \"lib/attendance-formula-references.ts\",\n \"app/admin/attendance/settings/formula-builder/actions.ts\",\n \"app/attendance/individual/[date]/formula-actions.ts\",\n"
         },
         {
-          "startLine": 3483,
-          "endLine": 3488,
+          "startLine": 3562,
+          "endLine": 3564,
+          "before": " \"db/migrations/2301_attendance_workflow_submission_shared_lock.sql\",\n \"db/migrations/3103_access_editor_presentation.sql\",\n",
+          "after": " \"test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql\",\n \"test/fixtures/historical-migrations/3103_access_editor_presentation.sql\",\n"
+        },
+        {
+          "startLine": 3524,
+          "endLine": 3530,
           "before": "",
-          "after": " \".github/ci/employee-restoration-proof.mjs\",\n \"test/employee-choice-restoration-proof.test.ts\",\n \"test/performance/employee-choice-restoration-cleanup.ts\",\n \"test/performance/employee-choice-restoration-source.ts\",\n \"docs/qualification/employee-native-restoration-inverse-20261108.json\",\n"
+          "after": " \"test/fixtures/historical-migrations/source-path.ts\",\n \".github/ci/employee-restoration-proof.mjs\",\n \"test/employee-choice-restoration-proof.test.ts\",\n \"test/performance/employee-choice-restoration-cleanup.ts\",\n \"test/performance/employee-choice-restoration-source.ts\",\n \"docs/qualification/employee-native-restoration-inverse-20261108.json\",\n"
         },
         {
-          "startLine": 3429,
-          "endLine": 3431,
+          "startLine": 3480,
+          "endLine": 3521,
+          "before": " \"vitest.nodb.config.ts\"\n",
+          "after": " \"vitest.nodb.config.ts\",\n // Actual selected-alpha executable product imports; existing members retained.\n \"lib/attendance-formula-allocation.ts\",\n \"core/module-presentation-read.ts\",\n \"lib/maybank-payment-settings.ts\",\n \"localization/my/maybank-v74-file.ts\",\n \"lib/system-label-assignment.ts\",\n \"core/system-label-selection.ts\",\n \"packs/attendance/formula-sources.ts\",\n \"lib/attendance-formula-catalog.ts\",\n \"lib/attendance-formula-overtime.ts\",\n \"core/attendance-formula-leave.ts\",\n \"core/attendance-formula-measurements.ts\",\n \"core/attendance-formulas.ts\",\n \"lib/attendance-formula-model.ts\",\n \"lib/attendance-formula-language.ts\",\n \"lib/attendance-formula-periods.ts\",\n \"lib/pay-component-company.ts\",\n \"core/attendance-formula-ai.ts\",\n \"lib/attendance-formula-ai.ts\",\n \"lib/attendance-formula-bindings.ts\",\n \"lib/attendance-formula-posting.ts\",\n \"core/pay-component-company.ts\",\n \"components/ui/action-button.tsx\",\n \"app/admin/pay-components/company-applicability.tsx\",\n \"components/export-download-link.tsx\",\n \"components/use-export-download.ts\",\n \"lib/export-download.ts\",\n \"packs/rewards/preparation-model.ts\",\n \"packs/rewards/dashboard-model.ts\",\n \"components/system-label-export-button.tsx\",\n \"components/system-label-scope.tsx\",\n \"components/attendance-formula-pay-items.tsx\",\n \"app/admin/attendance/settings/formula-builder/editor.tsx\",\n \"components/formula-source-editor.tsx\",\n \"components/allowance-employee-picker.tsx\",\n \"components/allowance-employee-expression-editor.tsx\",\n \"lib/attendance-formula-guide.ts\",\n \"lib/attendance-formula-references.ts\",\n \"app/admin/attendance/settings/formula-builder/actions.ts\",\n \"app/attendance/individual/[date]/formula-actions.ts\",\n"
+        },
+        {
+          "startLine": 3430,
+          "endLine": 3432,
           "before": "",
           "after": " \"test/performance/employee-choice-restoration-cleanup.ts\",\n \"test/performance/employee-choice-restoration-source.ts\",\n"
         },
         {
-          "startLine": 3403,
-          "endLine": 3404,
+          "startLine": 3404,
+          "endLine": 3405,
           "before": "",
           "after": " \"test/performance/employee-choice-benchmark-harness.ts\",\n"
         },
         {
-          "startLine": 3401,
-          "endLine": 3402,
+          "startLine": 3402,
+          "endLine": 3403,
           "before": "",
           "after": " \"test/performance/employee-choice-benchmark-contract.ts\",\n"
         },
         {
-          "startLine": 3372,
-          "endLine": 3375,
+          "startLine": 3373,
+          "endLine": 3376,
           "before": "",
           "after": " \"test/fixtures/unicode-17.0.0/LICENSE.txt\",\n \"test/fixtures/unicode-17.0.0/SpecialCasing.txt\",\n \"test/fixtures/unicode-17.0.0/UnicodeData.txt\",\n"
         },
         {
-          "startLine": 3343,
-          "endLine": 3347,
+          "startLine": 3344,
+          "endLine": 3348,
           "before": "",
           "after": " \"test/fixtures/employee-choice-ascii-proof-lifetime.ts\",\n \"test/fixtures/employee-choice-ascii-proof-native.ts\",\n \"test/fixtures/employee-choice-ascii-scalar-corpus.sql\",\n \"test/fixtures/employee-choice-ascii-vectors.sql\",\n"
+        },
+        {
+          "startLine": 3339,
+          "endLine": 3340,
+          "before": "",
+          "after": " \"test/fixtures/historical-migrations/source-path.ts\",\n"
         },
         {
           "startLine": 3332,
@@ -119,6 +137,18 @@
           "endLine": 2168,
           "before": "",
           "after": " \"db/migrations/3200_ai_centre_controls.sql\",\n \"db/migrations/3201_ai_centre_function_coverage.sql\",\n"
+        },
+        {
+          "startLine": 2164,
+          "endLine": 2165,
+          "before": " \"db/migrations/3103_access_editor_presentation.sql\",\n",
+          "after": " \"test/fixtures/historical-migrations/3103_access_editor_presentation.sql\",\n"
+        },
+        {
+          "startLine": 2138,
+          "endLine": 2139,
+          "before": " \"db/migrations/2301_attendance_workflow_submission_shared_lock.sql\",\n",
+          "after": " \"test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql\",\n"
         },
         {
           "startLine": 956,
@@ -172,31 +202,31 @@
     },
     ".github/ci/employee-lifecycle-sources.test.mjs": {
       "parentSha256": "73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196",
-      "currentSha256": "ef14926b21b32329a634bf626f68875eaf904c0cc69b6f3f82c1b23c624a2322",
+      "currentSha256": "00b9bfd733f27e6bd032709fb436252407b89f446165e871c4db1cc18d9996ac",
       "changes": [
         {
-          "startLine": 35,
-          "endLine": 41,
+          "startLine": 36,
+          "endLine": 44,
           "before": "",
-          "after": " const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[EMPLOYEE_LIFECYCLE_PROFILE.files[0].file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}};\n assert.throws(()=>singletonSources(unit));for(const path of ['db/migrations/3500_ai_centre_architecture_compatibility.sql','db/migrations/3501_ai_centre_mandate_write_order.sql'])assert(singletonSources(unit,candidateRoot).includes(path));\n const root=realpathSync(mkdtempSync(join(tmpdir(),'employee-shared-history-model-')));try{\n  mkdirSync(join(root,'db/migrations/meta'),{recursive:true});for(const file of readdirSync(join(candidateRoot,'db/migrations')).filter(file=>file.endsWith('.sql')))writeFileSync(join(root,'db/migrations',file),'-- fictional source input\\n');\n  for(const entries of [[],[{tag:'../foreign'}],[journal.entries[0],journal.entries[0]]]){writeFileSync(join(root,'db/migrations/meta/_journal.json'),JSON.stringify({...journal,entries}));assert.throws(()=>singletonSources(unit,root));}\n }finally{rmSync(root,{recursive:true,force:true});}\n"
+          "after": " const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[EMPLOYEE_LIFECYCLE_PROFILE.files[0].file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}};\n assert.throws(()=>singletonSources(unit));for(const path of ['db/migrations/3500_ai_centre_architecture_compatibility.sql','db/migrations/3501_ai_centre_mandate_write_order.sql'])assert(singletonSources(unit,candidateRoot).includes(path));\n const root=realpathSync(mkdtempSync(join(tmpdir(),'employee-shared-history-model-')));try{\n  mkdirSync(join(root,'db/migrations/meta'),{recursive:true});for(const file of readdirSync(join(candidateRoot,'db/migrations')).filter(file=>file.endsWith('.sql')))writeFileSync(join(root,'db/migrations',file),'-- fictional source input\\n');\n  for(const file of ['test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql','test/fixtures/historical-migrations/3103_access_editor_presentation.sql']){mkdirSync(join(root,file,'..'),{recursive:true});writeFileSync(join(root,file),'-- fictional historical source input\\n');}\n  writeFileSync(join(root,'db/migrations/meta/_journal.json'),JSON.stringify(journal));assert.deepEqual(singletonSources(unit,root),singletonSources(unit,candidateRoot));\n  for(const entries of [[],[{tag:'../foreign'}],[journal.entries[0],journal.entries[0]]]){writeFileSync(join(root,'db/migrations/meta/_journal.json'),JSON.stringify({...journal,entries}));assert.throws(()=>singletonSources(unit,root));}\n }finally{rmSync(root,{recursive:true,force:true});}\n"
         },
         {
-          "startLine": 22,
-          "endLine": 31,
+          "startLine": 23,
+          "endLine": 32,
           "before": " for(const missing of [...independentOwners,'db/migrations/'+journal.entries[0].tag+'.sql','db/migrations/'+journal.entries.at(-1).tag+'.sql']){const reduced=EMPLOYEE_LIFECYCLE_SOURCES.filter(file=>file!==missing);assert.notEqual(fingerprint(reduced),fingerprint(EMPLOYEE_LIFECYCLE_SOURCES));assert.throws(()=>assertEmployeeLifecycleSourceClosure(reduced,journal));}\n",
           "after": " const file='.github/ci/employee-lifecycle-sources.test.mjs',current=readFileSync(new URL('./employee-lifecycle-sources.test.mjs',import.meta.url),'utf8');\n const original=employeeChoiceRestorationSourceInverse(file,current);assert.equal(Buffer.byteLength(original),3512);assert.equal(createHash('sha256').update(original).digest('hex'),'73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196');\n assert.throws(()=>employeeChoiceRestorationSourceInverse(file,current+'\\n'),/current source changed/);\n const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[EMPLOYEE_LIFECYCLE_PROFILE.files[0].file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}},complete=singletonSources(unit,candidateRoot);\n assertEmployeeLifecycleSourceClosure(complete,journal);\n for(const missing of [...independentOwners,'db/migrations/'+journal.entries[0].tag+'.sql','db/migrations/'+journal.entries.at(-1).tag+'.sql']){\n  assert(complete.includes(missing),missing);const reduced=complete.filter(file=>file!==missing);\n  assert.equal(reduced.length,complete.length-1);assert(!reduced.includes(missing));assert.notEqual(fingerprint(reduced),fingerprint(complete));assert.throws(()=>assertEmployeeLifecycleSourceClosure(reduced,journal));\n }\n"
         },
         {
-          "startLine": 19,
-          "endLine": 20,
+          "startLine": 20,
+          "endLine": 21,
           "before": " for(const row of EMPLOYEE_LIFECYCLE_PROFILE.files){const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[row.file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}},sources=singletonSources(unit);assert.equal(new Set(sources).size,sources.length);assertEmployeeLifecycleSourceClosure(sources,journal);for(const owner of independentOwners)assert(sources.includes(owner));for(const entry of journal.entries)assert(sources.includes('db/migrations/'+entry.tag+'.sql'));for(const file of ['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql'])assert(sources.includes(file));}\n",
-          "after": " for(const row of EMPLOYEE_LIFECYCLE_PROFILE.files){const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[row.file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}},sources=singletonSources(unit,candidateRoot);assert.equal(new Set(sources).size,sources.length);assertEmployeeLifecycleSourceClosure(sources,journal);for(const owner of independentOwners)assert(sources.includes(owner));for(const entry of journal.entries)assert(sources.includes('db/migrations/'+entry.tag+'.sql'));for(const file of ['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql'])assert(sources.includes(file));}\n"
+          "after": " for(const row of EMPLOYEE_LIFECYCLE_PROFILE.files){const unit={id:'db-'+'a'.repeat(16),kind:'db',files:[row.file],singleton:{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'}},sources=singletonSources(unit,candidateRoot);assert.equal(new Set(sources).size,sources.length);assertEmployeeLifecycleSourceClosure(sources,journal);for(const owner of independentOwners)assert(sources.includes(owner));for(const entry of journal.entries)assert(sources.includes('db/migrations/'+entry.tag+'.sql'));for(const file of ['test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql','test/fixtures/historical-migrations/3103_access_editor_presentation.sql'])assert(sources.includes(file));}\n"
         },
         {
           "startLine": 13,
-          "endLine": 17,
+          "endLine": 18,
           "before": "const independentOwners=['.github/ci/unit-report-directories.mjs','.github/ci/unit-report-directories.test.mjs','test/ci-unit-report-directory-contract.test.ts','.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\n",
-          "after": "const independentOwners=[\".github/ci/employee-restoration-proof.mjs\",\"test/employee-choice-restoration-proof.test.ts\",\"test/performance/employee-choice-restoration-cleanup.ts\",\"test/performance/employee-choice-restoration-source.ts\",\"docs/qualification/employee-native-restoration-inverse-20261108.json\",'.github/ci/unit-report-directories.mjs','.github/ci/unit-report-directories.test.mjs','test/ci-unit-report-directory-contract.test.ts','.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\nindependentOwners.push(\"core/employee-choice-ascii.ts\",\"test/performance/employee-choice-benchmark-contract.ts\",\"test/performance/employee-choice-benchmark-harness.ts\",\".github/ci/employee-ascii-compiled-source.mjs\",\".github/ci/employee-ascii-compiled-source.test.mjs\",\".github/ci/employee-ascii-runtime-qualification.mjs\",\".github/ci/employee-ascii-runtime-qualification.test.mjs\",\"test/employee-ascii-runtime-qualification-model.test.ts\",\"test/employee-choice-inline-ascii-native.test.ts\",\"test/fixtures/employee-choice-ascii-proof-native.ts\",\"test/fixtures/employee-choice-ascii-observation.ts\",\"test/fixtures/employee-choice-ascii-proof-lifetime.ts\",\"test/fixtures/employee-choice-ascii-scalar-corpus.sql\",\"test/fixtures/employee-choice-ascii-vectors.sql\",\"test/employee-choice-exact-ascii-proof.test.ts\",\"test/employee-choice-ascii-observation.test.ts\",\"test/fixtures/unicode-17.0.0/LICENSE.txt\",\"test/fixtures/unicode-17.0.0/UnicodeData.txt\",\"test/fixtures/unicode-17.0.0/SpecialCasing.txt\",\".github/ci/focused-checks.mjs\",\".github/workflows/alpha-focused-checks.yml\");\nindependentOwners.push(\".github/ci/restricted-port-qualification.mjs\",\".github/ci/diagnostics/native-reference/admission.mjs\",\"lib/ai/centre-activity.ts\",\"core/ai-centre-control.ts\",\"lib/ai/management-sections.ts\");\nindependentOwners.push('.github/ci/compiler-file-window-inverse.json');\n"
+          "after": "const independentOwners=[\".github/ci/employee-restoration-proof.mjs\",\"test/employee-choice-restoration-proof.test.ts\",\"test/performance/employee-choice-restoration-cleanup.ts\",\"test/performance/employee-choice-restoration-source.ts\",\"docs/qualification/employee-native-restoration-inverse-20261108.json\",'.github/ci/unit-report-directories.mjs','.github/ci/unit-report-directories.test.mjs','test/ci-unit-report-directory-contract.test.ts','.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\nindependentOwners.push(\"core/employee-choice-ascii.ts\",\"test/performance/employee-choice-benchmark-contract.ts\",\"test/performance/employee-choice-benchmark-harness.ts\",\".github/ci/employee-ascii-compiled-source.mjs\",\".github/ci/employee-ascii-compiled-source.test.mjs\",\".github/ci/employee-ascii-runtime-qualification.mjs\",\".github/ci/employee-ascii-runtime-qualification.test.mjs\",\"test/employee-ascii-runtime-qualification-model.test.ts\",\"test/employee-choice-inline-ascii-native.test.ts\",\"test/fixtures/employee-choice-ascii-proof-native.ts\",\"test/fixtures/employee-choice-ascii-observation.ts\",\"test/fixtures/employee-choice-ascii-proof-lifetime.ts\",\"test/fixtures/employee-choice-ascii-scalar-corpus.sql\",\"test/fixtures/employee-choice-ascii-vectors.sql\",\"test/employee-choice-exact-ascii-proof.test.ts\",\"test/employee-choice-ascii-observation.test.ts\",\"test/fixtures/unicode-17.0.0/LICENSE.txt\",\"test/fixtures/unicode-17.0.0/UnicodeData.txt\",\"test/fixtures/unicode-17.0.0/SpecialCasing.txt\",\".github/ci/focused-checks.mjs\",\".github/workflows/alpha-focused-checks.yml\");\nindependentOwners.push(\".github/ci/restricted-port-qualification.mjs\",\".github/ci/diagnostics/native-reference/admission.mjs\",\"lib/ai/centre-activity.ts\",\"core/ai-centre-control.ts\",\"lib/ai/management-sections.ts\");\nindependentOwners.push('.github/ci/compiler-file-window-inverse.json','test/fixtures/historical-migrations/source-path.ts');\nindependentOwners.push(\"lib/attendance-formula-allocation.ts\",\"core/module-presentation-read.ts\",\"lib/maybank-payment-settings.ts\",\"localization/my/maybank-v74-file.ts\",\"lib/system-label-assignment.ts\",\"core/system-label-selection.ts\",\"packs/attendance/formula-sources.ts\",\"lib/attendance-formula-catalog.ts\",\"lib/attendance-formula-overtime.ts\",\"core/attendance-formula-leave.ts\",\"core/attendance-formula-measurements.ts\",\"core/attendance-formulas.ts\",\"lib/attendance-formula-model.ts\",\"lib/attendance-formula-language.ts\",\"lib/attendance-formula-periods.ts\",\"lib/pay-component-company.ts\",\"core/attendance-formula-ai.ts\",\"lib/attendance-formula-ai.ts\",\"lib/attendance-formula-bindings.ts\",\"lib/attendance-formula-posting.ts\",\"core/pay-component-company.ts\",\"components/ui/action-button.tsx\",\"app/admin/pay-components/company-applicability.tsx\",\"components/export-download-link.tsx\",\"components/use-export-download.ts\",\"lib/export-download.ts\",\"packs/rewards/preparation-model.ts\",\"packs/rewards/dashboard-model.ts\",\"components/system-label-export-button.tsx\",\"components/system-label-scope.tsx\",\"components/attendance-formula-pay-items.tsx\",\"app/admin/attendance/settings/formula-builder/editor.tsx\",\"components/formula-source-editor.tsx\",\"components/allowance-employee-picker.tsx\",\"components/allowance-employee-expression-editor.tsx\",\"lib/attendance-formula-guide.ts\",\"lib/attendance-formula-references.ts\",\"app/admin/attendance/settings/formula-builder/actions.ts\",\"app/attendance/individual/[date]/formula-actions.ts\");\n"
         },
         {
           "startLine": 11,

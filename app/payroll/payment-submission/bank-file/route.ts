@@ -1,8 +1,9 @@
+import {DEFAULT_MAYBANK_PAYMENT_SETTINGS} from '@/lib/maybank-payment-settings';
 import { recordPayrollExport } from '@/core/payroll-audit/access-log';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withTenant } from '@/db/client';
-import { company } from '@/db/schema';
+import { company,companyStatutoryAuthority } from '@/db/schema';
 import { scopedAdmin } from '@/lib/scope';
 import { isCalendarDate } from '@/lib/calendar-date';
 import { isSameOriginBrowserRequest } from '@/lib/request-origin';
@@ -75,10 +76,17 @@ export async function GET(req: Request) {
         listFilableRunsForPeriod(auth.s, { companyIds: auth.scopeIds, companyId: parsed.data.companyId, periodKey: parsed.data.periodKey }),
         listBatches(auth.s, [parsed.data.companyId], parsed.data.periodKey),
       ]);
+      const maybank=parsed.data.formatId.startsWith('my.maybank74.');
+      let mappedId:string|null=null;
+      if(maybank){
+        const category=parsed.data.formatId.split('.').at(-1)!;
+        if(category==='salary')mappedId=accounts.find(account=>account.isPrimary)?.id??null;
+        else mappedId=await withTenant(auth.s,async tx=>{const [row]=await tx.select({id:companyStatutoryAuthority.bankProfileId}).from(companyStatutoryAuthority).where(and(eq(companyStatutoryAuthority.tenantId,auth.s.tenantId),eq(companyStatutoryAuthority.companyId,parsed.data.companyId),eq(companyStatutoryAuthority.authority,category==='kwsp'?'epf':category)));return row?.id??null;});
+      }
       const ready = new Set(batches.filter((b) => !b.historyImportAttemptId && !b.needsRecalcAt && ['processed', 'closed'].includes(b.status)).map((b) => b.runSeq));
       return Response.json({
-        accounts: accounts.filter((a) => a.bank === 'ocbc_bank' && a.currency === 'MYR').map((a) => ({ id: a.id, label: a.accountLabel || 'OCBC', last4: a.debitAccountNo.replace(/\D/g, '').slice(-4) })),
-        runs: runs.filter((r) => ready.has(r.runSeq)),
+        accounts: accounts.filter((a) => a.bank === (maybank?'maybank':'ocbc_bank') && a.currency === 'MYR' && (!maybank||a.id===mappedId&&(a.maybankPaymentSettings??DEFAULT_MAYBANK_PAYMENT_SETTINGS).version==='7.4')).map((a) => ({ id: a.id, label: a.accountLabel || (maybank?'Maybank':'OCBC'), last4: a.debitAccountNo.replace(/\D/g, '').slice(-4) })),
+        runs: runs.filter((r) => ready.has(r.runSeq)),...(maybank?{configuredAccountId:mappedId}:{}),
       }, { headers });
     } catch (error) { return errorResponse(error); }
   }

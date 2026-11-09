@@ -50,12 +50,28 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:2410,when:1793330002710,tag:'3110_attendance_workflow_owner_rls'},
  {idx:2500,when:1793330002800,tag:'3200_ai_centre_controls'},
  {idx:2501,when:1793330002801,tag:'3201_ai_centre_function_coverage'},
+ {idx:2700,when:1793330003000,tag:'3400_system_label_company_scope'},
+ {idx:3000,when:1793330003300,tag:'3700_pay_item_company_applicability'},
+ {idx:3001,when:1793330003301,tag:'3701_rewards_unit_preparation'},
+ {idx:3002,when:1793330003302,tag:'3702_maybank_payment_arrangement'},
+ {idx:3003,when:1793330003303,tag:'3703_attendance_formula_versions'},
+ {idx:3004,when:1793330003304,tag:'3704_attendance_formula_results'},
+ {idx:3005,when:1793330003305,tag:'3705_attendance_formula_payroll_source'},
+ {idx:3006,when:1793330003306,tag:'3706_attendance_formula_overtime_binding'},
  ...PERFORMANCE_MIGRATION_IDENTITIES.map(({idx,when,tag})=>({idx,when,tag})),
- {idx:2800,when:1793330003100,tag:'3500_ai_centre_architecture_compatibility'},
- {idx:2801,when:1793330003101,tag:'3501_ai_centre_mandate_write_order'},
+ {idx:3436,when:1793330003736,tag:'3500_ai_centre_architecture_compatibility'},
+ {idx:3437,when:1793330003737,tag:'3501_ai_centre_mandate_write_order'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '3400_system_label_company_scope':'58067b76694141c5fc824c66acc24fda05c273dd7d3d85654418e0f52a01b69e',
+ '3706_attendance_formula_overtime_binding':'4a46111e9d07cdf8a2167e430ee6c79c78e9c049c79c6c13544ffc68ad39d153',
+ '3705_attendance_formula_payroll_source':'50263e2c7628a10a894c4f2ea7e9f912faa7d5b83331ea5b8e7d542cff8e31cc',
+ '3704_attendance_formula_results':'f238d8b8893833ec71cd08691856b68b452c37e4444eccbbd241bdf73d3c391b',
+ '3703_attendance_formula_versions':'d77ce2a318d153b61f3804defe9858d33649db14ceb19764448d8c2a501a4702',
+ '3702_maybank_payment_arrangement':'19334a66cee1af68b561a8a8795dc74748e5825507f268d0138f7aff7cd91dfa',
+ '3700_pay_item_company_applicability':'ff67d0990fce26f759b7d0e07a6805aced04e70af893c98dcf41c23774aa9c3c',
+ '3701_rewards_unit_preparation':'4d8969bfc0b8f134f8cc01c42a738eb6cc4babdcb1ccfb0ec824a61d9b9fee11',
  '3100_pay_formula_saved_availability':'7bc0ab95aea27bae36f9be299784d3d391b4a315aa0302a9c42c2dbf9996b1b8',
  '3101_attendance_shared_workflow':'f32d12965f2788dc673f0c09e128996a653341bbcf6933e47f211da021617169',
  '3110_attendance_workflow_owner_rls':'39fc4b31666120cb4befe263b8b30433d6752dbaa52cda6cdbe350b3077f8f16',
@@ -181,6 +197,14 @@ export function retainedUpgradeRows(name:string,rows:unknown[],witness?:Approved
   const field=wrapper&&typeof wrapper==='object'&&Object.keys(wrapper).length===1&&('row' in wrapper||'value' in wrapper)?('row' in wrapper?'row':'value'):null;
   const row=(field?wrapper[field]:parsed) as Row;
   let normalized=row;
+  if((tableName==='reward_unit'||tableName==='units')&&Object.hasOwn(row,'preparation_required')){
+   expect(row.preparation_required,'historical reviews retain unrecorded preparation, never fabricated release proofs').toBe(false);
+   const {preparation_required:_preparation,...original}=normalized;normalized=original;
+  }
+  if(tableName==='pay_component'&&Object.hasOwn(row,'applied_company_ids')){
+   expect(row.applied_company_ids,'legacy Pay Items retain all-company availability').toBeNull();
+   const {applied_company_ids:_companies,...original}=normalized;normalized=original;
+  }
   if(tableName==='company'&&row.display_group_field===null&&row.display_group_option_id===null){
    const {display_group_field:_field,display_group_option_id:_option,...original}=row;
    normalized=original;

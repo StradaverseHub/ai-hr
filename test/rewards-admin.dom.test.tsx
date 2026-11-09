@@ -17,7 +17,7 @@ vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAc
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
 import AdminPage from '../app/admin/rewards/page';
 import ConfigurationPage from '../app/admin/rewards/[unitId]/page';
-import ReviewsPage from '../app/rewards/page';
+import ReviewsPage from '../app/rewards/reviews/page';
 import { PolicyForm, RewardPolicyFields } from '../app/rewards/[unitId]/policy-form';
 import { defaultPolicy } from '../packs/rewards/model';
 import { todayInKualaLumpur } from '../lib/hr-date';

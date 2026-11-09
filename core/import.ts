@@ -1,3 +1,4 @@
+import {labelAppliesToCompany} from '../lib/system-label-assignment';
 import {organisationImportWarningsTx} from './derived-organisation-display';
 import {readEmployeeImportEvaluationTx,claimEmployeeImportEvaluationTx,completeEmployeeImportEvaluationTx} from './personnel-import-evaluation';
 import type {EmployeeImportEvaluationBinding,EmployeeImportEvaluationReceipt} from '../lib/personnel-import-evaluation';
@@ -300,7 +301,7 @@ async function loadCompanyContext(
     listPositions(ctx, { companyIds: [co.id] },outerTx),
     listCostCenters(ctx, { companyIds: [co.id] },outerTx),
     listBusinessUnits(ctx, { companyIds: [co.id] },outerTx),
-    listJobGrades(ctx,{},outerTx),
+    listJobGrades(ctx,{companyId:co.id},outerTx),
   ]);
   const deptByName=new PersonnelImportLookup<string>();
   const posByName=new PersonnelImportLookup<string>();
@@ -388,6 +389,7 @@ async function analyze(
     existingIcs,
     existingCodes,
     reservedCodes,
+    catalogScopeRows,
     catalog,
     superiorByCode,
     superiorByEmail,
@@ -431,7 +433,7 @@ async function analyze(
     // already created. Same rule as `assertProfileValueAllowed`: an EMPTY catalog means the tenant never
     // configured that list and free text is accepted, exactly as it is on the Personnel screens.
     const options = await tx
-      .select({ category: profileOption.category, value: profileOption.value,label:profileOption.label,isActive:profileOption.isActive })
+      .select({ category: profileOption.category, value: profileOption.value,label:profileOption.label,isActive:profileOption.isActive,scopeCompanyIds:profileOption.scopeCompanyIds })
       .from(profileOption);
     // Item 06f0cb8f — an unfinished DRAFT holds an Employee ID too, so an import can collide with a
     // record that has no employment row yet. `hireEmployee` refuses it either way (that is the
@@ -450,6 +452,7 @@ async function analyze(
       addUniqueImportAlias(superiorByEmail,e.email.toLowerCase(),e.id);
     }
     return {
+      catalogScopeRows:options,
       catalog,
       superiorByCode,
       superiorByEmail,
@@ -488,10 +491,10 @@ async function analyze(
    * of the active options. Deliberately NOT case-folded — the catalog value is what gets stored, and the
    * Reference sheet lists the exact spellings.
    */
-  const catalogAllows = (category: string, value: string): boolean => {
+  const catalogAllows = (category: string, value: string,companyId?:string): boolean => {
     const active = catalog.get(category);
     if (!active) return true;
-    return active.has(value);
+    return active.has(value)&&catalogScopeRows.some(row=>row.category===category&&row.value===value&&row.isActive&&labelAppliesToCompany(row.scopeCompanyIds,companyId));
   };
 
   const derivedOrganisationRows=await read(async tx=>{
@@ -752,7 +755,7 @@ async function analyze(
     /** An optional value governed by a profile_option catalog, as a three-way verdict (see `CatalogCell`
      *  — blank, accepted and refused are never collapsed into one another). */
     const catalogField = (raw: string | undefined, category: string, label: string): CatalogCell => {
-      const cell = classifyCatalogCell(raw, (v) => catalogAllows(category, v));
+      const cell = classifyCatalogCell(raw, (v) => catalogAllows(category, v,rc.co?.id));
       if (cell.kind === 'refused') {
         errors.push(
           `"${cell.value}" is not an active ${category} option (see the Reference sheet) — column ${label}`,

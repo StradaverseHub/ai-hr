@@ -9,7 +9,10 @@ import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
 import {createDb,type SessionContext} from '../db/client';
-import {constructAiCentreCompatibilityOwner} from './helpers/ai-centre-compatibility-owner-constructor';
+import {constructAiCentreSelectedPrefixOwner,assertAiCentreSelectedJobCatalogue,aiCentreSelectedJobSourceModel} from './helpers/ai-centre-compatibility-owner-constructor';
+
+import {admitSingletonTest} from './helpers/ci-singleton-admission';
+const admission=admitSingletonTest('test/ai-centre-architecture-compatibility-upgrade.test.ts');
 
 const compatibility='db/migrations/3500_ai_centre_architecture_compatibility.sql';
 const context='app._ai_control_context(text,boolean)',beforeContext='app._ai_control_context_before_centre(text,boolean)';
@@ -33,13 +36,68 @@ function sourceDefinition(file:string,name:string){
 }
 type NativeFunction={signature:string;oid:number;definition:string;body:string;attributes:Record<string,unknown>;owner:string;app_execute:boolean};
 
-it('upgrades populated709 atomically, preserves real native owners/wrappers and refuses drift and raw stopped admissions',async()=>{
+it('upgrades populated709 atomically, preserves real native owners/wrappers and refuses drift and raw stopped admissions',async context=>{
+ const caseStartedAt=performance.now();
+ const sourceModelControls:string[]=[];
+ // Pure hypothetical controls never qualify a native job or authorize SQL.
+ for(const mode of ['full','focused']as const){
+  const positive=aiCentreSelectedJobSourceModel(mode);assertAiCentreSelectedJobCatalogue(positive);
+  expect(positive.evidence).toBe('source-model-only');sourceModelControls.push(mode+'/positive');
+  const cases:[string,(value:ReturnType<typeof aiCentreSelectedJobSourceModel>)=>void][]=[
+   ['wrong-server-port',v=>{v.readers[0].connection.serverPort=5432;}],
+   ['wrong-client-address',v=>{v.readers[0].connection.clientAddress='192.0.2.1';}],
+   ['wrong-current',v=>{v.readers[0].connection.current='ai_hr_app';}],
+   ['wrong-login',v=>{v.readers[0].connection.session='ai_hr_app';}],
+   ['wrong-database-oid',v=>{v.readers[0].connection.databaseOid='999999';}],
+   ['wrong-owner-oid',v=>{v.owned.roleOid='999999';}],
+   ['cluster-identifier-lf',v=>{v.cluster.systemIdentifier+='\n';}],
+   ['owned-name-lf',v=>{v.owned.database+='\n';}],
+   ['ledger-order-or-hash',v=>{v.readers[0].ledgerRowsSha256='f'.repeat(64);}],
+   ['ledger-count',v=>{v.readers[0].ledgerCount=754;}],
+   ['fingerprint-missing',v=>{v.readers[2].fingerprints=null;}],
+   ['fingerprint-multiple',v=>{v.readers[2].fingerprints!.push(v.readers[2].fingerprints![0]);}],
+   ['base-not-empty',v=>{v.readers[1].emptyObjects=1;}],
+   ['native-role-absent',v=>{v.roles=v.roles.filter(r=>r.name!=='ai_hr_reward_preparation_reader');}],
+   ['native-role-login',v=>{v.roles.find(r=>r.name==='ai_hr_reward_preparation_reader')!.login=true;}],
+   ['native-role-bypass',v=>{v.roles.find(r=>r.name==='ai_hr_reward_preparation_reader')!.bypassRls=true;}],
+   ['native-role-password',v=>{v.roles.find(r=>r.name==='ai_hr_reward_preparation_reader')!.passwordNull=false;}],
+   ['member-set',v=>{v.memberships[0].set=true;}],
+   ['member-inherit',v=>{v.memberships[0].inherit=false;}],
+   ['member-admin',v=>{v.memberships[0].admin=true;}],
+   ['member-grantor',v=>{v.memberships[0].grantor='ai_hr_app';}],
+   ['app-can-set-native',v=>{v.memberships.push({role:'ai_hr_reward_preparation_reader',member:'ai_hr_app',grantor:'postgres',inherit:false,set:true,admin:false});}],
+   ['foreign-role',v=>{v.roles.push({...v.roles.find(r=>r.name==='ai_hr_app')!,name:'foreign',oid:'999999'});}],
+   ['foreign-database',v=>{v.databases.push({...v.databases[0],name:'foreign',oid:'999999'});}],
+   ['global-dependency',v=>{v.shared.push({...v.shared[0],databaseOid:'0'});}],
+   ['foreign-dependency',v=>{v.shared.push({...v.shared[0],databaseOid:'999999'});}],
+   ['unknown-object-class',v=>{v.readers[0].shared[0].className='pg_unknown';}],
+   ['wrong-subobject',v=>{v.readers[0].shared[0].subId=999;}],
+   ['wrong-dependency-type',v=>{v.readers[0].shared[0].dependency='x';}],
+   ['dependency-omission',v=>{v.readers[0].shared.pop();}],
+   ['dependency-duplicate',v=>{v.readers[0].shared.push({...v.readers[0].shared[0]});}],
+   ['function-overload',v=>{v.readers[0].functions.push({...v.readers[0].functions[0],oid:'999999',identity:'app.reward_preparation_upload_state(text)'});}],
+   ['function-body',v=>{v.readers[0].functions[0].bodySha256='f'.repeat(64);}],
+   ['function-config',v=>{v.readers[0].functions[0].config=['search_path=public'];}],
+   ['function-owner',v=>{v.readers[0].functions[0].owner='postgres';}],
+   ['function-go',v=>{v.readers[0].functions[0].acl[0].grantable=true;}],
+   ['column-type',v=>{v.readers[0].relations[0].columns[0].type='text';}],
+   ['column-extra-go',v=>{const c=v.readers[0].relations.flatMap(r=>r.columns).find(c=>c.acl.length)!;c.acl[0].grantable=true;}],
+   ['policy-role',v=>{v.readers[0].policies[0].roles=['PUBLIC'];}],
+   ['policy-expression',v=>{v.readers[0].policies[0].using='true';}],
+   ['public-recursion-guard',v=>{v.readers[0].policies.find(p=>p.name==='reward_uploaded_review_read')!.using='true';}],
+   ['public-write-check',v=>{v.readers[0].policies.find(p=>p.name==='reward_uploaded_review_write')!.check='true';}],
+   ['public-app-create',v=>{v.readers[0].schemas.find(s=>s.name==='app')!.acl.push({grantee:'PUBLIC',grantor:'postgres',privilege:'CREATE',grantable:false});}],
+   ['clone-local-oid',v=>{const reader=v.readers[3],previous=reader.functions[0].oid;reader.functions[0].oid='999999';for(const row of reader.shared)if(row.className==='pg_proc'&&row.objectOid===previous)row.objectOid='999999';for(const row of v.shared)if(row.databaseOid===reader.connection.databaseOid&&row.className==='pg_proc'&&row.objectOid===previous)row.objectOid='999999';}],
+   ['integer-is-boolean',v=>{v.readers[0].ledgerCount=true as unknown as number;}],
+  ];
+  for(const [label,mutate]of cases){const negative=structuredClone(positive);mutate(negative);expect(()=>assertAiCentreSelectedJobCatalogue(negative),mode+'/'+label).toThrow();sourceModelControls.push(mode+'/'+label);}
+ }
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{idx:number;when:number;tag:string}[]};
  // This qualified component owns the exact3500 boundary; the separate3501 fixture
- // executes and checks the later write-order append against its actual747 boundary.
+ // executes and checks the later write-order append against its selected755 boundary.
  journal.entries=journal.entries.slice(0,journal.entries.findIndex(row=>row.tag==='3500_ai_centre_architecture_compatibility')+1);
- const boundary=journal.entries.findIndex(row=>row.tag==='2103_system_performance_read_guards');expect(boundary).toBe(709);
- expect(journal.entries.at(-1)).toMatchObject({idx:2800,when:1793330003100,tag:'3500_ai_centre_architecture_compatibility'});
+ const boundary=journal.entries.findIndex(row=>row.tag==='2103_system_performance_read_guards');expect(boundary).toBe(717);
+ expect(journal.entries.at(-1)).toMatchObject({idx:3436,when:1793330003736,tag:'3500_ai_centre_architecture_compatibility'});
  const token=randomUUID().replaceAll('-',''),database='ai_hr_ai_compat_'+token,role='aihr_ai_compat_'+token;
  const directory=mkdtempSync(join(tmpdir(),'aihr-ai-compat-'));
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
@@ -51,10 +109,11 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
  const storage=createDb(ownerUrl.toString(),{max:1}),application=createDb(appUrl.toString(),{max:1});
  let migration:ReturnType<typeof createDb>|undefined;
  let created=false,roleCreated=false,primaryFailure:unknown;
+ let databaseOid:string|undefined,roleOid:string|undefined,selectedCourse:Awaited<ReturnType<typeof constructAiCentreSelectedPrefixOwner>>|undefined;
  const report:Record<string,unknown>={kind:'NATIVE_AI_CENTRE_HISTORICAL709_COMPATIBILITY_COMPONENT_ONLY',releaseAuthorized:false,
-  complete:false,cleanupComplete:false,phase:'constructor',historicalOriginals:historical,
-  resourceBound:{caseMs:300000,pools:4,maxPerPool:1,maximumConnections:4,extraOwnerLoginPools:1,poolCloseSeconds:5,raceLockTimeoutMs:5000,raceStatementTimeoutMs:10000}};
- const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'ai-centre-compatibility-populated-upgrade.json'),JSON.stringify(report,null,2));};
+  complete:false,cleanupComplete:false,phase:'constructor',historicalOriginals:historical,selectedSourceBoundaries:[710,717,754],
+  sourceModelControls,resourceBound:{caseMs:300000,pools:4,maxPerPool:1,maximumConnections:4,extraOwnerLoginPools:1,poolCloseSeconds:5,raceLockTimeoutMs:5000,raceStatementTimeoutMs:10000}};
+ const save=()=>{writeFileSync(join(admission.evidenceDirectory,'ai-centre-compatibility-populated-upgrade.json'),JSON.stringify(report,null,2));};
  const tenantId=randomUUID(),companyId=randomUUID(),userId=randomUUID(),foreignTenant=randomUUID(),foreignCompany=randomUUID();
  const ctx:SessionContext={tenantId,userId,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
  const ledger=()=>storage.client`select id,hash,created_at::text as created_at from drizzle.__drizzle_migrations order by id`;
@@ -77,14 +136,16 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
  });
  try{
   await admin.unsafe(`CREATE ROLE "${role}" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT CONNECTION LIMIT -1`);roleCreated=true;
+  [{oid:roleOid}]=await admin<{oid:string}[]>`select oid::text as oid from pg_roles where rolname=${role}`;
   await admin.unsafe(`CREATE DATABASE "${database}" OWNER "${role}"`);created=true;
+  [{oid:databaseOid}]=await admin<{oid:string}[]>`select oid::text as oid from pg_database where datname=${database}`;
   mkdirSync(join(directory,'meta'));for(const entry of journal.entries){
    const original=historical[entry.tag as keyof typeof historical];
    const path=original?'.github/ci/historical-migrations/'+entry.tag+'.sql':'db/migrations/'+entry.tag+'.sql';
    if(original){expect(entry.when).toBe(original.when);expect(sha(readFileSync(path))).toBe(original.hash);}
    copyFileSync(path,join(directory,entry.tag+'.sql'));
   }
-  writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,boundary)}));
+  writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,710)}));
   await migrate(storage.db,{migrationsFolder:directory});
   report.phase='populated709';save();
   await storage.client`insert into tenant(id,workos_org_id,name) values(${tenantId},${randomUUID()},'Fictional AI compatibility'),(${foreignTenant},${randomUUID()},'Fictional foreign group')`;
@@ -96,22 +157,21 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
   // Then the actual pending stock migrator uses a SEPARATE real owner LOGIN.
   const [{owner}]=await storage.client<{owner:string}[]>`select current_user as owner`;
   expect(owner).toBe('postgres');
-  const construction=await constructAiCentreCompatibilityOwner(storage.client,database,role);
+  const selected=await constructAiCentreSelectedPrefixOwner(storage.client,admin,database,role,directory,context.signal,caseStartedAt);selectedCourse=selected;migration=selected.migration;
+  const construction=selected.construction;report.selectedPrefix=selected.report;
   report.constructor={realm:construction.realm,memberships:construction.memberships,perKind:construction.perKind,
    beforeSha256:sha(Buffer.from(JSON.stringify(construction.before))),afterSha256:sha(Buffer.from(JSON.stringify(construction.after))),transferred:construction.transferred};
   // Do not invent a password or an authentication bypass. The existing ordinary
   // app route must be the declared passwordless loopback course. Login failure
   // is a genuine qualification failure; never fall back to SET ROLE.
-  const login=new URL(appUrl.toString());login.username=role;
-  migration=createDb(login.toString(),{max:1});
   const [actualOwner]=await migration.client`select current_user as role,session_user as login,current_database()as database,inet_server_addr()='127.0.0.1'::inet as loopback,
    r.rolsuper,r.rolinherit,r.rolcanlogin,r.rolreplication,r.rolbypassrls,r.rolcreatedb,r.rolcreaterole,r.rolconnlimit from pg_roles r where r.rolname=current_user`;
   expect(actualOwner).toEqual({role,login:role,database,loopback:true,rolsuper:false,rolinherit:true,rolcanlogin:true,rolreplication:false,rolbypassrls:false,rolcreatedb:false,rolcreaterole:false,rolconnlimit:-1});
   report.migrationOwner=actualOwner;
-  const baseline=await beforeCatalogue(),originalLedger=await ledger(),originalFacts=await facts();expect(originalLedger).toHaveLength(709);
+  const baseline=await beforeCatalogue(),originalLedger=await ledger(),originalFacts=await facts();expect(originalLedger).toHaveLength(717);
   const tableState=()=>storage.client`select relowner::regrole::text as owner,relacl::text as acl,relrowsecurity as rls,relforcerowsecurity as force from pg_class where oid='public.teras_mandate_control'::regclass`;
   const controlTable=await tableState();expect(controlTable[0]).toMatchObject({owner:role,rls:true,force:false});
-  expect(originalLedger.map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(journal.entries.slice(0,709).map(entry=>({
+  expect(originalLedger.map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(journal.entries.slice(0,717).map(entry=>({
    hash:sha(readFileSync(join(directory,entry.tag+'.sql'))),created_at:String(entry.when),
   })));
   for(const [tag,original]of Object.entries(historical))expect(originalLedger.find(row=>row.created_at===String(original.when))?.hash,tag).toBe(original.hash);
@@ -131,11 +191,11 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
   await storage.client.unsafe(oldContext.definition);
   report.wholePendingBatchRollback=true;report.phase='stock-upgrade';save();
   await migrate(migration.db,{migrationsFolder:directory});
-  const upgraded=await catalogue(),afterLedger=await ledger();expect(afterLedger).toHaveLength(746);
+  const upgraded=await catalogue(),afterLedger=await ledger();expect(afterLedger).toHaveLength(754);
   // Compare ACTUAL before rows. The installed staging0180/0212 hash exceptions
   // must never be replaced by a universal source/ledger hash identity assertion.
-  expect(afterLedger.slice(0,709)).toEqual(originalLedger);expect(await facts()).toEqual(originalFacts);
-  for(const [i,entry]of journal.entries.slice(709).entries())expect(afterLedger[709+i]).toMatchObject({created_at:String(entry.when),hash:sha(readFileSync('db/migrations/'+entry.tag+'.sql'))});
+  expect(afterLedger.slice(0,717)).toEqual(originalLedger);expect(await facts()).toEqual(originalFacts);
+  for(const [i,entry]of journal.entries.slice(717).entries())expect(afterLedger[717+i]).toMatchObject({created_at:String(entry.when),hash:sha(readFileSync('db/migrations/'+entry.tag+'.sql'))});
   expect(upgraded.find(row=>row.signature===context)?.definition).toBe(oldWrapper.definition);
   expect(upgraded.find(row=>row.signature===agent)?.definition).toBe(oldAgent.definition);
   for(const previous of baseline){const current=upgraded.find(row=>row.signature===previous.signature)!;expect(current.oid).toBe(previous.oid);expect(current.attributes).toEqual(previous.attributes);expect(current.owner).toBe(role);expect(current.app_execute).toBe(previous.app_execute);}
@@ -227,13 +287,14 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
   const deniedScope=await migration.withTenant(ctx,tx=>tx.execute<{company_ids:string[]}>(sql`select company_ids from app._ai_control_context('hr_assistant',false)`));expect(deniedScope[0].company_ids).toEqual([companyId]);
   await application.withTenant(ctx,tx=>tx.execute(sql`select app.ai_agent_action_pause_set('claims.cancel',true)`));expect((await check())[0]).toEqual({allowed:false,agent:false});
   await migrate(migration.db,{migrationsFolder:directory});expect(await ledger()).toEqual(afterLedger);expect(await catalogue()).toEqual(upgraded);
-  report.complete=true;report.phase='cleanup';save();
+  await selectedCourse!.verifyPositivePrivateBoundary();report.complete=true;report.phase='cleanup';save();
  }catch(error){primaryFailure=error;throw error;}finally{
   const failures:unknown[]=[];
-  for(const close of [()=>application.client.end({timeout:5}),async()=>{await migration?.client.end({timeout:5});},()=>storage.client.end({timeout:5}),
-   async()=>{if(created)await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);},
-   async()=>{if(roleCreated)await admin.unsafe(`DROP ROLE "${role}"`);},
-   async()=>{const [absence]=await admin`select not exists(select 1 from pg_database where datname=${database}) as database_absent,not exists(select 1 from pg_roles where rolname=${role}) as role_absent`;expect(absence).toEqual({database_absent:true,role_absent:true});report.cleanup=absence;report.cleanupComplete=true;},()=>admin.end({timeout:5}),
+  for(const close of [()=>application.client.end({timeout:5}),async()=>{if(selectedCourse)await selectedCourse.closeMigration();else await migration?.client.end({timeout:5});},()=>storage.client.end({timeout:5}),
+   async()=>{if(created){expect(await admin`select oid::text as oid from pg_database where datname=${database}`).toEqual([{oid:databaseOid}]);await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);}},
+   async()=>{if(roleCreated){expect(await admin`select oid::text as oid from pg_roles where rolname=${role}`).toEqual([{oid:roleOid}]);await admin.unsafe(`DROP ROLE "${role}"`);}},
+   async()=>{if(selectedCourse)report.globalNativeCleanup=await selectedCourse.verifyCleanup();},
+   async()=>{const [absence]=await admin`select not exists(select 1 from pg_database where datname=${database}) as database_absent,not exists(select 1 from pg_roles where rolname=${role}) as role_absent`;expect(absence).toEqual({database_absent:true,role_absent:true});report.cleanup=absence;report.cleanupComplete=!primaryFailure&&failures.length===0;},()=>admin.end({timeout:5}),
    ()=>rmSync(directory,{recursive:true,force:true})])try{await close();}catch(error){failures.push(error);}
   report.phase=primaryFailure||failures.length?'failed':'complete';if(primaryFailure||failures.length)report.complete=false;try{save();}catch(error){failures.push(error);}
   if(failures.length)throw new AggregateError([...(primaryFailure?[primaryFailure]:[]),...failures],'AI compatibility fixture cleanup failed');

@@ -66,8 +66,8 @@ export const V25_REPLACED:readonly (readonly [v24:string,v25:string])[]=[
 ];
 /** Revert v26's single added guidance topic to recover main's v25. */
 export function v25ShapedSpec(){
- const guidanceTopics=HARNESS_SPEC.offer.guidanceTopics.filter(topic=>topic!=='organisation_tagging');
- return {...HARNESS_SPEC,version:25,offer:{...HARNESS_SPEC.offer,guidanceTopics}};
+ const previous=v26ShapedSpec(),guidanceTopics=previous.offer.guidanceTopics.filter(topic=>topic!=='organisation_tagging');
+ return {...previous,version:25,offer:{...previous.offer,guidanceTopics}};
 }
 
 /** Revert main v25's named-date instruction to recover main's v24. */
@@ -82,3 +82,6 @@ export function v24OrganisationShapedSpec(){
  const v23=v23ShapedSpec();
  return {...v23,version:24,offer:{...v23.offer,guidanceTopics:[...v23.offer.guidanceTopics,'organisation_tagging']}};
 }
+
+/** Recover the exact prior published spec, preserving its original digest. */
+export function v26ShapedSpec(){const guidanceTopics=HARNESS_SPEC.offer.guidanceTopics.filter(topic=>!['attendance_formula_library','attendance_formula_authoring','reward_reviews'].includes(topic));return {...HARNESS_SPEC,version:26,offer:{...HARNESS_SPEC.offer,guidanceTopics}};}

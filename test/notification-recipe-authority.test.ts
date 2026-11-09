@@ -1,14 +1,14 @@
 /** Canonical recipe binding models only; actual audience/RLS proof remains native. */
 import {expect,it} from 'vitest';
-import {createNotificationRegistry,assertNotificationRecipeAudience,type NotificationRecipientReaders,type NotificationPayload,type NotificationSpec} from '../core/notification-registry';
-import {nativeNotificationReaderSupport,nativeNotificationRecipeImplemented,notificationWorkerProjectionContract,notificationWorkerAssessmentContract} from '../lib/notification-worker/projection';
+import {createNotificationRegistry,assertNotificationRecipeAudience,type NotificationRecipientReaders,type NotificationPayload,type NotificationSpec,type EventRef} from '../core/notification-registry';
+import {nativeNotificationReaderSupport,nativeNotificationRecipeImplemented,notificationWorkerProjectionContract,notificationWorkerAssessmentContract,notificationWorkerProjection,UnsupportedNotificationFacts} from '../lib/notification-worker/projection';
 type Probe={calls:Array<{port:string;selector?:string}>};
 const subject='00000000-0000-4000-8000-000000000001',resolved='00000000-0000-4000-8000-000000000002';
 const event={id:'00000000-0000-4000-8000-000000000003',aggregateId:'00000000-0000-4000-8000-000000000004',subjectEmploymentId:subject};
 const port=(name:string)=>(state:Probe)=>{state.calls.push({port:name});return Promise.resolve([resolved]);};
 const readers:NotificationRecipientReaders<Probe>={
  probation:port('probation'),contract:port('contract'),onboardingDigest:port('onboardingDigest'),assessmentReminder:port('assessmentReminder'),
- rewardSuspension:port('rewardSuspension'),rewardUploadChecker:port('rewardUploadChecker'),rewardUploadReady:port('rewardUploadReady'),rewardRouted:port('rewardRouted'),rewardPoolChanged:port('rewardPoolChanged'),rewardApproved:port('rewardApproved'),
+ rewardSuspension:port('rewardSuspension'),rewardUploadChecker:port('rewardUploadChecker'),rewardUploadReady:port('rewardUploadReady'),rewardRouted:port('rewardRouted'),rewardPreparationReleased:port('rewardPreparationReleased'),rewardPreparationChanged:port('rewardPreparationChanged'),rewardPreparationInvalidated:port('rewardPreparationInvalidated'),rewardPoolChanged:port('rewardPoolChanged'),rewardApproved:port('rewardApproved'),
  leaveSubmitted:port('leaveSubmitted'),leaveCancellationSubmitted:port('leaveCancellationSubmitted'),overtimeSubmitted:port('overtimeSubmitted'),readinessNudge:port('readinessNudge'),peerFeedback:port('peerFeedback'),
  assessmentReviewTask:(state,_event,phase)=>{state.calls.push({port:'assessmentReviewTask',selector:phase});return Promise.resolve([resolved]);},
  assessmentKpiApproval:port('assessmentKpiApproval'),legacyReviewStarted:port('legacyReviewStarted'),legacyReviewEvaluated:port('legacyReviewEvaluated'),legacyReviewDecidedLetter:port('legacyReviewDecidedLetter'),legacyReviewReminder:port('legacyReviewReminder'),
@@ -18,7 +18,7 @@ const readers:NotificationRecipientReaders<Probe>={
 };
 const registry=createNotificationRegistry(readers),recipes=Object.entries(registry).flatMap(([eventType,value])=>(Array.isArray(value)?value:[value]).map(spec=>({eventType,spec})));
 const eligible=(spec:NotificationSpec<Probe>):NotificationPayload=>spec.recipientGuard?{[spec.recipientGuard.field]:spec.recipientGuard.not?false:true}:{};
-const unsupported=new Set(['probation','leaveSubmitted','leaveCancellationSubmitted','overtimeSubmitted','readinessNudge','peerFeedback','assessmentReviewTask','assessmentKpiApproval','legacyReviewStarted','legacyReviewEvaluated','legacyReviewDecidedLetter','legacyReviewReminder','leaveEscalation','automaticReviewChase','missingClockFollowup','passportFollowup','lifecycleFollowup','approvalChase']);
+const unsupported=new Set(['rewardPreparationReleased','rewardPreparationChanged','rewardPreparationInvalidated','probation','leaveSubmitted','leaveCancellationSubmitted','overtimeSubmitted','readinessNudge','peerFeedback','assessmentReviewTask','assessmentKpiApproval','legacyReviewStarted','legacyReviewEvaluated','legacyReviewDecidedLetter','legacyReviewReminder','leaveEscalation','automaticReviewChase','missingClockFollowup','passportFollowup','lifecycleFollowup','approvalChase']);
 
 // Reviewed domain identities, independent of the registry's runtime count/factory expansion.
 const expectedRecipeKeys=[
@@ -78,6 +78,9 @@ const expectedRecipeKeys=[
  'reward-access.suspended|rewards.access-suspended',
  'reward-unit.approved|rewards.approved',
  'reward-unit.final-pool-changed|rewards.final-pool-changed',
+ 'reward-unit.preparation-released|rewards.preparation-released',
+ 'reward-unit.preparation-changed|rewards.preparation-changed',
+ 'reward-unit.preparation-invalidated|rewards.preparation-invalidated',
  'reward-unit.routed|rewards.review',
  'reward-unit.upload-confirmed|rewards.upload-ready',
  'reward-unit.upload-replaced|rewards.upload-check',
@@ -126,4 +129,45 @@ it('refuses missing/unknown/inconsistent metadata rather than guessing subject o
  for(const value of [{},null,[],{recipientAudience:'other'},{recipientAudience:'reader'},{recipientAudience:'reader',recipientPort:'caller',recipients:port('caller')},{recipientAudience:'reader',recipientPort:'probation'},
   {recipientAudience:'subject',recipientPort:'probation'},{recipientAudience:'subject',recipients:port('caller')},{recipientAudience:'none',recipients:async()=>[]}])expect(()=>assertNotificationRecipeAudience(value,readers)).toThrow();
  expect(()=>assertNotificationRecipeAudience({recipientAudience:'subject'},readers)).not.toThrow();
+});
+
+const preparationRecipes=[
+ {eventType:'reward-unit.preparation-released',port:'rewardPreparationReleased',kind:'rewards.preparation-released',copy:'release'},
+ {eventType:'reward-unit.preparation-changed',port:'rewardPreparationChanged',kind:'rewards.preparation-changed',copy:'change'},
+ {eventType:'reward-unit.preparation-invalidated',port:'rewardPreparationInvalidated',kind:'rewards.preparation-invalidated',copy:'change'},
+] as const;
+it('keeps preparation notifications on their exact reader ports and renders no submitted private facts',async()=>{
+ const privatePayload={to:'gr',salary:'PRIVATE_SALARY',budget:'PRIVATE_BUDGET',reason:'PRIVATE_REASON'};
+ for(const expected of preparationRecipes){
+  const calls:unknown[]=[];
+  const selected=createNotificationRegistry({...readers,[expected.port]:async(state:Probe,ref:EventRef,p:NotificationPayload)=>{
+   calls.push({state,ref,p});return [resolved];
+  }})[expected.eventType];
+  if(!selected||Array.isArray(selected))throw Error('One explicit preparation recipe required');
+  const state:Probe={calls:[]};
+  expect(await selected.recipients!(state,event,privatePayload)).toEqual([resolved]);
+  expect(calls).toEqual([{state,ref:event,p:privatePayload}]);expect(state.calls).toEqual([]);
+  expect(selected.recipientPort).toBe(expected.port);expect(selected.kind).toBe(expected.kind);expect(selected.category).toBe('rewards');
+  expect(selected.render(privatePayload,event)).toEqual({severity:'action',title:`rewardsPreparation.${expected.copy}NotificationTitle`,body:`rewardsPreparation.${expected.copy}NotificationBody`,linkPath:`/rewards/${event.aggregateId}`});
+  for(const value of ['PRIVATE_SALARY','PRIVATE_BUDGET','PRIVATE_REASON'])expect(JSON.stringify(selected.render(privatePayload,event))).not.toContain(value);
+  for(const version of [2,3]as const)expect(nativeNotificationRecipeImplemented(selected,version)).toBe(false);
+ }
+});
+it('does not acknowledge any preparation event when native facts are unimplemented or wrongly claim support',async()=>{
+ for(const expected of preparationRecipes)for(const implemented of [false,true]){
+  const statements:string[]=[],families:unknown[]=[];let rejectedTransaction=false;
+  const transaction=async(strings:TemplateStringsArray,...values:unknown[])=>{
+   const query=strings.join('?');statements.push(query);
+   if(query.includes('notification_worker.open_batch('))return [{id:event.aggregateId}];
+   if(query.includes('notification_worker.events('))return [{event_id:event.id,event_type:expected.eventType,aggregate_id:event.aggregateId,subject_employment_id:subject,payload:{to:'gr'}}];
+   if(query.includes('notification_worker.facts(')){families.push(values[2]);return [{value:{known:true,implemented,obsolete:false}}];}
+   throw Error('Unexpected native operation before refusal');
+  };
+  const connection={options:{max:1},begin:async(run:(tx:typeof transaction)=>Promise<unknown>)=>{
+   try{return await run(transaction);}catch(error){rejectedTransaction=true;throw error;}
+  }} as unknown as Parameters<typeof notificationWorkerProjection>[0];
+  await expect(notificationWorkerProjection(connection).projectBatch(event.id,event.aggregateId)).rejects.toBeInstanceOf(UnsupportedNotificationFacts);
+  expect(rejectedTransaction).toBe(true);expect(families).toEqual(['meta']);
+  expect(statements.some(query=>query.includes('notification_worker.finish_event(')||query.includes('notification_worker.finish_batch(')||query.includes('notification_worker.project('))).toBe(false);
+ }
 });

@@ -30,6 +30,7 @@ export function PendingOvertimeCashDetails({evidence}:{evidence:PendingOvertimeC
     <p>{t('recordedCalculation')} · {evidence.date}</p>
     <details><summary className="cursor-pointer">{t('calculationTrace')}</summary>
       <p className="mt-2 break-all">{t('calculationReference',{id:evidence.calculationId,revision:evidence.sourceRevision})}</p>
+      {evidence.formulaBindingId&&<p className="mt-2 break-all">{t('attendanceFormulaBinding',{id:evidence.formulaBindingId})}</p>}
       <dl className="mt-2 space-y-1">{(['sourceId','settlementId','lineId','earningItemId'] as const).map(key=><div key={key}><dt>{t('evidenceDetail',{key})}</dt><dd className="break-all">{evidence[key]}</dd></div>)}</dl>
     </details>
   </div>;

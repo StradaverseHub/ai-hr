@@ -213,11 +213,17 @@ describe('§1 the declared referrer set is the live schema', () => {
   it('declares EXACTLY the columns the database points at company.id', async () => {
     const fks = await liveFks();
     const live = [...new Set(fks.filter((f) => f.references === 'company' && f.refColumn === 'id').map((f) => `${f.table}.${f.column}`))].sort();
-    const declared = COMPANY_REFERRERS.map((r) => `${r.table}.${r.column}`).sort();
+    const declared = COMPANY_REFERRERS.filter(r=>r.referenceKind!=='uuid-array').map((r) => `${r.table}.${r.column}`).sort();
     // Missing => a delete that fails at the last moment with a raw 23503 (the reported fault).
     // Extra   => a cascade aimed at a table that no longer references a company.
     expect(declared, 'core/company-refs.ts must declare every FK to company.id, and no others').toEqual(live);
     expect(live.length, 'non-vacuity: the schema has dozens of them').toBeGreaterThan(40);
+  });
+
+  it('declares exactly the separately guarded company UUID-array reference',async()=>{
+    expect(COMPANY_REFERRERS.filter(r=>r.referenceKind==='uuid-array').map(({table,column,disposition,existsFunction})=>({table,column,disposition,existsFunction}))).toEqual([{table:'pay_component',column:'applied_company_ids',disposition:'other',existsFunction:'app.pay_component_company_in_use'}]);
+    const [shape]=await owner.db.execute<{type:string}>(sql`select udt_name as type from information_schema.columns where table_schema='public' and table_name='pay_component' and column_name='applied_company_ids'`);
+    expect(shape.type).toBe('_uuid');
   });
 
   it('every foreign-key constraint to company is accounted for, composite (tenant_id, company_id) keys included', async () => {

@@ -17,7 +17,7 @@ const book=(data:Record<string,Record<string,string>[]>)=>{
   const wb=XLSX.utils.book_new();
   for(const [kind,rows]of Object.entries(data)){
     const d=LABEL_IMPORT_DEFINITIONS.find(x=>x.kind===kind)!;
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([d.columns,...rows.map(r=>d.columns.map(c=>(c==='Criteria'?(r.Criteria??(r.Scope==='global'?'global':'companies')):c==='Criteria Companies'?(r['Criteria Companies']??(r.Scope==='global'?'':[r.Company,r['Shared Companies']].filter(Boolean).join(';'))):r[c])??''))]),kind);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([d.columns,...rows.map(r=>d.columns.map(c=>(c==='Criteria'?(r.Criteria??(r.Scope?(r.Scope==='global'?'global':'companies'):'')):c==='Criteria Companies'?(r['Criteria Companies']??(r.Scope==='global'?'':[r.Company,r['Shared Companies']].filter(Boolean).join(';'))):r[c])??''))]),kind);
   }
   return XLSX.write(wb,{type:'buffer',bookType:'xlsx'}) as Buffer;
 };
@@ -32,8 +32,8 @@ describe('reviewed System Labels imports',()=>{
     for(const d of LABEL_IMPORT_DEFINITIONS.filter(d=>d.kind!=='grades'&&d.kind!=='grade_groups'))data[d.kind]=[
       d.scope==='company'?{Company:b.companyId,Scope:'own',Code:'EXCEL_'+d.kind,Label:'Readable',Description:'Description'}:
         {Code:'EXCEL_'+d.kind,Label:'Readable',Description:'Description','Sort Order':'3'}];
-    const bytes=book(data);expect(await apply(bytes)).toMatchObject({imported:12,updated:0,failed:0});
-    const blocked=await previewSystemLabelImport(adminCtx(b),bytes,'add');expect(blocked.valid).toBe(false);expect(blocked.rows).toHaveLength(12);expect(blocked.rows.every(row=>row.reason==='existing'&&!row.selected)).toBe(true);
+    const bytes=book(data);expect(await apply(bytes)).toMatchObject({imported:21,updated:0,failed:0});
+    const blocked=await previewSystemLabelImport(adminCtx(b),bytes,'add');expect(blocked.valid).toBe(false);expect(blocked.rows).toHaveLength(21);expect(blocked.rows.every(row=>row.reason==='existing'&&!row.selected)).toBe(true);
     await expect(applySystemLabelImport(adminCtx(b),{bytes,token:blocked.token})).rejects.toThrow('no valid new codes');
     const [department]=await owner.db.select().from(s.department).where(eq(s.department.name,'EXCEL_department'));
     const [position]=await owner.db.select().from(s.position).where(eq(s.position.title,'EXCEL_position'));
@@ -56,7 +56,7 @@ describe('reviewed System Labels imports',()=>{
     const bytes=book({division:[{Code:'VALID',Label:'Valid'},{Code:'',Label:'Invalid'}]});
     const preview=await previewSystemLabelImport(adminCtx(b),bytes,'add');expect(preview.valid).toBe(true);
     expect(preview.rows.map(row=>[row.outcome,row.selected])).toEqual([['add',true],['error',false]]);
-    const summary=await applySystemLabelImport(adminCtx(b),{bytes,mode:'add',token:preview.token});expect(summary).toMatchObject({imported:1,updated:0,skipped:1});
+    const summary=await applySystemLabelImport(adminCtx(b),{bytes,mode:'add',token:preview.token});expect(summary).toMatchObject({imported:1,updated:0,skipped:0,failed:1});
     expect(summary.errorReport).toBeTruthy();const report=XLSX.read(Buffer.from(summary.errorReport!,'base64'),{type:'buffer'});
     expect(XLSX.utils.sheet_to_json(report.Sheets.Errors)).toMatchObject([{Worksheet:'division',Row:3,Code:'',Message:'Code is required.'}]);
     expect(XLSX.utils.sheet_to_json(report.Sheets.Errors)).toHaveLength(1);
@@ -66,9 +66,9 @@ describe('reviewed System Labels imports',()=>{
     await expect(applySystemLabelImport(adminCtx(b),{bytes:valid,mode:'add',token:stale.token})).rejects.toThrow('changed since preview');
     expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'NOT_SAVED'))).toEqual([]);
   });
-  it('preserves company scope; missing or foreign companies cannot turn a row global',async()=>{
+  it('preserves explicit company intent and rejects foreign companies or conflicting global input',async()=>{
     for(const Company of ['',randomUUID()]){
-      const preview=await previewSystemLabelImport(adminCtx(b),book({department:[{Company,Scope:'global',Code:'NO'}]}),'add');expect(preview.valid).toBe(false);
+      const preview=await previewSystemLabelImport(adminCtx(b),book({department:[{Company,Criteria:'companies',Code:'NO'}]}),'add');expect(preview.valid).toBe(false);
     }
     const other={...adminCtx(b),roles:['employee'],grants:[{role:'employee' as const,companyId:null}]};
     await expect(previewSystemLabelImport(other,book({division:[{Code:'FORBIDDEN'}]}),'add')).rejects.toThrow('administrator');
@@ -101,7 +101,7 @@ describe('reviewed System Labels imports',()=>{
     expect(await labelIdsForCompany(adminCtx(b),'department',other.id)).toContain(dep.id);
     const [shared]=await owner.db.select().from(s.company).where(eq(s.company.id,other.id));expect(shared.sharedSystemLabels).toBe(beforeTarget.sharedSystemLabels);
     expect((await owner.db.select({companyId:s.labelCompanyAssignment.companyId}).from(s.labelCompanyAssignment).where(eq(s.labelCompanyAssignment.labelId,dep.id))).map(row=>row.companyId).sort()).toEqual([co.id,other.id].sort());
-    await apply(book({department:[{Company:co.legalName,Scope:'global',Code:'GLOBAL'}]}));
+    await apply(book({department:[{Scope:'global',Code:'GLOBAL'}]}));
     const [global]=await owner.db.select().from(s.department).where(eq(s.department.name,'GLOBAL'));
     expect(await labelIdsForCompany(adminCtx(b),'department',other.id)).toContain(global.id);
     const scoped={...adminCtx(b),roles:['hr_admin'],grants:[{role:'hr_admin' as const,companyId:b.companyId}]};

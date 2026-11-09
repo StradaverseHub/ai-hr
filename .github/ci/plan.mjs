@@ -39,19 +39,20 @@ export function createPlan(cwd = process.cwd()) {
   const pdfTooling=inspectPdfToolScope(cwd);
   const units = buildUnits(suite,groups,browsers);
   const sourceFiles=new Map(units.filter(unit=>unit.singleton).map(unit=>[unit.id,singletonSources(unit,cwd)]));
+  const historicalArchives=new Set(['test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql','test/fixtures/historical-migrations/3103_access_editor_presentation.sql']);
   const requiredMigrations=new Set(units.filter(unit=>unit.singleton&&unit.kind==='db').flatMap(unit=>sourceFiles.get(unit.id))
-   .filter(file=>file==='db/migrations/meta/_journal.json'||file.startsWith('db/migrations/')&&file.endsWith('.sql')));
+   .filter(file=>file==='db/migrations/meta/_journal.json'||file.startsWith('db/migrations/')&&file.endsWith('.sql')||historicalArchives.has(file)));
   if(requiredMigrations.size){
    // The existing clean-HEAD owner observes the index ONCE. Clean status alone
    // does not exclude ignored SQL; journal-derived membership is not tracking.
-   const raw=git('ls-files','--cached','--stage','-z','--','db/migrations');
+   const raw=git('ls-files','--cached','--stage','-z','--','db/migrations',...historicalArchives);
    if(!raw.endsWith('\0'))throw Error('Incomplete canonical migration index');
    const index=new Map();
    for(const record of raw.slice(0,-1).split('\0')){
     const match=/^([0-7]{6}) ([a-f0-9]{40}) 0\t([^\0]+)(?![\s\S])/.exec(record);
     if(!match)throw Error('Malformed canonical migration index');
     const [,mode,,file]=match;
-    if(!file.startsWith('db/migrations/')||file.includes('\\')||/[\x00-\x1f\x7f]/.test(file)
+    if(!(file.startsWith('db/migrations/')||historicalArchives.has(file))||file.includes('\\')||/[\x00-\x1f\x7f]/.test(file)
       ||file.split('/').some(part=>part===''||part==='.'||part==='..')||index.has(file))throw Error('Noncanonical or duplicate migration index path');
     index.set(file,mode);
    }

@@ -3295,7 +3295,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
 }
 
 /** ADR-0041 2E: the tenant grade catalog, most-senior first (rank asc), then name. */
-export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boolean } = {}, outerTx?:Tx) {
+export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boolean;companyId?:string|null } = {}, outerTx?:Tx) {
   const run=(tx:Tx)=>tx
       .select({
         id: jobGrade.id,
@@ -3307,6 +3307,7 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
         // trap the leave-type projection documents field by field.
         description: jobGrade.description,
         rank: jobGrade.rank,
+        scopeCompanyIds:jobGrade.scopeCompanyIds,
         archivedAt: jobGrade.archivedAt,
         // Grade relocation to System Labels (b1b81a08): the in-use predicate spans ALL SIX referencing
         // tables, not just employment + leave_policy. leave_approval_policy.grade_id and
@@ -3337,7 +3338,7 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
           or exists (select 1 from grade_group_member ggm where ggm.grade_id = job_grade.id)`,
       })
       .from(jobGrade)
-      .where(opts.includeArchived ? undefined : isNull(jobGrade.archivedAt))
+      .where(opts.includeArchived ? undefined : and(isNull(jobGrade.archivedAt),sql`app.system_label_scope_applies(${jobGrade.scopeCompanyIds},${opts.companyId??null}::uuid)`))
       .orderBy(jobGrade.rank, jobGrade.name);
   return outerTx?run(outerTx):withTenant(ctx,run);
 }

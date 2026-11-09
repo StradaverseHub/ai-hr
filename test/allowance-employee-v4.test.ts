@@ -41,3 +41,10 @@ it('editor preview and period calculation use the same final owned employment da
  expect(allowanceEmployeePeriodMatch(rule,'own',input,{from:'2026-01-01',to:'2026-01-31'})).toMatchObject({asOf:'2026-01-05',pass:true});
  expect(allowanceEmployeePeriodMatch(rule,'own',input,{from:'2026-01-01',to:'2026-01-04'})).toMatchObject({asOf:'2026-01-04',pass:false});
 });
+
+it.each(['branch','division','region','line','section','team','base'] as const)('compares the exact configured %s value and refuses missing facts',field=>{
+ const expression=validateAllowanceEmployeeExpression({id:'root',type:'group',logic:'and',children:[{id:'org',type:'criterion',field,operator:'is',values:['Fictional North']}]});
+ expect(allowanceEmployeeExpressionMatches(expression,{...facts(design,materials),[field]:'Fictional North'})).toBe(true);
+ expect(allowanceEmployeeExpressionMatches(expression,{...facts(design,materials),[field]:'Fictional South'})).toBe(false);
+ expect(allowanceEmployeeExpressionMatches(expression,facts(design,materials))).toBe(false);
+});

@@ -36,7 +36,7 @@ test('every registered infrastructure file remains exactly once in its native cl
  const native=Object.keys(SINGLETON_FILES),ordinary=['test/ordinary-db.test.ts','test/ordinary-nodb.test.ts'];
  const db=native.filter(f=>singletonKind(singletonDescriptor(f).profile)==='db').concat(ordinary[0]),nodb=native.filter(f=>!db.includes(f)).concat(ordinary[1]),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browser),special=units.filter(u=>u.singleton);
- assert.equal(special.length,27);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
+ assert.equal(special.length,29);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
  assert(special.every(u=>u.files.length===1&&u.singleton.workers===1));assert.equal(requiredEvidence({suite,units}).units.length,units.length);
  for(const unit of special){const changed=structuredClone(units);changed.find(u=>u.id===unit.id).singleton.workers=2;assert.throws(()=>requiredEvidence({suite,units:changed}));}
  assert.throws(()=>buildUnits([native[0]],{db:[],nodb:[native[0]]},browser));
@@ -48,16 +48,17 @@ test('every registered infrastructure file remains exactly once in its native cl
  assert.equal(common.length,22);assert.equal(database.length,12);
  for(const file of [...common,...database])assert(all.includes(file),file);
  const sql=readdirSync(join(candidateRoot,'db/migrations')).filter(file=>file.endsWith('.sql')).map(file=>'db/migrations/'+file).sort();
- assert.equal(sql.length,749);assert.deepEqual(all.filter(file=>file.startsWith('db/migrations/')).sort(),[journalPath,...sql].sort());
+ assert.equal(sql.length,755);assert.deepEqual(all.filter(file=>file.startsWith('db/migrations/')).sort(),[journalPath,...sql].sort());
+ const archives=['test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql','test/fixtures/historical-migrations/3103_access_editor_presentation.sql'];for(const file of archives)assert(all.includes(file));
  assert.throws(()=>singletonSources(databaseFixture.unit));assert.throws(()=>validateSingletonBinding(databaseFixture.binding,databaseFixture.plan,databaseFixture.unit,databaseFixture.witness));
  const directory=realpathSync(mkdtempSync(join(tmpdir(),'shared-database-model-'))),journal=JSON.parse(readFileSync(join(candidateRoot,journalPath),'utf8'));
  const write=(file,bytes)=>{mkdirSync(join(directory,file,'..'),{recursive:true});writeFileSync(join(directory,file),bytes);};
  try{
   // NoDB/ordinary/missing context cannot read any journal, even in an empty root.
   const pure=singletonSources(hostFixture.unit,directory);for(const file of common)assert(pure.includes(file));
-  for(const file of [...database,journalPath,...sql])assert(!pure.includes(file),file);
+  for(const file of [...database,journalPath,...sql,...archives])assert(!pure.includes(file),file);
   validateSingletonBinding(hostFixture.binding,hostFixture.plan,hostFixture.unit,hostFixture.witness);
-  write(journalPath,readFileSync(join(candidateRoot,journalPath)));for(const file of sql)write(file,'-- fictional source membership input\n');
+  write(journalPath,readFileSync(join(candidateRoot,journalPath)));for(const file of [...sql,...archives])write(file,'-- fictional source membership input\n');
   assert.deepEqual(singletonSources(databaseFixture.unit,directory),all);
   validateSingletonBinding(databaseFixture.binding,databaseFixture.plan,databaseFixture.unit,databaseFixture.witness,directory);
   const raw=readFileSync(join(directory,journalPath));
@@ -73,6 +74,12 @@ test('every registered infrastructure file remains exactly once in its native cl
   const first=sql[0];unlinkSync(join(directory,first));assert.throws(()=>singletonSources(databaseFixture.unit,directory));write(first,'-- restored\n');
   write('db/migrations/unexpected.sql','-- unexpected\n');assert.throws(()=>singletonSources(databaseFixture.unit,directory));unlinkSync(join(directory,'db/migrations/unexpected.sql'));
   unlinkSync(join(directory,first));symlinkSync(join(directory,sql[1]),join(directory,first));assert.throws(()=>singletonSources(databaseFixture.unit,directory));unlinkSync(join(directory,first));mkdirSync(join(directory,first));assert.throws(()=>singletonSources(databaseFixture.unit,directory));rmdirSync(join(directory,first));write(first,'-- restored\n');
+  for(const archive of archives){
+   unlinkSync(join(directory,archive));assert.throws(()=>singletonSources(databaseFixture.unit,directory));
+   symlinkSync(join(directory,first),join(directory,archive));assert.throws(()=>singletonSources(databaseFixture.unit,directory));unlinkSync(join(directory,archive));
+   mkdirSync(join(directory,archive));assert.throws(()=>singletonSources(databaseFixture.unit,directory));rmdirSync(join(directory,archive));
+   write(archive,Buffer.alloc(4*1024*1024+1,32));assert.throws(()=>singletonSources(databaseFixture.unit,directory));write(archive,'-- restored historical source\n');
+  }
   write(journalPath,Buffer.alloc(4*1024*1024+1,32));assert.throws(()=>singletonSources(databaseFixture.unit,directory));write(journalPath,raw);
   unlinkSync(join(directory,journalPath));symlinkSync(join(candidateRoot,journalPath),join(directory,journalPath));assert.throws(()=>singletonSources(databaseFixture.unit,directory));unlinkSync(join(directory,journalPath));write(journalPath,raw);
  }finally{rmSync(directory,{recursive:true,force:true});}
@@ -94,6 +101,13 @@ test('every registered infrastructure file remains exactly once in its native cl
   git('add','--force',added);git('-c','user.name=Fictional CI','-c','user.email=ci@example.invalid','commit','--quiet','-m','Track matching canonical SQL');
   const actual=createPlan(repository),selected=actual.units.find(unit=>unit.files.includes(databaseFixture.unit.files[0]));
   assert(selected?.singleton);assert.equal(actual.sha,git('rev-parse','HEAD').trim());assert.equal(actual.singletonSources[selected.id][added],createHash('sha256').update(readFileSync(join(repository,added))).digest('hex'));
+  for(const archive of archives){
+   git('rm','--cached',archive);writeFileSync(join(repository,'.gitignore'),added+'\n'+archive+'\n');git('add','.gitignore');git('-c','user.name=Fictional CI','-c','user.email=ci@example.invalid','commit','--quiet','-m','Ignore an existing required historical payload');
+   assert.equal(git('status','--porcelain').trim(),'');assert(singletonSources(databaseFixture.unit,repository).includes(archive));
+   assert.throws(()=>createPlan(repository),{message:'Canonical database source must be tracked as a regular file: '+archive});
+   git('add','--force',archive);git('-c','user.name=Fictional CI','-c','user.email=ci@example.invalid','commit','--quiet','-m','Track required historical payload');
+   const tracked=createPlan(repository);assert.equal(tracked.singletonSources[selected.id][archive],createHash('sha256').update(readFileSync(join(repository,archive))).digest('hex'));
+  }
   writeFileSync(join(repository,journalPath),readFileSync(join(repository,journalPath),'utf8')+'\n');git('add',journalPath);git('-c','user.name=Fictional CI','-c','user.email=ci@example.invalid','commit','--quiet','-m','Change raw journal bytes only');const changed=createPlan(repository);assert.deepEqual(Object.keys(changed.singletonSources[selected.id]),Object.keys(actual.singletonSources[selected.id]));assert.notEqual(changed.singletonSources[selected.id][journalPath],actual.singletonSources[selected.id][journalPath]);assert.notEqual(changed.fingerprint,actual.fingerprint);
   process.env.AIHR_CI_HEAD='f'.repeat(40);assert.throws(()=>createPlan(repository),/checkout does not match requested HEAD/);
  }finally{for(const[key,value]of saved){if(value===undefined)delete process.env[key];else process.env[key]=value;}rmSync(repository,{recursive:true,force:true});}
@@ -198,7 +212,7 @@ test('final independent build verification refuses a native unit that exercised 
 
 test('Access native-owner and paired notification diagnostics retain isolated authenticated jobs and their exact owned source closure',()=>{
  const cases=[['test/access-editor-native-owner-presentation.test.ts','controlled-database-v1',[
-  'db/migrations/3211_access_editor_native_owner_presentation.sql','test/fixtures/access-editor-native-owner.ts','test/fixtures/access-editor-cleanup-lifetime.ts','test/fixtures/access-editor-catalogue-diagnostic.ts','test/fixtures/access-editor-owner-dependencies.ts','test/fixtures/access-editor-owned-work.ts','test/fixtures/access-editor-original739-journal.json','test/fixtures/access-editor-locked-baseline.ts',
+  'db/migrations/3211_access_editor_native_owner_presentation.sql','test/fixtures/access-editor-native-owner.ts','test/fixtures/historical-migrations/source-path.ts','test/fixtures/access-editor-cleanup-lifetime.ts','test/fixtures/access-editor-catalogue-diagnostic.ts','test/fixtures/access-editor-owner-dependencies.ts','test/fixtures/access-editor-owned-work.ts','test/fixtures/access-editor-original739-journal.json','test/fixtures/access-editor-locked-baseline.ts',
  ]],['test/notification-worker-native-plan-diagnostic.test.ts','notification-cluster-v1',[
   'test/harness.ts','lib/notification-worker/lifecycle.ts','lib/notification-worker/projection.ts','lib/assessment-reminder-mail.ts','test/fixtures/notification-worker/owner-fixture.ts','test/fixtures/notification-worker/database.ts','test/fixtures/notification-worker/diagnostic-ownership.ts','test/fixtures/notification-worker/plan-logging.ts','test/fixtures/notification-worker/auto-explain.ts','test/fixtures/notification-worker/admission-plan-summary.ts','test/fixtures/notification-worker/lifecycle.sql','test/fixtures/notification-worker/projection.sql','test/fixtures/notification-worker/assessment.sql','test/fixtures/notification-worker/process.sql','test/fixtures/notification-worker/query-shape.sql','test/fixtures/notification-worker/exact-source.sql',
  ]]];
@@ -301,14 +315,62 @@ test('Rewards native policy and original read family retain complete isolated so
   'localization/registry.ts','lib/hr-date.ts','db/migrations/meta/_journal.json',
   'db/migrations/0863_assistant_bank_effect_closure.sql','db/migrations/0864_assistant_catalogue_effect_closure.sql',
   'db/migrations/3210_attendance_shared_workflow_submission_lock.sql','db/migrations/3211_access_editor_native_owner_presentation.sql',
-  'db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql',
+  'test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql','test/fixtures/historical-migrations/3103_access_editor_presentation.sql',
   'db/migrations/3200_ai_centre_controls.sql','db/migrations/3201_ai_centre_function_coverage.sql',
   'db/migrations/3500_ai_centre_architecture_compatibility.sql','db/migrations/3501_ai_centre_mandate_write_order.sql',
+  "lib/maybank-payment-settings.ts",
+  "localization/my/maybank-v74-file.ts",
+  "lib/attendance-formula-allocation.ts",
+  "lib/system-label-assignment.ts",
+  "packs/attendance/formula-sources.ts",
+  "lib/attendance-formula-catalog.ts",
+  "lib/attendance-formula-overtime.ts",
+  "core/attendance-formula-leave.ts",
+  "core/attendance-formula-measurements.ts",
+  "core/attendance-formulas.ts",
+  "lib/attendance-formula-model.ts",
+  "lib/attendance-formula-language.ts",
+  "lib/attendance-formula-periods.ts",
+  "lib/pay-component-company.ts",
+  "core/attendance-formula-ai.ts",
+  "lib/attendance-formula-ai.ts",
+  "lib/attendance-formula-bindings.ts",
+  "lib/attendance-formula-posting.ts",
+  "core/pay-component-company.ts",
+  "core/system-label-selection.ts",
+  "lib/authz.ts",
+  "lib/session.ts",
+  "lib/identity/config.ts",
+  "lib/auth-errors.ts",
+  "lib/demo-mode.ts",
+  "lib/mobile-api/jwt.ts",
+  "lib/internal-auth/web-session.ts",
+  "lib/entra/sessions.ts",
+  "lib/session-policy-server.ts",
+  "lib/session-policy.ts",
+  "lib/entra/model.ts",
+  "lib/entra/store.ts",
+  "lib/internal-auth/service.ts",
+  "lib/internal-auth/account-expiry.ts",
+  "lib/internal-auth/remembered-mfa.ts",
+  "lib/remembered-mfa-policy.ts",
+  "lib/internal-auth/login-lockout.ts",
+  "lib/identity/session.ts",
+  "lib/identity/cookie.ts",
+  "lib/identity/seal.ts",
+  "lib/identity/oidc.ts",
+  "lib/workos.ts",
+  "core/payroll-audit/reader-grant.ts",
+  "packs/rewards/preparation-model.ts",
+  "packs/rewards/dashboard-model.ts",
+  "test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts",
+  "test/fixtures/notification-worker/canonical-inventory.ts",
+  "test/fixtures/notification-worker/replay-prefix-ownership.ts",
  ];
  const journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url)));
- assert.equal(journal.entries.length,747);const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');assert.equal(new Set(journalSql).size,747);
- const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,749);
- assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql']);
+ assert.equal(journal.entries.length,755);const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');assert.equal(new Set(journalSql).size,755);
+ const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,755);
+ assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),[]);
  for(const file of files){
   const f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
   assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
@@ -359,13 +421,13 @@ test('shared module JIT diagnostic owns one unchanged controlled database and ca
  const file='test/module-read-jit-diagnostic.test.ts',f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
  assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
  assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);assert.equal(new Set(sources).size,sources.length);
- assert.equal(sources.length,1556);assert.equal(createHash('sha256').update(JSON.stringify(sources)).digest('hex'),'742577028ddcab2a088f16a9c810a9c978ed44f7523cd331bed84aef708503a5');
- for(const required of ["core/ai-centre-control.ts", "db/migrations/3200_ai_centre_controls.sql", "db/migrations/3201_ai_centre_function_coverage.sql", "db/migrations/3500_ai_centre_architecture_compatibility.sql", "db/migrations/3501_ai_centre_mandate_write_order.sql", "lib/ai/centre-activity.ts", "test/helpers/native-read-observer.ts"])assert(sources.includes(required),'Actual JIT read owner omitted: '+required);
+ assert.equal(sources.length,1584);assert.equal(createHash('sha256').update(JSON.stringify(sources)).digest('hex'),'512189a8692016924f67081ede283316892f28f6ad580015d888324c936d8659');
+ for(const required of ["core/ai-centre-control.ts", "db/migrations/3200_ai_centre_controls.sql", "db/migrations/3201_ai_centre_function_coverage.sql", "db/migrations/3500_ai_centre_architecture_compatibility.sql", "db/migrations/3501_ai_centre_mandate_write_order.sql", "lib/ai/centre-activity.ts", "test/helpers/native-read-observer.ts","lib/maybank-payment-settings.ts","localization/my/maybank-v74-file.ts","lib/attendance-formula-allocation.ts","lib/system-label-assignment.ts","packs/attendance/formula-sources.ts","lib/attendance-formula-catalog.ts","lib/attendance-formula-overtime.ts","core/attendance-formula-leave.ts","core/attendance-formula-measurements.ts","core/attendance-formulas.ts","lib/attendance-formula-model.ts","lib/attendance-formula-language.ts","lib/attendance-formula-periods.ts","lib/pay-component-company.ts","core/attendance-formula-ai.ts","lib/attendance-formula-ai.ts","lib/attendance-formula-bindings.ts","lib/attendance-formula-posting.ts","core/pay-component-company.ts","core/system-label-selection.ts"])assert(sources.includes(required),'Actual JIT read owner omitted: '+required);
  const journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url),'utf8'));
- assert.equal(journal.entries.length,747);const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');assert.equal(new Set(journalSql).size,747);
- const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,749);
+ assert.equal(journal.entries.length,755);const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');assert.equal(new Set(journalSql).size,755);
+ const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,755);
  for(const path of [...journalSql,...physicalSql])assert(sources.includes(path),'Actual canonical SQL/fingerprint input omitted: '+path);
- assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql']);
+ assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),[]);
  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
  for(const source of sources){
   const bytes=readFileSync(new URL('../../'+source,import.meta.url));assert(bytes.length>0&&bytes.length<=singletonSourceMaximum(source),source);
@@ -378,4 +440,58 @@ test('shared module JIT diagnostic owns one unchanged controlled database and ca
  assert(text.indexOf("admitSingletonTest('"+file+"')")<text.indexOf('beforeAll(migrateTestDb)'));
  assert(!/AIHR_FOCUSED_|\.(?:skipIf|runIf)\s*\(/.test(text));
  assertSingletonCoverage([file],path=>readFileSync(new URL('../../'+path,import.meta.url),'utf8'));
+});
+
+
+test('both selected-prefix AI upgrades require sole authenticated controlled jobs and every actual source owner',()=>{
+ const files=['test/ai-centre-architecture-compatibility-upgrade.test.ts','test/ai-centre-mandate-write-order-upgrade.test.ts'];
+ const owned=[
+  ".github/ci/candidate-environment.mjs",
+  ".github/ci/employee-lifecycle-profile.mjs",
+  ".github/ci/employee-lifecycle-sources.mjs",
+  ".github/ci/historical-migrations/0180_profile_option.sql",
+  ".github/ci/historical-migrations/0212_dashboard_card_config.sql",
+  ".github/ci/native-next-helper-sources.mjs",
+  ".github/ci/native-next-installation.mjs",
+  ".github/ci/policy-version.mjs",
+  ".github/ci/postgres-evidence.mjs",
+  ".github/ci/rewards-native-sources.mjs",
+  ".github/ci/singleton-protocol.mjs",
+  "core/audit-chain-arming.ts",
+  "core/entitlement-types.ts",
+  "db/admission.ts",
+  "db/background-read-admission.ts",
+  "db/capacity.ts",
+  "db/client.ts",
+  "db/tenant-write-admission.ts",
+  "db/workload.ts",
+  "test/db-names.ts",
+  "test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql",
+  "test/fixtures/historical-migrations/3103_access_editor_presentation.sql",
+  "test/helpers/ai-centre-compatibility-owner-constructor.ts",
+  "test/helpers/ci-singleton-admission.ts",
+ "test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts",
+ "test/fixtures/notification-worker/canonical-inventory.ts",
+ "test/fixtures/notification-worker/replay-prefix-ownership.ts"
+];
+ for(const file of files){
+  const f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
+  assert.deepEqual(f.unit.files,[file]);assert.equal(f.unit.kind,'db');
+  assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
+  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
+  assert.equal(new Set(sources).size,sources.length);
+  for(const source of [file,...owned]){
+   assert(sources.includes(source),source);assert(readFileSync(new URL('../../'+source,import.meta.url)).length>0);
+   const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
+   const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
+   assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot),source);
+  }
+  assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));
+  assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
+  for(const mutate of [v=>{v.unit.singleton.workers=2;},v=>{v.unit.singleton.profile='notification-cluster-v1';},v=>{v.binding.prerequisites.workers=2;},v=>{v.binding.prerequisites.kind='shared-cluster';},v=>{v.env.AIHR_FOCUSED_SUITE_CAPACITY='true';},v=>{v.env.GITHUB_RUN_ATTEMPT='2';}]){const changed=structuredClone(f);mutate(changed);assert.throws(()=>{validateSingletonHost(changed);validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot);});}
+  const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+  assert(text.indexOf("admitSingletonTest('"+file+"')")<text.indexOf("it('"));
+  assert(text.includes('writeFileSync(join(admission.evidenceDirectory,'));assert(text.includes('context.signal,caseStartedAt)'));
+  assert(!/process\.env\.AIHR_FOCUSED_|\.(?:skipIf|runIf)\s*\(/.test(text));
+ }
 });

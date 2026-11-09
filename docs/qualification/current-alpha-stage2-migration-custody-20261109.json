@@ -1,0 +1,1195 @@
+{
+  "kind": "CURRENT_ALPHA_STAGE2_SOURCE_CUSTODY_NOT_QUALIFICATION",
+  "schemaVersion": 1,
+  "normalMergeParents": [
+    "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+    "e70686353134de3471f08fe7a27e937f14fdcc95"
+  ],
+  "sourceState": "UNCOMMITTED; merge index deliberately unresolved for root final custody",
+  "exactOwnedPaths": [
+    "db/migrations/meta/_journal.json",
+    "docs/MIGRATION-ALLOCATION.md",
+    "test/performance-migration-identities.ts",
+    "test/helpers/approved-upgrade.ts",
+    "test/ai-centre-architecture-compatibility-upgrade.test.ts",
+    "test/ai-centre-mandate-write-order-upgrade.test.ts",
+    "test/access-editor-populated-upgrade.test.ts",
+    ".github/ci/singleton-protocol.mjs",
+    ".github/ci/plan.mjs",
+    ".github/ci/singleton-profiles.test.mjs",
+    ".github/ci/employee-lifecycle-sources.mjs",
+    ".github/ci/employee-lifecycle-sources.test.mjs",
+    ".github/ci/rewards-native-sources.mjs",
+    "docs/qualification/employee-native-restoration-inverse-20261108.json",
+    "db/migrations/2301_attendance_workflow_submission_shared_lock.sql",
+    "db/migrations/3103_access_editor_presentation.sql",
+    "test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql",
+    "test/fixtures/historical-migrations/3103_access_editor_presentation.sql",
+    "docs/qualification/architecture-reviewed-recovery-source-index-20261109.json",
+    "docs/qualification/current-alpha-stage2-migration-custody-20261109.json",
+    "test/fixtures/access-editor-native-owner.ts",
+    "test/fixtures/historical-migrations/source-path.ts",
+    "test/helpers/ai-centre-compatibility-owner-constructor.ts"
+  ],
+  "wholeParentPreimages": [
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "db/migrations/meta/_journal.json",
+      "gitBlob": "3ba4ce0e97252c35528232169ab9780cbbe23acb",
+      "bytes": 115315,
+      "sha256": "c288908efd8c5ecdad8162599b8160a6ae22cd84442f956812632ed097b01052"
+    },
+    {
+      "commit": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "path": "db/migrations/meta/_journal.json",
+      "gitBlob": "8dc5082d1414a6d069ec5c747fcf05e4b69dfda0",
+      "bytes": 110482,
+      "sha256": "97b2ab44f70156494591c83effe6e5b580f60b7dc930570cc4a138b3090289fb"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "docs/MIGRATION-ALLOCATION.md",
+      "gitBlob": "a590acd643eb606bf267c3b74b837790f6080f11",
+      "bytes": 196045,
+      "sha256": "8e417eaa993c18a377bf1f9f3172f100760d1d5dbff8910dcc2e6da3d9d3047f"
+    },
+    {
+      "commit": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "path": "docs/MIGRATION-ALLOCATION.md",
+      "gitBlob": "e0e95196e2f24b2920689ed0858b9ea025cd41ec",
+      "bytes": 152118,
+      "sha256": "515170b9a6ae74ac9dbc2444be5b4713be57e5de8bedfb5317bb999b3ae35717"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "test/performance-migration-identities.ts",
+      "gitBlob": "acb20df8befdf9698cadda7471b89cc4bc5dfa56",
+      "bytes": 6475,
+      "sha256": "03c294cee1e7db4bd59e0e0988d7dbf06c1c57ba0a4bf30deb2d5a664f0110fd"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "test/helpers/approved-upgrade.ts",
+      "gitBlob": "42ab6eaba8b90f2b1fa87ec9aac016fa4ccacd16",
+      "bytes": 20671,
+      "sha256": "0c51f59bf162e26759c88c953f2119cf2201c9324bd8902339e71dc256a78f3c"
+    },
+    {
+      "commit": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "path": "test/helpers/approved-upgrade.ts",
+      "gitBlob": "429651cf0a778fe1b2f73753a56f611eb5f4cee9",
+      "bytes": 22044,
+      "sha256": "357d40b8a4fa53e830752cd19c8de1b61e43ca33e9a818145e63823c22bce910"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "test/ai-centre-architecture-compatibility-upgrade.test.ts",
+      "gitBlob": "8a98bb15dd026ac34a8f8e97deb961336beff725",
+      "bytes": 24216,
+      "sha256": "17ba8a855d7d6481ad16897964db68c43dea0166b512a85cde70897dc0886499"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "test/ai-centre-mandate-write-order-upgrade.test.ts",
+      "gitBlob": "c8123e132c5c2e85e9274b31fb2829444988419e",
+      "bytes": 23597,
+      "sha256": "6508186ee04892c5fe16d5021dc11255b857d4654b4438e3e5930ae1edf22e5b"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "test/access-editor-populated-upgrade.test.ts",
+      "gitBlob": "6ba0a004fbcecf468e9149c448084e572dbb7c25",
+      "bytes": 16405,
+      "sha256": "82c01e90c0129c6611274f1866f223f2b4597bbb645f5a54470ecc0a6c1f2a0f"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": ".github/ci/singleton-protocol.mjs",
+      "gitBlob": "1d7e404f250230b4590d5e0064f44157ab8ada77",
+      "bytes": 93524,
+      "sha256": "a5b02e31304383880ccac5773b76cec0334a44de6683d8f7869e3a95bf40fb92"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": ".github/ci/plan.mjs",
+      "gitBlob": "36aa405c661765fb9350000e46192db1e4dc95eb",
+      "bytes": 5614,
+      "sha256": "83ed8d67ae92af8f7b3fdf8532ed9833db7160d2aec618ae395c58fbbc36a11d"
+    },
+    {
+      "commit": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "path": ".github/ci/plan.mjs",
+      "gitBlob": "f962f7912b58f3351a41c8938ef67f0ef4a29b83",
+      "bytes": 2745,
+      "sha256": "aa18dc8082a72c6d876960fe55ef074b3547595bd82f10494ddc55b413e61f36"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": ".github/ci/singleton-profiles.test.mjs",
+      "gitBlob": "27c63a03e68e2ecc2322fc466d1f4db5a6e96d3f",
+      "bytes": 46364,
+      "sha256": "c11e0234262c0734d8473f4f6ea32113843f14e73e692617c4619c8a6819a57f"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": ".github/ci/employee-lifecycle-sources.mjs",
+      "gitBlob": "22d3c224aa93a621c6610b655ac4e48ea89dc731",
+      "bytes": 153397,
+      "sha256": "9f8a598bbbe8245eb2f619dcb38f4532492e98611ed81979ee766f3d5862c36f"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": ".github/ci/employee-lifecycle-sources.test.mjs",
+      "gitBlob": "96852b04f1c7d5e053e65584fe4102e9a5d90019",
+      "bytes": 7510,
+      "sha256": "ef14926b21b32329a634bf626f68875eaf904c0cc69b6f3f82c1b23c624a2322"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": ".github/ci/rewards-native-sources.mjs",
+      "gitBlob": "361cbf65986f87560178d6eaa0b96cedda43f385",
+      "bytes": 73071,
+      "sha256": "6d51c4dcc04419826a3a6acbcd6e8ae6942cb7b2916ef760d21e06569408c151"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "gitBlob": "d87533e8943a8286b11f986b18f363e273481a68",
+      "bytes": 140709,
+      "sha256": "21539b92435b8d3d48acd087373bada320795ea1ef361533d57f30c08388b47a"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "db/migrations/2301_attendance_workflow_submission_shared_lock.sql",
+      "gitBlob": "65dd3b5824b5c73d0b5d36041d315c2485d91aee",
+      "bytes": 1078,
+      "sha256": "421384a8eff51afcf0b910b966db1e092dd67343cd4fefff40c05aad537ae4fa"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "db/migrations/3103_access_editor_presentation.sql",
+      "gitBlob": "0ae0ed267b2f401328977d80d0bfa9bad358a279",
+      "bytes": 8644,
+      "sha256": "bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "docs/qualification/architecture-reviewed-recovery-source-index-20261109.json",
+      "gitBlob": "73e3273498097c6f9634df40b3b78886d91e94d0",
+      "bytes": 45386,
+      "sha256": "5b93579e3b23e74da1b50d5df4de9b0b4ea2b081ce72a9b6da9570e608f28ee8"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "test/fixtures/access-editor-native-owner.ts",
+      "gitBlob": "4324638c85e88752901a03c03f3497a1716ca3fc",
+      "bytes": 34464,
+      "sha256": "c0b55a71db7a9c3230de197474ec6004300565b96a53b9a312c8d2a1ce9e5687"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "test/helpers/ai-centre-compatibility-owner-constructor.ts",
+      "gitBlob": "07906b5fdbf45737b2dbcfeda518fe278ecd5a9b",
+      "bytes": 9375,
+      "sha256": "38baa80e70f1c16cd5b6fa6f5e4aabf370362f62c017f8dfc3ad6f70a9765d65"
+    }
+  ],
+  "initialUncommittedMergePreimages": [
+    {
+      "path": "db/migrations/meta/_journal.json",
+      "exists": true,
+      "bytes": 116622,
+      "sha256": "8d51472a4e9e0659949242e5058573f885045dfd9d436998b282ba9dd6b6e3b9"
+    },
+    {
+      "path": "docs/MIGRATION-ALLOCATION.md",
+      "exists": true,
+      "bytes": 201431,
+      "sha256": "e122e3dbcac41933a819b73aeaa99f14a5e4f1a157236358a8d26fca3f3e17b0"
+    },
+    {
+      "path": "test/performance-migration-identities.ts",
+      "exists": true,
+      "bytes": 6475,
+      "sha256": "03c294cee1e7db4bd59e0e0988d7dbf06c1c57ba0a4bf30deb2d5a664f0110fd"
+    },
+    {
+      "path": "test/helpers/approved-upgrade.ts",
+      "exists": true,
+      "bytes": 22755,
+      "sha256": "bdf49a0daa92d8c076adc0e085001da945fb715d08cb7dbaeda071ee0835fea6"
+    },
+    {
+      "path": "test/ai-centre-architecture-compatibility-upgrade.test.ts",
+      "exists": true,
+      "bytes": 24216,
+      "sha256": "17ba8a855d7d6481ad16897964db68c43dea0166b512a85cde70897dc0886499"
+    },
+    {
+      "path": "test/ai-centre-mandate-write-order-upgrade.test.ts",
+      "exists": true,
+      "bytes": 23597,
+      "sha256": "6508186ee04892c5fe16d5021dc11255b857d4654b4438e3e5930ae1edf22e5b"
+    },
+    {
+      "path": "test/access-editor-populated-upgrade.test.ts",
+      "exists": true,
+      "bytes": 16405,
+      "sha256": "82c01e90c0129c6611274f1866f223f2b4597bbb645f5a54470ecc0a6c1f2a0f"
+    },
+    {
+      "path": ".github/ci/singleton-protocol.mjs",
+      "exists": true,
+      "bytes": 93524,
+      "sha256": "a5b02e31304383880ccac5773b76cec0334a44de6683d8f7869e3a95bf40fb92"
+    },
+    {
+      "path": ".github/ci/plan.mjs",
+      "exists": true,
+      "bytes": 5614,
+      "sha256": "83ed8d67ae92af8f7b3fdf8532ed9833db7160d2aec618ae395c58fbbc36a11d"
+    },
+    {
+      "path": ".github/ci/singleton-profiles.test.mjs",
+      "exists": true,
+      "bytes": 46364,
+      "sha256": "c11e0234262c0734d8473f4f6ea32113843f14e73e692617c4619c8a6819a57f"
+    },
+    {
+      "path": ".github/ci/employee-lifecycle-sources.mjs",
+      "exists": true,
+      "bytes": 153397,
+      "sha256": "9f8a598bbbe8245eb2f619dcb38f4532492e98611ed81979ee766f3d5862c36f"
+    },
+    {
+      "path": ".github/ci/employee-lifecycle-sources.test.mjs",
+      "exists": true,
+      "bytes": 7510,
+      "sha256": "ef14926b21b32329a634bf626f68875eaf904c0cc69b6f3f82c1b23c624a2322"
+    },
+    {
+      "path": ".github/ci/rewards-native-sources.mjs",
+      "exists": true,
+      "bytes": 73071,
+      "sha256": "6d51c4dcc04419826a3a6acbcd6e8ae6942cb7b2916ef760d21e06569408c151"
+    },
+    {
+      "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "exists": true,
+      "bytes": 140709,
+      "sha256": "21539b92435b8d3d48acd087373bada320795ea1ef361533d57f30c08388b47a"
+    },
+    {
+      "path": "db/migrations/2301_attendance_workflow_submission_shared_lock.sql",
+      "exists": true,
+      "bytes": 1078,
+      "sha256": "421384a8eff51afcf0b910b966db1e092dd67343cd4fefff40c05aad537ae4fa"
+    },
+    {
+      "path": "db/migrations/3103_access_editor_presentation.sql",
+      "exists": true,
+      "bytes": 8644,
+      "sha256": "bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47"
+    },
+    {
+      "path": "test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql",
+      "exists": false,
+      "bytes": null,
+      "sha256": null
+    },
+    {
+      "path": "test/fixtures/historical-migrations/3103_access_editor_presentation.sql",
+      "exists": false,
+      "bytes": null,
+      "sha256": null
+    },
+    {
+      "path": "docs/qualification/architecture-reviewed-recovery-source-index-20261109.json",
+      "exists": true,
+      "bytes": 45386,
+      "sha256": "5b93579e3b23e74da1b50d5df4de9b0b4ea2b081ce72a9b6da9570e608f28ee8"
+    },
+    {
+      "path": "docs/qualification/current-alpha-stage2-migration-custody-20261109.json",
+      "exists": false,
+      "bytes": null,
+      "sha256": null
+    },
+    {
+      "path": "test/fixtures/access-editor-native-owner.ts",
+      "exists": true,
+      "bytes": 34464,
+      "sha256": "c0b55a71db7a9c3230de197474ec6004300565b96a53b9a312c8d2a1ce9e5687"
+    },
+    {
+      "path": "test/fixtures/historical-migrations/source-path.ts",
+      "exists": false,
+      "bytes": null,
+      "sha256": null
+    },
+    {
+      "path": "test/helpers/ai-centre-compatibility-owner-constructor.ts",
+      "exists": true,
+      "bytes": 9375,
+      "sha256": "38baa80e70f1c16cd5b6fa6f5e4aabf370362f62c017f8dfc3ad6f70a9765d65"
+    }
+  ],
+  "initialThreeStageIndexSha256": "aa6bd24070796d5a27502446e4207e3d61343cf4f9044cb2b850af46f27577ba",
+  "currentSourcePinsExceptSelf": [
+    {
+      "path": "db/migrations/meta/_journal.json",
+      "bytes": 116591,
+      "sha256": "f3c89344828ab28ba7403792cf1cb345c5576c0d8287852ca0e772fab42a3bae",
+      "gitBlobContentAddress": "7f9cfaea53e9240b7995608128a9681ed799a3f7"
+    },
+    {
+      "path": "docs/MIGRATION-ALLOCATION.md",
+      "bytes": 206859,
+      "sha256": "f585c0891a06cb5ceb7959bd557378407bdbc7195e79f98198abc482416a50bc",
+      "gitBlobContentAddress": "a238fd0db93af22de9d1514f70ecd7ffd9bf6b5e"
+    },
+    {
+      "path": "test/performance-migration-identities.ts",
+      "bytes": 6475,
+      "sha256": "f1066c0eddda76cd136e97b2e5868857fb2a13dfa57905b888dcce080798c62d",
+      "gitBlobContentAddress": "0564e3279f72a55222ba37e11bc4ca6fcffcdcd1"
+    },
+    {
+      "path": "test/helpers/approved-upgrade.ts",
+      "bytes": 22685,
+      "sha256": "372af2a64c0ec6bc820d2e48ec0c68d41e50517c90f0038efaa5448b87d09eb2",
+      "gitBlobContentAddress": "a916dc881360285bdddf8083813c43051ca1aa84"
+    },
+    {
+      "path": "test/ai-centre-architecture-compatibility-upgrade.test.ts",
+      "bytes": 30259,
+      "sha256": "8b1f34a7b6178f5cdc628fa491b1d0bf4686bbbdc359291d3d008b8d8bca4975",
+      "gitBlobContentAddress": "391bd668c2f489f461d78c551a55066d95e7807b"
+    },
+    {
+      "path": "test/ai-centre-mandate-write-order-upgrade.test.ts",
+      "bytes": 24719,
+      "sha256": "6a5297892306b27800772d046427a1073b41950e33c359b6c2c032b86da5ff2c",
+      "gitBlobContentAddress": "a58fd28280e116e0ba0620ce4af4e0430cbb3bd8"
+    },
+    {
+      "path": "test/access-editor-populated-upgrade.test.ts",
+      "bytes": 17283,
+      "sha256": "e0013c429ae45113ef2f745acb44c8eab505b6f4b6a893860096c89b436a2836",
+      "gitBlobContentAddress": "75c30ed42d27026647f475a2da654aea6e7e9598"
+    },
+    {
+      "path": ".github/ci/singleton-protocol.mjs",
+      "bytes": 97704,
+      "sha256": "aa66f6f322356fe681bd657902d0e7bbf2696f1d400eea14bb62b930767e833a",
+      "gitBlobContentAddress": "d094b2b6abf3acb04b1cfd44aea25bce1919e84c"
+    },
+    {
+      "path": ".github/ci/plan.mjs",
+      "bytes": 5901,
+      "sha256": "3012d782a085e10cf5ac3fde996bba31cfe9d20c5dd0a96a70dff656d7ee8493",
+      "gitBlobContentAddress": "78d15eb8f1f5c79d80c3c7555a2e26f31a3cc8bb"
+    },
+    {
+      "path": ".github/ci/singleton-profiles.test.mjs",
+      "bytes": 54003,
+      "sha256": "177cfa7cbad0ef6f5242046dd2b46e2251db1bcddb5c92cccf3c3fe89e5e0891",
+      "gitBlobContentAddress": "e46d1b672d63b5582e7b85660d8709f4379ddf30"
+    },
+    {
+      "path": ".github/ci/employee-lifecycle-sources.mjs",
+      "bytes": 156913,
+      "sha256": "e10360f6488e6dc51a1cdf3bef2e4f552b70d142a206a1ee0d1537d13c98117a",
+      "gitBlobContentAddress": "9160474f3519063705d247f3d2635029e12fd98e"
+    },
+    {
+      "path": ".github/ci/employee-lifecycle-sources.test.mjs",
+      "bytes": 9614,
+      "sha256": "00b9bfd733f27e6bd032709fb436252407b89f446165e871c4db1cc18d9996ac",
+      "gitBlobContentAddress": "e7d1c732178dca70930e8d7a61b377e134d1b7d7"
+    },
+    {
+      "path": ".github/ci/rewards-native-sources.mjs",
+      "bytes": 74958,
+      "sha256": "d70ed7c94532e9352f870b9992dd93aa3ec44d359522b0655ce475dc001327e0",
+      "gitBlobContentAddress": "b3c1f13fcd1923d4857e7c2782f01506e1cc9851"
+    },
+    {
+      "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "bytes": 147844,
+      "sha256": "7d601a0b56e907f992b5a6188cfeb4d16e1274eb42ec2144a8fcfa6e492e12cb",
+      "gitBlobContentAddress": "6a7fd07e825a30bcc0b71ea6c08bd1243e43bdd5"
+    },
+    {
+      "path": "test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql",
+      "bytes": 1078,
+      "sha256": "421384a8eff51afcf0b910b966db1e092dd67343cd4fefff40c05aad537ae4fa",
+      "gitBlobContentAddress": "65dd3b5824b5c73d0b5d36041d315c2485d91aee"
+    },
+    {
+      "path": "test/fixtures/historical-migrations/3103_access_editor_presentation.sql",
+      "bytes": 8644,
+      "sha256": "bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47",
+      "gitBlobContentAddress": "0ae0ed267b2f401328977d80d0bfa9bad358a279"
+    },
+    {
+      "path": "docs/qualification/architecture-reviewed-recovery-source-index-20261109.json",
+      "bytes": 212352,
+      "sha256": "1234292f1469069f6b98274f2b753c3de2f9ec909115f1fab438e72f9672b099",
+      "gitBlobContentAddress": "eec8554725993f9be943d062cd0b62c51bdaa010"
+    },
+    {
+      "path": "test/fixtures/access-editor-native-owner.ts",
+      "bytes": 34561,
+      "sha256": "01af0ef84f073e62aba1ab9419d668f663c59e2e140ab679f8829c131039fcaa",
+      "gitBlobContentAddress": "860f4df6b6deafa51df1535b62194ae171b13b0d"
+    },
+    {
+      "path": "test/fixtures/historical-migrations/source-path.ts",
+      "bytes": 822,
+      "sha256": "7408bf6d268a8d3ea9ded611e08cfb9f8781525b7267cde00106aac25b40772e",
+      "gitBlobContentAddress": "1b89cc945b4a1a116d9f1ee120afeafb3db81704"
+    },
+    {
+      "path": "test/helpers/ai-centre-compatibility-owner-constructor.ts",
+      "bytes": 117768,
+      "sha256": "bca389589843e01142b5a9e0411e5ad3aca51128d3d54c40ee3f1f3e815cc2cc",
+      "gitBlobContentAddress": "be800a0c3ae0b7c8c7cbcbb9271c73cea6fcd1c0"
+    }
+  ],
+  "removedActiveHistoricalPayloads": [
+    {
+      "oldPath": "db/migrations/2301_attendance_workflow_submission_shared_lock.sql",
+      "current": {
+        "path": "test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql",
+        "bytes": 1078,
+        "sha256": "421384a8eff51afcf0b910b966db1e092dd67343cd4fefff40c05aad537ae4fa",
+        "gitBlobContentAddress": "65dd3b5824b5c73d0b5d36041d315c2485d91aee"
+      },
+      "wholeOldGitPayload": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "db/migrations/2301_attendance_workflow_submission_shared_lock.sql",
+        "gitBlob": "65dd3b5824b5c73d0b5d36041d315c2485d91aee",
+        "bytes": 1078,
+        "sha256": "421384a8eff51afcf0b910b966db1e092dd67343cd4fefff40c05aad537ae4fa"
+      }
+    },
+    {
+      "oldPath": "db/migrations/3103_access_editor_presentation.sql",
+      "current": {
+        "path": "test/fixtures/historical-migrations/3103_access_editor_presentation.sql",
+        "bytes": 8644,
+        "sha256": "bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47",
+        "gitBlobContentAddress": "0ae0ed267b2f401328977d80d0bfa9bad358a279"
+      },
+      "wholeOldGitPayload": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "db/migrations/3103_access_editor_presentation.sql",
+        "gitBlob": "0ae0ed267b2f401328977d80d0bfa9bad358a279",
+        "bytes": 8644,
+        "sha256": "bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47"
+      }
+    }
+  ],
+  "architectureMapping38": [
+    {
+      "breakpoints": true,
+      "oldIdx": 2510,
+      "oldWhen": 1793330002810,
+      "ordinal": 0,
+      "originalGitBlob": "d287faf0f21efca9faa4bba1cbfc1e76c5db9115",
+      "path": "db/migrations/2103_system_performance_read_guards.sql",
+      "proposedIdx": 3400,
+      "proposedWhen": 1793330003700,
+      "tag": "2103_system_performance_read_guards",
+      "version": "7",
+      "wholeSqlBytes": 12927,
+      "wholeSqlSha256": "0f9ec0dfac05dfd46db765cdc868b0dfc14637e4c6266d229dea12f3691f8111"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2511,
+      "oldWhen": 1793330002811,
+      "ordinal": 1,
+      "originalGitBlob": "0640e86ef33ffd62ce8a8e247640446e5843aea1",
+      "path": "db/migrations/2104_contract_navigation_role_guards.sql",
+      "proposedIdx": 3401,
+      "proposedWhen": 1793330003701,
+      "tag": "2104_contract_navigation_role_guards",
+      "version": "7",
+      "wholeSqlBytes": 3743,
+      "wholeSqlSha256": "6aa941d06156cd4112ed9bd5ee6974323e96dc57b000e67f4ab21776f4459fcc"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2512,
+      "oldWhen": 1793330002812,
+      "ordinal": 2,
+      "originalGitBlob": "7e91900ec36ed596544c9a7e099762ce440bb43f",
+      "path": "db/migrations/2105_authorization_navigation_plans.sql",
+      "proposedIdx": 3402,
+      "proposedWhen": 1793330003702,
+      "tag": "2105_authorization_navigation_plans",
+      "version": "7",
+      "wholeSqlBytes": 7805,
+      "wholeSqlSha256": "c2f47c495fec180999d2ec236eeed1f334f3231106e08c0fec3a0c9c3c69550f"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2513,
+      "oldWhen": 1793330002813,
+      "ordinal": 3,
+      "originalGitBlob": "8f1933753551b279caadf95de99b0bea81d54c73",
+      "path": "db/migrations/2124_ai_control_navigation_candidates.sql",
+      "proposedIdx": 3403,
+      "proposedWhen": 1793330003703,
+      "tag": "2124_ai_control_navigation_candidates",
+      "version": "7",
+      "wholeSqlBytes": 2824,
+      "wholeSqlSha256": "ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2514,
+      "oldWhen": 1793330002814,
+      "ordinal": 4,
+      "originalGitBlob": "0800b1f119f950986b9a9e06c0d50205df52d625",
+      "path": "db/migrations/2125_approval_subject_batch.sql",
+      "proposedIdx": 3404,
+      "proposedWhen": 1793330003704,
+      "tag": "2125_approval_subject_batch",
+      "version": "7",
+      "wholeSqlBytes": 1912,
+      "wholeSqlSha256": "46573298e6faa5545dccf3c7ac5fda930ac48860636630dc4d3bd14e546a5461"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2515,
+      "oldWhen": 1793330002815,
+      "ordinal": 5,
+      "originalGitBlob": "4f8563ede8b27048c1c0c2bfd7ce8175e63de8fa",
+      "path": "db/migrations/2129_personnel_native_paging.sql",
+      "proposedIdx": 3405,
+      "proposedWhen": 1793330003705,
+      "tag": "2129_personnel_native_paging",
+      "version": "7",
+      "wholeSqlBytes": 7056,
+      "wholeSqlSha256": "877fb32d3e85cd3c3476038b7d1787877a27f7633bdc5308d6c660e669dc1255"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2516,
+      "oldWhen": 1793330002816,
+      "ordinal": 6,
+      "originalGitBlob": "9091f37e0f6f4e75781d696459c61fbcd7924df9",
+      "path": "db/migrations/2131_ai_read_only_metadata_locks.sql",
+      "proposedIdx": 3406,
+      "proposedWhen": 1793330003706,
+      "tag": "2131_ai_read_only_metadata_locks",
+      "version": "7",
+      "wholeSqlBytes": 4542,
+      "wholeSqlSha256": "409262dd7b958eb8c2633556f9dba13ad637042efcb07b632a5bcea5c8131077"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2517,
+      "oldWhen": 1793330002817,
+      "ordinal": 7,
+      "originalGitBlob": "d3b30b5b8a1367e5cf31f17b89ac77bd251c49d6",
+      "path": "db/migrations/2132_ai_metadata_claim_preview_index.sql",
+      "proposedIdx": 3407,
+      "proposedWhen": 1793330003707,
+      "tag": "2132_ai_metadata_claim_preview_index",
+      "version": "7",
+      "wholeSqlBytes": 5456,
+      "wholeSqlSha256": "ea9d1a6ee283b0586a835d98ee4c5e75196615a5f51d22d643966fc519c97508"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2518,
+      "oldWhen": 1793330002818,
+      "ordinal": 8,
+      "originalGitBlob": "fd966a4a8f203b1432b9d49dbe6912f8d4873cb7",
+      "path": "db/migrations/2133_ai_action_read_only_lock.sql",
+      "proposedIdx": 3408,
+      "proposedWhen": 1793330003708,
+      "tag": "2133_ai_action_read_only_lock",
+      "version": "7",
+      "wholeSqlBytes": 1160,
+      "wholeSqlSha256": "d22cc6aa2e0995a4b7368127ac4d0a2d0c8f18e4bc44a5ca31480ab5d144ea8f"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2519,
+      "oldWhen": 1793330002819,
+      "ordinal": 9,
+      "originalGitBlob": "ceef99b5876fbeaeb0dd538ad144a46b45580a96",
+      "path": "db/migrations/2134_claim_visibility_set_membership.sql",
+      "proposedIdx": 3409,
+      "proposedWhen": 1793330003709,
+      "tag": "2134_claim_visibility_set_membership",
+      "version": "7",
+      "wholeSqlBytes": 1048,
+      "wholeSqlSha256": "a489a4293bc835003a0c6ee3f77f68d3847c618827949b54d541290563d3f2f6"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2520,
+      "oldWhen": 1793330002820,
+      "ordinal": 10,
+      "originalGitBlob": "2bf51a3b949622012c961a2fb2eeeb36807c7fed",
+      "path": "db/migrations/2135_profile_presentation_read_lock.sql",
+      "proposedIdx": 3410,
+      "proposedWhen": 1793330003710,
+      "tag": "2135_profile_presentation_read_lock",
+      "version": "7",
+      "wholeSqlBytes": 1385,
+      "wholeSqlSha256": "b05f44a52bce44559088003111d1cc36e734ed01971a3042766909128b2d82fd"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2521,
+      "oldWhen": 1793330002821,
+      "ordinal": 11,
+      "originalGitBlob": "de9bbc7354ee34beb0cdf88f8bfa6589f6019dfc",
+      "path": "db/migrations/2136_grant_admin_role_precheck.sql",
+      "proposedIdx": 3411,
+      "proposedWhen": 1793330003711,
+      "tag": "2136_grant_admin_role_precheck",
+      "version": "7",
+      "wholeSqlBytes": 1303,
+      "wholeSqlSha256": "c2c67726492e0aa45bb601fe6f0c0e61c54ca39bbfb2658cad476958ced6a027"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2522,
+      "oldWhen": 1793330002822,
+      "ordinal": 12,
+      "originalGitBlob": "ba47e2ec66a64eb348049cc4183075802b183ca2",
+      "path": "db/migrations/2137_home_peer_cohort_batch.sql",
+      "proposedIdx": 3412,
+      "proposedWhen": 1793330003712,
+      "tag": "2137_home_peer_cohort_batch",
+      "version": "7",
+      "wholeSqlBytes": 3731,
+      "wholeSqlSha256": "25b659236aa53f5dfd268eef64dfbda0315bfdc84aca122463d37cb943555597"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2523,
+      "oldWhen": 1793330002823,
+      "ordinal": 13,
+      "originalGitBlob": "dc943d2af6520986d3ae95507f31644f16be9580",
+      "path": "db/migrations/2138_ai_pause_company_discovery.sql",
+      "proposedIdx": 3413,
+      "proposedWhen": 1793330003713,
+      "tag": "2138_ai_pause_company_discovery",
+      "version": "7",
+      "wholeSqlBytes": 5906,
+      "wholeSqlSha256": "bc44d218c30fcaa1db8a2f92e661be228cc4638fdfeb4280be0cacef388e5574"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2524,
+      "oldWhen": 1793330002824,
+      "ordinal": 14,
+      "originalGitBlob": "eb0cbff2f3376e3fd5ed14497fa733103d293d89",
+      "path": "db/migrations/2139_workforce_bounded_read_plan.sql",
+      "proposedIdx": 3414,
+      "proposedWhen": 1793330003714,
+      "tag": "2139_workforce_bounded_read_plan",
+      "version": "7",
+      "wholeSqlBytes": 4634,
+      "wholeSqlSha256": "da60091cd9f282910810fc493c3edc5fb124819899d3e91f1d2376f704f0ac75"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2525,
+      "oldWhen": 1793330002825,
+      "ordinal": 15,
+      "originalGitBlob": "c59e438711085161786130c4cbe0643f9640f870",
+      "path": "db/migrations/2252_probation_navigation_capability_probe.sql",
+      "proposedIdx": 3415,
+      "proposedWhen": 1793330003715,
+      "tag": "2252_probation_navigation_capability_probe",
+      "version": "7",
+      "wholeSqlBytes": 4060,
+      "wholeSqlSha256": "48982043ee84171b29f61c639146b4997e687e961362e3b495c24d5c858d483c"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2526,
+      "oldWhen": 1793330002826,
+      "ordinal": 16,
+      "originalGitBlob": "487aedc3353810afbd4b690007907412d0ed12c3",
+      "path": "db/migrations/2141_approval_nonadmin_visibility_batch.sql",
+      "proposedIdx": 3416,
+      "proposedWhen": 1793330003716,
+      "tag": "2141_approval_nonadmin_visibility_batch",
+      "version": "7",
+      "wholeSqlBytes": 5835,
+      "wholeSqlSha256": "d25a2cc9c4c30e6941b15a203fdf869f60e2a7cc34853b0fb40007d5fbd309a1"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2527,
+      "oldWhen": 1793330002827,
+      "ordinal": 17,
+      "originalGitBlob": "09ac7ef69acb7a4b7465647939dfc743944b99da",
+      "path": "db/migrations/2212_payroll_audit_claim_lookup_indexes.sql",
+      "proposedIdx": 3417,
+      "proposedWhen": 1793330003717,
+      "tag": "2212_payroll_audit_claim_lookup_indexes",
+      "version": "7",
+      "wholeSqlBytes": 256,
+      "wholeSqlSha256": "ba7080ebfe158a3e2c339552de3a4c9c5adc2ae63dd5e32ec846671e647f37e2"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2528,
+      "oldWhen": 1793330002828,
+      "ordinal": 18,
+      "originalGitBlob": "747ece070645fdec843278fc23177714e3b63e80",
+      "path": "db/migrations/3210_attendance_shared_workflow_submission_lock.sql",
+      "proposedIdx": 3418,
+      "proposedWhen": 1793330003718,
+      "tag": "3210_attendance_shared_workflow_submission_lock",
+      "version": "7",
+      "wholeSqlBytes": 12386,
+      "wholeSqlSha256": "4c627ce23deeda3195511e0ea1b6887cce6b7f39faeb538b061e82885acdb00d"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2529,
+      "oldWhen": 1793330002829,
+      "ordinal": 19,
+      "originalGitBlob": "3a9cb8af89e9aaddfc93ab5ab7f9a15d1afe0b6b",
+      "path": "db/migrations/2302_company_ancestry_early_exit.sql",
+      "proposedIdx": 3419,
+      "proposedWhen": 1793330003719,
+      "tag": "2302_company_ancestry_early_exit",
+      "version": "7",
+      "wholeSqlBytes": 1703,
+      "wholeSqlSha256": "5824edcc7b35788c5c8df9d5d1a16614543eed3412b62bb1282da85609de8f54"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2530,
+      "oldWhen": 1793330002830,
+      "ordinal": 20,
+      "originalGitBlob": "a14928d1756d1fe7d3db894e992e36d0d9f029c8",
+      "path": "db/migrations/2303_admin_grant_direct_scan.sql",
+      "proposedIdx": 3420,
+      "proposedWhen": 1793330003720,
+      "tag": "2303_admin_grant_direct_scan",
+      "version": "7",
+      "wholeSqlBytes": 1104,
+      "wholeSqlSha256": "fad8864bb7745cc0548d385af3b2d49c895c3ae041918b8d6cb79b051e16da8b"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2531,
+      "oldWhen": 1793330002831,
+      "ordinal": 21,
+      "originalGitBlob": "05411e840fb929188beb1d423067dda2506ec9de",
+      "path": "db/migrations/2304_payroll_grant_direct_scan.sql",
+      "proposedIdx": 3421,
+      "proposedWhen": 1793330003721,
+      "tag": "2304_payroll_grant_direct_scan",
+      "version": "7",
+      "wholeSqlBytes": 1129,
+      "wholeSqlSha256": "ef02f03fbb1f3634d8b9535ce2d98ffddac024e6f5a2f868cbb9513d8085a006"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2532,
+      "oldWhen": 1793330002832,
+      "ordinal": 22,
+      "originalGitBlob": "9263fe96a9db7fd767d891e84629a283b894a6e9",
+      "path": "db/migrations/2403_personnel_bounded_overview.sql",
+      "proposedIdx": 3422,
+      "proposedWhen": 1793330003722,
+      "tag": "2403_personnel_bounded_overview",
+      "version": "7",
+      "wholeSqlBytes": 13044,
+      "wholeSqlSha256": "1eac5d0a075e4505f69ac75f19e99e19f24fd189c93f82fd35b1c49f97ba228f"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2533,
+      "oldWhen": 1793330002833,
+      "ordinal": 23,
+      "originalGitBlob": "0450d270ecd90c8acd87028c0049304209eb8835",
+      "path": "db/migrations/2503_attendance_pending_visible_headers.sql",
+      "proposedIdx": 3423,
+      "proposedWhen": 1793330003723,
+      "tag": "2503_attendance_pending_visible_headers",
+      "version": "7",
+      "wholeSqlBytes": 4902,
+      "wholeSqlSha256": "fca8d6436f259f4955e78da75155836083f5f970d9f5640377ffb89ce7ca7718"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2534,
+      "oldWhen": 1793330002834,
+      "ordinal": 24,
+      "originalGitBlob": "8347fa9f388428dee1fbbc483e279ecac3715b1c",
+      "path": "db/migrations/2504_notification_event_processing.sql",
+      "proposedIdx": 3424,
+      "proposedWhen": 1793330003724,
+      "tag": "2504_notification_event_processing",
+      "version": "7",
+      "wholeSqlBytes": 5826,
+      "wholeSqlSha256": "a473a533cd967d7ad2ac971e24b5141af87d25967b84b3ca491e42fa9f1d81ce"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2535,
+      "oldWhen": 1793330002835,
+      "ordinal": 25,
+      "originalGitBlob": "dd7453c439e747991cf78f63f1e8b87c4a7217fe",
+      "path": "db/migrations/2505_workforce_picker_facts.sql",
+      "proposedIdx": 3425,
+      "proposedWhen": 1793330003725,
+      "tag": "2505_workforce_picker_facts",
+      "version": "7",
+      "wholeSqlBytes": 1560,
+      "wholeSqlSha256": "af1fa920e5ded85fbb0c5f4aa5d016d341a519d38e461e5926301780a0ee49d4"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2536,
+      "oldWhen": 1793330002836,
+      "ordinal": 26,
+      "originalGitBlob": "fd5ce610eff3d5239e8769fe47b7cf12b2bc3e42",
+      "path": "db/migrations/2506_notification_receipt_retention.sql",
+      "proposedIdx": 3426,
+      "proposedWhen": 1793330003726,
+      "tag": "2506_notification_receipt_retention",
+      "version": "7",
+      "wholeSqlBytes": 468,
+      "wholeSqlSha256": "764bd405d99e398e35f2282202f07daf9c5f732cdbd67d19b35862849bfc88cf"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2537,
+      "oldWhen": 1793330002837,
+      "ordinal": 27,
+      "originalGitBlob": "d65bf72a63b40cc689e17af789c828a1a82359d9",
+      "path": "db/migrations/2507_attendance_header_column_grants.sql",
+      "proposedIdx": 3427,
+      "proposedWhen": 1793330003727,
+      "tag": "2507_attendance_header_column_grants",
+      "version": "7",
+      "wholeSqlBytes": 2146,
+      "wholeSqlSha256": "66f567a34ad2fd9cf17f181d7ec15b6b19f435890c0a55e6be219ddb3c28f8aa"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2538,
+      "oldWhen": 1793330002838,
+      "ordinal": 28,
+      "originalGitBlob": "b48400708e12226c8b2fa8733c4b8d2fb02c2db5",
+      "path": "db/migrations/2508_notification_receipt_grants.sql",
+      "proposedIdx": 3428,
+      "proposedWhen": 1793330003728,
+      "tag": "2508_notification_receipt_grants",
+      "version": "7",
+      "wholeSqlBytes": 544,
+      "wholeSqlSha256": "07eeadfb1db236283f2bcb7206e8a8274cfb637a3d1b53ddac75d40879ad6d3b"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2539,
+      "oldWhen": 1793330002839,
+      "ordinal": 29,
+      "originalGitBlob": "0b153c65c843b42ebe47e55d6f4cd8db8e4e0614",
+      "path": "db/migrations/2509_principal_statement_plan_reuse.sql",
+      "proposedIdx": 3429,
+      "proposedWhen": 1793330003729,
+      "tag": "2509_principal_statement_plan_reuse",
+      "version": "7",
+      "wholeSqlBytes": 3099,
+      "wholeSqlSha256": "09135ed32933b61236c2dee1c05e39824155cedf8089364ef970755ca198bb88"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2540,
+      "oldWhen": 1793330002840,
+      "ordinal": 30,
+      "originalGitBlob": "8f1c4752b21459d6ce82298b14a08c37805dc6e0",
+      "path": "db/migrations/2510_capability_statement_plan_reuse.sql",
+      "proposedIdx": 3430,
+      "proposedWhen": 1793330003730,
+      "tag": "2510_capability_statement_plan_reuse",
+      "version": "7",
+      "wholeSqlBytes": 2674,
+      "wholeSqlSha256": "e5689d9c6a71e21176506a0576bd635e7c8d05c63dc76c8c492a41e2e7086f9f"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2541,
+      "oldWhen": 1793330002841,
+      "ordinal": 31,
+      "originalGitBlob": "61083db8f97376aa067f1e1d00e973aeaee6591f",
+      "path": "db/migrations/2701_personnel_typed_overview_filter_fields.sql",
+      "proposedIdx": 3431,
+      "proposedWhen": 1793330003731,
+      "tag": "2701_personnel_typed_overview_filter_fields",
+      "version": "7",
+      "wholeSqlBytes": 8314,
+      "wholeSqlSha256": "87b1b0a0dd532eda1211dddcd5af2a8b14013a66615527cffa3c1be449d0daf8"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2542,
+      "oldWhen": 1793330002842,
+      "ordinal": 32,
+      "originalGitBlob": "a044c7f49eabb439f1672625c35afd936dabd8a7",
+      "path": "db/migrations/2903_notification_receipt_cycle_authority.sql",
+      "proposedIdx": 3432,
+      "proposedWhen": 1793330003732,
+      "tag": "2903_notification_receipt_cycle_authority",
+      "version": "7",
+      "wholeSqlBytes": 3593,
+      "wholeSqlSha256": "82711cacac3c69fc217fb9038ccc6a6000dc41c746e3751d8584499698471e22"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2543,
+      "oldWhen": 1793330002843,
+      "ordinal": 33,
+      "originalGitBlob": "e18adf86fc258b25ef46aaefaca8fbe7f06dd802",
+      "path": "db/migrations/3001_employment_membership_initplan.sql",
+      "proposedIdx": 3433,
+      "proposedWhen": 1793330003733,
+      "tag": "3001_employment_membership_initplan",
+      "version": "7",
+      "wholeSqlBytes": 3538,
+      "wholeSqlSha256": "cd25b675ca404c364d4aef1f436f2e8a89ddeff8d4c63c355cd1fb28dc1507d0"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2544,
+      "oldWhen": 1793330002844,
+      "ordinal": 34,
+      "originalGitBlob": "0143e372b6146aa0f0aeaad292962f04826fb904",
+      "path": "db/migrations/3102_assignment_membership_initplan.sql",
+      "proposedIdx": 3434,
+      "proposedWhen": 1793330003734,
+      "tag": "3102_assignment_membership_initplan",
+      "version": "7",
+      "wholeSqlBytes": 2739,
+      "wholeSqlSha256": "5cb2e363d5fb27d7de67c8317d1d0c59a5545d86dc835e0d4d1c4cfaa126c2d6"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2545,
+      "oldWhen": 1793330002845,
+      "ordinal": 35,
+      "originalGitBlob": "01cf0ce10b0ac062159018e900ccc2604f1da2c1",
+      "path": "db/migrations/3211_access_editor_native_owner_presentation.sql",
+      "proposedIdx": 3435,
+      "proposedWhen": 1793330003735,
+      "tag": "3211_access_editor_native_owner_presentation",
+      "version": "7",
+      "wholeSqlBytes": 9256,
+      "wholeSqlSha256": "9f9691816d1ae1b9bad62675169b3b07353af50e14c3863d247ffb3fbc3a3421"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2800,
+      "oldWhen": 1793330003100,
+      "ordinal": 36,
+      "originalGitBlob": "961c9b17b704702c5f52c83b8eb7d88b1ed80c25",
+      "path": "db/migrations/3500_ai_centre_architecture_compatibility.sql",
+      "proposedIdx": 3436,
+      "proposedWhen": 1793330003736,
+      "tag": "3500_ai_centre_architecture_compatibility",
+      "version": "7",
+      "wholeSqlBytes": 13020,
+      "wholeSqlSha256": "3286f17e76b8d997c46b22019df613b9eef1d1b82c85c125cdb57b80392884ca"
+    },
+    {
+      "breakpoints": true,
+      "oldIdx": 2801,
+      "oldWhen": 1793330003101,
+      "ordinal": 37,
+      "originalGitBlob": "508cf9e5b1f288d76a07329a927acc822c4c13f0",
+      "path": "db/migrations/3501_ai_centre_mandate_write_order.sql",
+      "proposedIdx": 3437,
+      "proposedWhen": 1793330003737,
+      "tag": "3501_ai_centre_mandate_write_order",
+      "version": "7",
+      "wholeSqlBytes": 11230,
+      "wholeSqlSha256": "821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76"
+    }
+  ],
+  "wholeSelectedAlphaPrefix": {
+    "entries": 717,
+    "commit": "e70686353134de3471f08fe7a27e937f14fdcc95",
+    "path": "db/migrations/meta/_journal.json",
+    "wholeRawSerializedEntryObjectsPreserved": true
+  },
+  "allocationAdmission": {
+    "kind": "CORE22_SOURCE_ALLOCATION_ADMISSION_NOT_INSTALLATION",
+    "at": "2026-11-08T22:00:41.642985+00:00",
+    "rootFreshOriginFetch": "Root session63600 EXIT0 reported successful; selectedmain/alpha unchanged",
+    "main": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
+    "alpha": "e70686353134de3471f08fe7a27e937f14fdcc95",
+    "surveySummarySha256": "5738dc06a05545b0fb2653440aa3d7fd232b178baefc4720ef246cf6c5568e55",
+    "allRefsFinalSha256": "339ea50669914ca0ecafd2e1bea42578eea66c8cf33928a5a452af63bfd00207",
+    "stable": true,
+    "priorMaxima": {
+      "idx": 3302,
+      "when": 1793330003602,
+      "tag": 4002
+    },
+    "noProposedTupleCollision": true,
+    "whole717RawSerializedEntryObjectsPreserved": true,
+    "own38WholeSqlPreserved": true,
+    "activeSqlEqualsCanonical755": true,
+    "sqlRenames": false,
+    "archivesWhole2": true,
+    "productionHeld": true,
+    "testsOrSqlExecuted": false
+  },
+  "oldHistorical739": {
+    "journalPath": "test/fixtures/access-editor-original739-journal.json",
+    "journalSourceWhole": true,
+    "historical740AppendWhole": true,
+    "resolverOwner": "test/fixtures/historical-migrations/source-path.ts",
+    "bothActual739Consumers": [
+      "test/access-editor-populated-upgrade.test.ts",
+      "test/fixtures/access-editor-native-owner.ts"
+    ],
+    "closedArchiveTags": [
+      "2301_attendance_workflow_submission_shared_lock",
+      "3103_access_editor_presentation"
+    ],
+    "ordinaryTagRule": "Strict actual whole-input ASCII match plus maximum180; terminal LF/CRLF/Unicode/path negatives retain old callback ownership"
+  },
+  "sourceProtocol": {
+    "commonSources": 22,
+    "databaseOnlySources": 12,
+    "activeCanonicalSql": 755,
+    "archivedFixtureSql": 2,
+    "activeOrphans": 0,
+    "cachedGitIndexObservations": 1,
+    "nativeUnits": 29,
+    "preservedGeneratedProfileCases": 51,
+    "additionalProfileCases": 1,
+    "preservedExistingModelDefinitions": 205,
+    "preservedNativeCallbackDefinitions": 2,
+    "journalIndexAndWhenRule": "Only38 proven-uninstalled architecture positions changed; tags, filenames, whole payloads and relative order retained. No foreign Board3 or payroll selection or rewrite."
+  },
+  "nativeQualificationScope": {
+    "sourceSelectedCourse": "710 original installed payload fixture -> unchanged historical owner constructor -> real nonSUPER M LOGIN alpha7 -> existing37/38 rollback and positive -> exact private cleanup and global N postimage",
+    "preexistingJobPrelude": 755,
+    "nativeRoles": "Three source-defined preexisting NOLOGIN/NOSUPER/NOBYPASS/NOINHERIT native roles; absence refuses",
+    "platformAbsentRoleProvisioningQualified": false,
+    "reservedPoolLifetimes": "SERIAL dev, empty base, template, full w1 / focused w1+w2 metadata, then real M; serial readonly recheck after owned cleanup",
+    "maximumConcurrentPools": 4,
+    "maximumPerPool": 1,
+    "metadataAggregateObjects": 40000,
+    "metadataAggregateBytes": 67108864,
+    "caseDeadlineMilliseconds": 300000,
+    "originalCaseStartAndCancellationBound": true,
+    "closeAndNativeSettlementMilliseconds": 5000,
+    "nativeFunctionBaseline": 15,
+    "nativeOwnedFunctions": 7,
+    "nativeRelations": 10,
+    "nativeRoleTargetedPolicies": 12,
+    "additionalPublicUsingWrappers": 2,
+    "unchangedPublicWriteWithCheck": true,
+    "totalPolicyCensus": "Captured all policies on those10 relations;12 refers only to the exact N-targeted subset. No whole enterprise policy claim.",
+    "sourceRlsExpectedForce": 8,
+    "sourceRlsExpectedNonForce": 2,
+    "sourceOnlyExpectationNotNativeObservation": true,
+    "temporaryGrantCourse": "Scoped old view-owner M EXEC WITH GO -> M grants preparation reader -> independent actual-owner grant -> revoke M EXEC CASCADE -> exact G5 ACL; no permanent M direct/GO/delegated grant",
+    "sourceModels": "Hypothetical full/focused positives plus targeted mutations, never passed to native-changing owner; locally UNRUN",
+    "effectiveSchemaCreate": "Native built-in privilege observations for exactly three N roles: G0 false/G1 true/G5 false, retaining exact direct ACL grantor/option checks; source-only until run",
+    "publicCreateNegative": "Owned private rollback-only M GRANT CREATE PUBLIC; exact effective-predicate refusal, separate rollback sentinel, complete native G0 catalogue/ledger restored before G1; UNRUN",
+    "sourceModelMutationsPerMode": 45
+  },
+  "activeEmployeeRestoration": {
+    "base": "ee5722312689fc88d8a9253c232945e6f2599900",
+    "rows": 11,
+    "recomposedCurrentRows": [
+      ".github/ci/employee-lifecycle-sources.mjs",
+      ".github/ci/employee-lifecycle-sources.test.mjs"
+    ],
+    "otherNineSerializedRowsWhole": true,
+    "wholeOriginalModelBytes": 3512,
+    "wholeOriginalModelSha256": "73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196",
+    "originalMjsWholeTargetSha256": "80db405706af787565e9f827f3688d2c1dfad3cd62b2cd7e393f87297ffa63ec"
+  },
+  "selectedAlphaImportReconciliation": {
+    "employeeActualProductImports": 39,
+    "jitActualProductImports": 20,
+    "rewardsActualProductImports": 45,
+    "rewardsConditionalMigrationPrerequisites": 3,
+    "eachAiUnitDirectTestImportsAndHistoricalInputs": 25,
+    "eachAiUnitConditionalMigrationPrerequisites": 3,
+    "eachAiUnitSelectedComponentPaths": 28,
+    "existingGeneralDeclarations": "common22 and database12 whole; ordinary DB semantics unchanged",
+    "sourceCustodyOnlyNativeAndRuntimeSignificanceUnobserved": true
+  },
+  "reviewHistory": "Original plans and actual native metadata remain immutable private review evidence. Source-plan reviews confer no current implementation CLEAN verdict or runtime PASS. Original failed CI receipts remain historical and are not rebound.",
+  "releaseGates": [
+    "Root and different-peer FULL current code/data review",
+    "Hosted controller/source/native upgrade/type/build gates",
+    "Separately qualified ABSENT native-role platform bootstrap before installed alpha3701",
+    "Later common ABI normal-owner global-template adoption course, separate ownership",
+    "Actual browser preflight and correct zero Busy/crash/blocking-lock worker2/4/8 tests",
+    "Staging release queue/lease and current native/prefix admission"
+  ],
+  "repositoryImportsOrTestsExecutedLocally": false,
+  "nativeSqlExecutedByThisImplementationTask": false,
+  "sourceOnly": true,
+  "runtimeQualified": false,
+  "typecheckQualified": false,
+  "browserOrLoadQualified": false,
+  "stagingDeployed": false,
+  "productionHeld": true,
+  "selfReferenceRule": "This record excludes its own hash. Its current source pins include the existing acyclic binding overlay; no executable consumer reads this record, and that overlay names only this path.",
+  "full23SourceRepair": {
+    "kind": "SOURCE_REPAIR_AFTER_DIFFERENT_AUTHOR_FULL23_REVIEW_NOT_RUNTIME_QUALIFICATION",
+    "reviewSourceProofSha256": "7de5418adfba1bafd16a0900169e3173b5f0ac474460ec9b133fcb9921224c4d",
+    "independentReviewSha256": "3e6bd2b638968db423006bc52b49c334243276ab7d35876969cb6bcdac6f0ce1",
+    "runtimeSourceParents": [
+      {
+        "path": "test/helpers/ai-centre-compatibility-owner-constructor.ts",
+        "bytes": 114707,
+        "sha256": "8b534adc7b792b8ce23606b7a22050c0658d2830f27edd7f1fb883a7a8b95bfa"
+      },
+      {
+        "path": "test/ai-centre-architecture-compatibility-upgrade.test.ts",
+        "bytes": 30098,
+        "sha256": "d4de0b9be1cdb048d5c7dd67ad9a915c496b33b06e0e172c59f1415686e0467d"
+      }
+    ],
+    "wholeParentSourceAvailable": "Frozen source-only review record; no earlier review or execution result transfers",
+    "rollbackOracle": "Complete actual G1 catalogue after authorized schema CREATE and view EXEC GO; only deliberate corruption patched",
+    "effectiveCreate": "Fixed actual has_schema_privilege observations for three exact N roles at G0 false/G1 true/G5 false, in addition to existing direct grantor/option checks",
+    "publicCreateControl": "Same owned private schema, actual M grant to PUBLIC inside one rollback-only transaction; exact predicate-refusal and separate rollback identities; whole G0 catalogue and ledger restoration before G1",
+    "sourceModelMutationsPerMode": 45,
+    "sourceModelModes": [
+      "full",
+      "focused"
+    ],
+    "sourceModelMeaning": "Hypothetical only, never native authority; locally UNRUN",
+    "unchangedFrontiers": {
+      "caseMilliseconds": 300000,
+      "metadataObjects": 40000,
+      "metadataBytes": 67108864,
+      "maximumConnections": 4,
+      "perPoolMaximum": 1,
+      "closeAndNativeSettlementMilliseconds": 5000
+    },
+    "runtimeAndBudgetFit": "UNKNOWN_UNRUN",
+    "broaderPublicTableColumnPolicyAndCommonAbi": "OPEN",
+    "stagingQualified": false,
+    "productionHeld": true
+  }
+}

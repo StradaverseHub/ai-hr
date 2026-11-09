@@ -1,4 +1,82 @@
+# System Labels company scope — 8 November 2026 (unapplied reservation)
+
+Branch codex/board1-system-labels-plan-20261108 reserves 3400_system_label_company_scope, idx2700 / when1793330003000. A fresh scan of 495 distinct committed journals and readable registered worktree journals found maximum idx2603 / when1793330002903 through3303. A read-only live survey matched 709 applied entries with watermark1793330002801, below this reservation. Preserve the full current main/alpha prefix and the then-installed prefix. Recheck live ledger and peer claims before admission; this is source allocation only.
+
 # Coordinated migration reservations
+
+## Architecture38 after selected alpha717 — 9 November 2026 (owned uninstalled reallocation)
+
+This amendment supersedes ONLY the38 owned, independently proven uninstalled
+architecture reservation tuples listed below. Preserve their tags, filenames,
+whole SQL bytes and dependency order. The complete selected alpha
+e70686353134de3471f08fe7a27e937f14fdcc95 717-entry prefix remains whole;
+append this38-entry suffix at idx3400–3437 / when1793330003700–1793330003737.
+The canonical result has755 rows and755 active SQL files. The superseded2301
+and3103 payloads remain whole historical fixture inputs outside the active
+migration directory; they are not extra canonical migrations.
+
+Root's fresh successful origin fetch retained main00a27edbe and alphae7068635.
+The subsequent stable source-only namespace survey captured6683refs,
+1117registered worktrees,3626root trees,724migration trees,507committed journal
+blobs and345allocation document blobs. Prior maxima were tag4002,idx3302 and
+when1793330003602. Malformed/foreign WIP and all readable literal claims were
+preserved and included; no foreign reservation is rewritten or cancelled here.
+Actual read-only staging evidence records the whole710 ordered-id ledger through
+1793330003000, the two retained0180/0212 applied-hash identities and absence of
+all38 owned SQL hashes. This source amendment does not refresh that installation
+claim or grant an installation lease. Recheck actual full prefix/roles/reservations
+and native compatibility at release admission; production remains held.
+
+Foreign payroll3900 and Board34000–4002 are NOT selected. If this higher timestamp
+suffix is installed first, their owners must reallocate/rebase any still-pending
+lower-watermark release under their own authority. If a foreign release lands
+first, refreeze the actual ledger/source and re-evaluate our native preimages
+before admission. No automatic queue priority or deployment is granted.
+The later common read-only append is unallocated and excluded from this755.
+
+| Owned tag | Superseded idx / when | Current idx / when |
+| --- | --- | --- |
+| 2103_system_performance_read_guards | 2510 / 1793330002810 | 3400 / 1793330003700 |
+| 2104_contract_navigation_role_guards | 2511 / 1793330002811 | 3401 / 1793330003701 |
+| 2105_authorization_navigation_plans | 2512 / 1793330002812 | 3402 / 1793330003702 |
+| 2124_ai_control_navigation_candidates | 2513 / 1793330002813 | 3403 / 1793330003703 |
+| 2125_approval_subject_batch | 2514 / 1793330002814 | 3404 / 1793330003704 |
+| 2129_personnel_native_paging | 2515 / 1793330002815 | 3405 / 1793330003705 |
+| 2131_ai_read_only_metadata_locks | 2516 / 1793330002816 | 3406 / 1793330003706 |
+| 2132_ai_metadata_claim_preview_index | 2517 / 1793330002817 | 3407 / 1793330003707 |
+| 2133_ai_action_read_only_lock | 2518 / 1793330002818 | 3408 / 1793330003708 |
+| 2134_claim_visibility_set_membership | 2519 / 1793330002819 | 3409 / 1793330003709 |
+| 2135_profile_presentation_read_lock | 2520 / 1793330002820 | 3410 / 1793330003710 |
+| 2136_grant_admin_role_precheck | 2521 / 1793330002821 | 3411 / 1793330003711 |
+| 2137_home_peer_cohort_batch | 2522 / 1793330002822 | 3412 / 1793330003712 |
+| 2138_ai_pause_company_discovery | 2523 / 1793330002823 | 3413 / 1793330003713 |
+| 2139_workforce_bounded_read_plan | 2524 / 1793330002824 | 3414 / 1793330003714 |
+| 2252_probation_navigation_capability_probe | 2525 / 1793330002825 | 3415 / 1793330003715 |
+| 2141_approval_nonadmin_visibility_batch | 2526 / 1793330002826 | 3416 / 1793330003716 |
+| 2212_payroll_audit_claim_lookup_indexes | 2527 / 1793330002827 | 3417 / 1793330003717 |
+| 3210_attendance_shared_workflow_submission_lock | 2528 / 1793330002828 | 3418 / 1793330003718 |
+| 2302_company_ancestry_early_exit | 2529 / 1793330002829 | 3419 / 1793330003719 |
+| 2303_admin_grant_direct_scan | 2530 / 1793330002830 | 3420 / 1793330003720 |
+| 2304_payroll_grant_direct_scan | 2531 / 1793330002831 | 3421 / 1793330003721 |
+| 2403_personnel_bounded_overview | 2532 / 1793330002832 | 3422 / 1793330003722 |
+| 2503_attendance_pending_visible_headers | 2533 / 1793330002833 | 3423 / 1793330003723 |
+| 2504_notification_event_processing | 2534 / 1793330002834 | 3424 / 1793330003724 |
+| 2505_workforce_picker_facts | 2535 / 1793330002835 | 3425 / 1793330003725 |
+| 2506_notification_receipt_retention | 2536 / 1793330002836 | 3426 / 1793330003726 |
+| 2507_attendance_header_column_grants | 2537 / 1793330002837 | 3427 / 1793330003727 |
+| 2508_notification_receipt_grants | 2538 / 1793330002838 | 3428 / 1793330003728 |
+| 2509_principal_statement_plan_reuse | 2539 / 1793330002839 | 3429 / 1793330003729 |
+| 2510_capability_statement_plan_reuse | 2540 / 1793330002840 | 3430 / 1793330003730 |
+| 2701_personnel_typed_overview_filter_fields | 2541 / 1793330002841 | 3431 / 1793330003731 |
+| 2903_notification_receipt_cycle_authority | 2542 / 1793330002842 | 3432 / 1793330003732 |
+| 3001_employment_membership_initplan | 2543 / 1793330002843 | 3433 / 1793330003733 |
+| 3102_assignment_membership_initplan | 2544 / 1793330002844 | 3434 / 1793330003734 |
+| 3211_access_editor_native_owner_presentation | 2545 / 1793330002845 | 3435 / 1793330003735 |
+| 3500_ai_centre_architecture_compatibility | 2800 / 1793330003100 | 3436 / 1793330003736 |
+| 3501_ai_centre_mandate_write_order | 2801 / 1793330003101 | 3437 / 1793330003737 |
+
+All earlier sections below remain historical reservation records. Only these38
+owned uninstalled tuples are superseded by this amendment.
 
 ## Architecture / AI Centre compatibility — 8 November 2026 (reserved, uninstalled)
 
@@ -21,6 +99,58 @@ historical source/ledger hash exceptions remain unchanged; this is not a new
 identity waiver. Recheck actual refs, competing WIP and the target ledger before
 admission. Source reservation grants no installation or deployment authority.
 Production remains held.
+
+## Six board items after System Labels — 9 November 2026 (unapplied reallocation)
+
+The qualified, published System Labels source4ae7953eb owns incoming release
+lease67 and migration3400 (idx2700 / when1793330003000). Preserve its710-row
+source prefix; actual installed arrival and complete ordered hashes still require
+independent confirmation before admission. No incoming acceptance is inferred here.
+
+This coordinator moves only its seven still-unapplied migrations3300–3303 and
+3600–3602 to3700–3706, idx3000–3006 / when1793330003300–1793330003306, preserving
+their dependency order and every SQL payload byte. This supersedes those earlier
+source reservations below. The717-row candidate retains the incoming prefix;
+no applied file, journal row, hash or pending foreign reservation is rewritten.
+A refreshed read-only survey found1057 distinct journals and781 readable worktree
+journals, with maxima3602/2902/1793330003202, all owned here; peer3500/3501 remain
+reserved to their owner and are not silently included. Refresh peers, refs and the
+actual live ledger before release. This reservation grants no lease or deployment.
+
+
+## Attendance Formula overtime binding — 8 November 2026 (unapplied)
+
+Reserve3602_attendance_formula_overtime_binding, idx2902 / when1793330003202.
+A fresh full origin fetch and survey found1056 journal blobs and809 readable
+worktrees, with maxima3601/2901/1793330003201, all owned by this coordinator.
+The new evidence remains below the existing overtime parent and settlement.
+No current assignment/version UUID is substituted. Refresh the live ledger and
+peer claims at release admission; this reservation grants no staging lease.
+
+
+## Attendance Formula calculation evidence — 8 November 2026 (unapplied)
+
+The board coordinator reserves3600_attendance_formula_results at idx2900 /
+when1793330003200, plus3601_attendance_formula_payroll_source at idx2901 /
+when1793330003201. Both extend the existing Attendance/Payroll owners. Fresh main/alpha82859db9a preserve the709-row installed prefix.
+A read-only survey found1054 distinct journals,805 readable worktrees and
+maxima3501 / idx2801 / when1793330003101. An independent live comparison
+matched all709 ordered hashes through1793330002801. This is a reservation
+only; refresh peer claims and live ledger at release admission.
+
+
+## Attendance Formula Builder — 8 November 2026 (unapplied source reservation)
+
+Branch `codex/board-staging-integration-20261108` reserves
+`3303_attendance_formula_versions`, idx2603 / when1793330002903, after its existing
+3300–3302 reservations. A refreshed read-only survey found1049 distinct journal blobs,
+725 readable worktree journals and maxima3302 / idx2602 / when1793330002902.
+Freshly fetched main and alpha remain29d9edcbc; the integrated incoming9dd3847b4
+prefix is preserved. An independent read-only staging ledger comparison matched all709
+ordered rows against9dd3847b4, through1793330002801. The foreign release lease remains
+owned by its controller; this reservation neither installs SQL nor authorizes deployment.
+Recheck peers, refs and the complete live ledger at admission. These new tables hold
+formula configuration and testing/audit evidence, not another payroll or OT settlement ledger.
 
 ## AI centre after accepted PR233 — 8 November 2026 (unapplied reallocation)
 
@@ -2529,3 +2659,26 @@ The non-superuser owner regression and hosted requalification remain required.
 Unapplied peer `3102`/`3103` drafts must reallocate above the actually installed
 prefix when integrating; no lower timestamp may be silently skipped. This is a
 source reservation, not evidence that the repair is applied or accepted.
+
+## Six approved board items — 8 November 2026 (unapplied)
+
+Branch codex/board-open-items-20261108 reserves 3300_pay_item_company_applicability
+at idx2600 / when1793330002900. Fresh origin main/alpha remain 29d9edcbc.
+A full origin fetch and read-only survey of 1043 distinct historical journal blobs
+and 671 readable registered worktrees found highest competing file3211,
+idx2545 and when1793330002845. Read-only staging had 706 applied migrations
+through1793330002701. The canonical journal prefix and applied SQL bytes remain
+unchanged. Refresh the exact ordered target ledger and peer reservations before
+integration or release; this reservation grants no installation priority.
+
+The same approved-item coordinator reserves 3301_rewards_unit_preparation at
+idx2601 / when1793330002901, immediately after its owned 3300. Preparation
+extends the existing governance history. Existing reviews retain explicitly
+legacy visibility; no doer/checker history is manufactured. New annual review
+creation requires the preparation release. No live migration has been applied.
+
+The same coordinator reserves 3302_maybank_payment_arrangement at idx2602 /
+when1793330002902. A fresh full fetch and survey of 1046 journals and 686
+readable registered worktrees found no higher competing reservation than its
+owned 3301/2601/1793330002901. This adds explicit Maybank arrangement metadata
+and a separate, nullable payee banking-residency fact; no tax residency is copied.
