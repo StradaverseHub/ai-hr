@@ -110,7 +110,7 @@ it('keeps Plans dropdown labels and durable audit events while withholding matri
  const input={libraryId:null,versionId:null,expectedLock:0,name:'A fictional branch matrix',year:f.year,tags:[],groupDefault:false,previousLibraryId:null,
   data:{...legacyBonus.data,type:'branch',segments:[{name:'Fictional branch',factors:[0,10000,10000,10000,10000]}]},reason:'Fictional selector branch fixture'};
  const branchId=await saveRewardLibrary(f.ctx,input);
- await submitRewardLibrary(f.ctx,branchId,1);await confirmRewardLibrary(checker,branchId);
+ await submitRewardLibrary(f.ctx,branchId,1);await confirmRewardLibrary(checker,branchId,2);
  const draftId=await saveRewardLibrary(f.ctx,{...input,name:'Unconfirmed fictional matrix'});
  const libraries=await rewardLibraries(f.ctx,undefined,f.year),pats=await rewardPatInputs(f.ctx,f.year);
  expect(pats[0]?.current?.inputs).toBeDefined();
