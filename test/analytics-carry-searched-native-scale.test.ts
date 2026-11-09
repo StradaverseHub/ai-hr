@@ -16,6 +16,7 @@ import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture
 
 const POPULATION=50_000, FIXTURE_BATCH=5_000, FETCH_SIZE=4_096;
 const CASE_MS=300_000, CELL_MS=120_000, STATEMENT_MS=20_000, SETTLEMENT_MS=10_000;
+const RESERVED_READ_MS=120_000;
 const PLAN_BYTES=1_048_576, PLAN_NODES=256, PLAN_DEPTH=64, RECEIPT_BYTES=65_536;
 const RECEIPT='analytics-carry-searched-native-50k.json';
 const EXPLAIN_PREFIX='explain(analyze,buffers,verbose,settings,timing off,format json) ';
@@ -70,23 +71,26 @@ class ReadLane {
  constructor(private readonly end:number,private readonly signal:AbortSignal,private readonly onFailure:(error:unknown)=>void) {}
 
  async run<T>(start:()=>PromiseLike<T>):Promise<T> {
-  requireRoom(this.end,STATEMENT_MS,this.signal);
-  if(this.stopped)throw new Error('Searched Carry native admission closed');
-  if(this.active)throw new Error('Concurrent searched Carry statements refused');
-  const query=start();
-  // Invoke the actual builder/driver then method in this admission turn.
-  const pending=new Promise<T>((resolve,reject)=>{void query.then(resolve,reject);});
-  this.active=pending;
+  let pending:Promise<T>|undefined;
   try {
+   requireRoom(this.end,STATEMENT_MS,this.signal);
+   if(this.stopped)throw new Error('Searched Carry native admission closed');
+   if(this.active)throw new Error('Concurrent searched Carry statements refused');
+   const query=start();
+   // Invoke the actual builder/driver then method in this admission turn.
+   pending=new Promise<T>((resolve,reject)=>{void query.then(resolve,reject);});
+   this.active=pending;
    const value=await pending;
    requireRoom(this.end,0,this.signal);
    return value;
   } catch(error) {
+   // Preserve the first admission or driver error before a principal read can
+   // turn it into the common calling-authority refusal.
    this.stop();
    this.onFailure(error);
    throw error;
   } finally {
-   this.active=undefined;
+   if(pending&&this.active===pending)this.active=undefined;
   }
  }
 
@@ -394,6 +398,8 @@ function summarizePlan(raw:unknown) {
  if(!Array.isArray(raw)||raw.length!==1||!record(raw[0])||!record(raw[0].Plan)) {
   throw new Error('Searched Carry analyzed plan envelope refused');
  }
+ // PostgreSQL's client has already decoded the result. This is a receipt
+ // acceptance bound on the reserialized plan.
  const encoded=JSON.stringify(raw),bytes=Buffer.byteLength(encoded);
  if(bytes>PLAN_BYTES)throw new Error('Searched Carry analyzed plan byte bound exceeded');
  const document=raw[0],root=document.Plan as PlanRecord,entries:PlanEntry[]=[];
@@ -465,6 +471,7 @@ afterAll(async()=>{
 
 it('qualifies the actual searched Carry cursor and first page over 50,000 employments',async ({signal})=>{
  const started=performance.now(),caseEnd=started+CASE_MS,workEnd=caseEnd-SETTLEMENT_MS;
+ const fixtureEnd=workEnd-RESERVED_READ_MS;
  const report:Receipt={kind:'SEARCHED_CARRY_50000_NATIVE_COMPONENT',status:'INCOMPLETE',fixture:{},cells:[],
   observedBackends:0,settlement:'UNOBSERVED'};
  const identities:Identity[]=[];
@@ -482,7 +489,6 @@ it('qualifies the actual searched Carry cursor and first page over 50,000 employ
    report.failure=fact;
   }
  };
- const cellEnd=()=>Math.min(workEnd,performance.now()+CELL_MS);
  const store=()=>{
   const payload=JSON.stringify(report);
   if(Buffer.byteLength(payload)>RECEIPT_BYTES)throw new Error('Searched Carry receipt byte bound exceeded');
@@ -584,17 +590,25 @@ it('qualifies the actual searched Carry cursor and first page over 50,000 employ
  async function runCourse() {
   safeToClose=false;
   try {
-   const fixtureStarted=performance.now(),fixtureEnd=cellEnd();
-   requireRoom(fixtureEnd,STATEMENT_MS,signal);
+   // The existing fixture exposes preparation boundaries rather than the
+   // measured lane's per-statement timeout. Keep its cutoff separate so the
+   // oracle, ordinary cells and replay still own a fixed read reserve.
+   const checkFixture=()=>requireRoom(fixtureEnd,0,signal);
+   report.fixture.setupBudgetMs=fixtureEnd-started;
+   const fixtureStarted=performance.now();
+   checkFixture();
    uncertain=true;
-   const fixture=await seedPersonnelNativeFixture(POPULATION,report.fixture,
-    ()=>requireRoom(fixtureEnd,STATEMENT_MS,signal),()=>requireRoom(fixtureEnd,STATEMENT_MS,signal));
+   const fixture=await seedPersonnelNativeFixture(POPULATION,report.fixture,checkFixture,checkFixture).finally(()=>{
+    report.fixture.elapsedMs=performance.now()-fixtureStarted;
+   });
    uncertain=false;
-   report.fixture.elapsedMs=performance.now()-fixtureStarted;
-   requireRoom(fixtureEnd,0,signal);
+   checkFixture();
+   const readEnd=Math.min(workEnd,performance.now()+RESERVED_READ_MS);
+   const cellEnd=()=>Math.min(readEnd,performance.now()+CELL_MS);
 
    phase='oracle';
    const oracleEnd=cellEnd(),oracleLane=new ReadLane(oracleEnd,signal,remember);
+   requireRoom(oracleEnd,STATEMENT_MS,signal);
    const {prefixes,db}=await inOwner(oracleLane,async tx=>{
     await oracleLane.run(()=>tx.execute(sql`set local statement_timeout='20s'`));
     await oracleLane.run(()=>tx.execute(sql`set local lock_timeout='300ms'`));

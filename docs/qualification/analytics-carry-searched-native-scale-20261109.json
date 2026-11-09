@@ -12,8 +12,8 @@
   "selector": "test/analytics-carry-searched-native-scale.test.ts",
   "testLeaf": {
     "path": "test/analytics-carry-searched-native-scale.test.ts",
-    "bytes": 36223,
-    "sha256": "06d7b3b90f032f3e51ce1b3e7cab76c23c7f1ec7e3f6ad62dd156cfe4b26e468",
+    "bytes": 36960,
+    "sha256": "94f1edec3bf28eea9f05b4d1ab6805f4d3f989fcc46f4f40c3d86ed17628b5a6",
     "caseCount": 1,
     "databaseClassification": "SOURCE_EXPECTED_DB"
   },
@@ -218,17 +218,75 @@
     "nativeLockMs": 300,
     "caseSettlementReserveMs": 10000,
     "ownerIdleProbeStatementMs": 1000,
-    "rawPlanBytes": 1048576,
     "planNodes": 256,
     "planDepth": 64,
     "sanitizedArtifactBytes": 65536,
-    "focusedJobMinutes": 20
+    "focusedJobMinutes": 20,
+    "decodedReserializedPlanBytes": 1048576,
+    "inheritedFixtureSetupMs": 170000,
+    "maximumActiveReadWindowMs": 120000
   },
   "claimLimits": [
     "Ordinary wall and FETCH timings include the observer. Sort, spill and executor detail apply to the separate analyzed replay.",
     "Existing fixture setup and driver bootstrap retain inherited custody. The leaf checks seed boundaries and enforces native caps on entered measured statements.",
+    "The separate 170-second fixture setup cutoff allows a maximum 120-second measured read window from fixture readiness and preserves 10 seconds of settlement within the 300-second case. The global active cutoff is 290 seconds. The searched fixture fit remains unverified.",
     "The sibling 50k qualification failed inside the shared unchanged seed before measurements. This leaf retains that fixture dependency.",
+    "The decoded plan and its serialization exist before the byte check. The limit gates acceptance and receipt output.",
     "Incremental Sort plans refuse because this receipt does not adjudicate their group-level telemetry.",
     "No historical artifact supplies a 50000 searched baseline. Browser, compiler, staging and release require separate evidence."
-  ]
+  ],
+  "admissionCorrection": {
+    "directParent": "9bb44a86f13203e81453fa69b44d023b020c0f4f",
+    "independentSourceReview": {
+      "bytes": 5423,
+      "sha256": "8896527d7270e6a42b2864715c4393812fbcd1eb84585cd540d26fa62a6ca8e4"
+    },
+    "wholeDirectParentPreimages": {
+      "test/analytics-carry-searched-native-scale.test.ts": {
+        "gitBlob": "5a6ee4d1f6673987b8996d6067cce4dd516de283",
+        "bytes": 36223,
+        "sha256": "06d7b3b90f032f3e51ce1b3e7cab76c23c7f1ec7e3f6ad62dd156cfe4b26e468"
+      },
+      "docs/qualification/analytics-carry-searched-native-scale-20261109.json": {
+        "gitBlob": "7d414224f6f079de9206ce23460aecfcc62fe6ae",
+        "bytes": 7761,
+        "sha256": "007743eeb269be3306aab9c460dc21e6a03dd0edc8836588a7d55046686ba13a"
+      }
+    },
+    "scope": [
+      "Retain the first native admission or driver failure before the public principal check can translate it.",
+      "Retain the active owner promise on refused overlapping admission.",
+      "Admit the first measured owner-oracle statement before opening its transaction.",
+      "Allocate inherited fixture setup separately from measured reads within the original overall case.",
+      "Classify the plan byte limit as an acceptance/export bound on decoded native data."
+    ],
+    "separateFixtureQualification": {
+      "source": "e2275e1f60bdfa5a3ebbfaebab820fc93a6e285d",
+      "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "run": 42561295761,
+      "attempt": 1,
+      "artifact": {
+        "id": 13649513439,
+        "bytes": 29369,
+        "sha256": "81eb477e8d3b0b80491b1ed7868a07d6cffcc145cfb88826c0dff669379b7a56",
+        "members": {
+          "focused.json": {
+            "bytes": 10267,
+            "sha256": "d6f2916685a592a9f0118e066de0d95a506db8986e43062bdf555f16561e6e63"
+          },
+          "db.vitest.json": {
+            "bytes": 963,
+            "sha256": "16bdfc464d5df08027344ae248bc8d96dedebf1a61496e739afa8b6777930c2e"
+          },
+          "employee-choice-unicode-50k.json": {
+            "bytes": 76805,
+            "sha256": "e1b690f4c0292199f0fae58c830dfacd718925aa805e52225cdda31f840614e9"
+          }
+        }
+      },
+      "caseWallMsUpperBoundForFixture": 156456.978038,
+      "separateFixtureTimingObserved": false,
+      "use": "Setup budget corroboration on a different exact source and profile. Fixture bytes remain unchanged in the present correction."
+    }
+  }
 }
