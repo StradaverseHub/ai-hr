@@ -25,9 +25,10 @@
 import {withTenant,type SessionContext} from '@/db/client';
 import {EntitlementsResolutionFailedError,isModuleEnabled} from '@/core/entitlements';
 import {listPendingTasks,pendingTaskSummary,type PendingTaskItem} from '@/core/approvals-inbox';
-import {listOwnLeaveReviewsTx,reopenOwnLeaveReviewTx} from '@/core/assistant-actions/own-leave-store';
+import {reopenOwnLeaveReviewTx} from '@/core/assistant-actions/own-leave-store';
 import {leaveCancellationReviews} from '@/core/assistant-actions/leave-change-review-store';
-import {listLeaveDecisionReviews,reopenLeaveDecisionReview} from '@/core/assistant-actions/leave-decision-review-store';
+import {reopenLeaveDecisionReview} from '@/core/assistant-actions/leave-decision-review-store';
+import {readHomeOwnLeaveReviewIndex,readHomeLeaveCancellationReviewIndex,readHomeLeaveDecisionReviewIndex} from '@/core/home-leave-review-presentation';
 import {OwnLeavePreparedReview} from '@/lib/assistant-actions/own-leave-contract';
 import {LeaveCancellationPreparedReview} from '@/lib/assistant-actions/own-leave-change-contract';
 import {LeaveDecisionPreparedReview} from '@/lib/assistant-actions/leave-decision-review-contract';
@@ -138,9 +139,9 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
   // Home only renders five decisions. Keep its exact count without transporting every Claim.
   // The existing explicit All view retains its complete-queue contract.
   settle(()=>p.all?listPendingTasks(s,[...p.scopeIds],inboxModules(modules)).then(items=>({items,total:items.length})):pendingTaskSummary(s,[...p.scopeIds],inboxModules(modules))),
-  leave?settle(()=>withTenant(s,tx=>listOwnLeaveReviewsTx(tx,s))):null,
-  leave?settle(()=>leaveCancellationReviews.list(s)):null,
-  leave?settle(()=>listLeaveDecisionReviews(s)):null,
+  leave?settle(()=>readHomeOwnLeaveReviewIndex(s)):null,
+  leave?settle(()=>readHomeLeaveCancellationReviewIndex(s)):null,
+  leave?settle(()=>readHomeLeaveDecisionReviewIndex(s)):null,
   admin&&payroll?settle(()=>proposeActions(s)):null,
   admin?settle(()=>recordReadiness(s,{peopleLimit:0})):null,
   admin?settle(()=>latestDailyDigest(s)):null,

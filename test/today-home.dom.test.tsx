@@ -56,9 +56,14 @@ vi.mock('@/core/approvals-inbox',()=>{
 });
 // The owners' own reopen of the caller's review, as the review page reads it; a missing fixture is the owner refusing.
 const reopen=async(id:string)=>{S.reopenCalls.push(id);if(!(id in S.reopened))throw Error('Fixture review unavailable');return S.reopened[id];};
-vi.mock('@/core/assistant-actions/own-leave-store',()=>({listOwnLeaveReviewsTx:async()=>({kind:'review_index',reviews:S.ownLeave}),reopenOwnLeaveReviewTx:async(_tx:unknown,_s:unknown,id:string)=>reopen(id)}));
-vi.mock('@/core/assistant-actions/leave-change-review-store',()=>({leaveCancellationReviews:{list:async()=>({kind:'leave_cancellation_review_index',reviews:S.cancellations}),reopen:async(_s:unknown,id:string)=>reopen(id)}}));
-vi.mock('@/core/assistant-actions/leave-decision-review-store',()=>({listLeaveDecisionReviews:async()=>({kind:'leave_decision_review_index',reviews:S.decisions}),reopenLeaveDecisionReview:async(_s:unknown,id:string)=>reopen(id)}));
+vi.mock('@/core/home-leave-review-presentation',()=>({
+ readHomeOwnLeaveReviewIndex:async()=>({kind:'review_index',reviews:S.ownLeave}),
+ readHomeLeaveCancellationReviewIndex:async()=>({kind:'leave_cancellation_review_index',reviews:S.cancellations}),
+ readHomeLeaveDecisionReviewIndex:async()=>({kind:'leave_decision_review_index',reviews:S.decisions}),
+}));
+vi.mock('@/core/assistant-actions/own-leave-store',()=>({reopenOwnLeaveReviewTx:async(_tx:unknown,_s:unknown,id:string)=>reopen(id)}));
+vi.mock('@/core/assistant-actions/leave-change-review-store',()=>({leaveCancellationReviews:{reopen:async(_s:unknown,id:string)=>reopen(id)}}));
+vi.mock('@/core/assistant-actions/leave-decision-review-store',()=>({reopenLeaveDecisionReview:async(_s:unknown,id:string)=>reopen(id)}));
 vi.mock('@/core/agent-actions',()=>({proposeActions:async()=>{S.calls.proposals++;return S.proposals;}}));
 vi.mock('@/core/record-readiness',()=>({recordReadiness:async()=>{S.calls.readiness++;return S.readiness;}}));
 // The digest owner's own pages (core/digest/daily-digest.ts DIGEST_PAGES; test/ai-centre-restructure.test.ts pins the setup page).
