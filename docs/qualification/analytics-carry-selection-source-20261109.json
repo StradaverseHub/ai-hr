@@ -781,5 +781,82 @@
     },
     "hostedNativeStatus": "UNOBSERVED",
     "performanceQualified": false
+  },
+  "carryMaterializedMatchingPerson": {
+    "directParent": "81f2d0494161009463477913806c4b24b202a544",
+    "historical81f2": {
+      "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "runId": 42553922012,
+      "attempt": 1,
+      "terminalJobs": 7,
+      "passed": 14,
+      "failed": 1,
+      "observedEstimateCell": [
+        0,
+        0
+      ],
+      "estimateNativeMs": 2.273365,
+      "estimateNativeOps": 1,
+      "originalDeclareAdmitted": false,
+      "firstFetchObserved": false,
+      "retainedEvidence": [
+        {
+          "member": "terminal-retention.json",
+          "bytes": 3898,
+          "sha256": "38dc52bdf82abac5cdb0cc35c3a6f263d45a8ee716ba5235e08983a3ead50463"
+        },
+        {
+          "member": "focused.json",
+          "bytes": 11232,
+          "sha256": "95458c6602e06195eecec78a2fd60da9d70d34e8db20e5266000993df8a1be3a"
+        },
+        {
+          "member": "db.vitest.json",
+          "bytes": 6565,
+          "sha256": "a04cbd89004154819a939fba8f605eac7b8f5c0f07dc22188dad4e4f75c37f13"
+        },
+        {
+          "member": "analytics-carry-boundaries.json",
+          "bytes": 4356,
+          "sha256": "240f4b0923068cb8f9eab98c48452d48e238e4a979d2e314cd02615154dd5333"
+        },
+        {
+          "member": "analytics-carry-first-fetch-estimate-private.json",
+          "bytes": 10508,
+          "sha256": "bed1d71ca51f04d13c8464b2aff0615b8eb1306cb84b527cbfb959ded6096752"
+        }
+      ]
+    },
+    "caseCensus": {
+      "registered": 15,
+      "wholeBodies": 12,
+      "caseTimingArgumentsWhole": true,
+      "affectedCases": [
+        "keeps native tenant/company RLS, selected identities outside page and current calling authority",
+        "preserves stable same-native-stream carry pages across fixed4096 fetch boundaries",
+        "keeps carry identity order and enrichment with absent, current and department-filtered assignments"
+      ],
+      "b1Phases": 7,
+      "b1Pages": 11,
+      "b1Fetches": 17,
+      "b1Rows": 30212,
+      "b1Events": 125,
+      "b1ActualStatuses": "UNOBSERVED"
+    },
+    "hostedNativeStatus": "UNOBSERVED",
+    "performanceQualified": false,
+    "releaseEligible": false,
+    "wholeParentIndex": {
+      "gitRef": "81f2d0494161009463477913806c4b24b202a544:docs/qualification/analytics-carry-selection-source-20261109.json",
+      "gitBlob": "5055e62a2c74b55a868e6fae70b8b2adc96d2669",
+      "bytes": 30118,
+      "sha256": "5324c1633624bb7db46fc752bea2e35b5e35e3cbba46b41b08ae959a8a713f0f"
+    },
+    "recordSection": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json#carryMaterializedMatchingPerson",
+    "recordPin": {
+      "gitBlob": "6b95cffaafb8cdcafcb0e12752b337a37322d8b6",
+      "bytes": 110544,
+      "sha256": "a2e61c9d305da67ac828eb3dc5862384a38660bade6afb57276adfefca35aa12"
+    }
   }
 }

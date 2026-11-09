@@ -1798,5 +1798,606 @@
     "hostedNativeStatus": "UNOBSERVED",
     "performanceQualified": false,
     "releaseEligible": false
+  },
+  "carryMaterializedMatchingPerson": {
+    "kind": "SOURCE_ONLY_SEARCHED_CARRY_MATERIALIZED_MATCHING_PERSON",
+    "directParent": "81f2d0494161009463477913806c4b24b202a544",
+    "historical81f2": {
+      "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "runId": 42553922012,
+      "attempt": 1,
+      "terminalJobs": 7,
+      "passed": 14,
+      "failed": 1,
+      "observedEstimateCell": [
+        0,
+        0
+      ],
+      "estimateNativeMs": 2.273365,
+      "estimateNativeOps": 1,
+      "originalDeclareAdmitted": false,
+      "firstFetchObserved": false,
+      "retainedEvidence": [
+        {
+          "member": "terminal-retention.json",
+          "bytes": 3898,
+          "sha256": "38dc52bdf82abac5cdb0cc35c3a6f263d45a8ee716ba5235e08983a3ead50463"
+        },
+        {
+          "member": "focused.json",
+          "bytes": 11232,
+          "sha256": "95458c6602e06195eecec78a2fd60da9d70d34e8db20e5266000993df8a1be3a"
+        },
+        {
+          "member": "db.vitest.json",
+          "bytes": 6565,
+          "sha256": "a04cbd89004154819a939fba8f605eac7b8f5c0f07dc22188dad4e4f75c37f13"
+        },
+        {
+          "member": "analytics-carry-boundaries.json",
+          "bytes": 4356,
+          "sha256": "240f4b0923068cb8f9eab98c48452d48e238e4a979d2e314cd02615154dd5333"
+        },
+        {
+          "member": "analytics-carry-first-fetch-estimate-private.json",
+          "bytes": 10508,
+          "sha256": "bed1d71ca51f04d13c8464b2aff0615b8eb1306cb84b527cbfb959ded6096752"
+        }
+      ]
+    },
+    "caseCensus": {
+      "registered": 15,
+      "wholeBodies": 12,
+      "caseTimingArgumentsWhole": true,
+      "affectedCases": [
+        "keeps native tenant/company RLS, selected identities outside page and current calling authority",
+        "preserves stable same-native-stream carry pages across fixed4096 fetch boundaries",
+        "keeps carry identity order and enrichment with absent, current and department-filtered assignments"
+      ],
+      "b1Phases": 7,
+      "b1Pages": 11,
+      "b1Fetches": 17,
+      "b1Rows": 30212,
+      "b1Events": 125,
+      "b1ActualStatuses": "UNOBSERVED"
+    },
+    "hostedNativeStatus": "UNOBSERVED",
+    "performanceQualified": false,
+    "releaseEligible": false,
+    "sourcePlan": {
+      "bytes": 10392,
+      "sha256": "3092c7c9fe3696f9390cd7ee79deb574d72b6529aabc34918d7044267bcf3d67"
+    },
+    "externalSourceAstComparison": {
+      "bytes": 915,
+      "sha256": "b3317ea916b3f693c689bfa4a41ab063e75ca8447f79adc28a261e2571b9be4e"
+    },
+    "currentSourceRows": {
+      "core/analytics.ts": {
+        "current": {
+          "gitBlob": "47d6e0a3d14489f4b44601ef6313cfc6e6ddabb4",
+          "bytes": 85500,
+          "sha256": "887f8163f6eb1b849412a9f031a6196209a265e56cebebae8935758cfb82d684"
+        },
+        "wholeParent": {
+          "gitRef": "81f2d0494161009463477913806c4b24b202a544:core/analytics.ts",
+          "gitBlob": "ea0131da0d53b013e9bcb01cea9526581c91c7c2",
+          "bytes": 84414,
+          "sha256": "861f83ce8138bfa5daedd15734fd82f18e28f2790987da4a549f2ed0448015cf"
+        },
+        "inverseHunks": [
+          {
+            "parentStart": 634,
+            "parentEnd": 634,
+            "currentStart": 634,
+            "currentEnd": 653,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "cf1930be2aa2c2ea7bd6f42906c349ff8ab5cbe4d7b8f4fc61f13034fb8e7b88"
+          },
+          {
+            "parentStart": 53110,
+            "parentEnd": 53110,
+            "currentStart": 53129,
+            "currentEnd": 53542,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "f760164240f6e1795f96919a322590b90017e520ea46b627a5b9e11da65755aa"
+          },
+          {
+            "parentStart": 53219,
+            "parentEnd": 53282,
+            "currentStart": 53651,
+            "currentEnd": 53706,
+            "parentSliceSha256": "2850c55ade09b0621ed8f128f35cb299b34d635141ac4d690848cbb6035322ed",
+            "currentSliceSha256": "d9d7c3b3794f4f4079b1d2d5b394f3f193787a91380df3edee0d30400e2192a5"
+          },
+          {
+            "parentStart": 53296,
+            "parentEnd": 53322,
+            "currentStart": 53720,
+            "currentEnd": 53737,
+            "parentSliceSha256": "3624aefe28a0617bbb8548aaf27e33ac5e7f4ce2a1af22b021d64d1d663c96cd",
+            "currentSliceSha256": "ac769e3eabb01040ac8dba27096f7cd758a69710773b593de82102ce90340432"
+          },
+          {
+            "parentStart": 53388,
+            "parentEnd": 53457,
+            "currentStart": 53803,
+            "currentEnd": 53822,
+            "parentSliceSha256": "ebd7a0b33f850cf9787b9d010d5667e93120836141902a1e607651e6ffa8db96",
+            "currentSliceSha256": "762191d7560f60e173aa74fe322e46232b99e1171b0fe29c7ecaf01346a804d6"
+          },
+          {
+            "parentStart": 53572,
+            "parentEnd": 53692,
+            "currentStart": 53937,
+            "currentEnd": 53977,
+            "parentSliceSha256": "d1296a7f45d759fd44ae76cd3a6e5c52946a0db17dc1b1d60334046e0b064b8f",
+            "currentSliceSha256": "bdbff33801579a1acf18dfdad0b05d034e07fce26e1bc8b5a5efc7bfe9aee247"
+          },
+          {
+            "parentStart": 57018,
+            "parentEnd": 57018,
+            "currentStart": 57303,
+            "currentEnd": 59648,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "b3012cd1bd6008318ef393bde83cd6bc530fdcb299e12a6136f9238f4db357d4"
+          },
+          {
+            "parentStart": 57357,
+            "parentEnd": 58735,
+            "currentStart": 59987,
+            "currentEnd": 59987,
+            "parentSliceSha256": "c011c1364fdad5603e70715193b30d09f056010be0d3e44c83aafebf6f16a4d5",
+            "currentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "parentStart": 58840,
+            "parentEnd": 59070,
+            "currentStart": 60092,
+            "currentEnd": 60156,
+            "parentSliceSha256": "e9a4fc90c04522a384e6704e066e5d91a3a25e3a94e9a7c51191cbf6893f332e",
+            "currentSliceSha256": "b2a396cb8c0e99682690c57638de05ae940df20123be943033575daf3bebfb84"
+          }
+        ]
+      },
+      "test/analytics-bounded-reports.test.ts": {
+        "current": {
+          "gitBlob": "dbc9fb1fc0b9d411233e8be06ce734bde45cacb2",
+          "bytes": 95507,
+          "sha256": "95415f82c0bd3fe98c4049b5946ea9eea4c65901ec1555ccd6a963fc74dbbacb"
+        },
+        "wholeParent": {
+          "gitRef": "81f2d0494161009463477913806c4b24b202a544:test/analytics-bounded-reports.test.ts",
+          "gitBlob": "af6e0d6a83cca2ee92827143dd9d33994ff21392",
+          "bytes": 86094,
+          "sha256": "a1a8b327d40f9e8ea10c8a246ae3f775031bd9f51561fa931accedc708cf58f7"
+        },
+        "inverseHunks": [
+          {
+            "parentStart": 8740,
+            "parentEnd": 8740,
+            "currentStart": 8740,
+            "currentEnd": 9850,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "b19a1954dc707ef6723f16087fd3c5b2338fff97386cc8542e94b8e629f4a302"
+          },
+          {
+            "parentStart": 9140,
+            "parentEnd": 9140,
+            "currentStart": 10250,
+            "currentEnd": 10351,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "a25ba5653a885644d84243e9e028d8d828bd3f0893a0979c58074258a966756a"
+          },
+          {
+            "parentStart": 29745,
+            "parentEnd": 30025,
+            "currentStart": 30956,
+            "currentEnd": 31316,
+            "parentSliceSha256": "3ddbc3999c7059d2d9116c1659d7ef488dbd849ea2e5fa02dcd717dff8168508",
+            "currentSliceSha256": "36122c6e9f0d77fc620c622d43724123faa94b1ada9d3829eeb52cdb96147045"
+          },
+          {
+            "parentStart": 32499,
+            "parentEnd": 32499,
+            "currentStart": 33790,
+            "currentEnd": 40139,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "7840896842b2d227e9e97571595e5a8549abdc59c502368289fac4fd60b00e17"
+          },
+          {
+            "parentStart": 33995,
+            "parentEnd": 34302,
+            "currentStart": 41635,
+            "currentEnd": 41774,
+            "parentSliceSha256": "1f73b6653017f840b657fff9c5529b92a124983452a5e9de4f93a056b3efb920",
+            "currentSliceSha256": "d2622654e6722232ad6bf5c585a5c136042cf8562cb5bd0dd4fdb5747dd38667"
+          },
+          {
+            "parentStart": 35075,
+            "parentEnd": 35458,
+            "currentStart": 42547,
+            "currentEnd": 42620,
+            "parentSliceSha256": "936e8789191b270a85eb4eb692d1d2497b3e70dd95319029fe0208be93cb7f6e",
+            "currentSliceSha256": "cf26b083c9158b539e761e6eb9f7dfde78c54182b15b39508631e28b313b8f03"
+          },
+          {
+            "parentStart": 35878,
+            "parentEnd": 36087,
+            "currentStart": 43040,
+            "currentEnd": 43147,
+            "parentSliceSha256": "2eb387dfd33d4832c4d44b4a3810518e8fe7c7bf87a6433b5623310ccde657c7",
+            "currentSliceSha256": "faa1475c18d4776c837adc1098bced7aea1dc67e7135424095b344bb41d3e69e"
+          },
+          {
+            "parentStart": 36297,
+            "parentEnd": 37022,
+            "currentStart": 43357,
+            "currentEnd": 43357,
+            "parentSliceSha256": "f7769b4c1195a21402df1e91dde8e0801812d9d8dd3f268d40f9a7284fa4cfb3",
+            "currentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "parentStart": 37310,
+            "parentEnd": 37445,
+            "currentStart": 43645,
+            "currentEnd": 43695,
+            "parentSliceSha256": "cc8d7e5cf0abdaa015a702493fa5cb49664ac9541c84e5f2edcdaae1b05fecff",
+            "currentSliceSha256": "1e7be43e11e3c8a42da9ffe2d04ba634d244b559d86503276d89de8568dd75c8"
+          },
+          {
+            "parentStart": 37452,
+            "parentEnd": 37452,
+            "currentStart": 43702,
+            "currentEnd": 45978,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "3157f9095b568f8154022e60d27403d82a31d27ad0b551d9dd549621c829f29f"
+          },
+          {
+            "parentStart": 38958,
+            "parentEnd": 39074,
+            "currentStart": 47484,
+            "currentEnd": 47600,
+            "parentSliceSha256": "4c2dec27c1e5a5b6b9e49799c0b6258bd59dbc7f909829d2f5777dc7c824b19d",
+            "currentSliceSha256": "e235217e4356345b88ece2d3e0fe2f77b7c0277894ed02e9a902bbb5261535f0"
+          },
+          {
+            "parentStart": 40949,
+            "parentEnd": 41439,
+            "currentStart": 49475,
+            "currentEnd": 49999,
+            "parentSliceSha256": "eef934903edd2c63fe1e5f4d6200e01a5b46ea32a1a269a6ed98f8c03969418f",
+            "currentSliceSha256": "10101ce3dd505d9eeac706dea7d4dcaff4a139c4a4cb1e491e85e6fd0a479878"
+          },
+          {
+            "parentStart": 50708,
+            "parentEnd": 50808,
+            "currentStart": 59268,
+            "currentEnd": 59368,
+            "parentSliceSha256": "080cb1e014225f2708d5ec202a45f855a27d3fcc25371d80fa264634b1ec3711",
+            "currentSliceSha256": "0a295fc183d86da576db5262b43fa32ff2c56dfe4dbb83d52976402517c3b1da"
+          },
+          {
+            "parentStart": 50920,
+            "parentEnd": 50991,
+            "currentStart": 59480,
+            "currentEnd": 59551,
+            "parentSliceSha256": "12ec1cde8ddc56e38abc2d270c2a5dd81dc0b8c93cc96a1b8cd412a1a51276a7",
+            "currentSliceSha256": "9260dd290b75916408e29b12ecb34a6731bc7c407dece432302eb6583ecff385"
+          },
+          {
+            "parentStart": 51944,
+            "parentEnd": 52045,
+            "currentStart": 60504,
+            "currentEnd": 60605,
+            "parentSliceSha256": "ada4ea2aec0b19a169b0de2a2c6e9f458cfacfa94bdc1ee53977d3945a43d621",
+            "currentSliceSha256": "f25173591c295a0258f02f40f77e21fb564c7ad3e4485efcab7dcdb4beb467de"
+          },
+          {
+            "parentStart": 52134,
+            "parentEnd": 52210,
+            "currentStart": 60694,
+            "currentEnd": 60770,
+            "parentSliceSha256": "a2ee5b2e606c55419fd8e80a50bc2b6c7746759aeb1950d7b0cb1f0e379dc10b",
+            "currentSliceSha256": "81e50a6cb3dd7b480227fb339b739e1e52da8dff32bc929bb73bc9a29a464d6a"
+          },
+          {
+            "parentStart": 52615,
+            "parentEnd": 52709,
+            "currentStart": 61175,
+            "currentEnd": 61269,
+            "parentSliceSha256": "2c2af59f022dfc1f7d2ad298a6fa175943d207cea5b4a85eefc417e089e12e95",
+            "currentSliceSha256": "f3cf8e9121f682a65b06e140d325092b9f4b9cc38aa41e1bc1b701df7908f4cf"
+          },
+          {
+            "parentStart": 52724,
+            "parentEnd": 52787,
+            "currentStart": 61284,
+            "currentEnd": 61347,
+            "parentSliceSha256": "4825855eaedd67e9305300430bd8c3732f177f65f95fd2755d7a3e12eab7fc81",
+            "currentSliceSha256": "81b4bb9414e57262ecd4e03b503b78d68fc8211be7edd2f7a50ae768ae193957"
+          },
+          {
+            "parentStart": 53674,
+            "parentEnd": 53787,
+            "currentStart": 62234,
+            "currentEnd": 62394,
+            "parentSliceSha256": "9c2fb5d1e87db959b99f188b496676cdab6639a27b8c4f475b4f1d3102645c26",
+            "currentSliceSha256": "6949573a278f4369b1e1a0d60fa99e30a51aa91fa7ca25722a10dfaf644159b1"
+          },
+          {
+            "parentStart": 53790,
+            "parentEnd": 53892,
+            "currentStart": 62397,
+            "currentEnd": 62499,
+            "parentSliceSha256": "b81d0bff5e63553d02ee5637762f837c840488760436a48a76226e7607f83f80",
+            "currentSliceSha256": "61302f123b7cde344040008b8f389e32fdf5298923361ceaf35f6df1d7856303"
+          },
+          {
+            "parentStart": 54066,
+            "parentEnd": 54265,
+            "currentStart": 62673,
+            "currentEnd": 62872,
+            "parentSliceSha256": "83c66b34bee6db549ef2d89a30ee4e521dd299a3cb86a49f631cf07d90012ec2",
+            "currentSliceSha256": "285862067e2766320e1d026dc055e6693e3891295b59af1b2366cfefa5eec676"
+          },
+          {
+            "parentStart": 54952,
+            "parentEnd": 55030,
+            "currentStart": 63559,
+            "currentEnd": 63637,
+            "parentSliceSha256": "50e38681d8570a8c64ef06a3b7ad7729b00a3f05d47208ecd7ee70ee03138d4f",
+            "currentSliceSha256": "2084ae958059e28468ed27c152aeb55113a179c2ad2ee7b05e23b0fb76f8566f"
+          },
+          {
+            "parentStart": 56944,
+            "parentEnd": 57111,
+            "currentStart": 65551,
+            "currentEnd": 65975,
+            "parentSliceSha256": "44855f79706f779ea088fb6f1ba63c16324a3ebd056c5ea12777d66e59304b56",
+            "currentSliceSha256": "a1ce521cac6a7bdb0ca80ba79f23f68783107f3eb7dec5dc163af9c3ef4a04d8"
+          },
+          {
+            "parentStart": 57405,
+            "parentEnd": 57538,
+            "currentStart": 66269,
+            "currentEnd": 66403,
+            "parentSliceSha256": "f9e4e679907de5b92f9590b79265bd05126311be6b669c80d0a81c81917e40e9",
+            "currentSliceSha256": "93f0df0f52c237e210230881c01b452a38f6477d903312215dd9c94d388307e0"
+          },
+          {
+            "parentStart": 58245,
+            "parentEnd": 58556,
+            "currentStart": 67110,
+            "currentEnd": 67421,
+            "parentSliceSha256": "0c7fd46f8cdb7ce958cd6f03d6cfc06dd5288cb2a16c449f0ee2ce96f25c96c1",
+            "currentSliceSha256": "617f751273b2003f9e2d920472b05e95192b14d2dd22ba62879bb9e726467246"
+          },
+          {
+            "parentStart": 58811,
+            "parentEnd": 58904,
+            "currentStart": 67676,
+            "currentEnd": 67769,
+            "parentSliceSha256": "16f90c7c0ed1aeebe5caea96093d6760725c5790749cdd43b5119f41a2181e77",
+            "currentSliceSha256": "538792e3dd1441413d731248060e9fb1113b0f91d7100752abd8fd6fa52e2206"
+          },
+          {
+            "parentStart": 59184,
+            "parentEnd": 59281,
+            "currentStart": 68049,
+            "currentEnd": 68140,
+            "parentSliceSha256": "7626769a6be37ff833ff4ef5409d531eb47c62eb50248cd4374b9772b8cd8008",
+            "currentSliceSha256": "5086976cb8bda7c7caa8325a3e8c3bba3c86b71673e18c679fe050b0ec75a9bc"
+          },
+          {
+            "parentStart": 59368,
+            "parentEnd": 59469,
+            "currentStart": 68227,
+            "currentEnd": 68333,
+            "parentSliceSha256": "2164d1ad4efbd03f1dbfa617eb9e3678a0f80dfe3367769e73ae8e9e29874519",
+            "currentSliceSha256": "0cbd69d2f1c482a8a7bbcdfcd90955756a299c0af51234b488faec36c5b88abe"
+          },
+          {
+            "parentStart": 59570,
+            "parentEnd": 59759,
+            "currentStart": 68434,
+            "currentEnd": 68623,
+            "parentSliceSha256": "5a03d3c31cea9c460fcd73dd11be67a62a9392b2d12db571faa8437ba5ffb11e",
+            "currentSliceSha256": "2e7d1aa6f8cca76e6a7de30be44dd24ce76ef8d88370a64360c082cbeb0120f1"
+          },
+          {
+            "parentStart": 60310,
+            "parentEnd": 60396,
+            "currentStart": 69174,
+            "currentEnd": 69260,
+            "parentSliceSha256": "7c0732460276821eeb18608739a64bdea5eee1e3fa99db76baa5b14f97cb774c",
+            "currentSliceSha256": "47b5412dcb14e5570ab9fd2e1b326975972166701e369692223da6cc2ae4d35a"
+          },
+          {
+            "parentStart": 60615,
+            "parentEnd": 60739,
+            "currentStart": 69479,
+            "currentEnd": 69600,
+            "parentSliceSha256": "c0f17f2bb19ffc8c495e6102df0a5234475d44b4f7843d94155d1ad73a9ff72d",
+            "currentSliceSha256": "2488dd0f4e1fb4f60d0a664cd88c99980c61517d20adbe02cabddac232fb8f70"
+          },
+          {
+            "parentStart": 61076,
+            "parentEnd": 61291,
+            "currentStart": 69937,
+            "currentEnd": 70152,
+            "parentSliceSha256": "7d1660a5f0c18f5cbeeec235becad79cd60fa09cc0e7712d13033973b5e07188",
+            "currentSliceSha256": "837a9d0def767eaa96d60a5c806b7e919380c5555b5868969233171e4328fa42"
+          },
+          {
+            "parentStart": 61298,
+            "parentEnd": 61384,
+            "currentStart": 70159,
+            "currentEnd": 70245,
+            "parentSliceSha256": "72090096851e778fd2bbfa6d416b43e7ff07ebdf7fec0b9cd17dff9efd2a4606",
+            "currentSliceSha256": "9585f9899e328aa234151b99dfc5c94d296ffe5fbee554aa0241a90a40ce6e81"
+          },
+          {
+            "parentStart": 61471,
+            "parentEnd": 61536,
+            "currentStart": 70332,
+            "currentEnd": 70397,
+            "parentSliceSha256": "48bdc6b4c4f290d35da34a71375d6ef30b2adb365a3e59ed88d679ae21f4a50e",
+            "currentSliceSha256": "e03704d4b40fad415068b987cc46db56b7276f27806bc3bb3d7e699517429ef8"
+          },
+          {
+            "parentStart": 61842,
+            "parentEnd": 61949,
+            "currentStart": 70703,
+            "currentEnd": 70810,
+            "parentSliceSha256": "7d1e51a457029fef03579c7756a7d3fd93f4990e8df75e4d273a39251e6af8d2",
+            "currentSliceSha256": "397e885e4280c1bcc9155c3bdaf1cb6e9588a19c1f4206ac3d66a7219fead976"
+          },
+          {
+            "parentStart": 68972,
+            "parentEnd": 69127,
+            "currentStart": 77833,
+            "currentEnd": 77988,
+            "parentSliceSha256": "378a799ac46becb36399534cc0bb928307d0a764a70437fd20dd58c08b014fdc",
+            "currentSliceSha256": "5b37023edf5f223025c4801b878731bb6300aa70a14ef99ce0d20db09df8a85b"
+          },
+          {
+            "parentStart": 70799,
+            "parentEnd": 70799,
+            "currentStart": 79660,
+            "currentEnd": 79705,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "f801fc2087e63d0c8bd57c351ffaa73e4935396461c996f0f58a36ec82905c0c"
+          },
+          {
+            "parentStart": 71613,
+            "parentEnd": 71775,
+            "currentStart": 80519,
+            "currentEnd": 80744,
+            "parentSliceSha256": "14f2df1ee2a130fda69fd57e5ec5f6a39dadcbfff129c11e8de854f13e932802",
+            "currentSliceSha256": "cd83de567d31afa73f90e684757225ee60aa5c7504dfec88b7e341c84c9f3ac8"
+          },
+          {
+            "parentStart": 73328,
+            "parentEnd": 73624,
+            "currentStart": 82297,
+            "currentEnd": 82646,
+            "parentSliceSha256": "ec34a2f610fb038ecf99685c2c4079bd916da9d37c98b2fd4344a122a3b4903a",
+            "currentSliceSha256": "9508ff8c6d000b2a1d27b41ce3cd0b1c019a93331d1dbd58858a6e44de81f50c"
+          },
+          {
+            "parentStart": 75329,
+            "parentEnd": 75329,
+            "currentStart": 84351,
+            "currentEnd": 84387,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "c4658ee49379ffbd017dec7d3b5375786c4c435d300d2a82360126c8b6612b66"
+          },
+          {
+            "parentStart": 85025,
+            "parentEnd": 85104,
+            "currentStart": 94083,
+            "currentEnd": 94335,
+            "parentSliceSha256": "897ca8a4c5bda46b5d9128ce2056b6198646426fdd772f77c626ca0d7725fef7",
+            "currentSliceSha256": "fb46334db108aa580b9c53006896bd9e3844664b6fa497e99ce4b9bcd42d25f6"
+          },
+          {
+            "parentStart": 85136,
+            "parentEnd": 85411,
+            "currentStart": 94367,
+            "currentEnd": 94657,
+            "parentSliceSha256": "793f4829d104cbba70de811c09e324852fbef1a730d51ba3012bf67cab85ba86",
+            "currentSliceSha256": "46622a140c106facc92b9b87e7a10b39cd0e1c169444955ac2817ecfb82d86ad"
+          },
+          {
+            "parentStart": 85985,
+            "parentEnd": 86058,
+            "currentStart": 95231,
+            "currentEnd": 95471,
+            "parentSliceSha256": "21be04107ae52ce0c8d02bdd4d9d27e67292ea797f67fc1f0333d2ac3f4a0f23",
+            "currentSliceSha256": "18499930e9dce4af0372a774b5ccd378ca6c0cf75657414a72e7e992adf3d4ee"
+          }
+        ]
+      },
+      "docs/adr/2026-11-09-analytics-employment-aggregates.md": {
+        "current": {
+          "gitBlob": "474a675e3da2cb2d829ae93701ab530172a2b74a",
+          "bytes": 29660,
+          "sha256": "58082bb56d58fb2a2f66b17ca57063739a367876278ac776992a6974ad02fd51"
+        },
+        "wholeParent": {
+          "gitRef": "81f2d0494161009463477913806c4b24b202a544:docs/adr/2026-11-09-analytics-employment-aggregates.md",
+          "gitBlob": "c6e083909896a7603340559dedb764328f2ee3c6",
+          "bytes": 28152,
+          "sha256": "e2706126efafb104bbfe149c940991aae3afd704600690da25c3ff155e665967"
+        },
+        "inverseHunks": [
+          {
+            "parentStart": 28152,
+            "parentEnd": 28152,
+            "currentStart": 28152,
+            "currentEnd": 29660,
+            "parentSliceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "currentSliceSha256": "71c31c2e42ecf3abd3933a43b984b99362fa3248cb104d5a44ed962a6f85c1e2"
+          }
+        ]
+      }
+    },
+    "parentRecordObjects": {
+      "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json": {
+        "gitRef": "81f2d0494161009463477913806c4b24b202a544:docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json",
+        "gitBlob": "63790d21b56564c5c0dfb9927df2deb8ad076a4b",
+        "bytes": 84847,
+        "sha256": "39db5b8b9f7baf8d033bbedf676650f6dc2be64b2646fd7a1f0ca8e5aae91173"
+      },
+      "docs/qualification/analytics-carry-selection-source-20261109.json": {
+        "gitRef": "81f2d0494161009463477913806c4b24b202a544:docs/qualification/analytics-carry-selection-source-20261109.json",
+        "gitBlob": "5055e62a2c74b55a868e6fae70b8b2adc96d2669",
+        "bytes": 30118,
+        "sha256": "5324c1633624bb7db46fc752bea2e35b5e35e3cbba46b41b08ae959a8a713f0f"
+      }
+    },
+    "scope": "Only paged carry identities with nonblank trimmed q and no department filter.",
+    "bindings": {
+      "searched": [
+        "existing company scope ids",
+        "optional direct company id",
+        "name pattern",
+        "email pattern",
+        "year end",
+        "year start"
+      ],
+      "legacyTermOrderPreserved": true
+    },
+    "nativeEstimate": {
+      "phase": 6,
+      "page": 0,
+      "operations": 1,
+      "requiresRealOriginalDeclareAndFetch": true,
+      "producer": "Single uncorrelated materialized matching Person producer with one physical Person scan.",
+      "bulkJoin": [
+        "UUID hash",
+        "UUID merge",
+        "Person-driven UUID Employment Index Cond"
+      ],
+      "dataOnlyFalsifiers": 9,
+      "oldZeroCellNativeProofNotTransferred": true
+    },
+    "bounds": {
+      "lifetimeMs": 120000,
+      "estimateReserveMs": 70000,
+      "declarationReserveMs": 50000,
+      "statementTimeoutMs": 20000,
+      "lockTimeoutMs": 300,
+      "planBytes": 1048576,
+      "contextBytes": 8192,
+      "framingBytes": 4096,
+      "sqlBytes": 65536,
+      "binds": 64,
+      "nodes": 2048,
+      "depth": 64,
+      "receiptBytes": 65536
+    },
+    "authority": "Source only. Existing focused workflow after independent source review. No staging or production authorization."
   }
 }

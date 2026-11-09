@@ -22,6 +22,7 @@ import {
   or,
   sql,
   type SQL,
+  type SQLWrapper,
 } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { isAdmin } from '../lib/authz-model';
@@ -1008,16 +1009,26 @@ const isAnniversaryEarned = (leaveCycle: string | null, method: string | undefin
   leaveCycle === 'anniversary' && isEarnedMethod(method);
 
 type CarryForwardInput = {year:number;filter?:ReportFilter;companyId?:string};
-function carryForwardPopulationWhere(scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]){
+function carryForwardEmploymentTerms(scopeIds:string[]|undefined,p:CarryForwardInput) {
   const yearStart=`${p.year}-01-01`,yearEnd=`${p.year}-12-31`;
+  return {
+    scope:scopeWhere(scopeIds),
+    company:p.companyId ? eq(employment.companyId,p.companyId) : undefined,
+    hired:lte(employment.hiredOn,yearEnd),
+    termination:or(isNull(employment.terminatedOn),gte(employment.terminatedOn,yearStart)),
+  };
+}
+
+function carryForwardPopulationWhere(scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]){
+  const terms=carryForwardEmploymentTerms(scopeIds,p);
   return and(
-    scopeWhere(scopeIds),
+    terms.scope,
     selectedIds ? inArray(employment.id,selectedIds) : undefined,
-    p.companyId ? eq(employment.companyId, p.companyId) : undefined,
+    terms.company,
     p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,
     qWhere(p.filter),
-    lte(employment.hiredOn, yearEnd),
-    or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+    terms.hired,
+    terms.termination,
   );
 }
 
@@ -1089,34 +1100,51 @@ function retainCarryPageIdentity(heap:RankedCarryPageIdentity[],candidate:Ranked
   heap[index]=candidate;
 }
 
+function carryIdentityDeclaration(tx:Tx,scope:string[]|undefined,input:CarryForwardInput) {
+  const alias='analytics_carry_population';
+  const declare=(population:SQLWrapper,id:SQLWrapper,name:SQLWrapper)=>sql`declare analytics_carry_identities no scroll cursor for
+      select ${id} as "employmentId",${name} as name from ${population}
+      order by ${id}`;
+  const search=input.filter?.departmentId ? undefined : qWhere(input.filter);
+  if(search){
+    // Keep company bindings ahead of search, and evaluate the uncorrelated Person match once.
+    const terms=carryForwardEmploymentTerms(scope,input);
+    const companyScope=and(terms.scope,terms.company);
+    const population=sql`(
+      with "analytics_carry_scoped_employment" as not materialized (
+        select ${employment.id}, ${employment.personId}, ${employment.companyId}, ${employment.hiredOn}, ${employment.terminatedOn}
+        from ${employment}${companyScope ? sql` where ${companyScope}` : undefined}
+      ), "analytics_carry_matching_person" as materialized (
+        select ${person.id}, ${person.fullName} from ${person} where ${search}
+      )
+      select ${employment.id}, "matching_person"."full_name"
+      from "analytics_carry_scoped_employment" as ${employment}
+      inner join "analytics_carry_matching_person" as "matching_person" on "matching_person"."id" = ${employment.personId}
+      inner join ${company} on ${eq(company.id,employment.companyId)}
+      where ${and(terms.hired,terms.termination)}
+      order by ${employment.id}
+    ) ${sql.identifier(alias)}`;
+    return declare(population,sql`${sql.identifier(alias)}."id"`,sql`${sql.identifier(alias)}."full_name"`);
+  }
+  // assignment_no_overlap allows at most one open, non-superseded assignment per employment.
+  // Department's primary key makes the second left join cardinality-preserving as well.
+  const population=input.filter?.departmentId
+    ? carryForwardPopulationTx(tx,scope,input).as(alias)
+    : tx.select({employmentId:employment.id,name:person.fullName})
+        .from(employment)
+        .innerJoin(person,eq(person.id,employment.personId))
+        .innerJoin(company,eq(company.id,employment.companyId))
+        .where(carryForwardPopulationWhere(scope,input))
+        .orderBy(employment.id).as(alias);
+  return declare(population,population.employmentId,population.name);
+}
+
 async function carryForwardReportPageTx(tx:Tx,scope:string[]|undefined,input:CarryForwardInput,page:PageQuery):Promise<AnalyticsReportPage<CarryForwardReportRow>> {
     const [annual]=await tx.select({id:leaveType.id}).from(leaveType).where(eq(leaveType.code,'ANNUAL')).limit(1);
     if(!annual)return {rows:[],state:pageState(page,0,0)};
-    // assignment_no_overlap allows at most one open, non-superseded assignment per employment.
-    // Department's primary key makes the second left join cardinality-preserving as well.
-    const populationAlias='analytics_carry_population';
-    const population=input.filter?.departmentId
-      ? carryForwardPopulationTx(tx,scope,input).as(populationAlias)
-      : input.filter?.q?.trim()
-      ? tx.select({employmentId:employment.id,name:sql<string>`${person.fullName}`.mapWith(person.fullName).as('full_name')})
-          .from(employment)
-          // Keep the Person UUID lookup inside the lateral boundary before applying the existing search.
-          .innerJoinLateral(sql`(select ${person.fullName}, ${person.primaryEmail} from ${person}
-            where ${person.id} = ${employment.personId} offset 0) as ${sql.identifier('person')}`,sql`true`)
-          .innerJoin(company,eq(company.id,employment.companyId))
-          .where(carryForwardPopulationWhere(scope,input))
-          .orderBy(employment.id).as(populationAlias)
-      : tx.select({employmentId:employment.id,name:person.fullName})
-          .from(employment)
-          .innerJoin(person,eq(person.id,employment.personId))
-          .innerJoin(company,eq(company.id,employment.companyId))
-          .where(carryForwardPopulationWhere(scope,input))
-          .orderBy(employment.id).as(populationAlias);
     const identities:RankedCarryPageIdentity[]=[],retain=carryPageRetentionLimit(page);
     let total=0;
-    await tx.execute(sql`declare analytics_carry_identities no scroll cursor for
-      select ${population.employmentId} as "employmentId",${population.name} as name from ${population}
-      order by ${population.employmentId}`);
+    await tx.execute(carryIdentityDeclaration(tx,scope,input));
     for(;;){
       const batch=await tx.execute<CarryPageIdentity>(sql`fetch forward 4096 from analytics_carry_identities`);
       for(const identity of batch){

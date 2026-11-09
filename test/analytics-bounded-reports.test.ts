@@ -106,10 +106,24 @@ it('keeps native tenant/company RLS, selected identities outside page and curren
  expect(await analyticsManagerSelection(ctx,[otherCompany.id],ids[0])).toBeNull();
  expect(await analyticsManagerSelection(ctx,[],otherEmployment)).toEqual({employmentId:otherEmployment,name:'Fictional other company person'});
  expect(await analyticsManagerSelection(ctx,[],'malformed')).toBeNull();
+ const searchedCarry={year:2026,filter:{q:'Fictional report 00000'},page:first};
+ const otherCarry={year:2026,filter:{q:'Fictional other company person'},page:first};
+ const ownGroupCarry=await carryForwardReportPage(ctx,[],searchedCarry);
+ expect(ownGroupCarry.state.total).toBe(1);
+ expect(ownGroupCarry.rows.map(row=>row.employmentId)).toEqual([ids[0]]);
+ const ownCompanyCarry=await carryForwardReportPage(scoped,[],searchedCarry);
+ expect(ownCompanyCarry.state.total).toBe(1);
+ expect(ownCompanyCarry.rows.map(row=>row.employmentId)).toEqual([ids[0]]);
+ expect((await carryForwardReportPage(ctx,[otherCompany.id],{...otherCarry,companyId:otherCompany.id})).rows.map(row=>row.employmentId))
+  .toEqual([otherEmployment]);
+ expect((await carryForwardReportPage(ctx,[b.companyId],{...otherCarry,companyId:otherCompany.id})).state.total).toBe(0);
+ expect((await carryForwardReportPage(scoped,[otherCompany.id],{...otherCarry,companyId:otherCompany.id})).state.total).toBe(0);
+ expect((await carryForwardReportPage(ctx,[foreign.companyId],{...searchedCarry,companyId:foreign.companyId})).state.total).toBe(0);
  const employeeUser=await createAppUser(b.tenantId,people[0],'employee');
  const employeeCtx:SessionContext={tenantId:b.tenantId,userId:employeeUser,personId:people[0],roles:['employee']};
  expect((await newHiresPage(employeeCtx,[],{...period,page:first})).rows.map(row=>row.name)).toEqual(['Fictional report 00000']);
  await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,user));
+ await expect(carryForwardReportPage(scoped,[],searchedCarry)).rejects.toThrow('calling authority');
  for(const read of [()=>newHiresPage(scoped,[],{...period,page:first}),()=>terminationsPage(scoped,[],{...period,page:first}),()=>changeJobTransactionsPage(scoped,[],{...period,page:first}),()=>carryForwardReportPage(scoped,[],{year:2026,page:first}),()=>masterDataCount(scoped,[]),()=>analyticsManagerSelection(scoped,[],ids[0])]){
   await expect(read()).rejects.toThrow('calling authority');
  }
@@ -333,8 +347,11 @@ type CarryTimedSubmission = {
 type CarryBoundarySlot={kind:'fixture'|'command'|'read';epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;estimateContext?:unknown;timedSubmission?:CarryTimedSubmission;cancel?:Promise<void>;tag:string};
 const CARRY_DECLARE_PREFIX = 'declare analytics_carry_identities no scroll cursor for\n      select ';
 const CARRY_EXPLAIN_PREFIX = 'explain(verbose,settings,format json) ';
-const CARRY_PERSON_LATERAL = 'inner join lateral (select "person"."full_name", "person"."primary_email" from "person" where "person"."id" = "employment"."person_id" offset 0) as "person" on true';
-const CARRY_ESTIMATE_MEMBER = 'analytics-carry-first-fetch-estimate-private.json';
+const CARRY_SCOPED_EMPLOYMENT = 'analytics_carry_scoped_employment';
+const CARRY_MATCHING_PERSON = 'analytics_carry_matching_person';
+const CARRY_MATCHING_PERSON_SQL = `"${CARRY_MATCHING_PERSON}" as materialized (`;
+const CARRY_ESTIMATE_CELL = {phase:6,page:0} as const;
+const CARRY_ESTIMATE_MEMBER = 'analytics-carry-dense-declaration-estimate-private.json';
 const CARRY_PLAN_BYTES = 1024 * 1024;
 const CARRY_CONTEXT_BYTES = 8 * 1024;
 const CARRY_FRAMING_BYTES = 4 * 1024;
@@ -376,6 +393,111 @@ function carryEstimatedNumber(node: Record<string, unknown>, key: string) {
   }
   return value;
 }
+type CarryPlanEntry = {
+  node: Record<string, unknown>;
+  parent?: CarryPlanEntry;
+};
+
+function carryPlanPath(entry: CarryPlanEntry): CarryPlanEntry[] {
+  const path: CarryPlanEntry[] = [];
+  for(let cursor: CarryPlanEntry | undefined=entry;cursor;cursor=cursor.parent)path.push(cursor);
+  return path;
+}
+
+function carryPlanAlias(entry: CarryPlanEntry) {
+  const alias=entry.node.Alias;
+  return typeof alias==='string' && /^[a-z_][a-z_0-9]{0,62}$/.test(alias) ? alias : undefined;
+}
+
+// Match a required equality, including one contained in a mandatory AND term.
+function carryPlanEquality(condition:unknown,left:string,right:string) {
+  if(typeof condition!=='string' || condition.length>CARRY_CONTEXT_BYTES)return false;
+  const matches=(expression:string,depth:number):boolean=>{
+    if(depth>CARRY_PLAN_DEPTH)return false;
+    const text=expression.trim(),andAt:number[]=[];
+    let parens=0,outerClose=-1;
+    for(const token of text.matchAll(/"(?:[^"]|"")*"|'(?:[^'\\]|\\.|'')*'|[()]|\b(?:AND|OR|CASE|BETWEEN)\b/g)){
+      switch(token[0]){
+        case '(':parens++;break;
+        case ')':
+          if(--parens<0)return false;
+          if(!parens && outerClose===-1)outerClose=token.index!;
+          break;
+        case 'OR':case 'CASE':case 'BETWEEN':if(!parens)return false;break;
+        case 'AND':if(!parens)andAt.push(token.index!);break;
+      }
+    }
+    if(parens)return false;
+    if(text.startsWith('(')&&outerClose===text.length-1)return matches(text.slice(1,-1),depth+1);
+    if(andAt.length){
+      let start=0;
+      for(const end of andAt){
+        if(matches(text.slice(start,end),depth+1))return true;
+        start=end+3;
+      }
+      return matches(text.slice(start),depth+1);
+    }
+    const unquoted=text.replace(/"([a-z_][a-z_0-9]{0,62})"/g,'$1').replace(/\s+/g,' ');
+    return unquoted===`${left} = ${right}` || unquoted===`${right} = ${left}`;
+  };
+  return matches(condition,0);
+}
+
+function carryDenseJoinWitness(entries:CarryPlanEntry[]) {
+  const relationship=(entry:CarryPlanEntry)=>entry.node['Parent Relationship'];
+  const main=(entry:CarryPlanEntry)=>carryPlanPath(entry).every(step=>!['InitPlan','SubPlan'].includes(String(relationship(step))));
+  const repeatedInner=(entry:CarryPlanEntry)=>relationship(entry)==='Inner' && entry.parent?.node['Node Type']==='Nested Loop';
+  const relation=(entry:CarryPlanEntry,name:string)=>entry.node.Schema==='public' && entry.node['Relation Name']===name;
+  const producer=entries.filter(entry=>entry.node['Subplan Name']===`CTE ${CARRY_MATCHING_PERSON}`);
+  const personScans=entries.filter(entry=>entry.node['Relation Name']==='person');
+  const matchingScans=entries.filter(entry=>entry.node['CTE Name']===CARRY_MATCHING_PERSON);
+  const employmentScans=entries.filter(entry=>main(entry)&&relation(entry,'employment'));
+  const [producerEntry]=producer,[personScan]=personScans,[matching]=matchingScans,[employmentScan]=employmentScans;
+  const personPath=personScan ? carryPlanPath(personScan) : [];
+  const producerDepth=personPath.indexOf(producerEntry);
+  const onePass=producer.length===1 && relationship(producerEntry)==='InitPlan' &&
+    producerEntry.parent!==undefined && main(producerEntry.parent) && !carryPlanPath(producerEntry).some(repeatedInner) &&
+    personScans.length===1 && relation(personScan,'person') && producerDepth>=0 &&
+    personPath.slice(0,producerDepth).every(entry=>!['InitPlan','SubPlan'].includes(String(relationship(entry))) && !repeatedInner(entry)) &&
+    ['Seq Scan','Index Scan','Index Only Scan','Bitmap Heap Scan'].includes(String(personScan.node['Node Type'])) &&
+    matchingScans.length===1 && matching.node['Node Type']==='CTE Scan' && main(matching) &&
+    !entries.some(entry=>entry.node['CTE Name']===CARRY_SCOPED_EMPLOYMENT ||
+      entry.node['Subplan Name']===`CTE ${CARRY_SCOPED_EMPLOYMENT}` ||
+      relation(entry,'assignment') || relation(entry,'department'));
+  let join:'hash'|'merge'|'indexed-employment'|'none'='none';
+  if(onePass && employmentScans.length===1){
+    const personAlias=carryPlanAlias(matching),employmentAlias=carryPlanAlias(employmentScan);
+    const matchingPath=carryPlanPath(matching),employmentPath=carryPlanPath(employmentScan);
+    const joined=matchingPath.find(entry=>employmentPath.includes(entry));
+    if(personAlias && employmentAlias && personAlias!==employmentAlias && joined && joined.node['Join Type']==='Inner'){
+      const matchingChild=matchingPath[matchingPath.indexOf(joined)-1];
+      const employmentChild=employmentPath[employmentPath.indexOf(joined)-1];
+      const joinedPath=carryPlanPath(joined);
+      // A bulk join on a repeated inner path of an enclosing loop is not sufficient.
+      const repeated=joinedPath.some(repeatedInner) ||
+        matchingPath.slice(0,matchingPath.indexOf(joined)-1).some(repeatedInner) ||
+        employmentPath.slice(0,employmentPath.indexOf(joined)-1).some(repeatedInner);
+      const matchingKey=`${personAlias}.id`,employmentKey=`${employmentAlias}.person_id`;
+      if(!repeated && matchingChild && employmentChild){
+        const matchingSide=relationship(matchingChild),employmentSide=relationship(employmentChild);
+        const opposite=(matchingSide==='Outer' && employmentSide==='Inner') || (matchingSide==='Inner' && employmentSide==='Outer');
+        const nodeType=joined.node['Node Type'];
+        if(opposite && nodeType==='Hash Join' && carryPlanEquality(joined.node['Hash Cond'],matchingKey,employmentKey))join='hash';
+        if(opposite && nodeType==='Merge Join' && carryPlanEquality(joined.node['Merge Cond'],matchingKey,employmentKey))join='merge';
+        if(nodeType==='Nested Loop' && matchingSide==='Outer' && employmentSide==='Inner' &&
+          ['Index Scan','Index Only Scan'].includes(String(employmentScan.node['Node Type'])) &&
+          carryPlanEquality(employmentScan.node['Index Cond'],matchingKey,employmentKey) &&
+          employmentPath.slice(0,employmentPath.indexOf(joined)).every(step=>{
+            if(step.node['Node Type']!=='Memoize')return true;
+            const key=step.node['Cache Key'];
+            return typeof key==='string' && key.replace(/[()"]/g,'').trim()===matchingKey;
+          }))join='indexed-employment';
+      }
+    }
+  }
+  return {accepted:onePass && join!=='none',personScans:personScans.length,matchingScans:matchingScans.length,onePass,join};
+}
+
 function carryEstimatePlan(raw: unknown) {
   if (!Array.isArray(raw) || raw.length !== 1 || !carryEstimateRecord(raw[0])) {
     throw new Error('Carry estimate JSON envelope refused');
@@ -401,9 +523,8 @@ function carryEstimatePlan(raw: unknown) {
     }
     carryEstimatedNumber(jit, 'Functions');
   }
-  const pending: {node: unknown; depth: number; memoizeKeys:readonly unknown[]}[] = [{node: root, depth: 0, memoizeKeys:[]}];
-  const employmentAliases=new Set<string>();
-  const personScans:{alias:unknown;schema:unknown;nodeType:string;index:unknown;condition:unknown;memoizeKeys:readonly unknown[]}[]=[];
+  const pending: {node: unknown; depth: number; parent?:CarryPlanEntry}[] = [{node: root, depth: 0}];
+  const entries:CarryPlanEntry[]=[];
   let nodes = 0;
   let rootNodeType = '';
   while (pending.length) {
@@ -420,31 +541,20 @@ function carryEstimatePlan(raw: unknown) {
       throw new Error('Carry estimate plan node refused');
     }
     if (nodes === 1) rootNodeType = nodeType;
-    if(node.Schema==='public'&&node['Relation Name']==='employment'&&typeof node.Alias==='string'&&/^employment(?:_\d{1,4})?$/.test(node.Alias))
-      employmentAliases.add(node.Alias);
-    if(node['Relation Name']==='person')personScans.push({alias:node.Alias,schema:node.Schema,nodeType,index:node['Index Name'],
-      condition:node['Index Cond'],memoizeKeys:entry.memoizeKeys});
+    const current={node,parent:entry.parent};
+    entries.push(current);
     for (const key of ['Startup Cost', 'Total Cost', 'Plan Rows', 'Plan Width']) carryEstimatedNumber(node, key);
     if (node.Plans !== undefined) {
       if (!Array.isArray(node.Plans)) throw new Error('Carry estimate child plans refused');
       if (node.Plans.length > CARRY_PLAN_NODES - nodes - pending.length) {
         throw new CarryEstimateOverflow('Carry estimate child plan count exceeds its bound');
       }
-      const memoizeKeys=nodeType==='Memoize'?[...entry.memoizeKeys,node['Cache Key']]:entry.memoizeKeys;
-      for (const child of node.Plans) pending.push({node: child, depth: entry.depth + 1, memoizeKeys});
+      for (const child of node.Plans) pending.push({node: child, depth: entry.depth + 1, parent:current});
     }
   }
   const serialized = JSON.stringify(raw);
   const bytes = Buffer.byteLength(serialized);
   if (bytes > CARRY_PLAN_BYTES) throw new CarryEstimateOverflow('Carry estimate JSON exceeds its byte bound');
-  const [scan]=personScans;
-  const correlatedPersonPk=personScans.length===1&&scan.schema==='public'&&typeof scan.alias==='string'&&/^person(?:_\d{1,4})?$/.test(scan.alias)&&
-    (scan.nodeType==='Index Scan'||scan.nodeType==='Index Only Scan')&&scan.index==='person_pkey'&&typeof scan.condition==='string'&&
-    [...employmentAliases].some(alias=>{
-      const personKey=scan.alias+'.id',employmentKey=alias+'.person_id',condition=String(scan.condition).replace(/"/g,'');
-      return (condition.includes('('+personKey+' = '+employmentKey+')')||condition.includes('('+employmentKey+' = '+personKey+')'))&&
-        scan.memoizeKeys.every(key=>typeof key==='string'&&key.replace(/[()"]/g,'').trim()===employmentKey);
-    });
   return {
     serialized,
     bytes,
@@ -454,9 +564,32 @@ function carryEstimatePlan(raw: unknown) {
     startupCost: carryEstimatedNumber(root, 'Startup Cost'),
     totalCost: carryEstimatedNumber(root, 'Total Cost'),
     estimatedRows: carryEstimatedNumber(root, 'Plan Rows'),
-    personWitness:{accepted:correlatedPersonPk,personScans:personScans.length,memoized:correlatedPersonPk&&scan.memoizeKeys.length>0},
+    personWitness:carryDenseJoinWitness(entries),
   };
 }
+function assertCarryDenseWitnessRefusals() {
+  const node=(type:string,fields:Record<string,unknown>={}):Record<string,unknown>=>({
+    'Node Type':type,'Startup Cost':0,'Total Cost':1,'Plan Rows':1,'Plan Width':16,...fields,
+  });
+  const producer=node('Seq Scan',{'Subplan Name':`CTE ${CARRY_MATCHING_PERSON}`,'Parent Relationship':'InitPlan',Schema:'public','Relation Name':'person',Alias:'person'});
+  const matching=node('CTE Scan',{'CTE Name':CARRY_MATCHING_PERSON,'Parent Relationship':'Outer',Alias:'matching_person'});
+  const employmentNode=node('Index Scan',{'Parent Relationship':'Inner',Schema:'public','Relation Name':'employment',Alias:'employment_1'});
+  const equality='("matching_person"."id" = "employment_1"."person_id")';
+  const hash=node('Hash Join',{'Join Type':'Inner','Hash Cond':equality,Plans:[matching,employmentNode]});
+  const nested=node('Nested Loop',{'Join Type':'Inner',Plans:[matching,{...employmentNode,'Index Cond':equality}]});
+  const witness=(join:Record<string,unknown>,source=producer,other:Record<string,unknown>[]=[])=>
+    carryEstimatePlan([{Plan:node('Sort',{Plans:[source,join,...other]})}]).personWitness;
+  expect(witness(hash,{...producer,'Subplan Name':'unrelated'}).accepted).toBe(false);
+  expect(witness(hash,producer,[node('Seq Scan',{Schema:'public','Relation Name':'person'})]).accepted).toBe(false);
+  expect(witness(hash,{...producer,'Parent Relationship':'SubPlan'}).accepted).toBe(false);
+  expect(witness({...hash,'Hash Cond':'(matching_person.id = employment_1.id)','Join Filter':equality}).accepted).toBe(false);
+  expect(witness({...hash,'Hash Cond':`(${equality} OR (matching_person.id IS NOT NULL))`}).accepted).toBe(false);
+  expect(witness({...hash,'Hash Cond':`(CASE WHEN true AND ${equality} AND false THEN false ELSE true END)`}).accepted).toBe(false);
+  expect(witness({...hash,Plans:[matching,{...employmentNode,'Parent Relationship':'Outer'}]}).accepted).toBe(false);
+  expect(witness({...nested,Plans:[matching,{...employmentNode,'Index Cond':'(employment_1.tenant_id = $1)',Filter:equality}]}).accepted).toBe(false);
+  expect(witness({...nested,Plans:[{...matching,'Parent Relationship':'Inner'},{...employmentNode,'Parent Relationship':'Outer','Index Cond':equality}]}).accepted).toBe(false);
+}
+
 type CarryEstimateSummary = {
   status: 'UNOBSERVED' | 'PREPARED' | 'STARTED' | 'CAPTURED' | 'FAILED' | 'OVERFLOW' | 'UNAVAILABLE';
   nativeOperations: number;
@@ -487,7 +620,7 @@ class CarryBoundaryScope{
  private control?:Awaited<ReturnType<typeof owner.client.reserve>>;private readonly identities:CarryBoundaryIdentity[]=[];private idleVerified=false;private controlUncertain=false;private controlIdentity?:CarryBoundaryIdentity;private visibleTargets=0;
  nativeOperations=0;nativeAwaitMs=0;
  private readonly estimateDirectory = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
- private readonly firstEstimate: CarryEstimateSummary = {status:'UNOBSERVED', nativeOperations:0, nativeAwaitMs:0};
+ private readonly denseEstimate: CarryEstimateSummary = {status:'UNOBSERVED', nativeOperations:0, nativeAwaitMs:0};
  private estimateEpoch?: number;
  private evidenceFailed=false;private ownerDatabase='';private ownerLogin='';private cancellationIssued=false;private cancellationSettled=true;private cancellationResult:'not-issued'|'pending'|'no-match'|'accepted'|'refused'|'unavailable'='not-issued';
  private originalFailure?:CarryPrivateFailure;private secondaryControlFailure?:CarryPrivateFailure;private rollbackFailure?:CarryPrivateFailure;private abortFailure?:CarryPrivateFailure;private holderRetained=false;
@@ -503,7 +636,7 @@ class CarryBoundaryScope{
   const directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR;if(!directory)return;
   const report={kind:'NATIVE_CARRY_BOUNDARY_PHASES_COMPONENT_ONLY',releaseEligible:false,source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,
    runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,complete:this.settled&&!this.bodyFailed&&!this.poisoned&&!this.evidenceFailed,
-   firstFetchEstimate:this.firstEstimate,originalFailure:this.originalFailure?.fact??'UNOBSERVED',secondaryControlFailure:this.secondaryControlFailure?.fact??'UNOBSERVED',rollbackFailure:this.rollbackFailure?.fact??'UNOBSERVED',abortObservation:this.abortFailure?.fact??'UNOBSERVED',branchObservations:{cancellation:this.cancellationIssued?'OBSERVED':'UNOBSERVED',controlUncertainty:this.controlUncertain?'OBSERVED':'UNOBSERVED',retainedHolder:this.holderRetained?'OBSERVED':'UNOBSERVED'},
+   denseDeclarationEstimate:{...CARRY_ESTIMATE_CELL,...this.denseEstimate},originalFailure:this.originalFailure?.fact??'UNOBSERVED',secondaryControlFailure:this.secondaryControlFailure?.fact??'UNOBSERVED',rollbackFailure:this.rollbackFailure?.fact??'UNOBSERVED',abortObservation:this.abortFailure?.fact??'UNOBSERVED',branchObservations:{cancellation:this.cancellationIssued?'OBSERVED':'UNOBSERVED',controlUncertainty:this.controlUncertain?'OBSERVED':'UNOBSERVED',retainedHolder:this.holderRetained?'OBSERVED':'UNOBSERVED'},
    stopped:this.stopped,settled:this.settled,poisoned:this.poisoned,cancellationIssued:this.cancellationIssued,cancellationSettled:this.cancellationSettled,cancellationResult:this.cancellationResult,observerInstalled:this.observerInstalled,observerRestored:this.observerRestored,resolverInstalled:this.resolverInstalled,resolverRestored:this.resolverRestored,idleVerified:this.idleVerified,controlUncertain:this.controlUncertain,nativeIdentities:this.identities.length,nativeOperations:this.nativeOperations,nativeAwaitMs:this.nativeAwaitMs,rowTypeChecks:this.events.filter(event=>event.stage==='fetch-return').reduce((n,event)=>n+2*(event.rows??0),0),distinctControlVerified:this.controlIdentity!==undefined&&this.visibleTargets===this.identities.length,active:[...this.slots].reduce((n,s)=>n+s.active,0),held:this.slots.size,events:this.events};
   try{const bytes=JSON.stringify(report);if(Buffer.byteLength(bytes)>65536){this.evidenceFailed=true;return;}writeFileSync(join(directory,'analytics-carry-boundaries.json'),bytes);}catch{this.evidenceFailed=true;}
  }
@@ -600,12 +733,12 @@ class CarryBoundaryScope{
     const operation = estimate || refusedDeclaration ? 'native-estimate' : slot.kind==='fixture' ? 'native-fixture' :
       slot.kind==='command' ? 'native-command' : 'native-read';
     const point = refusedDeclaration ? 'entry' : 'work';
-    if (refusedDeclaration) this.firstEstimate.failure = this.failureFact(error, operation, point);
+    if (refusedDeclaration) this.denseEstimate.failure = this.failureFact(error, operation, point);
     this.remember(error,operation,point);
     throw error;
   } finally {
     if (estimate && timed?.admitted) {
-      this.firstEstimate.nativeAwaitMs += performance.now() - started;
+      this.denseEstimate.nativeAwaitMs += performance.now() - started;
     } else if (!estimate && (!timed || timed.admitted)) {
       this.nativeOperations++;
       this.nativeAwaitMs += performance.now() - started;
@@ -627,9 +760,9 @@ class CarryBoundaryScope{
     if (timed?.used) throw new Error('Carry timed statement was already consumed');
     if (timed) timed.used = true;
     const work = timed ? () => new Promise<unknown>((resolve, reject) => {
-      if (!this.firstEstimatePage() || !this.slots.has(slot) || slot.epoch !== this.estimateEpoch ||
+      if (!this.denseEstimatePage() || !this.slots.has(slot) || slot.epoch !== this.estimateEpoch ||
           !slot.armed || slot.closing || slot.active !== 1 || slot.pending.size !== 1) {
-        throw new Error('Carry timed statement lost its first read epoch');
+        throw new Error('Carry timed statement lost its dense read epoch');
       }
       // PgRaw's genuine then starts the prepared query. Invoke it here to avoid another thenable
       // assimilation turn after the final case-budget check. Reporter writes stay outside this work.
@@ -637,10 +770,10 @@ class CarryBoundaryScope{
       Reflect.apply(member, target, [resolve, reject]);
       timed.admitted = true;
       if (timed.kind === 'estimate') {
-        this.firstEstimate.nativeOperations++;
-        this.firstEstimate.status = 'STARTED';
+        this.denseEstimate.nativeOperations++;
+        this.denseEstimate.status = 'STARTED';
       } else {
-        this.firstEstimate.originalDeclarationAdmitted = true;
+        this.denseEstimate.originalDeclarationAdmitted = true;
       }
     }) : () => Promise.resolve(target);
     return Reflect.apply(Promise.prototype.then, this.native(slot, work, timed), [onFulfilled, onRejected]);
@@ -661,15 +794,15 @@ class CarryBoundaryScope{
    };
   }});
  }
- private firstEstimatePage() {
-   return Boolean(this.estimateDirectory) && this.phase === 0 && this.page === 0;
+ private denseEstimatePage() {
+   return Boolean(this.estimateDirectory) && this.phase === CARRY_ESTIMATE_CELL.phase && this.page === CARRY_ESTIMATE_CELL.page;
  }
- async estimateFirstDeclaration(target: Tx, context: SessionContext, observedPid: number | undefined,
+ async estimateDenseDeclaration(target: Tx, context: SessionContext, observedPid: number | undefined,
      statement: SQL, dialect: PgDialect, compiled: ReturnType<PgDialect['sqlToQuery']>, expectedCompanyId: string | undefined) {
    const directory = this.estimateDirectory;
-   if (!directory || !this.firstEstimatePage()) return;
-   if (this.firstEstimate.status !== 'UNOBSERVED') {
-     const error = new Error('Carry estimate already attempted in the first read epoch');
+   if (!directory || !this.denseEstimatePage()) return;
+   if (this.denseEstimate.status !== 'UNOBSERVED') {
+     const error = new Error('Carry estimate already attempted in the dense read epoch');
      this.remember(error, 'native-estimate', 'entry');
      throw error;
    }
@@ -682,7 +815,7 @@ class CarryBoundaryScope{
          slot.active !== 0 || slot.pending.size !== 0 || !identity || identity.pid !== observedPid ||
          identity.database !== this.ownerDatabase || identity.role !== 'ai_hr_app' || identity.login !== 'ai_hr_app' ||
          identity.isolation !== 'repeatable read' || !identity.readOnly) {
-       throw new Error('Carry estimate requires the first owned read epoch');
+       throw new Error('Carry estimate requires the dense owned read epoch');
      }
      const packet = slot.estimateContext;
      if (!carryEstimateRecord(packet) || Object.keys(packet).length !== 5 ||
@@ -709,11 +842,13 @@ class CarryBoundaryScope{
      if (!compiled.sql.startsWith(CARRY_DECLARE_PREFIX)) throw new Error('Carry estimate declaration prefix refused');
      const declaration=compiled.sql.replace(/\s+/g,' ');
      if(!expectedCompanyId||!isDeepStrictEqual(compiled.params,[expectedCompanyId,'%Carry boundary %%','%Carry boundary %%','2026-12-31','2026-01-01'])||
-       !declaration.includes(CARRY_PERSON_LATERAL)||!declaration.includes('"full_name" as name from (select "employment"."id", "person"."full_name" as "full_name"')||
+       !declaration.includes('"full_name" as name from ( with "analytics_carry_scoped_employment" as not materialized (')||
+       !declaration.includes(CARRY_MATCHING_PERSON_SQL)||!declaration.includes('select "person"."id", "person"."full_name" from "person" where')||
+       !declaration.includes('inner join "analytics_carry_matching_person" as "matching_person" on "matching_person"."id" = "employment"."person_id"')||
        !declaration.includes('"employment"."company_id" in ($1)')||
        !declaration.includes('"person"."full_name" ilike $2 or "person"."primary_email" ilike $3')||
        !declaration.includes('"employment"."hired_on" <= $4')||!declaration.includes('"employment"."terminated_on" >= $5')||
-       !declaration.endsWith('order by "employment"."id") "analytics_carry_population" order by "analytics_carry_population"."id"'))
+       !declaration.endsWith('order by "employment"."id" ) "analytics_carry_population" order by "analytics_carry_population"."id"'))
        throw new Error('Carry searched declaration witness refused');
      const explain = sql`explain(verbose,settings,format json) ${statement}`;
      const wrapped = dialect.sqlToQuery(explain);
@@ -724,27 +859,27 @@ class CarryBoundaryScope{
      if (wrapped.sql !== CARRY_EXPLAIN_PREFIX + compiled.sql || !isDeepStrictEqual(wrapped.params, compiled.params)) {
        throw new Error('Carry estimate did not retain the complete declaration and parameters');
      }
-     this.firstEstimate.originalSqlSha256 = carryEstimateHash(compiled.sql);
-     this.firstEstimate.estimateSqlSha256 = carryEstimateHash(wrapped.sql);
-     this.firstEstimate.parameterCount = compiled.params.length;
-     this.firstEstimate.contextVerified = true;
-     this.firstEstimate.status = 'PREPARED';
+     this.denseEstimate.originalSqlSha256 = carryEstimateHash(compiled.sql);
+     this.denseEstimate.estimateSqlSha256 = carryEstimateHash(wrapped.sql);
+     this.denseEstimate.parameterCount = compiled.params.length;
+     this.denseEstimate.contextVerified = true;
+     this.denseEstimate.status = 'PREPARED';
      this.save();
      slot.timedSubmission = {kind: 'estimate', statement: explain};
      const result = await target.execute<{"QUERY PLAN": unknown}>(explain);
      if (!Array.isArray(result) || result.length !== 1 || !carryEstimateRecord(result[0]) ||
-         Object.keys(result[0]).length !== 1 || this.firstEstimate.nativeOperations !== 1) {
+         Object.keys(result[0]).length !== 1 || this.denseEstimate.nativeOperations !== 1) {
        throw new Error('Carry estimate requires one native JSON row and operation');
      }
      const {serialized, sha256, bytes, nodes, rootNodeType, startupCost, totalCost, estimatedRows, personWitness} =
        carryEstimatePlan(result[0]['QUERY PLAN']);
      const frame = {
-       kind: 'NATIVE_CARRY_FIRST_FETCH_DECLARE_ESTIMATE_COMPONENT_ONLY', releaseEligible: false,
+       kind: 'NATIVE_CARRY_DENSE_DECLARE_ESTIMATE_COMPONENT_ONLY', releaseEligible: false,
        source: process.env.AIHR_CI_HEAD, controller: process.env.AIHR_CI_CONTROL_HEAD,
-       runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT, phase: 0, page: 0,
+       runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT, ...CARRY_ESTIMATE_CELL,
        planEncoding: 'POSTGRES_JSON_DECODED_AND_RESERIALIZED', planSha256: sha256, planBytes: bytes,
-       originalSqlSha256: this.firstEstimate.originalSqlSha256, estimateSqlSha256: this.firstEstimate.estimateSqlSha256,
-       parameterCount: this.firstEstimate.parameterCount, metadata,
+       originalSqlSha256: this.denseEstimate.originalSqlSha256, estimateSqlSha256: this.denseEstimate.estimateSqlSha256,
+       parameterCount: this.denseEstimate.parameterCount, metadata,
      };
      const header = JSON.stringify(frame);
      const payload = header.slice(0, -1) + ',"plan":' + serialized + '}';
@@ -755,33 +890,33 @@ class CarryBoundaryScope{
      }
      this.check();
      writeFileSync(join(directory, CARRY_ESTIMATE_MEMBER), payload, {flag: 'wx', mode: 0o600});
-     this.firstEstimate.status = 'CAPTURED';
-     Object.assign(this.firstEstimate, {
+     this.denseEstimate.status = 'CAPTURED';
+     Object.assign(this.denseEstimate, {
        planSha256: sha256, planBytes: bytes, nodes, rootNodeType, startupCost, totalCost,
        estimatedRows, personWitness, privateMemberBytes: payloadBytes, privateMemberSha256: carryEstimateHash(payload),
      });
-     if(!personWitness.accepted)throw new Error('Carry searched estimate lacks the correlated Person primary-key witness');
+     if(!personWitness.accepted)throw new Error('Carry dense estimate lacks the one-pass Person and bulk join witness');
      const originalAgain = dialect.sqlToQuery(statement);
      if (originalAgain.sql !== compiled.sql || !isDeepStrictEqual(originalAgain.params, compiled.params)) {
        throw new Error('Carry declaration changed during estimate observation');
      }
      slot.timedSubmission = {kind: 'declaration', statement};
    } catch (error) {
-     if (this.firstEstimate.status !== 'CAPTURED') {
-       this.firstEstimate.status = error instanceof CarryEstimateOverflow ? 'OVERFLOW' :
-         this.firstEstimate.nativeOperations ? 'FAILED' : 'UNAVAILABLE';
+     if (this.denseEstimate.status !== 'CAPTURED') {
+       this.denseEstimate.status = error instanceof CarryEstimateOverflow ? 'OVERFLOW' :
+         this.denseEstimate.nativeOperations ? 'FAILED' : 'UNAVAILABLE';
      }
-     this.firstEstimate.failure = this.failureFact(error, 'native-estimate', 'work');
+     this.denseEstimate.failure = this.failureFact(error, 'native-estimate', 'work');
      this.remember(error, 'native-estimate', 'work');
      throw error;
    } finally {
-     this.firstEstimate.elapsedMs = performance.now() - started;
+     this.denseEstimate.elapsedMs = performance.now() - started;
      this.save();
    }
  }
  async held<T>(tx:Tx,kind:'fixture'|'command'|'read',body:(guarded:Tx)=>Promise<T>):Promise<T>{
   this.check();const slot:CarryBoundarySlot={kind,epoch:++this.nextEpoch,armed:false,closing:false,active:0,pending:new Set(),tag:'carry-boundary-'+randomUUID()};this.slots.add(slot);
-  const observeEstimate = kind === 'read' && this.firstEstimatePage() && this.estimateEpoch === undefined;
+  const observeEstimate = kind === 'read' && this.denseEstimatePage() && this.estimateEpoch === undefined;
   if (observeEstimate) this.estimateEpoch = slot.epoch;
   let outcome:{ok:true;value:T}|{ok:false;error:unknown};
   try{
@@ -874,7 +1009,7 @@ class CarryBoundaryScope{
    this.signal.removeEventListener('abort',this.abort);this.restore?.();this.observerRestored=this.observerInstalled;this.restore=undefined;
    this.event('drain-complete');this.event('final');
    if(!this.bodyFailed){
-    if (this.estimateDirectory && (this.firstEstimate.status !== 'CAPTURED' || !this.firstEstimate.originalDeclarationAdmitted)) this.evidenceFailed=true;
+    if (this.estimateDirectory && (this.denseEstimate.status !== 'CAPTURED' || !this.denseEstimate.originalDeclarationAdmitted)) this.evidenceFailed=true;
     const count=(stage:CarryBoundaryStage)=>this.events.filter(event=>event.stage===stage).length;
     const rows=(stage:CarryBoundaryStage)=>this.events.filter(event=>event.stage===stage).reduce((n,event)=>n+(event.rows??0),0);
     if(this.stopped||!this.observerRestored||!this.resolverRestored||!this.cancellationSettled||this.events.length!==125||count('phase-complete')!==7||count('page-start')!==11||count('fetch-return')!==17||count('oracle-complete')!==11
@@ -895,6 +1030,7 @@ type ObservedCarryProperties={role:string;isolation:string;readOnly:boolean;pid:
  * The original RowList is returned unchanged, and the oracle below sorts this SAME stream. */
 function observeCarryCursor(failAfterFirstFetch=false,scope?:CarryBoundaryScope,expectedCompanyId?:string){
  const actual=database.withTenant,dialect=new PgDialect(),rows:ObservedCarryIdentity[]=[],batches:number[]=[],queries:string[]=[],properties:ObservedCarryProperties[]=[];
+ const declarationParameters:unknown[][]=[];
  const state={active:0,maxActive:0};let originalFetchFailure:unknown,controlClosed=false;
  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{
   scope?.check();
@@ -904,7 +1040,10 @@ function observeCarryCursor(failAfterFirstFetch=false,scope?:CarryBoundaryScope,
   const invoke=(native:Tx)=>read(new Proxy(native,{get(target,key,receiver){
    if(key==='execute')return async(statement:SQL)=>{
     const compiled=dialect.sqlToQuery(statement),text=compiled.sql.trim().toLowerCase().replace(/\s+/g,' ');
-    if (scope && text.startsWith('declare ')) await scope.estimateFirstDeclaration(target, context, facts?.pid, statement, dialect, compiled, expectedCompanyId);
+    if(text.startsWith('declare ')){
+     declarationParameters.push(compiled.params.slice());
+     if(scope)await scope.estimateDenseDeclaration(target,context,facts?.pid,statement,dialect,compiled,expectedCompanyId);
+    }
     queries.push(text);state.active++;state.maxActive=Math.max(state.maxActive,state.active);
     try{
      let result:Awaited<ReturnType<Tx['execute']>>;const nativeStarted=performance.now();
@@ -933,7 +1072,7 @@ function observeCarryCursor(failAfterFirstFetch=false,scope?:CarryBoundaryScope,
   }}));
   return scope?scope.held(tx,options?.readOnlySnapshot?'read':'command',invoke):invoke(tx);
  },options));
- return {rows,batches,queries,properties,state,resetPage(){if(state.active!==0)throw new Error('Carry boundary observer still active');rows.length=0;batches.length=0;queries.length=0;properties.length=0;state.active=0;state.maxActive=0;},get originalFetchFailure(){return originalFetchFailure;},
+ return {rows,batches,queries,properties,state,declarationParameters,resetPage(){if(state.active!==0)throw new Error('Carry boundary observer still active');rows.length=0;batches.length=0;queries.length=0;properties.length=0;declarationParameters.length=0;state.active=0;state.maxActive=0;},get originalFetchFailure(){return originalFetchFailure;},
   get controlClosed(){return controlClosed;},restore:()=>spy.mockRestore()};
 }
 function expectCarryCursorPage(probe:ReturnType<typeof observeCarryCursor>,page:ReturnType<typeof parsePageQuery>,result:Awaited<ReturnType<typeof carryForwardReportPage>>,total:number){
@@ -956,6 +1095,7 @@ it('preserves stable same-native-stream carry pages across fixed4096 fetch bound
  const scope=new CarryBoundaryScope(context.signal);carryBoundaryScope=scope;
  context.onTestFinished(()=>scope.finish());
  await scope.run(async()=>{
+ assertCarryDenseWitnessRefusals();
  scope.event('seed-start');await scope.prepare();
  const b=await seedBase(),ctx=adminCtx(b),probe=observeCarryCursor(false,scope,b.companyId);scope.setRestore(probe.restore);
  const seeded=await scope.fixture(tx=>seedRows(b,4095,{}, {tx,scope}));scope.event('seed-return');scope.event('pair-start');
@@ -1075,12 +1215,14 @@ it('keeps carry identity order and enrichment with absent, current and departmen
    expect(declarations).toHaveLength(1);
    expect(declarations[0].includes('left join "assignment"')).toBe(Boolean(departmentId));
    expect(declarations[0].includes('left join "department"')).toBe(Boolean(departmentId));
-   expect(declarations[0].includes(CARRY_PERSON_LATERAL)).toBe(!departmentId);
+   expect(declarations[0].includes(CARRY_MATCHING_PERSON_SQL)).toBe(!departmentId);
+   expect(probe.declarationParameters).toEqual([[b.companyId,b.companyId,...(departmentId?[departmentId]:[]),
+    `%${name}%`,`%${name}%`,'2026-12-31','2026-01-01']]);
   }finally{probe.restore();}
  }
- for(const {q,expected,lateral} of [
-  {q:' '+email+' ',expected:[{employmentId:historical,name}],lateral:true},
-  {q:'  ',expected:[{employmentId:excluded,name:excludedName},...[historical,finance,operations].sort().map(employmentId=>({employmentId,name}))],lateral:false},
+ for(const {q,expected,materialized} of [
+  {q:' '+email+' ',expected:[{employmentId:historical,name}],materialized:true},
+  {q:'  ',expected:[{employmentId:excluded,name:excludedName},...[historical,finance,operations].sort().map(employmentId=>({employmentId,name}))],materialized:false},
  ]){
   const input={year:2026,companyId:b.companyId,filter:{q}};
   const full=await carryForwardReport(ctx,scope,input),probe=observeCarryCursor();
@@ -1091,7 +1233,9 @@ it('keeps carry identity order and enrichment with absent, current and departmen
    expect(probe.rows.slice().sort((a,b)=>a.name.localeCompare(b.name))).toEqual(expected);
    const declarations=probe.queries.filter(query=>query.startsWith('declare analytics_carry_identities '));
    expect(declarations).toHaveLength(1);
-   expect(declarations[0].includes(CARRY_PERSON_LATERAL)).toBe(lateral);
+   expect(declarations[0].includes(CARRY_MATCHING_PERSON_SQL)).toBe(materialized);
+   expect(probe.declarationParameters).toEqual([[b.companyId,b.companyId,...(materialized?[`%${email}%`,`%${email}%`]:[]),
+    '2026-12-31','2026-01-01']]);
   }finally{probe.restore();}
  }
 });
