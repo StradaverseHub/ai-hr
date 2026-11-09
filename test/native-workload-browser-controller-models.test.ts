@@ -183,9 +183,10 @@ const suites=[
     'test_wrong_root_kind_or_mode_refuses_before_any_archive_read',
    ]],
   ]},
- {name:'runs the 7 exact manager launch view source models',file:'.github/ci/native-workload-browser-launch-view.test.py',count:7,classes:[
+ {name:'runs the 8 exact manager launch view source models',file:'.github/ci/native-workload-browser-launch-view.test.py',count:8,classes:[
    ['LaunchViewModels',[
     'test_allocations_require_both_fragment_space_and_inode_reserves',
+    'test_empty_parent_checks_exact_held_birth_both_mounts_and_both_censuses',
     'test_manager_namespace_or_stage_replacement_refuses_before_publication',
     'test_mountinfo_fd_identity_flags_and_foreign_mounts_fail_closed',
     'test_postview_mount_namespace_path_and_clock_drift_are_refusals',
