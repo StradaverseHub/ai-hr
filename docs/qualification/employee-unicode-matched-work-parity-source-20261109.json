@@ -1,32 +1,26 @@
 {
   "kind": "EMPLOYEE_UNICODE_MATCHED_WORK_PARITY_SOURCE_ONLY",
-  "directParent": "08028380b4ff27c81fca5a4072f59e0ff73a4a9a",
+  "directParent": "0f02518e60a4f38ea757ebebdaccda0d0517f660",
   "selector": "test/employee-choice-unicode-scale.test.ts",
   "testSource": {
     "before": {
-      "blob": "028f24358231b16a50d0bddc3724b5daf0108fb7",
-      "bytes": 62986,
-      "sha256": "30a93e49300d40513e59084af0cc29154e0b99867c7c6fed8779491bbc001676"
-    },
-    "current": {
       "blob": "85e0b19371b7939c7d9c0798bf2d875df5b83642",
       "bytes": 68573,
       "sha256": "6cf5e1b12e781e4cdf027814b2fb2b0130b72d58a4f2548a8dd5f834c2b3a29e"
     },
-    "preserved": {
-      "sourceCases": 1,
-      "unchangedRegistrations": 3,
-      "sqlTagsWhole": 27,
-      "clockCallsWhole": 40,
-      "priorAssertionsWhole": 87,
-      "replacedPriorTimingOnlyGate": 1,
-      "currentAssertions": 93
-    }
+    "current": {
+      "blob": "f7896ac3c1381d446ccd6554c1961e330cdee65a",
+      "bytes": 71307,
+      "sha256": "b51ff91e90c6e1f38982dcb22c3dbf5f5d62a8051984192d65830fe933836cc8"
+    },
+    "preserved": "The one native course, all registrations, SQL, clocks, original assertions, elapsed decisions, sparse gates and cleanup remain whole. Four additional native-plan mutations exercise the exact new path refusal."
   },
   "sourceInverse": {
-    "restore": "test/employee-choice-unicode-scale.test.ts",
-    "remove": "docs/qualification/employee-unicode-matched-work-parity-source-20261109.json",
-    "targetTree": "d70052426cbfcc5b4eb69a63f39c51e4e83b2b8b"
+    "restore": [
+      "test/employee-choice-unicode-scale.test.ts",
+      "docs/qualification/employee-unicode-matched-work-parity-source-20261109.json"
+    ],
+    "targetTree": "f77529743b120a0f70832301bc1ce1928eb09710"
   },
   "protectedGitBlobs": {
     "core/employee-choice.ts": "a772876f19acb9ba1e590ad9089842b13e410808",
@@ -164,11 +158,46 @@
   },
   "verification": {
     "existingTwoDepartmentMatchedScope": "Distinct sealed SQL performs a positive existence lookup over the same native tenant/actor scope. Existing exact DTO, statement binding, candidate correlated witness, RR/RO and catalogue guards retain their behavior.",
-    "equivalentWork": "Exact active base access and executor counters, policy expansion counters, join-removal counters and root shared blocks for known in-memory, non-JIT plans. The result is explicitly equivalent-work. One elapsed sample per arm remains inconclusive.",
+    "equivalentWork": "Require each arm’s known active native shape plus exact equality of its measured base-access, policy expansion, join removal, and root shared-block counters. One elapsed sample per arm remains inconclusive.",
     "changedWork": "Require the original strict lower elapsed time on both timing channels, strictly fewer Assignment loops and root shared buffers, no extra supporting base access and unchanged measured policy/join filters.",
     "refusal": "Unknown or incomplete work shape, spill, new work, or non-improvement outside the exact parity path refuses the matched gate. No added SQL, timing margin, changed case cap or changed sparse ABBA.",
     "qualificationScope": "Observed physical work on one fixed broad fallback fixture. No general CPU/latency equivalence or release claim."
   },
   "runtimeQualificationPending": true,
-  "releaseEligible": false
+  "releaseEligible": false,
+  "initialSource": {
+    "source": "0f02518e60a4f38ea757ebebdaccda0d0517f660",
+    "parent": "08028380b4ff27c81fca5a4072f59e0ff73a4a9a",
+    "testSource": {
+      "before": {
+        "blob": "028f24358231b16a50d0bddc3724b5daf0108fb7",
+        "bytes": 62986,
+        "sha256": "30a93e49300d40513e59084af0cc29154e0b99867c7c6fed8779491bbc001676"
+      },
+      "current": {
+        "blob": "85e0b19371b7939c7d9c0798bf2d875df5b83642",
+        "bytes": 68573,
+        "sha256": "6cf5e1b12e781e4cdf027814b2fb2b0130b72d58a4f2548a8dd5f834c2b3a29e"
+      },
+      "preserved": {
+        "sourceCases": 1,
+        "unchangedRegistrations": 3,
+        "sqlTagsWhole": 27,
+        "clockCallsWhole": 40,
+        "priorAssertionsWhole": 87,
+        "replacedPriorTimingOnlyGate": 1,
+        "currentAssertions": 93
+      }
+    },
+    "recordBlob": "4e512ac04b680fa800937c0bb4fda4e1b614b162"
+  },
+  "knownMatchedPaths": {
+    "sourceRun": 42567992502,
+    "activeNodesPerArm": 19,
+    "normalizedShapeSha256": {
+      "old-matched": "d7725d1f6e9483cfe3c4127524d68a17a3051cf18f011e4ad46e031d677b7f74",
+      "candidate-matched": "160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96"
+    },
+    "method": "Pin the active node sequence, depth, native properties, qualifier expressions, and non-scan actual row/loop counters separately for the two observed plans. Normalize only the sealed fixture tenant/company values and the plan/parameter reference numbering. Required variable counter keys remain in the shape and observed work remains separately compared. Unknown active nodes, extra Result or Join work, missing counter fields, and altered projected qualifiers refuse."
+  }
 }

@@ -214,13 +214,50 @@ function usesEmploymentTenantPointIndex(node:PlanNode,point:EmploymentPoint){
 const matchedRelations=['assignment','company','department','employment','person'] as const;
 const matchedScans=['Seq Scan','Index Scan'];
 const matchedNodes=['Sort','Result','Nested Loop','ProjectSet',...matchedScans];
+const knownMatchedShapes={
+ 'old-matched':'d7725d1f6e9483cfe3c4127524d68a17a3051cf18f011e4ad46e031d677b7f74',
+ 'candidate-matched':'160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96',
+} as const;
+type MatchedScope={label:keyof typeof knownMatchedShapes;tenant:string;company:string};
+const matchedVariableCounters=new Set(['Startup Cost','Total Cost','Plan Rows','Plan Width','Shared Hit Blocks','Shared Read Blocks',
+ 'Rows Removed by Filter','Rows Removed by Index Recheck']);
 const planCounter=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
 type MatchedAccess={relation:string;kind:string;index:string|null;loops:number;rows:number;filtered:number;rechecked:number|null};
 type MatchedFacetWork={
  access:MatchedAccess[];policy:[number,number][];joinRemovals:[number,number][];sharedHits:number;sharedReads:number;
 };
 
-function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:PlanNode[]):MatchedFacetWork|null{
+/** Pin each arm's own executed shape. Keep reference relationships without fixing PostgreSQL's numeric IDs. */
+function knownMatchedShape(root:PlanNode,scope:MatchedScope){
+ const references=new Map<string,number>(),shape:unknown[]=[];
+ const normalize=(value:unknown):unknown=>{
+  if(Array.isArray(value))return value.map(normalize);
+  if(typeof value!=='string')return value;
+  return value.replaceAll(scope.tenant,'<tenant>').replaceAll(scope.company,'<company>')
+   .replace(/(InitPlan|SubPlan) (\d+)|\$(\d+)/g,(_match,kind:string|undefined,plan:string|undefined,param:string|undefined)=>{
+    const key=plan?'p'+plan:'$'+param;
+    if(!references.has(key))references.set(key,references.size+1);
+    return plan?String(kind)+' @'+references.get(key):'$@'+references.get(key);
+   });
+ };
+ function walk(node:PlanNode,depth:number):boolean{
+  if(node['Actual Loops']===0)return (node.Plans??[]).every(child=>child['Actual Loops']===0&&walk(child,depth+1));
+  const scan=matchedScans.includes(String(node['Node Type']));
+  const fields=[];
+  for(const key of Object.keys(node).sort()){
+   if(key==='Plans')continue;
+   const value=node[key];
+   const measured=matchedVariableCounters.has(key)||(scan&&(key==='Actual Loops'||key==='Actual Rows'));
+   if(measured&&(typeof value!=='number'||!Number.isFinite(value)||value<0))return false;
+   fields.push([key,measured?null:normalize(value)]);
+  }
+  shape.push([depth,fields]);
+  return (node.Plans??[]).every(child=>walk(child,depth+1));
+ }
+ return walk(root,0)&&digest(JSON.stringify(shape))===knownMatchedShapes[scope.label];
+}
+
+function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:PlanNode[],scope:MatchedScope):MatchedFacetWork|null{
  if(root['Node Type']!=='Sort'||root['Actual Loops']!==1||root['Actual Rows']!==1||root['Sort Space Type']!=='Memory'||
     Object.hasOwn(document,'JIT')||nodes.some(node=>!planCounter(node['Actual Loops'])))return null;
  const active=nodes.filter(node=>(node['Actual Loops'] as number)>0);
@@ -228,6 +265,15 @@ function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:Pl
     node['Parallel Aware']!==false||node['Async Capable']!==false||node['Temp Read Blocks']!==0||node['Temp Written Blocks']!==0||
     node['Local Hit Blocks']!==0||node['Local Read Blocks']!==0||node['Local Dirtied Blocks']!==0||node['Local Written Blocks']!==0||
     node['Shared Dirtied Blocks']!==0||node['Shared Written Blocks']!==0))return null;
+ if(!knownMatchedShape(root,scope))return null;
+ const [result]=root.Plans??[],[join]=result.Plans??[];
+ const withoutCounter={...result};delete withoutCounter['Shared Hit Blocks'];
+ for(const changed of [
+  {...root,Plans:[result,{...result,Plans:[],'Actual Loops':50000}]},
+  {...root,Plans:[{...result,Plans:[join,{...join,Plans:[]}]}]},
+  {...root,Plans:[{...result,'One-Time Filter':String(result['One-Time Filter'])+' AND true'}]},
+  {...root,Plans:[withoutCounter]},
+ ])expect(knownMatchedShape(changed,scope)).toBe(false);
  const access=active.filter(node=>matchedScans.includes(String(node['Node Type'])));
  if(access.length!==matchedRelations.length)return null;
  const scans:MatchedAccess[]=[];
@@ -273,7 +319,7 @@ function matchedFacetOutcome(old:MatchedFacetWork|null,candidate:MatchedFacetWor
  return 'refused';
 }
 
-function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,sparseCount?:number,point?:EmploymentPoint,matched=false){
+function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,sparseCount?:number,point?:EmploymentPoint,matched?:MatchedScope){
  if(!Array.isArray(raw)||raw.length!==1||!raw[0]||typeof raw[0]!=='object')throw new Error('Unexpected native facet plan envelope');
  const document=raw[0] as Record<string,unknown>;
  const measure=(value:unknown)=>{
@@ -315,7 +361,7 @@ function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:nu
  return {planningMs:measure(document['Planning Time']),executionMs:measure(document['Execution Time']),nodes,
   jitReported:Object.hasOwn(document,'JIT'),assignmentNodes:assignments.map(({qual:_qual,...value})=>value),correlatedWitnesses:witnesses,
   witnessLoops,indexPaths,sharedTraffic:measure(root['Shared Hit Blocks'])+measure(root['Shared Read Blocks']),
-  ...(matched?{matchedWork:matchedFacetWork(document,root,shapeNodes)}:{}),
+  ...(matched?{matchedWork:matchedFacetWork(document,root,shapeNodes,matched)}:{}),
   pathRefusals:sparseCount===undefined?[]:sparsePathRefusals(sparseCount,shapeNodes,root,measure,point)};
 }
 
@@ -586,7 +632,8 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   const bytes=Buffer.byteLength(JSON.stringify(raw));
   if(rawPlans.length>=10||bytes>1024*1024)throw new Error('Native facet plan inventory or size refused');
   rawPlans.push({label,raw});persist();
-  const summary=summarizePlan(raw,first,loops,sparseCount,point,label==='old-matched'||label==='candidate-matched');
+  const matched:MatchedScope|undefined=label==='old-matched'||label==='candidate-matched'?{label,tenant,company:b.companyId}:undefined;
+  const summary=summarizePlan(raw,first,loops,sparseCount,point,matched);
   state.plans.push({label,wallMs,...summary});persist();
   return summary;
  };
