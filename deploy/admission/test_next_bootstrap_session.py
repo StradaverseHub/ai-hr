@@ -14,6 +14,7 @@ from unittest.mock import patch
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import test_next_environment_observation as old
+from next_boot_welcome_action_rewind import pre_welcome_action_source
 F = old.F
 FS = {'actualNamespaceFilesystemVerified': True, 'cacheWrites': 3, 'immutableParentRefusals': 5, 'originalCheckoutReadWriteRefusals': 4}
 
@@ -476,7 +477,7 @@ class BootstrapSessionModels(unittest.TestCase):
         inv=json.loads((ROOT/'deploy/admission/next_bootstrap_session_inverse.json').read_text())
         self.assertFalse(inv['historicalRunEvidenceTransferred'])
         for path,row in inv['files'].items():
-            data=(ROOT/path).read_bytes();self.assertEqual(hashlib.sha256(data).hexdigest(),row['currentSha256']);lines=data.decode().splitlines(keepends=True)
+            data=pre_welcome_action_source(path,(ROOT/path).read_bytes());self.assertEqual(hashlib.sha256(data).hexdigest(),row['currentSha256']);lines=data.decode().splitlines(keepends=True)
             for edit in row['changes']:
                 self.assertEqual(''.join(lines[edit['start']:edit['end']]),edit['after']);lines[edit['start']:edit['end']]=edit['before'].splitlines(keepends=True)
             restored=''.join(lines).encode();self.assertEqual(restored,base64.b64decode(row['originalBase64']));self.assertEqual(hashlib.sha256(restored).hexdigest(),row['originalSha256'])

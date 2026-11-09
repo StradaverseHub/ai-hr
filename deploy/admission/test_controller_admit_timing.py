@@ -22,6 +22,8 @@ S = load('admit_timing_state_models', ROOT/'deploy/admission/test_state.py')
 C = S.C
 F = load('admit_timing_receiver_models', ROOT/'deploy/admission/test_next_native.py')
 H = load('admit_timing_host_models', ROOT/'deploy/admission/test_next_host_view_native.py')
+pre_welcome_action_source = load('admit_timing_boot_welcome_rewind',
+    ROOT/'deploy/admission/next_boot_welcome_action_rewind.py').pre_welcome_action_source
 
 class Stream:
     def __init__(self, failure=None):self.data=[];self.failure=failure;self.closed=0
@@ -343,7 +345,7 @@ class AdmitTimingModels(unittest.TestCase):
         for manifest in ('next_controller_admit_terminal_inverse.json','next_controller_admit_timing_inverse.json'):
             inverse=json.loads((ROOT/'deploy/admission'/manifest).read_text())
             for name,row in inverse['files'].items():
-                data=(ROOT/name).read_bytes();self.assertEqual(hashlib.sha256(data).hexdigest(),row['currentSha256']);lines=data.decode().splitlines(keepends=True)
+                data=pre_welcome_action_source(name,(ROOT/name).read_bytes());self.assertEqual(hashlib.sha256(data).hexdigest(),row['currentSha256']);lines=data.decode().splitlines(keepends=True)
                 for change in row['changes']:
                     self.assertEqual(''.join(lines[change['start']:change['end']]),change['after']);lines[change['start']:change['end']]=change['before'].splitlines(keepends=True)
                 restored=''.join(lines).encode();self.assertEqual(restored,base64.b64decode(row['originalBase64']));self.assertEqual(hashlib.sha256(restored).hexdigest(),row['originalSha256'])
