@@ -39,10 +39,11 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,
  developmentLockWindowEvidence,developmentSteadyLoadPass,buildDevelopmentMeasurement,developmentDockerContext,DEVELOPMENT_DOCKER_COMMAND,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,startMeasuredLockInterval,acquireDriverResource,
- measuredPreflightLockAttemptMs,measuredPreflightLockTiming,
+ measuredPreflightLockTiming,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
-import {createPreflightLockWorkload,firstAppLockWaitCategories,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
+import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
+import {createMeasuredPreflightObserver,measuredLockSampleLimit,observeDatabaseLockCore,observeMeasuredLockConnection} from './measured-lock-observer.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
  nativePreflightRoutePlan,nativePreflightRouteFor,nativePreflightContentWitness,nativePreflightReadiness,
  assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,requireNativeRenderedUnion,readManifestRoute} from './system-route-manifest.mjs';
@@ -387,9 +388,14 @@ function recordLockSampling(){
   loaded:measureDevelopment?qualified('loaded',loaded,loadedCadenceClosed):loaded,
   ...(measureDevelopment?{privatePreflightTiming:measuredPreflightLockTiming(preflight.samples,preflight.window)}:{})};
 }
-function startPreflightLockSampling(lockScope){
- preflightWindow={startMs:performance.now()};
+async function startPreflightLockSampling(lockScope){
+ if(!measureDevelopment)preflightWindow={startMs:performance.now()};
  preflightSampler=sampleDatabaseLocks(lockScope,'preflight',250);
+ if(measureDevelopment){
+  await preflightSampler.ready();
+  preflightWindow={startMs:performance.now()};
+  await preflightSampler.start();
+ }
 }
 async function finishPreflightLockSampling(){
  preflightWindow.endMs??=performance.now();
@@ -457,28 +463,16 @@ async function prepareDatabaseLockScope(){
 }
 
 const waits=[];
-let preflightAttributionPhase='pilot-http';
-const preflightLockWorkload=createPreflightLockWorkload();
+const preflightAttribution=createMeasuredPreflightAttribution();
+const preflightLockWorkload=createPreflightLockWorkload(preflightAttribution.setWorkload);
 const withLockWorkload=fullDevelopmentRoutes?preflightLockWorkload.within:(_stage,work)=>work();
 function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
  const rootStatements=new Map(),samples=[];
- const sampleDb=measureDevelopment?measuredLockDb:db;
- const schedule=measureDevelopment?startMeasuredLockInterval:startDriverInterval;
  const measuredPreflight=measureDevelopment&&phase==='preflight';
- const attemptInterval=measuredPreflight?measuredPreflightLockAttemptMs:interval;
- // Extra aggregate columns on the same preflight probe. Other courses retain their original query.
- const waitCategories=fullDevelopmentRoutes&&measuredPreflight?sampleDb`,jsonb_build_object(
-      'advisory',count(*) filter(where usename='ai_hr_app' and wait_event='advisory'),
-      'transactionid',count(*) filter(where usename='ai_hr_app' and wait_event='transactionid'),
-      'tuple',count(*) filter(where usename='ai_hr_app' and wait_event='tuple'),
-      'relation',count(*) filter(where usename='ai_hr_app' and wait_event='relation'),
-      'other',count(*) filter(where usename='ai_hr_app' and (wait_event is null or
-       wait_event not in ('advisory','transactionid','tuple','relation')))
-      ) as app_lock_wait_kinds`:sampleDb``;
  let attributedSamples=0,enrichmentPending=false;
  const retain=row=>{
   // A sentinel makes over-cap evidence ineligible without growing the ledger indefinitely.
-  if(!measureDevelopment||samples.length<=4096)samples.push(row);
+  if(!measureDevelopment||samples.length<measuredLockSampleLimit)samples.push(row);
  };
  const readHolders=(sql,pids)=>sql.unsafe('select pid,state,wait_event_type,wait_event,query_id::text,extract(epoch from(clock_timestamp()-xact_start))as transaction_age_seconds from pg_stat_activity where datname=current_database()and pid in('+pids.map((_,i)=>'$'+(i+1)).join(',')+')',pids);
  async function captureRootStatements(sql,holders,queuedLocks){
@@ -494,16 +488,13 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    else noteEvidence(()=>writeFileSync(path,evidence));
   }catch{report.blockingStatementCaptureUnavailable=true;}
  }
- const timer=schedule(attemptInterval,async timing=>{
-  const startedMs=performance.now();
-  const attributionPhase=preflightAttributionPhase;
-  const workloadAtStart=preflightLockWorkload.snapshot();
+ async function collect(probe){
+  const startedMs=probe?.startedMs??performance.now();
   let coreComplete=false;
   try{
-   const activity=await sampleDb`select state,coalesce(wait_event_type,'CPU-or-ready') as kind,count(*)::int as connections,
-      (count(*) filter(where usename='ai_hr_app'))::int as app_connections${waitCategories}
-     from pg_stat_activity where datname=current_database() and backend_type='client backend' group by 1,2`;
-   const activityCompletedMs=performance.now();
+   if(probe?.failure){retain({state:'failed',startedMs,completedMs:probe.coreCompletedMs,...probe.failure});return;}
+   const {activity,locks,activityCompletedMs,advisoryStartedMs,coreCompletedMs}=probe??
+    await observeDatabaseLockCore(measureDevelopment?measuredLockDb:db,phase,accessLocks,false);
    const rows=activity.filter(row=>row.state==='active').map(({kind,connections})=>({kind,connections}));
    const appConnections={
     open:activity.reduce((total,row)=>total+row.app_connections,0),
@@ -511,15 +502,6 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
     idleInTransaction:activity.filter(row=>row.state?.startsWith('idle in transaction')).reduce((total,row)=>total+row.app_connections,0),
     waitingOnLock:activity.filter(row=>row.state==='active'&&row.kind==='Lock').reduce((total,row)=>total+row.app_connections,0),
    };
-   const advisoryStartedMs=measuredPreflight?performance.now():null;
-   const locks=await sampleDb`select a.pid,case when not l.granted then pg_blocking_pids(a.pid) end as blockers,l.mode,l.granted,l.classid::text,l.objid::text,l.objsubid,
-     a.usename='ai_hr_app' as app_session from pg_locks l join pg_stat_activity a on a.pid=l.pid
-     where a.datname=current_database()and l.database=(select oid from pg_database where datname=current_database())
-       and l.locktype='advisory' and (not l.granted or (
-       concat(l.classid,':',l.objid,':',l.objsubid)=any(${accessLocks}::text[])
-       and (${phase==='loaded'}::boolean or l.mode='ExclusiveLock')
-       )) order by l.granted,a.pid limit 40`;
-   const coreCompletedMs=performance.now();
    const queuedLocks=locks.filter(row=>!row.granted);
    appConnections.sampledAdvisoryWaiters=new Set(queuedLocks.filter(row=>row.app_session).map(row=>row.pid)).size;
    const pids=[...new Set([
@@ -535,14 +517,13 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    if(wait)waits.push(wait);
    const row={state:'complete',startedMs,completedMs:measureDevelopment?coreCompletedMs:performance.now(),locks:locks.length,blockingAppSessions,
     holdersRequested:pids.length,holdersObserved:holders.length,...(measureDevelopment?{appSessions:appConnections.open,activityCompletedMs}:{}),
-    ...(measuredPreflight?{...timing,advisoryStartedMs}:{})};
+    ...(measuredPreflight?{...probe.timing,advisoryStartedMs}:{})};
    retain(row);
    coreComplete=true;
    let attribution;
-   if(wait&&fullDevelopmentRoutes&&phase==='preflight'&&blockingAppSessions>0&&attributedSamples<6){
+   if(wait&&probe&&fullDevelopmentRoutes&&blockingAppSessions>0&&attributedSamples<6){
     attributedSamples++;
-    const observedPhase=attributionPhase===preflightAttributionPhase?attributionPhase:'transition';
-    attribution={phase:observedPhase,workloadStage:observedPhase==='browser-workflows'?preflightLockWorkload.stageAfter(workloadAtStart):null,
+    attribution={...measuredPreflightAttribution(probe.attributionStart,probe.attributionEnd),
      ...originalAdvisoryAttribution(locks,lockLabels)};
     wait.appAdvisoryAttribution=attribution;
     wait.firstAppLockWaitCategories=firstAppLockWaitCategories(activity,appConnections.waitingOnLock);
@@ -565,8 +546,16 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    if(coreComplete)failures.record('lock-sample-diagnostic',reason);
    else retain({state:'failed',startedMs,completedMs:performance.now(),...driverErrorFact(reason)});
   }
- },reason=>failures.record('lock-sample-diagnostic',reason));
- return {samples,stop:timer.stop};
+ }
+ const onFailure=reason=>failures.record('lock-sample-diagnostic',reason);
+ if(measuredPreflight){
+  const worker=createMeasuredPreflightObserver({url:process.env.MIGRATION_DATABASE_URL,accessLocks,
+   categorized:fullDevelopmentRoutes,token:preflightAttribution.token,
+   onProbe:probe=>{void collect(probe).catch(onFailure);},onFailure});
+  return {samples,...worker};
+ }
+ const schedule=measureDevelopment?startMeasuredLockInterval:startDriverInterval;
+ return {samples,stop:schedule(interval,()=>collect(),onFailure).stop};
 }
 
 async function main(){
@@ -574,14 +563,8 @@ async function main(){
  if(measureDevelopment)await observePostgresWaitLogging('start');
  save();await db`select pg_stat_statements_reset()`;
  const lockScope=nativePreflight?undefined:await prepareDatabaseLockScope();
- if(measuredLockDb){
-  const [settings]=await measuredLockDb`select current_setting('transaction_read_only')='on' as readonly,
-   current_setting('statement_timeout')='400ms' as bounded
-   where session_user='postgres' and current_user='postgres' and current_database()='ai_hr_dev'`;
-  assert(settings?.readonly&&settings?.bounded,'Measured lock observer settings unavailable');
- }
  if(nativePreflight)await startProtectedPreflightLockSampling();
- else if(samplingRequired)startPreflightLockSampling(lockScope);
+ else if(samplingRequired)await startPreflightLockSampling(lockScope);
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
  const claimsFormsBookmark='/admin/claims/forms';
  const claimsFormsWire=!nativePreflight&&suite==='workflow-preflight';
@@ -632,7 +615,7 @@ async function main(){
   const response=await request(actor,'/api/personnel/search?q='+encodeURIComponent(target.name));
   assert.deepEqual(JSON.parse(response.content).rows,[]);report.boundaries.push({kind:'company-or-tenant-search',role:actor.role,passed:true});
  }
- preflightAttributionPhase='browser-sign-in-navigation';
+ preflightAttribution.setPhase('browser-sign-in-navigation');
  try{
   requireNativeBusiness();
   browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined,
@@ -1035,7 +1018,7 @@ async function main(){
    (report.browserLanguageSwitches??=[]).push({role:user.role,path,phase,locale,startedWith,usableWith:loadState?.(),elapsedMs:performance.now()-start,translatedHeading:true,usable:true,draftRetained:!!draft,draftReadyWaitMs});save();
   }
  }
- if(!samplingRequired)startPreflightLockSampling(lockScope);
+ if(!samplingRequired)await startPreflightLockSampling(lockScope);
  // These six independent read-only contexts run concurrently, matching the loaded browser bound.
  // Route/role assertions, per-request deadlines and the overall driver deadline stay unchanged.
  await lanes.run(()=>settleDriverLanes([employee,manager,hr,group,fixture.users[254],fixture.users[251]],async user=>{
@@ -1182,7 +1165,7 @@ async function main(){
  // Finish every admitted sign-in body. On failure the terminal sweep still owns
  // every native context-close outcome.
  for(const result of signInPreflight)if(result.status==='rejected')throw result.reason;
- preflightAttributionPhase='browser-workflows';
+ preflightAttribution.setPhase('browser-workflows');
  let baselineCapture,sealStage='pre-render-settlement';
  try{
   requireCleanDriver();
@@ -1542,6 +1525,11 @@ async function main(){
  requireCleanDriver();
  await finishPreflightLockSampling();
  await db`select pg_stat_statements_reset()`;
+ if(measureDevelopment){
+  measuredLockDb=postgres(process.env.MIGRATION_DATABASE_URL,{max:1,connect_timeout:2,
+   connection:{default_transaction_read_only:'on',statement_timeout:'400ms'}});
+  await observeMeasuredLockConnection(measuredLockDb);
+ }
  loadedSampler=sampleDatabaseLocks(lockScope,'loaded',1000);
  const resourceCpuBefore=resourceCpu(),appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
  const offset=samples.length,started=performance.now(),steadyStart=started+10000,steadyUntil=steadyStart+steadyHoldMs;
@@ -1826,8 +1814,6 @@ try{
  requireNativeBusiness();
  chromiumEnv=closedChromiumEnvironment(process.env,userInfo().homedir);
  db=acquireDriverResource(acquired,'observer',()=>postgres(process.env.MIGRATION_DATABASE_URL,{max:2}));
- if(measureDevelopment&&samplingRequired)measuredLockDb=postgres(process.env.MIGRATION_DATABASE_URL,{max:1,connect_timeout:2,
-  connection:{default_transaction_read_only:'on',statement_timeout:'400ms'}});
  agent=acquireDriverResource(acquired,'agent',()=>new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:nativePreflight,
   lookup:(_host,options,callback)=>options.all?callback(null,[{address:'127.0.0.1',family:4}]):callback(null,'127.0.0.1',4)}));
  await main();
@@ -1882,6 +1868,7 @@ const driverResources={
   if(measureDevelopment&&db)await observePostgresWaitLogging('end');
   if(failureAtExit&&db&&!nativePreflight)await failures.attempt('failure-database-snapshot',()=>databaseSnapshot('failure'));
   shutdown.database=await closePerformanceDbPools(nativeAuditClient,db,failures,measuredLockDb);
+  if(measureDevelopment&&diagnosticOutcomes[0].status==='rejected')shutdown.database.observer='failed';
   shutdown.nativeAuditPoolClosed=shutdown.database.audit==='settled';
   shutdown.driverPoolClosed=shutdown.database.observer==='settled';
  },

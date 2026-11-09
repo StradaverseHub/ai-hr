@@ -1,7 +1,10 @@
 import {expect,it} from 'vitest';
+import {once} from 'node:events';
+import {Worker} from 'node:worker_threads';
 import {developmentPostgresLockWindow,postgresLockFailures} from '../scripts/performance/lock-failure-log.mjs';
-import {createPreflightLockWorkload,firstAppLockWaitCategories,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
-import {lockSampleEvidence} from '../scripts/performance/driver-shutdown.mjs';
+import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
+import {lockSampleEvidence,qualifyLockSampleCadence} from '../scripts/performance/driver-shutdown.mjs';
+import {createMeasuredPreflightObserver} from '../scripts/performance/measured-lock-observer.mjs';
 
 const fictionalWaiter={app_session:true,pid:22,classid:'11',objid:'12',objsubid:1,mode:'ExclusiveLock',blockers:[84]};
 const fictionalBlocker={family:'access-configuration',waiterMode:'ExclusiveLock',blockerMode:'ShareLock',blockerState:'granted',
@@ -30,6 +33,94 @@ it('attributes only an unchanged closed workload during the two original probes'
  });
  expect(owner.stageAfter(outside)).toBe('transition');
  expect(owner.stageAfter(owner.snapshot())).toBeNull();
+});
+
+it('preserves cross-thread workload boundaries even if a nested stage came and went',async()=>{
+ const owner=createMeasuredPreflightAttribution();
+ const workload=createPreflightLockWorkload(owner.setWorkload),stamp=()=>Atomics.load(owner.token,0);
+ const pilot=stamp();
+ owner.setPhase('browser-workflows');
+ expect(measuredPreflightAttribution(pilot,stamp())).toEqual({phase:'transition',workloadStage:null});
+ await workload.within('personnel-profile',async()=>{
+  const initial=stamp();
+  expect(measuredPreflightAttribution(initial,initial)).toEqual({phase:'browser-workflows',workloadStage:'personnel-profile'});
+  await workload.within('letter-draft',async()=>undefined);
+  expect(measuredPreflightAttribution(initial,stamp())).toEqual({phase:'browser-workflows',workloadStage:'transition'});
+ });
+ expect(measuredPreflightAttribution(stamp(),stamp())).toEqual({phase:'browser-workflows',workloadStage:null});
+ expect(measuredPreflightAttribution(undefined,stamp())).toEqual({phase:'transition',workloadStage:null});
+});
+
+it('refuses a database other than the fixed fictional development observer before creating a Worker',()=>{
+ const inputs={accessLocks:[],categorized:true,token:createMeasuredPreflightAttribution().token,onProbe:()=>{},onFailure:()=>{}};
+ for(const url of ['postgres://postgres@127.0.0.1:5433/ai_hr_test','postgres://postgres:secret@127.0.0.1:5433/ai_hr_dev',
+  'postgres://postgres@localhost:5433/ai_hr_dev','postgres://postgres@127.0.0.1:5433/ai_hr_dev?application_name=other']){
+  expect(()=>createMeasuredPreflightObserver({url,...inputs})).toThrow('Measured preflight lock observer database refused');
+ }
+});
+
+it.each([false,true])('uses actual worker timestamps for cadence when the probe itself is slow=%s',async slowProbe=>{
+ const control=new Int32Array(new SharedArrayBuffer(3*Int32Array.BYTES_PER_ELEMENT));
+ const token=createMeasuredPreflightAttribution().token;
+ const moduleUrl=new URL('../scripts/performance/measured-lock-observer.mjs',import.meta.url).href;
+ const source=`import {parentPort,workerData} from 'node:worker_threads';
+  import {setTimeout as delay} from 'node:timers/promises';
+  import {startMeasuredPreflightProbes} from ${JSON.stringify(moduleUrl)};
+  const {control,token,slowProbe}=workerData;
+  let attempts=0,sampler,activityOpen=false;
+  const sql=(parts)=>{
+   const query=parts.join(' ');
+   if(query.includes('jsonb_build_object'))return 'categories';
+   if(query.includes('from pg_stat_activity where')){
+    if(activityOpen)throw Error('Concurrent activity probe');
+    activityOpen=true;
+    return (async()=>{
+     if(++attempts===2&&slowProbe){parentPort.postMessage({secondStarted:true});await delay(550);}
+     return [{state:'active',kind:'CPU-or-ready',connections:1,app_connections:1}];
+    })();
+   }
+   if(query.includes('from pg_locks')&&activityOpen){activityOpen=false;return Promise.resolve([]);}
+   throw Error('Unexpected probe SQL');
+  };
+  parentPort.on('message',async command=>{
+   if(command==='start')sampler=startMeasuredPreflightProbes({sql,accessLocks:[],categorized:true,token,stopped:control,
+    onProbe(probe){Atomics.add(control,1,1);parentPort.postMessage(probe);},onFailure(reason){throw reason;}});
+   else{await sampler.stop();if(activityOpen)throw Error('In-flight probe was not drained');parentPort.close();}
+  });
+  parentPort.postMessage({ready:true,timeOrigin:performance.timeOrigin});`;
+ const worker=new Worker(new URL('data:text/javascript,'+encodeURIComponent(source)),{execArgv:[],workerData:{control,token,slowProbe}});
+ const exited=once(worker,'exit');void exited.catch(()=>{});
+ const first=Promise.withResolvers<void>(),second=Promise.withResolvers<void>(),secondStarted=Promise.withResolvers<void>();
+ const samples:{state:string;startedMs:number;completedMs:number;locks:number;blockingAppSessions:number}[]=[];
+ worker.on('message',probe=>{
+  if(probe.ready)return;
+  if(probe.secondStarted){secondStarted.resolve();return;}
+  samples.push({state:probe.failure?'failed':'complete',startedMs:probe.startedMs,completedMs:probe.coreCompletedMs,
+   locks:probe.locks?.length??0,blockingAppSessions:0});
+  if(probe.sequence===1)first.resolve();
+  if(probe.sequence===2)second.resolve();
+ });
+ try{
+  const [ready]=await once(worker,'message');
+  expect(ready).toEqual({ready:true,timeOrigin:performance.timeOrigin});
+  const startMs=performance.now();
+  worker.postMessage('start');
+  await first.promise;
+  const stop=()=>{Atomics.store(control,0,1);worker.postMessage('stop');};
+  if(slowProbe){await secondStarted.promise;stop();await second.promise;}
+  else{
+   expect(Atomics.wait(control,2,0,620)).toBe('timed-out');
+   expect(samples).toHaveLength(1); // Native observations were made before their messages could run here.
+   expect(Atomics.load(control,1)).toBeGreaterThanOrEqual(4);
+  }
+  const endMs=performance.now();
+  if(!slowProbe)stop();
+  await expect(exited).resolves.toEqual([0]);
+  expect(samples.length).toBe(Atomics.load(control,1));
+  expect(qualifyLockSampleCadence('preflight',samples,{startMs,endMs})).toMatchObject({
+   maxGapUs:500000,coveragePass:!slowProbe,pass:!slowProbe,reason:slowProbe?'coverage-gap':null,
+  });
+ }finally{await worker.terminate();}
 });
 
 it('partitions only the first probe and preserves an original positive on refused category evidence',()=>{

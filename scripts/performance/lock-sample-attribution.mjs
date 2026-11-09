@@ -15,7 +15,7 @@ const preflightWorkloads=new Set(['ai-baseline','org-explorer','personnel-switch
  'personnel-profile','letter-draft','performance-rewards-drafts','audit-verification','assistant-compatibility']);
 
 /** Mark only serial driver scopes. A new token on exit detects a nested stage that came and went mid-probe. */
-export function createPreflightLockWorkload(){
+export function createPreflightLockWorkload(onChange=()=>{}){
  let current=Object.freeze({stage:null});
  return {
   snapshot:()=>current,
@@ -24,10 +24,32 @@ export function createPreflightLockWorkload(){
    if(!preflightWorkloads.has(stage))return work();
    const prior=current.stage;
    current=Object.freeze({stage});
+   onChange(stage);
    try{return await work();}
-   finally{current=Object.freeze({stage:prior});}
+   finally{current=Object.freeze({stage:prior});onChange(prior);}
   },
  };
+}
+
+const probePhases=['pilot-http','browser-sign-in-navigation','browser-workflows'];
+const probeWorkloads=[null,...preflightWorkloads];
+
+/** A single atomic token marks the exact workload interval, including brief nested transitions. */
+export function createMeasuredPreflightAttribution(){
+ const token=new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+ let phase=0,stage=0,generation=0;
+ function publish(){Atomics.store(token,0,++generation*64+stage*4+phase);}
+ return {token,
+  setPhase(value){const next=probePhases.indexOf(value);if(next<phase)throw Error('Unknown preflight lock phase');phase=next;publish();},
+  setWorkload(value){const next=probeWorkloads.indexOf(value);if(next<0)throw Error('Unknown preflight lock workload');stage=next;publish();},
+ };
+}
+
+export function measuredPreflightAttribution(start,end){
+ if(!Number.isSafeInteger(start)||start<0||!Number.isSafeInteger(end)||end<start)return {phase:'transition',workloadStage:null};
+ const phase=probePhases[start&3],workload=probeWorkloads[(start>>2)&15];
+ if(phase===undefined||workload===undefined||(start&3)!==(end&3))return {phase:'transition',workloadStage:null};
+ return {phase,workloadStage:phase==='browser-workflows'?(start===end?workload:'transition'):null};
 }
 
 const waitKinds=['advisory','transactionid','tuple','relation','other'];
