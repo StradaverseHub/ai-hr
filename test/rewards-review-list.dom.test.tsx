@@ -61,7 +61,8 @@ describe('Rewards review overview',()=>{
   show([scopedRow,other],{plan:plan.versionId});
   expect(screen.getByRole('columnheader',{name:'Data check'})).toBeTruthy();
   expect(screen.getByText('4 of 6 verified')).toBeTruthy();
-  expect(screen.queryByText('Fictional Trading')).toBeNull();
+  expect(screen.getAllByRole('row')).toHaveLength(2);
+  expect(within(screen.getAllByRole('row')[1]).queryByText('Fictional Trading')).toBeNull();
   cleanup();
   show([other]);
   expect(screen.queryByRole('columnheader',{name:'Data check'})).toBeNull();
