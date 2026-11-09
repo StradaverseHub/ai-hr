@@ -1,10 +1,10 @@
 {
-  "kind": "NATIVE_RENDERED_UNION_AND_SHELL_BASELINE_SOURCE_NOT_QUALIFICATION",
-  "parent": "4ce6776f5b2df28eb5977a6c9499f7f6cd4a539b",
-  "sourceRef": "codex/native-shell-baseline-52-20261109",
+  "kind": "NATIVE_RENDERED_UNION_AND_SHELL_DESTINATION_IDENTITY_SOURCE_NOT_QUALIFICATION",
+  "parent": "890207be334a47533c50df3d259aef93d4e63320",
+  "sourceRef": "codex/native-shell-destination-identity-20261109",
   "addedPaths": [],
   "sourcePlanSha256": "36903c05bbac12b0c00fd9ca8753453879dac4a5a6f4749e370373e2520546ea",
-  "sourceCensusSha256": "7bdb00bf9f011fa15dd250f7cd914e5483e3c66212d1beec4b4692c1430f8f0d",
+  "sourceCensusSha256": "7fa74353c61730ba4ac82e308aa2c84539ef4b77bd825c439ea4c2adc12f8042",
   "scope": {
     "nativeCourseIssuable": false,
     "publicDriverExport": "runDevelopmentSystemLoad",
@@ -232,7 +232,20 @@
       },
       "legacyWriterStill48": true,
       "independentProtectedVerifierPending": true,
-      "actualBrowserObservationsUnobserved": true
+      "actualBrowserObservationsUnobserved": true,
+      "mountedDestinationIdentity": {
+        "attribute": "data-shell-destination",
+        "canonicalValue": "Existing sidebar item.href",
+        "renderBranches": [
+          "Monolith flat row",
+          "Atelier flat row",
+          "Classic and responsive drawer flat row"
+        ],
+        "absenceObservation": "Refuse a mounted exact href anchor or a matching canonical destination marker, including the real disabled span in the same native shell roots.",
+        "malformedObservation": "Reject invalid static selector inputs and mounted disabled spans with absent or invalid identity under the same deadline.",
+        "activation": "Existing visible enabled link and exact actual href only.",
+        "existingRoleCasesAndRetirementWhole": true
+      }
     }
   },
   "uncommissioned": [
@@ -268,19 +281,18 @@
       ]
     },
     "test/navigation-shell-browser.dom.test.tsx": {
-      "old": 3,
-      "current": 8,
+      "old": 8,
+      "current": 12,
       "oldBodiesWhole": true,
-      "parentCases": 3,
-      "currentCases": 8,
-      "newCallsites": 5,
-      "newExpandedCases": 5,
+      "parentCases": 8,
+      "currentCases": 12,
+      "newCallsites": 4,
+      "newExpandedCases": 4,
       "addedNames": [
-        "observes absence through every native workspace/disclosure before a separate direct-route refusal",
-        "rejects visible, collapsed, disabled and later-mounted native destination anchors as hidden proof",
-        "keeps the original caller deadline and traversal bound for hidden observations",
-        "refuses a destination mounted after the zero-count snapshot and before the visible read without clicking it",
-        "rechecks mounted-anchor absence when a hidden anchor appears after the final visible-count snapshot"
+        "rejects the actual disabled span shape in each mounted sidebar or flyout root",
+        "keeps destination identity exact and scoped, and follows only actual hrefs when clicking",
+        "refuses malformed disabled identities and selector inputs before clicking disclosures",
+        "rechecks mounted disabled spans after the final visible-count snapshot"
       ]
     }
   },
@@ -294,772 +306,238 @@
   },
   "inverseFormat": "zero-based current line offsets with line endings, applied last edit first to replay complete Git parent bytes",
   "files": {
-    "scripts/performance/navigation-browser-capture.ts": {
+    "components/sidebar.tsx": {
       "parent": {
-        "bytes": 22667,
-        "sha256": "4f47538805d999ad5ac251dd2d18c439b83f5926d4f0e3044da54fa1c37adc73",
-        "gitBlob": "f5d0d6240588ef92ee1fb2df19fc85ed106f79d5"
+        "bytes": 54891,
+        "sha256": "dc49c5ab768eb5d55f6fbee1c3e4f0b0bdbdc18a529c7b38fa13a6a6eb758755",
+        "gitBlob": "3ecd5f41f5b0d731741ceefebd7a117af8fb2f6e"
       },
       "current": {
-        "bytes": 31644,
-        "sha256": "0dbc544be4e6a51459501a7abd5c37c3d9b56b7de3393d2947643a265690861a",
-        "gitBlob": "49937e9557d40823e493bc3ea6796ea31f8962cf"
+        "bytes": 55101,
+        "sha256": "656c7b9b9fd0c6431d016536f12f8a2ea1262798118b2e725e25f391da423cbf",
+        "gitBlob": "59ff6b82a02bee4e42f0d140b0496364e8c282bb"
       },
       "inverse": [
         {
-          "currentStart": 9,
+          "currentStart": 474,
           "current": [
-            " NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,validateNativeShellBaseline,\n",
-            " type NavigationCapture,type NavigationCaptureBundle,type NavigationObservation,type NavigationScenario,type NavigationFixtureTextBindings,\n",
-            " type NativeHiddenShellCase,type NativeHiddenShellObservation,type NativeShellIdentity} from './navigation-protocol';\n"
+            "                    <span key={item.href} data-shell-destination={item.href} aria-disabled=\"true\" title={tWorkspace('planLocked')} className={cn(railRow, 'cursor-not-allowed hover:border-transparent hover:text-mid')}>\n"
           ],
           "original": [
-            " type NavigationCapture,type NavigationCaptureBundle,type NavigationObservation,type NavigationScenario,type NavigationFixtureTextBindings} from './navigation-protocol';\n"
+            "                    <span key={item.href} aria-disabled=\"true\" title={tWorkspace('planLocked')} className={cn(railRow, 'cursor-not-allowed hover:border-transparent hover:text-mid')}>\n"
           ]
         },
         {
-          "currentStart": 15,
+          "currentStart": 485,
           "current": [
-            "import {assertNativeShellDestinationHidden,clickNativeShellDestination} from './navigation-shell-browser';\n"
+            "                      href={item.navigationHref ?? item.href} data-shell-destination={item.href}\n"
           ],
           "original": [
-            "import {clickNativeShellDestination} from './navigation-shell-browser';\n"
+            "                      href={item.navigationHref ?? item.href}\n"
           ]
         },
         {
-          "currentStart": 42,
+          "currentStart": 609,
           "current": [
-            "const nativeHiddenShellPages=new WeakSet<Page>();\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 52,
-          "current": [
-            " return (await installNativeDocumentFailureObserver(page,'primary')).retirement;\n",
-            "}\n",
-            "\n",
-            "async function installNativeDocumentFailureObserver(page:Page,scope:'primary'|'hidden-shell'){\n",
-            " const primary=scope==='primary',pages=primary?nativePrimaryPages:nativeHiddenShellPages;\n",
-            " assert(!pages.has(page),'Native document retirement observer already installed');pages.add(page);\n",
-            " const binding=primary?nativePrimaryBinding:'__aihrNativeHiddenShellRetirementV1';\n",
-            " const property=primary?nativePrimaryProperty:'__aihrNativeHiddenShellFailureCaptureV1';\n"
+            "                      <span key={item.href} data-shell-destination={item.href} aria-disabled=\"true\" title={collapsed ? `${label} \u2014 ${tWorkspace('planLocked')}` : tWorkspace('planLocked')} className=\"atelier-row cursor-not-allowed text-muted-foreground\">\n"
           ],
           "original": [
-            " assert(!nativePrimaryPages.has(page),'Native primary retirement observer already installed');nativePrimaryPages.add(page);\n"
+            "                      <span key={item.href} aria-disabled=\"true\" title={collapsed ? `${label} \u2014 ${tWorkspace('planLocked')}` : tWorkspace('planLocked')} className=\"atelier-row cursor-not-allowed text-muted-foreground\">\n"
           ]
         },
         {
-          "currentStart": 64,
+          "currentStart": 615,
           "current": [
-            " const bridge=await page.exposeBinding(binding,(source,...args:unknown[])=>{\n"
+            "                      <Link prefetchOnIntentOnly key={item.href} href={item.navigationHref ?? item.href} data-shell-destination={item.href} onClick={()=>setMobileNavigationOpen(false)} data-tour={item.tour}\n"
           ],
           "original": [
-            " await page.exposeBinding(nativePrimaryBinding,(source,...args:unknown[])=>{\n"
-          ]
-        },
-        {
-          "currentStart": 79,
-          "current": [
-            " const script=await page.addInitScript(({selectors,property,attributes,ingress,binding,key})=>{\n"
-          ],
-          "original": [
-            " await page.addInitScript(({selectors,property,attributes,ingress,binding,key})=>{\n"
-          ]
-        },
-        {
-          "currentStart": 110,
-          "current": [
-            " },{selectors,property,attributes:nativeMarkerAttributes,ingress:BASE,binding,key});\n"
-          ],
-          "original": [
-            " },{selectors,property:nativePrimaryProperty,attributes:nativeMarkerAttributes,ingress:BASE,binding:nativePrimaryBinding,key});\n"
-          ]
-        },
-        {
-          "currentStart": 126,
-          "current": [
-            " const retirement={\n"
-          ],
-          "original": [
-            " return {\n"
-          ]
-        },
-        {
-          "currentStart": 134,
-          "current": [
-            "   },property);\n"
-          ],
-          "original": [
-            "   },nativePrimaryProperty);\n"
-          ]
-        },
-        {
-          "currentStart": 157,
-          "current": [
-            " return {retirement,async disposeHiddenShell(){\n",
-            "  assert(!primary,'Native primary observer remains bound to its Page lifetime');\n",
-            "  retirement.requireSettled(4);\n",
-            "  // The last tracked document is already retired at about:blank. Remove this\n",
-            "  // scope before the same Page begins the independent 187-route observer.\n",
-            "  await script.dispose();await bridge.dispose();\n",
-            " }};\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 198,
-          "current": [
-            " let sealed=false,legacyCapture:NavigationCapture|undefined;\n",
-            " let nativeShell:ReturnType<typeof createNativeHiddenShellCollector>|undefined;\n"
-          ],
-          "original": [
-            " let sealed=false;\n"
-          ]
-        },
-        {
-          "currentStart": 202,
-          "current": [
-            "  nativeHiddenShell(deadline:number){\n",
-            "   assert(phase==='baseline'&&!sealed&&!nativeShell&&!seen.size,'Native shell requires one fresh baseline collector');\n",
-            "   const source={candidateSha,controllerSha,runId,harnessSha256:identity.harnessSha256,scenarioSha256:identity.scenarioSha256};\n",
-            "   nativeShell=createNativeHiddenShellCollector(source,deadline,()=>legacyCapture);\n",
-            "   return {captureActor:nativeShell.captureActor,finish:nativeShell.finish};\n",
-            "  },\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 218,
-          "current": [
-            "   nativeShell?.bindLegacyRole(page,actorIndex);\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 223,
-          "current": [
-            "   legacyCapture=validateNavigationCapture({schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,fixture:identity.plan.fixture,engine:identity.plan.engine,\n"
-          ],
-          "original": [
-            "   return validateNavigationCapture({schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,fixture:identity.plan.fixture,engine:identity.plan.engine,\n"
-          ]
-        },
-        {
-          "currentStart": 226,
-          "current": [
-            "   return legacyCapture;\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 316,
-          "current": [
-            "\n",
-            "const exactHome=BASE+'/';\n",
-            "const nativePrivateContent={\n",
-            " 'shell.payrollProcess':'main [data-tour=\"payroll-batches\"],main [data-tour=\"payroll-create\"]',\n",
-            " 'shell.analytics':'main [data-analytics-metric],main [data-analytics-value]',\n",
-            "} as const;\n",
-            "\n",
-            "function createNativeHiddenShellCollector(source:NativeShellIdentity,deadline:number,legacy:()=>NavigationCapture|undefined){\n",
-            " assert(Number.isFinite(deadline)&&deadline>performance.now(),'Owned native shell deadline required');\n",
-            " assert(source.scenarioSha256===NATIVE_SHELL_LEGACY_SCENARIO_SHA256,'Exact legacy navigation scenario source required');\n",
-            " const legacyPages=new Map<number,Page>(),started=new Set<number>();\n",
-            " const retired=new Map<number,Awaited<ReturnType<typeof installNativePrimaryFailureObserver>>>();\n",
-            " const observations=new Map<string,NativeHiddenShellObservation>();\n",
-            " let sealed=false;\n",
-            " return {\n",
-            "  bindLegacyRole(page:Page,actorIndex:number){\n",
-            "   if(NATIVE_HIDDEN_SHELL_CASES.some(row=>row.actorIndex===actorIndex)){\n",
-            "    assert(!legacyPages.has(actorIndex),'Native shell actor already bound');\n",
-            "    legacyPages.set(actorIndex,page);\n",
-            "   }\n",
-            "  },\n",
-            "  async captureActor(page:Page,actorIndex:number){\n",
-            "   assert(!sealed&&!started.has(actorIndex)&&legacyPages.get(actorIndex)===page,'Native shell requires the same completed legacy actor Page');\n",
-            "   const rows=NATIVE_HIDDEN_SHELL_CASES.filter(row=>row.actorIndex===actorIndex);\n",
-            "   assert(rows.length===2,'Native shell actor differs');\n",
-            "   assert(performance.now()<deadline,'Owned native shell deadline closed before observation');started.add(actorIndex);\n",
-            "   const observer=await installNativeDocumentFailureObserver(page,'hidden-shell');\n",
-            "   const {retirement}=observer;\n",
-            "   for(const [index,row]of rows.entries()){\n",
-            "    const began=performance.now(),limit=Math.min(deadline,began+90000);\n",
-            "    const remaining=()=>{const ms=Math.floor(limit-performance.now());assert(ms>0,'Native hidden shell deadline exceeded');return ms;};\n",
-            "    observations.set(row.id,await captureNativeHiddenShellScenario(page,row,retirement,remaining,began));\n",
-            "    if(index===rows.length-1){\n",
-            "     await retirement.finish(remaining);\n",
-            "     await observer.disposeHiddenShell();remaining();\n",
-            "     retired.set(actorIndex,retirement);\n",
-            "    }\n",
-            "   }\n",
-            "  },\n",
-            "  finish(){\n",
-            "   assert(!sealed,'Native shell baseline already sealed');sealed=true;\n",
-            "   const baseline=legacy();\n",
-            "   assert(baseline?.complete&&baseline.phase==='baseline'&&baseline.observations.length===48,'Exact complete legacy baseline required for native shell');\n",
-            "   assert(retired.size===2&&observations.size===4,'Native hidden shell document or observation census differs');\n",
-            "   let retiredDocuments=0;\n",
-            "   for(const retirement of retired.values()){\n",
-            "    retirement.requireSettled(4);retiredDocuments+=retirement.facts().retired;\n",
-            "   }\n",
-            "   assert(retiredDocuments===8&&performance.now()<deadline,'Native shell retirement census or terminal deadline differs');\n",
-            "   return validateNativeShellBaseline({schemaVersion:1,protocol:NATIVE_SHELL_BASELINE_VERSION,releaseAuthorized:false,\n",
-            "    ...source,runAttempt:1,legacyCases:48,nativeCases:52,retiredDocuments,extensionSha256:nativeHiddenShellCasesSha256(),complete:true,\n",
-            "    observations:NATIVE_HIDDEN_SHELL_CASES.map(row=>observations.get(row.id))},source);\n",
-            "  },\n",
-            " };\n",
-            "}\n",
-            "\n",
-            "async function captureNativeHiddenShellScenario(page:Page,row:NativeHiddenShellCase,retirement:Awaited<ReturnType<typeof installNativePrimaryFailureObserver>>,remaining:()=>number,began:number):Promise<NativeHiddenShellObservation>{\n",
-            " const actor=fixtureNavigationActor(row.actorIndex),frame=page.mainFrame();\n",
-            " assert(actor.role===row.role,'Native hidden shell actor differs');\n",
-            " const cookies=await page.context().cookies(BASE);\n",
-            " assert(cookies.some(cookie=>cookie.name==='__Host-aihr_internal'&&cookie.value&&cookie.secure&&cookie.httpOnly&&cookie.path==='/'),\n",
-            "  'Native hidden shell authenticated session missing');\n",
-            " const nativeDocument=(response:Response,url:string,status:number)=>{\n",
-            "  const request=response.request();\n",
-            "  return response.status()===status&&response.url()===url&&!response.fromServiceWorker()&&request.url()===url&&\n",
-            "   request.method()==='GET'&&request.isNavigationRequest()&&request.resourceType()==='document'&&request.frame()===frame;\n",
-            " };\n",
-            " const verifyHome=async()=>{\n",
-            "  assert(page.url()===exactHome,'Native hidden shell Home address differs');\n",
-            "  await page.locator('main').waitFor({state:'visible',timeout:remaining()});\n",
-            "  const account=page.locator('button[data-tour=\"account\"]');\n",
-            "  await account.first().waitFor({state:'visible',timeout:remaining()});\n",
-            "  assert(await account.count()===1&&await account.isEnabled({timeout:remaining()}),'Native hidden shell account control differs');\n",
-            "  const name=account.getByText(actor.name,{exact:true});\n",
-            "  await name.first().waitFor({state:'visible',timeout:remaining()});\n",
-            "  assert(await name.count()===1&&await name.innerText({timeout:remaining()})===actor.name,'Native hidden shell fixture identity differs');\n",
-            "  const destination='main [data-navigation-destination=\"'+row.destinationId+'\"],main[data-navigation-destination=\"'+row.destinationId+'\"]';\n",
-            "  assert(await page.locator(destination+','+nativePrivateContent[row.destinationId]).count()===0,'Native hidden shell private destination rendered');\n",
-            "  assert(page.url()===exactHome,'Native hidden shell Home changed during observation');\n",
-            " };\n",
-            " const requireCleanDocument=async()=>{\n",
-            "  const facts=await retirement.snapshot(remaining);\n",
-            "  assert(Object.values(facts).every(count=>count===0),'Native hidden shell rendered a DOM failure');\n",
-            " };\n",
-            " retirement.beforeNavigation();\n",
-            " const origin=await page.goto(BASE+row.originHref,{waitUntil:'domcontentloaded',timeout:remaining()});\n",
-            " assert(origin&&nativeDocument(origin,exactHome,200)&&!origin.request().redirectedFrom(),'Native hidden shell origin document differs');\n",
-            " await verifyHome();await requireCleanDocument();\n",
-            " await assertNativeShellDestinationHidden(page,row.href,remaining);\n",
-            " assert(page.url()===exactHome,'Native hidden shell changed origin while traversing');\n",
-            " retirement.beforeNavigation();\n",
-            " const final=await page.goto(BASE+row.href,{waitUntil:'domcontentloaded',timeout:remaining()});\n",
-            " assert(final&&nativeDocument(final,exactHome,200),'Native hidden shell direct denial did not finish at Home');\n",
-            " const finalRequest=final.request(),prior=finalRequest.redirectedFrom();\n",
-            " assert(prior&&!prior.redirectedFrom()&&prior.redirectedTo()===finalRequest&&prior.url()===BASE+row.href,'Native hidden shell direct denial redirect chain differs');\n",
-            " const redirect=await prior.response(),location=redirect?.headers().location;\n",
-            " assert(redirect&&redirect.request()===prior&&nativeDocument(redirect,BASE+row.href,307)&&(location==='/'||location===exactHome),'Native hidden shell HTTP 307 to Home required');\n",
-            " await verifyHome();await requireCleanDocument();\n",
-            " assert(page.url()===exactHome,'Native hidden shell Home changed before observation completed');remaining();\n",
-            " return {id:row.id,destinationId:row.destinationId,role:row.role,actorIndex:row.actorIndex,entry:row.entry,shellVisibility:row.shellVisibility,\n",
-            "  originHref:row.originHref,href:row.href,outcome:row.outcome,originStatus:200,redirectStatus:307,finalStatus:200,finalHref:'/',\n",
-            "  internalSessionObserved:true,fixtureIdentityObserved:true,privateDestinationAbsent:true,elapsedMs:performance.now()-began};\n",
-            "}\n"
-          ],
-          "original": []
-        }
-      ]
-    },
-    "scripts/performance/navigation-protocol.ts": {
-      "parent": {
-        "bytes": 12239,
-        "sha256": "338e8e65d7e18eb4aba1150860fd776be79036a729e1639366707a54ed8bf811",
-        "gitBlob": "aa3095b6f5686668d56b4b9832ebc0c2bd01bd25"
-      },
-      "current": {
-        "bytes": 16981,
-        "sha256": "fb90131d158da44b0ffea2d503e0dcc01fdef42cf1fb7298717f005c55d9e997",
-        "gitBlob": "bba9adbf6df97cbab79093f52d93bc16625b080e"
-      },
-      "inverse": [
-        {
-          "currentStart": 1,
-          "current": [
-            "import {createHash} from 'node:crypto';\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 102,
-          "current": [
-            "\n",
-            "// Separate native-only observations. The v2 development contract above stays 48.\n",
-            "export const NATIVE_SHELL_BASELINE_VERSION='aihr-native-shell-baseline/v1' as const;\n",
-            "export const NATIVE_SHELL_LEGACY_SCENARIO_SHA256='6dae3cc787e5da49e8f00eb30e0d093f7669f8fff3f87aa5f966a00d9397ca7a';\n",
-            "const nativeShellCases=[\n",
-            " {id:'shell.payrollProcess.employee.hidden-denied',destinationId:'shell.payrollProcess',role:'employee',href:'/payroll',actorIndex:4},\n",
-            " {id:'shell.payrollProcess.manager.hidden-denied',destinationId:'shell.payrollProcess',role:'manager',href:'/payroll',actorIndex:2},\n",
-            " {id:'shell.analytics.employee.hidden-denied',destinationId:'shell.analytics',role:'employee',href:'/analytics',actorIndex:4},\n",
-            " {id:'shell.analytics.manager.hidden-denied',destinationId:'shell.analytics',role:'manager',href:'/analytics',actorIndex:2},\n",
-            "] as const;\n",
-            "export const NATIVE_HIDDEN_SHELL_CASES=Object.freeze(nativeShellCases.map(row=>Object.freeze({...row,\n",
-            " entry:'shell-menu',shellVisibility:'hidden',originHref:'/',outcome:'denied',readiness:'controls',\n",
-            " steps:Object.freeze([]),checks:Object.freeze([]),\n",
-            "} as const)));\n",
-            "export const nativeHiddenShellCasesSha256=()=>createHash('sha256').update(JSON.stringify(NATIVE_HIDDEN_SHELL_CASES)).digest('hex');\n",
-            "export type NativeHiddenShellCase=(typeof NATIVE_HIDDEN_SHELL_CASES)[number];\n",
-            "export type NativeHiddenShellObservation=Pick<NativeHiddenShellCase,'id'|'destinationId'|'role'|'actorIndex'|'entry'|'shellVisibility'|'originHref'|'href'|'outcome'>&{\n",
-            " originStatus:200;redirectStatus:307;finalStatus:200;finalHref:'/';internalSessionObserved:true;fixtureIdentityObserved:true;\n",
-            " privateDestinationAbsent:true;elapsedMs:number;\n",
-            "};\n",
-            "export type NativeShellIdentity=Pick<NavigationCapture,'candidateSha'|'controllerSha'|'runId'|'harnessSha256'|'scenarioSha256'>;\n",
-            "export type NativeShellBaseline=NativeShellIdentity&{\n",
-            " schemaVersion:1;protocol:typeof NATIVE_SHELL_BASELINE_VERSION;releaseAuthorized:false;runAttempt:1;\n",
-            " legacyCases:48;nativeCases:52;retiredDocuments:8;extensionSha256:string;complete:true;observations:NativeHiddenShellObservation[];\n",
-            "};\n",
-            "const exactKeys=(value:object,keys:readonly string[])=>Object.keys(value).length===keys.length&&closed(value,keys);\n",
-            "\n",
-            "/** Reconciles a source-bound native observation. A matching record grants no authority. */\n",
-            "export function validateNativeShellBaseline(value:unknown,expected:NativeShellIdentity):NativeShellBaseline{\n",
-            " if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Native shell baseline missing');\n",
-            " const capture=value as NativeShellBaseline;\n",
-            " if(!exactKeys(capture,['schemaVersion','protocol','releaseAuthorized','candidateSha','controllerSha','runId','runAttempt','harnessSha256',\n",
-            "  'scenarioSha256','legacyCases','nativeCases','retiredDocuments','extensionSha256','complete','observations'])\n",
-            "  ||capture.schemaVersion!==1||capture.protocol!==NATIVE_SHELL_BASELINE_VERSION||capture.releaseAuthorized!==false||capture.runAttempt!==1\n",
-            "  ||capture.legacyCases!==48||capture.nativeCases!==52||capture.retiredDocuments!==8||capture.complete!==true\n",
-            "  ||capture.scenarioSha256!==NATIVE_SHELL_LEGACY_SCENARIO_SHA256||capture.extensionSha256!==nativeHiddenShellCasesSha256()\n",
-            "  ||![capture.candidateSha,capture.controllerSha].every(sha=>typeof sha==='string'&&/^[a-f0-9]{40}(?![\\s\\S])/.test(sha))\n",
-            "  ||typeof capture.harnessSha256!=='string'||!/^[a-f0-9]{64}(?![\\s\\S])/.test(capture.harnessSha256)\n",
-            "  ||!Number.isSafeInteger(capture.runId)||capture.runId<1\n",
-            "  ||(['candidateSha','controllerSha','runId','harnessSha256','scenarioSha256'] as const).some(key=>capture[key]!==expected[key])\n",
-            "  ||!Array.isArray(capture.observations)||capture.observations.length!==NATIVE_HIDDEN_SHELL_CASES.length)throw Error('Native shell baseline identity or completeness differs');\n",
-            " for(const [index,scenario] of NATIVE_HIDDEN_SHELL_CASES.entries()){\n",
-            "  const row=capture.observations[index];\n",
-            "  const caseKeys=['id','destinationId','role','actorIndex','entry','shellVisibility','originHref','href','outcome'] as const;\n",
-            "  if(!row||typeof row!=='object'||Array.isArray(row)||!exactKeys(row,[...caseKeys,'originStatus','redirectStatus','finalStatus','finalHref',\n",
-            "   'internalSessionObserved','fixtureIdentityObserved','privateDestinationAbsent','elapsedMs'])\n",
-            "   ||caseKeys.some(key=>row[key]!==scenario[key])||fixtureNavigationActor(row.actorIndex).role!==row.role\n",
-            "   ||row.originStatus!==200||row.redirectStatus!==307||row.finalStatus!==200||row.finalHref!=='/'\n",
-            "   ||row.internalSessionObserved!==true||row.fixtureIdentityObserved!==true||row.privateDestinationAbsent!==true\n",
-            "   ||!Number.isFinite(row.elapsedMs)||row.elapsedMs<0||row.elapsedMs>90000)throw Error('Native hidden shell observation differs');\n",
-            " }\n",
-            " return capture;\n",
-            "}\n"
-          ],
-          "original": []
-        }
-      ]
-    },
-    "scripts/performance/navigation-shell-browser.ts": {
-      "parent": {
-        "bytes": 3377,
-        "sha256": "f9621840fd7bcc77934e57e890c0a3619376b2fc7134b69ec3896b9ca1248995",
-        "gitBlob": "c7dc4bd3a4cd7a019352a3260206a636d9c38455"
-      },
-      "current": {
-        "bytes": 4577,
-        "sha256": "4cd97d9caac1bf1475121b40917e394ccbfad39cbece2051ffcfc00a73ea10ca",
-        "gitBlob": "ab0e60cf6a28d7fdf28f6e13fc9e75acf27ef654"
-      },
-      "inverse": [
-        {
-          "currentStart": 11,
-          "current": [
-            "async function traverseNativeShellDestination(page:Page,href:string,remaining:()=>number,mode:'click'|'hidden'){\n"
-          ],
-          "original": [
-            "export async function clickNativeShellDestination(page:Page,href:string,remaining:()=>number){\n"
-          ]
-        },
-        {
-          "currentStart": 35,
-          "current": [
-            "   remaining();\n",
-            "   // A retained hidden/disabled anchor is not permission-filtered absence. Check\n",
-            "   // every mounted native shell, including collapsed and alternate workspaces.\n",
-            "   if(mode==='hidden')assert(await target.count()===0,'Denied destination is still rendered in the native shell');\n",
-            "   const links=await visible(target);assert(links.length<=1,'Native shell destination is ambiguous');\n",
-            "   if(mode==='hidden')assert(links.length===0,'Denied destination became visible in the native shell');\n",
-            "   if(mode==='click'&&links.length){\n"
-          ],
-          "original": [
-            "   remaining();const links=await visible(target);assert(links.length<=1,'Native shell destination is ambiguous');\n",
-            "   if(links.length){\n"
-          ]
-        },
-        {
-          "currentStart": 58,
-          "current": [
-            "  if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native workspace observation completed');\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 60,
-          "current": [
-            " if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native shell observation completed');\n",
-            " if(mode==='click')throw Error('Reviewed destination is absent from the actual native shell');\n"
-          ],
-          "original": [
-            " throw Error('Reviewed destination is absent from the actual native shell');\n"
-          ]
-        },
-        {
-          "currentStart": 63,
-          "current": [
-            "export async function clickNativeShellDestination(page:Page,href:string,remaining:()=>number){\n",
-            " await traverseNativeShellDestination(page,href,remaining,'click');\n",
-            "}\n",
-            "/** Absence is observed through the real disclosures, then the collector separately\n",
-            " * exercises the native direct-route refusal. This is not a permission resolver. */\n",
-            "export async function assertNativeShellDestinationHidden(page:Page,href:string,remaining:()=>number){\n",
-            " await traverseNativeShellDestination(page,href,remaining,'hidden');\n",
-            "}\n"
-          ],
-          "original": []
-        }
-      ]
-    },
-    "scripts/performance/system-load-owner.mjs": {
-      "parent": {
-        "bytes": 113640,
-        "sha256": "5d95076bd71673789a8e49f422ab72393ad38ee58cdfa94f2b85a61939f7539c",
-        "gitBlob": "c2050d330105ed494adbe0bf985175a22b76d6ca"
-      },
-      "current": {
-        "bytes": 114036,
-        "sha256": "9bfc1178b51e2184c3708f06b6abaebcea8dac63ed371d488b8eb591ee1eeaa2",
-        "gitBlob": "4f8057e97178297962dd3c9cc041775125389594"
-      },
-      "inverse": [
-        {
-          "currentStart": 10,
-          "current": [
-            "import {NATIVE_HIDDEN_SHELL_CASES} from './navigation-protocol.ts';\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 69,
-          "current": [
-            "const nativeShell=nativePreflight?baselineNavigation.nativeHiddenShell(nativeDeadline):undefined;\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 83,
-          "current": [
-            " pendingHiddenShellCases:NATIVE_HIDDEN_SHELL_CASES.map(row=>row.id),\n",
-            " nativeShellBaseline:null,exactShellScenarioPlanComplete:false,dynamicNavigationComplete:false,releaseEligible:false};\n"
-          ],
-          "original": [
-            " pendingHiddenShellCases:['shell.payrollProcess.employee.hidden-denied','shell.payrollProcess.manager.hidden-denied',\n",
-            "  'shell.analytics.employee.hidden-denied','shell.analytics.manager.hidden-denied'],\n",
-            " exactShellScenarioPlanComplete:false,dynamicNavigationComplete:false,releaseEligible:false};\n"
+            "                      <Link prefetchOnIntentOnly key={item.href} href={item.navigationHref ?? item.href} onClick={()=>setMobileNavigationOpen(false)} data-tour={item.tour}\n"
           ]
         },
         {
           "currentStart": 800,
           "current": [
-            "    if(NATIVE_HIDDEN_SHELL_CASES.some(row=>row.actorIndex===user.index))await nativeShell.captureActor(page,user.index);\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 1392,
-          "current": [
-            "  if(!failures.failed()){\n",
-            "   report.nativeRenderedPreflight.nativeShellBaseline=nativeShell.finish();\n",
-            "   report.nativeRenderedPreflight.pendingHiddenShellCases=[];\n",
-            "   report.nativeRenderedPreflight.exactShellScenarioPlanComplete=true;\n",
-            "   report.nativeRenderedPreflight.workflowAndRenderedSlicePassed=true;\n",
-            "  }\n"
+            "                  <span key={item.href} data-shell-destination={item.href} aria-disabled=\"true\" title={tWorkspace('planLocked')}\n"
           ],
           "original": [
-            "  if(!failures.failed())report.nativeRenderedPreflight.workflowAndRenderedSlicePassed=true;\n"
+            "                  <span key={item.href} aria-disabled=\"true\" title={tWorkspace('planLocked')}\n"
+          ]
+        },
+        {
+          "currentStart": 816,
+          "current": [
+            "                    href={item.navigationHref ?? item.href} data-shell-destination={item.href}\n"
+          ],
+          "original": [
+            "                    href={item.navigationHref ?? item.href}\n"
           ]
         }
       ]
     },
-    "test/navigation-browser-capture.test.ts": {
+    "scripts/performance/navigation-shell-browser.ts": {
       "parent": {
-        "bytes": 16249,
-        "sha256": "366f11f3890f31bfa62fe27d7139119806a5d64021e7452bf56712cd8c370f5a",
-        "gitBlob": "7fe389c21d4e23a016087b7aea070809da81d5ec"
+        "bytes": 4577,
+        "sha256": "4cd97d9caac1bf1475121b40917e394ccbfad39cbece2051ffcfc00a73ea10ca",
+        "gitBlob": "ab0e60cf6a28d7fdf28f6e13fc9e75acf27ef654"
       },
       "current": {
-        "bytes": 26365,
-        "sha256": "4c471b9810f1f765c0d647a0f9242fa7b9e4c64354212645f95cd42a72415746",
-        "gitBlob": "16beb58728167fd145bb3c7f227b8bd666def212"
+        "bytes": 5491,
+        "sha256": "e76a46e3ef16a14aa3c2833e93ba202d28759f141fd6d2d85aa19e8708f4160a",
+        "gitBlob": "baeee5b9455b5148f43d04c623468c1360121bef"
       },
       "inverse": [
         {
-          "currentStart": 4,
+          "currentStart": 5,
           "current": [
-            "const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40),scenarioSha256:'d'.repeat(64)}));\n"
-          ],
-          "original": [
-            "const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40)}));\n"
-          ]
-        },
-        {
-          "currentStart": 7,
-          "current": [
-            " navigationSourceIdentity:()=>({harnessSha256:'c'.repeat(64),scenarioSha256:source.scenarioSha256,plan:{schemaVersion:1,fixture:'system-load-v1',engine:'chromium',scope:'Unit collector contract only',scenarios:[{\n"
-          ],
-          "original": [
-            " navigationSourceIdentity:()=>({harnessSha256:'c'.repeat(64),scenarioSha256:'d'.repeat(64),plan:{schemaVersion:1,fixture:'system-load-v1',engine:'chromium',scope:'Unit collector contract only',scenarios:[{\n"
-          ]
-        },
-        {
-          "currentStart": 14,
-          "current": [
-            "import {NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,\n",
-            " validateNativeShellBaseline,type NativeShellBaseline} from '../scripts/performance/navigation-protocol';\n"
+            "const staticShellHref=(value:unknown):value is string=>typeof value==='string'&&/^\\/[a-z0-9-]+(?:\\/[a-z0-9-]+)*(?![\\s\\S])/.test(value);\n"
           ],
           "original": []
         },
         {
-          "currentStart": 87,
+          "currentStart": 13,
           "current": [
-            "afterEach(()=>{source.scenarioSha256='d'.repeat(64);vi.restoreAllMocks();vi.unstubAllEnvs();});\n"
+            " assert(staticShellHref(href),'Only reviewed static shell destinations are supported');\n"
           ],
           "original": [
-            "afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});\n"
+            " assert(/^\\/[a-z0-9/-]+$/.test(href),'Only reviewed static shell destinations are supported');\n"
           ]
         },
         {
-          "currentStart": 214,
+          "currentStart": 16,
           "current": [
-            "\n",
-            "const nativeShellIdentity={candidateSha:source.sha,controllerSha:source.controller,runId:123,harnessSha256:'c'.repeat(64),\n",
-            " scenarioSha256:NATIVE_SHELL_LEGACY_SCENARIO_SHA256};\n",
-            "function modeledShellBaseline():NativeShellBaseline{\n",
-            " return {schemaVersion:1,protocol:NATIVE_SHELL_BASELINE_VERSION,releaseAuthorized:false,...nativeShellIdentity,runAttempt:1,\n",
-            "  legacyCases:48,nativeCases:52,retiredDocuments:8,extensionSha256:nativeHiddenShellCasesSha256(),complete:true,\n",
-            "  observations:NATIVE_HIDDEN_SHELL_CASES.map(({id,destinationId,role,actorIndex,entry,shellVisibility,originHref,href,outcome})=>({\n",
-            "   id,destinationId,role,actorIndex,entry,shellVisibility,originHref,href,outcome,originStatus:200,redirectStatus:307,finalStatus:200,finalHref:'/',\n",
-            "   internalSessionObserved:true,fixtureIdentityObserved:true,privateDestinationAbsent:true,elapsedMs:1200,\n",
-            "  }))};\n",
-            "}\n",
-            "type HiddenShellFixtureMode='exact'|'streamed'|'extra-hop'|'location'|'other-home'|'private-content'|'retired-marker';\n",
-            "function hiddenShellPage(mode:HiddenShellFixtureMode='exact'){\n",
-            " const {page,operations}=fictionalPage(),legacyGoto=page.goto.bind(page),legacyLocator=page.locator.bind(page);\n",
-            " const navigations:string[]=[],disposals:string[]=[];\n",
-            " let url=ingress+'/unit',id:string|undefined,serial=0,privateContent=false;\n",
-            " const frame={url:()=>url},context=page.context();\n",
-            " type Sender={page:Page;frame:typeof frame;context:typeof context};\n",
-            " let binding:((source:Sender,payload:{id:string;key:string;mask:number;terminal:true})=>unknown)|undefined;\n",
-            " let key:string|undefined;\n",
-            " const origin=ingress+'/';\n",
-            " const empty={count:async()=>0};\n",
-            " const accountSelector='button[data-tour=\"account\"]';\n",
-            " type ModeledRequest={url:()=>string;method:()=>string;resourceType:()=>string;isNavigationRequest:()=>boolean;frame:()=>typeof frame;\n",
-            "  redirectedFrom:()=>ModeledRequest|null;redirectedTo:()=>ModeledRequest|null;response:()=>Promise<unknown>};\n",
-            " const request=(address:string)=>{\n",
-            "  const linked:{from?:ModeledRequest;to?:ModeledRequest;response?:unknown}={};\n",
-            "  const value:ModeledRequest={url:()=>address,method:()=> 'GET',resourceType:()=> 'document',isNavigationRequest:()=>true,frame:()=>frame,\n",
-            "   redirectedFrom:()=>linked.from??null,redirectedTo:()=>linked.to??null,response:async()=>linked.response??null};\n",
-            "  return {value,linked};\n",
-            " };\n",
-            " const document=(address:string,status:number,location?:string)=>{\n",
-            "  const {value,linked}=request(address);\n",
-            "  const response={url:()=>address,status:()=>status,request:()=>value,headers:()=>({location}),fromServiceWorker:()=>false};\n",
-            "  linked.response=response;\n",
-            "  return {response,value,linked};\n",
-            " };\n",
-            " Object.assign(page,{\n",
-            "  url:()=>url,mainFrame:()=>frame,context:()=>context,\n",
-            "  exposeBinding:async(name:string,receiver:typeof binding)=>{\n",
-            "   expect(name).toBe('__aihrNativeHiddenShellRetirementV1');binding=receiver;\n",
-            "   return {dispose:async()=>{expect(url).toBe('about:blank');expect(disposals).toEqual(['script']);binding=undefined;disposals.push('binding');}};\n",
-            "  },\n",
-            "  addInitScript:async(_script:unknown,input:{key?:string})=>{\n",
-            "   if(input.key)key=input.key;\n",
-            "   return {dispose:async()=>{expect(url).toBe('about:blank');key=undefined;disposals.push('script');}};\n",
-            "  },\n",
-            "  evaluate:async(_fn:unknown,property?:string)=>{\n",
-            "   if(property!==undefined){expect(property).toBe('__aihrNativeHiddenShellFailureCaptureV1');expect(id).toBeDefined();}\n",
-            "   return {busy:0,unavailable:0,alerts:0,...(property?{id,origin:ingress}:{})};\n",
-            "  },\n",
-            "  locator(selector:string){\n",
-            "   if(!binding||selector===accountSelector||selector==='main')return legacyLocator(selector);\n",
-            "   if(selector==='aside[data-app-sidebar]')return {waitFor:async()=>{},locator:()=>empty};\n",
-            "   if(selector.startsWith('main [data-navigation-destination='))return {count:async()=>Number(privateContent)};\n",
-            "   return empty;\n",
-            "  },\n",
-            "  async goto(address:string,options:Parameters<Page['goto']>[1]){\n",
-            "   navigations.push(address);const legacy=await legacyGoto(address,options);\n",
-            "   if(!binding){url=address;return legacy;}\n",
-            "   if(id){expect(binding({page,frame,context},{id,key:key!,mask:mode==='retired-marker'&&address==='about:blank'?1:0,terminal:true})).toBe(true);}\n",
-            "   if(address==='about:blank'){url=address;id=undefined;return null;}\n",
-            "   id='12345678-1234-4234-8234-'+String(++serial).padStart(12,'0');\n",
-            "   if(address===origin){url=origin;privateContent=false;return document(origin,200).response;}\n",
-            "   expect([ingress+'/payroll',ingress+'/analytics']).toContain(address);\n",
-            "   url=mode==='other-home'?origin+'?foreign=1':origin;privateContent=mode==='private-content';\n",
-            "   const final=document(url,200);\n",
-            "   if(mode!=='streamed'){\n",
-            "    const prior=document(address,307,mode==='location'?'/other':'/');\n",
-            "    prior.linked.to=final.value;final.linked.from=prior.value;\n",
-            "    if(mode==='extra-hop')prior.linked.from=document(ingress+'/foreign',307,address).value;\n",
+            " const value=JSON.stringify(href);\n",
+            " const anchors=roots.map(root=>root+' a[href='+value+']');\n",
+            " // Only absence uses the identity of a mounted row. Clicks still require the actual href.\n",
+            " const target=page.locator((mode==='hidden'?[...anchors,...roots.map(root=>root+' [data-shell-destination='+value+']')]:anchors).join(','));\n",
+            " const disabled=mode==='hidden'?page.locator(roots.map(root=>root+' span[aria-disabled]').join(',')):undefined;\n",
+            " const assertHidden=async(message:string)=>{\n",
+            "  if(disabled){\n",
+            "   const count=await disabled.count();\n",
+            "   assert(count<=128,'Native shell disabled destination inventory exceeds its bound');\n",
+            "   for(let i=0;i<count;i++){\n",
+            "    const span=disabled.nth(i);\n",
+            "    assert(await span.getAttribute('aria-disabled',{timeout:remaining()})==='true'&&\n",
+            "     staticShellHref(await span.getAttribute('data-shell-destination',{timeout:remaining()})),\n",
+            "    'Native shell disabled destination has no valid identity');\n",
             "   }\n",
-            "   return final.response;\n",
-            "  },\n",
-            " });\n",
-            " return {page,navigations,operations,disposals};\n",
-            "}\n",
-            "\n",
-            "describe('separate fixed native shell baseline data and driver controls',()=>{\n",
-            " it('binds only the four reviewed actor and route pairs to the distinct native shell scope',()=>{\n",
-            "  expect(NATIVE_HIDDEN_SHELL_CASES.map(row=>[row.id,row.actorIndex,row.href])).toEqual([\n",
-            "   ['shell.payrollProcess.employee.hidden-denied',4,'/payroll'],['shell.payrollProcess.manager.hidden-denied',2,'/payroll'],\n",
-            "   ['shell.analytics.employee.hidden-denied',4,'/analytics'],['shell.analytics.manager.hidden-denied',2,'/analytics'],\n",
-            "  ]);\n",
-            "  const record=modeledShellBaseline();expect(validateNativeShellBaseline(record,nativeShellIdentity)).toBe(record);\n",
-            "  const malformed:Array<[string,(r:NativeShellBaseline)=>void]>=[\n",
-            "   ['omitted',r=>{r.observations.pop();}],['duplicate',r=>{r.observations[3]=r.observations[0];}],\n",
-            "   ['actor',r=>{Reflect.set(r.observations[0],'actorIndex',5);}],['role',r=>{Reflect.set(r.observations[0],'role','groupHR');}],\n",
-            "   ['destination',r=>{Reflect.set(r.observations[0],'destinationId','shell.rosterManager');}],\n",
-            "   ['route',r=>{Reflect.set(r.observations[0],'href','/roster');}],['origin',r=>{Reflect.set(r.observations[0],'originHref','/login');}],\n",
-            "   ['denial',r=>{Reflect.set(r.observations[0],'outcome','usable');}],['shell visibility',r=>{Reflect.set(r.observations[0],'shellVisibility','visible');}],\n",
-            "   ['target',r=>{Reflect.set(r.observations[0],'finalHref','/?other=1');}],\n",
-            "   ['streamed',r=>{Reflect.set(r.observations[0],'redirectStatus',200);}],['entry',r=>{Reflect.set(r.observations[0],'entry','canonical-link');}],\n",
-            "   ['private destination',r=>{Reflect.set(r.observations[0],'privateDestinationAbsent',false);}],\n",
-            "   ['extension hash',r=>{r.extensionSha256='0'.repeat(64);}],['legacy hash',r=>{r.scenarioSha256='0'.repeat(64);}],\n",
-            "   ['harness hash',r=>{r.harnessSha256='0'.repeat(64);}],['retirement count',r=>{Reflect.set(r,'retiredDocuments',7);}],['extra key',r=>{Reflect.set(r.observations[0],'extra',true);}],\n",
-            "  ];\n",
-            "  for(const [name,change]of malformed){\n",
-            "   const wrong=structuredClone(record);change(wrong);\n",
-            "   expect(()=>validateNativeShellBaseline(wrong,nativeShellIdentity),name).toThrow(/Native (?:hidden shell observation|shell baseline identity or completeness) differs/);\n",
             "  }\n",
-            " });\n",
-            " it('keeps the original v2 collector separate and requires the same Page, clean retirement and whole legacy census',async()=>{\n",
-            "  const ordinary=hiddenShellPage(),development=createNavigationCaptureCollector({phase:'baseline'});\n",
-            "  expect(()=>development.nativeHiddenShell(performance.now()+90000)).toThrow(/Exact legacy navigation/);\n",
-            "  await development.captureActor(ordinary.page,4);\n",
-            "  const old=development.finish();\n",
-            "  expect(ordinary.navigations).toEqual([ingress+'/unit']);expect(ordinary.disposals).toEqual([]);\n",
-            "  expect(old).toMatchObject({protocol:'aihr-navigation-development/v2',scenarioSha256:'d'.repeat(64),phase:'baseline'});\n",
-            "  expect(old.observations).toHaveLength(1);\n",
-            "\n",
-            "  source.scenarioSha256=NATIVE_SHELL_LEGACY_SCENARIO_SHA256;\n",
-            "  const current=hiddenShellPage(),collector=createNavigationCaptureCollector({phase:'baseline'});\n",
-            "  const native=collector.nativeHiddenShell(performance.now()+90000);\n",
-            "  await expect(native.captureActor(current.page,4)).rejects.toThrow(/same completed legacy actor Page/);\n",
-            "  await collector.captureActor(current.page,4);\n",
-            "  await expect(native.captureActor(ordinary.page,4)).rejects.toThrow(/same completed legacy actor Page/);\n",
-            "  await native.captureActor(current.page,4);\n",
-            "  expect(current.navigations).toEqual([ingress+'/unit',ingress+'/',ingress+'/payroll',ingress+'/',ingress+'/analytics','about:blank']);\n",
-            "  expect(current.disposals).toEqual(['script','binding']);\n",
-            "  expect(current.operations.filter(operation=>operation.startsWith('click:'))).toEqual(\n",
-            "   ordinary.operations.filter(operation=>operation.startsWith('click:')));\n",
-            "  await expect(native.captureActor(current.page,4)).rejects.toThrow(/same completed legacy actor Page/);\n",
-            "  const baseline=collector.finish();\n",
-            "  expect(baseline.observations).toEqual(old.observations);\n",
-            "  expect(baseline).not.toHaveProperty('extensionSha256');\n",
-            "  expect(()=>native.finish()).toThrow(/Exact complete legacy baseline/);\n",
-            " });\n",
-            " it.each([\n",
-            "  ['streamed','direct denial redirect chain'],\n",
-            "  ['extra-hop','direct denial redirect chain'],\n",
-            "  ['location','HTTP 307 to Home'],\n",
-            "  ['other-home','did not finish at Home'],\n",
-            "  ['private-content','private destination rendered'],\n",
-            "  ['retired-marker','failure observed through document retirement'],\n",
-            " ]as const)('refuses %s even with an ordinary signed-in baseline',async(mode,reason)=>{\n",
-            "  source.scenarioSha256=NATIVE_SHELL_LEGACY_SCENARIO_SHA256;\n",
-            "  const model=hiddenShellPage(mode),collector=createNavigationCaptureCollector({phase:'baseline'});\n",
-            "  const native=collector.nativeHiddenShell(performance.now()+90000);\n",
-            "  await collector.captureActor(model.page,4);\n",
-            "  await expect(native.captureActor(model.page,4)).rejects.toThrow(reason);\n",
-            "  expect(model.disposals).toEqual([]);\n",
-            " });\n",
-            "});\n"
+            "  assert(await target.count()===0,message);\n",
+            " };\n"
           ],
-          "original": []
+          "original": [
+            " const target=page.locator(roots.map(root=>root+' a[href='+JSON.stringify(href)+']').join(','));\n"
+          ]
+        },
+        {
+          "currentStart": 54,
+          "current": [
+            "   // Count mounted destinations, including disabled rows in collapsed or alternate workspaces.\n",
+            "   if(mode==='hidden')await assertHidden('Denied destination is still rendered in the native shell');\n"
+          ],
+          "original": [
+            "   // A retained hidden/disabled anchor is not permission-filtered absence. Check\n",
+            "   // every mounted native shell, including collapsed and alternate workspaces.\n",
+            "   if(mode==='hidden')assert(await target.count()===0,'Denied destination is still rendered in the native shell');\n"
+          ]
+        },
+        {
+          "currentStart": 75,
+          "current": [
+            "  if(mode==='hidden')await assertHidden('Denied destination appeared before native workspace observation completed');\n"
+          ],
+          "original": [
+            "  if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native workspace observation completed');\n"
+          ]
+        },
+        {
+          "currentStart": 77,
+          "current": [
+            " if(mode==='hidden')await assertHidden('Denied destination appeared before native shell observation completed');\n"
+          ],
+          "original": [
+            " if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native shell observation completed');\n"
+          ]
         }
       ]
     },
     "test/navigation-shell-browser.dom.test.tsx": {
       "parent": {
-        "bytes": 4435,
-        "sha256": "e6243e2a0ce2e0244106d64466bb295361801768adaabf5e14d7352c129ada52",
-        "gitBlob": "fc3074b318c6a7acb64f38f3e7859213d5b95dc9"
-      },
-      "current": {
         "bytes": 7999,
         "sha256": "bccdd4111795af2c08ce693f0a67f25a97d51443474bbb0125fa05c2584366a6",
         "gitBlob": "917507b04da32c6bd30afafaed3a06c581e4d184"
       },
+      "current": {
+        "bytes": 12009,
+        "sha256": "cadfc7e5290b2c13fc448736f3d302cb410933075b076b6cce8038c70325b0c0",
+        "gitBlob": "6ff763025a87caffa4e162b26d4e57898b2bd927"
+      },
       "inverse": [
         {
-          "currentStart": 4,
-          "current": [
-            "import {clickNativeShellDestination,assertNativeShellDestinationHidden} from '../scripts/performance/navigation-shell-browser';\n"
-          ],
-          "original": [
-            "import {clickNativeShellDestination} from '../scripts/performance/navigation-shell-browser';\n"
-          ]
-        },
-        {
-          "currentStart": 6,
-          "current": [
-            " constructor(private readonly nodes:()=>Element[],private readonly afterCount?:(count:number)=>void){}\n",
-            " async count(){const count=this.nodes().length;this.afterCount?.(count);return count;}\n"
-          ],
-          "original": [
-            " constructor(private readonly nodes:()=>Element[]){}\n",
-            " async count(){return this.nodes().length;}\n"
-          ]
-        },
-        {
-          "currentStart": 18,
-          "current": [
-            "const page=(afterTargetCount?:(count:number)=>void)=>({locator:(selector:string)=>new DomLocator(()=>Array.from(document.querySelectorAll(selector)),selector.includes(' a[href=')?afterTargetCount:undefined)})as unknown as Page;\n"
-          ],
-          "original": [
-            "const page=()=>({locator:(selector:string)=>new DomLocator(()=>Array.from(document.querySelectorAll(selector)))})as unknown as Page;\n"
-          ]
-        },
-        {
-          "currentStart": 49,
+          "currentStart": 93,
           "current": [
             "\n",
-            "it('observes absence through every native workspace/disclosure before a separate direct-route refusal',async()=>{\n",
-            " const clicks=fixture({denied:true});await assertNativeShellDestinationHidden(page(),'/analytics',()=>90000);\n",
-            " expect(clicks).toEqual(['workspace','nav-flyout-insights','nested']);\n",
-            " expect(document.querySelector('main button')!.getAttribute('aria-expanded')).toBe('false');\n",
-            "});\n",
-            "it('rejects visible, collapsed, disabled and later-mounted native destination anchors as hidden proof',async()=>{\n",
-            " for(const state of ['collapsed','visible','disabled','later-mounted']){\n",
-            "  const clicks=fixture({denied:state==='later-mounted'});\n",
-            "  const anchor=document.querySelector('nav a');\n",
-            "  if(state==='visible'){document.getElementById('nav-flyout-insights')!.removeAttribute('hidden');document.getElementById('nested')!.removeAttribute('hidden');}\n",
-            "  if(state==='disabled')anchor!.setAttribute('aria-disabled','true');\n",
-            "  if(state==='later-mounted')document.querySelector('[aria-controls=\"nested\"]')!.addEventListener('click',()=>{document.getElementById('nested')!.innerHTML='<a href=\"/analytics\">Newly mounted</a>';});\n",
+            "function appendDisabledDestination(root:Element,href:string){\n",
+            " const row=document.createElement('span');\n",
+            " row.setAttribute('aria-disabled','true');\n",
+            " row.setAttribute('data-shell-destination',href);\n",
+            " const label=document.createElement('span');\n",
+            " label.textContent='Locked destination';row.append(label);root.append(row);\n",
+            " return row;\n",
+            "}\n",
+            "it('rejects the actual disabled span shape in each mounted sidebar or flyout root',async()=>{\n",
+            " for(const selector of ['aside nav','#nav-flyout-insights nav','#atelier-flyout-insights nav']){\n",
+            "  const clicks=fixture({denied:true});\n",
+            "  if(selector.startsWith('#atelier'))document.body.insertAdjacentHTML('beforeend','<div id=\"atelier-flyout-insights\" hidden><nav></nav></div>');\n",
+            "  const row=appendDisabledDestination(document.querySelector(selector)!,'/analytics');\n",
+            "  expect(row.tagName).toBe('SPAN');expect(row.hasAttribute('href')).toBe(false);\n",
             "  await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');\n",
-            "  expect(clicks).not.toContain('destination');\n",
+            "  expect(clicks).toEqual([]);\n",
             " }\n",
             "});\n",
-            "it('keeps the original caller deadline and traversal bound for hidden observations',async()=>{\n",
-            " const clicks=fixture({denied:true});await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>{throw Error('same original deadline');})).rejects.toThrow('same original deadline');\n",
+            "it('keeps destination identity exact and scoped, and follows only actual hrefs when clicking',async()=>{\n",
+            " const clicks=fixture({denied:true});\n",
+            " const rail=document.querySelector('aside nav')!;\n",
+            " appendDisabledDestination(rail,'/analytics-settings');\n",
+            " appendDisabledDestination(rail,'/insights/analytics');\n",
+            " appendDisabledDestination(document.querySelector('main')!,'/analytics');\n",
+            " await assertNativeShellDestinationHidden(page(),'/analytics',()=>90000);\n",
+            " expect(clicks).toEqual(['workspace','nav-flyout-insights','nested']);\n",
+            "\n",
+            " const aliasClicks=fixture({denied:true});\n",
+            " const alias=document.createElement('a');alias.href='/another-route';alias.setAttribute('data-shell-destination','/analytics');\n",
+            " alias.addEventListener('click',event=>{event.preventDefault();aliasClicks.push('alias');});document.querySelector('aside nav')!.append(alias);\n",
+            " await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');\n",
+            " await expect(clickNativeShellDestination(page(),'/analytics',()=>90000)).rejects.toThrow('absent');\n",
+            " expect(aliasClicks).not.toContain('alias');\n",
+            " alias.setAttribute('href','/analytics');alias.setAttribute('data-shell-destination','/another-route');\n",
+            " await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');\n",
+            "});\n",
+            "it('refuses malformed disabled identities and selector inputs before clicking disclosures',async()=>{\n",
+            " for(const identity of [null,'','//analytics','/analytics/','/analytics\\n','/analytics\"]']){\n",
+            "  const clicks=fixture({denied:true});\n",
+            "  const row=appendDisabledDestination(document.querySelector('aside nav')!,identity??'/analytics');\n",
+            "  if(identity===null)row.removeAttribute('data-shell-destination');\n",
+            "  await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('no valid identity');\n",
+            "  if(identity)await expect(assertNativeShellDestinationHidden(page(),identity,()=>90000)).rejects.toThrow('reviewed static');\n",
+            "  expect(clicks).toEqual([]);\n",
+            " }\n",
+            " const clicks=fixture({denied:true});\n",
+            " const wrongState=appendDisabledDestination(document.querySelector('aside nav')!,'/another-route');\n",
+            " wrongState.setAttribute('aria-disabled','false');\n",
+            " await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('no valid identity');\n",
             " expect(clicks).toEqual([]);\n",
             "});\n",
-            "\n",
-            "it('refuses a destination mounted after the zero-count snapshot and before the visible read without clicking it',async()=>{\n",
-            " const clicks=fixture({denied:true});let mounted=false,zeroSnapshotObserved=false;\n",
+            "it('rechecks mounted disabled spans after the final visible-count snapshot',async()=>{\n",
+            " const clicks=fixture({denied:true});let targetReads=0;\n",
             " const racingPage=page(count=>{\n",
-            "  if(mounted)return;expect(count).toBe(0);zeroSnapshotObserved=true;mounted=true;\n",
-            "  const anchor=document.createElement('a');anchor.href='/analytics';anchor.textContent='Mounted between awaited reads';\n",
-            "  anchor.addEventListener('click',event=>{event.preventDefault();clicks.push('racing-destination');});\n",
-            "  document.querySelector('aside nav')!.append(anchor);\n",
-            " });\n",
-            " await expect(assertNativeShellDestinationHidden(racingPage,'/analytics',()=>90000)).rejects.toThrow('became visible');\n",
-            " expect(zeroSnapshotObserved).toBe(true);expect(mounted).toBe(true);expect(clicks).not.toContain('racing-destination');expect(clicks).not.toContain('destination');\n",
-            "});\n",
-            "it('rechecks mounted-anchor absence when a hidden anchor appears after the final visible-count snapshot',async()=>{\n",
-            " const clicks=fixture({denied:true});let targetReads=0,mounted=false;\n",
-            " const racingPage=page(count=>{\n",
-            "  targetReads++;if(targetReads!==2)return;expect(count).toBe(0);mounted=true;\n",
-            "  const anchor=document.createElement('a');anchor.href='/analytics';anchor.hidden=true;\n",
-            "  anchor.addEventListener('click',event=>{event.preventDefault();clicks.push('late-hidden-destination');});\n",
-            "  document.querySelector('aside nav')!.append(anchor);\n",
+            "  if(++targetReads!==2)return;\n",
+            "  expect(count).toBe(0);\n",
+            "  const row=appendDisabledDestination(document.querySelector('aside nav')!,'/analytics');\n",
+            "  row.hidden=true;\n",
+            "  row.addEventListener('click',()=>clicks.push('disabled-destination'));\n",
             " });\n",
             " await expect(assertNativeShellDestinationHidden(racingPage,'/analytics',()=>90000)).rejects.toThrow('before native workspace observation completed');\n",
-            " expect(mounted).toBe(true);expect(clicks).not.toContain('late-hidden-destination');expect(clicks).not.toContain('destination');\n",
+            " expect(targetReads).toBe(3);expect(clicks).toEqual([]);\n",
             "});\n"
           ],
           "original": []
@@ -1223,16 +701,51 @@
       "bytes": 13572,
       "sha256": "32e5d2b4c7dfd9f9f3b3f63389920010db4feb2c6fe22674f4d2cc2d06f84195",
       "gitBlob": "928c199c032d4b659026103ac39074a117e9c1ce"
+    },
+    "scripts/performance/navigation-browser-capture.ts": {
+      "bytes": 31644,
+      "sha256": "0dbc544be4e6a51459501a7abd5c37c3d9b56b7de3393d2947643a265690861a",
+      "gitBlob": "49937e9557d40823e493bc3ea6796ea31f8962cf"
+    },
+    "scripts/performance/navigation-protocol.ts": {
+      "bytes": 16981,
+      "sha256": "fb90131d158da44b0ffea2d503e0dcc01fdef42cf1fb7298717f005c55d9e997",
+      "gitBlob": "bba9adbf6df97cbab79093f52d93bc16625b080e"
+    },
+    "scripts/performance/system-load-owner.mjs": {
+      "bytes": 114036,
+      "sha256": "9bfc1178b51e2184c3708f06b6abaebcea8dac63ed371d488b8eb591ee1eeaa2",
+      "gitBlob": "4f8057e97178297962dd3c9cc041775125389594"
+    },
+    "test/navigation-browser-capture.test.ts": {
+      "bytes": 26365,
+      "sha256": "4c471b9810f1f765c0d647a0f9242fa7b9e4c64354212645f95cd42a72415746",
+      "gitBlob": "16beb58728167fd145bb3c7f227b8bd666def212"
+    },
+    "components/nav-flyout.tsx": {
+      "bytes": 12593,
+      "sha256": "c4e5878a2e8a3a47783c2dbda964d19ed172de4be23b60969d58941178102349",
+      "gitBlob": "a9d97dbe40ad99253c10027b8d894e00b8d5b4f5"
+    },
+    "components/intent-link.tsx": {
+      "bytes": 2658,
+      "sha256": "830514be0624a2be70b8ea407c5fde6bb4b02d2989fdd2889e0c6025cdf13835",
+      "gitBlob": "234cf696421e1c9df01a2271a829486aa7f6e3de"
+    },
+    "lib/navigation/shell-resolver.ts": {
+      "bytes": 11921,
+      "sha256": "86218cb5f5e9d6e5b68b9553d236f0b2138ffc3d06f8057e3f222f004028cc75",
+      "gitBlob": "f812b9f0ac0d1d47a09ec896634cdea1611c60d6"
     }
   },
   "originalIntegrationBase": "499f49f2d7c62d91e0b141bea237d77d75079ac8",
   "historicalSourceRecord": {
     "path": "docs/qualification/native-rendered-union-workflow-source-20261109.json",
-    "commit": "4ce6776f5b2df28eb5977a6c9499f7f6cd4a539b",
-    "bytes": 37186,
-    "sha256": "f3007c38a334d4a08304ab07d1a5dac86d6442a4edc1305fedd94ddf411060a5",
-    "gitBlob": "2920dc2496e12e44acdae05afb4b6844ce382646"
+    "commit": "890207be334a47533c50df3d259aef93d4e63320",
+    "bytes": 66991,
+    "sha256": "da45f5673d4d1a0d783b51e7b2c66a42f404ba257c831942cf589f0e7f42550e",
+    "gitBlob": "ec48fce8f43fc9bf689ac7c28a6a2ee7652625bf"
   },
-  "independentParentSourceReviewSha256": "b733c3145161694f601bd5624c28b5bbbc5352b0a5a12fae1480d99ef6798f1c",
+  "independentParentSourceReviewSha256": "bcc72ba7f22dfddb18eab9f961483cc47d88cc5ecde65c79ba9af56b4e1c0245",
   "reviewedShellSourceEvidenceSha256": "576a69d8b84d779701b8c75d4d01b2d68250ebcb6d6ea48c2912b839487c18b7"
 }

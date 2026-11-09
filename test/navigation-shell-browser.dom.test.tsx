@@ -91,3 +91,67 @@ it('rechecks mounted-anchor absence when a hidden anchor appears after the final
  await expect(assertNativeShellDestinationHidden(racingPage,'/analytics',()=>90000)).rejects.toThrow('before native workspace observation completed');
  expect(mounted).toBe(true);expect(clicks).not.toContain('late-hidden-destination');expect(clicks).not.toContain('destination');
 });
+
+function appendDisabledDestination(root:Element,href:string){
+ const row=document.createElement('span');
+ row.setAttribute('aria-disabled','true');
+ row.setAttribute('data-shell-destination',href);
+ const label=document.createElement('span');
+ label.textContent='Locked destination';row.append(label);root.append(row);
+ return row;
+}
+it('rejects the actual disabled span shape in each mounted sidebar or flyout root',async()=>{
+ for(const selector of ['aside nav','#nav-flyout-insights nav','#atelier-flyout-insights nav']){
+  const clicks=fixture({denied:true});
+  if(selector.startsWith('#atelier'))document.body.insertAdjacentHTML('beforeend','<div id="atelier-flyout-insights" hidden><nav></nav></div>');
+  const row=appendDisabledDestination(document.querySelector(selector)!,'/analytics');
+  expect(row.tagName).toBe('SPAN');expect(row.hasAttribute('href')).toBe(false);
+  await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');
+  expect(clicks).toEqual([]);
+ }
+});
+it('keeps destination identity exact and scoped, and follows only actual hrefs when clicking',async()=>{
+ const clicks=fixture({denied:true});
+ const rail=document.querySelector('aside nav')!;
+ appendDisabledDestination(rail,'/analytics-settings');
+ appendDisabledDestination(rail,'/insights/analytics');
+ appendDisabledDestination(document.querySelector('main')!,'/analytics');
+ await assertNativeShellDestinationHidden(page(),'/analytics',()=>90000);
+ expect(clicks).toEqual(['workspace','nav-flyout-insights','nested']);
+
+ const aliasClicks=fixture({denied:true});
+ const alias=document.createElement('a');alias.href='/another-route';alias.setAttribute('data-shell-destination','/analytics');
+ alias.addEventListener('click',event=>{event.preventDefault();aliasClicks.push('alias');});document.querySelector('aside nav')!.append(alias);
+ await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');
+ await expect(clickNativeShellDestination(page(),'/analytics',()=>90000)).rejects.toThrow('absent');
+ expect(aliasClicks).not.toContain('alias');
+ alias.setAttribute('href','/analytics');alias.setAttribute('data-shell-destination','/another-route');
+ await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');
+});
+it('refuses malformed disabled identities and selector inputs before clicking disclosures',async()=>{
+ for(const identity of [null,'','//analytics','/analytics/','/analytics\n','/analytics"]']){
+  const clicks=fixture({denied:true});
+  const row=appendDisabledDestination(document.querySelector('aside nav')!,identity??'/analytics');
+  if(identity===null)row.removeAttribute('data-shell-destination');
+  await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('no valid identity');
+  if(identity)await expect(assertNativeShellDestinationHidden(page(),identity,()=>90000)).rejects.toThrow('reviewed static');
+  expect(clicks).toEqual([]);
+ }
+ const clicks=fixture({denied:true});
+ const wrongState=appendDisabledDestination(document.querySelector('aside nav')!,'/another-route');
+ wrongState.setAttribute('aria-disabled','false');
+ await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('no valid identity');
+ expect(clicks).toEqual([]);
+});
+it('rechecks mounted disabled spans after the final visible-count snapshot',async()=>{
+ const clicks=fixture({denied:true});let targetReads=0;
+ const racingPage=page(count=>{
+  if(++targetReads!==2)return;
+  expect(count).toBe(0);
+  const row=appendDisabledDestination(document.querySelector('aside nav')!,'/analytics');
+  row.hidden=true;
+  row.addEventListener('click',()=>clicks.push('disabled-destination'));
+ });
+ await expect(assertNativeShellDestinationHidden(racingPage,'/analytics',()=>90000)).rejects.toThrow('before native workspace observation completed');
+ expect(targetReads).toBe(3);expect(clicks).toEqual([]);
+});

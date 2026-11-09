@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type {Locator,Page} from 'playwright';
 const roots=['aside[data-app-sidebar] nav[data-tour="nav"]','[id^="nav-flyout-"] nav','[id^="atelier-flyout-"] nav'];
 const controls=roots.map(root=>root+' button[aria-controls][aria-expanded="false"]').join(',');
+const staticShellHref=(value:unknown):value is string=>typeof value==='string'&&/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*(?![\s\S])/.test(value);
 async function visible(locator:Locator){
  const count=await locator.count();assert(count<=128,'Native shell selector exceeds its bound');
  const result:Locator[]=[];
@@ -10,10 +11,27 @@ async function visible(locator:Locator){
  return result;
 }
 async function traverseNativeShellDestination(page:Page,href:string,remaining:()=>number,mode:'click'|'hidden'){
- assert(/^\/[a-z0-9/-]+$/.test(href),'Only reviewed static shell destinations are supported');
+ assert(staticShellHref(href),'Only reviewed static shell destinations are supported');
  const sidebar=page.locator('aside[data-app-sidebar]');
  await sidebar.waitFor({state:'visible',timeout:remaining()});
- const target=page.locator(roots.map(root=>root+' a[href='+JSON.stringify(href)+']').join(','));
+ const value=JSON.stringify(href);
+ const anchors=roots.map(root=>root+' a[href='+value+']');
+ // Only absence uses the identity of a mounted row. Clicks still require the actual href.
+ const target=page.locator((mode==='hidden'?[...anchors,...roots.map(root=>root+' [data-shell-destination='+value+']')]:anchors).join(','));
+ const disabled=mode==='hidden'?page.locator(roots.map(root=>root+' span[aria-disabled]').join(',')):undefined;
+ const assertHidden=async(message:string)=>{
+  if(disabled){
+   const count=await disabled.count();
+   assert(count<=128,'Native shell disabled destination inventory exceeds its bound');
+   for(let i=0;i<count;i++){
+    const span=disabled.nth(i);
+    assert(await span.getAttribute('aria-disabled',{timeout:remaining()})==='true'&&
+     staticShellHref(await span.getAttribute('data-shell-destination',{timeout:remaining()})),
+    'Native shell disabled destination has no valid identity');
+   }
+  }
+  assert(await target.count()===0,message);
+ };
  const workspaces=sidebar.locator('[role="group"] > button[aria-pressed]');
  const workspaceCount=await workspaces.count();assert(workspaceCount<=2,'Unexpected native workspace inventory');
  const alternatives:number[]=[];
@@ -34,9 +52,8 @@ async function traverseNativeShellDestination(page:Page,href:string,remaining:()
   const opened=new Set<string>();
   for(;;){
    remaining();
-   // A retained hidden/disabled anchor is not permission-filtered absence. Check
-   // every mounted native shell, including collapsed and alternate workspaces.
-   if(mode==='hidden')assert(await target.count()===0,'Denied destination is still rendered in the native shell');
+   // Count mounted destinations, including disabled rows in collapsed or alternate workspaces.
+   if(mode==='hidden')await assertHidden('Denied destination is still rendered in the native shell');
    const links=await visible(target);assert(links.length<=1,'Native shell destination is ambiguous');
    if(mode==='hidden')assert(links.length===0,'Denied destination became visible in the native shell');
    if(mode==='click'&&links.length){
@@ -56,9 +73,9 @@ async function traverseNativeShellDestination(page:Page,href:string,remaining:()
    await page.locator(roots.map(root=>root+' button[aria-controls='+JSON.stringify(id)+'][aria-expanded="true"]').join(','))
     .waitFor({state:'visible',timeout:remaining()});
   }
-  if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native workspace observation completed');
+  if(mode==='hidden')await assertHidden('Denied destination appeared before native workspace observation completed');
  }
- if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native shell observation completed');
+ if(mode==='hidden')await assertHidden('Denied destination appeared before native shell observation completed');
  if(mode==='click')throw Error('Reviewed destination is absent from the actual native shell');
 }
 export async function clickNativeShellDestination(page:Page,href:string,remaining:()=>number){
