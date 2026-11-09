@@ -95,7 +95,7 @@ jobs:
               if (project.rootProject.name != 'gradle-plugin-root') return
               project.repositories.exclusiveContent {
                   forRepository {
-                      maven { url = 'https://maven-central.storage-download.googleapis.com/maven2' }
+                      project.repositories.maven { url = 'https://maven-central.storage-download.googleapis.com/maven2' }
                   }
                   filter { includeVersion('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', '2.2.0') }
               }
