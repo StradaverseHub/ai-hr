@@ -28,7 +28,10 @@ afterAll(stop,30000);
 afterEach(async ({task})=>{
  if(task.result?.state!=='fail')return;
  try{
-  for(const context of browser?.contexts()??[])for(const page of context.pages())console.error('Owned browser failure state:',page.url(),(await page.locator('body').innerText()).slice(0,4000));
+  for(const context of browser?.contexts()??[])for(const page of context.pages()){
+   const body=await page.locator('body').innerText({timeout:2500}).catch(error=>String(error));
+   console.error('Owned browser failure state:',page.url(),body.slice(0,4000));
+  }
   if(serverLog&&typeof serverLog.path==='string')console.error('Owned Next server failure tail:',readFileSync(serverLog.path,'utf8').slice(-12000));
  }catch(error){console.error('Browser diagnostic unavailable:',String(error));}
 },30000);
@@ -50,7 +53,13 @@ describe('System Labels authenticated Excel browser journey',()=>{
   async function navigate(target:Page,path:string){
    for(let attempt=0;;attempt++){
     if(server?.exitCode!==null)throw new Error('Owned preview process exited: '+readFileSync(log,'utf8').slice(-5000));
-    try{return await target.goto(origin+path,{waitUntil:'networkidle',timeout:180000});}
+    try{
+     // A development connection may stay busy after the page is usable. The controls below establish readiness.
+     const response=await target.goto(origin+path,{waitUntil:'domcontentloaded',timeout:180000});
+     expect(response?.status()).toBe(200);
+     expect(new URL(target.url()).pathname).toBe(path);
+     return;
+    }
     catch(error){
      // Next's development supervisor can briefly close its listener during a documented memory restart.
      // Retry only connection-level restarts of this owned process; HTTP/application failures still fail.
@@ -78,13 +87,25 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const context=await browser.newContext({viewport:{width:1440,height:1050},acceptDownloads:true});
   await context.addCookies([{name:'dev_user',value:b.adminUserId,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
   const page=await context.newPage();page.setDefaultTimeout(90000);
-  const response=await navigate(page,'/admin/settings/system-labels');
-  expect(response?.status()).toBe(200);expect(page.url()).toContain('/system-labels');
+  async function openImport(target:Page){
+   const trigger=target.getByRole('button',{name:en.admin.systemLabels.excel.import,exact:true});
+   const dialog=target.getByRole('dialog',{name:en.labelsImportWizard.title,exact:true});
+   // Opening the wizard is reversible and makes no request. Retry only that click until its client UI exists.
+   await expect.poll(async()=>{
+    if(!await dialog.isVisible())await trigger.click({timeout:10000});
+    return dialog.isVisible();
+   },{timeout:90000,intervals:[250,500,1000]}).toBe(true);
+   return dialog;
+  }
+  await navigate(page,'/admin/settings/system-labels');
   // Even a fresh personal catalogue must retain its category rail and Excel export.
   await navigate(page,'/admin/settings/system-labels/profile-options');
   await page.getByRole('button',{name:en.systemLabelExchange.export,exact:true}).waitFor();
   await page.screenshot({path:join(evidence,'system-label-profile-options-empty.png'),fullPage:true});
   await navigate(page,'/admin/settings/system-labels');
+  const readyDialog=await openImport(page);
+  await readyDialog.getByRole('button',{name:en.labelsImportWizard.close,exact:true}).click();
+  await readyDialog.waitFor({state:'hidden'});
   const exports=page.getByRole('button',{name:en.systemLabelExchange.export,exact:true});await expect.poll(()=>exports.count()).toBe(1);
   const downloaded=page.waitForEvent('download');await exports.click();const download=await downloaded;
   expect(download.suggestedFilename()).toMatch(/\.xlsx$/);
@@ -96,8 +117,8 @@ describe('System Labels authenticated Excel browser journey',()=>{
    division:[{Code:'BROWSER_COMPANY_LABEL',Label:'Fictional scoped label',Company:other.id}],
    grade_groups:[{Code:'',Label:'',Name:'BROWSER_GROUP_LABEL'}],
   }});
-  await page.getByRole('button',{name:en.admin.systemLabels.excel.import,exact:true}).click();
-  await page.locator('input[type=file]').setInputFiles({name:'fictional-labels.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:bytes});
+  const importDialog=await openImport(page);
+  await importDialog.locator('input[type=file]').setInputFiles({name:'fictional-labels.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:bytes});
   await page.getByRole('button',{name:en.labelsImportWizard.check,exact:true}).click();
   await page.getByRole('button',{name:'Import 3 new codes',exact:true}).waitFor();
   expect(await page.getByRole('dialog').innerText()).toContain(en.systemLabelExchange.global);
@@ -127,9 +148,9 @@ describe('System Labels authenticated Excel browser journey',()=>{
   await restrictedContext.addCookies([{name:'dev_user',value:restricted.id,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
   const restrictedPage=await restrictedContext.newPage();restrictedPage.setDefaultTimeout(90000);
   await navigate(restrictedPage,'/admin/settings/system-labels');
-  await restrictedPage.getByRole('button',{name:en.admin.systemLabels.excel.import,exact:true}).click();
+  const restrictedDialog=await openImport(restrictedPage);
   const refused=await buildSystemLabelWorkbook({kinds:['department'],rows:{department:[{Code:'BROWSER_FORBIDDEN_GLOBAL'}]},references:{companies:[],grades:[],employees:[]}});
-  await restrictedPage.locator('input[type=file]').setInputFiles({name:'forbidden-global.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:refused});
+  await restrictedDialog.locator('input[type=file]').setInputFiles({name:'forbidden-global.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:refused});
   await restrictedPage.getByRole('button',{name:en.labelsImportWizard.check,exact:true}).click();
   await restrictedPage.getByText(en.labelsImportWizard.globalAdminRequired,{exact:true}).waitFor();
   expect(await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_FORBIDDEN_GLOBAL'))).toHaveLength(0);
