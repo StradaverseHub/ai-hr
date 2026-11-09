@@ -155,22 +155,49 @@ def oom_events(directory, name):
     return {key: integer(events[key]) for key in ('oom', 'oom_kill', 'oom_group_kill') if key in events}
 
 
+def mount_id(fd):
+    values = re.findall(r'^mnt_id:[ \t]+([1-9][0-9]*)$', read_at(None, f'/proc/self/fdinfo/{fd}', 4096), re.M)
+    require(len(values) == 1, 'cgroup-mount-id')
+    return values[0]
+
+
+def group_birth(descriptors):
+    births = [(info.st_dev, info.st_ino) for info in map(os.fstat, descriptors)]
+    return hashlib.sha256(json.dumps(births, separators=(',', ':')).encode('ascii')).hexdigest()
+
+
 @contextlib.contextmanager
-def group(unit):
+def group(unit, service_birth=None):
     with contextlib.ExitStack() as held:
         mount = read_at(None, '/proc/self/mountinfo', 131072)
         relevant = [line.split() for line in mount.splitlines() if len(line.split()) > 6
                     and (line.split()[4] == str(ROOT) or line.split()[4].startswith(str(ROOT) + '/'))]
-        require(len(relevant) == 1 and relevant[0][3:5] == ['/', str(ROOT)]
-                and relevant[0][relevant[0].index('-') + 1] == 'cgroup2', 'cgroup-mount')
+        if service_birth is None:
+            require(len(relevant) == 1 and relevant[0][3:5] == ['/', str(ROOT)]
+                    and relevant[0][relevant[0].index('-') + 1] == 'cgroup2', 'cgroup-mount')
         descriptors = []
         for name in (str(ROOT), 'system.slice', unit):
             fd = os.open(name, CG_FLAGS, dir_fd=descriptors[-1] if descriptors else None)
             held.callback(os.close, fd)
             st = os.fstat(fd)
-            require(st.st_uid == 0 and not st.st_mode & 0o022
-                    and f'{os.major(st.st_dev)}:{os.minor(st.st_dev)}' == relevant[0][2], 'cgroup-ownership')
+            if service_birth is not None:
+                require(st.st_uid == 0 and not st.st_mode & 0o022, 'cgroup-ownership')
+            else:
+                require(st.st_uid == 0 and not st.st_mode & 0o022
+                        and f'{os.major(st.st_dev)}:{os.minor(st.st_dev)}' == relevant[0][2], 'cgroup-ownership')
             descriptors.append(fd)
+        if service_birth is not None:
+            # ProtectControlGroups may present a different mount ID. The active
+            # readonly cover and all three underlying births must be the same tree.
+            ids = [mount_id(fd) for fd in descriptors]
+            device = os.fstat(descriptors[0]).st_dev
+            require(1 <= len(relevant) <= 2 and len({row[0] for row in relevant}) == len(relevant)
+                    and all(row[3:5] == ['/', str(ROOT)] and row[row.index('-') + 1] == 'cgroup2'
+                            and row[2] == f'{os.major(device)}:{os.minor(device)}' for row in relevant), 'service-cgroup-view')
+            covering = [row for row in relevant if row[0] == ids[0]]
+            require(len(covering) == 1 and all(value == ids[0] for value in ids)
+                    and 'ro' in covering[0][5].split(',') and 'rw' not in covering[0][5].split(','), 'service-cgroup-cover')
+            require(group_birth(descriptors) == service_birth, 'service-cgroup-birth')
         yield descriptors
 
 
@@ -239,36 +266,76 @@ def frame(pipe, deadline, maximum=48):
     raise Refusal('protocol-bound')
 
 
+SERVICE_FAILURES = {
+    'identity': {'service-identity', 'process-cgroup-or-executable', 'process-identity', 'process-not-live', 'core-limit'},
+    'grant': {'grant', 'protocol-deadline', 'protocol-eof-or-late', 'protocol-bound', 'invalid-integer'},
+    'cgroup': {'cgroup-mount-id', 'cgroup-ownership', 'service-cgroup-view', 'service-cgroup-cover', 'service-cgroup-birth',
+               'host-memory', 'host-size', 'host-headroom', 'ancestor-memory-controller', 'ancestor-headroom',
+               'cgroup-cap-readback', 'cgroup-swap', 'kernel-fields', 'kernel-duplicate', 'oom-counters',
+               'invalid-integer', 'read-bound', 'service-launch-frontier'},
+    'start': {'service-launch-late'},
+    'compiler': {'service-completion-late'},
+    'terminal': {'terminal-ack', 'protocol-deadline', 'protocol-eof-or-late', 'protocol-bound'},
+}
+SERVICE_ERRORS = {'os-denied', 'os-missing', 'os-pipe', 'os-error', 'invalid-data', 'missing-field', 'process-error', 'refused'}
+
+
+def service_failure(message, allowed):
+    matched = re.fullmatch(r'F ([a-z]+) ([a-z-]+)', message)
+    if matched is None:
+        return None
+    phase, reason = matched.groups()
+    require(phase in allowed and reason in SERVICE_FAILURES[phase] | SERVICE_ERRORS, 'child-refusal-frame')
+    return {'phase': phase, 'reason': reason}
+
+
 def service(unit, pending):
-    temporary = Path(os.environ['RUNNER_TEMP'])
-    directory = temporary / DIRECTORY
-    pnpm = Path(pwd.getpwuid(os.getuid()).pw_dir) / 'setup-pnpm/node_modules/.bin/pnpm'
-    require(re.fullmatch(r'aihr-compiler-12800-[1-9][0-9]{0,15}\.service', unit) and os.getuid() > 0
-            and temporary.is_absolute() and directory.resolve(strict=True) == directory, 'service-identity')
-    pid = os.getpid()
-    process_identity(pid, unit)
-    # Linux reserves a soft core limit of one byte to suppress pipe recursion.
-    # Socket core handlers have different semantics and remain outside this profile.
-    require(resource.getrlimit(resource.RLIMIT_CORE) == (1, 1)
-            and not read_at(None, '/proc/sys/kernel/core_pattern', 4096).startswith('@'), 'core-limit')
-    print(f'R {pid}', flush=True)
-    grant = frame(sys.stdin, pending).split()
-    require(len(grant) == 2 and grant[0] == 'G', 'grant')
-    stop = integer(grant[1])
-    with group(unit) as descriptors:
-        start = sample(descriptors, initial=True)
-        require(read_at(descriptors[-1], 'cgroup.procs') == str(pid) and start['current'] < 64 * 1024 ** 2
-                and all(value == 0 for value in start['oom'].values())
-                and 0 < stop - time.monotonic_ns() <= WORK_NS, 'service-launch-frontier')
-        with (directory / 'compiler.raw.log').open('xb') as log:
-            require(time.monotonic_ns() < stop, 'service-launch-late')
-            with subprocess.Popen(['/usr/bin/time', '-v', str(pnpm), 'exec', 'tsc', '--noEmit'],
-                                  stdin=subprocess.DEVNULL, stdout=log, stderr=log) as compiler:
-                print('S', flush=True)
-                result = compiler.wait()
-        require(time.monotonic_ns() < stop, 'service-completion-late')
-        print(f'D {result}', flush=True)
-        require(frame(sys.stdin, stop + 10 * 10 ** 9) == 'X', 'terminal-ack')
+    phase = 'identity'
+    try:
+        temporary = Path(os.environ['RUNNER_TEMP'])
+        directory = temporary / DIRECTORY
+        pnpm = Path(pwd.getpwuid(os.getuid()).pw_dir) / 'setup-pnpm/node_modules/.bin/pnpm'
+        require(re.fullmatch(r'aihr-compiler-12800-[1-9][0-9]{0,15}\.service', unit) and os.getuid() > 0
+                and temporary.is_absolute() and directory.resolve(strict=True) == directory, 'service-identity')
+        pid = os.getpid()
+        process_identity(pid, unit)
+        # Linux reserves a soft core limit of one byte to suppress pipe recursion.
+        # Socket core handlers have different semantics and remain outside this profile.
+        require(resource.getrlimit(resource.RLIMIT_CORE) == (1, 1)
+                and not read_at(None, '/proc/sys/kernel/core_pattern', 4096).startswith('@'), 'core-limit')
+        print(f'R {pid}', flush=True)
+        phase = 'grant'
+        grant = frame(sys.stdin, pending, maximum=96).split()
+        require(len(grant) == 3 and grant[0] == 'G' and re.fullmatch(r'[a-f0-9]{64}', grant[2]), 'grant')
+        stop = integer(grant[1])
+        phase = 'cgroup'
+        with group(unit, service_birth=grant[2]) as descriptors:
+            start = sample(descriptors, initial=True)
+            require(read_at(descriptors[-1], 'cgroup.procs') == str(pid) and start['current'] < 64 * 1024 ** 2
+                    and all(value == 0 for value in start['oom'].values())
+                    and 0 < stop - time.monotonic_ns() <= WORK_NS, 'service-launch-frontier')
+            phase = 'start'
+            with (directory / 'compiler.raw.log').open('xb') as log:
+                require(time.monotonic_ns() < stop, 'service-launch-late')
+                with subprocess.Popen(['/usr/bin/time', '-v', str(pnpm), 'exec', 'tsc', '--noEmit'],
+                                      stdin=subprocess.DEVNULL, stdout=log, stderr=log) as compiler:
+                    print('S', flush=True)
+                    phase = 'compiler'
+                    result = compiler.wait()
+            require(time.monotonic_ns() < stop, 'service-completion-late')
+            print(f'D {result}', flush=True)
+            phase = 'terminal'
+            require(frame(sys.stdin, stop + 10 * 10 ** 9) == 'X', 'terminal-ack')
+    except (Refusal, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        if isinstance(error, Refusal):
+            reason = str(error) if str(error) in SERVICE_FAILURES[phase] else 'refused'
+        elif isinstance(error, OSError):
+            reason = {PermissionError: 'os-denied', FileNotFoundError: 'os-missing', BrokenPipeError: 'os-pipe'}.get(type(error), 'os-error')
+        else:
+            reason = {ValueError: 'invalid-data', UnicodeDecodeError: 'invalid-data', KeyError: 'missing-field'}.get(type(error), 'process-error')
+        with contextlib.suppress(BrokenPipeError):
+            print(f'F {phase} {reason}', flush=True)
+        raise
 
 
 def owned(row, unit, pid, nonce):
@@ -329,7 +396,12 @@ def run(workspace, temporary, controller, run_id):
             wrapper = subprocess.Popen(argv, env=BASE_ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=manager_log)
         report['ownedCleanup'] = 'unknown'
         wrapper_pidfd = os.pidfd_open(wrapper.pid)
-        ready = re.fullmatch(r'R ([1-9][0-9]{0,9})', frame(wrapper.stdout, pending))
+        message = frame(wrapper.stdout, pending)
+        refusal = service_failure(message, {'identity'})
+        if refusal is not None:
+            report['unboundChildRefusal'] = refusal
+            raise Refusal('child-pre-ready-refused')
+        ready = re.fullmatch(r'R ([1-9][0-9]{0,9})', message)
         require(ready, 'ready-frame')
         pid = int(ready[1])
         row = show(unit)
@@ -344,28 +416,34 @@ def run(workspace, temporary, controller, run_id):
                     and all(value == 0 for value in before['oom'].values()), 'initial-cgroup')
             report['initial'] = before
             minimum = before['memAvailable']
+            birth_seal = group_birth(descriptors)
             now = time.monotonic_ns()
             require(now < pending and deadline - now >= WORK_NS + 25 * 10 ** 9 and wrapper.poll() is None, 'late-grant')
             stop = now + WORK_NS
-            wrapper.stdin.write(f'G {stop}\n'.encode('ascii'))
+            wrapper.stdin.write(f'G {stop} {birth_seal}\n'.encode('ascii'))
             wrapper.stdin.flush()
             report['grantSent'] = True
             while time.monotonic_ns() < stop:
+                if select.select([wrapper.stdout], [], [], .25)[0]:
+                    message = frame(wrapper.stdout, stop)
+                    allowed = {'compiler', 'terminal'} if report['admitted'] else {'grant', 'cgroup', 'start'}
+                    refusal = service_failure(message, allowed)
+                    if refusal is not None:
+                        report['childRefusal'] = refusal
+                        raise Refusal('child-refused')
+                    if not report['admitted']:
+                        require(message == 'S', 'start-frame')
+                        report['admitted'] = True
+                    else:
+                        done = re.fullmatch(r'D (-?[0-9]{1,3})', message)
+                        require(done and -64 <= int(done[1]) <= 255, 'done-frame')
+                        report['compilerExit'] = int(done[1])
+                        break
                 current = sample(descriptors)
                 minimum = min(minimum, current['memAvailable'])
                 report.update(lastSample=current, minimumMemAvailable=minimum)
                 require(current['oom'] == before['oom'] and current['hostOomKill'] == before['hostOomKill']
                         and [a['oom'] for a in current['ancestors']] == [a['oom'] for a in before['ancestors']], 'oom-observed')
-                if select.select([wrapper.stdout], [], [], .25)[0]:
-                    message = frame(wrapper.stdout, stop)
-                    if not report['admitted']:
-                        require(message == 'S', 'start-frame')
-                        report['admitted'] = True
-                        continue
-                    done = re.fullmatch(r'D (-?[0-9]{1,3})', message)
-                    require(done and -64 <= int(done[1]) <= 255, 'done-frame')
-                    report['compilerExit'] = int(done[1])
-                    break
             require(report['compilerExit'] is not None and time.monotonic_ns() < stop, 'compiler-deadline')
             after = sample(descriptors)
             report.update(terminal=after, minimumMemAvailable=min(minimum, after['memAvailable']))
