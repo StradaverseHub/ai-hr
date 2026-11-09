@@ -56,3 +56,7 @@ The recovery retains the 1,487-file provider source closure. Within that closure
 The requested renewal replaces `a72ed7576ba5f1cd7b1a4bb75172a6f92c061d0c6b6c1ccb5b67a4bb48275971` with `738297d46f55828ec2b2f12ea80b7e61956367558be2b59d83410f0c643e0e06` in the same 29 already approved contracts. The two pending contracts and review metadata are preserved. The registry keeps the previously approved digest pending this decision.
 
 The other repairs sit outside the provider source closure. They fix shared browser action feedback, preserve form submission and update failing tests to exercise the required human approval and Prepare paths. The repair tightens the function search path in the still-unapplied migration `4000_attendance_workflow_lifecycle_scope`, whose new SHA-256 is `62759d27e18adc62dd458a18d7f1525f9ed2ac498ae58d7d3884f9f200cc0b1f`. The 718 installed migration payloads and journal entries and the other two appended migrations retain their original bytes.
+
+## Recovery owner approval
+
+The repository owner answered **“Approve exact recovery digest”** on 9 November 2026 to the exact 29-contract request for review commit `99633cc4c7b1ead00919fa3d72b4d541bf6e27cf` and digest `738297d46f55828ec2b2f12ea80b7e61956367558be2b59d83410f0c643e0e06`. The subsequent Mobile Builder repair at `72f4b64e542b36e97f935c8ec6cbc406b44041ec` preserves the reviewed provider source bytes. This renewal changes only the 29 existing source digests and preserves both pending contracts and every existing review field.
