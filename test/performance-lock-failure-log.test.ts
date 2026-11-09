@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import {developmentPostgresLockWindow,postgresLockFailures} from '../scripts/performance/lock-failure-log.mjs';
-import {observeSampledAdvisoryBlockers} from '../scripts/performance/lock-sample-attribution.mjs';
+import {mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
 import {lockSampleEvidence} from '../scripts/performance/driver-shutdown.mjs';
 
 const fictionalWaiter={app_session:true,pid:22,classid:'11',objid:'12',objsubid:1,mode:'ExclusiveLock',blockers:[84]};
@@ -15,7 +15,23 @@ it('attributes only app waiters and emits closed blocker facts without native id
  };
  const edges=await observeSampledAdvisoryBlockers(query,[fictionalWaiter,{...fictionalWaiter,app_session:false,pid:83}],new Map([['11:12:1','access-configuration:fixture-tenant-0']]));
  expect(inputs).toEqual([[JSON.stringify([{pid:22,key:'11:12:1',mode:'ExclusiveLock',family:'access-configuration',blockers:[84]}]),8]]);
- expect(edges).toEqual([fictionalBlocker]);
+ expect(edges).toEqual([{source:'recheck',...fictionalBlocker}]);
+});
+
+it('retains original app waiter and exclusive blocker facts after an expired recheck',async()=>{
+ const waiter={...fictionalWaiter,granted:false,mode:'ShareLock'};
+ const blocker={...waiter,app_session:false,pid:84,granted:true,mode:'ExclusiveLock',query:'private SQL'};
+ const labels=new Map([['11:12:1','access-configuration:fixture-tenant-0']]);
+ const snapshot=originalAdvisoryAttribution([waiter,{...blocker,objid:'wrong-lock'},blocker],labels);
+ expect(snapshot).toEqual({waiters:[{family:'access-configuration',mode:'ShareLock'}],edges:[{
+  source:'original-sample',family:'access-configuration',waiterMode:'ShareLock',blockerMode:'ExclusiveLock',blockerState:'granted',
+  waiterCategory:'unknown',blockerCategory:'unknown',
+ }]});
+ const expired=await observeSampledAdvisoryBlockers(async()=>[],[waiter],labels);
+ expect(mergeAdvisoryEdges(snapshot.edges,expired)).toEqual(snapshot.edges);
+ const enriched=await observeSampledAdvisoryBlockers(async()=>[{...fictionalBlocker,waiterMode:'ShareLock',blockerMode:'ExclusiveLock'}],[waiter],labels);
+ expect(mergeAdvisoryEdges(snapshot.edges,enriched)).toMatchObject([{source:'original-sample'},{source:'recheck'}]);
+ expect(originalAdvisoryAttribution([waiter],labels)).toEqual({waiters:snapshot.waiters,edges:null});
 });
 
 it('keeps the positive lock gate when attribution refuses, disappears or overruns its bound',async()=>{

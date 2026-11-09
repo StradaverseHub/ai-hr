@@ -4,15 +4,47 @@ const modes=new Set(['ShareLock','ExclusiveLock']);
 const categories=new Set(['advisory-exclusive','advisory-shared','rewards-authority','rewards-library','rewards-company','audit-append','ai-action-pause','unknown']);
 const states=new Set(['granted','queued']);
 const maxEdges=8;
+const lockKey=row=>row.classid+':'+row.objid+':'+row.objsubid;
+const lockFamily=(key,labels)=>{
+ const family=labels.get(key)?.split(':',1)[0];
+ return families.has(family)?family:'unclassified';
+};
+
+/** Pair only rows from the retained native query and its own pg_blocking_pids result. */
+export function originalAdvisoryAttribution(locks,labels){
+ try{
+  const waiters=[],edges=[];
+  for(const waiter of locks){
+   if(waiters.length===maxEdges)break;
+   if(waiter.granted!==false||waiter.app_session!==true||!modes.has(waiter.mode))continue;
+   const key=lockKey(waiter),family=lockFamily(key,labels);
+   waiters.push({family,mode:waiter.mode});
+   for(const pid of new Set((waiter.blockers??[]).slice(0,4))){
+    if(edges.length===maxEdges)break;
+    if(!Number.isSafeInteger(pid)||pid<=0||pid===waiter.pid)continue;
+    const candidates=locks.filter(row=>row.pid===pid&&lockKey(row)===key&&modes.has(row.mode)
+     &&typeof row.granted==='boolean'&&(waiter.mode==='ExclusiveLock'||row.mode==='ExclusiveLock'));
+    const blocker=candidates.find(row=>row.granted)??candidates[0];
+    if(!blocker)continue;
+    edges.push({source:'original-sample',family,waiterMode:waiter.mode,blockerMode:blocker.mode,
+     blockerState:blocker.granted?'granted':'queued',waiterCategory:'unknown',blockerCategory:'unknown'});
+   }
+  }
+  return {waiters:waiters.length?waiters:null,edges:edges.length?edges:null};
+ }catch{return {waiters:null,edges:null};}
+}
+
+export function mergeAdvisoryEdges(original,rechecked){
+ return rechecked?[...(original??[]),...rechecked].slice(0,maxEdges):original;
+}
 
 export async function observeSampledAdvisoryBlockers(sql,queued,lockLabels){
  try{
   const targets=queued.filter(row=>row.app_session===true&&Number.isSafeInteger(row.pid)&&row.pid>0&&modes.has(row.mode))
    .slice(0,maxEdges).map(row=>{
-    const key=row.classid+':'+row.objid+':'+row.objsubid;
-    const family=lockLabels.get(key)?.split(':',1)[0];
+    const key=lockKey(row);
     const blockers=(row.blockers??[]).filter(pid=>Number.isSafeInteger(pid)&&pid>0).slice(0,4);
-    return {pid:row.pid,key,mode:row.mode,family:families.has(family)?family:'unclassified',blockers};
+    return {pid:row.pid,key,mode:row.mode,family:lockFamily(key,lockLabels),blockers};
    });
   if(!targets.length)return null;
   // Recheck the original app waiter, exact lock and current blockers. SQL text stays inside PostgreSQL.
@@ -52,7 +84,7 @@ export async function observeSampledAdvisoryBlockers(sql,queued,lockLabels){
    if(!families.has(family)||!modes.has(waiterMode)||!modes.has(blockerMode)||!states.has(blockerState)
     ||waiterMode===blockerMode&&waiterMode==='ShareLock'
     ||!categories.has(waiterCategory)||!categories.has(blockerCategory))return null;
-   edges.push({family,waiterMode,blockerMode,blockerState,waiterCategory,blockerCategory});
+   edges.push({source:'recheck',family,waiterMode,blockerMode,blockerState,waiterCategory,blockerCategory});
   }
   return edges;
  }catch{return null;}

@@ -40,7 +40,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
-import {observeSampledAdvisoryBlockers} from './lock-sample-attribution.mjs';
+import {mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
  nativePreflightRoutePlan,nativePreflightRouteFor,nativePreflightContentWitness,nativePreflightReadiness,
  assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,requireNativeRenderedUnion,readManifestRoute} from './system-route-manifest.mjs';
@@ -502,11 +502,11 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    coreComplete=true;
    if(wait&&fullDevelopmentRoutes&&phase==='preflight'&&blockingAppSessions>0&&attributedSamples<6){
     attributedSamples++;
-    const attribution={phase:attributionPhase===preflightAttributionPhase?attributionPhase:'transition',edges:null};
+    const attribution={phase:attributionPhase===preflightAttributionPhase?attributionPhase:'transition',...originalAdvisoryAttribution(locks,lockLabels)};
     wait.appAdvisoryAttribution=attribution;
     // Schedule separately after retaining the original sample. An attribution error cannot erase or fail it.
     try{void diagnostics.run(async()=>{
-     attribution.edges=await observeSampledAdvisoryBlockers(db,queuedLocks,lockLabels);
+     attribution.edges=mergeAdvisoryEdges(attribution.edges,await observeSampledAdvisoryBlockers(db,queuedLocks,lockLabels));
     }).catch(()=>{});}catch{/* Optional work may already be sealed. */}
    }
    // The top-statement summary can omit rare root holders. Resolve only sampled root IDs,
