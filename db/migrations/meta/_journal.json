@@ -5027,6 +5027,13 @@
       "when": 1793330003500,
       "tag": "3900_individual_transaction_calculation_method",
       "breakpoints": true
+    },
+    {
+      "idx": 3501,
+      "version": "7",
+      "when": 1793330003801,
+      "tag": "4101_attendance_formula_company_scope",
+      "breakpoints": true
     }
   ]
 }

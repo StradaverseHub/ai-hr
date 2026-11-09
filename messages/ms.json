@@ -36606,6 +36606,11 @@
     "residencyHelp": "Rekod pemastautinan penerima untuk pelaporan pembayaran, termasuk pemegang akaun tersuai. Ini berasingan daripada pemastautinan cukai pekerja."
   },
   "attendanceFormula": {
+    "allCompanies": "Semua Syarikat",
+    "selectedCompanies": "Syarikat dipilih ({count})",
+    "allCompanySnapshot": "Versi ini meliputi {count} syarikat aktif. Semak syarikat baharu sebelum menambahnya.",
+    "refreshCompanies": "Semak senarai syarikat semasa",
+    "employeeCompany": "Syarikat untuk pemilihan pekerja",
     "title": "Formula kehadiran",
     "subtitle": "Bina, uji dan semak pengiraan kehadiran sebelum pengaktifan.",
     "settings": "Tetapan kehadiran",

@@ -111,6 +111,8 @@ export function transferAttendanceFormulaResults(ctx:SessionContext,p:{batchId:s
  if(!ctx.userId||!Array.isArray(p.resultIds)||!p.resultIds.length||p.resultIds.length>128||new Set(p.resultIds).size!==p.resultIds.length||!p.reason?.trim()||p.reason.length>1000)throw Error('Choose approved results and give a transfer reason.');
  const results=await Promise.all(p.resultIds.map(id=>readAttendanceFormulaResultTx(tx,ctx,id)));
  for(const employmentId of [...new Set(results.map(row=>row.employmentId))].sort())await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+employmentId},0))`);
+ // Keep the applicable active set stable until its complete contribution has been checked and posted.
+ await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId.toLowerCase()+':attendance-formula-activation'},0))`);
  const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId));
  if(!batch||batch.status!=='draft'||batch.runType!=='regular'||results.some(row=>row.companyId!==batch.companyId||row.periodTo.slice(0,7)!==batch.payPeriod))throw Error('Use the matching company regular draft Payroll run and calculation ending month.');
  const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${batch.companyId}::uuid) as allowed`);if(!authority?.allowed)throw Error('Payroll financial authority is required.');
@@ -121,7 +123,11 @@ export function transferAttendanceFormulaResults(ctx:SessionContext,p:{batchId:s
   else if(state?.kind!=='approved')throw Error('Review and approve every current result before transfer.');
   const others=await tx.select().from(attendanceFormulaResult).where(and(eq(attendanceFormulaResult.employmentId,result.employmentId),eq(attendanceFormulaResult.payComponentId,result.payComponentId),sql`${attendanceFormulaResult.periodFrom}<=${result.periodTo}::date and ${attendanceFormulaResult.periodTo}>=${result.periodFrom}::date`)).limit(501);if(others.length>500)throw Error('Narrow the overlapping result history.');
   for(const other of others){const state=await attendanceFormulaResultStateTx(tx,other.id);if(state&&!['superseded','reversed'].includes(state.kind)&&!p.resultIds.includes(other.id))throw Error('Include every current result for the overlapping employee, Pay Item and period; incomplete sets cannot post.');}
-  const active=await tx.execute<{id:string;definition:unknown}>(sql`select f.id,v.definition from attendance_formula f join lateral(select e.kind,e.revision_id from attendance_formula_event e where e.formula_id=f.id and e.tenant_id=f.tenant_id and e.kind in('activated','deactivated','archived') order by sequence desc limit 1)state on state.kind='activated' join attendance_formula_revision v on v.id=state.revision_id where f.company_id=${result.companyId}::uuid and f.tenant_id=app.current_tenant_id() and(v.pay_component_id=${result.payComponentId}::uuid or(${replay.configuration.purpose==='overtime'}::boolean and v.definition->>'purpose'='overtime')) and v.definition->>'effectiveFrom'<=${result.periodTo} limit 129`);
+  const active=await tx.execute<{id:string;definition:unknown}>(sql`
+   select formula_id as id,definition
+   from app.attendance_formula_subject_versions(${result.companyId}::uuid,${result.employmentId}::uuid,${result.periodTo}::date,
+    null,null,${result.payComponentId}::uuid,${replay.configuration.purpose==='overtime'})
+   limit 129`);
   if(active.length>128)throw Error('Narrow the active formula conflict set.');for(const formula of active){if(await attendanceFormulaEligibleForPeriodTx(tx,ctx,formula.definition,{employmentId:result.employmentId,from:result.periodFrom,to:result.periodTo})&&!results.some(row=>row.formulaId===formula.id&&row.employmentId===result.employmentId&&row.periodFrom===result.periodFrom&&row.periodTo===result.periodTo))throw Error('Calculate and review every applicable active formula before resolving the complete posting set.');}
   candidates.push({...result,posting:replay.configuration.posting,purpose:replay.configuration.purpose});
  }
