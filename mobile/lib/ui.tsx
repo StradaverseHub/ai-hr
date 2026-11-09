@@ -100,7 +100,7 @@ export function Button({ title, onPress, kind = 'primary', disabled = false,busy
       accessibilityLabel={accessibilityLabel}
       accessibilityState={selected === undefined ? { disabled:blocked,busy } : { disabled:blocked,busy,selected }}
       disabled={blocked}
-      onPress={()=>{if(blocked||activating.current)return;activating.current=true;queueMicrotask(()=>{activating.current=false;});onPress();}}
+      onPress={()=>{if(blocked||activating.current)return;activating.current=true;void Promise.resolve().then(()=>{activating.current=false;});onPress();}}
       style={({ pressed }) => [styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : palette.button, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 6 }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || blocked) && { opacity: 0.7 }]}
     >
       {busy&&<ActivityIndicator accessibilityLabel={t('loading')} color={foreground} style={{marginEnd:8}}/>}

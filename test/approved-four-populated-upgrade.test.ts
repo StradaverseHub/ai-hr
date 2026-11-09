@@ -24,12 +24,12 @@ it('upgrades a populated canonical baseline with an exact ledger prefix and pres
   await storage.client`insert into company(id,tenant_id,legal_name) values(${company},${tenant},'Fictional retained company')`;
   const stages=[{name:'Original retained stage',level:{kind:'hr_admin',employmentId:null,alternates:[]}}];
   await storage.client`insert into attendance_workflow_template(id,tenant_id,company_id,code,name,application_type,priority,criteria,stages,version,active,lineage_id) values(${template},${tenant},${company},'RETAINED','Retained original workflow','irregularity',100,'{}'::jsonb,${JSON.stringify(stages)}::jsonb,1,true,${lineage})`;
-  const before=await storage.client`select to_jsonb(t) as row from attendance_workflow_template t where tenant_id=${tenant}`;
+  const before=await storage.client<{row:Record<string,unknown>}[]>`select to_jsonb(t) as row from attendance_workflow_template t where tenant_id=${tenant}`;
   const beforeCompany=await storage.client`select to_jsonb(c) as row from company c where tenant_id=${tenant}`;
   const prefix=await ledger();expect(prefix).toHaveLength(boundary);
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const after=await ledger();expect(after.slice(0,prefix.length)).toEqual(prefix);expect(after).toHaveLength(journal.entries.length);
-  expect(await storage.client`select to_jsonb(t) as row from attendance_workflow_template t where tenant_id=${tenant}`).toEqual(before);
+  expect(await storage.client`select to_jsonb(t) as row from attendance_workflow_template t where tenant_id=${tenant}`).toEqual(before.map(({row})=>({row:{...row,all_companies:false}})));
   expect(await storage.client`select to_jsonb(c) as row from company c where tenant_id=${tenant}`).toEqual(beforeCompany);
   expect(await storage.client`select tenant_id,template_id,company_id from attendance_workflow_company where template_id=${template}`).toEqual([{tenant_id:tenant,template_id:template,company_id:company}]);
   for(const [index,entry]of journal.entries.slice(boundary).entries())expect(after[boundary+index].hash).toBe(createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'));

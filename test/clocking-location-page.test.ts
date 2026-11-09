@@ -350,7 +350,7 @@ describe('r423 — the form: the reporter’s order, Companies and Status, Back,
   it('Save posts one of the two existing actions; Cancel is a LINK; one form; the islands take one plain prop each', () => {
     expect(form).toContain("action={mode === 'edit' ? updateClockingLocationAction : createClockingLocationAction}");
     expect(form).toContain("key={clockingLocationId ?? 'new'}");
-    expect(form).toMatch(/<button className=\{btnPrimary\}>\{t\('save'\)\}<\/button>/);
+    expect(form).toMatch(/<ActionButton actionKind=\"saving\" className=\{btnPrimary\}>\{t\('save'\)\}<\/ActionButton>/);
     expect(form).toMatch(/<Link href=\{cancelHref\}[^>]*>\s*\{t\('cancel'\)\}/);
     expect(form.match(/<form/g)?.length, 'ONE form — Cancel is not a second one').toBe(1);
     expect(form.match(/<ErrorBanner /g)?.length, 'one banner').toBe(1);

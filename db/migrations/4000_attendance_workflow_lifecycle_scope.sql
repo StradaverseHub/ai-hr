@@ -2,18 +2,18 @@
 ALTER TABLE public.attendance_workflow_template ADD COLUMN all_companies boolean NOT NULL DEFAULT false;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.attendance_workflow_companies(wanted uuid) RETURNS uuid[]
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
  SELECT CASE WHEN t.all_companies THEN ARRAY(SELECT c.id FROM public.company c WHERE c.tenant_id=t.tenant_id ORDER BY c.id)
  ELSE ARRAY(SELECT a.company_id FROM public.attendance_workflow_company a WHERE a.template_id=t.id AND a.tenant_id=t.tenant_id ORDER BY a.company_id) END
  FROM public.attendance_workflow_template t WHERE t.id=wanted AND t.tenant_id=app.current_tenant_id()
 $$;
 CREATE OR REPLACE FUNCTION app.attendance_workflow_applies(wanted uuid,wanted_company uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
  SELECT EXISTS(SELECT 1 FROM public.attendance_workflow_template t JOIN public.company c ON c.id=wanted_company AND c.tenant_id=t.tenant_id
  WHERE t.id=wanted AND t.tenant_id=app.current_tenant_id() AND (t.all_companies OR EXISTS(SELECT 1 FROM public.attendance_workflow_company a WHERE a.template_id=t.id AND a.tenant_id=t.tenant_id AND a.company_id=c.id)))
 $$;
 CREATE OR REPLACE FUNCTION app.attendance_workflow_all_companies_admin(wanted uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
  SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.attendance_workflow_template t WHERE t.id=wanted AND t.tenant_id=app.current_tenant_id()
  AND CASE WHEN t.all_companies THEN app.is_admin_for(NULL::uuid) ELSE EXISTS(SELECT 1 FROM public.attendance_workflow_company a WHERE a.template_id=t.id AND a.tenant_id=t.tenant_id)
  AND NOT EXISTS(SELECT 1 FROM public.attendance_workflow_company a WHERE a.template_id=t.id AND a.tenant_id=t.tenant_id AND NOT app.is_admin_for(a.company_id)) END)
@@ -22,7 +22,7 @@ $$;
 -- The global lock is first in both paths: shared submissions, exclusive configuration mutations.
 -- A future company has no assignment row to lock, so company-only locks are insufficient.
 CREATE FUNCTION app.attendance_workflow_scope_lock() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
 BEGIN
  IF TG_TABLE_NAME='attendance_workflow_request' THEN
   PERFORM pg_advisory_xact_lock_shared(hashtextextended(NEW.tenant_id::text||':attendance-workflow-scope:'||NEW.application_type,0));
@@ -42,7 +42,7 @@ REVOKE ALL ON app.attendance_workflow_delete_intent FROM PUBLIC,ai_hr_app;
 ALTER TABLE app.attendance_workflow_delete_intent ENABLE ROW LEVEL SECURITY;
 CREATE POLICY attendance_workflow_delete_intent_owner ON app.attendance_workflow_delete_intent FOR ALL TO ai_hr_owner USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
 CREATE FUNCTION app.attendance_workflow_unused_delete_guard() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
 DECLARE wanted uuid;
 BEGIN
  IF TG_TABLE_NAME='attendance_workflow_template' THEN wanted:=OLD.id;ELSE wanted:=OLD.template_id;END IF;
@@ -60,7 +60,7 @@ CREATE TRIGGER attendance_workflow_company_unused_delete BEFORE DELETE ON public
 REVOKE DELETE ON public.attendance_workflow_template,public.attendance_workflow_company FROM ai_hr_app;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.attendance_workflow_retirement_guard() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
 BEGIN
  IF NEW.retired_at IS DISTINCT FROM OLD.retired_at THEN
   IF OLD.retired_at IS NOT NULL OR OLD.superseded_at IS NOT NULL OR NEW.retired_at IS NULL OR NEW.superseded_at IS NULL OR NOT app.principal_snapshot_current() OR NOT app.attendance_workflow_all_companies_admin(OLD.id) THEN RAISE EXCEPTION 'A current workflow and its complete administrative scope are required to archive configuration';END IF;
@@ -71,7 +71,7 @@ BEGIN
 END $$;
 --> statement-breakpoint
 CREATE FUNCTION app.attendance_workflow_remove(wanted_lineage uuid,expected_version integer,archive boolean) RETURNS uuid
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
 DECLARE current_template public.attendance_workflow_template;history public.attendance_workflow_template;used boolean;
 BEGIN
  IF NOT app.principal_snapshot_current() OR archive IS NULL THEN RAISE EXCEPTION 'A current administrator identity is required' USING ERRCODE='42501';END IF;
@@ -103,13 +103,13 @@ REVOKE ALL ON FUNCTION app.attendance_workflow_remove(uuid,integer,boolean) FROM
 GRANT EXECUTE ON FUNCTION app.attendance_workflow_remove(uuid,integer,boolean) TO ai_hr_app;
 -- Old callers must use the same checked deletion semantics; no retained-deleted configuration path.
 CREATE OR REPLACE FUNCTION app.attendance_workflow_retire(wanted_lineage uuid,expected_version integer) RETURNS uuid
-LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$SELECT app.attendance_workflow_remove(wanted_lineage,expected_version,false)$$;
+LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$SELECT app.attendance_workflow_remove(wanted_lineage,expected_version,false)$$;
 
 --> statement-breakpoint
 -- A globally active definition carries the global administrator's future-company intent.
 -- Initialise only absent routing switches; never override a deliberate company/type opt-out.
 CREATE FUNCTION app.attendance_workflow_global_setting() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
 BEGIN
  IF TG_TABLE_NAME='company' THEN
   -- Hold both application-type barriers before reading definitions. The order is fixed;

@@ -428,7 +428,19 @@ function employeeListWhere(p: EmployeeListFilters, c: EmployeeListColumns = empl
 /** The JSON owner declares every field. Query expressions are fixed server source, never a caller's
  * field/table selector. Reuse the exact status/filter owner above; no second interpretation in SQL. */
 const workforceListSource = sql`app.access_workforce_list_rows() as workforce_row(value)`;
-const personnelListSource = (companyIds?:string[],asOf=todayInKualaLumpur()) => sql`app.personnel_list_rows(${asOf}::date,${companyIds?sql`ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`}) as workforce_row(value)`;
+const personnelListSource = (companyIds?: string[], asOf = todayInKualaLumpur(), privateFilter = false) => {
+  const projection = privateFilter ? sql`app.personnel_list_rows` : sql`app.personnel_filter_rows`;
+  const scope = companyIds ? sql`ARRAY[${sql.join(companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]` : sql`null::uuid[]`;
+  return sql`${projection}(${asOf}::date,${scope}) as workforce_row(value)`;
+};
+// The extended projection verifies private membership. Preserve the ordinary list response shape.
+const privateFilterRowFields = [
+  'directSuperiorEmployeeCode', 'directSuperiorFullName', 'employmentFieldsPermitted', 'filterRevision',
+  'orgDivision', 'orgBranch', 'orgRegion', 'orgLine', 'orgSection', 'orgTeam', 'orgBase', 'employmentCategory',
+  'probationValue', 'probationUnit', 'extendedProbationValue', 'extendedProbationUnit', 'contractStartDate',
+  'contractEndDate', 'contractRemark', 'noticeBeforeConfirmationValue', 'noticeBeforeConfirmationUnit',
+  'noticeAfterConfirmationValue', 'noticeAfterConfirmationUnit', 'tenderResignationDate',
+];
 const workforceListValue = <T>(key: string): SQL<T> => sql<T>`workforce_row.value ->> ${key}`;
 const workforceListDate = (key: string) => sql<string | null>`(${workforceListValue(key)})::date`;
 const workforceListUuid = (key: string) => sql<string>`(${workforceListValue(key)})::uuid`;
@@ -522,14 +534,17 @@ async function workforcePersonnelPageTx(
   const sameScope = input.companyIds !== undefined && input.companyIds.length === choiceIds.length &&
     input.companyIds.every(id => choiceIds.includes(id));
   const choiceSource = sameScope ? source : personnelListSource(choiceIds, asOf);
+  const publicRow = input.privateSearch
+    ? sql`value - ARRAY[${sql.join(privateFilterRowFields.map(field => sql`${field}`), sql`, `)}]::text[]`
+    : sql`value`;
   const [result] = await tx.execute<{
     rows: EmployeeListRow[]; total: number; byStatus: Partial<Record<EmploymentStatus, number>>; choices: PersonnelChoiceRow[];
   }>(sql`
-    with personnel_source as materialized (select value from ${personnelListSource(input.companyIds, asOf)}),
+    with personnel_source as materialized (select value from ${personnelListSource(input.companyIds, asOf, Boolean(input.privateSearch))}),
     matching as materialized (select value from ${source} where ${filters ?? sql`true`}),
     page as (select value from matching as workforce_row order by ${order} limit ${input.limit} offset ${input.offset})
     select
-      (select coalesce(jsonb_agg(value order by ${order}), '[]'::jsonb) from page as workforce_row) as rows,
+      (select coalesce(jsonb_agg(${publicRow} order by ${order}), '[]'::jsonb) from page as workforce_row) as rows,
       (select count(distinct ${workforceListUuid('employmentId')})::int from matching as workforce_row) as total
       ${facets ? sql`,
         (select coalesce(jsonb_object_agg(status, count), '{}'::jsonb) from (
@@ -625,7 +640,7 @@ export function countEmployeesByStatus(
       const asOf=todayInKualaLumpur(),columns = workforceListColumns(asOf);
       const duplicateIds=p.qualityFlags?.includes('suspected_duplicate')?await personnelDuplicateIdsTx(tx,ctx,{companyIds:p.companyIds,asOf}):[];
       const rows = await tx.select({ status: columns.status, count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
-        .from(personnelListSource(p.companyIds,asOf)).where(workforceListWhere(p, columns,duplicateIds)).groupBy(sql`1`);
+        .from(personnelListSource(p.companyIds,asOf,Boolean(p.privateSearch))).where(workforceListWhere(p, columns,duplicateIds)).groupBy(sql`1`);
       const byStatus: Partial<Record<EmploymentStatus, number>> = {};
       let total = 0;
       for (const row of rows) { const count = Number(row.count); byStatus[row.status] = count; total += count; }

@@ -34,7 +34,7 @@ import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,
 const TODAY='2026-07-02',PROBATION_ENDS='2026-07-12';
 const LOOPS=['loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry','loop_salary_payroll'];
 /** The highest level each loop may reach (core/loops/autonomy.ts), written out: the six loops in page order. */
-const CEILINGS=['prepare','prepare','act_audit','act_audit','prepare','prepare'];
+const CEILINGS=['prepare','prepare','act_audit','prepare','prepare','prepare'];
 const UUID=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 type Login=SessionContext&{userId:string;personId:string;employmentId:string};
 type LoopOut={loop:string;ceiling:string;levels:{company:string;level:string}[];on:boolean;stopped:boolean;running:boolean;lastRun:{at:string;status:string;capped:boolean}|null;openNow:number;waitingNow:number;pausedIn:{company:string}[]};
@@ -118,7 +118,7 @@ describe('loops_overview',()=>{
   expect(loop(all,'loop_probation_ending')).toMatchObject({on:true,running:true,openNow:2,lastRun:{status:'ran',capped:false},pausedIn:[{company:firstName}]});
   expect(Number.isNaN(Date.parse(loop(all,'loop_probation_ending').lastRun!.at))).toBe(false);
   expect(loop(all,'loop_document_expiry')).toEqual({loop:'loop_document_expiry',ceiling:'prepare',levels:both,on:false,stopped:false,running:false,lastRun:null,openNow:0,waitingNow:0,pausedIn:[{company:secondName}]});
-  expect(loop(all,'loop_missed_clock_outs')).toEqual({loop:'loop_missed_clock_outs',ceiling:'act_audit',levels:[{company:firstName,level:'prepare'},{company:secondName,level:'watch'}],
+  expect(loop(all,'loop_missed_clock_outs')).toEqual({loop:'loop_missed_clock_outs',ceiling:'prepare',levels:[{company:firstName,level:'prepare'},{company:secondName,level:'watch'}],
    on:false,stopped:false,running:false,lastRun:null,openNow:0,waitingNow:0,pausedIn:[]});
   expect(loop(all,'loop_salary_payroll')).toEqual({loop:'loop_salary_payroll',ceiling:'prepare',levels:both,on:false,stopped:false,running:false,lastRun:null,openNow:0,waitingNow:0,pausedIn:[]});
   expect(all.provenance).toMatchObject({owner:'core/loops/views.ts#loopsOverview',page:'/control-tower/loops'});

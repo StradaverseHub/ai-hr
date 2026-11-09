@@ -28,7 +28,8 @@ import {setWorkerSwitch} from '../core/agent-registry/controls';
 import {runLoop} from '../core/loops/run';
 import {confirmMissedClockOut} from '../core/loops/clock-out-confirm';
 import {clockOutReasonText} from '../lib/today/clock-out-reasons';
-import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,setModule,type Base} from './harness';
+import {configureAttendanceSubmissionFixtures,seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 
 type Person={uid:string;employmentId:string;personId:string};
 let base:Base,worker:Person,colleague:Person,group:SessionContext,worked:string,shiftId:string,principalId:string;
@@ -44,7 +45,7 @@ beforeEach(async()=>{
  vi.stubEnv('AUTH_PROVIDER','workos');vi.stubEnv('NODE_ENV','test');vi.stubEnv('ALLOW_DEMO_SESSION','false');
  vi.stubEnv('AI_CONFIG_SECRET','fictional-clock-out-card-custody-key-1234');
  vi.stubEnv('TERAS_PROPOSAL_SECRET','fictional-proposal-signing-secret-0123456789abcdef');
- await resetDb();base=await seedBase();
+ await resetDb();base=await seedAttendanceSubmissionBase();
  for(const module of ['assistant','attendance'])await setModule(base.tenantId,module,'active');
  const admin=await hire('Fictional Group Administrator','hr_admin');
  group={...await entitledCtx(base,['hr_admin']),userId:admin.uid,personId:admin.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
@@ -124,6 +125,7 @@ describe('the case\'s own employment',()=>{
  });
  it('someone with two employments corrects the one the case is about, never their earliest',async()=>{
   const company=await createCompany(adminCtx(base),{legalName:'Fictional Second Clocking Company',country:'MY',currency:'MYR'});
+  await configureAttendanceSubmissionFixtures(base,[company.id]);
   const department=await createDepartment(adminCtx(base),{companyId:company.id,name:'Fictional Second Clocking Department'});
   // A later second employment of the same person, with its own clock-in on the same day.
   const second=await hireEmployee(adminCtx(base),{person:{id:worker.personId},companyId:company.id,departmentId:department.id,employmentType:'full_time',hiredOn:'2024-06-01'});

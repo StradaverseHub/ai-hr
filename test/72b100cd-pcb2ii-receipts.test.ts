@@ -439,14 +439,19 @@ describe('72b100cd · an out-of-scope company is a bare 404 from THIS page’s g
   });
 
   /**
-   * A server action reaching a client island as a prop is a 500 at runtime while tsc, the suite and
-   * `next build` all stay green. This screen has no client island at all, which is the strongest form.
+   * Only the shared submit button is a client island. The records and action binding stay with the server form.
    */
-  it('renders no client island, so nothing crosses the server→client boundary', () => {
+  it('keeps records server-rendered and passes only the save label to the shared client button', () => {
     const src = read(SCREEN);
     expect(src).not.toContain("'use client'");
     const imports = [...code(src).matchAll(/from '([^']+)'/g)].map((m) => m[1]);
     for (const spec of imports.filter((i) => i.startsWith('.') || i.startsWith('@/'))) {
+      if (spec === '@/components/ui/action-button') {
+        expect(src.match(/<ActionButton\b[^>]*>[\s\S]*?<\/ActionButton>/g)).toEqual([
+          `<ActionButton actionKind="saving" className={btnGhost}>{tPay('pcbPaymentSave')}</ActionButton>`,
+        ]);
+        continue;
+      }
       const base = spec.startsWith('@/') ? path.join(ROOT, spec.slice(2)) : path.resolve(path.dirname(path.join(ROOT, SCREEN)), spec);
       const file = ['.ts', '.tsx', '/index.ts', '/index.tsx'].map((e) => `${base}${e}`).find((p) => fs.existsSync(p));
       if (file) expect(fs.readFileSync(file, 'utf8').slice(0, 40), `${spec} is a server module`).not.toContain('use client');

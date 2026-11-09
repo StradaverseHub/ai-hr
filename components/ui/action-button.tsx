@@ -17,7 +17,8 @@ export const ActionButton=forwardRef<HTMLButtonElement,Props>(function ActionBut
  const form=useFormStatus(),externalFormPending=useExternalActionFormPending(props.form),labels=useActionFeedbackLabels();
  const [callbackPending,setCallbackPending]=useState(false);
  const activating=useRef(false),mounted=useRef(true),activated=useRef(false),currentPending=useRef(false);
- useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+ const activationTimeout=useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;clearTimeout(activationTimeout.current);};},[]);
  const formPending=props.type!=='button'&&props.type!=='reset'&&(form.pending||externalFormPending);
  const pending=formPending||callbackPending||explicitBusy===true||explicitBusy==='true';
  currentPending.current=pending;
@@ -30,7 +31,6 @@ export const ActionButton=forwardRef<HTMLButtonElement,Props>(function ActionBut
  const click=(event:MouseEvent<HTMLButtonElement>)=>{
   if(pending||activating.current){event.preventDefault();return;}
   activating.current=true;activated.current=true;
-  setTimeout(()=>{if(!currentPending.current)activated.current=false;},0);
   let result:unknown;
   try{result=onClick?.(event);}catch(error){queueMicrotask(()=>{activating.current=false;});throw error;}
   const promise=result!==null&&result!==undefined&&typeof (result as Promise<unknown>).then==='function';
@@ -40,6 +40,10 @@ export const ActionButton=forwardRef<HTMLButtonElement,Props>(function ActionBut
   // Keep the latch during the callback itself to refuse reentry, then permit the next local edit immediately.
   if(ownsProcessing)queueMicrotask(()=>{activating.current=false;});
   else{activating.current=false;activated.current=false;}
+  if(!promise&&props.type==='button'&&guardNavigation===true){
+   clearTimeout(activationTimeout.current);
+   activationTimeout.current=setTimeout(()=>{if(!currentPending.current)activated.current=false;},0);
+  }
   if(promise&&(props.type==='button'||!event.currentTarget.form||event.defaultPrevented)){
    setCallbackPending(true);
    // The callback owns its confirmed success/error messaging. A rejected callback must remain visible.

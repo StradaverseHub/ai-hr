@@ -156,7 +156,7 @@ function CopyToCompanies({companyId, companyName, companies, dirty}: {companyId:
   return <div className="flex max-w-xl flex-col items-start gap-2">
     <AlertDialog.Root open={open} onOpenChange={o => { if (o) setSelected(new Set()); setOpen(o); }}>
       <AlertDialog.Trigger asChild>
-        <Button aria-busy={pending} type="button" variant="outline" disabled={pending}>{t('copyButton')}</Button>
+        <Button type="button" variant="outline" disabled={pending}>{t('copyButton')}</Button>
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50"/>

@@ -108,7 +108,7 @@ describe('8cc268c4 · Add Leave Type form layout — modal two-column grid with 
     const footer = form.slice(footerIdx, form.indexOf('</div>', footerIdx));
     expect(footer).toMatch(/flex justify-end gap-2/);
     const cancelIdx = form.indexOf('<AddLeaveTypeCancel>', footerIdx);
-    const saveIdx = form.indexOf('<button', footerIdx);
+    const saveIdx = form.indexOf('<ActionButton', footerIdx);
     expect(cancelIdx).toBeGreaterThan(footerIdx);
     expect(saveIdx).toBeGreaterThan(cancelIdx);
     const buttonTag = form.slice(saveIdx, form.indexOf('>', saveIdx));

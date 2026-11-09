@@ -46,3 +46,13 @@ The registry requires actual human approval of the exact source binding before r
 ## Owner approval
 
 The repository owner answered **“Yes approve”** at 2026-11-09T05:21:16+00:00 to the exact 29-contract renewal request for review commit `100861f700f05c6cf45c12388b8618b0043a2df2`. The registry changes only the 29 existing source digests. Reversing those substitutions reproduces the Payroll registry byte for byte, including both pending contracts and all existing metadata.
+
+## Recovery source review
+
+The full hosted staging gate [42567021684](https://github.com/StradaverseHub/ai-hr/actions/runs/42567021684) checked `09569cb7d27dbee81454dc5e8b0a336d20328021`. Its compiler, canonical web build and migration rehearsal passed. The browser suites encountered a shared module-resolution failure. The remaining failed jobs recorded test failures in application behavior and historical upgrade checks. Their results remain attached to the original candidate.
+
+The recovery retains the 1,487-file provider source closure. Within that closure, only `core/read.ts` changes. Ordinary Personnel queries use the existing scoped projection. A private search still checks the stored membership against the current fingerprint in the extended projection and removes its criteria fields and fingerprint from returned rows. The repair adds no provider purpose, contract, disclosure field or call.
+
+The requested renewal replaces `a72ed7576ba5f1cd7b1a4bb75172a6f92c061d0c6b6c1ccb5b67a4bb48275971` with `738297d46f55828ec2b2f12ea80b7e61956367558be2b59d83410f0c643e0e06` in the same 29 already approved contracts. The two pending contracts and review metadata are preserved. The registry keeps the previously approved digest pending this decision.
+
+The other repairs sit outside the provider source closure. They fix shared browser action feedback, preserve form submission and update failing tests to exercise the required human approval and Prepare paths. The repair tightens the function search path in the still-unapplied migration `4000_attendance_workflow_lifecycle_scope`, whose new SHA-256 is `62759d27e18adc62dd458a18d7f1525f9ed2ac498ae58d7d3884f9f200cc0b1f`. The 718 installed migration payloads and journal entries and the other two appended migrations retain their original bytes.

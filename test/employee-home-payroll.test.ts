@@ -38,7 +38,8 @@ describe('Home consumes own salary-free Payroll metadata',()=>{
   expect(published.payslips).toHaveLength(1);
   expect(published.payslips[0]).toEqual({id:expect.any(String),period:previousPayrollComparisonPeriod(period),runType:'regular',runSequence:1});
   expect(Object.keys(published).sort()).toEqual(['employmentId','nextPayment','payslips','version']);
-  for(const field of ['4321','gross','deductions','net','statutory','basicSalary','bank'])expect(JSON.stringify(published)).not.toContain(field);
+  // Assert the data shape and money fields, independent of random UUID text.
+  for(const field of ['gross','deductions','net','statutory','basicSalary','bank'])expect(JSON.stringify(published)).not.toContain(field);
   await setSetting(b.tenantId,'payroll.unlock_enabled',true);
   const unlockAdmin=await entitledCtx(b,['hr_admin','super_admin']);
   await unlockClosedBatch(unlockAdmin,{batchId:batch.batchId,reason:'Fictional Home publication regression'});

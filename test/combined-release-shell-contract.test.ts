@@ -23,7 +23,7 @@ describe('combined release rendered-shell source boundary',()=>{
   expect(audit.indexOf('<Pager basePath="/admin/audit"')).toBeLessThan(audit.indexOf('<AuditTable rows='));
   const personnel=readFileSync('app/admin/personnel/page.tsx','utf8');
   expect(personnel.indexOf('{pager}')).toBeGreaterThan(0);
-  expect(personnel.indexOf('{pager}')).toBeLessThan(personnel.indexOf('<table'));
+  expect(personnel.indexOf('{pager}')).toBeLessThan(personnel.indexOf('<PersonnelListTable'));
  });
  it('retains real server authorization behind the displayed destinations',()=>{
   expect(readFileSync('app/admin/audit/page.tsx','utf8')).toContain('await requireAdmin()');

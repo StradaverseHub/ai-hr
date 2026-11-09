@@ -303,7 +303,7 @@ describe('F · the contract between the form and the server action', () => {
     expect(form).toBeDefined();
     const wrapper=read('components/attendance-submission-form.tsx');
     expect(wrapper).toContain('new FormData(event.currentTarget)');
-    expect(wrapper).toContain('method="post"');
+    expect(wrapper).toContain('<form action={action as');
     expect(wrapper).toContain('await action(data)');
     const fn = ACTIONS.slice(ACTIONS.indexOf('export async function myRequestOvertime'));
     const body = fn.slice(0, fn.indexOf('\n}\n') + 3);

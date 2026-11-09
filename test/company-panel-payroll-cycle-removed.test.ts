@@ -38,8 +38,10 @@ describe('company-panel Payroll tab — payroll-cycle cross-link removed', () =>
   it('retains the statutory identity + bank disbursement forms', () => {
     expect(src).toContain("t('bankProfileSave')");
     expect(src).toContain("t('bankProfilesHint')");
-    // statutory identity form (94ae7e1f: the old "Payroll" tab, renamed Statutory)
-    expect(src).toContain("t('statutoryIdentityMY')");
+    // General owns the registration form and submits it through its consolidated Save.
+    expect(src).toContain('data-save-section="registration"');
+    expect(src).toContain('name="ssmRegistrationNo"');
+    expect(src).toContain('name="myinvoisTin"');
     // The Payroll tab is gone and has not come back under any of its successors' names.
     expect(src).toContain('{/* end Statutory tab */}');
     expect(src).toContain('{/* end Bank Account tab */}');

@@ -1,6 +1,6 @@
 import type {ReactElement} from 'react';
 import {beforeAll,expect,it,vi} from 'vitest';
-import {fireEvent,render as renderUI,screen,within} from '@testing-library/react';
+import {act,fireEvent,render as renderUI,screen,within} from '@testing-library/react';
 import {CaseWorkflows} from '../app/lifecycle/v9/case-workflows';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {NextIntlClientProvider} from 'next-intl';
@@ -19,9 +19,10 @@ function fixture(){
  const workflow:Workflow={id:'manual',name:'Fictional manual workflow',module:'off',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'Fictional',body:''}],description:''};
  const config=v9Defaults();config.workflows=[workflow];return{c,config,workflow};
 }
-it('starts the selected live workflow by ID and preserves waits for explicit continuation',()=>{
+it('starts the selected live workflow by ID and preserves waits for explicit continuation',async()=>{
  const {c,config,workflow}=fixture(),command=vi.fn(),view=render(<CaseWorkflows c={c} config={config} busy={false} command={command}/>);
  fireEvent.click(screen.getByRole('button',{name:'Start now Fictional manual workflow'}));expect(command).toHaveBeenCalledWith({type:'startWorkflow',workflowId:'manual'});
+ await act(async()=>{});
  c.runs=[{id:'run',workflowId:'manual',revision:1,date:'2026-10-29',status:'waiting',cursor:0,reason:'Delivery outcome is uncertain.',at:'',definition:workflow}];
  view.rerender(<CaseWorkflows c={c} config={config} busy={false} command={command}/>);expect(screen.getByText('Delivery outcome is uncertain.')).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'Continue Fictional manual workflow'}));expect(command).toHaveBeenLastCalledWith({type:'retryWorkflow',workflowId:'manual'});
  workflow.status='draft';view.rerender(<CaseWorkflows c={c} config={config} busy={false} command={command}/>);expect(screen.getByText('Paused')).toBeVisible();expect(screen.getByRole('button',{name:'Continue Fictional manual workflow'})).toBeDisabled();

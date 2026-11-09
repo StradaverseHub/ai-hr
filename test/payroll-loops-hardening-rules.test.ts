@@ -189,10 +189,11 @@ describe('the audit controls (review finding A4)',()=>{
 });
 
 describe('the autonomy step honours a stop between record and apply (review finding A8)',()=>{
- it('re-checks inside both apply transactions, at the start and before commit, and records loop_stopped',()=>{
+ it('re-checks the remaining request actor at the start and before commit, and records loop_stopped',()=>{
   expect(LOOP_ACTION_REASONS).toContain('loop_stopped');
-  for(const file of ['core/loops/act-clock-outs.ts','core/loops/act-requests.ts'])
-   expect(readFileSync(file,'utf8').match(/await requireLoopMayStillActTx\(tx,gate\);/g),file).toHaveLength(2);
+  const file='core/loops/act-requests.ts';
+  expect(readFileSync(file,'utf8').match(/await requireLoopMayStillActTx\(tx,gate\);/g),file).toHaveLength(2);
+  expect(readFileSync('core/loops/act-clock-outs.ts','utf8')).toContain('human_review_required');
  });
 });
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useRef, useState, useTransition, type ComponentProps, type FormEvent, type ReactNode } from 'react';
-import { isRedirectError } from 'next/dist/client/components/redirect-error';
+import { isActionRedirect } from '@/lib/action-feedback-result';
 import { useTranslations } from 'next-intl';
 import { Button } from './ui/button';
 import { usePendingAction } from './action-feedback';
@@ -33,7 +33,7 @@ export function AttendanceSubmissionForm({ action, className, children, onSubmit
         if (result?.error) setError(result.error);
         else onSubmitted?.();
       } catch (failure) {
-        if (isRedirectError(failure)) {
+        if (isActionRedirect(failure)) {
           if (!('handled' in failure && failure.handled === true)) throw failure;
           onSubmitted?.();
           return;
@@ -44,7 +44,8 @@ export function AttendanceSubmissionForm({ action, className, children, onSubmit
       }
     });
   };
-  return <SubmissionPending.Provider value={pending}><form method="post" className={className} onSubmit={submit} aria-busy={pending}>
+  // Keep the original server action for progressive enhancement. The hydrated handler preserves the live draft.
+  return <SubmissionPending.Provider value={pending}><form action={action as (data: FormData) => void | Promise<void>} className={className} onSubmit={submit} aria-busy={pending}>
     {error && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
     <fieldset disabled={pending} className="m-0 min-w-0 space-y-2.5 border-0 p-0">{children}</fieldset>
   </form></SubmissionPending.Provider>;

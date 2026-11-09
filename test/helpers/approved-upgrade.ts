@@ -58,9 +58,15 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3005,when:1793330003305,tag:'3705_attendance_formula_payroll_source'},
  {idx:3006,when:1793330003306,tag:'3706_attendance_formula_overtime_binding'},
  {idx:3200,when:1793330003500,tag:'3900_individual_transaction_calculation_method'},
+ {idx:3300,when:1793330003600,tag:'4000_attendance_workflow_lifecycle_scope'},
+ {idx:3301,when:1793330003601,tag:'4001_personnel_employment_filter_projection'},
+ {idx:3302,when:1793330003602,tag:'4002_attendance_prepare_review_only'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '4000_attendance_workflow_lifecycle_scope':'62759d27e18adc62dd458a18d7f1525f9ed2ac498ae58d7d3884f9f200cc0b1f',
+ '4001_personnel_employment_filter_projection':'a7cd7536bca8d1b271d6f08eecd11242c4b56e9ba492e57e4b50053737d1c9fd',
+ '4002_attendance_prepare_review_only':'c4b5b39f6eb241744e11eb49c96eff188efb11aa3cd5120f4195d2c1052bec36',
  '3900_individual_transaction_calculation_method':'f6f4a31109f66bc5c9038315e249829c2655b870db98a9cbb1ede9cfdab958d4',
  '3400_system_label_company_scope':'58067b76694141c5fc824c66acc24fda05c273dd7d3d85654418e0f52a01b69e',
  '3706_attendance_formula_overtime_binding':'4a46111e9d07cdf8a2167e430ee6c79c78e9c049c79c6c13544ffc68ad39d153',

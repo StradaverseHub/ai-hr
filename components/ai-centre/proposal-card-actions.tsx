@@ -139,10 +139,10 @@ export function InlineProposalCard({ kind, proposal, copy, card, awaitingLabel, 
         </label>
       )}
       <div role="group" aria-label={copy.actionsLabel} aria-busy={busy !== null} className="flex flex-wrap items-center gap-2">
-        <Button type="button" onClick={confirm} disabled={busy !== null || needsAgreement} className={TARGET}>
+        <Button type="button" guardNavigation aria-busy={busy === 'confirm'} onClick={confirm} disabled={busy !== null || needsAgreement} className={TARGET}>
           {busy === 'confirm' ? copy.confirming : copy.confirm}<span className="sr-only"> · {card.title}</span>
         </Button>
-        <Button type="button" variant="outline" onClick={edit} disabled={busy !== null} className={TARGET}>
+        <Button type="button" variant="outline" aria-busy={busy === 'edit'} onClick={edit} disabled={busy !== null} className={TARGET}>
           {busy === 'edit' ? copy.opening : copy.edit}<span className="sr-only"> · {card.title}</span>
         </Button>
         <Button type="button" variant="ghost" onClick={() => { learn('card_discarded'); setDiscarded(true); }} disabled={busy !== null} className={`text-muted-foreground ${TARGET}`}>
