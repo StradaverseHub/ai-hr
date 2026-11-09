@@ -514,9 +514,6 @@ async function listRewardUnitsTx(tx:Tx,companyIds:string[]){
       verified: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id} and e.facts->>'reviewed'='true') end`,
       // 56595838: the shared configuration version the review started from, and whether its own settings changed since.
       policyOrigin: sql<{ versionId: string; revision: number; name: string; changed: boolean } | null>`app.reward_policy_unit_origin(${rewardUnit.id})`,
-      // An older review may reference the same settings without having been created from the approved plan.
-      creationPlanVersionId: sql<string | null>`(select setup.plan_version_id from reward_unit_setup setup
-        where setup.unit_id=${rewardUnit.id} and setup.tenant_id=${rewardUnit.tenantId})`,
       // 62e743ed: cancelRewardReview's guard, projected for the row actions (the service still decides).
       canCancel: sql<boolean>`${rewardUnit.status} not in ('posted','withdrawn','rejected') and (app.reward_admin(${rewardUnit.companyId}) or 'gr' in (select app.reward_roles(${rewardUnit.id})))` })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
@@ -1733,11 +1730,17 @@ export async function rewardApprovalsBoard(ctx: SessionContext, companyIds: stri
  * Detail-only metadata is not hydrated just to discard it.
  * An administrator without a seat receives metadata only. Empty-state scope checks return booleans,
  * never names or counts from reviews outside the selected company scope. */
-export async function listRewardReviewStatus(ctx:SessionContext,companyIds:string[]){
+export async function listRewardReviewStatus(ctx:SessionContext,companyIds:string[],{includeCreationPlan=false}:{includeCreationPlan?:boolean}={}){
  return withRewardsTenant(ctx,async tx=>{
   const units=await listRewardUnitsTx(tx,companyIds),today=todayInKualaLumpur(),year=Number(today.slice(0,4));
+  // Only All Reviews filters by the approved plan that actually created a review.
+  const bindings=includeCreationPlan&&units.length?await tx.execute<{unitId:string;planVersionId:string}>(sql`
+   select unit_id as "unitId",plan_version_id as "planVersionId" from reward_unit_setup
+   where tenant_id=app.current_tenant_id() and unit_id in (${sql.join(units.map(unit=>sql`${unit.id}::uuid`),sql`, `)})`):[];
+  const planByUnit=new Map(bindings.map(binding=>[binding.unitId,binding.planVersionId]));
   const rows=[];
-  for(const unit of units){
+  for(const row of units){
+   const unit={...row,...(includeCreationPlan?{creationPlanVersionId:planByUnit.get(row.id)??null}:{})};
    const roles=await rolesFor(tx,unit.id);
    if(roles.length){const [cap]=await tx.execute<{allowed:boolean}>(sql`select app.reward_capability(${unit.id}::uuid,'review.view') as allowed`);if(!cap?.allowed)continue;}
    if(unit.uploadPending&&!roles.includes('gr')){rows.push({...unit,people:null,verified:null,roles,waiting:false,salary:null,bonus:null,blocking:null,exceptions:null,laterSeats:[] as RewardRole[]});continue;}

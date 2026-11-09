@@ -11,7 +11,7 @@ import {withModulePresentationRead} from '../core/module-presentation-read';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {cancelRewardReview,emptyRewardCalendar,listRewardUnits,observeRewardPlanLandingAccess,rewardConfigurationListView,rewardCoverageForUnits,saveRewardCalendar,type RewardConfigurationFilters} from '../packs/rewards/service';
+import {cancelRewardReview,emptyRewardCalendar,listRewardReviewStatus,listRewardUnits,observeRewardPlanLandingAccess,rewardConfigurationListView,rewardCoverageForUnits,saveRewardCalendar,type RewardConfigurationFilters} from '../packs/rewards/service';
 import {rewardUnitCoverage} from '../packs/rewards/coverage';
 import {rewardWholeGroupSetupCompanies,saveRewardGroupRole} from '../packs/rewards/group-roles';
 import {rewardSetupPlanChoices} from '../packs/rewards/plan-configuration';
@@ -184,6 +184,10 @@ it('commits the Group Rewards landing observation in RC before the separate Plan
   expect(observed.queries.filter(q=>q.sql.includes('reward_access_observe'))).toHaveLength(1);
   expect(observed.state).toEqual({active:0,maxActive:1});
  }finally{observed.restore();}
+ const reviews=await listRewardReviewStatus(actor,[f.b.companyId],{includeCreationPlan:true});
+ expect(reviews.rows).toEqual(expect.arrayContaining([
+  expect.objectContaining({id:f.unitId,creationPlanVersionId:binding.plan_version_id}),
+ ]));
 },60000);
 
 it('keeps RC supplied-Tx admission and omitted observation while the bounded query equals the old projection',async()=>{
