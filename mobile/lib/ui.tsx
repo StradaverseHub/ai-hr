@@ -121,8 +121,7 @@ export function Button({ title, onPress, kind = 'primary', disabled = false, acc
 }
 
 /**
- * The one back control of a detail screen: a compact "‹" at the top-left, a 44×44 pt target, announced as "Back".
- * Replaces the full-width quiet "Back" button every detail screen used to end with.
+ * The detail screen’s Back control. Keep it at the leading edge and give the label a full-size touch target.
  */
 /** `onPress` overrides the stack's back for an in-screen panel (e.g. a list that replaced the form). */
 export function HeaderBack({ onPress }: { onPress?: () => void } = {}) {

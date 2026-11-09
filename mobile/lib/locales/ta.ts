@@ -162,6 +162,7 @@ const messages: Record<MessageKey, string> = {
   clockedOutAt: "{time} மணிக்கு பணி முடிந்தது",
   clockNeedsReview: "வருகை மதிப்பாய்வுக்காக குறிக்கப்பட்டது",
   clockShowDetails: "வருகை நேர விவரங்கள்",
+  clockAllowLocation: "வருகைப் பதிவுக்கு இருப்பிடத்தை அனுமதிக்கவும்",
   clockHideDetails: "வருகை நேர விவரங்களை மறை",
   workedTime: "{hours}ம {minutes}நி பதிவானது",
   clockRecorded: "வருகை பதிவுசெய்யப்பட்டது",

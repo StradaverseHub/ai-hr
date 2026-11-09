@@ -162,6 +162,7 @@ const messages: Record<MessageKey, string> = {
   clockedOutAt: "ลงเวลาออกเมื่อ {time}",
   clockNeedsReview: "ทำเครื่องหมายเพื่อตรวจสอบเวลาเข้างาน",
   clockShowDetails: "รายละเอียดการลงเวลา",
+  clockAllowLocation: "อนุญาตให้ใช้ตำแหน่งในการลงเวลา",
   clockHideDetails: "ซ่อนรายละเอียดการลงเวลา",
   workedTime: "บันทึกแล้ว {hours} ชม. {minutes} นาที",
   clockRecorded: "บันทึกการเข้างานแล้ว",

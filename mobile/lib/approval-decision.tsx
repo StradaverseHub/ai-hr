@@ -11,7 +11,7 @@
  *
  * Claims include recorded amounts, custom fields and protected receipt review.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { TextInput, Linking, Pressable, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -148,14 +148,14 @@ const historyActionLabel = {
 const historyKey = (item: MobileApprovalHistoryItem) => item.id;
 const listPadding = { padding: 20, gap: 8, paddingBottom: 40 };
 
-function PendingApprovals({ header }: { header: ReactNode }) {
+function PendingApprovals({ header }: { header: ReactElement }) {
   const { signOut } = useSession();
   const list = usePagedResource(TASKS, { native: 'expanded', limit: '10' }, keyOf, signOut);
   return <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={listPadding}
     header={header} renderItem={(item) => <TaskRow item={item} />} />;
 }
 
-function ApprovalHistory({ header }: { header: ReactNode }) {
+function ApprovalHistory({ header }: { header: ReactElement }) {
   const { signOut } = useSession();
   const { palette } = useTenantDesign();
   const [action, setAction] = useState<'approved' | 'rejected'>('approved');
@@ -180,7 +180,6 @@ export function ApprovalsScreen({ embedded = false }: { embedded?: boolean } = {
   const { palette } = useTenantDesign();
   const [history, setHistory] = useState(false);
   const header = <View style={{ gap: 12 }}>
-    {!embedded && <HeaderBack />}
     <Muted>{t('approvalsTitle')}</Muted>
     <Title>{history ? t('approvalHistoryTitle') : t('fieldReviewTitle')}</Title>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 12 }}>
@@ -190,6 +189,7 @@ export function ApprovalsScreen({ embedded = false }: { embedded?: boolean } = {
   </View>;
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={[]}>
     <Atmosphere strong />
+    {!embedded && <View style={{ paddingHorizontal: 20 }}><HeaderBack /></View>}
     {history ? <ApprovalHistory header={header} /> : <PendingApprovals header={header} />}
   </SafeAreaView>;
 }

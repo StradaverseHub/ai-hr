@@ -8,7 +8,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createInAppAlertState } from '../mobile/lib/in-app-alert-state';
 
 afterEach(cleanup);
-function fixture(platform = 'android') {
+function fixture(platform = 'android', approval = false) {
   let path = '/approvals/leave/id', generation = 1, employmentId = 'employment-A';
   const listeners = new Map<string, (value?: string) => void>();
   const nativeAlert = vi.fn(), submit = vi.fn();
@@ -30,7 +30,7 @@ function fixture(platform = 'android') {
   runInNewContext(transpileModule(readFileSync('mobile/lib/in-app-alert.tsx', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText,
     { module: output, exports: output.exports, require: (id: string) => { if (id in ports) return ports[id]; throw new Error(id); } });
   const { InAppAlert, InAppAlertBoundary } = output.exports;
-  const show = () => InAppAlert.alert('Approve request?', 'Recorded facts and consequence', [{ text: 'Cancel', style: 'cancel' }, { text: 'Confirm', onPress: submit }]);
+  const show = () => (approval ? InAppAlert.approval : InAppAlert.alert)('Approve request?', 'Recorded facts and consequence', [{ text: 'Cancel', style: 'cancel' }, { text: 'Confirm', onPress: submit }]);
   function App() { return <InAppAlertBoundary><p>Private form</p><button onClick={show}>Review</button></InAppAlertBoundary>; }
   return { App, show, submit, nativeAlert, setPath: (next: string) => { path = next; }, changeAccount: () => { generation++; employmentId = 'employment-B'; }, event: (name: string) => { if (name === 'background') appState.currentState = name; listeners.get(name === 'background' ? 'change' : name)?.(name); } };
 }
@@ -55,4 +55,15 @@ it('navigation and account changes remove the previous context’s confirmation'
 it('iOS retains its existing native confirmation implementation', () => {
   const f = fixture('ios'); render(<f.App />); fireEvent.click(screen.getByText('Review'));
   expect(f.nativeAlert).toHaveBeenCalledTimes(1); expect(f.submit).not.toHaveBeenCalled(); expect(screen.queryByText('Approve request?')).toBeNull();
+});
+
+it.each(['ios', 'android'])('uses the scoped approval confirmation on %s and discards it when backgrounded', platform => {
+  const f = fixture(platform, true);
+  render(<f.App />);
+  fireEvent.click(screen.getByText('Review'));
+  expect(screen.getByRole('heading', { name: 'Approve request?' })).toBeTruthy();
+  expect(f.nativeAlert).not.toHaveBeenCalled();
+  act(() => f.event('background'));
+  expect(screen.queryByText('Approve request?')).toBeNull();
+  expect(f.submit).not.toHaveBeenCalled();
 });

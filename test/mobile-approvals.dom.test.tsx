@@ -93,6 +93,22 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
 afterEach(cleanup);
 
 describe('approvals list', () => {
+  it('filters approval history separately from the actionable queue', async () => {
+    const f = fixture();
+    f.apiGetPage.mockImplementation(async (resource, _cursor, params) => {
+      const { action } = params as { action?: string };
+      if ((resource as { path: string }).path === 'v2/tasks') return { items: [item()], nextCursor: null };
+      return { items: [{ id: ID, actionKey: action, moduleKey: 'leave', subjectName: action === 'approved' ? 'Approved example' : 'Rejected example', deciderName: null, occurredAt: '2026-10-28T01:00:00.000Z' }], nextCursor: null };
+    });
+    render(<f.ApprovalsScreen embedded />);
+    await screen.findByRole('button', { name: 'task_leave · Aisyah' });
+    fireEvent.click(screen.getByRole('button', { name: 'approvalHistoryTitle' }));
+    await screen.findByText('Approved example');
+    fireEvent.click(screen.getByRole('button', { name: 'rejected' }));
+    await screen.findByText('Rejected example');
+    expect(screen.queryByText('Approved example')).toBeNull();
+    expect(f.apiPostV2).not.toHaveBeenCalled();
+  });
   it('bounds Home preview reads without changing native detail navigation',async()=>{
     const f=fixture();render(<f.HomeApprovalQueue refreshToken={0}/>);
     const row=await screen.findByRole('button',{name:'task_leave · Aisyah'});

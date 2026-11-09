@@ -162,6 +162,7 @@ const messages: Record<MessageKey, string> = {
   clockedOutAt: "Đã chấm công ra lúc {time}",
   clockNeedsReview: "Đã đánh dấu để kiểm tra chấm công",
   clockShowDetails: "Chi tiết chấm công",
+  clockAllowLocation: "Cho phép vị trí khi chấm công",
   clockHideDetails: "Ẩn chi tiết chấm công",
   workedTime: "Đã ghi nhận {hours} giờ {minutes} phút",
   clockRecorded: "Đã ghi nhận chấm công",

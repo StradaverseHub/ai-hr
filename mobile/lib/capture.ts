@@ -9,9 +9,12 @@ import type {ClockSourceSignals} from '../../lib/mobile-clock-integrity';
 import type { LocalAttachment } from './journey-drafts';
 import { t } from './i18n';
 import {LocationCaptureError} from './errors';
+export function requestClockLocationPermission(){
+  return Location.requestForegroundPermissionsAsync();
+}
 export async function capturePosition(assertCurrent?:()=>void, advisory=false){
   assertCurrent?.();
-  const permission=await (advisory?Location.getForegroundPermissionsAsync():Location.requestForegroundPermissionsAsync());
+  const permission=await (advisory?Location.getForegroundPermissionsAsync():requestClockLocationPermission());
   if(permission.status!=='granted')throw new LocationCaptureError(permission.canAskAgain?'permission_denied':'permission_blocked',t(permission.canAskAgain?'locationPermission':'locationPermissionBlocked'));
   assertCurrent?.();
   const permissionAccuracy:'precise'|'approximate'|'unavailable'=permission.android?.accuracy==='coarse'||permission.ios?.accuracy==='reduced'?'approximate':permission.android?.accuracy==='fine'||permission.ios?.accuracy==='full'?'precise':'unavailable';

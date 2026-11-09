@@ -7,6 +7,7 @@ import * as React from 'react';
 import * as jsx from 'react/jsx-runtime';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, vi } from 'vitest';
+import * as historyContract from '../../lib/mobile-api/v2/approval-history';
 import * as taskContract from '../../lib/mobile-api/v2/tasks';
 import * as requestContract from '../../lib/mobile-api/v2/request-workspaces';
 import * as reviewContract from '../../lib/mobile-api/v2/review-workspaces';
@@ -63,10 +64,10 @@ export function nativeApiJourney(options: {
     './design': { DesignText: Text, Atmosphere: () => null, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: { text: '#fff', border: '#333', muted: '#aaa' } }) },
     './visual': { Material: View, StatusPill: Text, alpha: (v: string) => v }, './icon': { Icon: () => null },
     './i18n': { t: (key: string) => key, appLocale: () => 'en' }, './ui': ui,
-    './in-app-alert': { InAppAlert: { alert } }, './approval-document': { ApprovalDocument: ({ name }: any) => <p>{name}</p> },
+    './in-app-alert': { InAppAlert: { alert, approval: alert } }, './approval-document': { ApprovalDocument: ({ name }: any) => <p>{name}</p> },
     './paged-list': { PagedList: () => null, usePagedResource: () => ({}) },
     './leave-request-form': { PickerField: ({ label, value, onChange, disabled }: any) => <input aria-label={label} value={value ?? ''} disabled={disabled} onChange={e => onChange(e.target.value)} /> },
-    '../../lib/mobile-api/v2/tasks': taskContract, '../../lib/mobile-api/v2/request-workspaces': requestContract,
+    '../../lib/mobile-api/v2/tasks': taskContract, '../../lib/mobile-api/v2/approval-history': historyContract, '../../lib/mobile-api/v2/request-workspaces': requestContract,
     '../../lib/mobile-api/v2/review-workspaces': reviewContract, '../../lib/mobile-api/v2/pack-workspaces': packContract,
   };
   function load(file: string): any {
@@ -83,7 +84,7 @@ export function nativeApiJourney(options: {
   async function confirm() {
     await waitFor(() => expect(alert).toHaveBeenCalledTimes(1), { timeout: 10000 });
     expect(sent).toHaveLength(0);
-    // This is the OS dialog port; Android's actual same-window renderer has separate live and DOM evidence.
+    // The actual same-window confirmation is covered separately on iOS and Android.
     await act(async () => { alert.mock.calls[0][2][1].onPress(); });
     if (options.loseFirstReply) {
       await waitFor(() => expect(screen.getByRole('button', { name: 'approvalRetry' })).toBeTruthy(), { timeout: 10000 });

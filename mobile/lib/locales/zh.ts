@@ -162,6 +162,7 @@ const messages: Record<MessageKey, string> = {
   clockedOutAt: "已于 {time} 下班打卡",
   clockNeedsReview: "已标记，待考勤复核",
   clockShowDetails: "打卡详情",
+  clockAllowLocation: "允许打卡定位",
   clockHideDetails: "隐藏打卡详情",
   workedTime: "已记录 {hours} 小时 {minutes} 分钟",
   clockRecorded: "考勤已记录",

@@ -8,7 +8,7 @@ import {identityNamespace} from './config';
 import { apiGet,apiPost,apiPostFormV2,useApi,type ClockResponse } from './api';
 import { requestShiftReminderRefresh } from './shift-reminder-signal';
 import { assertAuthGeneration,authGeneration } from './auth';
-import { capturePhoto,capturePosition,appendAttachment } from './capture';
+import { capturePhoto,capturePosition,appendAttachment,requestClockLocationPermission } from './capture';
 import { readClockDevice,writeClockDevice,clearClockDevice } from './device-registration';
 import { useTenantDesign } from './design';
 import { SignInRequiredError,RequestRejectedError,LocationCaptureError,SessionChangedError,UnavailableError,isNoConnectivity } from './errors';
@@ -46,8 +46,9 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
   const [detailsOpen,setDetailsOpen]=useState(false);
   const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut,{enabled:variant!=='home'&&(clock.data?.state?.reviewExceptions!==true||detailsOpen)});
-  const visited=useRef(false);
-  useFocusEffect(useCallback(()=>{if(visited.current){clock.reload();if(detailsOpen)attempts.reload();}visited.current=true;},[clock.reload,attempts.reload,detailsOpen]));
+  const visited=useRef(false),detailsVisible=useRef(detailsOpen);
+  detailsVisible.current=detailsOpen;
+  useFocusEffect(useCallback(()=>{if(visited.current){clock.reload();if(detailsVisible.current)attempts.reload();}visited.current=true;},[clock.reload,attempts.reload]));
   useEffect(()=>{if(refreshToken){clock.reload();attempts.reload();}},[refreshToken,clock.reload,attempts.reload]);
   // D8: every fresh clock answer (after a punch, a refresh or a return) re-plans the shift reminders.
   const clockOwner=authGeneration(),clockNamespace=identityNamespace();
@@ -79,7 +80,10 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   // Pending journals stay with their original employment. Never display or submit another subject's draft.
   const draft=retainedDraft?.employmentId&&identity&&retainedDraft.employmentId!==identity?null:retainedDraft;
   const simplified=current?.reviewExceptions===true;
-  const action=(draft&&draft.phase!=='done'?draft.action:undefined)??(draft?.phase==='done'&&draft.clockProtocol==='review'?(draft.action==='in'?'out':'in'):((offline.clockedIn??current?.clockedIn)?'out':'in'));
+  const receiptIsNewer=draft?.phase==='done'&&draft.clockProtocol==='review'&&!!draft.receiptTime&&
+    (!current||Date.parse(draft.receiptTime)>Date.parse(current.serverNow));
+  const defaultAction=receiptIsNewer?(draft.action==='in'?'out':'in'):((offline.clockedIn??current?.clockedIn)?'out':'in');
+  const action=(draft&&draft.phase!=='done'?draft.action:undefined)??defaultAction;
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const [signedStatus,setSignedStatus]=useState<SignedClockStatus|null>(null);
   const [registrationNeeded,setRegistrationNeeded]=useState(false);
@@ -241,6 +245,19 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     try{const receipt=await recovery.reportAttempt(draft.requestId,operation(owner));assertAuthGeneration(owner);putClock({...draft,attemptReceiptTime:receipt.receivedAt,message:t('attemptReported')},draft.requestId);attempts.reload();}
     catch(e){putClock({...draft,message:t('attemptReportUncertain')},draft.requestId);if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}
+  }
+  async function enableLocation(){
+    if(flight.current||pending||!identity)return;
+    flight.current=true;
+    const owner=authGeneration();
+    try{
+      operation(owner).assertCurrent();
+      const permission=await requestClockLocationPermission();
+      operation(owner).assertCurrent();
+      if(permission.status!=='granted'&&!permission.canAskAgain)await Linking.openSettings();
+    }catch(error){
+      if(!(error instanceof SessionChangedError))Alert.alert(t('locationPermission'));
+    }finally{flight.current=false;}
   }
   async function takePhoto(){
     let captured:ClockDraft['photo'];
@@ -446,7 +463,6 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
           <Text style={{color:palette.onButton,fontWeight:'700',fontSize:26,textAlign:'center'}}>{pending?t('preparingClock'):label}</Text>
           </Pressable>}
         <Text style={{color:palette.text,textAlign:'center',fontSize:15}}>{current.shift.start&&current.shift.end?t('clockCurrentShift',{time:`${current.shift.start.slice(0,5)} – ${current.shift.end.slice(0,5)}`}):t('noShift')}</Text>
-        {directButton&&!pending&&<Button kind="quiet" title={t(action==='in'?'switchToClockOut':'switchToClockIn')} onPress={()=>putClock({employmentId:identity,action:action==='in'?'out':'in',phase:'idle',...(draft?.phase==='idle'?{photo:draft.photo}:{})})}/>}
       </View>}
       {!home&&current&&!simplified&&<View style={{gap:12,paddingTop:4,paddingBottom:8}}>
         <View style={{flexDirection:'row',justifyContent:'space-between',gap:12}}><Text style={{color:palette.muted,fontSize:13}}>{current.shift.code?`${current.date} · ${current.shift.code}`:current.date}</Text><Text style={{color:palette.accent,fontSize:13,flexShrink:1,textAlign:'right'}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text></View>
@@ -494,6 +510,10 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
       </>}
       <SavedOfflinePunches offline={offline}/>
       {!home&&simplified&&<Button kind="quiet" title={t(detailsOpen?'clockHideDetails':'clockShowDetails')} onPress={()=>setDetailsOpen(!detailsOpen)}/>}
+      {simplified&&detailsOpen&&directButton&&!pending&&<>
+        <Button kind="quiet" title={t(action==='in'?'switchToClockOut':'switchToClockIn')} onPress={()=>putClock({employmentId:identity??undefined,action:action==='in'?'out':'in',phase:'idle',...(draft?.phase==='idle'?{photo:draft.photo}:{})})}/>
+        <Button kind="quiet" title={t('clockAllowLocation')} onPress={()=>void enableLocation()}/>
+      </>}
       {(!simplified||detailsOpen)&&afterControls}
       {!home&&current&&(!simplified||detailsOpen)&&<>
       {simplified&&current.attendancePhotoSetting!=='not_required'&&(!draft||draft.phase==='idle'||draft.phase==='done')&&<Button title={draft?.photo?t('retakePhoto'):t('addPhoto')} kind="quiet" onPress={()=>void takePhoto()}/>}
