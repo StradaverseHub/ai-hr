@@ -23480,6 +23480,7 @@
     }
   },
   "rewards": {
+    "promotionNominationsHelp": "查看您有权访问的年度奖励评审中的提名。",
     "compaRatio": "薪资比率",
     "compaRatioBefore": "调整前薪资相对中点",
     "compaRatioAfter": "调整后薪资相对中点",
@@ -35702,7 +35703,14 @@
     "already-reviewed": "此公司本年度已有年度审核。",
     "pat-not-confirmed": "创建审核前，请先确认公司的 PAT 数据。",
     "company-unavailable": "本奖励年度无法使用此公司。",
-    "createReviews": "创建已就绪的审核",
+    "createReviews": "创建单位评审",
+    "createReviewsCount": "创建 {count} 个单位评审",
+    "reviewsCreated": "已创建 {count} 个评审",
+    "openCreatedReviews": "在团队奖励审核中打开",
+    "manageRewardPlans": "管理方案",
+    "creationOutcome": "结果",
+    "creationReady": "输入已确认",
+    "plan-assignment-changed": "该公司已分配到其他方案版本。",
     "independentCreateHelp": "须由另一位集团薪酬用户根据此已批准方案创建评审。",
     "useApprovedPlan": "从已批准的奖励计划创建年度审核",
     "newVersion": "创建下一版本",
@@ -36564,6 +36572,7 @@
     "locked": "集团管理员可更改适用公司。其他薪资项目设置仍可保存。"
   },
   "rewardDashboard": {
+    "purpose": "跟踪评审、预算及待您处理的事项。",
     "greeting": "欢迎来到您的薪酬工作台",
     "salary": "加薪预算",
     "bonus": "奖金预算",

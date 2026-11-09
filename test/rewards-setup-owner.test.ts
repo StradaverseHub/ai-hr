@@ -9,7 +9,7 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {createRewardUnit,getRewardUnit,getRewardUnitGovernance,saveRewardEntry,refreshRewardPatBasis,saveRewardPolicy} from '../packs/rewards/service';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
-import {approveRewardSetupPlan,createNewRewardPlan,previewNewRewardPlan,rewardPlanSettings,saveRewardPlanSettings,submitRewardSetupPlan} from '../packs/rewards/plan-configuration';
+import {approveRewardSetupPlan,createNewRewardPlan,createRewardPlanReviews,previewNewRewardPlan,previewRewardPlanCreation,rewardApprovedPlanReviewSummaries,rewardPlanSettings,saveRewardPlanSettings,submitRewardSetupPlan} from '../packs/rewards/plan-configuration';
 import {rewardPatInputs,proposeRewardPat,confirmRewardPat} from '../packs/rewards/pat-inputs';
 import {rewardLibraries,rewardLibraryHistory,rewardLibraryForExport,saveRewardLibrary,submitRewardLibrary,confirmRewardLibrary} from '../packs/rewards/libraries';
 import {createApprovedRewardUnit,setupChecker,setupCompanyStructureFixture,setupGrades} from './rewards-setup-fixture';
@@ -40,8 +40,43 @@ it('runs the real GR-only library, checked plan, dated roster and atomic draft P
  expect(await withTenant(ctro,tx=>tx.execute(sql`select inputs from reward_pat_version where tenant_id=${b.tenantId}::uuid`))).toHaveLength(0);
  const pat=await proposeRewardPat(maker,{companyId:b.companyId,year:2026,expectedRevision:0,inputs:{targetCents:100,forecastCents:null,actualCents:100,targetMonthsBp:20000},reason});await confirmRewardPat(checker,pat);
  const raw={year:2026,name:'Scoped test annual',snapshotDate:'2026-01-01',companyIds:[b.companyId],salaryVersionId:salary,bonusVersionId:bonus,branchAcknowledged:false},preview=await previewNewRewardPlan(maker,raw);expect(preview.rows.map(r=>r.status)).toEqual(['ready']);
- const plan=await createNewRewardPlan(maker,raw,preview.digest,reason);await submitRewardSetupPlan(maker,plan,1);await approveRewardSetupPlan(checker,plan,2);
- const id=await createRewardUnit(maker,{name:raw.name,year:raw.year,companyId:b.companyId,businessUnitId:bu,snapshotDate:raw.snapshotDate,approvedPlanVersionId:plan});
+ const plan=await createNewRewardPlan(maker,raw,preview.digest,reason);
+ await submitRewardSetupPlan(maker,plan,1);
+ await expect(previewRewardPlanCreation(maker,plan)).rejects.toThrow(/Approve/);
+ await approveRewardSetupPlan(checker,plan,2);
+ const checkerAlias=await realSetupActor('gr',checker.personId);
+ const creation=await previewRewardPlanCreation(maker,plan);
+ expect(creation.mayCreate).toBe(true);
+ expect(creation.rows.map(row=>[row.companyId,row.status])).toEqual([[b.companyId,'ready']]);
+ expect((await previewRewardPlanCreation(checkerAlias,plan)).mayCreate).toBe(false);
+ for(const actor of [checker,checkerAlias]){
+  await expect(createRewardPlanReviews(actor,plan,creation.digest)).rejects.toThrow(/different/);
+  await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_create_planned_unit(${plan}::uuid,${b.companyId}::uuid,${bu}::uuid)`)))
+   .rejects.toMatchObject({cause:{code:'42501',message:expect.stringMatching(/different Group Rewards user/)}});
+ }
+ await expect(withTenant(maker,tx=>tx.execute(sql`select app.reward_create_planned_unit_bound(${plan}::uuid,${b.companyId}::uuid,${bu}::uuid)`)))
+  .rejects.toMatchObject({cause:{code:'42501'}});
+ await expect(createRewardPlanReviews(maker,plan,'stale')).rejects.toThrow(/preview changed/);
+ expect((await rewardApprovedPlanReviewSummaries(maker)).find(row=>row.versionId===plan)?.createdCount).toBe(0);
+ const [winner,replay]=await Promise.allSettled([createRewardPlanReviews(maker,plan,creation.digest),createRewardPlanReviews(maker,plan,creation.digest)]);
+ const successful=winner.status==='fulfilled'?winner:replay;
+ const refused=winner.status==='rejected'?winner:replay;
+ expect(refused).toMatchObject({status:'rejected',reason:expect.objectContaining({message:expect.stringMatching(/preview changed/)})});
+ expect(successful).toMatchObject({status:'fulfilled',value:{created:[expect.any(String)],skipped:[]}});
+ if(successful.status!=='fulfilled')throw successful.reason;
+ const [id]=successful.value.created;
+ expect((await rewardApprovedPlanReviewSummaries(maker)).find(row=>row.versionId===plan)?.createdCount).toBe(1);
+ expect(await rewardApprovedPlanReviewSummaries(ctro)).toEqual([]);
+ const after=await previewRewardPlanCreation(maker,plan);
+ expect(after.rows).toMatchObject([{companyId:b.companyId,status:'skip',reason:'already-reviewed',existingUnitId:id}]);
+ expect(await createRewardPlanReviews(maker,plan,after.digest)).toMatchObject({created:[],skipped:after.rows});
+ const events=await owner.db.execute(sql`select aggregate_id,event_type,payload from domain_event
+  where tenant_id=${b.tenantId}::uuid and (aggregate_id=${plan}::uuid and event_type='rewards-setup.review.skipped'
+    or aggregate_id=${id}::uuid and event_type='reward-unit.approved-plan-admitted') order by event_type`);
+ expect(events).toMatchObject([
+  {aggregate_id:id,event_type:'reward-unit.approved-plan-admitted',payload:{planVersionId:plan}},
+  {aggregate_id:plan,event_type:'rewards-setup.review.skipped',payload:{companyId:b.companyId,reason:'already-reviewed',existingUnitId:id}},
+ ]);
  const unit=await getRewardUnit(maker,id);expect(unit.rows.map(r=>r.source.employeeCode)).toEqual(['PAT-BASIS']);expect(unit.roles).toContain('gr');const [origin]=await withTenant(maker,tx=>tx.execute<{value:{changed:boolean}}>(sql`select app.reward_policy_unit_origin(${id}::uuid) as value`));expect(origin.value.changed).toBe(false);expect(unit.rows[0].source.payChanges).toEqual([{on:'2026-02-01',basicCents:520000,kind:'promotion'}]);
  await expect(saveRewardPolicy(maker,id,unit.unit.revision,{...unit.unit.policy,ranges:{...unit.unit.policy.ranges,'12':[1,2,3]}})).rejects.toThrow(/read-only/);
  await saveRewardEntry(maker,id,unit.unit.revision,unit.rows[0].id,emptyRecommendation(),{...emptyFacts(),performance:'ME',reviewed:true});

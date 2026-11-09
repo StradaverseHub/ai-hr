@@ -12,6 +12,8 @@ import {Card,PageHeader} from '@/components/ui';
 import {rewardPolicyMemberships} from '@/packs/rewards/service';
 import {RewardPolicyFields} from '@/app/rewards/[unitId]/policy-form';
 import {SharedRewardHistory} from './history';
+import { ApprovedRewardPlans } from '../plans/creation-preview';
+import { rewardApprovedPlanReviewSummaries } from '@/packs/rewards/plan-configuration';
 import {rewardCompanyBusinessGroup} from '@/packs/rewards/company-picker';
 import {rewardCompanyClassifications} from '@/packs/rewards/company-classification';
 import {RewardCompanyClassificationPanel} from './classification';
@@ -21,7 +23,7 @@ export default async function SharedRewardPolicyPage({searchParams}:{searchParam
  await requireModule('rewards');
  const session=await getSession(),wholeGroup=await rewardWholeGroupSetupCompanies(session);
  const {s}=wholeGroup.length?{s:session}:await scopedAdmin(),t=await getTranslations('rewards.sharedPolicy'),params=await searchParams,{group:groupId}=params;
- const groups=await listRewardPolicyGroups(s),selected=groupId?groups.find(row=>row.groupId===groupId):null;if(groupId&&!selected)notFound();
+ const [groups,approvedPlans]=await Promise.all([listRewardPolicyGroups(s),rewardApprovedPlanReviewSummaries(s)]),selected=groupId?groups.find(row=>row.groupId===groupId):null;if(groupId&&!selected)notFound();
  // Deliberately all permitted companies for multi-company setup, rather than the current header filter.
  const companies=wholeGroup.length?wholeGroup:await adminCompanies(s),choices=await rewardSetupChoices(s,companies.map(company=>company.id),{includeArchived:true,sharedPolicy:true});
  const policy=selected?.policy??defaultPolicy(Number(todayInKualaLumpur().slice(0,4)));
@@ -35,7 +37,7 @@ export default async function SharedRewardPolicyPage({searchParams}:{searchParam
  if(params.version&&!shownVersion)notFound();
  const usage=(selected?await rewardPolicyGroupUsage(s,selected.groupId):[]).filter(row=>!shownVersion||row.revision===shownVersion.version.revision);
  return <div className="mx-auto max-w-6xl space-y-6"><PageHeader title={(await getTranslations('nav'))('rewardsSharedConfiguration')} description={t('description')}/>
-  <Link className="text-primary underline" href="/admin/rewards/plans">{(await getTranslations('rewardSetup'))('plans')}</Link><p className="text-sm text-muted-foreground">{t('currencyHelp')}</p>
+  <ApprovedRewardPlans plans={approvedPlans}/><p className="text-sm text-muted-foreground">{t('currencyHelp')}</p>
   <SharedRewardHistory session={s} groups={groups} groupId={groupId} showVersions={params.versions} versionId={params.version} compare={params.compare} companies={choices.companies} units={choices.units}/>
   {choices.companies.length>0&&<SharedRewardEditor actorUserId={s.userId??''} groupId={selected?.groupId??null} revision={selected?.revision??0} name={selected?.name??''} year={policy.year} targets={selected?.targets??[]} companies={groupedCompanies} units={choices.units} memberships={memberships} initialTaken={taken} loadTakenAction={loadSharedRewardTakenAction} canManageUnits={companies.length>0} exclusions={exclusions} exclusionAction={changeSharedRewardExclusionAction}
    policyFields={<RewardPolicyFields policy={policy} context="shared"/>} saveAction={saveSharedRewardPolicyAction}/>}

@@ -10,6 +10,7 @@ import {employedByCompanyDuring} from '../../core/employment-company';
 import {mobileRewardPersonBlock} from './mobile-review-projection';
 import type { Tx as AiReadTx } from '../../db/client';
 import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
+import { lockAccessConfigurationTx } from '../../core/access-configuration-lock';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, or, gt, sql } from 'drizzle-orm';
@@ -607,6 +608,7 @@ export async function createRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitI
 /** Internal transaction seam used by approved bulk creation; SQL rechecks all authority and frozen bindings. */
 export async function createRewardUnitTx(tx:Tx,ctx:SessionContext,raw:PlannedRewardUnitInput){
  const version=idSchema.parse(raw.approvedPlanVersionId),companyId=idSchema.parse(raw.companyId),businessUnitId=idSchema.parse(raw.businessUnitId);
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
  await setupLock(tx,ctx,'plans');
  await setupLock(tx,ctx,'pat:'+companyId+':'+setupYear.parse(raw.year));
  const resolved=await approvedPlanPolicyTx(tx,ctx,version,companyId,businessUnitId);

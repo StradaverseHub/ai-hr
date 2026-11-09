@@ -10,11 +10,11 @@ import type {RewardReviewFilters} from '@/packs/rewards/review-list-model';
 export default async function RewardsPage({searchParams}:{searchParams:Promise<RewardReviewFilters&{error?:string}>}){
  await requireModule('rewards');const {s}=await scopedSession(),sp=await searchParams;
  // Keep saved and incoming review-list links useful at their dedicated destination.
- if(['cycle','company','unit','businessGroup','stage','waiting'].some(key=>sp[key as keyof RewardReviewFilters])){
+ if(['plan','cycle','company','unit','businessGroup','stage','waiting'].some(key=>sp[key as keyof RewardReviewFilters])){
   const query=new URLSearchParams(Object.entries(sp).filter(([,v])=>typeof v==='string') as [string,string][]);redirect(`/rewards/reviews?${query}`);
  }
  const companies=await rewardVisibleCompanies(s),allowedIds=companies.map(c=>c.id),scopeIds=companies.some(c=>c.wholeGroup)?allowedIds:await getScopeIds(allowedIds);
  const [preference,t,nav]=await Promise.all([getRewardDashboardPreference(s),getTranslations('rewardDashboard'),getTranslations('nav')]);
  const value=await rewardDashboard(s,scopeIds,preference);
- return <div className="w-full space-y-5"><PageHeader title={t('greeting')} description={nav('rewardsReviewing')}/><ErrorBanner message={sp.error}/><RewardsDashboard value={value}/></div>;
+ return <div className="w-full space-y-5"><PageHeader title={nav('rewardsReviewing')} description={t('purpose')}/><ErrorBanner message={sp.error}/><RewardsDashboard value={value}/></div>;
 }

@@ -7,7 +7,7 @@ import en from '../messages/en.json';
 const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), scope: vi.fn(), visibleCompanies: vi.fn(), navigation: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn(), requests: vi.fn(), accessCompanies: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async (namespace: keyof typeof en = 'rewards') => (key: string) => key.split('.').reduce((v: any, k) => v[k], en[namespace]) }));
 const redirect = vi.hoisted(() => vi.fn(() => { throw new Error('redirect'); }));
-vi.mock('next/navigation', () => ({ redirect }));
+vi.mock('next/navigation', async importOriginal => ({ ...await importOriginal<typeof import('next/navigation')>(), redirect }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession, getScopeIds: ports.scope }));
 vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: ports.visibleCompanies, rewardNavigation: ports.navigation, rewardAccessPageCompanies: ports.accessCompanies }));
@@ -29,10 +29,16 @@ const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale
 /** Resolve only the known nested server fields; keep the real form and visible controls. */
 async function resolvePolicyFields(node: ReactNode): Promise<ReactNode> {
   if (Array.isArray(node)) return Promise.all(node.map(resolvePolicyFields));
-  if (!isValidElement<{ children?: ReactNode }>(node)) return node;
+  if (!isValidElement<{ children?: ReactNode; maintenanceActions?: ReadonlyMap<string, ReactNode> }>(node)) return node;
   if (typeof node.type === 'function' && node.type.constructor.name === 'AsyncFunction') return resolvePolicyFields(await (node.type as any)(node.props));
   if (node.type === RewardPolicyFields) return RewardPolicyFields(node.props as ComponentProps<typeof RewardPolicyFields>);
-  return cloneElement(node, { children: await resolvePolicyFields(node.props.children) });
+  const actions = node.props.maintenanceActions;
+  return cloneElement(node, {
+    children: await resolvePolicyFields(node.props.children),
+    ...(actions ? { maintenanceActions: new Map(await Promise.all(
+      [...actions].map(async ([key, value]) => [key, await resolvePolicyFields(value)] as const)
+    )) } : {}),
+  });
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -60,7 +66,7 @@ describe('Rewards administration and review destinations', () => {
   it('shows authorized review shortcuts and leaves configuration in the menu', async () => {
     show(await resolvePolicyFields(await ReviewsPage({ searchParams: Promise.resolve({}) })));
     expect(screen.getAllByRole('link', { name: 'Open review' }).map(link => link.getAttribute('href'))).toContain('/rewards/review');
-    expect(screen.getByRole('heading', { name: 'Reviewing Team Rewards' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: en.nav.rewardsAllReviews })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Rules' })).toBeNull();
     expect(screen.getByRole('link', { name: 'View' }).getAttribute('href')).toBe('/admin/rewards/review?mode=view');
     expect(screen.queryByRole('link', { name: 'Rewards Analytics' })).toBeNull();
