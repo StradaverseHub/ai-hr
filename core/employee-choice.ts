@@ -92,7 +92,7 @@ async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerI
   let rows:EmployeeChoice[]=[],total=0;
   if(!q||exactAscii){
    // One native population walk supplies both the exact count and bounded page.
-   // An empty/out-of-range page needs a separate count; it must never imply total=0.
+   // An empty first page has no matches. A later offset can hide matching rows.
    // The immediate native assignment_no_overlap constraint (also guarded by
    // Personnel migrations) permits at most one unsuperseded NULL-ended assignment.
    // Without organisation filters, authorize/count/page identities first, then
@@ -107,7 +107,7 @@ async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerI
      order by ${person.fullName},${employment.id},${assignment.id}`);
    signal?.throwIfAborted();
    if(page.length){total=page[0].total;rows=page.map(({total:count,...row})=>row);}
-   else{const [count]=await tx.execute<{total:number}>(sql`select count(*)::int as total ${population} where ${pageWhere}`);total=count.total;signal?.throwIfAborted();}
+   else if(offset>0){const [count]=await tx.execute<{total:number}>(sql`select count(*)::int as total ${population} where ${pageWhere}`);total=count.total;signal?.throwIfAborted();}
   }else{
    // PostgreSQL locale lower/ILIKE is not ECMAScript lower/includes. ASCII-only rows
    // admit exact native candidates; every non-ASCII row remains a conservative candidate.
