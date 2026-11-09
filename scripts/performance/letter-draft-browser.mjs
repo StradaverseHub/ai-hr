@@ -1,5 +1,6 @@
 /** Real draft actions and protected routes on the isolated fictional browser fixture. */
 import assert from 'node:assert/strict';
+import {driverErrorFact} from './driver-shutdown.mjs';
 import {readFileSync} from 'node:fs';
 import {performance} from 'node:perf_hooks';
 
@@ -8,7 +9,7 @@ const timeout=90000;
 const dateInput='input[name="custom:effectiveDate:value"]';
 const batchRoute=/^\/letters\/generate\/([0-9a-f-]{36})$/i;
 
-export async function exerciseLetterDraft({base,context,visit,fixture,db,report,save}){
+export async function exerciseLetterDraft({base,context,closeContext,noteEvidence,visit,fixture,db,report,save}){
  const tenant=fixture.tenants[0],seed=tenant.letterDraft;
  assert(seed,'E-Letter preflight requires a fictional approved template and disabled notifications');
  const author=fixture.users.find(user=>user.index===seed.authorIndex&&user.tenant===0&&user.companyId===seed.companyId&&user.role==='companyHR');
@@ -141,7 +142,7 @@ export async function exerciseLetterDraft({base,context,visit,fixture,db,report,
     assert(!html.includes(created.record.reference)&&!html.includes(seed.name),'E-Letter draft data crossed a scope boundary');
     evidence.scope.push({scope,pickerDenied:true,draftDenied:true});
     save();
-   }finally{await deniedContext.close();}
+   }finally{await closeContext(deniedContext);}
   }
 
 
@@ -170,9 +171,7 @@ export async function exerciseLetterDraft({base,context,visit,fixture,db,report,
   Object.assign(evidence,{status:'passed',retainedRevisions:2,withdrawalEvents:1,artifacts:0,jobs:0});
   save();
  }catch(error){
-  evidence.status='failed';
-  evidence.errorType=error.name;
-  save();
+  noteEvidence(()=>{evidence.status='failed';evidence.errorType=driverErrorFact(error).kind;save();});
   throw error;
- }finally{await authorContext.close();}
+ }finally{await closeContext(authorContext);}
 }

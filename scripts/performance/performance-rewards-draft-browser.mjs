@@ -105,7 +105,7 @@ async function createRewards({base,page,user,target,tenantId,db,report,save}){
  return {id,name};
 }
 
-export async function exercisePerformanceRewardsDrafts({base,context,fixture,db,report,save}){
+export async function exercisePerformanceRewardsDrafts({base,context,closeContext,fixture,db,report,save}){
  assert.equal(report.suite,'workflow-preflight','draft witnesses are outside the 500-user workload');
  const user=fixture.users.find(actor=>actor.tenant===0&&actor.role==='groupHR');
  const scoped=fixture.users.find(actor=>actor.tenant===0&&actor.role==='companyHR');
@@ -126,7 +126,7 @@ export async function exercisePerformanceRewardsDrafts({base,context,fixture,db,
   // The list is the same surface used below for negative controls. Prove the positive draft is visible.
   await open(page,base,'/admin/rewards');
   await page.locator('main').getByText(rewardsDraft.name,{exact:true}).waitFor({state:'visible',timeout:budgetMs});
- }finally{await actorContext.close();}
+ }finally{await closeContext(actorContext);}
  for(const [scope,actor]of [['other-company',scoped],['other-tenant',foreign]]){
   const boundaryContext=await context(actor);
   try{
@@ -161,6 +161,6 @@ export async function exercisePerformanceRewardsDrafts({base,context,fixture,db,
    assert.equal(await page.locator('main button[name="operation"][value="create"]').count(),0,'out-of-scope plan creation is offered');
    (report.browserDraftWriteBoundaries??=[]).push({scope,performanceBoundary:scope==='other-company'?'lifecycle-write-denied':'detail-denied',rewardsListHidden:true,rewardsPlanDenied:true});
    save();
-  }finally{await boundaryContext.close();}
+  }finally{await closeContext(boundaryContext);}
  }
 }

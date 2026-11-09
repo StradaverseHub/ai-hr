@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {performance} from 'node:perf_hooks';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 
-export async function exerciseConcurrentPayrollClose({context,visit,fixture,db,request,capture,assertProcessed,report,save}){
+export async function exerciseConcurrentPayrollClose({context,closeContext,noteEvidence,visit,fixture,db,request,capture,assertProcessed,report,save}){
  const tenant=fixture.tenants[0];
  const {publicationMonth,historicalMonth}=performanceFixtureCalendar(fixture.today);
  assert(publicationMonth<historicalMonth&&historicalMonth<fixture.month,'concurrent close needs a reserved past Payroll month');
@@ -85,10 +85,9 @@ export async function exerciseConcurrentPayrollClose({context,visit,fixture,db,r
   result.status='passed';
   save();
  }catch(error){
-  result.status='failed';
-  save();
+  noteEvidence(()=>{result.status='failed';save();});
   throw error;
  }finally{
-  await Promise.allSettled(lanes.map(lane=>lane.browserContext.close()));
+  await Promise.all(lanes.map(lane=>closeContext(lane.browserContext)));
  }
 }

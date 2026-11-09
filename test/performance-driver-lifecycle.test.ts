@@ -1,0 +1,324 @@
+import {EventEmitter,once} from 'node:events';
+import {Agent,createServer,request as httpRequest} from 'node:http';
+import {PassThrough} from 'node:stream';
+import {gzipSync} from 'node:zlib';
+import {afterEach,expect,it,vi} from 'vitest';
+import {acquireDriverResource,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
+ createDriverFailures,createDriverSockets,createDriverWork,lockSampleEvidence,observeDriverBrowser,
+ openDriverResponse,settleDriverBrowser,settleDriverLanes,settleDriverResources,startDriverInterval} from '../scripts/performance/driver-shutdown.mjs';
+
+function deferred<T=void>(){
+ let resolve!:(value:T)=>void,reject!:(reason:unknown)=>void;
+ const promise=new Promise<T>((yes,no)=>{resolve=yes;reject=no;});
+ return {promise,resolve,reject};
+}
+const disposition=(work:Promise<unknown>)=>work.then(value=>({ok:true,value}),reason=>({ok:false,reason}));
+afterEach(()=>vi.useRealTimers());
+
+it('closes the child environment and refuses the parent remote selection without revealing it',()=>{
+ const ambient={TZ:'Asia/Kuala_Lumpur',HOME:'/inherited',DATABASE_URL:'db',AUTH_SESSION_KEY:'session',
+  AI_CONFIG_SECRET:'encryption',OPENAI_API_KEY:'provider',GH_TOKEN:'github',HTTP_PROXY:'proxy',LD_PRELOAD:'loader',
+  SSH_AUTH_SOCK:'ssh',PLAYWRIGHT_BROWSERS_PATH:'/registry',XDG_CACHE_HOME:'/cache',PLAYWRIGHT_CHROMIUM_EXECUTABLE:'/selector'};
+ expect(closedChromiumEnvironment(ambient,'/actual-runner')).toEqual({PATH:'/usr/bin:/bin',HOME:'/actual-runner',
+  LANG:'C.UTF-8',LC_ALL:'C.UTF-8',TZ:'Asia/Kuala_Lumpur'});
+ expect(closedChromiumEnvironment({TZ:'UTC'},'/actual-runner')).toHaveProperty('TZ','UTC');
+ expect(closedChromiumEnvironment({},'/actual-runner')).not.toHaveProperty('TZ');
+ expect(()=>closedChromiumEnvironment({...ambient,SELENIUM_REMOTE_URL:'private-remote-selector'},'/actual-runner'))
+  .toThrow(/^Remote Chromium launch is outside the owned development driver$/);
+ expect(()=>closedChromiumEnvironment({TZ:'Europe/Paris'},'/actual-runner')).toThrow('Unsupported Chromium time zone');
+ expect(ambient.HOME).toBe('/inherited');
+});
+
+it('retains the first temporal rejection and waits for the other admitted lane',async()=>{
+ const slower=deferred(),firstFailure=deferred();
+ const joined=settleDriverLanes([slower.promise,firstFailure.promise],(work:Promise<void>)=>work);
+ const result=disposition(joined);
+ let settled=false;void result.then(()=>{settled=true;});
+ firstFailure.reject(undefined);
+ await Promise.resolve();
+ expect(settled).toBe(false);
+ slower.reject(Error('later lane failed'));
+ expect(await result).toEqual({ok:false,reason:undefined});
+});
+
+it('retains actually admitted work while later admission is closed',async()=>{
+ const owned=createDriverWork(),operation=deferred();
+ const run=vi.fn(()=>operation.promise);
+ const pending=owned.run(run);
+ owned.seal();
+ expect(()=>owned.run(()=>undefined)).toThrow('Driver work admission is closed');
+ let drained=false;const drain=owned.drain().then(()=>{drained=true;});
+ await Promise.resolve();
+ expect(run).toHaveBeenCalledTimes(1);
+ expect(drained).toBe(false);
+ operation.resolve();
+ await Promise.all([pending,drain]);
+ expect(drained).toBe(true);
+});
+
+it('settles a pending periodic native operation before another phase or either pool ends',async()=>{
+ vi.useFakeTimers();
+ const query=deferred(),sample=vi.fn(()=>query.promise),failures=createDriverFailures();
+ const preflight=startDriverInterval(250,sample,(reason:unknown)=>failures.record('sample',reason));
+ await vi.advanceTimersByTimeAsync(750);
+ expect(sample).toHaveBeenCalledTimes(1);
+ const stop=preflight.stop(),audit={end:vi.fn()},observer={end:vi.fn()};
+ const loaded=vi.fn();
+ const next=stop.then(()=>startDriverInterval(1000,loaded,(reason:unknown)=>failures.record('sample',reason)));
+ const cleanup=stop.then(()=>closePerformanceDbPools(audit,observer,failures));
+ await vi.advanceTimersByTimeAsync(3000);
+ expect(sample).toHaveBeenCalledTimes(1);
+ expect(loaded).not.toHaveBeenCalled();
+ expect(audit.end).not.toHaveBeenCalled();
+ expect(observer.end).not.toHaveBeenCalled();
+ query.resolve();
+ expect(await cleanup).toEqual({audit:'settled',observer:'settled'});
+ expect(audit.end).toHaveBeenCalledWith({timeout:5});
+ expect(observer.end).toHaveBeenCalledWith({timeout:5});
+ await vi.advanceTimersByTimeAsync(1000);
+ expect(loaded).toHaveBeenCalledTimes(1);
+ await (await next).stop();
+});
+
+it('keeps admitted slow-pilot and progress work owned through independent teardown',async()=>{
+ vi.useFakeTimers();
+ const failures=createDriverFailures(),diagnostics=createDriverWork(),slow=deferred(),progress=deferred();
+ const slowWork=diagnostics.run(()=>slow.promise);
+ const interval=startDriverInterval(30000,()=>progress.promise,(reason:unknown)=>failures.record('progress',reason));
+ await vi.advanceTimersByTimeAsync(30000);
+ const progressStop=interval.stop();diagnostics.seal();
+ const native={end:vi.fn()},observer={end:vi.fn()},browser=vi.fn(),https=vi.fn();
+ const close=settleDriverResources(failures,{browser,https,async database(){
+  await Promise.all([progressStop,diagnostics.drain()]);
+  return closePerformanceDbPools(native,observer,failures);
+ }});
+ expect(browser).toHaveBeenCalledTimes(1);
+ expect(https).toHaveBeenCalledTimes(1);
+ expect(native.end).not.toHaveBeenCalled();
+ progress.resolve();await progressStop;
+ expect(observer.end).not.toHaveBeenCalled();
+ slow.resolve();await slowWork;await close;
+ expect(native.end).toHaveBeenCalledTimes(1);
+ expect(observer.end).toHaveBeenCalledTimes(1);
+});
+
+it('distinguishes a complete empty sample, a late drain, missing work and an actual failure',()=>{
+ const window={startMs:100,endMs:200};
+ const empty={state:'complete',startedMs:101,completedMs:199,locks:0};
+ const late={state:'complete',startedMs:150,completedMs:201,locks:0};
+ const outside={state:'complete',startedMs:99,completedMs:175,locks:0};
+ expect(lockSampleEvidence([empty,late,outside],window)).toMatchObject({completed:3,qualified:1,failures:0,validEmpty:1,pass:true});
+ expect(lockSampleEvidence([late],window)).toMatchObject({completed:1,qualified:0,validEmpty:0,pass:false});
+ expect(lockSampleEvidence([],window)).toMatchObject({completed:0,qualified:0,failures:0,pass:false});
+ expect(lockSampleEvidence([empty,{state:'failed',startedMs:130,completedMs:150,code:'57014'}],window))
+  .toMatchObject({completed:1,qualified:1,failures:1,pass:false});
+});
+
+it('retains actual startup and cleanup outcomes and keeps raw reasons private',async()=>{
+ const failures=createDriverFailures(),states={observer:'absent',agent:'absent'};
+ const original=undefined,secret=Error('fictional-private-reason'),observer={end:vi.fn()};
+ failures.notePrimary(original);
+ const acquired=acquireDriverResource(states,'observer',()=>observer);
+ expect(()=>acquireDriverResource(states,'agent',()=>{throw secret;})).toThrow(secret);
+ expect(states).toEqual({observer:'acquired',agent:'failed'});
+ failures.notePrimary(Error('later outcome'));
+ const evidence=failures.evidence(()=>{throw secret;});
+ expect(evidence).toEqual({state:'failed',reason:secret});
+ const close=vi.fn(async()=>{throw secret;});
+ const https=vi.fn(async()=>{}),database=vi.fn(async()=>closePerformanceDbPools(undefined,acquired,failures));
+ const outcomes=await settleDriverResources(failures,{browser:close,https,database});
+ expect(outcomes.map(value=>value.state)).toEqual(['failed','settled','settled']);
+ expect(https).toHaveBeenCalledTimes(1);
+ expect(database).toHaveBeenCalledTimes(1);
+ expect(observer.end).toHaveBeenCalledWith({timeout:5});
+ expect(outcomes[2]).toMatchObject({value:{audit:'absent',observer:'settled'}});
+ expect(failures.privateFailures().primary).toEqual({failed:true,reason:original});
+ expect(failures.privateFailures().secondary[0].reason).toBe(secret);
+ expect(JSON.stringify(failures.publicFailures())).not.toContain(secret.message);
+});
+
+it('attempts the other actual pool when the first end rejects',async()=>{
+ const failures=createDriverFailures(),error=Error('first pool refused');
+ const audit={end:vi.fn().mockRejectedValue(error)},observer={end:vi.fn()};
+ expect(await closePerformanceDbPools(audit,observer,failures)).toEqual({audit:'failed',observer:'settled'});
+ expect(audit.end).toHaveBeenCalledWith({timeout:5});
+ expect(observer.end).toHaveBeenCalledWith({timeout:5});
+ expect(failures.privateFailures().secondary).toEqual([{stage:'audit-pool-end',reason:error}]);
+});
+
+it('shares a pending context close and never retries its real rejection',async()=>{
+ const failures=createDriverFailures(),contexts=createDriverContexts(failures),close=deferred();
+ const actual={close:vi.fn(()=>close.promise)},error=Error('close refused');
+ contexts.register(actual);
+ const one=contexts.close(actual);
+ expect(contexts.close(actual)).toBe(one);
+ expect(actual.close).toHaveBeenCalledTimes(1);
+ close.reject(error);
+ expect(await one).toEqual({state:'failed',reason:error});
+ expect(await contexts.closeAll()).toEqual([{state:'failed',reason:error}]);
+ expect(actual.close).toHaveBeenCalledTimes(1);
+ expect(contexts.summary()).toEqual({acquired:1,attempted:1,settled:0,failed:1});
+});
+
+it('starts every context close before browser close and retains an earlier disconnect',async()=>{
+ const failures=createDriverFailures(),contexts=createDriverContexts(failures),order:string[]=[];
+ const pending=deferred();
+ const a={close:vi.fn(()=>{order.push('context A');return pending.promise;})};
+ const b={close:vi.fn(()=>{order.push('context B');})};
+ contexts.register(a);
+ const browser=Object.assign(new EventEmitter(),{contexts:()=>[a,b],isConnected:()=>false,
+  close:vi.fn(()=>{order.push('browser');pending.resolve();})});
+ const tracked=observeDriverBrowser(browser,failures);
+ expect(await settleDriverBrowser(browser,tracked,contexts,failures)).toMatchObject({close:'settled',
+  unexpectedDisconnect:true,contexts:{acquired:2,attempted:2,settled:2,failed:0}});
+ expect(order).toEqual(['context A','context B','browser']);
+ expect(failures.publicFailures().secondary.map(row=>row.stage)).toEqual(['browser-disconnected']);
+});
+
+it('keeps a disconnect from its own browser close distinct from a runtime disconnect',async()=>{
+ const failures=createDriverFailures(),contexts=createDriverContexts(failures);
+ const browser=Object.assign(new EventEmitter(),{contexts:()=>[],isConnected:()=>true,
+  close:vi.fn(()=>{browser.emit('disconnected');})});
+ const tracked=observeDriverBrowser(browser,failures);
+ expect(await settleDriverBrowser(browser,tracked,contexts,failures)).toMatchObject({close:'settled',unexpectedDisconnect:false});
+ expect(failures.failed()).toBe(false);
+});
+
+function responseFixture(encoding?:'gzip'){
+ const failures=createDriverFailures(),observed=vi.fn();
+ const request=Object.assign(new EventEmitter(),{end:vi.fn(),destroy:vi.fn(),socket:undefined});
+ const response=Object.assign(new PassThrough(),{complete:false,statusCode:200,
+  headers:encoding?{'content-encoding':encoding}:{}});
+ const headers=vi.fn(),body=Buffer.from('fictional request');
+ const opened=openDriverResponse({start:()=>request,body,startedMs:0,onHeaders:headers,observeSocket:observed,recordFailure:failures.record});
+ const result=disposition(opened.result);
+ request.emit('response',response);
+ return {failures,observed,request,response,headers,body,opened,result};
+}
+
+it('keeps decoded response success separate from the request and decoder terminal witnesses',async()=>{
+ const {request,response,headers,body,opened,result}=responseFixture('gzip');
+ let terminal=false;void opened.terminal.then(()=>{terminal=true;});
+ const wire=gzipSync('fictional body');
+ response.complete=true;
+ response.end(wire);
+ expect(await result).toMatchObject({ok:true,value:{content:'fictional body',status:200,wireBytes:wire.length,decodedBytes:14}});
+ expect(request.end).toHaveBeenCalledExactlyOnceWith(body);
+ expect(headers).toHaveBeenCalledTimes(1);
+ expect(terminal).toBe(false);
+ request.emit('close');
+ await opened.terminal;
+ expect(terminal).toBe(true);
+});
+
+it('owns the raw gzip source error and drains both streams and the actual request close',async()=>{
+ const {request,response,opened,result}=responseFixture('gzip');
+ const error=Error('raw response failed');
+ response.emit('error',error);
+ expect(await result).toEqual({ok:false,reason:error});
+ expect(response.destroyed).toBe(true);
+ expect(request.destroy).toHaveBeenCalledTimes(1);
+ let terminal=false;void opened.terminal.then(()=>{terminal=true;});
+ await Promise.resolve();expect(terminal).toBe(false);
+ request.emit('close');await opened.terminal;expect(terminal).toBe(true);
+});
+
+it.each(['aborted','early close'] as const)('refuses an HTTP response with %s before its body completed',async how=>{
+ const {request,response,opened,result}=responseFixture('gzip');
+ if(how==='aborted')response.emit('aborted');else response.destroy();
+ expect(await result).toMatchObject({ok:false,reason:{code:'ERR_STREAM_PREMATURE_CLOSE'}});
+ expect(request.destroy).toHaveBeenCalledTimes(1);
+ request.emit('close');await opened.terminal;
+});
+
+it('refuses an actually truncated gzip stream and owns its native decoder close',async()=>{
+ const {request,response,opened,result}=responseFixture('gzip');
+ response.complete=true;
+ response.end(gzipSync('fictional compressed response').subarray(0,8));
+ expect(await result).toMatchObject({ok:false,reason:{code:'Z_BUF_ERROR'}});
+ expect(request.destroy).toHaveBeenCalledTimes(1);
+ request.emit('close');await opened.terminal;
+});
+
+it('preserves a request failure before headers and handles absent acquisition separately',async()=>{
+ const failures=createDriverFailures(),observeSocket=vi.fn(),onHeaders=vi.fn();
+ const request=Object.assign(new EventEmitter(),{end:vi.fn(),destroy:vi.fn(),socket:undefined});
+ const options={body:undefined,startedMs:0,onHeaders,observeSocket,recordFailure:failures.record};
+ const transport=openDriverResponse({...options,start:()=>request}),result=disposition(transport.result);
+ const abort=Object.assign(Error('owned request timeout'),{code:'ABORT_ERR'});
+ request.emit('error',abort);request.emit('close');
+ expect(await result).toEqual({ok:false,reason:abort});
+ await transport.terminal;
+ expect(request.end).toHaveBeenCalledTimes(1);
+ expect(onHeaders).not.toHaveBeenCalled();
+ const absent=openDriverResponse({...options,start:()=>{throw null;}});
+ expect(await disposition(absent.result)).toEqual({ok:false,reason:null});
+ await absent.terminal;
+ expect(observeSocket).not.toHaveBeenCalled();
+});
+
+it('refuses the original decoded-size ceiling while settling the owned response',async()=>{
+ const {request,response,opened,result}=responseFixture();
+ response.write(Buffer.alloc(12*1024*1024+1));
+ expect(await result).toMatchObject({ok:false,reason:{message:'Decoded response exceeded the 12MiB measurement ceiling'}});
+ expect(request.destroy).toHaveBeenCalledTimes(1);
+ request.emit('close');await opened.terminal;
+});
+
+function testSocket(){return Object.assign(new EventEmitter(),{destroyed:false,destroy:vi.fn()});}
+
+it('waits for the real close event of a reused socket after synchronous agent destroy',async()=>{
+ const failures=createDriverFailures(),sockets=createDriverSockets(failures),socket=testSocket();
+ sockets.observe(socket);sockets.observe(socket);
+ const agent={requests:{},sockets:{local:[socket]},freeSockets:{local:[socket]},destroy:vi.fn(()=>{socket.destroyed=true;})};
+ let finished=false;const close=sockets.closeAgent(agent).then(result=>{finished=true;return result;});
+ await Promise.resolve();
+ expect(agent.destroy).toHaveBeenCalledTimes(1);
+ expect(socket.destroyed).toBe(true);
+ expect(finished).toBe(false);
+ socket.emit('close');
+ expect(await close).toEqual({state:'settled',queued:0,assigned:1,closed:1,pending:0});
+});
+
+it('retains unexpected queued requests and late socket assignment as separate failures',async()=>{
+ const failures=createDriverFailures(),sockets=createDriverSockets(failures),socket=testSocket(),late=testSocket();
+ const queued={destroy:vi.fn()};sockets.observe(socket);
+ const agent={requests:{local:[queued]},sockets:{local:[socket]},freeSockets:{},destroy:vi.fn()};
+ const close=sockets.closeAgent(agent);
+ sockets.observe(late);
+ expect(queued.destroy).toHaveBeenCalledTimes(1);
+ expect(late.destroy).toHaveBeenCalledTimes(1);
+ socket.emit('close');late.emit('close');
+ expect(await close).toMatchObject({queued:1,assigned:2,closed:2,pending:0});
+ expect(failures.publicFailures().secondary.map(row=>row.stage)).toEqual(['agent-queue','late-socket']);
+});
+
+it('drains a real loopback request and socket after its raw gzip response is cut short',async()=>{
+ const failures=createDriverFailures(),sockets=createDriverSockets(failures),cut=deferred();
+ const wire=gzipSync('fictional loopback response');
+ let serverRequests=0;
+ const server=createServer((_request,response)=>{
+  serverRequests++;
+  response.writeHead(200,{'Content-Encoding':'gzip','Content-Length':wire.length});
+  response.write(wire.subarray(0,8));
+  const socket=response.socket;
+  void cut.promise.then(()=>socket?.destroy());
+ });
+ const agent=new Agent({keepAlive:true});
+ try{
+  const listening=once(server,'listening');
+  server.listen(0,'127.0.0.1');
+  await listening;
+  const address=server.address();
+  if(!address||typeof address==='string')throw Error('Missing owned loopback fixture address');
+  const opened=openDriverResponse({body:undefined,startedMs:0,onHeaders:()=>cut.resolve(),observeSocket:sockets.observe,
+   recordFailure:failures.record,start:()=>httpRequest({hostname:'127.0.0.1',port:address.port,path:'/',agent,signal:AbortSignal.timeout(1500)})});
+  expect(await disposition(opened.result)).toMatchObject({ok:false,reason:{code:'ERR_STREAM_PREMATURE_CLOSE'}});
+  await opened.terminal;
+  expect(await sockets.closeAgent(agent)).toEqual({state:'settled',queued:0,assigned:1,closed:1,pending:0});
+  expect(serverRequests).toBe(1);
+ }finally{
+  cut.resolve();agent.destroy();server.closeAllConnections();
+  await new Promise<void>(resolve=>server.close(()=>resolve()));
+ }
+});
