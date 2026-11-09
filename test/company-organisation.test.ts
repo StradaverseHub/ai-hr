@@ -1,5 +1,8 @@
 import {createBusinessUnit} from '../core/admin';
+import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {derivedOrganisationForForm} from '../core/derived-organisation-display';
 import {setLabelGlobal} from '../core/system-labels';
+import {assertWorkforceCompanyTx,WorkforceAccessError} from '../core/workforce-access';
 import {pgSqlState} from '../lib/db-error';
 import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
@@ -62,6 +65,60 @@ it('honours future/historical dates and tenant-pins native ancestry without expo
  const [proof]=await withTenant(adminCtx(b),tx=>tx.execute<{descendant:boolean}>(sql`select app.is_company_descendant(${other.id}::uuid,${other.id}::uuid) descendant`));expect(proof.descendant).toBe(false);
  await expect(withTenant(adminCtx(b),tx=>deriveCompanyOrganisationTx(tx,adminCtx(b),{companyId:other.id,asOf:today()}))).rejects.toThrow();
  await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`select * from app.company_subtree(${b.companyId}::uuid)`))).rejects.toThrow();
+});
+it('shows dated organisation fields during an open Access writer and refuses stale maintenance scope',async({signal})=>{
+ const employee=await hire('FictionalDerivedOrganisation');
+ const effectiveOn='2090-01-01';
+ await publish(await prepare(effectiveOn));
+ const [outside]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Outside organisation scope'}).returning();
+ const userId=await createAppUser(b.tenantId,null,'hr_admin');
+ await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+ const scoped:SessionContext={...adminCtx(b),userId,grants:[{role:'hr_admin',companyId:b.companyId}]};
+
+ let announce!:(pid:number)=>void,release!:()=>void;
+ const ready=new Promise<number>(resolve=>{announce=resolve;});
+ const held=new Promise<void>(resolve=>{release=resolve;});
+ signal.addEventListener('abort',release,{once:true});
+ const holder=owner.withTenant(adminCtx(b),async tx=>{
+  await lockAccessConfigurationTx(tx,b.tenantId);
+  const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
+  announce(backend.pid);
+  await held;
+ });
+ let deadline:ReturnType<typeof setTimeout>|undefined;
+ let reads:Promise<unknown>|undefined;
+ try{
+  const blocker=await Promise.race([ready,holder.then(()=>{throw Error('Access holder exited before the organisation witness');})]);
+  const write=await withTenant(scoped,async tx=>{
+   await tx.execute(sql`set local lock_timeout='300ms'`);
+   await assertWorkforceCompanyTx(tx,scoped,b.companyId,'maintain');
+  }).then(()=>null,(error:unknown)=>error);
+  expect(pgSqlState(write)).toBe('55P03');
+
+  const readyFields={companyId:b.companyId,asOf:effectiveOn,status:'ready',businessUnitId:unit,businessUnitName:'REVIEWED'};
+  reads=Promise.all([
+   derivedOrganisationForForm(scoped,{companyId:b.companyId,asOf:effectiveOn}),
+   derivedOrganisationForForm(scoped,{employmentId:employee.employmentId,asOf:effectiveOn}),
+   derivedOrganisationForForm(scoped,{employmentId:employee.employmentId}),
+  ]);
+  await expect(Promise.race([
+   reads,new Promise<never>((_,reject)=>{deadline=setTimeout(()=>reject(Error('Organisation fields waited for Access')),3000);}),
+  ])).resolves.toMatchObject([readyFields,readyFields,{companyId:b.companyId,asOf:'2024-01-01',status:'legacy'}]);
+  const [lock]=await owner.db.execute<{held:boolean}>(sql`select exists(
+   select 1 from pg_locks where pid=${blocker}::integer and locktype='advisory' and mode='ExclusiveLock' and granted
+    and classid=((hashtextextended(${'access-configuration:'+b.tenantId},0)>>32)&4294967295)::oid
+    and objid=(hashtextextended(${'access-configuration:'+b.tenantId},0)&4294967295)::oid and objsubid=1) as held`);
+  expect(lock.held).toBe(true);
+ }finally{
+  clearTimeout(deadline);
+  signal.removeEventListener('abort',release);
+  release();
+  await Promise.all([holder,reads?.catch(()=>{})]);
+ }
+ await expect(derivedOrganisationForForm(scoped,{companyId:outside.id,asOf:effectiveOn})).rejects.toBeInstanceOf(WorkforceAccessError);
+ await owner.db.update(schema.roleAssignment).set({companyId:outside.id}).where(eq(schema.roleAssignment.appUserId,userId));
+ await expect(derivedOrganisationForForm(scoped,{companyId:b.companyId,asOf:effectiveOn})).rejects.toBeInstanceOf(WorkforceAccessError);
+ await expect(derivedOrganisationForForm(scoped,{employmentId:employee.employmentId,asOf:effectiveOn})).rejects.toBeInstanceOf(WorkforceAccessError);
 });
 it('never lets raw application SQL publish an unprojected approved preview or mutate the published parent directly',async()=>{
  await hire('FictionalNative');const id=await prepare();await approve(id);
