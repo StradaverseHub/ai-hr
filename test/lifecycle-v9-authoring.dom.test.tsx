@@ -10,9 +10,9 @@ import type { Template } from '../lib/lifecycle-v9-model';
 const actor = { id: 'fixture-hr', name: 'Fictional HR' };
 const types: Template['type'][] = ['Form', 'Acknowledgement', 'Letter', 'Attachment'];
 const templates = types.map(type => newV9Template(type, actor, type, '2026-10-29T02:00:00Z'));
-function Editor() {
+function Editor({ showDefinition = true }: { showDefinition?: boolean }) {
   const [email, setEmail] = useState(newV9Email('email'));
-  return <><EmailDefinition email={email} templates={templates} disabled={false} change={update => setEmail(value => { const next = structuredClone(value); update(next); return next; })}/><output data-testid="definition">{JSON.stringify(email)}</output></>;
+  return <><EmailDefinition email={email} templates={templates} disabled={false} change={update => setEmail(value => { const next = structuredClone(value); update(next); return next; })}/>{showDefinition && <output data-testid="definition">{JSON.stringify(email)}</output>}</>;
 }
 function saved() { return JSON.parse(screen.getByTestId('definition').textContent!); }
 it('uses the source document transport rules and preserves the link when a letter PDF is unticked', () => {
@@ -75,8 +75,8 @@ it('inserts allowed Personnel fields at the selected cursor range in the correct
 });
 
 it('renders the Personnel field picker in the email template drawer', async () => {
-  const view = render(<div className="v9-shell"><section className="v9-panel v9-stack">
-    <h1>Email template</h1><Editor/>
+  const view = render(<div className="v9-workspace v9-workspace-global"><section className="v9-panel v9-stack">
+    <h1>Email template</h1><Editor showDefinition={false}/>
   </section></div>);
   fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Welcome, {employee.name}' } });
   fireEvent.change(screen.getByLabelText('Body'), { target: { value: 'Welcome to {company.name}.' } });

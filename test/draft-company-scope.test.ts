@@ -237,7 +237,10 @@ describe('§2 the Personnel screen: list, Draft card and Filter options follow t
     expect(html).toContain('Alpha Candidate');
     expect(html.indexOf('data-ui-pager')).toBeGreaterThan(html.indexOf('</table>'));
     expect(html).toContain('Export');
-    await captureAiReviewScreenshots(html, 'en', 'feedback-personnel-list-footer',
+    // Match the real shell's positioned scrolling main. Its containment keeps offscreen table
+    // accessibility labels from adding scrollable width to the document viewport.
+    const shell = '<div class="relative min-w-0 overflow-y-auto pb-1">' + html + '</div>';
+    await captureAiReviewScreenshots(shell, 'en', 'feedback-personnel-list-footer',
       'Actual Personnel page, table and bottom pager backed by scoped fictional drafts');
   }, 120_000);
 
