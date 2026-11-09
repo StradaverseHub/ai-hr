@@ -155,6 +155,7 @@
         "noSpend": "Không tốn chi phí AI: các vòng lặp này chỉ dùng quy tắc, không bao giờ dùng mô hình."
       },
       "openWaiting": "{open} đang mở · {waiting} đang chờ",
+      "companySettings": "Cài đặt công ty",
       "pause": {
         "title": "Tạm dừng cho một công ty",
         "help": "Vòng lặp bị tạm dừng sẽ không chạy và không hiện thẻ ở công ty đó. Tắt công tắc sẽ dừng nó ở mọi nơi.",
@@ -286,6 +287,7 @@
         "records": "Mọi con số đều lấy từ hồ sơ: thẻ vòng lặp, hồ sơ kết quả và phát hiện bất thường về lương, được đọc bằng quyền truy cập của chính bạn. Không ước tính từ mức trung bình của ngành."
       },
       "baseline": {
+        "set": "Đặt mức cơ sở",
         "notSet": "Chưa đặt mốc cơ sở",
         "notSetBody": "Số giờ được giải phóng được đo theo thời gian thủ công của chính bạn trước khi Autopilot bắt đầu. Hãy đặt mốc cơ sở để xem; nhật ký sự kiện đo những gì có thể, còn bạn bổ sung số phút mà nó không thể biết.",
         "missingSome": "{count, plural, other {# công ty chưa có mốc cơ sở, nên công việc của họ được tính là đã xong nhưng không giải phóng thời gian.}}",
@@ -308,6 +310,7 @@
         "periodEndsToday": "Autopilot chưa bắt đầu tại đây, nên kết thúc vào hôm nay.",
         "daysLabel": "Độ dài",
         "daysOption": "{days} ngày",
+        "changePeriod": "Đổi khoảng thời gian",
         "usePeriod": "Dùng khoảng thời gian này",
         "period": "Khoảng thời gian: từ {from} đến {to}.",
         "step2": "2. Những gì nhật ký sự kiện đã đo",

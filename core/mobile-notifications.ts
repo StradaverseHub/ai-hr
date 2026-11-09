@@ -20,6 +20,7 @@ import type { SessionContext } from '../db/client';
 import { AuthRequiredError } from '../lib/auth-errors';
 import { isModuleEnabled } from './entitlements';
 import { listNotificationsPage, markAllNotificationsRead, markNotificationRead, unreadNotificationCount } from './notifications';
+import { readEmployeeLoopCards } from './loops/cards';
 import { pendingTaskCountV2 } from './mobile-approvals';
 import { notificationDestination, type DestinationAccess } from '../lib/mobile-api/notification-destination';
 import { encodeCursor } from '../lib/mobile-api/v2/common';
@@ -73,19 +74,23 @@ export async function markNotificationsReadV2(ctx: SessionContext, command: Noti
   return { outcome: 'read', unreadCount, items: rows.map((r) => ({ id: r.id, destination: notificationDestination(r.kind, access) })) };
 }
 
-/** Home's two counts, each settled on its own: one failing never hides the other, and neither reads as zero. */
+/** Home's counts and self-service findings settle independently. A failed read stays unavailable. */
 export async function homeSummaryV2(ctx: SessionContext): Promise<HomeSummaryV2> {
-  const [tasks, inbox] = await Promise.allSettled([
+  const [tasks, inbox, loopActions] = await Promise.allSettled([
     pendingTaskCountV2(ctx),
     // The module check runs inside the settled part, so an entitlements outage marks only the inbox `unavailable`.
     Promise.resolve().then(() => (enabled(ctx) ? unreadNotificationCount(ctx).then((n) => ({ enabled: true, unreadCount: n })) : { enabled: false, unreadCount: 0 })),
+    readEmployeeLoopCards(ctx).then(cards => cards.map(card => ({
+      id: card.caseId, kind: card.kind, date: card.kind === 'clockOut' ? card.date : card.kind === 'passport' ? card.expiresOn : null,
+    }))),
   ]);
   // A signed-out caller is 401 for the whole summary, never a per-part "could not check".
-  for (const part of [tasks, inbox]) if (part.status === 'rejected' && part.reason instanceof AuthRequiredError) throw part.reason;
+  for (const part of [tasks, inbox, loopActions]) if (part.status === 'rejected' && part.reason instanceof AuthRequiredError) throw part.reason;
   // The cause may carry private HR or SQL text (lib/mobile-api/handler.ts privateFailure): log the part, never the error.
-  for (const [name, part] of [['tasks', tasks], ['inbox', inbox]] as const) if (part.status === 'rejected') console.error('[mobile-api]', { event: 'home_summary_part_unavailable', part: name });
+  for (const [name, part] of [['tasks', tasks], ['inbox', inbox], ['loopActions', loopActions]] as const) if (part.status === 'rejected') console.error('[mobile-api]', { event: 'home_summary_part_unavailable', part: name });
   return {
     tasks: tasks.status === 'fulfilled' ? { status: 'ok', count: tasks.value } : { status: 'unavailable' },
+    loopActions: loopActions.status === 'fulfilled' ? { status: 'ok', items: loopActions.value } : { status: 'unavailable' },
     inbox: inbox.status === 'fulfilled' ? { status: 'ok', ...inbox.value } : { status: 'unavailable' },
   };
 }

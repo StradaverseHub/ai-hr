@@ -258,11 +258,11 @@ describe('Home summary (M14)', () => {
     expect(summary.status).toBe(200);
     const canonical = await listPendingTasks(manager.ctx, undefined, { attendance: isModuleEnabled(manager.ctx, 'attendance'), claims: isModuleEnabled(manager.ctx, 'claims'), performance: isModuleEnabled(manager.ctx, 'performance'), rewards: isModuleEnabled(manager.ctx, 'rewards') });
     expect(canonical.length).toBeGreaterThan(0);
-    expect(summary.body).toEqual({ tasks: { status: 'ok', count: canonical.length }, inbox: { status: 'ok', enabled: true, unreadCount: 1 } });
+    expect(summary.body).toEqual({ tasks: { status: 'ok', count: canonical.length }, inbox: { status: 'ok', enabled: true, unreadCount: 1 }, loopActions: { status: 'ok', items: [] } });
 
     // The applicant: their own request is never their task, and nothing is unread.
     caller = A.ctx;
-    expect((await get('/home/summary', homeRoute.GET)).body).toEqual({ tasks: { status: 'ok', count: 0 }, inbox: { status: 'ok', enabled: true, unreadCount: 0 } });
+    expect((await get('/home/summary', homeRoute.GET)).body).toEqual({ tasks: { status: 'ok', count: 0 }, inbox: { status: 'ok', enabled: true, unreadCount: 0 }, loopActions: { status: 'ok', items: [] } });
   });
 
   it('a part that cannot be read is `unavailable`, never zero, and does not take the other part down', async () => {
@@ -271,7 +271,7 @@ describe('Home summary (M14)', () => {
     caller = { ...A.ctx, entitlements: undefined, entitlementsError: 'test: no snapshot' };
     const summary = await get('/home/summary', homeRoute.GET);
     expect(summary.status).toBe(200);
-    expect(summary.body).toEqual({ tasks: { status: 'unavailable' }, inbox: { status: 'unavailable' } });
+    expect(summary.body).toEqual({ tasks: { status: 'unavailable' }, inbox: { status: 'unavailable' }, loopActions: { status: 'unavailable' } });
     blocked = true;
     expect((await get('/home/summary', homeRoute.GET)).status).toBe(401);
   });
