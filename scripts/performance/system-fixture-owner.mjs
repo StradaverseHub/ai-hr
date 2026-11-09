@@ -16,6 +16,8 @@ for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
 const auditRequested=process.env.AUDIT_HASH_CHAIN_ENABLED==='true';
 assert(auditRequested,'the production workload requires audit chaining');
 const fullDevelopmentRoutes=fullDevelopmentBrowserRouteCourse(process.env);
+const establishedAttendance=fullDevelopmentRoutes||(process.env.AIHR_MEASURED_BROWSER_COURSE==='serial-2-4-8'
+ &&['whole-system','workflow-preflight'].includes(process.env.PERF_HTTP_SUITE));
 const {seedBase,entitledCtx,owner,closeAll,setModule}=await import('../../test/harness.ts');
 // The ordinary unit harness deliberately clears deployment gates. Restore this fixture's
 // explicit opt-in before seeding any domain events; production app/driver already retain it.
@@ -227,6 +229,12 @@ try{
   });
   // A real current administrative reporting line, inside the same company, for each manager.
   await fixturePhase(t,'reporting-line-tail',()=>owner.db.insert(s.reportingLine).values(cohort.filter(u=>u.role==='manager').flatMap(u=>cohort.filter(v=>v.company===u.company&&v.index%50>=4+(u.index%50-2)*10&&v.index%50<14+(u.index%50-2)*10).map(v=>({tenantId:b.tenantId,managerEmploymentId:u.employmentId,subordinateEmploymentId:v.employmentId,lineType:'administrative',validFrom:'2025-01-01'})))));
+  // The measured course represents established tenants. First-use creation has a separate native witness.
+  if(establishedAttendance)await fixturePhase(t,'attendance-established-standard',async()=>{
+   const {ensureStandardRule}=await import('../../core/attendance-rule.ts');
+   const standard=await ensureStandardRule(ctx);
+   assert.equal(standard.created,true,'Established Attendance fixture must create one Standard before measurement');
+  });
  }));
  for(const result of seeded)if(result.status==='rejected')throw result.reason;
  users.sort((a,b)=>a.index-b.index);

@@ -777,7 +777,7 @@ jobs:
           fixture_phase_names = set(('lifecycle-hub letter-draft-prerequisites claims-history attendance-history historical-payroll-generate '
                                      'historical-payroll-close rewards-draft-prerequisites rewards-draft-import '
                                      'payroll-readiness-after-organisation-publication attendance-workflow-tail '
-                                     'reporting-line-tail post-seed-counts audit-counts native-traffic-actors assistant-saved-history').split())
+                                     'reporting-line-tail attendance-established-standard post-seed-counts audit-counts native-traffic-actors assistant-saved-history').split())
           fixture_error_codes = set(('ERR_ASSERTION ERR_INVALID_ARG_TYPE ERR_INVALID_PACKAGE_CONFIG ERR_MODULE_NOT_FOUND '
                                      'MODULE_NOT_FOUND ERR_PACKAGE_PATH_NOT_EXPORTED ERR_REQUIRE_ESM ERR_UNKNOWN_FILE_EXTENSION '
                                      'ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX 22023 23502 23503 23505 23514 25006 25P02 40001 40P01 '
