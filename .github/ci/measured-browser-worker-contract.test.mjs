@@ -31,7 +31,7 @@ function dispatch() {
       repository: { ...repository }, ref: branch,
       inputs: {
         candidate_ref: branch, expected_sha: sha, selected_tests: '[]',
-        architecture_browser_development_preflight: 'false', measured_browser_course: 'steady-2',
+        architecture_browser_development_preflight: 'false', measured_browser_course: 'serial-2-4-8',
         measured_browser_preflight_run: '101', employee_ascii_qualification: 'off',
         qualify_restricted_port_prerequisites: 'false', profile_database: 'false', duration_order: 'false',
         run_typecheck: 'false', run_native_typecheck: 'false', run_native_swift_models: 'false',
@@ -52,7 +52,9 @@ function modelMetadata() {
     { number: 9, name: 'Publish sanitized functional browser development evidence', ...interval('10:28:21', '10:29:00') },
   ];
   const jobs = [
-    { id: 2001, name: 'resolve', ...interval('10:00:01', '10:01:00') },
+    { id: 2001, name: 'resolve', ...interval('10:00:01', '10:01:00'), steps: [
+      { number: 4, name: 'Admit the fixed full-rendered development browser course', ...interval('10:00:15', '10:00:18') },
+    ] },
     { id: 2002, name: 'selected-tests', ...interval('10:01:02', '10:30:00'), steps: selectedSteps },
     ...['typecheck', 'linux-build', 'native-typecheck', 'native-bundle', 'native-swift-models']
       .map((name, index) => ({ id: 2003 + index, name, status: 'completed', conclusion: 'skipped' })),
@@ -109,6 +111,7 @@ test('rejects open worker counts and absent, noncanonical or unsafe run IDs', ()
   for (const course of ['steady-8', 'whole-system', 'toString', '', 2]) assert.throws(() => measuredWorkerCourse(course, '101'));
   for (const upstream of ['', '0', '01', '1.0', '1\n', ' 1', '+1', '9007199254740992', 101]) {
     assert.throws(() => measuredWorkerCourse('steady-2', upstream), /run ID/);
+    assert.throws(() => measuredWorkerCourse('serial-2-4-8', upstream), /run ID/);
   }
   assert.throws(() => measuredWorkerCourse('off', '101'));
   assert.throws(() => measuredWorkerCourse('preflight-2', '101'));
@@ -121,6 +124,7 @@ test('models only the exact same-source dispatch and first resolve job', () => {
   assert.equal(model.source, sha);
   assert.equal(model.currentRunId, 102);
   assert.equal(model.profile.upstreamRunId, 101);
+  assert.equal(model.profile.course, 'serial-2-4-8');
   for (const patch of [
     { GITHUB_RUN_ATTEMPT: '2' }, { GITHUB_JOB: 'selected-tests' }, { GITHUB_SHA: 'c'.repeat(40) },
     { GITHUB_WORKFLOW_SHA: sha + '\n' }, { STAGING_ENABLED: 'true' }, { PRODUCTION_ENABLED: 'true' },
@@ -130,6 +134,7 @@ test('models only the exact same-source dispatch and first resolve job', () => {
     { expected_sha: 'c'.repeat(40) }, { candidate_ref: 'main' }, { model_eval: 'anything' },
     { eval_allowed_providers: 'openrouter' }, { architecture_browser_development_preflight: 'true' },
     { run_build: 'true' }, { worker_count: '8' }, { measured_browser_preflight_run: '102' },
+    ...['steady-2', 'steady-4', 'functional-8', 'off'].map(course => ({ measured_browser_course: course })),
     { selected_tests: '["test/fake.test.ts"]' },
   ]) assert.throws(() => inspectMeasuredWorkerDispatch(environment, { ...event, inputs: { ...event.inputs, ...patch } }));
   assert.throws(() => inspectMeasuredWorkerDispatch(environment, { ...event, repository: { ...repository, private: true } }));
@@ -173,6 +178,9 @@ test('requires all seven terminal jobs and the actual selected step order', () =
   const mutations = [
     row => { row.jobInventory.total_count = 6; }, row => { row.jobInventory.jobs[2].name = 'resolve'; },
     row => { row.jobInventory.jobs[2].id = 2002; }, row => { row.jobInventory.jobs[1].head_sha = 'd'.repeat(40); },
+    row => { row.jobInventory.jobs[0].steps = []; },
+    row => { row.jobInventory.jobs[0].steps[0].conclusion = 'skipped'; },
+    row => { row.jobInventory.jobs[0].steps.push({ ...row.jobInventory.jobs[0].steps[0] }); },
     row => { row.jobInventory.jobs[1].started_at = at('10:00:20'); },
     row => { row.jobInventory.jobs[1].steps[2].conclusion = 'skipped'; },
     row => { row.jobInventory.jobs[1].steps[2].number = 6; },

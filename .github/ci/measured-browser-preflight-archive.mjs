@@ -264,7 +264,7 @@ export async function authenticateMeasuredPreflightArchive() {
   const dispatch = inspectMeasuredWorkerDispatch(process.env, hostedEvent(temp));
   const { source, currentRunId, profile } = dispatch;
   const upstreamRunId = profile.upstreamRunId;
-  assert(id(upstreamRunId), 'A downstream course with a prior preflight is required');
+  assert(profile.course === 'serial-2-4-8' && id(upstreamRunId), 'The serial course requires a prior preflight');
   controllerHead(source, deadline);
 
   const token = process.env.GH_TOKEN;

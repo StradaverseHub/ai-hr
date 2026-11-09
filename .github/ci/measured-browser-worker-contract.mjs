@@ -11,6 +11,7 @@ const ARTIFACT = 'architecture-browser-development-preflight-evidence';
 const maximumArchiveBytes = 64 * 1024 ** 2;
 const freshnessMs = 24 * 60 * 60 * 1000;
 const jobs = ['resolve', 'selected-tests', 'typecheck', 'linux-build', 'native-typecheck', 'native-bundle', 'native-swift-models'];
+const preflightAdmissionStep = 'Admit the fixed full-rendered development browser course';
 const preflightSteps = [
   'Verify the exact self-source before dependency installation',
   'Fictional two-worker functional browser preflight',
@@ -52,6 +53,7 @@ export function measuredWorkerCourse(course, upstream) {
     assert(upstream === '', 'An inactive worker course cannot name a preflight');
     return null;
   }
+  if (course === 'serial-2-4-8') return Object.freeze({ course, upstreamRunId: runId(upstream), ...commonProfile });
   assert(typeof course === 'string' && Object.hasOwn(courseProfiles, course), 'Unknown measured worker course');
   if (course === 'preflight-2') assert(upstream === '', 'Preflight must be independent');
   return Object.freeze({
@@ -100,6 +102,7 @@ export function inspectMeasuredWorkerDispatch(environment, event) {
     run_native_bundle: 'false', run_build: 'false', model_eval: '', eval_budget_usd: '20', eval_allowed_providers: '',
   };
   assert(exactFields(inputs, expected), 'Measured worker dispatch inputs refused');
+  assert(course === 'preflight-2' || course === 'serial-2-4-8', 'Measured worker dispatch course refused');
   const profile = measuredWorkerCourse(course, upstream);
   const currentRunId = runId(environment.GITHUB_RUN_ID);
   assert(profile && profile.upstreamRunId !== currentRunId, 'Inactive or same-run measured worker prerequisite refused');
@@ -154,6 +157,10 @@ export function inspectMeasuredPreflightProviderMetadata(values, expected) {
   const selected = byName.get('selected-tests');
   const resolveTime = successfulInterval(resolve, began, updated);
   const selectedTime = successfulInterval(selected, resolveTime.completed, updated);
+  assert(Array.isArray(resolve.steps) && resolve.steps.length <= 64, 'Measured worker prerequisite resolve steps refused');
+  const admissions = resolve.steps.filter(row => row?.name === preflightAdmissionStep);
+  assert(admissions.length === 1 && id(admissions[0].number), 'Measured worker prerequisite admission step refused');
+  successfulInterval(admissions[0], resolveTime.started, resolveTime.completed);
   assert(Array.isArray(selected.steps) && selected.steps.length <= 64, 'Measured worker prerequisite steps refused');
   let previousNumber = 0;
   let previousCompleted = selectedTime.started;
