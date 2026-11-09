@@ -15,9 +15,9 @@ import sys
 import time
 
 
-SOURCE = '2357c75d413909b6b67ec954ec8b29f5e5ebcc90'
-SOURCE_BRANCH = 'codex/compiler-typed-cohort-source-20261109'
-BRANCH = 'codex/compiler-2357c75d-partition-feasibility-20261109'
+SOURCE = '3a3bc5dd325df1d57000eb03bebc76c8cda7157c'
+SOURCE_BRANCH = 'codex/architecture-ai-management-snapshot-20261109'
+BRANCH = 'codex/compiler-3a3bc5dd-partition-feasibility-20261109'
 PARTITION_CELLS = ('build', 'test-tooling-first', 'test-tooling-second')
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
