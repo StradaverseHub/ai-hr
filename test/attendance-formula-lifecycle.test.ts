@@ -3,7 +3,7 @@ import {eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
-import {seedPayComponentCatalog} from '../core/pay-components';
+import {createPayComponent,seedPayComponentCatalog} from '../core/pay-components';
 import {checkIn,checkOut,setAttendancePolicy,saveAttendanceFormula,testAttendanceFormula,activateAttendanceFormula,changeAttendanceFormulaStatus,getAttendanceFormula,attendanceFormulaSetup,listAttendanceFormulas,searchAttendanceFormulaEmployees,readAttendanceFormulaTest} from '../packs/attendance/service';
 import {attendanceFormula,attendanceFormulaRevision,payComponent} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -98,9 +98,10 @@ it('rejects incomplete All Companies coverage, a company-limited Pay Item and ov
  const all={...f.configuration,companyScope:{mode:'all' as const,companyIds}};
  await expect(saveAttendanceFormula(f.ctx,{configuration:{...all,companyScope:{mode:'all',companyIds:[base.companyId]}}}))
   .rejects.toMatchObject({cause:expect.objectContaining({code:'AF002'})});
- await owner.db.update(payComponent).set({appliedCompanyIds:[base.companyId]}).where(eq(payComponent.id,f.configuration.payItemId));
- await expect(saveAttendanceFormula(f.ctx,{configuration:all})).rejects.toThrow(/every selected company/);
- await owner.db.update(payComponent).set({appliedCompanyIds:null}).where(eq(payComponent.id,f.configuration.payItemId));
+ const limited=await createPayComponent(f.ctx,{code:'LIMITED_FORMULA_PAY',name:'Company A earning',label:'Company A',kind:'allowance',
+  includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,
+  appliedCompanyIds:[base.companyId]});
+ await expect(saveAttendanceFormula(f.ctx,{configuration:{...all,payItemId:limited.id}})).rejects.toThrow(/every selected company/);
  const first=await saveAttendanceFormula(f.ctx,{configuration:all});
  const firstProof=await testAttendanceFormula(f.ctx,{...first,employmentId:f.employmentId,date:f.date});
  await activateAttendanceFormula(f.ctx,{...first,testId:firstProof.id});
