@@ -99,16 +99,22 @@ function trustedFile(path,digest){
  const after=lstatSync(path);
  for(const key of ['dev','ino','size','mtimeMs','ctimeMs'])assert.equal(after[key],row[key]);
 }
+export function protectedDockerCommandTimeout(command,remaining){
+ assert(remaining>1000,'Docker owner deadline exhausted');
+ if(command[0]==='container'&&command[1]==='create')return Math.min(15000,Math.floor(remaining-500));
+ const ceiling=command[0]==='container'&&command[1]==='wait'?18500:7000;
+ return Math.min(ceiling,remaining-500);
+}
 function engine(root,deadline){
  trustedFile(cli,commandHash);trustedFile('/usr/bin/runc',runtimeHash);
  const row=lstatSync(socket);assert(row.isSocket()&&row.uid===0&&(row.mode&0o002)===0&&realpathSync('/var/run/docker.sock')===socket);
  const socketBirth=fileBirth(socket);
  const {args,env}=developmentDockerContext(root);
  const invoke=(arguments_)=>{
-  const remaining=deadline-performance.now();assert(remaining>1000,'Docker owner deadline exhausted');
+  const timeout=protectedDockerCommandTimeout(arguments_,deadline-performance.now());
   assert.deepEqual(fileBirth(socket),socketBirth);
   const result=spawnSync(cli,[...args,...arguments_],{env,stdio:['ignore','pipe','pipe'],encoding:'utf8',
-   timeout:Math.min(arguments_[0]==='container'&&arguments_[1]==='wait'?18500:7000,remaining-500),killSignal:'SIGKILL',maxBuffer:131072});
+   timeout,killSignal:'SIGKILL',maxBuffer:131072});
   assert.deepEqual(fileBirth(socket),socketBirth);
   return result;
  };
