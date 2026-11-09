@@ -41,6 +41,7 @@ test('requires the exact migration-created auth tenant and refuses all other row
 for (const [name,mutate] of [
   ['wrong source',x=>{x.source=BASE;}],
   ['mixed workflow controller',x=>{x.env.GITHUB_WORKFLOW_SHA=BASE;}],
+  ['missing forwarded workflow identity',x=>{delete x.env.GITHUB_WORKFLOW_SHA;}],
   ['retry',x=>{x.env.GITHUB_RUN_ATTEMPT='2';}],
   ['public database',x=>{x.env.TEST_DATABASE_URL='postgres://ai_hr_app@external.example:5433/ai_hr_dev';}],
   ['changed local database',x=>{x.env.TEST_MIGRATION_DATABASE_URL=x.env.TEST_MIGRATION_DATABASE_URL.replace('ai_hr_dev','ai_hr_test');}],

@@ -44,6 +44,12 @@ class Admission(unittest.TestCase):
         self.env['GITHUB_JOB'] = 'resolve'
         self.assertEqual(self.admit('resolve')[0],'1010')
 
+    def test_admitted_job_carries_the_workflow_identity_to_env_i_child(self):
+        _, controller, child_job = self.admit()
+        # The witness checks all three values after the controller clears inherited environment.
+        for name in ('GITHUB_WORKFLOW_SHA','GITHUB_SHA','AIHR_CI_CONTROL_HEAD'):
+            self.assertEqual(child_job.get(name),controller,name)
+
     def test_actual_sudo_boundary_preserves_exact_owner_inputs(self):
         class ObservedEnvironment(dict):
             def __init__(self, values):

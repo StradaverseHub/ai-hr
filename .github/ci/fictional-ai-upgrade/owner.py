@@ -331,7 +331,8 @@ def admit(e, job='selected-tests'):
         'GITHUB_WORKFLOW': 'alpha-focused-checks', 'GITHUB_JOB': job, 'GITHUB_RUN_ATTEMPT': '1',
         'GITHUB_REF': 'refs/heads/' + BRANCH,
         'GITHUB_WORKFLOW_REF': REPO + '/.github/workflows/alpha-focused-checks.yml@refs/heads/' + BRANCH,
-        'GITHUB_SHA': controller, 'AIHR_CI_CONTROL_HEAD': controller, 'AIHR_CI_HEAD': CANDIDATE,
+        'GITHUB_SHA': controller, 'GITHUB_WORKFLOW_SHA': controller,
+        'AIHR_CI_CONTROL_HEAD': controller, 'AIHR_CI_HEAD': CANDIDATE,
         'AIHR_AI_UPGRADE_STAGING_ENABLED': 'false', 'AIHR_AI_UPGRADE_PRODUCTION_ENABLED': 'false',
     }
     need(all(e.get(k) == v for k, v in expected.items()))
