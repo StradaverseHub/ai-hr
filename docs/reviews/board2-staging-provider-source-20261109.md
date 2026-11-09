@@ -7,3 +7,7 @@ The changed shared sources are the Employee Master projection, the Lifecycle Per
 The requested renewal retains the 29 approved provider contracts and both pending contracts. It changes only their source fingerprint. The registry keeps its previous binding until the owner approves the exact reviewed source.
 
 Company Configuration keeps the saved SSM and MyInvois values available to filing readers. The approved plan removes both input controls without adding a new entry point. The application still generates TP1 with a blank employer TIN when the company has no saved TIN. The SSM field is outside the application's blocking CP39 header checks. This staging release is for reviewing the requested screens and verifying filing behaviour with existing and new company records.
+
+## Owner approval
+
+On 9 November 2026 the repository owner answered **“Approve exact BOARD 2 source binding”** for review commit `4a74afd034e51bd6e0b0f8628d354f6ca317f5c7` and the exact fingerprint above. Reversing the 29 fingerprint substitutions reproduces the prior registry byte for byte, including both pending contracts and all review metadata.
