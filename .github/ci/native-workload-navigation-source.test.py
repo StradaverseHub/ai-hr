@@ -1,11 +1,14 @@
 """Navigation source custody controls with tracked and synthetic file bytes only."""
 import hashlib
 import importlib.util
+import io
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tempfile
+from time import monotonic_ns
 import unittest
 from unittest.mock import Mock, patch
 
@@ -258,6 +261,95 @@ class NativeNavigationHandoffModel(unittest.TestCase):
                 H.capture_navigation_handoff(tree, inventory, (scenario, collector), change_earlier_member)
             self.assertTrue(changed)
             self.assertIn('Inventory final identity proof refused: ValueError', refusal.exception.__notes__)
+
+
+class NativeNavigationGitModel(unittest.TestCase):
+    def deadline(self):
+        return monotonic_ns() + 5_000_000_000
+
+    def test_fixed_commands_capture_committed_navigation_inventory_and_raw_blobs(self):
+        revision = subprocess.run(('/usr/bin/git', 'rev-parse', 'HEAD'), cwd=ROOT,
+                                  env=H._GIT_ENV, check=True, capture_output=True,
+                                  timeout=1).stdout.decode('ascii').strip()
+        with I.PinnedTree(ROOT) as tree:
+            facts = H._acquire_navigation_git_sources(tree, revision, self.deadline())
+        expected = H._read_inventory(facts.inventory, tick)
+        self.assertEqual(tuple(obj.member for obj in facts.ordinary), H._ordinary_members(expected))
+        self.assertEqual(sum(row.path in {pin.path for pin in H.HISTORY_PINS} for row in expected), 4)
+        actual = {obj.member.path: obj for obj in facts.ordinary}
+        for path in H.REQUIRED_ORDINARY:
+            raw = (ROOT / path).read_bytes()
+            self.assertEqual(actual[path].member.size, len(raw))
+            self.assertEqual(actual[path].member.git_blob,
+                             hashlib.sha1(f'blob {len(raw)}\0'.encode() + raw, usedforsecurity=False).hexdigest())
+            self.assertEqual(actual[path].sha256, hashlib.sha256(raw).hexdigest())
+
+    def test_alternate_worktree_and_promisor_inputs_refuse_before_git(self):
+        for path in ('.git/commondir', '.git/gitdir', '.git/config.worktree',
+                     '.git/objects/info/alternates', '.git/objects/info/http-alternates',
+                     '.git/objects/pack/pack-model.promisor'):
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                for directory in ('.git/objects/info', '.git/objects/pack'):
+                    (root / directory).mkdir(parents=True)
+                (root / path).symlink_to('/unused-external-store')
+                with I.PinnedTree(root) as tree, patch.object(H, '_git_navigation_pipe') as start:
+                    with self.assertRaisesRegex(ValueError, 'alternate store|object pack catalogue'):
+                        H._check_git_store(tree, self.deadline())
+                    start.assert_not_called()
+
+    def test_local_configuration_refuses_external_helpers_includes_and_duplicates(self):
+        baseline = (b'[core]\nrepositoryformatversion=0\nbare=false\n'
+                    b'[remote "origin"]\nurl=https://github.com/StradaverseHub/ai-hr\n')
+        bad = (b'[include]\npath=/unused-external-config\n', b'[extensions]\npartialClone=origin\n',
+               b'[filter "outside"]\nprocess=outside-command\n', b'url=https://github.com/StradaverseHub/ai-hr\n')
+        for tail in (b'', *bad):
+            with self.subTest(tail=tail), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                (root / '.git').mkdir()
+                (root / '.git/config').write_bytes(baseline + tail)
+                with I.PinnedTree(root) as tree:
+                    if tail:
+                        with self.assertRaisesRegex(ValueError, 'unsupported setting'):
+                            H._check_git_config(tree, self.deadline())
+                    else:
+                        H._check_git_config(tree, self.deadline())
+                        with self.assertRaisesRegex(ValueError, 'trailing bytes'):
+                            with H._git_navigation_pipe(('config', '--null', '--no-includes',
+                                                         '--file', str(root / '.git/config'), '--list'),
+                                                        self.deadline()):
+                                pass
+
+    def test_batch_raw_oid_and_member_framing_fail_closed(self):
+        class Pipe(io.BytesIO):
+            def request(self, oid):
+                requests.append(oid)
+
+        payload = b'known'
+        oid = hashlib.sha1(b'blob 5\0' + payload, usedforsecurity=False).hexdigest()
+        member = H.BoundedHarnessMember('scripts/performance/navigation-scenarios.json', '100644', 5, oid)
+        header = f'{oid} blob 5\n'.encode('ascii')
+        requests = []
+        valid = header + payload + b'\n'
+        self.assertEqual(H._read_git_objects(Pipe(valid * 2), (member, member)),
+                         (H.NavigationOrdinaryGitObject(member, hashlib.sha256(payload).hexdigest()),) * 2)
+        self.assertEqual(requests, [oid, oid])
+        for raw, reason in (
+            (b'', 'truncated'), (header[:-1], 'truncated'), (header + payload[:-1], 'truncated'),
+            (header + b'other\n', 'framing or bytes'), (valid[:-1] + b'!', 'framing or bytes'),
+            (b'0' + valid[1:], 'header differs'), (valid + b'\n' + valid, 'header differs'),
+        ):
+            with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, reason):
+                H._read_git_objects(Pipe(raw), (member, member))
+
+    def test_deadline_and_unprotected_view_refuse_without_a_child(self):
+        with I.PinnedTree(ROOT) as tree, patch.object(H.subprocess, 'Popen') as start:
+            with self.assertRaisesRegex(ValueError, 'protected nonroot'):
+                H.acquire_navigation_git_sources(tree, OID, self.deadline())
+            with self.assertRaisesRegex(ValueError, 'deadline closed'):
+                with H._git_navigation_pipe((), monotonic_ns()):
+                    pass
+            start.assert_not_called()
 
 
 if __name__ == '__main__':

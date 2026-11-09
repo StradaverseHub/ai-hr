@@ -23,6 +23,13 @@ const inputs=[
  ['deploy/admission/next_host_history_controller_inverse.json',39_474_867],
 ] as const;
 const classes=[
+ ['NativeNavigationGitModel',[
+  'test_alternate_worktree_and_promisor_inputs_refuse_before_git',
+  'test_batch_raw_oid_and_member_framing_fail_closed',
+  'test_deadline_and_unprotected_view_refuse_without_a_child',
+  'test_fixed_commands_capture_committed_navigation_inventory_and_raw_blobs',
+  'test_local_configuration_refuses_external_helpers_includes_and_duplicates',
+ ]],
  ['NativeNavigationHandoffModel',[
   'test_handoff_binds_the_raw_scenario_and_four_real_histories_in_inventory_order',
   'test_handoff_refuses_incomplete_or_duplicate_object_evidence_before_opening_any_file',
@@ -108,7 +115,7 @@ function requireSource(sha:string){
  expect(git(['hash-object','--no-filters','--',...paths],5000)).toBe(blobs.join('\n')+'\n');
 }
 
-it('runs the 10 exact held navigation source byte models',()=>{
+it('runs the 15 exact held navigation source byte models',()=>{
  expect(process.platform).toBe('linux');
  expect(process.env.GITHUB_ACTIONS).toBe('true');
  expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
@@ -118,8 +125,8 @@ it('runs the 10 exact held navigation source byte models',()=>{
  expect(sha).toMatch(/^[a-f0-9]{40}$/);
  requireSource(sha);
  const expected=cases.map(row=>row.description+' ... ok');
- expect(expected).toHaveLength(10);
- expect(new Set(expected).size).toBe(10);
+ expect(expected).toHaveLength(15);
+ expect(new Set(expected).size).toBe(15);
  // A nondirectory cache prefix and -B force the stock interpreter to read source.
  expect(lstatSync('/dev/null').isCharacterDevice()).toBe(true);
  const result=spawnSync('/usr/bin/python3',['-I','-B','-X','pycache_prefix=/dev/null',file,'-v'],{
@@ -137,7 +144,7 @@ it('runs the 10 exact held navigation source byte models',()=>{
  if(result.status!==0)throw Error('Navigation source model child returned an unexpected status');
  const timing=result.stderr.split('\n').at(-4)??'';
  const transcript=[...expected,'',rule,timing,'','OK',''].join('\n');
- if(result.stdout!==''||!/^Ran 10 tests in [0-9]+\.[0-9]{3}s$(?![\s\S])/.test(timing)||result.stderr!==transcript)
+ if(result.stdout!==''||!/^Ran 15 tests in [0-9]+\.[0-9]{3}s$(?![\s\S])/.test(timing)||result.stderr!==transcript)
   throw Error('Navigation source model success transcript refused');
  process.stderr.write(transcript);
 },30000);

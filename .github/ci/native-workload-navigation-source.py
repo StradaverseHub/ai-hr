@@ -8,6 +8,11 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import select
+import subprocess
+import sys
+from contextlib import contextmanager
+from time import monotonic_ns
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
@@ -321,3 +326,204 @@ def capture_navigation_handoff(tree: PinnedTree, inventory: bytes,
     tree.assert_unchanged()
     check_clock()
     return NativeNavigationSourceFacts(inventory_sha256, facts, ordinary.scenario)
+
+
+class NavigationGitSources(NamedTuple):
+    inventory: bytes
+    ordinary: tuple[NavigationOrdinaryGitObject, ...]
+
+
+_GIT = '/usr/bin/git'
+_GIT_ENV = {
+    'PATH': '/usr/bin:/bin', 'HOME': '/nonexistent', 'LANG': 'C', 'LC_ALL': 'C',
+    'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_OPTIONAL_LOCKS': '0',
+    'GIT_NO_REPLACE_OBJECTS': '1', 'GIT_NO_LAZY_FETCH': '1', 'GIT_ALLOW_PROTOCOL': '',
+    'GIT_TERMINAL_PROMPT': '0',
+}
+_PROTECTED_AUTOMATION = re.compile(r'/var/lib/aihr-native-controller/[1-9][0-9]{0,19}/automation')
+_GIT_CONFIG_MAX = 64 * 1024
+_GIT_CONFIG_KEYS = frozenset((
+    b'core.repositoryformatversion', b'core.filemode', b'core.bare', b'core.logallrefupdates',
+    b'core.ignorecase', b'core.precomposeunicode', b'core.symlinks', b'gc.auto',
+    b'remote.origin.url', b'remote.origin.fetch',
+))
+_GIT_BRANCH_CONFIG = re.compile(rb'branch\.[A-Za-z0-9._/-]{1,256}\.(?:remote|merge)')
+_GIT_ORIGIN = (b'https://github.com/StradaverseHub/ai-hr', b'https://github.com/StradaverseHub/ai-hr.git')
+
+
+def _git_seconds(deadline_ns):
+    remaining = deadline_ns - monotonic_ns()
+    _require(remaining > 0, 'navigation Git deadline closed')
+    return remaining / 1_000_000_000
+
+
+class _NavigationGitPipe:
+    def __init__(self, child, deadline_ns):
+        self.child, self.deadline_ns = child, deadline_ns
+        self.stdout, self.stderr = child.stdout.fileno(), child.stderr.fileno()
+
+    def read(self, size):
+        while True:
+            available = [self.stdout] if self.stderr is None else [self.stdout, self.stderr]
+            ready, _, _ = select.select(available, (), (), _git_seconds(self.deadline_ns))
+            _git_seconds(self.deadline_ns)
+            if self.stderr in ready:
+                _require(not os.read(self.stderr, 1), 'navigation Git wrote an unexpected diagnostic')
+                self.stderr = None
+            if self.stdout in ready:
+                return os.read(self.stdout, size)
+
+    def request(self, oid):
+        _git_seconds(self.deadline_ns)
+        raw = oid.encode('ascii') + b'\n'
+        _require(os.write(self.child.stdin.fileno(), raw) == len(raw), 'navigation Git request incomplete')
+
+    def finish(self):
+        if self.child.stdin is not None:
+            self.child.stdin.close()
+        _require(not self.read(1), 'navigation Git response has trailing bytes')
+        _require(self.child.wait(timeout=_git_seconds(self.deadline_ns)) == 0, 'navigation Git child refused')
+        _require(not self.child.stderr.read(1), 'navigation Git wrote an unexpected diagnostic')
+        _git_seconds(self.deadline_ns)
+
+
+@contextmanager
+def _git_navigation_pipe(argv, deadline_ns, *, batch=False, pass_fds=()):
+    _git_seconds(deadline_ns)
+    # Fixed commands cannot dispatch helpers. Keep the child in the owning
+    # process scope. A failed child is killed and reaped before custody returns.
+    with subprocess.Popen((_GIT, *argv), cwd='/', env=_GIT_ENV, pass_fds=pass_fds,
+                          stdin=subprocess.PIPE if batch else subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0) as child:
+        try:
+            if batch:
+                os.set_blocking(child.stdin.fileno(), False)
+            pipe = _NavigationGitPipe(child, deadline_ns)
+            yield pipe
+            pipe.finish()
+        except BaseException as error:
+            try:
+                if child.poll() is None:
+                    child.kill()
+                child.wait()
+            except OSError as secondary:
+                error.add_note('Navigation Git child settlement refused: ' + type(secondary).__name__)
+            raise
+
+
+def _read_git_output(pipe, maximum):
+    value = bytearray()
+    while block := pipe.read(min(READ_CHUNK, maximum + 1 - len(value))):
+        value.extend(block)
+        _require(len(value) <= maximum, 'navigation Git output exceeds bounds')
+    return bytes(value)
+
+
+def _check_git_config(tree, deadline_ns):
+    with tree.open_regular('.git/config', _GIT_CONFIG_MAX, context='navigation Git configuration') as (source, info):
+        _require(info.st_nlink == 1 and not info.st_mode & 0o022,
+                 'navigation Git configuration custody differs')
+        fd = source.fileno()
+        with _git_navigation_pipe(('config', '--null', '--no-includes', '--file', f'/proc/self/fd/{fd}',
+                                   '--list'), deadline_ns, pass_fds=(fd,)) as pipe:
+            config = _read_git_output(pipe, _GIT_CONFIG_MAX)
+    _require(config.endswith(b'\0') and 0 < config.count(b'\0') <= 128,
+             'navigation Git configuration exceeds bounds')
+    known = {}
+    for raw in config[:-1].split(b'\0'):
+        _git_seconds(deadline_ns)
+        key, separator, value = raw.partition(b'\n')
+        _require(separator and key not in known and not any(char < 32 or char > 126 for char in value)
+                 and (key in _GIT_CONFIG_KEYS or _GIT_BRANCH_CONFIG.fullmatch(key)),
+                 'navigation Git configuration contains an unsupported setting')
+        known[key] = value
+    _require(known.get(b'core.repositoryformatversion') == b'0' and known.get(b'core.bare') == b'false'
+             and known.get(b'remote.origin.url') in _GIT_ORIGIN,
+             'navigation Git repository configuration differs')
+
+
+def _check_git_store(tree, deadline_ns):
+    for directory, forbidden in (
+        ('.git', ('commondir', 'gitdir', 'config.worktree')),
+        ('.git/objects/info', ('alternates', 'http-alternates')),
+    ):
+        with tree.directory(directory) as fd:
+            for name in forbidden:
+                _git_seconds(deadline_ns)
+                try:
+                    os.stat(name, dir_fd=fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    continue
+                raise ValueError('navigation Git alternate store or worktree refused')
+    with tree.directory('.git/objects/pack') as fd, os.scandir(fd) as entries:
+        for count, entry in enumerate(entries, 1):
+            _git_seconds(deadline_ns)
+            _require(count <= 2048 and not entry.name.endswith('.promisor') and entry.is_file(follow_symlinks=False),
+                     'navigation Git object pack catalogue refused')
+    _check_git_config(tree, deadline_ns)
+
+
+def _read_git_exact(pipe, size):
+    raw = bytearray()
+    while len(raw) < size:
+        block = pipe.read(size - len(raw))
+        _require(bool(block), 'navigation Git object response truncated')
+        raw.extend(block)
+    return raw
+
+
+def _read_git_objects(pipe, members):
+    facts = []
+    for member in members:
+        pipe.request(member.git_blob)
+        header = f'{member.git_blob} blob {member.size}\n'.encode('ascii')
+        _require(_read_git_exact(pipe, len(header)) == header, 'navigation Git object header differs')
+        sha256 = hashlib.sha256()
+        oid = hashlib.sha1(f'blob {member.size}\0'.encode('ascii'), usedforsecurity=False)
+        remaining = member.size
+        while remaining:
+            raw = _read_git_exact(pipe, min(remaining, READ_CHUNK))
+            sha256.update(raw)
+            oid.update(raw)
+            remaining -= len(raw)
+        _require(_read_git_exact(pipe, 1) == b'\n' and oid.hexdigest() == member.git_blob,
+                 'navigation Git object framing or bytes differ')
+        facts.append(NavigationOrdinaryGitObject(member, sha256.hexdigest()))
+    return tuple(facts)
+
+
+def _acquire_navigation_git_sources(tree, revision, deadline_ns):
+    _check_git_store(tree, deadline_ns)
+    with tree.directory('.git') as fd:
+        prefix = ('-c', 'safe.directory=' + str(tree.path), '-c', 'core.fsmonitor=false', '-c',
+                  'core.hooksPath=/dev/null', '--literal-pathspecs', f'--git-dir=/proc/self/fd/{fd}')
+        with _git_navigation_pipe((*prefix, 'ls-tree', '-rlz', '--full-tree', revision + '^{commit}',
+                                   '--', *HARNESS_ROOTS), deadline_ns, pass_fds=(fd,)) as pipe:
+            inventory = _read_git_output(pipe, MAX_INVENTORY)
+        ordinary = _ordinary_members(_read_inventory(inventory, lambda: _git_seconds(deadline_ns)))
+        with _git_navigation_pipe((*prefix, 'cat-file', '--batch'), deadline_ns, batch=True, pass_fds=(fd,)) as pipe:
+            facts = _read_git_objects(pipe, ordinary)
+    tree.assert_unchanged()
+    _git_seconds(deadline_ns)
+    return NavigationGitSources(inventory, facts)
+
+
+def acquire_navigation_git_sources(tree: PinnedTree, revision: str, deadline_ns: int) -> NavigationGitSources:
+    """Read committed Git bytes from the caller's already authenticated protected tree.
+
+    The fixed outer owner must admit the exact commit and root mount before
+    calling this leaf and own the process scope through mandatory Git reaping.
+    No caller, launch authority or alternate view is installed here.
+    """
+    _require(sys.platform == 'linux' and os.geteuid() > 0 and _PROTECTED_AUTOMATION.fullmatch(str(tree.path)),
+             'protected nonroot navigation Git view required')
+    _require(type(revision) is str and re.fullmatch(r'[a-f0-9]{40}', revision)
+             and type(deadline_ns) is int, 'exact navigation Git revision and clock required')
+    _git_seconds(deadline_ns)
+    root = os.fstat(tree.fd)
+    _require(root.st_uid == 0 and not root.st_mode & 0o022 and os.fstatvfs(tree.fd).f_flag & os.ST_RDONLY,
+             'immutable root-owned navigation Git view required')
+    result = _acquire_navigation_git_sources(tree, revision, deadline_ns)
+    _require(os.fstatvfs(tree.fd).f_flag & os.ST_RDONLY, 'navigation Git view lost immutability')
+    _git_seconds(deadline_ns)
+    return result
