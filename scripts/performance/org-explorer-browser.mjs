@@ -5,13 +5,14 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {performance} from 'node:perf_hooks';
+import {wholeSystemOrgRoster} from './fixture-workload.mjs';
 
 export async function exerciseOrgExplorer({page,user,fixture,report,save,phase}){
  assert.equal(user.role,'groupHR','Org explorer journey needs the fixture group HR actor');
  assert(['baseline','loaded','preflight'].includes(phase));
- const cohort=fixture.users.filter(actor=>actor.tenant===user.tenant);
- assert.equal(cohort.length,250,'Unexpected isolated fixture population');
+ const cohort=wholeSystemOrgRoster(fixture,user.tenant);
  const known=new Map(cohort.map(actor=>[actor.employmentId,actor]));
+ const rewardMember=cohort.find(actor=>actor.role==='reward-fixture');
  const catalog=locale=>JSON.parse(readFileSync(new URL(`../../messages/${locale}.json`,import.meta.url),'utf8'));
  const results=[];let stage='navigation',locale='en';
  const explorer=()=>page.locator('[data-org-explorer]');
@@ -31,13 +32,17 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   const permitted=new Set(allowed.map(actor=>actor.employmentId));
   assert.equal(data.totalPeople,allowed.length);
   for(const item of data.items){
-   if(item.node){assert(permitted.has(item.node.employmentId),'Out-of-scope person in Org response');assert.equal(item.node.name,known.get(item.node.employmentId)?.name);}
+   if(item.node){assert(permitted.has(item.node.employmentId),'Out-of-scope person in Org response');assert(item.node.name===known.get(item.node.employmentId)?.name,'Org response person name differs from the fixture');}
    else{assert.equal(item.inSelectedScope,false);assert.equal(data.view,'connections');}
   }
  }
- async function request(action,view,allowed=cohort){
+ async function request(action,view,allowed=cohort,expectedQuery){
   const started=performance.now();
-  const responsePromise=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/org/window'&&new URL(response.url()).searchParams.get('view')===view,{timeout:90000});
+  const responsePromise=page.waitForResponse(response=>{
+   const url=new URL(response.url());
+   return url.pathname==='/api/org/window'&&url.searchParams.get('view')===view&&
+    (expectedQuery===undefined||url.searchParams.get('q')===expectedQuery);
+  },{timeout:90000});
   await action();const response=await responsePromise;
   assert.equal(response.status(),200,'Org window request failed');assert.equal(response.headers()['cache-control'],'private, no-store');
   const data=await response.json();assertPeople(data,allowed);
@@ -95,6 +100,13 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   for(const item of connections.items){assert(['administrative','functional','project','dotted'].includes(item.type));assert(['incoming','outgoing'].includes(item.direction));}
   stage='literal-person-search';const searchBox=explorer().getByRole('textbox');await searchBox.fill(person.name);
   const match=await request(()=>button('search').click(),'search');assert.equal(match.totalItems,1);assert.equal(match.items[0].node?.employmentId,person.employmentId);
+  if(phase==='baseline'&&rewardMember){
+   stage='rewards-member-search';await searchBox.fill(rewardMember.name);
+   const reward=await request(()=>button('search').click(),'search',cohort,rewardMember.name);
+   assert(reward.totalItems===1&&reward.items.length===1&&reward.items[0].node?.employmentId===rewardMember.employmentId,
+    'Org Explorer did not return the exact Rewards member');
+   await rows().getByRole('heading',{name:rewardMember.name,exact:true}).waitFor({state:'visible',timeout:90000});
+  }
   stage='selected-company';const selected=cohort.filter(actor=>actor.companyId===user.companyId);
   await page.locator('[data-company-switcher]').click();await page.getByRole('button',{name:catalog(locale).topbar.deselectAll,exact:true}).click();
   const scopedStarted=performance.now();await page.locator(`input[name="companyId"][value="${user.companyId}"]`).check();
@@ -102,6 +114,12 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   stage='selected-company-people';const scoped=await allPeople(selected);assert.equal(scoped.totalItems,selected.length);assert.equal(scoped.nextCursor,null);assert.equal(scoped.items.length,selected.length);
   stage='other-company-search';const other=cohort.find(actor=>actor.companyId!==user.companyId);assert(other);await searchBox.fill(other.name);
   const hidden=await request(()=>button('search').click(),'search',selected);assert.equal(hidden.totalItems,0);assert.equal(hidden.items.length,0);
+  if(phase==='baseline'&&rewardMember&&rewardMember.companyId!==user.companyId){
+   stage='rewards-member-outside-company';await searchBox.fill(rewardMember.name);
+   const hiddenReward=await request(()=>button('search').click(),'search',selected,rewardMember.name);
+   assert(hiddenReward.totalItems===0&&hiddenReward.items.length===0,
+    'Org Explorer returned a Rewards member outside the selected company');
+  }
   stage='restore-all-companies';await page.locator('[data-company-switcher]').click();await page.getByRole('button',{name:catalog(locale).topbar.selectAll,exact:true}).click();await ready(cohort.length);await closeScopePopover();
   stage='language-switch';await switchLocale('zh');await switchLocale('en');
   stage='translated-search-usable';await allPeople();

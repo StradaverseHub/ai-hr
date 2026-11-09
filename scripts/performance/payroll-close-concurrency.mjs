@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {performance} from 'node:perf_hooks';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 
-export async function exerciseConcurrentPayrollClose({context,visit,fixture,db,request,capture,assertProcessed,report,save}){
+export async function exerciseConcurrentPayrollClose({context,closeContext,notePrimary,noteEvidence,visit,fixture,db,request,capture,assertProcessed,report,save}){
  const tenant=fixture.tenants[0];
  const {publicationMonth,historicalMonth}=performanceFixtureCalendar(fixture.today);
  assert(publicationMonth<historicalMonth&&historicalMonth<fixture.month,'concurrent close needs a reserved past Payroll month');
@@ -73,9 +73,10 @@ export async function exerciseConcurrentPayrollClose({context,visit,fixture,db,r
     assert(Number.isFinite(lane.requestMs)&&Number.isFinite(lane.responseMs)&&lane.responseMs>lane.requestMs,'close request/response timing missing');
     result.results.push({company:lane.companyIndex,requestMs:lane.requestMs,responseMs:lane.responseMs,employeeCount:50,closedEvents:1,published:true,scopeDenials:2});
     save();
-   }finally{
-    lane.page.off('request',observeRequest);
-    lane.page.off('response',observeResponse);
+   }catch(reason){notePrimary(reason);throw reason;}
+   finally{
+    noteEvidence(()=>lane.page.off('request',observeRequest));
+    noteEvidence(()=>lane.page.off('response',observeResponse));
    }
   }));
   const failures=settled.filter(outcome=>outcome.status==='rejected');
@@ -85,10 +86,10 @@ export async function exerciseConcurrentPayrollClose({context,visit,fixture,db,r
   result.status='passed';
   save();
  }catch(error){
-  result.status='failed';
-  save();
+  notePrimary(error);
+  noteEvidence(()=>{result.status='failed';save();});
   throw error;
  }finally{
-  await Promise.allSettled(lanes.map(lane=>lane.browserContext.close()));
+  await Promise.all(lanes.map(lane=>closeContext(lane.browserContext)));
  }
 }

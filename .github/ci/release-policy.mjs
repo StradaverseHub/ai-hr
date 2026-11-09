@@ -53,12 +53,12 @@ export function validateArtifacts(artifacts,p,expectedPlan){
  return true;
 }
 export function verifyArtifactBytes(artifact,bytes){if(digest(bytes)!==artifact.digest)reject('artifact archive digest mismatch: '+artifact.name);return true;}
-export function validateProof({plan,reports,receipt,expectedPlan,p,employeeUnits},candidateRoot){
+export function validateProof({plan,reports,receipt,expectedPlan,p,employeeUnits,workloadDatabases},candidateRoot){
  if(plan.policyVersion!==CI_POLICY||plan.sha!==p.candidate||plan.controller!==p.controller||plan.migrationBase!==p.baseline)reject('plan policy/candidate/controller/baseline mismatch');
  if(plan.runtime?.platform!=='linux'||plan.runtime?.arch!=='x64'||!/^22\./.test(plan.runtime?.node??''))reject('unexpected verification environment');
  if(!isDeepStrictEqual(plan,expectedPlan))reject('candidate classifier/manifest changed');
  requiredEvidence(expectedPlan);
- const verified=verifyReports(plan,reports,{runId:p.runId,attempt:1,employeeUnits},candidateRoot);
+ const verified=verifyReports(plan,reports,{runId:p.runId,attempt:1,employeeUnits,workloadDatabases},candidateRoot);
  if(!isDeepStrictEqual(verified,receipt)||receipt.policyVersion!==CI_POLICY||receipt.migrationBase!==p.baseline)reject('receipt differs from complete executed evidence');
  return {policyVersion:CI_POLICY,tier:'ci',result:'PASS',sha:p.candidate,controller:p.controller,baseline:p.baseline,runId:p.runId,suiteFiles:receipt.suiteFiles,browserFiles:receipt.browserFiles,tests:receipt.tests,fingerprint:receipt.fingerprint};
 }

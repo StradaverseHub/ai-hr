@@ -105,7 +105,7 @@ async function createRewards({base,page,user,target,tenantId,db,report,save}){
  return {id,name};
 }
 
-export async function exercisePerformanceRewardsDrafts({base,context,fixture,db,report,save}){
+export async function exercisePerformanceRewardsDrafts({base,context,withContext,fixture,db,report,save}){
  assert.equal(report.suite,'workflow-preflight','draft witnesses are outside the 500-user workload');
  const user=fixture.users.find(actor=>actor.tenant===0&&actor.role==='groupHR');
  const scoped=fixture.users.find(actor=>actor.tenant===0&&actor.role==='companyHR');
@@ -114,7 +114,7 @@ export async function exercisePerformanceRewardsDrafts({base,context,fixture,db,
  assert(user&&scoped&&foreign&&target&&target.companyId!==scoped.companyId,'missing isolated draft scope fixture');
  let performanceDraft,rewardsDraft;
  const actorContext=await context(user);
- try{
+ await withContext(actorContext,async()=>{
   const page=await actorContext.newPage();
   const tour=page.getByRole('dialog',{name:'Product tour',exact:true});
   await page.addLocatorHandler(tour,async()=>{
@@ -126,10 +126,10 @@ export async function exercisePerformanceRewardsDrafts({base,context,fixture,db,
   // The list is the same surface used below for negative controls. Prove the positive draft is visible.
   await open(page,base,'/admin/rewards');
   await page.locator('main').getByText(rewardsDraft.name,{exact:true}).waitFor({state:'visible',timeout:budgetMs});
- }finally{await actorContext.close();}
+ });
  for(const [scope,actor]of [['other-company',scoped],['other-tenant',foreign]]){
   const boundaryContext=await context(actor);
-  try{
+  await withContext(boundaryContext,async()=>{
    const page=await boundaryContext.newPage();
    const detailPath='/performance/'+performanceDraft.id;
    if(scope==='other-company'){
@@ -161,6 +161,6 @@ export async function exercisePerformanceRewardsDrafts({base,context,fixture,db,
    assert.equal(await page.locator('main button[name="operation"][value="create"]').count(),0,'out-of-scope plan creation is offered');
    (report.browserDraftWriteBoundaries??=[]).push({scope,performanceBoundary:scope==='other-company'?'lifecycle-write-denied':'detail-denied',rewardsListHidden:true,rewardsPlanDenied:true});
    save();
-  }finally{await boundaryContext.close();}
+  });
  }
 }

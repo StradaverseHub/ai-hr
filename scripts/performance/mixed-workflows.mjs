@@ -1,10 +1,11 @@
 /** Real built browser actions, replayed over HTTPS; owner DB access is a read-only oracle. */
 import assert from 'node:assert/strict';
+import {driverErrorFact} from './driver-shutdown.mjs';
 import {setTimeout as pause} from 'node:timers/promises';
 import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
 import {attendanceCorrectionForm} from './attendance-rejection-browser.mjs';
 import {exerciseConcurrentPayrollClose} from './payroll-close-concurrency.mjs';
-export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs}){
+export async function prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs}){
  const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[],capturedTransport:[],captureProtocol:'new click request and response headers; UI and persisted outcomes checked separately'};
  const failedAttendanceActions=[];
  async function capture(page,click,kind){
@@ -19,7 +20,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    [req]=await Promise.all([waiting,click()]);
    response=await Promise.race([req.response(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Mutation response headers exceeded90 seconds')),90000);})]);
    assert(response,'Mutation request failed before response headers');assert(response.status()<400,'Browser mutation returned an HTTP error');
-  }catch(error){report.mixedWorkflows.error={stage:kind,message:String(error.message).slice(0,350)};save();throw error;}
+  }catch(error){notePrimary(error);noteEvidence(()=>{report.mixedWorkflows.error={stage:kind,message:driverErrorFact(error).kind};save();});throw error;}
   finally{clearTimeout(timer);}
   const headers={};
   for(const key of ['accept','next-action','next-router-state-tree'])if(req.headers()[key])headers[key]=req.headers()[key];
@@ -75,8 +76,9 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
  const day=new Date(fixture.today+'T12:00:00Z');do{day.setUTCDate(day.getUTCDate()+1);}while([0,6].includes(day.getUTCDay()));
  const leaveDate=day.toISOString().slice(0,10);
  {
-  const ctx=await context(employee),page=await ctx.newPage();
-  try{
+  const ctx=await context(employee);
+  await withContext(ctx,async()=>{
+   const page=await ctx.newPage();
    await visit(page,employee,'/leave');await page.locator('[data-tour="leave-request"]').click();
    const dialog=page.getByRole('dialog');await dialog.locator('[name="leaveTypeId"]').selectOption(employee.leaveTypeId);
    await dialog.locator('[name="startDate"]').fill(leaveDate);await dialog.locator('[name="endDate"]').fill(leaveDate);
@@ -98,11 +100,12 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    await capture(page,()=>cancel.locator('button[type="submit"]').click(),'leaveCancel');await page.waitForLoadState('networkidle');
    const [cancelled]=await db`select status from leave_request where id=${row.id}::uuid`;assert.equal(cancelled.status,'cancelled');
    evidence.push({workflow:'leave create/edit/withdraw',persisted:true,physicalDeletion:false});save();
-  }finally{await ctx.close();}
+  });
  }
  {
-  const ctx=await context(hr),page=await ctx.newPage();
-  try{
+  const ctx=await context(hr);
+  await withContext(ctx,async()=>{
+   const page=await ctx.newPage();
    await visit(page,hr,'/admin/personnel/new');
    await page.locator('select[data-personnel-field="employment.organisation_assignment.companyname"]').selectOption(hr.companyId);
    await page.locator('input[data-personnel-field="profile.personal_details.employeecode"]').fill('PFD-BROWSER');
@@ -120,7 +123,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    assert.equal((await db`select id from employee_draft where id=${id}::uuid`).length,0);
    for(const key of ['personnelCreate','personnelEdit','personnelDelete'])assert(Array.isArray(templates[key].fields),'typed action transport changed');
    evidence.push({workflow:'personnel draft create/edit/delete',persisted:true});save();
-  }finally{await ctx.close();}
+  });
  }
  // A real correction workflow and Payroll processing/export, not page-render timing.
  const approverFor=user=>fixture.users.find(actor=>actor.tenant===user.tenant&&actor.company===user.company&&['companyHR','groupHR'].includes(actor.role));
@@ -140,8 +143,9 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   report.mixedWorkflows.completed.payrollExport++;
  }
  {
-  const ctx=await context(employee),page=await ctx.newPage();let correction;
-  try{
+  const ctx=await context(employee);let correction;
+  await withContext(ctx,async()=>{
+   const page=await ctx.newPage();
    await visit(page,employee,'/attendance/my-records/'+fixture.today);
    const form=attendanceCorrectionForm(page);
    await form.locator('input[type="time"][name="checkIn"]').fill('09:15');
@@ -151,9 +155,10 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    await page.waitForLoadState('networkidle');
    [correction]=await db`select id,status from attendance_correction where employment_id=${employee.employmentId}::uuid and reason='PERF_ATTENDANCE_BROWSER'`;
    assert(correction&&correction.status==='pending');
-  }finally{await ctx.close();}
-  const approver=approverFor(employee),reviewCtx=await context(approver),review=await reviewCtx.newPage();
-  try{
+  });
+  const approver=approverFor(employee),reviewCtx=await context(approver);
+  await withContext(reviewCtx,async()=>{
+   const review=await reviewCtx.newPage();
    await visit(review,approver,'/attendance/application-history/'+correction.id);
    const approve=review.locator('form:visible').filter({has:review.locator('input[name="action"][value="approved"]')}).getByRole('button',{name:'Approve current stage',exact:true});
    await approve.waitFor({state:'visible',timeout:90000});
@@ -162,12 +167,13 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    const [row]=await db`select status from attendance_correction where id=${correction.id}::uuid`;assert.equal(row.status,'approved');
    const [day]=await db`select check_in_at,check_out_at from attendance where employment_id=${employee.employmentId}::uuid and attendance_date=${fixture.today}::date`;assert.equal(day.check_in_at,'09:15:00');assert.equal(day.check_out_at,'18:15:00');
    evidence.push({workflow:'attendance correction/approval/applied punches',persisted:true});save();
-  }finally{await reviewCtx.close();}
+  });
  }
  if(report.suite==='workflow-preflight'){
   const actor=fixture.users.find(user=>user.role==='groupHR');
-  const ctx=await context(actor),page=await ctx.newPage();
-  try{
+  const ctx=await context(actor);
+  await withContext(ctx,async()=>{
+   const page=await ctx.newPage();
    await visit(page,actor,'/approvals?category=claim');
    const expected=await db`select q.id from claim_request q join employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id
      where q.tenant_id=${fixture.tenants[actor.tenant].tenantId}::uuid and q.status='pending' and e.person_id<>${actor.personId}::uuid
@@ -189,26 +195,28 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    assert.deepEqual(items.map(item=>item.id).sort(),expected.map(row=>row.id));
    await confirmation.getByRole('button',{name:'Cancel',exact:true}).click();
    evidence.push({workflow:'Claims queue-wide bulk selection',selected:items.length,pageLimit:25,submitted:false});save();
-  }finally{await ctx.close();}
+  });
  }
  {
   const actor=fixture.users.find(user=>user.role==='groupHR'),batchId=fixture.tenants[actor.tenant].companies[1].batchId;
-  const ctx=await context(actor),page=await ctx.newPage();
-  try{
+  const ctx=await context(actor);
+  await withContext(ctx,async()=>{
+   const page=await ctx.newPage();
    await visit(page,actor,'/payroll/'+batchId);
    await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
    await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess');await page.waitForLoadState('networkidle');
    await assertProcessed(batchId);await exportPayroll(actor,batchId,1);
    evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50});save();
-  }finally{await ctx.close();}
+  });
  }
  // Publish a separate completed past-month run; current-month mutations retain their open period.
  {
   const actor=fixture.users.find(user=>user.role==='groupHR'),batchId=fixture.tenants[actor.tenant].companies[1].publicationBatchId;
   assert(batchId,'dedicated publication fixture missing');
   const employee=fixture.users.find(user=>user.tenant===actor.tenant&&user.company===1&&user.role==='employee');
-  const ctx=await context(actor),page=await ctx.newPage();let slipId;
-  try{
+  const ctx=await context(actor);let slipId;
+  await withContext(ctx,async()=>{
+   const page=await ctx.newPage();
    await visit(page,actor,'/payroll/'+batchId);
    await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
    await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollPublicationProcess');await page.waitForLoadState('networkidle');
@@ -220,18 +228,19 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    const [closed]=await db`select status,released_at from payroll_batch where id=${batchId}::uuid`;
    assert.equal(closed.status,'closed');assert(closed.released_at&&new Date(closed.released_at).getTime()<=Date.now());
    const events=await db`select payload from domain_event where aggregate_id=${batchId}::uuid and event_type='payroll-batch.closed'`;assert.equal(events.length,1);assert.equal(new Date(events[0].payload.releasedAt).getTime(),new Date(closed.released_at).getTime());
-  }finally{await ctx.close();}
-  const employeeContext=await context(employee),statement=await employeeContext.newPage();
-  try{
+  });
+  const employeeContext=await context(employee);
+  await withContext(employeeContext,async()=>{
+   const statement=await employeeContext.newPage();
    await visit(statement,employee,'/me/payslip?payslipId='+slipId);
    await statement.getByRole('link',{name:'Download PDF',exact:true}).waitFor({state:'visible'});
    assert(await statement.locator('a[href="/me/payslip/'+slipId+'/pdf"]').count(),'published statement did not expose its own document');
    const document=await request(employee,'/me/payslip/'+slipId+'/pdf',undefined,200,false);assert(document.content.startsWith('%PDF-'));assert(String(document.headers['content-type']).includes('application/pdf'));
    for(const foreign of [fixture.users.find(user=>user.tenant===employee.tenant&&user.company===employee.company&&user.index!==employee.index&&user.role==='employee'),fixture.users.find(user=>user.tenant!==employee.tenant&&user.role==='employee')])await request(foreign,'/me/payslip/'+slipId+'/pdf',undefined,404,false);
    evidence.push({workflow:'payroll close and employee publication',persisted:true,employees:50,unpublishedRefused:true,ownPublishedStatement:true,foreignDocumentRefusals:2});save();
-  }finally{await employeeContext.close();}
+  });
  }
- if(report.suite==='workflow-preflight')await exerciseConcurrentPayrollClose({context,visit,fixture,db,request,capture,assertProcessed,report,save});
+ if(report.suite==='workflow-preflight')await exerciseConcurrentPayrollClose({context,closeContext,notePrimary,noteEvidence,visit,fixture,db,request,capture,assertProcessed,report,save});
  const {importDate}=performanceFixtureCalendar(fixture.today);
  const importText=(user,date)=>clockingFixtureText(fixture.users,user.tenant,user.company,date);
  async function assertImported(user,fileName,date){
@@ -244,8 +253,9 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   assert.equal(punches.length,100);for(const id of expected)assert.equal(punches.filter(punch=>punch.employment_id===id).length,2);
  }
  {
-  const ctx=await context(hr),page=await ctx.newPage(),date=importDate(2),text=importText(hr,date),fileName='PERF_IMPORT_BROWSER.csv';
-  try{
+  const ctx=await context(hr);
+  await withContext(ctx,async()=>{
+   const page=await ctx.newPage(),date=importDate(2),text=importText(hr,date),fileName='PERF_IMPORT_BROWSER.csv';
    await visit(page,hr,'/attendance/import');await page.locator('main select').selectOption(fixture.tenants[hr.tenant].clockingMappingId);
    await page.locator('input[type="file"]').setInputFiles({name:fileName,mimeType:'text/csv',buffer:Buffer.from(text)});
    const before=await db`select count(*)::int as count from clocking_import_run`;
@@ -254,7 +264,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    await capture(page,()=>page.getByRole('button',{name:'Import 100 valid records',exact:true}).click(),'importCommit');
    await page.waitForURL(url=>url.pathname.startsWith('/attendance/import/logs/'),{timeout:90000});await assertImported(hr,fileName,date);
    evidence.push({workflow:'clocking file validate/import',persisted:true,lines:100,employees:50});save();
-  }finally{await ctx.close();}
+  });
  }
  async function sendAttendance(user,template,fields,effect){
   try{return await send(user,template,fields);}

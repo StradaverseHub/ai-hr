@@ -1,5 +1,6 @@
 /** Real draft actions and protected routes on the isolated fictional browser fixture. */
 import assert from 'node:assert/strict';
+import {driverErrorFact} from './driver-shutdown.mjs';
 import {readFileSync} from 'node:fs';
 import {performance} from 'node:perf_hooks';
 
@@ -8,7 +9,7 @@ const timeout=90000;
 const dateInput='input[name="custom:effectiveDate:value"]';
 const batchRoute=/^\/letters\/generate\/([0-9a-f-]{36})$/i;
 
-export async function exerciseLetterDraft({base,context,visit,fixture,db,report,save}){
+export async function exerciseLetterDraft({base,context,withContext,notePrimary,noteEvidence,visit,fixture,db,report,save}){
  const tenant=fixture.tenants[0],seed=tenant.letterDraft;
  assert(seed,'E-Letter preflight requires a fictional approved template and disabled notifications');
  const author=fixture.users.find(user=>user.index===seed.authorIndex&&user.tenant===0&&user.companyId===seed.companyId&&user.role==='companyHR');
@@ -28,7 +29,7 @@ export async function exerciseLetterDraft({base,context,visit,fixture,db,report,
  save();
 
  const authorContext=await context(author);
- try{
+ await withContext(authorContext,async()=>{try{
   const page=await authorContext.newPage(),main=page.locator('main');
   const newPath='/letters/generate/new?versionId='+seed.versionId;
   const toursBefore=report.onboardingTourDismissals??0;
@@ -124,7 +125,7 @@ export async function exerciseLetterDraft({base,context,visit,fixture,db,report,
 
   for(const [scope,actor] of [['same-tenant-other-company',otherCompany],['other-tenant',otherTenant],['unissued-recipient',recipient]]){
    const deniedContext=await context(actor);
-   try{
+   await withContext(deniedContext,async()=>{
     if(actor.role==='companyHR'){
      const allowedQuery=new URLSearchParams({kind:'employee',companyId:actor.companyId,q:'PERF'+String(actor.index).padStart(4,'0')});
      const allowedPicker=await deniedContext.request.get(base+'/letters/templates/options?'+allowedQuery,{timeout,maxRedirects:0});
@@ -141,7 +142,7 @@ export async function exerciseLetterDraft({base,context,visit,fixture,db,report,
     assert(!html.includes(created.record.reference)&&!html.includes(seed.name),'E-Letter draft data crossed a scope boundary');
     evidence.scope.push({scope,pickerDenied:true,draftDenied:true});
     save();
-   }finally{await deniedContext.close();}
+   });
   }
 
 
@@ -170,9 +171,9 @@ export async function exerciseLetterDraft({base,context,visit,fixture,db,report,
   Object.assign(evidence,{status:'passed',retainedRevisions:2,withdrawalEvents:1,artifacts:0,jobs:0});
   save();
  }catch(error){
-  evidence.status='failed';
-  evidence.errorType=error.name;
-  save();
+  notePrimary(error);
+  noteEvidence(()=>{evidence.status='failed';evidence.errorType=driverErrorFact(error).kind;save();});
   throw error;
- }finally{await authorContext.close();}
+ }
+ });
 }

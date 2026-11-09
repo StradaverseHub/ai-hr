@@ -57,3 +57,8 @@ qualification and matched-resource worker tests remain gates. The fictional
 native component witness exercises real Linux processes and Nginx but cannot
 certify those application or release concerns. Full lifecycle, proof selectors,
 failure semantics and outstanding gates are in the [component runbook](../../deploy/admission/README.md).
+
+
+## Whole-role pilot selector recovery
+
+Source review found two baseline/browser pilot calls to `routePool(user)` after the steady-navigation change removed that local binding. Restore the original selector from the complete `routePools` manifest. Keep the smaller suite-specific steady pools, role scheduler, workload volumes, pacing, assertions and all resource limits unchanged. Both pilot callers now have their intended source binding; this source correction does not establish a passing browser or worker comparison. Actual native browser preflight still precedes sustained load, and staging and production remain held.

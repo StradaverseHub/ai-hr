@@ -11,7 +11,7 @@ import {hostHealth} from './host-health.mjs';
 import {createPlan,hash} from './plan.mjs';
 import {DB_BATCH_FILES} from './manifest.mjs';
 import {validatePdfSetupProof} from './pdf-tools.mjs';
-import {assertNoSingletonHints,nativeNextUnit,singletonControllerPath} from './singleton-protocol.mjs';
+import {assertNoSingletonHints,nativeNextUnit,nativeWorkloadDatabaseUnit,singletonControllerPath} from './singleton-protocol.mjs';
 import {readProtectedBootstrap,readProtectedNativeEvent} from './native-next-installation.mjs';
 import {actualSingletonHost,provisionSingletonHost,writeSingletonBinding} from './singleton-profiles.mjs';
 
@@ -165,8 +165,11 @@ if (!unit || !destination) throw Error('Unknown CI unit or missing evidence dire
 const dir = resolve(destination); mkdirSync(dir, {recursive: true});
 const report = {healthBefore: null, schemaVersion: 1, sha: plan.sha, fingerprint: plan.fingerprint, id, cwd: process.cwd(), files: unit.files, batches: [], exitCode: 1};
 const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
-let failure = false,lifecycle;
+let failure = false,lifecycle,workload,workloadHost,workloadBuild,workloadProof;
 const lifecycleProfile=employeeLifecycleUnit(unit);
+const workloadUnit=nativeWorkloadDatabaseUnit(unit);
+const workloadChild=(args,env)=>spawnSync('/usr/bin/timeout',['--kill-after=5s','300s','pnpm',...args],
+ {stdio:'ignore',env,timeout:310000});
 const fixedStage=(stage,environment=candidateEnvironment(process.env))=>{assert(lifecycle,'Actual owned lifecycle required');const result=runEmployeeLifecycleStage(lifecycle,stage,environment);if(result.error||result.signal||result.status!==0)throw Error('Owned employee stage refused: '+stage);return result;};
 const metadata=stage=>fixedStage(stage).stdout.trim();
 const nativeEvidence=()=>{const value=JSON.parse(fixedStage('evidence').stdout);validatePostgresEvidence(value,plan.execution);return value;};
@@ -191,10 +194,22 @@ try {
     if(lifecycle)assert.equal(roleProfile,fullRoleMode,'Employee lifecycle requires the actual complete role prerequisite owner');
     if (unit.kind === 'db') {
       if (!hostHealth().ok) throw Error('Runner disk headroom too low before DB batch');
-      const reset = lifecycle?fixedStage('reset'):spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
-      if (reset.status !== 0) throw Error('Owned CI PostgreSQL reset failed');
-      const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,reset.status,lifecycle?metadata:undefined):null;
-      const migrate = lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env)):roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});
+      let resetStatus;
+      if(workloadUnit){
+        assert(offset===0&&roleProfile===fullRoleMode,'Native workload requires the existing role prerequisite owner');
+        workloadHost=provisionSingletonHost(plan,unit,dir);
+        workloadBuild=await provisionNativeNextBuild(plan,unit,dir,process.env,installation);
+        const {prepareNativeWorkloadPostgres}=await import('./native-workload-postgres.mjs');
+        workload=prepareNativeWorkloadPostgres(plan,unit,dir);
+        workloadProof=workload.start();resetStatus=0;
+      }else{
+        const reset = lifecycle?fixedStage('reset'):spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
+        resetStatus=reset.status;
+      }
+      if (resetStatus !== 0) throw Error('Owned CI PostgreSQL reset failed');
+      const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatus,lifecycle?metadata:undefined):null;
+      const migrate = workload?workloadChild(['db:migrate'],{...roleContext.env,...workload.migrationUrls})
+        :lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env)):roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});
       if(migrate.status !== 0)throw Error('CI migration failed');
       if(roleContext)rolePrerequisites=readFullCiRoleReceipt(dir,roleContext.binding,roleContext.sourceHashes,process.env.RUNNER_TEMP,roleContext.catalogueReplaySources);
     }
@@ -217,9 +232,12 @@ try {
       let prerequisites;
       if(nativeNextUnit(unit)){
         actualSingletonHost(plan,unit,dir);
-        Object.assign(env,FULL_CI_ROLE_URLS);
-        const host=provisionSingletonHost(plan,unit,dir),build=await provisionNativeNextBuild(plan,unit,dir,process.env,installation);
-        prerequisites={kind:'fresh-job-next-systemd-nginx-postgres',workers:1,database:capturePostgresEvidence(id,plan.execution.postgres),host,build:build.prerequisite};
+        Object.assign(env,workload?{...workload.migrationUrls,...workload.observerEnvironment}:FULL_CI_ROLE_URLS);
+        const host=workload?workloadHost:provisionSingletonHost(plan,unit,dir);
+        const build=workload?workloadBuild:await provisionNativeNextBuild(plan,unit,dir,process.env,installation);
+        prerequisites={kind:'fresh-job-next-systemd-nginx-postgres',workers:1,
+         database:workload?workload.evidence():capturePostgresEvidence(id,plan.execution.postgres),host,build:build.prerequisite,
+         ...(workload?{workloadDatabase:workloadProof}:{})};
         env.AIHR_NATIVE_NEXT_PACKET_DIR=build.packetDirectory;env.AIHR_NATIVE_NEXT_BUILD_BINDING=build.bindingPath;
         // GitHub credentials belong to the provisioning owner, never the app/test child.
         delete env.GH_TOKEN;delete env.GITHUB_TOKEN;
@@ -228,11 +246,11 @@ try {
       singleton=writeSingletonBinding(plan,unit,dir,prerequisites);env.AIHR_CI_SINGLETON_BINDING=singleton.path;report.singleton=singleton.binding;
       if(lifecycle)Object.assign(env,authorizeEmployeeLifecycleTest(lifecycle,singleton.path));
     }
-    const child = lifecycle?fixedStage(lifecycleProfile.stage,env):spawnSync('pnpm', args, {stdio: 'inherit', env});
+    const child = workload?workloadChild(args,env):lifecycle?fixedStage(lifecycleProfile.stage,env):spawnSync('pnpm', args, {stdio: 'inherit', env});
     if(singleton&&readFileSync(singleton.path,'utf8')!==singleton.bytes)throw Error('Singleton admission receipt changed during test');
     const exitCode = child.status ?? 1;
     const stats = lifecycle?fixedStage('stats'):unit.kind === 'db' ? spawnSync('bash', [postgres, 'stats'], {encoding:'utf8', env:{...process.env, AIHR_CI_UNIT:id}}) : null;
-    const databaseEvidence=lifecycle?nativeEvidence():unit.kind==='db'?capturePostgresEvidence(id,plan.execution.postgres):null;
+    const databaseEvidence=workload?workload.evidence():lifecycle?nativeEvidence():unit.kind==='db'?capturePostgresEvidence(id,plan.execution.postgres):null;
     if(lifecycle)report.databaseTerminalEvidence=databaseEvidence;
     report.batches.push({exitCode,databaseEvidence,...(rolePrerequisites?{rolePrerequisites}:{}), databaseResourceSnapshot: stats?.status === 0 ? JSON.parse(stats.stdout) : null, result: JSON.parse(readFileSync(path, 'utf8'))});
     if(databaseEvidence)validatePostgresEvidence(databaseEvidence,plan.execution);
@@ -247,8 +265,12 @@ try {
 } finally {
   // Mandatory owned PG stop precedes EVERY terminal report/receipt publication.
   if(lifecycle){try{const terminal=closeEmployeeLifecycle(lifecycle);report.employeeLifecycle=terminal.proof;if(!terminal.complete)report.exitCode=1;}catch{report.exitCode=1;report.employeeLifecycleSettlementRefused=true;}}
+  if(workload){
+    try{report.databaseTerminalEvidence=workload.evidence();}catch{report.databaseTelemetryError='Owned workload PostgreSQL terminal evidence unavailable';report.exitCode=1;}
+    try{report.workloadDatabaseClose=workload.close();if(!report.workloadDatabaseClose.complete)report.exitCode=1;}catch{report.workloadDatabaseSettlementRefused=true;report.exitCode=1;}
+  }
   report.healthAfter = hostHealth();
-  if (unit.kind === 'db'&&!lifecycleProfile) {
+  if (unit.kind === 'db'&&!lifecycleProfile&&!workloadUnit) {
     try{report.databaseTerminalEvidence=capturePostgresEvidence(id,plan.execution.postgres);validatePostgresEvidence(report.databaseTerminalEvidence,plan.execution);}catch(error){report.databaseTelemetryError=String(error);report.exitCode=1;}
     const cleanup = spawnSync('bash', [postgres, 'stop'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
     if (cleanup.status !== 0) report.exitCode = 1;

@@ -7,13 +7,14 @@ import {isDeepStrictEqual} from 'node:util';
 import {BUILD_ARTIFACT,inspectCiBuildPacket,bindCiBuildSource} from './build-artifact.mjs';
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {bindPlanWitnessIdentity} from './manifest.mjs';
-import {assertNativeBuildMatches} from './singleton-protocol.mjs';
+import {assertNativeBuildMatches,nativeWorkloadDatabaseUnit} from './singleton-protocol.mjs';
 import {randomUUID} from 'node:crypto';
 import {employeeLifecycleUnit} from './employee-lifecycle-profile.mjs';
 import {readEmployeeLifecycleArchive,readEmployeeLifecycleControllerFacts} from './employee-lifecycle-api.mjs';
 import {createPlan,hash} from './plan.mjs';
 import {admitAiManifests} from './ai-manifest-admission.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
+import {readWorkloadDatabaseArtifact} from './unit-report-directories.mjs';
 import {REPOSITORY,validateRun,validateJobs,validateArtifacts,verifyArtifactBytes,validateProof} from './release-policy.mjs';
 export const controllerRoot=fileURLToPath(new URL('../../',import.meta.url));
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024*1024}).trim();
@@ -68,8 +69,18 @@ export async function verifyCi({candidatePath,runId,baseline}){
  const plan=json('gate-plan','ci-plan.json'),receipt=json('gate-evidence','ci-receipt.json');
  const expectedPlan=bindPlanWitnessIdentity(local,{controller,baseline},plan.runtime);
  const employeeUnits=readEmployeeArchives({plan:expectedPlan,run,jobs,artifacts,dir,sourceRoot:candidatePath});
- const reports=local.units.map(unit=>employeeUnits.has(unit.id)?JSON.parse(employeeUnits.get(unit.id).members.get(`unit-${unit.id}.json`)):json(`unit-${unit.id}`,`unit-${unit.id}.json`));
- const verified=validateProof({plan,reports,receipt,expectedPlan,p,employeeUnits},candidatePath);
+ const workloadDatabases=new Map();
+ const reports=local.units.map(unit=>{
+  if(employeeUnits.has(unit.id))return JSON.parse(employeeUnits.get(unit.id).members.get(`unit-${unit.id}.json`));
+  const name=`unit-${unit.id}`;
+  if(nativeWorkloadDatabaseUnit(unit)){
+   const entry=readWorkloadDatabaseArtifact(join(dir,name),unit);
+   workloadDatabases.set(unit.id,entry.workloadDatabaseBytes);
+   return entry.report;
+  }
+  return json(name,name+'.json');
+ });
+ const verified=validateProof({plan,reports,receipt,expectedPlan,p,employeeUnits,workloadDatabases},candidatePath);
  const build=await sourceBoundBuild({candidatePath,dir,p,jobs});
  assertNativeBuildMatches(expectedPlan,reports,build,artifacts.find(a=>a.name===BUILD_ARTIFACT),jobs.find(j=>j.name==='build').id);
  if(cleanHead(controllerRoot)!==controller||cleanHead(candidatePath)!==candidate)throw Error('Source changed during CI verification');
@@ -105,14 +116,14 @@ function readEmployeeArchives({plan,run,jobs,artifacts,dir,sourceRoot}){
 export async function revalidateCi(evidence){
  const local=createPlan(evidence.candidatePath);
  if(cleanHead(controllerRoot)!==evidence.controller||cleanHead(evidence.candidatePath)!==evidence.sha)throw Error('Source changed after CI verification');
- if(local.units.some(unit=>employeeLifecycleUnit(unit))){
+ if(local.units.some(unit=>employeeLifecycleUnit(unit)||nativeWorkloadDatabaseUnit(unit))){
   // A new verification owns fresh API inventories, freshly authenticated ZIPs,
   // canonical gate-plan runtime, native members and actual controller blob facts.
   // No retained parsed report or caller-supplied controller map is re-used.
   const fresh=await verifyCi({candidatePath:evidence.candidatePath,runId:evidence.runId,baseline:evidence.baseline});
   const stable=value=>Object.fromEntries(['policyVersion','tier','result','sha','controller','baseline','runId','suiteFiles','browserFiles','tests','fingerprint','build','candidatePath','controllerBranch','url'].map(key=>[key,value[key]]));
   const artifacts=value=>value.map(({id,name,digest})=>({id,name,digest})).sort((a,b)=>a.name.localeCompare(b.name));
-  if(!isDeepStrictEqual(stable(fresh),stable(evidence))||!isDeepStrictEqual(artifacts(fresh.artifacts),artifacts(evidence.artifacts)))throw Error('Reauthenticated employee CI witness changed');
+  if(!isDeepStrictEqual(stable(fresh),stable(evidence))||!isDeepStrictEqual(artifacts(fresh.artifacts),artifacts(evidence.artifacts)))throw Error('Reauthenticated native CI witness changed');
   return true;
  }
  const p={controller:evidence.controller,candidate:evidence.sha,runId:evidence.runId,baseline:evidence.baseline,controllerBranch:evidence.controllerBranch};

@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {isAbsolute,join,resolve} from 'node:path';
 import {catalogueReplayMode,CATALOGUE_REPLAY_SOURCES,validateCatalogueReplayReceipt} from '../../.github/ci/notification-catalogue-replay.mjs';
+import {nativeNextProfile,nativeWorkloadDatabaseUnit,validateNativeWorkloadDatabaseUrls} from '../../.github/ci/singleton-protocol.mjs';
 /** Pure orchestration: no driver, helper import, connection, filesystem or process side effects.
  * The CLI supplies the actual environment and dynamically loads the strict disposable owner only
  * after focused intent. Tests inject these owners without importing provisioning code. */
@@ -155,17 +156,18 @@ export function inspectFullCiRoleAdmission(env:FocusedIntentEnvironment,host:Ful
   fullNeed(headRepo.id===1333414856&&headRepo.full_name==='StradaverseHub/ai-hr'&&baseRepo.id===1333414856&&baseRepo.full_name==='StradaverseHub/ai-hr','same repo PR');
   fullNeed(head.sha===env.AIHR_CI_HEAD&&pr.merge_commit_sha===env.AIHR_CI_CONTROL_HEAD&&env.GITHUB_REF===`refs/pull/${event.number}/merge`&&ref===workflowPrefix+env.GITHUB_REF,'head versus merge/controller PR SHA');
  }else fullFail('event kind');
- let admin:string;
- if(!readonlyRehearsal){
-  for(const [key,value] of Object.entries(FULL_CI_ROLE_URLS))fullNeed(env[key]===value,'canonical disposable URLs');
-  admin='postgres://postgres@127.0.0.1:5433/postgres';
- }else{
+ function ordinaryAdmin(){
+  if(!readonlyRehearsal){
+   for(const [key,value] of Object.entries(FULL_CI_ROLE_URLS))fullNeed(env[key]===value,'canonical disposable URLs');
+   return 'postgres://postgres@127.0.0.1:5433/postgres';
+  }
   let migration:URL,app:URL;try{migration=new URL(env.TEST_MIGRATION_DATABASE_URL??'');app=new URL(env.TEST_DATABASE_URL??'');}catch{return fullFail('readonly URL shape');}
   fullNeed(migration.protocol==='postgres:'&&migration.hostname==='127.0.0.1'&&migration.port==='5433'&&migration.username==='postgres'&&migration.password===''&&migration.search===''&&migration.hash===''&&/^\/ai_hr_test(?:_w[1-9][0-9]*)?$/.test(migration.pathname),'readonly worker cluster');
   fullNeed(app.protocol==='postgres:'&&app.hostname===migration.hostname&&app.port===migration.port&&app.username==='ai_hr_app'&&app.password===''&&app.search===''&&app.hash===''&&app.pathname===migration.pathname,'readonly app worker');
   fullNeed(env.MIGRATION_DATABASE_URL===migration.href&&env.DATABASE_URL===app.href,'readonly worker aliases');
-  migration.pathname='/postgres';admin=migration.href;
+  migration.pathname='/postgres';return migration.href;
  }
+ const ordinary=(!protectedOwner||readonlyRehearsal)?ordinaryAdmin():undefined;
  const observed=fullRecord(host.observePlan(source)),plan=fullRecord(observed.plan),batchSize=observed.dbBatchFiles;
  fullNeed(Number.isSafeInteger(batchSize)&&Number(batchSize)>0,'actual DB_BATCH_FILES');
  fullNeed(plan.sha===env.AIHR_CI_HEAD&&plan.controller===env.AIHR_CI_CONTROL_HEAD&&plan.migrationBase===env.AIHR_CI_MIGRATION_BASE&&fullSha(plan.fingerprint,64),'reconstructed plan identity');
@@ -173,10 +175,13 @@ export function inspectFullCiRoleAdmission(env:FocusedIntentEnvironment,host:Ful
  fullNeed(Array.isArray(plan.units),'actual plan units');const units=(plan.units as unknown[]).map(fullRecord),matching=units.filter(unit=>unit.id===unitId);
  fullNeed(matching.length===1&&matching[0].kind==='db'&&Array.isArray(matching[0].files),'actual plan DB membership');
  const files=(matching[0].files as unknown[]).map(fullText);fullNeed(files.length>0&&new Set(files).size===files.length,'unit files');
- const singleton=matching[0].singleton===undefined?null:fullRecord(matching[0].singleton),native=singleton?.profile==='linux-next-postgres-v1';
+ const singleton=matching[0].singleton===undefined?null:fullRecord(matching[0].singleton),native=nativeNextProfile(singleton?.profile);
+ const workload=nativeWorkloadDatabaseUnit(matching[0]);
  if(native)fullNeed(singleton?.version===1&&singleton.workers===1&&singleton.isolation==='job-host-and-postgres-cluster'
-  &&files.length===1&&files[0]==='test/runtime-next-admission-native.test.ts','exact hybrid prerequisite profile');
+  &&files.length===1&&(workload||singleton.profile==='linux-next-postgres-v1'&&files[0]==='test/runtime-next-admission-native.test.ts'),'exact hybrid prerequisite profile');
  fullNeed(env.GITHUB_JOB===(native?'native-test':'test'),'job matches actual reconstructed unit capability');
+ if(workload)fullNeed(protectedOwner&&env.GITHUB_RUN_ATTEMPT==='1'&&!readonlyRehearsal,'protected native workload bootstrap only');
+ const admin=workload?validateNativeWorkloadDatabaseUrls(env,null):ordinary??ordinaryAdmin();
  const rehearsalFile='test/personnel-draft-discard-role-transfer.test.ts',fileIndex=files.indexOf(rehearsalFile);
  if(readonlyRehearsal)fullNeed(fileIndex>=0,'actual rehearsal file membership');
  const offset=hints?.offset??Math.floor(fileIndex/Number(batchSize))*Number(batchSize);

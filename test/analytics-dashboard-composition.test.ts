@@ -1,7 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {eq,sql} from 'drizzle-orm';
+import {eq,sql,type SQL} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
@@ -15,6 +16,7 @@ import {hireEmployee,terminateEmployment,transferEmployee,setReportingLine} from
 import {createEntitlementTemplate} from '../core/entitlement-template';
 import {CARRY_FORFEIT_REASON_CAP} from '../core/leave';
 import {parsePageQuery} from '../lib/pagination';
+import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 import {observeNativeRead as observe,type NativeReadQuery as Query} from './helpers/native-read-observer';
 
@@ -180,4 +182,96 @@ it('settles the original report failure before starting another borrowed reader'
  expect(probe.queries.some(query=>query.sql.includes('analytics_newHires_page'))).toBe(true);
  expect(probe.queries.some(query=>query.sql.includes('analytics_terminations_page'))).toBe(false);
  expect(probe.state).toEqual({active:0,maxActive:1});expect(probe.properties).toHaveLength(1);
+});
+
+
+it('preserves all thirteen DTOs behind held Access for empty, nonempty and past-end change-job envelopes',async()=>{
+ const f=await fixture();
+ const [before]=await owner.client`select count(*)::int as count from domain_event where tenant_id=${f.b.tenantId}::uuid`;
+ for(const kind of ['empty','nonempty','past-end']as const){
+  const p=input();if(kind==='empty')p.filters.q='Definitely absent';
+  if(kind==='past-end')p.pages.changeJobs=parsePageQuery({page:'99'});
+  const expected=await standaloneDashboard(f.ctx,[f.b.companyId],p),probe=observe();
+  try{await owner.client.begin(async writer=>{
+   await writer`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+f.b.tenantId},0))`;
+   const actual=await analyticsDashboard(f.ctx,[f.b.companyId],p);
+   expect(actual).toEqual(expected);expect(Object.keys(actual)).toHaveLength(13);
+   expect(actual.changeJobs.rows).toHaveLength(kind==='nonempty'?1:0);
+   expect(actual.changeJobs.state.total).toBe(kind==='empty'?0:1);
+  });}finally{probe.restore();}
+  expect(probe.properties).toHaveLength(1);expect(probe.properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});
+  const statements=probe.queries.filter(query=>query.sql.includes('analytics_changeJobTransactions_page'));
+  expect(statements).toHaveLength(1);expect(statements[0].rows).toBe(1);expect(probe.state).toEqual({active:0,maxActive:1});
+ }
+ const [after]=await owner.client`select count(*)::int as count from domain_event where tenant_id=${f.b.tenantId}::uuid`;
+ expect(after).toEqual(before);
+});
+
+it('settles change-job envelope failure before later reports and releases its native presentation owner',async()=>{
+ const f=await fixture(),failure=Error('Controlled change-job envelope failure');
+ const probe=observe({fail:{matches:query=>query.sql.includes('analytics_changeJobTransactions_page'),error:failure}});
+ try{await expect(analyticsDashboard(f.ctx,[f.b.companyId],input())).rejects.toBe(failure);}finally{probe.restore();}
+ expect(probe.queries.filter(query=>query.sql.includes('analytics_changeJobTransactions_page'))).toHaveLength(1);
+ expect(probe.queries.some(query=>query.sql.includes('"date_of_birth"'))).toBe(false);
+ expect(probe.state).toEqual({active:0,maxActive:1});expect(probe.properties).toHaveLength(1);
+ const expected=await standaloneDashboard(f.ctx,[f.b.companyId],input());
+ expect(await analyticsDashboard(f.ctx,[f.b.companyId],input())).toEqual(expected);
+});
+
+it('settles native carry cursor failure before starting the later master report',async()=>{
+ const f=await fixture(),actual=database.withTenant,dialect=new PgDialect(),queries:string[]=[];
+ const properties:{role:string;isolation:string;readOnly:boolean;pid:number}[]=[],state={active:0,maxActive:0};
+ let controlClosed=false,originalFetchFailure:unknown,caught:unknown;
+ const run=async<T>(text:string,work:()=>PromiseLike<T>):Promise<T>=>{
+  queries.push(text);state.active++;state.maxActive=Math.max(state.maxActive,state.active);
+  try{return await work();}finally{state.active--;}
+ };
+ // Observe builder execution as well as public execute so the later master-count
+ // assertion cannot pass merely because that query used a different API.
+ const wrap=(query:object):object=>new Proxy(query,{get(target,key,receiver){
+  const value=Reflect.get(target,key,receiver);
+  if(key==='then'&&typeof value==='function')return (resolve:(rows:unknown)=>unknown,reject:(error:unknown)=>unknown)=>{
+   const text=(target as {toSQL:()=>{sql:string}}).toSQL().sql;
+   return run(text,()=>Reflect.apply(value,target,[(rows:unknown)=>rows])).then(resolve,reject);
+  };
+  return typeof value==='function'?(...args:unknown[])=>{
+   const result=Reflect.apply(value,target,args);return result&&typeof result==='object'&&'then'in result?wrap(result):result;
+  }:value;
+ }});
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{
+  const [facts]=await tx.execute<{role:string;isolation:string;readOnly:boolean;pid:number}>(sql`select current_user as role,
+   current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')='on'as "readOnly",pg_backend_pid()as pid`);
+  properties.push(facts);
+  return read(new Proxy(tx,{get(target,key,receiver){
+   if(key==='select'||key==='selectDistinct')return (...args:unknown[])=>wrap(Reflect.apply(target[key],target,args));
+   if(key==='execute')return (statement:SQL)=>{
+    const text=dialect.sqlToQuery(statement).sql;
+    return run(text,async()=>{
+     let result:Awaited<ReturnType<Tx['execute']>>;
+     try{result=await target.execute(statement);}catch(error){
+      if(text.trim().toLowerCase()==='fetch forward 4096 from analytics_carry_identities')originalFetchFailure=error;
+      throw error;
+     }
+     if(text.trim().toLowerCase().startsWith('declare analytics_carry_identities ')){
+      // The production DECLARE succeeds first. Only this test's own live cursor
+      // is closed; the first unchanged production FETCH then genuinely fails.
+      await target.execute(sql`close analytics_carry_identities`);controlClosed=true;
+     }
+     return result;
+    });
+   };
+   const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
+  }}));
+ },options));
+ try{await analyticsDashboard(f.ctx,[f.b.companyId],input());}catch(error){caught=error;}finally{spy.mockRestore();}
+ expect(controlClosed).toBe(true);expect(originalFetchFailure).toBeDefined();expect(caught).toBe(originalFetchFailure);expect(pgSqlState(caught)).toBe('34000');
+ expect(queries.filter(query=>query.trim().toLowerCase()==='fetch forward 4096 from analytics_carry_identities')).toHaveLength(1);
+ expect(queries.some(query=>query.includes('analytics_master_count'))).toBe(false);
+ expect(queries.some(query=>query.includes('"date_of_birth"'))).toBe(true);
+ expect(state).toEqual({active:0,maxActive:1});expect(properties).toHaveLength(1);
+ expect(properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});
+ const activity=await owner.client<{state:string;xactStart:string|null}[]>`select state,xact_start as "xactStart" from pg_stat_activity where pid=${properties[0].pid}`;
+ expect(activity.length).toBeLessThanOrEqual(1);if(activity.length)expect(activity[0]).toMatchObject({state:'idle',xactStart:null});
+ const expected=await standaloneDashboard(f.ctx,[f.b.companyId],input());
+ expect(await analyticsDashboard(f.ctx,[f.b.companyId],input())).toEqual(expected);
 });

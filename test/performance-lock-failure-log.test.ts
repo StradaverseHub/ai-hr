@@ -21,3 +21,22 @@ it('keeps bounded lock graphs and routine names while excluding SQL, values and 
  expect(JSON.stringify(failures)).not.toMatch(/private|hidden-password|SELECT|update person/);
  expect(postgresLockFailures(Array.from({length:100},()=>log).join('\n'))).toHaveLength(64);
 });
+
+it('recognizes a still-blocked, acquired or failed heavyweight wait without retaining lock objects',()=>{
+ const log=`2026-11-09 14:00:00.000 +08 [98] abcdef01.62 ai_hr_app@ai_hr_dev LOG:  process 98 still waiting for ShareLock on transaction 1234 after 1000.070 ms
+2026-11-09 14:00:00.000 +08 [98] DETAIL:  Process holding the lock: 99. Wait queue: 98.
+2026-11-09 14:00:00.250 +08 [98] abcdef01.62 ai_hr_app@ai_hr_dev LOG:  process 98 acquired ShareLock on transaction 1234 after 1250.070 ms
+2026-11-09 14:00:01.000 +08 [99] LOG:  process 99 failed to acquire AccessExclusiveLock on relation 5000 of database 321 after 1000.115 ms
+2026-11-09 14:00:01.000 +08 [100] STATEMENT:  process 100 acquired ShareLock on transaction 9999 after 1001.123 ms
+2026-11-09 14:00:01.000 +08 [100] LOG:  process 999 acquired ShareLock on transaction 9999 after 1001.123 ms
+2026-11-09 14:00:01.000 +08 [100] abcdef01.63 ai_hr_app@ai_hr_dev LOG:  process 100 acquired ShareLock on transaction 9999 after 1001.123 ms
+2026-11-09 14:00:02.000 +08 [101] abcdef01.65 @ LOG:  process 101 avoided deadlock for ExclusiveLock on transaction 9999 by rearranging queue order after 1002.444 ms`;
+ const failures=postgresLockFailures(log);
+ expect(failures).toEqual([
+  {kind:'observed heavyweight lock wait',pid:98,outcome:'still waiting for',mode:'ShareLock',waitMs:1000.07,waits:[],routines:[]},
+  {kind:'observed heavyweight lock wait',pid:98,outcome:'acquired',mode:'ShareLock',waitMs:1250.07,waits:[],routines:[]},
+  {kind:'observed heavyweight lock wait',pid:99,outcome:'failed to acquire',mode:'AccessExclusiveLock',waitMs:1000.115,waits:[],routines:[]},
+  {kind:'observed heavyweight lock wait',pid:101,outcome:'avoided deadlock for',mode:'ExclusiveLock',waitMs:1002.444,waits:[],routines:[]},
+ ]);
+ expect(JSON.stringify(failures)).not.toMatch(/1234|5000|9999|ai_hr|abcdef01/);
+});
