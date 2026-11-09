@@ -112,7 +112,77 @@ jobs:
       tests: ${{ steps.selection.outputs.tests }}
       worker_admission: ${{ steps.worker-prerequisite.outputs.admission }}
       worker_admission_sha256: ${{ steps.worker-prerequisite.outputs.sha256 }}
+      protected_db_client: ${{ steps.protected-db-client-dispatch.outputs.admitted }}
     steps:
+      - name: Admit the exact protected DB client diagnostic before checkout
+        id: protected-db-client-dispatch
+        if: ${{ github.ref == 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' }}
+        env:
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          /usr/bin/python3 -I -B - <<'PYTHON'
+          import json, os, re, stat
+          from pathlib import Path
+
+          repo_name = 'StradaverseHub/ai-hr'
+          branch = 'codex/compiler-protected-db-client-ab-6c05-20261109'
+          ref = 'refs/heads/' + branch
+          sha = os.environ.get('GITHUB_WORKFLOW_SHA', '')
+          run = os.environ.get('GITHUB_RUN_ID', '')
+          expected_environment = {
+              'GITHUB_ACTIONS': 'true', 'CI': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted',
+              'RUNNER_OS': 'Linux', 'RUNNER_ARCH': 'X64', 'GITHUB_REPOSITORY': repo_name,
+              'GITHUB_REPOSITORY_ID': '1333414856', 'GITHUB_EVENT_NAME': 'workflow_dispatch',
+              'GITHUB_WORKFLOW': 'alpha-focused-checks', 'GITHUB_JOB': 'resolve', 'GITHUB_RUN_ATTEMPT': '1',
+              'GITHUB_REF': ref, 'GITHUB_WORKFLOW_REF': repo_name + '/.github/workflows/alpha-focused-checks.yml@' + ref,
+              'GITHUB_SHA': sha, 'AIHR_CI_CONTROL_HEAD': sha, 'STAGING_ENABLED': 'false', 'PRODUCTION_ENABLED': 'false',
+          }
+          if (not re.fullmatch(r'[a-f0-9]{40}', sha) or not re.fullmatch(r'[1-9][0-9]{0,15}', run)
+                  or int(run) > 2**53 - 1 or any(os.environ.get(k) != v for k, v in expected_environment.items())):
+              raise SystemExit('Protected DB client host, source or deployment admission refused')
+          temp = Path(os.environ['RUNNER_TEMP'])
+          path = temp / '_github_workflow' / 'event.json'
+          if path != Path(os.environ['GITHUB_EVENT_PATH']) or path.resolve(strict=True) != path:
+              raise SystemExit('Protected DB client event path refused')
+          def identity(info):
+              return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_nlink, info.st_size,
+                      info.st_mtime_ns, info.st_ctime_ns)
+          with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
+              before = os.fstat(stream.fileno())
+              if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or before.st_nlink != 1
+                      or before.st_mode & 0o022 or not 0 < before.st_size <= 65536):
+                  raise SystemExit('Protected DB client event custody refused')
+              raw = stream.read(65537)
+              if len(raw) != before.st_size or identity(before) != identity(os.fstat(stream.fileno())) or identity(before) != identity(path.lstat()):
+                  raise SystemExit('Protected DB client event changed')
+          def unique(pairs):
+              result = dict(pairs)
+              if len(result) != len(pairs):
+                  raise SystemExit('Protected DB client event duplicated a field')
+              return result
+          event = json.loads(raw, object_pairs_hook=unique)
+          repo = event.get('repository', {})
+          inputs = event.get('inputs')
+          if type(inputs) is not dict:
+              raise SystemExit('Protected DB client dispatch inputs refused')
+          for name in ('model_eval', 'eval_allowed_providers', 'measured_browser_preflight_run'):
+              inputs.setdefault(name, '')
+          expected_inputs = {
+              'candidate_ref': branch, 'expected_sha': sha, 'selected_tests': '["test/compiler-native-reference-fixture.test.ts"]',
+              'architecture_browser_development_preflight': 'false', 'measured_browser_course': 'off',
+              'measured_browser_preflight_run': '', 'employee_ascii_qualification': 'off',
+              'qualify_restricted_port_prerequisites': 'false', 'profile_database': 'false', 'duration_order': 'false',
+              'run_typecheck': 'false', 'run_native_typecheck': 'false', 'run_native_swift_models': 'false',
+              'run_native_bundle': 'false', 'run_build': 'false', 'model_eval': '', 'eval_budget_usd': '20', 'eval_allowed_providers': '',
+          }
+          if (event.get('ref') not in (branch, ref) or repo.get('id') != 1333414856
+                  or repo.get('full_name') != repo_name or repo.get('private') is not False
+                  or repo.get('fork') is not False or repo.get('default_branch') != 'main' or inputs != expected_inputs):
+              raise SystemExit('Protected DB client dispatch inputs refused')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as output:
+              output.write('admitted=true\n')
+          PYTHON
       - name: Admit only the fixed development browser dispatch
         if: ${{ inputs.architecture_browser_development_preflight }}
         env:
@@ -246,10 +316,11 @@ jobs:
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
     needs: resolve
+    if: ${{ github.ref != 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' || needs.resolve.outputs.protected_db_client == 'true' }}
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
-    environment: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.model_eval != '' && 'assistant-eval' || '' }}
+    environment: ${{ github.ref != 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.model_eval != '' && 'assistant-eval' || '' }}
     timeout-minutes: ${{ inputs.measured_browser_course == 'serial-2-4-8' && 120 || (inputs.architecture_browser_development_preflight || inputs.measured_browser_course == 'preflight-2') && 40 || inputs.model_eval != '' && 45 || 20 }}
     defaults:
       run:
@@ -261,7 +332,7 @@ jobs:
       AIHR_FOCUSED_SUITE_CAPACITY: 'true'
       AIHR_QUALIFY_RESTRICTED_PORT: ${{ inputs.qualify_restricted_port_prerequisites }}
       AIHR_RESTRICTED_PORT_TYPECHECK: ${{ inputs.run_typecheck }}
-      AIHR_EVAL_OPENROUTER_KEY: ${{ (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.model_eval != '' && secrets.OPENROUTER_API_KEY || '' }}
+      AIHR_EVAL_OPENROUTER_KEY: ${{ github.ref != 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.model_eval != '' && secrets.OPENROUTER_API_KEY || '' }}
       AIHR_EVAL_MODEL: ${{ inputs.model_eval }}
       AIHR_EVAL_BUDGET_USD: ${{ inputs.eval_budget_usd }}
       AIHR_EVAL_ALLOWED_PROVIDERS: ${{ inputs.eval_allowed_providers }}
@@ -396,6 +467,7 @@ jobs:
         if: ${{ always() && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && inputs.profile_database }}
         run: node scripts/report-test-profile.mjs "$RUNNER_TEMP/aihr-focused/harness-profile" "$RUNNER_TEMP/aihr-focused/profile-summary.json"
       - name: Ensure owned resource settlement after interrupted checks
+        id: focused-owned-settlement
         if: ${{ always() && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
         run: |
           if [ "$AIHR_RESOLVED_FOCUSED_TESTS" = '["test/compiler-native-reference-fixture.test.ts"]' ]; then
@@ -410,11 +482,11 @@ jobs:
         env:
           AIHR_RESOLVED_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
           AIHR_CI_UNIT: ${{ needs.resolve.outputs.tests != '["test/compiler-native-reference-fixture.test.ts"]' && needs.resolve.outputs.tests != '["test/compiler-native-application-inventory.test.ts"]' && 'db-1' || '' }}
-      - name: Close the protected TP1 public artifact
-        if: ${{ always() && github.ref == 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' }}
+      - name: Close the protected DB client public artifact
+        if: ${{ always() && github.ref == 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' && steps.focused-owned-settlement.outcome == 'success' }}
         id: protected-db-client-public
         run: node ../automation/.github/ci/focused-checks.mjs protected-db-client-public-artifact "$RUNNER_TEMP/aihr-focused"
-      - if: ${{ always() && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && (github.ref != 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' || steps.protected-db-client-public.outputs.safe == 'true') }}
+      - if: ${{ always() && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && (github.ref != 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' || (steps.focused-owned-settlement.outcome == 'success' && steps.protected-db-client-public.outputs.safe == 'true')) }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ inputs.employee_ascii_qualification == 'node22' && 'employee-ascii-qualification-node22' || inputs.employee_ascii_qualification == 'node24' && 'employee-ascii-qualification-node24' || 'focused-development-evidence' }}
@@ -1366,7 +1438,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   typecheck:
-    if: ${{ inputs.run_typecheck }}
+    if: ${{ github.ref != 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' && inputs.run_typecheck }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -1388,7 +1460,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build }}
+    if: ${{ github.ref != 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' && inputs.run_build }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -1434,7 +1506,7 @@ jobs:
           retention-days: 14
 
   native-typecheck:
-    if: ${{ inputs.run_native_typecheck }}
+    if: ${{ github.ref != 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' && inputs.run_native_typecheck }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -1460,7 +1532,7 @@ jobs:
 
 
   native-bundle:
-    if: ${{ inputs.run_native_bundle }}
+    if: ${{ github.ref != 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' && inputs.run_native_bundle }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -1488,7 +1560,7 @@ jobs:
           EXPO_NO_TELEMETRY: '1'
 
   native-swift-models:
-    if: ${{ inputs.run_native_swift_models }}
+    if: ${{ github.ref != 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' && inputs.run_native_swift_models }}
     needs: resolve
     runs-on: macos-15
     timeout-minutes: 15

@@ -275,18 +275,22 @@ export function runFocused(destination) {
 }
 
 /** Read-only native corroboration, never a stale-PID recovery/kill mechanism. */
-export function verifyCompilerSettlement(destination){
+export function verifyCompilerSettlement(destination){return readCompilerSettlement(destination,false);}
+function readCompilerSettlement(destination,artifactOnly){
   runnerOnly();const profile=compilerPurpose(parseSelection(process.env.AIHR_FOCUSED_TESTS));
   const dir=resolve(destination);if(dir!==join(realpathSync(process.env.RUNNER_TEMP),'aihr-focused'))throw Error('Fixed compiler evidence directory required');
   const raw=boundedCompilerBytes(join(dir,profile.journal),131072).toString('utf8'),lines=raw.trimEnd().split('\n');
   if(!raw.endsWith('\n')||!lines.length||lines.length>1000)throw Error('Complete compiler ownership stream required');
-  const monitors=parseCompilerSettlementRows(raw,{source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID},profile.purpose);
+  if(artifactOnly)assert(profile.purpose==='reference'&&process.env.GITHUB_REF==='refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109'&&
+    process.env.GITHUB_JOB==='selected-tests'&&process.env.GITHUB_RUN_ATTEMPT==='1');
+  const monitors=parseOwnedCompilerSettlementRows(raw,{source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID},profile.purpose,artifactOnly);
   requireCompilerMonitorsAbsent(monitors);
-  return{kind:'READ_ONLY_COMPILER_NATIVE_SETTLEMENT_NOT_RELEASE',source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,operations:9,nativeMonitorsAbsent:monitors.length,releaseAuthorized:false};
+  return{kind:artifactOnly?'READ_ONLY_PROTECTED_COMPILER_ARTIFACT_SETTLEMENT_NOT_RELEASE':'READ_ONLY_COMPILER_NATIVE_SETTLEMENT_NOT_RELEASE',source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,operations:9,nativeMonitorsAbsent:monitors.length,releaseAuthorized:false};
 }
 
 /** Source-model parser only. A parsed stream ALONE never establishes native settlement. */
-export function parseCompilerSettlementRows(raw,context,purpose='reference'){
+export function parseCompilerSettlementRows(raw,context,purpose='reference'){return parseOwnedCompilerSettlementRows(raw,context,purpose,false);}
+function parseOwnedCompilerSettlementRows(raw,context,purpose,artifactOnly){
   if(!['reference','application'].includes(purpose))throw Error('Closed compiler settlement purpose required');
   const terminal=purpose==='application'?'compiler-application-inventory':'compiler-reference';
   if(!context||!['source','controller'].every(key=>typeof context[key]==='string'&&/^[a-f0-9]{40}$/.test(context[key]))||typeof context.run!=='string'||!/^[1-9][0-9]{0,19}$/.test(context.run))throw Error('Exact compiler context required');
@@ -305,8 +309,11 @@ export function parseCompilerSettlementRows(raw,context,purpose='reference'){
     for(const actor of [first.writer,first.owner])if(!actor||JSON.stringify(Object.keys(actor).sort())!==JSON.stringify(['pid','start'])||!Object.values(actor).every(value=>Number.isSafeInteger(value)&&value>1))throw Error('Compiler native actor identity differs');
     const once=kind=>{const found=rows.map((row,index)=>({row,index})).filter(value=>value.row.kind===kind);if(found.length!==1)throw Error('Incomplete compiler ownership chronology');return found[0];};
     const admitted=once('session-admitted'),stop=once('group-stop-before-reap'),reaped=once('group-quiescent-then-reaped'),end=once('stage-ended');
+    const cleanExit=stop.row.reason==='complete'&&end.row.reason==='complete'&&end.row.commandExit===0;
+    const cleanFixtureFailure=artifactOnly&&first.stage===terminal&&stop.row.reason==='command-failed'&&end.row.reason==='command-failed'&&
+      Number.isSafeInteger(end.row.commandExit)&&end.row.commandExit>0&&end.row.commandExit<=255;
     if(!(admitted.index<stop.index&&stop.index<reaped.index&&reaped.index<end.index&&end.index===rows.length-1)
-      ||stop.row.reason!=='complete'||end.row.reason!=='complete'||end.row.commandExit!==0||end.row.admitted!==true||end.row.reaped!==true||end.row.groupQuiescent!==true||end.row.escapedSession!==false||reaped.row.escapedSession!==false)throw Error('Compiler native settlement is uncertain');
+      ||!(cleanExit||cleanFixtureFailure)||end.row.admitted!==true||end.row.reaped!==true||end.row.groupQuiescent!==true||end.row.escapedSession!==false||reaped.row.escapedSession!==false)throw Error('Compiler native settlement is uncertain');
     if(!Number.isSafeInteger(admitted.row.pid)||admitted.row.pid<=1||!Number.isSafeInteger(admitted.row.start)||admitted.row.start<=0)throw Error('Native compiler monitor identity absent');
     stages.add(first.stage);monitors.push({pid:admitted.row.pid,start:admitted.row.start});
   }
@@ -349,7 +356,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   else if(command === 'compiler-settled' && process.argv.length === 4){
     if(process.env.GITHUB_REF==='refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109'){
       let nativeSettled=false,dockerSettled=false;
-      try{nativeSettled=cleanupCompilerReference(process.argv[3])===0;}catch{}
+      try{
+        const proof=readCompilerSettlement(process.argv[3],true);
+        writeFileSync(join(resolve(process.argv[3]),'compiler-settlement.json'),JSON.stringify(proof,null,2)+'\n',{flag:'wx',mode:0o600});
+        nativeSettled=true;
+      }catch{}
       try{
         const {settleProtectedDockerCanary}=await import('./diagnostics/native-reference/protected-docker-canary.mjs');
         dockerSettled=settleProtectedDockerCanary(process.argv[3]);
@@ -367,7 +378,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       const destination=join(realpathSync(process.env.RUNNER_TEMP),'aihr-focused');
       assert.equal(process.argv[3],destination);
       const {closeProtectedArtifactTree}=await import('./diagnostics/native-reference/protected-db-client-public-evidence.mjs');
-      closeProtectedArtifactTree(destination);
+      closeProtectedArtifactTree(destination,{source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,
+        run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT});
       appendFileSync(process.env.GITHUB_OUTPUT,'safe=true\n');
     }catch{process.exitCode=1;}
   }

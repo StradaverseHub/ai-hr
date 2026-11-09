@@ -23,7 +23,7 @@ const stop=value=>value==null?null:['phase-deadline','aborted','child-error','pi
 const status=value=>value==null?null:count(value,255);
 
 export function publicInnerRefusal(value){
- const phases=['identity','mounts','network','host-grant','protected-stock-next','protected-db-client-compare','protected-db-client-close-grant'];
+ const phases=['identity','mounts','network','dependency-selection','dependency-postcondition','host-grant','protected-stock-next','protected-db-client-compare','protected-db-client-close-grant'];
  return {phase:phases.includes(value?.phase)?value.phase:'other',code:safeProbeError(value?.code)};
 }
 export function publicTypegenExecution(value){
@@ -153,31 +153,53 @@ export function publicDbClientComparison(directory,complete,source){
 }
 
 /** Final branch-scoped uploader frontier, after the selected reporter and resource owners have closed. */
-export function closeProtectedArtifactTree(directory){
+export function closeProtectedArtifactTree(directory,context){
  assert.equal(realpathSync(directory),directory);
  const owned=(path,isDirectory)=>{
   const row=lstatSync(path);
   assert(row.uid===process.getuid()&&(row.mode&0o022)===0&&realpathSync(path)===path);
   assert(isDirectory?row.isDirectory():row.isFile()&&row.nlink===1);
+  return row;
  };
  owned(directory,true);
  const entries=readdirSync(directory),raw='nodb.vitest.json';
- if(entries.includes(raw)){
-  const path=join(directory,raw);
-  owned(path,false);unlinkSync(path);
- }
- const files=['compiler-reference-preflight.json','compiler-reference-clock.json','compiler-reference-clock-ack.json',
-  'compiler-supervisor.jsonl','focused.json','focused-partial.json','compiler-settlement.json','protected-docker-settlement.json'];
+ const rawPath=join(directory,raw);
+ if(entries.includes(raw))assert(owned(rawPath,false).size<=16*1024**2);
+ const limits={'compiler-reference-preflight.json':32*1024,'compiler-reference-clock.json':8*1024,
+  'compiler-reference-clock-ack.json':8*1024,'compiler-supervisor.jsonl':128*1024,'focused.json':64*1024,
+  'focused-partial.json':64*1024,'compiler-settlement.json':16*1024,'protected-docker-settlement.json':16*1024};
  const stages={'compiler-protected-docker':'PROTECTED_NEXT_TYPEGEN_6C05','compiler-protected-db-client':'PROTECTED_DB_CLIENT_COMPARISON_6C05'};
  const reportFields=new Set(['kind','source','controller','run','attempt','role','productSource','productTree','transportQualified',
   'productInputsMounted','stockNextInvoked','strictCompilerInvoked','ordinaryCompilerQualified','releaseAuthorized','productProjection',
-  'sameRunGeneratedSeals','sameRunPrivateHandoffConsumed','createDiagnostic','innerRefusal','observed','comparison','typegenExecution',
+  'sameRunGeneratedSeals','sameRunPrivateHandoffConsumed','sameRunDependencies','createDiagnostic','innerRefusal','observed','comparison','typegenExecution',
   'typegen','typegenLaunchIntent','refusal','partialComparison','settlementRefused','settlement']);
  const markers=['compiler-reference-clock.json.ready','compiler-reference-clock-ack.json.ready'];
- let structured=0;
- for(const name of readdirSync(directory)){
+ let structured=0,nativeSettled=false,dockerSettled=false;
+ for(const name of entries){
+  if(name===raw)continue;
   const path=join(directory,name);
-  if(files.includes(name)){owned(path,false);structured++;continue;}
+  if(Object.hasOwn(limits,name)){
+   const row=owned(path,false);
+   assert(row.size>0&&row.size<=limits[name],'Protected artifact member exceeds its bound');
+   if(name.endsWith('.json')){
+    const content=JSON.parse(readFileSync(path,'utf8'));
+    assert(content&&typeof content==='object'&&!Array.isArray(content));
+    if(name==='compiler-settlement.json'){
+     assert.deepEqual(content,{kind:'READ_ONLY_PROTECTED_COMPILER_ARTIFACT_SETTLEMENT_NOT_RELEASE',
+      source:context.source,controller:context.controller,run:context.run,operations:9,nativeMonitorsAbsent:9,releaseAuthorized:false});
+     nativeSettled=true;
+    }
+    if(name==='protected-docker-settlement.json'){
+     assert.deepEqual([content.kind,content.source,content.controller,content.run,content.attempt,content.complete,content.releaseAuthorized],
+      ['PROTECTED_DB_CLIENT_DOCKER_INDEPENDENT_SETTLEMENT',context.source,context.controller,context.run,context.attempt,true,false]);
+     assert.deepEqual(content.failures,[]);
+     assert.deepEqual(Object.keys(content.stages).sort(),['db-client','typegen']);
+     for(const stage of Object.values(content.stages))for(const name of ['containerAbsent','processAbsent','cgroupAbsent','imageAbsent','privateScratchRemoved'])assert.equal(stage[name],true);
+     dockerSettled=true;
+    }
+   }
+   structured++;continue;
+  }
   assert(Object.hasOwn(stages,name)||markers.includes(name),'Unexpected protected artifact member');
   owned(path,true);
   const members=readdirSync(path);
@@ -193,5 +215,7 @@ export function closeProtectedArtifactTree(directory){
    structured++;
   }
  }
- assert(structured>0,'No structured protected evidence to publish');
+ assert(structured>0&&nativeSettled&&dockerSettled,'Independent protected artifact settlement is incomplete');
+ if(entries.includes(raw))unlinkSync(rawPath);
+ assert.deepEqual(readdirSync(directory),entries.filter(name=>name!==raw));
 }

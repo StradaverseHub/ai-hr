@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 
 const roles=['mnt','net','pid','ipc','uts','cgroup'];
-const baseReadOnly=['/','/input','/dependency','/probe/entry.mjs','/probe/plan.json','/runtime/node','/lib/x86_64-linux-gnu',
+const baseReadOnly=['/','/input','/dependency','/probe/entry.mjs','/probe/plan.json','/probe/dependencies.mjs','/runtime/node','/lib/x86_64-linux-gnu',
  '/lib64/ld-linux-x86-64.so.2','/etc/hostname','/etc/hosts','/etc/resolv.conf','/project','/project/node_modules'];
 const generated=['/project/.next','/project/next-env.d.ts'];
 const pseudo=['/proc','/proc/acpi','/proc/asound','/proc/bus','/proc/fs','/proc/interrupts','/proc/irq','/proc/kcore',
@@ -111,7 +111,17 @@ async function run(plan){
    assert(rows.every(line=>line.trim().split(/\s+/).at(-1)==='lo'));
   }
   const loopbackRefusal=await assertNoEgress(plan.port);
-  publish('/work/ready.json',{nonce:plan.nonce,ns,mounts,loopbackRefusal,sourceMutationRefusals:4,generatedMutationRefusals,
+  phase='dependency-selection';
+  const {snapshotProtectedDependencies}=await import('/probe/dependencies.mjs');
+  const dependencySelection=snapshotProtectedDependencies('/project/node_modules');
+  assert.deepEqual(dependencySelection,plan.dependencySelection);
+  const closeDependencies=()=>{
+   phase='dependency-postcondition';
+   const after=snapshotProtectedDependencies('/project/node_modules');
+   assert.deepEqual(after,dependencySelection);
+   publish('/work/dependency-finished.json',{nonce:plan.nonce,dependencySelection:after});
+  };
+  publish('/work/ready.json',{nonce:plan.nonce,ns,mounts,loopbackRefusal,sourceMutationRefusals:4,generatedMutationRefusals,dependencySelection,
    seccomp:true,apparmor:true,noNewPrivs:true,zeroCapabilities:true});
   phase='host-grant';
   const until=performance.now()+15000;
@@ -121,10 +131,12 @@ async function run(plan){
    phase='protected-stock-next';
    const {runProtectedNextTypegen}=await import('/probe/next.mjs');
    runProtectedNextTypegen();
+   closeDependencies();
   }else{
    phase='protected-db-client-compare';
    const {runProtectedDbClientComparison}=await import('/probe/compare.mjs');
    await runProtectedDbClientComparison({reportRoot:'/work/db-client',deadlineMs:performance.now()+120000,expectedGenerated:plan.generated});
+   closeDependencies();
    publish('/work/compare-ready.json',{nonce:plan.nonce,complete:true});
    phase='protected-db-client-close-grant';
    const closeBy=performance.now()+15000;

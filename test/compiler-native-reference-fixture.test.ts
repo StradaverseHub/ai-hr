@@ -55,6 +55,8 @@ it('checks source and native declaration paths for the real protected DB client'
     settlement:{containerAbsent:true,processAbsent:true,cgroupAbsent:true,imageAbsent:true,privatePayloadRemoved:true,
      identityRetainedForSettlement:true}});
    expect(comparison.sameRunGeneratedSeals).toEqual(report.typegen.generated);
+   expect(report.sameRunDependencies).toMatchObject({selectedFileCount:23,selectedFilesOnly:true,physicalReadOnly:true});
+   expect(comparison.sameRunDependencies).toEqual(report.sameRunDependencies);
    for(const directory of ['compiler-protected-docker','compiler-protected-db-client']){
     expect(readdirSync(join(proof.destination,directory))).toEqual(['report.json']);
    }

@@ -10,7 +10,7 @@ export const protectedHash=bytes=>createHash('sha256').update(bytes).digest('hex
 export const protectedDigest=/^sha256:[a-f0-9]{64}$/;
 const json=object=>Buffer.from(JSON.stringify(object));
 const directories=['dependency/','dev/','etc/','input/','lib/','lib/x86_64-linux-gnu/','lib64/','probe/','proc/','project/','runtime/','sys/','work/'];
-const placeholders=['etc/hostname','etc/hosts','etc/resolv.conf','lib64/ld-linux-x86-64.so.2','probe/entry.mjs','probe/next.mjs','probe/plan.json','runtime/node'];
+const placeholders=['etc/hostname','etc/hosts','etc/resolv.conf','lib64/ld-linux-x86-64.so.2','probe/entry.mjs','probe/dependencies.mjs','probe/next.mjs','probe/plan.json','runtime/node'];
 
 function tar(entries){
  const chunks=[];

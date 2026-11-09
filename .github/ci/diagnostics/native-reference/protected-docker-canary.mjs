@@ -15,11 +15,14 @@ import {protectedDigest,protectedHash,protectedLimits,protectedOwnerLabel,protec
 import {generatedNames,generatedSeals,protectedAppSource,protectedAppTree,protectedLock} from './protected-next-typegen.mjs';
 import {publicInnerRefusal,publicDbClientComparison,publicTypegenExecution,publicTypegenResult,safeProbeError} from './protected-db-client-public-evidence.mjs';
 
+import {publicProtectedDependencySelection,snapshotProtectedDependencies} from './protected-dependency-selection.mjs';
+
 export const protectedDockerRef='refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109';
 const ownModule='.github/ci/diagnostics/native-reference/protected-docker-canary.mjs';
 const entryName='.github/ci/diagnostics/native-reference/protected-docker-entry.mjs';
 const typegenName='.github/ci/diagnostics/native-reference/protected-next-typegen.mjs';
 const projectName='.github/ci/diagnostics/native-reference/project-protected-next.py';
+const dependencyName='.github/ci/diagnostics/native-reference/protected-dependency-selection.mjs';
 const compareName='.github/ci/diagnostics/native-reference/protected-db-client-compare.mjs';
 const evidenceName='.github/ci/diagnostics/native-reference/protected-db-client-public-evidence.mjs';
 const manifest='docs/qualification/compiler-reference-owned-source-20261108.json';
@@ -34,7 +37,7 @@ const createDiagnosticLimit=4096;
 const productMountRoles=Object.freeze({
  '/project':'product-source', '/project/node_modules':'installed-dependencies',
  '/project/.next':'generated-types-directory', '/project/next-env.d.ts':'generated-env-file',
- '/probe/next.mjs':'typegen-probe',
+ '/probe/next.mjs':'typegen-probe', '/probe/dependencies.mjs':'dependency-seal-probe',
 });
 const createCategories=[
  [/bind source path does not exist/i,'bind-source-missing'],
@@ -268,7 +271,7 @@ function verifyContainer(row,owner,mounts,uid,gid,profile){
   mounts.map(mount=>['bind',mount.source,mount.dest,!mount.readonly,'rprivate']).sort());
  assert.equal(row.Image,owner.imageId);
 }
-async function runProtectedStage(role,freshGenerated){
+async function runProtectedStage(role,freshGenerated,expectedDependencies){
  assert(isRole(role));
  const profile=roleProfiles[role];
  assert(role==='typegen'?freshGenerated===undefined:freshGenerated&&freshGenerated.stockNextInvoked&&freshGenerated.transportQualified);
@@ -300,8 +303,9 @@ async function runProtectedStage(role,freshGenerated){
   const projected=join(root,'project'),nextOutput=join(root,'next-output'),nextEnv=join(root,'next-env-output');
   const generator=join(proof.source,projectName),courseName=role==='db-client'?compareName:typegenName;
   const course=join(proof.source,courseName),dependencies=join(proof.source,'node_modules');
-  for(const [name,path]of [[projectName,generator],[courseName,course]])assert.equal(protectedHash(readFileSync(path)),proof.sourceHashes[name]);
-  assert.equal(realpathSync(dependencies),dependencies);
+  const dependencyModule=join(proof.source,dependencyName);
+  for(const [name,path]of [[projectName,generator],[courseName,course],[dependencyName,dependencyModule]])assert.equal(protectedHash(readFileSync(path)),proof.sourceHashes[name]);
+  assert.deepEqual(snapshotProtectedDependencies(dependencies),expectedDependencies);
   assert.equal(protectedHash(readFileSync(join(proof.source,'pnpm-lock.yaml'))),protectedLock);
   for(const name of ['.next','next-env.d.ts'])assert(!exists(join(proof.source,name)));
   const productCheckout=join(realpathSync(process.env.GITHUB_WORKSPACE),'compiler-product');
@@ -346,7 +350,7 @@ async function runProtectedStage(role,freshGenerated){
   assert.equal(productBefore['pnpm-lock.yaml'].sha256,protectedLock);
   const ro=(source,dest)=>({source,dest,readonly:true});
   const mounts=[ro(node,'/runtime/node'),ro('/usr/lib/x86_64-linux-gnu','/lib/x86_64-linux-gnu'),
-   ro(realpathSync('/lib64/ld-linux-x86-64.so.2'),'/lib64/ld-linux-x86-64.so.2'),ro(entry,'/probe/entry.mjs'),
+   ro(realpathSync('/lib64/ld-linux-x86-64.so.2'),'/lib64/ld-linux-x86-64.so.2'),ro(entry,'/probe/entry.mjs'),ro(dependencyModule,'/probe/dependencies.mjs'),
    ro(join(root,'plan.json'),'/probe/plan.json'),ro(join(root,'input'),'/input'),ro(join(root,'dependency'),'/dependency'),
    ...['hostname','hosts','resolv.conf'].map(name=>ro(join(root,'empty-etc'),'/etc/'+name)),{source:join(root,'work'),dest:'/work',readonly:false},
    ro(projected,'/project'),ro(dependencies,'/project/node_modules'),ro(course,role==='db-client'?'/probe/compare.mjs':'/probe/next.mjs'),
@@ -363,7 +367,7 @@ async function runProtectedStage(role,freshGenerated){
   assert.equal(accepted,1);
   const plan={role,nonce,uid,gid,port,node:fileBirth(node),hostNamespaces:namespaceIds(),hostUserNamespace:readlinkSync('/proc/self/ns/user'),
    ...(role==='db-client'?{generated:report.sameRunGeneratedSeals}:{}),
-   env:protectedRuntimeEnv,hiddenPath:join(root,'host-only','canary'),input:canarySeal(join(root,'input','canary')),
+   dependencySelection:expectedDependencies,env:protectedRuntimeEnv,hiddenPath:join(root,'host-only','canary'),input:canarySeal(join(root,'input','canary')),
    dependency:canarySeal(join(root,'dependency','canary'))};
   write(join(root,'plan.json'),plan);
   publish(join(root,'intent.json'),owner);
@@ -399,6 +403,7 @@ async function runProtectedStage(role,freshGenerated){
   assert(live.State.Running&&live.AppArmorProfile==='docker-default'&&!live.State.OOMKilled&&Number.isSafeInteger(pid)&&pid>1);
   const birth=liveBirth(pid,id);publish(join(root,'birth.json'),{id,birth});
   assert.equal(ready.nonce,nonce);assert.equal(ready.sourceMutationRefusals,4);
+  assert.deepEqual(ready.dependencySelection,expectedDependencies);
   assert.equal(ready.generatedMutationRefusals,role==='db-client'?2:0);
   for(const key of ['seccomp','apparmor','noNewPrivs','zeroCapabilities'])assert.equal(ready[key],true);
   assert.deepEqual(namespaceIds(pid),ready.ns);
@@ -418,6 +423,12 @@ async function runProtectedStage(role,freshGenerated){
    loopbackRefusal:ready.loopbackRefusal,sourceMutationRefusals:4,generatedMutationRefusals:ready.generatedMutationRefusals,
    seccomp:true,apparmor:true,noNewPrivs:true,zeroCapabilities:true,pidBirth:{pid,start:birth.start},cgroupBirth:birth.cgroup,
    resourceLimits:resourceFacts(id,pid,profile),hostLoopbackPositive:true,imageId:image.id,archiveSha256:image.sha256,layerDiffId:image.diffId};
+  const verifyDependencySettlement=()=>{
+   const observed=config(join(root,'work','dependency-finished.json'));
+   assert.deepEqual(observed,{nonce,dependencySelection:expectedDependencies});
+   assert.deepEqual(snapshotProtectedDependencies(dependencies),expectedDependencies);
+   report.sameRunDependencies=publicProtectedDependencySelection(expectedDependencies);
+  };
   publish(join(root,'work','grant.json'),{nonce});
   if(role==='db-client'){
    phase='db-client-hold';
@@ -428,6 +439,7 @@ async function runProtectedStage(role,freshGenerated){
     await delay(30);
    }
    assert.deepEqual(config(complete),{nonce,complete:true});
+   verifyDependencySettlement();
    assert.deepEqual(liveBirth(pid,id),birth);
    const finalResources=resourceFacts(id,pid,profile),peak=Number(readFileSync(join(cgroupDir(id),'memory.peak'),'utf8'));
    assert(Number.isSafeInteger(peak)&&peak>0&&peak<=profile.memory);
@@ -447,6 +459,7 @@ async function runProtectedStage(role,freshGenerated){
   const exited=inspectContainer(client,id,owner);
   assert(!exited.State.Running&&!exited.State.OOMKilled&&exited.State.ExitCode===0&&exited.State.Pid===0);
   if(role==='typegen'){
+   verifyDependencySettlement();
    assert(report.stockNextInvoked&&report.typegenExecution.exit===0);
    const result=publicTypegenResult(config(join(root,'work','typegen-result.json')),protectedAppSource,protectedAppTree);
    assert.deepEqual(generatedSeals(projected,nextOutput,nextEnv),result.generated);
@@ -505,11 +518,13 @@ async function runProtectedStage(role,freshGenerated){
  return report;
 }
 export async function protectedDockerCanary(){
- const fresh=await runProtectedStage('typegen');
+ const proof=admitCompilerReference('fixture');
+ const expectedDependencies=snapshotProtectedDependencies(join(proof.source,'node_modules'));
+ const fresh=await runProtectedStage('typegen',undefined,expectedDependencies);
  for(const field of ['containerAbsent','processAbsent','cgroupAbsent','imageAbsent','privateGeneratedHandoffRetained']){
   assert.equal(fresh.settlement[field],true);
  }
- return await runProtectedStage('db-client',fresh);
+ return await runProtectedStage('db-client',fresh,expectedDependencies);
 }
 export function settleProtectedDockerCanary(destination){
  const context=identityEnv();
@@ -520,7 +535,7 @@ export function settleProtectedDockerCanary(destination){
  assert.deepEqual(source,controller);
  assert.equal(controller.sourceRef,protectedDockerRef.slice(11));
  const members=[ownModule,entryName,'.github/ci/diagnostics/native-reference/protected-docker-image.mjs',
-  typegenName,projectName,compareName,evidenceName,'.github/ci/focused-checks.mjs','scripts/performance/driver-shutdown.mjs'];
+  typegenName,projectName,compareName,dependencyName,evidenceName,'.github/ci/focused-checks.mjs','scripts/performance/driver-shutdown.mjs'];
  for(const member of members){
   assert.equal(controller.componentSources[member],protectedHash(readFileSync(join(automation,member))));
   assert.equal(source.componentSources[member],protectedHash(readFileSync(join(workspace,'source',member))));
