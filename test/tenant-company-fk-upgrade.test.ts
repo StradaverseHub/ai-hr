@@ -169,6 +169,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.assistant_rewards_return_presentation_choices_v1()',
    'app.assistant_rewards_calendar_presentation_choices_v1()',
    'app.assistant_rewards_cancel_presentation_choices_v1()',
+   'app.home_leave_presentation_index(text)',
   ].sort();
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
