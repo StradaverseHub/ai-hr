@@ -201,19 +201,6 @@ export function createProtectedClaimCustody(persist){
  };
 }
 
-export function protectedLockObserverCounts(row,expected){
- if(!row||!expected||!Number.isSafeInteger(expected.pid)||expected.pid<=1
-  ||typeof expected.backendStart!=='string'||!/^\d+(?:\.\d+)?$/.test(expected.backendStart)
-  ||typeof expected.databaseOid!=='string'||!/^[1-9]\d{0,9}$/.test(expected.databaseOid)
-  ||row.pid!==expected.pid||row.backendStart!==expected.backendStart||row.databaseOid!==expected.databaseOid
-  ||row.login!=='ai_hr_workload_observer'||row.role!==row.login||row.database!=='ai_hr_test_w1'
-  ||row.address!=='127.0.0.1'||row.port!==5433||row.readOnly!=='on'||row.trackActivities!=='on'
-  ||row.canReadStats!==true||row.invisibleAppSessions!==0){
-  throw Error('Protected lock observer identity or visibility differed');
- }
- return {appSessions:row.appSessions,blockingAppSessions:row.blockingAppSessions};
-}
-
 export function createProtectedLockSampler({phase,deadline,observe,onFailure,now=()=>performance.now()}){
  const interval=Object.hasOwn(lockCadenceMs,phase)?lockCadenceMs[phase]:null;
  const origin=now(),cutoffUs=Math.floor((deadline-origin)*1000);

@@ -5,7 +5,8 @@ import {gzipSync} from 'node:zlib';
 import {afterEach,expect,it,vi} from 'vitest';
 import {acquireDriverResource,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
  createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
- openDriverResponse,protectedLockObserverCounts,settleDriverBrowser,settleDriverLanes,settleDriverResources,startDriverInterval} from '../scripts/performance/driver-shutdown.mjs';
+ openDriverResponse,settleDriverBrowser,settleDriverLanes,settleDriverResources,startDriverInterval} from '../scripts/performance/driver-shutdown.mjs';
+import {protectedLockObserverObservedCounts} from '../scripts/performance/protected-lock-observer.mjs';
 
 function deferred<T=void>(){
  let resolve!:(value:T)=>void,reject!:(reason:unknown)=>void;
@@ -154,10 +155,10 @@ it('requires the exact held stats observer identity and actual app visibility on
  const row={...expected,login:'ai_hr_workload_observer',role:'ai_hr_workload_observer',database:'ai_hr_test_w1',
   address:'127.0.0.1',port:5433,readOnly:'on',trackActivities:'on',canReadStats:true,invisibleAppSessions:0,
   appSessions:3,blockingAppSessions:1};
- expect(protectedLockObserverCounts(row,expected)).toEqual({appSessions:3,blockingAppSessions:1});
+ expect(protectedLockObserverObservedCounts([row],expected)).toEqual({appSessions:3,blockingAppSessions:1});
  for(const change of [{pid:21},{backendStart:'124.45'},{databaseOid:'54322'},{database:'ai_hr_dev'},
   {role:'postgres'},{readOnly:'off'},{canReadStats:false},{trackActivities:'off'},{invisibleAppSessions:1}]){
-  expect(()=>protectedLockObserverCounts({...row,...change},expected)).toThrow('observer identity or visibility differed');
+  expect(()=>protectedLockObserverObservedCounts([{...row,...change}],expected)).toThrow('observer identity or visibility differed');
  }
 });
 

@@ -21,10 +21,11 @@ export function protectedLockObserverQuery(sql){
 }
 
 /**
+ * Bind the sampled row to the held observer before the caller credits counts.
  * @param {Record<string,unknown>[]} rows
  * @param {{pid:number,backendStart:string,databaseOid:string}} expected
  */
-export function protectedLockObserverCounts(rows,expected){
+export function protectedLockObserverObservedCounts(rows,expected){
  const [row]=rows;
  if(rows.length!==1||!row||!expected||!Number.isSafeInteger(expected.pid)||expected.pid<=1
   ||typeof expected.backendStart!=='string'||!/^\d+(?:\.\d+)?$/.test(expected.backendStart)
@@ -35,7 +36,15 @@ export function protectedLockObserverCounts(rows,expected){
   ||row.canReadStats!==true||row.invisibleAppSessions!==0){
   throw Error('Protected lock observer identity or visibility differed');
  }
- const {appSessions,blockingAppSessions}=row;
+ return {appSessions:row.appSessions,blockingAppSessions:row.blockingAppSessions};
+}
+
+/**
+ * @param {Record<string,unknown>[]} rows
+ * @param {{pid:number,backendStart:string,databaseOid:string}} expected
+ */
+export function protectedLockObserverCounts(rows,expected){
+ const {appSessions,blockingAppSessions}=protectedLockObserverObservedCounts(rows,expected);
  if(typeof appSessions!=='number'||!Number.isSafeInteger(appSessions)||appSessions<0
   ||typeof blockingAppSessions!=='number'||!Number.isSafeInteger(blockingAppSessions)
   ||blockingAppSessions<0||blockingAppSessions>appSessions){

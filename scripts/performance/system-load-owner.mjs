@@ -34,9 +34,10 @@ import {chromium} from 'playwright';
 import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironment,createDriverContexts,
- createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,protectedLockObserverCounts,
+ createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
+import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
  nativePreflightRoutePlan,nativePreflightRouteFor,nativePreflightContentWitness,nativePreflightReadiness,
  assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from './system-route-manifest.mjs';
@@ -315,28 +316,13 @@ async function startProtectedPreflightLockSampling(){
  const expected=Object.freeze({pid:identity.pid,backendStart:identity.backendStart,databaseOid:identity.databaseOid});
  protectedSampler=createProtectedLockSampler({phase:'preflight',deadline:nativeDeadline,
   async observe(lease){
-   const query=sql`with app_sessions as materialized (
-    select pid,state,wait_event_type from pg_catalog.pg_stat_activity
-    where datid=(select oid from pg_catalog.pg_database where datname=current_database())
-     and usename='ai_hr_app' and backend_type='client backend'
-   ), queued as materialized (
-    select distinct l.pid from pg_catalog.pg_locks l join app_sessions a on a.pid=l.pid where not l.granted
-   )
-   select pg_backend_pid() as pid,session_user as login,current_user as role,current_database() as database,
-    a.datid::text as "databaseOid",extract(epoch from a.backend_start)::text as "backendStart",
-    host(inet_server_addr()) as address,inet_server_port() as port,
-    current_setting('transaction_read_only') as "readOnly",current_setting('track_activities') as "trackActivities",
-    pg_has_role(current_user,'pg_read_all_stats','USAGE') as "canReadStats",
-    (select count(*)::int from app_sessions) as "appSessions",
-    (select count(*)::int from app_sessions where state is null or state='disabled') as "invisibleAppSessions",
-    (select count(*)::int from app_sessions s left join queued q on q.pid=s.pid
-      where s.wait_event_type='Lock' or q.pid is not null) as "blockingAppSessions"
-   from pg_catalog.pg_stat_activity a where a.pid=pg_backend_pid()`;
+   const query=protectedLockObserverQuery(sql);
    const terminal=await nativeLockObserver.settleFixedSample(query,lease);
    if(terminal?.settlement!=='settled'||terminal.failed===true)return terminal;
    try{
     assert.equal(terminal.rows.length,1,'Protected lock observer result differs');
-    return {settlement:'settled',...protectedLockObserverCounts(terminal.rows[0],expected)};
+    // The sampler still owns count validation after its completion-time gate.
+    return {settlement:'settled',...protectedLockObserverObservedCounts(terminal.rows,expected)};
    }catch(reason){return {settlement:'settled',failed:true,reason};}
   },onFailure(reason){
    nativeAdmission.close(reason);
