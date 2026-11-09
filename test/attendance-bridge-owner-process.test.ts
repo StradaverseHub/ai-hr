@@ -52,9 +52,9 @@ it('requires the actual OID, complete flags, incident memberships and owned obje
 it('closes inherited credentials and refuses non-worker, foreign host, role and arbitrary SQL startup options',()=>{
  const tag='bridge_'+ 'a'.repeat(32),app='postgres://ai_hr_app:fictional@127.0.0.1/ai_hr_test_w1',owner='postgres://postgres:fictional@127.0.0.1/ai_hr_test_w1';
  const urls=ownedDatabaseUrls(app,owner,'ai_hr_test_w1',tag);
- const env=childEnvironment({GH_TOKEN:'private',SSH_AUTH_SOCK:'private',PGPASSWORD:'private',OWNER_DATABASE_URL:'private',CI:'true'},urls,'/opt/node/bin/node');
+ const env=childEnvironment({NODE_ENV:'production',GH_TOKEN:'private',SSH_AUTH_SOCK:'private',PGPASSWORD:'private',OWNER_DATABASE_URL:'private',CI:'true'},urls,'/opt/node/bin/node');
  expect(Object.keys(env).sort()).toEqual(['PATH','HOME','LANG','LC_ALL','TZ','NODE_ENV','DATABASE_URL','TEST_DATABASE_URL','MIGRATION_DATABASE_URL','TEST_MIGRATION_DATABASE_URL','WORKER_DB','CI'].sort());
- expect(env.PATH).toBe('/opt/node/bin:/usr/bin:/bin');expect(env.DATABASE_URL).toBe(urls.app);
+ expect(env.PATH).toBe('/opt/node/bin:/usr/bin:/bin');expect(env.DATABASE_URL).toBe(urls.app);expect(env.NODE_ENV).toBe('test');
  for(const value of [app.replace('127.0.0.1','foreign.invalid'),app.replace('ai_hr_app','postgres'),app+'?options=-c+role%3Dpostgres',app.replace('ai_hr_test_w1','ai_hr_dev'),app+'#private'])expect(()=>ownedDatabaseUrls(value,owner,'ai_hr_test_w1',tag)).toThrow('Closed owned Attendance database capability required');
  expect(()=>ownerReport({kind:'ATTENDANCE_OWNER_FAULT',private:'private'})).toThrow();
  expect(new OwnerRefusal(ownerStage('access-catalogue')).stage).toBe('access-catalogue');
@@ -66,13 +66,13 @@ it('closes inherited credentials and refuses non-worker, foreign host, role and 
 });
 it('binds a real detached direct child to a kernel pidfd while stale-start and foreign-parent controls cannot signal it',async()=>{
  expect(process.platform).toBe('linux');expect(process.getuid?.()).not.toBe(0);
- const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(0),5000)'],{detached:true,stdio:'ignore',env:{PATH:'/usr/bin:/bin'}});
+ const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(0),5000)'],{detached:true,stdio:'ignore',env:{PATH:'/usr/bin:/bin',NODE_ENV:'test'}});
  const exited=new Promise<{code:number|null;signal:NodeJS.Signals|null}>(yes=>{child.once('error',()=>{});child.once('close',(code,signal)=>yes({code,signal}));});
  let held:ReturnType<typeof holdChildPidfd>|undefined,bound=false;const failures:unknown[]=[];
  try{
   assert(child.pid);held=holdChildPidfd(child.pid);await held.ready;bound=true;const identity=directChildIdentity(child.pid);
   for(const args of [[identity.parent, String(BigInt(identity.start)+BigInt(1))],[identity.parent+1,identity.start]]as const){
-   const probe=spawn('/usr/bin/python3',['-I','-B',resolve('test/helpers/attendance-bridge-pidfd.py'),String(identity.pid),String(args[0]),args[1]],{env:{PATH:'/usr/bin:/bin'},stdio:['pipe','pipe','pipe']});
+   const probe=spawn('/usr/bin/python3',['-I','-B',resolve('test/helpers/attendance-bridge-pidfd.py'),String(identity.pid),String(args[0]),args[1]],{env:{PATH:'/usr/bin:/bin',NODE_ENV:'test'},stdio:['pipe','pipe','pipe']});
    let stdout='',stderr='',invalid=false;const result=new Promise<{code:number|null;signal:NodeJS.Signals|null}>(yes=>{probe.once('error',()=>{invalid=true;});probe.once('close',(code,signal)=>yes({code,signal}));});
    probe.stdout.on('data',(chunk:Buffer)=>{if(stdout.length+chunk.length>128){invalid=true;return;}stdout+=chunk.toString('ascii');});
    probe.stderr.on('data',(chunk:Buffer)=>{if(stderr.length+chunk.length>128){invalid=true;return;}stderr+=chunk.toString('ascii');});probe.stdin.on('error',()=>{});probe.stdin.end('KILL\n');
@@ -91,7 +91,7 @@ it('binds a real detached direct child to a kernel pidfd while stale-start and f
 },10000);
 it('a closed unused pidfd never gains authority to signal the still-live original child',async()=>{
  expect(process.platform).toBe('linux');expect(process.getuid?.()).not.toBe(0);
- const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(0),2500)'],{detached:true,stdio:'ignore',env:{PATH:'/usr/bin:/bin'}});
+ const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(0),2500)'],{detached:true,stdio:'ignore',env:{PATH:'/usr/bin:/bin',NODE_ENV:'test'}});
  const exited=new Promise<{code:number|null;signal:NodeJS.Signals|null}>(yes=>{child.once('error',()=>{});child.once('close',(code,signal)=>yes({code,signal}));});
  let held:ReturnType<typeof holdChildPidfd>|undefined;const failures:unknown[]=[];
  try{

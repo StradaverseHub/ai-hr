@@ -49,16 +49,16 @@ export async function runOwnerProof(input:OwnerInput,frontier:OwnerWorkFrontier,
   // requiring its transport container to have the plain-array prototype.
   assert.deepEqual(Array.from(access),['access_capability','access_configuration','access_group','access_group_grant','access_membership','access_user_override'].map(name=>({name,rls:true,force:true})));
   enter('ownership-create');await step(()=>owner.client.begin(async connection=>{
-   frontier.check();assert(baseline);
+   frontier.check();
    await step(()=>connection.unsafe(guardedOwnerBatch(input.role,[
     `CREATE ROLE ${quoteBridgeRole(input.role)} NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT`,
-    `GRANT ${quoteBridgeRole(baseline.state.request.owner)} TO ${quoteBridgeRole(input.role)} WITH INHERIT TRUE, SET FALSE, ADMIN FALSE`,
-    ...baseline.state.functions.map(fn=>`ALTER FUNCTION ${fn.signature} OWNER TO ${quoteBridgeRole(input.role)}`),
+    `GRANT ${quoteBridgeRole(predecessor.state.request.owner)} TO ${quoteBridgeRole(input.role)} WITH INHERIT TRUE, SET FALSE, ADMIN FALSE`,
+    ...predecessor.state.functions.map(fn=>`ALTER FUNCTION ${fn.signature} OWNER TO ${quoteBridgeRole(input.role)}`),
     `ALTER TABLE public.attendance_workflow_request OWNER TO ${quoteBridgeRole(input.role)}`,definition,
    ])));
    // Captured before COMMIT. A lost commit response cannot erase the native OID.
    enter('owned-witness');witness=await step(()=>bridgeSnapshot(connection,input.role));
-   assertCreatedRole(witness,baseline.state.request.ownerOid);result.ownedOidCaptured=true;
+   assertCreatedRole(witness,predecessor.state.request.ownerOid);result.ownedOidCaptured=true;
    if(input.mode==='rollback-before-commit')throw rollbackFault;
   }));
   if(input.mode==='lost-after-commit')throw lostFault;

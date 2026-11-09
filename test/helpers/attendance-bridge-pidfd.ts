@@ -29,7 +29,7 @@ export function directChildIdentity(pid:number){
 export function holdChildPidfd(pid:number){
  const identity=directChildIdentity(pid);
  const helper=spawn('/usr/bin/python3',['-I','-B',resolve('test/helpers/attendance-bridge-pidfd.py'),String(pid),String(identity.parent),identity.start],
-  {env:{PATH:'/usr/bin:/bin',LANG:'C'},stdio:['pipe','pipe','pipe']});
+  {env:{PATH:'/usr/bin:/bin',LANG:'C',NODE_ENV:'test'},stdio:['pipe','pipe','pipe']});
  let output='',bound=false,killSent=false,closed=false,protocolBroken=false,resolveBound!:()=>void,rejectBound!:(error:Error)=>void;
  const ready=new Promise<void>((yes,no)=>{resolveBound=yes;rejectBound=no;});void ready.catch(()=>undefined);
  const exited=new Promise<void>((yes,no)=>{
