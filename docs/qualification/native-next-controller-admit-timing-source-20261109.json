@@ -1,8 +1,8 @@
 {
   "kind": "CURRENT_CONTROLLER_ADMIT_TIMING_SOURCE_NOT_RUN_EVIDENCE",
   "base": "615274a2556686946610c66ccd1422506338946c",
-  "sourceRef": "codex/linear-inventory-refusal-boundary-tests-20261109",
-  "currentCount": 133,
+  "sourceRef": "codex/native-next-boot-first-home-proof-20261109",
+  "currentCount": 134,
   "sourceSha256": {
     ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
     ".github/ci/ai-manifest-admission.mjs": "180b439bbce1605e60271841c57386c5f6dba977edfeb1c36402bd1649157f76",
@@ -28,13 +28,13 @@
     ".github/ci/singleton-protocol.mjs": "1dfff5d0e14ccd748508f9cd1ba07541307e5f7fea944af9bdc9bb7cc7333403",
     ".github/workflows/alpha-staging.yml": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
     "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
-    "deploy/admission/next_bootstrap_session_inverse.json": "a39f27f18464e00a9c1f8fe82febfc8d3ad8d0a7359e06d13858d16c41ab1a48",
+    "deploy/admission/next_bootstrap_session_inverse.json": "0048a1cd4d443f54cebbbef7afd74b695bddfff40bbe8cc9ffab63c957e0174f",
     "deploy/admission/next_build_binding.py": "b21ba80bd5efd5bc38c1a0c7458d86e4ea90cb1c98901f60955c68658c079ec0",
     "deploy/admission/next_cgroup_control_guard_order_inverse.json": "540abe7754b110edb293e51aecfe2a8875a1bdfe07e0f838eddfce8ccfd26752",
     "deploy/admission/next_cleanup_57d.source": "b9cbb0e4adea6c7a0f8835fe92a1a96683e25d27037429b8b212ffa840cdbf28",
     "deploy/admission/next_cleanup_phase_inverse.json": "223d5afed26d5c9f8e8954c7d44e89e54184d3cc2e2c34a6ac535141c1e441da",
-    "deploy/admission/next_controller_admit_terminal_inverse.json": "8f425565583c22afd70e77a9eff0463773f7bb43ec376fe94e4fd49945fe809c",
-    "deploy/admission/next_controller_admit_timing_inverse.json": "75cd68bf9eec202407c9e891a754e80dea181d89c2b51da7d4d9ef9228388e10",
+    "deploy/admission/next_controller_admit_terminal_inverse.json": "1780eaf4c2d55246fef47f412faf885490c42e9196b71451b289fa148b64a008",
+    "deploy/admission/next_controller_admit_timing_inverse.json": "b9197f9ee544004e3103b42e4de82a1214ffb92f9f7f3e7dcd8ff0c93b2406d3",
     "deploy/admission/next_cpu_weight_constructor_inverse.json": "0b8b934bdafc370311efc1bddbb5a4329e578b87afb42ccdd7bc1608837ff99a",
     "deploy/admission/next_dependency_probe.cjs": "04e62c6ecc41acc84bee60b8ff6829b74e9ddd139652a2c57fd650497cf462c8",
     "deploy/admission/next_environment_observation_inverse.json": "9a4d71493bb5a44b2027d8f69c500fba0a27a32b983dfc0cef185000b026756f",
@@ -117,7 +117,7 @@
     "scripts/lib/discard-premigration.ts": "ce856d78b3d3e02e3d086969acecf398c9bb28fd3df03ee22dc43c8b37af497f",
     "scripts/migrate-with-focused-prerequisites.ts": "54c2248593444232488028fd2713709081f030aaacef616bb9f8aa281c9d88cc",
     "scripts/performance/fixture-workload.mjs": "8bef41b3e403683dbb399b1fd0f4a4f2feb3c673e4f72c6a141b0666e0161c51",
-    "scripts/performance/native-next-boot-browser.mjs": "f18b593143ac639703a1653e04e712466063b6631f5873ccaa622f0b7c21744f",
+    "scripts/performance/native-next-boot-browser.mjs": "26e0956d1ce836a19ef4d13629fdec481872f8e92cb8c2a7f83287ff88f909c0",
     "scripts/performance/next-source-proof.mjs": "290deb1655332a3db2fc2100d7f2c082d147a9ec8a4c36645e7a7d6094592e44",
     "test/db-names.ts": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b",
     "test/env.ts": "e8f9c2584f15c4701fc6ea032a3f5c90ea4581e64919bf1c535d79dda6677cf7",
@@ -136,7 +136,8 @@
     "test/runtime-next-plain-key-names.test.ts": "d8cab72729f6a9a07bc6686e4c7e25fbd9dd91db9b37c85234e393c7fb2945db",
     "test/runtime-next-profile.test.ts": "25f64a2099a0656904a7ce2395d301112fe8f1df55d97b9820ded621f6395c1e",
     "vitest.config.ts": "a2d0d96b3a1f18c322ea76a208de4a0b217b13258cff01f48e3a1f754dba318d",
-    "vitest.nodb.config.ts": "594bae2433c451ae3a1f83139fe4cce0fbe8415c751e374dcf4359814a2f429d"
+    "vitest.nodb.config.ts": "594bae2433c451ae3a1f83139fe4cce0fbe8415c751e374dcf4359814a2f429d",
+    "test/runtime-next-boot-home-driver-source.test.ts": "a3e3bc003c189fcaa80d42ee9287a5c49c750e5532a90c92a2b1c64b5d051d8f"
   },
   "actualWhole525Preimages": 11,
   "c045WholeRewinds": 9,
@@ -214,7 +215,7 @@
     "scripts/lib/discard-premigration.ts": "ce856d78b3d3e02e3d086969acecf398c9bb28fd3df03ee22dc43c8b37af497f",
     "scripts/migrate-with-focused-prerequisites.ts": "54c2248593444232488028fd2713709081f030aaacef616bb9f8aa281c9d88cc",
     "scripts/performance/fixture-workload.mjs": "8bef41b3e403683dbb399b1fd0f4a4f2feb3c673e4f72c6a141b0666e0161c51",
-    "scripts/performance/native-next-boot-browser.mjs": "f18b593143ac639703a1653e04e712466063b6631f5873ccaa622f0b7c21744f",
+    "scripts/performance/native-next-boot-browser.mjs": "26e0956d1ce836a19ef4d13629fdec481872f8e92cb8c2a7f83287ff88f909c0",
     "scripts/performance/next-source-proof.mjs": "290deb1655332a3db2fc2100d7f2c082d147a9ec8a4c36645e7a7d6094592e44",
     "test/db-names.ts": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b",
     "test/env.ts": "e8f9c2584f15c4701fc6ea032a3f5c90ea4581e64919bf1c535d79dda6677cf7",
@@ -499,5 +500,123 @@
     "priorPassesRetainedOnlyAt7fc": true,
     "directParent": "7d99d52640c5efdc94a2a020fd12bbeb17f5157b",
     "linearInsertionOrderCorrectionSourceOnly": true
+  },
+  "bootFirstHomeProof": {
+    "parent": "103774c6a0feabbba3a2fa5cbac6af93951c844f",
+    "sourceOnly": true,
+    "currentRuntimeVerified": false,
+    "existingSourceControlCallbacksChanged": 0,
+    "exactLeasePaths": [
+      "scripts/performance/native-next-boot-browser.mjs",
+      "test/runtime-next-boot-home-driver-source.test.ts",
+      "docs/qualification/native-next-boot-convergence-20261108.md",
+      "docs/qualification/native-next-controller-admit-timing-source-20261109.json",
+      "deploy/admission/next_bootstrap_session_inverse.json",
+      "deploy/admission/next_controller_admit_timing_inverse.json",
+      "deploy/admission/next_controller_admit_terminal_inverse.json"
+    ],
+    "wholeParentGitPreimages": {
+      "scripts/performance/native-next-boot-browser.mjs": {
+        "gitMode": "100644",
+        "gitBlob": "0dc997f055a077507fd3f75288b2d6f1b602ceef",
+        "bytes": 11066,
+        "sha256": "f18b593143ac639703a1653e04e712466063b6631f5873ccaa622f0b7c21744f"
+      },
+      "docs/qualification/native-next-boot-convergence-20261108.md": {
+        "gitMode": "100644",
+        "gitBlob": "6621b280078fe966db5eb8697e3bc0622b650416",
+        "bytes": 2319,
+        "sha256": "3bf81010cdcd3293c83eec1a29d470f5920f8852ce153373c4616be881d4c83f"
+      },
+      "docs/qualification/native-next-controller-admit-timing-source-20261109.json": {
+        "gitMode": "100644",
+        "gitBlob": "58decfd38a6a30081bb66e07a5fe691ae92ee88a",
+        "bytes": 35245,
+        "sha256": "600423f00bd09fbe4582026a2eab3e78b1915d675ab7d88a2ae72d904f1dfac9"
+      },
+      "deploy/admission/next_bootstrap_session_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "20d9f65208c0288988a9136809b15c9cecb37cb2",
+        "bytes": 3077660,
+        "sha256": "a39f27f18464e00a9c1f8fe82febfc8d3ad8d0a7359e06d13858d16c41ab1a48"
+      },
+      "deploy/admission/next_controller_admit_timing_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "e58dda1452f5041bb8034604e38cec884a0a7440",
+        "bytes": 7489276,
+        "sha256": "75cd68bf9eec202407c9e891a754e80dea181d89c2b51da7d4d9ef9228388e10"
+      },
+      "deploy/admission/next_controller_admit_terminal_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "97ac7a503a3a5f4b822824b89ac1ae05a7defdb6",
+        "bytes": 21682856,
+        "sha256": "8f425565583c22afd70e77a9eff0463773f7bb43ec376fe94e4fd49945fe809c"
+      }
+    },
+    "newParentAbsent": [
+      "test/runtime-next-boot-home-driver-source.test.ts"
+    ],
+    "qualificationRecord": {
+      "path": "docs/qualification/native-next-boot-convergence-20261108.md",
+      "bytes": 4838,
+      "sha256": "05df8d7a4877e7c84a6fb413e01ab14f602951e1db798c9bc4302f351bed2ac7"
+    },
+    "focusedSourceControl": {
+      "path": "test/runtime-next-boot-home-driver-source.test.ts",
+      "cases": 4,
+      "executed": false
+    },
+    "historicalReceipts": {
+      "controllerRunId": 42548637943,
+      "hostRunId": 42549130450,
+      "bootRunId": 42549850517,
+      "bootEvidenceSha256": "2e40599232b184e9d30c3aa172651ef2b606c253db6456d78a9dfa54e8cf55e9",
+      "rawBrowserSha256": "b2a3b921080270fefc43d5075d3fa4b853a914191c7aa6a9cad6abc25fe44d3c",
+      "originalBootOutcome": "canonical-build-passed-first-worker-start-and-group-hr-login-observed-first-home-incomplete",
+      "originalFailureStepUnknown": true,
+      "runtimeEvidenceTransferred": false
+    },
+    "recomposedExistingInverseTargets": {
+      "deploy/admission/next_bootstrap_session_inverse.json": [
+        "scripts/performance/native-next-boot-browser.mjs"
+      ],
+      "deploy/admission/next_controller_admit_timing_inverse.json": [
+        "deploy/admission/next_bootstrap_session_inverse.json"
+      ],
+      "deploy/admission/next_controller_admit_terminal_inverse.json": [
+        "deploy/admission/next_bootstrap_session_inverse.json",
+        "deploy/admission/next_controller_admit_timing_inverse.json"
+      ]
+    },
+    "newTimingInverseExactParentDriver": {
+      "owner": "deploy/admission/next_controller_admit_timing_inverse.json",
+      "path": "scripts/performance/native-next-boot-browser.mjs",
+      "wholeOriginalGitObject": {
+        "gitMode": "100644",
+        "gitBlob": "0dc997f055a077507fd3f75288b2d6f1b602ceef",
+        "bytes": 11066,
+        "sha256": "f18b593143ac639703a1653e04e712466063b6631f5873ccaa622f0b7c21744f"
+      }
+    },
+    "historicalHostControllerInverseUnchanged": true,
+    "nativeHostSourcePinsUnchanged": true,
+    "actualFullSourcePinChanges": [
+      "scripts/performance/native-next-boot-browser.mjs"
+    ],
+    "firstHomeTrace": {
+      "path": "native-next-boot-first-home-progress.jsonl",
+      "stages": 18,
+      "maximumRows": 21,
+      "closedRefusalTypes": [
+        "timeout",
+        "assertion",
+        "other"
+      ]
+    },
+    "actualWelcomeActionAndDismissalRequired": true,
+    "fixtureOnboardingStateUnchanged": true,
+    "budgetsUnchanged": true,
+    "noBrowserWorkflowOrProductAuthorityChange": true,
+    "releaseEligible": false
   }
 }
