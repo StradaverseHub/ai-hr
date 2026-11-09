@@ -3,8 +3,9 @@ import { cloneElement, isValidElement, type ComponentProps, type ReactNode } fro
 import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
+import { AuthRequiredError } from '../lib/auth-errors';
 
-const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), scope: vi.fn(), visibleCompanies: vi.fn(), navigation: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn(), requests: vi.fn(), accessCompanies: vi.fn(), accessEntry: vi.fn(), accessAdministration: vi.fn(), accessPermissions: vi.fn(), accessPersonalPages: vi.fn(), accessActivity: vi.fn() }));
+const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), scope: vi.fn(), visibleCompanies: vi.fn(), navigation: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn(), requests: vi.fn(), accessCompanies: vi.fn(), accessEntry: vi.fn(), accessAdministration: vi.fn(), accessPermissions: vi.fn(), accessPersonalPages: vi.fn(), accessActivity: vi.fn(), session: vi.fn(), isOperator: vi.fn(), isDemoDeployment: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async (namespace: keyof typeof en = 'rewards') => (key: string) => key.split('.').reduce((v: any, k) => v[k], en[namespace]) }));
 const redirect = vi.hoisted(() => vi.fn(() => { throw new Error('redirect'); }));
 const notFound = vi.hoisted(() => vi.fn(() => { throw new Error('not found'); }));
@@ -18,12 +19,13 @@ vi.mock('../packs/rewards/access-policy', () => ({
 }));
 vi.mock('../packs/rewards/activity', () => ({ rewardReviewActivity: ports.accessActivity }));
 vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupPlans: async () => [], rewardReviewCompanyGroups: async () => ({}), rewardWholeGroupSetupCompanies: async () => [] }));
-vi.mock('../lib/session', () => ({ getSession: async () => ({ tenantId: 'tenant' }) }));
-vi.mock('../lib/authz', () => ({ requireModule: ports.requireModule, isAdmin: () => false }));
+vi.mock('../lib/session', () => ({ getSession: ports.session }));
+vi.mock('../lib/authz', () => ({ requireModule: ports.requireModule, isAdmin: () => false, isOperator: ports.isOperator }));
+vi.mock('../lib/demo-mode', async importOriginal => ({ ...await importOriginal<typeof import('../lib/demo-mode')>(), isDemoDeployment: ports.isDemoDeployment }));
 vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, listRewardReviewStatus: ports.reviewStatus, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared, rewardPolicyMemberships: ports.memberships, getRewardCalendar: async () => ({ revision: 1, canEdit: true, values: { due: { bu: '2026-12-11' }, caseDue: null, offcycleDays: {} } }), rewardAccessRequests: ports.requests, rewardAccessAdministration: ports.accessAdministration, rewardCalendarStages: ['bu'], rewardOffcycleSlaStages: ['bg'] }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn(), calendarAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
-import AdminPage from '../app/admin/rewards/page';
+import { GET as rewardsBookmark, HEAD as rewardsBookmarkHead } from '../app/admin/rewards/route';
 import RewardAccessPage from '../app/admin/rewards/access/page';
 import ConfigurationPage from '../app/admin/rewards/[unitId]/page';
 import ReviewsPage from '../app/rewards/reviews/page';
@@ -49,6 +51,9 @@ async function resolvePolicyFields(node: ReactNode): Promise<ReactNode> {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  ports.session.mockResolvedValue(session);
+  ports.isOperator.mockReturnValue(false);
+  ports.isDemoDeployment.mockReturnValue(false);
   ports.scopedAdmin.mockResolvedValue({ s: session, scopeIds: ['company'] });
   ports.scopedSession.mockResolvedValue({ s: session, scopeIds: ['company'] });
   ports.choices.mockResolvedValue({ companies: [{ id: 'company', name: 'Company' }], units: [{ id: 'bu', companyId: 'company', name: 'Headquarters' }], users: [], cycles: [] });
@@ -65,10 +70,49 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Rewards administration and review destinations', () => {
-  it('redirects legacy Review Cycles to the approved plan workspace with the selected version', async () => {
-    await expect(AdminPage({ searchParams: Promise.resolve({ version: 'approved', year: '2026' }) })).rejects.toThrow('redirect');
-    expect(redirect).toHaveBeenCalledWith('/admin/rewards/plans?version=approved&year=2026');
-    expect(ports.list).not.toHaveBeenCalled();
+  it.each([['GET', rewardsBookmark], ['HEAD', rewardsBookmarkHead]] as const)(
+    'redirects legacy Review Cycles with an uncached HTTP 307 on %s', async (method, handle) => {
+      const request = new Request('https://fixture.invalid/admin/rewards?version=approved&year=2026', { method });
+      const response = await handle(request);
+      expect(response.status).toBe(307);
+      expect(response.headers.get('location')).toBe('/admin/rewards/plans?version=approved&year=2026');
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      expect(await response.text()).toBe('');
+      expect(ports.session).toHaveBeenCalledTimes(1);
+      expect(ports.requireModule).toHaveBeenCalledExactlyOnceWith('rewards', session);
+      expect(ports.requireModule.mock.calls[0][1]).toBe(session);
+      expect(ports.scopedAdmin).not.toHaveBeenCalled();
+      expect(ports.list).not.toHaveBeenCalled();
+    });
+  it.each([
+    ['?version=a&version=b&year=2026&year=2027&error=first&error=second&sharedError=ignored&next=https://foreign.invalid', ''],
+    ['?sharedError=Needs+review&next=https://foreign.invalid', '?error=Needs+review'],
+    ['?sharedError=ignored&error=', '?error='],
+    ['?year=2026&sharedError=first&sharedError=second', '?year=2026'],
+  ])('preserves the legacy scalar and error-precedence rules for %s', async (search, expected) => {
+    const response = await rewardsBookmark(new Request(`https://fixture.invalid/admin/rewards${search}`));
+    expect(response.headers.get('location')).toBe('/admin/rewards/plans' + expected);
+  });
+  it('runs identity, operator and Rewards module decisions before exposing the Plans target', async () => {
+    const request = new Request('https://fixture.invalid/admin/rewards');
+    ports.session.mockRejectedValueOnce(new AuthRequiredError('fictional missing session'));
+    await expect(rewardsBookmark(request)).rejects.toThrow('redirect');
+    expect(redirect).toHaveBeenLastCalledWith('/login');
+    expect(ports.requireModule).not.toHaveBeenCalled();
+
+    ports.isOperator.mockReturnValueOnce(true);
+    await expect(rewardsBookmarkHead(request)).rejects.toThrow('redirect');
+    expect(redirect).toHaveBeenLastCalledWith('/operator');
+    expect(ports.requireModule).not.toHaveBeenCalled();
+
+    ports.requireModule.mockImplementationOnce(() => redirect('/?moduleUnavailable=rewards'));
+    await expect(rewardsBookmark(request)).rejects.toThrow('redirect');
+    expect(redirect).toHaveBeenLastCalledWith('/?moduleUnavailable=rewards');
+
+    ports.isOperator.mockReturnValueOnce(true);
+    ports.isDemoDeployment.mockReturnValueOnce(true);
+    expect((await rewardsBookmark(request)).status).toBe(307);
+    expect(ports.requireModule).toHaveBeenLastCalledWith('rewards', session);
   });
   it('opens scoped access maintenance without loading policy, activity or exports', async () => {
     ports.accessEntry.mockResolvedValue({ companies: [{ id: 'company' }], groupRewards: false });
