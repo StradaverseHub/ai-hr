@@ -695,7 +695,7 @@ jobs:
           timing_keys = 'hire identityAndSessionProvisioning historyAndCompensationSeed payrollGenerate50 payrollClose50'
           module_codes = set(('employees org leave ess approvals knowledge_base payroll attendance claims performance '
                               'rewards lifecycle notifications assistant system_explorer system_testing').split())
-          fixture_phase_names = set(('letter-draft-prerequisites claims-history attendance-history historical-payroll-generate '
+          fixture_phase_names = set(('lifecycle-hub letter-draft-prerequisites claims-history attendance-history historical-payroll-generate '
                                      'historical-payroll-close rewards-draft-prerequisites rewards-draft-import '
                                      'payroll-readiness-after-organisation-publication attendance-workflow-tail '
                                      'reporting-line-tail post-seed-counts audit-counts assistant-saved-history').split())
