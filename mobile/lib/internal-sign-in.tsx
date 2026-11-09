@@ -1,11 +1,12 @@
 import { PublicHeader } from './public-header';
 import { DesignText as Text } from './design';
-import { useRef, useState } from 'react';
+import { useContext, useRef, useState } from 'react';
+import { MfaResumeContext } from './mfa-resume';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { TextInput, ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { beginSignIn, assertAuthGeneration, completeInternalSignIn } from './auth';
+import { authGeneration, beginSignIn, assertAuthGeneration, completeInternalSignIn } from './auth';
 import { useCompanyConnection, companyCopy } from './company-connection';
 import { verifyCompanyServer } from './connection-probe';
 import { config, runtimeConnections } from './config';
@@ -27,10 +28,14 @@ export function InternalSignIn() {
   const styles = signInStyles(palette);
   const workplaceOrganization = company?.organization ?? '';
   const copy = authCopy[appLocale()];
-  const [step, setStep] = useState<InternalReply | null>(null), [organization, setOrganization] = useState('');
+  const resume = useContext(MfaResumeContext);
+  const saved = resume?.current;
+  const resumable = saved && saved.owner === authGeneration() ? saved : null;
+  const [step, setStep] = useState<InternalReply | null>(() => resumable ? { step: 'mfa', challenge: resumable.challenge } : null);
+  const [organization, setOrganization] = useState('');
   const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [confirmation, setConfirmation] = useState(''), [code, setCode] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const pending = useRef(false), owner = useRef<number | null>(null);
+  const pending = useRef(false), owner = useRef<number | null>(resumable?.owner ?? null);
   async function finish(result: InternalReply) {
     if (owner.current === null || !result.access_token || !result.refresh_token) return;
     assertAuthGeneration(owner.current);
@@ -41,8 +46,11 @@ export function InternalSignIn() {
     if (pending.current) return;
     if (step?.step === 'password' && password !== confirmation) { setError('passwordMismatch'); return; }
     pending.current = true; setBusy(true); setError('');
+    // A request in flight owns its challenge until it returns. A remounted form cannot submit it twice.
+    if (resume) resume.current = null;
     const body: Record<string, string> = step ? { challenge: step.challenge!, ...(step.step === 'password' ? { password } : { code }) } : { organization: workplaceOrganization || organization, username, password };
     setPassword(''); setConfirmation(''); setCode('');
+    let responseReceived = false;
     try {
       if (!step) {
         owner.current = beginSignIn();
@@ -51,9 +59,20 @@ export function InternalSignIn() {
         assertAuthGeneration(owner.current);
       }
       const result = await internalAuthRequest(!step ? 'login' : step.step === 'password' ? 'password' : 'mfa', body, owner.current!);
-      assertAuthGeneration(owner.current!); setStep(result);
+      responseReceived = true;
+      assertAuthGeneration(owner.current!);
+      if (resume && result.step === 'mfa' && result.challenge) {
+        resume.current = { owner: owner.current!, challenge: result.challenge };
+      }
+      setStep(result);
       if (result.step === 'complete' && !result.recoveryCodes?.length) await finish(result);
-    } catch (e) { setError(e instanceof InternalSignInError ? e.code : 'unavailable'); }
+    } catch (e) {
+      const errorCode = e instanceof InternalSignInError ? e.code : 'unavailable';
+      if (!responseReceived && resume && step?.step === 'mfa' && step.challenge && owner.current === authGeneration() && errorCode !== 'invalidChallenge') {
+        resume.current = { owner: owner.current, challenge: step.challenge };
+      }
+      setError(errorCode);
+    }
     finally { pending.current = false; setBusy(false); }
   }
   if (session.status === 'signedIn') return <Redirect href="/"/>;
@@ -113,7 +132,7 @@ export function InternalSignIn() {
       </>}
       {(state === 'enroll' || state === 'mfa') && <><Text style={styles.label}>{state === 'enroll' ? copy.code : copy.codeOrRecovery}</Text><TextInput accessibilityLabel={state === 'enroll' ? copy.code : copy.codeOrRecovery} autoCapitalize="characters" autoCorrect={false} autoComplete="one-time-code" maxLength={64} value={code} onChangeText={setCode} style={[{ fontFamily: 'FieldRegular' }, styles.input]} editable={!busy}/></>}
       <Button title={busy ? copy.working : copy.continue} onPress={() => void submit()} disabled={busy || (state === 'password' && (!password || !confirmation)) || ((state === 'enroll' || state === 'mfa') && !code)}/>
-      {step && <Button title={copy.back} kind="quiet" disabled={busy} onPress={() => { beginSignIn(); owner.current = null; setStep(null); setPassword(''); setCode(''); setError(''); }}/>}
+      {step && <Button title={copy.back} kind="quiet" disabled={busy} onPress={() => { if (resume) resume.current = null; beginSignIn(); owner.current = null; setStep(null); setPassword(''); setCode(''); setError(''); }}/>}
     </View>}
     <Button title={companyCopy().change} kind="quiet" disabled={busy} onPress={() => router.push('/company')}/>
   </ScrollView></SafeAreaView>;

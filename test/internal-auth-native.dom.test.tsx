@@ -7,10 +7,12 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import copy from '../mobile/lib/internal-auth-copy.json';
+import { MfaResumeContext } from '../mobile/lib/mfa-resume';
 function fixture(organization?: string) {
   let generation = 0;
+  let visible = true;
   class Failure extends Error { constructor(public code: string) { super(code); } }
-  const auth = { beginSignIn: () => ++generation, assertAuthGeneration: (owner: number) => { if (owner !== generation) throw new Error('Session changed'); }, completeInternalSignIn: vi.fn(async () => {}) };
+  const auth = { authGeneration: () => generation, beginSignIn: () => ++generation, assertAuthGeneration: (owner: number) => { if (owner !== generation) throw new Error('Session changed'); }, completeInternalSignIn: vi.fn(async () => {}) };
   const request = vi.fn(), probe = vi.fn(async () => {}), router = { replace: vi.fn(), push: vi.fn() }, mark = vi.fn(async () => {});
   const Container = ({ children }: React.PropsWithChildren) => <div>{children}</div>;
   const Text = ({ children, accessibilityRole }: React.PropsWithChildren<{accessibilityRole?:string}>) => accessibilityRole === 'header' ? <h1>{children}</h1> : <span role={accessibilityRole === 'alert' ? 'alert' : undefined}>{children}</span>;
@@ -21,18 +23,36 @@ function fixture(organization?: string) {
     '../assets/onehr-icon.png':{uri:'fixture://onehr-icon'},
     react: React, 'react/jsx-runtime': jsx,
     'react-native': { Text, Pressable:({children,accessibilityLabel,accessibilityRole,disabled,onPress}:any)=><button aria-label={accessibilityLabel} role={accessibilityRole==='link'?'link':undefined} disabled={disabled} onClick={onPress}>{typeof children==='function'?children({pressed:false}):children}</button>, ActivityIndicator:()=>null, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
-    'expo-router':{router,Redirect:()=>null},'expo-web-browser':{openBrowserAsync:vi.fn()},
+    'expo-router':{useRouter:()=>router,Redirect:()=>null,Stack:()=> <output.exports.InternalSignIn/>},'expo-web-browser':{openBrowserAsync:vi.fn()},
     './auth':auth,'./company-connection':{useCompanyConnection:()=>({name:'Private customer',apiOrigin:'https://hr.test',organization}),companyCopy:()=>({change:'Change company'})},
     './connection-probe':{verifyCompanyServer:probe},'./config':{config:{apiUrl:'https://hr.test'},runtimeConnections:true},
-    './internal-auth':{internalAuthRequest:request,InternalSignInError:Failure},'./session':{useSession:()=>({status:'signedOut',markSignedIn:mark})},
+    './internal-auth':{internalAuthRequest:request,InternalSignInError:Failure},'./session':{SessionProvider:Container,useSession:()=>({status:'signedOut',visible,markSignedIn:mark})},
     './i18n':{appLocale:()=> 'en',t:(key:string)=>key==='appName'?'OneHR+':key},'./internal-auth-copy.json':copy,
-    './sign-in-background':{SignInBackground:()=>null}, './icon':{Icon:()=>null}, 'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:0,bottom:0})},
-    './design':{Atmosphere:()=>null,useTenantDesign:()=>({palette:{}})},
+    './mfa-resume':{MfaResumeContext}, './public-header':{PublicHeader:()=>null},
+    './sign-in-background':{SignInBackground:()=>null}, './icon':{Icon:()=>null}, 'react-native-safe-area-context':{SafeAreaView:Container,SafeAreaProvider:Container},
+    './design':{DesignText:Text,PublicDesignProvider:Container,Atmosphere:()=>null,useTenantDesign:()=>({palette:{}})},
     './ui':{colors:{},Button:({title,disabled,onPress}:any)=><button disabled={disabled} onClick={onPress}>{title}</button>},
   };
-  runInNewContext(transpileModule(readFileSync('mobile/lib/internal-sign-in.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,
-    {exports:output.exports,module:output,URL,require:(name:string)=>{if(!(name in ports))throw new Error(name);return ports[name];}});
-  return { View:output.exports.InternalSignIn,auth,request,probe,router,mark,Failure };
+  function load(file: string, target: { exports: object }, overrides: Record<string, unknown> = {}) {
+    runInNewContext(transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,
+      {exports:target.exports,module:target,URL,require:(name:string)=>{
+        if (name in overrides) return overrides[name];
+        const key = name.replace(/^\.\.\/lib\//, './');
+        if (!(key in ports)) throw new Error(name);
+        return ports[key];
+      }});
+  }
+  load('mobile/lib/internal-sign-in.tsx', output);
+  const layout = { exports: {} as {default: React.ComponentType} };
+  load('mobile/app/_layout.tsx', layout, {
+    '../lib/api': {}, '../lib/app-shell': {}, '../lib/widget-launch': {WidgetLaunchObserver:()=>null},
+    '../lib/journey-drafts': {JourneyDraftProvider:Container},
+    '../lib/company-connection': {...ports['./company-connection'] as object, CompanyConnectionProvider:Container, WorkplaceReviewBoundary:Container},
+    '../../lib/mobile-composition': {colorContrast:()=>1}, 'expo-font': {useFonts:()=>[true]},
+    '../lib/field-typography': {}, 'expo-status-bar': {StatusBar:()=>null}, '../lib/app-lock': {},
+    '../lib/preferences': {useDisplayPrefs:()=>({language:'en'})}, '../lib/push': {PushSessionWatcher:()=>null},
+  });
+  return { View:output.exports.InternalSignIn, Layout:layout.exports.default, setVisible:(value:boolean)=>{visible=value;}, auth,request,probe,router,mark,Failure };
 }
 afterEach(cleanup);
 async function login(user: ReturnType<typeof userEvent.setup>) {
@@ -43,7 +63,7 @@ describe('native embedded sign-in — rendered shipped screen',()=>{
   it.each(['cloud-alpha','cloud-beta','private-company'])('uses the signed workplace %s with only username/password entry before MFA',async organization=>{
     const f=fixture(organization),user=userEvent.setup();f.request.mockResolvedValueOnce({step:'mfa',challenge:'m'.repeat(43)});
     render(<f.View/>);expect(screen.queryByLabelText(copy.en.organization)).not.toBeInTheDocument();
-    expect(screen.getByText(copy.en.organization+': '+organization)).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:'Change company'})).toHaveTextContent(organization);
     await user.type(screen.getByLabelText(copy.en.username),'employee');await user.type(screen.getByLabelText(copy.en.password),'Private fixture password 771!');
     await user.click(screen.getByRole('button',{name:copy.en.signIn}));
     await screen.findByRole('heading',{name:copy.en.mfaTitle});
@@ -75,6 +95,33 @@ describe('native embedded sign-in — rendered shipped screen',()=>{
     await user.type(screen.getByLabelText(copy.en.codeOrRecovery),'wrong-code');await user.click(screen.getByRole('button',{name:copy.en.continue}));
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.en.errors.invalidCode);expect(screen.getByLabelText(copy.en.codeOrRecovery)).toHaveValue('');
     expect(f.auth.completeInternalSignIn).not.toHaveBeenCalled();expect(f.mark).not.toHaveBeenCalled();
+  });
+  it('resumes the pending code screen after the root gate hides and remounts sign-in',async()=>{
+    const f=fixture(),user=userEvent.setup(),challenge='m'.repeat(43);
+    f.request.mockResolvedValueOnce({step:'mfa',challenge}).mockResolvedValueOnce({step:'complete',access_token:'aihr_'+'a'.repeat(43),refresh_token:'aihr_refresh_'+'b'.repeat(43),expires_in:900});
+    const view=render(<f.Layout/>);await login(user);
+    await screen.findByRole('heading',{name:copy.en.mfaTitle});
+    await user.type(screen.getByLabelText(copy.en.codeOrRecovery),'000000');
+    f.setVisible(false);view.rerender(<f.Layout/>);
+    expect(screen.queryByLabelText(copy.en.codeOrRecovery)).not.toBeInTheDocument();
+    f.setVisible(true);view.rerender(<f.Layout/>);
+    expect(await screen.findByLabelText(copy.en.codeOrRecovery)).toHaveValue('');
+    expect(screen.queryByLabelText(copy.en.password)).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(copy.en.codeOrRecovery),'123456');
+    await user.click(screen.getByRole('button',{name:copy.en.continue}));
+    await waitFor(()=>expect(f.mark).toHaveBeenCalledOnce());
+    expect(f.request).toHaveBeenNthCalledWith(2,'mfa',{challenge,code:'123456'},1);
+    expect(f.probe).toHaveBeenCalledOnce();
+  });
+  it('discards a saved challenge when its sign-in attempt is replaced',async()=>{
+    const f=fixture(),user=userEvent.setup();f.request.mockResolvedValueOnce({step:'mfa',challenge:'m'.repeat(43)});
+    const view=render(<f.Layout/>);await login(user);await screen.findByRole('heading',{name:copy.en.mfaTitle});
+    f.setVisible(false);view.rerender(<f.Layout/>);
+    f.auth.beginSignIn();
+    f.setVisible(true);view.rerender(<f.Layout/>);
+    expect(screen.getByLabelText(copy.en.password)).toHaveValue('');
+    expect(screen.queryByLabelText(copy.en.codeOrRecovery)).not.toBeInTheDocument();
+    expect(f.request).toHaveBeenCalledOnce();
   });
   it('can retry local session completion after MFA without showing nonexistent backup codes',async()=>{
     const f=fixture(),user=userEvent.setup();

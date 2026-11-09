@@ -8,7 +8,8 @@ import { CompanyConnectionProvider, WorkplaceReviewBoundary, useCompanyConnectio
 import { Atmosphere, PublicDesignProvider, TenantDesignProvider, useTenantDesign } from '../lib/design';
 import { colorContrast } from '../../lib/mobile-composition';
 import { Stack, useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { MfaResumeContext } from '../lib/mfa-resume';
 import { useFonts } from 'expo-font';
 import { FIELD_NOTES_FONTS } from '../lib/field-typography';
 import { StatusBar } from 'expo-status-bar';
@@ -51,6 +52,8 @@ function Gate() {
   const router = useRouter();
   const { status, visible, error, unlocking, unlock, signOut } = useSession();
   const company=useCompanyConnection();
+  const mfaResume = useRef<{ owner: number; challenge: string } | null>(null);
+  useEffect(() => { if (status !== 'signedOut') mfaResume.current = null; }, [status]);
   const { palette } = useTenantDesign();
   // Navigate only AFTER the signed-out Stack commits, including the first connection setup.
   useEffect(()=>{if(company&&status==='signedOut'&&visible)router.replace('/sign-in');},[company,status,visible,router]);
@@ -64,7 +67,7 @@ function Gate() {
   if (status === 'locked') {
     return <LockScreen error={error} unlocking={unlocking} unlock={unlock} signOut={signOut} />;
   }
-  return status === 'signedIn' ? <ReadSnapshotBoundary><TenantDesignProvider><ThemedStack /></TenantDesignProvider></ReadSnapshotBoundary> : <Stack screenOptions={{ headerShown: false }} />;
+  return status === 'signedIn' ? <ReadSnapshotBoundary><TenantDesignProvider><ThemedStack /></TenantDesignProvider></ReadSnapshotBoundary> : <MfaResumeContext.Provider value={mfaResume}><Stack screenOptions={{ headerShown: false }} /></MfaResumeContext.Provider>;
 }
 
 /** The app lock: the phone's own biometric named and pictured, one unlock button, and sign out as the way past it. */
