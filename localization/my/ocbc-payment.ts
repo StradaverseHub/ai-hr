@@ -7,7 +7,7 @@ import {type SessionContext,type Tx} from '../../db/client';
 import {withPayrollHistoryTenant} from '../../packs/payroll/history';
 import {myBankLabel} from '../../lib/my-banks';
 import {appendEvent,actorOf} from '../../db/events';
-import {company,companyBankProfile,companyStatutoryMy,companyStatutoryAuthority,employeeStatutoryMy,employment,payrollBatch,payslip,person,bankPaymentExport,payrollCycle} from '../../db/schema';
+import {company,companyBankProfile,companyStatutoryMy,companyStatutoryAuthority,employeeStatutoryMy,employment,payrollBatch,payslip,person,bankPaymentExport,payrollCycle,payPeriod} from '../../db/schema';
 import {BankPaymentFileError,type BankPaymentCategory,type BankPaymentFiles,type BankPaymentOptions,type BankPaymentRequest} from '../country-pack';
 import {buildOcbcFile,ocbcLhdnTaxIdentity,OcbcFileError,type OcbcInput,type OcbcRow} from './ocbc-file';
 import {buildMaybankV74File,type MaybankInput,type MaybankRow} from './maybank-v74-file';
@@ -77,11 +77,15 @@ async function submissionRuns(
     runType: payrollBatch.runType,
     cycleName: payrollCycle.name,
     status: payrollBatch.status,
+    monthStatus: payPeriod.status,
     stale: payrollBatch.needsRecalcAt,
     employeeCount: payrollBatch.employeeCount,
     payslipCount: sql<number>`(select count(*)::int from ${payslip} where ${payslip.batchId} = ${payrollBatch.id})`,
   }).from(payrollBatch).leftJoin(payrollCycle, and(
     eq(payrollCycle.id, payrollBatch.payrollCycleId), eq(payrollCycle.tenantId, payrollBatch.tenantId),
+  )).innerJoin(payPeriod, and(
+    eq(payPeriod.id, payrollBatch.payPeriodId), eq(payPeriod.tenantId, payrollBatch.tenantId),
+    eq(payPeriod.companyId, payrollBatch.companyId), eq(payPeriod.period, payrollBatch.payPeriod),
   )).where(and(
     eq(payrollBatch.tenantId, ctx.tenantId), eq(payrollBatch.companyId, companyId),
     inArray(payrollBatch.status, ['processed', 'closed']), isNull(payrollBatch.historyImportAttemptId),
@@ -91,8 +95,12 @@ async function submissionRuns(
   return selection ? query.for('share', { of: payrollBatch }) : query;
 }
 
-function isClosedPaymentRun(run: Awaited<ReturnType<typeof submissionRuns>>[number]) {
+type PaymentRun = Awaited<ReturnType<typeof submissionRuns>>[number];
+function isClosedPaymentRun(run: PaymentRun) {
   return run.status === 'closed' && !run.stale && run.payslipCount > 0 && run.payslipCount === run.employeeCount;
+}
+function isClosedStatutoryMonth(runs: PaymentRun[]) {
+  return runs.length > 0 && runs.every(run => run.monthStatus === 'closed' && isClosedPaymentRun(run));
 }
 
 async function source(tx:Tx,ctx:SessionContext,p:BankPaymentRequest){
@@ -129,7 +137,7 @@ async function source(tx:Tx,ctx:SessionContext,p:BankPaymentRequest){
   const today=todayInKualaLumpur(),days=(Date.parse(p.paymentDate+'T00:00:00Z')-Date.parse(today+'T00:00:00Z'))/86400000;if(days<0||days>90)throw new OcbcFileError('Maybank value date must be today or within the next 90 days.');
  }
  const batches = await submissionRuns(tx, ctx, p.companyId, { periodKey: p.periodKey, runSeq: p.runSeq });
- if(p.closedPayrollOnly&&(!batches.length||batches.some(batch => !isClosedPaymentRun(batch)))) {
+ if(p.closedPayrollOnly && !(format === 'salary' ? batches.length === 1 && isClosedPaymentRun(batches[0]) : isClosedStatutoryMonth(batches))) {
   throw new BankPaymentFileError('Only complete, closed payroll runs are available. Refresh the payroll selection.', 409);
  }
  if(!batches.length)throw new OcbcFileError('No ready payroll runs exist for this selection. Imported history cannot initiate a bank payment.');
@@ -190,7 +198,7 @@ export const ocbcBankPaymentFiles:BankPaymentFiles={
   }
   const periods = [...byPeriod].flatMap(([periodKey, group]) => {
    const closed = group.filter(isClosedPaymentRun);
-   if (!closed.length || p.category !== 'salary' && closed.length !== group.length) return [];
+   if (!closed.length || p.category !== 'salary' && !isClosedStatutoryMonth(group)) return [];
    return [{ periodKey, runs: p.category === 'salary' ? closed.map(({ runSeq, cycleName, runType }) => ({ runSeq, cycleName, runType })) : [] }];
   });
   return {

@@ -9,7 +9,7 @@ import {closeBatch,createBatch,generatePayslips} from '../packs/payroll/service'
 import {upsertCompanyBankProfile} from '../core/bank-profile';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {ocbcBankPaymentFiles} from '../localization/my/ocbc-payment';
-import {appUser,bankPaymentExport,companyBankProfile,companyStatutoryAuthority,companyStatutoryMy,employeeStatutoryMy,payrollBatch,payslip} from '../db/schema';
+import {appUser,bankPaymentExport,companyBankProfile,companyStatutoryAuthority,companyStatutoryMy,employeeStatutoryMy,payPeriod,payrollBatch,payslip} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {BankPaymentRequest} from '../localization/country-pack';
 describe('OCBC immutable generated bank artifacts',()=>{
@@ -59,9 +59,14 @@ describe('OCBC immutable generated bank artifacts',()=>{
   const {ctx,request,batchId}=await fixture();
   await closeBatch(ctx,{batchId});
   const [batch]=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));
+  const selection={companyId:b.companyId,category:'socso'} as const;
+  expect((await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).periods)
+   .toEqual([{periodKey:period,runs:[]}]);
+  await owner.db.update(payPeriod).set({status:'open'}).where(eq(payPeriod.id,batch.payPeriodId));
+  expect((await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).periods).toEqual([]);
+  await owner.db.update(payPeriod).set({status:'closed'}).where(eq(payPeriod.id,batch.payPeriodId));
   const secondId=randomUUID();
   await owner.db.insert(payrollBatch).values({...batch,id:secondId,runSeq:2,runType:'bonus',status:'processed',closedAt:null});
-  const selection={companyId:b.companyId,category:'socso'} as const;
   const {runSeq:_,...monthly}=request;
   const requestForMonth={...monthly,formatId:'my.ocbc.socso',closedPayrollOnly:true as const};
   expect((await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).periods).toEqual([]);
