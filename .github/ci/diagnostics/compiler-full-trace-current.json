@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "kind": "FIXED_CURRENT_STOCK_TRACE_SOURCE",
+  "cohort": "PAYROLL_BASELINE_CURRENT",
+  "base": "db88dffc4de594329a95002c34999a18ba3dcde0",
+  "source": "08028380b4ff27c81fca5a4072f59e0ff73a4a9a",
+  "tree": "d70052426cbfcc5b4eb69a63f39c51e4e83b2b8b",
+  "branch": "codex/5aa-architecture-manifests-20261109",
+  "manifestOutputs": [
+    {
+      "path": "lib/ai/module-agent-source-manifest.ts",
+      "bytes": 352,
+      "sha256": "3d7a2b6213aadb4a0594970dffc879c3b3c9da5b33855e14842ddf3dce60dbec"
+    },
+    {
+      "path": "lib/ai/provider-data-source-manifest.ts",
+      "bytes": 228,
+      "sha256": "897ad0202e2fd3f9c9c374898b7fc926540f97a98d3848fb4397f14d0085e392"
+    }
+  ],
+  "common": [
+    {
+      "path": "tsconfig.json",
+      "bytes": 676,
+      "sha256": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "bytes": 356104,
+      "sha256": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+    },
+    {
+      "path": "package.json",
+      "bytes": 6300,
+      "sha256": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c"
+    },
+    {
+      "path": "next.config.ts",
+      "bytes": 6579,
+      "sha256": "a2e110533821502c36cd0b371960fe7cb73710ef9e253221bd188696560724f6"
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "bytes": 120,
+      "sha256": "68505b5f88e6fbd9ef4a309ca131de8e64f1749939d846da2d81e88db14c9369"
+    },
+    {
+      "path": "node_modules/typescript/package.json",
+      "bytes": 3620,
+      "sha256": "822ef7ca6452205657b6288b066481ecf508bfbf43455d715cf7d3ec457561e6"
+    },
+    {
+      "path": "node_modules/typescript/lib/tsc.js",
+      "bytes": 267,
+      "sha256": "2cffde0b8c6760dfb0b5b0382bbb7e00ba6a8b2d981b9205b256a700a481d983"
+    },
+    {
+      "path": "node_modules/typescript/lib/_tsc.js",
+      "bytes": 6213092,
+      "sha256": "e8f349eabd48486bdb2bf9dc1a00c89d58297270c54b745838879e2859194419"
+    },
+    {
+      "path": "node_modules/typescript/lib/typescript.js",
+      "bytes": 9112572,
+      "sha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675"
+    }
+  ],
+  "trackedInputCount": 9167,
+  "trackedInputPathsSha256": "0e134696cd8463407d6caf3c53e709105031d7733494776c04566f2c017d7bc9"
+}

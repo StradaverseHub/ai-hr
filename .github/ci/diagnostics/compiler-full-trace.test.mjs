@@ -7,7 +7,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {retainTraceDiagnostics,validateWorkflowRef,LIMITS,validatePairData,validateTraceInputs,stageBudget,stockCommand,compilerOutcome,
  readHeld,sameStat,validateExportEntries,copyHeld,traceState,validateAnchorData,validateProducerFragment,
- validateTypegenSuccess,verifyFileManifest,cleanupReceiptRequired} from './compiler-full-trace.mjs';
+ validateTypegenSuccess,verifyFileManifest,cleanupReceiptRequired,validateCurrentTraceData,validateCurrentTraceInputs,
+ summarizeStockTrace,phaseSummary} from './compiler-full-trace.mjs';
 const original=JSON.parse(readFileSync(new URL('./compiler-full-trace-pair.json',import.meta.url),'utf8'));
 const clone=()=>structuredClone(original),digest=b=>createHash('sha256').update(b).digest('hex');
 const selection=cell=>({candidate_ref:cell.branch,expected_sha:cell.source,selected_tests:'[]',
@@ -336,4 +337,79 @@ test('actual unreadable safe member causes raw copy refusal and isolated fallbac
   assert.deepEqual(readFileSync(join(f.pending,'raw/report.json')),f.report);
   assert.notEqual(result.retentionRoot,join(f.pending,'raw'));
  }finally{chmodSync(join(f.root,'resources.json'),0o600);f.cleanup();}
+});
+
+test('new cohort requires one exact frozen manifest successor and rejects historical or mixed requests',()=>{
+ const current=JSON.parse(readFileSync(new URL('./compiler-full-trace-current.json',import.meta.url),'utf8'));
+ assert.equal(validateCurrentTraceData(current).base,'db88dffc4de594329a95002c34999a18ba3dcde0');
+ assert.equal(validateCurrentTraceInputs(selection(current),current),current);
+ for(const value of [selection(original.control),selection(original.candidate),{...selection(current),selected_tests:'["foreign"]'},
+  {...selection(current),run_build:true},{...selection(current),extra:'private'},{...selection(current),model_eval:'private'}]){
+  assert.throws(()=>validateCurrentTraceInputs(value,current));
+ }
+ for(const mutate of [row=>row.tree='unknown',row=>row.cohort='FOREIGN',row=>row.common.pop(),row=>row.manifestOutputs.reverse(),
+  row=>row.trackedInputCount++,row=>row.branch='codex/foreign']){
+  const row=structuredClone(current);mutate(row);assert.throws(()=>validateCurrentTraceData(row));
+ }
+});
+
+test('owned stock prefix yields only numeric aggregates and tracked-owner hashes after truncation',()=>{
+ const base=fixture(),path=join(base,'trace.json'),source=join(base,'source'),owned='test/fixed.ts';
+ const event=(cat,name,ph,ts,args)=>({cat,name,ph,ts,pid:1,tid:1,args});
+ try{
+  const rows=[event('parse','createSourceFile','B',1,{path:'private absolute path'}),
+   event('check','checkSourceFile','B',10,{path:source+'/'+owned}),
+   event('checkTypes','structuredTypeRelatedTo','X',15,{sourceId:58919,targetId:59419,display:'private compiler text'}),
+   event('check','checkSourceFile','E',30,{path:source+'/'+owned}),
+   event('check','checkSourceFile','B',40,{path:'private foreign absolute path'})];
+  writeFileSync(path,'[\n'+rows.map(row=>JSON.stringify(row)+',\n').join('')+'{"truncatedPrivate":"unfinished',{mode:0o600});
+  const summary=summarizeStockTrace(path,source,new Set([owned]),process.hrtime.bigint()+5000000000n);
+  assert.equal(summary.events,5);assert.equal(summary.stop,'INCOMPLETE_FINAL_LINE');assert.equal(summary.openCheckIntervals,1);
+  assert.deepEqual(summary.groups.test,{intervals:1,durationUs:20});assert.equal(summary.counts.relations,1);
+  assert.deepEqual(summary.top,[{ownerSha256:digest(owned),durationUs:20}]);
+  const raw=JSON.stringify(summary);
+  for(const privateText of ['private','58919','59419','fixed.ts','truncatedPrivate'])assert(!raw.includes(privateText));
+ }finally{rmSync(base,{recursive:true,force:true});}
+});
+
+test('redacted trace observes real array closure but refuses unsafe custody, malformed prefixes and expired projection',()=>{
+ const base=fixture(),path=join(base,'trace.json'),link=join(base,'link.json'),source=join(base,'source');
+ const deadline=()=>process.hrtime.bigint()+5000000000n;
+ try{
+  writeFileSync(path,'[\n{"cat":"test","name":"metadata","ph":"I"}\n]\n',{mode:0o600});
+  assert.equal(summarizeStockTrace(path,source,new Set(),deadline()).stop,'CLOSING_LINE_OBSERVED');
+  assert.equal(summarizeStockTrace(path,source,new Set(),1n).stop,'TIME_BOUND');
+  symlinkSync(path,link);assert.throws(()=>summarizeStockTrace(link,source,new Set(),deadline()));
+  writeFileSync(path,'[\nnot-json\n]\n');
+  assert.equal(summarizeStockTrace(path,source,new Set(),deadline()).stop,'INVALID_PREFIX');
+  writeFileSync(path,'[\n'+'x'.repeat(16385)+'\n');
+  assert.equal(summarizeStockTrace(path,source,new Set(),deadline()).stop,'LINE_BOUND');
+ }finally{rmSync(base,{recursive:true,force:true});}
+});
+
+test('phase projection retains actual bounded OOM and resource facts without raw diagnostics or argv',()=>{
+ const raw=Buffer.from('Command terminated by signal 6\n\tMaximum resident set size (kbytes): 12836532\nprivate diagnostic text\n');
+ const phase={name:'check',logStartByte:0,logEndByte:raw.length,closed:true,code:134,signal:null,elapsedMs:480000,
+  v8HeapFailure:true,diagnosticsObserved:0,compilerCompleted:false,error:'private raw error',args:['private args']};
+ assert.deepEqual(phaseSummary(phase,raw),{stage:'check',closed:true,exit:134,wrapperSignal:null,termination:null,
+  timeObservedSignal:6,elapsedMs:480000,maxRssKiB:12836532,v8HeapFailure:true,diagnostics:0,compilerCompleted:false});
+ const unavailable=phaseSummary({...phase,closed:false,logEndByte:raw.length+1},raw);
+ assert.equal(unavailable.maxRssKiB,null);assert.equal(unavailable.timeObservedSignal,null);
+ assert.equal(unavailable.compilerCompleted,false);
+ assert.equal(phaseSummary({...phase,code:0,compilerCompleted:true},raw).compilerCompleted,false);
+});
+
+test('new trace collector receives only the four actual typed step-outcome channels',()=>{
+ const text=readFileSync(new URL('../../workflows/alpha-focused-checks.yml',import.meta.url),'utf8');
+ for(const step of ['source','setup','typegen','check']){
+  assert.equal(text.split('id: trace-'+step).length,2);
+  const outcome='AIHR_TRACE_'+step.toUpperCase()+'_OUTCOME: '+String.fromCharCode(36)+'{{ steps.trace-'+step+'.outcome }}';
+  assert(text.includes(outcome));
+ }
+ const branch='refs/heads/codex/compiler-full-stock-trace-db88-20261109';
+ const oldUpload=text.slice(text.indexOf('      - name: Retain private compiler diagnostic bytes'),text.indexOf('      - name: Retain only the closed current compiler summary'));
+ const currentUpload=text.slice(text.indexOf('      - name: Retain only the closed current compiler summary'),text.indexOf('  linux-build:\n'));
+ assert(oldUpload.includes("github.ref != '"+branch+"'"));
+ assert(currentUpload.includes("github.ref == '"+branch+"'"));
+ assert.deepEqual(currentUpload.match(/^          path:.*$/gm),['          path: '+String.fromCharCode(36)+'{{ runner.temp }}/compiler-full-trace-export/summary.json']);
 });

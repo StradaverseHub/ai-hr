@@ -15,6 +15,11 @@ export const LIMITS=Object.freeze({jobMs:1800000,reserveMs:180000,typegenMs:1200
 const BASE='0f50e869e9e74f012803e8aafe1f3350e8792605';
 const GUARD='test/types/database-client-native-contract.ts';
 const PAIR_PATH=fileURLToPath(new URL('./compiler-full-trace-pair.json',import.meta.url));
+const CURRENT_PATH=fileURLToPath(new URL('./compiler-full-trace-current.json',import.meta.url));
+const CURRENT_BASE='db88dffc4de594329a95002c34999a18ba3dcde0';
+const CURRENT_REF='StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/heads/codex/compiler-full-stock-trace-db88-20261109';
+const CURRENT_COHORT='PAYROLL_BASELINE_CURRENT';
+const MANIFEST_OUTPUTS=['lib/ai/module-agent-source-manifest.ts','lib/ai/provider-data-source-manifest.ts'];
 const HASH=/^[a-f0-9]{64}$/,COMMIT=/^[a-f0-9]{40}$/,positive=/^[1-9][0-9]{0,15}$/;
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const exact=(o,keys)=>assert.deepEqual(Object.keys(o).sort(),keys.slice().sort(),'Unexpected closed record keys');
@@ -51,13 +56,32 @@ export function validatePairData(pair){
  return pair;
 }
 export function validateTraceInputs(value,pair){
- validatePairData(pair);assert(value&&typeof value==='object'&&!Array.isArray(value));
+ validatePairData(pair);validateTraceShape(value);
+ const cell=[pair.control,pair.candidate].find(c=>c.source===value.expected_sha);assert(cell,'Unfrozen trace source');
+ assert.equal(value.candidate_ref,cell.branch);return cell;
+}
+function validateTraceShape(value){
+ assert(value&&typeof value==='object'&&!Array.isArray(value));
  for(const k of Object.keys(value))assert([...REQUIRED,...Object.keys(INPUT_DEFAULTS)].includes(k),'Unknown trace input');
  for(const k of REQUIRED)assert(Object.hasOwn(value,k),'Required trace input missing');
  assert.equal(value.compiler_full_trace,true);assert.equal(value.run_typecheck,true);assert.equal(value.selected_tests,'[]');
  for(const [k,v]of Object.entries(INPUT_DEFAULTS))assert.equal(value[k]===undefined?v:value[k],v,'Mixed operation/default');
- const cell=[pair.control,pair.candidate].find(c=>c.source===value.expected_sha);assert(cell,'Unfrozen trace source');
- assert.equal(value.candidate_ref,cell.branch);return cell;
+}
+export function validateCurrentTraceData(data){
+ exact(data,['version','kind','cohort','base','source','tree','branch','manifestOutputs','common','trackedInputCount','trackedInputPathsSha256']);
+ assert.equal(data.version,1);assert.equal(data.kind,'FIXED_CURRENT_STOCK_TRACE_SOURCE');
+ assert.equal(data.cohort,CURRENT_COHORT);assert.equal(data.base,CURRENT_BASE);
+ assert(COMMIT.test(data.source)&&COMMIT.test(data.tree)&&data.source!==data.base);
+ assert.equal(data.branch,'codex/5aa-architecture-manifests-20261109');
+ assert.deepEqual(data.manifestOutputs.map(row=>row.path),MANIFEST_OUTPUTS);data.manifestOutputs.forEach(pin);
+ assert.deepEqual(data.common.map(row=>row.path).sort(),[...COMMON_FILES,...COMPILER_FILES,'next.config.ts','pnpm-workspace.yaml'].sort());
+ data.common.forEach(pin);assert.equal(data.trackedInputCount,9167);
+ assert.equal(data.trackedInputPathsSha256,'0e134696cd8463407d6caf3c53e709105031d7733494776c04566f2c017d7bc9');
+ return data;
+}
+export function validateCurrentTraceInputs(value,data){
+ validateCurrentTraceData(data);validateTraceShape(value);
+ assert.equal(value.expected_sha,data.source);assert.equal(value.candidate_ref,data.branch);return data;
 }
 export function validateWorkflowRef(value){
  assert(value==='StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/heads/main'
@@ -125,7 +149,8 @@ function json(path,value,maximum=LIMITS.reportBytes){
  writeFileSync(path,b,{flag:'wx',mode:0o600});return hash(b);
 }
 function git(cwd,...args){return execFileSync('git',['-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false',...args],
- {cwd,env:childEnvironment(),encoding:'utf8',timeout:10000,maxBuffer:16*1024**2}).trim();}
+ {cwd,env:childEnvironment(),encoding:'utf8',timeout:10000,maxBuffer:16*1024**2,
+  ...(currentRequested()?{stdio:['ignore','pipe','pipe']}: {})}).trim();}
 function childEnvironment(compiler=true){
  const e={...process.env};
  if(compiler)e.NODE_OPTIONS='--max-old-space-size=12288';
@@ -135,6 +160,8 @@ function childEnvironment(compiler=true){
  return e;
 }
 function pair(){return validatePairData(JSON.parse(readHeld(PAIR_PATH,LIMITS.reportBytes).bytes.toString('utf8')));}
+const currentRequested=()=>process.env.GITHUB_WORKFLOW_REF===CURRENT_REF;
+function currentData(){return validateCurrentTraceData(JSON.parse(readHeld(CURRENT_PATH,LIMITS.reportBytes).bytes.toString('utf8')));}
 function anchorIdentity(source){
  const e=process.env;return {source,controller:e.AIHR_CI_CONTROL_HEAD,runId:e.GITHUB_RUN_ID,attempt:e.GITHUB_RUN_ATTEMPT,job:e.GITHUB_JOB};
 }
@@ -151,34 +178,52 @@ function anchor(source,temp){
  return {value:a,sha256:h.sha256,nativeNs:validateAnchorData(a,anchorIdentity(source),now()),path};
 }
 function cleanSource(source,sha){assert.equal(git(source,'rev-parse','HEAD'),sha);assert.equal(git(source,'status','--porcelain'),'');}
-function context(){
+function context({early=false}={}){
  const e=process.env;assert.equal(process.platform,'linux');assert.equal(e.CI,'true');assert.equal(e.GITHUB_ACTIONS,'true');
  assert.equal(e.RUNNER_ENVIRONMENT,'github-hosted');assert.equal(e.RUNNER_OS,'Linux');
  assert.equal(e.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(e.GITHUB_REPOSITORY_ID,'1333414856');
  assert.equal(e.GITHUB_EVENT_NAME,'workflow_dispatch');assert.equal(e.GITHUB_RUN_ATTEMPT,'1');assert(positive.test(e.GITHUB_RUN_ID??''));
  assert.equal(e.GITHUB_WORKFLOW,'alpha-focused-checks');assert.equal(e.GITHUB_JOB,'typecheck');
- validateWorkflowRef(e.GITHUB_WORKFLOW_REF);
+ const current=currentRequested();if(!current)validateWorkflowRef(e.GITHUB_WORKFLOW_REF);
  assert.equal(e.AIHR_CI_CONTROL_HEAD,e.GITHUB_SHA);assert(COMMIT.test(e.GITHUB_SHA??''));
  assert.equal(process.versions.node,'22.23.3');
  assert.equal(process.arch,'x64');assert.equal(cpus().length,4);
  assert(totalmem()>=14*1024**3&&totalmem()<=18*1024**3,'Actual standard 4CPU/16GiB runner required');
  const workspace=realpathSync(e.GITHUB_WORKSPACE),source=join(workspace,'source'),automation=join(workspace,'automation'),temp=realpathSync(e.RUNNER_TEMP);
- assert.equal(realpathSync(source),source);assert.equal(realpathSync(automation),automation);assert.equal(realpathSync(process.cwd()),source);
+ assert.equal(realpathSync(automation),automation);
  assert.equal(realpathSync(fileURLToPath(new URL('../../../',import.meta.url))),automation);
- const p=pair(),cell=validateTraceInputs(JSON.parse(e.AIHR_COMPILER_TRACE_INPUTS),p);
- assert.equal(e.AIHR_CI_HEAD,cell.source);cleanSource(source,cell.source);cleanSource(automation,e.AIHR_CI_CONTROL_HEAD);
+ const inputs=JSON.parse(e.AIHR_COMPILER_TRACE_INPUTS),p=current?currentData():pair();
+ const cell=current?validateCurrentTraceInputs(inputs,p):validateTraceInputs(inputs,p);
+ assert.equal(e.AIHR_CI_HEAD,cell.source);cleanSource(automation,e.AIHR_CI_CONTROL_HEAD);
  const event=JSON.parse(readHeld(realpathSync(e.GITHUB_EVENT_PATH),LIMITS.reportBytes).bytes.toString('utf8'));
  assert.equal(event.repository.id,1333414856);assert.equal(event.repository.full_name,'StradaverseHub/ai-hr');
  assert.equal(event.inputs?.expected_sha,cell.source);assert.equal(event.inputs?.candidate_ref,cell.branch);
- assert.equal(git(source,'rev-parse',p.control.source+'^'),p.base);
- assert.equal(git(source,'rev-parse',p.candidate.source+'^'),p.control.source);
- const controlPaths=git(source,'diff-tree','--no-commit-id','--name-only','-r',p.control.source).split('\n').sort();
- const candidatePaths=git(source,'diff-tree','--no-commit-id','--name-only','-r',p.candidate.source).split('\n').sort();
- const adr='docs/adr/2026-11-08-native-compiler-reference-boundaries.md',record='docs/qualification/compiler-native-database-interface-source-20261109.json';
- assert.deepEqual(controlPaths,[adr,record,GUARD].sort());assert.deepEqual(candidatePaths,['db/client.ts',adr,record].sort());
- assert.equal(git(source,'rev-parse',p.base+':db/client.ts'),git(source,'rev-parse',p.control.source+':db/client.ts'));
- assert.equal(git(source,'rev-parse',p.control.source+':'+GUARD),git(source,'rev-parse',p.candidate.source+':'+GUARD));
- for(const row of [p.guard,cell.dbClient,...p.common]){
+ if(current){
+  const actual=Object.fromEntries(Object.entries(event.inputs).map(([key,value])=>{
+   const expected=inputs[key]??INPUT_DEFAULTS[key];assert(expected!==undefined);
+   assert(value===expected||typeof expected==='boolean'&&value===String(expected));return [key,expected];
+  }));
+  validateCurrentTraceInputs(actual,p);
+ }
+ const fixed={source,automation,temp,pair:p,cell,cohort:current?CURRENT_COHORT:null,clock:anchor(cell.source,temp),
+  out:join(temp,'diagnostic-compiler-full-trace'),identity:anchorIdentity(cell.source)};
+ if(current&&early)return fixed;
+ assert.equal(realpathSync(source),source);assert.equal(realpathSync(process.cwd()),source);cleanSource(source,cell.source);
+ if(current){
+  assert.equal(git(source,'rev-parse',cell.source+'^{tree}'),p.tree);
+  assert.equal(git(source,'show','-s','--format=%P',cell.source),p.base);
+  assert.deepEqual(git(source,'diff-tree','--no-commit-id','--name-only','-r',cell.source).split('\n').sort(),MANIFEST_OUTPUTS);
+ }else{
+  assert.equal(git(source,'rev-parse',p.control.source+'^'),p.base);
+  assert.equal(git(source,'rev-parse',p.candidate.source+'^'),p.control.source);
+  const controlPaths=git(source,'diff-tree','--no-commit-id','--name-only','-r',p.control.source).split('\n').sort();
+  const candidatePaths=git(source,'diff-tree','--no-commit-id','--name-only','-r',p.candidate.source).split('\n').sort();
+  const adr='docs/adr/2026-11-08-native-compiler-reference-boundaries.md',record='docs/qualification/compiler-native-database-interface-source-20261109.json';
+  assert.deepEqual(controlPaths,[adr,record,GUARD].sort());assert.deepEqual(candidatePaths,['db/client.ts',adr,record].sort());
+  assert.equal(git(source,'rev-parse',p.base+':db/client.ts'),git(source,'rev-parse',p.control.source+':db/client.ts'));
+  assert.equal(git(source,'rev-parse',p.control.source+':'+GUARD),git(source,'rev-parse',p.candidate.source+':'+GUARD));
+ }
+ for(const row of current?[...p.manifestOutputs,...p.common]:[p.guard,cell.dbClient,...p.common]){
   const actual=realpathSync(join(source,row.path));assert(actual.startsWith(source+'/'));
   assert.deepEqual(fileHash(actual),{bytes:row.bytes,sha256:row.sha256},'Source/compiler bytes differ: '+row.path);
  }
@@ -186,11 +231,10 @@ function context(){
  const tracked=git(source,'ls-files','-z').split('\0').filter(p=>/\.(ts|tsx|mts)$/.test(p)&&!p.startsWith('mobile/')&&!p.startsWith('node_modules/')).sort();
  assert.equal(tracked.length,p.trackedInputCount);assert.equal(hash(tracked.join('\n')+'\n'),p.trackedInputPathsSha256);
  const nodePath=realpathSync(process.execPath);assert.equal(realpathSync('/proc/self/exe'),nodePath);
- return {source,automation,temp,pair:p,cell,clock:anchor(cell.source,temp),out:join(temp,'diagnostic-compiler-full-trace'),
-  identity:anchorIdentity(cell.source),nodePath,tracked};
+ return {...fixed,nodePath,tracked};
 }
 function recordContext(c){return {...c.identity,kind:'STOCK_FULL_TRACE_DIAGNOSTIC_ONLY',version:1,
- cell:c.cell===c.pair.control?'CONTROL':'CANDIDATE',clock:c.clock.value,clockSha256:c.clock.sha256,
+ cell:c.cohort??(c.cell===c.pair.control?'CONTROL':'CANDIDATE'),clock:c.clock.value,clockSha256:c.clock.sha256,
  controllerSourceRestored:false,sourceRestored:false,releaseAuthorized:false,ordinaryCompilerGatePass:false,
  cacheScope:'Fresh checker process and absent private buildinfo; prior setup/typegen/stock inventories can warm OS files and stock Node code caches on each cell. Stock tsc.js enables the Node compile cache when available. No restored TypeScript semantic state or zero-OS/code-cache claim.'};}
 function rawFiles(root){
@@ -265,7 +309,7 @@ export function cleanupReceiptRequired(typegen,observed){
 }
 function heldIdentity(c,fragment){
  const st=directory(c.out);validateProducerFragment(fragment,{identity:c.identity,clockSha256:c.clock.sha256,
-  clock:c.clock.value,cell:c.cell===c.pair.control?'CONTROL':'CANDIDATE',root:{dev:st.dev,ino:st.ino}});
+  clock:c.clock.value,cell:c.cohort??(c.cell===c.pair.control?'CONTROL':'CANDIDATE'),root:{dev:st.dev,ino:st.ino}});
 }
 function generated(c){
  const result=[];let visited=0;
@@ -301,7 +345,7 @@ function captureInputs(c){
  assert(Array.isArray(config.files)&&config.files.length>0&&config.files.length<40000,'Resolved stock roots missing/unbounded');
  const rootPaths=config.files.map(p=>relative(c.source,resolve(c.source,p)));
  assert(rootPaths.every(p=>p!==''&&!p.startsWith('../')&&p!=='..'),'Resolved root outside candidate');
- assert(rootPaths.includes(GUARD),'Guard absent from actual stock config roots');
+ if(!c.cohort)assert(rootPaths.includes(GUARD),'Guard absent from actual stock config roots');
  const lines=readHeld(join(c.out,'list-files.txt'),LIMITS.metadataBytes,true).bytes.toString('utf8').trim().split('\n');
  assert(lines.length>0&&lines.length<40000&&new Set(lines).size===lines.length);
  const files=lines.map(p=>{assert(p.startsWith(c.source+'/'),'Resolved file outside candidate');return {path:relative(c.source,p),realPath:relative(c.source,realpathSync(p)),...fileHash(realpathSync(p))};});
@@ -509,11 +553,174 @@ function collect(){
  }
  assert(!receipt.refused&&receipt.complete,'Bounded trace export refused or incomplete');
 }
+
+const PREFIX_BYTES=64*1024**2, PREFIX_EVENTS=250000, PREFIX_LINE=16384;
+const TRACE_KINDS=Object.freeze({
+ 'parse/createSourceFile/B':'parseBegin','parse/createSourceFile/E':'parseEnd',
+ 'bind/bindSourceFile/B':'bindBegin','bind/bindSourceFile/E':'bindEnd',
+ 'check/checkSourceFile/B':'checkBegin','check/checkSourceFile/E':'checkEnd',
+ 'checkTypes/structuredTypeRelatedTo/X':'relations',
+ 'checkTypes/recursiveTypeRelatedTo_DepthLimit/I':'recursiveDepthLimits',
+ 'checkTypes/typeRelatedToDiscriminatedType_DepthLimit/I':'discriminatedDepthLimits',
+});
+const OWNER_GROUPS=['app','components','core','db','lib','localization','packs','scripts','test'];
+/** One bounded projection of pinned stock TypeScript JSON-line records. The
+ * export cannot include raw events, positions, type identifiers, or paths. */
+export function summarizeStockTrace(path,source,tracked,deadline){
+ const before=lstatSync(path);assert(before.isFile()&&before.nlink===1&&before.uid===process.getuid()
+  &&(before.mode&0o077)===0&&before.size<=LIMITS.fileBytes);
+ const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ const counts=Object.fromEntries(Object.values(TRACE_KINDS).map(key=>[key,0]));
+ const groups=Object.fromEntries([...OWNER_GROUPS,'other'].map(key=>[key,{intervals:0,durationUs:0}]));
+ const pending=new Map(),top=[];let opening=false,previousComma=true,events=0,stop='END_OF_FILE',offset=0,tail=Buffer.alloc(0);
+ const chunk=Buffer.alloc(65536),utf8=new TextDecoder('utf-8',{fatal:true});
+ function row(line){
+  let text;try{text=utf8.decode(line).trim();}catch{return 'INVALID_PREFIX';}
+  if(!opening){opening=text==='[';return opening?null:'INVALID_PREFIX';}
+  if(text===']')return events===0||!previousComma?'CLOSING_LINE_OBSERVED':'INVALID_PREFIX';
+  if(!previousComma||events>=PREFIX_EVENTS)return events>=PREFIX_EVENTS?'EVENT_BOUND':'INVALID_PREFIX';
+  previousComma=text.endsWith(',');
+  let event;try{event=JSON.parse(previousComma?text.slice(0,-1):text);}catch{return 'INVALID_PREFIX';}
+  if(!event||typeof event!=='object'||Array.isArray(event))return 'INVALID_PREFIX';
+  events++;
+  const key=[event.cat,event.name,event.ph];
+  if(!key.every(value=>typeof value==='string'&&value.length<=64))return 'INVALID_PREFIX';
+  const name=Object.hasOwn(TRACE_KINDS,key.join('/'))?TRACE_KINDS[key.join('/')]:null;
+  if(!name)return null;
+  counts[name]++;
+  if(name!=='checkBegin'&&name!=='checkEnd')return null;
+  const {pid,tid,ts}=event,file=event.args?.path;
+  if(![pid,tid].every(Number.isSafeInteger)||!Number.isFinite(ts)||ts<0||ts>Number.MAX_SAFE_INTEGER
+   ||typeof file!=='string'||file.length>4096)return 'INVALID_PREFIX';
+  const thread=pid+':'+tid;
+  if(name==='checkBegin'){
+   if(pending.has(thread)||pending.size>=16)return 'UNMATCHED_CHECK';
+   pending.set(thread,{file,ts});return null;
+  }
+  const started=pending.get(thread);
+  if(!started||started.file!==file||started.ts>ts)return 'UNMATCHED_CHECK';
+  pending.delete(thread);
+  const durationUs=Math.round(ts-started.ts);if(durationUs>LIMITS.checkMs*1000)return 'INVALID_PREFIX';
+  const owner=file.startsWith(source+'/')?file.slice(source.length+1):null;
+  const group=owner&&tracked.has(owner)&&OWNER_GROUPS.includes(owner.split('/')[0])?owner.split('/')[0]:'other';
+  groups[group].intervals++;groups[group].durationUs+=durationUs;
+  if(owner&&tracked.has(owner)){
+   top.push({ownerSha256:hash(owner),durationUs});
+   top.sort((a,b)=>b.durationUs-a.durationUs||a.ownerSha256.localeCompare(b.ownerSha256));if(top.length>16)top.pop();
+  }
+  return null;
+ }
+ try{
+  assert(sameStat(before,fstatSync(fd)));
+  const limit=Math.min(before.size,PREFIX_BYTES);
+  scan:while(offset<limit){
+   if(now()>=deadline){stop='TIME_BOUND';break;}
+   const count=readSync(fd,chunk,0,Math.min(chunk.length,limit-offset),offset);assert(count>0);offset+=count;
+   const block=Buffer.concat([tail,chunk.subarray(0,count)]);let start=0,end;
+   while((end=block.indexOf(10,start))>=0){
+    if(now()>=deadline){stop='TIME_BOUND';break scan;}
+    stop=end-start>PREFIX_LINE?'LINE_BOUND':row(block.subarray(start,end));
+    if(stop)break scan;
+    start=end+1;
+   }
+   tail=block.subarray(start);if(tail.length>PREFIX_LINE){stop='LINE_BOUND';break;}
+  }
+  if(!stop||stop==='END_OF_FILE')stop=limit<before.size?'BYTE_BOUND':tail.length?'INCOMPLETE_FINAL_LINE':'END_OF_FILE';
+  assert(sameStat(before,fstatSync(fd))&&sameStat(before,lstatSync(path)),'Raw trace observation changed');
+ }finally{closeSync(fd);}
+ return {stop,events,rawBytes:before.size,bytesRead:offset,counts,groups,top,openCheckIntervals:pending.size};
+}
+
+const STAGES=['typegen','show','inventory','check'];
+const STATUSES=['success','failure','cancelled','skipped',''];
+export function phaseSummary(phase,log){
+ const finite=(value,max)=>Number.isSafeInteger(value)&&value>=0&&value<=max?value:null;
+ assert(STAGES.includes(phase.name));
+ const range=typeof phase.logStartByte==='number'&&typeof phase.logEndByte==='number'
+  &&finite(phase.logStartByte,log.length)!==null&&finite(phase.logEndByte,log.length)!==null
+  &&phase.logEndByte>=phase.logStartByte?log.subarray(phase.logStartByte,phase.logEndByte).toString('utf8'):'';
+ const peak=[...range.matchAll(/^\s*Maximum resident set size \(kbytes\): (\d+)\s*$/gm)].at(-1);
+ const nativeSignal=[...range.matchAll(/^Command terminated by signal (\d+)\s*$/gm)].at(-1);
+ return {stage:phase.name,closed:phase.closed===true,exit:finite(phase.code,255),
+  wrapperSignal:['SIGABRT','SIGTERM','SIGKILL','SIGINT','SIGXFSZ'].includes(phase.signal)?phase.signal:null,
+  termination:['controller-interrupted','per-file-output-cap','log-output-cap','observed-output-cap',
+   'free-space-floor','monitor-failure'].includes(phase.stoppedBecause)?phase.stoppedBecause:null,
+  timeObservedSignal:finite(Number(nativeSignal?.[1]),64),elapsedMs:finite(phase.elapsedMs,LIMITS.jobMs),
+  maxRssKiB:finite(Number(peak?.[1]),64*1024**2),v8HeapFailure:phase.name==='check'&&phase.v8HeapFailure===true,
+  diagnostics:phase.name==='check'?finite(phase.diagnosticsObserved,100000):null,
+  compilerCompleted:phase.name==='check'&&phase.closed===true&&phase.code===0&&phase.signal===null
+   &&phase.v8HeapFailure===false&&phase.diagnosticsObserved===0&&phase.compilerCompleted===true};
+}
+
+function collectCurrent(){
+ const started=now(),c=context({early:true}),output=join(c.temp,'compiler-full-trace-export');
+ stageBudget(c.clock.nativeNs,started,LIMITS.collectMs);
+ assert(!exists(output));
+ const steps=Object.fromEntries(['source','setup','typegen','check'].map(key=>[key,process.env['AIHR_TRACE_'+key.toUpperCase()+'_OUTCOME']??'']));
+ assert(Object.values(steps).every(value=>STATUSES.includes(value)));
+ const firstStepFailure=Object.keys(steps).find(key=>['failure','cancelled'].includes(steps[key]))??null;
+ const report={version:1,kind:'REDACTED_STOCK_FULL_TRACE_DIAGNOSTIC_ONLY',...c.identity,cohort:c.cohort,
+  clockSha256:c.clock.sha256,steps,firstStepFailure,producerBound:false,phases:[],inventory:null,trace:null,traceObservation:'UNAVAILABLE',
+  swapCleanup:'UNOBSERVED',sourcePostimages:'UNOBSERVED',logObservation:'UNAVAILABLE',rawArtifactMembers:0,
+  runtime:{node:process.versions.node,typescript:null,cpuCount:cpus().length,totalMemoryBytes:totalmem(),expectedHeapLimitMiB:12288},
+  compilerSucceeded:false,ordinaryCompilerGatePass:false,releaseAuthorized:false};
+ try{
+  const live=context();report.runtime.typescript='5.9.3';directory(live.out);
+  const typegenRecord=readHeld(join(live.out,'typegen.json'),LIMITS.reportBytes,true);
+  const typegen=JSON.parse(typegenRecord.bytes.toString('utf8'));heldIdentity(live,typegen);report.producerBound=true;
+  const original=exists(join(live.out,'report.json'))?JSON.parse(readHeld(join(live.out,'report.json'),LIMITS.reportBytes,true).bytes):null;
+  if(original){heldIdentity(live,original);assert.equal(original.typegenSha256,typegenRecord.sha256);}
+  let log=Buffer.alloc(0);
+  try{if(exists(join(live.out,'compiler.log'))){
+   log=readHeld(join(live.out,'compiler.log'),LIMITS.logBytes,true).bytes;report.logObservation='PROJECTED';
+  }}catch{report.logObservation='REFUSED';}
+  const phases=[...typegen.phases,...(original?.phases??[])];
+  assert(phases.length<=STAGES.length&&phases.every((phase,index)=>phase.name===STAGES[index]));
+  report.phases=phases.map(phase=>phaseSummary(phase,log));
+  if(original?.compilerAndConfigPostimagesVerified===true&&original.sourceRestored===true&&original.controllerSourceRestored===true){
+   report.sourcePostimages='VERIFIED';
+  }
+  if(exists(join(live.out,'inputs.json'))){
+   const inputs=JSON.parse(readHeld(join(live.out,'inputs.json'),LIMITS.metadataBytes,true).bytes);
+   assert(inputs.source===c.identity.source&&inputs.controller===c.identity.controller&&inputs.clockSha256===c.clock.sha256);
+   for(const sha of [inputs.rootPathsSha256,inputs.orderedFilesSha256])assert(HASH.test(sha));
+   assert([inputs.rootPaths,inputs.orderedFiles,inputs.generated].every(rows=>Array.isArray(rows)&&rows.length>0&&rows.length<40000));
+   report.inventory={roots:inputs.rootPaths.length,loaded:inputs.orderedFiles.length,rootPathsSha256:inputs.rootPathsSha256,
+    orderedFilesSha256:inputs.orderedFilesSha256,generatedFiles:inputs.generated.length,generatedSha256:hash(JSON.stringify(inputs.generated))};
+  }
+  const swap=join(live.temp,'compiler-transport-swap-cleanup.json');
+  if(exists(swap)){
+   const cleanup=JSON.parse(readHeld(swap,LIMITS.reportBytes,true).bytes);
+   assert(cleanup.runId===c.identity.runId&&cleanup.attempt===c.identity.attempt&&cleanup.mode==='--full-trace');
+   report.swapCleanup=cleanup.fileAbsent===true&&cleanup.swapAbsent===true&&cleanup.cleanupExit===0?'VERIFIED':'REFUSED';
+  }
+  report.compilerSucceeded=steps.check==='success'&&report.phases.at(-1)?.compilerCompleted===true
+   &&original?.compilerSucceeded===true&&original.cleanupComplete===true&&report.sourcePostimages==='VERIFIED'&&report.swapCleanup==='VERIFIED';
+  if(report.phases.some(phase=>phase.stage==='check'&&phase.closed)&&exists(join(live.out,'trace/trace.json'))){
+   directory(join(live.out,'trace'));
+   report.trace=summarizeStockTrace(join(live.out,'trace/trace.json'),live.source,new Set(live.tracked),started+15000000000n);
+   report.traceObservation='PROJECTED';
+  }
+ }catch{if(report.producerBound)report.traceObservation='REFUSED';}
+ // Publish only a newly generated closed projection. The raw run directory
+ // is never under this output root, including after OOM or collector refusal.
+ assert(now()<started+BigInt(LIMITS.collectMs)*1000000n,'Redacted collection frontier');
+ mkdirSync(output,{mode:0o700});directory(output);json(join(output,'summary.json'),report,65536);
+ assert(process.env.GITHUB_OUTPUT);appendFileSync(process.env.GITHUB_OUTPUT,'export_ready=true\n');
+ assert(report.producerBound&&report.compilerSucceeded&&report.trace?.events>0
+  &&report.trace.stop==='CLOSING_LINE_OBSERVED','Redacted diagnostic did not complete');
+}
+
 async function main(){
  process.umask(0o077);assert(process.argv.length<=3,'No extra diagnostic arguments');
- if(process.argv[2]==='--selection'){validateTraceInputs(JSON.parse(process.env.AIHR_COMPILER_TRACE_INPUTS),pair());return;}
+ if(process.argv[2]==='--selection'){
+  const value=JSON.parse(process.env.AIHR_COMPILER_TRACE_INPUTS);
+  if(currentRequested())validateCurrentTraceInputs(value,currentData());else validateTraceInputs(value,pair());return;
+ }
  if(process.argv[2]==='--typegen'){await typegen();return;}
- if(process.argv[2]==='--collect'){collect();return;}
+ if(process.argv[2]==='--collect'){if(currentRequested())collectCurrent();else collect();return;}
  assert(process.argv.length===2,'Unknown closed diagnostic role');await run();
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(e=>{console.error(e);process.exitCode=1;});
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(e=>{
+ console.error(currentRequested()?'Current stock compiler diagnostic refused; inspect its closed receipt when available.':e);process.exitCode=1;
+});
