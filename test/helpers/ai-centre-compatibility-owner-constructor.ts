@@ -687,7 +687,7 @@ const selectedOracle:SelectedSourceOracle={
   "public.company_organisation_run": {
    "id": "uuid",
    "tenant_id": "uuid",
-   "requested_by": "text",
+   "requested_by": "uuid",
    "authority_company_ids": "uuid[]",
    "company_ids": "uuid[]",
    "mapping": "jsonb",
@@ -1044,8 +1044,13 @@ function selectedNColumns(relation:SelectedRelation,creator:string){
  selectedArray(relation.columns);selectedUnique(relation.columns.map(row=>row.name));selectedUnique(relation.columns.map(row=>String(row.number)));
  for(const column of relation.columns){
   selectedObject(column);selectedInt(column.number,1);selectedNeed(typeof column.name==='string'&&typeof column.type==='string'&&typeof column.typeSchema==='string');
-  const type=selectedOracle.columnTypes[relation.identity]?.[column.name];
-  if(type){selectedEqual(column.type,type);selectedEqual(column.typeSchema,type==='actor_type'?'public':'pg_catalog');}
+  const types=selectedOracle.columnTypes[relation.identity],type=types?.[column.name];
+  if(type){
+   const label=Object.hasOwn(selectedOracle.columnTypes,relation.identity)&&Object.hasOwn(types,column.name)
+    ?relation.identity+'.'+column.name:'unlisted column';
+   selectedEqual(column.type,type,'Selected native column type differs for '+label);
+   selectedEqual(column.typeSchema,type==='actor_type'?'public':'pg_catalog','Selected native column type namespace differs for '+label);
+  }
   selectedAcl(column.acl.filter(row=>selectedOracle.N.includes(row.grantee)),expected[column.name]??[]);
  }
  for(const column of Object.keys(expected))selectedEqual(relation.columns.filter(row=>row.name===column).length,1);
@@ -1779,6 +1784,14 @@ export function aiCentreSelectedJobSourceModel(mode:'full'|'focused'):AiCentreSe
  const withoutCreator=view.acl.filter(row=>row.grantee!=='postgres');
  for(const acl of [withoutCreator,[...withoutCreator,{...creatorGrant,grantor:'postgres'}]]){
   expect(()=>selectedKnownFunction({...view,acl},spec,'postgres')).toThrow('Selected native ACL/grantor/options differ for '+viewIdentity);
+ }
+ const run=readers[0].relations.find(row=>row.identity==='public.company_organisation_run')!;
+ const requester=run.columns.find(column=>column.name==='requested_by')!;
+ expect(requester).toMatchObject({type:'uuid',typeSchema:'pg_catalog'});
+ for(const [field,value,label] of [['type','text','type'],['typeSchema','public','type namespace']] as const){
+  const columns=run.columns.map(column=>column===requester?{...column,[field]:value}:column);
+  expect(()=>selectedNColumns({...run,columns},'postgres')).toThrow(new Error(
+   'Selected native column '+label+' differs for public.company_organisation_run.requested_by'));
  }
  return {evidence:'source-model-only',mode,cluster,source:{...selectedSourceBinding},roles,memberships,databases,owned:{database,databaseOid:databases.find(row=>row.name===database)!.oid,role,roleOid:'30000'},readers,shared};
 }
