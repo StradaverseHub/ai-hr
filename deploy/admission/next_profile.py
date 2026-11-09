@@ -30,7 +30,7 @@ SAFE_PATH = re.compile(r'/[A-Za-z0-9_./@-]+')
 SYSTEM_LIBRARY_PATH = re.compile(r'/usr/lib/[A-Za-z0-9_./@+-]+')
 EXTRA_PROPERTIES = ('ProtectSystem', 'ProtectHome', 'PrivateMounts', 'NoNewPrivileges', 'CapabilityBoundingSet',
                     'RestrictNamespaces', 'BindPaths', 'BindReadOnlyPaths', 'ReadWritePaths',
-                    'ReadOnlyPaths', 'Slice', 'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax')
+                    'ReadOnlyPaths', 'Slice', 'CPUWeight', 'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax')
 APP_ENVIRONMENT = frozenset({'NODE_ENV', 'HOME', 'PATH', 'NEXT_TELEMETRY_DISABLED', 'AUTH_PROVIDER',
     'ALLOW_DEMO_SESSION', 'DATABASE_URL', 'AUTH_PUBLIC_ORIGIN', 'AUTH_SESSION_KEY',
     'AUTH_DEFAULT_ORGANIZATION', 'AUDIT_HASH_CHAIN_ENABLED', 'AI_CONFIG_SECRET'})
@@ -145,11 +145,16 @@ def load_verified_module(directory, name, wanted, secure_path, require, uid):
     return module
 
 
+def require_leaf_cpu_weight(properties, require):
+    require(properties.get('CPUWeight') == '100', 'Managed worker CPU weight differs')
+
+
 class NextRuntime:
     def __init__(self, value, helper_directory, secure_path, require, uid=0):
         self.value, self.secure_path, self.require, self.uid = value, secure_path, require, uid
         self.package_trees = {}
         self.verified = {}
+        self.cache_views = {}
         closed(value['trustedModules'], {'next_profile.py', 'runtime_inventory.py'}, require)
         self.inventory = load_verified_module(helper_directory, 'runtime_inventory.py',
             value['trustedModules']['runtime_inventory.py'], secure_path, require, uid)
@@ -369,12 +374,17 @@ class NextRuntime:
         root, require = pathlib.Path(spec['releaseDirectory']), self.require
         self.metadata_current()
         if str(root) in self.verified:
+            view = immutable_cache_view(str(root), self.package_trees[str(root)], self.value['unitCacheMounts'],
+                next(iter(self.value['units'].values()))['workerUid'], require, self.secure_path, self.uid)
+            require(view == self.cache_views[str(root)], 'Native cache view changed during controller operation')
             self.package_trees[str(root)].assert_unchanged()
             return self.verified[str(root)]
         self.secure_path(root, self.uid, directory=True)
         tree = self.inventory.PinnedTree(root, require)
         self.package_trees[str(root)] = tree
         try:
+            cache_view = immutable_cache_view(str(root), tree, self.value['unitCacheMounts'],
+                next(iter(self.value['units'].values()))['workerUid'], require, self.secure_path, self.uid)
             observed = {}
             def walk(base=''):
                 with tree.directory(base) as directory:
@@ -385,11 +395,10 @@ class NextRuntime:
                         relative(key, require)
                         before = os.stat(name, dir_fd=directory, follow_symlinks=False)
                         if key in CACHE_TARGETS:
-                            require(stat.S_ISDIR(before.st_mode) and before.st_uid == self.uid
-                                    and not stat.S_IMODE(before.st_mode) & 0o022,
-                                    'Unsafe immutable cache mountpoint')
-                            with tree.directory(key) as cache:
-                                require(not os.listdir(cache), 'Cold immutable cache mountpoint is not empty')
+                            # Host placeholders and actual overlays were independently
+                            # fenced above. Never inventory mutable cache contents or
+                            # pin their changing directory mtime as immutable code.
+                            require(key in cache_view['placeholders'], 'Missing native cache placeholder proof')
                             continue
                         require(key in self.rows and len(observed) < MAX_ENTRIES, 'Unknown managed package member')
                         wanted = self.rows[key]
@@ -421,10 +430,9 @@ class NextRuntime:
                                 require(before.st_size == wanted['size'] and h.hexdigest() == wanted['sha256'],
                                         'Managed package bytes differ')
             walk()
-            for cache in CACHE_TARGETS:
-                point = tree.metadata(cache)
-                require(stat.S_ISDIR(point.st_mode) and point.st_uid == self.uid
-                        and not stat.S_IMODE(point.st_mode) & 0o022, 'Missing or unsafe cache mountpoint')
+            require(immutable_cache_view(str(root), tree, self.value['unitCacheMounts'],
+                next(iter(self.value['units'].values()))['workerUid'], require, self.secure_path, self.uid)
+                == cache_view, 'Native cache view changed while hashing immutable code')
             require(set(observed) == set(self.rows), 'Incomplete managed package inventory')
             require(tree.read_bytes('.next/BUILD_ID', 1024).decode().strip() == self.value['build'],
                     'Managed package build differs')
@@ -448,6 +456,7 @@ class NextRuntime:
             result = {'entries': len(observed), 'root': (root.stat().st_dev, root.stat().st_ino),
                       'systemFiles': len(self.system_files), 'actionManifestSha256': self.rows.get('.next/server/server-reference-manifest.json', {}).get('sha256')}
             require(result['actionManifestSha256'] is not None, 'Immutable action manifest required')
+            self.cache_views[str(root)] = cache_view
             self.verified[str(root)] = result
             return result
         except BaseException:
@@ -483,6 +492,7 @@ class NextRuntime:
         require, spec = self.require, self.value['units'][unit]
         envelope = self.value['resourceEnvelope']
         require(all(key in properties for key in EXTRA_PROPERTIES), 'Managed unit properties incomplete')
+        require_leaf_cpu_weight(properties, require)
         require(properties['ProtectSystem'] == 'strict' and properties['ProtectHome'] == 'yes'
                 and properties['PrivateMounts'] == 'yes'
                 and properties.get('DynamicUser') == 'no'
@@ -820,6 +830,177 @@ def open_beneath(directory: int, name: str, require) -> int:
         raise
 
 
+@contextlib.contextmanager
+def system_manager_root(require, secure_path):
+    """One fixed kernel magic-link exception, never a caller-selected proc PID.
+
+    No namespace is entered and no capability is granted. Every subsequent
+    filesystem step is descriptor-relative and refuses symlinks. PID1 must be
+    the actual protected system manager, in its original root/mount namespace.
+    """
+    with contextlib.ExitStack() as stack:
+        secure_path(pathlib.Path('/proc/1'), 0, directory=True)
+        require(os.readlink('/proc/self') == str(os.getpid()), 'Native proc identity differs')
+        proc = os.open('/proc/1', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        stack.callback(os.close, proc)
+        require(os.fstat(proc).st_uid == 0, 'Native system manager proc owner differs')
+        def fixed(name, limit):
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=proc)
+            try:
+                result = bytearray()
+                while len(result) <= limit:
+                    part = os.read(fd, min(4096, limit + 1 - len(result)))
+                    if not part:
+                        break
+                    result.extend(part)
+                require(len(result) <= limit, 'Native system manager facts exceed bound')
+                return bytes(result)
+            finally:
+                os.close(fd)
+        def start_token(raw):
+            require(raw.startswith(b'1 (systemd) '), 'PID1 is not the native root system manager')
+            fields = raw[len(b'1 (systemd) '):].split()
+            require(len(fields) >= 20 and fields[19].isdigit(), 'Native system manager start identity differs')
+            return fields[19]
+        started = start_token(fixed('stat', 65536))
+        require(b'\nUid:\t0\t0\t0\t0\n' in fixed('status', 65536),
+                'PID1 is not the native root system manager')
+        executable = pathlib.Path('/usr/lib/systemd/systemd')
+        secure_path(executable, 0)
+        # exe/root/ns/mnt are these exact kernel-maintained links, not an
+        # extension to secure_path or descriptor-relative symlink policy.
+        exe = os.open('exe', os.O_RDONLY | os.O_NONBLOCK, dir_fd=proc)
+        stack.callback(os.close, exe)
+        expected = executable.stat()
+        require(os.readlink('exe', dir_fd=proc) == str(executable)
+                and file_identity(os.fstat(exe)) == file_identity(expected),
+                'Native system manager executable differs')
+        namespace = os.open('ns/mnt', os.O_RDONLY, dir_fd=proc)
+        stack.callback(os.close, namespace)
+        ns = os.fstat(namespace)
+        require(os.readlink('root', dir_fd=proc) == '/', 'Native system manager root differs')
+        root = os.open('root', os.O_RDONLY | os.O_DIRECTORY, dir_fd=proc)
+        stack.callback(os.close, root)
+        identity = file_identity(os.fstat(root))
+        require(os.fstat(root).st_uid == 0 and not stat.S_IMODE(os.fstat(root).st_mode) & 0o022,
+                'Native system manager root is writable')
+        yield root, (ns.st_dev, ns.st_ino)
+        # stat includes mutable scheduling fields. Bind the non-reusable native
+        # start field, not incidental runtime counters from a busy PID1.
+        after = fixed('stat', 65536)
+        require(started == start_token(after)
+                and file_identity(os.stat('root', dir_fd=proc)) == identity
+                and (os.stat('ns/mnt', dir_fd=proc).st_dev, os.stat('ns/mnt', dir_fd=proc).st_ino)
+                == (ns.st_dev, ns.st_ino)
+                and file_identity(os.stat('exe', dir_fd=proc)) == file_identity(expected),
+                'Native system manager identity changed')
+
+
+def immutable_cache_view(release, tree, mounts_by_unit, worker_uid, require, secure_path, package_uid=0):
+    """Actual descriptor/mount observations; this does not authorize a profile.
+
+    The production caller supplies only its already closed protected profile.
+    The separate native conformance fixture supplies its owned synthetic tree.
+    """
+    own_proc = os.open('/proc/self', os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        mounts = parse_mountinfo(read_proc(own_proc, 'mountinfo', 4 * 1024 * 1024, require), require)
+    finally:
+        os.close(own_proc)
+    descendants = {row['target'] for row in mounts if row['target'].startswith(release + '/')}
+    expected_targets = {release + '/' + target for target in CACHE_TARGETS}
+    require(not descendants or descendants == expected_targets,
+            'Unknown or partial managed package overlay')
+    if not descendants:
+        # Host/CHECKONLY remains the original strict empty immutable package.
+        points = {}
+        for target in CACHE_TARGETS:
+            before = tree.metadata(target)
+            require(stat.S_ISDIR(before.st_mode) and before.st_uid == package_uid
+                    and stat.S_IMODE(before.st_mode) == 0o755,
+                    'Unsafe immutable cache mountpoint')
+            with tree.directory(target, record=False) as fd:
+                require(not os.listdir(fd), 'Cold immutable cache mountpoint is not empty')
+            points[target] = file_identity(before)
+        return {'overlaid': False, 'placeholders': points}
+    with contextlib.ExitStack() as stack:
+        host_root, host_namespace = stack.enter_context(system_manager_root(require, secure_path))
+        self_namespace = os.stat('/proc/self/ns/mnt')
+        require((self_namespace.st_dev, self_namespace.st_ino) != host_namespace,
+                'Cache overlays are not in a distinct service namespace')
+        require(package_uid == 0, 'Overlaid package must be protected by root')
+        host_release = os.dup(host_root)
+        try:
+            for part in pathlib.Path(release).parts[1:]:
+                child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=host_release)
+                os.close(host_release); host_release = child
+                info = os.fstat(host_release)
+                require(info.st_uid == 0 and not stat.S_IMODE(info.st_mode) & 0o022,
+                        'Native host package ancestor is not protected')
+        except BaseException:
+            os.close(host_release)
+            raise
+        stack.callback(os.close, host_release)
+        host_info = os.fstat(host_release)
+        visible = os.fstat(tree.fd)
+        require((visible.st_dev, visible.st_ino) == (host_info.st_dev, host_info.st_ino),
+                'Visible package differs from the native host package')
+        points = {}
+        for target in CACHE_TARGETS:
+            # Every host parent must retain the protected root ownership; a
+            # symlink, writable ancestor or app-owned placeholder is never cold.
+            current = os.dup(host_release)
+            try:
+                for part in target.split('/'):
+                    child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current)
+                    os.close(current); current = child
+                    info = os.fstat(current)
+                    require(info.st_uid == 0 and not stat.S_IMODE(info.st_mode) & 0o022,
+                            'Unsafe native host cache ancestor')
+                info = os.fstat(current)
+                require(stat.S_IMODE(info.st_mode) == 0o755 and not os.listdir(current),
+                        'Cold native host cache mountpoint differs')
+                points[target] = file_identity(info)
+            finally:
+                os.close(current)
+        observed = {}
+        for target in CACHE_TARGETS:
+            with tree.directory(target, record=False) as fd:
+                info = os.fstat(fd)
+                observed[target] = {'device': info.st_dev, 'inode': info.st_ino, 'uid': info.st_uid,
+                    'mode': stat.S_IMODE(info.st_mode), 'readOnly': bool(os.fstatvfs(fd).f_flag & os.ST_RDONLY)}
+        matches = []
+        for unit, rows in mounts_by_unit.items():
+            require(isinstance(rows, list) and len(rows) == 3
+                    and [row['target'] for row in rows] == list(CACHE_TARGETS),
+                    'Closed cache declarations required')
+            sources = {}
+            for row in rows:
+                source = pathlib.Path(row['source'])
+                secure_path(source.parent, 0, directory=True)
+                before = source.lstat()
+                require(stat.S_ISDIR(before.st_mode) and before.st_uid == worker_uid
+                        and stat.S_IMODE(before.st_mode) == 0o700,
+                        'Unsafe declared mutable cache source')
+                sources[row['target']] = (source, before)
+            if all((observed[target]['device'], observed[target]['inode'])
+                   == (before.st_dev, before.st_ino) for target, (_, before) in sources.items()):
+                proof = validate_namespace(mounts, release, (host_info.st_dev, host_info.st_ino),
+                    {'device': visible.st_dev, 'inode': visible.st_ino,
+                     'readOnly': bool(os.fstatvfs(tree.fd).f_flag & os.ST_RDONLY)},
+                    sources, observed, worker_uid, require)
+                matches.append((unit, proof))
+        require(len(matches) == 1, 'Visible cache sources do not match one exact protected unit')
+        return {'overlaid': True, 'placeholders': points, 'unit': matches[0][0], 'namespace': matches[0][1]}
+
+
+def require_owned_invocation(properties, expected, require):
+    """A native observation is checked against prior custody, never adopted here."""
+    require(isinstance(expected, str) and re.fullmatch(r'[0-9a-f]{32}', expected) is not None
+            and properties.get('InvocationID') == expected and properties.get('LoadState') == 'loaded',
+            'Unowned replacement invocation; preserve runtime')
+
+
 def read_proc(directory: int, name: str, limit: int, require) -> bytes:
     require(name in ('mountinfo', 'status', 'environ', 'maps', 'cgroup'), 'Unsupported native process inspection')
     fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
@@ -881,3 +1062,339 @@ def key_values(text, require):
         require(len(fields) == 2 and fields[0] not in result and fields[1].isdigit(), 'Invalid native resource counters')
         result[fields[0]] = int(fields[1])
     return result
+
+# Observation vocabulary ONLY. This is deliberately separate from all admission
+# allowlists above. Exact known names map to fixed public labels; no prefix match.
+ENVIRONMENT_OBSERVATION_NAMES = types.MappingProxyType({
+    'NOTIFY_SOCKET': 'systemd-notify', 'FDSTORE': 'systemd-fdstore',
+    'CREDENTIALS_DIRECTORY': 'systemd-credentials', 'MAINPID': 'systemd-mainpid',
+    'MANAGERPID': 'systemd-managerpid', 'LISTEN_FDS': 'systemd-listen-fds',
+    'LISTEN_PID': 'systemd-listen-pid', 'LISTEN_FDNAMES': 'systemd-listen-names',
+    'WATCHDOG_PID': 'systemd-watchdog-pid', 'WATCHDOG_USEC': 'systemd-watchdog-usec',
+    'RUNTIME_DIRECTORY': 'systemd-runtime-directory', 'STATE_DIRECTORY': 'systemd-state-directory',
+    'CACHE_DIRECTORY': 'systemd-cache-directory', 'LOGS_DIRECTORY': 'systemd-logs-directory',
+    'CONFIGURATION_DIRECTORY': 'systemd-config-directory', 'LOG_NAMESPACE': 'systemd-log-namespace',
+    'TERM': 'systemd-terminal', 'XDG_RUNTIME_DIR': 'systemd-xdg-runtime',
+    'XDG_SEAT': 'systemd-xdg-seat', 'XDG_VTNR': 'systemd-xdg-vtnr',
+    'SERVICE_RESULT': 'systemd-service-result', 'EXIT_CODE': 'systemd-exit-code',
+    'EXIT_STATUS': 'systemd-exit-status', 'MONITOR_SERVICE_RESULT': 'systemd-monitor-result',
+    'MONITOR_EXIT_CODE': 'systemd-monitor-exit-code', 'MONITOR_EXIT_STATUS': 'systemd-monitor-exit-status',
+    'MONITOR_INVOCATION_ID': 'systemd-monitor-invocation', 'MONITOR_UNIT': 'systemd-monitor-unit',
+    'PIDFILE': 'systemd-pidfile', 'REMOTE_ADDR': 'systemd-remote-address',
+    'REMOTE_PORT': 'systemd-remote-port', 'TRIGGER_UNIT': 'systemd-trigger-unit',
+    'TRIGGER_PATH': 'systemd-trigger-path', 'TRIGGER_TIMER_REALTIME_USEC': 'systemd-trigger-realtime',
+    'TRIGGER_TIMER_MONOTONIC_USEC': 'systemd-trigger-monotonic',
+    'NEXT_PRIVATE_START_TIME': 'next-start-time', 'NEXT_RUNTIME': 'next-runtime',
+    '__NEXT_PRIVATE_ORIGIN': 'next-origin', 'LANGUAGE': 'locale-language',
+    **{'LC_' + key: 'locale-' + key.lower() for key in ('CTYPE', 'NUMERIC', 'TIME', 'COLLATE',
+       'MONETARY', 'MESSAGES', 'PAPER', 'NAME', 'ADDRESS', 'TELEPHONE', 'MEASUREMENT', 'IDENTIFICATION')},
+    'LANG': 'locale-lang', 'LC_ALL': 'locale-all', 'TZ': 'process-timezone',
+    'PWD': 'process-pwd', 'SHLVL': 'process-shell-level', '_': 'process-underscore',
+    '__NEXT_PROCESSED_ENV': 'next-processed-environment', 'NEXT_DEPLOYMENT_ID': 'next-deployment',
+})
+ENVIRONMENT_OBSERVATION_PREFIX = 'AIHR_OWNED_INITIAL_ENVIRONMENT_V1 '
+ENVIRONMENT_OBSERVATION_MAX = 8192  # Fits within the existing131072-byte journal transport.
+ENVIRONMENT_COUNTS_KEYS = frozenset({'parseComplete', 'allowedCount', 'forbiddenPresent',
+    'unqualifiedCount', 'knownUnqualified', 'otherUnqualifiedCount'})
+ENVIRONMENT_NATIVE_KEYS = ENVIRONMENT_COUNTS_KEYS | frozenset({'version', 'kind', 'subject',
+    'sourceVerified', 'invocationMatched', 'processStable', 'nextApplicationVerified', 'releaseEligible'})
+
+
+def environment_observation_values(raw):
+    # Private intermediate only. No returned key/value map reaches telemetry.
+    if not isinstance(raw, bytes) or not 0 < len(raw) <= 1024**2 or not raw.endswith(b'\0'):
+        raise ValueError('Environment observation parse refused')
+    values = {}
+    for entry in raw[:-1].split(b'\0'):
+        key, separator, value = entry.decode('utf8').partition('=')
+        if not separator or not key or key in values:
+            raise ValueError('Environment observation parse refused')
+        values[key] = value
+    return values
+
+
+def environment_observation_counts(raw):
+    """Pure classification carries NO source/process/invocation authority."""
+    values = environment_observation_values(raw)
+    allowed = APP_ENVIRONMENT | FLEET_ENVIRONMENT | SYSTEMD_ENVIRONMENT
+    unqualified = set(values) - allowed
+    known = {label: name in unqualified for name, label in ENVIRONMENT_OBSERVATION_NAMES.items()}
+    return {'parseComplete': True, 'allowedCount': len(set(values) & allowed),
+        'forbiddenPresent': any(forbidden_environment(key) for key in values),
+        'unqualifiedCount': len(unqualified), 'knownUnqualified': known,
+        'otherUnqualifiedCount': len(unqualified - set(ENVIRONMENT_OBSERVATION_NAMES))}
+
+
+def validate_environment_observation(value, subject):
+    """Closed receiver; provenance is independently supplied by the journal owner."""
+    if not isinstance(value, dict) or set(value) != ENVIRONMENT_NATIVE_KEYS:
+        raise ValueError('Environment observation schema refused')
+    if (type(value['version']) is not int or value['version'] != 1
+            or value['kind'] != 'ACTUAL_OWNED_INITIAL_ENVIRONMENT_OBSERVATION_NOT_ADMISSION'
+            or subject not in ('worker-1', 'worker-2', 'host-component') or value['subject'] != subject
+            or any(value[key] is not True for key in ('parseComplete', 'sourceVerified', 'invocationMatched', 'processStable'))
+            or value['nextApplicationVerified'] is not False or value['releaseEligible'] is not False
+            or type(value['forbiddenPresent']) is not bool):
+        raise ValueError('Environment observation identity refused')
+    for key in ('allowedCount', 'unqualifiedCount', 'otherUnqualifiedCount'):
+        if type(value[key]) is not int or not 0 <= value[key] <= 1024**2:
+            raise ValueError('Environment observation count refused')
+    known = value['knownUnqualified']
+    if (not isinstance(known, dict) or set(known) != set(ENVIRONMENT_OBSERVATION_NAMES.values())
+            or any(type(item) is not bool for item in known.values())
+            or value['unqualifiedCount'] != sum(known.values()) + value['otherUnqualifiedCount']
+            or value['allowedCount'] + value['unqualifiedCount'] > 1024**2
+            or len(canonical(value)) > ENVIRONMENT_OBSERVATION_MAX):
+        raise ValueError('Environment observation vocabulary refused')
+    # Always-allowed fixed labels cannot truthfully describe unqualified fields.
+    if known['locale-lang'] or known['locale-all']:
+        raise ValueError('Environment observation allowed locale refused')
+    return value
+
+
+
+KEY_NAME_DIGEST_DOMAIN = b'AIHR_INITIAL_ENV_OTHER_KEY_NAME_SHA256_V1\0'
+KEY_NAME_DIGEST_KIND = 'INITIAL_ENV_OTHER_KEY_NAMES_SHA256_NOT_ADMISSION'
+KEY_NAME_DIGEST_MAX = 4
+
+
+def validate_key_name_digests(value, expected_count=None):
+    if (type(value) is not dict or set(value) != {'version', 'kind', 'state', 'count', 'digests', 'reason'}
+            or type(value['version']) is not int or value['version'] != 1 or value['kind'] != KEY_NAME_DIGEST_KIND
+            or type(value['count']) is not int or not 0 <= value['count'] <= 1024**2
+            or type(value['digests']) is not list
+            or expected_count is not None and (type(expected_count) is not int or value['count'] != expected_count)):
+        raise ValueError('Closed key-name digest schema refused')
+    if value['state'] == 'complete':
+        hashes = value['digests']
+        if (value['count'] > KEY_NAME_DIGEST_MAX or value['reason'] != 'none'
+                or len(hashes) != value['count'] or any(type(item) is not str or SHA.fullmatch(item) is None for item in hashes)
+                or hashes != sorted(set(hashes))):
+            raise ValueError('Complete key-name digest set refused')
+    elif value['state'] == 'unavailable':
+        if (value['digests'] != [] or value['reason'] not in ('overflow', 'digest-unavailable', 'capture-unavailable')
+                or (value['reason'] == 'overflow') != (value['count'] > KEY_NAME_DIGEST_MAX)):
+            raise ValueError('Unavailable key-name digest state refused')
+    else:
+        raise ValueError('Closed key-name digest state refused')
+    return value
+
+
+def unavailable_key_name_digests(count, reason='capture-unavailable'):
+    return validate_key_name_digests({'version': 1, 'kind': KEY_NAME_DIGEST_KIND,
+        'state': 'unavailable', 'count': count, 'digests': [],
+        'reason': 'overflow' if type(count) is int and count > KEY_NAME_DIGEST_MAX else reason})
+
+
+def key_name_digests(keys, expected_count):
+    """PURE keys-only diagnostic. No value, process/source or permission proof."""
+    if type(expected_count) is not int or not 0 <= expected_count <= 1024**2:
+        raise ValueError('Key-name digest count refused')
+    if expected_count > KEY_NAME_DIGEST_MAX:
+        return unavailable_key_name_digests(expected_count, 'overflow')
+    allowed = APP_ENVIRONMENT | FLEET_ENVIRONMENT | SYSTEMD_ENVIRONMENT
+    hashes, seen = [], set()
+    for name in keys:
+        if type(name) is not str or not name or '\0' in name or '=' in name or name in seen:
+            raise ValueError('Key-name digest input refused')
+        seen.add(name)
+        encoded = name.encode('utf8', 'strict')
+        if encoded.decode('utf8', 'strict') != name:
+            raise ValueError('Key-name digest encoding refused')
+        if name not in allowed and name not in ENVIRONMENT_OBSERVATION_NAMES:
+            if len(hashes) >= KEY_NAME_DIGEST_MAX:
+                raise ValueError('Key-name digest count differs')
+            hashes.append(hashlib.sha256(KEY_NAME_DIGEST_DOMAIN + encoded).hexdigest())
+    return validate_key_name_digests({'version': 1, 'kind': KEY_NAME_DIGEST_KIND,
+        'state': 'complete', 'count': expected_count, 'digests': sorted(hashes), 'reason': 'none'}, expected_count)
+
+
+
+PLAIN_KEY_NAME_MAX = 64
+
+
+def validate_plain_key_names(value, digest):
+    """Pure explicit OTHER names only; no value or native/admission authority."""
+    validate_key_name_digests(digest)
+    if (type(value) is not dict or set(value) != {'namesComplete', 'names'}
+            or type(value['namesComplete']) is not bool or type(value['names']) is not list):
+        raise ValueError('Closed plain key-name schema refused')
+    names = value['names']
+    if not value['namesComplete']:
+        if names != []:
+            raise ValueError('Unavailable plain key-name payload refused')
+        return value
+    allowed = APP_ENVIRONMENT | FLEET_ENVIRONMENT | SYSTEMD_ENVIRONMENT
+    if (digest['state'] != 'complete' or len(names) != digest['count'] or len(names) > KEY_NAME_DIGEST_MAX
+            or any(type(name) is not str or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', name) is None
+                or name in allowed or name in ENVIRONMENT_OBSERVATION_NAMES or forbidden_environment(name)
+                for name in names) or names != sorted(set(names))):
+        raise ValueError('Complete plain key-name set refused')
+    if sorted(hashlib.sha256(KEY_NAME_DIGEST_DOMAIN + name.encode('utf8', 'strict')).hexdigest()
+              for name in names) != digest['digests']:
+        raise ValueError('Plain key-name digest pairing refused')
+    return value
+
+
+def plain_key_names(keys, expected_count, digest):
+    """Immutable same-read tuple ONLY. All or nothing, with no partial-name leak."""
+    unavailable = {'namesComplete': False, 'names': []}
+    validate_key_name_digests(digest, expected_count)
+    if type(keys) is not tuple:
+        raise ValueError('Immutable key-name tuple required')
+    if digest['state'] != 'complete':
+        return unavailable
+    allowed = APP_ENVIRONMENT | FLEET_ENVIRONMENT | SYSTEMD_ENVIRONMENT
+    names, seen = [], set()
+    for name in keys:
+        if type(name) is not str or not name or '\0' in name or '=' in name or name in seen:
+            return unavailable
+        seen.add(name)
+        if name not in allowed and name not in ENVIRONMENT_OBSERVATION_NAMES:
+            if (len(names) >= KEY_NAME_DIGEST_MAX or forbidden_environment(name)
+                    or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', name) is None):
+                return unavailable
+            names.append(name)
+    try:
+        return validate_plain_key_names({'namesComplete': True, 'names': sorted(names)}, digest)
+    except (ValueError, TypeError, UnicodeError, OverflowError):
+        return unavailable
+
+
+MANAGER_ENVIRONMENT_MAX = 131072
+MANAGER_ENVIRONMENT_KEYS_MAX = 128
+
+
+def manager_environment_keys(raw):
+    """Typed busctl255.4 property payload -> immutable KEYS ONLY, no authority."""
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('Manager environment metadata refused')
+            result[key] = value
+        return result
+    if type(raw) is not bytes or not 0 < len(raw) <= MANAGER_ENVIRONMENT_MAX:
+        raise ValueError('Manager environment metadata refused')
+    try:
+        value = json.loads(raw.decode('utf8', 'strict'), object_pairs_hook=unique)
+        if (type(value) is not dict or set(value) != {'type', 'data'} or value['type'] != 'as'
+                or type(value['data']) is not list or len(value['data']) > MANAGER_ENVIRONMENT_KEYS_MAX):
+            raise ValueError('Manager environment metadata refused')
+        names = set()
+        for assignment in value['data']:
+            if type(assignment) is not str or '\0' in assignment:
+                raise ValueError('Manager environment metadata refused')
+            name, separator, _private_value = assignment.partition('=')
+            if (not separator or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,127}', name) is None
+                    or name in names):
+                raise ValueError('Manager environment metadata refused')
+            names.add(name)
+        return tuple(sorted(names))
+    except (ValueError, UnicodeError, TypeError, KeyError, RecursionError, OverflowError):
+        raise ValueError('Manager environment metadata refused') from None
+
+
+def manager_unset_environment(keys):
+    """Pure generic negative projection; never returns values or admission proof."""
+    if (type(keys) is not tuple or len(keys) > MANAGER_ENVIRONMENT_KEYS_MAX
+            or any(type(name) is not str or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,127}', name) is None for name in keys)
+            or len(set(keys)) != len(keys)):
+        raise ValueError('Manager environment key tuple refused')
+    # UnsetEnvironment applies to ALL Exec* commands, including the generated
+    # MAINPID required by ExecStartPost. Do not silently erase that control input.
+    if 'MAINPID' in keys:
+        raise ValueError('Manager environment control-input collision refused')
+    allowed = APP_ENVIRONMENT | FLEET_ENVIRONMENT | SYSTEMD_ENVIRONMENT
+    return tuple(sorted(name for name in keys if name not in allowed))
+
+
+def environment_process_read(directory, name, bound, deadline):
+    import time
+    if name not in ('stat', 'cmdline', 'cgroup', 'environ'):
+        raise ValueError('Environment observation proc field refused')
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    try:
+        data = bytearray()
+        while True:
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Environment observation deadline')
+            block = os.read(fd, min(65536, bound + 1 - len(data)))
+            if not block:
+                return bytes(data)
+            data.extend(block)
+            if len(data) > bound:
+                raise ValueError('Environment observation proc bound refused')
+    finally:
+        os.close(fd)
+
+
+def observe_owned_environment(expected, custody, deadline, *, _phase=None, _key_names=None):
+    """Native authority only after protected custody + two pinned live checks.
+
+    The full hook supplies its systemd MAINPID and INVOCATION_ID, protected fixed
+    fixture context and exact stock declaration. The host component supplies its
+    existing owned invocation. No command, extra process or admission is invoked.
+    """
+    import time
+    if (not isinstance(expected, dict) or set(expected) != {'pid', 'invocation', 'uid', 'executable',
+            'cwd', 'cgroup', 'argv', 'title', 'subject'} or type(expected['pid']) is not int
+            or expected['pid'] <= 1 or type(expected['uid']) is not int or expected['uid'] != 65534
+            or re.fullmatch(r'[a-f0-9]{32}', expected['invocation']) is None
+            or time.monotonic() >= deadline):
+        raise ValueError('Environment observation expectation refused')
+    if _phase is not None: _phase('declaration-before')
+    custody()
+    if _phase is not None: _phase('process-before')
+    proc = pathlib.Path('/proc', str(expected['pid']))
+    fd = os.open(proc, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        before = os.fstat(fd)
+        if before.st_uid != expected['uid']:
+            raise ValueError('Environment observation principal refused')
+        def current():
+            info = os.fstat(fd)
+            if (info.st_dev, info.st_ino, info.st_uid) != (before.st_dev, before.st_ino, before.st_uid):
+                raise ValueError('Environment observation process changed')
+            named = proc.stat()
+            if (named.st_dev, named.st_ino, named.st_uid) != (before.st_dev, before.st_ino, before.st_uid):
+                raise ValueError('Environment observation process replaced')
+            raw = environment_process_read(fd, 'stat', 65536, deadline)
+            fields = raw[raw.rfind(b')') + 2:].split()
+            if (raw.split(b' ', 1)[0] != str(expected['pid']).encode() or len(fields) < 20
+                    or fields[0] in (b'Z', b'X', b'x') or not fields[19].isdigit()):
+                raise ValueError('Environment observation live identity refused')
+            if (os.readlink('exe', dir_fd=fd) != expected['executable']
+                    or os.readlink('cwd', dir_fd=fd) != expected['cwd']
+                    or environment_process_read(fd, 'cgroup', 65536, deadline).decode().strip() != '0::' + expected['cgroup']):
+                raise ValueError('Environment observation executable scope refused')
+            command = environment_process_read(fd, 'cmdline', 65536, deadline)
+            argv = b'\0'.join(part.encode() for part in expected['argv']) + b'\0'
+            # Node legitimately replaces argv with its exact stock Next title.
+            # The protected declaration still binds the complete original argv.
+            title = expected['title']
+            if command != argv and not (type(title) is str and command.rstrip(b'\0') == title.encode()):
+                raise ValueError('Environment observation command refused')
+            return fields[19]
+        identity = current()
+        if _phase is not None: _phase('environment-read')
+        raw = environment_process_read(fd, 'environ', 1024**2, deadline)
+        if _phase is not None: _phase('environment-classified')
+        values = environment_observation_values(raw)
+        if values.get('INVOCATION_ID') != expected['invocation']:
+            raise ValueError('Environment observation invocation refused')
+        result = environment_observation_counts(raw)
+        if _key_names is not None: _key_names(tuple(values), result['otherUnqualifiedCount'])
+        if _phase is not None: _phase('process-after')
+        if current() != identity:
+            raise ValueError('Environment observation start identity changed')
+        if _phase is not None: _phase('custody-after')
+        custody()
+        if time.monotonic() >= deadline:
+            raise TimeoutError('Environment observation deadline')
+        result.update({'version': 1, 'kind': 'ACTUAL_OWNED_INITIAL_ENVIRONMENT_OBSERVATION_NOT_ADMISSION',
+            'subject': expected['subject'], 'sourceVerified': True, 'invocationMatched': True,
+            'processStable': True, 'nextApplicationVerified': False, 'releaseEligible': False})
+        return validate_environment_observation(result, expected['subject'])
+    finally:
+        os.close(fd)

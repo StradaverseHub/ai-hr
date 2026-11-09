@@ -50,7 +50,43 @@ it('boots two actual same-build Next workers through protected native admission 
   expect(report).toMatchObject({source:candidate,controller,runId,unit,complete:true,releaseEligible:false,
    fullApplicationJourneysVerified:false,hostInstallationVerified:false,actualNextBootVerified:true,
    checkOnlyDidNotStartWorkers:true,coldBusinessRequests:0,allStoppedGenerationsReclaimed:true,
+   firstHomeOnboardingInitiallyUnset:true,firstHomeOnboardingCommitted:true,
    rawBindAndProcessFamilyBarriersPreserved:true,ownedRuntimeCleaned:true});
+  const projection=report.managerEnvironmentProjection;
+  expect(projection).toMatchObject({kind:'ACTUAL_PRIVATE_MANAGER_KEYS_PROJECTION_NOT_ADMISSION',stable:true,effectiveUnitsVerified:true});
+  expect(projection.operations).toHaveLength(2);
+  for(const [ordinal,operation]of projection.operations.entries()){
+   expect(Object.keys(operation).sort()).toEqual(['ordinal','outcome','returned','settled','keyCount','unsetCount'].sort());
+   expect(operation).toMatchObject({ordinal,outcome:'complete',returned:true,settled:true});
+   expect(Number.isInteger(operation.keyCount)&&operation.keyCount>=0&&operation.keyCount<=128).toBe(true);
+   expect(Number.isInteger(operation.unsetCount)&&operation.unsetCount>=0&&operation.unsetCount<=operation.keyCount).toBe(true);
+  }
+  expect(projection.operations[0].unsetCount).toBe(projection.operations[1].unsetCount);
+  const bootstrapTiming=report.bootstrapTiming,stages=['profile-open','immutable-source-full-read','first-owned-start','first-ready','browser-launch','first-request-lifetime','first-ready-before','first-live-proof-composite','first-filesystem-proof','first-ready-after','first-reply-flush','browser-exit-observed','profile-close'];
+  expect(Object.keys(bootstrapTiming).sort()).toEqual(['kind','slots','browserExit','browserFirstRequest'].sort());
+  expect(bootstrapTiming.kind).toBe('FIXED_OWNER_STAGE_TIMINGS_NOT_ADMISSION');expect(bootstrapTiming.slots).toHaveLength(13);
+  for(const [slot,row]of bootstrapTiming.slots.entries()){
+   expect(Object.keys(row).sort()).toEqual(['slot','stage','outcome','startUs','endUs','elapsedUs','returned','code'].sort());
+   expect(row).toMatchObject({slot,stage:stages[slot],outcome:'returned',returned:true,code:slot===11?0:null});
+   expect(Number.isSafeInteger(row.startUs)&&row.startUs>=0&&Number.isSafeInteger(row.endUs)&&row.endUs>=row.startUs).toBe(true);
+   expect(row.elapsedUs).toBe(row.endUs-row.startUs);
+  }
+  for(const [before,after]of [[0,1],[1,2],[2,3],[3,4],[4,5],[6,7],[7,8],[8,9],[9,10],[5,11],[11,12]]as const)expect(bootstrapTiming.slots[before].endUs).toBeLessThanOrEqual(bootstrapTiming.slots[after].startUs);
+  expect(bootstrapTiming.slots[5].startUs).toBeLessThanOrEqual(bootstrapTiming.slots[6].startUs);expect(bootstrapTiming.slots[5].endUs).toBeGreaterThanOrEqual(bootstrapTiming.slots[10].endUs);
+  expect(bootstrapTiming.slots[5].elapsedUs).toBeLessThanOrEqual(90000000);expect(bootstrapTiming.slots[12].endUs-bootstrapTiming.slots[0].startUs).toBeLessThanOrEqual(450000000);
+  expect(bootstrapTiming.browserFirstRequest).toMatchObject({kind:'ACTUAL_FIRST_HOST_REQUEST_TIMING_NOT_ADMISSION',outcome:'returned'});
+  expect(Number.isSafeInteger(bootstrapTiming.browserFirstRequest.timeoutMs)&&bootstrapTiming.browserFirstRequest.timeoutMs>0&&bootstrapTiming.browserFirstRequest.timeoutMs<=90000).toBe(true);
+  expect(Number.isSafeInteger(bootstrapTiming.browserFirstRequest.elapsedMs)&&bootstrapTiming.browserFirstRequest.elapsedMs>=0&&bootstrapTiming.browserFirstRequest.elapsedMs<=bootstrapTiming.browserFirstRequest.timeoutMs).toBe(true);
+  expect(Number.isSafeInteger(bootstrapTiming.browserFirstRequest.driverFinalElapsedMs)&&bootstrapTiming.browserFirstRequest.driverFinalElapsedMs>=0&&bootstrapTiming.browserFirstRequest.driverFinalElapsedMs<=300000).toBe(true);
+  const exit=bootstrapTiming.browserExit;
+  expect(Object.keys(exit).sort()).toEqual(['kind','invocationMatched','mainStartUs','mainExitUs','wrapperExitObservedUs','wrapperReturnCode','state'].sort());
+  expect(exit.kind).toBe('OWNED_BROWSER_CLOCK_OBSERVATIONS_NOT_ADMISSION');expect(typeof exit.invocationMatched).toBe('boolean');expect(exit.wrapperReturnCode).toBe(0);
+  expect(Number.isSafeInteger(exit.wrapperExitObservedUs)&&exit.wrapperExitObservedUs>=0).toBe(true);
+  if(exit.state==='observed'){
+   expect(exit.invocationMatched).toBe(true);expect(Number.isSafeInteger(exit.mainStartUs)&&exit.mainStartUs>0&&Number.isSafeInteger(exit.mainExitUs)&&exit.mainExitUs>=exit.mainStartUs).toBe(true);
+  }else{expect(exit.state).toBe('unavailable');expect(exit.mainStartUs).toBeNull();expect(exit.mainExitUs).toBeNull();}
+  expect(Buffer.byteLength(JSON.stringify(bootstrapTiming))).toBeLessThanOrEqual(4096);
+  expect(Buffer.byteLength(JSON.stringify({bootstrapTiming},null,2))+2).toBeLessThanOrEqual(4096);
   expect(report.nativeIngress).toMatchObject({tls:true,nodeProxyUsed:false,webWorkers:2,steadyLoadCapacityClaim:false,proxyNextUpstream:'off'});
   expect(report.slicePreflight).toMatchObject({fixedImplicitSliceAbsenceVerified:true,existingKernelCgroup:false});
   expect(report.slicePreflight.lookupDirectories).toBeGreaterThan(0);expect(report.slicePreflight.lookupDirectories).toBeLessThanOrEqual(64);

@@ -227,13 +227,67 @@ class PinnedTree:
 
     def assert_unchanged(self):
         self._pins()
-        for relative, wanted in list(self.directories.items()):
-            with self.directory(relative, record=False) as current:
-                self.check(identity(os.fstat(current)) == wanted, 'inventory directory changed')
-        for relative, wanted in list(self.links.items()):
-            self.check((identity(self.metadata(relative)), self.readlink(relative)) == wanted, 'inventory link changed')
-        for relative, wanted in list(self.files.items()):
-            self.check(identity(self.metadata(relative)) == wanted, 'inventory file changed after reading')
+        directories, links, files = dict(self.directories), dict(self.links), dict(self.files)
+        self.check(not (directories.keys() & links.keys() or directories.keys() & files.keys()
+                        or links.keys() & files.keys()), 'inventory member kinds overlap')
+        # The constructor's held root is implicit: directory('a/b') need not
+        # have recorded ''. Do not invent a prior identity for partial trees.
+        children = {name: [] for name in directories}
+        children.setdefault('', [])
+        for kind, records in (('directory', directories), ('link', links), ('file', files)):
+            for relative, wanted in records.items():
+                parts = self._parts(relative)
+                if not parts:
+                    self.check(kind == 'directory', 'inventory member required')
+                    continue
+                parent = '/'.join(parts[:-1])
+                self.check(not parent or parent in directories, 'inventory recorded parent missing')
+                children[parent].append((parts[-1], relative, kind, wanted))
+
+        def strict(info):
+            return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+                    info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+        def walk(current, relative):
+            before = os.fstat(current)
+            self.check(stat.S_ISDIR(before.st_mode), 'symlink or non-directory inventory parent')
+            if relative in directories:
+                self.check(identity(before) == directories[relative], 'inventory directory changed')
+            for name, key, kind, wanted in children.get(relative, []):
+                found = os.stat(name, dir_fd=current, follow_symlinks=False)
+                if kind == 'directory':
+                    self.check(stat.S_ISDIR(found.st_mode), 'symlink or non-directory inventory parent')
+                    self.check(identity(found) == wanted, 'inventory directory changed')
+                    child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current)
+                    try:
+                        self.check(strict(os.fstat(child)) == strict(found), 'inventory parent changed while opening')
+                        walk(child, key)
+                        self.check(strict(os.fstat(child)) == strict(found)
+                                   and strict(os.stat(name, dir_fd=current, follow_symlinks=False)) == strict(found),
+                                   'inventory directory changed')
+                    finally:
+                        os.close(child)
+                elif kind == 'link':
+                    self.check(stat.S_ISLNK(found.st_mode), 'inventory link changed type')
+                    target = os.readlink(name, dir_fd=current)
+                    self.check(len(target.encode()) <= 4096
+                               and strict(os.stat(name, dir_fd=current, follow_symlinks=False)) == strict(found),
+                               'inventory link changed while reading')
+                    self.check((identity(found), target) == wanted, 'inventory link changed')
+                else:
+                    self.check(stat.S_ISREG(found.st_mode) and identity(found) == wanted
+                               and strict(os.stat(name, dir_fd=current, follow_symlinks=False)) == strict(found),
+                               'inventory file changed after reading')
+            self.check(strict(os.fstat(current)) == strict(before), 'inventory directory changed')
+
+        # One fresh traversal per call; no descriptor or permission verdict is
+        # cached across calls. Descendants never reopen unchecked ancestors.
+        current = os.dup(self.fd)
+        try:
+            walk(current, '')
+        finally:
+            os.close(current)
+        self._pins()
 
     def close(self):
         if self.fd is not None:

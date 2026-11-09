@@ -41,7 +41,7 @@ test('every registered infrastructure file remains exactly once in its native cl
  const native=Object.keys(SINGLETON_FILES),ordinary=['test/ordinary-db.test.ts','test/ordinary-nodb.test.ts'];
  const db=native.filter(f=>singletonKind(singletonDescriptor(f).profile)==='db').concat(ordinary[0]),nodb=native.filter(f=>!db.includes(f)).concat(ordinary[1]),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browser),special=units.filter(u=>u.singleton);
- assert.equal(special.length,30);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
+ assert.equal(special.length,31);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
  assert(special.every(u=>u.files.length===1&&u.singleton.workers===1));assert.equal(requiredEvidence({suite,units}).units.length,units.length);
  for(const unit of special){const changed=structuredClone(units);changed.find(u=>u.id===unit.id).singleton.workers=2;assert.throws(()=>requiredEvidence({suite,units:changed}));}
  assert.throws(()=>buildUnits([native[0]],{db:[],nodb:[native[0]]},browser));
@@ -612,4 +612,28 @@ test('both selected-prefix AI upgrades require sole authenticated controlled job
   assert(text.includes('writeFileSync(join(admission.evidenceDirectory,'));assert(text.includes('context.signal,caseStartedAt)'));
   assert(!/process\.env\.AIHR_FOCUSED_|\.(?:skipIf|runIf)\s*\(/.test(text));
  }
+});
+
+test('host cache conformance owns a distinct complete host-only source-bound singleton',()=>{
+ const file='test/runtime-next-host-view-native.test.ts',f=fixture(file);
+ assert.equal(f.unit.kind,'nodb');assert.deepEqual(f.unit.files,[file]);
+ assert.deepEqual(f.unit.singleton,{version:1,profile:'linux-systemd-nginx-v1',workers:1,isolation:'job-host'});
+ assert.equal(nativeNextUnit(f.unit),false);assert.equal(singletonJobName(f.unit),`test (${f.unit.id})`);
+ validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
+ const required=['deploy/admission/test_next_host_view_native.py','deploy/admission/next_fixture_poststart.py','deploy/admission/test_next_native.py','deploy/admission/next_profile.py','.github/ci/runtime_inventory.py','deploy/admission/controller.py',
+  '.github/ci/singleton-profiles.mjs','.github/ci/run-unit.mjs','.github/ci/plan.mjs','.github/ci/manifest.mjs',
+  '.github/ci/candidate-environment.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml','scripts/gate-db-classify.ts'];
+ for(const source of required){
+  assert(singletonSources(f.unit).includes(source));
+  const changed=structuredClone(f.binding);delete changed.sourceHashes[source];
+  assert.throws(()=>validateSingletonBinding(changed,f.plan,f.unit,f.witness));
+  const tampered=structuredClone(f.binding);tampered.sourceHashes[source]='0'.repeat(64);
+  assert.throws(()=>validateSingletonBinding(tampered,f.plan,f.unit,f.witness));
+ }
+ const borrowed=fixture();assert.notEqual(f.unit.id,borrowed.unit.id);
+ assert.throws(()=>validateSingletonBinding(borrowed.binding,f.plan,f.unit,f.witness));
+ assert.throws(()=>validateSingletonBinding({...f.binding,prerequisites:{kind:'fresh-job-postgres-cluster',workers:1,database:{}}},f.plan,f.unit,f.witness));
+ const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+ assert(source.includes("admitSingletonTest('"+file+"')"));assert(source.includes('timeout:30000'));assert(source.includes('},35000)'));
+ assert(!source.includes('240000'));assert(source.includes("'next_preparation.py','deploy/admission/test_next_native.py'"));assert(!source.includes('.skipIf('));
 });

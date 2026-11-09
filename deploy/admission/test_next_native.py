@@ -35,10 +35,11 @@ FIXTURE_CGROUP = '/aihr.slice/aihr-native.slice/aihr-native-next.slice'
 BROWSER = 'aihr-native-next-browser.service'
 ROOTS = ['/etc/aihr-admission', '/usr/local/lib/aihr-admission', '/etc/nginx/aihr-admission',
          '/run/aihr-admission', '/var/lib/aihr-admission', '/var/cache/aihr']
-owned_paths, owned_units = {}, {}
+owned_paths, owned_units, owned_invocations = {}, {}, {}
 created_home = False
 created_empty_parent = None
 browser = None
+managed_runtime_module = None
 report = {'version': 1, 'kind': 'ACTUAL_NEXT_TWO_WORKER_NATIVE_BOOT_ONLY', 'complete': False,
           'releaseEligible': False, 'fullApplicationJourneysVerified': False,
           'hostInstallationVerified': False, 'actualNextBootVerified': False,
@@ -440,8 +441,13 @@ def left(maximum=30):
 
 
 def run(arguments, *, check=True, timeout=30, env=None, input=None, cwd=None):
-    result = subprocess.run(arguments, env=SAFE_ENV if env is None else env, input=input,
-                            capture_output=True, timeout=left(timeout), cwd=cwd)
+    try:
+        result = subprocess.run(arguments, env=SAFE_ENV if env is None else env, input=input,
+                                capture_output=True, timeout=left(timeout), cwd=cwd)
+    except BaseException as error:
+        runtime_command_observation(arguments, error=error)
+        raise
+    runtime_command_observation(arguments, result=result)
     if check:
         require(result.returncode == 0, 'Bounded native subprocess refused')
     return result
@@ -451,8 +457,8 @@ def systemctl(*args, check=True, timeout=30):
     return run(['/usr/bin/systemctl', '--system', *args], check=check, timeout=timeout)
 
 
-def props(unit):
-    raw = systemctl('show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup').stdout.decode()
+def props(unit, timeout=30):
+    raw = systemctl('show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup,UnsetEnvironment,ExecMainStartTimestampMonotonic,ExecMainExitTimestampMonotonic', timeout=timeout).stdout.decode()
     return dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
 
 
@@ -563,15 +569,15 @@ def port(used):
     raise AssertionError('Cannot allocate bounded distinct fixture endpoints')
 
 
-def control(operation, unit=None, check=True, observer=None):
+def control(operation, unit=None, check=True, observer=None, *, timeout=60):
     if observer is None:
         result = run(['/usr/bin/python3', '-I', '-B', '/usr/local/lib/aihr-admission/controller.py', operation]
-                     + ([unit] if unit else []), check=False, timeout=60)
+                     + ([unit] if unit else []), check=False, timeout=timeout)
     else:
         require(operation == 'check-only' and unit is None, 'Observer accepts only fixed CHECKONLY')
         result = run(['/usr/bin/python3', '-I', '-B', str(pathlib.Path(__file__).absolute()), '--observe-check-only'],
                      input=(json.dumps(observer, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False) + '\n').encode(),
-                     check=False, timeout=60)
+                     check=False, timeout=timeout)
     require(not check or result.returncode == 0, 'Protected admission operation refused: ' + operation)
     return result
 
@@ -584,6 +590,69 @@ def ready(unit):
     row = next((row for row in status()['workers']
                 if row['unit'] == unit and row['phase'] == 'READY' and row['admitted']), None)
     return {**row, 'id': row['generation']} if row else None
+
+
+def second_worker_ready(C, cold_row, proof):
+    deadline = time.monotonic() + left(60)
+    unit = UNITS[1]
+    invocation = owned_invocations[unit]
+    process = proof['process']
+    require(cold_row['unit'] == proof['unit'] == unit
+            and cold_row['invocation'] == proof['invocation'] == invocation
+            and cold_row['port'] == proof['port'] and runtime_owned_declaration(unit),
+            'Second worker ownership differs before readiness settlement')
+
+    def remaining():
+        budget = deadline - time.monotonic()
+        require(budget > 0, 'Native deadline: second actual Next worker READY')
+        return budget
+
+    evidence = {'systemdPostStartSettled': False, 'controllerStatus': 'not-attempted'}
+    report['secondWorkerReadiness'] = evidence
+    while True:
+        actual = props(unit, timeout=min(30, remaining()))
+        require(actual.get('LoadState') == 'loaded' and actual.get('InvocationID') == invocation
+                and actual.get('FragmentPath') == '/etc/systemd/system/' + unit
+                and actual.get('MainPID') == str(process['pid'])
+                and actual.get('ControlGroup') == cold_row['controlGroup']
+                and C.process_identity(process['pid']) == process,
+                'Second worker identity changed while settling readiness')
+        service_phase = actual.get('ActiveState'), actual.get('SubState')
+        if service_phase == ('active', 'running'):
+            require(actual.get('ControlPID') == '0' and runtime_owned_declaration(unit),
+                    'Second worker post-start settlement is unverified')
+            break
+        require(service_phase == ('activating', 'start-post'), 'Second worker post-start did not settle')
+        time.sleep(min(0.05, remaining()))
+
+    # ExecStartPost owns the writer until it exits. Observe the same generation
+    # through the authoritative controller only after that writer has settled.
+    evidence['systemdPostStartSettled'] = True
+    try:
+        result = control('status', check=False, timeout=remaining())
+    except subprocess.TimeoutExpired:
+        evidence['controllerStatus'] = 'timeout'
+        raise
+    if result.returncode != 0:
+        evidence['controllerStatus'] = (
+            'signal' if result.returncode < 0 else
+            'admission-lock-occupied' if result.returncode == 1
+            and result.stderr == b'Admission refused: Admission configuration is occupied\n'
+            else 'nonzero')
+        require(False, 'Protected admission operation refused: status')
+    evidence['controllerStatus'] = 'invalid-result'
+    snapshot = json.loads(result.stdout)
+    require(snapshot['bootMatches'] is True and snapshot['publicationPending'] is False,
+            'Second worker publication is not current and settled')
+    rows = [row for row in snapshot['workers'] if row['unit'] == unit]
+    require(len(rows) == 1, 'Second worker admission row differs')
+    row = rows[0]
+    require(row['phase'] == 'READY' and row['admitted'] is True
+            and row['generation'] == cold_row['id'] and row['port'] == cold_row['port'],
+            'Cold generation changed during admission')
+    remaining()
+    evidence['controllerStatus'] = 'accepted'
+    return {**row, 'id': row['generation']}
 
 
 def state():
@@ -1082,6 +1151,44 @@ class OwnedPostgresScope:
         require(self.inspect() == self.identity, 'Native PostgreSQL identity changed during scope observation')
         return {'memoryMax': 2113929216, 'memorySwapMax': 0, 'managerSwapMax': row['MemorySwapMax']}
 
+    def require_first_home_onboarding(self, fixture, *, committed):
+        # Only the first fictional group HR identity from the already admitted
+        # private fixture. The browser's existing protocol supplies no values.
+        require(type(committed) is bool, 'Closed native first Home onboarding expectation required')
+        require(isinstance(fixture, dict) and fixture.get('kind') == 'FICTIONAL_NATIVE_NEXT_SMOKE_ONLY'
+                and type(fixture.get('version')) is int and fixture['version'] == 1
+                and isinstance(fixture.get('actors'), list) and len(fixture['actors']) == 8,
+                'Fixed native first Home fixture required')
+        actor = fixture['actors'][0]
+        require(isinstance(actor, dict) and type(actor.get('index')) is int and actor['index'] == 0
+                and type(actor.get('tenant')) is int and actor['tenant'] == 0
+                and actor.get('role') == 'groupHR' and actor.get('organization') == 'native-a',
+                'Fixed native first Home group HR actor required')
+        tenant, user, person = (actor.get(key) for key in ('tenantId', 'userId', 'personId'))
+        uuid = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+        require(all(isinstance(value, str) and re.fullmatch(uuid, value) for value in (tenant, user, person)),
+                'Canonical native first Home actor IDs required')
+        require(self.inspect() == self.identity, 'Native PostgreSQL changed before first Home observation')
+        # A fresh read-only transaction sees the actual committed row. Only
+        # validated UUIDs enter the fixed SQL on stdin, never the command line.
+        expected = 'true' if committed else 'false'
+        sql = f"""BEGIN READ ONLY;
+SET LOCAL lock_timeout = '250ms';
+SET LOCAL statement_timeout = '1s';
+SELECT current_database() = 'ai_hr_test_w1' AND count(*) = 1
+       AND coalesce(bool_and((u.onboarded_at IS NOT NULL) = {expected}), false)
+FROM public.app_user AS u
+WHERE u.tenant_id = '{tenant}'::uuid AND u.id = '{user}'::uuid AND u.person_id = '{person}'::uuid
+  AND EXISTS (SELECT 1 FROM public.role_assignment AS r
+    WHERE r.tenant_id = u.tenant_id AND r.app_user_id = u.id AND r.role = 'hr_admin' AND r.company_id IS NULL);
+ROLLBACK;
+""".encode()
+        result = run(['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', 'exec', '-i', self.identity['id'],
+                      'psql', '-X', '-qAt', '-w', '-U', 'postgres', '-p', '5433', '-d', 'ai_hr_test_w1',
+                      '-v', 'ON_ERROR_STOP=1'], input=sql, timeout=5)
+        require(self.inspect() == self.identity, 'Native PostgreSQL changed after first Home observation')
+        require(result.stdout == b't\n' and result.stderr == b'', 'First Home group HR onboarding state is not verified')
+
     def snapshot(self, stage):
         require(stage in self.STAGES, 'Unknown native PostgreSQL scope observation')
         value = self.observe()
@@ -1094,7 +1201,40 @@ class OwnedPostgresScope:
         save()
 
 
+MANAGER_ENVIRONMENT_ARGUMENTS = ('/usr/bin/busctl', '--system', '--json=short', 'get-property',
+    'org.freedesktop.systemd1', '/org/freedesktop/systemd1', 'org.freedesktop.systemd1.Manager', 'Environment')
+
+
+def manager_environment_snapshot(N, deadline):
+    """Private fixed read only. Actual caller owns its exact two-slot ledger."""
+    require(os.geteuid() == 0 and type(deadline) is float
+            and 0 < deadline - time.monotonic() <= 3, 'Manager environment read budget refused')
+    result, raw = runtime_diagnostic_read(list(MANAGER_ENVIRONMENT_ARGUMENTS), deadline)
+    require(type(result) is int and result == 0, 'Manager environment transport refused')
+    return N.manager_environment_keys(raw)
+
+
+def manager_projection_snapshot(N, ledger, ordinal):
+    require(type(ledger) is list and type(ordinal) is int and ordinal in (0, 1) and len(ledger) == ordinal
+            and report.get('currentPhase') == 'protected-native-configuration'
+            and report.get('configuration', {}).get('stage') == ('unit-files' if ordinal == 0 else 'manager-reload'),
+            'Manager environment preparation order refused')
+    entry = {'ordinal': ordinal, 'outcome': 'entered', 'returned': False, 'settled': False,
+             'keyCount': None, 'unsetCount': None}
+    ledger.append(entry)
+    try:
+        names = manager_environment_snapshot(N, min(DEADLINE, time.monotonic() + 3))
+        projected = N.manager_unset_environment(names)
+    except BaseException:
+        entry['outcome'] = 'refused'
+        raise
+    entry.update(outcome='complete', returned=True, settled=True, keyCount=len(names), unsetCount=len(projected))
+    return projected
+
+
 def configure(plan, binding, N, release, runtime_package, postgres_scope):
+    global managed_runtime_module
+    managed_runtime_module = N
     phase('protected-native-configuration')
     configuration_phase('principal')
     nobody = pwd.getpwnam('nobody')
@@ -1155,6 +1295,11 @@ http {
  }
 }
 ''')
+    configuration_phase('unit-files')
+    projection_ledger = []
+    report['managerEnvironmentProjection'] = {'kind': 'ACTUAL_PRIVATE_MANAGER_KEYS_PROJECTION_NOT_ADMISSION',
+        'operations': projection_ledger, 'stable': False, 'effectiveUnitsVerified': False}
+    manager_unsets = manager_projection_snapshot(N, projection_ledger, 0)
     files = {PROXY: '''[Unit]
 Description=Owned actual Next admission Nginx fixture
 [Service]
@@ -1191,6 +1336,7 @@ WorkingDirectory={release}
 EnvironmentFile=/etc/aihr-admission/app.env
 EnvironmentFile=-/run/aihr-admission/ports/{slot}.env
 Environment=AIHR_APP_WORKERS=2 AIHR_DB_TOTAL_CONNECTIONS=16 AIHR_DB_POOL_MAX=8
+UnsetEnvironment={' '.join(manager_unsets)}
 ExecStartPre=+/usr/bin/python3 -I -B /usr/local/lib/aihr-admission/controller.py reserve {unit}
 ExecStart={plan['nodePath']} --max-old-space-size=2048 {release}/node_modules/next/dist/bin/next start --hostname 127.0.0.1
 ExecStartPost=+/usr/bin/python3 -I -B /usr/local/lib/aihr-admission/next_fixture_poststart.py {unit}
@@ -1210,9 +1356,9 @@ CapabilityBoundingSet=
 BindReadOnlyPaths={release}:{release}:norbind
 {binds}
 Slice={SLICE}
+CPUWeight=100
 UMask=0077
 '''
-    configuration_phase('unit-files')
     for name, contents in files.items():
         file = pathlib.Path('/etc/systemd/system', name)
         require(not os.path.lexists(file), 'Fixture unit destination already exists')
@@ -1223,6 +1369,9 @@ UMask=0077
     postgres_scope.snapshot('before-config-reload')
     systemctl('daemon-reload')
     postgres_scope.snapshot('after-config-reload')
+    require(manager_projection_snapshot(N, projection_ledger, 1) == manager_unsets,
+            'Manager environment projection changed during reload')
+    report['managerEnvironmentProjection']['stable'] = True
     configuration_phase('guarded-profile')
     C = load('actual_next_controller', pathlib.Path('/usr/local/lib/aihr-admission/controller.py'))
     profile = {'version': 2, 'epoch': os.urandom(16).hex(), 'source': plan['candidate'], 'build': binding['nextBuildId'],
@@ -1237,10 +1386,23 @@ UMask=0077
         'ports': pool, 'units': {}, 'healthSeconds': 60, 'activationSeconds': 5, 'drainSeconds': 30,
         'reloadGuardDigest': C.command_identity(props(PROXY)['ExecReload'])}
     for slot, unit in enumerate(UNITS, 1):
+        observed = props(unit)
+        require(type(observed.get('UnsetEnvironment')) is str
+                and observed['UnsetEnvironment'].split() == list(manager_unsets),
+                'Effective manager environment projection differs')
         profile['units'][unit] = {'environmentFile': f'/run/aihr-admission/ports/{slot}.env',
             'releaseDirectory': str(release), 'workerUid': nobody.pw_uid,
-            'commandDigest': C.command_identity(props(unit)['ExecStart']), 'executable': plan['nodePath']}
+            'commandDigest': C.command_identity(observed['ExecStart']), 'executable': plan['nodePath']}
+    report['managerEnvironmentProjection']['effectiveUnitsVerified'] = True
     write(C.PROFILE, N.canonical(profile))
+    # Private native observation custody only; contains no environment data.
+    observation_context = {'version': 1, 'profileSha256': hashlib.sha256(N.canonical(profile)).hexdigest(),
+        'sources': {name: binding['helpers'][name]['sha256']
+                    for name in ('next_fixture_poststart.py', 'next_profile.py')},
+        'units': {unit: {'device': owned_units[unit][0], 'inode': owned_units[unit][1],
+            'sha256': hashlib.sha256(pathlib.Path('/etc/systemd/system', unit).read_bytes()).hexdigest()}
+            for unit in UNITS}}
+    write(pathlib.Path('/etc/aihr-admission/observation.json'), N.canonical(observation_context))
     configuration_phase('check-only')
     observer = {'version': 1, 'kind': 'SOURCE_BOUND_INSTALLED_CHECKONLY_OBSERVER',
         'observerSha256': binding['helpers']['test_next_native.py']['sha256'],
@@ -1254,7 +1416,7 @@ UMask=0077
     report['checkOnlyDidNotStartWorkers'] = True
     write(pathlib.Path('/run/aihr-admission/permit-' + UNITS[0]), b'owned cold gate\n')
     configuration_phase('proxy-start')
-    systemctl('start', PROXY, timeout=60)
+    owned_start(PROXY, timeout=60)
     configuration_phase('empty-publication')
     require(json.loads(configuration_control('status').stdout)['workers'] == [], 'Empty proxy unexpectedly published worker')
     report['configuration']['declarationsVerified'] = True
@@ -1264,14 +1426,132 @@ UMask=0077
     return C
 
 
-def native_worker(C, row, plan, binding):
+BOOTSTRAP_STAGES = ('profile-open', 'immutable-source-full-read', 'first-owned-start', 'first-ready',
+    'browser-launch', 'first-request-lifetime', 'first-ready-before', 'first-live-proof-composite',
+    'first-filesystem-proof', 'first-ready-after', 'first-reply-flush', 'browser-exit-observed', 'profile-close')
+
+
+def bootstrap_clock():
+    value = time.monotonic_ns() // 1000
+    require(type(value) is int and 0 <= value <= 9007199254740991, 'Bootstrap monotonic clock refused')
+    return value
+
+
+def bootstrap_timing():
+    report['bootstrapTiming'] = {'kind': 'FIXED_OWNER_STAGE_TIMINGS_NOT_ADMISSION',
+        'slots': [{'slot': i, 'stage': stage, 'outcome': 'not-entered', 'startUs': None, 'endUs': None,
+                   'elapsedUs': None, 'returned': False, 'code': None} for i, stage in enumerate(BOOTSTRAP_STAGES)],
+        'browserExit': {'kind': 'OWNED_BROWSER_CLOCK_OBSERVATIONS_NOT_ADMISSION', 'invocationMatched': False,
+            'mainStartUs': None, 'mainExitUs': None, 'wrapperExitObservedUs': None,
+            'wrapperReturnCode': None, 'state': 'unavailable'}, 'browserFirstRequest': None}
+
+
+@contextlib.contextmanager
+def bootstrap_stage(index):
+    require(type(index) is int and 0 <= index < len(BOOTSTRAP_STAGES), 'Bootstrap timing slot refused')
+    row = report['bootstrapTiming']['slots'][index]
+    require(row['outcome'] == 'not-entered', 'Duplicate bootstrap timing slot refused')
+    row.update(outcome='entered', startUs=bootstrap_clock())
+    failure = None
+    try:
+        save()  # Persist entered before the actual bounded source operation.
+        yield row
+    except BaseException as error:
+        failure = error
+        row['outcome'] = 'refused'
+        raise
+    else:
+        row.update(outcome='returned', returned=True)
+    finally:
+        try:
+            if not (row['code'] is None or index == 11 and type(row['code']) is int and -2147483648 <= row['code'] <= 2147483647):
+                row.update(outcome='refused', returned=False, code=None)
+                require(False, 'Bootstrap timing result refused')
+            end = bootstrap_clock()
+            require(end >= row['startUs'], 'Bootstrap timing result refused')
+            row.update(endUs=end, elapsedUs=end-row['startUs'])
+            save()
+        except BaseException as error:
+            if failure is not None:
+                raise BaseExceptionGroup('Bootstrap operation and timing settlement refused', [failure, error])
+            raise
+
+
+def bootstrap_wrapper_exit(code):
+    require(type(code) is int and -2147483648 <= code <= 2147483647, 'Browser wrapper exit code refused')
+    value = report['bootstrapTiming']['browserExit']
+    if value['wrapperExitObservedUs'] is None:
+        value.update(wrapperExitObservedUs=bootstrap_clock(), wrapperReturnCode=code)
+
+
+def bootstrap_service_exit(actual):
+    # Called ONLY after the existing exact transient/source/invocation ownership
+    # checks, with the existing cleanup snapshot. No additional native query.
+    value = report.get('bootstrapTiming', {}).get('browserExit')
+    if value is None:
+        return
+    value['invocationMatched'] = True
+    fields = [actual.get(name) for name in ('ExecMainStartTimestampMonotonic', 'ExecMainExitTimestampMonotonic')]
+    if not all(type(field) is str and re.fullmatch(r'[0-9]{1,16}', field) for field in fields):
+        return
+    start, end = map(int, fields)
+    if 0 < start <= end <= bootstrap_clock():
+        value.update(mainStartUs=start, mainExitUs=end, state='observed')
+
+
+@contextlib.contextmanager
+def bootstrap_profile(C, plan, binding):
+    profile, failure = None, None
+    try:
+        with bootstrap_stage(0):
+            profile = C.Profile(C.PROFILE)
+            host = C.LinuxHost(profile)
+            require(type(profile) is C.Profile and type(host) is C.LinuxHost and host.profile is profile
+                    and profile.value['source'] == plan['candidate'] and profile.value['build'] == binding['nextBuildId']
+                    and profile.next_runtime is not None, 'Fixed bootstrap profile context refused')
+            profile.assert_current()
+        with bootstrap_stage(1):
+            profile.next_runtime.verify_release(profile.value['units'][UNITS[0]])
+        with bootstrap_stage(2):
+            owned_start(UNITS[0], timeout=90)
+        with bootstrap_stage(3):
+            first = until(lambda: ready(UNITS[0]), 'first actual Next worker READY')
+            generation = state()['generations'].get(first['id'], {})
+            require(generation.get('phase') == 'READY' and generation.get('unit') == UNITS[0]
+                    and generation.get('port') == first['port'] and generation.get('epoch') == profile.value['epoch']
+                    and generation.get('profile') == profile.sha and generation.get('invocation') == owned_invocations.get(UNITS[0])
+                    and type(generation.get('process')) is dict and C.alive(generation['process']),
+                    'Prepared first generation context refused')
+            prepared = {'row': dict(first), 'invocation': generation['invocation'], 'process': dict(generation['process'])}
+        yield profile, host, prepared
+    except BaseException as error:
+        failure = error
+        raise
+    finally:
+        if profile is not None:
+            try:
+                with bootstrap_stage(12):
+                    profile.close()
+            except BaseException as error:
+                if failure is not None:
+                    raise BaseExceptionGroup('Bootstrap operation and profile close refused', [failure, error])
+                raise
+
+
+def native_worker(C, row, plan, binding, profile, host, *, first=False):
+    require(type(first) is bool and type(profile) is C.Profile and type(host) is C.LinuxHost and host.profile is profile
+            and profile.value['source'] == plan['candidate'] and profile.value['build'] == binding['nextBuildId'],
+            'Native proof profile context differs')
+    profile.assert_current()
     unit = row['unit']
-    with contextlib.closing(C.Profile(C.PROFILE)) as profile:
-        host = C.LinuxHost(profile)
-        identity_value = host.worker(unit, props(unit)['InvocationID'], row['port'])
+    with bootstrap_stage(7) if first else contextlib.nullcontext():
+        invocation = props(unit)['InvocationID']
+        require(invocation == owned_invocations.get(unit), 'Native proof invocation differs')
+        identity_value = host.worker(unit, invocation, row['port'])
         proof = host.next_worker_evidence[unit]
         require(proof['namespace']['actualKernelMountsVerified'] and proof['namespace']['actualEnvironmentVerified']
                 and proof['resources']['aggregateCapsVerified'], 'Native live kernel proofs absent')
+    with bootstrap_stage(8) if first else contextlib.nullcontext():
         pid = identity_value['pid']
         before = C.process_identity(pid)
         require(before == identity_value, 'Worker changed before namespace write controls')
@@ -1282,13 +1562,16 @@ def native_worker(C, row, plan, binding):
         require(C.process_identity(pid) == before and C.alive(before), 'Worker changed after namespace controls')
         require(filesystem == {'actualNamespaceFilesystemVerified': True, 'cacheWrites': 3,
             'immutableParentRefusals': 5, 'originalCheckoutReadWriteRefusals': 4}, 'Native filesystem control differs')
-        return {'unit': unit, 'port': row['port'], 'invocation': props(unit)['InvocationID'],
-                'process': identity_value, 'kernel': proof, 'filesystem': filesystem}
+    require(props(unit)['InvocationID'] == invocation, 'Native proof invocation changed')
+    profile.assert_current()
+    return {'unit': unit, 'port': row['port'], 'invocation': invocation,
+            'process': identity_value, 'kernel': proof, 'filesystem': filesystem}
 
 
-def browser_core(plan, binding, C):
+def browser_core(plan, binding, C, postgres_scope):
     global browser
     phase('actual-browser-two-worker-boot')
+    bootstrap_timing()
     runner = pwd.getpwuid(plan['runnerUid'])
     require(runner.pw_gid == plan['runnerGid'] and runner.pw_uid > 0, 'Actual runner identity differs')
     # This transient driver gets no app/owner DB URL, platform token, session key
@@ -1299,85 +1582,144 @@ def browser_core(plan, binding, C):
         '--property=User=' + runner.pw_name, '--property=Group=' + str(plan['runnerGid']),
         '--property=MemoryMax=2G', '--property=MemorySwapMax=0', '--property=TasksMax=512',
         '--property=NoNewPrivileges=yes', '--property=KillMode=control-group',
+        '--property=TimeoutStopSec=3s', '--property=SendSIGKILL=yes', '--property=RuntimeMaxSec=300s',
         '--property=Description=Owned actual Next browser ' + plan['runId'],
         '--setenv=HOME=' + runner.pw_dir, '--setenv=PATH=/usr/bin:/bin', '--setenv=LANG=C.UTF-8',
         plan['nodePath'], '--max-old-space-size=512', driver, plan['browserInputPath']]
-    browser = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL, env=environment, start_new_session=True)
-    expected = ['start-first', 'start-second-cold', 'admit-second', 'browser-core-finished']
-    completed, first, second, proofs = [], None, None, []
-    selector = selectors.DefaultSelector()
-    selector.register(browser.stdout, selectors.EVENT_READ)
-    buffer = b''
-    try:
-        while len(completed) < len(expected):
-            require(browser.poll() is None, 'Native browser exited before complete protocol')
-            require(selector.select(left(90)), 'Native browser protocol deadline exceeded')
-            block = os.read(browser.stdout.fileno(), 65537)
-            require(block, 'Native browser protocol ended early')
-            buffer += block
-            require(len(buffer) <= 65536, 'Native browser protocol exceeds bound')
-            if b'\n' not in buffer:
-                continue
-            line, buffer = buffer.split(b'\n', 1)
-            request = json.loads(line)
-            index = len(completed)
-            require(request == {'id': index + 1, 'operation': expected[index]}, 'Native browser protocol order/fields differ')
-            operation = expected[index]
-            phase('actual-browser-' + operation)
-            if operation == 'start-first':
-                systemctl('start', UNITS[0], timeout=90)
-                first = until(lambda: ready(UNITS[0]), 'first actual Next worker READY')
-                proofs.append(native_worker(C, first, plan, binding))
-                result = {'port': first['port']}
-            elif operation == 'start-second-cold':
-                systemctl('start', '--no-block', UNITS[1])
-                second = until(lambda: cold(UNITS[1]), 'second actual Next healthy but unpublished')
-                require(second['port'] != first['port'], 'Cold endpoint reused current peer endpoint')
-                proofs.append(native_worker(C, second, plan, binding))
-                result = {'port': second['port'], 'admitted': False}
-            elif operation == 'admit-second':
-                cold_state = state()
-                require(second['id'] not in cold_state['published']['ready'], 'Cold worker publication happened before gate')
-                access = pathlib.Path('/run/aihr-admission/access.log').read_text()
-                cold_rows = [row for row in access.splitlines() if row.startswith('127.0.0.1:' + str(second['port']) + ' ')]
-                require(not cold_rows, 'Cold worker served business ingress traffic')
-                report['coldBusinessRequests'] = 0
-                write(pathlib.Path('/run/aihr-admission/permit-' + UNITS[1]), b'owned actual admission\n')
-                admitted = until(lambda: ready(UNITS[1]), 'second actual Next worker READY')
-                require(admitted['id'] == second['id'] and admitted['port'] == second['port'], 'Cold generation changed during admission')
-                proofs.append(native_worker(C, admitted, plan, binding))
-                result = {'port': admitted['port']}
-            else:
-                require(first and second, 'Two actual workers were not established')
-                result = {'accepted': True}
-            completed.append(operation)
-            browser.stdin.write((json.dumps({'id': index + 1, 'ok': True, 'result': result}) + '\n').encode())
-            browser.stdin.flush()
-        browser.stdin.close()
-        require(browser.wait(timeout=left(30)) == 0, 'Native browser final assertions or cleanup failed')
-        # No extra out-of-order control request can silently be ignored.
-        require(not buffer.strip() and not browser.stdout.read(65537).strip(), 'Unexpected native browser protocol tail')
-        browser_report = json.loads(regular(pathlib.Path(plan['evidenceDirectory'], 'native-next-boot-browser.json'), plan['runnerUid'], 2 * 1024**2))
-        require(browser_report.get('complete') is True and browser_report.get('unexpectedBrowserErrors') == 0
-                and browser_report.get('hydratedAccountControls', 0) >= 6 and browser_report.get('nonemptyOwnPayrollView') is True
-                and browser_report.get('servedPorts') == sorted([first['port'], second['port']])
-                and len(browser_report.get('logins', [])) == 2, 'Actual browser functional evidence incomplete')
-        report['browser'] = {'complete': True, 'realPasswordTotpLogins': 2,
-            'hydratedAccountControls': browser_report['hydratedAccountControls'], 'unexpectedBrowserErrors': 0,
-            'homeViews': len(browser_report['home']), 'nonemptyOwnPayrollView': True,
-            'servedPorts': browser_report['servedPorts']}
-        report['workers'] = proofs
-        report['postBrowserWorkers'] = [native_worker(C, ready(unit), plan, binding) for unit in UNITS]
-        report['actualNextBootVerified'] = True
-    finally:
-        selector.close()
-        if browser.poll() is None:
-            # The launcher belongs to this invocation. Its systemd child is
-            # stopped only after independently checking transient-unit identity.
-            browser.terminate()
-            with contextlib.suppress(subprocess.TimeoutExpired):
-                browser.wait(timeout=5)
+    with bootstrap_profile(C, plan, binding) as (profile, host, prepared):
+        selector, failure = None, None
+        try:
+            with bootstrap_stage(4):
+                browser = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL, env=environment, start_new_session=True)
+                until(lambda: record_owned_invocation(BROWSER, transient=True), 'owned native browser invocation', seconds=5)
+            expected = ['start-first', 'start-second-cold', 'admit-second', 'browser-core-finished']
+            completed, first, second, second_proof, proofs = [], None, None, None, []
+            selector = selectors.DefaultSelector()
+            selector.register(browser.stdout, selectors.EVENT_READ)
+            buffer = b''
+            while len(completed) < len(expected):
+                require(browser.poll() is None, 'Native browser exited before complete protocol')
+                require(selector.select(left(90)), 'Native browser protocol deadline exceeded')
+                block = os.read(browser.stdout.fileno(), 65537)
+                require(block, 'Native browser protocol ended early')
+                buffer += block
+                require(len(buffer) <= 65536, 'Native browser protocol exceeds bound')
+                if b'\n' not in buffer:
+                    continue
+                line, buffer = buffer.split(b'\n', 1)
+                request = json.loads(line)
+                index = len(completed)
+                require(request == {'id': index + 1, 'operation': expected[index]}, 'Native browser protocol order/fields differ')
+                operation = expected[index]
+                phase('actual-browser-' + operation)
+                if operation == 'start-first':
+                    with bootstrap_stage(5):
+                        with bootstrap_stage(6):
+                            first = ready(UNITS[0])
+                            require(first == prepared['row'], 'Prepared first READY generation changed')
+                        proof = native_worker(C, first, plan, binding, profile, host, first=True)
+                        require(proof['invocation'] == prepared['invocation'] and proof['process'] == prepared['process'],
+                                'Prepared first live identity changed')
+                        with bootstrap_stage(9):
+                            require(ready(UNITS[0]) == first and C.process_identity(proof['process']['pid']) == proof['process']
+                                    and C.alive(proof['process']), 'First READY identity changed before reply')
+                        proofs.append(proof)
+                        result = {'port': first['port']}
+                        with bootstrap_stage(10):
+                            code = browser.poll()
+                            if code is not None:
+                                bootstrap_wrapper_exit(code)
+                            require(code is None, 'Native browser exited before first reply')
+                            browser.stdin.write((json.dumps({'id': index + 1, 'ok': True, 'result': result}) + '\n').encode())
+                            browser.stdin.flush()
+                    completed.append(operation)
+                    continue
+                elif operation == 'start-second-cold':
+                    postgres_scope.require_first_home_onboarding(plan['fixture'], committed=True)
+                    report['firstHomeOnboardingCommitted'] = True
+                    owned_start(UNITS[1], nonblocking=True)
+                    second = until(lambda: cold(UNITS[1]), 'second actual Next healthy but unpublished')
+                    require(second['port'] != first['port'], 'Cold endpoint reused current peer endpoint')
+                    second_proof = native_worker(C, second, plan, binding, profile, host)
+                    proofs.append(second_proof)
+                    result = {'port': second['port'], 'admitted': False}
+                elif operation == 'admit-second':
+                    cold_state = state()
+                    require(second['id'] not in cold_state['published']['ready'], 'Cold worker publication happened before gate')
+                    access = pathlib.Path('/run/aihr-admission/access.log').read_text()
+                    cold_rows = [row for row in access.splitlines() if row.startswith('127.0.0.1:' + str(second['port']) + ' ')]
+                    require(not cold_rows, 'Cold worker served business ingress traffic')
+                    report['coldBusinessRequests'] = 0
+                    write(pathlib.Path('/run/aihr-admission/permit-' + UNITS[1]), b'owned actual admission\n')
+                    admitted = second_worker_ready(C, second, second_proof)
+                    admitted_proof = native_worker(C, admitted, plan, binding, profile, host)
+                    require(admitted_proof['process'] == second_proof['process'],
+                            'Second worker live identity changed before reply')
+                    proofs.append(admitted_proof)
+                    result = {'port': admitted['port']}
+                else:
+                    require(first and second, 'Two actual workers were not established')
+                    result = {'accepted': True}
+                completed.append(operation)
+                browser.stdin.write((json.dumps({'id': index + 1, 'ok': True, 'result': result}) + '\n').encode())
+                browser.stdin.flush()
+            browser.stdin.close()
+            with bootstrap_stage(11) as exit_slot:
+                code = browser.wait(timeout=left(30))
+                bootstrap_wrapper_exit(code)
+                exit_slot['code'] = code
+                require(code == 0, 'Native browser final assertions or cleanup failed')
+            # No extra out-of-order control request can silently be ignored.
+            require(not buffer.strip() and not browser.stdout.read(65537).strip(), 'Unexpected native browser protocol tail')
+            browser_report = json.loads(regular(pathlib.Path(plan['evidenceDirectory'], 'native-next-boot-browser.json'), plan['runnerUid'], 2 * 1024**2))
+            require(browser_report.get('complete') is True and browser_report.get('unexpectedBrowserErrors') == 0
+                    and browser_report.get('hydratedAccountControls', 0) >= 6 and browser_report.get('nonemptyOwnPayrollView') is True
+                    and browser_report.get('servedPorts') == sorted([first['port'], second['port']])
+                    and len(browser_report.get('logins', [])) == 2, 'Actual browser functional evidence incomplete')
+            report['browser'] = {'complete': True, 'realPasswordTotpLogins': 2,
+                'hydratedAccountControls': browser_report['hydratedAccountControls'], 'unexpectedBrowserErrors': 0,
+                'homeViews': len(browser_report['home']), 'nonemptyOwnPayrollView': True,
+                'servedPorts': browser_report['servedPorts']}
+            timing = browser_report.get('firstHostRequestTiming')
+            require(type(timing) is dict and set(timing) == {'kind', 'timeoutMs', 'elapsedMs', 'outcome', 'driverFinalElapsedMs'}
+                    and timing['kind'] == 'ACTUAL_FIRST_HOST_REQUEST_TIMING_NOT_ADMISSION' and timing['outcome'] == 'returned'
+                    and type(timing['timeoutMs']) is int and 0 < timing['timeoutMs'] <= 90000
+                    and type(timing['elapsedMs']) is int and 0 <= timing['elapsedMs'] <= timing['timeoutMs']
+                    and type(timing['driverFinalElapsedMs']) is int and 0 <= timing['driverFinalElapsedMs'] <= 300000,
+                    'Native browser first request timing incomplete')
+            report['bootstrapTiming']['browserFirstRequest'] = timing
+            report['workers'] = proofs
+            report['postBrowserWorkers'] = [native_worker(C, ready(unit), plan, binding, profile, host) for unit in UNITS]
+            require(time.monotonic() < DEADLINE, 'Native bootstrap operation exceeded its original budget')
+        except BaseException as error:
+            failure = error
+            raise
+        finally:
+            errors = []
+            try:
+                if selector is not None:
+                    selector.close()
+            except BaseException as error:
+                errors.append(error)
+            try:
+                if browser is not None:
+                    code = browser.poll()
+                    if code is None:
+                        # Only this wrapper is terminated here. Existing outer
+                        # cleanup independently admits/stops its transient unit.
+                        browser.terminate()
+                        code = browser.wait(timeout=5)
+                    bootstrap_wrapper_exit(code)
+            except BaseException as error:
+                errors.append(error)
+            if errors:
+                if failure is not None:
+                    errors.insert(0, failure)
+                if len(errors) == 1:
+                    raise errors[0]
+                raise BaseExceptionGroup('Native browser operation and wrapper settlement refused', errors)
+    report['actualNextBootVerified'] = True
 
 
 def release_workers(C):
@@ -1402,8 +1744,9 @@ def release_workers(C):
     report['rawBindAndProcessFamilyBarriersPreserved'] = True
 
 
-def require_stopped(unit):
-    actual = props(unit)
+def require_stopped(unit, actual=None):
+    if actual is None:
+        actual = props(unit)
     require(actual.get('MainPID', '0') == '0' and actual.get('ControlPID', '0') == '0'
             and actual.get('ActiveState') in ('inactive', 'failed'), 'Owned runtime process remains; preserve package')
     group = actual.get('ControlGroup', '')
@@ -1425,50 +1768,862 @@ def require_stopped(unit):
                     pending.append(pathlib.Path(entry.path))
 
 
+def record_owned_invocation(unit, transient=False):
+    actual = props(unit)
+    invocation = actual.get('InvocationID', '')
+    if actual.get('LoadState') == 'not-found' or not invocation:
+        return False
+    require(re.fullmatch(r'[0-9a-f]{32}', invocation) is not None, 'Native owned invocation invalid')
+    if transient:
+        require(unit == BROWSER and browser is not None, 'No owned browser launch')
+        description = systemctl('show', unit, '--property=Description,Transient', timeout=2).stdout.decode()
+        require('Transient=yes\n' in description
+                and 'Description=Owned actual Next browser ' + report['runId'] + '\n' in description,
+                'Owned browser declaration differs')
+    else:
+        file = pathlib.Path('/etc/systemd/system', unit)
+        info = file.lstat()
+        require((info.st_dev, info.st_ino) == owned_units.get(unit) and info.st_uid == 0,
+                'Owned service declaration changed at invocation capture')
+    prior = owned_invocations.get(unit)
+    require(prior is None or prior == invocation, 'Owned native invocation unexpectedly changed')
+    owned_invocations[unit] = invocation
+    return True
+
+
+def owned_start(unit, *, timeout=30, nonblocking=False):
+    require(unit in [*UNITS, PROXY] and unit in owned_units, 'Closed owned service start required')
+    errors, result = [], None
+    try:
+        result = systemctl('start', *(['--no-block'] if nonblocking else []), unit, timeout=timeout)
+    except BaseException as error:
+        errors.append(error)
+    try:
+        if nonblocking:
+            until(lambda: record_owned_invocation(unit), 'new native owned invocation', seconds=5)
+        else:
+            require(record_owned_invocation(unit), 'Native owned start produced no invocation')
+    except BaseException as error:
+        errors.append(error)
+    if len(errors) == 1:
+        raise errors[0]
+    if errors:
+        raise BaseExceptionGroup('Owned native start or identity capture refused', errors)
+    return result
+
+
 def cleanup(postgres_scope):
-    # Never remove a package under an unowned/replaced live service declaration.
+    # One aggregate deadline, including telemetry, all native stop attempts,
+    # absence proofs, manager reload and descriptor-only filesystem disposal.
+    global DEADLINE
+    started = time.monotonic()
+    DEADLINE = min(TOTAL_DEADLINE, started + 30)
+    admission_end, queue_end, settlement_end = started + 6, started + 8, started + 15
+    errors, safe = [], []
+    def phase_timeout(frontier, cap, slots=1):
+        remaining = min(DEADLINE, frontier) - time.monotonic()
+        require(remaining > 0, 'Owned cleanup phase deadline exceeded')
+        return min(cap, remaining / max(1, slots))
+    # Reserve a fair observation slot for every other independently owned unit
+    # and both browser properties. A single30s show must not consume all custody.
+    admission_slots = sum(unit != SLICE for unit in owned_units) + 2
+    def metadata_timeout():
+        nonlocal admission_slots
+        value = phase_timeout(admission_end, .75, admission_slots)
+        admission_slots = max(0, admission_slots - 1)
+        return value
+    def attempt(work):
+        try:
+            return work()
+        except BaseException as error:
+            errors.append(error)
+            return None
     for unit, expected in owned_units.items():
-        path = pathlib.Path('/etc/systemd/system', unit)
-        info = path.lstat()
-        require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and (info.st_dev, info.st_ino) == expected,
-                'Owned unit changed; preserve uncertain runtime for diagnosis')
-    transient = props(BROWSER)
-    if transient.get('LoadState') != 'not-found':
-        actual = systemctl('show', BROWSER, '--property=Description,Transient').stdout.decode()
+        def admit(unit=unit, expected=expected):
+            path = pathlib.Path('/etc/systemd/system', unit)
+            info = path.lstat()
+            require(stat.S_ISREG(info.st_mode) and info.st_uid == 0
+                    and (info.st_dev, info.st_ino) == expected,
+                    'Owned unit changed; preserve uncertain runtime for diagnosis')
+            if unit != SLICE:
+                actual = props(unit, timeout=metadata_timeout())
+                invocation = actual.get('InvocationID', '')
+                if invocation:
+                    require(managed_runtime_module is not None, 'Native runtime owner missing')
+                    managed_runtime_module.require_owned_invocation(actual, owned_invocations.get(unit), require)
+                else:
+                    require(actual.get('MainPID') == actual.get('ControlPID') == '0'
+                            and actual.get('ActiveState') in ('inactive', 'failed'), 'Unowned native service remains')
+            safe.append(unit)
+        attempt(admit)
+    def browser_admit():
+        transient = props(BROWSER, timeout=metadata_timeout())
+        if transient.get('LoadState') == 'not-found':
+            return
+        actual = systemctl('show', BROWSER, '--property=Description,Transient', timeout=metadata_timeout()).stdout.decode()
         require('Transient=yes\n' in actual and 'Description=Owned actual Next browser ' + report['runId'] + '\n' in actual,
                 'Unexpected browser transient unit; preserve uncertain runtime')
-        systemctl('stop', BROWSER, check=False, timeout=10)
-        require_stopped(BROWSER)
-        systemctl('reset-failed', BROWSER, check=False)
-    for unit in [*reversed(UNITS), PROXY, SLICE]:
+        require(managed_runtime_module is not None, 'Native runtime owner missing')
+        managed_runtime_module.require_owned_invocation(transient, owned_invocations.get(BROWSER), require)
+        bootstrap_service_exit(transient)
+        safe.append(BROWSER)
+    attempt(browser_admit)
+    # Enqueue ALL independently admitted service stops before awaiting any one.
+    # A foreign slice occupant cannot be killed through stop(slice).
+    services = [unit for unit in [BROWSER, *reversed(UNITS), PROXY] if unit in safe]
+    for index, unit in enumerate(services):
+        attempt(lambda unit=unit, slots=len(services)-index: systemctl('stop', '--no-block', unit,
+            timeout=phase_timeout(queue_end, .5, slots)))
+    pending = set(services)
+    while pending and time.monotonic() < min(DEADLINE, settlement_end):
+        for unit in list(pending):
+            try:
+                require_stopped(unit, props(unit, timeout=phase_timeout(settlement_end, .25, len(pending))))
+                pending.remove(unit)
+            except AssertionError:
+                pass
+            except BaseException as error:
+                errors.append(error)
+                pending.remove(unit)
+        if pending:
+            time.sleep(max(0, min(0.025, min(DEADLINE, settlement_end) - time.monotonic())))
+    if pending:
+        errors.append(AssertionError('Owned runtime family did not settle within cleanup deadline'))
+    if SLICE in safe:
+        def stop_empty_slice():
+            # cgroup absence/emptiness is checked BEFORE stop, so a newly arrived
+            # foreign child service remains untouched and keeps package custody.
+            actual = props(SLICE, timeout=phase_timeout(started + 18, .5))
+            require(actual.get('MainPID', '0') == actual.get('ControlPID', '0') == '0', 'Native slice process identity differs')
+            group = actual.get('ControlGroup', '')
+            require(group == FIXTURE_CGROUP or not group, 'Native slice cgroup differs')
+            if group:
+                directory = pathlib.Path('/sys/fs/cgroup' + group)
+                if directory.exists():
+                    require(not directory.is_symlink(), 'Native slice cgroup is a link')
+                    with os.scandir(directory) as entries:
+                        child = any(entry.is_dir(follow_symlinks=False) for entry in entries)
+                    require(not (directory / 'cgroup.procs').read_text().strip() and not child,
+                            'Foreign native slice occupant; preserve runtime')
+            systemctl('stop', SLICE, timeout=phase_timeout(started + 18, 2))
+            require_stopped(SLICE, props(SLICE, timeout=phase_timeout(started + 18, .5)))
+        attempt(stop_empty_slice)
+    # Reap the exact launcher owned by Popen, never a reconstructed numeric PID.
+    if browser is not None:
+        def launcher_settle():
+            if browser.poll() is None:
+                browser.terminate()
+                try:
+                    browser.wait(timeout=left(1))
+                except subprocess.TimeoutExpired:
+                    browser.kill()
+                    browser.wait(timeout=left(1))
+            require(browser.poll() is not None, 'Owned browser launcher remains live')
+        attempt(launcher_settle)
+    def no_host_mounts():
+        # Same-filesystem bind mounts are not detected by st_dev alone. A fixed
+        # bounded host observation must exclude them BEFORE any path disposal.
+        owner = managed_runtime_module
+        if owner is None:
+            module = pathlib.Path('/usr/local/lib/aihr-admission/next_profile.py')
+            require(module.exists(), 'Protected mount observation owner unavailable')
+            raw = observer_read(module, 1024 * 1024)
+            expected = report.get('sealedHelpers', {}).get('next_profile.py', {}).get('sha256')
+            require(isinstance(expected, str) and hashlib.sha256(raw).hexdigest() == expected,
+                    'Protected cleanup observer source differs')
+            owner = types.ModuleType('owned_cleanup_mount_observer')
+            owner.__file__ = str(module)
+            exec(compile(raw, str(module), 'exec'), owner.__dict__)
+        proc = os.open('/proc/self', os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            mounts = owner.parse_mountinfo(owner.read_proc(proc, 'mountinfo', 4 * 1024 * 1024, require), require)
+        finally:
+            os.close(proc)
+        require(not any(row['target'] == root or row['target'].startswith(root + '/')
+                        for root in owned_paths for row in mounts), 'Foreign host mount; preserve fixture paths')
+    attempt(no_host_mounts)
+    if errors:
+        raise BaseExceptionGroup('Owned native stop/absence refused; preserve all fixture paths', errors)
+    for unit in safe:
+        systemctl('reset-failed', unit, check=False, timeout=1)
         if unit in owned_units:
-            systemctl('stop', unit, check=False, timeout=15)
-            require_stopped(unit)
-            systemctl('reset-failed', unit, check=False)
-            pathlib.Path('/etc/systemd/system', unit).unlink()
+            path = pathlib.Path('/etc/systemd/system', unit)
+            info = path.lstat()
+            require((info.st_dev, info.st_ino) == owned_units[unit] and info.st_uid == 0,
+                    'Owned unit changed before disposal')
+            path.unlink()
     if owned_units:
         require(postgres_scope is not None, 'Owned PostgreSQL reload guard absent')
         postgres_scope.snapshot('before-cleanup-reload')
-        systemctl('daemon-reload')
+        systemctl('daemon-reload', timeout=2)
         postgres_scope.snapshot('after-cleanup-reload')
-    require(shutil.rmtree.avoids_symlink_attacks, 'Descriptor-safe cleanup unavailable')
+    def remove_tree(path, expected):
+        info = os.lstat(path)
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0
+                and (info.st_dev, info.st_ino) == expected, 'Owned fixture directory changed')
+        root = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        count = 0
+        def walk(fd, depth):
+            nonlocal count
+            require(depth <= 128, 'Owned cleanup depth exceeds bound')
+            with os.scandir(fd) as entries:
+                for entry in entries:
+                    left();count += 1
+                    require(count <= 500000, 'Owned cleanup member count exceeds bound')
+                    before = os.stat(entry.name, dir_fd=fd, follow_symlinks=False)
+                    require(before.st_dev == info.st_dev, 'Unexpected cleanup mount; preserve runtime')
+                    if stat.S_ISDIR(before.st_mode):
+                        child = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                        try:
+                            held = os.fstat(child)
+                            require((held.st_dev, held.st_ino) == (before.st_dev, before.st_ino), 'Cleanup directory changed')
+                            walk(child, depth + 1)
+                            after = os.stat(entry.name, dir_fd=fd, follow_symlinks=False)
+                            require((after.st_dev, after.st_ino) == (held.st_dev, held.st_ino), 'Cleanup directory replaced')
+                        finally:
+                            os.close(child)
+                        os.rmdir(entry.name, dir_fd=fd)
+                    else:
+                        os.unlink(entry.name, dir_fd=fd)  # unlink links; never follow them
+        try:
+            held = os.fstat(root)
+            require((held.st_dev, held.st_ino) == expected, 'Cleanup root changed')
+            walk(root, 0)
+        finally:
+            os.close(root)
+        left();after = os.lstat(path)
+        require((after.st_dev, after.st_ino) == expected, 'Cleanup root replaced')
+        os.rmdir(path)
     for name in reversed(ROOTS):
         if name in owned_paths:
-            info = os.lstat(name)
-            require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0
-                    and (info.st_dev, info.st_ino) == owned_paths[name], 'Owned fixture directory changed')
-            shutil.rmtree(name)
+            remove_tree(name, owned_paths[name])
     if created_home:
-        home = pathlib.Path('/var/empty/aihr')
-        info = home.lstat()
+        left();home = pathlib.Path('/var/empty/aihr');info = home.lstat()
         require((info.st_dev, info.st_ino) == owned_paths[str(home)] and info.st_uid == 0, 'Owned empty home changed')
         home.rmdir()
     if created_empty_parent is not None:
-        parent = pathlib.Path('/var/empty')
-        info = parent.lstat()
+        left();parent = pathlib.Path('/var/empty');info = parent.lstat()
         require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0
                 and (info.st_dev, info.st_ino) == created_empty_parent, 'Owned empty-home parent changed')
         parent.rmdir()
+
+
+# Read-only failure diagnostics. These observations cannot grant admission,
+# replace a product predicate, establish cleanup or change an original outcome.
+RUNTIME_DIAGNOSTIC_UNITS = {unit: label for unit, label in zip(
+    [*UNITS, PROXY, BROWSER, SLICE], ['worker-1', 'worker-2', 'proxy', 'browser', 'slice'])}
+RUNTIME_STATE_KEYS = frozenset({'Id', 'LoadState', 'ActiveState', 'SubState', 'InvocationID',
+    'MainPID', 'ControlPID', 'Result', 'ExecMainCode', 'ExecMainStatus'})
+RUNTIME_DIAGNOSTIC_MAX = 131072
+RUNTIME_PHASES = frozenset({'actual-browser-start-first', 'actual-browser-start-second-cold',
+    'actual-browser-admit-second', 'actual-browser-browser-core-finished',
+    'actual-browser-two-worker-boot', 'drain-stop-and-actual-bind-reclamation'})
+
+
+def runtime_command_label(arguments):
+    if not isinstance(arguments, list) or arguments[:2] != ['/usr/bin/systemctl', '--system']:
+        return None
+    tail = arguments[2:]
+    if tail == ['daemon-reload']:
+        return 'manager-reload'
+    for unit, label in RUNTIME_DIAGNOSTIC_UNITS.items():
+        for verb in ('start', 'stop', 'reset-failed'):
+            if tail == [verb, unit] or tail == [verb, '--no-block', unit]:
+                return verb + '-' + label
+        if tail in (['show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup'],
+                    ['show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup,UnsetEnvironment'],
+                    ['show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup,UnsetEnvironment,ExecMainStartTimestampMonotonic,ExecMainExitTimestampMonotonic']):
+            return 'properties-' + label
+    if tail == ['show', BROWSER, '--property=Description,Transient']:
+        return 'browser-owner-check'
+    return None
+
+
+def runtime_command_observation(arguments, result=None, error=None):
+    # No caller label, argument, stderr, private command output or exception text.
+    label = runtime_command_label(arguments)
+    if label is None:
+        return
+    values = report.setdefault('runtimeCommands', [])
+    if len(values) >= 32:
+        report['runtimeCommandsComplete'] = False
+        return
+    code = getattr(result, 'returncode', None)
+    values.append({'command': label, 'returnCode': code if type(code) is int and -255 <= code <= 255 else None,
+                   'outcome': 'timeout' if isinstance(error, subprocess.TimeoutExpired)
+                       else 'exception' if error is not None else 'returned'})
+
+
+def runtime_catalog(sources, fixture_path):
+    paths = dict(OBSERVER_PATHS, fixture=fixture_path)
+    require(isinstance(sources, dict) and set(sources) == set(paths), 'Closed diagnostic sources required')
+    result, reasons = {}, {}
+    for owner, filename in paths.items():
+        raw = sources[owner]
+        require(isinstance(raw, bytes) and 0 < len(raw) <= 1024**2, 'Bounded diagnostic source required')
+        tree = ast.parse(raw, filename)
+        calls, guards = set(), set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            calls.update(range(node.lineno, node.end_lineno + 1))
+            if (isinstance(node.func, ast.Name) and node.func.id in ('require', 'check')
+                    or isinstance(node.func, ast.Attribute) and node.func.attr in ('require', 'check')):
+                guards.update(range(node.lineno, node.end_lineno + 1))
+                if (owner != 'fixture' and len(node.args) == 2
+                        and isinstance(node.args[1], ast.Constant) and type(node.args[1].value) is str
+                        and 0 < len(node.args[1].value.encode()) <= 1024):
+                    reasons.setdefault('Admission refused: ' + node.args[1].value, []).append(
+                        {'owner': owner, 'line': node.lineno})
+        code, codes = compile(raw, filename, 'exec', dont_inherit=True), set()
+        def gather(value):
+            codes.add(observer_code_identity(value))
+            for item in value.co_consts:
+                if isinstance(item, types.CodeType):
+                    gather(item)
+        gather(code)
+        result[owner] = {'path': filename, 'codes': frozenset(codes),
+                         'calls': frozenset(calls), 'guards': frozenset(guards)}
+    return result, reasons
+
+
+def runtime_exception_observation(error, catalog):
+    frames, current, count = [], error.__traceback__, 0
+    while current is not None:
+        count += 1
+        if count > 32:
+            return {'classification': 'stack-bound-exceeded'}
+        frame = current.tb_frame
+        for owner, source in catalog.items():
+            if (frame.f_code.co_filename == source['path'] and frame.f_globals.get('__file__') == source['path']
+                    and current.tb_lineno in source['calls']
+                    and observer_code_identity(frame.f_code) in source['codes']):
+                frames.append({'owner': owner, 'line': current.tb_lineno,
+                               'kind': 'guard' if current.tb_lineno in source['guards'] else 'call'})
+        current = current.tb_next
+    name = type(error).__name__
+    return {'classification': 'sealed-source-exception' if frames else 'unmatched-source-exception',
+            'exception': name if name in OBSERVER_EXCEPTIONS | {'TimeoutExpired', 'CalledProcessError',
+                'SystemExit', 'KeyboardInterrupt'} else 'unknown', 'frames': frames}
+
+
+def runtime_state_observation(raw):
+    require(isinstance(raw, bytes) and len(raw) <= RUNTIME_DIAGNOSTIC_MAX, 'Diagnostic state bound refused')
+    rows = {}
+    for block in raw.decode('utf8').strip().split('\n\n'):
+        values = {}
+        for line in block.splitlines():
+            key, separator, value = line.partition('=')
+            require(separator and key in RUNTIME_STATE_KEYS and key not in values,
+                    'Closed diagnostic state fields required')
+            values[key] = value
+        unit = values.get('Id')
+        require(unit in RUNTIME_DIAGNOSTIC_UNITS and unit not in rows, 'Closed diagnostic unit required')
+        require({'Id', 'LoadState', 'ActiveState', 'SubState', 'InvocationID'} <= set(values),
+                'Complete diagnostic state identity required')
+        rows[unit] = values
+    require(set(rows) == set(RUNTIME_DIAGNOSTIC_UNITS), 'Complete fixed unit snapshot required')
+    result, invocations = [], {}
+    known = {'LoadState': {'loaded', 'not-found', 'masked', 'error', 'bad-setting', 'merged', 'stub'},
+        'ActiveState': {'active', 'reloading', 'inactive', 'failed', 'activating', 'deactivating', 'maintenance', 'refreshing'},
+        'SubState': {'dead', 'running', 'start-pre', 'start', 'start-post', 'stop', 'stop-sigterm', 'stop-sigkill',
+            'stop-post', 'failed', 'exited', 'waiting', 'auto-restart', 'condition', 'listening'},
+        'Result': {'success', 'resources', 'timeout', 'exit-code', 'signal', 'core-dump', 'watchdog',
+            'start-limit-hit', 'oom-kill', 'protocol', 'exec-condition', 'dependency'}}
+    for unit, label in RUNTIME_DIAGNOSTIC_UNITS.items():
+        values = rows[unit]
+        public = {'unit': label}
+        for key, allowed in known.items():
+            public[key] = values.get(key) if values.get(key) in allowed else 'unknown'
+        for key in ('ExecMainCode', 'ExecMainStatus'):
+            value = values.get(key, '')
+            public[key] = int(value) if re.fullmatch(r'[0-9]{1,3}', value) and int(value) <= 255 else None
+        invocation = values['InvocationID']
+        public['hasInvocation'] = re.fullmatch(r'[a-f0-9]{32}', invocation) is not None
+        if unit in UNITS and public['hasInvocation']:
+            invocations[unit] = invocation
+        result.append(public)
+    return result, invocations
+
+
+def runtime_journal_observation(raw, unit, invocation, python_exe, reasons):
+    require(unit in UNITS and re.fullmatch(r'[a-f0-9]{32}', invocation)
+            and isinstance(python_exe, str) and python_exe.startswith('/usr/bin/'), 'Closed journal identity required')
+    require(isinstance(raw, bytes) and len(raw) <= RUNTIME_DIAGNOSTIC_MAX, 'Diagnostic journal bound refused')
+    records, trusted, refusals, exceptions = 0, 0, [], []
+    commands = {prefix + ' -I -B ' + OBSERVER_PATHS['controller'] + ' ' + operation + ' ' + unit
+                for prefix in ('/usr/bin/python3', python_exe) for operation in ('reserve', 'admit', 'cleanup')}
+    for line in raw.splitlines():
+        records += 1
+        require(records <= 64, 'Diagnostic journal record bound refused')
+        row = json.loads(line)
+        if not (isinstance(row, dict) and row.get('_UID') == '0' and row.get('_EXE') == python_exe
+                and row.get('_SYSTEMD_UNIT') == unit and row.get('_SYSTEMD_INVOCATION_ID') == invocation
+                and type(row.get('_CMDLINE')) is str and row['_CMDLINE'] in commands):
+            continue
+        trusted += 1
+        message = row.get('MESSAGE')
+        if type(message) is not str:
+            continue
+        if message in reasons:
+            sites = reasons[message]
+            require(len(sites) <= 16, 'Ambiguous literal diagnostic exceeds bound')
+            refusals.append({'classification': 'sealed-literal-refusal', 'sites': sites})
+        else:
+            for name in OBSERVER_EXCEPTIONS:
+                if message == 'Admission failed: ' + name + '; reconcile before retry':
+                    exceptions.append(name)
+                    break
+    return {'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'records': records, 'trustedControllerRecords': trusted,
+            'literalRefusals': refusals, 'closedExceptions': exceptions}
+
+
+
+
+ADMISSION_PHASE_PREFIX = 'AIHR_ADMIT_PHASE_V1 '
+ADMISSION_PHASE_STAGES = ('controller-profile', 'admit-initial-state', 'already-ready-worker',
+    'readiness-loop', 'first-loop-profile', 'first-worker-before', 'first-worker-resources',
+    'first-worker-typed', 'first-worker-runtime', 'first-worker-listener-final', 'first-health',
+    'repeat-readiness', 'final-lock-state', 'final-already-ready-worker', 'prepublish-worker',
+    'prepublish-save', 'publish', 'postpublish-worker', 'save-ready', 'profile-close')
+
+
+def admission_unique_fields(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError('Duplicate diagnostic field')
+        value[key] = item
+    return value
+
+
+def parse_admission_phase_messages(messages, raw_record_count):
+    """Pure bounded schema/clock/controlflow parser. NO native authority checks."""
+    def need(ok):
+        if not ok:
+            raise ValueError('Invalid bounded admission phase prefix')
+    need(type(raw_record_count) is int and 0 < raw_record_count < 64)
+    need(type(messages) is list and 0 < len(messages) <= 40 and len(messages) <= raw_record_count)
+    events, stack, started, ended = [], [], {}, {}
+    previous, total = None, 0
+    worker_parents = {2, 3, 11, 13, 14, 17}
+    for message in messages:
+        need(19 not in ended)  # profile-close exit is terminal, including raised exits.
+        need(type(message) is str and message.startswith(ADMISSION_PHASE_PREFIX) and message.isascii())
+        length = len(message.encode('ascii')) + 1
+        total += length
+        need(length <= 128 and total <= 5120)
+        row = json.loads(message[len(ADMISSION_PHASE_PREFIX):], object_pairs_hook=admission_unique_fields)
+        need(type(row) is dict and set(row) == {'v', 'q', 'p', 'e', 't', 'd'})
+        need(type(row['v']) is int and row['v'] == 1 and type(row['q']) is int and row['q'] == len(events)
+             and type(row['p']) is int and 0 <= row['p'] < 20 and row['e'] in ('enter', 'return', 'raised'))
+        need(type(row['t']) is int and 0 <= row['t'] <= 9007199254740991
+             and (previous is None or row['t'] >= previous))
+        code, event, stamp = row['p'], row['e'], row['t']
+        if event == 'enter':
+            need(row['d'] is None and code not in started)
+            parent = stack[-1] if stack else None
+            if code in (0, 1, 3, 12, 19):
+                need(parent is None)
+                if code == 0:
+                    need(not events)
+                elif code == 1:
+                    need(ended.get(0) == 'return')
+                elif code == 3:
+                    need(ended.get(1) == 'return' and 2 not in started)
+                elif code == 12:
+                    need(ended.get(3) == 'return')
+                else:
+                    need(0 in ended)
+            elif code == 2:
+                need(parent == 1)
+            elif code == 4:
+                need(parent == 3)
+            elif code in (5, 6, 7, 8, 9):
+                need(parent in worker_parents)
+                if code != 5:
+                    need(ended.get(5) == 'return')
+                if code in (7, 8):
+                    need(ended.get(code - 1) == 'return')
+            elif code == 10:
+                need(parent in (3, 11))
+            elif code == 11:
+                need(parent == 3 and ended.get(4) == 'return')
+            else:
+                need(parent == 12)
+                if code == 13:
+                    need(14 not in started)
+                elif code == 14:
+                    need(13 not in started)
+                else:
+                    need(ended.get(code - 1) == 'return')
+            started[code] = stamp
+            stack.append(code)
+        else:
+            need(stack and stack[-1] == code and type(row['d']) is int
+                 and 0 <= row['d'] <= 9007199254740991 and row['d'] == stamp - started[code])
+            stack.pop()
+            ended[code] = event
+        events.append(row)
+        previous = stamp
+    need(events[0]['p'] == 0 and events[0]['e'] == 'enter')
+    complete = not stack and ended.get(19) == 'return'
+    result = {'kind': 'SOURCE_BOUND_CONTROLLER_PHASE_OBSERVATIONS_NOT_ADMISSION',
+        'state': 'complete-prefix' if complete else 'incomplete-prefix', 'events': events,
+        'activeStageCodes': stack, 'lastEnteredStage': next(row['p'] for row in reversed(events) if row['e'] == 'enter'),
+        'lastReturnedStage': next((row['p'] for row in reversed(events) if row['e'] == 'return'), None),
+        'traceComplete': complete}
+    need(len(json.dumps(result, separators=(',', ':')).encode()) <= 8192
+         and len(json.dumps(result, indent=2).encode()) <= 16384)
+    return result
+
+
+def unavailable_admission_phases():
+    return {'kind': 'SOURCE_BOUND_CONTROLLER_PHASE_OBSERVATIONS_NOT_ADMISSION', 'state': 'unavailable',
+        'events': [], 'activeStageCodes': [], 'lastEnteredStage': None, 'lastReturnedStage': None, 'traceComplete': False}
+
+
+def runtime_admission_phase_diagnostic(raw, unit, invocation, python_exe, sources, binding):
+    """Full Next authority stays fixed here; the shared parser cannot confer it."""
+    try:
+        require(unit in UNITS and re.fullmatch(r'[a-f0-9]{32}', invocation)
+                and type(python_exe) is str and python_exe.startswith('/usr/bin/'), 'Closed controller phase identity required')
+        for owner, name in (('controller', 'controller.py'), ('fixture', 'test_next_native.py')):
+            require(hashlib.sha256(sources[owner]).hexdigest() == binding['helpers'][name]['sha256'],
+                    'Controller phase source identity differs')
+        require(type(raw) is bytes and len(raw) <= RUNTIME_DIAGNOSTIC_MAX, 'Controller phase raw bound refused')
+        lines, messages = raw.splitlines(), []
+        require(0 < len(lines) < 64, 'Controller phase journal may be truncated')
+        commands = {prefix + ' -I -B ' + OBSERVER_PATHS['controller'] + ' admit ' + unit
+                    for prefix in ('/usr/bin/python3', python_exe)}
+        for line in lines:
+            row = json.loads(line, object_pairs_hook=admission_unique_fields)
+            message = row.get('MESSAGE') if type(row) is dict else None
+            if type(message) is str and message.startswith(ADMISSION_PHASE_PREFIX):
+                require(row.get('_UID') == '0' and row.get('_EXE') == python_exe
+                        and row.get('_SYSTEMD_UNIT') == unit and row.get('_SYSTEMD_INVOCATION_ID') == invocation
+                        and row.get('_TRANSPORT') == 'stdout' and '_LINE_BREAK' not in row
+                        and type(row.get('_CMDLINE')) is str and row['_CMDLINE'] in commands,
+                        'Controller phase native origin unavailable')
+                messages.append(message)
+        return parse_admission_phase_messages(messages, len(lines))
+    except BaseException:
+        return unavailable_admission_phases()
+
+def runtime_environment_journal_observation(raw, unit, invocation, python_exe, sources, binding):
+    """Separate closed helper branch; controller message matching is unchanged."""
+    require(unit in UNITS and re.fullmatch(r'[a-f0-9]{32}', invocation)
+            and isinstance(python_exe, str) and python_exe.startswith('/usr/bin/'), 'Closed environment journal identity required')
+    require(isinstance(raw, bytes) and len(raw) <= RUNTIME_DIAGNOSTIC_MAX, 'Environment journal bound refused')
+    require(type(sources) is dict and set(sources) == {'next-profile', 'poststart'}, 'Closed environment observer sources required')
+    for owner, name in (('next-profile', 'next_profile.py'), ('poststart', 'next_fixture_poststart.py')):
+        require(isinstance(sources[owner], bytes) and 0 < len(sources[owner]) <= 1024**2
+                and hashlib.sha256(sources[owner]).hexdigest() == binding['helpers'][name]['sha256'],
+                'Environment observer source identity differs')
+    N = types.ModuleType('sealed_environment_journal_receiver')
+    N.__file__ = OBSERVER_PATHS['next-profile']
+    exec(compile(sources['next-profile'], N.__file__, 'exec', dont_inherit=True), N.__dict__)
+    commands = {prefix + ' -I -B /usr/local/lib/aihr-admission/next_fixture_poststart.py ' + unit
+                for prefix in ('/usr/bin/python3', python_exe)}
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, 'Duplicate environment journal field')
+            value[key] = item
+        return value
+    result = []
+    lines = raw.splitlines()
+    require(len(lines) <= 64, 'Environment journal record bound refused')
+    for line in lines:
+        row = json.loads(line, object_pairs_hook=unique)
+        if not (type(row) is dict and row.get('_UID') == '0' and row.get('_EXE') == python_exe
+                and row.get('_SYSTEMD_UNIT') == unit and row.get('_SYSTEMD_INVOCATION_ID') == invocation
+                and type(row.get('_CMDLINE')) is str and row['_CMDLINE'] in commands):
+            continue
+        message = row.get('MESSAGE')
+        if type(message) is not str or not message.startswith(N.ENVIRONMENT_OBSERVATION_PREFIX):
+            continue
+        require(len(message.encode()) <= 4096, 'Environment journal message bound refused')
+        value = json.loads(message[len(N.ENVIRONMENT_OBSERVATION_PREFIX):], object_pairs_hook=unique)
+        result.append(N.validate_environment_observation(value, RUNTIME_DIAGNOSTIC_UNITS[unit]))
+        require(len(result) == 1, 'Duplicate environment observer record refused')
+    return result
+
+
+def runtime_environment_journal_diagnostic(raw, unit, invocation, python_exe, sources, binding):
+    """New phase failure cannot discard an original validated environment observation."""
+    observed = runtime_environment_journal_observation(raw, unit, invocation, python_exe, sources, binding)
+    try:
+        return _runtime_environment_phase_diagnostic(raw, unit, invocation, python_exe, sources, observed)
+    except BaseException:
+        return {'observations': observed, 'diagnostic': {'kind': 'CLOSED_OBSERVER_PHASE_DIAGNOSTIC_NOT_ENVIRONMENT_OR_ADMISSION',
+            'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'state': 'receiver-unavailable', 'phases': [],
+            'census': None, 'phaseUnavailable': True, 'keyNameDiagnostic': {
+                'kind': 'KEY_NAME_HASHES_NOT_ENVIRONMENT_OR_ADMISSION', 'state': 'unavailable',
+                'helperCompletion': 'unavailable', 'count': None, 'digests': [], 'reason': 'phase-unavailable'}, 'plainKeyNameDiagnostic': {
+                'kind': 'PLAIN_OTHER_KEY_NAMES_NOT_ENVIRONMENT_OR_ADMISSION', 'state': 'unavailable',
+                'helperCompletion': 'unavailable', 'count': None, 'names': [], 'reason': 'phase-unavailable'}}}
+
+
+def _runtime_environment_phase_diagnostic(raw, unit, invocation, python_exe, sources, observed):
+    # Original source and outer JSON/duplicate/transport checks have completed.
+    P = types.ModuleType('sealed_observer_phase_receiver')
+    P.__file__ = '/usr/local/lib/aihr-admission/next_fixture_poststart.py'
+    N = types.ModuleType('sealed_observer_prefix_owner')
+    N.__file__ = OBSERVER_PATHS['next-profile']
+    exec(compile(sources['poststart'], P.__file__, 'exec', dont_inherit=True), P.__dict__)
+    exec(compile(sources['next-profile'], N.__file__, 'exec', dont_inherit=True), N.__dict__)
+    commands = {prefix + ' -I -B /usr/local/lib/aihr-admission/next_fixture_poststart.py ' + unit
+                for prefix in ('/usr/bin/python3', python_exe)}
+    controllers = {prefix + ' -I -B /usr/local/lib/aihr-admission/controller.py admit ' + unit
+                   for prefix in ('/usr/bin/python3', python_exe)}
+    census = {'kind': 'UNTRUSTED_PREFIX_TRANSPORT_COUNTS_NOT_HELPER_OR_ENVIRONMENT_PROOF',
+        'records': 0, 'environmentCandidates': 0, 'phaseCandidates': 0, 'trustedHelperCandidates': 0,
+        'metadataMatches': dict.fromkeys(('uid', 'executable', 'unit', 'invocation'), 0),
+        'commandClasses': dict.fromkeys(('helper', 'controller', 'other-or-missing'), 0)}
+    phases, unavailable, key_names, plain_names = [], False, None, None
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, 'Duplicate observer phase field')
+            value[key] = item
+        return value
+    for line in raw.splitlines():
+        row = json.loads(line);census['records'] += 1
+        message = row.get('MESSAGE') if type(row) is dict else None
+        if type(message) is not str:
+            continue
+        plain_terminal = message.startswith(P.PLAIN_TERMINAL_PREFIX)
+        terminal = message.startswith(P.TERMINAL_PREFIX) or plain_terminal
+        phase = message.startswith(P.PHASE_PREFIX) or terminal
+        environment = message.startswith(N.ENVIRONMENT_OBSERVATION_PREFIX)
+        if not (phase or environment):
+            continue
+        census['phaseCandidates' if phase else 'environmentCandidates'] += 1
+        matches = {'uid': row.get('_UID') == '0', 'executable': row.get('_EXE') == python_exe,
+            'unit': row.get('_SYSTEMD_UNIT') == unit, 'invocation': row.get('_SYSTEMD_INVOCATION_ID') == invocation}
+        for key, matched in matches.items():
+            census['metadataMatches'][key] += int(matched)
+        command = row.get('_CMDLINE')
+        classification = 'helper' if type(command) is str and command in commands else \
+            'controller' if type(command) is str and command in controllers else 'other-or-missing'
+        census['commandClasses'][classification] += 1
+        trusted = all(matches.values()) and classification == 'helper'
+        if trusted:
+            census['trustedHelperCandidates'] += 1
+        if not phase or not trusted:
+            continue
+        try:
+            require(len(message.encode()) <= 1024, 'Observer phase message bound refused')
+            candidate_keys, candidate_plain = None, None
+            if plain_terminal:
+                envelope = P.validate_plain_terminal_observation(json.loads(message[len(P.PLAIN_TERMINAL_PREFIX):], object_pairs_hook=unique),
+                    RUNTIME_DIAGNOSTIC_UNITS[unit], N.validate_key_name_digests, N.validate_plain_key_names)
+                value, candidate_keys = envelope['phase'], envelope['keyNames']
+                candidate_plain = {key: envelope[key] for key in ('namesComplete', 'names')}
+            elif terminal:
+                envelope = P.validate_terminal_observation(json.loads(message[len(P.TERMINAL_PREFIX):], object_pairs_hook=unique),
+                    RUNTIME_DIAGNOSTIC_UNITS[unit], N.validate_key_name_digests)
+                value, candidate_keys = envelope['phase'], envelope['keyNames']
+            else:
+                value = P.validate_phase_observation(json.loads(message[len(P.PHASE_PREFIX):], object_pairs_hook=unique), RUNTIME_DIAGNOSTIC_UNITS[unit])
+            # Full-helper ledger starts at timer-armed. Host hook subsequences do
+            # not become full-helper execution evidence through this receiver.
+            require(not phases or phases[-1]['result'] == 'entered', 'Observer phase after terminal')
+            require(value['sequence'] == len(phases) and len(phases) < 14, 'Observer phase sequence refused')
+            if value['result'] != 'entered':
+                require(phases and value['phase'] == phases[-1]['phase'], 'Observer terminal phase differs')
+            phases.append(value)
+            if terminal:
+                key_names, plain_names = candidate_keys, candidate_plain
+        except BaseException:
+            unavailable = True
+    # Never publish a partial accepted ledger after a malformed/duplicate/foreign
+    # transition. Census remains explicitly untrusted; valid original observations survive.
+    if key_names is not None and len(phases) == 14 and phases[-1]['result'] == 'finished' and len(observed) == 1:
+        try:
+            N.validate_key_name_digests(key_names, observed[0]['otherUnqualifiedCount'])
+            if plain_names is not None:
+                N.validate_plain_key_names(plain_names, key_names)
+        except (ValueError, TypeError):
+            unavailable = True
+    if unavailable:
+        phases, key_names, plain_names = [], None, None
+    helper_finished = len(phases) == 14 and phases[-1]['result'] == 'finished'
+    count = observed[0]['otherUnqualifiedCount'] if len(observed) == 1 else None
+    key_diagnostic = {'kind': 'KEY_NAME_HASHES_NOT_ENVIRONMENT_OR_ADMISSION',
+        'state': 'helper-not-finished', 'helperCompletion': 'not-finished', 'count': count,
+        'digests': [], 'reason': 'helper-not-finished'}
+    if unavailable:
+        key_diagnostic.update(state='unavailable', helperCompletion='unavailable', reason='phase-unavailable')
+    elif helper_finished:
+        key_diagnostic.update(state='unavailable', helperCompletion='finished',
+            reason='environment-observation-missing' if len(observed) != 1 else 'terminal-v2-absent')
+        if len(observed) == 1 and key_names is not None:
+            key_diagnostic.update(state=key_names['state'], digests=list(key_names['digests']), reason=key_names['reason'])
+    plain_diagnostic = {'kind': 'PLAIN_OTHER_KEY_NAMES_NOT_ENVIRONMENT_OR_ADMISSION',
+        'state': 'helper-not-finished', 'helperCompletion': 'not-finished', 'count': count,
+        'names': [], 'reason': 'helper-not-finished'}
+    if unavailable:
+        plain_diagnostic.update(state='unavailable', helperCompletion='unavailable', reason='phase-unavailable')
+    elif helper_finished:
+        plain_diagnostic.update(state='unavailable', helperCompletion='finished',
+            reason='environment-observation-missing' if len(observed) != 1 else 'terminal-v3-absent')
+        if len(observed) == 1 and plain_names is not None:
+            plain_diagnostic.update(state='complete' if plain_names['namesComplete'] else 'unavailable',
+                names=list(plain_names['names']), reason='none' if plain_names['namesComplete'] else 'plain-unavailable')
+    state = 'environment-observed' if observed else 'phase-only' if phases else \
+        'untrusted-candidates-only' if census['environmentCandidates'] + census['phaseCandidates'] else 'no-candidates'
+    if unavailable:
+        state = 'receiver-unavailable'
+    return {'observations': observed, 'diagnostic': {'kind': 'CLOSED_OBSERVER_PHASE_DIAGNOSTIC_NOT_ENVIRONMENT_OR_ADMISSION',
+        'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'state': state, 'phases': phases, 'census': census,
+        'phaseUnavailable': unavailable, 'keyNameDiagnostic': key_diagnostic,
+        'plainKeyNameDiagnostic': plain_diagnostic}}
+
+
+def runtime_owned_declaration(unit):
+    """Positive ownership only from this fixture's captured native declaration."""
+    require(unit in RUNTIME_DIAGNOSTIC_UNITS, 'Closed diagnostic owned unit required')
+    expected = owned_units.get(unit)
+    if expected is None:
+        return False
+    info = pathlib.Path('/etc/systemd/system', unit).lstat()
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022
+            and (info.st_dev, info.st_ino) == expected, 'Diagnostic unit ownership differs')
+    return True
+
+
+def runtime_diagnostic_read(arguments, deadline):
+    """Bound both pipe bytes and process lifetime; raw output is never evidence."""
+    require(time.monotonic() < deadline - 0.05, 'Diagnostic budget unavailable')
+    child = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=SAFE_ENV)
+    selector, raw, stopped, result = None, bytearray(), False, None
+    try:
+        selector = selectors.DefaultSelector()
+        selector.register(child.stdout, selectors.EVENT_READ)
+        while time.monotonic() < deadline - 0.05:
+            events = selector.select(max(0, deadline - 0.05 - time.monotonic()))
+            if not events:
+                break
+            block = os.read(child.stdout.fileno(), 65537)
+            if not block:
+                result = child.wait(timeout=max(0.001, deadline - time.monotonic()))
+                stopped = True
+                return result, bytes(raw)
+            raw.extend(block)
+            require(len(raw) <= RUNTIME_DIAGNOSTIC_MAX, 'Diagnostic raw pipe bound refused')
+        raise TimeoutError('Diagnostic budget exhausted')
+    finally:
+        cleanup_errors = False
+        try:
+            if selector is not None:
+                selector.close()
+        except BaseException:
+            cleanup_errors = True
+        if not stopped:
+            try:
+                child.kill()
+            except BaseException:
+                cleanup_errors = True
+            try:
+                child.wait(timeout=max(0.001, deadline - time.monotonic()))
+            except BaseException:
+                report['diagnosticChildrenSettled'] = False
+                cleanup_errors = True
+        try:
+            child.stdout.close()
+        except BaseException:
+            cleanup_errors = True
+        if cleanup_errors:
+            raise RuntimeError('Bounded diagnostic transport cleanup refused') from None
+
+
+def runtime_failure_diagnostic(kind, error, binding):
+    # Every failure, including unavailable time/source/IO, is observational only.
+    # The original exception is always rethrown by the caller; cleanup is separate.
+    if type(kind) is not str or kind not in ('primary', 'cleanup'):
+        return
+    current_phase = report.get('currentPhase')
+    value = {'classification': 'unavailable', 'reason': 'budget-or-source-or-io-unavailable',
+             'phase': current_phase if type(current_phase) is str and current_phase in RUNTIME_PHASES else 'other-native-phase'}
+    report.setdefault('runtimeFailureDiagnostics', {})[kind] = value
+    deadline = min(DEADLINE, time.monotonic() + 2)
+    try:
+        require(time.monotonic() < deadline - 0.05, 'Diagnostic budget unavailable')
+        own_path = str(pathlib.Path(__file__).absolute())
+        sources = {'fixture': observer_read(own_path, 1024**2)}
+        require(hashlib.sha256(sources['fixture']).hexdigest() == binding['helpers']['test_next_native.py']['sha256'],
+                'Diagnostic fixture identity differs')
+        for owner, path in OBSERVER_PATHS.items():
+            require(time.monotonic() < deadline - 0.05, 'Diagnostic budget unavailable')
+            sources[owner] = observer_read(path, 1024**2)
+            require(hashlib.sha256(sources[owner]).hexdigest() == binding['helpers'][pathlib.Path(path).name]['sha256'],
+                    'Diagnostic installed source identity differs')
+        catalog, reasons = runtime_catalog(sources, own_path)
+        value['exception'] = runtime_exception_observation(error, catalog)
+        for unit in owned_units:
+            require(runtime_owned_declaration(unit), 'Captured diagnostic declaration required')
+        require(time.monotonic() < deadline - 0.05, 'Diagnostic budget unavailable')
+        code, raw = runtime_diagnostic_read(['/usr/bin/systemctl', '--system', 'show', '--all', '--no-pager',
+            '--property=' + ','.join(sorted(RUNTIME_STATE_KEYS)), *RUNTIME_DIAGNOSTIC_UNITS], deadline)
+        value['stateCommandReturnCode'] = code
+        states, invocations = runtime_state_observation(raw)
+        value['states'] = states
+        value['statesScope'] = 'fixed-unit-snapshot-not-ownership'
+        python_path = pathlib.Path('/usr/bin/python3').resolve(strict=True)
+        require(str(python_path).startswith('/usr/bin/'), 'Diagnostic Python identity differs')
+        current = pathlib.Path('/')
+        for part in python_path.parts[1:]:
+            current /= part
+            python_info = current.lstat()
+            require(python_info.st_uid == 0 and not stat.S_ISLNK(python_info.st_mode)
+                    and not python_info.st_mode & 0o022, 'Diagnostic Python ancestor differs')
+        require(stat.S_ISREG(python_info.st_mode), 'Diagnostic Python identity differs')
+        journals, unavailable = [], []
+        for unit in UNITS:
+            # A same-named current invocation is not proof that this fixture
+            # owns it. Never read an unowned worker's journal, even when its
+            # native identity or message would match the fixed source catalog.
+            if not runtime_owned_declaration(unit):
+                unavailable.append({'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'reason': 'unowned-declaration'})
+                continue
+            if unit not in invocations:
+                unavailable.append({'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'reason': 'no-current-invocation'})
+                continue
+            # Read no previous or foreign invocation. journald's trusted UID/exe/
+            # unit/invocation/argv fields are revalidated before literal matching.
+            code, raw = runtime_diagnostic_read(['/usr/bin/journalctl', '--system', '--no-pager', '--quiet',
+                '--output=json', '--output-fields=_UID,_EXE,_CMDLINE,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,_TRANSPORT,_LINE_BREAK,MESSAGE',
+                '--lines=64', '_SYSTEMD_UNIT=' + unit, '_SYSTEMD_INVOCATION_ID=' + invocations[unit]], deadline)
+            require(code == 0, 'Diagnostic journal read refused')
+            require(runtime_owned_declaration(unit), 'Diagnostic journal ownership changed')
+            journals.append(runtime_journal_observation(raw, unit, invocations[unit], str(python_path), reasons))
+            # Optional helper observation has independent source/schema custody;
+            # its failure cannot discard original controller literal diagnostics.
+            try:
+                require(time.monotonic() < deadline - 0.05, 'Environment diagnostic budget unavailable')
+                poststart = observer_read('/usr/local/lib/aihr-admission/next_fixture_poststart.py', 1024**2)
+                diagnostic = runtime_environment_journal_diagnostic(raw, unit, invocations[unit], str(python_path),
+                    {'next-profile': sources['next-profile'], 'poststart': poststart}, binding)
+                require(runtime_owned_declaration(unit), 'Environment diagnostic declaration changed')
+                value.setdefault('environmentObservations', []).extend(diagnostic['observations'])
+                value.setdefault('environmentObserverDiagnostics', []).append(diagnostic['diagnostic'])
+            except BaseException:
+                value['environmentObservationUnavailable'] = True
+            # Independent optional branch; malformed/missing phase data cannot
+            # discard original literal/helper/v1 observations. No extra query.
+            phase_data = runtime_admission_phase_diagnostic(raw, unit, invocations[unit], str(python_path), sources, binding)
+            if not runtime_owned_declaration(unit):
+                phase_data = unavailable_admission_phases()
+            value.setdefault('controllerAdmissionTiming', []).append({'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], **phase_data})
+        require(time.monotonic() <= deadline, 'Diagnostic aggregate budget exhausted')
+        value.update({'classification': 'bounded-sealed-source-observations', 'journals': journals,
+                      'unavailableWorkerJournals': unavailable})
+    except BaseException:
+        # Never publish exception messages, command arguments or unknown native
+        # values. Already verified source locations remain useful if IO refuses.
+        value['incomplete'] = True
 
 
 def main():
@@ -1529,18 +2684,23 @@ def main():
             and browser_input['evidenceDirectory'] == plan['evidenceDirectory'], 'Private browser input binding differs')
     save()
     succeeded = False
+    primary_failure = None
     postgres_scope = None
     try:
         postgres_scope = OwnedPostgresScope(plan)
+        postgres_scope.require_first_home_onboarding(plan['fixture'], committed=False)
+        report['firstHomeOnboardingInitiallyUnset'] = True
         fixture_directories()
         install_helpers(helper, plan, binding)
         N, release, runtime_package = package(plan, helper, binding)
         C = configure(plan, binding, N, release, runtime_package, postgres_scope)
-        browser_core(plan, binding, C)
+        browser_core(plan, binding, C, postgres_scope)
         release_workers(C)
         succeeded = True
     except BaseException as error:
+        primary_failure = error
         report['failureType'] = type(error).__name__
+        runtime_failure_diagnostic('primary', error, binding)
         report['complete'] = False
         save()
         raise
@@ -1551,10 +2711,13 @@ def main():
             if postgres_scope is not None:
                 postgres_scope.snapshot('final')
             report['ownedRuntimeCleaned'] = True
-        except BaseException:
+        except BaseException as error:
+            runtime_failure_diagnostic('cleanup', error, binding)
             report['ownedRuntimeCleaned'] = False
             report['complete'] = False
             save()
+            if primary_failure is not None:
+                raise BaseExceptionGroup('Native Next operation and owned cleanup both refused', [primary_failure, error])
             raise
         report['complete'] = succeeded
         save()

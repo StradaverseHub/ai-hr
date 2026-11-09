@@ -102,6 +102,7 @@ class NextProfileTests(unittest.TestCase):
         self.format2['files'].sort(key=lambda row: row['path'])
         for cache in N.CACHE_TARGETS:
             (self.release / cache).mkdir(parents=True)
+            (self.release / cache).chmod(0o755)
         self.manifest = {'version': 1, 'source': 'a' * 40, 'build': 'source-model-build', 'runtime': N.RUNTIME,
             'node': {'path': str(self.node), 'sha256': sha(self.node.read_bytes())},
             'systemFiles': [{'path': '/usr/lib/aihr-synthetic-native.so', 'sha256': sha(b'synthetic-native')}],
@@ -405,7 +406,7 @@ class NextProfileTests(unittest.TestCase):
         root = str(self.release)
         props = {key: '' for key in N.EXTRA_PROPERTIES}
         props.update({'ProtectSystem': 'strict', 'ProtectHome': 'yes', 'PrivateMounts': 'yes', 'NoNewPrivileges': 'yes', 'DynamicUser': 'no',
-            'Slice': self.envelope['slice'], 'CPUQuotaPerSecUSec': 'infinity',
+            'Slice': self.envelope['slice'], 'CPUWeight': '100', 'CPUQuotaPerSecUSec': 'infinity',
             'MemoryHigh': 'infinity', 'MemoryMax': 'infinity',
             'ExecStart': '{ path=' + str(self.node) + ' ; argv[]=' + str(self.node)
                 + ' --max-old-space-size=2048 ' + root + '/node_modules/next/dist/bin/next start --hostname 127.0.0.1 ; ignore_errors=no ; pid=0 ; }'})
@@ -432,9 +433,11 @@ class NextProfileTests(unittest.TestCase):
                     runtime.unit_configuration(unit, props, typed | {key: value})
             for changes in ({'ProtectSystem': 'no'}, {'ProtectHome': 'read-only'}, {'ReadWritePaths': root}, {'DynamicUser': 'yes'},
                             {'ExecStart': props['ExecStart'].replace('--hostname 127.0.0.1', '-p 3000')},
-                            {'NoNewPrivileges': 'no'}):
+                            {'NoNewPrivileges': 'no'}, {'CPUWeight': '99'}, {'CPUWeight': '101'}, {'CPUWeight': '100\n'}, {'CPUWeight': 100}):
                 with self.assertRaises(C.Refused):
                     runtime.unit_configuration(unit, props | changes, typed)
+            with self.assertRaises(C.Refused):
+                runtime.unit_configuration(unit, {key: value for key, value in props.items() if key != 'CPUWeight'}, typed)
 
     def test_nonstarting_declarations_do_not_issue_resource_evidence_and_readiness_requires_it(self):
         # Model the controller seam, not a successful native service. An inactive

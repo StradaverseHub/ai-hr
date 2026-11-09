@@ -1,0 +1,64 @@
+{
+  "kind": "NATIVE_NEXT_DIAGNOSTIC_OWNED_INVOCATION_RECOVERY_SOURCE_ONLY",
+  "base": "aaa4ab668ea46dd32499e7b30e9e77a0913bf965",
+  "sourceRef": "codex/native-next-diagnostic-owned-invocations-20261108",
+  "qualification": "NOT_RUN; root and independent source review before models/controller/native",
+  "originalFailedRun": 42437836312,
+  "originalNativeFixtureSha256": "8a22a9ebdaab88fccaf53a47ec517763e52073880877672074840f72d41cf181",
+  "sourceSha256": {
+    "deploy/admission/test_next_failure_diagnostic.py": "31907a745a6421daac336b81f9ec5f518f614500d9f4afb3581550426313f90c",
+    "deploy/admission/test_next_native.py": "f3acb4eec66245356ef8945425d1e17077bba0e451f75449ab5b5065f994f4c2",
+    "docs/qualification/native-next-diagnostic-owned-invocations-20261108.md": "2e9890ff190f819a33bfcf51d868a6980130b2e32d22357bc8a009f80a88e119",
+    "test/runtime-next-failure-diagnostic.test.ts": "1ad6aecd161eff3fe70ecdea80a826999a6b2b0ada6cf80395b2326a8ae8116c"
+  },
+  "unchangedSha256": {
+    ".github/ci/native-next-helper-sources.mjs": "f8238d02b92a0464dcbe9a517a9a959ecef350696d48666cc7e2ef30ca47e1f0",
+    ".github/ci/runtime_inventory.py": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d",
+    "deploy/admission/controller.py": "c83fa023e51137fcaae007e2e4f756388096fe47bccf3254bfc870f466686dd6",
+    "deploy/admission/next_build_binding.py": "b21ba80bd5efd5bc38c1a0c7458d86e4ea90cb1c98901f60955c68658c079ec0",
+    "deploy/admission/next_fixture_poststart.py": "c8edfdf798096adc4837899c912c9f76a0f968a92af4853c80569377205c6607",
+    "deploy/admission/next_profile.py": "e1740576d65fec2aa555d32da5cd98a3f914aa8d536e978ed3008a5d5c938335",
+    "deploy/admission/test_next_postgres_scope.py": "ba4518ba5e3dca6a0b5cb6afaccd21b3d285ca77a4fa6e2567fa7d7654a1369f",
+    "deploy/admission/test_next_prepackage_diagnostic.py": "3074480506c23e792053e61adc80c781ca04a73e2a415adc1c2a69656e4fa532",
+    "docs/qualification/native-next-failure-diagnostics-20261108.md": "fe39d791a7af9ac2235a20a16db24863c91d1d0547687aaa84d2b08fef41cc2d",
+    "test/runtime-next-admission-native.test.ts": "923c7c20a1b79cb1e5240080eb46ac63eec2829dccdc36d5dac668f4a3a09e07",
+    "test/runtime-next-postgres-scope.test.ts": "768028ba5ddbd42aec55eabba6db0e5486fded51da65998c5976cf1b15adb714",
+    "test/runtime-next-prepackage-diagnostic.test.ts": "45aac343676d78a94b2d183a99980d3faafca5822c25b43eb7f31cdc1840b808"
+  },
+  "sourceSelectors": [
+    "test/runtime-next-failure-diagnostic.test.ts",
+    "test/runtime-next-prepackage-diagnostic.test.ts",
+    "test/runtime-next-postgres-scope.test.ts"
+  ],
+  "models": {
+    "newFailureDiagnostics": 22,
+    "retainedObserverPrepackage": 31,
+    "retainedPostgresScope": 6,
+    "retainedOriginalFailureDiagnostics": 19,
+    "addedOwnershipIoModels": 3
+  },
+  "nativeCases": 1,
+  "bounds": {
+    "perFailureDiagnosticSeconds": 2,
+    "diagnosticRawPipeBytes": 131072,
+    "journalRecords": 64,
+    "commandObservations": 32,
+    "nativeTotalSeconds": 480,
+    "nativeWorkSeconds": 450,
+    "cleanupReservedSeconds": 30,
+    "browserSeconds": 300,
+    "nativeCaseSeconds": 600
+  },
+  "sealedHelperCount": 11,
+  "productChanged": false,
+  "declarationsChanged": false,
+  "authorityChanged": false,
+  "resourceLimitsChanged": false,
+  "checksExecuted": false,
+  "actualNextBootVerified": false,
+  "cleanupVerified": false,
+  "releaseAuthorized": false,
+  "productionHeld": true,
+  "originalDiagnosticBase": "e67d947cea4868ae58d59211d1d1546796b272e3",
+  "ownershipRepairExecuted": false
+}

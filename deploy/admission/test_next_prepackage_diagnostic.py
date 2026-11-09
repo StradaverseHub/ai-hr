@@ -331,7 +331,7 @@ class PrepackageDiagnosticModels(unittest.TestCase):
             code, stdout, diagnostic = F.observe_controller_main(controller, catalog)
             profile.assert_not_called()
             run.assert_not_called()
-        self.assertEqual((code, stdout, diagnostic), (1, '', {'classification': 'guard', 'owner': 'controller', 'line': 1106}))
+        self.assertEqual((code, stdout, diagnostic), (1, '', {'classification': 'guard', 'owner': 'controller', 'line': 1257}))
         self.assertIs(controller.require, original)
         self.assertIs(sys.argv, argv)
         self.assertNotIn('The installed admission controller requires Linux root', F.CONFIGURATION_REASONS)
@@ -455,12 +455,12 @@ class PrepackageDiagnosticModels(unittest.TestCase):
     def test_source_observer_decoder_requires_bound_callsite_and_never_reflects_unknown_private_or_extra_fields(self):
         catalog = F.observer_catalog(self.observer_sources())
         encode = lambda value: (json.dumps({'version': 1, 'kind': 'SOURCE_BOUND_CHECKONLY_REFUSAL', **value}, sort_keys=True) + '\n').encode()
-        self.assertEqual(F.observer_diagnostic(encode({'classification': 'guard', 'owner': 'controller', 'line': 1106}), catalog),
-            {'reason': 'controller-source-guard', 'sourceGuard': {'owner': 'controller', 'line': 1106}})
-        for value in [{'classification': 'guard', 'owner': '/private/TOKEN=fictional', 'line': 1106},
+        self.assertEqual(F.observer_diagnostic(encode({'classification': 'guard', 'owner': 'controller', 'line': 1257}), catalog),
+            {'reason': 'controller-source-guard', 'sourceGuard': {'owner': 'controller', 'line': 1257}})
+        for value in [{'classification': 'guard', 'owner': '/private/TOKEN=fictional', 'line': 1257},
                       {'classification': 'guard', 'owner': 'controller', 'line': True},
                       {'classification': 'guard', 'owner': 'controller', 'line': 1},
-                      {'classification': 'guard', 'owner': 'controller', 'line': 1106, 'private': 'TOKEN=fictional'},
+                      {'classification': 'guard', 'owner': 'controller', 'line': 1257, 'private': 'TOKEN=fictional'},
                       {'classification': 'cli-exception', 'exception': 'private TOKEN=fictional'}]:
             self.assertEqual(F.observer_diagnostic(encode(value), catalog), {'reason': 'controller-observer-refused'})
         for raw in (b'private TOKEN=fictional', b'private' * 10000, None):
