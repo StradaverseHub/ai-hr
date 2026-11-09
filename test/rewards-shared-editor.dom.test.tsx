@@ -55,13 +55,14 @@ describe('shared configuration pair picker',()=>{
    <RewardCompanyClassificationPanel companies={companies} rows={[]} saveAction={saveAction}/>
   </NextIntlClientProvider>;
   const host=document.createElement('div');
-  host.innerHTML=renderToString(node);document.body.append(host);
-  const review=within(host).getByRole<HTMLButtonElement>('button',{name:en.rewards.companyPicker.reviewDesignation,exact:true});
-  expect(review.getAttribute('data-reward-classification-ready')).toBe('false');
-  expect(review.disabled).toBe(false);
   const onRecoverableError=vi.fn();
   let root:ReturnType<typeof hydrateRoot>|undefined;
+  let primaryFailure:{error:unknown}|undefined;
   try{
+   host.innerHTML=renderToString(node);document.body.append(host);
+   const review=within(host).getByRole<HTMLButtonElement>('button',{name:en.rewards.companyPicker.reviewDesignation,exact:true});
+   expect(review.getAttribute('data-reward-classification-ready')).toBe('false');
+   expect(review.disabled).toBe(false);
    await act(async()=>{root=hydrateRoot(host,node,{onRecoverableError});});
    expect(within(host).getByRole('button',{name:en.rewards.companyPicker.reviewDesignation,exact:true})).toBe(review);
    expect(review.getAttribute('data-reward-classification-ready')).toBe('true');
@@ -72,10 +73,19 @@ describe('shared configuration pair picker',()=>{
    expect(within(host).queryByLabelText(en.rewards.companyPicker.designation)).toBeNull();
    expect(saveAction).not.toHaveBeenCalled();
    expect(onRecoverableError).not.toHaveBeenCalled();
+  }catch(error){
+   primaryFailure={error};
+   throw error;
   }finally{
-   const hydrated=root;
-   if(hydrated)await act(async()=>{hydrated.unmount();});
-   host.remove();
+   try{
+    const hydrated=root;
+    if(hydrated)await act(async()=>{hydrated.unmount();});
+   }catch(error){
+    if(primaryFailure)throw new AggregateError([primaryFailure.error,error],'Designation hydration test and unmount failed');
+    throw error;
+   }finally{
+    host.remove();
+   }
   }
  });
  it('requires explicit identity review, a canonical company and supporting reason before an alias designation can submit',()=>{
