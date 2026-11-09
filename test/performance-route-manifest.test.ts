@@ -83,6 +83,7 @@ it('binds cross-module content and the explicit AI scope denial to the existing 
   ['groupHR',0,'/control-tower/agents/runs','ai-runs-group-history-controls','usable-content'],
   ['companyHR',1,'/control-tower/agents/runs','ai-runs-company-scope','scope-denial'],
   ['groupHR',0,'/admin/rewards/shared','rewards-shared-company-scope','usable-content'],
+  ['companyHR',1,'/admin/rewards/shared','rewards-shared-draft-grids','usable-content'],
   ['employee',4,'/me','own-profile-identity','usable-content'],
  ] as const;
  for(const [role,actorIndex,requested,witness,readiness]of expected){

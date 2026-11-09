@@ -46,6 +46,36 @@ function requireEmployeeFacts(facts:FixtureFacts){
   &&facts.foreignName==='PERF Person 0254','Native preflight employee fixture differs');
 }
 
+async function verifyRewardsSharedDraftGrids(page:Page,main:Locator,remaining:Remaining){
+ const draft=main.locator('form:has(input[name="groupId"][value=""])');
+ await enabled(draft.locator('input[name="name"]'),remaining);
+ assert.equal(await draft.locator('[data-reward-policy-grid]').count(),2,'Native Rewards draft grid count differs');
+ // The custom validity ref is set by the mounted client. Reading validity does
+ // not dispatch the invalid event that would turn guidance into an alert.
+ await page.waitForFunction(()=>['ranges','bonusMatrix'].every(kind=>{
+  const cell=document.querySelector<HTMLInputElement>(`main [data-reward-policy-grid="${kind}"] input[type="number"][aria-invalid="true"]`);
+  return cell?.validity.customError===true;
+ }),undefined,{timeout:remaining()});
+ for(const [kind,controls,missing]of [['ranges',36,36],['bonusMatrix',65,5]]as const){
+  const grid=draft.locator(`[data-reward-policy-grid="${kind}"]`);
+  await visible(grid,remaining);
+  await visible(grid.locator(`ul#${kind}-errors[role="status"]`),remaining);
+  const actual=await grid.evaluate((section,kind)=>{
+   const guidance=section.querySelector(`ul#${kind}-errors[role="status"]`);
+   const cells=Array.from(section.querySelectorAll<HTMLInputElement>('input[type="number"]'));
+   const invalid=cells.filter(cell=>cell.getAttribute('aria-invalid')==='true');
+   return {controls:cells.length,missing:invalid.length,issues:guidance?.children.length??0,
+    valid:cells.every(cell=>cell.required&&!cell.matches(':disabled')&&cell.getAttribute('aria-invalid')===String(!cell.validity.valid)),
+    described:invalid.every(cell=>{
+     const id=cell.getAttribute('aria-describedby');
+     const text=id?document.getElementById(id):null;
+     return cell.value===''&&cell.validity.valueMissing&&cell.validity.customError&&!!text?.textContent?.trim()&&guidance?.contains(text)===true;
+    })};
+  },kind,{timeout:remaining()});
+  assert.deepEqual(actual,{controls,missing,issues:missing,valid:true,described:true},'Native Rewards draft validation differs');
+ }
+}
+
 export async function verifyNativePreflightContent(page:Page,witness:string,facts:FixtureFacts,remaining:Remaining){
  const main=page.locator('main:visible');
  try{
@@ -112,6 +142,7 @@ export async function verifyNativePreflightContent(page:Page,witness:string,fact
    case 'rewards-shared-company-scope': {
     assert(facts.actorIndex===0&&Array.isArray(facts.companyIds)&&facts.companyIds.length===5
      &&new Set(facts.companyIds).size===5&&facts.companyIds.every(id=>companyIdPattern.test(id)),'Native Rewards company fixture differs');
+    await verifyRewardsSharedDraftGrids(page,main,remaining);
     const review=main.getByRole('button',{name:'Review company designation',exact:true})
      .and(main.locator('button[data-reward-classification-ready="true"]'));
     await enabled(review,remaining);
@@ -123,6 +154,11 @@ export async function verifyNativePreflightContent(page:Page,witness:string,fact
     assert(options.length===5&&new Set(options).size===5&&options.every(id=>facts.companyIds.includes(id)),'Native Rewards company scope differs');
     await form.getByRole('button',{name:'Cancel',exact:true}).click({timeout:remaining()});
     await form.waitFor({state:'hidden',timeout:remaining()});
+    break;
+   }
+   case 'rewards-shared-draft-grids': {
+    assert(facts.actorIndex===1,'Native company Rewards fixture differs');
+    await verifyRewardsSharedDraftGrids(page,main,remaining);
     break;
    }
    case 'own-profile-identity': {

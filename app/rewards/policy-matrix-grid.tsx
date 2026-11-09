@@ -8,11 +8,14 @@ import {loadPreviousRewardPolicyMatrices} from './policy-grid-actions';
 import {useRewardPolicyYear} from './policy-year-context';
 type Previous=Awaited<ReturnType<typeof loadPreviousRewardPolicyMatrices>>;
 const headers:Record<RewardPolicyGridKind,string[]>={ranges:['Grade','Minimum','Midpoint','Maximum'],bonusMatrix:['Grade','UA','BE','ME','AE','OU'],branchFactors:['Segment','UA','BE','ME','AE','OU']};
-type GridProps={kind:RewardPolicyGridKind;matrix:Record<string,readonly number[]>;year:number;onRowsChange?:(rows:string[][])=>void};
+type GridProps={kind:RewardPolicyGridKind;matrix:Record<string,readonly number[]>;year:number;onRowsChange?:(rows:string[][])=>void;pristineValidationGuidance?:boolean};
 export function PolicyMatrixGrid(props:GridProps){const year=useRewardPolicyYear(props.year);return <PolicyMatrixGridDraft key={`${props.kind}:${year}`} {...props} year={year}/>;}
-function PolicyMatrixGridDraft({kind,matrix,year,onRowsChange}:GridProps){
+function PolicyMatrixGridDraft({kind,matrix,year,onRowsChange,pristineValidationGuidance=false}:GridProps){
  const t=useTranslations('rewards.policyGrids');
  const [rows,setRows]=useState(()=>policyGridRows(kind,matrix)),[proposal,setProposal]=useState<string[][]|null>(null),[previous,setPrevious]=useState<Previous|null>(null),[sourceYear,setSourceYear]=useState(year),[busy,setBusy]=useState(false),[error,setError]=useState(false),file=useRef<HTMLInputElement>(null);
+ const [validationInteracted,setValidationInteracted]=useState(false);
+ // Blank draft fields are initial guidance. Editing or attempting submission needs an alert.
+ const guidance=pristineValidationGuidance&&!validationInteracted;
  const issues=policyGridIssues(kind,rows),columns=headers[kind];
  const invalid=(name:string,col:number)=>issues.some(issue=>issue.row===name&&issue.column===col);
  const columnName=(column:number)=>column===0?t(kind==='branchFactors'?'segment':'grade'):kind==='ranges'?t(['minimum','midpoint','maximum'][column-1]):columns[column];
@@ -37,10 +40,11 @@ function PolicyMatrixGridDraft({kind,matrix,year,onRowsChange}:GridProps){
  }
  const selectedYear=()=>{const input=file.current?.form?.elements.namedItem('year');return input instanceof HTMLInputElement?Number(input.value):year;};
  async function copy(){setBusy(true);setError(false);const requested=selectedYear();try{const choices=await loadPreviousRewardPolicyMatrices(requested);if(selectedYear()!==requested){setError(true);return;}setSourceYear(requested);setPrevious(choices);}catch{setError(true);}finally{setBusy(false);}}
- const changeRows=(next:string[][])=>{setRows(next);onRowsChange?.(next);};
+ const changeRows=(next:string[][])=>{if(guidance)setValidationInteracted(true);setRows(next);onRowsChange?.(next);};
  const update=(index:number,column:number,value:string)=>changeRows(rows.map((row,i)=>i===index?row.map((cell,c)=>c===column?value:cell):row));
  const proposalIssues=proposal?policyGridIssues(kind,proposal):[];
- return <section className="space-y-3" aria-label={t(kind)}>
+ return <section className="space-y-3" aria-label={t(kind)} data-reward-policy-grid={pristineValidationGuidance?kind:undefined}
+  onInvalidCapture={guidance?()=>setValidationInteracted(true):undefined}>
   <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-medium">{t(kind)}</h3><div className="flex flex-wrap gap-2"><Button aria-busy={busy} type="button" variant="outline" disabled={busy} onClick={()=>file.current?.click()}>{t('import')}</Button><Button aria-busy={busy} type="button" variant="outline" disabled={busy||year<=2000} onClick={()=>{void copy();}}>{t('copy')}</Button></div></div>
   <input ref={file} type="file" accept=".xlsx" className="sr-only" aria-label={t('import')} onChange={event=>{if(event.target.files?.[0])void upload(event.target.files[0]);}}/>
   <p className="text-xs text-muted-foreground">{t('columns',{columns:columns.join(', ')})}</p>
@@ -55,7 +59,7 @@ function PolicyMatrixGridDraft({kind,matrix,year,onRowsChange}:GridProps){
    {kind==='branchFactors'&&<td><Button type="button" variant="ghost" onClick={()=>changeRows(rows.filter((_,i)=>i!==index))}>{t('remove')}</Button></td>}
   </tr>)}</tbody></table></div>
   {kind==='branchFactors'&&<Button type="button" variant="outline" onClick={()=>changeRows([...rows,['', '0','','','','']])}>{t('addSegment')}</Button>}
-  {issues.length>0&&<ul id={`${kind}-errors`} role="alert" className="space-y-1 text-sm text-destructive">{uniqueIssues.map((issue,index)=><li key={index} id={issueId(issue.row,issue.column)}>{cellMessage(issue.row,issue.column)}</li>)}</ul>}
+  {issues.length>0&&<ul key={guidance?'guidance':'alert'} id={`${kind}-errors`} role={guidance?'status':'alert'} className="space-y-1 text-sm text-destructive">{uniqueIssues.map((issue,index)=><li key={index} id={issueId(issue.row,issue.column)}>{cellMessage(issue.row,issue.column)}</li>)}</ul>}
  </section>;
 }
 function GridPreview({rows,columns}:{rows:string[][];columns:string[]}){return <div className="max-h-64 overflow-auto"><table className="w-full text-sm"><thead><tr>{columns.map(column=><th key={column} className="p-2 text-left">{column}</th>)}</tr></thead><tbody>{rows.map((row,index)=><tr key={index}>{row.map((cell,col)=><td key={col} className="p-2">{cell}</td>)}</tr>)}</tbody></table></div>;}

@@ -58,6 +58,7 @@ const roleContentWitness=new Map([
  ['groupHR:/control-tower/agents/runs','ai-runs-group-history-controls'],
  ['companyHR:/control-tower/agents/runs',scopedDenialWitness],
  ['groupHR:/admin/rewards/shared','rewards-shared-company-scope'],
+ ['companyHR:/admin/rewards/shared','rewards-shared-draft-grids'],
  ['employee:/me','own-profile-identity'],
 ]);
 export function nativePreflightContentWitness(role,requested){

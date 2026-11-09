@@ -33,6 +33,49 @@ describe('approved Rewards policy grids',()=>{
   fireEvent.change(input,{target:{value:'2.5'}});expect(input.checkValidity()).toBe(true);
   const encoded=document.querySelector<HTMLInputElement>('input[name="bonusMatrix"]')!.value;expect(encoded).toContain('H, 0, 1, 2.5, 3, 4');
  });
+ it('keeps both pristine draft lists and native validation, then announces edits and attempted submission',()=>{
+  const draft=defaultPolicy(2026);
+  render(wrap(<form><PolicyMatrixGrid kind="ranges" year={2026} matrix={draft.ranges} pristineValidationGuidance/>
+   <PolicyMatrixGrid kind="bonusMatrix" year={2026} matrix={draft.bonusMatrix} pristineValidationGuidance/></form>));
+  const ranges=within(screen.getByRole('region',{name:en.rewards.policyGrids.ranges}));
+  const bonus=within(screen.getByRole('region',{name:en.rewards.policyGrids.bonusMatrix}));
+  const minimum=ranges.getByRole<HTMLInputElement>('spinbutton',{name:'H Minimum'});
+  const grade23=bonus.getByRole<HTMLInputElement>('spinbutton',{name:'23 UA'});
+  for(const [grid,cell,missing]of [[ranges,minimum,36],[bonus,grade23,5]]as const){
+   const guidance=grid.getByRole('status');
+   expect(within(guidance).getAllByRole('listitem')).toHaveLength(missing);
+   expect(cell).toHaveAttribute('aria-invalid','true');
+   expect(guidance.contains(document.getElementById(cell.getAttribute('aria-describedby')!))).toBe(true);
+   expect(cell.validity.valueMissing&&cell.validity.customError).toBe(true);
+  }
+  expect(screen.queryByRole('alert')).toBeNull();
+  const initialGuidance=ranges.getByRole('status');
+  fireEvent.change(minimum,{target:{value:'100'}});
+  const alert=ranges.getByRole('alert');
+  expect(alert).not.toBe(initialGuidance);
+  expect(within(alert).getAllByRole('listitem')).toHaveLength(35);
+  expect(minimum.validity.valid).toBe(true);
+  expect(bonus.getByRole('status')).toBeVisible();
+  fireEvent.invalid(grade23);
+  expect(within(bonus.getByRole('alert')).getAllByRole('listitem')).toHaveLength(5);
+  expect(grade23.validity.valid).toBe(false);
+ });
+ it('keeps stored policy grid alerts assertive at mount',()=>{
+  render(wrap(<PolicyMatrixGrid kind="ranges" year={2026} matrix={{}}/>));
+  expect(within(screen.getByRole('alert')).getAllByRole('listitem')).toHaveLength(36);
+  expect(screen.queryByRole('status')).toBeNull();
+ });
+ it('announces a failed import immediately and announces incomplete rows after applying a copy',async()=>{
+  render(wrap(<PolicyMatrixGrid kind="bonusMatrix" year={2026} matrix={defaultPolicy(2026).bonusMatrix} pristineValidationGuidance/>));
+  fireEvent.change(screen.getByLabelText(en.rewards.policyGrids.import),{target:{files:[new File(['bad'],'policy.csv')]}});
+  expect(await screen.findByRole('alert')).toHaveTextContent(en.rewards.policyGrids.fileError);
+  expect(screen.getByRole('status')).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:en.rewards.policyGrids.copy}));
+  fireEvent.click(await screen.findByRole('button',{name:'Previous policy · Version 2'}));
+  fireEvent.click(screen.getByRole('button',{name:en.rewards.policyGrids.apply}));
+  expect(within(screen.getByRole('alert')).getAllByRole('listitem')).toHaveLength(60);
+  expect(screen.queryByRole('status')).toBeNull();
+ });
  it('identifies only the failing salary comparison and gives each cell its own correction',()=>{
   cleanup();const ranges=Object.fromEntries(REWARD_POLICY_GRADES.filter(g=>g!=='23').map(g=>[g,[10000,20000,30000]]));
   render(wrap(<PolicyMatrixGrid kind="ranges" year={2026} matrix={ranges}/>));
