@@ -72,6 +72,9 @@ describe('Encrypted annual Rewards return custody', () => {
   afterAll(closeAll);
 
   const reason='Fictional recommendations need another BU review.';
+  // seedBase persists this group-wide grant. The test context must carry its
+  // scope explicitly when calling the group-only control writers.
+  const controlsAdmin=():SessionContext=>({...admin,grants:[{role:'hr_admin',companyId:null}]});
   afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks();});
   async function enable(who=admin){vi.stubEnv('AI_CONFIG_SECRET','fictional-rewards-return-key-123456');await setModule(b.tenantId,'assistant','active');await grantAssistant(admin,{appUserId:who.userId!});}
   async function prepare(){await enable();await submit();let rev=(await view()).unit.revision;await decideRewardUnit(actors.bg!,unitId,rev,'approve','Fictional first-stage approval');rev=(await view()).unit.revision;const result=await reviews.prepare(admin,{action,contractVersion:1,unitId,revision:rev,reason,confirmWholeAnnualReview:true});if(result.kind!=='prepared')throw Error('Expected annual review');return result.review;}
@@ -114,6 +117,7 @@ describe('Encrypted annual Rewards return custody', () => {
   });
   it('requires the exact native snapshot and a current human login, grant and controls',async()=>{
     await prepare();
+    const group=controlsAdmin();
     const query=sql`select app.assistant_rewards_return_presentation_choices_v1()`;
     const snapshot={readOnlySnapshot:true} as const;
     const refused=async (read:Promise<unknown>)=>await expect(read.catch(error=>pgSqlState(error))).resolves.toBe('42501');
@@ -126,16 +130,16 @@ describe('Encrypted annual Rewards return custody', () => {
     await refused(withTenant({...admin,userId:undefined},tx=>tx.execute(query),snapshot));
     await refused(withTenant({...admin,userId:randomUUID()},tx=>tx.execute(query),snapshot));
     await refused(withTenant(admin,tx=>tx.execute(sql`select app._assistant_rewards_return_choice_payload_v1()`),snapshot));
-    await setAgentActionPause(admin,action,true);
+    await setAgentActionPause(group,action,true);
     await refused(withTenant(admin,tx=>tx.execute(query),snapshot));
     await expect(readRewardsReturnChoices(admin)).rejects.toThrow();
-    await setAgentActionPause(admin,action,false);
-    await setAiFeature(admin,'hr_assistant',false);
+    await setAgentActionPause(group,action,false);
+    await setAiFeature(group,'hr_assistant',false);
     await refused(withTenant(admin,tx=>tx.execute(query),snapshot));
-    await setAiFeature(admin,'hr_assistant',true);
-    await setMandateStopSwitch(admin,true);
+    await setAiFeature(group,'hr_assistant',true);
+    await setMandateStopSwitch(group,true);
     await refused(withTenant(admin,tx=>tx.execute(query),snapshot));
-    await setMandateStopSwitch(admin,false);
+    await setMandateStopSwitch(group,false);
     expect((await readRewardsReturnChoices(admin)).units.map(row=>row.unitId)).toContain(unitId);
     await revokeAssistant(admin,{appUserId:admin.userId!});
     await refused(withTenant(admin,tx=>tx.execute(query),snapshot));
@@ -148,7 +152,7 @@ describe('Encrypted annual Rewards return custody', () => {
     const choices=await Promise.all([readRewardsCalendarChoices(admin),readRewardsCancelChoices(admin)]);
     expect(choices).toEqual([legacy.calendar,legacy.cancel]);
     for(const result of choices)expect(result.units.map(row=>row.unitId)).toContain(unitId);
-    await withTenant(admin,async writer=>{
+    await withTenant(controlsAdmin(),async writer=>{
       await writer.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`);
       await writer.execute(sql`select app.ai_agent_action_pause_set(${REWARDS_CANCEL_ACTION},true)`);
       const results=await Promise.allSettled([readRewardsCalendarChoices(admin),readRewardsCancelChoices(admin)]);
