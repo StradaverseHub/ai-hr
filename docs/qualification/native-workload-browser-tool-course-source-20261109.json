@@ -1,8 +1,8 @@
 {
-  "version": 5,
+  "version": 6,
   "kind": "PROTECTED_NATIVE_TOOL_ONLY_SOURCE_NOT_RUNTIME",
-  "sourceRef": "codex/native-workload-tool-only-partial-capture-20261109",
-  "parent": "ede998f4880694c5979769e5068909ddc18fccfe",
+  "sourceRef": "codex/native-workload-tool-only-pre-root-checkpoint-20261109",
+  "parent": "461bb5d85f1c8696f971111ec2341998d61f8eb3",
   "normalCompositionParents": [
     "1d925e3f0e7945ac5bac1be84857178eaa264a70",
     "5bfcf553173cb566a97b28a2ba017de81cb09226"
@@ -17,8 +17,8 @@
     },
     {
       "path": ".github/ci/native-controller-bootstrap.py",
-      "bytes": 43092,
-      "sha256": "aa85b57efd617b95175f864642fccb12dbdcb13c97373b75e5c2ee9b246d25d6"
+      "bytes": 44679,
+      "sha256": "4a431615132f4fa648450232e982f083dbde0228978ca445e48ef70648a73953"
     },
     {
       "path": ".github/ci/native-workload-browser-tool-course.py",
@@ -27,8 +27,8 @@
     },
     {
       "path": ".github/ci/native-workload-browser-tool-course.test.py",
-      "bytes": 37416,
-      "sha256": "fc4e7f16ada9a297606c336cfee0eac62dfba374d498126d141eb6981b3cdb7a"
+      "bytes": 39048,
+      "sha256": "c6abcc8f2baa9c0e84aa397234615c99446167045a3daf1ca7396e748d3ac546"
     },
     {
       "path": ".github/ci/singleton-commissioning.test.mjs",
@@ -39,24 +39,24 @@
   "exactWholeExistingPreimages": [
     {
       "path": ".github/ci/native-controller-bootstrap.py",
-      "bytes": 42800,
-      "sha256": "c68574c36404153b03b62ca24b861bc482fd2a3c2d8e9ac612db03052a383b37",
-      "commit": "ede998f4880694c5979769e5068909ddc18fccfe",
-      "gitBlob": "395281ae0f1e9ae139b923fb8e253f2a3dc078e6"
+      "bytes": 43092,
+      "sha256": "aa85b57efd617b95175f864642fccb12dbdcb13c97373b75e5c2ee9b246d25d6",
+      "commit": "461bb5d85f1c8696f971111ec2341998d61f8eb3",
+      "gitBlob": "bb2533218510d5872cfb37d0b6a74ad5ecc7df4d"
     },
     {
       "path": ".github/ci/native-workload-browser-tool-course.test.py",
-      "bytes": 35937,
-      "sha256": "840b09e6a435ad3c0173060d79714be11584d2cb0f74e27168a897162afe6fef",
-      "commit": "ede998f4880694c5979769e5068909ddc18fccfe",
-      "gitBlob": "86984d69c73c63de1b37aef0723c1a3b835a387c"
+      "bytes": 37416,
+      "sha256": "fc4e7f16ada9a297606c336cfee0eac62dfba374d498126d141eb6981b3cdb7a",
+      "commit": "461bb5d85f1c8696f971111ec2341998d61f8eb3",
+      "gitBlob": "52721194e3efb8a85b63f488a1fb22e53ed7765a"
     },
     {
       "path": "docs/qualification/native-workload-browser-tool-course-source-20261109.json",
-      "bytes": 9403,
-      "sha256": "33af53906cab43596ce23c19a8399ee66dcd25b1c0e4207f088a2a8c51918fb4",
-      "commit": "ede998f4880694c5979769e5068909ddc18fccfe",
-      "gitBlob": "73e62269ef9c0a86d1df93b04170f3dea18df507"
+      "bytes": 9953,
+      "sha256": "3ce1cf7803090036cebb0a33ca62fdc81e369d884b5f25505190696212ecfd26",
+      "commit": "461bb5d85f1c8696f971111ec2341998d61f8eb3",
+      "gitBlob": "6210ea1b95bde181fc9375793ce0469a25beee34"
     }
   ],
   "closedCapsuleInputs": [
@@ -239,6 +239,43 @@
       "failed-bind-with-no-observed-mount",
       "failed-unmount-without-absence"
     ],
+    "modelCount": 25,
+    "nativeObservation": "UNRUN"
+  },
+  "preRootCheckpointCorrection": {
+    "historicalRun": {
+      "runId": "42568222473",
+      "source": "461bb5d85f1c8696f971111ec2341998d61f8eb3",
+      "controller": "461bb5d85f1c8696f971111ec2341998d61f8eb3",
+      "artifactId": "13652561320",
+      "nativeLogSha256": "e0dd9bf5074ac4f04c30c5b43f24061b9de1942f80f60c69c33e44829d7fd1f0",
+      "artifactZipSha256": "b6a25e7d766348a06ffaf695d3d29a186d63086b0c9738c0c52f0d557d0424b7",
+      "receiptSha256": "d1ffa46315bc76a3a62a9f6af55667908ac91cd8ee4a9b80b25ed79121ed83bb",
+      "receiptBytes": 140,
+      "failure": "tool-pre-root-refused",
+      "cleanup": "not-observed",
+      "exactFailingGate": "UNOBSERVED"
+    },
+    "exclusiveDispatchBranch": "codex/native-workload-tool-only-custody-repair-20261109",
+    "preRootCheckpointEnum": [
+      "runner-identity",
+      "runner-context",
+      "event-file",
+      "event-json",
+      "dispatch-contract",
+      "controller-location",
+      "controller-directory",
+      "controller-script",
+      "controller-git-config",
+      "controller-commit",
+      "capsule-members",
+      "controller-stability",
+      "sealed-handoff",
+      "unknown"
+    ],
+    "reportsExceptionDetails": false,
+    "rootBootstrapReceiptUnchanged": true,
+    "physicalOwnerUnchanged": true,
     "modelCount": 25,
     "nativeObservation": "UNRUN"
   }

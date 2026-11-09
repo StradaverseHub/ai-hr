@@ -373,6 +373,11 @@ TOOL_MEMBERS = tuple(sorted((
 TOOL_MEMBER_MAX = 2 * 1024**2
 TOOL_REQUEST_MAX = 16 * 1024
 TOOL_EVENT_MAX = 1024**2
+TOOL_PRE_ROOT_CHECKPOINTS = (
+    'runner-identity', 'runner-context', 'event-file', 'event-json', 'dispatch-contract',
+    'controller-location', 'controller-directory', 'controller-script', 'controller-git-config',
+    'controller-commit', 'capsule-members', 'controller-stability', 'sealed-handoff', 'unknown',
+)
 
 
 def tool_intent(environment, event):
@@ -459,6 +464,11 @@ def _tool_request(fd):
 def _tool_refusal(reason):
     return {'kind': 'NATIVE_TOOL_ONLY_COMPONENT', 'complete': False, 'failure': reason,
             'cleanup': 'not-observed', 'releaseAuthorized': False}
+
+
+def _tool_pre_root_refusal(checkpoint):
+    need(type(checkpoint) is str and checkpoint in TOOL_PRE_ROOT_CHECKPOINTS, 'Unknown TOOL pre-root checkpoint')
+    return {**_tool_refusal('tool-pre-root-refused'), 'preRootCheckpoint': checkpoint}
 
 
 def _write_tool_receipt(report):
@@ -608,51 +618,73 @@ def _validate_tool_capture(raw, status):
          and report.get('kind') == 'NATIVE_TOOL_ONLY_COMPONENT'
          and report.get('complete') is (status == '0') and report.get('releaseAuthorized') is False,
          'Returned TOOL capture differs')
-    if report.get('failure') in ('tool-pre-root-refused', 'tool-bootstrap-refused'):
-        need(report == _tool_refusal(report['failure']), 'Returned TOOL bootstrap refusal differs')
+    if report.get('failure') == 'tool-pre-root-refused':
+        need(report == _tool_pre_root_refusal(report.get('preRootCheckpoint')), 'Returned TOOL pre-root refusal differs')
+    elif report.get('failure') == 'tool-bootstrap-refused':
+        need(report == _tool_refusal('tool-bootstrap-refused'), 'Returned TOOL bootstrap refusal differs')
     else:
         _validate_tool_owner_capture(report)
 
 
 def prepare_tool():
-    uid, gid = os.geteuid(), os.getegid()
-    need(sys.platform == 'linux' and uid == os.getuid() and gid == os.getgid() and uid > 0 and gid > 0,
-         'Original nonroot TOOL bootstrap required')
-    environment = {key: os.environ[key] for key in ENVIRONMENT if key in os.environ}
-    _, workspace = context(environment)
-    event_path = os.environ['GITHUB_EVENT_PATH']
-    event = _tool_event(environment, event_path, uid)
-    tool_intent(environment, json.loads(event))
-    controller = workspace / 'automation'
-    need(pathlib.Path(__file__).absolute() == controller / SCRIPT and pathlib.Path.cwd() == controller,
-         'Original fixed TOOL controller checkout required')
-    with directory(controller) as root:
-        receiver, _ = read(root, SCRIPT, TOOL_MEMBER_MAX)
-        config = git(controller, ['config', '--local', '--null', '--list']).decode().split('\0')
-        for entry in filter(None, config):
-            key, _, value = entry.partition('\n')
-            need(not re.search(r'(^credential\.|^include\.|^includeif\.|^filter\.|extraheader$|askpass$|sshcommand$|^core\.(?:fsmonitor|worktree)$)', key, re.I),
-                 'TOOL controller configuration contains an unowned command source')
-            if key == 'remote.origin.url':
-                need(value in ('https://github.com/StradaverseHub/ai-hr', 'https://github.com/StradaverseHub/ai-hr.git'), 'TOOL controller remote differs')
-        sha = environment['GITHUB_SHA']
-        need(git(controller, ['rev-parse', 'HEAD']).decode().strip() == sha
-             and git(controller, ['status', '--porcelain']) == b''
-             and git(controller, ['show', sha + ':' + SCRIPT]) == receiver,
-             'Exact committed TOOL bootstrap required')
-        records = git(controller, ['ls-tree', '-rz', sha, '--', *TOOL_MEMBERS]).split(b'\0')
-        need(records[-1] == b'' and len(records) == len(TOOL_MEMBERS) + 1, 'Fixed TOOL Git inventory differs')
-        rows = []
-        for path, record in zip(TOOL_MEMBERS, records[:-1], strict=True):
-            raw, info = read(root, path, TOOL_MEMBER_MAX)
-            row = _tool_row(path, raw, info)
-            need(record == f"100644 blob {row['gitBlob']}\t{path}".encode(), 'TOOL checkout differs from fixed committed Git bytes')
-            rows.append(row)
-        need(git(controller, ['rev-parse', 'HEAD']).decode().strip() == sha
-             and git(controller, ['status', '--porcelain']) == b'', 'TOOL controller changed during capture')
-    request = {'environment': environment, 'runnerUid': uid, 'runnerGid': gid, 'rows': rows,
-               'event': {'path': event_path, 'size': len(event), 'sha256': hashlib.sha256(event).hexdigest()}}
-    _tool_handoff(receiver, request)
+    checkpoint = 'runner-identity'
+    try:
+        uid, gid = os.geteuid(), os.getegid()
+        need(sys.platform == 'linux' and uid == os.getuid() and gid == os.getgid() and uid > 0 and gid > 0,
+             'Original nonroot TOOL bootstrap required')
+        checkpoint = 'runner-context'
+        environment = {key: os.environ[key] for key in ENVIRONMENT if key in os.environ}
+        _, workspace = context(environment)
+        checkpoint = 'event-file'
+        event_path = os.environ['GITHUB_EVENT_PATH']
+        event = _tool_event(environment, event_path, uid)
+        checkpoint = 'event-json'
+        event_payload = json.loads(event)
+        checkpoint = 'dispatch-contract'
+        tool_intent(environment, event_payload)
+        checkpoint = 'controller-location'
+        controller = workspace / 'automation'
+        need(pathlib.Path(__file__).absolute() == controller / SCRIPT and pathlib.Path.cwd() == controller,
+             'Original fixed TOOL controller checkout required')
+        checkpoint = 'controller-directory'
+        with directory(controller) as root:
+            checkpoint = 'controller-script'
+            receiver, _ = read(root, SCRIPT, TOOL_MEMBER_MAX)
+            checkpoint = 'controller-git-config'
+            config = git(controller, ['config', '--local', '--null', '--list']).decode().split('\0')
+            for entry in filter(None, config):
+                key, _, value = entry.partition('\n')
+                need(not re.search(r'(^credential\.|^include\.|^includeif\.|^filter\.|extraheader$|askpass$|sshcommand$|^core\.(?:fsmonitor|worktree)$)', key, re.I),
+                     'TOOL controller configuration contains an unowned command source')
+                if key == 'remote.origin.url':
+                    need(value in ('https://github.com/StradaverseHub/ai-hr', 'https://github.com/StradaverseHub/ai-hr.git'), 'TOOL controller remote differs')
+            checkpoint = 'controller-commit'
+            sha = environment['GITHUB_SHA']
+            need(git(controller, ['rev-parse', 'HEAD']).decode().strip() == sha
+                 and git(controller, ['status', '--porcelain']) == b''
+                 and git(controller, ['show', sha + ':' + SCRIPT]) == receiver,
+                 'Exact committed TOOL bootstrap required')
+            checkpoint = 'capsule-members'
+            records = git(controller, ['ls-tree', '-rz', sha, '--', *TOOL_MEMBERS]).split(b'\0')
+            need(records[-1] == b'' and len(records) == len(TOOL_MEMBERS) + 1, 'Fixed TOOL Git inventory differs')
+            rows = []
+            for path, record in zip(TOOL_MEMBERS, records[:-1], strict=True):
+                raw, info = read(root, path, TOOL_MEMBER_MAX)
+                row = _tool_row(path, raw, info)
+                need(record == f"100644 blob {row['gitBlob']}\t{path}".encode(), 'TOOL checkout differs from fixed committed Git bytes')
+                rows.append(row)
+            checkpoint = 'controller-stability'
+            need(git(controller, ['rev-parse', 'HEAD']).decode().strip() == sha
+                 and git(controller, ['status', '--porcelain']) == b'', 'TOOL controller changed during capture')
+            checkpoint = 'controller-directory'
+        checkpoint = 'sealed-handoff'
+        request = {'environment': environment, 'runnerUid': uid, 'runnerGid': gid, 'rows': rows,
+                   'event': {'path': event_path, 'size': len(event), 'sha256': hashlib.sha256(event).hexdigest()}}
+        _tool_handoff(receiver, request)
+    except Exception:
+        return _tool_pre_root_refusal(checkpoint)
+    # A successful handoff replaces this process. Fallthrough is a refusal.
+    return _tool_pre_root_refusal('unknown')
 
 
 def seal_tool(request):
@@ -693,11 +725,8 @@ if __name__ == '__main__':
             need(0 < len(raw) <= MAX_REQUEST, 'Bounded bootstrap request required')
             print(json.dumps(seal(json.loads(raw))))
         elif sys.argv[1:] == ['--tool-only']:
-            try:
-                prepare_tool()
-            except Exception:
-                _write_tool_receipt(_tool_refusal('tool-pre-root-refused'))
-                sys.exit(1)
+            _write_tool_receipt(prepare_tool())
+            sys.exit(1)
         elif len(sys.argv) == 3 and sys.argv[1] == '--check-tool-capture':
             with directory(pathlib.Path(os.environ['RUNNER_TEMP']) / 'aihr-native-tool-only') as folder:
                 raw, info = read(folder, 'native-workload-tool-only.json', 65536)

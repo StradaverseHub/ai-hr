@@ -147,18 +147,37 @@ class ToolIntentModels(unittest.TestCase):
     def test_returned_pre_root_refusal_is_bounded_and_kill_or_partial_is_not_a_receipt(self):
         stdout = SimpleNamespace(buffer=io.BytesIO())
         path = str(pathlib.Path(__file__).with_name('native-controller-bootstrap.py'))
-        with patch.object(sys, 'argv', [path, '--tool-only']), patch.object(sys, 'stdout', stdout), \
-             patch.dict(os.environ, clear=True), self.assertRaises(SystemExit) as exited:
-            runpy.run_path(path, run_name='__main__')
+        identity = {key:Mock(return_value=1001) for key in ('getuid', 'geteuid', 'getgid', 'getegid')}
+        with patch.object(sys, 'platform', 'linux'), patch.multiple(os, **identity):
+            with patch.object(sys, 'argv', [path, '--tool-only']), patch.object(sys, 'stdout', stdout), \
+                 patch.dict(os.environ, clear=True), self.assertRaises(SystemExit) as exited:
+                runpy.run_path(path, run_name='__main__')
+            env = environment() | {'GITHUB_EVENT_PATH':'/home/runner/work/_temp/_github_workflow/event.json'}
+            base = {'kind':'NATIVE_TOOL_ONLY_COMPONENT', 'complete':False, 'failure':'tool-pre-root-refused',
+                    'cleanup':'not-observed', 'releaseAuthorized':False}
+            wrong_intent = event() | {'inputs':{}}
+            for supplied, checkpoint in ((OSError('fictional private path'), 'event-file'),
+                                         (b'{fictional private bytes', 'event-json'),
+                                         (B.canonical(wrong_intent), 'dispatch-contract')):
+                with self.subTest(checkpoint=checkpoint), patch.dict(os.environ, env, clear=True), \
+                     patch.object(B, '_tool_event', side_effect=[supplied]):
+                    receipt = B.prepare_tool()
+                    self.assertEqual(receipt, base | {'preRootCheckpoint':checkpoint})
+                    B._validate_tool_capture(B.canonical(receipt), '1')
         self.assertEqual(exited.exception.code, 1)
         raw = stdout.buffer.getvalue()
-        self.assertEqual(raw, B.canonical({'kind':'NATIVE_TOOL_ONLY_COMPONENT', 'complete':False,
-                                           'failure':'tool-pre-root-refused', 'cleanup':'not-observed',
-                                           'releaseAuthorized':False}))
+        self.assertEqual(raw, B.canonical(base | {'preRootCheckpoint':'runner-context'}))
         B._validate_tool_capture(raw, '1')
         for malformed, status in [(raw, '0'), (raw, '137'), (b'', '1'), (raw[:-1], '1'), (raw[:-4], '1')]:
             with self.subTest(status=status), self.assertRaises(ValueError):
                 B._validate_tool_capture(malformed, status)
+        for changed in (base, base | {'preRootCheckpoint':'fictional private path'},
+                        base | {'preRootCheckpoint':['runner-context']},
+                        base | {'preRootCheckpoint':'runner-context', 'details':'fictional private value'},
+                        base | {'preRootCheckpoint':'runner-context', 'failure':'tool-bootstrap-refused'}):
+            with self.subTest(fields=changed.keys()), self.assertRaises(ValueError):
+                B._validate_tool_capture(B.canonical(changed), '1')
+        B._validate_tool_capture(B.canonical(base | {'preRootCheckpoint':'unknown'}), '1')
 
     def test_success_capture_requires_closed_owner_shape_and_positive_settlement(self):
         report = tool_owner_report()
