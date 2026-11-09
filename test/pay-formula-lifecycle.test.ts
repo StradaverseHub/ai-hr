@@ -1,4 +1,7 @@
 import {randomUUID} from 'node:crypto';
+import {createTranslator} from 'next-intl';
+import en from '../messages/en.json';
+import {readPayItemFormulaOptions} from '../app/admin/pay-components/formula-options';
 import {parsePayFormula,type FormulaProgram} from '../lib/pay-formula-language';
 /** Immutable evidence and native catalog activation, exercised through the public services. */
 import {sql,eq} from 'drizzle-orm';
@@ -45,6 +48,41 @@ it('offers all successfully saved formulas without a mandatory test or activatio
  await setPayFormulaActive(ctx, { id: formula.id, active: false });
  expect(await offered()).toContain('PICKABLE');
  expect((await listPayComponents(ctx)).find(item => item.code === 'PICKED')?.rule).toMatchObject({ formulaId: 'PICKABLE' });
+});
+it('projects the latest saved linked explanation without exposing source or weakening catalogue authority',async()=>{
+ const t=createTranslator({locale:'en',messages:en,namespace:'payFormula'});
+ const source=`' A private author comment
+If {#Input} > 10 Then
+  {#Explain}("Review this branch")
+  Return {#Basic} / 26 * {#Input}
+ElseIf {#Input} > 0 Then
+  Return 20 * {#Input}
+Else
+  Return 1
+End If`;
+ const first=await saved('LINKED_EXPLANATION',source);
+ await upsertPayComponent(ctx,{...settings,code:'EXPLANATION_ITEM',rule:{kind:'formula_builder',formulaId:'LINKED_EXPLANATION',dependencies:[]}});
+ await saved('ANOTHER_FORMULA','Return 77');
+ expect(await readPayItemFormulaOptions(ctx,t)).toEqual([
+  {formulaId:'ANOTHER_FORMULA',description:'Fictional lifecycle proof',dependencies:[],explanation:[{depth:0,text:'The result is 77.'}]},
+  {formulaId:'LINKED_EXPLANATION',description:'Fictional lifecycle proof',dependencies:[],explanation:[
+   {depth:0,text:'If Current input > 10:'},
+   {depth:1,text:'Add the note “Review this branch”.'},
+   {depth:1,text:'The result is Basic salary ÷ 26 × Current input.'},
+   {depth:0,text:'Otherwise, if Current input > 0:'},
+   {depth:1,text:'The result is 20 × Current input.'},
+   {depth:0,text:'Otherwise:'},
+   {depth:1,text:'The result is 1.'},
+  ]},
+ ]);
+ await savePayFormula(ctx,{id:first.id,expectedRevisionId:first.revisionId,formulaId:'LINKED_EXPLANATION',
+  description:'Fictional lifecycle proof',method:'write',source:'Return 9'});
+ const reopened=(await readPayItemFormulaOptions(ctx,t)).find(option=>option.formulaId==='LINKED_EXPLANATION');
+ expect(reopened?.explanation).toEqual([{depth:0,text:'The result is 9.'}]);
+ expect((await listPayComponents(ctx)).find(item=>item.code==='EXPLANATION_ITEM')?.rule).toMatchObject({formulaId:'LINKED_EXPLANATION'});
+ await expect(readPayItemFormulaOptions({...ctx,userId:undefined},t)).rejects.toThrow(/Formula access is unavailable/);
+ const other=await seedBase();await setModule(other.tenantId,'typed_pay_components','active');
+ expect(await readPayItemFormulaOptions(await entitledCtx(other),t)).toEqual([]);
 });
 it('binds server dependencies and locks a used identity while retaining receipts after deactivation',async()=>{
  const s=await activated('LINKED','Return {#PayItem}("BASIC") / 10');

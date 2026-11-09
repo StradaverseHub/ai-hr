@@ -8,7 +8,8 @@ import Link from 'next/link';
 import {useTranslations} from 'next-intl';
 import {personnelFormulaFieldDescriptor} from '@/lib/pay-formula-personnel';
 import {parsePayFormula,type FormulaValue} from '@/lib/pay-formula-language';
-import {explainPayFormula,type FormulaExplanationWords} from '@/lib/pay-formula-explain';
+import {describePayFormula} from '@/lib/pay-formula-explain';
+import {PayFormulaExplanationPanel} from '@/components/pay-formula-explanation';
 import {PAY_FORMULA_TEMPLATE_KEYS,payFormulaTemplateSource,type PayFormulaTemplateKey} from '@/lib/pay-formula-templates';
 import type {FormulaDiagnostic} from '@/lib/pay-formula-diagnostics';
 import {PAY_FORMULA_SAMPLE_VARIABLES,payFormulaSampleFields,type PayFormulaSampleResult,type PayFormulaSampleStep,type PayFormulaSampleValues,type PayFormulaSampleVariable} from '@/lib/pay-formula-sample';
@@ -50,13 +51,9 @@ export function FormulaHelpPanel({tab,onTab,library,canUseTemplate}:{tab:Formula
 
 export function FormulaExplanation({text,templateKey}:{text:string;templateKey?:PayFormulaTemplateKey}){
  const t=useTranslations('payFormula'),templateSource=useFormulaTemplateSource();
- const words:FormulaExplanationWords=useMemo(()=>({and:t('explain.and'),or:t('explain.or'),not:t('explain.not'),true:t('true'),false:t('false'),variable:code=>t('functions.'+code)}),[t]);
- const lines=useMemo(()=>{try{return explainPayFormula(parsePayFormula(text),words);}catch{return null;}},[text,words]);
+ const rows=useMemo(()=>{try{return describePayFormula(parsePayFormula(text),t);}catch{return null;}},[text,t]);
  const curated=templateKey&&text===templateSource(templateKey);
- return <section aria-labelledby="formula-explanation-title" className="rounded-lg border border-amber-300/70 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-100">
-  <h3 id="formula-explanation-title" className="font-semibold">{t('explain.title')}</h3>
-  {curated?<p className="mt-1">{t('templates.'+templateKey+'.explanation')}</p>:lines?<ul className="mt-1 space-y-1">{lines.map((line,index)=><li key={index} style={{paddingInlineStart:line.depth*1.25+'rem'}}>{t('explain.'+line.key,line.values)}</li>)}</ul>:<p className="mt-1">{t('explain.unavailable')}</p>}
- </section>;
+ return <PayFormulaExplanationPanel content={curated?t('templates.'+templateKey+'.explanation'):rows}/>;
 }
 
 export function FormulaChecks({diagnostics,onSelect}:{diagnostics:readonly FormulaDiagnostic[];onSelect?:(diagnostic:FormulaDiagnostic)=>void}){

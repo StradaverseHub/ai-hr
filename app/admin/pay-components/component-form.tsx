@@ -2,7 +2,7 @@ import { payComponentCompanyChoices } from '@/packs/payroll/service';
 import { CompanyApplicability } from './company-applicability';
 import { ActionButton } from '@/components/ui/action-button';
 import {isModuleEnabled} from '@/core/entitlements';
-import {payFormulaOptions} from '@/packs/payroll/service';
+import { readPayItemFormulaOptions } from './formula-options';
 import { packFor } from '@/localization/registry';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -70,7 +70,12 @@ export async function ComponentForm({
   const s = await requireAdmin();
   const companyChoices = await payComponentCompanyChoices(s);
   const builderEnabled=isModuleEnabled(s,'payroll')&&isModuleEnabled(s,'typed_pay_components');
-  const [allItems, previewEmployees, formulaOptions] = await Promise.all([loadPayComponents(s), listPayRulePreviewCandidates(s),builderEnabled?payFormulaOptions(s):Promise.resolve({activeFormulas:[]})]);
+  const formulaTranslations = builderEnabled ? await getTranslations('payFormula') : null;
+  const [allItems, previewEmployees, formulaOptions] = await Promise.all([
+    loadPayComponents(s),
+    listPayRulePreviewCandidates(s),
+    formulaTranslations ? readPayItemFormulaOptions(s, formulaTranslations) : [],
+  ]);
   const payItems = allItems
     // In copy mode the source's own code is offered too: the new item is a distinct code and may legitimately
     // reference the one it was copied from (self-exclusion only applies to a rule reading ITSELF, which the
@@ -205,7 +210,7 @@ export async function ComponentForm({
               pendingInputKind={component?.pendingInputKind ?? null}
               aiEnabled={aiEnabled}
               payItems={payItems}
-              activeFormulas={formulaOptions.activeFormulas}
+              activeFormulas={formulaOptions}
               builderEnabled={builderEnabled}
               formulaContext={component?.formulaContext??null}
               previewEmployees={previewEmployees.map((e) => ({

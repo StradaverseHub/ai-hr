@@ -2,6 +2,9 @@
  * supplies translated words and variable labels; this module only decides structure and order. */
 import type {FormulaExpression,FormulaProgram,FormulaStatement} from './pay-formula-language';
 
+export type FormulaExplanationRow = { depth: number; text: string };
+type FormulaExplanationTranslation = (key: string, values?: FormulaExplanationLine['values']) => string;
+
 export type FormulaExplanationKey='declare'|'assign'|'if'|'elseIf'|'otherwise'|'return'|'explain';
 export type FormulaExplanationLine={depth:number;key:FormulaExplanationKey;values:{name?:string;expression?:string;condition?:string}};
 export type FormulaExplanationWords={
@@ -53,4 +56,16 @@ export function explainPayFormula(program:FormulaProgram,words:FormulaExplanatio
  };
  block(program.statements,0);
  return lines;
+}
+
+/** Localize the read-only projection without exposing the source or syntax tree. */
+export function describePayFormula(program: FormulaProgram, t: FormulaExplanationTranslation): FormulaExplanationRow[] {
+ const words: FormulaExplanationWords = {
+  and: t('explain.and'), or: t('explain.or'), not: t('explain.not'),
+  true: t('true'), false: t('false'), variable: code => t('functions.' + code),
+ };
+ return explainPayFormula(program, words).map(({ depth, key, values }) => ({
+  depth,
+  text: t('explain.' + key, values),
+ }));
 }
