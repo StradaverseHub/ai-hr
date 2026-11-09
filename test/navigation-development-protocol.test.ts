@@ -1,6 +1,12 @@
 import {describe,expect,it} from 'vitest';
-import {readFileSync} from 'node:fs';
-import {fixtureNavigationActor,localNavigationHref,navigationExpectedText,NAVIGATION_CAPTURE_VERSION,validateNavigationCapture,validateNavigationScenarioPlan,type NavigationScenarioPlan} from '../scripts/performance/navigation-protocol';
+import {execFileSync} from 'node:child_process';
+import {closeSync,copyFileSync,linkSync,mkdirSync,mkdtempSync,openSync,readFileSync,readSync,renameSync,rmSync,symlinkSync,unlinkSync,writeFileSync,writeSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {fixtureNavigationActor,localNavigationHref,navigationExpectedText,NAVIGATION_CAPTURE_VERSION,NAVIGATION_HARNESS_ROOTS,NAVIGATION_SCENARIO_FILE,
+ validateNavigationCapture,validateNavigationScenarioPlan,type NavigationScenarioPlan} from '../scripts/performance/navigation-protocol';
+import {navigationSha256,navigationSourceIdentity} from '../scripts/performance/navigation-source';
 const readPlan=()=>JSON.parse(readFileSync(new URL('../scripts/performance/navigation-scenarios.json',import.meta.url),'utf8'));
 const expected={candidateSha:'a'.repeat(40),controllerSha:'b'.repeat(40),runId:123,harnessSha256:'c'.repeat(64),scenarioSha256:'d'.repeat(64),phase:'baseline' as 'baseline'|'loaded'};
 const indices={groupHR:0,companyHR:1,manager:2,employee:4};
@@ -49,5 +55,86 @@ describe('closed source-reviewed navigation development protocol (not authentica
    (c:any)=>delete c.observations[0].usableWith,(c:any)=>c.observations[0].usableWith.verified=true]){
    const value=capture(plan,'loaded');edit(value);expect(()=>validateNavigationCapture(value,plan,{...expected,phase:'loaded'})).toThrow();
   }
+ });
+});
+
+const repo=fileURLToPath(new URL('../',import.meta.url));
+const historyPins=()=>Array.from(readFileSync(new URL('../.github/ci/native-workload-navigation-source.py',import.meta.url),'utf8')
+ .matchAll(/HistoryPin\('([^']+)', (\d+),\s*'([a-f0-9]{40})',\s*'([a-f0-9]{64})'\)/g),
+ ([,path,size,blob,sha256])=>({path,size:Number(size),blob,sha256}));
+const sourceGit=(root:string,...args:string[])=>execFileSync('git',['-c','core.hooksPath=/dev/null',...args],
+ {cwd:root,env:{PATH:process.env.PATH,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null'},maxBuffer:2*1024*1024,timeout:2000});
+const currentSource=(root:string)=>sourceGit(root,'rev-parse','HEAD').toString().trim();
+
+describe('development navigation source identity',()=>{
+ it('streams the four exact protected-history objects into the original ordered digest',()=>{
+  const revision=currentSource(repo),pins=historyPins();
+  expect(pins).toHaveLength(4);
+  expect(pins.reduce((total,pin)=>total+pin.size,0)).toBe(73_681_717);
+  const records=sourceGit(repo,'ls-tree','-r','-z','--full-tree',revision,'--',...NAVIGATION_HARNESS_ROOTS).toString().split('\0').filter(Boolean);
+  const expected=records.map(row=>{
+   const [metadata,path]=row.split('\t'),[mode,,blob]=metadata.split(' ');
+   const pin=pins.find(member=>member.path===path);
+   if(pin){
+    expect({mode,blob}).toEqual({mode:'100644',blob:pin.blob});
+    expect(sourceGit(repo,'cat-file','-s',blob).toString().trim()).toBe(String(pin.size));
+   }
+   return {path,mode,sha256:pin?.sha256??navigationSha256(sourceGit(repo,'show',revision+':'+path))};
+  }).sort((a,b)=>a.path.localeCompare(b.path,'en'));
+  const actual=navigationSourceIdentity(repo,revision);
+  expect(actual.files).toEqual(expected);
+  expect(actual.harnessSha256).toBe(navigationSha256(JSON.stringify(expected)));
+  expect(actual.scenarioSha256).toBe(navigationSha256(sourceGit(repo,'show',revision+':'+NAVIGATION_SCENARIO_FILE)));
+ },15000);
+
+ it('refuses linked, mutated, executable, and unrecognized large history while retaining older ordinary bytes',()=>{
+  const root=mkdtempSync(join(tmpdir(),'navigation-fixed-history-'));
+  const pin=historyPins()[0];
+  const history=join(root,pin.path),backup=join(root,'history-backup');
+  const commit=()=>{
+   sourceGit(root,'-c','user.name=Navigation Model','-c','user.email=fixture@example.invalid','commit','-qm','source fixture');
+   return currentSource(root);
+  };
+  try{
+   sourceGit(root,'init','-q');
+   mkdirSync(join(root,'scripts/performance'),{recursive:true});
+   mkdirSync(join(root,'deploy/admission'),{recursive:true});
+   copyFileSync(join(repo,pin.path),history);
+   copyFileSync(join(repo,NAVIGATION_SCENARIO_FILE),join(root,NAVIGATION_SCENARIO_FILE));
+   writeFileSync(join(root,'scripts/performance/navigation-browser-capture.ts'),'export {};\n');
+   sourceGit(root,'add','--','scripts/performance','deploy/admission');
+   const original=commit();
+   expect(navigationSourceIdentity(root,original).files).toContainEqual({path:pin.path,mode:'100644',sha256:pin.sha256});
+
+   renameSync(history,backup);
+   symlinkSync(backup,history);
+   expect(()=>navigationSourceIdentity(root,original)).toThrow('Fixed navigation history link refused');
+   unlinkSync(history);
+   linkSync(backup,history);
+   expect(()=>navigationSourceIdentity(root,original)).toThrow('Fixed navigation history checkout metadata differs');
+   unlinkSync(history);
+   renameSync(backup,history);
+
+   sourceGit(root,'update-index','--chmod=+x','--',pin.path);
+   const executable=commit();
+   expect(()=>navigationSourceIdentity(root,executable)).toThrow('Fixed navigation history Git metadata differs');
+
+   const fd=openSync(history,'r+'),byte=Buffer.alloc(1);
+   try{
+    expect(readSync(fd,byte,0,1,0)).toBe(1);
+    byte[0]^=1;
+    expect(writeSync(fd,byte,0,1,0)).toBe(1);
+   }finally{closeSync(fd);}
+   expect(()=>navigationSourceIdentity(root,original)).toThrow('Fixed navigation history bytes differ');
+   sourceGit(root,'add','--',pin.path);
+   const unrecognized=commit();
+   expect(()=>navigationSourceIdentity(root,unrecognized)).toThrow('Navigation harness source exceeds bounds');
+
+   const oldBytes='{}\n';
+   writeFileSync(history,oldBytes);
+   sourceGit(root,'add','--',pin.path);
+   const older=commit();
+   expect(navigationSourceIdentity(root,older).files).toContainEqual({path:pin.path,mode:'100644',sha256:navigationSha256(oldBytes)});
+  }finally{rmSync(root,{recursive:true,force:true});}
  });
 });
