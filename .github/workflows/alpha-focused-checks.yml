@@ -104,7 +104,7 @@ env:
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
   resolve:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' && !(github.ref == 'refs/heads/codex/compiler-12800-whole-feasibility-20261109' && inputs.run_typecheck) }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && !(github.ref == 'refs/heads/codex/compiler-8a5d-partition-feasibility-20261109' && inputs.run_typecheck) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -1116,12 +1116,17 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   compiler-memory-feasibility:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/compiler-12800-whole-feasibility-20261109' && inputs.run_typecheck }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/compiler-8a5d-partition-feasibility-20261109' && inputs.run_typecheck }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        cell: [build, test-tooling-first, test-tooling-second]
     permissions:
       contents: read
     env:
+      AIHR_COMPILER_PARTITION: ${{ matrix.cell }}
       STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
       PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
     steps:
@@ -1139,7 +1144,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 54fe69ffdf952eac087c91ad6050bf9fdb36d116
+          ref: 8a5d0fbdad4146ce3c9277a9ec830e7119a38432
           path: source
           persist-credentials: false
       - name: Admit the exact compiler feasibility event before dependency setup
@@ -1150,14 +1155,14 @@ jobs:
         working-directory: source
         env: {NEXT_TELEMETRY_DISABLED: '1'}
         run: /usr/bin/timeout --signal=TERM --kill-after=10s 120s pnpm exec next typegen
-      - name: Run the held whole compiler only after physical memory admission
+      - name: Run the held stock compiler partition after physical memory admission
         id: compiler-feasibility
         run: /usr/bin/python3 -I -B automation/.github/ci/compiler-memory-feasibility.py run
       - name: Retain bounded compiler feasibility and native settlement facts
         if: ${{ always() && steps.compiler-feasibility.outputs.evidence == 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: whole-compiler-12800-feasibility-evidence
+          name: compiler-root-partition-${{ matrix.cell }}-evidence
           path: |
             ${{ runner.temp }}/compiler-12800-feasibility/receipt.json
             ${{ runner.temp }}/compiler-12800-feasibility/compiler.log

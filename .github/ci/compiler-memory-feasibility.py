@@ -15,9 +15,10 @@ import sys
 import time
 
 
-SOURCE = '54fe69ffdf952eac087c91ad6050bf9fdb36d116'
-SOURCE_BRANCH = 'codex/architecture-five-item-browser-convergence-20261109'
-BRANCH = 'codex/compiler-12800-whole-feasibility-20261109'
+SOURCE = '8a5d0fbdad4146ce3c9277a9ec830e7119a38432'
+SOURCE_BRANCH = 'codex/compiler-native-inventory-28274-20261109'
+BRANCH = 'codex/compiler-8a5d-partition-feasibility-20261109'
+PARTITION_CELLS = ('build', 'test-tooling-first', 'test-tooling-second')
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 LIMIT = 13 * GIB
@@ -135,7 +136,9 @@ def environment():
                 and command(['/usr/bin/git', '-C', str(directory), 'status', '--porcelain']) == (0, b''), 'checkout-source')
     require(Path(__file__).resolve() == workspace / 'automation/.github/ci/compiler-memory-feasibility.py'
             and os.getuid() > 0, 'controller-path')
-    return workspace, temporary, controller, run
+    cell = e.get('AIHR_COMPILER_PARTITION')
+    require(cell in PARTITION_CELLS, 'partition-cell')
+    return workspace, temporary, controller, run, cell
 
 
 def ram():
@@ -280,7 +283,7 @@ SERVICE_FAILURES = {
                'host-memory', 'host-size', 'host-headroom', 'ancestor-memory-controller', 'ancestor-headroom',
                'cgroup-cap-readback', 'cgroup-swap', 'kernel-fields', 'kernel-duplicate', 'oom-counters',
                'invalid-integer', 'read-bound', 'service-launch-frontier'},
-    'start': {'service-launch-late'},
+    'start': {'service-launch-late', 'partition-plan'},
     'compiler': {'service-completion-late'},
     'terminal': {'terminal-ack', 'protocol-deadline', 'protocol-eof-or-late', 'protocol-bound'},
 }
@@ -296,14 +299,47 @@ def service_failure(message, allowed):
     return {'phase': phase, 'reason': reason}
 
 
+def partition_report(directory, source, cell, raw):
+    path = directory / 'partition-plan.json'
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as stream:
+        before = os.fstat(stream.fileno())
+        require(stat.S_ISREG(before.st_mode) and before.st_uid == os.getuid() and before.st_nlink == 1
+                and stat.S_IMODE(before.st_mode) == 0o600 and 0 < before.st_size <= 1024 * 1024, 'partition-plan')
+        plan_raw = stream.read(1024 * 1024 + 1)
+        require(len(plan_raw) == before.st_size and identity(before) == identity(os.fstat(stream.fileno()))
+                == identity(os.stat(path, follow_symlinks=False)), 'partition-plan')
+    plan = json.loads(plan_raw)
+    require(plan.get('cell') == cell and plan.get('originalRootOwnershipExact') is True
+            and plan.get('externalAmbientGlobalParityProven') is False, 'partition-plan')
+    roots = plan.pop('roots')
+    require(isinstance(roots, list) and 0 < len(roots) <= 9213 and len(roots) == len(set(roots))
+            and all(isinstance(root, str) and not root.startswith('/') and '..' not in root.split('/')
+                    and not re.search(r'[\x00-\x1f]', root) for root in roots), 'partition-plan')
+    require(plan.get('configured') == {'count': len(roots),
+            'sha256': hashlib.sha256(('\n'.join(roots) + '\n').encode()).hexdigest()}, 'partition-plan')
+    text = raw.decode('utf-8', errors='strict')
+    prefix = str(source) + '/'
+    loaded = [line[len(prefix):] for line in text.splitlines() if line.startswith(prefix)
+              and re.search(r'\.(?:[cm]?[jt]sx?|json)$', line)]
+    counts = re.findall(r'^Files:\s+([1-9][0-9]*)\s*$', text, re.M)
+    required = set(roots) | set(plan['localContext']) | set(plan['automaticTypes'])
+    complete = len(counts) == 1 and int(counts[0]) == len(loaded) == len(set(loaded)) and required <= set(loaded)
+    return {**plan, 'loadedCount': len(loaded), 'requiredInputsMissing': len(required - set(loaded)),
+            'listedInputsComplete': complete, 'typescriptDiagnosticsObserved': bool(re.search(r'\berror TS[0-9]+:', text)),
+            'loadedOrderSha256': hashlib.sha256(('\n'.join(loaded) + '\n').encode()).hexdigest()}
+
+
 def service(unit, pending):
     phase = 'identity'
     try:
         temporary = Path(os.environ['RUNNER_TEMP'])
         directory = temporary / DIRECTORY
         pnpm = Path(pwd.getpwuid(os.getuid()).pw_dir) / 'setup-pnpm/node_modules/.bin/pnpm'
+        cell = os.environ.get('AIHR_COMPILER_PARTITION')
         require(re.fullmatch(r'aihr-compiler-12800-[1-9][0-9]{0,15}\.service', unit) and os.getuid() > 0
-                and temporary.is_absolute() and directory.resolve(strict=True) == directory, 'service-identity')
+                and temporary.is_absolute() and directory.resolve(strict=True) == directory
+                and cell in PARTITION_CELLS, 'service-identity')
         pid = os.getpid()
         process_identity(pid, unit)
         # Linux reserves a soft core limit of one byte to suppress pipe recursion.
@@ -323,8 +359,14 @@ def service(unit, pending):
                     and 0 < stop - time.monotonic_ns() <= WORK_NS, 'service-launch-frontier')
             phase = 'start'
             with (directory / 'compiler.raw.log').open('xb') as log:
+                plan = Path(__file__).with_name('compiler-root-partitions.mjs')
+                result = subprocess.run(['node', str(plan), cell, os.getcwd(), str(directory)], stdin=subprocess.DEVNULL,
+                                        stdout=log, stderr=log, timeout=30, check=False)
+                require(result.returncode == 0, 'partition-plan')
                 require(time.monotonic_ns() < stop, 'service-launch-late')
-                with subprocess.Popen(['/usr/bin/time', '-v', str(pnpm), 'exec', 'tsc', '--noEmit', '--incremental', 'false'],
+                with subprocess.Popen(['/usr/bin/time', '-v', str(pnpm), 'exec', 'tsc', '--noEmit', '--incremental', 'false',
+                                       '--pretty', 'false', '--listFiles', '--extendedDiagnostics', '--project',
+                                       str(directory / 'partition.tsconfig.json')],
                                       stdin=subprocess.DEVNULL, stdout=log, stderr=log) as compiler:
                     print('S', flush=True)
                     phase = 'compiler'
@@ -353,7 +395,7 @@ def owned(row, unit, pid, nonce):
             and re.fullmatch(r'[a-f0-9]{32}', row['InvocationID']) and int(row['InvocationID'], 16) > 0)
 
 
-def run(workspace, temporary, controller, run_id):
+def run(workspace, temporary, controller, run_id, cell):
     directory = temporary / DIRECTORY
     directory.mkdir(mode=0o700)
     source = workspace / 'source'
@@ -361,9 +403,9 @@ def run(workspace, temporary, controller, run_id):
     group_path = ROOT / 'system.slice' / unit
     nonce = unit + '-' + os.urandom(16).hex()
     deadline = integer(os.environ['AIHR_COMPILER_FEASIBILITY_T0_NS']) + 1140 * 10 ** 9
-    report = {'kind': 'WHOLE_COMPILER_HEAP_FEASIBILITY_NOT_RELEASE', 'candidateSha': SOURCE, 'controllerSha': controller,
+    report = {'kind': 'COMPILER_ROOT_PARTITION_FEASIBILITY_NOT_RELEASE', 'candidateSha': SOURCE, 'controllerSha': controller,
               'runId': run_id, 'attempt': 1, 'heapMiB': 12800, 'incremental': False, 'compilerExit': None, 'admitted': False,
-              'grantSent': False,
+              'grantSent': False, 'cell': cell,
               'complete': False, 'ownedCleanup': 'not-started', 'releaseEligible': False}
     wrapper = None
     pidfd = None
@@ -392,7 +434,8 @@ def run(workspace, temporary, controller, run_id):
                  'WorkingDirectory=' + str(source), 'Description=' + nonce)
         settings = {'PATH': f'{tools}:{pnpm.parent}:/usr/bin:/bin', 'HOME': pwd.getpwuid(os.getuid()).pw_dir,
                     'LANG': 'en_US.UTF-8', 'LC_ALL': 'en_US.UTF-8', 'TZ': 'Asia/Kuala_Lumpur', 'CI': 'true',
-                    'NODE_OPTIONS': '--max-old-space-size=12800', 'RUNNER_TEMP': str(temporary)}
+                    'NODE_OPTIONS': '--max-old-space-size=12800', 'RUNNER_TEMP': str(temporary),
+                    'AIHR_COMPILER_PARTITION': cell}
         for name in ('DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL'):
             settings[name] = 'postgres://nobody:nothing@127.0.0.1:1/no_database'
         argv = ['/usr/bin/sudo', '-n', '--', '/usr/bin/systemd-run', '--system', '--wait', '--pipe', '--quiet', '--collect',
@@ -530,10 +573,14 @@ def run(workspace, temporary, controller, run_id):
                 report['compilerLog'] = {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
                 report['v8HeapFatalMarker'] = bool(re.search(
                     rb'^FATAL ERROR: [^\r\n]*JavaScript heap out of memory[^\r\n]*$', raw, re.M))
-        except (Refusal, OSError):
-            report['compilerLog'] = None
+                if report['admitted']:
+                    report['partition'] = partition_report(directory, source, cell, raw)
+        except (Refusal, OSError, ValueError, KeyError, TypeError):
+            report.setdefault('compilerLog', None)
         report['complete'] = ('reason' not in report and report['admitted'] and report['compilerExit'] == 0
                               and report.get('zeroObservedOom') is True and report['ownedCleanup'] == 'settled'
+                              and report.get('partition', {}).get('listedInputsComplete') is True
+                              and report['partition']['typescriptDiagnosticsObserved'] is False
                               and report.get('compilerLog') is not None and time.monotonic_ns() < deadline)
         with (directory / 'receipt.json').open('x', encoding='utf-8') as stream:
             stream.write(json.dumps(report, indent=2) + '\n')
