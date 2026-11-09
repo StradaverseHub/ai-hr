@@ -251,7 +251,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           # This fictional branch checks out its exact baseline independently of release metadata handback.
-          STAGING_BASE_SHA: ${{ github.ref == 'refs/heads/codex/architecture-streamline-ai-upgrade-witness-20261110' && '5cd7fed8bb8e4025b9ef93ea056a31eb95d30948' || vars.STAGING_DEPLOYED_SHA }}
+          STAGING_BASE_SHA: ${{ github.ref == 'refs/heads/codex/architecture-streamline-ai-upgrade-witness-20261110' && 'f07f32dcd0ccaeb6b49d40f2b6c64307b9bf80fc' || vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
     needs: resolve
     runs-on: ubuntu-24.04
@@ -301,7 +301,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         if: ${{ github.ref == 'refs/heads/codex/architecture-streamline-ai-upgrade-witness-20261110' }}
         with:
-          ref: 5cd7fed8bb8e4025b9ef93ea056a31eb95d30948
+          ref: f07f32dcd0ccaeb6b49d40f2b6c64307b9bf80fc
           path: baseline
           persist-credentials: false
       - name: Allocate an isolated fixture tool and source directory
@@ -343,8 +343,8 @@ jobs:
           install -m 0755 "$(command -v node)" "$runtime/bin/node"
           export PATH="$runtime/bin:$runtime/pnpm/node_modules/.bin:/usr/bin:/bin"
           for member in baseline source; do
-            sha=5cd7fed8bb8e4025b9ef93ea056a31eb95d30948
-            if test "$member" = source; then sha=6f35a07d592a3656c1f67f54d145d1e0c7772403; fi
+            sha=f07f32dcd0ccaeb6b49d40f2b6c64307b9bf80fc
+            if test "$member" = source; then sha=06e499c211807981689c34c5e732b7dac488abbc; fi
             checkout="$runtime/$member"
             test "$(git -C "$GITHUB_WORKSPACE/$member" rev-parse HEAD)" = "$sha"
             git init --quiet "$checkout"

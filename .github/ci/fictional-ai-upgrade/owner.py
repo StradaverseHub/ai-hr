@@ -12,8 +12,8 @@ import subprocess
 import sys
 import time
 
-BASE = '5cd7fed8bb8e4025b9ef93ea056a31eb95d30948'
-CANDIDATE = '6f35a07d592a3656c1f67f54d145d1e0c7772403'
+BASE = 'f07f32dcd0ccaeb6b49d40f2b6c64307b9bf80fc'
+CANDIDATE = '06e499c211807981689c34c5e732b7dac488abbc'
 BRANCH = 'codex/architecture-streamline-ai-upgrade-witness-20261110'
 REPO = 'StradaverseHub/ai-hr'
 IMAGE = 'postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97'
