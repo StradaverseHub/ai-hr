@@ -26,6 +26,11 @@ function differentDatabaseRoot(){
  const root=realpathSync(modelMkdtemp(modelJoin(modelTmpdir(),'shared-prerequisite-other-source-'))),journal='db/migrations/meta/_journal.json';
  modelMkdir(modelJoin(root,'db/migrations/meta'),{recursive:true});
  for(const file of modelReaddir(modelJoin(modelRoot,'db/migrations')).filter(file=>file.endsWith('.sql')))modelWrite(modelJoin(root,'db/migrations',file),'-- fictional source input\n');
+ const archive='test/fixtures/historical-migrations';
+ modelMkdir(modelJoin(root,archive),{recursive:true});
+ for(const file of ['2301_attendance_workflow_submission_shared_lock.sql','3103_access_editor_presentation.sql']){
+  modelWrite(modelJoin(root,archive,file),readModelSource(modelJoin(modelRoot,archive,file)));
+ }
  const data=JSON.parse(readModelSource(modelJoin(modelRoot,journal),'utf8'));
  data.entries.push({...data.entries.at(-1),idx:data.entries.length,tag:'9999_distinct_current_model'});
  modelWrite(modelJoin(root,journal),JSON.stringify(data));modelWrite(modelJoin(root,'db/migrations/9999_distinct_current_model.sql'),'-- fictional new source input\n');return root;
