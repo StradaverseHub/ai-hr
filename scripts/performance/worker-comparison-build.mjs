@@ -13,19 +13,20 @@ const child=(fd,name)=>`${fdPath(fd)}/${name}`;
 const stats=path=>lstatSync(path,{bigint:true});
 const held=fd=>fstatSync(fd,{bigint:true});
 const sameInode=(left,right)=>left.dev===right.dev&&left.ino===right.ino;
-const unchanged=(left,right)=>sameInode(left,right)&&['mode','uid','gid','size','nlink','mtimeNs','ctimeNs']
+const sameDirectoryIdentity=(left,right)=>sameInode(left,right)&&['mode','uid','gid'].every(key=>left[key]===right[key]);
+const unchanged=(left,right)=>sameDirectoryIdentity(left,right)&&['size','nlink','mtimeNs','ctimeNs']
  .every(key=>left[key]===right[key]);
 
 function missing(path){
  try{stats(path);return false;}catch(error){if(error.code==='ENOENT')return true;throw error;}
 }
 
-function openDirectory(path){
+function openDirectory(path,matches=unchanged){
  const before=stats(path);
  assert(before.isDirectory(),'Worker build directory or ancestor is a link or unsupported');
  const fd=openSync(path,readFlags|flags.O_DIRECTORY);
  try{
-  assert(unchanged(before,held(fd))&&unchanged(before,stats(path)),'Worker build directory changed during open');
+  assert(matches(before,held(fd))&&matches(before,stats(path)),'Worker build directory changed during open');
   return fd;
  }catch(error){closeSync(fd);throw error;}
 }
@@ -33,10 +34,12 @@ function openDirectory(path){
 function openAbsoluteDirectory(path){
  assert(typeof path==='string'&&path.length<=4096&&path!=='/'&&isAbsolute(path)&&normalize(path)===path
   &&!path.endsWith('/')&&!/[\\\u0000-\u001f\u007f]/.test(path),'Worker build root path refused');
- let fd=openDirectory('/');
+ // Shared path ancestors can gain unrelated siblings while we walk them.
+ // Only held build trees require unchanged content metadata across an open.
+ let fd=openDirectory('/',sameDirectoryIdentity);
  try{
   for(const name of path.slice(1).split('/')){
-   const previous=fd;fd=openDirectory(child(previous,name));
+   const previous=fd;fd=openDirectory(child(previous,name),sameDirectoryIdentity);
    closeSync(previous);
   }
   return fd;

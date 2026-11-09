@@ -1,6 +1,7 @@
 /** Filesystem models for the hosted Linux byte owner. No Next build or worker starts here. */
 import assert from 'node:assert/strict';
-import {chmodSync,existsSync,linkSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,renameSync,rmSync,symlinkSync,truncateSync,writeFileSync} from 'node:fs';
+import fs,{chmodSync,existsSync,linkSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,renameSync,rmSync,symlinkSync,truncateSync,writeFileSync} from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -77,6 +78,37 @@ test('refuses an occupied pre-build .next, including a link, without touching it
   assert.equal(lstatSync(next).isSymbolicLink(),true);
   assert.equal(readFileSync(join(outside,'sentinel'),'utf8'),'outside');
   assert.equal(existsSync(privateRoot),false);
+ });
+});
+
+test('allows sibling churn while binding the path, but refuses an ancestor mode change',()=>{
+ for(const [testChurn,mutate] of [
+  [true,workspace=>mkdirSync(join(workspace,'unrelated-sibling'))],
+  [false,workspace=>chmodSync(workspace,0o700)],
+ ])fixture(({workspace,open,build})=>{
+  chmodSync(workspace,0o755);
+  const original=fs.lstatSync;
+  let changed=false;
+  fs.lstatSync=(path,options)=>{
+   const row=original(path,options);
+   if(!changed&&typeof path==='string'&&/^\/proc\/self\/fd\/\d+\/workspace$/.test(path)){
+    changed=true;
+    mutate(workspace);
+   }
+   return row;
+  };
+  syncBuiltinESMExports();
+  try{
+   if(testChurn){
+    const snapshot=open();
+    build();
+    assert.equal(snapshot.capture().seal.buildId,'model-build-id');
+   }else assert.throws(open,/directory changed during open/);
+   assert.equal(changed,true);
+  }finally{
+   fs.lstatSync=original;
+   syncBuiltinESMExports();
+  }
  });
 });
 
