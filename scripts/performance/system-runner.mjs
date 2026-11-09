@@ -16,6 +16,7 @@ import {createDriverFailures,createDriverSockets,validateDevelopmentMeasurement,
  developmentDockerContext,developmentPostgresBirthId,developmentPostgresSettlement} from './driver-shutdown.mjs';
 import {systemBuildEnvironment} from './build-environment.mjs';
 import {isolatedWorkerBudget,isolatedWorkerCpuAdmission} from './worker-budget.mjs';
+import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
 assert.equal(process.env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
@@ -45,7 +46,9 @@ const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:fals
  run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool,heapMiBPerWorker:heapPerWorker,totalHeapMiB,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host,cpuAdmission,phases:[],exitCode:1};
 const measureDevelopment=['workflow-preflight','whole-system'].includes(env.PERF_HTTP_SUITE);
 const lockLogNonce=measureDevelopment?randomBytes(16).toString('hex'):null;
+const requireRenderedUnion=fullDevelopmentBrowserRouteCourse(env);
 const measurementIdentity={candidateSha:sha,controllerSha:report.controller,runId:Number(report.run),
+ requireRenderedUnion,
  runAttempt:Number(process.env.GITHUB_RUN_ATTEMPT),suite:env.PERF_HTTP_SUITE};
 const measurement=measureDevelopment?report.developmentMeasurement={kind:'DEVELOPMENT_BROWSER_RUNNER_MEASUREMENT_V1',complete:false,
  driver:null,driverReceipt:'absent',settlement:{driver:'unknown',proxy:'unknown',workers:'unknown',

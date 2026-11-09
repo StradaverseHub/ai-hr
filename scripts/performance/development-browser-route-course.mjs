@@ -34,7 +34,8 @@ function readEvent(temp,named){
 }
 
 export function fullDevelopmentBrowserRouteCourse(env){
- if(env.PERF_HTTP_SUITE!=='workflow-preflight'||(env.GITHUB_REF!==ref&&env.GITHUB_REF_NAME!==branch))return false;
+ if(env.AIHR_MEASURED_BROWSER_COURSE!=='preflight-2'||env.PERF_HTTP_SUITE!=='workflow-preflight'
+  ||(env.GITHUB_REF!==ref&&env.GITHUB_REF_NAME!==branch))return false;
  const sha=env.GITHUB_WORKFLOW_SHA;
  const required={
   GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux',RUNNER_ARCH:'X64',
@@ -53,9 +54,10 @@ export function fullDevelopmentBrowserRouteCourse(env){
   &&event.repository.full_name===repository&&event.repository.private===false&&event.repository.fork===false
   &&event.repository.default_branch==='main'&&event.inputs&&Object.getPrototypeOf(event.inputs)===Object.prototype,
   'Full development browser event refused');
- const inputs={model_eval:'',eval_allowed_providers:'',...event.inputs};
+ const inputs={model_eval:'',eval_allowed_providers:'',measured_browser_preflight_run:'',...event.inputs};
  const expected={
-  candidate_ref:branch,expected_sha:sha,selected_tests:'[]',architecture_browser_development_preflight:'true',
+  candidate_ref:branch,expected_sha:sha,selected_tests:'[]',architecture_browser_development_preflight:'false',
+  measured_browser_course:'preflight-2',measured_browser_preflight_run:'',
   employee_ascii_qualification:'off',qualify_restricted_port_prerequisites:'false',profile_database:'false',duration_order:'false',
   run_typecheck:'false',run_native_typecheck:'false',run_native_swift_models:'false',run_native_bundle:'false',
   run_build:'false',model_eval:'',eval_budget_usd:'20',eval_allowed_providers:'',

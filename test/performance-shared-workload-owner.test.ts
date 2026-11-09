@@ -125,10 +125,10 @@ it('admits only the exact self-source development event and never a steady or or
    GITHUB_WORKFLOW:'alpha-focused-checks',GITHUB_JOB:'selected-tests',GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'1234',
    GITHUB_REF:ref,GITHUB_REF_NAME:branch,GITHUB_WORKFLOW_REF:repository+'/.github/workflows/alpha-focused-checks.yml@'+ref,
    GITHUB_SHA:sha,GITHUB_WORKFLOW_SHA:sha,AIHR_CI_CONTROL_HEAD:sha,AIHR_CI_HEAD:sha,
-   RUNNER_TEMP:temp,GITHUB_EVENT_PATH:eventPath,PERF_HTTP_SUITE:'workflow-preflight',
+   RUNNER_TEMP:temp,GITHUB_EVENT_PATH:eventPath,PERF_HTTP_SUITE:'workflow-preflight',AIHR_MEASURED_BROWSER_COURSE:'preflight-2',
    PERF_APP_WORKERS:'2',PERF_APP_POOL_CONNECTIONS:'16',PERF_APP_TOTAL_HEAP_MIB:'4096',PERF_ATTENDANCE_DAYS:'180',
    PERF_HTTP_THINK_MS:'1000',PERF_HTTP_HOLD_MS:'30000'};
-  const inputs={candidate_ref:branch,expected_sha:sha,selected_tests:'[]',architecture_browser_development_preflight:'true',
+  const inputs={candidate_ref:branch,expected_sha:sha,selected_tests:'[]',architecture_browser_development_preflight:'false',measured_browser_course:'preflight-2',
    employee_ascii_qualification:'off',qualify_restricted_port_prerequisites:'false',profile_database:'false',duration_order:'false',
    run_typecheck:'false',run_native_typecheck:'false',run_native_swift_models:'false',run_native_bundle:'false',
    run_build:'false',eval_budget_usd:'20'};
@@ -142,6 +142,7 @@ it('admits only the exact self-source development event and never a steady or or
   for(const suite of ['claims-heavy','whole-system','native-rendered-preflight'])
    expect(fullDevelopmentBrowserRouteCourse({...env,PERF_HTTP_SUITE:suite})).toBe(false);
   expect(fullDevelopmentBrowserRouteCourse({...env,GITHUB_REF:'refs/heads/main',GITHUB_REF_NAME:'main'})).toBe(false);
+  expect(fullDevelopmentBrowserRouteCourse({...env,AIHR_MEASURED_BROWSER_COURSE:'off'})).toBe(false);
   for(const wrong of [{GITHUB_JOB:'resolve'},{GITHUB_RUN_ATTEMPT:'2'},{GITHUB_RUN_ID:'0'},{AIHR_CI_HEAD:'b'.repeat(40)},
    {GITHUB_REF:'refs/tags/other'},{PERF_APP_WORKERS:'4'},{PERF_APP_POOL_CONNECTIONS:'32'},{PERF_HTTP_HOLD_MS:'60000'}])
    expect(()=>fullDevelopmentBrowserRouteCourse({...env,...wrong})).toThrow(/hosted identity refused/);
