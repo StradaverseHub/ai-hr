@@ -27,6 +27,51 @@ const runtimeHash='1248fee8f9a0dc5382f888990d669e2bd225045869b9246f848a1681161ab
 const idPattern=/^[a-f0-9]{64}$/;
 const sourcePattern=/^[a-f0-9]{40}$/;
 const missing=result=>!result.error&&!result.signal&&result.status===1&&/No such (?:image|object|container)(?::|\b)/i.test(result.stderr);
+const createDiagnosticLimit=4096;
+const productMountRoles=Object.freeze({
+ '/project':'product-source', '/project/node_modules':'installed-dependencies',
+ '/project/.next':'generated-types-directory', '/project/next-env.d.ts':'generated-env-file',
+ '/probe/next.mjs':'typegen-probe',
+});
+const createCategories=[
+ [/bind source path does not exist/i,'bind-source-missing'],
+ [/duplicate mount point|duplicate mount destination/i,'duplicate-mount-destination'],
+ [/not (?:a |in a )?(?:shared|slave) mount|invalid (?:bind )?propagation/i,'bind-propagation-refused'],
+ [/mount[^\n]*(?:not a directory|is a directory|file onto a directory|directory onto a file)/i,'bind-type-mismatch'],
+ [/read-only file system/i,'read-only-filesystem-refused'],
+ [/invalid mount config|invalid mount specification|invalid mount option/i,'mount-config-invalid'],
+ [/memory limit|memory[ -]swap|NanoCPUs|CPU quota|pids limit/i,'resource-config-refused'],
+ [/No such image|invalid reference format|failed to resolve reference/i,'image-reference-refused'],
+ [/container name[^\n]*already in use|conflict[^\n]*container name/i,'container-name-conflict'],
+ [/cannot connect to the docker daemon|error during connect|docker\.sock[^\n]*(?:permission denied|connection refused)/i,'daemon-connection-refused'],
+ [/no space left on device|disk quota exceeded/i,'daemon-storage-refused'],
+ [/permission denied|operation not permitted/i,'daemon-access-refused'],
+ [/unknown flag|unknown shorthand flag|invalid argument[^\n]*flag/i,'cli-argument-refused'],
+];
+
+/** Reduce the bounded create failure to fixed values. Never retain stderr or an argv token. */
+export function classifyDockerCreateFailure(result,mounts,elapsedMs){
+ const code=result.error?.code;
+ const clientError=['ETIMEDOUT','ENOBUFS','ENOENT','EACCES','EPERM'].includes(code)?code:result.error?'other':null;
+ const signal=['SIGKILL','SIGTERM','SIGINT'].includes(result.signal)?result.signal:result.signal?'other':null;
+ const status=Number.isSafeInteger(result.status)&&result.status>=0&&result.status<=255?result.status:null;
+ const stderr=typeof result.stderr==='string'?result.stderr:'';
+ const bounded=Buffer.byteLength(stderr)<=createDiagnosticLimit;
+ const category=clientError==='ETIMEDOUT'?'client-timeout':clientError==='ENOBUFS'?'client-output-bound':
+  clientError?'client-process-error':signal?'client-signalled':!bounded?'stderr-bound':
+  createCategories.find(([pattern])=>pattern.test(stderr))?.[1]??(stderr?'unclassified-stderr':'no-stderr');
+ let mountRole=null;
+ if(bounded&&/^(bind-|duplicate-mount-|mount-config-|read-only-filesystem|daemon-access)/.test(category)){
+  const token=path=>{
+   const escaped=path.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+   return new RegExp('(?:^|[\\s"\':=,])'+escaped+'(?=$|[\\s"\':;,)]|\\.(?=$|\\s))','m').test(stderr);
+  };
+  const matches=mounts.filter(({source,dest})=>token(source)||token(dest));
+  if(matches.length===1)mountRole=Object.hasOwn(productMountRoles,matches[0].dest)?productMountRoles[matches[0].dest]:'transport-mount';
+ }
+ const milliseconds=Number.isFinite(elapsedMs)?Math.max(0,Math.min(120000,Math.round(elapsedMs))):null;
+ return {category,status,clientError,signal,mountRole,stderrObserved:stderr.length>0,elapsedMs:milliseconds};
+}
 const reportPath='compiler-protected-docker';
 const write=(path,value)=>writeFileSync(path,JSON.stringify(value)+'\n',{flag:'wx',mode:0o600});
 const publish=(path,value)=>{write(path+'.pending',value);renameSync(path+'.pending',path);};
@@ -67,9 +112,11 @@ function engine(root,deadline){
   assert.deepEqual(fileBirth(socket),socketBirth);
   return result;
  };
- const required=arguments_=>{
-  const result=invoke(arguments_);
-  assert(!result.error&&!result.signal&&result.status===0,'Docker command refused: '+arguments_.slice(0,2).join(' '));
+ const required=(arguments_,onFailure)=>{
+  const started=performance.now(),result=invoke(arguments_);
+  const passed=!result.error&&!result.signal&&result.status===0;
+  if(!passed)onFailure?.(result,performance.now()-started);
+  assert(passed,'Docker command refused: '+arguments_.slice(0,2).join(' '));
   return result.stdout.trim();
  };
  const info=JSON.parse(required(['info','--format','{"v":{{json .ServerVersion}},"cg":{{json .CgroupDriver}},"cv":{{json .CgroupVersion}},"r":{{json .DefaultRuntime}},"s":{{json .SecurityOptions}}}']));
@@ -275,7 +322,9 @@ export async function protectedDockerCanary(){
    '--runtime=runc','--restart=no','--no-healthcheck','--log-driver=none','--pids-limit=64','--memory=1g','--memory-swap=1g',
    '--cpus=1','--hostname',protectedRuntimeEnv.HOSTNAME,'--user',uid+':'+gid,'--workdir','/work','--entrypoint','/runtime/node',
    ...Object.entries(protectedRuntimeEnv).flatMap(([key,value])=>['--env',key+'='+value]),...bindArgs(mounts),
-   image.id,'--max-old-space-size=12288','/probe/entry.mjs']);
+   image.id,'--max-old-space-size=12288','/probe/entry.mjs'],(result,elapsedMs)=>{
+    report.createDiagnostic=classifyDockerCreateFailure(result,mounts,elapsedMs);
+   });
   assert(idPattern.test(id));publish(join(root,'container.json'),{id});
   assert.equal(byName(client,owner.name),id);verifyContainer(inspectContainer(client,id,owner),owner,mounts,uid,gid);
   phase='start';

@@ -28,7 +28,7 @@
     ".github/ci/diagnostics/native-reference/process.mjs": "798b305f20088ee77c1ce0cc01c08427718671f769aec446d1946b0b844879ba",
     ".github/ci/diagnostics/native-reference/process.test.mjs": "c2df40d57fd9964a405326952c9c4543ad5da0d837db7761553cbc5b5ea57912",
     ".github/ci/diagnostics/native-reference/project-protected-next.py": "0b074063b1fa361012b29775c505d278088bf23010f0526148572d64f33d0417",
-    ".github/ci/diagnostics/native-reference/protected-docker-canary.mjs": "583324ecac773a455613ef6c776e9eef14da56ab32cb0968ad21c4a8749e10f4",
+    ".github/ci/diagnostics/native-reference/protected-docker-canary.mjs": "3438950c157ea98eef6ff49fce103fa11c411b5a8010fe28b24434c4443f0614",
     ".github/ci/diagnostics/native-reference/protected-docker-entry.mjs": "9803c52d529716fc92b01f781e5dbc5726aeb2ee85a3778aac44a4ad5259d505",
     ".github/ci/diagnostics/native-reference/protected-docker-image.mjs": "55e9f6a542d868431c698b724973f8d26c72ac19d800f19ca573ed36a2a60473",
     ".github/ci/diagnostics/native-reference/protected-next-typegen.mjs": "ec8dc14900c886c81e1f48e864b9d6ff206eb5c3b14e16e9ddfbb3b728953524",
