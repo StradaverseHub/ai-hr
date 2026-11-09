@@ -145,6 +145,11 @@ BEGIN
  WHERE state.kind='activated' AND NOT coalesce(app.attendance_formula_manage_scope(f.company_id,active.definition),false)) THEN
   RAISE EXCEPTION 'The active company scope requires administration access' USING ERRCODE='42501';
  END IF;
+ IF TG_TABLE_NAME='attendance_formula_event' THEN
+  IF NEW.kind IN('activated','deactivated','archived') THEN
+   PERFORM pg_advisory_xact_lock(hashtextextended(f.tenant_id::text||':attendance-formula-activation',0));
+  END IF;
+ END IF;
  IF TG_TABLE_NAME='attendance_formula_revision' THEN
   IF NEW.definition->>'code' IS DISTINCT FROM f.code OR NEW.ordinal<>coalesce(r.ordinal,0)+1 THEN
    RAISE EXCEPTION 'Save the next exact formula version';
@@ -158,7 +163,6 @@ BEGIN
    RAISE EXCEPTION 'A matching successful actual-attendance test is required';
   END IF;
   IF NEW.kind='activated' THEN
-   PERFORM pg_advisory_xact_lock(hashtextextended(f.tenant_id::text||':attendance-formula-activation',0));
    PERFORM app.attendance_formula_check_scope(f.company_id,r.definition,r.pay_component_id);
    -- Effective scopes are open-ended. Treat criteria as possibly overlapping. Two explicit employee
    -- lists with no common ID can coexist; otherwise only the existing compatible Sum/Priority rules apply.
@@ -190,21 +194,25 @@ CREATE FUNCTION app.attendance_formula_subject_versions(
  p_item uuid DEFAULT NULL,p_include_overtime boolean DEFAULT false
 ) RETURNS SETOF public.attendance_formula_revision
 LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app,pg_temp SET row_security=on AS $$
- SELECT (jsonb_populate_record(v,jsonb_build_object('company_id',p_company,'created_by',NULL,'definition',
+ SELECT (CASE WHEN authority.can_read THEN jsonb_populate_record(v,jsonb_build_object('company_id',p_company,'created_by',NULL,'definition',
   (v.definition-'companyScope')||jsonb_build_object('companyId',p_company::text,'eligibility',
     CASE WHEN v.definition->'eligibility'->>'mode'='selected'
      THEN jsonb_build_object('mode','selected','employmentIds',jsonb_build_array(p_employment::text))
-     ELSE v.definition->'eligibility' END)))).*
+     ELSE v.definition->'eligibility' END))) ELSE NULL::public.attendance_formula_revision END).*
  FROM public.attendance_formula f
  LEFT JOIN LATERAL(SELECT kind,revision_id FROM public.attendance_formula_event e WHERE e.formula_id=f.id
   AND e.kind IN('activated','deactivated','archived') ORDER BY sequence DESC LIMIT 1) current_state ON p_result IS NULL
  LEFT JOIN public.attendance_formula_result result ON result.id=p_result AND result.formula_id=f.id AND result.tenant_id=f.tenant_id
   AND result.company_id=p_company AND result.employment_id=p_employment AND result.period_to=p_date
  JOIN public.attendance_formula_revision v ON v.id=coalesce(result.revision_id,current_state.revision_id) AND v.tenant_id=f.tenant_id
+ CROSS JOIN LATERAL(SELECT app.attendance_formula_trace_access(p_company,p_employment,coalesce(result.read_requirements,v.read_requirements)) AS can_read) authority
  WHERE f.tenant_id=app.current_tenant_id() AND (p_formula IS NULL OR f.id=p_formula)
  AND p_company=ANY(app.attendance_formula_companies(f.company_id,v.definition))
  AND (p_item IS NULL OR v.pay_component_id=p_item OR (p_include_overtime AND v.definition->>'purpose'='overtime'))
- AND app.attendance_formula_trace_access(p_company,p_employment,coalesce(result.read_requirements,v.read_requirements))
+ -- Payroll must refuse an incomplete conflict set without seeing any fields of a private formula.
+ AND (authority.can_read OR (p_item IS NOT NULL AND p_formula IS NULL AND p_result IS NULL
+   AND app.can_admin_payroll_for(p_company)
+   AND app.attendance_formula_trace_access(p_company,p_employment,'{"financial":true,"workforce":false}'::jsonb)))
  AND ((p_result IS NOT NULL AND result.id IS NOT NULL) OR (p_result IS NULL AND current_state.kind='activated'
    AND EXISTS(SELECT 1 FROM public.company c WHERE c.id=p_company AND c.tenant_id=f.tenant_id AND c.archived_at IS NULL)
    AND v.definition->>'effectiveFrom'<=p_date::text

@@ -28,9 +28,9 @@ export async function projectAttendanceAllowanceTx(tx:Tx,ctx:SessionContext,p:{b
   const allowed=await tx.execute(sql`select app.is_admin_for(${batch.companyId}) as allowed`);
   if(!(allowed[0] as {allowed?:boolean})?.allowed) throw new Error('Only an authorised payroll administrator may transfer allowances');
   if(batch.status==='closed'||(batch.status!=='draft'&&!(batch.status==='processed'&&p.reprocess))) throw new BatchNotDraftError();
-  // Serialise across runs too. A retry cannot post a policy/month to two runs concurrently.
+  // Serialise across runs too. A retry cannot post a company owner's payment month to two runs.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${ctx.tenantId}:attendance-allowance:${ownerId}:${p.payMonth}`},0))`);
-  const other=await tx.select({id:payrollAttendanceAllowanceSource.id}).from(payrollAttendanceAllowanceSource).where(and(eq(ownerColumn,ownerId),eq(payrollAttendanceAllowanceSource.payMonth,p.payMonth),ne(payrollAttendanceAllowanceSource.batchId,p.batchId))).limit(1);
+  const other=await tx.select({id:payrollAttendanceAllowanceSource.id}).from(payrollAttendanceAllowanceSource).where(and(eq(ownerColumn,ownerId),eq(payrollAttendanceAllowanceSource.companyId,p.companyId),eq(payrollAttendanceAllowanceSource.payMonth,p.payMonth),ne(payrollAttendanceAllowanceSource.batchId,p.batchId))).limit(1);
   if(other.length) throw new AllowancePayrollConflictError('This policy and payment month already belongs to another payroll run');
   const scope=await resolveBatchScopeFilter(tx,batch.scope as BatchScope|null);
   if(scope.employmentIds&&p.contributions.some(c=>!scope.employmentIds!.includes(c.employmentId)))throw new Error('Allowance recipient is outside the payroll run scope');
@@ -123,12 +123,14 @@ export function transferAttendanceFormulaResults(ctx:SessionContext,p:{batchId:s
   else if(state?.kind!=='approved')throw Error('Review and approve every current result before transfer.');
   const others=await tx.select().from(attendanceFormulaResult).where(and(eq(attendanceFormulaResult.employmentId,result.employmentId),eq(attendanceFormulaResult.payComponentId,result.payComponentId),sql`${attendanceFormulaResult.periodFrom}<=${result.periodTo}::date and ${attendanceFormulaResult.periodTo}>=${result.periodFrom}::date`)).limit(501);if(others.length>500)throw Error('Narrow the overlapping result history.');
   for(const other of others){const state=await attendanceFormulaResultStateTx(tx,other.id);if(state&&!['superseded','reversed'].includes(state.kind)&&!p.resultIds.includes(other.id))throw Error('Include every current result for the overlapping employee, Pay Item and period; incomplete sets cannot post.');}
-  const active=await tx.execute<{id:string;definition:unknown}>(sql`
+  const active=await tx.execute<{id:string|null;definition:unknown}>(sql`
    select formula_id as id,definition
    from app.attendance_formula_subject_versions(${result.companyId}::uuid,${result.employmentId}::uuid,${result.periodTo}::date,
     null,null,${result.payComponentId}::uuid,${replay.configuration.purpose==='overtime'})
    limit 129`);
-  if(active.length>128)throw Error('Narrow the active formula conflict set.');for(const formula of active){if(await attendanceFormulaEligibleForPeriodTx(tx,ctx,formula.definition,{employmentId:result.employmentId,from:result.periodFrom,to:result.periodTo})&&!results.some(row=>row.formulaId===formula.id&&row.employmentId===result.employmentId&&row.periodFrom===result.periodFrom&&row.periodTo===result.periodTo))throw Error('Calculate and review every applicable active formula before resolving the complete posting set.');}
+  if(active.length>128)throw Error('Narrow the active formula conflict set.');
+  if(active.some(formula=>!formula.id))throw Error('Review access to every applicable active formula before transferring this result.');
+  for(const formula of active){if(await attendanceFormulaEligibleForPeriodTx(tx,ctx,formula.definition,{employmentId:result.employmentId,from:result.periodFrom,to:result.periodTo})&&!results.some(row=>row.formulaId===formula.id&&row.employmentId===result.employmentId&&row.periodFrom===result.periodFrom&&row.periodTo===result.periodTo))throw Error('Calculate and review every applicable active formula before resolving the complete posting set.');}
   candidates.push({...result,posting:replay.configuration.posting,purpose:replay.configuration.purpose});
  }
  const plan=planAttendanceFormulaPosting(candidates),selected=results.filter(row=>plan.selected.includes(row.id)),excluded=results.filter(row=>plan.excluded.includes(row.id));
@@ -138,7 +140,7 @@ export function transferAttendanceFormulaResults(ctx:SessionContext,p:{batchId:s
  // The same existing source projector aggregates old Allowance and new Formula contributions once.
  for(const formulaId of [...new Set(ordinary.map(row=>row.formulaId))].sort()){
   const rows=ordinary.filter(row=>row.formulaId===formulaId);
-  const previous=await tx.select({id:payrollAttendanceAllowanceSource.id}).from(payrollAttendanceAllowanceSource).where(and(eq(payrollAttendanceAllowanceSource.formulaId,formulaId),eq(payrollAttendanceAllowanceSource.payMonth,batch.payPeriod)));if(previous.length)throw Error('Reverse the prior formula/month contribution before replacing its results.');
+  const previous=await tx.select({id:payrollAttendanceAllowanceSource.id}).from(payrollAttendanceAllowanceSource).where(and(eq(payrollAttendanceAllowanceSource.formulaId,formulaId),eq(payrollAttendanceAllowanceSource.companyId,batch.companyId),eq(payrollAttendanceAllowanceSource.payMonth,batch.payPeriod)));if(previous.length)throw Error('Reverse the prior formula/month contribution before replacing its results.');
   await projectAttendanceAllowanceTx(tx,ctx,{kind:'formula',formulaId,batchId:batch.id,companyId:batch.companyId,payMonth:batch.payPeriod,contributions:rows.map(row=>({resultId:row.id,employmentId:row.employmentId,componentId:row.payComponentId,periodKey:row.periodTo,amount:row.amount}))});
  }
  for(const result of selected)await appendAttendanceFormulaResultEventTx(tx,ctx,result,'posted',p.reason,batch.id);
