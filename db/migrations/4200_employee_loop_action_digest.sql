@@ -3,6 +3,9 @@
 CREATE POLICY employee_loop_digest_maintenance_only ON public.domain_event AS RESTRICTIVE FOR INSERT TO ai_hr_app
  WITH CHECK (event_type<>'teras-loop.employee-digest-queued');
 --> statement-breakpoint
+-- Flush earlier deferred trigger checks before indexing domain events in a populated upgrade.
+SET CONSTRAINTS ALL IMMEDIATE;
+--> statement-breakpoint
 CREATE UNIQUE INDEX employee_loop_digest_once_per_hr_day
  ON public.domain_event (tenant_id,aggregate_id,(payload->>'day'))
  WHERE aggregate_type='teras-loop-employee-digest' AND event_type='teras-loop.employee-digest-queued';

@@ -91,7 +91,7 @@ describe('each person\'s own checklist',()=>{
   await setWorkerSwitch(group,{workerId:'loop_missed_clock_outs',enabled:true});
   expect(await runLoop('loop_missed_clock_outs',{tenantId:b.tenantId,principalId:principal,entitlements:(await entitledCtx(b)).entitlements!,today:TODAY})).toMatchObject({status:'ran'});
   const row=(await read(aina)).items.find(item=>item.kind==='missed_clock_out')!;
-  expect(row.action).toMatchObject({kind:'confirm',card:'clockOut',date:YESTERDAY,checkIn:'09:02',proposedCheckOut:'18:00',href:'/attendance/my-records/2026-07-01?checkOut=18%3A00'});
+  expect(row.action).toMatchObject({kind:'confirm',card:'clockOut',date:YESTERDAY,checkIn:'09:02',proposedCheckOut:'18:00',href:`/attendance/my-records/2026-07-01?checkOut=18%3A00&employmentId=${aina.employmentId}&home=1`});
   // The colleague's card is never offered to Aina, and hers never to the colleague.
   const theirs=(await read(siti)).items.find(item=>item.kind==='missed_clock_out')!;
   expect(theirs.action.kind).toBe('confirm');

@@ -62,6 +62,6 @@ describe('approved feedback rendered journeys',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Preview assignment'}));await screen.findByText(en.attendanceWorkflow.hierarchyWarning);
   await waitFor(()=>expect(screen.getByRole('button',{name:'Save workflow'})).toBeEnabled());
   await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','feedback-shared-workflow','Actual shared-company WorkflowForm and missing-superior preview; fictional employees');
-  fireEvent.click(screen.getByRole('button',{name:'Save workflow'}));await waitFor(()=>expect(state.save).toHaveBeenCalledWith(null,expect.objectContaining({companyIds:[company,other]}),true));
+  fireEvent.click(screen.getByRole('button',{name:'Save workflow'}));await waitFor(()=>expect(state.save).toHaveBeenCalledWith(null,expect.objectContaining({companyIds:[company,other]}),true,expect.stringMatching(/^[a-f0-9-]{36}$/)));
  },120000);
 });

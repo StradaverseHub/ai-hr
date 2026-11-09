@@ -63,9 +63,13 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3302,when:1793330003602,tag:'4002_attendance_prepare_review_only'},
  {idx:3500,when:1793330003800,tag:'4100_rewards_review_creator_independence'},
  {idx:3501,when:1793330003801,tag:'4101_attendance_formula_company_scope'},
+ {idx:3600,when:1793330003900,tag:'4200_employee_loop_action_digest'},
+ {idx:3601,when:1793330003901,tag:'4201_retire_attendance_formula_builder'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '4200_employee_loop_action_digest':'8fb9906f3f5a4828507a87fe0e162826ccbbe76430e4ca39993e9ab1301d967f',
+ '4201_retire_attendance_formula_builder':'7929ff4d341d96873c3d7c7f0a6c7253674816ed65e9b8d44171218377559778',
  '4100_rewards_review_creator_independence':'2b985ae73e3da8c1ce3e7015829734632bff6ac550021dc644c59b9603083dff',
  '4101_attendance_formula_company_scope':'60d18c40db8d2f8392c81fa5ccb7cf05c12d6448321e744ebbc31605574e28f4',
  '4000_attendance_workflow_lifecycle_scope':'62759d27e18adc62dd458a18d7f1525f9ed2ac498ae58d7d3884f9f200cc0b1f',
