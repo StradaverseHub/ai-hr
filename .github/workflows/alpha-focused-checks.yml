@@ -404,7 +404,11 @@ jobs:
         env:
           AIHR_RESOLVED_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
           AIHR_CI_UNIT: ${{ needs.resolve.outputs.tests != '["test/compiler-native-reference-fixture.test.ts"]' && needs.resolve.outputs.tests != '["test/compiler-native-application-inventory.test.ts"]' && 'db-1' || '' }}
-      - if: ${{ always() && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') }}
+      - name: Close the protected TP1 public artifact
+        if: ${{ always() && github.ref == 'refs/heads/codex/compiler-protected-tp1-ab-a139-20261109' }}
+        id: protected-tp1-public
+        run: node ../automation/.github/ci/focused-checks.mjs protected-tp1-public-artifact "$RUNNER_TEMP/aihr-focused"
+      - if: ${{ always() && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && (github.ref != 'refs/heads/codex/compiler-protected-tp1-ab-a139-20261109' || steps.protected-tp1-public.outputs.safe == 'true') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ inputs.employee_ascii_qualification == 'node22' && 'employee-ascii-qualification-node22' || inputs.employee_ascii_qualification == 'node24' && 'employee-ascii-qualification-node24' || 'focused-development-evidence' }}

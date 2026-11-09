@@ -115,7 +115,11 @@ export async function nativeReferenceFixture(){
  }
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- assert.equal(process.argv.length,2);
- const {protectedDockerCanary}=await import('./protected-docker-canary.mjs');
- await protectedDockerCanary();
+ try{
+  assert.equal(process.argv.length,2);
+  const {protectedDockerCanary}=await import('./protected-docker-canary.mjs');
+  await protectedDockerCanary();
+ }catch{
+  process.exitCode=1;
+ }
 }

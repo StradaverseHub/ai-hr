@@ -13,6 +13,7 @@ import {canarySeal,fileBirth,namespaceIds} from './protected-docker-entry.mjs';
 import {protectedDigest,protectedHash,protectedLimits,protectedOwnerLabel,protectedRuntimeEnv,sealedScratchImage} from './protected-docker-image.mjs';
 
 import {generatedNames,generatedSeals,protectedAppSource,protectedAppTree,protectedLock} from './protected-next-typegen.mjs';
+import {publicInnerRefusal,publicTp1Comparison,publicTypegenExecution,publicTypegenResult,safeProbeError} from './protected-tp1-public-evidence.mjs';
 
 export const protectedDockerRef='refs/heads/codex/compiler-protected-tp1-ab-a139-20261109';
 const ownModule='.github/ci/diagnostics/native-reference/protected-docker-canary.mjs';
@@ -20,6 +21,7 @@ const entryName='.github/ci/diagnostics/native-reference/protected-docker-entry.
 const typegenName='.github/ci/diagnostics/native-reference/protected-next-typegen.mjs';
 const projectName='.github/ci/diagnostics/native-reference/project-protected-next.py';
 const compareName='.github/ci/diagnostics/native-reference/protected-tp1-compare.mjs';
+const evidenceName='.github/ci/diagnostics/native-reference/protected-tp1-public-evidence.mjs';
 const manifest='docs/qualification/compiler-reference-owned-source-20261108.json';
 const socket='/run/docker.sock';
 const cli='/usr/bin/docker';
@@ -187,8 +189,8 @@ function loadIntent(root,context,role){
  assert.deepEqual([owner.imageId,owner.diffId,owner.archiveSha256],[sealed.id,sealed.diffId,sealed.sha256]);
  return owner;
 }
-function closeOwned(root,context,deadline,{retainIdentity=false,role='typegen'}={}){
- assert(isRole(role));
+function closeOwned(root,context,deadline,{retainIdentity=false,retainGenerated=false,role='typegen'}={}){
+ assert(isRole(role)&&(!retainGenerated||(retainIdentity&&role==='typegen')));
  if(!exists(root))return {containerAbsent:true,processAbsent:true,cgroupAbsent:true,imageAbsent:true,privateScratchRemoved:true};
  ownDirectory(root);
  if(!exists(join(root,'intent.json'))){
@@ -229,11 +231,16 @@ function closeOwned(root,context,deadline,{retainIdentity=false,role='typegen'}=
  assert.deepEqual(readdirSync(join(root,'docker-config')),[]);
  const result={containerAbsent:true,processAbsent:true,cgroupAbsent:true,imageAbsent:true};
  if(retainIdentity){
-  for(const name of ['scratch-image.tar','input','dependency','host-only','empty-etc','plan.json','work','project','next-output','next-env-output']){
+  const allowed=['intent.json','container.json','birth.json','docker-config'];
+  for(const name of ['scratch-image.tar','input','dependency','host-only','empty-etc','plan.json','work','project']){
    rmSync(join(root,name),{recursive:true,force:true});
   }
-  assert(readdirSync(root).every(name=>['intent.json','container.json','birth.json','docker-config'].includes(name)));
-  return {...result,privatePayloadRemoved:true,identityRetainedForSettlement:true};
+  for(const name of ['next-output','next-env-output']){
+   if(retainGenerated){assert(exists(join(root,name)));allowed.push(name);}
+   else rmSync(join(root,name),{recursive:true,force:true});
+  }
+  assert(readdirSync(root).every(name=>allowed.includes(name)));
+  return {...result,privatePayloadRemoved:!retainGenerated,privateGeneratedHandoffRetained:retainGenerated,identityRetainedForSettlement:true};
  }
  rmSync(root,{recursive:true});
  return {...result,privateScratchRemoved:!exists(root)};
@@ -260,33 +267,6 @@ function verifyContainer(row,owner,mounts,uid,gid,profile){
  assert.deepEqual(row.Mounts.map(mount=>[mount.Type,mount.Source,mount.Destination,mount.RW,mount.Propagation]).sort(),
   mounts.map(mount=>['bind',mount.source,mount.dest,!mount.readonly,'rprivate']).sort());
  assert.equal(row.Image,owner.imageId);
-}
-const comparisonPhases=['original-list-only','producer','source-0','reference-0','reference-1','source-1','missing-reference'];
-function retainComparison(root,out,complete){
- const directory=join(root,'work','tp1'),path=join(directory,'report.json');
- const comparison=config(path,16*1024**2);
- assert.equal(comparison.kind,'PROTECTED_TP1_DATE_REFERENCE_COMPARISON');
- if(complete)assert.equal(comparison.complete,true);
- const evidence=join(out,complete?'semantic-evidence':'partial-semantic-evidence');
- makeDirectory(evidence);
- const expected=['report.json',...comparisonPhases.map(name=>name+'.log')];
- const sealed={};
- let total=0;
- for(const name of expected){
-  const input=join(directory,name);
-  if(!exists(input)){assert(!complete,'Missing complete comparison evidence');continue;}
-  const before=lstatSync(input);
-  assert(before.isFile()&&before.nlink===1&&before.uid===process.getuid()&&(before.mode&0o022)===0&&
-   realpathSync(input)===input&&before.size>0&&before.size<=16*1024**2);
-  total+=before.size;assert(total<=48*1024**2);
-  const target=join(evidence,name),digest=protectedHash(readFileSync(input));
-  copyFileSync(input,target,constants.COPYFILE_EXCL);
-  const after=lstatSync(input);
-  for(const key of ['dev','ino','size','mtimeMs','ctimeMs'])assert.equal(after[key],before[key]);
-  assert.equal(protectedHash(readFileSync(target)),digest);
-  sealed[name]={bytes:before.size,sha256:digest};
- }
- return {comparison,files:sealed};
 }
 async function runProtectedStage(role,freshGenerated){
  assert(isRole(role));
@@ -331,20 +311,28 @@ async function runProtectedStage(role,freshGenerated){
   const projectedProof=JSON.parse(projectedResult.stdout);
   assert.deepEqual([projectedProof.source,projectedProof.tree,projectedProof.files,projectedProof.bytes],
    [protectedAppSource,protectedAppTree,12962,334836843]);
-  report.productProjection=projectedProof;
+  assert(/^[a-f0-9]{64}$/.test(projectedProof.manifestSha256));
+  report.productProjection={source:protectedAppSource,tree:protectedAppTree,files:projectedProof.files,bytes:projectedProof.bytes,
+   manifestSha256:projectedProof.manifestSha256};
   makeDirectory(nextOutput);
   if(role==='typegen')writeFileSync(nextEnv,Buffer.alloc(0),{flag:'wx',mode:0o600});
   else{
-   const retained=join(proof.destination,reportPath,'generated');
+   const handoffRoot=tempRoot(context,'typegen'),handedNext=join(handoffRoot,'next-output'),handedEnv=join(handoffRoot,'next-env-output');
+   ownDirectory(handoffRoot);
    assert.deepEqual([freshGenerated.source,freshGenerated.controller,freshGenerated.run,freshGenerated.attempt],
     [context.source,context.controller,context.run,context.attempt]);
    assert.equal(freshGenerated.productSource,protectedAppSource);
    assert.equal(freshGenerated.productTree,protectedAppTree);
+   assert(freshGenerated.settlement.privateGeneratedHandoffRetained);
+   assert.deepEqual(generatedSeals(handoffRoot,handedNext,handedEnv),freshGenerated.typegen.generated);
    makeDirectory(join(nextOutput,'types'));
-   copyFileSync(join(retained,'next-env.d.ts'),nextEnv,constants.COPYFILE_EXCL);
-   for(const name of generatedNames)copyFileSync(join(retained,'types',name),join(nextOutput,'types',name),constants.COPYFILE_EXCL);
+   copyFileSync(handedEnv,nextEnv,constants.COPYFILE_EXCL);
+   for(const name of generatedNames)copyFileSync(join(handedNext,'types',name),join(nextOutput,'types',name),constants.COPYFILE_EXCL);
    assert.deepEqual(generatedSeals(projected,nextOutput,nextEnv),freshGenerated.typegen.generated);
+   rmSync(handedNext,{recursive:true});rmSync(handedEnv);
+   assert(!exists(handedNext)&&!exists(handedEnv));
    report.sameRunGeneratedSeals=freshGenerated.typegen.generated;
+   report.sameRunPrivateHandoffConsumed=true;
   }
   const productPaths=['package.json','pnpm-lock.yaml','next.config.ts','tsconfig.build.json','app/payroll/transactions/tp1/[year]/page.tsx',
    'lib/hr-date.ts','lib/calendar-date.ts','lib/date-time-formatter.ts'];
@@ -397,7 +385,7 @@ async function runProtectedStage(role,freshGenerated){
   const readyPath=join(root,'work','ready.json'),refusedPath=join(root,'work','refused.json');
   while(!exists(readyPath)){
    abort.signal.throwIfAborted();assert(performance.now()<workEnd-2000,'Protected kernel canary timed out');
-   if(exists(refusedPath)){report.innerRefusal=config(refusedPath);throw Error('Protected kernel canary refused');}
+   if(exists(refusedPath)){report.innerRefusal=publicInnerRefusal(config(refusedPath));throw Error('Protected kernel canary refused');}
    await delay(30);
   }
   phase='observe';
@@ -418,16 +406,20 @@ async function runProtectedStage(role,freshGenerated){
    assert.deepEqual(canarySeal(join(root,role,'canary')),plan[role]);
   }
   for(const name of ['home','tmp','cache','generated'])assert.equal(readFileSync(join(root,'work',name,'canary'),'utf8'),'private output\n');
-  const {nonce:_,...observed}=ready;
-  report.observed={...observed,pidBirth:{pid,start:birth.start},cgroupBirth:birth.cgroup,resourceLimits:resourceFacts(id,pid,profile),hostLoopbackPositive:true,
-   imageId:image.id,archiveSha256:image.sha256,layerDiffId:image.diffId};
+  assert(['ECONNREFUSED','ENETUNREACH','EHOSTUNREACH','EADDRNOTAVAIL'].includes(ready.loopbackRefusal));
+  for(const group of ['readOnly','privateWritable','pseudoMounts'])assert(Array.isArray(ready.mounts[group])&&ready.mounts[group].length<=64);
+  report.observed={namespaceCount:Object.keys(ready.ns).length,readOnlyMountCount:ready.mounts.readOnly.length,
+   privateWritableMountCount:ready.mounts.privateWritable.length,pseudoMountCount:ready.mounts.pseudoMounts.length,
+   loopbackRefusal:ready.loopbackRefusal,sourceMutationRefusals:4,generatedMutationRefusals:ready.generatedMutationRefusals,
+   seccomp:true,apparmor:true,noNewPrivs:true,zeroCapabilities:true,pidBirth:{pid,start:birth.start},cgroupBirth:birth.cgroup,
+   resourceLimits:resourceFacts(id,pid,profile),hostLoopbackPositive:true,imageId:image.id,archiveSha256:image.sha256,layerDiffId:image.diffId};
   publish(join(root,'work','grant.json'),{nonce});
   if(role==='tp1'){
    phase='tp1-hold';
    const complete=join(root,'work','compare-ready.json');
    while(!exists(complete)){
     abort.signal.throwIfAborted();assert(performance.now()<workEnd-3000,'Protected TP1 work frontier closed');
-    if(exists(refusedPath)){report.innerRefusal=config(refusedPath);throw Error('Protected TP1 comparison refused');}
+    if(exists(refusedPath)){report.innerRefusal=publicInnerRefusal(config(refusedPath));throw Error('Protected TP1 comparison refused');}
     await delay(30);
    }
    assert.deepEqual(config(complete),{nonce,complete:true});
@@ -436,48 +428,23 @@ async function runProtectedStage(role,freshGenerated){
    assert(Number.isSafeInteger(peak)&&peak>0&&peak<=profile.memory);
    assert.deepEqual(liveBirth(pid,id),birth);
    assert.deepEqual(generatedSeals(projected,nextOutput,nextEnv),report.sameRunGeneratedSeals);
-   const semantic=retainComparison(root,out,true);
-   assert.equal(semantic.comparison.product,protectedAppSource);
-   for(const field of ['ordinaryCompilerQualified','releaseAuthorized','generatedValidatorSemanticRequested']){
-    assert.equal(semantic.comparison[field],false);
-   }
-   assert.deepEqual(semantic.comparison.generated,report.sameRunGeneratedSeals);
-   assert.deepEqual(semantic.comparison.attempts.map(row=>row.phase),comparisonPhases);
-   assert.deepEqual(semantic.comparison.phases.map(row=>row.phase),[...comparisonPhases,'owned-declarations-and-context']);
-   for(const attempt of semantic.comparison.attempts){
-    const actual=semantic.files[attempt.phase+'.log'];
-    assert.deepEqual(actual,{bytes:attempt.log.bytes,sha256:attempt.log.sha256});
-   }
-   report.comparison={complete:true,files:semantic.files,groupPeakBytes:peak,resourceLimits:finalResources,
-    generatedPhysicalReadOnly:true,generatedValidatorSemanticRequested:false};
+   const semantic=publicTp1Comparison(join(root,'work','tp1'),true,protectedAppSource);
+   assert.deepEqual(semantic.generated,report.sameRunGeneratedSeals);
+   report.comparison={...semantic,groupPeakBytes:peak,resourceLimits:finalResources,generatedPhysicalReadOnly:true};
    report.strictCompilerInvoked=true;
    publish(join(root,'work','compare-close.json'),{nonce});
   }
   phase='wait';
   const waited=client.required(['container','wait',id]),executionPath=join(root,'work','typegen-execution.json');
-  if(exists(executionPath)){report.typegenExecution=config(executionPath);report.stockNextInvoked=report.typegenExecution.exit!==null||report.typegenExecution.signal!==null;}
-  if(exists(refusedPath))report.innerRefusal=config(refusedPath);
+  if(exists(executionPath)){report.typegenExecution=publicTypegenExecution(config(executionPath));report.stockNextInvoked=report.typegenExecution.exit!==null||report.typegenExecution.signal!==null;}
+  if(exists(refusedPath))report.innerRefusal=publicInnerRefusal(config(refusedPath));
   assert.equal(waited,'0');
   const exited=inspectContainer(client,id,owner);
   assert(!exited.State.Running&&!exited.State.OOMKilled&&exited.State.ExitCode===0&&exited.State.Pid===0);
   if(role==='typegen'){
    assert(report.stockNextInvoked&&report.typegenExecution.exit===0);
-   const result=config(join(root,'work','typegen-result.json'));
-   assert.deepEqual([result.kind,result.source,result.tree,result.routeSemanticCoverage,result.releaseEligible],
-    ['PROTECTED_STOCK_NEXT_TYPEGEN',protectedAppSource,protectedAppTree,false,false]);
-   assert(result.dependencies.gnuElfLoaded&&result.dependencies.swcVersion==='16.4.1');
+   const result=publicTypegenResult(config(join(root,'work','typegen-result.json')),protectedAppSource,protectedAppTree);
    assert.deepEqual(generatedSeals(projected,nextOutput,nextEnv),result.generated);
-   const retained=join(out,'generated');
-   makeDirectory(retained);makeDirectory(join(retained,'types'));
-   copyFileSync(nextEnv,join(retained,'next-env.d.ts'),constants.COPYFILE_EXCL);
-   for(const name of generatedNames)copyFileSync(join(nextOutput,'types',name),join(retained,'types',name),constants.COPYFILE_EXCL);
-   // The evidence tree uses a visible types directory so the standard uploader retains it.
-   for(const [name,value]of Object.entries(result.generated)){
-    const relativeName=name.startsWith('.next/')?name.slice(6):name;
-    const path=join(retained,relativeName);
-    assert.equal(lstatSync(path).size,value.bytes);
-    assert.equal(protectedHash(readFileSync(path)),value.sha256);
-   }
    report.typegen=result;
   }else{
    assert(report.comparison?.complete&&!report.stockNextInvoked);
@@ -490,26 +457,33 @@ async function runProtectedStage(role,freshGenerated){
   assert.deepEqual(readCompilerReferenceClock(admitCompilerReference('fixture')),clock);
   report.transportQualified=true;
  }catch(error){
-  primary=error;report.refusal={phase,code:typeof error.code==='string'?error.code:null};
+  primary=error;report.refusal={phase,code:safeProbeError(error.code)};
  }finally{
   try{
    try{
     const launch=join(root,'work','typegen-launch.json'),execution=join(root,'work','typegen-execution.json');
-    if(exists(launch))report.typegenLaunchIntent=config(launch);
+    if(exists(launch)){
+     const value=config(launch);
+     assert(value.intended===true&&/^[a-f0-9]{64}$/.test(value.argvSha256));
+     report.typegenLaunchIntent={intended:true,argvSha256:value.argvSha256};
+    }
     if(exists(execution)){
-     report.typegenExecution=config(execution);
+     report.typegenExecution=publicTypegenExecution(config(execution));
      report.stockNextInvoked=report.typegenExecution.exit!==null||report.typegenExecution.signal!==null;
     }
     if(role==='tp1'&&!report.comparison&&exists(join(root,'work','tp1','report.json'))){
-     const partial=retainComparison(root,out,false);
-     report.partialComparison={complete:partial.comparison.complete,files:partial.files};
-     report.strictCompilerInvoked=Object.keys(partial.files).some(name=>name.endsWith('.log'));
+     try{
+      report.partialComparison=publicTp1Comparison(join(root,'work','tp1'),false,protectedAppSource);
+      report.strictCompilerInvoked=report.partialComparison.attempts.length>0;
+     }catch{
+      report.partialComparison={failure:{category:'private-evidence-refused',code:null}};
+     }
     }
    }finally{
     try{
      if(server?.listening)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
     }finally{
-     report.settlement=closeOwned(root,context,end,{retainIdentity:true,role});
+     report.settlement=closeOwned(root,context,end,{retainIdentity:true,retainGenerated:role==='typegen'&&report.transportQualified&&!primary,role});
     }
    }
   }catch(error){
@@ -521,12 +495,13 @@ async function runProtectedStage(role,freshGenerated){
   }
  }
  if(primary)throw primary;
- assert(report.transportQualified&&report.settlement.privatePayloadRemoved&&report.settlement.identityRetainedForSettlement);
+ assert(report.transportQualified&&report.settlement.identityRetainedForSettlement&&
+  (role==='typegen'?report.settlement.privateGeneratedHandoffRetained:report.settlement.privatePayloadRemoved));
  return report;
 }
 export async function protectedDockerCanary(){
  const fresh=await runProtectedStage('typegen');
- for(const field of ['containerAbsent','processAbsent','cgroupAbsent','imageAbsent','privatePayloadRemoved']){
+ for(const field of ['containerAbsent','processAbsent','cgroupAbsent','imageAbsent','privateGeneratedHandoffRetained']){
   assert.equal(fresh.settlement[field],true);
  }
  return await runProtectedStage('tp1',fresh);
@@ -540,7 +515,7 @@ export function settleProtectedDockerCanary(destination){
  assert.deepEqual(source,controller);
  assert.equal(controller.sourceRef,protectedDockerRef.slice(11));
  const members=[ownModule,entryName,'.github/ci/diagnostics/native-reference/protected-docker-image.mjs',
-  typegenName,projectName,compareName,'.github/ci/focused-checks.mjs','scripts/performance/driver-shutdown.mjs'];
+  typegenName,projectName,compareName,evidenceName,'.github/ci/focused-checks.mjs','scripts/performance/driver-shutdown.mjs'];
  for(const member of members){
   assert.equal(controller.componentSources[member],protectedHash(readFileSync(join(automation,member))));
   assert.equal(source.componentSources[member],protectedHash(readFileSync(join(workspace,'source',member))));
@@ -548,9 +523,9 @@ export function settleProtectedDockerCanary(destination){
  const settlements={},failures=[];
  for(const role of ['tp1','typegen']){
   try{settlements[role]=closeOwned(tempRoot(context,role),context,performance.now()+35000,{role});}
-  catch(error){failures.push(error);}
+  catch(error){failures.push({role,category:'owned-settlement-refused',code:safeProbeError(error.code)});}
  }
  write(join(destination,'protected-docker-settlement.json'),{kind:'PROTECTED_TP1_DOCKER_INDEPENDENT_SETTLEMENT',...context,
-  stages:settlements,complete:failures.length===0,releaseAuthorized:false});
- if(failures.length)throw new AggregateError(failures,'Protected TP1 resource settlement refused');
+  stages:settlements,failures,complete:failures.length===0,releaseAuthorized:false});
+ return failures.length===0;
 }

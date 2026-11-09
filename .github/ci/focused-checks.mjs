@@ -347,13 +347,29 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     appendFileSync(process.env.GITHUB_OUTPUT, `tests=${JSON.stringify(files)}\n`);
   } else if (command === 'run' && process.argv.length === 4) process.exitCode = runFocused(process.argv[3]);
   else if(command === 'compiler-settled' && process.argv.length === 4){
-    try{process.exitCode=cleanupCompilerReference(process.argv[3]);}
-    finally{
-      if(process.env.GITHUB_REF==='refs/heads/codex/compiler-protected-tp1-ab-a139-20261109'){
+    if(process.env.GITHUB_REF==='refs/heads/codex/compiler-protected-tp1-ab-a139-20261109'){
+      let nativeSettled=false,dockerSettled=false;
+      try{nativeSettled=cleanupCompilerReference(process.argv[3])===0;}catch{}
+      try{
         const {settleProtectedDockerCanary}=await import('./diagnostics/native-reference/protected-docker-canary.mjs');
-        settleProtectedDockerCanary(process.argv[3]);
-      }
-    }
+        dockerSettled=settleProtectedDockerCanary(process.argv[3]);
+      }catch{}
+      process.exitCode=nativeSettled&&dockerSettled?0:1;
+    }else process.exitCode=cleanupCompilerReference(process.argv[3]);
+  }
+  else if(command === 'protected-tp1-public-artifact' && process.argv.length === 4){
+    try{
+      runnerOnly();
+      assert(process.env.GITHUB_REF==='refs/heads/codex/compiler-protected-tp1-ab-a139-20261109'&&
+        process.env.GITHUB_JOB==='selected-tests'&&process.env.GITHUB_RUN_ATTEMPT==='1');
+      assert.deepEqual(parseSelection(process.env.AIHR_FOCUSED_TESTS),[compilerReferenceFile]);
+      assert(/^[a-f0-9]{40}$/.test(process.env.AIHR_CI_HEAD??'')&&process.env.AIHR_CI_HEAD===process.env.AIHR_CI_CONTROL_HEAD);
+      const destination=join(realpathSync(process.env.RUNNER_TEMP),'aihr-focused');
+      assert.equal(process.argv[3],destination);
+      const {closeProtectedArtifactTree}=await import('./diagnostics/native-reference/protected-tp1-public-evidence.mjs');
+      closeProtectedArtifactTree(destination);
+      appendFileSync(process.env.GITHUB_OUTPUT,'safe=true\n');
+    }catch{process.exitCode=1;}
   }
   else if(command === 'cleanup' && process.argv.length === 4) process.exitCode=cleanupEmployeeChoiceBenchmark(process.argv[3]);
   else throw Error('Usage: focused-checks.mjs selection | run <owned-evidence-directory> | cleanup <fixed-benchmark-evidence-directory>');

@@ -1,11 +1,11 @@
 /** Bounded protected stock Next and real TP1 reference comparison. */
 import {spawnClosed,type ClosedChildEnvironment} from './helpers/closed-child-process.mjs';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {expect,it} from 'vitest';
 import {admitCompilerReference,publishCompilerReferenceClock} from '../.github/ci/diagnostics/native-reference/admission.mjs';
 it('checks source and native date declaration paths for the real protected TP1 route',async context=>{
- const started=process.hrtime.bigint(),controller=new AbortController(),failures:unknown[]=[],output:Buffer[]=[];
+ const started=process.hrtime.bigint(),controller=new AbortController(),failures:unknown[]=[];
  let child:ReturnType<typeof spawnClosed>|undefined,closed:Promise<{code:number|null;signal:NodeJS.Signals|null}>|undefined;
  let exited=false,finished=false,bytes=0,timer:ReturnType<typeof setTimeout>|undefined,killTimer:ReturnType<typeof setTimeout>|undefined,drainTimer:ReturnType<typeof setTimeout>|undefined;
  const elapsed=()=>Number(process.hrtime.bigint()-started)/1e6;
@@ -34,27 +34,30 @@ it('checks source and native date declaration paths for the real protected TP1 r
    for(const stream of [child.stdout,child.stderr]){
     if(!stream){remember(Error('Owned fixture pipe absent'));stop(failures.at(-1));continue;}
     stream.on('error',error=>{remember(error);stop(error);});
-    stream.on('data',(chunk:Buffer)=>{bytes+=chunk.length;if(bytes<=1024*1024)output.push(chunk);else{const error=Error('Native fixture wrapper output bound');remember(error);stop(error);}});
+    stream.on('data',(chunk:Buffer)=>{bytes+=chunk.length;if(bytes>1024*1024){const error=Error('Native fixture wrapper output bound');remember(error);stop(error);}});
    }
    timer=setTimeout(()=>stop(Error('Native fixture aggregate budget exhausted')),Math.max(0,718000-elapsed()));
-   const result=await closed;controller.signal.throwIfAborted();expect(failures).toEqual([]);expect(result.signal).toBeNull();expect(result.code,Buffer.concat(output).toString('utf8')).toBe(0);
+   const result=await closed;controller.signal.throwIfAborted();expect(failures).toEqual([]);expect(result.signal).toBeNull();expect(result.code,'Protected TP1 fixture refused').toBe(0);
    const report=JSON.parse(readFileSync(join(proof.destination,'compiler-protected-docker/report.json'),'utf8'));
    expect(report).toMatchObject({kind:'PROTECTED_NEXT_TYPEGEN_A139',source:proof.sourceHead,controller:proof.controllerHead,
     run:proof.run,attempt:proof.attempt,productSource:'a1397fa78ed35188849445962d35bdf48087b7a4',productInputsMounted:true,
     transportQualified:true,stockNextInvoked:true,strictCompilerInvoked:false,ordinaryCompilerQualified:false,releaseAuthorized:false,
     typegen:{kind:'PROTECTED_STOCK_NEXT_TYPEGEN',exit:0,routeSemanticCoverage:false,releaseEligible:false,
      dependencies:{gnuElfLoaded:true,swcVersion:'16.4.1'}},
-    settlement:{containerAbsent:true,processAbsent:true,cgroupAbsent:true,imageAbsent:true,privatePayloadRemoved:true,
-     identityRetainedForSettlement:true}});
+    settlement:{containerAbsent:true,processAbsent:true,cgroupAbsent:true,imageAbsent:true,privatePayloadRemoved:false,
+     privateGeneratedHandoffRetained:true,identityRetainedForSettlement:true}});
    expect(Object.keys(report.typegen.generated)).toHaveLength(5);
    const comparison=JSON.parse(readFileSync(join(proof.destination,'compiler-protected-tp1/report.json'),'utf8'));
    expect(comparison).toMatchObject({kind:'PROTECTED_TP1_DATE_COMPARISON_A139',source:proof.sourceHead,controller:proof.controllerHead,
     run:proof.run,attempt:proof.attempt,productSource:'a1397fa78ed35188849445962d35bdf48087b7a4',productInputsMounted:true,
     transportQualified:true,stockNextInvoked:false,strictCompilerInvoked:true,ordinaryCompilerQualified:false,releaseAuthorized:false,
-    comparison:{complete:true,generatedPhysicalReadOnly:true,resourceLimits:{memoryBytes:8589934592,swapBytes:0,pids:64,cpuQuota:'200000 100000',oomKills:0}},
+    sameRunPrivateHandoffConsumed:true,comparison:{complete:true,generatedPhysicalReadOnly:true,resourceLimits:{memoryBytes:8589934592,swapBytes:0,pids:64,cpuQuota:'200000 100000',oomKills:0}},
     settlement:{containerAbsent:true,processAbsent:true,cgroupAbsent:true,imageAbsent:true,privatePayloadRemoved:true,
      identityRetainedForSettlement:true}});
    expect(comparison.sameRunGeneratedSeals).toEqual(report.typegen.generated);
+   for(const directory of ['compiler-protected-docker','compiler-protected-tp1']){
+    expect(readdirSync(join(proof.destination,directory))).toEqual(['report.json']);
+   }
    expect(elapsed()).toBeLessThanOrEqual(720000);
   }catch(error){remember(error);}
   finally{
@@ -63,7 +66,7 @@ it('checks source and native date declaration paths for the real protected TP1 r
    if(timer)clearTimeout(timer);if(killTimer)clearTimeout(killTimer);if(drainTimer)clearTimeout(drainTimer);
    context.signal.removeEventListener('abort',abort);finished=true;
   }
-  if(failures.length===1)throw failures[0];if(failures.length)throw new AggregateError(failures,'Native fixture and owned settlement both refused');
+  if(failures.length)throw Error('Protected TP1 fixture or owned settlement refused');
  })();
  // Hook/promise ownership exists before the first asynchronous continuation.
  context.onTestFinished(async()=>{if(!finished)stop(Error('Native fixture finish requested'));await run;});
