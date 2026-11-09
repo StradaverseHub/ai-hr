@@ -16,10 +16,10 @@ import sys
 import time
 
 
-SOURCE = '9341d4fb996834fd5552816673b59337e4576a6c'
-SOURCE_TREE = 'b9f914ab9ffaaead553566cfe2456ea4e5ffff1a'
-SOURCE_BRANCH = 'codex/architecture-five-item-browser-convergence-20261109'
-BRANCH = 'codex/compiler-next-frozen-13312-proof-20261110'
+SOURCE = '49c002be31358b36e46c19bea8d6d004e946c181'
+SOURCE_TREE = '5f5346c7129ca3cb1728bb1d76332989bc0e5278'
+SOURCE_BRANCH = 'codex/architecture-compiler-extended-reference-20261110'
+BRANCH = 'codex/compiler-extended-13312-proof-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 HEAP_MIB = 13 * 1024
@@ -29,7 +29,7 @@ PLATFORM_SWAP = Path('/swapfile')
 PLATFORM_SWAP_BYTES = 3 * GIB
 PLATFORM_SWAP_USABLE = PLATFORM_SWAP_BYTES - 4096
 SWAP_HOST_RESERVE = 512 * 1024 ** 2
-WORK_SECONDS = 900
+WORK_SECONDS = 1080
 JOB_SECONDS = 1680
 WORK_NS = WORK_SECONDS * 10 ** 9
 PROGRESS_SECONDS = 30
@@ -41,8 +41,8 @@ PROGRESS_COUNTERS = ('cpuUsec', 'userUsec', 'systemUsec', 'cpuSomeUsec', 'cpuFul
 PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
 PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-13312-next-frozen'
-UNIT_PREFIX = 'aihr-compiler-13312-next-frozen-'
+DIRECTORY = 'compiler-13312-extended'
+UNIT_PREFIX = 'aihr-compiler-13312-extended-'
 UNIT_NAME = re.compile(rf'{re.escape(UNIT_PREFIX)}[1-9][0-9]{{0,15}}\.service')
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -58,8 +58,8 @@ STATE_FIELDS = ('buildInfoBytes', 'buildInfoSha256', 'nativeFiles', 'nativeRoots
 # Neither its typecheck result nor its compiler graph is adopted.
 BASELINE_RUN = '42678892305'
 CALIBRATION_SOURCE = '06e499c211807981689c34c5e732b7dac488abbc'
-TRACKED_MEMBERS = 12964
-TRACKED_SHA256 = '451ecc963bceeda6e29a75724824ce0b9558a99151a3aa3491c7d055fe1098db'
+TRACKED_MEMBERS = 12965
+TRACKED_SHA256 = 'c5f9735cb020edf2a2c2bcaa54c0c2d39f54ee41734ce318c581cfe8121348f2'
 BASELINE_INVENTORY = {
     'configuredRoots': 9205,
     'orderedRootSha256': '9fdad7b65530150218090b7b4378d6b647b0da6f856081ca898d2ed09a1349fc',
@@ -1102,6 +1102,9 @@ def run_stock(workspace, temporary, controller, run_id, directory):
                         raise Refusal('child-refused')
                     if not report['admitted']:
                         require(message == 'S', 'start-frame')
+                        fingerprint = read_intent(directory / 'native-input-fingerprint.json', maximum=4096)
+                        require(valid_fingerprint(fingerprint), 'native-input-fingerprint')
+                        report['nativeInputFingerprint'] = fingerprint
                         report['admitted'] = True
                     else:
                         done = re.fullmatch(r'D (-?[0-9]{1,3})', message)
@@ -1221,9 +1224,9 @@ def run_stock(workspace, temporary, controller, run_id, directory):
                 require(all(report['inventory'][key] == state[key] for key in INVENTORY_FIELDS), 'managed-result-identity')
                 report['managedInputsReverified'] = True
                 fingerprint = compiler_fingerprint(source, node, directory / 'native-list.raw')
-                require(fingerprint == read_intent(directory / 'native-input-fingerprint.json', maximum=4096),
+                require(fingerprint == report['nativeInputFingerprint']
+                        == read_intent(directory / 'native-input-fingerprint.json', maximum=4096),
                         'native-input-fingerprint-changed')
-                report['nativeInputFingerprint'] = fingerprint
                 if success:
                     require(report.get('compilerFiles') == state['nativeFiles'], 'managed-result-identity')
                     report['managedState'] = state

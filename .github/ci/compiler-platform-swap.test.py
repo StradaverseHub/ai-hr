@@ -181,7 +181,8 @@ class SettlementModel(unittest.TestCase):
             if not member.exists():
                 model['own_json'](member, fingerprint_row())
         else:
-            report.pop('nativeInputFingerprint')
+            if 'nativeInputFingerprint' not in overrides:
+                report.pop('nativeInputFingerprint')
             report['diagnosticLocations'] = {'status': 'unmatched-compiler-outcome', 'rows': []}
         model['own_json'](self.directory / 'receipt.json', report)
 
@@ -209,6 +210,20 @@ class SettlementModel(unittest.TestCase):
         self.assertTrue(receipt['platformSwapIdentityVerified'])
         self.assertTrue(receipt['managedStateRemoved'])
         self.assertFalse(receipt['releaseEligible'])
+
+    def test_owned_early_fingerprint_survives_a_deadline_without_claiming_success(self):
+        raw = self.directory / 'native-list.raw'
+        raw.write_bytes(b'private compiler input list\n')
+        raw.chmod(0o600)
+        self.receipt(complete=False, compilerExit=None, compilerFiles=None, managedState=None, reason='compiler-deadline',
+                     nativeInputFingerprint=fingerprint_row(), progress=[progress_row('start'),
+                                                                         progress_row('deadline', elapsed=1080000)])
+        self.settle()
+        witness = json.loads((self.directory / 'swap-settlement.json').read_text())
+        self.assertTrue(witness['inputFingerprintIndependentlyVerified'])
+        self.assertFalse(witness['diagnosticLocationsIndependentlyVerified'])
+        self.assertFalse(witness['releaseEligible'])
+        self.assertFalse(raw.exists())
 
     def test_unsettled_launch_and_live_manager_never_settle(self):
         pending = self.directory / 'manager-start.pending'
@@ -367,7 +382,7 @@ def matched_input():
 class ManagedResultModel(unittest.TestCase):
     def test_measured_heap_change_preserves_native_envelope_and_exact_baseline(self):
         self.assertEqual((model['HEAP_MIB'], CAP, SWAP, model['WORK_SECONDS'], model['PROGRESS_SECONDS']),
-                         (13312, 13958643712, 2684354560, 900, 30))
+                         (13312, 13958643712, 2684354560, 1080, 30))
         baseline = matched_input()
         self.assertTrue(model['same_baseline'](baseline))
         for changes in ({'nodeSha256': '0' * 64}, {'managedArgvSha256': '0' * 64},
@@ -411,11 +426,11 @@ class ManagedResultModel(unittest.TestCase):
     def test_closed_receipt_rejects_raw_and_inconsistent_fields(self):
         report = {'inventory': inventory_row(), 'managedState': inventory_row(result=True), 'compilerExit': 0,
                   'compilerOutcome': 'complete', 'complete': True, 'compilerFiles': 8, 'managedInputsReverified': True,
-                  'compilerWindowElapsedMs': 899999, 'terminalBeforeOrdinaryBudget': True,
+                  'compilerWindowElapsedMs': 900000, 'terminalBeforeOrdinaryBudget': False,
                   'compilerLog': {'bytes': 16, 'sha256': 'a' * 64},
                   **model['compiler_log_evidence'](b'Files: 8\n')}
         self.assertTrue(model['valid_measurement'](report))
-        for changes in ({'terminalBeforeOrdinaryBudget': False}, {'compilerWindowElapsedMs': 900000}, {'compilerOutcome': 'other-compiler-nonzero'},
+        for changes in ({'terminalBeforeOrdinaryBudget': True}, {'compilerWindowElapsedMs': 1080000}, {'compilerOutcome': 'other-compiler-nonzero'},
                         {'compilerFiles': 7}, {'typescriptDiagnosticCodes': [[2322, 1]]},
                         {'managedState': {**report['managedState'], 'generatedSha256': 'f' * 64}},
                         {'managedState': {**report['managedState'], 'raw': 'foreign'}}):
@@ -496,7 +511,7 @@ class ProgressModel(unittest.TestCase):
         start = progress_row('start', cpuUsec=10)
         running = progress_row('running', elapsed=30000, cpuUsec=20, ioSomeUsec=4)
         terminal = progress_row('terminal', elapsed=30001, cpuUsec=21, ioSomeUsec=4)
-        deadline = {**terminal, 'phase': 'deadline', 'elapsedMs': 900100}
+        deadline = {**terminal, 'phase': 'deadline', 'elapsedMs': 1080100}
         self.assertTrue(model['valid_progress']([start, running, terminal]))
         self.assertTrue(model['valid_progress']([start, running, deadline]))
         self.assertTrue(model['valid_progress']([]))
@@ -506,7 +521,7 @@ class ProgressModel(unittest.TestCase):
                      [start, {**running, 'throttledUsec': 1}],
                      [start, {**running, 'throttledUsec': 1, 'throttledPeriods': 1}],
                      [start, {**running, 'swapPeakBytes': SWAP + 1}], [start, {**running, 'foreign': 'raw'}],
-                     [start, {**deadline, 'elapsedMs': 899999}], [start, {**deadline, 'elapsedMs': 901001}],
+                     [start, {**deadline, 'elapsedMs': 1079999}], [start, {**deadline, 'elapsedMs': 1081001}],
                      [start, {**deadline, 'phase': 'terminal'}]):
             with self.subTest(rows=rows):
                 self.assertFalse(model['valid_progress'](rows))
@@ -586,7 +601,7 @@ class KernelModel(unittest.TestCase):
                       {'nativeInputFingerprint': {**fingerprint_row(), 'loadedFiles': 9205}},
                       {'nativeInputFingerprint': {**fingerprint_row(), 'trackedSha256': 'f' * 64}},
                       {'progress': []}, {'progress': [progress_row('start')]},
-                      {'progress': [progress_row('start'), progress_row('deadline', elapsed=900000)]},
+                      {'progress': [progress_row('start'), progress_row('deadline', elapsed=1080000)]},
                       {'terminal': {**valid['terminal'], 'swapPeak': SWAP + 1}},
                       {'terminal': {**valid['terminal'], 'swapEvents': {'fail': 1}}},
                       {'terminal': {**valid['terminal'], 'oom': {'oom': 1}}}):
