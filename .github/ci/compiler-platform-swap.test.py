@@ -23,6 +23,11 @@ RUN = '42647755570'
 UNIT = model['unit_name'](RUN)
 HEADER = 'Filename Type Size Used Priority\n'
 ACTIVE = '/swapfile file 3145724 0 -1'
+EXTENDED_RAW = (b'Types:                     500123\nInstantiations:             43210\n'
+                b'Program time:              12.34s\nCheck time:              900.02s\nTotal time:              925.20s\n'
+                b'private detail: fixture-only bytes\n')
+EXTENDED_VALUES = {'status': 'verified', 'types': 500123, 'instantiations': 43210,
+                   'programMs': 12340, 'checkMs': 900020, 'totalMs': 925200}
 
 
 class PlatformFile:
@@ -175,6 +180,19 @@ class SettlementModel(unittest.TestCase):
             'workSeconds': model['WORK_SECONDS'], 'progressSeconds': model['PROGRESS_SECONDS'],
             'progress': [progress_row('start'), progress_row('terminal', elapsed=1)],
             'platformSwapBirthSha256': hashlib.sha256(json.dumps(self.birth).encode('ascii')).hexdigest(), **overrides}
+        raw_log = self.directory / 'compiler.raw.log'
+        if report['complete'] and not raw_log.exists():
+            with raw_log.open('xb') as stream:
+                stream.write(EXTENDED_RAW)
+            raw_log.chmod(0o600)
+        raw = raw_log.read_bytes() if raw_log.exists() else None
+        if raw is not None:
+            report.setdefault('compilerLog', {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()})
+            report.setdefault('typescriptDiagnosticCodes', [])
+            report.setdefault('diagnosticsParsed', True)
+            report.setdefault('v8HeapFatalMarker', False)
+        report.setdefault('extendedDiagnosticsPolicy', model['EXTENDED_DIAGNOSTICS_POLICY'])
+        report.setdefault('extendedDiagnostics', model['extended_diagnostics_evidence'](raw, report))
         report.setdefault('compilerOutcome', model['compiler_outcome'](report))
         if report['complete']:
             member = self.directory / 'native-input-fingerprint.json'
@@ -192,7 +210,6 @@ class SettlementModel(unittest.TestCase):
     def test_settlement_requires_quiescence_and_publishes_closed_witness(self):
         self.receipt()
         raw = self.directory / 'compiler.raw.log'
-        model['own_json'](raw, {'private': 'raw'})
         with model['owner_lock'](self.directory):
             with self.assertRaises(BlockingIOError):
                 self.settle()
@@ -209,6 +226,7 @@ class SettlementModel(unittest.TestCase):
         receipt = json.loads((self.directory / 'swap-settlement.json').read_text())
         self.assertTrue(receipt['platformSwapIdentityVerified'])
         self.assertTrue(receipt['managedStateRemoved'])
+        self.assertTrue(receipt['extendedDiagnosticsIndependentlyVerified'])
         self.assertFalse(receipt['releaseEligible'])
 
     def test_owned_early_fingerprint_survives_a_deadline_without_claiming_success(self):
@@ -222,6 +240,7 @@ class SettlementModel(unittest.TestCase):
         witness = json.loads((self.directory / 'swap-settlement.json').read_text())
         self.assertTrue(witness['inputFingerprintIndependentlyVerified'])
         self.assertFalse(witness['diagnosticLocationsIndependentlyVerified'])
+        self.assertFalse(witness['extendedDiagnosticsIndependentlyVerified'])
         self.assertFalse(witness['releaseEligible'])
         self.assertFalse(raw.exists())
 
@@ -257,6 +276,24 @@ class SettlementModel(unittest.TestCase):
         self.assertFalse(raw.exists())
         self.assertFalse(self.output.exists())
 
+    def test_extended_projection_mismatch_refuses_upload_and_deletes_raw(self):
+        self.receipt(extendedDiagnostics={**EXTENDED_VALUES, 'checkMs': 1})
+        with self.assertRaisesRegex(Refusal, 'extended-diagnostics-custody'):
+            self.settle()
+        self.assertFalse((self.directory / 'compiler.raw.log').exists())
+        self.assertFalse((self.directory / 'swap-settlement.json').exists())
+        self.assertFalse(self.output.exists())
+
+    def test_missing_stock_measurement_refuses_success_evidence_and_deletes_raw(self):
+        raw = self.directory / 'compiler.raw.log'
+        raw.write_bytes(b'non-projectable compiler log\n')
+        raw.chmod(0o600)
+        self.receipt()
+        with self.assertRaisesRegex(Refusal, 'extended-diagnostics-unavailable'):
+            self.settle()
+        self.assertFalse(raw.exists())
+        self.assertFalse(self.output.exists())
+
     def test_changed_platform_cleans_raw_without_admitting_upload(self):
         raw = self.directory / 'manager.raw.log'
         model['own_json'](raw, {'private': 'raw'})
@@ -272,8 +309,12 @@ class SettlementModel(unittest.TestCase):
         with self.assertRaisesRegex(Refusal, 'platform-swap-witness'):
             self.settle()
         self.platform.unlink()
+        raw = self.directory / 'compiler.raw.log'
+        raw.write_bytes(EXTENDED_RAW)
+        raw.chmod(0o600)
         with self.assertRaisesRegex(Refusal, 'platform-swap-witness'):
             self.settle()
+        self.assertFalse(raw.exists())
         self.assertFalse(self.output.exists())
 
     def test_malformed_telemetry_refuses_artifact_settlement(self):
@@ -290,6 +331,33 @@ class SettlementModel(unittest.TestCase):
         receipt = json.loads((self.directory / 'swap-settlement.json').read_text())
         self.assertFalse(receipt['platformSwapIdentityVerified'])
         self.assertEqual(receipt['platformSwapBirthSha256'], None)
+
+
+class ExtendedDiagnosticsModel(unittest.TestCase):
+    def project(self, raw, **changes):
+        report = {'complete': True, 'compilerLog': {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}, **changes}
+        return model['extended_diagnostics_evidence'](raw, report)
+
+    def test_stock_numeric_projection_omits_unrelated_raw_data(self):
+        self.assertEqual(self.project(EXTENDED_RAW), EXTENDED_VALUES)
+        self.assertEqual(self.project(EXTENDED_RAW.replace(b'\n', b'\r\n')), EXTENDED_VALUES)
+        self.assertNotIn('private', json.dumps(self.project(EXTENDED_RAW)))
+        self.assertEqual(self.project(EXTENDED_RAW, complete=False), {'status': 'not-complete'})
+        self.assertEqual(self.project(EXTENDED_RAW, compilerLog=None), {'status': 'projection-refused'})
+
+    def test_ambiguous_malformed_or_out_of_bound_rows_refuse(self):
+        variants = (
+            EXTENDED_RAW + b'Types: bad\n',
+            EXTENDED_RAW.replace(b'Types:', b'Typed:'),
+            EXTENDED_RAW.replace(b'500123', b'500123private'),
+            EXTENDED_RAW.replace(b'43210', b'100000001'),
+            EXTENDED_RAW.replace(b'12.34s', b'12.340s'),
+            EXTENDED_RAW.replace(b'925.20s', b'1080.01s'),
+            EXTENDED_RAW.replace(b'900.02s', b'926.00s'),
+        )
+        for raw in variants:
+            with self.subTest(raw=raw):
+                self.assertEqual(self.project(raw), {'status': 'projection-refused'})
 
 
 class DiagnosticLocationModel(unittest.TestCase):

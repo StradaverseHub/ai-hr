@@ -18,8 +18,8 @@ import time
 
 SOURCE = 'f02e24c81c3177e0be54e08af482677e209d7fc3'
 SOURCE_TREE = '838da66fbeadc369c78d43eabb3fc69a56a90b09'
-SOURCE_BRANCH = 'codex/architecture-five-item-browser-convergence-20261109'
-BRANCH = 'codex/compiler-sampler-f02e24c8-13312-proof-20261110'
+SOURCE_BRANCH = 'codex/architecture-f02e-stock-compiler-reference-20261110'
+BRANCH = 'codex/compiler-sampler-f02e24c8-13312-phase-proof-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 HEAP_MIB = 13 * 1024
@@ -41,8 +41,8 @@ PROGRESS_COUNTERS = ('cpuUsec', 'userUsec', 'systemUsec', 'cpuSomeUsec', 'cpuFul
 PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
 PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-13312-sampler-f02e24c8'
-UNIT_PREFIX = 'aihr-compiler-13312-sampler-f02e24c8-'
+DIRECTORY = 'compiler-13312-sampler-f02e24c8-phase'
+UNIT_PREFIX = 'aihr-compiler-13312-sampler-f02e24c8-phase-'
 UNIT_NAME = re.compile(rf'{re.escape(UNIT_PREFIX)}[1-9][0-9]{{0,15}}\.service')
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -56,8 +56,8 @@ INVENTORY_FIELDS = ('configuredRoots', 'orderedRootSha256', 'rootSetSha256', 'ge
 STATE_FIELDS = ('buildInfoBytes', 'buildInfoSha256', 'nativeFiles', 'nativeRoots', 'nativeRootSetSha256')
 # The earlier managed command proves the tool, root census and route inputs on its own source.
 # Neither its typecheck result nor its compiler graph is adopted.
-BASELINE_RUN = '42708031227'
-CALIBRATION_SOURCE = 'f152a15891d1e17d45093b4a1a20bc09b103f532'
+BASELINE_RUN = '42712727555'
+CALIBRATION_SOURCE = SOURCE
 TRACKED_MEMBERS = 12968
 TRACKED_SHA256 = 'c14778c83e7b6ac33373db43a9c7fc14a81acc8009a685c764e341c752bcb4eb'
 BASELINE_INVENTORY = {
@@ -71,6 +71,14 @@ BASELINE_INVENTORY = {
 BASELINE_NODE_SHA256 = 'fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48'
 BASELINE_ARGV_SHA256 = 'c24f853d33edb0cfbb3068197aba380b9869e89e762827bb0edf9fe72de8027d'
 LOCATION_POLICY = 'TRACKED_SOURCE_COMPILER_COORDINATES_V1'
+EXTENDED_DIAGNOSTICS_POLICY = 'STOCK_TYPESCRIPT_EXTENDED_DIAGNOSTICS_V1'
+EXTENDED_DIAGNOSTICS_FIELDS = {
+    b'Types': 'types',
+    b'Instantiations': 'instantiations',
+    b'Program time': 'programMs',
+    b'Check time': 'checkMs',
+    b'Total time': 'totalMs',
+}
 LOCATION_MAX_ROWS = 64
 LOCATION_GENERATED = {'next-env.d.ts', '.next/types/cache-life.d.ts', '.next/types/root-params.d.ts',
                       '.next/types/routes.d.ts', '.next/types/validator.ts'}
@@ -786,6 +794,37 @@ def compiler_log_evidence(raw):
             'compilerFiles': int(files[0]) if len(files) == 1 and len(files[0]) <= 6 else None}
 
 
+def extended_diagnostics_evidence(raw, report):
+    if report.get('complete') is not True:
+        return {'status': 'not-complete'}
+    refused = {'status': 'projection-refused'}
+    if (not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_LOG or report.get('compilerLog') != {
+            'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}):
+        return refused
+    pattern = rb'^(Types|Instantiations|Program time|Check time|Total time):([^\r\n]*)\r?$'
+    rows = re.findall(pattern, raw, re.M)
+    if [label for label, _ in rows] != list(EXTENDED_DIAGNOSTICS_FIELDS):
+        return refused
+    values = {}
+    for label, text in rows:
+        key = EXTENDED_DIAGNOSTICS_FIELDS[label]
+        if key in ('types', 'instantiations'):
+            number = re.fullmatch(rb'[ \t]+(0|[1-9][0-9]{0,8})[ \t]*', text)
+            if number is None:
+                return refused
+            values[key] = int(number[1])
+        else:
+            duration = re.fullmatch(rb'[ \t]+(0|[1-9][0-9]{0,3})\.([0-9]{2})s[ \t]*', text)
+            if duration is None:
+                return refused
+            values[key] = 1000 * int(duration[1]) + 10 * int(duration[2])
+    if (not 0 < values['types'] <= 100_000_000 or values['instantiations'] > 100_000_000
+            or not 0 < values['totalMs'] <= WORK_SECONDS * 1000
+            or max(values['programMs'], values['checkMs']) > values['totalMs']):
+        return refused
+    return {'status': 'verified', **values}
+
+
 def read_owned_compiler_log(log):
     fd = os.open(log, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
     with os.fdopen(fd, 'rb') as stream:
@@ -1239,6 +1278,8 @@ def run_stock(workspace, temporary, controller, run_id, directory):
         report['compilerOutcome'] = compiler_outcome(report)
         report['diagnosticLocationPolicy'] = LOCATION_POLICY
         report['diagnosticLocations'] = diagnostic_location_evidence(raw, source, report)
+        report['extendedDiagnosticsPolicy'] = EXTENDED_DIAGNOSTICS_POLICY
+        report['extendedDiagnostics'] = extended_diagnostics_evidence(raw, report)
         own_json(directory / 'receipt.json', report)
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as stream:
             stream.write('evidence=true\n')
@@ -1258,6 +1299,7 @@ def independent_cleanup(workspace, temporary, controller, run_id):
         report = None
         input_fingerprint = None
         locations_verified = False
+        extended_verified = False
         try:
             receipt = directory / 'receipt.json'
             if os.path.lexists(receipt):
@@ -1276,6 +1318,12 @@ def independent_cleanup(workspace, temporary, controller, run_id):
                 projected = diagnostic_location_evidence(raw, workspace / 'source', report)
                 require(projected == report.get('diagnosticLocations'), 'diagnostic-location-custody')
                 locations_verified = projected['status'] in ('verified', 'none')
+                require(report.get('extendedDiagnosticsPolicy') == EXTENDED_DIAGNOSTICS_POLICY,
+                        'extended-diagnostics-policy')
+                extended = extended_diagnostics_evidence(raw, report)
+                require(extended == report.get('extendedDiagnostics'), 'extended-diagnostics-custody')
+                extended_verified = extended['status'] == 'verified'
+                require(report.get('complete') is not True or extended_verified, 'extended-diagnostics-unavailable')
         finally:
             for name in ('compiler.raw.log', 'manager.raw.log', 'native-list.raw'):
                 path = directory / name
@@ -1320,6 +1368,7 @@ def independent_cleanup(workspace, temporary, controller, run_id):
                   'platformSwapBirthSha256': birth_digest, 'privateLogsRemoved': True,
                   'inputFingerprintIndependentlyVerified': input_fingerprint is not None,
                   'diagnosticLocationsIndependentlyVerified': locations_verified,
+                  'extendedDiagnosticsIndependentlyVerified': extended_verified,
                   'releaseEligible': False})
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as stream:
             stream.write('settled=true\n')
