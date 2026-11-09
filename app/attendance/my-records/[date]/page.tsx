@@ -7,7 +7,7 @@ import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { requestOwnAttendanceDayAction } from './actions';
-import { attendanceForEmploymentRange, attendancePunchesForRange, myAttendanceCorrections, breakMinutesOf, otByRate, flagOf, personalAttendanceStatus, explainAttendanceDay, type AttendanceStatus, type AttendanceFlag } from '@/packs/attendance/service';
+import { readAttendanceRecordDay, breakMinutesOf, otByRate, flagOf, personalAttendanceStatus, explainAttendanceDay, type AttendanceStatus, type AttendanceFlag } from '@/packs/attendance/service';
 import {ownAttendanceRecordSubject} from '../subject';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceFigureCells } from '@/components/attendance-figure-cells';
@@ -72,16 +72,8 @@ export default async function MyAttendanceDayPage({
   }
 
   const subjectDescription=[selected.name,...(typeof sp.employmentId==='string'?[selected.company,selected.employeeCode]:[]),fmtDayDate(date,locale)].filter(Boolean).join(' · ');
-  const [rows, punchesByAttendance, requestHistory] = await Promise.all([
-    attendanceForEmploymentRange(s, selected.employmentId, date, date),
-    attendancePunchesForRange(s, selected.employmentId, date, date),
-    myAttendanceCorrections(s, selected.employmentId, { date, limit: 100 }),
-  ]);
-  const row = rows[0] ?? null;
-  const pending = requestHistory.some(request => request.status === 'pending');
+  const { row, punches, pending } = await readAttendanceRecordDay(s, selected.employmentId, date);
   const future = date > todayInKualaLumpur();
-  // Keyed by attendance id, exactly as the list reads it — no second shape for one fact.
-  const punches = row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [];
 
   const backHref = sp.home==='1'&&typeof sp.employmentId==='string'
     ?'/?'+new URLSearchParams({employmentId:sp.employmentId})

@@ -1,12 +1,14 @@
 import {randomUUID} from 'node:crypto';
 import {asc,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {assignment,compensation,domainEvent,employment} from '../db/schema';
+import {appUser,assignment,compensation,domainEvent,employment} from '../db/schema';
 import {withTenant} from '../db/client';
+import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {WorkforceAccessError} from '../core/workforce-access';
 import {hireEmployee,setEmploymentGrade,setEmploymentAssignment} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {createJobGrade} from '../core/admin';
-import {createMovementEvent,editMovementEvent,movementCurrentState,movementDetail,movementHistory,reverseMovementEvent,MovementNoChangeError} from '../core/movement';
+import {createMovementEvent,editMovementEvent,movementCurrentState,movementDetail,movementHistory,movementHistoryWithTypes,reverseMovementEvent,MovementNoChangeError} from '../core/movement';
 import {previewMovementImport,commitMovementImport} from '../core/movement-import';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {toCsv} from '../lib/csv';
@@ -35,6 +37,26 @@ async function assertPromotionBeforeTransfer(id:string){
  expect(await movementCurrentState(ctx,id)).toMatchObject({departmentId:b.deptB,basicSalary:'3500.00'});
  expect(await snapshot(id)).toEqual(before);return {promotion,transfer};
 }
+it('reads the exact Movement History through a held Access lock and refuses archived or foreign principals',async()=>{
+ const {id,ctx}=await hire();
+ const expected=await movementHistoryWithTypes(ctx,id,{includeResignation:true});
+ expect(expected.movements.some(row=>row.kind==='hired')).toBe(true);
+ await owner.withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  let deadline:ReturnType<typeof setTimeout>|undefined;
+  try{
+   await expect(Promise.race([
+    movementHistoryWithTypes(ctx,id,{includeResignation:true}),
+    new Promise<never>((_,reject)=>{deadline=setTimeout(()=>reject(new Error('Movement History waited for Access')),2000);}),
+   ])).resolves.toEqual(expected);
+  }finally{clearTimeout(deadline);}
+ });
+ const foreign=await seedBase();
+ await expect(movementHistory(adminCtx(foreign),id)).rejects.toBeInstanceOf(WorkforceAccessError);
+ await owner.db.update(appUser).set({archivedAt:new Date()}).where(eq(appUser.id,b.adminUserId));
+ await expect(movementHistory(ctx,id)).rejects.toBeInstanceOf(WorkforceAccessError);
+});
+
 describe('comparison Movement effective date is independent of its primary leg',()=>{
  it('imports grade+salary on the entered day before a later transfer, then preserves correction/rollback ordering',async()=>{
   const {id,ctx,base,higher}=await hire(),csv=toCsv([['employee_code','event_type','effective_date','department_id','grade_id','basic_salary'],['EMP-0004','promotion',day(-6),'',higher.id,3500],['EMP-0004','transfer',day(-4),b.deptB,'','']]);

@@ -365,11 +365,14 @@ describe('33bf1a2d — approval behaviour is unchanged (presentation only)', () 
     expect(approvals).toContain('const leaveBulkActionable');
   });
 
-  it('/approvals is still NOT paginated (r75 deliberately excluded it)', () => {
-    expect(approvals, 'paging a bulk-decision surface makes "approve all" mean "this page"').not.toContain(
-      '@/components/pager',
-    );
-    expect(approvals).not.toContain('parsePageQuery');
+  it('pages Claims detail separately from queue-wide bulk selection and keeps Leave unpaged', () => {
+    expect(approvalsLeaveSection()).not.toContain('<Pager');
+    expect(approvals.match(/<Pager\b/g)).toHaveLength(1);
+    expect(approvals).toContain('state={claimResult.page}');
+    expect(approvals).toContain('claimSelectionScope={claimSelectionScope}');
+    const selection = read('app/approvals/bulk-selection.tsx');
+    expect(selection).toContain('await selectPendingClaimsAction(claimSelectionScope)');
+    expect(selection).toContain('...capturedClaims');
   });
 });
 

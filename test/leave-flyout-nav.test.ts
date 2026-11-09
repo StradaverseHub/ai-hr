@@ -607,7 +607,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
   });
 
   it('retains the canonical authorized Leave descriptors while placing daily HR work separately from Configuration', () => {
-    const sidebar = stripComments(read('components/sidebar.tsx'));
+    const sidebar = stripComments(read('lib/navigation/shell-inventory.ts'));
     expect(sidebar.split('\n').some(line=>line.trim()==='LEAVE_CONFIG_NODE,'), 'the source owner is actually mounted').toBe(true);
     expect(sidebar, 'the old flat row must be gone, not merely unused').not.toContain('LEAVE_CONFIG_ROW');
     // Ops/Strata supersedes the old between-Attendance-and-Claims position. Every existing leaf

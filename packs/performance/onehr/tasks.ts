@@ -27,6 +27,7 @@
  * Payload: id, kind, subject name, owner timestamp and link. No band, rating, score, plan body or remark.
  */
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import {settleReadGroup} from '../../../lib/settle-read-group';
 import type { SessionContext } from '../../../db/client';
 import { employment, onehrCycle, onehrPlan, onehrReview, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
@@ -125,7 +126,7 @@ async function assessmentTasks(ctx: SessionContext): Promise<Sourced[]> {
 /** The performance pack's task provider (core/approvals-inbox.ts PACK_TASK_SOURCES). */
 export async function pendingPerformanceTasks(ctx: SessionContext, scopeIds: string[] | undefined): Promise<PackTaskItem[]> {
   const sources: Array<(ctx: SessionContext) => Promise<Sourced[]>> = [managerReviewTasks, assessmentTasks, (c) => pendingCalibrationTasks(c)];
-  const all = (await Promise.all(sources.map((source) => source(ctx)))).flat();
+  const all = (await settleReadGroup(sources.map((source) => ()=>source(ctx)))).flat();
   // One assessment, one task: a review already in the "Reviews awaiting you" queue is not repeated as
   // assessment work. A career plan is a separate decision on its own record and stays.
   const reviewed = new Set(all.filter((t) => t.kind === 'performanceReview').map((t) => t.reviewId));

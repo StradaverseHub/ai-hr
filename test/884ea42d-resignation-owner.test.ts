@@ -4,7 +4,7 @@ import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setEmploymentInfo} from '../core/org';
-import {createMovementEvent,editMovementEvent,reverseMovementEvent,movementHistory,movementPendingEditInput,applyDueMovementsTx,resignationInformation,movementRecordedResignationOf} from '../core/movement';
+import {createMovementEvent,editMovementEvent,reverseMovementEvent,movementHistory,movementHistoryWithTypes,movementPendingEditInput,applyDueMovementsTx,resignationInformation,movementRecordedResignationOf} from '../core/movement';
 import {previewMovementImport,commitMovementImport} from '../core/movement-import';
 import {validateEmployeeImport,commitEmployeeImport} from '../core/import';
 import {movementFormFields} from '../lib/movement-form-contract';
@@ -48,7 +48,7 @@ describe('884ea42d one resignation information owner',()=>{
   const {employmentId}=await hire();const before=await row(employmentId);await createMovementEvent(ctx,input(employmentId));
   const saved=await row(employmentId);expect(dates(saved)).toEqual({tenderResignationDate:day(-20),resignationDate:day(-10),lastWorkingDate:day(-5)});expect(saved.terminatedOn).toBe(before.terminatedOn);
   const history=await resignation(employmentId);expect(history.effectiveDate).toBe(day(-4));expect(history.canEdit).toBe(true);expect(history.canReverse).toBe(true);
-  const summary=await resignationInformation(ctx,employmentId);for(const field of ['tenderResignationDate','resignationDate','lastWorkingDate'] as const)expect(summary[field].source).toMatchObject({kind:'movement',movementId:history.id});
+  const summary=await resignationInformation(ctx,employmentId);expect((await movementHistoryWithTypes(ctx,employmentId,{includeResignation:true})).resignation).toEqual(summary);for(const field of ['tenderResignationDate','resignationDate','lastWorkingDate'] as const)expect(summary[field].source).toMatchObject({kind:'movement',movementId:history.id});
   const [event]=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.id,history.id));expect(event.actorId).toBe(ctx.userId);expect(event.payload).toMatchObject({before:{resignationDate:null},after:{resignationDate:day(-10)}});
   expect((await movementPendingEditInput(ctx,employmentId,history.id))?.values).toMatchObject({tenderResignationDate:day(-20),resignationEffectiveDate:day(-10)});
  });

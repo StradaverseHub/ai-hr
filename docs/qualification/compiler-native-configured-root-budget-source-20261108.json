@@ -1,0 +1,89 @@
+{
+  "kind": "TRUE_NATIVE_CONFIGURED_ROOT_BUDGET_REPAIR_NOT_EXECUTED",
+  "base": "fcd898ed1a4c4d886f70ac700fd1aff417240564",
+  "sourceRef": "codex/compiler-native-configured-root-budget-20261108",
+  "sourceSha256": {
+    ".github/ci/diagnostics/native-reference/graph.mjs": "c555b649e7cebb95e5135af87ab7275d248c4c9b3a27b8742e7f8407944bace3",
+    ".github/ci/diagnostics/native-reference/config.mjs": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95",
+    ".github/ci/diagnostics/native-reference/fixture.mjs": "826071f401f714db97e031515db86bc4f5a1c596c67e92e4ab678844eeb2e20b",
+    ".github/ci/diagnostics/native-reference/graph.test.mjs": "cc9187838c5f5d402917dbe355e004ade36807b95ef0373d15b347ed29f8940f",
+    ".github/ci/diagnostics/native-reference/outputs.test.mjs": "4250f1972ae7b1bd37f3900a84fc5fd93dce87d67ffc30b48366b22ef43d4348",
+    "docs/qualification/compiler-native-configured-root-budget-20261108.md": "500747fb8b17ab2131fce58f0ee4a6bbc337455191e73f20969ba9466ff4c787"
+  },
+  "unchangedSha256": {
+    ".github/ci/diagnostics/native-reference/outputs.mjs": "83271feb235557b628aaf369f7b65cb6805745d03d88d6322bec329e9fc92d58",
+    ".github/ci/diagnostics/native-reference/process.mjs": "e92e8a8b264e70a94aed73152811638088680e302a3d302193a4b72277824e52",
+    ".github/ci/diagnostics/native-reference/worker.mjs": "04b9e1c1d875bf593d7522f00e1dea3d0da28640a4dd8c2d9c033f775a790712",
+    "test/fixtures/compiler-native-reference/ambient.d.ts.fixture": "3484153d22e83a7e18eec81e20723857175991853e45a776f7475f3c5fbdb37a",
+    "test/fixtures/compiler-native-reference/base.json.fixture": "e74aac086043224dbc1632c65bc366513480e17f6b08b3a7d084ab89b481ed9c",
+    "test/fixtures/compiler-native-reference/consumer/index.ts.fixture": "deda4b62165632afb8d347f4b1e673b2e16f5dc8093681ee4116b3c133a4c7ee",
+    "test/fixtures/compiler-native-reference/external/index.d.ts.fixture": "38a6bfb17b33b2a8c87daf3f85253e90be6b3ebcd30253a4c4d4de83a04a1cd9",
+    "test/fixtures/compiler-native-reference/producer/index.ts.fixture": "e456cd0343e756dc69a1ff64875e37fc23ea4c59df9116441ca4ed2c36444728",
+    "test/fixtures/compiler-native-reference/producer/labels.json.fixture": "b322597a1221af66e01f958f3e7225bc2bb4927b52633b2fbb647ae1514eeb0d",
+    "test/fixtures/compiler-native-reference/producer/math.js.fixture": "ee79d80342379062c44ac52ce786bcb873c8729faca15be8e7880c0c9c89bc63",
+    "test/compiler-native-reference-graph.test.ts": "c6df2319f58a22e9dee86b631169d33e88d970b5dfea912aa493f0a87b6a50ba",
+    "test/compiler-native-reference-fixture.test.ts": "07d74e7d53cd7d1680e5aa17484a4a5688a51578fd39aa01cc6206a53c6c2ee0",
+    "docs/qualification/compiler-native-reference-prototype-20261108.md": "cf4db60bb6b80335e73a131dfb6749bd89bb2bc420cad75f147af0a49f766be2",
+    "docs/adr/2026-11-08-native-compiler-reference-boundaries.md": "fe1b9c6ba3a998c440b0daa2ffbd97b663107d7cb046eef404753e0a60059c23",
+    "docs/qualification/compiler-native-reference-shared-layout-20261108.md": "06ecf5d4387fae4e56ddc5da660d85d4b6754922ed8ded844d79cca38595108f",
+    "docs/qualification/compiler-native-reference-shared-layout-source-20261108.json": "9da0cb3440f4caf5befa54a98f1bb40f897827bf4cd96a3f4f45330e7c7cb74b",
+    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "cf1aef49f7aad7394e3a8de31e1b31e1da80667fbbc9c8f2da16db5795c28ed7",
+    ".github/ci/diagnostics/compiler-boundary.mjs": "5fa67c973118053b1760e7adc288d8e429834b468ac38f28040a1e3cd74195d8",
+    ".github/ci/diagnostics/compiler-boundary-worker.mjs": "5d1986d983cc0a2f5d87670704cb83acaaaf41a26d8068958c83ba89e727c00e",
+    ".github/ci/typecheck.sh": "cb410d168ff728c97cd5f819d103e0e13b88728b89c0e80fb8b8a4444ce8ae55",
+    ".github/ci/compiler-cache.mjs": "bde4c1ce0b952dd80373f0801d0aa523c0d044e7748ce3e17c3cb6f381c8b5e6",
+    "tsconfig.json": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a",
+    "tsconfig.build.json": "1c989c374f21f205e7aeb51842cc6032307bc91075faf5a6feccc945fcda49bf",
+    "package.json": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c",
+    "pnpm-lock.yaml": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+  },
+  "planned": {
+    "graphModelDeclarations": 17,
+    "outputModelDeclarations": 6,
+    "totalModels": 23,
+    "retainedLogicalIntentions": 17,
+    "nativePhases": 13,
+    "graphSelector": "test/compiler-native-reference-graph.test.ts",
+    "nativeSelector": "test/compiler-native-reference-fixture.test.ts",
+    "dispatchHeldUntilRootIntegration": true,
+    "rootOwnedPending": [
+      "graph wrapper expected count17 to23",
+      "native process/wrapper/closed route normal integration"
+    ]
+  },
+  "bounds": {
+    "heapMiB": 12288,
+    "aggregateMs": 720000,
+    "projectRootMax": 400,
+    "projectOwnedMax": 600,
+    "miniaturePacking": {
+      "rootMax": 4,
+      "ownedMax": 2,
+      "originalProducerImplementationRoots": 2,
+      "actualProducerConfiguredRoots": 4
+    },
+    "fileBytes": 536870912,
+    "totalBytes": 1073741824,
+    "nativeLogBytes": 16777216,
+    "wrapperLogBytes": 1048576
+  },
+  "rootOwnedSourcesUntouched": [
+    ".github/ci/diagnostics/native-reference/process.mjs",
+    ".github/ci/diagnostics/native-reference/worker.mjs",
+    "test/compiler-native-reference-graph.test.ts",
+    "test/compiler-native-reference-fixture.test.ts"
+  ],
+  "typescript": "5.9.3",
+  "node": "22.23.3",
+  "nativeApiSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "nativeCliSha256": "e8f349eabd48486bdb2bf9dc1a00c89d58297270c54b745838879e2859194419",
+  "customHost": false,
+  "customResolver": false,
+  "ordinaryCompilerChanged": false,
+  "checksExecuted": false,
+  "staticNodeSyntaxParsingOnly": true,
+  "applicationInventoryComplete": false,
+  "ordinaryCompilerQualified": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

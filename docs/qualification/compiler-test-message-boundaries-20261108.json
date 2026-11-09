@@ -1,0 +1,80 @@
+{
+  "kind": "SOURCE_COMPILER_TRANSLATION_BOUNDARY_REPAIR",
+  "releaseAuthorized": false,
+  "base": "fe26d003b9750478e4d434cc9dd22b59092ae830",
+  "originalEvidence": {
+    "runId": "42392198414",
+    "controller": "ea3aad7e84d27868b400cd7c5ef02a5259b5ad34",
+    "compilerCompleted": false,
+    "v8HeapFailure": true,
+    "elapsedMs": 634501,
+    "heapMiB": 12288,
+    "rootFiles": 11268,
+    "sampledPeakRssKiB": 12860052,
+    "completedFileSeconds": {
+      "test/agent-principal.test.ts": 79.127232612,
+      "test/r422-profile-dates.test.ts": 26.109021333
+    }
+  },
+  "compilerPolicy": {
+    "wholeProject": true,
+    "heapMiB": 12288,
+    "standardHostedRunnerOnly": true,
+    "localChecksRun": false,
+    "tsconfigChanged": false,
+    "rootExclusionsChanged": false,
+    "applicationSourceChanged": false
+  },
+  "messageProjection": {
+    "originalEnglishPaths": 34669,
+    "agentProjectedPaths": 82,
+    "profileProjectedPaths": 3249,
+    "agentNamespaces": [
+      "controlTower.orchestrator",
+      "controlTower.corrections",
+      "controlTower.readinessScreen.gap"
+    ],
+    "profileOwners": [
+      "people.detail",
+      "people.list",
+      "people.employeeStatus",
+      "people.switcher",
+      "people.informationCorrection",
+      "people.wizard",
+      "people.import.fieldUnit",
+      "people.import.fieldValue",
+      "admin.personnel",
+      "leave.breakdown",
+      "leave.inquiry",
+      "leave.fieldStartDate",
+      "leaveCreditHistory.col",
+      "review",
+      "payroll.transactions.fixed",
+      "payrollPolicy",
+      "attendance",
+      "common",
+      "components.confirmSubmit",
+      "components.tabSave",
+      "components.drawer",
+      "accessConfiguration",
+      "holidayCalendarAssignments",
+      "derivedOrganisation",
+      "costAllocations",
+      "currencySelect",
+      "pagination"
+    ],
+    "fullClientProviderCataloguesRetained": true,
+    "getMessagesAndUseMessagesUnchanged": true
+  },
+  "selectors": [
+    "test/agent-principal.test.ts",
+    "test/r422-profile-dates.test.ts",
+    "test/i18n-catalogs.test.ts",
+    "test/i18n-coverage.test.ts"
+  ],
+  "sourceSha256": {
+    "test/agent-principal.test.ts": "ac79a668e45563b96716808ba38763d8079ad0b1b2638fd6757e22421c5306bd",
+    "test/r422-profile-dates.test.ts": "b3b8d057f40aff8de2fdc0c9946fd69f56bffdfe8e7110effaf3098f85467efb"
+  },
+  "qualification": "PENDING: independent review, focused native renders and normal complete compiler; no speed, memory, release or deployment acceptance claim"
+}

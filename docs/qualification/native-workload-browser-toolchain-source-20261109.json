@@ -1,0 +1,210 @@
+{
+  "kind": "STRICT_BROWSER_TOOL_ARCHIVE_SOURCE_ONLY_NO_INSTALL_AUTHORITY",
+  "version": 1,
+  "parent": "7f337f106748e6453f692c1b799738b53b0108bf",
+  "previousCustody": "869681b4bd9f933725b82401f6a49f4134e48ace",
+  "sourceRef": "codex/native-workload-strict-tool-identity-20261109",
+  "leasePaths": [
+    ".github/ci/native-workload-browser-toolchain.py",
+    ".github/ci/native-workload-browser-toolchain.test.py",
+    "docs/qualification/native-workload-browser-toolchain-source-20261109.json"
+  ],
+  "exactNewSourceBytes": {
+    ".github/ci/native-workload-browser-toolchain.py": {
+      "bytes": 23113,
+      "sha256": "795e5d53a96b0dcfbbe03c95ef1f3cc3bd5d4e28a0ba04b4bfc342245abcaea7"
+    },
+    ".github/ci/native-workload-browser-toolchain.test.py": {
+      "bytes": 18382,
+      "sha256": "40afe4f2236d1336f5645f2c85d4a05c034705d9a544b7ba0919fadf32d04c8f"
+    }
+  },
+  "parentToolInputs": {
+    "package.json": {
+      "gitMode": "100644",
+      "gitBlob": "12091ae79d969edc6146e2d63f40342948b1237b",
+      "bytes": 6300,
+      "sha256": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c"
+    },
+    "pnpm-lock.yaml": {
+      "gitMode": "100644",
+      "gitBlob": "86269692f041fb333f44371d004f9a2afe999e3b",
+      "bytes": 356104,
+      "sha256": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+    },
+    ".github/workflows/alpha-staging.yml": {
+      "gitMode": "100644",
+      "gitBlob": "cbc7848d383ff3cb0d2e3b94c0913b20f4292fbc",
+      "bytes": 41369,
+      "sha256": "950aea0b0ef72f611ab65ebff1007a53013111417883b2f3647187548d4e2c9e"
+    },
+    ".github/actions/setup-alpha/action.yml": {
+      "gitMode": "100644",
+      "gitBlob": "7820324a856a7b3fbae005a79deac4b6ad864fb4",
+      "bytes": 4189,
+      "sha256": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150"
+    },
+    ".github/ci/native-controller-bootstrap.py": {
+      "gitMode": "100644",
+      "gitBlob": "0b934bce71b3f20bf573bc90500ac7faa19943d6",
+      "bytes": 22423,
+      "sha256": "1892e07813e688275d4aed7f903f1b87dc37007e2878d21ed19c85cd0a01d2f3"
+    },
+    ".github/ci/native-controller-owner.mjs": {
+      "gitMode": "100644",
+      "gitBlob": "99ece680f6753ad578e38a58333c3c83ae6c8c74",
+      "bytes": 8712,
+      "sha256": "1dc53cf05e9fd7c63fda70b9853e8686d34ead6c67b4a71db5ad0864384c2372"
+    },
+    ".github/ci/native-next-installation.mjs": {
+      "gitMode": "100644",
+      "gitBlob": "eed5748591d8a9420e58228ec7c697603a2e6328",
+      "bytes": 10047,
+      "sha256": "f56836062d0bd6d94274a559dc5fbd75ecf33704445a3200fcd49296bdd4ac53"
+    },
+    ".github/ci/runtime_inventory.py": {
+      "gitMode": "100644",
+      "gitBlob": "9f738c7a343699ea16a85021f750b00bfe02fb91",
+      "bytes": 25995,
+      "sha256": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d"
+    }
+  },
+  "hostedObservation": {
+    "runId": 42558678590,
+    "attempt": 1,
+    "allTerminalJobs": 11,
+    "source": "957296bb9e60e5053f1362bdb261c48622403b82",
+    "controller": "957296bb9e60e5053f1362bdb261c48622403b82",
+    "authentication": {
+      "bytes": 2685,
+      "sha256": "f98a9dbedcecfd0a638798e59eeae90dbf50e5ea007b68aef5d7ebbb5f1bcb14"
+    },
+    "artifactId": 13649005094,
+    "artifactSha256": "sha256:1fb248e55de2b2159fc7469c7264542ddf46b22f4869c50f28bf3c3d5a308c99",
+    "receipt": {
+      "bytes": 46796,
+      "sha256": "b7d4bd143361484db2e78d5b2b1e7e70fbc39d324bb60cb0d33e9fa4ee1a5717"
+    },
+    "rawArchiveRetained": false,
+    "publisherSha256": null,
+    "strictMemberFramingVerified": false
+  },
+  "fixedBrowserPin": {
+    "version": "151.0.7922.34",
+    "revision": "1234",
+    "bucket": "chrome-for-testing-public",
+    "object": "151.0.7922.34/linux64/chrome-headless-shell-linux64.zip",
+    "mediaUri": "https://storage.googleapis.com/storage/v1/b/chrome-for-testing-public/o/151.0.7922.34%2Flinux64%2Fchrome-headless-shell-linux64.zip?alt=media&generation=1784092784777971",
+    "generation": "1784092784777971",
+    "metageneration": "1",
+    "rawBytes": 120231126,
+    "observedSha256": "3cfc2bd00d1bafcf8a68dc74c9c92bb7150ddc8d26ade948a776316e1cec4f14",
+    "archiveFiles": 287,
+    "normalizedTreeEntries": 290,
+    "normalizedTreeSha256": "285519f831cfb38f59102de01929448b7229153f469470b68b9459892d1bbf7e",
+    "decodedBytes": 273378828,
+    "executable": {
+      "bytes": 196975952,
+      "path": "chrome-headless-shell-linux64/chrome-headless-shell",
+      "sha256": "e11fc9ce65c96313476f7ee9844b6fb6a9220fb048693cfe9eee00acf4170a9f"
+    }
+  },
+  "fixedPackages": {
+    "playwright": {
+      "version": "1.62.1",
+      "archiveUri": "https://registry.npmjs.org/playwright/-/playwright-1.62.1.tgz",
+      "lockSRI": "sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg=="
+    },
+    "playwright-core": {
+      "version": "1.62.1",
+      "archiveUri": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.62.1.tgz",
+      "lockSRI": "sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw=="
+    },
+    "postgres": {
+      "version": "3.4.9",
+      "archiveUri": "https://registry.npmjs.org/postgres/-/postgres-3.4.9.tgz",
+      "lockSRI": "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="
+    }
+  },
+  "authoredModelCases": [
+    "test_complete_zip_checks_actual_bytes_modes_and_both_classic_descriptor_shapes",
+    "test_zip_refuses_bad_local_identity_overlap_preamble_and_descriptor",
+    "test_zip_refuses_hidden_central_members_zip64_extra_and_local_aliases",
+    "test_zip_refuses_dos_directory_and_volume_flags_on_regular_members",
+    "test_raw_deflate_requires_natural_exact_end_and_independent_crc",
+    "test_executable_program_table_and_tree_parent_are_independent_checks",
+    "test_browser_rejects_synthetic_transfer_before_parser_even_at_expected_size",
+    "test_three_fictional_lock_sri_archives_admit_exact_known_package_entrypoints",
+    "test_package_sri_identity_precedes_any_tar_parsing",
+    "test_parse_consumed_package_bytes_must_match_the_initial_locked_digest_and_extent",
+    "test_tar_end_cannot_hide_a_gzip_suffix_second_member_or_invalid_footer",
+    "test_tar_octal_fields_match_native_decode_without_ignored_digits",
+    "test_tar_keeps_explicit_directory_and_rejects_v7_alias_and_reserved_bytes",
+    "test_tar_refuses_extended_entries_links_privilege_duplicates_and_nonzero_padding",
+    "test_sri_match_alone_cannot_substitute_package_or_browser_manifest",
+    "test_combined_tree_budget_accounts_for_implicit_parents_before_each_package",
+    "test_expanded_and_path_limits_refuse_under_a_single_elapsed_deadline"
+  ],
+  "behaviorExecuted": false,
+  "packageTransferObserved": false,
+  "strictPublisherBytesAccepted": false,
+  "runtimeRegistered": false,
+  "installed": false,
+  "releaseEligible": false,
+  "parserIdentityCorrection": {
+    "initialToolLeafBase": "705e92409e0a1b5d3023d55cdd2d21a0087b9c1a",
+    "priorLeaf": "7f337f106748e6453f692c1b799738b53b0108bf",
+    "priorIndependentReview": {
+      "bytes": 5921,
+      "sha256": "044d6b24fc79de793db78f813e646f837de378a99c2fe08b6aced254d2d3bdcf"
+    },
+    "priorFrozenProof": {
+      "bytes": 3233,
+      "sha256": "05796e478454053c2ad037e70b1bf625843a5c325d6936aa6be64ac83c47d5da"
+    },
+    "wholeDirectParentGitPreimages": {
+      ".github/ci/native-workload-browser-toolchain.py": {
+        "gitMode": "100644",
+        "gitBlob": "bef17427965d7016662e37f3513b800ef29620d5",
+        "bytes": 21682,
+        "sha256": "8f41e89fb3eda7d37d0f5ae8ba119fb6ccd83e73e3c1de9d5dc75115495be5a5"
+      },
+      ".github/ci/native-workload-browser-toolchain.test.py": {
+        "gitMode": "100644",
+        "gitBlob": "198060be1a860c22c4553c921ae96afa416fae0a",
+        "bytes": 14210,
+        "sha256": "baf9a3857095b3055b41831472f8920b40bc20fbf28892be1e9f84adea271854"
+      },
+      "docs/qualification/native-workload-browser-toolchain-source-20261109.json": {
+        "gitMode": "100644",
+        "gitBlob": "25132be781d7da225ca51b3445b627ec2b629b27",
+        "bytes": 6522,
+        "sha256": "791ab996385b1d59ce20f89d46d705f56f27a7a857f33beb17b1286e931a3558"
+      }
+    },
+    "syntheticModelMethodsAdded": [
+      "test_zip_refuses_dos_directory_and_volume_flags_on_regular_members",
+      "test_parse_consumed_package_bytes_must_match_the_initial_locked_digest_and_extent",
+      "test_tar_octal_fields_match_native_decode_without_ignored_digits",
+      "test_tar_keeps_explicit_directory_and_rejects_v7_alias_and_reserved_bytes"
+    ],
+    "rawTar": {
+      "completeOctalFieldAndStdlibAgreement": true,
+      "explicitDirectoryTypeOnly": true,
+      "reservedPaddingAndUnusedDeviceFieldsZero": true
+    },
+    "zip": {
+      "refusesDirectoryAndVolumeDosFlagsOnRegularMember": true,
+      "otherZipParserFramingWhole": true
+    },
+    "package": {
+      "initialLockedSRIBeforeParsing": true,
+      "digestUsesActualCompressedDecoderInput": true,
+      "exactParsedCompressedExtent": true
+    },
+    "immutableExclusivelyHeldSourceRequired": true,
+    "physicalSourceCustodyEstablished": false,
+    "nativeExecutionVerified": false,
+    "historicalEvidenceTransferred": false
+  }
+}

@@ -380,7 +380,9 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       expect((await getRewardUnit(actors.bu!, id)).due).toBe(today);
       await saveRewardCalendar(admin, id, 1, { ...cal, due: { ...cal.due, bg: shift(-1) } });
       expect(await row()).toMatchObject({ due: shift(-1), daysUntilDue: -1 });
-      const t = createTranslator({ locale: 'en', messages: en, namespace: 'rewards.board' });
+      // This real translator reads only the board owner; keep its original path
+      // without instantiating namespace/key types for every unrelated HR message.
+      const t = createTranslator({ locale: 'en', messages: { rewards: { board: en.rewards.board } }, namespace: 'rewards.board' });
       const say = (d: number) => { const w = rewardDueWording(d); return t(w.key, { days: w.days }); };
       expect([say(0), say(-1), say(-3), say(1), say(4)]).toEqual(['today', '1 day overdue', '3 days overdue', 'tomorrow', 'in 4 days']);
     });

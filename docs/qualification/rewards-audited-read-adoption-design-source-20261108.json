@@ -1,0 +1,58 @@
+{
+  "kind": "REWARDS_INSTALLED_ADOPTION_DESIGN_NOT_IMPLEMENTATION",
+  "base": "315467b94d49011ba367a54c46a4eaa2e90b8a8a",
+  "sourceRef": "codex/rewards-audited-read-adoption-design-20261108",
+  "status": "PROPOSED_ROOT_REVIEW_BEFORE_SQL_OR_APPLICATION_IMPLEMENTATION",
+  "retainedNative": {
+    "run": 42422798419,
+    "passed": 16,
+    "failed": 0,
+    "pending": 0,
+    "artifact": 13594585682,
+    "zipSha256": "7afab9ea7434a11be6fca9f8101284154d35917c066eed1665710196479cdbff",
+    "verificationOwner": "root; not a new run or new installed-owner claim"
+  },
+  "retainedOriginalProof": {
+    "source": "00779cb4c28b20820a972441b5ddc43cc43c5c59",
+    "pureRun": 42415491165,
+    "purePassed": 3,
+    "legacyRun": 42415491484,
+    "legacyPassed": 323
+  },
+  "blockingBeforeAdoption": [
+    "fresh native-owner/helper-grant/installed-lineage inventory",
+    "canonical armed+unarmed audit-policy compatibility",
+    "production fleet pool reservation",
+    "guarded native pending/run/coverage owner",
+    "actual protected built worker and credential/profile qualification",
+    "current audit coverage before capability enable",
+    "same-facade native/ordinary/browser/load acceptance"
+  ],
+  "applicationSqlOrRuntimeChanged": false,
+  "migrationAllocated": false,
+  "sourceSha256": {
+    "docs/adr/2026-11-08-rewards-audited-read-adoption.md": "90236c685f9aa261e4f1f316d900e38ec05e7838a7fd8d55a4c758ee65d5252b",
+    "docs/qualification/rewards-audited-read-adoption-plan-20261108.md": "1d7477c99232ed22824ea6a3348deb7748a7a2f406c70c6fdbbcfe0cba0cab88"
+  },
+  "inspectedUnchangedOwnersSha256": {
+    "packs/rewards/libraries.ts": "dcb7a97c82277d00c3d2edd89962ad40f21ca021374f62b98fec5085c35d49d5",
+    "packs/rewards/pat-inputs.ts": "2543d88e85069cb00fcac3cf7dd85b361d327f28dc2af69ed2a2fb4bab4855d2",
+    "packs/rewards/setup-data.ts": "b30f36c4e8b66c2a065c94b62722af47b4a4718589c2c23d1c476cccb4cc63ed",
+    "packs/rewards/setup-query-owner.ts": "e01e813004aae86b3c1c3f0b7a2d88cab5cc7c7762d5ace8a6afecadd1ae69cd",
+    "packs/rewards/setup-legacy-query-port.ts": "57f2fc53d5dc1b16ba58fce918f4003179461fd8304580ae9861a4ea48aa3862",
+    "db/client.ts": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f",
+    "db/capacity.ts": "e3452749d6dc3f62de919c24af2f0667d71bd05b9606f9aec799bdd3afe70db3",
+    "db/events.ts": "ef25d45018701886ebca1021d4033c147bbd8c94bbb1ff01ef7962381829bd0e",
+    "core/audit-chain-arming.ts": "e8db2d54de0673f992af3773a7f5a3809c33f9367583b755c647b56c0f8b389d",
+    "core/audit-chain.ts": "af10603553bd2e43ac779813b69ae5933cc36b7e5b522d1a602cf97d7a0cfa38",
+    "test/prototypes/rewards-audited-read.sql": "cad7076c1263888257084dbf5b2eef77ebb6e360dbf08ae38e2029a00a58b654",
+    "test/prototypes/rewards-audited-read-family.ts": "6dd22b871459f4d0f8f42d5741a7b09b64adc79fda1c245a03e34ed3ebb185f5",
+    "test/prototypes/rewards-audited-read-port.ts": "bf0828ce1983f2c84f0656aaf9e979d94a9850590f787f4585355c210a8ce9fd",
+    "test/rewards-audited-read-prototype.test.ts": "ebf91012548d6e8aac88100f34646996d6ff3e33a98508f61b73137594386571"
+  },
+  "localChecksExecuted": false,
+  "installed": false,
+  "completeSuite": false,
+  "releaseAuthorized": false,
+  "production": "HELD"
+}

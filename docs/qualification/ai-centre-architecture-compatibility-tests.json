@@ -1,0 +1,9 @@
+[
+  "test/ai-feature-switch-owner.test.ts",
+  "test/ai-centre-architecture-compatibility-upgrade.test.ts",
+  "test/ai-native-read-locks.test.ts",
+  "test/ai-action-controls.test.ts",
+  "test/ai-centre-controls.test.ts",
+  "test/ai-feature-switch-owner-db.test.ts",
+  "test/ai-pause-company-discovery.test.ts"
+]

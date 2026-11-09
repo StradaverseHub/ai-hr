@@ -1,5 +1,14 @@
 {
   "roster": {
+    "prepareTitle": "Review roster changes",
+    "prepareHint": "Check the shift, dates and employee count, then confirm.",
+    "browseEmployees": "Browse all employees",
+    "reviewTargets": "Review selected employees",
+    "confirmRoster": "Confirm roster changes",
+    "prepareFailed": "The roster change could not be prepared. Check the selection and try again.",
+    "pickerFailed": "Could not load employees. Please try again.",
+    "pickerSelectMatching": "Select all {n} matching employees",
+    "copyTargetsReview": "Copy will use the {n} employees selected now. Review the dates, then click Copy to confirm.",
     "title": "Roster",
     "subtitle": "Build the monthly shift roster — pick a month, then assign shifts across your team.",
     "noCompanies": "No companies in your scope to roster.",
@@ -855,7 +864,8 @@
       "placeholder": "Search employee ID or name…",
       "resultsLabel": "Employee search results",
       "noMatches": "No employee matches that.",
-      "currentTag": "Current"
+      "currentTag": "Current",
+      "loadFailed": "Employee search could not be loaded. Try again."
     },
     "detail": {
       "incentiveDeclarations": {
@@ -4826,6 +4836,33 @@
       "active": "Active",
       "probation": "Probation",
       "notice": "Notice"
+    },
+    "explorer": {
+      "hint": "Explore a large organization one section at a time. Search reaches everyone in your selected companies.",
+      "topLevel": "Top level",
+      "allPeople": "All people",
+      "search": "Search",
+      "searchResults": "Search results",
+      "reports": "Direct reports",
+      "managers": "Managers",
+      "connections": "All connections",
+      "history": "Visited people",
+      "loading": "Loading organization…",
+      "loaded": "Loaded {loaded} on this page · {total} matching results · {people} people in your selected companies",
+      "accessChanged": "Your access changed. Reload to continue.",
+      "changed": "The organization changed. Refresh this section to continue.",
+      "failed": "This section could not load. Please try again.",
+      "refresh": "Reload",
+      "retry": "Try again",
+      "multipleAssignments": "Multiple current assignments",
+      "profile": "View profile",
+      "relationships": "Reporting relationships",
+      "outsideScope": "Connection outside your selected companies",
+      "incoming": "Reports to this person",
+      "outgoing": "This person reports to",
+      "explore": "Explore",
+      "back": "Back",
+      "next": "Next page"
     }
   },
   "me": {
@@ -5501,7 +5538,8 @@
     "submitDecisions": "Submit",
     "employeeRemark": "Employee remark",
     "closeDialog": "Close",
-    "bulkSelectAll": "Select all",
+    "bulkSelectAll": "Select all requests in this view",
+    "bulkSelectionUnavailable": "Could not select the pending claims. Try again.",
     "bulkSelectRow": "Select request",
     "bulkSelected": "Selected: {count, plural, one {# request} other {# requests}}",
     "bulkClear": "Clear",
@@ -6077,6 +6115,7 @@
       },
       "preChecksOpenProfile": "Open profile",
       "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
+      "preChecksNotReady": "Resolve the blocking pre-processing checks before processing payroll.",
       "preChecksBlockedPayModeError": "Cannot process payroll: {n} employee(s) have a Custom Period pay structure that payroll cannot calculate. Change the Pay Mode on their Basic Salary record, or leave them out of this run.",
       "preChecksBlockedTp3Error": "Cannot process payroll: {n} employee(s) have a Form TP3 for this year that has not reached their payroll figures. Open Form TP3 for each of them and save it first.",
       "generatedWithSkipped": "Payslips generated — {n} employee(s) skipped. The list below names them and says why.",
@@ -16941,12 +16980,24 @@
     "colRanAt": "Ran at",
     "colOutcome": "Outcome",
     "colError": "Error",
+    "notificationEvidenceUnverified": "Run history does not verify the installed worker release or email receipt.",
     "outcome": {
+      "running": "Started; completion not recorded",
       "success": "Success",
       "partial": "Partial",
       "failed": "Failed"
     },
     "counters": {
+      "processedEvents": "Events processed",
+      "createdNotifications": "Notifications created",
+      "committedBatches": "Batches committed",
+      "pendingEvents": "Events pending",
+      "oldestPendingSeconds": "Oldest pending age (seconds)",
+      "cappedTenants": "Companies reaching batch limit",
+      "emailAttempted": "Email attempts",
+      "emailSkipped": "Emails skipped",
+      "emailUnavailableTenants": "Companies with unavailable email",
+      "emailCappedTenants": "Companies reaching email batch limit",
       "granted": "Days granted",
       "opened": "Reviews opened",
       "reminders": "Reminders sent",
@@ -16956,6 +17007,10 @@
       "tenantsAlarming": "Companies with an alarm"
     },
     "jobs": {
+      "notifications-project": {
+        "name": "Notification processing",
+        "description": "Processes pending notification events and records committed work and backlog. Email delivery has separate outcomes."
+      },
       "leave-accrue": {
         "name": "Earned leave top-up",
         "description": "Adds the leave days employees have earned so far."
@@ -17634,7 +17689,13 @@
     "selectedTag": "Selected",
     "allEmployees": "All employees",
     "allEmployeesHint": "Clear the selection and show every employee.",
-    "showingCapped": "Showing first {cap} of {total} matches — refine your search."
+    "showingCapped": "Showing first {cap} of {total} matches — refine your search.",
+    "loadingEmployees": "Loading employees…",
+    "loadFailed": "Employees could not be loaded. Try again.",
+    "retry": "Retry",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "pageRange": "{from}–{to} of {total, number}"
   },
   "appliedInPayroll": {
     "searchPlaceholder": "Search month, employee, company or amount",

@@ -1,0 +1,341 @@
+{
+  "base": "7c6d847abdc44a49db179e1c848cea06e63661a3",
+  "files": {
+    ".github/ci/diagnostics/native-reference/outputs.mjs": {
+      "currentSha256": "f80442a765b03277548faffd076b0e13b037bef633cda8b013443d043eb8427d",
+      "originalSha256": "67aa88231dcf314b161bc43b4716ddacf160fb1736a61eb229166a60237167f5",
+      "edits": [
+        {
+          "start": 2462,
+          "end": 4554,
+          "original": "",
+          "current": "/** Read-only native dependency input, never an owned config/output/artifact seal.\n * Package-manager hard links do not grant write or disposal authority. */\nexport function dependencyInputHash(path,root,expectedSha256,maximum=REFERENCE_LIMITS.fileBytes){\n assert(Number.isSafeInteger(maximum)&&maximum>0&&maximum<=REFERENCE_LIMITS.fileBytes);assert(/^[a-f0-9]{64}$/.test(expectedSha256));\n assert(isAbsolute(root)&&realpathSync(root)===root);const directory=lstatSync(root,{bigint:true});assert(directory.isDirectory()&&!directory.isSymbolicLink());\n const rel=relative(root,path);assert(isAbsolute(path)&&rel&&!isAbsolute(rel)&&rel!=='..'&&!rel.startsWith('../')&&realpathSync(path)===path,'Dependency outside canonical input tree');\n const before=lstatSync(path,{bigint:true});assert(before.isFile()&&!before.isSymbolicLink()&&before.nlink>=1n&&before.size>=0n&&before.size<=BigInt(maximum),'Read-only dependency input refused');\n const fields=['dev','ino','mode','uid','gid','nlink','size','mtimeNs','ctimeNs'],same=observed=>{for(const key of fields)assert.equal(observed[key],before[key],'Dependency input identity or bytes changed');};\n const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);\n try{\n  same(fstatSync(fd,{bigint:true}));const hash=createHash('sha256'),chunk=Buffer.alloc(65536);let bytes=0;\n  while(bytes<Number(before.size)){const n=readSync(fd,chunk,0,Math.min(chunk.length,Number(before.size)-bytes),bytes);assert(n>0,'Dependency input truncated');hash.update(chunk.subarray(0,n));bytes+=n;}\n  assert.equal(readSync(fd,chunk,0,1,bytes),0,'Dependency input grew');same(fstatSync(fd,{bigint:true}));same(lstatSync(path,{bigint:true}));assert.equal(realpathSync(path),path);\n  const after=lstatSync(root,{bigint:true});for(const key of ['dev','ino','mode','uid','gid'])assert.equal(after[key],directory[key],'Dependency root changed');assert.equal(realpathSync(root),root);\n  const sha256=hash.digest('hex');assert.equal(sha256,expectedSha256,'Native loaded dependency bytes changed');return{path,sha256,bytes};\n }finally{closeSync(fd);}\n}\n"
+        },
+        {
+          "start": 227,
+          "end": 275,
+          "original": "",
+          "current": ",openSync,readSync,fstatSync,closeSync,constants"
+        }
+      ]
+    },
+    ".github/ci/diagnostics/native-reference/outputs.test.mjs": {
+      "currentSha256": "e70e9ea5c4ea7f884be47cd23d2a7148df385568634fc9899faeed24f8d09881",
+      "originalSha256": "4250f1972ae7b1bd37f3900a84fc5fd93dce87d67ffc30b48366b22ef43d4348",
+      "edits": [
+        {
+          "start": 6395,
+          "end": 11129,
+          "original": "",
+          "current": "\ntest('actual hard-linked dependency input is readable while the same inode remains forbidden as an owned output',()=>{\n const dir=realpathSync(mkdtempSync(join(tmpdir(),'native-dependency-links-'))),root=join(dir,'node_modules');mkdirSync(root);\n try{const file=join(root,'native.d.ts'),alias=join(dir,'store-entry'),body='export declare const literal: 7;\\n';writeFileSync(file,body);linkSync(file,alias);assert.equal(lstatSync(file).nlink,2);const expected=digest(Buffer.from(body));\n  assert.deepEqual(dependencyInputHash(file,root,expected),{path:file,sha256:expected,bytes:Buffer.byteLength(body)});assert.throws(()=>regularHash(file),/Native regular file custody refused/);assert.throws(()=>assertOutputSeal([{path:file,sha256:expected,bytes:Buffer.byteLength(body)}]),/Native regular file custody refused/);\n  assert.equal(readFileSync(alias,'utf8'),body);assert.equal(lstatSync(file).nlink,2);\n }finally{rmSync(dir,{recursive:true});}\n});\ntest('dependency input refuses outside paths, symlink files and a symlink dependency root',()=>{\n const dir=realpathSync(mkdtempSync(join(tmpdir(),'native-dependency-path-'))),root=join(dir,'node_modules');mkdirSync(root);\n try{const outside=join(dir,'foreign.d.ts'),body='export {};\\n';writeFileSync(outside,body);const expected=digest(Buffer.from(body)),link=join(root,'link.d.ts');symlinkSync(outside,link);\n  assert.throws(()=>dependencyInputHash(outside,root,expected),/outside canonical input tree/);assert.throws(()=>dependencyInputHash(link,root,expected),/outside canonical input tree/);\n  const rootLink=join(dir,'foreign-root');symlinkSync(root,rootLink);assert.throws(()=>dependencyInputHash(outside,rootLink,expected));assert.equal(readFileSync(outside,'utf8'),body);\n }finally{rmSync(dir,{recursive:true});}\n});\ntest('actual dependency alias mutation cannot match the native loaded byte hash and never changes output policy',()=>{\n const dir=realpathSync(mkdtempSync(join(tmpdir(),'native-dependency-change-'))),root=join(dir,'node_modules');mkdirSync(root);\n try{const path=join(root,'native.d.ts'),alias=join(dir,'store-entry'),original='export declare const literal: 7;\\n';writeFileSync(path,original);linkSync(path,alias);const expected=digest(Buffer.from(original));\n  writeFileSync(alias,'export declare const literal: 8;\\n');assert.throws(()=>dependencyInputHash(path,root,expected),/Native loaded dependency bytes changed/);writeFileSync(alias,original);assert.equal(dependencyInputHash(path,root,expected).sha256,expected);assert.throws(()=>regularHash(path),/Native regular file custody refused/);\n }finally{rmSync(dir,{recursive:true});}\n});\ntest('dependency inputs retain exact positive byte bounds and the worker excludes every configured, fixture and output owner',()=>{\n const dir=realpathSync(mkdtempSync(join(tmpdir(),'native-dependency-bound-'))),root=join(dir,'node_modules');mkdirSync(root);\n try{const path=join(root,'native.d.ts'),body='export {};\\n';writeFileSync(path,body);const expected=digest(Buffer.from(body));assert.throws(()=>dependencyInputHash(path,root,expected,body.length-1),/Read-only dependency input refused/);assert.throws(()=>dependencyInputHash(path,root,'0'.repeat(63)));assert.throws(()=>dependencyInputHash(path,root,expected,0));assert.throws(()=>dependencyInputHash(path,root,expected,513*1024**2));assert.equal(dependencyInputHash(path,root,expected,body.length).bytes,body.length);const empty=join(root,'empty.d.ts');writeFileSync(empty,'');assert.equal(dependencyInputHash(empty,root,digest(Buffer.alloc(0))).bytes,0);\n  const worker=readFileSync(new URL('worker.mjs',import.meta.url),'utf8');assert(worker.includes('(external||defaultLibrary)&&inside(dependencyRoot,path)&&!configured.has(path)&&!inside(source,path)&&!owned.has(path)'));assert(worker.includes(\"assert.equal(realpathSync(dependencyRoot),dependencyRoot,'External dependency tree refused')\"));\n  assert(worker.includes('assertOutputSeal(seals);assertOutputSeal(projectSeals);'));assert.equal(worker.split('assertOutputSeal(seals);').length-1,4);\n  const inverse=JSON.parse(readFileSync(new URL('dependency-custody-inverse.json',import.meta.url),'utf8'));assert.equal(inverse.base,'7c6d847abdc44a49db179e1c848cea06e63661a3');for(const[name,row]of Object.entries(inverse.files)){let text=readFileSync(new URL('../../../../'+name,import.meta.url),'utf8');assert.equal(digest(Buffer.from(text)),row.currentSha256);let frontier=text.length;for(const edit of row.edits){assert(edit.start>=0&&edit.end<=frontier);assert.equal(text.slice(edit.start,edit.end),edit.current);text=text.slice(0,edit.start)+edit.original+text.slice(edit.end);frontier=edit.start;}assert.equal(digest(Buffer.from(text)),row.originalSha256);}\n }finally{rmSync(dir,{recursive:true});}\n});\n"
+        },
+        {
+          "start": 400,
+          "end": 427,
+          "original": "",
+          "current": ",dependencyInputHash,digest"
+        },
+        {
+          "start": 234,
+          "end": 265,
+          "original": "",
+          "current": ",linkSync,symlinkSync,lstatSync"
+        }
+      ]
+    },
+    ".github/ci/diagnostics/native-reference/worker.mjs": {
+      "currentSha256": "227118d4fa84a119fd1db100bdec1010da8c3eca33d85df63cd385150bb27741",
+      "originalSha256": "04b9e1c1d875bf593d7522f00e1dea3d0da28640a4dd8c2d9c033f775a790712",
+      "edits": [
+        {
+          "start": 8078,
+          "end": 8079,
+          "original": "",
+          "current": ")"
+        },
+        {
+          "start": 8035,
+          "end": 8062,
+          "original": "",
+          "current": "(native?nativeHash(native):"
+        },
+        {
+          "start": 7680,
+          "end": 7720,
+          "original": "",
+          "current": ",nativeHash=sourceHasher(program,source)"
+        },
+        {
+          "start": 6978,
+          "end": 7035,
+          "original": "",
+          "current": "assertOutputSeal(seals);assertOutputSeal(projectSeals);\n "
+        },
+        {
+          "start": 5994,
+          "end": 6007,
+          "original": "",
+          "current": ",source,seals"
+        },
+        {
+          "start": 3995,
+          "end": 4002,
+          "original": "",
+          "current": ",source"
+        },
+        {
+          "start": 3691,
+          "end": 3717,
+          "original": "",
+          "current": "assertOutputSeal(seals);\n "
+        },
+        {
+          "start": 3261,
+          "end": 3274,
+          "original": "",
+          "current": ",source,seals"
+        },
+        {
+          "start": 3122,
+          "end": 3129,
+          "original": "",
+          "current": ",source"
+        },
+        {
+          "start": 3071,
+          "end": 3071,
+          "original": "};}",
+          "current": ""
+        },
+        {
+          "start": 3057,
+          "end": 3070,
+          "original": "",
+          "current": ",ownedOutputs"
+        },
+        {
+          "start": 3055,
+          "end": 3056,
+          "original": "y(fil",
+          "current": "c"
+        },
+        {
+          "start": 3049,
+          "end": 3054,
+          "original": "",
+          "current": "m,sou"
+        },
+        {
+          "start": 3038,
+          "end": 3047,
+          "original": "ultLib",
+          "current": "sher(prog"
+        },
+        {
+          "start": 3036,
+          "end": 3037,
+          "original": "f",
+          "current": "H"
+        },
+        {
+          "start": 3022,
+          "end": 3035,
+          "original": "D",
+          "current": "s().map(sourc"
+        },
+        {
+          "start": 3009,
+          "end": 3012,
+          "original": "is",
+          "current": "get"
+        },
+        {
+          "start": 2913,
+          "end": 3001,
+          "original": ":",
+          "current": ",readOnlyDependency};};\n}\nfunction observedFiles(program,source,ownedOutputs=[]){return "
+        },
+        {
+          "start": 2898,
+          "end": 2898,
+          "original": ":program.isSourceFileFromExternalLibrary(file)",
+          "current": ""
+        },
+        {
+          "start": 2835,
+          "end": 2838,
+          "original": "",
+          "current": "\n  "
+        },
+        {
+          "start": 2788,
+          "end": 2789,
+          "original": "xt))",
+          "current": "d"
+        },
+        {
+          "start": 2785,
+          "end": 2786,
+          "original": "r.from(file.",
+          "current": "c"
+        },
+        {
+          "start": 2782,
+          "end": 2784,
+          "original": "st(Buff",
+          "current": "xp"
+        },
+        {
+          "start": 2781,
+          "end": 2781,
+          "original": "dig",
+          "current": ""
+        },
+        {
+          "start": 2681,
+          "end": 2750,
+          "original": "",
+          "current": "readOnlyDependency?dependencyInputHash(path,dependencyRoot,expected):"
+        },
+        {
+          "start": 2367,
+          "end": 2674,
+          "original": "",
+          "current": "expected=digest(Buffer.from(file.text)),external=program.isSourceFileFromExternalLibrary(file),defaultLibrary=program.isSourceFileDefaultLibrary(file);\n  const readOnlyDependency=(external||defaultLibrary)&&inside(dependencyRoot,path)&&!configured.has(path)&&!inside(source,path)&&!owned.has(path);\n  const "
+        },
+        {
+          "start": 2107,
+          "end": 2321,
+          "original": "",
+          "current": "path=>realpathSync(path))),owned=new Set(ownedOutputs.map(row=>row.path));\n const inside=(root,path)=>{const rel=relative(root,path);return rel!==''&&rel!=='..'&&!rel.startsWith('../')&&!isAbsolute(rel);};\n return "
+        },
+        {
+          "start": 2094,
+          "end": 2098,
+          "original": "",
+          "current": "eNam"
+        },
+        {
+          "start": 2089,
+          "end": 2091,
+          "original": "urce",
+          "current": "ot"
+        },
+        {
+          "start": 2087,
+          "end": 2088,
+          "original": "S",
+          "current": "R"
+        },
+        {
+          "start": 2057,
+          "end": 2076,
+          "original": "",
+          "current": "configured=new Set("
+        },
+        {
+          "start": 2054,
+          "end": 2056,
+          "original": "",
+          "current": "st"
+        },
+        {
+          "start": 2037,
+          "end": 2053,
+          "original": "",
+          "current": "ce),source);\n co"
+        },
+        {
+          "start": 1934,
+          "end": 2035,
+          "original": "",
+          "current": "hSync(dependencyRoot),dependencyRoot,'External dependency tree refused');assert.equal(realpathSync(so"
+        },
+        {
+          "start": 1929,
+          "end": 1933,
+          "original": "",
+          "current": "alpa"
+        },
+        {
+          "start": 1856,
+          "end": 1927,
+          "original": "",
+          "current": "\n const dependencyRoot=join(process.cwd(),'node_modules');assert.equal("
+        },
+        {
+          "start": 1831,
+          "end": 1854,
+          "original": "",
+          "current": ",source,ownedOutputs=[]"
+        },
+        {
+          "start": 1823,
+          "end": 1823,
+          "original": "vedFiles",
+          "current": ""
+        },
+        {
+          "start": 1820,
+          "end": 1821,
+          "original": "",
+          "current": "h"
+        },
+        {
+          "start": 1813,
+          "end": 1819,
+          "original": "b",
+          "current": "urceHa"
+        },
+        {
+          "start": 1811,
+          "end": 1812,
+          "original": "",
+          "current": "s"
+        },
+        {
+          "start": 351,
+          "end": 371,
+          "original": "",
+          "current": "Hash,dependencyInput"
+        }
+      ]
+    },
+    "test/compiler-native-reference-graph.test.ts": {
+      "currentSha256": "f07a4f4d18905b6464710511bf1face04d5908615879d8b3b6dbb4767cc94cf5",
+      "originalSha256": "ce8b4bfe6123f412c1353831ad1d8deb682e01b3a0eb2dc0202c33a94f5020fa",
+      "edits": [
+        {
+          "start": 715,
+          "end": 716,
+          "original": "3",
+          "current": "7"
+        },
+        {
+          "start": 670,
+          "end": 671,
+          "original": "3",
+          "current": "7"
+        },
+        {
+          "start": 193,
+          "end": 194,
+          "original": "",
+          "current": "n"
+        },
+        {
+          "start": 191,
+          "end": 192,
+          "original": "",
+          "current": "v"
+        },
+        {
+          "start": 189,
+          "end": 190,
+          "original": "thr",
+          "current": "s"
+        }
+      ]
+    }
+  }
+}

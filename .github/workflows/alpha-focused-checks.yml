@@ -15,6 +15,11 @@ on:
         description: JSON array of 1–64 tracked unit/DOM test paths; candidate classifier owns DB selection
         required: true
         type: string
+      employee_ascii_qualification:
+        description: Closed development-only employee ASCII semantic cell; requires the exact proof and product selectors
+        default: 'off'
+        type: choice
+        options: ['off', node22, node24]
       qualify_restricted_port_prerequisites:
         description: Opt-in exact581 populated restricted-port prerequisite rehearsal before migrations; requires real Personnel DB files and whole typecheck
         default: false
@@ -79,6 +84,7 @@ env:
   AIHR_CI_PG_JIT: 'on'
   AIHR_FOCUSED_PROFILE: ${{ inputs.profile_database }}
   AIHR_TEST_DURATION_ORDER: ${{ inputs.duration_order }}
+  AIHR_EMPLOYEE_ASCII_QUALIFICATION: ${{ inputs.employee_ascii_qualification || 'off' }}
   DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
   MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
   TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
@@ -133,6 +139,19 @@ jobs:
       AIHR_EVAL_BUDGET_USD: ${{ inputs.eval_budget_usd }}
       AIHR_EVAL_ALLOWED_PROVIDERS: ${{ inputs.eval_allowed_providers }}
     steps:
+      - name: Anchor first executable focused job step (not runner allocation time)
+        working-directory: ${{ runner.temp }}
+        run: |
+          python3 -I -B - <<'PYTHON'
+          import json, os, time
+          from pathlib import Path
+          start = str(time.monotonic_ns())
+          anchor = {'version': 1, 'run': os.environ['GITHUB_RUN_ID'], 'attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+                    'job': os.environ['GITHUB_JOB'], 'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip(), 'startNs': start, 'wallTimeNs': str(time.time_ns())}
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('AIHR_FOCUSED_JOB_MONOTONIC_NS=' + start + '\n')
+              output.write('AIHR_FOCUSED_JOB_ANCHOR=' + json.dumps(anchor, separators=(',', ':')) + '\n')
+          PYTHON
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.workflow_sha }}
@@ -145,12 +164,21 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
-        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
+        with:
+          capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"
+          node: "${{ inputs.employee_ascii_qualification == 'node24' && '24.22.1' || '22.23.3' }}"
       - name: Provision multilingual fonts for AI review screenshots
         if: ${{ contains(inputs.selected_tests, 'test/ai-management-naming.dom.test.tsx') || contains(inputs.selected_tests, 'test/ai-probe-history-page.dom.test.tsx') || contains(inputs.selected_tests, 'test/feedback-kanban.dom.test.tsx') || contains(inputs.selected_tests, 'test/security-center-sidebar.dom.test.tsx') }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk
+      - name: Provision native readiness witness prerequisite
+        # Fixed official distro package; no arbitrary package/URL input.
+        if: ${{ contains(fromJSON(needs.resolve.outputs.tests), 'test/runtime-ready-admission-native.test.ts') }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends nginx
+          dpkg-query -W -f='${Package} ${Version}\n' nginx
       - name: Classify and execute only selected files
         run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"
         env:
@@ -158,15 +186,25 @@ jobs:
       - name: Summarize opt-in harness phase timings
         if: ${{ always() && inputs.profile_database }}
         run: node scripts/report-test-profile.mjs "$RUNNER_TEMP/aihr-focused/harness-profile" "$RUNNER_TEMP/aihr-focused/profile-summary.json"
-      - name: Ensure owned database cleanup after interrupted checks
+      - name: Ensure owned resource settlement after interrupted checks
         if: always()
-        run: bash ../automation/.github/ci/postgres.sh stop
+        run: |
+          if [ "$AIHR_RESOLVED_FOCUSED_TESTS" = '["test/compiler-native-reference-fixture.test.ts"]' ]; then
+            node ../automation/.github/ci/focused-checks.mjs compiler-settled "$RUNNER_TEMP/aihr-focused"
+          elif [ "$AIHR_RESOLVED_FOCUSED_TESTS" = '["test/compiler-native-application-inventory.test.ts"]' ]; then
+            node ../automation/.github/ci/focused-checks.mjs compiler-settled "$RUNNER_TEMP/aihr-focused"
+          elif [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-purpose-plan.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-benchmark-owner-native.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-owner-factory.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-exact-ascii-purpose.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-exact-ascii-plan.test.ts"]' ]; then
+            node ../automation/.github/ci/focused-checks.mjs cleanup "$RUNNER_TEMP/aihr-focused"
+          else
+            bash ../automation/.github/ci/postgres.sh stop
+          fi
         env:
-          AIHR_CI_UNIT: db-1
+          AIHR_RESOLVED_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
+          AIHR_CI_UNIT: ${{ needs.resolve.outputs.tests != '["test/compiler-native-reference-fixture.test.ts"]' && needs.resolve.outputs.tests != '["test/compiler-native-application-inventory.test.ts"]' && 'db-1' || '' }}
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: focused-development-evidence
+          name: ${{ inputs.employee_ascii_qualification == 'node22' && 'employee-ascii-qualification-node22' || inputs.employee_ascii_qualification == 'node24' && 'employee-ascii-qualification-node24' || 'focused-development-evidence' }}
           path: ${{ runner.temp }}/aihr-focused/
           if-no-files-found: error
           retention-days: 14

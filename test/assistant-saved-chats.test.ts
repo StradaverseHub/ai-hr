@@ -58,6 +58,13 @@ describe('saved owned chats',()=>{
   const opened=await loadOwnAssistantChat(ctx,{exchangeId:second.exchangeId});expect(opened.turns.map(turn=>turn.id)).toEqual([first.exchangeId,second.exchangeId]);expect(opened.resume?.exchangeId).toBe(second.exchangeId);expect(opened.turns.every(turn=>turn.answer===null)).toBe(true);
   const context=await ownAssistantConversationContext(ctx,second.exchangeId,'Hello',opened.resume!.conversationToken);expect(context.questions).toEqual(['Hello','Thanks']);
  });
+ it('resumes an owned saved chat while another read holds shared Access',async()=>{
+  const {ctx}=await actor(),id=await row(ctx);
+  await owner.db.transaction(async tx=>{
+   await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+ctx.tenantId},0))`);
+   await expect(resumeOwnAssistantConversation(ctx,id)).resolves.toMatchObject({exchangeId:id,threadId:id});
+  });
+ });
  it('keeps authoritative parent order when equal timestamps would put the child UUID first, including paged history',async()=>{
   const {ctx}=await actor(),askedAt=new Date(Date.now()-1000),parentId='ffffffff-ffff-4fff-8fff-ffffffffffff',childId='00000000-0000-4000-8000-000000000001';
   const parent=await row(ctx,{id:parentId,askedAt}),child=await row(ctx,{id:childId,threadId:parent,parent,askedAt});

@@ -1,0 +1,13 @@
+{
+  "kind": "STATIC_EXACT_LEGACY_FIXTURE_EXTRACTION_NOT_RUNTIME",
+  "base": "315467b94d49011ba367a54c46a4eaa2e90b8a8a",
+  "originalSourceSha256": "7a935b0eee7932838713d08183eaf39f96594695271fb2fc94c3f3542aae7ff5",
+  "inverseExact": true,
+  "originalNativeCases": 16,
+  "newNativeRequalificationRequired": true,
+  "sourceSha256": {
+    "test/prototypes/rewards-audited-read-owner.ts": "a04cb932f7e393969376751eb2f70774d51c76ed96ed05af285b964ff1cde36c",
+    "test/prototypes/rewards-audited-read-owner-factory.ts": "a7788b3bfe779a5f42a4914ff7418e3ac31dfbd435bd4ce5ee53f9739b368b40",
+    "docs/qualification/rewards-audit-owned-factory-extraction-20261108.md": "4627cad7d6c28fe11fcf368adee31861e8ef633ab59df03dcc7a52d44a66da47"
+  }
+}

@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { desc, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { JOBS, JOB_KEYS, jobOutcome, recordJobRun } from '../core/job-run';
+import { JOBS, JOB_KEYS, jobOutcome, recordJobRun, startJobRun, completeJobRun } from '../core/job-run';
 import { closeAll, migrateTestDb, owner, resetDb } from './harness';
 
 const runsFor = (jobKey: string) =>
@@ -72,6 +72,31 @@ describe('0280 — job_run recorder', () => {
     expect(Number.isInteger(row.result?.forfeited)).toBe(false);
   });
 
+  it('leaves a durable unfinished start after a worker disappears, then permits exactly one matching completion', async () => {
+    const started = await startJobRun(owner.db, 'notifications.project', { identityVerified: 0, capabilityVersion: 1 });
+    const [unfinished] = await runsFor('notifications.project');
+    expect(unfinished).toMatchObject({id: started.id, outcome: 'running', durationMs: null, result: {identityVerified: 0, capabilityVersion: 1}});
+    const terminal = {outcome: 'partial' as const, tenantsProcessed: 2, tenantsFailed: 1,
+      result: {identityVerified: 0, capabilityVersion: 1, processedEvents: 1000, createdNotifications: 4}, error: 'Projection batch failed.'};
+    await expect(completeJobRun(owner.db, {...started, jobKey: 'review.sweep'}, terminal)).rejects.toThrow('completion was not recorded');
+    expect((await runsFor('notifications.project'))[0].outcome).toBe('running');
+    await completeJobRun(owner.db, started, terminal);
+    const [finished] = await runsFor('notifications.project');
+    expect(finished).toMatchObject({id: started.id, outcome: 'partial', tenantsProcessed: 2, tenantsFailed: 1, result: terminal.result});
+    expect(finished.durationMs).toBeGreaterThanOrEqual(0);
+    await expect(completeJobRun(owner.db, started, {...terminal, outcome: 'success'})).rejects.toThrow('completion was not recorded');
+    expect((await runsFor('notifications.project'))[0].outcome).toBe('partial');
+  });
+
+  it('does not fabricate a start or completion when evidence persistence fails', async () => {
+    const refusingStart = {insert: () => ({values: () => ({returning: () => Promise.reject(new Error('start unavailable'))})})} as unknown as Parameters<typeof startJobRun>[0];
+    await expect(startJobRun(refusingStart, 'notifications.project', {})).rejects.toThrow('start unavailable');
+    const started = await startJobRun(owner.db, 'notifications.project', {identityVerified: 0});
+    const refusingFinish = {update: () => ({set: () => ({where: () => ({returning: () => Promise.reject(new Error('finish unavailable'))})})})} as unknown as Parameters<typeof completeJobRun>[0];
+    await expect(completeJobRun(refusingFinish, started, {outcome: 'success', tenantsProcessed: 0, tenantsFailed: 0, result: {identityVerified: 0}})).rejects.toThrow('finish unavailable');
+    expect((await runsFor('notifications.project'))[0]).toMatchObject({outcome: 'running', durationMs: null});
+  });
+
   it('classifies the outcome from the per-tenant failure counter', () => {
     expect(jobOutcome(4, 0)).toBe('success');
     expect(jobOutcome(4, 1)).toBe('partial');
@@ -128,6 +153,7 @@ describe('0280 — job_run recorder', () => {
         'replacement-holidays.reconcile',
         'reports.employee-master.deliver',
         'review.sweep',
+        'notifications.project',
         'usage.capture',
       ].sort(),
     );

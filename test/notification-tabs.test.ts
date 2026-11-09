@@ -16,7 +16,7 @@ import type { SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { requestLeave } from '../core/leave';
 import { listPendingTasks, pendingApprovalsCount } from '../core/approvals-inbox';
-import { listNotifications, markNotificationRead, unreadNotificationCount } from '../core/notifications';
+import { listNotifications, markNotificationRead, notificationBellSummary, unreadNotificationCount } from '../core/notifications';
 import { listPendingReplacementLeaveRequests, listPendingReplacementLeaveTasks } from '../packs/leave/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -234,12 +234,15 @@ describe('notification read filters (Notification / Task / History split)', () =
     // History tab: nothing read yet.
     expect(await listNotifications(A.ctx, undefined, { read: true })).toHaveLength(0);
 
+    expect(await notificationBellSummary(A.ctx)).toEqual({ unread: 2, taskCount: 1, items: notifTab, tasks: taskTab, read: [] });
+
     // Completing the task notice (mark read) moves it to History and off the Task badge…
     await markNotificationRead(A.ctx, taskTab[0].id);
     expect(await unreadNotificationCount(A.ctx, undefined, { action: true })).toBe(0);
     expect((await listNotifications(A.ctx, undefined, { read: false, action: true }))).toHaveLength(0);
     const history = await listNotifications(A.ctx, undefined, { read: true });
     expect(history.map((n) => n.title)).toEqual(['Do something']);
+    expect(await notificationBellSummary(A.ctx)).toEqual({ unread: 2, taskCount: 0, items: notifTab, tasks: [], read: history });
     // …without touching the Notification-tab unread count (History never affects it).
     expect(await unreadNotificationCount(A.ctx, undefined, { action: false })).toBe(2);
   });

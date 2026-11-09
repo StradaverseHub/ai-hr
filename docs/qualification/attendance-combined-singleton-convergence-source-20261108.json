@@ -1,0 +1,37 @@
+{
+  "kind": "ATTENDANCE_COMBINED_SINGLETON_SOURCE_CONVERGENCE_NOT_QUALIFICATION",
+  "parent": "7894ba4f96fef47e057bf2ae6c90c5e1063b9715",
+  "sourceRef": "codex/architecture-live-baseline-integration-20261108",
+  "qualification": "NOT_RUN; root and independent source review before hosted controller/plan and sole native unit",
+  "isolatedComponentSource": "5771919656cea2ee96d8166e2430780d7f4538bf",
+  "nativeCases": 23,
+  "unchangedPureProcessCases": 13,
+  "profile": {
+    "version": 1,
+    "profile": "controlled-database-v1",
+    "workers": 1,
+    "isolation": "job-postgres-cluster"
+  },
+  "journalRows": 743,
+  "prefixRows": 707,
+  "nativeTestInverseExact": true,
+  "sqlAndOwnedHelpersChanged": false,
+  "sourceSha256": {
+    ".github/ci/singleton-protocol.mjs": "ba7011dc7bab01c2961f32cf11d95274b0470b1e754059b4b1001a4b6e840e91",
+    ".github/ci/singleton-profiles.test.mjs": "e418c4a605a1a16a5b3dfb3cb2eef0d63f3ae9244fe3dbe2af6830eea859e2fb",
+    "test/attendance-shared-submission-bridge.test.ts": "c7cea179862c2bb9d7ab5471cd628f3d20fca015a529a5aeecf35938d5937e7e",
+    "docs/qualification/attendance-combined-singleton-convergence-20261108.md": "905c7b120e9203fc9bdde284698f76f633f5a50175bc4f1a327a4a2af8f9255a"
+  },
+  "fullInstalled706or707ChainQualified": false,
+  "combinedNativeQualified": false,
+  "sourceManifestAndAiBindingCurrent": false,
+  "browserAndWorkerQualificationComplete": false,
+  "releaseAuthorized": false,
+  "productionHeld": true,
+  "reviewRecovery": {
+    "fixedMissingDirectAttendanceCommandOwner": "core/attendance.ts",
+    "boundDirectHrDateOwner": "lib/hr-date.ts",
+    "originalFinding": "Critical component-source coverage; whole-candidate source identity remained enforced",
+    "nativeSqlHelpersCasesAndBudgetsChanged": false
+  }
+}

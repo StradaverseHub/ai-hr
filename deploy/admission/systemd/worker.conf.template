@@ -1,0 +1,12 @@
+# Render only through the reviewed protected installer after root environment
+# ownership and existing unit identity have been verified. Keep stock ExecStart.
+[Unit]
+Wants=@@NGINX_UNIT@@
+After=@@NGINX_UNIT@@
+
+[Service]
+EnvironmentFile=-@@ENVIRONMENT_FILE@@
+ExecStartPre=+/usr/bin/python3 -I /usr/local/lib/aihr-admission/controller.py reserve @@UNIT@@
+ExecStartPost=+/usr/bin/python3 -I /usr/local/lib/aihr-admission/controller.py admit @@UNIT@@
+# Planned drain is deliberately NOT ExecStop: failure there cannot cancel stop.
+ExecStopPost=+/usr/bin/python3 -I /usr/local/lib/aihr-admission/controller.py cleanup @@UNIT@@

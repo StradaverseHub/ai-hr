@@ -18,8 +18,9 @@ export type InquiryEmployee = {
  * The reporter's order: Company A→Z, then Employee Name A→Z. Locale-aware and case-insensitive, because
  * "Acme" and "acme" landing in different halves of the list reads as a bug to the person scrolling it.
  */
-export function sortInquiryEmployees<T extends InquiryEmployee>(rows: T[], locale?: string): T[] {
-  const cmp = (a: string, b: string) => a.localeCompare(b, locale, { sensitivity: 'base' });
+export function sortInquiryEmployees<T extends Pick<InquiryEmployee,'employmentId'|'company'|'name'>>(rows: T[], locale?: string): T[] {
+  let compare:((a:string,b:string)=>number)|undefined;
+  const cmp = (a: string, b: string) => (compare??=new Intl.Collator(locale,{sensitivity:'base'}).compare)(a,b);
   return [...rows].sort((a, b) => cmp(a.company, b.company) || cmp(a.name, b.name) || a.employmentId.localeCompare(b.employmentId));
 }
 

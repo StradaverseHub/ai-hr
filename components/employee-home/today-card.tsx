@@ -7,6 +7,7 @@ import Link from 'next/link';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {IndependentHomeCard} from './home-card';
+import {useHomeInitialSharing} from './sharing-cohort';
 import {validateEmployeeHomeToday,type EmployeeHomeToday} from '@/lib/employee-home-today';
 import {liveClockSeconds} from '@/lib/clock-elapsed';
 import type {ClockingConfirmation} from '@/app/attendance/clock/clock-client';
@@ -20,6 +21,7 @@ const CanonicalClockFlow=dynamic(()=>import('@/app/attendance/clock/clock-client
  * canonical clock interaction mounts only after an explicit button press for this own employment. */
 export function HomeTodayCard({employmentId,employmentLabel,timeZone}:{employmentId:string;employmentLabel:string;timeZone:string}){
  const t=useTranslations('employeeHome.today'),clockText=useTranslations('attendance.clock'),locale=useLocale();
+ const subscribe=useHomeInitialSharing();
  const [revision,setRevision]=React.useState(0),[intent,setIntent]=React.useState<'in'|'out'|null>(null),[confirmed,setConfirmed]=React.useState<ClockingConfirmation|null>(null);
  const actionRef=React.useRef<HTMLButtonElement|null>(null),regionRef=React.useRef<HTMLDivElement|null>(null);
  const restoreFocus=React.useCallback(()=>{(actionRef.current??regionRef.current)?.focus();},[]);
@@ -27,6 +29,8 @@ export function HomeTodayCard({employmentId,employmentLabel,timeZone}:{employmen
   const response=await fetch('/api/home/today?'+new URLSearchParams({employmentId}),{signal,cache:'no-store',credentials:'same-origin'});
   if(!response.ok)throw Error('Your Day unavailable.');return validateEmployeeHomeToday(await response.json(),employmentId);
  },[employmentId]);
+ const initialRead=React.useCallback(async(signal:AbortSignal)=>subscribe
+  ?validateEmployeeHomeToday(await subscribe('today',signal,()=>read(signal)) as EmployeeHomeToday,employmentId):read(signal),[subscribe,read,employmentId]);
  React.useEffect(()=>{
   const refresh=()=>{if(document.visibilityState==='visible'&&intent===null)setRevision(value=>value+1);};
   const timer=setInterval(refresh,60000);window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
@@ -39,7 +43,7 @@ export function HomeTodayCard({employmentId,employmentLabel,timeZone}:{employmen
  return <>
   {confirmed&&<p role="status" className="mb-3 rounded-lg border p-3 text-sm">{clockText(confirmed.direction==='in'?'savedIn':'savedOut',{time:recorded!})}</p>}
   <IndependentHomeCard card="today" title={t('title')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}} regionRef={regionRef}
-   requestKey={`${employmentId}:${locale}:${revision}`} read={read}>{value=><TodayFacts value={value} timeZone={timeZone} onClock={start} actionRef={actionRef}/>}</IndependentHomeCard>
+   requestKey={`${employmentId}:${locale}:${revision}`} read={read} initialRead={revision===0?initialRead:undefined}>{value=><TodayFacts value={value} timeZone={timeZone} onClock={start} actionRef={actionRef}/>}</IndependentHomeCard>
   {intent&&<HomeClockDialog key={`${employmentId}:${intent}`} employmentId={employmentId} employmentLabel={employmentLabel} intent={intent} onSaved={complete} onClose={dismiss} onRestoreFocus={restoreFocus}/>}
  </>;
 }

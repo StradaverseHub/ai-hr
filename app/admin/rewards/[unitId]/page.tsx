@@ -26,7 +26,7 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
   const td=await getTranslations('rewardsDeletion'),tc=await getTranslations('rewardsConfig');
   const ta=await getTranslations('rewardsAccessControl'),tt=await getTranslations('rewardsAdminTabs');
   const v = await getRewardConfiguration(s, unitId);
-  const choices = await rewardSetupChoices(s, scopeIds);
+  const choices = await rewardSetupChoices(s, scopeIds, { fields: ['users'] });
   const { unit } = v;
   const senior = !readOnly && v.canConfigure ? await getRewardSeniorMembership(s, unitId) : null;
   const calendar = await getRewardCalendar(s, unitId);

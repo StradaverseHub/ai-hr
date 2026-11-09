@@ -33,9 +33,24 @@ export async function assistantLauncherFor(ctx: SessionContext): Promise<Omit<La
     const settings = readLauncherSettings(ctx);
     if (!settings.enabled) return null;
     if (!(await mayUseAssistant(ctx)).allowed) return null;
-    if (!(await withTenant(ctx, tx => resolveActiveAiConfig(tx, ctx)))) return null;
-    return { position: settings.position, hiddenAreas: settings.hiddenAreas };
+    return await configuredLauncher(ctx, settings);
   } catch { return null; }
+}
+
+async function configuredLauncher(ctx: SessionContext, settings: LauncherSettings) {
+  if (!settings.enabled || !(await withTenant(ctx, tx => resolveActiveAiConfig(tx, ctx)))) return null;
+  return { position: settings.position, hiddenAreas: settings.hiddenAreas };
+}
+
+/** The shell's navigation and launcher use one current grant result in this render. */
+export async function assistantShellFor(ctx: SessionContext) {
+  const allowed = await mayUseAssistant(ctx).then(access => access.allowed).catch(() => false);
+  if (!allowed) return { allowed, launcher: null };
+  try {
+    return { allowed, launcher: await configuredLauncher(ctx, readLauncherSettings(ctx)) };
+  } catch {
+    return { allowed, launcher: null };
+  }
 }
 
 export class LauncherSettingsError extends Error { constructor() { super('Invalid floating Assistant settings.'); this.name = 'LauncherSettingsError'; } }

@@ -274,6 +274,19 @@ export async function processedPeriodsTx(tx: Tx, employmentId: string): Promise<
   return rows.map((r) => r.period);
 }
 
+/** Movement history needs both payroll protection sets from the same observation. */
+export async function movementPayrollPeriodsTx(tx: Tx, employmentId: string) {
+  const rows = await tx
+    .selectDistinct({ period: payrollBatch.payPeriod, status: payrollBatch.status })
+    .from(payslip)
+    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+    .where(and(eq(payslip.employmentId, employmentId), inArray(payrollBatch.status, ['processed', 'closed'])));
+  return {
+    closed: rows.filter(row => row.status === 'closed').map(row => row.period),
+    processed: [...new Set(rows.map(row => row.period))],
+  };
+}
+
 /**
  * 'YYYY-MM' periods of CLOSED payroll runs that paid this employment. The Basic Salary card uses this
  * (with `overlapsClosedPeriod`) to decide which history rows are deletable — a record whose window a

@@ -12,7 +12,9 @@ describe('selected own claim form context',()=>{
  it('posts the selected subject with an existing draft and retains it on a refusal',async()=>{
   const action=vi.fn(async(_state:{error:string|null},data:FormData)=>{expect(data.get('employmentId')).toBe(employmentId);expect(data.get('draftId')).toBe('draft');return {error:'Fictional refusal'};});
   render(<NextIntlClientProvider locale="en" messages={en}><ClaimForm types={[type]} submitAction={action} todayUtc={today} employmentId={employmentId} draft={{id:'draft',claimTypeId:'type',claimItemId:null,amount:10,quantityKm:null,incurredOn:today,description:'Fictional saved draft'}}/></NextIntlClientProvider>);
-  fireEvent.submit(document.querySelector('form')!);await screen.findByText('Fictional refusal');
+  const form=document.querySelector('form[data-claim-form-ready="true"]');
+  expect(form).not.toBeNull();
+  fireEvent.submit(form!);await screen.findByText('Fictional refusal');
   await waitFor(()=>expect(action).toHaveBeenCalledOnce());expect((document.querySelector('input[name="employmentId"]') as HTMLInputElement).value).toBe(employmentId);expect(screen.getByDisplayValue('Fictional saved draft')).toBeTruthy();
  });
  it('leaves legacy forms without an explicit subject field',()=>{

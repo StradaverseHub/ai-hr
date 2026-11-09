@@ -7,14 +7,18 @@ import { createTranslator } from 'next-intl';
 import en from '../messages/en.json';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
-const ports = vi.hoisted(() => ({ list: vi.fn(), choices: vi.fn(), shared: vi.fn() }));
+const ports = vi.hoisted(() => ({ list: vi.fn(), choices: vi.fn(), shared: vi.fn(), memberships: vi.fn(), presentation: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en-GB', getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as 'rewards' }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: { tenantId: 'tenant', userId: 'actor' }, scopeIds: ['company'] }) }));
 vi.mock('../lib/session', () => ({ getSession: async () => ({ tenantId: 'tenant', userId: 'actor' }) }));
 vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupSetupCompanies: async () => [] }));
 vi.mock('../lib/authz', () => ({ requireModule: vi.fn() }));
-vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardCoverageForUnits: async () => [], rewardPolicyMemberships:vi.fn(async()=>[{companyId:'company',businessUnitId:'bu-1'},{companyId:'company',businessUnitId:'bu-2'}]),rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
+vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardCoverageForUnits: async () => [], rewardConfigurationListView: ports.presentation.mockImplementation(async (ctx: unknown, ids: string[], filter: Record<string,string>={}) => {
+  const all=await ports.list(ctx,ids);
+  const units=all.filter((u:typeof rows[number])=>(!filter.cycle||u.cycleId===filter.cycle)&&(!filter.company||u.companyId===filter.company)&&(!filter.unit||u.businessUnitId===filter.unit)&&(!filter.stage||u.status===filter.stage));
+  return {all,units,coverage:new Map()};
+}), rewardPolicyMemberships:ports.memberships.mockImplementation(async()=>[{companyId:'company',businessUnitId:'bu-1'},{companyId:'company',businessUnitId:'bu-2'}]),rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
 import AdminPage from '../app/admin/rewards/page';
@@ -163,5 +167,50 @@ describe('Shared configuration visibility (56595838)', () => {
     const row = screen.getAllByRole('row')[1];
     expect(within(row).getByText(/Group Standard 2026 · Version 3/)).toBeTruthy();
     expect(within(row).getByText('changed in this review')).toBeTruthy();
+  });
+});
+
+describe('Configuration page consumes only its rendered setup reads', () => {
+  const rejectUnusedReads = () => {
+    ports.memberships.mockClear().mockRejectedValue(new Error('Unused policy memberships must not load for this page'));
+    ports.shared.mockClear().mockRejectedValue(new Error('Unused shared policy contents must not load for this page'));
+    ports.choices.mockClear();ports.presentation.mockClear();ports.list.mockClear();
+  };
+  it('renders nonempty provenance, filters and the approved-plan link without unused native policy reads', async () => {
+    rejectUnusedReads();
+    ports.list.mockResolvedValue([{ ...rows[0], policyOrigin: { versionId: 'v', revision: 3, name: 'Group Standard 2026', changed: true } }, rows[1]]);
+    const filters = { cycle: 'cycle-1', company: 'company', unit: 'bu-1', stage: 'draft' };
+    render(wrap(await page(filters)));
+    expect(ports.choices).toHaveBeenCalledExactlyOnceWith({ tenantId: 'tenant', userId: 'actor' }, ['company'], { fields: [] });
+    // This proves the page still invokes its audited facade boundary, not native audit execution.
+    expect(ports.presentation).toHaveBeenCalledExactlyOnceWith({ tenantId: 'tenant', userId: 'actor' }, ['company'], filters);
+    expect(ports.list).toHaveBeenCalledExactlyOnceWith({ tenantId: 'tenant', userId: 'actor' }, ['company']);
+    expect(ports.memberships).not.toHaveBeenCalled();expect(ports.shared).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('row')).toHaveLength(2);
+    const row = screen.getAllByRole('row')[1];
+    expect(within(row).getByText('Sample Trading Sdn Bhd')).toBeTruthy();
+    expect(within(row).getByText('Northern Sales')).toBeTruthy();
+    expect(within(row).getByText('Group Standard 2026 · Version 3')).toBeTruthy();
+    expect(within(row).getByText('changed in this review')).toBeTruthy();
+    const form = screen.getByRole('form', { name: 'Filter reviews' });
+    for (const [name, value] of [['Review cycle', 'cycle-1'], ['Company', 'company'], ['Business unit', 'bu-1'], ['Approval stage', 'draft']]) {
+      expect(within(form).getByRole<HTMLSelectElement>('combobox', { name }).value).toBe(value);
+    }
+    expect(within(form).getByRole('option', { name: 'Precast' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Create annual reviews from an approved Rewards plan' }).getAttribute('href')).toBe('/admin/rewards/plans');
+  });
+  it('still invokes the audited list facade for empty company choices without unused native policy reads', async () => {
+    rejectUnusedReads();
+    ports.choices.mockResolvedValue({ companies: [], units: [], users: [], cycles: [] });
+    ports.list.mockResolvedValue([]);
+    render(wrap(await page({})));
+    expect(ports.choices).toHaveBeenCalledExactlyOnceWith({ tenantId: 'tenant', userId: 'actor' }, ['company'], { fields: [] });
+    expect(ports.presentation).toHaveBeenCalledExactlyOnceWith({ tenantId: 'tenant', userId: 'actor' }, [], {});
+    expect(ports.list).toHaveBeenCalledExactlyOnceWith({ tenantId: 'tenant', userId: 'actor' }, []);
+    expect(ports.memberships).not.toHaveBeenCalled();expect(ports.shared).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('row')).toHaveLength(1);
+    expect(screen.getByText('No review cycles have been configured for your company scope.')).toBeTruthy();
+    expect(screen.queryByRole('form', { name: 'Filter reviews' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Create annual reviews from an approved Rewards plan' }).getAttribute('href')).toBe('/admin/rewards/plans');
   });
 });

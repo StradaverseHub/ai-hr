@@ -4,12 +4,12 @@ import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { attendanceMonthSummary } from '@/core/attendance';
+import { attendanceMonthSummaryPage } from '@/packs/attendance/service';
 import { Card, EmployeeName, ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { OtReportExport } from '@/components/ot-report-export';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 import { Pager } from '@/components/pager';
-import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { parsePageQuery } from '@/lib/pagination';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -59,9 +59,8 @@ export default async function AttendancePage({
   const sp = await searchParams;
   const todayIso = todayInKualaLumpur();
   const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : todayIso.slice(0, 7);
-  const summary = await attendanceMonthSummary(s, { month, companyIds: scopeIds, today: todayIso });
+  const summaryPage = await attendanceMonthSummaryPage(s, { month, companyIds: scopeIds, today: todayIso, page: parsePageQuery(sp) });
   const monthHref = (m: string) => `/attendance?month=${m}`;
-  const summaryPage = paginateRows(summary, parsePageQuery(sp));
   const isAdmin = (s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
 
   return (

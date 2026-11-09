@@ -1,0 +1,24 @@
+{
+  "kind": "DEVELOPMENT_ONLY_COMPILER_CONTROLLER_MODELS",
+  "base": "7106fb2fdc74e0faa2d28ee653fc1da3055cca29",
+  "sourceRef": "codex/compiler-controller-focused-controls-20261108",
+  "selectors": [
+    "test/compiler-diagnostic-controller.test.ts"
+  ],
+  "nativeSuites": [
+    ".github/ci/diagnostics/compiler-boundary.test.mjs",
+    ".github/ci/diagnostics/compiler-attribution.test.mjs",
+    ".github/ci/diagnostics/compiler-incremental.test.mjs"
+  ],
+  "applicationOrCompilerExperimentChanged": false,
+  "ordinaryCompilerQualified": false,
+  "releaseAuthorized": false,
+  "qualification": "NOT_RUN",
+  "sourceSha256": {
+    "test/compiler-diagnostic-controller.test.ts": "3418b382950b321709e4aeb526554fa38448f8451ccf979d4c5a94150bd64c73",
+    ".github/ci/diagnostics/compiler-boundary.test.mjs": "294772128b541fb349112a904dd484a6c1600c2dc03a96c9095215a17710895d",
+    ".github/ci/diagnostics/compiler-attribution.test.mjs": "50f86f858f5052215b2902d28207c2d2e1c3ee5ce580e3034991f464046da235",
+    ".github/ci/diagnostics/compiler-incremental.test.mjs": "65258d46dd42c8bee389bbd761e777f4f3b074bd7b9fe8a6743c13b3f198471d",
+    "docs/qualification/compiler-controller-focused-controls-20261108.md": "d5622954eb8951b4ea4ce0fb10b2b19f3b76c07631371e866ae3c66ec79af22c"
+  }
+}
