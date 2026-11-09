@@ -16,13 +16,17 @@ type Reader = Pick<postgres.Sql, 'unsafe'>;
 const ledger = (client: Reader) => client.unsafe<{ hash: string; created_at: string }[]>(
   'select hash, created_at::text from drizzle.__drizzle_migrations order by id');
 const boundary = async (client: Reader) => (await client.unsafe(`select
+  pg_has_role('ai_hr_owner','ai_hr_reward_setup_reader','MEMBER') as owner_member,
   pg_has_role('ai_hr_owner','ai_hr_reward_setup_reader','USAGE') as inherited,
   pg_has_role('ai_hr_owner','ai_hr_reward_setup_reader','SET') as settable,
   pg_has_role('ai_hr_app','ai_hr_reward_setup_reader','MEMBER') as app_member,
   has_schema_privilege('ai_hr_reward_setup_reader','app','CREATE') as schema_create,
   exists(select 1 from pg_roles where rolname='ai_hr_owner' and rolcanlogin
-    and not (rolsuper or rolcreaterole or rolbypassrls)) as restricted_owner`))[0];
-const closedBoundary = { inherited: false, settable: false, app_member: false, schema_create: false, restricted_owner: true };
+    and not (rolsuper or rolcreatedb or rolcreaterole or rolreplication or rolbypassrls)) as restricted_owner,
+  exists(select 1 from pg_roles where rolname='ai_hr_reward_setup_reader'
+    and not (rolcanlogin or rolsuper or rolcreatedb or rolcreaterole or rolreplication or rolbypassrls)) as restricted_writer`))[0];
+const closedBoundary = { owner_member: false, inherited: false, settable: false, app_member: false,
+  schema_create: false, restricted_owner: true, restricted_writer: true };
 const writer = async (client: Reader, name: 'reward_create_planned_unit' | 'reward_create_planned_unit_bound') =>
   (await client.unsafe(`select p.oid::text as oid, p.prosrc as body, p.prosecdef as definer,
     pg_get_userbyid(p.proowner) as owner, has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_execute,
@@ -71,6 +75,9 @@ export async function rehearseRewardsCreatorOwnerUpgrade(
   const initial = [...await ledger(fixture)];
   expect(initial).toHaveLength(boundaryIndex);
   expect(initial.at(-1)?.created_at).toBe('1793330003602');
+  expect(initial).toEqual(staged.slice(0,boundaryIndex).map(({tag,when}:{tag:string;when:number})=>({
+    hash:createHash('sha256').update(readFileSync(join(directory,`${tag}.sql`))).digest('hex'),created_at:String(when),
+  })));
   const original = await writer(fixture, 'reward_create_planned_unit');
   expect(original).toMatchObject({ owner: 'ai_hr_reward_setup_reader', definer: true, app_execute: true, public_execute: false });
   expect(await writer(fixture, 'reward_create_planned_unit_bound')).toBeUndefined();
@@ -96,7 +103,7 @@ export async function rehearseRewardsCreatorOwnerUpgrade(
         expect(await boundary(tx)).toEqual(closedBoundary);
         await tx`grant ai_hr_reward_setup_reader to ai_hr_owner with inherit true, set true, admin false`;
         await tx`grant create on schema app to ai_hr_reward_setup_reader`;
-        expect(await boundary(tx)).toEqual({ ...closedBoundary, inherited: true, settable: true, schema_create: true });
+        expect(await boundary(tx)).toEqual({ ...closedBoundary, owner_member: true, inherited: true, settable: true, schema_create: true });
         expect(await boundary(observer)).toEqual(closedBoundary);
         await tx`set local role ai_hr_owner`;
         const [actor] = await tx`select current_user as effective`;
@@ -107,6 +114,10 @@ export async function rehearseRewardsCreatorOwnerUpgrade(
         await tx`revoke ai_hr_reward_setup_reader from ai_hr_owner`;
         expect(await boundary(tx)).toEqual(closedBoundary);
         expect(await ledger(tx)).toEqual([...initial, ...expectedTail]);
+        expect(await writer(tx, 'reward_create_planned_unit_bound')).toEqual({ ...original, app_execute: false });
+        expect(await writer(tx, 'reward_create_planned_unit')).toMatchObject({
+          owner: 'ai_hr_reward_setup_reader', definer: true, app_execute: true, public_execute: false,
+        });
       });
     },
   });
