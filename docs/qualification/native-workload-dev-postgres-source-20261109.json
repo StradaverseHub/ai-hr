@@ -1,0 +1,244 @@
+{
+  "kind": "DORMANT_NATIVE_WORKLOAD_DEV_POSTGRES_SOURCE_ONLY",
+  "parent": "6573b4c68e5846e96a96df757623406ead13eb77",
+  "sourceRef": "codex/native-workload-dev-postgres-20261109",
+  "design": {
+    "bytes": 14837,
+    "sha256": "4d2f693ed1fedc7ae273d724d50f7aaab31459538810f258bbde19919dee5fbe"
+  },
+  "designSourceData": {
+    "bytes": 9316,
+    "sha256": "a1aa7f2f4fde39eb45e60432c1251e678c4513216746ff436d264c0e7ce93a2f"
+  },
+  "scope": {
+    "database": "ai_hr_dev",
+    "host": "127.0.0.1",
+    "port": 5433,
+    "profileProposal": "linux-next-workload-dev-postgres-v1",
+    "hba": {
+      "bytes": 248,
+      "sha256": "1caaff1bdf965f2366636d60ac6f93ccc2d4de0a12b690e340dae3cadba4a945"
+    },
+    "existingTestWorkerHbaWhole": {
+      "bytes": 296,
+      "sha256": "c3ba3db9759c83063574fa8024458c260f6a4d008914a4c1c3e66de3e86ad524"
+    },
+    "registered": false,
+    "physicalAdmissionCreated": false,
+    "executesSql": false,
+    "issuesCredentials": false,
+    "payloadScope": "Closed private evidence shapes only, with no native receipt or public row or credential projection."
+  },
+  "physicalProofInterfaces": {
+    "separate": "Per-job source and physical birth, before/after TCP sessions, effective ACL and SCRAM kind, bounded statistics, SQLSTATE refusals and terminal physical settlement.",
+    "crossBinding": "Native database OID, observer role OID, loopback tuple and backend birth stay in private adjudication.",
+    "statistics": "Same actual dev OID and workload app role. Bounded numeric counts only.",
+    "observerTemporaryPrivilege": "Expected false in actual effective PostgreSQL privileges. Native TEMP refusal with read/write-capable transaction and SQLSTATE 42501 is pending. If PUBLIC grants TEMP, the separately reviewed activation owner may revoke only the disposable database PUBLIC TEMP edge after checking the canonical existing owners.",
+    "statements": {
+      "session": {
+        "bytes": 1044,
+        "sha256": "f10c7459994261f9e11f59f295163ad3831783df37f7499d638cd43e5ea934e7"
+      },
+      "passwordKinds": {
+        "bytes": 424,
+        "sha256": "07ddc154a110ce66a41d193cf7b44224f2ad257f65f617cd7e9164f1633423df"
+      },
+      "observerAcl": {
+        "bytes": 3580,
+        "sha256": "0ae8dbc0c7c8e446c45524d22a44712520abab217d2c5ba4e0b2b02891b0fb0e"
+      },
+      "statistics": {
+        "bytes": 599,
+        "sha256": "af30df90f4c89a8365e7f26874441008efcb7ad407c2d64bbae5b379dc44a9c0"
+      }
+    },
+    "sourceModelCases": [
+      "dev realm HBA has exact physical scope and preserves the old test worker HBA bytes",
+      "private credential grammar refuses any other transport, target, slot or reused password without returning credentials",
+      "SCRAM verifier observation consists of exactly three booleans and never verifier strings",
+      "independent physical birth must bind exact source, controller, first attempt, run, unit and dev HBA",
+      "owner, RLS app and stats roles must use stable distinct dev TCP connections on both observations",
+      "observer requires held repeatable read, read-only, connection cap and short statement and lock limits",
+      "effective observer ACL refuses PUBLIC TEMP, unsafe role edges, table or definer rights and absent reset evidence",
+      "ACL observations are bound to the held database and role and refuse unknown inventory bounds",
+      "only closed same-realm aggregate app observations with positive live activity can be retained",
+      "actual refusal categories distinguish wrong auth, foreign realm and server-denied privileges",
+      "successful observation cannot replace cleanup tied to the held physical birth",
+      "native observation statements are finite reads and expose no password or query text"
+    ]
+  },
+  "protectedParentSources": {
+    ".github/ci/native-workload-postgres.mjs": {
+      "bytes": 11963,
+      "sha256": "3d5455973ec501a2c9288170e3f6fde4ad7ad386e0ae09a472169a841a9122e6",
+      "gitBlob": "d55966ee1cb57464332206c818971291834f0f52"
+    },
+    ".github/ci/postgres.sh": {
+      "bytes": 6392,
+      "sha256": "c399f0dfc5da953ef8eda084dba33eb5b2466feaa235aadd77f3dec3fe587a70",
+      "gitBlob": "0e33bef9c68b08edfed5d2d44361396f952943a3"
+    },
+    ".github/ci/postgres-evidence.mjs": {
+      "bytes": 6028,
+      "sha256": "97a35b219278f51b39b7a48d351c100e51c6bcbe82f99174300b810b8e1243fb",
+      "gitBlob": "f6b266cff6afdb2bc3ac744a74e82c68fc783980"
+    },
+    ".github/ci/run-unit.mjs": {
+      "bytes": 29048,
+      "sha256": "d9c92b46ebd61ed79675d6dc3c5bde555b190c6c445234d91cc1bd1a02d031bf",
+      "gitBlob": "b467bfd6588355001a379fe3f89fb4325f919dd8"
+    },
+    ".github/ci/singleton-protocol.mjs": {
+      "bytes": 102406,
+      "sha256": "c3693c3b056f00936c7c203045d282a27033faaea2eaddcd26df6225330f3852",
+      "gitBlob": "a0338438ed3d1967a66733dabf70b44c81350c42"
+    },
+    ".github/ci/singleton-profiles.mjs": {
+      "bytes": 4464,
+      "sha256": "894897870d228b4a2ab9571d869965eb1742f138dcf74a9c0e1f4145b311cc0e",
+      "gitBlob": "53b135af127daf8c42929f2191062be7528c2ee2"
+    },
+    ".github/ci/unit-report-directories.mjs": {
+      "bytes": 6690,
+      "sha256": "04ebadc8bb8860206f1dca54b26d8668f959d6cf5785284c0a6d56a2ef31e8a0",
+      "gitBlob": "35c171ee37155ac7c2a410701ab5156ad3cde0fd"
+    },
+    ".github/ci/verify-shards.mjs": {
+      "bytes": 8071,
+      "sha256": "6f2720765096bfa74dc01030f06a67aa1644488cc6030e7f3be101a8e333662e",
+      "gitBlob": "baa41b5ec6167445ab212f31455c078638de3b36"
+    },
+    ".github/ci/singleton-commissioning.mjs": {
+      "bytes": 7342,
+      "sha256": "45e589f8830f9c1e3bbd0bab2a9aae69e5d77a0cab096733731b5d012c38dec1",
+      "gitBlob": "7b657c8796172e03104c4f4a3a52d338217c340c"
+    },
+    "scripts/migrate-with-focused-prerequisites.ts": {
+      "bytes": 4779,
+      "sha256": "e04753c8b0cc288ddec2bc86dafeda9fbea64e334de8eadcb0aed77fbc5e14aa",
+      "gitBlob": "38bde2e2f1be2d3618ffded606a10142fcc40acf"
+    },
+    "scripts/lib/discard-premigration.ts": {
+      "bytes": 21845,
+      "sha256": "049d86857e876410905d94f13f717a0a00a5956c9e0166ba4d00376451884504",
+      "gitBlob": "bd782021a671512633ddf2709014fe0378d89e51"
+    },
+    "test/helpers/personnel-draft-discard-ci-role-fixture.ts": {
+      "bytes": 13809,
+      "sha256": "1e7372f0e2e02770258a91b423466e4ec3a137a0677db961d369e0117aa1470f",
+      "gitBlob": "ae659f66fbc3bae02f5bc285d8673de8af5e95be"
+    },
+    "test/helpers/ci-singleton-admission.ts": {
+      "bytes": 6553,
+      "sha256": "17601d7d4ccb0c6dc7b7b9f856172a825a47f4d842bbc3ca0f2d07f3da0dcb4c",
+      "gitBlob": "477a939b693724acc1f3da626550b3fd229bec17"
+    },
+    "test/runtime-next-workload-database-native.test.ts": {
+      "bytes": 5604,
+      "sha256": "f8932550942a71df877e55d0d44b601c250313429849968b5bec35f97e25453f",
+      "gitBlob": "7cbe218a40f0b81439753c556f61c6ec9cd73f06"
+    },
+    "scripts/provision-organisation-admission.ts": {
+      "bytes": 1289,
+      "sha256": "f410acace09be346343873b336f008e64c96bd972cfe0983c057bbaeee89da97",
+      "gitBlob": "debd781c8291387d3c54c828a80d0ca8eb8a1cc7"
+    },
+    "scripts/seed-catalogs.ts": {
+      "bytes": 10829,
+      "sha256": "67e3d5bf3164fcc4eb839eae64c22373009843f2372a34166cef32bddb3199d7",
+      "gitBlob": "9b120ff7c3def224426400a5f174f2dce65f1f38"
+    },
+    "scripts/performance/system-fixture-owner.mjs": {
+      "bytes": 31589,
+      "sha256": "5c8a031a3dd78cea4f9fa67a3e0426855f37383dd38e2680bd2fb219273f8659",
+      "gitBlob": "e7b8f59a638cb9a35b97d791885e0c476ab676d9"
+    },
+    "scripts/performance/system-fixture.mjs": {
+      "bytes": 109,
+      "sha256": "fc2e253251b3252181c256dc8d6266775bd725bbd409ed7b46c0bce7b2b17afd",
+      "gitBlob": "baff3eaa94642dab1d1c489df634f47d3d4bde21"
+    },
+    "scripts/performance/system-runner.mjs": {
+      "bytes": 18638,
+      "sha256": "3a7a78372799134475fc7b9566ddfe0967d9584ee3e342c184000a64ae77938a",
+      "gitBlob": "ee70888c4fda1d11afd1b839286b527f8744b26e"
+    },
+    "scripts/performance/system-load-owner.mjs": {
+      "bytes": 106447,
+      "sha256": "097e895e625c37c9712873f57a4b12a9979904c724c1d359418320d3a501f6d2",
+      "gitBlob": "93d41a0ba72f505e4175379e85b243941ed957e2"
+    },
+    "test/harness.ts": {
+      "bytes": 50733,
+      "sha256": "2d8635bdd5223597369b4977cda4022dd202f9b7963eb463fed924ef33cc3825",
+      "gitBlob": "29f0979b6bcb3e59ebe780f41c2c07e548810182"
+    },
+    "db/client.ts": {
+      "bytes": 22595,
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f",
+      "gitBlob": "0c4f28e00393a763608b506d608a3cf7df542c57"
+    },
+    "core/audit-chain.ts": {
+      "bytes": 8070,
+      "sha256": "af10603553bd2e43ac779813b69ae5933cc36b7e5b522d1a602cf97d7a0cfa38",
+      "gitBlob": "73ab20d4e290af320491185849dff8100ba66fb7"
+    },
+    "scripts/performance/lock-failure-log.mjs": {
+      "bytes": 2413,
+      "sha256": "92646520ec54861841d1aaf1ee676b26eb7a72898eb23ad2b6176191fae1835f",
+      "gitBlob": "c12d2d617024f0738a9e76e291522298b03affa0"
+    }
+  },
+  "sourceChanges": {
+    ".github/ci/native-workload-dev-postgres.mjs": {
+      "parent": null,
+      "current": {
+        "bytes": 15445,
+        "sha256": "90befe5cb578622bfbc52987d655b8334a11c62659a30d2b1c33e242c7d21bea",
+        "gitBlob": "e7e3de630bd61ef8abe32232b23b6d6de6a1bf77"
+      }
+    },
+    ".github/ci/native-workload-dev-postgres.test.mjs": {
+      "parent": null,
+      "current": {
+        "bytes": 11159,
+        "sha256": "7c60c3f4436b0c35b4368e317acb9223f0ee83c5b2b9078abf368f8d5fbd02d6",
+        "gitBlob": "503b85656efaccb193ff9f21d9843024caa37ec7"
+      }
+    }
+  },
+  "retainedDistinct705": {
+    "focusedModels": {
+      "run": 42559660509,
+      "actualCases": 52,
+      "nativeQualification": false,
+      "seal": {
+        "bytes": 6152,
+        "sha256": "fa17b8239a4e54be87bbd7d3936614473f48577d577af675d8e178a1006241bd"
+      }
+    },
+    "controllerFailure": {
+      "run": 42560252841,
+      "conclusion": "failure",
+      "seal": {
+        "bytes": 12448,
+        "sha256": "8c45d0de16d3b66ba082c48b40ccb43ae043943a11e1c48058a24a99e7b550ce"
+      }
+    }
+  },
+  "protectedActivationPending": [
+    "Reviewed independent existing custody qualification, protected exact plan/source/producer/physical Docker identity and fixed scope",
+    "Native HBA and role setup with real TCP and exact effective ACL catalogue including PUBLIC and inherited paths",
+    "Canonical pre-migration role, journal/migration, organisation and seed owners with scoped app positive and negative witnesses",
+    "Actual statement and lock timeout, independent fixed read outcomes, native negative SQLSTATEs and closed resource settlement",
+    "Closed root statistics/phase-reset and separately scoped product-persistence ownership outside the driver",
+    "New sole fixed native registration and authenticated actual native receipt, separate from full browser or load"
+  ],
+  "qualification": {
+    "modelsExecuted": false,
+    "sqlExecuted": false,
+    "nativeEvidence": false,
+    "published": false,
+    "releaseEligible": false
+  }
+}
