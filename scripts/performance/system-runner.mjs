@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
-import {mkdirSync,writeFileSync,readFileSync,copyFileSync,readdirSync,openSync,closeSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,copyFileSync,readdirSync,openSync,closeSync,lstatSync,realpathSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import https from 'node:https';
 import http from 'node:http';
@@ -12,7 +12,8 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {postgresLockFailures} from './lock-failure-log.mjs';
 import {admissionFailureMarkers} from './admission-failure-log.mjs';
 import {runtimeAcceptance} from './runtime-acceptance.mjs';
-import {createDriverFailures,createDriverSockets,validateDevelopmentMeasurement} from './driver-shutdown.mjs';
+import {createDriverFailures,createDriverSockets,validateDevelopmentMeasurement,DEVELOPMENT_DOCKER_COMMAND,
+ developmentDockerContext,developmentPostgresBirthId,developmentPostgresSettlement} from './driver-shutdown.mjs';
 import {systemBuildEnvironment} from './build-environment.mjs';
 import {isolatedWorkerBudget,isolatedWorkerCpuAdmission} from './worker-budget.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
@@ -46,7 +47,10 @@ const measureDevelopment=['workflow-preflight','whole-system'].includes(env.PERF
 const measurementIdentity={candidateSha:sha,controllerSha:report.controller,runId:Number(report.run),
  runAttempt:Number(process.env.GITHUB_RUN_ATTEMPT),suite:env.PERF_HTTP_SUITE};
 const measurement=measureDevelopment?report.developmentMeasurement={kind:'DEVELOPMENT_BROWSER_RUNNER_MEASUREMENT_V1',complete:false,
- driver:null,driverReceipt:'absent',settlement:{driver:'unknown',proxy:'unknown',workers:'unknown',postgres:'unknown',postgresAbsent:null}}:null;
+ driver:null,driverReceipt:'absent',settlement:{driver:'unknown',proxy:'unknown',workers:'unknown',
+  ...developmentPostgresSettlement('unknown','unknown',null)}}:null;
+const developmentReset={admitted:false,state:'unknown',id:null};
+let developmentRemoveApi='unknown';
 const proxyFailures=measurement?createDriverFailures():null;
 const proxySockets=proxyFailures?createDriverSockets(proxyFailures):null;
 const save=()=>writeFileSync(join(out,'runner.json'),JSON.stringify(report,null,2));
@@ -56,7 +60,17 @@ async function run(label,command,args,childEnv=env,timeout=900000){
  console.log('[system-perf] '+label+' started');const start=Date.now();
  const fd=openSync(join(privateDir,label+'.log'),'w',0o600);
  const measuring=measurement!==null&&label==='http-and-browser';
- const child=spawn(command,args,{env:childEnv,stdio:measuring?['ignore',fd,fd,'ipc']:['ignore',fd,fd]});
+ const capturingBirth=measurement!==null&&label==='postgres';
+ const child=spawn(command,args,{env:childEnv,stdio:measuring?['ignore',fd,fd,'ipc']:
+  capturingBirth?['ignore',fd,fd,'pipe']:['ignore',fd,fd]});
+ let birth=Buffer.alloc(0),birthRefused=false;
+ if(capturingBirth&&child.stdio[3]){
+  child.stdio[3].on('data',chunk=>{
+   if(birth.length+chunk.length>65){birthRefused=true;return;}
+   birth=Buffer.concat([birth,chunk]);
+  });
+  child.stdio[3].on('error',()=>{birthRefused=true;});
+ }
  if(measuring)child.on('message',value=>{
   if(measurement.driverReceipt!=='absent'||!validateDevelopmentMeasurement(value,measurementIdentity)
    ||Buffer.byteLength(JSON.stringify(value))>8192){
@@ -64,14 +78,30 @@ async function run(label,command,args,childEnv=env,timeout=900000){
   }
   measurement.driverReceipt='observed';measurement.driver=value;
  });
- let killTimer,timedOut=false,exitSignal;const timer=setTimeout(()=>{timedOut=true;child.kill('SIGTERM');killTimer=setTimeout(()=>child.kill('SIGKILL'),10000);},timeout);let code;
- try{code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once(measuring?'close':'exit',(value,signal)=>{exitSignal=signal;resolve(value);});});}finally{clearTimeout(timer);clearTimeout(killTimer);closeSync(fd);}
+ let killTimer,timedOut=false,exitSignal;
+ const timer=setTimeout(()=>{
+  timedOut=true;child.kill('SIGTERM');
+  killTimer=setTimeout(()=>{
+   child.kill('SIGKILL');
+   if(capturingBirth)child.stdio[3]?.destroy();
+  },10000);
+ },timeout);
+ let code;
+ try{code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once(measuring||capturingBirth?'close':'exit',(value,signal)=>{exitSignal=signal;resolve(value);});});}finally{clearTimeout(timer);clearTimeout(killTimer);closeSync(fd);}
+ if(capturingBirth){
+  developmentReset.id=birthRefused?null:developmentPostgresBirthId(birth);
+  developmentReset.state=timedOut||code===null||exitSignal!==null?'unknown':code===0&&developmentReset.id?'settled':'failed';
+  measurement.settlement.postgresReset=developmentReset.state;
+ }
+ if(measurement&&label==='cleanup')
+  developmentRemoveApi=timedOut||code===null||exitSignal!==null?'unknown':code===0?'settled':'failed';
  if(measuring)measurement.settlement.driver=!timedOut&&code===0&&exitSignal===null?'settled':'failed';
  report.phases.push({label,elapsedMs:Date.now()-start,exitCode:code,timeoutMs:timeout,timedOut,exitSignal});save();
  console.log('[system-perf] '+JSON.stringify(report.phases.at(-1)));
  if(code!==0){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
  assert.equal(timedOut,false,label+' exceeded its unchanged process budget; retain incomplete evidence');
  assert.equal(code,0,label+' failed; private process logs contain no published credentials');
+ if(capturingBirth)assert(developmentReset.state==='settled','Development PostgreSQL reset birth receipt refused');
  if(measuring)assert(measurement.driver?.complete===true,'Development driver terminal measurement refused');
 }
 function summarizeCpu(){
@@ -127,25 +157,99 @@ function summarizeNativeFailures(){
  writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'Exact public-error reference/SQLSTATE metadata plus bounded native Draft marker blocks; Draft block errors may overlap; raw logs and SQL excluded',failures},null,2));
 }
 const apps=[],appFds=[],workerProcessErrors=new Set();let proxy,upstream,dbStarted=false,postgresRuntimeFailures;
-let databaseResetAttempted=false,developmentContainerId;
+let developmentPostgresBirth;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
-const ownedDockerSocket='unix:///var/run/docker.sock';
-const postgresEnv=measureDevelopment?{...env,DOCKER_HOST:ownedDockerSocket}:env;
+// Keep the canonical reset recipe. Its Docker commands cannot remove anything
+// and, after creation, cannot resolve the database through a reusable name.
+const developmentResetCommand=String.raw`set -euo pipefail
+owned_id=''
+fixed_docker() { /usr/bin/docker --config "$DOCKER_CONFIG" --host "$DOCKER_HOST" "$@" 3>&-; }
+docker() {
+ case "$1" in
+  container)
+   [[ "$#" == 3 && "$2" == inspect && "$3" == "$AIHR_DEVELOPMENT_DB_NAME" ]] || return 2
+   fixed_docker "$@"
+   ;;
+  inspect)
+   [[ "$#" == 4 && "$2" == --format && "$4" == "$AIHR_DEVELOPMENT_DB_NAME" ]] || return 2
+   fixed_docker "$@"
+   ;;
+  run)
+   [[ -z "$owned_id" && "$2" == -d && "$3" == --name && "$4" == "$AIHR_DEVELOPMENT_DB_NAME" &&
+     "$5" == --label && "$6" == "aihr-owner=$AIHR_DEVELOPMENT_DB_NAME" ]] || return 2
+   owned_id="$(exec 3>&-; fixed_docker "$@")" || return "$?"
+   [[ "$owned_id" =~ ^[a-f0-9]{64}$ ]] || return 2
+   printf '%s\n' "$owned_id" >&3
+   printf '%s\n' "$owned_id"
+   ;;
+  exec|logs)
+   local operation="$1"
+   shift
+   [[ -n "$owned_id" && "$1" == "$AIHR_DEVELOPMENT_DB_NAME" ]] || return 2
+   shift
+   fixed_docker "$operation" "$owned_id" "$@"
+   ;;
+  *) return 2 ;;
+ esac
+}
+source .github/ci/postgres.sh reset
+`;
+const developmentDocker=()=>developmentDockerContext(privateDir);
+function dockerQuery(args,maximum=4096){
+ const context=developmentDocker();
+ return execFileSync(DEVELOPMENT_DOCKER_COMMAND,[...context.args,...args],
+  {env:context.env,encoding:'utf8',timeout:10000,killSignal:'SIGKILL',maxBuffer:maximum}).trim();
+}
 function dockerContainerIds(filter){
- const raw=execFileSync('/usr/bin/docker',['--host',ownedDockerSocket,'container','ls','--all','--quiet','--no-trunc','--filter',filter],
-  {encoding:'utf8',timeout:10000,killSignal:'SIGKILL',maxBuffer:4096}).trim();
+ const raw=dockerQuery(['container','ls','--all','--quiet','--no-trunc','--filter',filter]);
  const ids=raw?raw.split('\n'):[];
  assert(ids.length<=1&&ids.every(id=>/^[a-f0-9]{64}(?![\s\S])/.test(id)),'Development PostgreSQL container inventory refused');
  return ids;
 }
 const namedContainer=()=>dockerContainerIds(`name=^/${container}$`);
-function identifyDevelopmentPostgres(id,requireRunning){
- const proof=execFileSync('/usr/bin/docker',['--host',ownedDockerSocket,'inspect','--type','container',
-  '--format','{{.Id}} {{index .Config.Labels "aihr-owner"}} {{.State.Running}}',id],
-  {encoding:'utf8',timeout:10000,killSignal:'SIGKILL',maxBuffer:4096}).trim();
- const running=proof===id+' '+container+' true';
- assert(running||(!requireRunning&&proof===id+' '+container+' false'),'Owned development PostgreSQL identity refused');
- return id;
+function observeDevelopmentPostgres(id){
+ assert(/^[a-f0-9]{64}(?![\s\S])/.test(id),'Development PostgreSQL creation identity refused');
+ const format='{"id":{{json .Id}},"name":{{json .Name}},"owner":{{json (index .Config.Labels "aihr-owner")}},'
+  +'"running":{{json .State.Running}},"pid":{{json .State.Pid}},"started":{{json .State.StartedAt}},"network":{{json .HostConfig.NetworkMode}},'
+  +'"mounts":[{{range $i,$m := .Mounts}}{{if $i}},{{end}}{"name":{{json $m.Name}},"type":{{json $m.Type}},"destination":{{json $m.Destination}}}{{end}}]}';
+ const row=JSON.parse(dockerQuery(['inspect','--type','container','--format',format,id]));
+ assert(row.id===id&&row.name==='/'+container&&row.owner===container&&row.network==='host'
+  &&typeof row.running==='boolean'&&/^[0-9T:.+Z-]{20,40}(?![\s\S])/.test(row.started)
+  &&Array.isArray(row.mounts)&&row.mounts.length===1,'Owned development PostgreSQL identity refused');
+ const [volume]=row.mounts;
+ assert(volume.type==='volume'&&volume.destination==='/var/lib/postgresql/data'
+  &&/^[a-f0-9]{64}(?![\s\S])/.test(volume.name),'Development PostgreSQL anonymous volume refused');
+ return {id,pid:row.pid,running:row.running,started:row.started,volume:volume.name};
+}
+function processBirth(pid){
+ assert(Number.isSafeInteger(pid)&&pid>1,'Development PostgreSQL process identity refused');
+ let stat;
+ try{stat=readFileSync('/proc/'+pid+'/stat','utf8');}catch(error){if(error.code==='ENOENT')return null;throw error;}
+ const end=stat.lastIndexOf(') '),birth=stat.slice(end+2).trimEnd().split(' ')[19];
+ assert(stat.startsWith(pid+' (')&&end>0&&/^[1-9][0-9]*(?![\s\S])/.test(birth),'Development PostgreSQL process birth refused');
+ return birth;
+}
+function captureDevelopmentPostgres(id){
+ const row=observeDevelopmentPostgres(id);
+ assert(row.running,'Development PostgreSQL running birth unavailable');
+ const birth=processBirth(row.pid),cgroup=readFileSync('/proc/'+row.pid+'/cgroup','utf8');
+ const expected=['/system.slice/docker-'+id+'.scope','/docker/'+id].find(path=>cgroup==='0::'+path+'\n');
+ assert(birth&&expected,'Development PostgreSQL native cgroup birth unavailable');
+ const path='/sys/fs/cgroup'+expected,state=lstatSync(path,{bigint:true});
+ const after=observeDevelopmentPostgres(id);
+ const cgroupAfter=lstatSync(path,{bigint:true});
+ assert(state.isDirectory()&&cgroupAfter.isDirectory()&&state.dev===cgroupAfter.dev&&state.ino===cgroupAfter.ino
+  &&after.running&&after.pid===row.pid&&after.started===row.started&&after.volume===row.volume&&processBirth(row.pid)===birth
+  &&readFileSync('/proc/'+row.pid+'/cgroup','utf8')===cgroup,'Development PostgreSQL birth changed');
+ return {id,pid:row.pid,started:row.started,volume:row.volume,birth,path,cgroupDevice:String(state.dev),cgroupInode:String(state.ino)};
+}
+function confirmDevelopmentPostgresAbsent(held){
+ const containerAbsent=dockerContainerIds(`id=${held.id}`).length===0&&namedContainer().length===0;
+ const processAbsent=processBirth(held.pid)!==held.birth;
+ let cgroupAbsent=false;
+ try{lstatSync(held.path);}catch(error){if(error.code==='ENOENT')cgroupAbsent=true;else throw error;}
+ const volumeAbsent=dockerQuery(['volume','ls','--quiet','--filter','name='+held.volume])==='';
+ return containerAbsent&&processAbsent&&cgroupAbsent&&volumeAbsent;
 }
 
 try{
@@ -154,14 +258,20 @@ try{
  report.buildHeap=admission;save();
  if(measureDevelopment){
   assert(/^[1-9][0-9]*(?![\s\S])/.test(env.GITHUB_RUN_ID)&&env.GITHUB_RUN_ATTEMPT==='1'&&env.AIHR_CI_UNIT==='db-1'
-   &&namedContainer().length===0,'Development PostgreSQL pre-reset absence refused');
-  databaseResetAttempted=true;
- }
- await run('postgres','bash',['.github/ci/postgres.sh','reset'],postgresEnv);dbStarted=true;
- if(measureDevelopment){
-  const [held]=namedContainer();assert(held,'Owned development PostgreSQL container missing');
-  developmentContainerId=identifyDevelopmentPostgres(held,true);
- }
+   &&realpathSync(privateDir)===privateDir,'Development PostgreSQL reset scope refused');
+  mkdirSync(join(privateDir,'docker-config'),{mode:0o700});
+  assert(namedContainer().length===0,'Development PostgreSQL pre-reset absence refused');
+  const resetEnv={...developmentDocker().env,AIHR_DEVELOPMENT_DB_NAME:container};
+  for(const key of ['GITHUB_ACTIONS','CI','GITHUB_EVENT_NAME','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','AIHR_CI_UNIT',
+   'AIHR_CI_PG_PROFILE','AIHR_CI_PG_CONFIGURED_CAP_BYTES','AIHR_CI_PG_PEAK_BUDGET_BYTES','AIHR_CI_PG_MEMORY_GIB',
+   'AIHR_CI_PG_JIT','AIHR_CI_PG_DURABLE','AIHR_CI_PG_STATEMENTS','AIHR_CI_PG_STATEMENTS_OWNER'])
+   if(env[key]!==undefined)resetEnv[key]=env[key];
+  developmentReset.admitted=true;
+  await run('postgres','/usr/bin/bash',['--noprofile','--norc','-c',developmentResetCommand],resetEnv);
+  assert(namedContainer()[0]===developmentReset.id,'Development PostgreSQL name no longer matches the held creation ID');
+  developmentPostgresBirth=captureDevelopmentPostgres(developmentReset.id);
+ }else await run('postgres','bash',['.github/ci/postgres.sh','reset']);
+ dbStarted=true;
  await run('migrate','pnpm',['db:migrate']);
  // Native performance helpers are installed through the ordinary migration journal.
  copyFileSync(join(focusedEvidence,'personnel-draft-discard-premigration-role-prerequisites.json'),join(out,'personnel-draft-discard-premigration-role-prerequisites.json'));
@@ -217,7 +327,7 @@ try{
  // The driver covers setup journeys and verification as well as the steady traffic interval.
  // Keep the post-warmup allowance constant when the measured interval is longer.
  const driverTimeoutMs=600000+Math.max(0,Number(env.PERF_HTTP_HOLD_MS??30000)-30000);
- await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}).trim(),NODE_OPTIONS:'--max-old-space-size=2048'},driverTimeoutMs);
+ await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,...(measureDevelopment?{PERF_POSTGRES_CONTAINER_ID:developmentPostgresBirth.id}:{}),PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}).trim(),NODE_OPTIONS:'--max-old-space-size=2048'},driverTimeoutMs);
  summarizeNativeFailures();
  assert(report.workerFatalDiagnostics.every(worker=>worker.logMarkers.passiveReadUnavailable===0),'passive shell approval read failures must be fixed before acceptance');
  report.exitCode=0;
@@ -277,17 +387,17 @@ finally{
  try{summarizeNativeFailures();}catch{report.nativeFailureSummaryUnavailable=true;}
  if(apps.length)try{summarizeCpu();}catch(error){report.cpuSummaryError=String(error.message).slice(0,180);}
  if(dbStarted){
-  const captureStats=()=>{
-   const stats=spawnSync('bash',['.github/ci/postgres.sh','stats'],{env:postgresEnv,encoding:'utf8',...(measureDevelopment?{timeout:10000,killSignal:'SIGKILL'}:{})});
-   if(measurement)assert.equal(stats.status,0,'Development PostgreSQL stats unavailable');
+  if(!measurement){
+   const stats=spawnSync('bash',['.github/ci/postgres.sh','stats'],{env,encoding:'utf8'});
    writeFileSync(join(out,'postgres-resources.txt'),stats.stdout??'');
-  };
-  if(!measurement)captureStats();
-  else try{captureStats();}catch{report.postgresResourceSummaryUnavailable=true;report.exitCode=1;}
+  }else try{
+   const stats=dockerQuery(['stats','--no-stream','--format','{{json .}}',developmentPostgresBirth.id],16384);
+   writeFileSync(join(out,'postgres-resources.txt'),stats+'\n');
+  }catch{report.postgresResourceSummaryUnavailable=true;report.exitCode=1;}
   try{
    if(measureDevelopment){
-    assert(developmentContainerId&&namedContainer()[0]===developmentContainerId,'Owned development PostgreSQL identity changed');
-    identifyDevelopmentPostgres(developmentContainerId,true);
+    assert(namedContainer()[0]===developmentPostgresBirth.id&&observeDevelopmentPostgres(developmentPostgresBirth.id).running,
+     'Owned development PostgreSQL identity changed');
    }
    else{
     const owner=execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',container],{encoding:'utf8',timeout:10000}).trim();
@@ -295,29 +405,37 @@ finally{
    }
    // Scope acceptance to actual application runtime. Setup/rehearsal diagnostics remain
    // independent. No tail truncation: exceeding the bounded capture fails evidence closed.
-   const logs=spawnSync(measureDevelopment?'/usr/bin/docker':'docker',
-    [...(measureDevelopment?['--host',ownedDockerSocket]:[]),'logs',...(report.applicationRuntimeFrom?['--since',report.applicationRuntimeFrom]:[]),
-     measureDevelopment?developmentContainerId:container],
-    {encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024,...(measureDevelopment?{killSignal:'SIGKILL'}:{})});
+   const logContext=measureDevelopment?developmentDocker():null;
+   const logs=spawnSync(logContext?DEVELOPMENT_DOCKER_COMMAND:'docker',
+    [...(logContext?.args??[]),'logs',...(report.applicationRuntimeFrom?['--since',report.applicationRuntimeFrom]:[]),
+     logContext?developmentPostgresBirth.id:container],
+    {encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024,...(logContext?{env:logContext.env,killSignal:'SIGKILL'}:{})});
    assert.equal(logs.status,0);
    postgresRuntimeFailures=postgresLockFailures((logs.stdout??'')+'\n'+(logs.stderr??''));
    writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:'Owned disposable database during application runtime only; bounded lock topology and routine frames; SQL/values/raw logs excluded',runtimeFrom:report.applicationRuntimeFrom??null,failures:postgresRuntimeFailures},null,2));
   }catch{report.postgresLockFailureSummaryUnavailable=true;}
  }
- if(databaseResetAttempted){
-  try{
-   // No acknowledged stop or physical named/held absence means no positive terminal receipt.
-   const [held]=namedContainer();
-   if(held){
-    assert(!developmentContainerId||held===developmentContainerId,'Owned development PostgreSQL identity changed');
-    identifyDevelopmentPostgres(held,false);
-   }
-   await run('cleanup','bash',['.github/ci/postgres.sh','stop'],postgresEnv,25000);
-   const absent=namedContainer().length===0&&(!developmentContainerId||dockerContainerIds(`id=${developmentContainerId}`).length===0);
-   measurement.settlement.postgresAbsent=absent;
-   measurement.settlement.postgres=absent?'settled':'failed';
-  }catch{measurement.settlement.postgres='failed';report.exitCode=1;}
- }else if(dbStarted)await run('cleanup','bash',['.github/ci/postgres.sh','stop']).catch(()=>{report.exitCode=1;});
+ if(measurement&&developmentReset.admitted){
+  let physicalAbsent=null;
+  if(developmentReset.id)try{
+   const current=observeDevelopmentPostgres(developmentReset.id);
+   let held=developmentPostgresBirth;
+   if(!held&&current.running)try{held=captureDevelopmentPostgres(developmentReset.id);}catch{}
+   let sameBirth=held&&current.started===held.started&&current.volume===held.volume;
+   if(sameBirth&&current.running)try{
+    const cgroup=lstatSync(held.path,{bigint:true});
+    sameBirth=current.pid===held.pid&&processBirth(current.pid)===held.birth&&cgroup.isDirectory()
+     &&String(cgroup.dev)===held.cgroupDevice&&String(cgroup.ino)===held.cgroupInode;
+   }catch{sameBirth=false;}
+   const context=developmentDocker();
+   try{await run('cleanup',DEVELOPMENT_DOCKER_COMMAND,[...context.args,'rm','-fv',developmentReset.id],context.env,25000);}
+   catch{report.exitCode=1;}
+   // A timeout can leave a pending Docker creation. An empty snapshot is not terminal evidence then.
+   if(developmentRemoveApi==='settled'&&developmentReset.state!=='unknown'&&sameBirth)
+    physicalAbsent=confirmDevelopmentPostgresAbsent(held);
+  }catch{report.exitCode=1;}
+  Object.assign(measurement.settlement,developmentPostgresSettlement(developmentReset.state,developmentRemoveApi,physicalAbsent));
+ }else if(!measurement&&dbStarted)await run('cleanup','bash',['.github/ci/postgres.sh','stop']).catch(()=>{report.exitCode=1;});
  report.runtimeAcceptance=runtimeAcceptance({workers,
   workerDiagnostics:report.nativeFailureSummaryUnavailable?undefined:report.workerFatalDiagnostics,
   nativeFailures:report.nativeFailureSummaryUnavailable?undefined:report.nativeRuntimeFailures,postgresFailures:postgresRuntimeFailures,

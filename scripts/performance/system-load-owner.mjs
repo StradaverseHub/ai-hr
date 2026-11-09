@@ -35,7 +35,7 @@ import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironment,createDriverContexts,
  createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,
- developmentLockWindowEvidence,buildDevelopmentMeasurement,
+ developmentLockWindowEvidence,buildDevelopmentMeasurement,developmentDockerContext,DEVELOPMENT_DOCKER_COMMAND,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
@@ -194,8 +194,21 @@ function resourceCpu(){
  assert.equal(name,`aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-${process.env.AIHR_CI_UNIT}`);
  assert(/^aihr-ci-\d+-\d+-db-(?:[1-4]|[0-9a-f]{16})$/.test(name));
  // Only this workflow's labelled disposable container may be inspected.
- assert.equal(execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',name],{encoding:'utf8',timeout:5000}).trim(),name);
- const usage=execFileSync('docker',['exec',name,'cat','/sys/fs/cgroup/cpu.stat'],{encoding:'utf8',timeout:5000});
+ let usage;
+ if(measureDevelopment){
+  const id=process.env.PERF_POSTGRES_CONTAINER_ID;
+  assert(/^[a-f0-9]{64}(?![\s\S])/.test(id),'Owned development PostgreSQL driver identity refused');
+  const context=developmentDockerContext(process.env.PERF_PRIVATE_DIR);
+  const query=(...args)=>execFileSync(DEVELOPMENT_DOCKER_COMMAND,[...context.args,...args],
+   {env:context.env,encoding:'utf8',timeout:5000,killSignal:'SIGKILL',maxBuffer:4096});
+  const format='{{.Id}} {{.Name}} {{index .Config.Labels "aihr-owner"}} {{.State.Running}}';
+  assert(query('inspect','--type','container','--format',format,id).trim()===id+' /'+name+' '+name+' true',
+   'Owned development PostgreSQL driver container refused');
+  usage=query('exec',id,'cat','/sys/fs/cgroup/cpu.stat');
+ }else{
+  assert.equal(execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',name],{encoding:'utf8',timeout:5000}).trim(),name);
+  usage=execFileSync('docker',['exec',name,'cat','/sys/fs/cgroup/cpu.stat'],{encoding:'utf8',timeout:5000});
+ }
  const fields=Object.fromEntries(usage.trim().split('\n').map(line=>{const [key,value]=line.trim().split(/\s+/);return [key,Number(value)];}));
  for(const key of ['usage_usec','user_usec','system_usec','throttled_usec'])assert(Number.isSafeInteger(fields[key])&&fields[key]>=0,'missing PostgreSQL CPU counter');
  const host=readFileSync('/proc/stat','utf8').split('\n')[0].trim().split(/\s+/).slice(1).map(Number);

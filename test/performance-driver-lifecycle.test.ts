@@ -1,10 +1,14 @@
 import {EventEmitter,once} from 'node:events';
+import {mkdirSync,mkdtempSync,realpathSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {Agent,createServer,request as httpRequest} from 'node:http';
 import {PassThrough} from 'node:stream';
 import {gzipSync} from 'node:zlib';
 import {afterEach,expect,it,vi} from 'vitest';
 import {acquireDriverResource,buildDevelopmentMeasurement,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
- createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,developmentLockWindowEvidence,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
+ createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,developmentDockerContext,developmentLockWindowEvidence,
+ developmentPostgresBirthId,developmentPostgresSettlement,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
  openDriverResponse,qualifyLockSampleCadence,settleDriverBrowser,settleDriverLanes,settleDriverResources,startDriverInterval,validateDevelopmentMeasurement} from '../scripts/performance/driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts} from '../scripts/performance/protected-lock-observer.mjs';
 
@@ -288,6 +292,60 @@ it('retains incomplete terminal receipts without promoting missing Pages, app tr
  }
  const loaded=buildDevelopmentMeasurement({...input,suite:'whole-system'});
  expect(loaded.complete).toBe(false);expect(validateDevelopmentMeasurement(loaded,{...expected,suite:'whole-system'})).toBe(true);
+});
+
+it('refuses an impossible Page census even in an explicitly incomplete development receipt',()=>{
+ const input=developmentMeasurementInput(),expected={...input.identity,suite:input.suite};
+ const receipt=buildDevelopmentMeasurement(input);
+ expect(receipt.poolEvidence).toBe('postgres-js-end-api-acknowledgement');
+ for(const state of ['failed','unknown','absent']){
+  const forged=structuredClone(receipt);forged.complete=false;forged.settlement.browser=state;
+  expect(validateDevelopmentMeasurement(forged,expected)).toBe(false);
+ }
+ for(const counts of [{observedPages:1,closedPages:2},{observedPages:null,closedPages:2}]){
+  const forged=structuredClone(receipt);forged.complete=false;
+  Object.assign(forged.pageEvents,counts,{censusComplete:false,qualifiedCrashes:null,observedCrashes:null,
+   aborted:null,transport:null,http5xx:null,pageError:null,consoleError:null});
+  expect(validateDevelopmentMeasurement(forged,expected)).toBe(false);
+ }
+ const incomplete=buildDevelopmentMeasurement({...input,shutdown:{...input.shutdown,browser:{close:'failed'}},
+  pages:{...input.pages,crash:1}});
+ expect(incomplete).toMatchObject({complete:false,pageEvents:{censusComplete:false,observedCrashes:1,qualifiedCrashes:null}});
+ expect(validateDevelopmentMeasurement(incomplete,expected)).toBe(true);
+ const inverted=buildDevelopmentMeasurement({...input,pages:{...input.pages,closedPages:3}});
+ expect(inverted).toMatchObject({complete:false,pageEvents:{censusComplete:false,observedPages:2,closedPages:null,qualifiedCrashes:null}});
+ expect(validateDevelopmentMeasurement(inverted,expected)).toBe(true);
+});
+
+it('binds development Docker to one fixed daemon and refuses config material or a name alias',()=>{
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'aihr-dev-docker-model-'))),config=join(root,'docker-config');
+ try{
+  mkdirSync(config,{mode:0o700});
+  expect(developmentDockerContext(root)).toEqual({
+   args:['--config',config,'--host','unix:///var/run/docker.sock'],
+   env:{PATH:'/usr/bin:/bin',HOME:root,LANG:'C',LC_ALL:'C',DOCKER_CONFIG:config,DOCKER_HOST:'unix:///var/run/docker.sock'},
+  });
+  writeFileSync(join(config,'config.json'),'{}');
+  expect(()=>developmentDockerContext(root)).toThrow('configuration refused');
+  rmSync(config,{recursive:true});
+  const other=join(root,'other');mkdirSync(other,{mode:0o700});symlinkSync(other,config);
+  expect(()=>developmentDockerContext(root)).toThrow('configuration refused');
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+it('uses only a full creation receipt and separates reset, removal API and physical absence',()=>{
+ const id='a'.repeat(64);
+ expect(developmentPostgresBirthId(Buffer.from(id+'\n'))).toBe(id);
+ for(const raw of [Buffer.from(id),Buffer.from(id+'\n'+id+'\n'),Buffer.from('f'.repeat(63)+'\n\n'),
+  Buffer.from(id.toUpperCase()+'\n'),Buffer.from('aihr-ci-123-1-db-1\n')])
+  expect(developmentPostgresBirthId(raw)).toBeNull();
+ expect(developmentPostgresSettlement('unknown','settled',true)).toEqual({
+  postgresReset:'unknown',postgresRemoveApi:'settled',postgresAbsent:null,postgres:'unknown',
+ });
+ expect(developmentPostgresSettlement('settled','settled',null)).toMatchObject({postgresAbsent:null,postgres:'unknown'});
+ expect(developmentPostgresSettlement('settled','settled',false)).toMatchObject({postgresAbsent:false,postgres:'failed'});
+ expect(developmentPostgresSettlement('failed','settled',true)).toMatchObject({postgresReset:'failed',postgresAbsent:true,postgres:'settled'});
+ expect(developmentPostgresSettlement('settled','failed',true)).toMatchObject({postgresRemoveApi:'failed',postgresAbsent:null,postgres:'failed'});
 });
 
 it('requires the exact held stats observer identity and actual app visibility on every protected observation',()=>{

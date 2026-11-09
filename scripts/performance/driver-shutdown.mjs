@@ -1,6 +1,8 @@
 /** Lifetime helpers for the fixed development driver. Native handles stay with that driver. */
 import {performance} from 'node:perf_hooks';
 import {createGunzip} from 'node:zlib';
+import {lstatSync,readdirSync,realpathSync} from 'node:fs';
+import {join} from 'node:path';
 
 const knownCodes=new Set(['ERR_ASSERTION','ABORT_ERR','ECONNRESET','ETIMEDOUT','EPIPE','ERR_STREAM_PREMATURE_CLOSE',
  'Z_DATA_ERROR','Z_BUF_ERROR','57014','55P03','53300','08006','42501','23514','25P02','57P01']);
@@ -182,7 +184,33 @@ export function developmentLockWindowEvidence(phase,samples,window,closed){
   coveragePass:false,pass:false,blockingSamples:null,observedBlockingSamples};
 }
 
+export const DEVELOPMENT_DOCKER_COMMAND='/usr/bin/docker';
+export const DEVELOPMENT_DOCKER_SOCKET='unix:///var/run/docker.sock';
+
+export function developmentDockerContext(privateDir){
+ const config=join(privateDir,'docker-config'),parent=lstatSync(privateDir),directory=lstatSync(config);
+ const own=stat=>stat.isDirectory()&&stat.uid===process.getuid()&&(stat.mode&0o7777)===0o700;
+ if(!own(parent)||!own(directory)||realpathSync(privateDir)!==privateDir||realpathSync(config)!==config||readdirSync(config).length)
+  throw Error('Owned development Docker configuration refused');
+ return {args:['--config',config,'--host',DEVELOPMENT_DOCKER_SOCKET],
+  env:{PATH:'/usr/bin:/bin',HOME:privateDir,LANG:'C',LC_ALL:'C',DOCKER_CONFIG:config,DOCKER_HOST:DEVELOPMENT_DOCKER_SOCKET}};
+}
+
+export function developmentPostgresBirthId(raw){
+ if(!Buffer.isBuffer(raw)||raw.length!==65||raw[64]!==10)return null;
+ const id=raw.subarray(0,64).toString('latin1');
+ return /^[a-f0-9]{64}(?![\s\S])/.test(id)?id:null;
+}
+
+export function developmentPostgresSettlement(reset,remove,physicalAbsent){
+ const postgresAbsent=reset==='unknown'||remove!=='settled'?null:physicalAbsent;
+ const postgres=remove==='failed'||postgresAbsent===false?'failed':
+  remove==='settled'&&postgresAbsent===true?'settled':'unknown';
+ return {postgresReset:reset,postgresRemoveApi:remove,postgresAbsent,postgres};
+}
+
 const developmentTerminalKind='DEVELOPMENT_BROWSER_MEASUREMENT_V1';
+const developmentPoolEvidence='postgres-js-end-api-acknowledgement';
 const developmentNotLoaded=Object.freeze({phase:'loaded',intervalMs:1000,maxGapUs:2000000,state:'not-applicable',reason:null,
  coveragePass:false,pass:false,blockingSamples:null,observedBlockingSamples:null,qualifiedSamples:null,
  openingGapUs:null,interiorGapUs:null,tailGapUs:null});
@@ -208,9 +236,10 @@ function cleanDevelopmentMeasurement({suite,identity,workCompleted,busyResponses
 
 export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,busyResponses,pages,preflight,loaded,shutdown}){
  const observedPages=knownCount(pages.observedPages,4096)?pages.observedPages:null;
- const closedPages=knownCount(pages.closedPages,4096)?pages.closedPages:null;
+ const closedPages=knownCount(pages.closedPages,4096)
+  &&(observedPages!==null?pages.closedPages<=observedPages:pages.closedPages===null)?pages.closedPages:null;
  const observedCrashes=observedPages>0?observedEventCount(pages.crash):null;
- const censusComplete=pages.censusComplete===true&&observedPages>0&&observedPages===closedPages&&observedCrashes!==null;
+ const censusComplete=pages.censusComplete===true&&shutdown.browser?.close==='settled'&&observedPages>0&&observedPages===closedPages&&observedCrashes!==null;
  const pageEvents={censusComplete,observedPages,closedPages,observedCrashes,qualifiedCrashes:censusComplete?observedCrashes:null};
  for(const name of ['aborted','transport','http5xx','pageError','consoleError'])
   pageEvents[name]=observedPages>0?observedEventCount(pages[name]):null;
@@ -221,14 +250,15 @@ export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,
   diagnostics:shutdown.diagnostics??'unknown',auditPool:shutdown.database?.audit??'unknown',observerPool:shutdown.database?.observer??'unknown',
  };
  const busy=observedEventCount(busyResponses);
- const evidence={kind:developmentTerminalKind,suite,workCompleted,identity,busyResponses:workCompleted||busy>0?busy:null,pageEvents,
+ const evidence={kind:developmentTerminalKind,suite,workCompleted,identity,busyResponses:workCompleted||busy>0?busy:null,
+  poolEvidence:developmentPoolEvidence,pageEvents,
   locks:{preflight,loaded:suite==='workflow-preflight'?developmentNotLoaded:loaded},settlement};
  return {...evidence,complete:clean&&cleanDevelopmentMeasurement(evidence)};
 }
 
 export function validateDevelopmentMeasurement(value,expected){
- if(!closedFields(value,['kind','suite','workCompleted','identity','busyResponses','pageEvents','locks','settlement','complete'])
-  ||value.kind!==developmentTerminalKind||!['workflow-preflight','whole-system'].includes(value.suite)||value.suite!==expected.suite
+ if(!closedFields(value,['kind','suite','workCompleted','identity','busyResponses','poolEvidence','pageEvents','locks','settlement','complete'])
+  ||value.kind!==developmentTerminalKind||value.poolEvidence!==developmentPoolEvidence||!['workflow-preflight','whole-system'].includes(value.suite)||value.suite!==expected.suite
   ||typeof value.workCompleted!=='boolean'||typeof value.complete!=='boolean'||!knownCount(value.busyResponses,1000000)
   ||(!value.workCompleted&&value.busyResponses===0))return false;
  const {identity,pageEvents,locks,settlement}=value;
@@ -238,12 +268,14 @@ export function validateDevelopmentMeasurement(value,expected){
   ||!['harnessSha256','scenarioSha256'].every(key=>identity[key]===null||exactHex(identity[key],64)))return false;
  if(!closedFields(pageEvents,developmentPagesFields)||typeof pageEvents.censusComplete!=='boolean'
   ||!knownCount(pageEvents.observedPages,4096)||!knownCount(pageEvents.closedPages,4096)
+  ||(pageEvents.closedPages!==null&&(pageEvents.observedPages===null||pageEvents.closedPages>pageEvents.observedPages))
   ||!developmentPagesFields.slice(3).every(key=>knownCount(pageEvents[key],1000000))
   ||(pageEvents.censusComplete?!(pageEvents.observedPages>0&&pageEvents.observedPages===pageEvents.closedPages
     &&pageEvents.observedCrashes!==null&&pageEvents.qualifiedCrashes===pageEvents.observedCrashes):pageEvents.qualifiedCrashes!==null)
   ||(!pageEvents.observedPages&&developmentPagesFields.slice(3).some(key=>pageEvents[key]!==null)))return false;
  if(!closedFields(locks,['preflight','loaded'])||!closedFields(settlement,developmentSettlementFields)
-  ||!Object.values(settlement).every(settlementState))return false;
+  ||!Object.values(settlement).every(settlementState)
+  ||(pageEvents.censusComplete&&settlement.browser!=='settled'))return false;
  for(const [phase,intervalMs] of [['preflight',250],['loaded',1000]]){
   const lock=locks[phase];
   if(!closedFields(lock,developmentLockFields)||lock.phase!==phase||lock.intervalMs!==intervalMs||lock.maxGapUs!==intervalMs*2000)return false;
