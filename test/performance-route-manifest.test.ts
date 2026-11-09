@@ -2,6 +2,7 @@ import {existsSync,readFileSync} from 'node:fs';
 import {expect,it} from 'vitest';
 import {validateNavigationScenarioPlan,type NavigationFixtureRole,type NavigationScenario} from '../scripts/performance/navigation-protocol';
 import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
+import {isNativeOwnPayslipPdfPath,requireNativePreflightFixtureDay} from '../scripts/performance/native-preflight-content';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
  nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to an existing page',()=>{
@@ -70,6 +71,28 @@ it('binds cross-module content and the explicit AI scope denial to the existing 
  expect(()=>assertNativeRenderedVisit({...company,readiness:'usable-content'})).toThrow(/readiness/);
  expect(()=>assertNativeRenderedVisit({...group,readiness:'scope-denial'})).toThrow(/readiness/);
  expect(()=>assertNativeRenderedVisit({...company,witness:group.witness,readiness:group.readiness})).toThrow(/witness/);
+});
+
+it('requires the same sealed Kuala Lumpur day at both calendar observation boundaries',()=>{
+ const fixtureDay='2026-11-09';
+ const beforeMidnight=new Date('2026-11-09T15:59:59.999Z');
+ const atMidnight=new Date('2026-11-09T16:00:00.000Z');
+ for(const witness of ['own-annual-leave-controls','own-individual-attendance-picker']){
+  expect(()=>requireNativePreflightFixtureDay(witness,fixtureDay,beforeMidnight)).not.toThrow();
+  expect(()=>requireNativePreflightFixtureDay(witness,fixtureDay,atMidnight)).toThrow(/current Kuala Lumpur day/);
+  expect(()=>requireNativePreflightFixtureDay(witness,'2026-11-10',atMidnight)).not.toThrow();
+ }
+ expect(()=>requireNativePreflightFixtureDay('own-released-payslip',fixtureDay,atMidnight)).not.toThrow();
+});
+
+it('accepts only a canonical own payslip PDF address with one exact UUID',()=>{
+ const uuid='10000000-0000-4000-8000-000000000004';
+ const href='/me/payslip/'+uuid+'/pdf';
+ expect(isNativeOwnPayslipPdfPath(href)).toBe(true);
+ for(const bad of [null,'/me/payslip/'+'-'.repeat(36)+'/pdf','/me/payslip/'+uuid.replace('-','a')+'/pdf',
+  href+'?disposition=inline',href+'#pdf',href+'\n','https://localhost:3443'+href,'/payroll'+href]){
+  expect(isNativeOwnPayslipPdfPath(bad)).toBe(false);
+ }
 });
 
 it('retains both guarded compatibility requests and their distinct exact canonical destinations',()=>{

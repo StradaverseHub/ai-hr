@@ -1,6 +1,7 @@
 /** Content checks on the already-owned native preflight Page. Fixture facts confer no authority. */
 import assert from 'node:assert/strict';
 import type {Locator,Page} from 'playwright';
+import {todayInKualaLumpur} from '../../lib/hr-date';
 
 type FixtureFacts=Readonly<{
  actorIndex:number;
@@ -12,6 +13,19 @@ type FixtureFacts=Readonly<{
  companyIds:readonly string[];
 }>;
 type Remaining=()=>number;
+const uuid='[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}';
+const companyIdPattern=new RegExp('^'+uuid+'$');
+const ownPayslipPathPattern=new RegExp('^/me/payslip/'+uuid+'/pdf$');
+
+export function requireNativePreflightFixtureDay(witness:string|null,seedToday:string,now?:Date){
+ if(witness==='own-annual-leave-controls'||witness==='own-individual-attendance-picker'){
+  assert(todayInKualaLumpur(now)===seedToday,'Native preflight fixture day differs from the current Kuala Lumpur day');
+ }
+}
+
+export function isNativeOwnPayslipPdfPath(href:string|null){
+ return href!==null&&ownPayslipPathPattern.test(href);
+}
 
 async function visible(locator:Locator,remaining:Remaining){
  await locator.waitFor({state:'visible',timeout:remaining()});
@@ -43,7 +57,7 @@ export async function verifyNativePreflightContent(page:Page,witness:string,fact
      .format(new Date(facts.historicalPayrollMonth+'-01T00:00:00Z'));
     const link=main.getByRole('link',{name:'Download PDF',exact:true});
     await enabled(link,remaining);
-    assert(/^\/me\/payslip\/[0-9a-f-]{36}\/pdf$/.test(await link.getAttribute('href',{timeout:remaining()})??''),'Native own payslip link differs');
+    assert(isNativeOwnPayslipPdfPath(await link.getAttribute('href',{timeout:remaining()})),'Native own payslip link differs');
     await visible(main.getByText('PERF0004 · '+facts.actorName,{exact:true}),remaining);
     await visible(main.locator('p:visible').and(main.getByText(month,{exact:true})),remaining);
     const basic=main.getByText('Basic salary',{exact:true}).locator('..');
@@ -97,8 +111,9 @@ export async function verifyNativePreflightContent(page:Page,witness:string,fact
    }
    case 'rewards-shared-company-scope': {
     assert(facts.actorIndex===0&&Array.isArray(facts.companyIds)&&facts.companyIds.length===5
-     &&new Set(facts.companyIds).size===5&&facts.companyIds.every(id=>/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(id)),'Native Rewards company fixture differs');
-    const review=main.getByRole('button',{name:'Review company designation',exact:true});
+     &&new Set(facts.companyIds).size===5&&facts.companyIds.every(id=>companyIdPattern.test(id)),'Native Rewards company fixture differs');
+    const review=main.getByRole('button',{name:'Review company designation',exact:true})
+     .and(main.locator('button[data-reward-classification-ready="true"]'));
     await enabled(review,remaining);
     await review.click({timeout:remaining()});
     const form=main.locator('form:has(select[name="disposition"]):has(textarea[name="reason"])');

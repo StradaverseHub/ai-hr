@@ -9,7 +9,7 @@ import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} f
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,installNativePrimaryFailureObserver,
  createNativeBrowserFailureObservation} from './navigation-browser-capture.ts';
 import {NATIVE_HIDDEN_SHELL_CASES} from './navigation-protocol.ts';
-import {verifyNativePreflightContent} from './native-preflight-content.ts';
+import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
 import {attendanceRejectionProbeEnabled,prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
@@ -452,13 +452,18 @@ async function main(){
   };
   if(trackHomePrefetch)page.on('request',observePrefetch);
   const start=performance.now();let response,signInTiming,visitFailed=false,visitStage=signIn?'sign-in':'navigation';
+  const contentWitness=nativeRoute?nativePreflightContentWitness(user.role,path):null;
   const deadline=nativeRoute?Math.min(nativeDeadline,start+90000):null;
   const timeout=(limit=90000)=>deadline===null?limit:Math.min(limit,nativeRemaining(deadline));
   let witness=null,redirectStatus=null;
   const startedWith=loadState?.();
   try{
    const browserFailuresBefore=nativeRoute?nativeBrowserFailures.pageCount(page):0;
-   if(nativeRoute){assert(!signIn&&nativeDom);nativeDom.beforeNavigation();}
+   if(nativeRoute){
+    assert(!signIn&&nativeDom);
+    requireNativePreflightFixtureDay(contentWitness,fixture.today);
+    nativeDom.beforeNavigation();
+   }
    if(signIn)signInTiming=await signInToHome(page,user);
    // Readiness is proved below. Network-idle adds an unrelated500ms quiet window.
    else response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:timeout()});
@@ -612,7 +617,6 @@ async function main(){
     assert.equal(await views.count(),1,'Native Assistant selected view is ambiguous');
     view=await views.first().getAttribute('data-ai-centre',{timeout:timeout()});
    }
-   const contentWitness=nativePreflightContentWitness(user.role,path);
    if(contentWitness!==null){
     witness=await verifyNativePreflightContent(page,contentWitness,{
      actorIndex:user.index,actorName:user.name,seedToday:fixture.today,
@@ -621,7 +625,8 @@ async function main(){
      companyIds:fixture.tenants[0]?.companies?.map(company=>company.companyId),
     },timeout);
    }
-   const observed=await nativeDom.snapshot(timeout);timeout();
+   const observed=await nativeDom.snapshot(timeout);
+   requireNativePreflightFixtureDay(contentWitness,fixture.today);timeout();
    assert.equal(page.url(),base+nativeRoute.final,'Native rendered route or query changed after readiness');
    const row={role:user.role,actorIndex:user.index,requested:path,final:page.url().slice(base.length),status:response.status(),redirectStatus,
     accountObserved:true,readiness:nativePreflightReadiness(witness),witness,view,elapsedMs:performance.now()-start,
