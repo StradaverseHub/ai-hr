@@ -277,6 +277,8 @@ export function readSelectedCatalogueProjection(kind: Kind, bounds: Bounds, pack
   }
   assert(header.rows <= bounds.rows && header.rendered === header.rows && objects.length === header.rows);
   assert(header.rawBytes <= bounds.rawBytes && header.maxRowBytes <= bounds.rowBytes);
+  // The checked row and byte caps keep this product within safe integer range.
+  assert(header.rawBytes <= header.rows * header.maxRowBytes);
   assert(header.aclEntries <= bounds.aclEntries && header.encodedBytes <= bounds.encodedBytes);
   let previousOid = 0;
   let previousSubId = 0;
@@ -299,7 +301,9 @@ export function readSelectedCatalogueProjection(kind: Kind, bounds: Bounds, pack
     assert(!identities.has(row.identity));
     identities.add(row.identity);
     aclEntries += row.acl.length;
-    rawFrameBytes += row.attributes.bytes + (row.definition?.bytes ?? 0);
+    const knownRawBytes = row.attributes.bytes + (row.definition?.bytes ?? 0);
+    assert(knownRawBytes <= header.maxRowBytes);
+    rawFrameBytes += knownRawBytes;
     assert(aclEntries <= header.aclEntries && rawFrameBytes <= header.rawBytes);
     return row;
   });
