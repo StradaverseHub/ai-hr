@@ -1,7 +1,7 @@
 /** Real temporary Git/source fixtures for the fixed generators; never provider, DB or native authority. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,readFileSync,writeFileSync,rmSync,unlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -128,14 +128,17 @@ test('a clean Git CRLF checkout cannot change a source member or generated preim
  ]){
   withPair(p=>{
    const directory=p[side];
-   const lf=readFileSync(join(directory,path),'utf8');
+   const member=join(directory,path);
+   const lf=readFileSync(member,'utf8');
    assert(lf.endsWith('\n')&&!lf.includes('\r'));
    writeFixture(directory,'.gitattributes',path+' text eol=crlf\n');
    commitAiManifestFixture(directory);
+   // Materialize the member afresh so Git applies the new checkout attribute.
+   unlinkSync(member);
    fixtureGit(directory,'checkout-index','--force','--',path);
    assert.equal(fixtureGit(directory,'status','--porcelain'),'');
    assert.equal(fixtureGit(directory,'show','HEAD:'+path)+'\n',lf);
-   assert.equal(readFileSync(join(directory,path),'utf8'),lf.replaceAll('\n','\r\n'));
+   assert.equal(readFileSync(member,'utf8'),lf.replaceAll('\n','\r\n'));
    const output=join(p.candidate,'lib/ai',unwrittenOutput),before=readFileSync(output);
    assert.throws(()=>refreshAiManifests(p.options()),/differs from its frozen Git blob/);
    assert(readFileSync(output).equals(before));
