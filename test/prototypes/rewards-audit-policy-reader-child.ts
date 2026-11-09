@@ -1,8 +1,8 @@
 /** UNINSTALLED/nonpackaged LOGIN/receipt lifecycle only; no service DTO claim. */
 import postgres from 'postgres';
 import {z} from 'zod';
-if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||!process.send)throw Error('Owned hosted policy child required');
-const allowed=new Set(['PATH','TZ','LANG','GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY']);if(Object.keys(process.env).some(key=>!allowed.has(key)))throw Error('Closed policy child environment required');
+if(process.env.NODE_ENV!=='test'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||!process.send)throw Error('Owned hosted policy child required');
+const allowed=new Set(['NODE_ENV','PATH','TZ','LANG','GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY']);if(Object.keys(process.env).some(key=>!allowed.has(key)))throw Error('Closed policy child environment required');
 globalThis.fetch=async()=>{throw Error('Policy child cannot invoke providers/network');};
 const base={database:z.string().regex(/^ai_hr_test_w[1-9][0-9]*(?:_[a-z0-9][a-z0-9_]{0,19})?$/),readerUrl:z.string(),tenantId:z.guid(),userId:z.guid(),roles:z.array(z.string()).max(16),grants:z.array(z.object({role:z.string(),companyId:z.guid().nullable()}).strict()).max(32)};
 const request=z.discriminatedUnion('kind',[

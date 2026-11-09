@@ -21,6 +21,7 @@ const nativeResults:Readonly<Record<string,{result:string;names:string[]|null}>>
  'app._domain_event_next(uuid,boolean)':{result:'jsonb',names:['p_tenant','p_try']},
 };
 type FunctionRecord={signature:string;details:unknown;acl:unknown};
+type PolicyRecord={oid:number;details:unknown};
 export type RewardsAuditOwnerDependencies={owner:{client:Sql};migrateTestDb:()=>Promise<void>;closeAll:()=>Promise<void>};
 export async function createRewardsAuditFixtureOwner({owner,migrateTestDb,closeAll}:RewardsAuditOwnerDependencies){
  if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted')throw Error('Standard hosted Rewards prototype required');
@@ -32,7 +33,7 @@ export async function createRewardsAuditFixtureOwner({owner,migrateTestDb,closeA
  const roles=['ai_hr_reward_audit_read','ai_hr_reward_audit_projector']as const;
  expect(await owner.client`select 1 from pg_roles where rolname=any(${[...roles]}::text[])`).toHaveLength(0);
  const credentials=roles.map(role=>{const url=new URL(migration);url.username=role;url.password=randomUUID();return url;});
- const created:string[]=[],sockets=new Set<ReturnType<typeof postgres>>();let installed=false,originals:FunctionRecord[]=[],policies:{oid:number;details:unknown}[]=[];
+ const created:string[]=[],sockets=new Set<ReturnType<typeof postgres>>();let installed=false,originals:FunctionRecord[]=[],policies:PolicyRecord[]=[];
  try{
   // UUID passwords and the two fixed reviewed identifiers only. The roles have
   // no membership, owner/app credentials, admin flags or app-schema USAGE.
@@ -81,7 +82,7 @@ export async function createRewardsAuditFixtureOwner({owner,migrateTestDb,closeA
     expect(acl.retained).toEqual(original.acl);expect(acl.narrow).toBe(true);
     await tx`insert into reward_audit_private.function_contract(signature,details)select p.oid,to_jsonb(p)from pg_proc p where p.oid=${original.signature}::regprocedure`;
    }
-   policies=Array.from(await tx`select p.oid,to_jsonb(p)as details from pg_policy p where p.polname in('reward_audit_library_purpose','reward_audit_library_version_purpose')`);
+   policies=Array.from(await tx<PolicyRecord[]>`select p.oid,to_jsonb(p)as details from pg_policy p where p.polname in('reward_audit_library_purpose','reward_audit_library_version_purpose')`);
    expect(policies).toHaveLength(2);
    await tx`update reward_audit_private.authority set enabled=true`;
    await tx`select reward_audit_private.assert_profile()`;

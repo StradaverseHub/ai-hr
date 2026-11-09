@@ -4,7 +4,7 @@ import {expect} from 'vitest';
 import type {RewardsAuditFixtureOwner} from './rewards-audited-read-owner';
 type Message={kind:string;pid?:number;started?:string;projected?:number};
 export async function rewardAuditProjectorProcess(fixture:RewardsAuditFixtureOwner,signal:AbortSignal){
- const child=spawn(process.execPath,['--import','tsx','test/prototypes/rewards-audit-projector-child.ts'],{cwd:process.cwd(),env:{PATH:process.env.PATH,TZ:'UTC',LANG:'en_US.UTF-8',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr'},stdio:['ignore','pipe','pipe','ipc']});
+ const child=spawn(process.execPath,['--import','tsx','test/prototypes/rewards-audit-projector-child.ts'],{cwd:process.cwd(),env:{NODE_ENV:'test',PATH:process.env.PATH,TZ:'UTC',LANG:'en_US.UTF-8',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr'},stdio:['ignore','pipe','pipe','ipc']});
  let output='';const messages:Message[]=[],wake=new Set<()=>void>();
  child.stdout?.on('data',value=>{output+=String(value);if(output.length>16384)child.kill('SIGKILL');});child.stderr?.on('data',value=>{output+=String(value);if(output.length>16384)child.kill('SIGKILL');});
  child.on('message',raw=>{if(raw&&typeof raw==='object'&&'kind'in raw&&typeof raw.kind==='string'){messages.push(raw as Message);for(const notify of wake)notify();}});

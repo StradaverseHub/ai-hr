@@ -1,8 +1,8 @@
 /** UNINSTALLED/nonpackaged fictional process proof. No application/owner pool. */
 import postgres from 'postgres';
 import {z} from 'zod';
-if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||!process.send)throw Error('Owned hosted Rewards child required');
-const allowed=new Set(['PATH','TZ','LANG','GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY']);if(Object.keys(process.env).some(key=>!allowed.has(key)))throw Error('Unsealed Rewards child environment');
+if(process.env.NODE_ENV!=='test'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||!process.send)throw Error('Owned hosted Rewards child required');
+const allowed=new Set(['NODE_ENV','PATH','TZ','LANG','GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY']);if(Object.keys(process.env).some(key=>!allowed.has(key)))throw Error('Unsealed Rewards child environment');
 globalThis.fetch=async()=>{throw Error('Rewards child cannot call providers/network');};
 const request=z.object({kind:z.literal('start'),database:z.string(),projectorUrl:z.string(),pauseAfterCommit:z.boolean()}).strict();
 const send=(value:object)=>new Promise<void>((resolve,reject)=>{process.send!(value,error=>error?reject(error):resolve());});

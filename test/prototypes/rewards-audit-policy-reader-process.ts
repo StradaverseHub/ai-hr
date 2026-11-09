@@ -14,7 +14,7 @@ type Message=z.infer<typeof message>;
 export async function rewardPolicyReaderProcess(fixture:RewardsAuditPolicyFixtureOwner,ctx:SessionContext,signal:AbortSignal,registerStop:(stop:()=>Promise<void>)=>void){
  if(!ctx.userId||ctx.agent||ctx.entitlementsExempt!==undefined||ctx.statutoryOverride!==undefined)throw Error('Actual human policy process required');
  const userId=ctx.userId,tenantId=ctx.tenantId,roles=ctx.roles?.slice()??[],grants=ctx.grants?.map(grant=>({...grant}))??roles.map(role=>({role,companyId:null}));
- const child=spawn(process.execPath,['--import','tsx','test/prototypes/rewards-audit-policy-reader-child.ts'],{cwd:process.cwd(),env:{PATH:process.env.PATH,TZ:'UTC',LANG:'en_US.UTF-8',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr'},stdio:['ignore','pipe','pipe','ipc']});
+ const child=spawn(process.execPath,['--import','tsx','test/prototypes/rewards-audit-policy-reader-child.ts'],{cwd:process.cwd(),env:{NODE_ENV:'test',PATH:process.env.PATH,TZ:'UTC',LANG:'en_US.UTF-8',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr'},stdio:['ignore','pipe','pipe','ipc']});
  let outputBytes=0,invalid=false,exited=false;const messages:Message[]=[],wake=new Set<()=>void>();
  const abort=()=>{if(!exited)child.kill('SIGKILL');};
  // An error event is not the close/drain witness. Retain it until the real

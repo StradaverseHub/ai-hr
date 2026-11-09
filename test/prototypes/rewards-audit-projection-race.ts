@@ -42,7 +42,7 @@ export async function rewardAuditProjectionRace(fixture:RewardsAuditFixtureOwner
  expect(identity.pid).toBeGreaterThan(0);
  const [other]=await b`select pg_backend_pid()as pid,backend_start::text as started,session_user from pg_stat_activity where pid=pg_backend_pid()`;
  expect(other.session_user).toBe('ai_hr_reward_audit_projector');expect(other.pid).not.toBe(identity.pid);
- const releaseKey=BigInt('0x'+randomUUID().replace(/-/g,'').slice(0,12)).toString(),markerKey=(BigInt(releaseKey)+1n).toString();
+ const releaseKey=BigInt('0x'+randomUUID().replace(/-/g,'').slice(0,12)).toString(),markerKey=(BigInt(releaseKey)+BigInt(1)).toString();
  const ready=deferred(),release=deferred();let held:Promise<unknown>|undefined,pending:Promise<{rows?:number;error?:unknown}>|undefined,ownedFunction:Awaited<ReturnType<typeof definition>>|undefined,gate:unknown;
  let stopping:Promise<unknown>=Promise.resolve();
  const abort=()=>{release.resolve();stopping=Promise.allSettled([a.end({timeout:0}),b.end({timeout:0})]);};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
