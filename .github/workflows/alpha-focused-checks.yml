@@ -934,13 +934,21 @@ jobs:
                                    'heapMiBPerWorker': 2048, 'totalHeapMiB': 4096}
               driver_capture = record(driver.get('navigationCapture'))
               driver_mirror = driver.get('developmentMeasurement')
+              exact_actors = {'fictional': True, 'globalPopulationAsserted': False, 'trafficActors': 500,
+                  'tenants': 2, 'companies': 10, 'actorsPerTenant': 250, 'actorsPerCompany': 50,
+                  'nativeSelectedRows': 500, 'nativeGrants': 544,
+                  'roles': {'employee': 460, 'manager': 20, 'companyHR': 18, 'groupHR': 2}}
+              pg_failures = record(public.get('postgres-lock-failures.json'))
+              worker_failures = record(public.get('server-native-failures.json'))
               full_pass = (course_outcome == 'success' and receipt is not None and receipt['complete']
                   and all(number(topology.get(key), value, value) == value for key, value in expected_topology.items())
                   and driver_state == 'observed' and driver.get('preflightPassed') is True
                   and driver_receipt(driver_mirror) and driver_mirror == child and fixture_state == 'observed'
                   and capture_binding is not None
                   and (not full_course or (union_binding is not None and full_log_coverage
-                      and len(baseline['observations']) == 48 and legacy_states['actor-tenancy.json'] == 'observed'))
+                      and len(baseline['observations']) == 48 and public.get('actor-tenancy.json') == exact_actors
+                      and pg_failures.get('failures') == [] and pg_failures.get('runtimeFrom') is not None
+                      and worker_failures.get('failures') == []))
                   and driver_capture.get('scope') == 'DEVELOPMENT_ONLY'
                   and driver_capture.get('releaseEligible') is False
                   and number(driver_capture.get('loadedScenarios'), 0) == 0
