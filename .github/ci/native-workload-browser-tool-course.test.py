@@ -448,9 +448,39 @@ class ToolTransportModels(unittest.TestCase):
             downloader.update(course.state['processOutcomes']['archive-downloader'])
             accepted = report | {'failureReason':label}
             B._validate_tool_capture(B.canonical(accepted), '1')
-            downloader['exit'] = 2
-            with self.assertRaisesRegex(ValueError, 'identity reason lacks its exact child exit'):
+            wrong_identity = 'download-identity-drop-gid' if reason == 'original' else 'download-identity-original'
+            for wrong in ('download-identity', 'command-failed', wrong_identity):
+                with self.assertRaisesRegex(ValueError, 'identity reason lacks its exact child exit'):
+                    B._validate_tool_capture(B.canonical(accepted | {'failureReason':wrong}), '1')
+            with patch.dict(downloader, exit=2), \
+                 self.assertRaisesRegex(ValueError, 'identity reason lacks its exact child exit'):
                 B._validate_tool_capture(B.canonical(accepted), '1')
+
+        for change in (
+            lambda value: value.update(failure='strict-materialization'),
+            lambda value: value['processOutcomes'].pop('namespace-private'),
+            lambda value: value['processOutcomes']['namespace-private'].update(reason='command-failed', exit=2),
+            lambda value: value['processOutcomes'].update({'payload-bind':outcomes['namespace-private'].copy()}),
+            lambda value: value['processOutcomes']['archive-downloader'].update(escapedSession=True),
+        ):
+            malformed = copy.deepcopy(accepted)
+            change(malformed)
+            with self.assertRaisesRegex(ValueError, 'identity reason lacks its exact child exit'):
+                B._validate_tool_capture(B.canonical(malformed), '1')
+
+        uncertain = copy.deepcopy(accepted)
+        uncertain.update(cleanup='refused', ownedProcessesSettled=False, cleanupReason='group-uncertain')
+        for key in ('mountsAbsent', 'namespaceAbsent'):
+            del uncertain[key]
+        uncertain_child = uncertain['processOutcomes']['archive-downloader']
+        uncertain_child.update(quiescent=False, settlementReason='group-uncertain')
+        B._validate_tool_capture(B.canonical(uncertain), '1')
+        with patch.dict(uncertain_child, reaped=False), \
+             self.assertRaisesRegex(ValueError, 'identity reason lacks its exact child exit'):
+            B._validate_tool_capture(B.canonical(uncertain), '1')
+        for interrupted in ('deadline', 'owner-interrupted'):
+            with patch.dict(downloader, reason=interrupted):
+                B._validate_tool_capture(B.canonical(accepted | {'failureReason':interrupted}), '1')
 
     def test_incomplete_and_overcap_bodies_are_framing_refusals_before_overcap_write(self):
         now = time.monotonic()

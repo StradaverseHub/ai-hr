@@ -665,10 +665,16 @@ def _validate_tool_owner_capture(report):
                    'handshake-refused', 'protocol-refused', 'command-failed', 'group-uncertain',
                    'descendants-survived', 'session-escaped')),
              'Returned TOOL failure reasons differ')
-        if report.get('failureReason') in identity_reasons:
-            downloader = outcomes.get('archive-downloader', {})
-            need(report['failure'] == 'fixed-archive-acquisition' and downloader.get('reason') == 'command-failed'
-                 and downloader.get('exit') == 8 + identity_reasons.index(report['failureReason']),
+        failure_reason = report.get('failureReason')
+        downloader = outcomes.get('archive-downloader', {})
+        code = downloader.get('exit')
+        identity_exit = downloader.get('reason') == 'command-failed' and _tool_capture_int(code, 8, 20)
+        if identity_exit or failure_reason in identity_reasons:
+            need(identity_exit and failure_reason == identity_reasons[code - 8]
+                 and report['failure'] == 'fixed-archive-acquisition' and set(outcomes) == set(operations[:2])
+                 and 'namespace-private' in successful_operations
+                 and downloader['reaped'] and not downloader['escapedSession']
+                 and not any(key in report for key in ('transfer', 'materialized')),
                  'Returned TOOL identity reason lacks its exact child exit')
 
 
