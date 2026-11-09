@@ -79,3 +79,21 @@ protected first-worker protocol and all other browser assertions remain in use.
 This is source work awaiting independent review and hosted verification. The
 original HOST and BOOT receipts retain their exact identities. Future BOOT still
 needs a fresh canonical build from its own run and authenticated native results.
+
+### Committed first-tour state
+
+The protected fixture now verifies the first group HR user's actual onboarding
+state in its own PostgreSQL database. The same fixed read-only statement proves
+an unset value before any web worker starts and a committed value before the
+existing second-worker command proceeds. Both probes require the exact first
+fixture identity and current group-wide role. They use the existing owned
+container identity on both sides of the read, and emit only the two positive
+booleans. The browser supplies no database arguments. The 250 ms lock timeout,
+one-second statement timeout and five-second command bound fit within the
+existing absolute fixture deadline.
+
+The prior real Skip, completed response, card and hydration assertions remain
+required. The browser procedure and its deadlines are unchanged by this database
+proof. The source models preserve their 27 registered cases and exercise the
+positive sequence and refusal modes within the existing second-worker case.
+The new native proof awaits hosted verification on its own source and build.

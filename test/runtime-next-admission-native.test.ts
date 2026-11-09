@@ -50,6 +50,7 @@ it('boots two actual same-build Next workers through protected native admission 
   expect(report).toMatchObject({source:candidate,controller,runId,unit,complete:true,releaseEligible:false,
    fullApplicationJourneysVerified:false,hostInstallationVerified:false,actualNextBootVerified:true,
    checkOnlyDidNotStartWorkers:true,coldBusinessRequests:0,allStoppedGenerationsReclaimed:true,
+   firstHomeOnboardingInitiallyUnset:true,firstHomeOnboardingCommitted:true,
    rawBindAndProcessFamilyBarriersPreserved:true,ownedRuntimeCleaned:true});
   const projection=report.managerEnvironmentProjection;
   expect(projection).toMatchObject({kind:'ACTUAL_PRIVATE_MANAGER_KEYS_PROJECTION_NOT_ADMISSION',stable:true,effectiveUnitsVerified:true});

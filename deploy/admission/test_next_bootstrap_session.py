@@ -26,6 +26,17 @@ class Harness:
         self.ready_drift, self.identity_drift, self.exit_before_reply = ready_drift, identity_drift, exit_before_reply
         self.plan = {'candidate': 'a'*40, 'sourceDirectory': '/fixture/source', 'runnerUid': 1001, 'runnerGid': 1001,
             'runId': '123', 'nodePath': '/owned/node', 'browserInputPath': '/fixture/browser.json', 'evidenceDirectory': '/fixture/evidence'}
+        actor = {'index':0,'tenant':0,'role':'groupHR','organization':'native-a',
+                 'tenantId':'10000000-0000-4000-8000-000000000001',
+                 'userId':'20000000-0000-4000-8000-000000000002',
+                 'personId':'30000000-0000-4000-8000-000000000003'}
+        if fail == 'onboarding-invalid-id':actor['userId'] = 'fictional-private-invalid-uuid'
+        if fail == 'onboarding-not-group':actor['role'] = 'employee'
+        self.plan['fixture'] = {'version':1,'kind':'FICTIONAL_NATIVE_NEXT_SMOKE_ONLY','actors':[actor,*[{} for _ in range(7)]]}
+        self.postgres_scope = object.__new__(F.OwnedPostgresScope)
+        self.postgres_scope.identity = {'id':'c'*64}
+        self.postgres_scope.inspect = self.inspect_postgres
+        self.postgres_inspects = 0
         self.binding = {'nextBuildId': 'BUILD', 'buildSourcePath': '/fixture/producer'}
         self.processes = {42: {'pid': 42, 'start': 7}, 43: {'pid': 43, 'start': 8}}
         self.rows = {F.UNITS[0]: {'unit': F.UNITS[0], 'generation': 'g1', 'id': 'g1', 'phase': 'READY', 'port': 3201, 'admitted': True},
@@ -108,7 +119,31 @@ class Harness:
         if self.fail == 'generation':g['epoch'] = 'f'*32
         return {'generations': {'g1': g}, 'published': {'ready': ['g1','g2'] if self.permit else ['g1']}}
 
+    def inspect_postgres(self):
+        self.postgres_inspects += 1
+        changed = self.fail == 'onboarding-foreign-container' or self.fail == 'onboarding-container-replaced' and self.postgres_inspects == 2
+        return {'id':'d'*64} if changed else dict(self.postgres_scope.identity)
+
     def run(self, *args, **kwargs):
+        if args[0][0] == '/usr/bin/docker':
+            assert args[0] == ['/usr/bin/docker','--host','unix:///var/run/docker.sock','exec','-i','c'*64,
+                               'psql','-X','-qAt','-w','-U','postgres','-p','5433','-d','ai_hr_test_w1','-v','ON_ERROR_STOP=1']
+            assert kwargs['timeout'] == 5
+            sql = kwargs['input'].decode()
+            assert sql.startswith("BEGIN READ ONLY;\nSET LOCAL lock_timeout = '250ms';\nSET LOCAL statement_timeout = '1s';\n")
+            assert sql.endswith('ROLLBACK;\n') and sql.count('SELECT current_database()') == 1
+            assert "current_database() = 'ai_hr_test_w1' AND count(*) = 1" in sql
+            committed = 'bool_and((u.onboarded_at IS NOT NULL) = true)' in sql
+            assert committed or 'bool_and((u.onboarded_at IS NOT NULL) = false)' in sql
+            self.events.append('first-home-onboarding-probe' if committed else 'first-home-onboarding-initial-probe')
+            actor = self.plan['fixture']['actors'][0]
+            for column, key in [('tenant_id','tenantId'),('id','userId'),('person_id','personId')]:
+                assert f"u.{column} = '{actor[key]}'::uuid" in sql and all(actor[key] not in part for part in args[0])
+            assert "r.tenant_id = u.tenant_id AND r.app_user_id = u.id AND r.role = 'hr_admin' AND r.company_id IS NULL" in sql
+            if self.fail == 'onboarding-query-timeout':raise TimeoutError('synthetic owned PostgreSQL timeout')
+            stdout = {'onboarding-incomplete':b'f\n','onboarding-initial-already-complete':b'f\n',
+                      'onboarding-malformed':b't\nf\n'}.get(self.fail,b't\n')
+            return types.SimpleNamespace(stdout=stdout,stderr=b'')
         self.fs_calls += 1;self.events.append('filesystem-proof')
         assert kwargs['timeout'] == 10
         return types.SimpleNamespace(stdout=json.dumps(FS).encode())
@@ -194,7 +229,7 @@ class BootstrapSessionModels(unittest.TestCase):
     def test_profile_source_start_ready_precede_browser_and_one_profile_closes(self):
         h=Harness()
         with h.context() as report:
-            F.browser_core(h.plan,h.binding,h.C)
+            F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertEqual(len(h.profiles),1);self.assertEqual(h.profiles[0].next_runtime.full_reads,1)
             self.assertLess(h.events.index('source-check'),h.events.index('owned-start:'+F.UNITS[0]));self.assertLess(h.events.index('ready:'+F.UNITS[0]),h.events.index('browser-launch'))
             self.assertEqual(h.events.count('profile-close'),1);self.assertTrue(h.profiles[0].closed);self.assertTrue(report['actualNextBootVerified'])
@@ -202,14 +237,14 @@ class BootstrapSessionModels(unittest.TestCase):
     def test_allfive_live_proofs_and_filesystem_controls_still_run(self):
         h=Harness()
         with h.context() as report:
-            F.browser_core(h.plan,h.binding,h.C)
+            F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertEqual((h.workers,h.fs_calls),(5,5));self.assertEqual(h.profiles[0].next_runtime.checks,6)
             self.assertEqual(len(report['workers']),3);self.assertEqual(len(report['postBrowserWorkers']),2)
 
     def test_first_ack_occurs_only_after_live_filesystem_and_rechecked_ready(self):
         h=Harness()
         with h.context() as report:
-            F.browser_core(h.plan,h.binding,h.C)
+            F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertLess(h.events.index('live-proof'),h.events.index('filesystem-proof'));self.assertLess(h.events.index('filesystem-proof'),h.events.index('reply-flush'))
             self.assertEqual(h.replies[0],{'id':1,'ok':True,'result':{'port':3201}})
             self.assertEqual(report['bootstrapTiming']['slots'][9]['outcome'],'returned')
@@ -217,83 +252,110 @@ class BootstrapSessionModels(unittest.TestCase):
     def test_second_cold_and_permit_course_remains_after_first_ack(self):
         h=Harness()
         with h.context() as report:
-            F.browser_core(h.plan,h.binding,h.C)
+            h.postgres_scope.require_first_home_onboarding(h.plan['fixture'],committed=False)
+            F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertLess(h.events.index('reply-flush'),h.events.index('owned-start:'+F.UNITS[1]));self.assertTrue(h.permit)
             self.assertEqual(h.replies[1]['result'],{'port':3202,'admitted':False});self.assertEqual(report['coldBusinessRequests'],0)
+            self.assertLess(h.events.index('reply-flush'),h.events.index('first-home-onboarding-probe'))
+            self.assertLess(h.events.index('first-home-onboarding-probe'),h.events.index('owned-start:'+F.UNITS[1]))
+            self.assertLess(h.events.index('first-home-onboarding-initial-probe'),h.events.index('owned-start:'+F.UNITS[0]))
+            self.assertEqual(h.postgres_inspects,4);self.assertIs(report['firstHomeOnboardingCommitted'],True)
+        h=Harness(fail='onboarding-initial-already-complete')
+        with h.context():
+            with self.assertRaises(AssertionError):
+                h.postgres_scope.require_first_home_onboarding(h.plan['fixture'],committed=False)
+            self.assertEqual(h.events,['first-home-onboarding-initial-probe'])
+            self.assertEqual(h.postgres_inspects,2)
+        for fail, inspected, probed in (
+            ('onboarding-incomplete',2,True),('onboarding-malformed',2,True),('onboarding-foreign-container',1,False),
+            ('onboarding-container-replaced',2,True),('onboarding-query-timeout',1,True),
+            ('onboarding-invalid-id',0,False),('onboarding-not-group',0,False),
+        ):
+            with self.subTest(fail=fail):
+                h=Harness(fail=fail)
+                with h.context() as report:
+                    with self.assertRaises((AssertionError,TimeoutError)):
+                        F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
+                    self.assertEqual(h.postgres_inspects,inspected)
+                    self.assertEqual('first-home-onboarding-probe' in h.events,probed)
+                    self.assertNotIn('owned-start:'+F.UNITS[1],h.events)
+                    self.assertEqual(len(h.replies),1);self.assertTrue(h.profiles[0].closed)
+                    self.assertNotIn('firstHomeOnboardingCommitted',report)
+                    self.assertFalse(report['actualNextBootVerified'])
 
     def test_failed_profile_constructor_does_not_launch_or_claim_closed_session(self):
         h=Harness(fail='constructor')
         with h.context() as report:
-            with self.assertRaises(ValueError):F.browser_core(h.plan,h.binding,h.C)
+            with self.assertRaises(ValueError):F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertNotIn('browser-launch',h.events);self.assertEqual(report['bootstrapTiming']['slots'][12]['outcome'],'not-entered')
 
     def test_source_label_or_metadata_or_full_read_failure_always_closes(self):
         for fail in ('source-label','metadata','source'):
             h=Harness(fail=fail)
             with h.context():
-                with self.assertRaises((AssertionError,ValueError)):F.browser_core(h.plan,h.binding,h.C)
+                with self.assertRaises((AssertionError,ValueError)):F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
                 self.assertEqual(h.events.count('profile-close'),1);self.assertNotIn('browser-launch',h.events)
 
     def test_start_or_ready_generation_failure_never_launches_browser(self):
         for fail in ('start','generation'):
             h=Harness(fail=fail)
             with h.context():
-                with self.assertRaises((AssertionError,OSError)):F.browser_core(h.plan,h.binding,h.C)
+                with self.assertRaises((AssertionError,OSError)):F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
                 self.assertTrue(h.profiles[0].closed);self.assertNotIn('browser-launch',h.events)
 
     def test_first_live_environment_refusal_cannot_reuse_prepared_ready_ack(self):
         h=Harness(fail='live')
         with h.context() as report:
-            with self.assertRaises(ValueError):F.browser_core(h.plan,h.binding,h.C)
+            with self.assertRaises(ValueError):F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertEqual(h.replies,[]);self.assertEqual(h.fs_calls,0);self.assertTrue(h.profiles[0].closed);self.assertFalse(report['actualNextBootVerified'])
 
     def test_generation_after_live_proof_drift_refuses_first_ack(self):
         h=Harness(ready_drift=True)
         with h.context():
-            with self.assertRaises(AssertionError):F.browser_core(h.plan,h.binding,h.C)
+            with self.assertRaises(AssertionError):F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertEqual(h.replies,[]);self.assertEqual(h.workers,1);self.assertEqual(h.fs_calls,1)
 
     def test_prepared_process_identity_cannot_admit_replacement(self):
         h=Harness(identity_drift=True)
         with h.context():
-            with self.assertRaises(AssertionError):F.browser_core(h.plan,h.binding,h.C)
+            with self.assertRaises(AssertionError):F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertEqual(h.replies,[]);self.assertTrue(h.profiles[0].closed)
 
     def test_exited_browser_never_receives_fake_first_ack(self):
         h=Harness(exit_before_reply=True)
         with h.context() as report:
-            with self.assertRaises(AssertionError):F.browser_core(h.plan,h.binding,h.C)
+            with self.assertRaises(AssertionError):F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertEqual(h.replies,[]);self.assertEqual(report['bootstrapTiming']['browserExit']['wrapperReturnCode'],1)
 
     def test_original_pipe_failure_preserved_with_close_mandatory(self):
         h=Harness(fail='flush')
         with h.context() as report:
-            with self.assertRaises(BrokenPipeError):F.browser_core(h.plan,h.binding,h.C)
+            with self.assertRaises(BrokenPipeError):F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertTrue(h.profiles[0].closed);self.assertEqual(report['bootstrapTiming']['slots'][10]['outcome'],'refused')
 
     def test_profile_close_failure_prevents_boot_success(self):
         h=Harness(close_fail=True)
         with h.context() as report:
-            with self.assertRaises(OSError):F.browser_core(h.plan,h.binding,h.C)
+            with self.assertRaises(OSError):F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertFalse(report['actualNextBootVerified']);self.assertEqual(report['bootstrapTiming']['slots'][12]['outcome'],'refused')
 
     def test_original_and_close_failures_are_both_retained(self):
         h=Harness(fail='live',close_fail=True)
         with h.context():
-            with self.assertRaises(BaseExceptionGroup) as caught:F.browser_core(h.plan,h.binding,h.C)
+            with self.assertRaises(BaseExceptionGroup) as caught:F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertEqual([type(e) for e in caught.exception.exceptions],[ValueError,OSError])
 
     def test_wrapper_settlement_failure_is_mandatory_and_profile_still_closes(self):
         h=Harness(fail='wait')
         with h.context() as report:
-            with self.assertRaises(BaseExceptionGroup):F.browser_core(h.plan,h.binding,h.C)
+            with self.assertRaises(BaseExceptionGroup):F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
             self.assertTrue(h.profiles[0].closed);self.assertFalse(report['actualNextBootVerified'])
 
     def test_no_profile_or_live_proof_survives_into_next_operation(self):
         h=Harness()
-        with h.context():F.browser_core(h.plan,h.binding,h.C)
+        with h.context():F.browser_core(h.plan,h.binding,h.C,h.postgres_scope)
         h2=Harness()
-        with h2.context():F.browser_core(h2.plan,h2.binding,h2.C)
+        with h2.context():F.browser_core(h2.plan,h2.binding,h2.C,h2.postgres_scope)
         self.assertIsNot(h.profiles[0],h2.profiles[0]);self.assertTrue(h.profiles[0].closed and h2.profiles[0].closed)
 
     def test_clock_metadata_is_numeric_and_unknown_property_bytes_never_reflect(self):
@@ -310,7 +372,7 @@ class BootstrapSessionModels(unittest.TestCase):
     def test_successful_actual_shape_is_closed13slots_with_nested_first_clock_and_small_frame(self):
         h=Harness()
         with h.context() as report:
-            F.browser_core(h.plan,h.binding,h.C);timing=report['bootstrapTiming'];rows=timing['slots']
+            F.browser_core(h.plan,h.binding,h.C,h.postgres_scope);timing=report['bootstrapTiming'];rows=timing['slots']
             self.assertTrue(all(row['outcome']=='returned' and row['returned'] and row['elapsedUs']==row['endUs']-row['startUs'] for row in rows))
             self.assertLessEqual(rows[5]['startUs'],rows[6]['startUs']);self.assertGreaterEqual(rows[5]['endUs'],rows[10]['endUs'])
             self.assertLessEqual(len(json.dumps(timing,separators=(',',':')).encode()),4096)

@@ -1088,6 +1088,44 @@ class OwnedPostgresScope:
         require(self.inspect() == self.identity, 'Native PostgreSQL identity changed during scope observation')
         return {'memoryMax': 2113929216, 'memorySwapMax': 0, 'managerSwapMax': row['MemorySwapMax']}
 
+    def require_first_home_onboarding(self, fixture, *, committed):
+        # Only the first fictional group HR identity from the already admitted
+        # private fixture. The browser's existing protocol supplies no values.
+        require(type(committed) is bool, 'Closed native first Home onboarding expectation required')
+        require(isinstance(fixture, dict) and fixture.get('kind') == 'FICTIONAL_NATIVE_NEXT_SMOKE_ONLY'
+                and type(fixture.get('version')) is int and fixture['version'] == 1
+                and isinstance(fixture.get('actors'), list) and len(fixture['actors']) == 8,
+                'Fixed native first Home fixture required')
+        actor = fixture['actors'][0]
+        require(isinstance(actor, dict) and type(actor.get('index')) is int and actor['index'] == 0
+                and type(actor.get('tenant')) is int and actor['tenant'] == 0
+                and actor.get('role') == 'groupHR' and actor.get('organization') == 'native-a',
+                'Fixed native first Home group HR actor required')
+        tenant, user, person = (actor.get(key) for key in ('tenantId', 'userId', 'personId'))
+        uuid = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+        require(all(isinstance(value, str) and re.fullmatch(uuid, value) for value in (tenant, user, person)),
+                'Canonical native first Home actor IDs required')
+        require(self.inspect() == self.identity, 'Native PostgreSQL changed before first Home observation')
+        # A fresh read-only transaction sees the actual committed row. Only
+        # validated UUIDs enter the fixed SQL on stdin, never the command line.
+        expected = 'true' if committed else 'false'
+        sql = f"""BEGIN READ ONLY;
+SET LOCAL lock_timeout = '250ms';
+SET LOCAL statement_timeout = '1s';
+SELECT current_database() = 'ai_hr_test_w1' AND count(*) = 1
+       AND coalesce(bool_and((u.onboarded_at IS NOT NULL) = {expected}), false)
+FROM public.app_user AS u
+WHERE u.tenant_id = '{tenant}'::uuid AND u.id = '{user}'::uuid AND u.person_id = '{person}'::uuid
+  AND EXISTS (SELECT 1 FROM public.role_assignment AS r
+    WHERE r.tenant_id = u.tenant_id AND r.app_user_id = u.id AND r.role = 'hr_admin' AND r.company_id IS NULL);
+ROLLBACK;
+""".encode()
+        result = run(['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', 'exec', '-i', self.identity['id'],
+                      'psql', '-X', '-qAt', '-w', '-U', 'postgres', '-p', '5433', '-d', 'ai_hr_test_w1',
+                      '-v', 'ON_ERROR_STOP=1'], input=sql, timeout=5)
+        require(self.inspect() == self.identity, 'Native PostgreSQL changed after first Home observation')
+        require(result.stdout == b't\n' and result.stderr == b'', 'First Home group HR onboarding state is not verified')
+
     def snapshot(self, stage):
         require(stage in self.STAGES, 'Unknown native PostgreSQL scope observation')
         value = self.observe()
@@ -1467,7 +1505,7 @@ def native_worker(C, row, plan, binding, profile, host, *, first=False):
             'process': identity_value, 'kernel': proof, 'filesystem': filesystem}
 
 
-def browser_core(plan, binding, C):
+def browser_core(plan, binding, C, postgres_scope):
     global browser
     phase('actual-browser-two-worker-boot')
     bootstrap_timing()
@@ -1535,6 +1573,8 @@ def browser_core(plan, binding, C):
                     completed.append(operation)
                     continue
                 elif operation == 'start-second-cold':
+                    postgres_scope.require_first_home_onboarding(plan['fixture'], committed=True)
+                    report['firstHomeOnboardingCommitted'] = True
                     owned_start(UNITS[1], nonblocking=True)
                     second = until(lambda: cold(UNITS[1]), 'second actual Next healthy but unpublished')
                     require(second['port'] != first['port'], 'Cold endpoint reused current peer endpoint')
@@ -2582,11 +2622,13 @@ def main():
     postgres_scope = None
     try:
         postgres_scope = OwnedPostgresScope(plan)
+        postgres_scope.require_first_home_onboarding(plan['fixture'], committed=False)
+        report['firstHomeOnboardingInitiallyUnset'] = True
         fixture_directories()
         install_helpers(helper, plan, binding)
         N, release, runtime_package = package(plan, helper, binding)
         C = configure(plan, binding, N, release, runtime_package, postgres_scope)
-        browser_core(plan, binding, C)
+        browser_core(plan, binding, C, postgres_scope)
         release_workers(C)
         succeeded = True
     except BaseException as error:
