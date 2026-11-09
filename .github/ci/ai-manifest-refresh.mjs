@@ -14,9 +14,11 @@ const ownRoot=fileURLToPath(new URL('../../',import.meta.url));
 const outputs=['lib/ai/provider-data-source-manifest.ts','lib/ai/module-agent-source-manifest.ts'];
 const controllerInputs=['.github/ci/ai-manifest-refresh.mjs','.github/ci/resolve.mjs','.github/ci/ai-manifest-admission.mjs'];
 const approval='lib/ai/provider-data-approvals.ts';
-const approvalSha256='8d527c26d99b5931f466fb56cc3a39ff493265c0c6e2c8b7163d0ca57a87c452';
-// All 29 approved rows in the pinned e706 registry bind this one digest.
-const approvedProviderDigest='6d36d3f44cd79a5b386685e8e60176c45a50a61c188999251ecb9e5f4206bb16';
+// Each exact registry has 29 approved rows bound to its one digest and two pending rows.
+const approvalRegistries=Object.freeze([
+ Object.freeze({sha256:'8d527c26d99b5931f466fb56cc3a39ff493265c0c6e2c8b7163d0ca57a87c452',digest:'6d36d3f44cd79a5b386685e8e60176c45a50a61c188999251ecb9e5f4206bb16'}),
+ Object.freeze({sha256:'22c7c01b08a45507dfee5f56265c016abd77a50f280d7e8d5de18564d3283bdd',digest:'d225b958ee491f82a63f58280dc5d89aa87643c7775d82e9c95de6d5088abb82'}),
+]);
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const disabled=['qualify_restricted_port_prerequisites','profile_database','duration_order','run_typecheck','run_native_typecheck','run_native_swift_models','run_native_bundle','run_build'];
 const keys=['candidate_ref','expected_sha','selected_tests','refresh_ai_source_manifests',...disabled,'model_eval','eval_budget_usd','eval_allowed_providers'];
@@ -57,7 +59,7 @@ export function checkedManifestChild(result,withSources=false){
 export function assertRefreshProviderSource(provider){
  assert(provider.sources.includes('core/attendance-formula-ai.ts')&&provider.sources.includes('lib/attendance-formula-ai.ts'),
   'Attendance authoring source closure required');
- assert(provider.digest!==approvedProviderDigest,'Refresh must leave the changed provider source unapproved');
+ assert(!approvalRegistries.some(row=>row.digest===provider.digest),'Refresh must leave the changed provider source unapproved');
 }
 
 export function manifestRemainingTimeout(deadline,now,max){
@@ -109,7 +111,8 @@ export function refreshAiManifests({candidatePath,controllerPath,source,controll
  const protectedBytes=new Map([...AI_MANIFEST_INPUTS,approval].map(n=>[n,candidateMember(n)]));
  const trustedBytes=new Map([...controllerInputs,...AI_MANIFEST_INPUTS].map(n=>[n,committed(trusted,controllerTree,n)]));
  for(const name of AI_MANIFEST_INPUTS)assert(protectedBytes.get(name).equals(trustedBytes.get(name)),'Unreviewed generator or scope');
- assert(sha(protectedBytes.get(approval))===approvalSha256,'Exact e706 approval registry required');
+ const approvalSha256=sha(protectedBytes.get(approval));
+ assert(approvalRegistries.some(row=>row.sha256===approvalSha256),'Exact pinned approval registry required');
  const originalBytes=outputs.map(path=>candidateMember(path,4096));
  const originalOutputs=outputs.map((path,index)=>({path,sha256:sha(originalBytes[index])}));
  const agentNames=aiSourceFiles([...candidateTree.keys()]);

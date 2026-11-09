@@ -11,13 +11,25 @@ import {initAiManifestFixture,writeFixture,commitAiManifestFixture,fixtureGit} f
 import {admitAiManifests} from './ai-manifest-admission.mjs';
 const root=fileURLToPath(new URL('../../',import.meta.url)),hash=b=>createHash('sha256').update(b).digest('hex');
 const approval='lib/ai/provider-data-approvals.ts';
+const originalApprovalDigest='6d36d3f44cd79a5b386685e8e60176c45a50a61c188999251ecb9e5f4206bb16';
+const payrollApprovalDigest='d225b958ee491f82a63f58280dc5d89aa87643c7775d82e9c95de6d5088abb82';
 const event=()=>({repository:{full_name:'StradaverseHub/ai-hr'},ref:'refs/heads/main',inputs:{refresh_ai_source_manifests:'true',candidate_ref:'codex/fixture',expected_sha:'a'.repeat(40),selected_tests:'[]'}});
-function withPair(fn){
+function originalRegistryFixture(){
+ const original=readFileSync(join(root,approval),'utf8').replaceAll(payrollApprovalDigest,originalApprovalDigest);
+ assert.equal(hash(original),'8d527c26d99b5931f466fb56cc3a39ff493265c0c6e2c8b7163d0ca57a87c452');
+ return original;
+}
+function payrollRegistryFixture(){
+ const current=originalRegistryFixture().replaceAll(originalApprovalDigest,payrollApprovalDigest);
+ assert.equal(hash(current),'22c7c01b08a45507dfee5f56265c016abd77a50f280d7e8d5de18564d3283bdd');
+ return current;
+}
+function withPair(fn,registry=originalRegistryFixture()){
  const temp=mkdtempSync(join(tmpdir(),'ai-manifest-refresh-')),candidate=join(temp,'candidate'),controller=join(temp,'controller');
  try{
   for(const dir of [candidate,controller]){
    writeFixture(dir,'placeholder',dir===candidate?'fictional candidate':'fictional controller');initAiManifestFixture(dir);
-   writeFixture(dir,approval,readFileSync(join(root,approval)));
+   writeFixture(dir,approval,registry);
    writeFixture(dir,'core/attendance-formula-ai.ts',"import '../lib/attendance-formula-ai';\n");
    writeFixture(dir,'lib/attendance-formula-ai.ts','// Fictional finite authoring serializer\n');
    writeFixture(dir,'core/performance.ts','// Fictional changed provider input\n');
@@ -67,14 +79,38 @@ test('actual fixed generators refresh in dependency order and preserve every app
  assert.deepEqual(fixtureGit(p.candidate,'diff','--name-only').split('\n'),result.generated.map(r=>r.path).sort());
  assert.equal(admitAiManifests(p.candidate,commitAiManifestFixture(p.candidate)).checks.length,2);
 }));
+test('actual fixed generators preserve the exact Payroll approval registry',()=>{
+ const registry=payrollRegistryFixture();
+ withPair(p=>{
+  const result=refreshAiManifests(p.options());
+  assert.equal(readFileSync(join(p.candidate,approval),'utf8'),registry);
+  const pin={path:approval,sha256:hash(registry)};
+  assert.deepEqual(result.receipt.protectedInputs.find(row=>row.path===approval),pin);
+  assert.deepEqual(result.receipt.agent.members.find(row=>row.path===approval),pin);
+  assert(!result.receipt.provider.members.some(row=>row.path===approval));
+  assert.deepEqual(result.receipt.approvalRecords,{approved:29,pending:2,unchanged:true,renewed:false});
+  assert.deepEqual(result.generated.map(row=>row.path),['lib/ai/provider-data-source-manifest.ts','lib/ai/module-agent-source-manifest.ts']);
+  assert.equal(admitAiManifests(p.candidate,commitAiManifestFixture(p.candidate)).checks.length,2);
+ },registry);
+});
 test('same-count approval provenance drift refuses before either generated file changes',()=>withPair(p=>{
  const original=readFileSync(join(p.candidate,approval),'utf8');
  const changed=original.replace('human:zenlam repository-owner provisional','human:fictional reviewer provisional');
  assert.notEqual(changed,original);
  writeFixture(p.candidate,approval,changed);commitAiManifestFixture(p.candidate);
- assert.throws(()=>refreshAiManifests(p.options()),/Exact e706 approval registry required/);
+ assert.throws(()=>refreshAiManifests(p.options()),/Exact pinned approval registry required/);
  assert.equal(fixtureGit(p.candidate,'status','--porcelain'),'');
 }));
+test('a same-count mutation of the Payroll registry refuses before generator work',()=>{
+ const registry=payrollRegistryFixture();
+ withPair(p=>{
+  const changed=registry.replace(payrollApprovalDigest,originalApprovalDigest);
+  assert.notEqual(changed,registry);
+  writeFixture(p.candidate,approval,changed);commitAiManifestFixture(p.candidate);
+  assert.throws(()=>refreshAiManifests(p.options()),/Exact pinned approval registry required/);
+  assert.equal(fixtureGit(p.candidate,'status','--porcelain'),'');
+ },registry);
+});
 test('a tracked Attendance serializer outside the actual provider closure refuses',()=>withPair(p=>{
  const attendance=readFileSync(join(root,'core/attendance-formula-ai.ts'),'utf8');
  assert.match(attendance,/from ['"]\.\.\/lib\/attendance-formula-ai['"]/);
@@ -84,11 +120,10 @@ test('a tracked Attendance serializer outside the actual provider closure refuse
  const generated='lib/ai/module-agent-source-manifest.ts';
  assert.equal(readFileSync(join(p.candidate,generated),'utf8'),fixtureGit(p.candidate,'show','HEAD:'+generated)+'\n');
 }));
-test('the actual previously approved provider digest refuses even with both Attendance members',()=>{
- const manifest=readFileSync(join(root,'lib/ai/provider-data-source-manifest.ts'),'utf8');
- const approved=/SOURCE_DIGEST = "([0-9a-f]{64})"/.exec(manifest)[1];
+test('both actually approved provider digests refuse even with both Attendance members',()=>{
  const sources=['core/attendance-formula-ai.ts','lib/attendance-formula-ai.ts'];
- assert.throws(()=>assertRefreshProviderSource({sources,digest:approved}),/must leave the changed provider source unapproved/);
+ for(const digest of [originalApprovalDigest,payrollApprovalDigest])
+  assert.throws(()=>assertRefreshProviderSource({sources,digest}),/must leave the changed provider source unapproved/);
  assert.doesNotThrow(()=>assertRefreshProviderSource({sources,digest:'a'.repeat(64)}));
 });
 test('dirty or wrong source and controller identities refuse before generator work',()=>withPair(p=>{
