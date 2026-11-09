@@ -1,8 +1,8 @@
 {
-  "version": 3,
+  "version": 4,
   "kind": "PROTECTED_NATIVE_TOOL_ONLY_SOURCE_NOT_RUNTIME",
   "sourceRef": "codex/native-workload-tool-only-custody-repair-20261109",
-  "parent": "aad6881a04390e7bb510e2fe77f949a6064ad9b7",
+  "parent": "670f3bdcd83901c3e922d3833825b3ad6e3c2038",
   "normalCompositionParents": [
     "1d925e3f0e7945ac5bac1be84857178eaa264a70",
     "5bfcf553173cb566a97b28a2ba017de81cb09226"
@@ -17,8 +17,8 @@
     },
     {
       "path": ".github/ci/native-controller-bootstrap.py",
-      "bytes": 42411,
-      "sha256": "20dabef62c23f014475d5ea16e91bf8f5d8875b292f09e8c393fd9f94ca4ec9f"
+      "bytes": 42800,
+      "sha256": "c68574c36404153b03b62ca24b861bc482fd2a3c2d8e9ac612db03052a383b37"
     },
     {
       "path": ".github/ci/native-workload-browser-tool-course.py",
@@ -27,8 +27,8 @@
     },
     {
       "path": ".github/ci/native-workload-browser-tool-course.test.py",
-      "bytes": 33276,
-      "sha256": "0286b4a0013d3a78862b0c9f11f0b83eee51ca3fd84e4b362a981d4fae22cbb2"
+      "bytes": 35937,
+      "sha256": "840b09e6a435ad3c0173060d79714be11584d2cb0f74e27168a897162afe6fef"
     },
     {
       "path": ".github/ci/singleton-commissioning.test.mjs",
@@ -39,31 +39,24 @@
   "exactWholeExistingPreimages": [
     {
       "path": ".github/ci/native-controller-bootstrap.py",
-      "bytes": 33565,
-      "sha256": "3f28de1ef59ef279ba2fc88863c58f6e1274053a11dd2f967664b81e1b6e13f7",
-      "commit": "aad6881a04390e7bb510e2fe77f949a6064ad9b7",
-      "gitBlob": "5f7959ec76108257a6e42f13c1ba41101d2bbc7f"
-    },
-    {
-      "path": ".github/ci/native-workload-browser-tool-course.py",
-      "bytes": 57914,
-      "sha256": "2d382bab833ed6f686f11272bc477e265109ae0aae4f2cc80d24551ea75cfc82",
-      "commit": "aad6881a04390e7bb510e2fe77f949a6064ad9b7",
-      "gitBlob": "101f7e66cb5f6cc1a51691cec006efd9d32d4a1f"
+      "bytes": 42411,
+      "sha256": "20dabef62c23f014475d5ea16e91bf8f5d8875b292f09e8c393fd9f94ca4ec9f",
+      "commit": "670f3bdcd83901c3e922d3833825b3ad6e3c2038",
+      "gitBlob": "666a6b9dffc6684c7f876379fc4cbe5ca7e7e399"
     },
     {
       "path": ".github/ci/native-workload-browser-tool-course.test.py",
-      "bytes": 23162,
-      "sha256": "cefd1fd1c6feab6a1889388c9c4a6ae61f3b6e3774b4d54b36c79cfa7799e7fe",
-      "commit": "aad6881a04390e7bb510e2fe77f949a6064ad9b7",
-      "gitBlob": "6db895d54c58f1d6e00c553a11b6375f66f9c526"
+      "bytes": 33276,
+      "sha256": "0286b4a0013d3a78862b0c9f11f0b83eee51ca3fd84e4b362a981d4fae22cbb2",
+      "commit": "670f3bdcd83901c3e922d3833825b3ad6e3c2038",
+      "gitBlob": "eb7a85fb6b4b5b82e62c81c2599d26dab9ad645f"
     },
     {
       "path": "docs/qualification/native-workload-browser-tool-course-source-20261109.json",
-      "bytes": 8410,
-      "sha256": "22732456b74c66781a0b8aef451d57a12b1975bd3240cc4d1ee6c3bd023a8b7d",
-      "commit": "aad6881a04390e7bb510e2fe77f949a6064ad9b7",
-      "gitBlob": "200f6ac69c331f7b77b22651976e3e70cfa6763d"
+      "bytes": 9118,
+      "sha256": "c46aa553c43b584c04085744bbff22b82aafae9f3e5e9808c2876b7ebc685401",
+      "commit": "670f3bdcd83901c3e922d3833825b3ad6e3c2038",
+      "gitBlob": "c4ca46e54ba597968ad193ac6d92c75aeebc12c8"
     }
   ],
   "closedCapsuleInputs": [
@@ -121,6 +114,7 @@
     "test_late_written_ack_keeps_real_group_proof_through_owned_refusal_reap",
     "test_observed_owned_mount_and_real_absence_are_both_required",
     "test_only_exact_real_native_job_and_manual_self_source_enter",
+    "test_owner_capture_refuses_contradictory_process_and_cleanup_claims",
     "test_partial_precreated_slot_can_be_reclaimed_but_same_name_replacement_is_preserved",
     "test_primary_operation_failure_survives_later_owned_settlement_refusal",
     "test_ready_identity_readback_at_active_edge_never_acknowledges",
@@ -221,6 +215,16 @@
     "actualLateAckGroupClosureRemainsRequired": true,
     "framingClassIncludesIncompleteReadAndPrewriteOvercap": true,
     "modelCount": 24,
+    "nativeObservation": "UNRUN"
+  },
+  "cleanupCaptureCorrection": {
+    "historicalAuthorSourceProofSha256": "0062317a0ee7584155f110b6b967df369c4668e21b3649a8bf2d4b8eebb56add",
+    "onlyReturnedOwnerCaptureValidationChanged": true,
+    "ownedProcessSettlementRequiresEveryReportedProcessQuiescent": true,
+    "unacquiredRequiresNoOwnedProcessPending": true,
+    "completeCleanupRequiresOriginalTimeBound": true,
+    "completeCleanupOfMaterializedPayloadRequiresSuccessfulOwnedUnmount": true,
+    "modelCount": 25,
     "nativeObservation": "UNRUN"
   }
 }

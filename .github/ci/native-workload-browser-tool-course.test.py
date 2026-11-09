@@ -211,6 +211,50 @@ class ToolIntentModels(unittest.TestCase):
         del row['settlementReason']
         B._validate_tool_capture(B.canonical(report), '1')
 
+    def test_owner_capture_refuses_contradictory_process_and_cleanup_claims(self):
+        report = tool_owner_report()
+        report.update(complete=False, failure='readonly-installation-readback', failureReason='deadline', elapsedMs=179999)
+        B._validate_tool_capture(B.canonical(report), '1')
+
+        for unmount in (None, {'reason':'command-failed', 'exit':1, 'admitted':True,
+                                'reaped':True, 'quiescent':True, 'escapedSession':False}):
+            changed = copy.deepcopy(report)
+            outcomes = changed['processOutcomes']
+            if unmount is None:
+                del outcomes['payload-unmount']
+            else:
+                outcomes['payload-unmount'] = unmount
+            with self.subTest(unmount=unmount), self.assertRaisesRegex(ValueError, 'bounded positive closure'):
+                B._validate_tool_capture(B.canonical(changed), '1')
+
+        expired = report | {'elapsedMs':180000}
+        with self.assertRaisesRegex(ValueError, 'bounded positive closure'):
+            B._validate_tool_capture(B.canonical(expired), '1')
+        B._validate_tool_capture(B.canonical(expired | {'cleanup':'refused', 'cleanupReason':'deadline'}), '1')
+
+        uncertain = copy.deepcopy(report)
+        uncertain.update(failure='fixed-archive-acquisition', failureReason='deadline')
+        for key in ('transfer', 'materialized'):
+            del uncertain[key]
+        outcomes = uncertain['processOutcomes']
+        outcomes['archive-downloader'].update(exit=None, reason='deadline', reaped=False, quiescent=False,
+                                               settlementReason='group-uncertain')
+        for operation in ('payload-bind', 'payload-remount', 'payload-unmount'):
+            del outcomes[operation]
+        with self.assertRaisesRegex(ValueError, 'cleanup fields differ'):
+            B._validate_tool_capture(B.canonical(uncertain), '1')
+        for key in ('mountsAbsent', 'namespaceAbsent'):
+            del uncertain[key]
+        uncertain.update(cleanup='refused', ownedProcessesSettled=False, cleanupReason='contract-refused')
+        B._validate_tool_capture(B.canonical(uncertain), '1')
+
+        unacquired = report | {'cleanup':'not-acquired', 'failure':'root-parent-acquisition', 'failureReason':'host-io'}
+        for key in ('transfer', 'materialized', 'processOutcomes', 'mountsAbsent', 'namespaceAbsent'):
+            del unacquired[key]
+        B._validate_tool_capture(B.canonical(unacquired), '1')
+        with self.assertRaisesRegex(ValueError, 'unacquired state'):
+            B._validate_tool_capture(B.canonical(unacquired | {'ownedProcessesSettled':False}), '1')
+
 
 class ToolTransportModels(unittest.TestCase):
     def test_incomplete_and_overcap_bodies_are_framing_refusals_before_overcap_write(self):

@@ -542,6 +542,7 @@ def _validate_tool_owner_capture(report):
     reasons = ('complete', 'command-failed', 'deadline', 'handshake-refused', 'descendants-survived',
                'protocol-refused', 'owner-interrupted', 'group-uncertain', 'session-escaped')
     successful_operations = set()
+    all_reported_processes_quiescent = True
     if 'processOutcomes' in report:
         outcomes = report['processOutcomes']
         _tool_capture_keys(outcomes, operations if complete else (), () if complete else operations)
@@ -555,6 +556,7 @@ def _validate_tool_owner_capture(report):
                  and (row['quiescent'] and row['reaped'] and 'settlementReason' not in row
                       or not row['quiescent'] and row.get('settlementReason') == 'group-uncertain'),
                  'Returned TOOL process outcome differs')
+            all_reported_processes_quiescent = all_reported_processes_quiescent and row['quiescent']
             if (row['reason'] == 'complete' and row['exit'] == 0 and row['admitted']
                     and row['quiescent'] and not row['escapedSession']):
                 successful_operations.add(operation)
@@ -566,15 +568,19 @@ def _validate_tool_owner_capture(report):
     cleanup = report['cleanup']
     need(cleanup in ('complete', 'refused', 'not-acquired') and all(report[key] is True for key in closure if key in report)
          and ('namespaceAbsent' not in report or 'mountsAbsent' in report)
-         and ('mountsAbsent' not in report or report['ownedProcessesSettled']), 'Returned TOOL cleanup fields differ')
+         and ('mountsAbsent' not in report or report['ownedProcessesSettled'])
+         and (not report['ownedProcessesSettled'] or all_reported_processes_quiescent),
+         'Returned TOOL cleanup fields differ')
     if cleanup == 'complete':
-        need(all(report.get(key) is True for key in closure) and 'cleanupReason' not in report,
-             'Returned TOOL cleanup lacks positive absence')
+        need(all(report.get(key) is True for key in closure) and 'cleanupReason' not in report
+             and report['elapsedMs'] < 180000
+             and ('materialized' not in report or operations[-1] in successful_operations),
+             'Returned TOOL cleanup lacks bounded positive closure')
     elif cleanup == 'not-acquired':
-        need(not any(key in report for key in closure + observed + ('cleanupReason',)),
+        need(report['ownedProcessesSettled'] and not any(key in report for key in closure + observed + ('cleanupReason',)),
              'Returned TOOL unacquired state contains owner observations')
     if complete:
-        need(cleanup == 'complete' and report['elapsedMs'] < 180000 and successful_operations == set(operations),
+        need(cleanup == 'complete' and successful_operations == set(operations),
              'Returned TOOL success lacks bounded cleanup and process completion')
     else:
         stages = ('root-parent-acquisition', 'root-acquisition', 'source-capsule', 'private-mount-namespace',
