@@ -45,16 +45,16 @@
       "wholeOriginalSha256": "1a689caf19c62c06a8f6a0d147d00098a1acfd52f204db5dc3c2734668b42635"
     },
     "test/employee-choice-unicode-scale.test.ts": {
-      "currentBytes": 36373,
-      "currentSha256": "06ac58340c489f9fdd9cac44e5f5c7875a783cbac4492cb12c02baa5bd851b1a",
+      "currentBytes": 37944,
+      "currentSha256": "c872ac7e1af49292522f443f638e37cc29e25dac9634c97f532692d55a257a8c",
       "wholeOriginalGitRef": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d:test/employee-choice-unicode-scale.test.ts",
       "wholeOriginalBlob": "33ffb2d7a2e627feebdf6be2343350b3d28cf2a7",
       "wholeOriginalBytes": 4455,
       "wholeOriginalSha256": "67acc9503022ee957ecbaf2db05834704893300cfb45c58a12ab3aacad760a4b"
     },
     "docs/adr/2026-11-07-employee-choice-organisation-plan.md": {
-      "currentBytes": 4557,
-      "currentSha256": "7647f3d6701fefdd881462c4ea34a5b9ccd11b9502511b76d2f14e838621101f",
+      "currentBytes": 5180,
+      "currentSha256": "ba1a26acb6ce32fb921234c962281b54ff1ad73115d232c91621e808d668b150",
       "wholeOriginalGitRef": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d:docs/adr/2026-11-07-employee-choice-organisation-plan.md",
       "wholeOriginalBlob": "e998fdeb1848a04877671554b942652b63f2ea61",
       "wholeOriginalBytes": 3068,
@@ -82,16 +82,6 @@
       18000,
       10000
     ],
-    "appColdConnectTypeAndBootstrapMs": [
-      1000,
-      500,
-      1500
-    ],
-    "ownerColdConnectTypeAndSetupMs": [
-      2000,
-      10000,
-      10000
-    ],
     "ownerOriginalFixtureStatementCapMs": 10000,
     "applicationOriginalReadStatementCapMs": 20000,
     "matchedStatementCapMs": 3000,
@@ -100,12 +90,59 @@
     "maximumRawPlans": 4,
     "pairedPerformanceClaim": "DESCRIPTIVE_MATCHED_PAIR_ONLY",
     "stressPerformanceClaim": "ABSOLUTE_FIXED_SCOPE_ONLY",
-    "nativeFit": "UNMEASURED"
+    "nativeFit": "UNMEASURED",
+    "appColdConnectAndBootstrapMs": [
+      1000,
+      1500
+    ],
+    "dedicatedPoolFetchTypes": false,
+    "ordinaryPoolSettingsPreserved": true,
+    "stressStatementCount": "PRODUCT_EXECUTE_POSITIONS_EXCLUDING_DRIVER_PROTOCOL_AND_RETRY",
+    "ownerColdConnectWarmupAndSetupMs": [
+      2000,
+      10000,
+      10000
+    ]
   },
   "holds": [
     "independent full source review",
     "hosted native correctness and scale receipts",
     "source and disclosure qualification",
     "staging and production authority"
-  ]
+  ],
+  "connectionStartupCorrection": {
+    "directParent": "fb5710607386118f3fa158cb571337a8e21ad103",
+    "independentParentReviewSha256": "752653ffd3868a5b883bbb6a0e03e7a42b861d796e864c75f5647a625bb679c1",
+    "parentWholePreimages": {
+      "test/employee-choice-unicode-scale.test.ts": {
+        "wholeGitRef": "fb5710607386118f3fa158cb571337a8e21ad103:test/employee-choice-unicode-scale.test.ts",
+        "gitBlob": "986a4fba3ded26a45dd2d4c51c30b4c2dcd4370c",
+        "bytes": 36373,
+        "sha256": "06ac58340c489f9fdd9cac44e5f5c7875a783cbac4492cb12c02baa5bd851b1a"
+      },
+      "docs/adr/2026-11-07-employee-choice-organisation-plan.md": {
+        "wholeGitRef": "fb5710607386118f3fa158cb571337a8e21ad103:docs/adr/2026-11-07-employee-choice-organisation-plan.md",
+        "gitBlob": "f874a5b0d85a4eb9fb1805842c83cab172b51237",
+        "bytes": 4557,
+        "sha256": "7647f3d6701fefdd881462c4ea34a5b9ccd11b9502511b76d2f14e838621101f"
+      },
+      "docs/qualification/employee-choice-department-existence-source-20261109.json": {
+        "wholeGitRef": "fb5710607386118f3fa158cb571337a8e21ad103:docs/qualification/employee-choice-department-existence-source-20261109.json",
+        "gitBlob": "5a85309708f57d38b78d62ba85f537ec1f023375",
+        "bytes": 4458,
+        "sha256": "4a854b005f652e8652fcbbeb892ec9303b3684660bce548013b2adb3b0163569"
+      }
+    },
+    "driverVersion": "postgres.js 3.4.9",
+    "sourcePins": {
+      "src/index.js": "4e21f5733e70d79cffc10d10d4ef01031de4a9ac862210e43f8870029fd103ed",
+      "src/connection.js": "ee3a218d9aa6a6f2887c1a19da50009335fe84c11a5431d5cab72d6bc528632f",
+      "src/types.js": "1883bd4536eab1c94b9e708d325b13708b0f18ec80020e3a825f34a72f603b81"
+    },
+    "scope": "SAME_TWO_EXISTING_DEDICATED_POOLS_ONLY",
+    "codecContract": "SCALAR_AND_JSON_PLUS_SERVER_CAST_ARRAY_TEXT",
+    "preparedDriverBehavior": "UNCHANGED",
+    "priorRuntimeFailureObserved": false,
+    "ownerWarmupContract": "ONE_AUTHENTICATED_SCALAR_QUERY_THEN_IMMEDIATE_RESERVE_SAME_BACKEND_BEFORE_SESSION_CHANGES"
+  }
 }

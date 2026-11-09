@@ -66,3 +66,12 @@ observations. The stress checks establish absolute limits and exact results for
 their inputs. Verification requires the observed native plan, original lookup
 results and owned transaction settlement. This source candidate has no release
 qualification or deployment receipt.
+
+The dedicated probe disables postgres.js type discovery on both existing pools.
+Its fixtures use scalar and JSON values, with array arguments cast on the server.
+The driver can otherwise start a discovery query outside the awaited operation
+after its connection timer stops. The fixture owner awaits one authenticated
+scalar query before immediately reserving its connection. The reservation must
+have the same backend identity before setting limits. Ordinary runs keep their
+connection settings. The five stress statements count product calls. Driver
+protocol messages and prepared-query retries have separate semantics.

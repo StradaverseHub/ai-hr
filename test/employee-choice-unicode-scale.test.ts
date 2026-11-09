@@ -39,6 +39,9 @@ const facetAdmission=await vi.hoisted(async()=>{
      (index===0&&value!==process.env.TEST_DATABASE_URL)||(index===1&&value!==process.env.MIGRATION_DATABASE_URL))
    throw new Error('Dedicated employee facet worker URL differs');
   url.searchParams.set('connect_timeout',index===0?'1':'2');
+  // This closed fixture uses scalar/JSON codecs and server-cast array text.
+  // Avoid the driver's detached discovery query on these two pools only.
+  url.searchParams.set('fetch_types','false');
   url.searchParams.set('statement_timeout',index===0?'500ms':'10s');
   if(index===0)url.searchParams.set('lock_timeout','300ms');
   return url.toString();
@@ -122,7 +125,8 @@ const uuidArray=(ids:readonly string[])=>'{'+ids.join(',')+'}';
 
 function verifyFacetPools(expectedDatabase:string){
  for(const [pool,role,connect,statement]of [[database.client,'ai_hr_app',1,'500ms'],[owner.client,'postgres',2,'10s']] as const){
-  expect(pool.options).toMatchObject({host:['127.0.0.1'],port:[5433],database:expectedDatabase,user:role,connect_timeout:connect,fetch_types:true});
+  expect(pool.options).toMatchObject({host:['127.0.0.1'],port:[5433],database:expectedDatabase,user:role,connect_timeout:connect,fetch_types:false});
+  expect(Object.hasOwn(pool.options.connection,'fetch_types')).toBe(false);
   expect(pool.options.connection.statement_timeout).toBe(statement);
  }
  expect(database.client.options.connection.lock_timeout).toBe('300ms');
@@ -240,8 +244,10 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   stress:[] as {label:string;wallMs:number;departmentMs:number;explainMs?:number;total:number;statements:number;rows:number}[]};
  report.facetCandidate=state;
  const rawPlans:{label:string;raw:unknown}[]=[],metadata:Record<string,unknown>={startup:{
-  app:{poolMax:database.client.options.max,connectMs:1000,coldTypeDiscoveryMs:500,nativeBootstrapMs:1500},
-  owner:{poolMax:owner.client.options.max,connectMs:2000,coldTypeDiscoveryMs:10000,authenticatedSetupMs:10000},
+  app:{poolMax:database.client.options.max,connectMs:1000,fetchTypes:database.client.options.fetch_types,nativeBootstrapMs:1500},
+  owner:{poolMax:owner.client.options.max,connectMs:2000,fetchTypes:owner.client.options.fetch_types,authenticatedWarmupMs:10000,authenticatedSetupMs:10000},
+  preparedStatements:database.client.options.prepare,
+  stressStatementCount:'PRODUCT_EXECUTE_POSITIONS_EXCLUDING_DRIVER_PROTOCOL_AND_RETRY',
  }};
  const persist=()=>{
   const detail=JSON.stringify(metadata);
@@ -271,10 +277,21 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
  let appStarts=0;
  const fixture:{reservation?:Awaited<ReturnType<typeof owner.client.reserve>>;realm?:Realm;transaction:boolean;tightened:boolean}={transaction:false,tightened:false};
  const startOwner=async()=>{
-  // A cold checkout can spend 2s connecting plus 10s on postgres.js's default
-  // fetchArrayTypes SELECT after ReadyForQuery cancels the connect timer.
-  fit(matchedEnd,22000,'owner cold reserve and authenticated setup');
+  // postgres.js 3.4.9 does not hand off a cold reserve with fetch_types off.
+  // A normal query reaches ReadyForQuery, which opens the socket before the
+  // waiting promise continues. This sole-file course has no other owner work.
+  fit(matchedEnd,22000,'owner cold connect, authenticated warmup and setup');
+  const [warm]=await owner.client<{pid:number;backendStart:string}[]>`select pg_backend_pid() as pid,
+   extract(epoch from backend_start)::text as "backendStart" from pg_stat_activity
+   where pid=pg_backend_pid() and datname=${admission.database} and current_database()=${admission.database}
+     and current_user='postgres' and session_user='postgres' and inet_server_port()=5433
+     and inet_server_addr()='127.0.0.1'::inet and current_setting('statement_timeout')='10s'`;
+  if(!warm||!Number.isSafeInteger(warm.pid)||warm.pid<=0||!/^\d+(?:\.\d+)?$/.test(warm.backendStart))
+   throw new Error('Authenticated owner warmup refused');
+  fit(matchedEnd,10000,'owner immediate reservation and authenticated setup');
+  // Call reserve in this same continuation without any intervening await.
   const reservation=await owner.client.reserve();fixture.reservation=reservation;
+  metadata.ownerWarmup=warm;
   fit(matchedEnd,10000,'reserved owner realm and limits');
   const [identity]=await reservation<(Realm&{boundStatement:string;boundLock:string})[]>`with live as materialized (
     select current_database() as database,d.oid::text as "databaseOid",inet_server_addr()::text as address,
@@ -284,6 +301,8 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
     from pg_database d where d.datname=current_database() and d.datname=${admission.database}
       and current_user='postgres' and session_user='postgres' and inet_server_port()=5433
       and inet_server_addr()='127.0.0.1'::inet and current_setting('statement_timeout')='10s'
+      and pg_backend_pid()=${warm.pid} and exists(select 1 from pg_stat_activity a where a.pid=${warm.pid}
+        and extract(epoch from a.backend_start)::text=${warm.backendStart})
    ), tightened as materialized (
     select set_config('statement_timeout','1s',false) as "boundStatement",set_config('lock_timeout','300ms',false) as "boundLock" from live
    ) select live.*,tightened.* from live cross join tightened`;
@@ -300,8 +319,8 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    rls:{assignment:true,employment:true,person:true,company:true,department:true}});
  };
  const snapshot=async(deadline:number,finalMs:number,work:(tx:Tx,assertPhase:()=>void)=>Promise<void>)=>{
-  // Cold app startup is ≤1s + a 500ms type SELECT + 3×500ms for BEGIN,
-  // mode and context. The four-second frontier also charges queue and wire time.
+  // Cold app startup budgets 1s to connect and 3×500ms for BEGIN, mode
+  // and context. The four-second frontier also charges queue and wire time.
   fit(deadline,4000+finalMs,'application admission and bootstrap');
   const frontier=new AbortController(),bootstrapEnd=performance.now()+4000;
   const timer=setTimeout(()=>frontier.abort(new Error('Facet application bootstrap deadline elapsed')),4000);
