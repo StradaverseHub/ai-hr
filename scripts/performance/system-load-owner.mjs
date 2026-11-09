@@ -35,12 +35,47 @@ import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironment,createDriverContexts,
  createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,
+ developmentLockWindowEvidence,buildDevelopmentMeasurement,developmentDockerContext,DEVELOPMENT_DOCKER_COMMAND,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
  nativePreflightRoutePlan,nativePreflightRouteFor,nativePreflightContentWitness,nativePreflightReadiness,
  assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion,readManifestRoute} from './system-route-manifest.mjs';
+function createDevelopmentPageCensus(){
+ const observation=createNativeBrowserFailureObservation(),contexts=new Map();
+ let observedPages=0,closedPages=0,incomplete=false;
+ const observe=work=>{try{work();}catch{incomplete=true;}};
+ return {
+  attach(context){
+   observe(()=>{
+    assert(!contexts.has(context)&&context.pages().length===0);
+    const live=new Set();contexts.set(context,live);
+    context.on('page',page=>observe(()=>{
+     assert(page.context()===context&&!page.isClosed()&&context.pages().includes(page));
+     observation.observe(page);
+     live.add(page);observedPages++;
+    }));
+    // Playwright emits pageclose after removing the Page from the context's list.
+    context.on('pageclose',page=>observe(()=>{
+     assert(page.context()===context&&page.isClosed()&&live.delete(page));
+     closedPages++;
+    }));
+   });
+  },
+  finish(shutdown,strict,recordFailure){
+   observe(()=>{for(const [context,live] of contexts)assert(live.size===0&&context.pages().length===0);});
+   const settled=shutdown.contexts,events=observation.facts();
+   const censusComplete=!incomplete&&shutdown.browserClosed===true&&shutdown.browser?.unexpectedDisconnect===false
+    &&settled?.acquired===contexts.size&&settled.attempted===contexts.size&&settled.settled===contexts.size&&settled.failed===0
+    &&observedPages>0&&observedPages===closedPages;
+   if(strict&&!censusComplete)recordFailure('development-page-census',Error('Development Page event census incomplete'));
+   if(strict&&events.crash>0)recordFailure('development-page-crash',Error('Development Page crashed'));
+   return {scope:'owned-development-page-events-through-browser-settlement',censusComplete,observedPages,closedPages,...events};
+  },
+ };
+}
+
 export async function runDevelopmentSystemLoad(){
  return runSystemLoad();
 }
@@ -140,6 +175,9 @@ const report={suite,kind:nativePreflight?'NATIVE_RENDERED_UNION_WORKFLOW_SLICE':
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
 const nativeBrowserFailures=nativePreflight?createNativeBrowserFailureObservation():null;
+const measureDevelopment=!nativePreflight&&suite!=='claims-heavy';
+const developmentPageCensus=measureDevelopment?createDevelopmentPageCensus():null;
+let developmentNavigationBinding,developmentRenderedCapture,developmentWorkCompleted=false;
 const nativePrimaryDocuments=[];
 if(nativePreflight)report.nativeRenderedPreflight={kind:'NATIVE_PRIMARY_ROUTE_UNION',observations:[],union:null,workflowAndRenderedSlicePassed:false,
  pendingHiddenShellCases:NATIVE_HIDDEN_SHELL_CASES.map(row=>row.id),
@@ -156,8 +194,21 @@ function resourceCpu(){
  assert.equal(name,`aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-${process.env.AIHR_CI_UNIT}`);
  assert(/^aihr-ci-\d+-\d+-db-(?:[1-4]|[0-9a-f]{16})$/.test(name));
  // Only this workflow's labelled disposable container may be inspected.
- assert.equal(execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',name],{encoding:'utf8',timeout:5000}).trim(),name);
- const usage=execFileSync('docker',['exec',name,'cat','/sys/fs/cgroup/cpu.stat'],{encoding:'utf8',timeout:5000});
+ let usage;
+ if(measureDevelopment){
+  const id=process.env.PERF_POSTGRES_CONTAINER_ID;
+  assert(/^[a-f0-9]{64}(?![\s\S])/.test(id),'Owned development PostgreSQL driver identity refused');
+  const context=developmentDockerContext(process.env.PERF_PRIVATE_DIR);
+  const query=(...args)=>execFileSync(DEVELOPMENT_DOCKER_COMMAND,[...context.args,...args],
+   {env:context.env,encoding:'utf8',timeout:5000,killSignal:'SIGKILL',maxBuffer:4096});
+  const format='{{.Id}} {{.Name}} {{index .Config.Labels "aihr-owner"}} {{.State.Running}}';
+  assert(query('inspect','--type','container','--format',format,id).trim()===id+' /'+name+' '+name+' true',
+   'Owned development PostgreSQL driver container refused');
+  usage=query('exec',id,'cat','/sys/fs/cgroup/cpu.stat');
+ }else{
+  assert.equal(execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',name],{encoding:'utf8',timeout:5000}).trim(),name);
+  usage=execFileSync('docker',['exec',name,'cat','/sys/fs/cgroup/cpu.stat'],{encoding:'utf8',timeout:5000});
+ }
  const fields=Object.fromEntries(usage.trim().split('\n').map(line=>{const [key,value]=line.trim().split(/\s+/);return [key,Number(value)];}));
  for(const key of ['usage_usec','user_usec','system_usec','throttled_usec'])assert(Number.isSafeInteger(fields[key])&&fields[key]>=0,'missing PostgreSQL CPU counter');
  const host=readFileSync('/proc/stat','utf8').split('\n')[0].trim().split(/\s+/).slice(1).map(Number);
@@ -287,6 +338,7 @@ const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const o
 const pendingBrowserRequests=new WeakMap(),browserPdfRequests=new WeakMap();
 let progressTimer,sqlProgress,browserDiagnosticTimer,contextTemplates,lastPage,mixedWorkflows;
 let preflightSampler,loadedSampler,preflightWindow,loadedWindow,protectedSampler,preflightComplete=false;
+let preflightCadenceClosed=false,loadedCadenceClosed=false;
 const slowPilotTimers=new Set();
 const samplingRequired=suite!=='claims-heavy';
 function recordLockSampling(){
@@ -296,9 +348,15 @@ function recordLockSampling(){
    loaded:{phase:'loaded',state:'not-applicable',blockingSamples:null}};
   return;
  }
+ const preflight=lockSampleEvidence(preflightSampler?.samples??[],preflightWindow);
+ const loaded=lockSampleEvidence(loadedSampler?.samples??[],loadedWindow);
+ const qualified=(phase,legacy,closed)=>{
+  const cadence=developmentLockWindowEvidence(phase,legacy.samples,legacy.window,closed);
+  return {...legacy,cadence,coveragePass:cadence.coveragePass,pass:cadence.pass,blockingSamples:cadence.blockingSamples};
+ };
  report.lockSampling={strict:samplingRequired,scope:'Sampled application heavyweight lock waits, including advisory waits. Unobserved waits are outside this evidence.',
-  preflight:lockSampleEvidence(preflightSampler?.samples??[],preflightWindow),
-  loaded:lockSampleEvidence(loadedSampler?.samples??[],loadedWindow)};
+  preflight:measureDevelopment?qualified('preflight',preflight,preflightCadenceClosed):preflight,
+  loaded:measureDevelopment?qualified('loaded',loaded,loadedCadenceClosed):loaded};
 }
 function startPreflightLockSampling(lockScope){
  preflightWindow={startMs:performance.now()};
@@ -307,6 +365,7 @@ function startPreflightLockSampling(lockScope){
 async function finishPreflightLockSampling(){
  preflightWindow.endMs??=performance.now();
  await preflightSampler.stop();
+ if(measureDevelopment)preflightCadenceClosed=true;
  recordLockSampling();
  if(samplingRequired)assert(report.lockSampling.preflight.pass,'Preflight lock samples were incomplete or observed blocking');
 }
@@ -360,6 +419,10 @@ async function prepareDatabaseLockScope(){
 const waits=[];
 function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
  const rootStatements=new Map(),samples=[];
+ const retain=row=>{
+  // A sentinel makes over-cap evidence ineligible without growing the ledger indefinitely.
+  if(!measureDevelopment||samples.length<=4096)samples.push(row);
+ };
  const timer=startDriverInterval(interval,async()=>{
   const startedMs=performance.now();
   let coreComplete=false;
@@ -393,8 +456,8 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    if(phase!=='preflight'||locks.length||blockingAppSessions)waits.push({at:Date.now(),phase,rows,appConnections,blockingSessions:holders,
      grantedAccessHolders:locks.filter(row=>row.granted).map(row=>({pid:row.pid,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)})),
      advisoryWaiters:queuedLocks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
-   samples.push({state:'complete',startedMs,completedMs:performance.now(),locks:locks.length,blockingAppSessions,
-    holdersRequested:pids.length,holdersObserved:holders.length});
+   retain({state:'complete',startedMs,completedMs:performance.now(),locks:locks.length,blockingAppSessions,
+    holdersRequested:pids.length,holdersObserved:holders.length,...(measureDevelopment?{appSessions:appConnections.open}:{})});
    coreComplete=true;
    // The top-statement summary can omit rare root holders. Resolve only sampled root IDs,
    // never queued waiters or parameters; all data belongs to the fictional runner fixture.
@@ -407,7 +470,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    }catch{report.blockingStatementCaptureUnavailable=true;}
   }catch(reason){
    if(coreComplete)failures.record('lock-sample-diagnostic',reason);
-   else samples.push({state:'failed',startedMs,completedMs:performance.now(),...driverErrorFact(reason)});
+   else retain({state:'failed',startedMs,completedMs:performance.now(),...driverErrorFact(reason)});
   }
  },reason=>failures.record('lock-sample-diagnostic',reason));
  return {samples,stop:timer.stop};
@@ -486,6 +549,7 @@ async function main(){
   try{
   requireNativeBusiness();
   context=contexts.register(await browser.newContext({ignoreHTTPSErrors:!nativePreflight,locale}));
+  developmentPageCensus?.attach(context);
   await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:base}]);
   if(!signIn)await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'}]);
   context.on('page',page=>noteEvidence(()=>{
@@ -958,6 +1022,7 @@ async function main(){
  for(const result of signInPreflight)if(result.status==='rejected')throw result.reason;
  requireCleanDriver();
  const baselineCapture=baselineNavigation?.finish();
+ if(measureDevelopment&&baselineCapture)developmentNavigationBinding=baselineCapture;
  if(nativePreflight)report.nativeRenderedPreflight.union=requireNativeRenderedUnion(report.nativeRenderedPreflight.observations);
  report.navigationCapture={scope:'DEVELOPMENT_ONLY',releaseEligible:false,baselineScenarios:baselineCapture?.observations.length??0,loadedScenarios:0};save();
  // Handled card failures remain a failed acceptance gate. Keep collecting the
@@ -1288,7 +1353,8 @@ async function main(){
    assert(report.nativeRenderedPreflight.union,'Complete native rendered route union required');
    nativeRemaining(nativeDeadline);
   }
-  writeNavigationCaptureBundle(out,baselineCapture);
+  if(measureDevelopment)developmentRenderedCapture=writeNavigationCaptureBundle(out,baselineCapture,undefined,'development-byte-binding');
+  else writeNavigationCaptureBundle(out,baselineCapture);
   if(!nativePreflight)await finishPreflightLockSampling();
   preflightComplete=true;return;
  }
@@ -1472,6 +1538,7 @@ async function main(){
 
  report.trafficSettled=true;
  report.browserLoad={contexts:browserResults.length,completed:browserResults.filter(v=>v.status==='fulfilled').length,errors:browserResults.flatMap((v,index)=>v.status==='rejected'?[{index,error:errorLabel(v.reason)}]:[])};
+ const loadedWindowReached=measureDevelopment&&performance.now()>=loadedWindow.endMs;
  const lockDrain=loadedSampler.stop(),progressDrain=sqlProgress.stop();
  clearInterval(progressTimer);progressTimer=null;report.progress={...progress,elapsedMs:performance.now()-started};
  report.functionalErrors=results.flatMap((value,index)=>value.status==='rejected'?[{user:index,error:errorLabel(value.reason)}]:[]);report.functionalAccountingComplete=true;
@@ -1503,6 +1570,7 @@ async function main(){
  report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],steadyStart,steadyUntil});
  report.latencyTargetMet=(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  await Promise.all([lockDrain,progressDrain]);
+ if(measureDevelopment)loadedCadenceClosed=loadedWindowReached;
  recordLockSampling();
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
  report.concurrentHomeApiCoverage=report.homeApiTraffic.templates.flatMap(({role,requests})=>requests.map(({path})=>({role,path,requests:loaded.filter(sample=>sample.role===role&&sample.method==='GET'&&sample.route===path).length})));
@@ -1565,7 +1633,7 @@ async function main(){
  if(suite==='whole-system'){
   assert(baselineCapture&&loadedNavigation,'Reviewed navigation producer is missing');
   const loadedCapture=loadedNavigation.finish();
-  writeNavigationCaptureBundle(out,baselineCapture,loadedCapture);
+  developmentRenderedCapture=writeNavigationCaptureBundle(out,baselineCapture,loadedCapture,'development-byte-binding');
   report.navigationCapture.loadedScenarios=loadedCapture.observations.length;save();
  }
 }
@@ -1577,6 +1645,7 @@ try{
  agent=acquireDriverResource(acquired,'agent',()=>new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:nativePreflight,
   lookup:(_host,options,callback)=>options.all?callback(null,[{address:'127.0.0.1',family:4}]):callback(null,'127.0.0.1',4)}));
  await main();
+ if(measureDevelopment)developmentWorkCompleted=true;
 }catch(reason){
  if(reason!==lifecycleRefused){
   failures.notePrimary(reason);
@@ -1622,7 +1691,8 @@ const driverResources={
   shutdown.http=agent?await sockets.closeAgent(agent):{state:'absent'};
  },
  async database(){
-  await diagnosticDrain;
+  const diagnosticOutcomes=await diagnosticDrain;
+  if(measureDevelopment)shutdown.diagnostics=diagnosticOutcomes.every(outcome=>outcome.status==='fulfilled')?'settled':'failed';
   if(failureAtExit&&db&&!nativePreflight)await failures.attempt('failure-database-snapshot',()=>databaseSnapshot('failure'));
   shutdown.database=await closePerformanceDbPools(nativeAuditClient,db,failures);
   shutdown.nativeAuditPoolClosed=shutdown.database.audit==='settled';
@@ -1640,6 +1710,7 @@ if(nativePreflight){
  });
  await failures.attempt('database-settlement',driverResources.database);
 }else await settleDriverResources(failures,driverResources);
+if(developmentPageCensus)report.developmentBrowserPageEvents=developmentPageCensus.finish(shutdown,true,failures.record);
 recordLockSampling();
 if(nativePreflight){
  report.nativeRenderedPreflight.browserFailures=nativeBrowserFailures.facts();
@@ -1657,6 +1728,24 @@ if(nativePreflight){
    report.nativeRenderedPreflight.workflowAndRenderedSlicePassed=true;
   }
  });
+}
+if(measureDevelopment){
+ const capture=developmentNavigationBinding;
+ const identity={
+  candidateSha:process.env.AIHR_CI_HEAD,controllerSha:process.env.AIHR_CI_CONTROL_HEAD,
+  runId:Number(process.env.GITHUB_RUN_ID),runAttempt:Number(process.env.GITHUB_RUN_ATTEMPT),
+  harnessSha256:capture?.harnessSha256??null,scenarioSha256:capture?.scenarioSha256??null,
+ };
+ const measurement=buildDevelopmentMeasurement({suite,identity,workCompleted:developmentWorkCompleted,clean:!failures.failed(),
+  busyResponses:report.pageBusyResponses.length,pages:report.developmentBrowserPageEvents,
+  preflight:report.lockSampling.preflight.cadence,loaded:report.lockSampling.loaded.cadence,shutdown,
+  renderedCapture:developmentRenderedCapture});
+ report.developmentMeasurement=measurement;
+ if(!measurement.complete&&developmentWorkCompleted&&!failures.failed())
+  failures.record('development-terminal-evidence',Error('Development measurement evidence was incomplete or observed a failure'));
+ // Only the runner's direct driver child has a Node IPC channel. No path or credentials cross it.
+ if(typeof process.send==='function')await failures.attempt('development-terminal-handoff',()=>
+  new Promise((resolve,reject)=>process.send(measurement,error=>error?reject(error):resolve())));
 }
 report.driverFailures=failures.publicFailures();
 if(failures.failed()){

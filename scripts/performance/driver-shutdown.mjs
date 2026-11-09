@@ -1,6 +1,8 @@
 /** Lifetime helpers for the fixed development driver. Native handles stay with that driver. */
 import {performance} from 'node:perf_hooks';
 import {createGunzip} from 'node:zlib';
+import {lstatSync,readdirSync,realpathSync} from 'node:fs';
+import {join} from 'node:path';
 
 const knownCodes=new Set(['ERR_ASSERTION','ABORT_ERR','ECONNRESET','ETIMEDOUT','EPIPE','ERR_STREAM_PREMATURE_CLOSE',
  'Z_DATA_ERROR','Z_BUF_ERROR','57014','55P03','53300','08006','42501','23514','25P02','57P01']);
@@ -111,6 +113,194 @@ export function lockSampleEvidence(samples,window){
 const lockCadenceMs=Object.freeze({preflight:250,loaded:1000});
 const maxProtectedLockSamples=4096;
 const lockCount=value=>Number.isSafeInteger(value)&&value>=0;
+
+/** Qualify a closed work window from serial legacy query rows. Cadence bounds
+ * sampled observations. Skipped timer ticks and waits between queries are unmeasured. */
+export function qualifyLockSampleCadence(phase,samples,window){
+ const intervalMs=typeof phase==='string'&&Object.hasOwn(lockCadenceMs,phase)?lockCadenceMs[phase]:null;
+ const maxGapUs=intervalMs===null?null:intervalMs*2000;
+ const {startMs,endMs}=window??{};
+ const time=value=>Number.isFinite(value)&&value>=0;
+ const unknown={phase:intervalMs===null?null:phase,intervalMs,maxGapUs,state:'unknown',coveragePass:false,pass:false,blockingSamples:null,
+  observedBlockingSamples:null,qualifiedSamples:null,openingGapUs:null,interiorGapUs:null,tailGapUs:null};
+ if(intervalMs===null||!time(startMs)||!time(endMs)||endMs<=startMs)
+  return {...unknown,reason:'window-unknown'};
+ const durationUs=Math.ceil((endMs-startMs)*1000);
+ if(!Number.isSafeInteger(durationUs))
+  return {...unknown,reason:'window-unknown'};
+ if(!Array.isArray(samples)||samples.length>maxProtectedLockSamples)
+  return {...unknown,reason:'samples-unknown'};
+
+ let previousStartMs=-1,previousEndMs=-1,previousStartUs=null;
+ let observedBlockingSamples=0,qualifiedSamples=0,openingGapUs=null,interiorGapUs=null,problem=null;
+ for(const row of samples){
+  if(row?.state!=='complete'){
+   problem??=row?.state==='failed'?'sample-failed':'sample-unknown';
+   continue;
+  }
+  const {startedMs,completedMs,locks,blockingAppSessions}=row;
+  if(!time(startedMs)||!time(completedMs)||completedMs<startedMs||!lockCount(locks)||!lockCount(blockingAppSessions)){
+   problem??='sample-unknown';
+   continue;
+  }
+  if(blockingAppSessions>0)observedBlockingSamples++;
+  if(startedMs<=previousStartMs||startedMs<previousEndMs)problem??='sample-order';
+  previousStartMs=startedMs;
+  previousEndMs=completedMs;
+  if(startedMs<startMs||completedMs>endMs)continue;
+
+  // The server observation may occur anywhere inside the query. Round outward.
+  const startedUs=Math.floor((startedMs-startMs)*1000);
+  const completedUs=Math.ceil((completedMs-startMs)*1000);
+  if(previousStartUs===null)openingGapUs=completedUs;
+  else interiorGapUs=Math.max(interiorGapUs??0,completedUs-previousStartUs);
+  previousStartUs=startedUs;
+  qualifiedSamples++;
+ }
+ if(problem!==null)return {...unknown,reason:problem,observedBlockingSamples};
+
+ const tailGapUs=previousStartUs===null?null:durationUs-previousStartUs;
+ const facts={...unknown,observedBlockingSamples,qualifiedSamples,openingGapUs,interiorGapUs,tailGapUs};
+ if(Math.max(openingGapUs??0,interiorGapUs??0,tailGapUs??0)>maxGapUs)
+  return {...facts,state:'missed',reason:'coverage-gap'};
+ if(interiorGapUs===null)return {...facts,reason:'cadence-unobserved'};
+
+ // Keep the legacy veto for a known blocking observation anywhere in the sampler.
+ return {...facts,state:'complete',reason:observedBlockingSamples===0?null:'blocking-observed',
+  coveragePass:true,pass:observedBlockingSamples===0,blockingSamples:observedBlockingSamples};
+}
+
+// Development only. A drained, completed work window is required before an observed zero can qualify.
+export function developmentLockWindowEvidence(phase,samples,window,closed){
+ const evidence=qualifyLockSampleCadence(phase,samples,window);
+ const observed=(Array.isArray(samples)?samples.slice(0,maxProtectedLockSamples+1):[]).filter(row=>row?.state==='complete'
+  &&Number.isFinite(row.startedMs)&&row.startedMs>=0&&Number.isFinite(row.completedMs)&&row.completedMs>=row.startedMs
+  &&lockCount(row.locks)&&lockCount(row.blockingAppSessions));
+ const observedBlockingSamples=observed.length?observed.filter(row=>row.blockingAppSessions>0).length:null;
+ const appWitness=evidence.coveragePass&&observed.some(row=>row.startedMs>=window.startMs&&row.completedMs<=window.endMs
+  &&lockCount(row.appSessions)&&row.appSessions>0);
+ if(closed&&(!evidence.coveragePass||appWitness))return {...evidence,observedBlockingSamples};
+ return {...evidence,state:'unknown',reason:closed?'application-unobserved':'window-unsettled',
+  coveragePass:false,pass:false,blockingSamples:null,observedBlockingSamples};
+}
+
+export const DEVELOPMENT_DOCKER_COMMAND='/usr/bin/docker';
+export const DEVELOPMENT_DOCKER_SOCKET='unix:///var/run/docker.sock';
+
+export function developmentDockerContext(privateDir){
+ const config=join(privateDir,'docker-config'),parent=lstatSync(privateDir),directory=lstatSync(config);
+ const own=stat=>stat.isDirectory()&&stat.uid===process.getuid()&&(stat.mode&0o7777)===0o700;
+ if(!own(parent)||!own(directory)||realpathSync(privateDir)!==privateDir||realpathSync(config)!==config||readdirSync(config).length)
+  throw Error('Owned development Docker configuration refused');
+ return {args:['--config',config,'--host',DEVELOPMENT_DOCKER_SOCKET],
+  env:{PATH:'/usr/bin:/bin',HOME:privateDir,LANG:'C',LC_ALL:'C',DOCKER_CONFIG:config,DOCKER_HOST:DEVELOPMENT_DOCKER_SOCKET}};
+}
+
+export function developmentPostgresBirthId(raw){
+ if(!Buffer.isBuffer(raw)||raw.length!==65||raw[64]!==10)return null;
+ const id=raw.subarray(0,64).toString('latin1');
+ return /^[a-f0-9]{64}(?![\s\S])/.test(id)?id:null;
+}
+
+export function developmentPostgresSettlement(reset,remove,physicalAbsent){
+ const postgresAbsent=reset==='unknown'||remove!=='settled'?null:physicalAbsent;
+ const postgres=remove==='failed'||postgresAbsent===false?'failed':
+  remove==='settled'&&postgresAbsent===true?'settled':'unknown';
+ return {postgresReset:reset,postgresRemoveApi:remove,postgresAbsent,postgres};
+}
+
+const developmentTerminalKind='DEVELOPMENT_BROWSER_MEASUREMENT_V1';
+const developmentPoolEvidence='postgres-js-end-api-acknowledgement';
+export const DEVELOPMENT_RENDERED_CAPTURE_MAX_BYTES=4*1024**2;
+const developmentNotLoaded=Object.freeze({phase:'loaded',intervalMs:1000,maxGapUs:2000000,state:'not-applicable',reason:null,
+ coveragePass:false,pass:false,blockingSamples:null,observedBlockingSamples:null,qualifiedSamples:null,
+ openingGapUs:null,interiorGapUs:null,tailGapUs:null});
+const closedFields=(row,names)=>row!==null&&typeof row==='object'&&!Array.isArray(row)
+ &&Object.keys(row).length===names.length&&names.every(name=>Object.hasOwn(row,name));
+const boundedInteger=(value,max)=>Number.isSafeInteger(value)&&value>=0&&value<=max;
+const knownCount=(value,max)=>value===null||boundedInteger(value,max);
+const exactHex=(value,length)=>typeof value==='string'&&value.length===length&&/^[0-9a-f]+(?![\s\S])/.test(value);
+const validRenderedCapture=value=>closedFields(value,['sha256','bytes'])&&exactHex(value.sha256,64)
+ &&boundedInteger(value.bytes,DEVELOPMENT_RENDERED_CAPTURE_MAX_BYTES)&&value.bytes>0;
+const settlementState=value=>['settled','failed','absent','unknown'].includes(value);
+const observedEventCount=value=>boundedInteger(value,1000000)?value:null;
+const developmentPagesFields=['censusComplete','observedPages','closedPages','observedCrashes','qualifiedCrashes',
+ 'aborted','transport','http5xx','pageError','consoleError'];
+const developmentLockFields=Object.keys(developmentNotLoaded);
+const developmentSettlementFields=['browser','https','diagnostics','auditPool','observerPool'];
+
+function cleanDevelopmentMeasurement({suite,identity,workCompleted,busyResponses,pageEvents,locks,settlement}){
+ return workCompleted&&busyResponses===0&&exactHex(identity.harnessSha256,64)&&exactHex(identity.scenarioSha256,64)
+  &&pageEvents.censusComplete&&pageEvents.qualifiedCrashes===0&&pageEvents.aborted!==null
+  &&['transport','http5xx','pageError','consoleError'].every(key=>pageEvents[key]===0)
+  &&locks.preflight.pass===true&&(suite==='workflow-preflight'||locks.loaded.pass===true)
+  &&developmentSettlementFields.every(key=>settlement[key]==='settled');
+}
+
+export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,busyResponses,pages,preflight,loaded,shutdown,renderedCapture}){
+ const observedPages=knownCount(pages.observedPages,4096)?pages.observedPages:null;
+ const closedPages=knownCount(pages.closedPages,4096)
+  &&(observedPages!==null?pages.closedPages<=observedPages:pages.closedPages===null)?pages.closedPages:null;
+ const observedCrashes=observedPages>0?observedEventCount(pages.crash):null;
+ const censusComplete=pages.censusComplete===true&&shutdown.browser?.close==='settled'&&observedPages>0&&observedPages===closedPages&&observedCrashes!==null;
+ const pageEvents={censusComplete,observedPages,closedPages,observedCrashes,qualifiedCrashes:censusComplete?observedCrashes:null};
+ for(const name of ['aborted','transport','http5xx','pageError','consoleError'])
+  pageEvents[name]=observedPages>0?observedEventCount(pages[name]):null;
+ const http=shutdown.http;
+ const settlement={
+  browser:shutdown.browser?.close??'unknown',
+  https:http?.state==='settled'&&!(http.assigned>0&&http.assigned===http.closed&&http.pending===0&&http.queued===0)?'failed':http?.state??'unknown',
+  diagnostics:shutdown.diagnostics??'unknown',auditPool:shutdown.database?.audit??'unknown',observerPool:shutdown.database?.observer??'unknown',
+ };
+ const busy=observedEventCount(busyResponses);
+ const evidence={kind:developmentTerminalKind,suite,workCompleted,identity,busyResponses:workCompleted||busy>0?busy:null,
+  poolEvidence:developmentPoolEvidence,pageEvents,
+  locks:{preflight,loaded:suite==='workflow-preflight'?developmentNotLoaded:loaded},settlement};
+ const complete=clean&&validRenderedCapture(renderedCapture)&&cleanDevelopmentMeasurement(evidence);
+ return {...evidence,complete,renderedCapture:complete?{sha256:renderedCapture.sha256,bytes:renderedCapture.bytes}:null};
+}
+
+export function validateDevelopmentMeasurement(value,expected){
+ if(!closedFields(value,['kind','suite','workCompleted','identity','busyResponses','poolEvidence','pageEvents','locks','settlement','complete','renderedCapture'])
+  ||value.kind!==developmentTerminalKind||value.poolEvidence!==developmentPoolEvidence||!['workflow-preflight','whole-system'].includes(value.suite)||value.suite!==expected.suite
+  ||typeof value.workCompleted!=='boolean'||typeof value.complete!=='boolean'||!knownCount(value.busyResponses,1000000)
+  ||(!value.workCompleted&&value.busyResponses===0))return false;
+ const {identity,pageEvents,locks,settlement}=value;
+ if(!closedFields(identity,['candidateSha','controllerSha','runId','runAttempt','harnessSha256','scenarioSha256'])
+  ||!exactHex(identity.candidateSha,40)||!exactHex(identity.controllerSha,40)||!Number.isSafeInteger(identity.runId)||identity.runId<1
+  ||identity.runAttempt!==1||!['candidateSha','controllerSha','runId','runAttempt'].every(key=>identity[key]===expected[key])
+  ||!['harnessSha256','scenarioSha256'].every(key=>identity[key]===null||exactHex(identity[key],64)))return false;
+ if(!closedFields(pageEvents,developmentPagesFields)||typeof pageEvents.censusComplete!=='boolean'
+  ||!knownCount(pageEvents.observedPages,4096)||!knownCount(pageEvents.closedPages,4096)
+  ||(pageEvents.closedPages!==null&&(pageEvents.observedPages===null||pageEvents.closedPages>pageEvents.observedPages))
+  ||!developmentPagesFields.slice(3).every(key=>knownCount(pageEvents[key],1000000))
+  ||(pageEvents.censusComplete?!(pageEvents.observedPages>0&&pageEvents.observedPages===pageEvents.closedPages
+    &&pageEvents.observedCrashes!==null&&pageEvents.qualifiedCrashes===pageEvents.observedCrashes):pageEvents.qualifiedCrashes!==null)
+  ||(!pageEvents.observedPages&&developmentPagesFields.slice(3).some(key=>pageEvents[key]!==null)))return false;
+ if(!closedFields(locks,['preflight','loaded'])||!closedFields(settlement,developmentSettlementFields)
+  ||!Object.values(settlement).every(settlementState)
+  ||(pageEvents.censusComplete&&settlement.browser!=='settled'))return false;
+ for(const [phase,intervalMs] of [['preflight',250],['loaded',1000]]){
+  const lock=locks[phase];
+  if(!closedFields(lock,developmentLockFields)||lock.phase!==phase||lock.intervalMs!==intervalMs||lock.maxGapUs!==intervalMs*2000)return false;
+  if(phase==='loaded'&&value.suite==='workflow-preflight'){
+   if(!developmentLockFields.every(key=>lock[key]===developmentNotLoaded[key]))return false;
+   continue;
+  }
+  if(!['unknown','missed','complete'].includes(lock.state)
+   ||![null,'window-unknown','samples-unknown','sample-failed','sample-unknown','sample-order','coverage-gap','cadence-unobserved','blocking-observed','window-unsettled','application-unobserved'].includes(lock.reason)
+   ||!['blockingSamples','observedBlockingSamples','qualifiedSamples'].every(key=>knownCount(lock[key],4097))
+   ||!['openingGapUs','interiorGapUs','tailGapUs'].every(key=>knownCount(lock[key],1000000000))
+   ||lock.coveragePass!==(lock.state==='complete')
+   ||lock.pass!==(lock.coveragePass&&lock.blockingSamples===0))return false;
+  if(lock.coveragePass){
+   if(!boundedInteger(lock.qualifiedSamples,maxProtectedLockSamples)||lock.qualifiedSamples<2||lock.blockingSamples===null||lock.blockingSamples!==lock.observedBlockingSamples
+    ||lock.reason!==(lock.blockingSamples===0?null:'blocking-observed')
+    ||!['openingGapUs','interiorGapUs','tailGapUs'].every(key=>boundedInteger(lock[key],lock.maxGapUs)))return false;
+  }else if(lock.blockingSamples!==null||lock.reason===null)return false;
+ }
+ return value.complete?validRenderedCapture(value.renderedCapture)&&cleanDevelopmentMeasurement(value):value.renderedCapture===null;
+}
 
 export function createProtectedWorkAdmission({assertIngress,sealIngress,noteFailure,noteSealFailure}){
  let closed=false;

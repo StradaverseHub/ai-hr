@@ -1,11 +1,15 @@
 import {EventEmitter,once} from 'node:events';
+import {mkdirSync,mkdtempSync,realpathSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {Agent,createServer,request as httpRequest} from 'node:http';
 import {PassThrough} from 'node:stream';
 import {gzipSync} from 'node:zlib';
 import {afterEach,expect,it,vi} from 'vitest';
-import {acquireDriverResource,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
- createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
- openDriverResponse,settleDriverBrowser,settleDriverLanes,settleDriverResources,startDriverInterval} from '../scripts/performance/driver-shutdown.mjs';
+import {acquireDriverResource,buildDevelopmentMeasurement,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
+ createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,developmentDockerContext,developmentLockWindowEvidence,
+ developmentPostgresBirthId,developmentPostgresSettlement,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
+ openDriverResponse,qualifyLockSampleCadence,settleDriverBrowser,settleDriverLanes,settleDriverResources,startDriverInterval,validateDevelopmentMeasurement} from '../scripts/performance/driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts} from '../scripts/performance/protected-lock-observer.mjs';
 
 function deferred<T=void>(){
@@ -148,6 +152,219 @@ it('requires valid lock counts and rejects an observed blocking session even wit
  expect(lockSampleEvidence([clean,blocked],window)).toMatchObject({coveragePass:true,blockingSamples:1,validEmpty:0,pass:false});
  expect(lockSampleEvidence([{...clean,blockingAppSessions:undefined}],window))
   .toMatchObject({coveragePass:false,invalidBlockingCounts:1,pass:false});
+});
+
+const legacyLockRow=(startedMs:number,completedMs:number,blockingAppSessions=0)=>
+ ({state:'complete',startedMs,completedMs,locks:0,blockingAppSessions,holdersRequested:0,holdersObserved:0});
+
+it('qualifies the measured opening, interior and tail at each fixed lock cadence',()=>{
+ for(const [phase,intervalMs] of [['preflight',250],['loaded',1000]] as const){
+  const window={startMs:100,endMs:100+5*intervalMs};
+  const samples=[legacyLockRow(99,101),...[1,2,3].map(tick=>
+   legacyLockRow(100+tick*intervalMs,100+(tick+1)*intervalMs)),legacyLockRow(window.endMs-1,window.endMs+1)];
+  expect(qualifyLockSampleCadence(phase,samples,window)).toEqual({
+   phase,intervalMs,maxGapUs:intervalMs*2000,state:'complete',reason:null,coveragePass:true,pass:true,
+   blockingSamples:0,observedBlockingSamples:0,qualifiedSamples:3,openingGapUs:intervalMs*2000,
+   interiorGapUs:intervalMs*2000,tailGapUs:intervalMs*2000,
+  });
+ }
+});
+
+it('refuses each missed coverage segment even when all observed lock counts are zero',()=>{
+ const window={startMs:100,endMs:1200};
+ for(const [segment,gapUs,samples] of [
+  ['openingGapUs',501000,[legacyLockRow(590,601),legacyLockRow(700,720),legacyLockRow(900,920)]],
+  ['interiorGapUs',500001,[legacyLockRow(200,220),legacyLockRow(690,700.0001),legacyLockRow(900,920)]],
+  ['tailGapUs',501000,[legacyLockRow(200,220),legacyLockRow(450,460),legacyLockRow(699,710)]],
+ ] as const){
+  expect(qualifyLockSampleCadence('preflight',samples,window)).toMatchObject({
+   state:'missed',reason:'coverage-gap',pass:false,coveragePass:false,blockingSamples:null,observedBlockingSamples:0,
+   [segment]:gapUs,
+  });
+ }
+});
+
+it('refuses unknown, failed, duplicated or unordered lock evidence and leaves zero unqualified',()=>{
+ const window={startMs:100,endMs:400};
+ const first=legacyLockRow(110,120),second=legacyLockRow(220,230);
+ for(const samples of [[],[first],[legacyLockRow(99,105),legacyLockRow(390,401)]])
+  expect(qualifyLockSampleCadence('preflight',samples,window)).toMatchObject({
+   state:'unknown',reason:'cadence-unobserved',blockingSamples:null,pass:false,
+  });
+ for(const [reason,samples] of [
+  ['sample-failed',[first,{state:'failed',startedMs:170,completedMs:180},second]],
+  ['sample-unknown',[first,{...second,blockingAppSessions:undefined}]],
+  ['sample-unknown',[first,{...second,completedMs:NaN}]],
+  ['sample-unknown',[first,{...second,locks:-1}]],
+  ['sample-unknown',[first,legacyLockRow(220,219)]],
+  ['sample-order',[first,legacyLockRow(119,220)]],
+  ['sample-order',[second,first]],
+  ['sample-order',[legacyLockRow(220,220),legacyLockRow(220,220)]],
+ ] as const){
+  expect(qualifyLockSampleCadence('preflight',samples,window)).toMatchObject({
+   state:'unknown',reason,blockingSamples:null,pass:false,
+  });
+ }
+ for(const open of [undefined,{startMs:100},{startMs:100,endMs:100}]){
+  expect(qualifyLockSampleCadence('preflight',[first,second],open)).toMatchObject({
+   state:'unknown',reason:'window-unknown',blockingSamples:null,pass:false,
+  });
+ }
+ expect(qualifyLockSampleCadence('unregistered',[first,second],window)).toMatchObject({reason:'window-unknown',pass:false});
+ expect(qualifyLockSampleCadence('preflight',Array(4097).fill(first),window)).toMatchObject({reason:'samples-unknown',pass:false});
+});
+
+it('retains known blocking even when it occurs in a late drain outside the cadence window',()=>{
+ const window={startMs:100,endMs:400};
+ const samples=[legacyLockRow(110,120),legacyLockRow(220,230),legacyLockRow(399,401,1)];
+ expect(qualifyLockSampleCadence('preflight',samples,window)).toMatchObject({
+  state:'complete',reason:'blocking-observed',qualifiedSamples:2,coveragePass:true,blockingSamples:1,pass:false,
+ });
+ expect(qualifyLockSampleCadence('preflight',[...samples,{state:'failed'}],window)).toMatchObject({
+  state:'unknown',reason:'sample-failed',observedBlockingSamples:1,coveragePass:false,blockingSamples:null,pass:false,
+ });
+});
+
+it('keeps abort, invisible app or empty sampling distinct from qualified zero',()=>{
+ const first={...legacyLockRow(110,120),appSessions:2},second={...legacyLockRow(220,230),appSessions:2};
+ const window={startMs:100,endMs:400};
+ expect(developmentLockWindowEvidence('preflight',[first,second],window,true)).toMatchObject({
+  state:'complete',blockingSamples:0,observedBlockingSamples:0,pass:true,
+ });
+ expect(developmentLockWindowEvidence('preflight',[first,second],window,false)).toMatchObject({
+  state:'unknown',reason:'window-unsettled',blockingSamples:null,observedBlockingSamples:0,pass:false,
+ });
+ expect(developmentLockWindowEvidence('preflight',[first,second].map(row=>({...row,appSessions:0})),window,true)).toMatchObject({
+  state:'unknown',reason:'application-unobserved',blockingSamples:null,observedBlockingSamples:0,pass:false,
+ });
+ expect(developmentLockWindowEvidence('preflight',[],window,true)).toMatchObject({
+  state:'unknown',blockingSamples:null,observedBlockingSamples:null,pass:false,
+ });
+ expect(developmentLockWindowEvidence('preflight',[first,second,{...legacyLockRow(399,401,1),appSessions:2}],window,false)).toMatchObject({
+  state:'unknown',blockingSamples:null,observedBlockingSamples:1,pass:false,
+ });
+});
+
+function developmentMeasurementInput(){
+ const suite='workflow-preflight',identity={candidateSha:'a'.repeat(40),controllerSha:'b'.repeat(40),
+  runId:123,runAttempt:1,harnessSha256:'c'.repeat(64),scenarioSha256:'d'.repeat(64)};
+ const observed=[{...legacyLockRow(110,120),appSessions:1},{...legacyLockRow(220,230),appSessions:1}];
+ const preflight=developmentLockWindowEvidence('preflight',observed,{startMs:100,endMs:400},true);
+ return {suite,identity,preflight,loaded:developmentLockWindowEvidence('loaded',[],null,false),workCompleted:true,clean:true,busyResponses:0,
+  renderedCapture:{sha256:'e'.repeat(64),bytes:128},
+  pages:{observedPages:2,closedPages:2,censusComplete:true,crash:0,aborted:2,transport:0,http5xx:0,pageError:0,consoleError:0},
+  shutdown:{browser:{close:'settled'},http:{state:'settled',assigned:3,closed:3,pending:0,queued:0},
+   diagnostics:'settled',database:{audit:'settled',observer:'settled'}}};
+}
+
+it('joins the exact development terminal receipt and refuses changed identity or inconsistent zeros',()=>{
+ const input=developmentMeasurementInput(),expected={...input.identity,suite:input.suite};
+ const receipt=buildDevelopmentMeasurement(input);
+ expect(receipt).toMatchObject({complete:true,workCompleted:true,busyResponses:0,
+  pageEvents:{qualifiedCrashes:0,aborted:2},locks:{preflight:{blockingSamples:0},loaded:{state:'not-applicable'}}});
+ expect(validateDevelopmentMeasurement(receipt,expected)).toBe(true);
+ for(const change of [
+  (value:typeof receipt)=>value.identity.runId++,
+  (value:typeof receipt)=>value.identity.harnessSha256='z'.repeat(64),
+  (value:typeof receipt)=>value.pageEvents.censusComplete=false,
+  (value:typeof receipt)=>value.locks.preflight.openingGapUs=500001,
+  (value:typeof receipt)=>value.locks.preflight.observedBlockingSamples=1,
+  (value:typeof receipt)=>value.busyResponses=1,
+  (value:typeof receipt)=>value.settlement.observerPool='failed',
+  (value:typeof receipt)=>Object.assign(value,{private:'forged'}),
+ ]){
+  const changed=structuredClone(receipt);change(changed);
+  expect(validateDevelopmentMeasurement(changed,expected)).toBe(false);
+ }
+});
+
+it('retains incomplete terminal receipts without promoting missing Pages, app traffic or cleanup',()=>{
+ const input=developmentMeasurementInput(),expected={...input.identity,suite:input.suite};
+ for(const change of [
+  (value:typeof input)=>{value.pages.censusComplete=false;value.pages.observedPages=0;value.pages.closedPages=0;},
+  (value:typeof input)=>{value.pages.crash=1;},
+  (value:typeof input)=>{value.pages.http5xx=1;},
+  (value:typeof input)=>{value.shutdown.http.pending=1;},
+  (value:typeof input)=>{value.workCompleted=false;},
+ ]){
+  const changed=structuredClone(input);change(changed);const receipt=buildDevelopmentMeasurement(changed);
+  expect(receipt.complete).toBe(false);expect(validateDevelopmentMeasurement(receipt,expected)).toBe(true);
+  if(!changed.pages.censusComplete)expect(receipt.pageEvents).toMatchObject({observedCrashes:null,qualifiedCrashes:null});
+ }
+ const loaded=buildDevelopmentMeasurement({...input,suite:'whole-system'});
+ expect(loaded.complete).toBe(false);expect(validateDevelopmentMeasurement(loaded,{...expected,suite:'whole-system'})).toBe(true);
+});
+
+it('requires the bounded rendered capture binding only for a complete development terminal receipt',()=>{
+ const input=developmentMeasurementInput(),expected={...input.identity,suite:input.suite};
+ const receipt=buildDevelopmentMeasurement(input);
+ expect(receipt.renderedCapture).toEqual(input.renderedCapture);
+ expect(receipt.renderedCapture).not.toBe(input.renderedCapture);
+ expect(validateDevelopmentMeasurement(receipt,expected)).toBe(true);
+ for(const invalid of [null,{sha256:'e'.repeat(63)+'\n',bytes:128},{sha256:'e'.repeat(64),bytes:0},
+  {sha256:'e'.repeat(64),bytes:4*1024**2+1},{...input.renderedCapture,payload:'not-allowed'}]){
+  const changed=structuredClone(receipt);Object.assign(changed,{renderedCapture:invalid});
+  expect(validateDevelopmentMeasurement(changed,expected)).toBe(false);
+  expect(buildDevelopmentMeasurement({...input,renderedCapture:invalid})).toMatchObject({complete:false,renderedCapture:null});
+ }
+ const failed=buildDevelopmentMeasurement({...input,clean:false});
+ expect(failed).toMatchObject({complete:false,renderedCapture:null});
+ expect(validateDevelopmentMeasurement(failed,expected)).toBe(true);
+ expect(validateDevelopmentMeasurement({...failed,renderedCapture:input.renderedCapture},expected)).toBe(false);
+});
+
+it('refuses an impossible Page census even in an explicitly incomplete development receipt',()=>{
+ const input=developmentMeasurementInput(),expected={...input.identity,suite:input.suite};
+ const receipt=buildDevelopmentMeasurement(input);
+ expect(receipt.poolEvidence).toBe('postgres-js-end-api-acknowledgement');
+ for(const state of ['failed','unknown','absent']){
+  const forged=structuredClone(receipt);forged.complete=false;forged.settlement.browser=state;
+  expect(validateDevelopmentMeasurement(forged,expected)).toBe(false);
+ }
+ for(const counts of [{observedPages:1,closedPages:2},{observedPages:null,closedPages:2}]){
+  const forged=structuredClone(receipt);forged.complete=false;
+  Object.assign(forged.pageEvents,counts,{censusComplete:false,qualifiedCrashes:null,observedCrashes:null,
+   aborted:null,transport:null,http5xx:null,pageError:null,consoleError:null});
+  expect(validateDevelopmentMeasurement(forged,expected)).toBe(false);
+ }
+ const incomplete=buildDevelopmentMeasurement({...input,shutdown:{...input.shutdown,browser:{close:'failed'}},
+  pages:{...input.pages,crash:1}});
+ expect(incomplete).toMatchObject({complete:false,pageEvents:{censusComplete:false,observedCrashes:1,qualifiedCrashes:null}});
+ expect(validateDevelopmentMeasurement(incomplete,expected)).toBe(true);
+ const inverted=buildDevelopmentMeasurement({...input,pages:{...input.pages,closedPages:3}});
+ expect(inverted).toMatchObject({complete:false,pageEvents:{censusComplete:false,observedPages:2,closedPages:null,qualifiedCrashes:null}});
+ expect(validateDevelopmentMeasurement(inverted,expected)).toBe(true);
+});
+
+it('binds development Docker to one fixed daemon and refuses config material or a name alias',()=>{
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'aihr-dev-docker-model-'))),config=join(root,'docker-config');
+ try{
+  mkdirSync(config,{mode:0o700});
+  expect(developmentDockerContext(root)).toEqual({
+   args:['--config',config,'--host','unix:///var/run/docker.sock'],
+   env:{PATH:'/usr/bin:/bin',HOME:root,LANG:'C',LC_ALL:'C',DOCKER_CONFIG:config,DOCKER_HOST:'unix:///var/run/docker.sock'},
+  });
+  writeFileSync(join(config,'config.json'),'{}');
+  expect(()=>developmentDockerContext(root)).toThrow('configuration refused');
+  rmSync(config,{recursive:true});
+  const other=join(root,'other');mkdirSync(other,{mode:0o700});symlinkSync(other,config);
+  expect(()=>developmentDockerContext(root)).toThrow('configuration refused');
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+it('uses only a full creation receipt and separates reset, removal API and physical absence',()=>{
+ const id='a'.repeat(64);
+ expect(developmentPostgresBirthId(Buffer.from(id+'\n'))).toBe(id);
+ for(const raw of [Buffer.from(id),Buffer.from(id+'\n'+id+'\n'),Buffer.from('f'.repeat(63)+'\n\n'),
+  Buffer.from(id.toUpperCase()+'\n'),Buffer.from('aihr-ci-123-1-db-1\n')])
+  expect(developmentPostgresBirthId(raw)).toBeNull();
+ expect(developmentPostgresSettlement('unknown','settled',true)).toEqual({
+  postgresReset:'unknown',postgresRemoveApi:'settled',postgresAbsent:null,postgres:'unknown',
+ });
+ expect(developmentPostgresSettlement('settled','settled',null)).toMatchObject({postgresAbsent:null,postgres:'unknown'});
+ expect(developmentPostgresSettlement('settled','settled',false)).toMatchObject({postgresAbsent:false,postgres:'failed'});
+ expect(developmentPostgresSettlement('failed','settled',true)).toMatchObject({postgresReset:'failed',postgresAbsent:true,postgres:'settled'});
+ expect(developmentPostgresSettlement('settled','failed',true)).toMatchObject({postgresRemoveApi:'failed',postgresAbsent:null,postgres:'failed'});
 });
 
 it('requires the exact held stats observer identity and actual app visibility on every protected observation',()=>{

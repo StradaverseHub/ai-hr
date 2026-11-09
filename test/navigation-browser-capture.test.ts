@@ -1,5 +1,11 @@
 /** Collector behavior contracts with a mocked page/source, never executed app coverage. */
+import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
+import {existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {runInNewContext} from 'node:vm';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {Page} from 'playwright';
 const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40),scenarioSha256:'d'.repeat(64)}));
@@ -11,9 +17,60 @@ vi.mock('../scripts/performance/navigation-source',()=>({
  }]}}),
 }));
 vi.mock('../scripts/performance/navigation-fixture-bindings',()=>({readNavigationFixtureBindings:()=>new Map([[4,{actorName:'PERF Person 0004',actorEmployeeCode:'PERF0004',firstCompanyPersonName:'PERF Person 0000',activeHeadcount:'50',historicalPayrollMonth:'2026-07',seedToday:'2026-11-07',seedMonth:'2026-11',rosterScope:{}}]])}));
-import {createNavigationCaptureCollector,installNativePrimaryFailureObserver,createNativeBrowserFailureObservation} from '../scripts/performance/navigation-browser-capture';
-import {NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,
+import {createNavigationCaptureCollector,installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,writeNavigationCaptureBundle} from '../scripts/performance/navigation-browser-capture';
+import {NAVIGATION_CAPTURE_MEMBER,NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,
  validateNativeShellBaseline,type NativeShellBaseline} from '../scripts/performance/navigation-protocol';
+
+function developmentPageCensusModel(){
+ const source=readFileSync(new URL('../scripts/performance/system-load-owner.mjs',import.meta.url),'utf8');
+ const start=source.indexOf('function createDevelopmentPageCensus(){');
+ const end=source.indexOf('export async function runDevelopmentSystemLoad()',start);
+ assert(start>=0&&end>start);
+ const census=runInNewContext(source.slice(start,end)+'\ncreateDevelopmentPageCensus()',{
+  assert,createNativeBrowserFailureObservation,
+ });
+ const live=new Set<EventEmitter>(),stages:string[]=[];
+ const context=Object.assign(new EventEmitter(),{pages:()=>[...live]});
+ census.attach(context);
+ return {
+  stages,
+  open(notify=true){
+   let closed=false;
+   const page=Object.assign(new EventEmitter(),{context:()=>context,isClosed:()=>closed});
+   live.add(page);
+   if(notify)context.emit('page',page);
+   return {page,close(notify=true){closed=true;live.delete(page);if(notify)context.emit('pageclose',page);}};
+  },
+  finish({strict=true,acquired=1,settled=1,disconnected=false}={}){
+   return census.finish({browserClosed:true,browser:{unexpectedDisconnect:disconnected},
+    contexts:{acquired,attempted:acquired,settled,failed:0}},strict,(stage:string)=>stages.push(stage));
+  },
+ };
+}
+
+it('records the owned development Page crash and distinguishes ordinary aborts through settlement',()=>{
+ for(const [crashed,strict] of [[false,true],[true,true],[true,false]]){
+  const model=developmentPageCensusModel(),first=model.open(),last=model.open();
+  first.page.emit('requestfailed',{url:()=> 'https://localhost:3443/asset',failure:()=>({errorText:'net::ERR_ABORTED'})});
+  first.close();
+  if(crashed)last.page.emit('crash');
+  last.close();
+  expect(model.finish({strict})).toMatchObject({censusComplete:true,observedPages:2,closedPages:2,aborted:1,crash:Number(crashed)});
+  expect(model.stages).toEqual(crashed&&strict?['development-page-crash']:[]);
+ }
+});
+
+it('refuses missing Page or context census even with zero observed crashes',()=>{
+ for(const variant of ['empty','unobserved-page','missing-close','unwatched-context','context-unsettled','disconnected']){
+  const model=developmentPageCensusModel();
+  if(variant==='unobserved-page')model.open().close();
+  if(variant!=='empty')model.open(variant!=='unobserved-page').close(variant!=='missing-close');
+  expect(model.finish({acquired:variant==='unwatched-context'?2:1,settled:variant==='context-unsettled'?0:1,
+   disconnected:variant==='disconnected'})).toMatchObject({censusComplete:false,crash:0});
+  expect(model.stages).toEqual(['development-page-census']);
+ }
+});
+
 const actorName='PERF Person 0004',otherActorName='PERF Person 0005';
 function fictionalPage({accountName=actorName,accountCount=1,anchorCount=1,detailsCount=1}:{accountName?:string;accountCount?:number;anchorCount?:number;detailsCount?:number}={}){
  let now=0;const waited=new Set<string>(),waits:{selector:string;timeout:number}[]=[],operations:string[]=[];
@@ -86,6 +143,39 @@ beforeEach(()=>{
  vi.stubEnv('AIHR_CI_HEAD',source.sha);vi.stubEnv('AIHR_CI_CONTROL_HEAD',source.controller);vi.stubEnv('GITHUB_RUN_ID','123');vi.stubEnv('GITHUB_RUN_ATTEMPT','1');
 });
 afterEach(()=>{source.scenarioSha256='d'.repeat(64);vi.restoreAllMocks();vi.unstubAllEnvs();});
+it('binds the exact written UTF-8 rendered capture and refuses oversized or failed exclusive writes',async()=>{
+ const collector=createNavigationCaptureCollector({phase:'baseline'});
+ await collector.captureActor(fictionalPage().page,4);
+ const baseline=collector.finish();
+ const out=mkdtempSync(join(tmpdir(),'aihr-rendered-capture-model-'));
+ try{
+  const path=join(out,NAVIGATION_CAPTURE_MEMBER);
+  const binding=writeNavigationCaptureBundle(out,baseline,undefined,'development-byte-binding');
+  const bytes=readFileSync(path);
+  expect(binding).toEqual({sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length});
+  expect(Object.isFrozen(binding)).toBe(true);
+  expect(()=>writeNavigationCaptureBundle(out,baseline,undefined,'development-byte-binding')).toThrow(/EEXIST/);
+  expect(readFileSync(path)).toEqual(bytes);
+  const old=join(out,'legacy');mkdirSync(old);
+  const bundle=writeNavigationCaptureBundle(old,baseline);
+  expect(bundle.baseline).toBe(baseline);
+  expect(readFileSync(join(old,NAVIGATION_CAPTURE_MEMBER))).toEqual(bytes);
+  const both=join(out,'both');mkdirSync(both);
+  const loaded={...baseline,phase:'loaded' as const};
+  expect(()=>writeNavigationCaptureBundle(both,baseline,{...loaded,runId:999},'development-byte-binding'))
+   .toThrow(/different source\/run identities/);
+  expect(existsSync(join(both,NAVIGATION_CAPTURE_MEMBER))).toBe(false);
+  const combined=writeNavigationCaptureBundle(both,baseline,loaded,'development-byte-binding');
+  const combinedBytes=readFileSync(join(both,NAVIGATION_CAPTURE_MEMBER));
+  expect(combined).toEqual({sha256:createHash('sha256').update(combinedBytes).digest('hex'),bytes:combinedBytes.length});
+  expect(JSON.parse(combinedBytes.toString('utf8'))).toMatchObject({baseline:{phase:'baseline'},loaded:{phase:'loaded'}});
+  const tooLarge=join(out,'oversize');mkdirSync(tooLarge);
+  const oversized={...baseline,observations:[{...baseline.observations[0],finalPath:'é'.repeat(2*1024**2)}]};
+  expect(()=>writeNavigationCaptureBundle(tooLarge,oversized,undefined,'development-byte-binding')).toThrow(/capture byte bound refused/);
+  expect(existsSync(join(tooLarge,NAVIGATION_CAPTURE_MEMBER))).toBe(false);
+ }finally{rmSync(out,{recursive:true,force:true});}
+});
+
 describe('native identity and streamed navigation capture boundaries',()=>{
  it('keeps legacy separate and refuses markers queued after a clean snapshot when the document retires',async()=>{
   const {page}=fictionalPage(),collector=createNavigationCaptureCollector({phase:'baseline'});

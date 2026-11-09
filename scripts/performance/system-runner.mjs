@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
-import {mkdirSync,writeFileSync,readFileSync,copyFileSync,readdirSync,openSync,closeSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,copyFileSync,readdirSync,openSync,closeSync,lstatSync,realpathSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import https from 'node:https';
 import http from 'node:http';
@@ -12,6 +12,8 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {postgresLockFailures} from './lock-failure-log.mjs';
 import {admissionFailureMarkers} from './admission-failure-log.mjs';
 import {runtimeAcceptance} from './runtime-acceptance.mjs';
+import {createDriverFailures,createDriverSockets,validateDevelopmentMeasurement,DEVELOPMENT_DOCKER_COMMAND,
+ developmentDockerContext,developmentPostgresBirthId,developmentPostgresSettlement} from './driver-shutdown.mjs';
 import {systemBuildEnvironment} from './build-environment.mjs';
 import {isolatedWorkerBudget,isolatedWorkerCpuAdmission} from './worker-budget.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
@@ -41,20 +43,66 @@ if(totalHeapMiB===8192){
 const ports=Array.from({length:workers},(_,index)=>3174+index);
 const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha,controller:process.env.AIHR_CI_CONTROL_HEAD,
  run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool,heapMiBPerWorker:heapPerWorker,totalHeapMiB,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host,cpuAdmission,phases:[],exitCode:1};
+const measureDevelopment=['workflow-preflight','whole-system'].includes(env.PERF_HTTP_SUITE);
+const measurementIdentity={candidateSha:sha,controllerSha:report.controller,runId:Number(report.run),
+ runAttempt:Number(process.env.GITHUB_RUN_ATTEMPT),suite:env.PERF_HTTP_SUITE};
+const measurement=measureDevelopment?report.developmentMeasurement={kind:'DEVELOPMENT_BROWSER_RUNNER_MEASUREMENT_V1',complete:false,
+ driver:null,driverReceipt:'absent',settlement:{driver:'unknown',proxy:'unknown',workers:'unknown',
+  ...developmentPostgresSettlement('unknown','unknown',null)}}:null;
+const developmentReset={admitted:false,state:'unknown',id:null};
+let developmentRemoveApi='unknown';
+const proxyFailures=measurement?createDriverFailures():null;
+const proxySockets=proxyFailures?createDriverSockets(proxyFailures):null;
 const save=()=>writeFileSync(join(out,'runner.json'),JSON.stringify(report,null,2));
 save();
 async function assertPortFree(port){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});await new Promise(resolve=>server.close(resolve));}
 async function run(label,command,args,childEnv=env,timeout=900000){
  console.log('[system-perf] '+label+' started');const start=Date.now();
  const fd=openSync(join(privateDir,label+'.log'),'w',0o600);
- const child=spawn(command,args,{env:childEnv,stdio:['ignore',fd,fd]});
- let killTimer,timedOut=false,exitSignal;const timer=setTimeout(()=>{timedOut=true;child.kill('SIGTERM');killTimer=setTimeout(()=>child.kill('SIGKILL'),10000);},timeout);let code;
- try{code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',(value,signal)=>{exitSignal=signal;resolve(value);});});}finally{clearTimeout(timer);clearTimeout(killTimer);closeSync(fd);}
+ const measuring=measurement!==null&&label==='http-and-browser';
+ const capturingBirth=measurement!==null&&label==='postgres';
+ const child=spawn(command,args,{env:childEnv,stdio:measuring?['ignore',fd,fd,'ipc']:
+  capturingBirth?['ignore',fd,fd,'pipe']:['ignore',fd,fd]});
+ let birth=Buffer.alloc(0),birthRefused=false;
+ if(capturingBirth&&child.stdio[3]){
+  child.stdio[3].on('data',chunk=>{
+   if(birth.length+chunk.length>65){birthRefused=true;return;}
+   birth=Buffer.concat([birth,chunk]);
+  });
+  child.stdio[3].on('error',()=>{birthRefused=true;});
+ }
+ if(measuring)child.on('message',value=>{
+  if(measurement.driverReceipt!=='absent'||!validateDevelopmentMeasurement(value,measurementIdentity)
+   ||Buffer.byteLength(JSON.stringify(value))>8192){
+   measurement.driverReceipt='refused';measurement.driver=null;return;
+  }
+  measurement.driverReceipt='observed';measurement.driver=value;
+ });
+ let killTimer,timedOut=false,exitSignal;
+ const timer=setTimeout(()=>{
+  timedOut=true;child.kill('SIGTERM');
+  killTimer=setTimeout(()=>{
+   child.kill('SIGKILL');
+   if(capturingBirth)child.stdio[3]?.destroy();
+  },10000);
+ },timeout);
+ let code;
+ try{code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once(measuring||capturingBirth?'close':'exit',(value,signal)=>{exitSignal=signal;resolve(value);});});}finally{clearTimeout(timer);clearTimeout(killTimer);closeSync(fd);}
+ if(capturingBirth){
+  developmentReset.id=birthRefused?null:developmentPostgresBirthId(birth);
+  developmentReset.state=timedOut||code===null||exitSignal!==null?'unknown':code===0&&developmentReset.id?'settled':'failed';
+  measurement.settlement.postgresReset=developmentReset.state;
+ }
+ if(measurement&&label==='cleanup')
+  developmentRemoveApi=timedOut||code===null||exitSignal!==null?'unknown':code===0?'settled':'failed';
+ if(measuring)measurement.settlement.driver=!timedOut&&code===0&&exitSignal===null?'settled':'failed';
  report.phases.push({label,elapsedMs:Date.now()-start,exitCode:code,timeoutMs:timeout,timedOut,exitSignal});save();
  console.log('[system-perf] '+JSON.stringify(report.phases.at(-1)));
  if(code!==0){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
  assert.equal(timedOut,false,label+' exceeded its unchanged process budget; retain incomplete evidence');
  assert.equal(code,0,label+' failed; private process logs contain no published credentials');
+ if(capturingBirth)assert(developmentReset.state==='settled','Development PostgreSQL reset birth receipt refused');
+ if(measuring)assert(measurement.driver?.complete===true,'Development driver terminal measurement refused');
 }
 function summarizeCpu(){
  const frames=new Map(),root=resolve('.next/server/chunks/ssr')+'/';
@@ -108,13 +156,122 @@ function summarizeNativeFailures(){
  report.nativeRuntimeFailures=failures;
  writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'Exact public-error reference/SQLSTATE metadata plus bounded native Draft marker blocks; Draft block errors may overlap; raw logs and SQL excluded',failures},null,2));
 }
-const apps=[],appFds=[];let proxy,upstream,dbStarted=false,postgresRuntimeFailures;
+const apps=[],appFds=[],workerProcessErrors=new Set();let proxy,upstream,dbStarted=false,postgresRuntimeFailures;
+let developmentPostgresBirth;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
+// Keep the canonical reset recipe. Its Docker commands cannot remove anything
+// and, after creation, cannot resolve the database through a reusable name.
+const developmentResetCommand=String.raw`set -euo pipefail
+owned_id=''
+fixed_docker() { /usr/bin/docker --config "$DOCKER_CONFIG" --host "$DOCKER_HOST" "$@" 3>&-; }
+docker() {
+ case "$1" in
+  container)
+   [[ "$#" == 3 && "$2" == inspect && "$3" == "$AIHR_DEVELOPMENT_DB_NAME" ]] || return 2
+   fixed_docker "$@"
+   ;;
+  inspect)
+   [[ "$#" == 4 && "$2" == --format && "$4" == "$AIHR_DEVELOPMENT_DB_NAME" ]] || return 2
+   fixed_docker "$@"
+   ;;
+  run)
+   [[ -z "$owned_id" && "$2" == -d && "$3" == --name && "$4" == "$AIHR_DEVELOPMENT_DB_NAME" &&
+     "$5" == --label && "$6" == "aihr-owner=$AIHR_DEVELOPMENT_DB_NAME" ]] || return 2
+   owned_id="$(exec 3>&-; fixed_docker "$@")" || return "$?"
+   [[ "$owned_id" =~ ^[a-f0-9]{64}$ ]] || return 2
+   printf '%s\n' "$owned_id" >&3
+   printf '%s\n' "$owned_id"
+   ;;
+  exec|logs)
+   local operation="$1"
+   shift
+   [[ -n "$owned_id" && "$1" == "$AIHR_DEVELOPMENT_DB_NAME" ]] || return 2
+   shift
+   fixed_docker "$operation" "$owned_id" "$@"
+   ;;
+  *) return 2 ;;
+ esac
+}
+source .github/ci/postgres.sh reset
+`;
+const developmentDocker=()=>developmentDockerContext(privateDir);
+function dockerQuery(args,maximum=4096){
+ const context=developmentDocker();
+ return execFileSync(DEVELOPMENT_DOCKER_COMMAND,[...context.args,...args],
+  {env:context.env,encoding:'utf8',timeout:10000,killSignal:'SIGKILL',maxBuffer:maximum}).trim();
+}
+function dockerContainerIds(filter){
+ const raw=dockerQuery(['container','ls','--all','--quiet','--no-trunc','--filter',filter]);
+ const ids=raw?raw.split('\n'):[];
+ assert(ids.length<=1&&ids.every(id=>/^[a-f0-9]{64}(?![\s\S])/.test(id)),'Development PostgreSQL container inventory refused');
+ return ids;
+}
+const namedContainer=()=>dockerContainerIds(`name=^/${container}$`);
+function observeDevelopmentPostgres(id){
+ assert(/^[a-f0-9]{64}(?![\s\S])/.test(id),'Development PostgreSQL creation identity refused');
+ const format='{"id":{{json .Id}},"name":{{json .Name}},"owner":{{json (index .Config.Labels "aihr-owner")}},'
+  +'"running":{{json .State.Running}},"pid":{{json .State.Pid}},"started":{{json .State.StartedAt}},"network":{{json .HostConfig.NetworkMode}},'
+  +'"mounts":[{{range $i,$m := .Mounts}}{{if $i}},{{end}}{"name":{{json $m.Name}},"type":{{json $m.Type}},"destination":{{json $m.Destination}}}{{end}}]}';
+ const row=JSON.parse(dockerQuery(['inspect','--type','container','--format',format,id]));
+ assert(row.id===id&&row.name==='/'+container&&row.owner===container&&row.network==='host'
+  &&typeof row.running==='boolean'&&/^[0-9T:.+Z-]{20,40}(?![\s\S])/.test(row.started)
+  &&Array.isArray(row.mounts)&&row.mounts.length===1,'Owned development PostgreSQL identity refused');
+ const [volume]=row.mounts;
+ assert(volume.type==='volume'&&volume.destination==='/var/lib/postgresql/data'
+  &&/^[a-f0-9]{64}(?![\s\S])/.test(volume.name),'Development PostgreSQL anonymous volume refused');
+ return {id,pid:row.pid,running:row.running,started:row.started,volume:volume.name};
+}
+function processBirth(pid){
+ assert(Number.isSafeInteger(pid)&&pid>1,'Development PostgreSQL process identity refused');
+ let stat;
+ try{stat=readFileSync('/proc/'+pid+'/stat','utf8');}catch(error){if(error.code==='ENOENT')return null;throw error;}
+ const end=stat.lastIndexOf(') '),birth=stat.slice(end+2).trimEnd().split(' ')[19];
+ assert(stat.startsWith(pid+' (')&&end>0&&/^[1-9][0-9]*(?![\s\S])/.test(birth),'Development PostgreSQL process birth refused');
+ return birth;
+}
+function captureDevelopmentPostgres(id){
+ const row=observeDevelopmentPostgres(id);
+ assert(row.running,'Development PostgreSQL running birth unavailable');
+ const birth=processBirth(row.pid),cgroup=readFileSync('/proc/'+row.pid+'/cgroup','utf8');
+ const expected=['/system.slice/docker-'+id+'.scope','/docker/'+id].find(path=>cgroup==='0::'+path+'\n');
+ assert(birth&&expected,'Development PostgreSQL native cgroup birth unavailable');
+ const path='/sys/fs/cgroup'+expected,state=lstatSync(path,{bigint:true});
+ const after=observeDevelopmentPostgres(id);
+ const cgroupAfter=lstatSync(path,{bigint:true});
+ assert(state.isDirectory()&&cgroupAfter.isDirectory()&&state.dev===cgroupAfter.dev&&state.ino===cgroupAfter.ino
+  &&after.running&&after.pid===row.pid&&after.started===row.started&&after.volume===row.volume&&processBirth(row.pid)===birth
+  &&readFileSync('/proc/'+row.pid+'/cgroup','utf8')===cgroup,'Development PostgreSQL birth changed');
+ return {id,pid:row.pid,started:row.started,volume:row.volume,birth,path,cgroupDevice:String(state.dev),cgroupInode:String(state.ino)};
+}
+function confirmDevelopmentPostgresAbsent(held){
+ const containerAbsent=dockerContainerIds(`id=${held.id}`).length===0&&namedContainer().length===0;
+ const processAbsent=processBirth(held.pid)!==held.birth;
+ let cgroupAbsent=false;
+ try{lstatSync(held.path);}catch(error){if(error.code==='ENOENT')cgroupAbsent=true;else throw error;}
+ const volumeAbsent=dockerQuery(['volume','ls','--quiet','--filter','name='+held.volume])==='';
+ return containerAbsent&&processAbsent&&cgroupAbsent&&volumeAbsent;
+}
+
 try{
  for(const port of ports)await assertPortFree(port);await assertPortFree(3443);
  const {buildEnv,admission}=systemBuildEnvironment(env,readFileSync('/proc/meminfo','utf8'));
  report.buildHeap=admission;save();
- await run('postgres','bash',['.github/ci/postgres.sh','reset']);dbStarted=true;
+ if(measureDevelopment){
+  assert(/^[1-9][0-9]*(?![\s\S])/.test(env.GITHUB_RUN_ID)&&env.GITHUB_RUN_ATTEMPT==='1'&&env.AIHR_CI_UNIT==='db-1'
+   &&realpathSync(privateDir)===privateDir,'Development PostgreSQL reset scope refused');
+  mkdirSync(join(privateDir,'docker-config'),{mode:0o700});
+  assert(namedContainer().length===0,'Development PostgreSQL pre-reset absence refused');
+  const resetEnv={...developmentDocker().env,AIHR_DEVELOPMENT_DB_NAME:container};
+  for(const key of ['GITHUB_ACTIONS','CI','GITHUB_EVENT_NAME','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','AIHR_CI_UNIT',
+   'AIHR_CI_PG_PROFILE','AIHR_CI_PG_CONFIGURED_CAP_BYTES','AIHR_CI_PG_PEAK_BUDGET_BYTES','AIHR_CI_PG_MEMORY_GIB',
+   'AIHR_CI_PG_JIT','AIHR_CI_PG_DURABLE','AIHR_CI_PG_STATEMENTS','AIHR_CI_PG_STATEMENTS_OWNER'])
+   if(env[key]!==undefined)resetEnv[key]=env[key];
+  developmentReset.admitted=true;
+  await run('postgres','/usr/bin/bash',['--noprofile','--norc','-c',developmentResetCommand],resetEnv);
+  assert(namedContainer()[0]===developmentReset.id,'Development PostgreSQL name no longer matches the held creation ID');
+  developmentPostgresBirth=captureDevelopmentPostgres(developmentReset.id);
+ }else await run('postgres','bash',['.github/ci/postgres.sh','reset']);
+ dbStarted=true;
  await run('migrate','pnpm',['db:migrate']);
  // Native performance helpers are installed through the ordinary migration journal.
  copyFileSync(join(focusedEvidence,'personnel-draft-discard-premigration-role-prerequisites.json'),join(out,'personnel-draft-discard-premigration-role-prerequisites.json'));
@@ -130,7 +287,9 @@ try{
  report.applicationRuntimeFrom=new Date().toISOString();save();
  for(const [index,port]of ports.entries()){
   const fd=openSync(join(privateDir,'server-'+index+'.log'),'w',0o600);appFds.push(fd);
-  apps.push(spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'--import',resolve('scripts/performance/profile-exit.mjs'),'--import',resolve('scripts/performance/transaction-timing.mjs'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',PERF_TX_TIMING_PATH:join(out,'app-transactions-'+index+'.json'),AIHR_DB_POOL_MAX:String(poolPerWorker),AIHR_APP_WORKERS:String(workers),AIHR_DB_TOTAL_CONNECTIONS:String(totalApplicationPool),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]}));
+  const app=spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'--import',resolve('scripts/performance/profile-exit.mjs'),'--import',resolve('scripts/performance/transaction-timing.mjs'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',PERF_TX_TIMING_PATH:join(out,'app-transactions-'+index+'.json'),AIHR_DB_POOL_MAX:String(poolPerWorker),AIHR_APP_WORKERS:String(workers),AIHR_DB_TOTAL_CONNECTIONS:String(totalApplicationPool),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]});
+  if(measurement)app.on('error',()=>workerProcessErrors.add(index));
+  apps.push(app);
  }
  // Avoid replaying a mutation onto a backend socket that closed during an idle interval.
  // Fresh loopback connections also avoid unsafe automatic retries after an ambiguous write.
@@ -138,6 +297,7 @@ try{
  proxy=https.createServer({key:readFileSync(join(privateDir,'key.pem')),cert:readFileSync(join(privateDir,'cert.pem'))},(req,res)=>{
   const request=http.request({host:'127.0.0.1',port:ports[nextWorker++%ports.length],path:req.url,method:req.method,agent:upstream,
    headers:{...req.headers,host:'localhost:3443','x-forwarded-host':'localhost:3443','x-forwarded-proto':'https'}},response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res);});
+  if(proxySockets)request.on('socket',proxySockets.observe);
   request.on('error',error=>{
    report.proxyErrors.push({at:new Date().toISOString(),method:req.method,path:req.url.split('?')[0],code:error.code??error.name,reusedSocket:request.reusedSocket,headersSent:res.headersSent,clientAborted:Boolean(req.aborted||res.destroyed)});save();
    if(res.destroyed)return;if(res.headersSent){res.destroy();return;}res.writeHead(502);res.end();
@@ -167,22 +327,47 @@ try{
  // The driver covers setup journeys and verification as well as the steady traffic interval.
  // Keep the post-warmup allowance constant when the measured interval is longer.
  const driverTimeoutMs=600000+Math.max(0,Number(env.PERF_HTTP_HOLD_MS??30000)-30000);
- await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}).trim(),NODE_OPTIONS:'--max-old-space-size=2048'},driverTimeoutMs);
+ await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,...(measureDevelopment?{PERF_POSTGRES_CONTAINER_ID:developmentPostgresBirth.id}:{}),PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}).trim(),NODE_OPTIONS:'--max-old-space-size=2048'},driverTimeoutMs);
  summarizeNativeFailures();
  assert(report.workerFatalDiagnostics.every(worker=>worker.logMarkers.passiveReadUnavailable===0),'passive shell approval read failures must be fixed before acceptance');
  report.exitCode=0;
 }catch(error){report.error=String(error.message).slice(0,350);console.error('[system-perf] '+report.error);}
 finally{
- if(proxy)await new Promise(resolve=>{proxy.close(resolve);proxy.closeAllConnections();});
- if(upstream)upstream.destroy();
- report.profileShutdown=await Promise.all(apps.map(async(app,worker)=>{
+ if(proxy&&measurement){
+  const serverClosed=new Promise(resolve=>{proxy.close(error=>resolve(!error));proxy.closeAllConnections();});
+  const agentClosed=proxySockets.closeAgent(upstream);
+  let proxyTimer;
+  const proxyLimit=new Promise(resolve=>{proxyTimer=setTimeout(resolve,5000);});
+  const result=await Promise.race([Promise.allSettled([serverClosed,agentClosed]),proxyLimit]).finally(()=>clearTimeout(proxyTimer));
+  if(result){
+   const [server,agent]=result;
+   const sockets=agent.status==='fulfilled'?agent.value:null;
+   measurement.settlement.proxy=server.status==='fulfilled'&&server.value===true&&sockets?.state==='settled'
+    &&sockets.assigned>0&&sockets.assigned===sockets.closed&&sockets.pending===0&&sockets.queued===0&&!proxyFailures.failed()?'settled':'failed';
+  }
+ }else{
+  if(proxy)await new Promise(resolve=>{proxy.close(resolve);proxy.closeAllConnections();});
+  if(upstream)upstream.destroy();
+ }
+ const workerStops=apps.map(async(app,worker)=>{
+  if(measurement&&!app.pid)return {worker,code:null,signal:null};
   if(app.exitCode!==null||app.signalCode!==null)return {worker,alreadyExited:true,code:app.exitCode,signal:app.signalCode};
   const exited=new Promise(resolve=>app.once('exit',resolve));
   app.kill('SIGUSR2');await Promise.race([exited,pause(5000)]);
   const forced=app.exitCode===null&&app.signalCode===null;
-  if(forced){app.kill('SIGKILL');await exited;}
+  if(forced){
+   app.kill('SIGKILL');
+   if(measureDevelopment)await Promise.race([exited,pause(5000)]);else await exited;
+  }
   return {worker,requestedSignal:'SIGUSR2',forced,code:app.exitCode,signal:app.signalCode};
- }));
+ });
+ report.profileShutdown=measurement?(await Promise.allSettled(workerStops)).map((result,worker)=>
+  result.status==='fulfilled'?result.value:{worker,code:null,signal:null}):await Promise.all(workerStops);
+ if(measurement&&apps.length===workers){
+  const acknowledged=report.profileShutdown.every(row=>row.code!==null||row.signal!==null);
+  const clean=workerProcessErrors.size===0&&report.profileShutdown.every(row=>row.requestedSignal==='SIGUSR2'&&row.forced===false&&row.code===0&&row.signal===null);
+  measurement.settlement.workers=clean?'settled':acknowledged?'failed':'unknown';
+ }
  if(apps.length){
   const observedPoolSizes=apps.map((_,worker)=>{
    try{return JSON.parse(readFileSync(join(out,'app-transactions-'+worker+'.json'),'utf8')).observedPoolSizes??[];}
@@ -195,23 +380,62 @@ finally{
    report.error='Application worker database pools did not verify the requested connection budget';
   }
  }
- for(const fd of appFds)closeSync(fd);
+ for(const fd of appFds){
+  if(!measurement)closeSync(fd);
+  else try{closeSync(fd);}catch{measurement.settlement.workers='failed';}
+ }
  try{summarizeNativeFailures();}catch{report.nativeFailureSummaryUnavailable=true;}
  if(apps.length)try{summarizeCpu();}catch(error){report.cpuSummaryError=String(error.message).slice(0,180);}
  if(dbStarted){
-  const stats=spawnSync('bash',['.github/ci/postgres.sh','stats'],{env,encoding:'utf8'});writeFileSync(join(out,'postgres-resources.txt'),stats.stdout??'');
+  if(!measurement){
+   const stats=spawnSync('bash',['.github/ci/postgres.sh','stats'],{env,encoding:'utf8'});
+   writeFileSync(join(out,'postgres-resources.txt'),stats.stdout??'');
+  }else try{
+   const stats=dockerQuery(['stats','--no-stream','--format','{{json .}}',developmentPostgresBirth.id],16384);
+   writeFileSync(join(out,'postgres-resources.txt'),stats+'\n');
+  }catch{report.postgresResourceSummaryUnavailable=true;report.exitCode=1;}
   try{
-   const owner=execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',container],{encoding:'utf8',timeout:10000}).trim();
-   assert.equal(owner,container);
+   if(measureDevelopment){
+    assert(namedContainer()[0]===developmentPostgresBirth.id&&observeDevelopmentPostgres(developmentPostgresBirth.id).running,
+     'Owned development PostgreSQL identity changed');
+   }
+   else{
+    const owner=execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',container],{encoding:'utf8',timeout:10000}).trim();
+    assert.equal(owner,container);
+   }
    // Scope acceptance to actual application runtime. Setup/rehearsal diagnostics remain
    // independent. No tail truncation: exceeding the bounded capture fails evidence closed.
-   const logs=spawnSync('docker',['logs',...(report.applicationRuntimeFrom?['--since',report.applicationRuntimeFrom]:[]),container],{encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024});
+   const logContext=measureDevelopment?developmentDocker():null;
+   const logs=spawnSync(logContext?DEVELOPMENT_DOCKER_COMMAND:'docker',
+    [...(logContext?.args??[]),'logs',...(report.applicationRuntimeFrom?['--since',report.applicationRuntimeFrom]:[]),
+     logContext?developmentPostgresBirth.id:container],
+    {encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024,...(logContext?{env:logContext.env,killSignal:'SIGKILL'}:{})});
    assert.equal(logs.status,0);
    postgresRuntimeFailures=postgresLockFailures((logs.stdout??'')+'\n'+(logs.stderr??''));
    writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:'Owned disposable database during application runtime only; bounded lock topology and routine frames; SQL/values/raw logs excluded',runtimeFrom:report.applicationRuntimeFrom??null,failures:postgresRuntimeFailures},null,2));
   }catch{report.postgresLockFailureSummaryUnavailable=true;}
-  await run('cleanup','bash',['.github/ci/postgres.sh','stop']).catch(()=>{report.exitCode=1;});
  }
+ if(measurement&&developmentReset.admitted){
+  let physicalAbsent=null;
+  if(developmentReset.id)try{
+   const current=observeDevelopmentPostgres(developmentReset.id);
+   let held=developmentPostgresBirth;
+   if(!held&&current.running)try{held=captureDevelopmentPostgres(developmentReset.id);}catch{}
+   let sameBirth=held&&current.started===held.started&&current.volume===held.volume;
+   if(sameBirth&&current.running)try{
+    const cgroup=lstatSync(held.path,{bigint:true});
+    sameBirth=current.pid===held.pid&&processBirth(current.pid)===held.birth&&cgroup.isDirectory()
+     &&String(cgroup.dev)===held.cgroupDevice&&String(cgroup.ino)===held.cgroupInode;
+   }catch{sameBirth=false;}
+   const context=developmentDocker();
+   try{await run('cleanup',DEVELOPMENT_DOCKER_COMMAND,[...context.args,'rm','-fv',developmentReset.id],context.env,25000);}
+   catch{report.exitCode=1;}
+   // A timeout can leave a pending Docker creation. An empty snapshot is not terminal evidence then.
+   if(developmentRemoveApi==='settled'&&developmentReset.state!=='unknown'&&sameBirth)
+    physicalAbsent=confirmDevelopmentPostgresAbsent(held);
+  }catch{report.exitCode=1;}
+  Object.assign(measurement.settlement,developmentPostgresSettlement(developmentReset.state,developmentRemoveApi,physicalAbsent));
+ }else if(!measurement&&dbStarted)await run('cleanup','bash',['.github/ci/postgres.sh','stop']).catch(()=>{report.exitCode=1;});
  report.runtimeAcceptance=runtimeAcceptance({workers,
   workerDiagnostics:report.nativeFailureSummaryUnavailable?undefined:report.workerFatalDiagnostics,
   nativeFailures:report.nativeFailureSummaryUnavailable?undefined:report.nativeRuntimeFailures,postgresFailures:postgresRuntimeFailures,
@@ -220,6 +444,14 @@ finally{
  if(!report.runtimeAcceptance.pass){
   if(report.exitCode===0)report.error='Application runtime diagnostics failed acceptance';
   report.exitCode=1;
+ }
+ if(measurement){
+  const {driver,proxy,workers,postgres,postgresAbsent}=measurement.settlement;
+  measurement.complete=report.exitCode===0&&measurement.driverReceipt==='observed'&&measurement.driver?.complete===true
+   &&driver==='settled'&&proxy==='settled'&&workers==='settled'&&postgres==='settled'&&postgresAbsent===true;
+  if(!measurement.complete&&report.exitCode===0){
+   report.error='Development browser measurement settlement was incomplete';report.exitCode=1;
+  }
  }
  save();
 }

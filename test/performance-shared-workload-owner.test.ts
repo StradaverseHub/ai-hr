@@ -63,6 +63,20 @@ it.each(courses)('imports the $name development owner without invoking the workl
  });
 },15000);
 
+it('loads the Rewards draft fixture with the React server condition',()=>{
+ withScratch(({privateDir,evidenceDir,env})=>{
+  const url=new URL('../scripts/performance/reward-draft-fixture.mjs',import.meta.url).href;
+  const result=spawnSync(process.execPath,[
+   '--conditions=react-server','--import',tsx,'--input-type=module','-e',
+   `import assert from 'node:assert/strict';const fixture=await import(${JSON.stringify(url)});
+ assert.equal(typeof fixture.prepareRewardDraftFixture,'function');console.log('REWARDS_DRAFT_FIXTURE_IMPORTED');`,
+  ],{cwd:root,env,encoding:'utf8',timeout:10000,maxBuffer:256*1024});
+  expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,result.stderr).toBe(0);
+  expect(result.stderr).toBe('');expect(result.stdout.trim()).toBe('REWARDS_DRAFT_FIXTURE_IMPORTED');
+  expect(readdirSync(privateDir)).toEqual([]);expect(readdirSync(evidenceDir)).toEqual([]);
+ });
+},15000);
+
 it.each(courses)('refuses the real $name legacy entry outside GitHub before dynamic application work',course=>{
  withScratch(({privateDir,evidenceDir,env})=>{
   expectGuard(course,{...env,GITHUB_ACTIONS:'false'},'false','true');
