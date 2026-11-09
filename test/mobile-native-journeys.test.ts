@@ -14,6 +14,7 @@ let caller:SessionContext;
 let blocked=false;
 vi.mock('../lib/session',async original=>({...await original<typeof import('../lib/session')>(),getMobileSession:async()=>{if(blocked)throw new AuthRequiredError('revoked');return caller;}}));
 const clock=await import('../app/api/mobile/v1/clock/route');
+const advisoryClock=await import('../app/api/mobile/v2/clock/route');
 const device=await import('../app/api/mobile/v1/clock-device/route');
 const leave=await import('../app/api/mobile/v1/leave-requests/route');
 const options=await import('../app/api/mobile/v1/leave-options/route');
@@ -170,6 +171,27 @@ describe('server-ordered pending submission abandonment',()=>{
 });
 
 describe('native online attendance',()=>{
+  it('records native advisory punches with missing evidence and persists review flags on the receipt',async()=>{
+    const a=await hire('Advisory Employee'),peer=await hire('Advisory Peer');
+    caller=a.ctx;
+    const admin=adminCtx(base);
+    const site=await createClockingLocation(admin,{companyIds:[base.companyId],name:'Advisory office',lat:3,lng:101,radiusM:50});
+    await setClockingControl(admin,{employmentId:a.employmentId,enabled:true,clockingLocationIds:[site.id]});
+    await setAttendancePhotoSetting(admin,{employmentId:a.employmentId,setting:'required'});
+    const command={action:'in',requestId:randomUUID(),location:null};
+    expect((await call(advisoryClock.POST,'clock?employmentId='+peer.employmentId,command)).status).toBe(400);
+    const first=await call(advisoryClock.POST,'clock',command);
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({outcome:'accepted',receipt:{direction:'in',photoAvailable:false,reviewReasons:['photo_missing','location_missing']}});
+    expect((await call(advisoryClock.POST,'clock',command)).body).toEqual(first.body);
+    expect((await call(receipts.GET,`submission-receipt?kind=clock&requestId=${command.requestId}`)).body.receipt).toEqual(first.body.receipt);
+    expect((await call(clock.GET,'clock')).body.state.captures[0].reviewReasons).toEqual(first.body.receipt.reviewReasons);
+    expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(1);
+    const out={action:'out',requestId:randomUUID(),location:{lat:4,lng:102,accuracy:5,sampledAt:Date.now()}};
+    const second=await call(advisoryClock.POST,'clock',out);
+    expect(second.body).toMatchObject({outcome:'accepted',receipt:{direction:'out',reviewReasons:['photo_missing','outside_site']}});
+    expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(2);
+  });
   it('previews own location without writes and rechecks containment and company policy at submit',async()=>{
     const a=await hire('Native Quality');caller=a.ctx;
     const admin=adminCtx(base),site=await createClockingLocation(admin,{companyIds:[base.companyId],name:'Own office',lat:3,lng:101,radiusM:50});

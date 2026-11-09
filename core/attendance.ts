@@ -1,4 +1,5 @@
 import { externalBreakBounds } from './shift-break-rules';
+import type { ClockReviewReason } from '../lib/clock-review-reasons';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
@@ -258,7 +259,7 @@ export class OutsideGeofenceError extends Error {
 }
 
 type GeofenceCheck =
-  | { enforced: false; lat: number | null; lng: number | null }
+  | { enforced: false; lat: number | null; lng: number | null; review?: ClockReviewReason }
   | {
       enforced: true;
       lat: number;
@@ -338,7 +339,7 @@ export function assignedClockingSitesTx(tx: Tx, employmentId: string, companyId:
  */
 export async function resolveGeofence(
   tx: Tx,
-  p: { employmentId: string; date: string; time: string; lat?: number; lng?: number; accuracy?:number; punch: 'in' | 'out'; skip?: boolean },
+  p: { employmentId: string; date: string; time: string; lat?: number; lng?: number; accuracy?:number; punch: 'in' | 'out'; skip?: boolean; reviewExceptions?: boolean },
 ): Promise<GeofenceCheck> {
   if (p.skip) return { enforced: false, lat: null, lng: null };
   const [emp] = await tx
@@ -357,6 +358,11 @@ export async function resolveGeofence(
   const sites = await assignedClockingSitesTx(tx, p.employmentId, emp!.companyId);
 
   const assessment=assessGeofence(p,sites,policy?.maximum??null,haversineMetres);
+  if (p.reviewExceptions && assessment.outcome !== 'pass') {
+    const review = assessment.outcome === 'poor_accuracy' ? 'location_accuracy'
+      : assessment.outcome === 'outside_site' || assessment.outcome === 'no_assigned_site' ? assessment.outcome : 'location_missing';
+    return { enforced: false, lat: p.lat ?? null, lng: p.lng ?? null, review };
+  }
   if(assessment.outcome==='location_required'||assessment.outcome==='invalid_location'||assessment.outcome==='poor_accuracy')
     throw new GeofenceQualityError(assessment);
   if (assessment.outcome!=='pass') {
@@ -2104,7 +2110,7 @@ function captureAttendanceContext(ctx: SessionContext): SessionContext {
 
 export async function checkInTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean; method?: 'web' | 'mobile_offline' },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; capturedGeofence?: GeofenceCheck; preciseOrder?: boolean; manual?: boolean; method?: 'web' | 'mobile_offline' },
   existingTx?: Tx,
 ) {
   ctx = captureAttendanceContext(ctx); p = structuredClone(p);
@@ -2151,7 +2157,7 @@ export async function checkInTx(
     // ADR-0070: resolve the geofence outcome BEFORE writing. Throws (rolling back this transaction, no
     // row/event written) when enforced and outside every assigned site — the caller catches it outside
     // this transaction and appends the blocked event separately.
-    const geo = await resolveGeofence(tx, {
+    const geo = (existingTx && p.clockCaptureId && p.capturedGeofence) || await resolveGeofence(tx, {
       employmentId: p.employmentId,
       date: p.date,
       time: p.time,
@@ -2251,7 +2257,7 @@ export async function checkIn(
 
 export async function checkOutTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean; method?: 'web' | 'mobile_offline' },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; capturedGeofence?: GeofenceCheck; preciseOrder?: boolean; manual?: boolean; method?: 'web' | 'mobile_offline' },
   existingTx?: Tx,
 ) {
   ctx = captureAttendanceContext(ctx); p = structuredClone(p);
@@ -2316,7 +2322,7 @@ export async function checkOutTx(
 
     // ADR-0070: resolve the geofence outcome for the CHECK-OUT punch — independent of the check-in punch's
     // status/radius (a mid-day toggle or radius change is representable; each punch freezes its own).
-    const geo = await resolveGeofence(tx, {
+    const geo = (existingTx && p.clockCaptureId && p.capturedGeofence) || await resolveGeofence(tx, {
       employmentId: p.employmentId,
       date: p.date,
       time: p.time,
@@ -7171,9 +7177,12 @@ export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:strin
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+me.employmentId},0))`);
     const [previous]=await tx.select().from(attendanceCorrection).where(eq(attendanceCorrection.id,p.requestId)).limit(1);
     if(previous){if(previous.employmentId!==me.employmentId||previous.removalPunchId!==p.punchId||previous.reason!==reason||previous.clockChanges?.baseline!==p.baseline)throw new Error('This removal identity is already in use.');return {correctionId:previous.id};}
-    const [target]=await tx.select({punch:attendancePunch,capture:attendanceClockCapture.id,deviceId:attendanceClockCapture.deviceId}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId)).where(and(eq(attendancePunch.id,p.punchId),eq(attendancePunch.employmentId,me.employmentId),eq(attendanceClockCapture.employmentId,me.employmentId))).limit(1);
+    const [target]=await tx.select({punch:attendancePunch,capture:attendanceClockCapture.id,deviceId:attendanceClockCapture.deviceId,
+      registeredWithoutLocation:sql<boolean>`coalesce(${domainEvent.payload}->'registeredDevice' = 'true'::jsonb, false)`}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId))
+      .leftJoin(domainEvent,and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateId,attendanceClockCapture.id),eq(domainEvent.aggregateType,'attendance-clock-capture'),eq(domainEvent.eventType,'attendance.clock.captured')))
+      .where(and(eq(attendancePunch.id,p.punchId),eq(attendancePunch.employmentId,me.employmentId),eq(attendanceClockCapture.employmentId,me.employmentId))).limit(1);
     // Owner decision 2026-10-28: an accepted offline punch is not the employee's to remove; HR corrects it.
-    if(!target||target.deviceId||target.punch.method==='mobile_offline'||target.punch.voidedAt)throw new Error('This active Web Clocking record is not available for removal.');
+    if(!target||target.deviceId||target.registeredWithoutLocation||target.punch.method==='mobile_offline'||target.punch.voidedAt)throw new Error('This active Web Clocking record is not available for removal.');
     const date=target.punch.attendanceDate;
     if(date>todayInKualaLumpur())throw new AttendanceCorrectionFutureDateError();
     // Payroll precedes attendance row locks, matching the final correction effect.

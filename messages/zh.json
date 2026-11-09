@@ -4148,6 +4148,16 @@
     "clockEvidenceGeofenced": "{site} · 距离 {distance} 米（允许 {radius} 米）",
     "clockEvidenceLocationUnavailable": "未记录位置 — 位置信息不可用",
     "clockEvidenceNotRequired": "无需地理围栏",
+    "clockEvidenceReview": "待复核",
+    "clockReviewReasons": {
+      "location_missing": "无法获取定位",
+      "location_stale": "定位已过期",
+      "location_accuracy": "定位精度不足",
+      "outside_site": "超出指定工作地点",
+      "no_assigned_site": "未分配工作地点",
+      "photo_missing": "缺少必需照片",
+      "photo_invalid": "无法验证照片"
+    },
     "colAbsent": "缺勤",
     "colAction": "操作",
     "colActualHours": "实际工时",
