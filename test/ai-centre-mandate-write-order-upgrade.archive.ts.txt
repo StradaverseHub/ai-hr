@@ -94,7 +94,7 @@ it('upgrades actual historical709 through3500 to3501 as the real non-super owner
   expect(beforeLedger.slice(boundaries.payroll).map(({hash,created_at})=>({hash,created_at}))).toEqual(
    journal.entries.slice(boundaries.payroll,boundaries.compatibility).map(entry=>({hash:sha(readFileSync(join(directory,entry.tag+'.sql'))),created_at:String(entry.when)})));
   stage(boundaries.mandate);await migrate(migration.db,{migrationsFolder:directory});const afterLedger=await ledger();expect(afterLedger).toHaveLength(boundaries.mandate);
-  expect(afterLedger.slice(0,boundaries.compatibility)).toEqual(beforeLedger);expect(afterLedger.at(-1)).toMatchObject({created_at:'1793330003937',hash:sha(readFileSync(migrationFile))});
+  expect(afterLedger.slice(0,boundaries.compatibility)).toEqual(beforeLedger);expect(afterLedger.at(-1)).toMatchObject({created_at:'1793330003737',hash:sha(readFileSync(migrationFile))});
   expect(await catalogue()).toEqual(initialCatalogue);expect(await facts()).toEqual(initialFacts);
   const newCatalogue=await storage.client`select p.oid::regprocedure::text as signature,p.proowner::regrole::text as owner,p.prosecdef,has_function_privilege('ai_hr_app',p.oid,'EXECUTE')as app_execute,
    (select count(*)::integer from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))))as acl_count from pg_proc p where p.oid=any(${newFunctions}::text[]::regprocedure[])order by signature`;

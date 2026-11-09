@@ -12,7 +12,7 @@ import {buildUnits,requiredEvidence,CI_EXECUTION} from './manifest.mjs';
 import {verifyReports,verifyUnitReport} from './verify-shards.mjs';
 import {readUnitReportDirectories,readWorkloadDatabaseArtifact} from './unit-report-directories.mjs';
 import {selectCommissioning,summarizeCommissioning} from './singleton-commissioning.mjs';
-import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,singletonSourceMaximum,protocolHash,assertSingletonSourceHashes,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection} from './singleton-protocol.mjs';
+import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,singletonSourceMaximum,protocolHash,assertSingletonSourceHashes,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection,AI_CENTRE_CURRENT_UPGRADE_FILE,assertAiCentreUpgradeCoverage} from './singleton-protocol.mjs';
 import {NATIVE_WORKLOAD_DATABASE_CASE,NATIVE_WORKLOAD_DATABASE_FILE,NATIVE_WORKLOAD_DATABASE_HBA,NATIVE_WORKLOAD_DATABASE_MEMBER,NATIVE_WORKLOAD_DATABASE_SETTINGS,NATIVE_WORKLOAD_OBSERVER,
  NATIVE_WORKLOAD_OBSERVER_URL,nativeWorkloadDatabaseUnit,validateNativeWorkloadDatabaseUrls,validateNativeWorkloadObserverUrl} from './singleton-protocol.mjs';
 import {prepareNativeWorkloadPostgres} from './native-workload-postgres.mjs';
@@ -41,7 +41,7 @@ test('every registered infrastructure file remains exactly once in its native cl
  const native=Object.keys(SINGLETON_FILES),ordinary=['test/ordinary-db.test.ts','test/ordinary-nodb.test.ts'];
  const db=native.filter(f=>singletonKind(singletonDescriptor(f).profile)==='db').concat(ordinary[0]),nodb=native.filter(f=>!db.includes(f)).concat(ordinary[1]),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browser),special=units.filter(u=>u.singleton);
- assert.equal(special.length,31);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
+ assert.equal(special.length,30);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
  assert(special.every(u=>u.files.length===1&&u.singleton.workers===1));assert.equal(requiredEvidence({suite,units}).units.length,units.length);
  for(const unit of special){const changed=structuredClone(units);changed.find(u=>u.id===unit.id).singleton.workers=2;assert.throws(()=>requiredEvidence({suite,units:changed}));}
  assert.throws(()=>buildUnits([native[0]],{db:[],nodb:[native[0]]},browser));
@@ -98,7 +98,9 @@ test('every registered infrastructure file remains exactly once in its native cl
  const git=(...args)=>execFileSync('git',['-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false',...args],{cwd:repository,encoding:'utf8',timeout:10000});
  const copy=file=>{mkdirSync(join(repository,file,'..'),{recursive:true});copyFileSync(join(candidateRoot,file),join(repository,file));};
  try{
-  for(const file of [...all,'scripts/gate-db-classify.ts','test/payslip-pdf.test.ts','test/r379-pcb2ii-pdf.test.ts','lib/borang-8a-pdf.ts','lib/borang-8b-pdf.ts','lib/cp21-fields.ts','lib/cp22a-fields.ts','lib/payslip-pdf.ts','lib/payslip-pdf-strings.ts','test/fixtures/payslip-pdf-fixture.ts','core/payslip-information.ts','lib/pcb2ii-pdf.ts','lib/payslip-pdf-fonts.ts','lib/pcb2ii-form.ts','test/tailwind-width-order.browser.test.tsx'])copy(file);
+  const currentAiCentre=fixture(AI_CENTRE_CURRENT_UPGRADE_FILE);
+  const currentAiCentreSources=singletonSources(currentAiCentre.unit,candidateRoot);
+  for(const file of new Set([...all,...currentAiCentreSources,'scripts/gate-db-classify.ts','test/payslip-pdf.test.ts','test/r379-pcb2ii-pdf.test.ts','lib/borang-8a-pdf.ts','lib/borang-8b-pdf.ts','lib/cp21-fields.ts','lib/cp22a-fields.ts','lib/payslip-pdf.ts','lib/payslip-pdf-strings.ts','test/fixtures/payslip-pdf-fixture.ts','core/payslip-information.ts','lib/pcb2ii-pdf.ts','lib/payslip-pdf-fonts.ts','lib/pcb2ii-form.ts','test/tailwind-width-order.browser.test.tsx']))copy(file);
   const added='db/migrations/9999_shared_index_model.sql';
   writeFileSync(join(repository,journalPath),JSON.stringify({...journal,entries:[...journal.entries,{...journal.entries.at(-1),idx:journal.entries.length,tag:'9999_shared_index_model'}]}));
   writeFileSync(join(repository,added),'-- ignored fictional SQL source\n');writeFileSync(join(repository,'.gitignore'),added+'\n');
@@ -108,6 +110,7 @@ test('every registered infrastructure file remains exactly once in its native cl
   assert.throws(()=>createPlan(repository),new RegExp('Canonical database source must be tracked as a regular file: '+added));
   git('add','--force',added);git('-c','user.name=Fictional CI','-c','user.email=ci@example.invalid','commit','--quiet','-m','Track matching canonical SQL');
   const actual=createPlan(repository),selected=actual.units.find(unit=>unit.files.includes(databaseFixture.unit.files[0]));
+  assert.deepEqual(actual.units.find(unit=>unit.id===currentAiCentre.unit.id)?.files,[AI_CENTRE_CURRENT_UPGRADE_FILE]);
   assert(selected?.singleton);assert.equal(actual.sha,git('rev-parse','HEAD').trim());assert.equal(actual.singletonSources[selected.id][added],createHash('sha256').update(readFileSync(join(repository,added))).digest('hex'));
   for(const archive of archives){
    git('rm','--cached',archive);writeFileSync(join(repository,'.gitignore'),added+'\n'+archive+'\n');git('add','.gitignore');git('-c','user.name=Fictional CI','-c','user.email=ci@example.invalid','commit','--quiet','-m','Ignore an existing required historical payload');
@@ -569,57 +572,62 @@ test('shared module JIT diagnostic owns one unchanged controlled database and ca
 });
 
 
-test('both selected-prefix AI upgrades require sole authenticated controlled jobs and every actual source owner',()=>{
- const files=['test/ai-centre-architecture-compatibility-upgrade.test.ts','test/ai-centre-mandate-write-order-upgrade.test.ts'];
- const owned=[
-  ".github/ci/candidate-environment.mjs",
-  ".github/ci/employee-lifecycle-profile.mjs",
-  ".github/ci/employee-lifecycle-sources.mjs",
-  ".github/ci/historical-migrations/0180_profile_option.sql",
-  ".github/ci/historical-migrations/0212_dashboard_card_config.sql",
-  ".github/ci/native-next-helper-sources.mjs",
-  ".github/ci/native-next-installation.mjs",
-  ".github/ci/policy-version.mjs",
-  ".github/ci/postgres-evidence.mjs",
-  ".github/ci/rewards-native-sources.mjs",
-  ".github/ci/singleton-protocol.mjs",
-  "core/audit-chain-arming.ts",
-  "core/entitlement-types.ts",
-  "db/admission.ts",
-  "db/background-read-admission.ts",
-  "db/capacity.ts",
-  "db/client.ts",
-  "db/tenant-write-admission.ts",
-  "db/workload.ts",
-  "test/db-names.ts",
-  "test/fixtures/historical-migrations/2301_attendance_workflow_submission_shared_lock.sql",
-  "test/fixtures/historical-migrations/3103_access_editor_presentation.sql",
-  "test/helpers/ai-centre-compatibility-owner-constructor.ts",
-  "test/helpers/ci-singleton-admission.ts",
- "test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts",
- "test/fixtures/notification-worker/canonical-inventory.ts",
- "test/fixtures/notification-worker/replay-prefix-ownership.ts"
-];
- for(const file of files){
-  const f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
-  assert.deepEqual(f.unit.files,[file]);assert.equal(f.unit.kind,'db');
-  assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
-  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
-  assert.equal(new Set(sources).size,sources.length);
-  for(const source of [file,...owned]){
-   assert(sources.includes(source),source);assert(readFileSync(new URL('../../'+source,import.meta.url)).length>0);
-   const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
-   const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
-   assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot),source);
-  }
-  assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));
-  assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
-  for(const mutate of [v=>{v.unit.singleton.workers=2;},v=>{v.unit.singleton.profile='notification-cluster-v1';},v=>{v.binding.prerequisites.workers=2;},v=>{v.binding.prerequisites.kind='shared-cluster';},v=>{v.env.AIHR_FOCUSED_SUITE_CAPACITY='true';},v=>{v.env.GITHUB_RUN_ATTEMPT='2';}]){const changed=structuredClone(f);mutate(changed);assert.throws(()=>{validateSingletonHost(changed);validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot);});}
-  const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
-  assert(text.indexOf("admitSingletonTest('"+file+"')")<text.indexOf("it('"));
-  assert(text.includes('writeFileSync(join(admission.evidenceDirectory,'));assert(text.includes('context.signal,caseStartedAt)'));
-  assert(!/process\.env\.AIHR_FOCUSED_|\.(?:skipIf|runIf)\s*\(/.test(text));
+test('current AI Centre upgrade is mandatory with exact historical archives and a dedicated native unit',()=>{
+ const file=AI_CENTRE_CURRENT_UPGRADE_FILE,f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
+ const originals=['test/ai-centre-architecture-compatibility-upgrade.test.ts','test/ai-centre-mandate-write-order-upgrade.test.ts'];
+ const archives=originals.map(original=>original.replace(/\.test\.ts$/,'.archive.ts.txt'));
+ const input='test/fixtures/ai-centre-current-upgrade-source.ts';
+ const exactTracked=[file,input,...archives];
+ const read=path=>{
+  const actual=join(candidateRoot,path);
+  return lstatSync(actual,{throwIfNoEntry:false})?readFileSync(actual):undefined;
+ };
+ assert.deepEqual(f.unit.files,[file]);assert.equal(f.unit.kind,'db');
+ assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
+ validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
+ assertAiCentreUpgradeCoverage(exactTracked,read);
+ assertSingletonSelection([file]);assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));
+ assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
+ for(const original of originals){
+  assert.equal(singletonDescriptor(original),null);
+  assert.throws(()=>assertSingletonSelection([original]),/original archived revision/);
+  assert.throws(()=>assertAiCentreUpgradeCoverage([...exactTracked,original],read),/Historical AI Centre upgrade path/);
+  assert.throws(()=>assertAiCentreUpgradeCoverage(exactTracked,path=>path===original?Buffer.from('ignored shadow'):read(path)),/Historical AI Centre upgrade path/);
+  assert.throws(()=>assertSingletonCoverage(['test/shadow-ai-upgrade.test.ts'],()=>`admitSingletonTest ( "${original}" )`),/Historical AI Centre admission/);
  }
+ for(const archive of archives){
+  assert.equal(singletonDescriptor(archive),null);
+  assert.throws(()=>assertSingletonSelection([archive]),/original archived revision/);
+ }
+ for(const required of exactTracked){
+  assert.throws(()=>assertAiCentreUpgradeCoverage(exactTracked.filter(path=>path!==required),read),/must be tracked/);
+  assert.throws(()=>assertAiCentreUpgradeCoverage(exactTracked,path=>path===required?undefined:read(path)),/is missing/);
+  assert.throws(()=>assertAiCentreUpgradeCoverage(exactTracked,path=>path===required?Buffer.concat([read(path),Buffer.from('\n')]):read(path)),/source differs/);
+ }
+ assert.throws(()=>assertAiCentreUpgradeCoverage(exactTracked,path=>path===archives[0]?read(archives[1]):read(path)),/source differs/);
+ const owned=[...exactTracked,
+  '.github/ci/historical-migrations/0180_profile_option.sql','.github/ci/historical-migrations/0212_dashboard_card_config.sql',
+  '.github/ci/migration-history.mjs','.github/ci/staging-migration-ledger.mjs','.github/ci/ci-install-grant.mjs',
+  '.github/ci/plan.mjs','.github/ci/singleton-protocol.mjs','core/entitlements.ts','core/module-gate.ts','db/client.ts',
+  'db/migrations/3500_ai_centre_architecture_compatibility.sql','db/migrations/3501_ai_centre_mandate_write_order.sql',
+  'scripts/seed-catalogs.ts','test/helpers/ai-centre-compatibility-owner-constructor.ts',
+  'test/helpers/ci-singleton-admission.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts',
+  'test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts',
+ ];
+ assert.equal(new Set(sources).size,sources.length);
+ for(const source of owned){
+  assert(sources.includes(source),source);assert(read(source).length>0);
+  const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
+  const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
+  assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot),source);
+ }
+ for(const mutate of [v=>{v.unit.singleton.workers=2;},v=>{v.unit.singleton.profile='notification-cluster-v1';},v=>{v.binding.prerequisites.workers=2;},v=>{v.binding.prerequisites.kind='shared-cluster';},v=>{v.env.AIHR_FOCUSED_SUITE_CAPACITY='true';},v=>{v.env.GITHUB_RUN_ATTEMPT='2';}]){
+  const changed=structuredClone(f);mutate(changed);assert.throws(()=>{validateSingletonHost(changed);validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot);});
+ }
+ const text=read(file).toString('utf8'),admission="admitSingletonTest('"+file+"')";
+ assert(text.indexOf(admission)>=0&&text.indexOf(admission)<text.indexOf("it('"));
+ assert(!/process\.env\.AIHR_FOCUSED_|\.(?:skipIf|runIf)\s*\(/.test(text));
+ assertSingletonCoverage([file],path=>read(path).toString('utf8'));
 });
 
 test('host cache conformance owns a distinct complete host-only source-bound singleton',()=>{
