@@ -1,11 +1,10 @@
-/** BLOCKED until root's exact closed hosted route/source registration. Native
- * miniature fixture qualification only; never ordinary compiler or release. */
+/** Isolated transport preflight using the existing closed native fixture owner. */
 import {spawnClosed,type ClosedChildEnvironment} from './helpers/closed-child-process.mjs';
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {expect,it} from 'vitest';
 import {admitCompilerReference,publishCompilerReferenceClock} from '../.github/ci/diagnostics/native-reference/admission.mjs';
-it('checks genuine native composite emission/reference/declaration fixture semantics',async context=>{
+it('qualifies the fixed read-only and no-egress transport for a later native reference experiment',async context=>{
  const started=process.hrtime.bigint(),controller=new AbortController(),failures:unknown[]=[],output:Buffer[]=[];
  let child:ReturnType<typeof spawnClosed>|undefined,closed:Promise<{code:number|null;signal:NodeJS.Signals|null}>|undefined;
  let exited=false,finished=false,bytes=0,timer:ReturnType<typeof setTimeout>|undefined,killTimer:ReturnType<typeof setTimeout>|undefined,drainTimer:ReturnType<typeof setTimeout>|undefined;
@@ -39,7 +38,12 @@ it('checks genuine native composite emission/reference/declaration fixture seman
    }
    timer=setTimeout(()=>stop(Error('Native fixture aggregate budget exhausted')),Math.max(0,718000-elapsed()));
    const result=await closed;controller.signal.throwIfAborted();expect(failures).toEqual([]);expect(result.signal).toBeNull();expect(result.code,Buffer.concat(output).toString('utf8')).toBe(0);
-   const report=JSON.parse(readFileSync(join(proof.destination,'compiler-native-reference/report.json'),'utf8'));expect(report.complete).toBe(true);expect(report.ordinaryCompilerQualified).toBe(false);expect(report.releaseAuthorized).toBe(false);expect(report.applicationInventoryComplete).toBe(false);expect(report.originalApplicationFiveNegativesQualified).toBe(false);expect(report.elapsedMs).toBeLessThanOrEqual(720000);
+   const report=JSON.parse(readFileSync(join(proof.destination,'compiler-protected-view/report.json'),'utf8'));
+   expect(report).toMatchObject({kind:'NATIVE_REFERENCE_PROTECTED_VIEW_PREFLIGHT',source:proof.sourceHead,
+    controller:proof.controllerHead,run:proof.run,attempt:proof.attempt,transportQualified:true,privateScratchRemoved:true,
+    ordinaryCompilerQualified:false,applicationInventoryComplete:false,releaseAuthorized:false,stockNextInvoked:false,
+    strictCompilerInvoked:false,processSettlementRequired:true});
+   expect(elapsed()).toBeLessThanOrEqual(720000);
   }catch(error){remember(error);}
   finally{
    if(child&&!exited)stop(Error('Owned native fixture settlement required'));

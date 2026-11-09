@@ -114,4 +114,8 @@ export async function nativeReferenceFixture(){
   finally{if(deadlineTimer)clearTimeout(deadlineTimer);process.removeListener('SIGTERM',interrupted);process.removeListener('SIGINT',interrupted);}
  }
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){assert.equal(process.argv.length,2);await nativeReferenceFixture();}
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ assert.equal(process.argv.length,2);
+ const {protectedViewPreflight}=await import('./protected-view.mjs');
+ await protectedViewPreflight();
+}
