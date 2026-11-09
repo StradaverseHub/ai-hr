@@ -431,7 +431,9 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   const homeDisabled=!(current||coldStart)||pending||!recovery.ready||clock.loading||
     !!draft&&['review','uncertain','submitting','preparing'].includes(draft.phase)||
     signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending';
-  const directDisabled=homeDisabled||offline.mode==='sending';
+  const waitingForOtherClock=signedStatus?.status==='other_pending'&&!offline.otherExchange||
+    signedStatus?.status==='offline_pending'&&!offlineClocking;
+  const directDisabled=pending||!recovery.ready||clock.loading||offline.mode==='sending'||waitingForOtherClock;
   const directButton=!home&&simplified&&(!draft||['idle','preparing','submitting','done'].includes(draft.phase));
   const homeContent=home?renderHome?.({current:current??null,loading:clock.loading,error:clock.error,reload:clock.reload,action,
     busy:pending,disabled:homeDisabled,doneAt:draft?.phase==='done'?draft.receiptTime??null:null,
@@ -504,7 +506,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
         </Card>}
         {draft?.phase==='uncertain'?<><Muted>{t('retrySameClock')}</Muted><Button title={t('checkReceipt')} onPress={()=>void recover()}/><Button title={t('retrySameClock')} disabled={!recovery.ready} onPress={()=>void submit()}/>
           {draft.clockProtocol==='signed'&&<Button title={t('pendingDiscard')} kind="quiet" onPress={()=>Alert.alert(t('pendingDiscard'),t('pendingDiscardConfirm'),[{text:t('cancel'),style:'cancel'},{text:t('pendingDiscard'),style:'destructive',onPress:()=>void recover(true)}])}/>}
-        </>:simplified&&draft?.phase==='review'&&draft.clockProtocol==='review'?<Button title={label} disabled={current?.deviceRequired&&!draft.deviceToken} onPress={()=>void submit()}/>:(!simplified||draft?.phase==='review')&&<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={(!current&&!coldStart)||pending||!recovery.ready||offline.mode==='sending'||(signedStatus?.status==='other_pending'&&!offline.otherExchange||signedStatus?.status==='offline_pending'&&!offlineClocking)||(draft?.phase==='review'&&current?.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
+        </>:simplified&&draft?.phase==='review'&&draft.clockProtocol==='review'?<Button title={label} disabled={current?.deviceRequired&&!draft.deviceToken} onPress={()=>void submit()}/>:(!simplified||draft?.phase==='review')&&<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={(!current&&!coldStart)||pending||!recovery.ready||offline.mode==='sending'||waitingForOtherClock||(draft?.phase==='review'&&current?.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
         {draft&&draft.phase==='review'&&<Button title={t('cancel')} kind="quiet" onPress={cancel}/>}
         {(!simplified||detailsOpen)&&offline.mode!=='offline'&&<InfoNote short={t('onlineClockShort')} detail={t('onlineClockOnly')}/>}
       </>}
