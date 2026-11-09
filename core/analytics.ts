@@ -748,7 +748,7 @@ export async function changeJobTransactionsPage(ctx:SessionContext,scopeIds:stri
 }
 
 type ChangeJobPageEnvelope = {total:number} & (
-  | ({assignmentId:string} & ChangeJobRow)
+  | (Omit<ChangeJobRow,'effectiveOn'> & {assignmentId:string;effectiveOn:string|Date})
   | {assignmentId:null;name:null;company:null;fromDepartment:null;toDepartment:null;fromPosition:null;toPosition:null;effectiveOn:null}
 );
 
@@ -756,8 +756,10 @@ type ChangeJobPageEnvelope = {total:number} & (
  * Raw execute bypasses select-field decoding, so retain the column's date decoder. */
 function changeJobPageRow(row:ChangeJobPageEnvelope):ChangeJobRow|null {
   if(row.assignmentId===null)return null;
+  const effectiveOn=assignment.validFrom.mapFromDriverValue(row.effectiveOn);
+  if(typeof effectiveOn!=='string')throw new Error('Invalid change-job effective date');
   return {name:row.name,company:row.company,fromDepartment:row.fromDepartment,toDepartment:row.toDepartment,
-    fromPosition:row.fromPosition,toPosition:row.toPosition,effectiveOn:assignment.validFrom.mapFromDriverValue(row.effectiveOn)};
+    fromPosition:row.fromPosition,toPosition:row.toPosition,effectiveOn};
 }
 
 async function changeJobTransactionsPageTx(tx:Tx,scope:string[]|undefined,input:PeriodReportInput,page:PageQuery):Promise<AnalyticsReportPage<ChangeJobRow>> {

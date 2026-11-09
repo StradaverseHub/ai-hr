@@ -13,7 +13,8 @@ export function employeeChoiceAsciiObservation(value:SQL):SQL{
 }
 
 function qualifiedDefaultIcuProcess(){
- const versions=process.versions,build=process.config.variables;
+ const versions=process.versions;
+ const build:Readonly<Record<string,unknown>>=process.config.variables;
  // Transitional packaged-runtime policy: qualify BOTH exact releases before
  // deployment. Unknown builds/data configurations retain the exact JS reader.
  if(process.platform!=='linux'||process.arch!=='x64'
