@@ -18,6 +18,11 @@ async function boundedReady(ready:Promise<void>,running:Promise<unknown>){
 }
 function watched<T>(promise:Promise<T>){void promise.catch(()=>{});return promise;}
 const limits=(tx:Tx)=>tx.execute(sql`select set_config('lock_timeout','5s',true),set_config('statement_timeout','10s',true)`);
+function observedPid(pid:number|undefined){
+ if(pid===undefined)throw Error('Expected native backend identity was not observed');
+ return pid;
+}
+
 
 it('retains initialization, exact stop generations, policy updates while stopped, native authority and transactional audit',async()=>{
  const initialized=await setManagerRevocationPolicy(ctx,true);
@@ -70,13 +75,13 @@ it('orders real raw UPDATE and the unchanged stop setter before rows in both gen
     });await boundedReady(ready,raw);
     stop=watched(setMandateStopSwitch(ctx,true,{expectedGeneration:version+1,reason:'Fictional ordered raw first'}));
     for(let poll=0;poll<100;poll++){
-     const rows=await owner.client`select l.pid,${holderPid}::integer=any(pg_blocking_pids(l.pid))as blocked,
+     const rows=await owner.client`select l.pid,${observedPid(holderPid)}::integer=any(pg_blocking_pids(l.pid))as blocked,
       not exists(select 1 from pg_locks ai where ai.pid=l.pid and ai.locktype='advisory'and ai.granted and ai.objsubid=2
        and ai.classid::bigint=(hashtext('ai-control')::bigint+4294967296)%4294967296
        and ai.objid::bigint=(hashtext(${base.tenantId})::bigint+4294967296)%4294967296)as ai_not_acquired from pg_locks l join pg_stat_activity a on a.pid=l.pid
       where l.locktype='advisory'and not l.granted and l.objsubid=1
        and l.classid::bigint=((hashtextextended(${'access-configuration:'+base.tenantId},0)>>32)&4294967295)
-       and l.objid::bigint=(hashtextextended(${'access-configuration:'+base.tenantId},0)&4294967295) and a.datname=current_database()and a.usename='ai_hr_app'and l.pid<>${rawPid}`;
+       and l.objid::bigint=(hashtextextended(${'access-configuration:'+base.tenantId},0)&4294967295) and a.datname=current_database()and a.usename='ai_hr_app'and l.pid<>${observedPid(rawPid)}`;
      const waiting=rows.find(row=>row.blocked);if(waiting){expect(waiting.ai_not_acquired).toBe(true);stopPid=waiting.pid as number;blocked=true;break;}await new Promise(resolve=>setTimeout(resolve,20));
     }
    }else{
@@ -87,7 +92,7 @@ it('orders real raw UPDATE and the unchanged stop setter before rows in both gen
     });await boundedReady(ready,holder);
     stop=watched(setMandateStopSwitch(ctx,false,{expectedGeneration:version,reason:'Fictional ordered stop first'}));
     for(let poll=0;poll<100;poll++){
-     const rows=await owner.client`select a.pid from pg_stat_activity a where a.datname=current_database()and a.usename='ai_hr_app'and ${holderPid}::integer=any(pg_blocking_pids(a.pid))`;
+     const rows=await owner.client`select a.pid from pg_stat_activity a where a.datname=current_database()and a.usename='ai_hr_app'and ${observedPid(holderPid)}::integer=any(pg_blocking_pids(a.pid))`;
      if(rows.length){expect(rows).toHaveLength(1);stopPid=rows[0].pid as number;break;}await new Promise(resolve=>setTimeout(resolve,20));
     }
     expect(stopPid,'real setter must wait at its actual audit INSERT').toBeTypeOf('number');
@@ -95,11 +100,11 @@ it('orders real raw UPDATE and the unchanged stop setter before rows in both gen
      return tx.execute(sql`update teras_mandate_control set manager_may_revoke=not manager_may_revoke,changed_by_user_id=${ctx.userId} where tenant_id=${base.tenantId}`);
     });await boundedReady(rawReady,raw);
     for(let poll=0;poll<100;poll++){
-     const[state]=await owner.client`select ${stopPid}::integer=any(pg_blocking_pids(${rawPid}::integer))as blocked,
-      exists(select 1 from pg_locks where pid=${rawPid} and locktype='advisory'and not granted and objsubid=1
+     const[state]=await owner.client`select ${observedPid(stopPid)}::integer=any(pg_blocking_pids(${observedPid(rawPid)}::integer))as blocked,
+      exists(select 1 from pg_locks where pid=${observedPid(rawPid)} and locktype='advisory'and not granted and objsubid=1
        and classid::bigint=((hashtextextended(${'access-configuration:'+base.tenantId},0)>>32)&4294967295)
        and objid::bigint=(hashtextextended(${'access-configuration:'+base.tenantId},0)&4294967295))as access_wait,
-      exists(select 1 from pg_locks where pid=${rawPid} and locktype='tuple')as tuple_lock`;
+      exists(select 1 from pg_locks where pid=${observedPid(rawPid)} and locktype='tuple')as tuple_lock`;
      if(state.blocked){expect(state.access_wait).toBe(true);expect(state.tuple_lock).toBe(false);blocked=true;break;}await new Promise(resolve=>setTimeout(resolve,20));
     }
    }

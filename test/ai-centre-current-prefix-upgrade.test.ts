@@ -117,10 +117,10 @@ it('replays the populated current AI Centre checkpoint under the real fixture ow
   };
   const save = (bytes = JSON.stringify(report)) =>
     writeFileSync(join(admission.evidenceDirectory, 'ai-centre-current-prefix-upgrade.json'), bytes, { mode: 0o600 });
-  const fixtureActor = (tenantId: string, actorRole: 'hr_admin' | 'employee'): SessionContext => ({
+  const fixtureActor = (tenantId: string, actorRole: 'hr_admin' | 'employee') => ({
     tenantId, userId: randomUUID(), personId: randomUUID(), roles: [actorRole],
     grants: [{ role: actorRole, companyId: null }],
-  });
+  } satisfies SessionContext);
   const own = fixtureActor(randomUUID(), 'hr_admin');
   const foreign = fixtureActor(randomUUID(), 'hr_admin');
   const employee = fixtureActor(own.tenantId, 'employee');
@@ -519,6 +519,8 @@ it('replays the populated current AI Centre checkpoint under the real fixture ow
     let foreignFailed = false;
     let holderIdentity: HolderIdentity | undefined;
     let observedDenial: Promise<unknown> | undefined;
+    const holderDatabaseOid = dbOid;
+    if (!holderDatabaseOid) throw Error('Native fixture database identity is missing');
     const observeHolder = async (identity: HolderIdentity, expectedHeld: boolean) => {
       requireHolderTime(holderUntil);
       const actual = await storage.client`
@@ -528,7 +530,7 @@ it('replays the populated current AI Centre checkpoint under the real fixture ow
             and classid::bigint=(hashtext('ai-control')::bigint+4294967296)%4294967296
             and objid::bigint=(hashtext(${foreign.tenantId})::bigint+4294967296)%4294967296) as held
         from pg_catalog.pg_stat_activity a where a.pid=${identity.pid} and a.backend_start::text=${identity.started}
-          and a.datid=${dbOid}::oid and a.usename=${role}
+          and a.datid=${holderDatabaseOid}::oid and a.usename=${role}
       `;
       requireHolderTime(holderUntil);
       expect(actual).toEqual([{ in_transaction: expectedHeld, held: expectedHeld }]);
