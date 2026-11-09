@@ -1139,7 +1139,7 @@
   "releaseGates": [
     "Root and different-peer FULL current code/data review",
     "Hosted controller/source/native upgrade/type/build gates",
-    "Separately qualified ABSENT native-role platform bootstrap before installed alpha3701",
+    "Qualify the 717-to-755 existing-role course for the observed e706 staging baseline and verify the installed role and ownership preimages. Qualify absent-role platform bootstrap separately for a proven pre-3701 target.",
     "Later common ABI normal-owner global-template adoption course, separate ownership",
     "Actual browser preflight and correct zero Busy/crash/blocking-lock worker2/4/8 tests",
     "Staging release queue/lease and current native/prefix admission"
