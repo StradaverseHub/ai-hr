@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 
@@ -39,6 +40,34 @@ class Admission(unittest.TestCase):
         self.assertEqual(self.admit()[:2],('1010','a'*40))
         self.env['GITHUB_JOB'] = 'resolve'
         self.assertEqual(self.admit('resolve')[0],'1010')
+
+    def test_actual_sudo_boundary_preserves_exact_owner_inputs(self):
+        class ObservedEnvironment(dict):
+            def __init__(self, values):
+                super().__init__(values)
+                self.accessed = set()
+
+            def __getitem__(self, key):
+                self.accessed.add(key)
+                return super().__getitem__(key)
+
+            def get(self, key, default=None):
+                self.accessed.add(key)
+                return super().get(key, default)
+
+        self.env = ObservedEnvironment(self.env)
+        self.admit()
+        # main also resolves these two custody paths. SUDO_UID is assigned by sudo itself.
+        required = self.env.accessed | {'GITHUB_WORKSPACE', 'RUNNER_TEMP'}
+        workflow = Path(__file__).resolve().parents[2]/'workflows'/'alpha-focused-checks.yml'
+        step = workflow.read_text().split('id: fictional-ai-upgrade\n',1)[1]
+        step = step.split('      - name: Publish closed fictional Assistant upgrade evidence',1)[0]
+        entries = re.findall(r'^\s+keep=(\S+)\s*$',step,re.M)
+        self.assertEqual(len(entries),1)
+        keys = entries[0].split(',')
+        self.assertTrue(all(re.fullmatch(r'[A-Z_][A-Z0-9_]*',key) for key in keys))
+        self.assertCountEqual(keys,required)
+        self.assertRegex(step,r'(?m)^\s+sudo --preserve-env="\$keep" /usr/bin/python3 ')
 
     def test_mixed_course_or_source_refuses(self):
         for key,wrong in [('model_eval','paid-model'),('run_build','true'),

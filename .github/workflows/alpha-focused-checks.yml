@@ -319,12 +319,13 @@ jobs:
           set -euo pipefail
           owner="$GITHUB_WORKSPACE/automation/.github/ci/fictional-ai-upgrade/owner.py"
           /usr/bin/python3 -I -B "$owner" --admit-only
+          /usr/bin/python3 -I -B "${owner%.py}.test.py"
           AIHR_CI_CAPACITY_PROFILE=bounded-suite-setup bash ../automation/.github/ci/prepare-runner.sh
           for checkout in "$GITHUB_WORKSPACE/baseline" "$GITHUB_WORKSPACE/source"; do
             pnpm --dir "$checkout" install --frozen-lockfile --ignore-scripts --store-dir "$RUNNER_TEMP/aihr-fictional-ai-upgrade-pnpm-store"
           done
           AIHR_CI_CAPACITY_PROFILE=bounded-suite-ready bash ../automation/.github/ci/prepare-runner.sh
-          keep=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,RUNNER_OS,RUNNER_ARCH,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ATTEMPT,GITHUB_RUN_ID,GITHUB_refs/heads/codex/architecture-ai-source-upgrade-witness-20261109,GITHUB_WORKFLOW_refs/heads/codex/architecture-ai-source-upgrade-witness-20261109,GITHUB_SHA,GITHUB_WORKFLOW_SHA,GITHUB_EVENT_PATH,GITHUB_WORKSPACE,RUNNER_TEMP,AIHR_CI_CONTROL_HEAD,AIHR_CI_HEAD,AIHR_AI_UPGRADE_STAGING_ENABLED,AIHR_AI_UPGRADE_PRODUCTION_ENABLED
+          keep=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,RUNNER_OS,RUNNER_ARCH,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ATTEMPT,GITHUB_RUN_ID,GITHUB_REF,GITHUB_WORKFLOW_REF,GITHUB_SHA,GITHUB_WORKFLOW_SHA,GITHUB_EVENT_PATH,GITHUB_WORKSPACE,RUNNER_TEMP,AIHR_CI_CONTROL_HEAD,AIHR_CI_HEAD,AIHR_AI_UPGRADE_STAGING_ENABLED,AIHR_AI_UPGRADE_PRODUCTION_ENABLED
           sudo --preserve-env="$keep" /usr/bin/python3 -I -B "$owner" "$(command -v node)" "$(command -v pnpm)"
       - name: Publish closed fictional Assistant upgrade evidence
         if: ${{ always() && github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && (steps.fictional-ai-upgrade.outcome == 'success' || steps.fictional-ai-upgrade.outcome == 'failure') }}
