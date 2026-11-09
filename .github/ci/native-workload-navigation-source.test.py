@@ -1,10 +1,10 @@
 """Fixed history custody controls with tracked and synthetic file bytes only."""
-import importlib.util
 import os
 from pathlib import Path
 import re
 import sys
 import tempfile
+from types import ModuleType
 import unittest
 from unittest.mock import Mock
 
@@ -12,9 +12,10 @@ sys.dont_write_bytecode = True
 
 
 def load_sibling(name, filename):
-    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(filename))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    source = Path(__file__).with_name(filename)
+    module = ModuleType(name)
+    module.__file__ = str(source)
+    exec(compile(source.read_bytes(), str(source), 'exec', dont_inherit=True), module.__dict__)
     return module
 
 

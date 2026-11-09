@@ -1,0 +1,284 @@
+{
+  "kind": "NARROW_HOSTED_NAVIGATION_HISTORY_AND_ISSUER_SOURCE_MODELS_ONLY",
+  "directParent": "e87fd13988f1db4b670238a6ea235c8bcd8c1b5f",
+  "candidatePurpose": "Focused no-database model evidence only",
+  "wrapper": {
+    "path": "test/native-workload-browser-controller-models.test.ts",
+    "originalWrapper": "1a0e5e8ac8cfdd0dd1f5da6cba32e9eaa0bb4441",
+    "fixedPython": "/usr/bin/python3",
+    "argv": [
+      "-I",
+      "-B",
+      "<fixed model path>",
+      "-v"
+    ],
+    "timeoutMsPerChild": 10000,
+    "killSignal": "SIGKILL",
+    "maxCaptureBytesPerStream": 131072,
+    "caseCount": 2,
+    "nestedModelCount": 22,
+    "suites": [
+      {
+        "path": ".github/ci/native-workload-navigation-source.test.py",
+        "cases": 7,
+        "classes": [
+          [
+            "NativeNavigationHistoryModel",
+            [
+              "test_exact_current_roots_and_four_whole_tracked_checkout_objects",
+              "test_exact_length_incorrect_real_file_is_not_a_history_fact",
+              "test_first_real_stream_has_no_result_after_clock_closes",
+              "test_live_caps_and_original_member_limit_hold_with_history",
+              "test_missing_duplicate_renamed_foreign_and_invalid_roles_refuse_before_read",
+              "test_named_file_replacement_during_read_does_not_validate_held_inode",
+              "test_symlink_hardlink_and_nonregular_refuse_through_pinned_tree"
+            ]
+          ]
+        ]
+      },
+      {
+        "path": ".github/ci/native-workload-browser-issuer.test.py",
+        "cases": 15,
+        "classes": [
+          [
+            "HeldEvidenceModel",
+            [
+              "test_changed_driver_identity_survives_recheck_pidfd_close_failure",
+              "test_distinct_held_browser_roles_and_renderer_reuse_actual_kernel_checks",
+              "test_exact_private_observer_rejects_other_roles_realms_and_extra_bytes",
+              "test_held_pipe_reads_a_frame_and_refuses_surplus_at_terminal_eof",
+              "test_tls_reconciliation_has_one_exact_url_status_body_and_certificate"
+            ]
+          ],
+          [
+            "TranscriptModel",
+            [
+              "test_actual_role_pipe_refuses_child_output_observed_before_root_turn",
+              "test_an_unexpected_packet_cannot_be_replaced_by_a_correct_one",
+              "test_driver_connection_cannot_start_before_third_transport_eof",
+              "test_exact_frames_use_distinct_role_pipes_and_bound_the_counter_windows",
+              "test_initial_unowned_fence_and_aliased_role_channels_refuse",
+              "test_missing_eof_preserves_primary_and_closes_other_pipes",
+              "test_out_of_order_root_and_child_frames_poison_without_writes",
+              "test_partial_transcript_is_terminal_before_any_descriptor_close",
+              "test_timeout_rejects_before_consuming_first_frame",
+              "test_wrong_counter_window_poison_preserves_fence"
+            ]
+          ]
+        ]
+      }
+    ],
+    "checks": "Exact stdout, complete unittest stderr ledger, zero status, no signal or spawn error"
+  },
+  "exactFileComposition": {
+    ".github/ci/native-workload-browser-host.py": {
+      "preimage": {
+        "source": "1a0e5e8ac8cfdd0dd1f5da6cba32e9eaa0bb4441",
+        "bytes": 33063,
+        "sha256": "4f9145631d7be9abe37f3b668259cc43156ece5d3978013d103e65f78d3a84e4",
+        "gitBlob": "0fa7f7c7a2605dfc09ebd9ce080bbb31c7556802"
+      },
+      "current": {
+        "bytes": 33063,
+        "sha256": "4f9145631d7be9abe37f3b668259cc43156ece5d3978013d103e65f78d3a84e4",
+        "gitBlob": "0fa7f7c7a2605dfc09ebd9ce080bbb31c7556802"
+      },
+      "delta": "whole"
+    },
+    ".github/ci/native-workload-browser-issuer.py": {
+      "preimage": {
+        "source": "39f90daecf409e9fa7442b63acf8434725e51592",
+        "bytes": 15197,
+        "sha256": "58274fb0a96cff05d5f1e54fe2311fe391688a4f00e88b2dfe09f525a4d8504a",
+        "gitBlob": "510144905b83da48c95ecf0013d0247b4b3a6a78"
+      },
+      "current": {
+        "bytes": 15197,
+        "sha256": "58274fb0a96cff05d5f1e54fe2311fe391688a4f00e88b2dfe09f525a4d8504a",
+        "gitBlob": "510144905b83da48c95ecf0013d0247b4b3a6a78"
+      },
+      "delta": "whole"
+    },
+    ".github/ci/native-workload-browser-issuer.test.py": {
+      "preimage": {
+        "source": "39f90daecf409e9fa7442b63acf8434725e51592",
+        "bytes": 17665,
+        "sha256": "374ce735270ed0aeb1572332bfb9b82549a0b4dbf0e4024d86ae838219f292e1",
+        "gitBlob": "927b3688ebe96a467691f89eacbd254cc45f0f7c"
+      },
+      "current": {
+        "bytes": 17701,
+        "sha256": "d8d52779948bc950e68ca7657d63300b17bf787e55ef1b4d3358be57216ff19d",
+        "gitBlob": "7a39772aa314bf105575634ef3ac47e5d58014ce"
+      },
+      "delta": "fixed source-byte loader only"
+    },
+    ".github/ci/native-workload-navigation-source.test.py": {
+      "preimage": {
+        "source": "e87fd13988f1db4b670238a6ea235c8bcd8c1b5f",
+        "bytes": 8396,
+        "sha256": "6fe6857549520ac6af2e7ac2960e1e53d8c15ac79215be33d5fa9fa73ba010b4",
+        "gitBlob": "12ea138140710d06431a0bc91c24b345e914e9d7"
+      },
+      "current": {
+        "bytes": 8432,
+        "sha256": "cb40b8c922afc4dc8f054361ce3b0741ac5a7dd7d30129989a5b38c540e7dfe2",
+        "gitBlob": "bab7391558b89261dcb4c312e96e1824e2cfdda8"
+      },
+      "delta": "fixed source-byte loader only"
+    },
+    "test/native-workload-browser-controller-models.test.ts": {
+      "preimage": {
+        "source": "1a0e5e8ac8cfdd0dd1f5da6cba32e9eaa0bb4441",
+        "bytes": 4791,
+        "sha256": "349f194c3495d7a5c08dcf0e2f00cbee4d76ad05f451863aae4e0feb80f1fe67",
+        "gitBlob": "758d50b7f884abde15f3e54927d5771f66af29ac"
+      },
+      "current": {
+        "bytes": 3159,
+        "sha256": "78796a50afa8f85b35191ceb6126b4320dcf9f8cee163cf89f7c86e5a41c2539",
+        "gitBlob": "d534111581571643663673ad11459da6ce13bd0e"
+      },
+      "delta": "two fixed suite records only"
+    }
+  },
+  "untouchedSourceOwners": {
+    ".github/ci/native-workload-navigation-source.py": {
+      "source": "e87fd13988f1db4b670238a6ea235c8bcd8c1b5f",
+      "bytes": 7139,
+      "sha256": "9f99185c97cb6c8ba7db2f47b17427eb73504dbded8785ce7830497a3e3a3d2f",
+      "gitBlob": "371c29759045b6d5518331f5906ccc1c6dbd3a1a"
+    },
+    ".github/ci/runtime_inventory.py": {
+      "source": "e87fd13988f1db4b670238a6ea235c8bcd8c1b5f",
+      "bytes": 29244,
+      "sha256": "62e5478633349991cc21b8243d234fc85aabf900cfa57df52ff9b012be89c013",
+      "gitBlob": "3db36828a390825569f0e5c1f9b07561778a9959"
+    },
+    ".github/workflows/alpha-focused-checks.yml": {
+      "source": "e87fd13988f1db4b670238a6ea235c8bcd8c1b5f",
+      "bytes": 13722,
+      "sha256": "cc3c8e9bac07370bd70f1333bff6f697c2943120771cb8f8ca07caf87543e827",
+      "gitBlob": "a27cec29473774da9a4810fefc26d0f5f729bfd4"
+    },
+    ".github/workflows/alpha-staging.yml": {
+      "source": "e87fd13988f1db4b670238a6ea235c8bcd8c1b5f",
+      "bytes": 38635,
+      "sha256": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
+      "gitBlob": "1648c46d62d66ea9472170b9cdff48d7427f3799"
+    },
+    "scripts/performance/navigation-source.ts": {
+      "source": "e87fd13988f1db4b670238a6ea235c8bcd8c1b5f",
+      "bytes": 2337,
+      "sha256": "8a43261888b9065e64ced5bca410a0c07917d3e9ee6215f57dcb3b8910467f9d",
+      "gitBlob": "2c07175a5081fd8bf2b53d27d2183e4093123d09"
+    },
+    "scripts/performance/navigation-protocol.ts": {
+      "source": "e87fd13988f1db4b670238a6ea235c8bcd8c1b5f",
+      "bytes": 12239,
+      "sha256": "338e8e65d7e18eb4aba1150860fd776be79036a729e1639366707a54ed8bf811",
+      "gitBlob": "aa3095b6f5686668d56b4b9832ebc0c2bd01bd25"
+    },
+    "scripts/performance/navigation-capture-verifier.ts": {
+      "source": "e87fd13988f1db4b670238a6ea235c8bcd8c1b5f",
+      "bytes": 10584,
+      "sha256": "406ea9d6e8f748b8f9917a443ede9fb4633f015c292b207cce07caf9a2019889",
+      "gitBlob": "5f5181a4d94dbd4cd2dbf6c708a3cd797beba434"
+    },
+    "scripts/performance/navigation-browser-capture.ts": {
+      "source": "e87fd13988f1db4b670238a6ea235c8bcd8c1b5f",
+      "bytes": 13893,
+      "sha256": "f0519ded30e0b3b782043941c4907ee5dbf1639a966f724f0bf1814b0409c9cf",
+      "gitBlob": "f93138e19090442fa8582ea0617419b7c50c1ad3"
+    }
+  },
+  "fixedHistory": [
+    {
+      "path": "deploy/admission/next_bootstrap_session_inverse.json",
+      "size": 3214186,
+      "mode": "100644",
+      "gitBlob": "9b5d549f1f9ebc95186962ce8b807f82d6ecb453",
+      "sha256": "45266a6b0972304842ccec5095506a65255e183630e04b03c6451c2bcfdb3933",
+      "exactGitAndHeldWorkingBytes": true
+    },
+    {
+      "path": "deploy/admission/next_controller_admit_terminal_inverse.json",
+      "size": 22906898,
+      "mode": "100644",
+      "gitBlob": "4af22ef5b8dba44b4ce1ce41059777126afe20be",
+      "sha256": "8f86d7c2b60eb061c30a62d665ac37b1617deee5761b4b2aa41b858f7f8a89cf",
+      "exactGitAndHeldWorkingBytes": true
+    },
+    {
+      "path": "deploy/admission/next_controller_admit_timing_inverse.json",
+      "size": 8085766,
+      "mode": "100644",
+      "gitBlob": "6d3d23b7301b2728073b73a2422b9e693d24fc3a",
+      "sha256": "8c5a9a8255d19f182d4e88c6f7b0b9433065833009e6168f5e75137d8e09eee7",
+      "exactGitAndHeldWorkingBytes": true
+    },
+    {
+      "path": "deploy/admission/next_host_history_controller_inverse.json",
+      "size": 39474867,
+      "mode": "100644",
+      "gitBlob": "4e64a7924aff4438fa4d2a3e4e6e5ac3c4c0c787",
+      "sha256": "7657c27da9d577e3c2d49db285439b37e6970a517250691af70f0f495c08cbe6",
+      "exactGitAndHeldWorkingBytes": true
+    }
+  ],
+  "fixedHistoryAggregateBytes": 73681717,
+  "independentSourceReviews": {
+    "e87": {
+      "bytes": 5839,
+      "sha256": "f2c70c3aeb1a23a9828c4b9a9521a64b7b34a0ca9c4a24a1fd8540835bec68d3"
+    },
+    "issuer39f": {
+      "bytes": 5434,
+      "sha256": "7bddf3cc0b162cd47d03935b97a74af4e9446d6a198dce937db4d68dfbcda630"
+    },
+    "issuerHostedPlan": {
+      "bytes": 7801,
+      "sha256": "03a7712369992c2c942e2d186909e11894272635462d4972749bc8c09462e358"
+    },
+    "wrapper1a0": {
+      "bytes": 6884,
+      "sha256": "9fbd8ff5a65ec769695e7b78f62f90387fe236598e653fffa9acb1bfcd8c116e"
+    },
+    "kernel34d": {
+      "bytes": 2339,
+      "sha256": "7f54e0b836d56cce3c7626d5e117445fcbedfe1d2029d15a062d518c871486ae"
+    }
+  },
+  "retainedSeparateHostedToolAndKernelModels": {
+    "source": "1a0e5e8ac8cfdd0dd1f5da6cba32e9eaa0bb4441",
+    "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+    "run": 42561934416,
+    "artifactId": 13650165957,
+    "artifactSha256": "2a745b13f383110500143999112f11bcb66d77ca3da2c8b216da7edaa132fc34",
+    "counts": [
+      17,
+      25
+    ],
+    "authenticationSeal": {
+      "bytes": 482,
+      "sha256": "abd252afb91033bcd4c48d970a3be284786a297507e6e83aa68005091c44b6dd"
+    },
+    "terminalRetentionSeal": {
+      "bytes": 2648,
+      "sha256": "e2c1096249fbbd9d518d7d51fefd14ae934062abb96beb6a645b8126d2384135"
+    },
+    "kernelModel": {
+      "source": "34d597960e5ff1ea1615040080054af770c5fe7a",
+      "bytes": 28131,
+      "sha256": "202672a424671a53f93ca72bdb1dcf18f0e9eafebbb3117ba09d1b445c19b742",
+      "gitBlob": "85d99896b41b545cde131b797658b0ad2d5c8371"
+    },
+    "carriedIntoNewSelection": false
+  },
+  "qualification": {
+    "localModelExecution": false,
+    "newHostedModelExecution": false,
+    "runtimeActivation": false,
+    "releaseEligible": false
+  }
+}
