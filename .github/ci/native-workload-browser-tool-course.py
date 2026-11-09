@@ -341,6 +341,35 @@ def _send_writer_message(channel, data, ancillary, deadline):
             'TOOL writer channel write differs')
 
 
+def _downloader_status(pid, deadline):
+    require(type(pid) is int and pid > 1, 'TOOL held downloader PID differs')
+    maximum = 65536
+    left(deadline)
+    with owned_fd(os.open('/proc', DIR)) as proc, owned_fd(os.open(str(pid), DIR, dir_fd=proc)) as process:
+        process_birth = birth(os.fstat(process))
+        require(process_birth == birth(named(proc, str(pid))), 'TOOL downloader proc directory differs')
+        left(deadline)
+        with owned_fd(os.open('status', READ, dir_fd=process)) as descriptor:
+            before = os.fstat(descriptor)
+            require(stat.S_ISREG(before.st_mode) and birth(before) == birth(named(process, 'status')),
+                    'TOOL downloader proc status differs')
+            status = bytearray()
+            # A short procfs read is not EOF. Read one extra byte to detect overflow.
+            while True:
+                left(deadline)
+                block = os.read(descriptor, min(4096, maximum + 1 - len(status)))
+                left(deadline)
+                if not block:
+                    break
+                status.extend(block)
+                require(len(status) <= maximum, 'TOOL downloader proc status exceeds bound')
+            require(status and birth(before) == birth(os.fstat(descriptor)) == birth(named(process, 'status'))
+                    and process_birth == birth(os.fstat(process)) == birth(named(proc, str(pid))),
+                    'TOOL downloader proc status or directory changed')
+    left(deadline)
+    return bytes(status)
+
+
 def _download_writer_handoff(channel, deadline, interrupted, kernel, descriptor, admitted, uid, gid, slots):
     child = admitted['pid']
 
@@ -357,7 +386,7 @@ def _download_writer_handoff(channel, deadline, interrupted, kernel, descriptor,
                 and not rights and records == 0, 'TOOL writer readiness differs')
         policy = data[1:]
     held()
-    status = bounded_proc(f'/proc/{child}/status', 65536)
+    status = _downloader_status(child, deadline)
     fields = [line.split() for line in status.splitlines()]
     for key, expected in ((b'Uid:', [str(uid).encode()] * 4), (b'Gid:', [str(gid).encode()] * 4), (b'Groups:', [])):
         require([row[1:] for row in fields if row and row[0] == key] == [expected],
@@ -531,6 +560,7 @@ def _run_tool_command(kernel, argv, stop, *, download_slots=None):
     # as the historical kernel. Unlike its relative clock this stop is armed
     # before setup, and neither settlement phase can restart its allowance.
     ready_stop = min(stop, time.monotonic() + HANDSHAKE_SECONDS)
+    command_stop = ready_stop
     require(kernel.own_children() == [] and signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
             and len(list(pathlib.Path('/proc/self/task').iterdir())) == 1, 'TOOL process owner is not exclusive')
     previous = kernel.subreaper(True)
@@ -610,18 +640,28 @@ def _run_tool_command(kernel, argv, stop, *, download_slots=None):
                     writer_handoff = _download_writer_handoff(root_channel, ready_stop, lambda: interrupted,
                                                               kernel, descriptor, admitted, uid, gid, download_slots)
                     root_channel.close()
-                while not interrupted and not _wait_tool_exit(child):
-                    time.sleep(min(.01, left(stop)))
-                left(stop)
+                # The launcher ACK grants mounts. A downloader also needs the writer handoff.
+                if download_slots is None or writer_handoff is not None:
+                    command_stop = stop
+                while not interrupted:
+                    left(command_stop)
+                    if _wait_tool_exit(child):
+                        break
+                    time.sleep(min(.01, left(command_stop)))
+                left(command_stop)
                 result['reason'] = 'owner-interrupted' if interrupted else 'complete'
                 if not interrupted:
-                    followers_until = min(stop, time.monotonic() + 1)
-                    while followers := kernel.live_group(child):
+                    followers_until = min(command_stop, time.monotonic() + 1)
+                    while True:
+                        left(command_stop)
+                        followers = kernel.live_group(child)
+                        if not followers:
+                            break
                         remaining = followers_until - time.monotonic()
                         if remaining <= 0:
                             break
                         time.sleep(min(.01, remaining))
-                    left(stop)
+                    left(command_stop)
                     if followers:
                         result['reason'] = 'descendants-survived'
             except ToolRefusal as error:
@@ -630,7 +670,7 @@ def _run_tool_command(kernel, argv, stop, *, download_slots=None):
             except BaseException:
                 result['reason'] = 'protocol-refused'
             finally:
-                settle = min(stop if admitted is not None else ready_stop, time.monotonic())
+                settle = min(command_stop, time.monotonic())
                 try:
                     code, escaped = _stop_tool_command(kernel, child, descriptor, admitted,
                                                        settle + GROUP_SETTLEMENT, settle + PROCESS_SETTLEMENT)

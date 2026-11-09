@@ -569,9 +569,9 @@ class ToolTransportModels(unittest.TestCase):
 
             with self.subTest(case=case), ExitStack() as mocked:
                 mocked.enter_context(patch.object(C, '_writer_message', return_value=nullcontext(ready)))
-                mocked.enter_context(patch.object(C, 'bounded_proc', side_effect=[
-                    status.replace(b'1001\n', b'0\n') if case == 'wrong-fsuid' else status,
-                    b'1\n' if case == 'wrong-policy' else b'2\n']))
+                native_status = status.replace(b'1001\n', b'0\n') if case == 'wrong-fsuid' else status
+                held_status = mocked.enter_context(patch.object(C, '_downloader_status', return_value=native_status))
+                mocked.enter_context(patch.object(C, 'bounded_proc', return_value=b'1\n' if case == 'wrong-policy' else b'2\n'))
                 mocked.enter_context(patch.object(C.select, 'select', side_effect=lambda read, *_:
                     (read if case == 'exited' or case == 'surplus' and read == [channel] else [], [], [])))
                 mocked.enter_context(patch.object(C, 'download_writers'))
@@ -582,6 +582,7 @@ class ToolTransportModels(unittest.TestCase):
                 args = (channel, deadline, lambda: case == 'interrupted', kernel, 11, birth, 1001, 1002, slots)
                 if case == 'valid':
                     self.assertEqual(C._download_writer_handoff(*args), C.DUMP_POLICIES[b'2'])
+                    held_status.assert_called_once_with(77, deadline)
                     channel.sendmsg.assert_called_once_with([b'W'], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
                         b''.join(C.RIGHT.pack(fd) for fd in slots[1]))], socket.MSG_DONTWAIT | socket.MSG_NOSIGNAL)
                 elif case == 'eof':
@@ -592,6 +593,50 @@ class ToolTransportModels(unittest.TestCase):
                         C._download_writer_handoff(*args)
                 if case != 'valid':
                     channel.sendmsg.assert_not_called()
+
+    def test_held_downloader_status_reads_complete_eof_before_the_same_frontier(self):
+        proc = SimpleNamespace(st_dev=1, st_ino=77, st_mode=stat.S_IFDIR|0o500)
+        status = SimpleNamespace(st_dev=1, st_ino=78, st_mode=stat.S_IFREG|0o444)
+        for case in ('short-reads', 'empty', 'too-large', 'late', 'replaced-status', 'replaced-process'):
+            now = 100
+            chunks = iter([b''] if case == 'empty' else
+                          [b'x'*4096]*16 + [b'x'] if case == 'too-large' else [b'Uid:', b'\t1001\n', b''])
+            reads = []
+            names = []
+
+            def read(fd, length):
+                nonlocal now
+                self.assertEqual(fd, 32)
+                reads.append(length)
+                if case == 'late':
+                    now = 103
+                return next(chunks)
+
+            def named(fd, name):
+                names.append((fd, name))
+                row = proc if name == '77' else status
+                if names.count((fd, name)) == 2 and case == ('replaced-process' if name == '77' else 'replaced-status'):
+                    return SimpleNamespace(st_dev=row.st_dev, st_ino=90, st_mode=row.st_mode)
+                return row
+
+            with self.subTest(case=case), patch.object(C.time, 'monotonic', side_effect=lambda: now), \
+                 patch.object(C.os, 'open', side_effect=[30, 31, 32]) as opened, \
+                 patch.object(C.os, 'fstat', side_effect=lambda fd: proc if fd == 31 else status), \
+                 patch.object(C, 'named', side_effect=named), patch.object(C.os, 'read', side_effect=read), \
+                 patch.object(C.os, 'close') as closed:
+                if case == 'short-reads':
+                    self.assertEqual(C._downloader_status(77, 103), b'Uid:\t1001\n')
+                    self.assertEqual(reads, [4096]*3)
+                else:
+                    with self.assertRaises(ValueError):
+                        C._downloader_status(77, 103)
+                self.assertEqual(opened.call_args_list, [call('/proc', C.DIR), call('77', C.DIR, dir_fd=30),
+                                                        call('status', C.READ, dir_fd=31)])
+                self.assertEqual(closed.call_args_list, [call(32), call(31), call(30)])
+            if case == 'too-large':
+                self.assertEqual(reads, [4096]*16 + [1])
+            if case == 'late':
+                self.assertEqual(reads, [4096])
 
     def test_downloader_waits_for_exact_grant_and_terminal_channel_before_tls(self):
         source = str(C.ROOT_PARENT / (C.ROOT_PREFIX + '123') / 'code' / C.SOURCE)
@@ -634,13 +679,21 @@ class ToolTransportModels(unittest.TestCase):
         child = 4321
         argv = ['/usr/bin/python3','-I','-B','/fixed/owner.py','--download','1001','1002','144.0']
         slots = (12, (31, 32, 33, 34, 35), {})
-        for code, reason in ((10, 'command-failed'), (0, 'protocol-refused')):
+        for code, observed_at, natural_exit, reason in ((10, 100, True, 'command-failed'), (0, 100, True, 'protocol-refused'),
+                (-9, 103, False, 'deadline'), (10, 104, True, 'deadline')):
+            now = 100
             kernel = Mock()
             kernel.own_children.return_value = []
             kernel.live_group.return_value = []
             root, peer = MagicMock(), MagicMock()
             admitted = {'pid':child}
-            with self.subTest(code=code), patch.object(C.time, 'monotonic', return_value=100), \
+            def observe(_pid):
+                nonlocal now
+                now = observed_at
+                return natural_exit
+
+            with self.subTest(code=code, observed_at=observed_at), patch.object(C.time, 'monotonic', side_effect=lambda: now), \
+                 patch.object(C.time, 'sleep') as slept, \
                  patch.object(C.pathlib.Path, 'iterdir', return_value=iter([1])), \
                  patch.object(C.signal, 'getsignal', return_value=signal.SIG_DFL), patch.object(C.signal, 'signal'), \
                  patch.object(C.os, 'pipe', side_effect=[(10,11),(12,13)]), patch.object(C.os, 'close'), \
@@ -648,7 +701,7 @@ class ToolTransportModels(unittest.TestCase):
                  patch.object(C.os, 'fork', return_value=child), patch.object(C.os, 'pidfd_open', return_value=20), \
                  patch.object(C, '_admit_tool_command', return_value=admitted) as admit, \
                  patch.object(C, '_download_writer_handoff', return_value=None) as handoff, \
-                 patch.object(C, '_wait_tool_exit', return_value=True) as wait, \
+                 patch.object(C, '_wait_tool_exit', side_effect=observe) as wait, \
                  patch.object(C, '_stop_tool_command', return_value=(code, False)) as settle:
                 result = C._run_tool_command(kernel, argv, 144, download_slots=slots)
             self.assertEqual(result, owned_result(reason=reason, commandExit=code))
@@ -657,7 +710,10 @@ class ToolTransportModels(unittest.TestCase):
             root.close.assert_called_once_with()
             peer.close.assert_called_once_with()
             wait.assert_called_once_with(child)
-            settle.assert_called_once_with(kernel, child, 20, admitted, 103, 106)
+            slept.assert_not_called()
+            anchor = min(observed_at, 103)
+            settle.assert_called_once_with(kernel, child, 20, admitted, anchor + 3, anchor + 6)
+            self.assertEqual(kernel.live_group.call_count, int(observed_at < 103))
 
     def test_incomplete_and_overcap_bodies_are_framing_refusals_before_overcap_write(self):
         now = time.monotonic()
