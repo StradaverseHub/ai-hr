@@ -12,7 +12,7 @@ import {buildUnits,requiredEvidence,CI_EXECUTION} from './manifest.mjs';
 import {verifyReports,verifyUnitReport} from './verify-shards.mjs';
 import {readUnitReportDirectories,readWorkloadDatabaseArtifact} from './unit-report-directories.mjs';
 import {selectCommissioning,summarizeCommissioning} from './singleton-commissioning.mjs';
-import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,singletonSourceMaximum,protocolHash,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection} from './singleton-protocol.mjs';
+import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,singletonSourceMaximum,protocolHash,assertSingletonSourceHashes,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection} from './singleton-protocol.mjs';
 import {NATIVE_WORKLOAD_DATABASE_CASE,NATIVE_WORKLOAD_DATABASE_FILE,NATIVE_WORKLOAD_DATABASE_HBA,NATIVE_WORKLOAD_DATABASE_MEMBER,NATIVE_WORKLOAD_DATABASE_SETTINGS,NATIVE_WORKLOAD_OBSERVER,
  NATIVE_WORKLOAD_OBSERVER_URL,nativeWorkloadDatabaseUnit,validateNativeWorkloadDatabaseUrls,validateNativeWorkloadObserverUrl} from './singleton-protocol.mjs';
 import {prepareNativeWorkloadPostgres} from './native-workload-postgres.mjs';
@@ -519,17 +519,39 @@ test('shared module JIT diagnostic owns one unchanged controlled database and ca
  assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);assert.equal(new Set(sources).size,sources.length);
  assert.equal(sources.length,1584);assert.equal(createHash('sha256').update(JSON.stringify(sources)).digest('hex'),'512189a8692016924f67081ede283316892f28f6ad580015d888324c936d8659');
  for(const required of ["core/ai-centre-control.ts", "db/migrations/3200_ai_centre_controls.sql", "db/migrations/3201_ai_centre_function_coverage.sql", "db/migrations/3500_ai_centre_architecture_compatibility.sql", "db/migrations/3501_ai_centre_mandate_write_order.sql", "lib/ai/centre-activity.ts", "test/helpers/native-read-observer.ts","lib/maybank-payment-settings.ts","localization/my/maybank-v74-file.ts","lib/attendance-formula-allocation.ts","lib/system-label-assignment.ts","packs/attendance/formula-sources.ts","lib/attendance-formula-catalog.ts","lib/attendance-formula-overtime.ts","core/attendance-formula-leave.ts","core/attendance-formula-measurements.ts","core/attendance-formulas.ts","lib/attendance-formula-model.ts","lib/attendance-formula-language.ts","lib/attendance-formula-periods.ts","lib/pay-component-company.ts","core/attendance-formula-ai.ts","lib/attendance-formula-ai.ts","lib/attendance-formula-bindings.ts","lib/attendance-formula-posting.ts","core/pay-component-company.ts","core/system-label-selection.ts"])assert(sources.includes(required),'Actual JIT read owner omitted: '+required);
- const journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url),'utf8'));
+ const journalBytes=readFileSync(new URL('../../'+journalPath,import.meta.url)),journal=JSON.parse(journalBytes.toString('utf8'));
+ const inputs=Object.freeze({sources:Object.freeze(sources),journalSha256:createHash('sha256').update(journalBytes).digest('hex')});
  assert.equal(journal.entries.length,755);const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');assert.equal(new Set(journalSql).size,755);
  const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,755);
  for(const path of [...journalSql,...physicalSql])assert(sources.includes(path),'Actual canonical SQL/fingerprint input omitted: '+path);
  assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),[]);
  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
+ const omissionHashes={...f.binding.sourceHashes};
  for(const source of sources){
   const bytes=readFileSync(new URL('../../'+source,import.meta.url));assert(bytes.length>0&&bytes.length<=singletonSourceMaximum(source),source);
-  const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
-  const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
-  assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot),source);
+  assert(Object.hasOwn(omissionHashes,source),source);
+  const digest=omissionHashes[source];delete omissionHashes[source];
+  try{assert.throws(()=>assertSingletonSourceHashes(omissionHashes,inputs),/Singleton source membership differs/,source);}
+  finally{omissionHashes[source]=digest;}
+ }
+ assert.deepEqual(omissionHashes,f.binding.sourceHashes);
+ assertSingletonSourceHashes(omissionHashes,inputs);
+
+ const dependency='test/helpers/native-read-observer.ts',canonicalSql='db/migrations/3500_ai_centre_architecture_compatibility.sql';
+ const foreign='test/foreign.test.ts',membership=/Singleton source membership differs/;
+ assert(!sources.includes(foreign));
+ for(const [label,mutate,reason] of [
+  ['registered entry',hashes=>delete hashes[file],membership],
+  ['non-SQL dependency',hashes=>delete hashes[dependency],membership],
+  ['canonical SQL',hashes=>delete hashes[canonicalSql],membership],
+  ['same-size foreign substitution',hashes=>{hashes[foreign]=hashes[dependency];delete hashes[dependency];},membership],
+  ['journal bytes',hashes=>{hashes[journalPath]='0'.repeat(64);},/Canonical journal bytes differ/],
+  ['invalid digest',hashes=>{hashes[dependency]='invalid';},/Invalid singleton source hash/],
+ ]){
+  const changed=structuredClone(f),hashes=changed.plan.singletonSources[changed.unit.id];
+  mutate(hashes);changed.binding.sourceHashes=hashes;
+  const {fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
+  assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness,candidateRoot),reason,label);
  }
  assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
  const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');

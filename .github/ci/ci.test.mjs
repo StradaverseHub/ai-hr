@@ -194,13 +194,34 @@ test('full-CI receipt reader accepts only owned bounded direct regular auxiliary
 });
 function assertFullCiProvisioningWiring(source){
  const start=source.indexOf('export async function main(){');assert(start>=0);source=source.slice(start);
- const reset=source.indexOf("if (reset.status !== 0)"),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(',reset),migration=source.indexOf('const migrate = ',context),receipt=source.indexOf('rolePrerequisites=readFullCiRoleReceipt(',migration),environment=source.indexOf('const env = {...candidateEnvironment(process.env)',receipt),vitest=source.indexOf('const child = ',environment);
- assert(reset>=0&&context>reset&&migration>context&&receipt>migration&&environment>receipt&&vitest>environment);
+ const resetBranches=`if(workloadUnit){
+        assert(offset===0&&roleProfile===fullRoleMode,'Native workload requires the existing role prerequisite owner');
+        workloadHost=provisionSingletonHost(plan,unit,dir);
+        workloadBuild=await provisionNativeNextBuild(plan,unit,dir,process.env,installation);
+        const {prepareNativeWorkloadPostgres}=await import('./native-workload-postgres.mjs');
+        workload=prepareNativeWorkloadPostgres(plan,unit,dir);
+        workloadProof=workload.start();resetStatus=0;
+      }else{
+        const reset = lifecycle?fixedStage('reset'):spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
+        resetStatus=reset.status;
+      }`;
+ const branches=source.indexOf(resetBranches);
+ const reset=source.indexOf("if (resetStatus !== 0) throw Error('Owned CI PostgreSQL reset failed');");
+ const context=source.indexOf('const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(');
+ const migration=source.indexOf('const migrate = ',context);
+ const migrated=source.indexOf("if(migrate.status !== 0)throw Error('CI migration failed');",migration);
+ const receipt=source.indexOf('rolePrerequisites=readFullCiRoleReceipt(',migration);
+ const environment=source.indexOf('const env = {...candidateEnvironment(process.env)',receipt);
+ const vitest=source.indexOf('const child = ',environment);
+ assert(branches>=0&&reset>=branches+resetBranches.length&&context>reset&&migration>context&&migrated>migration&&receipt>migrated&&environment>receipt&&vitest>environment);
  const line=at=>source.slice(at,source.indexOf('\n',at)).trim();
- assert(source.includes("const reset = lifecycle?fixedStage('reset'):spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});"));
- assert.equal(line(migration),"const migrate = lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env)):roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});");
- assert.equal(line(vitest),"const child = lifecycle?fixedStage(lifecycleProfile.stage,env):spawnSync('pnpm', args, {stdio: 'inherit', env});");
- assert.doesNotMatch(line(environment),/roleContext|AIHR_CI_ROLE_|AIHR_CI_DISPOSABLE_ROLE/);
+ assert.equal(line(context),"const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatus,lifecycle?metadata:undefined):null;");
+ assert.equal(source.slice(migration,migrated).trim(),`const migrate = workload?workloadChild(['db:migrate'],{...roleContext.env,...workload.migrationUrls})
+        :lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env)):roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});`);
+ assert.equal(line(vitest),"const child = workload?workloadChild(args,env):lifecycle?fixedStage(lifecycleProfile.stage,env):spawnSync('pnpm', args, {stdio: 'inherit', env});");
+ const testEnvironment=source.slice(environment,vitest);
+ assert(testEnvironment.includes('Object.assign(env,workload?{...workload.migrationUrls,...workload.observerEnvironment}:FULL_CI_ROLE_URLS);'));
+ assert.doesNotMatch(testEnvironment,/roleContext|AIHR_CI_ROLE_|AIHR_CI_DISPOSABLE_ROLE/);
  assert.match(source,/report\.batches\.push\(\{exitCode,databaseEvidence,\.\.\.\(rolePrerequisites\?\{rolePrerequisites\}:\{\}\)/);
 }
 test('full-CI provisioning is wired only between successful DB reset and migration, never Vitest/globalsetup',()=>{
@@ -209,13 +230,20 @@ test('full-CI provisioning is wired only between successful DB reset and migrati
 test('both owned and ordinary provisioning branches retain ordering and never give role setup authority to Vitest',()=>{
  const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');
  for(const [before,after]of [
-  ["if (reset.status !== 0)","if (reset.status === 0)"],
+  ["if (resetStatus !== 0)","if (resetStatus === 0)"],
   ['const roleContext=roleProfile===fullRoleMode?','const roleContext=undefined;const unused=roleProfile===fullRoleMode?'],
   ["lifecycle?fixedStage('reset')","lifecycle?fixedStage('migrate')"],
   ["lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env))","lifecycle?fixedStage('migrate',candidateEnvironment(process.env))"],
   ["{stdio: 'inherit',env:roleContext.env}","{stdio: 'inherit',env:candidateEnvironment(process.env)}"],
   ["lifecycle?fixedStage(lifecycleProfile.stage,env)","lifecycle?fixedStage('migrate',env)"],
   ['const env = {...candidateEnvironment(process.env),','const env = {...roleContext.env,'],
+  ["offset===0&&roleProfile===fullRoleMode","offset===0"],
+  ["workloadProof=workload.start();resetStatus=0;","resetStatus=0;workloadProof=workload.start();"],
+  ["workloadBuild=await provisionNativeNextBuild(plan,unit,dir,process.env,installation);","workloadBuild=undefined;"],
+  ["if(migrate.status !== 0)","if(migrate.status === 0)"],
+  ["workload?workloadChild(['db:migrate'],{...roleContext.env,...workload.migrationUrls})","workload?workloadChild(['db:migrate'],workload.migrationUrls)"],
+  ["workload?workloadChild(args,env)","workload?workloadChild(args,roleContext.env)"],
+  ["...workload.observerEnvironment}:FULL_CI_ROLE_URLS","...roleContext.env}:FULL_CI_ROLE_URLS"],
  ]){assert.equal(source.split(before).length-1,1);assert.throws(()=>assertFullCiProvisioningWiring(source.replace(before,after)));}
 });
 

@@ -903,6 +903,13 @@ export function validateNativeBuildPrerequisite(p,expected){
  for(const key of ['archiveSha256','manifestSha256','provenanceSha256'])assert(digest(p[key]));
  assert(/^sha256:[a-f0-9]{64}$/.test(p.artifactDigest));assert(/^[A-Za-z0-9_-]{1,512}$/.test(p.nextBuildId));
 }
+export function assertSingletonSourceHashes(sourceHashes,inputs){
+ const keys=Object.keys(sourceHashes??{});
+ assert(keys.length===inputs.sources.length&&keys.sort().every((key,index)=>key===inputs.sources[index]),'Singleton source membership differs');
+ if(inputs.journalSha256!==undefined)assert.equal(sourceHashes[canonicalJournal],inputs.journalSha256,
+  'Canonical journal bytes differ from independently reconstructed candidate plan');
+ for(const value of Object.values(sourceHashes))assert(digest(value),'Invalid singleton source hash');
+}
 export function validateSingletonBinding(binding,plan,unit,witness,candidateRoot){
  const descriptor=assertSingletonUnit(unit);
  assert(binding&&Object.keys(binding).sort().join('|')===['schemaVersion','mode','candidate','controller','runId','attempt','unit','fingerprint','file','profile','sourceHashes','evidenceDirectory','prerequisites'].sort().join('|'),'Closed singleton binding required');
@@ -915,11 +922,7 @@ export function validateSingletonBinding(binding,plan,unit,witness,candidateRoot
  assert(witness&&positive(String(witness.runId))&&String(witness.attempt)==='1','Authenticated first-attempt full-CI context required');
  assert.equal(binding.runId,String(witness.runId));assert.equal(binding.attempt,'1');
  assert.deepEqual(binding.sourceHashes,plan.singletonSources?.[unit.id],'Singleton source binding differs');
- const inputs=singletonSourceInputs(unit,candidateRoot);
- assert.deepEqual(Object.keys(binding.sourceHashes??{}).sort(),inputs.sources);
- if(unit.kind==='db')assert.equal(plan.singletonSources?.[unit.id]?.[canonicalJournal],inputs.journalSha256,
-  'Canonical journal bytes differ from independently reconstructed candidate plan');
- for(const value of Object.values(binding.sourceHashes))assert(digest(value),'Invalid singleton source hash');
+ assertSingletonSourceHashes(binding.sourceHashes,singletonSourceInputs(unit,candidateRoot));
  assert(typeof binding.evidenceDirectory==='string'&&binding.evidenceDirectory.startsWith('/')&&!binding.evidenceDirectory.includes('\0'));
  const p=binding.prerequisites;
  if(unit.kind==='db'){
