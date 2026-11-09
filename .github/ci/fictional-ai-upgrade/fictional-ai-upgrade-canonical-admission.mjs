@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 export const BASE = '5c990a639607b404a6d8fc7f78ca4752d2461476';
-export const CANDIDATE = '06e499c211807981689c34c5e732b7dac488abbc';
+export const CANDIDATE = 'f54c94e9063bc168986a070ca063e713fa391a32';
 export const BASE_ROWS = 723;
 export const CANDIDATE_ROWS = 769;
 export const BRANCH = 'codex/architecture-ai-source-upgrade-witness-20261109';
