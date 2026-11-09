@@ -57,6 +57,61 @@ const suites=[
     'test_uncertain_firewall_delete_cannot_retry_the_native_mutation',
    ]],
   ]},
+ {name:'runs the 21 exact synthetic browser issuer and held evidence source models',file:'.github/ci/native-workload-browser-issuer.test.py',count:21,classes:[
+   ['HeldEvidenceModel',[
+    'test_changed_driver_identity_survives_recheck_pidfd_close_failure',
+    'test_distinct_held_browser_roles_and_renderer_reuse_actual_kernel_checks',
+    'test_exact_private_observer_rejects_other_roles_realms_and_extra_bytes',
+    'test_held_pipe_reads_a_frame_and_refuses_surplus_at_terminal_eof',
+    'test_tls_reconciliation_has_one_exact_url_status_body_and_certificate',
+   ]],
+   ['SyntheticTranscriptModel',[
+    'test_observer_transcript_does_not_accept_synthetic_readiness',
+    'test_synthetic_decoy_has_one_canonical_run_scope_and_no_observer_authority',
+    'test_synthetic_readiness_does_not_extend_the_first_deadline',
+    'test_synthetic_readiness_refuses_observer_data_or_extra_fields_permanently',
+    'test_synthetic_readiness_runs_the_exact_remaining_role_and_counter_sequence',
+    'test_wrong_role_or_repeated_synthetic_readiness_poison_the_transcript',
+   ]],
+   ['TranscriptModel',[
+    'test_actual_role_pipe_refuses_child_output_observed_before_root_turn',
+    'test_an_unexpected_packet_cannot_be_replaced_by_a_correct_one',
+    'test_driver_connection_cannot_start_before_third_transport_eof',
+    'test_exact_frames_use_distinct_role_pipes_and_bound_the_counter_windows',
+    'test_initial_unowned_fence_and_aliased_role_channels_refuse',
+    'test_missing_eof_preserves_primary_and_closes_other_pipes',
+    'test_out_of_order_root_and_child_frames_poison_without_writes',
+    'test_partial_transcript_is_terminal_before_any_descriptor_close',
+    'test_timeout_rejects_before_consuming_first_frame',
+    'test_wrong_counter_window_poison_preserves_fence',
+   ]],
+  ]},
+ {name:'runs the 12 exact synthetic browser TLS fixture and tripwire source models',file:'.github/ci/native-workload-browser-capability-fixture.test.py',count:12,classes:[
+   ['FixtureModels',[
+    'test_browser_admission_requires_the_single_validated_independent_probe',
+    'test_controlled_tls_shutdown_keeps_want_read_and_ragged_eof_distinct',
+    'test_crypto_retains_leader_until_group_signal_and_observed_group_absence',
+    'test_crypto_unknown_settlement_refuses_fixture_release_and_keeps_private_writers',
+    'test_failed_crypto_launch_retains_exact_held_writers_without_releasing_fixture',
+    'test_fixed_navigation_and_private_probe_are_distinct',
+    'test_late_queued_traffic_keeps_failure_even_after_positive_listener_cleanup',
+    'test_only_one_armed_bare_tcp_eof_settles_inside_same_counter_clock',
+    'test_other_paths_authority_credentials_and_payload_refuse',
+    'test_queued_split_tls_record_and_premature_eof_refuse_before_response',
+    'test_tripwire_accepts_no_protocol_and_fails_the_course',
+    'test_unsettled_thread_does_not_authorize_closing_either_held_listener',
+   ]],
+  ]},
+ {name:'runs the 6 exact synthetic browser launch plan source models',file:'.github/ci/native-workload-browser-launch-plan.test.py',count:6,classes:[
+   ['SyntheticLaunchPlanModels',[
+    'test_browser_has_fixed_server_probe_and_chromium_view_without_driver_files',
+    'test_driver_has_only_fixed_synthetic_credential_and_playwright_view',
+    'test_driver_refuses_wrong_path_or_decoy_and_other_roles_refuse_credentials',
+    'test_non_synthetic_scope_malformed_identity_and_sibling_stage_refuse',
+    'test_only_browser_accepts_one_canonical_spki',
+    'test_third_has_only_fixed_python_probe_and_no_writable_role_view',
+   ]],
+  ]},
 ] as const;
 
 it.each(suites)('$name',({file,count,classes})=>{
