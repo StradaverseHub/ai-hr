@@ -58,8 +58,36 @@ test('ordinary processes and fabricated proof objects cannot publish or read the
  assert.throws(()=>admitCompilerApplicationInventory());for(const role of ['foreign','inventory-worker'])assert.throws(()=>admitCompilerApplicationInventory(role));const proof={destination:root};assert.throws(()=>publishCompilerApplicationInventoryClock(proof,undefined,process.hrtime.bigint()));assert.throws(()=>readCompilerApplicationInventoryClock(proof));
 }));
 test('complete inverse restores every changed existing owner and the qualified kernel remains exact',()=>{
- const inverse=JSON.parse(readFileSync(new URL('./application-owner-inverse.json',import.meta.url)));assert.equal(inverse.base,'1ffaffae266870a0b298ec8094433eeeb0dcb57e');assert(inverse.files.length>=4);
- for(const row of inverse.files){const current=readFileSync(new URL('../../../../'+row.path,import.meta.url));assert.equal(createHash('sha256').update(current).digest('hex'),row.currentSha256);const original=Buffer.from(row.originalBase64,'base64');assert.equal(createHash('sha256').update(original).digest('hex'),row.originalSha256);assert(original.length>0);}
+ const inverse=JSON.parse(readFileSync(new URL('./application-owner-inverse.json',import.meta.url)));
+ const inventory=JSON.parse(readFileSync(new URL('../../../../docs/qualification/compiler-native-application-inventory-source-20261108.json',import.meta.url)));
+ const rebindBytes=readFileSync(new URL('./application-current-owner-inverse.json',import.meta.url));
+ const rebind=JSON.parse(rebindBytes),hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+ assert.equal(hash(rebindBytes),inventory.componentSources['.github/ci/diagnostics/native-reference/application-current-owner-inverse.json']);
+ assert.equal(inverse.base,'1ffaffae266870a0b298ec8094433eeeb0dcb57e');
+ assert.equal(rebind.historicalOwnerSource,'51edc2cbc274fe89cd923f9adc0fc1951df0f332');
+ const reboundPaths=['.github/ci/focused-checks.mjs','.github/workflows/alpha-focused-checks.yml'];
+ assert.deepEqual(Object.keys(rebind.historicalOwnerCurrent).sort(),reboundPaths);
+ assert.deepEqual(inverse.files.map(row=>row.path),['.github/ci/compiler-reference-supervisor.py',
+  '.github/ci/compiler-reference-supervisor.test.py','.github/ci/diagnostics/native-reference/admission.mjs',reboundPaths[0],
+  '.github/ci/focused-checks.test.mjs',reboundPaths[1],'test/compiler-native-reference-supervisor.test.ts']);
+ const root=new URL('../../../../',import.meta.url);
+ for(const row of inverse.files){
+  const current=readFileSync(new URL(row.path,root));
+  const historical=Object.hasOwn(rebind.historicalOwnerCurrent,row.path)?rebind.historicalOwnerCurrent[row.path]:null;
+  if(historical){
+   const currentSha256=hash(current);
+   assert.equal(currentSha256,inventory.componentSources[row.path],row.path);
+   assert.equal(currentSha256,historical.currentSha256,row.path);
+   const before=Buffer.from(historical.base64,'base64');
+   assert.equal(before.toString('base64'),historical.base64,row.path);
+   assert.equal(before.length,historical.bytes,row.path);
+   assert.equal(hash(before),row.currentSha256,row.path);
+   assert.equal(createHash('sha1').update('blob '+before.length+'\0').update(before).digest('hex'),historical.gitBlob,row.path);
+  }else assert.equal(hash(current),row.currentSha256,row.path);
+  const original=Buffer.from(row.originalBase64,'base64');
+  assert.equal(hash(original),row.originalSha256,row.path);
+  assert(original.length>0);
+ }
  const kernel=readFileSync(new URL('../../owned-process.py',import.meta.url));assert.equal(createHash('sha256').update(kernel).digest('hex'),'9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129');
 });
 

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "COMPILER_NATIVE_APPLICATION_INVENTORY_SOURCE_NOT_QUALIFICATION",
-  "sourceRef": "codex/compiler-current-control-native-inventory-20261109",
+  "sourceRef": "codex/compiler-current-owner-inverse-20261109",
   "reviewedIntegration": "1ffaffae266870a0b298ec8094433eeeb0dcb57e",
   "reviewedDesign": "047a0748b41bad3b2abde1c170f1a01c16f97687",
   "requiredCurrentSharedAncestor": "29d9edcbc4368be871688e9fdf35347676a7841c",
@@ -15,31 +15,34 @@
     ".github/ci/build-artifact.mjs": "3043b2696ab26dd928461902997e363cb757966ff0633bd1080e361af5ab1da5",
     ".github/ci/build-heap.mjs": "190498be69184884d68b6804f42c78c01f093bf8faf90f511963291aece3451c",
     ".github/ci/build-production.mjs": "055670ed0579a2a1a2982786a7263b8f1672cdacbead2d5d5a106fe95aee3253",
+    ".github/ci/build-transport-extract.py": "18dc394369cd60c8e41032e480426659b3a92ea98ba2e6e338e0226033e80ea4",
     ".github/ci/candidate-environment.mjs": "638d7af878bb04866872464d026484895ef5c110343986965d15db95987c2ec4",
     ".github/ci/ci.test.mjs": "d5921d67e4b1a290ca8afa40c80dc1823d742fb41b93876742673fd8bdcc65f5",
     ".github/ci/compiler-cache-protocol.mjs": "c988503585c7fab6849fc33623284d50132ae818861590570d62fda31e8c0fd0",
     ".github/ci/compiler-file-window-inverse.json": "6dc7a68c49921b085b9292972fa92e3b413fc01dbb21510578431712172d97ea",
     ".github/ci/compiler-reference-supervisor.py": "9516b7ecaca0d504b403fc62703d47613aebfb3fbece25250ffd20c9d61597a6",
     ".github/ci/compiler-reference-supervisor.test.py": "fa03bb0223d30f01e08702b53b9f0067597230fb70036196a062b434f1d25ec1",
+    ".github/ci/db-duration-hints.json": "4f6c85b5f791676ddfbd875964be56c336f41d80565c48158bc59d0ed3446085",
     ".github/ci/db-scheduling.mjs": "3728c238eca2dbe342542bc24c57b3070d4e3ec1b8713c14a23f3bcf97347cea",
     ".github/ci/diagnostics/compiler-boundary-policy.mjs": "cf1aef49f7aad7394e3a8de31e1b31e1da80667fbbc9c8f2da16db5795c28ed7",
     ".github/ci/diagnostics/native-reference/admission.mjs": "57ae1c1cdd1e8949f337acdd0b2031b72b9d9a4609e8be33ea736fc6b84b42db",
     ".github/ci/diagnostics/native-reference/admission.test.mjs": "3e0f32e5ad02a70bfff5e11eeecb5608a2a14c658773522be6f7aa89f464769a",
     ".github/ci/diagnostics/native-reference/application-current-control-inverse.json": "8b7e39b68c6ba81b83c672ef60538ba3ca77d952defc9c7580d055b1aaccfec3",
+    ".github/ci/diagnostics/native-reference/application-current-owner-inverse.json": "0804167fbc4fbd704572e50f12ad228f1663de59b265a3ac9005a6e54e463bf9",
     ".github/ci/diagnostics/native-reference/application-inputs.mjs": "7a765d7af7f711d0c9c65026f45efed8f66be3fd74ecdc5137deb337713d3727",
     ".github/ci/diagnostics/native-reference/application-inventory.mjs": "5743026bf5cd081b60ffd8e6e88f994111c5ab9399fe850089030a5309f7a592",
     ".github/ci/diagnostics/native-reference/application-jsdoc-binding-inverse.json": "7a613c5d1d9533cba7b9581b2be2d338e229561e5b9a0dcb6b39c41c8125d036",
     ".github/ci/diagnostics/native-reference/application-jsdoc-inverse.json": "c55d07a421dd4a8e8a00f19a8d992e627a760149dae4fb02d76da07332f0c96c",
     ".github/ci/diagnostics/native-reference/application-mode-native.test.mjs": "40a0bcec224f320272047ba8edbc089899a5748eddfcb06013048a556c2b31ef",
     ".github/ci/diagnostics/native-reference/application-mode.mjs": "b8dee0b836e1047d3574cf5ca30515c521096fef383741aa87d56202243957dd",
-    ".github/ci/diagnostics/native-reference/application-mode.test.mjs": "e01b3f60cef44f0937f23fe8e1bad24190dd40e8b500d87daec9f59924121bcd",
+    ".github/ci/diagnostics/native-reference/application-mode.test.mjs": "7e33dbcc135760b869f555eef9ea45a1039cea6d1680cf0917b4776b38921f0c",
     ".github/ci/diagnostics/native-reference/application-original-attachment-inverse.json": "1a387510ae8ce606ba3ad6a56627e2833dbde96fa541e134bdaf005bbcc904bb",
     ".github/ci/diagnostics/native-reference/application-owner-inverse.json": "8584d652e8e62ae358a286adbc9535de49b3c2fc03d40d2b5fc17da0597f828c",
     ".github/ci/diagnostics/native-reference/application-parent-context-inverse.json": "176db10f6b9cb53a70aa5bf6f1c201317eb9cbd94882f902e1f966fff66ec816",
     ".github/ci/diagnostics/native-reference/application-protocol.mjs": "a3daa34c48285dd3ea17573245730fdcdb9f03a79f462a77735eff059a056376",
     ".github/ci/diagnostics/native-reference/application-syntax.mjs": "b395b3020bd0228937d656e42889e213b1096d584d988b1728f752aca2fb820d",
     ".github/ci/diagnostics/native-reference/application-worker.mjs": "84bd5be47b95871028d4468e1fd547877d3ef4002a57d1ff81baa5e381158de8",
-    ".github/ci/diagnostics/native-reference/application.test.mjs": "868f7197d73710d6388058eb8f47d0afbbb0c9b21df9717fdd81bae45c76698e",
+    ".github/ci/diagnostics/native-reference/application.test.mjs": "61b1823187eba5609f7ae4dd8ce5c26ef0425b92e5d164799284d53ee1897e09",
     ".github/ci/diagnostics/native-reference/config.mjs": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95",
     ".github/ci/diagnostics/native-reference/dependency-custody-inverse.json": "d32319321ced719bc1898cf6a26d6bc5225fe14d1806f2285cc44f06499a2fa2",
     ".github/ci/diagnostics/native-reference/fixture.mjs": "9542df648d16320338174d1f692fd243696142b2e91dfa7e95184acba0712c84",
@@ -58,8 +61,10 @@
     ".github/ci/employee-benchmark-supervisor.test.py": "6ade2b3227cbc9c227c2d9fcfe37536a193017f4b99cfbc80eefe05220e7a19c",
     ".github/ci/employee-lifecycle-api.mjs": "1e12a46150a2ce29d26c9d0770ddb9dccab7c3cfd9c20713a3f7f8b2f21c7ca0",
     ".github/ci/employee-lifecycle-context.mjs": "32e2e49c0d576ad4bfb2ac3fcf73f0096e2a819d66c62181c0f47b902b034974",
+    ".github/ci/employee-lifecycle-evidence-profile.json": "a0a9aaf0c8236026c969461fdd61b7ffd31786355e3d8760382f24f431c71dc9",
     ".github/ci/employee-lifecycle-evidence.mjs": "882fd3c05aa0875611072e342b548df8b42c88763f954568223fefd9f7e830a0",
     ".github/ci/employee-lifecycle-native.mjs": "f7692b8255143b90d6c2f54f848ef3e07967ed6597c5c9d3a68128b8574928e3",
+    ".github/ci/employee-lifecycle-profile.json": "90972f3b57d62a473dafa3a48b671137234cf43de33c964b0eea00f0af05979e",
     ".github/ci/employee-lifecycle-profile.mjs": "2fa49c30f235b3e5b5470f7942106a4b1fef02c2f21d80c1d1fbe287bd54417b",
     ".github/ci/employee-lifecycle-sources.mjs": "9f8a598bbbe8245eb2f619dcb38f4532492e98611ed81979ee766f3d5862c36f",
     ".github/ci/employee-lifecycle-witness.mjs": "8ea5635eb7b236685adcf7aca02e2589ba3538585c89026a3843d5aa846ba294",
@@ -70,6 +75,7 @@
     ".github/ci/focused-checks.test.mjs": "cb8221657d7f5e23fd83c83bd46a283c22653aa9f206eeaece9e351642328ca5",
     ".github/ci/host-health.mjs": "d88d53222b04be01d803e516783033cc406251c3983258a4fdb18c5493087c93",
     ".github/ci/manifest.mjs": "6fd081b890148a35014927200e1b0ae9053d565895b68b400eab08e49b858143",
+    ".github/ci/native-next-build-inputs.mjs": "403158728f912deb94c3a55c624ee97d18c5ab2206079d1c49dbc3c56e548861",
     ".github/ci/native-next-build-packet.mjs": "ae8385a878cdb26a6c101a47be777a5adc00fcc31c34f4b367e7e2e93f0f9e8c",
     ".github/ci/native-next-helper-sources.mjs": "f8238d02b92a0464dcbe9a517a9a959ecef350696d48666cc7e2ef30ca47e1f0",
     ".github/ci/native-next-installation.mjs": "f56836062d0bd6d94274a559dc5fbd75ecf33704445a3200fcd49296bdd4ac53",
@@ -335,6 +341,132 @@
     "stockControlListOnlyLoadedCount": 11546,
     "currentComponentMembers": 142,
     "wholePredecessorInverse": ".github/ci/diagnostics/native-reference/application-current-control-inverse.json",
+    "historicalQualificationTransferred": false,
+    "testsExecuted": false,
+    "metadataExecuted": false,
+    "ordinaryCompilerQualified": false,
+    "releaseAuthorized": false
+  },
+  "ownerInverseRebind": {
+    "base": "b1ce2b5cd0654d07baeb40826a5b5fcda74e437b",
+    "precedingSourceRef": "codex/compiler-current-control-native-inventory-20261109",
+    "independentReviewSha256": "1f8ec524fe129c89f01a226f214d6a2c28eef652327ae305d6886b4ee9647f53",
+    "historicalOwnerSource": "51edc2cbc274fe89cd923f9adc0fc1951df0f332",
+    "currentComponentMembers": 148,
+    "wholePredecessorInverse": ".github/ci/diagnostics/native-reference/application-current-owner-inverse.json",
+    "staticRelativeSourceBinding": {
+      "scope": "JS_TS_LITERAL_RELATIVE_MODULE_AND_IMPORT_META_URL_SOURCE_BINDING_NOT_NATIVE_GRAPH",
+      "closedEligibleMembers": 148,
+      "edgeOccurrences": 222,
+      "newlyPinnedPaths": [
+        ".github/ci/build-transport-extract.py",
+        ".github/ci/db-duration-hints.json",
+        ".github/ci/diagnostics/native-reference/application-current-owner-inverse.json",
+        ".github/ci/employee-lifecycle-evidence-profile.json",
+        ".github/ci/employee-lifecycle-profile.json",
+        ".github/ci/native-next-build-inputs.mjs"
+      ],
+      "selfHashExcluded": "docs/qualification/compiler-native-application-inventory-source-20261108.json",
+      "outsideAdmissionPathEdges": [
+        {
+          "file": "next.config.ts",
+          "target": "lib/profile-photo-limits.ts",
+          "form": "module",
+          "line": 4
+        },
+        {
+          "file": "next.config.ts",
+          "target": "lib/profile-attachment.ts",
+          "form": "module",
+          "line": 3
+        },
+        {
+          "file": "next.config.ts",
+          "target": "lib/notice-upload-policy.ts",
+          "form": "module",
+          "line": 2
+        },
+        {
+          "file": "scripts/improve/system-testing-manifest.ts",
+          "target": "lib/system-testing/hash.ts",
+          "form": "module",
+          "line": 9
+        },
+        {
+          "file": "scripts/improve/system-testing-manifest.ts",
+          "target": "lib/system-testing/model.ts",
+          "form": "module",
+          "line": 8
+        }
+      ],
+      "nonLiteralSites": [
+        {
+          "file": ".github/ci/build-production.mjs",
+          "form": "dynamic-import",
+          "line": 114
+        },
+        {
+          "file": ".github/ci/ci.test.mjs",
+          "form": "import-meta-url",
+          "line": 60
+        },
+        {
+          "file": ".github/ci/diagnostics/native-reference/application-mode.test.mjs",
+          "form": "import-meta-url",
+          "line": 44
+        },
+        {
+          "file": ".github/ci/diagnostics/native-reference/application-mode.test.mjs",
+          "form": "import-meta-url",
+          "line": 43
+        },
+        {
+          "file": ".github/ci/diagnostics/native-reference/application-mode.test.mjs",
+          "form": "import-meta-url",
+          "line": 41
+        },
+        {
+          "file": ".github/ci/diagnostics/native-reference/application-mode.test.mjs",
+          "form": "import-meta-url",
+          "line": 40
+        },
+        {
+          "file": ".github/ci/diagnostics/native-reference/outputs.test.mjs",
+          "form": "import-meta-url",
+          "line": 85
+        },
+        {
+          "file": ".github/ci/diagnostics/native-reference/outputs.test.mjs",
+          "form": "import-meta-url",
+          "line": 84
+        },
+        {
+          "file": ".github/ci/native-next-build-packet.mjs",
+          "form": "import-meta-url",
+          "line": 23
+        },
+        {
+          "file": ".github/ci/native-next-build-inputs.mjs",
+          "form": "dynamic-import",
+          "line": 22
+        },
+        {
+          "file": ".github/ci/native-next-build-inputs.mjs",
+          "form": "dynamic-import",
+          "line": 21
+        }
+      ],
+      "separatelyScopedLoaderSite": {
+        "file": ".github/ci/build-transport-extract.py",
+        "literalSibling": ".github/ci/build-bundle.py",
+        "scope": "PYTHON_DYNAMIC_BUILD_LOADER_OUTSIDE_JS_TS_AST_BINDING"
+      },
+      "separatelyCheckedOwnerPathLookup": {
+        "file": ".github/ci/diagnostics/native-reference/application.test.mjs",
+        "scope": "EXACT_SEVEN_INVERSE_ROWS_UNDER_LITERAL_REPOSITORY_ROOT",
+        "historicalOwnerCurrentRows": 2
+      }
+    },
     "historicalQualificationTransferred": false,
     "testsExecuted": false,
     "metadataExecuted": false,
