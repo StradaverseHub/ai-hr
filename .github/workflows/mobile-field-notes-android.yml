@@ -89,7 +89,19 @@ jobs:
             printf '%s  %s\n' "$checksum" "$distribution" | sha256sum --check
             sed -i -e '/^distributionUrl=/d' -e '/^distributionSha256Sum=/d' "$wrapper"
             printf '\ndistributionUrl=file\:%s\ndistributionSha256Sum=%s\n' "$distribution" "$checksum" >> "$wrapper"
-            ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m' -x lint -x test > "$RUNNER_TEMP/onehr-android-build.log" 2>&1 || {
+            init="$RUNNER_TEMP/onehr-kotlin-repository.gradle"
+            cat > "$init" <<'GRADLE'
+          gradle.beforeProject { project ->
+              if (project.rootProject.name != 'gradle-plugin-root') return
+              project.repositories.exclusiveContent {
+                  forRepository {
+                      maven { url = 'https://maven-central.storage-download.googleapis.com/maven2' }
+                  }
+                  filter { includeVersion('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', '2.2.0') }
+              }
+          }
+          GRADLE
+            ./gradlew --init-script "$init" :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m' -x lint -x test > "$RUNNER_TEMP/onehr-android-build.log" 2>&1 || {
               tail -140 "$RUNNER_TEMP/onehr-android-build.log"
               exit 1
             }
