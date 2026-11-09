@@ -44,6 +44,26 @@ const hash=await passwordHash(password),users=[],tenants=[];
 const operationTimings={hire:[],identityAndSessionProvisioning:[],historyAndCompensationSeed:[],payrollGenerate50:[],payrollClose50:[]};
 const timingSummary=values=>{const rows=[...values].sort((a,b)=>a-b);return{samples:rows.length,totalMs:rows.reduce((sum,value)=>sum+value,0),p50Ms:rows[Math.ceil(rows.length*.5)-1]??null,p95Ms:rows[Math.ceil(rows.length*.95)-1]??null,maxMs:rows.at(-1)??null};};
 const fixturePhases=[];
+const fixtureFailureCodes=new Set([
+ 'ERR_ASSERTION','ERR_INVALID_ARG_TYPE','ERR_INVALID_PACKAGE_CONFIG','ERR_MODULE_NOT_FOUND','MODULE_NOT_FOUND',
+ 'ERR_PACKAGE_PATH_NOT_EXPORTED','ERR_REQUIRE_ESM','ERR_UNKNOWN_FILE_EXTENSION','ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX',
+ '22023','23502','23503','23505','23514','25006','25P02','40001','40P01','42501','42703','42883','42P01','55P03','57014','P0001',
+]);
+function fixtureFailure(error){
+ // Inspect only own data properties on a bounded Error cause chain. Never emit
+ // messages, stacks, identifiers, SQL or other exception values.
+ try{
+  const kind=error instanceof assert.AssertionError?'assertion-error':
+   error instanceof SyntaxError?'syntax-error':error instanceof TypeError?'type-error':
+   error instanceof Error?'error':'other';
+  for(let current=error,depth=0;depth<3&&current instanceof Error;depth++){
+   const code=Object.getOwnPropertyDescriptor(current,'code')?.value;
+   if(fixtureFailureCodes.has(code))return{kind,code};
+   current=Object.getOwnPropertyDescriptor(current,'cause')?.value;
+  }
+  return{kind,code:null};
+ }catch{return{kind:'other',code:null};}
+}
 async function fixturePhase(tenant,phase,run){
  const entry={tenant,phase,status:'running'};
  fixturePhases.push(entry);
@@ -52,7 +72,7 @@ async function fixturePhase(tenant,phase,run){
  save();
  const start=performance.now();
  try{const result=await run();entry.status='passed';return result;}
- catch(error){entry.status='failed';throw error;}
+ catch(error){entry.status='failed';entry.failure=fixtureFailure(error);throw error;}
  finally{entry.elapsedMs=performance.now()-start;save();}
 }
 try{
@@ -174,11 +194,12 @@ try{
    operationTimings.payrollClose50.push(performance.now()-started);
   }
   if(t===0&&['workflow-preflight','whole-system'].includes(process.env.PERF_HTTP_SUITE)){
-   const {prepareRewardDraftFixture}=await import('./reward-draft-fixture.mjs');
    // Company 2's historical register is already closed. Leave the active
    // processing and publication rosters in companies 1, 3 and 4 intact.
-   tenants[t].rewardDraft=await fixturePhase(t,'rewards-draft-prerequisites',()=>
-    prepareRewardDraftFixture({owner,schema:s,ctx,tenant:tenants[t],companies,company:companies[2],today,actor:cohort.find(u=>u.role==='groupHR'),expectedCompanyEmploymentIds:cohort.filter(u=>u.companyId===companies[2].companyId).map(u=>u.employmentId)}));
+   tenants[t].rewardDraft=await fixturePhase(t,'rewards-draft-prerequisites',async()=>{
+    const {prepareRewardDraftFixture}=await fixturePhase(t,'rewards-draft-import',()=>import('./reward-draft-fixture.mjs'));
+    return prepareRewardDraftFixture({owner,schema:s,ctx,tenant:tenants[t],companies,company:companies[2],today,actor:cohort.find(u=>u.role==='groupHR'),expectedCompanyEmploymentIds:cohort.filter(u=>u.companyId===companies[2].companyId).map(u=>u.employmentId)});
+   });
    // Check the actual drafts used by the browser. Earlier periods retain legacy
    // grouping while the current period uses the approved mapping.
    await fixturePhase(t,'payroll-readiness-after-organisation-publication',async()=>{
@@ -193,24 +214,29 @@ try{
     }
    });
   }
-  for(const company of companies){
-   const approver=cohort.find(u=>u.companyId===company.companyId&&['companyHR','groupHR'].includes(u.role));assert(approver);
-   await saveAttendanceWorkflow(ctx,{companyId:company.companyId,applicationType:'irregularity',routingVersion:4,code:'PERF',name:'Fictional performance approval',priority:100,active:true,criteria:{employeeIds:cohort.filter(u=>u.companyId===company.companyId&&u.role==='employee').map(u=>u.employmentId)},stages:[{name:'HR',mode:'any_one',sources:[{kind:'specific_employee',employmentIds:[approver.employmentId]}],hrAlternative:false}],cc:[]});
-   await setAttendanceWorkflowEnabled(ctx,company.companyId,'irregularity',true);
-  }
+  await fixturePhase(t,'attendance-workflow-tail',async()=>{
+   for(const company of companies){
+    const approver=cohort.find(u=>u.companyId===company.companyId&&['companyHR','groupHR'].includes(u.role));assert(approver);
+    await saveAttendanceWorkflow(ctx,{companyId:company.companyId,applicationType:'irregularity',routingVersion:4,code:'PERF',name:'Fictional performance approval',priority:100,active:true,criteria:{employeeIds:cohort.filter(u=>u.companyId===company.companyId&&u.role==='employee').map(u=>u.employmentId)},stages:[{name:'HR',mode:'any_one',sources:[{kind:'specific_employee',employmentIds:[approver.employmentId]}],hrAlternative:false}],cc:[]});
+    await setAttendanceWorkflowEnabled(ctx,company.companyId,'irregularity',true);
+   }
+  });
   // A real current administrative reporting line, inside the same company, for each manager.
-  await owner.db.insert(s.reportingLine).values(cohort.filter(u=>u.role==='manager').flatMap(u=>cohort.filter(v=>v.company===u.company&&v.index%50>=4+(u.index%50-2)*10&&v.index%50<14+(u.index%50-2)*10).map(v=>({tenantId:b.tenantId,managerEmploymentId:u.employmentId,subordinateEmploymentId:v.employmentId,lineType:'administrative',validFrom:'2025-01-01'}))));
+  await fixturePhase(t,'reporting-line-tail',()=>owner.db.insert(s.reportingLine).values(cohort.filter(u=>u.role==='manager').flatMap(u=>cohort.filter(v=>v.company===u.company&&v.index%50>=4+(u.index%50-2)*10&&v.index%50<14+(u.index%50-2)*10).map(v=>({tenantId:b.tenantId,managerEmploymentId:u.employmentId,subordinateEmploymentId:v.employmentId,lineType:'administrative',validFrom:'2025-01-01'})))));
  }));
  for(const result of seeded)if(result.status==='rejected')throw result.reason;
  users.sort((a,b)=>a.index-b.index);
- for(const table of ['claim_request','attendance','employment','person','app_user','role_assignment','assignment','reporting_line','payslip'])await owner.client.unsafe('analyze '+table);
- const counts=await owner.client`select (select count(*)::int from claim_request)as claims,(select count(*)::int from attendance)as attendance,(select count(*)::int from payslip)as payslips`;
- assert.equal(counts[0].claims,500*claimsPerEmployee);assert.equal(users.length,500);
- assert.equal(counts[0].attendance,users.length*attendanceDays);assert.equal(counts[0].payslips,500);
- const [attendanceBounds]=await owner.client`select count(*) filter(where a.attendance_date=${today}::date)::int as current_rows,
+ const {counts,attendanceBounds}=await fixturePhase(null,'post-seed-counts',async()=>{
+  for(const table of ['claim_request','attendance','employment','person','app_user','role_assignment','assignment','reporting_line','payslip'])await owner.client.unsafe('analyze '+table);
+  const counts=await owner.client`select (select count(*)::int from claim_request)as claims,(select count(*)::int from attendance)as attendance,(select count(*)::int from payslip)as payslips`;
+  assert.equal(counts[0].claims,500*claimsPerEmployee);assert.equal(users.length,500);
+  assert.equal(counts[0].attendance,users.length*attendanceDays);assert.equal(counts[0].payslips,500);
+  const [attendanceBounds]=await owner.client`select count(*) filter(where a.attendance_date=${today}::date)::int as current_rows,
   count(*) filter(where a.attendance_date<e.hired_on)::int as before_hire
   from attendance a join employment e on e.id=a.employment_id and e.tenant_id=a.tenant_id`;
- assert.equal(attendanceBounds.current_rows,500);assert.equal(attendanceBounds.before_hire,0);
+  assert.equal(attendanceBounds.current_rows,500);assert.equal(attendanceBounds.before_hire,0);
+  return {counts,attendanceBounds};
+ });
  const audit=await fixturePhase(null,'audit-counts',()=>fixtureAuditCounts(owner.client,tenants.map(tenant=>tenant.tenantId)));
  const auditCounts=tenants.map((tenant,index)=>({tenant:index,...Object.fromEntries(Object.entries(audit.find(row=>row.tenant_id===tenant.tenantId)??{}).filter(([key])=>key!=='tenant_id'))}));
  writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'audit-fixture.json'),JSON.stringify(auditCounts,null,2));
