@@ -2,16 +2,18 @@
 import {EventEmitter} from 'node:events';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {Page} from 'playwright';
-const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40)}));
+const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40),scenarioSha256:'d'.repeat(64)}));
 vi.mock('../scripts/performance/navigation-source',()=>({
  navigationCleanHead:()=>source.sha,
- navigationSourceIdentity:()=>({harnessSha256:'c'.repeat(64),scenarioSha256:'d'.repeat(64),plan:{schemaVersion:1,fixture:'system-load-v1',engine:'chromium',scope:'Unit collector contract only',scenarios:[{
+ navigationSourceIdentity:()=>({harnessSha256:'c'.repeat(64),scenarioSha256:source.scenarioSha256,plan:{schemaVersion:1,fixture:'system-load-v1',engine:'chromium',scope:'Unit collector contract only',scenarios:[{
   id:'unit.employee',destinationId:'submenu.unit',role:'employee',href:'/unit',originHref:'/unit',outcome:'usable',readiness:'controls',
   steps:[{kind:'open-details',selector:'main details:has(input[name="unit"])'}],checks:[{id:'input',kind:'enabled',tag:'input',selector:'main input[name="unit"]'}],
  }]}}),
 }));
 vi.mock('../scripts/performance/navigation-fixture-bindings',()=>({readNavigationFixtureBindings:()=>new Map([[4,{actorName:'PERF Person 0004',actorEmployeeCode:'PERF0004',firstCompanyPersonName:'PERF Person 0000',activeHeadcount:'50',historicalPayrollMonth:'2026-07',seedToday:'2026-11-07',seedMonth:'2026-11',rosterScope:{}}]])}));
 import {createNavigationCaptureCollector,installNativePrimaryFailureObserver,createNativeBrowserFailureObservation} from '../scripts/performance/navigation-browser-capture';
+import {NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,
+ validateNativeShellBaseline,type NativeShellBaseline} from '../scripts/performance/navigation-protocol';
 const actorName='PERF Person 0004',otherActorName='PERF Person 0005';
 function fictionalPage({accountName=actorName,accountCount=1,anchorCount=1,detailsCount=1}:{accountName?:string;accountCount?:number;anchorCount?:number;detailsCount?:number}={}){
  let now=0;const waited=new Set<string>(),waits:{selector:string;timeout:number}[]=[],operations:string[]=[];
@@ -83,7 +85,7 @@ beforeEach(()=>{
  vi.stubEnv('AIHR_PERFORMANCE_ROLE_FIXTURE','true');vi.stubEnv('DATABASE_URL','postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev');
  vi.stubEnv('AIHR_CI_HEAD',source.sha);vi.stubEnv('AIHR_CI_CONTROL_HEAD',source.controller);vi.stubEnv('GITHUB_RUN_ID','123');vi.stubEnv('GITHUB_RUN_ATTEMPT','1');
 });
-afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
+afterEach(()=>{source.scenarioSha256='d'.repeat(64);vi.restoreAllMocks();vi.unstubAllEnvs();});
 describe('native identity and streamed navigation capture boundaries',()=>{
  it('keeps legacy separate and refuses markers queued after a clean snapshot when the document retires',async()=>{
   const {page}=fictionalPage(),collector=createNavigationCaptureCollector({phase:'baseline'});
@@ -208,5 +210,149 @@ describe('native identity and streamed navigation capture boundaries',()=>{
  it.each([{accountCount:2},{anchorCount:2},{detailsCount:2}])('refuses ambiguous native account/navigation/disclosure controls after waiting (%j)',async options=>{
   const {page}=fictionalPage(options),collector=createNavigationCaptureCollector({phase:'baseline'});
   await expect(collector.captureActor(page,4)).rejects.toThrow(/ambiguous/);
+ });
+});
+
+const nativeShellIdentity={candidateSha:source.sha,controllerSha:source.controller,runId:123,harnessSha256:'c'.repeat(64),
+ scenarioSha256:NATIVE_SHELL_LEGACY_SCENARIO_SHA256};
+function modeledShellBaseline():NativeShellBaseline{
+ return {schemaVersion:1,protocol:NATIVE_SHELL_BASELINE_VERSION,releaseAuthorized:false,...nativeShellIdentity,runAttempt:1,
+  legacyCases:48,nativeCases:52,retiredDocuments:8,extensionSha256:nativeHiddenShellCasesSha256(),complete:true,
+  observations:NATIVE_HIDDEN_SHELL_CASES.map(({id,destinationId,role,actorIndex,entry,shellVisibility,originHref,href,outcome})=>({
+   id,destinationId,role,actorIndex,entry,shellVisibility,originHref,href,outcome,originStatus:200,redirectStatus:307,finalStatus:200,finalHref:'/',
+   internalSessionObserved:true,fixtureIdentityObserved:true,privateDestinationAbsent:true,elapsedMs:1200,
+  }))};
+}
+type HiddenShellFixtureMode='exact'|'streamed'|'extra-hop'|'location'|'other-home'|'private-content'|'retired-marker';
+function hiddenShellPage(mode:HiddenShellFixtureMode='exact'){
+ const {page,operations}=fictionalPage(),legacyGoto=page.goto.bind(page),legacyLocator=page.locator.bind(page);
+ const navigations:string[]=[],disposals:string[]=[];
+ let url=ingress+'/unit',id:string|undefined,serial=0,privateContent=false;
+ const frame={url:()=>url},context=page.context();
+ type Sender={page:Page;frame:typeof frame;context:typeof context};
+ let binding:((source:Sender,payload:{id:string;key:string;mask:number;terminal:true})=>unknown)|undefined;
+ let key:string|undefined;
+ const origin=ingress+'/';
+ const empty={count:async()=>0};
+ const accountSelector='button[data-tour="account"]';
+ type ModeledRequest={url:()=>string;method:()=>string;resourceType:()=>string;isNavigationRequest:()=>boolean;frame:()=>typeof frame;
+  redirectedFrom:()=>ModeledRequest|null;redirectedTo:()=>ModeledRequest|null;response:()=>Promise<unknown>};
+ const request=(address:string)=>{
+  const linked:{from?:ModeledRequest;to?:ModeledRequest;response?:unknown}={};
+  const value:ModeledRequest={url:()=>address,method:()=> 'GET',resourceType:()=> 'document',isNavigationRequest:()=>true,frame:()=>frame,
+   redirectedFrom:()=>linked.from??null,redirectedTo:()=>linked.to??null,response:async()=>linked.response??null};
+  return {value,linked};
+ };
+ const document=(address:string,status:number,location?:string)=>{
+  const {value,linked}=request(address);
+  const response={url:()=>address,status:()=>status,request:()=>value,headers:()=>({location}),fromServiceWorker:()=>false};
+  linked.response=response;
+  return {response,value,linked};
+ };
+ Object.assign(page,{
+  url:()=>url,mainFrame:()=>frame,context:()=>context,
+  exposeBinding:async(name:string,receiver:typeof binding)=>{
+   expect(name).toBe('__aihrNativeHiddenShellRetirementV1');binding=receiver;
+   return {dispose:async()=>{expect(url).toBe('about:blank');expect(disposals).toEqual(['script']);binding=undefined;disposals.push('binding');}};
+  },
+  addInitScript:async(_script:unknown,input:{key?:string})=>{
+   if(input.key)key=input.key;
+   return {dispose:async()=>{expect(url).toBe('about:blank');key=undefined;disposals.push('script');}};
+  },
+  evaluate:async(_fn:unknown,property?:string)=>{
+   if(property!==undefined){expect(property).toBe('__aihrNativeHiddenShellFailureCaptureV1');expect(id).toBeDefined();}
+   return {busy:0,unavailable:0,alerts:0,...(property?{id,origin:ingress}:{})};
+  },
+  locator(selector:string){
+   if(!binding||selector===accountSelector||selector==='main')return legacyLocator(selector);
+   if(selector==='aside[data-app-sidebar]')return {waitFor:async()=>{},locator:()=>empty};
+   if(selector.startsWith('main [data-navigation-destination='))return {count:async()=>Number(privateContent)};
+   return empty;
+  },
+  async goto(address:string,options:Parameters<Page['goto']>[1]){
+   navigations.push(address);const legacy=await legacyGoto(address,options);
+   if(!binding){url=address;return legacy;}
+   if(id){expect(binding({page,frame,context},{id,key:key!,mask:mode==='retired-marker'&&address==='about:blank'?1:0,terminal:true})).toBe(true);}
+   if(address==='about:blank'){url=address;id=undefined;return null;}
+   id='12345678-1234-4234-8234-'+String(++serial).padStart(12,'0');
+   if(address===origin){url=origin;privateContent=false;return document(origin,200).response;}
+   expect([ingress+'/payroll',ingress+'/analytics']).toContain(address);
+   url=mode==='other-home'?origin+'?foreign=1':origin;privateContent=mode==='private-content';
+   const final=document(url,200);
+   if(mode!=='streamed'){
+    const prior=document(address,307,mode==='location'?'/other':'/');
+    prior.linked.to=final.value;final.linked.from=prior.value;
+    if(mode==='extra-hop')prior.linked.from=document(ingress+'/foreign',307,address).value;
+   }
+   return final.response;
+  },
+ });
+ return {page,navigations,operations,disposals};
+}
+
+describe('separate fixed native shell baseline data and driver controls',()=>{
+ it('binds only the four reviewed actor and route pairs to the distinct native shell scope',()=>{
+  expect(NATIVE_HIDDEN_SHELL_CASES.map(row=>[row.id,row.actorIndex,row.href])).toEqual([
+   ['shell.payrollProcess.employee.hidden-denied',4,'/payroll'],['shell.payrollProcess.manager.hidden-denied',2,'/payroll'],
+   ['shell.analytics.employee.hidden-denied',4,'/analytics'],['shell.analytics.manager.hidden-denied',2,'/analytics'],
+  ]);
+  const record=modeledShellBaseline();expect(validateNativeShellBaseline(record,nativeShellIdentity)).toBe(record);
+  const malformed:Array<[string,(r:NativeShellBaseline)=>void]>=[
+   ['omitted',r=>{r.observations.pop();}],['duplicate',r=>{r.observations[3]=r.observations[0];}],
+   ['actor',r=>{Reflect.set(r.observations[0],'actorIndex',5);}],['role',r=>{Reflect.set(r.observations[0],'role','groupHR');}],
+   ['destination',r=>{Reflect.set(r.observations[0],'destinationId','shell.rosterManager');}],
+   ['route',r=>{Reflect.set(r.observations[0],'href','/roster');}],['origin',r=>{Reflect.set(r.observations[0],'originHref','/login');}],
+   ['denial',r=>{Reflect.set(r.observations[0],'outcome','usable');}],['shell visibility',r=>{Reflect.set(r.observations[0],'shellVisibility','visible');}],
+   ['target',r=>{Reflect.set(r.observations[0],'finalHref','/?other=1');}],
+   ['streamed',r=>{Reflect.set(r.observations[0],'redirectStatus',200);}],['entry',r=>{Reflect.set(r.observations[0],'entry','canonical-link');}],
+   ['private destination',r=>{Reflect.set(r.observations[0],'privateDestinationAbsent',false);}],
+   ['extension hash',r=>{r.extensionSha256='0'.repeat(64);}],['legacy hash',r=>{r.scenarioSha256='0'.repeat(64);}],
+   ['harness hash',r=>{r.harnessSha256='0'.repeat(64);}],['retirement count',r=>{Reflect.set(r,'retiredDocuments',7);}],['extra key',r=>{Reflect.set(r.observations[0],'extra',true);}],
+  ];
+  for(const [name,change]of malformed){
+   const wrong=structuredClone(record);change(wrong);
+   expect(()=>validateNativeShellBaseline(wrong,nativeShellIdentity),name).toThrow(/Native (?:hidden shell observation|shell baseline identity or completeness) differs/);
+  }
+ });
+ it('keeps the original v2 collector separate and requires the same Page, clean retirement and whole legacy census',async()=>{
+  const ordinary=hiddenShellPage(),development=createNavigationCaptureCollector({phase:'baseline'});
+  expect(()=>development.nativeHiddenShell(performance.now()+90000)).toThrow(/Exact legacy navigation/);
+  await development.captureActor(ordinary.page,4);
+  const old=development.finish();
+  expect(ordinary.navigations).toEqual([ingress+'/unit']);expect(ordinary.disposals).toEqual([]);
+  expect(old).toMatchObject({protocol:'aihr-navigation-development/v2',scenarioSha256:'d'.repeat(64),phase:'baseline'});
+  expect(old.observations).toHaveLength(1);
+
+  source.scenarioSha256=NATIVE_SHELL_LEGACY_SCENARIO_SHA256;
+  const current=hiddenShellPage(),collector=createNavigationCaptureCollector({phase:'baseline'});
+  const native=collector.nativeHiddenShell(performance.now()+90000);
+  await expect(native.captureActor(current.page,4)).rejects.toThrow(/same completed legacy actor Page/);
+  await collector.captureActor(current.page,4);
+  await expect(native.captureActor(ordinary.page,4)).rejects.toThrow(/same completed legacy actor Page/);
+  await native.captureActor(current.page,4);
+  expect(current.navigations).toEqual([ingress+'/unit',ingress+'/',ingress+'/payroll',ingress+'/',ingress+'/analytics','about:blank']);
+  expect(current.disposals).toEqual(['script','binding']);
+  expect(current.operations.filter(operation=>operation.startsWith('click:'))).toEqual(
+   ordinary.operations.filter(operation=>operation.startsWith('click:')));
+  await expect(native.captureActor(current.page,4)).rejects.toThrow(/same completed legacy actor Page/);
+  const baseline=collector.finish();
+  expect(baseline.observations).toEqual(old.observations);
+  expect(baseline).not.toHaveProperty('extensionSha256');
+  expect(()=>native.finish()).toThrow(/Exact complete legacy baseline/);
+ });
+ it.each([
+  ['streamed','direct denial redirect chain'],
+  ['extra-hop','direct denial redirect chain'],
+  ['location','HTTP 307 to Home'],
+  ['other-home','did not finish at Home'],
+  ['private-content','private destination rendered'],
+  ['retired-marker','failure observed through document retirement'],
+ ]as const)('refuses %s even with an ordinary signed-in baseline',async(mode,reason)=>{
+  source.scenarioSha256=NATIVE_SHELL_LEGACY_SCENARIO_SHA256;
+  const model=hiddenShellPage(mode),collector=createNavigationCaptureCollector({phase:'baseline'});
+  const native=collector.nativeHiddenShell(performance.now()+90000);
+  await collector.captureActor(model.page,4);
+  await expect(native.captureActor(model.page,4)).rejects.toThrow(reason);
+  expect(model.disposals).toEqual([]);
  });
 });

@@ -1,4 +1,5 @@
 /** Closed development capture protocol. Validation alone never authenticates it. */
+import {createHash} from 'node:crypto';
 import {navigationScenarioEntry} from './navigation-entry';
 export const NAVIGATION_CAPTURE_VERSION='aihr-navigation-development/v2' as const;
 export const NAVIGATION_CAPTURE_ARTIFACT='system-http-browser-development-evidence';
@@ -96,6 +97,59 @@ export function validateNavigationCapture(value:unknown,plan:NavigationScenarioP
    &&(check.kind!=='count'&&check.kind!=='fixture-roster-rows'||result.observedCount>=check.minimum&&(check.maximum===undefined||result.observedCount<=check.maximum)))))throw Error('Navigation check coverage differs');
   if([row.startedWith,row.usableWith].some(state=>state!==undefined&&(!state||!closed(state,['active','inSteadyWindow'])||!Number.isSafeInteger(state.active)||state.active<0||typeof state.inSteadyWindow!=='boolean')))throw Error('Invalid navigation traffic state');
   if(capture.phase==='loaded'&&![row.startedWith,row.usableWith].every(state=>state?.active===500&&state.inSteadyWindow===true))throw Error('Navigation content was not usable during steady 500-user traffic');
+ }
+ return capture;
+}
+
+// Separate native-only observations. The v2 development contract above stays 48.
+export const NATIVE_SHELL_BASELINE_VERSION='aihr-native-shell-baseline/v1' as const;
+export const NATIVE_SHELL_LEGACY_SCENARIO_SHA256='6dae3cc787e5da49e8f00eb30e0d093f7669f8fff3f87aa5f966a00d9397ca7a';
+const nativeShellCases=[
+ {id:'shell.payrollProcess.employee.hidden-denied',destinationId:'shell.payrollProcess',role:'employee',href:'/payroll',actorIndex:4},
+ {id:'shell.payrollProcess.manager.hidden-denied',destinationId:'shell.payrollProcess',role:'manager',href:'/payroll',actorIndex:2},
+ {id:'shell.analytics.employee.hidden-denied',destinationId:'shell.analytics',role:'employee',href:'/analytics',actorIndex:4},
+ {id:'shell.analytics.manager.hidden-denied',destinationId:'shell.analytics',role:'manager',href:'/analytics',actorIndex:2},
+] as const;
+export const NATIVE_HIDDEN_SHELL_CASES=Object.freeze(nativeShellCases.map(row=>Object.freeze({...row,
+ entry:'shell-menu',shellVisibility:'hidden',originHref:'/',outcome:'denied',readiness:'controls',
+ steps:Object.freeze([]),checks:Object.freeze([]),
+} as const)));
+export const nativeHiddenShellCasesSha256=()=>createHash('sha256').update(JSON.stringify(NATIVE_HIDDEN_SHELL_CASES)).digest('hex');
+export type NativeHiddenShellCase=(typeof NATIVE_HIDDEN_SHELL_CASES)[number];
+export type NativeHiddenShellObservation=Pick<NativeHiddenShellCase,'id'|'destinationId'|'role'|'actorIndex'|'entry'|'shellVisibility'|'originHref'|'href'|'outcome'>&{
+ originStatus:200;redirectStatus:307;finalStatus:200;finalHref:'/';internalSessionObserved:true;fixtureIdentityObserved:true;
+ privateDestinationAbsent:true;elapsedMs:number;
+};
+export type NativeShellIdentity=Pick<NavigationCapture,'candidateSha'|'controllerSha'|'runId'|'harnessSha256'|'scenarioSha256'>;
+export type NativeShellBaseline=NativeShellIdentity&{
+ schemaVersion:1;protocol:typeof NATIVE_SHELL_BASELINE_VERSION;releaseAuthorized:false;runAttempt:1;
+ legacyCases:48;nativeCases:52;retiredDocuments:8;extensionSha256:string;complete:true;observations:NativeHiddenShellObservation[];
+};
+const exactKeys=(value:object,keys:readonly string[])=>Object.keys(value).length===keys.length&&closed(value,keys);
+
+/** Reconciles a source-bound native observation. A matching record grants no authority. */
+export function validateNativeShellBaseline(value:unknown,expected:NativeShellIdentity):NativeShellBaseline{
+ if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Native shell baseline missing');
+ const capture=value as NativeShellBaseline;
+ if(!exactKeys(capture,['schemaVersion','protocol','releaseAuthorized','candidateSha','controllerSha','runId','runAttempt','harnessSha256',
+  'scenarioSha256','legacyCases','nativeCases','retiredDocuments','extensionSha256','complete','observations'])
+  ||capture.schemaVersion!==1||capture.protocol!==NATIVE_SHELL_BASELINE_VERSION||capture.releaseAuthorized!==false||capture.runAttempt!==1
+  ||capture.legacyCases!==48||capture.nativeCases!==52||capture.retiredDocuments!==8||capture.complete!==true
+  ||capture.scenarioSha256!==NATIVE_SHELL_LEGACY_SCENARIO_SHA256||capture.extensionSha256!==nativeHiddenShellCasesSha256()
+  ||![capture.candidateSha,capture.controllerSha].every(sha=>typeof sha==='string'&&/^[a-f0-9]{40}(?![\s\S])/.test(sha))
+  ||typeof capture.harnessSha256!=='string'||!/^[a-f0-9]{64}(?![\s\S])/.test(capture.harnessSha256)
+  ||!Number.isSafeInteger(capture.runId)||capture.runId<1
+  ||(['candidateSha','controllerSha','runId','harnessSha256','scenarioSha256'] as const).some(key=>capture[key]!==expected[key])
+  ||!Array.isArray(capture.observations)||capture.observations.length!==NATIVE_HIDDEN_SHELL_CASES.length)throw Error('Native shell baseline identity or completeness differs');
+ for(const [index,scenario] of NATIVE_HIDDEN_SHELL_CASES.entries()){
+  const row=capture.observations[index];
+  const caseKeys=['id','destinationId','role','actorIndex','entry','shellVisibility','originHref','href','outcome'] as const;
+  if(!row||typeof row!=='object'||Array.isArray(row)||!exactKeys(row,[...caseKeys,'originStatus','redirectStatus','finalStatus','finalHref',
+   'internalSessionObserved','fixtureIdentityObserved','privateDestinationAbsent','elapsedMs'])
+   ||caseKeys.some(key=>row[key]!==scenario[key])||fixtureNavigationActor(row.actorIndex).role!==row.role
+   ||row.originStatus!==200||row.redirectStatus!==307||row.finalStatus!==200||row.finalHref!=='/'
+   ||row.internalSessionObserved!==true||row.fixtureIdentityObserved!==true||row.privateDestinationAbsent!==true
+   ||!Number.isFinite(row.elapsedMs)||row.elapsedMs<0||row.elapsedMs>90000)throw Error('Native hidden shell observation differs');
  }
  return capture;
 }

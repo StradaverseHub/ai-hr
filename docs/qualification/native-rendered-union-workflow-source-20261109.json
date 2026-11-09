@@ -1,10 +1,10 @@
 {
-  "kind": "NATIVE_RENDERED_UNION_WORKFLOW_SOURCE_NOT_QUALIFICATION",
-  "parent": "a8fa1bd8165fe55bf6ac44e1d41f5244fa0cb739",
-  "sourceRef": "codex/native-primary-dom-retirement-20261109",
+  "kind": "NATIVE_RENDERED_UNION_AND_SHELL_BASELINE_SOURCE_NOT_QUALIFICATION",
+  "parent": "4ce6776f5b2df28eb5977a6c9499f7f6cd4a539b",
+  "sourceRef": "codex/native-shell-baseline-52-20261109",
   "addedPaths": [],
-  "sourcePlanSha256": "87f8ab8d5ad10b6bdef42ad9945aaa49fbb2a9831bbfe0c5c06758372f746126",
-  "sourceCensusSha256": "326ebce6d77d307e7036398e24a64e17e06b0243ea109e82c497d6c8fd5f5046",
+  "sourcePlanSha256": "36903c05bbac12b0c00fd9ca8753453879dac4a5a6f4749e370373e2520546ea",
+  "sourceCensusSha256": "7bdb00bf9f011fa15dd250f7cd914e5483e3c66212d1beec4b4692c1430f8f0d",
   "scope": {
     "nativeCourseIssuable": false,
     "publicDriverExport": "runDevelopmentSystemLoad",
@@ -38,12 +38,6 @@
     "plannedRenderedOnly": 177,
     "deadlineMsPerRoute": 90000,
     "legacyScenarioCasesWhole": 48,
-    "hiddenShellCasesUnadopted": [
-      "shell.payrollProcess.employee.hidden-denied",
-      "shell.payrollProcess.manager.hidden-denied",
-      "shell.analytics.employee.hidden-denied",
-      "shell.analytics.manager.hidden-denied"
-    ],
     "staticLedgerEntriesStillUncovered": 222,
     "dynamicFamilyPlanningRows": 46,
     "parameterizedPageFiles": 120,
@@ -138,6 +132,107 @@
           ]
         }
       }
+    },
+    "nativeShellBaseline": {
+      "protocol": "aihr-native-shell-baseline/v1",
+      "sourceAndCases": {
+        "legacy": 48,
+        "additional": 4,
+        "total": 52,
+        "role": {
+          "companyHR": 14,
+          "groupHR": 14,
+          "employee": 12,
+          "manager": 12
+        },
+        "outcome": {
+          "usable": 36,
+          "denied": 16
+        },
+        "entry": {
+          "canonical-link": 32,
+          "ai-centre-tab": 8,
+          "shell-menu": 12
+        },
+        "destinations": 14
+      },
+      "legacyScenarioSha256": "6dae3cc787e5da49e8f00eb30e0d093f7669f8fff3f87aa5f966a00d9397ca7a",
+      "extensionSha256": "36b86d2561088d2063db0431652b3418c8dee1ec558eeadc5a970bccc9a9fa74",
+      "fixedExtension": [
+        {
+          "id": "shell.payrollProcess.employee.hidden-denied",
+          "role": "employee",
+          "actorIndex": 4,
+          "originHref": "/",
+          "href": "/payroll",
+          "entry": "shell-menu",
+          "outcome": "denied",
+          "shellVisibility": "hidden"
+        },
+        {
+          "id": "shell.payrollProcess.manager.hidden-denied",
+          "role": "manager",
+          "actorIndex": 2,
+          "originHref": "/",
+          "href": "/payroll",
+          "entry": "shell-menu",
+          "outcome": "denied",
+          "shellVisibility": "hidden"
+        },
+        {
+          "id": "shell.analytics.employee.hidden-denied",
+          "role": "employee",
+          "actorIndex": 4,
+          "originHref": "/",
+          "href": "/analytics",
+          "entry": "shell-menu",
+          "outcome": "denied",
+          "shellVisibility": "hidden"
+        },
+        {
+          "id": "shell.analytics.manager.hidden-denied",
+          "role": "manager",
+          "actorIndex": 2,
+          "originHref": "/",
+          "href": "/analytics",
+          "entry": "shell-menu",
+          "outcome": "denied",
+          "shellVisibility": "hidden"
+        }
+      ],
+      "firstAttemptSameSourceControllerHarnessAndRunRequired": true,
+      "strictDirectDenial": {
+        "requestedStatus": 307,
+        "location": "/",
+        "finalStatus": 200,
+        "finalHref": "/",
+        "streamedAdmitted": false
+      },
+      "exactTransportAndIdentity": "A fresh fixed same-origin main-frame GET from signed-in Home. Two linked native Request objects, exact direct-route and final Home responses, no additional hop, and the same unique account control at origin and final.",
+      "boundedObservation": "For each added case one 90-second maximum bounded by the remaining native course clock. Preserve existing shell traversal limits and do not click the denied anchor.",
+      "rolePageOrder": "On the two existing non-HR Pages, after the complete per-role v2 captures and before the independent 187-route primary observer. No additional Page, context, login or retry.",
+      "retiredDocumentsRequired": 8,
+      "inertTransitionsRequired": 2,
+      "retirementScope": "Use the same bound retirement implementation with a separate Page-local binding and init script. Prove four clean retirements per role including the final inert transition. Remove the hidden-scope script and binding before primary observation. Keep Page browser failure listeners through context and browser settlement.",
+      "playwrightDisposableSource": {
+        "samePinnedPlaywrightCoreAsPrimary": true,
+        "typeAndClientContract": [
+          "Page.exposeBinding",
+          "Page.addInitScript",
+          "Disposable.dispose"
+        ],
+        "serverScriptRegistration": [
+          22158,
+          22173
+        ],
+        "serverBindingRemoval": [
+          21903,
+          21912
+        ]
+      },
+      "legacyWriterStill48": true,
+      "independentProtectedVerifierPending": true,
+      "actualBrowserObservationsUnobserved": true
     }
   },
   "uncommissioned": [
@@ -145,7 +240,7 @@
     "native ingress trust and owned process lifetime",
     "isolated driver credential/observer/DB and profile admission",
     "authenticated hosted runtime route/alias observations and fit",
-    "separate hidden-shell 52-case scope and verifier binding"
+    "authenticated native 52-case browser evidence and independent protected verifier binding"
   ],
   "sourceTestCallsites": {
     "test/performance-route-manifest.test.ts": {
@@ -159,15 +254,34 @@
       "oldBodiesWhole": true
     },
     "test/navigation-browser-capture.test.ts": {
+      "old": 8,
+      "current": 11,
+      "oldBodiesWhole": true,
+      "parentCases": 18,
+      "currentCases": 26,
+      "newCallsites": 3,
+      "newExpandedCases": 8,
+      "addedNames": [
+        "binds only the four reviewed actor and route pairs to the distinct native shell scope",
+        "keeps the original v2 collector separate and requires the same Page, clean retirement and whole legacy census",
+        "refuses %s even with an ordinary signed-in baseline"
+      ]
+    },
+    "test/navigation-shell-browser.dom.test.tsx": {
       "old": 3,
-      "parent": 5,
       "current": 8,
       "oldBodiesWhole": true,
-      "parentCases": 8,
-      "currentCases": 18,
-      "parentNativeObserverModelAdapted": 1,
-      "newCallsites": 3,
-      "newExpandedCases": 10
+      "parentCases": 3,
+      "currentCases": 8,
+      "newCallsites": 5,
+      "newExpandedCases": 5,
+      "addedNames": [
+        "observes absence through every native workspace/disclosure before a separate direct-route refusal",
+        "rejects visible, collapsed, disabled and later-mounted native destination anchors as hidden proof",
+        "keeps the original caller deadline and traversal bound for hidden observations",
+        "refuses a destination mounted after the zero-count snapshot and before the visible read without clicking it",
+        "rechecks mounted-anchor absence when a hidden anchor appears after the final visible-count snapshot"
+      ]
     }
   },
   "qualification": {
@@ -180,476 +294,773 @@
   },
   "inverseFormat": "zero-based current line offsets with line endings, applied last edit first to replay complete Git parent bytes",
   "files": {
-    "scripts/performance/system-load-owner.mjs": {
+    "scripts/performance/navigation-browser-capture.ts": {
       "parent": {
-        "bytes": 112920,
-        "sha256": "60b7d1d0b69e955244ee59990caec160a48d844f053d223097206dd99462b6cd",
-        "gitBlob": "5c644d3ea34cc42694a02c79d27ccfd36553f562"
+        "bytes": 22667,
+        "sha256": "4f47538805d999ad5ac251dd2d18c439b83f5926d4f0e3044da54fa1c37adc73",
+        "gitBlob": "f5d0d6240588ef92ee1fb2df19fc85ed106f79d5"
       },
       "current": {
-        "bytes": 113640,
-        "sha256": "5d95076bd71673789a8e49f422ab72393ad38ee58cdfa94f2b85a61939f7539c"
+        "bytes": 31644,
+        "sha256": "0dbc544be4e6a51459501a7abd5c37c3d9b56b7de3393d2947643a265690861a",
+        "gitBlob": "49937e9557d40823e493bc3ea6796ea31f8962cf"
       },
       "inverse": [
         {
           "currentStart": 9,
           "current": [
-            " createNativeBrowserFailureObservation} from './navigation-browser-capture.ts';\n"
+            " NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,validateNativeShellBaseline,\n",
+            " type NavigationCapture,type NavigationCaptureBundle,type NavigationObservation,type NavigationScenario,type NavigationFixtureTextBindings,\n",
+            " type NativeHiddenShellCase,type NativeHiddenShellObservation,type NativeShellIdentity} from './navigation-protocol';\n"
           ],
           "original": [
-            " capturedNativePrimaryFailures,createNativeBrowserFailureObservation} from './navigation-browser-capture.ts';\n"
+            " type NavigationCapture,type NavigationCaptureBundle,type NavigationObservation,type NavigationScenario,type NavigationFixtureTextBindings} from './navigation-protocol';\n"
           ]
         },
         {
-          "currentStart": 79,
+          "currentStart": 15,
           "current": [
-            "const nativePrimaryDocuments=[];\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 438,
-          "current": [
-            " async function visit(page,user,path,phase='baseline',signIn=false,loadState,nativeRoute,nativeDom){\n"
+            "import {assertNativeShellDestinationHidden,clickNativeShellDestination} from './navigation-shell-browser';\n"
           ],
           "original": [
-            " async function visit(page,user,path,phase='baseline',signIn=false,loadState,nativeRoute){\n"
-          ]
-        },
-        {
-          "currentStart": 456,
-          "current": [
-            "   if(nativeRoute){assert(!signIn&&nativeDom);nativeDom.beforeNavigation();}\n"
-          ],
-          "original": [
-            "   if(nativeRoute)assert(!signIn);\n"
-          ]
-        },
-        {
-          "currentStart": 610,
-          "current": [
-            "   const observed=await nativeDom.snapshot(timeout);timeout();\n"
-          ],
-          "original": [
-            "   const observed=await capturedNativePrimaryFailures(page);timeout();\n"
-          ]
-        },
-        {
-          "currentStart": 799,
-          "current": [
-            "    const nativeDom=await installNativePrimaryFailureObserver(page),paths=routePool(user);\n",
-            "    nativePrimaryDocuments.push({actorIndex:user.index,expected:paths.length,nativeDom});\n",
-            "    for(const path of paths){\n"
-          ],
-          "original": [
-            "    await installNativePrimaryFailureObserver(page);\n",
-            "    for(const path of routePool(user)){\n"
-          ]
-        },
-        {
-          "currentStart": 803,
-          "current": [
-            "     await visit(page,user,path,'baseline',false,undefined,route,nativeDom);\n"
-          ],
-          "original": [
-            "     await visit(page,user,path,'baseline',false,undefined,route);\n"
-          ]
-        },
-        {
-          "currentStart": 805,
-          "current": [
-            "    const retirementDeadline=Math.min(nativeDeadline,performance.now()+90000);\n",
-            "    await nativeDom.finish(()=>nativeRemaining(retirementDeadline));\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 1383,
-          "current": [
-            " report.nativeRenderedPreflight.primaryDocumentRetirement=nativePrimaryDocuments.map(({actorIndex,expected,nativeDom})=>({actorIndex,expected,...nativeDom.facts()}));\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 1385,
-          "current": [
-            "  assert.deepEqual(nativePrimaryDocuments.map(row=>row.actorIndex).sort((a,b)=>a-b),[0,1,2,4],'Native primary document owners differ');\n",
-            "  for(const {expected,nativeDom}of nativePrimaryDocuments)nativeDom.requireSettled(expected);\n"
-          ],
-          "original": []
-        }
-      ]
-    },
-    "scripts/performance/navigation-browser-capture.ts": {
-      "parent": {
-        "bytes": 17482,
-        "sha256": "d4fee213180b2c3efe5522a830f47fd8262189ba711cbfc67ad8406672d90b7c",
-        "gitBlob": "fee0baebf1ea200436c05f10954262e950802e10"
-      },
-      "current": {
-        "bytes": 22667,
-        "sha256": "4f47538805d999ad5ac251dd2d18c439b83f5926d4f0e3044da54fa1c37adc73"
-      },
-      "inverse": [
-        {
-          "currentStart": 4,
-          "current": [
-            "import {randomUUID} from 'node:crypto';\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 37,
-          "current": [
-            "const nativePrimaryProperty='__aihrNativePrimaryFailureCaptureV1';\n",
-            "const nativePrimaryBinding='__aihrNativePrimaryRetirementV1';\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 40,
-          "current": [],
-          "original": [
-            "const nativePrimaryProperty='__aihrNativePrimaryFailureCaptureV1';\n"
+            "import {clickNativeShellDestination} from './navigation-shell-browser';\n"
           ]
         },
         {
           "currentStart": 42,
           "current": [
-            "const nativeDocumentId=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;\n",
-            "type Retirement={id:string;received:boolean;wake?:()=>void};\n",
-            "type NativeDocumentSnapshot={id:string;origin:string;busy:number;unavailable:number;alerts:number};\n",
-            "\n",
-            "/** One already-owned primary Page. The bridge can only record failures and\n",
-            " * acknowledge retirement of a document the driver has independently observed. */\n"
+            "const nativeHiddenShellPages=new WeakSet<Page>();\n"
           ],
           "original": []
         },
         {
-          "currentStart": 49,
+          "currentStart": 52,
           "current": [
-            " assert(!nativePrimaryPages.has(page),'Native primary retirement observer already installed');nativePrimaryPages.add(page);\n",
-            " const frame=page.mainFrame(),context=page.context(),key=randomUUID(),seen=new Set<string>();\n",
-            " const markerDocuments={busy:0,unavailable:0,alerts:0};\n",
-            " let active:string|undefined,retiring:Retirement|undefined,awaitingSnapshot=false,finalBlank=false,retired=0,refusals=0;\n",
-            " const refuse=()=>{refusals++;retiring?.wake?.();return false;};\n",
-            " await page.exposeBinding(nativePrimaryBinding,(source,...args:unknown[])=>{\n",
-            "  const payload=args[0]as {key?:unknown;id?:unknown;mask?:unknown;terminal?:unknown}|null|undefined;\n",
-            "  if(source.page!==page||source.frame!==frame||source.context!==context||args.length!==1||!payload||typeof payload!=='object'\n",
-            "   ||Object.keys(payload).sort().join(',')!=='id,key,mask,terminal'||payload.key!==key\n",
-            "   ||!retiring||retiring.received||payload.id!==retiring.id||payload.terminal!==true\n",
-            "   ||typeof payload.mask!=='number'||!Number.isSafeInteger(payload.mask)||payload.mask<0||payload.mask>7)return refuse();\n",
-            "  // Frame URL is mutable by the time a queued pagehide reaches this callback.\n",
-            "  // The exact retiring document was already admitted at the same-origin snapshot.\n",
-            "  if(payload.mask&1)markerDocuments.busy++;\n",
-            "  if(payload.mask&2)markerDocuments.unavailable++;\n",
-            "  if(payload.mask&4)markerDocuments.alerts++;\n",
-            "  retiring.received=true;retired++;retiring.wake?.();return true;\n",
-            " });\n"
+            " return (await installNativeDocumentFailureObserver(page,'primary')).retirement;\n",
+            "}\n",
+            "\n",
+            "async function installNativeDocumentFailureObserver(page:Page,scope:'primary'|'hidden-shell'){\n",
+            " const primary=scope==='primary',pages=primary?nativePrimaryPages:nativeHiddenShellPages;\n",
+            " assert(!pages.has(page),'Native document retirement observer already installed');pages.add(page);\n",
+            " const binding=primary?nativePrimaryBinding:'__aihrNativeHiddenShellRetirementV1';\n",
+            " const property=primary?nativePrimaryProperty:'__aihrNativeHiddenShellFailureCaptureV1';\n"
           ],
           "original": [
-            " if(nativePrimaryPages.has(page))return;\n"
+            " assert(!nativePrimaryPages.has(page),'Native primary retirement observer already installed');nativePrimaryPages.add(page);\n"
           ]
+        },
+        {
+          "currentStart": 64,
+          "current": [
+            " const bridge=await page.exposeBinding(binding,(source,...args:unknown[])=>{\n"
+          ],
+          "original": [
+            " await page.exposeBinding(nativePrimaryBinding,(source,...args:unknown[])=>{\n"
+          ]
+        },
+        {
+          "currentStart": 79,
+          "current": [
+            " const script=await page.addInitScript(({selectors,property,attributes,ingress,binding,key})=>{\n"
+          ],
+          "original": [
+            " await page.addInitScript(({selectors,property,attributes,ingress,binding,key})=>{\n"
+          ]
+        },
+        {
+          "currentStart": 110,
+          "current": [
+            " },{selectors,property,attributes:nativeMarkerAttributes,ingress:BASE,binding,key});\n"
+          ],
+          "original": [
+            " },{selectors,property:nativePrimaryProperty,attributes:nativeMarkerAttributes,ingress:BASE,binding:nativePrimaryBinding,key});\n"
+          ]
+        },
+        {
+          "currentStart": 126,
+          "current": [
+            " const retirement={\n"
+          ],
+          "original": [
+            " return {\n"
+          ]
+        },
+        {
+          "currentStart": 134,
+          "current": [
+            "   },property);\n"
+          ],
+          "original": [
+            "   },nativePrimaryProperty);\n"
+          ]
+        },
+        {
+          "currentStart": 157,
+          "current": [
+            " return {retirement,async disposeHiddenShell(){\n",
+            "  assert(!primary,'Native primary observer remains bound to its Page lifetime');\n",
+            "  retirement.requireSettled(4);\n",
+            "  // The last tracked document is already retired at about:blank. Remove this\n",
+            "  // scope before the same Page begins the independent 187-route observer.\n",
+            "  await script.dispose();await bridge.dispose();\n",
+            " }};\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 198,
+          "current": [
+            " let sealed=false,legacyCapture:NavigationCapture|undefined;\n",
+            " let nativeShell:ReturnType<typeof createNativeHiddenShellCollector>|undefined;\n"
+          ],
+          "original": [
+            " let sealed=false;\n"
+          ]
+        },
+        {
+          "currentStart": 202,
+          "current": [
+            "  nativeHiddenShell(deadline:number){\n",
+            "   assert(phase==='baseline'&&!sealed&&!nativeShell&&!seen.size,'Native shell requires one fresh baseline collector');\n",
+            "   const source={candidateSha,controllerSha,runId,harnessSha256:identity.harnessSha256,scenarioSha256:identity.scenarioSha256};\n",
+            "   nativeShell=createNativeHiddenShellCollector(source,deadline,()=>legacyCapture);\n",
+            "   return {captureActor:nativeShell.captureActor,finish:nativeShell.finish};\n",
+            "  },\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 218,
+          "current": [
+            "   nativeShell?.bindLegacyRole(page,actorIndex);\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 223,
+          "current": [
+            "   legacyCapture=validateNavigationCapture({schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,fixture:identity.plan.fixture,engine:identity.plan.engine,\n"
+          ],
+          "original": [
+            "   return validateNavigationCapture({schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,fixture:identity.plan.fixture,engine:identity.plan.engine,\n"
+          ]
+        },
+        {
+          "currentStart": 226,
+          "current": [
+            "   return legacyCapture;\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 316,
+          "current": [
+            "\n",
+            "const exactHome=BASE+'/';\n",
+            "const nativePrivateContent={\n",
+            " 'shell.payrollProcess':'main [data-tour=\"payroll-batches\"],main [data-tour=\"payroll-create\"]',\n",
+            " 'shell.analytics':'main [data-analytics-metric],main [data-analytics-value]',\n",
+            "} as const;\n",
+            "\n",
+            "function createNativeHiddenShellCollector(source:NativeShellIdentity,deadline:number,legacy:()=>NavigationCapture|undefined){\n",
+            " assert(Number.isFinite(deadline)&&deadline>performance.now(),'Owned native shell deadline required');\n",
+            " assert(source.scenarioSha256===NATIVE_SHELL_LEGACY_SCENARIO_SHA256,'Exact legacy navigation scenario source required');\n",
+            " const legacyPages=new Map<number,Page>(),started=new Set<number>();\n",
+            " const retired=new Map<number,Awaited<ReturnType<typeof installNativePrimaryFailureObserver>>>();\n",
+            " const observations=new Map<string,NativeHiddenShellObservation>();\n",
+            " let sealed=false;\n",
+            " return {\n",
+            "  bindLegacyRole(page:Page,actorIndex:number){\n",
+            "   if(NATIVE_HIDDEN_SHELL_CASES.some(row=>row.actorIndex===actorIndex)){\n",
+            "    assert(!legacyPages.has(actorIndex),'Native shell actor already bound');\n",
+            "    legacyPages.set(actorIndex,page);\n",
+            "   }\n",
+            "  },\n",
+            "  async captureActor(page:Page,actorIndex:number){\n",
+            "   assert(!sealed&&!started.has(actorIndex)&&legacyPages.get(actorIndex)===page,'Native shell requires the same completed legacy actor Page');\n",
+            "   const rows=NATIVE_HIDDEN_SHELL_CASES.filter(row=>row.actorIndex===actorIndex);\n",
+            "   assert(rows.length===2,'Native shell actor differs');\n",
+            "   assert(performance.now()<deadline,'Owned native shell deadline closed before observation');started.add(actorIndex);\n",
+            "   const observer=await installNativeDocumentFailureObserver(page,'hidden-shell');\n",
+            "   const {retirement}=observer;\n",
+            "   for(const [index,row]of rows.entries()){\n",
+            "    const began=performance.now(),limit=Math.min(deadline,began+90000);\n",
+            "    const remaining=()=>{const ms=Math.floor(limit-performance.now());assert(ms>0,'Native hidden shell deadline exceeded');return ms;};\n",
+            "    observations.set(row.id,await captureNativeHiddenShellScenario(page,row,retirement,remaining,began));\n",
+            "    if(index===rows.length-1){\n",
+            "     await retirement.finish(remaining);\n",
+            "     await observer.disposeHiddenShell();remaining();\n",
+            "     retired.set(actorIndex,retirement);\n",
+            "    }\n",
+            "   }\n",
+            "  },\n",
+            "  finish(){\n",
+            "   assert(!sealed,'Native shell baseline already sealed');sealed=true;\n",
+            "   const baseline=legacy();\n",
+            "   assert(baseline?.complete&&baseline.phase==='baseline'&&baseline.observations.length===48,'Exact complete legacy baseline required for native shell');\n",
+            "   assert(retired.size===2&&observations.size===4,'Native hidden shell document or observation census differs');\n",
+            "   let retiredDocuments=0;\n",
+            "   for(const retirement of retired.values()){\n",
+            "    retirement.requireSettled(4);retiredDocuments+=retirement.facts().retired;\n",
+            "   }\n",
+            "   assert(retiredDocuments===8&&performance.now()<deadline,'Native shell retirement census or terminal deadline differs');\n",
+            "   return validateNativeShellBaseline({schemaVersion:1,protocol:NATIVE_SHELL_BASELINE_VERSION,releaseAuthorized:false,\n",
+            "    ...source,runAttempt:1,legacyCases:48,nativeCases:52,retiredDocuments,extensionSha256:nativeHiddenShellCasesSha256(),complete:true,\n",
+            "    observations:NATIVE_HIDDEN_SHELL_CASES.map(row=>observations.get(row.id))},source);\n",
+            "  },\n",
+            " };\n",
+            "}\n",
+            "\n",
+            "async function captureNativeHiddenShellScenario(page:Page,row:NativeHiddenShellCase,retirement:Awaited<ReturnType<typeof installNativePrimaryFailureObserver>>,remaining:()=>number,began:number):Promise<NativeHiddenShellObservation>{\n",
+            " const actor=fixtureNavigationActor(row.actorIndex),frame=page.mainFrame();\n",
+            " assert(actor.role===row.role,'Native hidden shell actor differs');\n",
+            " const cookies=await page.context().cookies(BASE);\n",
+            " assert(cookies.some(cookie=>cookie.name==='__Host-aihr_internal'&&cookie.value&&cookie.secure&&cookie.httpOnly&&cookie.path==='/'),\n",
+            "  'Native hidden shell authenticated session missing');\n",
+            " const nativeDocument=(response:Response,url:string,status:number)=>{\n",
+            "  const request=response.request();\n",
+            "  return response.status()===status&&response.url()===url&&!response.fromServiceWorker()&&request.url()===url&&\n",
+            "   request.method()==='GET'&&request.isNavigationRequest()&&request.resourceType()==='document'&&request.frame()===frame;\n",
+            " };\n",
+            " const verifyHome=async()=>{\n",
+            "  assert(page.url()===exactHome,'Native hidden shell Home address differs');\n",
+            "  await page.locator('main').waitFor({state:'visible',timeout:remaining()});\n",
+            "  const account=page.locator('button[data-tour=\"account\"]');\n",
+            "  await account.first().waitFor({state:'visible',timeout:remaining()});\n",
+            "  assert(await account.count()===1&&await account.isEnabled({timeout:remaining()}),'Native hidden shell account control differs');\n",
+            "  const name=account.getByText(actor.name,{exact:true});\n",
+            "  await name.first().waitFor({state:'visible',timeout:remaining()});\n",
+            "  assert(await name.count()===1&&await name.innerText({timeout:remaining()})===actor.name,'Native hidden shell fixture identity differs');\n",
+            "  const destination='main [data-navigation-destination=\"'+row.destinationId+'\"],main[data-navigation-destination=\"'+row.destinationId+'\"]';\n",
+            "  assert(await page.locator(destination+','+nativePrivateContent[row.destinationId]).count()===0,'Native hidden shell private destination rendered');\n",
+            "  assert(page.url()===exactHome,'Native hidden shell Home changed during observation');\n",
+            " };\n",
+            " const requireCleanDocument=async()=>{\n",
+            "  const facts=await retirement.snapshot(remaining);\n",
+            "  assert(Object.values(facts).every(count=>count===0),'Native hidden shell rendered a DOM failure');\n",
+            " };\n",
+            " retirement.beforeNavigation();\n",
+            " const origin=await page.goto(BASE+row.originHref,{waitUntil:'domcontentloaded',timeout:remaining()});\n",
+            " assert(origin&&nativeDocument(origin,exactHome,200)&&!origin.request().redirectedFrom(),'Native hidden shell origin document differs');\n",
+            " await verifyHome();await requireCleanDocument();\n",
+            " await assertNativeShellDestinationHidden(page,row.href,remaining);\n",
+            " assert(page.url()===exactHome,'Native hidden shell changed origin while traversing');\n",
+            " retirement.beforeNavigation();\n",
+            " const final=await page.goto(BASE+row.href,{waitUntil:'domcontentloaded',timeout:remaining()});\n",
+            " assert(final&&nativeDocument(final,exactHome,200),'Native hidden shell direct denial did not finish at Home');\n",
+            " const finalRequest=final.request(),prior=finalRequest.redirectedFrom();\n",
+            " assert(prior&&!prior.redirectedFrom()&&prior.redirectedTo()===finalRequest&&prior.url()===BASE+row.href,'Native hidden shell direct denial redirect chain differs');\n",
+            " const redirect=await prior.response(),location=redirect?.headers().location;\n",
+            " assert(redirect&&redirect.request()===prior&&nativeDocument(redirect,BASE+row.href,307)&&(location==='/'||location===exactHome),'Native hidden shell HTTP 307 to Home required');\n",
+            " await verifyHome();await requireCleanDocument();\n",
+            " assert(page.url()===exactHome,'Native hidden shell Home changed before observation completed');remaining();\n",
+            " return {id:row.id,destinationId:row.destinationId,role:row.role,actorIndex:row.actorIndex,entry:row.entry,shellVisibility:row.shellVisibility,\n",
+            "  originHref:row.originHref,href:row.href,outcome:row.outcome,originStatus:200,redirectStatus:307,finalStatus:200,finalHref:'/',\n",
+            "  internalSessionObserved:true,fixtureIdentityObserved:true,privateDestinationAbsent:true,elapsedMs:performance.now()-began};\n",
+            "}\n"
+          ],
+          "original": []
+        }
+      ]
+    },
+    "scripts/performance/navigation-protocol.ts": {
+      "parent": {
+        "bytes": 12239,
+        "sha256": "338e8e65d7e18eb4aba1150860fd776be79036a729e1639366707a54ed8bf811",
+        "gitBlob": "aa3095b6f5686668d56b4b9832ebc0c2bd01bd25"
+      },
+      "current": {
+        "bytes": 16981,
+        "sha256": "fb90131d158da44b0ffea2d503e0dcc01fdef42cf1fb7298717f005c55d9e997",
+        "gitBlob": "bba9adbf6df97cbab79093f52d93bc16625b080e"
+      },
+      "inverse": [
+        {
+          "currentStart": 1,
+          "current": [
+            "import {createHash} from 'node:crypto';\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 102,
+          "current": [
+            "\n",
+            "// Separate native-only observations. The v2 development contract above stays 48.\n",
+            "export const NATIVE_SHELL_BASELINE_VERSION='aihr-native-shell-baseline/v1' as const;\n",
+            "export const NATIVE_SHELL_LEGACY_SCENARIO_SHA256='6dae3cc787e5da49e8f00eb30e0d093f7669f8fff3f87aa5f966a00d9397ca7a';\n",
+            "const nativeShellCases=[\n",
+            " {id:'shell.payrollProcess.employee.hidden-denied',destinationId:'shell.payrollProcess',role:'employee',href:'/payroll',actorIndex:4},\n",
+            " {id:'shell.payrollProcess.manager.hidden-denied',destinationId:'shell.payrollProcess',role:'manager',href:'/payroll',actorIndex:2},\n",
+            " {id:'shell.analytics.employee.hidden-denied',destinationId:'shell.analytics',role:'employee',href:'/analytics',actorIndex:4},\n",
+            " {id:'shell.analytics.manager.hidden-denied',destinationId:'shell.analytics',role:'manager',href:'/analytics',actorIndex:2},\n",
+            "] as const;\n",
+            "export const NATIVE_HIDDEN_SHELL_CASES=Object.freeze(nativeShellCases.map(row=>Object.freeze({...row,\n",
+            " entry:'shell-menu',shellVisibility:'hidden',originHref:'/',outcome:'denied',readiness:'controls',\n",
+            " steps:Object.freeze([]),checks:Object.freeze([]),\n",
+            "} as const)));\n",
+            "export const nativeHiddenShellCasesSha256=()=>createHash('sha256').update(JSON.stringify(NATIVE_HIDDEN_SHELL_CASES)).digest('hex');\n",
+            "export type NativeHiddenShellCase=(typeof NATIVE_HIDDEN_SHELL_CASES)[number];\n",
+            "export type NativeHiddenShellObservation=Pick<NativeHiddenShellCase,'id'|'destinationId'|'role'|'actorIndex'|'entry'|'shellVisibility'|'originHref'|'href'|'outcome'>&{\n",
+            " originStatus:200;redirectStatus:307;finalStatus:200;finalHref:'/';internalSessionObserved:true;fixtureIdentityObserved:true;\n",
+            " privateDestinationAbsent:true;elapsedMs:number;\n",
+            "};\n",
+            "export type NativeShellIdentity=Pick<NavigationCapture,'candidateSha'|'controllerSha'|'runId'|'harnessSha256'|'scenarioSha256'>;\n",
+            "export type NativeShellBaseline=NativeShellIdentity&{\n",
+            " schemaVersion:1;protocol:typeof NATIVE_SHELL_BASELINE_VERSION;releaseAuthorized:false;runAttempt:1;\n",
+            " legacyCases:48;nativeCases:52;retiredDocuments:8;extensionSha256:string;complete:true;observations:NativeHiddenShellObservation[];\n",
+            "};\n",
+            "const exactKeys=(value:object,keys:readonly string[])=>Object.keys(value).length===keys.length&&closed(value,keys);\n",
+            "\n",
+            "/** Reconciles a source-bound native observation. A matching record grants no authority. */\n",
+            "export function validateNativeShellBaseline(value:unknown,expected:NativeShellIdentity):NativeShellBaseline{\n",
+            " if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Native shell baseline missing');\n",
+            " const capture=value as NativeShellBaseline;\n",
+            " if(!exactKeys(capture,['schemaVersion','protocol','releaseAuthorized','candidateSha','controllerSha','runId','runAttempt','harnessSha256',\n",
+            "  'scenarioSha256','legacyCases','nativeCases','retiredDocuments','extensionSha256','complete','observations'])\n",
+            "  ||capture.schemaVersion!==1||capture.protocol!==NATIVE_SHELL_BASELINE_VERSION||capture.releaseAuthorized!==false||capture.runAttempt!==1\n",
+            "  ||capture.legacyCases!==48||capture.nativeCases!==52||capture.retiredDocuments!==8||capture.complete!==true\n",
+            "  ||capture.scenarioSha256!==NATIVE_SHELL_LEGACY_SCENARIO_SHA256||capture.extensionSha256!==nativeHiddenShellCasesSha256()\n",
+            "  ||![capture.candidateSha,capture.controllerSha].every(sha=>typeof sha==='string'&&/^[a-f0-9]{40}(?![\\s\\S])/.test(sha))\n",
+            "  ||typeof capture.harnessSha256!=='string'||!/^[a-f0-9]{64}(?![\\s\\S])/.test(capture.harnessSha256)\n",
+            "  ||!Number.isSafeInteger(capture.runId)||capture.runId<1\n",
+            "  ||(['candidateSha','controllerSha','runId','harnessSha256','scenarioSha256'] as const).some(key=>capture[key]!==expected[key])\n",
+            "  ||!Array.isArray(capture.observations)||capture.observations.length!==NATIVE_HIDDEN_SHELL_CASES.length)throw Error('Native shell baseline identity or completeness differs');\n",
+            " for(const [index,scenario] of NATIVE_HIDDEN_SHELL_CASES.entries()){\n",
+            "  const row=capture.observations[index];\n",
+            "  const caseKeys=['id','destinationId','role','actorIndex','entry','shellVisibility','originHref','href','outcome'] as const;\n",
+            "  if(!row||typeof row!=='object'||Array.isArray(row)||!exactKeys(row,[...caseKeys,'originStatus','redirectStatus','finalStatus','finalHref',\n",
+            "   'internalSessionObserved','fixtureIdentityObserved','privateDestinationAbsent','elapsedMs'])\n",
+            "   ||caseKeys.some(key=>row[key]!==scenario[key])||fixtureNavigationActor(row.actorIndex).role!==row.role\n",
+            "   ||row.originStatus!==200||row.redirectStatus!==307||row.finalStatus!==200||row.finalHref!=='/'\n",
+            "   ||row.internalSessionObserved!==true||row.fixtureIdentityObserved!==true||row.privateDestinationAbsent!==true\n",
+            "   ||!Number.isFinite(row.elapsedMs)||row.elapsedMs<0||row.elapsedMs>90000)throw Error('Native hidden shell observation differs');\n",
+            " }\n",
+            " return capture;\n",
+            "}\n"
+          ],
+          "original": []
+        }
+      ]
+    },
+    "scripts/performance/navigation-shell-browser.ts": {
+      "parent": {
+        "bytes": 3377,
+        "sha256": "f9621840fd7bcc77934e57e890c0a3619376b2fc7134b69ec3896b9ca1248995",
+        "gitBlob": "c7dc4bd3a4cd7a019352a3260206a636d9c38455"
+      },
+      "current": {
+        "bytes": 4577,
+        "sha256": "4cd97d9caac1bf1475121b40917e394ccbfad39cbece2051ffcfc00a73ea10ca",
+        "gitBlob": "ab0e60cf6a28d7fdf28f6e13fc9e75acf27ef654"
+      },
+      "inverse": [
+        {
+          "currentStart": 11,
+          "current": [
+            "async function traverseNativeShellDestination(page:Page,href:string,remaining:()=>number,mode:'click'|'hidden'){\n"
+          ],
+          "original": [
+            "export async function clickNativeShellDestination(page:Page,href:string,remaining:()=>number){\n"
+          ]
+        },
+        {
+          "currentStart": 35,
+          "current": [
+            "   remaining();\n",
+            "   // A retained hidden/disabled anchor is not permission-filtered absence. Check\n",
+            "   // every mounted native shell, including collapsed and alternate workspaces.\n",
+            "   if(mode==='hidden')assert(await target.count()===0,'Denied destination is still rendered in the native shell');\n",
+            "   const links=await visible(target);assert(links.length<=1,'Native shell destination is ambiguous');\n",
+            "   if(mode==='hidden')assert(links.length===0,'Denied destination became visible in the native shell');\n",
+            "   if(mode==='click'&&links.length){\n"
+          ],
+          "original": [
+            "   remaining();const links=await visible(target);assert(links.length<=1,'Native shell destination is ambiguous');\n",
+            "   if(links.length){\n"
+          ]
+        },
+        {
+          "currentStart": 58,
+          "current": [
+            "  if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native workspace observation completed');\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 60,
+          "current": [
+            " if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native shell observation completed');\n",
+            " if(mode==='click')throw Error('Reviewed destination is absent from the actual native shell');\n"
+          ],
+          "original": [
+            " throw Error('Reviewed destination is absent from the actual native shell');\n"
+          ]
+        },
+        {
+          "currentStart": 63,
+          "current": [
+            "export async function clickNativeShellDestination(page:Page,href:string,remaining:()=>number){\n",
+            " await traverseNativeShellDestination(page,href,remaining,'click');\n",
+            "}\n",
+            "/** Absence is observed through the real disclosures, then the collector separately\n",
+            " * exercises the native direct-route refusal. This is not a permission resolver. */\n",
+            "export async function assertNativeShellDestinationHidden(page:Page,href:string,remaining:()=>number){\n",
+            " await traverseNativeShellDestination(page,href,remaining,'hidden');\n",
+            "}\n"
+          ],
+          "original": []
+        }
+      ]
+    },
+    "scripts/performance/system-load-owner.mjs": {
+      "parent": {
+        "bytes": 113640,
+        "sha256": "5d95076bd71673789a8e49f422ab72393ad38ee58cdfa94f2b85a61939f7539c",
+        "gitBlob": "c2050d330105ed494adbe0bf985175a22b76d6ca"
+      },
+      "current": {
+        "bytes": 114036,
+        "sha256": "9bfc1178b51e2184c3708f06b6abaebcea8dac63ed371d488b8eb591ee1eeaa2",
+        "gitBlob": "4f8057e97178297962dd3c9cc041775125389594"
+      },
+      "inverse": [
+        {
+          "currentStart": 10,
+          "current": [
+            "import {NATIVE_HIDDEN_SHELL_CASES} from './navigation-protocol.ts';\n"
+          ],
+          "original": []
         },
         {
           "currentStart": 69,
           "current": [
-            " await page.addInitScript(({selectors,property,attributes,ingress,binding,key})=>{\n",
-            "  if(window.top!==window||location.origin!==ingress)return;\n",
-            "  const send=(window as unknown as Record<string,unknown>)[binding];\n",
-            "  if(typeof send!=='function')throw Error('Native primary retirement binding missing');\n",
-            "  const id=crypto.randomUUID(),counts={busy:0,unavailable:0,alerts:0};\n"
+            "const nativeShell=nativePreflight?baselineNavigation.nativeHiddenShell(nativeDeadline):undefined;\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 83,
+          "current": [
+            " pendingHiddenShellCases:NATIVE_HIDDEN_SHELL_CASES.map(row=>row.id),\n",
+            " nativeShellBaseline:null,exactShellScenarioPlanComplete:false,dynamicNavigationComplete:false,releaseEligible:false};\n"
           ],
           "original": [
-            " await page.addInitScript(({selectors,property,attributes})=>{\n",
-            "  const counts={busy:0,unavailable:0,alerts:0};\n",
-            "  Object.defineProperty(window,property,{value:counts});\n"
+            " pendingHiddenShellCases:['shell.payrollProcess.employee.hidden-denied','shell.payrollProcess.manager.hidden-denied',\n",
+            "  'shell.analytics.employee.hidden-denied','shell.analytics.manager.hidden-denied'],\n",
+            " exactShellScenarioPlanComplete:false,dynamicNavigationComplete:false,releaseEligible:false};\n"
           ]
         },
         {
-          "currentStart": 76,
+          "currentStart": 800,
           "current": [
-            "  const observe=(records:MutationRecord[])=>{\n"
+            "    if(NATIVE_HIDDEN_SHELL_CASES.some(row=>row.actorIndex===user.index))await nativeShell.captureActor(page,user.index);\n"
           ],
-          "original": [
-            "  new MutationObserver(records=>{\n"
-          ]
+          "original": []
         },
         {
-          "currentStart": 87,
+          "currentStart": 1392,
           "current": [
-            "  };\n",
-            "  const observer=new MutationObserver(observe);\n",
-            "  observer.observe(document,{childList:true,subtree:true,attributes:true,attributeOldValue:true,attributeFilter:Object.keys(attributes)});\n",
-            "  const snapshot=()=>{observe(observer.takeRecords());return{id,origin:location.origin,...counts};};\n",
-            "  Object.defineProperty(window,property,{value:snapshot});\n",
-            "  window.addEventListener('pagehide',event=>{\n",
-            "   const final=snapshot();observer.disconnect();\n",
-            "   const mask=Number(final.busy>0)+2*Number(final.unavailable>0)+4*Number(final.alerts>0);\n",
-            "   // A retired document may be disposed before the RPC returns. Only receipt\n",
-            "   // in the driver counts. Transport failure leaves its retirement missing.\n",
-            "   void Promise.resolve(send({id,key,mask,terminal:event.isTrusted&&!event.persisted})).catch(()=>{});\n",
-            "  },{once:true});\n"
+            "  if(!failures.failed()){\n",
+            "   report.nativeRenderedPreflight.nativeShellBaseline=nativeShell.finish();\n",
+            "   report.nativeRenderedPreflight.pendingHiddenShellCases=[];\n",
+            "   report.nativeRenderedPreflight.exactShellScenarioPlanComplete=true;\n",
+            "   report.nativeRenderedPreflight.workflowAndRenderedSlicePassed=true;\n",
+            "  }\n"
           ],
           "original": [
-            "  }).observe(document,{childList:true,subtree:true,attributes:true,attributeOldValue:true,attributeFilter:Object.keys(attributes)});\n"
-          ]
-        },
-        {
-          "currentStart": 100,
-          "current": [
-            " },{selectors,property:nativePrimaryProperty,attributes:nativeMarkerAttributes,ingress:BASE,binding:nativePrimaryBinding,key});\n",
-            "\n",
-            " const beginRetirement=()=>{\n",
-            "  assert(!retiring&&!awaitingSnapshot&&!finalBlank,'Native document transition already open');\n",
-            "  if(active){retiring={id:active,received:false};active=undefined;}\n",
-            " };\n",
-            " async function waitForRetirement(remaining:()=>number){\n",
-            "  const pending=retiring;\n",
-            "  if(pending&&!pending.received&&refusals===0)await new Promise<void>((resolve,reject)=>{\n",
-            "   const ms=remaining();assert(Number.isSafeInteger(ms)&&ms>0&&ms<=90000,'Native retirement wait outside deadline');\n",
-            "   const timer=setTimeout(()=>{pending.wake=undefined;refusals++;reject(Error('Native document retirement receipt missing'));},ms);\n",
-            "   pending.wake=()=>{clearTimeout(timer);pending.wake=undefined;resolve();};\n",
-            "  });\n",
-            "  assert(refusals===0&&(!pending||pending.received),'Native document retirement refused');\n",
-            "  retiring=undefined;\n",
-            " }\n",
-            " return {\n",
-            "  beforeNavigation(){beginRetirement();awaitingSnapshot=true;},\n",
-            "  async snapshot(remaining:()=>number){\n",
-            "   assert(awaitingSnapshot,'Native document snapshot without owned navigation');\n",
-            "   await waitForRetirement(remaining);\n",
-            "   const read=await page.evaluate(property=>{\n",
-            "    const snapshot=(window as unknown as Record<string,(()=>NativeDocumentSnapshot)|undefined>)[property];\n",
-            "    if(!snapshot)throw Error('Native primary failure-state observer missing');return snapshot();\n",
-            "   },nativePrimaryProperty);\n",
-            "   remaining();\n",
-            "   assert(read&&Object.keys(read).sort().join(',')==='alerts,busy,id,origin,unavailable'\n",
-            "    &&frame===page.mainFrame()&&new URL(frame.url()).origin===BASE&&read.origin===BASE\n",
-            "    &&typeof read.id==='string'&&nativeDocumentId.test(read.id)&&!seen.has(read.id)&&seen.size<72,'Native document snapshot identity differs');\n",
-            "   for(const count of [read.busy,read.unavailable,read.alerts])assert(Number.isSafeInteger(count)&&count>=0,'Native DOM failure count invalid');\n",
-            "   seen.add(read.id);active=read.id;awaitingSnapshot=false;\n",
-            "   return{busy:read.busy,unavailable:read.unavailable,alerts:read.alerts};\n",
-            "  },\n",
-            "  async finish(remaining:()=>number){\n",
-            "   assert(active,'Missing last native primary document');\n",
-            "   beginRetirement();\n",
-            "   const response=await page.goto('about:blank',{waitUntil:'commit',timeout:remaining()});\n",
-            "   assert(response===null&&page.url()==='about:blank','Native primary inert retirement navigation differs');\n",
-            "   await waitForRetirement(remaining);remaining();finalBlank=true;\n",
-            "  },\n",
-            "  facts(){return{admitted:seen.size,retired,refusals,finalBlank,markerDocuments:{...markerDocuments}};},\n",
-            "  requireSettled(expected:number){\n",
-            "   assert(finalBlank&&!active&&!retiring&&!awaitingSnapshot&&seen.size===expected&&retired===expected&&refusals===0,\n",
-            "    'Native primary document retirement census incomplete');\n",
-            "   assert(Object.values(markerDocuments).every(count=>count===0),'Native DOM failure observed through document retirement');\n",
-            "  },\n",
-            " };\n"
-          ],
-          "original": [
-            " },{selectors,property:nativePrimaryProperty,attributes:nativeMarkerAttributes});\n",
-            " nativePrimaryPages.add(page);\n",
-            "}\n",
-            "export async function capturedNativePrimaryFailures(page:Page){\n",
-            " assert(nativePrimaryPages.has(page),'Native primary failure observer not installed');\n",
-            " return page.evaluate(property=>{\n",
-            "  const counts=(window as unknown as Record<string,{busy:number;unavailable:number;alerts:number}|undefined>)[property];\n",
-            "  if(!counts)throw Error('Native primary failure-state observer missing');return {...counts};\n",
-            " },nativePrimaryProperty);\n"
+            "  if(!failures.failed())report.nativeRenderedPreflight.workflowAndRenderedSlicePassed=true;\n"
           ]
         }
       ]
     },
     "test/navigation-browser-capture.test.ts": {
       "parent": {
-        "bytes": 11181,
-        "sha256": "d2e4b404515c101c5b25ada762491798e86e479570e9e78d24a12773b23fb799",
-        "gitBlob": "4c8872828f37e536c77e4b0eeeee932d09cd9a01"
+        "bytes": 16249,
+        "sha256": "366f11f3890f31bfa62fe27d7139119806a5d64021e7452bf56712cd8c370f5a",
+        "gitBlob": "7fe389c21d4e23a016087b7aea070809da81d5ec"
       },
       "current": {
-        "bytes": 16249,
-        "sha256": "366f11f3890f31bfa62fe27d7139119806a5d64021e7452bf56712cd8c370f5a"
+        "bytes": 26365,
+        "sha256": "4c471b9810f1f765c0d647a0f9242fa7b9e4c64354212645f95cd42a72415746",
+        "gitBlob": "16beb58728167fd145bb3c7f227b8bd666def212"
       },
       "inverse": [
         {
-          "currentStart": 56,
+          "currentStart": 4,
           "current": [
-            "const ingress='https://localhost:3443';\n",
-            "const firstDocument='12345678-1234-4234-8234-123456789abc',secondDocument='12345678-1234-4234-9234-123456789abc';\n",
-            "function retirementPage(existing?:Page){\n",
-            " let url=ingress+'/',read=():unknown=>({id:firstDocument,origin:ingress,busy:0,unavailable:0,alerts:0});\n",
-            " const frame={url:()=>url},context={};\n",
-            " type Sender={page:unknown;frame:unknown;context:unknown};\n",
-            " let receive:(sender:Sender,...args:unknown[])=>unknown;\n",
-            " let onCommit=()=>{};\n",
-            " const page=Object.assign(existing??{}, {\n",
-            "  mainFrame:()=>frame,context:()=>context,url:()=>url,\n",
-            "  addInitScript:existing?.addInitScript??vi.fn(),\n",
-            "  exposeBinding:vi.fn(async(_name:string,callback:typeof receive)=>{receive=callback;}),\n",
-            "  evaluate:vi.fn(async()=>read()),\n",
-            "  goto:vi.fn(async(next:string)=>{url=next;onCommit();return next==='about:blank'?null:{status:()=>200};}),\n",
-            " })as unknown as Page;\n",
-            " const sender={page,frame,context};\n",
-            " return {page,sender,receive:(payload:unknown,source=sender)=>receive(source,payload),\n",
-            "  next:(fn:()=>void)=>{onCommit=fn;},read:(fn:()=>unknown)=>{read=fn;},\n",
-            "  receipt:(id=firstDocument)=>{\n",
-            "   const input=vi.mocked(page.addInitScript).mock.calls.at(-1)?.[1]as {key:string};\n",
-            "   return{id,mask:0,terminal:true,key:input.key};\n",
-            "  },\n",
-            " };\n",
-            "}\n"
+            "const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40),scenarioSha256:'d'.repeat(64)}));\n"
+          ],
+          "original": [
+            "const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40)}));\n"
+          ]
+        },
+        {
+          "currentStart": 7,
+          "current": [
+            " navigationSourceIdentity:()=>({harnessSha256:'c'.repeat(64),scenarioSha256:source.scenarioSha256,plan:{schemaVersion:1,fixture:'system-load-v1',engine:'chromium',scope:'Unit collector contract only',scenarios:[{\n"
+          ],
+          "original": [
+            " navigationSourceIdentity:()=>({harnessSha256:'c'.repeat(64),scenarioSha256:'d'.repeat(64),plan:{schemaVersion:1,fixture:'system-load-v1',engine:'chromium',scope:'Unit collector contract only',scenarios:[{\n"
+          ]
+        },
+        {
+          "currentStart": 14,
+          "current": [
+            "import {NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,\n",
+            " validateNativeShellBaseline,type NativeShellBaseline} from '../scripts/performance/navigation-protocol';\n"
           ],
           "original": []
         },
         {
           "currentStart": 87,
           "current": [
-            " it('keeps legacy separate and refuses markers queued after a clean snapshot when the document retires',async()=>{\n"
+            "afterEach(()=>{source.scenarioSha256='d'.repeat(64);vi.restoreAllMocks();vi.unstubAllEnvs();});\n"
           ],
           "original": [
-            " it('keeps legacy and native observers separate and retains transient native marker attributes',async()=>{\n"
+            "afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});\n"
           ]
         },
         {
-          "currentStart": 90,
+          "currentStart": 214,
           "current": [
-            "  const fixture=retirementPage(page),observer=await installNativePrimaryFailureObserver(page);\n",
-            "  await expect(installNativePrimaryFailureObserver(page)).rejects.toThrow(/already installed/);\n"
-          ],
-          "original": [
-            "  await installNativePrimaryFailureObserver(page);await installNativePrimaryFailureObserver(page);\n"
-          ]
-        },
-        {
-          "currentStart": 98,
-          "current": [
-            "  const observers:{options?:MutationObserverInit;pending:AttributeRecord[];disconnected:boolean}[]=[];\n"
-          ],
-          "original": [
-            "  const observers:{deliver:(records:AttributeRecord[])=>void;options?:MutationObserverInit}[]=[];\n"
-          ]
-        },
-        {
-          "currentStart": 100,
-          "current": [
-            "   entry:(typeof observers)[number]={pending:[],disconnected:false};\n",
-            "   constructor(){observers.push(this.entry);}\n"
-          ],
-          "original": [
-            "   entry:{deliver:(records:AttributeRecord[])=>void;options?:MutationObserverInit};\n",
-            "   constructor(deliver:(records:AttributeRecord[])=>void){this.entry={deliver};observers.push(this.entry);}\n"
-          ]
-        },
-        {
-          "currentStart": 103,
-          "current": [
-            "   takeRecords(){return this.entry.pending.splice(0);}\n",
-            "   disconnect(){this.entry.disconnected=true;}\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 106,
-          "current": [
-            "  let pagehide:(event:{isTrusted:boolean;persisted:boolean})=>void;\n",
-            "  const windowState:Record<string,unknown>={__aihrNativePrimaryRetirementV1:fixture.receive,\n",
-            "   addEventListener(name:string,listener:typeof pagehide){expect(name).toBe('pagehide');pagehide=listener;}};\n",
-            "  windowState.top=windowState;\n"
-          ],
-          "original": [
-            "  const windowState:Record<string,unknown>={};\n"
-          ]
-        },
-        {
-          "currentStart": 111,
-          "current": [
-            "  vi.stubGlobal('location',{origin:ingress});vi.stubGlobal('crypto',{randomUUID:()=>firstDocument});\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 114,
-          "current": [
-            "   observer.beforeNavigation();\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 118,
-          "current": [
-            "   fixture.read(windowState.__aihrNativePrimaryFailureCaptureV1 as ()=>unknown);\n",
-            "   expect(await observer.snapshot(()=>1000)).toEqual({busy:0,unavailable:0,alerts:0});\n"
-          ],
-          "original": []
-        },
-        {
-          "currentStart": 122,
-          "current": [
-            "   observers[1].pending.push(change(inMain,'data-page-busy',null),change(inMain,'data-page-busy',''),\n",
-            "    change(inMain,'data-read-unavailable','true'),change(inMain,'role','alert'),change(inMain,'role','status'),change(outside,'data-page-busy',''));\n",
-            "   fixture.next(()=>{expect(page.url()).toBe('about:blank');pagehide({isTrusted:true,persisted:false});});\n",
-            "   await observer.finish(()=>1000);\n",
-            "   expect(observers[1].disconnected).toBe(true);\n"
-          ],
-          "original": [
-            "   const records=[change(inMain,'data-page-busy',null),change(inMain,'data-page-busy',''),\n",
-            "    change(inMain,'data-read-unavailable','true'),change(inMain,'role','alert'),change(inMain,'role','status'),change(outside,'data-page-busy','')];\n",
-            "   for(const observer of observers)observer.deliver(records);\n"
-          ]
-        },
-        {
-          "currentStart": 128,
-          "current": [
-            "   expect(observer.facts()).toEqual({admitted:1,retired:1,refusals:0,finalBlank:true,markerDocuments:{busy:1,unavailable:1,alerts:1}});\n",
-            "   expect(()=>observer.requireSettled(1)).toThrow(/failure observed through document retirement/);\n"
-          ],
-          "original": [
-            "   expect(windowState.__aihrNativePrimaryFailureCaptureV1).toEqual({busy:1,unavailable:1,alerts:1});\n"
-          ]
-        },
-        {
-          "currentStart": 131,
-          "current": [
+            "\n",
+            "const nativeShellIdentity={candidateSha:source.sha,controllerSha:source.controller,runId:123,harnessSha256:'c'.repeat(64),\n",
+            " scenarioSha256:NATIVE_SHELL_LEGACY_SCENARIO_SHA256};\n",
+            "function modeledShellBaseline():NativeShellBaseline{\n",
+            " return {schemaVersion:1,protocol:NATIVE_SHELL_BASELINE_VERSION,releaseAuthorized:false,...nativeShellIdentity,runAttempt:1,\n",
+            "  legacyCases:48,nativeCases:52,retiredDocuments:8,extensionSha256:nativeHiddenShellCasesSha256(),complete:true,\n",
+            "  observations:NATIVE_HIDDEN_SHELL_CASES.map(({id,destinationId,role,actorIndex,entry,shellVisibility,originHref,href,outcome})=>({\n",
+            "   id,destinationId,role,actorIndex,entry,shellVisibility,originHref,href,outcome,originStatus:200,redirectStatus:307,finalStatus:200,finalHref:'/',\n",
+            "   internalSessionObserved:true,fixtureIdentityObserved:true,privateDestinationAbsent:true,elapsedMs:1200,\n",
+            "  }))};\n",
+            "}\n",
+            "type HiddenShellFixtureMode='exact'|'streamed'|'extra-hop'|'location'|'other-home'|'private-content'|'retired-marker';\n",
+            "function hiddenShellPage(mode:HiddenShellFixtureMode='exact'){\n",
+            " const {page,operations}=fictionalPage(),legacyGoto=page.goto.bind(page),legacyLocator=page.locator.bind(page);\n",
+            " const navigations:string[]=[],disposals:string[]=[];\n",
+            " let url=ingress+'/unit',id:string|undefined,serial=0,privateContent=false;\n",
+            " const frame={url:()=>url},context=page.context();\n",
+            " type Sender={page:Page;frame:typeof frame;context:typeof context};\n",
+            " let binding:((source:Sender,payload:{id:string;key:string;mask:number;terminal:true})=>unknown)|undefined;\n",
+            " let key:string|undefined;\n",
+            " const origin=ingress+'/';\n",
+            " const empty={count:async()=>0};\n",
+            " const accountSelector='button[data-tour=\"account\"]';\n",
+            " type ModeledRequest={url:()=>string;method:()=>string;resourceType:()=>string;isNavigationRequest:()=>boolean;frame:()=>typeof frame;\n",
+            "  redirectedFrom:()=>ModeledRequest|null;redirectedTo:()=>ModeledRequest|null;response:()=>Promise<unknown>};\n",
+            " const request=(address:string)=>{\n",
+            "  const linked:{from?:ModeledRequest;to?:ModeledRequest;response?:unknown}={};\n",
+            "  const value:ModeledRequest={url:()=>address,method:()=> 'GET',resourceType:()=> 'document',isNavigationRequest:()=>true,frame:()=>frame,\n",
+            "   redirectedFrom:()=>linked.from??null,redirectedTo:()=>linked.to??null,response:async()=>linked.response??null};\n",
+            "  return {value,linked};\n",
+            " };\n",
+            " const document=(address:string,status:number,location?:string)=>{\n",
+            "  const {value,linked}=request(address);\n",
+            "  const response={url:()=>address,status:()=>status,request:()=>value,headers:()=>({location}),fromServiceWorker:()=>false};\n",
+            "  linked.response=response;\n",
+            "  return {response,value,linked};\n",
+            " };\n",
+            " Object.assign(page,{\n",
+            "  url:()=>url,mainFrame:()=>frame,context:()=>context,\n",
+            "  exposeBinding:async(name:string,receiver:typeof binding)=>{\n",
+            "   expect(name).toBe('__aihrNativeHiddenShellRetirementV1');binding=receiver;\n",
+            "   return {dispose:async()=>{expect(url).toBe('about:blank');expect(disposals).toEqual(['script']);binding=undefined;disposals.push('binding');}};\n",
+            "  },\n",
+            "  addInitScript:async(_script:unknown,input:{key?:string})=>{\n",
+            "   if(input.key)key=input.key;\n",
+            "   return {dispose:async()=>{expect(url).toBe('about:blank');key=undefined;disposals.push('script');}};\n",
+            "  },\n",
+            "  evaluate:async(_fn:unknown,property?:string)=>{\n",
+            "   if(property!==undefined){expect(property).toBe('__aihrNativeHiddenShellFailureCaptureV1');expect(id).toBeDefined();}\n",
+            "   return {busy:0,unavailable:0,alerts:0,...(property?{id,origin:ingress}:{})};\n",
+            "  },\n",
+            "  locator(selector:string){\n",
+            "   if(!binding||selector===accountSelector||selector==='main')return legacyLocator(selector);\n",
+            "   if(selector==='aside[data-app-sidebar]')return {waitFor:async()=>{},locator:()=>empty};\n",
+            "   if(selector.startsWith('main [data-navigation-destination='))return {count:async()=>Number(privateContent)};\n",
+            "   return empty;\n",
+            "  },\n",
+            "  async goto(address:string,options:Parameters<Page['goto']>[1]){\n",
+            "   navigations.push(address);const legacy=await legacyGoto(address,options);\n",
+            "   if(!binding){url=address;return legacy;}\n",
+            "   if(id){expect(binding({page,frame,context},{id,key:key!,mask:mode==='retired-marker'&&address==='about:blank'?1:0,terminal:true})).toBe(true);}\n",
+            "   if(address==='about:blank'){url=address;id=undefined;return null;}\n",
+            "   id='12345678-1234-4234-8234-'+String(++serial).padStart(12,'0');\n",
+            "   if(address===origin){url=origin;privateContent=false;return document(origin,200).response;}\n",
+            "   expect([ingress+'/payroll',ingress+'/analytics']).toContain(address);\n",
+            "   url=mode==='other-home'?origin+'?foreign=1':origin;privateContent=mode==='private-content';\n",
+            "   const final=document(url,200);\n",
+            "   if(mode!=='streamed'){\n",
+            "    const prior=document(address,307,mode==='location'?'/other':'/');\n",
+            "    prior.linked.to=final.value;final.linked.from=prior.value;\n",
+            "    if(mode==='extra-hop')prior.linked.from=document(ingress+'/foreign',307,address).value;\n",
+            "   }\n",
+            "   return final.response;\n",
+            "  },\n",
             " });\n",
-            " it('requires two distinct receipts and one exact inert navigation before native primary settlement',async()=>{\n",
-            "  const fixture=retirementPage(),{page}=fixture,observer=await installNativePrimaryFailureObserver(page);\n",
-            "  observer.beforeNavigation();await page.goto(ingress+'/first');await observer.snapshot(()=>1000);\n",
-            "  expect(()=>observer.requireSettled(1)).toThrow(/incomplete/);\n",
-            "  observer.beforeNavigation();fixture.next(()=>{expect(fixture.receive(fixture.receipt())).toBe(true);});\n",
-            "  await page.goto(ingress+'/second');\n",
-            "  fixture.read(()=>({id:secondDocument,origin:ingress,busy:0,unavailable:0,alerts:0}));await observer.snapshot(()=>1000);\n",
-            "  fixture.next(()=>{});const finishing=observer.finish(()=>1000);\n",
-            "  await Promise.resolve();expect(page.url()).toBe('about:blank');\n",
-            "  expect(fixture.receive(fixture.receipt(secondDocument))).toBe(true);await finishing;\n",
-            "  expect(page.goto).toHaveBeenCalledTimes(3);\n",
-            "  expect(page.goto).toHaveBeenLastCalledWith('about:blank',{waitUntil:'commit',timeout:1000});\n",
-            "  expect(()=>observer.requireSettled(2)).not.toThrow();expect(()=>observer.requireSettled(1)).toThrow(/incomplete/);\n",
-            "  expect(fixture.receive(fixture.receipt(secondDocument))).toBe(false);\n",
-            "  expect(()=>observer.requireSettled(2)).toThrow(/incomplete/);\n",
+            " return {page,navigations,operations,disposals};\n",
+            "}\n",
+            "\n",
+            "describe('separate fixed native shell baseline data and driver controls',()=>{\n",
+            " it('binds only the four reviewed actor and route pairs to the distinct native shell scope',()=>{\n",
+            "  expect(NATIVE_HIDDEN_SHELL_CASES.map(row=>[row.id,row.actorIndex,row.href])).toEqual([\n",
+            "   ['shell.payrollProcess.employee.hidden-denied',4,'/payroll'],['shell.payrollProcess.manager.hidden-denied',2,'/payroll'],\n",
+            "   ['shell.analytics.employee.hidden-denied',4,'/analytics'],['shell.analytics.manager.hidden-denied',2,'/analytics'],\n",
+            "  ]);\n",
+            "  const record=modeledShellBaseline();expect(validateNativeShellBaseline(record,nativeShellIdentity)).toBe(record);\n",
+            "  const malformed:Array<[string,(r:NativeShellBaseline)=>void]>=[\n",
+            "   ['omitted',r=>{r.observations.pop();}],['duplicate',r=>{r.observations[3]=r.observations[0];}],\n",
+            "   ['actor',r=>{Reflect.set(r.observations[0],'actorIndex',5);}],['role',r=>{Reflect.set(r.observations[0],'role','groupHR');}],\n",
+            "   ['destination',r=>{Reflect.set(r.observations[0],'destinationId','shell.rosterManager');}],\n",
+            "   ['route',r=>{Reflect.set(r.observations[0],'href','/roster');}],['origin',r=>{Reflect.set(r.observations[0],'originHref','/login');}],\n",
+            "   ['denial',r=>{Reflect.set(r.observations[0],'outcome','usable');}],['shell visibility',r=>{Reflect.set(r.observations[0],'shellVisibility','visible');}],\n",
+            "   ['target',r=>{Reflect.set(r.observations[0],'finalHref','/?other=1');}],\n",
+            "   ['streamed',r=>{Reflect.set(r.observations[0],'redirectStatus',200);}],['entry',r=>{Reflect.set(r.observations[0],'entry','canonical-link');}],\n",
+            "   ['private destination',r=>{Reflect.set(r.observations[0],'privateDestinationAbsent',false);}],\n",
+            "   ['extension hash',r=>{r.extensionSha256='0'.repeat(64);}],['legacy hash',r=>{r.scenarioSha256='0'.repeat(64);}],\n",
+            "   ['harness hash',r=>{r.harnessSha256='0'.repeat(64);}],['retirement count',r=>{Reflect.set(r,'retiredDocuments',7);}],['extra key',r=>{Reflect.set(r.observations[0],'extra',true);}],\n",
+            "  ];\n",
+            "  for(const [name,change]of malformed){\n",
+            "   const wrong=structuredClone(record);change(wrong);\n",
+            "   expect(()=>validateNativeShellBaseline(wrong,nativeShellIdentity),name).toThrow(/Native (?:hidden shell observation|shell baseline identity or completeness) differs/);\n",
+            "  }\n",
             " });\n",
-            " it.each(['foreign-page','subframe','foreign-context','wrong-key','wrong-document','extra-field','out-of-range','persisted']as const)(\n",
-            "  'refuses an inadmissible native retirement receipt (%s)',async kind=>{\n",
-            "   const fixture=retirementPage(),observer=await installNativePrimaryFailureObserver(fixture.page);\n",
-            "   observer.beforeNavigation();await observer.snapshot(()=>1000);\n",
-            "   const receipt=fixture.receipt(),sender={...fixture.sender};\n",
-            "   let payload:object=receipt;\n",
-            "   if(kind==='foreign-page')sender.page=retirementPage().page;\n",
-            "   if(kind==='subframe')sender.frame={url:()=>ingress};\n",
-            "   if(kind==='foreign-context')sender.context={};\n",
-            "   if(kind==='wrong-key')receipt.key='unowned';\n",
-            "   if(kind==='wrong-document')receipt.id=secondDocument;\n",
-            "   if(kind==='extra-field')payload={...receipt,unexpected:0};\n",
-            "   if(kind==='out-of-range')receipt.mask=8;\n",
-            "   if(kind==='persisted')receipt.terminal=false;\n",
-            "   fixture.next(()=>{expect(fixture.receive(payload,sender)).toBe(false);});\n",
-            "   await expect(observer.finish(()=>1000)).rejects.toThrow(/retirement refused/);\n",
-            "   expect(observer.facts()).toMatchObject({admitted:1,retired:0,refusals:1,finalBlank:false});\n",
-            "  });\n",
-            " it('refuses a missing receipt within the remaining deadline after inert navigation',async()=>{\n",
-            "  const fixture=retirementPage(),observer=await installNativePrimaryFailureObserver(fixture.page);\n",
-            "  observer.beforeNavigation();await observer.snapshot(()=>1000);\n",
-            "  await expect(observer.finish(()=>1)).rejects.toThrow(/receipt missing/);\n",
-            "  expect(observer.facts()).toMatchObject({admitted:1,retired:0,refusals:1,finalBlank:false});\n"
+            " it('keeps the original v2 collector separate and requires the same Page, clean retirement and whole legacy census',async()=>{\n",
+            "  const ordinary=hiddenShellPage(),development=createNavigationCaptureCollector({phase:'baseline'});\n",
+            "  expect(()=>development.nativeHiddenShell(performance.now()+90000)).toThrow(/Exact legacy navigation/);\n",
+            "  await development.captureActor(ordinary.page,4);\n",
+            "  const old=development.finish();\n",
+            "  expect(ordinary.navigations).toEqual([ingress+'/unit']);expect(ordinary.disposals).toEqual([]);\n",
+            "  expect(old).toMatchObject({protocol:'aihr-navigation-development/v2',scenarioSha256:'d'.repeat(64),phase:'baseline'});\n",
+            "  expect(old.observations).toHaveLength(1);\n",
+            "\n",
+            "  source.scenarioSha256=NATIVE_SHELL_LEGACY_SCENARIO_SHA256;\n",
+            "  const current=hiddenShellPage(),collector=createNavigationCaptureCollector({phase:'baseline'});\n",
+            "  const native=collector.nativeHiddenShell(performance.now()+90000);\n",
+            "  await expect(native.captureActor(current.page,4)).rejects.toThrow(/same completed legacy actor Page/);\n",
+            "  await collector.captureActor(current.page,4);\n",
+            "  await expect(native.captureActor(ordinary.page,4)).rejects.toThrow(/same completed legacy actor Page/);\n",
+            "  await native.captureActor(current.page,4);\n",
+            "  expect(current.navigations).toEqual([ingress+'/unit',ingress+'/',ingress+'/payroll',ingress+'/',ingress+'/analytics','about:blank']);\n",
+            "  expect(current.disposals).toEqual(['script','binding']);\n",
+            "  expect(current.operations.filter(operation=>operation.startsWith('click:'))).toEqual(\n",
+            "   ordinary.operations.filter(operation=>operation.startsWith('click:')));\n",
+            "  await expect(native.captureActor(current.page,4)).rejects.toThrow(/same completed legacy actor Page/);\n",
+            "  const baseline=collector.finish();\n",
+            "  expect(baseline.observations).toEqual(old.observations);\n",
+            "  expect(baseline).not.toHaveProperty('extensionSha256');\n",
+            "  expect(()=>native.finish()).toThrow(/Exact complete legacy baseline/);\n",
+            " });\n",
+            " it.each([\n",
+            "  ['streamed','direct denial redirect chain'],\n",
+            "  ['extra-hop','direct denial redirect chain'],\n",
+            "  ['location','HTTP 307 to Home'],\n",
+            "  ['other-home','did not finish at Home'],\n",
+            "  ['private-content','private destination rendered'],\n",
+            "  ['retired-marker','failure observed through document retirement'],\n",
+            " ]as const)('refuses %s even with an ordinary signed-in baseline',async(mode,reason)=>{\n",
+            "  source.scenarioSha256=NATIVE_SHELL_LEGACY_SCENARIO_SHA256;\n",
+            "  const model=hiddenShellPage(mode),collector=createNavigationCaptureCollector({phase:'baseline'});\n",
+            "  const native=collector.nativeHiddenShell(performance.now()+90000);\n",
+            "  await collector.captureActor(model.page,4);\n",
+            "  await expect(native.captureActor(model.page,4)).rejects.toThrow(reason);\n",
+            "  expect(model.disposals).toEqual([]);\n",
+            " });\n",
+            "});\n"
+          ],
+          "original": []
+        }
+      ]
+    },
+    "test/navigation-shell-browser.dom.test.tsx": {
+      "parent": {
+        "bytes": 4435,
+        "sha256": "e6243e2a0ce2e0244106d64466bb295361801768adaabf5e14d7352c129ada52",
+        "gitBlob": "fc3074b318c6a7acb64f38f3e7859213d5b95dc9"
+      },
+      "current": {
+        "bytes": 7999,
+        "sha256": "bccdd4111795af2c08ce693f0a67f25a97d51443474bbb0125fa05c2584366a6",
+        "gitBlob": "917507b04da32c6bd30afafaed3a06c581e4d184"
+      },
+      "inverse": [
+        {
+          "currentStart": 4,
+          "current": [
+            "import {clickNativeShellDestination,assertNativeShellDestinationHidden} from '../scripts/performance/navigation-shell-browser';\n"
+          ],
+          "original": [
+            "import {clickNativeShellDestination} from '../scripts/performance/navigation-shell-browser';\n"
+          ]
+        },
+        {
+          "currentStart": 6,
+          "current": [
+            " constructor(private readonly nodes:()=>Element[],private readonly afterCount?:(count:number)=>void){}\n",
+            " async count(){const count=this.nodes().length;this.afterCount?.(count);return count;}\n"
+          ],
+          "original": [
+            " constructor(private readonly nodes:()=>Element[]){}\n",
+            " async count(){return this.nodes().length;}\n"
+          ]
+        },
+        {
+          "currentStart": 18,
+          "current": [
+            "const page=(afterTargetCount?:(count:number)=>void)=>({locator:(selector:string)=>new DomLocator(()=>Array.from(document.querySelectorAll(selector)),selector.includes(' a[href=')?afterTargetCount:undefined)})as unknown as Page;\n"
+          ],
+          "original": [
+            "const page=()=>({locator:(selector:string)=>new DomLocator(()=>Array.from(document.querySelectorAll(selector)))})as unknown as Page;\n"
+          ]
+        },
+        {
+          "currentStart": 49,
+          "current": [
+            "\n",
+            "it('observes absence through every native workspace/disclosure before a separate direct-route refusal',async()=>{\n",
+            " const clicks=fixture({denied:true});await assertNativeShellDestinationHidden(page(),'/analytics',()=>90000);\n",
+            " expect(clicks).toEqual(['workspace','nav-flyout-insights','nested']);\n",
+            " expect(document.querySelector('main button')!.getAttribute('aria-expanded')).toBe('false');\n",
+            "});\n",
+            "it('rejects visible, collapsed, disabled and later-mounted native destination anchors as hidden proof',async()=>{\n",
+            " for(const state of ['collapsed','visible','disabled','later-mounted']){\n",
+            "  const clicks=fixture({denied:state==='later-mounted'});\n",
+            "  const anchor=document.querySelector('nav a');\n",
+            "  if(state==='visible'){document.getElementById('nav-flyout-insights')!.removeAttribute('hidden');document.getElementById('nested')!.removeAttribute('hidden');}\n",
+            "  if(state==='disabled')anchor!.setAttribute('aria-disabled','true');\n",
+            "  if(state==='later-mounted')document.querySelector('[aria-controls=\"nested\"]')!.addEventListener('click',()=>{document.getElementById('nested')!.innerHTML='<a href=\"/analytics\">Newly mounted</a>';});\n",
+            "  await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');\n",
+            "  expect(clicks).not.toContain('destination');\n",
+            " }\n",
+            "});\n",
+            "it('keeps the original caller deadline and traversal bound for hidden observations',async()=>{\n",
+            " const clicks=fixture({denied:true});await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>{throw Error('same original deadline');})).rejects.toThrow('same original deadline');\n",
+            " expect(clicks).toEqual([]);\n",
+            "});\n",
+            "\n",
+            "it('refuses a destination mounted after the zero-count snapshot and before the visible read without clicking it',async()=>{\n",
+            " const clicks=fixture({denied:true});let mounted=false,zeroSnapshotObserved=false;\n",
+            " const racingPage=page(count=>{\n",
+            "  if(mounted)return;expect(count).toBe(0);zeroSnapshotObserved=true;mounted=true;\n",
+            "  const anchor=document.createElement('a');anchor.href='/analytics';anchor.textContent='Mounted between awaited reads';\n",
+            "  anchor.addEventListener('click',event=>{event.preventDefault();clicks.push('racing-destination');});\n",
+            "  document.querySelector('aside nav')!.append(anchor);\n",
+            " });\n",
+            " await expect(assertNativeShellDestinationHidden(racingPage,'/analytics',()=>90000)).rejects.toThrow('became visible');\n",
+            " expect(zeroSnapshotObserved).toBe(true);expect(mounted).toBe(true);expect(clicks).not.toContain('racing-destination');expect(clicks).not.toContain('destination');\n",
+            "});\n",
+            "it('rechecks mounted-anchor absence when a hidden anchor appears after the final visible-count snapshot',async()=>{\n",
+            " const clicks=fixture({denied:true});let targetReads=0,mounted=false;\n",
+            " const racingPage=page(count=>{\n",
+            "  targetReads++;if(targetReads!==2)return;expect(count).toBe(0);mounted=true;\n",
+            "  const anchor=document.createElement('a');anchor.href='/analytics';anchor.hidden=true;\n",
+            "  anchor.addEventListener('click',event=>{event.preventDefault();clicks.push('late-hidden-destination');});\n",
+            "  document.querySelector('aside nav')!.append(anchor);\n",
+            " });\n",
+            " await expect(assertNativeShellDestinationHidden(racingPage,'/analytics',()=>90000)).rejects.toThrow('before native workspace observation completed');\n",
+            " expect(mounted).toBe(true);expect(clicks).not.toContain('late-hidden-destination');expect(clicks).not.toContain('destination');\n",
+            "});\n"
           ],
           "original": []
         }
@@ -677,10 +1088,6 @@
       "bytes": 33134,
       "sha256": "6dae3cc787e5da49e8f00eb30e0d093f7669f8fff3f87aa5f966a00d9397ca7a"
     },
-    "scripts/performance/navigation-protocol.ts": {
-      "bytes": 12239,
-      "sha256": "338e8e65d7e18eb4aba1150860fd776be79036a729e1639366707a54ed8bf811"
-    },
     "scripts/performance/navigation-entry.ts": {
       "bytes": 1568,
       "sha256": "af01bdaec1bcd89272b7ae517b76a70dee974226d1d78f88c7717a63a9a0f919"
@@ -688,10 +1095,6 @@
     "scripts/performance/navigation-source.ts": {
       "bytes": 2337,
       "sha256": "8a43261888b9065e64ced5bca410a0c07917d3e9ee6215f57dcb3b8910467f9d"
-    },
-    "scripts/performance/navigation-shell-browser.ts": {
-      "bytes": 3377,
-      "sha256": "f9621840fd7bcc77934e57e890c0a3619376b2fc7134b69ec3896b9ca1248995"
     },
     "scripts/performance/navigation-coverage-ledger.json": {
       "bytes": 89071,
@@ -780,15 +1183,56 @@
     "app/assistant/page.tsx": {
       "bytes": 22426,
       "sha256": "327e8bc69317f19595cbeda33376361e6404a5c7088299791ae507fdba0b9960"
+    },
+    "scripts/performance/system-route-manifest.mjs": {
+      "bytes": 7652,
+      "sha256": "49b803a2a5d7ae3b841ee4d778f3a23deab192900b3bb02c17f5b2d210428589",
+      "gitBlob": "4df64b7aaf400b6aba32365045428667edc7bbb3"
+    },
+    "test/performance-route-manifest.test.ts": {
+      "bytes": 10642,
+      "sha256": "031faa76e0939ecc3d01d96750936b11992dfeed78b3bdbbc04ee0af880aeb33",
+      "gitBlob": "be717f733411ccdd01fe81b1fedbded6d63183c4"
+    },
+    "test/performance-shared-workload-owner.test.ts": {
+      "bytes": 7017,
+      "sha256": "b68935a68ea8c7cfaf99b2ae12946461e113aec17c8625cf01db95c647762a5b",
+      "gitBlob": "3f2925b2a3afbb5c22cd614a8fe8640f67f79575"
+    },
+    "app/payroll/page.tsx": {
+      "bytes": 33277,
+      "sha256": "020be4d61b24c677c5ae1428789ea8702cbcbe0256e0af7efabe5b4e6855d87d",
+      "gitBlob": "4568c4a746aa6600a8424e499444823fe56d3b9a"
+    },
+    "app/analytics/page.tsx": {
+      "bytes": 23153,
+      "sha256": "7f0c84a179e815b6c567347fbf5305b2bff6be4b29c8ae25e3312ab23aafbd03",
+      "gitBlob": "374f9d6e97d1ef740e1c1aa81844bde6d5a92e9f"
+    },
+    "lib/scope.ts": {
+      "bytes": 3497,
+      "sha256": "21b4eafd954753bd583da124ac1b029a03b638b73f8cd2381189f67bf2104897",
+      "gitBlob": "be579f0f1799c58e7364f41f04aecb89a433a182"
+    },
+    "lib/authz.ts": {
+      "bytes": 4399,
+      "sha256": "e83017da78add1970d8e67798e61c4e32a1df78173c0be8d993e1db46b2e5322",
+      "gitBlob": "d4f84d9d757733007487d34f306aaca870d60164"
+    },
+    "components/user-menu.tsx": {
+      "bytes": 13572,
+      "sha256": "32e5d2b4c7dfd9f9f3b3f63389920010db4feb2c6fe22674f4d2cc2d06f84195",
+      "gitBlob": "928c199c032d4b659026103ac39074a117e9c1ce"
     }
   },
   "originalIntegrationBase": "499f49f2d7c62d91e0b141bea237d77d75079ac8",
   "historicalSourceRecord": {
     "path": "docs/qualification/native-rendered-union-workflow-source-20261109.json",
-    "commit": "a8fa1bd8165fe55bf6ac44e1d41f5244fa0cb739",
-    "gitBlob": "c29a6c409492222b9caad7752b60a211fd591d1f",
-    "bytes": 42464,
-    "sha256": "ce91708cfc1407bc18b902fc5c94b03826afb175bca26b0dfecb8fa211926a38"
+    "commit": "4ce6776f5b2df28eb5977a6c9499f7f6cd4a539b",
+    "bytes": 37186,
+    "sha256": "f3007c38a334d4a08304ab07d1a5dac86d6442a4edc1305fedd94ddf411060a5",
+    "gitBlob": "2920dc2496e12e44acdae05afb4b6844ce382646"
   },
-  "independentParentSourceReviewSha256": "b733c3145161694f601bd5624c28b5bbbc5352b0a5a12fae1480d99ef6798f1c"
+  "independentParentSourceReviewSha256": "b733c3145161694f601bd5624c28b5bbbc5352b0a5a12fae1480d99ef6798f1c",
+  "reviewedShellSourceEvidenceSha256": "576a69d8b84d779701b8c75d4d01b2d68250ebcb6d6ea48c2912b839487c18b7"
 }

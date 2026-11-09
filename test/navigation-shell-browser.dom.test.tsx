@@ -2,10 +2,10 @@
 /** DOM adapter controls only. These do not qualify an actual application/browser. */
 import {afterEach,expect,it} from 'vitest';
 import type {Page} from 'playwright';
-import {clickNativeShellDestination} from '../scripts/performance/navigation-shell-browser';
+import {clickNativeShellDestination,assertNativeShellDestinationHidden} from '../scripts/performance/navigation-shell-browser';
 class DomLocator {
- constructor(private readonly nodes:()=>Element[]){}
- async count(){return this.nodes().length;}
+ constructor(private readonly nodes:()=>Element[],private readonly afterCount?:(count:number)=>void){}
+ async count(){const count=this.nodes().length;this.afterCount?.(count);return count;}
  nth(index:number){return new DomLocator(()=>this.nodes().slice(index,index+1));}
  async isVisible(){const node=this.single();for(let p:Element|null=node;p;p=p.parentElement)if(p.hasAttribute('hidden'))return false;return true;}
  async isEnabled(){return !this.single().hasAttribute('disabled');}
@@ -16,7 +16,7 @@ class DomLocator {
  locator(selector:string){return new DomLocator(()=>Array.from(this.single().querySelectorAll(selector)));}
  private single(){expect(this.nodes()).toHaveLength(1);return this.nodes()[0];}
 }
-const page=()=>({locator:(selector:string)=>new DomLocator(()=>Array.from(document.querySelectorAll(selector)))})as unknown as Page;
+const page=(afterTargetCount?:(count:number)=>void)=>({locator:(selector:string)=>new DomLocator(()=>Array.from(document.querySelectorAll(selector)),selector.includes(' a[href=')?afterTargetCount:undefined)})as unknown as Page;
 afterEach(()=>{document.body.replaceChildren();});
 function fixture({duplicate=false,denied=false}={}){
  document.body.innerHTML=`<main><button aria-expanded="false" aria-controls="danger">Save employment</button></main>
@@ -46,4 +46,48 @@ it('refuses duplicate and absent destinations without clicking any substitute ro
 it('refuses invalid addresses and obeys the caller deadline before traversing disclosures',async()=>{
  const clicks=fixture();await expect(clickNativeShellDestination(page(),'https://outside.invalid',()=>90000)).rejects.toThrow('reviewed static');
  await expect(clickNativeShellDestination(page(),'/analytics',()=>{throw Error('original deadline');})).rejects.toThrow('original deadline');expect(clicks).toEqual([]);
+});
+
+it('observes absence through every native workspace/disclosure before a separate direct-route refusal',async()=>{
+ const clicks=fixture({denied:true});await assertNativeShellDestinationHidden(page(),'/analytics',()=>90000);
+ expect(clicks).toEqual(['workspace','nav-flyout-insights','nested']);
+ expect(document.querySelector('main button')!.getAttribute('aria-expanded')).toBe('false');
+});
+it('rejects visible, collapsed, disabled and later-mounted native destination anchors as hidden proof',async()=>{
+ for(const state of ['collapsed','visible','disabled','later-mounted']){
+  const clicks=fixture({denied:state==='later-mounted'});
+  const anchor=document.querySelector('nav a');
+  if(state==='visible'){document.getElementById('nav-flyout-insights')!.removeAttribute('hidden');document.getElementById('nested')!.removeAttribute('hidden');}
+  if(state==='disabled')anchor!.setAttribute('aria-disabled','true');
+  if(state==='later-mounted')document.querySelector('[aria-controls="nested"]')!.addEventListener('click',()=>{document.getElementById('nested')!.innerHTML='<a href="/analytics">Newly mounted</a>';});
+  await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');
+  expect(clicks).not.toContain('destination');
+ }
+});
+it('keeps the original caller deadline and traversal bound for hidden observations',async()=>{
+ const clicks=fixture({denied:true});await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>{throw Error('same original deadline');})).rejects.toThrow('same original deadline');
+ expect(clicks).toEqual([]);
+});
+
+it('refuses a destination mounted after the zero-count snapshot and before the visible read without clicking it',async()=>{
+ const clicks=fixture({denied:true});let mounted=false,zeroSnapshotObserved=false;
+ const racingPage=page(count=>{
+  if(mounted)return;expect(count).toBe(0);zeroSnapshotObserved=true;mounted=true;
+  const anchor=document.createElement('a');anchor.href='/analytics';anchor.textContent='Mounted between awaited reads';
+  anchor.addEventListener('click',event=>{event.preventDefault();clicks.push('racing-destination');});
+  document.querySelector('aside nav')!.append(anchor);
+ });
+ await expect(assertNativeShellDestinationHidden(racingPage,'/analytics',()=>90000)).rejects.toThrow('became visible');
+ expect(zeroSnapshotObserved).toBe(true);expect(mounted).toBe(true);expect(clicks).not.toContain('racing-destination');expect(clicks).not.toContain('destination');
+});
+it('rechecks mounted-anchor absence when a hidden anchor appears after the final visible-count snapshot',async()=>{
+ const clicks=fixture({denied:true});let targetReads=0,mounted=false;
+ const racingPage=page(count=>{
+  targetReads++;if(targetReads!==2)return;expect(count).toBe(0);mounted=true;
+  const anchor=document.createElement('a');anchor.href='/analytics';anchor.hidden=true;
+  anchor.addEventListener('click',event=>{event.preventDefault();clicks.push('late-hidden-destination');});
+  document.querySelector('aside nav')!.append(anchor);
+ });
+ await expect(assertNativeShellDestinationHidden(racingPage,'/analytics',()=>90000)).rejects.toThrow('before native workspace observation completed');
+ expect(mounted).toBe(true);expect(clicks).not.toContain('late-hidden-destination');expect(clicks).not.toContain('destination');
 });

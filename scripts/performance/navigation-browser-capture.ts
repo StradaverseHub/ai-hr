@@ -7,11 +7,13 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import type {Page,Response} from 'playwright';
 import {fixtureNavigationActor,navigationExpectedText,NAVIGATION_CAPTURE_MEMBER,NAVIGATION_CAPTURE_VERSION,validateNavigationCapture,
- type NavigationCapture,type NavigationCaptureBundle,type NavigationObservation,type NavigationScenario,type NavigationFixtureTextBindings} from './navigation-protocol';
+ NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,validateNativeShellBaseline,
+ type NavigationCapture,type NavigationCaptureBundle,type NavigationObservation,type NavigationScenario,type NavigationFixtureTextBindings,
+ type NativeHiddenShellCase,type NativeHiddenShellObservation,type NativeShellIdentity} from './navigation-protocol';
 import {navigationCleanHead,navigationSourceIdentity} from './navigation-source';
 import {readNavigationFixtureBindings} from './navigation-fixture-bindings';
 import {navigationScenarioEntry} from './navigation-entry';
-import {clickNativeShellDestination} from './navigation-shell-browser';
+import {assertNativeShellDestinationHidden,clickNativeShellDestination} from './navigation-shell-browser';
 const BASE='https://localhost:3443';
 const failuresSelector={busy:'main[data-personnel-busy],main[data-page-busy],main [data-personnel-busy],main [data-page-busy]',
  unavailable:'main [data-read-unavailable],main [data-today-unavailable]',alerts:'main [role="alert"]'} as const;
@@ -38,6 +40,7 @@ async function capturedFailures(page:Page){
 const nativePrimaryProperty='__aihrNativePrimaryFailureCaptureV1';
 const nativePrimaryBinding='__aihrNativePrimaryRetirementV1';
 const nativePrimaryPages=new WeakSet<Page>();
+const nativeHiddenShellPages=new WeakSet<Page>();
 const nativeMarkerAttributes={'data-personnel-busy':'busy','data-page-busy':'busy',
  'data-read-unavailable':'unavailable','data-today-unavailable':'unavailable',role:'alerts'}as const;
 const nativeDocumentId=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -47,12 +50,19 @@ type NativeDocumentSnapshot={id:string;origin:string;busy:number;unavailable:num
 /** One already-owned primary Page. The bridge can only record failures and
  * acknowledge retirement of a document the driver has independently observed. */
 export async function installNativePrimaryFailureObserver(page:Page){
- assert(!nativePrimaryPages.has(page),'Native primary retirement observer already installed');nativePrimaryPages.add(page);
+ return (await installNativeDocumentFailureObserver(page,'primary')).retirement;
+}
+
+async function installNativeDocumentFailureObserver(page:Page,scope:'primary'|'hidden-shell'){
+ const primary=scope==='primary',pages=primary?nativePrimaryPages:nativeHiddenShellPages;
+ assert(!pages.has(page),'Native document retirement observer already installed');pages.add(page);
+ const binding=primary?nativePrimaryBinding:'__aihrNativeHiddenShellRetirementV1';
+ const property=primary?nativePrimaryProperty:'__aihrNativeHiddenShellFailureCaptureV1';
  const frame=page.mainFrame(),context=page.context(),key=randomUUID(),seen=new Set<string>();
  const markerDocuments={busy:0,unavailable:0,alerts:0};
  let active:string|undefined,retiring:Retirement|undefined,awaitingSnapshot=false,finalBlank=false,retired=0,refusals=0;
  const refuse=()=>{refusals++;retiring?.wake?.();return false;};
- await page.exposeBinding(nativePrimaryBinding,(source,...args:unknown[])=>{
+ const bridge=await page.exposeBinding(binding,(source,...args:unknown[])=>{
   const payload=args[0]as {key?:unknown;id?:unknown;mask?:unknown;terminal?:unknown}|null|undefined;
   if(source.page!==page||source.frame!==frame||source.context!==context||args.length!==1||!payload||typeof payload!=='object'
    ||Object.keys(payload).sort().join(',')!=='id,key,mask,terminal'||payload.key!==key
@@ -67,7 +77,7 @@ export async function installNativePrimaryFailureObserver(page:Page){
  });
  const selectors={...failuresSelector,unavailable:failuresSelector.unavailable+',main[data-read-unavailable],main[data-today-unavailable]',
   alerts:failuresSelector.alerts+',main[role="alert"]'};
- await page.addInitScript(({selectors,property,attributes,ingress,binding,key})=>{
+ const script=await page.addInitScript(({selectors,property,attributes,ingress,binding,key})=>{
   if(window.top!==window||location.origin!==ingress)return;
   const send=(window as unknown as Record<string,unknown>)[binding];
   if(typeof send!=='function')throw Error('Native primary retirement binding missing');
@@ -98,7 +108,7 @@ export async function installNativePrimaryFailureObserver(page:Page){
    void Promise.resolve(send({id,key,mask,terminal:event.isTrusted&&!event.persisted})).catch(()=>{});
   },{once:true});
   inspect();
- },{selectors,property:nativePrimaryProperty,attributes:nativeMarkerAttributes,ingress:BASE,binding:nativePrimaryBinding,key});
+ },{selectors,property,attributes:nativeMarkerAttributes,ingress:BASE,binding,key});
 
  const beginRetirement=()=>{
   assert(!retiring&&!awaitingSnapshot&&!finalBlank,'Native document transition already open');
@@ -114,7 +124,7 @@ export async function installNativePrimaryFailureObserver(page:Page){
   assert(refusals===0&&(!pending||pending.received),'Native document retirement refused');
   retiring=undefined;
  }
- return {
+ const retirement={
   beforeNavigation(){beginRetirement();awaitingSnapshot=true;},
   async snapshot(remaining:()=>number){
    assert(awaitingSnapshot,'Native document snapshot without owned navigation');
@@ -122,7 +132,7 @@ export async function installNativePrimaryFailureObserver(page:Page){
    const read=await page.evaluate(property=>{
     const snapshot=(window as unknown as Record<string,(()=>NativeDocumentSnapshot)|undefined>)[property];
     if(!snapshot)throw Error('Native primary failure-state observer missing');return snapshot();
-   },nativePrimaryProperty);
+   },property);
    remaining();
    assert(read&&Object.keys(read).sort().join(',')==='alerts,busy,id,origin,unavailable'
     &&frame===page.mainFrame()&&new URL(frame.url()).origin===BASE&&read.origin===BASE
@@ -145,6 +155,13 @@ export async function installNativePrimaryFailureObserver(page:Page){
    assert(Object.values(markerDocuments).every(count=>count===0),'Native DOM failure observed through document retirement');
   },
  };
+ return {retirement,async disposeHiddenShell(){
+  assert(!primary,'Native primary observer remains bound to its Page lifetime');
+  retirement.requireSettled(4);
+  // The last tracked document is already retired at about:blank. Remove this
+  // scope before the same Page begins the independent 187-route observer.
+  await script.dispose();await bridge.dispose();
+ }};
 }
 
 const browserFailureCounts=()=>({aborted:0,transport:0,http5xx:0,pageError:0,consoleError:0,crash:0});
@@ -179,9 +196,16 @@ export function createNavigationCaptureCollector({phase,sourceRoot=process.cwd()
  assert(candidateSha===process.env.AIHR_CI_HEAD&&/^[a-f0-9]{40}$/.test(controllerSha),'Exact navigation candidate/controller required');
  const runId=Number(process.env.GITHUB_RUN_ID);assert(Number.isSafeInteger(runId)&&runId>0&&process.env.GITHUB_RUN_ATTEMPT==='1','First hosted navigation attempt required');
  const identity=navigationSourceIdentity(sourceRoot,candidateSha),fixtureBindings=readNavigationFixtureBindings(),observations:NavigationObservation[]=[],seen=new Set<string>();
- let sealed=false;
+ let sealed=false,legacyCapture:NavigationCapture|undefined;
+ let nativeShell:ReturnType<typeof createNativeHiddenShellCollector>|undefined;
  return {
   phase,
+  nativeHiddenShell(deadline:number){
+   assert(phase==='baseline'&&!sealed&&!nativeShell&&!seen.size,'Native shell requires one fresh baseline collector');
+   const source={candidateSha,controllerSha,runId,harnessSha256:identity.harnessSha256,scenarioSha256:identity.scenarioSha256};
+   nativeShell=createNativeHiddenShellCollector(source,deadline,()=>legacyCapture);
+   return {captureActor:nativeShell.captureActor,finish:nativeShell.finish};
+  },
   async captureActor(page:Page,actorIndex:number,loadState?:()=>LoadState){
    assert(!sealed,'Navigation capture already sealed');fixtureRealm();
    const actor=fixtureNavigationActor(actorIndex),scenarios=identity.plan.scenarios.filter(row=>row.role===actor.role);
@@ -192,13 +216,15 @@ export function createNavigationCaptureCollector({phase,sourceRoot=process.cwd()
     const observation=await captureScenario(page,actorIndex,scenario,phase,bindings,loadState);
     observations.push(observation);seen.add(scenario.id);
    }
+   nativeShell?.bindLegacyRole(page,actorIndex);
   },
   finish():NavigationCapture{
    assert(!sealed,'Navigation capture already sealed');sealed=true;
    assert(navigationCleanHead(sourceRoot)===candidateSha,'Navigation source changed while executing');
-   return validateNavigationCapture({schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,fixture:identity.plan.fixture,engine:identity.plan.engine,
+   legacyCapture=validateNavigationCapture({schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,fixture:identity.plan.fixture,engine:identity.plan.engine,
     candidateSha,controllerSha,runId,runAttempt:1,harnessSha256:identity.harnessSha256,scenarioSha256:identity.scenarioSha256,phase,complete:true,observations},identity.plan,
     {candidateSha,controllerSha,runId,harnessSha256:identity.harnessSha256,scenarioSha256:identity.scenarioSha256,phase});
+   return legacyCapture;
   },
  };
 }
@@ -287,4 +313,107 @@ export function writeNavigationCaptureBundle(outputDirectory:string,baseline:Nav
  const bundle:NavigationCaptureBundle={schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,baseline,...(loaded?{loaded}:{})};
  writeFileSync(join(outputDirectory,NAVIGATION_CAPTURE_MEMBER),JSON.stringify(bundle,null,2)+'\n',{mode:0o600,flag:'wx'});
  return bundle;
+}
+
+const exactHome=BASE+'/';
+const nativePrivateContent={
+ 'shell.payrollProcess':'main [data-tour="payroll-batches"],main [data-tour="payroll-create"]',
+ 'shell.analytics':'main [data-analytics-metric],main [data-analytics-value]',
+} as const;
+
+function createNativeHiddenShellCollector(source:NativeShellIdentity,deadline:number,legacy:()=>NavigationCapture|undefined){
+ assert(Number.isFinite(deadline)&&deadline>performance.now(),'Owned native shell deadline required');
+ assert(source.scenarioSha256===NATIVE_SHELL_LEGACY_SCENARIO_SHA256,'Exact legacy navigation scenario source required');
+ const legacyPages=new Map<number,Page>(),started=new Set<number>();
+ const retired=new Map<number,Awaited<ReturnType<typeof installNativePrimaryFailureObserver>>>();
+ const observations=new Map<string,NativeHiddenShellObservation>();
+ let sealed=false;
+ return {
+  bindLegacyRole(page:Page,actorIndex:number){
+   if(NATIVE_HIDDEN_SHELL_CASES.some(row=>row.actorIndex===actorIndex)){
+    assert(!legacyPages.has(actorIndex),'Native shell actor already bound');
+    legacyPages.set(actorIndex,page);
+   }
+  },
+  async captureActor(page:Page,actorIndex:number){
+   assert(!sealed&&!started.has(actorIndex)&&legacyPages.get(actorIndex)===page,'Native shell requires the same completed legacy actor Page');
+   const rows=NATIVE_HIDDEN_SHELL_CASES.filter(row=>row.actorIndex===actorIndex);
+   assert(rows.length===2,'Native shell actor differs');
+   assert(performance.now()<deadline,'Owned native shell deadline closed before observation');started.add(actorIndex);
+   const observer=await installNativeDocumentFailureObserver(page,'hidden-shell');
+   const {retirement}=observer;
+   for(const [index,row]of rows.entries()){
+    const began=performance.now(),limit=Math.min(deadline,began+90000);
+    const remaining=()=>{const ms=Math.floor(limit-performance.now());assert(ms>0,'Native hidden shell deadline exceeded');return ms;};
+    observations.set(row.id,await captureNativeHiddenShellScenario(page,row,retirement,remaining,began));
+    if(index===rows.length-1){
+     await retirement.finish(remaining);
+     await observer.disposeHiddenShell();remaining();
+     retired.set(actorIndex,retirement);
+    }
+   }
+  },
+  finish(){
+   assert(!sealed,'Native shell baseline already sealed');sealed=true;
+   const baseline=legacy();
+   assert(baseline?.complete&&baseline.phase==='baseline'&&baseline.observations.length===48,'Exact complete legacy baseline required for native shell');
+   assert(retired.size===2&&observations.size===4,'Native hidden shell document or observation census differs');
+   let retiredDocuments=0;
+   for(const retirement of retired.values()){
+    retirement.requireSettled(4);retiredDocuments+=retirement.facts().retired;
+   }
+   assert(retiredDocuments===8&&performance.now()<deadline,'Native shell retirement census or terminal deadline differs');
+   return validateNativeShellBaseline({schemaVersion:1,protocol:NATIVE_SHELL_BASELINE_VERSION,releaseAuthorized:false,
+    ...source,runAttempt:1,legacyCases:48,nativeCases:52,retiredDocuments,extensionSha256:nativeHiddenShellCasesSha256(),complete:true,
+    observations:NATIVE_HIDDEN_SHELL_CASES.map(row=>observations.get(row.id))},source);
+  },
+ };
+}
+
+async function captureNativeHiddenShellScenario(page:Page,row:NativeHiddenShellCase,retirement:Awaited<ReturnType<typeof installNativePrimaryFailureObserver>>,remaining:()=>number,began:number):Promise<NativeHiddenShellObservation>{
+ const actor=fixtureNavigationActor(row.actorIndex),frame=page.mainFrame();
+ assert(actor.role===row.role,'Native hidden shell actor differs');
+ const cookies=await page.context().cookies(BASE);
+ assert(cookies.some(cookie=>cookie.name==='__Host-aihr_internal'&&cookie.value&&cookie.secure&&cookie.httpOnly&&cookie.path==='/'),
+  'Native hidden shell authenticated session missing');
+ const nativeDocument=(response:Response,url:string,status:number)=>{
+  const request=response.request();
+  return response.status()===status&&response.url()===url&&!response.fromServiceWorker()&&request.url()===url&&
+   request.method()==='GET'&&request.isNavigationRequest()&&request.resourceType()==='document'&&request.frame()===frame;
+ };
+ const verifyHome=async()=>{
+  assert(page.url()===exactHome,'Native hidden shell Home address differs');
+  await page.locator('main').waitFor({state:'visible',timeout:remaining()});
+  const account=page.locator('button[data-tour="account"]');
+  await account.first().waitFor({state:'visible',timeout:remaining()});
+  assert(await account.count()===1&&await account.isEnabled({timeout:remaining()}),'Native hidden shell account control differs');
+  const name=account.getByText(actor.name,{exact:true});
+  await name.first().waitFor({state:'visible',timeout:remaining()});
+  assert(await name.count()===1&&await name.innerText({timeout:remaining()})===actor.name,'Native hidden shell fixture identity differs');
+  const destination='main [data-navigation-destination="'+row.destinationId+'"],main[data-navigation-destination="'+row.destinationId+'"]';
+  assert(await page.locator(destination+','+nativePrivateContent[row.destinationId]).count()===0,'Native hidden shell private destination rendered');
+  assert(page.url()===exactHome,'Native hidden shell Home changed during observation');
+ };
+ const requireCleanDocument=async()=>{
+  const facts=await retirement.snapshot(remaining);
+  assert(Object.values(facts).every(count=>count===0),'Native hidden shell rendered a DOM failure');
+ };
+ retirement.beforeNavigation();
+ const origin=await page.goto(BASE+row.originHref,{waitUntil:'domcontentloaded',timeout:remaining()});
+ assert(origin&&nativeDocument(origin,exactHome,200)&&!origin.request().redirectedFrom(),'Native hidden shell origin document differs');
+ await verifyHome();await requireCleanDocument();
+ await assertNativeShellDestinationHidden(page,row.href,remaining);
+ assert(page.url()===exactHome,'Native hidden shell changed origin while traversing');
+ retirement.beforeNavigation();
+ const final=await page.goto(BASE+row.href,{waitUntil:'domcontentloaded',timeout:remaining()});
+ assert(final&&nativeDocument(final,exactHome,200),'Native hidden shell direct denial did not finish at Home');
+ const finalRequest=final.request(),prior=finalRequest.redirectedFrom();
+ assert(prior&&!prior.redirectedFrom()&&prior.redirectedTo()===finalRequest&&prior.url()===BASE+row.href,'Native hidden shell direct denial redirect chain differs');
+ const redirect=await prior.response(),location=redirect?.headers().location;
+ assert(redirect&&redirect.request()===prior&&nativeDocument(redirect,BASE+row.href,307)&&(location==='/'||location===exactHome),'Native hidden shell HTTP 307 to Home required');
+ await verifyHome();await requireCleanDocument();
+ assert(page.url()===exactHome,'Native hidden shell Home changed before observation completed');remaining();
+ return {id:row.id,destinationId:row.destinationId,role:row.role,actorIndex:row.actorIndex,entry:row.entry,shellVisibility:row.shellVisibility,
+  originHref:row.originHref,href:row.href,outcome:row.outcome,originStatus:200,redirectStatus:307,finalStatus:200,finalHref:'/',
+  internalSessionObserved:true,fixtureIdentityObserved:true,privateDestinationAbsent:true,elapsedMs:performance.now()-began};
 }

@@ -8,6 +8,7 @@ import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,installNativePrimaryFailureObserver,
  createNativeBrowserFailureObservation} from './navigation-browser-capture.ts';
+import {NATIVE_HIDDEN_SHELL_CASES} from './navigation-protocol.ts';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
 import {attendanceRejectionProbeEnabled,prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
@@ -66,6 +67,7 @@ const errorLabel=reason=>{const {kind,code}=driverErrorFact(reason);return code?
 const suite=nativePreflight?'workflow-preflight':process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','whole-system','workflow-preflight'].includes(suite));
 const baselineNavigation=suite==='claims-heavy'?undefined:createNavigationCaptureCollector({phase:'baseline'});
 const loadedNavigation=suite==='whole-system'?createNavigationCaptureCollector({phase:'loaded'}):undefined;
+const nativeShell=nativePreflight?baselineNavigation.nativeHiddenShell(nativeDeadline):undefined;
 // Keep complete role routes for baseline and whole-system browser pilots.
 const routePool=user=>routePools[user.role];
 const measuredRoutePools=suite==='whole-system'?routePools:{employee:['/me','/claims','/leave'],manager:['/approvals','/claims','/performance/home'],companyHR:['/admin/personnel','/payroll','/claims'],groupHR:['/admin/personnel','/payroll','/claims']};
@@ -79,9 +81,8 @@ const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report
 const nativeBrowserFailures=nativePreflight?createNativeBrowserFailureObservation():null;
 const nativePrimaryDocuments=[];
 if(nativePreflight)report.nativeRenderedPreflight={kind:'NATIVE_PRIMARY_ROUTE_UNION',observations:[],union:null,workflowAndRenderedSlicePassed:false,
- pendingHiddenShellCases:['shell.payrollProcess.employee.hidden-denied','shell.payrollProcess.manager.hidden-denied',
-  'shell.analytics.employee.hidden-denied','shell.analytics.manager.hidden-denied'],
- exactShellScenarioPlanComplete:false,dynamicNavigationComplete:false,releaseEligible:false};
+ pendingHiddenShellCases:NATIVE_HIDDEN_SHELL_CASES.map(row=>row.id),
+ nativeShellBaseline:null,exactShellScenarioPlanComplete:false,dynamicNavigationComplete:false,releaseEligible:false};
 function nativeRemaining(deadline){const remaining=Math.floor(deadline-performance.now());assert(remaining>0,'Owned native preflight route deadline closed');return remaining;}
 function processCpu(ids){
  const ticks=Number(process.env.PERF_CLOCK_TICKS);
@@ -797,6 +798,7 @@ async function main(){
    await visit(page,user,'/','sign-in-preflight',true);
    if(baselineNavigation)await baselineNavigation.captureActor(page,user.index);
    if(nativePreflight){
+    if(NATIVE_HIDDEN_SHELL_CASES.some(row=>row.actorIndex===user.index))await nativeShell.captureActor(page,user.index);
     const nativeDom=await installNativePrimaryFailureObserver(page),paths=routePool(user);
     nativePrimaryDocuments.push({actorIndex:user.index,expected:paths.length,nativeDom});
     for(const path of paths){
@@ -1388,7 +1390,12 @@ if(nativePreflight){
   nativeBrowserFailures.requireClean();
   assert.equal(report.browserErrors.length,0,'Native late browser runtime errors');
   nativeRemaining(nativeDeadline);
-  if(!failures.failed())report.nativeRenderedPreflight.workflowAndRenderedSlicePassed=true;
+  if(!failures.failed()){
+   report.nativeRenderedPreflight.nativeShellBaseline=nativeShell.finish();
+   report.nativeRenderedPreflight.pendingHiddenShellCases=[];
+   report.nativeRenderedPreflight.exactShellScenarioPlanComplete=true;
+   report.nativeRenderedPreflight.workflowAndRenderedSlicePassed=true;
+  }
  });
 }
 report.driverFailures=failures.publicFailures();

@@ -9,7 +9,7 @@ async function visible(locator:Locator){
  for(let i=0;i<count;i++){const item=locator.nth(i);if(await item.isVisible())result.push(item);}
  return result;
 }
-export async function clickNativeShellDestination(page:Page,href:string,remaining:()=>number){
+async function traverseNativeShellDestination(page:Page,href:string,remaining:()=>number,mode:'click'|'hidden'){
  assert(/^\/[a-z0-9/-]+$/.test(href),'Only reviewed static shell destinations are supported');
  const sidebar=page.locator('aside[data-app-sidebar]');
  await sidebar.waitFor({state:'visible',timeout:remaining()});
@@ -33,8 +33,13 @@ export async function clickNativeShellDestination(page:Page,href:string,remainin
   }
   const opened=new Set<string>();
   for(;;){
-   remaining();const links=await visible(target);assert(links.length<=1,'Native shell destination is ambiguous');
-   if(links.length){
+   remaining();
+   // A retained hidden/disabled anchor is not permission-filtered absence. Check
+   // every mounted native shell, including collapsed and alternate workspaces.
+   if(mode==='hidden')assert(await target.count()===0,'Denied destination is still rendered in the native shell');
+   const links=await visible(target);assert(links.length<=1,'Native shell destination is ambiguous');
+   if(mode==='hidden')assert(links.length===0,'Denied destination became visible in the native shell');
+   if(mode==='click'&&links.length){
     assert(await links[0].getAttribute('href')===href&&await links[0].isEnabled(),'Native shell destination changed or is unavailable');
     await links[0].click({timeout:remaining()});return;
    }
@@ -51,6 +56,16 @@ export async function clickNativeShellDestination(page:Page,href:string,remainin
    await page.locator(roots.map(root=>root+' button[aria-controls='+JSON.stringify(id)+'][aria-expanded="true"]').join(','))
     .waitFor({state:'visible',timeout:remaining()});
   }
+  if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native workspace observation completed');
  }
- throw Error('Reviewed destination is absent from the actual native shell');
+ if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native shell observation completed');
+ if(mode==='click')throw Error('Reviewed destination is absent from the actual native shell');
+}
+export async function clickNativeShellDestination(page:Page,href:string,remaining:()=>number){
+ await traverseNativeShellDestination(page,href,remaining,'click');
+}
+/** Absence is observed through the real disclosures, then the collector separately
+ * exercises the native direct-route refusal. This is not a permission resolver. */
+export async function assertNativeShellDestinationHidden(page:Page,href:string,remaining:()=>number){
+ await traverseNativeShellDestination(page,href,remaining,'hidden');
 }
