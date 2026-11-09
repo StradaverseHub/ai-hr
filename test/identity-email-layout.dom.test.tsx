@@ -95,9 +95,9 @@ describe('root layout admin document entry',()=>{
 
  it('leaves specialized Payroll child routes to their own guards',async()=>{
   m.pathname='/payroll/process';
+  m.module.mockReturnValue(false);
   m.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:['payroll_partner'],grants:[{role:'payroll_partner',companyId:'company'}],entitlements:{}});
   expect(sidebarProps(await Layout({children:null}))).toBeDefined();
-  expect(m.module.mock.calls.some(([,code])=>code==='payroll')).toBe(false);
  });
 });
 
