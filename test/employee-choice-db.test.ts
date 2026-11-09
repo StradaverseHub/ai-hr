@@ -300,7 +300,8 @@ it('compares represented Department pairs under actual native scope and independ
   if(!original||!forwarded||!pairs)throw new Error('Missing forwarded native Department result');
   return {page,original:dialect.sqlToQuery(original),forwarded,pairs};
  };
- const compare=async(ctx:SessionContext,input:Input,total:number,pairs:string[][],visibility?:boolean[])=>database.withTenant(ctx,async tx=>{
+ type HistoricalAssignment={id:string;employmentId:string;departmentId:string;validTo:string|null;supersededAt:Date|null};
+ const compare=async(ctx:SessionContext,input:Input,total:number,pairs:string[][],visibility?:boolean[],history?:HistoricalAssignment)=>database.withTenant(ctx,async tx=>{
   await tx.execute(sql`set local lock_timeout='300ms'`);
   await tx.execute(sql`set local statement_timeout='3s'`);
   const [identity]=await tx.execute(sql`select current_user as role,session_user as login,
@@ -321,6 +322,11 @@ it('compares represented Department pairs under actual native scope and independ
     exists(select 1 from public.person where id=${transferred.personId}::uuid and tenant_id=${b.tenantId}::uuid) as p,
     exists(select 1 from public.assignment where id=${transferred.assignmentId!}::uuid and tenant_id=${b.tenantId}::uuid) as a`);
    expect(native).toEqual({e:visibility[0],p:visibility[1],a:visibility[2]});
+  }
+  if(history){
+   const rows=await tx.select({id:assignment.id,employmentId:assignment.employmentId,departmentId:assignment.departmentId,
+    validTo:assignment.validTo,supersededAt:assignment.supersededAt}).from(assignment).where(eq(assignment.id,history.id));
+   expect(rows).toEqual([history]);
   }
   if(input.employmentIds?.length===0){
    type EmptyPlan={'Relation Name'?:string;'Actual Loops':number;'Actual Rows':number;Plans?:EmptyPlan[]};
@@ -351,6 +357,15 @@ it('compares represented Department pairs under actual native scope and independ
  await compare(f.ctx,{companyIds:[],employmentIds:limited},2,limitedPairs);
  await compare(f.ctx,{companyIds:[],employmentIds:[...limited,alpha.id]},2,limitedPairs);
  await compare(f.ctx,{companyIds:[],employmentIds:[]},0,[]);
+ const closed={id:f.closedUnassigned,employmentId:unassigned.id,departmentId:b.deptA,validTo:'2021-01-01',supersededAt:null};
+ await compare(f.ctx,{companyIds:[b.companyId],employmentIds:[unassigned.id]},1,[],undefined,closed);
+ // Alpha has a current Finance row and a superseded Operations row with a NULL end.
+ try{
+  const changed=await owner.db.update(assignment).set({validTo:null}).where(eq(assignment.id,f.supersededAlpha)).returning({id:assignment.id});
+  expect(changed).toEqual([{id:f.supersededAlpha}]);
+  await compare(f.ctx,{companyIds:[b.companyId],employmentIds:[alpha.id]},1,[[b.companyId,b.deptA]],undefined,
+   {id:f.supersededAlpha,employmentId:alpha.id,departmentId:b.deptB,validTo:null,supersededAt:new Date('2022-01-01T00:00:00Z')});
+ }finally{await owner.db.update(assignment).set({validTo:'2021-01-01'}).where(eq(assignment.id,f.supersededAlpha));}
  await compare(f.scopedCtx,{companyIds:[otherCompany]},0,[]);
  await compare(f.managerCtx,{companyIds:[b.companyId]},2,tenantPairs.slice(0,2));
  await compare(f.selfCtx,{companyIds:[otherCompany],employmentIds:[transferred.id,transferred.id]},1,[[otherCompany,b.deptB]]);

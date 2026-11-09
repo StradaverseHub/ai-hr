@@ -661,6 +661,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    expect(realm(identity)).toEqual(realm(ownerRealm));expect(identity.planner).toEqual(identities[0].planner);
    expect(identity.prepared?.length).toBeLessThanOrEqual(100);
    await stress(tx,'A0',firstStep);
+   fit(stressDeadline,0,'initial stress evidence completion');
    for(const epoch of ['B0','B1','A1'] as const)await stress(tx,epoch,laterStep);
    for(const rows of [identity.prepared,...epochs.map(epoch=>prepared[epoch])]){
     expect(Array.isArray(rows)).toBe(true);
@@ -692,7 +693,9 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
     path:b0.pathRefusals.length===0&&b1.pathRefusals.length===0,
     stressLimits:rows.every(row=>row.wallMs<=6000&&row.departmentMs<=1250&&row.explainMs<=1000)};
   });
-  metadata.pairOutcomes=outcomes;pairStatus.complete=true;persist();
+  metadata.pairOutcomes=outcomes;persist();
+  fit(activeEnd,0,'represented pair evidence completion');
+  pairStatus.complete=true;
   gate('representedPairs',()=>{
    for(const {label,...outcome} of outcomes)expect(outcome,label).toEqual({ordinary:true,instrumented:true,traffic:true,wholeRead:true,path:true,stressLimits:true});
   });
