@@ -21,7 +21,7 @@ import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exerciseLivePersonnelProfile} from './personnel-live-profile-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {actionFormData} from './action-form.ts';
-import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
+import {closeSync,constants as fsFlags,fstatSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,realpathSync,writeFileSync,writeSync} from 'node:fs';
 import {join} from 'node:path';
 import https from 'node:https';
 import {userInfo} from 'node:os';
@@ -41,6 +41,30 @@ export async function runDevelopmentSystemLoad(){
  return runSystemLoad();
 }
 
+function protectedClaimHandoff(directory){
+ let fd,frames=0;
+ return {
+  persist(frame){
+   // Seventeen fixed mutation attempts and their verified transitions, plus one seal.
+   const raw=Buffer.from(JSON.stringify(frame)+'\n');
+   assert(frames<35&&raw.length<=1024,'Protected Claims handoff bound refused');
+   if(fd===undefined){
+    const privateDir=lstatSync(directory);
+    assert(realpathSync(directory)===directory&&privateDir.isDirectory()&&privateDir.uid===process.getuid()&&
+     (privateDir.mode&0o7777)===0o700,'Protected Claims private directory refused');
+    fd=openSync(join(directory,'protected-claim-attempts.jsonl'),fsFlags.O_WRONLY|fsFlags.O_CREAT|fsFlags.O_EXCL|fsFlags.O_NOFOLLOW,0o600);
+    const held=fstatSync(fd);
+    assert(held.isFile()&&held.uid===process.getuid()&&(held.mode&0o7777)===0o600&&held.nlink===1&&held.size===0,
+     'Protected Claims handoff descriptor refused');
+   }
+   assert.equal(writeSync(fd,raw),raw.length,'Protected Claims handoff write incomplete');
+   fsyncSync(fd);
+   frames++;
+  },
+  close(){if(fd!==undefined)closeSync(fd);},
+ };
+}
+
 // No native issuer is installed by this source slice. A future protected
 // launcher must bind its admitted course at an audited private call site.
 // The public development entry has no way to supply it.
@@ -52,7 +76,8 @@ const nativeIngress=nativeCourse?.ingress,nativeLockObserver=nativeCourse?.lockO
 if(nativePreflight){
  assert(Number.isFinite(nativeDeadline)&&nativeDeadline>performance.now(),'Owned native preflight deadline required');
  // No caller is installed. The protected issuer must fence actual browser
- // ingress and own the reserved native query through cancellation and drain.
+ // ingress with the rolling lock frontier independently of JS timer delivery,
+ // and own the reserved native query through cancellation and drain.
  assert(typeof nativeIngress?.assertBusinessOpen==='function'&&typeof nativeIngress?.sealBusiness==='function'
   &&typeof nativeIngress?.assertClaimRestoration==='function'&&typeof nativeLockObserver?.sql==='function'
   &&nativeLockObserver.identity&&typeof nativeLockObserver.settleFixedSample==='function',
@@ -65,7 +90,8 @@ const acquired={observer:'absent',agent:'absent',browser:'absent',audit:'absent'
 const failures=createDriverFailures(),contexts=createDriverContexts(failures),sockets=createDriverSockets(failures);
 const lanes=createDriverWork(),requests=createDriverWork(),transports=createDriverWork(),diagnostics=createDriverWork();
 const lifecycleRefused=Error('An owned development driver resource failed');
-const claimCustody=nativePreflight?createProtectedClaimCustody():undefined;
+const claimHandoff=nativePreflight?protectedClaimHandoff(process.env.PERF_PRIVATE_DIR):undefined;
+const claimCustody=claimHandoff?createProtectedClaimCustody(claimHandoff.persist):undefined;
 const nativeAdmission=nativePreflight?createProtectedWorkAdmission({
  assertIngress(){
   protectedSampler?.requireOpen();nativeRemaining(nativeDeadline);
@@ -167,9 +193,12 @@ async function requestBody(user,path,fields,expectedStatus=200,record=true,actio
  let responseHeaders;
  const transport=openDriverResponse({body,startedMs:started,observeSocket:sockets.observe,recordFailure:failures.record,
   start:()=>{
-   if(claimAttempt?.key===claimRestorationKey)requireNativeClaimRestoration(user,claimAttempt.draft);
-   else requireNativeBusiness();
-   claimAttempt?.beforeDispatch();
+   const checkAdmission=()=>{
+    if(claimAttempt?.key===claimRestorationKey)requireNativeClaimRestoration(user,claimAttempt.draft);
+    else requireNativeBusiness();
+   };
+   checkAdmission();
+   if(claimAttempt){claimAttempt.beforeDispatch();checkAdmission();}
    return https.request(base+path,{agent,signal:AbortSignal.timeout(nativePreflight?Math.min(90000,nativeRemaining(nativeDeadline)):90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
     Cookie:`__Host-aihr_internal=${user?.token??''}; NEXT_LOCALE=en`,'Accept-Encoding':'gzip',...actionHeaders,...(body?{'Content-Type':contentType,'Content-Length':body.length}:{})}});
   },
@@ -1047,6 +1076,7 @@ async function main(){
    await page.locator('main form:visible').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).getByRole('button').click();started=performance.now();
    requireRestore();
    custody?.begin('delete');
+   if(custody)requireRestore();
    const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);
    deleteTemplate=await capturedAction(deleteResponse);
    await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted',{timeout:90000});timings.push({operation:'delete',visibleByMs:performance.now()-started});
@@ -1057,6 +1087,7 @@ async function main(){
    started=performance.now();
    requireNativeBusiness();
    custody?.begin('create');
+   if(custody)requireNativeBusiness();
    const [createResponse]=await Promise.all([browserAction(),form.locator('button[name="intent"][value="draft"]:visible').click()]);const createTemplate=await capturedAction(createResponse);
    await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'create',visibleByMs:performance.now()-started});
    const drafts=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description}`;
@@ -1068,6 +1099,7 @@ async function main(){
    await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await form.locator('[name="amount"]:visible').fill('2');started=performance.now();
    requireNativeBusiness();
    custody?.begin('edit');
+   if(custody)requireNativeBusiness();
    await form.locator('button[name="intent"][value="draft"]:visible').click();await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'edit',visibleByMs:performance.now()-started});
    const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
    custody?.verify('edit');
@@ -1532,19 +1564,24 @@ try{
  }
 }
 
-const diagnosticDrain=stopDiagnosticAdmission();
-const protectedAbort=nativePreflight&&!preflightComplete?protectedSampler?.close(false):undefined;
-await drainDriverLanes(lanes,requests);
 const unconfirmedClaims=claimCustody?.privateUnconfirmed();
 if(claimCustody){
  const entries=claimCustody.publicFacts();
- const ownerStopRequired=unconfirmedClaims.length>0;
- report.protectedClaimCustody={entries,ownerStopRequired};
+ // This is local handoff evidence. The trusted issuer independently owns
+ // the whole realm stop after a kill, missing handoff or uncertain attempt.
+ const sealed=noteEvidence(()=>claimCustody.seal());
+ const closed=noteEvidence(()=>claimHandoff.close());
+ const driverHandoffSealed=sealed.state==='settled'&&closed.state==='settled';
+ const ownerStopRequired=!driverHandoffSealed||unconfirmedClaims.length>0;
+ report.protectedClaimCustody={entries,driverHandoffSealed,ownerStopRequired};
  if(ownerStopRequired)failures.record('claim-custody-unconfirmed',Error('Protected Claims restitution requires owned realm stop'));
  else if(preflightComplete&&entries.filter(entry=>entry.disposition==='restored').length!==5)
   failures.record('claim-custody-census',Error('Protected Claims restoration census differs'));
  noteEvidence(save);
 }
+const diagnosticDrain=stopDiagnosticAdmission();
+const protectedAbort=nativePreflight&&!preflightComplete?protectedSampler?.close(false):undefined;
+await drainDriverLanes(lanes,requests);
 const failureAtExit=failures.failed();
 const shutdown=report.shutdown={acquisition:acquired,browserClosed:false,nativeAuditPoolClosed:false,driverPoolClosed:false};
 const driverResources={

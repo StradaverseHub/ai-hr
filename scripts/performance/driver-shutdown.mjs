@@ -137,17 +137,25 @@ const claimScopes=Object.freeze({
 const claimUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Own each fixed fictional Claims lifecycle until verified absence or private handoff. */
-export function createProtectedClaimCustody(){
+export function createProtectedClaimCustody(persist){
+ if(typeof persist!=='function')throw Error('Protected Claims handoff writer required');
  const entries=new Map();
+ let sealed=false,refused=false;
+ function retain(frame){
+  if(refused)throw Error('Protected Claims handoff already refused');
+  try{persist(frame);}catch(reason){refused=true;throw reason;}
+ }
  const disposition=entry=>entry.pending||entry.draft?'unconfirmed':entry.last==='delete'?'restored':'not-dispatched';
+ const publicFacts=()=>[...entries.values()].map(entry=>({scope:entry.scope,
+  stage:entry.pending??(entry.restorationReserved?'delete':entry.last??'create'),disposition:disposition(entry)}));
  return {
   register(scope,{actorIndex,employmentId,marker}){
-   if(!Object.hasOwn(claimScopes,scope)||entries.has(scope)||!Number.isSafeInteger(actorIndex)||actorIndex<0||actorIndex>=500||
+   if(sealed||refused||!Object.hasOwn(claimScopes,scope)||entries.has(scope)||!Number.isSafeInteger(actorIndex)||actorIndex<0||actorIndex>=500||
       !claimUuid.test(employmentId)||!/^PERF_(?:BROWSER_DRAFT|HTTP_PREFLIGHT|BOUNDARY_[0-9]{1,3})$/.test(marker))
     throw Error('Protected Claims custody refused');
    const entry={scope,actorIndex,employmentId,marker,draft:null,pending:null,last:null,senderIndex:null,restorationReserved:false,attempted:new Set()};
    entries.set(scope,entry);
-   const canRestore=()=>entry.draft!==null&&entry.pending===null&&!entry.restorationReserved;
+   const canRestore=()=>!sealed&&!refused&&entry.draft!==null&&entry.pending===null&&!entry.restorationReserved;
    return {
     reserveRestore(draft){
      if(!canRestore()||draft!==entry.draft)throw Error('Protected Claims restoration state refused');
@@ -156,21 +164,23 @@ export function createProtectedClaimCustody(){
     begin(stage,senderIndex=actorIndex){
      const allowed=claimScopes[scope];
      const foreign=stage==='foreign-own'||stage==='foreign-other';
-     if(!allowed.includes(stage)||entry.pending||entry.attempted.has(stage)||
+     if(sealed||refused||!allowed.includes(stage)||entry.pending||entry.attempted.has(stage)||
         !Number.isSafeInteger(senderIndex)||senderIndex<0||senderIndex>=500||(foreign?senderIndex===actorIndex:senderIndex!==actorIndex)||
         (stage==='delete'?!entry.restorationReserved:entry.restorationReserved)||
         (stage==='create'?entry.last!==null:entry.draft===null)||
         (stage!=='delete'&&stage!=='create'&&allowed[allowed.indexOf(stage)-1]!==entry.last))
       throw Error('Protected Claims mutation state refused');
      entry.attempted.add(stage);entry.pending=stage;entry.senderIndex=senderIndex;
+     retain({kind:'attempt',scope,stage,actorIndex,employmentId,marker,draft:entry.draft,senderIndex});
     },
     /**
      * @param {string} stage
      * @param {string} [draft]
      */
     verify(stage,draft){
-     if(entry.pending!==stage||(stage==='create'&&!claimUuid.test(draft))||(stage!=='create'&&draft!==undefined))
+     if(sealed||entry.pending!==stage||(stage==='create'&&!claimUuid.test(draft))||(stage!=='create'&&draft!==undefined))
       throw Error('Protected Claims mutation proof refused');
+     retain({kind:'verified',scope,stage,draft:stage==='create'?draft:entry.draft});
      if(stage==='create')entry.draft=draft;
      if(stage==='delete')entry.draft=null;
      entry.last=stage;entry.pending=null;entry.senderIndex=null;
@@ -178,8 +188,13 @@ export function createProtectedClaimCustody(){
     canRestore,
    };
   },
-  publicFacts:()=>[...entries.values()].map(entry=>({scope:entry.scope,
-   stage:entry.pending??(entry.restorationReserved?'delete':entry.last??'create'),disposition:disposition(entry)})),
+  seal(){
+   if(sealed)throw Error('Protected Claims handoff already sealed');
+   sealed=true;
+   const entries=publicFacts();
+   retain({kind:'driver-sealed',entries,ownerStopRequired:entries.some(entry=>entry.disposition==='unconfirmed')});
+  },
+  publicFacts,
   privateUnconfirmed:()=>[...entries.values()].filter(entry=>disposition(entry)==='unconfirmed').map(
    ({scope,actorIndex,employmentId,marker,draft,pending,last,senderIndex,restorationReserved})=>
     ({scope,actorIndex,employmentId,marker,draft,pending,last,senderIndex,restorationReserved})),

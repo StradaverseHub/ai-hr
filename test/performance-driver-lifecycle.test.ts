@@ -377,7 +377,7 @@ it('seals an impossible gap before a held periodic or closing sample settles',as
 });
 
 it('retains pre-dispatch custody and refuses a second ambiguous claim mutation',()=>{
- const claims=createProtectedClaimCustody(),employmentId='00000000-0000-0000-0000-000000000001';
+ const claims=createProtectedClaimCustody(vi.fn()),employmentId='00000000-0000-0000-0000-000000000001';
  const browser=claims.register('browser',{actorIndex:0,employmentId,marker:'PERF_BROWSER_DRAFT'});
  const http=claims.register('http',{actorIndex:0,employmentId,marker:'PERF_HTTP_PREFLIGHT'});
  expect(claims.publicFacts()).toEqual([
@@ -413,7 +413,7 @@ it('retains pre-dispatch custody and refuses a second ambiguous claim mutation',
 });
 
 it('keeps the original claim failure when its one authorized restitution fails',async()=>{
- const failures=createDriverFailures(),claims=createProtectedClaimCustody();
+ const failures=createDriverFailures(),claims=createProtectedClaimCustody(vi.fn());
  const claim=claims.register('same-company',{actorIndex:5,employmentId:'00000000-0000-0000-0000-000000000001',marker:'PERF_BOUNDARY_0'});
  const original=Error('original failed action'),restoration=Error('private failed delete');
  claim.begin('create',5);claim.verify('create','00000000-0000-0000-0000-000000000002');
@@ -427,6 +427,46 @@ it('keeps the original claim failure when its one authorized restitution fails',
  expect(claim.canRestore()).toBe(false);
  expect(failures.privateFailures()).toEqual({primary:{failed:true,reason:original},secondary:[{stage:'claim-restoration',reason:restoration}]});
  expect(claims.publicFacts()).toEqual([{scope:'same-company',stage:'delete',disposition:'unconfirmed'}]);
+});
+
+it('persists fixed private attempts and verification before effect and seals even with pending restoration',()=>{
+ const employmentId='00000000-0000-0000-0000-000000000001',draft='00000000-0000-0000-0000-000000000002';
+ const persist=vi.fn(),claims=createProtectedClaimCustody(persist);
+ const claim=claims.register('http',{actorIndex:4,employmentId,marker:'PERF_HTTP_PREFLIGHT'});
+ claim.begin('create');
+ expect(persist).toHaveBeenNthCalledWith(1,{kind:'attempt',scope:'http',stage:'create',actorIndex:4,employmentId,
+  marker:'PERF_HTTP_PREFLIGHT',draft:null,senderIndex:4});
+ claim.verify('create',draft);
+ expect(persist).toHaveBeenNthCalledWith(2,{kind:'verified',scope:'http',stage:'create',draft});
+ claim.reserveRestore(draft);claim.begin('delete');
+ expect(persist).toHaveBeenNthCalledWith(3,{kind:'attempt',scope:'http',stage:'delete',actorIndex:4,employmentId,
+  marker:'PERF_HTTP_PREFLIGHT',draft,senderIndex:4});
+ claims.seal();
+ expect(persist).toHaveBeenNthCalledWith(4,{kind:'driver-sealed',entries:[{scope:'http',stage:'delete',disposition:'unconfirmed'}],ownerStopRequired:true});
+ expect(()=>claim.verify('delete')).toThrow('mutation proof refused');
+ expect(()=>claims.seal()).toThrow('already sealed');
+ expect(claims.publicFacts()).toEqual([{scope:'http',stage:'delete',disposition:'unconfirmed'}]);
+});
+
+it('refuses Claims dispatch when private persistence fails and retains pending verification on write failure',()=>{
+ const employmentId='00000000-0000-0000-0000-000000000001',draft='00000000-0000-0000-0000-000000000002';
+ const failure=Error('private handoff failed'),persist=vi.fn(),dispatch=vi.fn();
+ const claims=createProtectedClaimCustody(persist);
+ const browser=claims.register('browser',{actorIndex:4,employmentId,marker:'PERF_BROWSER_DRAFT'});
+ persist.mockImplementationOnce(()=>{throw failure;});
+ expect(()=>{browser.begin('create');dispatch();}).toThrow(failure);
+ expect(dispatch).not.toHaveBeenCalled();
+ expect(browser.canRestore()).toBe(false);
+ expect(()=>claims.seal()).toThrow('handoff already refused');
+ expect(persist).toHaveBeenCalledTimes(1);
+ expect(claims.publicFacts()).toEqual([{scope:'browser',stage:'create',disposition:'unconfirmed'}]);
+ const otherWriter=vi.fn(),otherClaims=createProtectedClaimCustody(otherWriter);
+ const http=otherClaims.register('http',{actorIndex:4,employmentId,marker:'PERF_HTTP_PREFLIGHT'});
+ http.begin('create');
+ otherWriter.mockImplementationOnce(()=>{throw failure;});
+ expect(()=>http.verify('create',draft)).toThrow(failure);
+ expect(http.canRestore()).toBe(false);
+ expect(otherClaims.publicFacts()).toEqual([{scope:'http',stage:'create',disposition:'unconfirmed'}]);
 });
 
 it('retains actual startup and cleanup outcomes and keeps raw reasons private',async()=>{
