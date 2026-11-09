@@ -812,7 +812,7 @@ VIEW_NETWORK_EXITS = {
     'interface-census-differs': 53,
     'loopback-flags-differ': 54,
     'ipv4-proc-read': 55,
-    'ipv4-proc-empty': 56,
+    'ipv4-proc-empty': 56,  # Retained exit identity from the header-only probe.
     'ipv4-extra-row': 57,
     'ipv4-header-differs': 58,
     'ipv6-proc-absent': 59,
@@ -820,6 +820,8 @@ VIEW_NETWORK_EXITS = {
     'ipv6-row-shape': 61,
     'ipv6-row-not-loopback-reject': 62,
     'identity-readback': 63,
+    'ipv4-fib-trie-read': 64,
+    'ipv4-fib-trie-nonempty': 65,
 }
 VIEW_DIRS = ('source', 'dependencies', 'jail', 'jail/project', 'jail/project/app',
              'jail/project/node_modules', 'jail/receipt')
@@ -1011,13 +1013,16 @@ def view_network_need(condition, reason):
         raise ViewNetworkRefusal(reason)
 
 
-def view_routes(interfaces, flags, ipv4, ipv6):
+def view_routes(interfaces, flags, ipv4, ipv6, ipv4_fib):
     view_network_need(interfaces == [(1, 'lo')], 'interface-census-differs')
     view_network_need(flags & 0x8 and not flags & 0x1, 'loopback-flags-differ')
-    route = ipv4.splitlines()
-    view_network_need(route, 'ipv4-proc-empty')
-    view_network_need(len(route) == 1, 'ipv4-extra-row')
-    view_network_need(route[0].split()[:2] == [b'Iface', b'Destination'], 'ipv4-header-differs')
+    # Linux emits the route header only if the main table exists.
+    if ipv4 != b'':
+        route = ipv4.splitlines()
+        view_network_need(len(route) == 1, 'ipv4-extra-row')
+        view_network_need(route[0].split()[:2] == [b'Iface', b'Destination'], 'ipv4-header-differs')
+    # The independent fib_trie iterator visits every IPv4 FIB table.
+    view_network_need(ipv4_fib == b'', 'ipv4-fib-trie-nonempty')
     rows = ipv6.splitlines()
     view_network_need(len(rows) <= 8, 'ipv6-row-shape')
     for line in rows:
@@ -1027,10 +1032,11 @@ def view_routes(interfaces, flags, ipv4, ipv6):
     return len(rows)
 
 
-def view_network():
+def view_network(stop):
     import fcntl
     import socket
     import struct
+    import time
     reason = 'loopback-flags-read'
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM | socket.SOCK_CLOEXEC) as handle:
@@ -1046,7 +1052,13 @@ def view_network():
         if reason == 'ipv6-proc-read' and isinstance(error, FileNotFoundError):
             reason = 'ipv6-proc-absent'
         raise ViewNetworkRefusal(reason) from error
-    return view_routes(interfaces, flags, ipv4, ipv6)
+    view_network_need(time.monotonic() < stop, 'work-frontier')
+    try:
+        ipv4_fib = view_proc('/proc/self/net/fib_trie', 65536)
+    except (OSError, ValueError) as error:
+        raise ViewNetworkRefusal('ipv4-fib-trie-read') from error
+    view_network_need(time.monotonic() < stop, 'work-frontier')
+    return view_routes(interfaces, flags, ipv4, ipv6, ipv4_fib)
 
 
 def view_drop(libc, uid, gid, cap_last, dump_policy):
@@ -1190,7 +1202,7 @@ def view_worker():
                      and os.fstatvfs(held).f_flag & os.ST_RDONLY, 'View worker opened mount identity differs')
         phase += 1
         view_network_need(time.monotonic() < stop, 'work-frontier')
-        reject_rows = view_network()
+        reject_rows = view_network(stop)
         try:
             same_identity = view_namespaces() == private and view_parent_identity(int(issuer)) == issuer_start
         except (OSError, ValueError) as error:

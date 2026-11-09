@@ -206,55 +206,78 @@ class ViewProbeControls(unittest.TestCase):
     def test_route_census_requires_down_loopback_and_reject_only_ipv6(self):
         interfaces, header = [(1, 'lo')], b'Iface Destination Gateway Flags\n'
         reject = b'0 00 0 00 0 0 0 0 00200200 lo\n'
-        self.assertEqual(M.view_routes(interfaces, 8, header, reject), 1)
+        self.assertEqual(M.view_routes(interfaces, 8, header, reject, b''), 1)
         for args in ((interfaces + [(2, 'eth0')], 8, header, reject),
                      (interfaces, 9, header, reject),
                      (interfaces, 8, header + b'eth0 row\n', reject),
                      (interfaces, 8, header, reject.replace(b'00200200', b'00200000')),
                      (interfaces, 8, header, reject.replace(b'lo', b'eth0'))):
             with self.subTest(args=args), self.assertRaises(ValueError):
-                M.view_routes(*args)
+                M.view_routes(*args, b'')
 
     def test_route_row_refusals_keep_distinct_closed_codes(self):
         loopback, header = [(1, 'lo')], b'Iface Destination Gateway Flags\n'
         reject = b'0 00 0 00 0 0 0 0 00200200 lo\n'
         cases = ((53, loopback + [(2, 'eth0')], 8, header, reject),
                  (54, loopback, 9, header, reject),
-                 (56, loopback, 8, b'', reject),
                  (57, loopback, 8, header + b'eth0 row\n', reject),
                  (58, loopback, 8, b'not a header\n', reject),
+                 (58, loopback, 8, b'\n', reject),
                  (61, loopback, 8, header, reject * 9),
                  (61, loopback, 8, header, reject.replace(b'00200200', b'wrong')),
                  (62, loopback, 8, header, reject.replace(b'00200200', b'00200000')),
                  (62, loopback, 8, header, reject.replace(b'lo', b'eth0')))
-        self.assertEqual(M.view_routes(loopback, 8, header, b''), 0)
+        for ipv4 in (header, b''):
+            self.assertEqual(M.view_routes(loopback, 8, ipv4, b'', b''), 0)
+            self.assertEqual(M.view_routes(loopback, 8, ipv4, reject, b''), 1)
+            for fib in (b'Local:\n  |-- 127.0.0.1\n', b'Id 100:\n  |-- 192.0.2.0\n', b'\n'):
+                with self.subTest(ipv4=ipv4, fib=fib):
+                    with self.assertRaises(M.ViewNetworkRefusal) as caught:
+                        M.view_routes(loopback, 8, ipv4, reject, fib)
+                    self.assertEqual(caught.exception.code, 65)
         for code, *args in cases:
             with self.subTest(code=code):
                 with self.assertRaises(M.ViewNetworkRefusal) as caught:
-                    M.view_routes(*args)
+                    M.view_routes(*args, b'')
                 self.assertEqual(caught.exception.code, code)
 
     def test_route_native_read_refusals_distinguish_missing_ipv6_from_other_io(self):
         import struct
         header = b'Iface Destination Gateway Flags\n'
         with mock.patch('socket.socket'), mock.patch('fcntl.ioctl') as flags, \
-             mock.patch('socket.if_nameindex') as interfaces, mock.patch.object(M, 'view_proc') as proc:
-            for code in (None, 51, 52, 55, 59, 60):
+             mock.patch('socket.if_nameindex') as interfaces, mock.patch.object(M, 'view_proc') as proc, \
+             mock.patch('time.monotonic', return_value=0) as clock:
+            for code in (None, 51, 52, 55, 59, 60, 64, 65):
                 with self.subTest(code=code):
+                    proc.reset_mock()
                     flags.return_value = struct.pack('16sH22x', b'lo', 8)
                     flags.side_effect = PermissionError() if code == 51 else None
                     interfaces.return_value = [(1, 'lo')]
                     interfaces.side_effect = OSError() if code == 52 else None
-                    proc.side_effect = (OSError(),) if code == 55 else (
-                        header, FileNotFoundError() if code == 59 else PermissionError() if code == 60 else b'')
+                    ipv6 = {59: FileNotFoundError(), 60: PermissionError()}.get(code, b'')
+                    fib = {64: FileNotFoundError(), 65: b'Local:\n'}.get(code, b'')
+                    proc.side_effect = (OSError(),) if code == 55 else (header, ipv6, fib)
                     if code is None:
-                        self.assertEqual(M.view_network(), 0)
-                        self.assertEqual(proc.call_args_list, [
-                            mock.call('/proc/self/net/route', 65536), mock.call('/proc/self/net/ipv6_route', 65536)])
+                        for ipv4 in (header, b''):
+                            proc.reset_mock()
+                            proc.side_effect = (ipv4, ipv6, fib)
+                            self.assertEqual(M.view_network(1), 0)
+                            self.assertEqual(proc.call_args_list, [
+                                mock.call('/proc/self/net/route', 65536), mock.call('/proc/self/net/ipv6_route', 65536),
+                                mock.call('/proc/self/net/fib_trie', 65536)])
                     else:
                         with self.assertRaises(M.ViewNetworkRefusal) as caught:
-                            M.view_network()
+                            M.view_network(1)
                         self.assertEqual(caught.exception.code, code)
+            for times, reads in (((1,), 2), ((0, 1), 3)):
+                with self.subTest(times=times):
+                    proc.reset_mock()
+                    proc.side_effect = (b'', b'', b'')
+                    clock.side_effect = times
+                    with self.assertRaises(M.ViewNetworkRefusal) as caught:
+                        M.view_network(1)
+                    self.assertEqual(caught.exception.code, 50)
+                    self.assertEqual(proc.call_count, reads)
 
     def test_exact_mount_census_separates_source_noexec_from_dependency_exec(self):
         root = M.view_scope('123')
@@ -442,15 +465,16 @@ class ViewProbeControls(unittest.TestCase):
             'ipv4-proc-empty': 56, 'ipv4-extra-row': 57, 'ipv4-header-differs': 58,
             'ipv6-proc-absent': 59, 'ipv6-proc-read': 60, 'ipv6-row-shape': 61,
             'ipv6-row-not-loopback-reject': 62, 'identity-readback': 63,
+            'ipv4-fib-trie-read': 64, 'ipv4-fib-trie-nonempty': 65,
         })
-        for code in (43, *range(50, 64)):
+        for code in (43, *range(50, 66)):
             with self.subTest(code=code):
                 exit_row = {'reason': 'command-failed', 'commandExit': code, 'admitted': True,
                             'reaped': True, 'groupQuiescent': True, 'escapedSession': False}
                 native = M.view_report('network-route-census', sha='a'*40, run='123', event='b'*64, attempted=True,
                                        process=exit_row, cleanup=True, elapsed=9)
                 self.assertEqual(M.validate_view_capture(M.canonical(native), '1'), native)
-                for changed in ({'commandExit': 49}, {'commandExit': 64}, {'reaped': False},
+                for changed in ({'commandExit': 49}, {'commandExit': 66}, {'reaped': False},
                                 {'groupQuiescent': False}, {'escapedSession': True}, {'admitted': False},
                                 {'reason': 'deadline'}):
                     with self.assertRaises(ValueError):
