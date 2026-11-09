@@ -68,6 +68,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3636,when:1793330003936,tag:'3500_ai_centre_architecture_compatibility'},
  {idx:3637,when:1793330003937,tag:'3501_ai_centre_mandate_write_order'},
  {idx:3638,when:1793330003938,tag:'4200_assistant_rewards_return_presentation_snapshot'},
+ {idx:3639,when:1793330003939,tag:'4201_assistant_rewards_calendar_cancel_presentation_snapshot'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -128,6 +129,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '3500_ai_centre_architecture_compatibility':'3286f17e76b8d997c46b22019df613b9eef1d1b82c85c125cdb57b80392884ca',
  '3501_ai_centre_mandate_write_order':'821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76',
  '4200_assistant_rewards_return_presentation_snapshot':'1acfa11fd818c5efe53dc74c05aef351fb7b71e238dcd0dfc0d1c978672d84d8',
+ '4201_assistant_rewards_calendar_cancel_presentation_snapshot':'6df872ead7dc864a8e2a7c78ee8dcdf9e4bd4d637186c185c54a656acb6f07e9',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);

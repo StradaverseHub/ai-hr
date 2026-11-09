@@ -25,6 +25,9 @@ import {emptyFacts,type RewardRole} from '../packs/rewards/model';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {readRewardsReturnChoices} from '../core/assistant-actions/rewards-return-source';
+import {readRewardsCalendarChoices} from '../core/assistant-actions/rewards-calendar-source';
+import {readRewardsCancelChoices} from '../core/assistant-actions/rewards-cancel-source';
+import {REWARDS_CANCEL_ACTION} from '../lib/assistant-actions/rewards-cancel-contract';
 beforeAll(migrateRewardMembershipFixture);
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 const addDays = (iso: string, days: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
@@ -137,6 +140,23 @@ describe('Encrypted annual Rewards return custody', () => {
     await revokeAssistant(admin,{appUserId:admin.userId!});
     await refused(withTenant(admin,tx=>tx.execute(query),snapshot));
     await expect(readRewardsReturnChoices(admin)).rejects.toThrow();
+  });
+  it('keeps Calendar and Cancel choices identical and independent of a concurrent native policy writer',async()=>{
+    await prepare();
+    const [legacy]=await withTenant(admin,tx=>tx.execute<{calendar:unknown;cancel:unknown}>(sql`
+      select app.assistant_rewards_calendar_choices() as calendar,app.assistant_rewards_cancel_choices() as cancel`));
+    const choices=await Promise.all([readRewardsCalendarChoices(admin),readRewardsCancelChoices(admin)]);
+    expect(choices).toEqual([legacy.calendar,legacy.cancel]);
+    for(const result of choices)expect(result.units.map(row=>row.unitId)).toContain(unitId);
+    await withTenant(admin,async writer=>{
+      await writer.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`);
+      await writer.execute(sql`select app.ai_agent_action_pause_set(${REWARDS_CANCEL_ACTION},true)`);
+      const results=await Promise.allSettled([readRewardsCalendarChoices(admin),readRewardsCancelChoices(admin)]);
+      expect(results).toEqual(choices.map(value=>({status:'fulfilled',value})));
+    });
+    await expect(readRewardsCancelChoices(admin)).rejects.toThrow();
+    expect(await readRewardsCalendarChoices(admin)).toEqual(choices[0]);
+    expect((await view()).unit.status).toBe('gr');
   });
   it('uses real encrypted custody and SAME native return, captures every actual participant and replays without another effect',async()=>{const r=await prepare(),before=await view(),pending=await custody(r.actionId);expect(pending).toMatchObject({state:'awaiting_confirmation',bodies:1,rewards_return_snapshot:expect.any(Object)});expect(JSON.stringify(r)).not.toMatch(/Fictional Reward Employee|basicSalary|nativeDecisionDigest|unitStableHash|wrappedDek|ciphertext/);const [sealed]=await owner.db.execute<{ciphertext:string}>(sql`select ciphertext from app.assistant_own_leave_review_content where action_id=${r.actionId}::uuid`);expect(sealed.ciphertext).not.toContain(reason);const done=await reviews.confirm(admin,confirmation(r));if(done.kind!=='completed')throw Error('Expected completed annual return');expect(done.receipt.receipt).toMatchObject({unitId,returnedRevision:r.content.revision,currentRevision:r.content.revision+1,currentStatus:'draft'});const after=await view();expect(after.unit.status).toBe('draft');expect(after.rows).toEqual(before.rows);expect(await custody(r.actionId)).toMatchObject({state:'completed',bodies:0,rewards_return_snapshot:null,rewards_review_person_ids:null,sealed_xid:expect.any(String)});const targets=await owner.db.execute<{kind:string;id:string}>(sql`select t.kind,t.target_id id from app.native_outcome_source_target t join app.native_outcome_source_capture c on c.id=t.capture_id where c.source_id=${r.actionId}::uuid order by t.kind,t.target_id`);expect(targets.length).toBeGreaterThan(0);const actual=await owner.db.execute<{kind:string;id:string}>(sql`select 'employment' kind,e.id from employment e join reward_entry re on re.employment_id=e.id and re.tenant_id=e.tenant_id where re.unit_id=${unitId}::uuid union select 'person' kind,e.person_id id from employment e join reward_entry re on re.employment_id=e.id and re.tenant_id=e.tenant_id where re.unit_id=${unitId}::uuid union select 'person' kind,${admin.personId}::uuid id order by kind,id`);expect(Array.from(targets)).toEqual(Array.from(actual));expect(await reviews.confirm(admin,confirmation(r))).toEqual(done);expect(await reviews.reopen(admin,r.actionId)).toEqual(done);await expect(reviews.discard(admin,retirement(r))).rejects.toThrow();});
   it('admits actual BG seat without an HR title and never grants another stage seat an override',async()=>{await enable(actors.bg!);const revision=await submit(),human={action,contractVersion:1 as const,unitId,revision,reason,confirmWholeAnnualReview:true as const};await expect(reviews.prepare(admin,human)).rejects.toThrow();const r=await reviews.prepare(actors.bg!,human);if(r.kind!=='prepared')throw Error();expect((await reviews.confirm(actors.bg!,confirmation(r.review))).kind).toBe('completed');});

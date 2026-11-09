@@ -860,6 +860,7 @@ export const EMPLOYEE_LIFECYCLE_SOURCES=Object.freeze([
  "core/assistant-actions/rewards-cancel-review-store.ts",
  "core/assistant-actions/rewards-cancel-source.ts",
  "core/assistant-actions/rewards-post-review-store.ts",
+ "core/assistant-actions/rewards-presentation.ts",
  "core/assistant-actions/rewards-return-review-store.ts",
  "core/assistant-actions/rewards-return-source.ts",
  "core/assistant-actions/schedule-group-maintenance-review-store.ts",
