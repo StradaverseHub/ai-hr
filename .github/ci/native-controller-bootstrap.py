@@ -205,8 +205,10 @@ def write(folder, relative, data, mode):
 _PINNED_NODE_PATH = pathlib.Path('/opt/hostedtoolcache/node/22.23.3/x64/bin/node')
 
 
-def _capture_pinned_node():
+def _capture_pinned_node(*, exact_path=False):
     original_node = pathlib.Path(shutil.which('node')).resolve()
+    if exact_path:
+        need(original_node == _PINNED_NODE_PATH, 'Exact pinned setup-node executable required')
     with directory(original_node.parent) as root:
         raw, _ = read(root, original_node.name, MAX_FILE)
     facts = subprocess.run([str(original_node), '-p', 'JSON.stringify({node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime})'],
@@ -392,12 +394,14 @@ TOOL_REQUEST_MAX = 16 * 1024
 TOOL_EVENT_MAX = 1024**2
 BROWSER_STAGE_BRANCH = 'codex/native-synthetic-browser-stage-course-20261109'
 BROWSER_STAGE_SOURCE = '.github/ci/native-workload-browser-synthetic-stage-course.py'
+BROWSER_STAGE_ROLES = ('.github/ci/native-workload-browser-host.py',
+                       'test/performance/native-workload-browser-driver.mjs',
+                       'test/performance/native-workload-browser-server.mjs')
 BROWSER_STAGE_MEMBERS = tuple(sorted((
-    *TOOL_MEMBERS, BROWSER_STAGE_SOURCE, '.github/ci/native-workload-browser-host.py',
+    *TOOL_MEMBERS, BROWSER_STAGE_SOURCE, *BROWSER_STAGE_ROLES,
     '.github/ci/native-workload-browser-launch-view.py', '.github/ci/native-workload-browser-synthetic-stage.py',
     '.github/ci/native-workload-browser-synthetic-stage-cleanup.py',
     '.github/ci/native-workload-browser-synthetic-stage-owner.py',
-    'test/performance/native-workload-browser-driver.mjs', 'test/performance/native-workload-browser-server.mjs',
 )))
 TOOL_PRE_ROOT_CHECKPOINTS = (
     'runner-identity', 'runner-context', 'event-file', 'event-json', 'dispatch-contract',
@@ -525,7 +529,7 @@ def _tool_row(path, raw, info):
     return {'path': path, 'mode': '100644', 'size': len(raw), 'gitBlob': _tool_blob(raw), 'sha256': digest}
 
 
-def _tool_handoff(receiver, request):
+def _tool_handoff(receiver, request, *, browser_stage=False):
     import fcntl
 
     encoded = canonical(request)
@@ -543,7 +547,8 @@ def _tool_handoff(receiver, request):
     finally:
         if fd != 0:
             os.close(fd)
-    command = ['/usr/bin/sudo', '-n', '/usr/bin/python3', '-I', '-B', '-c', receiver.decode(), '--seal-tool-only']
+    selector = '--seal-browser-stage-only' if browser_stage else '--seal-tool-only'
+    command = ['/usr/bin/sudo', '-n', '/usr/bin/python3', '-I', '-B', '-c', receiver.decode(), selector]
     os.execve(command[0], command, SAFE)
 
 
@@ -746,7 +751,89 @@ def _validate_tool_capture(raw, status, *, live=False):
         _validate_tool_owner_capture(report, live=live)
 
 
-def prepare_tool():
+BROWSER_STAGE_INACTIVE = ('rolesStarted', 'browserStarted', 'applicationBuilt', 'databaseStarted',
+                          'nativeWorkloadQualified', 'releaseAuthorized')
+
+
+BROWSER_STAGE_FAILURE_PHASES = (
+    'root-parent-acquisition', 'root-acquisition', 'source-capsule', 'private-mount-namespace',
+    'fixed-archive-acquisition', 'stage-preparation', 'stage-disposal', 'stage-owner-settlement',
+    'archive-disposal', 'owner-settlement',
+)
+
+BROWSER_STAGE_FAILURE_REASONS = (
+    'command-failed', 'deadline', 'handshake-refused', 'descendants-survived', 'protocol-refused',
+    'owner-interrupted', 'group-uncertain', 'session-escaped', 'download-identity', 'download-writer',
+    'download-tls-transport', 'download-framing', 'download-deadline', 'download-write',
+    'download-identity-original', 'download-identity-dump-policy', 'download-identity-dump-policy-root-only',
+    'download-identity-set-dumpable', 'download-identity-drop-groups', 'download-identity-drop-gid',
+    'download-identity-drop-uid', 'download-identity-post-dumpable', 'download-identity-set-no-new-privs',
+    'download-identity-post-ids', 'download-identity-status', 'download-identity-capabilities',
+    'download-identity-observe-no-new-privs', 'host-io', 'contract-refused', 'strict-archive-pin',
+    'strict-archive-or-tree', 'namespace-creation-unproved', 'launch-view-ancestry',
+    'launch-view-backing-identity', 'launch-view-capacity', 'launch-view-copy-bound', 'launch-view-deadline',
+    'launch-view-directory', 'launch-view-empty-parent', 'launch-view-fd-flags', 'launch-view-fd-mount',
+    'launch-view-foreign-mount', 'launch-view-fragment', 'launch-view-manager-birth',
+    'launch-view-manager-executable', 'launch-view-manager-uid', 'launch-view-mount-changed',
+    'launch-view-namespace', 'launch-view-pid-namespace', 'launch-view-proc-bound', 'launch-view-proc-file',
+    'launch-view-proc-identity', 'launch-view-root', 'launch-view-root-identity', 'launch-view-run',
+    'launch-view-run-mount', 'launch-view-stage-fd', 'launch-view-stage-mount',
+)
+
+
+def _browser_stage_refusal(reason, checkpoint=None):
+    report = {'kind': 'NATIVE_BROWSER_SYNTHETIC_STAGE_COMPONENT', 'complete': False,
+              'failure': reason, **dict.fromkeys(BROWSER_STAGE_INACTIVE, False)}
+    if reason == 'browser-stage-pre-root-refused':
+        need(checkpoint in (*TOOL_PRE_ROOT_CHECKPOINTS, 'pinned-node'), 'Unknown browser stage checkpoint')
+        report['preRootCheckpoint'] = checkpoint
+    return report
+
+
+def _validate_browser_stage_capture(raw, status, environment):
+    need(status in ('0', '1') and 0 < len(raw) <= 65536, 'Returned browser stage capture required')
+    report = json.loads(raw)
+    need(type(report) is dict and canonical(report) == raw
+         and report.get('kind') == 'NATIVE_BROWSER_SYNTHETIC_STAGE_COMPONENT'
+         and report.get('complete') is (status == '0')
+         and all(report.get(key) is False for key in BROWSER_STAGE_INACTIVE), 'Returned browser stage capture differs')
+    failure = report.get('failure')
+    if failure in ('browser-stage-pre-root-refused', 'browser-stage-bootstrap-refused'):
+        need(status == '1' and report == _browser_stage_refusal(failure, report.get('preRootCheckpoint')),
+             'Returned browser stage bootstrap refusal differs')
+        return
+    run, _ = context(environment)
+    required = ('kind', 'complete', 'source', 'controller', 'runId', 'attempt', 'job', 'eventSha256',
+                'sourceCapsuleSha256', 'elapsedMs', 'ownedProcessesSettled', 'cleanup', *BROWSER_STAGE_INACTIVE)
+    _tool_capture_keys(report, required + (() if status == '0' else ('failure',)), ('stage',))
+    need(report['source'] == report['controller'] == environment['GITHUB_SHA']
+         and report['runId'] == run and report['job'] == 'native-test' and type(report['attempt']) is int
+         and report['attempt'] == 1 and _tool_capture_int(report['elapsedMs'], 0, 180000)
+         and type(report['ownedProcessesSettled']) is bool
+         and all(_tool_capture_hex(report[key], 64) for key in ('eventSha256', 'sourceCapsuleSha256')),
+         'Returned browser stage identity differs')
+    cleanup = report['cleanup']
+    _tool_capture_keys(cleanup, ('stage', 'archives'))
+    need(all(value in ('not-acquired', 'complete', 'refused') for value in cleanup.values()),
+         'Returned browser stage cleanup differs')
+    if 'stage' in report:
+        stage = report['stage']
+        _tool_capture_keys(stage, ('treeSha256', 'entries', 'fileBytes', 'currentRootMatched', 'managerRootMatched'))
+        need(_tool_capture_hex(stage['treeSha256'], 64) and _tool_capture_int(stage['entries'], 509, 509)
+             and _tool_capture_int(stage['fileBytes'], 291895067, 560396058)
+             and stage['currentRootMatched'] is True and stage['managerRootMatched'] is True,
+             'Returned browser stage readback differs')
+    if status == '0':
+        need('stage' in report and all(value == 'complete' for value in cleanup.values())
+             and report['ownedProcessesSettled'] is True and report['elapsedMs'] < 180000,
+             'Returned browser stage success lacks bounded settlement')
+    else:
+        _tool_capture_keys(failure, ('phase', 'reason'))
+        need(failure['phase'] in BROWSER_STAGE_FAILURE_PHASES and failure['reason'] in BROWSER_STAGE_FAILURE_REASONS,
+             'Returned browser stage failure differs')
+
+
+def prepare_tool(*, browser_stage=False):
     checkpoint = 'runner-identity'
     try:
         uid, gid = os.geteuid(), os.getegid()
@@ -762,7 +849,10 @@ def prepare_tool():
         event_payload = json.loads(event)
         checkpoint = 'dispatch-contract'
         try:
-            tool_intent(environment, event_payload)
+            if browser_stage:
+                browser_stage_intent(environment, event_payload)
+            else:
+                tool_intent(environment, event_payload)
         except _ToolDispatchRefusal as error:
             checkpoint = error.checkpoint
             raise
@@ -789,10 +879,11 @@ def prepare_tool():
                  and git(controller, ['show', sha + ':' + SCRIPT]) == receiver,
                  'Exact committed TOOL bootstrap required')
             checkpoint = 'capsule-members'
-            records = git(controller, ['ls-tree', '-rz', sha, '--', *TOOL_MEMBERS]).split(b'\0')
-            need(records[-1] == b'' and len(records) == len(TOOL_MEMBERS) + 1, 'Fixed TOOL Git inventory differs')
+            paths = BROWSER_STAGE_MEMBERS if browser_stage else TOOL_MEMBERS
+            records = git(controller, ['ls-tree', '-rz', sha, '--', *paths]).split(b'\0')
+            need(records[-1] == b'' and len(records) == len(paths) + 1, 'Fixed TOOL Git inventory differs')
             rows = []
-            for path, record in zip(TOOL_MEMBERS, records[:-1], strict=True):
+            for path, record in zip(paths, records[:-1], strict=True):
                 raw, info = read(root, path, TOOL_MEMBER_MAX)
                 row = _tool_row(path, raw, info)
                 need(record == f"100644 blob {row['gitBlob']}\t{path}".encode(), 'TOOL checkout differs from fixed committed Git bytes')
@@ -804,10 +895,23 @@ def prepare_tool():
         checkpoint = 'sealed-handoff'
         request = {'environment': environment, 'runnerUid': uid, 'runnerGid': gid, 'rows': rows,
                    'event': {'path': event_path, 'size': len(event), 'sha256': hashlib.sha256(event).hexdigest()}}
-        _tool_handoff(receiver, request)
+        if browser_stage:
+            checkpoint = 'pinned-node'
+            path, raw = _capture_pinned_node(exact_path=True)
+            node = {'path': str(path), 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+            _require_pinned_node_row(node)
+            request['node'] = node
+            checkpoint = 'sealed-handoff'
+            _tool_handoff(receiver, request, browser_stage=True)
+        else:
+            _tool_handoff(receiver, request)
     except Exception:
+        if browser_stage:
+            return _browser_stage_refusal('browser-stage-pre-root-refused', checkpoint)
         return _tool_pre_root_refusal(checkpoint)
     # A successful handoff replaces this process. Fallthrough is a refusal.
+    if browser_stage:
+        return _browser_stage_refusal('browser-stage-pre-root-refused', 'unknown')
     return _tool_pre_root_refusal('unknown')
 
 
@@ -842,6 +946,49 @@ def seal_tool(request):
     return owner.run_course(run, environment['GITHUB_SHA'], uid, gid, members, rows, event_row['sha256'])
 
 
+def seal_browser_stage(request):
+    from types import ModuleType
+
+    need(sys.platform == 'linux' and os.geteuid() == 0, 'Root Linux browser stage receiver required')
+    need(type(request) is dict and set(request) == {'environment', 'runnerUid', 'runnerGid', 'rows', 'event', 'node'},
+         'Closed browser stage bootstrap request required')
+    environment, uid, gid = request['environment'], request['runnerUid'], request['runnerGid']
+    _, workspace = context(environment)
+    need(type(uid) is int and type(gid) is int and uid > 0 and gid > 0
+         and os.environ.get('SUDO_UID') == str(uid) and os.environ.get('SUDO_GID') == str(gid)
+         and pwd.getpwuid(uid).pw_gid == gid, 'Actual browser stage issuer required')
+    event_row = request['event']
+    need(type(event_row) is dict and set(event_row) == {'path', 'size', 'sha256'}, 'Closed browser stage event required')
+    event = _tool_event(environment, event_row['path'], uid, event_row)
+    run, _ = browser_stage_intent(environment, json.loads(event))
+    node = request['node']
+    _require_pinned_node_row(node)
+    node_raw = _read_pinned_node(node, uid)
+    rows = request['rows']
+    need(type(rows) is list and len(rows) == len(BROWSER_STAGE_MEMBERS), 'Fixed browser stage capsule census required')
+    members = {}
+    with directory(workspace / 'automation') as root:
+        for path, row in zip(BROWSER_STAGE_MEMBERS, rows, strict=True):
+            raw, info = read(root, path, TOOL_MEMBER_MAX)
+            need(row == _tool_row(path, raw, info), 'Browser stage capsule source bytes differ')
+            members[path] = raw
+    os.environ.clear()
+    os.environ.update(SAFE)
+    tool = ModuleType('aihr_fixed_stage_tool_course')
+    tool.__file__ = TOOL_SOURCE
+    exec(compile(members[TOOL_SOURCE], TOOL_SOURCE, 'exec', dont_inherit=True), tool.__dict__)
+    owner = tool.source_module('aihr_fixed_browser_stage_course', BROWSER_STAGE_SOURCE, members[BROWSER_STAGE_SOURCE])
+    report = owner.run_stage(tool, run, environment['GITHUB_SHA'], uid, gid, members, rows, event_row['sha256'],
+                             node_bytes=node_raw, node_sha256=node['sha256'])
+    need(report.get('sourceCapsuleSha256') == hashlib.sha256(canonical(rows)).hexdigest(),
+         'Returned browser stage source capsule differs')
+    if 'stage' in report:
+        expected_bytes = 291895066 + len(node_raw) + sum(len(members[path]) for path in BROWSER_STAGE_ROLES)
+        need(report['stage'].get('entries') == 509 and report['stage'].get('fileBytes') == expected_bytes,
+             'Returned browser stage extent differs from its held input')
+    return report
+
+
 if __name__ == '__main__':
     try:
         if sys.argv[1:] == ['--seal']:
@@ -851,16 +998,31 @@ if __name__ == '__main__':
         elif sys.argv[1:] == ['--tool-only']:
             _write_tool_receipt(prepare_tool())
             sys.exit(1)
+        elif sys.argv[1:] == ['--browser-stage-only']:
+            _write_tool_receipt(prepare_tool(browser_stage=True))
+            sys.exit(1)
         elif len(sys.argv) == 3 and sys.argv[1] == '--check-tool-capture':
             with directory(pathlib.Path(os.environ['RUNNER_TEMP']) / 'aihr-native-tool-only') as folder:
                 raw, info = read(folder, 'native-workload-tool-only.json', 65536)
             need(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o600, 'TOOL capture owner differs')
             _validate_tool_capture(raw, sys.argv[2], live=True)
+        elif len(sys.argv) == 3 and sys.argv[1] == '--check-browser-stage-capture':
+            with directory(pathlib.Path(os.environ['RUNNER_TEMP']) / 'aihr-native-browser-stage') as folder:
+                raw, info = read(folder, 'native-workload-browser-stage.json', 65536)
+            need(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o600, 'Browser stage capture owner differs')
+            _validate_browser_stage_capture(raw, sys.argv[2], dict(os.environ))
         elif sys.argv[1:] == ['--seal-tool-only']:
             try:
                 report = seal_tool(_tool_request(0))
             except BaseException:
                 report = _tool_refusal('tool-bootstrap-refused')
+            _write_tool_receipt(report)
+            sys.exit(0 if report['complete'] else 1)
+        elif sys.argv[1:] == ['--seal-browser-stage-only']:
+            try:
+                report = seal_browser_stage(_tool_request(0))
+            except BaseException:
+                report = _browser_stage_refusal('browser-stage-bootstrap-refused')
             _write_tool_receipt(report)
             sys.exit(0 if report['complete'] else 1)
         else:

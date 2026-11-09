@@ -1,5 +1,5 @@
 name: alpha-staging-ci
-run-name: ${{ inputs.native_tool_only && 'Protected native TOOL only' || inputs.commission_singleton_units && 'Singleton commissioning only' || inputs.build_only && 'Canonical build only' || inputs.controller_only && 'CI controller checks' || inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
+run-name: ${{ inputs.native_browser_stage_only && 'Protected native browser stage only' || inputs.native_tool_only && 'Protected native TOOL only' || inputs.commission_singleton_units && 'Singleton commissioning only' || inputs.build_only && 'Canonical build only' || inputs.controller_only && 'CI controller checks' || inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
 on:
   workflow_dispatch:
     inputs:
@@ -42,6 +42,11 @@ on:
         required: false
         default: false
         type: boolean
+      native_browser_stage_only:
+        description: Protected browser source staging and disposal only
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [alpha]
   pull_request:
@@ -51,7 +56,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-ci-${{ inputs.candidate_ref || github.head_ref || github.ref }}-${{ inputs.native_tool_only && 'tool-only' || inputs.commission_singleton_units && 'commissioning' || inputs.build_only && 'build-only' || inputs.diagnostics_only && 'diagnostics' || 'gate' }}
+  group: alpha-ci-${{ inputs.candidate_ref || github.head_ref || github.ref }}-${{ inputs.native_browser_stage_only && 'browser-stage-only' || inputs.native_tool_only && 'tool-only' || inputs.commission_singleton_units && 'commissioning' || inputs.build_only && 'build-only' || inputs.diagnostics_only && 'diagnostics' || 'gate' }}
   cancel-in-progress: false
 env:
   PYTHONDONTWRITEBYTECODE: '1'
@@ -101,6 +106,29 @@ jobs:
           [[ "$TOOL_DIAGNOSTICS_ONLY" == true && "$TOOL_CONTROLLER_ONLY" == false && "$TOOL_BUILD_ONLY" == false ]]
           [[ -z "$TOOL_COMMISSION" && "$TOOL_PARALLELISM" == 4 ]]
           [[ "$TOOL_STAGING_ENABLED" == false && "$TOOL_PRODUCTION_ENABLED" == false ]]
+      - name: Validate closed native browser stage intent
+        if: ${{ inputs.native_browser_stage_only }}
+        shell: bash
+        env:
+          STAGE_CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          STAGE_EXPECTED_SHA: ${{ inputs.expected_sha }}
+          STAGE_CONTROL_SHA: ${{ github.workflow_sha }}
+          STAGE_PARALLELISM: ${{ inputs.test_parallelism }}
+          STAGE_DIAGNOSTICS_ONLY: ${{ inputs.diagnostics_only }}
+          STAGE_CONTROLLER_ONLY: ${{ inputs.controller_only }}
+          STAGE_BUILD_ONLY: ${{ inputs.build_only }}
+          STAGE_TOOL_ONLY: ${{ inputs.native_tool_only }}
+          STAGE_COMMISSION: ${{ inputs.commission_singleton_units }}
+          STAGE_DEPLOY_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          STAGE_PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_RUN_ATTEMPT" == 1 ]]
+          [[ "$GITHUB_REF" == refs/heads/codex/native-synthetic-browser-stage-course-20261109 ]]
+          [[ "$STAGE_CANDIDATE_REF" == "${GITHUB_REF#refs/heads/}" ]]
+          [[ "$STAGE_EXPECTED_SHA" == "$STAGE_CONTROL_SHA" && "$STAGE_EXPECTED_SHA" == "$GITHUB_SHA" ]]
+          [[ "$STAGE_DIAGNOSTICS_ONLY" == true && "$STAGE_CONTROLLER_ONLY" == false && "$STAGE_BUILD_ONLY" == false && "$STAGE_TOOL_ONLY" == false ]]
+          [[ -z "$STAGE_COMMISSION" && "$STAGE_PARALLELISM" == 4 ]]
+          [[ "$STAGE_DEPLOY_ENABLED" == false && "$STAGE_PRODUCTION_ENABLED" == false ]]
       - name: Validate exclusive bounded commissioning intent
         run: node .github/ci/singleton-commissioning.mjs intent
       - name: Refuse an invalid controller-only selection
@@ -133,12 +161,20 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/focused-recovery-extract.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/repair-recovery-extract.test.py
       - name: Verify fixed TOOL source models before acquisition
-        if: ${{ inputs.native_tool_only }}
+        if: ${{ inputs.native_tool_only || inputs.native_browser_stage_only }}
         run: |
           /usr/bin/python3 -I -B .github/ci/test_native_controller_bootstrap.py -v
           /usr/bin/python3 -I -B .github/ci/native-workload-browser-toolchain.test.py -v
           /usr/bin/python3 -I -B .github/ci/native-workload-browser-tool-installation.test.py -v
           /usr/bin/python3 -I -B .github/ci/native-workload-browser-tool-course.test.py -v
+      - name: Verify fixed browser stage source models before acquisition
+        if: ${{ inputs.native_browser_stage_only }}
+        run: |
+          /usr/bin/python3 -I -B .github/ci/native-workload-browser-launch-view.test.py -v
+          /usr/bin/python3 -I -B .github/ci/native-workload-browser-synthetic-stage.test.py -v
+          /usr/bin/python3 -I -B .github/ci/native-workload-browser-synthetic-stage-cleanup.test.py -v
+          /usr/bin/python3 -I -B .github/ci/native-workload-browser-synthetic-stage-owner.test.py -v
+          /usr/bin/python3 -I -B .github/ci/native-workload-browser-synthetic-stage-course.test.py -v
       - name: Resolve frozen candidate
         id: candidate
         env:
@@ -255,7 +291,7 @@ jobs:
       - run: node ../automation/.github/ci/check-migration-order.mjs "$BASE"
         env: {BASE: '${{ needs.resolve.outputs.base }}'}
   runner-diagnostics:
-    if: ${{ inputs.diagnostics_only && !inputs.controller_only && !inputs.native_tool_only }}
+    if: ${{ inputs.diagnostics_only && !inputs.controller_only && !inputs.native_tool_only && !inputs.native_browser_stage_only }}
     needs: resolve
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
@@ -608,8 +644,8 @@ jobs:
   native-test:
     if: >-
       ${{ always() && !cancelled() && needs.resolve.result == 'success' &&
-          ((inputs.native_tool_only && needs.plan.result == 'skipped' && needs.build.result == 'skipped') ||
-           (!inputs.native_tool_only && !inputs.diagnostics_only && !inputs.build_only && needs.plan.result == 'success' &&
+          (((inputs.native_tool_only || inputs.native_browser_stage_only) && needs.plan.result == 'skipped' && needs.build.result == 'skipped') ||
+           (!inputs.native_tool_only && !inputs.native_browser_stage_only && !inputs.diagnostics_only && !inputs.build_only && needs.plan.result == 'success' &&
             needs.plan.outputs.has_native == 'true' && needs.build.result == 'success')) }}
     needs: [resolve, plan, build]
     runs-on: ubuntu-24.04
@@ -619,11 +655,11 @@ jobs:
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
       AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
-    timeout-minutes: ${{ inputs.native_tool_only && 10 || 120 }}
+    timeout-minutes: ${{ (inputs.native_tool_only || inputs.native_browser_stage_only) && 10 || 120 }}
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(inputs.test_parallelism || '48') }}
-      matrix: ${{ fromJSON(inputs.native_tool_only && '{"unit":["tool-only"]}' || needs.plan.outputs.native_matrix) }}
+      matrix: ${{ fromJSON(inputs.native_browser_stage_only && '{"unit":["browser-stage-only"]}' || inputs.native_tool_only && '{"unit":["tool-only"]}' || needs.plan.outputs.native_matrix) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -658,18 +694,49 @@ jobs:
           path: ${{ runner.temp }}/aihr-native-tool-only/native-workload-tool-only.json
           if-no-files-found: error
           retention-days: 14
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        if: ${{ inputs.native_browser_stage_only && matrix.unit == 'browser-stage-only' }}
+        with: {node-version: '22.23.3'}
+      - name: Materialize and dispose of the fixed native browser stage
+        id: browser_stage
+        if: ${{ inputs.native_browser_stage_only && matrix.unit == 'browser-stage-only' }}
+        shell: bash
+        working-directory: automation
+        env:
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+          LD_AUDIT: ''
+          GLIBC_TUNABLES: ''
+          BASH_ENV: /dev/null
+          ENV: /dev/null
+        run: |
+          umask 077
+          set -o noclobber
+          mkdir -m 700 "$RUNNER_TEMP/aihr-native-browser-stage"
+          status=0
+          /usr/bin/python3 -I -B .github/ci/native-controller-bootstrap.py --browser-stage-only > "$RUNNER_TEMP/aihr-native-browser-stage/native-workload-browser-stage.json" || status=$?
+          /usr/bin/python3 -I -B .github/ci/native-controller-bootstrap.py --check-browser-stage-capture "$status"
+          echo 'receipt=true' >> "$GITHUB_OUTPUT"
+          exit "$status"
+      - if: ${{ always() && inputs.native_browser_stage_only && steps.browser_stage.outputs.receipt == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-workload-browser-stage
+          path: ${{ runner.temp }}/aihr-native-browser-stage/native-workload-browser-stage.json
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        if: ${{ !inputs.native_tool_only }}
+        if: ${{ !inputs.native_tool_only && !inputs.native_browser_stage_only }}
         with:
           ref: ${{ needs.resolve.outputs.sha }}
           path: source
           fetch-depth: 0
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
-        if: ${{ !inputs.native_tool_only }}
+        if: ${{ !inputs.native_tool_only && !inputs.native_browser_stage_only }}
         with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}", native_controller: 'true'}
       - name: Prepare candidate reference through protected native owner
-        if: ${{ !inputs.native_tool_only }}
+        if: ${{ !inputs.native_tool_only && !inputs.native_browser_stage_only }}
         run: '"/var/lib/aihr-native-controller/$GITHUB_RUN_ID/node" "/var/lib/aihr-native-controller/$GITHUB_RUN_ID/automation/.github/ci/native-controller-owner.mjs" ensure-main'
         env:
           LD_PRELOAD: ''
@@ -686,7 +753,7 @@ jobs:
       # run-unit captures the retained installed closure BEFORE createPlan's
       # candidate classifier, then prepares its source-bound PDF prerequisite.
       - name: Run complete unit through protected native owner
-        if: ${{ !inputs.native_tool_only }}
+        if: ${{ !inputs.native_tool_only && !inputs.native_browser_stage_only }}
         run: '"/var/lib/aihr-native-controller/$GITHUB_RUN_ID/node" "/var/lib/aihr-native-controller/$GITHUB_RUN_ID/automation/.github/ci/native-controller-owner.mjs" run-unit "$UNIT" "$RUNNER_TEMP/aihr-ci"'
         env:
           UNIT: '${{ matrix.unit }}'
@@ -703,13 +770,13 @@ jobs:
           SHELLOPTS: ''
           BASHOPTS: ''
       - name: Retain actual PDF setup diagnostics with the unit evidence
-        if: ${{ always() && !inputs.native_tool_only }}
+        if: ${{ always() && !inputs.native_tool_only && !inputs.native_browser_stage_only }}
         run: |
           if [ -f "$RUNNER_TEMP/pdf-tools-setup.json" ]; then
             mkdir -p "$RUNNER_TEMP/aihr-ci"
             cp "$RUNNER_TEMP/pdf-tools-setup.json" "$RUNNER_TEMP/aihr-ci/pdf-tools-setup.json"
           fi
-      - if: ${{ always() && !inputs.native_tool_only }}
+      - if: ${{ always() && !inputs.native_tool_only && !inputs.native_browser_stage_only }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ inputs.commission_singleton_units && 'commission-unit' || 'unit' }}-${{ matrix.unit }}

@@ -24,13 +24,19 @@ def environment():
         'RUNNER_TEMP': '/home/runner/work/_temp', 'RUNNER_TOOL_CACHE': '/opt/hostedtoolcache'}
 
 
+def browser_stage_environment():
+    branch = M.BROWSER_STAGE_BRANCH
+    ref = 'refs/heads/' + branch
+    return {**environment(), 'AIHR_CI_HEAD': 'b' * 40, 'GITHUB_WORKFLOW_SHA': 'b' * 40,
+            'GITHUB_REF': ref, 'GITHUB_REF_NAME': branch, 'GITHUB_REF_TYPE': 'branch',
+            'GITHUB_WORKFLOW_REF': 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@' + ref}
+
+
 class BootstrapControls(unittest.TestCase):
     def test_browser_stage_intent_requires_its_exact_self_source_and_exclusive_mode(self):
         branch = M.BROWSER_STAGE_BRANCH
         ref = 'refs/heads/' + branch
-        env = {**environment(), 'AIHR_CI_HEAD': 'b' * 40, 'GITHUB_WORKFLOW_SHA': 'b' * 40,
-               'GITHUB_REF': ref, 'GITHUB_REF_NAME': branch, 'GITHUB_REF_TYPE': 'branch',
-               'GITHUB_WORKFLOW_REF': 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@' + ref}
+        env = browser_stage_environment()
         inputs = {'candidate_ref': branch, 'expected_sha': 'b' * 40, 'test_parallelism': '4',
                   'build_only': 'false', 'diagnostics_only': 'true', 'controller_only': 'false',
                   'native_tool_only': 'false', 'native_browser_stage_only': 'true'}
@@ -48,6 +54,36 @@ class BootstrapControls(unittest.TestCase):
             M.browser_stage_intent({**env, 'GITHUB_REF': 'refs/heads/alpha'}, event)
         with self.assertRaisesRegex(ValueError, 'event differs'):
             M.browser_stage_intent(env, {**event, 'ref': M.TOOL_BRANCH})
+
+    def test_browser_stage_checks_exact_node_path_before_any_read_or_probe(self):
+        with mock.patch.object(M.shutil, 'which', return_value='/tmp/foreign/node'), \
+             mock.patch.object(M, 'directory') as read_directory, mock.patch.object(M.subprocess, 'run') as probe:
+            with self.assertRaisesRegex(ValueError, 'Exact pinned setup-node executable'):
+                M._capture_pinned_node(exact_path=True)
+        read_directory.assert_not_called()
+        probe.assert_not_called()
+
+    def test_browser_stage_capture_requires_positive_native_closure_and_excludes_release_authority(self):
+        env = browser_stage_environment()
+        report = {'kind': 'NATIVE_BROWSER_SYNTHETIC_STAGE_COMPONENT', 'complete': True,
+                  'source': 'b' * 40, 'controller': 'b' * 40, 'runId': '123', 'attempt': 1, 'job': 'native-test',
+                  'eventSha256': 'd' * 64, 'sourceCapsuleSha256': 'e' * 64, 'elapsedMs': 3401,
+                  'ownedProcessesSettled': True, 'cleanup': {'stage': 'complete', 'archives': 'complete'},
+                  'stage': {'treeSha256': 'f' * 64, 'entries': 509, 'fileBytes': 300000000,
+                            'currentRootMatched': True, 'managerRootMatched': True},
+                  **dict.fromkeys(M.BROWSER_STAGE_INACTIVE, False)}
+        M._validate_browser_stage_capture(M.canonical(report), '0', env)
+        for change in ({'releaseAuthorized': True}, {'rolesStarted': True}, {'source': 'a' * 40},
+                       {'elapsedMs': 180000}, {'ownedProcessesSettled': False},
+                       {'cleanup': {'stage': 'complete', 'archives': 'refused'}},
+                       {'stage': {**report['stage'], 'entries': 510}},
+                       {'stage': {**report['stage'], 'managerRootMatched': False}}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                M._validate_browser_stage_capture(M.canonical({**report, **change}), '0', env)
+        refused = M._browser_stage_refusal('browser-stage-pre-root-refused', 'pinned-node')
+        M._validate_browser_stage_capture(M.canonical(refused), '1', env)
+        with self.assertRaises(ValueError):
+            M._validate_browser_stage_capture(M.canonical({**refused, 'preRootCheckpoint': 'invented'}), '1', env)
 
     def test_receiver_is_cached_before_even_controller_metadata_git(self):
         class StopBeforeExternalProgram(Exception):
