@@ -1134,6 +1134,72 @@ class ToolDisposalModels(unittest.TestCase):
         course.processes_settled = False
         self.assertFalse(C.course_complete(course, None, 'complete', start + 1))
 
+    def test_protected_archive_scope_holds_order_and_refuses_changed_inputs(self):
+        course = C.Course('123', 1001, 1001, time.monotonic())
+        course.root, course.device = 10, 1
+        course.births['inputs'] = (1, 11)
+
+        def info(inode, mode):
+            return SimpleNamespace(st_dev=1, st_ino=inode, st_uid=0, st_gid=0, st_mode=mode,
+                                   st_nlink=1, st_size=1, st_mtime_ns=1, st_ctime_ns=1)
+
+        directory = info(11, stat.S_IFDIR | 0o700)
+        names = [name for name, _, _, _ in C.DOWNLOADS]
+        fds = dict(zip(names, range(20, 24), strict=True))
+        files = {fd: info(fd, stat.S_IFREG | 0o400) for fd in fds.values()}
+        streams = {fd: MagicMock() for fd in files}
+        for fd, stream in streams.items():
+            stream.__enter__.return_value = stream
+            stream.fileno.return_value = fd
+
+        class ArchiveRefused(ValueError):
+            pass
+
+        course.installer = SimpleNamespace(_PARSER=SimpleNamespace(ArchiveRefused=ArchiveRefused))
+
+        for case in ('complete', 'source-replaced', 'archive-replaced', 'parser-refused'):
+            current = files.copy()
+            for stream in streams.values():
+                stream.reset_mock()
+            found = directory if case != 'source-replaced' else info(99, stat.S_IFDIR | 0o700)
+
+            def named(parent, name):
+                if (parent, name) == (10, 'inputs'):
+                    return found
+                self.assertEqual(parent, 11)
+                return files[fds[name]]
+
+            def materialize():
+                with course.protected_archive_inputs(11) as held:
+                    self.assertEqual(held, tuple(streams[fd] for fd in fds.values()))
+                    if case == 'archive-replaced':
+                        current[20] = info(90, stat.S_IFREG | 0o400)
+                    if case == 'parser-refused':
+                        raise ArchiveRefused('pinned browser tree differs')
+
+            with self.subTest(case=case), \
+                 patch.object(C, 'named', side_effect=named), \
+                 patch.object(C.os, 'open', side_effect=lambda name, flags, *, dir_fd: fds[name]) as opened, \
+                 patch.object(C.os, 'fdopen', side_effect=lambda fd, mode: streams[fd]), \
+                 patch.object(C.os, 'fstat', side_effect=lambda fd: directory if fd == 11 else current[fd]):
+                if case == 'complete':
+                    materialize()
+                elif case == 'source-replaced':
+                    with self.assertRaisesRegex(ValueError, 'input directory differs'):
+                        materialize()
+                    opened.assert_not_called()
+                    continue
+                elif case == 'archive-replaced':
+                    with self.assertRaisesRegex(ValueError, 'protected input changed'):
+                        materialize()
+                else:
+                    with self.assertRaises(C.ToolRefusal) as refusal:
+                        materialize()
+                    self.assertEqual(refusal.exception.reason, 'strict-archive-pin')
+                self.assertEqual(opened.call_args_list, [call(name, C.READ, dir_fd=11) for name in names])
+                for stream in streams.values():
+                    stream.__exit__.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()

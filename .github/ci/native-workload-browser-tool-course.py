@@ -984,10 +984,16 @@ class Course:
             require_file(os.fstat(sealed), 0, 0, 0o400, maximum)
             require(os.fstat(sealed).st_size == size, 'TOOL protected archive extent differs')
 
-    def materialize(self):
-        self.add_directory('payload')
-        with owned_fd(self.child_directory('inputs')) as source, \
-             owned_fd(self.child_directory('payload')) as destination, ExitStack() as files:
+    @contextmanager
+    def protected_archive_inputs(self, source):
+        """Hold only this course's four exact inputs through strict materialization."""
+        left(self.active)
+        source_info = os.fstat(source)
+        require_dir(source_info, 0, 0, 0o700, self.device)
+        require(birth(source_info) == self.births['inputs']
+                and identity(source_info) == identity(named(self.root, 'inputs')),
+                'TOOL protected input directory differs')
+        with ExitStack() as files:
             archives = []
             for name, _, _, maximum in DOWNLOADS:
                 info = named(source, name)
@@ -996,7 +1002,7 @@ class Course:
                 require(identity(os.fstat(stream.fileno())) == identity(info), 'TOOL protected input inode differs')
                 archives.append((name, stream, info))
             try:
-                staged = self.installer.materialize_toolchain(destination, *(row[1] for row in archives), self.active)
+                yield tuple(stream for _, stream, _ in archives)
             except self.installer._PARSER.ArchiveRefused as error:
                 if error.args == ('archive inspection deadline exhausted',):
                     reason = 'deadline'
@@ -1009,6 +1015,14 @@ class Course:
             for name, stream, info in archives:
                 require(identity(info) == identity(os.fstat(stream.fileno())) == identity(named(source, name)),
                         'TOOL protected input changed')
+            left(self.active)
+
+    def materialize(self):
+        self.add_directory('payload')
+        with owned_fd(self.child_directory('inputs')) as source, \
+             owned_fd(self.child_directory('payload')) as destination:
+            with self.protected_archive_inputs(source) as archives:
+                staged = self.installer.materialize_toolchain(destination, *archives, self.active)
             self.final_modes(destination, staged)
         return staged
 
