@@ -250,7 +250,8 @@ jobs:
         run: node .github/ci/resolve.mjs
         env:
           GH_TOKEN: ${{ github.token }}
-          STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
+          # This fictional branch checks out its exact baseline independently of release metadata handback.
+          STAGING_BASE_SHA: ${{ github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' && '5c990a639607b404a6d8fc7f78ca4752d2461476' || vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
     needs: resolve
     runs-on: ubuntu-24.04
@@ -300,7 +301,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         if: ${{ github.ref == 'refs/heads/codex/architecture-ai-source-upgrade-witness-20261109' }}
         with:
-          ref: b698f5d35b0cca12e2c1268f3bea08d0aa1d070e
+          ref: 5c990a639607b404a6d8fc7f78ca4752d2461476
           path: baseline
           persist-credentials: false
       - name: Allocate an isolated fixture tool and source directory
@@ -342,8 +343,8 @@ jobs:
           install -m 0755 "$(command -v node)" "$runtime/bin/node"
           export PATH="$runtime/bin:$runtime/pnpm/node_modules/.bin:/usr/bin:/bin"
           for member in baseline source; do
-            sha=b698f5d35b0cca12e2c1268f3bea08d0aa1d070e
-            if test "$member" = source; then sha=145e527f45be53fd6b587691d7a82a9240a0e456; fi
+            sha=5c990a639607b404a6d8fc7f78ca4752d2461476
+            if test "$member" = source; then sha=eb53cdf7cb4007e9d6298f7928028c20925c65e5; fi
             checkout="$runtime/$member"
             test "$(git -C "$GITHUB_WORKSPACE/$member" rev-parse HEAD)" = "$sha"
             git init --quiet "$checkout"

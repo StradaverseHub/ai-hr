@@ -1,4 +1,4 @@
-"""Development-only owner for the exact fictional b698 to 145e witness."""
+"""Development-only owner for the exact fictional Board 2 to eb53 witness."""
 import fcntl
 import hashlib
 import importlib.util
@@ -12,8 +12,8 @@ import subprocess
 import sys
 import time
 
-BASE = 'b698f5d35b0cca12e2c1268f3bea08d0aa1d070e'
-CANDIDATE = '145e527f45be53fd6b587691d7a82a9240a0e456'
+BASE = '5c990a639607b404a6d8fc7f78ca4752d2461476'
+CANDIDATE = 'eb53cdf7cb4007e9d6298f7928028c20925c65e5'
 BRANCH = 'codex/architecture-ai-source-upgrade-witness-20261109'
 REPO = 'StradaverseHub/ai-hr'
 IMAGE = 'postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97'
@@ -621,7 +621,7 @@ def main():
         stage = 'result'
         output = json.loads(plain(witness_dir/'after.json'))
         need(output == {'status':'PASS','baseline':BASE,'candidate':CANDIDATE,'controller':controller,'runId':run,
-            'attempt':1,'retainedTables':14,'ledgerBefore':723,'ledgerAfter':764,'oldReplay':'unavailable',
+            'attempt':1,'retainedTables':14,'ledgerBefore':723,'ledgerAfter':765,'oldReplay':'unavailable',
             'fallbackReplay':'baseline','currentReplay':'promoted','oldPermitsUsed':1,'currentPermitsUsed':1,
             'sourceChangedRollbacks':1,'releaseAuthorized':False})
     except BaseException:

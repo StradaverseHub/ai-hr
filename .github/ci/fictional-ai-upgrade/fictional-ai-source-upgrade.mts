@@ -9,10 +9,10 @@ import type { SessionContext } from '../db/client';
 import type { Base } from '../test/harness';
 import {APP_URL, BASE, CANDIDATE, OWNER_URL, assertPristineAuthTenant, installFictionalServerOnlyResolution, readCanonicalAdmission} from './fictional-ai-upgrade-canonical-admission.mjs';
 
-const BASE_MODULE = '7f15e132bb44c257e9a9615184e12625684556945f8edc9b75999657c3266d2e';
-const CANDIDATE_MODULE = '9e45abb74a6035bd26d9eaef8fe2e06bc0a88de2704587ef1864a378b5c465a9';
-const BASE_PROVIDER = '020279efedc544846db0bcc91e6fba27b8c49725169178fa8307c1bc8b6b394c';
-const CANDIDATE_PROVIDER = '51789bac0824dc0a33acee0dc0b3887f61bc94e40c67a5093f45fe0b5c91c432';
+const BASE_MODULE = 'e43b340ce5851409e0f63eff0f1d786c681fb8068517988b063fc1060760d247';
+const CANDIDATE_MODULE = '982b79512dea177d5205aa6ae2f671f058e14ad6ca1c20606f47b7466aeda02f';
+const BASE_PROVIDER = 'ffd2e1fec9fd42740bdd1cda8b4859237c78327bdca9471b17c9406b44eb58ce';
+const CANDIDATE_PROVIDER = 'f1c2967f5d76665114b877553ec8bb3efd5f929b3b2219a9cf2023a7aa183163';
 const AI_TABLES = ['ai_agent_candidate', 'ai_agent_candidate_provenance', 'ai_agent_evaluation',
   'ai_agent_promotion', 'ai_agent_job_receipt', 'ai_agent_job_feedback', 'ai_agent_rollback'] as const;
 const TABLES = [...AI_TABLES, 'assistant_grant', 'person', 'employment', 'assignment', 'reporting_line', 'role_assignment', 'domain_event'] as const;
@@ -99,7 +99,7 @@ async function main() {
     // Sort by the native integer column because the unqualified output alias is text.
     const ledger = [...await owner.client<LedgerRow[]>`select m.id::text as id, m.hash, m.created_at::text as created_at
       from drizzle.__drizzle_migrations m order by m.id`];
-    assert.equal(freshLedger.length, phase === 'prepare' ? 723 : 764);
+    assert.equal(freshLedger.length, phase === 'prepare' ? 723 : 765);
     validateMigrationLedgerRows(freshLedger,ledger);
     enter('database-identity');
     const [{db,role,postgresSystemId,postmasterEpoch}] = await owner.client<{

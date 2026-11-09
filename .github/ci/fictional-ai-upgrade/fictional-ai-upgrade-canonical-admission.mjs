@@ -6,8 +6,8 @@ import {registerHooks} from 'node:module';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-export const BASE = 'b698f5d35b0cca12e2c1268f3bea08d0aa1d070e';
-export const CANDIDATE = '145e527f45be53fd6b587691d7a82a9240a0e456';
+export const BASE = '5c990a639607b404a6d8fc7f78ca4752d2461476';
+export const CANDIDATE = 'eb53cdf7cb4007e9d6298f7928028c20925c65e5';
 export const BRANCH = 'codex/architecture-ai-source-upgrade-witness-20261109';
 export const IMAGE = 'postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97';
 export const APP_URL = 'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev';
