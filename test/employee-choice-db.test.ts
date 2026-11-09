@@ -468,10 +468,17 @@ const pagePrepared=sql`select count(*)::int as total,coalesce(sum(generic_plans)
 async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<ReturnType<typeof organisationPageCourse>>,caseEnd:number,signal:AbortSignal,preTagCalls:readonly PagePreTagCall[]){
  const {b,ctx,expectedLast,organisationTagSample}=fixture,tenant=b.tenantId,dialect=new PgDialect();
  const activeEnd=caseEnd-25000,ownerDeadline=caseEnd;
+ const statisticsWorkEnd=activeEnd-5000;
+ let statisticsWork=false,statisticsEnded=false;
+ const workDeadline=()=>statisticsWork?statisticsWorkEnd:activeEnd;
  const requireTime=(deadline:number,remaining:number,phase:string)=>{
   if(performance.now()+remaining>deadline)throw new Error('Organisation page slot refused before '+phase);
  };
- const active=(phase:string,remaining=20000)=>{signal.throwIfAborted();requireTime(activeEnd,remaining,phase);};
+ const active=(phase:string,remaining=20000)=>{
+  signal.throwIfAborted();
+  if(statisticsEnded)throw new Error('Organisation page statistics holder ended during the read');
+  requireTime(workDeadline(),remaining,phase);
+ };
  const cleanup=(phase:string,remaining=20000)=>requireTime(ownerDeadline,remaining,phase);
  const limit=async(tx:Tx,step:(label:string)=>void)=>{
   step('transaction limits');
@@ -772,7 +779,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   expected:readonly {position:string;value:unknown}[])=>{
   // This stays in the held comparison transaction. In particular, no new
   // checkout can follow the original catalogue refusal or its rollback.
-  const splitEnd=Math.min(end,activeEnd);
+  const splitEnd=Math.min(end,workDeadline());
   if(signal.aborted||performance.now()+24000>splitEnd)return;
   splitEvidence.state='incomplete';
   const step=(stage:typeof splitEvidence.stage,remaining=2000)=>{
@@ -1060,8 +1067,8 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  const observeCleanEnvelope=async(open:typeof database.withTenant,reference:CleanEnvelopeReference)=>{
   envelopeEvidence.origin='post-public-clean-snapshot';
   const start=performance.now(),settleBy=start+72000;
-  envelopeEvidence.activeRemainingAtAdmissionMs=activeEnd-start;
-  if(signal.aborted||settleBy>activeEnd){
+  envelopeEvidence.activeRemainingAtAdmissionMs=workDeadline()-start;
+  if(signal.aborted||statisticsEnded||settleBy>workDeadline()){
    envelopeEvidence.stage='post-public-slot-unavailable';
    return;
   }
@@ -1079,7 +1086,8 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
     entrySignal.throwIfAborted();requireTime(enterBy,0,'post-public auxiliary timeouts');
     const nativeStep=(stage:EnvelopeStage,remaining=2000)=>{
      envelopeEvidence.stage=stage;
-     signal.throwIfAborted();requireTime(nativeEnd,remaining,'post-public auxiliary '+stage);
+     active('post-public auxiliary '+stage,remaining);
+     requireTime(nativeEnd,remaining,'post-public auxiliary '+stage);
     };
     nativeStep('post-public-principal');
     await assertAiPresentationPrincipalTx(tx,ctx);
@@ -1151,6 +1159,118 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    }
   }
  };
+ // A separate fixture-owner transaction keeps maintenance off the exact six
+ // tables while the ordinary app transaction retains its usual SELECT locks.
+ type StatisticsBackend=Pick<PageRealm,'pid'|'started'|'oid'>;
+ type StatisticsLock={name:string;oid:string;kind:string;virtualTransaction:string;transactionStarted:string};
+ const statisticsReceipt:{
+  state:'not-started'|'starting'|'held'|'lock-not-available'|'refused'|'rollback-acknowledged'|'unconfirmed';
+  backend?:StatisticsBackend;initial?:StatisticsLock[];terminal?:StatisticsLock[];
+  settlement?:'rollback-acknowledged'|'unconfirmed';locksAbsent?:true;
+  terminalWithinSlot?:boolean;rollbackWithinSlot?:boolean;outerFailure?:string|null;callbackFailure?:string|null;
+ }={state:'not-started'};
+ metadata.statisticsHolder=statisticsReceipt;
+ const holdStatistics=(prepared:PageRealm)=>{
+  const rollback=new Error('Release organisation page statistics locks');
+  let ready!: (id:StatisticsBackend)=>void,release!:()=>void;
+  const readiness=new Promise<StatisticsBackend>(resolve=>{ready=resolve;});
+  const releasing=new Promise<void>(resolve=>{release=resolve;});
+  let callback:Promise<never>|undefined,acquisitionFailure:{error:unknown}|undefined;
+  const locks=async(tx:Tx,id:StatisticsBackend)=>{
+   const rows=Array.from(await tx.execute<StatisticsLock>(sql`select
+    case when n.nspname='public' then c.relname end as name,l.relation::text as oid,
+    c.relkind as kind,l.virtualtransaction as "virtualTransaction",
+    extract(epoch from a.xact_start)::text as "transactionStarted"
+    from pg_catalog.pg_locks l
+    join pg_catalog.pg_stat_activity a on a.pid=l.pid and a.datid=l.database
+    left join pg_catalog.pg_class c on c.oid=l.relation
+    left join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+    where l.pid=pg_backend_pid() and l.pid=${id.pid}::int and l.database=${id.oid}::oid
+      and extract(epoch from a.backend_start)::text=${id.started} and a.usename='postgres'
+      and l.locktype='relation' and l.mode='ShareUpdateExclusiveLock' and l.granted
+    order by c.relname`));
+   expect(rows.map(row=>row.name)).toEqual(pageRelationNames);
+   expect(new Set(rows.map(row=>row.oid)).size).toBe(pageRelationNames.length);
+   expect(rows.every(row=>row.kind==='r'&&/^\d+$/.test(row.oid))).toBe(true);
+   const [first]=rows;
+   expect(first.virtualTransaction).toMatch(/^\d+\/\d+$/);
+   expect(first.transactionStarted).toMatch(/^\d+(?:\.\d+)?$/);
+   expect(rows.every(row=>row.virtualTransaction===first.virtualTransaction&&row.transactionStarted===first.transactionStarted)).toBe(true);
+   return rows;
+  };
+  statisticsReceipt.state='starting';
+  const outer=Promise.resolve().then(()=>owner.db.transaction(tx=>{
+   callback=Promise.resolve().then(async()=>{
+    await limit(tx,active);
+    const identity=await realm(tx,active,'postgres');
+    sameWorker(identity,prepared);
+    expect(identity).toMatchObject({isolation:'read committed',read_only:'off'});
+    const id={pid:identity.pid,started:identity.started,oid:identity.oid};
+    statisticsReceipt.backend=id;
+    active('statistics holder native bounds');
+    const [setting]=await tx.execute<{statement:string;idle:number}>(sql`select
+     pg_catalog.set_config('statement_timeout','2s',true) as statement,setting::int as idle
+     from pg_catalog.pg_settings where name='idle_in_transaction_session_timeout' and unit='ms'`);
+    expect(setting.statement).toBe('2s');
+    expect(Number.isInteger(setting.idle)&&(setting.idle===0||setting.idle>=Math.ceil(activeEnd-performance.now()))).toBe(true);
+    active('statistics holder NOWAIT',2000);
+    try{
+     await tx.execute(sql`LOCK TABLE ONLY public.assignment, ONLY public.business_unit, ONLY public.company,
+      ONLY public.department, ONLY public.employment, ONLY public.person IN SHARE UPDATE EXCLUSIVE MODE NOWAIT`);
+    }catch(error){acquisitionFailure={error};throw error;}
+    active('statistics holder initial lock readback',2000);
+    statisticsReceipt.initial=await locks(tx,id);
+    active('statistics holder readiness',0);
+    statisticsReceipt.state='held';
+    ready(id);
+    await releasing;
+    // On an expired or aborted case only restitution remains admitted.
+    if(!signal.aborted&&!statisticsEnded&&performance.now()+2000<=activeEnd){
+     statisticsReceipt.terminal=await locks(tx,id);
+     expect(statisticsReceipt.terminal).toEqual(statisticsReceipt.initial);
+     statisticsReceipt.terminalWithinSlot=performance.now()<=activeEnd;
+    }
+    throw rollback;
+   });
+   return callback;
+  })).then(
+   ()=>({error:new Error('Organisation page statistics transaction returned without rollback')}),
+   (error:unknown)=>({error}),
+  ).then(result=>{statisticsEnded=true;return result;});
+  return {
+   ready:Promise.race([readiness,outer.then(({error})=>{throw error;})]),
+   finish:async()=>{
+    release();
+    const {error}=await outer;
+    const result=callback?(await Promise.allSettled([callback]))[0]:undefined;
+    // The pinned driver rethrows that exact callback error only after
+    // ROLLBACK returns. Its separate socket-close rejection proves no such thing.
+    if(!statisticsReceipt.backend||result?.status!=='rejected'||result.reason!==error){
+     statisticsReceipt.state='unconfirmed';statisticsReceipt.settlement='unconfirmed';
+     statisticsReceipt.outerFailure=errorHash(error);
+     ownerUnconfirmed=true;organisationPageUnconfirmed=true;
+     if(result?.status==='rejected'&&result.reason!==error){
+      statisticsReceipt.callbackFailure=errorHash(result.reason);
+      throw new AggregateError([error,result.reason],'Organisation page statistics holder and callback refused');
+     }
+     throw error;
+    }
+    statisticsReceipt.settlement='rollback-acknowledged';
+    statisticsReceipt.rollbackWithinSlot=performance.now()<=activeEnd;
+    if(error!==rollback){
+     statisticsReceipt.state=acquisitionFailure?.error===error&&typeof error==='object'&&error!==null&&
+      (('code' in error&&error.code==='55P03')||
+       ('cause' in error&&typeof error.cause==='object'&&error.cause!==null&&'code' in error.cause&&error.cause.code==='55P03'))
+      ?'lock-not-available':'refused';
+     throw error;
+    }
+    statisticsReceipt.state='rollback-acknowledged';
+    if(signal.aborted||!statisticsReceipt.terminalWithinSlot||!statisticsReceipt.rollbackWithinSlot)
+     throw new Error('Organisation page statistics settlement exceeded the active slot');
+   },
+  };
+ };
+ let statisticsHolder:ReturnType<typeof holdStatistics>|undefined,statisticsFailure:{error:unknown}|undefined;
  const publicPortMs:Record<string,number>={};
  metadata.publicPortMs=publicPortMs;
  const assessPrimaryTimings=()=>references.map(({label,total})=>{
@@ -1195,11 +1315,17 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    return id;
   });
   fixtureCommitted=true;metadata.fixture={units:2,tagged:touched.length,committed:true};save();
+  statisticsWork=true;
+  active('statistics holder admission with ABBA reserved',90000);
+  statisticsHolder=holdStatistics(preparedOwner);
+  const statisticsBackend=await statisticsHolder.ready;
   active('ABBA admission with cleanup reserved',90000);
+  save();
   await database.withTenant(ctx,tx=>track((async()=>{
    await limit(tx,active);
    const identity=await realm(tx,active,'ai_hr_app');
    sameWorker(identity,preparedOwner);expect(identity.pid).not.toBe(preparedOwner.pid);
+   expect(identity.pid).not.toBe(statisticsBackend.pid);
    metadata.app=identity;
    active('initial planner catalogue');
    const [catalogue]=await tx.execute<{facts:{indexes:unknown[][];policies:{tablename:string;policyname:string;qual:string}[];
@@ -1271,6 +1397,8 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  }
  finally{
   await Promise.allSettled([...readSnapshots]);
+  if(statisticsHolder)try{await statisticsHolder.finish();}
+  catch(error){if(!workFailed||workFailure!==error)statisticsFailure={error};}
   const admitted=ownerIdentity;
   if(admitted&&!ownerUnconfirmed)try{
    const preparation=ownerReceipts.prepare;
@@ -1291,6 +1419,20 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
     if(sameBackend)expect(settlement.preparation).toEqual({state:'active',outside:false});
     else if(settlement.preparation)expect(settlement.preparation).toEqual({state:'idle',outside:true});
     metadata.preparationSettlement={sameBackend,observed:settlement.preparation};
+    const held=statisticsReceipt.backend;
+    if(held){
+     expect(statisticsReceipt.settlement).toBe('rollback-acknowledged');
+     expect(id.oid).toBe(held.oid);
+     ownedStep('statistics holder native lock absence');
+     const [remaining]=await tx.execute<{locks:number;transactions:number}>(sql`select
+      (select count(*)::int from pg_catalog.pg_locks l where l.pid=${held.pid}::int and l.database=${held.oid}::oid
+       and l.locktype='relation' and l.mode='ShareUpdateExclusiveLock' and l.granted) as locks,
+      (select count(*)::int from pg_catalog.pg_stat_activity a where a.pid=${held.pid}::int and a.datid=${held.oid}::oid
+       and extract(epoch from a.backend_start)::text=${held.started} and a.xact_start is not null
+       and a.pid<>pg_backend_pid()) as transactions`);
+     expect(remaining).toEqual({locks:0,transactions:0});
+     statisticsReceipt.locksAbsent=true;
+    }
     ownedStep('exact fixture ownership');
     const owned=Array.from(await tx.execute<{id:string;code:string;name:string}>(sql`select id::text,code,name from public.business_unit
      where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid and id=any(${organisationPageArray(units.map(unit=>unit.id))}::uuid[])
@@ -1329,7 +1471,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    restored=true;
   }catch(error){restoreFailed=true;restoreFailure=error;organisationPageUnconfirmed=true;}
  }
- metadata.failures={work:errorHash(workFailure),cleanup:errorHash(restoreFailure)};
+ metadata.failures={work:errorHash(workFailure),statistics:errorHash(statisticsFailure?.error),cleanup:errorHash(restoreFailure)};
  metadata.restored=restored;metadata.ownerStopRequired=organisationPageUnconfirmed;
  if(taggedEvidence.stage==='capture-finished'&&taggedEvidence.failure===undefined&&!appOuterRefusal&&restored&&metadata.nativeAppSettled===true){
   taggedEvidence.state='complete';taggedEvidence.stage='native-settled';
@@ -1344,7 +1486,8 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
     splitEvidence.stage==='capture-finished'&&splitEvidence.failure===undefined){
   splitEvidence.state='settled';splitEvidence.stage='native-settled';
  }
- const failures=[...(workFailed?[workFailure]:[]),...(appOuterRefusal?[appOuterRefusal.error]:[]),...(restoreFailed?[restoreFailure]:[])];
+ const failures=[...(workFailed?[workFailure]:[]),...(appOuterRefusal?[appOuterRefusal.error]:[]),
+  ...(statisticsFailure?[statisticsFailure.error]:[]),...(restoreFailed?[restoreFailure]:[])];
  metadata.positionTimings=positionTimings;
  try{
   if(preTagCalls.length!==6)throw new Error('Unexpected pre-tag organisation statement census');
