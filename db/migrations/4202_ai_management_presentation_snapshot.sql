@@ -11,7 +11,7 @@ BEGIN
   SELECT * INTO observed FROM pg_catalog.pg_proc WHERE oid=to_regprocedure(expected.signature);
   IF observed.oid IS NULL OR observed.proowner<>current_user::regrole OR NOT observed.prosecdef
    OR md5(observed.prosrc) IS DISTINCT FROM expected.body_hash
-   OR (SELECT count(*) FROM aclexplode(coalesce(observed.proacl,acldefault('f',observed.proowner))))<>CASE WHEN expected.app_execute THEN 2 ELSE 1 END
+   OR (SELECT count(*) FROM aclexplode(coalesce(observed.proacl,acldefault('f',observed.proowner))))<> (1 + expected.app_execute::int)
    OR EXISTS(SELECT 1 FROM aclexplode(coalesce(observed.proacl,acldefault('f',observed.proowner))) a
      WHERE a.grantor<>observed.proowner OR a.privilege_type<>'EXECUTE' OR a.is_grantable
       OR NOT (a.grantee=observed.proowner OR (expected.app_execute AND a.grantee='ai_hr_app'::regrole)))
