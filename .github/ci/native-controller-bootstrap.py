@@ -792,9 +792,655 @@ def seal_tool(request):
     return owner.run_course(run, environment['GITHUB_SHA'], uid, gid, members, rows, event_row['sha256'])
 
 
+# Fixed synthetic physical capability probe. No production source, packages,
+# compiler, browser, database, downloader or deployment enters the jail.
+VIEW_BRANCH = 'codex/native-next-project-view-probe-20261109'
+VIEW_KIND = 'ROOT_PRIVATE_NEXT_PROJECT_VIEW_SYNTHETIC_CAPABILITY'
+VIEW_RECEIPT = 'next-project-view-probe.json'
+VIEW_TOOL = '.github/ci/native-workload-browser-tool-course.py'
+VIEW_KERNEL = '.github/ci/owned-process.py'
+VIEW_MOUNTINFO = 'deploy/admission/next_profile.py'
+VIEW_MEMBERS = tuple(sorted((SCRIPT, VIEW_TOOL, VIEW_KERNEL, VIEW_MOUNTINFO)))
+VIEW_FILE_MAX = 32768
+VIEW_RECEIVER_MAX = 96 * 1024
+VIEW_PHASES = ('namespace', 'private-propagation', 'read-only-mounts', 'network-route-census',
+               'privilege-drop', 'physical-file-controls')
+VIEW_DIRS = ('source', 'dependencies', 'jail', 'jail/project', 'jail/project/app',
+             'jail/project/node_modules', 'jail/receipt')
+VIEW_SEEDS = {'source/seed': b'fictional source\n', 'dependencies/seed': b'fictional dependency\n'}
+VIEW_CREATED = ('jail/project/.next', 'jail/project/.next/probe',
+                'jail/project/next-env.d.ts', 'jail/receipt/worker.json')
+VIEW_WRITTEN = b'fictional writable output\n'
+VIEW_NEWNS = 0x00020000
+VIEW_NEWNET = 0x40000000
+VIEW_BIND = 4096
+VIEW_REMOUNT = 32
+VIEW_RDONLY_NOSUID_NODEV = 1 | 2 | 4
+VIEW_NOEXEC = 8
+VIEW_RECURSIVE_PRIVATE = (1 << 14) | (1 << 18)
+
+
+def view_intent(environment, event):
+    ref = 'refs/heads/' + VIEW_BRANCH
+    fields = {'GITHUB_ACTIONS': 'true', 'CI': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted',
+              'RUNNER_OS': 'Linux', 'RUNNER_ARCH': 'X64', 'GITHUB_REPOSITORY': 'StradaverseHub/ai-hr',
+              'GITHUB_REPOSITORY_ID': '1333414856', 'GITHUB_WORKFLOW': 'alpha-staging-ci',
+              'GITHUB_WORKFLOW_REF': 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@' + ref,
+              'GITHUB_JOB': 'resolve', 'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_RUN_ATTEMPT': '1',
+              'GITHUB_REF': ref, 'GITHUB_REF_NAME': VIEW_BRANCH, 'GITHUB_REF_TYPE': 'branch',
+              'RUNNER_TEMP': '/home/runner/work/_temp', 'RUNNER_TOOL_CACHE': '/opt/hostedtoolcache',
+              'GITHUB_WORKSPACE': '/home/runner/work/ai-hr/ai-hr'}
+    need(type(environment) is dict and set(environment) <= set(ENVIRONMENT)
+         and all(type(value) is str and '\0' not in value and len(value) <= 8192 for value in environment.values())
+         and all(environment.get(key) == value for key, value in fields.items()), 'Fixed view-probe controller required')
+    run, sha = environment.get('GITHUB_RUN_ID', ''), environment.get('GITHUB_SHA', '')
+    need(re.fullmatch(r'[1-9][0-9]{0,15}', run) and re.fullmatch(r'[a-f0-9]{40}', sha)
+         and all(environment.get(key) == sha for key in ('GITHUB_WORKFLOW_SHA', 'AIHR_CI_HEAD', 'AIHR_CI_CONTROL_HEAD')),
+         'Fixed view-probe source identity required')
+    repository = event.get('repository') if type(event) is dict else None
+    need(type(repository) is dict and type(repository.get('id')) is int and repository['id'] == 1333414856
+         and repository.get('full_name') == fields['GITHUB_REPOSITORY'] and event.get('ref') in (ref, VIEW_BRANCH),
+         'Fixed view-probe provider event required')
+    expected = {'candidate_ref': VIEW_BRANCH, 'expected_sha': sha, 'test_parallelism': '4',
+                'commission_singleton_units': '', 'build_only': 'false', 'diagnostics_only': 'true',
+                'controller_only': 'true', 'native_tool_only': 'false'}
+    inputs = event.get('inputs')
+    need(type(inputs) is dict and {'commission_singleton_units': '', **inputs} == expected,
+         'Exclusive view-probe controller inputs required')
+    return run, pathlib.Path(fields['GITHUB_WORKSPACE'])
+
+
+def view_scope(run):
+    need(type(run) is str and re.fullmatch(r'[1-9][0-9]{0,15}', run), 'Fixed view-probe run required')
+    return pathlib.Path('/var/lib') / ('aihr-next-view-probe-' + run)
+
+
+def view_handoff(receiver, request):
+    import fcntl
+    encoded = canonical(request)
+    need(0 < len(receiver) <= VIEW_RECEIVER_MAX and len(encoded) <= TOOL_REQUEST_MAX,
+         'Bounded view-probe receiver and request required')
+    fd = os.memfd_create('aihr-next-view-probe', os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+    try:
+        need(os.write(fd, encoded) == len(encoded), 'View-probe request write refused')
+        seals = fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
+        fcntl.fcntl(fd, fcntl.F_ADD_SEALS, seals)
+        need(fcntl.fcntl(fd, fcntl.F_GET_SEALS) == seals, 'View-probe transport seal refused')
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.dup2(fd, 0, inheritable=True)
+    finally:
+        if fd != 0:
+            os.close(fd)
+    argv = ['/usr/bin/sudo', '-n', '/usr/bin/python3', '-I', '-B', '-c', receiver.decode(), '--seal-next-view-probe']
+    os.execve(argv[0], argv, SAFE)
+
+
+def prepare_view_probe():
+    uid, gid = os.geteuid(), os.getegid()
+    need(sys.platform == 'linux' and uid == os.getuid() and gid == os.getgid() and uid > 0 and gid > 0,
+         'Original nonroot view-probe runner required')
+    env = {key: os.environ[key] for key in ENVIRONMENT if key in os.environ}
+    path = os.environ['GITHUB_EVENT_PATH']
+    raw_event = _tool_event(env, path, uid)
+    _, workspace = view_intent(env, json.loads(raw_event))
+    need(pathlib.Path.cwd() == workspace and pathlib.Path(__file__).absolute() == workspace / SCRIPT,
+         'Fixed view-probe controller location required')
+    sha = env['GITHUB_SHA']
+    with directory(workspace) as root:
+        receiver, _ = read(root, SCRIPT, VIEW_RECEIVER_MAX)
+        for entry in filter(None, git(workspace, ['config', '--local', '--null', '--list']).decode().split('\0')):
+            key, _, value = entry.partition('\n')
+            need(not re.search(r'(^credential\.|^include\.|^includeif\.|^filter\.|extraheader$|askpass$|sshcommand$|^core\.(?:fsmonitor|worktree)$)', key, re.I),
+                 'View-probe Git configuration contains a command source')
+            if key == 'remote.origin.url':
+                need(value in ('https://github.com/StradaverseHub/ai-hr', 'https://github.com/StradaverseHub/ai-hr.git'),
+                     'View-probe Git remote differs')
+        def require_git_head():
+            need(git(workspace, ['rev-parse', 'HEAD']).decode().strip() == sha
+                 and git(workspace, ['status', '--porcelain']) == b'', 'View-probe controller Git identity differs')
+        require_git_head()
+        records = git(workspace, ['ls-tree', '-rz', sha, '--', *VIEW_MEMBERS]).split(b'\0')
+        need(records[-1] == b'' and len(records) == len(VIEW_MEMBERS) + 1, 'View-probe source census differs')
+        rows = []
+        for member, record in zip(VIEW_MEMBERS, records[:-1], strict=True):
+            raw, info = read(root, member, TOOL_MEMBER_MAX)
+            row = _tool_row(member, raw, info)
+            need(record == f"100644 blob {row['gitBlob']}\t{member}".encode()
+                 and (member != SCRIPT or raw == receiver), 'View-probe committed bytes differ')
+            rows.append(row)
+        require_git_head()
+    view_handoff(receiver, {'environment': env, 'uid': uid, 'gid': gid, 'rows': rows,
+                            'event': {'path': path, 'size': len(raw_event), 'sha256': hashlib.sha256(raw_event).hexdigest()}})
+    raise ValueError('View-probe receiver not entered')
+
+
+def view_birth(info):
+    return info.st_dev, info.st_ino
+
+
+def view_namespaces():
+    return {key: view_birth(os.stat('/proc/self/ns/' + key)) for key in ('mnt', 'net', 'user')}
+
+
+def view_enter_namespaces(libc, original):
+    need(libc.unshare(VIEW_NEWNS | VIEW_NEWNET) == 0, 'View worker combined unshare refused')
+    private = view_namespaces()
+    need(private['mnt'] != original['mnt'] and private['net'] != original['net']
+         and private['user'] == original['user'], 'View worker namespace identities differ')
+    return private
+
+
+def view_parent_identity(pid):
+    need(type(pid) is int and pid == os.getppid() and pid > 1, 'View worker root parent differs')
+    prefix = f'/proc/{pid}/'
+    fields = view_proc(prefix + 'stat', 65536).rsplit(b')', 1)[-1].split()
+    status = view_proc(prefix + 'status', 65536)
+    uids = re.findall(rb'^Uid:[ \t]+([0-9]+)[ \t]+([0-9]+)[ \t]+([0-9]+)[ \t]+([0-9]+)$', status, re.M)
+    need(len(fields) > 19 and fields[19].isdigit()
+         and uids == [(b'0',) * 4]
+         and pid == os.getppid(), 'View worker root parent birth differs')
+    return fields[19].decode()
+
+
+def view_mount_rows(parser, *, private=False):
+    with directory(pathlib.Path('/proc') / str(os.getpid())) as fd:
+        raw = parser.read_proc(fd, 'mountinfo', 4 * 1024**2, need)
+    rows = parser.parse_mountinfo(raw, need)
+    if private:
+        need(not any(field.startswith((b'shared:', b'master:', b'propagate_from:'))
+                     for line in raw.splitlines() for field in line.split(b' - ', 1)[0].split()[6:]),
+             'View-probe propagation is not private')
+    return rows
+
+
+def view_under(rows, root):
+    prefix = str(root)
+    return [row for row in rows if row['target'] == prefix or row['target'].startswith(prefix + '/')]
+
+
+def view_mount_check(rows, root):
+    targets = {str(root / 'jail/project/app'): True, str(root / 'jail/project/node_modules'): False}
+    owned = view_under(rows, root)
+    need(len(owned) == 2 and {row['target'] for row in owned} == set(targets)
+         and len({row['id'] for row in owned}) == 2, 'View-probe mount membership differs')
+    for row in owned:
+        opts = row['options']
+        need({'ro', 'nosuid', 'nodev'} <= opts and 'rw' not in opts
+             and ('noexec' in opts) == targets[row['target']], 'View-probe mount options differ')
+    return owned
+
+
+def view_proc(path, maximum):
+    fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        data = bytearray()
+        while True:
+            block = os.read(fd, min(65536, maximum + 1 - len(data)))
+            if not block:
+                return bytes(data)
+            data.extend(block)
+            need(len(data) <= maximum, 'View-probe proc input exceeds bound')
+    finally:
+        os.close(fd)
+
+
+def view_routes(interfaces, flags, ipv4, ipv6):
+    need(interfaces == [(1, 'lo')] and flags & 0x8 and not flags & 0x1, 'View-probe loopback is not isolated')
+    route = ipv4.splitlines()
+    need(len(route) == 1 and route[0].split()[:2] == [b'Iface', b'Destination'], 'View-probe IPv4 route exists')
+    rows = ipv6.splitlines()
+    need(len(rows) <= 8, 'View-probe IPv6 route count differs')
+    for line in rows:
+        fields = line.split()
+        need(len(fields) == 10 and fields[-1] == b'lo'
+             and re.fullmatch(rb'[a-f0-9]{8}', fields[8]) and int(fields[8], 16) & 0x200,
+             'View-probe usable IPv6 route exists')
+    return len(rows)
+
+
+def view_network():
+    import fcntl
+    import socket
+    import struct
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM | socket.SOCK_CLOEXEC) as handle:
+        raw = fcntl.ioctl(handle.fileno(), 0x8913, struct.pack('16sH22x', b'lo', 0))
+    return view_routes(socket.if_nameindex(), struct.unpack_from('H', raw, 16)[0],
+                       view_proc('/proc/self/net/route', 65536), view_proc('/proc/self/net/ipv6_route', 65536))
+
+
+def view_drop(libc, uid, gid, cap_last, dump_policy):
+    import ctypes
+    class Header(ctypes.Structure):
+        _fields_ = [('version', ctypes.c_uint32), ('pid', ctypes.c_int)]
+    class Caps(ctypes.Structure):
+        _fields_ = [('effective', ctypes.c_uint32), ('permitted', ctypes.c_uint32), ('inheritable', ctypes.c_uint32)]
+    need(libc.prctl(4, 0, 0, 0, 0) == 0, 'View-probe initial dumpability refused')
+    os.setgroups([])
+    os.setresgid(gid, gid, gid)
+    os.setresuid(uid, uid, uid)
+    need(libc.prctl(3, 0, 0, 0, 0) == dump_policy and libc.prctl(4, 0, 0, 0, 0) == 0
+         and libc.prctl(3, 0, 0, 0, 0) == 0
+         and libc.prctl(38, 1, 0, 0, 0) == 0 and libc.prctl(39, 0, 0, 0, 0) == 1,
+         'View-probe no-new-privileges/dumpability differs')
+    data = (Caps * 2)()
+    header = Header(0x20080522, 0)
+    need(os.getresuid() == (uid,) * 3 and os.getresgid() == (gid,) * 3 and not os.getgroups()
+         and libc.capget(ctypes.byref(header), ctypes.byref(data)) == 0
+         and all((row.effective, row.permitted, row.inheritable) == (0, 0, 0) for row in data)
+         and all(libc.prctl(47, 1, cap, 0, 0) == 0 for cap in range(cap_last + 1)),
+         'View-probe unprivileged identity/capabilities differ')
+
+
+def view_erofs(path):
+    import errno
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError as error:
+        need(error.errno == errno.EROFS, 'View-probe write refusal was not EROFS')
+    else:
+        os.close(fd)
+        raise ValueError('View-probe mounted file was writable')
+
+
+def view_file_controls(mmap):
+    with directory(pathlib.Path('/project')) as project:
+        for name, seed in zip(('app/seed', 'node_modules/seed'), VIEW_SEEDS.values(), strict=True):
+            raw, info = read(project, name, 64)
+            need(raw == seed and (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode))
+                 == (os.getuid(), os.getgid(), 0o600), 'View-probe mounted seed differs')
+            view_erofs('/project/' + name)
+        dep = os.open('node_modules/seed', os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=project)
+        try:
+            with mmap.mmap(dep, 0, flags=mmap.MAP_PRIVATE, prot=mmap.PROT_READ | mmap.PROT_EXEC) as mapped:
+                need(mapped[:] == VIEW_SEEDS['dependencies/seed'], 'View-probe executable dependency mapping differs')
+        finally:
+            os.close(dep)
+        write(project, 'next-env.d.ts', VIEW_WRITTEN, 0o600)
+        fd = os.open('next-env.d.ts', os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=project)
+        os.close(fd)
+        os.mkdir('.next', 0o700, dir_fd=project)
+        write(project, '.next/probe', VIEW_WRITTEN, 0o600)
+        for name in ('next-env.d.ts', '.next/probe'):
+            raw, _ = read(project, name, 64)
+            need(raw == VIEW_WRITTEN, 'View-probe writable output differs')
+    names = set()
+    with os.scandir('/') as entries:
+        for entry in entries:
+            need(entry.name in {'project', 'receipt'} and entry.name not in names
+                 and entry.is_dir(follow_symlinks=False), 'View-probe host alias exists')
+            names.add(entry.name)
+    need(names == {'project', 'receipt'}, 'View-probe jail census differs')
+
+
+def view_worker():
+    import ctypes
+    import mmap
+    import time
+
+    keys = ('AIHR_VIEW_RUN', 'AIHR_VIEW_UID', 'AIHR_VIEW_GID', 'AIHR_VIEW_STOP', 'AIHR_VIEW_MOUNT_SHA',
+            'AIHR_VIEW_PARENT', 'AIHR_VIEW_PARENT_START')
+    need(set(os.environ) == set(SAFE) | set(keys) and os.getresuid() == os.getresgid() == (0, 0, 0),
+         'Fixed root view worker required')
+    run, uid_text, gid_text, clock, wanted, issuer, issuer_start = (os.environ[key] for key in keys)
+    root = view_scope(run)
+    uid, gid, stop = int(uid_text), int(gid_text), float(clock)
+    need(uid > 0 and gid > 0 and 0 < stop - time.monotonic() <= 16
+         and re.fullmatch(r'[a-f0-9]{64}', wanted) and os.getpid() == os.getsid(0) == os.getpgrp()
+         and view_parent_identity(int(issuer)) == issuer_start,
+         'Owned view worker identity/clock required')
+    def active():
+        need(time.monotonic() < stop, 'View worker work frontier closed')
+    sink = os.stat('/dev/null')
+    for fd in range(3):
+        info = os.fstat(fd)
+        need(stat.S_ISCHR(info.st_mode) and info.st_rdev == sink.st_rdev, 'View worker stdio is not inert')
+    for fd in os.listdir('/proc/self/fd'):
+        if int(fd) > 2:
+            try:
+                os.fstat(int(fd))
+            except OSError as error:
+                import errno
+                need(error.errno == errno.EBADF, 'View worker inherited an unexpected descriptor')
+            else:
+                raise ValueError('View worker inherited an unexpected descriptor')
+    with directory(root, root_owned=True) as held:
+        raw, info = read(held, 'mountinfo.py', TOOL_MEMBER_MAX)
+        need(info.st_uid == info.st_gid == 0 and hashlib.sha256(raw).hexdigest() == wanted,
+             'View worker parser bytes differ')
+        from types import ModuleType
+        parser = ModuleType('next_view_mountinfo_worker')
+        exec(compile(raw, VIEW_MOUNTINFO, 'exec', dont_inherit=True), parser.__dict__)
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.mount.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_ulong, ctypes.c_void_p]
+    phase = 0
+    try:
+        active()
+        original = view_namespaces()
+        need(not view_under(view_mount_rows(parser), root), 'View worker started with an unexpected mount')
+        private = view_enter_namespaces(libc, original)
+        phase += 1
+        active()
+        need(libc.mount(None, b'/', None, VIEW_RECURSIVE_PRIVATE, None) == 0,
+             'View worker recursive private propagation refused')
+        need(not view_under(view_mount_rows(parser, private=True), root), 'View worker private root already mounted')
+        phase += 1
+        active()
+        for source, target, extra in (('source', 'app', VIEW_NOEXEC), ('dependencies', 'node_modules', 0)):
+            old = os.fsencode(root / source)
+            new = os.fsencode(root / 'jail/project' / target)
+            need(libc.mount(old, new, None, VIEW_BIND, None) == 0
+                 and libc.mount(None, new, None, VIEW_BIND | VIEW_REMOUNT | VIEW_RDONLY_NOSUID_NODEV | extra, None) == 0,
+                 'View worker bind or readonly remount refused')
+            active()
+        rows = view_mount_check(view_mount_rows(parser, private=True), root)
+        for row in rows:
+            target = pathlib.Path(row['target'])
+            source = root / ('source' if target.name == 'app' else 'dependencies')
+            with directory(target) as held:
+                fdinfo = view_proc(f'/proc/self/fdinfo/{held}', 65536)
+                need(re.findall(rb'^mnt_id:\s+([0-9]+)$', fdinfo, re.M) == [str(row['id']).encode()]
+                     and view_birth(os.fstat(held)) == view_birth(source.lstat())
+                     and os.fstatvfs(held).f_flag & os.ST_RDONLY, 'View worker opened mount identity differs')
+        phase += 1
+        active()
+        reject_rows = view_network()
+        need(view_namespaces() == private and view_parent_identity(int(issuer)) == issuer_start,
+             'View worker namespace or root parent changed during census')
+        phase += 1
+        active()
+        cap_last = int(view_proc('/proc/sys/kernel/cap_last_cap', 16).strip())
+        dump_policy = view_proc('/proc/sys/fs/suid_dumpable', 16).strip()
+        need(0 <= cap_last <= 63 and dump_policy in (b'0', b'2'), 'View worker credential transition policy differs')
+        # Close the final old-root descriptor before dropping real credentials.
+        with directory(root / 'jail', root_owned=True) as jail:
+            os.fchdir(jail)
+            os.chroot('.')
+            os.chdir('/')
+        view_drop(libc, uid, gid, cap_last, int(dump_policy))
+        phase += 1
+        active()
+        view_file_controls(mmap)
+        active()
+        with directory(pathlib.Path('/receipt')) as receipt:
+            write(receipt, 'worker.json', canonical({'phases': list(VIEW_PHASES), 'ipv6RejectRows': reject_rows}), 0o600)
+        active()
+        return 0
+    except BaseException:
+        return 40 + phase
+
+
+def view_cleanup(root, held, births, uid, gid, parser, original, stop, *, require_outputs=False):
+    import time
+    need(time.monotonic() < stop and view_namespaces() == original
+         and not view_under(view_mount_rows(parser), root), 'View-probe host namespace or frontier differs')
+    expected_dirs = set(VIEW_DIRS) | {VIEW_CREATED[0]}
+    allowed = set(births) | set(VIEW_CREATED)
+    visited = {}
+    def inspect(folder, prefix=''):
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                need(time.monotonic() < stop and len(visited) < len(allowed), 'View-probe cleanup census exceeds bound')
+                path = prefix + entry.name
+                need(path in allowed and path not in visited, 'View-probe foreign cleanup entry')
+                info = os.stat(entry.name, dir_fd=folder, follow_symlinks=False)
+                need(path not in births or births[path] == view_birth(info), 'View-probe cleanup birth changed')
+                if path in VIEW_CREATED:
+                    mode = 0o700 if path in expected_dirs else 0o600
+                    need((info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) == (uid, gid, mode),
+                         'View-probe output owner/mode differs')
+                visited[path] = view_birth(info)
+                if path in expected_dirs:
+                    need(stat.S_ISDIR(info.st_mode), 'View-probe cleanup directory differs')
+                    child = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=folder)
+                    try:
+                        need(view_birth(os.fstat(child)) == visited[path], 'View-probe cleanup held directory differs')
+                        inspect(child, path + '/')
+                    finally:
+                        os.close(child)
+                else:
+                    raw, observed = read(held, path, TOOL_MEMBER_MAX)
+                    need(view_birth(observed) == visited[path], 'View-probe cleanup held file differs')
+                    if path in VIEW_SEEDS:
+                        need(raw == VIEW_SEEDS[path] and (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode))
+                             == (uid, gid, 0o600), 'View-probe backing seed changed')
+                    elif path in VIEW_CREATED[1:3]:
+                        need(raw == VIEW_WRITTEN, 'View-probe output bytes differ')
+                    elif path == VIEW_CREATED[3]:
+                        view_worker_result(raw)
+    inspect(held)
+    need(set(births) <= set(visited), 'View-probe owned cleanup entry missing')
+    need(not require_outputs or set(VIEW_CREATED) <= set(visited), 'View-probe confirmed writable outputs missing')
+    for path in sorted(visited, key=lambda value: value.count('/'), reverse=True):
+        need(time.monotonic() < stop, 'View-probe cleanup frontier closed')
+        with parent(held, path) as (folder, leaf):
+            info = os.stat(leaf, dir_fd=folder, follow_symlinks=False)
+            need(view_birth(info) == visited[path], 'View-probe cleanup target changed')
+            (os.rmdir if path in expected_dirs else os.unlink)(leaf, dir_fd=folder)
+
+
+def view_worker_result(raw):
+    need(type(raw) is bytes and 0 < len(raw) <= 1024, 'View-probe worker receipt bound')
+    value = json.loads(raw)
+    need(type(value) is dict and set(value) == {'phases', 'ipv6RejectRows'}
+         and value['phases'] == list(VIEW_PHASES) and type(value['ipv6RejectRows']) is int
+         and 0 <= value['ipv6RejectRows'] <= 8, 'View-probe worker receipt differs')
+    return value
+
+
+def view_report(failure, *, sha=None, run=None, event=None, process=None, worker=None, cleanup=False, elapsed=None):
+    if failure in VIEW_PHASES:
+        blocked = list(VIEW_PHASES[VIEW_PHASES.index(failure):])
+    elif worker is None:
+        blocked = list(VIEW_PHASES)
+    else:
+        blocked = []
+    return {'version': 1, 'kind': VIEW_KIND, 'source': sha, 'run': run, 'eventSha256': event,
+            'complete': failure is None, 'failure': failure, 'unconfirmedPhases': blocked, 'process': process, 'worker': worker,
+            'cleanupComplete': cleanup, 'elapsedMs': elapsed, 'nextTypegenRun': False, 'networkEgressAttempted': False,
+            'applicationBuilt': False, 'releaseAuthorized': False}
+
+
+def view_run(run, sha, uid, gid, members, event_hash):
+    import time
+    from types import ModuleType
+    def module(key):
+        value = ModuleType(key)
+        value.__file__ = key
+        exec(compile(members[key], key, 'exec', dont_inherit=True), value.__dict__)
+        return value
+    now = time.monotonic()
+    stop, active = now + 25, now + 16
+    parser, tool, kernel = map(module, (VIEW_MOUNTINFO, VIEW_TOOL, VIEW_KERNEL))
+    original = view_namespaces()
+    root = view_scope(run)
+    failure, process, worker, cleanup = 'root-setup', None, None, False
+    attempted = False
+    births = {}
+    need(os.uname().machine == 'x86_64' and b'VERSION_ID="24.04"' in view_proc('/usr/lib/os-release', 65536).splitlines()
+         and b'ID=ubuntu' in view_proc('/usr/lib/os-release', 65536).splitlines(), 'Actual Ubuntu 24.04 view-probe platform required')
+    os.umask(0o077)
+    try:
+        with directory(root.parent, root_owned=True) as prefix:
+            need(not view_under(view_mount_rows(parser), root), 'View-probe root has a host mount')
+            os.mkdir(root.name, 0o700, dir_fd=prefix)
+            birth = view_birth(os.stat(root.name, dir_fd=prefix, follow_symlinks=False))
+            with directory(root, root_owned=True) as held:
+                need(view_birth(os.fstat(held)) == birth, 'View-probe root changed')
+                def remember(path):
+                    with parent(held, path) as (folder, leaf):
+                        births[path] = view_birth(os.stat(leaf, dir_fd=folder, follow_symlinks=False))
+                try:
+                    for path in VIEW_DIRS:
+                        tool.left(active)
+                        with parent(held, path) as (folder, leaf):
+                            os.mkdir(leaf, 0o700, dir_fd=folder)
+                        remember(path)
+                        if path in ('jail/project', 'jail/receipt', 'source', 'dependencies'):
+                            with parent(held, path) as (folder, leaf):
+                                os.chown(leaf, uid, gid, dir_fd=folder, follow_symlinks=False)
+                        if path in ('jail', 'jail/project/app', 'jail/project/node_modules', 'source', 'dependencies'):
+                            with parent(held, path) as (folder, leaf):
+                                os.chmod(leaf, 0o755, dir_fd=folder)
+                    for path, seed in VIEW_SEEDS.items():
+                        write(held, path, seed, 0o600)
+                        remember(path)
+                        with parent(held, path) as (folder, leaf):
+                            os.chown(leaf, uid, gid, dir_fd=folder, follow_symlinks=False)
+                    write(held, 'mountinfo.py', members[VIEW_MOUNTINFO], 0o600)
+                    remember('mountinfo.py')
+                    failure = 'owned-worker'
+                    argv = ['/usr/bin/python3', '-I', '-B', '-c', members[SCRIPT].decode(), '--run-next-view-probe']
+                    os.environ.update({'AIHR_VIEW_RUN': run, 'AIHR_VIEW_UID': str(uid), 'AIHR_VIEW_GID': str(gid),
+                                       'AIHR_VIEW_STOP': repr(active),
+                                       'AIHR_VIEW_MOUNT_SHA': hashlib.sha256(members[VIEW_MOUNTINFO]).hexdigest(),
+                                       'AIHR_VIEW_PARENT': str(os.getpid()),
+                                       'AIHR_VIEW_PARENT_START': str(kernel.identity(os.getpid())['start'])})
+                    with tool.quiet_command_stdio():
+                        tool.left(active)
+                        attempted = True
+                        process = tool._run_tool_command(kernel, argv, active)
+                    need(type(process) is dict and process['reaped'] is True and process['groupQuiescent'] is True
+                         and not kernel.own_children(), 'View-probe process settlement refused')
+                    code = process['commandExit']
+                    if type(code) is int and 40 <= code < 40 + len(VIEW_PHASES):
+                        failure = VIEW_PHASES[code - 40]
+                    need(process['reason'] == 'complete' and code == 0 and process['admitted'] is True
+                         and process['escapedSession'] is False, 'View-probe owned worker refused')
+                    failure = 'worker-receipt'
+                    raw, info = read(held, VIEW_CREATED[3], 1024)
+                    need((info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) == (uid, gid, 0o600),
+                         'View-probe worker receipt owner differs')
+                    worker = view_worker_result(raw)
+                    failure = None
+                finally:
+                    if not attempted or (process is not None and process['reaped'] is True
+                                         and process['groupQuiescent'] is True and not kernel.own_children()):
+                        try:
+                            view_cleanup(root, held, births, uid, gid, parser, original, stop, require_outputs=worker is not None)
+                            need(view_birth(os.stat(root.name, dir_fd=prefix, follow_symlinks=False)) == birth,
+                                 'View-probe root cleanup birth changed')
+                            # directory() checks the named identity on exit.
+                            cleanup = True
+                        except BaseException:
+                            failure = failure or 'cleanup'
+                if cleanup:
+                    cleanup = False
+                    os.rmdir(root.name, dir_fd=prefix)
+                    need(not tool.present(prefix, root.name) and time.monotonic() < stop, 'View-probe root remains')
+                    cleanup = True
+    except BaseException:
+        failure = failure or 'cleanup'
+    return view_report(failure or (None if cleanup else 'cleanup'), sha=sha, run=run, event=event_hash,
+                       process=process, worker=worker, cleanup=cleanup, elapsed=int((time.monotonic() - now) * 1000))
+
+
+def seal_view_probe(request):
+    need(sys.platform == 'linux' and os.getresuid() == os.getresgid() == (0, 0, 0)
+         and type(request) is dict and set(request) == {'environment', 'uid', 'gid', 'rows', 'event'},
+         'Fixed root view-probe request required')
+    env, uid, gid, event, rows = (request[key] for key in ('environment', 'uid', 'gid', 'event', 'rows'))
+    need(type(uid) is int and type(gid) is int and uid > 0 and gid > 0 and pwd.getpwuid(uid).pw_gid == gid
+         and os.environ.get('SUDO_UID') == str(uid) and os.environ.get('SUDO_GID') == str(gid),
+         'View-probe sudo issuer differs')
+    need(type(event) is dict and set(event) == {'path', 'size', 'sha256'}, 'View-probe original event seal required')
+    raw = _tool_event(env, event['path'], uid, event)
+    run, workspace = view_intent(env, json.loads(raw))
+    need(pathlib.Path.cwd() == workspace and type(rows) is list and len(rows) == len(VIEW_MEMBERS),
+         'View-probe capsule placement differs')
+    members = {}
+    with directory(workspace) as root:
+        for path, row in zip(VIEW_MEMBERS, rows, strict=True):
+            body, info = read(root, path, TOOL_MEMBER_MAX)
+            need(row == _tool_row(path, body, info), 'View-probe sealed source bytes differ')
+            members[path] = body
+    need(0 < len(members[SCRIPT]) <= VIEW_RECEIVER_MAX
+         and sys.orig_argv == ['/usr/bin/python3', '-I', '-B', '-c', members[SCRIPT].decode(), '--seal-next-view-probe']
+         and pathlib.Path('/proc/self/exe').resolve() == pathlib.Path('/usr/bin/python3').resolve(),
+         'View-probe live root receiver bytes differ')
+    os.environ.clear()
+    os.environ.update(SAFE)
+    return view_run(run, env['GITHUB_SHA'], uid, gid, members, event['sha256'])
+
+
+def validate_view_capture(raw, status):
+    need(type(raw) is bytes and 0 < len(raw) <= VIEW_FILE_MAX, 'Bounded view-probe capture required')
+    report = json.loads(raw)
+    need(type(report) is dict and set(report) == set(view_report('pre-root'))
+         and type(report['version']) is int and report['version'] == 1 and report['kind'] == VIEW_KIND
+         and all(report[key] is False for key in ('nextTypegenRun', 'networkEgressAttempted', 'applicationBuilt', 'releaseAuthorized'))
+         and type(report['cleanupComplete']) is bool and type(report['complete']) is bool
+         and ((status == '0') if report['complete'] else status == '1'), 'View-probe capture status differs')
+    if report['source'] is None:
+        need(all(report[key] is None for key in ('run', 'eventSha256', 'elapsedMs', 'process', 'worker'))
+             and report['cleanupComplete'] is False and report['failure'] in ('pre-root', 'root-admission'),
+             'View-probe pre-root capture contains physical claims')
+    else:
+        need(type(report['source']) is str and re.fullmatch(r'[a-f0-9]{40}', report['source'])
+             and type(report['eventSha256']) is str and re.fullmatch(r'[a-f0-9]{64}', report['eventSha256'])
+             and type(report['run']) is str and re.fullmatch(r'[1-9][0-9]{0,15}', report['run'])
+             and type(report['elapsedMs']) is int and 0 <= report['elapsedMs'] < 60000,
+             'View-probe physical capture provenance differs')
+    process = report['process']
+    if process is not None:
+        flags = ('admitted', 'reaped', 'groupQuiescent', 'escapedSession')
+        need(type(process) is dict and set(process) == {'reason', 'commandExit', *flags}
+             and process['reason'] in {'complete', 'command-failed', 'deadline', 'handshake-refused', 'descendants-survived',
+                                       'protocol-refused', 'owner-interrupted', 'group-uncertain', 'session-escaped'}
+             and (process['commandExit'] is None or type(process['commandExit']) is int and -64 <= process['commandExit'] <= 255)
+             and all(type(process[key]) is bool for key in flags), 'View-probe process capture differs')
+    if report['worker'] is not None:
+        view_worker_result(canonical(report['worker']))
+    if report['complete']:
+        need(report['failure'] is None and report['cleanupComplete'] is True and report['unconfirmedPhases'] == []
+             and type(report['elapsedMs']) is int and 0 <= report['elapsedMs'] < 25000
+             and report['process'] == {'reason': 'complete', 'commandExit': 0, 'admitted': True, 'reaped': True,
+                                      'groupQuiescent': True, 'escapedSession': False},
+             'View-probe success lacks owned settlement')
+        need(report['worker'] is not None, 'View-probe physical worker report required')
+    else:
+        need(report['failure'] in {'pre-root', 'root-admission', 'root-setup', 'owned-worker', 'worker-receipt', 'cleanup', *VIEW_PHASES},
+             'View-probe refusal class differs')
+        need(report['unconfirmedPhases'] == view_report(report['failure'], worker=report['worker'])['unconfirmedPhases'],
+             'View-probe refusal frontier differs')
+    return report
+
+
+def write_view_capture(value):
+    raw = canonical(value)
+    need(len(raw) <= VIEW_FILE_MAX, 'View-probe receipt bound')
+    sys.stdout.buffer.write(raw)
+    sys.stdout.flush()
+
+
 if __name__ == '__main__':
     try:
-        if sys.argv[1:] == ['--seal']:
+        if sys.argv[1:] == ['--next-view-probe']:
+            try:
+                prepare_view_probe()
+            except BaseException:
+                write_view_capture(view_report('pre-root'))
+            sys.exit(1)
+        elif sys.argv[1:] == ['--seal-next-view-probe']:
+            try:
+                report = seal_view_probe(_tool_request(0))
+            except BaseException:
+                report = view_report('root-admission')
+            write_view_capture(report)
+            sys.exit(0 if report['complete'] else 1)
+        elif sys.argv[1:] == ['--run-next-view-probe']:
+            sys.exit(view_worker())
+        elif len(sys.argv) == 3 and sys.argv[1] == '--check-next-view-probe':
+            with directory(pathlib.Path(os.environ['RUNNER_TEMP']) / 'aihr-next-view-probe') as folder:
+                raw, info = read(folder, VIEW_RECEIPT, VIEW_FILE_MAX)
+            need(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o600, 'View-probe capture owner differs')
+            report = validate_view_capture(raw, sys.argv[2])
+            if report['source'] is not None:
+                event = _tool_event(os.environ, os.environ['GITHUB_EVENT_PATH'], os.getuid())
+                need(report['source'] == os.environ['GITHUB_SHA'] and report['run'] == os.environ['GITHUB_RUN_ID']
+                     and report['eventSha256'] == hashlib.sha256(event).hexdigest(),
+                     'View-probe capture run/source differs')
+        elif sys.argv[1:] == ['--seal']:
             raw = sys.stdin.buffer.read(MAX_REQUEST + 1)
             need(0 < len(raw) <= MAX_REQUEST, 'Bounded bootstrap request required')
             print(json.dumps(seal(json.loads(raw))))

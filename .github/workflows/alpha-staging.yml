@@ -76,6 +76,27 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
+      - name: Require the exclusive Next view-probe controller dispatch
+        if: ${{ github.ref == 'refs/heads/codex/native-next-project-view-probe-20261109' }}
+        shell: bash
+        env:
+          VIEW_REF: ${{ inputs.candidate_ref }}
+          VIEW_EXPECTED: ${{ inputs.expected_sha }}
+          VIEW_CONTROL: ${{ github.workflow_sha }}
+          VIEW_PARALLELISM: ${{ inputs.test_parallelism }}
+          VIEW_DIAGNOSTICS: ${{ inputs.diagnostics_only }}
+          VIEW_CONTROLLER: ${{ inputs.controller_only }}
+          VIEW_BUILD: ${{ inputs.build_only }}
+          VIEW_TOOL: ${{ inputs.native_tool_only }}
+          VIEW_COMMISSION: ${{ inputs.commission_singleton_units }}
+          VIEW_STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          VIEW_PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_RUN_ATTEMPT" == 1 ]]
+          [[ "$VIEW_REF" == "${GITHUB_REF#refs/heads/}" && "$VIEW_EXPECTED" == "$VIEW_CONTROL" && "$VIEW_EXPECTED" == "$GITHUB_SHA" ]]
+          [[ "$VIEW_DIAGNOSTICS" == true && "$VIEW_CONTROLLER" == true && "$VIEW_BUILD" == false && "$VIEW_TOOL" == false ]]
+          [[ -z "$VIEW_COMMISSION" && "$VIEW_PARALLELISM" == 4 ]]
+          [[ "$VIEW_STAGING_ENABLED" == false && "$VIEW_PRODUCTION_ENABLED" == false ]]
       - name: Pin dependency-free controller runtime
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
@@ -173,6 +194,40 @@ jobs:
           path: |
             ${{ runner.temp }}/controller-plan.json
             ${{ runner.temp }}/scheduling-model.json
+          if-no-files-found: error
+          retention-days: 3
+      - name: Verify the synthetic Next project-view capability
+        id: next_view_probe
+        if: ${{ inputs.controller_only && github.ref == 'refs/heads/codex/native-next-project-view-probe-20261109' }}
+        timeout-minutes: 1
+        shell: bash
+        env:
+          AIHR_CI_HEAD: ${{ steps.candidate.outputs.sha }}
+          VIEW_STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          VIEW_PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+          LD_AUDIT: ''
+          GLIBC_TUNABLES: ''
+          BASH_ENV: /dev/null
+          ENV: /dev/null
+        run: |
+          [[ "$AIHR_CI_HEAD" == "$GITHUB_SHA" && "$AIHR_CI_HEAD" == "$AIHR_CI_CONTROL_HEAD" ]]
+          [[ "$VIEW_STAGING_ENABLED" == false && "$VIEW_PRODUCTION_ENABLED" == false ]]
+          /usr/bin/python3 -I -B .github/ci/test_native_controller_bootstrap.py -v ViewProbeControls
+          umask 077
+          set -o noclobber
+          mkdir -m 700 "$RUNNER_TEMP/aihr-next-view-probe"
+          status=0
+          /usr/bin/python3 -I -B .github/ci/native-controller-bootstrap.py --next-view-probe > "$RUNNER_TEMP/aihr-next-view-probe/next-project-view-probe.json" || status=$?
+          /usr/bin/python3 -I -B .github/ci/native-controller-bootstrap.py --check-next-view-probe "$status"
+          echo 'receipt=true' >> "$GITHUB_OUTPUT"
+          exit "$status"
+      - if: ${{ always() && steps.next_view_probe.outputs.receipt == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: next-project-view-probe
+          path: ${{ runner.temp }}/aihr-next-view-probe/next-project-view-probe.json
           if-no-files-found: error
           retention-days: 3
   typecheck:
