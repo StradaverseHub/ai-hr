@@ -779,51 +779,42 @@ async function changeJobTransactionsPageTx(tx:Tx,scope:string[]|undefined,input:
     return {rows,state:pageState(page,Number(envelope[0].total),rows.length)};
 }
 // ───────────────────────── Dimension distributions (visual charts) ─────────────────────────
-// Every distribution is filter-aware and tallied in JS (small result sets) so the Unknown / Unassigned
-// bucketing logic lives in one place. Person-level dimensions (gender / marital / age) sum to the
-// total headcount INCLUDING the explicit "Unknown" bucket (NULL value); they don't depend on the
-// current assignment so they never need an Unassigned bucket. Assignment-derived dimensions
-// (cost-centre / department / 5-way status come from the current assignment) count rows with no current
-// assignment into an explicit "Unassigned" bucket so the design narrows intentionally and the chart
-// still sums to the total headcount.
+// Every distribution is filter-aware and shares one native population. Count each raw value in
+// PostgreSQL, then fold those counts into the existing presentation buckets in JavaScript.
 //
 // Bucket sentinel keys are returned as machine codes; the UI maps them to localized labels.
 export const UNKNOWN_BUCKET = '__unknown__';
 export const UNASSIGNED_BUCKET = '__unassigned__';
 
-/** Tally a list of (nullable) string keys into a sorted DimensionCount[], folding null → nullBucket. */
-function tally(rows: (string | null)[], nullBucket = UNKNOWN_BUCKET): DimensionCount[] {
-  const m = new Map<string, number>();
-  for (const r of rows) {
-    const name = r ?? nullBucket;
-    m.set(name, (m.get(name) ?? 0) + 1);
-  }
-  return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-}
+const demographicFields = [
+  'gender', 'maritalStatus', 'dateOfBirth', 'workState', 'costCenterName', 'employmentStatus', 'departmentName',
+] as const;
+type DemographicField = (typeof demographicFields)[number];
+type DemographicCountRow = Record<DemographicField, string | null> & { groupingMask: number; count: string };
+const demographicTotalMask = (1 << demographicFields.length) - 1;
+const demographicFieldByMask = new Map(demographicFields.map((field, index) =>
+  [demographicTotalMask ^ (1 << (demographicFields.length - 1 - index)), field] as const,
+));
 
-/** The base row set for person-level dimensions: one row per active-as-of-asOf employment matching the
- *  filters, carrying the person attributes + the current assignment's dept/costCentre/status. */
-function dimensionRowsTx(tx:Tx,scopeIds:string[]|undefined,filters:AnalyticsFilters,asOf:string) {
+/** The original visible employment population supplies every dimension. */
+function dimensionRowsTx(tx: Tx, scopeIds: string[] | undefined, filters: AnalyticsFilters, asOf: string) {
   return tx
-      .select({
-        gender: person.gender,
-        maritalStatus: person.maritalStatus,
-        dateOfBirth: person.dateOfBirth,
-        workState: employment.workState,
-        costCenterName: costCenter.name,
-        // 9cbf5e0d — the DERIVED Employee Status as of asOf, so the chart shows what the Personnel screens
-        // show. The legacy stored assignment.status is not read here any more.
-        employmentStatus: employmentStatusSql(asOf),
-        departmentName: department.name,
-      })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(assignment, currentAssignment)
-      .leftJoin(department, eq(department.id, assignment.departmentId))
-      .leftJoin(costCenter, eq(costCenter.id, assignment.costCenterId))
-      .where(
-        analyticsWhere({ ...filters, lifecycleStatus: filters.lifecycleStatus ?? 'active' }, scopeIds, { asOf }),
-      );
+    .select({
+      // A bytewise equality grouping retains the original distinct JS string keys.
+      gender: sql<string | null>`${person.gender}::text collate "C"`.as('gender'),
+      maritalStatus: sql<string | null>`${person.maritalStatus}::text collate "C"`.as('maritalStatus'),
+      dateOfBirth: sql<string | null>`${person.dateOfBirth}::text collate "C"`.as('dateOfBirth'),
+      workState: sql<string | null>`${employment.workState}::text collate "C"`.as('workState'),
+      costCenterName: sql<string | null>`${costCenter.name}::text collate "C"`.as('costCenterName'),
+      employmentStatus: sql<string>`(${employmentStatusSql(asOf)})::text collate "C"`.as('employmentStatus'),
+      departmentName: sql<string | null>`${department.name}::text collate "C"`.as('departmentName'),
+    })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .leftJoin(assignment, currentAssignment)
+    .leftJoin(department, eq(department.id, assignment.departmentId))
+    .leftJoin(costCenter, eq(costCenter.id, assignment.costCenterId))
+    .where(analyticsWhere({ ...filters, lifecycleStatus: filters.lifecycleStatus ?? 'active' }, scopeIds, { asOf }));
 }
 
 /** Bucket a date-of-birth (ISO) into an age band as of `asOf`; null DOB → UNKNOWN_BUCKET. */
@@ -865,24 +856,49 @@ export async function workforceDemographics(
 ): Promise<Demographics> {
   return withTenant(ctx,tx=>workforceDemographicsTx(tx,scopeIds,opts));
 }
-async function workforceDemographicsTx(tx:Tx,scopeIds:string[]|undefined,opts:{asOf:string;filters?:AnalyticsFilters}):Promise<Demographics> {
-  const filters = opts.filters ?? {};
-  const rows = await dimensionRowsTx(tx, scopeIds, filters, opts.asOf);
-  const byAgeBand = tally(rows.map((r) => ageBand(r.dateOfBirth, opts.asOf))).sort(
-    (a, b) => AGE_ORDER.indexOf(a.name) - AGE_ORDER.indexOf(b.name),
-  );
+async function workforceDemographicsTx(
+  tx: Tx, scopeIds: string[] | undefined, opts: { asOf: string; filters?: AnalyticsFilters },
+): Promise<Demographics> {
+  const population = dimensionRowsTx(tx, scopeIds, opts.filters ?? {}, opts.asOf).as('demographic_population');
+  const columns = demographicFields.map(field => sql.identifier(field));
+  const columnList = sql.join(columns, sql`, `);
+  const groups = sql.join(columns.map(column => sql`(${column})`), sql`, `);
+  // GROUPING distinguishes a real NULL bucket from an absent dimension or the total.
+  const rows = await tx.execute<DemographicCountRow>(sql`
+    select grouping(${columnList}) as "groupingMask", ${columnList}, count(*)::text as count
+    from ${population}
+    group by grouping sets ((), ${groups})
+  `);
+
+  const tallies = new Map(demographicFields.map(field => [field, new Map<string, number>()] as const));
+  let total = 0;
+  for (const row of rows) {
+    const count = Number(row.count);
+    if (row.groupingMask === demographicTotalMask) {
+      total = count;
+      continue;
+    }
+    const field = demographicFieldByMask.get(row.groupingMask);
+    if (!field) throw new Error('Unexpected workforce demographic grouping');
+    const value = row[field];
+    const nullBucket = field === 'costCenterName' || field === 'departmentName' ? UNASSIGNED_BUCKET : UNKNOWN_BUCKET;
+    // Keep the original date interpretation and fold raw DOB counts into the age bands here.
+    const name = field === 'dateOfBirth' ? ageBand(value, opts.asOf) : value ?? nullBucket;
+    const buckets = tallies.get(field)!;
+    buckets.set(name, (buckets.get(name) ?? 0) + count);
+  }
+  const dimension = (field: DemographicField) =>
+    [...tallies.get(field)!].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+  const byAgeBand = dimension('dateOfBirth').sort((a, b) => AGE_ORDER.indexOf(a.name) - AGE_ORDER.indexOf(b.name));
   return {
-    total: rows.length,
-    byGender: tally(rows.map((r) => r.gender)),
-    byMarital: tally(rows.map((r) => r.maritalStatus)),
+    total,
+    byGender: dimension('gender'),
+    byMarital: dimension('maritalStatus'),
     byAgeBand,
-    byLocation: tally(rows.map((r) => r.workState)),
-    // assignment-derived → no current assignment folds to UNASSIGNED_BUCKET (so the chart sums to total).
-    byCostCentre: tally(rows.map((r) => r.costCenterName), UNASSIGNED_BUCKET),
-    byDepartment: tally(rows.map((r) => r.departmentName), UNASSIGNED_BUCKET),
-    // Derived from the employment's own lifecycle, so — unlike the other assignment-derived dimensions —
-    // an employee with no current assignment still lands in a real bucket, never "Unassigned".
-    byEmploymentStatus: tally(rows.map((r) => r.employmentStatus)),
+    byLocation: dimension('workState'),
+    byCostCentre: dimension('costCenterName'),
+    byDepartment: dimension('departmentName'),
+    byEmploymentStatus: dimension('employmentStatus'),
   };
 }
 

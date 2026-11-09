@@ -178,10 +178,13 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
  // The empty change-job page now returns its one count envelope instead
  // of an empty page SELECT followed by a separate count SELECT.
  // Nationality retains its single independently expected Unknown bucket.
- // Fixed4096 carry batches replace98 FETCHes with13; all50,000 identities
- // still cross the driver and every other23 statement/row source remains.
+ // Fixed4096 carry batches retain all50,000 identities. The demographics
+ // fixture has one raw value per dimension plus the overall total.
  expect(telemetry.totals.statements).toBe(36);
- expect(telemetry.totals.returnedRows).toBe(90089);
+ expect(telemetry.totals.returnedRows).toBe(50097);
+ const demographicCounts=telemetry.summaries.filter(row=>row.classification==='demographic-dimensions');
+ expect(demographicCounts).toHaveLength(1);
+ expect(demographicCounts[0]).toMatchObject({count:1,returnedRows:8,unknownRowCounts:0,failed:0});
  const carryFetch=telemetry.summaries.filter(row=>row.classification==='carry-identities-fetch');
  expect(carryFetch).toHaveLength(1);expect(carryFetch[0]).toMatchObject({count:13,returnedRows:50000,unknownRowCounts:0,failed:0});
  const changeJobSummary=telemetry.summaries.filter(row=>row.classification==='change-jobs-page');
