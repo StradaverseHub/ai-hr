@@ -16,8 +16,11 @@ const failuresSelector={busy:'main[data-personnel-busy],main[data-page-busy],mai
  unavailable:'main [data-read-unavailable],main [data-today-unavailable]',alerts:'main [role="alert"]'} as const;
 type LoadState={active:number;inSteadyWindow:boolean};
 const instrumented=new WeakSet<Page>();
-async function installFailureObserver(page:Page){
+export {installFailureObserver,capturedFailures};
+async function installFailureObserver(page:Page,nativePrimary=false){
  if(instrumented.has(page))return;instrumented.add(page);
+ const selectors=nativePrimary?{...failuresSelector,unavailable:failuresSelector.unavailable+',main[data-read-unavailable],main[data-today-unavailable]',
+  alerts:failuresSelector.alerts+',main[role="alert"]'}:failuresSelector;
  await page.addInitScript((selectors)=>{
   const counts={busy:0,unavailable:0,alerts:0};
   Object.defineProperty(window,'__aihrNavigationFailureCaptureV1',{value:counts});
@@ -25,7 +28,7 @@ async function installFailureObserver(page:Page){
   new MutationObserver(records=>{inspect();for(const record of records)for(const node of record.addedNodes)if(node instanceof Element){
    for(const key of ['busy','unavailable','alerts']as const)if(node.matches(selectors[key])||node.querySelector(selectors[key]))counts[key]++;
   }}).observe(document,{childList:true,subtree:true,attributes:true});inspect();
- },failuresSelector);
+ },selectors);
 }
 async function capturedFailures(page:Page){
  return page.evaluate(()=>{

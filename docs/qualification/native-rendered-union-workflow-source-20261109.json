@@ -1,0 +1,928 @@
+{
+  "kind": "NATIVE_RENDERED_UNION_WORKFLOW_SOURCE_NOT_QUALIFICATION",
+  "parent": "499f49f2d7c62d91e0b141bea237d77d75079ac8",
+  "sourceRef": "codex/native-rendered-union-preflight-20261109",
+  "addedPaths": [
+    "docs/qualification/native-rendered-union-workflow-source-20261109.json"
+  ],
+  "sourcePlanSha256": "87f8ab8d5ad10b6bdef42ad9945aaa49fbb2a9831bbfe0c5c06758372f746126",
+  "sourceCensusSha256": "0f7f3e8ce98931f321e8c4993f04c31ee985a91a3f5f5b89457d16e0c9894114",
+  "scope": {
+    "nativeCourseIssuable": false,
+    "publicDriverExport": "runDevelopmentSystemLoad",
+    "privateCourseCallSites": [
+      {
+        "owner": "runDevelopmentSystemLoad",
+        "argumentCount": 0
+      }
+    ],
+    "primaryActorRoutes": {
+      "employee": {
+        "actorIndex": 4,
+        "routes": 30
+      },
+      "manager": {
+        "actorIndex": 2,
+        "routes": 16
+      },
+      "companyHR": {
+        "actorIndex": 1,
+        "routes": 69
+      },
+      "groupHR": {
+        "actorIndex": 0,
+        "routes": 72
+      }
+    },
+    "requestedRouteStrings": 91,
+    "actorRoutes": 187,
+    "plannedUsableWitnesses": 10,
+    "plannedRenderedOnly": 177,
+    "deadlineMsPerRoute": 90000,
+    "claimsFormsTransport": {
+      "requiredHttpStatus": 308,
+      "requiredFinal": "/admin/claims",
+      "rows": 2,
+      "actualTransportUnobserved": true,
+      "streamingRedirectNotAdmitted": true
+    },
+    "legacyScenarioCasesWhole": 48,
+    "hiddenShellCasesUnadopted": [
+      "shell.payrollProcess.employee.hidden-denied",
+      "shell.payrollProcess.manager.hidden-denied",
+      "shell.analytics.employee.hidden-denied",
+      "shell.analytics.manager.hidden-denied"
+    ],
+    "staticLedgerEntriesStillUncovered": 222,
+    "dynamicFamilyPlanningRows": 46,
+    "parameterizedPageFiles": 120,
+    "lifecycleStaffTileParityPending": true,
+    "existingWorkflowMutationAndRestoreOwnersWhole": true
+  },
+  "uncommissioned": [
+    "protected native driver issuer and independent source/build/run/fixture identity",
+    "native ingress trust and owned process lifetime",
+    "isolated driver credential/observer/DB and profile admission",
+    "authenticated hosted runtime route/alias observations and fit",
+    "separate hidden-shell 52-case scope and verifier binding"
+  ],
+  "sourceTestCallsites": {
+    "test/performance-route-manifest.test.ts": {
+      "old": 9,
+      "current": 12,
+      "oldBodiesWhole": true
+    },
+    "test/performance-shared-workload-owner.test.ts": {
+      "old": 3,
+      "current": 4,
+      "oldBodiesWhole": true
+    },
+    "test/navigation-browser-capture.test.ts": {
+      "old": 3,
+      "current": 4,
+      "oldBodiesWhole": true
+    }
+  },
+  "qualification": {
+    "testsExecuted": false,
+    "browserExecuted": false,
+    "nativeMutationCourseExecuted": false,
+    "completeNavigationQualified": false,
+    "ordinaryCompilerQualified": false,
+    "releaseAuthorized": false
+  },
+  "inverseFormat": "zero-based current line offsets with line endings, applied last edit first to replay complete Git parent bytes",
+  "files": {
+    "scripts/performance/system-load-owner.mjs": {
+      "parent": {
+        "bytes": 106447,
+        "sha256": "097e895e625c37c9712873f57a4b12a9979904c724c1d359418320d3a501f6d2",
+        "gitBlob": "93d41a0ba72f505e4175379e85b243941ed957e2"
+      },
+      "current": {
+        "bytes": 112334,
+        "sha256": "eddfc71f6e16786b6b10377abe73f93e896ecba3a71bbdae24da9ac31470ce70"
+      },
+      "inverse": [
+        {
+          "currentStart": 8,
+          "current": [
+            "import {createNavigationCaptureCollector,writeNavigationCaptureBundle,installFailureObserver,capturedFailures} from './navigation-browser-capture.ts';\n"
+          ],
+          "original": [
+            "import {createNavigationCaptureCollector,writeNavigationCaptureBundle} from './navigation-browser-capture.ts';\n"
+          ]
+        },
+        {
+          "currentStart": 35,
+          "current": [
+            "import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,\n",
+            " nativePreflightRoutePlan,nativePreflightRouteFor,assertNativeClaimsFormsRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from './system-route-manifest.mjs';\n"
+          ],
+          "original": [
+            "import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes} from './system-route-manifest.mjs';\n"
+          ]
+        },
+        {
+          "currentStart": 38,
+          "current": [
+            " return runSystemLoad();\n",
+            "}\n",
+            "\n",
+            "// No native issuer is installed by this source slice. A future protected\n",
+            "// launcher must bind its admitted course at an audited private call site.\n",
+            "// The public development entry has no way to supply it.\n",
+            "async function runSystemLoad(nativeCourse){\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 47,
+          "current": [
+            "const nativePreflight=nativeCourse!==undefined,nativeDeadline=nativeCourse?.deadline;\n",
+            "if(nativePreflight){\n",
+            " assert(Number.isFinite(nativeDeadline)&&nativeDeadline>performance.now(),'Owned native preflight deadline required');\n",
+            " nativePreflightRoutePlan();\n",
+            "}\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 64,
+          "current": [
+            "const suite=nativePreflight?'workflow-preflight':process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','whole-system','workflow-preflight'].includes(suite));\n"
+          ],
+          "original": [
+            "const suite=process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','whole-system','workflow-preflight'].includes(suite));\n"
+          ]
+        },
+        {
+          "currentStart": 72,
+          "current": [
+            "const report={suite,kind:nativePreflight?'NATIVE_RENDERED_UNION_WORKFLOW_SLICE':suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),\n"
+          ],
+          "original": [
+            "const report={suite,kind:suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),\n"
+          ]
+        },
+        {
+          "currentStart": 77,
+          "current": [
+            "if(nativePreflight)report.nativeRenderedPreflight={kind:'NATIVE_PRIMARY_ROUTE_UNION',observations:[],union:null,workflowAndRenderedSlicePassed:false,\n",
+            " pendingHiddenShellCases:['shell.payrollProcess.employee.hidden-denied','shell.payrollProcess.manager.hidden-denied',\n",
+            "  'shell.analytics.employee.hidden-denied','shell.analytics.manager.hidden-denied'],\n",
+            " exactShellScenarioPlanComplete:false,dynamicNavigationComplete:false,releaseEligible:false};\n",
+            "function nativeRemaining(deadline){const remaining=Math.floor(deadline-performance.now());assert(remaining>0,'Owned native preflight route deadline closed');return remaining;}\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 132,
+          "current": [
+            "  start:()=>https.request(base+path,{agent,signal:AbortSignal.timeout(nativePreflight?Math.min(90000,nativeRemaining(nativeDeadline)):90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,\n"
+          ],
+          "original": [
+            "  start:()=>https.request(base+path,{agent,signal:AbortSignal.timeout(90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,\n"
+          ]
+        },
+        {
+          "currentStart": 209,
+          "current": [
+            "const primaryActors=[employee,manager,hr,group];\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 319,
+          "current": [
+            " const pilotResults=await runLanes(primaryActors,async user=>{\n"
+          ],
+          "original": [
+            " const pilotResults=await runLanes([employee,manager,hr,group],async user=>{\n"
+          ]
+        },
+        {
+          "currentStart": 330,
+          "current": [
+            "   try{\n",
+            "    const intended=nativePreflight?nativePreflightRouteFor(user.role,user.index,route):null;\n",
+            "    const response=intended?.redirectStatus===308?await request(user,route,undefined,308):await request(user,route);\n",
+            "    if(intended?.redirectStatus===308)assertNativeClaimsFormsRedirect(response.status,response.headers.location);\n",
+            "    report.coverage.push({role:user.role,route,status:'passed',durationMs:response.durationMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes,\n",
+            "     ...(intended?{actorIndex:user.index,httpStatus:response.status,redirectStatus:intended.redirectStatus}:{})});\n",
+            "   }\n"
+          ],
+          "original": [
+            "   try{const response=await request(user,route);report.coverage.push({role:user.role,route,status:'passed',durationMs:response.durationMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});}\n"
+          ]
+        },
+        {
+          "currentStart": 365,
+          "current": [
+            "  context=contexts.register(await browser.newContext({ignoreHTTPSErrors:!nativePreflight,locale}));\n"
+          ],
+          "original": [
+            "  context=contexts.register(await browser.newContext({ignoreHTTPSErrors:true,locale}));\n"
+          ]
+        },
+        {
+          "currentStart": 434,
+          "current": [
+            " async function visit(page,user,path,phase='baseline',signIn=false,loadState,nativeRoute){\n"
+          ],
+          "original": [
+            " async function visit(page,user,path,phase='baseline',signIn=false,loadState){\n"
+          ]
+        },
+        {
+          "currentStart": 446,
+          "current": [
+            "  const deadline=nativeRoute?Math.min(nativeDeadline,start+90000):null;\n",
+            "  const timeout=(limit=90000)=>deadline===null?limit:Math.min(limit,nativeRemaining(deadline));\n",
+            "  let nativeFailures=0,witness=null,redirectStatus=null;\n",
+            "  const nativeResponse=row=>{if(new URL(row.url()).origin===base&&row.status()>=500)nativeFailures++;};\n",
+            "  const nativePageError=()=>{nativeFailures++;};\n",
+            "  const nativeConsole=message=>{if(message.type()==='error')nativeFailures++;};\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 454,
+          "current": [
+            "   if(nativeRoute){\n",
+            "    assert(!signIn);\n",
+            "    page.on('response',nativeResponse);page.on('pageerror',nativePageError);page.on('console',nativeConsole);\n",
+            "   }\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 460,
+          "current": [
+            "   else response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:timeout()});\n"
+          ],
+          "original": [
+            "   else response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:90000});\n"
+          ]
+        },
+        {
+          "currentStart": 463,
+          "current": [
+            "   if(nativeRoute){\n",
+            "    assert(response&&response.url()===base+nativeRoute.final,'Native rendered response address differs');\n",
+            "    const prior=response.request().redirectedFrom();\n",
+            "    if(nativeRoute.redirectStatus===308){\n",
+            "     assert(prior&&!prior.redirectedFrom()&&prior.url()===base+path,'Native Claims Forms redirect chain differs');\n",
+            "     const redirect=await prior.response();assert(redirect,'Native Claims Forms redirect response missing');\n",
+            "     assertNativeClaimsFormsRedirect(redirect.status(),redirect.headers().location);redirectStatus=redirect.status();\n",
+            "    }else assert(!prior,'Unexpected native preflight route redirect');\n",
+            "   }\n",
+            "   assert(!new URL(page.url()).pathname.startsWith('/login'));\n",
+            "   if(nativeRoute)await page.locator('main').waitFor({timeout:timeout(30000)});else await page.locator('main').waitFor();\n",
+            "   assert((await page.locator('body').innerText(nativeRoute?{timeout:timeout(30000)}:undefined)).includes(user.name));\n"
+          ],
+          "original": [
+            "  assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));\n"
+          ]
+        },
+        {
+          "currentStart": 477,
+          "current": [
+            "   await headingElement.waitFor({state:'visible',timeout:timeout()});\n",
+            "   const heading=(await headingElement.innerText(nativeRoute?{timeout:timeout(30000)}:undefined)).trim();assert(heading.length>0&&!/^404\\b/.test(heading),'missing or not-found page heading');\n"
+          ],
+          "original": [
+            "  await headingElement.waitFor({state:'visible',timeout:90000});\n",
+            "  const heading=(await headingElement.innerText()).trim();assert(heading.length>0&&!/^404\\b/.test(heading),'missing or not-found page heading');\n"
+          ]
+        },
+        {
+          "currentStart": 480,
+          "current": [
+            "   if(await skip.isVisible()){await skip.click(nativeRoute?{timeout:timeout(30000)}:undefined);await skip.waitFor({state:'hidden',...(nativeRoute?{timeout:timeout(30000)}:{})});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}\n"
+          ],
+          "original": [
+            "  if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}\n"
+          ]
+        },
+        {
+          "currentStart": 489,
+          "current": [
+            "    await rows.or(busy).first().waitFor({state:'attached',timeout:timeout()});\n"
+          ],
+          "original": [
+            "    await rows.or(busy).first().waitFor({state:'attached',timeout:90000});\n"
+          ]
+        },
+        {
+          "currentStart": 496,
+          "current": [
+            "   await rows.first().waitFor({state:'visible',timeout:timeout()});\n"
+          ],
+          "original": [
+            "   await rows.first().waitFor({state:'visible',timeout:90000});\n"
+          ]
+        },
+        {
+          "currentStart": 503,
+          "current": [
+            "   await page.getByRole('link',{name:'Download PDF',exact:true}).waitFor({state:'visible',timeout:timeout()});\n"
+          ],
+          "original": [
+            "   await page.getByRole('link',{name:'Download PDF',exact:true}).waitFor({state:'visible',timeout:90000});\n"
+          ]
+        },
+        {
+          "currentStart": 511,
+          "current": [
+            "    await value.waitFor({state:'visible',timeout:timeout()});\n"
+          ],
+          "original": [
+            "    await value.waitFor({state:'visible',timeout:90000});\n"
+          ]
+        },
+        {
+          "currentStart": 520,
+          "current": [
+            "   await page.locator('main form[method=\"get\"] select[name=\"companyId\"]').waitFor({state:'visible',timeout:timeout()});\n"
+          ],
+          "original": [
+            "   await page.locator('main form[method=\"get\"] select[name=\"companyId\"]').waitFor({state:'visible',timeout:90000});\n"
+          ]
+        },
+        {
+          "currentStart": 522,
+          "current": [
+            "   witness='analytics-fixture-metrics';\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 528,
+          "current": [
+            "   await rows.first().waitFor({state:'visible',timeout:timeout()});\n"
+          ],
+          "original": [
+            "   await rows.first().waitFor({state:'visible',timeout:90000});\n"
+          ]
+        },
+        {
+          "currentStart": 541,
+          "current": [
+            "   witness='roster-scoped-employments';\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 546,
+          "current": [
+            "   const filter=page.locator('main form input[name=\"q\"]'),create=page.locator('main a[href=\"/admin/job-descriptions/new\"]');\n",
+            "   await filter.waitFor({state:'visible',timeout:timeout()});\n",
+            "   await create.waitFor({state:'visible',timeout:timeout()});\n"
+          ],
+          "original": [
+            "   await page.locator('main form input[name=\"q\"]').waitFor({state:'visible',timeout:90000});\n",
+            "   await page.locator('main a[href=\"/admin/job-descriptions/new\"]').waitFor({state:'visible',timeout:90000});\n"
+          ]
+        },
+        {
+          "currentStart": 551,
+          "current": [
+            "   if(nativeRoute)assert(await filter.isEnabled({timeout:timeout()})&&await create.isEnabled({timeout:timeout()}),'Job Description controls are unavailable');\n",
+            "   witness='job-description-controls';\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 559,
+          "current": [
+            "    await page.locator('main a[href=\"'+href+'\"]').getByText(String(count),{exact:true}).waitFor({state:'visible',timeout:timeout()});\n"
+          ],
+          "original": [
+            "    await page.locator('main a[href=\"'+href+'\"]').getByText(String(count),{exact:true}).waitFor({state:'visible',timeout:90000});\n"
+          ]
+        },
+        {
+          "currentStart": 568,
+          "current": [
+            "   await cards.first().waitFor({timeout:timeout()});\n",
+            "   await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy=\"true\"]').length===0,{},{timeout:timeout()});\n"
+          ],
+          "original": [
+            "   await cards.first().waitFor({timeout:90000});\n",
+            "   await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy=\"true\"]').length===0,{},{timeout:90000});\n"
+          ]
+        },
+        {
+          "currentStart": 581,
+          "current": [
+            "    if(cardFailures===0)witness='home-card-inventory';\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 598,
+          "current": [
+            "  if(nativeRoute){\n",
+            "   visitStage='native-primary-rendered-evidence';\n",
+            "   const account=page.locator('button[data-tour=\"account\"]'),signedInName=account.getByText(user.name,{exact:true});\n",
+            "   await signedInName.first().waitFor({state:'visible',timeout:timeout()});\n",
+            "   assert(await account.count()===1&&await account.isEnabled({timeout:timeout()})&&await signedInName.count()===1\n",
+            "    &&await signedInName.innerText({timeout:timeout()})===user.name,'Native rendered route account differs');\n",
+            "   assert.equal(page.url(),base+nativeRoute.final,'Native rendered route or query changed after readiness');\n",
+            "   const observed=await capturedFailures(page);timeout();\n",
+            "   const row={role:user.role,actorIndex:user.index,requested:path,final:page.url().slice(base.length),status:response.status(),redirectStatus,\n",
+            "    accountObserved:true,readiness:witness?'usable-content':'rendered-only',witness,elapsedMs:performance.now()-start,\n",
+            "    failureCount:nativeFailures+observed.busy+observed.unavailable+observed.alerts};\n",
+            "   assertNativeRenderedVisit(row);report.nativeRenderedPreflight.observations.push(row);\n",
+            "  }\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 648,
+          "current": [
+            "   if(nativeRoute){page.off('response',nativeResponse);page.off('pageerror',nativePageError);page.off('console',nativeConsole);}\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 701,
+          "current": [
+            "  const routes=nativePreflight&&primaryActors.includes(user)?['/']:suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'];\n",
+            "  for(const route of routes)await visit(page,user,route);\n"
+          ],
+          "original": [
+            "  for(const route of suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);\n"
+          ]
+        },
+        {
+          "currentStart": 709,
+          "current": [
+            " if(!nativePreflight)await lanes.run(()=>settleDriverLanes(primaryActors,async user=>{\n"
+          ],
+          "original": [
+            " await lanes.run(()=>settleDriverLanes([employee,manager,hr,group],async user=>{\n"
+          ]
+        },
+        {
+          "currentStart": 788,
+          "current": [
+            " const signInPreflight=await runLanes(primaryActors,async user=>{\n"
+          ],
+          "original": [
+            " const signInPreflight=await runLanes([employee,manager,hr,group],async user=>{\n"
+          ]
+        },
+        {
+          "currentStart": 791,
+          "current": [
+            "   if(nativePreflight)await installFailureObserver(page,true);\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 794,
+          "current": [
+            "   if(nativePreflight)for(const path of routePool(user)){\n",
+            "    const route=nativePreflightRouteFor(user.role,user.index,path);\n",
+            "    await visit(page,user,path,'baseline',false,undefined,route);\n",
+            "   }\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 805,
+          "current": [
+            " if(nativePreflight)report.nativeRenderedPreflight.union=requireNativeRenderedUnion(report.nativeRenderedPreflight.observations);\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 821,
+          "current": [
+            " if(suite==='whole-system'||nativePreflight){\n"
+          ],
+          "original": [
+            " if(suite==='whole-system'){\n"
+          ]
+        },
+        {
+          "currentStart": 854,
+          "current": [
+            "  if(suite==='whole-system'||nativePreflight)await exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'});\n"
+          ],
+          "original": [
+            "  if(suite==='whole-system')await exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'});\n"
+          ]
+        },
+        {
+          "currentStart": 1045,
+          "current": [
+            "  if(nativePreflight){\n",
+            "   assert(report.nativeRenderedPreflight.union,'Complete native rendered route union required');\n",
+            "   nativeRemaining(nativeDeadline);\n",
+            "  }\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 1334,
+          "current": [
+            " agent=acquireDriverResource(acquired,'agent',()=>new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:nativePreflight,\n"
+          ],
+          "original": [
+            " agent=acquireDriverResource(acquired,'agent',()=>new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:false,\n"
+          ]
+        },
+        {
+          "currentStart": 1378,
+          "current": [
+            "if(preflightComplete&&!failures.failed()){\n",
+            " if(nativePreflight)report.nativeRenderedPreflight.workflowAndRenderedSlicePassed=true;\n",
+            " else report.preflightPassed=true;\n",
+            "}\n"
+          ],
+          "original": [
+            "if(preflightComplete&&!failures.failed())report.preflightPassed=true;\n"
+          ]
+        }
+      ]
+    },
+    "scripts/performance/system-route-manifest.mjs": {
+      "parent": {
+        "bytes": 3711,
+        "sha256": "01a4988c25ef6953f80ffc0a94e3719280cc24bbc4f806445c7208ac28925fac",
+        "gitBlob": "0d7e31eaf7da3b5dea2da48513ed2ba2852b0eb5"
+      },
+      "current": {
+        "bytes": 7044,
+        "sha256": "f31a217e30a5a2d31fd116aa2c97750c1a728f17c056821e3757c897745cdf82"
+      },
+      "inverse": [
+        {
+          "currentStart": 1,
+          "current": [
+            "import assert from 'node:assert/strict';\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 36,
+          "current": [
+            "\n",
+            "const primaryActor=Object.freeze({employee:4,manager:2,companyHR:1,groupHR:0});\n",
+            "const origin='https://localhost:3443';\n",
+            "const claimsForms='/admin/claims/forms';\n",
+            "const claimsConfig='/admin/claims';\n",
+            "const usableWitness=new Map([\n",
+            " ['/', 'home-card-inventory'],['/analytics','analytics-fixture-metrics'],\n",
+            " ['/roster','roster-scoped-employments'],['/admin/job-descriptions','job-description-controls'],\n",
+            "]);\n",
+            "const expectedCounts=Object.freeze({employee:30,manager:16,companyHR:69,groupHR:72});\n",
+            "const nativeRoutes=Object.freeze(Object.entries(routePools).flatMap(([role,routes])=>\n",
+            " routes.map(requested=>Object.freeze({role,actorIndex:primaryActor[role],requested,\n",
+            "  final:requested===claimsForms?claimsConfig:requested,redirectStatus:requested===claimsForms?308:null,\n",
+            "  witness:usableWitness.get(requested)??null}))));\n",
+            "\n",
+            "export function nativePreflightRoutePlan(){\n",
+            " for(const [role,routes]of Object.entries(routePools)){\n",
+            "  assert.equal(new Set(routes).size,expectedCounts[role]);\n",
+            "  assert.equal(routes.length,expectedCounts[role]);\n",
+            "  assert(additionalBrowserRoutes[role].every(route=>routes.includes(route)),'Additional rendered route lies outside the closed role union');\n",
+            " }\n",
+            " return nativeRoutes;\n",
+            "}\n",
+            "\n",
+            "export function nativePreflightRouteFor(role,actorIndex,requested){\n",
+            " const expected=nativeRoutes.find(row=>row.role===role&&row.actorIndex===actorIndex&&row.requested===requested);\n",
+            " assert(expected,'Unreviewed native preflight actor/route pair');return expected;\n",
+            "}\n",
+            "\n",
+            "export function assertNativeClaimsFormsRedirect(status,location){\n",
+            " assert.equal(status,308,'Claims Forms requires its guarded permanent redirect');\n",
+            " assert(location===claimsConfig||location===origin+claimsConfig,'Claims Forms redirect location differs');\n",
+            "}\n",
+            "\n",
+            "/** Data adjudication only. Native route/account/failure facts come from the owned page. */\n",
+            "export function assertNativeRenderedVisit(row){\n",
+            " assert(row&&typeof row==='object');\n",
+            " assert.deepEqual(Object.keys(row).sort(),['accountObserved','actorIndex','elapsedMs','failureCount','final','readiness','redirectStatus','requested','role','status','witness']);\n",
+            " const expected=nativePreflightRouteFor(row.role,row.actorIndex,row.requested);\n",
+            " assert.equal(row.final,expected.final,'Native preflight final route or query differs');\n",
+            " assert.equal(row.redirectStatus,expected.redirectStatus,'Native preflight redirect chain differs');\n",
+            " assert.equal(row.status,200);assert.equal(row.accountObserved,true);assert.equal(row.failureCount,0);\n",
+            " assert(Number.isFinite(row.elapsedMs)&&row.elapsedMs>=0&&row.elapsedMs<=90000,'Native rendered-route deadline exceeded');\n",
+            " assert.equal(row.witness,expected.witness,'Native preflight usable-content witness differs');\n",
+            " assert.equal(row.readiness,expected.witness?'usable-content':'rendered-only','Native preflight readiness exceeds observed content');\n",
+            " return expected;\n",
+            "}\n",
+            "\n",
+            "export function requireNativeRenderedUnion(rows){\n",
+            " assert(Array.isArray(rows)&&rows.length===nativePreflightRoutePlan().length,'Native rendered route union incomplete');\n",
+            " const seen=new Set();let usable=0;\n",
+            " for(const row of rows){\n",
+            "  const expected=assertNativeRenderedVisit(row);assert(!seen.has(expected),'Duplicate native rendered actor/route pair');seen.add(expected);\n",
+            "  if(expected.witness)usable++;\n",
+            " }\n",
+            " return{total:seen.size,usable,renderedOnly:seen.size-usable};\n",
+            "}\n"
+          ],
+          "original": []
+        }
+      ]
+    },
+    "scripts/performance/navigation-browser-capture.ts": {
+      "parent": {
+        "bytes": 13893,
+        "sha256": "f0519ded30e0b3b782043941c4907ee5dbf1639a966f724f0bf1814b0409c9cf",
+        "gitBlob": "f93138e19090442fa8582ea0617419b7c50c1ad3"
+      },
+      "current": {
+        "bytes": 14184,
+        "sha256": "1cee7e66669b77d895baa12fb6b9ed13bb0ff082038eef6d138c2893befb03ff"
+      },
+      "inverse": [
+        {
+          "currentStart": 18,
+          "current": [
+            "export {installFailureObserver,capturedFailures};\n",
+            "async function installFailureObserver(page:Page,nativePrimary=false){\n"
+          ],
+          "original": [
+            "async function installFailureObserver(page:Page){\n"
+          ]
+        },
+        {
+          "currentStart": 21,
+          "current": [
+            " const selectors=nativePrimary?{...failuresSelector,unavailable:failuresSelector.unavailable+',main[data-read-unavailable],main[data-today-unavailable]',\n",
+            "  alerts:failuresSelector.alerts+',main[role=\"alert\"]'}:failuresSelector;\n"
+          ],
+          "original": []
+        },
+        {
+          "currentStart": 30,
+          "current": [
+            " },selectors);\n"
+          ],
+          "original": [
+            " },failuresSelector);\n"
+          ]
+        }
+      ]
+    },
+    "test/performance-route-manifest.test.ts": {
+      "parent": {
+        "bytes": 6297,
+        "sha256": "08b1b993fc32cf1594ff028c4535ff0c40eef73f821d8de0304651036a1623b7",
+        "gitBlob": "239375ad392cf14bd8c5a5e13985679a21149afb"
+      },
+      "current": {
+        "bytes": 10033,
+        "sha256": "b19e282f362c2a9b2869a43c556d69c716ba33efa29121926fbbc7661564d88f"
+      },
+      "inverse": [
+        {
+          "currentStart": 4,
+          "current": [
+            "import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,\n",
+            " nativePreflightRouteFor,assertNativeClaimsFormsRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from '../scripts/performance/system-route-manifest.mjs';\n"
+          ],
+          "original": [
+            "import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes} from '../scripts/performance/system-route-manifest.mjs';\n"
+          ]
+        },
+        {
+          "currentStart": 13,
+          "current": [
+            "});\n",
+            "\n",
+            "const nativeRenderedRows=()=>nativePreflightRoutePlan().map(row=>({...row,status:200,accountObserved:true,\n",
+            " elapsedMs:100,failureCount:0,readiness:row.witness?'usable-content':'rendered-only'}));\n",
+            "\n",
+            "it('requires the complete current native role union on exactly the four primary actors',()=>{\n",
+            " const plan=nativePreflightRoutePlan(),byRole=[['employee',4,30],['manager',2,16],['companyHR',1,69],['groupHR',0,72]]as const;\n",
+            " expect(plan).toHaveLength(187);expect(new Set(plan.map(row=>row.requested)).size).toBe(91);\n",
+            " for(const [role,actor,count]of byRole){\n",
+            "  const rows=plan.filter(row=>row.role===role);expect(rows).toHaveLength(count);\n",
+            "  expect(rows.map(row=>row.requested)).toEqual(routePools[role]);expect(rows.every(row=>row.actorIndex===actor)).toBe(true);\n",
+            " }\n",
+            " const observed=nativeRenderedRows();expect(requireNativeRenderedUnion(observed)).toEqual({total:187,usable:10,renderedOnly:177});\n",
+            " expect(()=>requireNativeRenderedUnion(observed.slice(1))).toThrow(/incomplete/);\n",
+            " expect(()=>requireNativeRenderedUnion([...observed,observed[0]])).toThrow(/incomplete/);\n",
+            " expect(()=>requireNativeRenderedUnion([observed[1],...observed.slice(1)])).toThrow(/Duplicate/);\n",
+            " expect(()=>nativePreflightRouteFor('employee',254,'/assistant')).toThrow(/actor\\/route/);\n",
+            " expect(()=>nativePreflightRouteFor('companyHR',1,'/control-tower/agents/provider')).toThrow(/actor\\/route/);\n",
+            "});\n",
+            "\n",
+            "it('refuses route substitution, silent redirect and usability without an actual reviewed witness',()=>{\n",
+            " const rows=nativeRenderedRows(),row=rows.find(item=>item.role==='employee'&&item.requested==='/assistant?view=tools')!;\n",
+            " expect(assertNativeRenderedVisit(row)).toBe(nativePreflightRouteFor('employee',4,'/assistant?view=tools'));\n",
+            " for(const delta of [{final:'/assistant'},{final:'/assistant?view=privacy'},{final:'https://example.invalid/assistant?view=tools'},\n",
+            "  {redirectStatus:308},{status:404},{actorIndex:254},{accountObserved:false},{failureCount:1},{elapsedMs:90001},\n",
+            "  {readiness:'usable-content'},{witness:'home-card-inventory'},{fixtureBypass:true}])expect(()=>assertNativeRenderedVisit({...row,...delta})).toThrow();\n",
+            " const roster=rows.find(item=>item.role==='groupHR'&&item.requested==='/roster')!;\n",
+            " expect(()=>assertNativeRenderedVisit({...roster,witness:null,readiness:'rendered-only'})).toThrow(/witness/);\n",
+            " expect(()=>assertNativeRenderedVisit({...roster,witness:'analytics-fixture-metrics'})).toThrow(/witness/);\n",
+            "});\n",
+            "\n",
+            "it('retains the guarded Claims Forms compatibility request and its exact canonical destination separately',()=>{\n",
+            " const aliases=nativeRenderedRows().filter(row=>row.requested==='/admin/claims/forms');\n",
+            " expect(aliases.map(row=>[row.role,row.final,row.redirectStatus,row.readiness])).toEqual([\n",
+            "  ['companyHR','/admin/claims',308,'rendered-only'],['groupHR','/admin/claims',308,'rendered-only'],\n",
+            " ]);\n",
+            " for(const row of aliases){expect(assertNativeRenderedVisit(row).final).toBe('/admin/claims');\n",
+            "  expect(()=>assertNativeRenderedVisit({...row,redirectStatus:null})).toThrow(/redirect chain/);\n",
+            "  expect(()=>assertNativeRenderedVisit({...row,final:'/admin/claims/forms'})).toThrow(/final route/);\n",
+            " }\n",
+            " expect(()=>assertNativeClaimsFormsRedirect(308,'/admin/claims')).not.toThrow();\n",
+            " expect(()=>assertNativeClaimsFormsRedirect(308,'https://localhost:3443/admin/claims')).not.toThrow();\n",
+            " for(const [status,location]of [[200,'/admin/claims'],[307,'/admin/claims'],[308,'/claims'],[308,'/admin/claims?extra=1'],\n",
+            "  [308,'//localhost:3443/admin/claims'],[308,'https://example.invalid/admin/claims'],[308,undefined]]as const)\n",
+            "  expect(()=>assertNativeClaimsFormsRedirect(status,location)).toThrow();\n"
+          ],
+          "original": []
+        }
+      ]
+    },
+    "test/performance-shared-workload-owner.test.ts": {
+      "parent": {
+        "bytes": 5810,
+        "sha256": "31df37084b9fc551bf17d1610802f2f517176b7e82794193a90299b332f979a3",
+        "gitBlob": "0b553f49acc1c9452f143b6873413da28511c351"
+      },
+      "current": {
+        "bytes": 6955,
+        "sha256": "d8db3a9305824b171adfdc11fb4cc7443e697b58092f9348ecd5aa615f56669d"
+      },
+      "inverse": [
+        {
+          "currentStart": 72,
+          "current": [
+            "it('cannot select the native rendered course through public development arguments or environment',()=>{\n",
+            " withScratch(({privateDir,evidenceDir,env})=>{\n",
+            "  const url=new URL('../scripts/performance/system-load-owner.mjs',import.meta.url).href;\n",
+            "  const result=child(`import assert from 'node:assert/strict';const owner=await import(${JSON.stringify(url)});\n",
+            "   assert.deepEqual(Object.keys(owner),['runDevelopmentSystemLoad']);\n",
+            "   try{await owner.runDevelopmentSystemLoad({deadline:Infinity});throw Error('Unexpected workload');}\n",
+            "   catch(error){assert.equal(error.code,'ERR_ASSERTION');assert.equal(error.actual,'/ai_hr_test_w1');assert.equal(error.expected,'/ai_hr_dev');}\n",
+            "   console.log('DEVELOPMENT_REALM_REFUSED');`,{...env,DATABASE_URL:nativeUrl,PERF_HTTP_SUITE:'native-rendered-preflight',AIHR_NATIVE_PREFLIGHT:'true'});\n",
+            "  expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,result.stderr).toBe(0);\n",
+            "  expect(result.stderr).toBe('');expect(result.stdout.trim()).toBe('DEVELOPMENT_REALM_REFUSED');\n",
+            "  expect(readdirSync(privateDir)).toEqual([]);expect(readdirSync(evidenceDir)).toEqual([]);\n",
+            " });\n",
+            "},15000);\n",
+            "\n"
+          ],
+          "original": []
+        }
+      ]
+    },
+    "test/navigation-browser-capture.test.ts": {
+      "parent": {
+        "bytes": 6753,
+        "sha256": "1cc2868dfc9097cd676ceec40b858dcec0e28f14882feac20e84679e456ef864",
+        "gitBlob": "2390a62a93779c93671d4cc9a5f089bd23cac981"
+      },
+      "current": {
+        "bytes": 7690,
+        "sha256": "8a1b000b2d7aae91120d6b501074473229454ab19e01385b9a00352f07510c1a"
+      },
+      "inverse": [
+        {
+          "currentStart": 12,
+          "current": [
+            "import {createNavigationCaptureCollector,installFailureObserver} from '../scripts/performance/navigation-browser-capture';\n"
+          ],
+          "original": [
+            "import {createNavigationCaptureCollector} from '../scripts/performance/navigation-browser-capture';\n"
+          ]
+        },
+        {
+          "currentStart": 62,
+          "current": [
+            " it('installs root and nested failure selectors once on the native primary page only',async()=>{\n",
+            "  const {page:development}=fictionalPage();await installFailureObserver(development);\n",
+            "  const legacy=vi.mocked(development.addInitScript).mock.calls[0][1]as {unavailable:string;alerts:string};\n",
+            "  expect(legacy.unavailable).not.toContain(',main[data-read-unavailable]');\n",
+            "  expect(legacy.alerts).toBe('main [role=\"alert\"]');\n",
+            "  const {page:native}=fictionalPage();await installFailureObserver(native,true);await installFailureObserver(native);\n",
+            "  expect(native.addInitScript).toHaveBeenCalledTimes(1);\n",
+            "  const strict=vi.mocked(native.addInitScript).mock.calls[0][1]as {unavailable:string;alerts:string};\n",
+            "  expect(strict.unavailable).toContain('main [data-read-unavailable]');expect(strict.unavailable).toContain(',main[data-read-unavailable]');\n",
+            "  expect(strict.alerts).toBe('main [role=\"alert\"],main[role=\"alert\"]');\n",
+            " });\n"
+          ],
+          "original": []
+        }
+      ]
+    }
+  },
+  "protectedSources": {
+    "scripts/performance/system-load.mjs": {
+      "bytes": 100,
+      "sha256": "17a26184a7e01e1d38c51a1bd626b542b33c472894ab03a43608eda2f48c6c15"
+    },
+    "scripts/performance/system-fixture.mjs": {
+      "bytes": 109,
+      "sha256": "fc2e253251b3252181c256dc8d6266775bd725bbd409ed7b46c0bce7b2b17afd"
+    },
+    "scripts/performance/system-fixture-owner.mjs": {
+      "bytes": 31589,
+      "sha256": "5c8a031a3dd78cea4f9fa67a3e0426855f37383dd38e2680bd2fb219273f8659"
+    },
+    "scripts/performance/system-runner.mjs": {
+      "bytes": 18638,
+      "sha256": "3a7a78372799134475fc7b9566ddfe0967d9584ee3e342c184000a64ae77938a"
+    },
+    "scripts/performance/navigation-scenarios.json": {
+      "bytes": 33134,
+      "sha256": "6dae3cc787e5da49e8f00eb30e0d093f7669f8fff3f87aa5f966a00d9397ca7a"
+    },
+    "scripts/performance/navigation-protocol.ts": {
+      "bytes": 12239,
+      "sha256": "338e8e65d7e18eb4aba1150860fd776be79036a729e1639366707a54ed8bf811"
+    },
+    "scripts/performance/navigation-entry.ts": {
+      "bytes": 1568,
+      "sha256": "af01bdaec1bcd89272b7ae517b76a70dee974226d1d78f88c7717a63a9a0f919"
+    },
+    "scripts/performance/navigation-source.ts": {
+      "bytes": 2337,
+      "sha256": "8a43261888b9065e64ced5bca410a0c07917d3e9ee6215f57dcb3b8910467f9d"
+    },
+    "scripts/performance/navigation-shell-browser.ts": {
+      "bytes": 3377,
+      "sha256": "f9621840fd7bcc77934e57e890c0a3619376b2fc7134b69ec3896b9ca1248995"
+    },
+    "scripts/performance/navigation-coverage-ledger.json": {
+      "bytes": 89071,
+      "sha256": "e096a2f9c5bbec4953840debbe1e04674c39abf7d96dc35496825fa0f026bcc2"
+    },
+    "scripts/performance/navigation-capture-verifier.ts": {
+      "bytes": 10584,
+      "sha256": "406ea9d6e8f748b8f9917a443ede9fb4633f015c292b207cce07caf9a2019889"
+    },
+    "scripts/performance/navigation-fixture-bindings.ts": {
+      "bytes": 6631,
+      "sha256": "22a465d202dc2db0fa4319033ccc82ed92a7142f0372052fd1537dc85482e2fb"
+    },
+    "scripts/performance/mixed-workflows.mjs": {
+      "bytes": 28857,
+      "sha256": "e4d1ba6cf8f879c15b774eb3a7bfd23e43e1da9f7c8ac7092dd36fa713308276"
+    },
+    "scripts/performance/payroll-close-concurrency.mjs": {
+      "bytes": 5930,
+      "sha256": "89e22367ef469c0e10dda764f2baaa607cc5c66c83f1d8129eb99c4b9d9c83bc"
+    },
+    "scripts/performance/payroll-register-browser.mjs": {
+      "bytes": 6533,
+      "sha256": "aeecb26e12dfe3c29a4b1a3cdd47708f44e7c9ad6d1981595e6433d5fe20c4ac"
+    },
+    "scripts/performance/movement-browser.mjs": {
+      "bytes": 4827,
+      "sha256": "d4582455cce4250664c06018600aeb27135d039bd461b042bb2420ec29712f84"
+    },
+    "scripts/performance/reports-browser.mjs": {
+      "bytes": 8304,
+      "sha256": "28c4c8d19a703f5485cba564c6b1863f0c923dbb44afc62d870ac28053b055d5"
+    },
+    "scripts/performance/letter-draft-browser.mjs": {
+      "bytes": 11220,
+      "sha256": "2dfb421cd1bad7fd906e72e7eac3b4f9f1505478662f2c568283fd359a08fb21"
+    },
+    "scripts/performance/personnel-live-profile-browser.mjs": {
+      "bytes": 12154,
+      "sha256": "f2ec0d7360391fbdc8ac78207f212318a78b76ca76943213e673608409b0bfab"
+    },
+    "scripts/performance/performance-rewards-draft-browser.mjs": {
+      "bytes": 11971,
+      "sha256": "ce09583bac6306228d7f3d97d63d70d1c5da6a2b10beccb498e7b13297a38027"
+    },
+    "scripts/performance/driver-shutdown.mjs": {
+      "bytes": 13177,
+      "sha256": "68af4b010ac89638d071f68e93c9f06784ead2fc67fd289756b7471215b7ea99"
+    },
+    "scripts/performance/route-scheduling.mjs": {
+      "bytes": 9378,
+      "sha256": "e390f352a001d7490c4f87c0caeeee27b902cd4c3164e84b90f8fcf7ecc5f37f"
+    },
+    "scripts/performance/runtime-acceptance.mjs": {
+      "bytes": 1753,
+      "sha256": "8af675969cd9663a94f3fd0ba6ba9bade37d9fbf4758bf3279784c957bda7ed0"
+    },
+    ".github/workflows/alpha-focused-checks.yml": {
+      "bytes": 16493,
+      "sha256": "d9ed6026eae9d56904b42bcddb6644bc0132943e27142a415dc3bb8c78c47765"
+    },
+    "deploy/admission/test_next_native.py": {
+      "bytes": 89490,
+      "sha256": "8a22a9ebdaab88fccaf53a47ec517763e52073880877672074840f72d41cf181"
+    },
+    "app/admin/claims/forms/page.tsx": {
+      "bytes": 1373,
+      "sha256": "050735a2de5c44063a7a880f8307c1d1628ed4e58277ff7fd747b08b4fd58f3a"
+    }
+  }
+}

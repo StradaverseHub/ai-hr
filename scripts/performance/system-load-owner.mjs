@@ -6,7 +6,7 @@ import {browserFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
-import {createNavigationCaptureCollector,writeNavigationCaptureBundle} from './navigation-browser-capture.ts';
+import {createNavigationCaptureCollector,writeNavigationCaptureBundle,installFailureObserver,capturedFailures} from './navigation-browser-capture.ts';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
 import {attendanceRejectionProbeEnabled,prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
@@ -33,10 +33,23 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  createDriverFailures,createDriverSockets,createDriverWork,driverErrorFact,lockSampleEvidence,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
-import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes} from './system-route-manifest.mjs';
+import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
+ nativePreflightRoutePlan,nativePreflightRouteFor,assertNativeClaimsFormsRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from './system-route-manifest.mjs';
 export async function runDevelopmentSystemLoad(){
+ return runSystemLoad();
+}
+
+// No native issuer is installed by this source slice. A future protected
+// launcher must bind its admitted course at an audited private call site.
+// The public development entry has no way to supply it.
+async function runSystemLoad(nativeCourse){
 const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_dev');
+const nativePreflight=nativeCourse!==undefined,nativeDeadline=nativeCourse?.deadline;
+if(nativePreflight){
+ assert(Number.isFinite(nativeDeadline)&&nativeDeadline>performance.now(),'Owned native preflight deadline required');
+ nativePreflightRoutePlan();
+}
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
 let db,agent,browser,ownedBrowser,chromiumEnv,nativeAuditClient;
 const acquired={observer:'absent',agent:'absent',browser:'absent',audit:'absent'};
@@ -49,7 +62,7 @@ const {notePrimary,evidence:noteEvidence}=failures;
 const runLane=async work=>{try{return await work();}catch(reason){failures.notePrimary(reason);throw reason;}};
 const runLanes=(values,run)=>lanes.run(()=>Promise.allSettled(values.map(value=>runLane(()=>run(value)))));
 const errorLabel=reason=>{const {kind,code}=driverErrorFact(reason);return code??kind;};
-const suite=process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','whole-system','workflow-preflight'].includes(suite));
+const suite=nativePreflight?'workflow-preflight':process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','whole-system','workflow-preflight'].includes(suite));
 const baselineNavigation=suite==='claims-heavy'?undefined:createNavigationCaptureCollector({phase:'baseline'});
 const loadedNavigation=suite==='whole-system'?createNavigationCaptureCollector({phase:'loaded'}):undefined;
 // Keep complete role routes for baseline and whole-system browser pilots.
@@ -57,11 +70,16 @@ const routePool=user=>routePools[user.role];
 const measuredRoutePools=suite==='whole-system'?routePools:{employee:['/me','/claims','/leave'],manager:['/approvals','/claims','/performance/home'],companyHR:['/admin/personnel','/payroll','/claims'],groupHR:['/admin/personnel','/payroll','/claims']};
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
-const report={suite,kind:suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
+const report={suite,kind:nativePreflight?'NATIVE_RENDERED_UNION_WORKFLOW_SLICE':suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
  assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationProtocol:suite==='whole-system'?navigationProtocol:'unchanged-claims-cycle',navigationScheduling:'shared per-role pending/inflight/completed steady obligations; minimum seven, maximum twelve group-HR reads per cycle; three other reads; same complete mutations and activity pauses; higher read share lowers write iteration frequency; compare only identical frozen v2 protocols',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by unchanged heading, fixture data and complete Home card assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],browserMutations:suite==='claims-heavy'?[]:['Generic Reports saved-definition create/edit/delete (group HR, baseline'+(suite==='whole-system'?' and loaded':'')+')','Service Movement Secondment (group HR, '+(suite==='whole-system'?'loaded':'preflight')+')'],preflightOnly:suite==='workflow-preflight'?['Active Personnel contact edit/restore','E-Letter draft create/edit/withdraw','Concurrent Payroll close/publish','Performance review-cycle draft creation','Rewards annual unit draft creation']:[],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['Navigation destinations outside the reviewed scenario plan',...(suite==='workflow-preflight'?[]:['concurrent Payroll close/publish','active Personnel contact edit/restore','E-Letter draft mutations']),'Lifecycle mutations',...(suite==='workflow-preflight'?['Performance and Rewards mutations beyond draft creation']:['Performance mutations','Rewards mutations']),'large Personnel imports',...(suite==='claims-heavy'?['report-definition CRUD']:['Employee Master and Payroll Comparison definition CRUD','500-principal Reports write mix']),'long-running document jobs','external email delivery'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
+if(nativePreflight)report.nativeRenderedPreflight={kind:'NATIVE_PRIMARY_ROUTE_UNION',observations:[],union:null,workflowAndRenderedSlicePassed:false,
+ pendingHiddenShellCases:['shell.payrollProcess.employee.hidden-denied','shell.payrollProcess.manager.hidden-denied',
+  'shell.analytics.employee.hidden-denied','shell.analytics.manager.hidden-denied'],
+ exactShellScenarioPlanComplete:false,dynamicNavigationComplete:false,releaseEligible:false};
+function nativeRemaining(deadline){const remaining=Math.floor(deadline-performance.now());assert(remaining>0,'Owned native preflight route deadline closed');return remaining;}
 function processCpu(ids){
  const ticks=Number(process.env.PERF_CLOCK_TICKS);
  if(!/^\d+(,\d+)*$/.test(ids??'')||!Number.isFinite(ticks)||ticks<=0)return null;
@@ -112,7 +130,7 @@ async function requestBody(user,path,fields,expectedStatus=200,record=true,actio
  else if(fields){const encoded=new Response(actionFormData(fields,fieldOrder));contentType=encoded.headers.get('content-type');body=Buffer.from(await encoded.arrayBuffer());}
  let responseHeaders;
  const transport=openDriverResponse({body,startedMs:started,observeSocket:sockets.observe,recordFailure:failures.record,
-  start:()=>https.request(base+path,{agent,signal:AbortSignal.timeout(90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
+  start:()=>https.request(base+path,{agent,signal:AbortSignal.timeout(nativePreflight?Math.min(90000,nativeRemaining(nativeDeadline)):90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
    Cookie:`__Host-aihr_internal=${user?.token??''}; NEXT_LOCALE=en`,'Accept-Encoding':'gzip',...actionHeaders,...(body?{'Content-Type':contentType,'Content-Length':body.length}:{})}}),
   onHeaders:(res,ttfbMs)=>{responseHeaders={status:res.statusCode,ttfbMs,hasActionRedirect:Boolean(res.headers['x-action-redirect'])};},
  });
@@ -189,6 +207,7 @@ async function verifyAudit(){
  assert.equal(report.auditVerification.length,2);
 }
 const employee=fixture.users.find(u=>u.role==='employee'),hr=fixture.users.find(u=>u.role==='companyHR'),group=fixture.users.find(u=>u.role==='groupHR'),manager=fixture.users.find(u=>u.role==='manager');
+const primaryActors=[employee,manager,hr,group];
 const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const ordinal=roleCounts.get(user.role)??0;roleCounts.set(user.role,ordinal+1);return [user.index,ordinal];}));
 const pendingBrowserRequests=new WeakMap(),browserPdfRequests=new WeakMap();
 let progressTimer,sqlProgress,browserDiagnosticTimer,contextTemplates,lastPage,mixedWorkflows;
@@ -298,7 +317,7 @@ async function main(){
  if(samplingRequired)startPreflightLockSampling(lockScope);
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
  // Bound independent preflight roles to four lanes; every role still visits its full route pool.
- const pilotResults=await runLanes([employee,manager,hr,group],async user=>{
+ const pilotResults=await runLanes(primaryActors,async user=>{
   const routes=routePool(user);
   for(const route of routes){
    const diagnostic=setTimeout(()=>{
@@ -309,7 +328,13 @@ async function main(){
     });
    },10000);
    slowPilotTimers.add(diagnostic);
-   try{const response=await request(user,route);report.coverage.push({role:user.role,route,status:'passed',durationMs:response.durationMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});}
+   try{
+    const intended=nativePreflight?nativePreflightRouteFor(user.role,user.index,route):null;
+    const response=intended?.redirectStatus===308?await request(user,route,undefined,308):await request(user,route);
+    if(intended?.redirectStatus===308)assertNativeClaimsFormsRedirect(response.status,response.headers.location);
+    report.coverage.push({role:user.role,route,status:'passed',durationMs:response.durationMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes,
+     ...(intended?{actorIndex:user.index,httpStatus:response.status,redirectStatus:intended.redirectStatus}:{})});
+   }
    catch(error){noteEvidence(()=>{report.coverage.push({role:user.role,route,status:'failed',reason:errorLabel(error)});save();});throw error;}
    finally{clearTimeout(diagnostic);slowPilotTimers.delete(diagnostic);}
    save();
@@ -338,7 +363,7 @@ async function main(){
  async function context(user,locale='en',signIn=false){
   let context;
   try{
-  context=contexts.register(await browser.newContext({ignoreHTTPSErrors:true,locale}));
+  context=contexts.register(await browser.newContext({ignoreHTTPSErrors:!nativePreflight,locale}));
   await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:base}]);
   if(!signIn)await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'}]);
   context.on('page',page=>noteEvidence(()=>{
@@ -407,7 +432,7 @@ async function main(){
   assert(session&&session.value!==user.token,'browser sign-in did not establish a new session');
   return {passwordSubmittedAt,mfaSubmittedAt,homeUrlSettledAt,mfaTransport};
  }
- async function visit(page,user,path,phase='baseline',signIn=false,loadState){
+ async function visit(page,user,path,phase='baseline',signIn=false,loadState,nativeRoute){
   lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
   const trackHomePrefetch=path==='/'&&phase==='baseline'&&!signIn;
   let rscRequests=0,prefetchRequests=0;
@@ -419,20 +444,41 @@ async function main(){
   };
   if(trackHomePrefetch)page.on('request',observePrefetch);
   const start=performance.now();let response,signInTiming,visitFailed=false,visitStage=signIn?'sign-in':'navigation';
+  const deadline=nativeRoute?Math.min(nativeDeadline,start+90000):null;
+  const timeout=(limit=90000)=>deadline===null?limit:Math.min(limit,nativeRemaining(deadline));
+  let nativeFailures=0,witness=null,redirectStatus=null;
+  const nativeResponse=row=>{if(new URL(row.url()).origin===base&&row.status()>=500)nativeFailures++;};
+  const nativePageError=()=>{nativeFailures++;};
+  const nativeConsole=message=>{if(message.type()==='error')nativeFailures++;};
   const startedWith=loadState?.();
   try{
+   if(nativeRoute){
+    assert(!signIn);
+    page.on('response',nativeResponse);page.on('pageerror',nativePageError);page.on('console',nativeConsole);
+   }
    if(signIn)signInTiming=await signInToHome(page,user);
    // Readiness is proved below. Network-idle adds an unrelated500ms quiet window.
-   else response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:90000});
+   else response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:timeout()});
   visitStage='page-content';
   if(response)assert.equal(response.status(),200);
-  assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
+   if(nativeRoute){
+    assert(response&&response.url()===base+nativeRoute.final,'Native rendered response address differs');
+    const prior=response.request().redirectedFrom();
+    if(nativeRoute.redirectStatus===308){
+     assert(prior&&!prior.redirectedFrom()&&prior.url()===base+path,'Native Claims Forms redirect chain differs');
+     const redirect=await prior.response();assert(redirect,'Native Claims Forms redirect response missing');
+     assertNativeClaimsFormsRedirect(redirect.status(),redirect.headers().location);redirectStatus=redirect.status();
+    }else assert(!prior,'Unexpected native preflight route redirect');
+   }
+   assert(!new URL(page.url()).pathname.startsWith('/login'));
+   if(nativeRoute)await page.locator('main').waitFor({timeout:timeout(30000)});else await page.locator('main').waitFor();
+   assert((await page.locator('body').innerText(nativeRoute?{timeout:timeout(30000)}:undefined)).includes(user.name));
   visitStage='heading';
   const headingElement=page.locator('main h1:visible').first();
-  await headingElement.waitFor({state:'visible',timeout:90000});
-  const heading=(await headingElement.innerText()).trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
+   await headingElement.waitFor({state:'visible',timeout:timeout()});
+   const heading=(await headingElement.innerText(nativeRoute?{timeout:timeout(30000)}:undefined)).trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
-  if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
+   if(await skip.isVisible()){await skip.click(nativeRoute?{timeout:timeout(30000)}:undefined);await skip.waitFor({state:'hidden',...(nativeRoute?{timeout:timeout(30000)}:{})});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   visitStage='table-data';
   if(await page.locator(busyScreenSelector).count())rejectBusyPage(user,path,'browser');
   if(['/claims','/admin/personnel','/payroll'].includes(path)){
@@ -441,21 +487,21 @@ async function main(){
    const rows=page.locator('main tbody tr:visible');
    if(path==='/admin/personnel'){
     const busy=page.locator(busyScreenSelector);
-    await rows.or(busy).first().waitFor({state:'attached',timeout:90000});
+    await rows.or(busy).first().waitFor({state:'attached',timeout:timeout()});
     if(await busy.count()){
      const reason=await busy.first().getAttribute('data-personnel-busy');
      visitStage=reason==='access-lock'?'personnel-access-lock':'personnel-statement-timeout';
      rejectBusyPage(user,path,'browser');
     }
    }
-   await rows.first().waitFor({state:'visible',timeout:90000});
+   await rows.first().waitFor({state:'visible',timeout:timeout()});
    if(await page.locator(busyScreenSelector).count())rejectBusyPage(user,path,'browser');
   }
   if(path==='/me/payslip'){
    visitStage='payslip-statement';
    // The heading can stream before the actual statement. Keep the existing90s ceiling
    // and prove the real document control exists before taking identity/readiness snapshots.
-   await page.getByRole('link',{name:'Download PDF',exact:true}).waitFor({state:'visible',timeout:90000});
+   await page.getByRole('link',{name:'Download PDF',exact:true}).waitFor({state:'visible',timeout:timeout()});
   }
   if(path==='/analytics'){
    visitStage='analytics-metrics';
@@ -463,7 +509,7 @@ async function main(){
    const metricKeys=['activeHeadcount','newHires','terminations','turnoverRate'],observed={};
    for(const key of metricKeys){
     const value=page.locator('main [data-analytics-metric="'+key+'"] [data-analytics-value]');
-    await value.waitFor({state:'visible',timeout:90000});
+    await value.waitFor({state:'visible',timeout:timeout()});
     observed[key]=(await value.innerText()).trim();
     assert((key==='turnoverRate'?/^-?\d+(?:\.\d+)?%$/:/^\d+$/).test(observed[key]),'Analytics '+key+' must display a usable value');
    }
@@ -472,14 +518,15 @@ async function main(){
    const rewardEmployee=rewardDraft&&(user.role==='groupHR'||rewardDraft.companyId===user.companyId)?1:0;
    const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId)).length+rewardEmployee;
    assert.equal(observed.activeHeadcount,String(expected),'Analytics headcount must match the independently seeded company/tenant population');
-   await page.locator('main form[method="get"] select[name="companyId"]').waitFor({state:'visible',timeout:90000});
+   await page.locator('main form[method="get"] select[name="companyId"]').waitFor({state:'visible',timeout:timeout()});
    assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Analytics rendered an unavailable state');
+   witness='analytics-fixture-metrics';
    (report.analyticsReadiness??=[]).push({role:user.role,phase,expectedHeadcount:expected,renderedMetrics:Object.keys(observed).length,startedWith,usableWith:loadState?.()});save();
   }
   if(path==='/roster'){
    visitStage='roster-scoped-grid';
    const rows=page.locator('main [data-roster-grid] tbody tr[data-roster-employment-id]:visible');
-   await rows.first().waitFor({state:'visible',timeout:90000});
+   await rows.first().waitFor({state:'visible',timeout:timeout()});
    const rendered=await rows.evaluateAll(elements=>elements.map(row=>({id:row.getAttribute('data-roster-employment-id'),text:row.textContent??''})));
    assert(rendered.length>0&&rendered.length<=25,'default Roster must render a bounded nonempty employee page');
    assert.equal(new Set(rendered.map(row=>row.id)).size,rendered.length,'Roster employee rows must be unique');
@@ -492,21 +539,25 @@ async function main(){
     if(actor)assert(row.text.includes(actor.name),'Roster row omitted the expected employee name');
    }
    assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Roster rendered an unavailable state');
+   witness='roster-scoped-employments';
    (report.rosterReadiness??=[]).push({role:user.role,phase,renderedEmployees:rendered.length,scopeVerified:true,startedWith,usableWith:loadState?.()});save();
   }
   if(path==='/admin/job-descriptions'){
    visitStage='job-description-read-controls';
-   await page.locator('main form input[name="q"]').waitFor({state:'visible',timeout:90000});
-   await page.locator('main a[href="/admin/job-descriptions/new"]').waitFor({state:'visible',timeout:90000});
+   const filter=page.locator('main form input[name="q"]'),create=page.locator('main a[href="/admin/job-descriptions/new"]');
+   await filter.waitFor({state:'visible',timeout:timeout()});
+   await create.waitFor({state:'visible',timeout:timeout()});
    assert(await page.locator('main table thead th:visible').count()>=7,'Job Description listing did not render its complete table');
    assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Job Description listing rendered an unavailable state');
+   if(nativeRoute)assert(await filter.isEnabled({timeout:timeout()})&&await create.isEnabled({timeout:timeout()}),'Job Description controls are unavailable');
+   witness='job-description-controls';
    (report.jobDescriptionReadiness??=[]).push({role:user.role,phase,filterReady:true,createReady:true,startedWith,usableWith:loadState?.()});save();
   }
   if(suite==='whole-system'&&path==='/lifecycle'&&['companyHR','groupHR'].includes(user.role)){
    visitStage='lifecycle-staff-tiles';
    const open=user.role==='groupHR'?2:user.company<2?1:0,pending=user.role==='groupHR'||user.company===0?1:0;
    for(const [href,count] of [['/lifecycle/requisitions',open],['/lifecycle/requisitions?approval=pending',pending]]){
-    await page.locator('main a[href="'+href+'"]').getByText(String(count),{exact:true}).waitFor({state:'visible',timeout:90000});
+    await page.locator('main a[href="'+href+'"]').getByText(String(count),{exact:true}).waitFor({state:'visible',timeout:timeout()});
    }
    (report.lifecycleStaffHub??=[]).push({phase,role:user.role,open,pending});save();
   }
@@ -515,8 +566,8 @@ async function main(){
   if(path==='/'||(path==='/me/calendar'&&['employee','manager'].includes(user.role))){
    const personal=['employee','manager'].includes(user.role),attribute=personal?'data-home-card':'data-dashboard-card';
    const cards=page.locator('main ['+attribute+']');
-   await cards.first().waitFor({timeout:90000});
-   await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
+   await cards.first().waitFor({timeout:timeout()});
+   await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:timeout()});
    const failures=await page.locator('main [role="alert"], main [data-today-unavailable], main [data-read-unavailable]').allTextContents();
    if(path==='/'){todaySectionIds=await page.locator('main [data-today-section]').evaluateAll(sections=>sections.map(section=>section.getAttribute('data-today-section')).sort());assert(todaySectionIds.length>0,'current Today sections missing');}
    cardFailures=failures.length;
@@ -528,6 +579,7 @@ async function main(){
     const expectedCards=personal?['calendar','celebrations','notices','summary','tasks','team','timeOff','today']:
      ['attendanceOverview','companies','headcount','headcountByCompany','latestPayroll','latestPayrollRun','noticeBoard','pendingLeave','recentActivity','recentlyJoined','upcomingEvents'];
     assert.deepEqual(homeCardIds,[...expectedCards].sort(),'fictional Home must render every expected card');
+    if(cardFailures===0)witness='home-card-inventory';
    }
    if(!personal){
     const rewardDraft=fixture.tenants[user.tenant].rewardDraft;
@@ -544,6 +596,19 @@ async function main(){
   }
   visitStage='navigation-timing';
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
+  if(nativeRoute){
+   visitStage='native-primary-rendered-evidence';
+   const account=page.locator('button[data-tour="account"]'),signedInName=account.getByText(user.name,{exact:true});
+   await signedInName.first().waitFor({state:'visible',timeout:timeout()});
+   assert(await account.count()===1&&await account.isEnabled({timeout:timeout()})&&await signedInName.count()===1
+    &&await signedInName.innerText({timeout:timeout()})===user.name,'Native rendered route account differs');
+   assert.equal(page.url(),base+nativeRoute.final,'Native rendered route or query changed after readiness');
+   const observed=await capturedFailures(page);timeout();
+   const row={role:user.role,actorIndex:user.index,requested:path,final:page.url().slice(base.length),status:response.status(),redirectStatus,
+    accountObserved:true,readiness:witness?'usable-content':'rendered-only',witness,elapsedMs:performance.now()-start,
+    failureCount:nativeFailures+observed.busy+observed.unavailable+observed.alerts};
+   assertNativeRenderedVisit(row);report.nativeRenderedPreflight.observations.push(row);
+  }
   if(signIn){
    const cardsCheckedAt=performance.now();
    const result={phase,role:user.role,homeCards,homeCardIds,todaySectionIds,elapsedMs:cardsCheckedAt-start,
@@ -581,6 +646,7 @@ async function main(){
    });
    throw error;
   }finally{
+   if(nativeRoute){page.off('response',nativeResponse);page.off('pageerror',nativePageError);page.off('console',nativeConsole);}
    const home=noteEvidence(stopHomeTracking);
    const prefetch=trackHomePrefetch?noteEvidence(()=>{
     page.off('request',observePrefetch);
@@ -633,14 +699,15 @@ async function main(){
  await lanes.run(()=>settleDriverLanes([employee,manager,hr,group,fixture.users[254],fixture.users[251]],async user=>{
   const ctx=await context(user);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
-  for(const route of suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
+  const routes=nativePreflight&&primaryActors.includes(user)?['/']:suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'];
+  for(const route of routes)await visit(page,user,route);
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});
   });
  },failures));
  if(!samplingRequired)await finishPreflightLockSampling();
  requireCleanDriver();
  // Additional concrete pages have explicit rendered checks, separate from HTTP route counts.
- await lanes.run(()=>settleDriverLanes([employee,manager,hr,group],async user=>{
+ if(!nativePreflight)await lanes.run(()=>settleDriverLanes(primaryActors,async user=>{
   const ctx=await context(user);
   await withContext(ctx,async()=>{const page=await ctx.newPage();for(const path of additionalBrowserRoutes[user.role]){
    // The full workload already rendered these exact role/path pairs above. Keep each
@@ -719,11 +786,16 @@ async function main(){
   }
  }
  // Exercise real password/MFA before any capacity test; these results are never loaded proof.
- const signInPreflight=await runLanes([employee,manager,hr,group],async user=>{
+ const signInPreflight=await runLanes(primaryActors,async user=>{
   const ctx=await context(user,'en',true);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
+   if(nativePreflight)await installFailureObserver(page,true);
    await visit(page,user,'/','sign-in-preflight',true);
    if(baselineNavigation)await baselineNavigation.captureActor(page,user.index);
+   if(nativePreflight)for(const path of routePool(user)){
+    const route=nativePreflightRouteFor(user.role,user.index,path);
+    await visit(page,user,path,'baseline',false,undefined,route);
+   }
   });
  });
  // Finish every admitted sign-in body. On failure the terminal sweep still owns
@@ -731,6 +803,7 @@ async function main(){
  for(const result of signInPreflight)if(result.status==='rejected')throw result.reason;
  requireCleanDriver();
  const baselineCapture=baselineNavigation?.finish();
+ if(nativePreflight)report.nativeRenderedPreflight.union=requireNativeRenderedUnion(report.nativeRenderedPreflight.observations);
  report.navigationCapture={scope:'DEVELOPMENT_ONLY',releaseEligible:false,baselineScenarios:baselineCapture?.observations.length??0,loadedScenarios:0};save();
  // Handled card failures remain a failed acceptance gate. Keep collecting the
  // isolated workload evidence after every role completed a real sign-in.
@@ -746,7 +819,7 @@ async function main(){
   ?[{role:aiBrowserActors[index].role,userIndex:aiBrowserActors[index].index,error:errorLabel(result.reason)}]:[]);
  save();
  requireCleanDriver();
- if(suite==='whole-system'){
+ if(suite==='whole-system'||nativePreflight){
   const ctx=await context(group);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
    await exerciseOrgExplorer({page,user:group,fixture,report,save,phase:'baseline'});
@@ -779,7 +852,7 @@ async function main(){
    await page.waitForURL(url=>url.pathname==='/control-tower/agents',{timeout:90000});
    report.boundaries.push({kind:'AI group-administrator-only route',role:hr.role,path,redirectDenied:true});save();
   }
-  if(suite==='whole-system')await exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'});
+  if(suite==='whole-system'||nativePreflight)await exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'});
   });
   requireCleanDriver();
  }
@@ -970,6 +1043,10 @@ async function main(){
   assert.equal(report.browserErrors.length,0,'all preflight journeys must finish without browser runtime errors');
   assert.equal(report.pageBusyResponses.length,0,'preflight page Busy responses');
   assert(baselineCapture,'Reviewed navigation baseline capture is missing');
+  if(nativePreflight){
+   assert(report.nativeRenderedPreflight.union,'Complete native rendered route union required');
+   nativeRemaining(nativeDeadline);
+  }
   writeNavigationCaptureBundle(out,baselineCapture);
   await finishPreflightLockSampling();
   preflightComplete=true;return;
@@ -1255,7 +1332,7 @@ async function main(){
 try{
  chromiumEnv=closedChromiumEnvironment(process.env,userInfo().homedir);
  db=acquireDriverResource(acquired,'observer',()=>postgres(process.env.MIGRATION_DATABASE_URL,{max:2}));
- agent=acquireDriverResource(acquired,'agent',()=>new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:false,
+ agent=acquireDriverResource(acquired,'agent',()=>new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:nativePreflight,
   lookup:(_host,options,callback)=>options.all?callback(null,[{address:'127.0.0.1',family:4}]):callback(null,'127.0.0.1',4)}));
  await main();
 }catch(reason){
@@ -1299,7 +1376,10 @@ if(failures.failed()){
  noteEvidence(()=>writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits)));
 }
 report.driverFailures=failures.publicFailures();
-if(preflightComplete&&!failures.failed())report.preflightPassed=true;
+if(preflightComplete&&!failures.failed()){
+ if(nativePreflight)report.nativeRenderedPreflight.workflowAndRenderedSlicePassed=true;
+ else report.preflightPassed=true;
+}
 noteEvidence(save);
 if(failures.failed()){
  // The outer runner publishes a bounded child log tail. Keep the actual reasons in its private directory.

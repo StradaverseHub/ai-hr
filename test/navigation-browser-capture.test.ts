@@ -10,7 +10,7 @@ vi.mock('../scripts/performance/navigation-source',()=>({
  }]}}),
 }));
 vi.mock('../scripts/performance/navigation-fixture-bindings',()=>({readNavigationFixtureBindings:()=>new Map([[4,{actorName:'PERF Person 0004',actorEmployeeCode:'PERF0004',firstCompanyPersonName:'PERF Person 0000',activeHeadcount:'50',historicalPayrollMonth:'2026-07',seedToday:'2026-11-07',seedMonth:'2026-11',rosterScope:{}}]])}));
-import {createNavigationCaptureCollector} from '../scripts/performance/navigation-browser-capture';
+import {createNavigationCaptureCollector,installFailureObserver} from '../scripts/performance/navigation-browser-capture';
 const actorName='PERF Person 0004',otherActorName='PERF Person 0005';
 function fictionalPage({accountName=actorName,accountCount=1,anchorCount=1,detailsCount=1}:{accountName?:string;accountCount?:number;anchorCount?:number;detailsCount?:number}={}){
  let now=0;const waited=new Set<string>(),waits:{selector:string;timeout:number}[]=[],operations:string[]=[];
@@ -60,6 +60,17 @@ beforeEach(()=>{
 });
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 describe('native identity and streamed navigation capture boundaries',()=>{
+ it('installs root and nested failure selectors once on the native primary page only',async()=>{
+  const {page:development}=fictionalPage();await installFailureObserver(development);
+  const legacy=vi.mocked(development.addInitScript).mock.calls[0][1]as {unavailable:string;alerts:string};
+  expect(legacy.unavailable).not.toContain(',main[data-read-unavailable]');
+  expect(legacy.alerts).toBe('main [role="alert"]');
+  const {page:native}=fictionalPage();await installFailureObserver(native,true);await installFailureObserver(native);
+  expect(native.addInitScript).toHaveBeenCalledTimes(1);
+  const strict=vi.mocked(native.addInitScript).mock.calls[0][1]as {unavailable:string;alerts:string};
+  expect(strict.unavailable).toContain('main [data-read-unavailable]');expect(strict.unavailable).toContain(',main[data-read-unavailable]');
+  expect(strict.alerts).toBe('main [role="alert"],main[role="alert"]');
+ });
  it('binds exact identity to the unique account button and waits for streamed anchors/disclosures inside one budget',async()=>{
   const {page,waits,operations}=fictionalPage(),collector=createNavigationCaptureCollector({phase:'baseline'});
   await collector.captureActor(page,4);expect(collector.finish().observations).toHaveLength(1);

@@ -1,4 +1,5 @@
 /** Concrete read routes only; dynamic record/workflow routes retain their seeded owner journeys. */
+import assert from 'node:assert/strict';
 export const aiCentreRoutes=Object.freeze(['/assistant','/policies','/assistant?view=how','/assistant?view=privacy','/assistant?view=tools']);
 export const attendanceReadRoutes=Object.freeze(['/attendance','/attendance/daily']);
 export const architectureHrReadRoutes=Object.freeze(['/analytics','/roster','/admin/job-descriptions']);
@@ -33,3 +34,60 @@ export const additionalBrowserRoutes=Object.freeze({
  companyHR:['/lifecycle',...aiAdminRoutes,...architectureHrReadRoutes,'/admin/claims','/admin/attendance/schedule','/roster/import'],
  groupHR:['/lifecycle',...architectureHrReadRoutes,'/control-tower/agents/spending','/control-tower/agents/provider','/control-tower/agents/build-list','/letters/templates','/letters/settings','/admin/rewards','/admin/notice-board'],
 });
+
+const primaryActor=Object.freeze({employee:4,manager:2,companyHR:1,groupHR:0});
+const origin='https://localhost:3443';
+const claimsForms='/admin/claims/forms';
+const claimsConfig='/admin/claims';
+const usableWitness=new Map([
+ ['/', 'home-card-inventory'],['/analytics','analytics-fixture-metrics'],
+ ['/roster','roster-scoped-employments'],['/admin/job-descriptions','job-description-controls'],
+]);
+const expectedCounts=Object.freeze({employee:30,manager:16,companyHR:69,groupHR:72});
+const nativeRoutes=Object.freeze(Object.entries(routePools).flatMap(([role,routes])=>
+ routes.map(requested=>Object.freeze({role,actorIndex:primaryActor[role],requested,
+  final:requested===claimsForms?claimsConfig:requested,redirectStatus:requested===claimsForms?308:null,
+  witness:usableWitness.get(requested)??null}))));
+
+export function nativePreflightRoutePlan(){
+ for(const [role,routes]of Object.entries(routePools)){
+  assert.equal(new Set(routes).size,expectedCounts[role]);
+  assert.equal(routes.length,expectedCounts[role]);
+  assert(additionalBrowserRoutes[role].every(route=>routes.includes(route)),'Additional rendered route lies outside the closed role union');
+ }
+ return nativeRoutes;
+}
+
+export function nativePreflightRouteFor(role,actorIndex,requested){
+ const expected=nativeRoutes.find(row=>row.role===role&&row.actorIndex===actorIndex&&row.requested===requested);
+ assert(expected,'Unreviewed native preflight actor/route pair');return expected;
+}
+
+export function assertNativeClaimsFormsRedirect(status,location){
+ assert.equal(status,308,'Claims Forms requires its guarded permanent redirect');
+ assert(location===claimsConfig||location===origin+claimsConfig,'Claims Forms redirect location differs');
+}
+
+/** Data adjudication only. Native route/account/failure facts come from the owned page. */
+export function assertNativeRenderedVisit(row){
+ assert(row&&typeof row==='object');
+ assert.deepEqual(Object.keys(row).sort(),['accountObserved','actorIndex','elapsedMs','failureCount','final','readiness','redirectStatus','requested','role','status','witness']);
+ const expected=nativePreflightRouteFor(row.role,row.actorIndex,row.requested);
+ assert.equal(row.final,expected.final,'Native preflight final route or query differs');
+ assert.equal(row.redirectStatus,expected.redirectStatus,'Native preflight redirect chain differs');
+ assert.equal(row.status,200);assert.equal(row.accountObserved,true);assert.equal(row.failureCount,0);
+ assert(Number.isFinite(row.elapsedMs)&&row.elapsedMs>=0&&row.elapsedMs<=90000,'Native rendered-route deadline exceeded');
+ assert.equal(row.witness,expected.witness,'Native preflight usable-content witness differs');
+ assert.equal(row.readiness,expected.witness?'usable-content':'rendered-only','Native preflight readiness exceeds observed content');
+ return expected;
+}
+
+export function requireNativeRenderedUnion(rows){
+ assert(Array.isArray(rows)&&rows.length===nativePreflightRoutePlan().length,'Native rendered route union incomplete');
+ const seen=new Set();let usable=0;
+ for(const row of rows){
+  const expected=assertNativeRenderedVisit(row);assert(!seen.has(expected),'Duplicate native rendered actor/route pair');seen.add(expected);
+  if(expected.witness)usable++;
+ }
+ return{total:seen.size,usable,renderedOnly:seen.size-usable};
+}

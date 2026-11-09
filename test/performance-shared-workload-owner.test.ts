@@ -70,6 +70,20 @@ it.each(courses)('refuses the real $name legacy entry outside GitHub before dyna
  });
 },15000);
 
+it('cannot select the native rendered course through public development arguments or environment',()=>{
+ withScratch(({privateDir,evidenceDir,env})=>{
+  const url=new URL('../scripts/performance/system-load-owner.mjs',import.meta.url).href;
+  const result=child(`import assert from 'node:assert/strict';const owner=await import(${JSON.stringify(url)});
+   assert.deepEqual(Object.keys(owner),['runDevelopmentSystemLoad']);
+   try{await owner.runDevelopmentSystemLoad({deadline:Infinity});throw Error('Unexpected workload');}
+   catch(error){assert.equal(error.code,'ERR_ASSERTION');assert.equal(error.actual,'/ai_hr_test_w1');assert.equal(error.expected,'/ai_hr_dev');}
+   console.log('DEVELOPMENT_REALM_REFUSED');`,{...env,DATABASE_URL:nativeUrl,PERF_HTTP_SUITE:'native-rendered-preflight',AIHR_NATIVE_PREFLIGHT:'true'});
+  expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,result.stderr).toBe(0);
+  expect(result.stderr).toBe('');expect(result.stdout.trim()).toBe('DEVELOPMENT_REALM_REFUSED');
+  expect(readdirSync(privateDir)).toEqual([]);expect(readdirSync(evidenceDir)).toEqual([]);
+ });
+},15000);
+
 it.each([
  {name:'fixture hostname',course:courses[0],key:'DATABASE_URL',url:'postgres://performance_guard_never_provisioned@example.invalid:5433/ai_hr_dev',actual:'example.invalid',expected:'127.0.0.1'},
  {name:'fixture port',course:courses[0],key:'DATABASE_URL',url:'postgres://performance_guard_never_provisioned@127.0.0.1:1/ai_hr_dev',actual:'1',expected:'5433'},
