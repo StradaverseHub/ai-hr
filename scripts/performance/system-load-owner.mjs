@@ -177,7 +177,7 @@ const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report
 const nativeBrowserFailures=nativePreflight?createNativeBrowserFailureObservation():null;
 const measureDevelopment=!nativePreflight&&suite!=='claims-heavy';
 const developmentPageCensus=measureDevelopment?createDevelopmentPageCensus():null;
-let developmentNavigationBinding,developmentWorkCompleted=false;
+let developmentNavigationBinding,developmentRenderedCapture,developmentWorkCompleted=false;
 const nativePrimaryDocuments=[];
 if(nativePreflight)report.nativeRenderedPreflight={kind:'NATIVE_PRIMARY_ROUTE_UNION',observations:[],union:null,workflowAndRenderedSlicePassed:false,
  pendingHiddenShellCases:NATIVE_HIDDEN_SHELL_CASES.map(row=>row.id),
@@ -1336,7 +1336,8 @@ async function main(){
    assert(report.nativeRenderedPreflight.union,'Complete native rendered route union required');
    nativeRemaining(nativeDeadline);
   }
-  writeNavigationCaptureBundle(out,baselineCapture);
+  if(measureDevelopment)developmentRenderedCapture=writeNavigationCaptureBundle(out,baselineCapture,undefined,'development-byte-binding');
+  else writeNavigationCaptureBundle(out,baselineCapture);
   if(!nativePreflight)await finishPreflightLockSampling();
   preflightComplete=true;return;
  }
@@ -1615,7 +1616,7 @@ async function main(){
  if(suite==='whole-system'){
   assert(baselineCapture&&loadedNavigation,'Reviewed navigation producer is missing');
   const loadedCapture=loadedNavigation.finish();
-  writeNavigationCaptureBundle(out,baselineCapture,loadedCapture);
+  developmentRenderedCapture=writeNavigationCaptureBundle(out,baselineCapture,loadedCapture,'development-byte-binding');
   report.navigationCapture.loadedScenarios=loadedCapture.observations.length;save();
  }
 }
@@ -1720,7 +1721,8 @@ if(measureDevelopment){
  };
  const measurement=buildDevelopmentMeasurement({suite,identity,workCompleted:developmentWorkCompleted,clean:!failures.failed(),
   busyResponses:report.pageBusyResponses.length,pages:report.developmentBrowserPageEvents,
-  preflight:report.lockSampling.preflight.cadence,loaded:report.lockSampling.loaded.cadence,shutdown});
+  preflight:report.lockSampling.preflight.cadence,loaded:report.lockSampling.loaded.cadence,shutdown,
+  renderedCapture:developmentRenderedCapture});
  report.developmentMeasurement=measurement;
  if(!measurement.complete&&developmentWorkCompleted&&!failures.failed())
   failures.record('development-terminal-evidence',Error('Development measurement evidence was incomplete or observed a failure'));

@@ -251,6 +251,7 @@ function developmentMeasurementInput(){
  const observed=[{...legacyLockRow(110,120),appSessions:1},{...legacyLockRow(220,230),appSessions:1}];
  const preflight=developmentLockWindowEvidence('preflight',observed,{startMs:100,endMs:400},true);
  return {suite,identity,preflight,loaded:developmentLockWindowEvidence('loaded',[],null,false),workCompleted:true,clean:true,busyResponses:0,
+  renderedCapture:{sha256:'e'.repeat(64),bytes:128},
   pages:{observedPages:2,closedPages:2,censusComplete:true,crash:0,aborted:2,transport:0,http5xx:0,pageError:0,consoleError:0},
   shutdown:{browser:{close:'settled'},http:{state:'settled',assigned:3,closed:3,pending:0,queued:0},
    diagnostics:'settled',database:{audit:'settled',observer:'settled'}}};
@@ -292,6 +293,24 @@ it('retains incomplete terminal receipts without promoting missing Pages, app tr
  }
  const loaded=buildDevelopmentMeasurement({...input,suite:'whole-system'});
  expect(loaded.complete).toBe(false);expect(validateDevelopmentMeasurement(loaded,{...expected,suite:'whole-system'})).toBe(true);
+});
+
+it('requires the bounded rendered capture binding only for a complete development terminal receipt',()=>{
+ const input=developmentMeasurementInput(),expected={...input.identity,suite:input.suite};
+ const receipt=buildDevelopmentMeasurement(input);
+ expect(receipt.renderedCapture).toEqual(input.renderedCapture);
+ expect(receipt.renderedCapture).not.toBe(input.renderedCapture);
+ expect(validateDevelopmentMeasurement(receipt,expected)).toBe(true);
+ for(const invalid of [null,{sha256:'e'.repeat(63)+'\n',bytes:128},{sha256:'e'.repeat(64),bytes:0},
+  {sha256:'e'.repeat(64),bytes:4*1024**2+1},{...input.renderedCapture,payload:'not-allowed'}]){
+  const changed=structuredClone(receipt);Object.assign(changed,{renderedCapture:invalid});
+  expect(validateDevelopmentMeasurement(changed,expected)).toBe(false);
+  expect(buildDevelopmentMeasurement({...input,renderedCapture:invalid})).toMatchObject({complete:false,renderedCapture:null});
+ }
+ const failed=buildDevelopmentMeasurement({...input,clean:false});
+ expect(failed).toMatchObject({complete:false,renderedCapture:null});
+ expect(validateDevelopmentMeasurement(failed,expected)).toBe(true);
+ expect(validateDevelopmentMeasurement({...failed,renderedCapture:input.renderedCapture},expected)).toBe(false);
 });
 
 it('refuses an impossible Page census even in an explicitly incomplete development receipt',()=>{

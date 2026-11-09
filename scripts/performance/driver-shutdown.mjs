@@ -211,6 +211,7 @@ export function developmentPostgresSettlement(reset,remove,physicalAbsent){
 
 const developmentTerminalKind='DEVELOPMENT_BROWSER_MEASUREMENT_V1';
 const developmentPoolEvidence='postgres-js-end-api-acknowledgement';
+export const DEVELOPMENT_RENDERED_CAPTURE_MAX_BYTES=4*1024**2;
 const developmentNotLoaded=Object.freeze({phase:'loaded',intervalMs:1000,maxGapUs:2000000,state:'not-applicable',reason:null,
  coveragePass:false,pass:false,blockingSamples:null,observedBlockingSamples:null,qualifiedSamples:null,
  openingGapUs:null,interiorGapUs:null,tailGapUs:null});
@@ -219,6 +220,8 @@ const closedFields=(row,names)=>row!==null&&typeof row==='object'&&!Array.isArra
 const boundedInteger=(value,max)=>Number.isSafeInteger(value)&&value>=0&&value<=max;
 const knownCount=(value,max)=>value===null||boundedInteger(value,max);
 const exactHex=(value,length)=>typeof value==='string'&&value.length===length&&/^[0-9a-f]+(?![\s\S])/.test(value);
+const validRenderedCapture=value=>closedFields(value,['sha256','bytes'])&&exactHex(value.sha256,64)
+ &&boundedInteger(value.bytes,DEVELOPMENT_RENDERED_CAPTURE_MAX_BYTES)&&value.bytes>0;
 const settlementState=value=>['settled','failed','absent','unknown'].includes(value);
 const observedEventCount=value=>boundedInteger(value,1000000)?value:null;
 const developmentPagesFields=['censusComplete','observedPages','closedPages','observedCrashes','qualifiedCrashes',
@@ -234,7 +237,7 @@ function cleanDevelopmentMeasurement({suite,identity,workCompleted,busyResponses
   &&developmentSettlementFields.every(key=>settlement[key]==='settled');
 }
 
-export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,busyResponses,pages,preflight,loaded,shutdown}){
+export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,busyResponses,pages,preflight,loaded,shutdown,renderedCapture}){
  const observedPages=knownCount(pages.observedPages,4096)?pages.observedPages:null;
  const closedPages=knownCount(pages.closedPages,4096)
   &&(observedPages!==null?pages.closedPages<=observedPages:pages.closedPages===null)?pages.closedPages:null;
@@ -253,11 +256,12 @@ export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,
  const evidence={kind:developmentTerminalKind,suite,workCompleted,identity,busyResponses:workCompleted||busy>0?busy:null,
   poolEvidence:developmentPoolEvidence,pageEvents,
   locks:{preflight,loaded:suite==='workflow-preflight'?developmentNotLoaded:loaded},settlement};
- return {...evidence,complete:clean&&cleanDevelopmentMeasurement(evidence)};
+ const complete=clean&&validRenderedCapture(renderedCapture)&&cleanDevelopmentMeasurement(evidence);
+ return {...evidence,complete,renderedCapture:complete?{sha256:renderedCapture.sha256,bytes:renderedCapture.bytes}:null};
 }
 
 export function validateDevelopmentMeasurement(value,expected){
- if(!closedFields(value,['kind','suite','workCompleted','identity','busyResponses','poolEvidence','pageEvents','locks','settlement','complete'])
+ if(!closedFields(value,['kind','suite','workCompleted','identity','busyResponses','poolEvidence','pageEvents','locks','settlement','complete','renderedCapture'])
   ||value.kind!==developmentTerminalKind||value.poolEvidence!==developmentPoolEvidence||!['workflow-preflight','whole-system'].includes(value.suite)||value.suite!==expected.suite
   ||typeof value.workCompleted!=='boolean'||typeof value.complete!=='boolean'||!knownCount(value.busyResponses,1000000)
   ||(!value.workCompleted&&value.busyResponses===0))return false;
@@ -295,7 +299,7 @@ export function validateDevelopmentMeasurement(value,expected){
     ||!['openingGapUs','interiorGapUs','tailGapUs'].every(key=>boundedInteger(lock[key],lock.maxGapUs)))return false;
   }else if(lock.blockingSamples!==null||lock.reason===null)return false;
  }
- return !value.complete||cleanDevelopmentMeasurement(value);
+ return value.complete?validRenderedCapture(value.renderedCapture)&&cleanDevelopmentMeasurement(value):value.renderedCapture===null;
 }
 
 export function createProtectedWorkAdmission({assertIngress,sealIngress,noteFailure,noteSealFailure}){

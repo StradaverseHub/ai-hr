@@ -2,7 +2,7 @@
  * The existing system runner owns native fixture provisioning/session creation and traffic.
  * Call once per role in each phase, with its already authenticated Playwright Page. */
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import type {Page,Response} from 'playwright';
@@ -14,6 +14,7 @@ import {navigationCleanHead,navigationSourceIdentity} from './navigation-source'
 import {readNavigationFixtureBindings} from './navigation-fixture-bindings';
 import {navigationScenarioEntry} from './navigation-entry';
 import {assertNativeShellDestinationHidden,clickNativeShellDestination} from './navigation-shell-browser';
+import {DEVELOPMENT_RENDERED_CAPTURE_MAX_BYTES} from './driver-shutdown.mjs';
 const BASE='https://localhost:3443';
 const failuresSelector={busy:'main[data-personnel-busy],main[data-page-busy],main [data-personnel-busy],main [data-page-busy]',
  unavailable:'main [data-read-unavailable],main [data-today-unavailable]',alerts:'main [role="alert"]'} as const;
@@ -307,11 +308,24 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
  }finally{page.off('response',response);page.off('pageerror',pageError);page.off('console',consoleError);}
 }
 /** The runner retains both phases in the same fixed artifact member. No credentials/content. */
-export function writeNavigationCaptureBundle(outputDirectory:string,baseline:NavigationCapture,loaded?:NavigationCapture){
+export function writeNavigationCaptureBundle(outputDirectory:string,baseline:NavigationCapture,loaded?:NavigationCapture):NavigationCaptureBundle;
+export function writeNavigationCaptureBundle(outputDirectory:string,baseline:NavigationCapture,loaded:NavigationCapture|undefined,
+ bind:'development-byte-binding'):Readonly<{sha256:string;bytes:number}>;
+export function writeNavigationCaptureBundle(outputDirectory:string,baseline:NavigationCapture,loaded?:NavigationCapture,bind?:'development-byte-binding'){
  assert(baseline.phase==='baseline'&&baseline.complete&&(!loaded||loaded.phase==='loaded'&&loaded.complete),'Complete navigation phases required');
  if(loaded)for(const field of ['candidateSha','controllerSha','runId','runAttempt','harnessSha256','scenarioSha256']as const)assert(loaded[field]===baseline[field],'Navigation phases have different source/run identities');
  const bundle:NavigationCaptureBundle={schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,baseline,...(loaded?{loaded}:{})};
- writeFileSync(join(outputDirectory,NAVIGATION_CAPTURE_MEMBER),JSON.stringify(bundle,null,2)+'\n',{mode:0o600,flag:'wx'});
+ const serialized=JSON.stringify(bundle,null,2)+'\n';
+ const path=join(outputDirectory,NAVIGATION_CAPTURE_MEMBER);
+ if(bind==='development-byte-binding'){
+  const bytes=Buffer.byteLength(serialized,'utf8');
+  assert(bytes>0&&bytes<=DEVELOPMENT_RENDERED_CAPTURE_MAX_BYTES,'Development rendered capture byte bound refused');
+  const raw=Buffer.from(serialized,'utf8');
+  const sha256=createHash('sha256').update(raw).digest('hex');
+  writeFileSync(path,raw,{mode:0o600,flag:'wx'});
+  return Object.freeze({sha256,bytes});
+ }
+ writeFileSync(path,serialized,{mode:0o600,flag:'wx'});
  return bundle;
 }
 
