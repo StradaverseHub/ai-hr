@@ -876,13 +876,42 @@ jobs:
               failures = bounded_list(row.get('failures'), 100, project_server_failure)
               return {'scope': 'Closed worker diagnostics without raw logs or references', 'failures': failures} if failures is not None else None
 
+          lock_families = {'access-configuration', 'ai-control', 'audit-chain', 'employment', 'payroll-history',
+                           'pay-component-catalog', 'advisory-unclassified', 'transaction', 'tuple', 'relation'}
+          lock_routines = {'workforce-policy-write', 'profile-policy-read', 'profile-policy-write', 'ai-centre-running',
+                           'ai-centre-control', 'ai-centre-mandate-order', 'personnel-draft-delete',
+                           'assistant-generic-review', 'assistant-generic-review-index', 'assistant-legacy-review-index',
+                           'assistant-own-leave-expiry'}
+          lock_calls = lock_routines | {'direct-advisory-exclusive', 'direct-advisory-shared'}
+
+          def project_lock_edge(value):
+              row = record(value)
+              waiter, blocker = (number(row.get(key), 16, 1) for key in ('waiter', 'blocker'))
+              resource = number(row.get('resource'), 8, 1)
+              mode, family = choice(row.get('mode'), lock_modes), choice(row.get('family'), lock_families)
+              if None in (waiter, blocker, resource, mode, family):
+                  return None
+              return {'waiter': waiter, 'blocker': blocker, 'resource': resource, 'mode': mode, 'family': family,
+                      **{key: choice(row.get(key), lock_calls) for key in ('waiterCall', 'blockerCall')}}
+
+          def project_lock_diagnostic(value):
+              row = record(value)
+              phase = choice(row.get('phase'), {'qualified-runtime', 'before-runtime-start', 'after-runtime-start', 'unknown'})
+              edges = bounded_list(row.get('edges'), 8, project_lock_edge)
+              routines = bounded_list(row.get('victimRoutines'), 6, lambda name: choice(name, lock_routines))
+              complete = flag(row.get('allParsedEdgesRetained'))
+              if None in (phase, edges, routines, complete):
+                  return None
+              return {'phase': phase, 'edges': edges, 'allParsedEdgesRetained': complete, 'victimRoutines': routines}
+
           def project_postgres_failure(value):
               row = record(value)
               kind = choice(row.get('kind'), {'observed heavyweight lock wait', 'deadlock detected', 'canceling statement due to lock timeout'})
               waits, routines = row.get('waits'), row.get('routines')
               if not kind or type(waits) is not list or len(waits) > 64 or type(routines) is not list or len(routines) > 32:
                   return None
-              result = {'kind': kind, 'waitDetails': len(waits), 'routineFrames': len(routines)}
+              result = {'kind': kind, 'waitDetails': len(waits), 'routineFrames': len(routines),
+                        'diagnostic': project_lock_diagnostic(row.get('diagnostic'))}
               if kind == 'observed heavyweight lock wait':
                   outcome = choice(row.get('outcome'), {'still waiting for', 'acquired', 'avoided deadlock for',
                       'detected deadlock while waiting for', 'failed to acquire'})
@@ -896,8 +925,9 @@ jobs:
           def project_postgres_failures(row):
               failures = bounded_list(row.get('failures'), 64, project_postgres_failure)
               runtime = matches(row.get('runtimeFrom'), r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z')
+              window = choice(row.get('logWindow'), {'qualified-runtime', 'unqualified'})
               return {'scope': 'Owned PostgreSQL log observations without native identifiers',
-                      'runtimeFrom': runtime, 'failures': failures} if failures is not None else None
+                      'runtimeFrom': runtime, 'logWindow': window, 'failures': failures} if failures is not None else None
 
 
           def publish(directory, name, raw):

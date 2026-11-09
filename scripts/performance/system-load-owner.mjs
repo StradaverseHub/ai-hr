@@ -427,7 +427,7 @@ async function prepareDatabaseLockScope(){
   for(const [kind,key]of [['access-configuration','access-configuration:'+tenant.tenantId],['payroll-history','payroll-history:'+tenant.tenantId],['pay-component-catalog',tenant.tenantId+':pay-component-catalog']])lockKeys.push({label:kind+':fixture-tenant-'+index,key});
  }
  for(const user of fixture.users)lockKeys.push({label:'employment:fixture-user-'+user.index,key:fixture.tenants[user.tenant].tenantId+':'+user.employmentId});
- const hashedLocks=await db`select k,((hashtextextended(k,0)>>32)&4294967295)::text as classid,(hashtextextended(k,0)&4294967295)::text as objid from unnest(${lockKeys.map(row=>row.key)}::text[])k`;
+ const hashedLocks=await db`select k,((hashtextextended(k,0)>>32)&4294967295)::text as classid,(hashtextextended(k,0)&4294967295)::text as objid, (select oid::text from pg_database where datname=current_database()) as dbid from unnest(${lockKeys.map(row=>row.key)}::text[])k`;
  const labelsByKey=new Map(lockKeys.map(row=>[row.key,row.label])),lockLabels=new Map(hashedLocks.map(row=>[row.classid+':'+row.objid+':1',labelsByKey.get(row.k)]));
  // Audit's native key uses hashtext (int4), unlike the other bigint advisory namespaces.
  for(const [index,tenant]of fixture.tenants.entries()){
@@ -439,6 +439,13 @@ async function prepareDatabaseLockScope(){
   lockLabels.set(row.ai_classid+':'+row.ai_objid+':2','ai-control:fixture-tenant-'+index);
  }
  const accessLocks=[...lockLabels].filter(([,label])=>label.startsWith('access-configuration:')).map(([key])=>key);
+ if(measureDevelopment){
+  const databaseOid=hashedLocks[0]?.dbid;
+  const familyKeys=[...lockLabels].map(([key,label])=>[databaseOid+':'+key,label.split(':',1)[0]]);
+  if(/^\d{1,10}$/.test(databaseOid)&&familyKeys.length<=1024)try{
+   writeFileSync(join(process.env.PERF_PRIVATE_DIR,'diagnostic-lock-families.json'),JSON.stringify(familyKeys),{flag:'wx',mode:0o600});
+  }catch{/* Optional topology labels never determine acceptance. */}
+ }
  return {lockLabels,accessLocks};
 }
 

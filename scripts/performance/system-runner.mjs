@@ -565,8 +565,20 @@ finally{
     {encoding:'utf8',timeout:timeBudget(10000),maxBuffer:8*1024*1024,...(logContext?{env:logContext.env,killSignal:'SIGKILL'}:{})});
    assert.equal(logs.status,0);
    const log=measureDevelopment?(logs.stderr??''):(logs.stdout??'')+'\n'+(logs.stderr??'');
-   const window=measureDevelopment&&!report.postgresLockWindowEndUnavailable?developmentPostgresLockWindow(log,lockLogNonce):null;
-   postgresRuntimeFailures=window?.failures??postgresLockFailures(log);
+   const advisoryKeys=new Map();
+   if(measureDevelopment)try{
+    const path=join(privateDir,'diagnostic-lock-families.json'),state=lstatSync(path);
+    if(state.isFile()&&state.nlink===1&&state.uid===process.getuid()&&(state.mode&0o777)===0o600&&state.size<=128*1024){
+     const rows=JSON.parse(readFileSync(path,'utf8'));
+     if(Array.isArray(rows)&&rows.length<=1024&&rows.every(row=>Array.isArray(row)&&row.length===2
+       &&typeof row[0]==='string'&&/^\d{1,10}:\d{1,10}:\d{1,10}:[12]$/.test(row[0])&&typeof row[1]==='string'&&row[1].length<=32)){
+      for(const [key,family] of rows)advisoryKeys.set(key,family);
+     }
+    }
+   }catch{/* Exact lock class remains available when the optional fixture labels are absent. */}
+   const lockDiagnostics={runtimeFrom:report.applicationRuntimeFrom,advisoryKeys};
+   const window=measureDevelopment&&!report.postgresLockWindowEndUnavailable?developmentPostgresLockWindow(log,lockLogNonce,lockDiagnostics):null;
+   postgresRuntimeFailures=window?.failures??postgresLockFailures(log,lockDiagnostics);
    if(measureDevelopment){
     if(window)assert.deepEqual(captureDevelopmentPostgres(developmentPostgresBirth.id),developmentPostgresBirth,
      'Development PostgreSQL lock log capture birth changed');
@@ -575,7 +587,7 @@ finally{
    }
    const scope=measureDevelopment&&!window?'Unqualified retained disposable database stderr; setup may be included':
     'Owned disposable database during application runtime only';
-   writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:scope+'; bounded lock topology and routine frames; SQL/values/raw logs excluded',runtimeFrom:report.applicationRuntimeFrom??null,failures:postgresRuntimeFailures},null,2));
+   writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:scope+'; bounded lock topology and routine frames; SQL/values/raw logs excluded',runtimeFrom:report.applicationRuntimeFrom??null,logWindow:window?'qualified-runtime':'unqualified',failures:postgresRuntimeFailures},null,2));
   }catch{report.postgresLockFailureSummaryUnavailable=true;}
  }
  if(measurement&&developmentReset.admitted){

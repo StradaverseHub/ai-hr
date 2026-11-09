@@ -57,3 +57,29 @@ it('qualifies only the exact bracketed PostgreSQL log window and retains blockin
   log(marker('begin'),marker('end')+' unexpected'),log(marker('begin'),marker('end').replace(nonce,'0'.repeat(32))),
  ])expect(developmentPostgresLockWindow(rejected,nonce)).toBeNull();
 });
+
+it('projects only closed lock families, ordinal topology and explicit log phase',()=>{
+ const log=`2026-11-09 14:00:00.000 +08 [98] abcdef01.62 ai_hr_app@ai_hr_dev ERROR:  deadlock detected
+2026-11-09 14:00:00.000 +08 [98] abcdef01.62 ai_hr_app@ai_hr_dev DETAIL:  Process 98 waits for ExclusiveLock on advisory lock [90, 42, 77, 1]; blocked by process 99.
+ Process 99 waits for ExclusiveLock on advisory lock [90, 42, 77, 1]; blocked by process 98.
+ Process 98: select pg_advisory_xact_lock(hashtextextended('private-source',0));
+ Process 99: select * from app.unknown_private_routine('private-value');
+ CONTEXT: SQL statement "private-source"
+ PL/pgSQL function app.ai_centre_assert_running(integer) line 8 at PERFORM
+ PL/pgSQL function app.unknown_private_routine(text) line 9 at PERFORM`;
+ const options={runtimeFrom:'2026-11-09T06:00:00.001Z',advisoryKeys:new Map([['90:42:77:1','access-configuration']])};
+ const evidence=postgresLockFailures(log,options)[0].diagnostic;
+ expect(evidence).toEqual({phase:'before-runtime-start',allParsedEdgesRetained:true,victimRoutines:['ai-centre-running'],edges:[
+  {waiter:1,blocker:2,resource:1,mode:'ExclusiveLock',family:'access-configuration',waiterCall:'direct-advisory-exclusive',blockerCall:null},
+  {waiter:2,blocker:1,resource:1,mode:'ExclusiveLock',family:'access-configuration',waiterCall:null,blockerCall:'direct-advisory-exclusive'},
+ ]});
+ expect(JSON.stringify(evidence)).not.toMatch(/private|\b(?:98|99|90|42|77)\b/);
+ expect(postgresLockFailures(log,{runtimeFrom:'2026-11-09T06:00:00.000Z'})[0].diagnostic).toMatchObject({
+  phase:'after-runtime-start',edges:[expect.objectContaining({family:'advisory-unclassified'}),expect.objectContaining({family:'advisory-unclassified'})],
+ });
+ expect(postgresLockFailures(log,{bracketed:true})[0].diagnostic?.phase).toBe('qualified-runtime');
+ expect(postgresLockFailures(log,{runtimeFrom:'invalid'})[0].diagnostic?.phase).toBe('unknown');
+ const long=log+'\n'+Array.from({length:16},(_,i)=>` Process ${100+i} waits for ShareLock on transaction ${i}; blocked by process 98.`).join('\n');
+ const bounded=postgresLockFailures(long,options)[0].diagnostic;
+ expect(bounded?.edges).toHaveLength(8);expect(bounded?.allParsedEdgesRetained).toBe(false);
+});
