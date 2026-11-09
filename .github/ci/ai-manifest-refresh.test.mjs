@@ -21,7 +21,13 @@ function withPair(fn){
    writeFixture(dir,'core/attendance-formula-ai.ts',"import '../lib/attendance-formula-ai';\n");
    writeFixture(dir,'lib/attendance-formula-ai.ts','// Fictional finite authoring serializer\n');
    writeFixture(dir,'core/performance.ts','// Fictional changed provider input\n');
-   writeFixture(dir,'lib/ai/refresh-fixture.ts','// Fictional changed agent input\n');commitAiManifestFixture(dir);
+   writeFixture(dir,'lib/ai/refresh-fixture.ts','// Fictional changed agent input\n');
+   if(dir===controller){
+    for(const path of ['.github/ci/ai-manifest-refresh.mjs','.github/ci/resolve.mjs','.github/ci/ai-manifest-admission.mjs']){
+     writeFixture(dir,path,readFileSync(join(root,path)));
+    }
+   }
+   commitAiManifestFixture(dir);
   }
   const options=()=>({candidatePath:candidate,controllerPath:controller,source:fixtureGit(candidate,'rev-parse','HEAD'),controller:fixtureGit(controller,'rev-parse','HEAD')});
   fn({candidate,controller,options});
@@ -113,6 +119,29 @@ test('ignored untracked provider inputs cannot masquerade as frozen commit membe
  assert.equal(fixtureGit(p.candidate,'status','--porcelain'),'');
  assert.throws(()=>refreshAiManifests(p.options()),/frozen tracked source/);
 }));
+test('a clean Git CRLF checkout cannot change a source member or generated preimage',()=>{
+ for(const [side,path,unwrittenOutput] of [
+  ['candidate','core/performance.ts','module-agent-source-manifest.ts'],
+  ['candidate','lib/ai/refresh-fixture.ts','provider-data-source-manifest.ts'],
+  ['candidate','lib/ai/module-agent-source-manifest.ts','provider-data-source-manifest.ts'],
+  ['controller','.github/ci/resolve.mjs','provider-data-source-manifest.ts'],
+ ]){
+  withPair(p=>{
+   const directory=p[side];
+   const lf=readFileSync(join(directory,path),'utf8');
+   assert(lf.endsWith('\n')&&!lf.includes('\r'));
+   writeFixture(directory,'.gitattributes',path+' text eol=crlf\n');
+   commitAiManifestFixture(directory);
+   fixtureGit(directory,'checkout-index','--force','--',path);
+   assert.equal(fixtureGit(directory,'status','--porcelain'),'');
+   assert.equal(fixtureGit(directory,'show','HEAD:'+path)+'\n',lf);
+   assert.equal(readFileSync(join(directory,path),'utf8'),lf.replaceAll('\n','\r\n'));
+   const output=join(p.candidate,'lib/ai',unwrittenOutput),before=readFileSync(output);
+   assert.throws(()=>refreshAiManifests(p.options()),/differs from its frozen Git blob/);
+   assert(readFileSync(output).equals(before));
+  });
+ }
+});
 test('actual generator or scope mutation refuses before the next fixed child',()=>withPair(p=>{
  adversarialGenerator(p,"writeFileSync('scripts/ai-agent-source-scope.mjs','// changed scope');");
  assert.throws(()=>refreshAiManifests(p.options()),/Protected generator, scope or approval changed/);

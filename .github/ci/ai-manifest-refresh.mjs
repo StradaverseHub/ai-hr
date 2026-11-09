@@ -12,6 +12,7 @@ import {aiSourceFiles,aiSourceDigest} from '../../scripts/ai-agent-source-scope.
 
 const ownRoot=fileURLToPath(new URL('../../',import.meta.url));
 const outputs=['lib/ai/provider-data-source-manifest.ts','lib/ai/module-agent-source-manifest.ts'];
+const controllerInputs=['.github/ci/ai-manifest-refresh.mjs','.github/ci/resolve.mjs','.github/ci/ai-manifest-admission.mjs'];
 const approval='lib/ai/provider-data-approvals.ts';
 const approvalSha256='8d527c26d99b5931f466fb56cc3a39ff493265c0c6e2c8b7163d0ca57a87c452';
 // All 29 approved rows in the pinned e706 registry bind this one digest.
@@ -67,9 +68,10 @@ export function manifestRemainingTimeout(deadline,now,max){
 export function refreshAiManifests({candidatePath,controllerPath,source,controller}){
  const start=performance.now(),deadline=start+240000;
  const budget=max=>manifestRemainingTimeout(deadline,performance.now(),max);
+ const utf8=new TextDecoder('utf-8',{fatal:true});
  const git=(cwd,...args)=>{
-  const result=spawnSync('/usr/bin/git',args,{cwd,env:childEnv(),encoding:'utf8',timeout:budget(10000),maxBuffer:8*1024*1024});
-  assert(result.error==null&&result.signal==null&&result.status===0,'Fixed source metadata refused');return result.stdout.trimEnd();
+  const result=spawnSync('/usr/bin/git',args,{cwd,env:childEnv(),timeout:budget(10000),maxBuffer:8*1024*1024});
+  assert(result.error==null&&result.signal==null&&result.status===0,'Fixed source metadata refused');return utf8.decode(result.stdout).trimEnd();
  };
  const cwd=realpathSync(candidatePath),trusted=realpathSync(controllerPath);
  assert(cwd!==trusted,'Separate controller and candidate required');
@@ -77,19 +79,46 @@ export function refreshAiManifests({candidatePath,controllerPath,source,controll
  frozen(trusted,controller);frozen(cwd,source);
  assert(source!==controller,'Separate controller and candidate identities required');
  const tree=git(cwd,'rev-parse','HEAD^{tree}');assert(/^[0-9a-f]{40}$/.test(tree),'Invalid original tree');
- const tracked=git(cwd,'ls-files','-z').split('\0').filter(Boolean),trackedNames=new Set(tracked);
+ const inventory=(root,commit)=>{
+  const rows=git(root,'ls-tree','-rz','--full-tree',commit);
+  assert(rows.endsWith('\0'),'Incomplete frozen Git inventory');
+  const entries=new Map();
+  for(const row of rows.slice(0,-1).split('\0')){
+   const entry=/^([0-7]{6}) (blob|commit) ([0-9a-f]{40})\t([^\0]+)$/.exec(row);
+   assert(entry&&!entries.has(entry[4]),'Invalid frozen Git inventory member');
+   const [,mode,type,oid,path]=entry;
+   entries.set(path,{mode,type,oid});
+  }
+  return entries;
+ };
+ const candidateTree=inventory(cwd,source),controllerTree=inventory(trusted,controller);
  const regular=(root,name,max=16*1024*1024)=>{
   budget(1);assert(typeof name==='string'&&name!==''&&!isAbsolute(name)&&name.split('/').every(p=>p!==''&&p!=='.'&&p!=='..'),'Invalid fixed source member');
   const path=join(root,name),s=lstatSync(path);assert(s.isFile()&&!s.isSymbolicLink()&&s.size<=max&&realpathSync(path)===path,'Untrusted source member');return readFileSync(path);
  };
- const protectedBytes=new Map([...AI_MANIFEST_INPUTS,approval].map(n=>[n,regular(cwd,n)]));
- for(const name of AI_MANIFEST_INPUTS)assert(protectedBytes.get(name).equals(regular(trusted,name)),'Unreviewed generator or scope');
+ const committed=(root,entries,name,max)=>{
+  const entry=entries.get(name);
+  assert(entry?.type==='blob'&&['100644','100755'].includes(entry.mode),'Manifest inputs must belong to the frozen tracked source');
+  const bytes=regular(root,name,max);
+  // Compare the raw bytes to the pinned tree without applying Git clean filters.
+  const oid=createHash('sha1').update('blob '+bytes.length+'\0').update(bytes).digest('hex');
+  assert(oid===entry.oid,'Manifest input differs from its frozen Git blob');
+  return bytes;
+ };
+ const candidateMember=(name,max)=>committed(cwd,candidateTree,name,max);
+ const protectedBytes=new Map([...AI_MANIFEST_INPUTS,approval].map(n=>[n,candidateMember(n)]));
+ const trustedBytes=new Map([...controllerInputs,...AI_MANIFEST_INPUTS].map(n=>[n,committed(trusted,controllerTree,n)]));
+ for(const name of AI_MANIFEST_INPUTS)assert(protectedBytes.get(name).equals(trustedBytes.get(name)),'Unreviewed generator or scope');
  assert(sha(protectedBytes.get(approval))===approvalSha256,'Exact e706 approval registry required');
- const originalOutputs=outputs.map(path=>({path,sha256:sha(regular(cwd,path,4096))}));
+ const originalBytes=outputs.map(path=>candidateMember(path,4096));
+ const originalOutputs=outputs.map((path,index)=>({path,sha256:sha(originalBytes[index])}));
+ const agentNames=aiSourceFiles([...candidateTree.keys()]);
+ for(const name of agentNames)candidateMember(name);
  const guard=()=>{
   assert(git(cwd,'rev-parse','HEAD')===source&&git(cwd,'rev-parse','HEAD^{tree}')===tree,'Original source identity changed');
   frozen(trusted,controller);
   for(const [name,bytes]of protectedBytes)assert(regular(cwd,name).equals(bytes),'Protected generator, scope or approval changed');
+  for(const [name,bytes]of trustedBytes)assert(regular(trusted,name).equals(bytes),'Protected controller source changed');
   const changes=git(cwd,'status','--porcelain','-z').split('\0').filter(Boolean);
   assert(changes.every(row=>row.startsWith(' M ')&&outputs.includes(row.slice(3))),'Unexpected candidate change');
  };
@@ -98,24 +127,33 @@ export function refreshAiManifests({candidatePath,controllerPath,source,controll
   const result=spawnSync(process.execPath,args,{cwd,env:childEnv(),encoding:'utf8',timeout:budget(60000),maxBuffer:1024*1024});
   const value=checkedManifestChild(result,index===0);guard();return value;
  };
- const provider=invoke(0),agentNames=aiSourceFiles(tracked);
- assert(provider.sources.every(path=>trackedNames.has(path)),'Manifest inputs must belong to the frozen tracked source');
- const members=names=>names.map(path=>({path,sha256:sha(regular(cwd,path))}));
- const providerMembers=members(provider.sources),agentMembers=members(agentNames);
- assert(providerMembers.every(r=>!outputs.includes(r.path)&&r.path!==approval),'Provider closure must exclude generated identities and approvals');
+ const provider=invoke(0);
+ assert(provider.sources.every(path=>!outputs.includes(path)&&path!==approval),'Provider closure must exclude generated identities and approvals');
+ const members=(names,read)=>names.map(path=>({path,sha256:sha(read(path))}));
+ const providerMembers=members(provider.sources,candidateMember);
  assert(sha(JSON.stringify(providerMembers.map(r=>[r.path,r.sha256])))===provider.digest,'Provider member digest mismatch');
  assertRefreshProviderSource(provider);
+ const expectedProvider='/** GENERATED exact privacy transform sources. Regenerate after any listed dependency changes. */\nexport const PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST = '+JSON.stringify(provider.digest)+' as const;\n';
+ const providerOverlay=Buffer.from(expectedProvider);
+ const readAgentMember=name=>{
+  if(name!==outputs[0])return candidateMember(name);
+  const bytes=regular(cwd,name,4096);
+  assert(bytes.equals(providerOverlay),'Agent input differs from the generated provider manifest');
+  return bytes;
+ };
+ assert(agentNames.includes(outputs[0])&&!agentNames.includes(outputs[1]),'Unexpected agent generated inputs');
+ assert(regular(cwd,outputs[1],4096).equals(originalBytes[1]),'Module-agent manifest changed before its generator');
+ const agentMembers=members(agentNames,readAgentMember);
  const agent=invoke(1);
  assert(agentNames.length===agent.files&&aiSourceDigest(agentMembers.map(r=>[r.path,r.sha256]))===agent.digest,'Agent member digest mismatch');
- assert(!agentNames.includes(outputs[1]),'Agent output cannot hash itself');
  for(const [index,expected]of[[2,provider],[3,agent]]){
   const checked=invoke(index);assert(checked.files===expected.files&&checked.digest===expected.digest,'Generated check mismatch');
  }
- assert(JSON.stringify(providerMembers)===JSON.stringify(members(provider.sources))&&JSON.stringify(agentMembers)===JSON.stringify(members(agentNames)),'Manifest inputs changed during checks');
+ assert(JSON.stringify(providerMembers)===JSON.stringify(members(provider.sources,candidateMember))&&
+  JSON.stringify(agentMembers)===JSON.stringify(members(agentNames,readAgentMember)),'Manifest inputs changed during checks');
  const generated=outputs.map(path=>({path,bytes:regular(cwd,path,4096)}));
- const expectedProvider='/** GENERATED exact privacy transform sources. Regenerate after any listed dependency changes. */\nexport const PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST = '+JSON.stringify(provider.digest)+' as const;\n';
  const expectedAgent='/** GENERATED static source manifest of the AI behaviour surface (scripts/ai-agent-source-scope.mjs).\n * Regenerate/check after all integration; no runtime source reads. */\nexport const MODULE_AGENT_SOURCE_DIGEST = '+JSON.stringify(agent.digest)+' as const;\nexport const MODULE_AGENT_SOURCE_FILE_COUNT = '+agent.files+' as const;\n';
- assert(generated[0].bytes.toString('utf8')===expectedProvider&&generated[1].bytes.toString('utf8')===expectedAgent,'Generated output bytes refused');
+ assert(generated[0].bytes.equals(providerOverlay)&&generated[1].bytes.equals(Buffer.from(expectedAgent)),'Generated output bytes refused');
  guard();
  return {generated,receipt:{kind:'AI_SOURCE_MANIFEST_REFRESH_DATA_NOT_APPROVAL',source,controller,originalTree:tree,originalOutputs,outputs:generated.map(r=>({path:r.path,bytes:r.bytes.length,sha256:sha(r.bytes)})),protectedInputs:[...protectedBytes].map(([path,bytes])=>({path,sha256:sha(bytes)})),approvalRecords:{approved:29,pending:2,unchanged:true,renewed:false},provider:{files:provider.files,digest:provider.digest,members:providerMembers},agent:{files:agent.files,digest:agent.digest,inputPhase:'after-provider-refresh',members:agentMembers},operations:MANIFEST_REFRESH_COMMANDS.map(a=>a.slice()),releaseAuthorized:false,testAuthorized:false,nativeAuthorized:false,providerAuthorized:false}};
 }
