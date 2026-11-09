@@ -472,7 +472,7 @@ export function Sidebar({
                   if (isCollapsible(item)) return monolithModule(item);
                   const label = t(item.labelKey);
                   if (item.disabled) return (
-                    <span key={item.href} aria-disabled="true" title={tWorkspace('planLocked')} className={cn(railRow, 'cursor-not-allowed hover:border-transparent hover:text-mid')}>
+                    <span key={item.href} data-shell-destination={item.href} aria-disabled="true" title={tWorkspace('planLocked')} className={cn(railRow, 'cursor-not-allowed hover:border-transparent hover:text-mid')}>
                       <span className="min-w-0">{label}</span>
                       <Lock aria-hidden className="size-3 shrink-0" />
                     </span>
@@ -483,7 +483,7 @@ export function Sidebar({
                   return (
                     <Link prefetchOnIntentOnly
                       key={item.href}
-                      href={item.navigationHref ?? item.href}
+                      href={item.navigationHref ?? item.href} data-shell-destination={item.href}
                       data-tour={item.tour}
                       aria-label={showApprovalCount ? `${label}, ${t('approvalsCount', { count: rowCount })}` : label}
                       aria-current={active ? 'page' : undefined}
@@ -607,13 +607,13 @@ export function Sidebar({
                     const Icon = item.icon;
                     const label = t(item.labelKey);
                     if (item.disabled) return (
-                      <span key={item.href} aria-disabled="true" title={collapsed ? `${label} — ${tWorkspace('planLocked')}` : tWorkspace('planLocked')} className="atelier-row cursor-not-allowed text-muted-foreground">
+                      <span key={item.href} data-shell-destination={item.href} aria-disabled="true" title={collapsed ? `${label} — ${tWorkspace('planLocked')}` : tWorkspace('planLocked')} className="atelier-row cursor-not-allowed text-muted-foreground">
                         <Icon aria-hidden /><span className="atelier-label truncate">{label}</span><Lock aria-hidden className="ml-auto size-3.5 shrink-0" />
                       </span>
                     );
                     const count = atelierCount(item.href);
                     return (
-                      <Link prefetchOnIntentOnly key={item.href} href={item.navigationHref ?? item.href} onClick={()=>setMobileNavigationOpen(false)} data-tour={item.tour}
+                      <Link prefetchOnIntentOnly key={item.href} href={item.navigationHref ?? item.href} data-shell-destination={item.href} onClick={()=>setMobileNavigationOpen(false)} data-tour={item.tour}
                         aria-label={count ? `${label}, ${t('approvalsCount', { count })}` : label}
                         aria-current={isRowActive(item) ? 'page' : undefined} title={collapsed ? label : undefined} className="atelier-row">
                         <Icon aria-hidden /><span className="atelier-label truncate">{label}</span>
@@ -798,7 +798,7 @@ export function Sidebar({
                 const Icon = item.icon;
                 const label = t(item.labelKey);
                 if (item.disabled) return (
-                  <span key={item.href} aria-disabled="true" title={tWorkspace('planLocked')}
+                  <span key={item.href} data-shell-destination={item.href} aria-disabled="true" title={tWorkspace('planLocked')}
                     className={cn(rowBase, collapsed ? 'size-11 justify-center' : 'w-full gap-3 px-3 py-2', 'cursor-not-allowed text-muted-foreground')}>
                     <Icon className="size-[20px] shrink-0" strokeWidth={2} aria-hidden />
                     {!collapsed && <span className="truncate text-sm">{label}</span>}
@@ -814,7 +814,7 @@ export function Sidebar({
                 return (
                   <Link prefetchOnIntentOnly
                     key={item.href}
-                    href={item.navigationHref ?? item.href}
+                    href={item.navigationHref ?? item.href} data-shell-destination={item.href}
                     data-tour={item.tour}
                     title={collapsed ? label : undefined}
                     // The badge itself is aria-hidden, so the count reaches screen readers here —

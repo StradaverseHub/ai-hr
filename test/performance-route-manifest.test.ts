@@ -2,7 +2,8 @@ import {existsSync,readFileSync} from 'node:fs';
 import {expect,it} from 'vitest';
 import {validateNavigationScenarioPlan,type NavigationFixtureRole,type NavigationScenario} from '../scripts/performance/navigation-protocol';
 import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
-import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes} from '../scripts/performance/system-route-manifest.mjs';
+import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
+ nativePreflightRouteFor,assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to an existing page',()=>{
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
  for(const [role,paths]of Object.entries(routePools)){
@@ -10,6 +11,58 @@ it('counts the actual distinct route pools and binds every concrete path to an e
   for(const path of paths){const url=new URL(path,'https://fixture.invalid');expect(url.origin).toBe('https://fixture.invalid');expect(url.pathname).toMatch(/^\/(?:[a-z0-9/-]*)$/);expect(existsSync(new URL('../app'+(url.pathname==='/'?'':url.pathname)+'/page.tsx',import.meta.url)),path).toBe(true);}
  }
  for(const [role,paths]of Object.entries(additionalBrowserRoutes))for(const path of paths)expect(routePools[role as keyof typeof routePools],role).toContain(path);
+});
+
+const nativeRenderedRows=()=>nativePreflightRoutePlan().map(row=>({...row,status:200,accountObserved:true,
+ elapsedMs:100,failureCount:0,readiness:row.witness?'usable-content':'rendered-only'}));
+
+it('requires the complete current native role union on exactly the four primary actors',()=>{
+ const plan=nativePreflightRoutePlan(),byRole=[['employee',4,30],['manager',2,16],['companyHR',1,69],['groupHR',0,72]]as const;
+ expect(plan).toHaveLength(187);expect(new Set(plan.map(row=>row.requested)).size).toBe(91);
+ for(const [role,actor,count]of byRole){
+  const rows=plan.filter(row=>row.role===role);expect(rows).toHaveLength(count);
+  expect(rows.map(row=>row.requested)).toEqual(routePools[role]);expect(rows.every(row=>row.actorIndex===actor)).toBe(true);
+ }
+ const observed=nativeRenderedRows();expect(requireNativeRenderedUnion(observed)).toEqual({total:187,usable:10,renderedOnly:177});
+ expect(observed.filter(row=>row.view!==null)).toHaveLength(14);
+ expect(observed.filter(row=>row.redirectStatus!==null)).toHaveLength(4);
+ expect(()=>requireNativeRenderedUnion(observed.slice(1))).toThrow(/incomplete/);
+ expect(()=>requireNativeRenderedUnion([...observed,observed[0]])).toThrow(/incomplete/);
+ expect(()=>requireNativeRenderedUnion([observed[1],...observed.slice(1)])).toThrow(/Duplicate/);
+ expect(()=>nativePreflightRouteFor('employee',254,'/assistant')).toThrow(/actor\/route/);
+ expect(()=>nativePreflightRouteFor('companyHR',1,'/control-tower/agents/provider')).toThrow(/actor\/route/);
+});
+
+it('refuses route substitution, silent redirect and usability without an actual reviewed witness',()=>{
+ const rows=nativeRenderedRows(),row=rows.find(item=>item.role==='employee'&&item.requested==='/assistant?view=tools')!;
+ expect(assertNativeRenderedVisit(row)).toBe(nativePreflightRouteFor('employee',4,'/assistant?view=tools'));
+ for(const delta of [{final:'/assistant'},{final:'/assistant?view=privacy'},{final:'https://example.invalid/assistant?view=tools'},
+  {redirectStatus:308},{status:404},{actorIndex:254},{accountObserved:false},{failureCount:1},{elapsedMs:90001},
+  {readiness:'usable-content'},{witness:'home-card-inventory'},{fixtureBypass:true}])expect(()=>assertNativeRenderedVisit({...row,...delta})).toThrow();
+ for(const view of [null,'ask','privacy'])expect(()=>assertNativeRenderedVisit({...row,view})).toThrow(/selected Assistant view/);
+ const roster=rows.find(item=>item.role==='groupHR'&&item.requested==='/roster')!;
+ expect(()=>assertNativeRenderedVisit({...roster,witness:null,readiness:'rendered-only'})).toThrow(/witness/);
+ expect(()=>assertNativeRenderedVisit({...roster,witness:'analytics-fixture-metrics'})).toThrow(/witness/);
+});
+
+it('retains both guarded compatibility requests and their distinct exact canonical destinations',()=>{
+ const aliases=[['/admin/claims/forms',308,'/admin/claims'],['/admin/locations',307,'/admin/work-locations/clocking']]as const;
+ for(const [requested,status,final]of aliases){
+  const rows=nativeRenderedRows().filter(row=>row.requested===requested);
+  expect(rows.map(row=>[row.role,row.final,row.redirectStatus,row.readiness])).toEqual([
+   ['companyHR',final,status,'rendered-only'],['groupHR',final,status,'rendered-only'],
+  ]);
+  for(const row of rows){expect(assertNativeRenderedVisit(row).final).toBe(final);
+   expect(()=>assertNativeRenderedVisit({...row,redirectStatus:null})).toThrow(/redirect chain/);
+   expect(()=>assertNativeRenderedVisit({...row,final:requested})).toThrow(/final route/);
+  }
+  expect(()=>assertNativePreflightRedirect(requested,status,final)).not.toThrow();
+  expect(()=>assertNativePreflightRedirect(requested,status,'https://localhost:3443'+final)).not.toThrow();
+  for(const wrongStatus of [200,303,status===308?307:308])expect(()=>assertNativePreflightRedirect(requested,wrongStatus,final)).toThrow(/status/);
+  for(const wrongLocation of ['/claims',final+'?extra=1',final+'#extra','//localhost:3443'+final,'https://example.invalid'+final,undefined])
+   expect(()=>assertNativePreflightRedirect(requested,status,wrongLocation)).toThrow(/location/);
+ }
+ expect(()=>assertNativePreflightRedirect('/admin/locations?focus=extra',307,'/admin/work-locations/clocking')).toThrow(/Unreviewed/);
 });
 
 it('covers the installed AI Centre tabs and administrator sections without granting employees admin routes',()=>{

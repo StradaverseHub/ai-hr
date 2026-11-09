@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync,mkdirSync,readdirSync,rmSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readdirSync,rmSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -67,6 +67,21 @@ it.each(courses)('refuses the real $name legacy entry outside GitHub before dyna
  withScratch(({privateDir,evidenceDir,env})=>{
   expectGuard(course,{...env,GITHUB_ACTIONS:'false'},'false','true');
   expect(readdirSync(privateDir)).toEqual([]);expect(readdirSync(evidenceDir)).toEqual([]);
+ });
+},15000);
+
+it('cannot select the native rendered course through public development arguments or environment',()=>{
+ withScratch(({privateDir,evidenceDir,env})=>{
+  writeFileSync(join(privateDir,'fixture.json'),'{}',{flag:'wx',mode:0o600});
+  const url=new URL('../scripts/performance/system-load-owner.mjs',import.meta.url).href;
+  const result=child(`import assert from 'node:assert/strict';const owner=await import(${JSON.stringify(url)});
+   assert.deepEqual(Object.keys(owner),['runDevelopmentSystemLoad']);
+   try{await owner.runDevelopmentSystemLoad({deadline:performance.now()+60000});throw Error('Unexpected workload');}
+   catch(error){assert.equal(error.code,'ERR_ASSERTION');assert.match(error.message,/includes\\(suite\\)/);}
+   console.log('DEVELOPMENT_SUITE_REFUSED');`,{...env,PERF_HTTP_SUITE:'native-rendered-preflight',AIHR_NATIVE_PREFLIGHT:'true'});
+  expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,result.stderr).toBe(0);
+  expect(result.stderr).toBe('');expect(result.stdout.trim()).toBe('DEVELOPMENT_SUITE_REFUSED');
+  expect(readdirSync(privateDir)).toEqual(['fixture.json']);expect(readdirSync(evidenceDir)).toEqual([]);
  });
 },15000);
 
