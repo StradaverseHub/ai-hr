@@ -341,6 +341,46 @@ it('requires the bounded rendered capture binding only for a complete developmen
  expect(validateDevelopmentMeasurement({...failed,renderedCapture:input.renderedCapture},expected)).toBe(false);
 });
 
+it('admits two independent rendered seals only for the runner-selected self-source full preflight',()=>{
+ const input=developmentMeasurementInput();
+ input.identity.controllerSha=input.identity.candidateSha;
+ const expected={...input.identity,suite:input.suite,requireRenderedUnion:true};
+ const legacy=buildDevelopmentMeasurement(input);
+ const renderedUnion={sha256:'f'.repeat(64),bytes:4*1024**2};
+ const full={...legacy,renderedUnion};
+ expect(validateDevelopmentMeasurement(full,expected)).toBe(true);
+ expect(validateDevelopmentMeasurement(legacy,expected)).toBe(false);
+ expect(validateDevelopmentMeasurement(full,{...expected,requireRenderedUnion:false})).toBe(false);
+ expect(validateDevelopmentMeasurement(legacy,{...expected,requireRenderedUnion:false})).toBe(true);
+ expect(validateDevelopmentMeasurement(legacy,Object.assign({...expected},{requireRenderedUnion:'true'}))).toBe(false);
+ for(const forged of [null,undefined,{...renderedUnion,bytes:0},{...renderedUnion,bytes:1.5},
+  {...renderedUnion,bytes:renderedUnion.bytes+1},{...renderedUnion,sha256:'f'.repeat(63)+'\n'},
+  {...renderedUnion,private:'refused'},{...renderedUnion,sha256:legacy.renderedCapture!.sha256}]){
+  expect(validateDevelopmentMeasurement({...full,renderedUnion:forged},expected)).toBe(false);
+ }
+ expect(validateDevelopmentMeasurement({...full,renderedCapture:null},expected)).toBe(false);
+ const controllerSha='b'.repeat(40);
+ expect(validateDevelopmentMeasurement({...full,identity:{...full.identity,controllerSha}},{...expected,controllerSha})).toBe(false);
+ const steady=buildDevelopmentMeasurement({...input,suite:'whole-system'});
+ expect(validateDevelopmentMeasurement({...steady,renderedUnion:null},{...expected,suite:'whole-system'})).toBe(false);
+});
+
+it('keeps failed full preflight receipts unsealed and retains the original Busy and settlement gates',()=>{
+ const input=developmentMeasurementInput();
+ input.identity.controllerSha=input.identity.candidateSha;
+ const expected={...input.identity,suite:input.suite,requireRenderedUnion:true};
+ const renderedUnion={sha256:'f'.repeat(64),bytes:256};
+ const completed=buildDevelopmentMeasurement(input);
+ const failed={...buildDevelopmentMeasurement({...input,busyResponses:1}),renderedUnion:null};
+ expect(failed).toMatchObject({complete:false,busyResponses:1,renderedCapture:null,renderedUnion:null});
+ expect(validateDevelopmentMeasurement(failed,expected)).toBe(true);
+ expect(validateDevelopmentMeasurement({...failed,renderedUnion},expected)).toBe(false);
+ expect(validateDevelopmentMeasurement({...failed,renderedCapture:input.renderedCapture},expected)).toBe(false);
+ expect(validateDevelopmentMeasurement({...failed,renderedUnion:undefined},expected)).toBe(false);
+ expect(validateDevelopmentMeasurement({...completed,renderedUnion,busyResponses:1},expected)).toBe(false);
+ expect(validateDevelopmentMeasurement({...completed,renderedUnion,settlement:{...completed.settlement,observerPool:'failed'}},expected)).toBe(false);
+});
+
 it('refuses an impossible Page census even in an explicitly incomplete development receipt',()=>{
  const input=developmentMeasurementInput(),expected={...input.identity,suite:input.suite};
  const receipt=buildDevelopmentMeasurement(input);

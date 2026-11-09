@@ -280,8 +280,16 @@ export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,
  return {...evidence,complete,renderedCapture:complete?{sha256:renderedCapture.sha256,bytes:renderedCapture.bytes}:null};
 }
 
+/**
+ * The runner decides the course before receiving any child message.
+ * @param {{candidateSha:string,controllerSha:string,runId:number,runAttempt:number,suite:string,requireRenderedUnion?:boolean}} expected
+ */
 export function validateDevelopmentMeasurement(value,expected){
- if(!closedFields(value,['kind','suite','workCompleted','identity','busyResponses','poolEvidence','pageEvents','locks','settlement','load','complete','renderedCapture'])
+ const requireRenderedUnion=Object.hasOwn(expected,'requireRenderedUnion')?expected.requireRenderedUnion:false;
+ if(typeof requireRenderedUnion!=='boolean'||(requireRenderedUnion&&expected.suite!=='workflow-preflight'))return false;
+ const fields=['kind','suite','workCompleted','identity','busyResponses','poolEvidence','pageEvents','locks','settlement','load','complete','renderedCapture'];
+ if(requireRenderedUnion)fields.push('renderedUnion');
+ if(!closedFields(value,fields)
   ||value.kind!==developmentTerminalKind||value.poolEvidence!==developmentPoolEvidence||!['workflow-preflight','whole-system'].includes(value.suite)||value.suite!==expected.suite
   ||typeof value.workCompleted!=='boolean'||typeof value.complete!=='boolean'||!knownCount(value.busyResponses,1000000)
   ||(!value.workCompleted&&value.busyResponses===0))return false;
@@ -290,6 +298,7 @@ export function validateDevelopmentMeasurement(value,expected){
  if(!closedFields(identity,['candidateSha','controllerSha','runId','runAttempt','harnessSha256','scenarioSha256'])
   ||!exactHex(identity.candidateSha,40)||!exactHex(identity.controllerSha,40)||!Number.isSafeInteger(identity.runId)||identity.runId<1
   ||identity.runAttempt!==1||!['candidateSha','controllerSha','runId','runAttempt'].every(key=>identity[key]===expected[key])
+  ||(requireRenderedUnion&&identity.candidateSha!==identity.controllerSha)
   ||!['harnessSha256','scenarioSha256'].every(key=>identity[key]===null||exactHex(identity[key],64)))return false;
  if(!closedFields(pageEvents,developmentPagesFields)||typeof pageEvents.censusComplete!=='boolean'
   ||!knownCount(pageEvents.observedPages,4096)||!knownCount(pageEvents.closedPages,4096)
@@ -320,7 +329,9 @@ export function validateDevelopmentMeasurement(value,expected){
     ||!['openingGapUs','interiorGapUs','tailGapUs'].every(key=>boundedInteger(lock[key],lock.maxGapUs)))return false;
   }else if(lock.blockingSamples!==null||lock.reason===null)return false;
  }
- return value.complete?validRenderedCapture(value.renderedCapture)&&cleanDevelopmentMeasurement(value):value.renderedCapture===null;
+ if(!value.complete)return value.renderedCapture===null&&(!requireRenderedUnion||value.renderedUnion===null);
+ if(!validRenderedCapture(value.renderedCapture)||!cleanDevelopmentMeasurement(value))return false;
+ return !requireRenderedUnion||(validRenderedCapture(value.renderedUnion)&&value.renderedUnion.sha256!==value.renderedCapture.sha256);
 }
 
 export function createProtectedWorkAdmission({assertIngress,sealIngress,noteFailure,noteSealFailure}){
