@@ -7,10 +7,11 @@ import {isNativeOwnPayslipPdfPath,requireNativePreflightFixtureDay} from '../scr
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
  nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion,readManifestRoute} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to its source route',()=>{
+ const handlers=new Set(['/admin/claims/forms','/admin/locations','/admin/rewards']);
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
  for(const [role,paths]of Object.entries(routePools)){
   expect(new Set(paths).size,role).toBe(paths.length);
-  for(const path of paths){const url=new URL(path,'https://fixture.invalid');expect(url.origin).toBe('https://fixture.invalid');expect(url.pathname).toMatch(/^\/(?:[a-z0-9/-]*)$/);const entry=url.pathname==='/admin/claims/forms'?'/route.ts':'/page.tsx';expect(existsSync(new URL('../app'+(url.pathname==='/'?'':url.pathname)+entry,import.meta.url)),path).toBe(true);}
+  for(const path of paths){const url=new URL(path,'https://fixture.invalid');expect(url.origin).toBe('https://fixture.invalid');expect(url.pathname).toMatch(/^\/(?:[a-z0-9/-]*)$/);const entry=handlers.has(url.pathname)?'/route.ts':'/page.tsx';expect(existsSync(new URL('../app'+(url.pathname==='/'?'':url.pathname)+entry,import.meta.url)),path).toBe(true);}
  }
  for(const [role,paths]of Object.entries(additionalBrowserRoutes))for(const path of paths)expect(routePools[role as keyof typeof routePools],role).toContain(path);
 });

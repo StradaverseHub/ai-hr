@@ -70,15 +70,14 @@ function codeWithoutComments(src: string): string {
  * A route belongs here ONLY if it reads no session and no data. Anything that reads gets a real guard.
  */
 // '/admin/ai' forwards to AI management › Provider, where the requireAdmin guard applies.
-// The former Rewards Configuration page forwards to the guarded Shared Rewards Configuration.
-const REDIRECT_ONLY_ROUTES = ['/admin/ai', '/admin/rewards', '/payroll/transactions/tp1/[year]'] as const;
+const REDIRECT_ONLY_ROUTES = ['/admin/ai', '/payroll/transactions/tp1/[year]'] as const;
 
 /** An actual awaited call, not a comment/string bearing an auth helper's name. */
 function hasAssistantSessionGuard(source:string){
  const ast=ts.createSourceFile('layout.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let guarded=false;
  const visit=(node:ts.Node)=>{if(ts.isAwaitExpression(node)&&ts.isCallExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&node.expression.expression.text==='getBrowserCommandSession')guarded=true;ts.forEachChild(node,visit);};visit(ast);return guarded;
 }
-function hasBookmarkHandlerGuards(source: string, requiredModule?: 'claims'): boolean {
+function hasBookmarkHandlerGuards(source: string, requiredModule?: 'claims' | 'rewards', requiresAdmin = true): boolean {
   const ast = ts.createSourceFile('route.ts', source, ts.ScriptTarget.Latest, true);
   for (const statement of ast.statements) {
     if (!ts.isFunctionDeclaration(statement) || statement.name?.text !== 'GET'
@@ -109,19 +108,23 @@ function hasBookmarkHandlerGuards(source: string, requiredModule?: 'claims'): bo
     const calls = guardLines.flatMap(line =>
       ts.isExpressionStatement(line) && ts.isAwaitExpression(line.expression)
         && ts.isCallExpression(line.expression.expression) ? [line.expression.expression] : []);
-    const admin = calls.at(-1);
-    if (sessionReads !== 1 || calls.length !== guardLines.length || !admin || !ts.isIdentifier(admin.expression)
-        || admin.expression.text !== 'requireAdmin' || admin.arguments.length !== 1 || !isSession(admin.arguments[0])) return false;
-    if (!requiredModule) return calls.length === 1;
+    const expectedCount = Number(requiredModule !== undefined) + Number(requiresAdmin);
+    if (sessionReads !== 1 || calls.length !== guardLines.length || calls.length !== expectedCount) return false;
+    if (requiresAdmin) {
+      const admin = calls.at(-1);
+      if (!admin || !ts.isIdentifier(admin.expression) || admin.expression.text !== 'requireAdmin'
+          || admin.arguments.length !== 1 || !isSession(admin.arguments[0])) return false;
+    }
+    if (!requiredModule) return true;
     const [module] = calls;
-    return calls.length === 2 && ts.isIdentifier(module.expression) && module.expression.text === 'requireModule'
+    return ts.isIdentifier(module.expression) && module.expression.text === 'requireModule'
       && module.arguments.length === 2 && ts.isStringLiteral(module.arguments[0]) && module.arguments[0].text === requiredModule
       && isSession(module.arguments[1]);
   }
   return false;
 }
 
-/** Collect guarded pages and the two exact guarded bookmark handlers. */
+/** Collect guarded pages and the exact guarded bookmark handlers. */
 function guardedRoutes(): string[] {
   const out: string[] = [];
   // This actual layout call guards every descendant, including pages whose data guards live in
@@ -148,10 +151,14 @@ function guardedRoutes(): string[] {
     }
   };
   walk(APP);
-  const bookmarks = [['/admin/claims/forms', 'claims'], ['/admin/locations', undefined]] as const;
-  for (const [href, module] of bookmarks) {
+  const bookmarks = [
+    ['/admin/claims/forms', 'claims', true],
+    ['/admin/locations', undefined, true],
+    ['/admin/rewards', 'rewards', false],
+  ] as const;
+  for (const [href, module, requiresAdmin] of bookmarks) {
     const file = path.join(APP, href.slice(1), 'route.ts');
-    if (fs.existsSync(file) && hasBookmarkHandlerGuards(fs.readFileSync(file, 'utf8'), module)) out.push(href);
+    if (fs.existsSync(file) && hasBookmarkHandlerGuards(fs.readFileSync(file, 'utf8'), module, requiresAdmin)) out.push(href);
   }
   return out;
 }
@@ -163,6 +170,14 @@ function getPath(obj: unknown, dotted: string): unknown {
 }
 
 describe('function-access registry (lib/permissions)', () => {
+  it('keeps the Rewards bookmark under the same-session module guard', () => {
+    const source = fs.readFileSync(path.join(APP, 'admin/rewards/route.ts'), 'utf8');
+    const admits = (candidate: string) => hasBookmarkHandlerGuards(candidate, 'rewards', false);
+    expect(admits(source)).toBe(true);
+    expect(admits(source.replace("await requireModule('rewards', session)", "await requireModule('rewards', await getSession())"))).toBe(false);
+    expect(admits(source.replace("await requireModule('rewards', session);", "await requireModule('rewards', session); await requireAdmin(session);"))).toBe(false);
+    expect(guardedRoutes()).toContain('/admin/rewards');
+  });
   it('recognizes only the exported Claims Forms GET with one session read and both guards in order', () => {
     const hasClaimsFormsGuards = (candidate: string) => hasBookmarkHandlerGuards(candidate, 'claims');
     const source = fs.readFileSync(path.join(APP, 'admin/claims/forms/route.ts'), 'utf8');
