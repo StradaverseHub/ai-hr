@@ -15,3 +15,9 @@ On 10 November 2026 MYT the repository owner approved the repaired joint review 
 The approved Schedule Group work adds a native, dated clock policy and native attendance and payroll replay. Its new save action remains a native confirmation action. The clock policy, raw punches, and audit reasons remain in the application. The provider inventory removes the retired authoring purpose and public guidance topics. Existing outbound fields, approved purposes and transports remain the same.
 
 Reversing the 28 substitutions yields the serving registry byte for byte. Both pending records and the retired Attendance Formula contract keep their prior bindings and review metadata. Existing evaluations and promotions retain their original source identities.
+
+## Online clock compatibility repair
+
+On 10 November 2026 MYT the repository owner approved compatibility review commit `39d25732db1ad349473521dc32a776e52840e891` and exact fingerprint `2213fbcc07038de42a8f6a10e554affddf99dc665c1c97269295928d63543027`. The repair restores the previous online punch response and removes the extra receipt timestamp from that response. The shared overtime parser test now exercises empty and explicit zero rates. No provider transport or payload gains data.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This exact binding supersedes the earlier joint candidate above.
