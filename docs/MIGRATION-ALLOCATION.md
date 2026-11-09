@@ -1,3 +1,15 @@
+# Approved Rewards and Attendance follow-ups — 9 November 2026 (unapplied)
+
+The approved-item coordinator reserves `4100_rewards_review_creator_independence`
+at idx 3500 / when 1793330003800 and `4101_attendance_formula_company_scope`
+at idx 3501 / when 1793330003801, in that order in the combined source.
+Freshly fetched main and alpha agree at 5aa20706fb. A read-only survey of
+1,072 distinct committed journals and 913 readable registered worktree journals
+found maxima 4002 / idx 3437 / when 1793330003737. Independent ordered ledger
+comparison matched all 718 installed rows through 1793330003500.
+Preserve the complete source prefix and all applied SQL bytes. Recheck peer
+claims and the exact installed ledger before release admission.
+
 # System Labels company scope — 8 November 2026 (unapplied reservation)
 
 Branch codex/board1-system-labels-plan-20261108 reserves 3400_system_label_company_scope, idx2700 / when1793330003000. A fresh scan of 495 distinct committed journals and readable registered worktree journals found maximum idx2603 / when1793330002903 through3303. A read-only live survey matched 709 applied entries with watermark1793330002801, below this reservation. Preserve the full current main/alpha prefix and the then-installed prefix. Recheck live ledger and peer claims before admission; this is source allocation only.
