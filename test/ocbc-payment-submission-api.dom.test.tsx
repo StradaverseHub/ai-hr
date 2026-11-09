@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({
   scopedAdmin: vi.fn(), permission: true, country: 'MY',
-  accounts: vi.fn(), runs: vi.fn(), batches: vi.fn(), preview: vi.fn(), download: vi.fn(),
+  options: vi.fn(), preview: vi.fn(), download: vi.fn(),
 }));
 vi.mock('@/core/entitlements', () => ({ assertModuleEnabled: vi.fn() }));
 vi.mock('@/lib/scope', () => ({ scopedAdmin: m.scopedAdmin }));
@@ -9,12 +9,10 @@ vi.mock('@/db/client', () => ({ withTenant: async (_s: unknown, fn: (tx: unknown
   execute: async () => [{ ok: m.permission }],
   select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ country: m.country }] }) }) }),
 }) }));
-vi.mock('@/core/bank-profile', () => ({ listCompanyBankProfiles: m.accounts }));
 // AI v2 P2-2b: a generated bank file is recorded in the payroll access log before it is handed over.
 const access = vi.hoisted(() => ({ recordPayrollExport: vi.fn(async () => ({ recorded: true, eventId: 'fictional-event' })) }));
 vi.mock('@/core/payroll-audit/access-log', () => access);
-vi.mock('@/packs/payroll/service', () => ({ listFilableRunsForPeriod: m.runs, listBatches: m.batches }));
-vi.mock('@/localization/registry', () => ({ packFor: (country: string) => country === 'MY' ? { bankPaymentFiles: { preview: m.preview, download: m.download } } : undefined }));
+vi.mock('@/localization/registry', () => ({ packFor: (country: string) => country === 'MY' ? { bankPaymentFiles: { submissionOptions: m.options, preview: m.preview, download: m.download } } : undefined }));
 vi.mock('../app/payroll/payment-submission/registry', () => ({ submissionFormat: (id: string) => ({
   'my.ocbc.salary': { available: true, transport: 'bank-post', periodKind: 'month-cycle', testIndicator: false },
   'my.ocbc.kwsp': { available: true, transport: 'bank-post', periodKind: 'month', testIndicator: true },
@@ -35,26 +33,40 @@ const post = (p: object, origin = 'https://app.example') => POST(new Request(url
 beforeEach(() => {
   vi.clearAllMocks(); m.permission = true; m.country = 'MY';
   m.scopedAdmin.mockResolvedValue({ s: { tenantId: companyId, userId: companyId }, scopeIds: [companyId] });
-  m.accounts.mockResolvedValue([{ id: bankProfileId, bank: 'ocbc_bank', currency: 'MYR', accountLabel: 'Operations', debitAccountNo: '123456789012' }, { id: 'other', bank: 'other', currency: 'MYR', debitAccountNo: 'full-secret' }]);
-  m.runs.mockResolvedValue([1, 2, 3, 4].map(runSeq => ({ runSeq, runType: 'regular', cycleName: null, status: 'closed' })));
-  m.batches.mockResolvedValue([{ runSeq: 1, status: 'closed' }, { runSeq: 2, status: 'closed', historyImportAttemptId: 'import' }, { runSeq: 3, status: 'processed', needsRecalcAt: new Date() }, { runSeq: 4, status: 'draft' }]);
+  m.options.mockResolvedValue({
+    accounts: [
+      { id: bankProfileId, bankName: 'OCBC Bank', label: 'Operations', accountNumber: '123456789012', formatId: 'my.ocbc.salary' },
+      { id: 'other', bankName: 'Other Bank', label: '', accountNumber: 'full-secret', formatId: 'unregistered' },
+    ],
+    configuredAccountId: bankProfileId, usesStatutoryAccount: false, accountIssue: null,
+    periods: [{ periodKey: '2026-10', runs: [{ runSeq: 1, runType: 'regular', cycleName: null }] }],
+  });
   m.preview.mockResolvedValue({ digest: 'a'.repeat(64), companyName: 'Acme', recordCount: 2, totalCents: 300000, periodKey: request.periodKey, paymentDate: request.paymentDate });
   m.download.mockResolvedValue({ filename: 'OCBC.txt', content: 'BANK\r\n' });
 });
 describe('OCBC bank file route', () => {
   it('returns the authorised account number and only closed native payroll runs', async () => {
-    const response = await get({ operation: 'options', companyId, formatId: request.formatId, periodKey: request.periodKey });
+    const response = await get({ operation: 'options', companyId, category: 'salary' });
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
-    expect(await response.json()).toEqual({ accounts: [{ id: bankProfileId, label: 'Operations', accountNumber: '123456789012' }], configuredAccountId: null, runs: [{ runSeq: 1, runType: 'regular', cycleName: null, status: 'closed' }] });
+    expect(await response.json()).toEqual({
+      accounts: [{ id: bankProfileId, bankName: 'OCBC Bank', label: 'Operations', accountNumber: '123456789012', formatId: 'my.ocbc.salary' }],
+      configuredAccountId: bankProfileId, usesStatutoryAccount: false, accountIssue: null,
+      periods: [{ periodKey: '2026-10', runs: [{ runSeq: 1, runType: 'regular', cycleName: null }] }],
+    });
+    expect(m.options).toHaveBeenCalledWith(expect.anything(), { companyId, category: 'salary' });
     expect(m.preview).not.toHaveBeenCalled(); expect(m.download).not.toHaveBeenCalled();
   });
   it.each(['scope', 'database', 'country'])('denies %s before reading sensitive options', async (gate) => {
     if (gate === 'scope') m.scopedAdmin.mockResolvedValue({ s: {}, scopeIds: [] });
     if (gate === 'database') m.permission = false;
     if (gate === 'country') m.country = 'XX';
-    expect((await get({ operation: 'options', companyId, formatId: request.formatId, periodKey: request.periodKey })).status).toBe(404);
-    expect(m.accounts).not.toHaveBeenCalled(); expect(m.runs).not.toHaveBeenCalled();
+    expect((await get({ operation: 'options', companyId, category: 'salary' })).status).toBe(404);
+    expect(m.options).not.toHaveBeenCalled();
+  });
+  it('rejects unrecognised categories before reading any options', async () => {
+    expect((await get({ operation: 'options', companyId, category: 'wire-transfer' })).status).toBe(400);
+    expect(m.options).not.toHaveBeenCalled();
   });
   it('cannot generate a bank file through the government GET download', async () => {
     expect((await governmentDownload(new Request(url + '?format=my.ocbc.salary&companyId=' + companyId))).status).toBe(404);
