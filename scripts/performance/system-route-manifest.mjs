@@ -91,6 +91,35 @@ export function assertNativePreflightRedirect(requested,status,location){
  assert(location===expected.final||location===origin+expected.final,'Native compatibility redirect location differs');
 }
 
+/** Classify only fixed development alias failures before the unchanged assertions. */
+export function compatibilityRedirectFailure(role,route,expectedStatus,response){
+ const expected=compatibilityRoutes.get(route);
+ if(!expected||expectedStatus!==expected.status||(role!=='companyHR'&&role!=='groupHR'))return null;
+ const {status,headers,content}=response;
+ if(!Number.isSafeInteger(status)||status<100||status>599)return null;
+ const location=headers.location;
+ const locationClass=location===expected.final?'expected-relative':
+  location===origin+expected.final?'expected-absolute':location===undefined?'absent':'other';
+ if(status===expected.status&&(locationClass==='expected-relative'||locationClass==='expected-absolute'))return null;
+ const type=headers['content-type'];
+ const mediaType=typeof type==='string'?type.split(';',1)[0].trim().toLowerCase():null;
+ const contentType=mediaType==='text/html'?'html':mediaType==='text/x-component'?'rsc':type===undefined?'absent':'other';
+ let nextMeta='not-inspected';
+ if(contentType==='html'&&typeof content==='string'){
+  const edge=32*1024,whole=content.length<=2*edge;
+  const parts=whole?[content]:[content.slice(0,edge),content.slice(-edge)];
+  const delay=expected.status===308?0:1;
+  const expectedMarker=[expected.final,origin+expected.final].some(target=>{
+   const prefix=`<meta id="__next-page-redirect" http-equiv="refresh" content="${delay};url=${target}"`;
+   return parts.some(part=>part.includes(prefix+'/>')||part.includes(prefix+'>'));
+  });
+  // This is an exact renderer-text observation, with no redirect acceptance authority.
+  nextMeta=expectedMarker?'expected-marker':whole?'unseen-complete-html':'unseen-bounded-html';
+ }
+ return {role,route,expectedStatus,observedStatus:status,location:locationClass,contentType,nextMeta,
+  reason:status===expected.status?'location-mismatch':'status-mismatch'};
+}
+
 // The owned GET checks the exact status without following a redirect.
 export async function readManifestRoute(requested,get){
  assert(concreteReadRoutes.has(requested),'Unreviewed concrete read route');

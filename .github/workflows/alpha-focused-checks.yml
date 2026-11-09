@@ -112,7 +112,7 @@ jobs:
           import json, os, re
 
           repository = 'StradaverseHub/ai-hr'
-          branch = 'codex/architecture-browser-development-preflight-20261109'
+          branch = 'codex/architecture-browser-claims-redirect-diagnostic-20261109'
           ref = 'refs/heads/' + branch
           workflow = repository + '/.github/workflows/alpha-focused-checks.yml@' + ref
           sha = os.environ.get('GITHUB_WORKFLOW_SHA', '')
@@ -510,6 +510,28 @@ jobs:
                   secondary = first(driver_failures.get('secondary'), lambda row: True)
                   visit = record(driver.get('browserFailedNavigation'))
                   pilot = first(driver.get('coverage'), lambda row: row.get('status') == 'failed')
+                  pilot_role = choice(pilot.get('role'), {'companyHR', 'groupHR'})
+                  aliases = {'/admin/claims/forms': 308, '/admin/locations': 307}
+                  pilot_alias = choice(pilot.get('route'), aliases)
+                  compatibility_failure = None
+                  if pilot_role and pilot_alias and pilot.get('reason') == 'ERR_ASSERTION':
+                      candidate = first(driver.get('compatibilityRouteFailures'), lambda row:
+                          row.get('role') == pilot_role and row.get('route') == pilot_alias)
+                      expected = aliases[pilot_alias]
+                      status = number(candidate.get('observedStatus'), 599, 100)
+                      location = choice(candidate.get('location'), {'expected-relative', 'expected-absolute', 'absent', 'other'})
+                      content_type = choice(candidate.get('contentType'), {'html', 'rsc', 'absent', 'other'})
+                      meta = choice(candidate.get('nextMeta'), {
+                          'expected-marker', 'unseen-complete-html', 'unseen-bounded-html', 'not-inspected'})
+                      reason = ('status-mismatch' if status != expected else 'location-mismatch'
+                                if location in {'absent', 'other'} else None)
+                      if (number(candidate.get('expectedStatus'), 599, 100) == expected
+                              and None not in (status, location, content_type, meta, reason)
+                              and (content_type == 'html' or meta == 'not-inspected')
+                              and candidate.get('reason') == reason):
+                          compatibility_failure = {'role': pilot_role, 'route': pilot_alias, 'expectedStatus': expected,
+                                                   'observedStatus': status, 'location': location, 'contentType': content_type,
+                                                   'nextMeta': meta, 'reason': reason}
                   locks = record(record(driver.get('lockSampling')).get('preflight'))
                   completed = number(locks.get('completed'), 4096)
                   invalid = number(locks.get('invalidBlockingCounts'), completed) if completed is not None else None
@@ -541,6 +563,7 @@ jobs:
                           'errorType': choice(secondary.get('kind'), types), 'errorCode': choice(secondary.get('code'), codes)} if secondary else None,
                       'firstFailedPilotRoute': {'role': choice(pilot.get('role'), roles), **route(pilot.get('route')),
                                                 'reason': choice(pilot.get('reason'), types | codes)} if pilot else None,
+                      'firstFailedPilotCompatibility': compatibility_failure,
                       'firstFailedBrowserVisit': {'phase': choice(visit.get('phase'), {'baseline', 'sign-in-preflight', 'loaded'}),
                                                   'role': choice(visit.get('role'), roles), **route(visit.get('path')),
                                                   'visitStage': choice(visit.get('visitStage'), visits),

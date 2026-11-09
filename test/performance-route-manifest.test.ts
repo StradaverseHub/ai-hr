@@ -4,7 +4,7 @@ import {validateNavigationScenarioPlan,type NavigationFixtureRole,type Navigatio
 import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
 import {isNativeOwnPayslipPdfPath,requireNativePreflightFixtureDay} from '../scripts/performance/native-preflight-content';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
- nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion,readManifestRoute} from '../scripts/performance/system-route-manifest.mjs';
+ nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion,readManifestRoute,compatibilityRedirectFailure} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to an existing page',()=>{
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
  for(const [role,paths]of Object.entries(routePools)){
@@ -125,6 +125,41 @@ it('reads each exact declared route once using its expected HTTP status without 
   const get=vi.fn(async()=>response);
   await expect(readManifestRoute(requested,get)).resolves.toBe(response);
   expect(get).toHaveBeenCalledExactlyOnceWith(requested,status);
+ }
+});
+
+it('classifies exact compatibility failures before rejection without copying response values',()=>{
+ const claims='/admin/claims/forms',locations='/admin/locations';
+ const claimsMeta='<meta id="__next-page-redirect" http-equiv="refresh" content="0;url=/admin/claims"/>';
+ const locationsMeta='<meta id="__next-page-redirect" http-equiv="refresh" content="1;url=/admin/work-locations/clocking"/>';
+ const response={status:200,headers:{'content-type':'text/html; charset=utf-8'},content:claimsMeta};
+ expect(compatibilityRedirectFailure('companyHR',claims,308,response)).toEqual({
+  role:'companyHR',route:claims,expectedStatus:308,observedStatus:200,location:'absent',contentType:'html',
+  nextMeta:'expected-marker',reason:'status-mismatch',
+ });
+ expect(compatibilityRedirectFailure('groupHR',locations,307,{...response,content:locationsMeta})).toMatchObject({
+  expectedStatus:307,observedStatus:200,nextMeta:'expected-marker',reason:'status-mismatch',
+ });
+ expect(compatibilityRedirectFailure('groupHR',claims,308,{status:308,
+  headers:{'content-type':'text/x-component',location:'https://example.invalid/private'},content:'private-body',
+ })).toEqual({role:'groupHR',route:claims,expectedStatus:308,observedStatus:308,location:'other',contentType:'rsc',
+  nextMeta:'not-inspected',reason:'location-mismatch'});
+ for(const [location,expected]of [['/admin/claims','expected-relative'],['https://localhost:3443/admin/claims','expected-absolute']]){
+  const headers={...response.headers,location};
+  expect(compatibilityRedirectFailure('companyHR',claims,308,{...response,headers})).toMatchObject({location:expected});
+  expect(compatibilityRedirectFailure('companyHR',claims,308,{...response,status:308,headers})).toBeNull();
+ }
+ expect(compatibilityRedirectFailure('employee',claims,308,response)).toBeNull();
+ expect(compatibilityRedirectFailure('companyHR',claims+'?secret=private',308,response)).toBeNull();
+ expect(compatibilityRedirectFailure('companyHR',claims,307,response)).toBeNull();
+ expect(compatibilityRedirectFailure('companyHR',claims,308,{...response,status:undefined})).toBeNull();
+ const long='a'.repeat(40*1024);
+ for(const [content,nextMeta]of [
+  [long+long+claimsMeta,'expected-marker'],[long+claimsMeta+long,'unseen-bounded-html'],
+  [claimsMeta.replace('/admin/claims','/private'),'unseen-complete-html'],
+  [claimsMeta.replace('0;','1;'),'unseen-complete-html'],
+ ]){
+  expect(compatibilityRedirectFailure('companyHR',claims,308,{...response,content})).toMatchObject({nextMeta});
  }
 });
 

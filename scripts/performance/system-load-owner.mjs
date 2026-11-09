@@ -40,7 +40,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
  nativePreflightRoutePlan,nativePreflightRouteFor,nativePreflightContentWitness,nativePreflightReadiness,
- assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion,readManifestRoute} from './system-route-manifest.mjs';
+ assertNativePreflightRedirect,assertNativeRenderedVisit,requireNativeRenderedUnion,readManifestRoute,compatibilityRedirectFailure} from './system-route-manifest.mjs';
 export async function runDevelopmentSystemLoad(){
  return runSystemLoad();
 }
@@ -216,6 +216,12 @@ async function requestBody(user,path,fields,expectedStatus=200,record=true,actio
  });
  response.durationMs=performance.now()-started;
  if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
+ if(!fields&&!nativePreflight&&suite==='workflow-preflight'&&(expectedStatus===307||expectedStatus===308))noteEvidence(()=>{
+  const failure=compatibilityRedirectFailure(user?.role,path,expectedStatus,response);
+  if(!failure)return;
+  const rows=report.compatibilityRouteFailures??=[];
+  if(!rows.some(row=>row.role===failure.role&&row.route===failure.route))rows.push(failure);
+ });
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
  const ownPayslipPdf=/^\/me\/payslip\/[0-9a-f-]{36}\/pdf$/.test(path.split('?')[0]);
  if(!fields&&expectedStatus===200&&ownPayslipPdf){
