@@ -266,12 +266,12 @@ describe('Home summary (M14)', () => {
   });
 
   it('a part that cannot be read is `unavailable`, never zero, and does not take the other part down', async () => {
-    // The snapshot could not be resolved: neither part can decide its modules, so each is `unavailable` (re-pinned 29 October
-    // 2026: a Mobile service reads modules strictly, so the inbox no longer reads an outage as "Notifications off").
+    // The task and inbox reads need the entitlement snapshot. Loop switches are all off in this fixture,
+    // so the loop reader independently knows that it has no items to show.
     caller = { ...A.ctx, entitlements: undefined, entitlementsError: 'test: no snapshot' };
     const summary = await get('/home/summary', homeRoute.GET);
     expect(summary.status).toBe(200);
-    expect(summary.body).toEqual({ tasks: { status: 'unavailable' }, inbox: { status: 'unavailable' }, loopActions: { status: 'unavailable' } });
+    expect(summary.body).toEqual({ tasks: { status: 'unavailable' }, inbox: { status: 'unavailable' }, loopActions: { status: 'ok', items: [] } });
     blocked = true;
     expect((await get('/home/summary', homeRoute.GET)).status).toBe(401);
   });

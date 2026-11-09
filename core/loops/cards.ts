@@ -62,7 +62,6 @@ export const LOOP_CARD_HREF=Object.freeze({
  * (default the HR day): the Pre-salary card shows only in the last PAYROLL_INPUTS_LEAD_DAYS before its cut-off. */
 export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:readonly string[];admin:boolean;today?:string;employeeOnly?:true}>):Promise<readonly LoopCard[]>{
  if(!ctx.userId||ctx.agent||(p.employeeOnly&&!ctx.personId))return [];
- if(p.employeeOnly)isModuleEnabled(ctx,'employees');
  const today=p.today??todayInKualaLumpur();
  return withTenant(ctx,async tx=>{
   // P2-1: open undo windows and automatic moves down are shown whether or not the loop still runs.

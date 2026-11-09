@@ -70,7 +70,7 @@ export async function CapacityLedgerSection({ session, query }: { session: Sessi
         </div>
         <nav aria-label={t('periodLabel')} data-capacity-period className="flex flex-wrap gap-1.5">
           {CAPACITY_PERIODS.map((period: CapacityPeriod) => (
-            <Link key={period} href={href({ period, company, pdays })} aria-current={period === view.period ? 'true' : undefined}
+            <Link key={period} href={href({ period, company, pdays: query.pdays })} aria-current={period === view.period ? 'true' : undefined}
               className={cn(btnGhost, target, period === view.period && 'border-primary bg-primary/10 text-foreground')}>{t(`periods.${period}`)}</Link>
           ))}
         </nav>
