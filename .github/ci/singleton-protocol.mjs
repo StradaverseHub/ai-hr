@@ -652,6 +652,7 @@ const componentSources=Object.freeze({
   "packs/attendance/policy-work-input.ts","packs/attendance/service.ts","packs/attendance/unclocked-work-setup.ts",
   "packs/catalog.ts","packs/leave/service.ts","packs/payroll/ai-rule-proposal.ts",
   "packs/payroll/history.ts","packs/payroll/pay-averages.ts","packs/payroll/reward-provenance.ts",
+  "packs/payroll/individual-calculation.ts",
   "packs/payroll/service.ts","packs/performance/mobile-review.ts","packs/performance/onehr/admin-agent-service.ts",
   "packs/performance/onehr/admin-context.ts","packs/performance/onehr/admin-report-model.ts","packs/performance/onehr/admin-report-service.ts",
   "packs/performance/onehr/admin-report-xlsx.ts","packs/performance/onehr/admin-sections.ts","packs/performance/onehr/ai-settings.ts",

@@ -3101,6 +3101,7 @@ export const EMPLOYEE_LIFECYCLE_SOURCES=Object.freeze([
  "packs/payroll/pay-averages.ts",
  "packs/payroll/phases.ts",
  "packs/payroll/reward-provenance.ts",
+ "packs/payroll/individual-calculation.ts",
  "packs/payroll/service.ts",
  "packs/performance/index.ts",
  "packs/performance/mobile-review.ts",
@@ -3523,6 +3524,7 @@ export const EMPLOYEE_LIFECYCLE_SOURCES=Object.freeze([
 export const EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS=Object.freeze(EMPLOYEE_LIFECYCLE_SOURCES.filter(file=>file.startsWith('.github/')));
 export const EMPLOYEE_LIFECYCLE_CRITICAL=Object.freeze([
  "test/fixtures/historical-migrations/source-path.ts",
+ "packs/payroll/individual-calculation.ts",
  ".github/ci/employee-restoration-proof.mjs",
  "test/employee-choice-restoration-proof.test.ts",
  "test/performance/employee-choice-restoration-cleanup.ts",
