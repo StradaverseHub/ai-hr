@@ -10,9 +10,9 @@ import type { Base } from '../test/harness';
 import {APP_URL, BASE, BASE_ROWS, CANDIDATE, CANDIDATE_ROWS, OWNER_URL, assertPristineAuthTenant, installFictionalServerOnlyResolution, readCanonicalAdmission} from './fictional-ai-upgrade-canonical-admission.mjs';
 
 const BASE_MODULE = 'c7db1328e10bf47765ed9c0298d865fc83df1724a756ea1a123775653e167a98';
-const CANDIDATE_MODULE = '982ca0d15e234a0716f87d64e2c8e9a640b2d7864d5c55868b5704cad7172c6a';
+const CANDIDATE_MODULE = '68186f7b7dfd0536d476d866644c30495a0e90ec11c148e62be397e728f58706';
 const BASE_PROVIDER = '2213fbcc07038de42a8f6a10e554affddf99dc665c1c97269295928d63543027';
-const CANDIDATE_PROVIDER = '14a82c9c48eafca5a2a7ee4c7da5618abc2a0ae6f72e4309124ed3c852ded334';
+const CANDIDATE_PROVIDER = '959412738e4302e4a00590bdda55e4bebc2f492efb8112fa0f2e1e1d25f3b6ee';
 const AI_TABLES = ['ai_agent_candidate', 'ai_agent_candidate_provenance', 'ai_agent_evaluation',
   'ai_agent_promotion', 'ai_agent_job_receipt', 'ai_agent_job_feedback', 'ai_agent_rollback'] as const;
 const TABLES = [...AI_TABLES, 'assistant_grant', 'person', 'employment', 'assignment', 'reporting_line', 'role_assignment', 'domain_event'] as const;
