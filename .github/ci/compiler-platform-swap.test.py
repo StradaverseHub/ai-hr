@@ -114,7 +114,7 @@ class ServiceIdentityModel(unittest.TestCase):
 
     def test_predecessor_foreign_and_malformed_units_refuse_before_process_probe(self):
         for unit in (f'aihr-compiler-12800-swap-{RUN}.service', f'aihr-compiler-12800-progress-{RUN}.service',
-                     f'foreign-{RUN}.service',
+                     f'aihr-compiler-12800-managed-{RUN}.service', f'foreign-{RUN}.service',
                      model['unit_name']('0'), model['unit_name']('0123'),
                      model['unit_name']('1' * 17), model['unit_name']('1/foreign'),
                      model['unit_name'](RUN) + '.foreign', model['unit_name'](RUN) + '\n'):
@@ -162,9 +162,10 @@ class SettlementModel(unittest.TestCase):
             'kind': model['MANAGED_KIND'], 'candidateSha': model['SOURCE'],
             'candidateTree': model['SOURCE_TREE'], 'controllerSha': CONTROLLER, 'runId': RUN, 'attempt': 1,
             'releaseEligible': False, 'compilerStateReusable': False, 'complete': True,
+            'heapMiB': model['HEAP_MIB'], 'residentCapBytes': CAP, 'swapCapBytes': SWAP,
             'platformSwapVerified': True, 'platformSwapPreserved': True,
-            'compilerExit': 0, 'inventory': inventory_row(), 'managedState': inventory_row(result=True), 'compilerFiles': 8,
-            'managedInputsReverified': True,
+            'compilerExit': 0, **matched_input(), 'managedState': inventory_row(result=True, matched=True),
+            'compilerFiles': model['BASELINE_INVENTORY']['configuredRoots'] + 10, 'managedInputsReverified': True,
             'workSeconds': model['WORK_SECONDS'], 'progressSeconds': model['PROGRESS_SECONDS'],
             'progress': [progress_row('start'), progress_row('terminal', elapsed=1)],
             'platformSwapBirthSha256': hashlib.sha256(json.dumps(self.birth).encode('ascii')).hexdigest(), **overrides}
@@ -236,21 +237,40 @@ class SettlementModel(unittest.TestCase):
     def test_preflight_refusal_can_retain_closed_failure_without_platform_witness(self):
         self.platform.unlink()
         self.receipt(complete=False, platformSwapVerified=False, platformSwapPreserved=False, progress=[],
-                     compilerExit=None, inventory=None, managedState=None, compilerFiles=None)
+                     compilerExit=None, managedState=None, compilerFiles=None)
         self.settle()
         receipt = json.loads((self.directory / 'swap-settlement.json').read_text())
         self.assertFalse(receipt['platformSwapIdentityVerified'])
         self.assertEqual(receipt['platformSwapBirthSha256'], None)
 
 
-def inventory_row(*, result=False):
-    base = {'configuredRoots': 6, 'orderedRootSha256': 'a' * 64, 'rootSetSha256': 'b' * 64,
-            'generatedCount': 5, 'generatedSha256': 'c' * 64, 'toolSha256': 'd' * 64}
-    return {**base, 'buildInfoBytes': 20, 'buildInfoSha256': 'e' * 64, 'nativeFiles': 8,
-            'nativeRoots': 6, 'nativeRootSetSha256': 'b' * 64} if result else base
+def inventory_row(*, result=False, matched=False):
+    base = dict(model['BASELINE_INVENTORY']) if matched else {
+        'configuredRoots': 6, 'orderedRootSha256': 'a' * 64, 'rootSetSha256': 'b' * 64,
+        'generatedCount': 5, 'generatedSha256': 'c' * 64, 'toolSha256': 'd' * 64}
+    files = base['configuredRoots'] + (10 if matched else 2)
+    return {**base, 'buildInfoBytes': 20, 'buildInfoSha256': 'e' * 64, 'nativeFiles': files,
+            'nativeRoots': base['configuredRoots'], 'nativeRootSetSha256': base['rootSetSha256']} if result else base
+
+
+def matched_input():
+    return {'inventory': inventory_row(matched=True), 'nodeSha256': model['BASELINE_NODE_SHA256'],
+            'managedArgvSha256': model['BASELINE_ARGV_SHA256'], 'matchedBaselineRun': model['BASELINE_RUN']}
 
 
 class ManagedResultModel(unittest.TestCase):
+    def test_measured_heap_change_preserves_native_envelope_and_exact_baseline(self):
+        self.assertEqual((model['HEAP_MIB'], CAP, SWAP, model['WORK_SECONDS'], model['PROGRESS_SECONDS']),
+                         (13312, 13958643712, 2684354560, 1080, 30))
+        baseline = matched_input()
+        self.assertTrue(model['same_baseline'](baseline))
+        for changes in ({'nodeSha256': '0' * 64}, {'managedArgvSha256': '0' * 64},
+                        {'inventory': {**baseline['inventory'], 'configuredRoots': 9204}},
+                        {'inventory': {**baseline['inventory'], 'generatedSha256': '0' * 64}},
+                        {'inventory': {**baseline['inventory'], 'orderedRootSha256': '0' * 64}}):
+            with self.subTest(changes=changes):
+                self.assertFalse(model['same_baseline']({**baseline, **changes}))
+
     def test_exact_canonical_command(self):
         source = Path('/home/runner/work/ai-hr/ai-hr/source')
         node = Path('/opt/hostedtoolcache/node/22.23.3/x64/bin/node')
@@ -443,8 +463,9 @@ class KernelModel(unittest.TestCase):
                      ownedCleanup='settled', platformSwapVerified=True, platformSwapPreserved=True,
                      generatedTypesVerified=True, sourceReverified=True, managedInputsReverified=True,
                      compilerLog={'bytes': 1, 'sha256': '0' * 64}, v8HeapFatalMarker=False,
-                     typescriptDiagnosticCount=0, diagnosticsParsed=True, compilerFiles=8,
-                     inventory=inventory_row(), managedState=inventory_row(result=True),
+                     typescriptDiagnosticCount=0, diagnosticsParsed=True,
+                     compilerFiles=model['BASELINE_INVENTORY']['configuredRoots'] + 10,
+                     **matched_input(), managedState=inventory_row(result=True, matched=True),
                      progress=[progress_row('start'), progress_row('terminal', elapsed=1)],
                      initial=model['sample']([0, 1, 2], initial=True),
                      terminal=model['sample']([0, 1, 2]))

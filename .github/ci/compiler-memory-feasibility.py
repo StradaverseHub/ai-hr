@@ -22,6 +22,7 @@ SOURCE_BRANCH = 'codex/architecture-zero-busy-lock-qualification-20261109'
 BRANCH = 'codex/compiler-06e499c-managed-platform-swap-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
+HEAP_MIB = 13 * 1024
 LIMIT = 13 * GIB
 SWAP = 2560 * 1024 ** 2
 PLATFORM_SWAP = Path('/swapfile')
@@ -40,8 +41,8 @@ PROGRESS_COUNTERS = ('cpuUsec', 'userUsec', 'systemUsec', 'cpuSomeUsec', 'cpuFul
 PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
 PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-12800-managed-platform'
-UNIT_PREFIX = 'aihr-compiler-12800-managed-'
+DIRECTORY = 'compiler-13312-managed-platform'
+UNIT_PREFIX = 'aihr-compiler-13312-managed-'
 UNIT_NAME = re.compile(rf'{re.escape(UNIT_PREFIX)}[1-9][0-9]{{0,15}}\.service')
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -53,6 +54,18 @@ ORDINARY_BUDGET_MS = 900000
 INVENTORY_FIELDS = ('configuredRoots', 'orderedRootSha256', 'rootSetSha256', 'generatedCount',
                     'generatedSha256', 'toolSha256')
 STATE_FIELDS = ('buildInfoBytes', 'buildInfoSha256', 'nativeFiles', 'nativeRoots', 'nativeRootSetSha256')
+# Authenticated 12,800 MiB cold measurement on the same source and managed command.
+BASELINE_RUN = '42669956545'
+BASELINE_INVENTORY = {
+    'configuredRoots': 9205,
+    'orderedRootSha256': '9fdad7b65530150218090b7b4378d6b647b0da6f856081ca898d2ed09a1349fc',
+    'rootSetSha256': '8a418081b8ade80d627a2ee0f1be4936f9b28a8aea141c78af432878cbe9bd15',
+    'generatedCount': 5,
+    'generatedSha256': '61eb985bfaa59dcd9621c43083c11c792856c4e031587d40fa6962c9d17f612e',
+    'toolSha256': '8a3f43685059608d9fa8e5333e233d0494f89cd453202f5f9a54989631efa4be',
+}
+BASELINE_NODE_SHA256 = 'fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48'
+BASELINE_ARGV_SHA256 = 'c24f853d33edb0cfbb3068197aba380b9869e89e762827bb0edf9fe72de8027d'
 SOURCE_INPUTS = {
     'tsconfig.json': '0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a',
     'package.json': '7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c',
@@ -745,7 +758,14 @@ def compiler_outcome(report):
     return 'zero-exit-evidence-refused'
 
 
+def same_baseline(report):
+    return (report.get('inventory') == BASELINE_INVENTORY and report.get('nodeSha256') == BASELINE_NODE_SHA256
+            and report.get('managedArgvSha256') == BASELINE_ARGV_SHA256)
+
+
 def valid_measurement(report):
+    if 'matchedBaselineRun' in report and (report['matchedBaselineRun'] != BASELINE_RUN or not same_baseline(report)):
+        return False
     inventory, state = report.get('inventory'), report.get('managedState')
     if inventory is not None and not valid_inventory(inventory):
         return False
@@ -824,6 +844,7 @@ def accepted_terminal(report, deadline):
             and report.get('platformSwapVerified') is True and report.get('platformSwapPreserved') is True
             and report.get('generatedTypesVerified') is True and report.get('sourceReverified') is True
             and report.get('managedInputsReverified') is True
+            and report.get('matchedBaselineRun') == BASELINE_RUN and same_baseline(report)
             and report.get('v8HeapFatalMarker') is False and report.get('typescriptDiagnosticCount') == 0
             and terminal['memoryMax'] == LIMIT and terminal['memorySwapMax'] == SWAP and 0 < terminal['peak'] <= LIMIT
             and 0 <= terminal['swapCurrent'] <= terminal['swapPeak'] <= SWAP
@@ -847,7 +868,7 @@ def run_stock(workspace, temporary, controller, run_id, directory):
     deadline = integer(os.environ['AIHR_COMPILER_FEASIBILITY_T0_NS']) + JOB_SECONDS * 10 ** 9
     report = {'kind': MANAGED_KIND, 'candidateSha': SOURCE, 'candidateTree': SOURCE_TREE,
               'controllerSha': controller, 'residentCapBytes': LIMIT, 'swapCapBytes': SWAP,
-              'runId': run_id, 'attempt': 1, 'heapMiB': 12800, 'compilerExit': None, 'admitted': False,
+              'runId': run_id, 'attempt': 1, 'heapMiB': HEAP_MIB, 'compilerExit': None, 'admitted': False,
               'grantSent': False, 'workSeconds': WORK_SECONDS, 'progressSeconds': PROGRESS_SECONDS, 'progress': [],
               'complete': False, 'ownedCleanup': 'not-started', 'platformSwapVerified': False,
               'platformSwapPreserved': False, 'releaseEligible': False, 'compilerStateReusable': False}
@@ -874,6 +895,8 @@ def run_stock(workspace, temporary, controller, run_id, directory):
         report['inventory'] = compiler_inventory(source, node, 'pre')
         report['generatedTypesVerified'] = True
         report['managedArgvSha256'] = hashlib.sha256(json.dumps(compiler_command(source, node)).encode('ascii')).hexdigest()
+        require(same_baseline(report), 'managed-baseline-differs')
+        report['matchedBaselineRun'] = BASELINE_RUN
         cache_fd, cache_seal = create_cache(source, directory, controller, run_id)
         swap_birth = platform_swap(initial=True)
         own_json(directory / 'platform-swap.json', {**run_identity(controller, run_id), 'birth': swap_birth})
@@ -891,7 +914,7 @@ def run_stock(workspace, temporary, controller, run_id, directory):
                  'WorkingDirectory=' + str(source), 'Description=' + nonce)
         settings = {'PATH': f'{tools}:/usr/bin:/bin', 'HOME': pwd.getpwuid(os.getuid()).pw_dir,
                     'LANG': 'en_US.UTF-8', 'LC_ALL': 'en_US.UTF-8', 'TZ': 'Asia/Kuala_Lumpur', 'CI': 'true',
-                    'NODE_OPTIONS': '--max-old-space-size=12800', 'RUNNER_TEMP': str(temporary),
+                    'NODE_OPTIONS': f'--max-old-space-size={HEAP_MIB}', 'RUNNER_TEMP': str(temporary),
                     'AIHR_STOCK_NODE': str(node)}
         for name in ('DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL'):
             settings[name] = 'postgres://nobody:nothing@127.0.0.1:1/no_database'
@@ -1119,14 +1142,17 @@ def independent_cleanup(workspace, temporary, controller, run_id):
         if os.path.lexists(receipt):
             report = read_intent(receipt, maximum=64 * 1024)
             require([report.get(key) for key in ('kind', 'candidateSha', 'candidateTree', 'controllerSha', 'runId', 'attempt',
-                    'releaseEligible', 'compilerStateReusable')] == [
-                        MANAGED_KIND, SOURCE, SOURCE_TREE, controller, run_id, 1, False, False], 'swap-receipt-context')
+                    'releaseEligible', 'compilerStateReusable', 'heapMiB', 'residentCapBytes', 'swapCapBytes')] == [
+                        MANAGED_KIND, SOURCE, SOURCE_TREE, controller, run_id, 1, False, False, HEAP_MIB, LIMIT, SWAP],
+                    'swap-receipt-context')
             require(report.get('workSeconds') == WORK_SECONDS and report.get('progressSeconds') == PROGRESS_SECONDS
                     and valid_progress(report.get('progress')), 'compiler-progress-witness')
             require(valid_measurement(report), 'managed-measurement-witness')
             if report.get('complete') is True:
                 require(bool(report['progress']) and report['progress'][-1]['phase'] == 'terminal', 'compiler-progress-witness')
-                require(valid_inventory(report.get('managedState'), result=True), 'managed-measurement-witness')
+                require(valid_inventory(report.get('managedState'), result=True)
+                        and report.get('matchedBaselineRun') == BASELINE_RUN and same_baseline(report),
+                        'managed-measurement-witness')
             if report.get('platformSwapVerified') is True:
                 require(platform_verified and report.get('platformSwapBirthSha256') == birth_digest, 'platform-swap-witness')
             if report.get('complete') is True:
