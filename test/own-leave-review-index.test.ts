@@ -21,7 +21,7 @@ beforeAll(migrateTestDb);beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fic
 async function subject(b=base,role:'employee'|'hr_admin'='employee'){
  const hired=await hireEmployee(adminCtx(b),{person:{fullName:'PRIVATE INDEX PERSON',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
  const userId=await createAppUser(b.tenantId,hired.personId,role);
- const ctx:SessionContext={...adminCtx(b),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:null}]};
+ const ctx:SessionContext & {userId:string}={...adminCtx(b),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:null}]};
  return{...hired,ctx,companyId:b.companyId};
 }
 type Subject=Awaited<ReturnType<typeof subject>>;

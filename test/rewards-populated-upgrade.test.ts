@@ -28,7 +28,7 @@ it('preserves populated Rewards history, seats, shared policies and both notific
  const ledger=()=>storage.client`select m.id::text as id,m.hash,m.created_at::text as created_at
   from drizzle.__drizzle_migrations m order by m.id`;
  // The disposable database replays the source bytes of the two archived staging migrations.
- const expectedLedger=expectedMigrationLedger(process.cwd()).map(({tag,created_at,hash,sourceSha256})=>({
+ const expectedLedger=expectedMigrationLedger(process.cwd()).map(({tag,created_at,hash,sourceSha256}:{tag:string;created_at:string;hash:string;sourceSha256?:string})=>({
   tag,created_at,hash:sourceSha256??hash,
  }));
  async function actor(tx:Pick<typeof storage.client,'unsafe'>,user:string,role:string,appRole=false){
