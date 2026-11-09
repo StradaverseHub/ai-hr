@@ -2,6 +2,7 @@
  * The existing system runner owns native fixture provisioning/session creation and traffic.
  * Call once per role in each phase, with its already authenticated Playwright Page. */
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import type {Page,Response} from 'playwright';
@@ -34,20 +35,46 @@ async function capturedFailures(page:Page){
  });
 }
 
-const nativePrimaryPages=new WeakSet<Page>();
 const nativePrimaryProperty='__aihrNativePrimaryFailureCaptureV1';
+const nativePrimaryBinding='__aihrNativePrimaryRetirementV1';
+const nativePrimaryPages=new WeakSet<Page>();
 const nativeMarkerAttributes={'data-personnel-busy':'busy','data-page-busy':'busy',
  'data-read-unavailable':'unavailable','data-today-unavailable':'unavailable',role:'alerts'}as const;
+const nativeDocumentId=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+type Retirement={id:string;received:boolean;wake?:()=>void};
+type NativeDocumentSnapshot={id:string;origin:string;busy:number;unavailable:number;alerts:number};
+
+/** One already-owned primary Page. The bridge can only record failures and
+ * acknowledge retirement of a document the driver has independently observed. */
 export async function installNativePrimaryFailureObserver(page:Page){
- if(nativePrimaryPages.has(page))return;
+ assert(!nativePrimaryPages.has(page),'Native primary retirement observer already installed');nativePrimaryPages.add(page);
+ const frame=page.mainFrame(),context=page.context(),key=randomUUID(),seen=new Set<string>();
+ const markerDocuments={busy:0,unavailable:0,alerts:0};
+ let active:string|undefined,retiring:Retirement|undefined,awaitingSnapshot=false,finalBlank=false,retired=0,refusals=0;
+ const refuse=()=>{refusals++;retiring?.wake?.();return false;};
+ await page.exposeBinding(nativePrimaryBinding,(source,...args:unknown[])=>{
+  const payload=args[0]as {key?:unknown;id?:unknown;mask?:unknown;terminal?:unknown}|null|undefined;
+  if(source.page!==page||source.frame!==frame||source.context!==context||args.length!==1||!payload||typeof payload!=='object'
+   ||Object.keys(payload).sort().join(',')!=='id,key,mask,terminal'||payload.key!==key
+   ||!retiring||retiring.received||payload.id!==retiring.id||payload.terminal!==true
+   ||typeof payload.mask!=='number'||!Number.isSafeInteger(payload.mask)||payload.mask<0||payload.mask>7)return refuse();
+  // Frame URL is mutable by the time a queued pagehide reaches this callback.
+  // The exact retiring document was already admitted at the same-origin snapshot.
+  if(payload.mask&1)markerDocuments.busy++;
+  if(payload.mask&2)markerDocuments.unavailable++;
+  if(payload.mask&4)markerDocuments.alerts++;
+  retiring.received=true;retired++;retiring.wake?.();return true;
+ });
  const selectors={...failuresSelector,unavailable:failuresSelector.unavailable+',main[data-read-unavailable],main[data-today-unavailable]',
   alerts:failuresSelector.alerts+',main[role="alert"]'};
- await page.addInitScript(({selectors,property,attributes})=>{
-  const counts={busy:0,unavailable:0,alerts:0};
-  Object.defineProperty(window,property,{value:counts});
+ await page.addInitScript(({selectors,property,attributes,ingress,binding,key})=>{
+  if(window.top!==window||location.origin!==ingress)return;
+  const send=(window as unknown as Record<string,unknown>)[binding];
+  if(typeof send!=='function')throw Error('Native primary retirement binding missing');
+  const id=crypto.randomUUID(),counts={busy:0,unavailable:0,alerts:0};
   const kinds=['busy','unavailable','alerts']as const;
   const inspect=()=>{for(const kind of kinds)counts[kind]=Math.max(counts[kind],document.querySelectorAll(selectors[kind]).length);};
-  new MutationObserver(records=>{
+  const observe=(records:MutationRecord[])=>{
    inspect();
    for(const record of records){
     if(record.type==='attributes'&&record.target instanceof Element&&record.target.closest('main')){
@@ -58,17 +85,66 @@ export async function installNativePrimaryFailureObserver(page:Page){
      for(const kind of kinds)if(node.matches(selectors[kind])||node.querySelector(selectors[kind]))counts[kind]++;
     }
    }
-  }).observe(document,{childList:true,subtree:true,attributes:true,attributeOldValue:true,attributeFilter:Object.keys(attributes)});
+  };
+  const observer=new MutationObserver(observe);
+  observer.observe(document,{childList:true,subtree:true,attributes:true,attributeOldValue:true,attributeFilter:Object.keys(attributes)});
+  const snapshot=()=>{observe(observer.takeRecords());return{id,origin:location.origin,...counts};};
+  Object.defineProperty(window,property,{value:snapshot});
+  window.addEventListener('pagehide',event=>{
+   const final=snapshot();observer.disconnect();
+   const mask=Number(final.busy>0)+2*Number(final.unavailable>0)+4*Number(final.alerts>0);
+   // A retired document may be disposed before the RPC returns. Only receipt
+   // in the driver counts. Transport failure leaves its retirement missing.
+   void Promise.resolve(send({id,key,mask,terminal:event.isTrusted&&!event.persisted})).catch(()=>{});
+  },{once:true});
   inspect();
- },{selectors,property:nativePrimaryProperty,attributes:nativeMarkerAttributes});
- nativePrimaryPages.add(page);
-}
-export async function capturedNativePrimaryFailures(page:Page){
- assert(nativePrimaryPages.has(page),'Native primary failure observer not installed');
- return page.evaluate(property=>{
-  const counts=(window as unknown as Record<string,{busy:number;unavailable:number;alerts:number}|undefined>)[property];
-  if(!counts)throw Error('Native primary failure-state observer missing');return {...counts};
- },nativePrimaryProperty);
+ },{selectors,property:nativePrimaryProperty,attributes:nativeMarkerAttributes,ingress:BASE,binding:nativePrimaryBinding,key});
+
+ const beginRetirement=()=>{
+  assert(!retiring&&!awaitingSnapshot&&!finalBlank,'Native document transition already open');
+  if(active){retiring={id:active,received:false};active=undefined;}
+ };
+ async function waitForRetirement(remaining:()=>number){
+  const pending=retiring;
+  if(pending&&!pending.received&&refusals===0)await new Promise<void>((resolve,reject)=>{
+   const ms=remaining();assert(Number.isSafeInteger(ms)&&ms>0&&ms<=90000,'Native retirement wait outside deadline');
+   const timer=setTimeout(()=>{pending.wake=undefined;refusals++;reject(Error('Native document retirement receipt missing'));},ms);
+   pending.wake=()=>{clearTimeout(timer);pending.wake=undefined;resolve();};
+  });
+  assert(refusals===0&&(!pending||pending.received),'Native document retirement refused');
+  retiring=undefined;
+ }
+ return {
+  beforeNavigation(){beginRetirement();awaitingSnapshot=true;},
+  async snapshot(remaining:()=>number){
+   assert(awaitingSnapshot,'Native document snapshot without owned navigation');
+   await waitForRetirement(remaining);
+   const read=await page.evaluate(property=>{
+    const snapshot=(window as unknown as Record<string,(()=>NativeDocumentSnapshot)|undefined>)[property];
+    if(!snapshot)throw Error('Native primary failure-state observer missing');return snapshot();
+   },nativePrimaryProperty);
+   remaining();
+   assert(read&&Object.keys(read).sort().join(',')==='alerts,busy,id,origin,unavailable'
+    &&frame===page.mainFrame()&&new URL(frame.url()).origin===BASE&&read.origin===BASE
+    &&typeof read.id==='string'&&nativeDocumentId.test(read.id)&&!seen.has(read.id)&&seen.size<72,'Native document snapshot identity differs');
+   for(const count of [read.busy,read.unavailable,read.alerts])assert(Number.isSafeInteger(count)&&count>=0,'Native DOM failure count invalid');
+   seen.add(read.id);active=read.id;awaitingSnapshot=false;
+   return{busy:read.busy,unavailable:read.unavailable,alerts:read.alerts};
+  },
+  async finish(remaining:()=>number){
+   assert(active,'Missing last native primary document');
+   beginRetirement();
+   const response=await page.goto('about:blank',{waitUntil:'commit',timeout:remaining()});
+   assert(response===null&&page.url()==='about:blank','Native primary inert retirement navigation differs');
+   await waitForRetirement(remaining);remaining();finalBlank=true;
+  },
+  facts(){return{admitted:seen.size,retired,refusals,finalBlank,markerDocuments:{...markerDocuments}};},
+  requireSettled(expected:number){
+   assert(finalBlank&&!active&&!retiring&&!awaitingSnapshot&&seen.size===expected&&retired===expected&&refusals===0,
+    'Native primary document retirement census incomplete');
+   assert(Object.values(markerDocuments).every(count=>count===0),'Native DOM failure observed through document retirement');
+  },
+ };
 }
 
 const browserFailureCounts=()=>({aborted:0,transport:0,http5xx:0,pageError:0,consoleError:0,crash:0});

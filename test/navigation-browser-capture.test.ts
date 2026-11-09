@@ -54,6 +54,30 @@ function fictionalPage({accountName=actorName,accountCount=1,anchorCount=1,detai
  } as unknown as Page;
  return {page,body,waits,operations};
 }
+const ingress='https://localhost:3443';
+const firstDocument='12345678-1234-4234-8234-123456789abc',secondDocument='12345678-1234-4234-9234-123456789abc';
+function retirementPage(existing?:Page){
+ let url=ingress+'/',read=():unknown=>({id:firstDocument,origin:ingress,busy:0,unavailable:0,alerts:0});
+ const frame={url:()=>url},context={};
+ type Sender={page:unknown;frame:unknown;context:unknown};
+ let receive:(sender:Sender,...args:unknown[])=>unknown;
+ let onCommit=()=>{};
+ const page=Object.assign(existing??{}, {
+  mainFrame:()=>frame,context:()=>context,url:()=>url,
+  addInitScript:existing?.addInitScript??vi.fn(),
+  exposeBinding:vi.fn(async(_name:string,callback:typeof receive)=>{receive=callback;}),
+  evaluate:vi.fn(async()=>read()),
+  goto:vi.fn(async(next:string)=>{url=next;onCommit();return next==='about:blank'?null:{status:()=>200};}),
+ })as unknown as Page;
+ const sender={page,frame,context};
+ return {page,sender,receive:(payload:unknown,source=sender)=>receive(source,payload),
+  next:(fn:()=>void)=>{onCommit=fn;},read:(fn:()=>unknown)=>{read=fn;},
+  receipt:(id=firstDocument)=>{
+   const input=vi.mocked(page.addInitScript).mock.calls.at(-1)?.[1]as {key:string};
+   return{id,mask:0,terminal:true,key:input.key};
+  },
+ };
+}
 beforeEach(()=>{
  vi.stubEnv('GITHUB_ACTIONS','true');vi.stubEnv('RUNNER_ENVIRONMENT','github-hosted');vi.stubEnv('GITHUB_REPOSITORY','StradaverseHub/ai-hr');
  vi.stubEnv('AIHR_PERFORMANCE_ROLE_FIXTURE','true');vi.stubEnv('DATABASE_URL','postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev');
@@ -61,37 +85,90 @@ beforeEach(()=>{
 });
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 describe('native identity and streamed navigation capture boundaries',()=>{
- it('keeps legacy and native observers separate and retains transient native marker attributes',async()=>{
+ it('keeps legacy separate and refuses markers queued after a clean snapshot when the document retires',async()=>{
   const {page}=fictionalPage(),collector=createNavigationCaptureCollector({phase:'baseline'});
   await collector.captureActor(page,4);expect(collector.finish().observations).toHaveLength(1);
-  await installNativePrimaryFailureObserver(page);await installNativePrimaryFailureObserver(page);
+  const fixture=retirementPage(page),observer=await installNativePrimaryFailureObserver(page);
+  await expect(installNativePrimaryFailureObserver(page)).rejects.toThrow(/already installed/);
   expect(page.addInitScript).toHaveBeenCalledTimes(2);
   const [legacy,native]=vi.mocked(page.addInitScript).mock.calls;
   expect(legacy[1]).toMatchObject({alerts:'main [role="alert"]'});
   expect(native[1]).toMatchObject({selectors:{alerts:'main [role="alert"],main[role="alert"]'}});
   type AttributeRecord={type:'attributes';target:FixtureElement;attributeName:string;oldValue:string|null;addedNodes:[]};
   class FixtureElement{constructor(readonly inMain=true){}closest(){return this.inMain?this:null;}}
-  const observers:{deliver:(records:AttributeRecord[])=>void;options?:MutationObserverInit}[]=[];
+  const observers:{options?:MutationObserverInit;pending:AttributeRecord[];disconnected:boolean}[]=[];
   class FixtureObserver{
-   entry:{deliver:(records:AttributeRecord[])=>void;options?:MutationObserverInit};
-   constructor(deliver:(records:AttributeRecord[])=>void){this.entry={deliver};observers.push(this.entry);}
+   entry:(typeof observers)[number]={pending:[],disconnected:false};
+   constructor(){observers.push(this.entry);}
    observe(_document:unknown,options:MutationObserverInit){this.entry.options=options;}
+   takeRecords(){return this.entry.pending.splice(0);}
+   disconnect(){this.entry.disconnected=true;}
   }
-  const windowState:Record<string,unknown>={};
+  let pagehide:(event:{isTrusted:boolean;persisted:boolean})=>void;
+  const windowState:Record<string,unknown>={__aihrNativePrimaryRetirementV1:fixture.receive,
+   addEventListener(name:string,listener:typeof pagehide){expect(name).toBe('pagehide');pagehide=listener;}};
+  windowState.top=windowState;
   vi.stubGlobal('window',windowState);vi.stubGlobal('document',{querySelectorAll:()=>[]});
+  vi.stubGlobal('location',{origin:ingress});vi.stubGlobal('crypto',{randomUUID:()=>firstDocument});
   vi.stubGlobal('Element',FixtureElement);vi.stubGlobal('MutationObserver',FixtureObserver);
   try{
+   observer.beforeNavigation();
    for(const [script,input]of [legacy,native]){expect(typeof script).toBe('function');(script as (input:unknown)=>void)(input);}
    expect(observers[0].options?.attributeOldValue).toBeUndefined();
    expect(observers[1].options?.attributeOldValue).toBe(true);
+   fixture.read(windowState.__aihrNativePrimaryFailureCaptureV1 as ()=>unknown);
+   expect(await observer.snapshot(()=>1000)).toEqual({busy:0,unavailable:0,alerts:0});
    const inMain=new FixtureElement(),outside=new FixtureElement(false);
    const change=(target:FixtureElement,attributeName:string,oldValue:string|null):AttributeRecord=>({type:'attributes',target,attributeName,oldValue,addedNodes:[]});
-   const records=[change(inMain,'data-page-busy',null),change(inMain,'data-page-busy',''),
-    change(inMain,'data-read-unavailable','true'),change(inMain,'role','alert'),change(inMain,'role','status'),change(outside,'data-page-busy','')];
-   for(const observer of observers)observer.deliver(records);
+   observers[1].pending.push(change(inMain,'data-page-busy',null),change(inMain,'data-page-busy',''),
+    change(inMain,'data-read-unavailable','true'),change(inMain,'role','alert'),change(inMain,'role','status'),change(outside,'data-page-busy',''));
+   fixture.next(()=>{expect(page.url()).toBe('about:blank');pagehide({isTrusted:true,persisted:false});});
+   await observer.finish(()=>1000);
+   expect(observers[1].disconnected).toBe(true);
    expect(windowState.__aihrNavigationFailureCaptureV1).toEqual({busy:0,unavailable:0,alerts:0});
-   expect(windowState.__aihrNativePrimaryFailureCaptureV1).toEqual({busy:1,unavailable:1,alerts:1});
+   expect(observer.facts()).toEqual({admitted:1,retired:1,refusals:0,finalBlank:true,markerDocuments:{busy:1,unavailable:1,alerts:1}});
+   expect(()=>observer.requireSettled(1)).toThrow(/failure observed through document retirement/);
   }finally{vi.unstubAllGlobals();}
+ });
+ it('requires two distinct receipts and one exact inert navigation before native primary settlement',async()=>{
+  const fixture=retirementPage(),{page}=fixture,observer=await installNativePrimaryFailureObserver(page);
+  observer.beforeNavigation();await page.goto(ingress+'/first');await observer.snapshot(()=>1000);
+  expect(()=>observer.requireSettled(1)).toThrow(/incomplete/);
+  observer.beforeNavigation();fixture.next(()=>{expect(fixture.receive(fixture.receipt())).toBe(true);});
+  await page.goto(ingress+'/second');
+  fixture.read(()=>({id:secondDocument,origin:ingress,busy:0,unavailable:0,alerts:0}));await observer.snapshot(()=>1000);
+  fixture.next(()=>{});const finishing=observer.finish(()=>1000);
+  await Promise.resolve();expect(page.url()).toBe('about:blank');
+  expect(fixture.receive(fixture.receipt(secondDocument))).toBe(true);await finishing;
+  expect(page.goto).toHaveBeenCalledTimes(3);
+  expect(page.goto).toHaveBeenLastCalledWith('about:blank',{waitUntil:'commit',timeout:1000});
+  expect(()=>observer.requireSettled(2)).not.toThrow();expect(()=>observer.requireSettled(1)).toThrow(/incomplete/);
+  expect(fixture.receive(fixture.receipt(secondDocument))).toBe(false);
+  expect(()=>observer.requireSettled(2)).toThrow(/incomplete/);
+ });
+ it.each(['foreign-page','subframe','foreign-context','wrong-key','wrong-document','extra-field','out-of-range','persisted']as const)(
+  'refuses an inadmissible native retirement receipt (%s)',async kind=>{
+   const fixture=retirementPage(),observer=await installNativePrimaryFailureObserver(fixture.page);
+   observer.beforeNavigation();await observer.snapshot(()=>1000);
+   const receipt=fixture.receipt(),sender={...fixture.sender};
+   let payload:object=receipt;
+   if(kind==='foreign-page')sender.page=retirementPage().page;
+   if(kind==='subframe')sender.frame={url:()=>ingress};
+   if(kind==='foreign-context')sender.context={};
+   if(kind==='wrong-key')receipt.key='unowned';
+   if(kind==='wrong-document')receipt.id=secondDocument;
+   if(kind==='extra-field')payload={...receipt,unexpected:0};
+   if(kind==='out-of-range')receipt.mask=8;
+   if(kind==='persisted')receipt.terminal=false;
+   fixture.next(()=>{expect(fixture.receive(payload,sender)).toBe(false);});
+   await expect(observer.finish(()=>1000)).rejects.toThrow(/retirement refused/);
+   expect(observer.facts()).toMatchObject({admitted:1,retired:0,refusals:1,finalBlank:false});
+  });
+ it('refuses a missing receipt within the remaining deadline after inert navigation',async()=>{
+  const fixture=retirementPage(),observer=await installNativePrimaryFailureObserver(fixture.page);
+  observer.beforeNavigation();await observer.snapshot(()=>1000);
+  await expect(observer.finish(()=>1)).rejects.toThrow(/receipt missing/);
+  expect(observer.facts()).toMatchObject({admitted:1,retired:0,refusals:1,finalBlank:false});
  });
  it('counts actual bound Page event classes and refuses a failure delivered after a clean route snapshot',()=>{
   const first=new EventEmitter(),second=new EventEmitter(),one=first as unknown as Page,two=second as unknown as Page;

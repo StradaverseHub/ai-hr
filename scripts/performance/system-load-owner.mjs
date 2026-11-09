@@ -7,7 +7,7 @@ import {routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,installNativePrimaryFailureObserver,
- capturedNativePrimaryFailures,createNativeBrowserFailureObservation} from './navigation-browser-capture.ts';
+ createNativeBrowserFailureObservation} from './navigation-browser-capture.ts';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
 import {attendanceRejectionProbeEnabled,prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
@@ -77,6 +77,7 @@ const report={suite,kind:nativePreflight?'NATIVE_RENDERED_UNION_WORKFLOW_SLICE':
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
 const nativeBrowserFailures=nativePreflight?createNativeBrowserFailureObservation():null;
+const nativePrimaryDocuments=[];
 if(nativePreflight)report.nativeRenderedPreflight={kind:'NATIVE_PRIMARY_ROUTE_UNION',observations:[],union:null,workflowAndRenderedSlicePassed:false,
  pendingHiddenShellCases:['shell.payrollProcess.employee.hidden-denied','shell.payrollProcess.manager.hidden-denied',
   'shell.analytics.employee.hidden-denied','shell.analytics.manager.hidden-denied'],
@@ -435,7 +436,7 @@ async function main(){
   assert(session&&session.value!==user.token,'browser sign-in did not establish a new session');
   return {passwordSubmittedAt,mfaSubmittedAt,homeUrlSettledAt,mfaTransport};
  }
- async function visit(page,user,path,phase='baseline',signIn=false,loadState,nativeRoute){
+ async function visit(page,user,path,phase='baseline',signIn=false,loadState,nativeRoute,nativeDom){
   lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
   const trackHomePrefetch=path==='/'&&phase==='baseline'&&!signIn;
   let rscRequests=0,prefetchRequests=0;
@@ -453,7 +454,7 @@ async function main(){
   const startedWith=loadState?.();
   try{
    const browserFailuresBefore=nativeRoute?nativeBrowserFailures.pageCount(page):0;
-   if(nativeRoute)assert(!signIn);
+   if(nativeRoute){assert(!signIn&&nativeDom);nativeDom.beforeNavigation();}
    if(signIn)signInTiming=await signInToHome(page,user);
    // Readiness is proved below. Network-idle adds an unrelated500ms quiet window.
    else response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:timeout()});
@@ -607,7 +608,7 @@ async function main(){
     assert.equal(await views.count(),1,'Native Assistant selected view is ambiguous');
     view=await views.first().getAttribute('data-ai-centre',{timeout:timeout()});
    }
-   const observed=await capturedNativePrimaryFailures(page);timeout();
+   const observed=await nativeDom.snapshot(timeout);timeout();
    assert.equal(page.url(),base+nativeRoute.final,'Native rendered route or query changed after readiness');
    const row={role:user.role,actorIndex:user.index,requested:path,final:page.url().slice(base.length),status:response.status(),redirectStatus,
     accountObserved:true,readiness:witness?'usable-content':'rendered-only',witness,view,elapsedMs:performance.now()-start,
@@ -796,11 +797,14 @@ async function main(){
    await visit(page,user,'/','sign-in-preflight',true);
    if(baselineNavigation)await baselineNavigation.captureActor(page,user.index);
    if(nativePreflight){
-    await installNativePrimaryFailureObserver(page);
-    for(const path of routePool(user)){
+    const nativeDom=await installNativePrimaryFailureObserver(page),paths=routePool(user);
+    nativePrimaryDocuments.push({actorIndex:user.index,expected:paths.length,nativeDom});
+    for(const path of paths){
      const route=nativePreflightRouteFor(user.role,user.index,path);
-     await visit(page,user,path,'baseline',false,undefined,route);
+     await visit(page,user,path,'baseline',false,undefined,route,nativeDom);
     }
+    const retirementDeadline=Math.min(nativeDeadline,performance.now()+90000);
+    await nativeDom.finish(()=>nativeRemaining(retirementDeadline));
    }
   });
  });
@@ -1377,7 +1381,10 @@ await settleDriverResources(failures,{
 recordLockSampling();
 if(nativePreflight){
  report.nativeRenderedPreflight.browserFailures=nativeBrowserFailures.facts();
+ report.nativeRenderedPreflight.primaryDocumentRetirement=nativePrimaryDocuments.map(({actorIndex,expected,nativeDom})=>({actorIndex,expected,...nativeDom.facts()}));
  if(preflightComplete)await failures.attempt('native-post-settlement',()=>{
+  assert.deepEqual(nativePrimaryDocuments.map(row=>row.actorIndex).sort((a,b)=>a-b),[0,1,2,4],'Native primary document owners differ');
+  for(const {expected,nativeDom}of nativePrimaryDocuments)nativeDom.requireSettled(expected);
   nativeBrowserFailures.requireClean();
   assert.equal(report.browserErrors.length,0,'Native late browser runtime errors');
   nativeRemaining(nativeDeadline);
