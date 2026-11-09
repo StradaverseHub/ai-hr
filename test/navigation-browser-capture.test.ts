@@ -121,24 +121,23 @@ const ingress='https://localhost:3443';
 const firstDocument='12345678-1234-4234-8234-123456789abc',secondDocument='12345678-1234-4234-9234-123456789abc';
 function retirementPage(existing?:Page){
  let url=ingress+'/',read=():unknown=>({id:firstDocument,origin:ingress,busy:0,unavailable:0,alerts:0});
- const frame={url:()=>url},context={};
- type Sender={page:unknown;frame:unknown;context:unknown};
- let receive:(sender:Sender,...args:unknown[])=>unknown;
+ const frame={url:()=>url},storage=new Map<string,string>();
  let onCommit=()=>{};
  const page=Object.assign(existing??{}, {
-  mainFrame:()=>frame,context:()=>context,url:()=>url,
+  mainFrame:()=>frame,url:()=>url,on:existing?.on??vi.fn(),off:existing?.off??vi.fn(),
   addInitScript:existing?.addInitScript??vi.fn(),
-  exposeBinding:vi.fn(async(_name:string,callback:typeof receive)=>{receive=callback;}),
-  evaluate:vi.fn(async()=>read()),
-  goto:vi.fn(async(next:string)=>{url=next;onCommit();return next==='about:blank'?null:{status:()=>200};}),
+  waitForURL:vi.fn(async()=>{}),
+  evaluate:vi.fn(async(_fn:unknown,input:{key?:string;expected?:string})=>{
+   if(input.expected){expect(read()).toMatchObject({id:input.expected});url='about:blank';onCommit();return;}
+   const receipt=storage.get(input.key!)??null;storage.delete(input.key!);
+   return url==='about:blank'?receipt:{read:read(),receipt};
+  }),
+  goto:vi.fn(async(next:string)=>{url=next;onCommit();return {status:()=>200};}),
  })as unknown as Page;
- const sender={page,frame,context};
- return {page,sender,receive:(payload:unknown,source=sender)=>receive(source,payload),
+ const key=()=> (vi.mocked(page.addInitScript).mock.calls.at(-1)?.[1]as {key:string}).key;
+ return {page,storage,store:(payload:unknown)=>storage.set(key(),JSON.stringify(payload)),
   next:(fn:()=>void)=>{onCommit=fn;},read:(fn:()=>unknown)=>{read=fn;},
-  receipt:(id=firstDocument)=>{
-   const input=vi.mocked(page.addInitScript).mock.calls.at(-1)?.[1]as {key:string};
-   return{id,mask:0,terminal:true,key:input.key};
-  },
+  receipt:(id=firstDocument)=>({id,mask:0,terminal:true,key:key()}),
  };
 }
 beforeEach(()=>{
@@ -240,11 +239,12 @@ describe('native identity and streamed navigation capture boundaries',()=>{
    disconnect(){this.entry.disconnected=true;}
   }
   let pagehide:(event:{isTrusted:boolean;persisted:boolean})=>void;
-  const windowState:Record<string,unknown>={__aihrNativePrimaryRetirementV1:fixture.receive,
+  const windowState:Record<string,unknown>={
    addEventListener(name:string,listener:typeof pagehide){expect(name).toBe('pagehide');pagehide=listener;}};
   windowState.top=windowState;
   const browser={window:windowState,document:{querySelectorAll:()=>[]},location:{origin:ingress},
-   crypto:{randomUUID:()=>firstDocument},Element:FixtureElement,MutationObserver:FixtureObserver};
+   crypto:{randomUUID:()=>firstDocument},Element:FixtureElement,MutationObserver:FixtureObserver,
+   sessionStorage:{getItem:(key:string)=>fixture.storage.get(key)??null,setItem:(key:string,value:string)=>fixture.storage.set(key,value)}};
   observer.beforeNavigation();
   for(const [script,input]of [legacy,native]){
    expect(typeof script).toBe('function');
@@ -273,33 +273,28 @@ describe('native identity and streamed navigation capture boundaries',()=>{
   const fixture=retirementPage(),{page}=fixture,observer=await installNativePrimaryFailureObserver(page);
   observer.beforeNavigation();await page.goto(ingress+'/first');await observer.snapshot(()=>1000);
   expect(()=>observer.requireSettled(1)).toThrow(/incomplete/);
-  observer.beforeNavigation();fixture.next(()=>{expect(fixture.receive(fixture.receipt())).toBe(true);});
+  observer.beforeNavigation();fixture.next(()=>fixture.store(fixture.receipt()));
   await page.goto(ingress+'/second');
   fixture.read(()=>({id:secondDocument,origin:ingress,busy:0,unavailable:0,alerts:0}));await observer.snapshot(()=>1000);
-  fixture.next(()=>{});const finishing=observer.finish(()=>1000);
-  await Promise.resolve();expect(page.url()).toBe('about:blank');
-  expect(fixture.receive(fixture.receipt(secondDocument))).toBe(true);await finishing;
-  expect(page.goto).toHaveBeenCalledTimes(3);
-  expect(page.goto).toHaveBeenLastCalledWith('about:blank',{waitUntil:'commit',timeout:1000});
+  fixture.next(()=>fixture.store(fixture.receipt(secondDocument)));await observer.finish(()=>1000);
+  expect(page.url()).toBe('about:blank');expect(page.goto).toHaveBeenCalledTimes(2);
+  expect(page.waitForURL).toHaveBeenLastCalledWith('about:blank',{waitUntil:'domcontentloaded',timeout:1000});
   expect(()=>observer.requireSettled(2)).not.toThrow();expect(()=>observer.requireSettled(1)).toThrow(/incomplete/);
-  expect(fixture.receive(fixture.receipt(secondDocument))).toBe(false);
-  expect(()=>observer.requireSettled(2)).toThrow(/incomplete/);
+  expect(fixture.storage.size).toBe(0);
  });
- it.each(['foreign-page','subframe','foreign-context','wrong-key','wrong-document','extra-field','out-of-range','persisted']as const)(
+ it.each(['wrong-key','wrong-document','extra-field','out-of-range','persisted','malformed']as const)(
   'refuses an inadmissible native retirement receipt (%s)',async kind=>{
    const fixture=retirementPage(),observer=await installNativePrimaryFailureObserver(fixture.page);
    observer.beforeNavigation();await observer.snapshot(()=>1000);
-   const receipt=fixture.receipt(),sender={...fixture.sender};
-   let payload:object=receipt;
-   if(kind==='foreign-page')sender.page=retirementPage().page;
-   if(kind==='subframe')sender.frame={url:()=>ingress};
-   if(kind==='foreign-context')sender.context={};
+   const receipt=fixture.receipt();
+   let payload:unknown=receipt;
    if(kind==='wrong-key')receipt.key='unowned';
    if(kind==='wrong-document')receipt.id=secondDocument;
    if(kind==='extra-field')payload={...receipt,unexpected:0};
    if(kind==='out-of-range')receipt.mask=8;
    if(kind==='persisted')receipt.terminal=false;
-   fixture.next(()=>{expect(fixture.receive(payload,sender)).toBe(false);});
+   if(kind==='malformed')payload=[];
+   fixture.next(()=>fixture.store(payload));
    await expect(observer.finish(()=>1000)).rejects.toThrow(/retirement refused/);
    expect(observer.facts()).toMatchObject({admitted:1,retired:0,refusals:1,finalBlank:false});
   });
@@ -307,6 +302,16 @@ describe('native identity and streamed navigation capture boundaries',()=>{
   const fixture=retirementPage(),observer=await installNativePrimaryFailureObserver(fixture.page);
   observer.beforeNavigation();await observer.snapshot(()=>1000);
   await expect(observer.finish(()=>1)).rejects.toThrow(/receipt missing/);
+  expect(observer.facts()).toMatchObject({admitted:1,retired:0,refusals:1,finalBlank:false});
+ });
+ it('refuses a stale receipt before the first document and a missing same-tab successor receipt',async()=>{
+  const stale=retirementPage(),staleObserver=await installNativePrimaryFailureObserver(stale.page);
+  stale.store(stale.receipt());staleObserver.beforeNavigation();
+  await expect(staleObserver.snapshot(()=>1000)).rejects.toThrow(/retirement refused/);
+  const missing=retirementPage(),observer=await installNativePrimaryFailureObserver(missing.page);
+  observer.beforeNavigation();await observer.snapshot(()=>1000);observer.beforeNavigation();
+  missing.read(()=>({id:secondDocument,origin:ingress,busy:0,unavailable:0,alerts:0}));
+  await expect(observer.snapshot(()=>1000)).rejects.toThrow(/receipt missing/);
   expect(observer.facts()).toMatchObject({admitted:1,retired:0,refusals:1,finalBlank:false});
  });
  it('counts actual bound Page event classes and refuses a failure delivered after a clean route snapshot',()=>{
@@ -362,13 +367,12 @@ function modeledShellBaseline():NativeShellBaseline{
 }
 type HiddenShellFixtureMode='exact'|'streamed'|'extra-hop'|'location'|'other-home'|'private-content'|'retired-marker';
 function hiddenShellPage(mode:HiddenShellFixtureMode='exact'){
- const {page,operations}=fictionalPage(),legacyGoto=page.goto.bind(page),legacyLocator=page.locator.bind(page);
+ const {page,operations}=fictionalPage(),legacyGoto=page.goto.bind(page),legacyLocator=page.locator.bind(page),legacyWait=page.waitForURL.bind(page);
  const navigations:string[]=[],disposals:string[]=[];
  let url=ingress+'/unit',id:string|undefined,serial=0,privateContent=false;
- const frame={url:()=>url},context=page.context();
- type Sender={page:Page;frame:typeof frame;context:typeof context};
- let binding:((source:Sender,payload:{id:string;key:string;mask:number;terminal:true})=>unknown)|undefined;
- let key:string|undefined;
+ const frame={url:()=>url};
+ let key:string|undefined,receipt:string|null=null;
+ const retire=(mask=0)=>{if(id)receipt=JSON.stringify({id,key,mask,terminal:true});};
  const origin=ingress+'/';
  const empty={count:async()=>0};
  const accountSelector='button[data-tour="account"]';
@@ -387,30 +391,38 @@ function hiddenShellPage(mode:HiddenShellFixtureMode='exact'){
   return {response,value,linked};
  };
  Object.assign(page,{
-  url:()=>url,mainFrame:()=>frame,context:()=>context,
-  exposeBinding:async(name:string,receiver:typeof binding)=>{
-   expect(name).toBe('__aihrNativeHiddenShellRetirementV1');binding=receiver;
-   return {dispose:async()=>{expect(url).toBe('about:blank');expect(disposals).toEqual(['script']);binding=undefined;disposals.push('binding');}};
-  },
+  url:()=>url,mainFrame:()=>frame,
   addInitScript:async(_script:unknown,input:{key?:string})=>{
    if(input.key)key=input.key;
    return {dispose:async()=>{expect(url).toBe('about:blank');key=undefined;disposals.push('script');}};
   },
-  evaluate:async(_fn:unknown,property?:string)=>{
-   if(property!==undefined){expect(property).toBe('__aihrNativeHiddenShellFailureCaptureV1');expect(id).toBeDefined();}
-   return {busy:0,unavailable:0,alerts:0,...(property?{id,origin:ingress}:{})};
+  async waitForURL(target:Parameters<Page['waitForURL']>[0],options:Parameters<Page['waitForURL']>[1]){
+   if(target==='about:blank'){expect(options?.waitUntil).toBe('domcontentloaded');return;}
+   return legacyWait(target,options);
+  },
+  evaluate:async(_fn:unknown,input?:{property:string;key?:string;expected?:string})=>{
+   const counts={busy:0,unavailable:0,alerts:0};
+   if(!input)return counts;
+   expect(input.property).toBe('__aihrNativeHiddenShellFailureCaptureV1');
+   if(input.expected){
+    expect(input.expected).toBe(id);retire(mode==='retired-marker'?1:0);
+    url='about:blank';navigations.push(url);id=undefined;return;
+   }
+   expect(input.key).toBe(key);
+   const consumed=receipt;receipt=null;
+   if(url==='about:blank')return consumed;
+   expect(id).toBeDefined();return {read:{...counts,id,origin:ingress},receipt:consumed};
   },
   locator(selector:string){
-   if(!binding||selector===accountSelector||selector==='main')return legacyLocator(selector);
+   if(!key||selector===accountSelector||selector==='main')return legacyLocator(selector);
    if(selector==='aside[data-app-sidebar]')return {waitFor:async()=>{},locator:()=>empty};
    if(selector.startsWith('main [data-navigation-destination='))return {count:async()=>Number(privateContent)};
    return empty;
   },
   async goto(address:string,options:Parameters<Page['goto']>[1]){
    navigations.push(address);const legacy=await legacyGoto(address,options);
-   if(!binding){url=address;return legacy;}
-   if(id){expect(binding({page,frame,context},{id,key:key!,mask:mode==='retired-marker'&&address==='about:blank'?1:0,terminal:true})).toBe(true);}
-   if(address==='about:blank'){url=address;id=undefined;return null;}
+   if(!key){url=address;return legacy;}
+   retire();
    id='12345678-1234-4234-8234-'+String(++serial).padStart(12,'0');
    if(address===origin){url=origin;privateContent=false;return document(origin,200).response;}
    expect([ingress+'/payroll',ingress+'/analytics']).toContain(address);
@@ -468,7 +480,7 @@ describe('separate fixed native shell baseline data and driver controls',()=>{
   await expect(native.captureActor(ordinary.page,4)).rejects.toThrow(/same completed legacy actor Page/);
   await native.captureActor(current.page,4);
   expect(current.navigations).toEqual([ingress+'/unit',ingress+'/',ingress+'/payroll',ingress+'/',ingress+'/analytics','about:blank']);
-  expect(current.disposals).toEqual(['script','binding']);
+  expect(current.disposals).toEqual(['script']);
   expect(current.operations.filter(operation=>operation.startsWith('click:'))).toEqual(
    ordinary.operations.filter(operation=>operation.startsWith('click:')));
   await expect(native.captureActor(current.page,4)).rejects.toThrow(/same completed legacy actor Page/);
@@ -502,12 +514,12 @@ it('retains all 74 group primary documents and refuses a 75th or an unlisted act
   const observer=await installNativePrimaryFailureObserver(fixture.page,0);
   for(let index=1;index<=count;index++){
    observer.beforeNavigation();
-   fixture.next(()=>{if(index>1)expect(fixture.receive(fixture.receipt(id(index-1)))).toBe(true);});
+   fixture.next(()=>{if(index>1)fixture.store(fixture.receipt(id(index-1)));});
    await fixture.page.goto(ingress+'/');
    fixture.read(()=>({id:id(index),origin:ingress,busy:0,unavailable:0,alerts:0}));
    await observer.snapshot(()=>1000);
   }
-  fixture.next(()=>{expect(fixture.receive(fixture.receipt(id(count)))).toBe(true);});
+  fixture.next(()=>fixture.store(fixture.receipt(id(count))));
   await observer.finish(()=>1000);
   observer.requireSettled(count);
   return observer.facts();

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import type {Page,Response} from 'playwright';
+import type {Page,Request,Response} from 'playwright';
 import {fixtureNavigationActor,navigationExpectedText,NAVIGATION_CAPTURE_MEMBER,NAVIGATION_CAPTURE_VERSION,validateNavigationCapture,
  NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,validateNativeShellBaseline,
  type NavigationCapture,type NavigationCaptureBundle,type NavigationObservation,type NavigationScenario,type NavigationFixtureTextBindings,
@@ -42,7 +42,6 @@ async function capturedFailures(page:Page){
 }
 
 const nativePrimaryProperty='__aihrNativePrimaryFailureCaptureV1';
-const nativePrimaryBinding='__aihrNativePrimaryRetirementV1';
 const nativePrimaryPages=new WeakSet<Page>();
 const nativeHiddenShellPages=new WeakSet<Page>();
 const nativeMarkerAttributes={'data-personnel-busy':'busy','data-page-busy':'busy',
@@ -128,11 +127,11 @@ async function installLegacyDenialObserver(page:Page,deniedPath:string){
 }
 
 const nativeDocumentId=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
-type Retirement={id:string;received:boolean;wake?:()=>void};
 type NativeDocumentSnapshot={id:string;origin:string;busy:number;unavailable:number;alerts:number};
+type NativeRetirementReceipt={id:string;key:string;mask:number;terminal:boolean};
 
-/** One already-owned primary Page. The bridge can only record failures and
- * acknowledge retirement of a document the driver has independently observed. */
+/** One already-owned primary Page. Retirement receipts belong to documents
+ * that the driver has independently observed on that Page. */
 export async function installNativePrimaryFailureObserver(page:Page,actorIndex?:number){
  const capacity=actorIndex===undefined?72:nativePreflightRoutePlan().filter(row=>row.actorIndex===actorIndex).length;
  assert(capacity>0,'Unknown primary route retirement actor');
@@ -142,31 +141,33 @@ export async function installNativePrimaryFailureObserver(page:Page,actorIndex?:
 async function installNativeDocumentFailureObserver(page:Page,scope:'primary'|'hidden-shell',capacity:number){
  const primary=scope==='primary',pages=primary?nativePrimaryPages:nativeHiddenShellPages;
  assert(!pages.has(page),'Native document retirement observer already installed');pages.add(page);
- const binding=primary?nativePrimaryBinding:'__aihrNativeHiddenShellRetirementV1';
  const property=primary?nativePrimaryProperty:'__aihrNativeHiddenShellFailureCaptureV1';
- const frame=page.mainFrame(),context=page.context(),key=randomUUID(),seen=new Set<string>();
+ const frame=page.mainFrame(),key='__aihrNativeRetirement:'+randomUUID(),seen=new Set<string>();
  const markerDocuments={busy:0,unavailable:0,alerts:0};
- let active:string|undefined,retiring:Retirement|undefined,awaitingSnapshot=false,finalBlank=false,retired=0,refusals=0;
- const refuse=()=>{refusals++;retiring?.wake?.();return false;};
- const bridge=await page.exposeBinding(binding,(source,...args:unknown[])=>{
-  const payload=args[0]as {key?:unknown;id?:unknown;mask?:unknown;terminal?:unknown}|null|undefined;
-  if(source.page!==page||source.frame!==frame||source.context!==context||args.length!==1||!payload||typeof payload!=='object'
-   ||Object.keys(payload).sort().join(',')!=='id,key,mask,terminal'||payload.key!==key
-   ||!retiring||retiring.received||payload.id!==retiring.id||payload.terminal!==true
-   ||typeof payload.mask!=='number'||!Number.isSafeInteger(payload.mask)||payload.mask<0||payload.mask>7)return refuse();
-  // Frame URL is mutable by the time a queued pagehide reaches this callback.
-  // The exact retiring document was already admitted at the same-origin snapshot.
+ let active:string|undefined,retiring:string|undefined,awaitingSnapshot=false,finalBlank=false,retired=0,refusals=0;
+ function consumeRetirement(raw:unknown){
+  if(!retiring&&raw===null)return;
+  let payload:Partial<NativeRetirementReceipt>|null=null;
+  if(typeof raw==='string'&&raw.length<=256){
+   try{
+    const value:unknown=JSON.parse(raw);
+    if(value&&typeof value==='object'&&!Array.isArray(value))payload=value as Partial<NativeRetirementReceipt>;
+   }catch{}
+  }
+  if(!retiring||!payload||Object.keys(payload).sort().join(',')!=='id,key,mask,terminal'||payload.key!==key
+   ||payload.id!==retiring||payload.terminal!==true
+   ||typeof payload.mask!=='number'||!Number.isSafeInteger(payload.mask)||payload.mask<0||payload.mask>7){
+   refusals++;throw Error(raw===null?'Native document retirement receipt missing':'Native document retirement refused');
+  }
   if(payload.mask&1)markerDocuments.busy++;
   if(payload.mask&2)markerDocuments.unavailable++;
   if(payload.mask&4)markerDocuments.alerts++;
-  retiring.received=true;retired++;retiring.wake?.();return true;
- });
+  retiring=undefined;retired++;
+ }
  const selectors={...failuresSelector,unavailable:failuresSelector.unavailable+',main[data-read-unavailable],main[data-today-unavailable]',
   alerts:failuresSelector.alerts+',main[role="alert"]'};
- const script=await page.addInitScript(({selectors,property,attributes,ingress,binding,key})=>{
+ const script=await page.addInitScript(({selectors,property,attributes,ingress,key})=>{
   if(window.top!==window||location.origin!==ingress)return;
-  const send=(window as unknown as Record<string,unknown>)[binding];
-  if(typeof send!=='function')throw Error('Native primary retirement binding missing');
   const id=crypto.randomUUID(),counts={busy:0,unavailable:0,alerts:0};
   const kinds=['busy','unavailable','alerts']as const;
   // Keep this serialized browser callback independent of tsx's Node scope.
@@ -192,50 +193,68 @@ async function installNativeDocumentFailureObserver(page:Page,scope:'primary'|'h
   window.addEventListener('pagehide',event=>{
    const final=state.snapshot();observer.disconnect();
    const mask=Number(final.busy>0)+2*Number(final.unavailable>0)+4*Number(final.alerts>0);
-   // A retired document may be disposed before the RPC returns. Only receipt
-   // in the driver counts. Transport failure leaves its retirement missing.
-   void Promise.resolve(send({id,key,mask,terminal:event.isTrusted&&!event.persisted})).catch(()=>{});
+   // A browser binding can lose the old context as it retires. Seal inside the
+   // tab before unloading, and refuse an unconsumed seal instead of replacing it.
+   const receipt={id,key,mask,terminal:event.isTrusted&&!event.persisted};
+   sessionStorage.setItem(key,sessionStorage.getItem(key)===null?JSON.stringify(receipt):'');
   },{once:true});
   state.inspect();
- },{selectors,property,attributes:nativeMarkerAttributes,ingress:BASE,binding,key});
+ },{selectors,property,attributes:nativeMarkerAttributes,ingress:BASE,key});
 
  const beginRetirement=()=>{
   assert(!retiring&&!awaitingSnapshot&&!finalBlank,'Native document transition already open');
-  if(active){retiring={id:active,received:false};active=undefined;}
+  retiring=active;active=undefined;
  };
- async function waitForRetirement(remaining:()=>number){
-  const pending=retiring;
-  if(pending&&!pending.received&&refusals===0)await new Promise<void>((resolve,reject)=>{
-   const ms=remaining();assert(Number.isSafeInteger(ms)&&ms>0&&ms<=90000,'Native retirement wait outside deadline');
-   const timer=setTimeout(()=>{pending.wake=undefined;refusals++;reject(Error('Native document retirement receipt missing'));},ms);
-   pending.wake=()=>{clearTimeout(timer);pending.wake=undefined;resolve();};
-  });
-  assert(refusals===0&&(!pending||pending.received),'Native document retirement refused');
-  retiring=undefined;
- }
  const retirement={
   beforeNavigation(){beginRetirement();awaitingSnapshot=true;},
   async snapshot(remaining:()=>number){
    assert(awaitingSnapshot,'Native document snapshot without owned navigation');
-   await waitForRetirement(remaining);
-   const read=await page.evaluate(property=>{
+   const {read,receipt}=await page.evaluate(({property,key})=>{
     const snapshot=(window as unknown as Record<string,(()=>NativeDocumentSnapshot)|undefined>)[property];
-    if(!snapshot)throw Error('Native primary failure-state observer missing');return snapshot();
-   },property);
+    if(!snapshot)throw Error('Native primary failure-state observer missing');
+    const read=snapshot(),receipt=sessionStorage.getItem(key);
+    if(receipt!==null)sessionStorage.removeItem(key);
+    return {read,receipt};
+   },{property,key});
    remaining();
    assert(read&&Object.keys(read).sort().join(',')==='alerts,busy,id,origin,unavailable'
     &&frame===page.mainFrame()&&new URL(frame.url()).origin===BASE&&read.origin===BASE
     &&typeof read.id==='string'&&nativeDocumentId.test(read.id)&&!seen.has(read.id)&&seen.size<capacity,'Native document snapshot identity differs');
    for(const count of [read.busy,read.unavailable,read.alerts])assert(Number.isSafeInteger(count)&&count>=0,'Native DOM failure count invalid');
+   consumeRetirement(receipt);
    seen.add(read.id);active=read.id;awaitingSnapshot=false;
    return{busy:read.busy,unavailable:read.unavailable,alerts:read.alerts};
   },
   async finish(remaining:()=>number){
-   assert(active,'Missing last native primary document');
+   const expected=active;
+   assert(expected,'Missing last native primary document');
    beginRetirement();
-   const response=await page.goto('about:blank',{waitUntil:'commit',timeout:remaining()});
-   assert(response===null&&page.url()==='about:blank','Native primary inert retirement navigation differs');
-   await waitForRetirement(remaining);remaining();finalBlank=true;
+   let requestedDocument=false;
+   const request=(value:Request)=>{
+    if(value.isNavigationRequest()&&value.resourceType()==='document'){
+     try{requestedDocument ||= value.frame()===frame;}catch{requestedDocument=true;}
+    }
+   };
+   page.on('request',request);
+   try{
+    await Promise.all([page.waitForURL('about:blank',{waitUntil:'domcontentloaded',timeout:remaining()}),page.evaluate(({property,expected,ingress})=>{
+     const snapshot=(window as unknown as Record<string,(()=>NativeDocumentSnapshot)|undefined>)[property];
+     if(location.origin!==ingress||snapshot?.().id!==expected)throw Error('Native terminal retirement document differs');
+     // The retiring document initiates blank, which inherits its effective origin
+     // and can read the same tab's seal without an application or network request.
+     setTimeout(()=>location.replace('about:blank'),0);
+    },{property,expected,ingress:BASE})]);
+    const receipt=await page.evaluate(({property,key,ingress})=>{
+     if(location.href!=='about:blank'||window.origin!==ingress||window.top!==window
+      ||Object.hasOwn(window,property)||document.body?.childNodes.length!==0)throw Error('Native terminal retirement blank differs');
+     const receipt=sessionStorage.getItem(key);
+     if(receipt!==null)sessionStorage.removeItem(key);
+     return receipt;
+    },{property,key,ingress:BASE});
+    remaining();
+    assert(!requestedDocument&&frame===page.mainFrame()&&page.url()==='about:blank','Native primary inert retirement navigation differs');
+    consumeRetirement(receipt);finalBlank=true;
+   }finally{page.off('request',request);}
   },
   facts(){return{admitted:seen.size,retired,refusals,finalBlank,markerDocuments:{...markerDocuments}};},
   requireSettled(expected:number){
@@ -249,7 +268,7 @@ async function installNativeDocumentFailureObserver(page:Page,scope:'primary'|'h
   retirement.requireSettled(4);
   // The last tracked document is already retired at about:blank. Remove this
   // scope before the same Page begins the independent primary route observer.
-  await script.dispose();await bridge.dispose();
+  await script.dispose();
  }};
 }
 
