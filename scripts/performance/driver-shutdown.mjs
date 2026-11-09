@@ -256,7 +256,7 @@ function cleanDevelopmentMeasurement({suite,identity,workCompleted,busyResponses
   &&developmentSettlementFields.every(key=>settlement[key]==='settled');
 }
 
-export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,busyResponses,pages,preflight,loaded,shutdown,renderedCapture,load=null}){
+export function buildDevelopmentMeasurement({suite,identity,workCompleted,clean,busyResponses,pages,preflight,loaded,shutdown,renderedCapture,load=/** @type {unknown} */ (null)}){
  const observedPages=knownCount(pages.observedPages,4096)?pages.observedPages:null;
  const closedPages=knownCount(pages.closedPages,4096)
   &&(observedPages!==null?pages.closedPages<=observedPages:pages.closedPages===null)?pages.closedPages:null;

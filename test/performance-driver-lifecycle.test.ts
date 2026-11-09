@@ -462,7 +462,7 @@ it('seals protected zero only after real opening, in-work observation and termin
  const result=await sampler.close(true);
  expect(result).toMatchObject({state:'complete',coveragePass:true,pass:true,blockingSamples:0,maxGapUs:500000,
   observedGapUs:250000,window:{startUs:0,endUs:400000},missedTicks:0});
- expect(result.samples.map(row=>row.position)).toEqual(['opening','periodic','closing']);
+ expect(result.samples.map((row:{position:string})=>row.position)).toEqual(['opening','periodic','closing']);
  expect([result,result.window,result.samples,...result.samples].every(Object.isFrozen)).toBe(true);
  expect(sampler.close(false)).toBe(sampler.close(true));
 });
@@ -586,7 +586,7 @@ it('closes protected business admission at the first periodic blocker and keeps 
 it('keeps local protected admission closed when the owned ingress seal itself refuses',()=>{
  const failures=createDriverFailures(),first=Error('first native failure'),later=Error('owner seal refused');
  const gate=createProtectedWorkAdmission({assertIngress:vi.fn(),sealIngress(){throw later;},
-  noteFailure:failures.notePrimary,noteSealFailure:reason=>failures.record('native-ingress-seal',reason)});
+  noteFailure:failures.notePrimary,noteSealFailure:(reason:unknown)=>failures.record('native-ingress-seal',reason)});
  gate.close(first);
  expect(()=>gate.requireOpen()).toThrow('Protected workload admission is closed');
  expect(failures.privateFailures()).toEqual({primary:{failed:true,reason:first},secondary:[{stage:'native-ingress-seal',reason:later}]});
