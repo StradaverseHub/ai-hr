@@ -6580,6 +6580,12 @@
       "childQualificationUnavailable": "不可用"
     },
     "batch": {
+      "retiredFormulaReview": "请检查已停用的考勤公式输入。",
+      "retiredFormulaDraft": "请检查保留的输入并将其冲销，然后生成工资单。",
+      "retiredFormulaProcessed": "请检查保留的输入。按薪资更正流程将此批次重置为草稿，再冲销这些输入。",
+      "retiredFormulaReverse": "冲销已停用的公式输入",
+      "retiredFormulaReason": "更正原因",
+      "retiredFormulaCorrectionFailed": "无法冲销已停用的公式输入。请检查薪资权限和草稿输入。",
       "back": "薪资",
       "subtitle": "薪资批次",
       "paymentSummary": "付款汇总",
@@ -36825,6 +36831,7 @@
     "residencyHelp": "请记录收款人的居民身份以供付款申报，包括自定义账户持有人。此资料与员工税务居民身份分开。"
   },
   "attendanceFormula": {
+    "retiredHistory": "考勤公式历史记录",
     "allCompanies": "所有公司",
     "selectedCompanies": "所选公司（{count} 家）",
     "allCompanySnapshot": "此版本涵盖 {count} 家有效公司。添加新公司前请先审核。",

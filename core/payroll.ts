@@ -1,4 +1,3 @@
-import {verifyAttendanceFormulaPayrollSourcesTx} from './payroll-attendance-allowance';
 import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
@@ -26,7 +25,7 @@ import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendanc
 import {readPcbExemptions, type PcbExemptionRow} from './pcb-exemptions';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError, readPcbNonCash, totalNonCash, taxableNonCash, type NonCashEntry, type NonCashEaEntry, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
 import { businessUnit, payslipInformationSetting } from '../db/schema';
-import { payrollHistoryEffectiveBatch } from '../db/schema';
+import { attendanceOvertimeSource, overtimeSourceSettlement, payrollAttendanceAllowanceSource, payrollHistoryEffectiveBatch } from '../db/schema';
 /**
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
@@ -3776,6 +3775,78 @@ export async function generatePayslips(
   return withTenant(ctx, async tx=>{await lockPayComponentCatalogReadTx(tx,ctx);await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);return generatePayslipsTx(tx,ctx,p);});
 }
 
+const retiredAttendanceFormulaRunError = 'Review and reverse retired Attendance Formula inputs before continuing this Payroll run.';
+
+async function payrollHasRetiredAttendanceFormulaInputsTx(tx:Tx,batchId:string) {
+ const [row]=await tx.execute<{affected:boolean}>(sql`
+  select app.payroll_has_retired_attendance_formula_inputs(${batchId}::uuid) as affected
+ `);
+ return row?.affected===true;
+}
+export function payrollHasRetiredAttendanceFormulaInputs(ctx:SessionContext,batchId:string) {
+ return withTenant(ctx,tx=>payrollHasRetiredAttendanceFormulaInputsTx(tx,batchId));
+}
+async function assertNoRetiredAttendanceFormulaInputsTx(tx:Tx,batchId:string) {
+ if(await payrollHasRetiredAttendanceFormulaInputsTx(tx,batchId))throw new Error(retiredAttendanceFormulaRunError);
+}
+
+/** Correct the draft run using the canonical component removal and overtime release paths. */
+export function reverseRetiredAttendanceFormulaInputs(
+ ctx:SessionContext,p:{batchId:string;scopeIds:string[];reason:string},
+) {
+ const batchId=z.guid().parse(p.batchId).toLowerCase();
+ const reason=z.string().trim().min(1).max(1000).parse(p.reason);
+ return withTenant(ctx,async tx=>{
+  await lockNativePayrollBatchPeriodTx(tx,ctx,batchId);
+  await lockPayrollOvertimeBatchContextTx(tx,ctx,batchId);
+  const [batch]=await tx.select().from(payrollBatch)
+   .where(and(eq(payrollBatch.id,batchId),eq(payrollBatch.tenantId,ctx.tenantId))).for('update');
+  if(!batch||!ctx.userId||!p.scopeIds.includes(batch.companyId))throw new BatchNotDraftError();
+  const [access]=await tx.execute<{allowed:boolean}>(sql`
+   select app.principal_snapshot_current() and app.can_admin_payroll_for(${batch.companyId}::uuid) as allowed
+  `);
+  if(!access?.allowed||batch.status!=='draft')throw new BatchNotDraftError();
+  if((await tx.select({id:payslip.id}).from(payslip).where(eq(payslip.batchId,batch.id)).limit(1)).length)
+   throw new BatchNotDraftError();
+  if(!await payrollHasRetiredAttendanceFormulaInputsTx(tx,batch.id))return;
+
+  // Do not remove any Pay Item that has an independent Attendance Allowance source.
+  const components=await tx.delete(payrollBatchComponent).where(and(
+   eq(payrollBatchComponent.tenantId,ctx.tenantId),eq(payrollBatchComponent.batchId,batch.id),
+   sql`exists (select 1 from ${payrollAttendanceAllowanceSource} s
+    where s.tenant_id=${ctx.tenantId}::uuid and s.batch_id=${payrollBatchComponent.batchId}
+     and s.employment_id=${payrollBatchComponent.employmentId} and s.component_id=${payrollBatchComponent.componentId}
+     and s.formula_result_id is not null)`,
+   sql`not exists (select 1 from ${payrollAttendanceAllowanceSource} s
+    where s.tenant_id=${ctx.tenantId}::uuid and s.batch_id=${payrollBatchComponent.batchId}
+     and s.employment_id=${payrollBatchComponent.employmentId} and s.component_id=${payrollBatchComponent.componentId}
+     and s.formula_result_id is null)`,
+  )).returning({id:payrollBatchComponent.id,employmentId:payrollBatchComponent.employmentId,componentId:payrollBatchComponent.componentId});
+
+  const subjects=await tx.selectDistinct({employmentId:attendanceOvertimeSource.employmentId})
+   .from(overtimeSourceSettlement).innerJoin(attendanceOvertimeSource,and(
+    eq(attendanceOvertimeSource.id,overtimeSourceSettlement.sourceId),
+    eq(attendanceOvertimeSource.tenantId,overtimeSourceSettlement.tenantId),
+   )).where(and(eq(overtimeSourceSettlement.tenantId,ctx.tenantId),
+    eq(overtimeSourceSettlement.payrollBatchId,batch.id),isNotNull(overtimeSourceSettlement.formulaBindingId),
+    isNull(overtimeSourceSettlement.releasedAt)));
+  const {released}=await releaseOvertimeSettlementsForDraftTeardownTx(tx,ctx,{batchId:batch.id,reason,retiredFormulaOnly:true});
+  for(const {employmentId} of subjects)await prefillOvertimeFromAttendanceTx(tx,ctx,{batchId:batch.id,employmentId,preserveManual:true});
+  await assertNoRetiredAttendanceFormulaInputsTx(tx,batch.id);
+
+  for(const component of components)await appendEvent(tx,{
+   tenantId:ctx.tenantId,aggregateType:'payroll-batch-component',aggregateId:component.id,
+   eventType:'payroll-batch-component.removed',actor:actorOf(ctx),subjectEmploymentId:component.employmentId,
+   payload:{batchId:batch.id,componentId:component.componentId,source:'retired-attendance-formula',reason},
+  });
+  await appendEvent(tx,{
+   tenantId:ctx.tenantId,aggregateType:'payroll-batch',aggregateId:batch.id,
+   eventType:'payroll-batch.retired-attendance-formula-inputs-reversed',actor:actorOf(ctx),
+   payload:{componentCount:components.length,overtimeSettlementCount:released,reason},
+  });
+ });
+}
+
 async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePayslipsParams) {
   await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
   const subset = p.reprocessSubset ?? null;
@@ -3787,6 +3858,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     } else if (batch.status !== 'draft') {
       throw new BatchNotDraftError();
     }
+
+    await assertNoRetiredAttendanceFormulaInputsTx(tx, batch.id);
 
     // ── ADR-0085 step 4 — THE MONEY GUARD. See `refuseIfPeriodFiled` for why the line is `run_seq > 1`.
     // This is the one that matters: `createAdditionalRun` refuses early, but a run created before a
@@ -4279,7 +4352,6 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const dim = daysInMonth(pYear, pMonth);
     // Formula cash is always a Payroll input, including when individual transaction pay is disabled.
     // Read under the batch lock without employee/source locks (the inverse would deadlock Attendance writers).
-    await verifyAttendanceFormulaPayrollSourcesTx(tx,ctx,p.batchId);
     const formulaCash = await readPayrollOvertimePatternCashTx(tx, ctx, { batchId: p.batchId });
     const formulaSchedule = await loadBatchCutOffSchedule(tx, batch.companyId);
     const formulaWindow = await unionTypeWindow(tx, formulaSchedule, batch.companyId, 'overtime', payPeriod);
@@ -8411,7 +8483,6 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
 /** app.payroll_close_anomaly_gate source version when the batch has no verdict row at all. */
 const NO_ANOMALY_VERDICT_SOURCE_VERSION=createHash('md5').update('').digest('hex');
 async function preparePayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string},reviewed=false){
-    await verifyAttendanceFormulaPayrollSourcesTx(tx,ctx,p.batchId);
     await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
@@ -8433,6 +8504,7 @@ async function preparePayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string}
     // Granular RBAC (9bc442bc): payroll.close (configurable per company/tenant), not a coarse admin check.
     await assertPayrollPermission(tx, ctx, 'payroll.close', batch.companyId);
     if (batch.status !== 'processed') throw new BatchNotCloseableError();
+    await assertNoRetiredAttendanceFormulaInputsTx(tx, p.batchId);
     const [parent]=await tx.select({status:payPeriod.status}).from(payPeriod).where(eq(payPeriod.id,batch.payPeriodId)).limit(1);
     if(parent?.status!=='open')throw new Error('This pay period is closed or unavailable.');
     // 49e7e0a2 — a run whose one-off transactions changed after it was processed is NOT closeable until

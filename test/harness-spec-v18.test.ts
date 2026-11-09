@@ -29,7 +29,7 @@ const line=(start:string)=>{const found=instructions.filter(row=>row.startsWith(
 
 describe('spec v18',()=>{
  it('keeps the current digest and every earlier version',()=>{
-  expect(HARNESS_SPEC.version).toBe(27);expect(HARNESS_SPEC_DIGESTS[27]).toBe(harnessSpecDigest());
+  expect(HARNESS_SPEC.version).toBe(28);expect(HARNESS_SPEC_DIGESTS[28]).toBe(harnessSpecDigest());
   expect(HARNESS_SPEC_DIGESTS[20]).toBe('87f846496918cf773ce778eefb288b1a41bf4c518d8e1463b9aa4d91755bda04');
   expect(HARNESS_SPEC_DIGESTS[19]).toBe('44e9708772ac71c0fcdc29b117769b34424fb21f4d5e1f45d1a3fe4795046b7c');
   expect(HARNESS_SPEC_DIGESTS[18]).toBe('7802392d1738b72c2035ff25c2009c07e559c865ca4fb6cb3bb30493dfd99759');

@@ -1023,10 +1023,6 @@ export const SCREENS: readonly ScreenEntry[] = [
     ],
   },
   {
-    screenKey: 'attendanceFormulaBuilder',href:'/admin/attendance/settings/formula-builder',labelKey:'nav.attendanceFormulaBuilder',guard:'scopedAdmin',
-    routes:['/admin/attendance/settings/formula-builder','/admin/attendance/settings/formula-builder/new','/admin/attendance/settings/formula-builder/[id]'],
-  },
-  {
     screenKey: 'attendanceAllowance',
     href: '/admin/attendance-allowance',
     labelKey: 'nav.attendanceAllowance',

@@ -186,7 +186,6 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/attendance/schedule','admin',null],['/admin/attendance/schedule-assignment','admin',null],
  ['/admin/attendance/schedule-assignment/bulk','admin',null],['/admin/attendance/schedule/new','admin',null],
  ['/admin/attendance/settings','admin',null],['/admin/attendance/settings/company-policy','admin',null],
- ['/admin/attendance/settings/formula-builder','admin',null],['/admin/attendance/settings/formula-builder/new','admin',null],
  ['/admin/attendance/settings/overtime-patterns','admin',null],['/admin/attendance/settings/registered-devices','admin',null],
  ['/admin/attendance/settings/work-schedule-overtime','admin',null],['/admin/audit','admin',null],['/admin/card-assignment','admin','attendance'],
  ['/admin/claims','admin',null],['/admin/claims/forms','admin',null],['/admin/claims/limits','admin',null],['/admin/claims/mileage','admin',null],

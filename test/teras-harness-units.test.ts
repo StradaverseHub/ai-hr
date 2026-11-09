@@ -53,7 +53,7 @@ it('keeps the two public guides as v22 product_guidance topics while retaining e
  });
  expect(Object.keys(HARNESS_SPEC_DIGESTS)).toEqual(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27']);
  expect(HARNESS_SPEC.offer.publicContextTools).toEqual(['product_destinations','product_guidance','available_actions']);
- expect(HARNESS_SPEC.offer.guidanceTopics).toEqual(['password_policy','correction_controls','organisation_tagging','attendance_formula_library','attendance_formula_authoring','reward_reviews']);
+ expect(HARNESS_SPEC.offer.guidanceTopics).toEqual(['password_policy','correction_controls','organisation_tagging','reward_reviews']);
  const v22=v22ShapedSpec(),{guidanceTopics:_topics,...v20Offer}=v22.offer;
  expect(harnessSpecDigest({...v22,version:20,offer:v20Offer})).toBe('87f846496918cf773ce778eefb288b1a41bf4c518d8e1463b9aa4d91755bda04');
 });

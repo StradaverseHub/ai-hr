@@ -41,7 +41,7 @@ export type TerasCapability=Readonly<{name:string;module:string|null;admin:boole
  worker:'explainers'|null;
  /** Release merge (spec v22): served as this topic of product_guidance (core/product-context/tools.ts GUIDANCE_TOPICS),
   * never bound as a tool of its own, so the offer stays within the provider's tool ceiling. Same runner, same gating. */
- topic?:'password_policy'|'correction_controls'|'organisation_tagging'|'attendance_formula_library'|'attendance_formula_authoring'|'reward_reviews';
+ topic?:'password_policy'|'correction_controls'|'organisation_tagging'|'reward_reviews';
  run(ctx:SessionContext,input:Record<string,unknown>,scope:TerasCapabilityScope):Promise<ExplainerOutcome>}>;
 const text=(value:unknown)=>typeof value==='string'?value:undefined;
 
@@ -113,20 +113,10 @@ export async function organisationTaggingGuidance(ctx:SessionContext):Promise<Ex
   humanBoundary:'The native owner verifies current HR doer authority over the full affected scope and independent HR or eligible Group Rewards checker authority. A different login and Person must approve the exact frozen preview; the original HR doer separately continues staging and publication. A changed source requires a new preview. Guidance cannot choose mappings, read a run, approve, publish, resume, export or re-tag employees. Deployment never executes a re-tag.',
   provenance:provenance('core/explainers/capabilities.ts#organisationTaggingGuidance','Not applicable: literal public page guidance, not a mapping or workflow read.',page,'Public navigation and human decision boundaries only. No Company identities, run handles, employees, mappings, counts, decisions, account state or source fingerprints are read or changed.')};
 }
-export async function attendanceFormulaLibraryGuidance(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
- if(!isAdmin(ctx)||!isModuleEnabled(ctx,'attendance',scope.companyId))return refuse('not_permitted','This guidance requires an administrator with the module enabled.');
- const page='/admin/attendance/settings/formula-builder';
- return {ok:true,page,purpose:'Review the library of administrator-authored attendance formulas.',navigation:'Open Attendance Settings, then Formula Builder.',humanBoundary:'Guidance reads no saved formula, employee, test or result. An authorised administrator chooses the company and Pay Item and uses the native Save, Test and Activate controls.',provenance:provenance('core/explainers/capabilities.ts#attendanceFormulaLibraryGuidance','Not applicable: literal public navigation only.',page,'No saved formula, employee, result, review, money, configuration or effect is read or changed.')};
-}
-export async function attendanceFormulaAuthoringGuidance(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
- if(!isAdmin(ctx)||!isModuleEnabled(ctx,'attendance',scope.companyId))return refuse('not_permitted','This guidance requires an administrator with the module enabled.');
- const page='/admin/attendance/settings/formula-builder/new';
- return {ok:true,page,purpose:'Prepare a new attendance formula using the public formula grammar.',navigation:'Open Attendance Settings, then Formula Builder, then New formula.',humanBoundary:'Only administrator-entered wording and public formula grammar may be sent through the separately reviewed draft helper. AI proposals do not save or activate a formula. Actual-data Test, activation, result review, approval and Payroll transfer remain separate authorised human actions.',provenance:provenance('core/explainers/capabilities.ts#attendanceFormulaAuthoringGuidance','Not applicable: literal public navigation only.',page,'No saved formula, employee, result, review, money, configuration or effect is read or changed.')};
-}
 export async function rewardReviewsGuidance(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
  if(!isAdmin(ctx)||!isModuleEnabled(ctx,'rewards',scope.companyId))return refuse('not_permitted','This guidance requires an administrator with the module enabled.');
  const page='/rewards/reviews';
- return {ok:true,page,purpose:'Find the native Rewards review workspace.',navigation:'Open Rewards, then Reviews.',humanBoundary:'Guidance reads no review, participant, recommendation, salary or budget. The native review owner checks each assigned role and company scope; configuration access alone does not grant access to a review. A human separately chooses and confirms any review action.',provenance:provenance('core/explainers/capabilities.ts#rewardReviewsGuidance','Not applicable: literal public navigation only.',page,'No saved formula, employee, result, review, money, configuration or effect is read or changed.')};
+ return {ok:true,page,purpose:'Find the native Rewards review workspace.',navigation:'Open Rewards, then Reviews.',humanBoundary:'Guidance reads no review, participant, recommendation, salary or budget. The native review owner checks each assigned role and company scope; configuration access alone does not grant access to a review. A human separately chooses and confirms any review action.',provenance:provenance('core/explainers/capabilities.ts#rewardReviewsGuidance','Not applicable: literal public navigation only.',page,'No employee, review, money, configuration or effect is read or changed.')};
 }
 export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'explain_payslip_statutory',module:'payroll',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnPayslipStatutory(ctx,{period:text(input.period),item:text(input.item)})},
@@ -136,8 +126,6 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'password_policy_guidance',module:null,admin:true,worker:null,topic:'password_policy',run:ctx=>passwordPolicyGuidance(ctx)},
  {name:'correction_controls_guidance',module:'payroll',admin:true,worker:null,topic:'correction_controls',run:(ctx,_input,scope)=>correctionControlsGuidance(ctx,scope)},
  {name:'organisation_tagging_guidance',module:null,admin:true,worker:null,topic:'organisation_tagging',run:ctx=>organisationTaggingGuidance(ctx)},
- {name:'attendance_formula_library_guidance',module:'attendance',admin:true,worker:null,topic:'attendance_formula_library',run:(ctx,_input,scope)=>attendanceFormulaLibraryGuidance(ctx,scope)},
- {name:'attendance_formula_authoring_guidance',module:'attendance',admin:true,worker:null,topic:'attendance_formula_authoring',run:(ctx,_input,scope)=>attendanceFormulaAuthoringGuidance(ctx,scope)},
  {name:'reward_reviews_guidance',module:'rewards',admin:true,worker:null,topic:'reward_reviews',run:(ctx,_input,scope)=>rewardReviewsGuidance(ctx,scope)},
  {name:'pay_aggregates',module:'payroll',admin:false,access:'payroll',worker:null,run:(ctx,input)=>payAggregates(ctx,input)},
  {name:'workforce_metrics',module:null,admin:false,access:'team',worker:null,run:(ctx,input)=>workforceAggregates(ctx,input)},

@@ -35,8 +35,6 @@ const statutory=answer('explain_payslip_statutory'),entitlement=answer('explain_
 const cycle=answer('payroll_cycle_status'),salaryChecks=answer('salary_payroll_checks'),loopSettings=answer('payroll_loop_settings'),audit=answer('payroll_audit_status');
 /** Conversations run as the explainer persona (employee role) unless `persona: 'admin'`. */
 export const EXPLAINER_CONVERSATIONS:readonly BaselineConversation[]=freeze([
- {id:'board-attendance_formula_library-guidance',title:'Attendance formula library public navigation and human boundaries',persona:'admin',turns:[{id:'board-attendance_formula_library-location',question:'Where do I open attendance formula library, and which decisions must I confirm on the native page?',category:'guidance',ideal:answer('attendance_formula_library_guidance')}]},
- {id:'board-attendance_formula_authoring-guidance',title:'New attendance formula public navigation and human boundaries',persona:'admin',turns:[{id:'board-attendance_formula_authoring-location',question:'Where do I open new attendance formula, and which decisions must I confirm on the native page?',category:'guidance',ideal:answer('attendance_formula_authoring_guidance')}]},
  {id:'board-reward_reviews-guidance',title:'Rewards reviews public navigation and human boundaries',persona:'admin',turns:[{id:'board-reward_reviews-location',question:'Where do I open rewards reviews, and which decisions must I confirm on the native page?',category:'guidance',ideal:answer('reward_reviews_guidance')}]},
  {id:'why-statutory',title:'Step 4: why is a statutory line this much',turns:[
   {id:'why-epf',question:'Why is my EPF deduction this amount?',category:'explanation',ideal:statutory},

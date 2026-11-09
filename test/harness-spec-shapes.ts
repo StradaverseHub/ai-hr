@@ -84,4 +84,10 @@ export function v24OrganisationShapedSpec(){
 }
 
 /** Recover the exact prior published spec, preserving its original digest. */
-export function v26ShapedSpec(){const guidanceTopics=HARNESS_SPEC.offer.guidanceTopics.filter(topic=>!['attendance_formula_library','attendance_formula_authoring','reward_reviews'].includes(topic));return {...HARNESS_SPEC,version:26,offer:{...HARNESS_SPEC.offer,guidanceTopics}};}
+export function v26ShapedSpec(){
+ return {...HARNESS_SPEC,version:26,offer:{...HARNESS_SPEC.offer,guidanceTopics:HARNESS_SPEC.offer.guidanceTopics.filter(topic=>topic!=='reward_reviews')}};
+}
+export function v27ShapedSpec(){
+ const prior=v26ShapedSpec();
+ return {...prior,version:27,offer:{...prior.offer,guidanceTopics:[...prior.offer.guidanceTopics,'attendance_formula_library','attendance_formula_authoring','reward_reviews']}};
+}

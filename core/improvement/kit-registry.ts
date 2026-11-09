@@ -34,8 +34,6 @@ export const KIT_DECLARATIONS:readonly KitDeclaration[]=Object.freeze([
  declare('password_policy_guidance','core/explainers/capabilities.ts#passwordPolicyGuidance',{module:null,admin:true}),
  declare('correction_controls_guidance','core/explainers/capabilities.ts#correctionControlsGuidance',{module:'payroll',admin:true}),
  declare('organisation_tagging_guidance','core/explainers/capabilities.ts#organisationTaggingGuidance',{module:null,admin:true}),
- declare('attendance_formula_library_guidance','core/explainers/capabilities.ts#attendanceFormulaLibraryGuidance',{module:'attendance',admin:true}),
- declare('attendance_formula_authoring_guidance','core/explainers/capabilities.ts#attendanceFormulaAuthoringGuidance',{module:'attendance',admin:true}),
  declare('reward_reviews_guidance','core/explainers/capabilities.ts#rewardReviewsGuidance',{module:'rewards',admin:true}),
  // AI Centre issue 13b: governed pay averages (core/semantic-model/entities-metrics.ts), offered under payroll access.
  declare('pay_aggregates','packs/payroll/pay-averages.ts#payAverages',{module:'payroll',admin:false,access:'payroll'}),

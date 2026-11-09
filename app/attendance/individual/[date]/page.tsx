@@ -1,6 +1,5 @@
-import {AttendanceFormulaPayItems} from '@/components/attendance-formula-pay-items';
-import {attendanceFormulaChoicesForDay,listAttendanceFormulaResults} from '@/packs/attendance/service';
-import {attendanceFormulaPayrollRuns} from '@/packs/payroll/service';
+import {AttendanceFormulaHistory} from '@/components/attendance-formula-pay-items';
+import {listAttendanceFormulaResults} from '@/packs/attendance/service';
 import {AttendanceUnclockedWork} from '@/components/attendance-unclocked-work';
 import { parseAttendanceLevelProblemToken, attendanceLevelProblemMessageKey } from '@/lib/attendance-workflow-v3';
 import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
@@ -189,8 +188,6 @@ export default async function IndividualAttendanceDayPage({
   const DASH = '—';
 
   const formulaPayItems=admin?await listAttendanceFormulaResults(s,{employmentId:selected.employmentId,date}):[];
-  const formulaChoices=admin?await attendanceFormulaChoicesForDay(s,{employmentId:selected.employmentId,date,companyIds:scopeIds}):[];
-  const formulaRuns=admin?await attendanceFormulaPayrollRuns(s,scopeIds):[];
 
   return (
     <div className={pageWideCls}>
@@ -228,7 +225,7 @@ export default async function IndividualAttendanceDayPage({
         </DayFieldGrid>
       </Card>
 
-      {admin&&<AttendanceFormulaPayItems employmentId={selected.employmentId} date={date} rows={formulaPayItems} choices={formulaChoices} runs={formulaRuns}/>}
+      {formulaPayItems.length > 0 && <AttendanceFormulaHistory rows={formulaPayItems} />}
 
       {/* r433 — 1 · CLOCK DATE AND BREAK TIME. The old Shift details and Break time cards, one section: the
           date, the shift period and the break together. The break is DERIVED (shift span less net

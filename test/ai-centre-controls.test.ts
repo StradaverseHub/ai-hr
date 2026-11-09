@@ -184,7 +184,7 @@ describe('individual AI read controls',()=>{
  it('registers every current read and module, and fails closed for future unknown functions',async()=>{
   const rows=await owner.db.execute<{function_key:string}>(sql`select function_key from app.ai_centre_function_kind order by function_key collate "C"`);
   expect(Array.from(rows).map(row=>row.function_key)).toEqual([...aiCentreReadKeys()].sort());
-  for(const key of ['read:attendance_formula_library_guidance','read:attendance_formula_authoring_guidance','read:reward_reviews_guidance'] as const){
+  for(const key of ['read:reward_reviews_guidance'] as const){
    expect(await aiCentreReadAllowed(group,key),key).toBe(true);
    await setAiCentreReadControl(group,key,false);
    expect(await aiCentreReadAllowed(group,key),key).toBe(false);

@@ -2,7 +2,6 @@ import {IMPORT_TARGETS} from '../assistant-import';
 /** Business operations that shared a gateway feature now have independent child restrictions.
  * This metadata grants nothing; each owner retains its native feature, scope and adjudication. */
 export const AI_CENTRE_OPERATIONS=Object.freeze([
- {id:'attendance_formula_draft',label:'Draft an attendance formula',owner:'core/attendance-formula-ai.ts#draftAttendanceFormula'},
  {id:'pay_formula_draft',label:'Draft a pay formula',owner:'core/pay-formula-ai.ts#draftPayFormula'},
  {id:'pay_rule_draft',label:'Draft a pay rule',owner:'core/pay-rule-ai.ts#draftPayRule'},
  {id:'report_spec_draft',label:'Draft a report',owner:'core/report-ai.ts#draftReportSpec'},

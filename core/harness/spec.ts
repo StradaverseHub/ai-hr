@@ -136,8 +136,9 @@ export const HARNESS_SPEC=freeze({
   * (core/proposals/request-dates.ts); the reply states the date the result gives. Any other date is still worked out from
   * today. Only the change line's last two sentences differ from v24.
   * 26: merge v25 with the deployed organisation review guidance, a literal public product_guidance topic.
-  * 27: public Attendance formula and Rewards review guidance topics; native decisions and private data remain outside guidance. */
- version:27,
+  * 27: public Attendance formula and Rewards review guidance topics; native decisions and private data remain outside guidance.
+  * 28: retire the Attendance formula builder guidance topics. */
+ version:28,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -182,7 +183,7 @@ export const HARNESS_SPEC=freeze({
   publicContextTools:['product_destinations','product_guidance','available_actions'],
   /** v22: the topics product_guidance serves besides its guide search, each one of main's administrator page guides
    * (core/explainers/capabilities.ts, gated as there). The harness refuses any other topic before the owner runs. */
-  guidanceTopics:['password_policy','correction_controls','organisation_tagging','attendance_formula_library','attendance_formula_authoring','reward_reviews'],
+  guidanceTopics:['password_policy','correction_controls','organisation_tagging','reward_reviews'],
   /** v23: the topic tools and their topics, in order (core/semantic-model/topic-tools.ts TOPIC_TOOLS). Each topic is one
    * declared read, bound only through its tool; the harness refuses any other topic before a runner. */
   topicTools:{
@@ -386,6 +387,7 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  // Main v25 plus deployed public organisation review guidance.
  26:'584e57dba0129ecb6c4c488137a82186f68c7cbfa171d2672a9b0d3f68b76dfa',
  27:'fdcc4753d0026dccf1d1eb14075944fa5bbd48a98d1e03ff80f2c5750381f04a',
+ 28:'8201900d74c1c75410f36439f671ba498f671c5ad647a746b6b3917a7c825cd0',
 });
 
 /** Parallel v24 deployed before the histories converged. Its number also identifies main's payroll-learning spec. */

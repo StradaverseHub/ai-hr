@@ -7,9 +7,10 @@ import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { formatPayPeriodMonth } from '@/lib/hr-date';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, listBatches, listRecalcChangeCategories, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
+import { batchDetail, payrollHasRetiredAttendanceFormulaInputs, listBatches, listRecalcChangeCategories, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
 import {batchScopeHeadcount} from '@/packs/payroll/service';
+import { reverseRetiredAttendanceFormulaAction } from './retired-attendance-formula-action';
 import {PendingMoneyStatus,PendingOvertimeCashAmount,PendingOvertimeCashDetails} from './pending-overtime';
 import { payrollPrecheckProfileHref } from '@/lib/payroll-precheck-profile';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
@@ -93,6 +94,7 @@ export default async function BatchPage({
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
+  const retiredFormulaInputs = batch.status !== 'closed' && await payrollHasRetiredAttendanceFormulaInputs(s,batch.id);
   // AI v2 P2-2b: who viewed this run's payroll register is recorded (core/payroll-audit/access-log.ts), before it renders.
   await recordPayrollAccess(s, { surface: 'register', action: 'view', companyId: batch.companyId, payPeriod: batch.payPeriod, batchId: batch.id });
   const scope = (batch.scope ?? null) as BatchScope | null;
@@ -418,7 +420,7 @@ export default async function BatchPage({
                 ⬇ {t('transactionDetail')}
               </ExportDownloadLink>
             )}
-            {batch.status === 'draft' && (
+            {batch.status === 'draft' && !retiredFormulaInputs && (
               <form action={generateAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
                 {/* r253 — THE SELECTION SURVIVES THE BUTTON, not just the Back link. This action
@@ -456,7 +458,7 @@ export default async function BatchPage({
                 Same gates as the panel had (processed-only, multi-cycle on, payslips exist); the
                 destination re-asserts all three and the service is still the authority. A plain <Link>,
                 not a form: the destination is a page, and this keeps the header a server component. */}
-            {batch.status === 'processed' && multiCycleOn && slips.length > 0 && (
+            {batch.status === 'processed' && !retiredFormulaInputs && multiCycleOn && slips.length > 0 && (
               <Link
                 href={`/payroll/${batch.id}/reprocess${fromSuffix}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -478,7 +480,7 @@ export default async function BatchPage({
                 {t('removeHeaderAction')}
               </Link>
             )}
-            {batch.status === 'processed' &&
+            {batch.status === 'processed' && !retiredFormulaInputs &&
               // 49e7e0a2 — Close is refused by `closeBatch` while the run owes a recalculation, so the
               // button is not offered while that is true. The service throw is the authority (this is a
               // second surface, not the guard); what the screen adds is not making the operator discover
@@ -539,6 +541,26 @@ export default async function BatchPage({
       />
 
       <ErrorBanner message={error} />
+      {retiredFormulaInputs && (
+        <div className="space-y-3 rounded-lg border border-border bg-muted p-4 text-sm">
+          <p className="font-medium">{t('retiredFormulaReview')}</p>
+          <p className="text-muted-foreground">{t(batch.status === 'draft' ? 'retiredFormulaDraft' : 'retiredFormulaProcessed')}</p>
+          {batch.status === 'draft' && (
+            <form action={reverseRetiredAttendanceFormulaAction}>
+              <input type="hidden" name="batchId" value={batch.id} />
+              <input type="hidden" name="from" value={backHref} />
+              <ConfirmSubmit
+                title={t('retiredFormulaReverse')}
+                description={t('retiredFormulaDraft')}
+                confirmLabel={t('retiredFormulaReverse')}
+                reasonField={{name:'reason',label:t('retiredFormulaReason'),required:true}}
+              >
+                {t('retiredFormulaReverse')}
+              </ConfirmSubmit>
+            </form>
+          )}
+        </div>
+      )}
 
       {/* Reporter req. #1/#2 made explicit (a03b2d9b): a processed run is LOCKED — amendments don't
           silently reprocess; corrections go through the controlled Reset. */}

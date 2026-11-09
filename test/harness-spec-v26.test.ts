@@ -5,7 +5,7 @@ import {GUIDANCE_TOPICS,CONTEXT_TOOL_SPECS} from '../core/product-context/tools'
 import {TERAS_CAPABILITIES} from '../core/explainers/capabilities';
 import {TERAS_READS,terasEntity} from '../core/semantic-model/generate';
 import {KIT_CAPABILITIES} from '../core/improvement/kit-registry';
-import {v24OrganisationShapedSpec,v25ShapedSpec,v26ShapedSpec} from './harness-spec-shapes';
+import {v24OrganisationShapedSpec,v25ShapedSpec,v26ShapedSpec,v27ShapedSpec} from './harness-spec-shapes';
 it('merges main v25 and preserves the parallel deployed v24 digest',()=>{
  const v25=v25ShapedSpec();
  expect(v26ShapedSpec().version).toBe(26);
@@ -18,7 +18,7 @@ it('merges main v25 and preserves the parallel deployed v24 digest',()=>{
 });
 it('registers one literal public topic with no input handles or additional provider binding',()=>{
  expect(GUIDANCE_TOPICS).toEqual(HARNESS_SPEC.offer.guidanceTopics);
- expect(CONTEXT_TOOL_SPECS.product_guidance.inputSchema).toMatchObject({properties:{topic:{enum:['password_policy','correction_controls','organisation_tagging','attendance_formula_library','attendance_formula_authoring','reward_reviews']}}});
+ expect(CONTEXT_TOOL_SPECS.product_guidance.inputSchema).toMatchObject({properties:{topic:{enum:['password_policy','correction_controls','organisation_tagging','reward_reviews']}}});
  const read=TERAS_READS.find(row=>row.name==='organisation_tagging_guidance')!;expect(read.input).toEqual([]);
  const entity=terasEntity(read.entity);expect(entity).toMatchObject({module:null,audience:'admin',page:'/admin/organization/organisation-tagging',owners:['core/explainers/capabilities.ts#organisationTaggingGuidance']});
  expect(entity.fields.map(field=>field.name)).toEqual(['page','purpose','navigation','humanBoundary','provenance']);
@@ -26,4 +26,9 @@ it('registers one literal public topic with no input handles or additional provi
  expect(KIT_CAPABILITIES.some(row=>row.declaration.name===read.name)).toBe(true);
 });
 
-it('v27 adds only three public page guidance topics and retains every previous spec digest',()=>{const prior=v26ShapedSpec();expect(HARNESS_SPEC).toEqual({...prior,version:27,offer:{...prior.offer,guidanceTopics:[...prior.offer.guidanceTopics,'attendance_formula_library','attendance_formula_authoring','reward_reviews']}});expect(harnessSpecDigest()).toBe(HARNESS_SPEC_DIGESTS[27]);});
+it('v28 retires the Attendance formula topics and keeps the previous spec digest',()=>{
+ const previous=v27ShapedSpec();
+ expect(harnessSpecDigest(previous)).toBe(HARNESS_SPEC_DIGESTS[27]);
+ expect(HARNESS_SPEC).toEqual({...previous,version:28,offer:{...previous.offer,guidanceTopics:[...v26ShapedSpec().offer.guidanceTopics,'reward_reviews']}});
+ expect(harnessSpecDigest()).toBe(HARNESS_SPEC_DIGESTS[28]);
+});

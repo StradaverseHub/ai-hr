@@ -1,4 +1,3 @@
-import {isCalendarDate} from '../lib/calendar-date';
 import {remainingDatedToilCredit,calculateDatedToilCredit,toilMeasuredCreditDays,TOIL_STANDARD_DAY_MINUTES,type DatedToilCreditEvidence} from '../lib/toil-dated-credit';
 /**
  * Leave-in-lieu (TOIL) — ADR-0033. A contractual replacement-leave engine: elected+approved rest-day /
@@ -4147,15 +4146,4 @@ export async function closeReplacementLeaveYear(
 export async function assertNoDependentAttendanceCreditTx(tx:Tx,employmentId:string,date:string){
   const [credit]=await tx.select({id:toilAccrual.id}).from(toilAccrual).where(and(eq(toilAccrual.employmentId,employmentId),eq(toilAccrual.workedDate,date),ne(toilAccrual.status,'reversed'))).limit(1);
   if(credit)throw new Error('This day has a dependent Leave Credit. Review and reverse that credit through Leave Credits before correcting this attendance day.');
-}
-
-/** Read-only native quantity for Attendance formula diagnostics. No grant, credit or settlement effect.
- * A reversed accrual is not consumption; every other retained status preserves the banked source fact. */
-export async function attendanceFormulaToilSourceTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;from:string;to:string}){
- if(!isModuleEnabled(ctx,'toil'))return null;
- if(!/^[a-f0-9-]{36}$/i.test(p.employmentId)||!isCalendarDate(p.from)||!isCalendarDate(p.to)||p.to<p.from||(Date.parse(p.to+'T00:00:00Z')-Date.parse(p.from+'T00:00:00Z'))/86400000>61)throw Error('Choose a bounded TOIL source period.');
- const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.can_admin_employment(${p.employmentId}::uuid) as ok`);if(!allowed?.ok)throw Error('The TOIL source is outside your employee administrative scope.');
- const rows=await tx.select({id:toilAccrual.id,date:toilAccrual.workedDate,minutes:toilAccrual.otMinutes,status:toilAccrual.status,source:toilAccrual.source,updatedAt:toilAccrual.updatedAt}).from(toilAccrual).where(and(eq(toilAccrual.tenantId,ctx.tenantId),eq(toilAccrual.employmentId,p.employmentId),gte(toilAccrual.workedDate,p.from),lte(toilAccrual.workedDate,p.to),ne(toilAccrual.status,'reversed'))).orderBy(asc(toilAccrual.workedDate),asc(toilAccrual.id)).limit(63);
- if(rows.length>62||new Set(rows.map(row=>row.date)).size!==rows.length||rows.some(row=>!Number.isSafeInteger(row.minutes)||row.minutes<0||row.minutes>4320))throw Error('The retained TOIL source cannot establish an unambiguous minute quantity.');
- return rows;
 }

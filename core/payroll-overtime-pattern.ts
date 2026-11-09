@@ -1,8 +1,4 @@
-/** Formula OT is a canonical Payroll input, never an individual transaction or a second money ledger.
- * Generation/close hold the batch and use MVCC reads; only transfer acquires employee -> source -> batch. */
-import {datesBetween} from '../lib/roster-month';
-import {randomUUID} from 'node:crypto';
-import {allocateAttendanceFormulaCents} from '../lib/attendance-formula-allocation';
+/** Overtime Pattern cash inputs and retained Attendance Formula cash evidence. */
 import {allowanceCents} from '../lib/attendance-allowance-rules';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
@@ -322,75 +318,98 @@ export async function transferOvertimePatternToPayroll(ctx:SessionContext,p:{emp
 
 /** The country pack and existing Payroll policy own monetary floors for any proved OT source.
  * Attendance formulas supply neither a statutory rate nor a statutory eligibility decision. */
-export async function attendanceFormulaOvertimeFloorTx(tx:Tx,ctx:SessionContext,p:{companyId:string;employmentId:string;payPeriod:string;componentIds:string[];parts:{date:string;dayType:'workday'|'rest_day'|'holiday';minutes:number}[]}){
- await financial(tx,p.companyId);
- if(!p.parts.length||p.parts.length>186||p.parts.some(part=>!Number.isSafeInteger(part.minutes)||part.minutes<0||part.minutes>4320))fail('coverage');
- const [entity]=await tx.select().from(company).where(eq(company.id,p.companyId));if(!entity)fail('permission');assertStatutory(entity.statutoryTier,'Payroll',entity.legalName);
- const pack=packFor(entity.country);if(!pack||entity.currency!=='MYR')fail('currency');
- const seed=pack.payComponents.defaults.find(row=>row.code===pack.payComponents.backfillCodes.overtime);if(!seed)fail('mapping');
- const components=await tx.select().from(payComponent).where(and(inArray(payComponent.id,p.componentIds),eq(payComponent.tenantId,ctx.tenantId),isNull(payComponent.archivedAt),isNull(payComponent.pendingInputKind)));
- if(components.length!==new Set(p.componentIds).size||components.some(item=>item.kind!==seed.kind||item.isNonPayable!==seed.isNonPayable||item.includedInEpf!==seed.includedInEpf||item.includedInSocsoEis!==seed.includedInSocsoEis||item.includedInPcb!==seed.includedInPcb||item.includedInHrdfBase!==seed.includedInHrdfBase||item.epfBonus2012||item.pcbExemptionCode||item.pcbRemunerationType==='optional_deduction'||item.pcbRemunerationType==='normal'))fail('mapping');
- const end=periodEnd(p.payPeriod),comps=await tx.select().from(compensation).where(and(eq(compensation.employmentId,p.employmentId),compensationEffectiveOn(end))).limit(2);if(comps.length!==1||comps[0].currency!==entity.currency)fail('unavailable');
- const proofs=await provenCompanyDatesTx(tx,p.parts.map(part=>({employmentId:p.employmentId,date:part.date})));if(p.parts.some(part=>proofs.get(p.employmentId+'|'+part.date)?.companyId!==p.companyId))fail('coverage');
- const rules=await pack.payroll.loadRuleset(tx,{asOf:end}),config=(await resolveAssignedPolicy(tx,p.employmentId))?.config??null;
- const floors=p.parts.map(part=>{const minimum=pack.payroll.overtimePay({monthlyWages:round2(Number(comps[0].basicSalary)+Number(comps[0].monthlyAllowance??0)),days:[{dayType:part.dayType,minutes:part.minutes}],wageCeiling:rules.ot.wageCeiling,restDayExcessMultiplier:rules.ot.restDayExcessMultiplier,holidayExcessMultiplier:rules.ot.holidayExcessMultiplier});const floor=minimum.eligible?applyOvertimeCapsDetailed({overtime:{multiplier:config?.overtime?.multiplier}},{workday:minimum.workday,restDay:minimum.restDay,holiday:minimum.holiday,workedOtHours:0}).capped:0;return {date:part.date,dayType:part.dayType,minutes:part.minutes,countryMinimumApplicable:minimum.eligible,minimumMinorUnits:String(Math.round(floor*100)),periodEnd:end};});
- return {components:components.map(item=>({id:item.id,code:item.code,name:item.name})).sort((a,b)=>a.id.localeCompare(b.id)),treatment:{epf:seed.includedInEpf,socso:seed.includedInSocsoEis,pcb:seed.includedInPcb,hrdf:seed.includedInHrdfBase},floors,references:{compensation:comps[0],country:entity.country,currency:entity.currency,rules:rules.ot,policy:config?.overtime??null}};
-}
+type FrozenFormulaLine = {
+ resultId:string; revisionId:string; sourceId:string; date:string; dayType:PayrollOvertimePatternLine['dayType'];
+ componentId:string; amountMinorUnits:string; physicalMinutes:number; countedMinutes:number;
+};
+type FrozenFormulaDay = {
+ sourceId:string; sourceDate:string; sourceRevision:number; calculationId:string; coverage:string;
+};
+type FrozenFormulaResult = Pick<typeof import('../db/schema').attendanceFormulaResult.$inferSelect,
+ 'id'|'formulaId'|'revisionId'|'sourceHash'|'payComponentId'|'quantity'|'unit'|'rate'|'amount'>;
+type FrozenFormulaProof = {
+ version:string; companyId:string; employmentId:string; from:string; to:string; batchId:string; payPeriod:string;
+ days:FrozenFormulaDay[]; results:FrozenFormulaResult[]; lines:FrozenFormulaLine[];
+ money:{
+  treatment:PayrollOvertimePatternLine['treatment'];
+  components:{id:string;code:string;name:string}[];
+  floors:(PayrollOvertimePatternLine['floorEvidence'] & {date:string})[];
+ };
+};
 
-type FormulaOtPart={date:string;dayClass:string;dayType:'workday'|'rest_day'|'holiday';minutes:number;physicalMinutes:number;roundedMinutes:number;roundingCountAttributions:unknown[];intervals:{from:number;to:number}[]};
-type FormulaOtResult=typeof import('../db/schema').attendanceFormulaResult.$inferSelect;
-type FormulaOtDay={sourceId:string;sourceDate:string;sourceRevision:number;calculationId:string;sourceHash:string;coverage:string;parts:FormulaOtPart[]};
-const FORMULA_OT_BINDING_VERSION='attendance-formula-overtime-1';
-async function attendanceFormulaOvertimeProofTx(tx:Tx,ctx:SessionContext,results:FormulaOtResult[],batch:typeof payrollBatch.$inferSelect,lockSources:boolean){
- if(!results.length||results.length>128||results.some(row=>row.companyId!==batch.companyId||row.employmentId!==results[0].employmentId||row.periodFrom!==results[0].periodFrom||row.periodTo!==results[0].periodTo))fail('coverage');
- const ordered=[...results].sort((a,b)=>a.id.localeCompare(b.id)),employmentId=ordered[0].employmentId,from=ordered[0].periodFrom,to=ordered[0].periodTo;
- const {readAttendanceFormulaOvertimeCoverageTx,replayAttendanceFormulaResultTx,lockOvertimeSourceTx}=await import('../packs/attendance/service');
- for(const result of ordered){const replay=await replayAttendanceFormulaResultTx(tx,ctx,result);if(replay.configuration.purpose!=='overtime')fail('mapping');}
- const days:FormulaOtDay[]=[];
- for(const date of datesBetween(from,to)){
-  if(lockSources)await lockOvertimeSourceTx(tx,ctx,{employmentId,date});
-  const coverage=await readAttendanceFormulaOvertimeCoverageTx(tx,ctx,{companyId:batch.companyId,employmentId,date});if(!coverage.parts.length)continue;
-  const parts:FormulaOtPart[]=coverage.parts.map(part=>{const dayType=part.dayClass==='normal'?'workday':part.dayClass==='off'||part.dayClass==='rest'?'rest_day':part.dayClass==='publicHoliday'||part.dayClass==='replacementHoliday'?'holiday':null;if(!dayType)fail('coverage');return {...part,dayType};});
-  const parent=coverage.source;if(parent.companyId!==batch.companyId)fail('coverage');
-  const intervals=coverage.reservationIntervals;if(!intervals.length||intervals.some(part=>!Number.isSafeInteger(part.fromEpochMillisecond)||!Number.isSafeInteger(part.toEpochMillisecond)||part.toEpochMillisecond<=part.fromEpochMillisecond))fail('coverage');
-  days.push({sourceId:parent.id,sourceDate:date,sourceRevision:parent.revision,calculationId:coverage.calculationId,sourceHash:coverage.sourceHash,parts,coverage:'{'+intervals.map(part=>'['+part.fromEpochMillisecond+','+part.toEpochMillisecond+')').join(',')+'}'});
+/** Posted cash uses the immutable allocation, treatment and rate captured when Payroll accepted it. */
+async function readAttendanceFormulaOvertimeBindingTx(
+ tx:Tx,ctx:SessionContext,id:string,batch:typeof payrollBatch.$inferSelect,
+):Promise<FrozenFormulaProof>{
+ const [binding]=await tx.execute<{companyId:string;employmentId:string;from:string;to:string;payload:FrozenFormulaProof}>(sql`
+  select company_id as "companyId",employment_id as "employmentId",period_from::text as "from",
+   period_to::text as "to",payload
+  from attendance_formula_ot_binding
+  where id=${id}::uuid and tenant_id=app.current_tenant_id() and batch_id=${batch.id}::uuid
+ `);
+ if(!binding)fail('unavailable');
+ const proof=binding.payload;
+ if(proof.version!=='attendance-formula-overtime-1'||proof.companyId!==batch.companyId||
+  proof.companyId!==binding.companyId||proof.employmentId!==binding.employmentId||
+  proof.from!==binding.from||proof.to!==binding.to||proof.batchId!==batch.id||proof.payPeriod!==batch.payPeriod||
+  !Array.isArray(proof.results)||!Array.isArray(proof.days)||!Array.isArray(proof.lines)||
+  !Array.isArray(proof.money?.components)||!Array.isArray(proof.money?.floors)||!proof.money.treatment)fail('stale');
+
+ const ids=await tx.execute<{id:string}>(sql`
+  select result_id as id from attendance_formula_ot_binding_result
+  where binding_id=${id}::uuid and tenant_id=app.current_tenant_id() order by result_id
+ `);
+ if(!ids.length||ids.length>128||ids.length!==proof.results.length)fail('coverage');
+ const {readAttendanceFormulaResultTx,attendanceFormulaResultStateTx}=await import('../packs/attendance/service');
+ const totals=new Map<string,bigint>();
+ for(const {id:resultId} of ids){
+  const result=await readAttendanceFormulaResultTx(tx,ctx,resultId);
+  const state=await attendanceFormulaResultStateTx(tx,resultId);
+  const frozen=proof.results.find(row=>row.id===resultId);
+  const {id,formulaId,revisionId,sourceHash,payComponentId,quantity,unit,rate,amount}=result;
+  if(state?.kind!=='posted'||state.batchId!==batch.id||result.companyId!==binding.companyId||
+   result.employmentId!==binding.employmentId||result.periodFrom!==binding.from||result.periodTo!==binding.to||
+   !frozen||stableJSON(frozen)!==stableJSON({id,formulaId,revisionId,sourceHash,payComponentId,quantity,unit,rate,amount}))fail('stale');
+  totals.set(resultId,BigInt(0));
  }
- if(!days.length)fail('coverage');
- // Same employee/source -> batch ordering as the existing overtime owner. Every dated part
- // retains the parent's Payroll attribution; mixed-employer or out-of-cutoff coverage refuses.
- for(const day of days)await targetTx(tx,ctx,{batchId:batch.id,employmentId,date:day.sourceDate,dates:[...new Set([day.sourceDate,...day.parts.map(part=>part.date)])],companyId:batch.companyId,status:batch.status==='draft'?'draft':'processed'});
- const parts=days.flatMap(day=>day.parts.map(part=>({...part,sourceId:day.sourceId}))),byDate=new Map<string,{date:string;dayType:FormulaOtPart['dayType'];minutes:number}>();
- for(const part of parts){const previous=byDate.get(part.date);if(previous&&previous.dayType!==part.dayType)fail('coverage');byDate.set(part.date,{date:part.date,dayType:part.dayType,minutes:(previous?.minutes??0)+part.minutes});}
- const money=await attendanceFormulaOvertimeFloorTx(tx,ctx,{companyId:batch.companyId,employmentId,payPeriod:batch.payPeriod,componentIds:[...new Set(ordered.map(row=>row.payComponentId))],parts:[...byDate.values()].sort((a,b)=>a.date.localeCompare(b.date))});
- const lines=ordered.flatMap((result,resultIndex)=>{const allocated=allocateAttendanceFormulaCents(allowanceCents(result.amount).toString(),parts.map(part=>part.minutes));return parts.map((part,index)=>({resultId:result.id,revisionId:result.revisionId,sourceId:part.sourceId,date:part.date,dayType:part.dayType,componentId:result.payComponentId,amountMinorUnits:allocated[index],physicalMinutes:part.physicalMinutes,countedMinutes:resultIndex===0?part.minutes:0}));});
- for(const floor of money.floors){const total=lines.filter(line=>line.date===floor.date).reduce((sum,line)=>sum+BigInt(line.amountMinorUnits),BigInt(0));if(total<BigInt(floor.minimumMinorUnits))fail('statutoryFloor');}
- const proof={version:FORMULA_OT_BINDING_VERSION,companyId:batch.companyId,employmentId,from,to,batchId:batch.id,payPeriod:batch.payPeriod,results:ordered.map(row=>({id:row.id,formulaId:row.formulaId,revisionId:row.revisionId,sourceHash:row.sourceHash,payComponentId:row.payComponentId,quantity:row.quantity,unit:row.unit,rate:row.rate,amount:row.amount})),days,money,lines};
- const encoded=JSON.stringify(proof);if(Buffer.byteLength(encoded)>8*1024*1024)fail('unavailable');
- // Compare the durable JSON representation: database timestamps become ISO strings and
- // undefined optional properties are absent, exactly as PostgreSQL jsonb retains them.
- return JSON.parse(encoded) as typeof proof;
-}
-/** One immutable evidence binding can have many real formula results and dated source parents.
- * Every parent still reserves through the existing cash/TOIL owner, once. No invented assignment. */
-export async function bindAttendanceFormulaOvertimeTx(tx:Tx,ctx:SessionContext,p:{results:FormulaOtResult[];batch:typeof payrollBatch.$inferSelect}){
- const proof=await attendanceFormulaOvertimeProofTx(tx,ctx,p.results,p.batch,true),id=randomUUID(),first=p.results[0];
- if(!ctx.userId)fail('permission');
- await tx.execute(sql`insert into attendance_formula_ot_binding(id,tenant_id,company_id,employment_id,batch_id,period_from,period_to,payload,created_by) values(${id}::uuid,${ctx.tenantId}::uuid,${first.companyId}::uuid,${first.employmentId}::uuid,${p.batch.id}::uuid,${first.periodFrom}::date,${first.periodTo}::date,${JSON.stringify(proof)}::jsonb,${ctx.userId}::uuid)`);
- for(const result of p.results)await tx.execute(sql`insert into attendance_formula_ot_binding_result(binding_id,tenant_id,company_id,employment_id,result_id) values(${id}::uuid,${ctx.tenantId}::uuid,${result.companyId}::uuid,${result.employmentId}::uuid,${result.id}::uuid)`);
- for(const day of proof.days){await tx.execute(sql`insert into attendance_formula_ot_binding_day(binding_id,source_id,tenant_id,company_id,employment_id,coverage,payload) values(${id}::uuid,${day.sourceId}::uuid,${ctx.tenantId}::uuid,${first.companyId}::uuid,${first.employmentId}::uuid,${day.coverage}::int8multirange,${JSON.stringify(day)}::jsonb)`);
-  await reserveOvertimeSettlementTx(tx,ctx,{employmentId:first.employmentId,date:day.sourceDate,mode:'cash',calculationId:day.calculationId,payrollBatchId:p.batch.id,formulaBindingId:id});
+
+ const days=await tx.execute<{sourceId:string;payload:FrozenFormulaDay;matchesCoverage:boolean}>(sql`
+  select d.source_id as "sourceId",d.payload,
+   (d.coverage=(d.payload->>'coverage')::int8multirange
+    and d.coverage=c.reservation_coverage
+    and c.calculation_id is not distinct from (d.payload->>'calculationId')::uuid
+    and c.coverage_calculation_id is not distinct from c.calculation_id
+    and c.coverage_kind='formulaPhysical'
+    and c.coverage_employment_id=d.employment_id
+    and o.attendance_date::text=d.payload->>'sourceDate') as "matchesCoverage"
+  from attendance_formula_ot_binding_day d
+  join overtime_source_settlement c on c.source_id=d.source_id and c.tenant_id=d.tenant_id
+   and c.company_id=d.company_id and c.formula_binding_id=d.binding_id and c.payroll_batch_id=${batch.id}::uuid
+   and c.mode='cash' and c.released_at is null
+  join attendance_overtime_source o on o.id=d.source_id and o.tenant_id=d.tenant_id
+  where d.binding_id=${id}::uuid and d.tenant_id=app.current_tenant_id()
+ `);
+ const [{count}]=await tx.execute<{count:number}>(sql`
+  select count(*)::int as count from overtime_source_settlement
+  where formula_binding_id=${id}::uuid and tenant_id=app.current_tenant_id()
+   and payroll_batch_id=${batch.id}::uuid and released_at is null
+ `);
+ if(!days.length||days.length!==proof.days.length||days.length!==count)fail('coverage');
+ for(const day of days){
+  const frozen=proof.days.find(row=>row.sourceId===day.sourceId);
+  if(!frozen||!day.matchesCoverage||stableJSON(day.payload)!==stableJSON(frozen))fail('stale');
  }
- await prefillOvertimeFromAttendanceTx(tx,ctx,{batchId:p.batch.id,preserveManual:true,employmentId:first.employmentId});
- return {bindingId:id,sources:proof.days.length};
-}
-async function readAttendanceFormulaOvertimeBindingTx(tx:Tx,ctx:SessionContext,id:string,batch:typeof payrollBatch.$inferSelect){
- const [binding]=await tx.execute<{id:string;payload:Awaited<ReturnType<typeof attendanceFormulaOvertimeProofTx>>}>(sql`select id,payload from attendance_formula_ot_binding where id=${id}::uuid and tenant_id=app.current_tenant_id() and batch_id=${batch.id}::uuid`);if(!binding)fail('unavailable');
- const ids=await tx.execute<{id:string}>(sql`select result_id as id from attendance_formula_ot_binding_result where binding_id=${id}::uuid and tenant_id=app.current_tenant_id() order by result_id`);if(!ids.length||ids.length>128)fail('unavailable');
- const {readAttendanceFormulaResultTx,attendanceFormulaResultStateTx}=await import('../packs/attendance/service'),results=[];
- for(const row of ids){const result=await readAttendanceFormulaResultTx(tx,ctx,row.id),state=await attendanceFormulaResultStateTx(tx,result.id);if(state?.kind!=='posted'||state.batchId!==batch.id)fail('stale');results.push(result);}
- const fresh=await attendanceFormulaOvertimeProofTx(tx,ctx,results,batch,false);if(stableJSON(fresh)!==stableJSON(binding.payload))fail('stale');
- const days=await tx.execute<{sourceId:string;payload:FormulaOtDay;coverage:string}>(sql`select source_id as "sourceId",payload,coverage::text as coverage from attendance_formula_ot_binding_day where binding_id=${id}::uuid and tenant_id=app.current_tenant_id() order by source_id`);
- if(days.length!==fresh.days.length)fail('coverage');for(const day of fresh.days){const stored=days.find(row=>row.sourceId===day.sourceId);if(!stored||stableJSON(stored.payload)!==stableJSON(day))fail('stale');const [same]=await tx.execute<{ok:boolean}>(sql`select ${stored.coverage}::int8multirange=${day.coverage}::int8multirange as ok`);if(!same?.ok)fail('stale');}
- const claims=await tx.execute<{sourceId:string;id:string}>(sql`select source_id as "sourceId",id from overtime_source_settlement where formula_binding_id=${id}::uuid and tenant_id=app.current_tenant_id() and payroll_batch_id=${batch.id}::uuid and released_at is null`);if(claims.length!==fresh.days.length||fresh.days.some(day=>!claims.some(claim=>claim.sourceId===day.sourceId)))fail('coverage');
- return fresh;
+
+ const sourceIds=new Set(days.map(day=>day.sourceId));
+ const results=new Map(proof.results.map(row=>[row.id,row]));
+ for(const line of proof.lines){
+  const result=results.get(line.resultId);
+  if(!result||result.revisionId!==line.revisionId||result.payComponentId!==line.componentId||
+   !sourceIds.has(line.sourceId)||!/^[0-9]+$/.test(line.amountMinorUnits)||
+   !Number.isSafeInteger(line.countedMinutes)||line.countedMinutes<0||
+   !Number.isSafeInteger(line.physicalMinutes)||line.physicalMinutes<0)fail('stale');
+  totals.set(result.id,(totals.get(result.id)??BigInt(0))+BigInt(line.amountMinorUnits));
+ }
+ if(proof.results.some(row=>totals.get(row.id)!==allowanceCents(row.amount)))fail('stale');
+ return proof;
 }

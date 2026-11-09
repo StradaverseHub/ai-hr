@@ -100,5 +100,3 @@ export {payFormulaPermittedDraftFieldsTx} from '../../core/pay-formula-personnel
 
 export {previewIndividualTxnInput} from './individual-calculation';
 export { payComponentCompanyChoices, PayComponentCompanyError } from '../../core/pay-component-company';
-
-export {priceAttendanceFormulaQuantity} from '../../core/payroll-attendance-allowance';

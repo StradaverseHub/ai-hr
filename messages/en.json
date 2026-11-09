@@ -5856,6 +5856,12 @@
       "rowMoreActions": "More actions"
     },
     "batch": {
+      "retiredFormulaReview": "Retired Attendance Formula inputs need review.",
+      "retiredFormulaDraft": "Review the retained inputs and reverse them before generating payslips.",
+      "retiredFormulaProcessed": "Review the retained inputs. Reset the run to draft using the payroll correction process, then reverse them.",
+      "retiredFormulaReverse": "Reverse retired formula inputs",
+      "retiredFormulaReason": "Reason for the correction",
+      "retiredFormulaCorrectionFailed": "The retired formula inputs could not be reversed. Check your payroll access and the draft inputs.",
       "back": "Payroll",
       "subtitle": "Payroll batch",
       "paymentSummary": "Payment summary",
@@ -36825,6 +36831,7 @@
     "residencyHelp": "Record the bank payee’s residency for payment reporting, including a custom account holder. This is separate from employee tax residency."
   },
   "attendanceFormula": {
+    "retiredHistory": "Attendance formula history",
     "allCompanies": "All Companies",
     "selectedCompanies": "Selected companies ({count})",
     "allCompanySnapshot": "This version covers {count} active companies. Review new companies before adding them.",

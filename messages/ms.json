@@ -6580,6 +6580,12 @@
       "childQualificationUnavailable": "Tidak tersedia"
     },
     "batch": {
+      "retiredFormulaReview": "Input Formula Kehadiran yang telah ditamatkan perlu disemak.",
+      "retiredFormulaDraft": "Semak input yang disimpan dan songsangkannya sebelum menjana slip gaji.",
+      "retiredFormulaProcessed": "Semak input yang disimpan. Tetapkan semula larian kepada draf melalui proses pembetulan gaji, kemudian songsangkan input tersebut.",
+      "retiredFormulaReverse": "Songsangkan input formula yang ditamatkan",
+      "retiredFormulaReason": "Sebab pembetulan",
+      "retiredFormulaCorrectionFailed": "Input formula yang ditamatkan tidak dapat disongsangkan. Semak akses gaji dan input draf anda.",
       "back": "Gaji",
       "subtitle": "Kelompok gaji",
       "paymentSummary": "Ringkasan pembayaran",
@@ -36825,6 +36831,7 @@
     "residencyHelp": "Rekod pemastautinan penerima untuk pelaporan pembayaran, termasuk pemegang akaun tersuai. Ini berasingan daripada pemastautinan cukai pekerja."
   },
   "attendanceFormula": {
+    "retiredHistory": "Sejarah formula kehadiran",
     "allCompanies": "Semua Syarikat",
     "selectedCompanies": "Syarikat dipilih ({count})",
     "allCompanySnapshot": "Versi ini meliputi {count} syarikat aktif. Semak syarikat baharu sebelum menambahnya.",

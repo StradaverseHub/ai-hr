@@ -1,23 +1,79 @@
 'use client';
+
 import {useState,useTransition} from 'react';
-import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
-import Link from 'next/link';
-import {Button,Field,inputCls} from '@/components/ui';
-import {TestEvidence} from '@/app/admin/attendance/settings/formula-builder/editor';
-import {calculateAttendancePayItemAction,reviewAttendancePayItemAction,readAttendancePayItemAction,transferAttendancePayItemsAction} from '@/app/attendance/individual/[date]/formula-actions';
-import type {attendanceFormulaChoicesForDay,listAttendanceFormulaResults,readAttendanceFormulaResult} from '@/packs/attendance/service';
-import type {attendanceFormulaPayrollRuns} from '@/packs/payroll/service';
-type Rows=Awaited<ReturnType<typeof listAttendanceFormulaResults>>;
-export function AttendanceFormulaPayItems({employmentId,date,rows,choices,runs}:{employmentId:string;date:string;rows:Rows;choices:Awaited<ReturnType<typeof attendanceFormulaChoicesForDay>>;runs:Awaited<ReturnType<typeof attendanceFormulaPayrollRuns>>}){
- const t=useTranslations('attendanceFormula'),router=useRouter(),[pending,start]=useTransition(),[error,setError]=useState(''),[notice,setNotice]=useState(''),[formulaId,setFormulaId]=useState(''),[reason,setReason]=useState(''),[batchId,setBatchId]=useState(''),[selection,setSelection]=useState<string[]>([]),[detail,setDetail]=useState<Awaited<ReturnType<typeof readAttendanceFormulaResult>>|null>(null);
- const act=<T,>(run:()=>Promise<{ok:true;value:T}|{ok:false;error:string}>,done?:(value:T)=>void)=>{setError('');setNotice('');start(async()=>{const response=await run();if(!response.ok){setError(response.error);return;}done?.(response.value);router.refresh();});};
- return <section className="space-y-5 border-t border-border pt-6" aria-labelledby="attendance-pay-items"><div className="flex flex-wrap items-baseline justify-between gap-3"><h2 id="attendance-pay-items" className="text-lg font-semibold">{t('payItemsTitle')}</h2><Link href="/admin/attendance/settings/formula-builder" className="text-sm text-primary underline-offset-4 hover:underline">{t('title')}</Link></div><p className="max-w-prose text-sm text-muted-foreground">{t('payItemsHelp')}</p>
- {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}{notice&&<p role="status" className="text-sm">{notice}</p>}
- <div className="flex flex-wrap items-end gap-3"><Field label={t('activeFormula')}><select className={inputCls+' max-w-lg'} disabled={pending} value={formulaId} onChange={event=>setFormulaId(event.target.value)}><option value="">{t('chooseFormula')}</option>{choices.map(choice=><option key={choice.id} value={choice.id}>{choice.code} · {choice.description} · {t(choice.method)}</option>)}</select></Field><Button type="button" variant="secondary" disabled={pending||!formulaId} onClick={()=>act(()=>calculateAttendancePayItemAction({id:formulaId,employmentId,date}),()=>setNotice(t('calculatedNotice')))}>{t('calculatePayItem')}</Button></div>
- {!rows.length?<p className="py-6 text-sm text-muted-foreground">{t('noPayItems')}</p>:<div className="overflow-x-auto"><table className="w-full min-w-[58rem] text-left text-sm"><thead><tr className="border-b border-border">{['selectResult','payItem','code','period','quantity','rate','amount','status','actions'].map(key=><th key={key} scope="col" className="px-3 py-3 font-medium">{t(key)}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={row.result.id} className="border-b border-border align-top"><td className="px-3 py-3"><input type="checkbox" aria-label={t('selectResultName',{code:row.code,from:row.result.periodFrom,to:row.result.periodTo})} disabled={pending||!['approved','posted'].includes(row.state)} checked={selection.includes(row.result.id)} onChange={event=>setSelection(current=>event.target.checked?[...current,row.result.id]:current.filter(id=>id!==row.result.id))}/></td><td className="px-3 py-3">{row.payCode}<span className="block text-muted-foreground">{row.payName}</span></td><td className="px-3 py-3">{row.code}<span className="block text-muted-foreground">{t('versionNumber',{version:row.version})}</span><span className="block max-w-64 text-muted-foreground">{row.definition.description}</span></td><td className="px-3 py-3 tabular-nums">{row.result.periodFrom} – {row.result.periodTo}<span className="block text-muted-foreground">{t(row.definition.period.method)}</span></td><td className="px-3 py-3 tabular-nums">{row.result.quantity} {t(row.result.unit)}</td><td className="px-3 py-3 tabular-nums">{row.result.rate??'—'}</td><td className="px-3 py-3 tabular-nums">RM {row.result.amount}</td><td className="px-3 py-3">{t('resultStates.'+row.state)}</td><td className="space-y-2 px-3 py-3"><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={()=>act(()=>readAttendancePayItemAction(row.result.id),setDetail)}>{t('viewEvidence')}</Button>{['calculated','reviewed'].includes(row.state)&&<Button type="button" size="sm" variant="secondary" disabled={pending||!reason.trim()} onClick={()=>act(()=>reviewAttendancePayItemAction({resultId:row.result.id,command:row.state==='calculated'?'review':'approve',reason}),()=>setNotice(t('reviewRecorded')))}>{t(row.state==='calculated'?'reviewResult':'approveResult')}</Button>}</td></tr>)}</tbody></table></div>}
- <Field label={t('reviewReason')}><input className={inputCls+' max-w-2xl'} maxLength={1000} value={reason} disabled={pending} onChange={event=>setReason(event.target.value)}/></Field>
- {detail&&<div className="space-y-3"><TestEvidence proof={detail}/><Button type="button" variant="ghost" onClick={()=>setDetail(null)}>{t('closeEvidence')}</Button></div>}
- <div className="space-y-3 border-t border-border pt-5"><h3 className="font-semibold">{t('transferTitle')}</h3><p className="max-w-prose text-sm text-muted-foreground">{t('transferHelp')}</p><div className="flex flex-wrap items-end gap-3"><Field label={t('payrollRun')}><select className={inputCls} value={batchId} disabled={pending} onChange={event=>setBatchId(event.target.value)}><option value="">{t('chooseRun')}</option>{runs.map(run=><option key={run.id} value={run.id}>{run.companyName} · {run.period} · {run.cycleName??t('regularRun')}</option>)}</select></Field><Button type="button" disabled={pending||!batchId||!selection.length||!reason.trim()} onClick={()=>act(()=>transferAttendancePayItemsAction({batchId,resultIds:selection,reason}),()=>{setSelection([]);setNotice(t('transferRecorded'));})}>{t('transferToPayroll')}</Button></div></div>
- </section>;
+import {Button} from '@/components/ui';
+import {readAttendancePayItemAction} from '@/app/attendance/individual/[date]/formula-actions';
+import type {listAttendanceFormulaResults,readAttendanceFormulaResult} from '@/packs/attendance/service';
+import type {FormulaTraceEvent,FormulaValue} from '@/lib/pay-formula-language';
+
+type Rows = Awaited<ReturnType<typeof listAttendanceFormulaResults>>;
+type Detail = Awaited<ReturnType<typeof readAttendanceFormulaResult>>;
+type FormulaRequest = {code:string;args:{value:unknown}[]};
+
+export function AttendanceFormulaHistory({rows}:{rows:Rows}) {
+ const t=useTranslations('attendanceFormula');
+ const [pending,start]=useTransition();
+ const [error,setError]=useState('');
+ const [detail,setDetail]=useState<Detail|null>(null);
+ function openEvidence(id:string) {
+  setError('');
+  start(async()=>{
+   const response=await readAttendancePayItemAction(id);
+   if(response.ok) setDetail(response.value);
+   else setError(response.error);
+  });
+ }
+ return (
+  <section className="space-y-5 border-t border-border pt-6" aria-labelledby="attendance-formula-history">
+   <h2 id="attendance-formula-history" className="text-lg font-semibold">{t('retiredHistory')}</h2>
+   {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
+   <div className="overflow-x-auto">
+    <table className="w-full min-w-[48rem] text-left text-sm">
+     <thead>
+      <tr className="border-b border-border">
+       {['payItem','code','period','quantity','rate','amount','status','actions'].map(key=>(
+        <th key={key} scope="col" className="px-3 py-3 font-medium">{t(key)}</th>
+       ))}
+      </tr>
+     </thead>
+     <tbody>
+      {rows.map(row=>(
+       <tr key={row.result.id} className="border-b border-border align-top">
+        <td className="px-3 py-3">{row.payCode}<span className="block text-muted-foreground">{row.payName}</span></td>
+        <td className="px-3 py-3">{row.code}<span className="block text-muted-foreground">{t('versionNumber',{version:row.version})}</span>
+         <span className="block max-w-64 text-muted-foreground">{row.definition.description}</span></td>
+        <td className="px-3 py-3 tabular-nums">{row.result.periodFrom} – {row.result.periodTo}
+         <span className="block text-muted-foreground">{t(row.definition.period.method)}</span></td>
+        <td className="px-3 py-3 tabular-nums">{row.result.quantity} {t(row.result.unit)}</td>
+        <td className="px-3 py-3 tabular-nums">{row.result.rate??'—'}</td>
+        <td className="px-3 py-3 tabular-nums">RM {row.result.amount}</td>
+        <td className="px-3 py-3">{t('resultStates.'+row.state)}</td>
+        <td className="px-3 py-3"><Button type="button" size="sm" variant="ghost" disabled={pending}
+         onClick={()=>openEvidence(row.result.id)}>{t('viewEvidence')}</Button></td>
+       </tr>
+      ))}
+     </tbody>
+    </table>
+   </div>
+   {detail&&<div className="space-y-3"><HistoricalEvidence proof={detail}/>
+    <Button type="button" variant="ghost" onClick={()=>setDetail(null)}>{t('closeEvidence')}</Button>
+   </div>}
+  </section>
+ );
+}
+
+function HistoricalEvidence({proof}:{proof:Pick<Detail,'payload'|'periodFrom'|'periodTo'>}){const t=useTranslations('attendanceFormula'),result=proof.payload.result as {amount?:string;trace?:{formula:string;event:FormulaTraceEvent;request?:FormulaRequest}[]},days=proof.payload.days as {date:string;values:Record<string,{state:string;value?:{value:unknown};source?:string;revision?:string;reason?:string}>}[];return <div className="space-y-4 rounded-xl border border-border p-4"><h3 className="font-semibold">{t('result',{amount:result.amount??'—'})}</h3><p className="text-sm tabular-nums">{proof.periodFrom} – {proof.periodTo}</p><details><summary className="cursor-pointer text-sm font-medium">{t('calculationTrace')}</summary><ol className="mt-3 space-y-2 text-sm">{result.trace?.map((step,index)=><li key={index} className="break-words"><p className="font-medium">{step.formula} · {t('traceLine',{line:step.event.loc.line})}</p><TraceStep event={step.event} request={step.request}/></li>)}</ol></details><details><summary className="cursor-pointer text-sm font-medium">{t('sourceEvidence')}</summary><div className="mt-3 space-y-3">{days?.map(day=><details key={day.date}><summary className="cursor-pointer text-sm tabular-nums">{day.date}</summary><dl className="mt-2 divide-y divide-border">{Object.entries(day.values).filter(([,fact])=>fact.state==='known').map(([key,fact])=><div key={key} className="grid gap-1 py-2 text-xs sm:grid-cols-2"><dt className="break-all font-mono">{key}</dt><dd className="break-all">{String(fact.value?.value)} · {fact.source}<span className="block text-muted-foreground">{fact.revision}</span></dd></div>)}</dl></details>)}</div></details></div>;}
+
+function TraceStep({event,request}:{event:FormulaTraceEvent;request?:FormulaRequest}){
+ const t=useTranslations('attendanceFormula'),value=(v:FormulaValue)=>v.type==='boolean'?t(v.value?'true':'false'):String(v.value);
+ switch(event.kind){
+  case 'read':return <p>{t('traceRead',{reference:request?request.code+'('+request.args.map(arg=>String(arg.value)).join(', ')+')':event.code,value:value(event.value)})}</p>;
+  case 'arithmetic':return <p className="tabular-nums">{event.left} {event.operator} {event.right} = {event.result}</p>;
+  case 'condition':return <p>{t('traceCondition',{value:t(event.value?'true':'false')})}</p>;
+  case 'otherwise':return <p>{t('traceElse')}</p>;
+  case 'set':return <p>{t('traceSet',{name:event.name,value:value(event.value)})}</p>;
+  case 'return':return <p className="font-medium tabular-nums">{t('traceReturn',{value:value(event.value)})}</p>;
+  case 'explain':return <p className="whitespace-pre-wrap">{event.text}</p>;
+ }
 }

@@ -6580,6 +6580,12 @@
       "childQualificationUnavailable": "Không có dữ liệu"
     },
     "batch": {
+      "retiredFormulaReview": "Cần xem xét dữ liệu từ công thức chấm công đã ngừng sử dụng.",
+      "retiredFormulaDraft": "Hãy xem lại và đảo ngược các dữ liệu đã lưu trước khi tạo phiếu lương.",
+      "retiredFormulaProcessed": "Hãy xem lại dữ liệu đã lưu. Đặt đợt tính lương về bản nháp theo quy trình điều chỉnh bảng lương, rồi đảo ngược dữ liệu.",
+      "retiredFormulaReverse": "Đảo ngược dữ liệu từ công thức đã ngừng",
+      "retiredFormulaReason": "Lý do điều chỉnh",
+      "retiredFormulaCorrectionFailed": "Không thể đảo ngược dữ liệu từ công thức đã ngừng. Hãy kiểm tra quyền truy cập bảng lương và dữ liệu bản nháp.",
       "back": "Bảng lương",
       "subtitle": "Đợt bảng lương",
       "paymentSummary": "Tóm tắt thanh toán",
@@ -36825,6 +36831,7 @@
     "residencyHelp": "Ghi nhận tình trạng cư trú của người nhận để báo cáo thanh toán, gồm cả chủ tài khoản tùy chỉnh. Thông tin này tách biệt với tình trạng cư trú thuế của nhân viên."
   },
   "attendanceFormula": {
+    "retiredHistory": "Lịch sử công thức chấm công",
     "allCompanies": "Tất cả công ty",
     "selectedCompanies": "Công ty đã chọn ({count})",
     "allCompanySnapshot": "Phiên bản này áp dụng cho {count} công ty đang hoạt động. Hãy xem xét công ty mới trước khi thêm.",
