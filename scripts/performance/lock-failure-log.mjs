@@ -3,6 +3,15 @@
 export function postgresLockFailures(log){
  const failures=[];let current;
  for(const line of log.split('\n')){
+  // PostgreSQL logs these only after the lock-wait timer fired. An acquired
+  // message still witnesses blocking, even if no timeout reached the user.
+  const waited=line.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} [A-Z0-9+-]+ \[(\d{1,10})\] (?:[a-z0-9_]+@[a-z0-9_]+ )?LOG:\s+process (\d{1,10}) (still waiting for|acquired|avoided deadlock for|detected deadlock while waiting for|failed to acquire) (AccessShareLock|RowShareLock|RowExclusiveLock|ShareUpdateExclusiveLock|ShareLock|ShareRowExclusiveLock|ExclusiveLock|AccessExclusiveLock) on [^\r\n]{1,512} after (\d{1,12}\.\d{3}) ms\s*$/);
+  if(waited&&waited[1]===waited[2]&&Number(waited[1])>0){
+   current=undefined;
+   if(failures.length<64)failures.push({kind:'observed heavyweight lock wait',pid:Number(waited[1]),
+    outcome:waited[3],mode:waited[4],waitMs:Number(waited[5]),waits:[],routines:[]});
+   continue;
+  }
   const error=line.match(/\bERROR:\s+(deadlock detected|canceling statement due to lock timeout)\s*$/);
   if(error){
    if(failures.length>=64){current=undefined;continue;}
