@@ -15,3 +15,17 @@ The old four navigation fixture tests remain whole. One additional pure projecti
 Current source closure has the same runtime vertices/import edges; only the fixture owner changes. The new SELECT adds one syntactic database site, not evidence of an executed native statement. The prior extraction record and all older qualification records remain immutable and source-bound. The new compact overlay stores whole actual parent Git identities and bounded inverse coordinates; current source/disclosure binding remains open until coherent integration. Root and a different peer must fully review the frozen candidate before publication or hosted verification.
 
 The separate native union, Org Explorer extra-employment, driver pool/cleanup/sampler/Chromium environment and same-artifact admission work remains open. No workload execution, repository imports/tests/compiler/build, database/native command, remote operation, source upload or dispatch occurred while preparing this change. Staging and production remain held.
+
+The whole-system fictional workload also needs the prepared Rewards plan and
+its one additional employment. Seed that employment in tenant 0, company 2,
+after the retained Payroll runs close. Its hire date equals the Rewards
+snapshot date, so it is present in the current dated roster and outside the
+historical Payroll periods. Verify the stored person and employment, including
+the absence of a login and a payslip, before writing the private fixture.
+
+The 500 traffic actors stay in their existing independent population. Org
+Explorer expects 251 people in tenant 0 and 250 in tenant 1. Company 2 in
+tenant 0 contains 51 people, including the known Rewards employment. The
+company 0 scope still contains 50. The workflow preflight keeps its existing
+Rewards fixture and the claims workload keeps its existing fixture. This
+source change requires hosted fixture and browser verification.

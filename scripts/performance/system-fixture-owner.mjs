@@ -173,7 +173,7 @@ try{
    await fixturePhase(t,'historical-payroll-close',()=>closeBatch(ctx,{batchId:company.historicalBatchId}));
    operationTimings.payrollClose50.push(performance.now()-started);
   }
-  if(process.env.PERF_HTTP_SUITE==='workflow-preflight'&&t===0){
+  if(t===0&&['workflow-preflight','whole-system'].includes(process.env.PERF_HTTP_SUITE)){
    const {prepareRewardDraftFixture}=await import('./reward-draft-fixture.mjs');
    // Company 2's historical register is already closed. Leave the active
    // processing and publication rosters in companies 1, 3 and 4 intact.

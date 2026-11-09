@@ -5,12 +5,12 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {performance} from 'node:perf_hooks';
+import {wholeSystemOrgRoster} from './fixture-workload.mjs';
 
 export async function exerciseOrgExplorer({page,user,fixture,report,save,phase}){
  assert.equal(user.role,'groupHR','Org explorer journey needs the fixture group HR actor');
  assert(['baseline','loaded','preflight'].includes(phase));
- const cohort=fixture.users.filter(actor=>actor.tenant===user.tenant);
- assert.equal(cohort.length,250,'Unexpected isolated fixture population');
+ const cohort=wholeSystemOrgRoster(fixture,user.tenant);
  const known=new Map(cohort.map(actor=>[actor.employmentId,actor]));
  const catalog=locale=>JSON.parse(readFileSync(new URL(`../../messages/${locale}.json`,import.meta.url),'utf8'));
  const results=[];let stage='navigation',locale='en';
