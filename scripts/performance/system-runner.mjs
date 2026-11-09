@@ -69,7 +69,7 @@ const proxyFailures=measurement?createDriverFailures():null;
 const proxySockets=proxyFailures?createDriverSockets(proxyFailures):null;
 const save=()=>writeFileSync(join(out,'runner.json'),JSON.stringify(report,null,2));
 save();
-const directChildren=new Set();
+const directChildren=new Set(),childBirths=new WeakMap();
 let cleaning=false,build=null,fixture=null,postgresProfile=null;
 function timeBudget(maximum,reserve=0,full=false){
  if(!comparison)return maximum;
@@ -82,8 +82,17 @@ function trackChild(child){
  if(comparison){
   directChildren.add(child);
   child.once('close',()=>directChildren.delete(child));
+  if(child.pid)childBirths.set(child,processBirth(child.pid));
  }
  return child;
+}
+function signalChild(child,signal){
+ if(!comparison)return child.kill(signal);
+ try{
+  const birth=childBirths.get(child);
+  if(!birth||!directChildren.has(child)||child.exitCode!==null||child.signalCode!==null||processBirth(child.pid)!==birth)return false;
+  return child.kill(signal);
+ }catch{return false;}
 }
 async function run(label,command,args,childEnv=env,timeout=900000){
  timeout=timeBudget(timeout,10000,label==='http-and-browser');
@@ -111,9 +120,9 @@ async function run(label,command,args,childEnv=env,timeout=900000){
  });
  let killTimer,closeTimer,timedOut=false,exitSignal,refuseUnsettled;
  const timer=setTimeout(()=>{
-  timedOut=true;child.kill('SIGTERM');
+  timedOut=true;signalChild(child,'SIGTERM');
   killTimer=setTimeout(()=>{
-   child.kill('SIGKILL');
+   signalChild(child,'SIGKILL');
    if(capturingBirth)child.stdio[3]?.destroy();
    if(comparison)closeTimer=setTimeout(()=>refuseUnsettled(Error('Worker comparison direct child close unobserved')),1000);
   },10000);
@@ -382,7 +391,10 @@ try{
   assert(native.fictional===true&&population.fictional===true&&native.attendanceDays===comparison.cell.attendanceDays
    &&native.claimsPerEmployee===comparison.cell.claimsPerActor&&native.tenants===population.tenants&&native.companies===population.companies
    &&native.users===population.trafficActors&&native.users===population.nativeSelectedRows
-   &&privateFixture.month===privateFixture.today.slice(0,7),'Worker comparison fixture evidence refused');
+   &&typeof privateFixture.today==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(privateFixture.today)
+   &&privateFixture.month===privateFixture.today.slice(0,7)
+   &&[native.users,native.tenants,native.companies,population.nativeGrants,native.counts.claims,native.counts.attendance,native.counts.payslips]
+    .every(value=>Number.isSafeInteger(value)&&value>0),'Worker comparison fixture evidence refused');
   fixture={day:privateFixture.today,actors:native.users,tenants:native.tenants,companies:native.companies,
    nativeGrants:population.nativeGrants,claims:native.counts.claims,attendance:native.counts.attendance,payslips:native.counts.payslips};
  }
@@ -448,7 +460,7 @@ try{
  if(comparison){
   for(const app of apps){
    assert(app.exitCode===null&&app.signalCode===null,'Worker comparison worker terminated before driver admission');
-   appBirths.set(app.pid,processBirth(app.pid));
+   appBirths.set(app.pid,childBirths.get(app));
   }
   report.comparisonWorkerMemory={startup:comparisonWorkerMemory(apps,appBirths),terminal:null};
  }
@@ -488,10 +500,10 @@ finally{
   if(measurement&&!app.pid)return {worker,code:null,signal:null};
   if(app.exitCode!==null||app.signalCode!==null)return {worker,alreadyExited:true,code:app.exitCode,signal:app.signalCode};
   const exited=new Promise(resolve=>app.once('exit',resolve));
-  app.kill('SIGUSR2');await Promise.race([exited,pause(5000)]);
+  signalChild(app,'SIGUSR2');await Promise.race([exited,pause(5000)]);
   const forced=app.exitCode===null&&app.signalCode===null;
   if(forced){
-   app.kill('SIGKILL');
+   signalChild(app,'SIGKILL');
    if(measureDevelopment)await Promise.race([exited,pause(5000)]);else await exited;
   }
   return {worker,requestedSignal:'SIGUSR2',forced,code:app.exitCode,signal:app.signalCode};
@@ -692,12 +704,20 @@ function comparisonTelemetry(result,out){
  const roleLatency=browser?.steady?Object.fromEntries(roles.map(role=>[role,Object.fromEntries(['navigation','read','write'].map(work=>
   [work,metrics(browser.steady.roles?.[role]?.[work],['samples','p50Ms','p95Ms','p99Ms','maxMs'])]))])):null;
  const appMemory=browser?.appMemory?.processes;
+ const workers=report.topology.workers,stops=report.profileShutdown??[];
+ const abnormal=stops.filter(row=>row.alreadyExited===true||row.forced===true||row.code!==null&&row.code!==0||row.signal!==null).length;
+ const stopCensus=stops.length===workers&&stops.every(row=>row.code!==null||row.signal!==null);
+ const workerCrashes=abnormal>0||stopCensus?abnormal:null;
+ const failures=count(report.nativeRuntimeFailures);
+ const nativeRuntimeFailureCount=failures>0||report.workerFatalDiagnostics?.length===workers?failures:null;
+ const poolBudget=report.poolBudgetEvidence?{verified:report.poolBudgetEvidence.verified===true,
+  observedPoolSizes:report.poolBudgetEvidence.observedPoolSizes.slice(0,workers).map(row=>Array.isArray(row)&&row.length<=16
+   &&row.every(size=>Number.isSafeInteger(size)&&size>=1&&size<=16)?row:null)}:null;
  return {
   scope:result.scope,topology:report.topology,cpuAdmission:report.cpuAdmission,fixture,canonicalBuild,
   postgres:postgresProfile,postgresWaitLog:report.postgresWaitLogCoverage??null,
-  nativeRuntimeFailureCount:count(report.nativeRuntimeFailures),
-  workerCrashes:report.profileShutdown?.filter(row=>row.alreadyExited===true||row.forced===true||row.code!==0||row.signal!==null).length??null,
-  runtimeAcceptance:report.runtimeAcceptance??null,poolBudget:report.poolBudgetEvidence??null,
+  nativeRuntimeFailureCount,workerCrashes,
+  runtimeAcceptance:report.runtimeAcceptance??null,poolBudget,
   driverReceipt:measurement?.driverReceipt??null,driver:driver??null,renderedCaseCounts,
   settlement:measurement?.settlement??null,roleLatency,
   workerMemory:report.comparisonWorkerMemory??null,
