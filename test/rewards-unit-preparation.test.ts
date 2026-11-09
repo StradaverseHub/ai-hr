@@ -10,7 +10,7 @@ import { createPreparingRewardUnit as createApprovedRewardUnit } from './rewards
 import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget } from './rewards-governance-fixture';
 import { setRewardMember } from './rewards-access-fixture';
 import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardPreparationNotices,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference,rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange } from '../packs/rewards/service';
-import {rewardNavigation} from '../packs/rewards/access-policy';
+import {rewardAccessPageCompanies,rewardAccessPageEntry,rewardNavigation} from '../packs/rewards/access-policy';
 import {dispatchNotificationsFromSweep} from '../core/notifications';
 import { REWARD_PREPARATION_STEPS } from '../packs/rewards/preparation-model';
 
@@ -192,6 +192,8 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   expect(await withTenant(admin,tx=>tx.select({source:schema.rewardEntry.source}).from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)))).toEqual([]);
   const administration=await rewardAccessAdministration(admin,[base.companyId]);expect(administration.reviews.map(row=>row.id)).toContain(unitId);
   expect(await rewardNavigation(admin)).toContain('/admin/rewards/access');
+  expect(await rewardAccessPageEntry(admin)).toEqual({companies:[{id:base.companyId}],groupRewards:false});
+  await expect(rewardAccessPageCompanies(admin)).rejects.toThrow(/Group Rewards/);
   expect(JSON.stringify(administration.reviews)).not.toContain('basicCents');expect(JSON.stringify(administration.reviews)).not.toContain('policy');
   const input={unitId,revision:(await getRewardUnit(gr,unitId)).unit.revision,before:null,after:{userId:checkerLogin,role:'gr'},reason:'Fictional HR administrator proposes another preparation checker'};
   const preview=await previewRewardAccessChange(admin,input);const saved=await saveRewardAccessChange(admin,input,preview.digest);
@@ -200,6 +202,7 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   await expect(getRewardUnit(admin,unitId)).rejects.toThrow();
   const foreign=await seedBase();await setModule(foreign.tenantId,'rewards','active');
   expect((await rewardAccessAdministration(await entitledCtx(foreign),[base.companyId])).reviews).toEqual([]);
+  expect(await rewardAccessPageEntry(await entitledCtx(foreign))).toEqual({companies:[],groupRewards:false});
  });
 
  it.each([false,true])('preserves native owner RLS behavior with preparation released=%s',async released=>{

@@ -18,6 +18,10 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
  const date=(iso:string)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
  const relative=(days:number)=>{const phrase=rewardDueWording(days);return t(`board.${phrase.key}`,{days:phrase.days});};
  const config=useTranslations('rewardsConfig');
+ const stageLabel=(row:RewardReviewListRow)=>row.kind==='annual'&&row.status==='withdrawn'
+   ? config('cancelled')
+   : <RewardStageLabel status={row.status} returnedTo={row.returnedTo}/>;
+
  const canSeeSetup=(row:RewardReviewListRow)=>row.roles.some(role=>role==='gr'||role==='ctro'||role==='ec');
  const showSetup=all.some(canSeeSetup);
  const budgetRows = overview ? rows.filter(row => row.kind === 'annual' &&
@@ -70,7 +74,7 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
           <h2 className="font-semibold">{row.unit}</h2>
           <p className="text-sm text-muted-foreground">{row.company} · {row.cycle}</p>
         </div>
-        <RewardStageLabel status={row.status} returnedTo={row.returnedTo} />
+        {stageLabel(row)}
         {row.roles.length > 0 && <dl className="grid grid-cols-2 gap-2 text-sm tabular-nums">
           <div><dt className="text-muted-foreground">{t('reviewList.salary')}</dt><dd>{percent(row.salary?.poolShareBp)}</dd></div>
           <div><dt className="text-muted-foreground">{t('reviewList.bonus')}</dt><dd>{percent(row.bonus?.budgetShareBp)}</dd></div>
@@ -101,7 +105,7 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
       {config('shared.originLine',{name:row.policyOrigin.name,version:row.policyOrigin.revision})}
       {row.policyOrigin.changed&&<> · <span>{config('shared.changedInReview')}</span></>}
     </div>}</td><td className="px-3 py-3">{row.company}</td><td className="px-3 py-3">{row.unit}</td><td className="px-3 py-3">{row.roles.length?row.roles.map(role=>t(`board.seat.${role}`)).join(', '):t('reviewList.unavailable')}</td>
-    <td className="px-3 py-3"><RewardStageLabel status={row.status} returnedTo={row.returnedTo}/>{row.seat&&<p className="mt-1 text-muted-foreground">{t(`board.seat.${row.seat}`)}</p>}{row.holders.length>0&&<p className="mt-1 text-muted-foreground">{row.holders.map(name=>name??t('reviewList.restrictedName')).join(', ')}</p>}</td>
+    <td className="px-3 py-3">{stageLabel(row)}{row.seat&&<p className="mt-1 text-muted-foreground">{t(`board.seat.${row.seat}`)}</p>}{row.holders.length>0&&<p className="mt-1 text-muted-foreground">{row.holders.map(name=>name??t('reviewList.restrictedName')).join(', ')}</p>}</td>
     <td className="px-3 py-3">{row.due&&row.daysUntilDue!==null?<><span className="whitespace-nowrap tabular-nums">{date(row.due)}</span><p className={`text-xs ${row.daysUntilDue<0?'font-semibold text-destructive':'text-muted-foreground'}`}>{relative(row.daysUntilDue)}</p></>:'—'}</td>
     <td className="px-3 py-3 text-right tabular-nums">{row.roles.length?percent(row.salary?.poolShareBp):t('reviewList.unavailable')}</td><td className="px-3 py-3 text-right tabular-nums">{row.roles.length?percent(row.bonus?.budgetShareBp):t('reviewList.unavailable')}</td>
     <td className="px-3 py-3">{row.blocking===null?t('reviewList.unavailable'):<><span className={row.blocking?'font-semibold text-destructive':''}>{t('reviewList.blocking',{count:row.blocking})}</span><p>{t('reviewList.exceptions',{count:row.exceptions??0})}</p></>}</td>
