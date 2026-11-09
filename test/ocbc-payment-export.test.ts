@@ -5,7 +5,7 @@ import {withTenant} from '../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {hireEmployee,setEmploymentPaymentMethod} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {closeBatch,createBatch,generatePayslips} from '../packs/payroll/service';
+import {closeBatch,createAdditionalRun,createBatch,generatePayslips,setPayrollInput} from '../packs/payroll/service';
 import {upsertCompanyBankProfile} from '../core/bank-profile';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {ocbcBankPaymentFiles} from '../localization/my/ocbc-payment';
@@ -55,27 +55,33 @@ describe('OCBC immutable generated bank artifacts',()=>{
   await expect(ocbcBankPaymentFiles.preview(ctx,{...closedRequest,bankProfileId:primary.id,formatId:'my.maybank74.salary'})).rejects.toMatchObject({status:409});
   expect(await owner.db.select().from(bankPaymentExport)).toHaveLength(0);
  });
- it('withholds the statutory month while a contributing run is open or incomplete', async () => {
-  const {ctx,request,batchId}=await fixture();
+ it('withholds the statutory month while a sibling run is incomplete or open', async () => {
+  const {ctx,request,batchId,employee}=await fixture();
+  const {batchId:bonusId}=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'});
   await closeBatch(ctx,{batchId});
-  const [batch]=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));
+  const [regular]=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));
+  const monthStatus=async ()=>(await owner.db.select({status:payPeriod.status}).from(payPeriod).where(eq(payPeriod.id,regular.payPeriodId)))[0].status;
   const selection={companyId:b.companyId,category:'socso'} as const;
-  expect((await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).periods)
-   .toEqual([{periodKey:period,runs:[]}]);
-  await owner.db.update(payPeriod).set({status:'open'}).where(eq(payPeriod.id,batch.payPeriodId));
-  expect((await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).periods).toEqual([]);
-  await owner.db.update(payPeriod).set({status:'closed'}).where(eq(payPeriod.id,batch.payPeriodId));
-  const secondId=randomUUID();
-  await owner.db.insert(payrollBatch).values({...batch,id:secondId,runSeq:2,runType:'bonus',status:'processed',closedAt:null});
   const {runSeq:_,...monthly}=request;
   const requestForMonth={...monthly,formatId:'my.ocbc.socso',closedPayrollOnly:true as const};
+
+  // A draft sibling has no paid rows, but a whole-month file must still wait for the month to close.
+  expect(await monthStatus()).toBe('open');
   expect((await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).periods).toEqual([]);
   await expect(ocbcBankPaymentFiles.preview(ctx,requestForMonth)).rejects.toMatchObject({status:409});
-  await owner.db.update(payrollBatch).set({status:'closed',closedAt:new Date()}).where(eq(payrollBatch.id,secondId));
+  const salary=(await ocbcBankPaymentFiles.submissionOptions(ctx,{...selection,category:'salary'})).periods;
+  expect(salary.map(month=>[month.periodKey,month.runs.map(run=>run.runSeq)])).toEqual([[period,[1]]]);
+
+  await setPayrollInput(ctx,{batchId:bonusId,employmentId:employee.employmentId,overtimeAmount:0,bonusAmount:100});
+  await generatePayslips(ctx,{batchId:bonusId});
+  expect(await monthStatus()).toBe('open');
   expect((await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).periods).toEqual([]);
   await expect(ocbcBankPaymentFiles.preview(ctx,requestForMonth)).rejects.toMatchObject({status:409});
-  expect((await ocbcBankPaymentFiles.submissionOptions(ctx,{...selection,category:'salary'})).periods)
-   .toMatchObject([{periodKey:period,runs:[{runSeq:1}]}]);
+
+  await closeBatch(ctx,{batchId:bonusId});
+  expect(await monthStatus()).toBe('closed');
+  expect((await ocbcBankPaymentFiles.submissionOptions(ctx,selection)).periods)
+   .toEqual([{periodKey:period,runs:[]}]);
  });
  it('separate requests atomically reserve distinct value-date tapes',async()=>{
   const {ctx,request}=await fixture(),preview=await ocbcBankPaymentFiles.preview(ctx,request);
