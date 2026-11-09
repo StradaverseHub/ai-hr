@@ -104,7 +104,7 @@ env:
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
   resolve:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && !(github.ref == 'refs/heads/codex/compiler-12800-whole-feasibility-20261109' && inputs.run_typecheck) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -1113,6 +1113,54 @@ jobs:
         with:
           name: architecture-browser-development-preflight-evidence
           path: ${{ steps.development-browser-cleanup.outputs.paths }}
+          if-no-files-found: error
+          retention-days: 14
+  compiler-memory-feasibility:
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/compiler-12800-whole-feasibility-20261109' && inputs.run_typecheck }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+      PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+    steps:
+      - name: Anchor the fixed compiler feasibility clock
+        run: |
+          /usr/bin/python3 -I -B - <<'PYTHON'
+          import os, time
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='ascii') as output:
+              output.write(f'AIHR_COMPILER_FEASIBILITY_T0_NS={time.monotonic_ns()}\n')
+          PYTHON
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 54fe69ffdf952eac087c91ad6050bf9fdb36d116
+          path: source
+          persist-credentials: false
+      - name: Admit the exact compiler feasibility event before dependency setup
+        run: /usr/bin/python3 -I -B automation/.github/ci/compiler-memory-feasibility.py admit
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3'}
+      - name: Generate stock Next route types
+        working-directory: source
+        env: {NEXT_TELEMETRY_DISABLED: '1'}
+        run: /usr/bin/timeout --signal=TERM --kill-after=10s 120s pnpm exec next typegen
+      - name: Run the held whole compiler only after physical memory admission
+        id: compiler-feasibility
+        run: /usr/bin/python3 -I -B automation/.github/ci/compiler-memory-feasibility.py run
+      - name: Retain bounded compiler feasibility and native settlement facts
+        if: ${{ always() && steps.compiler-feasibility.outputs.evidence == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: whole-compiler-12800-feasibility-evidence
+          path: |
+            ${{ runner.temp }}/compiler-12800-feasibility/receipt.json
+            ${{ runner.temp }}/compiler-12800-feasibility/compiler.log
           if-no-files-found: error
           retention-days: 14
   typecheck:
