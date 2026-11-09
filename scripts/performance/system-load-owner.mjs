@@ -32,7 +32,7 @@ import {chromium} from 'playwright';
 import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironment,createDriverContexts,
- createDriverFailures,createDriverSockets,createDriverWork,createProtectedLockSampler,driverErrorFact,lockSampleEvidence,protectedLockObserverCounts,
+ createDriverFailures,createDriverSockets,createDriverWork,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,protectedLockObserverCounts,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,acquireDriverResource,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
@@ -48,8 +48,15 @@ async function runSystemLoad(nativeCourse){
 const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_dev');
 const nativePreflight=nativeCourse!==undefined,nativeDeadline=nativeCourse?.deadline;
+const nativeIngress=nativeCourse?.ingress,nativeLockObserver=nativeCourse?.lockObserver;
 if(nativePreflight){
  assert(Number.isFinite(nativeDeadline)&&nativeDeadline>performance.now(),'Owned native preflight deadline required');
+ // No caller is installed. The protected issuer must fence actual browser
+ // ingress and own the reserved native query through cancellation and drain.
+ assert(typeof nativeIngress?.assertBusinessOpen==='function'&&typeof nativeIngress?.sealBusiness==='function'
+  &&typeof nativeIngress?.assertClaimRestoration==='function'&&typeof nativeLockObserver?.sql==='function'
+  &&nativeLockObserver.identity&&typeof nativeLockObserver.settleFixedSample==='function',
+  'Protected ingress and owned lock observer settlement capabilities are required');
  nativePreflightRoutePlan();
 }
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
@@ -58,10 +65,25 @@ const acquired={observer:'absent',agent:'absent',browser:'absent',audit:'absent'
 const failures=createDriverFailures(),contexts=createDriverContexts(failures),sockets=createDriverSockets(failures);
 const lanes=createDriverWork(),requests=createDriverWork(),transports=createDriverWork(),diagnostics=createDriverWork();
 const lifecycleRefused=Error('An owned development driver resource failed');
-const requireCleanDriver=()=>{if(failures.resourceFailed()||contexts.hasPendingClose())throw lifecycleRefused;};
-const {withContext,waitForClose:closeContext}=contexts;
+const nativeAdmission=nativePreflight?createProtectedWorkAdmission({
+ assertIngress(){nativeRemaining(nativeDeadline);assert.equal(nativeIngress.assertBusinessOpen(),true,'Owned protected business ingress refused');},
+ sealIngress(){assert.equal(nativeIngress.sealBusiness(),true,'Owned protected business ingress did not seal');},
+ noteFailure:failures.notePrimary,noteSealFailure:reason=>failures.record('native-ingress-seal',reason),
+}):undefined;
+function requireNativeBusiness(){
+ if(!nativeAdmission)return;
+ try{nativeAdmission.requireOpen();}catch(reason){nativeAdmission.close(reason);throw reason;}
+}
+function requireNativeClaimRestoration(user,draft){
+ if(!nativePreflight)return;
+ nativeRemaining(nativeDeadline);
+ assert.equal(nativeIngress.assertClaimRestoration(user.index,draft),true,'Owned claim restoration refused');
+}
+const requireCleanDriver=()=>{if(failures.resourceFailed()||contexts.hasPendingClose())throw lifecycleRefused;requireNativeBusiness();};
+const {waitForClose:closeContext}=contexts;
+const withContext=(context,work)=>contexts.withContext(context,()=>{requireNativeBusiness();return work();});
 const {notePrimary,evidence:noteEvidence}=failures;
-const runLane=async work=>{try{return await work();}catch(reason){failures.notePrimary(reason);throw reason;}};
+const runLane=async work=>{try{requireNativeBusiness();return await work();}catch(reason){failures.notePrimary(reason);throw reason;}};
 const runLanes=(values,run)=>lanes.run(()=>Promise.allSettled(values.map(value=>runLane(()=>run(value)))));
 const errorLabel=reason=>{const {kind,code}=driverErrorFact(reason);return code??kind;};
 const suite=nativePreflight?'workflow-preflight':process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','whole-system','workflow-preflight'].includes(suite));
@@ -126,16 +148,21 @@ function rejectBusyPage(user,path,channel){
  }
 }
 
+const claimRestorationKey=Symbol('owned claim restoration');
 const homeHttp=createHomeHttpReplay({base,request,report});
-function request(...args){return requests.run(()=>requestBody(...args));}
-async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action){
+function request(...args){requireNativeBusiness();return requests.run(()=>requestBody(...args));}
+async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action,restoration){
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
  if(Array.isArray(fields)){body=Buffer.from(JSON.stringify(fields));contentType='text/plain;charset=UTF-8';}
  else if(fields){const encoded=new Response(actionFormData(fields,fieldOrder));contentType=encoded.headers.get('content-type');body=Buffer.from(await encoded.arrayBuffer());}
  let responseHeaders;
  const transport=openDriverResponse({body,startedMs:started,observeSocket:sockets.observe,recordFailure:failures.record,
-  start:()=>https.request(base+path,{agent,signal:AbortSignal.timeout(nativePreflight?Math.min(90000,nativeRemaining(nativeDeadline)):90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
-   Cookie:`__Host-aihr_internal=${user?.token??''}; NEXT_LOCALE=en`,'Accept-Encoding':'gzip',...actionHeaders,...(body?{'Content-Type':contentType,'Content-Length':body.length}:{})}}),
+  start:()=>{
+   if(restoration?.key===claimRestorationKey)requireNativeClaimRestoration(user,restoration.draft);
+   else requireNativeBusiness();
+   return https.request(base+path,{agent,signal:AbortSignal.timeout(nativePreflight?Math.min(90000,nativeRemaining(nativeDeadline)):90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
+    Cookie:`__Host-aihr_internal=${user?.token??''}; NEXT_LOCALE=en`,'Accept-Encoding':'gzip',...actionHeaders,...(body?{'Content-Type':contentType,'Content-Length':body.length}:{})}});
+  },
   onHeaders:(res,ttfbMs)=>{responseHeaders={status:res.statusCode,ttfbMs,hasActionRedirect:Boolean(res.headers['x-action-redirect'])};},
  });
  transports.run(()=>transport.terminal);
@@ -240,14 +267,13 @@ async function finishPreflightLockSampling(){
  if(samplingRequired)assert(report.lockSampling.preflight.pass,'Preflight lock samples were incomplete or observed blocking');
 }
 async function startProtectedPreflightLockSampling(){
- // The protected owner retains the reservation. This phase borrows only its
- // held stats connection and awaits all admitted queries before returning it.
- const {sql,identity}=nativeCourse.lockObserver??{};
- assert(typeof sql==='function'&&identity,'A held protected lock observer is required');
+ // The issuer retains the held connection. Its terminal result must reflect
+ // the actual query/transport drain or its own stop. Uncertainty poisons reuse.
+ const {sql,identity}=nativeLockObserver;
  const expected=Object.freeze({pid:identity.pid,backendStart:identity.backendStart,databaseOid:identity.databaseOid});
  protectedSampler=createProtectedLockSampler({phase:'preflight',deadline:nativeDeadline,
-  async observe(){
-   const rows=await sql`with app_sessions as materialized (
+  async observe(lease){
+   const query=sql`with app_sessions as materialized (
     select pid,state,wait_event_type from pg_catalog.pg_stat_activity
     where datid=(select oid from pg_catalog.pg_database where datname=current_database())
      and usename='ai_hr_app' and backend_type='client backend'
@@ -264,10 +290,14 @@ async function startProtectedPreflightLockSampling(){
     (select count(*)::int from app_sessions s left join queued q on q.pid=s.pid
       where s.wait_event_type='Lock' or q.pid is not null) as "blockingAppSessions"
    from pg_catalog.pg_stat_activity a where a.pid=pg_backend_pid()`;
-   assert.equal(rows.length,1,'Protected lock observer result differs');
-   return protectedLockObserverCounts(rows[0],expected);
+   const terminal=await nativeLockObserver.settleFixedSample(query,lease);
+   if(terminal?.settlement!=='settled'||terminal.failed===true)return terminal;
+   try{
+    assert.equal(terminal.rows.length,1,'Protected lock observer result differs');
+    return {settlement:'settled',...protectedLockObserverCounts(terminal.rows[0],expected)};
+   }catch(reason){return {settlement:'settled',failed:true,reason};}
   },onFailure(reason){
-   failures.notePrimary(reason);
+   nativeAdmission.close(reason);
    recordLockSampling();noteEvidence(save);
   }});
  await protectedSampler.start();
@@ -355,7 +385,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
 }
 
 async function main(){
- save();await db`select pg_stat_statements_reset()`;
+ requireNativeBusiness();save();await db`select pg_stat_statements_reset()`;
  const lockScope=nativePreflight?undefined:await prepareDatabaseLockScope();
  if(nativePreflight)await startProtectedPreflightLockSampling();
  else if(samplingRequired)startPreflightLockSampling(lockScope);
@@ -366,6 +396,7 @@ async function main(){
   for(const route of routes){
    const diagnostic=setTimeout(()=>{
     slowPilotTimers.delete(diagnostic);
+    if(nativePreflight)return;
     diagnostics.run(async()=>{
      try{await databaseSnapshot('slow-pilot');report.slowPilotSnapshots=(report.slowPilotSnapshots??0)+1;}
      catch{report.slowPilotSnapshotFailures=(report.slowPilotSnapshotFailures??0)+1;}
@@ -393,6 +424,7 @@ async function main(){
   assert.deepEqual(JSON.parse(response.content).rows,[]);report.boundaries.push({kind:'company-or-tenant-search',role:actor.role,passed:true});
  }
  try{
+  requireNativeBusiness();
   browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined,
    args:['--host-resolver-rules=MAP localhost 127.0.0.1'],env:closedChromiumEnvironment(process.env,chromiumEnv.HOME)});
   acquired.browser='acquired';
@@ -407,6 +439,7 @@ async function main(){
  async function context(user,locale='en',signIn=false){
   let context;
   try{
+  requireNativeBusiness();
   context=contexts.register(await browser.newContext({ignoreHTTPSErrors:!nativePreflight,locale}));
   await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:base}]);
   if(!signIn)await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'}]);
@@ -438,17 +471,20 @@ async function main(){
   }catch(reason){notePrimary(reason);if(context)await closeContext(context);throw reason;}
  }
  async function signInToHome(page,user){
+  requireNativeBusiness();
   await page.goto(base+'/login?returnTo=%2F',{waitUntil:'domcontentloaded',timeout:90000});
   const username=page.locator('input[name="username"]');
   if(!await username.isVisible()){
    const workspace=page.locator('input[name="organization"]:visible');
    await workspace.fill(user.organization);
+   requireNativeBusiness();
    await page.locator('form').filter({has:workspace}).locator('button[type="submit"]').click();
   }
   await username.fill(user.username);
   const password=page.locator('input[name="password"]');
   await password.fill(user.password);
   const passwordSubmittedAt=performance.now();
+  requireNativeBusiness();
   await page.locator('form').filter({has:password}).locator('button[type="submit"]').click();
   const code=page.locator('input[name="code"]');
   await code.waitFor({state:'visible',timeout:90000});
@@ -467,6 +503,7 @@ async function main(){
   page.on('response',observeMfaResponse);
   const mfaSubmittedAt=performance.now();
   try{
+   requireNativeBusiness();
    await page.locator('form').filter({has:code}).locator('button[type="submit"]').click();
    await page.waitForURL(url=>url.origin===base&&url.pathname==='/',{timeout:90000});
   }finally{
@@ -494,6 +531,7 @@ async function main(){
   let witness=null,redirectStatus=null;
   const startedWith=loadState?.();
   try{
+   requireNativeBusiness();
    const browserFailuresBefore=nativeRoute?nativeBrowserFailures.pageCount(page):0;
    if(nativeRoute){assert(!signIn&&nativeDom);nativeDom.beforeNavigation();}
    if(signIn)signInTiming=await signInToHome(page,user);
@@ -518,7 +556,7 @@ async function main(){
    await headingElement.waitFor({state:'visible',timeout:timeout()});
    const heading=(await headingElement.innerText(nativeRoute?{timeout:timeout(30000)}:undefined)).trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
-   if(await skip.isVisible()){await skip.click(nativeRoute?{timeout:timeout(30000)}:undefined);await skip.waitFor({state:'hidden',...(nativeRoute?{timeout:timeout(30000)}:{})});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
+   if(await skip.isVisible()){requireNativeBusiness();await skip.click(nativeRoute?{timeout:timeout(30000)}:undefined);await skip.waitFor({state:'hidden',...(nativeRoute?{timeout:timeout(30000)}:{})});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   visitStage='table-data';
   if(await page.locator(busyScreenSelector).count())rejectBusyPage(user,path,'browser');
   if(['/claims','/admin/personnel','/payroll'].includes(path)){
@@ -725,8 +763,10 @@ async function main(){
    await draft.fill('PERF_UNSUBMITTED_LANGUAGE_DRAFT');
   }
   for(const locale of ['zh','en']){
+   requireNativeBusiness();
    await page.getByRole('button',{name:'Change language',exact:true}).click();
    const start=performance.now(),startedWith=loadState?.();
+   requireNativeBusiness();
    await page.getByRole('button',{name:names[locale],exact:true}).click();
    await page.waitForFunction(({locale,title})=>{
     const button=document.querySelector('button[aria-label="Change language"]');
@@ -790,6 +830,7 @@ async function main(){
     const link=page.locator('[data-ai-centre-tabs] a[data-ai-centre-link-ready="true"][href="'+path+'"]');
     await link.waitFor({state:'visible',timeout:90000});
     const readinessWaitMs=performance.now()-readinessStarted,expected=new URL(path,base),start=performance.now();
+    requireNativeBusiness();
     await Promise.all([page.waitForURL(url=>url.pathname===expected.pathname&&url.search===expected.search,{timeout:90000}),link.click()]);
     await page.locator('[data-ai-centre-tabs] a[aria-current="page"][href="'+path+'"]').waitFor({timeout:90000});
     await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
@@ -806,6 +847,7 @@ async function main(){
     const link=view==='ask'?page.locator('[data-ai-centre-tabs] a[data-ai-centre-link-ready="true"][href="/assistant"]'):page.locator('main a[data-ai-centre-link-ready="true"][href="'+path+'"]:visible').first();
     await link.waitFor({state:'visible',timeout:90000});
     const readinessWaitMs=performance.now()-readinessStarted,expected=new URL(path,base),start=performance.now();
+    requireNativeBusiness();
     await Promise.all([page.waitForURL(url=>url.pathname===expected.pathname&&url.search===expected.search,{timeout:90000}),link.click()]);
     await page.locator('main [data-ai-centre="'+view+'"]').waitFor({timeout:90000});
     await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
@@ -824,7 +866,7 @@ async function main(){
    const traffic={rscRequests:0,prefetchRequests:0};
    const observe=request=>{const url=new URL(request.url());if(url.origin!==base||url.pathname!=='/assistant')return;const headers=request.headers();if(headers.rsc==='1')traffic.rscRequests++;if(headers['next-router-prefetch']==='1'||headers.purpose==='prefetch')traffic.prefetchRequests++;};
    page.on('request',observe);
-   try{await verifyAssistantHistoryBrowser({page,history,visitAsk:()=>visit(page,user,'/assistant',phase),timeout:90000,onMeasurement:row=>{
+   try{requireNativeBusiness();await verifyAssistantHistoryBrowser({page,history,visitAsk:()=>visit(page,user,'/assistant',phase),timeout:90000,onMeasurement:row=>{
     const totalMs=row.navigationToUsableMs??((row.clickToUsableMs??0)+(row.readinessWaitMs??0));
     (report.browserAssistantHistory??=[]).push({...row,phase,role:user.role,totalMs,targetMs:1000,targetMet:totalMs<1000});save();
    }});}catch(reason){failures.notePrimary(reason);throw reason;}
@@ -836,8 +878,10 @@ async function main(){
   const ctx=await context(user,'en',true);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
    await visit(page,user,'/','sign-in-preflight',true);
+   requireNativeBusiness();
    if(baselineNavigation)await baselineNavigation.captureActor(page,user.index);
    if(nativePreflight){
+    requireNativeBusiness();
     if(NATIVE_HIDDEN_SHELL_CASES.some(row=>row.actorIndex===user.index))await nativeShell.captureActor(page,user.index);
     const nativeDom=await installNativePrimaryFailureObserver(page),paths=routePool(user);
     nativePrimaryDocuments.push({actorIndex:user.index,expected:paths.length,nativeDom});
@@ -874,8 +918,11 @@ async function main(){
  if(suite==='whole-system'||nativePreflight){
   const ctx=await context(group);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
+   requireNativeBusiness();
    await exerciseOrgExplorer({page,user:group,fixture,report,save,phase:'baseline'});
+   requireNativeBusiness();
    await exercisePersonnelSwitcher({page,user:group,fixture,report,save,phase:'baseline'});
+   requireNativeBusiness();
    await exercisePayrollBrowser({base,page,user:group,fixture,report,save,phase:'baseline'});
   });
   requireCleanDriver();
@@ -883,8 +930,11 @@ async function main(){
  if(suite==='whole-system'||suite==='workflow-preflight'){
   const ctx=await context(group);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
+   requireNativeBusiness();
    await exerciseMovement({base,page,actor:group,subject:employee,fixture,db,report,save,phase:'baseline',recordEvent:suite==='workflow-preflight'});
+   requireNativeBusiness();
    await exercisePayrollRegister({base,page,user:group,fixture,db,request,report,save});
+   requireNativeBusiness();
    await exerciseSavedReport({page,user:group,fixture,db,base,phase:'baseline',thinkTimeMs,report,save});
   });
   requireCleanDriver();
@@ -900,11 +950,15 @@ async function main(){
  {
   const ctx=await context(hr);
   await withContext(ctx,async()=>{const page=await ctx.newPage();for(const path of ['/control-tower/agents/spending','/control-tower/agents/provider']){
+   requireNativeBusiness();
    await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});
    await page.waitForURL(url=>url.pathname==='/control-tower/agents',{timeout:90000});
    report.boundaries.push({kind:'AI group-administrator-only route',role:hr.role,path,redirectDenied:true});save();
   }
-  if(suite==='whole-system'||nativePreflight)await exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'});
+  if(suite==='whole-system'||nativePreflight){
+   requireNativeBusiness();
+   await exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'});
+  }
   });
   requireCleanDriver();
  }
@@ -924,6 +978,7 @@ async function main(){
   const ctx=await context(employee);
   await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,employee,'/leave');
   const documents=[];page.on('request',request=>{if(request.resourceType()==='document')documents.push(request.url());});
+  requireNativeBusiness();
   await Promise.all([page.waitForURL(url=>url.pathname==='/claims',{timeout:90000}),page.locator('a[href="/claims"]:visible').first().click()]);
   const catalog=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
   const heading=page.getByRole('heading',{level:1,name:catalog.claims.title,exact:true});
@@ -962,18 +1017,42 @@ async function main(){
   await form.locator('[name="claimTypeId"]:visible').selectOption(user.claimTypeId);await form.locator('[name="amount"]:visible').fill('1');await form.locator('[name="incurredOn"]:visible').fill(fixture.today);
   await form.locator('textarea[name="description"]:visible').fill(description);
   let started=performance.now();
+  requireNativeBusiness();
   const [createResponse]=await Promise.all([browserAction(),form.locator('button[name="intent"][value="draft"]:visible').click()]);const createTemplate=await capturedAction(createResponse);
   await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'create',visibleByMs:performance.now()-started});
   const [draft]=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description}`;assert(draft,'browser create did not persist');
-  if(phase==='loaded')await pause(thinkTimeMs);
-  await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await form.locator('[name="amount"]:visible').fill('2');started=performance.now();
-  await form.locator('button[name="intent"][value="draft"]:visible').click();await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'edit',visibleByMs:performance.now()-started});
-  const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
-  if(phase==='loaded')await pause(thinkTimeMs);
-  await page.locator('main form:visible').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).getByRole('button').click();started=performance.now();
-  const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);const deleteTemplate=await capturedAction(deleteResponse);
-  await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted',{timeout:90000});timings.push({operation:'delete',visibleByMs:performance.now()-started});
-  assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
+  let editPending=false,deleteAttempted=false,deleteTemplate;
+  const requireRestore=()=>requireNativeClaimRestoration(user,draft.id);
+  async function deleteDraft(){
+   requireRestore();
+   await page.locator('main form:visible').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).getByRole('button').click();started=performance.now();
+   requireRestore();
+   deleteAttempted=true;
+   const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);
+   deleteTemplate=await capturedAction(deleteResponse);
+   await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted',{timeout:90000});timings.push({operation:'delete',visibleByMs:performance.now()-started});
+   assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
+  }
+  try{
+   if(phase==='loaded')await pause(thinkTimeMs);
+   requireNativeBusiness();
+   await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await form.locator('[name="amount"]:visible').fill('2');started=performance.now();
+   requireNativeBusiness();
+   editPending=true;
+   await form.locator('button[name="intent"][value="draft"]:visible').click();await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'edit',visibleByMs:performance.now()-started});
+   const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
+   editPending=false;
+   if(phase==='loaded')await pause(thinkTimeMs);
+   await deleteDraft();
+  }catch(reason){if(nativePreflight)failures.notePrimary(reason);throw reason;}
+  finally{
+   if(nativePreflight&&editPending)failures.record('browser-claim-settlement',Error('Owned claim edit settlement is unproved'));
+   else if(nativePreflight&&!deleteAttempted)await failures.attempt('browser-claim-restoration',async()=>{
+    requireRestore();
+    await page.goto(base+'/claims',{waitUntil:'domcontentloaded',timeout:Math.min(90000,nativeRemaining(nativeDeadline))});
+    await deleteDraft();
+   });
+  }
   report.browser.push({phase,role:user.role,workflow:'claim create/edit/delete',persisted:true,timings});save();return {createTemplate,deleteTemplate};
  }
  {
@@ -982,6 +1061,12 @@ async function main(){
   requireCleanDriver();
  }
  const {createTemplate,deleteTemplate}=contextTemplates;
+ function restoreKnownClaimDraft(user,draft){
+  const fields={...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:user.employmentId,[deleteTemplate.prefix+'id']:draft.id};
+  if(!nativePreflight)return request(user,'/claims',fields,deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
+  return requests.run(()=>requestBody(user,'/claims',fields,deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder,undefined,
+   {key:claimRestorationKey,draft:draft.id}));
+ }
  assert.equal(report.browserErrors.length,0,'baseline browser errors must be fixed before load');
  const actionProtocol=template=>({fieldNames:Object.keys(template.fields),fieldOrder:template.fieldOrder,prefix:template.prefix,status:template.status,
   arguments:Object.fromEntries(Object.entries(template.fields).filter(([key])=>/^\d+$/.test(key)).map(([key,value])=>{try{return [key,JSON.parse(value)];}catch{return [key,typeof value];}}))});
@@ -996,7 +1081,7 @@ async function main(){
    publicErrors:[...response.content.matchAll(/"error":"([^"\n]{1,300})"/g)].map(match=>match[1]).filter(value=>value!=='$undefined')};save();
   const [draft]=await db`select id from claim_request where employment_id=${employee.employmentId}::uuid and status='draft'and description=${description}`;
   assert(draft,'same-actor HTTP action preflight did not persist');
-  await request(employee,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:employee.employmentId,[deleteTemplate.prefix+'id']:draft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
+  await restoreKnownClaimDraft(employee,draft);
   assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
   report.actionPreflight.persisted=true;save();
  }
@@ -1009,22 +1094,40 @@ async function main(){
   await request(victim,'/claims',fields,createTemplate.status,false,createTemplate.headers,createTemplate.fieldOrder);
   const [protectedDraft]=await db`select id from claim_request where employment_id=${victim.employmentId}::uuid and status='draft' and description=${description}`;
   assert(protectedDraft,'boundary fixture did not persist through HTTP');
-  for(const selector of [actor.employmentId,victim.employmentId]){
-   const response=await request(actor,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:selector,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
-   const redirect=new URL(String(response.headers['x-action-redirect']??response.headers.location).split(';')[0],base);
-   assert(redirect.searchParams.get('error'),'foreign draft deletion was not explicitly refused');
-   const [unchanged]=await db`select employment_id,amount,status from claim_request where id=${protectedDraft.id}::uuid`;
-   assert(unchanged);assert.equal(unchanged.employment_id,victim.employmentId);assert.equal(Number(unchanged.amount),7);assert.equal(unchanged.status,'draft');
-   report.boundaries.push({kind:'foreign-draft-delete',role:actor.role,scope:actor.tenant!==victim.tenant?'other-tenant':actor.company!==victim.company?'other-company':'other-person',selector:selector===actor.employmentId?'own':'foreign',passed:true});
+  let foreignPending=false,deleteAttempted=false;
+  try{
+   for(const selector of [actor.employmentId,victim.employmentId]){
+    requireNativeBusiness();
+    foreignPending=true;
+    const response=await request(actor,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:selector,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
+    const redirect=new URL(String(response.headers['x-action-redirect']??response.headers.location).split(';')[0],base);
+    assert(redirect.searchParams.get('error'),'foreign draft deletion was not explicitly refused');
+    const [unchanged]=await db`select employment_id,amount,status from claim_request where id=${protectedDraft.id}::uuid`;
+    assert(unchanged);assert.equal(unchanged.employment_id,victim.employmentId);assert.equal(Number(unchanged.amount),7);assert.equal(unchanged.status,'draft');
+    foreignPending=false;
+    report.boundaries.push({kind:'foreign-draft-delete',role:actor.role,scope:actor.tenant!==victim.tenant?'other-tenant':actor.company!==victim.company?'other-company':'other-person',selector:selector===actor.employmentId?'own':'foreign',passed:true});
+   }
+   deleteAttempted=true;
+   await restoreKnownClaimDraft(victim,protectedDraft);
+  }catch(reason){if(nativePreflight)failures.notePrimary(reason);throw reason;}
+  finally{
+   if(nativePreflight&&foreignPending)failures.record('claim-pilot-settlement',Error('Owned claim boundary settlement is unproved'));
+   else if(nativePreflight&&!deleteAttempted)await failures.attempt('claim-pilot-restoration',async()=>{
+    await restoreKnownClaimDraft(victim,protectedDraft);
+    assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
+   });
   }
-  await request(victim,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:victim.employmentId,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
   assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
  }
- if(suite!=='claims-heavy')mixedWorkflows=await prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
+ if(suite!=='claims-heavy'){
+  requireNativeBusiness();
+  mixedWorkflows=await prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
+ }
  requireCleanDriver();
  let loadedAttendanceRejection;
  if(attendanceRejectionProbeEnabled&&suite!=='claims-heavy'){
   const baseline=await prepareAttendanceRejection({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,db,report,save,phase:'baseline'});
+  requireNativeBusiness();
   await baseline.run();
   requireCleanDriver();
   if(suite==='whole-system')loadedAttendanceRejection=await prepareAttendanceRejection({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,db,report,save,phase:'loaded'});
@@ -1039,9 +1142,11 @@ async function main(){
    const text=await page.locator('main').innerText(),code='PERF'+String(employee.index).padStart(4,'0');
    assert(text.includes(employee.name)&&text.includes(code),'own statement identity missing');assert(/5,000\.00/.test(text),'native fixture salary missing from statement');
    const link=page.getByRole('link',{name:'Download PDF',exact:true}),href=await link.getAttribute('href');assert(/^\/me\/payslip\/[^/]+\/pdf$/.test(href??''));
+   requireNativeBusiness();
    const [download]=await Promise.all([page.waitForEvent('download',{timeout:90000}),link.click()]);
    // Chromium can hand attachment navigation to its download manager without a normal page Response.
    // Check transport headers independently with the same real browser context/cookies.
+   requireNativeBusiness();
    const transport=await ctx.request.get(base+href);assert.equal(transport.status(),200);
    assert(String(transport.headers()['content-type']).includes('application/pdf'));assert(String(transport.headers()['content-disposition']).includes('attachment'));assert(String(transport.headers()['cache-control']).includes('no-store'));
    const stream=await download.createReadStream();assert(stream);const chunks=[];let bytes=0;
@@ -1050,6 +1155,7 @@ async function main(){
    const {PDFDocument}=await import('pdf-lib'),document=await PDFDocument.load(file),pages=document.getPageCount();assert(pages>0&&pages<=10);
    for(const target of [fixture.users[5],fixture.users[254]]){
     const [slip]=await db`select id from payslip where employment_id=${target.employmentId}::uuid order by created_at desc limit 1`;assert(slip);
+    requireNativeBusiness();
     const denied=await ctx.request.get(base+'/me/payslip/'+slip.id+'/pdf');assert.equal(denied.status(),404,'foreign own-only PDF was accessible');report.boundaries.push({kind:'foreign-own-payslip-pdf',scope:target.tenant===employee.tenant?'same-company-other-person':'other-tenant',passed:true});
    }
    report.payslipDocument={nativeDownload:true,automaticPdfRequests,bytes,pages,ownIdentity:true,foreignBoundaries:2};save();
@@ -1064,6 +1170,7 @@ async function main(){
  assert.equal(report.browserErrors.length,0,'mutation/processing browser runtime errors');
  await homeHttp.read(fixture.users[5],false);await homeHttp.read(fixture.users[3],false);
  await homeHttp.boundary(employee,fixture.users[5]);await homeHttp.boundary(manager,employee);
+ requireNativeBusiness();
  await databaseSnapshot('pilot');
  if(report.coverage.some(v=>v.status==='failed'))throw Error('Pilot route failures must be diagnosed before a 500-user run');
  assert(report.preflightHomeReady,'all four preflight sign-ins must load their dashboards before load');
@@ -1073,9 +1180,11 @@ async function main(){
  assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys must pass before load');
  if(suite==='workflow-preflight'){
   assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys failed');
+  requireNativeBusiness();
   await exerciseLetterDraft({base,context,withContext,notePrimary,noteEvidence,visit,fixture,db,report,save});
   requireCleanDriver();
   const {exercisePerformanceRewardsDrafts}=await import('./performance-rewards-draft-browser.mjs');
+  requireNativeBusiness();
   await exercisePerformanceRewardsDrafts({base,context,withContext,fixture,db,report,save});
   requireCleanDriver();
   await verifyAudit();save();
@@ -1382,13 +1491,17 @@ async function main(){
 }
 
 try{
+ requireNativeBusiness();
  chromiumEnv=closedChromiumEnvironment(process.env,userInfo().homedir);
  db=acquireDriverResource(acquired,'observer',()=>postgres(process.env.MIGRATION_DATABASE_URL,{max:2}));
  agent=acquireDriverResource(acquired,'agent',()=>new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:nativePreflight,
   lookup:(_host,options,callback)=>options.all?callback(null,[{address:'127.0.0.1',family:4}]):callback(null,'127.0.0.1',4)}));
  await main();
 }catch(reason){
- if(reason!==lifecycleRefused)failures.notePrimary(reason);
+ if(reason!==lifecycleRefused){
+  failures.notePrimary(reason);
+  nativeAdmission?.close(reason);
+ }
 }
 
 const diagnosticDrain=stopDiagnosticAdmission();
@@ -1415,7 +1528,7 @@ const driverResources={
  },
  async database(){
   await diagnosticDrain;
-  if(failureAtExit&&db)await failures.attempt('failure-database-snapshot',()=>databaseSnapshot('failure'));
+  if(failureAtExit&&db&&!nativePreflight)await failures.attempt('failure-database-snapshot',()=>databaseSnapshot('failure'));
   shutdown.database=await closePerformanceDbPools(nativeAuditClient,db,failures);
   shutdown.nativeAuditPoolClosed=shutdown.database.audit==='settled';
   shutdown.driverPoolClosed=shutdown.database.observer==='settled';
@@ -1426,6 +1539,7 @@ if(nativePreflight){
  await failures.attempt('native-lock-settlement',async()=>{
   const settled=preflightComplete&&!failures.failed()&&shutdown.browserClosed&&shutdown.http?.state==='settled';
   const lockEvidence=await (protectedAbort??protectedSampler?.close(settled));
+  shutdown.protectedLockObserver=lockEvidence?.observerSettlement??'not-entered';
   recordLockSampling();noteEvidence(save);
   if(preflightComplete&&!failures.failed())assert(lockEvidence?.pass===true,'Protected preflight lock evidence incomplete or observed blocking');
  });

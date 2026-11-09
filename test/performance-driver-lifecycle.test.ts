@@ -4,7 +4,7 @@ import {PassThrough} from 'node:stream';
 import {gzipSync} from 'node:zlib';
 import {afterEach,expect,it,vi} from 'vitest';
 import {acquireDriverResource,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
- createDriverFailures,createDriverSockets,createDriverWork,createProtectedLockSampler,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
+ createDriverFailures,createDriverSockets,createDriverWork,createProtectedLockSampler,createProtectedWorkAdmission,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
  openDriverResponse,protectedLockObserverCounts,settleDriverBrowser,settleDriverLanes,settleDriverResources,startDriverInterval} from '../scripts/performance/driver-shutdown.mjs';
 
 function deferred<T=void>(){
@@ -161,11 +161,13 @@ it('requires the exact held stats observer identity and actual app visibility on
  }
 });
 
+const protectedObservation=(appSessions:number,blockingAppSessions:number)=>({settlement:'settled' as const,appSessions,blockingAppSessions});
+
 it('seals protected zero only after real opening, in-work observation and terminal closure',async()=>{
  vi.useFakeTimers();
  let now=100;
- const observe=vi.fn().mockResolvedValueOnce({appSessions:0,blockingAppSessions:0})
-  .mockResolvedValueOnce({appSessions:2,blockingAppSessions:0}).mockResolvedValueOnce({appSessions:0,blockingAppSessions:0});
+ const observe=vi.fn().mockResolvedValueOnce(protectedObservation(0,0))
+  .mockResolvedValueOnce(protectedObservation(2,0)).mockResolvedValueOnce(protectedObservation(0,0));
  const sampler=createProtectedLockSampler({phase:'preflight',deadline:1800,observe,onFailure:vi.fn(),now:()=>now});
  await sampler.start();
  expect(sampler.evidence()).toMatchObject({state:'incomplete',blockingSamples:null,pass:false});
@@ -182,18 +184,18 @@ it('seals protected zero only after real opening, in-work observation and termin
 it('refuses a protected window whose only visible app sessions occur at its endpoints',async()=>{
  vi.useFakeTimers();
  let now=100;
- const observe=vi.fn(async()=>({appSessions:2,blockingAppSessions:0}));
+ const observe=vi.fn(async()=>protectedObservation(2,0));
  const sampler=createProtectedLockSampler({phase:'preflight',deadline:1800,observe,onFailure:vi.fn(),now:()=>now});
  await sampler.start();now+=100;
  expect(await sampler.close(true)).toMatchObject({state:'incomplete',reason:'app-unobserved',blockingSamples:null,pass:false});
  expect(observe).toHaveBeenCalledTimes(2);
 });
 
-it('refuses an otherwise complete protected window with observed blocking',async()=>{
+it('refuses an otherwise complete protected window with observed blocking at its closing sample',async()=>{
  vi.useFakeTimers();
  let now=100;
- const observe=vi.fn().mockResolvedValue({appSessions:2,blockingAppSessions:0})
-  .mockResolvedValueOnce({appSessions:2,blockingAppSessions:0}).mockResolvedValueOnce({appSessions:2,blockingAppSessions:1});
+ const observe=vi.fn().mockResolvedValue(protectedObservation(2,0))
+  .mockResolvedValueOnce(protectedObservation(2,0)).mockResolvedValueOnce(protectedObservation(2,0)).mockResolvedValueOnce(protectedObservation(2,1));
  const sampler=createProtectedLockSampler({phase:'preflight',deadline:1800,observe,onFailure:vi.fn(),now:()=>now});
  await sampler.start();now+=250;await vi.advanceTimersByTimeAsync(250);
  now+=100;
@@ -204,7 +206,7 @@ it('fails conservative protected gaps in both fixed cadences even when each samp
  vi.useFakeTimers();
  for(const [phase,interval] of [['preflight',250],['loaded',1000]] as const){
   let now=100;
-  const observe=vi.fn(async()=>({appSessions:2,blockingAppSessions:0}));
+  const observe=vi.fn(async()=>protectedObservation(2,0));
   const sampler=createProtectedLockSampler({phase,deadline:4000,observe,onFailure:vi.fn(),now:()=>now});
   await sampler.start();now+=2*interval+1;await vi.advanceTimersByTimeAsync(interval);
   now+=1;
@@ -213,12 +215,12 @@ it('fails conservative protected gaps in both fixed cadences even when each samp
  }
 });
 
-it('keeps an observed protected blocker even if a later sample fails during close',async()=>{
+it('preserves a pending protected observer failure through the closing barrier',async()=>{
  vi.useFakeTimers();
  let now=100;
- const late=deferred<{appSessions:number;blockingAppSessions:number}>(),onFailure=vi.fn();
- const observe=vi.fn().mockResolvedValueOnce({appSessions:2,blockingAppSessions:0})
-  .mockResolvedValueOnce({appSessions:2,blockingAppSessions:1}).mockImplementationOnce(()=>late.promise);
+ const late=deferred<ReturnType<typeof protectedObservation>|{settlement:'settled';failed:true;reason:unknown}|{settlement:'stopped'}>(),onFailure=vi.fn();
+ const observe=vi.fn().mockResolvedValueOnce(protectedObservation(2,0))
+  .mockResolvedValueOnce(protectedObservation(2,0)).mockImplementationOnce(()=>late.promise);
  const sampler=createProtectedLockSampler({phase:'preflight',deadline:1800,observe,onFailure,now:()=>now});
  await sampler.start();
  now+=250;await vi.advanceTimersByTimeAsync(250);
@@ -227,8 +229,8 @@ it('keeps an observed protected blocker even if a later sample fails during clos
  const closed=sampler.close(true);
  let returned=false;void closed.then(()=>{returned=true;});
  await Promise.resolve();expect(returned).toBe(false);
- const original=Error('private observer failure');late.reject(original);
- expect(await closed).toMatchObject({state:'incomplete',reason:'observer-failed',observedBlockingSamples:1,
+ const original=Error('private observer failure');late.resolve({settlement:'settled',failed:true,reason:original});
+ expect(await closed).toMatchObject({state:'incomplete',reason:'observer-failed',observedBlockingSamples:0,
   blockingSamples:null,missedTicks:1,pass:false});
  expect(onFailure).toHaveBeenCalledExactlyOnceWith(original);
  expect(observe).toHaveBeenCalledTimes(3);
@@ -236,8 +238,8 @@ it('keeps an observed protected blocker even if a later sample fails during clos
 
 it('refuses protected opening blocking or invalid counts before any periodic work is admitted',async()=>{
  vi.useFakeTimers();
- for(const [counts,reason] of [[{appSessions:2,blockingAppSessions:1},'opening-blocking'],
-  [{appSessions:0,blockingAppSessions:1},'sample-invalid']] as const){
+ for(const [counts,reason] of [[protectedObservation(2,1),'opening-blocking'],
+  [protectedObservation(0,1),'sample-invalid']] as const){
   const observe=vi.fn(async()=>counts),onFailure=vi.fn();
   const sampler=createProtectedLockSampler({phase:'preflight',deadline:1800,observe,onFailure,now:()=>100});
   await expect(sampler.start()).rejects.toThrow('Protected lock opening observation');
@@ -250,8 +252,8 @@ it('refuses protected opening blocking or invalid counts before any periodic wor
 it('retains a pending native query at the existing deadline without renewing the observation window',async()=>{
  vi.useFakeTimers();
  let now=100;
- const late=deferred<{appSessions:number;blockingAppSessions:number}>(),onFailure=vi.fn();
- const observe=vi.fn().mockResolvedValueOnce({appSessions:2,blockingAppSessions:0}).mockImplementationOnce(()=>late.promise);
+ const late=deferred<ReturnType<typeof protectedObservation>|{settlement:'settled';failed:true;reason:unknown}|{settlement:'stopped'}>(),onFailure=vi.fn();
+ const observe=vi.fn().mockResolvedValueOnce(protectedObservation(2,0)).mockImplementationOnce(()=>late.promise);
  const sampler=createProtectedLockSampler({phase:'preflight',deadline:600,observe,onFailure,now:()=>now});
  await sampler.start();now=350;await vi.advanceTimersByTimeAsync(250);
  now=600;await vi.advanceTimersByTimeAsync(250);
@@ -259,8 +261,8 @@ it('retains a pending native query at the existing deadline without renewing the
  const closed=sampler.close(true);
  let returned=false;void closed.then(()=>{returned=true;});
  await Promise.resolve();expect(returned).toBe(false);
- late.resolve({appSessions:2,blockingAppSessions:0});
- expect(await closed).toMatchObject({reason:'deadline',state:'incomplete',cutoffUs:500000,blockingSamples:null,pass:false});
+ late.resolve({settlement:'stopped'});
+ expect(await closed).toMatchObject({reason:'deadline',state:'incomplete',cutoffUs:500000,observerSettlement:'stopped',blockingSamples:null,pass:false});
  expect(observe).toHaveBeenCalledTimes(2);
 });
 
@@ -273,6 +275,68 @@ it('refuses a delayed protected query before the actual observer invocation',asy
  expect(observe).not.toHaveBeenCalled();
  expect(await sampler.close(false)).toMatchObject({reason:'deadline',state:'incomplete',blockingSamples:null,pass:false});
  expect(onFailure).toHaveBeenCalledTimes(1);
+});
+
+it('closes protected business admission at the first periodic blocker and keeps the positive count',async()=>{
+ vi.useFakeTimers();
+ let now=100;
+ const failures=createDriverFailures(),sealIngress=vi.fn(),assertIngress=vi.fn();
+ const gate=createProtectedWorkAdmission({assertIngress,sealIngress,noteFailure:failures.notePrimary,noteSealFailure:vi.fn()});
+ const observe=vi.fn().mockResolvedValueOnce(protectedObservation(2,0)).mockResolvedValueOnce(protectedObservation(2,1));
+ const sampler=createProtectedLockSampler({phase:'preflight',deadline:1800,observe,onFailure:gate.close,now:()=>now});
+ await sampler.start();gate.requireOpen();
+ now+=250;await vi.advanceTimersByTimeAsync(250);
+ expect(failures.primary().reason).toMatchObject({message:'Protected lock observation found blocking'});
+ expect(()=>gate.requireOpen()).toThrow('Protected workload admission is closed');
+ gate.close(Error('later error'));
+ expect(sealIngress).toHaveBeenCalledTimes(1);expect(assertIngress).toHaveBeenCalledTimes(1);
+ expect(await sampler.close(false)).toMatchObject({reason:'blocking-observed',observedBlockingSamples:1,blockingSamples:null,pass:false});
+ expect(observe).toHaveBeenCalledTimes(2);
+});
+
+it('keeps local protected admission closed when the owned ingress seal itself refuses',()=>{
+ const failures=createDriverFailures(),first=Error('first native failure'),later=Error('owner seal refused');
+ const gate=createProtectedWorkAdmission({assertIngress:vi.fn(),sealIngress(){throw later;},
+  noteFailure:failures.notePrimary,noteSealFailure:reason=>failures.record('native-ingress-seal',reason)});
+ gate.close(first);
+ expect(()=>gate.requireOpen()).toThrow('Protected workload admission is closed');
+ expect(failures.privateFailures()).toEqual({primary:{failed:true,reason:first},secondary:[{stage:'native-ingress-seal',reason:later}]});
+});
+
+it('signals only the owned opening or terminal observer and waits for its actual stop disposition',async()=>{
+ vi.useFakeTimers();
+ for(const position of ['opening','closing']){
+  let now=100,lease:{activeUntilMs:number;signal:AbortSignal}|undefined;
+  const native=deferred<{settlement:'stopped'|'uncertain'}>(),onFailure=vi.fn();
+  const observe=vi.fn().mockImplementation((owned:typeof lease)=>{lease=owned;return native.promise;});
+  if(position==='closing')observe.mockResolvedValueOnce(protectedObservation(2,0)).mockResolvedValueOnce(protectedObservation(2,0));
+  const sampler=createProtectedLockSampler({phase:'preflight',deadline:600,observe,onFailure,now:()=>now});
+  const opened=disposition(sampler.start());
+  if(position==='closing'){expect((await opened).ok).toBe(true);now=350;await vi.advanceTimersByTimeAsync(250);}
+  const pending=position==='opening'?opened:sampler.close(true);
+  let returned=false;void pending.then(()=>{returned=true;});
+  await Promise.resolve();await Promise.resolve();
+  expect(lease?.activeUntilMs).toBe(600);expect(lease?.signal.aborted).toBe(false);
+  now=600;await vi.advanceTimersByTimeAsync(position==='opening'?500:250);
+  expect(lease?.signal.aborted).toBe(true);expect(returned).toBe(false);
+  expect(onFailure).toHaveBeenCalledTimes(1);
+  const settlement=position==='opening'?'stopped':'uncertain';
+  native.resolve({settlement});await pending;
+  expect(await sampler.close(false)).toMatchObject({reason:'deadline',observerSettlement:settlement,blockingSamples:null,pass:false});
+ }
+});
+
+it('rounds a fractional excess outward in both protected observation gaps',async()=>{
+ vi.useFakeTimers();
+ for(const [phase,interval] of [['preflight',250],['loaded',1000]] as const){
+  let now=100;
+  const observe=vi.fn(async()=>protectedObservation(2,0));
+  const sampler=createProtectedLockSampler({phase,deadline:4000,observe,onFailure:vi.fn(),now:()=>now});
+  now=100.0004;await sampler.start();
+  now=100+2*interval+0.0006;await vi.advanceTimersByTimeAsync(interval);
+  now+=1;
+  expect(await sampler.close(true)).toMatchObject({observedGapUs:interval*2000+1,reason:'coverage-gap',blockingSamples:null,pass:false});
+ }
 });
 
 it('retains actual startup and cleanup outcomes and keeps raw reasons private',async()=>{

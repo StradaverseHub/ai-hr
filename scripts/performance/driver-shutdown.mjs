@@ -112,6 +112,22 @@ const lockCadenceMs=Object.freeze({preflight:250,loaded:1000});
 const maxProtectedLockSamples=4096;
 const lockCount=value=>Number.isSafeInteger(value)&&value>=0;
 
+export function createProtectedWorkAdmission({assertIngress,sealIngress,noteFailure,noteSealFailure}){
+ let closed=false;
+ return {
+  requireOpen(){
+   if(closed)throw Error('Protected workload admission is closed');
+   assertIngress();
+  },
+  close(reason){
+   if(closed)return;
+   closed=true;
+   noteFailure(reason);
+   try{sealIngress();}catch(error){noteSealFailure(error);}
+  },
+ };
+}
+
 export function protectedLockObserverCounts(row,expected){
  if(!row||!expected||!Number.isSafeInteger(expected.pid)||expected.pid<=1
   ||typeof expected.backendStart!=='string'||!/^\d+(?:\.\d+)?$/.test(expected.backendStart)
@@ -130,15 +146,26 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
  const origin=now(),cutoffUs=Math.floor((deadline-origin)*1000);
  if(interval===null||!Number.isSafeInteger(cutoffUs)||cutoffUs<=0)throw Error('Protected lock observation window refused');
  const sampleLimit=Math.min(maxProtectedLockSamples,Math.ceil(cutoffUs/(interval*1000))+2);
- const maxGapUs=interval*2000,stamp=()=>Math.floor((now()-origin)*1000);
+ const maxGapUs=interval*2000,stamp=(round=Math.floor)=>round((now()-origin)*1000);
  const samples=[];
- let state='not-started',startUs=null,endUs=null,timer,pending,closing,missedTicks=0,reason=null;
+ let state='not-started',startUs=null,endUs=null,timer,watchdog,pending,closing,live,missedTicks=0,reason=null;
+ let observerSettlement='not-entered';
 
  function fail(code,error){
   if(reason!==null)return;
   reason=code;
   clearInterval(timer);
   onFailure(error);
+  live?.abort();
+ }
+ function checkDeadline(){
+  if(now()<deadline)return true;
+  fail('deadline',Error('Protected lock observer deadline closed'));
+  return false;
+ }
+ function watchDeadline(){
+  if(!checkDeadline())return;
+  watchdog=setTimeout(watchDeadline,Math.min(2**31-1,Math.max(1,Math.ceil(deadline-now()))));
  }
  function sample(position){
   if(samples.length>=sampleLimit){
@@ -152,28 +179,38 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
     fail('deadline',Error('Protected lock observer deadline closed'));
     return;
    }
-   let counts;
+   let outcome;
+   live=new AbortController();
+   observerSettlement='pending';
    try{
-    counts=await observe();
+    outcome=await observe({activeUntilMs:deadline,signal:live.signal});
    }catch(error){
-    const completedUs=stamp();
-    samples.push({position,startedUs,completedUs:lockCount(completedUs)&&completedUs>=startedUs?completedUs:null,state:'failed'});
-    fail('observer-failed',error);
+    outcome={settlement:'uncertain',reason:error};
+   }finally{live=undefined;}
+   const completedUs=stamp(Math.ceil);
+   const validCompletion=lockCount(completedUs)&&completedUs>=startedUs;
+   observerSettlement=outcome?.settlement==='settled'||outcome?.settlement==='stopped'?outcome.settlement:'uncertain';
+   if(observerSettlement!=='settled'||outcome.failed===true){
+    samples.push({position,startedUs,completedUs:validCompletion?completedUs:null,state:'failed'});
+    fail(observerSettlement==='settled'?'observer-failed':'observer-'+observerSettlement,
+     outcome?.reason??Error('Protected lock observer settlement refused'));
     return;
    }
-   const completedUs=stamp();
-   if(!lockCount(completedUs)||completedUs<startedUs||completedUs>=cutoffUs){
+   if(!validCompletion||now()>=deadline){
     samples.push({position,startedUs,completedUs:null,state:'failed'});
     fail('deadline',Error('Protected lock observer returned outside its window'));
     return;
    }
-   const {appSessions,blockingAppSessions}=counts??{};
+   const {appSessions,blockingAppSessions}=outcome;
    if(!lockCount(appSessions)||!lockCount(blockingAppSessions)||blockingAppSessions>appSessions){
     samples.push({position,startedUs,completedUs,state:'failed'});
     fail('sample-invalid',Error('Protected lock observation counts refused'));
     return;
    }
+   const previous=samples.at(-1);
    samples.push({position,startedUs,completedUs,state:'observed',appSessions,blockingAppSessions});
+   if(blockingAppSessions>0)fail(position==='opening'?'opening-blocking':'blocking-observed',Error('Protected lock observation found blocking'));
+   else if(previous&&completedUs-previous.startedUs>maxGapUs)fail('coverage-gap',Error('Protected lock observation gap exceeded'));
   }).finally(()=>{pending=undefined;});
   return pending;
  }
@@ -185,14 +222,14 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
    &&row.startedUs>=startUs&&row.completedUs<=endUs);
   const ordered=observed.every((row,i)=>i===0||observed[i-1].completedUs<=row.startedUs);
   const observedGapUs=ordered&&observed.length>=2?Math.max(...observed.slice(1).map((row,i)=>row.completedUs-observed[i].startedUs)):null;
-  const coveragePass=state==='sealed'&&reason===null&&ordered&&rows.length===observed.length&&appObservedDuringWork
+  const coveragePass=state==='sealed'&&(reason===null||reason==='blocking-observed')&&ordered&&rows.length===observed.length&&appObservedDuringWork
    &&lockCount(startUs)&&lockCount(endUs)&&startUs<=endUs
    &&observed[0]?.position==='opening'&&observed[0].completedUs<=startUs
    &&observed.at(-1)?.position==='closing'&&endUs<=observed.at(-1).startedUs
    &&observedGapUs!==null&&observedGapUs<=maxGapUs;
   const coverageReason=state==='sealed'&&!coveragePass?(appObservedDuringWork?'coverage-gap':'app-unobserved'):null;
   return Object.freeze({phase,state:coveragePass?'complete':state==='not-started'?'not-started':'incomplete',reason:reason??coverageReason,
-   intervalMs:interval,maxGapUs,observedGapUs,cutoffUs,sampleLimit,window:startUs===null?null:Object.freeze({startUs,endUs}),missedTicks,
+   intervalMs:interval,maxGapUs,observedGapUs,cutoffUs,sampleLimit,window:startUs===null?null:Object.freeze({startUs,endUs}),missedTicks,observerSettlement,
    observedBlockingSamples,blockingSamples:coveragePass?observedBlockingSamples:null,coveragePass,
    pass:coveragePass&&observedBlockingSamples===0,samples:rows});
  }
@@ -201,22 +238,18 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
   async start(){
    if(state!=='not-started')throw Error('Protected lock observation already started');
    state='opening';
+   watchDeadline();
    await sample('opening');
    if(reason!==null||state!=='opening')throw Error('Protected lock opening observation refused');
-   if(samples[0].blockingAppSessions>0){
-    const error=Error('Protected lock opening observation found blocking');
-    fail('opening-blocking',error);
-    throw error;
-   }
-   startUs=stamp();
-   if(!lockCount(startUs)||startUs>=cutoffUs){
+   startUs=stamp(Math.ceil);
+   if(!lockCount(startUs)||now()>=deadline){
     const error=Error('Protected lock phase deadline closed before ingress');
     fail('deadline',error);
     throw error;
    }
    state='active';
    timer=setInterval(()=>{
-    if(stamp()>=cutoffUs){fail('deadline',Error('Protected lock observer deadline closed'));return;}
+    if(!checkDeadline())return;
     if(pending){missedTicks++;return;}
     void sample('periodic');
    },interval);
@@ -227,6 +260,7 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
    if(active)endUs=stamp();
    state='closing';
    clearInterval(timer);
+   if(workSettled!==true){reason??='work-incomplete';live?.abort();}
    closing=(async()=>{
     await pending;
     if(active&&workSettled===true&&reason===null){
@@ -236,6 +270,7 @@ export function createProtectedLockSampler({phase,deadline,observe,onFailure,now
      reason??='work-incomplete';
      state='incomplete';
     }
+    clearTimeout(watchdog);
     return evidence();
    })();
    return closing;
