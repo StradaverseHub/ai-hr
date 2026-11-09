@@ -1015,6 +1015,8 @@ class Course:
             for name, stream, info in archives:
                 require(identity(info) == identity(os.fstat(stream.fileno())) == identity(named(source, name)),
                         'TOOL protected input changed')
+            require(identity(source_info) == identity(os.fstat(source)) == identity(named(self.root, 'inputs')),
+                    'TOOL protected input directory changed')
             left(self.active)
 
     def materialize(self):

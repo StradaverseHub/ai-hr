@@ -1157,7 +1157,7 @@ class ToolDisposalModels(unittest.TestCase):
 
         course.installer = SimpleNamespace(_PARSER=SimpleNamespace(ArchiveRefused=ArchiveRefused))
 
-        for case in ('complete', 'source-replaced', 'archive-replaced', 'parser-refused'):
+        for case in ('complete', 'source-replaced', 'source-detached', 'archive-replaced', 'parser-refused'):
             current = files.copy()
             for stream in streams.values():
                 stream.reset_mock()
@@ -1170,8 +1170,11 @@ class ToolDisposalModels(unittest.TestCase):
                 return files[fds[name]]
 
             def materialize():
+                nonlocal found
                 with course.protected_archive_inputs(11) as held:
                     self.assertEqual(held, tuple(streams[fd] for fd in fds.values()))
+                    if case == 'source-detached':
+                        found = info(99, stat.S_IFDIR | 0o700)
                     if case == 'archive-replaced':
                         current[20] = info(90, stat.S_IFREG | 0o400)
                     if case == 'parser-refused':
@@ -1191,6 +1194,9 @@ class ToolDisposalModels(unittest.TestCase):
                     continue
                 elif case == 'archive-replaced':
                     with self.assertRaisesRegex(ValueError, 'protected input changed'):
+                        materialize()
+                elif case == 'source-detached':
+                    with self.assertRaisesRegex(ValueError, 'input directory changed'):
                         materialize()
                 else:
                     with self.assertRaises(C.ToolRefusal) as refusal:
