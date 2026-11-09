@@ -10,8 +10,8 @@ export const REPAIR_RECOVERY_POLICY='aihr-cross-source-recovery/v2';
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
 const id=x=>Number.isSafeInteger(x)&&x>0;
-const unitJob=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
-const fullJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','deployment-hold'];
+import {singletonJobName as unitJob,nativeNextUnit} from './singleton-protocol.mjs';
+const fullJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','commission-summary','deployment-hold'];
 const focusedJobs=['resolve','selected-tests','typecheck','linux-build','native-typecheck','native-swift-models','native-bundle'];
 function runIdentity(run,{runId,controller,after,now=Date.now()}){
  assert(id(runId)&&run.id===runId&&sha(controller)&&run.head_sha===controller&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID,'Foreign repair execution');
@@ -38,11 +38,12 @@ export function validateRepairFocusedMetadata({run,jobs,artifacts,expected,now=D
 }
 export function validateRepairBuildMetadata({run,jobs,expected}){
  runIdentity(run,expected);assert(run.workflow_id===WORKFLOW_ID&&run.path===WORKFLOW_PATH&&run.display_title===`Canonical build only · ${expected.candidateBranch}`,'Exact canonical build-only route required');
- jobsIdentity(run,jobs,fullJobs,['resolve','build','deployment-hold']);return jobs.find(j=>j.name==='build');
+ jobsIdentity(run,jobs,jobs.some(j=>j.name==='native-test')?[...fullJobs,'native-test']:fullJobs,['resolve','build','deployment-hold']);return jobs.find(j=>j.name==='build');
 }
 /** No caller-selected invalidation list is authoritative. Input comes from immutable Git impact. */
 export function repairDisposition({sourcePlan,plan,assessment,impactContext,verificationController}){
  requiredEvidence(sourcePlan);requiredEvidence(plan);
+ assert(!sourcePlan.units.some(nativeNextUnit)&&!plan.units.some(nativeNextUnit),'Cross-source native runtime proof needs an authenticated fresh native unit and matching compiled packet; this recovery route cannot retain it');
  for(const p of [sourcePlan,plan]){const {fingerprint,...body}=p;assert(fingerprint===hash(body),'Altered independently reconstructed full plan');}
  assert(sourcePlan.sha!==plan.sha&&sha(verificationController)&&impactContext.base===sourcePlan.sha&&impactContext.head===plan.sha&&impactContext.controller===verificationController,'Repair delta/controller differs');
  same(plan.runtime,sourcePlan.runtime,'Runtime changed');same(plan.execution,sourcePlan.execution,'Execution policy changed');same(plan.units,sourcePlan.units,'Unit inventory changed');same(plan.suite,sourcePlan.suite,'Test inventory changed');
@@ -75,7 +76,7 @@ function caseInventory(result,files,cwd,{passing}){
 export function requireReviewedRepairController({execute,repair,controller,reviewedController}){
  if(execute&&repair)assert(sha(controller)&&reviewedController===controller,'Exact independent verifier review required before any repair deployment operation');
 }
-export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history}){
+export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history},sourceCandidateRoot){
  assert(sourceRun.status==='completed'&&sourceRun.conclusion==='failure'&&sourceRun.run_attempt===1&&assessment.sourceRun.id===sourceRun.id,'Original complete failure required');
  assert(assessment.sha===sourcePlan.sha&&assessment.controller===sourcePlan.controller&&assessment.fingerprint===sourcePlan.fingerprint&&assessment.baseline===plan.migrationBase,'Original source assessment differs');
  assert(verificationDiagnostic.controller===verificationController&&id(verificationDiagnostic.runId),'Hosted verifier diagnostic required');
@@ -110,9 +111,10 @@ export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,repor
  const units=[];let tests=0;
  for(const u of plan.units){const report=reports.find(r=>r.id===u.id);assert(report?.sha===sourcePlan.sha&&report.fingerprint===sourcePlan.fingerprint,'Original report was relabelled');
   if(!fresh.has(u.id)){
-   const witness=assessment.reusable.find(x=>x.id===u.id),verified=verifyUnitReport(sourcePlan,report);assert(witness?.source&&witness.reportHash===hash(report),'Retained original proof changed');
+   const witness=assessment.reusable.find(x=>x.id===u.id),verified=verifyUnitReport(sourcePlan,report,{runId:sourceRun.id,attempt:1},sourceCandidateRoot);assert(witness?.source&&witness.reportHash===hash(report),'Retained original proof changed');
    tests+=verified.tests;units.push({id:u.id,kind:'retained',originalSha:sourcePlan.sha,originalFingerprint:sourcePlan.fingerprint,reportHash:hash(report),tests:verified.tests,source:witness.source});continue;
   }
+  assert(!u.singleton,'Singleton replacement requires its authenticated full-unit profile; generic focused repair is not supported');
   same(report.files,u.files,'Original process coverage changed');const originals=new Map();
   for(const batch of report.batches??[]){const files=(batch.result?.testResults??[]).map(f=>relative(report.cwd,f.name).split('\\').join('/'));assert(files.length>0&&files.every(p=>u.files.includes(p)),'Original batch has foreign coverage');const names=caseInventory(batch.result,files,report.cwd,{passing:false});for(const [path,cases] of names){assert(!originals.has(path),'Duplicate original assertion file');originals.set(path,cases);}}
   assert(originals.size===u.files.length,'Original failed/affected process did not enumerate every file');let count=0;const files=[];

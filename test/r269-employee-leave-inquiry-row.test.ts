@@ -124,6 +124,7 @@ import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
 import { isNavRowActive, isParentActive } from '../components/nav-flyout';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 import { leavePack } from '../packs/leave';
+import { LEAVE_INQUIRY_SUBMENU } from '../lib/navigation/module-submenus';
 import '../packs/register-all';
 import { listPacks, type NavChildDescriptor } from '../packs/registry';
 
@@ -177,8 +178,10 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
     // r378 retains two inquiry tabs; tracker remains the separately accessible calendar/legacy alias.
     const rail = read('components/leave/leave-inquiry-nav.tsx');
     expect(rail).not.toContain("{ key: 'details'");
-    expect(rail).toContain("{ key: 'balances', href: hrefFor('/leave/employee-balances', 'balances'), label: t('employeeBalances') }");
-    expect(rail).toContain("{ key: 'records', href: hrefFor('/leave/employee-records', 'records'), label: t('employeeLeaveRecord') }");
+    expect(LEAVE_INQUIRY_SUBMENU.map(({key,href,labelKey})=>({key,href,labelKey}))).toEqual([
+      {key:'balances',href:'/leave/employee-balances',labelKey:'employeeBalances'},
+      {key:'records',href:'/leave/employee-records',labelKey:'employeeLeaveRecord'},
+    ]);
   });
 
   it('it owns Employee Leave Record, and the tracker row has given both inquiry paths up', () => {

@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { withTenant } from '@/db/client';
-import { batchDetail } from '@/core/payroll';
+import { batchHeader } from '@/core/payroll';
 import {
   anomalyMetrics,
   anomalyQueue,
@@ -103,7 +103,7 @@ export default async function AnomaliesPage({
   // when there is nothing to carry, so an unfiltered visit posts no field at all.
   const carry = carried === '/payroll' ? undefined : carried;
 
-  const batch = await batchDetail(s, batchId).catch(() => null);
+  const batch = await batchHeader(s, batchId).catch(() => null);
   if (!batch) notFound();
 
   const [rows, metrics, swing, provenance, evidence] = await Promise.all([

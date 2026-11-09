@@ -119,55 +119,98 @@ function isDbPackage(spec: string): boolean {
   return DB_PACKAGES.some((p) => spec === p || spec.startsWith(`${p}/`));
 }
 
-/**
- * Classify ONE test file. `cache` is shared across calls so a helper imported by 300 files is read once.
- */
-export function classifyTestFile(file: string, read: Reader, cache = new Map<string, DbVerdict>()): DbVerdict {
-  const visiting = new Set<string>();
+type Step = { helper: string } | { reason: string };
+const cleanReason = 'no database import, call or URL in it or its test/ helpers';
 
-  const visit = (f: string): DbVerdict => {
-    const hit = cache.get(f);
-    if (hit) return hit;
-    if (visiting.has(f)) return { db: false, reason: 'cycle' }; // the cycle's root decides
-    visiting.add(f);
-    const verdict = inspect(f);
-    visiting.delete(f);
-    cache.set(f, verdict);
-    return verdict;
+/** Own the complete reachable helper graph before publishing any clean verdict.
+ * A back-edge is a dependency, never a provisional clean result. */
+function classifyRequest(files: string[], sourceRead: Reader): Map<string, DbVerdict> {
+  // One immutable source view per request. Existence probes and later helper
+  // inspection share COMPLETE strings/nulls; no verdict or state escapes a call.
+  const sources = new Map<string, string | null>();
+  const read: Reader = (path) => {
+    if (sources.has(path)) return sources.get(path)!;
+    const source = sourceRead(path); // Preserve thrown Reader errors unchanged.
+    sources.set(path, source);
+    return source;
   };
-
-  const inspect = (f: string): DbVerdict => {
+  const graph = new Map<string, Step[]>(), queue: string[] = [];
+  const discover = (file: string) => {
+    if (!graph.has(file)) { graph.set(file, []); queue.push(file); }
+  };
+  for (const file of files) discover(file);
+  const inspect = (f: string): Step[] => {
     const src = read(f);
-    if (src === null) return { db: true, reason: `${f}: cannot be read` };
-    for (const { re, label } of DB_TEXT) if (re.test(src)) return { db: true, reason: `${f}: ${label}` };
+    if (src === null) return [{ reason: `${f}: cannot be read` }];
+    for (const { re, label } of DB_TEXT) if (re.test(src)) return [{ reason: `${f}: ${label}` }];
     const { specs, opaqueDynamic } = importSpecifiers(src);
-    if (opaqueDynamic) return { db: true, reason: `${f}: a dynamic import()/require() that is not a string literal` };
+    if (opaqueDynamic) return [{ reason: `${f}: a dynamic import()/require() that is not a string literal` }];
+    const steps: Step[] = [];
     for (const spec of specs) {
-      if (isDbPackage(spec)) return { db: true, reason: `${f}: imports ${spec}` };
+      if (isDbPackage(spec)) { steps.push({ reason: `${f}: imports ${spec}` }); break; }
       const r = resolveSpecifier(spec, f, read);
       if (r === undefined) continue; // some other package
-      if (r === null) return { db: true, reason: `${f}: import '${spec}' does not resolve` };
+      if (r === null) { steps.push({ reason: `${f}: import '${spec}' does not resolve` }); break; }
       const stem = stripExt(r);
       const named = DB_MODULES.find((m) => stem === m || stem.startsWith(`${m}/`));
-      if (named) return { db: true, reason: `${f}: imports ${named}` };
+      if (named) { steps.push({ reason: `${f}: imports ${named}` }); break; }
       if (r.startsWith('test/')) {
-        const v = visit(r);
-        if (v.db) return { db: true, reason: v.reason };
+        discover(r); steps.push({ helper: r });
       }
     }
-    return { db: false, reason: 'no database import, call or URL in it or its test/ helpers' };
+    return steps;
   };
+  for (let index = 0; index < queue.length; index++) graph.set(queue[index], inspect(queue[index]));
 
-  return visit(file);
+  // Reverse reachability closes cycles and diamonds without recursion depth or
+  // order-dependent cached negatives. Unknown/missing sources are hazard seeds.
+  const dependent = new Map<string, string[]>(), hazardous = new Set<string>(), pending: string[] = [];
+  for (const [file, steps] of graph) {
+    for (const step of steps) {
+      if ('reason' in step) {
+        if (!hazardous.has(file)) { hazardous.add(file); pending.push(file); }
+      } else {
+        const parents = dependent.get(step.helper) ?? [];
+        parents.push(file); dependent.set(step.helper, parents);
+      }
+    }
+  }
+  for (let index = 0; index < pending.length; index++) {
+    for (const parent of dependent.get(pending[index]) ?? []) {
+      if (!hazardous.has(parent)) { hazardous.add(parent); pending.push(parent); }
+    }
+  }
+  const reasonFor = (root: string): string => {
+    const seen = new Set<string>([root]), stack = [{ steps: graph.get(root)!, next: 0 }];
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      if (frame.next === frame.steps.length) { stack.pop(); continue; }
+      const step = frame.steps[frame.next++];
+      if ('reason' in step) return step.reason;
+      if (hazardous.has(step.helper) && !seen.has(step.helper)) {
+        seen.add(step.helper); stack.push({ steps: graph.get(step.helper)!, next: 0 });
+      }
+    }
+    throw Error('Database hazard closure has no reachable source reason');
+  };
+  return new Map(files.map(file => [file, hazardous.has(file)
+    ? { db: true, reason: reasonFor(file) } : { db: false, reason: cleanReason }]));
+}
+
+/** Classify one fresh source request. The legacy optional map is a result sink;
+ * verdicts from another request/Reader cannot prove the current source clean. */
+export function classifyTestFile(file: string, read: Reader, cache = new Map<string, DbVerdict>()): DbVerdict {
+  const verdict = classifyRequest([file], read).get(file)!;
+  cache.set(file, verdict); return verdict;
 }
 
 export function classifyTestFiles(files: string[], read: Reader): { db: string[]; nodb: string[]; why: Map<string, string> } {
-  const cache = new Map<string, DbVerdict>();
+  const verdicts = classifyRequest(files, read);
   const db: string[] = [];
   const nodb: string[] = [];
   const why = new Map<string, string>();
   for (const f of files) {
-    const v = classifyTestFile(f, read, cache);
+    const v = verdicts.get(f)!;
     (v.db ? db : nodb).push(f);
     why.set(f, v.reason);
   }

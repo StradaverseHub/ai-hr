@@ -2,7 +2,8 @@ import {organisationManagedTx,organisationBusinessUnit} from './organisation-wri
 import {deriveCompanyOrganisationTx} from './company-organisation';
 import {organisationImportWarningsTx} from './derived-organisation-display';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
-import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
+import {assertWorkforceCompanyTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
+import {isAiPresentationPrincipalCurrentTx} from './ai-principal';
 /** Bounded canonical Movement rehearsals and per-employee atomic application.
  * Preview intentionally writes only inside a transaction that ALWAYS rolls back. It never dispatches
  * notifications, opens a detached writer transaction, or holds a lock while the user reviews the result.
@@ -61,6 +62,11 @@ async function assertCompany(tx:Tx,ctx:SessionContext,id:string){
 }
 async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<MovementImportCatalog>{
  await assertCompany(tx,ctx,companyId);
+ return catalogRowsTx(tx,ctx,companyId);
+}
+/** Shared facts only: callers first admit either the command barrier or the pure
+ * presentation purpose. A template is reference data, never command authority. */
+async function catalogRowsTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<MovementImportCatalog>{
  const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(importType);
  // ac6645ec — the destination of an Entity Transfer may be named by the same Company ID as the row's company.
  const companies=(await tx.select({value:company.id,label:company.legalName,code:company.companyLabel,registration:company.registrationNo}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.view') and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1)).map(({code,registration,...row})=>({...row,codes:[code,registration].filter((v):v is string=>!!v?.trim())}));
@@ -82,7 +88,30 @@ async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<Move
  if(Object.values(fields).some(rows=>rows&&rows.length>MOVEMENT_IMPORT_LIMITS.referenceRows))throw new Error('movement_reference_catalog_too_large');
  return {types,companies,fields};
 }
-export function movementImportCatalog(ctx:SessionContext,companyId:string){assertAdmin(ctx);return withTenant(ctx,async tx=>{await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);return catalogTx(tx,ctx,companyId);});}
+/** Snapshot admission preserves both existing Workforce capabilities and the
+ * native administrative company fence, without taking a command/write lock. */
+async function assertPresentationCompany(tx:Tx,ctx:SessionContext,id:string){
+ if(!UUID.test(id))throw new Error('company_not_available');
+ const [permission]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_company(${id}::uuid,'workforce.view')
+  and app.access_workforce_company(${id}::uuid,'workforce.maintain') as allowed`);
+ if(permission?.allowed!==true)throw new WorkforceAccessError();
+ const [row]=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,id),sql`app.is_admin_for(${company.id})`)).limit(1);
+ if(!row)throw new Error('company_not_available');
+}
+function withMovementImportPresentation<T>(supplied:SessionContext,read:(tx:Tx,ctx:SessionContext)=>Promise<T>){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+ assertAdmin(ctx);
+ return withTenant(ctx,async tx=>{
+  await limits(tx);
+  if(!await isAiPresentationPrincipalCurrentTx(tx,ctx))throw new WorkforceAccessError();
+  return read(tx,ctx);
+ },{readOnlySnapshot:true});
+}
+export function movementImportCatalog(ctx:SessionContext,companyId:string){
+ return withMovementImportPresentation(ctx,async(tx,captured)=>{
+  await assertPresentationCompany(tx,captured,companyId);return catalogRowsTx(tx,captured,companyId);
+ });
+}
 function lookup(raw:string,options:MovementImportOption[],field:string):string{
  const choices=personnelImportOptionLookup(options);
  if(choices.isAmbiguous(raw))throw new Error('ambiguous_reference:'+field);
@@ -492,17 +521,19 @@ export async function movementImportStateTx(tx:Tx,employmentId:string):Promise<R
 /** ac6645ec — one template for every company the actor may import movements for: the tenant's active types,
  * each company's Company ID (Company Code, else registration number) and its allowed values. */
 export async function movementImportTemplateData(ctx:SessionContext){
- assertAdmin(ctx);return withTenant(ctx,async tx=>{
-  await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
-  const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(importType);
+ return withMovementImportPresentation(ctx,async(tx,captured)=>{
+  const types=(await activeMovementEventTypeChoicesTx(tx,captured.tenantId)).map(importType);
   const companies=[];
-  for(const c of await movementImportCompaniesTx(tx,ctx))companies.push({companyId:c.id,code:allocationCompanyCode(c),name:c.name,catalog:await catalogTx(tx,ctx,c.id)});
+  for(const c of await movementImportCompaniesTx(tx,captured)){
+   await assertPresentationCompany(tx,captured,c.id);
+   companies.push({companyId:c.id,code:allocationCompanyCode(c),name:c.name,catalog:await catalogRowsTx(tx,captured,c.id)});
+  }
   return{types,companies};
  });
 }
 /** The tenant's active movement types (the catalogue a template is signed to). */
 export async function movementImportTypes(ctx:SessionContext){
- assertAdmin(ctx);return withTenant(ctx,async tx=>{await limits(tx);return (await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(importType);});
+ return withMovementImportPresentation(ctx,async(tx,captured)=>(await activeMovementEventTypeChoicesTx(tx,captured.tenantId)).map(importType));
 }
 export type MovementImportFilters={departmentIds?:string[];businessUnitIds?:string[];gradeIds?:string[];locationIds?:string[];probationOnly?:boolean};
 /** Server-only download projection. Internal identities never leave this owner in workbook metadata. */

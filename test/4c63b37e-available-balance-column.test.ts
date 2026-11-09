@@ -224,7 +224,7 @@ describe('4c63b37e · (a) the column is on the screen and in the export, immedia
     // The no-tx entry point still opens its own tenant transaction; the explicit-tx seam added for
     // canonical AI readers delegates to the SAME owner after re-checking the principal, never a copy.
     const read = code('core/read.ts');
-    expect(read).toContain('return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts));');
+    expect(read).toContain('return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts),{presentationSnapshot:true});');
     expect(read).toContain('if (!existingTx) return withTenant(ctx, read);');
     expect(read).toContain('await assertAiPrincipalTx(existingTx, ctx);');
     for (const src of [page, route, inquiry]) expect(src, 'presentation adds no separate balance read').not.toMatch(/\bleaveBalances(?:Tx)?\(/);

@@ -10,7 +10,7 @@ import {prepareCompanyOrganisationRun,companyOrganisationRunReport,decideCompany
 import {withTenant} from '../../db/client';
 import {defaultPolicy,type RewardPolicy} from '../../packs/rewards/model';
 import {saveRewardSetupPlan,submitRewardSetupPlan,approveRewardSetupPlan,rewardSetupPlan,saveRewardPlanConfiguration} from '../../packs/rewards/plan-configuration';
-import {createRewardUnit,type PlannedRewardUnitInput} from '../../packs/rewards/service';
+import type {PlannedRewardUnitInput} from '../../packs/rewards/service';
 export function approvedRewardFixtures(owner:{db:Db}) {
 async function ensureFixtureSetupGrant(ctx:SessionContext,createdBy=ctx.userId){
  if(!ctx.userId||!createdBy)throw new Error('A real fixture setup actor is required.');
@@ -72,6 +72,7 @@ async function setupRewardLibrariesFixture(ctx:SessionContext,year:number,basePo
 }
 /** Existing versions are retained exactly; no replacement policy is invented for provenance tests. */
 async function createApprovedRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitInput,fixturePolicy?:RewardPolicy,fixtureTargets?:{companyId:string;businessUnitId:string}[]){
+ const {createRewardUnit}=await import('../../packs/rewards/service');
  await ensureFixtureSetupGrant(ctx);
  const existing=raw.sharedPolicyVersionId?await rewardSetupPlan(ctx,raw.sharedPolicyVersionId):null;
  if(existing?.setup?.state==='approved')return createRewardUnit(ctx,{...raw,name:existing.setup.cycleName,cycleId:undefined,approvedPlanVersionId:existing.source.versionId});

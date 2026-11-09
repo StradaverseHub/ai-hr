@@ -6,10 +6,11 @@ import {insightBandError,insightTextGroundingError} from './insight-grounding';
 import {recordFigure} from './record-insight-model';
 import reference from './talent-insight-source.json';
 import type {IdpFitInsight} from './idp-fit-model';
+import type {TalentInsight} from './talent-insight-types';
+export type {TalentInsight} from './talent-insight-types';
 export const talentSourceSchema=z.object({pm:z.object({name:z.string(),companyId:z.uuid(),kpis:z.array(kpiSchema),bands:z.object({aBands:policySchema.shape.aBands,bBands:policySchema.shape.bBands}),fileLinks:z.array(z.object({kpiId:z.uuid(),attachmentId:z.uuid()}))}),pot:potentialInsightSourceSchema,written:writtenSourceSchema,leadership:z.array(z.object({name:z.string(),description:z.string(),future:z.boolean(),yes:z.number(),total:z.number()})),plan:z.object({status:z.string(),managerRemark:z.string(),goals:z.array(goalSchema.omit({managerComment:true})),career:careerSchema}).nullable()});
 export type TalentSource=z.infer<typeof talentSourceSchema>;
 export type TalentPosition={performance:PMBand|null;potential:PotentialBand|null;performanceSource:string|null;potentialSource:string|null;movedFrom:string|null};
-export type TalentInsight={insight:string;decision:string};
 export type TalentFacts={kpis:{above:number;on:number;below:number;n:number};lm_pending:boolean;default:string[];moved_from:string|null;plan:string;top:string[];dev:string[]};
 export function talentMoveWords(move:string){const m=/^\s*(kept|set|moved)\s+(?:(\w+)\s*→\s*)?(\w+)\s*$/.exec(move);if(!m)return move;const [,verb,from,to]=m;if(verb==='kept')return 'kept their band';if(verb==='set')return 'set their band';const ranks=reference._TB_BAND_RANK as Record<string,number>,a=ranks[from],b=ranks[to];return a==null||b==null||a===b?'moved their band':`moved them ${b>a?'up':'down'} ${Math.abs(b-a)===1?'a band':'more than one band'}`;}
 /** Source ranking: next-level weight, next-level tie break, disjoint strengths/development and all-even collapse. */

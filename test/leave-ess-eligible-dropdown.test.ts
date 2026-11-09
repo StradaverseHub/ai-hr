@@ -29,8 +29,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { LeaveIneligibleError, requestLeave, todayInKualaLumpur } from '../core/leave';
-import { eligibleLeaveTypeIdsFor, listEligibleLeaveTypesFor } from '../core/read';
-import type { SessionContext } from '../db/client';
+import { eligibleLeaveTypeIdsFor, hasEligibleLeaveTypeForTx, listEligibleLeaveTypesFor } from '../core/read';
+import { withTenant, type SessionContext } from '../db/client';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -282,8 +282,13 @@ describe('ad965821 · eligibleLeaveTypeIdsFor — the on-behalf-of map', () => {
     const single = (await idsFor(emp.employmentId)).sort();
     const map = await eligibleLeaveTypeIdsFor(adminCtx(b), [emp.employmentId]);
     expect([...map[emp.employmentId]].sort()).toEqual(single);
+    expect(single.length).toBeGreaterThan(0);
+    expect(await withTenant(adminCtx(b),tx=>hasEligibleLeaveTypeForTx(tx,emp.employmentId))).toBe(true);
     // …and all four gates actually bit, so the agreement above is not agreement on "everything".
     for (const dropped of [noApply, hidden, probation]) expect(single).not.toContain(dropped);
+    await owner.db.update(schema.leaveType).set({employeeCanApply:false}).where(eq(schema.leaveType.tenantId,b.tenantId));
+    expect(await idsFor(emp.employmentId)).toEqual([]);
+    expect(await withTenant(adminCtx(b),tx=>hasEligibleLeaveTypeForTx(tx,emp.employmentId))).toBe(false);
   });
 
   it('an empty request is an empty map; an employment the caller cannot see gets an EMPTY list, not the catalogue', async () => {

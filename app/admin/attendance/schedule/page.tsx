@@ -16,7 +16,11 @@ export default async function ScheduleListPage({searchParams}:{searchParams:Prom
   for(const key of ['policy','viewPolicy','error','toast'] as const)if(typeof sp[key]==='string')q.set(key,sp[key]!);
   redirect(COMPANY_POLICY+'?'+q.toString()+'#schedule-panel');
  }
- await ensureStandardRule(s);
- const rules=await listAttendanceRules(s);
+ let rules=await listAttendanceRules(s);
+ if(!rules.some(rule=>rule.isDefault)){
+  // Only an absent Standard needs the write owner, which rechecks under its locks.
+  await ensureStandardRule(s);
+  rules=await listAttendanceRules(s);
+ }
  return <div className={pageWideCls}><LegacyScheduleAnchor/><AttendanceSettingsNavigation/><PageHeader title={t('pageTitle')} description={t('listSubtitle')} back={{href:'/admin/attendance/settings',label:hub('backToSettings')}}/><ErrorBanner message={sp.error}/><ScheduleGroupCard rules={rules}/></div>;
 }

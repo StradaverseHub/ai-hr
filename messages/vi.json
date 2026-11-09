@@ -1,5 +1,14 @@
 {
   "roster": {
+    "prepareTitle": "Xem lại thay đổi lịch làm việc",
+    "prepareHint": "Kiểm tra ca, ngày và số nhân viên, sau đó xác nhận.",
+    "browseEmployees": "Duyệt tất cả nhân viên",
+    "reviewTargets": "Xem lại nhân viên đã chọn",
+    "confirmRoster": "Xác nhận thay đổi lịch",
+    "prepareFailed": "Không thể chuẩn bị thay đổi lịch. Kiểm tra lựa chọn rồi thử lại.",
+    "pickerFailed": "Không thể tải danh sách nhân viên. Vui lòng thử lại.",
+    "pickerSelectMatching": "Chọn tất cả {n} nhân viên phù hợp",
+    "copyTargetsReview": "Sẽ sao chép lịch cho {n} nhân viên được chọn lúc này. Kiểm tra ngày, rồi nhấn Sao chép để xác nhận.",
     "title": "Lịch ca",
     "subtitle": "Lập lịch ca theo tháng — chọn tháng rồi phân ca cho đội của bạn.",
     "noCompanies": "Không có công ty nào trong phạm vi của bạn để lập lịch.",
@@ -860,7 +869,8 @@
       "placeholder": "Tìm mã nhân viên hoặc tên…",
       "resultsLabel": "Kết quả tìm nhân viên",
       "noMatches": "Không có nhân viên nào khớp.",
-      "currentTag": "Hiện tại"
+      "currentTag": "Hiện tại",
+      "loadFailed": "Không thể tải tìm kiếm nhân viên. Vui lòng thử lại."
     },
     "detail": {
       "incentiveDeclarations": {
@@ -4831,6 +4841,33 @@
       "active": "Đang làm",
       "probation": "Thử việc",
       "notice": "Báo trước"
+    },
+    "explorer": {
+      "hint": "Khám phá tổ chức lớn theo từng phần. Tìm kiếm bao gồm mọi người trong các công ty đã chọn.",
+      "topLevel": "Cấp cao nhất",
+      "allPeople": "Tất cả mọi người",
+      "search": "Tìm kiếm",
+      "searchResults": "Kết quả tìm kiếm",
+      "reports": "Nhân viên trực tiếp",
+      "managers": "Quản lý",
+      "connections": "Tất cả quan hệ",
+      "history": "Người đã xem",
+      "loading": "Đang tải tổ chức…",
+      "loaded": "Đã tải {loaded} trên trang này · {total} kết quả phù hợp · {people} người trong các công ty đã chọn",
+      "accessChanged": "Quyền truy cập đã thay đổi. Tải lại để tiếp tục.",
+      "changed": "Tổ chức đã thay đổi. Làm mới phần này để tiếp tục.",
+      "failed": "Không thể tải phần này. Vui lòng thử lại.",
+      "refresh": "Tải lại",
+      "retry": "Thử lại",
+      "multipleAssignments": "Nhiều phân công hiện tại",
+      "profile": "Xem hồ sơ",
+      "relationships": "Quan hệ báo cáo",
+      "outsideScope": "Quan hệ ngoài các công ty đã chọn",
+      "incoming": "Báo cáo cho người này",
+      "outgoing": "Người này báo cáo cho",
+      "explore": "Khám phá",
+      "back": "Quay lại",
+      "next": "Trang tiếp theo"
     }
   },
   "me": {
@@ -5506,7 +5543,8 @@
     "submitDecisions": "Gửi",
     "employeeRemark": "Ghi chú của nhân viên",
     "closeDialog": "Đóng",
-    "bulkSelectAll": "Chọn tất cả",
+    "bulkSelectAll": "Chọn tất cả yêu cầu trong chế độ xem này",
+    "bulkSelectionUnavailable": "Không thể chọn các yêu cầu chi phí đang chờ duyệt. Hãy thử lại.",
     "bulkSelectRow": "Chọn yêu cầu",
     "bulkSelected": "Đã chọn: {count, plural, other {# yêu cầu}}",
     "bulkClear": "Xóa",
@@ -6806,6 +6844,7 @@
       },
       "preChecksOpenProfile": "Mở hồ sơ",
       "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
+      "preChecksNotReady": "Hãy xử lý các mục kiểm tra đang chặn trước khi chạy bảng lương.",
       "preChecksBlockedPayModeError": "Không thể xử lý lương: {n} nhân viên có cơ cấu lương Kỳ tùy chỉnh mà bảng lương không tính được. Hãy đổi Chế độ lương trên hồ sơ Lương cơ bản của họ, hoặc loại họ khỏi kỳ chạy này.",
       "preChecksBlockedTp3Error": "Không thể xử lý lương: {n} nhân viên có Mẫu TP3 của năm nay chưa vào các con số bảng lương. Hãy mở Mẫu TP3 của từng người và lưu lại trước.",
       "generatedWithSkipped": "Đã tạo phiếu lương — bỏ qua {n} nhân viên. Danh sách bên dưới nêu tên và lý do.",
@@ -16966,12 +17005,24 @@
     "colRanAt": "Thời điểm chạy",
     "colOutcome": "Kết quả",
     "colError": "Lỗi",
+    "notificationEvidenceUnverified": "Lịch sử chạy không xác minh phiên bản tiến trình đã cài đặt hoặc việc nhận email.",
     "outcome": {
+      "running": "Đã bắt đầu; chưa ghi nhận hoàn tất",
       "success": "Thành công",
       "partial": "Một phần",
       "failed": "Thất bại"
     },
     "counters": {
+      "processedEvents": "Sự kiện đã xử lý",
+      "createdNotifications": "Thông báo đã tạo",
+      "committedBatches": "Lô đã xác nhận",
+      "pendingEvents": "Sự kiện đang chờ",
+      "oldestPendingSeconds": "Thời gian chờ lâu nhất (giây)",
+      "cappedTenants": "Công ty đạt giới hạn lô",
+      "emailAttempted": "Lần thử email",
+      "emailSkipped": "Email đã bỏ qua",
+      "emailUnavailableTenants": "Công ty không có email khả dụng",
+      "emailCappedTenants": "Công ty đạt giới hạn lô email",
       "granted": "Số ngày đã cấp",
       "opened": "Đánh giá đã mở",
       "reminders": "Nhắc nhở đã gửi",
@@ -16981,6 +17032,10 @@
       "tenantsAlarming": "Công ty có cảnh báo"
     },
     "jobs": {
+      "notifications-project": {
+        "name": "Xử lý thông báo",
+        "description": "Xử lý sự kiện thông báo đang chờ và ghi nhận công việc đã xác nhận cùng tồn đọng. Kết quả gửi email được ghi riêng."
+      },
       "leave-accrue": {
         "name": "Cộng dồn phép năm",
         "description": "Cộng thêm số ngày phép nhân viên đã tích lũy đến hiện tại."
@@ -17659,7 +17714,13 @@
     "selectedTag": "Đã chọn",
     "allEmployees": "Tất cả nhân viên",
     "allEmployeesHint": "Xóa lựa chọn và hiển thị tất cả nhân viên.",
-    "showingCapped": "Hiển thị {cap} trong số {total} kết quả — hãy thu hẹp tìm kiếm."
+    "showingCapped": "Hiển thị {cap} trong số {total} kết quả — hãy thu hẹp tìm kiếm.",
+    "loadingEmployees": "Đang tải nhân viên…",
+    "loadFailed": "Không thể tải nhân viên. Vui lòng thử lại.",
+    "retry": "Thử lại",
+    "previousPage": "Trước",
+    "nextPage": "Tiếp",
+    "pageRange": "{from}–{to} trên {total, number}"
   },
   "appliedInPayroll": {
     "searchPlaceholder": "Tìm tháng, nhân viên, công ty hoặc số tiền",
@@ -36658,7 +36719,7 @@
   },
   "personnelOrganisationFilters": {
     "updatingResults": "Đang cập nhật kết quả…",
-    "readBusy": "Hệ thống Nhân sự đang bận. Vui lòng đợi một lát rồi thử lại.",
+    "applyFailed": "Không thể áp dụng bộ lọc. Vui lòng thử lại.",
     "retryRead": "Thử lại",
     "businessUnit": "Đơn vị kinh doanh",
     "parentCompany": "Công ty mẹ",

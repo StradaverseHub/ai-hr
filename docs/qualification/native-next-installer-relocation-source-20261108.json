@@ -1,0 +1,58 @@
+{
+  "kind": "NATIVE_NEXT_GENERATED_INSTALLER_RELOCATION_V2_SOURCE_ONLY",
+  "base": "b09cb77761011be5fad3d474880ef05605411d4d",
+  "sourceRef": "codex/native-next-relocated-dependency-copy-20261108",
+  "qualification": "NOT_RUN; root and independent source review before hosted checks",
+  "dependencyNormalization": "ROOT_COPY_DEPENDENCIES_V2",
+  "sourceSelectors": [
+    "test/runtime-next-dependency-inventory.test.ts",
+    "test/runtime-next-prepackage-diagnostic.test.ts",
+    "test/runtime-next-build-binding.test.ts"
+  ],
+  "controllerSelectors": [
+    ".github/ci/native-next-build-packet.test.mjs"
+  ],
+  "compatibilitySelectors": [
+    ".github/ci/build-bundle.test.py",
+    ".github/ci/build-shim-paths.test.py"
+  ],
+  "declaredDependencyModels": 9,
+  "declaredDiagnosticModels": 14,
+  "declaredBindingModels": 6,
+  "fixedRuntimeSource": "/var/lib/aihr-admission/release",
+  "fixtureSeconds": 480,
+  "receiverSeconds": 60,
+  "format2ProducerReceiverSharedInventoryChanged": false,
+  "retainedOriginalFailure": {
+    "run": 42421614560,
+    "source": "b09cb77761011be5fad3d474880ef05605411d4d",
+    "currentPhase": "existing-format2-exact-receiver",
+    "actualChildReasonObserved": false,
+    "nativeFailed": 1,
+    "nativeSkipped": 0,
+    "nativeMs": 123746.833954,
+    "actualNextBootVerified": false,
+    "ownedRuntimeCleaned": true,
+    "actualSliceProof": {
+      "lookupDirectories": 12,
+      "associatedUnitsInspected": 192,
+      "existingKernelCgroup": false
+    }
+  },
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "sourceSha256": {
+    ".github/ci/native-next-build-packet.test.mjs": "be8dbd454af4f4e5894ad2ecd87ef55b0847121565a6adb7b64e2edb277b9727",
+    ".github/ci/native-next-installation.mjs": "f56836062d0bd6d94274a559dc5fbd75ecf33704445a3200fcd49296bdd4ac53",
+    "deploy/admission/next_build_binding.py": "b21ba80bd5efd5bc38c1a0c7458d86e4ea90cb1c98901f60955c68658c079ec0",
+    "deploy/admission/next_native_package.py": "a1c38782d486e7e6ebbfd475fd1652c9ab3bd66ad1a23f1129eab0fe5ef2cbe0",
+    "deploy/admission/test_next_build_binding.py": "fb3538d41c6d77f1e6b653a295e2c568fd8233cbd152f2dec31800218b547c94",
+    "deploy/admission/test_next_dependency_inventory.py": "becf07b63e5d573b5c25e27a68cea04cfee16f87928bf54f96f13a61aae6dcaf",
+    "deploy/admission/test_next_native.py": "5af22cc142c925f0f6d8b5f2eb2eb0370c00d5488f02a4c9d9b5385f6855225b",
+    "deploy/admission/test_next_prepackage_diagnostic.py": "05df7897680da523e03bd765ff1307686321eacf4ab305b82946ecfb429f7d8b",
+    "test/runtime-next-admission-native.test.ts": "aa3333ba0c615e40b1e2401d90ea2e441dab0fbde1d05c83d12cc89ffbea9f09",
+    "test/runtime-next-dependency-inventory.test.ts": "a0068f455ccdddacc58d797811932ede0352fbdc2cd05df63ba867ea28d50a84",
+    "test/runtime-next-prepackage-diagnostic.test.ts": "b168f40fa83608b2b8b003f06eaf349d94297a4b0e04a7754782f38033c555fb",
+    "docs/adr/2026-11-08-native-next-generated-installer-relocation.md": "dffd0582f10935c3c946fa526555d7789da54e58d1954e9914c1be5a3163acc3"
+  }
+}

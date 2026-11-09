@@ -1,5 +1,14 @@
 {
   "roster": {
+    "prepareTitle": "检查排班更改",
+    "prepareHint": "请检查班次、日期和员工人数，然后确认。",
+    "browseEmployees": "浏览所有员工",
+    "reviewTargets": "检查所选员工",
+    "confirmRoster": "确认排班更改",
+    "prepareFailed": "无法准备排班更改。请检查所选内容后重试。",
+    "pickerFailed": "无法加载员工，请重试。",
+    "pickerSelectMatching": "选择全部 {n} 名匹配员工",
+    "copyTargetsReview": "将为当前选中的 {n} 名员工复制排班。请检查日期，然后点击复制以确认。",
     "title": "排班",
     "subtitle": "编制月度排班表——选择月份，然后为团队安排班次。",
     "noCompanies": "您的范围内没有可排班的公司。",
@@ -860,7 +869,8 @@
       "placeholder": "搜索员工编号或姓名…",
       "resultsLabel": "员工搜索结果",
       "noMatches": "没有匹配的员工。",
-      "currentTag": "当前"
+      "currentTag": "当前",
+      "loadFailed": "无法加载员工搜索，请重试。"
     },
     "detail": {
       "incentiveDeclarations": {
@@ -4831,6 +4841,33 @@
       "active": "在职",
       "probation": "试用期",
       "notice": "通知期"
+    },
+    "explorer": {
+      "hint": "分段浏览大型组织。搜索涵盖所选公司中的所有人员。",
+      "topLevel": "最高层级",
+      "allPeople": "所有人员",
+      "search": "搜索",
+      "searchResults": "搜索结果",
+      "reports": "直属下属",
+      "managers": "经理",
+      "connections": "所有关系",
+      "history": "已浏览人员",
+      "loading": "正在加载组织…",
+      "loaded": "本页已加载 {loaded} 项 · 共 {total} 项匹配结果 · 所选公司共 {people} 人",
+      "accessChanged": "您的访问权限已更改。请重新加载以继续。",
+      "changed": "组织已更改。请刷新此部分以继续。",
+      "failed": "无法加载此部分。请重试。",
+      "refresh": "重新加载",
+      "retry": "重试",
+      "multipleAssignments": "多个当前任职",
+      "profile": "查看个人资料",
+      "relationships": "汇报关系",
+      "outsideScope": "此关系位于所选公司之外",
+      "incoming": "向此人汇报",
+      "outgoing": "此人汇报给",
+      "explore": "浏览",
+      "back": "返回",
+      "next": "下一页"
     }
   },
   "me": {
@@ -5506,7 +5543,8 @@
     "submitDecisions": "提交",
     "employeeRemark": "员工备注",
     "closeDialog": "关闭",
-    "bulkSelectAll": "全选",
+    "bulkSelectAll": "选择此视图中的所有申请",
+    "bulkSelectionUnavailable": "无法选择待审批的报销申请。请重试。",
     "bulkSelectRow": "选择申请",
     "bulkSelected": "已选择：{count, plural, other {# 项申请}}",
     "bulkClear": "清除",
@@ -6806,6 +6844,7 @@
       },
       "preChecksOpenProfile": "打开档案",
       "preChecksBlockedError": "无法处理薪资：{n} 名员工没有当前薪资记录。请先解决处理前检查问题。",
+      "preChecksNotReady": "请先解决预处理检查中的阻止项，再处理薪资。",
       "preChecksBlockedPayModeError": "无法处理薪资：{n} 名员工采用薪资无法计算的自定义周期薪酬结构。请更改其基本薪资记录上的薪资模式，或将他们排除在本次运行之外。",
       "preChecksBlockedTp3Error": "无法处理薪资：{n} 名员工本年度的 TP3 表格尚未进入其薪资数字。请先逐一打开并保存其 TP3 表格。",
       "generatedWithSkipped": "已生成工资单 — 跳过 {n} 名员工。下方列表列出姓名与原因。",
@@ -16966,12 +17005,24 @@
     "colRanAt": "运行时间",
     "colOutcome": "结果",
     "colError": "错误",
+    "notificationEvidenceUnverified": "运行历史不能证明已安装的工作程序版本或邮件已送达。",
     "outcome": {
+      "running": "已开始；尚未记录完成",
       "success": "成功",
       "partial": "部分成功",
       "failed": "失败"
     },
     "counters": {
+      "processedEvents": "已处理事件",
+      "createdNotifications": "已创建通知",
+      "committedBatches": "已提交批次",
+      "pendingEvents": "待处理事件",
+      "oldestPendingSeconds": "最早待处理事件的等待时间（秒）",
+      "cappedTenants": "达到批次上限的公司",
+      "emailAttempted": "邮件尝试次数",
+      "emailSkipped": "已跳过邮件",
+      "emailUnavailableTenants": "邮件服务不可用的公司",
+      "emailCappedTenants": "达到邮件批次上限的公司",
       "granted": "发放天数",
       "opened": "已开启考核",
       "reminders": "已发送提醒",
@@ -16981,6 +17032,10 @@
       "tenantsAlarming": "存在警报的公司"
     },
     "jobs": {
+      "notifications-project": {
+        "name": "通知处理",
+        "description": "处理待处理的通知事件，并记录已提交的工作和积压。邮件投递结果单独记录。"
+      },
       "leave-accrue": {
         "name": "应计假期发放",
         "description": "发放员工截至目前已累积的假期天数。"
@@ -17659,7 +17714,13 @@
     "selectedTag": "已选择",
     "allEmployees": "全部员工",
     "allEmployeesHint": "清除选择并显示全部员工。",
-    "showingCapped": "显示 {total} 个匹配中的前 {cap} 个 — 请细化搜索。"
+    "showingCapped": "显示 {total} 个匹配中的前 {cap} 个 — 请细化搜索。",
+    "loadingEmployees": "正在加载员工…",
+    "loadFailed": "无法加载员工，请重试。",
+    "retry": "重试",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "pageRange": "第 {from}–{to} 条，共 {total, number} 条"
   },
   "appliedInPayroll": {
     "searchPlaceholder": "搜索月份、员工、公司或金额",
@@ -36658,7 +36719,7 @@
   },
   "personnelOrganisationFilters": {
     "updatingResults": "正在更新结果…",
-    "readBusy": "人事系统正忙。请稍候再试。",
+    "applyFailed": "无法应用筛选条件。请重试。",
     "retryRead": "重试",
     "businessUnit": "业务单位",
     "parentCompany": "母公司",

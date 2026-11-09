@@ -1,0 +1,22 @@
+{
+  "kind": "NOTIFICATION_STATIC_SOURCE_PROVENANCE_AND_SEAL_DESIGN_NOT_QUALIFICATION",
+  "base": "7041e59d487b211875d82c4c455bc805720dd4df",
+  "inventorySource": "c45b4fda7ecb4bc98c4228a0c8335b33c01be51d",
+  "inventoryRun": "42430117622",
+  "sourceRecordsVerified": 745,
+  "orderedLedgerRowsVerified": 740,
+  "composedBodiesReconstructed": 9,
+  "effectiveSubstitutions": 115,
+  "defaultDeclarationsLocated": 127,
+  "opaqueDefaultsPortableApproved": false,
+  "expectedHelperProfileApproved": false,
+  "nativeSealImplemented": false,
+  "nativeSqlChanged": false,
+  "releaseAuthorized": false,
+  "productionHeld": true,
+  "sourceSha256": {
+    "docs/qualification/notification-native-source-provenance-20261108.md": "c1e4945e99fc8b1f89963fa4927defd07fb99e76f4f0dc329b85bfa1104dfccc",
+    "docs/qualification/notification-native-composed-body-provenance-20261108.json": "df0c2f068ab4d0cca14f0024acf33953cd87267d41bb35040b8588b4b8b1bbbd",
+    "docs/qualification/notification-native-default-source-provenance-20261108.json": "f696bb33586fe8b267ee0d149163459d38e45f1bdbb4e20b43c35086a5539948"
+  }
+}

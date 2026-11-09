@@ -1,0 +1,42 @@
+{
+  "kind": "NATIVE_NEXT_CONTROLLER_VERIFICATION_RECOVERY_NOT_RELEASE",
+  "base": "c72d78b9a8fa579c2bea4cf2d654efd6416238c0",
+  "sourceRef": "codex/native-next-controller-verification-recovery-20261108",
+  "qualification": "NOT_RUN; root and independent review before hosted controller recovery",
+  "affectedControllerTests": [
+    ".github/ci/candidate-environment.test.mjs",
+    ".github/ci/singleton-commissioning.test.mjs"
+  ],
+  "retainedControllerFailure": {
+    "run": 42417778340,
+    "tests": 920,
+    "passed": 918,
+    "failed": 2,
+    "skipped": 0,
+    "cancelled": 0,
+    "todo": 0
+  },
+  "retainedFocusedSuccess": {
+    "run": 42417776893,
+    "source": "c72d78b9a8fa579c2bea4cf2d654efd6416238c0",
+    "controller": "b7c0393aa3c7606a33dd15103426e5c535324065",
+    "files": 4,
+    "vitestAssertions": 117,
+    "artifactId": 13591982606,
+    "archiveSha256": "b32b3c7cd464cf81c23767a2f39dddd1d38753e1bf536eb86fd8f0c22d1f5684",
+    "actualRootBootstrapVerified": false,
+    "actualNextBootVerified": false
+  },
+  "applicationChanged": false,
+  "production": "HELD",
+  "releaseAuthorized": false,
+  "sourceSha256": {
+    ".github/ci/candidate-environment.test.mjs": "60eef6b180fb6eb8ec1dbbd0ecc4bee0e43b50a68ad82146f4e30e6d303d4340",
+    ".github/ci/singleton-commissioning.test.mjs": "b210208e99383768febd6d8bf6dfba4b9cfbf4a2e4bdeda0336ef0e908553ce6",
+    ".github/ci/native-controller-owner.mjs": "1dc53cf05e9fd7c63fda70b9853e8686d34ead6c67b4a71db5ad0864384c2372",
+    ".github/ci/run-unit.mjs": "025f379e3edb2d0ac7c3c7b4ba9b55e77db31fcec2cfd5ac6825e509a543805a",
+    ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
+    ".github/workflows/alpha-staging.yml": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
+    "docs/qualification/native-next-controller-verification-recovery-20261108.md": "0c1c3262f461a5fb5972889dca73917764a7b4221bf626c31e38d9bca103ef39"
+  }
+}

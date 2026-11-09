@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, batchInputRows } from '@/core/payroll';
+import { batchHeader, batchInputRows } from '@/core/payroll';
 import { loanSummaryForBatch } from '@/core/loans';
 import { listAllowancePolicies } from '@/core/read';
 import { Button, Card, EmployeeCode, SectionHeader, inputCls } from '@/components/ui';
@@ -56,7 +56,7 @@ export async function PayrollAdjustmentsPanel({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
-  const data = await batchDetail(s, batchId);
+  const data = await batchHeader(s, batchId);
   if (!data || data.batch.status !== 'draft') return null;
   const { batch } = data;
 

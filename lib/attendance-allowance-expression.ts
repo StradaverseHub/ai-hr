@@ -1,6 +1,6 @@
 /** Version 3 allowance expressions. Counts, measurements and unknown facts remain distinct. */
 import { ALLOWANCE_METRICS, ALLOWANCE_OPERATORS, type AllowanceMetric, type AllowanceOperator } from './attendance-allowance-vocabulary';
-import type { AllowanceDay } from './attendance-allowance-rules';
+import type { AllowanceDay } from './attendance-allowance-day-types';
 export const ALLOWANCE_METRICS_V3=[...ALLOWANCE_METRICS,'lateCount','earlyOutCount','absenceCount','shortHoursCount','shortMinutes','incompleteCount','leaveCount','leaveDays'] as const;
 export type AllowanceMetricV3=typeof ALLOWANCE_METRICS_V3[number];
 export type AllowanceExpressionUnit='minutes'|'hours'|'days'|'occurrences';

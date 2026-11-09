@@ -1,8 +1,8 @@
 /** Native transaction composition only. A returned source reference is not a deletion custody proof. */
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { withTenant, type SessionContext } from '../db/client';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { client, withTenant, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
 import { createConfig } from '../core/employee-id-config';
 import {
@@ -211,3 +211,66 @@ describe('native draft discard transaction seam', () => {
     }
   });
 });
+
+
+it('keeps a queued draft edit out of PostgreSQL and lets it proceed after an earlier edit fails', async () => {
+  const { id } = await saveEmployeeDraft(ctx, { data: {}, currentStep: 1 });
+  const accessKey = 'access-configuration:' + b.tenantId;
+  let writes: Promise<PromiseSettledResult<{ id: string }>[]> | undefined;
+
+  try {
+    await owner.db.transaction(async tx => {
+      const [holder] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${accessKey}, 0))`);
+      writes = Promise.allSettled([
+        saveEmployeeDraft(ctx, { id: randomUUID(), data: {}, currentStep: 2 }),
+        saveEmployeeDraft(ctx, { id, data: {}, currentStep: 3 }),
+      ]);
+      const readWaiters = async () => {
+        const [result] = await tx.execute<{ n: number }>(sql`select count(*)::int as n
+          from pg_locks l where l.locktype = 'advisory' and not l.granted
+           and ${holder.pid}::int = any(pg_blocking_pids(l.pid))`);
+        return result.n;
+      };
+      await expect.poll(readWaiters, { timeout: 5000 }).toBe(1);
+      // Recheck while the first edit stays blocked so a second pool borrower
+      // cannot pass by reaching PostgreSQL just after the first observation.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(await readWaiters()).toBe(1);
+    });
+    const [missing, saved] = await writes!;
+    expect(missing.status).toBe('rejected');
+    expect(saved).toEqual({ status: 'fulfilled', value: { id } });
+    const state = await snapshot();
+    expect(state.drafts).toMatchObject([{ id, currentStep: 3 }]);
+    expect(state.events.filter(event => event.eventType === 'employee-draft.updated')).toHaveLength(1);
+  } finally {
+    await writes;
+  }
+}, 15000);
+
+it('releases the standalone discard transaction before retrying busy Access and records one native event', async () => {
+  const { id } = await saveEmployeeDraft(ctx, { data: {}, currentStep: 1 });
+  const begins = vi.spyOn(client, 'begin');
+  let result: Promise<PromiseSettledResult<void>[]> | undefined;
+  try {
+    await owner.db.transaction(async tx => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`);
+      result = Promise.allSettled([discardEmployeeDraft(ctx, id)]);
+      await expect.poll(() => begins.mock.results.length, { timeout: 1000 }).toBeGreaterThanOrEqual(1);
+      // The first application transaction must finish while the other session
+      // still holds the lock. A timed-out blocking attempt also fails this assertion.
+      await expect(begins.mock.results[0].value).rejects.toThrow('Draft discard is waiting for Workforce access.');
+      const [row] = await tx.execute<{ remaining: number }>(sql`
+        select count(*)::int as remaining from employee_draft where id=${id}::uuid
+      `);
+      expect(row.remaining).toBe(1);
+    });
+    expect(await result).toEqual([{ status: 'fulfilled', value: undefined }]);
+    expect((await snapshot()).drafts).toHaveLength(0);
+    expect(await discardedEvents(id)).toHaveLength(1);
+  } finally {
+    await result;
+    begins.mockRestore();
+  }
+}, 12000);

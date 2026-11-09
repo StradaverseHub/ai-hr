@@ -2,7 +2,7 @@ import { internalSelected } from './internal-auth/config';
 import { keycloakSelected } from './identity/config';
 import { cache } from 'react';
 import { cookies, headers } from 'next/headers';
-import { client, type Grant, type SessionContext } from '../db/client';
+import { client, withPoolWork, type Grant, type SessionContext } from '../db/client';
 import { TENANT_STATUS_UNRESOLVED, resolveEntitlementsInTenantTx } from '../core/entitlements';
 import { AuthRequiredError } from './auth-errors';
 import { demoSwitcherEnabled, isDemoDeployment } from './demo-mode';
@@ -157,7 +157,7 @@ function perRequest<A extends readonly string[], R>(read: (...args: A) => Promis
  * (resolveEntitlementsTx inside their withTenant) are untouched: they are each owner's current check in its own
  * transaction, not this request snapshot. */
 const tenantSnapshotOnce = perRequest((tenantId: string) =>
-  client.begin((tx) => resolveEntitlementsInTenantTx((q, params) => tx.unsafe(q, params as never[]), tenantId)));
+  withPoolWork(tenantId, () => client.begin((tx) => resolveEntitlementsInTenantTx((q, params) => tx.unsafe(q, params as never[]), tenantId))));
 
 /**
  * Attach the tenant's entitlement snapshot to a resolved session (ADR-0077 slice 2).
@@ -275,18 +275,20 @@ export const getBrowserCommandSession = cache(() => resolveWebSession(true));
 const internalIdentityOnce = perRequest(async () => (await import('./internal-auth/web-session')).currentInternalIdentity());
 const keycloakIdentityOnce = perRequest(async () => (await import('./identity/session')).currentIdentitySession());
 const workosSessionOnce = perRequest(async () => (await import('./workos')).currentWorkosSession());
+const readPrincipalByIdentity = (issuer:string,subject:string) => withPoolWork('authentication',()=>
+  client<SubjectPrincipalRow[]>`select * from app.principal_by_identity(${issuer},${subject})`);
+const readPrincipalBySubject = (subject:string) => withPoolWork('authentication',()=>
+  client<SubjectPrincipalRow[]>`select app_user_id, tenant_id, person_id, grants from app.principal_by_subject(${subject})`);
 const principalByIdentityOnce = perRequest(async (issuer: string, subject: string) =>
-  Array.from(await client<SubjectPrincipalRow[]>`select * from app.principal_by_identity(${issuer},${subject})`));
+  Array.from(await readPrincipalByIdentity(issuer,subject)));
 const principalBySubjectOnce = perRequest(async (subject: string) =>
-  Array.from(await client<SubjectPrincipalRow[]>`
-      select app_user_id, tenant_id, person_id, grants from app.principal_by_subject(${subject})
-    `));
+  Array.from(await readPrincipalBySubject(subject)));
 const devPrincipalOnce = perRequest(async (id: string) =>
-  Array.from(await client<PrincipalRow[]>`
+  Array.from(await withPoolWork('authentication',()=>client<PrincipalRow[]>`
         select tenant_id, person_id, grants from app.principal(${id}::uuid)
-      `));
+      `)));
 const loginBlockedOnce = perRequest(async (id: string) => {
-  const [row] = await client<{ blocked: boolean }[]>`select app.login_blocked(${id}::uuid) as blocked`;
+  const [row] = await withPoolWork('authentication',()=>client<{ blocked: boolean }[]>`select app.login_blocked(${id}::uuid) as blocked`);
   return Boolean(row?.blocked);
 });
 
@@ -369,7 +371,7 @@ export async function getMobileSession(
     const token = /^Bearer (aihr_[A-Za-z0-9_-]{43})$/i.exec(header || '')?.[1];
     const identity = await (await import('./internal-auth/service')).readSession(token, true) || await (await import('./entra/sessions')).readEntraSession(token,true);
     if (!identity) throw new AuthRequiredError('A valid mobile session is required.');
-    const lookup = () => client<SubjectPrincipalRow[]>`select * from app.principal_by_identity(${identity.issuer},${identity.subject})`;
+    const lookup = () => readPrincipalByIdentity(identity.issuer,identity.subject);
     return withEntitlements(await resolveWorkosPrincipal(lookup, identity.subject));
   }
   const token = parseBearer(header);
@@ -377,7 +379,7 @@ export async function getMobileSession(
   if (keycloakSelected()) {
     const { verifyKeycloakAccessToken } = await import('./identity/oidc');
     const identity = await verifyKeycloakAccessToken(token);
-    const lookup = () => client<SubjectPrincipalRow[]>`select * from app.principal_by_identity(${identity.issuer},${identity.subject})`;
+    const lookup = () => readPrincipalByIdentity(identity.issuer,identity.subject);
     return withEntitlements(await resolveWorkosPrincipal(lookup, identity.subject));
   }
   const clientId = process.env.WORKOS_CLIENT_ID;
@@ -392,9 +394,6 @@ export async function getMobileSession(
     issuer: process.env.WORKOS_JWT_ISSUER || 'https://api.workos.com/',
     audience: process.env.WORKOS_JWT_AUDIENCE || undefined,
   });
-  const lookup = (sub: string) =>
-    client<SubjectPrincipalRow[]>`
-      select app_user_id, tenant_id, person_id, grants from app.principal_by_subject(${sub})
-    `;
+  const lookup = (sub: string) => readPrincipalBySubject(sub);
   return withEntitlements(await resolveWorkosPrincipal(lookup, subject));
 }

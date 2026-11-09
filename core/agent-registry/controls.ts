@@ -16,6 +16,7 @@ import {terasMandateControl,terasWorkerControl,type TerasAttestedProvider,type T
 import {isGroupAdmin} from '../../lib/authz-model';
 import {agentSwitchStatesTx} from '../agent-principal';
 import {resolveActiveAiConfig} from '../ai-config';
+import {readAiProviderPresentationTx} from '../ai-provider-snapshot';
 import {isModuleEnabled} from '../entitlements';
 import {readMandateKeysTx} from '../mandates/mandates';
 import {newRunId,writeOutcomeRecordTx} from '../outcome-record/record';
@@ -49,14 +50,25 @@ export type WorkerSwitchState=Readonly<{on:boolean;
  detail:'off'|'on'|'unattributed'}>;
 
 /** The worker's switch as of this transaction. */
-export async function workerSwitchStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration):Promise<WorkerSwitchState>{
+export function workerSwitchStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration):Promise<WorkerSwitchState>{
+ return readWorkerSwitchStateTx(tx,ctx,worker,async feature=>(await resolveActiveAiConfig(tx,ctx,feature))!=null);
+}
+
+/** Registry display uses the read-only snapshot and never prepares a worker configuration. */
+export function workerSwitchPresentationStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration):Promise<WorkerSwitchState>{
+ return readWorkerSwitchStateTx(tx,ctx,worker,async()=>(await readAiProviderPresentationTx(tx,ctx))!=null);
+}
+
+type ProviderSwitch = Extract<WorkerDeclaration['switch'],{kind:'ai_provider'}>;
+async function readWorkerSwitchStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration,
+ providerUsable:(feature:ProviderSwitch['feature'])=>Promise<boolean>):Promise<WorkerSwitchState>{
  const sw=worker.switch;
  if(sw.kind==='tenant_setting'){
   const state=(await agentSwitchStatesTx(tx,ctx)).find(row=>row.feature===sw.feature);
   const detail=state?.state==='attributed'?'on':state?.state==='unattributed'?'unattributed':'off';
   return Object.freeze({on:detail==='on',owner:'tenant_setting',detail});
  }
- if(sw.kind==='ai_provider'){const on=(await resolveActiveAiConfig(tx,ctx,sw.feature))!=null;return Object.freeze({on,owner:'ai_provider',detail:on?'on':'off'});}
+ if(sw.kind==='ai_provider'){const on=await providerUsable(sw.feature);return Object.freeze({on,owner:'ai_provider',detail:on?'on':'off'});}
  if(sw.kind==='job_type'){const on=(await readMandateKeysTx(tx,ctx.tenantId,sw.jobType)).enablement?.enabled===true;return Object.freeze({on,owner:'job_type',detail:on?'on':'off'});}
  const [row]=await tx.select({enabled:terasWorkerControl.enabled}).from(terasWorkerControl)
   .where(and(eq(terasWorkerControl.tenantId,ctx.tenantId),eq(terasWorkerControl.workerId,sw.workerId))).limit(1);
@@ -71,19 +83,24 @@ export async function tenantStoppedTx(tx:Tx,tenantId:string):Promise<boolean>{
 }
 
 export type WorkerGate=Readonly<{run:boolean;reasons:readonly ('not_registered'|'switched_off'|'stopped')[]}>;
+/** Evaluate already-read display facts. Execution paths still read their current gates. */
+export function workerGateFromState(on:boolean,stopped:boolean):WorkerGate{
+ const reasons:('switched_off'|'stopped')[]=[];
+ if(!on)reasons.push('switched_off');
+ if(stopped)reasons.push('stopped');
+ return Object.freeze({run:reasons.length===0,reasons:Object.freeze(reasons)});
+}
 /** Registered, switched on and not stopped, all read in the caller's transaction. */
 export async function workerRunGateTx(tx:Tx,ctx:SessionContext,workerId:string):Promise<WorkerGate>{
  const worker=registeredWorker(workerId);
  if(!worker)return Object.freeze({run:false,reasons:Object.freeze(['not_registered' as const])});
- const reasons:('switched_off'|'stopped')[]=[];
  // Serialize with the stop writer and reject work from an older generation.
  try{await assertAiCentreRunningTx(tx,ctx);}catch(error){
   if(error instanceof Error&&error.name==='AiAllowanceError')return Object.freeze({run:false,reasons:Object.freeze(['stopped' as const])});
   throw error;
  }
- if(!(await workerSwitchStateTx(tx,ctx,worker)).on)reasons.push('switched_off');
- if(await tenantStoppedTx(tx,ctx.tenantId))reasons.push('stopped');
- return Object.freeze({run:reasons.length===0,reasons:Object.freeze(reasons)});
+ const {on}=await workerSwitchStateTx(tx,ctx,worker);
+ return workerGateFromState(on,await tenantStoppedTx(tx,ctx.tenantId));
 }
 export const workerRunGate=(ctx:SessionContext,workerId:string)=>withTenant(ctx,tx=>workerRunGateTx(tx,ctx,workerId));
 /** One worker's gate as workerRunGatesTx reads it: the gate, its switch, and (a teras_worker_control switch that is on)
@@ -106,10 +123,7 @@ export async function workerRunGatesTx(tx:Tx,ctx:SessionContext,workerIds:readon
   if(!worker){out.set(id,Object.freeze({gate:Object.freeze({run:false,reasons:Object.freeze(['not_registered' as const])}),on:false,changedByUserId:null}));continue;}
   const sw=worker.switch,row=sw.kind==='worker_control'?control.get(sw.workerId):undefined;
   const on=sw.kind==='worker_control'?row?.enabled===true:(await workerSwitchStateTx(tx,ctx,worker)).on;
-  const reasons:('switched_off'|'stopped')[]=[];
-  if(!on)reasons.push('switched_off');
-  if(stopped)reasons.push('stopped');
-  out.set(id,Object.freeze({gate:Object.freeze({run:reasons.length===0,reasons:Object.freeze(reasons)}),on,changedByUserId:on?row?.changedByUserId??null:null}));
+  out.set(id,Object.freeze({gate:workerGateFromState(on,stopped),on,changedByUserId:on?row?.changedByUserId??null:null}));
  }
  return out;
 }

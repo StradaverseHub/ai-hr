@@ -1,0 +1,43 @@
+{
+  "kind": "NATIVE_COMPILER_SINGLE_FICTIONAL_PACKAGE_CONTEXT_DESIGN_ONLY",
+  "base": "5c86c5630341c4ea17085b4f8bf8a8171b047b52",
+  "sourceRef": "codex/compiler-native-package-context-design-20261108",
+  "sourceSha256": {
+    ".github/ci/diagnostics/native-reference/fixture.mjs": "436d8c4e5484cd47585c4babadbf2b3a8c16ce6844e08281bbb8c22ba29c34ea",
+    ".github/ci/diagnostics/native-reference/worker.mjs": "227118d4fa84a119fd1db100bdec1010da8c3eca33d85df63cd385150bb27741",
+    ".github/ci/diagnostics/native-reference/outputs.mjs": "f80442a765b03277548faffd076b0e13b037bef633cda8b013443d043eb8427d",
+    ".github/ci/diagnostics/native-reference/config.mjs": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95",
+    ".github/ci/diagnostics/native-reference/graph.mjs": "c555b649e7cebb95e5135af87ab7275d248c4c9b3a27b8742e7f8407944bace3",
+    "test/fixtures/compiler-native-reference/base.json.fixture": "e74aac086043224dbc1632c65bc366513480e17f6b08b3a7d084ab89b481ed9c",
+    "test/fixtures/compiler-native-reference/external/index.d.ts.fixture": "38a6bfb17b33b2a8c87daf3f85253e90be6b3ebcd30253a4c4d4de83a04a1cd9",
+    "test/fixtures/compiler-native-reference/producer/index.ts.fixture": "e456cd0343e756dc69a1ff64875e37fc23ea4c59df9116441ca4ed2c36444728",
+    "docs/qualification/compiler-native-package-context-design-20261108.md": "5c259bae3fd9c47f16c548210c95f5d789ad081311623802bbc8094919ca800b"
+  },
+  "retainedFailure": {
+    "runId": "42454779620",
+    "artifactId": "13606724187",
+    "zipSha256": "48d10c5e8ea5628ac961ca57babcbc1a90cd9421422946e434b89d19869099e7",
+    "failedPhase": "owned-declarations",
+    "ownedDiagnostics": [
+      {
+        "code": 2307,
+        "file": "projects/emitted/producer/index.d.ts",
+        "line": 2
+      }
+    ],
+    "optionsGlobalSyntax": [],
+    "remainingBlockedPhases": 5,
+    "successfulOrExpectedRefusalPhasesBeforeFailure": 7,
+    "actualExecutedPhaseCount": 8,
+    "jsonContextObservedBetweenPhases": true
+  },
+  "proposedPackageLocation": "compiler-native-reference/node_modules/fixture-external",
+  "fixtureBodyBytes": 93,
+  "fixtureBodySha256": "38a6bfb17b33b2a8c87daf3f85253e90be6b3ebcd30253a4c4d4de83a04a1cd9",
+  "plannedNativePhases": 13,
+  "implementationAuthorized": false,
+  "ordinaryCompilerQualified": false,
+  "applicationInventoryComplete": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

@@ -1,0 +1,831 @@
+{
+  "kind": "CURRENT_ARCHITECTURE_COMPILER_INTEGRATION_SOURCE_ONLY_NOT_ADMISSION",
+  "sourceRef": "codex/compiler-native-current-integration-20261108",
+  "architectureParent": "5af28f77c1b2f5e90937243fdda8a85ac1ba7f60",
+  "compilerParent": "047a0748b41bad3b2abde1c170f1a01c16f97687",
+  "mergeBase": "334ed804b794ff945153b70c638f22193fbe177c",
+  "requiredCurrentSharedAncestor": "29d9edcbc4368be871688e9fdf35347676a7841c",
+  "preparedMergeTreeBeforeReviewRecords": "5a34f6085ec6b8bfb680cdd4acfda4e04abc9447",
+  "mergeConflicts": 0,
+  "introducedMembers": {
+    ".github/ci/ci.test.mjs": {
+      "currentSha256": "07d2726db8f096e3997f6915c165eeb81ee33a7fafaa855dbe95876b0ff73fa7",
+      "compilerParentSha256": "5621e5af58ea3a5e5990f58f6485a839d3da315b968765be6b8053f4d737e9eb"
+    },
+    ".github/ci/compiler-file-window-inverse.json": {
+      "currentSha256": "6dc7a68c49921b085b9292972fa92e3b413fc01dbb21510578431712172d97ea",
+      "compilerParentSha256": "6dc7a68c49921b085b9292972fa92e3b413fc01dbb21510578431712172d97ea"
+    },
+    ".github/ci/compiler-reference-supervisor.py": {
+      "currentSha256": "f33708cb06ff7d87cea21514862508641b68c8ecd35d5c10809a1c1e670c0344",
+      "compilerParentSha256": "f33708cb06ff7d87cea21514862508641b68c8ecd35d5c10809a1c1e670c0344"
+    },
+    ".github/ci/compiler-reference-supervisor.test.py": {
+      "currentSha256": "e6dff34ad1455b8067bd095273730421a184fd02cb0e514df1586ac3797402ec",
+      "compilerParentSha256": "e6dff34ad1455b8067bd095273730421a184fd02cb0e514df1586ac3797402ec"
+    },
+    ".github/ci/diagnostics/compiler-attribution.mjs": {
+      "currentSha256": "78ce1ae3cc579856c1c933a347cca4c214ac4d60049112133a0061a5b3c07c71",
+      "compilerParentSha256": "78ce1ae3cc579856c1c933a347cca4c214ac4d60049112133a0061a5b3c07c71"
+    },
+    ".github/ci/diagnostics/compiler-attribution.test.mjs": {
+      "currentSha256": "0dc8bd8013482cfdb07316fc52cd97ec554b0484a9a77eb80b1cf27b77947e62",
+      "compilerParentSha256": "0dc8bd8013482cfdb07316fc52cd97ec554b0484a9a77eb80b1cf27b77947e62"
+    },
+    ".github/ci/diagnostics/compiler-boundary-policy.mjs": {
+      "currentSha256": "cf1aef49f7aad7394e3a8de31e1b31e1da80667fbbc9c8f2da16db5795c28ed7",
+      "compilerParentSha256": "cf1aef49f7aad7394e3a8de31e1b31e1da80667fbbc9c8f2da16db5795c28ed7"
+    },
+    ".github/ci/diagnostics/compiler-boundary-worker.mjs": {
+      "currentSha256": "5d1986d983cc0a2f5d87670704cb83acaaaf41a26d8068958c83ba89e727c00e",
+      "compilerParentSha256": "5d1986d983cc0a2f5d87670704cb83acaaaf41a26d8068958c83ba89e727c00e"
+    },
+    ".github/ci/diagnostics/compiler-boundary.mjs": {
+      "currentSha256": "5fa67c973118053b1760e7adc288d8e429834b468ac38f28040a1e3cd74195d8",
+      "compilerParentSha256": "5fa67c973118053b1760e7adc288d8e429834b468ac38f28040a1e3cd74195d8"
+    },
+    ".github/ci/diagnostics/compiler-boundary.test.mjs": {
+      "currentSha256": "e17bf76106ac650b70f56b6af263dd9d45de15a6061c94c24e08cc681374e95c",
+      "compilerParentSha256": "e17bf76106ac650b70f56b6af263dd9d45de15a6061c94c24e08cc681374e95c"
+    },
+    ".github/ci/diagnostics/compiler-consumer-trace.mjs": {
+      "currentSha256": "ba70a418a2cf86c7d203938fdbbca4c73441448ab97860c7b3616175c296892a",
+      "compilerParentSha256": "ba70a418a2cf86c7d203938fdbbca4c73441448ab97860c7b3616175c296892a"
+    },
+    ".github/ci/diagnostics/compiler-consumer-trace.test.mjs": {
+      "currentSha256": "67cd4a24cea03aff5c35d58db0ec751a27e7189123bee953ead39f7303b6ea1b",
+      "compilerParentSha256": "67cd4a24cea03aff5c35d58db0ec751a27e7189123bee953ead39f7303b6ea1b"
+    },
+    ".github/ci/diagnostics/native-reference/admission.mjs": {
+      "currentSha256": "38a777ec1108921399f8b3cd4acdb5ad696122f3e18d022a8463e244ef197b15",
+      "compilerParentSha256": "38a777ec1108921399f8b3cd4acdb5ad696122f3e18d022a8463e244ef197b15"
+    },
+    ".github/ci/diagnostics/native-reference/admission.test.mjs": {
+      "currentSha256": "3e0f32e5ad02a70bfff5e11eeecb5608a2a14c658773522be6f7aa89f464769a",
+      "compilerParentSha256": "3e0f32e5ad02a70bfff5e11eeecb5608a2a14c658773522be6f7aa89f464769a"
+    },
+    ".github/ci/diagnostics/native-reference/config.mjs": {
+      "currentSha256": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95",
+      "compilerParentSha256": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95"
+    },
+    ".github/ci/diagnostics/native-reference/dependency-custody-inverse.json": {
+      "currentSha256": "d32319321ced719bc1898cf6a26d6bc5225fe14d1806f2285cc44f06499a2fa2",
+      "compilerParentSha256": "d32319321ced719bc1898cf6a26d6bc5225fe14d1806f2285cc44f06499a2fa2"
+    },
+    ".github/ci/diagnostics/native-reference/fixture.mjs": {
+      "currentSha256": "9542df648d16320338174d1f692fd243696142b2e91dfa7e95184acba0712c84",
+      "compilerParentSha256": "9542df648d16320338174d1f692fd243696142b2e91dfa7e95184acba0712c84"
+    },
+    ".github/ci/diagnostics/native-reference/graph.mjs": {
+      "currentSha256": "c555b649e7cebb95e5135af87ab7275d248c4c9b3a27b8742e7f8407944bace3",
+      "compilerParentSha256": "c555b649e7cebb95e5135af87ab7275d248c4c9b3a27b8742e7f8407944bace3"
+    },
+    ".github/ci/diagnostics/native-reference/graph.test.mjs": {
+      "currentSha256": "cc9187838c5f5d402917dbe355e004ade36807b95ef0373d15b347ed29f8940f",
+      "compilerParentSha256": "cc9187838c5f5d402917dbe355e004ade36807b95ef0373d15b347ed29f8940f"
+    },
+    ".github/ci/diagnostics/native-reference/outputs.mjs": {
+      "currentSha256": "f80442a765b03277548faffd076b0e13b037bef633cda8b013443d043eb8427d",
+      "compilerParentSha256": "f80442a765b03277548faffd076b0e13b037bef633cda8b013443d043eb8427d"
+    },
+    ".github/ci/diagnostics/native-reference/outputs.test.mjs": {
+      "currentSha256": "13f71830702786a1d52cba90d2f95e0bbb2f957fe26b6440b8de6163346e1c2d",
+      "compilerParentSha256": "13f71830702786a1d52cba90d2f95e0bbb2f957fe26b6440b8de6163346e1c2d"
+    },
+    ".github/ci/diagnostics/native-reference/package-context-inverse.json": {
+      "currentSha256": "becb91b9af6b141da28374bcb0a0cdfa658949f9eb7e9973fa3ada99a7864c37",
+      "compilerParentSha256": "becb91b9af6b141da28374bcb0a0cdfa658949f9eb7e9973fa3ada99a7864c37"
+    },
+    ".github/ci/diagnostics/native-reference/package-context.mjs": {
+      "currentSha256": "b60bcd493e5867f0167446ab28eb78c556cbc8071394ee2feb202541bb68e6e9",
+      "compilerParentSha256": "b60bcd493e5867f0167446ab28eb78c556cbc8071394ee2feb202541bb68e6e9"
+    },
+    ".github/ci/diagnostics/native-reference/process.mjs": {
+      "currentSha256": "798b305f20088ee77c1ce0cc01c08427718671f769aec446d1946b0b844879ba",
+      "compilerParentSha256": "798b305f20088ee77c1ce0cc01c08427718671f769aec446d1946b0b844879ba"
+    },
+    ".github/ci/diagnostics/native-reference/process.test.mjs": {
+      "currentSha256": "c2df40d57fd9964a405326952c9c4543ad5da0d837db7761553cbc5b5ea57912",
+      "compilerParentSha256": "c2df40d57fd9964a405326952c9c4543ad5da0d837db7761553cbc5b5ea57912"
+    },
+    ".github/ci/diagnostics/native-reference/worker.mjs": {
+      "currentSha256": "a0599b5ea4dc2b4bc32c59049408d50d62129f92043b61b1623a6c18b8ecd10a",
+      "compilerParentSha256": "a0599b5ea4dc2b4bc32c59049408d50d62129f92043b61b1623a6c18b8ecd10a"
+    },
+    ".github/ci/employee-ascii-adapter-inverse.json": {
+      "currentSha256": "f99a86a391e669c0a4c26343a9ee5284b0a5924f3548bc7c7f95d0d0b7325ed3",
+      "compilerParentSha256": "f99a86a391e669c0a4c26343a9ee5284b0a5924f3548bc7c7f95d0d0b7325ed3"
+    },
+    ".github/ci/employee-benchmark-supervisor.py": {
+      "currentSha256": "68a47dce71197e7fc1f57702cbc1dc99495ac58d5cf43243c702c82873467926",
+      "compilerParentSha256": "68a47dce71197e7fc1f57702cbc1dc99495ac58d5cf43243c702c82873467926"
+    },
+    ".github/ci/employee-benchmark-supervisor.test.py": {
+      "currentSha256": "d95721c1172ed25318eb1d209a6d4aa5d7ce2e741c177bce103920c38e08490d",
+      "compilerParentSha256": "d95721c1172ed25318eb1d209a6d4aa5d7ce2e741c177bce103920c38e08490d"
+    },
+    ".github/ci/focused-checks.mjs": {
+      "currentSha256": "6501a62bb75ea3e3ff2ddb4066df6975ee85cf141052f58cc4d4a972bfb64a5f",
+      "compilerParentSha256": "b085f4e6d991bdccf2d86aaf674594bf34acc5dd2817b7f159af287163722994"
+    },
+    ".github/ci/focused-checks.test.mjs": {
+      "currentSha256": "d556a4967fa6ceb536d59aaa89d8310d8836d9526b98f037349b247c823c69a3",
+      "compilerParentSha256": "d556a4967fa6ceb536d59aaa89d8310d8836d9526b98f037349b247c823c69a3"
+    },
+    ".github/ci/owned-process-extraction.json": {
+      "currentSha256": "c94cc4317f67bdb0810a8baf22d747e0e8f7c681b26c90e495e59468224cd645",
+      "compilerParentSha256": "c94cc4317f67bdb0810a8baf22d747e0e8f7c681b26c90e495e59468224cd645"
+    },
+    ".github/ci/owned-process.py": {
+      "currentSha256": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129",
+      "compilerParentSha256": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129"
+    },
+    ".github/workflows/alpha-focused-checks.yml": {
+      "currentSha256": "f3f454d5474a02af38b18b97579e5854bd8897979f6e1ca61f72c1855ae1d991",
+      "compilerParentSha256": "f3f454d5474a02af38b18b97579e5854bd8897979f6e1ca61f72c1855ae1d991"
+    },
+    ".github/workflows/alpha-staging-diagnostics.yml": {
+      "currentSha256": "52c18222811f9ec289cc4fdbe01a58bcca70a671dad4209cd1cab7ae032c43cd",
+      "compilerParentSha256": "52c18222811f9ec289cc4fdbe01a58bcca70a671dad4209cd1cab7ae032c43cd"
+    },
+    "docs/adr/2026-11-08-exact-ascii-employee-choice-prototype.md": {
+      "currentSha256": "2149fd33ca21a97ce43364ed482838894e02d36c2d6cecbc1f31a09734b83084",
+      "compilerParentSha256": "2149fd33ca21a97ce43364ed482838894e02d36c2d6cecbc1f31a09734b83084"
+    },
+    "docs/adr/2026-11-08-native-compiler-reference-boundaries.md": {
+      "currentSha256": "fe1b9c6ba3a998c440b0daa2ffbd97b663107d7cb046eef404753e0a60059c23",
+      "compilerParentSha256": "fe1b9c6ba3a998c440b0daa2ffbd97b663107d7cb046eef404753e0a60059c23"
+    },
+    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": {
+      "currentSha256": "7b56aa25b50812f248a2f048875b0aa40afe0142b8af1b6b52c10a6bd7a194ff",
+      "compilerParentSha256": "7b56aa25b50812f248a2f048875b0aa40afe0142b8af1b6b52c10a6bd7a194ff"
+    },
+    "docs/architecture/COMPILER-SELECTED-CONSUMER-TRACE-20261108.md": {
+      "currentSha256": "aa3f494b7e65f8b5cc5513d135dc491121131bb4b59f1e74184c01241aaf5c32",
+      "compilerParentSha256": "aa3f494b7e65f8b5cc5513d135dc491121131bb4b59f1e74184c01241aaf5c32"
+    },
+    "docs/qualification/compiler-bounded-consumer-recovery-20261108.md": {
+      "currentSha256": "4ac5fe084af640a5daa2c44fdc0c633200d9279ad00c388c7aefc755d63e5158",
+      "compilerParentSha256": "4ac5fe084af640a5daa2c44fdc0c633200d9279ad00c388c7aefc755d63e5158"
+    },
+    "docs/qualification/compiler-controller-focused-controls-20261108.json": {
+      "currentSha256": "e8d7228afbf8065acedf888dade9d49cf2a9145119e8afa019a1131bd59c39c1",
+      "compilerParentSha256": "e8d7228afbf8065acedf888dade9d49cf2a9145119e8afa019a1131bd59c39c1"
+    },
+    "docs/qualification/compiler-controller-focused-controls-20261108.md": {
+      "currentSha256": "d5622954eb8951b4ea4ce0fb10b2b19f3b76c07631371e866ae3c66ec79af22c",
+      "compilerParentSha256": "d5622954eb8951b4ea4ce0fb10b2b19f3b76c07631371e866ae3c66ec79af22c"
+    },
+    "docs/qualification/compiler-declaration-boundary-request-20261108.json": {
+      "currentSha256": "36849f7f1c51a115a975b6fc8cd989fbfd2425f6eac5a4b260c630726695d459",
+      "compilerParentSha256": "36849f7f1c51a115a975b6fc8cd989fbfd2425f6eac5a4b260c630726695d459"
+    },
+    "docs/qualification/compiler-full-native-inventory-design-20261108.md": {
+      "currentSha256": "d1035d9913c8a477f64876662d7a2608b08b4c7f82f8805532cd50c328a27598",
+      "compilerParentSha256": "d1035d9913c8a477f64876662d7a2608b08b4c7f82f8805532cd50c328a27598"
+    },
+    "docs/qualification/compiler-full-native-inventory-design-source-20261108.json": {
+      "currentSha256": "8709fa420cbd12840784273277b1543e5406a3662f291dd791749b553a0b661a",
+      "compilerParentSha256": "8709fa420cbd12840784273277b1543e5406a3662f291dd791749b553a0b661a"
+    },
+    "docs/qualification/compiler-native-ambient-context-recovery-20261108.md": {
+      "currentSha256": "8872cb3484429ffc4b7f25ebc3b1a86a46f1e04446dea3bdfe78424b3bb9fcfa",
+      "compilerParentSha256": "8872cb3484429ffc4b7f25ebc3b1a86a46f1e04446dea3bdfe78424b3bb9fcfa"
+    },
+    "docs/qualification/compiler-native-configured-root-budget-20261108.md": {
+      "currentSha256": "500747fb8b17ab2131fce58f0ee4a6bbc337455191e73f20969ba9466ff4c787",
+      "compilerParentSha256": "500747fb8b17ab2131fce58f0ee4a6bbc337455191e73f20969ba9466ff4c787"
+    },
+    "docs/qualification/compiler-native-configured-root-budget-source-20261108.json": {
+      "currentSha256": "ea9afb7854fe1e8d7515c82a8d3d5005a5eefc5a68da35f998522b7522c570ac",
+      "compilerParentSha256": "ea9afb7854fe1e8d7515c82a8d3d5005a5eefc5a68da35f998522b7522c570ac"
+    },
+    "docs/qualification/compiler-native-declaration-emission-recovery-20261108.md": {
+      "currentSha256": "c4a061a101477232b2cc9805734af7b760d56d469ddb2d6c46c409486e6c470f",
+      "compilerParentSha256": "c4a061a101477232b2cc9805734af7b760d56d469ddb2d6c46c409486e6c470f"
+    },
+    "docs/qualification/compiler-native-input-stat-diagnostic-20261108.md": {
+      "currentSha256": "add5be85743f9361ed21c2cc5c9812e570c5afa93ea3970f57cbccd8f33cad8e",
+      "compilerParentSha256": "add5be85743f9361ed21c2cc5c9812e570c5afa93ea3970f57cbccd8f33cad8e"
+    },
+    "docs/qualification/compiler-native-json-context-20261108.md": {
+      "currentSha256": "4f690fd761ff0a9b7cc6ef256c220a1786610472c27b171877581f60320d5b03",
+      "compilerParentSha256": "4f690fd761ff0a9b7cc6ef256c220a1786610472c27b171877581f60320d5b03"
+    },
+    "docs/qualification/compiler-native-package-context-20261108.md": {
+      "currentSha256": "6cb18fafa9cc412ac1d8249b66367331911174b6994bb02351a57cd2c2b314d3",
+      "compilerParentSha256": "6cb18fafa9cc412ac1d8249b66367331911174b6994bb02351a57cd2c2b314d3"
+    },
+    "docs/qualification/compiler-native-package-context-design-20261108.md": {
+      "currentSha256": "5c259bae3fd9c47f16c548210c95f5d789ad081311623802bbc8094919ca800b",
+      "compilerParentSha256": "5c259bae3fd9c47f16c548210c95f5d789ad081311623802bbc8094919ca800b"
+    },
+    "docs/qualification/compiler-native-package-context-design-source-20261108.json": {
+      "currentSha256": "08a1cccdb92a94a4e3324ddd7a9d75a1532985266440f69be1d02a3672d354c2",
+      "compilerParentSha256": "08a1cccdb92a94a4e3324ddd7a9d75a1532985266440f69be1d02a3672d354c2"
+    },
+    "docs/qualification/compiler-native-reference-design-source-20261108.json": {
+      "currentSha256": "fe7375c37b4033ff38a8666c5893eb36d491bf7b4f5ef0a9a4d4e2bf79e50f57",
+      "compilerParentSha256": "fe7375c37b4033ff38a8666c5893eb36d491bf7b4f5ef0a9a4d4e2bf79e50f57"
+    },
+    "docs/qualification/compiler-native-reference-prototype-20261108.md": {
+      "currentSha256": "cf4db60bb6b80335e73a131dfb6749bd89bb2bc420cad75f147af0a49f766be2",
+      "compilerParentSha256": "cf4db60bb6b80335e73a131dfb6749bd89bb2bc420cad75f147af0a49f766be2"
+    },
+    "docs/qualification/compiler-native-reference-prototype-source-20261108.json": {
+      "currentSha256": "40bab409f0a9254b76df7f93f1392d1f4ee17d77892ab9840ec96da9d23b9fd6",
+      "compilerParentSha256": "40bab409f0a9254b76df7f93f1392d1f4ee17d77892ab9840ec96da9d23b9fd6"
+    },
+    "docs/qualification/compiler-native-reference-shared-layout-20261108.md": {
+      "currentSha256": "06ecf5d4387fae4e56ddc5da660d85d4b6754922ed8ded844d79cca38595108f",
+      "compilerParentSha256": "06ecf5d4387fae4e56ddc5da660d85d4b6754922ed8ded844d79cca38595108f"
+    },
+    "docs/qualification/compiler-native-reference-shared-layout-source-20261108.json": {
+      "currentSha256": "9da0cb3440f4caf5befa54a98f1bb40f897827bf4cd96a3f4f45330e7c7cb74b",
+      "compilerParentSha256": "9da0cb3440f4caf5befa54a98f1bb40f897827bf4cd96a3f4f45330e7c7cb74b"
+    },
+    "docs/qualification/compiler-native-resolution-leaves-recovery-20261108.md": {
+      "currentSha256": "977298fb5ad15ee137a7a395eb4243e83ed0235aede84973a54b7e023b13ad6d",
+      "compilerParentSha256": "977298fb5ad15ee137a7a395eb4243e83ed0235aede84973a54b7e023b13ad6d"
+    },
+    "docs/qualification/compiler-owned-controls-recovery-20261108.md": {
+      "currentSha256": "fc56c99214ee76ad4e6e90021906260c503dc00374db8d0563a1a1b0ed6f9b86",
+      "compilerParentSha256": "fc56c99214ee76ad4e6e90021906260c503dc00374db8d0563a1a1b0ed6f9b86"
+    },
+    "docs/qualification/compiler-post-translator-complete-boundary-20261108.md": {
+      "currentSha256": "439a63bdfa4ee5087193a724553745668620a9cd80a0d7ba88ce78893c55929c",
+      "compilerParentSha256": "439a63bdfa4ee5087193a724553745668620a9cd80a0d7ba88ce78893c55929c"
+    },
+    "docs/qualification/compiler-post-translator-complete-boundary-request-20261108.json": {
+      "currentSha256": "2eacde993f3682779709423a0123e40e3e5e64d4b1ff09b1206b4e3796a074ed",
+      "compilerParentSha256": "2eacde993f3682779709423a0123e40e3e5e64d4b1ff09b1206b4e3796a074ed"
+    },
+    "docs/qualification/compiler-post-translator-whole-trace-20261108.md": {
+      "currentSha256": "d0452666e85fa6adbadc305fac11601b2da34f3fb2adcba81a95d51a8f638366",
+      "compilerParentSha256": "d0452666e85fa6adbadc305fac11601b2da34f3fb2adcba81a95d51a8f638366"
+    },
+    "docs/qualification/compiler-post-translator-whole-trace-request-20261108.json": {
+      "currentSha256": "fa390ab844ab3c9fd5264f3ce9e8fab6ab8e0c1a4744a3d57cc6da263ba1efd6",
+      "compilerParentSha256": "fa390ab844ab3c9fd5264f3ce9e8fab6ab8e0c1a4744a3d57cc6da263ba1efd6"
+    },
+    "docs/qualification/compiler-readonly-dependency-custody-20261108.md": {
+      "currentSha256": "f8b2263c0e7b36479cf9aa08eaa48363bd6d7456f1db49db7356197983176e3a",
+      "compilerParentSha256": "f8b2263c0e7b36479cf9aa08eaa48363bd6d7456f1db49db7356197983176e3a"
+    },
+    "docs/qualification/compiler-reference-owned-source-20261108.json": {
+      "currentSha256": "837069a38e0a7b687508683b7936a92df744efb329df9b0e108de5983132c224",
+      "compilerParentSha256": "837069a38e0a7b687508683b7936a92df744efb329df9b0e108de5983132c224"
+    },
+    "docs/qualification/compiler-reference-owned-supervision-20261108.md": {
+      "currentSha256": "bdfcad6547d89647259848c61a9c898d3b81d7d7d4d0ca573c77aa119a386624",
+      "compilerParentSha256": "bdfcad6547d89647259848c61a9c898d3b81d7d7d4d0ca573c77aa119a386624"
+    },
+    "docs/qualification/compiler-reference-owned-work-checkpoint-20261108.md": {
+      "currentSha256": "ba01c6124da96e2e27df894e4f9a2fa6c75c265e9383e464c1e0a83edcfad32f",
+      "compilerParentSha256": "ba01c6124da96e2e27df894e4f9a2fa6c75c265e9383e464c1e0a83edcfad32f"
+    },
+    "docs/qualification/compiler-selected-consumer-trace-20261108.md": {
+      "currentSha256": "fbaa920a9145c4bc56a67ae9e654800ae65a525994b7742a04d319b6caa20451",
+      "compilerParentSha256": "fbaa920a9145c4bc56a67ae9e654800ae65a525994b7742a04d319b6caa20451"
+    },
+    "docs/qualification/compiler-selected-consumer-trace-request-20261108.json": {
+      "currentSha256": "c34cea1ff7a042b6a9cb59b68490d49cac6dba42c922fac871f687dc27549f38",
+      "compilerParentSha256": "c34cea1ff7a042b6a9cb59b68490d49cac6dba42c922fac871f687dc27549f38"
+    },
+    "docs/qualification/compiler-trace-controller-recovery-20261108.md": {
+      "currentSha256": "c11b4bc83c1ed8cd57bb1d6a7b8e10f66f0776e23d37656a0b8eb22293752c69",
+      "compilerParentSha256": "c11b4bc83c1ed8cd57bb1d6a7b8e10f66f0776e23d37656a0b8eb22293752c69"
+    },
+    "docs/qualification/compiler-trace-controller-recovery-source-20261108.json": {
+      "currentSha256": "58414c41da8cb916e30fd42ac5c9a39851ae6ec706f3797682ba3d294e04f5c1",
+      "compilerParentSha256": "58414c41da8cb916e30fd42ac5c9a39851ae6ec706f3797682ba3d294e04f5c1"
+    },
+    "docs/qualification/compiler-trace-controller-source-binding-20261108.md": {
+      "currentSha256": "1f9d8965f2d8001fb32314464a05fe31a28ec3436b367466543e7bb287538df3",
+      "compilerParentSha256": "1f9d8965f2d8001fb32314464a05fe31a28ec3436b367466543e7bb287538df3"
+    },
+    "docs/qualification/compiler-trace-controller-source-binding-source-20261108.json": {
+      "currentSha256": "a94cd501d4a525172a322e5d154e02acedef004dc84b865acaa215727a4cc6f0",
+      "compilerParentSha256": "a94cd501d4a525172a322e5d154e02acedef004dc84b865acaa215727a4cc6f0"
+    },
+    "docs/qualification/compiler-window-control-owner-20261108.md": {
+      "currentSha256": "f2227e3c5cbc3951d5050f0ebb57ede42f0707c65bb1a26b467385c817482076",
+      "compilerParentSha256": "f2227e3c5cbc3951d5050f0ebb57ede42f0707c65bb1a26b467385c817482076"
+    },
+    "docs/qualification/compiler38-attribution-request-20261108.json": {
+      "currentSha256": "a0f2b5271481ea0f36a4d0c7540093051b75109b5c8b7b4d529c881f838ceb73",
+      "compilerParentSha256": "a0f2b5271481ea0f36a4d0c7540093051b75109b5c8b7b4d529c881f838ceb73"
+    },
+    "docs/qualification/employee-choice-ascii-private-owner-20261108.md": {
+      "currentSha256": "05a64d5e3772b95c9afe24c4f82fe942920e15a9a65931b2f008639b644821bd",
+      "compilerParentSha256": "05a64d5e3772b95c9afe24c4f82fe942920e15a9a65931b2f008639b644821bd"
+    },
+    "docs/qualification/employee-choice-ascii-private-owner-design-20261108.md": {
+      "currentSha256": "aa2163cd3371cac981f0b1bf6a178fabecc50b12591a075d834a7c33f86ac367",
+      "compilerParentSha256": "aa2163cd3371cac981f0b1bf6a178fabecc50b12591a075d834a7c33f86ac367"
+    },
+    "docs/qualification/employee-choice-ascii-private-owner-design-source-20261108.json": {
+      "currentSha256": "542a50875cc9f747cc84a1ee401423a8061aa85c11318e8091c3fe36afa92a03",
+      "compilerParentSha256": "542a50875cc9f747cc84a1ee401423a8061aa85c11318e8091c3fe36afa92a03"
+    },
+    "docs/qualification/employee-choice-ascii-private-owner-source-20261108.json": {
+      "currentSha256": "a3e834d52be853b51b42092f1ec55c4bb01ea5013229f9018eda709f784b9660",
+      "compilerParentSha256": "a3e834d52be853b51b42092f1ec55c4bb01ea5013229f9018eda709f784b9660"
+    },
+    "docs/qualification/employee-choice-ascii-proof-json-wire-recovery-20261108.md": {
+      "currentSha256": "7c6156d1abcf306fac71e1c9802557485095e84c87d12ca488d5bef5f3664b94",
+      "compilerParentSha256": "7c6156d1abcf306fac71e1c9802557485095e84c87d12ca488d5bef5f3664b94"
+    },
+    "docs/qualification/employee-choice-ascii-supervised-routes-20261108.md": {
+      "currentSha256": "2cb3142ef5a8a9a5576924c2c89523609bc9e4c1dc68e1a2cfbc1d3b287e1713",
+      "compilerParentSha256": "2cb3142ef5a8a9a5576924c2c89523609bc9e4c1dc68e1a2cfbc1d3b287e1713"
+    },
+    "docs/qualification/employee-choice-ascii-supervised-routes-source-20261108.json": {
+      "currentSha256": "1b3d554316af0170e9d826cb622c5e8eb883aa556f0e834a0001cd17586911ab",
+      "compilerParentSha256": "1b3d554316af0170e9d826cb622c5e8eb883aa556f0e834a0001cd17586911ab"
+    },
+    "docs/qualification/employee-choice-exact-ascii-native-proof-20261108.md": {
+      "currentSha256": "3517b81844d2e7a390aa0e2cf30ee46cfabcb39bbb8493a998a287db1fb35610",
+      "compilerParentSha256": "3517b81844d2e7a390aa0e2cf30ee46cfabcb39bbb8493a998a287db1fb35610"
+    },
+    "docs/qualification/employee-choice-exact-ascii-native-proof-source-20261108.json": {
+      "currentSha256": "c95173d31a69e066e2767350a72f2c5dc51e988ab5870cc90e94e33352bf7add",
+      "compilerParentSha256": "c95173d31a69e066e2767350a72f2c5dc51e988ab5870cc90e94e33352bf7add"
+    },
+    "docs/qualification/employee-choice-exact-ascii-proof-plan-20261108.md": {
+      "currentSha256": "a2a54b399f10027d8d6c1b06116898372efc13571e6e87a7df0e728b7f81941a",
+      "compilerParentSha256": "a2a54b399f10027d8d6c1b06116898372efc13571e6e87a7df0e728b7f81941a"
+    },
+    "docs/qualification/employee-choice-exact-ascii-prototype-20261108.md": {
+      "currentSha256": "19e529ad2ee3bf9c481d7405f200bc400c09c6dbce1fcccb6bdc12f8dfe9b40c",
+      "compilerParentSha256": "19e529ad2ee3bf9c481d7405f200bc400c09c6dbce1fcccb6bdc12f8dfe9b40c"
+    },
+    "docs/qualification/employee-choice-exact-ascii-prototype-source-20261108.json": {
+      "currentSha256": "bf27191940ef0fc4b6d3dc8d487235a250d210e4dccaa68f8b3568a594d41d88",
+      "compilerParentSha256": "bf27191940ef0fc4b6d3dc8d487235a250d210e4dccaa68f8b3568a594d41d88"
+    },
+    "docs/qualification/employee-choice-native-factory-supervised-route-20261108.md": {
+      "currentSha256": "dfe37920f7f937c1338a0e292101fe5bda6f585180b98de860a23f16ad774631",
+      "compilerParentSha256": "dfe37920f7f937c1338a0e292101fe5bda6f585180b98de860a23f16ad774631"
+    },
+    "docs/qualification/employee-choice-native-factory-supervised-route-source-20261108.json": {
+      "currentSha256": "84f96bead47ef53588550f3d49ce778fd18f3e5680bacf6b8c716175b41de729",
+      "compilerParentSha256": "84f96bead47ef53588550f3d49ce778fd18f3e5680bacf6b8c716175b41de729"
+    },
+    "docs/qualification/employee-choice-native-owner-factory-20261108.md": {
+      "currentSha256": "841c71210213d6075e42da393e8b81ae6bc8c1ec1fcf4f1c748dd254b1ae89b1",
+      "compilerParentSha256": "841c71210213d6075e42da393e8b81ae6bc8c1ec1fcf4f1c748dd254b1ae89b1"
+    },
+    "docs/qualification/employee-choice-native-owner-factory-design-20261108.md": {
+      "currentSha256": "848dafc9851827ecd312c3447acdd65b276506ef651fc313ca015684cbc66380",
+      "compilerParentSha256": "848dafc9851827ecd312c3447acdd65b276506ef651fc313ca015684cbc66380"
+    },
+    "docs/qualification/employee-choice-native-owner-factory-design-source-20261108.json": {
+      "currentSha256": "c6eda96988090252e84725f8b124b590c0704f51baf7c613e32bae704c5f3c92",
+      "compilerParentSha256": "c6eda96988090252e84725f8b124b590c0704f51baf7c613e32bae704c5f3c92"
+    },
+    "docs/qualification/employee-choice-native-owner-factory-source-20261108.json": {
+      "currentSha256": "afc39887935b49fc356f2a5ba33efd7c85d25cf845d641acb19d9cb4773bc3ba",
+      "compilerParentSha256": "afc39887935b49fc356f2a5ba33efd7c85d25cf845d641acb19d9cb4773bc3ba"
+    },
+    "docs/qualification/employee-choice-owner-settlement-recovery-20261108.md": {
+      "currentSha256": "20bb1fee0fdb42881a151cac7395d2e58726910d5c38023c03b927428252f74b",
+      "compilerParentSha256": "20bb1fee0fdb42881a151cac7395d2e58726910d5c38023c03b927428252f74b"
+    },
+    "docs/qualification/employee-choice-owner-settlement-recovery-source-20261108.json": {
+      "currentSha256": "ff168f48c4e0e6d02345adc758b9a301823ac8b4b272c2478bf9d2f1d835b9fb",
+      "compilerParentSha256": "ff168f48c4e0e6d02345adc758b9a301823ac8b4b272c2478bf9d2f1d835b9fb"
+    },
+    "docs/qualification/shared-owned-process-control-source-loader-20261108.md": {
+      "currentSha256": "6667d9b7ea7ca79604d9ae3c966cc77638ea2868f4a702ce2c3ccde0b9d39880",
+      "compilerParentSha256": "6667d9b7ea7ca79604d9ae3c966cc77638ea2868f4a702ce2c3ccde0b9d39880"
+    },
+    "docs/qualification/shared-owned-process-control-source-loader-source-20261108.json": {
+      "currentSha256": "2d21e2013b35dbc665d6199413da410824cdc99335c8bd60ceefa7b7bf0840f1",
+      "compilerParentSha256": "2d21e2013b35dbc665d6199413da410824cdc99335c8bd60ceefa7b7bf0840f1"
+    },
+    "docs/qualification/shared-owned-process-kernel-extraction-20261108.md": {
+      "currentSha256": "391e7108059d4f2716392db469aa565b99caa40d868ebbf1ea5bc026c176866b",
+      "compilerParentSha256": "391e7108059d4f2716392db469aa565b99caa40d868ebbf1ea5bc026c176866b"
+    },
+    "docs/qualification/shared-owned-process-kernel-extraction-source-20261108.json": {
+      "currentSha256": "74ca2846a434fdd1800b62caaccc73dc0a9e9789a715832f19463f9e19125492",
+      "compilerParentSha256": "74ca2846a434fdd1800b62caaccc73dc0a9e9789a715832f19463f9e19125492"
+    },
+    "docs/qualification/shared-owned-process-source-loader-recovery-20261108.md": {
+      "currentSha256": "a12425d5f3e766bc5f1f122634011e962081fa82c0f786056917b59940e0549d",
+      "compilerParentSha256": "a12425d5f3e766bc5f1f122634011e962081fa82c0f786056917b59940e0549d"
+    },
+    "docs/qualification/shared-owned-process-source-loader-recovery-source-20261108.json": {
+      "currentSha256": "53e2af6f3ceda357644250638f87a6e183a0dc891110b71a70ea65603e8f9b14",
+      "compilerParentSha256": "53e2af6f3ceda357644250638f87a6e183a0dc891110b71a70ea65603e8f9b14"
+    },
+    "docs/qualification/whole-compiler-attribution.md": {
+      "currentSha256": "ed659ea1d63b24570ad135d00698fe107cce532d6df174b51c6e51aee078d7b1",
+      "compilerParentSha256": "ed659ea1d63b24570ad135d00698fe107cce532d6df174b51c6e51aee078d7b1"
+    },
+    "test/compiler-diagnostic-controller.test.ts": {
+      "currentSha256": "89bae4add29cd290ffca55b0faa1d3a1af309be340257882713adefcfab56081",
+      "compilerParentSha256": "89bae4add29cd290ffca55b0faa1d3a1af309be340257882713adefcfab56081"
+    },
+    "test/compiler-native-reference-fixture.test.ts": {
+      "currentSha256": "d3d4eb099a881a08f309779bc045188e4888c384ad05d41c448eb8333ad86ea3",
+      "compilerParentSha256": "d3d4eb099a881a08f309779bc045188e4888c384ad05d41c448eb8333ad86ea3"
+    },
+    "test/compiler-native-reference-graph.test.ts": {
+      "currentSha256": "1ccd72e69524542ef5e43116cc5eb171d55392e3b480a48df95b20a63fdd7c0f",
+      "compilerParentSha256": "1ccd72e69524542ef5e43116cc5eb171d55392e3b480a48df95b20a63fdd7c0f"
+    },
+    "test/compiler-native-reference-process.test.ts": {
+      "currentSha256": "a544911c24e4cf2517aa80d083c943e03466a9f12cd2bcb0a55a6922fa0cba8d",
+      "compilerParentSha256": "a544911c24e4cf2517aa80d083c943e03466a9f12cd2bcb0a55a6922fa0cba8d"
+    },
+    "test/compiler-native-reference-supervisor.test.ts": {
+      "currentSha256": "1b127edfecfdc748c0e59c0d9da6a7317bb27b6cd5536d35dba371315d164f54",
+      "compilerParentSha256": "1b127edfecfdc748c0e59c0d9da6a7317bb27b6cd5536d35dba371315d164f54"
+    },
+    "test/employee-choice-ascii-observation.test.ts": {
+      "currentSha256": "4f235a0deb6c30ffac0785c23bc4e565bb61141f9e35f1dcea668072de711bcd",
+      "compilerParentSha256": "4f235a0deb6c30ffac0785c23bc4e565bb61141f9e35f1dcea668072de711bcd"
+    },
+    "test/employee-choice-ascii-terminal-witness.test.ts": {
+      "currentSha256": "5c88b58549e0f14dfba796a546dbea8ff875e6abbfe252e2fce737f9f5b6d8ee",
+      "compilerParentSha256": "5c88b58549e0f14dfba796a546dbea8ff875e6abbfe252e2fce737f9f5b6d8ee"
+    },
+    "test/employee-choice-benchmark-supervisor.test.ts": {
+      "currentSha256": "6828c736aa4f9871433e10bd2156447e358370f1a73fc0b86b1f63841d5bc3fe",
+      "compilerParentSha256": "6828c736aa4f9871433e10bd2156447e358370f1a73fc0b86b1f63841d5bc3fe"
+    },
+    "test/employee-choice-exact-ascii-owner-source.test.ts": {
+      "currentSha256": "49a950ce097cb876063731c6c5440a8778144398f78d460f7d3996fc4d3ce0e3",
+      "compilerParentSha256": "49a950ce097cb876063731c6c5440a8778144398f78d460f7d3996fc4d3ce0e3"
+    },
+    "test/employee-choice-exact-ascii-plan-work.test.ts": {
+      "currentSha256": "5e43addb9eaa0efd92541eadd196d6f2ce79c94b455531559986c1d7576feaf2",
+      "compilerParentSha256": "5e43addb9eaa0efd92541eadd196d6f2ce79c94b455531559986c1d7576feaf2"
+    },
+    "test/employee-choice-exact-ascii-plan.test.ts": {
+      "currentSha256": "b7cdc6700afa0ef0aeb1b846778f5f2e927c9467ecf70bed8ebc298b1e057763",
+      "compilerParentSha256": "b7cdc6700afa0ef0aeb1b846778f5f2e927c9467ecf70bed8ebc298b1e057763"
+    },
+    "test/employee-choice-exact-ascii-proof.test.ts": {
+      "currentSha256": "0c6f64f338a933ec7e9803d6a6da8b261a20a6472e1ac54d3c66799c88e1aa85",
+      "compilerParentSha256": "0c6f64f338a933ec7e9803d6a6da8b261a20a6472e1ac54d3c66799c88e1aa85"
+    },
+    "test/employee-choice-exact-ascii-purpose.test.ts": {
+      "currentSha256": "b4243c1cdc9345fbb273fa2bf576f373365a47d14b9228279857c9e514401ae1",
+      "compilerParentSha256": "b4243c1cdc9345fbb273fa2bf576f373365a47d14b9228279857c9e514401ae1"
+    },
+    "test/employee-choice-exact-ascii-runtime.test.ts": {
+      "currentSha256": "50a1d02f922a96c81f7e74913928c3c34188a87bef300b50418f60a07da2d9c0",
+      "compilerParentSha256": "50a1d02f922a96c81f7e74913928c3c34188a87bef300b50418f60a07da2d9c0"
+    },
+    "test/employee-choice-native-object-identity.test.ts": {
+      "currentSha256": "42c45bac914e2c972b20940400057c1797b5386d06bbdc566f1cc7ad7ee1328d",
+      "compilerParentSha256": "42c45bac914e2c972b20940400057c1797b5386d06bbdc566f1cc7ad7ee1328d"
+    },
+    "test/employee-choice-native-owner-factory-source.test.ts": {
+      "currentSha256": "471f3cb7b08165cb9928819086a1a739591d4434877924e0d1e795b00efafc54",
+      "compilerParentSha256": "471f3cb7b08165cb9928819086a1a739591d4434877924e0d1e795b00efafc54"
+    },
+    "test/employee-choice-native-owner-factory.test.ts": {
+      "currentSha256": "255728fbec634ee378e4a9e56bcd0729583cd9dc3441843b7bcfdd4f64f6ab6d",
+      "compilerParentSha256": "255728fbec634ee378e4a9e56bcd0729583cd9dc3441843b7bcfdd4f64f6ab6d"
+    },
+    "test/employee-choice-owned-settlement.test.ts": {
+      "currentSha256": "70613c096b1ef14fa2ec47a1681b76f76e7d51b44ecf7b8b1ed350b3b6a0d04f",
+      "compilerParentSha256": "70613c096b1ef14fa2ec47a1681b76f76e7d51b44ecf7b8b1ed350b3b6a0d04f"
+    },
+    "test/fixtures/compiler-native-reference/ambient.d.ts.fixture": {
+      "currentSha256": "3484153d22e83a7e18eec81e20723857175991853e45a776f7475f3c5fbdb37a",
+      "compilerParentSha256": "3484153d22e83a7e18eec81e20723857175991853e45a776f7475f3c5fbdb37a"
+    },
+    "test/fixtures/compiler-native-reference/base.json.fixture": {
+      "currentSha256": "e74aac086043224dbc1632c65bc366513480e17f6b08b3a7d084ab89b481ed9c",
+      "compilerParentSha256": "e74aac086043224dbc1632c65bc366513480e17f6b08b3a7d084ab89b481ed9c"
+    },
+    "test/fixtures/compiler-native-reference/consumer/index.ts.fixture": {
+      "currentSha256": "deda4b62165632afb8d347f4b1e673b2e16f5dc8093681ee4116b3c133a4c7ee",
+      "compilerParentSha256": "deda4b62165632afb8d347f4b1e673b2e16f5dc8093681ee4116b3c133a4c7ee"
+    },
+    "test/fixtures/compiler-native-reference/external/index.d.ts.fixture": {
+      "currentSha256": "38a6bfb17b33b2a8c87daf3f85253e90be6b3ebcd30253a4c4d4de83a04a1cd9",
+      "compilerParentSha256": "38a6bfb17b33b2a8c87daf3f85253e90be6b3ebcd30253a4c4d4de83a04a1cd9"
+    },
+    "test/fixtures/compiler-native-reference/producer/index.ts.fixture": {
+      "currentSha256": "e456cd0343e756dc69a1ff64875e37fc23ea4c59df9116441ca4ed2c36444728",
+      "compilerParentSha256": "e456cd0343e756dc69a1ff64875e37fc23ea4c59df9116441ca4ed2c36444728"
+    },
+    "test/fixtures/compiler-native-reference/producer/labels.json.fixture": {
+      "currentSha256": "b322597a1221af66e01f958f3e7225bc2bb4927b52633b2fbb647ae1514eeb0d",
+      "compilerParentSha256": "b322597a1221af66e01f958f3e7225bc2bb4927b52633b2fbb647ae1514eeb0d"
+    },
+    "test/fixtures/compiler-native-reference/producer/math.js.fixture": {
+      "currentSha256": "ee79d80342379062c44ac52ce786bcb873c8729faca15be8e7880c0c9c89bc63",
+      "compilerParentSha256": "ee79d80342379062c44ac52ce786bcb873c8729faca15be8e7880c0c9c89bc63"
+    },
+    "test/fixtures/employee-choice-ascii-observation.ts": {
+      "currentSha256": "a6b0a1cc58224abbdf29e0e0613977b4cc4f18534dbb7ee3ec65bb2d2a5fb6cd",
+      "compilerParentSha256": "a6b0a1cc58224abbdf29e0e0613977b4cc4f18534dbb7ee3ec65bb2d2a5fb6cd"
+    },
+    "test/fixtures/employee-choice-ascii-proof-lifetime.ts": {
+      "currentSha256": "41cb3ec2c5305942f4cc5e5f90e12544251f45f73d1949b20a2f2a5aad9e01cf",
+      "compilerParentSha256": "41cb3ec2c5305942f4cc5e5f90e12544251f45f73d1949b20a2f2a5aad9e01cf"
+    },
+    "test/fixtures/employee-choice-ascii-proof-native.ts": {
+      "currentSha256": "3a7dbeba04c4dad5d79057bc36eee125b98e1f9a843533aacb76311747f5ca68",
+      "compilerParentSha256": "3a7dbeba04c4dad5d79057bc36eee125b98e1f9a843533aacb76311747f5ca68"
+    },
+    "test/fixtures/employee-choice-ascii-scalar-corpus.sql": {
+      "currentSha256": "dbc6337f825d80e9a9d329499c0981049ec6d22d5dd595bfd373e976a3f96c0e",
+      "compilerParentSha256": "dbc6337f825d80e9a9d329499c0981049ec6d22d5dd595bfd373e976a3f96c0e"
+    },
+    "test/fixtures/employee-choice-ascii-vectors.sql": {
+      "currentSha256": "cc9d644e7ef4f29b8a8fc50ece73be6a56707cb3fc2eac000722e2e3d9f11416",
+      "compilerParentSha256": "cc9d644e7ef4f29b8a8fc50ece73be6a56707cb3fc2eac000722e2e3d9f11416"
+    },
+    "test/fixtures/employee-choice-exact-ascii-owner-76b.source": {
+      "currentSha256": "44c648ef808dc2a3db73480e315ed93b8830b4dd339980ac205af509ea7d3784",
+      "compilerParentSha256": "44c648ef808dc2a3db73480e315ed93b8830b4dd339980ac205af509ea7d3784"
+    },
+    "test/fixtures/employee-choice-exact-ascii-owner-inverse.json": {
+      "currentSha256": "4a62bdecabf4802e8db4f12656a2300ff85e9e38f5d6c295cc1c5cb56948fac1",
+      "compilerParentSha256": "4a62bdecabf4802e8db4f12656a2300ff85e9e38f5d6c295cc1c5cb56948fac1"
+    },
+    "test/fixtures/employee-choice-exact-ascii-purpose.sql": {
+      "currentSha256": "10b0d44d8943fdfbb76e748028e8fbd2938a514ea22c57b70cfcc665b6a41743",
+      "compilerParentSha256": "10b0d44d8943fdfbb76e748028e8fbd2938a514ea22c57b70cfcc665b6a41743"
+    },
+    "test/fixtures/employee-choice-native-purpose-owner-334.source": {
+      "currentSha256": "3df8e3b01b4ab52304675b8d167f68059ac8e47cfa12835c0b3c3db034da4d3d",
+      "compilerParentSha256": "3df8e3b01b4ab52304675b8d167f68059ac8e47cfa12835c0b3c3db034da4d3d"
+    },
+    "test/fixtures/unicode-17.0.0/LICENSE.txt": {
+      "currentSha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96",
+      "compilerParentSha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96"
+    },
+    "test/fixtures/unicode-17.0.0/SpecialCasing.txt": {
+      "currentSha256": "efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588",
+      "compilerParentSha256": "efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588"
+    },
+    "test/fixtures/unicode-17.0.0/UnicodeData.txt": {
+      "currentSha256": "2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c",
+      "compilerParentSha256": "2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c"
+    },
+    "test/performance/employee-choice-ascii-terminal-witness.ts": {
+      "currentSha256": "5cacd1dbf0154181de2b60bcdc4ed554e361eaaa61481414a9b58997063feaab",
+      "compilerParentSha256": "5cacd1dbf0154181de2b60bcdc4ed554e361eaaa61481414a9b58997063feaab"
+    },
+    "test/performance/employee-choice-benchmark-owner.ts": {
+      "currentSha256": "6281fd843e2843b89806d57e415b9182d4985a2c5aa65c010e5d0b1d30034fbe",
+      "compilerParentSha256": "6281fd843e2843b89806d57e415b9182d4985a2c5aa65c010e5d0b1d30034fbe"
+    },
+    "test/performance/employee-choice-exact-ascii-owner-factory.ts": {
+      "currentSha256": "1d289fead9e6edfd010c6b8ff9afad2e39a4dc2602d4e8ad307a9b64e1fb4c39",
+      "compilerParentSha256": "1d289fead9e6edfd010c6b8ff9afad2e39a4dc2602d4e8ad307a9b64e1fb4c39"
+    },
+    "test/performance/employee-choice-exact-ascii-owner.ts": {
+      "currentSha256": "d66ca2fe7f67c2ee271e873ab2d035ff694da7bcbc4065a1dd6b13203873d26e",
+      "compilerParentSha256": "d66ca2fe7f67c2ee271e873ab2d035ff694da7bcbc4065a1dd6b13203873d26e"
+    },
+    "test/performance/employee-choice-exact-ascii-plan-work.ts": {
+      "currentSha256": "0c2974cb27bd2c71985e80607383732af317ba71dcb960f4d0af9ee2b33ab3bb",
+      "compilerParentSha256": "0c2974cb27bd2c71985e80607383732af317ba71dcb960f4d0af9ee2b33ab3bb"
+    },
+    "test/performance/employee-choice-exact-ascii-reader.ts": {
+      "currentSha256": "ed2e2fb304de2d78435c13ec9caf9d71161c68755abea459674d50fbf1a1a8fd",
+      "compilerParentSha256": "ed2e2fb304de2d78435c13ec9caf9d71161c68755abea459674d50fbf1a1a8fd"
+    },
+    "test/performance/employee-choice-exact-ascii-runtime-contract.ts": {
+      "currentSha256": "14f1f74b60fedaf394c3b5a7c1b1e0661d6327bc34472d146c81830e69cd7813",
+      "compilerParentSha256": "14f1f74b60fedaf394c3b5a7c1b1e0661d6327bc34472d146c81830e69cd7813"
+    },
+    "test/performance/employee-choice-exact-ascii-runtime.ts": {
+      "currentSha256": "3ba9e9aece28232badbccabb9ba13e731047a3327160081d01a4c03db3085921",
+      "compilerParentSha256": "3ba9e9aece28232badbccabb9ba13e731047a3327160081d01a4c03db3085921"
+    },
+    "test/performance/employee-choice-native-factory-fixture.ts": {
+      "currentSha256": "7901c84f48bc113188010dfadc59d6681c60aa40ab564d7ac47aecae3ea762fd",
+      "compilerParentSha256": "7901c84f48bc113188010dfadc59d6681c60aa40ab564d7ac47aecae3ea762fd"
+    },
+    "test/performance/employee-choice-native-object-identity.ts": {
+      "currentSha256": "c9b3f20bd7cc304704575cfce9925e4b64db3cbd9258db2a1c5a7431ff250393",
+      "compilerParentSha256": "c9b3f20bd7cc304704575cfce9925e4b64db3cbd9258db2a1c5a7431ff250393"
+    },
+    "test/performance/employee-choice-native-owner-source.ts": {
+      "currentSha256": "6594b4b2bc811095c736ccdd0533e7c753b7e6e6612cc617c6dd8283c0dc80a6",
+      "compilerParentSha256": "6594b4b2bc811095c736ccdd0533e7c753b7e6e6612cc617c6dd8283c0dc80a6"
+    },
+    "test/performance/employee-choice-native-purpose-owner-factory.ts": {
+      "currentSha256": "481e5f20b38d02325570147c146428066213560d9066aa3141869454924a3e13",
+      "compilerParentSha256": "481e5f20b38d02325570147c146428066213560d9066aa3141869454924a3e13"
+    },
+    "test/performance/employee-choice-native-purpose-owner.ts": {
+      "currentSha256": "12f0873b15dfd86e8972bc1d951c62d8827227513b11a2726807c561faf625ef",
+      "compilerParentSha256": "12f0873b15dfd86e8972bc1d951c62d8827227513b11a2726807c561faf625ef"
+    },
+    "test/performance/employee-choice-owned-settlement.ts": {
+      "currentSha256": "e4fe93308ee5ff14b89410f035cff9ed7c3d044151a1843d19919250a9930a27",
+      "compilerParentSha256": "e4fe93308ee5ff14b89410f035cff9ed7c3d044151a1843d19919250a9930a27"
+    },
+    "test/performance/employee-choice-prototype-carriers.ts": {
+      "currentSha256": "7e2b8dd195e69149c1f3e85b9043afd93d8891dde687666b7d20b1a29fdd8c14",
+      "compilerParentSha256": "7e2b8dd195e69149c1f3e85b9043afd93d8891dde687666b7d20b1a29fdd8c14"
+    }
+  },
+  "introducedMemberCount": 156,
+  "wholeCompilerParentInverses": {
+    ".github/ci/ci.test.mjs": {
+      "parentSha256": "5621e5af58ea3a5e5990f58f6485a839d3da315b968765be6b8053f4d737e9eb",
+      "currentSha256": "07d2726db8f096e3997f6915c165eeb81ee33a7fafaa855dbe95876b0ff73fa7",
+      "changes": [
+        {
+          "startLine": 201,
+          "endLine": 218,
+          "before": "",
+          "after": "\ntest('catalogue replay receipt extension is mandatory only for the two closed isolated native units',async()=>{\n const {catalogueReplayRoleHash}=await import('./notification-catalogue-replay.mjs');\n const context=roleContext(),ordinary=fullCiRoleBinding(context),base=roleReceipt(context),sources={ownerSha256:'1'.repeat(64),contractSha256:'2'.repeat(64)};\n const facts={objects:[{oid:20000}],dependencies:[{objid:20000}],shared:[]};\n for(const [file,mode]of [['test/notification-final-catalogue-baseline.test.ts','baseline'],['test/notification-final-catalogue-oid-shift.test.ts','oid-shift']]){\n  const binding={...ordinary,batchFiles:[file]},receipt={...base,...binding,catalogueReplay:{version:1,kind:'NATIVE_CATALOGUE_REPLAY_PREREQUISITE_NOT_PROFILE',mode,candidate:binding.candidate,controller:binding.controller,runId:binding.runId,attempt:binding.attempt,unit:binding.unit,planFingerprint:binding.planFingerprint,sourceHashes:sources,\n   session:{database:'postgres',pid:123,backendStart:'2026-11-08 00:00:00.123456+00',postmasterStart:'2026-11-08T00:00:00.123456Z',versionNumber:base.fixture.postgres.versionNumber,versionText:base.fixture.postgres.versionText,session:'postgres',current:'postgres',loopback:true},\n   roleCatalogSha256:catalogueReplayRoleHash({roles:base.fixture.roles,edges:base.fixture.edges}),allocation:mode==='baseline'?null:{namespaceOid:20000,enumOid:20001,enumArrayOid:20002,heapOid:20003,rowTypeOid:20004,rowArrayOid:20005,nativeRowsSha256:catalogueReplayRoleHash(facts.objects),dependenciesSha256:catalogueReplayRoleHash({dependencies:facts.dependencies,shared:facts.shared}),facts},objectsAbsent:true,quiescence:{sameCluster:true,ownedPresent:false,observerPid:124,observerStart:'2026-11-08 00:00:01.123456+00',observedAt:'2026-11-08 00:00:02.123456+00',postmasterStart:'2026-11-08T00:00:00.123456Z'},releaseAuthorized:false}};\n  assert.doesNotThrow(()=>validateFullCiRoleReceipt(receipt,binding,context.sourceHashes,sources));\n  assert.throws(()=>validateFullCiRoleReceipt(receipt,binding,context.sourceHashes));\n  for(const mutate of [x=>delete x.catalogueReplay,x=>x.catalogueReplay.sourceHashes.ownerSha256='0'.repeat(64),x=>x.catalogueReplay.roleCatalogSha256='0'.repeat(64),x=>x.catalogueReplay.session.versionNumber++,x=>x.catalogueReplay.session.database='ai_hr_dev',x=>x.catalogueReplay.objectsAbsent=false,x=>x.catalogueReplay.extra=true]){\n   const changed=structuredClone(receipt);mutate(changed);assert.throws(()=>validateFullCiRoleReceipt(changed,binding,context.sourceHashes,sources));\n  }\n  assert.throws(()=>validateFullCiRoleReceipt({...base,catalogueReplay:receipt.catalogueReplay},ordinary,context.sourceHashes,sources));\n }\n});\n"
+        },
+        {
+          "startLine": 184,
+          "endLine": 185,
+          "before": " const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');const profile=source.indexOf(\"const roleProfile=unit.kind==='db'?actualFullCiRoleApplicability():null\"),reset=source.indexOf(\"const reset = spawnSync('bash'\",profile),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?',reset);assert(profile>=0&&reset>profile&&context>reset);assert.match(source,/const migrate = roleContext\\?spawnSync\\('pnpm', \\['db:migrate'\\], \\{stdio: 'inherit',env:roleContext.env\\}\\):spawnSync\\('pnpm', \\['db:migrate'\\], \\{stdio: 'inherit'\\}\\);/);assert.match(source,/if\\(roleContext\\)rolePrerequisites=readFullCiRoleReceipt/);\n",
+          "after": " const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');const profile=source.indexOf(\"const roleProfile=unit.kind==='db'?actualFullCiRoleApplicability():null\"),reset=source.indexOf(\"const reset = spawnSync('bash'\",profile),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?',reset);assert(profile>=0&&reset>profile&&context>reset);assert.match(source,/const migrate = roleContext\\?spawnSync\\('pnpm', \\['db:migrate'\\], \\{stdio: 'inherit',env:roleContext.env\\}\\):spawnSync\\('pnpm', \\['db:migrate'\\], \\{stdio: 'inherit',env:candidateEnvironment\\(process.env\\)\\}\\);/);assert.match(source,/if\\(roleContext\\)rolePrerequisites=readFullCiRoleReceipt/);\n"
+        },
+        {
+          "startLine": 124,
+          "endLine": 125,
+          "before": " assert.match(source,/if\\(process\\.argv\\[1\\].*\\)main\\(\\);/);\n",
+          "after": " assert.match(source,/if\\(process\\.argv\\[1\\]&&resolve\\(process\\.argv\\[1\\]\\)===fileURLToPath\\(import\\.meta\\.url\\)\\)main\\(\\)\\.catch\\(/);\n"
+        }
+      ]
+    },
+    ".github/ci/focused-checks.mjs": {
+      "parentSha256": "b085f4e6d991bdccf2d86aaf674594bf34acc5dd2817b7f159af287163722994",
+      "currentSha256": "6501a62bb75ea3e3ff2ddb4066df6975ee85cf141052f58cc4d4a972bfb64a5f",
+      "changes": [
+        {
+          "startLine": 37,
+          "endLine": 38,
+          "before": "  return files.slice().sort();\n",
+          "after": "  assertSingletonSelection(files);return files.slice().sort();\n"
+        },
+        {
+          "startLine": 9,
+          "endLine": 10,
+          "before": "",
+          "after": "import {assertSingletonSelection} from './singleton-protocol.mjs';\n"
+        }
+      ]
+    }
+  },
+  "retainedArchitectureOwners": {
+    "db/migrations/meta/_journal.json": "ff2162831b7aeded2759e8baeba0915f14737543a422760f059ed0a2d2d5c958",
+    "docs/MIGRATION-ALLOCATION.md": "d656c3ff38250766ab3328a5cebbd4b5b856efedc562b48b23fd9996ce7cec90",
+    "lib/scope.ts": "21b4eafd954753bd583da124ac1b029a03b638b73f8cd2381189f67bf2104897",
+    "test/helpers/approved-upgrade.ts": "4c4b15f43dd646b83cf3991b83da7e8d63d5eb150c25917107c590911de7220a",
+    "lib/ai/provider-data-approvals.ts": "2ff41dba3f519e1c42ab305e281a27baef2b67a1734cdba511a6d8f3d80ae6ac",
+    "lib/ai/agent-capability-inventory.ts": "f0a0fffd2caf27be213fc33a802cc3f10b1bfa3ab94bd4e61873bb576ee1288c",
+    "lib/ai/provider-data-source-manifest.ts": "5c2d1ab323a8320d2fbdc3cc70659e366c827671ee8f7f7f36279617ed5ea759",
+    "lib/ai/module-agent-source-manifest.ts": "4d1b45ff8ae7dd1ea9b97fc4922a65b3db037773d79408f024052d7dd884ca6c"
+  },
+  "currentCompilerComponentSources": {
+    ".env.example": "466f9b377f9c6f9d3bbf9f7c6e6f3de7354d7c744678cd5c6f694d87020a58fe",
+    ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
+    ".github/ci/ci.test.mjs": "07d2726db8f096e3997f6915c165eeb81ee33a7fafaa855dbe95876b0ff73fa7",
+    ".github/ci/compiler-file-window-inverse.json": "6dc7a68c49921b085b9292972fa92e3b413fc01dbb21510578431712172d97ea",
+    ".github/ci/compiler-reference-supervisor.py": "f33708cb06ff7d87cea21514862508641b68c8ecd35d5c10809a1c1e670c0344",
+    ".github/ci/compiler-reference-supervisor.test.py": "e6dff34ad1455b8067bd095273730421a184fd02cb0e514df1586ac3797402ec",
+    ".github/ci/db-scheduling.mjs": "3728c238eca2dbe342542bc24c57b3070d4e3ec1b8713c14a23f3bcf97347cea",
+    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "cf1aef49f7aad7394e3a8de31e1b31e1da80667fbbc9c8f2da16db5795c28ed7",
+    ".github/ci/diagnostics/native-reference/admission.mjs": "38a777ec1108921399f8b3cd4acdb5ad696122f3e18d022a8463e244ef197b15",
+    ".github/ci/diagnostics/native-reference/admission.test.mjs": "3e0f32e5ad02a70bfff5e11eeecb5608a2a14c658773522be6f7aa89f464769a",
+    ".github/ci/diagnostics/native-reference/config.mjs": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95",
+    ".github/ci/diagnostics/native-reference/dependency-custody-inverse.json": "d32319321ced719bc1898cf6a26d6bc5225fe14d1806f2285cc44f06499a2fa2",
+    ".github/ci/diagnostics/native-reference/fixture.mjs": "9542df648d16320338174d1f692fd243696142b2e91dfa7e95184acba0712c84",
+    ".github/ci/diagnostics/native-reference/graph.mjs": "c555b649e7cebb95e5135af87ab7275d248c4c9b3a27b8742e7f8407944bace3",
+    ".github/ci/diagnostics/native-reference/graph.test.mjs": "cc9187838c5f5d402917dbe355e004ade36807b95ef0373d15b347ed29f8940f",
+    ".github/ci/diagnostics/native-reference/outputs.mjs": "f80442a765b03277548faffd076b0e13b037bef633cda8b013443d043eb8427d",
+    ".github/ci/diagnostics/native-reference/outputs.test.mjs": "13f71830702786a1d52cba90d2f95e0bbb2f957fe26b6440b8de6163346e1c2d",
+    ".github/ci/diagnostics/native-reference/package-context-inverse.json": "becb91b9af6b141da28374bcb0a0cdfa658949f9eb7e9973fa3ada99a7864c37",
+    ".github/ci/diagnostics/native-reference/package-context.mjs": "b60bcd493e5867f0167446ab28eb78c556cbc8071394ee2feb202541bb68e6e9",
+    ".github/ci/diagnostics/native-reference/process.mjs": "798b305f20088ee77c1ce0cc01c08427718671f769aec446d1946b0b844879ba",
+    ".github/ci/diagnostics/native-reference/process.test.mjs": "c2df40d57fd9964a405326952c9c4543ad5da0d837db7761553cbc5b5ea57912",
+    ".github/ci/diagnostics/native-reference/worker.mjs": "a0599b5ea4dc2b4bc32c59049408d50d62129f92043b61b1623a6c18b8ecd10a",
+    ".github/ci/employee-benchmark-supervisor.py": "68a47dce71197e7fc1f57702cbc1dc99495ac58d5cf43243c702c82873467926",
+    ".github/ci/employee-benchmark-supervisor.test.py": "d95721c1172ed25318eb1d209a6d4aa5d7ce2e741c177bce103920c38e08490d",
+    ".github/ci/focused-checks.mjs": "6501a62bb75ea3e3ff2ddb4066df6975ee85cf141052f58cc4d4a972bfb64a5f",
+    ".github/ci/focused-checks.test.mjs": "d556a4967fa6ceb536d59aaa89d8310d8836d9526b98f037349b247c823c69a3",
+    ".github/ci/host-health.mjs": "d88d53222b04be01d803e516783033cc406251c3983258a4fdb18c5493087c93",
+    ".github/ci/owned-process.py": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129",
+    ".github/ci/policy-version.mjs": "6b184db22189d6402016980e31b8a5d770e35860ea20577d3e863b65b645baf7",
+    ".github/ci/postgres-evidence.mjs": "97a35b219278f51b39b7a48d351c100e51c6bcbe82f99174300b810b8e1243fb",
+    ".github/ci/postgres.sh": "92b95465e3484558e0a8a69f58c06279fdfcdf15c22af7c23ff630a3e556f3ee",
+    ".github/ci/prepare-runner.sh": "b929a8a2729af63e3091e1a9f7fac7a5a2552bd0a5c88998117fba3ed79e3af5",
+    ".github/ci/resolve.mjs": "c6d181392132d00f996f1c7ee03464394549e84d77ffec2b5a166d257dc52da9",
+    ".github/ci/restricted-port-qualification.mjs": "6318059f63224b7b26c118f5e185ec0d0bda147085f3c3fe1ef29dad69218724",
+    ".github/ci/runner-capacity.mjs": "1233fef94e646fbd29d164e69df76aadc48525206239fb3ddcedcb6cce216c1c",
+    ".github/workflows/alpha-focused-checks.yml": "f3f454d5474a02af38b18b97579e5854bd8897979f6e1ca61f72c1855ae1d991",
+    ".github/workflows/alpha-staging-diagnostics.yml": "52c18222811f9ec289cc4fdbe01a58bcca70a671dad4209cd1cab7ae032c43cd",
+    "docs/qualification/compiler-native-input-stat-diagnostic-20261108.md": "add5be85743f9361ed21c2cc5c9812e570c5afa93ea3970f57cbccd8f33cad8e",
+    "docs/qualification/compiler-native-json-context-20261108.md": "4f690fd761ff0a9b7cc6ef256c220a1786610472c27b171877581f60320d5b03",
+    "docs/qualification/compiler-native-package-context-20261108.md": "6cb18fafa9cc412ac1d8249b66367331911174b6994bb02351a57cd2c2b314d3",
+    "docs/qualification/compiler-native-package-context-design-20261108.md": "5c259bae3fd9c47f16c548210c95f5d789ad081311623802bbc8094919ca800b",
+    "docs/qualification/compiler-native-package-context-design-source-20261108.json": "08a1cccdb92a94a4e3324ddd7a9d75a1532985266440f69be1d02a3672d354c2",
+    "docs/qualification/compiler-owned-controls-recovery-20261108.md": "fc56c99214ee76ad4e6e90021906260c503dc00374db8d0563a1a1b0ed6f9b86",
+    "docs/qualification/compiler-readonly-dependency-custody-20261108.md": "f8b2263c0e7b36479cf9aa08eaa48363bd6d7456f1db49db7356197983176e3a",
+    "docs/qualification/compiler-reference-owned-supervision-20261108.md": "bdfcad6547d89647259848c61a9c898d3b81d7d7d4d0ca573c77aa119a386624",
+    "docs/qualification/compiler-window-control-owner-20261108.md": "f2227e3c5cbc3951d5050f0ebb57ede42f0707c65bb1a26b467385c817482076",
+    "package.json": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c",
+    "pnpm-lock.yaml": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd",
+    "scripts/gate-db-classify.ts": "cc77445ba5b8a702a5f8f4a4292bdcb99275d520ae4f13b16442a17e78f3f916",
+    "scripts/test-duration-order.mjs": "09579d75363a8a1d4b514591e6dc6c4bef4b25f6599f8026e595c595dbdbb822",
+    "scripts/test-duration-sequencer.mjs": "1865d0ad3fe4f61dc964ae684fa3c8cbc1e0166b1cb8210d6be03f1ba69245a6",
+    "test/compiler-native-reference-fixture.test.ts": "d3d4eb099a881a08f309779bc045188e4888c384ad05d41c448eb8333ad86ea3",
+    "test/compiler-native-reference-graph.test.ts": "1ccd72e69524542ef5e43116cc5eb171d55392e3b480a48df95b20a63fdd7c0f",
+    "test/compiler-native-reference-process.test.ts": "a544911c24e4cf2517aa80d083c943e03466a9f12cd2bcb0a55a6922fa0cba8d",
+    "test/compiler-native-reference-supervisor.test.ts": "1b127edfecfdc748c0e59c0d9da6a7317bb27b6cd5536d35dba371315d164f54",
+    "test/db-names.ts": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b",
+    "test/dom-setup.ts": "5340b53cd4102b3e56e2c82391ac25dfc1a3c55868e83d34ad61be80a27a170d",
+    "test/employee-choice-benchmark-supervisor.test.ts": "6828c736aa4f9871433e10bd2156447e358370f1a73fc0b86b1f63841d5bc3fe",
+    "test/env.ts": "e8f9c2584f15c4701fc6ea032a3f5c90ea4581e64919bf1c535d79dda6677cf7",
+    "test/fixtures/compiler-native-reference/ambient.d.ts.fixture": "3484153d22e83a7e18eec81e20723857175991853e45a776f7475f3c5fbdb37a",
+    "test/fixtures/compiler-native-reference/base.json.fixture": "e74aac086043224dbc1632c65bc366513480e17f6b08b3a7d084ab89b481ed9c",
+    "test/fixtures/compiler-native-reference/consumer/index.ts.fixture": "deda4b62165632afb8d347f4b1e673b2e16f5dc8093681ee4116b3c133a4c7ee",
+    "test/fixtures/compiler-native-reference/external/index.d.ts.fixture": "38a6bfb17b33b2a8c87daf3f85253e90be6b3ebcd30253a4c4d4de83a04a1cd9",
+    "test/fixtures/compiler-native-reference/producer/index.ts.fixture": "e456cd0343e756dc69a1ff64875e37fc23ea4c59df9116441ca4ed2c36444728",
+    "test/fixtures/compiler-native-reference/producer/labels.json.fixture": "b322597a1221af66e01f958f3e7225bc2bb4927b52633b2fbb647ae1514eeb0d",
+    "test/fixtures/compiler-native-reference/producer/math.js.fixture": "ee79d80342379062c44ac52ce786bcb873c8729faca15be8e7880c0c9c89bc63",
+    "test/stubs/server-only.ts": "a5e9003218be54bd706cfca7c305afc9849555c1171a03afcbc347a27ebf0cf9",
+    "tsconfig.json": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a",
+    "vitest.config.ts": "a2d0d96b3a1f18c322ea76a208de4a0b217b13258cff01f48e3a1f754dba318d",
+    "vitest.nodb.config.ts": "594bae2433c451ae3a1f83139fe4cce0fbe8415c751e374dcf4359814a2f429d"
+  },
+  "historicalCompilerManifest": {
+    "file": "docs/qualification/compiler-reference-owned-source-20261108.json",
+    "sha256": "837069a38e0a7b687508683b7936a92df744efb329df9b0e108de5983132c224",
+    "currentDrift": {
+      ".github/actions/setup-alpha/action.yml": {
+        "historicalSha256": "7fbb70fefa00703367fc9a3d2b7915996e56aa237b06b52a87f60688e6ad59c3",
+        "currentSha256": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150"
+      },
+      ".github/ci/ci.test.mjs": {
+        "historicalSha256": "5621e5af58ea3a5e5990f58f6485a839d3da315b968765be6b8053f4d737e9eb",
+        "currentSha256": "07d2726db8f096e3997f6915c165eeb81ee33a7fafaa855dbe95876b0ff73fa7"
+      },
+      ".github/ci/focused-checks.mjs": {
+        "historicalSha256": "b085f4e6d991bdccf2d86aaf674594bf34acc5dd2817b7f159af287163722994",
+        "currentSha256": "6501a62bb75ea3e3ff2ddb4066df6975ee85cf141052f58cc4d4a972bfb64a5f"
+      },
+      ".github/ci/policy-version.mjs": {
+        "historicalSha256": "830c35671871f5f2f7d58da813f87c30048d1c63861a86f35ba79f9607eba3bf",
+        "currentSha256": "6b184db22189d6402016980e31b8a5d770e35860ea20577d3e863b65b645baf7"
+      },
+      ".github/ci/prepare-runner.sh": {
+        "historicalSha256": "7cd2c581061d0a4a5831cbc19ba52c14a59499ec1da8b364628df16668713049",
+        "currentSha256": "b929a8a2729af63e3091e1a9f7fac7a5a2552bd0a5c88998117fba3ed79e3af5"
+      },
+      ".github/ci/runner-capacity.mjs": {
+        "historicalSha256": "f57fc158d8e003b9db6e697c8bb9e2ea0e8d75a850b31f3bad32838fa260d473",
+        "currentSha256": "1233fef94e646fbd29d164e69df76aadc48525206239fb3ddcedcb6cce216c1c"
+      }
+    },
+    "mustNotBeRelabelled": true
+  },
+  "sharedMigrationTuplesPreserved": 707,
+  "sharedSqlFilesPreserved": 707,
+  "currentJournalEntries": 743,
+  "generatedAiStaticReplay": {
+    "provider": {
+      "files": 1486,
+      "digest": "341b786b4626129fc1cb19be987f6d3f120379ef9c75bf458e49035a5764225a"
+    },
+    "agent": {
+      "files": 472,
+      "digest": "a1c1eef38f83c26a6ff9260e51884b05aeccf626fdda7dd4b42fbd7ed255af34"
+    },
+    "generatedBytesChanged": false,
+    "approvalsChanged": false
+  },
+  "sharedKernel": {
+    "file": ".github/ci/owned-process.py",
+    "sha256": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129",
+    "inverseFile": ".github/ci/compiler-file-window-inverse.json",
+    "inverseSha256": "6dc7a68c49921b085b9292972fa92e3b413fc01dbb21510578431712172d97ea",
+    "qualifiedPredecessorSha256": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+    "defaultFileSeconds": 900,
+    "compilerFileSeconds": 720,
+    "compilerStageSeconds": 848
+  },
+  "sourceSha256": {
+    "docs/qualification/compiler-native-current-integration-20261108.md": "e6bef132ee2d635896956de1a7a61a1f5e22d4136495254865d6f63183049345"
+  },
+  "metadataSelectorImplemented": false,
+  "currentAdmissionManifestImplemented": false,
+  "localBehaviorExecuted": false,
+  "currentNativeQualification": false,
+  "currentApplicationInventoryComplete": false,
+  "ordinaryCompilerQualified": false,
+  "releaseAuthorized": false,
+  "stagingHeld": true,
+  "productionHeld": true
+}

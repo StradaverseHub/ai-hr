@@ -22,8 +22,7 @@ import {getSession} from '@/lib/session';
 import { getTranslations } from 'next-intl/server';
 import { getScopeIds } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { listEmployeesPage } from '@/core/read';
-import { PersonnelReadBusyError } from '@/core/personnel-read-bounds';
+import { listEmployeesPage, listWorkforcePersonnelPresentationPageTx } from '@/core/read';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
@@ -77,12 +76,7 @@ export async function GET(req: Request) {
         status: 413, headers: { 'Cache-Control': 'private, no-store' },
       });
     }
-    if (!(error instanceof PersonnelReadBusyError)) throw error;
-    const messages = await getTranslations('personnelOrganisationFilters');
-    return new Response(messages('readBusy'), {
-      status: 503,
-      headers: { 'Retry-After': '5', 'Cache-Control': 'private, no-store', Vary: 'Cookie' },
-    });
+    throw error;
   }
 }
 
@@ -124,7 +118,7 @@ async function exportPersonnel(req: Request) {
     ? { rows: [], total: 0, details: null }
     : mode === 'all'
       ? await withTenant(session, async tx => {
-          const matching = await listEmployeesPage(session, listInput, 'workforce', tx);
+          const matching = await listWorkforcePersonnelPresentationPageTx(session, listInput, today, tx);
           const details = matching.total > ROW_CAP ? null
             : await readPersonnelListExportDetails(session, matching.rows, today, tx);
           return { ...matching, details };

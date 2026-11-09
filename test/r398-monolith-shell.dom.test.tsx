@@ -297,7 +297,6 @@ describe('the top line and the status line', () => {
         taskNotifications={[]}
         taskCount={3}
         readItems={[]}
-        history={[]}
         canApprove={false}
       />,
     );

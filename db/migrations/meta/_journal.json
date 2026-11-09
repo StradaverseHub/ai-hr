@@ -5062,6 +5062,300 @@
       "when": 1793330003801,
       "tag": "4101_attendance_formula_company_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 3600,
+      "version": "7",
+      "when": 1793330003900,
+      "tag": "2103_system_performance_read_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 3601,
+      "version": "7",
+      "when": 1793330003901,
+      "tag": "2104_contract_navigation_role_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 3602,
+      "version": "7",
+      "when": 1793330003902,
+      "tag": "2105_authorization_navigation_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 3603,
+      "version": "7",
+      "when": 1793330003903,
+      "tag": "2124_ai_control_navigation_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 3604,
+      "version": "7",
+      "when": 1793330003904,
+      "tag": "2125_approval_subject_batch",
+      "breakpoints": true
+    },
+    {
+      "idx": 3605,
+      "version": "7",
+      "when": 1793330003905,
+      "tag": "2129_personnel_native_paging",
+      "breakpoints": true
+    },
+    {
+      "idx": 3606,
+      "version": "7",
+      "when": 1793330003906,
+      "tag": "2131_ai_read_only_metadata_locks",
+      "breakpoints": true
+    },
+    {
+      "idx": 3607,
+      "version": "7",
+      "when": 1793330003907,
+      "tag": "2132_ai_metadata_claim_preview_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 3608,
+      "version": "7",
+      "when": 1793330003908,
+      "tag": "2133_ai_action_read_only_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 3609,
+      "version": "7",
+      "when": 1793330003909,
+      "tag": "2134_claim_visibility_set_membership",
+      "breakpoints": true
+    },
+    {
+      "idx": 3610,
+      "version": "7",
+      "when": 1793330003910,
+      "tag": "2135_profile_presentation_read_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 3611,
+      "version": "7",
+      "when": 1793330003911,
+      "tag": "2136_grant_admin_role_precheck",
+      "breakpoints": true
+    },
+    {
+      "idx": 3612,
+      "version": "7",
+      "when": 1793330003912,
+      "tag": "2137_home_peer_cohort_batch",
+      "breakpoints": true
+    },
+    {
+      "idx": 3613,
+      "version": "7",
+      "when": 1793330003913,
+      "tag": "2138_ai_pause_company_discovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 3614,
+      "version": "7",
+      "when": 1793330003914,
+      "tag": "2139_workforce_bounded_read_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 3615,
+      "version": "7",
+      "when": 1793330003915,
+      "tag": "2252_probation_navigation_capability_probe",
+      "breakpoints": true
+    },
+    {
+      "idx": 3616,
+      "version": "7",
+      "when": 1793330003916,
+      "tag": "2141_approval_nonadmin_visibility_batch",
+      "breakpoints": true
+    },
+    {
+      "idx": 3617,
+      "version": "7",
+      "when": 1793330003917,
+      "tag": "2212_payroll_audit_claim_lookup_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 3618,
+      "version": "7",
+      "when": 1793330003918,
+      "tag": "3210_attendance_shared_workflow_submission_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 3619,
+      "version": "7",
+      "when": 1793330003919,
+      "tag": "2302_company_ancestry_early_exit",
+      "breakpoints": true
+    },
+    {
+      "idx": 3620,
+      "version": "7",
+      "when": 1793330003920,
+      "tag": "2303_admin_grant_direct_scan",
+      "breakpoints": true
+    },
+    {
+      "idx": 3621,
+      "version": "7",
+      "when": 1793330003921,
+      "tag": "2304_payroll_grant_direct_scan",
+      "breakpoints": true
+    },
+    {
+      "idx": 3622,
+      "version": "7",
+      "when": 1793330003922,
+      "tag": "2403_personnel_bounded_overview",
+      "breakpoints": true
+    },
+    {
+      "idx": 3623,
+      "version": "7",
+      "when": 1793330003923,
+      "tag": "2503_attendance_pending_visible_headers",
+      "breakpoints": true
+    },
+    {
+      "idx": 3624,
+      "version": "7",
+      "when": 1793330003924,
+      "tag": "2504_notification_event_processing",
+      "breakpoints": true
+    },
+    {
+      "idx": 3625,
+      "version": "7",
+      "when": 1793330003925,
+      "tag": "2505_workforce_picker_facts",
+      "breakpoints": true
+    },
+    {
+      "idx": 3626,
+      "version": "7",
+      "when": 1793330003926,
+      "tag": "2506_notification_receipt_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 3627,
+      "version": "7",
+      "when": 1793330003927,
+      "tag": "2507_attendance_header_column_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 3628,
+      "version": "7",
+      "when": 1793330003928,
+      "tag": "2508_notification_receipt_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 3629,
+      "version": "7",
+      "when": 1793330003929,
+      "tag": "2509_principal_statement_plan_reuse",
+      "breakpoints": true
+    },
+    {
+      "idx": 3630,
+      "version": "7",
+      "when": 1793330003930,
+      "tag": "2510_capability_statement_plan_reuse",
+      "breakpoints": true
+    },
+    {
+      "idx": 3631,
+      "version": "7",
+      "when": 1793330003931,
+      "tag": "2701_personnel_typed_overview_filter_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 3632,
+      "version": "7",
+      "when": 1793330003932,
+      "tag": "2903_notification_receipt_cycle_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 3633,
+      "version": "7",
+      "when": 1793330003933,
+      "tag": "3001_employment_membership_initplan",
+      "breakpoints": true
+    },
+    {
+      "idx": 3634,
+      "version": "7",
+      "when": 1793330003934,
+      "tag": "3102_assignment_membership_initplan",
+      "breakpoints": true
+    },
+    {
+      "idx": 3635,
+      "version": "7",
+      "when": 1793330003935,
+      "tag": "3211_access_editor_native_owner_presentation",
+      "breakpoints": true
+    },
+    {
+      "idx": 3636,
+      "version": "7",
+      "when": 1793330003936,
+      "tag": "3500_ai_centre_architecture_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 3637,
+      "version": "7",
+      "when": 1793330003937,
+      "tag": "3501_ai_centre_mandate_write_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 3638,
+      "version": "7",
+      "when": 1793330003938,
+      "tag": "4200_assistant_rewards_return_presentation_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 3639,
+      "version": "7",
+      "when": 1793330003939,
+      "tag": "4201_assistant_rewards_calendar_cancel_presentation_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 3640,
+      "version": "7",
+      "when": 1793330003940,
+      "tag": "4202_ai_management_presentation_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 3641,
+      "version": "7",
+      "when": 1793330003941,
+      "tag": "4203_home_leave_presentation_snapshot",
+      "breakpoints": true
     }
   ]
 }

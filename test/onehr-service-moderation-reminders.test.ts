@@ -625,7 +625,9 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await owner.db.insert(schema.tenantModule).values({tenantId:b.tenantId,moduleCode:'notifications',companyId:b.companyId,status:'active'});const scoped={...await entitledCtx(b),userId:undefined,personId:undefined};
     expect((await perf.queueAssessmentReminders(a,cycleId,'manual')).queued).toBe(1);
     await withTenant(a,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'test',aggregateId:randomUUID(),eventType:'leave-request.approved',subjectEmploymentId:subject.employmentId,actor:actorOf(a)}));
-    expect((await dispatchNotifications(scoped)).created).toBe(1);expect((await owner.db.select().from(schema.notification)).map(n=>n.kind)).toEqual(['performance.reminder']);
+    expect(await dispatchNotifications(scoped)).toEqual({processed:0,created:0});
+    expect((await dispatchNotificationsFromSweep(scoped,owner)).created).toBe(1);
+    expect((await owner.db.select().from(schema.notification)).map(n=>n.kind)).toEqual(['performance.reminder']);
     const [cursor]=await owner.db.select().from(schema.notificationCursor);expect(cursor.lastSequence).toBeNull();expect(cursor.assessmentLastSequence).toBeGreaterThan(0);
     await setModule(b.tenantId,'notifications','active');await dispatchNotifications(await entitledCtx(b));
     expect((await owner.db.select().from(schema.notification)).map(n=>n.kind).sort()).toEqual(['leave.approved','performance.reminder']);

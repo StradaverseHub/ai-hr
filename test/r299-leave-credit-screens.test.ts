@@ -105,7 +105,7 @@ describe('The menu row is gated on the toil module', () => {
     // Approved 2634fa7a adds My Leave › Leave Credit Details to the same guarded family as Leave Config ›
     // Leave Credit and My Leave › Leave Credit History. This originally read
     // `…filter((c) => c.labelKey === 'leaveCredit')…`; the HR row is still in it, by the same key.
-    const sidebar = code(read('components/sidebar.tsx'));
+    const sidebar = code(read('lib/navigation/shell-inventory.ts'));
     expect(sidebar).toContain(
       "n.children.filter((c) => c.labelKey === 'leaveCredit' || c.labelKey === 'leaveCreditHistory' || c.labelKey === 'leaveCreditDetails').map((c) => [c.href, 'toil'] as const)",
     );
