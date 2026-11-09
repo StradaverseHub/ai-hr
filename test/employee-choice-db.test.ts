@@ -302,18 +302,34 @@ function taggedAuxiliaryWork(result:unknown,rows:number){
  };
  expect(counter(root['Actual Rows'])).toBe(rows);
  let visibilityCalls=0,visibilityRows=0,visibilityHits=0,assignmentScans=0,assignmentLoops=0;
- const visit=(node:PagePlanNode)=>{
+ const visibleFunction='app.visible_employment_ids()';
+ const visit=(node:PagePlanNode,parent?:PagePlanNode)=>{
   const loops=counter(node['Actual Loops']);
   if(loops>0){
    if(node['Relation Name']==='assignment'){assignmentScans++;assignmentLoops+=loops;}
-   if(Array.isArray(node.Output)&&node.Output.some(value=>typeof value==='string'&&value.includes('app.visible_employment_ids()')))
-    visibilityCalls+=loops;
-   if(node['Node Type']==='ProjectSet'){
-    const outputRows=counter(node['Actual Rows']);
-    if(outputRows>0){visibilityRows+=outputRows*loops;visibilityHits+=counter(node['Shared Hit Blocks']);}
+   const output=node.Output;
+   if(Array.isArray(output)&&output.some(value=>typeof value==='string'&&value.includes(visibleFunction))){
+    // Attribute inclusive buffers only to the observed set expansion of this
+    // exact native InitPlan parameter. Other ProjectSets are not evidence.
+    const name=node['Subplan Name'];
+    const parameter=typeof name==='string'?/^InitPlan [1-9][0-9]* \(returns (\$(?:0|[1-9][0-9]*))\)$/.exec(name)?.[1]:undefined;
+    const [initPlan,outer]=parent?.Plans??[];
+    if(output.length!==1||output[0]!==visibleFunction||node['Node Type']!=='Result'||
+       node['Parent Relationship']!=='InitPlan'||loops!==1||counter(node['Actual Rows'])!==1||node.Plans?.length||
+       !parent||parent['Node Type']!=='ProjectSet'||parent['Parent Relationship']!=='SubPlan'||
+       parent.Plans?.length!==2||initPlan!==node||!outer||outer['Node Type']!=='Result'||
+       outer['Parent Relationship']!=='Outer'||outer.Plans?.length||counter(outer['Actual Loops'])!==1||
+       counter(outer['Actual Rows'])!==1||counter(parent['Actual Loops'])!==1||
+       !parameter||!Array.isArray(parent.Output)||parent.Output.length!==1||parent.Output[0]!=='unnest('+parameter+')')
+     throw new Error('Unpaired auxiliary visibility expansion');
+    const expandedRows=counter(parent['Actual Rows']);
+    if(expandedRows===0)throw new Error('Missing auxiliary visibility expansion rows');
+    visibilityCalls++;
+    visibilityRows+=expandedRows;
+    visibilityHits+=counter(parent['Shared Hit Blocks']);
    }
   }
-  for(const child of node.Plans??[])visit(child);
+  for(const child of node.Plans??[])visit(child,node);
  };
  // The existing plan parser already bounds and validates this exact tree.
  visit(root);

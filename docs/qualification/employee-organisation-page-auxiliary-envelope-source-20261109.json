@@ -147,5 +147,63 @@
     "maintenanceFence": "Deferred pending separate owner lifecycle and native lock admission/absence design. This bounded comparison cannot retroactively qualify a failed PAGE matrix or substitute for a real independently measured public port."
   },
   "runtimeQualificationPending": true,
-  "releaseEligible": false
+  "releaseEligible": false,
+  "pairedVisibilityCorrection": {
+    "directParent": "a104438b4789f8e48db2466c20d04625b1e56208",
+    "independentReviewSha256": "b3136b67fb7368e4b865a4fe815cf5ef46ab6612df043393b931bd26bddbad20",
+    "wholeParentPreimages": [
+      {
+        "path": "test/employee-choice-db.test.ts",
+        "gitBlob": "de3884a271422782fcf789d397a7aa2624874f55",
+        "bytes": 101280,
+        "sha256": "12fb48ae2b7b262c1849646f360bec878db4de84327a7485bca90d275764dbd0"
+      },
+      {
+        "path": "docs/qualification/employee-organisation-page-auxiliary-envelope-source-20261109.json",
+        "gitBlob": "10953c437789c72432857c7c034d91fd7a6d0243",
+        "bytes": 6861,
+        "sha256": "3feb0e85bae5f42e1c419a56c3c5a4b16ca43906629778195b1f28b0c4e47db6"
+      }
+    ],
+    "currentTestPin": {
+      "path": "test/employee-choice-db.test.ts",
+      "gitBlob": "f7448b942b5e5448db570a386828f6c8d094de38",
+      "bytes": 102520,
+      "sha256": "2159941f2a14a9cc92b6bc38ded683159e03bd5c2f37486df91fb2dacd94f2fb"
+    },
+    "inverseTargetGitTree": "cc253fef762704312758bfcfb763d2274b9b8b7a",
+    "soleChangedTestFunction": "taggedAuxiliaryWork",
+    "retainedExactPairCensus": {
+      "run": 42567213983,
+      "rows": [
+        {
+          "position": "selected",
+          "pairs": 2,
+          "rows": 100000,
+          "hits": 3712
+        },
+        {
+          "position": "company",
+          "pairs": 1,
+          "rows": 50000,
+          "hits": 1856
+        },
+        {
+          "position": "department",
+          "pairs": 2,
+          "rows": 100000,
+          "hits": 3712
+        },
+        {
+          "position": "unit",
+          "pairs": 2,
+          "rows": 100000,
+          "hits": 3712
+        }
+      ]
+    },
+    "attribution": "Count only the one-shot exact app.visible_employment_ids() Result InitPlan and the immediately enclosing one-shot ProjectSet whose sole output unnests the same native parameter. An unrelated ProjectSet contributes no visibility work. An executed visibility expression without this exact witness refuses attribution. Each paired parent contributes inclusive hits once.",
+    "unchanged": "Query and bound parameters, all ten cases and original assertions, native app snapshot and fixture cleanup, original and supplemental timing and plan gates. The exact diagnostic catalogue failure remains the primary result.",
+    "runtimeObservation": "UNRUN"
+  }
 }
