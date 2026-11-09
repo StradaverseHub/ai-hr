@@ -1,5 +1,6 @@
 """First-attempt hosted diagnostic. The ordinary whole compiler gate stays separate."""
 import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -15,17 +16,30 @@ import sys
 import time
 
 
-SOURCE = '6c05efc24242b8a5f50933e7cbb6709a276b286d'
-SOURCE_BRANCH = 'codex/architecture-zero-busy-lock-qualification-20261109'
-BRANCH = 'codex/compiler-6c05efc2-whole-12800-20261109'
+SOURCE = '6a71ae8b651fafdb845d92a47568ac3c5382322f'
+SOURCE_TREE = '853f28b988921a0f3b41035e2bb2bc4d653b75d1'
+SOURCE_BRANCH = 'codex/architecture-145e-compiler-test-fix-20261110'
+BRANCH = 'codex/compiler-6a71ae8b-whole-12800-platform-swap-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 LIMIT = 13 * GIB
+SWAP = 2560 * 1024 ** 2
+PLATFORM_SWAP = Path('/swapfile')
+PLATFORM_SWAP_BYTES = 3 * GIB
+PLATFORM_SWAP_USABLE = PLATFORM_SWAP_BYTES - 4096
+SWAP_HOST_RESERVE = 512 * 1024 ** 2
 WORK_NS = 720 * 10 ** 9
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-12800-feasibility'
+DIRECTORY = 'compiler-12800-platform-swap'
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+GENERATED = {
+    'next-env.d.ts': '1862ac4bbbc5192d4bf562161df66ea547ed3e67173100656ab606ae9797db2b',
+    '.next/types/cache-life.d.ts': '87384ad5954f65285fc17ba8ed39d010a8ef111edba114e493b0431d677e5faa',
+    '.next/types/root-params.d.ts': 'f3387dd7800eec3c34273f7a8efad13e864598c7e8f788d321e407390989bb59',
+    '.next/types/routes.d.ts': '52aeb68060ebdc801316e0a6880c848ee0fbc87542c452b65d963c1dafbb7432',
+    '.next/types/validator.ts': '860b54f3461834c458201cb58dbf3915fcafc89647b9a76abbe8d56242968124',
+}
 
 
 class Refusal(Exception):
@@ -133,6 +147,8 @@ def environment():
         require(directory.resolve(strict=True) == directory, 'checkout-path')
         require(command(['/usr/bin/git', '-C', str(directory), 'rev-parse', 'HEAD']) == (0, (sha + '\n').encode('ascii'))
                 and command(['/usr/bin/git', '-C', str(directory), 'status', '--porcelain']) == (0, b''), 'checkout-source')
+    require(command(['/usr/bin/git', '-C', str(workspace / 'source'), 'rev-parse', 'HEAD^{tree}'])
+            == (0, (SOURCE_TREE + '\n').encode('ascii')), 'checkout-tree')
     require(Path(__file__).resolve() == workspace / 'automation/.github/ci/compiler-memory-feasibility.py'
             and os.getuid() > 0, 'controller-path')
     return workspace, temporary, controller, run
@@ -141,12 +157,98 @@ def environment():
 def ram():
     raw = read_at(None, '/proc/meminfo')
     values = {}
-    for key in ('MemTotal', 'MemAvailable'):
-        found = re.findall(r'^' + key + r':\s+([1-9][0-9]+) kB$', raw, re.M)
+    for key in ('MemTotal', 'MemAvailable', 'SwapTotal', 'SwapFree'):
+        found = re.findall(r'^' + key + r':\s+([0-9]+) kB$', raw, re.M)
         require(len(found) == 1, 'host-memory')
         values[key] = int(found[0]) * 1024
     require(15 * GIB <= values['MemTotal'] <= 17 * GIB, 'host-size')
     return values
+
+
+def disk_available(*paths):
+    return min(row.f_bavail * row.f_frsize for row in map(os.statvfs, paths))
+
+
+def platform_swap(expected=None, *, initial=False):
+    before = PLATFORM_SWAP.lstat()
+    require(PLATFORM_SWAP.resolve(strict=True) == PLATFORM_SWAP and stat.S_ISREG(before.st_mode)
+            and before.st_uid == 0 and before.st_nlink == 1 and not before.st_mode & 0o077
+            and before.st_size == PLATFORM_SWAP_BYTES, 'platform-swap-file')
+    birth = list(identity(before))
+    rows = read_at(None, '/proc/swaps', 16384).splitlines()
+    require(len(rows) == 2 and rows[0].split() == ['Filename', 'Type', 'Size', 'Used', 'Priority'], 'platform-swap-inventory')
+    fields = rows[1].split()
+    require(len(fields) == 5 and fields[:3] == [str(PLATFORM_SWAP), 'file', str(PLATFORM_SWAP_USABLE // 1024)]
+            and fields[4] == '-1', 'platform-swap-inventory')
+    require(birth == list(identity(PLATFORM_SWAP.lstat())) and (expected is None or birth == expected), 'platform-swap-identity')
+    used = integer(fields[3]) * 1024
+    require(0 <= used <= PLATFORM_SWAP_USABLE - SWAP_HOST_RESERVE, 'host-swap-headroom')
+    if initial:
+        require(used == 0, 'platform-swap-preused')
+    return birth
+
+
+@contextlib.contextmanager
+def owner_lock(directory):
+    info = directory.lstat()
+    require(directory.resolve(strict=True) == directory and stat.S_ISDIR(info.st_mode)
+            and info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700, 'swap-directory')
+    path = directory / 'owner.lock'
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, 0o600)
+    try:
+        require(private_file_birth(os.fstat(fd)) == private_file_birth(path.lstat()), 'swap-lease')
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
+    finally:
+        os.close(fd)
+
+
+def private_file_birth(info):
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1
+            and stat.S_IMODE(info.st_mode) == 0o600, 'swap-inode')
+    return [info.st_dev, info.st_ino, info.st_uid, info.st_gid]
+
+
+def own_json(path, data):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(fd, 'w', encoding='ascii') as handle:
+        json.dump(data, handle, separators=(',', ':'))
+        handle.write('\n')
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def read_intent(path, maximum=1024):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as handle:
+        before = os.fstat(handle.fileno())
+        private_file_birth(before)
+        require(0 < before.st_size <= maximum, 'swap-intent')
+        raw = handle.read(maximum + 1)
+        require(len(raw) == before.st_size and identity(before) == identity(os.fstat(handle.fileno()))
+                == identity(path.lstat()), 'swap-intent')
+    return json.loads(raw)
+
+
+def run_identity(controller, run_id):
+    return {'candidate': SOURCE, 'controller': controller, 'run': run_id, 'attempt': 1}
+
+
+def settle_manager(directory, unit, controller, run_id):
+    require(show(unit)['LoadState'] == 'not-found' and not os.path.lexists(ROOT / 'system.slice' / unit), 'swap-service-live')
+    require(not os.path.lexists(directory / 'manager-start.pending'), 'swap-manager-unsettled')
+    manager = directory / 'manager-birth.json'
+    if os.path.lexists(manager):
+        recorded = read_intent(manager)
+        pid, birth = recorded.pop('pid'), recorded.pop('birth')
+        require(recorded == run_identity(controller, run_id) and type(pid) is int and pid > 1
+                and type(birth) is int and birth > 0, 'swap-manager-identity')
+        try:
+            active_birth = process_birth(pid)
+        except FileNotFoundError:
+            active_birth = None
+        require(active_birth != birth, 'swap-manager-live')
+    return True
 
 
 def oom_events(directory, name):
@@ -211,9 +313,23 @@ def group(unit, service_birth=None):
 def sample(descriptors, *, initial=False):
     host = ram()
     target = descriptors[-1]
-    require(read_at(target, 'memory.max') == str(LIMIT) and read_at(target, 'memory.swap.max') == '0'
+    require(read_at(target, 'memory.max') == str(LIMIT) and read_at(target, 'memory.swap.max') == str(SWAP)
             and read_at(target, 'memory.oom.group') == '1', 'cgroup-cap-readback')
-    require(read_at(target, 'memory.swap.current') == '0', 'cgroup-swap')
+    used = integer(read_at(target, 'memory.swap.current'))
+    peak = integer(read_at(target, 'memory.swap.peak'))
+    swap_events = pairs(read_at(target, 'memory.swap.events'))
+    require({'max', 'fail'} <= set(swap_events) and 0 <= used <= peak <= SWAP
+            and host['SwapTotal'] == PLATFORM_SWAP_USABLE and SWAP_HOST_RESERVE <= host['SwapFree'] <= PLATFORM_SWAP_USABLE, 'cgroup-swap')
+    if initial:
+        require(used == peak == 0 and host['SwapFree'] == PLATFORM_SWAP_USABLE, 'cgroup-swap')
+    pressure = {}
+    for category in ('some', 'full'):
+        rows = re.findall(r'^' + category + r' avg10=[0-9.]+ avg60=[0-9.]+ avg300=[0-9.]+ total=([0-9]+)$',
+                          read_at(target, 'memory.pressure'), re.M)
+        require(len(rows) == 1, 'cgroup-pressure')
+        pressure[category] = integer(rows[0])
+    require(pressure['full'] <= pressure['some'], 'cgroup-pressure')
+    require(integer(swap_events['fail']) == 0, 'cgroup-swap-failed')
     ancestors = []
     required = 14 * GIB if initial else GIB
     for index, fd in enumerate(descriptors[:-1]):
@@ -221,15 +337,22 @@ def sample(descriptors, *, initial=False):
             maximum = read_at(fd, 'memory.max')
         except FileNotFoundError:
             require(index == 0, 'ancestor-memory-controller')
-            ancestors.append({'maximum': None, 'remaining': None, 'oom': None})
+            ancestors.append({'maximum': None, 'remaining': None, 'swapRemaining': None, 'oom': None})
             continue
         remaining = None if maximum == 'max' else integer(maximum) - integer(read_at(fd, 'memory.current'))
         require(remaining is None or remaining >= required, 'ancestor-headroom')
+        swap_maximum = read_at(fd, 'memory.swap.max')
+        swap_remaining = None if swap_maximum == 'max' else integer(swap_maximum) - integer(read_at(fd, 'memory.swap.current'))
+        require(swap_remaining is None or swap_remaining >= (SWAP if initial else 0), 'ancestor-swap-headroom')
         ancestors.append({'maximum': None if maximum == 'max' else integer(maximum), 'remaining': remaining,
+                          'swapRemaining': swap_remaining,
                           'oom': oom_events(fd, 'memory.events.local')})
     require(host['MemAvailable'] >= required, 'host-headroom')
     return {'memTotal': host['MemTotal'], 'memAvailable': host['MemAvailable'], 'ancestors': ancestors,
-            'memoryMax': LIMIT, 'memorySwapMax': 0, 'oomGroup': 1,
+            'memoryMax': LIMIT, 'memorySwapMax': SWAP, 'oomGroup': 1,
+            'swapCurrent': used, 'swapPeak': peak, 'hostSwapFree': host['SwapFree'],
+            'swapEvents': {key: integer(value) for key, value in swap_events.items()},
+            'pressureMicros': pressure,
             'current': integer(read_at(target, 'memory.current')), 'peak': integer(read_at(target, 'memory.peak')),
             'oom': oom_events(target, 'memory.events.local'),
             'hostOomKill': integer(pairs(read_at(None, '/proc/vmstat'))['oom_kill'])}
@@ -243,9 +366,16 @@ def process_identity(pid, unit):
     require(re.search(r'^NoNewPrivs:\s+1$', status, re.M)
             and re.search(r'^Uid:\s+' + (r'\s+'.join([str(os.getuid())] * 4)) + '$', status, re.M)
             and len(os.sched_getaffinity(pid)) == 4, 'process-identity')
-    fields = read_at(None, f'/proc/{pid}/stat').rsplit(') ', 1)[-1].split()
-    require(len(fields) >= 20 and fields[0] not in ('Z', 'X'), 'process-not-live')
-    return integer(fields[19])
+    birth = process_birth(pid)
+    require(birth is not None, 'process-not-live')
+    return birth
+
+
+def process_birth(pid):
+    raw = read_at(None, f'/proc/{pid}/stat')
+    fields = raw.rsplit(') ', 1)[-1].split()
+    require(raw.startswith(f'{pid} (') and len(fields) >= 20, 'process-birth')
+    return None if fields[0] in ('Z', 'X') else integer(fields[19])
 
 
 def show(unit):
@@ -274,11 +404,12 @@ def frame(pipe, deadline, maximum=48):
 
 
 SERVICE_FAILURES = {
-    'identity': {'service-identity', 'process-cgroup-or-executable', 'process-identity', 'process-not-live', 'core-limit'},
+    'identity': {'service-identity', 'process-cgroup-or-executable', 'process-identity', 'process-not-live', 'process-birth', 'core-limit'},
     'grant': {'grant', 'protocol-deadline', 'protocol-eof-or-late', 'protocol-bound', 'invalid-integer'},
     'cgroup': {'cgroup-mount-id', 'cgroup-ownership', 'service-cgroup-view', 'service-cgroup-cover', 'service-cgroup-birth',
                'host-memory', 'host-size', 'host-headroom', 'ancestor-memory-controller', 'ancestor-headroom',
-               'cgroup-cap-readback', 'cgroup-swap', 'kernel-fields', 'kernel-duplicate', 'oom-counters',
+               'cgroup-cap-readback', 'cgroup-swap', 'cgroup-pressure', 'ancestor-swap-headroom',
+               'kernel-fields', 'kernel-duplicate', 'oom-counters',
                'invalid-integer', 'read-bound', 'service-launch-frontier'},
     'start': {'service-launch-late'},
     'compiler': {'service-completion-late'},
@@ -302,7 +433,7 @@ def service(unit, pending):
         temporary = Path(os.environ['RUNNER_TEMP'])
         directory = temporary / DIRECTORY
         pnpm = Path(pwd.getpwuid(os.getuid()).pw_dir) / 'setup-pnpm/node_modules/.bin/pnpm'
-        require(re.fullmatch(r'aihr-compiler-12800-[1-9][0-9]{0,15}\.service', unit) and os.getuid() > 0
+        require(re.fullmatch(r'aihr-compiler-12800-swap-[1-9][0-9]{0,15}\.service', unit) and os.getuid() > 0
                 and temporary.is_absolute() and directory.resolve(strict=True) == directory, 'service-identity')
         pid = os.getpid()
         process_identity(pid, unit)
@@ -353,22 +484,74 @@ def owned(row, unit, pid, nonce):
             and re.fullmatch(r'[a-f0-9]{32}', row['InvocationID']) and int(row['InvocationID'], 16) > 0)
 
 
+def unit_name(run_id):
+    return 'aihr-compiler-12800-swap-' + run_id + '.service'
+
+
+def compiler_files(source):
+    require(set((source / '.next/types').iterdir()) == {source / name for name in GENERATED if name.startswith('.next/')}
+            and not os.path.lexists(source / '.next/dev'), 'typegen-root-inventory')
+    for name, digest in GENERATED.items():
+        member = source / name
+        require(member.resolve(strict=True) == member and member.is_file() and 0 < member.stat().st_size <= 4 * 1024 ** 2
+                and hashlib.sha256(member.read_bytes()).hexdigest() == digest, 'typegen-inputs')
+
+
+def verify_swap_live(expected, temporary, source):
+    platform_swap(expected)
+    require(disk_available(temporary, source) >= 2 * GIB, 'compiler-disk-floor')
+
+
+def accepted_terminal(report, deadline):
+    terminal, initial = report.get('terminal'), report.get('initial')
+    if not isinstance(terminal, dict) or not isinstance(initial, dict):
+        return False
+    if not all(type(terminal.get(key)) is int for key in ('memoryMax', 'memorySwapMax', 'swapCurrent', 'swapPeak', 'peak')):
+        return False
+    events, log = terminal.get('swapEvents'), report.get('compilerLog')
+    if not isinstance(events, dict) or not isinstance(log, dict) or set(log) != {'bytes', 'sha256'}:
+        return False
+    if (type(log['bytes']) is not int or not 0 < log['bytes'] <= 4 * 1024 ** 2
+            or not isinstance(log['sha256'], str) or not re.fullmatch(r'[a-f0-9]{64}', log['sha256'])):
+        return False
+    return ('reason' not in report and report.get('admitted') is True and report.get('grantSent') is True
+            and type(report.get('compilerExit')) is int and report['compilerExit'] == 0
+            and type(report.get('managerExit')) is int and report['managerExit'] == 0
+            and report.get('zeroObservedOom') is True and report.get('ownedCleanup') == 'settled'
+            and report.get('platformSwapVerified') is True and report.get('platformSwapPreserved') is True
+            and report.get('generatedTypesVerified') is True and report.get('sourceReverified') is True
+            and report.get('v8HeapFatalMarker') is False and report.get('typescriptDiagnosticCount') == 0
+            and terminal['memoryMax'] == LIMIT and terminal['memorySwapMax'] == SWAP and 0 < terminal['peak'] <= LIMIT
+            and 0 <= terminal['swapCurrent'] <= terminal['swapPeak'] <= SWAP
+            and initial.get('oom') == terminal.get('oom') == {'oom': 0, 'oom_kill': 0, 'oom_group_kill': 0}
+            and type(events.get('fail')) is int and events['fail'] == 0
+            and time.monotonic_ns() < deadline)
+
+
 def run(workspace, temporary, controller, run_id):
     directory = temporary / DIRECTORY
     directory.mkdir(mode=0o700)
+    with owner_lock(directory):
+        return run_stock(workspace, temporary, controller, run_id, directory)
+
+
+def run_stock(workspace, temporary, controller, run_id, directory):
     source = workspace / 'source'
-    unit = 'aihr-compiler-12800-' + run_id + '.service'
+    unit = unit_name(run_id)
     group_path = ROOT / 'system.slice' / unit
     nonce = unit + '-' + os.urandom(16).hex()
     deadline = integer(os.environ['AIHR_COMPILER_FEASIBILITY_T0_NS']) + 1140 * 10 ** 9
-    report = {'kind': 'WHOLE_COMPILER_HEAP_FEASIBILITY_NOT_RELEASE', 'candidateSha': SOURCE, 'controllerSha': controller,
+    report = {'kind': 'WHOLE_COMPILER_PLATFORM_SWAP_FEASIBILITY_NOT_RELEASE', 'candidateSha': SOURCE, 'candidateTree': SOURCE_TREE,
+              'controllerSha': controller, 'residentCapBytes': LIMIT, 'swapCapBytes': SWAP,
               'runId': run_id, 'attempt': 1, 'heapMiB': 12800, 'compilerExit': None, 'admitted': False,
               'grantSent': False,
-              'complete': False, 'ownedCleanup': 'not-started', 'releaseEligible': False}
+              'complete': False, 'ownedCleanup': 'not-started', 'platformSwapVerified': False,
+              'platformSwapPreserved': False, 'releaseEligible': False}
     wrapper = None
     pidfd = None
     wrapper_pidfd = None
     holder_bound = False
+    swap_birth = None
     try:
         require(deadline - time.monotonic_ns() >= WORK_NS + 45 * 10 ** 9, 'insufficient-job-budget')
         report['hostPrelaunch'] = ram()
@@ -381,12 +564,19 @@ def run(workspace, temporary, controller, run_id):
         require(command([str(tools / 'node'), '--version']) == (0, b'v22.23.3\n')
                 and json.loads((source / 'node_modules/typescript/package.json').read_bytes())['version'] == '5.9.3'
                 and not os.path.lexists(source / 'tsconfig.tsbuildinfo'), 'cold-compiler-inputs')
-        for path in ('next-env.d.ts', '.next/types/routes.d.ts', '.next/types/validator.ts'):
-            member = source / path
-            require(member.resolve(strict=True) == member and member.is_file() and member.stat().st_size > 0, 'typegen-inputs')
+        compiler_files(source)
+        report['generatedTypesVerified'] = True
+        swap_birth = platform_swap(initial=True)
+        own_json(directory / 'platform-swap.json', {**run_identity(controller, run_id), 'birth': swap_birth})
+        verify_swap_live(swap_birth, temporary, source)
+        report['platformSwapVerified'] = True
+        report['platformSwapBytes'] = PLATFORM_SWAP_USABLE
+        report['hostSwapReserveBytes'] = SWAP_HOST_RESERVE
+        report['platformSwapBirthSha256'] = hashlib.sha256(json.dumps(swap_birth).encode('ascii')).hexdigest()
+        report['compilerDiskBytes'] = disk_available(temporary, source)
         pending = time.monotonic_ns() + 12 * 10 ** 9
         props = ('User=' + str(os.getuid()), 'Group=' + str(os.getgid()), 'Type=exec', 'MemoryAccounting=yes',
-                 'MemoryMax=' + str(LIMIT), 'MemorySwapMax=0', 'OOMPolicy=kill', 'NoNewPrivileges=yes',
+                 'MemoryMax=' + str(LIMIT), 'MemorySwapMax=' + str(SWAP), 'OOMPolicy=kill', 'NoNewPrivileges=yes',
                  'ProtectControlGroups=yes', 'PrivateNetwork=yes', 'LimitCORE=1', 'LimitFSIZE=67108864', 'UMask=0077', 'Delegate=no',
                  'KillMode=control-group', 'TimeoutStopSec=10s', 'RuntimeMaxSec=744s', 'Restart=no',
                  'WorkingDirectory=' + str(source), 'Description=' + nonce)
@@ -399,10 +589,17 @@ def run(workspace, temporary, controller, run_id):
                 '--unit=' + unit, *['--property=' + value for value in props],
                 *['--setenv=' + key + '=' + value for key, value in settings.items()],
                 '/usr/bin/python3', '-I', '-B', str(Path(__file__).resolve()), 'service', unit, str(pending)]
+        launching = directory / 'manager-start.pending'
+        own_json(launching, run_identity(controller, run_id))
         with (directory / 'manager.raw.log').open('xb') as manager_log:
             wrapper = subprocess.Popen(argv, env=BASE_ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=manager_log)
         report['ownedCleanup'] = 'unknown'
         wrapper_pidfd = os.pidfd_open(wrapper.pid)
+        manager_birth = process_birth(wrapper.pid)
+        require(manager_birth is not None, 'swap-manager-live')
+        own_json(directory / 'manager-birth.json', {**run_identity(controller, run_id),
+                 'pid': wrapper.pid, 'birth': manager_birth})
+        launching.unlink()
         message = frame(wrapper.stdout, pending)
         refusal = service_failure(message, {'identity'})
         if refusal is not None:
@@ -447,18 +644,26 @@ def run(workspace, temporary, controller, run_id):
                         report['compilerExit'] = int(done[1])
                         break
                 current = sample(descriptors)
+                verify_swap_live(swap_birth, temporary, source)
                 minimum = min(minimum, current['memAvailable'])
                 report.update(lastSample=current, minimumMemAvailable=minimum)
+                require(all(current['pressureMicros'][key] >= before['pressureMicros'][key] for key in ('some', 'full')),
+                        'cgroup-pressure-reset')
                 require(current['oom'] == before['oom'] and current['hostOomKill'] == before['hostOomKill']
                         and [a['oom'] for a in current['ancestors']] == [a['oom'] for a in before['ancestors']], 'oom-observed')
             require(report['compilerExit'] is not None and time.monotonic_ns() < stop, 'compiler-deadline')
             after = sample(descriptors)
+            verify_swap_live(swap_birth, temporary, source)
+            compiler_files(source)
+            require(command(['/usr/bin/git', '-C', str(source), 'status', '--porcelain']) == (0, b''), 'checkout-source')
+            report['sourceReverified'] = True
             report.update(terminal=after, minimumMemAvailable=min(minimum, after['memAvailable']))
             named_group = os.stat(unit, dir_fd=descriptors[-2], follow_symlinks=False)
             held_group = os.fstat(descriptors[-1])
             require((held_group.st_dev, held_group.st_ino) == (named_group.st_dev, named_group.st_ino)
                     and read_at(descriptors[-1], 'cgroup.procs') == str(pid) and process_identity(pid, unit) == birth
                     and show(unit) == row and after['peak'] <= LIMIT and after['oom'] == before['oom']
+                    and all(after['pressureMicros'][key] >= before['pressureMicros'][key] for key in ('some', 'full'))
                     and after['hostOomKill'] == before['hostOomKill']
                     and [a['oom'] for a in after['ancestors']] == [a['oom'] for a in before['ancestors']]
                     and time.monotonic_ns() < stop, 'terminal-native-evidence')
@@ -515,6 +720,13 @@ def run(workspace, temporary, controller, run_id):
             except (Refusal, OSError, ValueError):
                 pass
         try:
+            settle_manager(directory, unit, controller, run_id)
+            if swap_birth is not None:
+                platform_swap(swap_birth)
+                report['platformSwapPreserved'] = True
+        except (Refusal, OSError, ValueError, KeyError, subprocess.SubprocessError):
+            report['platformSettlementRefused'] = True
+        try:
             log = directory / 'compiler.raw.log'
             fd = os.open(log, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
             with os.fdopen(fd, 'rb') as stream:
@@ -525,22 +737,60 @@ def run(workspace, temporary, controller, run_id):
                 require(len(raw) == info.st_size and identity(info) == identity(os.fstat(fd))
                         == identity(os.stat(log, follow_symlinks=False)), 'log-changed')
             if report['ownedCleanup'] == 'settled':
-                with (directory / 'compiler.log').open('xb') as stream:
-                    stream.write(raw)
                 report['compilerLog'] = {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
                 report['v8HeapFatalMarker'] = bool(re.search(
                     rb'^FATAL ERROR: [^\r\n]*JavaScript heap out of memory[^\r\n]*$', raw, re.M))
+                report['typescriptDiagnosticCount'] = len(re.findall(rb'\berror TS[0-9]+:', raw))
         except (Refusal, OSError):
             report['compilerLog'] = None
-        report['complete'] = ('reason' not in report and report['admitted'] and report['compilerExit'] == 0
-                              and report.get('zeroObservedOom') is True and report['ownedCleanup'] == 'settled'
-                              and report.get('compilerLog') is not None and time.monotonic_ns() < deadline)
-        with (directory / 'receipt.json').open('x', encoding='utf-8') as stream:
-            stream.write(json.dumps(report, indent=2) + '\n')
+        report['complete'] = accepted_terminal(report, deadline)
+        own_json(directory / 'receipt.json', report)
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as stream:
             stream.write('evidence=true\n')
         print(json.dumps(report, separators=(',', ':')), flush=True)
     return 0 if report['complete'] else 1
+
+
+def independent_cleanup(_workspace, temporary, controller, run_id):
+    directory = temporary / DIRECTORY
+    if not os.path.lexists(directory):
+        return
+    with owner_lock(directory):
+        settle_manager(directory, unit_name(run_id), controller, run_id)
+        for name in ('compiler.raw.log', 'manager.raw.log'):
+            path = directory / name
+            if os.path.lexists(path):
+                private_file_birth(path.lstat())
+                path.unlink()
+        swap = directory / 'platform-swap.json'
+        platform_verified = False
+        birth_digest = None
+        if os.path.lexists(swap):
+            proof = read_intent(swap)
+            birth = proof.pop('birth')
+            require(proof == run_identity(controller, run_id) and isinstance(birth, list)
+                    and len(birth) == 9 and all(type(value) is int for value in birth), 'platform-swap-witness')
+            platform_swap(birth)
+            birth_digest = hashlib.sha256(json.dumps(birth).encode('ascii')).hexdigest()
+            platform_verified = True
+        receipt = directory / 'receipt.json'
+        if os.path.lexists(receipt):
+            report = read_intent(receipt, maximum=64 * 1024)
+            require([report.get(key) for key in ('kind', 'candidateSha', 'candidateTree', 'controllerSha', 'runId', 'attempt',
+                    'releaseEligible')] == ['WHOLE_COMPILER_PLATFORM_SWAP_FEASIBILITY_NOT_RELEASE', SOURCE, SOURCE_TREE,
+                                           controller, run_id, 1, False], 'swap-receipt-context')
+            if report.get('platformSwapVerified') is True:
+                require(platform_verified and report.get('platformSwapBirthSha256') == birth_digest, 'platform-swap-witness')
+            if report.get('complete') is True:
+                require(report.get('platformSwapVerified') is True and report.get('platformSwapPreserved') is True,
+                        'platform-swap-witness')
+        own_json(directory / 'swap-settlement.json', {**run_identity(controller, run_id),
+                  'kind': 'COMPILER_PLATFORM_SWAP_INDEPENDENT_SETTLEMENT_NOT_RELEASE',
+                  'unitAbsent': True, 'platformSwapIdentityVerified': platform_verified,
+                  'platformSwapBirthSha256': birth_digest, 'privateLogsRemoved': True,
+                  'releaseEligible': False})
+        with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as stream:
+            stream.write('settled=true\n')
 
 
 if __name__ == '__main__':
@@ -549,10 +799,15 @@ if __name__ == '__main__':
         if len(sys.argv) == 4 and sys.argv[1] == 'service':
             service(sys.argv[2], integer(sys.argv[3]))
         else:
-            require(sys.argv[1:] in (['admit'], ['run']), 'role')
+            require(sys.argv[1:] in (['admit'], ['run'], ['cleanup']), 'role')
             context = environment()
             if sys.argv[1] == 'run':
+                signal.signal(signal.SIGTERM, lambda *_: require(False, 'controller-interrupted'))
                 sys.exit(run(*context))
+            if sys.argv[1] == 'cleanup':
+                independent_cleanup(*context)
+            if sys.argv[1] == 'admit':
+                require(disk_available(context[0], context[1]) >= 12 * GIB, 'compiler-disk-setup')
     except (Refusal, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         print('Compiler feasibility refused: ' + (str(error) if isinstance(error, Refusal) else type(error).__name__), file=sys.stderr)
         sys.exit(2)
