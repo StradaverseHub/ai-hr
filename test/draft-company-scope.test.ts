@@ -280,6 +280,19 @@ describe('§3 the Excel export carries the same drafts as the screen', () => {
     expect(csv).not.toContain('Unplaced Candidate');
   });
 
+  it('downloads the current page as a real workbook and preserves the company fence', async () => {
+    SCOPE_COOKIE = A;
+    const res = await exportPersonnel(new Request('http://x/admin/personnel/export?mode=page&page=0&size=25&bucket=draft&cols=code,name,company,status'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Disposition')).toMatch(/\.xlsx"$/);
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.read(await res.arrayBuffer(), { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toContain('ALPHA001');
+    expect(JSON.stringify(rows)).not.toMatch(/BRAVO001|Unplaced Candidate/);
+  });
+
   it('un-narrowed, the file carries every draft', async () => {
     const csv = await exportCsv('bucket=draft&cols=code,name,company,status');
     for (const s of ['ALPHA001', 'BRAVO001', 'Unplaced Candidate']) expect(csv).toContain(s);

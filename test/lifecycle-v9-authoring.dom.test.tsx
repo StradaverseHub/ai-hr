@@ -52,3 +52,23 @@ it('keeps an explicit default CC mailbox separate from directory people', () => 
   fireEvent.click(screen.getByRole('checkbox', { name: 'Email: archive@fictional.invalid' }));
   expect(saved().cc).toEqual([]);
 });
+
+it('inserts allowed Personnel fields at the selected cursor range in the correct email input', () => {
+  render(<Editor/>);
+  const body = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Body' });
+  fireEvent.change(body, { target: { value: 'Hello replacement today' } });
+  body.focus();
+  body.setSelectionRange(6, 17);
+  fireEvent.blur(body);
+  fireEvent.click(screen.getByRole('button', { name: 'Insert field into body' }));
+  expect(screen.getByRole('button', { name: /Business unit · \{employee.businessUnit\}/ })).toBeVisible();
+  expect(screen.queryByRole('button', { name: /IC number|Passport number|Religion|Race/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /Position · \{employee.position\}/ }));
+  expect(saved().body).toBe('Hello {employee.position} today');
+  expect(screen.getByText('Position inserted into the body.')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Insert field into subject' }));
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search subject fields' }), { target: { value: 'date' } });
+  expect(screen.getByRole('button', { name: /Last working date/ })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: /Join date/ }));
+  expect(saved()).toMatchObject({ subject: '{joiner.joinDate}', body: 'Hello {employee.position} today' });
+});

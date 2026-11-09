@@ -76,8 +76,6 @@ const richProps = {
     epfEmployerNo: 'E123',
     socsoEmployerCode: 'S123',
     lhdnEmployerNo: 'L123',
-    myinvoisTin: 'C12345678900',
-    ssmRegistrationNo: '202301001234',
     hrdfStatus: 'mandatory' as const,
   },
   statutoryAuthorities: [
@@ -334,15 +332,13 @@ describe('15e5bd93 rev 4 render check — the setup SCREEN in all six locales, r
    * An EXACT ordered list of captions, because a substring check would pass on a card that rendered two of
    * the six, and the position is asserted because "stays at the top" is half the request.
    */
-  it('puts the six identity facts at the top, in the reporter’s order, with no input among them', () => {
+  it('puts the four statutory facts at the top, in the reporter’s order, with no input among them', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
     const card = identity(html);
     expect(card, 'the identity card is on the screen').toBeTruthy();
     expect(dtsIn(card)).toEqual(
       [
-        en.ssmRegistrationNo,
-        en.myinvoisTin,
         en.epfEmployerNo,
         en.socsoEmployerCode,
         en.lhdnENumber,
@@ -350,7 +346,7 @@ describe('15e5bd93 rev 4 render check — the setup SCREEN in all six locales, r
       ].map(inMarkup),
     );
     expect(ddsIn(card)).toEqual(
-      ['202301001234', 'C12345678900', 'E123', 'S123', 'L123', en.hrdfMandatory].map(inMarkup),
+      ['E123', 'S123', 'L123', en.hrdfMandatory].map(inMarkup),
     );
     /**
      * ⚠️ READ-ONLY HERE, EDITABLE PER BODY. The four filing identifiers live on `company_statutory_my` and

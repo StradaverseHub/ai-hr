@@ -66,7 +66,6 @@ const actions = {
   archiveCompany: noop,
   deleteCompany: noop,
   setParent: noop,
-  setStatutory: noop,
   setBankProfile: noop,
   removeBankProfile: noop,
   setStatutoryAuthority: noop,
@@ -114,8 +113,6 @@ const richProps = {
     epfEmployerNo: 'E123',
     socsoEmployerCode: 'S123',
     lhdnEmployerNo: 'L123',
-    myinvoisTin: null,
-    ssmRegistrationNo: null,
     hrdfStatus: 'mandatory' as const,
   },
   bankProfiles: [
@@ -370,7 +367,7 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
    * feature — it is a HALF-REMOVED one: a workspace pane left mounted with no Save above it, or a section
    * marker with no scope to read it, renders fine, passes tsc and quietly cannot save.
    */
-  it('renders registrations in General and keeps Statutory body editing on its dedicated screen', () => {
+  it('omits the legacy registration fields and keeps Statutory body editing on its dedicated screen', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
     // The workspace is gone, not hidden: no pane, no marker, no scope.
@@ -384,11 +381,9 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     expect(html, "General's Save bar stays").toContain('data-tab-save-scope="general"');
 
     expect(html).not.toContain(inMarkup(en.saveStatutoryIdentity));
-    const registration = html.match(/<form\b[^>]*data-save-section="registration"[^>]*>[\s\S]*?<\/form>/)?.[0] ?? '';
-    expect(registration).toContain('name="ssmRegistrationNo"');
-    expect(registration).toContain('name="myinvoisTin"');
-    expect(html.match(/name="ssmRegistrationNo"/g)).toHaveLength(1);
-    expect(html.match(/name="myinvoisTin"/g)).toHaveLength(1);
+    expect(html).not.toContain('data-save-section="registration"');
+    expect(html).not.toContain('name="ssmRegistrationNo"');
+    expect(html).not.toContain('name="myinvoisTin"');
 
     // NO PER-BODY SAVE ON THIS TAB EITHER: the bodies are not edited here at all.
     expect(html, 'no per-body Save reached the tab').not.toContain(inMarkup(en.authoritySave));

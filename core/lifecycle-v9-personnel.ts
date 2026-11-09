@@ -30,7 +30,12 @@ export async function readV9PersonnelTx(tx: Tx, ctx: SessionContext, employmentI
   const subject = await subjectTx(tx, ctx, employmentId);
   const [row] = await tx.select({ p: person, emName: primaryEmergencyContactSql('full_name'), emRel: primaryEmergencyContactSql('relationship'), emPhone: primaryEmergencyContactSql('mobile_phone') }).from(person).where(and(eq(person.id, subject.personId), eq(person.tenantId, ctx.tenantId)));
   if (!row) throw new V9Error('Personnel record not available.');
-  const p = row.p, values: Record<string, string> = { name: p.fullName, email: p.primaryEmail, mobile: p.phone ?? '', homePhone: p.homePhone ?? '', personalEmail: p.personalEmail ?? '', address: p.address ?? '', race: p.race ?? '', religion: p.religion ?? '', nationality: p.nationality ?? '', gender: title(p.gender), marital: title(p.maritalStatus), emName: row.emName ?? '', emRel: row.emRel ?? '', emPhone: row.emPhone ?? '' };
+  const p = row.p;
+  const address = p.address || [
+    p.permanentAddressLine1, p.permanentAddressLine2, p.permanentAddressLine3,
+    p.permanentPostcode, p.permanentCity, p.permanentState, p.permanentCountry,
+  ].filter(Boolean).join(', ');
+  const values: Record<string, string> = { name: p.fullName, email: p.primaryEmail, mobile: p.phone ?? '', homePhone: p.homePhone ?? '', personalEmail: p.personalEmail ?? '', address, race: p.race ?? '', religion: p.religion ?? '', nationality: p.nationality ?? '', gender: title(p.gender), marital: title(p.maritalStatus), emName: row.emName ?? '', emRel: row.emRel ?? '', emPhone: row.emPhone ?? '' };
   const statutory = await bankStatutorySubjectTx(tx, subject.id);
   if (statutory) {
     const state = await readBankStatutoryStateTx(tx, ctx, statutory);

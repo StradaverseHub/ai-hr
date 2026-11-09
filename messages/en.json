@@ -820,6 +820,9 @@
       "absentEmployeeCategory": "Employee Category",
       "absentEmployeeType": "Employee Type",
       "exportXlsx": "Export",
+      "exportCurrentPage": "Export Current Page Information",
+      "exportAllDetails": "Export All Employee Details",
+      "exportEmpty": "No employee information to export",
       "exportAria": "Export the filtered employee list to Excel",
       "exportTitle": "Employees",
       "rejectReasonPlaceholder": "Reason for rejecting (required)",
@@ -36499,6 +36502,7 @@
     "groupingHint": "Review and publish the company mapping before Rewards or payroll grouping. Employment details can still be saved."
   },
   "personnelOrganisationFilters": {
+    "updatingResults": "Updating results…",
     "readBusy": "Personnel is busy. Wait a moment and try again.",
     "retryRead": "Try again",
     "businessUnit": "Business unit",

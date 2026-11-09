@@ -454,8 +454,8 @@ describe('Statutory tab: per-authority payment setup', () => {
     );
   });
 
-  it('moves registrations to General while preserving the statutory authority list (approved 6a2b463a)', () => {
-    expect(panel.includes("t('companyRegistrationDetails')")).toBe(true);
+  it('removes the registration editor and retains the statutory authority list', () => {
+    expect(panel).not.toContain("t('companyRegistrationDetails')");
     expect(panel.includes("t('authoritiesTitle')")).toBe(true);
   });
 
@@ -636,32 +636,14 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
     }
   });
 
-  it('preserves the single SSM/TIN editor in General and the statutory file readers (approved 6a2b463a)', () => {
-    expect(panel).toContain("t('companyRegistrationDetails')");
-    expect(panel).toContain('name="ssmRegistrationNo"');
-    expect(panel).toContain('name="myinvoisTin"');
-    /**
-     * ⚠️ 15e5bd93 rev 2 — AND THE DEDICATED SCREEN READS THEM WITHOUT OWNING THEM. Approved point 1 puts
-     * the two numbers in that screen's heading so an operator can check them without coming back; neither
-     * gets a card and neither gets an input there, because neither is a body an employer pays a
-     * contribution to. One owner, one editor — which is the whole reason they never got a card in r226.
-     */
-    /**
-     * ⚠️ RE-POINTED BY REVISION 3. r353 asserted these two on the setup PAGE, because that round printed them
-     * in the PageHeader's description. The reporter's rev-3 sketch puts them in a "Statutory Identity (MY)"
-     * CARD at the top of the screen body, beside the four filing identifiers, so the claim moves to the
-     * component that now prints them — and the page is asserted NOT to, so the two cannot both do it.
-     */
-    const setupPage = read('app/admin/organization/[companyId]/statutory/page.tsx');
-    expect(screen, 'the identity card prints SSM').toContain('statutory?.ssmRegistrationNo');
-    expect(screen, 'and MyInvois').toContain('statutory?.myinvoisTin');
-    expect(setupPage, 'and the page heading no longer repeats them').not.toContain('statutory?.ssmRegistrationNo');
-    expect(setupPage, 'nor MyInvois').not.toContain('statutory?.myinvoisTin');
-    expect(screen, 'but the list has no SSM input').not.toContain('name="ssmRegistrationNo"');
-    expect(screen, 'and no MyInvois input').not.toContain('name="myinvoisTin"');
-    expect(CARD_SRC, 'nor does the body screen').not.toContain('name="ssmRegistrationNo"');
-    expect(CARD_SRC).not.toContain('name="myinvoisTin"');
-    // The reason SSM may not be filed under a payment card: two statutory files read it.
+  it('omits the two registration values from company settings and retains their filing readers', () => {
+    const view = read('app/admin/organization/[companyId]/view/page.tsx');
+    const edit = read('app/admin/organization/[companyId]/page.tsx');
+    expect(edit).not.toContain('<RegistrationClassification');
+    for (const source of [panel, view, screen, edit]) {
+      expect(source).not.toContain('ssmRegistrationNo');
+      expect(source).not.toContain('myinvoisTin');
+    }
     expect(read('localization/my/borang-8a.ts')).toContain('companyStatutoryMy.ssmRegistrationNo');
     expect(read('localization/my/socso-eis-file.ts')).toContain('companyStatutoryMy.ssmRegistrationNo');
   });
@@ -751,7 +733,7 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
      * and a caller that quietly stops naming one of them stops being able to CLEAR it — a defect with a
      * 200, a green suite and nothing on screen to show it.
      */
-    for (const field of ['epfEmployerNo', 'socsoEmployerCode', 'lhdnEmployerNo', 'myinvoisTin', 'ssmRegistrationNo']) {
+    for (const field of ['epfEmployerNo', 'socsoEmployerCode', 'lhdnEmployerNo']) {
       expect(ACTIONS, `the identity write reads ${field} by presence`).toContain(
         `${field}: postedField(formData, '${field}')`,
       );
@@ -1020,7 +1002,7 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
    * Statutory still has no local editor or Save. The separate payment-setup screen continues to
    * own its authority forms and lifecycle controls; moving registrations must not duplicate them.
    */
-  it('keeps Statutory read-only and gives the single General registration editor to its consolidated Save', () => {
+  it('keeps Statutory read-only and the General Save scoped to visible fields', () => {
     const pane = panel.slice(panel.indexOf("cn('space-y-4', tab === 'statutory'"), panel.indexOf('{/* end Statutory tab */}'));
     expect(pane, 'no scope over one card').not.toContain('<TabSaveScope');
     expect(pane, 'and no statutory tab key for one to key on').not.toContain('tabKey="statutory"');
@@ -1029,16 +1011,7 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     expect(stripComments(panel), 'and so is the section-label map it needed').not.toContain(
       'statutorySectionLabels',
     );
-    // Approved 6a2b463a moved the sole SSM/TIN editor into General's existing Save scope.
-    const general = panel.slice(panel.indexOf("cn('space-y-4', tab === 'general'"), panel.indexOf('{/* end General tab */}'));
-    const registration = general.match(/<form\b[^>]*data-save-section="registration"[\s\S]*?<\/form>/)?.[0] ?? '';
-    expect(general.length, 'the General pane slice must resolve').toBeGreaterThan(100);
-    expect(registration, 'the single registration section must resolve').not.toBe('');
-    expect(registration).toContain('name="ssmRegistrationNo"');
-    expect(registration).toContain('name="myinvoisTin"');
-    expect(panel.match(/name="ssmRegistrationNo"/g), 'there is only one SSM editor').toHaveLength(1);
-    expect(panel.match(/name="myinvoisTin"/g), 'there is only one TIN editor').toHaveLength(1);
-    expect(registration, 'the General Save owns it, without a competing button').not.toMatch(/<(?:Button|ActionButton|button)\b/);
+    expect(panel).not.toContain('data-save-section="registration"');
     expect(pane, 'the retired section caption stays removed').not.toContain("t('statutoryIdentityMY')");
     expect(pane, 'the old standalone Save stays removed').not.toContain("t('saveStatutoryIdentity')");
     // NO SECTION MARKERS LEFT ON THIS TAB. A marker with no scope above it is inert, and inert markup that
@@ -1073,26 +1046,11 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     expect(clear, 'and it is not inside the card Save').not.toContain("t('authoritySave')");
   });
 
-  /** Keep the historical country-name collision closed after moving registrations into General.
-   * The client uses filingCountry, while the consolidated writer chooses the actual company's pack
-   * and preserves partial-patch semantics. A posted address value cannot select a statutory owner.
-   */
-  it('keeps General registration fields separate from address country and uses the actual company pack', () => {
-    const general = panel.slice(panel.indexOf("cn('space-y-4', tab === 'general'"), panel.indexOf('{/* end General tab */}'));
-    const form = general.match(/<form\b[^>]*data-save-section="registration"[\s\S]*?<\/form>/)?.[0] ?? '';
-    expect(general.length, 'the General pane slice must resolve').toBeGreaterThan(100);
-    expect(form, 'the consolidated registration form must resolve').not.toBe('');
-    expect(form).toContain('<input type="hidden" name="filingCountry" value="MY" />');
-    expect(form, 'a hidden country would mirror an address value').not.toContain('name="country"');
-    const writer = ACTIONS_SRC.slice(ACTIONS_SRC.indexOf('async function applyCompanyRegistrationSection'), ACTIONS_SRC.indexOf('export async function saveCompanyGeneralTabAction'));
-    expect(writer.length, 'the narrow General registration writer must resolve').toBeGreaterThan(100);
-    expect(writer, 'the actual company chooses the pack').toContain('packFor(companyRow.country)');
-    expect(writer, 'a posted country must not select the statutory owner').not.toContain("fd.get('country')");
-    expect(writer, 'SSM uses partial-patch presence semantics').toContain("ssmRegistrationNo: postedField(fd, 'ssmRegistrationNo')");
-    expect(writer, 'TIN uses partial-patch presence semantics').toContain("myinvoisTin: postedField(fd, 'myinvoisTin')");
-    expect(writer, 'this editor cannot change the contribution rate').not.toContain('hrdfStatus:');
-    // The compatibility action remains safe for its older callers; it still defaults only an absent country.
-    expect(ACTIONS_SRC).toContain("const country = String(formData.get('country') ?? 'MY');");
+  it('keeps legacy form submissions from writing hidden company identifiers', () => {
+    const writer = ACTIONS_SRC.slice(ACTIONS_SRC.indexOf('export async function setCompanyStatutoryAction'), ACTIONS_SRC.indexOf('export async function', ACTIONS_SRC.indexOf('export async function setCompanyStatutoryAction') + 1));
+    expect(writer).toContain("postedField(formData, 'epfEmployerNo')");
+    expect(writer).not.toContain("postedField(formData, 'ssmRegistrationNo')");
+    expect(writer).not.toContain("postedField(formData, 'myinvoisTin')");
   });
 
   /**

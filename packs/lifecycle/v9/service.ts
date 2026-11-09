@@ -22,7 +22,7 @@ import { v9Defaults } from '../../../lib/lifecycle-v9-defaults';
 import { parseV9Config, validateV9ConfigChange, v9Equal } from '../../../lib/lifecycle-v9-validation';
 import { readSettlementTx, type SettlementView } from './settlement';
 import { readV9PersonnelTx, pushV9PersonnelTx, lockV9PersonnelWritesTx, v9PersonnelWritableKeys } from '../../../core/lifecycle-v9-personnel';
-import { onboardingFulfilmentGroupTx, onboardingHoldingsTx, onboardingReturnCatalogueTx, onboardingRecoverHoldingTx, onboardingCommand, onboardingV9ReadTx, onboardingV9StoreTx, onboardingSetupTx, onboardingEnableV9OffboardingTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
+import { onboardingFulfilmentGroupTx, onboardingHoldingsTx, onboardingReturnCatalogueTx, onboardingRecoverHoldingTx, onboardingCommand, onboardingV9ReadTx, onboardingV9DraftEmailFieldsTx, onboardingV9StoreTx, onboardingSetupTx, onboardingEnableV9OffboardingTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
 import { issuedToTx, returnAssetTx } from '../../../core/lifecycle-assets';
 import { lifecycleV9EmailIpc } from '../../../lib/lifecycle-v9-email-ipc';
 import type { LifecycleV9DeliveryRequest, LifecycleV9DeliveryResult } from '../../../lib/lifecycle-v9-delivery-model';
@@ -100,11 +100,26 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   const [personnel] = await tx.execute<{ position: string | null; department: string | null; business_group: string | null }>(sql`select (select title from position where id::text=${c.facts.title} and tenant_id=${ctx.tenantId}::uuid) as position,(select name from department where id::text=${c.facts.department} and tenant_id=${ctx.tenantId}::uuid) as department,(select name from business_unit where id::text=${c.facts.businessGroup} and tenant_id=${ctx.tenantId}::uuid) as business_group`);
   const native = c.module === 'onb' ? await onboardingV9ReadTx(ctx, tx, c.id) : null;
   const nf = native ? nativeFacts(native.c) : null;
-  const source = c.facts.employmentId ? await readV9PersonnelTx(tx, ctx, c.facts.employmentId) : { email: nf?.email ?? '', icNo: nf?.ic ?? '', passportNo: nf?.passport ?? '' };
+  const source = c.facts.employmentId
+    ? await readV9PersonnelTx(tx, ctx, c.facts.employmentId)
+    : { email: nf?.email ?? '', icNo: nf?.ic ?? '', passportNo: nf?.passport ?? '',
+        ...(native ? await onboardingV9DraftEmailFieldsTx(ctx, tx, native) : {}) };
+  const currentBusinessUnit = native?.personnelLabels.businessGroup;
+  const [unit] = !native && ctx.userId && c.facts.employmentId
+    ? await tx.execute<{ name: string | null }>(sql`
+        select bu.name from employment e
+        left join business_unit bu on bu.tenant_id=e.tenant_id
+          and bu.id::text=app.employment_organisation_tags(e.id, greatest(${today}::date,e.hired_on))->>'businessUnitId'
+        where e.id=${c.facts.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid
+          and app.access_workforce_employment(e.id, 'workforce.maintain')
+      `)
+    : [];
+
   const fmt = (value: string) => M.validDate(value) ? value.slice(8) + '/' + value.slice(5, 7) + '/' + value.slice(0, 4) : '';
   const values: Record<string, string> = { ...source,
     'employee.name': c.facts.name, 'employee.empNo': c.facts.employeeNo, 'employee.position': personnel?.position ?? c.facts.title, 'employee.department': personnel?.department ?? c.facts.department,
-    'employee.icNo': source.icNo ?? '', 'employee.passportNo': source.passportNo ?? '', 'employee.supervisor': users.find(u => u.id === c.facts.supervisorUserId)?.name ?? '',
+    'employee.icNo': source.icNo ?? '', 'employee.passportNo': source.passportNo ?? '', 'employee.supervisor': users.find(u => u.id === c.facts.supervisorUserId)?.name ?? native?.personnelLabels.supervisor ?? '',
+    'employee.businessUnit': currentBusinessUnit ?? (unit ? unit.name ?? '' : personnel?.business_group ?? ''),
     'company.name': company[0]?.name ?? '', 'joiner.joinDate': fmt(c.facts.joinDate), 'leaver.lastDay': fmt(c.facts.lastDay),
     'leaver.noticeDate': fmt(c.facts.noticeDate), 'leaver.type': c.facts.caseType, 'today.date': fmt(today), today: fmt(today),
     'signatory.name': who.name, 'onboarding.progress': M.work(c).percent + '%', name: c.facts.name, empNo: c.facts.employeeNo, company: company[0]?.name ?? '', position: personnel?.position ?? c.facts.title, group: personnel?.business_group ?? c.facts.businessGroup, icNo: source.icNo ?? '', email: source.email ?? '',
