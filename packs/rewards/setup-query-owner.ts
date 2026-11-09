@@ -17,6 +17,22 @@ export type RewardSetupQueryPort=Readonly<{
  structure:(tx:Tx,companyId:string,at:string)=>PromiseLike<{tags:{businessGroupId?:string;businessGroupName?:string;businessUnitId?:string;businessUnitName?:string;status?:string}}[]>;
  patHistory:(tx:Tx,companyId:string,year:number)=>PromiseLike<{value:PatVersion}[]>;
 }>;
+
+type RewardCompanyOrder=Pick<PatCompany,'id'|'name'|'parentName'|'businessGroupName'|'businessUnitName'>;
+export type RewardPlanCompanyChoiceQueryPort=Pick<RewardSetupQueryPort,'authority'>&Readonly<{
+ planCompanyOrder:(tx:Tx,year:number,at:string)=>PromiseLike<RewardCompanyOrder[]>;
+}>;
+
+function rewardStructureDate(year:number){
+ const today=todayInKualaLumpur();
+ return year<Number(today.slice(0,4))?`${year}-12-31`:today;
+}
+
+function compareRewardCompanies(a:RewardCompanyOrder,b:RewardCompanyOrder){
+ return (a.businessGroupName??a.parentName??'').localeCompare(b.businessGroupName??b.parentName??'')
+  ||(a.businessUnitName??'').localeCompare(b.businessUnitName??'')
+  ||a.name.localeCompare(b.name)||a.id.localeCompare(b.id);
+}
 export async function libraryVersionQueryTx(tx:Tx,ctx:SessionContext,id:string,requireConfirmed:boolean,port:RewardSetupQueryPort):Promise<RewardLibraryVersion>{
  setupUuid.parse(id);await port.authority(tx,null,'library_view');
  const [r]=await tx.execute<Omit<RewardLibraryVersion,'usedBy'|'locked'>>(sql`select v.id,l.id as "libraryId",l.kind,l.name,l.year,l.tags,l.group_default as "groupDefault",l.previous_library_id as "previousLibraryId",l.source_policy_version_id as "sourcePolicyVersionId",v.revision as version,v.data,v.state,v.lock_version as "lockVersion",v.created_by as "createdBy",v.contributor_ids as contributors,v.created_by_person_id as "createdByPersonId",v.contributor_person_ids as "contributorPersonIds",v.confirmed_by as "confirmedBy",v.confirmed_at::text as "confirmedAt",v.reason from reward_library_version v join reward_library l on l.id=v.library_id and l.tenant_id=v.tenant_id where v.id=${id}::uuid and v.tenant_id=${ctx.tenantId}::uuid`);
@@ -51,10 +67,17 @@ export async function rewardPlanLibraryChoicesQueryTx(tx:Tx,ctx:SessionContext,y
  });
 }
 
-export async function rewardSetupCompaniesQueryTx(tx:Tx,ctx:SessionContext,year:number,port:RewardSetupQueryPort):Promise<PatCompany[]>{setupYear.parse(year);await port.authority(tx,null,'manage');const rows=await port.companies(tx,year);const result:PatCompany[]=[];const at=year<Number(todayInKualaLumpur().slice(0,4))?`${year}-12-31`:todayInKualaLumpur();for(const company of rows){const [r]=await port.structure(tx,company.id,at);result.push({...company,businessGroupId:r?.tags?.businessGroupId??null,businessGroupName:r?.tags?.businessGroupName??null,businessUnitId:r?.tags?.businessUnitId??null,businessUnitName:r?.tags?.businessUnitName??null,structureStatus:r?.tags?.status??'legacy'});}return result.sort((a,b)=>(a.businessGroupName??a.parentName??'').localeCompare(b.businessGroupName??b.parentName??'')||(a.businessUnitName??'').localeCompare(b.businessUnitName??'')||a.name.localeCompare(b.name)||a.id.localeCompare(b.id));}
+export async function rewardSetupCompaniesQueryTx(tx:Tx,ctx:SessionContext,year:number,port:RewardSetupQueryPort):Promise<PatCompany[]>{setupYear.parse(year);await port.authority(tx,null,'manage');const rows=await port.companies(tx,year);const result:PatCompany[]=[];const at=rewardStructureDate(year);for(const company of rows){const [r]=await port.structure(tx,company.id,at);result.push({...company,businessGroupId:r?.tags?.businessGroupId??null,businessGroupName:r?.tags?.businessGroupName??null,businessUnitId:r?.tags?.businessUnitId??null,businessUnitName:r?.tags?.businessUnitName??null,structureStatus:r?.tags?.status??'legacy'});}return result.sort(compareRewardCompanies);}
 /** Preserve the authorized company order without reading any PAT version or value. */
-export async function rewardPlanCompanyChoicesQueryTx(tx:Tx,ctx:SessionContext,year:number,port:RewardSetupQueryPort){
- return (await rewardSetupCompaniesQueryTx(tx,ctx,year,port)).map(({id,name})=>({id,name}));
+export async function rewardPlanCompanyChoicesQueryTx(tx:Tx,year:number,port:RewardPlanCompanyChoiceQueryPort){
+ setupYear.parse(year);
+ await port.authority(tx,null,'manage');
+ const rows=await port.planCompanyOrder(tx,year,rewardStructureDate(year));
+ const choices=rows.sort(compareRewardCompanies).map(({id,name})=>({id,name}));
+ // An installed whole-group grant writer can change authority independently of the
+ // Access lock. Read the current grant again before the audited carrier appends.
+ await port.authority(tx,null,'manage');
+ return choices;
 }
 
 export async function rewardPatInputsQueryTx(tx:Tx,ctx:SessionContext,year:number,port:RewardSetupQueryPort){await port.authority(tx,null,'manage');const companies=await rewardSetupCompaniesQueryTx(tx,ctx,year,port),rows:({company:PatCompany;current:PatVersion|null;pending:PatVersion|null;history:PatVersion[]})[]=[];for(const company of companies){const versions=await port.patHistory(tx,company.id,year),all=versions.map(v=>v.value);rows.push({company,current:all.find(v=>v.state==='confirmed')??null,pending:all.find(v=>v.state==='pending')??null,history:all});}return rows;}

@@ -4,14 +4,14 @@ import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
-import {businessUnit,employment,jobGrade,roleAssignment} from '../db/schema';
+import {businessUnit,company,employment,jobGrade,roleAssignment} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {setupReadTenant,setupTenant} from '../packs/rewards/setup-data';
 import {confirmRewardLibrary,rewardLibraries,rewardLibraryGradeChoices,rewardLibraryHistory,rewardPlanLibraryChoices,saveRewardLibrary,submitRewardLibrary} from '../packs/rewards/libraries';
 import {previewNewRewardPlan,previewRewardPlanCreation,previewRewardPlanSplit,previewRewardUncoveredPlans,rewardPlanSettings,rewardPlanSuggestions,rewardSetupPlan,rewardSetupPlanChoices,saveRewardPlanSettings} from '../packs/rewards/plan-configuration';
-import {rewardPatInputs,rewardPlanCompanyChoices} from '../packs/rewards/pat-inputs';
+import {rewardPatInputs,rewardPlanCompanyChoices,rewardSetupCompaniesTx} from '../packs/rewards/pat-inputs';
 import {rewardPlanCompanyChoicesQueryTx,rewardPlanLibraryChoicesQueryTx} from '../packs/rewards/setup-query-owner';
 import {legacyRewardSetupQueryPort} from '../packs/rewards/setup-legacy-query-port';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
@@ -122,7 +122,7 @@ it('keeps Plans dropdown labels and durable audit events while withholding matri
  expect(expected.libraries.some(row=>row.id===draftId)).toBe(false);
  const snapshot=()=>setupReadTenant(f.ctx,async tx=>({
   libraries:await rewardPlanLibraryChoicesQueryTx(tx,f.ctx,f.year,legacyRewardSetupQueryPort),
-  companies:await rewardPlanCompanyChoicesQueryTx(tx,f.ctx,f.year,legacyRewardSetupQueryPort),
+  companies:await rewardPlanCompanyChoicesQueryTx(tx,f.year,legacyRewardSetupQueryPort),
  }));
  const before=await events(f.b.tenantId),probe=observeNativeRead();
  try{
@@ -152,6 +152,46 @@ it('keeps Plans dropdown labels and durable audit events while withholding matri
  }finally{spy.mockRestore();}
 },30000);
 
+it('batches eligible Plans companies in the established business group and company order',async()=>{
+ const b=await seedBase(),foreign=await seedBase();
+ await setModule(b.tenantId,'rewards','active');
+ const ctx=adminCtx(b),today=todayInKualaLumpur(),year=Number(today.slice(0,4));
+ await setupChecker(ctx);
+ const parentId=randomUUID(),standaloneId=randomUUID(),laterId=randomUUID(),earlierId=randomUUID();
+ await owner.db.insert(company).values([
+  {id:parentId,tenantId:b.tenantId,legalName:'Zulu Fictional Group'},
+  {id:standaloneId,tenantId:b.tenantId,legalName:'Middle Fictional Group'},
+ ]);
+ await owner.db.insert(company).values([
+  {id:laterId,tenantId:b.tenantId,legalName:'Beta Fictional Child',parentCompanyId:parentId},
+  {id:earlierId,tenantId:b.tenantId,legalName:'Alpha Fictional Child',parentCompanyId:parentId},
+  {tenantId:b.tenantId,legalName:'Archived Fictional Employer',archivedAt:new Date()},
+ ]);
+ const expectedIds=[b.companyId,standaloneId,earlierId,laterId,parentId];
+ const before=await events(b.tenantId);
+ for(const [selectedYear,at] of [[year,today],[year-1,`${year-1}-12-31`]] as const){
+  const legacy=await setupReadTenant(ctx,tx=>rewardSetupCompaniesTx(tx,ctx,selectedYear));
+  expect(legacy.map(({id})=>id)).toEqual(expectedIds);
+  const probe=observeNativeRead();
+  try{
+   const choices=await rewardPlanCompanyChoices(ctx,selectedYear);
+   expect(choices).toEqual(legacy.map(({id,name})=>({id,name})));
+   expect(choices.some(({id})=>id===foreign.companyId)).toBe(false);
+   const statements=probe.queries.filter(({sql})=>/reward_(setup_companies|company_structure)/.test(sql));
+   expect(statements).toHaveLength(1);
+   expect(statements[0]).toMatchObject({params:[selectedYear,at],rows:expectedIds.length});
+   expect(statements[0].sql).toMatch(/from app\.reward_setup_companies.*\s+cross join lateral app\.reward_company_structure/);
+   expect(probe.queries.some(({sql})=>/reward_private_pat_history|reward_pat_version/.test(sql))).toBe(false);
+  }finally{probe.restore();}
+ }
+ const added=(await events(b.tenantId)).filter(row=>!before.some(previous=>row.id===previous.id));
+ expect(added.map(({event_type,payload})=>({event_type,payload}))).toEqual(expect.arrayContaining([
+  {event_type:'rewards-setup.pat.viewed',payload:{year}},
+  {event_type:'rewards-setup.pat.viewed',payload:{year:year-1}},
+ ]));
+ expect(added).toHaveLength(2);
+},30000);
+
 it('refuses Plans selector and audit calls for foreign tenants and company-scoped Rewards grants',async()=>{
  const f=await fixture(),foreign=await seedBase();
  await setModule(foreign.tenantId,'rewards','active');
@@ -164,6 +204,6 @@ it('refuses Plans selector and audit calls for foreign tenants and company-scope
  await owner.client`update reward_setup_grant set company_id=${f.b.companyId}::uuid where tenant_id=${f.b.tenantId}::uuid and user_id=${f.ctx.userId!}::uuid`;
  await refuse(f.ctx);
  await expect(setupReadTenant(f.ctx,tx=>rewardPlanLibraryChoicesQueryTx(tx,f.ctx,f.year,legacyRewardSetupQueryPort))).rejects.toThrow(/not available/);
- await expect(setupReadTenant(f.ctx,tx=>rewardPlanCompanyChoicesQueryTx(tx,f.ctx,f.year,legacyRewardSetupQueryPort))).rejects.toThrow(/not available/);
+ await expect(setupReadTenant(f.ctx,tx=>rewardPlanCompanyChoicesQueryTx(tx,f.year,legacyRewardSetupQueryPort))).rejects.toThrow(/not available/);
  expect(await events(f.b.tenantId)).toEqual(expected);
 },30000);
