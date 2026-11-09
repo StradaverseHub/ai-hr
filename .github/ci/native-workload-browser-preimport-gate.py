@@ -47,32 +47,38 @@ def run():
             and os.getresuid() == os.getresgid() == (uid, uid, uid)
             and os.getgroups() in ([], [uid]))
     stdin, stdout = os.fstat(0), os.fstat(1)
+    checked = os.O_ACCMODE | os.O_NONBLOCK | os.O_PATH
     require(stat.S_ISFIFO(stdin.st_mode) and stat.S_ISFIFO(stdout.st_mode)
             and (stdin.st_dev, stdin.st_ino) != (stdout.st_dev, stdout.st_ino)
-            and fcntl.fcntl(0, fcntl.F_GETFL) & os.O_ACCMODE == os.O_RDONLY
-            and fcntl.fcntl(1, fcntl.F_GETFL) & os.O_ACCMODE == os.O_WRONLY)
+            and fcntl.fcntl(0, fcntl.F_GETFL) & checked == os.O_RDONLY
+            and fcntl.fcntl(1, fcntl.F_GETFL) & checked == os.O_WRONLY)
 
     def remaining():
         ns = deadline - time.monotonic_ns()
         require(0 < ns <= 32000000000)
         return ns / 1000000000
 
-    input_blocking, output_blocking = os.get_blocking(0), os.get_blocking(1)
+    # Reject already readable stdin, including EOF, before ready.
+    require(select.select([0], [1], [], remaining()) == ([], [1], []))
+    remaining()
+    # Stock systemd-run retains the forwarded open file descriptions.
+    # Use one private relay and never change the inherited pipe flags.
+    reader, writer = os.pipe2(os.O_CLOEXEC | os.O_NONBLOCK)
     try:
-        os.set_blocking(0, False)
-        try:
-            os.set_blocking(1, False)
-            # Reject already readable stdin, including EOF, before publishing ready.
-            require(select.select([0], [1], [], remaining()) == ([], [1], []))
-            remaining()
-            require(os.write(1, b'R\n') == 2)
-            require(select.select([0], [], [], remaining()) == ([0], [], []))
-            remaining()
-            require(os.read(0, 3) == b'G\n')
-        finally:
-            os.set_blocking(1, output_blocking)
+        remaining()
+        require(os.write(writer, b'R\n') == 2)
+        remaining()
+        require(os.splice(reader, 1, 2, flags=os.SPLICE_F_NONBLOCK) == 2)
+        require(select.select([0], [], [], remaining()) == ([0], [], []))
+        remaining()
+        require(os.splice(0, writer, 3, flags=os.SPLICE_F_NONBLOCK) == 2)
+        remaining()
+        require(os.read(reader, 3) == b'G\n')
     finally:
-        os.set_blocking(0, input_blocking)
+        try:
+            os.close(reader)
+        finally:
+            os.close(writer)
     # The owner may have been descheduled before its write. No work goes
     # between the final child clock check and replacing this same process.
     remaining()

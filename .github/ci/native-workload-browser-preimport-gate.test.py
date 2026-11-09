@@ -17,6 +17,9 @@ SPKI = base64.b64encode(bytes(range(32))).decode('ascii')
 RUNTIME = '/run/aihr-browser-capability-427/runtime'
 DEADLINE = 40000000000
 NOW = DEADLINE - 32000000000
+READER, WRITER = 12, 13
+PATH_ONLY = getattr(os, 'O_PATH', 0x200000)
+SPLICE_NONBLOCK = getattr(os, 'SPLICE_F_NONBLOCK', 2)
 
 
 class ReplacedProcess(Exception):
@@ -35,12 +38,15 @@ def inline(role='driver'):
     exec(compile(command[5], '<fixed inline gate>', 'exec', dont_inherit=True), program)
     uid = 62120 if role == 'driver' else 62121
     clock = SimpleNamespace(now=NOW)
-    posix = Mock(O_ACCMODE=os.O_ACCMODE, O_RDONLY=os.O_RDONLY, O_WRONLY=os.O_WRONLY)
+    posix = Mock(O_ACCMODE=os.O_ACCMODE, O_RDONLY=os.O_RDONLY, O_WRONLY=os.O_WRONLY,
+                 O_NONBLOCK=os.O_NONBLOCK, O_CLOEXEC=os.O_CLOEXEC, O_PATH=PATH_ONLY,
+                 SPLICE_F_NONBLOCK=SPLICE_NONBLOCK)
     posix.uname.return_value = SimpleNamespace(machine='x86_64')
     posix.getresuid.return_value = posix.getresgid.return_value = (uid, uid, uid)
     posix.getgroups.return_value = [uid]
     posix.fstat.side_effect = lambda fd: SimpleNamespace(st_mode=stat.S_IFIFO, st_dev=3, st_ino=20 + fd)
-    posix.get_blocking.side_effect = (True, False)
+    posix.pipe2.return_value = (READER, WRITER)
+    posix.splice.side_effect = (2, 2)
     posix.write.return_value = 2
     posix.read.return_value = b'G\n'
     posix.execv.side_effect = ReplacedProcess
@@ -75,21 +81,24 @@ class SyntheticPreimportGateModels(unittest.TestCase):
                                ('browser', (RUNTIME + '/roles/native-workload-browser-server.mjs', SPKI))):
             program, posix, poll, _ = inline(role)
             order = Mock()
-            for method in ('set_blocking', 'write', 'read', 'execv'):
+            for method in ('pipe2', 'write', 'splice', 'read', 'close', 'execv'):
                 order.attach_mock(getattr(posix, method), method)
             order.attach_mock(poll, 'poll')
             node = RUNTIME + '/node'
             with self.subTest(role=role), self.assertRaises(ReplacedProcess):
                 program['run']()
             self.assertEqual(order.mock_calls, [
-                call.set_blocking(0, False), call.set_blocking(1, False), call.poll([0], [1], [], 32.0),
-                call.write(1, b'R\n'), call.poll([0], [], [], 32.0), call.read(0, 3),
-                call.set_blocking(1, False), call.set_blocking(0, True), call.execv(node, (node, *expected)),
+                call.poll([0], [1], [], 32.0), call.pipe2(os.O_CLOEXEC | os.O_NONBLOCK),
+                call.write(WRITER, b'R\n'), call.splice(READER, 1, 2, flags=SPLICE_NONBLOCK),
+                call.poll([0], [], [], 32.0), call.splice(0, WRITER, 3, flags=SPLICE_NONBLOCK),
+                call.read(READER, 3), call.close(READER), call.close(WRITER), call.execv(node, (node, *expected)),
             ])
+            self.assertEqual(program['fcntl'].fcntl.call_args_list, [call(0, fcntl.F_GETFL), call(1, fcntl.F_GETFL)])
+            posix.set_blocking.assert_not_called()
 
     def test_inline_rechecks_argv_role_identity_and_reciprocal_pipes_before_ready(self):
         for case in ('extra', 'noncanonical-deadline', 'spki', 'root', 'saved-identity', 'other-group',
-                     'aliases', 'regular', 'wrong-direction'):
+                     'aliases', 'regular', 'wrong-direction', 'nonblocking', 'path-only'):
             role = 'browser' if case == 'spki' else 'driver'
             program, posix, poll, _ = inline(role)
             if case == 'extra':
@@ -109,7 +118,8 @@ class SyntheticPreimportGateModels(unittest.TestCase):
                 posix.fstat.return_value = SimpleNamespace(st_mode=stat.S_IFIFO if case == 'aliases' else stat.S_IFREG,
                                                            st_dev=3, st_ino=20)
             else:
-                program['fcntl'].fcntl.side_effect = [os.O_WRONLY, os.O_WRONLY]
+                flags = {'wrong-direction': os.O_WRONLY, 'nonblocking': os.O_NONBLOCK, 'path-only': PATH_ONLY}
+                program['fcntl'].fcntl.side_effect = [os.O_RDONLY | flags[case], os.O_WRONLY]
             with self.subTest(case=case), self.assertRaisesRegex(ValueError, 'synthetic-preimport-refused'):
                 program['run']()
             poll.assert_not_called()
@@ -122,7 +132,8 @@ class SyntheticPreimportGateModels(unittest.TestCase):
             posix.read.return_value = grant
             with self.subTest(grant=grant), self.assertRaisesRegex(ValueError, 'synthetic-preimport-refused'):
                 program['run']()
-            posix.write.assert_called_once_with(1, b'R\n')
+            posix.write.assert_called_once_with(WRITER, b'R\n')
+            self.assertEqual(posix.close.call_args_list, [call(READER), call(WRITER)])
             posix.execv.assert_not_called()
         for case in ('prequeued-or-eof', 'write-short', 'no-grant'):
             program, posix, poll, _ = inline()
@@ -137,6 +148,17 @@ class SyntheticPreimportGateModels(unittest.TestCase):
             self.assertEqual(posix.write.call_count, int(case != 'prequeued-or-eof'))
             posix.read.assert_not_called()
             posix.execv.assert_not_called()
+            self.assertEqual(posix.close.call_args_list, [] if case == 'prequeued-or-eof' else [call(READER), call(WRITER)])
+        for transfers in ((1,), (2, 0), (2, 1), (2, 3), (BlockingIOError(),), (2, BlockingIOError())):
+            program, posix, _, _ = inline()
+            posix.splice.side_effect = transfers
+            error = BlockingIOError if isinstance(transfers[-1], BlockingIOError) else ValueError
+            with self.subTest(transfers=transfers), self.assertRaises(error):
+                program['run']()
+            self.assertEqual(posix.close.call_args_list, [call(READER), call(WRITER)])
+            posix.set_blocking.assert_not_called()
+            posix.read.assert_not_called()
+            posix.execv.assert_not_called()
 
     def test_same_absolute_frontier_refuses_expired_future_and_late_grant(self):
         for now in (DEADLINE, NOW - 1):
@@ -147,20 +169,35 @@ class SyntheticPreimportGateModels(unittest.TestCase):
             poll.assert_not_called()
             posix.write.assert_not_called()
             posix.execv.assert_not_called()
-        program, posix, _, clock = inline()
+        for boundary in ('ready-transfer', 'grant-transfer', 'grant-read'):
+            program, posix, poll, clock = inline()
 
-        def late_grant(fd, size):
-            self.assertEqual((fd, size), (0, 3))
-            clock.now = DEADLINE
-            return b'G\n'
+            def transfer(src, dst, count, *, flags):
+                self.assertEqual(flags, SPLICE_NONBLOCK)
+                if (src, dst, count) == (READER, 1, 2):
+                    if boundary == 'ready-transfer':
+                        clock.now = DEADLINE
+                else:
+                    self.assertEqual((src, dst, count), (0, WRITER, 3))
+                    if boundary == 'grant-transfer':
+                        clock.now = DEADLINE
+                return 2
 
-        posix.read.side_effect = late_grant
-        with self.assertRaisesRegex(ValueError, 'synthetic-preimport-refused'):
-            program['run']()
-        posix.write.assert_called_once_with(1, b'R\n')
-        self.assertEqual(posix.set_blocking.call_args_list, [call(0, False), call(1, False),
-                                                            call(1, False), call(0, True)])
-        posix.execv.assert_not_called()
+            def late_read(fd, size):
+                self.assertEqual((fd, size), (READER, 3))
+                clock.now = DEADLINE
+                return b'G\n'
+
+            posix.splice.side_effect = transfer
+            posix.read.side_effect = late_read
+            with self.subTest(boundary=boundary), self.assertRaisesRegex(ValueError, 'synthetic-preimport-refused'):
+                program['run']()
+            posix.write.assert_called_once_with(WRITER, b'R\n')
+            self.assertEqual(poll.call_count, 1 if boundary == 'ready-transfer' else 2)
+            self.assertEqual(posix.read.call_count, int(boundary == 'grant-read'))
+            self.assertEqual(posix.close.call_args_list, [call(READER), call(WRITER)])
+            posix.set_blocking.assert_not_called()
+            posix.execv.assert_not_called()
 
 
 if __name__ == '__main__':

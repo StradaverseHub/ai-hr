@@ -463,7 +463,7 @@ def held_role_process(pid, role, control_group):
         raise
 
 
-_PREIMPORT_SOURCE_SHA256 = '754db444f2be56a7b36943c18fd0ed6d006c60ba50ede09d5bc3bb318a9ac8b7'
+_PREIMPORT_SOURCE_SHA256 = '46847e6c25f027d6a6dc83073537fa71880a9c09e30d96082655fed4b10061dc'
 _MAIN_NAMESPACES = ('user', 'pid', 'time', 'net', 'mnt')
 
 

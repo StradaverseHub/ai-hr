@@ -41,9 +41,9 @@ _UCRED = struct.Struct('3i')
 _RIGHT = struct.Struct('i')
 _ENV = (('PATH', '/usr/sbin:/usr/bin:/sbin:/bin'), ('LANG', 'C'), ('LC_ALL', 'C'))
 _BUILDERS = (
-    ('native-workload-browser-host.py', 44520, 'cd126f3937d7bb75424b893cbeb09fd6bbef80d61c4295f1b7213ffba83ff138'),
+    ('native-workload-browser-host.py', 44520, 'e4c562f6a9cb3897745881728d5343082c6e05268a52c34025adc99ac4c770fa'),
     ('native-workload-browser-launch-plan.py', 5200, '0abd48fae6d6959ee008e0a6704e91928047b207bd305c203334528c790273a6'),
-    ('native-workload-browser-preimport-gate.py', 4582, 'df50b797a3067d2bc60842f42c10f09d8814cc00cbee36675ebbdc36d8dfe7cb'),
+    ('native-workload-browser-preimport-gate.py', 4813, 'b0c4413354c7248d46f75c301e209636b4bd16816f097d2c65e9df606210829b'),
 )
 
 
