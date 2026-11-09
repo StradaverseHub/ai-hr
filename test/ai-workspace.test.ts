@@ -90,7 +90,8 @@ describe('actual AI workspace source read', () => {
       pg_try_advisory_xact_lock(hashtextextended(${'access-configuration:'+ctx.tenantId},0)) as access,
       pg_try_advisory_xact_lock(hashtext('ai-control'),hashtext(${ctx.tenantId})) as control`;
     expect(after).toEqual({access:true,control:true});
-    await setMandateStopSwitch(ctx,true);
+    const stop=await setMandateStopSwitch({...ctx,grants:[{role:'hr_admin',companyId:null}]},true);
+    expect(stop).toMatchObject({stopped:true,changedByUserId:ctx.userId});
     await expect(withTenant(ctx,async tx=>{
       await tx.execute(sql`SET TRANSACTION READ ONLY`);
       await check(tx);

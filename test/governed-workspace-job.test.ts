@@ -15,7 +15,7 @@ import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-governed-job-secret');await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
-async function fixture(){const admin=adminCtx(base);
+async function fixture(){const admin:SessionContext={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
  const make=async(name:string)=>{const subject=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
   const userId=await createAppUser(base.tenantId,subject.personId,'employee');await grantAssistant(admin,{appUserId:userId});
   const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};return {ctx,subject};};
