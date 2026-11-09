@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "kind": "PROTECTED_NATIVE_TOOL_ONLY_SOURCE_NOT_RUNTIME",
+  "sourceRef": "codex/native-workload-tool-only-20261109",
+  "parent": "3a86e8cf98e43b4c95b737ae151e460e2c21dfed",
+  "normalCompositionParents": [
+    "1d925e3f0e7945ac5bac1be84857178eaa264a70",
+    "5bfcf553173cb566a97b28a2ba017de81cb09226"
+  ],
+  "reviewedPlanSha256": "d2b4052950fc0430feb13ce59052b3ff521caee6ec599dc132bc3d541df9588b",
+  "materializerSourceProofSha256": "1ce42e77acf9128aa244fce1e0447bf2b83600708a24028466e9baa02cdff7e5",
+  "currentSourcePins": [
+    {
+      "path": ".github/workflows/alpha-staging.yml",
+      "bytes": 45029,
+      "sha256": "068bca41bfd08565dfa675700cb80146a78a27b3490864e16e7f8c9b317640c8"
+    },
+    {
+      "path": ".github/ci/native-controller-bootstrap.py",
+      "bytes": 31971,
+      "sha256": "54fcf3b1a813064a8e7e643c7d3397a2c0f7022c819d13ac5d559fc15c18010b"
+    },
+    {
+      "path": ".github/ci/native-workload-browser-tool-course.py",
+      "bytes": 42086,
+      "sha256": "7845835f9b36c0720929b5034663b256b64e0d6dda69639510e10f39ccbdb8ef"
+    },
+    {
+      "path": ".github/ci/native-workload-browser-tool-course.test.py",
+      "bytes": 11799,
+      "sha256": "2f76f99620e6aa96e2d1c16e48ce33813d0fb66932e89b6a236ce4d4beacc096"
+    }
+  ],
+  "exactWholeExistingPreimages": [
+    {
+      "path": ".github/workflows/alpha-staging.yml",
+      "bytes": 41369,
+      "sha256": "950aea0b0ef72f611ab65ebff1007a53013111417883b2f3647187548d4e2c9e",
+      "commit": "3a86e8cf98e43b4c95b737ae151e460e2c21dfed",
+      "gitBlob": "cbc7848d383ff3cb0d2e3b94c0913b20f4292fbc"
+    },
+    {
+      "path": ".github/ci/native-controller-bootstrap.py",
+      "bytes": 22423,
+      "sha256": "1892e07813e688275d4aed7f903f1b87dc37007e2878d21ed19c85cd0a01d2f3",
+      "commit": "3a86e8cf98e43b4c95b737ae151e460e2c21dfed",
+      "gitBlob": "0b934bce71b3f20bf573bc90500ac7faa19943d6"
+    }
+  ],
+  "closedCapsuleInputs": [
+    {
+      "path": ".github/ci/native-workload-browser-tool-course.py",
+      "bytes": 42086,
+      "sha256": "7845835f9b36c0720929b5034663b256b64e0d6dda69639510e10f39ccbdb8ef"
+    },
+    {
+      "path": ".github/ci/native-workload-browser-tool-installation.py",
+      "bytes": 12094,
+      "sha256": "680a96df4376938b107c22878473954ef6006ae4d0b4260b0336b413fdbaafdd"
+    },
+    {
+      "path": ".github/ci/native-workload-browser-toolchain.py",
+      "bytes": 24317,
+      "sha256": "16440458ebdebcea86631e93f06034cf93839f2d36c854471483b6c743a4f1fd"
+    },
+    {
+      "path": ".github/ci/owned-process.py",
+      "bytes": 11908,
+      "sha256": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129"
+    },
+    {
+      "path": ".github/ci/runtime_inventory.py",
+      "bytes": 29244,
+      "sha256": "62e5478633349991cc21b8243d234fc85aabf900cfa57df52ff9b012be89c013"
+    },
+    {
+      "path": "deploy/admission/next_profile.py",
+      "bytes": 86968,
+      "sha256": "80e32be041b80a007bceeb5af60bbf0d922cb490017950fc034057e30476f846"
+    },
+    {
+      "path": "package.json",
+      "bytes": 6300,
+      "sha256": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "bytes": 356104,
+      "sha256": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+    }
+  ],
+  "authoredUnrunOwnerModels": [
+    "test_actual_owned_process_summary_and_absolute_reserve_gate_success",
+    "test_complete_requires_both_actual_absence_facts_and_live_absolute_boundary",
+    "test_exact_generation_and_length_and_fixed_npm_http_framing",
+    "test_foreign_event_and_incompatible_modes_refuse_before_acquisition",
+    "test_foreign_or_replaced_mount_never_triggers_unmount",
+    "test_observed_owned_mount_and_real_absence_are_both_required",
+    "test_only_exact_real_native_job_and_manual_self_source_enter",
+    "test_primary_operation_failure_survives_later_owned_settlement_refusal",
+    "test_redirect_partial_encoding_duplicate_and_wrong_generation_refuse",
+    "test_tool_capsule_binds_fixed_package_metadata_and_actual_git_blob_shape",
+    "test_unreaped_or_still_live_child_never_permits_owned_disposal"
+  ],
+  "workflowSourceFacts": {
+    "inputCount": 8,
+    "changedJobDefinitions": [
+      "resolve",
+      "runner-diagnostics",
+      "native-test"
+    ],
+    "actualJobId": "native-test",
+    "matrixLabel": "tool-only",
+    "standardRunner": "ubuntu-24.04",
+    "firstAttemptSelfSource": true,
+    "actualBuildAndPlanSkippedRequired": true,
+    "existingOrdinaryNativeStepBodiesWhole": true
+  },
+  "toolCourse": {
+    "activeSeconds": 150,
+    "totalSeconds": 180,
+    "fixedTransfers": 4,
+    "noRootNetwork": true,
+    "privatePayloadMountFlags": [
+      "ro",
+      "nosuid",
+      "nodev",
+      "noexec"
+    ],
+    "rootPrefix": "/var/lib/aihr-native-tool-only-<run>",
+    "closureBeforeComplete": [
+      "owned-process-settlement",
+      "actual-owned-mount-absence",
+      "same-owned-root-absence"
+    ]
+  },
+  "historicalEvidenceOnly": {
+    "publisherObservationRun": 42558678590,
+    "strictParserAndHostModelRun": 42561934416
+  },
+  "modelsExecuted": false,
+  "nativeInstallationObserved": false,
+  "browserQualified": false,
+  "releaseAuthorized": false
+}

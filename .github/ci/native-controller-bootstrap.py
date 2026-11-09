@@ -357,12 +357,183 @@ def prepare():
     print(json.dumps(value))
 
 
+# Separate disposable TOOL course. This capsule has no normal bootstrap or
+# installed-controller authority and does not persist the checkout or Node.
+TOOL_BRANCH = 'codex/native-workload-tool-only-20261109'
+TOOL_SOURCE = '.github/ci/native-workload-browser-tool-course.py'
+TOOL_PACKAGE_PINS = {
+    'package.json': '7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c',
+    'pnpm-lock.yaml': '0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd',
+}
+TOOL_MEMBERS = tuple(sorted((
+    TOOL_SOURCE, '.github/ci/native-workload-browser-tool-installation.py',
+    '.github/ci/native-workload-browser-toolchain.py', '.github/ci/owned-process.py',
+    '.github/ci/runtime_inventory.py', 'deploy/admission/next_profile.py', *TOOL_PACKAGE_PINS,
+)))
+TOOL_MEMBER_MAX = 2 * 1024**2
+TOOL_REQUEST_MAX = 16 * 1024
+TOOL_EVENT_MAX = 1024**2
+
+
+def tool_intent(environment, event):
+    run, workspace = context(environment)
+    ref = 'refs/heads/' + TOOL_BRANCH
+    sha = environment['GITHUB_SHA']
+    need(environment.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
+         and environment.get('GITHUB_REF') == ref and environment.get('GITHUB_REF_NAME') == TOOL_BRANCH
+         and environment.get('GITHUB_REF_TYPE') == 'branch'
+         and environment.get('GITHUB_WORKFLOW_SHA') == environment['AIHR_CI_HEAD'] == sha
+         and environment.get('GITHUB_WORKFLOW_REF') == 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@' + ref,
+         'Exact prehook TOOL self-source workflow required')
+    need(type(event) is dict and type(event.get('repository')) is dict
+         and event['repository'].get('id') == 1333414856
+         and event['repository'].get('full_name') == 'StradaverseHub/ai-hr'
+         and event.get('ref') in (ref, TOOL_BRANCH), 'Original TOOL dispatch event differs')
+    expected = {'candidate_ref': TOOL_BRANCH, 'expected_sha': sha, 'test_parallelism': '4',
+                'commission_singleton_units': '', 'build_only': 'false', 'diagnostics_only': 'true',
+                'controller_only': 'false', 'native_tool_only': 'true'}
+    inputs = event.get('inputs')
+    need(type(inputs) is dict and inputs == expected, 'Exclusive fixed TOOL dispatch inputs required')
+    return run, workspace
+
+
+def _tool_event(environment, path, uid, expected=None):
+    path = pathlib.Path(path)
+    runner_temp = pathlib.Path(environment['RUNNER_TEMP'])
+    need(str(path) == str(path.resolve()) and runner_temp in path.parents
+         and path.name == 'event.json', 'Original TOOL event path differs')
+    with directory(path.parent) as folder:
+        raw, info = read(folder, path.name, TOOL_EVENT_MAX, expected)
+    need(info.st_uid == uid, 'Original TOOL event owner differs')
+    return raw
+
+
+def _tool_blob(raw):
+    return hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw, usedforsecurity=False).hexdigest()
+
+
+def _tool_row(path, raw, info):
+    need(stat.S_IMODE(info.st_mode) == 0o644 and 0 < len(raw) <= TOOL_MEMBER_MAX, 'Fixed TOOL source mode or length differs')
+    digest = hashlib.sha256(raw).hexdigest()
+    need(path not in TOOL_PACKAGE_PINS or digest == TOOL_PACKAGE_PINS[path], 'Pinned TOOL package metadata differs')
+    return {'path': path, 'mode': '100644', 'size': len(raw), 'gitBlob': _tool_blob(raw), 'sha256': digest}
+
+
+def _tool_handoff(receiver, request):
+    import fcntl
+
+    encoded = canonical(request)
+    need(len(encoded) <= TOOL_REQUEST_MAX, 'Fixed TOOL bootstrap request exceeds bound')
+    fd = os.memfd_create('aihr-tool-bootstrap', os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+    try:
+        with os.fdopen(fd, 'wb', closefd=False) as output:
+            output.write(encoded)
+        seals = fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
+        fcntl.fcntl(fd, fcntl.F_ADD_SEALS, seals)
+        need(fcntl.fcntl(fd, fcntl.F_GET_SEALS) == seals, 'TOOL bootstrap transport did not seal')
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.dup2(fd, 0, inheritable=True)
+        os.set_inheritable(0, True)
+    finally:
+        if fd != 0:
+            os.close(fd)
+    command = ['/usr/bin/sudo', '-n', '/usr/bin/python3', '-I', '-B', '-c', receiver.decode(), '--seal-tool-only']
+    os.execve(command[0], command, SAFE)
+
+
+def prepare_tool():
+    uid, gid = os.geteuid(), os.getegid()
+    need(sys.platform == 'linux' and uid == os.getuid() and gid == os.getgid() and uid > 0 and gid > 0,
+         'Original nonroot TOOL bootstrap required')
+    environment = {key: os.environ[key] for key in ENVIRONMENT if key in os.environ}
+    _, workspace = context(environment)
+    event_path = os.environ['GITHUB_EVENT_PATH']
+    event = _tool_event(environment, event_path, uid)
+    tool_intent(environment, json.loads(event))
+    controller = workspace / 'automation'
+    need(pathlib.Path(__file__).absolute() == controller / SCRIPT and pathlib.Path.cwd() == controller,
+         'Original fixed TOOL controller checkout required')
+    with directory(controller) as root:
+        receiver, _ = read(root, SCRIPT, TOOL_MEMBER_MAX)
+        config = git(controller, ['config', '--local', '--null', '--list']).decode().split('\0')
+        for entry in filter(None, config):
+            key, _, value = entry.partition('\n')
+            need(not re.search(r'(^credential\.|^include\.|^includeif\.|^filter\.|extraheader$|askpass$|sshcommand$|^core\.(?:fsmonitor|worktree)$)', key, re.I),
+                 'TOOL controller configuration contains an unowned command source')
+            if key == 'remote.origin.url':
+                need(value in ('https://github.com/StradaverseHub/ai-hr', 'https://github.com/StradaverseHub/ai-hr.git'), 'TOOL controller remote differs')
+        sha = environment['GITHUB_SHA']
+        need(git(controller, ['rev-parse', 'HEAD']).decode().strip() == sha
+             and git(controller, ['status', '--porcelain']) == b''
+             and git(controller, ['show', sha + ':' + SCRIPT]) == receiver,
+             'Exact committed TOOL bootstrap required')
+        records = git(controller, ['ls-tree', '-rz', sha, '--', *TOOL_MEMBERS]).split(b'\0')
+        need(records[-1] == b'' and len(records) == len(TOOL_MEMBERS) + 1, 'Fixed TOOL Git inventory differs')
+        rows = []
+        for path, record in zip(TOOL_MEMBERS, records[:-1], strict=True):
+            raw, info = read(root, path, TOOL_MEMBER_MAX)
+            row = _tool_row(path, raw, info)
+            need(record == f"100644 blob {row['gitBlob']}\t{path}".encode(), 'TOOL checkout differs from fixed committed Git bytes')
+            rows.append(row)
+        need(git(controller, ['rev-parse', 'HEAD']).decode().strip() == sha
+             and git(controller, ['status', '--porcelain']) == b'', 'TOOL controller changed during capture')
+    request = {'environment': environment, 'runnerUid': uid, 'runnerGid': gid, 'rows': rows,
+               'event': {'path': event_path, 'size': len(event), 'sha256': hashlib.sha256(event).hexdigest()}}
+    _tool_handoff(receiver, request)
+
+
+def seal_tool(request):
+    from types import ModuleType
+
+    need(sys.platform == 'linux' and os.geteuid() == 0, 'Root Linux TOOL receiver required')
+    need(type(request) is dict and set(request) == {'environment', 'runnerUid', 'runnerGid', 'rows', 'event'},
+         'Closed TOOL bootstrap request required')
+    environment, uid, gid = request['environment'], request['runnerUid'], request['runnerGid']
+    _, workspace = context(environment)
+    need(type(uid) is int and type(gid) is int and uid > 0 and gid > 0
+         and os.environ.get('SUDO_UID') == str(uid) and os.environ.get('SUDO_GID') == str(gid)
+         and pwd.getpwuid(uid).pw_gid == gid, 'Actual TOOL issuer required')
+    event_row = request['event']
+    need(type(event_row) is dict and set(event_row) == {'path', 'size', 'sha256'}, 'Closed TOOL event row required')
+    event = _tool_event(environment, event_row['path'], uid, event_row)
+    run, _ = tool_intent(environment, json.loads(event))
+    rows = request['rows']
+    need(type(rows) is list and len(rows) == len(TOOL_MEMBERS), 'Fixed TOOL capsule census required')
+    members = {}
+    with directory(workspace / 'automation') as root:
+        for path, row in zip(TOOL_MEMBERS, rows, strict=True):
+            raw, info = read(root, path, TOOL_MEMBER_MAX)
+            need(row == _tool_row(path, raw, info), 'TOOL capsule source bytes differ')
+            members[path] = raw
+    os.environ.clear()
+    os.environ.update(SAFE)
+    owner = ModuleType('aihr_fixed_tool_course')
+    owner.__file__ = TOOL_SOURCE
+    exec(compile(members[TOOL_SOURCE], TOOL_SOURCE, 'exec', dont_inherit=True), owner.__dict__)
+    return owner.run_course(run, environment['GITHUB_SHA'], uid, gid, members, rows, event_row['sha256'])
+
+
 if __name__ == '__main__':
     try:
         if sys.argv[1:] == ['--seal']:
             raw = sys.stdin.buffer.read(MAX_REQUEST + 1)
             need(0 < len(raw) <= MAX_REQUEST, 'Bounded bootstrap request required')
             print(json.dumps(seal(json.loads(raw))))
+        elif sys.argv[1:] == ['--tool-only']:
+            prepare_tool()
+        elif sys.argv[1:] == ['--seal-tool-only']:
+            try:
+                raw = sys.stdin.buffer.read(TOOL_REQUEST_MAX + 1)
+                need(0 < len(raw) <= TOOL_REQUEST_MAX, 'Bounded TOOL bootstrap request required')
+                report = seal_tool(json.loads(raw))
+            except BaseException:
+                report = {'kind': 'NATIVE_TOOL_ONLY_COMPONENT', 'complete': False,
+                          'failure': 'tool-bootstrap-refused', 'cleanup': 'not-observed',
+                          'releaseAuthorized': False}
+            encoded = canonical(report)
+            need(len(encoded) <= 65536, 'TOOL receipt exceeds bound')
+            sys.stdout.buffer.write(encoded)
+            sys.exit(0 if report['complete'] else 1)
         else:
             need(sys.argv[1:] == [], 'No caller-selected bootstrap operation')
             prepare()
