@@ -1,7 +1,7 @@
 {
   "kind": "CURRENT_CONTROLLER_ADMIT_TIMING_SOURCE_NOT_RUN_EVIDENCE",
   "base": "615274a2556686946610c66ccd1422506338946c",
-  "sourceRef": "codex/native-next-first-home-committed-tour-20261109",
+  "sourceRef": "codex/native-next-manager-inverse-carry-20261109",
   "currentCount": 134,
   "sourceSha256": {
     ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
@@ -28,13 +28,13 @@
     ".github/ci/singleton-protocol.mjs": "1dfff5d0e14ccd748508f9cd1ba07541307e5f7fea944af9bdc9bb7cc7333403",
     ".github/workflows/alpha-staging.yml": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
     "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
-    "deploy/admission/next_bootstrap_session_inverse.json": "d2aa732e98b07d3133d7c56af92da0201e8744115f7d8b8b6d714d1d066cdb89",
+    "deploy/admission/next_bootstrap_session_inverse.json": "77ba657e5292bd832cbea0bc6bd9987c110586d97113dfd4b0d2f41ed7a7f62c",
     "deploy/admission/next_build_binding.py": "b21ba80bd5efd5bc38c1a0c7458d86e4ea90cb1c98901f60955c68658c079ec0",
     "deploy/admission/next_cgroup_control_guard_order_inverse.json": "540abe7754b110edb293e51aecfe2a8875a1bdfe07e0f838eddfce8ccfd26752",
     "deploy/admission/next_cleanup_57d.source": "b9cbb0e4adea6c7a0f8835fe92a1a96683e25d27037429b8b212ffa840cdbf28",
     "deploy/admission/next_cleanup_phase_inverse.json": "223d5afed26d5c9f8e8954c7d44e89e54184d3cc2e2c34a6ac535141c1e441da",
-    "deploy/admission/next_controller_admit_terminal_inverse.json": "10c0eec08df719c2849337b757b5f0d44c658e6493ff19c462c3ae90388ddf0c",
-    "deploy/admission/next_controller_admit_timing_inverse.json": "28b12654ba77504c41bc01ed7eeeac013cf170802152dcad1db9ab91e84ad0c3",
+    "deploy/admission/next_controller_admit_terminal_inverse.json": "c97663665bde78f549a052405806642988ea748f6c70d0d33e6204ce0a9314c0",
+    "deploy/admission/next_controller_admit_timing_inverse.json": "0bc245ffd4d09883117713263b020b24f95db8ef860e30cdbd49c23c79c40d0e",
     "deploy/admission/next_cpu_weight_constructor_inverse.json": "0b8b934bdafc370311efc1bddbb5a4329e578b87afb42ccdd7bc1608837ff99a",
     "deploy/admission/next_dependency_probe.cjs": "04e62c6ecc41acc84bee60b8ff6829b74e9ddd139652a2c57fd650497cf462c8",
     "deploy/admission/next_environment_observation_inverse.json": "9a4d71493bb5a44b2027d8f69c500fba0a27a32b983dfc0cef185000b026756f",
@@ -44,7 +44,7 @@
     "deploy/admission/next_host_key_receipt_inverse.json": "c76880ab05c19b4e3963962018bff29d4d8afa930d293b0afc07fa115e8710c4",
     "deploy/admission/next_key_name_capability_inverse.json": "56fd02c366344647e7ca5c56f939d635bc5f54283abbcb2fc0d790b8cae385e5",
     "deploy/admission/next_key_name_digest_inverse.json": "809dd943aad7a409318cd741f99421d545a3e09185b23126b3acc3179dd46723",
-    "deploy/admission/next_manager_environment_inverse.json": "7887f7133e4b114e6f9f9c749ef014204290c11a5792194c69027fb960fc2006",
+    "deploy/admission/next_manager_environment_inverse.json": "15c8793261b790c5fb9d91bae24f436b5d2452b2df4a8e0385da22974ea1cf8a",
     "deploy/admission/next_manager_tap_census_inverse.json": "848afbf2d907b5e4c539ad79d162f5acfa9cf96db60e82a5f6c678029c3bc2e0",
     "deploy/admission/next_native_package.py": "a1c38782d486e7e6ebbfd475fd1652c9ab3bd66ad1a23f1129eab0fe5ef2cbe0",
     "deploy/admission/next_phase_observation_inverse.json": "badd9a274642bed2a1ea9111a34f1c35078ad7e9ebbf725b25bbe6bae894dd63",
@@ -935,6 +935,86 @@
     "commandBoundMs": 5000,
     "nativeOrDatabaseBehaviorExecuted": false,
     "historicalRuntimeEvidenceTransferred": false,
+    "releaseEligible": false
+  },
+  "managerEnvironmentInverseCarry": {
+    "parent": "d63f990cc50d23c71b519f3c6244c89a0e5d76e5",
+    "sourceOnly": true,
+    "leasePaths": [
+      "deploy/admission/next_manager_environment_inverse.json",
+      "deploy/admission/next_bootstrap_session_inverse.json",
+      "deploy/admission/next_controller_admit_timing_inverse.json",
+      "deploy/admission/next_controller_admit_terminal_inverse.json",
+      "docs/qualification/native-next-controller-admit-timing-source-20261109.json"
+    ],
+    "wholeParentGitPreimages": {
+      "deploy/admission/next_manager_environment_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "c199cbb345f871beaa34a21c4f92b5a13be78176",
+        "bytes": 1353648,
+        "sha256": "7887f7133e4b114e6f9f9c749ef014204290c11a5792194c69027fb960fc2006"
+      },
+      "deploy/admission/next_bootstrap_session_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "d2fbeef81dd132a775ffbc189fe2ef0192ba43df",
+        "bytes": 3149653,
+        "sha256": "d2aa732e98b07d3133d7c56af92da0201e8744115f7d8b8b6d714d1d066cdb89"
+      },
+      "deploy/admission/next_controller_admit_timing_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "da60c754f6b419777b1df5663027fc3b6451e211",
+        "bytes": 7823069,
+        "sha256": "28b12654ba77504c41bc01ed7eeeac013cf170802152dcad1db9ab91e84ad0c3"
+      },
+      "deploy/admission/next_controller_admit_terminal_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "4387bd5c27617c8fded09e1fb1cf96325f1d2ffb",
+        "bytes": 22312008,
+        "sha256": "10c0eec08df719c2849337b757b5f0d44c658e6493ff19c462c3ae90388ddf0c"
+      },
+      "docs/qualification/native-next-controller-admit-timing-source-20261109.json": {
+        "gitMode": "100644",
+        "gitBlob": "42d636fb4fb975b32103de99ffb2af1c35901fb5",
+        "bytes": 54151,
+        "sha256": "35295032a31cb8cd66eee89e8ce5baf703526f226950f7b29473a9b68ea2118c"
+      }
+    },
+    "actualFailure": {
+      "runId": 42554541356,
+      "attempt": 1,
+      "selectedPassed": 15,
+      "selectedFailed": 1,
+      "all7Terminal": true,
+      "directConsumer": "deploy/admission/test_next_manager_environment.py:252-257",
+      "sourcePathFirstObserved": "deploy/admission/test_next_native.py",
+      "historicalVitestArtifactMemberSha256": "1fc297dd2d07efec2609d614c6c3a42b794b1f40c55d051c6961fbf74bf2204d",
+      "historicalTerminalRetentionSha256": "d6129f2d0cd47888b9b66e667002bc519872e2de9a8a785ebc62963c458bc106"
+    },
+    "historicalManagerWholeTarget": "5383d212e073206db552d7f95a362895c3023323",
+    "recomposedExistingWholeReplayRows": {
+      "deploy/admission/next_manager_environment_inverse.json": [
+        "deploy/admission/test_next_native.py",
+        "test/runtime-next-admission-native.test.ts",
+        "deploy/admission/next_host_key_receipt_inverse.json"
+      ],
+      "deploy/admission/next_bootstrap_session_inverse.json": [
+        "deploy/admission/next_manager_environment_inverse.json"
+      ],
+      "deploy/admission/next_controller_admit_timing_inverse.json": [
+        "deploy/admission/next_manager_environment_inverse.json",
+        "deploy/admission/next_bootstrap_session_inverse.json"
+      ],
+      "deploy/admission/next_controller_admit_terminal_inverse.json": [
+        "deploy/admission/next_manager_environment_inverse.json",
+        "deploy/admission/next_bootstrap_session_inverse.json",
+        "deploy/admission/next_controller_admit_timing_inverse.json"
+      ]
+    },
+    "nativeHostAndFullPinsWhole": true,
+    "allExecutableOwnersAndTestBodiesWhole": true,
+    "hostHistoryInverseWhole": true,
+    "testOrRuntimeVerified": false,
+    "historicalEvidenceTransferred": false,
     "releaseEligible": false
   }
 }
