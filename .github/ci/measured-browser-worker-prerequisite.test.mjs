@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { readMeasuredPreflightArchiveRefusalStage } from './measured-browser-preflight-archive.mjs';
 import { encodeMeasuredWorkerPrerequisite } from './measured-browser-worker-prerequisite.mjs';
 
 const row = {
@@ -36,10 +40,34 @@ test('worker prerequisite transport refuses extra data, incomplete scope or unbo
 test('unbound CLI exits without a transport or exposed provider diagnostics', () => {
   const path = fileURLToPath(new URL('./measured-browser-worker-prerequisite.mjs', import.meta.url));
   const env = { PATH: '/usr/bin:/bin', GH_TOKEN: 'fictional-token-must-stay-private' };
-  for (const [args, expectedStage] of [[[], 'provider archive'], [['--alternate-api'], 'dispatch']]) {
+  for (const [args, expectedStage] of [[[], 'provider archive (runner-directory)'], [['--alternate-api'], 'dispatch']]) {
     assert.throws(() => execFileSync(process.execPath, [path, ...args], {
       env, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'],
     }), error => error.status === 1 && error.stdout === ''
       && error.stderr === `Measured worker prerequisite refused during ${expectedStage}\n`);
+  }
+});
+
+test('provider refusal stages distinguish event custody and contract without accepting forged tags', () => {
+  const path = fileURLToPath(new URL('./measured-browser-worker-prerequisite.mjs', import.meta.url));
+  const temp = mkdtempSync(join(realpathSync(tmpdir()), 'worker-prerequisite-test-'));
+  try {
+    const events = join(temp, '_github_workflow');
+    const eventPath = join(events, 'event.json');
+    const env = { PATH: '/usr/bin:/bin', GH_TOKEN: 'fictional-token-must-stay-private', RUNNER_TEMP: temp, GITHUB_EVENT_PATH: eventPath };
+    function refuses(stage) {
+      assert.throws(() => execFileSync(process.execPath, [path], {
+        env, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'],
+      }), error => error.status === 1 && error.stdout === ''
+        && error.stderr === `Measured worker prerequisite refused during provider archive (${stage})\n`);
+    }
+    refuses('event-custody');
+    mkdirSync(events, { mode: 0o700 });
+    writeFileSync(eventPath, '{"private":"must-stay-private"}', { mode: 0o600 });
+    refuses('dispatch-contract');
+    assert.equal(readMeasuredPreflightArchiveRefusalStage({ stage: 'archive-transfer' }), null);
+    assert.equal(readMeasuredPreflightArchiveRefusalStage(new Error('Measured preflight provider archive refused')), null);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
   }
 });

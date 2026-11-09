@@ -24,6 +24,13 @@ const members = [
 ];
 const environment = Object.freeze({ PATH: '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C' });
 const authenticated = new WeakMap();
+const archiveRefusals = new WeakMap();
+const archiveStages = new Set([
+  'runner-directory', 'event-custody', 'dispatch-contract', 'controller-before', 'read-credential', 'private-directory',
+  'current-run-read', 'current-run-contract', 'repository-read', 'workflow-read', 'upstream-run-read', 'upstream-jobs-read',
+  'upstream-artifacts-read', 'upstream-contract', 'archive-transfer', 'archive-file', 'archive-envelope', 'controller-after',
+  'result-deadline',
+]);
 
 const extract = String.raw`
 import io, json, math, stat, struct, sys, zipfile, zlib
@@ -257,18 +264,40 @@ function freeze(value) {
 
 /** Fixed trusted resolver only. No options permit an alternate API, token, transport or byte source. */
 export async function authenticateMeasuredPreflightArchive() {
+  let stage = 'runner-directory';
+  try {
+    return await collectMeasuredPreflightArchive(next => { stage = next; });
+  } catch {
+    const refusal = new Error('Measured preflight provider archive refused');
+    if (archiveStages.has(stage)) archiveRefusals.set(refusal, stage);
+    throw refusal;
+  }
+}
+
+/** Diagnostic only. Raw errors and caller-supplied labels are never returned. */
+export function readMeasuredPreflightArchiveRefusalStage(reason) {
+  return archiveRefusals.get(reason) ?? null;
+}
+
+async function collectMeasuredPreflightArchive(mark) {
   const deadline = performance.now() + 150000;
   const temp = process.env.RUNNER_TEMP;
   assert(typeof temp === 'string' && realpathSync(temp) === temp && lstatSync(temp).isDirectory()
     && lstatSync(temp).uid === process.getuid(), 'Measured preflight runner directory refused');
-  const dispatch = inspectMeasuredWorkerDispatch(process.env, hostedEvent(temp));
+  mark('event-custody');
+  const event = hostedEvent(temp);
+  mark('dispatch-contract');
+  const dispatch = inspectMeasuredWorkerDispatch(process.env, event);
   const { source, currentRunId, profile } = dispatch;
   const upstreamRunId = profile.upstreamRunId;
   assert(profile.course === 'serial-2-4-8' && id(upstreamRunId), 'The serial course requires a prior preflight');
+  mark('controller-before');
   controllerHead(source, deadline);
 
+  mark('read-credential');
   const token = process.env.GH_TOKEN;
   assert(typeof token === 'string' && token.length > 0 && token.length <= 4096, 'Measured preflight read credential unavailable');
+  mark('private-directory');
   const privateDirectory = mkdtempSync(join(temp, 'measured-preflight-archive-'));
   const configDirectory = join(privateDirectory, 'gh');
   mkdirSync(configDirectory, { mode: 0o700 });
@@ -276,8 +305,12 @@ export async function authenticateMeasuredPreflightArchive() {
     GH_NO_UPDATE_NOTIFIER: '1', GH_NO_EXTENSION_UPDATE_NOTIFIER: '1' };
   const root = 'repos/' + repository;
   const ghArgs = endpoint => ['api', '--hostname', 'github.com', '--method', 'GET', endpoint];
-  const get = endpoint => json(command('/usr/bin/gh', ghArgs(endpoint), deadline, github));
-  const current = get(root + '/actions/runs/' + currentRunId);
+  const get = (stage, endpoint) => {
+    mark(stage);
+    return json(command('/usr/bin/gh', ghArgs(endpoint), deadline, github));
+  };
+  const current = get('current-run-read', root + '/actions/runs/' + currentRunId);
+  mark('current-run-contract');
   assert(current?.id === currentRunId && current.repository?.id === repositoryId && current.repository.full_name === repository
     && current.head_repository?.id === repositoryId && current.head_repository.full_name === repository
     && current.workflow_id === workflowId && current.path === workflowPath && current.head_sha === source && current.head_branch === branch
@@ -285,14 +318,18 @@ export async function authenticateMeasuredPreflightArchive() {
   'Measured preflight current provider run refused');
   const upstream = root + '/actions/runs/' + upstreamRunId;
   const values = {
-    repository: get(root), workflow: get(root + '/actions/workflows/' + workflowId), run: get(upstream),
-    jobInventory: get(upstream + '/jobs?filter=all&per_page=8&page=1'),
-    artifactInventory: get(upstream + '/artifacts?per_page=2&page=1'),
+    repository: get('repository-read', root),
+    workflow: get('workflow-read', root + '/actions/workflows/' + workflowId),
+    run: get('upstream-run-read', upstream),
+    jobInventory: get('upstream-jobs-read', upstream + '/jobs?filter=all&per_page=8&page=1'),
+    artifactInventory: get('upstream-artifacts-read', upstream + '/artifacts?per_page=2&page=1'),
   };
+  mark('upstream-contract');
   const metadata = inspectMeasuredPreflightProviderMetadata(values, {
     source, upstreamRunId, currentRunId, currentRunStartedAt: current.run_started_at, nowMs: Date.now(),
   });
   const artifact = values.artifactInventory.artifacts[0];
+  mark('archive-transfer');
   try {
     await downloadCiArchives([artifact], privateDirectory, {
       concurrency: 1, timeoutMs: remaining(deadline - 20000, 100000),
@@ -303,8 +340,11 @@ export async function authenticateMeasuredPreflightArchive() {
   } catch {
     throw Error('Measured preflight authenticated archive transfer refused');
   }
+  mark('archive-file');
   const bytes = readCiArchive(artifact, join(privateDirectory, artifact.name + '.zip'));
+  mark('archive-envelope');
   const evidence = inspectMeasuredPreflightArchiveBytes(bytes, { source, runId: upstreamRunId }, remaining(deadline));
+  mark('controller-after');
   controllerHead(source, deadline);
   const archive = freeze({
     kind: 'AUTHENTICATED_MEASURED_PREFLIGHT_ARCHIVE_BYTES_ONLY',
@@ -314,6 +354,7 @@ export async function authenticateMeasuredPreflightArchive() {
     harnessSha256: evidence.measurement.capture.harnessSha256, scenarioSha256: evidence.measurement.capture.scenarioSha256,
     evidence,
   });
+  mark('result-deadline');
   remaining(deadline);
   const handle = Object.freeze({});
   authenticated.set(handle, { archive, deadline });

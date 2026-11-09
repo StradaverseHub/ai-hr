@@ -48,14 +48,15 @@ function publish(transport) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  let stage = 'dispatch';
+  let stage = 'dispatch', readArchiveRefusal;
   try {
     assert(process.argv.length === 2, 'Measured worker prerequisite takes no arguments');
-    const { authenticateMeasuredPreflightArchive } = await import('./measured-browser-preflight-archive.mjs');
+    const archive = await import('./measured-browser-preflight-archive.mjs');
+    readArchiveRefusal = archive.readMeasuredPreflightArchiveRefusalStage;
     let handle;
     stage = 'provider archive';
     try {
-      handle = await authenticateMeasuredPreflightArchive();
+      handle = await archive.authenticateMeasuredPreflightArchive();
     } finally {
       delete process.env.GH_TOKEN;
     }
@@ -64,8 +65,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const result = await validateAuthenticatedMeasuredPreflight(handle);
     stage = 'output';
     publish(encodeMeasuredWorkerPrerequisite(result));
-  } catch {
-    process.stderr.write(`Measured worker prerequisite refused during ${stage}\n`);
+  } catch (reason) {
+    const detail = stage === 'provider archive' ? readArchiveRefusal(reason) : null;
+    process.stderr.write(`Measured worker prerequisite refused during ${stage}${detail ? ' (' + detail + ')' : ''}\n`);
     process.exitCode = 1;
   }
 }
