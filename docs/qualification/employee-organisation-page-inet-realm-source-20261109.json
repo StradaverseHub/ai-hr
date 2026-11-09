@@ -1,0 +1,86 @@
+{
+  "kind": "PERSONNEL_ORGANISATION_PAGE_IPV4_REALM_SOURCE_ONLY",
+  "directParent": "2414da3dd6af1d16f8319e896e7ef7c39257acb0",
+  "selector": "test/employee-choice-db.test.ts",
+  "testSource": {
+    "parent": {
+      "gitBlob": "ba8a2057d0023aeaed2a6c710dabf831b066ce83",
+      "bytes": 75713,
+      "sha256": "c89169958df4185a9666ac468f50efa7647a033c6bba5180d79223fa550b79c5"
+    },
+    "current": {
+      "bytes": 75724,
+      "sha256": "763a368834346905fc51601a7b8573f126f97af35fa26c60afbc6192d6d9d146"
+    },
+    "exactChange": {
+      "before": "inet_server_addr()::text as address",
+      "after": "pg_catalog.host(inet_server_addr()) as address"
+    },
+    "caseCount": 10
+  },
+  "sourceInverse": {
+    "restore": "test/employee-choice-db.test.ts",
+    "remove": "docs/qualification/employee-organisation-page-inet-realm-source-20261109.json",
+    "targetGitTree": "9100d6f0af79e61130c887f641fdc03c08245003"
+  },
+  "priorHostedFailure": {
+    "source": "2414da3dd6af1d16f8319e896e7ef7c39257acb0",
+    "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+    "run": 42562482044,
+    "attempt": 1,
+    "terminalJobs": 7,
+    "artifact": {
+      "id": 13649639729,
+      "bytes": 45127,
+      "sha256": "6c17fac5afdb55cbf515e649bc8428301a39d3bc7954b5d72484deb0a628faea",
+      "members": {
+        "focused.json": {
+          "bytes": 10932,
+          "sha256": "f351cf3a246ae5db4aca0d69e01243e4e726d45e09c2b21bb0e6c5ff8c5f1f1e"
+        },
+        "db.vitest.json": {
+          "bytes": 13994,
+          "sha256": "a41d178b518922640f7fd68a2a1a9a86d6042996b006a8db0c53c52b13a36bd1"
+        },
+        "employee-choice-50k.json": {
+          "bytes": 629605,
+          "sha256": "4968ded528b669b39b3da06121a5b250d3044d4ba68a5cb38561556738af3846"
+        },
+        "employee-choice-organisation-page-private.json": {
+          "bytes": 2117,
+          "sha256": "fe236d04b62d4d98ab044b745137876a60112f8c0e97fb7a893e3481a229ad02"
+        }
+      }
+    },
+    "selectedLog": {
+      "bytes": 991239,
+      "sha256": "c4819edc140acdbd61c78f22ac28cc0ae5cdc0b4f188520e902761f337214a5c"
+    },
+    "reportedCases": 10,
+    "passed": 3,
+    "failed": 7,
+    "actualEnteredRealmFailures": 1,
+    "subsequentGuardBlockedCases": 6,
+    "observedAddress": "127.0.0.1/32",
+    "expectedAddress": "127.0.0.1",
+    "fixturePhaseElapsedMs": {
+      "fixtureEntry": 5.205660999999964,
+      "fixtureReady": 94313.050028,
+      "ordinaryReadsComplete": 97988.009282,
+      "comparisonEntry": 97994.055329
+    },
+    "exactOrdinaryFixtureAndReadParity": true,
+    "pageFixtureDmlEntered": false,
+    "comparisonObservations": 0,
+    "comparisonRawPlans": 0,
+    "unconfirmedSettlementGuardRetained": true,
+    "hostedOwnedCleanupSucceeded": true
+  },
+  "scope": [
+    "The shared native address projection returns host text for the same inet address. Its port and strict IPv4 equality remain required.",
+    "The one projection is used for owner preparation and restoration and application entry and final verification.",
+    "Every original clock, 10 cases, 160 expectations, exact owner/actor/DB/PID/role/port tests, parity, PAGE ABBA, native plan and restoration gates remain whole.",
+    "The failed hosted run remains at its original source. Runtime qualification of the correction is pending."
+  ],
+  "releaseEligible": false
+}

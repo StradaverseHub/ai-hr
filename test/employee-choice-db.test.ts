@@ -254,7 +254,7 @@ function organisationPagePlan(raw:unknown,candidate:boolean,kind:'page'|'count',
 }
 
 type PageFixture=Pick<Awaited<ReturnType<typeof seedPersonnelNativeFixture>>,'b'|'ctx'|'expectedLast'|'organisationTagSample'>;
-const pageRealm=sql`select current_database() as database, d.oid::text as oid, inet_server_addr()::text as address,
+const pageRealm=sql`select current_database() as database, d.oid::text as oid, pg_catalog.host(inet_server_addr()) as address,
  inet_server_port() as port, extract(epoch from pg_postmaster_start_time())::text as cluster,
  current_user as role, session_user as login, pg_backend_pid() as pid, extract(epoch from a.backend_start)::text as started,
  current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as read_only,
