@@ -1,3 +1,5 @@
+import {readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
 import {EventEmitter,once} from 'node:events';
 import {Agent,createServer,request as httpRequest} from 'node:http';
 import {PassThrough} from 'node:stream';
@@ -714,4 +716,38 @@ it('drains a real loopback request and socket after its raw gzip response is cut
   cut.resolve();agent.destroy();server.closeAllConnections();
   await new Promise<void>(resolve=>server.close(()=>resolve()));
  }
+});
+
+function preflightLockDiagnosticModel(){
+ const source=readFileSync(new URL('../scripts/performance/system-load-owner.mjs',import.meta.url),'utf8');
+ const start=source.indexOf('function projectPositivePreflightLock('),end=source.indexOf('async function observePositivePreflightLock(',start);
+ if(start<0||end<=start)throw Error('Missing development lock diagnostic owner');
+ return runInNewContext(source.slice(start,end)+'\nprojectPositivePreflightLock');
+}
+
+it('projects positive preflight lock arms without leaking identities or implying one shared waiter',()=>{
+ const model=preflightLockDiagnosticModel();
+ const base={sampleOrdinal:4,startedUs:1000,completedUs:2000,appActivityWaiters:1,appAdvisoryWaiters:1,
+  lockLabels:new Map([['1:2:1','access-configuration:fixture-tenant-0']])};
+ const observed=model({...base,queued:[{pid:800,app_session:true,granted:false,mode:'ExclusiveLock',classid:'1',objid:'2',objsubid:1,blockers:[900,900]}],
+  followup:[{pid:801,wait_event:'transactionid',locktype:'transactionid',mode:'ShareLock',blockers:[901]}]});
+ expect(observed).toEqual({kind:'DEVELOPMENT_PREFLIGHT_LOCK_DIAGNOSTIC_V1',sampleOrdinal:4,startedUs:1000,completedUs:2000,
+  appActivityWaiters:1,appAdvisoryWaiters:1,topologyState:'observed',rows:[
+   {arm:'advisory-census',waitEvent:null,lockType:'advisory',mode:'ExclusiveLock',namespace:'access-configuration',blockerCount:1},
+   {arm:'active-lock-followup',waitEvent:'transactionid',lockType:'transactionid',mode:'ShareLock',namespace:null,blockerCount:1},
+  ]});
+ expect(JSON.stringify(observed)).not.toMatch(/800|801|900|901|fixture-tenant/);
+});
+
+it('keeps disappeared, unavailable, duplicate and partial lock witnesses unknown',()=>{
+ const model=preflightLockDiagnosticModel(),base={sampleOrdinal:4,startedUs:1000,completedUs:2000,appActivityWaiters:1,appAdvisoryWaiters:0,
+  queued:[],lockLabels:new Map()};
+ expect(model({...base,followup:[]})).toMatchObject({topologyState:'disappeared',appActivityWaiters:1,rows:[]});
+ expect(model({...base,followup:null})).toMatchObject({topologyState:'unavailable',appActivityWaiters:1,rows:[]});
+ const row={pid:801,wait_event:'relation',locktype:'transactionid',mode:'ShareLock',blockers:[901]};
+ expect(model({...base,followup:[row,row]})).toMatchObject({topologyState:'ambiguous',rows:[]});
+ expect(model({...base,followup:[row]})).toMatchObject({topologyState:'ambiguous',rows:[
+  {arm:'active-lock-followup',waitEvent:'relation',lockType:null,mode:null,namespace:null,blockerCount:null},
+ ]});
+ expect(model({...base,followup:[{...row,locktype:'relation',blockers:[]}]})).toMatchObject({rows:[{blockerCount:null}]});
 });

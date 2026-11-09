@@ -357,6 +357,63 @@ async function prepareDatabaseLockScope(){
  return {lockLabels,accessLocks};
 }
 
+function projectPositivePreflightLock({sampleOrdinal,startedUs,completedUs,appActivityWaiters,appAdvisoryWaiters,queued,followup,lockLabels}){
+ const modes=['AccessShareLock','RowShareLock','RowExclusiveLock','ShareUpdateExclusiveLock','ShareLock','ShareRowExclusiveLock','ExclusiveLock','AccessExclusiveLock'];
+ const lockTypes=['relation','extend','frozenid','page','tuple','transactionid','virtualxid','spectoken','object','userlock','advisory','applytransaction'];
+ const namespaces=['access-configuration','payroll-history','pay-component-catalog','employment','audit-chain'];
+ const pid=value=>Number.isSafeInteger(value)&&value>0;
+ const count=value=>Number.isSafeInteger(value)&&value>=0&&value<=1024?value:null;
+ const micros=value=>Number.isSafeInteger(value)&&value>=0&&value<=1000000000?value:null;
+ const facts=(row,arm,waitEvent,lockType)=>{
+  const mode=modes.includes(row.mode)?row.mode:null;
+  const namespace=lockType==='advisory'?lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)?.split(':')[0]:null;
+  const blockers=row.blockers;
+  const blockerCount=mode&&Array.isArray(blockers)&&blockers.length>0&&blockers.length<=1024&&blockers.every(pid)
+   ?new Set(blockers).size:null;
+  return {arm,waitEvent,lockType,mode,namespace:namespaces.includes(namespace)?namespace:null,blockerCount};
+ };
+ const advisory=queued.filter(row=>row.app_session===true&&row.granted===false&&pid(row.pid));
+ const rows=advisory.slice(0,8).map(row=>facts(row,'advisory-census',null,'advisory'));
+ let topologyState=advisory.length>8||rows.some(row=>row.blockerCount===null)?'ambiguous':'observed';
+ if(appActivityWaiters>0){
+  if(followup===null)topologyState='unavailable';
+  else if(!followup.length)topologyState='disappeared';
+  else{
+   const counts=new Map();
+   for(const row of followup)counts.set(row.pid,(counts.get(row.pid)??0)+1);
+   if(followup.length>8||counts.size!==followup.length||counts.size!==appActivityWaiters)topologyState='ambiguous';
+   for(const row of followup.slice(0,8)){
+    if(rows.length>=8){topologyState='ambiguous';break;}
+    if(!pid(row.pid)||counts.get(row.pid)!==1){topologyState='ambiguous';continue;}
+    const waitEvent=lockTypes.includes(row.wait_event)?row.wait_event:null;
+    const lockType=waitEvent===row.locktype?waitEvent:null;
+    const fact=facts(lockType?row:{},'active-lock-followup',waitEvent,lockType);
+    if(!lockType||fact.mode===null||fact.blockerCount===null)topologyState='ambiguous';
+    rows.push(fact);
+   }
+  }
+ }
+ if(rows.length===0&&topologyState==='observed')topologyState='unavailable';
+ return {kind:'DEVELOPMENT_PREFLIGHT_LOCK_DIAGNOSTIC_V1',sampleOrdinal:Number.isSafeInteger(sampleOrdinal)&&sampleOrdinal>0&&sampleOrdinal<=4096?sampleOrdinal:null,startedUs:micros(startedUs),
+  completedUs:micros(completedUs),appActivityWaiters:count(appActivityWaiters),appAdvisoryWaiters:count(appAdvisoryWaiters),topologyState,rows};
+}
+
+async function observePositivePreflightLock(db){
+ // This is the same serialized timer callback, but the first aggregate did not
+ // identify a PID. A subsequent witness may be a different contemporaneous waiter.
+ return db.begin('read only',async tx=>{
+  await tx`set local statement_timeout='250ms'`;
+  return tx`with waiting as materialized (
+    select pid,wait_event from pg_stat_activity where datname=current_database() and backend_type='client backend'
+     and usename='ai_hr_app' and state='active' and wait_event_type='Lock' order by pid limit 9
+   )
+   select w.pid,w.wait_event,l.locktype,l.mode,l.classid::text,l.objid::text,l.objsubid,pg_blocking_pids(w.pid) as blockers
+   from waiting w left join lateral (
+    select locktype,mode,classid,objid,objsubid from pg_locks where pid=w.pid and not granted order by locktype limit 2
+   ) l on true order by w.pid`;
+ });
+}
+
 const waits=[];
 function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
  const rootStatements=new Map(),samples=[];
@@ -393,9 +450,20 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    if(phase!=='preflight'||locks.length||blockingAppSessions)waits.push({at:Date.now(),phase,rows,appConnections,blockingSessions:holders,
      grantedAccessHolders:locks.filter(row=>row.granted).map(row=>({pid:row.pid,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)})),
      advisoryWaiters:queuedLocks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
-   samples.push({state:'complete',startedMs,completedMs:performance.now(),locks:locks.length,blockingAppSessions,
+   const completedMs=performance.now();
+   samples.push({state:'complete',startedMs,completedMs,locks:locks.length,blockingAppSessions,
     holdersRequested:pids.length,holdersObserved:holders.length});
    coreComplete=true;
+   if(suite==='workflow-preflight'&&phase==='preflight'&&blockingAppSessions>0&&!report.preflightLockDiagnostic){
+    let followup=null;
+    if(appConnections.waitingOnLock>0)try{followup=await observePositivePreflightLock(db);}catch{}
+    report.preflightLockDiagnostic=projectPositivePreflightLock({
+     sampleOrdinal:samples.length,startedUs:Math.floor((startedMs-preflightWindow.startMs)*1000),
+     completedUs:Math.ceil((completedMs-preflightWindow.startMs)*1000),
+     appActivityWaiters:appConnections.waitingOnLock,appAdvisoryWaiters:appConnections.sampledAdvisoryWaiters,
+     queued:queuedLocks,followup,lockLabels,
+    });
+   }
    // The top-statement summary can omit rare root holders. Resolve only sampled root IDs,
    // never queued waiters or parameters; all data belongs to the fictional runner fixture.
    const queued=new Set(queuedLocks.map(row=>row.pid));
