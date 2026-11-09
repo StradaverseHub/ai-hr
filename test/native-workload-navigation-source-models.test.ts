@@ -38,6 +38,39 @@ const classes=[
   'test_symlink_hardlink_and_nonregular_refuse_through_pinned_tree',
  ]],
 ] as const;
+const cases=classes.flatMap(([owner,methods])=>[...methods].sort().map(method=>({
+ name:owner+'.'+method,
+ description:method+' (__main__.'+owner+'.'+method+')',
+})));
+const rule='-'.repeat(70);
+const exceptionKinds=new Set([
+ 'AssertionError','AttributeError','FileNotFoundError','ImportError','ModuleNotFoundError','OSError',
+ 'PermissionError','RuntimeError','SyntaxError','TimeoutError','TypeError','ValueError',
+]);
+
+function exceptionKind(lines:string[]){
+ for(let index=lines.length-1;index>=0;index--){
+  const name=/^([A-Za-z][A-Za-z0-9_.]{0,63})(?::|$)/.exec(lines[index])?.[1];
+  if(name)return exceptionKinds.has(name)?name:'unclassified';
+ }
+ return 'unclassified';
+}
+
+function modelFailure(stderr:string){
+ const [preamble,...blocks]=stderr.split('\n'+'='.repeat(70)+'\n');
+ const failed=new Map<string,string>();
+ for(const block of blocks){
+  const [heading,boundary,...detail]=block.split('\n');
+  const match=/^(FAIL|ERROR): (.+)$(?![\s\S])/.exec(heading);
+  if(!match||boundary!==rule)continue;
+  const [,kind,description]=match;
+  // A unittest subtest can append its parameters. Only the fixed parent name is reported.
+  const known=cases.find(row=>description===row.description
+   || description.startsWith(row.description+' (')&&description.endsWith(')'));
+  if(known&&!failed.has(known.name))failed.set(known.name,kind+' '+known.name+' ['+exceptionKind(detail)+']');
+ }
+ return failed.size?[...failed.values()].join(', '):'no named case ['+exceptionKind(preamble.split('\n'))+']';
+}
 
 function git(args:string[],timeout:number){
  const result=spawnSync('/usr/bin/git',args,{
@@ -84,8 +117,7 @@ it('runs the 10 exact held navigation source byte models',()=>{
  const sha=process.env.AIHR_CI_HEAD??'';
  expect(sha).toMatch(/^[a-f0-9]{40}$/);
  requireSource(sha);
- const expected=classes.flatMap(([owner,methods])=>[...methods].sort()
-  .map(method=>method+' (__main__.'+owner+'.'+method+') ... ok'));
+ const expected=cases.map(row=>row.description+' ... ok');
  expect(expected).toHaveLength(10);
  expect(new Set(expected).size).toBe(10);
  // A nondirectory cache prefix and -B force the stock interpreter to read source.
@@ -94,13 +126,18 @@ it('runs the 10 exact held navigation source byte models',()=>{
   cwd:root,env,encoding:'utf8',
   timeout:10000,killSignal:'SIGKILL',maxBuffer:128*1024,stdio:['ignore','pipe','pipe'],
  });
- expect(result.error).toBeUndefined();
- expect(result.signal).toBeNull();
- expect(result.status).toBe(0);
- expect(result.stdout).toBe('');
- expect(result.stderr.split('\n')).toEqual([
-  ...expected,'','-'.repeat(70),expect.stringMatching(/^Ran 10 tests in [0-9]+\.[0-9]{3}s$/),'','OK','',
- ]);
  requireSource(sha);
- process.stderr.write(result.stderr);
+ if(result.error){
+  const code=(result.error as NodeJS.ErrnoException).code;
+  const reason=code==='ETIMEDOUT'?'timeout':code==='ENOBUFS'?'output limit':'spawn error';
+  throw Error('Navigation source model child refused ['+reason+']');
+ }
+ if(result.signal!==null)throw Error('Navigation source model child interrupted');
+ if(result.status===1)throw Error('Navigation source models failed: '+modelFailure(result.stderr));
+ if(result.status!==0)throw Error('Navigation source model child returned an unexpected status');
+ const timing=result.stderr.split('\n').at(-4)??'';
+ const transcript=[...expected,'',rule,timing,'','OK',''].join('\n');
+ if(result.stdout!==''||!/^Ran 10 tests in [0-9]+\.[0-9]{3}s$(?![\s\S])/.test(timing)||result.stderr!==transcript)
+  throw Error('Navigation source model success transcript refused');
+ process.stderr.write(transcript);
 },30000);
