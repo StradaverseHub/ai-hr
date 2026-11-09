@@ -27,9 +27,9 @@ export function canarySeal(path){
  return {...fileBirth(path),sha256:createHash('sha256').update(readFileSync(path)).digest('hex')};
 }
 export function assertDockerMounts(text,role='typegen'){
- assert(role==='typegen'||role==='tp1');
- const readOnly=role==='tp1'?[...baseReadOnly,'/probe/compare.mjs',...generated]:[...baseReadOnly,'/probe/next.mjs'];
- const writable=role==='tp1'?['/work']:['/work',...generated];
+ assert(role==='typegen'||role==='db-client');
+ const readOnly=role==='db-client'?[...baseReadOnly,'/probe/compare.mjs',...generated]:[...baseReadOnly,'/probe/next.mjs'];
+ const writable=role==='db-client'?['/work']:['/work',...generated];
  const observed=new Map();
  for(const line of text.trimEnd().split('\n')){
   const [left,right]=line.split(' - '),fields=left.split(' ');
@@ -79,7 +79,7 @@ async function run(plan){
   phase='mounts';
   const mounts=assertDockerMounts(readFileSync('/proc/self/mountinfo','utf8'),plan.role);
   let generatedMutationRefusals=0;
-  if(plan.role==='tp1'){
+  if(plan.role==='db-client'){
    assert.throws(()=>writeFileSync('/project/.next/forbidden','blocked',{flag:'wx'}),{code:'EROFS'});
    assert.throws(()=>writeFileSync('/project/next-env.d.ts','blocked',{flag:constants.O_WRONLY}),{code:'EROFS'});
    generatedMutationRefusals=2;
@@ -122,11 +122,11 @@ async function run(plan){
    const {runProtectedNextTypegen}=await import('/probe/next.mjs');
    runProtectedNextTypegen();
   }else{
-   phase='protected-tp1-compare';
-   const {runProtectedTp1Comparison}=await import('/probe/compare.mjs');
-   await runProtectedTp1Comparison({reportRoot:'/work/tp1',deadlineMs:performance.now()+120000,expectedGenerated:plan.generated});
+   phase='protected-db-client-compare';
+   const {runProtectedDbClientComparison}=await import('/probe/compare.mjs');
+   await runProtectedDbClientComparison({reportRoot:'/work/db-client',deadlineMs:performance.now()+120000,expectedGenerated:plan.generated});
    publish('/work/compare-ready.json',{nonce:plan.nonce,complete:true});
-   phase='protected-tp1-close-grant';
+   phase='protected-db-client-close-grant';
    const closeBy=performance.now()+15000;
    while(!existsSync('/work/compare-close.json')){assert(performance.now()<closeBy);await delay(20);}
    assert.deepEqual(JSON.parse(readFileSync('/work/compare-close.json','utf8')),{nonce:plan.nonce});
@@ -138,7 +138,7 @@ async function run(plan){
 }
 if(process.argv[1]==='/probe/entry.mjs'){
  const plan=JSON.parse(readFileSync('/probe/plan.json','utf8'));
- assert(plan.role==='typegen'||plan.role==='tp1');
- const watchdog=setTimeout(()=>process.exit(88),plan.role==='tp1'?155000:30000);
+ assert(plan.role==='typegen'||plan.role==='db-client');
+ const watchdog=setTimeout(()=>process.exit(88),plan.role==='db-client'?155000:30000);
  try{await run(plan);}finally{clearTimeout(watchdog);}
 }

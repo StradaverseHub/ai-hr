@@ -13,15 +13,15 @@ import {canarySeal,fileBirth,namespaceIds} from './protected-docker-entry.mjs';
 import {protectedDigest,protectedHash,protectedLimits,protectedOwnerLabel,protectedRuntimeEnv,sealedScratchImage} from './protected-docker-image.mjs';
 
 import {generatedNames,generatedSeals,protectedAppSource,protectedAppTree,protectedLock} from './protected-next-typegen.mjs';
-import {publicInnerRefusal,publicTp1Comparison,publicTypegenExecution,publicTypegenResult,safeProbeError} from './protected-tp1-public-evidence.mjs';
+import {publicInnerRefusal,publicDbClientComparison,publicTypegenExecution,publicTypegenResult,safeProbeError} from './protected-db-client-public-evidence.mjs';
 
-export const protectedDockerRef='refs/heads/codex/compiler-protected-tp1-ab-a139-20261109';
+export const protectedDockerRef='refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109';
 const ownModule='.github/ci/diagnostics/native-reference/protected-docker-canary.mjs';
 const entryName='.github/ci/diagnostics/native-reference/protected-docker-entry.mjs';
 const typegenName='.github/ci/diagnostics/native-reference/protected-next-typegen.mjs';
 const projectName='.github/ci/diagnostics/native-reference/project-protected-next.py';
-const compareName='.github/ci/diagnostics/native-reference/protected-tp1-compare.mjs';
-const evidenceName='.github/ci/diagnostics/native-reference/protected-tp1-public-evidence.mjs';
+const compareName='.github/ci/diagnostics/native-reference/protected-db-client-compare.mjs';
+const evidenceName='.github/ci/diagnostics/native-reference/protected-db-client-public-evidence.mjs';
 const manifest='docs/qualification/compiler-reference-owned-source-20261108.json';
 const socket='/run/docker.sock';
 const cli='/usr/bin/docker';
@@ -76,12 +76,12 @@ export function classifyDockerCreateFailure(result,mounts,elapsedMs){
  return {category,status,clientError,signal,mountRole,stderrObserved:stderr.length>0,elapsedMs:milliseconds};
 }
 const reportPath='compiler-protected-docker';
-const comparisonReportPath='compiler-protected-tp1';
+const comparisonReportPath='compiler-protected-db-client';
 const roleProfiles=Object.freeze({
  typegen:Object.freeze({memory:protectedLimits.memory,memoryArgument:'1g',cpus:1,envelopeMs:120000}),
- tp1:Object.freeze({memory:8*1024**3,memoryArgument:'8g',cpus:2,envelopeMs:200000}),
+ 'db-client':Object.freeze({memory:8*1024**3,memoryArgument:'8g',cpus:2,envelopeMs:200000}),
 });
-const isRole=role=>role==='typegen'||role==='tp1';
+const isRole=role=>role==='typegen'||role==='db-client';
 const write=(path,value)=>writeFileSync(path,JSON.stringify(value)+'\n',{flag:'wx',mode:0o600});
 const publish=(path,value)=>{write(path+'.pending',value);renameSync(path+'.pending',path);};
 const exists=path=>{try{lstatSync(path);return true;}catch(error){if(error.code==='ENOENT')return false;throw error;}};
@@ -100,8 +100,8 @@ const identityEnv=()=>{
   process.env.GITHUB_JOB==='selected-tests'&&process.env.GITHUB_EVENT_NAME==='workflow_dispatch');
  return {source,controller,run,attempt};
 };
-const tempRoot=(context,role)=>join(realpathSync(process.env.RUNNER_TEMP),'aihr-protected-docker-'+context.run+'-'+context.attempt+(role==='tp1'?'-tp1':''));
-const containerName=(context,role)=>'aihr-protected-compiler-'+context.run+'-'+context.attempt+(role==='tp1'?'-tp1':'');
+const tempRoot=(context,role)=>join(realpathSync(process.env.RUNNER_TEMP),'aihr-protected-docker-'+context.run+'-'+context.attempt+(role==='db-client'?'-db-client':''));
+const containerName=(context,role)=>'aihr-protected-compiler-'+context.run+'-'+context.attempt+(role==='db-client'?'-db-client':'');
 const cgroupPath=id=>'/system.slice/docker-'+id+'.scope';
 const cgroupDir=id=>'/sys/fs/cgroup'+cgroupPath(id);
 
@@ -275,9 +275,9 @@ async function runProtectedStage(role,freshGenerated){
  const proof=admitCompilerReference('fixture'),clock=readCompilerReferenceClock(proof),context=identityEnv();
  assert.equal(proof.sourceHead,context.source);assert.equal(proof.controllerHead,context.controller);
  assert.equal(proof.sourceHashes[ownModule],protectedHash(readFileSync(fileURLToPath(import.meta.url))));
- const out=join(proof.destination,role==='tp1'?comparisonReportPath:reportPath),root=tempRoot(context,role);
+ const out=join(proof.destination,role==='db-client'?comparisonReportPath:reportPath),root=tempRoot(context,role);
  makeDirectory(out);makeDirectory(root);
- const report={kind:role==='tp1'?'PROTECTED_TP1_DATE_COMPARISON_A139':'PROTECTED_NEXT_TYPEGEN_A139',...context,role,productSource:protectedAppSource,productTree:protectedAppTree,transportQualified:false,productInputsMounted:false,
+ const report={kind:role==='db-client'?'PROTECTED_DB_CLIENT_COMPARISON_6C05':'PROTECTED_NEXT_TYPEGEN_6C05',...context,role,productSource:protectedAppSource,productTree:protectedAppTree,transportQualified:false,productInputsMounted:false,
   stockNextInvoked:false,strictCompilerInvoked:false,ordinaryCompilerQualified:false,releaseAuthorized:false};
  const end=performance.now()+Math.min(profile.envelopeMs,720000-Number(process.hrtime.bigint()-BigInt(clock.startNs))/1e6-3000);
  const workEnd=end-26000;
@@ -298,19 +298,22 @@ async function runProtectedStage(role,freshGenerated){
   const node=realpathSync(process.execPath),entry=join(proof.source,entryName),uid=process.getuid(),gid=process.getgid();
   assert.equal(protectedHash(readFileSync(entry)),proof.sourceHashes[entryName]);
   const projected=join(root,'project'),nextOutput=join(root,'next-output'),nextEnv=join(root,'next-env-output');
-  const generator=join(proof.source,projectName),courseName=role==='tp1'?compareName:typegenName;
+  const generator=join(proof.source,projectName),courseName=role==='db-client'?compareName:typegenName;
   const course=join(proof.source,courseName),dependencies=join(proof.source,'node_modules');
   for(const [name,path]of [[projectName,generator],[courseName,course]])assert.equal(protectedHash(readFileSync(path)),proof.sourceHashes[name]);
   assert.equal(realpathSync(dependencies),dependencies);
   assert.equal(protectedHash(readFileSync(join(proof.source,'pnpm-lock.yaml'))),protectedLock);
   for(const name of ['.next','next-env.d.ts'])assert(!exists(join(proof.source,name)));
-  const projectedResult=spawnSync('/usr/bin/python3',['-I','-B',generator,proof.source,projected],{
+  const productCheckout=join(realpathSync(process.env.GITHUB_WORKSPACE),'compiler-product');
+  assert.equal(realpathSync(productCheckout),productCheckout);
+  for(const name of ['.next','next-env.d.ts'])assert(!exists(join(productCheckout,name)));
+  const projectedResult=spawnSync('/usr/bin/python3',['-I','-B',generator,productCheckout,projected],{
    env:{PATH:'/usr/bin:/bin',HOME:'/nonexistent',LANG:'C',LC_ALL:'C'},encoding:'utf8',stdio:['ignore','pipe','pipe'],
    timeout:28000,killSignal:'SIGKILL',maxBuffer:8192});
   assert(!projectedResult.error&&!projectedResult.signal&&projectedResult.status===0,'Exact app projection refused');
   const projectedProof=JSON.parse(projectedResult.stdout);
   assert.deepEqual([projectedProof.source,projectedProof.tree,projectedProof.files,projectedProof.bytes],
-   [protectedAppSource,protectedAppTree,12962,334836843]);
+   [protectedAppSource,protectedAppTree,12968,334867242]);
   assert(/^[a-f0-9]{64}$/.test(projectedProof.manifestSha256));
   report.productProjection={source:protectedAppSource,tree:protectedAppTree,files:projectedProof.files,bytes:projectedProof.bytes,
    manifestSha256:projectedProof.manifestSha256};
@@ -334,8 +337,10 @@ async function runProtectedStage(role,freshGenerated){
    report.sameRunGeneratedSeals=freshGenerated.typegen.generated;
    report.sameRunPrivateHandoffConsumed=true;
   }
-  const productPaths=['package.json','pnpm-lock.yaml','next.config.ts','tsconfig.build.json','app/payroll/transactions/tp1/[year]/page.tsx',
-   'lib/hr-date.ts','lib/calendar-date.ts','lib/date-time-formatter.ts'];
+  const productPaths=['package.json','pnpm-lock.yaml','next.config.ts','tsconfig.json','tsconfig.build.json',
+   'db/client.ts','db/admission.ts','db/background-read-admission.ts','db/tenant-write-admission.ts','db/workload.ts',
+   'db/capacity.ts','core/audit-chain-arming.ts','core/entitlement-types.ts','test/payroll-tax-basis-read.test.ts',
+   'test/personnel-import-browser-key.test.ts','test/runner-control.test.ts'];
   const productSeals=()=>Object.fromEntries(productPaths.map(name=>[name,canarySeal(join(projected,name))]));
   const productBefore=productSeals();
   assert.equal(productBefore['pnpm-lock.yaml'].sha256,protectedLock);
@@ -344,8 +349,8 @@ async function runProtectedStage(role,freshGenerated){
    ro(realpathSync('/lib64/ld-linux-x86-64.so.2'),'/lib64/ld-linux-x86-64.so.2'),ro(entry,'/probe/entry.mjs'),
    ro(join(root,'plan.json'),'/probe/plan.json'),ro(join(root,'input'),'/input'),ro(join(root,'dependency'),'/dependency'),
    ...['hostname','hosts','resolv.conf'].map(name=>ro(join(root,'empty-etc'),'/etc/'+name)),{source:join(root,'work'),dest:'/work',readonly:false},
-   ro(projected,'/project'),ro(dependencies,'/project/node_modules'),ro(course,role==='tp1'?'/probe/compare.mjs':'/probe/next.mjs'),
-   {source:nextOutput,dest:'/project/.next',readonly:role==='tp1'},{source:nextEnv,dest:'/project/next-env.d.ts',readonly:role==='tp1'}];
+   ro(projected,'/project'),ro(dependencies,'/project/node_modules'),ro(course,role==='db-client'?'/probe/compare.mjs':'/probe/next.mjs'),
+   {source:nextOutput,dest:'/project/.next',readonly:role==='db-client'},{source:nextEnv,dest:'/project/next-env.d.ts',readonly:role==='db-client'}];
   let accepted=0;
   server=createServer(connection=>{accepted++;connection.destroy();});
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen({host:'127.0.0.1',port:0,exclusive:true},resolve);});
@@ -357,7 +362,7 @@ async function runProtectedStage(role,freshGenerated){
   });
   assert.equal(accepted,1);
   const plan={role,nonce,uid,gid,port,node:fileBirth(node),hostNamespaces:namespaceIds(),hostUserNamespace:readlinkSync('/proc/self/ns/user'),
-   ...(role==='tp1'?{generated:report.sameRunGeneratedSeals}:{}),
+   ...(role==='db-client'?{generated:report.sameRunGeneratedSeals}:{}),
    env:protectedRuntimeEnv,hiddenPath:join(root,'host-only','canary'),input:canarySeal(join(root,'input','canary')),
    dependency:canarySeal(join(root,'dependency','canary'))};
   write(join(root,'plan.json'),plan);
@@ -394,7 +399,7 @@ async function runProtectedStage(role,freshGenerated){
   assert(live.State.Running&&live.AppArmorProfile==='docker-default'&&!live.State.OOMKilled&&Number.isSafeInteger(pid)&&pid>1);
   const birth=liveBirth(pid,id);publish(join(root,'birth.json'),{id,birth});
   assert.equal(ready.nonce,nonce);assert.equal(ready.sourceMutationRefusals,4);
-  assert.equal(ready.generatedMutationRefusals,role==='tp1'?2:0);
+  assert.equal(ready.generatedMutationRefusals,role==='db-client'?2:0);
   for(const key of ['seccomp','apparmor','noNewPrivs','zeroCapabilities'])assert.equal(ready[key],true);
   assert.deepEqual(namespaceIds(pid),ready.ns);
   for(const [key,value]of Object.entries(ready.ns))assert.notEqual(value,plan.hostNamespaces[key]);
@@ -414,12 +419,12 @@ async function runProtectedStage(role,freshGenerated){
    seccomp:true,apparmor:true,noNewPrivs:true,zeroCapabilities:true,pidBirth:{pid,start:birth.start},cgroupBirth:birth.cgroup,
    resourceLimits:resourceFacts(id,pid,profile),hostLoopbackPositive:true,imageId:image.id,archiveSha256:image.sha256,layerDiffId:image.diffId};
   publish(join(root,'work','grant.json'),{nonce});
-  if(role==='tp1'){
-   phase='tp1-hold';
+  if(role==='db-client'){
+   phase='db-client-hold';
    const complete=join(root,'work','compare-ready.json');
    while(!exists(complete)){
-    abort.signal.throwIfAborted();assert(performance.now()<workEnd-3000,'Protected TP1 work frontier closed');
-    if(exists(refusedPath)){report.innerRefusal=publicInnerRefusal(config(refusedPath));throw Error('Protected TP1 comparison refused');}
+    abort.signal.throwIfAborted();assert(performance.now()<workEnd-3000,'Protected DB client work frontier closed');
+    if(exists(refusedPath)){report.innerRefusal=publicInnerRefusal(config(refusedPath));throw Error('Protected DB client comparison refused');}
     await delay(30);
    }
    assert.deepEqual(config(complete),{nonce,complete:true});
@@ -428,7 +433,7 @@ async function runProtectedStage(role,freshGenerated){
    assert(Number.isSafeInteger(peak)&&peak>0&&peak<=profile.memory);
    assert.deepEqual(liveBirth(pid,id),birth);
    assert.deepEqual(generatedSeals(projected,nextOutput,nextEnv),report.sameRunGeneratedSeals);
-   const semantic=publicTp1Comparison(join(root,'work','tp1'),true,protectedAppSource);
+   const semantic=publicDbClientComparison(join(root,'work','db-client'),true,protectedAppSource);
    assert.deepEqual(semantic.generated,report.sameRunGeneratedSeals);
    report.comparison={...semantic,groupPeakBytes:peak,resourceLimits:finalResources,generatedPhysicalReadOnly:true};
    report.strictCompilerInvoked=true;
@@ -471,9 +476,9 @@ async function runProtectedStage(role,freshGenerated){
      report.typegenExecution=publicTypegenExecution(config(execution));
      report.stockNextInvoked=report.typegenExecution.exit!==null||report.typegenExecution.signal!==null;
     }
-    if(role==='tp1'&&!report.comparison&&exists(join(root,'work','tp1','report.json'))){
+    if(role==='db-client'&&!report.comparison&&exists(join(root,'work','db-client','report.json'))){
      try{
-      report.partialComparison=publicTp1Comparison(join(root,'work','tp1'),false,protectedAppSource);
+      report.partialComparison=publicDbClientComparison(join(root,'work','db-client'),false,protectedAppSource);
       report.strictCompilerInvoked=report.partialComparison.attempts.length>0;
      }catch{
       report.partialComparison={failure:{category:'private-evidence-refused',code:null}};
@@ -504,7 +509,7 @@ export async function protectedDockerCanary(){
  for(const field of ['containerAbsent','processAbsent','cgroupAbsent','imageAbsent','privateGeneratedHandoffRetained']){
   assert.equal(fresh.settlement[field],true);
  }
- return await runProtectedStage('tp1',fresh);
+ return await runProtectedStage('db-client',fresh);
 }
 export function settleProtectedDockerCanary(destination){
  const context=identityEnv();
@@ -521,11 +526,11 @@ export function settleProtectedDockerCanary(destination){
   assert.equal(source.componentSources[member],protectedHash(readFileSync(join(workspace,'source',member))));
  }
  const settlements={},failures=[];
- for(const role of ['tp1','typegen']){
+ for(const role of ['db-client','typegen']){
   try{settlements[role]=closeOwned(tempRoot(context,role),context,performance.now()+35000,{role});}
   catch(error){failures.push({role,category:'owned-settlement-refused',code:safeProbeError(error.code)});}
  }
- write(join(destination,'protected-docker-settlement.json'),{kind:'PROTECTED_TP1_DOCKER_INDEPENDENT_SETTLEMENT',...context,
+ write(join(destination,'protected-docker-settlement.json'),{kind:'PROTECTED_DB_CLIENT_DOCKER_INDEPENDENT_SETTLEMENT',...context,
   stages:settlements,failures,complete:failures.length===0,releaseAuthorized:false});
  return failures.length===0;
 }

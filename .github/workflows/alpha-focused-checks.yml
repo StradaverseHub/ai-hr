@@ -290,6 +290,12 @@ jobs:
           path: source
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        if: ${{ github.ref == 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' }}
+        with:
+          ref: 6c05efc24242b8a5f50933e7cbb6709a276b286d
+          path: compiler-product
+          persist-credentials: false
       - name: Verify the exact self-source before dependency installation
         if: ${{ (inputs.architecture_browser_development_preflight || inputs.measured_browser_course != 'off') }}
         id: development-browser-source
@@ -405,10 +411,10 @@ jobs:
           AIHR_RESOLVED_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
           AIHR_CI_UNIT: ${{ needs.resolve.outputs.tests != '["test/compiler-native-reference-fixture.test.ts"]' && needs.resolve.outputs.tests != '["test/compiler-native-application-inventory.test.ts"]' && 'db-1' || '' }}
       - name: Close the protected TP1 public artifact
-        if: ${{ always() && github.ref == 'refs/heads/codex/compiler-protected-tp1-ab-a139-20261109' }}
-        id: protected-tp1-public
-        run: node ../automation/.github/ci/focused-checks.mjs protected-tp1-public-artifact "$RUNNER_TEMP/aihr-focused"
-      - if: ${{ always() && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && (github.ref != 'refs/heads/codex/compiler-protected-tp1-ab-a139-20261109' || steps.protected-tp1-public.outputs.safe == 'true') }}
+        if: ${{ always() && github.ref == 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' }}
+        id: protected-db-client-public
+        run: node ../automation/.github/ci/focused-checks.mjs protected-db-client-public-artifact "$RUNNER_TEMP/aihr-focused"
+      - if: ${{ always() && (!inputs.architecture_browser_development_preflight && inputs.measured_browser_course == 'off') && (github.ref != 'refs/heads/codex/compiler-protected-db-client-ab-6c05-20261109' || steps.protected-db-client-public.outputs.safe == 'true') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ inputs.employee_ascii_qualification == 'node22' && 'employee-ascii-qualification-node22' || inputs.employee_ascii_qualification == 'node24' && 'employee-ascii-qualification-node24' || 'focused-development-evidence' }}

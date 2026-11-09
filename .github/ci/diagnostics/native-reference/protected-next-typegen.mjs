@@ -6,8 +6,8 @@ import {closeSync,constants,existsSync,fstatSync,lstatSync,openSync,readdirSync,
 import {createRequire} from 'node:module';
 import {dirname,join,relative} from 'node:path';
 
-export const protectedAppSource='a1397fa78ed35188849445962d35bdf48087b7a4';
-export const protectedAppTree='d0a14fd8d4341b86a2352a6697163adda632f74e';
+export const protectedAppSource='6c05efc24242b8a5f50933e7cbb6709a276b286d';
+export const protectedAppTree='0b01a61737fd330d4cbdbc219e4f50c5f2b209e9';
 export const protectedLock='0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd';
 const swcIntegrity='sha512-Istng1hMGp9TGO4lUqeKLd70MPN/OOkucVTP2Nmj+gLkwBgmPqUw8CJYBCC7nbl/B/23bBCcjCI5Hsh6hazC1A==';
 const depRoot='/project/node_modules';

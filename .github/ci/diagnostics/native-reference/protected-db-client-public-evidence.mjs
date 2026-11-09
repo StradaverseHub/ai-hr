@@ -4,10 +4,12 @@ import {createHash} from 'node:crypto';
 import {lstatSync,readFileSync,readdirSync,realpathSync,unlinkSync} from 'node:fs';
 import {join} from 'node:path';
 
-export const comparisonPhases=['original-list-only','producer','source-0','reference-0','reference-1','source-1','missing-reference'];
+export const comparisonPhases=['original-list-only','producer','source-0','reference-0','reference-1','source-1','source-negative','reference-negative','missing-reference'];
 const terminalPhase='owned-declarations-and-context';
-const targetRoute='app/payroll/transactions/tp1/[year]/page.tsx';
-const date=['lib/calendar-date.ts','lib/date-time-formatter.ts','lib/hr-date.ts'];
+const producerModules=['db/client.ts','db/admission.ts','db/background-read-admission.ts','db/tenant-write-admission.ts',
+ 'db/workload.ts','db/capacity.ts','core/audit-chain-arming.ts','core/entitlement-types.ts'];
+const realTests=['test/payroll-tax-basis-read.test.ts','test/personnel-import-browser-key.test.ts','test/runner-control.test.ts'];
+const negativeCodes=[2322,2322,2339,2322];
 const generatedNames=['next-env.d.ts','.next/types/cache-life.d.ts','.next/types/root-params.d.ts','.next/types/routes.d.ts','.next/types/validator.ts'];
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const count=(value,max=1e10)=>{assert(Number.isSafeInteger(value)&&value>=0&&value<=max);return value;};
@@ -21,7 +23,7 @@ const stop=value=>value==null?null:['phase-deadline','aborted','child-error','pi
 const status=value=>value==null?null:count(value,255);
 
 export function publicInnerRefusal(value){
- const phases=['identity','mounts','network','host-grant','protected-stock-next','protected-tp1-compare','protected-tp1-close-grant'];
+ const phases=['identity','mounts','network','host-grant','protected-stock-next','protected-db-client-compare','protected-db-client-close-grant'];
  return {phase:phases.includes(value?.phase)?value.phase:'other',code:safeProbeError(value?.code)};
 }
 export function publicTypegenExecution(value){
@@ -60,56 +62,58 @@ function privateFile(path){
  return {bytes,seal:{bytes:before.size,sha256:hash(bytes)}};
 }
 const phaseOrder=[...comparisonPhases,terminalPhase];
-function verifiedTp1Witness(report){
- const [inventory,producer,...rest]=report.phases;
- const [a0,b0,b1,a1,negative,context]=rest;
- assert.equal(inventory.edge.compilerSemanticsRequested,false);
- assert.equal(inventory.edge.from,'/project/.next/types/validator.ts');
- assert.equal(inventory.edge.to,'/project/'+targetRoute);
- const originalRoots=count(inventory.edge.configuredRoots,50000),originalLoaded=count(inventory.edge.loadedFiles,50000);
- assert(originalRoots>0&&originalLoaded>=originalRoots);
- assert.deepEqual(negative.diagnostics.map(row=>({file:row.file,line:row.line,code:row.code})),[
-  {file:'/project/'+targetRoute,line:2,code:6305}]);
- const expectedDeclaration='/work/tp1/producer-output/lib/hr-date.d.ts';
- assert.deepEqual(context.overlap.sourceOnly,[...date.map(name=>'/project/'+name)].sort());
- assert.deepEqual(context.overlap.referenceOnly,[expectedDeclaration]);
- assert.equal(context.sourceAlias.selectedDeclaration,'/project/lib/hr-date.ts');
- assert.equal(context.referenceAlias.selectedDeclaration,expectedDeclaration);
- assert.equal(context.sourceAlias.mode,99);assert.equal(context.referenceAlias.mode,99);
- assert.equal(context.context.generatedPageProps,'/project/.next/types/routes.d.ts');
- assert.deepEqual([context.context.navigation.target.packageId.name,context.context.navigation.target.packageId.version],
-  ['next','16.4.1']);
- assert.deepEqual([context.context.jsxRuntime.target.packageId.name,context.context.jsxRuntime.target.packageId.version],
-  ['@types/react','19.2.16']);
- const signature=context.context.signature;
- assert.deepEqual(Object.keys(signature).sort(),['params','result','searchParams']);
- for(const value of Object.values(signature))assert(typeof value==='string'&&value.length>0&&value.length<=1024);
- assert.equal(context.validation.externalSemanticRequested,false);
- const declarations=date.map(name=>{
-  const path='/work/tp1/producer-output/'+name.replace(/\.ts$/,'.d.ts');
-  assert(context.validation.owned.includes(path));
-  const outputs=producer.outputs.filter(row=>row.path===path);
-  assert.equal(outputs.length,1);
-  return {module:name,...seal(outputs[0])};
+function verifiedDbClientWitness(report){
+ const [inventory,producer,a0,b0,b1,a1,an,bn,missing,context]=report.phases;
+ assert(inventory.compilerSemanticsRequested===false&&inventory.validatorObserved===true);
+ const originalRoots=count(inventory.configuredRoots,50000),originalLoaded=count(inventory.loadedFiles,50000);
+ assert(originalRoots>9000&&originalLoaded>=originalRoots);
+ const tooling=count(inventory.secondToolingRoots,5000);
+ assert(tooling>2000&&tooling<3000);
+ assert.deepEqual(an.diagnostics,bn.diagnostics);
+ assert.deepEqual(an.diagnostics.map(row=>row.code),negativeCodes);
+ assert.deepEqual(context.matchedNegativeCodes,negativeCodes);
+ assert.deepEqual(missing.diagnostics.map(({file,line,code})=>({file,line,code})),[
+  {file:'/work/db-client/missing-db-client.ts',line:1,code:6305}]);
+ assert.deepEqual(context.sourceOnly,[...producerModules.map(name=>'/project/'+name)].sort());
+ assert.equal(context.sourceAlias,'/project/db/client.ts');
+ assert.equal(context.referenceAlias,'/work/db-client/producer-output/db/client.d.ts');
+ assert(context.referenceOnly.includes(context.referenceAlias));
+ assert(context.referenceOnly.every(path=>context.ownedDeclarations.includes(path)));
+ assert.equal(context.externalSemanticRequested,false);
+ assert.deepEqual(context.packageIds.map(row=>[row.specifier,row.mode,row.target.packageId.version]),[
+  ['drizzle-orm',99,'0.45.2'],['drizzle-orm/postgres-js',99,'0.45.2'],['drizzle-orm/pg-core',99,'0.45.2'],['postgres',99,'3.4.9']]);
+ assert(context.packageIds.slice(0,3).every(row=>row.target.packageId.peerDependencies==='+postgres@3.4.9'));
+ assert.equal(context.ambient.length,3);
+ assert(context.ambient.every(row=>row.module==='node:async_hooks'&&row.symbol==='AsyncLocalStorage'&&
+  row.providerSha256==='8c0bcd6c6b67b4b503c11e91a1fb91522ed585900eab2ab1f61bba7d7caa9d6f'));
+ assert(context.automaticTypes.some(row=>row.name==='node'&&row.target.packageId.version==='20.19.41'));
+ assert(['drizzle-orm/postgres-js','postgres'].every(name=>context.emittedPackageUses.some(row=>row.specifier===name)));
+ const declarations=producerModules.map(name=>{
+  const path='/work/db-client/producer-output/'+name.replace(/\.ts$/,'.d.ts');
+  assert(context.ownedDeclarations.includes(path));
+  const selected=producer.outputs.filter(row=>row.path===path);
+  assert.equal(selected.length,1);
+  return {module:name,...seal(selected[0])};
  });
- assert.equal(context.validation.owned.length,3);
- assert.equal(producer.outputs.length,7);
+ assert.equal(context.ownedDeclarations.length,producerModules.length);
+ assert.equal(producer.outputs.length,producerModules.length+1);
  const cells=[a0,b0,b1,a1].map(row=>{
   assert(Array.isArray(row.orderedFiles)&&row.orderedFiles.length===row.metrics.files);
   return {phase:row.phase,files:count(row.metrics.files,50000),
    compilerHeapUsedRoundedKB:count(row.metrics.compilerHeapUsedRoundedKB),orderedFilesSha256:hash(JSON.stringify(row.orderedFiles))};
  });
- return {originalInventory:{configuredRoots:originalRoots,loadedFiles:originalLoaded,validatorRootObserved:true,exactTp1EdgeObserved:true,
-   validatorSemanticsRequested:false},producer:{declarations,emittedJavaScriptCount:3,buildInfoCount:1},cells,
-  tp1:{route:targetRoute,generatedYearParamsBothDirections:true,optionalStringEmploymentId:true,
-   signatureSha256:hash(JSON.stringify(signature)),dateSourceModules:date,nativeReferenceModule:'lib/hr-date.d.ts',
-   commonInputCount:count(context.overlap.intersection,50000),bundlerResolutionMode:99,
-   nextVersion:'16.4.1',reactTypesVersion:'19.2.16',ownedDeclarationSemanticsPassed:true},
-  missingReference:{route:targetRoute,line:2,code:6305},pairedDateTs2345Run:false,wrongTp1ParamsNegativeRun:false};
+ return {originalInventory:{configuredRoots:originalRoots,loadedFiles:originalLoaded,validatorObserved:true,
+   validatorSemanticsRequested:false,secondToolingRoots:tooling,secondToolingSeal:digest(inventory.secondToolingSeal)},
+  producer:{declarations,emittedJavaScriptCount:0,buildInfoCount:1},cells,
+  dbClient:{tests:realTests,nativeReferenceModule:'db/client.d.ts',noSourceFallback:true,
+   ownedDeclarationSemanticsPassed:true,commonInputCount:count(context.commonInputCount,50000),
+   packageIdentitySha256:hash(JSON.stringify(context.packageIds)),nodeVersion:'20.19.41',
+   asyncHooksProviderSha256:context.ambient[0].providerSha256,producerAmbientImports:2,
+   pairedNegativeCodes:[...negativeCodes],missingReferenceCode:6305}};
 }
-export function publicTp1Comparison(directory,complete,source){
+export function publicDbClientComparison(directory,complete,source){
  const file=privateFile(join(directory,'report.json')),report=JSON.parse(file.bytes.toString('utf8'));
- assert.equal(report.kind,'PROTECTED_TP1_DATE_REFERENCE_COMPARISON');assert.equal(report.product,source);
+ assert.equal(report.kind,'PROTECTED_DB_CLIENT_REFERENCE_COMPARISON');assert.equal(report.product,source);
  for(const name of ['ordinaryCompilerQualified','releaseAuthorized','generatedValidatorSemanticRequested','applicationAmbientEquivalenceQualified',
   'originalApplicationFiveNegativesQualified'])assert.equal(report[name],false);
  assert(typeof report.complete==='boolean');
@@ -128,17 +132,17 @@ export function publicTp1Comparison(directory,complete,source){
    failureCode:safeProbeError(row.failure),stopCategory:stop(row.stopped),samples:count(row.samples,100000),peakRss:count(row.peakRss),
    elapsedMs:duration(row.elapsedMs),log};
  });
- const result={kind:'PROTECTED_TP1_PUBLIC_EVIDENCE',productSource:source,complete:complete&&report.complete,nativeReportTerminal:report.complete,completedPhases,
+ const result={kind:'PROTECTED_DB_CLIENT_PUBLIC_EVIDENCE',productSource:source,complete:complete&&report.complete,nativeReportTerminal:report.complete,completedPhases,
   attempts:observed,privateReport:file.seal,ordinaryCompilerQualified:false,releaseAuthorized:false,
   generatedValidatorSemanticRequested:false,applicationAmbientEquivalenceQualified:false,originalApplicationFiveNegativesQualified:false};
  if(complete){
   assert(report.complete);assert.deepEqual(completedPhases,phaseOrder);assert.equal(attempts.length,comparisonPhases.length);
   for(const attempt of observed){
    assert(attempt.signal===null&&attempt.failureCode===null&&attempt.stopCategory===null&&attempt.samples>0&&attempt.peakRss>0);
-   assert(attempt.phase==='missing-reference'?Number.isInteger(attempt.exit)&&attempt.exit>0:attempt.exit===0);
+   assert(['source-negative','reference-negative','missing-reference'].includes(attempt.phase)?Number.isInteger(attempt.exit)&&attempt.exit>0:attempt.exit===0);
   }
   result.generated=publicGeneratedSeals(report.generated);
-  result.witness=verifiedTp1Witness(report);
+  result.witness=verifiedDbClientWitness(report);
  }else{
   const last=observed.at(-1);
   const category=last?.stopCategory==='phase-deadline'?'compiler-timeout':last?.signal?'compiler-signalled':
@@ -164,7 +168,7 @@ export function closeProtectedArtifactTree(directory){
  }
  const files=['compiler-reference-preflight.json','compiler-reference-clock.json','compiler-reference-clock-ack.json',
   'compiler-supervisor.jsonl','focused.json','focused-partial.json','compiler-settlement.json','protected-docker-settlement.json'];
- const stages={'compiler-protected-docker':'PROTECTED_NEXT_TYPEGEN_A139','compiler-protected-tp1':'PROTECTED_TP1_DATE_COMPARISON_A139'};
+ const stages={'compiler-protected-docker':'PROTECTED_NEXT_TYPEGEN_6C05','compiler-protected-db-client':'PROTECTED_DB_CLIENT_COMPARISON_6C05'};
  const reportFields=new Set(['kind','source','controller','run','attempt','role','productSource','productTree','transportQualified',
   'productInputsMounted','stockNextInvoked','strictCompilerInvoked','ordinaryCompilerQualified','releaseAuthorized','productProjection',
   'sameRunGeneratedSeals','sameRunPrivateHandoffConsumed','createDiagnostic','innerRefusal','observed','comparison','typegenExecution',
