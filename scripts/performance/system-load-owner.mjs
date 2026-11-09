@@ -431,8 +431,12 @@ async function prepareDatabaseLockScope(){
  const labelsByKey=new Map(lockKeys.map(row=>[row.key,row.label])),lockLabels=new Map(hashedLocks.map(row=>[row.classid+':'+row.objid+':1',labelsByKey.get(row.k)]));
  // Audit's native key uses hashtext (int4), unlike the other bigint advisory namespaces.
  for(const [index,tenant]of fixture.tenants.entries()){
-  const [row]=await db`select ((hashtext(${'audit-chain:'+tenant.tenantId})::bigint>>32)&4294967295)::text as classid,(hashtext(${'audit-chain:'+tenant.tenantId})::bigint&4294967295)::text as objid`;
+  const [row]=await db`select ((hashtext(${'audit-chain:'+tenant.tenantId})::bigint>>32)&4294967295)::text as classid,
+    (hashtext(${'audit-chain:'+tenant.tenantId})::bigint&4294967295)::text as objid,
+    (hashtext('ai-control')::bigint&4294967295)::text as ai_classid,
+    (hashtext(${tenant.tenantId})::bigint&4294967295)::text as ai_objid`;
   lockLabels.set(row.classid+':'+row.objid+':1','audit-chain:fixture-tenant-'+index);
+  lockLabels.set(row.ai_classid+':'+row.ai_objid+':2','ai-control:fixture-tenant-'+index);
  }
  const accessLocks=[...lockLabels].filter(([,label])=>label.startsWith('access-configuration:')).map(([key])=>key);
  return {lockLabels,accessLocks};

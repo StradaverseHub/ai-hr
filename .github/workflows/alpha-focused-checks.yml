@@ -1148,6 +1148,33 @@ jobs:
                           if event and fingerprint:
                               browser_signals.append({'kind': event, 'role': choice(row.get('role'), roles),
                                   **route(row.get('path')), 'fingerprint': fingerprint})
+                  wait_state, wait_samples, _ = json_member(directory, 'database-waits.json',
+                      lambda rows: count(rows) is not None, value_type=list)
+                  blocking_signals = []
+                  families = {'access-configuration', 'ai-control', 'audit-chain', 'employment',
+                              'payroll-history', 'pay-component-catalog', 'unclassified'}
+                  if wait_state == 'observed':
+                      for item in wait_samples:
+                          row = record(item)
+                          if row.get('phase') != 'preflight':
+                              continue
+                          app = record(row.get('appConnections'))
+                          waiting = number(app.get('waitingOnLock'), 1024)
+                          advisory = number(app.get('sampledAdvisoryWaiters'), 1024)
+                          if waiting is None or advisory is None or not max(waiting, advisory):
+                              continue
+                          signal = {'waitingAppBackends': waiting, 'sampledAdvisoryAppBackends': advisory}
+                          waiters = row.get('advisoryWaiters')
+                          if type(waiters) is list and len(waiters) <= 40:
+                              names = set()
+                              for item in waiters:
+                                  name = record(item).get('namespace')
+                                  if type(name) is str:
+                                      names.add(choice(name.partition(':')[0], families) or 'unclassified')
+                              signal['observedAdvisoryFamilies'] = sorted(names)
+                          blocking_signals.append(signal)
+                          if len(blocking_signals) == 6:
+                              break
                   receipt = {
                       'kind': 'INCOMPLETE_DEVELOPMENT_BROWSER_FAILURE', 'version': 1, 'complete': False, 'releaseEligible': False,
                       'courseOutcome': choice(os.environ['COURSE_OUTCOME'], {'success', 'failure', 'cancelled', 'skipped'}),
@@ -1174,6 +1201,7 @@ jobs:
                           'sourceFile': stage_file, 'sourceLine': stage_line if stage_file else None,
                           'sourceColumn': stage_column if stage_file else None} if stage_name else None,
                       'browserErrorSignals': browser_signals,
+                      'sampledBlockingSignals': {'evidence': wait_state, 'samples': blocking_signals},
                       'milestones': {'workerReadinessRows': count(readiness), 'readyWorkers': ready,
                                      'browserVersionObserved': True if type(driver.get('browserVersion')) is str and driver['browserVersion'] else None,
                                      'browserAcquisition': choice(record(shutdown.get('acquisition')).get('browser'), {'absent', 'acquired', 'failed'}),
