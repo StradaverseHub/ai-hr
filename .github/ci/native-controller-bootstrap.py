@@ -403,6 +403,14 @@ BROWSER_STAGE_MEMBERS = tuple(sorted((
     '.github/ci/native-workload-browser-synthetic-stage-cleanup.py',
     '.github/ci/native-workload-browser-synthetic-stage-owner.py',
 )))
+MANAGER_INPUT_BRANCH = 'codex/native-stock-manager-inputs-20261109'
+MANAGER_INPUT_SOURCE = '.github/ci/native-workload-browser-manager-input-course.py'
+MANAGER_INPUT_MODULES = (MANAGER_INPUT_SOURCE, '.github/ci/native-workload-browser-manager-admission.py',
+                         '.github/ci/native-workload-browser-launch-view.py', '.github/ci/native-workload-browser-host.py',
+                         'deploy/admission/next_profile.py')
+MANAGER_INPUT_MEMBERS = tuple(sorted((*MANAGER_INPUT_MODULES, '.github/workflows/alpha-staging.yml')))
+MANAGER_INPUT_INACTIVE = ('managerDsoLoaded', 'busConnected', 'rolesStarted', 'browserStarted', 'applicationBuilt',
+                          'databaseStarted', 'nativeWorkloadQualified', 'releaseAuthorized')
 TOOL_PRE_ROOT_CHECKPOINTS = (
     'runner-identity', 'runner-context', 'event-file', 'event-json', 'dispatch-contract',
     'controller-location', 'controller-directory', 'controller-script', 'controller-git-config',
@@ -507,6 +515,29 @@ def browser_stage_intent(environment, event):
     return run, workspace
 
 
+def manager_input_intent(environment, event):
+    run, workspace = context(environment)
+    ref = 'refs/heads/' + MANAGER_INPUT_BRANCH
+    sha = environment['GITHUB_SHA']
+    need(environment.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
+         and environment.get('GITHUB_REF') == ref and environment.get('GITHUB_REF_NAME') == MANAGER_INPUT_BRANCH
+         and environment.get('GITHUB_REF_TYPE') == 'branch'
+         and environment['GITHUB_WORKFLOW_SHA'] == environment['AIHR_CI_HEAD'] == sha
+         and environment.get('GITHUB_WORKFLOW_REF') == 'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@' + ref,
+         'Exact manager input self-source workflow required')
+    need(type(event) is dict and type(event.get('repository')) is dict
+         and event['repository'].get('id') == 1333414856
+         and event['repository'].get('full_name') == 'StradaverseHub/ai-hr'
+         and event.get('ref') in (ref, MANAGER_INPUT_BRANCH), 'Original manager input event differs')
+    expected = {'candidate_ref': MANAGER_INPUT_BRANCH, 'expected_sha': sha, 'test_parallelism': '4',
+                'commission_singleton_units': '', 'build_only': 'false', 'diagnostics_only': 'true',
+                'controller_only': 'false', 'native_tool_only': 'false', 'native_browser_stage_only': 'true'}
+    inputs = event.get('inputs')
+    need(type(inputs) is dict and {'commission_singleton_units': '', **inputs} == expected,
+         'Exclusive fixed manager input dispatch required')
+    return run, workspace
+
+
 def _tool_event(environment, path, uid, expected=None):
     path = pathlib.Path(path)
     runner_temp = pathlib.Path(environment['RUNNER_TEMP'])
@@ -529,9 +560,10 @@ def _tool_row(path, raw, info):
     return {'path': path, 'mode': '100644', 'size': len(raw), 'gitBlob': _tool_blob(raw), 'sha256': digest}
 
 
-def _tool_handoff(receiver, request, *, browser_stage=False):
+def _tool_handoff(receiver, request, *, browser_stage=False, manager_input=False):
     import fcntl
 
+    need(not (browser_stage and manager_input), 'Exclusive sealed receiver required')
     encoded = canonical(request)
     need(len(encoded) <= TOOL_REQUEST_MAX, 'Fixed TOOL bootstrap request exceeds bound')
     fd = os.memfd_create('aihr-tool-bootstrap', os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
@@ -547,7 +579,8 @@ def _tool_handoff(receiver, request, *, browser_stage=False):
     finally:
         if fd != 0:
             os.close(fd)
-    selector = '--seal-browser-stage-only' if browser_stage else '--seal-tool-only'
+    selector = ('--seal-manager-input-only' if manager_input else
+                '--seal-browser-stage-only' if browser_stage else '--seal-tool-only')
     command = ['/usr/bin/sudo', '-n', '/usr/bin/python3', '-I', '-B', '-c', receiver.decode(), selector]
     os.execve(command[0], command, SAFE)
 
@@ -839,7 +872,8 @@ def _validate_browser_stage_capture(raw, status, environment):
              'Returned browser stage failure differs')
 
 
-def prepare_tool(*, browser_stage=False):
+def prepare_tool(*, browser_stage=False, manager_input=False):
+    need(not (browser_stage and manager_input), 'Exclusive native diagnostic required')
     checkpoint = 'runner-identity'
     try:
         uid, gid = os.geteuid(), os.getegid()
@@ -855,7 +889,9 @@ def prepare_tool(*, browser_stage=False):
         event_payload = json.loads(event)
         checkpoint = 'dispatch-contract'
         try:
-            if browser_stage:
+            if manager_input:
+                manager_input_intent(environment, event_payload)
+            elif browser_stage:
                 browser_stage_intent(environment, event_payload)
             else:
                 tool_intent(environment, event_payload)
@@ -885,7 +921,8 @@ def prepare_tool(*, browser_stage=False):
                  and git(controller, ['show', sha + ':' + SCRIPT]) == receiver,
                  'Exact committed TOOL bootstrap required')
             checkpoint = 'capsule-members'
-            paths = BROWSER_STAGE_MEMBERS if browser_stage else TOOL_MEMBERS
+            paths = (MANAGER_INPUT_MEMBERS if manager_input else
+                     BROWSER_STAGE_MEMBERS if browser_stage else TOOL_MEMBERS)
             records = git(controller, ['ls-tree', '-rz', sha, '--', *paths]).split(b'\0')
             need(records[-1] == b'' and len(records) == len(paths) + 1, 'Fixed TOOL Git inventory differs')
             rows = []
@@ -909,13 +946,19 @@ def prepare_tool(*, browser_stage=False):
             request['node'] = node
             checkpoint = 'sealed-handoff'
             _tool_handoff(receiver, request, browser_stage=True)
+        elif manager_input:
+            _tool_handoff(receiver, request, manager_input=True)
         else:
             _tool_handoff(receiver, request)
     except Exception:
+        if manager_input:
+            return _manager_input_refusal('manager-input-pre-root-refused', checkpoint)
         if browser_stage:
             return _browser_stage_refusal('browser-stage-pre-root-refused', checkpoint)
         return _tool_pre_root_refusal(checkpoint)
     # A successful handoff replaces this process. Fallthrough is a refusal.
+    if manager_input:
+        return _manager_input_refusal('manager-input-pre-root-refused', 'unknown')
     if browser_stage:
         return _browser_stage_refusal('browser-stage-pre-root-refused', 'unknown')
     return _tool_pre_root_refusal('unknown')
@@ -995,6 +1038,110 @@ def seal_browser_stage(request):
     return report
 
 
+def _manager_input_refusal(reason, checkpoint=None):
+    report = {'kind': 'NATIVE_STOCK_MANAGER_INPUTS', 'complete': False, 'failure': reason,
+              **dict.fromkeys(MANAGER_INPUT_INACTIVE, False)}
+    if checkpoint is not None:
+        need(checkpoint in TOOL_PRE_ROOT_CHECKPOINTS, 'Unknown manager input pre-root checkpoint')
+        report['preRootCheckpoint'] = checkpoint
+    return report
+
+
+def _validate_manager_input_capture(raw, status, environment):
+    need(status in ('0', '1') and 0 < len(raw) <= 16384, 'Bounded manager input capture required')
+    report = json.loads(raw)
+    need(type(report) is dict and raw == canonical(report) and report.get('kind') == 'NATIVE_STOCK_MANAGER_INPUTS'
+         and report.get('complete') is (status == '0')
+         and all(report.get(key) is False for key in MANAGER_INPUT_INACTIVE), 'Manager input capture differs')
+    failure = report.get('failure')
+    if failure in ('manager-input-pre-root-refused', 'manager-input-bootstrap-refused'):
+        need(status == '1' and report == _manager_input_refusal(failure, report.get('preRootCheckpoint'))
+             and ('preRootCheckpoint' in report) == (failure == 'manager-input-pre-root-refused'),
+             'Manager input bootstrap refusal differs')
+        return
+    run, _ = context(environment)
+    required = ('kind', 'complete', 'source', 'controller', 'runId', 'attempt', 'job', 'eventSha256',
+                'sourceCapsuleSha256', *MANAGER_INPUT_INACTIVE)
+    _tool_capture_keys(report, (*required, 'observation' if status == '0' else 'failure'))
+    need(report['source'] == report['controller'] == environment['GITHUB_SHA']
+         and report['runId'] == run and type(report['attempt']) is int and report['attempt'] == 1
+         and report['job'] == 'native-test'
+         and all(_tool_capture_hex(report[key], 64) for key in ('eventSha256', 'sourceCapsuleSha256')),
+         'Manager input capture identity differs')
+    if status == '1':
+        _tool_capture_keys(failure, ('phase', 'reason'))
+        need(failure['phase'] in ('manager-inputs', 'library-bytes', 'listener-ownership', 'owner-settlement')
+             and failure['reason'] in ('owned-observation-refused', 'listener-table', 'listener-not-unique',
+             'listener-fd-census', 'listener-broker-cgroup', 'listener-broker-image', 'listener-broker-credentials',
+             'listener-stock-holder-missing', 'listener-changed', 'listener-native-mount', 'library-extent',
+             'owner-deadline'), 'Manager input failure differs')
+        return
+    observation = report['observation']
+    _tool_capture_keys(observation, ('pid1AndBothPathViewsMatched', 'elapsedMs', 'library', 'listener'))
+    need(observation['pid1AndBothPathViewsMatched'] is True and _tool_capture_int(observation['elapsedMs'], 0, 31999),
+         'Manager input PID 1 or clock proof differs')
+    listener, library = observation['listener'], observation['library']
+    _tool_capture_keys(listener, ('stockFdHolders', 'cgroupAndImageMatched'))
+    need(listener['cgroupAndImageMatched'] is True
+         and listener['stockFdHolders'] in (['pid1'], ['dbus-daemon'], ['pid1', 'dbus-daemon']),
+         'Manager input listener evidence differs')
+    _tool_capture_keys(library, ('bytes', 'sha256', 'soname', 'needed', 'selectedTags', 'flags', 'flags1'))
+    tags = ('DT_RPATH', 'DT_RUNPATH', 'DT_AUDIT', 'DT_DEPAUDIT', 'DT_FILTER', 'DT_AUXILIARY')
+    observed_tags = library['selectedTags']
+    need(_tool_capture_int(library['bytes'], 64, 4 * 1024**2) and _tool_capture_hex(library['sha256'], 64)
+         and library['soname'] == 'libsystemd.so.0' and type(library['needed']) is list and 1 <= len(library['needed']) <= 64
+         and all(type(item) is str and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+-]{0,127}', item) for item in library['needed'])
+         and type(observed_tags) is list and observed_tags == [tag for tag in tags if tag in observed_tags]
+         and all(library[key] is None or _tool_capture_int(library[key], 0, 2**64 - 1) for key in ('flags', 'flags1')),
+         'Manager input library evidence differs')
+
+
+def seal_manager_inputs(request):
+    from types import ModuleType
+
+    need(sys.platform == 'linux' and os.uname().machine == 'x86_64'
+         and os.getresuid() == os.getresgid() == (0, 0, 0), 'Root Linux manager input receiver required')
+    need(type(request) is dict and set(request) == {'environment', 'runnerUid', 'runnerGid', 'rows', 'event'},
+         'Closed manager input bootstrap request required')
+    environment, uid, gid = request['environment'], request['runnerUid'], request['runnerGid']
+    _, workspace = context(environment)
+    need(type(uid) is int and type(gid) is int and uid > 0 and gid > 0
+         and os.environ.get('SUDO_UID') == str(uid) and os.environ.get('SUDO_GID') == str(gid)
+         and pwd.getpwuid(uid).pw_gid == gid, 'Actual manager input issuer required')
+    event_row = request['event']
+    need(type(event_row) is dict and set(event_row) == {'path', 'size', 'sha256'}, 'Closed manager input event required')
+    event = _tool_event(environment, event_row['path'], uid, event_row)
+    run, _ = manager_input_intent(environment, json.loads(event))
+    with directory(pathlib.Path('/usr/lib'), root_owned=True) as system:
+        release, _ = read(system, 'os-release', 65536)
+        need(b'ID=ubuntu' in release.splitlines() and b'VERSION_ID="24.04"' in release.splitlines(),
+             'Exact Ubuntu 24.04 manager input context required')
+    rows = request['rows']
+    need(type(rows) is list and len(rows) == len(MANAGER_INPUT_MEMBERS), 'Fixed manager input capsule required')
+    members = {}
+    with directory(workspace / 'automation') as root:
+        for path, row in zip(MANAGER_INPUT_MEMBERS, rows, strict=True):
+            raw, info = read(root, path, TOOL_MEMBER_MAX)
+            need(row == _tool_row(path, raw, info), 'Manager input capsule source bytes differ')
+            members[path] = raw
+    os.environ.clear()
+    os.environ.update(SAFE)
+    modules = []
+    for index, path in enumerate(MANAGER_INPUT_MODULES):
+        module = ModuleType('aihr_fixed_manager_input_' + str(index))
+        module.__file__ = path
+        exec(compile(members[path], path, 'exec', dont_inherit=True), module.__dict__)
+        modules.append(module)
+    owner, *inputs = modules
+    result = owner.observe_manager_inputs(*inputs)
+    report = {'kind': 'NATIVE_STOCK_MANAGER_INPUTS', 'source': environment['GITHUB_SHA'],
+              'controller': environment['GITHUB_SHA'], 'runId': run, 'attempt': 1, 'job': 'native-test',
+              'eventSha256': event_row['sha256'], 'sourceCapsuleSha256': hashlib.sha256(canonical(rows)).hexdigest(),
+              'complete': 'observation' in result, **dict.fromkeys(MANAGER_INPUT_INACTIVE, False), **result}
+    _validate_manager_input_capture(canonical(report), '0' if report['complete'] else '1', environment)
+    return report
+
+
 if __name__ == '__main__':
     try:
         if sys.argv[1:] == ['--seal']:
@@ -1007,6 +1154,27 @@ if __name__ == '__main__':
         elif sys.argv[1:] == ['--browser-stage-only']:
             _write_tool_receipt(prepare_tool(browser_stage=True))
             sys.exit(1)
+        elif sys.argv[1:] == ['--manager-input-only']:
+            _write_tool_receipt(prepare_tool(manager_input=True))
+            sys.exit(1)
+        elif len(sys.argv) == 3 and sys.argv[1] == '--check-manager-input-capture':
+            with directory(pathlib.Path(os.environ['RUNNER_TEMP']) / 'aihr-native-manager-inputs') as folder:
+                raw, info = read(folder, 'native-stock-manager-inputs.json', 16384)
+            need(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o600, 'Manager input capture owner differs')
+            environment = {key: os.environ[key] for key in ENVIRONMENT if key in os.environ}
+            _validate_manager_input_capture(raw, sys.argv[2], environment)
+            observed = json.loads(raw)
+            if 'eventSha256' in observed:
+                event = _tool_event(environment, os.environ['GITHUB_EVENT_PATH'], os.getuid())
+                _, workspace = manager_input_intent(environment, json.loads(event))
+                need(observed['eventSha256'] == hashlib.sha256(event).hexdigest(), 'Manager input event changed')
+                with directory(workspace / 'automation') as root:
+                    rows = []
+                    for path in MANAGER_INPUT_MEMBERS:
+                        data, meta = read(root, path, TOOL_MEMBER_MAX)
+                        rows.append(_tool_row(path, data, meta))
+                need(observed['sourceCapsuleSha256'] == hashlib.sha256(canonical(rows)).hexdigest(),
+                     'Manager input source capsule changed')
         elif len(sys.argv) == 3 and sys.argv[1] == '--check-tool-capture':
             with directory(pathlib.Path(os.environ['RUNNER_TEMP']) / 'aihr-native-tool-only') as folder:
                 raw, info = read(folder, 'native-workload-tool-only.json', 65536)
@@ -1022,6 +1190,13 @@ if __name__ == '__main__':
                 report = seal_tool(_tool_request(0))
             except BaseException:
                 report = _tool_refusal('tool-bootstrap-refused')
+            _write_tool_receipt(report)
+            sys.exit(0 if report['complete'] else 1)
+        elif sys.argv[1:] == ['--seal-manager-input-only']:
+            try:
+                report = seal_manager_inputs(_tool_request(0))
+            except BaseException:
+                report = _manager_input_refusal('manager-input-bootstrap-refused')
             _write_tool_receipt(report)
             sys.exit(0 if report['complete'] else 1)
         elif sys.argv[1:] == ['--seal-browser-stage-only']:

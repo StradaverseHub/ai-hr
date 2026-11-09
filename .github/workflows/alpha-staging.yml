@@ -1,5 +1,5 @@
 name: alpha-staging-ci
-run-name: ${{ inputs.native_browser_stage_only && 'Protected native browser stage only' || inputs.native_tool_only && 'Protected native TOOL only' || inputs.commission_singleton_units && 'Singleton commissioning only' || inputs.build_only && 'Canonical build only' || inputs.controller_only && 'CI controller checks' || inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
+run-name: ${{ inputs.native_browser_stage_only && github.ref_name == 'codex/native-stock-manager-inputs-20261109' && 'Protected native manager inputs only' || inputs.native_browser_stage_only && 'Protected native browser stage only' || inputs.native_tool_only && 'Protected native TOOL only' || inputs.commission_singleton_units && 'Singleton commissioning only' || inputs.build_only && 'Canonical build only' || inputs.controller_only && 'CI controller checks' || inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
 on:
   workflow_dispatch:
     inputs:
@@ -43,7 +43,7 @@ on:
         default: false
         type: boolean
       native_browser_stage_only:
-        description: Protected browser source staging and disposal only
+        description: Protected browser staging or fixed manager input diagnostic, selected by exact commissioning branch
         required: false
         default: false
         type: boolean
@@ -123,7 +123,7 @@ jobs:
           STAGE_PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
         run: |
           [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_RUN_ATTEMPT" == 1 ]]
-          [[ "$GITHUB_REF" == refs/heads/codex/native-synthetic-browser-stage-course-20261109 ]]
+          [[ "$GITHUB_REF" == refs/heads/codex/native-synthetic-browser-stage-course-20261109 || "$GITHUB_REF" == refs/heads/codex/native-stock-manager-inputs-20261109 ]]
           [[ "$STAGE_CANDIDATE_REF" == "${GITHUB_REF#refs/heads/}" ]]
           [[ "$STAGE_EXPECTED_SHA" == "$STAGE_CONTROL_SHA" && "$STAGE_EXPECTED_SHA" == "$GITHUB_SHA" ]]
           [[ "$STAGE_DIAGNOSTICS_ONLY" == true && "$STAGE_CONTROLLER_ONLY" == false && "$STAGE_BUILD_ONLY" == false && "$STAGE_TOOL_ONLY" == false ]]
@@ -168,13 +168,18 @@ jobs:
           /usr/bin/python3 -I -B .github/ci/native-workload-browser-tool-installation.test.py -v
           /usr/bin/python3 -I -B .github/ci/native-workload-browser-tool-course.test.py -v
       - name: Verify fixed browser stage source models before acquisition
-        if: ${{ inputs.native_browser_stage_only }}
+        if: ${{ inputs.native_browser_stage_only && github.ref_name == 'codex/native-synthetic-browser-stage-course-20261109' }}
         run: |
           /usr/bin/python3 -I -B .github/ci/native-workload-browser-launch-view.test.py -v
           /usr/bin/python3 -I -B .github/ci/native-workload-browser-synthetic-stage.test.py -v
           /usr/bin/python3 -I -B .github/ci/native-workload-browser-synthetic-stage-cleanup.test.py -v
           /usr/bin/python3 -I -B .github/ci/native-workload-browser-synthetic-stage-owner.test.py -v
           /usr/bin/python3 -I -B .github/ci/native-workload-browser-synthetic-stage-course.test.py -v
+      - name: Verify fixed manager input source models
+        if: ${{ inputs.native_browser_stage_only && github.ref_name == 'codex/native-stock-manager-inputs-20261109' }}
+        run: |
+          /usr/bin/python3 -I -B -X pycache_prefix=/dev/null .github/ci/native-workload-browser-manager-admission.test.py -v
+          /usr/bin/python3 -I -B -X pycache_prefix=/dev/null .github/ci/native-workload-browser-manager-input-course.test.py -v
       - name: Resolve frozen candidate
         id: candidate
         env:
@@ -659,7 +664,7 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(inputs.test_parallelism || '48') }}
-      matrix: ${{ fromJSON(inputs.native_browser_stage_only && '{"unit":["browser-stage-only"]}' || inputs.native_tool_only && '{"unit":["tool-only"]}' || needs.plan.outputs.native_matrix) }}
+      matrix: ${{ fromJSON(inputs.native_browser_stage_only && github.ref_name == 'codex/native-stock-manager-inputs-20261109' && '{"unit":["manager-input-only"]}' || inputs.native_browser_stage_only && '{"unit":["browser-stage-only"]}' || inputs.native_tool_only && '{"unit":["tool-only"]}' || needs.plan.outputs.native_matrix) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -692,6 +697,34 @@ jobs:
         with:
           name: native-workload-tool-only
           path: ${{ runner.temp }}/aihr-native-tool-only/native-workload-tool-only.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Observe fixed native stock manager inputs
+        id: manager_inputs
+        if: ${{ inputs.native_browser_stage_only && matrix.unit == 'manager-input-only' }}
+        shell: bash
+        working-directory: automation
+        env:
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+          LD_AUDIT: ''
+          GLIBC_TUNABLES: ''
+          BASH_ENV: /dev/null
+          ENV: /dev/null
+        run: |
+          umask 077
+          set -o noclobber
+          mkdir -m 700 "$RUNNER_TEMP/aihr-native-manager-inputs"
+          status=0
+          /usr/bin/python3 -I -B -X pycache_prefix=/dev/null .github/ci/native-controller-bootstrap.py --manager-input-only > "$RUNNER_TEMP/aihr-native-manager-inputs/native-stock-manager-inputs.json" || status=$?
+          /usr/bin/python3 -I -B -X pycache_prefix=/dev/null .github/ci/native-controller-bootstrap.py --check-manager-input-capture "$status"
+          echo 'receipt=true' >> "$GITHUB_OUTPUT"
+          exit "$status"
+      - if: ${{ always() && inputs.native_browser_stage_only && steps.manager_inputs.outputs.receipt == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-stock-manager-inputs
+          path: ${{ runner.temp }}/aihr-native-manager-inputs/native-stock-manager-inputs.json
           if-no-files-found: error
           retention-days: 14
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38

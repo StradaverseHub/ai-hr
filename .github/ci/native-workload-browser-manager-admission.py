@@ -7,6 +7,7 @@ clock. File observation does not admit a DSO load or authenticate a bus peer.
 import hashlib
 import math
 import os
+import re
 import select
 import stat
 import struct
@@ -21,6 +22,19 @@ _LIBRARY = ('usr', 'lib', 'x86_64-linux-gnu', 'libsystemd.so.0.38.0')
 _SOCKET = ('run', 'dbus', 'system_bus_socket')
 _NAMESPACES = ('pid', 'user', 'net', 'time', 'mnt')
 _LIBRARY_LIMIT = 4 * 1024**2
+_DYNAMIC_LIMIT = 64 * 1024
+_STRING_LIMIT = 256 * 1024
+_ADDRESS_LIMIT = 1 << 64
+_AMD64_BASE_PAGE = 4096
+_PROGRAM = struct.Struct('<IIQQQQQQ')
+_DYNAMIC = struct.Struct('<QQ')
+_SONAME = 'libsystemd.so.0'
+_LINK_NAME = re.compile(rb'[A-Za-z0-9][A-Za-z0-9._+-]{0,127}')
+_SELECTED_LINK_TAGS = (
+    (15, 'DT_RPATH'), (29, 'DT_RUNPATH'), (0x6ffffefc, 'DT_AUDIT'),
+    (0x6ffffefb, 'DT_DEPAUDIT'), (0x7fffffff, 'DT_FILTER'), (0x7ffffffd, 'DT_AUXILIARY'),
+)
+_STRTAB, _STRSZ, _SONAME_TAG, _FLAGS, _FLAGS_1 = 5, 10, 14, 30, 0x6ffffffb
 _SECOND = 1_000_000_000
 _FRONTIERS = (16, 32, 42, 56, 60, 75)
 
@@ -33,6 +47,16 @@ class ManagerInputObservation(NamedTuple):
     library_sha256: str
     socket_birth: tuple[int, int]
     check_pid1: Callable[[int], int]
+
+
+class _ManagerLibraryLinkInputs(NamedTuple):
+    size: int
+    sha256: str
+    soname: str
+    needed: tuple[str, ...]
+    selected_tags: tuple[str, ...]
+    flags: int | None
+    flags_1: int | None
 
 
 class _Target(NamedTuple):
@@ -97,16 +121,95 @@ def _check_target(launch_view, mounts, target, deadline):
              'manager-admission-target-changed')
 
 
-def _hash_library(launch_view, mounts, library, deadline):
-    size = library.state[5]
-    launch_view._check_clock(deadline)
-    header = os.pread(library.fd, 64, 0)
+def _library_program_table(header, size):
     _require(len(header) == 64 and header.startswith(b'\x7fELF\x02\x01\x01')
              and struct.unpack_from('<HHI', header, 16) == (3, 62, 1), 'manager-admission-library-elf')
     phoff, = struct.unpack_from('<Q', header, 32)
     ehsize, phentsize, phnum = struct.unpack_from('<HHH', header, 52)
     _require(ehsize == 64 and phentsize == 56 and 1 <= phnum <= 128
              and 64 <= phoff <= size - phentsize * phnum, 'manager-admission-library-elf')
+    return phoff, phnum
+
+
+def _library_file_offset(loads, address, size):
+    end = address + size
+    reason = 'manager-admission-library-link-mapping'
+    _require(end < _ADDRESS_LIMIT, reason)
+    first_page, last_page = address // _AMD64_BASE_PAGE, (end - 1) // _AMD64_BASE_PAGE
+    # A disjoint load's mapped page or BSS can still cover the inspected bytes.
+    # A zero-sized load with an unaligned start can still round to one page.
+    owners = [(offset, start, file_size) for offset, start, file_size, memory_size in loads
+              if (memory_size or start % _AMD64_BASE_PAGE) and start // _AMD64_BASE_PAGE <= last_page
+              and first_page <= (start + memory_size - 1) // _AMD64_BASE_PAGE]
+    _require(len(owners) == 1, reason)
+    offset, start, file_size = owners[0]
+    _require(start <= address and end <= start + file_size, reason)
+    return offset + address - start
+
+
+def _library_link_name(table, offset):
+    reason = 'manager-admission-library-link-name'
+    _require(offset < len(table), reason)
+    end = table.find(b'\0', offset, offset + 129)
+    _require(end >= 0 and _LINK_NAME.fullmatch(table[offset:end]) is not None, reason)
+    return table[offset:end].decode('ascii')
+
+
+def _describe_fixed_library_link_inputs(raw):
+    """Describe one bounded byte image. The caller owns its provenance and any load."""
+    _require(type(raw) is bytes and len(raw) <= _LIBRARY_LIMIT, 'manager-admission-library-link-bytes')
+    phoff, phnum = _library_program_table(raw[:64], len(raw))
+    loads, dynamics = [], []
+    for index in range(phnum):
+        program = _PROGRAM.unpack_from(raw, phoff + index * _PROGRAM.size)
+        kind, _, offset, address, _, file_size, memory_size, _ = program
+        _require(kind != 3, 'manager-admission-library-link-interpreter')  # PT_INTERP
+        if kind in (1, 2):  # PT_LOAD, PT_DYNAMIC
+            _require(offset + file_size <= len(raw) and file_size <= memory_size
+                     and address + memory_size < _ADDRESS_LIMIT, 'manager-admission-library-link-extent')
+            if kind == 1:
+                _require(offset % _AMD64_BASE_PAGE == address % _AMD64_BASE_PAGE,
+                         'manager-admission-library-link-mapping')
+            segment = (offset, address, file_size, memory_size)
+            (loads if kind == 1 else dynamics).append(segment)
+    reason = 'manager-admission-library-link-dynamic'
+    _require(len(dynamics) == 1, reason)
+    offset, address, size, _ = dynamics[0]
+    _require(0 < size <= _DYNAMIC_LIMIT and size % _DYNAMIC.size == 0, reason)
+    _require(_library_file_offset(loads, address, size) == offset, 'manager-admission-library-link-mapping')
+
+    seen, singletons, needed = set(), {}, []
+    for tag, value in _DYNAMIC.iter_unpack(raw[offset:offset + size]):
+        if tag == 0:  # DT_NULL
+            break
+        if tag in (_STRTAB, _STRSZ, _SONAME_TAG, _FLAGS, _FLAGS_1):
+            _require(tag not in singletons, reason)
+            singletons[tag] = value
+        if tag == 1:  # DT_NEEDED
+            _require(len(needed) < 64, reason)
+            needed.append(value)
+        seen.add(tag)
+    else:
+        raise ValueError(reason)
+
+    _require(needed and {_STRTAB, _STRSZ, _SONAME_TAG} <= singletons.keys(), reason)
+    table_size = singletons[_STRSZ]
+    _require(0 < table_size <= _STRING_LIMIT, 'manager-admission-library-link-strings')
+    table_offset = _library_file_offset(loads, singletons[_STRTAB], table_size)
+    table = raw[table_offset:table_offset + table_size]
+    soname = _library_link_name(table, singletons[_SONAME_TAG])
+    _require(soname == _SONAME, 'manager-admission-library-link-soname')
+    return _ManagerLibraryLinkInputs(len(raw), hashlib.sha256(raw).hexdigest(), soname,
+                                     tuple(_library_link_name(table, value) for value in needed),
+                                     tuple(name for tag, name in _SELECTED_LINK_TAGS if tag in seen),
+                                     singletons.get(_FLAGS), singletons.get(_FLAGS_1))
+
+
+def _hash_library(launch_view, mounts, library, deadline):
+    size = library.state[5]
+    launch_view._check_clock(deadline)
+    header = os.pread(library.fd, 64, 0)
+    _library_program_table(header, size)
     offset = len(header)
     digest = hashlib.sha256(header)
     while offset < size:

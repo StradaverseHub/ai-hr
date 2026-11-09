@@ -330,5 +330,168 @@ class ManagerAdmissionModels(unittest.TestCase):
         model.assert_closed(self)
 
 
+def linked_library(*, names=(b'libzstd.so.1', b'libc.so.6', b'libzstd.so.1'),
+                   soname=b'libsystemd.so.0', extra=()):
+    strings = bytearray(b'\0' + soname + b'\0')
+    needed = []
+    for name in names:
+        needed.append((1, len(strings)))
+        strings.extend(name + b'\0')
+    rows = ((5, 0x100400), (10, len(strings)), (14, 1), *needed, *extra, (0, 0))
+    dynamic = b''.join(struct.pack('<QQ', tag, value) for tag, value in rows)
+    raw = bytearray(0x400 + len(strings))
+    raw[:64] = elf()[:64]
+    struct.pack_into('<H', raw, 56, 2)
+    struct.pack_into('<IIQQQQQQ', raw, 64, 1, 4, 0x100, 0x100100, 0,
+                     len(raw) - 0x100, len(raw) - 0x100, 0x1000)
+    struct.pack_into('<IIQQQQQQ', raw, 120, 2, 4, 0x200, 0x100200, 0,
+                     len(dynamic), len(dynamic), 8)
+    raw[0x200:0x200 + len(dynamic)] = dynamic
+    raw[0x400:] = strings
+    return raw
+
+
+class ManagerLibraryLinkInputModels(unittest.TestCase):
+    def test_link_inputs_bind_exact_bytes_and_ordered_duplicate_dependencies(self):
+        raw = bytes(linked_library(extra=(
+            (0x7ffffffd, 1), (29, 1), (30, 8), (0x6ffffffb, 1),
+            (15, 1), (0x6ffffefb, 1), (0x7fffffff, 1), (0x6ffffefc, 1),
+        )))
+        self.assertEqual(A._describe_fixed_library_link_inputs(raw), (
+            len(raw), hashlib.sha256(raw).hexdigest(), 'libsystemd.so.0',
+            ('libzstd.so.1', 'libc.so.6', 'libzstd.so.1'),
+            ('DT_RPATH', 'DT_RUNPATH', 'DT_AUDIT', 'DT_DEPAUDIT', 'DT_FILTER', 'DT_AUXILIARY'), 8, 1,
+        ))
+
+    def test_link_inputs_refuse_invalid_dynamic_segment_and_missing_terminator(self):
+        for variant in ('missing', 'duplicate', 'unaligned', 'over-limit', 'unterminated', 'too-many-dependencies'):
+            with (self.subTest(variant=variant),
+                  self.assertRaisesRegex(ValueError, '^manager-admission-library-link-dynamic$')):
+                raw = linked_library()
+                if variant == 'missing':
+                    struct.pack_into('<I', raw, 120, 0)
+                elif variant == 'duplicate':
+                    struct.pack_into('<H', raw, 56, 3)
+                    raw[176:232] = raw[120:176]
+                elif variant == 'unaligned':
+                    struct.pack_into('<Q', raw, 152, 15)
+                elif variant == 'over-limit':
+                    too_large = 64 * 1024 + 16
+                    raw.extend(b'\0' * too_large)
+                    struct.pack_into('<QQ', raw, 96, len(raw) - 0x100, len(raw) - 0x100)
+                    struct.pack_into('<QQ', raw, 152, too_large, too_large)
+                elif variant == 'unterminated':
+                    struct.pack_into('<QQ', raw, 0x200 + 6 * 16, 0x12345, 0)
+                else:
+                    # Preserve the valid table metadata and add only excess dependencies.
+                    rows = raw[0x200:0x230] + struct.pack('<QQ', 1, 1) * 65 + bytes(16)
+                    raw.extend(bytes(4096))
+                    raw[0x800:0x800 + len(rows)] = rows
+                    struct.pack_into('<QQ', raw, 96, len(raw) - 0x100, len(raw) - 0x100)
+                    struct.pack_into('<QQQQQ', raw, 128, 0x800, 0x100800, 0, len(rows), len(rows))
+                A._describe_fixed_library_link_inputs(bytes(raw))
+
+    def test_link_inputs_refuse_conflicting_or_non_file_backed_address_mappings(self):
+        for variant, reason in (
+            ('competing-load', 'mapping'), ('string-in-bss', 'mapping'), ('wrong-dynamic-offset', 'mapping'),
+            ('outside-file', 'extent'), ('wrapped-load', 'extent'), ('interpreter', 'interpreter'),
+        ):
+            with (self.subTest(variant=variant),
+                  self.assertRaisesRegex(ValueError, '^manager-admission-library-link-' + reason + '$')):
+                raw = linked_library()
+                if variant == 'competing-load':
+                    struct.pack_into('<H', raw, 56, 3)
+                    struct.pack_into('<IIQQQQQQ', raw, 176, 1, 4, 0x401, 0x100401, 0, 1, 1, 1)
+                elif variant == 'string-in-bss':
+                    struct.pack_into('<Q', raw, 96, 0x300)
+                elif variant == 'wrong-dynamic-offset':
+                    struct.pack_into('<Q', raw, 128, 0x201)
+                elif variant == 'outside-file':
+                    struct.pack_into('<Q', raw, 128, len(raw))
+                elif variant == 'wrapped-load':
+                    struct.pack_into('<Q', raw, 80, (1 << 64) - 1)
+                else:
+                    struct.pack_into('<I', raw, 64, 3)
+                A._describe_fixed_library_link_inputs(bytes(raw))
+
+    def test_link_inputs_refuse_missing_duplicate_or_unbounded_string_table_fields(self):
+        for tag in (5, 10, 14, 30, 0x6ffffffb):
+            with self.subTest(duplicate_tag=tag), self.assertRaisesRegex(ValueError, 'link-dynamic'):
+                A._describe_fixed_library_link_inputs(bytes(linked_library(extra=((tag, 1), (tag, 2)))))
+        for offset, value, reason in (
+            (0x200, 0x12345, 'dynamic'), (0x218, 0, 'strings'), (0x218, 256 * 1024 + 1, 'strings'),
+            (0x208, (1 << 64) - 1, 'mapping'),
+        ):
+            with self.subTest(offset=offset, value=value), self.assertRaisesRegex(ValueError, 'link-' + reason):
+                raw = linked_library()
+                struct.pack_into('<Q', raw, offset, value)
+                A._describe_fixed_library_link_inputs(bytes(raw))
+
+    def test_link_inputs_require_fixed_soname_and_bounded_ascii_basenames(self):
+        with self.assertRaisesRegex(ValueError, 'link-soname'):
+            A._describe_fixed_library_link_inputs(bytes(linked_library(soname=b'other.so.0')))
+        for name in (b'', b'./library.so', b'lib\xff.so', b'a' * 129):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'link-name'):
+                A._describe_fixed_library_link_inputs(bytes(linked_library(names=(name,))))
+        raw = linked_library(names=(b'a' * 128,))
+        self.assertEqual(A._describe_fixed_library_link_inputs(bytes(raw)).needed, ('a' * 128,))
+        raw[-1] = ord('x')
+        with self.assertRaisesRegex(ValueError, 'link-name'):
+            A._describe_fixed_library_link_inputs(bytes(raw))
+        struct.pack_into('<Q', raw, 0x238, (1 << 64) - 1)
+        with self.assertRaisesRegex(ValueError, 'link-name'):
+            A._describe_fixed_library_link_inputs(bytes(raw))
+
+    def test_link_inputs_are_dormant_and_read_only_with_exact_byte_boundary(self):
+        raw = linked_library()
+        with (patch('ctypes.CDLL', side_effect=AssertionError('unexpected loader')),
+              patch('subprocess.Popen', side_effect=AssertionError('unexpected process')),
+              patch('socket.socket', side_effect=AssertionError('unexpected socket')),
+              patch.object(A.os, 'pread', side_effect=AssertionError('unexpected read'))):
+            facts = A._describe_fixed_library_link_inputs(bytes(raw))
+            self.assertEqual((facts.selected_tags, facts.flags, facts.flags_1), ((), None, None))
+            for invalid in (raw, bytes(4 * 1024**2 + 1)):
+                with self.assertRaisesRegex(ValueError, 'link-bytes'):
+                    A._describe_fixed_library_link_inputs(invalid)
+        with self.assertRaisesRegex(ValueError, 'library-elf'):
+            A._describe_fixed_library_link_inputs(b'\0' * 64)
+        with self.assertRaisesRegex(ValueError, 'link-dynamic'):
+            A._describe_fixed_library_link_inputs(elf())
+        model = NativeModel()
+        with (model.mocked(), patch.object(A, '_describe_fixed_library_link_inputs') as dormant,
+              observe() as actual):
+            self.assertEqual(actual.library_sha256, hashlib.sha256(model.dso).hexdigest())
+            dormant.assert_not_called()
+        model.assert_closed(self)
+
+    def test_link_inputs_refuse_competing_projected_pages_even_when_load_extents_are_disjoint(self):
+        for variant, offset, address, file_size, memory_size in (
+            ('dynamic-file-page', 0x1800, 0x100800, 0x100, 0x100),
+            ('dynamic-zero-extent-page', 0x1800, 0x100800, 0, 0),
+            ('string-bss-page', 0x1800, 0x101800, 0, 0x100),
+            ('misaligned-different-page', 0x2001, 0x102000, 0x100, 0x100),
+            ('separate-page', 0x2000, 0x102000, 0x100, 0x100),
+        ):
+            with self.subTest(variant=variant):
+                raw = linked_library()
+                if variant == 'string-bss-page':
+                    # Leave PT_DYNAMIC on its original page and move only the table.
+                    strings = raw[0x400:]
+                    raw.extend(bytes(0x1400 - len(raw)))
+                    raw.extend(strings)
+                    struct.pack_into('<Q', raw, 0x208, 0x101400)
+                    struct.pack_into('<QQ', raw, 96, len(raw) - 0x100, len(raw) - 0x100)
+                self.assertLessEqual(0x100000 + len(raw), address)
+                raw.extend(bytes(0x2200 - len(raw)))
+                struct.pack_into('<H', raw, 56, 3)
+                struct.pack_into('<IIQQQQQQ', raw, 176, 1, 4, offset, address, 0, file_size, memory_size, 0x1000)
+                if variant == 'separate-page':
+                    facts = A._describe_fixed_library_link_inputs(bytes(raw))
+                    self.assertEqual(facts.needed, ('libzstd.so.1', 'libc.so.6', 'libzstd.so.1'))
+                else:
+                    with self.assertRaisesRegex(ValueError, '^manager-admission-library-link-mapping$'):
+                        A._describe_fixed_library_link_inputs(bytes(raw))
+
+
 if __name__ == '__main__':
     unittest.main()
