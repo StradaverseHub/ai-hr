@@ -19,7 +19,7 @@ from types import ModuleType
 FILE = 'test/compiler-native-reference-fixture.test.ts'
 APPLICATION_FILE = 'test/compiler-native-application-inventory.test.ts'
 PURPOSES = {
-    'reference': {'file': FILE, 'stage': 'compiler-reference', 'manifest': 'docs/qualification/compiler-reference-owned-source-20261108.json', 'kind': 'COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION', 'clock': 'compiler-reference-clock', 'clockKind': 'OWNED_COMPILER_REFERENCE_720_CLOCK', 'journal': 'compiler-supervisor.jsonl'},
+    'reference': {'file': FILE, 'stage': 'compiler-reference', 'manifest': 'docs/qualification/compiler-native-date-library-reference-source-20261109.json', 'kind': 'COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION', 'clock': 'compiler-reference-clock', 'clockKind': 'OWNED_COMPILER_REFERENCE_720_CLOCK', 'journal': 'compiler-supervisor.jsonl'},
     'application': {'file': APPLICATION_FILE, 'stage': 'compiler-application-inventory', 'manifest': 'docs/qualification/compiler-native-application-inventory-source-20261108.json', 'kind': 'COMPILER_NATIVE_APPLICATION_INVENTORY_SOURCE_NOT_QUALIFICATION', 'clock': 'compiler-application-inventory-clock', 'clockKind': 'OWNED_COMPILER_APPLICATION_INVENTORY_720_CLOCK', 'journal': 'compiler-application-inventory-supervisor.jsonl'},
 }
 LIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10,

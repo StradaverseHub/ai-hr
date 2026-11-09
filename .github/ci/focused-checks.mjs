@@ -79,7 +79,7 @@ export function isEmployeeChoiceAsciiPlan(files){return files.length===1&&files[
 export function isCompilerReferenceFixture(files){return files.length===1&&files[0]===compilerReferenceFile;}
 export function isCompilerApplicationInventory(files){return files.length===1&&files[0]===compilerApplicationInventoryFile;}
 function compilerPurpose(files){
- if(isCompilerReferenceFixture(files))return{selector:compilerReferenceFile,stage:'compiler-reference',manifest:'docs/qualification/compiler-reference-owned-source-20261108.json',kind:'COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION',preflight:'compiler-reference-preflight.json',preflightKind:'OWNED_COMPILER_REFERENCE_PREFLIGHT_NOT_RELEASE',journal:'compiler-supervisor.jsonl',purpose:'reference'};
+ if(isCompilerReferenceFixture(files))return{selector:compilerReferenceFile,stage:'compiler-reference',manifest:'docs/qualification/compiler-native-date-library-reference-source-20261109.json',kind:'COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION',preflight:'compiler-reference-preflight.json',preflightKind:'OWNED_COMPILER_REFERENCE_PREFLIGHT_NOT_RELEASE',journal:'compiler-supervisor.jsonl',purpose:'reference'};
  if(isCompilerApplicationInventory(files))return{selector:compilerApplicationInventoryFile,stage:'compiler-application-inventory',manifest:'docs/qualification/compiler-native-application-inventory-source-20261108.json',kind:'COMPILER_NATIVE_APPLICATION_INVENTORY_SOURCE_NOT_QUALIFICATION',preflight:'compiler-application-inventory-preflight.json',preflightKind:'OWNED_COMPILER_APPLICATION_INVENTORY_PREFLIGHT_NOT_RELEASE',journal:'compiler-application-inventory-supervisor.jsonl',purpose:'application'};
  throw Error('Sole closed native compiler purpose required');
 }

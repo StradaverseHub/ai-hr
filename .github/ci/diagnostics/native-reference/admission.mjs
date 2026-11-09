@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 const selector='test/compiler-native-reference-fixture.test.ts';
 const names={adapter:'.github/ci/compiler-reference-supervisor.py',kernel:'.github/ci/owned-process.py',
  owner:'.github/ci/focused-checks.mjs',fixture:'.github/ci/diagnostics/native-reference/fixture.mjs',
- manifest:'docs/qualification/compiler-reference-owned-source-20261108.json'};
+ manifest:'docs/qualification/compiler-native-date-library-reference-source-20261109.json'};
 const referencePurpose=Object.freeze({selector,names,stage:'compiler-reference',kind:'COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION',preflight:'compiler-reference-preflight.json',preflightKind:'OWNED_COMPILER_REFERENCE_PREFLIGHT_NOT_RELEASE',clock:'compiler-reference-clock',clockKind:'OWNED_COMPILER_REFERENCE_720_CLOCK'});
 const applicationPurpose=Object.freeze({selector:'test/compiler-native-application-inventory.test.ts',names:{...names,fixture:'.github/ci/diagnostics/native-reference/application-inventory.mjs',manifest:'docs/qualification/compiler-native-application-inventory-source-20261108.json'},stage:'compiler-application-inventory',kind:'COMPILER_NATIVE_APPLICATION_INVENTORY_SOURCE_NOT_QUALIFICATION',preflight:'compiler-application-inventory-preflight.json',preflightKind:'OWNED_COMPILER_APPLICATION_INVENTORY_PREFLIGHT_NOT_RELEASE',clock:'compiler-application-inventory-clock',clockKind:'OWNED_COMPILER_APPLICATION_INVENTORY_720_CLOCK'});
 const applicationProofs=new WeakSet();
