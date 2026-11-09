@@ -20,7 +20,7 @@ vi.mock('../scripts/performance/navigation-source',()=>({
 }));
 vi.mock('../scripts/performance/navigation-fixture-bindings',()=>({readNavigationFixtureBindings:()=>new Map([[4,{actorName:'PERF Person 0004',actorEmployeeCode:'PERF0004',firstCompanyPersonName:'PERF Person 0000',activeHeadcount:'50',historicalPayrollMonth:'2026-07',seedToday:'2026-11-07',seedMonth:'2026-11',rosterScope:{}}]])}));
 import {createNavigationCaptureCollector,installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,writeNavigationCaptureBundle,
- DEVELOPMENT_RENDERED_UNION_MEMBER,writeDevelopmentRenderedRouteUnion} from '../scripts/performance/navigation-browser-capture';
+ DEVELOPMENT_RENDERED_UNION_MEMBER,writeDevelopmentRenderedRouteUnion,legacyNavigationFailureFacts} from '../scripts/performance/navigation-browser-capture';
 import {nativePreflightReadiness,nativePreflightRoutePlan} from '../scripts/performance/system-route-manifest.mjs';
 import {NAVIGATION_CAPTURE_MEMBER,NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,
  validateNativeShellBaseline,type NativeShellBaseline} from '../scripts/performance/navigation-protocol';
@@ -91,11 +91,12 @@ it('refuses missing Page or context census even with zero observed crashes',()=>
 });
 
 const actorName='PERF Person 0004',otherActorName='PERF Person 0005';
-function fictionalPage({accountName=actorName,accountCount=1,anchorCount=1,detailsCount=1}:{accountName?:string;accountCount?:number;anchorCount?:number;detailsCount?:number}={}){
+function fictionalPage({accountName=actorName,accountCount=1,anchorCount=1,detailsCount=1,inputVisible=true}:{accountName?:string;accountCount?:number;anchorCount?:number;detailsCount?:number;inputVisible?:boolean}={}){
  let now=0;const waited=new Set<string>(),waits:{selector:string;timeout:number}[]=[],operations:string[]=[];
  vi.spyOn(performance,'now').mockImplementation(()=>now);
  const locator=(selector:string,count=1,options:{tag?:string;text?:string;href?:string;requiresWait?:boolean}={}):any=>({
   first(){return this;},
+  filter(value:{visible:boolean}){expect(value).toEqual({visible:true});return selector==='main input[name="unit"]'&&!inputVisible?locator(selector,0,options):this;},
   async waitFor({state,timeout}:{state:string;timeout:number}){
    expect(state).toBe('visible');expect(timeout).toBeGreaterThan(0);expect(timeout).toBeLessThanOrEqual(90000-now);
    waits.push({selector,timeout});now+=250;
@@ -363,6 +364,16 @@ describe('native identity and streamed navigation capture boundaries',()=>{
   expect(await body.innerText()).toContain(actorName);
   await expect(collector.captureActor(page,4)).rejects.toThrow('Mocked visible locator deadline: button[data-tour="account"] exact identity');
   expect(()=>collector.finish()).toThrow('Navigation capture identity or completeness differs');
+ });
+ it('reports the reviewed scenario and active check without replacing the original visibility failure',async()=>{
+  const {page}=fictionalPage({inputVisible:false}),collector=createNavigationCaptureCollector({phase:'baseline'});
+  const reason=await collector.captureActor(page,4).catch((error:unknown)=>error);
+  expect(reason).toBeInstanceOf(Error);
+  expect(legacyNavigationFailureFacts(reason)).toEqual({scenarioId:'unit.employee',checkId:'input'});
+  expect(legacyNavigationFailureFacts(Error('Mocked visible locator deadline: main input[name="unit"]'))).toBeNull();
+  const early=createNavigationCaptureCollector({phase:'baseline'});
+  const earlyReason=await early.captureActor(fictionalPage({accountCount:2}).page,4).catch((error:unknown)=>error);
+  expect(legacyNavigationFailureFacts(earlyReason)).toEqual({scenarioId:'unit.employee',checkId:null});
  });
  it.each([{accountCount:2},{anchorCount:2},{detailsCount:2}])('refuses ambiguous native account/navigation/disclosure controls after waiting (%j)',async options=>{
   const {page}=fictionalPage(options),collector=createNavigationCaptureCollector({phase:'baseline'});

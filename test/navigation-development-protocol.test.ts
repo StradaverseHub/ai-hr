@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {fixtureNavigationActor,localNavigationHref,navigationExpectedText,NAVIGATION_CAPTURE_VERSION,NAVIGATION_HARNESS_ROOTS,NAVIGATION_SCENARIO_FILE,
- PERSONNEL_PRIVATE_SEARCH_SELECTOR,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,
+ PERSONNEL_PRIVATE_SEARCH_SELECTOR,ROSTER_MONTH_SELECTOR,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,
  validateNavigationCapture,validateNavigationScenarioPlan,type NavigationScenarioPlan} from '../scripts/performance/navigation-protocol';
 import {navigationSha256,navigationSourceIdentity} from '../scripts/performance/navigation-source';
 const readPlan=()=>JSON.parse(readFileSync(new URL('../scripts/performance/navigation-scenarios.json',import.meta.url),'utf8'));
@@ -57,6 +57,22 @@ describe('closed source-reviewed navigation development protocol (not authentica
   observed.checks.find(check=>check.id==='native-private-search')!.observedCount=2;
   expect(()=>validateNavigationCapture(result,plan,expected)).toThrow(/check coverage/);
   expect(navigationSha256(readFileSync(new URL('../'+NAVIGATION_SCENARIO_FILE,import.meta.url)))).toBe(NATIVE_SHELL_LEGACY_SCENARIO_SHA256);
+ });
+ it('requires one editable month witness and retains the independent scoped grid in both Roster cases',()=>{
+  const plan=validateNavigationScenarioPlan(readPlan());
+  const roster=plan.scenarios.filter(row=>row.destinationId==='shell.rosterManager');
+  expect(roster.map(row=>row.role)).toEqual(['companyHR','groupHR']);
+  for(const row of roster){
+   expect(row.checks).toContainEqual({id:'native-roster-month',kind:'roster-month',selector:ROSTER_MONTH_SELECTOR,expected:'$fixture.seedMonth'});
+   expect(row.checks).toContainEqual({id:'native-scoped-employments',kind:'fixture-roster-rows',
+    selector:'main [data-roster-grid] tbody tr[data-roster-employment-id]',minimum:1,maximum:25});
+  }
+  const wrong=structuredClone(plan);
+  wrong.scenarios.find(row=>row.destinationId==='shell.rosterManager')!.checks.find(check=>check.kind==='roster-month')!.selector='main input[name="month"]';
+  expect(()=>validateNavigationScenarioPlan(wrong)).toThrow(/Roster month control/);
+  const result=capture(plan),observed=result.observations.find(row=>row.destinationId==='shell.rosterManager')!;
+  observed.checks.find(check=>check.id==='native-roster-month')!.observedCount=2;
+  expect(()=>validateNavigationCapture(result,plan,expected)).toThrow(/check coverage/);
  });
  it('refuses cross-source/role claims, missing checks, handled failures, and incomplete captures',()=>{
   const plan=validateNavigationScenarioPlan(readPlan());

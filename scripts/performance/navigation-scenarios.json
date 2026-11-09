@@ -1057,8 +1057,8 @@
         },
         {
           "id": "native-roster-month",
-          "kind": "value",
-          "selector": "main input[name=\"month\"]",
+          "kind": "roster-month",
+          "selector": "main input[type=\"month\"][name=\"month\"]",
           "expected": "$fixture.seedMonth"
         }
       ],
@@ -1095,8 +1095,8 @@
         },
         {
           "id": "native-roster-month",
-          "kind": "value",
-          "selector": "main input[name=\"month\"]",
+          "kind": "roster-month",
+          "selector": "main input[type=\"month\"][name=\"month\"]",
           "expected": "$fixture.seedMonth"
         }
       ],

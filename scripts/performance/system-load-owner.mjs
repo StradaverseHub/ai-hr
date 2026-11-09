@@ -7,7 +7,7 @@ import {routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,writeDevelopmentRenderedRouteUnion,
- installNativePrimaryFailureObserver,createNativeBrowserFailureObservation} from './navigation-browser-capture.ts';
+ installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,legacyNavigationFailureFacts} from './navigation-browser-capture.ts';
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
 import {NATIVE_HIDDEN_SHELL_CASES} from './navigation-protocol.ts';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
@@ -1092,7 +1092,8 @@ async function main(){
    }
    report.preflightBrowserStageFailure??={stage,role:user?.role??null,path,
     errorType:driverErrorFact(reason).kind,...browserPreflightFailureLocation(reason),
-    clickObstruction:browserPreflightClickObstruction(reason)};
+    clickObstruction:browserPreflightClickObstruction(reason),
+    legacyNavigation:stage==='legacy-navigation-capture'?legacyNavigationFailureFacts(reason):null};
   });
  }
  // Exercise real password/MFA before any capacity test; these results are never loaded proof.

@@ -7,7 +7,7 @@ import { validateAuthenticatedMeasuredPreflight, validateMeasuredPreflightSemant
 const plan = JSON.parse(readFileSync(new URL('../../scripts/performance/navigation-scenarios.json', import.meta.url), 'utf8'));
 const identity = {
   candidateSha: 'a'.repeat(40), controllerSha: 'a'.repeat(40), runId: 100, harnessSha256: 'b'.repeat(64),
-  scenarioSha256: '8e050c1edb048358c55757d81463250ee10e2fc74d4a85428336e870a14a7a84',
+  scenarioSha256: 'c450f4f611cdf2fcb3f4757871b1bb09d85d18347ef56a8a5b148098bc9ca329',
 };
 const protocol = 'aihr-navigation-development/v2';
 const roles = { employee: 460, manager: 20, companyHR: 18, groupHR: 2 };

@@ -451,7 +451,7 @@ jobs:
           COURSE_OUTCOME: ${{ steps.development-browser.outcome }}
         run: |
           /usr/bin/timeout --signal=TERM --kill-after=5s 25s /usr/bin/python3 -I -B - <<'PYTHON'
-          import hashlib, json, os, re, stat
+          import hashlib, json, os, re, stat, subprocess
           from collections import Counter
           from contextlib import ExitStack
           from pathlib import Path
@@ -774,7 +774,7 @@ jobs:
           timing_keys = 'hire identityAndSessionProvisioning historyAndCompensationSeed payrollGenerate50 payrollClose50'
           module_codes = set(('employees org leave ess approvals knowledge_base payroll attendance claims performance '
                               'rewards lifecycle notifications assistant system_explorer system_testing').split())
-          fixture_phase_names = set(('lifecycle-hub letter-draft-prerequisites claims-history attendance-history historical-payroll-generate '
+          fixture_phase_names = set(('lifecycle-hub roster-shared-shift letter-draft-prerequisites claims-history attendance-history historical-payroll-generate '
                                      'historical-payroll-close rewards-draft-prerequisites rewards-draft-import '
                                      'payroll-readiness-after-organisation-publication attendance-workflow-tail '
                                      'reporting-line-tail attendance-established-standard post-seed-counts audit-counts native-traffic-actors assistant-saved-history').split())
@@ -970,6 +970,30 @@ jobs:
                   return None
               return {'rule': rule, 'browser': browser, 'dom': dom}
 
+          def project_legacy_navigation_failure(value, role, scenarios):
+              if (role is None or not closed(value, 'scenarioId checkId')
+                      or type(value['scenarioId']) is not str
+                      or value['checkId'] is not None and type(value['checkId']) is not str):
+                  return None
+              scenario = first(scenarios, lambda row: row.get('id') == value['scenarioId'] and row.get('role') == role)
+              if not scenario:
+                  return None
+              check = value['checkId']
+              if check is not None and not first(scenario.get('checks'), lambda row: row.get('id') == check):
+                  return None
+              return {'scenarioId': scenario['id'], 'checkId': check}
+
+          def exact_legacy_navigation_scenarios():
+              try:
+                  raw = subprocess.check_output(('/usr/bin/git', '--no-replace-objects', '-C', 'automation',
+                      'show', sha + ':scripts/performance/navigation-scenarios.json'), timeout=2, stderr=subprocess.DEVNULL)
+                  if not 0 < len(raw) <= 128 * 1024:
+                      return []
+                  plan = record(json.loads(raw, object_pairs_hook=unique_object, parse_constant=refuse_constant))
+                  scenarios = plan.get('scenarios')
+                  return scenarios if count(scenarios) == 48 else []
+              except (OSError, subprocess.SubprocessError, ValueError, RecursionError):
+                  return []
 
           def publish(directory, name, raw):
               fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=directory)
@@ -1212,6 +1236,11 @@ jobs:
                       'navigation-protocol.ts', 'navigation-entry.ts', 'navigation-shell-browser.ts'})
                   stage_line = number(browser_stage.get('sourceLine'), 9999, 1)
                   stage_column = number(browser_stage.get('sourceColumn'), 4096, 1)
+                  stage_role = choice(browser_stage.get('role'), roles)
+                  legacy_navigation = None
+                  if stage_name == 'legacy-navigation-capture' and closed(browser_stage.get('legacyNavigation'), 'scenarioId checkId'):
+                      legacy_navigation = project_legacy_navigation_failure(browser_stage['legacyNavigation'], stage_role,
+                          exact_legacy_navigation_scenarios())
                   browser_signals = []
                   if type(driver.get('browserErrors')) is list:
                       for item in driver['browserErrors'][:6]:
@@ -1276,8 +1305,9 @@ jobs:
                                                   'sourceFile': source_file, 'sourceLine': line if source_file else None,
                                                   'sourceColumn': column if source_file else None,
                                                   'nativeEvidence': project_native_visit_evidence(visit.get('nativeEvidence'))} if visit else None,
-                      'browserStageFailure': {'stage': stage_name, 'role': choice(browser_stage.get('role'), roles),
+                      'browserStageFailure': {'stage': stage_name, 'role': stage_role,
                           **route(browser_stage.get('path')), 'errorType': choice(browser_stage.get('errorType'), types),
+                          'legacyNavigation': legacy_navigation,
                           'clickObstruction': choice(browser_stage.get('clickObstruction'), {'pointer-intercepted',
                               'outside-viewport', 'element-unstable', 'element-invisible', 'element-disabled', 'element-detached', 'click-timeout'}),
                           'sourceFile': stage_file, 'sourceLine': stage_line if stage_file else None,

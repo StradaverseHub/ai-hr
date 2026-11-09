@@ -20,6 +20,10 @@ const BASE='https://localhost:3443';
 const failuresSelector={busy:'main[data-personnel-busy],main[data-page-busy],main [data-personnel-busy],main [data-page-busy]',
  unavailable:'main [data-read-unavailable],main [data-today-unavailable]',alerts:'main [role="alert"]'} as const;
 type LoadState={active:number;inSteadyWindow:boolean};
+const legacyFailures=new WeakMap<Error,Readonly<{scenarioId:string;checkId:string|null}>>();
+export function legacyNavigationFailureFacts(error:unknown){
+ return error instanceof Error?legacyFailures.get(error)??null:null;
+}
 const instrumented=new WeakSet<Page>();
 async function installFailureObserver(page:Page){
  if(instrumented.has(page))return;instrumented.add(page);
@@ -367,6 +371,7 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
  const consoleError=(message:{type():string})=>{if(message.type()==='error')failures.pageErrors++;};
  page.on('response',response);page.on('pageerror',pageError);page.on('console',consoleError);
  let denial:Awaited<ReturnType<typeof installLegacyDenialObserver>>|undefined;
+ let checkId:string|null=null;
  try{
   if(scenario.outcome==='denied')denial=await installLegacyDenialObserver(page,scenario.href);
   else await installFailureObserver(page);
@@ -413,14 +418,18 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   }
   const checks:NavigationObservation['checks']=[];
   for(const check of scenario.checks){
+   checkId=check.id;
    // Personnel's editable term is in the actual portaled filter, not the hidden
    // retained term under the table form. The preceding table witness is read first.
    const scope=check.kind==='personnel-private-search'?await openNativePersonnelFilter(page,remaining):page;
-   const matches=scope.locator(check.selector);await matches.first().waitFor({state:'visible',timeout:remaining()});
-   const visible=[];for(const match of await matches.all())if(await match.isVisible())visible.push(match);
+   const matches=scope.locator(check.selector),visibleMatches=matches.filter({visible:true});
+   await visibleMatches.first().waitFor({state:'visible',timeout:remaining()});
+   const visible=await visibleMatches.all();
    assert(visible.length>0,'Reviewed usable-content selector has no visible result');
    if(check.kind==='personnel-private-search')assert(await matches.count()===1&&visible.length===1
     &&await visible[0].isEditable({timeout:remaining()}),'Native Personnel private search is ambiguous or read-only');
+   if(check.kind==='roster-month')assert(await matches.count()===1&&visible.length===1
+    &&await visible[0].isEditable({timeout:remaining()}),'Native Roster month control is ambiguous or read-only');
    if(check.kind==='count'||check.kind==='fixture-roster-rows')assert(visible.length>=check.minimum&&(check.maximum===undefined||visible.length<=check.maximum),'Usable-content count differs');
    if(check.kind==='fixture-roster-rows'){
     const ids=new Set<string>();
@@ -433,10 +442,11 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
     assert(await visible[0].evaluate(element=>element.tagName.toLowerCase())===check.tag&&await visible[0].isEnabled(),'Reviewed native control is unavailable');
    }else if(check.kind==='text-exact')assert((await visible[0].innerText({timeout:remaining()})).trim()===navigationExpectedText(check.expected,actorIndex,bindings),'Expected exact native fixture content differs');
    else if(check.kind==='text')assert((await visible[0].innerText({timeout:remaining()})).includes(navigationExpectedText(check.expected,actorIndex,bindings)),'Expected independent fixture content missing');
-   else if(check.kind==='value')assert(await visible[0].inputValue({timeout:remaining()})===navigationExpectedText(check.expected,actorIndex,bindings),'Expected native control value differs');
+   else if(check.kind==='value'||check.kind==='roster-month')assert(await visible[0].inputValue({timeout:remaining()})===navigationExpectedText(check.expected,actorIndex,bindings),'Expected native control value differs');
    else if(check.kind==='attribute')assert(await visible[0].getAttribute(check.name)===check.expected,'Reviewed native control attribute differs');
    checks.push({id:check.id,passed:true,observedCount:visible.length});
   }
+  checkId=null;
   const observed=denial?await denial.snapshot():await capturedFailures(page);
   for(const key of ['busy','unavailable','alerts']as const)failures[key]+=observed[key];
   assert(Object.values(failures).every(count=>count===0),'Navigation rendered failure state or browser/server error');
@@ -444,6 +454,9 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   return {entry:entry.kind,scenarioId:scenario.id,destinationId:scenario.destinationId,role:actor.role,actorIndex,href:scenario.href,outcome:scenario.outcome,readiness:scenario.readiness,
    status:200,finalPath:target.pathname,internalSessionObserved:true,fixtureIdentityObserved:true,elapsedMs:performance.now()-started,checks,failures,
    ...(startedWith?{startedWith}:{}),...(usableWith?{usableWith}:{})};
+ }catch(error){
+  if(error instanceof Error)legacyFailures.set(error,Object.freeze({scenarioId:scenario.id,checkId}));
+  throw error;
  }finally{
   page.off('response',response);page.off('pageerror',pageError);page.off('console',consoleError);
   await denial?.dispose();

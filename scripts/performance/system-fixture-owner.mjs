@@ -150,6 +150,21 @@ try{
    if(index%50===49)console.log('[system-perf-fixture] provisioned '+(index+1)+' principals');
   }
   const cohort=users.filter(u=>u.tenant===t);
+  // Roster requires a configured shift catalogue before it can render a populated grid.
+  await fixturePhase(t,'roster-shared-shift',async()=>{
+   const {createShift,listShiftsForTenant}=await import('../../core/roster.ts');
+   const shift=await createShift(ctx,{name:'Fictional performance day',code:'PERF-DAY',startTime:'09:00',endTime:'17:00',weeklyPattern:[1,2,3,4,5]});
+   for(const role of ['companyHR','groupHR']){
+    const actor=cohort.find(user=>user.role===role);
+    assert(actor,'Roster fixture browser actor missing');
+    const grants=[{role:'employee',companyId:actor.companyId},{role:'hr_admin',companyId:role==='groupHR'?null:actor.companyId}];
+    if(role==='groupHR')grants.push({role:'payroll_partner',companyId:null},{role:'performance_comp_partner',companyId:null});
+    const reader={...ctx,userId:actor.userId,personId:actor.personId,roles:grants.map(grant=>grant.role),grants};
+    const rows=await listShiftsForTenant(reader);
+    assert(rows.length===1&&rows[0].id===shift.id&&rows[0].tenantId===b.tenantId&&rows[0].companyId===null&&rows[0].archivedAt===null,
+     'Roster fixture browser actor cannot read the exact tenant-shared shift');
+   }
+  });
   if(process.env.PERF_HTTP_SUITE==='workflow-preflight'&&t===0){
    tenants[t].letterDraft=await fixturePhase(t,'letter-draft-prerequisites',async()=>{
     const {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy}=await import('../../core/letters.ts');
