@@ -10,6 +10,7 @@ import {outputOwnership,regularHash,assertOutputSeal,emittedTree,digest,assertAr
 import {compilerOwner,parsedConfig} from './worker.mjs';
 import {nativeReferenceProcess,requireNativeSuccess} from './process.mjs';
 import {admitCompilerReference,readCompilerReferenceClock} from './admission.mjs';
+import {runDateLibraryChild,startDateLibraryChild} from './date-library.mjs';
 import {fixturePackageRoot,FIXTURE_PACKAGE_MANIFEST,FIXTURE_PACKAGE_BODY_SHA256,FIXTURE_PACKAGE_BODY_BYTES} from './package-context.mjs';
 import {NEGATIVE_CONTRACTS} from '../compiler-boundary-policy.mjs';
 const fixtureFiles=['base.json','ambient.d.ts','producer/index.ts','producer/math.js','producer/labels.json','consumer/index.ts'];
@@ -22,6 +23,8 @@ export async function nativeReferenceFixture(){
  process.on('SIGTERM',interrupted);process.on('SIGINT',interrupted);
  try{
  const proof=admitCompilerReference('fixture'),clock=readCompilerReferenceClock(proof),startNs=BigInt(clock.startNs);
+ const parent=proof.ancestors[1];
+ if(parent.pid!==clock.wrapper.pid||parent.start!==clock.wrapper.start)return await runDateLibraryChild(controller.signal);
  const elapsed=()=>Number(process.hrtime.bigint()-startNs)/1e6;
  const started=performance.now()-elapsed(),deadline=started+REFERENCE_LIMITS.aggregateMs;
  const active=()=>{controller.signal.throwIfAborted();assert(performance.now()<deadline-2000,'Native fixture work frontier closed');};
@@ -32,7 +35,7 @@ export async function nativeReferenceFixture(){
  const cwd=proof.source,sourceHead=proof.sourceHead;assert.equal(process.env.AIHR_CI_HEAD,sourceHead);assert.equal(process.env.AIHR_CI_CONTROL_HEAD,proof.controllerHead);
  const temp=realpathSync(process.env.RUNNER_TEMP),evidence=join(temp,'aihr-focused');assert.equal(realpathSync(evidence),evidence);assert.equal(process.env.AIHR_FOCUSED_EVIDENCE_DIR,evidence);
  const out=join(evidence,'compiler-native-reference');mkdirSync(out,{mode:0o700});const source=join(out,'source');mkdirSync(source,{mode:0o700});const logs=join(out,'logs');mkdirSync(logs,{mode:0o700});
- const report={kind:'SMALL_NATIVE_REFERENCE_FIXTURES_NOT_APPLICATION',source:sourceHead,controller:process.env.AIHR_CI_CONTROL_HEAD,runId:process.env.GITHUB_RUN_ID,ordinaryCompilerQualified:false,releaseAuthorized:false,applicationInventoryComplete:false,originalApplicationFiveNegativesQualified:false,complete:false,limits:REFERENCE_LIMITS,plannedPhases:PLANNED_PHASES,phases:[],controls:[]};
+ const report={kind:'SMALL_NATIVE_REFERENCE_FIXTURES_NOT_APPLICATION',source:sourceHead,controller:process.env.AIHR_CI_CONTROL_HEAD,runId:process.env.GITHUB_RUN_ID,ordinaryCompilerQualified:false,releaseAuthorized:false,applicationInventoryComplete:false,originalApplicationFiveNegativesQualified:false,complete:false,limits:REFERENCE_LIMITS,plannedPhases:PLANNED_PHASES,phases:[],controls:[],dateLibrary:{status:'blocked'}};
  const save=()=>writeFileSync(join(out,'report.json'),JSON.stringify({...report,elapsedMs:elapsed()},null,2)+'\n',{mode:0o600});
  const input=[];for(const name of fixtureFiles){const bytes=readFileSync(join(cwd,'test/fixtures/compiler-native-reference',name+'.fixture')),path=join(source,name);mkdirSync(dirname(path),{recursive:true,mode:0o700});writeFileSync(path,bytes,{flag:'wx',mode:0o600});input.push(regularHash(path));}
  const external=fixturePackageRoot(source);mkdirSync(external,{recursive:true,mode:0o700});const externalBytes=readFileSync(join(cwd,'test/fixtures/compiler-native-reference/external/index.d.ts.fixture'));assert.equal(externalBytes.length,FIXTURE_PACKAGE_BODY_BYTES);assert.equal(digest(externalBytes),FIXTURE_PACKAGE_BODY_SHA256);writeFileSync(join(external,'package.json'),FIXTURE_PACKAGE_MANIFEST,{flag:'wx',mode:0o600});writeFileSync(join(external,'index.d.ts'),externalBytes,{flag:'wx',mode:0o600});input.push(regularHash(join(external,'package.json')),regularHash(join(external,'index.d.ts')));
@@ -104,7 +107,10 @@ export async function nativeReferenceFixture(){
   for(const name of ['package.json','index.d.ts']){const path=join(external,name),original=readFileSync(path);try{writeFileSync(path,Buffer.concat([original,Buffer.from('\n// changed owned package custody\n')]));assert.throws(()=>assertOutputSeal(input),'Changed shared package input must refuse');}finally{writeFileSync(path,original);}assertOutputSeal(input);report.controls.push({kind:'changed-shared-package-'+name,status:'expected-custody-refusal'});}
   const collisionFiles=[{id:'collision.ts',kind:'implementation',sha256:'1'.repeat(64)},{id:'collision.tsx',kind:'implementation',sha256:'2'.repeat(64)}];assert.throws(()=>outputOwnership({projects:[{index:0,owned:collisionFiles.map(f=>f.id),context:[]}]},collisionFiles));report.controls.push({kind:'duplicate-output-writer',status:'expected-planner-refusal'});
   assert.deepEqual(report.phases.map(p=>p.label),PLANNED_PHASES);
-  assertOutputSeal(input);assertOutputSeal(seals);assertOutputSeal(configSeals);assert.equal(JSON.stringify(readCompilerReferenceClock(admitCompilerReference('fixture'))),JSON.stringify(clock));assert(performance.now()<=deadline);report.artifactBudget=assertArtifactBudget(out);report.complete=true;
+  assertOutputSeal(input);assertOutputSeal(seals);assertOutputSeal(configSeals);assert.equal(JSON.stringify(readCompilerReferenceClock(admitCompilerReference('fixture'))),JSON.stringify(clock));assert(performance.now()<=deadline);report.artifactBudget=assertArtifactBudget(out);
+ report.miniatureComplete=true;report.dateLibrary={status:'incomplete',path:'date-library/report.json'};save();
+ report.dateLibrary=await startDateLibraryChild(controller.signal);
+ assertOutputSeal(input);assertOutputSeal(seals);assertOutputSeal(configSeals);assert.equal(JSON.stringify(readCompilerReferenceClock(admitCompilerReference('fixture'))),JSON.stringify(clock));assert(performance.now()<=deadline);report.artifactBudget=assertArtifactBudget(out);report.complete=true;
  }catch(error){primary=error;report.failure={name:error.name,message:error.message};report.blocked=PLANNED_PHASES.filter(label=>!report.phases.some(p=>p.label===label)).map(label=>({label,status:'blocked',reason:performance.now()>=deadline-2000?'aggregate-budget':'failed-fixture-prerequisite-or-control'}));throw error;}finally{try{save();}catch(error){if(primary)throw new AggregateError([primary,error],'Native fixture and partial report both refused');throw error;}}
  return report;
  }catch(error){primary=error;throw error;}
