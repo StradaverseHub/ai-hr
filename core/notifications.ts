@@ -1,3 +1,5 @@
+import {createNotificationRegistry,EMPLOYEE_LOOP_DIGEST_EVENT,type NotificationRecipientReaders,type EventRef} from './notification-registry';
+export {renderRewardRouted} from './notification-registry';
 import {probationNotificationRecipientsTx} from '../packs/probation/service';
 import {contractNotificationRecipientsTx} from '../packs/contracts/service';
 import {currentFollowupTargetsTx} from './automatic-followups';
@@ -23,15 +25,17 @@ import { rewardUploadCheckerRecipients,rewardAccessSuspensionEventRecipients,rew
 
  */
 import { randomUUID } from 'node:crypto';
-import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
+import { notificationEmailCategory } from '../lib/notification-email-model';
 import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,probationSweepRecipientsForTx,type NoticeSweepAccess,type NotificationSweepConnection} from './notice-projection';
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { unionAll } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
   attendanceCorrection,
   claimRequest,
   domainEvent,
+  notificationEventProcessing,
   employment,
   employmentReview,
   leaveApprovalStep,
@@ -48,7 +52,6 @@ import {
 import { resolveSubjectHead } from './leave';
 import { sanitizeApprovalLevels } from './leave-approval-policy';
 import { isModuleEnabled } from './entitlements';
-import { READINESS_CORRECTIONS } from '../lib/readiness-correction-actions';
 
 /** All HR-admin employments in the same company as `employmentId` (0110, employment-review fan-out).
  *  Resolves via role_assignment (hr_admin/super_admin) → app_user → person → that company's employment.
@@ -271,193 +274,28 @@ export async function currentApproverEmploymentsTx(tx: Tx, source: string, itemI
   return [...new Set(out)];
 }
 
-function approvalChaseSpec(source: string, kind: string, category: NotificationEmailCategory, title: string, what: string): Spec {
-  return {
-    kind,
-    category,
-    render: (p) => {
-      const days = typeof p?.workingDaysWaiting === 'number' && Number.isSafeInteger(p.workingDaysWaiting) ? p.workingDaysWaiting : null;
-      return {
-        severity: 'action',
-        title,
-        body: days == null ? `${what} is waiting for your decision.` : `${what} has been waiting for your decision for ${days} working day(s).`,
-        linkPath: '/approvals',
-      };
-    },
-    recipients: async (tx, ev, payload) => {
-      if (payload?.source !== source || typeof payload?.stage !== 'string' || !ev.subjectEmploymentId) return [];
-      return (await currentApproverEmploymentsTx(tx, source, ev.aggregateId, ev.subjectEmploymentId, payload.stage)) ?? [];
-    },
-  };
-}
-
 /** Notifications are a per-tenant module now (ADR-0077 slice 3), not a deployment flag. */
 const enabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'notifications');
 
-type Rendered = { severity: NotificationSeverity; title: string; body: string; linkPath: string };
-type EventRef = { id?:string;aggregateId: string; subjectEmploymentId: string | null };
-type Spec = {
-  kind: string;
-  category: NotificationEmailCategory|null;
-  /** `ev` is optional context (6522d26a) — most renders are payload-only; a spec may use the event ref
-   *  for a recipient-specific deep-link (e.g. the HR issue-letter task links to the subject's profile). */
-  render: (payload: Record<string, unknown> | null, ev: EventRef) => Rendered;
-  /** Fan-out resolver. When present, recipients come from here (e.g. every employee in a closed payroll
-   *  batch) instead of the event's single subjectEmploymentId. `payload` (R51 722904dc) is the event's
-   *  payload — a two-parameter resolver is still assignable, so existing resolvers compile unchanged. */
-  recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null,noticeReader?:NoticeRecipientReader) => Promise<string[]>;
-};
-
-/**
- * `reward-unit.routed` copy. A move back to draft from a later stage is a RETURN to the BU CEO (or the BG
- * CEO for a BG-originated off-cycle request — the recipient resolver already picks that seat), so it says
- * so. Neither branch carries an amount or the return reason: the reason is read in the app under
- * reward_decision RLS, never frozen into a stored notice or an email.
- */
-export function renderRewardRouted(p: Record<string, unknown> | null, ev: EventRef): Rendered {
-  const linkPath = `/rewards/${ev.aggregateId}?view=approvals`;
-  if (p?.to === 'draft' && typeof p?.from === 'string' && p.from !== 'draft')
-    return { severity: 'action', title: 'Rewards review returned to you', body: 'Open Reward Desk to see why it was returned and resubmit it.', linkPath };
-  return { severity: 'action', title: 'Rewards review needs attention', body: 'Open Reward Desk to review the assigned request.', linkPath };
-}
-
-// eventType → notification (or SEVERAL — 6522d26a: one event may fan out to different audiences with
-// different bodies, e.g. employment-review.decided → subject "complete" + HR "issue the letter").
-// Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
-// app where the full, gated detail lives.
-const REGISTRY: Record<string, Spec | Spec[]> = {
-  'probation.notification-due':{kind:'probation.notification',category:'review',recipients:(tx,ev)=>probationNotificationRecipientsTx(tx,ev),render:(payload)=>({severity:'action',title:'probation.notification.title',body:'probation.notification.body',linkPath:typeof payload?.caseId==='string'?(payload.documentKind==='letter'&&typeof payload.partId==='string'?`/lifecycle/probation/${payload.caseId}/letters/${payload.partId}`:`/lifecycle/probation/${payload.caseId}`):'/lifecycle/probation'})},
-  // This explicit command atomically point-projects its in-app notification. SQL refuses a forged
-  // event or a commit without that exact projection; the global cursor must not project it twice.
-  'employee-home.greeting.sent': {
-    kind:'employee-home.greeting',category:null,recipients:async()=>[],
-    render:(_payload,ev)=>({severity:'info',title:'employeeHome.greetingNotification.title',
-      body:'employeeHome.greetingNotification.body',linkPath:`/me/greetings/${ev.aggregateId}`}),
-  },
-  'contract.notification-due': {
-    kind:'contract.notification-due',category:'review',
-    recipients:(tx,ev)=>contractNotificationRecipientsTx(tx,ev.aggregateId),
-    render:()=>({severity:'action',title:'Contract staff task',body:'Open Contract Management to review your assigned task.',linkPath:'/lifecycle/contracts'}),
-  },
-  'onboarding.digest': {
-    kind:'onboarding.digest',category:'onboarding',
-    recipients:async(tx,ev,payload)=>{
+const webNotificationRecipients:NotificationRecipientReaders<Tx>={
+  probation:(tx,ev)=>probationNotificationRecipientsTx(tx,ev),
+  contract:(tx,ev)=>contractNotificationRecipientsTx(tx,ev.aggregateId),
+  onboardingDigest:async(tx,ev,payload)=>{
       if(typeof payload?.recipientUserId!=='string'||typeof payload?.caseId!=='string')return [];
       const result=await tx.execute(sql`select * from app.onboarding_mail_recipient(${payload.caseId}::uuid,${payload.recipientUserId}::uuid) as employment_id`);
       return (result as unknown as {employment_id:string}[]).map(row=>row.employment_id);
     },
-    render:()=>({severity:'info',title:'Your daily onboarding digest',body:'Review your assigned onboarding work, approvals and conversations.',linkPath:'/tasks'}),
-  },
-  'assessment.reminder-queued': {
-    kind:'performance.reminder',category:'performance',
-    recipients:(tx,ev)=>assessmentReminderRecipientsTx(tx,ev.aggregateId),
-    render:()=>({severity:'action',title:'Assessment work waiting on you',body:'Open your performance workspace to complete your pending review tasks.',linkPath:'/me/performance'}),
-  },
-  'reward-access.suspended': {
-    kind:'rewards.access-suspended',category:'rewards',
-    render:(_payload,event)=>({severity:'warning',title:'Rewards access suspended',body:'People records changed. Check approval-role coverage and ask a Rewards administrator to review suspended access.',linkPath:`/rewards/${event.aggregateId}?view=approvals`}),
-    recipients:(tx,ev)=>rewardAccessSuspensionEventRecipients(tx,ev.id),
-  },
-  'reward-unit.upload-replaced':{kind:'rewards.upload-check',category:'rewards',recipients:(tx,event)=>rewardUploadCheckerRecipients(tx,event.aggregateId),render:(_payload,event)=>({severity:'action',title:'rewardUploaded.checkNotificationTitle',body:'rewardUploaded.checkNotificationBody',linkPath:`/rewards/${event.aggregateId}/uploaded`})},
-  'reward-unit.upload-confirmed':{kind:'rewards.upload-ready',category:'rewards',recipients:(tx,event)=>rewardNotificationRecipients(tx,event.aggregateId,'draft'),render:(_payload,event)=>({severity:'action',title:'rewardUploaded.readyNotificationTitle',body:'rewardUploaded.readyNotificationBody',linkPath:`/rewards/${event.aggregateId}`})},
-  'reward-unit.routed': {
-    kind: 'rewards.review', category: 'rewards',
-    render: (p, ev) => renderRewardRouted(p, ev),
-    recipients: (tx, ev, payload) => rewardNotificationRecipients(tx, ev.aggregateId, payload?.to),
-  },
-  'reward-unit.preparation-released': {
-    kind:'rewards.preparation-released',category:'rewards',
-    recipients:(tx,event,payload)=>rewardPreparationNotificationRecipients(tx,event.aggregateId,payload?.to,true),
-    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.releaseNotificationTitle',body:'rewardsPreparation.releaseNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
-  },
-  'reward-unit.preparation-changed': {
-    kind:'rewards.preparation-changed',category:'rewards',
-    recipients:(tx,event,payload)=>rewardPreparationNotificationRecipients(tx,event.aggregateId,payload?.to,false),
-    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.changeNotificationTitle',body:'rewardsPreparation.changeNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
-  },
-  'reward-unit.preparation-invalidated': {
-    kind:'rewards.preparation-invalidated',category:'rewards',
-    recipients:(tx,event,payload)=>rewardPreparationNotificationRecipients(tx,event.aggregateId,payload?.to,false),
-    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.changeNotificationTitle',body:'rewardsPreparation.changeNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
-  },
-  'reward-unit.final-pool-changed': {
-    kind:'rewards.final-pool-changed',category:'rewards',
-    render:(_payload,event)=>({severity:'action',title:'Rewards pool updated',body:'Group Rewards changed the bonus pool or its status. Review the current pool and budget checks before approving.',linkPath:`/rewards/${event.aggregateId}#unit-governance`}),
-    recipients:(tx,event)=>rewardPoolNotificationRecipients(tx,event.aggregateId),
-  },
-  'reward-unit.approved': {
-    kind: 'rewards.approved', category: 'rewards',
-    render: (_p, ev) => ({ severity: 'action', title: 'Rewards ready for payroll', body: 'The review is approved and ready for the payroll handoff.', linkPath: `/rewards/${ev.aggregateId}?view=approvals` }),
-    recipients: (tx, ev) => rewardNotificationRecipients(tx, ev.aggregateId, 'approved'),
-  },
-  'leave-request.approved': {
-    kind: 'leave.approved',
-    category: 'leave',
-    // Partial Leave Approval notification fix: a MIXED per-date outcome (finalizeLeaveApproval sets
-    // payload.mixed === true when ≥1 date was approved AND ≥1 rejected) renders an honest "partially
-    // approved" body that deep-links to /me, where the existing per-date breakdown shows which dates were
-    // approved/rejected and why. Every other approval (whole-request, all-approved per-date) has no `mixed`
-    // flag and keeps the flat "approved" body — byte-identical to today.
-    render: (p) => {
-      if (p?.mixed === true) {
-        // R17 600be8ac ask #5: list the approved + rejected dates and the rejection reason so the notice is
-        // self-contained. perDateOutcome is attached by finalizeLeaveApproval only for the mixed case; fall
-        // back to the generic body if an older event lacks it. Cap the listing so the body stays short.
-        const o = (p.perDateOutcome ?? null) as
-          | { approved?: string[]; rejected?: { date: string; reason?: string | null }[] }
-          | null;
-        const cap = 6;
-        const fmt = (arr: string[]) =>
-          arr.length > cap ? `${arr.slice(0, cap).join(', ')} +${arr.length - cap} more` : arr.join(', ');
-        const approved = o?.approved ?? [];
-        const rejected = o?.rejected ?? [];
-        const parts: string[] = [];
-        if (approved.length) parts.push(`Approved: ${fmt(approved)}`);
-        if (rejected.length) {
-          parts.push(`Rejected: ${fmt(rejected.map((r) => r.date))}`);
-          const reason = rejected.find((r) => r.reason)?.reason;
-          if (reason) parts.push(`Reason: ${reason}`);
-        }
-        const body = parts.length
-          ? `Some dates were approved and some were not. ${parts.join('. ')}.`
-          : 'Some dates in your leave request were approved and some were not — tap to see the breakdown.';
-        return { severity: 'info', title: 'Leave partially approved', body, linkPath: '/me' };
-      }
-      return { severity: 'info', title: 'Leave approved', body: 'Your leave request was approved.', linkPath: '/me' };
-    },
-  },
-  'leave-request.rejected': {
-    kind: 'leave.rejected',
-    category: 'leave',
-    render: () => ({ severity: 'warning', title: 'Leave not approved', body: 'Your leave request was rejected.', linkPath: '/me' }),
-  },
-  // HR cancelled a leave on the employee's behalf (feedback 22e68ff0). Default recipient = the event's
-  // subjectEmploymentId (the affected employee) — no fan-out resolver. The payload carries the display facts
-  // (type + dates) the ticket wants in the notice. English-only strings, matching every other registry entry.
-  'leave-request.admin-cancelled': {
-    kind: 'leave.admin-cancelled',
-    category: 'leave',
-    render: (p) => ({
-      severity: 'warning',
-      title: 'Leave cancelled by HR',
-      body: `Your ${p?.leaveTypeName ?? 'leave'} (${p?.startDate ?? ''} → ${p?.endDate ?? ''}) has been cancelled by an HR administrator.`,
-      linkPath: '/me',
-    }),
-  },
-  // The employee withdrew their OWN pending leave (item c9a19e34, expected_function 4.v — "notify the approver
-  // and HR"). Unlike the other leave notices, the SUBJECT here is the person who took the action, so a subject
-  // notice would be pointless — a fan-out resolver targets the approver (the subject's current administrative
-  // manager) + the company's HR admins instead, excluding the subject. English-only body (registry convention).
-  'leave-request.self-cancelled': {
-    kind: 'leave.self-cancelled',
-    category: 'leave',
-    render: (p) => ({
-      severity: 'info',
-      title: 'Leave application withdrawn',
-      body: `An employee withdrew their ${p?.leaveTypeName ?? 'leave'} application (${p?.startDate ?? ''} → ${p?.endDate ?? ''}).`,
-      linkPath: '/approvals',
-    }),
-    recipients: async (tx, ev) => {
+  assessmentReminder:(tx,ev)=>assessmentReminderRecipientsTx(tx,ev.aggregateId),
+  rewardSuspension:(tx,ev)=>rewardAccessSuspensionEventRecipients(tx,ev.id),
+  rewardUploadChecker:(tx,event)=>rewardUploadCheckerRecipients(tx,event.aggregateId),
+  rewardUploadReady:(tx,event)=>rewardNotificationRecipients(tx,event.aggregateId,'draft'),
+  rewardRouted:(tx, ev, payload) => rewardNotificationRecipients(tx, ev.aggregateId, payload?.to),
+  rewardPreparationReleased:(tx,event,payload)=>rewardPreparationNotificationRecipients(tx,event.aggregateId,payload?.to,true),
+  rewardPreparationChanged:(tx,event,payload)=>rewardPreparationNotificationRecipients(tx,event.aggregateId,payload?.to,false),
+  rewardPreparationInvalidated:(tx,event,payload)=>rewardPreparationNotificationRecipients(tx,event.aggregateId,payload?.to,false),
+  rewardPoolChanged:(tx,event)=>rewardPoolNotificationRecipients(tx,event.aggregateId),
+  rewardApproved:(tx, ev) => rewardNotificationRecipients(tx, ev.aggregateId, 'approved'),
+  leaveSubmitted:async (tx, ev) => {
       if (!ev.subjectEmploymentId) return [];
       const hr = await hrAdminsForCompany(tx, ev.subjectEmploymentId);
       const mgrs = await tx
@@ -474,33 +312,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       const out = [...mgrs.map((m) => m.id), ...hr].filter((id) => id !== ev.subjectEmploymentId);
       return [...new Set(out)];
     },
-  },
-  // ── r301 (board 83511d3b) — Cancel Approved Leave. The reporter's complaint was that an employee was never
-  // told what became of their cancellation, so the two DECISIONS go to the employee ALWAYS (the event's
-  // subject — the default recipient). The REQUEST goes to the approver and HR only when the leave type's
-  // "Notify the approver and HR" box was ticked, a choice SNAPSHOTTED into the event payload at request time
-  // (re-reading the leave type at dispatch would let a later untick retroactively un-notify).
-  // Email uses a separate brief template; the in-app strings follow the registry convention.
-  'leave-cancellation.requested': {
-    kind: 'leave.cancellation-requested',
-    category: 'leave',
-    render: (p) => {
-      const what = `${p?.leaveTypeName ?? 'leave'} (${Array.isArray(p?.cancelDates) ? (p.cancelDates as string[]).join(', ') : ''})`;
-      return p?.autoApproved === true
-        ? {
-            severity: 'info',
-            title: 'Leave cancelled by an employee',
-            body: `An employee cancelled ${what}. It was approved automatically by the leave type setting.`,
-            linkPath: '/approvals',
-          }
-        : {
-            severity: 'action',
-            title: 'Leave cancellation awaiting approval',
-            body: `An employee asked to cancel ${what}. It is waiting for approval.`,
-            linkPath: '/approvals',
-          };
-    },
-    recipients: async (tx, ev, payload) => {
+  leaveCancellationSubmitted:async (tx, ev, payload) => {
       if (payload?.notify !== true || !ev.subjectEmploymentId) return [];
       // WHO APPROVES: the first level of the cancellation's copied chain — resolved through the SAME per-kind
       // resolver the escalation fan-out uses, alternates included — or, for a single-level chain (no steps),
@@ -527,143 +339,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       // Never the employee who asked (an HR admin or a manager cancelling their own leave).
       return [...new Set([...approvers, ...hr])].filter((id) => id !== ev.subjectEmploymentId);
     },
-  },
-  'leave-cancellation.approved': {
-    kind: 'leave.cancellation-approved',
-    category: 'leave',
-    render: (p) => {
-      const dates = Array.isArray(p?.cancelDates) ? (p.cancelDates as string[]).join(', ') : '';
-      const days = typeof p?.restoredDays === 'number' ? p.restoredDays : null;
-      return {
-        severity: 'info',
-        title: 'Leave cancellation approved',
-        body:
-          `Your cancellation of ${p?.leaveTypeName ?? 'leave'}${dates ? ` on ${dates}` : ''} was approved` +
-          `${p?.autoApproved === true ? ' automatically' : ''}. The leave is cancelled` +
-          `${days != null ? ` and ${days} day(s) went back to your balance` : ''}.`,
-        linkPath: '/leave',
-      };
-    },
-  },
-  'leave-cancellation.rejected': {
-    kind: 'leave.cancellation-rejected',
-    category: 'leave',
-    render: (p) => {
-      const dates = Array.isArray(p?.cancelDates) ? (p.cancelDates as string[]).join(', ') : '';
-      return {
-        severity: 'warning',
-        title: 'Leave cancellation not approved',
-        body: `Your cancellation of ${p?.leaveTypeName ?? 'leave'}${dates ? ` on ${dates}` : ''} was not approved. The leave stays approved.`,
-        linkPath: '/leave',
-      };
-    },
-    // The subject — EXCEPT when HR cancelled the whole leave on the employee's behalf and the pending
-    // give-back was closed as superseded (adminCancelLeave): the employee is already told "Leave cancelled
-    // by HR", and "your cancellation was not approved… the leave stays approved" would be untrue.
-    recipients: async (_tx, ev, payload) =>
-      payload?.supersededByAdminCancellation === true || !ev.subjectEmploymentId ? [] : [ev.subjectEmploymentId],
-  },
-  'toil.accrued': {
-    kind: 'toil.accrued',
-    category: 'toil',
-    render: (p) => ({
-      severity: 'info',
-      title: 'Time off in lieu banked',
-      body: `${p?.daysCredited ?? ''} day(s) banked in lieu${p?.workedDate ? ` for ${p.workedDate}` : ''}.`.trim(),
-      linkPath: '/me',
-    }),
-  },
-  'toil.converted': {
-    kind: 'toil.converted',
-    category: 'toil',
-    render: (p) => ({ severity: 'info', title: 'In-lieu converted to pay', body: `Your unused time in lieu (${p?.daysCredited ?? ''} day(s)) was converted to pay.`, linkPath: '/me' }),
-  },
-  'toil.lapsed': {
-    kind: 'toil.lapsed',
-    category: 'toil',
-    render: (p) => ({ severity: 'warning', title: 'In-lieu expired', body: `Your unused time in lieu (${p?.daysCredited ?? ''} day(s)) has lapsed.`, linkPath: '/me' }),
-  },
-  // 34-2b producers — the rest of the "your request was actioned" decisions (each already carries the
-  // requester as subjectEmploymentId) plus the payslip-ready fan-out.
-  'resignation.accepted': {
-    kind: 'resignation.accepted',
-    category: 'offboarding',
-    render: () => ({ severity: 'info', title: 'Resignation accepted', body: 'Your resignation has been accepted by HR.', linkPath: '/me' }),
-  },
-  'resignation.rejected': {
-    kind: 'resignation.rejected',
-    category: 'offboarding',
-    render: () => ({ severity: 'warning', title: 'Resignation not accepted', body: 'Your resignation was not accepted — please speak with HR.', linkPath: '/me' }),
-  },
-  /**
-   * ADR-0084 §2.7 — the input-triage question. The BODY is written by the SWEEP, not here, for the same
-   * reason the nudge's is: it may be a model draft, and by the time it reaches this registry it has
-   * already passed `adjudicateTriage` (or it was never emitted). Re-deciding that here would be two
-   * places deciding, which is how they drift.
-   *
-   * ⚠️ IT GOES TO THE CLAIMANT, NOT THE APPROVER, and that is the whole design (see core/input-triage.ts).
-   * `subjectEmploymentId` is the person who filed it, so the DEFAULT recipient resolver is already right
-   * and no `recipients` override is needed — the absence of one here is deliberate, not an oversight.
-   */
-  'claim-request.triage-queried': {
-    kind: 'claim.triageQueried',
-    // The claims category, so muting claim notifications mutes this too. It is a question about a claim.
-    category: 'claims',
-    render: (p) => ({
-      // `info`, never `warning`. Nothing is wrong with the claim, nothing is refused, and nothing is
-      // required of them — a warning colour would tell the employee they are in trouble, which is exactly
-      // the accusation §2.7 forbids.
-      severity: 'info',
-      title: 'A question about your claim',
-      body:
-        typeof p?.reason === 'string' && p.reason.length > 0
-          ? p.reason
-          : 'There is a question about a claim you filed. Please check it before it is approved.',
-      linkPath: '/me',
-    }),
-  },
-  'claim-request.approved': {
-    kind: 'claim.approved',
-    category: 'claims',
-    render: () => ({ severity: 'info', title: 'Claim approved', body: 'Your expense claim was approved.', linkPath: '/me' }),
-  },
-  'claim-request.rejected': {
-    kind: 'claim.rejected',
-    category: 'claims',
-    render: () => ({ severity: 'warning', title: 'Claim not approved', body: 'Your expense claim was not approved.', linkPath: '/me' }),
-  },
-  // ── 1e9145d4 Plan OT — three notices, because today NOTHING is sent about an attendance or overtime
-  // request at all. Overtime agreed before it is worked only works if the approver learns a plan is waiting
-  // while saying no is still cheap, and if the employee learns the answer without going to look.
-  //
-  // SCOPED TO OVERTIME, DELIBERATELY. The same three event types are also appended by a clock-time
-  // correction, which shares the record. Widening these notices to cover clock fixes would be a real
-  // improvement — they are equally silent today — but it is a behaviour change on a neighbouring flow that
-  // nobody asked for, so each resolver below returns NO RECIPIENTS for a non-overtime row. Widening later
-  // is deleting one guard clause. The discriminator is `requestedOtMinutes` on the request event and the
-  // explicit `overtime` flag on the decision events (which carry no minutes of their own).
-  //
-  // English-only strings, the registry convention — a notification body is rendered once and STORED, so
-  // there is no per-language version of it.
-  'attendance-correction.requested': {
-    kind: 'attendance.ot-requested',
-    category: 'attendance',
-    render: (p) => {
-      const hours = p?.requestedOtMinutes != null ? (Number(p.requestedOtMinutes) / 60).toFixed(1) : '';
-      const date = typeof p?.date === 'string' ? p.date : '';
-      return {
-        severity: 'action',
-        title: 'Overtime plan awaiting approval',
-        body: `An overtime plan for ${date} (${hours} hours) is waiting for your approval.`,
-        linkPath: '/approvals',
-      };
-    },
-    // THE APPROVER, not the subject — the event's subjectEmploymentId is the person who FILED it, so the
-    // default subject notice would tell the requester what they just did. Same routing as the decide path
-    // (assertCanDecide): the subject's current administrative manager, falling back to the company's HR
-    // admins when they have no line — otherwise a plan filed by someone reporting to nobody is silent.
-    // Both resolvers already exist and are used by the leave escalation fan-out; neither is new ground.
-    recipients: async (tx, ev, payload) => {
+  overtimeSubmitted:async (tx, ev, payload) => {
       if (!ev.subjectEmploymentId || payload?.requestedOtMinutes == null) return [];
       let out = await approverEmploymentsForKind(tx, ev.subjectEmploymentId, 'direct_manager');
       out=await withApprovalDelegatesTx(tx,ev.subjectEmploymentId,'attendance','attendance.correction',out);
@@ -672,143 +348,18 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       // HR admin filing for themselves).
       return [...new Set(out)].filter((id) => id !== ev.subjectEmploymentId);
     },
-  },
-  // The subject IS the employee whose plan was decided, so these two would take the default recipient —
-  // but the resolver is spelled out anyway to carry the overtime-only scope above.
-  'attendance-correction.approved': {
-    kind: 'attendance.ot-approved',
-    category: 'attendance',
-    render: (p) => ({
-      severity: 'info',
-      title: 'Overtime plan approved',
-      // `deferred` is set by decideAttendanceCorrection when the plan was agreed AHEAD of its date, which
-      // is the case worth saying out loud: approved is not the same as counted, and the hours appear on the
-      // day once it is worked.
-      body:
-        p?.deferred === true
-          ? `Your overtime plan for ${typeof p.date === 'string' ? p.date : 'the requested date'} was approved. The hours are counted once the day is worked.`
-          : 'Your overtime request was approved.',
-      linkPath: '/attendance/plan-ot',
-    }),
-    recipients: async (_tx, ev, payload) =>
-      payload?.overtime === true && ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [],
-  },
-  'attendance-correction.rejected': {
-    kind: 'attendance.ot-rejected',
-    category: 'attendance',
-    render: () => ({
-      severity: 'warning',
-      title: 'Overtime plan not approved',
-      body: 'Your overtime request was not approved.',
-      linkPath: '/attendance/plan-ot',
-    }),
-    recipients: async (_tx, ev, payload) =>
-      payload?.overtime === true && ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [],
-  },
-  // ADR-0084 §2.5 — the nudge agent. `body` is rendered by the SWEEP, not here, because it may be a
-  // model draft that passed `nudgeIsFaithful` — and if it did not, the sweep already substituted the
-  // deterministic template, so by the time it reaches this registry there is exactly one body and it is
-  // trustworthy. Rendering here would have to re-decide that, and two places deciding is how they drift.
-  'readiness.nudge-raised': {
-    kind: 'readiness.nudge',
-    // Its OWN category, so the existing per-category preference is a precise opt-out: somebody can mute
-    // record chasers without muting leave approvals.
-    category: 'readiness',
-    render: (p) => ({
-      severity: 'warning',
-      title: p?.audience === 'employee' ? 'Something is missing from your record' : 'An employee record needs completing',
-      // The fallback is unreachable in practice (the sweep never emits without a body) and is here so a
-      // hand-replayed or malformed event degrades to a true sentence rather than the string "undefined".
-      body: typeof p?.body === 'string' && p.body.length > 0 ? p.body : 'A record is incomplete and is holding up payroll or a statutory filing.',
-      // Deep-link to the screen the RECIPIENT can actually act on — the whole point of the routing split.
-      linkPath: p?.audience === 'employee'
-        ? p?.action === 'submit_correction' && typeof p?.gap === 'string' && Object.hasOwn(READINESS_CORRECTIONS, p.gap)
-          ? `/me?tab=${READINESS_CORRECTIONS[p.gap as keyof typeof READINESS_CORRECTIONS].tab}#section-request-${READINESS_CORRECTIONS[p.gap as keyof typeof READINESS_CORRECTIONS].tab}`
-          : '/me'
-        : '/control-tower/readiness',
-    }),
-    recipients: async (tx, ev, payload) => {
+  readinessNudge:async (tx, ev, payload) => {
       if (!ev.subjectEmploymentId) return [];
       if (payload?.audience === 'employee') return [ev.subjectEmploymentId];
       if (payload?.audience === 'hr') return hrAdminsForCompany(tx, ev.subjectEmploymentId);
       return [];
     },
-  },
-  'profile-change.approved': {
-    kind: 'profile.approved',
-    category: 'profile',
-    render: () => ({ severity: 'info', title: 'Profile change approved', body: 'Your requested profile change was approved.', linkPath: '/me' }),
-  },
-  'profile-change.rejected': {
-    kind: 'profile.rejected',
-    category: 'profile',
-    render: () => ({ severity: 'warning', title: 'Profile change not approved', body: 'Your requested profile change was not approved.', linkPath: '/me' }),
-  },
-  'peer-feedback-request.created': {
-    kind:'performance.feedback-request',category:'performance',
-    render:()=>({severity:'action',title:'Feedback requested',body:'A colleague has requested your feedback. Open your performance tasks.',linkPath:'/me/performance'}),
-    recipients:async(tx,ev)=>{
+  peerFeedback:async(tx,ev)=>{
       const rows=await tx.select({id:employment.id}).from(peerFeedbackRequest).innerJoin(employment,eq(employment.id,peerFeedbackRequest.peerEmploymentId)).innerJoin(appUser,and(eq(appUser.personId,employment.personId),eq(appUser.tenantId,employment.tenantId))).where(and(eq(peerFeedbackRequest.id,ev.aggregateId),eq(peerFeedbackRequest.status,'pending'),isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>(now() at time zone 'Asia/Kuala_Lumpur')::date)`));return [...new Set(rows.map(r=>r.id))];
     },
-  },
-  ...Object.fromEntries(['results-submitted','competencies-submitted','plan-shared'].map(event=>[`onehr.${event}`,{
-    kind:'performance.review-task',category:'performance' as const,recipients:(tx:Tx,ev:EventRef)=>assessmentReviewTaskRecipientsTx(tx,ev.aggregateId,event==='results-submitted'?'results':event==='competencies-submitted'?'competencies':'plan'),
-    render:()=>({severity:'action' as const,title:'Performance review task',body:'An employee has submitted information for your review. Open your performance tasks.',linkPath:'/me/performance'}),
-  }])),
-  'onehr.kpi-approval-needed': {
-    kind:'performance.review-task',category:'performance',
-    recipients:(tx,ev,payload)=>payload?.phase==='setting'||payload?.phase==='results'?assessmentReviewTaskRecipientsTx(tx,ev.aggregateId,payload.phase):Promise.resolve([]),
-    render:()=>({severity:'action',title:'Performance review task',body:'A KPI approval is awaiting your review. Open your performance tasks.',linkPath:'/me/performance'}),
-  },
-  // WP-E: a release is announced once per person per release action (onehr.results-to-person below), not once
-  // per component; onehr.result-released stays an audit event.
-  ...Object.fromEntries(['scorecard-approved','scorecard-returned','plan-reviewed','plan-closed'].map(event=>[`onehr.${event}`,{
-    kind:'performance.update',category:'performance' as const,
-    render:()=>({severity:'info' as const,title:'Performance assessment update',body:'There is an update to your assessment or development plan. Open your performance tasks.',linkPath:'/me/performance'}),
-  }])),
-  // WP-E (CF-08) — release notices. The event's subject is the recipient (a leader, or the person). The release
-  // service's ledger already decided who is newly told; the copy carries a count or the kinds released, never a
-  // band and never another person's name. Delivery: the bell always; email under the tenant's performance
-  // category policy and the recipient's own consent (E-6).
-  'onehr.results-to-leader': {
-    kind:'performance.update',category:'performance',
-    render:(p)=>{
-      const count=typeof p?.count==='number'&&p.count>0?p.count:1,moved=typeof p?.moved==='number'&&p.moved>0?p.moved:0;
-      const people=count===1?'1 person you lead':`${count} people you lead`;
-      return {severity:'info',title:'Results released to you',
-        body:`HR has released the results of ${people} to you.${p?.both===true?' They can see their own results as well.':' They cannot see their own results yet, so you can talk them through first.'}${moved?` The business group CEO moved ${moved===1?'1 of them':`${moved} of them`}.`:''} Open What you led to see them.`,
-        linkPath:'/performance/led'};
-    },
-  },
-  'onehr.results-to-person': {
-    kind:'performance.update',category:'performance',
-    render:(p)=>{
-      const words:Record<string,string>={performance:'your performance band',potential:'your potential band',talent:'your talent status',feedback:'your 360 feedback report'};
-      const raw:unknown=p?.kinds,kinds=Array.isArray(raw)?raw.filter((k):k is string=>typeof k==='string'&&k in words).map(k=>words[k]):[];
-      const list=kinds.length>1?`${kinds.slice(0,-1).join(', ')} and ${kinds.at(-1)}`:kinds[0]??'your results';
-      return {severity:'info',title:'Your results are released',body:`HR has released ${list} to you. Open your performance record to see them.`,linkPath:'/me/performance'};
-    },
-  },
-  // Performance closure (lifecycle G4). Release-safe: closeReview asserts the cycle is released before
-  // closing, and the body says only that the review was finalized — never the score or ABC class (the
-  // /me review surface gates the actual figures behind the existing release/showManager rules).
-  'performance-review.closed': {
-    kind: 'performance.closed',
-    category: 'performance',
-    render: () => ({ severity: 'info', title: 'Performance review finalized', body: 'Your performance review has been finalized.', linkPath: '/me' }),
-  },
-  // Employment-review workflow (0110). started → fan out to the resolved direct manager (from the review
-  // row) + the company's HR admins; manager-evaluated → HR admins; decided → the subject (default path).
-  'employment-review.started': {
-    kind: 'review.started',
-    category: 'review',
-    render: () => ({
-      severity: 'action',
-      title: 'Review due',
-      body: 'A probation / contract / internship review is due — confirm, extend or terminate.',
-      linkPath: '/approvals',
-    }),
-    recipients: async (tx, ev) => {
+  assessmentReviewTask:(tx,ev,phase)=>assessmentReviewTaskRecipientsTx(tx,ev.aggregateId,phase),
+  assessmentKpiApproval:(tx,ev,payload)=>payload?.phase==='setting'||payload?.phase==='results'?assessmentReviewTaskRecipientsTx(tx,ev.aggregateId,payload.phase):Promise.resolve([]),
+  legacyReviewStarted:async (tx, ev) => {
       const [rev] = await tx
         .select({ managerEmploymentId: employmentReview.managerEmploymentId, employmentId: employmentReview.employmentId })
         .from(employmentReview)
@@ -820,17 +371,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       if (rev.managerEmploymentId) out.unshift(rev.managerEmploymentId);
       return [...new Set(out)];
     },
-  },
-  'employment-review.manager-evaluated': {
-    kind: 'review.manager-evaluated',
-    category: 'review',
-    render: () => ({
-      severity: 'action',
-      title: 'Review ready for decision',
-      body: 'A manager evaluation is ready — record the HR decision.',
-      linkPath: '/approvals',
-    }),
-    recipients: async (tx, ev) => {
+  legacyReviewEvaluated:async (tx, ev) => {
       const [rev] = await tx
         .select({ employmentId: employmentReview.employmentId })
         .from(employmentReview)
@@ -839,28 +380,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       if (!rev) return [];
       return hrAdminsForCompany(tx, rev.employmentId);
     },
-  },
-  'employment-review.decided': [
-    {
-      kind: 'review.decided',
-      category: 'review',
-      // Default subject path (no resolver) — notify the subject only. The decision itself is gated behind
-      // the /me review surface; the body says only that the review is complete.
-      render: () => ({ severity: 'info', title: 'Your review is complete', body: 'Your review has been finalized.', linkPath: '/me' }),
-    },
-    {
-      // 6522d26a Fn 5.2 — the follow-up "issue letter" HR task: same event, HR fan-out, deep-link to the
-      // subject's profile review section where the save/upload affordances live. The notification IS the
-      // task (a dedicated task table is deliberately out of scope).
-      kind: 'review.issue-letter',
-      category: 'review',
-      render: (_p, ev) => ({
-        severity: 'action',
-        title: 'Issue review letter',
-        body: 'A review was decided — generate the outcome letter and upload the signed copy.',
-        linkPath: ev.subjectEmploymentId ? `/admin/personnel/${ev.subjectEmploymentId}` : '/approvals',
-      }),
-      recipients: async (tx, ev) => {
+  legacyReviewDecidedLetter:async (tx, ev) => {
         const [rev] = await tx
           .select({ employmentId: employmentReview.employmentId })
           .from(employmentReview)
@@ -869,20 +389,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
         if (!rev) return [];
         return hrAdminsForCompany(tx, rev.employmentId);
       },
-    },
-  ],
-  // 6522d26a Fn 2 — configurable reminder cadence: the sweep appends one reminder-due per (review,
-  // offset window); recipients = assigned manager + the company's HR admins (clone of .started).
-  'employment-review.reminder-due': {
-    kind: 'review.reminder',
-    category: 'review',
-    render: (p) => ({
-      severity: 'action',
-      title: 'Review reminder',
-      body: `A ${p?.reviewType ?? ''} review is awaiting action — the period ends on ${p?.dueOn ?? ''}.`.replace('  ', ' '),
-      linkPath: '/approvals',
-    }),
-    recipients: async (tx, ev) => {
+  legacyReviewReminder:async (tx, ev) => {
       const [rev] = await tx
         .select({ managerEmploymentId: employmentReview.managerEmploymentId, employmentId: employmentReview.employmentId })
         .from(employmentReview)
@@ -894,50 +401,9 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       if (rev.managerEmploymentId) out.unshift(rev.managerEmploymentId);
       return [...new Set(out)];
     },
-  },
-  // Global Delegation (Phase 1) — tell the STAND-IN (the delegate) when their cover starts / ends. The
-  // event's subjectEmploymentId is the delegator (the person handing over), so a subject-default notice
-  // would be wrong; a fan-out resolver reads the delegate off the reporting_line row (aggregateId) instead.
-  // Deep-links to /delegations, where the full picture (who covers whom, windows, revoke) lives.
-  'delegation.started': {
-    kind: 'delegation.started',
-    category: 'delegation',
-    render: (p) => ({
-      severity: 'action',
-      title: 'You are now a stand-in approver',
-      body: `You have been assigned to cover approvals${p?.validFrom ? ` from ${p.validFrom}` : ''}${p?.validTo ? ` to ${p.validTo}` : ''}.`,
-      linkPath: '/delegations',
-    }),
-    recipients: (tx, ev) => delegateRecipient(tx, ev.aggregateId),
-  },
-  'delegation.ended': {
-    kind: 'delegation.ended',
-    category: 'delegation',
-    render: (p) => ({
-      severity: 'info',
-      title: 'Your stand-in cover has ended',
-      body: `Your approval cover has ended${p?.endDate ? ` (${p.endDate})` : ''}.`,
-      linkPath: '/delegations',
-    }),
-    recipients: (tx, ev) => delegateRecipient(tx, ev.aggregateId),
-  },
-  // R51 722904dc/71b9143a — a leave approval step sat pending past the company's escalation threshold
-  // (core/leave-escalation.ts, carried by the nightly review-sweep). WHO to chase rides in the payload
-  // (targetKind, snapshotted at sweep time); WHETHER to chase is re-decided HERE, because dispatch is
-  // cursor-driven and may run hours after the sweep (opportunistically on admin page render): if the step
-  // — or the request — has since been decided, no notification is created. That re-check is what makes
-  // "if the approver acts in time, nothing is sent" actually hold. English-only strings, the registry
-  // convention (notification bodies are rendered once and STORED — there is no per-language version).
-  'leave-request.escalation-due': {
-    kind: 'leave.escalation',
-    category: 'leave',
-    render: (p) => ({
-      severity: 'action',
-      title: 'Leave approval overdue',
-      body: `A ${p?.leaveTypeName ?? 'leave'} request (${p?.startDate ?? ''} → ${p?.endDate ?? ''}) has been waiting for approval for ${p?.daysWaiting ?? ''} working day(s) and needs attention.`,
-      linkPath: '/approvals',
-    }),
-    recipients: async (tx, ev, payload) => {
+  delegationStarted:(tx, ev) => delegateRecipient(tx, ev.aggregateId),
+  delegationEnded:(tx, ev) => delegateRecipient(tx, ev.aggregateId),
+  leaveEscalation:async (tx, ev, payload) => {
       const p = payload ?? {};
       const leaveRequestId = typeof p.leaveRequestId === 'string' ? p.leaveRequestId : null;
       const stepIndex = typeof p.stepIndex === 'number' ? p.stepIndex : null;
@@ -977,26 +443,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       }
       return [...new Set(out)];
     },
-  },
-  // WP13 (R18) — Automatic-tier chasers run by the tenant's agent principal (core/automatic-chasers.ts). The
-  // event carries ids, stage and dates only; the copy is a fixed template (no model, no amount, no name). As for
-  // the leave escalation, WHETHER to notify is re-decided here: the item must still be pending at the chased
-  // stage, so an approver who acted after the sweep gets nothing. The subject is never a recipient.
-  'automatic-chase.approval-raised': [
-    approvalChaseSpec('claim', 'claim.approval-overdue', 'claims', 'Claim approval overdue', 'A claim'),
-    approvalChaseSpec('attendance_correction', 'attendance.approval-overdue', 'attendance', 'Attendance request approval overdue', 'An attendance request'),
-    approvalChaseSpec('replacement_leave', 'toil.approval-overdue', 'toil', 'Replacement leave approval overdue', 'A replacement leave request'),
-  ],
-  'automatic-chase.review-raised': {
-    kind: 'review.overdue',
-    category: 'review',
-    render: (p) => ({
-      severity: 'action',
-      title: 'Review decision overdue',
-      body: `A ${typeof p?.reviewType === 'string' ? p.reviewType : ''} review passed its end date${typeof p?.waitingOn === 'string' ? ` (${p.waitingOn})` : ''} and still needs a decision.`.replace('A  review', 'A review'),
-      linkPath: '/approvals',
-    }),
-    recipients: async (tx, ev, payload) => {
+  automaticReviewChase:async (tx, ev, payload) => {
       const stage = typeof payload?.stage === 'string' ? payload.stage : null;
       if (!ev.subjectEmploymentId || !stage) return [];
       const [rev] = await tx
@@ -1011,133 +458,51 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       if (out.length === 0) out = (await hrAdminsForCompany(tx, subject)).filter((id) => id !== subject);
       return [...new Set(out)];
     },
-  },
-  'automatic-chase.followup-raised': [
-    {kind:'attendance.missing-clock',category:'attendance',render:p=>({severity:'action',title:'Please check your clock-in record',body:`No clock-in is recorded for ${typeof p?.waitingOn==='string'?p.waitingOn:''}. Check Attendance if a record is missing; this reminder does not establish whether you worked.`,linkPath:'/me'}),recipients:async(tx,ev,p)=>p?.source==='missing_clock'&&typeof p.stage==='string'&&ev.subjectEmploymentId?currentFollowupTargetsTx(tx,'missing_clock',ev.aggregateId,p.stage,ev.subjectEmploymentId):[]},
-    {kind:'profile.passport-expiry',category:'profile',render:p=>({severity:'action',title:'Recorded passport expiry approaching',body:`A recorded passport expiry is ${typeof p?.waitingOn==='string'?p.waitingOn:''}. Check the Personnel record and follow your renewal process.`,linkPath:'/me'}),recipients:async(tx,ev,p)=>p?.source==='passport_expiry'&&typeof p.stage==='string'&&ev.subjectEmploymentId?currentFollowupTargetsTx(tx,'passport_expiry',ev.aggregateId,p.stage,ev.subjectEmploymentId):[]},
-    {kind:'lifecycle.step-waiting',category:null,render:()=>({severity:'action',title:'Lifecycle checklist needs attention',body:'An actionable checklist step is still incomplete. Review the case; this reminder does not complete or verify any task.',linkPath:'/lifecycle'}),recipients:async(tx,ev,p)=>p?.source==='lifecycle_step'&&typeof p.stage==='string'&&ev.subjectEmploymentId?currentFollowupTargetsTx(tx,'lifecycle_step',ev.aggregateId,p.stage,ev.subjectEmploymentId):[]},
-  ],
-  // 6e122302 — a Notice Board notice is A NOTIFICATION WITH A DIFFERENT PAYLOAD, which is why core/notice.ts
-  // carries no delivery code of its own. Publishing appends notice.published; this entry fans it out to the
-  // audience SNAPSHOT (notice_recipient) as ordinary in-app notifications, shown by the same bell as
-  // everything else. Conditional email also uses this snapshot, tenant category permission and recipient
-  // consent; the brief external alert carries a link instead of the notice's title/body.
-  'notice.published': {
-    kind: 'notice.published',
-    category: 'notice',
-    // Delivery stays informational. Required current-version acknowledgements are live assigned work
-    // from the Notice owner in the canonical inbox, so a historical notification cannot duplicate or
-    // outlive the actual acknowledgement task after completion, withdrawal or a content revision.
-    render: (p, ev) => ({
-      severity: 'info',
-      title: 'New notice',
-      body: String(p?.title ?? 'A new notice has been published.'),
-      linkPath: `/notices/${ev.aggregateId}`,
-    }),
-    recipients: async (tx, ev, payload,noticeReader) => {
+  missingClockFollowup:async(tx,ev,p)=>p?.source==='missing_clock'&&typeof p.stage==='string'&&ev.subjectEmploymentId?currentFollowupTargetsTx(tx,'missing_clock',ev.aggregateId,p.stage,ev.subjectEmploymentId):[],
+  passportFollowup:async(tx,ev,p)=>p?.source==='passport_expiry'&&typeof p.stage==='string'&&ev.subjectEmploymentId?currentFollowupTargetsTx(tx,'passport_expiry',ev.aggregateId,p.stage,ev.subjectEmploymentId):[],
+  lifecycleFollowup:async(tx,ev,p)=>p?.source==='lifecycle_step'&&typeof p.stage==='string'&&ev.subjectEmploymentId?currentFollowupTargetsTx(tx,'lifecycle_step',ev.aggregateId,p.stage,ev.subjectEmploymentId):[],
+  // Projection and delivery both recheck ai_centre_event_allowed before invoking this port.
+  employeeLoopDigest:async(_tx,ev)=>ev.id&&ev.subjectEmploymentId===ev.aggregateId?[ev.aggregateId]:[],
+  noticePublished:async (tx, ev, payload,noticeReader) => {
       // The publisher's `notifyOnPublish` choice, snapshotted into the event. That checkbox reads "Notify
       // recipients when it is published" (`notices.fNotify`, components/notice/notice-form.tsx) — it is NOT
       // an unconditional email switch. Category permission and recipient consent still apply. Read from the PAYLOAD
       // rather than re-queried: switching the flag off after publication must not retroactively un-notify,
       // and re-reading the row would make it look as though it had.
-      if (payload?.notify !== true) return [];
       return noticeReader?noticeReader(ev.aggregateId):noticeNotificationRecipientsTx(tx,ev.aggregateId);
     },
-  },
-  // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
-  'payroll-batch.closed': {
-    kind: 'payslip.ready',
-    category: 'payroll',
-    render: () => ({ severity: 'info', title: 'Payslip ready', body: 'Your payslip is ready to view.', linkPath: '/me' }),
-    recipients: async (tx, ev) => {
+  payrollClosed:async (tx, ev) => {
       const rows = await tx.select({ e: payslip.employmentId }).from(payslip).where(eq(payslip.batchId, ev.aggregateId));
       return [...new Set(rows.map((r) => r.e))];
     },
-  },
-  // AI v2 Phase 1 slice 3 (core/letter-requests.ts): HR declined an employee's letter request. The employee (the event's
-  // subject) is told only that it was declined: no letter type, no reason, no HR name. In-app only (no email category).
-  'letter-request.declined': {
-    kind: 'letter-request.declined',
-    category: null,
-    render: () => ({ severity: 'info', title: 'Letter request declined', body: 'Your letter request was declined. Open My Letters to see its status.', linkPath: '/me/letters' }),
-  },
-  // AI v2 Phase 2 P2-1 (core/loops/act-clock-outs.ts): the missed clock-outs loop, acting within its limits, set a missed
-  // clock-out to the roster end through the attendance owner. The employee (the event's subject) is told the day, the
-  // time and until when they can undo it on Today. Dates and a clock time only. In-app only (no email category).
-  'teras-loop.action.applied': {
-    kind: 'teras-loop.clock-out-set',
-    category: null,
-    render: (p) => {
-      const date = typeof p?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.date) ? p.date : 'a recent day';
-      const time = typeof p?.checkOut === 'string' && /^\d{2}:\d{2}$/.test(p.checkOut) ? p.checkOut : 'your roster end';
-      const until = typeof p?.undoUntil === 'string' && Number.isFinite(Date.parse(p.undoUntil))
-        ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(p.undoUntil)) : null;
-      return { severity: 'info', title: 'Missed clock-out filled in',
-        body: `Your missing clock-out on ${date} was set to ${time}, the end of your roster.${until ? ` If that is wrong, undo it on Today by ${until}.` : ''}`, linkPath: '/' };
-    },
-  },
-  // AI v2 Phase 2 P2-1 (core/loops/act-requests.ts): the missing employee data loop, acting within its limits, sent the
-  // employee its request to fill in their own details. A count and their own request section only; no record changed.
-  'teras-loop.request.sent': {
-    kind: 'teras-loop.details-requested',
-    category: null,
-    render: (p) => {
-      const tab = p?.tab === 'bankStatutory' || p?.tab === 'payroll' ? p.tab : 'profile';
-      const count = typeof p?.gaps === 'number' && Number.isInteger(p.gaps) && p.gaps > 0 ? p.gaps : null;
-      return { severity: 'action', title: 'Please complete your details',
-        body: count === 1 ? 'One detail is missing from your record. Fill it in on your profile; HR approves it as usual.'
-          : `${count ?? 'Some'} details are missing from your record. Fill them in on your profile; HR approves them as usual.`,
-        linkPath: `/me?tab=${tab}#section-request-${tab}` };
-    },
-  },
-  'teras-loop.request.withdrawn': {
-    kind: 'teras-loop.details-request-withdrawn',
-    category: null,
-    render: () => ({ severity: 'info', title: 'Details request withdrawn', body: 'The request to complete your details was withdrawn. You can ignore it.', linkPath: '/me' }),
-  },
-  // AI v2 Phase 2 hardening (core/loops/cut-off-reminders.ts, owner ruling 18): the Pre-salary loop's automatic cut-off
-  // reminder, 5, 2 or 1 days before a payroll cut-off, to the person (the event's subject) about their OWN pending items and
-  // the requests waiting on them. In-app only (no email category). Stored as message KEYS, which the bell renders in the
-  // reader's own language (components/notification-center.tsx, payrollReadiness.reminder.* in all six catalogues), like the
-  // greeting and letter notices: the title says how soon, the body whether items of their own, requests to decide, or
-  // both wait. Never a pay figure, an amount, a count of someone else's or another person's name. It opens Today.
-  'teras-loop.employee-digest-queued': {
-    kind: 'teras-loop.employee-digest',
-    category: 'readiness',
-    render: () => ({
-      severity: 'action',
-      title: 'Your daily action digest',
-      body: 'Open Today to review the items that need your attention.',
-      linkPath: '/#today-needs-you',
-    }),
-  },
-  'teras-loop.cut-off-reminder': {
-    kind: 'teras-loop.cut-off-reminder',
-    category: null,
-    render: (p) => {
-      const lead = typeof p?.leadDays === 'number' && [5, 2, 1].includes(p.leadDays) ? `lead${p.leadDays}` : 'soon';
-      const own = typeof p?.ownItems === 'number' && Number.isInteger(p.ownItems) && p.ownItems > 0;
-      const approvals = typeof p?.approvals === 'number' && Number.isInteger(p.approvals) && p.approvals > 0;
-      return { severity: 'action', title: `payrollReadiness.reminder.title.${lead}`,
-        body: `payrollReadiness.reminder.body.${own && approvals ? 'both' : approvals ? 'approvals' : 'own'}`, linkPath: '/' };
-    },
-  },
+  approvalChase:source=>async(tx,ev,payload)=>{if(payload?.source!==source||typeof payload?.stage!=='string'||!ev.subjectEmploymentId)return [];return (await currentApproverEmploymentsTx(tx,source,ev.aggregateId,ev.subjectEmploymentId,payload.stage))??[];},
 };
+const REGISTRY=createNotificationRegistry(webNotificationRecipients);
 
 export type DispatchResult = { processed: number; created: number };
 
+// Opportunistic page catch-up can skip a concurrent attempt before it borrows a pool connection.
+const pageCatchUps = new Set<string>();
+
 /** Complete global projection is owned by a fresh group administrator or the authenticated sweep.
  * A company-scoped web request cannot consume a partially visible global event stream. */
-export async function dispatchNotifications(ctx:SessionContext,opts:{limit?:number}={}):Promise<DispatchResult>{
+export async function dispatchNotifications(ctx:SessionContext,opts:{limit?:number;skipIfBusy?:boolean}={}):Promise<DispatchResult>{
   const allCategories=enabled(ctx);
   if(!allCategories&&!hasScopedReminders(ctx))return {processed:0,created:0};
-  return withTenant(ctx,async tx=>{
-    if(allCategories){
-      const [scope]=await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
-      if(!scope?.allowed)return {processed:0,created:0};
-    }
-    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit));
-  });
+  const catchUpKey = opts.skipIfBusy ? ctx.tenantId.toLowerCase() : undefined;
+  if(catchUpKey !== undefined && pageCatchUps.has(catchUpKey))return {processed:0,created:0};
+  if(catchUpKey !== undefined)pageCatchUps.add(catchUpKey);
+  try{
+    return await withTenant(ctx,async tx=>{
+      if(allCategories){
+        const [scope]=await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
+        if(!scope?.allowed)return {processed:0,created:0};
+      }
+      return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),{skipIfBusy:opts.skipIfBusy});
+    });
+  }finally{
+    if(catchUpKey !== undefined)pageCatchUps.delete(catchUpKey);
+  }
 }
 
 /** Cron already holds this explicit owner connection. Keep projection and cursor in one transaction;
@@ -1150,16 +515,24 @@ export async function dispatchNotificationsFromSweep(ctx:SessionContext,connecti
     const priorRole=await assertNotificationSweepConnection(tx);
     const [scope]=await tx.execute(sql`select app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
     if(!scope?.allowed)throw Error('Notification sweep requires the complete tenant scope.');
-    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),priorRole);
+    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),{priorRole});
   });
 }
 function hasScopedReminders(ctx:SessionContext){return (ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId));}
 function projectionLimit(value?:number){return Math.min(Math.max(value??1000,1),5000);}
-async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boolean,limit:number,priorRole?:string):Promise<DispatchResult>{
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`notification-cursor:${ctx.tenantId}`},0))`);
+async function projectNotificationsTx(
+  tx:Tx,ctx:SessionContext,allCategories:boolean,limit:number,
+  {priorRole,skipIfBusy}:{priorRole?:string;skipIfBusy?:boolean},
+):Promise<DispatchResult>{
+    const cursorKey=`notification-cursor:${ctx.tenantId}`;
+    if(skipIfBusy){
+      const [lock]=await tx.execute<{acquired:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${cursorKey},0)) as acquired`);
+      if(!lock?.acquired)return {processed:0,created:0};
+    }else{
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${cursorKey},0))`);
+    }
     const [cur] = await tx.select().from(notificationCursor).where(eq(notificationCursor.tenantId, ctx.tenantId)).limit(1);
-    const cursor=allCategories?cur?.lastSequence:cur?.assessmentLastSequence;
-    const after=cursor!=null?gt(domainEvent.sequence,cursor):undefined;
+    const consumer=allCategories?'notifications':'assessment-reminders';
     const rows = await tx
       .select({
         id: domainEvent.id,
@@ -1170,13 +543,21 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
         sequence: domainEvent.sequence,
       })
       .from(domainEvent)
-      .where(and(eq(domainEvent.tenantId,ctx.tenantId),after,allCategories?undefined:eq(domainEvent.eventType,'assessment.reminder-queued')))
-      .orderBy(asc(domainEvent.sequence))
+      .innerJoin(notificationEventProcessing,and(eq(notificationEventProcessing.eventId,domainEvent.id),eq(notificationEventProcessing.tenantId,domainEvent.tenantId)))
+      // Leave digest receipts pending for the sweep. Bell catch-up must not wait for its AI control guard.
+      .where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(notificationEventProcessing.consumer,consumer),isNull(notificationEventProcessing.disposition),
+        skipIfBusy?ne(domainEvent.eventType,EMPLOYEE_LOOP_DIGEST_EVENT):undefined))
+      .orderBy(asc(notificationEventProcessing.eventSequence))
       .limit(limit);
     if (rows.length === 0) return { processed: 0, created: 0 };
 
     let noticeReader:NoticeRecipientReader|undefined;
+    const existingProjections=new Set<string>();
+    const projectionKey=(eventId:string,recipient:string,kind:string)=>JSON.stringify([eventId,recipient,kind]);
     if(priorRole!==undefined){
+      const existing=await tx.select({eventId:notification.sourceEventId,recipient:notification.recipientEmploymentId,kind:notification.kind})
+        .from(notification).where(and(eq(notification.tenantId,ctx.tenantId),inArray(notification.sourceEventId,rows.map(row=>row.id))));
+      for(const prior of existing)if(prior.eventId&&prior.recipient)existingProjections.add(projectionKey(prior.eventId,prior.recipient,prior.kind));
       const audiences=new Map<string,string[]>();
       for(const ev of rows){
         if(ev.eventType==='notice.published'&&(ev.payload as Record<string,unknown>|null)?.notify===true&&!audiences.has(ev.aggregateId)){
@@ -1190,11 +571,12 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
     }
 
     let created = 0;
+    const ignoredIds:string[]=[];
     for (const ev of rows) {
       const entry = REGISTRY[ev.eventType];
-      if (!entry) continue;
-      if(!(await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_event_allowed(${ev.id}::uuid) as allowed`))[0]?.allowed)continue;
-      if(await legacyProbationNotificationIsObsolete(tx,ev.eventType,ev.aggregateId))continue;
+      if (!entry){ignoredIds.push(ev.id);continue;}
+      if(!(await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_event_allowed(${ev.id}::uuid) as allowed`))[0]?.allowed){ignoredIds.push(ev.id);continue;}
+      if(await legacyProbationNotificationIsObsolete(tx,ev.eventType,ev.aggregateId)){ignoredIds.push(ev.id);continue;}
       if(ev.eventType==='reward-access.suspended'){
         const [account]=await tx.execute<{created:number}>(sql`select app.reward_access_project_account_suspension(${ev.id}::uuid) as created`);
         created+=account.created;
@@ -1213,6 +595,12 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
           // A company-only reminder cursor never consumes other categories. Global dispatch may later
           // encounter the same event, so retain one projection per event/kind/recipient.
           if(spec.kind==='performance.reminder'){const [prior]=await tx.execute<{present:boolean}>(sql`select app.assessment_reminder_projected(${ev.id}::uuid,${recipient}::uuid) as present`);if(prior?.present)continue;}
+          const key=projectionKey(ev.id,recipient,spec.kind);
+          if(existingProjections.has(key))continue;
+          if(priorRole===undefined){
+            const [existing]=await tx.execute<{present:boolean}>(sql`select app.notification_projection_exists(${ev.id}::uuid,${recipient}::uuid,${spec.kind}) as present`);
+            if(existing?.present)continue;
+          }
           const notificationId = randomUUID();
           await tx.insert(notification).values({
             id: notificationId,
@@ -1226,6 +614,7 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
             sourceEventId: ev.id,
           });
           if(spec.category!==null)await tx.execute(sql`select app.notification_email_enqueue(${notificationId}::uuid,${spec.category},${ev.sequence}::bigint)`);
+          existingProjections.add(key);
           created += 1;
         }
       }
@@ -1234,11 +623,21 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
     // On an error the transaction rolls back both writes and SET LOCAL ROLE. Do not attempt a role
     // restore inside a failed transaction and obscure the original error. Restore only on success.
     if(priorRole!==undefined)await tx.execute(sql`select set_config('role',${priorRole},true)`);
+    const ignored=new Set(ignoredIds);
+    for(const disposition of ['processed','ignored'] as const){
+      const ids=rows.filter(row=>ignored.has(row.id)===(disposition==='ignored')).map(row=>row.id);
+      if(ids.length){
+        const completed=await tx.update(notificationEventProcessing).set({disposition,processedAt:sql`now()`})
+          .where(and(eq(notificationEventProcessing.tenantId,ctx.tenantId),eq(notificationEventProcessing.consumer,consumer),inArray(notificationEventProcessing.eventId,ids)))
+          .returning({id:notificationEventProcessing.eventId});
+        if(completed.length!==ids.length)throw Error('Notification processing authority changed.');
+      }
+    }
     const last = rows[rows.length - 1];
     if (cur) {
       await tx
         .update(notificationCursor)
-        .set({...(allCategories?{lastSequence:last.sequence}:{assessmentLastSequence:last.sequence}),updatedAt:sql`now()`})
+        .set({...(allCategories?{lastSequence:sql`greatest(${notificationCursor.lastSequence},${last.sequence})`}:{assessmentLastSequence:sql`greatest(${notificationCursor.assessmentLastSequence},${last.sequence})`}),updatedAt:sql`now()`})
         .where(eq(notificationCursor.tenantId, ctx.tenantId));
     } else {
       await tx.insert(notificationCursor).values({tenantId:ctx.tenantId,...(allCategories?{lastSequence:last.sequence}:{assessmentLastSequence:last.sequence})});
@@ -1292,6 +691,19 @@ export async function projectHomeGreetingInTx(tx:Tx,greetingId:string):Promise<v
 // ─── recipient reads (RLS scopes every query to the caller's own notifications, across all the person's
 // employments; pass employmentId only to narrow to one) ──────────────────────────────────────────────
 
+/** Indexed candidate narrowing only. The notification table's unchanged RLS still adjudicates every
+ * returned row. Resolve actual account ownership from the database, never a posted person/role or
+ * an active-employment filter: old notifications across ended own employments remain reachable. */
+async function notificationRecipientCandidatesTx(tx:Tx,ctx:SessionContext){
+ const own=await tx.select({id:employment.id}).from(employment).innerJoin(appUser,
+  and(eq(appUser.personId,employment.personId),eq(appUser.tenantId,employment.tenantId)))
+  .where(and(eq(employment.tenantId,ctx.tenantId),eq(appUser.tenantId,ctx.tenantId),sql`${appUser.id}=app.current_user_id()`));
+ return and(eq(notification.tenantId,ctx.tenantId),or(
+  own.length?inArray(notification.recipientEmploymentId,own.map(row=>row.id)):sql`false`,
+  eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000'),
+ ));
+}
+
 /** 3-tab bell (feedback 1514d366): `action` splits the severity-'action' task notices ("do something")
  *  from the informational rest — true ⇒ only action, false ⇒ only non-action, undefined ⇒ all (the
  *  pre-existing behaviour, so every current caller is unchanged). */
@@ -1305,11 +717,13 @@ export function unreadNotificationCount(
 
 
   return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, async (tx) => {
+    const recipients=await notificationRecipientCandidatesTx(tx,ctx);
     const [r] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(notification)
       .where(
         and(
+          recipients,
           isNull(notification.readAt),
           employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
           opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined,
@@ -1370,14 +784,49 @@ export function listNotifications(
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   opts = { ...opts, letterCompanyIds:opts.letterCompanyIds?.slice(), after: opts.after ? { ...opts.after } : opts.after };
 
-  return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, (tx) =>
-    tx
-      .select(notificationColumns)
-      .from(notification)
-      .where(notificationWhere(ctx, employmentId, opts))
-      .orderBy(desc(notification.createdAt), desc(notification.id))
-      .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100)),
-  );
+  return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, async (tx) => {
+    const recipients=await notificationRecipientCandidatesTx(tx,ctx);
+    return notificationRowsTx(tx, recipients, ctx, employmentId, opts);
+  });
+}
+
+function notificationRowsTx(
+  tx: Tx,
+  recipients: Awaited<ReturnType<typeof notificationRecipientCandidatesTx>>,
+  ctx: SessionContext,
+  employmentId: string | undefined,
+  opts: NotificationFilter & { limit?: number },
+) {
+  return tx
+    .select(notificationColumns)
+    .from(notification)
+    .where(and(recipients, notificationWhere(ctx, employmentId, opts)))
+    .orderBy(desc(notification.createdAt), desc(notification.id))
+    .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100));
+}
+
+/** The bell's three lists and two badges share one tenant connection and recipient lookup. */
+export function notificationBellSummary(ctx: SessionContext, scope: { letterCompanyIds?: string[] } = {}) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  scope = { letterCompanyIds: scope.letterCompanyIds?.slice() };
+  return withTenant(ctx, async tx => {
+    const recipients = await notificationRecipientCandidatesTx(tx, ctx);
+    const [counts] = await tx.select({
+      unread: sql<number>`count(*) filter (where ${notification.severity} <> 'action')::int`,
+      taskCount: sql<number>`count(*) filter (where ${notification.severity} = 'action')::int`,
+    }).from(notification).where(and(recipients, notificationWhere(ctx, undefined, { ...scope, read: false })));
+    // Bound each tab before combining it so history cannot crowd out unread or action items.
+    const previews = unionAll(
+      notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: false, action: false }),
+      notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: false, action: true }),
+      notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: true }),
+    ).as('bell_previews');
+    const rows = await tx.select().from(previews).orderBy(desc(previews.createdAt), desc(previews.id));
+    const items = rows.filter(row => row.readAt === null && row.severity !== 'action');
+    const tasks = rows.filter(row => row.readAt === null && row.severity === 'action');
+    const read = rows.filter(row => row.readAt !== null);
+    return { unread: counts?.unread ?? 0, taskCount: counts?.taskCount ?? 0, items, tasks, read };
+  });
 }
 
 /** D5 — one keyset page in listNotifications' order, each row with its exact cursor text. The caller asks
@@ -1387,14 +836,17 @@ export function listNotificationsPage(
   ctx: SessionContext,
   opts: { limit: number; after?: NotificationCursor | null; read?: boolean; ids?: readonly string[]; employmentId?: string },
 ): Promise<(NotificationRow & { cursorAt: string })[]> {
-  return withTenant(ctx, (tx) =>
-    tx
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  opts={...opts,ids:opts.ids?.slice(),after:opts.after?{...opts.after}:opts.after};
+  return withTenant(ctx, async (tx) => {
+    const recipients=await notificationRecipientCandidatesTx(tx,ctx);
+    return tx
       .select({ ...notificationColumns, cursorAt: sql<string>`to_char(${notification.createdAt} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')` })
       .from(notification)
-      .where(notificationWhere(ctx, opts.employmentId, opts))
+      .where(and(recipients,notificationWhere(ctx, opts.employmentId, opts)))
       .orderBy(desc(notification.createdAt), desc(notification.id))
-      .limit(Math.min(Math.max(opts.limit, 1), 101)),
-  );
+      .limit(Math.min(Math.max(opts.limit, 1), 101));
+  });
 }
 
 /** Mark one notification read. RLS confines the update to the caller's own rows. */

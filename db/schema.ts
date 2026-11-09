@@ -5555,6 +5555,7 @@ export const notification = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
+    index('notification_source_recipient_kind_idx').on(t.tenantId,t.sourceEventId,t.recipientEmploymentId,t.kind).where(sql`source_event_id is not null`),
     uniqueIndex('notification_letter_job_uq').on(t.letterJobId).where(sql`letter_job_id is not null`),
     index('notification_user_recipient_idx').on(t.tenantId,t.recipientUserId,t.createdAt),
     index('notification_recipient_idx').on(t.tenantId, t.recipientEmploymentId, t.createdAt),
@@ -5665,9 +5666,8 @@ export const notificationEmailPolicy = pgTable('notification_email_policy', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [uniqueIndex('notification_email_policy_tenant_id_category_key').on(t.tenantId, t.category)]);
 
-// Dispatcher state: the last domain_event.sequence (a monotonic bigserial — exact, unlike a timestamp which
-// loses sub-millisecond precision on the JS Date round-trip and would re-process events) processed per
-// tenant. The event log stays append-only — no mutable column on domain_event.
+// Legacy high-water marks retained for old/new dispatcher overlap and operations only.
+// Complete consumption is owned by notificationEventProcessing, never serial commit assumptions.
 export const notificationCursor = pgTable(
   'notification_cursor',
   {
@@ -5679,6 +5679,14 @@ export const notificationCursor = pgTable(
   },
   (t) => [uniqueIndex('notification_cursor_tenant_uq').on(t.tenantId)],
 );
+
+// Durable per-consumer projection intent; created atomically by the source-event trigger.
+export const notificationEventProcessing = pgTable('notification_event_processing', {
+ tenantId:tenantId(),eventId:uuid('event_id').notNull().references(()=>domainEvent.id,{onDelete:'cascade'}),
+ consumer:text('consumer').notNull(),eventSequence:bigint('event_sequence',{mode:'number'}).notNull(),
+ disposition:text('disposition'),processedAt:timestamp('processed_at',{withTimezone:true}),
+},t=>[primaryKey({columns:[t.eventId,t.consumer]}),
+ index('notification_event_processing_pending_idx').on(t.tenantId,t.consumer,t.eventSequence).where(sql`disposition is null`)]);
 
 // ─────────────────────── Notice Board (6e122302) ───────────────────────
 //
@@ -7427,7 +7435,7 @@ export const attendanceAllowancePolicy = pgTable(
     policyType: text('policy_type').notNull().default('earning'),
     version: integer('version').notNull().default(1),
     // NULL retains the original monthly criteria/scope semantics until explicitly edited.
-    rules: jsonb('rules').$type<import('../lib/attendance-allowance-rules').AllowanceRules>(),
+    rules: jsonb('rules').$type<import('../lib/attendance-allowance-rule-types').AllowanceRules>(),
     criteria: jsonb('criteria').$type<AttendanceAllowanceCriteria>().notNull().default({}),
     scope: jsonb('scope').$type<AttendanceAllowanceScope>().notNull().default({}),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -9001,7 +9009,10 @@ export const claimRequest = pgTable(
     payoutRef: text('payout_ref'),
     createdAt: createdAt(),
   },
-  (t) => [index('claim_request_employment_idx').on(t.employmentId, t.status)],
+  (t) => [index('claim_request_employment_idx').on(t.employmentId, t.status),
+    index('claim_request_preview_order_idx').on(t.tenantId,t.employmentId,t.status,t.createdAt.desc(),t.id),
+    index('claim_request_payroll_batch_idx').on(t.payrollBatchId).where(sql`payroll_batch_id is not null`),
+    index('claim_request_employment_incurred_idx').on(t.employmentId, t.incurredOn)],
 );
 
 export const claimAttachment = pgTable(
@@ -9159,7 +9170,7 @@ export const feedbackRequest = pgTable(
     blockedReason: text('blocked_reason'),
     buildRef: text('build_ref'), // PR / branch link once a build agent runs (F4)
     /** Operator-attested release evidence for this exact feedback cycle and build. */
-    release: jsonb('release').$type<import('../lib/feedback-release').FeedbackRelease | null>(),
+    release: jsonb('release').$type<import('../lib/feedback-release-types').FeedbackRelease | null>(),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -10919,7 +10930,7 @@ export const assessmentInsight = pgTable('performance_assessment_insight', {
 // Reviewer-owned summaries of submitted evidence; never a rating or decision authority.
 export const assessmentSummary = pgTable('performance_assessment_summary', {
  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),contextId:uuid('context_id').notNull(),visibilityKey:text('visibility_key'),kind:text('kind').notNull(),
- fingerprint:text('fingerprint').notNull(),source:text('source').notNull(),data:jsonb('data').$type<import('../packs/performance/onehr/competency-insight-model').CompetencyInsight|import('../packs/performance/onehr/idp-fit-model').IdpFitInsight|import('../packs/performance/onehr/potential-insight-model').PotentialInsight|import('../packs/performance/onehr/talent-insight-model').TalentInsight>().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+ fingerprint:text('fingerprint').notNull(),source:text('source').notNull(),data:jsonb('data').$type<import('../packs/performance/onehr/competency-insight-model').CompetencyInsight|import('../packs/performance/onehr/idp-fit-model').IdpFitInsight|import('../packs/performance/onehr/potential-insight-model').PotentialInsight|import('../packs/performance/onehr/talent-insight-types').TalentInsight>().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('performance_assessment_summary_actor_uq').on(t.reviewId,t.actorUserId,t.kind,t.contextId)]);
 // Authoritative PM overall remarks. The legacy review column is a guarded derived projection.
 export const assessmentReviewerRemark = pgTable('performance_assessment_reviewer_remark', {

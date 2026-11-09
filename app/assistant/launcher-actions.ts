@@ -177,14 +177,14 @@ export async function openStoredChatAction(input:{chatId:unknown}):Promise<Store
  }catch{return {ok:false,message:t('workspace.conversation.unavailable')};}
 }
 
-/** AI v2 slice 3 (issue 16b): whether Ask offers the paperclip. True only when this caller's chat runs through the harness
- * (the conversation switch, read here like every turn) and the capability catalogue lists an import they may prepare in
- * chat (core/chat-import/kinds.ts). Any failure is false: no paperclip. Grants nothing; each turn and Confirm re-check. */
+/** AI v2 slice 3 (issue 16b): whether Ask offers the paperclip. The presentation snapshot checks harness
+ * availability and the capability catalogue checks the kinds offered to this caller. Each turn and Confirm
+ * still obtain current command authority. Any failure hides the paperclip. */
 export async function chatImportOfferedAction():Promise<boolean>{
  try{
   const session=await getBrowserCommandSession();
-  const route:ConversationRoute=await import('@/core/teras-wiring/switch').then(owner=>owner.conversationRoute(session));
-  if(route.route!=='harness')return false;
+  const {conversationHarnessAvailableForPresentation}=await import('@/core/teras-wiring/switch');
+  if(!(await conversationHarnessAvailableForPresentation(session)))return false;
   return (await import('@/core/chat-import/kinds').then(owner=>owner.chatImportKindsFor(session))).length>0;
  }catch{return false;}
 }

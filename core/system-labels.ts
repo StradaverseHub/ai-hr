@@ -6,6 +6,10 @@ import { tenantMutation } from '../db/tenant-mutation';
 import { and, asc, eq, getTableName, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+import {randomUUID} from 'node:crypto';
+import {assertAiPresentationPrincipalTx} from './ai-principal';
+import {matchesEmployeeSearch,foldEmployeeCode} from '../lib/employee-search';
+import {LABEL_HEAD_CHOICE_PAGE_SIZE,LabelHeadChoiceInputError,parseLabelHeadChoiceInput,type LabelHeadChoice,type LabelHeadChoiceInput,type LabelHeadChoicePage} from '../lib/system-label-head-choice';
 import {
   assignment,
   businessUnit,
@@ -175,13 +179,70 @@ export function labelMaintenanceCompanies(ctx:SessionContext){return withTenant(
   .where(and(eq(company.tenantId,ctx.tenantId),sql`app.is_admin() and app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName),asc(company.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1);
  return boundedLabelMaintenanceRows(rows);
 });}
-/** Retain stored heads, including ended employments; writes independently validate current eligibility. */
-export function labelMaintenanceHeadOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
- const rows=await tx.select({employmentId:employment.id,companyId:employment.companyId,employeeCode:employment.employeeCode,name:person.fullName}).from(employment)
-  .innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId)))
-  .where(and(eq(employment.tenantId,ctx.tenantId),sql`app.is_admin() and app.is_admin_for(${employment.companyId})`)).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1);
- return boundedLabelMaintenanceRows(rows);
-});}
+export class LabelHeadChoiceAccessError extends Error {constructor(){super('Head choices are unavailable in this company');this.name='LabelHeadChoiceAccessError';}}
+const headUuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const headColumns=sql`${employment.id} as "employmentId",${employment.companyId} as "companyId",${employment.employeeCode} as "employeeCode",${person.fullName} as name`;
+/** This exact population has no active/Assignment cutoff: ended and unassigned heads remain selectable. */
+function headPopulation(tenantId:string,companyId?:string){return sql`from ${employment} join ${person}
+ on ${person.id}=${employment.personId} and ${person.tenantId}=${employment.tenantId}
+ where ${employment.tenantId}=${tenantId}::uuid and (select app.is_admin()) and ${companyId?
+  // Equality makes the company's native permission constant for this complete
+  // population. Keep it statement-local instead of re-evaluating it per employee.
+  sql`${employment.companyId}=${companyId}::uuid and (select app.is_admin_for(${companyId}::uuid))`:
+  sql`app.is_admin_for(${employment.companyId})`}`;}
+/** Initial rendering reads only exact configured heads, never a workforce count or list.
+ * The two head-bearing label kinds each retain their existing5000-row maintenance contract. */
+export function labelMaintenanceHeadSelections(ctx:SessionContext,employmentIds:readonly string[],signal?:AbortSignal):Promise<LabelHeadChoice[]>{
+ ctx=structuredClone(ctx);
+ if(!Array.isArray(employmentIds)||employmentIds.length>SYSTEM_LABEL_MAINTENANCE_LIMIT*2||employmentIds.some(id=>typeof id!=='string'||!headUuid.test(id)))throw new LabelHeadChoiceInputError();
+ const ids=[...new Set(employmentIds.map(id=>id.toLowerCase()))];
+ if(!ids.length)return Promise.resolve([]);
+ return withTenant(ctx,async tx=>{
+  await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
+  return Array.from(await tx.execute<LabelHeadChoice>(sql`select ${headColumns} ${headPopulation(ctx.tenantId)}
+   and ${employment.id}=any(${'{'+ids.join(',')+'}'}::uuid[]) order by ${employment.employeeCode},${employment.id}`));
+ },{readOnlySnapshot:true,readSignal:signal});
+}
+function headLike(value:string){return '%'+value.replace(/\\/g,'\\\\').replace(/%/g,'\\%').replace(/_/g,'\\_')+'%';}
+/** Conservative native candidate; final search truth belongs to matchesEmployeeSearch.
+ * Non-ASCII rows stay candidates because JS lowercasing/folding can cross codepoint boundaries. */
+function headSearchCandidate(query:string){
+ const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query),ascii=(s:string)=>/^[\x00-\x7f]*$/.test(s);
+ const choices:SQL[]=[sql`(${person.fullName} collate "C") ~ '[^ -~]' or (coalesce(${employment.employeeCode},'') collate "C") ~ '[^ -~]'`];
+ if(ascii(raw))choices.push(sql`lower(${person.fullName} collate "C") like ${headLike(raw)} escape '\\' or lower(coalesce(${employment.employeeCode},'') collate "C") like ${headLike(raw)} escape '\\'`);
+ if(folded&&ascii(folded))choices.push(sql`regexp_replace(lower(coalesce(${employment.employeeCode},'') collate "C"),'[[:space:]._-]','','g') like ${headLike(folded)} escape '\\'`);
+ return sql`(${sql.join(choices,sql` or `)})`;
+}
+/** Demand-only company-owned head navigation; its rows never grant label-write authority. */
+export function labelMaintenanceHeadChoices(ctx:SessionContext,input:LabelHeadChoiceInput,signal?:AbortSignal):Promise<LabelHeadChoicePage>{
+ ctx=structuredClone(ctx);const p=parseLabelHeadChoiceInput(input);
+ return withTenant<LabelHeadChoicePage>(ctx,async tx=>{
+  await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
+  const [scope]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from ${company} where ${company.id}=${p.companyId}::uuid
+   and ${company.tenantId}=${ctx.tenantId}::uuid and app.is_admin() and app.is_admin_for(${company.id})) as allowed`);
+  if(!scope?.allowed)throw new LabelHeadChoiceAccessError();
+  const population=headPopulation(ctx.tenantId,p.companyId);
+  const rows:LabelHeadChoice[]=[];let total=0;
+  if(!p.query){
+   const page=await tx.execute<LabelHeadChoice&{total:number}>(sql`select ${headColumns},count(*) over()::int as total ${population}
+    order by ${employment.employeeCode},${employment.id} limit ${LABEL_HEAD_CHOICE_PAGE_SIZE} offset ${p.offset}`);
+   total=page.length?Number(page[0].total):Number((await tx.execute<{total:number}>(sql`select count(*)::int as total ${population}`))[0]?.total??0);
+   rows.push(...page.map(({total:ignored,...row})=>{void ignored;return row;}));
+  }else{
+   const cursor=sql.identifier('label_heads_'+randomUUID().replace(/-/g,''));
+   await tx.execute(sql`declare ${cursor} no scroll cursor for select ${headColumns} ${population} and ${headSearchCandidate(p.query)} order by ${employment.employeeCode},${employment.id}`);
+   for(;;){
+    signal?.throwIfAborted();const batch=await tx.execute<LabelHeadChoice>(sql`fetch forward 512 from ${cursor}`);signal?.throwIfAborted();
+    for(const row of batch)if(matchesEmployeeSearch(row,p.query)){if(total>=p.offset&&rows.length<LABEL_HEAD_CHOICE_PAGE_SIZE)rows.push(row);total++;}
+    if(batch.length<512)break;
+   }
+   await tx.execute(sql`close ${cursor}`);
+  }
+  signal?.throwIfAborted();
+  const selected=p.selectedId?(await tx.execute<LabelHeadChoice>(sql`select ${headColumns} ${population} and ${employment.id}=${p.selectedId}::uuid limit 1`))[0]??null:null;
+  return {companyId:p.companyId,query:p.query,offset:p.offset,limit:LABEL_HEAD_CHOICE_PAGE_SIZE,total,rows,selected};
+ },{readOnlySnapshot:true,readSignal:signal});
+}
 
 /**
  * Batched read variant of `labelIdsForCompany`: the ids of `kind` any of `companyIds` may use.

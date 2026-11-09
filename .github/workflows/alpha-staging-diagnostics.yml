@@ -21,7 +21,7 @@ on:
         required: false
         default: full
         type: choice
-        options: [full, source-proof-followup, environment, source-transfer-followup, ledger-connection-followup, pdf-tools-setup, private-access-integration, normal-cleanup]
+        options: [full, source-proof-followup, environment, source-transfer-followup, ledger-connection-followup, pdf-tools-setup, private-access-integration, normal-cleanup, compiler-boundary, compiler-consumer-trace]
       plan_probe:
         description: Dependency-free native classifier parity against the authenticated full plan
         required: false
@@ -104,7 +104,7 @@ on:
         default: ""
         type: string
       compiler_probe:
-        description: Whole-project cold/warm incremental compiler and actual error-refusal controls; diagnostic only
+        description: Whole compiler diagnostic; exact 38b047 source selects bounded attribution, other sources retain cold/warm error-refusal controls
         required: false
         default: false
         type: boolean
@@ -142,7 +142,7 @@ env:
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
   resolve:
-    if: ${{ !inputs.filesystem_activation_probe }}
+    if: ${{ !inputs.filesystem_activation_probe || inputs.installer_fixture_phase == 'compiler-boundary' || inputs.installer_fixture_phase == 'compiler-consumer-trace' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -151,9 +151,24 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - name: Declaration-boundary controller and source admission
+        if: ${{ inputs.installer_fixture_phase == 'compiler-boundary' || inputs.installer_fixture_phase == 'compiler-consumer-trace' }}
+        run: |
+          node --test .github/ci/diagnostics/compiler-boundary.test.mjs .github/ci/diagnostics/compiler-consumer-trace.test.mjs
+          node .github/ci/diagnostics/compiler-boundary.mjs --selection
+        env:
+          AIHR_COMPILER_BOUNDARY_INPUTS: ${{ toJSON(inputs) }}
       - name: Compiler diagnostic controller checks
         if: ${{ inputs.compiler_probe }}
         run: node --test .github/ci/diagnostics/compiler-incremental.test.mjs
+      - name: Whole compiler attribution controller checks
+        if: ${{ inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '13d5a5d64512d1daa026836b34cb0b043b4a24cf' }}
+        run: node --test .github/ci/diagnostics/compiler-attribution.test.mjs
+      - name: Admit compiler-only attribution scope
+        if: ${{ inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '13d5a5d64512d1daa026836b34cb0b043b4a24cf' }}
+        run: node .github/ci/diagnostics/compiler-attribution.mjs --selection
+        env:
+          AIHR_COMPILER_ATTRIBUTION_INPUTS: ${{ toJSON(inputs) }}
       - name: Build transport controller checks
         if: ${{ inputs.build_transport_probe || inputs.transport_origin_run != '' }}
         run: |
@@ -208,7 +223,7 @@ jobs:
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
         run: node .github/ci/resolve.mjs
   nodb-timing:
-    if: ${{ inputs.nodb_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.nodb_probe) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -244,7 +259,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   layout:
-    if: ${{ inputs.layout_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.layout_probe) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -288,7 +303,7 @@ jobs:
           retention-days: 14
 
   statutory-timing:
-    if: ${{ inputs.statutory_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.statutory_probe) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -309,7 +324,7 @@ jobs:
           retention-days: 14
 
   fast-plan:
-    if: ${{ inputs.plan_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.plan_probe) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -336,8 +351,91 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  compiler-boundary:
+    if: ${{ inputs.installer_fixture_phase == 'compiler-boundary' && inputs.compiler_probe && inputs.expected_sha == '13d5a5d64512d1daa026836b34cb0b043b4a24cf' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Generate real unchanged Next route types
+        run: pnpm exec next typegen
+      - name: Measure fully covered checked declaration boundaries within aggregate budget
+        run: node ../automation/.github/ci/diagnostics/compiler-boundary.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-boundary
+          path: ${{ runner.temp }}/diagnostic-compiler-boundary/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  compiler-consumer-trace:
+    if: ${{ inputs.installer_fixture_phase == 'compiler-consumer-trace' && inputs.compiler_probe && inputs.expected_sha == 'f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Generate real unchanged Next route types
+        run: pnpm exec next typegen
+      - name: Trace only fixed consumers7/8/9 after fresh checked producer and declarations
+        run: node ../automation/.github/ci/diagnostics/compiler-boundary.mjs --trace-consumers
+      - name: Summarize bounded native traces without executing application code
+        if: always()
+        run: node ../automation/.github/ci/diagnostics/compiler-consumer-trace.mjs "$RUNNER_TEMP/diagnostic-compiler-boundary"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-consumer-trace
+          path: ${{ runner.temp }}/diagnostic-compiler-boundary/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  compiler-attribution:
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '13d5a5d64512d1daa026836b34cb0b043b4a24cf') }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Generate real Next route types
+        run: pnpm exec next typegen
+      - name: Attribute the complete cold compiler with unchanged heap and roots
+        run: node ../automation/.github/ci/diagnostics/compiler-attribution.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-attribution
+          path: ${{ runner.temp }}/diagnostic-compiler-attribution/
+          if-no-files-found: error
+          retention-days: 14
+
   compiler-incremental:
-    if: ${{ inputs.compiler_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_probe && inputs.expected_sha != '13d5a5d64512d1daa026836b34cb0b043b4a24cf') }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -363,7 +461,7 @@ jobs:
           retention-days: 14
 
   build-transport-producer:
-    if: ${{ inputs.build_transport_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.build_transport_probe) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -395,7 +493,7 @@ jobs:
           retention-days: 1
 
   build-transport-consumer:
-    if: ${{ inputs.build_transport_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.build_transport_probe) }}
     needs: [resolve, build-transport-producer]
     runs-on: ubuntu-24.04
     timeout-minutes: 8
@@ -433,7 +531,7 @@ jobs:
           retention-days: 3
 
   build-transport-consumer-repair:
-    if: ${{ inputs.transport_origin_run != '' }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.transport_origin_run != '') }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 8
@@ -473,7 +571,7 @@ jobs:
           retention-days: 3
 
   compiler-state-producer:
-    if: ${{ inputs.compiler_transport_probe && inputs.compiler_origin_run == '' && !inputs.compiler_compatible_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_transport_probe && inputs.compiler_origin_run == '' && !inputs.compiler_compatible_probe) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -523,7 +621,7 @@ jobs:
           retention-days: 3
 
   compiler-state-consumer:
-    if: ${{ inputs.compiler_transport_probe && inputs.compiler_origin_run == '' && !inputs.compiler_compatible_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_transport_probe && inputs.compiler_origin_run == '' && !inputs.compiler_compatible_probe) }}
     needs: [resolve, compiler-state-producer]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -560,7 +658,7 @@ jobs:
           retention-days: 3
 
   compiler-state-consumer-repair:
-    if: ${{ inputs.compiler_origin_run != '' && !inputs.compiler_compatible_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_origin_run != '' && !inputs.compiler_compatible_probe) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -599,7 +697,7 @@ jobs:
           retention-days: 3
 
   compiler-state-compatible-consumer:
-    if: ${{ inputs.compiler_compatible_probe && inputs.compiler_origin_run != '' }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_compatible_probe && inputs.compiler_origin_run != '') }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -640,7 +738,7 @@ jobs:
           retention-days: 3
 
   compiler-cache-pilot:
-    if: ${{ inputs.managed_compiler_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.managed_compiler_probe) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 12
@@ -682,7 +780,7 @@ jobs:
           retention-days: 3
 
   next-build-cache:
-    if: ${{ inputs.next_build_cache_phase != 'disabled' }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.next_build_cache_phase != 'disabled') }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -727,7 +825,7 @@ jobs:
           retention-days: 3
 
   filesystem-activation:
-    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase != 'normal-cleanup' && inputs.installer_fixture_phase != 'source-transfer-followup' && inputs.installer_fixture_phase != 'ledger-connection-followup' && inputs.installer_fixture_phase != 'pdf-tools-setup' && inputs.installer_fixture_phase != 'private-access-integration' && github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.filesystem_activation_probe && inputs.installer_fixture_phase != 'normal-cleanup' && inputs.installer_fixture_phase != 'source-transfer-followup' && inputs.installer_fixture_phase != 'ledger-connection-followup' && inputs.installer_fixture_phase != 'pdf-tools-setup' && inputs.installer_fixture_phase != 'private-access-integration' && github.repository == 'StradaverseHub/ai-hr') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -823,7 +921,7 @@ jobs:
           retention-days: 3
 
   private-access-integration:
-    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'private-access-integration' && github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'private-access-integration' && github.repository == 'StradaverseHub/ai-hr') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -860,7 +958,7 @@ jobs:
           retention-days: 3
 
   pdf-tools-setup:
-    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'pdf-tools-setup' && github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'pdf-tools-setup' && github.repository == 'StradaverseHub/ai-hr') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env: {AIHR_CI_HEAD: '${{ github.workflow_sha }}'}
@@ -915,7 +1013,7 @@ jobs:
           retention-days: 3
 
   ledger-connection-followup:
-    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'ledger-connection-followup' && github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'ledger-connection-followup' && github.repository == 'StradaverseHub/ai-hr') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
@@ -950,7 +1048,7 @@ jobs:
           retention-days: 3
 
   source-transfer-followup:
-    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'source-transfer-followup' && github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.filesystem_activation_probe && inputs.installer_fixture_phase == 'source-transfer-followup' && github.repository == 'StradaverseHub/ai-hr') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     defaults: {run: {working-directory: source}}
@@ -1018,7 +1116,7 @@ jobs:
           retention-days: 3
 
   normal-cleanup:
-    if: ${{ inputs.installer_fixture_phase == 'normal-cleanup' && !inputs.filesystem_activation_probe }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.installer_fixture_phase == 'normal-cleanup' && !inputs.filesystem_activation_probe) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20

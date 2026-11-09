@@ -1,6 +1,8 @@
 import copy
 import datetime as dt
 import hashlib
+import importlib.util
+import gzip
 import io
 import json
 from pathlib import Path
@@ -112,6 +114,54 @@ class Tests(unittest.TestCase):
                              ('node_modules/pkg', ('.pnpm/pkg/node_modules/pkg',))])
         self.assertIn('.next/BUILD_ID', release.audit_archive(path, True, BUILD,'e'*64))
         self.assertIn('deploy/.env.production.example',release.audit_archive(self.archive([('deploy/.env.production.example','template')])))
+
+    def legacy_inventory(self):
+        path = Path(__file__).resolve().parents[2] / '.github/ci/fixtures/runtime-inventory-format2/approve_staging.py'
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), 'fdca8d8576e1fc0f81999aeb0c31e9b9a7345e1ea2bf9ea505aa3a53e1818b9d')
+        spec = importlib.util.spec_from_file_location('historical_release_inventory', path)
+        historical = importlib.util.module_from_spec(spec); spec.loader.exec_module(historical)
+        return historical
+
+    def test_shared_inventory_keeps_format2_runtime_source_hashes_and_exact_alias_tar_payload(self):
+        old = self.legacy_inventory()
+        target = 'node_modules/.pnpm/sharp@0.35.5/node_modules/sharp'
+        captured = self.runtime([(target + '/package.json', '{"name":"sharp"}'),
+                                 ('node_modules/sharp', ('.pnpm/sharp@0.35.5/node_modules/sharp',)),
+                                 ('.next/node_modules/sharp-aaaaaaaa', ('/opt/ai-hr/' + target,))])
+        before = self.directory / 'historical.tar.gz'; after = self.directory / 'current.tar.gz'
+        self.assertEqual(old.relativize_build_aliases(captured, before, '/opt/ai-hr'),
+                         release.relativize_build_aliases(captured, after, '/opt/ai-hr'))
+        # Release captures retain their existing gzip header behavior. Compare
+        # the complete decompressed tar wire, then every original file digest.
+        with gzip.open(before, 'rb') as a, gzip.open(after, 'rb') as b:
+            self.assertEqual(a.read(), b.read())
+        self.assertEqual(old.audit_archive(before, True, BUILD, 'e'*64), release.audit_archive(after, True, BUILD, 'e'*64))
+        source = self.archive([('app/page.tsx', 'exact committed source'), ('deploy/.env.production.example', 'template')])
+        self.assertEqual(old.audit_archive(source), release.audit_archive(source))
+
+    def test_shared_inventory_retains_archive_hardlink_chain_and_refusal_contracts(self):
+        old = self.legacy_inventory()
+        entries = [('node_modules/.pnpm/pkg/index.js', 'original'), ('node_modules/pkg', ('.pnpm/pkg',))]
+        runtime = self.runtime(entries)
+        copied = self.directory / 'hardlinked.tar.gz'
+        with tarfile.open(runtime) as source, tarfile.open(copied, 'w:gz') as target:
+            for item in source:
+                target.addfile(item, source.extractfile(item) if item.isfile() else None)
+            link = tarfile.TarInfo('node_modules/duplicate.js'); link.type = tarfile.LNKTYPE; link.linkname = 'node_modules/.pnpm/pkg/index.js'
+            target.addfile(link)
+        self.assertEqual(old.audit_archive(copied, True, BUILD, 'e'*64), release.audit_archive(copied, True, BUILD, 'e'*64))
+        for additions in [[('node_modules/a', ('b',)), ('node_modules/b', ('a',))],
+                          [('node_modules/a', ('../../etc/passwd',))],
+                          [('node_modules/a', ('.npmrc',))],
+                          [('.next/cache/fetch-cache/key', 'private payload')],
+                          [('.next/BUILD_ID', 'duplicate')]]:
+            archive = self.runtime(additions)
+            with self.subTest(additions=additions):
+                with self.assertRaises(ValueError) as previous:
+                    old.audit_archive(archive, True, BUILD, 'e'*64)
+                with self.assertRaises(ValueError) as current:
+                    release.audit_archive(archive, True, BUILD, 'e'*64)
+                self.assertEqual(str(current.exception), str(previous.exception))
 
     def test_rejects_secrets_traversal_cache_and_links(self):
         for name,value in [('.next/.env.production','secret'), ('node_modules/runtime.env','secret'),

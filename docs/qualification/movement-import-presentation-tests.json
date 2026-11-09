@@ -1,0 +1,19 @@
+[
+  "test/movement-import-presentation.test.ts",
+  "test/movement-import.test.ts",
+  "test/movement-import-template.test.ts",
+  "test/movement-import-catalogue-race.test.ts",
+  "test/movement-import-canonical-parity.test.ts",
+  "test/movement-import-classification.test.ts",
+  "test/movement-import-classification-race.test.ts",
+  "test/movement-import-corrections.test.ts",
+  "test/movement-import-history.test.ts",
+  "test/movement-import-omission.test.ts",
+  "test/movement-type-controls.test.ts",
+  "test/939ffafb-import-code-owner.test.ts",
+  "test/workforce-access.test.ts",
+  "test/termination-reason-catalog.test.ts",
+  "test/movement-import-route.test.ts",
+  "test/movement-import-contract.test.ts",
+  "test/movement-import-screen.dom.test.tsx"
+]

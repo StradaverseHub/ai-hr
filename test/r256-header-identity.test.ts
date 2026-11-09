@@ -172,7 +172,7 @@ describe('fbf6abd0 — the app shell actually renders it, and Log out is still r
   it('the header mounts the account menu with the viewer’s resolved name + Employee ID', () => {
     expect(LAYOUT).toContain("import { UserMenu } from '@/components/user-menu';");
     expect(LAYOUT).toContain("import { viewerIdentity } from '@/lib/viewer';");
-    expect(LAYOUT).toMatch(/const \[viewer,\s*accessConfigurationAvailable,\s*workforceAvailable(?:,\s*\w+)*\]\s*=\s*await Promise\.all\(\[\s*viewerIdentity\(session\)/);
+    expect(LAYOUT).toMatch(/const \[viewer,\s*\{accessConfigurationAvailable,\s*workforceAvailable,\s*onboarded\}\]\s*=\s*await Promise\.all\(\[\s*viewerIdentity\(session\),\s*readShellNavigationAccess\(session,\s*!isAdmin\(session\)\)/);
     expect(LAYOUT).toContain(
       '<UserMenu name={viewer.name} employeeCode={viewer.employeeCode} employed={viewer.employed} canConfigureAccess={accessConfigurationAvailable} canViewWorkforce={workforceAvailable}/>',
     );

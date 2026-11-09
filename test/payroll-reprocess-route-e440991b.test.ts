@@ -124,7 +124,17 @@ describe('e440991b — the way in: the payroll run screen', () => {
   it('Reprocess is in the HEADER now, not at the bottom of the page', () => {
     expect(RUN_PAGE).toContain("t('reprocessHeaderAction')");
     expect(RUN_PAGE).toMatch(/\/payroll\/\$\{batch\.id\}\/reprocess/);
-    expect(RUN_PAGE).toMatch(/batch\.status === 'processed' && !retiredFormulaInputs && multiCycleOn && slips\.length > 0 && \(/);
+    expect(RUN_PAGE).toMatch(/batch\.status === 'processed' && !retiredFormulaInputs && multiCycleOn && slipCount > 0 && \(/);
+  });
+
+  it('requires retired-input review before generating, reprocessing or closing while preserving scoped recovery', () => {
+    expect(RUN_PAGE).toContain('await payrollRunRegisterPage(s, batchId, parsePageQuery(sp))');
+    expect(RUN_PAGE).toContain("batch.status !== 'closed' && await payrollHasRetiredAttendanceFormulaInputs(s, batch.id)");
+    expect(RUN_PAGE).toMatch(/\{batch\.status === 'draft' && !retiredFormulaInputs && \(\s*<form action=\{generateAction\}/);
+    expect(RUN_PAGE).toMatch(/\{batch\.status === 'processed' && !retiredFormulaInputs &&\s*\(needsRecalc \? \([\s\S]*?\)\s*:\s*\(\s*<form action=\{closeAction\}/);
+    expect(RUN_PAGE).toMatch(/\{!retiredFormulaInputs && multiCycleOn && slipCount > 0 && \(\s*<Link[^>]*>\s*\{t\('recalcBannerAction'\)\}/);
+    expect(RUN_PAGE).toMatch(/retiredFormulaInputs && \([\s\S]*?batch\.status === 'draft'[\s\S]*?action=\{reverseRetiredAttendanceFormulaAction\}/);
+    expect(RUN_PAGE).toMatch(/batch\.status === 'processed' && multiCycleOn && resetOn && slipCount > 0[\s\S]*?removeHeaderAction/);
   });
 
   it('the selection panel and the Recalculation History card are OFF this screen', () => {

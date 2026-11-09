@@ -1,0 +1,411 @@
+{
+  "kind": "REWARDS_CANONICAL_SOURCE_DELTA_REPAIR_NOT_GLOBAL_QUALIFICATION",
+  "parent": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+  "status": "FROZEN_SOURCE_REVIEW_REQUIRED_NO_RUNTIME",
+  "approvedScope": [
+    "six current canonical SQL/fingerprint inputs",
+    "three actual current application-component runtime owners",
+    "existing Rewards49 data/assertions only",
+    "this compact record"
+  ],
+  "currentAndWholeParentInverses": {
+    ".github/ci/rewards-native-sources.mjs": {
+      "currentSha256": "6d51c4dcc04419826a3a6acbcd6e8ae6942cb7b2916ef760d21e06569408c151",
+      "wholeParentSha256": "fbe3ead1497ddd7d7d6162532488aabc0a4113455314c1466fec41620e4ff71d",
+      "wholeParentGitBlob": "1da4481e17f5f5a2acd5cefb55e00dd84f20fc63",
+      "wholeParentBytes": 72628,
+      "inverseHunks": [
+        {
+          "currentStartLine": 11,
+          "currentCount": 1,
+          "current": [
+            " \"core/ai-centre-control.ts\",\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 144,
+          "currentCount": 1,
+          "current": [
+            " \"core/module-presentation-read.ts\",\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 971,
+          "currentCount": 1,
+          "current": [
+            " \"db/migrations/2301_attendance_workflow_submission_shared_lock.sql\",\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 997,
+          "currentCount": 1,
+          "current": [
+            " \"db/migrations/3103_access_editor_presentation.sql\",\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 999,
+          "currentCount": 2,
+          "current": [
+            " \"db/migrations/3200_ai_centre_controls.sql\",\n",
+            " \"db/migrations/3201_ai_centre_function_coverage.sql\",\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 1003,
+          "currentCount": 2,
+          "current": [
+            " \"db/migrations/3500_ai_centre_architecture_compatibility.sql\",\n",
+            " \"db/migrations/3501_ai_centre_mandate_write_order.sql\",\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 1025,
+          "currentCount": 1,
+          "current": [
+            " \"lib/ai/centre-activity.ts\",\n"
+          ],
+          "parent": []
+        }
+      ]
+    },
+    ".github/ci/singleton-profiles.test.mjs": {
+      "currentSha256": "e3eaf6778a9d0b1ebbb153862f56dafec481f5f145199678a8e2798073ce352e",
+      "wholeParentSha256": "29bfec86332fdb56d01b3aa73e2a1718d5ed7393f2ead10bd1fcf01b815ec55b",
+      "wholeParentGitBlob": "35af6f569d8b6cead88953c74575ceb0ff8edbee",
+      "wholeParentBytes": 33718,
+      "inverseHunks": [
+        {
+          "currentStartLine": 235,
+          "currentCount": 1,
+          "current": [
+            "  'core/ai-centre-control.ts','core/module-presentation-read.ts','lib/ai/centre-activity.ts',\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 241,
+          "currentCount": 3,
+          "current": [
+            "  'db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql',\n",
+            "  'db/migrations/3200_ai_centre_controls.sql','db/migrations/3201_ai_centre_function_coverage.sql',\n",
+            "  'db/migrations/3500_ai_centre_architecture_compatibility.sql','db/migrations/3501_ai_centre_mandate_write_order.sql',\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 246,
+          "currentCount": 3,
+          "current": [
+            " assert.equal(journal.entries.length,747);const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');assert.equal(new Set(journalSql).size,747);\n",
+            " const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,749);\n",
+            " assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql']);\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 255,
+          "currentCount": 1,
+          "current": [
+            "  for(const path of physicalSql)assert(sources.includes(path),'Actual Rewards SQL/fingerprint input omitted: '+path);\n"
+          ],
+          "parent": []
+        }
+      ]
+    }
+  },
+  "sourceMembership": {
+    "oldOwnerMembers": 1657,
+    "currentOwnerMembers": 1666,
+    "oldMembersAndOrderPreserved": true,
+    "addedActualOwners": {
+      "core/ai-centre-control.ts": "90b4b0161664f5f17cc0f4cc548def2cc00271d117b1852301a29aa5769db33a",
+      "core/module-presentation-read.ts": "51d2ee112c95efaeaa96b25a5f677580cd6eb11ecca6cddb3fc3c6f4f0b61440",
+      "db/migrations/2301_attendance_workflow_submission_shared_lock.sql": "421384a8eff51afcf0b910b966db1e092dd67343cd4fefff40c05aad537ae4fa",
+      "db/migrations/3103_access_editor_presentation.sql": "bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47",
+      "db/migrations/3200_ai_centre_controls.sql": "2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2",
+      "db/migrations/3201_ai_centre_function_coverage.sql": "0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a",
+      "db/migrations/3500_ai_centre_architecture_compatibility.sql": "3286f17e76b8d997c46b22019df613b9eef1d1b82c85c125cdb57b80392884ca",
+      "db/migrations/3501_ai_centre_mandate_write_order.sql": "821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76",
+      "lib/ai/centre-activity.ts": "7397410f0b1708b9bc0995cc96604a608fd11d5256407badddcfd917109a68ef"
+    },
+    "ownerPathListSha256": "1280ba2737ecd66fde33852377d73266cd576f06894a4cdeec91c68f4743eaf9",
+    "actualCombinedMembership": {
+      "test/rewards-audit-policy-native.test.ts": {
+        "count": 1676,
+        "pathListSha256": "d8583f405958c2af7129bc5dcbdb5dfc85f3a9f7986228adc4edf3e07593eab3"
+      },
+      "test/rewards-audited-read-prototype.test.ts": {
+        "count": 1676,
+        "pathListSha256": "1618f7b9d84846daee46f3b3162b568b3a8ccd17a1452d2833ff69cee0cace6d"
+      }
+    },
+    "existingCommonNinePlusComponentSelfUnchanged": true
+  },
+  "canonicalSqlCoverage": {
+    "journalEntries": 747,
+    "uniqueJournalSql": 747,
+    "physicalSql": 749,
+    "missingJournal": [],
+    "missingPhysical": [],
+    "exactUnjournaledFingerprintInputs": [
+      "db/migrations/2301_attendance_workflow_submission_shared_lock.sql",
+      "db/migrations/3103_access_editor_presentation.sql"
+    ],
+    "orderedPhysicalPathsSha256": "15716cf146a3d5370a552fb9992c336e55d0818da44f92bbb07c041b3f5f9ecc",
+    "existingGlobalSetupFingerprintOwnerWhole": true
+  },
+  "boundedComponentRuntimeClosure": {
+    "listedSourceIdentities": 1666,
+    "inspectedSourceIdentities": 1667,
+    "staticEdges": 3456,
+    "unresolved": [],
+    "onlyTargetOutsideOwnerList": "test/db-names.ts supplied by unchanged common9",
+    "missingAfterCommonSupply": [],
+    "meaning": "Retained component source closure only; common admission/config/global-setup subtree audited separately below."
+  },
+  "knownCommonPrerequisiteBindingGaps": {
+    "status": "OPEN_DEFERRED_BY_ROOT_TO_SHARED_OWNER_DESIGN",
+    "globalSourceBindingQualified": false,
+    "omissions": [
+      {
+        "path": ".github/ci/candidate-environment.mjs",
+        "incomingEdges": [
+          {
+            "from": ".github/ci/native-next-installation.mjs",
+            "to": ".github/ci/candidate-environment.mjs"
+          },
+          {
+            "from": "test/helpers/ci-singleton-admission.ts",
+            "to": ".github/ci/candidate-environment.mjs"
+          },
+          {
+            "from": "test/helpers/personnel-draft-discard-ci-role-fixture.ts",
+            "to": ".github/ci/candidate-environment.mjs"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "test/helpers/ci-singleton-admission.ts",
+          "test/global-setup.ts",
+          "test/rewards-audit-policy-native.test.ts",
+          "test/rewards-audited-read-prototype.test.ts"
+        ]
+      },
+      {
+        "path": ".github/ci/db-scheduling.mjs",
+        "incomingEdges": [
+          {
+            "from": "scripts/test-duration-order.mjs",
+            "to": ".github/ci/db-scheduling.mjs"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "vitest.config.ts",
+          "vitest.nodb.config.ts"
+        ]
+      },
+      {
+        "path": ".github/ci/employee-lifecycle-profile.mjs",
+        "incomingEdges": [
+          {
+            "from": ".github/ci/singleton-protocol.mjs",
+            "to": ".github/ci/employee-lifecycle-profile.mjs"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "test/helpers/ci-singleton-admission.ts",
+          ".github/ci/singleton-protocol.mjs",
+          "test/rewards-audit-policy-native.test.ts",
+          "test/rewards-audited-read-prototype.test.ts"
+        ]
+      },
+      {
+        "path": ".github/ci/employee-lifecycle-sources.mjs",
+        "incomingEdges": [
+          {
+            "from": ".github/ci/singleton-protocol.mjs",
+            "to": ".github/ci/employee-lifecycle-sources.mjs"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "test/helpers/ci-singleton-admission.ts",
+          ".github/ci/singleton-protocol.mjs",
+          "test/rewards-audit-policy-native.test.ts",
+          "test/rewards-audited-read-prototype.test.ts"
+        ]
+      },
+      {
+        "path": ".github/ci/native-next-helper-sources.mjs",
+        "incomingEdges": [
+          {
+            "from": ".github/ci/singleton-protocol.mjs",
+            "to": ".github/ci/native-next-helper-sources.mjs"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "test/helpers/ci-singleton-admission.ts",
+          ".github/ci/singleton-protocol.mjs",
+          "test/rewards-audit-policy-native.test.ts",
+          "test/rewards-audited-read-prototype.test.ts"
+        ]
+      },
+      {
+        "path": ".github/ci/native-next-installation.mjs",
+        "incomingEdges": [
+          {
+            "from": "test/helpers/ci-singleton-admission.ts",
+            "to": ".github/ci/native-next-installation.mjs"
+          },
+          {
+            "from": "test/helpers/personnel-draft-discard-ci-role-fixture.ts",
+            "to": ".github/ci/native-next-installation.mjs"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "test/helpers/ci-singleton-admission.ts",
+          "test/global-setup.ts",
+          "test/rewards-audit-policy-native.test.ts",
+          "test/rewards-audited-read-prototype.test.ts"
+        ]
+      },
+      {
+        "path": ".github/ci/notification-catalogue-replay.mjs",
+        "incomingEdges": [
+          {
+            "from": "scripts/lib/discard-premigration.ts",
+            "to": ".github/ci/notification-catalogue-replay.mjs"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "test/global-setup.ts"
+        ]
+      },
+      {
+        "path": ".github/ci/postgres-evidence.mjs",
+        "incomingEdges": [
+          {
+            "from": ".github/ci/singleton-protocol.mjs",
+            "to": ".github/ci/postgres-evidence.mjs"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "test/helpers/ci-singleton-admission.ts",
+          ".github/ci/singleton-protocol.mjs",
+          "test/rewards-audit-policy-native.test.ts",
+          "test/rewards-audited-read-prototype.test.ts"
+        ]
+      },
+      {
+        "path": "scripts/lib/discard-premigration.ts",
+        "incomingEdges": [
+          {
+            "from": "test/helpers/personnel-draft-discard-ci-role-fixture.ts",
+            "to": "scripts/lib/discard-premigration.ts"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "test/global-setup.ts"
+        ]
+      },
+      {
+        "path": "scripts/seed-catalogs.ts",
+        "incomingEdges": [
+          {
+            "from": "test/global-setup.ts",
+            "to": "scripts/seed-catalogs.ts"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "test/global-setup.ts"
+        ]
+      },
+      {
+        "path": "scripts/test-duration-order.mjs",
+        "incomingEdges": [
+          {
+            "from": "scripts/test-duration-sequencer.mjs",
+            "to": "scripts/test-duration-order.mjs"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "vitest.config.ts",
+          "vitest.nodb.config.ts"
+        ]
+      },
+      {
+        "path": "scripts/test-duration-sequencer.mjs",
+        "incomingEdges": [
+          {
+            "from": "vitest.config.ts",
+            "to": "scripts/test-duration-sequencer.mjs"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "vitest.config.ts",
+          "vitest.nodb.config.ts"
+        ]
+      },
+      {
+        "path": "test/helpers/personnel-draft-discard-ci-role-fixture.ts",
+        "incomingEdges": [
+          {
+            "from": "test/global-setup.ts",
+            "to": "test/helpers/personnel-draft-discard-ci-role-fixture.ts"
+          }
+        ],
+        "reachableFromCommonAndEntryRoots": [
+          "test/global-setup.ts"
+        ]
+      }
+    ],
+    "sourceDataMeaning": "Static imports/reachability do not claim effects executed or runtime qualification."
+  },
+  "models": {
+    "count": 51,
+    "orderedNamesSha256": "d4c90b138b6bd6052cb7b0d101c1eb96324673b9fcbb3e2378519e2eaa08c78b",
+    "onlyChangedCallbackPosition": 49,
+    "onlyChangedCallback": "Rewards native policy and original read family retain complete isolated source-bound jobs",
+    "other50CallbacksWhole": true,
+    "wrapperNamesAndCapsWhole": true,
+    "existingCriticalOmissionLoopWholeSha256": "839c34b24214a285ac68420d45888efe4cff16b9f816560a3ac00af5f576fb44",
+    "independentRewardsNativeSourcesTestFile": "ABSENT_IN_ACTUAL_PARENT; not created or edited"
+  },
+  "protectedWholeParentPins": {
+    "core/attendance.ts": "8dfff7caf9f98f8f4b5f4b13adb3149ea162cf76b1b7dd2d6ecf555c487eba02",
+    "core/analytics.ts": "328e0037e6ad23b15cccaea91a0e68834b14c83a05420d07faab7203268b44b0",
+    "test/module-read-jit-diagnostic.test.ts": "d57b9069bc869006d4d72eb256bd976bfe6f568d6529425beaea6b55d278f22d",
+    "test/performance/module-read-jit-probe.ts": "49efc0fd9630b782a550b046f151edbbe54f919d32c6c7cb36ebadd48c98be9b",
+    "test/analytics-dashboard-composition.test.ts": "9031fe507bf9aa4dbb2d20272a6f3731a5ceefc26c819627e91b634f2ce91140",
+    "test/analytics-native-scale.test.ts": "20255173e4282d6de6845c19002a8125ab8f590b01cfb750989b312f8306b1bd",
+    "test/attendance-month-native-scale.test.ts": "b97925982f407f8824c4ecbb74ed224c80c9cb682db157e278d80f406ebdc980",
+    "docs/adr/2026-11-08-measured-presentation-jit-policy.md": "aad3e42e1903a28b66821304934cbef96d1dc0c39332638821d4526dc28a172f",
+    ".github/ci/singleton-protocol.mjs": "9f5411fbe5cc92c2e43c871dec6981291302d32314a75b30eb3f370878d23c6c",
+    "test/singleton-execution-profile-controller.test.ts": "8910289450ad78dda4e5b00fc51622c78ce7b317db10c115c4e5f053c56c540c",
+    ".github/ci/singleton-profiles.mjs": "b1edfd129049b0a027675ff1888a1481f8f023f011652070079f227d421a32cb",
+    ".github/ci/owned-process.py": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129",
+    "test/global-setup.ts": "831822941d54ec3d79ceb66d3dece99af4af70ac2e4a4b594c843c156ec4ca1d",
+    "db/migrations/meta/_journal.json": "c288908efd8c5ecdad8162599b8160a6ae22cd84442f956812632ed097b01052"
+  },
+  "historicalFailures": {
+    "rootReportedModelsRun": 42500787604,
+    "rootReportedModelsPassed": 50,
+    "rootReportedModelsFailed": 1,
+    "originalSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
+    "newSourceFinding": "Four journaled omissions expanded to six physical SQL omissions and three current component runtime imports by SOURCE/DATA inspection only. No new runtime failure is claimed.",
+    "originalEvidenceNotRelabeled": true,
+    "nativeThreeCaseRunWasNotDispatched": true
+  },
+  "resourcesAndOtherProfilesUnchanged": true,
+  "noGenericRegistryFrameworkProductSqlMigrationJournalOrJit1556Change": true,
+  "repositoryBehaviorExecutedLocally": false,
+  "published": false,
+  "runtimeQualified": false,
+  "releaseAuthorized": false,
+  "candidateCommit": "Recorded externally after freeze; no self-hash cycle"
+}

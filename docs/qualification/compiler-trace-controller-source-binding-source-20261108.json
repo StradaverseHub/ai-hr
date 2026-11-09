@@ -1,0 +1,15 @@
+{
+  "kind": "CURRENT_COMPILER_CONTROLLER_SOURCE_BINDING_NOT_RELEASE",
+  "base": "95550f3fffa6cb0e46df6bd004a65dc184e958e5",
+  "sourceRef": "codex/compiler-trace-controller-source-binding-20261108",
+  "selectors": [
+    "test/compiler-diagnostic-controller.test.ts"
+  ],
+  "qualification": "NOT_RUN",
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "sourceSha256": {
+    "docs/qualification/compiler-selected-consumer-trace-request-20261108.json": "1d7a4aefca91a1f047e0e7b89a884c1d7226b46e0609986b7ba730914976bd8f",
+    "docs/qualification/compiler-trace-controller-source-binding-20261108.md": "1f9d8965f2d8001fb32314464a05fe31a28ec3436b367466543e7bb287538df3"
+  }
+}

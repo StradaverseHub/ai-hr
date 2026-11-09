@@ -10,7 +10,7 @@
  * Windows are the handover's (brief 9.2). The pure helpers are exported so they can be tested without a
  * database.
  */
-import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
 import { itAsset, itAssetRequest, itRequisition, itRequisitionItem, lcCase, lcCaseStep } from '../db/schema';
 import { daysBetween } from './lifecycle-rules';
@@ -53,7 +53,8 @@ export async function lifecycleWorklist(ctx: SessionContext): Promise<WorklistIt
     const out: WorklistItem[] = [];
 
     // 1. Offboarding: accepted, in progress, last working day near or past, while IT return / access revoke is open.
-    const ofb = await tx.select().from(lcCase).where(and(eq(lcCase.kind, 'offboarding'), eq(lcCase.status, 'in_progress'), eq(lcCase.outcome, 'accepted'), isNotNull(lcCase.lastWorkingDay)));
+    // No lower date bound: accepted offboarding remains due however old it is.
+    const ofb = await tx.select({id:lcCase.id,number:lcCase.number,fullName:lcCase.fullName,lastWorkingDay:lcCase.lastWorkingDay}).from(lcCase).where(and(eq(lcCase.kind, 'offboarding'), eq(lcCase.status, 'in_progress'), eq(lcCase.outcome, 'accepted'), isNotNull(lcCase.lastWorkingDay), sql`${lcCase.lastWorkingDay} <= ${today}::date + ${LWD_REMINDER_DAYS}::integer`));
     if (ofb.length) {
       const open = await tx.select({ caseId: lcCaseStep.caseId, key: lcCaseStep.stepKey, done: lcCaseStep.done }).from(lcCaseStep)
         .where(and(inArray(lcCaseStep.caseId, ofb.map((c) => c.id)), inArray(lcCaseStep.stepKey, ['it_asset_return', 'sys_access_revoke'])));
@@ -67,9 +68,9 @@ export async function lifecycleWorklist(ctx: SessionContext): Promise<WorklistIt
     }
 
     // 2. Onboarding start: in progress, with an open (not completed/cancelled) requisition.
-    const onb = await tx.select().from(lcCase).where(and(eq(lcCase.kind, 'onboarding'), eq(lcCase.status, 'in_progress'), isNotNull(lcCase.joinDate)));
+    const onb = await tx.select({id:lcCase.id,number:lcCase.number,fullName:lcCase.fullName,joinDate:lcCase.joinDate}).from(lcCase).where(and(eq(lcCase.kind, 'onboarding'), eq(lcCase.status, 'in_progress'), isNotNull(lcCase.joinDate), sql`${lcCase.joinDate} between ${today}::date - ${ONBOARDING_START_BEHIND}::integer and ${today}::date + ${ONBOARDING_START_AHEAD}::integer`));
     if (onb.length) {
-      const reqs = await tx.select().from(itRequisition).where(and(inArray(itRequisition.caseId, onb.map((c) => c.id)), eq(itRequisition.kind, 'requisition'), inArray(itRequisition.status, ['open', 'in_progress'])));
+      const reqs = await tx.select({id:itRequisition.id,caseId:itRequisition.caseId,number:itRequisition.number}).from(itRequisition).where(and(inArray(itRequisition.caseId, onb.map((c) => c.id)), eq(itRequisition.kind, 'requisition'), inArray(itRequisition.status, ['open', 'in_progress'])));
       const items = reqs.length ? await tx.select({ rid: itRequisitionItem.requisitionId, s: itRequisitionItem.status }).from(itRequisitionItem).where(inArray(itRequisitionItem.requisitionId, reqs.map((r) => r.id))) : [];
       for (const c of onb) {
         if (!isOnboardingStartDue(c.joinDate, today)) continue;
@@ -82,12 +83,12 @@ export async function lifecycleWorklist(ctx: SessionContext): Promise<WorklistIt
 
     // 3. Approvals waiting too long (managers and admins only).
     if (mgr) {
-      const rq = await tx.select().from(itRequisition).where(and(inArray(itRequisition.approvalStatus, ['pending', 'pending_l2']), sql`${itRequisition.status} <> 'cancelled'`, atLeast(itRequisition.companyId, LEVEL.manager))).orderBy(asc(itRequisition.number));
+      const rq = await tx.select({number:itRequisition.number,fullName:itRequisition.fullName,createdAt:itRequisition.createdAt}).from(itRequisition).where(and(inArray(itRequisition.approvalStatus, ['pending', 'pending_l2']), sql`${itRequisition.status} <> 'cancelled'`, atLeast(itRequisition.companyId, LEVEL.manager))).orderBy(asc(itRequisition.number));
       for (const r of rq) {
         const age = daysBetween(r.createdAt.toISOString().slice(0, 10), today);
         if (age >= APPROVAL_CHASE_DAYS) out.push({ kind: 'approval', ref: r.number, label: r.fullName, detail: 'requisition', days: -age, href: `/lifecycle/requisitions/${r.number}` });
       }
-      const ar = await tx.select().from(itAssetRequest).where(and(inArray(itAssetRequest.status, ['requested', 'pending_approval']), atLeast(itAssetRequest.companyId, LEVEL.manager))).orderBy(asc(itAssetRequest.number));
+      const ar = await tx.select({number:itAssetRequest.number,fullName:itAssetRequest.fullName,createdAt:itAssetRequest.createdAt}).from(itAssetRequest).where(and(inArray(itAssetRequest.status, ['requested', 'pending_approval']), atLeast(itAssetRequest.companyId, LEVEL.manager))).orderBy(asc(itAssetRequest.number));
       for (const r of ar) {
         const age = daysBetween(r.createdAt.toISOString().slice(0, 10), today);
         if (age >= APPROVAL_CHASE_DAYS) out.push({ kind: 'approval', ref: r.number, label: r.fullName, detail: 'assetRequest', days: -age, href: `/lifecycle/asset-requests/${r.number}` });
@@ -95,7 +96,13 @@ export async function lifecycleWorklist(ctx: SessionContext): Promise<WorklistIt
     }
 
     // 4. Warranty / lease ending (or just ended) on assets still in use.
-    const assets = await tx.select().from(itAsset).where(inArray(itAsset.status, ['in_stock', 'issued', 'returned', 'under_repair']));
+    // SQL DATE arithmetic uses the same HR-local `today` and inclusive calendar-day constants as
+    // the canonical helpers below. Either relevant expiry keeps the row; NULLs never become due.
+    const assets = await tx.select({code:itAsset.code,assetType:itAsset.assetType,model:itAsset.model,warrantyEnd:itAsset.warrantyEnd,leaseEnd:itAsset.leaseEnd}).from(itAsset).where(and(
+      inArray(itAsset.status, ['in_stock', 'issued', 'returned', 'under_repair']),
+      or(sql`${itAsset.warrantyEnd} between ${today}::date - ${EXPIRY_BEHIND}::integer and ${today}::date + ${EXPIRY_AHEAD}::integer`,
+         sql`${itAsset.leaseEnd} between ${today}::date - ${EXPIRY_BEHIND}::integer and ${today}::date + ${EXPIRY_AHEAD}::integer`),
+    ));
     for (const a of assets) {
       for (const [field, date] of [['warranty', a.warrantyEnd], ['lease', a.leaseEnd]] as const) {
         if (!isExpiryDue(date, today)) continue;

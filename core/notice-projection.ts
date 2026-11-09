@@ -40,12 +40,12 @@ export async function assertNotificationSweepConnection(tx:Tx):Promise<string>{
     coalesce(nullif(nullif(current_setting('role',true),'none'),''),session_user::text) AS effective
   )
   SELECT login,effective,prior_role,coalesce((
-   SELECT count(*)=3 AND bool_and(
+   SELECT count(*)=5 AND bool_and(
     (p.rolsuper OR p.rolbypassrls OR (NOT c.relforcerowsecurity AND pg_has_role(a.effective::name,c.relowner,'USAGE')))
     AND (s.rolsuper OR s.rolbypassrls OR (NOT c.relforcerowsecurity AND pg_has_role(a.login::name,c.relowner,'USAGE'))))
    FROM pg_catalog.pg_roles p CROSS JOIN pg_catalog.pg_roles s CROSS JOIN pg_catalog.pg_class c
    WHERE p.rolname=a.effective::name AND s.rolname=a.login::name
-    AND c.oid IN ('public.notice_recipient'::regclass,'public.domain_event'::regclass,'public.notification_cursor'::regclass)
+    AND c.oid IN ('public.notice_recipient'::regclass,'public.domain_event'::regclass,'public.notification_cursor'::regclass,'public.notification'::regclass,'public.notification_event_processing'::regclass)
   ),false) AS privileged FROM actor a
  `) as unknown as {login:string;effective:string;prior_role:string;privileged:boolean}[];
  if(!role?.privileged||role.effective==='ai_hr_app'||role.login==='ai_hr_app')throw Error('Notice sweep access requires an explicit privileged database connection.');

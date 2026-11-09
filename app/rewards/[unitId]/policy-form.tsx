@@ -15,7 +15,7 @@ export async function PolicyForm({unitId,revision,policy,readOnly=false,libraryO
  </form>;
 }
 /** Reuse the same policy fields in an individual review and a versioned shared configuration. */
-export async function RewardPolicyFields({policy:p,readOnly=false,context='unit',unitId,libraryOwned=false,hideLibraries=false}:{policy:RewardPolicy;readOnly?:boolean;context?:'unit'|'shared';hideUnitInputs?:boolean;unitId?:string;libraryOwned?:boolean;hideLibraries?:boolean}){
+export async function RewardPolicyFields({policy:p,readOnly=false,context='unit',unitId,libraryOwned=false,hideLibraries=false,pristineValidationGuidance=false}:{policy:RewardPolicy;readOnly?:boolean;context?:'unit'|'shared';hideUnitInputs?:boolean;unitId?:string;libraryOwned?:boolean;hideLibraries?:boolean;pristineValidationGuidance?:boolean}){
   const t = await getTranslations('rewards');
   const ts=await getTranslations('rewardSetup');const eligibility=rewardEligibilitySummary(p);
   const amount = (name: string, label: string, value: number | null, scale = 100) => <Field label={label}><input name={name} type="number" min="0" step="0.01" defaultValue={value == null ? '' : value / scale} className={inputCls} /></Field>;
@@ -33,9 +33,9 @@ export async function RewardPolicyFields({policy:p,readOnly=false,context='unit'
     </div></fieldset>
     <fieldset className="space-y-3"><legend className="mb-3 font-semibold">{t('meritMatrix')}</legend>
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th className="p-2 text-left">{t('talent')}</th>{['below', 'within', 'above'].map(k => <th key={k} className="p-2 text-left">{t(k)} (%)</th>)}</tr></thead><tbody>{talents.map(talent => <tr key={talent}><th className="p-2 text-left">{talent}</th>{p.meritMatrix[talent].map((value, i) => <td key={i} className="p-2"><input aria-label={`${talent} ${t(['below', 'within', 'above'][i])}`} type="number" min="0" step="0.01" name={`merit.${talent}.${i}`} defaultValue={value / 100} required className={inputCls} /></td>)}</tr>)}</tbody></table></div>
-      {!hideLibraries&&<fieldset disabled={libraryOwned}><PolicyMatrixGrid kind="ranges" matrix={p.ranges} year={p.year}/></fieldset>}
+      {!hideLibraries&&<fieldset disabled={libraryOwned}><PolicyMatrixGrid kind="ranges" matrix={p.ranges} year={p.year} pristineValidationGuidance={pristineValidationGuidance}/></fieldset>}
     </fieldset>
-    {!hideLibraries&&<fieldset disabled={libraryOwned} className="space-y-4"><legend className="mb-3 font-semibold">{t('bonusBudget')}</legend><PolicyMatrixGrid kind="bonusMatrix" matrix={p.bonusMatrix} year={p.year}/>
+    {!hideLibraries&&<fieldset disabled={libraryOwned} className="space-y-4"><legend className="mb-3 font-semibold">{t('bonusBudget')}</legend><PolicyMatrixGrid kind="bonusMatrix" matrix={p.bonusMatrix} year={p.year} pristineValidationGuidance={pristineValidationGuidance}/>
       <BranchPolicyFields structure={p.bonusStructure} factors={p.branchFactors} year={p.year}/>
 
     </fieldset>}

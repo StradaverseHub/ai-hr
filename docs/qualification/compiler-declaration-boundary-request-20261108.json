@@ -1,0 +1,262 @@
+{
+  "kind": "DEVELOPMENT_ONLY_CHECKED_DECLARATION_BOUNDARY_NOT_RELEASE",
+  "controllerBase": "1e9fa841c81ff92d5252335918d718b488a9d51e",
+  "controllerRef": "codex/compiler-independent-controls-20261108",
+  "source": "f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10",
+  "sourceRef": "codex/compiler-rewards-fixture-principal-20261108",
+  "workflow": "alpha-staging-diagnostics.yml",
+  "inputs": {
+    "candidate_ref": "codex/compiler-rewards-fixture-principal-20261108",
+    "expected_sha": "f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10",
+    "filesystem_activation_probe": false,
+    "installer_fixture_phase": "compiler-boundary",
+    "plan_probe": false,
+    "build_transport_probe": false,
+    "transport_origin_run": "",
+    "transport_origin_sha": "",
+    "transport_origin_artifact": "",
+    "transport_origin_digest": "",
+    "compiler_transport_probe": false,
+    "next_build_cache_phase": "disabled",
+    "next_build_cache_origin": "",
+    "managed_compiler_probe": false,
+    "managed_compiler_force_invalid": false,
+    "compiler_compatible_probe": false,
+    "compiler_origin_run": "",
+    "compiler_origin_sha": "",
+    "compiler_origin_artifact": "",
+    "compiler_origin_digest": "",
+    "compiler_probe": true,
+    "statutory_probe": false,
+    "nodb_probe": false,
+    "instrument_copies": false,
+    "layout_probe": false
+  },
+  "expectedJobs": [
+    "resolve",
+    "compiler-boundary"
+  ],
+  "artifact": "diagnostic-compiler-boundary",
+  "controllerSelectors": [
+    ".github/ci/diagnostics/compiler-boundary.test.mjs",
+    ".github/ci/diagnostics/compiler-attribution.test.mjs",
+    ".github/ci/diagnostics/compiler-incremental.test.mjs"
+  ],
+  "resourceContract": {
+    "runner": "ubuntu-24.04 standard4CPU/~16GiB",
+    "node": "22.23.3",
+    "typescript": "5.9.3",
+    "heapMiBPerChild": 12288,
+    "inventoryBudgetMs": 120000,
+    "aggregateCompilerBudgetMs": 720000,
+    "perPartitionCompilerBudget": false,
+    "jobTimeoutMinutes": 20,
+    "sequentialFreshProcesses": true,
+    "compilerStateCache": false,
+    "consumerRoots": 400,
+    "consumerSourceClosure": 600
+  },
+  "coverageContract": {
+    "originalOrderedRootNames": 8823,
+    "originalResolvedFiles": 11268,
+    "realNativeResolution": true,
+    "originalAmbientOrderRequired": true,
+    "nativeEmissionRequired": true,
+    "ownedGeneratedDeclarationSemanticsChecked": true,
+    "ownedDeclarationNegativeControl": {
+      "code": 2304,
+      "file": "__aihr_boundary_declaration_refusal__.d.ts"
+    },
+    "sourceAndDeclarationApiRefusals": 5,
+    "nativeReceiverSourceAndForeignOutputRefusal": true,
+    "originalRootExclusionsAdded": false,
+    "historicalOriginalInventorySha256": "64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd",
+    "newSourceInventoryRequired": true,
+    "nativeSccMembershipAndOriginalRootOrderPreserved": true
+  },
+  "sourceSha256": {
+    ".github/ci/diagnostics/compiler-boundary.mjs": "82aa97055842cfa89c6f540040e92f81dca9de72c7b1169a0c8136c239849b51",
+    ".github/ci/diagnostics/compiler-boundary-worker.mjs": "410428b90e613d631397b6bca1235617df3096b22c539615d023ae566c77bbcd",
+    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "a42c884201ba83bf33f82ed1f5628be85c0799258982e607b775815de5c11064",
+    ".github/ci/diagnostics/compiler-boundary.test.mjs": "294772128b541fb349112a904dd484a6c1600c2dc03a96c9095215a17710895d",
+    ".github/ci/diagnostics/compiler-attribution.mjs": "21fecd10f733fc7a610cca8cd45b5776ea06deb6851b9053ed101ad8c8507767",
+    ".github/ci/diagnostics/compiler-attribution.test.mjs": "50f86f858f5052215b2902d28207c2d2e1c3ee5ce580e3034991f464046da235",
+    ".github/workflows/alpha-staging-diagnostics.yml": "0c59a75fe7b943984412878225be1862744fcad91cbb9dc22098dcc345168eed",
+    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "7b56aa25b50812f248a2f048875b0aa40afe0142b8af1b6b52c10a6bd7a194ff",
+    "docs/qualification/compiler-native-ambient-context-recovery-20261108.md": "8872cb3484429ffc4b7f25ebc3b1a86a46f1e04446dea3bdfe78424b3bb9fcfa",
+    "docs/qualification/compiler-native-resolution-leaves-recovery-20261108.md": "977298fb5ad15ee137a7a395eb4243e83ed0235aede84973a54b7e023b13ad6d",
+    "docs/qualification/compiler-native-declaration-emission-recovery-20261108.md": "c4a061a101477232b2cc9805734af7b760d56d469ddb2d6c46c409486e6c470f",
+    "docs/qualification/compiler-bounded-consumer-recovery-20261108.md": "4ac5fe084af640a5daa2c44fdc0c633200d9279ad00c388c7aefc755d63e5158"
+  },
+  "qualification": "NOT_RUN independent-control recovery; exactf2b native3/3 passed42412478693. Old4e/38 partial native phases and original diagnostics retained; all new source/packing phases still required; ordinary compiler remains unqualified.",
+  "retainedFailure": {
+    "run": 42402718235,
+    "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
+    "result": "V8_OOM_SIGABRT",
+    "elapsedMs": 548358,
+    "sampledPeakRssKiB": 12806716,
+    "compilerQualified": false
+  },
+  "freshMain": "b7c0393aa3c7606a33dd15103426e5c535324065",
+  "freshAlpha": "b7c0393aa3c7606a33dd15103426e5c535324065",
+  "applicationSourceChanged": false,
+  "ordinaryCompilerChanged": false,
+  "releaseAuthorized": false,
+  "stagingDeployed": false,
+  "production": "HELD",
+  "ambientRecovery": {
+    "originalRun": 42405727772,
+    "originalController": "1a52835352bdd30becc3fc1b7c67515906baae08",
+    "inventoryPass": {
+      "elapsedMs": 25724,
+      "sampledPeakRssKiB": 3373504,
+      "roots": 8823,
+      "files": 11268,
+      "ambient": 224,
+      "consumers": 20
+    },
+    "producerRefusal": {
+      "elapsedMs": 15337,
+      "sampledPeakRssKiB": 1924608,
+      "beforeSemanticChecking": true,
+      "nativeAmbientMembership": 224,
+      "reason": "ambient order changed; never compiler PASS"
+    },
+    "exactMembershipAndOrderGuardRetained": true,
+    "nativeDefaultLibrariesExplicitlyRooted": false,
+    "nativeExternalEntrySidecars": true,
+    "realNativeGlobalAndModuleOverloadControls": {
+      "reversedCodes": [
+        2322,
+        2322
+      ],
+      "isolatedFromApplicationProgram": true
+    },
+    "allOriginalBodiesStillRequirePrimaryOwner": true
+  },
+  "resolutionLeafRecovery": {
+    "originalRun": 42407473358,
+    "originalController": "88dae55cad5c4b2374a803396af1413c63004e85",
+    "inventory": {
+      "elapsedMs": 26604,
+      "sampledPeakRssKiB": 3507608,
+      "roots": 8823,
+      "checkedProgramFiles": 11268
+    },
+    "producer": {
+      "elapsedMs": 17922,
+      "sampledPeakRssKiB": 1874984,
+      "exactAmbientOrderPassed": true,
+      "realMergeOrderControlsPassed": true,
+      "beforeApplicationSemanticChecking": true,
+      "refusal": "original external resolution targets became missing"
+    },
+    "originalOpaqueResolutionTargets": 7,
+    "separateUncheckedInventory": true,
+    "leafSourceParsingDenied": true,
+    "originalDependencyTypingUnchanged": true,
+    "programCoverageCountUnchanged": true,
+    "exactExternalEdgeGuardRetained": true
+  },
+  "nativeEmissionRecovery": {
+    "failedRun": 42409150861,
+    "inventoryMs": 24998,
+    "producerMs": 252652,
+    "producerPeakRssKiB": 8861064,
+    "producerDiagnostics": 0,
+    "emitDiagnostics": 0,
+    "failure": "native aggregate emitSkipped=true",
+    "preserveJsonProgramInputs": true,
+    "perOwnedImplementationNativeEmitRequired": true,
+    "hiddenCompilerOutputRetained": true
+  },
+  "sourceFixtureVerification": {
+    "selector": "test/rewards-setup-presentation-snapshot.test.ts",
+    "source": "f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10",
+    "nativeCases": 3,
+    "status": "PASS_3_OF_3_AT_EXACT_F2B_FOCUSED_ONLY",
+    "run": 42412478693,
+    "controller": "b7c0393aa3c7606a33dd15103426e5c535324065",
+    "releaseEligible": false
+  },
+  "boundedConsumerRecovery": {
+    "base": "4e04ffc750e33d1d82b1aca9497ffa8296bd474d",
+    "run": 42410522319,
+    "producerSemanticAnd4927NativeEmissions": "PASS_AT_OLD_SOURCE",
+    "ownedDeclarationValidation4927": "PASS_AT_OLD_SOURCE",
+    "nativeApiRefusalControls": "BOTH5PASS_AT_OLD_SOURCE",
+    "consumersPassedAtOldSource": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "failedConsumer": 13,
+    "nativeDiagnostics": [
+      {
+        "code": 1320,
+        "file": "test/rewards-setup-presentation-snapshot.test.ts",
+        "line": 91
+      },
+      {
+        "code": 2345,
+        "file": "test/rewards-setup-presentation-snapshot.test.ts",
+        "line": 91
+      }
+    ],
+    "unrunConsumers": [
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ],
+    "compilerElapsedMs": 648844,
+    "remainingAggregateMs": 71156,
+    "adjacent400RootClosureCounts": [
+      466,
+      441,
+      448,
+      460,
+      475,
+      464,
+      466,
+      465,
+      456,
+      311
+    ],
+    "closureLimitRemains600": true,
+    "independentFailuresCollected": true,
+    "budgetAndDependencyBlockRecords": true,
+    "noPriorPhaseRelabel": true,
+    "analysisSha256": "1fdb1b6523a5e4c284638b407a608705a718ebaedd95576d7debbe1012be4432"
+  },
+  "independentPhaseRecovery": {
+    "parent": "1e9fa841c81ff92d5252335918d718b488a9d51e",
+    "requiredPrerequisites": [
+      "inventory",
+      "producer",
+      "declarations"
+    ],
+    "independentChecks": [
+      "source-negative",
+      "declaration-negative",
+      "every planned consumer"
+    ],
+    "negativeControlFailureStopsConsumers": false,
+    "allFailuresCollectedByModeAndIndex": true,
+    "remainingAggregateBudgetOnly": true,
+    "unstartedIndependentWorkCannotCiteNegativeControlAsPrerequisite": true,
+    "nativeResults": "NOT_RUN"
+  }
+}

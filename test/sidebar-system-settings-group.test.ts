@@ -32,7 +32,7 @@ import { describe, expect, it } from 'vitest';
 import { countQuoted, nodeBlock } from './helpers/sidebar-source';
 import { navigationPlacement } from '../lib/navigation-workspaces';
 
-const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-inventory.ts'), 'utf8');
 const LAYOUT = fs.readFileSync(path.resolve(__dirname, '../app/layout.tsx'), 'utf8');
 
 /** The ticket's three relocated screens, in its required order. */
@@ -259,7 +259,8 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
   // this guard keeps the machinery from silently coming back half-wired (a reintroduced cookieKey
   // with no SSR read was the original always-closed bug).
   it('per-group nav cookies stay fully removed (no cookieKey without an SSR read coming back)', () => {
-    const keys = [...SIDEBAR.matchAll(/cookieKey: '([^']+)'/g)].map((m) => m[1]);
+    const rail = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+    const keys = [...rail.matchAll(/cookieKey: '([^']+)'/g)].map((m) => m[1]);
     for (const key of keys) {
       expect(
         LAYOUT.includes(`cookieStore.get('${key}')`),

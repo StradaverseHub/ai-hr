@@ -60,14 +60,10 @@ export default async function CyclePage({
   const today = todayInKualaLumpur();
   const nextDay = new Date(Date.parse(`${cycle.periodEnd}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
-  // r292 — PERFORMANCE AND PAYROLL ARE SEPARATELY SOLD, and this screen reads payroll only for the comp
-  // seam (a merit/bonus recommendation is enacted onto a DRAFT batch). `listBatches` is service-gated
-  // (core/module-gate.ts), so a tenant with Performance but WITHOUT Payroll would have had this page throw.
-  // No Payroll ⇒ no draft batches ⇒ the enact control simply has nowhere to post, which is what the empty
-  // list already expresses; `enactCompAction` refuses at the payroll service if it is reached anyway.
-  const batches = isModuleEnabledOrFalse(s, 'payroll') ? await listBatches(s) : [];
-  const draftBatches = batches.filter((b) => b.status === 'draft');
   const pendingComp = roster.filter((r) => r.compActionStatus === 'recommended');
+  // Only bonus enactment needs a draft payroll batch. Performance can also run without Payroll.
+  const draftBatches = cycle.status !== 'draft' && pendingComp.some((r) => r.recommendedBonus != null)
+    && isModuleEnabledOrFalse(s, 'payroll') ? await listBatches(s, undefined, undefined, ['draft']) : [];
   const maxDist = Math.max(1, ...distribution.map((d) => d.count));
 
   return (

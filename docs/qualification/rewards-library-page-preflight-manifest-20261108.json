@@ -1,0 +1,32 @@
+{
+  "kind": "SOURCE_ONLY_LIBRARY_PERMISSION_PREFLIGHT",
+  "base": "f1515376df082438ca025fb65d01a8a3330a8796",
+  "releaseAuthorized": false,
+  "sourceSha256": {
+    "packs/rewards/libraries.ts": "8569aef223413b855ac73fd750192878494da98d4cdb979503f2145bee6db973",
+    "app/admin/rewards/libraries/page-content.tsx": "5334a5b616595386bba5b4638973733aef12ebe2a1ac8230b61ff386f84bab85",
+    "test/rewards-library-page-access.test.ts": "a9b08d8248027779c90847052f44d34961739e49eeb9a9e2e942b7cbe3b11cf5",
+    "test/rewards-whole-group-grants.test.ts": "0054e9722109229f88db8e370489b8e806224508b8570867a3907e394c0e8bec",
+    "lib/ai/provider-data-source-manifest.ts": "21597605bd47b2274375915721733bc689d222a9b7cb83971bf9b757a7692bb7",
+    "lib/ai/module-agent-source-manifest.ts": "0eb4f913474036ee836546cdeb65bfcc04bc2aca55b344a9621ab43b769d36cd",
+    "docs/qualification/rewards-library-page-preflight-20261108.md": "e0bfadb50ea109f6c4ba7d655f608fc0100e257170fc6fab9897deb5a71f88ba"
+  },
+  "focusedSelectors": [
+    "test/rewards-library-page-access.test.ts",
+    "test/rewards-whole-group-grants.test.ts",
+    "test/rewards-setup-presentation-snapshot.test.ts",
+    "test/rewards-setup-owner.test.ts",
+    "test/rewards-setup-editor.dom.test.tsx"
+  ],
+  "wholeCompilerRequired": true,
+  "linuxBuildRequired": true,
+  "localAppChecksRun": false,
+  "sourceGeneratorsOnly": [
+    "scripts/ai-provider-data-source-manifest.mjs",
+    "scripts/ai-agent-source-manifest.mjs"
+  ],
+  "unchangedAuditedReadersAndExports": true,
+  "newAuditReceiptContractImplemented": false,
+  "actualBrowserAndLoadAcceptance": "PENDING; no zeroBusy or complete-page nonblocking claim",
+  "production": "HELD"
+}

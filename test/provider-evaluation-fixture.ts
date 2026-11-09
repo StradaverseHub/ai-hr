@@ -2,7 +2,11 @@
 import { vi } from 'vitest';
 import type { SessionContext } from '../db/client';
 import { openrouterAdapter } from '../lib/ai/providers/openrouter';
-import {installSyntheticSpendCapability} from './ai-spend-fixture';
+
+let activeTransport: {draft: typeof openrouterAdapter.generate; conversation: typeof openrouterAdapter.converse} | undefined;
+export function isSyntheticProviderTransportInstalled() {
+  return activeTransport !== undefined && activeTransport.draft === openrouterAdapter.generate && activeTransport.conversation === openrouterAdapter.converse;
+}
 export function syntheticProviderTransport() {
   const usage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 };
   const draft = vi.spyOn(openrouterAdapter, 'generate').mockImplementation(async (_cfg, args) => {
@@ -16,7 +20,12 @@ export function syntheticProviderTransport() {
     if (args.turns.length === 1) return { text: '', stop: 'tool_use', toolCalls: [{ id: 'synthetic-call', name: 'integration_echo', input: { marker } }], usage, usageReported: true };
     return { text: marker, stop: 'end', toolCalls: [], usage, usageReported: true };
   });
-  return { draft, conversation, restore() { draft.mockRestore(); conversation.mockRestore(); } };
+  const transport = { draft, conversation, restore() {
+    if (activeTransport === transport) activeTransport = undefined;
+    draft.mockRestore(); conversation.mockRestore();
+  } };
+  activeTransport = transport;
+  return transport;
 }
 export const syntheticConsent = { provider: 'openrouter', review: { version: 1, accountDefaultsReviewed: true, externalProcessingReviewed: true }, syntheticProbeConsent: true } as const;
 export async function syntheticConsentFor(ctx: SessionContext) {
@@ -32,6 +41,7 @@ export async function evaluateSyntheticCandidate(ctx: SessionContext) {
   const {providerCandidatesTx}=await import('../core/ai-provider-readiness');
   const candidate=await withTenant(ctx,async tx=>(await providerCandidatesTx(tx,ctx))[0]);
   if(!candidate)throw Error('Missing actual synthetic spend candidate');
+  const {installSyntheticSpendCapability}=await import('./ai-spend-fixture');
   const ceiling=await installSyntheticSpendCapability(ctx,{provider:'openrouter',model:candidate.model}),mock=syntheticProviderTransport();
   try { return await evaluateProviderCandidate(ctx, await syntheticConsentFor(ctx)); }
   finally { mock.restore();ceiling.restore(); }

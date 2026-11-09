@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "kind": "REVIEWABLE_SOURCE_PROVENANCE_NOT_NATIVE_EQUIVALENCE",
+  "baselineSha256": "44c648ef808dc2a3db73480e315ed93b8830b4dd339980ac205af509ea7d3784",
+  "factorySha256": "1d289fead9e6edfd010c6b8ff9afad2e39a4dc2602d4e8ad307a9b64e1fb4c39",
+  "steps": [
+    {
+      "kind": "change",
+      "before": "/** Guarded composition in the original disposable DB; no new role, grant or ABI. */\n",
+      "after": "/** Fixed native composition. No pool, harness binding, actor or authority cache. */\n"
+    },
+    {
+      "kind": "same",
+      "text": "import {readFileSync} from 'node:fs';\nimport {createHash} from 'node:crypto';\nimport {expect} from 'vitest';\nimport {z} from 'zod';\n"
+    },
+    {
+      "kind": "change",
+      "before": "import {owner} from '../harness';\nimport {employeeChoiceNativeSecurity,employeeChoicePrototypeSignature,installEmployeeChoiceNativePrototype} from './employee-choice-native-purpose-owner';\nimport {preserveDiagnosticFailure} from './employee-choice-native-purpose-session';\n",
+      "after": "import type {ISql,Sql} from 'postgres';\nimport {employeeChoiceNativePrototypeOwner,employeeChoicePrototypeSignature,type EmployeeChoiceNativeInstallation} from './employee-choice-native-purpose-owner-factory';\n"
+    },
+    {
+      "kind": "same",
+      "text": "const row=z.object({definition:z.string(),identity:z.record(z.string(),z.unknown())}).strict();\ntype Definition=z.infer<typeof row>;\nconst sourceFile='test/fixtures/employee-choice-exact-ascii-purpose.sql';\nconst sourceSha256='10b0d44d8943fdfbb76e748028e8fbd2938a514ea22c57b70cfcc665b6a41743';\n"
+    },
+    {
+      "kind": "change",
+      "before": "async function definition():Promise<Definition>{return row.parse((await owner.client`select pg_get_functiondef(p.oid)as definition,to_jsonb(p)as identity from pg_proc p where p.oid=${employeeChoicePrototypeSignature}::regprocedure`)[0]);}\n",
+      "after": "async function definition(query:ISql):Promise<Definition>{return row.parse((await query`select pg_get_functiondef(p.oid)as definition,to_jsonb(p)as identity from pg_proc p where p.oid=${employeeChoicePrototypeSignature}::regprocedure`)[0]);}\n"
+    },
+    {
+      "kind": "same",
+      "text": "const exceptBody=(value:Definition['identity'])=>Object.fromEntries(Object.entries(value).filter(([key])=>key!=='prosrc'));\n"
+    },
+    {
+      "kind": "change",
+      "before": "export async function installExactAsciiEmployeeChoicePrototype(){\n const source=readFileSync(sourceFile,'utf8');expect(createHash('sha256').update(source).digest('hex')).toBe(sourceSha256);\n const bodies=source.split('$employee_choice$');expect(bodies).toHaveLength(3);const body=bodies[1];expect(body.length).toBeGreaterThan(10000);\n const original=await installEmployeeChoiceNativePrototype(),before=row.parse({definition:original.installed.definition,identity:original.installed.identity});\n expect(before.identity.prosrc).not.toBe(body);let candidate:Definition|undefined,removed=false;\n // Exact intent is bound to the original actual native OID/metadata BEFORE the\n // additive transaction can COMMIT. Ambiguity never authorizes guessed cleanup.\n async function restore(){\n  const current=await definition();expect(exceptBody(current.identity)).toEqual(exceptBody(before.identity));\n  if(current.identity.prosrc===before.identity.prosrc)expect(current).toEqual(before);\n  else{\n   expect(current.identity.prosrc).toBe(body);if(candidate)expect(current).toEqual(candidate);\n   await owner.client.begin(async tx=>{await tx`set local statement_timeout='20s'`;await tx`set local lock_timeout='300ms'`;\n    const actual=row.parse((await tx`select pg_get_functiondef(p.oid)as definition,to_jsonb(p)as identity from pg_proc p where p.oid=${employeeChoicePrototypeSignature}::regprocedure`)[0]);expect(actual).toEqual(current);\n    await tx.unsafe(before.definition);\n   });expect(await definition()).toEqual(before);\n",
+      "after": "export type ExactAsciiNativeWitness=Readonly<{database:string;sourceSha256:string;originalSourceSha256:string;original:Definition;candidate:Definition|null;security:EmployeeChoiceNativeInstallation['security']}>;\nexport type ExactAsciiOwnership=Readonly<{remove:()=>Promise<void>;witness:()=>ExactAsciiNativeWitness}>;\nexport type ExactAsciiAdoption=(value:ExactAsciiOwnership,phase:'original'|'candidate')=>void;\nexport function exactAsciiEmployeeChoiceOwner(getQuery:()=>Sql,getPhase:()=> 'work'|'cleanup'){\n const native=employeeChoiceNativePrototypeOwner(getQuery);\n async function budget(tx:ISql){\n  // Legacy/default work is unchanged20s. A real cleanup carrier never has its\n  // existing1s limit raised by the original compositional SET LOCAL20s.\n  const phase=getPhase();if(phase==='cleanup')await tx`set local statement_timeout='1s'`;else if(phase==='work')await tx`set local statement_timeout='20s'`;else throw Error('Closed native composition phase required');\n  await tx`set local lock_timeout='300ms'`;\n }\n async function install(adopt:ExactAsciiAdoption){\n  const source=readFileSync(sourceFile,'utf8');expect(createHash('sha256').update(source).digest('hex')).toBe(sourceSha256);\n  const bodies=source.split('$employee_choice$');expect(bodies).toHaveLength(3);const body=bodies[1];expect(body.length).toBeGreaterThan(10000);\n  const state:{original?:EmployeeChoiceNativeInstallation;before?:Definition;candidate?:Definition}={};let removed=false;\n  const originalWitness=()=>{const {original,before}=state;if(!original||!before)throw Error('Complete original native witness absent');return{original,before};};\n  async function restore(){\n   const {original,before}=originalWitness();\n   const current=await definition(getQuery());expect(exceptBody(current.identity)).toEqual(exceptBody(before.identity));\n   if(current.identity.prosrc===before.identity.prosrc)expect(current).toEqual(before);\n   else{\n    const candidate=state.candidate;if(!candidate)throw Error('Complete candidate native witness absent; restoration refused');expect(current).toEqual(candidate);\n    await getQuery().begin(async tx=>{await budget(tx);\n     const actual=await definition(tx);expect(actual).toEqual(current);\n     await tx.unsafe(before.definition);expect(await definition(tx)).toEqual(before);\n    });expect(await definition(getQuery())).toEqual(before);\n   }\n   await original.unchanged();\n"
+    },
+    {
+      "kind": "same",
+      "text": "  }\n"
+    },
+    {
+      "kind": "change",
+      "before": "  await original.unchanged();\n",
+      "after": "  const custody:ExactAsciiOwnership=Object.freeze({\n   witness(){const {original,before}=originalWitness();return structuredClone({database:original.database,sourceSha256,originalSourceSha256:original.sourceSha256,original:before,candidate:state.candidate??null,security:original.security});},\n   async remove(){\n   if(removed)return;const {original}=originalWitness();\n   const [present]=await getQuery()`select count(*)::int as count from pg_proc where pronamespace='app'::regnamespace and proname='employee_choice_native_prototype'`;\n   if(present.count===0){await original.remove();removed=true;return;}\n   expect(present.count).toBe(1);await restore();await original.remove();removed=true;\n  }});\n  // Same cleanup capability is owned BEFORE BOTH possible native COMMITs.\n  // Errors defer cleanup to that owner; never restore through stopped work SQL.\n  await native.install(value=>{\n   if(state.original)throw Error('Duplicate original native witness refused');state.original=value;state.before=row.parse({definition:value.installed.definition,identity:value.installed.identity});\n   expect(state.before.identity.prosrc).not.toBe(body);adopt(custody,'original');\n  });\n  const {original:nativeOriginal,before:prior}=originalWitness();await nativeOriginal.unchanged();\n  await getQuery().begin(async tx=>{\n   await budget(tx);expect(await definition(tx)).toEqual(prior);\n   await tx`select set_config('aihr.employee_choice_probe.database',${nativeOriginal.database},true)`;await tx.unsafe(source);\n   const actual=await definition(tx);expect(actual.identity.prosrc).toBe(body);expect(exceptBody(actual.identity)).toEqual(exceptBody(prior.identity));\n   if(state.candidate)throw Error('Duplicate candidate native witness refused');state.candidate=actual;adopt(custody,'candidate'); // actual full native result BEFORE COMMIT\n  });\n  expect(await native.security()).toEqual(nativeOriginal.security);\n  const installed=state.candidate;if(!installed)throw Error('Exact ASCII candidate identity unavailable');\n  async function unchanged(){if(removed)throw Error('No owned exact ASCII installation');expect(await definition(getQuery())).toEqual(installed);expect(await native.security()).toEqual(nativeOriginal.security);}\n  return{database:nativeOriginal.database,sourceSha256,originalSourceSha256:nativeOriginal.sourceSha256,installed:structuredClone(installed),security:structuredClone(nativeOriginal.security),unchanged,remove:custody.remove};\n"
+    },
+    {
+      "kind": "same",
+      "text": " }\n"
+    },
+    {
+      "kind": "change",
+      "before": " try{\n  await original.unchanged();\n  candidate=await owner.client.begin(async tx=>{\n   await tx`set local statement_timeout='20s'`;await tx`set local lock_timeout='300ms'`;\n   expect(row.parse((await tx`select pg_get_functiondef(p.oid)as definition,to_jsonb(p)as identity from pg_proc p where p.oid=${employeeChoicePrototypeSignature}::regprocedure`)[0])).toEqual(before);\n   await tx`select set_config('aihr.employee_choice_probe.database',${original.database},true)`;await tx.unsafe(source);\n   const actual=row.parse((await tx`select pg_get_functiondef(p.oid)as definition,to_jsonb(p)as identity from pg_proc p where p.oid=${employeeChoicePrototypeSignature}::regprocedure`)[0]);\n   expect(actual.identity.prosrc).toBe(body);expect(exceptBody(actual.identity)).toEqual(exceptBody(before.identity));\n   return actual;\n  });\n  expect(await employeeChoiceNativeSecurity()).toEqual(original.security);\n }catch(error){await preserveDiagnosticFailure(async()=>{throw error;},async()=>{await restore();await original.remove();});throw error;}\n const installed=candidate;if(!installed)throw Error('Exact ASCII candidate identity unavailable');\n async function unchanged(){if(removed)throw Error('No owned exact ASCII installation');expect(await definition()).toEqual(installed);expect(await employeeChoiceNativeSecurity()).toEqual(original.security);}\n return{database:original.database,sourceSha256,originalSourceSha256:original.sourceSha256,installed,security:original.security,\n  unchanged,\n  async remove(){if(removed)return;await restore();await original.remove();removed=true;},\n };\n",
+      "after": " return{install};\n"
+    },
+    {
+      "kind": "same",
+      "text": "}\n"
+    },
+    {
+      "kind": "change",
+      "before": "",
+      "after": "export type ExactAsciiInstallation=Awaited<ReturnType<ReturnType<typeof exactAsciiEmployeeChoiceOwner>['install']>>;\n"
+    }
+  ]
+}

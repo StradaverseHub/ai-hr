@@ -48,7 +48,7 @@ import {
   type ClockingImportLineResult,
 } from '../db/schema';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { lockAttendanceLeaveDependenciesTx, addImportedPunchesBatchTx, assignPunchBusinessDays, punchOrderKey } from './attendance';
+import { withClockingImportWrite, addImportedPunchesBatchTx, assignPunchBusinessDays, punchOrderKey } from './attendance';
 // ADR-0080 D9 — payroll is consumed through its pack facade, never core/payroll directly.
 import {
   batchesCoveringAttendanceDates,
@@ -842,8 +842,7 @@ export async function commitClockingImport(
   let mappingForFailure: { id: string | null; name: string; snapshot: Record<string, unknown> } | null = null;
   let totalForFailure = 0;
   try {
-    return await withTenant(ctx, async (tx) => {
-      await lockAttendanceLeaveDependenciesTx(tx,ctx,[]);
+    return await withClockingImportWrite(ctx, async tx => {
       const mapping = await resolveMapping(tx, p.mappingId);
       mappingForFailure = mapping;
       const decided = await decideLines(tx, mapping.def, p.text, ctx.tenantId, p.companyId);

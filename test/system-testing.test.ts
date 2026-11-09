@@ -638,7 +638,7 @@ describe('e6be5a3b — the module, the placement, and the wiring', () => {
     // MODULE_OF_HREF is derived from pack descriptors for every other module; this one has no pack, so
     // its entry is a literal. Three things must agree and none of them can see the others.
     expect(MODULE_CODES_WITH_NAV as readonly string[]).toContain(SYSTEM_TESTING_MODULE);
-    const sidebar = readRepo('components/sidebar.tsx');
+    const sidebar = readRepo('lib/navigation/shell-inventory.ts');
     expect(sidebar).toContain(`['${HREF}', '${SYSTEM_TESTING_MODULE}'] as const`);
     // Exactly once, so the row cannot be duplicated into an ungated position.
     expect(sidebar.split(`href: '${HREF}'`).length - 1, 'one nav row for System Testing').toBe(1);

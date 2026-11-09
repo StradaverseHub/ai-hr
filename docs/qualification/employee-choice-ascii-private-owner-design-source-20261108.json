@@ -1,0 +1,47 @@
+{
+  "kind": "EXACT_ASCII_PRIVATE_OWNER_ADAPTATION_DESIGN_ONLY",
+  "merge": "89cdd6ca4c3c957df9236e302918d0e6dce9a4cf",
+  "frozenAscii": "76b63f12190707553923ad62ad1bcd1dfc303f7e",
+  "frozenFactory": "ca2c64b397ec91a19b8174168c3ea9effd12137b",
+  "repairCandidate": "a1f00f522d596dcdfd4eeccc3109db728c5d568a",
+  "sourceRef": "codex/employee-ascii-private-owner-design-20261108",
+  "sourceSha256": {
+    "test/performance/employee-choice-exact-ascii-owner.ts": "44c648ef808dc2a3db73480e315ed93b8830b4dd339980ac205af509ea7d3784",
+    "test/performance/employee-choice-native-purpose-owner.ts": "12f0873b15dfd86e8972bc1d951c62d8827227513b11a2726807c561faf625ef",
+    "test/performance/employee-choice-native-purpose-owner-factory.ts": "481e5f20b38d02325570147c146428066213560d9066aa3141869454924a3e13",
+    "test/performance/employee-choice-owned-settlement.ts": "e4fe93308ee5ff14b89410f035cff9ed7c3d044151a1843d19919250a9930a27",
+    "test/performance/employee-choice-native-object-identity.ts": "c9b3f20bd7cc304704575cfce9925e4b64db3cbd9258db2a1c5a7431ff250393",
+    "test/performance/employee-choice-benchmark-owner.ts": "6281fd843e2843b89806d57e415b9182d4985a2c5aa65c010e5d0b1d30034fbe",
+    "test/employee-choice-exact-ascii-purpose.test.ts": "df870385e6cba62681f51f02c9b40fb509be871f4162fa0a4a0aa8c69bd481a6",
+    "test/employee-choice-exact-ascii-plan.test.ts": "492e45fa049207def3ad9c6539f1b8c0709cfed29074b54e7766f2640b53f4ed",
+    "test/fixtures/employee-choice-exact-ascii-purpose.sql": "10b0d44d8943fdfbb76e748028e8fbd2938a514ea22c57b70cfcc665b6a41743",
+    "test/fixtures/employee-choice-native-purpose.sql": "d72e6ded4a07cbbb848856c35391e1e56fdd02ad793c71a18360754e11fe8efc",
+    "test/performance/employee-choice-exact-ascii-reader.ts": "ed2e2fb304de2d78435c13ec9caf9d71161c68755abea459674d50fbf1a1a8fd",
+    "test/performance/employee-choice-exact-ascii-runtime.ts": "3ba9e9aece28232badbccabb9ba13e731047a3327160081d01a4c03db3085921",
+    "docs/qualification/employee-choice-ascii-private-owner-design-20261108.md": "aa2163cd3371cac981f0b1bf6a178fabecc50b12591a075d834a7c33f86ac367"
+  },
+  "implementation": "NOT_STARTED; root design review first",
+  "plannedDeclaredCases": {
+    "existingAsciiPure": 14,
+    "nativePurpose": 9,
+    "benchmark": 6,
+    "newStandaloneNative": 0
+  },
+  "benchmark": {
+    "employees": 50000,
+    "wholePortsPerVariant": 18,
+    "actualPlanPhases": 44,
+    "exactAsciiNativePairs": 22,
+    "retainedOriginalNativePairs": 27,
+    "targetMs": 1000,
+    "workMs": 840000,
+    "fileMs": 900000,
+    "drainMs": 60000
+  },
+  "applicationChanged": false,
+  "nativeSqlChanged": false,
+  "runtimeExecuted": false,
+  "normalCiAdmitted": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

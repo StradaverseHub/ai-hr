@@ -6,7 +6,7 @@ import {client,withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {commitEmployeeImport} from '../core/import';
 import {createBankImportJob,uploadBankImportChunk,bankImportCommand,getBankImportJob} from '../core/bank-import-job';
-import {processBankImportJob} from '../core/bank-import-worker';
+import {processBankImportJob,runBankImportTick} from '../core/bank-import-worker';
 import {parseCsvRecords} from '../lib/csv';
 import {pgErrorChain,pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -135,11 +135,13 @@ describe('Bank point-read hint remains an optimization with current write permis
   expect((await owner.client`select count(*)::int as rows from import_attempt_item where attempt_id=${job.attemptId}::uuid and ordinal=1 and status='applied'`)[0].rows).toBe(1);
  });
 
- it('rolls back the native mutation and restores the SAME backend before recording a failed row',async()=>{
+ it('rolls back the native mutation and restores the SAME backend without consuming the valid row',async()=>{
   const id=await nativeJob('TPOINTFAIL');
   const [before]=await owner.client`select to_jsonb(s) as value from employee_statutory_my s where person_id=${target.personId}::uuid`;
-  await watchNativeWriter();await processBankImportJob(ctx,id);
-  const {job}=await getBankImportJob(ctx,id);expect(job).toMatchObject({state:'completed',processed:1,saved:0,failed:1});
+  await watchNativeWriter();
+  expect(await runBankImportTick(owner.client)).toBe(true);
+  const {job}=await getBankImportJob(ctx,id);expect(job).toMatchObject({state:'failed',processed:0,saved:0,failed:0});
+  expect(await owner.client`select state from bank_import_row where job_id=${id}::uuid`).toEqual([{state:'valid'}]);
   const [observed]=await owner.client`select last_value::int as pid,is_called from ci_bank_point_read.failed_backend`;expect(observed.is_called).toBe(true);expect(observed.pid).toBeGreaterThan(1);
   // A sequence survives rollback; only the trigger branch that first proved the
   // actual native app role and marker can publish this exact backend identity.

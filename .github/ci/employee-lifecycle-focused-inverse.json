@@ -1,0 +1,11 @@
+{
+  "base": "7168310233f4bdf9dbe9308c1b783a8592c1ca8c",
+  "oldSha256": "7fc4b786ad1a21e652fe0f6a5c27582b4b23a92ed31319ad49a7f18b16ecfe8e",
+  "currentSha256": "0d15951255cd2066ec6febde8c15d2738d4a0c22fda550c3d96ece3d63254258",
+  "changes": [
+    {
+      "before": "FILE = 'test/employee-choice-native-purpose-plan.test.ts'\nCONTROL_FILE = 'test/employee-choice-benchmark-owner-native.test.ts'\nFACTORY_FILE = 'test/employee-choice-native-owner-factory.test.ts'\nASCII_PURPOSE_FILE = 'test/employee-choice-exact-ascii-purpose.test.ts'\nASCII_PLAN_FILE = 'test/employee-choice-exact-ascii-plan.test.ts'\nFILE_CLOCK_DIRECTORIES = {'benchmark': 'employee-choice-native-purpose', 'ascii-purpose': 'employee-choice-exact-ascii-purpose', 'ascii-plan': 'employee-choice-exact-ascii'}\nLIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10, 'evidence': 30, 'classifier': 15, 'reset': 60, 'migrate': 60, 'benchmark': 960, 'native-controls': 180, 'native-factory': 206, 'ascii-purpose': 960, 'ascii-plan': 960,\n          'stats': 10, 'logs': 10, 'inspect': 10, 'stop': 9}\n",
+      "after": "# The same fixed source registry owns both focused and normal file identities.\n_registry = json.loads(Path(__file__).resolve().with_name('employee-lifecycle-profile.json').read_bytes())\n_files = _registry['files']\nFILE, CONTROL_FILE, FACTORY_FILE, ASCII_PURPOSE_FILE, ASCII_PLAN_FILE = [row['file'] for row in _files]\nFILE_CLOCK_DIRECTORIES = {row['stage']: row['clockDirectory'] for row in _files if row['clockDirectory'] is not None}\nLIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10, 'evidence': 30, 'classifier': 15, 'reset': 60, 'migrate': 60,\n          'stats': 10, 'logs': 10, 'inspect': 10, 'stop': 9, **{row['stage']: row['stageSeconds'] for row in _files}}\n"
+    }
+  ]
+}

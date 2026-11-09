@@ -85,7 +85,7 @@ export async function bootstrapCustomer(options: BootstrapOptions, env: NodeJS.P
     import('../db/schema'), import('../db/provision'),
   ]);
   const client = postgres(credentials.ownerUrl, { max: 1, onnotice: () => {} });
-  const db = drizzle(client, { schema });
+  const db = drizzle(client);
   let output: Awaited<ReturnType<typeof open>> | undefined;
   let outputIdentity: { dev: number; ino: number } | undefined;
   let commitAttempted = false;

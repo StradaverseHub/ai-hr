@@ -270,6 +270,69 @@ describe('first-party authentication with real private storage and existing HR b
     const other = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
     await expect(verifyMfa(challenge(other), code)).rejects.toMatchObject({ code: 'invalidCode' });
   });
+  it('looks up the MFA challenge once before charging the existing subject budget', async () => {
+    const { signedIn } = await enroll();
+    const account = (await credentialByLogin('alpha', 'owner'))!;
+    const login = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
+    const raw = challenge(login);
+    const key = `challenge:${digest(raw)}`;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    const window = 15 * 60_000;
+    const start = Math.floor(Date.now() / window) * window;
+    const rateKey = `rate:${digest(`mfa:${account.subject}:${start}`)}`;
+    await writeRecord(client, rateKey, { count: 14 }, null, start + 2 * window);
+    const read = vi.spyOn(client, 'unsafe');
+    try {
+      await expect(verifyMfa(raw, signedIn.recoveryCodes![0])).resolves.toMatchObject({ step: 'complete' });
+      const unlockedReads = read.mock.calls.filter(([query, params]) =>
+        query === 'select sealed from app.internal_auth_read($1,$2)' && params?.[0] === key && params?.[1] === false);
+      expect(unlockedReads).toHaveLength(1);
+      expect(await readRecord(client, rateKey)).toEqual({ count: 15 });
+      const other = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
+      await expect(verifyMfa(challenge(other), signedIn.recoveryCodes![1])).rejects.toMatchObject({ code: 'rateLimited' });
+    } finally {
+      read.mockRestore();
+      clock.mockRestore();
+    }
+  });
+  it('rechecks expiry after waiting for the MFA subject budget', async () => {
+    const { signedIn } = await enroll();
+    const account = (await credentialByLogin('alpha', 'owner'))!;
+    const login = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
+    const raw = challenge(login);
+    const key = `challenge:${digest(raw)}`;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    const window = 15 * 60_000;
+    const start = Math.floor(Date.now() / window) * window;
+    const rateKey = `rate:${digest(`mfa:${account.subject}:${start}`)}`;
+    await writeRecord(client, rateKey, { count: 1 }, null, start + 2 * window);
+    const loginAudits = () => owner.client`select count(*)::int as n from domain_event
+      where tenant_id=${base.tenantId} and event_type='app-user.logged-in'`;
+    const before = await loginAudits();
+    let attempt: Promise<AuthReply> | undefined;
+    try {
+      await owner.client.begin(async tx => {
+        const [holder] = await tx`select pg_backend_pid() as pid`;
+        await tx`select pg_advisory_xact_lock(hashtextextended(${'internal-auth:' + rateKey},0))`;
+        attempt = verifyMfa(raw, signedIn.recoveryCodes![0]);
+        void attempt.catch(() => {});
+        await expect.poll(async () => {
+          const [row] = await tx`select exists(select 1 from pg_locks
+            where locktype='advisory' and not granted and ${holder.pid}::int=any(pg_blocking_pids(pid))) as waiting`;
+          return row.waiting;
+        }, { timeout: 5000 }).toBe(true);
+        await tx`update public.app_internal_auth_record set expires_at=clock_timestamp()-interval '1 second'
+          where record_key=${key}`;
+      });
+      await expect(attempt).rejects.toMatchObject({ code: 'invalidChallenge' });
+      expect(await readRecord(client, rateKey)).toEqual({ count: 2 });
+      expect((await credentialByLogin('alpha', 'owner'))?.recoveryHashes).toEqual(account.recoveryHashes);
+      expect(await loginAudits()).toEqual(before);
+    } finally {
+      await attempt?.catch(() => {});
+      clock.mockRestore();
+    }
+  }, 20000);
   it('caps failed MFA attempts and does not allow an old challenge to create a session', async () => {
     await enroll(); const login = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
     for (let i = 0; i < 5; i++) await expect(verifyMfa(challenge(login), 'bad-code')).rejects.toMatchObject({ code: 'invalidCode' });

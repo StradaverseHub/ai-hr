@@ -63,11 +63,12 @@ it('makes an explicit missing-BU mapping pending, saves Personnel and blocks pay
  await setCompensation(ctx,{employmentId:next.employmentId,basicSalary:5000,effectiveFrom:today});
  const [cycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:b.tenantId,companyId:b.companyId,code:'ORG_READY',name:'Organisation readiness',runType:'regular'}).returning();
  const {batchId}=await createBatch(ctx,{companyId:b.companyId,payPeriod:today.slice(0,7),payrollCycleId:cycle.id});
- const advisory=await preProcessAdvisory(ctx,batchId);expect(advisory.organisationGrouping).toEqual([expect.objectContaining({employmentId:next.employmentId,name:'Fictional pending'})]);
+ const advisory=await preProcessAdvisory(ctx,batchId);expect(advisory.missingCompensation).toEqual([]);expect(advisory.organisationGrouping).toEqual([expect.objectContaining({employmentId:next.employmentId,name:'Fictional pending'})]);
  await expect(generatePayslips(ctx,{batchId})).rejects.toThrow();expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual([]);
  // New Rewards reviews require a proven current company/BU membership before their dated
  // roster is read. Today's corrected mapping must not clear yesterday's pending plan snapshot.
  await publish(today,newBu);
+ expect((await preProcessAdvisory(ctx,batchId)).organisationGrouping).toEqual([]);
  expect(await rewardPolicyMemberships(ctx,[b.companyId])).toContainEqual({companyId:b.companyId,businessUnitId:newBu});
  expect(await withTenant(ctx,tx=>employmentOrganisationTagsTx(tx,ctx,{employmentId:next.employmentId,asOf:pendingOn}))).toMatchObject({status:'pending',businessUnitId:null});
  const grChecker=await setupChecker(ctx),{policy,salary,bonus}=await setupRewardLibrariesFixture(ctx,year,undefined,grChecker);

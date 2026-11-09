@@ -12,13 +12,20 @@ import { captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 const copies={en,ms,zh,vi:viCopy,th,ta};
 const visual=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta'}));
 vi.mock('next-intl/server',()=>({
- getTranslations:async(namespace:any)=>createTranslator({locale:visual.locale,messages:copies[visual.locale],namespace}),
+ // The renderer owns exactly these two namespaces. Infer keys from their real
+ // locale subtree, rather than recursively enumerating every module's messages.
+ getTranslations:async(namespace:'processAssessment'|'processAssessment.buildList')=>createTranslator({
+  locale:visual.locale,messages:{processAssessment:copies[visual.locale].processAssessment},namespace,
+ }),
  getFormatter:async()=>createFormatter({locale:visual.locale,timeZone:'Asia/Kuala_Lumpur'}),
 }));
 import { RankedBuildList } from '../app/control-tower/agents/build-list/build-list';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { agentBuildList } from '../core/agent-build-list';
+import { assertAiPresentationPrincipalTx, assertAiPrincipalTx } from '../core/ai-principal';
+import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
+import { withTenant } from '../db/client';
 import { assessProcesses } from '../core/process-assessment';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -54,6 +61,8 @@ describe('group-admin ranked build-list source',()=>{
     locale, messages: copies[locale], children: await RankedBuildList({view}),
    }));
    expect(html).toContain(copies[locale].processAssessment.buildList.title);
+   expect(html).toContain(copies[locale].processAssessment.buildList.rank);
+   expect(html).toContain(copies[locale].processAssessment.processes.leave);
    expect(html).toContain('adminCancelLeaveAction');
    expect(html).not.toContain('Build fixture');
    await captureAiReviewScreenshots(html,locale,'build-list');
@@ -66,6 +75,24 @@ describe('group-admin ranked build-list source',()=>{
   await expect(agentBuildList({...ctx,grants:[{role:'hr_admin',companyId:base.companyId}]},30)).rejects.toThrow('Only group');
   await expect(agentBuildList({...ctx,roles:['employee'],grants:[{role:'employee',companyId:null}]},30)).rejects.toThrow('Only group');
   const original=base;try{base=await seedBase();const other=await agentBuildList(await group(),30);expect(other.entries.filter(r=>r.measurement==='measured').every(r=>r.staffActionsPer30===0&&r.peopleAffected===0)).toBe(true);}finally{base=original;}
+ });
+ it('reads identical authorized measurements while Access is held and refuses the wrong transaction modes',async()=>{
+  await leaveFixture(1,2);
+  const ctx=await group(),expected=await agentBuildList(ctx,30);
+  expect(expected.entries.some(row=>row.staffActionsPer30===2)).toBe(true);
+  await owner.withTenant(ctx,async tx=>{
+   await lockAccessConfigurationTx(tx,ctx.tenantId);
+   let deadline:ReturnType<typeof setTimeout>|undefined;
+   try{
+    await expect(Promise.race([
+     agentBuildList(ctx,30),
+     new Promise<never>((_,reject)=>{deadline=setTimeout(()=>reject(new Error('Build list waited for Access')),2000);}),
+    ])).resolves.toEqual(expected);
+   }finally{clearTimeout(deadline);}
+  });
+  await expect(withTenant(ctx,tx=>assertAiPresentationPrincipalTx(tx,ctx))).rejects.toThrow('calling authority');
+  await expect(withTenant(ctx,tx=>assertAiPrincipalTx(tx,ctx),{readOnlySnapshot:true})).rejects.toThrow('calling authority');
+  await expect(agentBuildList({...ctx,personId:randomUUID()},30)).rejects.toThrow('calling authority');
  });
  it('refuses a stale archived administrator even when the supplied grants still say group HR',async()=>{
   const ctx=await group();

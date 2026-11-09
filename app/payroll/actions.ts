@@ -61,7 +61,7 @@ import { ModuleNotEnabledError, SettingNotEnabledError } from '@/core/entitlemen
 import '@/packs/claims/payroll';
 import { payrollInputContributorById } from '@/packs/contracts';
 import { prefillLoansForBatch } from '@/core/loans';
-import { transferAllowancesToBatch } from '@/core/attendance-allowance';
+import { transferAllowancesToBatch } from '@/packs/attendance/service';
 // 7076f8af — the draft-adjustment panel is no longer a fixture of the run screen (it is rendered on the
 // Payroll Process wizard's Review step and on a screen under Transactions), so the eight actions it drives
 // return to the screen they were pressed on. The destination is whitelisted, never echoed raw. See
@@ -149,7 +149,7 @@ export async function generateAction(formData: FormData) {
   } catch (e) {
     errMsg =
       e instanceof PreProcessBlockedError
-        ? t('preChecksBlockedError', { n: e.count })
+        ? t('preChecksNotReady')
         : // 1b0943d5 — a transferred employee whose OTHER employer's run for this period is already
           // closed. Refused in the kernel before anything commits; the operator gets the real reason,
           // in their own language, rather than the service's raw English.

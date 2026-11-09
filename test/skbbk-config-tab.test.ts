@@ -25,6 +25,7 @@ import {
   type StatutoryRuleset,
 } from '../localization/my/statutory-tables';
 import { assemble, initState } from '../components/statutory-config-form';
+import { STATUTORY_SUBMENU } from '../lib/navigation/module-submenus';
 
 // Rung 5b (ADR-0080 D6): the form takes the pack's built-in EPF Third Schedule tables as an argument
 // (threaded from pack.payroll.epfThirdSchedule by the server page); pass the same tables here.
@@ -39,9 +40,9 @@ describe('SKBBK tab: registered alongside the other statutory tabs', () => {
   const tabs = read('components/statutory-tabs.tsx');
 
   it('adds a skbbk tab entry pointing at /payroll/configuration/skbbk', () => {
-    expect(tabs).toMatch(/key:\s*'skbbk'/);
-    expect(tabs.includes("href: '/payroll/configuration/skbbk'")).toBe(true);
-    expect(tabs.includes("t('body_skbbk')")).toBe(true);
+    expect(STATUTORY_SUBMENU.find(tab=>tab.key==='skbbk')).toMatchObject({
+      key:'skbbk',href:'/payroll/configuration/skbbk',labelKey:'body_skbbk',
+    });
   });
 
   it("adds 'skbbk' to the StatutoryTabs active union so the tab can be marked active", () => {
@@ -49,8 +50,8 @@ describe('SKBBK tab: registered alongside the other statutory tabs', () => {
   });
 
   it('places SKBBK next to SOCSO (it rides on the SOCSO bands)', () => {
-    expect(tabs.indexOf("key: 'socso'")).toBeLessThan(tabs.indexOf("key: 'skbbk'"));
-    expect(tabs.indexOf("key: 'skbbk'")).toBeLessThan(tabs.indexOf("key: 'eis'"));
+    const keys=STATUTORY_SUBMENU.map(tab=>tab.key);
+    expect(keys.slice(keys.indexOf('socso'),keys.indexOf('eis')+1)).toEqual(['socso','skbbk','eis']);
   });
 });
 

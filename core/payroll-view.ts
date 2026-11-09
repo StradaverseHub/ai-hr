@@ -33,7 +33,7 @@ import { businessUnit, payslipInformationSetting, payrollHistoryEffectiveBatch }
 import { randomUUID } from 'node:crypto';
 import {readPayrollOvertimePatternCashTx, OvertimePayrollError, type OvertimePayrollErrorCode} from './payroll-overtime-pattern';
 import {OvertimeOwnerError} from '../packs/attendance/service';
-import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { type SessionContext, type Tx } from '../db/client';
 import { pricesChildReliefFromGrid } from './dependents';
@@ -42,6 +42,7 @@ import { pricesChildReliefFromGrid } from './dependents';
 import { withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import { toCsv } from '../lib/csv';
+import {ALL_ROW_CEILING,type PageQuery} from '../lib/pagination';
 // 9cbf5e0d — one Employee Status engine, shared with Personnel and the dashboard.
 import { employmentStatusSql } from './employment-status-sql';
 // d0d2c9d1 — the scope resolver generatePayslips itself uses, so the "who will this run leave out?"
@@ -56,6 +57,7 @@ import {
   collectableCycleIds,
   intendedCycleFilter,
   listPayslipLessEligible,
+  payrollCloseCompanyIdsTx,
   resolveBatchScopeFilter,
   type BatchScope,
   type PayrollSkipReason,
@@ -217,15 +219,79 @@ export type FixedTransactionViewRow = {
  * item → all employees assigned to it), `status` ('active' = validTo null or ≥ today; 'ended' =
  * validTo < today — the same rule the Fixed keying screen derives per-row).
  */
+/** Explicit SQL aliases let a single statement return count and a bounded JSON page. Numeric
+ * money/quantity retain the legacy string DTO instead of passing through JSON numeric precision. */
+function inquiryColumns<T>(fields:{[K in keyof T]:SQLWrapper}):{[K in keyof T]:SQL.Aliased<T[K]>}{
+  return Object.fromEntries(Object.entries(fields).map(([key,value])=>[key,
+    (key==='amount'||key==='quantity'?sql`${value as SQLWrapper}::text`:sql`${value as SQLWrapper}`).as(key),
+  ])) as {[K in keyof T]:SQL.Aliased<T[K]>};
+}
+
+async function inquiryPage<T>(tx:Tx,source:SQLWrapper,order:SQL,page:PageQuery):Promise<{rows:T[];total:number}>{
+  if(!Number.isSafeInteger(page.limit)||page.limit<1||page.limit>ALL_ROW_CEILING||!Number.isFinite(page.offset)||!Number.isInteger(page.offset)||page.offset<0)
+    throw new RangeError('Choose a supported inquiry page.');
+  // One database statement owns both count and page, after the unchanged Payroll history barrier.
+  // NOT MATERIALIZED lets count discard payload columns and the page apply its own bounded order.
+  const [result]=await tx.execute<{rows:T[];total:string}>(sql`
+    with filtered as not materialized (${source}),
+    totals as (select count(*)::text as total from filtered),
+    page as (select * from filtered order by ${order} limit ${page.limit} offset ${Math.min(Number.MAX_SAFE_INTEGER,page.offset)})
+    select totals.total,(select coalesce(jsonb_agg(to_jsonb(page) order by ${order}),'[]'::jsonb) from page) as rows from totals`);
+  const total=Number(result?.total);
+  if(!Number.isSafeInteger(total)||total<0||!Array.isArray(result?.rows))throw Error('Payroll inquiry page unavailable.');
+  return {rows:result.rows,total};
+}
+
+/** SQL twin of the public pure rule; native parity tests cover missing/older/newer payslips. */
+function individualReprocessSql(){
+  return sql<boolean>`coalesce(${payrollBatch.status}='processed' and (${payslip.createdAt} is null
+    or coalesce(${payrollIndividualTxn.updatedAt},${payrollIndividualTxn.createdAt})>${payslip.createdAt}),false)`;
+}
+
+export const INDIVIDUAL_INQUIRY_SORT_KEYS=['payPeriod','txnDate','employeeName','company','kind','amount','batchStatus','createdBy','createdOn'] as const;
+export type IndividualInquirySortKey=typeof INDIVIDUAL_INQUIRY_SORT_KEYS[number];
+export type IndividualInquirySort={key:IndividualInquirySortKey;direction:'asc'|'desc'};
+export function parseIndividualInquirySort(key?:string,direction?:string):IndividualInquirySort{
+  const known=INDIVIDUAL_INQUIRY_SORT_KEYS.includes(key as IndividualInquirySortKey);
+  return {key:known?key as IndividualInquirySortKey:'payPeriod',direction:known&&direction==='asc'?'asc':'desc'};
+}
+function individualInquiryOrder(sort:IndividualInquirySort){
+  const text=(key:string)=>sql`lower(coalesce(${sql.identifier(key)},'')) collate "C"`;
+  const field=sort.key==='amount'?sql`${sql.identifier('amount')}::numeric`:
+    sort.key==='batchStatus'?sql`case when "batchStatus"='processed' and ("payslipCalculatedAt" is null or "changedAt">"payslipCalculatedAt") then 'reprocess' else coalesce("batchStatus",'') end`:
+    ['employeeName','company','createdBy'].includes(sort.key)?text(sort.key):sort.key==='kind'?sql`"kind"::text collate "C"`:sql`${sql.identifier(sort.key)}`;
+  return sql`${field} ${sort.direction==='asc'?sql`asc`:sql`desc`},"id" asc`;
+}
+
+export function listFixedTransactionsPage(ctx:SessionContext,p:FixedTransactionFilter,page:PageQuery):Promise<{rows:FixedTransactionViewRow[];total:number}>{
+  if(!p.companyIds.length)return Promise.resolve({rows:[],total:0});
+  return withTenant(ctx,async tx=>{
+    await tx.execute(sql`set transaction read only`);
+    return inquiryPage<FixedTransactionViewRow>(tx,fixedTransactionQuery(tx,p,todayIso()),sql`"employeeName","code","validFrom","id"`,page);
+  });
+}
+export async function listIndividualTxnsPage(ctx:SessionContext,p:IndividualTxnFilter,page:PageQuery,sort:IndividualInquirySort=parseIndividualInquirySort()):Promise<{rows:IndividualTxnViewRow[];total:number}>{
+  if(!p.companyIds.length)return {rows:[],total:0};
+  sort=parseIndividualInquirySort(sort.key,sort.direction);
+  const result=await withTenant(ctx,async tx=>{
+    await tx.execute(sql`set transaction read only`);
+    return inquiryPage<Omit<IndividualTxnViewRow,'reprocessRequired'>>(tx,individualTransactionQuery(tx,p),individualInquiryOrder(sort),page);
+  });
+  return {total:result.total,rows:result.rows.map(row=>({...row,reprocessRequired:individualTxnReprocessRequired(row)}))};
+}
+
+export type FixedTransactionFilter={companyIds:string[];employmentId?:string;componentId?:string;status?:'active'|'ended'};
 export function listFixedTransactionsAcross(
   ctx: SessionContext,
-  p: { companyIds: string[]; employmentId?: string; componentId?: string; status?: 'active' | 'ended' },
+  p: FixedTransactionFilter,
 ): Promise<FixedTransactionViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
-  const today = todayIso();
-  return withTenant(ctx, (tx) =>
-    tx
-      .select({
+  return withTenant(ctx,tx=>fixedTransactionQuery(tx,p,todayIso()).orderBy(asc(person.fullName),asc(payComponent.code),asc(employmentPayComponent.validFrom),asc(employmentPayComponent.id)));
+}
+
+function fixedTransactionQuery(tx:Tx,p:FixedTransactionFilter,today:string){
+  return tx
+      .select(inquiryColumns<FixedTransactionViewRow>({
         id: employmentPayComponent.id,
         employmentId: employmentPayComponent.employmentId,
         employeeName: person.fullName,
@@ -243,7 +309,7 @@ export function listFixedTransactionsAcross(
         // 4fffe638 — LEFT JOIN on a single FK: an unlinked row keeps its run-type label, nothing multiplies.
         payrollCycleName: payrollCycle.name,
         remarks: employmentPayComponent.remarks,
-      })
+      }))
       .from(employmentPayComponent)
       .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
       .leftJoin(payrollCycle, eq(payrollCycle.id, employmentPayComponent.payrollCycleId))
@@ -262,8 +328,7 @@ export function listFixedTransactionsAcross(
           p.status === 'ended' ? lt(employmentPayComponent.validTo, today) : undefined,
         ),
       )
-      .orderBy(asc(person.fullName), asc(payComponent.code), asc(employmentPayComponent.validFrom)),
-  );
+;
 }
 
 // ───────────────────── 2. Individual Transaction View ─────────────────────
@@ -348,38 +413,17 @@ export type IndividualTxnFilter = {
  * and LEFT-joined to the row's 'created' DomainEvent → app_user → person for the Created By / Created Date
  * dimensions. Read-only (pure SELECT — no event appended here).
  */
-async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<IndividualTxnViewRow[]> {
-  if (p.companyIds.length === 0) return []; // fail closed — no scope, no rows
+function individualTransactionQuery(tx:Tx,p:IndividualTxnFilter){
   const kind = cleanTxnKind(p.kind);
   const batchStatus = cleanBatchStatus(p.batchStatus);
   const createdFrom = cleanDate(p.createdFrom);
   const createdTo = cleanDate(p.createdTo);
 
-  // Department filter: resolve the department's current-assignment employments ONCE (fail-closed on an empty
-  // department), then narrow by the id set. A dedicated pre-query avoids a row-multiplying assignment join.
-  let deptEmploymentIds: string[] | undefined;
-  if (p.departmentId) {
-    const deptRows = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .innerJoin(
-        assignment,
-        and(
-          eq(assignment.employmentId, employment.id),
-          isNull(assignment.validTo),
-          isNull(assignment.supersededAt),
-          eq(assignment.departmentId, p.departmentId),
-        ),
-      );
-    deptEmploymentIds = deptRows.map((r) => r.id);
-    if (deptEmploymentIds.length === 0) return [];
-  }
-
-  // f1564110 Phase 2: the row's OWN (company_id, pay_period) columns are authoritative (stamped on every
-  // write, backfilled by 0175), so the batch join becomes a LEFT join purely for run/status metadata and
-  // UNATTACHED rows (batch_id NULL — keyed in before the month's run exists) stay visible in the inquiry.
-  const rows = await tx
-    .select({
+  // EXISTS keeps the exact current-assignment membership without transporting every matching ID.
+  const departmentMatch=p.departmentId?sql`exists(select 1 from ${assignment} a where a.employment_id=${payrollIndividualTxn.employmentId}
+    and a.valid_to is null and a.superseded_at is null and a.department_id=${p.departmentId}::uuid)`:undefined;
+  return tx
+    .select(inquiryColumns<Omit<IndividualTxnViewRow,'reprocessRequired'>>({
       id: payrollIndividualTxn.id,
       employmentId: payrollIndividualTxn.employmentId,
       employeeName: person.fullName,
@@ -414,7 +458,7 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
         string | null
       >`to_char(${payslip.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')`,
       batchNeedsRecalcForEmployment: sql<boolean>`(${payrollBatch.needsRecalcAt} is not null and coalesce(${payrollBatch.recalcEmploymentIds}, '[]'::jsonb) @> to_jsonb(${payrollIndividualTxn.employmentId}::text))`,
-    })
+    }))
     .from(payrollIndividualTxn)
     .leftJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
     // The selected cycle is an ID, not runType. Keep authorized archived names for existing rows.
@@ -464,7 +508,7 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
         periodFilter(p.year, p.month, payrollIndividualTxn.payPeriod),
         p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
         kind ? eq(payrollIndividualTxn.kind, kind) : undefined,
-        deptEmploymentIds ? inArray(payrollIndividualTxn.employmentId, deptEmploymentIds) : undefined,
+        departmentMatch,
         // 'unattached' and 'reprocess' are NOT batch statuses (see cleanBatchStatus). 'reprocess' narrows
         // in SQL to the runs it can possibly apply to — processed ones — and the row-level half is applied
         // below through the SAME pure rule the screen uses, so the filter and the badges cannot disagree.
@@ -475,17 +519,23 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
             : batchStatus
               ? eq(payrollBatch.status, batchStatus)
               : undefined,
+        batchStatus==='reprocess'?individualReprocessSql():batchStatus==='processed'?sql`not (${individualReprocessSql()})`:undefined,
         p.createdBy ? eq(domainEvent.actorId, p.createdBy) : undefined,
         createdFrom ? gte(sql`${payrollIndividualTxn.createdAt}::date`, createdFrom) : undefined,
         createdTo ? lte(sql`${payrollIndividualTxn.createdAt}::date`, createdTo) : undefined,
       ),
     )
-    .orderBy(desc(payrollIndividualTxn.payPeriod), asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id));
+;
+}
+
+async function queryIndividualTxns(tx:Tx,p:IndividualTxnFilter):Promise<IndividualTxnViewRow[]>{
+  if(!p.companyIds.length)return [];
+  const batchStatus=cleanBatchStatus(p.batchStatus);
+  const rows=await individualTransactionQuery(tx,p).orderBy(desc(payrollIndividualTxn.payPeriod),asc(payrollIndividualTxn.txnDate),asc(payrollIndividualTxn.id));
   // 510f4bd1 — DERIVED once, here, from facts the row already carries. Every consumer (the History grid,
   // its CSV, the workspace panel) reads this same boolean rather than re-deciding, which is what stops the
   // two screens saying different things about one line.
-  const derived = rows.map((r) => ({ ...r, reprocessRequired: individualTxnReprocessRequired(r) })) as
-    IndividualTxnViewRow[];
+  const derived = rows.map(row=>({...row,reprocessRequired:individualTxnReprocessRequired(row)})) as IndividualTxnViewRow[];
   // THE STATUS FILTER HAS TO SELECT WHAT THE STATUS COLUMN SHOWS, or the screen contradicts itself. Once
   // a stale row on a processed run is LABELLED Pending reprocessing, `?txnStatus=processed` must stop
   // returning it — otherwise filtering to Processed lists rows the grid beside it calls something else.
@@ -1370,12 +1420,24 @@ export function listPayrollRegisterAcross(
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName));
 
     const retained=await informationPayslipDocuments(tx,{...p,cycle});
-    for(const document of retained){
-      const saved=informationDocumentRow(document),index=rows.findIndex(r=>r.correctionSlipId===saved.id);
-      if(index>=0)rows[index]=overlayInformationDocument(rows[index],document);
-      else rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+    if(retained.length){
+      const firstIndexBySlipId = new Map<string, number>();
+      for (const [index, row] of rows.entries()) {
+        // Preserve the first match when more than one live row has the same slip ID.
+        if (!firstIndexBySlipId.has(row.correctionSlipId)) firstIndexBySlipId.set(row.correctionSlipId, index);
+      }
+      for (const document of retained) {
+        const saved = informationDocumentRow(document);
+        const index = firstIndexBySlipId.get(saved.id);
+        if (index !== undefined) {
+          rows[index] = overlayInformationDocument(rows[index], document);
+        } else {
+          firstIndexBySlipId.set(saved.id, rows.length);
+          rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+        }
+      }
+      rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     }
-    if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return rows.map((r) => {
       const st = (r.statutory ?? {}) as Record<string, unknown>;
       const n = (k: string): number => {
@@ -3000,22 +3062,41 @@ export function listBatchProcessedDates(
   batchIds: readonly string[],
 ): Promise<Map<string, string>> {
   if (batchIds.length === 0) return Promise.resolve(new Map());
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({
-        batchId: domainEvent.aggregateId,
-        processedOn: sql<string>`to_char(max(${domainEvent.occurredAt}) at time zone ${HR_LOCAL_TZ}::text, 'YYYY-MM-DD')`,
-      })
-      .from(domainEvent)
-      .where(
-        and(
-          eq(domainEvent.aggregateType, 'payroll-batch'),
-          eq(domainEvent.eventType, 'payroll-batch.processed'),
-          inArray(domainEvent.aggregateId, batchIds as string[]),
-        ),
-      )
-      .groupBy(domainEvent.aggregateId);
-    return new Map(rows.map((r) => [r.batchId, r.processedOn]));
+  return withTenant(ctx, tx => listBatchProcessedDatesTx(tx, batchIds));
+}
+
+async function listBatchProcessedDatesTx(tx: Tx, batchIds: readonly string[]): Promise<Map<string, string>> {
+  if (batchIds.length === 0) return new Map();
+  const rows = await tx
+    .select({
+      batchId: domainEvent.aggregateId,
+      processedOn: sql<string>`to_char(max(${domainEvent.occurredAt}) at time zone ${HR_LOCAL_TZ}::text, 'YYYY-MM-DD')`,
+    })
+    .from(domainEvent)
+    .where(
+      and(
+        eq(domainEvent.aggregateType, 'payroll-batch'),
+        eq(domainEvent.eventType, 'payroll-batch.processed'),
+        inArray(domainEvent.aggregateId, batchIds as string[]),
+      ),
+    )
+    .groupBy(domainEvent.aggregateId);
+  return new Map(rows.map((row) => [row.batchId, row.processedOn]));
+}
+
+/** Only visible-page metadata, using one Payroll history barrier and the original close authority. */
+export function payrollDashboardBatchMetadata(
+  ctx: SessionContext,
+  batchIds: readonly string[],
+  processedCompanyIds: readonly string[],
+): Promise<{ processedOn: Map<string, string>; closeCompanies: Set<string> }> {
+  if (batchIds.length === 0 && processedCompanyIds.length === 0) {
+    return Promise.resolve({ processedOn: new Map(), closeCompanies: new Set() });
+  }
+  return withTenant(ctx, async tx => {
+    const processedOn = await listBatchProcessedDatesTx(tx, batchIds);
+    const closeCompanies = await payrollCloseCompanyIdsTx(tx, ctx, processedCompanyIds);
+    return { processedOn, closeCompanies };
   });
 }
 

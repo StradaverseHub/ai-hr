@@ -82,7 +82,7 @@ export function PersonnelFilterFeedback({ formId }: { formId: string }) {
   return <>
     <span className="sr-only" role="status">{filters?.updating === formId ? t('updatingResults') : ''}</span>
     {failure?.id === formId && <div role="alert" className="space-y-2 rounded-md border border-border p-3 text-sm">
-      <p>{t('readBusy')}</p>
+      <p>{t('applyFailed')}</p>
       <button className="text-primary underline" type="button" onClick={() => filters?.retry(failure)}>{t('retryRead')}</button>
     </div>}
   </>;
