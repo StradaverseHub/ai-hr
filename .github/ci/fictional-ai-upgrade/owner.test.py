@@ -103,6 +103,34 @@ class Admission(unittest.TestCase):
                 owner.settle_interrupted(custody)
             pidfd.assert_not_called()
 
+    def test_migration_failures_publish_only_closed_categories(self):
+        cases = (
+            (b'nsenter: refused private ns path\n','namespace-entry-refused'),
+            (b'env: /private/pnpm: Permission denied\n','toolchain-access-refused'),
+            (b'fatal: detected dubious ownership in repository at /private/source\n','checkout-access-refused'),
+            (b"Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'tsx' imported from /private/app\n",'dependency-unavailable'),
+            (b'Disposable focused role fixture prerequisites are not satisfied.\n','focused-role-refused'),
+            (b'Existing migration engine did not complete normally.\n','migration-engine-launch-refused'),
+            (b'fictional private data, unknown error or SQL text\n','unclassified-stage-failure'),
+        )
+        for excerpt, category in cases:
+            with self.subTest(category=category):
+                self.assertEqual(owner.migration_failure_category(excerpt,False),category)
+        self.assertEqual(owner.migration_failure_category(b'fictional private SQL details',True),'migration-engine-failed')
+
+    def test_engine_boundary_needs_role_receipt_for_exact_phase(self):
+        path = self.event.parent/'roles.json'
+        source = Path(__file__).resolve().parents[3]
+        receipt = {'kind':'PERSONNEL_DRAFT_DISCARD_PREMIGRATION_ROLE_PREREQUISITES',
+                   'phase':'before_initial_candidate_migration','candidate':owner.BASE,
+                   'controller':'a'*40,'runId':'1010','attempt':'1','fixture':{'mode':'focused_disposable'}}
+        receipt.update({key:owner.digest((source/file).read_bytes()) for key,file in owner.ROLE_SOURCES.items()})
+        path.write_text(json.dumps(receipt))
+        with patch.object(owner,'UID',path.stat().st_uid):
+            self.assertEqual(json.loads(owner.phase_role_bytes(path,source,owner.BASE,'a'*40,'1010')),receipt)
+            with self.assertRaises(ValueError):
+                owner.phase_role_bytes(path,source,owner.CANDIDATE,'a'*40,'1010')
+
     def test_mixed_course_or_source_refuses(self):
         for key,wrong in [('model_eval','paid-model'),('run_build','true'),
                           ('measured_browser_course','preflight-2'),('expected_sha',owner.BASE),

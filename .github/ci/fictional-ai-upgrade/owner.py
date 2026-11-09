@@ -30,6 +30,9 @@ PINS = {
     'pnpm-workspace.yaml': '68505b5f88e6fbd9ef4a309ca131de8e64f1749939d846da2d81e88db14c9369',
     'patches/fontkit@1.9.0.patch': 'b208b0e233a985efb2decb13e5043f8c26955724f0df805849ef7b305773642a',
 }
+ROLE_SOURCES = {'helperSha256':'test/helpers/personnel-draft-discard-ci-role-fixture.ts',
+                'wrapperSha256':'scripts/migrate-with-focused-prerequisites.ts',
+                'orchestrationSha256':'scripts/lib/discard-premigration.ts'}
 
 
 def need(ok):
@@ -114,6 +117,53 @@ def copy_program_canary():
 def root_file(path):
     need(path.lstat().st_uid == 0 and path.lstat().st_mode & 0o022 == 0)
     return plain(path)
+
+
+def failure_excerpt(path):
+    if not path.exists():
+        return b''
+    fd = os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    with os.fdopen(fd,'rb') as source:
+        info = os.fstat(source.fileno())
+        need(info.st_uid == 0 and info.st_nlink == 1 and stat.S_ISREG(info.st_mode) and info.st_mode & 0o077 == 0)
+        front = source.read(8192)
+        if info.st_size <= 8192:
+            return front
+        source.seek(max(8192,info.st_size-8192))
+        return front+b'\n'+source.read(8192)
+
+
+def migration_failure_category(excerpt, role_recorded):
+    """Publish a fixed label only. The underlying process output always remains private."""
+    for category,pattern in (
+        ('namespace-entry-refused',rb'(?m)^nsenter: '),
+        ('child-identity-refused',rb'(?m)^setpriv: '),
+        ('toolchain-access-refused',rb"(?m)^(?:/usr/bin/)?env: [^\r\n]{1,512}: (?:Permission denied|No such file or directory)$"),
+        ('checkout-access-refused',rb'(?m)^fatal: (?:detected dubious ownership|not a git repository)'),
+        ('dependency-unavailable',rb"(?m)^(?:Error \[ERR_MODULE_NOT_FOUND\]: Cannot find package ['\"](?:tsx|postgres|esbuild|drizzle-kit)['\"]|Error: The package \"@esbuild/linux-x64\")"),
+        ('focused-role-refused',rb'(?m)^Disposable focused role fixture prerequisites are not satisfied\.$'),
+        ('focused-target-refused',rb'(?m)^Focused (?:migration target is not the canonical disposable development database|test migration target is (?:not canonical|unavailable)|migration and test clusters differ)\.$'),
+        ('receipt-write-refused',rb"(?m)^(?:EACCES|EPERM|EEXIST): [^\r\n]{0,1024}personnel-draft-discard-premigration-role-prerequisites\.json"),
+        ('postgres-connectivity-refused',rb'(?m)^(?:Error: connect (?:ECONNREFUSED|ETIMEDOUT) 127\.0\.0\.1:5433|PostgresError: the database system is starting up)'),
+        ('migration-engine-launch-refused',rb'(?m)^Existing migration engine did not complete normally\.$'),
+    ):
+        if re.search(pattern,excerpt):
+            return category
+    return 'migration-engine-failed' if role_recorded else 'unclassified-stage-failure'
+
+
+def phase_role_bytes(path,source,sha,controller,run):
+    info = path.lstat()
+    need(info.st_uid == UID)
+    data = plain(path)
+    row = json.loads(data)
+    need(row.get('kind') == 'PERSONNEL_DRAFT_DISCARD_PREMIGRATION_ROLE_PREREQUISITES'
+         and row.get('phase') == 'before_initial_candidate_migration'
+         and row.get('candidate') == sha and row.get('controller') == controller
+         and row.get('runId') == run and row.get('attempt') == '1'
+         and row.get('fixture',{}).get('mode') == 'focused_disposable')
+    need(all(row.get(key) == digest(plain(source/file)) for key,file in ROLE_SOURCES.items()))
+    return data
 
 
 def stop_owned(name, nonce):
@@ -240,7 +290,8 @@ def recover():
         summary = temp/'aihr-fictional-ai-upgrade-summary.json'
         if not summary.exists():
             output = {'status':'FAIL','baseline':BASE,'candidate':CANDIDATE,'controller':controller,'runId':run,
-                      'attempt':1,'firstFailedStage':'owner-interrupted','settled':True,'releaseAuthorized':False}
+                      'attempt':1,'firstFailedStage':'owner-interrupted','failureCategory':'controller-interrupted',
+                      'settled':True,'releaseAuthorized':False}
             write(summary,(json.dumps(output,separators=(',',':'))+'\n').encode(),0o644)
         else:
             root_file(summary)
@@ -367,10 +418,15 @@ def main():
     namespace_prefix = []
     uncertain = False
     failed = None
+    failure_category = 'unclassified-stage-failure'
+    active_log = None
+    active_reason = None
     output = None
 
     def owned(label, cwd, argv, env, seconds, *, unpriv=True):
-        nonlocal uncertain
+        nonlocal uncertain,active_log,active_reason
+        active_log = custody/(label+'.log')
+        active_reason = None
         env = {**env,'PWD':str(cwd),'GIT_CONFIG_COUNT':'1','GIT_CONFIG_KEY_0':'safe.directory','GIT_CONFIG_VALUE_0':str(cwd)}
         if unpriv:
             need(namespace_fd is not None)
@@ -379,7 +435,7 @@ def main():
         cmd = [*prefix,'/usr/bin/env','-i',*(f'{key}={value}' for key,value in env.items()),*map(str,argv)]
         fds = [os.dup(1),os.dup(2)]
         prev = Path.cwd()
-        log = os.open(custody/(label+'.log'),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        log = os.open(active_log,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
         try:
             os.dup2(log,1); os.dup2(log,2); os.chdir(cwd)
             def record(event):
@@ -394,9 +450,12 @@ def main():
             for fd, target in zip(fds,(1,2)):
                 os.dup2(fd,target); os.close(fd)
         uncertain = not result['groupQuiescent']
+        active_reason = result['reason']
         if not uncertain and session_receipt.exists():
             session_receipt.unlink()
         need(not uncertain and result['reason'] == 'complete' and result['commandExit'] == 0)
+        active_log = None
+        active_reason = None
 
     def database():
         row = owned_container(name,nonce)
@@ -457,23 +516,28 @@ def main():
         canary = 'import socket; c=socket.create_connection(("127.0.0.1",5433),2); c.close()'
         owned('network-canary',control,['/usr/bin/python3','-I','-B','-c',canary],common,12)
         for phase, source in sources.items():
-            stage = phase+'-migration'
+            stage = phase+'-migration-custody'
             sha = BASE if phase == 'prepare' else CANDIDATE
+            role_path = focus/ROLE
             env = {**common,'AIHR_CI_HEAD':sha,'TEST_DB_NAMESPACE':'aifocus','AIHR_FOCUSED_SUITE_CAPACITY':'true',
                    'AIHR_FOCUSED_EVIDENCE_DIR':str(focus),'DATABASE_URL':APP+'ai_hr_dev','MIGRATION_DATABASE_URL':ADMIN+'ai_hr_dev',
                    'TEST_DATABASE_URL':APP+'ai_hr_test','TEST_MIGRATION_DATABASE_URL':ADMIN+'ai_hr_test'}
-            need(db_identity() == born and not (focus/ROLE).exists())
+            need(db_identity() == born and not role_path.exists())
+            stage = phase+'-migration-toolchain'
+            probe = ('import {execFileSync} from "node:child_process";'
+                     'if(execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8"}).trim()!==process.env.AIHR_CI_HEAD)process.exit(2);'
+                     'for(const packageName of ["tsx","postgres","drizzle-kit"])import.meta.resolve(packageName);')
+            owned(stage,source,[pnpm,'exec',node,'--import','tsx','--input-type=module','--eval',probe],env,25)
+            stage = phase+'-migration-wrapper'
             owned(stage,source,[pnpm,'db:migrate'],env,360)
-            if phase == 'prepare':
-                owned('catalogs',source,[pnpm,'exec','tsx','scripts/seed-catalogs.ts'],env,80)
-            role_path = focus/ROLE
-            need(role_path.lstat().st_uid == UID)
-            role = plain(role_path)
-            decoded = json.loads(role)
-            need(decoded.get('candidate') == sha and decoded.get('controller') == controller
-                 and decoded.get('runId') == run and decoded.get('attempt') == '1')
+            stage = phase+'-migration-role-receipt'
+            role = phase_role_bytes(role_path,source,sha,controller,run)
             write(custody/(phase+'-roles.json'),role,0o444)
             role_path.unlink()
+            if phase == 'prepare':
+                stage = 'prepare-catalogs'
+                owned(stage,source,[pnpm,'exec','tsx','scripts/seed-catalogs.ts'],env,80)
+            stage = phase+'-witness-receipt'
             packet = {'kind':'AIHR_FICTIONAL_AI_UPGRADE_DISPOSABLE_CUSTODY','version':1,'releaseAuthorized':False,
                 'phase':phase,'baseline':BASE,'candidate':CANDIDATE,'controller':controller,'runId':run,'attempt':1,
                 'source':sha,'host':born,'prerequisiteSha256':digest(role),
@@ -494,6 +558,21 @@ def main():
             'sourceChangedRollbacks':1,'releaseAuthorized':False})
     except BaseException:
         failed = stage
+        if stage.endswith('-migration-wrapper'):
+            try:
+                phase_role_bytes(role_path,source,sha,controller,run)
+                failed = phase+'-migration-engine'
+            except (OSError,ValueError,TypeError,AttributeError):
+                pass
+        if uncertain:
+            failure_category = 'child-settlement-unverified'
+        elif active_reason == 'deadline':
+            failure_category = 'child-deadline'
+        elif active_log is not None:
+            try:
+                failure_category = migration_failure_category(failure_excerpt(active_log),failed.endswith('-migration-engine'))
+            except (OSError,ValueError):
+                failure_category = 'private-log-unavailable'
     finally:
         try:
             need(not uncertain)
@@ -505,7 +584,8 @@ def main():
             uncertain = True
     if failed:
         output = {'status':'FAIL','baseline':BASE,'candidate':CANDIDATE,'controller':controller,'runId':run,
-                  'attempt':1,'firstFailedStage':failed,'settled':not uncertain,'releaseAuthorized':False}
+                  'attempt':1,'firstFailedStage':failed,'failureCategory':failure_category,
+                  'settled':not uncertain,'releaseAuthorized':False}
     else:
         output['settled'] = True
     write(public,(json.dumps(output,separators=(',',':'))+'\n').encode(),0o644)
