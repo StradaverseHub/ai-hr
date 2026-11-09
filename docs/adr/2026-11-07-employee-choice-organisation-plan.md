@@ -99,3 +99,40 @@ records the matched, stress and index outcomes separately and keeps native
 rollback and handback within the original 300-second case. The new comparison
 requires 65 seconds of remaining case time, including 10 for cleanup. The
 source comparison has no observed hosted outcome.
+
+## Represented department pairs diagnostic
+
+Run `42553305798` kept the original matched failure and reached both indexed
+observations. The partial index was unused in all four indexed plans. Every
+broad and sparse plan had 10 Assignment sequential scan loops and 11,432 shared
+buffer hits at the root. The committed drop returned the original index inventory
+but relation row and visibility estimates drifted. The native test refused the
+post-drop comparison before the final baseline workload. The mandatory hosted
+cleanup step succeeded. This diagnostic leaves the older failure intact.
+
+The next test compares the unchanged reader against a test-only department query
+that groups exact represented `(current Employment company, open Assignment
+department)` pairs. Broad scope materializes native authorized Employment/Person
+keys separately from a single Assignment scan, joins those key sets, then
+projects the visible catalogue rows. Sparse scope starts with up to 25 explicit
+server Employment IDs and uses one bounded lateral Assignment lookup per
+admitted key through an existing index. The diagnostic crossover comes from the
+fixed fixture. Native RLS and the unchanged product entry and DTO remain in force.
+
+One Assignment scan alone is insufficient. Historical run `42390546115` had one
+scan followed by 50,000 Employment and 50,000 Person index probes. The earlier
+corrected fixture also failed its sparse loop check in run `42392436988`.
+The new broad gate requires bulk Employment/Person and Assignment-key joins,
+with no repeated input scans or temporary spill. The sparse gate requires a
+native Employment-key index path with no full Assignment scan. Both need
+consistent improvement against bracketing baseline observations on the existing
+50k fixture and must meet its original latency ceilings. The earlier population
+DISTINCT warning and whole lookup goal remain applicable.
+
+The original four Unicode reads, matched gate and 300-second case remain. The
+additional measured work prioritizes ten-department ABBA. Two-department
+candidate timing and a production crossover remain unmeasured. The ordinary DB
+suite adds a bounded native parity case with fixture-derived exact pairs and
+separate Person and Assignment denial controls. Existing index/catalogue reads
+admit and bracket the scale comparison. This change adds no DDL, product query
+replacement or release authority. Hosted execution is pending.

@@ -17,6 +17,8 @@ import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
+import {createAssignmentAuthorityFixture} from './performance/employee-choice-assignment-authority';
+import {departmentFacetBinds,isDepartmentFacet,representedDepartmentFacet} from './performance/employee-choice-department-pair-probe';
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(resetDb);
 
 it('preserves native scope, exact JavaScript Unicode search, facets and independent deep selection',async()=>{
@@ -271,4 +273,109 @@ it('keeps manager and department hierarchy facets inside native effective report
   choiceRow(report.employmentId,'Beta Direct','FACET-DIR',acme.id,acme.name,b.deptB,'Operations'),
   choiceRow(hod.employmentId,'Gamma Department','FACET-HOD',acme.id,acme.name,child.id,'Facet Child'),
  ],[acme],departments));
+},120000);
+
+it('compares represented Department pairs under actual native scope and independent table denials',async()=>{
+ const f=await createAssignmentAuthorityFixture(),{b,otherCompany,alpha,gamma,transferred,unassigned}=f;
+ const dialect=new PgDialect(),tenantPairs=[[b.companyId,b.deptA],[b.companyId,b.deptB],[otherCompany,b.deptB]];
+ const sorted=(rows:string[][])=>rows.map(row=>row.join('/')).sort();
+ type Input=Parameters<typeof readEmployeeChoicesTx>[2];
+ const read=async(tx:Tx,ctx:SessionContext,input:Input,replacement:boolean)=>{
+  const capture:{original?:SQL;forwarded?:SQL;pairs?:string[][]}={};
+  const proxy=new Proxy(tx,{get(target,key,receiver){
+   if(key==='execute')return async(query:SQL)=>{
+    const {sql:text,params}=dialect.sqlToQuery(query);
+    if(!isDepartmentFacet(text.trimStart()))return target.execute(query);
+    if(capture.original)throw new Error('Multiple native Department statements');
+    capture.original=query;expect(params).toEqual(departmentFacetBinds(ctx.tenantId,input));
+    const forwarded=replacement?representedDepartmentFacet(ctx.tenantId,input):query;
+    capture.forwarded=forwarded;
+    const rows=await target.execute<{companyId:string;departmentId:string}>(forwarded);
+    capture.pairs=rows.map(row=>[row.companyId,row.departmentId]);return rows;
+   };
+   const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
+  }});
+  const page=await readEmployeeChoicesTx(proxy,ctx,input);
+  const {original,forwarded,pairs}=capture;
+  if(!original||!forwarded||!pairs)throw new Error('Missing forwarded native Department result');
+  return {page,original:dialect.sqlToQuery(original),forwarded,pairs};
+ };
+ const compare=async(ctx:SessionContext,input:Input,total:number,pairs:string[][],visibility?:boolean[])=>database.withTenant(ctx,async tx=>{
+  await tx.execute(sql`set local lock_timeout='300ms'`);
+  await tx.execute(sql`set local statement_timeout='3s'`);
+  const [identity]=await tx.execute(sql`select current_user as role,session_user as login,
+   app.current_tenant_id()::text as tenant,app.current_user_id()::text as actor,
+   current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as read_only,
+   (select not (rolsuper or rolbypassrls) from pg_roles where rolname=current_user) as limited,
+   (select bool_and(row_security_active(c.oid)) and count(*)=5 from pg_class c where c.oid in
+    ('public.assignment'::regclass,'public.employment'::regclass,'public.person'::regclass,'public.company'::regclass,'public.department'::regclass)) as rls`);
+  expect(identity).toEqual({role:'ai_hr_app',login:'ai_hr_app',tenant:ctx.tenantId,actor:ctx.userId,isolation:'repeatable read',read_only:'on',limited:true,rls:true});
+  const before=await read(tx,ctx,input,false),after=await read(tx,ctx,input,true);
+  expect(after.original).toEqual(before.original);
+  expect(choicesWithoutContext(after.page)).toEqual(choicesWithoutContext(before.page));
+  expect(after.page.total).toBe(total);
+  expect(sorted(before.pairs)).toEqual(sorted(pairs));expect(sorted(after.pairs)).toEqual(sorted(pairs));
+  if(visibility){
+   const [native]=await tx.execute(sql`select
+    exists(select 1 from public.employment where id=${transferred.id}::uuid and tenant_id=${b.tenantId}::uuid) as e,
+    exists(select 1 from public.person where id=${transferred.personId}::uuid and tenant_id=${b.tenantId}::uuid) as p,
+    exists(select 1 from public.assignment where id=${transferred.assignmentId!}::uuid and tenant_id=${b.tenantId}::uuid) as a`);
+   expect(native).toEqual({e:visibility[0],p:visibility[1],a:visibility[2]});
+  }
+  if(input.employmentIds?.length===0){
+   type EmptyPlan={'Relation Name'?:string;'Actual Loops':number;'Actual Rows':number;Plans?:EmptyPlan[]};
+   const [row]=await tx.execute<{'QUERY PLAN':{Plan:EmptyPlan}[]}>(sql`explain(analyze,buffers,verbose,timing off,format json) ${after.forwarded}`);
+   const check=(node:EmptyPlan)=>{
+    if(node['Relation Name']==='assignment')expect(node['Actual Loops']).toBe(0);
+    for(const child of node.Plans??[])check(child);
+   };
+   const root=row['QUERY PLAN'][0].Plan;expect(root['Actual Rows']).toBe(0);check(root);
+  }
+  return after.page;
+ },{readOnlySnapshot:true});
+
+ const [physical]=await owner.db.select({companyId:employment.companyId,origin:assignment.companyId,departmentId:assignment.departmentId})
+  .from(employment).innerJoin(assignment,eq(assignment.employmentId,employment.id)).where(eq(assignment.id,transferred.assignmentId!));
+ expect(physical).toEqual({companyId:otherCompany,origin:b.companyId,departmentId:b.deptB});
+ await compare(f.ctx,{companyIds:[]},5,tenantPairs,[true,true,true]);
+ await archiveDepartment(f.ctx,{id:b.deptA,archived:true});
+ await owner.db.update(department).set({label:'  Paired 人  '}).where(eq(department.id,b.deptA));
+ await owner.db.update(department).set({label:'   ',description:'  Paired 人  '}).where(eq(department.id,b.deptB));
+ const narrowed=await compare(f.ctx,{companyIds:[],companyId:otherCompany,departmentId:b.deptA,businessUnitId:f.unit,query:'absent',
+  status:'active',labelMode:'labels',limit:1,offset:20,selectedId:unassigned.id},0,tenantPairs);
+ expect(narrowed.selected?.employmentId).toBe(unassigned.id);
+ expect(narrowed.departmentOptions).toEqual([{id:b.deptB,name:'Paired 人'}]);
+ expect(narrowed.allDepartmentOptions).toEqual([{id:b.deptA,name:'Paired 人 (Finance)'},{id:b.deptB,name:'Paired 人 (Operations)'}]);
+ const limited=[alpha.id,transferred.id,...Array.from({length:23},()=>randomUUID())];
+ const limitedPairs=[[b.companyId,b.deptA],[otherCompany,b.deptB]];
+ await compare(f.ctx,{companyIds:[],employmentIds:limited},2,limitedPairs);
+ await compare(f.ctx,{companyIds:[],employmentIds:[...limited,alpha.id]},2,limitedPairs);
+ await compare(f.ctx,{companyIds:[],employmentIds:[]},0,[]);
+ await compare(f.scopedCtx,{companyIds:[otherCompany]},0,[]);
+ await compare(f.managerCtx,{companyIds:[b.companyId]},2,tenantPairs.slice(0,2));
+ await compare(f.selfCtx,{companyIds:[otherCompany],employmentIds:[transferred.id,transferred.id]},1,[[otherCompany,b.deptB]]);
+ await compare(adminCtx(f.foreign),{companyIds:[b.companyId],employmentIds:[alpha.id]},0,[]);
+ for(const partner of f.partners){
+  await compare(partner,{companyIds:[otherCompany]},1,[],[true,true,false]);
+  await compare(partner,{companyIds:[otherCompany],employmentIds:[transferred.id]},1,[],[true,true,false]);
+ }
+
+ await owner.db.update(person).set({voidedAt:new Date()}).where(eq(person.id,transferred.personId));
+ try{
+  await compare(f.ctx,{companyIds:[otherCompany]},0,[],[true,false,true]);
+  await compare(f.ctx,{companyIds:[otherCompany],employmentIds:[transferred.id]},0,[],[true,false,true]);
+ }finally{await owner.db.update(person).set({voidedAt:null}).where(eq(person.id,transferred.personId));}
+ await owner.db.update(employment).set({terminatedOn:'2024-01-01'}).where(eq(employment.id,gamma.id));
+ try{
+  await compare(f.ctx,{companyIds:[b.companyId],employmentIds:[gamma.id],terminatedAfter:'2024-01-01'},0,[]);
+  await compare(f.ctx,{companyIds:[b.companyId],employmentIds:[gamma.id],terminatedAfter:'2023-12-31'},1,[[b.companyId,b.deptA]]);
+ }finally{await owner.db.update(employment).set({terminatedOn:null}).where(eq(employment.id,gamma.id));}
+ const grant=await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,f.employeeUser)).returning();
+ try{
+  expect(grant).toHaveLength(1);
+  await database.withTenant(f.employeeCtx,async tx=>{
+   await expect(read(tx,f.employeeCtx,{companyIds:[]},false)).rejects.toThrow('calling authority');
+   await expect(read(tx,f.employeeCtx,{companyIds:[]},true)).rejects.toThrow('calling authority');
+  },{readOnlySnapshot:true});
+ }finally{if(grant.length)await owner.db.insert(roleAssignment).values(grant);}
 },120000);

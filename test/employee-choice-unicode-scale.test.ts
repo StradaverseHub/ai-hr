@@ -15,6 +15,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {applicationDatabaseBudget} from '../db/capacity';
 import {closeAll,migrateTestDb,owner,type Base} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
+import {departmentFacetBinds,isDepartmentFacet,representedDepartmentFacet} from './performance/employee-choice-department-pair-probe';
 // This additional course is selected only by the existing focused controller. Other
 // Vitest runs keep the original setup and measurement, with their original URLs.
 const facetAdmission=await vi.hoisted(async()=>{
@@ -120,9 +121,7 @@ it('measures exact full and missing searches over the real 50k Unicode populatio
 
 const legacyHash='95900f68e826391eea261670dbeff344a7ef75e2ba921090ceef1ed949de172e';
 const facetIndexName='employee_choice_department_probe_20261109';
-const facetIndexDefinition='CREATE INDEX employee_choice_department_probe_20261109 ON public.assignment USING btree (tenant_id, department_id, employment_id) WHERE ((valid_to IS NULL) AND (superseded_at IS NULL))';
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
-const isDepartmentFacet=(text:string)=>text.startsWith('select "company"."id" as "companyId",')&&text.includes('cross join "department"');
 const uuidArray=(ids:readonly string[])=>'{'+ids.join(',')+'}';
 
 function verifyFacetPools(expectedDatabase:string){
@@ -189,7 +188,9 @@ const appFacts=sql`select ${realmColumns},app.current_tenant_id()::text as tenan
  from pg_database d join pg_roles r on r.rolname=current_user where d.datname=current_database()`;
 const preparedFacetCounters=sql`(select coalesce(jsonb_agg(to_jsonb(x) order by x.name),'[]'::jsonb) from (
  select name,generic_plans,custom_plans from pg_prepared_statements
- where statement like 'select "company"."id" as "companyId",%cross join "department"%' order by name limit 101) x)`;
+ where statement like 'select "company"."id" as "companyId",%cross join "department"%'
+  or statement like 'with authorized_members as materialized (%represented_department_pairs as materialized%'
+ order by name limit 101) x)`;
 
 const realm=(identity:Realm)=>[identity.database,identity.databaseOid,identity.address,identity.port,identity.version,identity.postmasterStart];
 const assertBackend=(identity:Realm)=>{
@@ -198,7 +199,7 @@ const assertBackend=(identity:Realm)=>{
 };
 
 type PlanNode={ [key:string]:unknown; Plans?:PlanNode[] };
-function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number){
+function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,pairProfile?:StressLabel){
  if(!Array.isArray(raw)||raw.length!==1||!raw[0]||typeof raw[0]!=='object')throw new Error('Unexpected native facet plan envelope');
  const document=raw[0] as Record<string,unknown>;
  const measure=(value:unknown)=>{
@@ -206,11 +207,13 @@ function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:nu
   return value;
  };
  const assignments:{node:string;loops:number;sharedHits:number;qual:string[]}[]=[];
+ const shapeNodes:PlanNode[]=[];
  const indexPaths:{node:string;loops:number;condition:string}[]=[];
  let nodes=0,witnesses=0,witnessLoops=0;
  function walk(node:PlanNode,depth:number,insideAssignment=false){
   if(!node||typeof node!=='object'||Array.isArray(node)||++nodes>2048||depth>64||typeof node['Node Type']!=='string')
    throw new Error('Unexpected native facet plan node');
+  shapeNodes.push(node);
   const isAssignment=node['Relation Name']==='assignment';
   if(isAssignment){
    const qual=['Filter','Index Cond','Recheck Cond'].map(key=>node[key]).filter((value):value is string=>typeof value==='string');
@@ -237,7 +240,49 @@ function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:nu
  }
  return {planningMs:measure(document['Planning Time']),executionMs:measure(document['Execution Time']),nodes,
   jitReported:Object.hasOwn(document,'JIT'),assignmentNodes:assignments.map(({qual:_qual,...value})=>value),correlatedWitnesses:witnesses,
-  witnessLoops,indexPaths,sharedTraffic:measure(root['Shared Hit Blocks'])+measure(root['Shared Read Blocks'])};
+  witnessLoops,indexPaths,sharedTraffic:measure(root['Shared Hit Blocks'])+measure(root['Shared Read Blocks']),
+  pathRefusals:pairProfile?representedPathRefusals(pairProfile,shapeNodes,root,measure):[]};
+}
+
+function representedPathRefusals(profile:StressLabel,nodes:PlanNode[],root:PlanNode,measure:(value:unknown)=>number){
+ const active=nodes.filter(node=>measure(node['Actual Loops'])>0);
+ const assignments=active.filter(node=>node['Relation Name']==='assignment');
+ const refusals:string[]=[];
+ const once=(matches:PlanNode[])=>matches.length===1&&measure(matches[0]['Actual Loops'])===1;
+ const reads=(name:string)=>active.filter(node=>node['Node Type']==='CTE Scan'&&node['CTE Name']===name);
+ const pairs=active.filter(node=>node['Subplan Name']==='CTE represented_department_pairs');
+ if(!once(pairs)||pairs[0]['Actual Rows']!==1||root['Actual Rows']!==1)refusals.push('pair-output');
+ if(!once(reads('authorized_members')))refusals.push('repeated-authority-read');
+ if(active.some(node=>measure(node['Temp Read Blocks'])>0||measure(node['Temp Written Blocks'])>0||
+   (typeof node['Hash Batches']==='number'&&node['Hash Batches']>1)||
+   (typeof node['Disk Usage']==='number'&&node['Disk Usage']>0)))refusals.push('temporary-work');
+ if(profile==='broad'){
+  if(!once(assignments)||assignments[0]['Actual Rows']!==50000||assignments[0]['Node Type']!=='Seq Scan')refusals.push('broad-assignment-scan');
+  if(!once(reads('open_assignment_keys')))refusals.push('repeated-assignment-keys-read');
+  const bulk=active.filter(node=>['Hash Join','Merge Join'].includes(String(node['Node Type']))&&
+   /\bk\.employment_id\b/.test(String(node['Hash Cond']??node['Merge Cond']))&&
+   /\bm\.employment_id\b/.test(String(node['Hash Cond']??node['Merge Cond'])));
+  if(!once(bulk)||bulk[0]['Actual Rows']!==50000)refusals.push('missing-bulk-employment-key-join');
+  const personJoin=active.filter(node=>['Hash Join','Merge Join'].includes(String(node['Node Type']))&&
+   /\be\.person_id\b/.test(String(node['Hash Cond']??node['Merge Cond']))&&
+   /\bp\.id\b/.test(String(node['Hash Cond']??node['Merge Cond'])));
+  if(!once(personJoin)||personJoin[0]['Actual Rows']!==50000)refusals.push('missing-bulk-person-witness');
+  for(const [relation,alias]of [['employment','e'],['person','p']] as const){
+   if(!once(active.filter(node=>node['Relation Name']===relation&&node.Alias===alias))||
+    active.some(node=>node['Relation Name']===relation&&node['Node Type']==='Seq Scan'&&measure(node['Actual Loops'])>1))
+    refusals.push('repeated-'+relation+'-witness');
+  }
+ }else{
+  const hasEmploymentIndex=(node:PlanNode)=>['assignment_employment_idx','assignment_no_overlap'].includes(String(node['Index Name']))&&
+   /\ba\.employment_id\s*=\s*m\.employment_id\b/.test(String(node['Index Cond']));
+  const indexed=(node:PlanNode)=>hasEmploymentIndex(node)||node['Node Type']==='Bitmap Heap Scan'&&
+   node.Plans?.length===1&&hasEmploymentIndex(node.Plans[0])&&node.Plans[0]['Actual Loops']===node['Actual Loops'];
+  const [members]=reads('authorized_members');
+  const admitted=members?measure(members['Actual Rows']):0;
+  if(admitted!==25||assignments.length!==1||assignments.some(node=>!indexed(node)||measure(node['Actual Loops'])>admitted))
+   refusals.push('sparse-employment-key-path');
+ }
+ return refusals;
 }
 
 type FacetIndex={oid:string;name:string;namespace:string;relation:string;owner:string;method:string;definition:string;columns:string[];
@@ -245,7 +290,7 @@ type FacetIndex={oid:string;name:string;namespace:string;relation:string;owner:s
 type PlannerCatalogue={assignmentOid:string;namedOid:string|null;indexes:FacetIndex[];relations:unknown[];columnStats:unknown[];
  extended:unknown[];policies:unknown[];memberships:unknown[];population:Record<string,number>};
 type StressLabel='broad'|'sparse';
-type IndexEpoch='B0'|'I1'|'I2'|'B1';
+type PairEpoch='A0'|'B0'|'B1'|'A1';
 type ReservedOwner=Awaited<ReturnType<typeof owner.client.reserve>>;
 type OwnerRealm=Realm&{cluster:string;boundStatement:string;boundLock:string};
 
@@ -316,9 +361,9 @@ type Probe={b:Base;ctx:SessionContext;expectedFirst:string[];captured:SQL[];dial
 async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAdmission>){
  const {b,ctx,dialect,report,save,signal}=p;
  const probeStart=performance.now(),matchedEnd=probeStart+27000,batchEnd=matchedEnd+5000,stressEnd=batchEnd+18000;
- const caseEnd=p.caseStart+300000;
- let end=stressEnd+10000;
- if(p.caseStart+300000-probeStart<65000)throw new Error('Insufficient original case lifetime for the closed facet probe');
+ const caseEnd=p.caseStart+300000,activeEnd=Math.min(stressEnd+30000,caseEnd-10000);
+ const end=activeEnd+10000;
+ if(caseEnd-probeStart<65000)throw new Error('Insufficient original case lifetime for the closed facet probe');
  expect(ctx.entitlements?.tenantStatus).toBe('active');
  expect(ctx.entitlements?.settings?.['audit.hash_chain_enabled']).not.toBe(true);
  expect(process.env.AUDIT_HASH_CHAIN_ENABLED).toBeUndefined();
@@ -326,13 +371,12 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   slotMilliseconds:[27000,5000,18000,10000],phase:'matched',plans:[] as Record<string,unknown>[],ordinaryMs:{} as Record<string,number>,
   matchedImprovement:{ordinary:false,instrumented:false},
   stress:[] as {label:string;wallMs:number;departmentMs:number;explainMs?:number;total:number;statements:number;rows:number}[]};
- const indexReceipt={admitted:false,createSent:false,createCommit:false,dropSent:false,dropCommit:false,cleanupDrop:false,
-  rollbackAcknowledged:false,indexAbsent:false,restored:false,ownedStopRequired:false};
- const indexAdjudication={complete:false,ordinary:false,instrumented:false,path:false,buffers:false,stressLimits:false};
- const gateStatus:{matched:'unobserved'|'pass'|'fail';baselineStress:'unobserved'|'pass'|'fail';index:'unobserved'|'pass'|'fail'}={
-  matched:'unobserved',baselineStress:'unobserved',index:'unobserved'};
+ const pairStatus={complete:false,catalogueUnchanged:false,ownedStopRequired:false,
+  twoDepartmentCandidate:'unobserved: retained original matched reads and prioritized ten-department ABBA'};
+ const gateStatus:{matched:'unobserved'|'pass'|'fail';baselineStress:'unobserved'|'pass'|'fail';
+  representedPairs:'unobserved'|'pass'|'fail'}={matched:'unobserved',baselineStress:'unobserved',representedPairs:'unobserved'};
  report.facetCandidate=state;
- const rawPlans:{label:string;raw:unknown}[]=[],metadata:Record<string,unknown>={indexReceipt,indexAdjudication,gateStatus,startup:{
+ const rawPlans:{label:string;raw:unknown}[]=[],metadata:Record<string,unknown>={pairStatus,gateStatus,startup:{
   app:{poolMax:database.client.options.max,connectMs:1000,fetchTypes:database.client.options.fetch_types,nativeBootstrapMs:1500},
   owner:{poolMax:owner.client.options.max,connectMs:2000,fetchTypes:owner.client.options.fetch_types,authenticatedWarmupMs:10000,authenticatedSetupMs:10000},
   preparedStatements:database.client.options.prepare,
@@ -343,8 +387,8 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   if(Buffer.byteLength(detail)>65536)throw new Error('Private facet metadata exceeds 64KiB');
   const plans=JSON.stringify(rawPlans);
   if(Buffer.byteLength(plans)>4*1024*1024)throw new Error('Private facet plans exceed 4MiB');
-  const path=join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'employee-choice-department-existence-private.json');
-  writeFileSync(path,JSON.stringify({kind:'FICTIONAL_NATIVE_DEPARTMENT_EXISTENCE_CANDIDATE',metadata,rawPlans}),{mode:0o600});
+  const path=join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'employee-choice-department-pairs-private.json');
+  writeFileSync(path,JSON.stringify({kind:'FICTIONAL_NATIVE_REPRESENTED_DEPARTMENT_PAIRS_DIAGNOSTIC',metadata,rawPlans}),{mode:0o600});
   save();
  };
  const fit=(deadline:number,ms:number,operation:string,cleanup=false)=>{
@@ -366,7 +410,6 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
  const identityReceipts:Record<string,unknown>[]=[];
  let appStarts=0;
  const fixture:{reservation?:ReservedOwner;realm?:OwnerRealm;transaction:boolean;tightened:boolean}={transaction:false,tightened:false};
- let recoverIndex:((deadline:number)=>Promise<void>)|undefined;
  const startOwner=async()=>{
   // postgres.js 3.4.9 does not hand off a cold reserve with fetch_types off.
   // A normal query reaches ReadyForQuery, which opens the socket before the
@@ -418,7 +461,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    isolation:'repeatable read',readOnly:true,superuser:false,bypass:false,statementTimeout:ms,lockTimeout:'300ms',port:5433,
    rls:{assignment:true,employment:true,person:true,company:true,department:true}});
  };
- const snapshot=async(deadline:number,finalMs:number,work:(tx:Tx,assertPhase:()=>void)=>Promise<void>)=>{
+ const snapshot=async(deadline:number,finalMs:number,work:(tx:Tx,assertPhase:()=>void)=>Promise<void>,settleBy=deadline)=>{
   // Cold app startup budgets 1s to connect and 3×500ms for BEGIN, mode
   // and context. The four-second frontier also charges queue and wire time.
   fit(deadline,4000+finalMs,'application admission and bootstrap');
@@ -433,14 +476,14 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
     pending.callback=Promise.resolve().then(()=>work(tx,()=>readSignal.throwIfAborted()));
     return pending.callback;
    },{readOnlySnapshot:true,readSignal});
-   fit(deadline,0,'settled application transaction');
+   fit(settleBy,0,'settled application transaction');
   }catch(error){frontier.abort(error);throw error;}finally{
    clearTimeout(timer);
    // postgres.js begin can reject on connection close before its callback ends.
    await pending.callback?.catch(()=>{});
   }
  };
- const explain=async(tx:Tx,query:SQL,label:string,first:boolean,loops:number)=>{
+ const explain=async(tx:Tx,query:SQL,label:string,first:boolean,loops:number,pairProfile?:StressLabel)=>{
   const started=performance.now();
   const rows=await tx.execute<{ 'QUERY PLAN':unknown }>(sql`explain(analyze,buffers,verbose,settings,timing off,format json) ${query}`);
   const wallMs=performance.now()-started;
@@ -449,7 +492,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   const bytes=Buffer.byteLength(JSON.stringify(raw));
   if(rawPlans.length>=10||bytes>1024*1024)throw new Error('Native facet plan inventory or size refused');
   rawPlans.push({label,raw});persist();
-  const summary=summarizePlan(raw,first,loops);
+  const summary=summarizePlan(raw,first,loops,pairProfile);
   state.plans.push({label,wallMs,...summary});persist();
   return summary;
  };
@@ -460,6 +503,10 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    select live.*,bounded.bound ${counters} from live cross join bounded`);
  };
 
+ const gateErrors:unknown[]=[];
+ const gate=(name:keyof typeof gateStatus,check:()=>void)=>{
+  try{check();gateStatus[name]='pass';}catch(error){gateStatus[name]='fail';gateErrors.push(error);}
+ };
  let workError:unknown,workFailed=false,matchedObserved=false;
  try{
   persist();
@@ -494,7 +541,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   state.phase='catalogue-batch';const batchDeadline=Math.min(batchEnd,performance.now()+5000);
   persist();fit(batchDeadline,4000,'fixed eight-department transaction');
   const empty=Array.from({length:8},(_,index)=>({id:randomUUID(),name:'Facet probe empty department '+String(index+1).padStart(2,'0')}));
-  await reservation`begin`;fixture.transaction=true;
+  fixture.transaction=true;await reservation`begin`;
   fit(batchDeadline,3000,'fixed eight-department insert');
   const inserted=await reservation<{id:string;name:string}[]>`insert into public.department(id,tenant_id,company_id,name)
    select x.id,${tenant}::uuid,${b.companyId}::uuid,x.name from jsonb_to_recordset(${JSON.stringify(empty)}::jsonb) x(id uuid,name text)
@@ -529,254 +576,128 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
     port:ownerRealm.port,version:ownerRealm.version,postmasterStart:ownerRealm.postmasterStart,pid:ownerRealm.pid,
     backendStart:ownerRealm.backendStart,role:'postgres',login:'postgres',statementTimeout:'1s',lockTimeout:'300ms',cluster:ownerRealm.cluster});
   };
-  const catalogues:Partial<Record<'B0'|'I'|'B1'|'B1-final'|'cleanup',unknown>>={};
-  metadata.indexCatalogues=catalogues;
-  const catalogue=async(label:keyof typeof catalogues,step:(operation:string)=>void)=>{
-   const facts=await readFacetPlannerCatalogue(reservation,tenant,b.deptA,[b.deptB,...empty.map(row=>row.id)],step);
-   const {assignmentOid,namedOid,indexes,population,...plannerFacts}=facts;
-   catalogues[label]=label==='B0'?facts:{assignmentOid,namedOid,indexes,population,
-    plannerFactSeals:Object.fromEntries(Object.entries(plannerFacts).map(([key,value])=>[key,digest(JSON.stringify(value))]))};
-   if(label!=='cleanup')persist();
-   return facts;
-  };
-  const ownerStep=(deadline:number,cleanup=false)=>(operation:string)=>fit(deadline,1000,operation,cleanup);
-  const beforeStep=ownerStep(stressEnd);
+  const beforeStep=(operation:string)=>fit(stressEnd,1000,operation);
   await ownedBackend(beforeStep);
-  const before=await catalogue('B0',beforeStep);
+  const emptyIds=[b.deptB,...empty.map(row=>row.id)];
+  const before=await readFacetPlannerCatalogue(reservation,tenant,b.deptA,emptyIds,beforeStep);
+  metadata.plannerBefore=before;persist();
   expect(before.namedOid).toBeNull();
   expect(before.indexes.some(index=>index.columns[0]==='department_id'||
    index.columns[0]==='tenant_id'&&index.columns[1]==='department_id')).toBe(false);
-  expect(before.indexes).toHaveLength(4);
-  const comparable=(facts:PlannerCatalogue)=>{
-   const {indexes,namedOid:_namedOid,...other}=facts;
-   return {...other,indexes:indexes.filter(index=>index.name!==facetIndexName)};
-  };
-  let created:FacetIndex|undefined;
-  const requireIndex=(rows:FacetIndex[])=>{
-   const candidates=rows.filter(index=>index.name===facetIndexName);
-   expect(candidates).toHaveLength(1);
-   const index=candidates[0];
-   expect(index).toMatchObject({name:facetIndexName,namespace:'public',relation:before.assignmentOid,owner:'postgres',method:'btree',
-    definition:facetIndexDefinition,columns:['tenant_id','department_id','employment_id'],valid:true,ready:true,live:true,unique:false,exclusion:false});
-   expect(index.oid).toMatch(/^\d+$/);
-   return index;
-  };
-  const begin=async(step:(operation:string)=>void)=>{
-   step('owned index BEGIN');fixture.transaction=true;await reservation`begin`;
-   await ownedBackend(step);
-  };
-  const commit=async(step:(operation:string)=>void)=>{
-   step('owned index COMMIT');await reservation`commit`;fixture.transaction=false;
-  };
-  const namedOid=async(step:(operation:string)=>void)=>{
-   step('fixed index namespace identity');
-   const [row]=await reservation<{oid:string|null}[]>`select to_regclass('public.employee_choice_department_probe_20261109')::oid::text as oid`;
-   if(!row)throw new Error('Missing fixed index namespace witness');
-   return row.oid;
-  };
-  const drop=async(step:(operation:string)=>void,cleanup=false)=>{
-   await begin(step);
-   step('lock Assignment for owned DROP');await reservation`lock table public.assignment in access exclusive mode`;
-   step('owned DROP index identity');const rows=Array.from(await facetIndexes(reservation));
-   if(!created)throw new Error('DROP refused without an in-transaction creation identity');
-   expect(requireIndex(rows)).toEqual(created);
-   step('owned DROP INDEX');indexReceipt.dropSent=true;indexReceipt.cleanupDrop=cleanup;
-   await reservation`drop index public.employee_choice_department_probe_20261109`;
-   await commit(step);indexReceipt.dropCommit=true;
-   if(!cleanup)persist();
-  };
-  const proveRestored=async(label:'B1'|'cleanup',step:(operation:string)=>void)=>{
-   const restored=await catalogue(label,step);
-   indexReceipt.indexAbsent=restored.namedOid===null;
-   expect(restored).toEqual(before);
-   indexReceipt.restored=true;
-   if(label!=='cleanup')persist();
-  };
-  recoverIndex=async(deadline:number)=>{
-   if(!indexReceipt.createSent||indexReceipt.restored)return;
-   const step=ownerStep(deadline,true);
-   await ownedBackend(step);
-   const oid=await namedOid(step);
-   indexReceipt.indexAbsent=oid===null;
-   if(oid!==null){
-    if(indexReceipt.dropSent||!created||oid!==created.oid)
-     throw new Error('Owned index still present after an ambiguous or refused DROP');
-    await drop(step,true);
-   }
-   await proveRestored('cleanup',step);
-  };
+  expect(before.indexes.map(index=>index.name).sort()).toEqual(
+   ['assignment_company_idx','assignment_employment_idx','assignment_no_overlap','assignment_pkey']);
+  expect(before.indexes.every(index=>index.valid&&index.ready&&index.live)).toBe(true);
+
   const profiles=['broad','sparse'] as const;
-  const baselineQueries:Partial<Record<StressLabel,{query:SQL;seal:{sql:string;parameters:string}}>>={};
-  const querySeals:Partial<Record<StressLabel,{sql:string;parameters:string}>>={};
-  metadata.indexQuerySeals=querySeals;
-  type Observation={epoch:IndexEpoch;label:StressLabel;departmentMs:number;wallMs?:number;statements?:number;rows:number;
-   total?:number;dtoVerified:boolean;explainMs?:number;indexAccess?:boolean;sharedTraffic?:number};
+  const epochs=['A0','B0','B1','A1'] as const;
+  type Seal={sql:string;parameters:string};
+  type Observation={epoch:PairEpoch;label:StressLabel;departmentMs:number;wallMs:number;statements:number;rows:number;
+   total:number;dtoVerified:boolean;explainMs?:number;sharedTraffic?:number;pathRefusals?:string[]};
+  const productSeals:Partial<Record<StressLabel,Seal[]>>={};
+  const pairSeals:Partial<Record<StressLabel,Seal>>={};
   const observations:Observation[]=[];
-  metadata.indexObservations=observations;
+  const prepared:Partial<Record<PairEpoch,unknown[]>>={};
+  metadata.pairObservations=observations;metadata.productQuerySeals=productSeals;metadata.pairQuerySeals=pairSeals;metadata.prepared=prepared;
   const compiledSeal=(query:SQL)=>{
    const {sql:text,params}=dialect.sqlToQuery(query);
    return {sql:digest(text),parameters:digest(JSON.stringify(params))};
   };
-  const completePlan=async(tx:Tx,query:SQL,entry:Observation,step:(operation:string)=>void)=>{
-   const {epoch,label}=entry;
-   step(label+' native plan');
-   const plan=await explain(tx,query,epoch==='B0'?label+'-stress':epoch+'-'+label,true,10);
-   entry.explainMs=plan.executionMs;entry.sharedTraffic=plan.sharedTraffic;
-   entry.indexAccess=plan.indexPaths.some(path=>path.loops>0&&/\bassignment\.tenant_id = /.test(path.condition)&&
-    /\bassignment\.department_id = department\.id\b/.test(path.condition));
-   if(epoch==='B0'||epoch==='B1')expect(plan.indexPaths).toEqual([]);
-   persist();
-  };
-  const stressIdentity=async(tx:Tx,step:(operation:string,ms?:number)=>void)=>{
-   step('stress application metadata',500);
-   const [identity]=await appWithLimit(tx,'1s');recordIdentity(identity,'500ms');expect(identity.bound).toBe('1s');
-   expect(realm(identity)).toEqual(realm(ownerRealm));expect(identity.planner).toEqual(identities[0].planner);
-   expect(identity.prepared?.length).toBeLessThanOrEqual(100);
-   return identity;
-  };
-  const preparedAfter:Partial<Record<'B0'|'I1'|'I2'|'B1',unknown[]>>={};
-  metadata.indexPreparedAfter=preparedAfter;
-  const readPrepared=async(tx:Tx,epoch:IndexEpoch,step:(operation:string)=>void)=>{
-   step(epoch+' native prepared counters');
-   const [row]=await tx.execute<{prepared:unknown[]}>(sql`select ${preparedFacetCounters} as prepared`);
-   if(!Array.isArray(row?.prepared)||row.prepared.length>100)throw new Error('Native prepared counter bound exceeded');
-   preparedAfter[epoch]=row.prepared;persist();
-  };
-  let baselineIdentity:AppFacts|undefined;
-  const sameAppBackend=(identity:AppFacts)=>{
-   if(!baselineIdentity)throw new Error('Missing no-index application identity');
-   expect([identity.pid,identity.backendStart]).toEqual([baselineIdentity.pid,baselineIdentity.backendStart]);
-  };
-  const stress=async(tx:Tx,epoch:'B0'|'I1'|'B1',step:(operation:string)=>void)=>{
-   for(const label of profiles){
+  const stress=async(tx:Tx,epoch:PairEpoch,step:(operation:string,ms?:number)=>void)=>{
+   const candidateEpoch=epoch==='B0'||epoch==='B1';
+   const order=epoch==='B0'||epoch==='A1'?[...profiles].reverse():profiles;
+   for(const label of order){
     const sparse=label==='sparse',input=sparse?{companyIds:[b.companyId],employmentIds:p.expectedFirst,limit:25}:{companyIds:[],limit:25};
-    let statements=0;const capturedStress:{query?:SQL;departmentMs:number}={departmentMs:NaN};
+    const seals:Seal[]=[];
+    const captured:{forwarded?:SQL;departmentMs:number}={departmentMs:NaN};
     const guarded=new Proxy(tx,{get(target,key,receiver){
      if(key==='execute')return async(statement:SQL)=>{
       step(label+' product statement');
-      const compiled=dialect.sqlToQuery(statement),position=++statements;
+      const compiled=dialect.sqlToQuery(statement),position=seals.push(compiledSeal(statement));
       const text=compiled.sql.trimStart();
       const permitted=[text.startsWith('select exists(select 1 from public.app_user'),text.startsWith('with employee_choice_page as materialized'),
        text.startsWith('select "company"."id" as "companyId",')&&!text.includes('cross join'),isDepartmentFacet(text),
        text.startsWith('select "company"."id" as "companyId",')&&text.includes('cross join "business_unit"')];
       if(permitted[position-1]!==true)throw new Error('Unexpected borrowed stress statement at '+position);
-      if(position===4){
-       expect(compiled.params).toEqual(sparse?[tenant,tenant,tenant,tenant,tenant,companyArray,uuidArray(p.expectedFirst)]:[tenant,tenant,tenant,tenant,tenant]);
-       if(epoch!=='B0')expect(compiledSeal(statement)).toEqual(baselineQueries[label]?.seal);
+      if(epoch!=='A0')expect(seals[position-1]).toEqual(productSeals[label]?.[position-1]);
+      if(position!==4)return target.execute(statement);
+      expect(compiled.params).toEqual(departmentFacetBinds(tenant,input));
+      const forwarded=candidateEpoch?representedDepartmentFacet(tenant,input):statement;
+      if(candidateEpoch){
+       const seal=compiledSeal(forwarded);
+       if(epoch==='B0')pairSeals[label]=seal;else expect(seal).toEqual(pairSeals[label]);
       }
-      const started=performance.now(),rows=await target.execute(statement);
-      if(position===4){capturedStress.query=statement;capturedStress.departmentMs=performance.now()-started;}
-      return rows;
+      const started=performance.now(),rows=await target.execute(forwarded);
+      captured.forwarded=forwarded;captured.departmentMs=performance.now()-started;return rows;
      };
      const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
     }});
+    metadata.activePair={epoch,label,stage:'ordinary'};persist();
     const started=performance.now(),{contextId:_contextId,...page}=await readEmployeeChoicesTx(guarded,ctx,input,signal),wallMs=performance.now()-started;
-    const {query,departmentMs}=capturedStress;
-    const entry:Observation={epoch,label,wallMs,departmentMs,total:page.total,statements,rows:page.rows.length,dtoVerified:false};
+    const {forwarded,departmentMs}=captured;
+    const entry:Observation={epoch,label,wallMs,departmentMs,total:page.total,statements:seals.length,rows:page.rows.length,dtoVerified:false};
     observations.push(entry);persist();
-    expect(statements).toBe(5);expect(page).toEqual(stressPage(b,p.expectedFirst,sparse?25:50000));
-    entry.dtoVerified=true;
-    if(!query)throw new Error('Actual candidate stress query was not captured');
-    if(epoch==='B0'){
-     const seal=compiledSeal(query);
-     baselineQueries[label]={query,seal};querySeals[label]=seal;
-    }
-    persist();
-    await completePlan(tx,query,entry,step);
-    if(epoch==='B0'){
-     state.stress.push({label,wallMs,departmentMs,explainMs:entry.explainMs,total:page.total,statements,rows:page.rows.length});
-     persist();
-    }
+    expect(seals).toHaveLength(5);expect(page).toEqual(stressPage(b,p.expectedFirst,sparse?25:50000));
+    if(!forwarded)throw new Error('Actual department statement was not forwarded');
+    entry.dtoVerified=true;if(epoch==='A0')productSeals[label]=seals;
+    metadata.activePair={epoch,label,stage:'explain'};persist();step(label+' native plan');
+    const plan=await explain(tx,forwarded,epoch+'-'+label,!candidateEpoch,10,candidateEpoch?label:undefined);
+    entry.explainMs=plan.executionMs;entry.sharedTraffic=plan.sharedTraffic;entry.pathRefusals=plan.pathRefusals;
+    if(epoch==='A0')state.stress.push({label,wallMs,departmentMs,explainMs:plan.executionMs,total:page.total,statements:seals.length,rows:page.rows.length});
+    delete metadata.activePair;persist();
    }
+   step(epoch+' native prepared counters');
+   const [row]=await tx.execute<{prepared:unknown[]}>(sql`select ${preparedFacetCounters} as prepared`);
+   if(!Array.isArray(row?.prepared)||row.prepared.length>100)throw new Error('Native prepared counter bound exceeded');
+   prepared[epoch]=row.prepared;persist();
   };
-  state.phase='stress';const stressDeadline=Math.min(stressEnd,performance.now()+18000);persist();
+
+  state.phase='pair-observations';const stressDeadline=Math.min(stressEnd,performance.now()+18000);
+  metadata.pairClock={caseEnd,stressDeadline,activeEnd,cleanupEnd:end};persist();
   await snapshot(stressDeadline,1000,async(tx,assertPhase)=>{
-   const step=(operation:string,ms=1000)=>{assertPhase();fit(stressDeadline,ms+1000,operation);};
-   baselineIdentity=await stressIdentity(tx,step);
-   await stress(tx,'B0',step);
-   await readPrepared(tx,'B0',step);
-   fit(stressDeadline,1000,'stress transaction finalization');
-  });
-  const indexStart=performance.now();
-  if(indexStart+65000>caseEnd)throw new Error('Insufficient original case lifetime for the owned index diagnostic');
-  end=indexStart+65000;indexReceipt.admitted=true;
-  const createEnd=indexStart+7000,indexedEnd=createEnd+23000,dropEnd=indexedEnd+5000,restoredEnd=dropEnd+20000;
-  metadata.indexClock={caseEnd,indexStart,createEnd,indexedEnd,dropEnd,restoredEnd,cleanupEnd:end};
-  state.phase='index-create';persist();
-  const createStep=ownerStep(createEnd);
-  await begin(createStep);
-  createStep('lock Assignment for owned CREATE');await reservation`lock table public.assignment in share mode`;
-  expect(await namedOid(createStep)).toBeNull();
-  createStep('owned CREATE INDEX');indexReceipt.createSent=true;
-  await reservation`create index employee_choice_department_probe_20261109 on public.assignment(tenant_id,department_id,employment_id)
-   where valid_to is null and superseded_at is null`;
-  createStep('in-transaction index identity');
-  created=requireIndex(Array.from(await facetIndexes(reservation)));metadata.createdIndex=created;persist();
-  await commit(createStep);indexReceipt.createCommit=true;persist();
-
-  state.phase='index-observations';persist();
-  const indexed=await catalogue('I',ownerStep(indexedEnd));
-  expect(indexed.namedOid).toBe(created.oid);expect(requireIndex(indexed.indexes)).toEqual(created);
-  expect(comparable(indexed)).toEqual(comparable(before));
-  await snapshot(indexedEnd,1000,async(tx,assertPhase)=>{
-   const step=(operation:string,ms=1000)=>{assertPhase();fit(indexedEnd,ms+1000,operation);};
-   sameAppBackend(await stressIdentity(tx,step));
-   await stress(tx,'I1',step);
-   await readPrepared(tx,'I1',step);
-   for(const label of profiles){
-    const saved=baselineQueries[label];
-    if(!saved)throw new Error('Missing captured no-index SQL');
-    expect(compiledSeal(saved.query)).toEqual(saved.seal);
-    step(label+' indexed repeated ordinary statement');
-    const started=performance.now(),rows=await tx.execute(saved.query);
-    const entry:Observation={epoch:'I2',label,departmentMs:performance.now()-started,rows:rows.length,dtoVerified:false};
-    observations.push(entry);persist();
-    expect(Array.from(rows)).toEqual(proofRows);entry.dtoVerified=true;persist();
-    await completePlan(tx,saved.query,entry,step);
+   const step=(deadline:number)=>(operation:string,ms=1000)=>{assertPhase();fit(deadline,ms+1000,operation);};
+   const firstStep=step(stressDeadline),laterStep=step(activeEnd);
+   firstStep('stress application metadata',500);
+   const [identity]=await appWithLimit(tx,'1s');recordIdentity(identity,'500ms');expect(identity.bound).toBe('1s');
+   expect(realm(identity)).toEqual(realm(ownerRealm));expect(identity.planner).toEqual(identities[0].planner);
+   expect(identity.prepared?.length).toBeLessThanOrEqual(100);
+   await stress(tx,'A0',firstStep);
+   for(const epoch of ['B0','B1','A1'] as const)await stress(tx,epoch,laterStep);
+   for(const rows of [identity.prepared,...epochs.map(epoch=>prepared[epoch])]){
+    expect(Array.isArray(rows)).toBe(true);
+    for(const row of rows??[])expect([0,'0']).toContain((row as {generic_plans?:unknown}).generic_plans);
    }
-   await readPrepared(tx,'I2',step);
-   fit(indexedEnd,1000,'indexed transaction finalization');
+   laterStep('final stress application identity');
+   const [final]=await tx.execute<AppFacts>(appFacts);
+   const {prepared:_prepared,bound:_bound,...initial}=identity;
+   metadata.stressFinal=final;persist();
+   expect(final).toEqual({...initial,statementTimeout:'1s'});
+   fit(activeEnd,1000,'stress transaction finalization');
+  },activeEnd);
+  const afterStep=(operation:string)=>fit(activeEnd,1000,operation);
+  await ownedBackend(afterStep);
+  const after=await readFacetPlannerCatalogue(reservation,tenant,b.deptA,emptyIds,afterStep);
+  const {relations,...other}=after;
+  metadata.plannerAfter={relations,seals:Object.fromEntries(Object.entries(other).map(([key,value])=>[key,digest(JSON.stringify(value))]))};
+  persist();expect(after).toEqual(before);pairStatus.catalogueUnchanged=true;
+  const outcomes=profiles.map(label=>{
+   const rows=epochs.map(epoch=>{
+    const row=observations.find(value=>value.epoch===epoch&&value.label===label);
+    if(!row?.dtoVerified||row.explainMs===undefined||row.sharedTraffic===undefined||!row.pathRefusals)
+     throw new Error('Incomplete represented pair observation');
+    return {...row,explainMs:row.explainMs,sharedTraffic:row.sharedTraffic,pathRefusals:row.pathRefusals};
+   });
+   const [a0,b0,b1,a1]=rows;
+   const better=(key:'departmentMs'|'explainMs'|'sharedTraffic'|'wallMs')=>Math.max(b0[key],b1[key])<Math.min(a0[key],a1[key]);
+   return {label,ordinary:better('departmentMs'),instrumented:better('explainMs'),traffic:better('sharedTraffic'),wholeRead:better('wallMs'),
+    path:b0.pathRefusals.length===0&&b1.pathRefusals.length===0,
+    stressLimits:rows.every(row=>row.wallMs<=6000&&row.departmentMs<=1250&&row.explainMs<=1000)};
   });
-  state.phase='index-drop';persist();
-  const dropStep=ownerStep(dropEnd);
-  await drop(dropStep);
-  await proveRestored('B1',dropStep);
-
-  state.phase='index-restored';persist();
-  await snapshot(restoredEnd,1000,async(tx,assertPhase)=>{
-   const step=(operation:string,ms=1000)=>{assertPhase();fit(restoredEnd,ms+1000,operation);};
-   sameAppBackend(await stressIdentity(tx,step));
-   await stress(tx,'B1',step);
-   await readPrepared(tx,'B1',step);
-   fit(restoredEnd,1000,'restored transaction finalization');
+  metadata.pairOutcomes=outcomes;pairStatus.complete=true;persist();
+  gate('representedPairs',()=>{
+   for(const {label,...outcome} of outcomes)expect(outcome,label).toEqual({ordinary:true,instrumented:true,traffic:true,wholeRead:true,path:true,stressLimits:true});
   });
-  const after=await catalogue('B1-final',ownerStep(restoredEnd));
-  expect(after).toEqual(before);
-  const observation=(epoch:IndexEpoch,label:StressLabel)=>{
-   const entry=observations.find(row=>row.epoch===epoch&&row.label===label);
-   if(!entry?.dtoVerified||entry.explainMs===undefined||entry.sharedTraffic===undefined)
-    throw new Error('Incomplete indexed comparison observation');
-   return {...entry,explainMs:entry.explainMs,sharedTraffic:entry.sharedTraffic};
-  };
-  const compare=profiles.flatMap(label=>(['I1','I2'] as const).map(epoch=>({
-   indexed:observation(epoch,label),before:observation('B0',label),after:observation('B1',label),
-  })));
-  const every=(check:(indexed:ReturnType<typeof observation>,before:ReturnType<typeof observation>,after:ReturnType<typeof observation>)=>boolean)=>
-   compare.every(row=>check(row.indexed,row.before,row.after));
-  indexAdjudication.complete=true;
-  indexAdjudication.ordinary=every((i,b,a)=>i.departmentMs<b.departmentMs&&i.departmentMs<a.departmentMs);
-  indexAdjudication.instrumented=every((i,b,a)=>i.explainMs<b.explainMs&&i.explainMs<a.explainMs);
-  indexAdjudication.path=every((i,b,a)=>i.indexAccess===true&&b.indexAccess===false&&a.indexAccess===false);
-  indexAdjudication.buffers=every((i,b,a)=>i.sharedTraffic<b.sharedTraffic&&i.sharedTraffic<a.sharedTraffic);
-  indexAdjudication.stressLimits=observations.every(row=>(row.wallMs===undefined||row.wallMs<=6000)&&row.departmentMs<=1250&&
-   row.explainMs!==undefined&&row.explainMs<=1000);
-  persist();
  }catch(error){workFailed=true;workError=error;}
 
- const gateErrors:unknown[]=[];
- const gate=(name:keyof typeof gateStatus,check:()=>void)=>{
-  try{check();gateStatus[name]='pass';}catch(error){gateStatus[name]='fail';gateErrors.push(error);}
- };
  if(matchedObserved)gate('matched',()=>expect(state.matchedImprovement).toEqual({ordinary:true,instrumented:true}));
  if(state.stress.length===2)gate('baselineStress',()=>{
   for(const result of state.stress){
@@ -784,27 +705,17 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    expect(result.explainMs).toBeLessThanOrEqual(1000);
   }
  });
- if(indexAdjudication.complete)gate('index',()=>
-  expect(indexAdjudication).toEqual({complete:true,ordinary:true,instrumented:true,path:true,buffers:true,stressLimits:true}));
 
  state.phase='settlement';
  const cleanupErrors:unknown[]=[];
  const {reservation,realm:ownerRealm}=fixture;
  if(reservation){
-  const rollbacks:{phase:'active'|'cleanup';acknowledged:boolean}[]=[];
-  metadata.rollbacks=rollbacks;
-  const rollback=async(phase:'active'|'cleanup')=>{
+  if(fixture.transaction){
+   const rollback={sent:false,acknowledged:false};metadata.rollback=rollback;
    try{
-    fit(end,1000,'owned '+phase+' rollback',true);
-    const receipt={phase,acknowledged:false};rollbacks.push(receipt);
-    await reservation`rollback`;fixture.transaction=false;
-    receipt.acknowledged=true;indexReceipt.rollbackAcknowledged=true;
+    fit(end,1000,'owned fixture rollback',true);rollback.sent=true;
+    await reservation`rollback`;fixture.transaction=false;rollback.acknowledged=true;
    }catch(error){cleanupErrors.push(error);}
-  };
-  if(fixture.transaction)await rollback('active');
-  if(recoverIndex&&!fixture.transaction){
-   try{await recoverIndex(end-3000);}catch(error){cleanupErrors.push(error);}
-   if(fixture.transaction)await rollback('cleanup');
   }
   if(fixture.tightened&&ownerRealm&&!fixture.transaction){
    try{
@@ -822,7 +733,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
     metadata.settlement=observed;
     for(const identity of identities){
      const row=(observed.app as {pid:number;start:string;state:string;outside:boolean}[]).find(item=>item.pid===identity.pid&&item.start===identity.backendStart);
-     if(row)expect(row).toMatchObject({state:'idle',outside:true});
+     expect(row).toMatchObject({state:'idle',outside:true});
     }
     fit(end,1000,'owner limit restoration',true);
     const [restored]=await reservation`select set_config('statement_timeout',${ownerRealm.statementTimeout},false) as statement,
@@ -832,7 +743,6 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   }else cleanupErrors.push(new Error('Reserved owner identity or transaction settlement is unconfirmed'));
  }else if(appStarts)cleanupErrors.push(new Error('No verified observer for application settlement'));
  if(identities.length!==appStarts)cleanupErrors.push(new Error('An application checkout ended without a native backend witness'));
- if(indexReceipt.createSent&&!indexReceipt.restored)cleanupErrors.push(new Error('Native index restoration is unconfirmed'));
  if(performance.now()>end)cleanupErrors.push(new Error('Native settlement deadline elapsed'));
  if(!cleanupErrors.length&&reservation){
   try{reservation.release();}catch(error){cleanupErrors.push(error);}
@@ -846,9 +756,9 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
  metadata.failures={work:workFailed?errorFact(workError):null,gates:gateErrors.map(errorFact),cleanup:cleanupErrors.map(errorFact)};
  state.settled=cleanupErrors.length===0;
  state.unconfirmed=!state.settled;
- indexReceipt.ownedStopRequired=state.unconfirmed;
+ pairStatus.ownedStopRequired=state.unconfirmed;
  if(state.unconfirmed)allowPoolClose=false;
- state.complete=state.settled&&!workFailed&&!gateErrors.length&&state.plans.length===10&&indexReceipt.restored&&!signal.aborted;
+ state.complete=state.settled&&!workFailed&&!gateErrors.length&&state.plans.length===10&&pairStatus.complete&&pairStatus.catalogueUnchanged&&!signal.aborted;
  state.phase=state.complete?'complete':'failed';
  try{persist();}catch(error){cleanupErrors.push(error);}
  if(workFailed||gateErrors.length||cleanupErrors.length)
