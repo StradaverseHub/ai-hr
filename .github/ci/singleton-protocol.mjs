@@ -14,7 +14,7 @@ export const NATIVE_WORKLOAD_DATABASE_FILE='test/runtime-next-workload-database-
 export const NATIVE_WORKLOAD_DATABASE_PROFILE='linux-next-workload-postgres-v1';
 export const NATIVE_WORKLOAD_DATABASE_MEMBER='runtime-next-workload-database.json';
 export const NATIVE_WORKLOAD_DATABASE_MEMBER_MAX=4096;
-export const NATIVE_WORKLOAD_DATABASE_CASE='authenticates the native workload owner, application and observer on the owned durable worker database';
+export const NATIVE_WORKLOAD_DATABASE_CASE='authenticates the native workload database roles and observes the exact application lock before and after release';
 export const NATIVE_WORKLOAD_OBSERVER='ai_hr_workload_observer';
 export const NATIVE_WORKLOAD_OBSERVER_URL='AIHR_NATIVE_WORKLOAD_DATABASE_OBSERVER_URL';
 export const NATIVE_WORKLOAD_DATABASE_HBA=[
@@ -850,7 +850,8 @@ function singletonSourceInputs(unit,candidateRoot){
    '.github/ci/run-unit.mjs','.github/ci/plan.mjs','.github/ci/singleton-profiles.mjs',
    '.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml',
    'scripts/migrate-with-focused-prerequisites.ts','scripts/lib/discard-premigration.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts']:[]),
-  ...(nativeWorkloadDatabaseUnit(unit)?['.github/ci/native-workload-postgres.mjs','.github/ci/postgres.sh']:[])];
+  ...(nativeWorkloadDatabaseUnit(unit)?['.github/ci/native-workload-postgres.mjs','.github/ci/postgres.sh',
+   'scripts/performance/protected-lock-observer.mjs']:[])];
  return {sources:[...new Set(sources)].sort(),journalSha256:database?.journalSha256};
 }
 export function singletonSources(unit,candidateRoot){return singletonSourceInputs(unit,candidateRoot).sources;}

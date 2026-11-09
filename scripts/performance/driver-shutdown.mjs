@@ -108,6 +108,257 @@ export function lockSampleEvidence(samples,window){
   invalidBlockingCounts,blockingSamples,coveragePass,pass:coveragePass&&blockingSamples===0,samples};
 }
 
+const lockCadenceMs=Object.freeze({preflight:250,loaded:1000});
+const maxProtectedLockSamples=4096;
+const lockCount=value=>Number.isSafeInteger(value)&&value>=0;
+
+export function createProtectedWorkAdmission({assertIngress,sealIngress,noteFailure,noteSealFailure}){
+ let closed=false;
+ return {
+  requireOpen(){
+   if(closed)throw Error('Protected workload admission is closed');
+   assertIngress();
+  },
+  close(reason){
+   if(closed)return;
+   closed=true;
+   noteFailure(reason);
+   try{sealIngress();}catch(error){noteSealFailure(error);}
+  },
+ };
+}
+
+const claimScopes=Object.freeze({
+ browser:['create','edit','delete'],http:['create','delete'],
+ 'same-company':['create','foreign-own','foreign-other','delete'],
+ 'other-company':['create','foreign-own','foreign-other','delete'],
+ 'other-tenant':['create','foreign-own','foreign-other','delete'],
+});
+const claimUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Own each fixed fictional Claims lifecycle until verified absence or private handoff. */
+export function createProtectedClaimCustody(persist){
+ if(typeof persist!=='function')throw Error('Protected Claims handoff writer required');
+ const entries=new Map();
+ let sealed=false,refused=false;
+ function retain(frame){
+  if(refused)throw Error('Protected Claims handoff already refused');
+  try{persist(frame);}catch(reason){refused=true;throw reason;}
+ }
+ const disposition=entry=>entry.pending||entry.draft?'unconfirmed':entry.last==='delete'?'restored':'not-dispatched';
+ const publicFacts=()=>[...entries.values()].map(entry=>({scope:entry.scope,
+  stage:entry.pending??(entry.restorationReserved?'delete':entry.last??'create'),disposition:disposition(entry)}));
+ return {
+  register(scope,{actorIndex,employmentId,marker}){
+   if(sealed||refused||!Object.hasOwn(claimScopes,scope)||entries.has(scope)||!Number.isSafeInteger(actorIndex)||actorIndex<0||actorIndex>=500||
+      !claimUuid.test(employmentId)||!/^PERF_(?:BROWSER_DRAFT|HTTP_PREFLIGHT|BOUNDARY_[0-9]{1,3})$/.test(marker))
+    throw Error('Protected Claims custody refused');
+   const entry={scope,actorIndex,employmentId,marker,draft:null,pending:null,last:null,senderIndex:null,restorationReserved:false,attempted:new Set()};
+   entries.set(scope,entry);
+   const canRestore=()=>!sealed&&!refused&&entry.draft!==null&&entry.pending===null&&!entry.restorationReserved;
+   return {
+    reserveRestore(draft){
+     if(!canRestore()||draft!==entry.draft)throw Error('Protected Claims restoration state refused');
+     entry.restorationReserved=true;
+    },
+    begin(stage,senderIndex=actorIndex){
+     const allowed=claimScopes[scope];
+     const foreign=stage==='foreign-own'||stage==='foreign-other';
+     if(sealed||refused||!allowed.includes(stage)||entry.pending||entry.attempted.has(stage)||
+        !Number.isSafeInteger(senderIndex)||senderIndex<0||senderIndex>=500||(foreign?senderIndex===actorIndex:senderIndex!==actorIndex)||
+        (stage==='delete'?!entry.restorationReserved:entry.restorationReserved)||
+        (stage==='create'?entry.last!==null:entry.draft===null)||
+        (stage!=='delete'&&stage!=='create'&&allowed[allowed.indexOf(stage)-1]!==entry.last))
+      throw Error('Protected Claims mutation state refused');
+     entry.attempted.add(stage);entry.pending=stage;entry.senderIndex=senderIndex;
+     retain({kind:'attempt',scope,stage,actorIndex,employmentId,marker,draft:entry.draft,senderIndex});
+    },
+    /**
+     * @param {string} stage
+     * @param {string} [draft]
+     */
+    verify(stage,draft){
+     if(sealed||entry.pending!==stage||(stage==='create'&&!claimUuid.test(draft))||(stage!=='create'&&draft!==undefined))
+      throw Error('Protected Claims mutation proof refused');
+     retain({kind:'verified',scope,stage,draft:stage==='create'?draft:entry.draft});
+     if(stage==='create')entry.draft=draft;
+     if(stage==='delete')entry.draft=null;
+     entry.last=stage;entry.pending=null;entry.senderIndex=null;
+    },
+    canRestore,
+   };
+  },
+  seal(){
+   if(sealed)throw Error('Protected Claims handoff already sealed');
+   sealed=true;
+   const entries=publicFacts();
+   retain({kind:'driver-sealed',entries,ownerStopRequired:entries.some(entry=>entry.disposition==='unconfirmed')});
+  },
+  publicFacts,
+  privateUnconfirmed:()=>[...entries.values()].filter(entry=>disposition(entry)==='unconfirmed').map(
+   ({scope,actorIndex,employmentId,marker,draft,pending,last,senderIndex,restorationReserved})=>
+    ({scope,actorIndex,employmentId,marker,draft,pending,last,senderIndex,restorationReserved})),
+ };
+}
+
+export function createProtectedLockSampler({phase,deadline,observe,onFailure,now=()=>performance.now()}){
+ const interval=Object.hasOwn(lockCadenceMs,phase)?lockCadenceMs[phase]:null;
+ const origin=now(),cutoffUs=Math.floor((deadline-origin)*1000);
+ if(interval===null||!Number.isSafeInteger(cutoffUs)||cutoffUs<=0)throw Error('Protected lock observation window refused');
+ const sampleLimit=Math.min(maxProtectedLockSamples,Math.ceil(cutoffUs/(interval*1000))+2);
+ const maxGapUs=interval*2000,stamp=(round=Math.floor)=>round((now()-origin)*1000);
+ const samples=[];
+ let state='not-started',startUs=null,endUs=null,timer,watchdog,gapWatchdog,pending,closing,live,missedTicks=0,reason=null;
+ let lastObservedStartUs=null;
+ let observerSettlement='not-entered';
+
+ function fail(code,error){
+  if(reason!==null)return;
+  reason=code;
+  clearInterval(timer);
+  clearTimeout(watchdog);
+  clearTimeout(gapWatchdog);
+  try{onFailure(error);}finally{live?.abort();}
+ }
+ function checkDeadline(){
+  if(now()<deadline)return true;
+  fail('deadline',Error('Protected lock observer deadline closed'));
+  return false;
+ }
+ function watchDeadline(){
+  if(!checkDeadline())return;
+  watchdog=setTimeout(watchDeadline,Math.min(2**31-1,Math.max(1,Math.ceil(deadline-now()))));
+ }
+ function checkGap(){
+  if(lastObservedStartUs===null||stamp(Math.ceil)-lastObservedStartUs<=maxGapUs)return true;
+  fail('coverage-gap',Error('Protected lock observation gap exceeded'));
+  return false;
+ }
+ function watchGap(){
+  clearTimeout(gapWatchdog);
+  if(reason!==null||!checkDeadline()||!checkGap())return;
+  const gapEnd=origin+(lastObservedStartUs+maxGapUs)/1000;
+  gapWatchdog=setTimeout(watchGap,Math.max(1,Math.ceil(gapEnd-now())));
+ }
+ function sample(position){
+  if(samples.length>=sampleLimit){
+   fail('sample-limit',Error('Protected lock sample bound exceeded'));
+   return;
+  }
+  pending=Promise.resolve().then(async()=>{
+   if((position==='opening'&&state!=='opening')||(position==='periodic'&&state!=='active'))return;
+   if(reason!==null||!checkGap())return;
+   const startedUs=stamp();
+   if(!lockCount(startedUs)||startedUs>=cutoffUs){
+    fail('deadline',Error('Protected lock observer deadline closed'));
+    return;
+   }
+   let outcome;
+   live=new AbortController();
+   observerSettlement='pending';
+   try{
+    outcome=await observe({activeUntilMs:deadline,signal:live.signal});
+   }catch(error){
+    outcome={settlement:'uncertain',reason:error};
+   }finally{live=undefined;}
+   const completedUs=stamp(Math.ceil);
+   const validCompletion=lockCount(completedUs)&&completedUs>=startedUs;
+   observerSettlement=outcome?.settlement==='settled'||outcome?.settlement==='stopped'?outcome.settlement:'uncertain';
+   if(observerSettlement!=='settled'||outcome.failed===true){
+    samples.push({position,startedUs,completedUs:validCompletion?completedUs:null,state:'failed'});
+    fail(observerSettlement==='settled'?'observer-failed':'observer-'+observerSettlement,
+     outcome?.reason??Error('Protected lock observer settlement refused'));
+    return;
+   }
+   if(!validCompletion||now()>=deadline){
+    samples.push({position,startedUs,completedUs:null,state:'failed'});
+    fail('deadline',Error('Protected lock observer returned outside its window'));
+    return;
+   }
+   const {appSessions,blockingAppSessions}=outcome;
+   if(!lockCount(appSessions)||!lockCount(blockingAppSessions)||blockingAppSessions>appSessions){
+    samples.push({position,startedUs,completedUs,state:'failed'});
+    fail('sample-invalid',Error('Protected lock observation counts refused'));
+    return;
+   }
+   const previous=samples.at(-1);
+   samples.push({position,startedUs,completedUs,state:'observed',appSessions,blockingAppSessions});
+   if(blockingAppSessions>0)fail(position==='opening'?'opening-blocking':'blocking-observed',Error('Protected lock observation found blocking'));
+   else if(previous&&completedUs-previous.startedUs>maxGapUs)fail('coverage-gap',Error('Protected lock observation gap exceeded'));
+   else if(reason===null&&position!=='closing'){
+    lastObservedStartUs=startedUs;
+    watchGap();
+   }
+  }).finally(()=>{pending=undefined;});
+  return pending;
+ }
+
+ function evidence(){
+  const rows=Object.freeze(samples.map(row=>Object.freeze({...row}))),observed=rows.filter(row=>row.state==='observed');
+  const observedBlockingSamples=observed.filter(row=>row.blockingAppSessions>0).length;
+  const appObservedDuringWork=observed.some(row=>row.position==='periodic'&&row.appSessions>0
+   &&row.startedUs>=startUs&&row.completedUs<=endUs);
+  const ordered=observed.every((row,i)=>i===0||observed[i-1].completedUs<=row.startedUs);
+  const observedGapUs=ordered&&observed.length>=2?Math.max(...observed.slice(1).map((row,i)=>row.completedUs-observed[i].startedUs)):null;
+  const coveragePass=state==='sealed'&&(reason===null||reason==='blocking-observed')&&ordered&&rows.length===observed.length&&appObservedDuringWork
+   &&lockCount(startUs)&&lockCount(endUs)&&startUs<=endUs
+   &&observed[0]?.position==='opening'&&observed[0].completedUs<=startUs
+   &&observed.at(-1)?.position==='closing'&&endUs<=observed.at(-1).startedUs
+   &&observedGapUs!==null&&observedGapUs<=maxGapUs;
+  const coverageReason=state==='sealed'&&!coveragePass?(appObservedDuringWork?'coverage-gap':'app-unobserved'):null;
+  return Object.freeze({phase,state:coveragePass?'complete':state==='not-started'?'not-started':'incomplete',reason:reason??coverageReason,
+   intervalMs:interval,maxGapUs,observedGapUs,cutoffUs,sampleLimit,window:startUs===null?null:Object.freeze({startUs,endUs}),missedTicks,observerSettlement,
+   observedBlockingSamples,blockingSamples:coveragePass?observedBlockingSamples:null,coveragePass,
+   pass:coveragePass&&observedBlockingSamples===0,samples:rows});
+ }
+
+ return {
+  requireOpen(){
+   if(state!=='active'||reason!==null||!checkDeadline()||!checkGap())throw Error('Protected lock coverage no longer admits work');
+  },
+  async start(){
+   if(state!=='not-started')throw Error('Protected lock observation already started');
+   state='opening';
+   watchDeadline();
+   await sample('opening');
+   if(reason!==null||state!=='opening')throw Error('Protected lock opening observation refused');
+   startUs=stamp(Math.ceil);
+   if(!lockCount(startUs)||now()>=deadline){
+    const error=Error('Protected lock phase deadline closed before ingress');
+    fail('deadline',error);
+    throw error;
+   }
+   state='active';
+   timer=setInterval(()=>{
+    if(!checkDeadline()||!checkGap())return;
+    if(pending){missedTicks++;return;}
+    void sample('periodic');
+   },interval);
+  },
+  close(workSettled){
+   if(closing)return closing;
+   const active=state==='active';
+   if(active)endUs=stamp();
+   state='closing';
+   clearInterval(timer);
+   if(workSettled!==true){reason??='work-incomplete';clearTimeout(gapWatchdog);live?.abort();}
+   closing=(async()=>{
+    await pending;
+    if(active&&workSettled===true&&reason===null){
+     await sample('closing');
+     state='sealed';
+    }else{
+     reason??='work-incomplete';
+     state='incomplete';
+    }
+    return evidence();
+   })().finally(()=>{clearTimeout(watchdog);clearTimeout(gapWatchdog);});
+   return closing;
+  },
+  evidence,
+ };
+}
+
 export function closedChromiumEnvironment(source,runnerHome){
  if(source.SELENIUM_REMOTE_URL)throw Error('Remote Chromium launch is outside the owned development driver');
  if(typeof runnerHome!=='string'||!runnerHome.startsWith('/'))throw Error('Runner account home is unavailable');
