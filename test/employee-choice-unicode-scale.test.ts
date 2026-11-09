@@ -214,11 +214,18 @@ function usesEmploymentTenantPointIndex(node:PlanNode,point:EmploymentPoint){
 const matchedRelations=['assignment','company','department','employment','person'] as const;
 const matchedScans=['Seq Scan','Index Scan'];
 const matchedNodes=['Sort','Result','Nested Loop','ProjectSet',...matchedScans];
-const knownMatchedShapes={
- 'old-matched':'d7725d1f6e9483cfe3c4127524d68a17a3051cf18f011e4ad46e031d677b7f74',
- 'candidate-matched':'160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96',
+const knownMatchedPairs={
+ 'equivalent-work':{
+  'old-matched':'d7725d1f6e9483cfe3c4127524d68a17a3051cf18f011e4ad46e031d677b7f74',
+  'candidate-matched':'160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96',
+ },
+ improved:{
+  'old-matched':'89400a082d46fb1d76e97635b382f8c5bef20ea8ce88a5c6f15098420e7b73cb',
+  'candidate-matched':'ccdbf6250eff201c6570ededb10fd765a9bcdd4735affb3e4c7fa1dc1d49941f',
+ },
 } as const;
-type MatchedScope={label:keyof typeof knownMatchedShapes;tenant:string;company:string};
+type MatchedPair=keyof typeof knownMatchedPairs;
+type MatchedScope={label:keyof typeof knownMatchedPairs[MatchedPair];tenant:string;company:string};
 const matchedVariableCounters=new Set(['Startup Cost','Total Cost','Plan Rows','Plan Width','Shared Hit Blocks','Shared Read Blocks',
  'Rows Removed by Filter','Rows Removed by Index Recheck']);
 const planCounter=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
@@ -226,9 +233,10 @@ type MatchedAccess={relation:string;kind:string;index:string|null;loops:number;r
 type MatchedFacetWork={
  access:MatchedAccess[];policy:[number,number][];joinRemovals:[number,number][];sharedHits:number;sharedReads:number;
 };
+type MatchedFacetArm={pair:MatchedPair;label:MatchedScope['label'];work:MatchedFacetWork};
 
-/** Pin each arm's own executed shape. Keep reference relationships without fixing PostgreSQL's numeric IDs. */
-function knownMatchedShape(root:PlanNode,scope:MatchedScope){
+/** Identify an arm within a reviewed pair while retaining native reference relationships. */
+function knownMatchedPair(root:PlanNode,scope:MatchedScope):MatchedPair|null{
  const references=new Map<string,number>(),shape:unknown[]=[];
  const normalize=(value:unknown):unknown=>{
   if(Array.isArray(value))return value.map(normalize);
@@ -254,10 +262,14 @@ function knownMatchedShape(root:PlanNode,scope:MatchedScope){
   shape.push([depth,fields]);
   return (node.Plans??[]).every(child=>walk(child,depth+1));
  }
- return walk(root,0)&&digest(JSON.stringify(shape))===knownMatchedShapes[scope.label];
+ if(!walk(root,0))return null;
+ const hash=digest(JSON.stringify(shape));
+ if(hash===knownMatchedPairs['equivalent-work'][scope.label])return 'equivalent-work';
+ if(hash===knownMatchedPairs.improved[scope.label])return 'improved';
+ return null;
 }
 
-function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:PlanNode[],scope:MatchedScope):MatchedFacetWork|null{
+function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:PlanNode[],scope:MatchedScope):MatchedFacetArm|null{
  if(root['Node Type']!=='Sort'||root['Actual Loops']!==1||root['Actual Rows']!==1||root['Sort Space Type']!=='Memory'||
     Object.hasOwn(document,'JIT')||nodes.some(node=>!planCounter(node['Actual Loops'])))return null;
  const active=nodes.filter(node=>(node['Actual Loops'] as number)>0);
@@ -265,7 +277,8 @@ function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:Pl
     node['Parallel Aware']!==false||node['Async Capable']!==false||node['Temp Read Blocks']!==0||node['Temp Written Blocks']!==0||
     node['Local Hit Blocks']!==0||node['Local Read Blocks']!==0||node['Local Dirtied Blocks']!==0||node['Local Written Blocks']!==0||
     node['Shared Dirtied Blocks']!==0||node['Shared Written Blocks']!==0))return null;
- if(!knownMatchedShape(root,scope))return null;
+ const pair=knownMatchedPair(root,scope);
+ if(!pair)return null;
  const [result]=root.Plans??[],[join]=result.Plans??[];
  const withoutCounter={...result};delete withoutCounter['Shared Hit Blocks'];
  for(const changed of [
@@ -273,7 +286,7 @@ function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:Pl
   {...root,Plans:[{...result,Plans:[join,{...join,Plans:[]}]}]},
   {...root,Plans:[{...result,'One-Time Filter':String(result['One-Time Filter'])+' AND true'}]},
   {...root,Plans:[withoutCounter]},
- ])expect(knownMatchedShape(changed,scope)).toBe(false);
+ ])expect(knownMatchedPair(changed,scope)).toBeNull();
  const access=active.filter(node=>matchedScans.includes(String(node['Node Type'])));
  if(access.length!==matchedRelations.length)return null;
  const scans:MatchedAccess[]=[];
@@ -303,7 +316,7 @@ function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:Pl
  }
  const sharedHits=root['Shared Hit Blocks'],sharedReads=root['Shared Read Blocks'];
  if(!policy.length||!planCounter(sharedHits)||!planCounter(sharedReads))return null;
- return {access:scans,policy:policy.sort(),joinRemovals:joinRemovals.sort(),sharedHits,sharedReads};
+ return {pair,label:scope.label,work:{access:scans,policy:policy.sort(),joinRemovals:joinRemovals.sort(),sharedHits,sharedReads}};
 }
 
 function matchedFacetOutcome(old:MatchedFacetWork|null,candidate:MatchedFacetWork|null,elapsed:{ordinary:boolean;instrumented:boolean}){
@@ -317,6 +330,12 @@ function matchedFacetOutcome(old:MatchedFacetWork|null,candidate:MatchedFacetWor
     })&&JSON.stringify(candidate.policy)===JSON.stringify(old.policy)&&JSON.stringify(candidate.joinRemovals)===JSON.stringify(old.joinRemovals)&&
     elapsed.ordinary&&elapsed.instrumented)return 'improved';
  return 'refused';
+}
+
+function correlatedMatchedOutcome(old:MatchedFacetArm|null,candidate:MatchedFacetArm|null,elapsed:{ordinary:boolean;instrumented:boolean}){
+ if(!old||!candidate||old.label!=='old-matched'||candidate.label!=='candidate-matched'||old.pair!==candidate.pair)return 'refused';
+ const outcome=matchedFacetOutcome(old.work,candidate.work,elapsed);
+ return outcome===old.pair?outcome:'refused';
 }
 
 function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,sparseCount?:number,point?:EmploymentPoint,matched?:MatchedScope){
@@ -502,7 +521,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
  const state={source:admission.source,controller:admission.controller,complete:false,settled:false,unconfirmed:false,
   slotMilliseconds:[27000,5000,18000,10000],phase:'matched',plans:[] as Record<string,unknown>[],ordinaryMs:{} as Record<string,number>,
   matchedImprovement:{ordinary:false,instrumented:false},
-  matchedOutcome:'refused' as ReturnType<typeof matchedFacetOutcome>,
+  matchedOutcome:'refused' as ReturnType<typeof correlatedMatchedOutcome>,
   stress:[] as {label:string;wallMs:number;departmentMs:number;explainMs?:number;total:number;statements:number;rows:number}[]};
  const pairStatus={complete:false,catalogueUnchanged:false,ownedStopRequired:false,
   twoDepartmentSparseProduct:'unobserved; original matched statements are retained'};
@@ -668,10 +687,12 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    const {bound:_bound,...startFacts}=start;
    expect(after).toEqual({...startFacts,statementTimeout:'3s'});metadata.matchedFinal=after;
    state.matchedImprovement={ordinary:state.ordinaryMs.candidate<state.ordinaryMs.old,instrumented:candidatePlan.executionMs<oldPlan.executionMs};
-   const oldWork=oldPlan.matchedWork??null,candidateWork=candidatePlan.matchedWork??null;
-   state.matchedOutcome=matchedFacetOutcome(oldWork,candidateWork,state.matchedImprovement);
+   const oldArm=oldPlan.matchedWork??null,candidateArm=candidatePlan.matchedWork??null;
+   state.matchedOutcome=correlatedMatchedOutcome(oldArm,candidateArm,state.matchedImprovement);
    metadata.matchedWorkOutcome={outcome:state.matchedOutcome,
+    oldPair:oldArm?.pair??null,candidatePair:candidateArm?.pair??null,
     elapsed:state.matchedOutcome==='improved'?'both-faster-in-this-run':'single-pair-inconclusive'};
+   const oldWork=oldArm?.work;
    if(oldWork){
     const opposed={ordinary:false,instrumented:true},bothFaster={ordinary:true,instrumented:true};
     expect(matchedFacetOutcome(oldWork,oldWork,opposed)).toBe('equivalent-work');
@@ -681,6 +702,13 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
     const moreLoops={...oldWork,access:[{...assignment,loops:assignment.loops+1},...other],sharedHits:oldWork.sharedHits+1};
     expect(matchedFacetOutcome(moreLoops,oldWork,opposed)).toBe('refused');
     expect(matchedFacetOutcome(moreLoops,oldWork,bothFaster)).toBe('improved');
+   }
+   if(oldArm&&candidateArm){
+    const otherPair:MatchedPair=oldArm.pair==='equivalent-work'?'improved':'equivalent-work';
+    const bothFaster={ordinary:true,instrumented:true};
+    expect(correlatedMatchedOutcome(oldArm,{...candidateArm,pair:otherPair},bothFaster)).toBe('refused');
+    expect(correlatedMatchedOutcome(candidateArm,oldArm,bothFaster)).toBe('refused');
+    expect(correlatedMatchedOutcome({...oldArm,pair:'improved'},{...candidateArm,pair:'improved',work:oldArm.work},bothFaster)).toBe('refused');
    }
    matchedObserved=true;persist();
    fit(matchedEnd,3000,'matched transaction finalization');
