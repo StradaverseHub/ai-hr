@@ -153,7 +153,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const afterPerformancePrivileges=await privileges();
   const privateFunctions=['app._access_bootstrap_eligible(uuid,uuid)','app._ai_control_context_for_purpose(text,boolean,boolean)','app._access_workforce_list_rows(uuid[])','app._assistant_assigned_index_login(uuid,boolean)','app.notification_event_processing_enqueue()',
    'app.ai_centre_mandate_write_order()','app.ai_centre_mandate_bound_tenant()',
-   'app._ai_control_context_policy_facts(text,boolean,boolean)','app._assistant_presentation_feature_unpaused_v1()',
+   'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()',
+   'app._assistant_presentation_feature_unpaused_v1()',
    'app._assistant_rewards_return_choice_payload_v1()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_rewards_calendar_choice_payload_v1()','app._assistant_rewards_cancel_choice_payload_v1()'];
   const addedFunctions=[...privateFunctions,'app.access_editor_presentation_v1()','app.access_profile_policy_read_lock()','app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)',
