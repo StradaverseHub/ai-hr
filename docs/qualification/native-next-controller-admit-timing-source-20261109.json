@@ -1,7 +1,7 @@
 {
   "kind": "CURRENT_CONTROLLER_ADMIT_TIMING_SOURCE_NOT_RUN_EVIDENCE",
   "base": "615274a2556686946610c66ccd1422506338946c",
-  "sourceRef": "codex/native-next-boot-first-home-proof-20261109",
+  "sourceRef": "codex/native-next-linear-inventory-inverse-carry-20261109",
   "currentCount": 134,
   "sourceSha256": {
     ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
@@ -28,13 +28,13 @@
     ".github/ci/singleton-protocol.mjs": "1dfff5d0e14ccd748508f9cd1ba07541307e5f7fea944af9bdc9bb7cc7333403",
     ".github/workflows/alpha-staging.yml": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
     "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
-    "deploy/admission/next_bootstrap_session_inverse.json": "0048a1cd4d443f54cebbbef7afd74b695bddfff40bbe8cc9ffab63c957e0174f",
+    "deploy/admission/next_bootstrap_session_inverse.json": "789291f82483f873683044497d85621c6fff5b880841b7ae0e263f50c860f3e8",
     "deploy/admission/next_build_binding.py": "b21ba80bd5efd5bc38c1a0c7458d86e4ea90cb1c98901f60955c68658c079ec0",
     "deploy/admission/next_cgroup_control_guard_order_inverse.json": "540abe7754b110edb293e51aecfe2a8875a1bdfe07e0f838eddfce8ccfd26752",
     "deploy/admission/next_cleanup_57d.source": "b9cbb0e4adea6c7a0f8835fe92a1a96683e25d27037429b8b212ffa840cdbf28",
     "deploy/admission/next_cleanup_phase_inverse.json": "223d5afed26d5c9f8e8954c7d44e89e54184d3cc2e2c34a6ac535141c1e441da",
-    "deploy/admission/next_controller_admit_terminal_inverse.json": "1780eaf4c2d55246fef47f412faf885490c42e9196b71451b289fa148b64a008",
-    "deploy/admission/next_controller_admit_timing_inverse.json": "b9197f9ee544004e3103b42e4de82a1214ffb92f9f7f3e7dcd8ff0c93b2406d3",
+    "deploy/admission/next_controller_admit_terminal_inverse.json": "3fe384f7800163b3769163f2ba256db5cdc7d3bdbd7ed745b46969b89cbce12a",
+    "deploy/admission/next_controller_admit_timing_inverse.json": "bc37d2ede6aff90cfc9f236dfbb94417f7de4c89e1aa043fc6b1a9c7a1007858",
     "deploy/admission/next_cpu_weight_constructor_inverse.json": "0b8b934bdafc370311efc1bddbb5a4329e578b87afb42ccdd7bc1608837ff99a",
     "deploy/admission/next_dependency_probe.cjs": "04e62c6ecc41acc84bee60b8ff6829b74e9ddd139652a2c57fd650497cf462c8",
     "deploy/admission/next_environment_observation_inverse.json": "9a4d71493bb5a44b2027d8f69c500fba0a27a32b983dfc0cef185000b026756f",
@@ -617,6 +617,91 @@
     "fixtureOnboardingStateUnchanged": true,
     "budgetsUnchanged": true,
     "noBrowserWorkflowOrProductAuthorityChange": true,
+    "releaseEligible": false
+  },
+  "linearInventoryInverseCarry": {
+    "parent": "d943cdb9af53f524dedfc1f4b9b672e68c12e470",
+    "sourceOnly": true,
+    "leasePaths": [
+      "deploy/admission/next_bootstrap_session_inverse.json",
+      "deploy/admission/next_controller_admit_timing_inverse.json",
+      "deploy/admission/next_controller_admit_terminal_inverse.json",
+      "docs/qualification/native-next-controller-admit-timing-source-20261109.json"
+    ],
+    "wholeParentGitPreimages": {
+      "deploy/admission/next_bootstrap_session_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "d37fada6d5fed6d8a0d09fab787d57f1ab0a891c",
+        "bytes": 3085755,
+        "sha256": "0048a1cd4d443f54cebbbef7afd74b695bddfff40bbe8cc9ffab63c957e0174f"
+      },
+      "deploy/admission/next_controller_admit_timing_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "52e77de6bcfbe4b5a6d86c3875098daa93d7b058",
+        "bytes": 7525450,
+        "sha256": "b9197f9ee544004e3103b42e4de82a1214ffb92f9f7f3e7dcd8ff0c93b2406d3"
+      },
+      "deploy/admission/next_controller_admit_terminal_inverse.json": {
+        "gitMode": "100644",
+        "gitBlob": "8a4435c28dbb24d72737ecd9b2de1eb2216ebb5e",
+        "bytes": 21739385,
+        "sha256": "1780eaf4c2d55246fef47f412faf885490c42e9196b71451b289fa148b64a008"
+      },
+      "docs/qualification/native-next-controller-admit-timing-source-20261109.json": {
+        "gitMode": "100644",
+        "gitBlob": "48a56342237c53bb7cd06a79db8a093d6766f244",
+        "bytes": 40392,
+        "sha256": "a1004a0b8075f5a37947c89406620037a11b7c8ffb43703f7113a8741570f40e"
+      }
+    },
+    "currentInventoryWhole": {
+      "gitMode": "100644",
+      "gitBlob": "3db36828a390825569f0e5c1f9b07561778a9959",
+      "bytes": 29244,
+      "sha256": "62e5478633349991cc21b8243d234fc85aabf900cfa57df52ff9b012be89c013"
+    },
+    "historicalInventoryTarget": {
+      "sourceRefs": [
+        "249e9b0ce33dabb69e95b0c1887303e51487e8b9",
+        "525e39cd1c6eac8d3c1547f764754a436bf41e12",
+        "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+      ],
+      "gitMode": "100644",
+      "gitBlob": "9f738c7a343699ea16a85021f750b00bfe02fb91",
+      "bytes": 25995,
+      "sha256": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d"
+    },
+    "originalMismatchPresentAt": "103774c6a0feabbba3a2fa5cbac6af93951c844f",
+    "newExactWholeReplayRows": {
+      "deploy/admission/next_bootstrap_session_inverse.json": [
+        ".github/ci/runtime_inventory.py"
+      ],
+      "deploy/admission/next_controller_admit_timing_inverse.json": [
+        ".github/ci/runtime_inventory.py"
+      ]
+    },
+    "recomposedExistingWholeReplayRows": {
+      "deploy/admission/next_controller_admit_timing_inverse.json": [
+        "deploy/admission/next_bootstrap_session_inverse.json"
+      ],
+      "deploy/admission/next_controller_admit_terminal_inverse.json": [
+        "deploy/admission/next_bootstrap_session_inverse.json",
+        "deploy/admission/next_controller_admit_timing_inverse.json"
+      ]
+    },
+    "executableDirectConsumers": [
+      "deploy/admission/test_next_bootstrap_session.py",
+      "deploy/admission/test_controller_admit_timing.py"
+    ],
+    "unchangedHistoricalConsumers": [
+      "deploy/admission/test_next_environment_observation.py",
+      "deploy/admission/test_next_plain_key_names.py",
+      "deploy/admission/test_next_host_view.py"
+    ],
+    "hostHistoryInverseUnchanged": true,
+    "controllerTestsUnchanged": true,
+    "nativeHostAndFullSourcePinsUnchanged": true,
+    "testOrRuntimeVerified": false,
     "releaseEligible": false
   }
 }
