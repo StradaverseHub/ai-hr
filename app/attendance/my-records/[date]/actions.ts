@@ -1,4 +1,5 @@
 'use server';
+import { AttendanceWorkflowSubmissionError } from '@/lib/attendance-workflow-submission';
 import { AttendanceLevelError, attendanceLevelProblemToken } from '@/lib/attendance-workflow-v3';
 
 import { redirect } from 'next/navigation';
@@ -37,6 +38,7 @@ export async function requestOwnAttendanceDayAction(formData: FormData) {
   const checkIn = String(formData.get('checkIn') ?? '').trim();
   const checkOut = String(formData.get('checkOut') ?? '').trim();
   const reason = String(formData.get('reason') ?? '').trim();
+  const workflowFingerprint=String(formData.get('workflowFingerprint')??'');
   if (!reason) fail('correctionReasonRequired');
   if (!checkIn && !checkOut) fail('correctionNothingToChange');
   const time = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -48,8 +50,10 @@ export async function requestOwnAttendanceDayAction(formData: FormData) {
       checkIn: checkIn || null,
       checkOut: checkOut || null,
       reason,
+      ...(workflowFingerprint&&{workflowFingerprint}),
     });
   } catch (error) {
+    if (error instanceof AttendanceWorkflowSubmissionError) redirect(`${back}&workflowRefusal=${error.reason}`);
     if (error instanceof AttendanceLevelError) redirect(`${back}&workflowProblem=${encodeURIComponent(attendanceLevelProblemToken(error.problem))}`);
     if (error instanceof AttendanceCorrectionPendingError) fail('myDayPending');
     if (error instanceof AttendanceCorrectionFutureDateError) fail('myDayFuture');

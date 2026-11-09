@@ -29,6 +29,7 @@
  */
 import { z } from 'zod';
 import { commandOf, pageOf, refusalOf } from './common';
+import { ATTENDANCE_SUBMISSION_REASONS } from '../../attendance-workflow-submission';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const calendarDate = isoDate.refine((v) => { const d = new Date(v + 'T00:00:00Z'); return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === v; });
@@ -215,6 +216,16 @@ export type AttendanceApplicationResult = z.infer<typeof AttendanceApplicationRe
 
 // ── One day, for the day screen and the correction form ────────────────────────────────────────────────
 
+const workflowFingerprint = z.string().regex(/^[0-9a-f]{64}$/);
+const attendanceSubmissionReason = z.enum(ATTENDANCE_SUBMISSION_REASONS);
+export const AttendanceSubmissionRoute = z.discriminatedUnion('available', [
+  z.object({available:z.literal(true),fingerprint:workflowFingerprint,firstApprovers:z.array(z.object({
+    kind:z.enum(['direct_manager','specific_employee','hr_admin']),name:z.string(),
+  })).min(1).max(20)}),
+  z.object({available:z.literal(false),reason:attendanceSubmissionReason}),
+]);
+export type AttendanceSubmissionRoute = z.infer<typeof AttendanceSubmissionRoute>;
+
 export const AttendanceDayResult = z.union([
   z.object({
     outcome: z.literal('found'),
@@ -227,7 +238,7 @@ export const AttendanceDayResult = z.union([
      * Whether the web's day screen offers its correction form (app/attendance/my-records/[date]): not for a future
      * date, not while an application for the date is pending. The kernel re-decides on submit.
      */
-    correction: z.object({ offered: z.boolean(), blockedBy: z.enum(['future', 'pending']).nullable() }),
+    correction: z.object({ offered: z.boolean(), blockedBy: z.enum(['future', 'pending']).nullable(), route: AttendanceSubmissionRoute.optional() }),
   }),
   refusalOf(['not_found', 'module_off']),
 ]);
@@ -248,7 +259,7 @@ export const ATTENDANCE_COMMAND_REFUSALS = [
   'workflow_unavailable', 'invalid', 'not_withdrawable',
 ] as const;
 export type AttendanceCommandRefusalCode = (typeof ATTENDANCE_COMMAND_REFUSALS)[number];
-export const AttendanceCommandRefusal = refusalOf(ATTENDANCE_COMMAND_REFUSALS);
+export const AttendanceCommandRefusal = refusalOf(ATTENDANCE_COMMAND_REFUSALS).extend({workflowReason:attendanceSubmissionReason.optional()});
 export type AttendanceCommandRefusal = z.infer<typeof AttendanceCommandRefusal>;
 
 /**
@@ -257,6 +268,7 @@ export type AttendanceCommandRefusal = z.infer<typeof AttendanceCommandRefusal>;
  * A raw punch is never edited: approval re-derives the day and keeps the originals.
  */
 export const AttendanceCorrectionCommand = commandOf({
+  workflowFingerprint: workflowFingerprint.optional(),
   date: calendarDate,
   checkIn: clock.optional(),
   checkOut: clock.optional(),
@@ -373,6 +385,7 @@ export const OvertimePlanOfferV2 = z.object({
   employmentId: z.string().uuid().nullable(),
   allowed: z.boolean(),
   reason: OvertimePlanUnavailable.nullable(),
+  route: AttendanceSubmissionRoute.optional(),
   timeZone,
   /** The kernel's business day today. A past date is accepted (overtime claimed after the fact), as on the web. */
   today: isoDate,
@@ -385,6 +398,7 @@ export type OvertimePlanOfferV2 = z.infer<typeof OvertimePlanOfferV2>;
  * and an optional remark. The minutes are derived on the server from the window, never sent by the app.
  */
 export const OvertimePlanCommand = commandOf({
+  workflowFingerprint: workflowFingerprint.optional(),
   date: calendarDate,
   plannedStart: clock,
   plannedEnd: clock,

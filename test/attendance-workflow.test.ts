@@ -358,14 +358,15 @@ describe('live non-self approver validation', () => {
         await owner.db.update(schema.reportingLine).set({ supersededAt: new Date() }).where(eq(schema.reportingLine.subordinateEmploymentId, worker.employmentId));
         expect((await previewAttendanceWorkflow(a,input())).rows.some(row=>!!row.problem)).toBe(true);
     });
-    it('blocks sole-HR self dead ends on activation and rechecks on submission', async () => {
+    it('saves sole-HR self dead ends as warnings and refuses affected submissions', async () => {
         const { a, worker, mgr } = await fixture();
         const ownHrUser = await createAppUser(b.tenantId, worker.personId, 'hr_admin');
         const ownHr: SessionContext = { ...a, userId: ownHrUser, personId: worker.personId, grants: [{ role: 'hr_admin', companyId: b.companyId }] };
         const template = await enable(a, input(['hr_admin']));
         await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, b.adminUserId));
         await expect(submit(ownHr, worker.employmentId)).rejects.toMatchObject({ code: 'unresolved' });
-        await expect(saveAttendanceWorkflow(ownHr, input(['hr_admin']), template.lineageId)).rejects.toMatchObject({ code: 'unresolved' });
+        await expect(saveAttendanceWorkflow(ownHr, input(['hr_admin']), template.lineageId)).resolves.toMatchObject({warningCount:expect.any(Number)});
+        await expect(submit(ownHr, worker.employmentId)).rejects.toMatchObject({ code: 'unresolved' });
         const alternative = input(['direct_manager']);
         alternative.stages[0].level.alternates = [{ kind: 'hr_admin', employmentId: null }];
         await saveAttendanceWorkflow(ownHr, alternative, template.lineageId);
@@ -374,16 +375,17 @@ describe('live non-self approver validation', () => {
         await decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
         expect((await correction(id)).status).toBe('approved');
     });
-    it('requires valid active templates before enabling, selects priority and keeps disabled pending routes frozen', async () => {
+    it('uses priority for new requests and keeps pending routes frozen after an edit', async () => {
         const { a, worker, mgr } = await fixture();
         await expect(setAttendanceWorkflowEnabled(a, b.companyId, 'irregularity', true)).rejects.toThrow(/activate valid/);
         await enable(a);
         await saveAttendanceWorkflow(a, input(['hr_admin'], { code: 'FIRST', priority: 90 }));
         const id = await submit(a, worker.employmentId);
         expect((await attendanceApplicationDetail(a, [b.companyId], id))?.workflow?.templateCode).toBe('FIRST');
-        await setAttendanceWorkflowEnabled(a, b.companyId, 'irregularity', false);
-        await expect(requestAttendanceCorrection(a, {employmentId: worker.employmentId, date: '2026-07-14', checkIn: '09:00', checkOut: '18:00', reason: 'New request while routing is disabled'})).rejects.toMatchObject({ code: 'noMatch' });
-        expect(await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.attendanceDate, '2026-07-14'))).toHaveLength(0);
+        const current=(await listAttendanceWorkflows(a,[b.companyId])).find(row=>row.code==='FIRST')!;
+        await saveAttendanceWorkflow(a,input(['direct_manager'],{code:'FIRST',priority:90}),current.lineageId);
+        const next=await requestAttendanceCorrection(a, {employmentId: worker.employmentId, date: '2026-07-14', checkIn: '09:00', checkOut: '18:00', reason: 'Request after routing update'});
+        expect((await attendanceApplicationDetail(a,[b.companyId],next.correctionId))?.workflow?.templateVersion).toBe(current.version+1);
         await expect(decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow(/assigned approver/);
         await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
     });

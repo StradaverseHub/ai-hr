@@ -1,4 +1,5 @@
 import { parseAttendanceLevelProblemToken, attendanceLevelProblemMessageKey } from '@/lib/attendance-workflow-v3';
+import { ATTENDANCE_SUBMISSION_REASONS } from '@/lib/attendance-workflow-submission';
 import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
 import Link from 'next/link';
 import {notFound} from 'next/navigation';
@@ -7,7 +8,7 @@ import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { requestOwnAttendanceDayAction } from './actions';
-import { attendanceForEmploymentRange, attendancePunchesForRange, myAttendanceCorrections, breakMinutesOf, otByRate, flagOf, personalAttendanceStatus, explainAttendanceDay, type AttendanceStatus, type AttendanceFlag } from '@/packs/attendance/service';
+import { attendanceForEmploymentRange, attendancePunchesForRange, myAttendanceCorrections, ownAttendanceSubmissionRoute, breakMinutesOf, otByRate, flagOf, personalAttendanceStatus, explainAttendanceDay, type AttendanceStatus, type AttendanceFlag } from '@/packs/attendance/service';
 import {ownAttendanceRecordSubject} from '../subject';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceFigureCells } from '@/components/attendance-figure-cells';
@@ -33,7 +34,7 @@ export default async function MyAttendanceDayPage({
   searchParams,
 }: {
   params: Promise<{ date: string }>;
-  searchParams: Promise<{ from?: string; to?: string; error?: string; correctionError?: string; workflowProblem?: string; corrected?: string; employmentId?:string|string[]; home?:string;
+  searchParams: Promise<{ from?: string; to?: string; error?: string; correctionError?: string; workflowProblem?: string; workflowRefusal?: string; corrected?: string; employmentId?:string|string[]; home?:string;
     /** AI v2 W2: the clock times a chat card asked for (HH:MM), opened by its Edit button. They only seed the boxes. */
     checkIn?: string|string[]; checkOut?: string|string[] } & AttendanceCalendarReturn>;
 }) {
@@ -47,6 +48,7 @@ export default async function MyAttendanceDayPage({
   const askedTime = (value: string | string[] | undefined) => typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
   const askedIn = askedTime(sp.checkIn), askedOut = askedTime(sp.checkOut);
   const workflowProblem = parseAttendanceLevelProblemToken(sp.workflowProblem);
+  const workflowRefusal = ATTENDANCE_SUBMISSION_REASONS.find(reason=>reason===sp.workflowRefusal);
   const workflowText = await getTranslations('attendanceWorkflow');
 
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
@@ -80,6 +82,10 @@ export default async function MyAttendanceDayPage({
   const row = rows[0] ?? null;
   const pending = requestHistory.some(request => request.status === 'pending');
   const future = date > todayInKualaLumpur();
+  const route = row&&!pending&&!future ? await ownAttendanceSubmissionRoute(s,selected.employmentId,'irregularity') : null;
+  const approver = route?.available
+    ? route.firstApprovers.map(actor=>actor.kind==='hr_admin'?workflowText('hr'):actor.name).join(', ')
+    : route ? workflowText(`submissionRefusals.${route.reason}`) : null;
   // Keyed by attendance id, exactly as the list reads it — no second shape for one fact.
   const punches = row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [];
 
@@ -143,6 +149,7 @@ export default async function MyAttendanceDayPage({
 
       {correctionError && CORRECTION_MESSAGES.includes(correctionError) && <ErrorBanner message={t(correctionError)} />}
       {workflowProblem && <ErrorBanner message={`${workflowProblem.levelIndex == null ? '' : `${workflowText('stageNumber', { number: workflowProblem.levelIndex + 1 })}: `}${workflowText(`v3.${attendanceLevelProblemMessageKey(workflowProblem)}`)}`}/>}
+      {workflowRefusal&&<ErrorBanner message={workflowText(`submissionRefusals.${workflowRefusal}`)} />}
       {sp.corrected === '1' && !correctionError && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
           {t('myDaySubmitted')}
@@ -252,6 +259,7 @@ export default async function MyAttendanceDayPage({
         {pending && <p className="border-t border-border px-4 py-3 text-sm font-medium text-amber-700 dark:text-amber-400">{t('myDayPending')}</p>}
         {future && <p className="border-t border-border px-4 py-3 text-sm text-muted-foreground">{t('myDayFuture')}</p>}
         <form action={requestOwnAttendanceDayAction} className="border-t border-border px-4 py-3">
+          {route?.available&&<input type="hidden" name="workflowFingerprint" value={route.fingerprint} />}
           <input type="hidden" name="date" value={date} />
           <input type="hidden" name="from" value={sp.from ?? ''} />
           <input type="hidden" name="to" value={sp.to ?? ''} />
@@ -271,8 +279,9 @@ export default async function MyAttendanceDayPage({
               {t('dayCorrectReason')}
               <input name="reason" required maxLength={500} className={inputCls} />
             </label>
-            <Button type="submit" variant="outline" size="sm">{t('myDaySubmit')}</Button>
+            <Button type="submit" variant="outline" size="sm" disabled={route?.available===false}>{t('myDaySubmit')}</Button>
           </fieldset>
+          {approver&&<div className="mt-3"><Field label={t('otGoesToLabel')} value={approver} /></div>}
           <p className="mt-3 text-[11px] text-muted-foreground">{t('myDayApprovalNote')}</p>
         </form>
       </Card>

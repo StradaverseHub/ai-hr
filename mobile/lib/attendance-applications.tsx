@@ -25,7 +25,7 @@ import { APPLICATION_STATUS, applicationKindText, askedText, attendanceApplicati
 import { ApplicationRow, TimeZoneNote } from './attendance-records';
 import {
   AttendanceApplicationResult, AttendanceApplicationsPageV2, AttendanceApplicationSummaryV2, AttendanceWithdrawResult,
-  type AttendanceApplicationLevelV2, type AttendanceCommandRefusal, type AttendanceCommandRefusalCode,
+  type AttendanceSubmissionRoute, type AttendanceApplicationLevelV2, type AttendanceCommandRefusal, type AttendanceCommandRefusalCode,
 } from '../../lib/mobile-api/v2/attendance';
 
 export const ATTENDANCE_APPLICATIONS = v2Page('v2/attendance/applications', AttendanceApplicationSummaryV2);
@@ -35,8 +35,23 @@ const REFUSAL: Record<AttendanceCommandRefusalCode, MessageKey> = {
   pending_exists: 'attRefusalPending', payroll_closed: 'attRefusalPayrollClosed', workflow_unavailable: 'attRefusalWorkflow',
   invalid: 'attRefusalInvalid', not_withdrawable: 'attRefusalNotWithdrawable',
 };
+const WORKFLOW_REFUSAL = {
+  noMatch: 'attRouteNoMatch', tie: 'attRouteTie', unresolved: 'attRouteUnresolved', routeChanged: 'attRouteChanged',
+} as const satisfies Record<NonNullable<AttendanceCommandRefusal['workflowReason']>,MessageKey>;
+
+export function AttendanceGoesTo({route}:{route:AttendanceSubmissionRoute}) {
+  const {palette}=useTenantDesign();
+  return <Card>
+    <Text style={{color:palette.text,fontSize:16,fontWeight:'600'}}>{t('attGoesTo')}</Text>
+    <Text accessibilityRole={route.available?undefined:'alert'} style={{color:palette.text,lineHeight:22}}>
+      {route.available?route.firstApprovers.map(actor=>actor.kind==='hr_admin'?t('attHrApprover'):actor.name).join(', '):t(WORKFLOW_REFUSAL[route.reason])}
+    </Text>
+  </Card>;
+}
+
 /** The app's own sentence for a refusal code; the kernel's English sentence beside the catch-all, in English only. */
 export function attendanceRefusalText(r: AttendanceCommandRefusal): string {
+  if(r.code==='workflow_unavailable'&&r.workflowReason)return t(WORKFLOW_REFUSAL[r.workflowReason]);
   return r.code === 'invalid' && r.message && appLocale() === 'en' ? `${t(REFUSAL.invalid)} ${r.message}` : t(REFUSAL[r.code]);
 }
 

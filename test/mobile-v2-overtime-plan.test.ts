@@ -66,7 +66,7 @@ describe('offer', () => {
     const employee = await hire('Olivia Offer');
     caller = employee.ctx;
     const got = await call(offer.GET, '/overtime-plans/offer');
-    expect(got).toEqual({ status: 200, body: { enabled: true, employmentId: employee.employmentId, allowed: true, reason: null, timeZone: 'Asia/Kuala_Lumpur', today: CURRENT_DAY } });
+    expect(got).toEqual({ status: 200, body: { enabled: true, employmentId: employee.employmentId, allowed: true, reason: null, timeZone: 'Asia/Kuala_Lumpur', today: CURRENT_DAY, route:{available:true,fingerprint:expect.stringMatching(/^[0-9a-f]{64}$/),firstApprovers:[{kind:'hr_admin',name:'HR administrators'}]} } });
     // Naming an employment that is not the caller's own is a 400, never an offer under it.
     const colleague = await hire('Colin Colleague');
     expect((await call(offer.GET, `/overtime-plans/offer?employmentId=${colleague.employmentId}`)).status).toBe(400);
@@ -97,7 +97,8 @@ describe('submit', () => {
   it('files through the kernel as myRequestOvertime does, replays under one requestId, and then appears in applications', async () => {
     const employee = await hire('Peter Planner');
     caller = employee.ctx;
-    const body = { requestId: randomUUID(), date: PLAN_DAY, plannedStart: '18:00', plannedEnd: '20:30', reason: 'Quarter-end stock take', remark: 'Agreed with supervisor' };
+    const preview=await call(offer.GET,'/overtime-plans/offer');
+    const body = { requestId: randomUUID(), date: PLAN_DAY, plannedStart: '18:00', plannedEnd: '20:30', reason: 'Quarter-end stock take', remark: 'Agreed with supervisor',workflowFingerprint:preview.body.route.fingerprint };
     const sent = await post(plans.POST, '/overtime-plans', body);
     expect(sent.status).toBe(200);
     expect(sent.body).toMatchObject({ outcome: 'submitted', date: PLAN_DAY, minutes: 150 });

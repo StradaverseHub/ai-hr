@@ -14,6 +14,7 @@ vi.mock('../packs/attendance/service', () => ({
   AttendancePayrollClosedError: class extends Error {},
   AttendanceWorkflowError: class extends Error { constructor(public code:string){super(code);} },
 }));
+import { AttendanceWorkflowSubmissionError } from '../lib/attendance-workflow-submission';
 import { requestOwnAttendanceDayAction } from '../app/attendance/my-records/[date]/actions';
 import { AttendanceCorrectionFutureDateError, AttendanceCorrectionPendingError, AttendancePayrollClosedError, AttendanceWorkflowError } from '../packs/attendance/service';
 const form = () => {
@@ -33,6 +34,13 @@ describe('employee attendance day action', () => {
     state.request.mockRejectedValue(new AttendanceWorkflowError(code,'Fictional routing refusal'));
     await expect(requestOwnAttendanceDayAction(form())).rejects.toThrow('correctionError=myDayWorkflowUnavailable');
     expect(state.revalidate).not.toHaveBeenCalled();
+  });
+  it('posts the preview fingerprint and keeps the changed-route refusal as a page-owned message',async()=>{
+    const data=form(),fingerprint='a'.repeat(64);
+    data.set('workflowFingerprint',fingerprint);
+    state.request.mockRejectedValue(new AttendanceWorkflowSubmissionError('routeChanged'));
+    await expect(requestOwnAttendanceDayAction(data)).rejects.toThrow('workflowRefusal=routeChanged');
+    expect(state.request).toHaveBeenCalledWith(state.session,expect.objectContaining({workflowFingerprint:fingerprint}));
   });
   it('retains safe calendar coordinates through submission and refreshes the calendar', async () => {
     const data = form();

@@ -26871,7 +26871,8 @@
     "moveUp": "Alih ke atas",
     "remove": "Alih keluar",
     "activate": "Aktif untuk permohonan baharu",
-    "activationHelp": "Pengaktifan menyemak pekerja semasa, hubungan pelaporan dan penetapan bertindih. Permohonan sedia ada mengekalkan peringkat tersimpan. Penghalaan diaktifkan secara berasingan bagi setiap syarikat dan jenis permohonan.",
+    "activationHelp": "Selepas disimpan, aliran kerja ini digunakan untuk permohonan baharu yang sepadan dengan syarikat, jenis permohonan dan penetapan pekerja. Permohonan yang sudah dihantar mengekalkan laluan kelulusannya.",
+    "savedAt": "Disimpan pada {date}",
     "preview": "Pratonton penetapan",
     "previewTitle": "Pekerja sepadan: {count}",
     "previewTruncated": "Memaparkan 100 pekerja sepadan pertama. Pekerja sebenar disemak semula semasa penghantaran.",
@@ -26898,7 +26899,7 @@
       "irregularity": "Ketidakteraturan Kehadiran",
       "self_overtime": "Kerja Lebih Masa Sendiri"
     },
-    "alternativeHelp": "Peringkat mana-mana seorang mengekalkan pilihan yang boleh digunakan. Pengurus yang tiada atau kumpulan HR yang hanya terdiri daripada pemohon dikecualikan daripada laluan tersimpan; peringkat tanpa pelulus aktif selain pemohon menyekat pengaktifan dan penghantaran.",
+    "alternativeHelp": "Mana-mana pelulus yang layak boleh menyelesaikan peringkat ini. Jika tiada pelulus yang layak, HR masih boleh menyimpan aliran kerja dan pekerja yang terjejas perlu menunggu laluan yang sah sebelum menghantar permohonan.",
     "companyHelp": "Pilih syarikat untuk mengurus aliran kerja kelulusannya.",
     "workflowCount": "Aliran kerja",
     "viewEdit": "Lihat / Edit",
@@ -27010,6 +27011,12 @@
     "noEmployeeMatches": "Tiada pekerja sepadan dengan carian.",
     "previousEmployees": "Pekerja sebelumnya",
     "nextEmployees": "Lagi pekerja",
+    "submissionRefusals": {
+      "noMatch": "Tiada aliran kerja kelulusan tersimpan yang sepadan dengan permohonan anda. Minta HR menyemak syarikat dan penetapan pekerja anda.",
+      "tie": "Beberapa aliran kerja kelulusan sepadan pada keutamaan yang sama. Minta HR melaraskan keutamaannya.",
+      "unresolved": "Pelulus yang diperlukan tiada atau tidak tersedia. Minta HR menyemak penyelia atau pelulus yang ditetapkan.",
+      "routeChanged": "Laluan kelulusan anda telah berubah. Muat semula untuk menyemak penerima permohonan sebelum menghantarnya semula."
+    },
     "submissionContactHr": "Sila hubungi Pentadbir HR.",
     "submissionSending": "Sedang menghantar…",
     "allCompany": "Semua Syarikat",
@@ -27026,7 +27033,7 @@
     "employeeName": "Nama pekerja",
     "approvalLevel": "Peringkat kelulusan",
     "warningIssue": "Isu",
-    "legacyReadinessWarning": "Penyelia Langsung yang diperlukan tidak dapat dikenal pasti.",
+    "legacyReadinessWarning": "Pelulus yang diperlukan tidak tersedia.",
     "warningPage": "{from}–{to} daripada {total}"
   },
   "attendanceHistory": {

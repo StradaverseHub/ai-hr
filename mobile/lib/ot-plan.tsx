@@ -22,13 +22,13 @@ import { PickerField } from './leave-request-form';
 import { useSession } from './session';
 import { fmtCalendarDate, fmtMinutes } from './attendance-format';
 import { TimeZoneNote, scheduleText } from './attendance-records';
-import { attendanceRefusalText } from './attendance-applications';
+import { AttendanceGoesTo, attendanceRefusalText } from './attendance-applications';
 import { Icon } from './icon';
 import { tint } from './home-hero';
 import { Button, Card, LoadState, Muted, Screen, Title } from './ui';
 import { AttendanceDayResult, OvertimePlanOfferV2, OvertimePlanResult } from '../../lib/mobile-api/v2/attendance';
 
-type PlanBody = { requestId: string; date: string; plannedStart: string; plannedEnd: string; reason: string; remark?: string };
+type PlanBody = { requestId: string; workflowFingerprint?:string; date: string; plannedStart: string; plannedEnd: string; reason: string; remark?: string };
 type Phase = { value: PlanBody; phase: 'sending' | 'uncertain' } | null;
 
 export function OvertimePlanScreen() {
@@ -48,6 +48,7 @@ export function OvertimePlanScreen() {
   const [sent, setSent] = useState<{ id: string; minutes: number; date: string } | null>(null);
   const flight = useRef(false);
   const o = offer.data;
+  const route=o?.route;
   const found = date && day.data?.outcome === 'found' ? day.data : null;
   const locked = !!command || !!sent;
   const online = !!o && !offer.error && !offer.loading;
@@ -60,7 +61,10 @@ export function OvertimePlanScreen() {
       const result = await apiPostV2('v2/attendance/overtime-plans', OvertimePlanResult, body, { employmentId });
       assertAuthGeneration(owner);
       setCommand(null);
-      if (result.outcome === 'refused') setNotice(attendanceRefusalText(result));
+      if (result.outcome === 'refused') {
+        setNotice(attendanceRefusalText(result));
+        if(result.code==='workflow_unavailable')offer.reload();
+      }
       else setSent({ id: result.id, minutes: result.minutes, date: result.date });
     } catch (e) {
       if (e instanceof SignInRequiredError) { setCommand(null); void signOut(); }
@@ -69,10 +73,11 @@ export function OvertimePlanScreen() {
     } finally { flight.current = false; }
   }
   function review() {
+    if(route?.available===false)return;
     if (!online || !date) { setNotice(t('otPickDate')); return; }
     if (!start || !end) { setNotice(t('otPickTimes')); return; }
     if (!reason.trim()) { setNotice(t('attReasonMissing')); return; }
-    const body: PlanBody = { requestId: randomUUID(), date, plannedStart: start, plannedEnd: end, reason: reason.trim(), ...(remark.trim() ? { remark: remark.trim() } : {}) };
+    const body: PlanBody = { requestId: randomUUID(), ...(route?.available&&{workflowFingerprint:route.fingerprint}), date, plannedStart: start, plannedEnd: end, reason: reason.trim(), ...(remark.trim() ? { remark: remark.trim() } : {}) };
     Alert.alert(t('otConfirmTitle'), t('otConfirm', { date: fmtCalendarDate(date), start, end, reason: body.reason }), [
       { text: t('cancel'), style: 'cancel' },
       { text: t('attSend'), onPress: () => void send(body) },
@@ -115,12 +120,13 @@ export function OvertimePlanScreen() {
       </View>
       {field(t('attReasonRequired'), reason, setReason, 500)}
       {field(t('attRemarkOptional'), remark, setRemark, 2000)}
+      {route&&<AttendanceGoesTo route={route} />}
       {notice && <Text accessibilityRole="alert" style={{ color: palette.text, lineHeight: 23 }}>{notice}</Text>}
       {command?.phase === 'uncertain' ? <Card>
         <Text accessibilityRole="alert" style={{ color: palette.text, lineHeight: 23 }}>{t('leaveCommandUncertain')}</Text>
         <Button title={t('leaveCommandRetry')} onPress={() => void send(command.value)} />
         <Button title={t('leaveCommandDismiss')} kind="quiet" onPress={() => setCommand(null)} />
-      </Card> : <Button title={t('otReview')} disabled={!online || locked} onPress={review} />}
+      </Card> : <Button title={t('otReview')} disabled={!online || locked || route?.available===false} onPress={review} />}
       {command?.phase === 'sending' && <Muted>{t('leaveCommandSending')}</Muted>}
       <Muted>{t('otAttachmentsOnWeb')}</Muted>
     </>}

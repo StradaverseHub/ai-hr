@@ -66,6 +66,7 @@ export type CorrectionDay = {
 export function CorrectionForm({
   copy,
   approver,
+  workflowFingerprint,
   submitAction,
   section,
   requestKind,
@@ -77,6 +78,7 @@ export function CorrectionForm({
 }: {
   copy: CorrectionCopy;
   approver: string;
+  workflowFingerprint?: string | null;
   submitAction: Action;
   /** Which section the request is filed from — carried so the action lands back on the right tab. */
   section: string;
@@ -95,6 +97,7 @@ export function CorrectionForm({
 }) {
   return (
     <AttendanceSubmissionForm action={submitAction} onSubmitted={onSubmitted} className="space-y-2.5 p-4">
+      {workflowFingerprint&&<input type="hidden" name="workflowFingerprint" value={workflowFingerprint} />}
       <input type="hidden" name="section" value={section} />
       <input type="hidden" name="requestKind" value={requestKind} />
       {day ? (
@@ -160,14 +163,12 @@ export function CorrectionForm({
       </Field>
       <p className="text-[11px] text-muted-foreground">{copy.attachmentHelp}</p>
       <Field label={copy.goesTo}>
-        {/* Read-only and deliberately NOT a form field: the approver is resolved from the reporting line at
-            decide time (assertCanDecide), so anything posted from here would be ignored. */}
-        <div className={`${inputCls} flex items-center bg-muted/40`}>{approver}</div>
+        <div className={`${inputCls} flex items-center bg-muted/40`} role={workflowFingerprint===null?'status':undefined}>{approver}</div>
       </Field>
       <p className="text-[11px] text-muted-foreground">{copy.originalKept}</p>
       <div className="flex items-center justify-end gap-2 pt-1">
         {cancel}
-        <AttendanceSubmissionButton type="submit" size="sm">
+        <AttendanceSubmissionButton type="submit" size="sm" disabled={workflowFingerprint===null}>
           {copy.submit}
         </AttendanceSubmissionButton>
       </div>

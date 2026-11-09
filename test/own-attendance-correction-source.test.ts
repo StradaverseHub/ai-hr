@@ -11,7 +11,7 @@ import {hireEmployee,setReportingLine} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {checkIn,checkOut,requestAttendanceCorrection} from '../packs/attendance/service';
 import {attendanceClockData} from '../core/attendance-clock-data';
-import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
+import {saveAttendanceWorkflow} from '../core/attendance-workflow';
 import type {AttendanceWorkflowInput} from '../lib/attendance-workflow';
 import {OwnAttendanceCorrectionIntent} from '../lib/assistant-actions/own-attendance-correction-contract';
 import {prepareOwnAttendanceCorrectionTx,confirmOwnAttendanceCorrectionTx,reopenOwnAttendanceCorrectionEventTx} from '../core/assistant-actions/own-attendance-correction-source';
@@ -55,8 +55,8 @@ describe('own Attendance correction request source',()=>{
  it('refuses changed original day/source and actual routing drift before native request effects',async()=>{
   const a=await fixture(),review=await prepare(a);await checkOut(a.admin,{employmentId:a.employmentId,date,time:'17:30',manual:true});const before=await state(a);await expect(confirm(a,review.reviewDigest)).rejects.toThrow();expect(await state(a)).toEqual(before);
   const manager=await hireEmployee(a.admin,{person:{fullName:'Fictional Routing Manager',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptB,employmentType:'full_time',hiredOn:`${Number(todayInKualaLumpur().slice(0,4))-2}-01-01`});await createAppUser(base.tenantId,manager.personId,'manager');await setReportingLine(a.admin,{subordinateEmploymentId:a.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:`${Number(todayInKualaLumpur().slice(0,4))-2}-01-01`});
-  const input:AttendanceWorkflowInput={companyId:base.companyId,code:'FICTIONAL',name:'Fictional human approval',description:'Fictional route',applicationType:'irregularity',priority:100,criteria:{departmentIds:[base.deptA]},stages:[{name:'Manager review',level:{kind:'direct_manager',employmentId:null,alternates:[]}}],active:true};await saveAttendanceWorkflow(a.admin,input);const fresh=await prepare(a);await setAttendanceWorkflowEnabled(a.admin,base.companyId,'irregularity',false);await expect(confirm(a,fresh.reviewDigest)).rejects.toThrow();expect((await state(a)).requests).toHaveLength(0);
-  await setAttendanceWorkflowEnabled(a.admin,base.companyId,'irregularity',true);const routed=await prepare(a);await confirm(a,routed.reviewDigest);expect((await state(a)).workflows).toHaveLength(1);
+  const input:AttendanceWorkflowInput={companyId:base.companyId,code:'FICTIONAL',name:'Fictional human approval',description:'Fictional route',applicationType:'irregularity',priority:100,criteria:{departmentIds:[base.deptA]},stages:[{name:'Manager review',level:{kind:'direct_manager',employmentId:null,alternates:[]}}],active:true};const saved=await saveAttendanceWorkflow(a.admin,input);const fresh=await prepare(a);await saveAttendanceWorkflow(a.admin,{...input,name:'Updated human approval',expectedVersion:saved.version},saved.lineageId);await expect(confirm(a,fresh.reviewDigest)).rejects.toThrow();expect((await state(a)).requests).toHaveLength(0);
+  const routed=await prepare(a);await confirm(a,routed.reviewDigest);expect((await state(a)).workflows).toHaveLength(1);
  });
  it('rechecks current Assistant/Attendance authority and never retargets a captured human request',async()=>{
   const a=await fixture(),review=await prepare(a);await revokeAssistant(a.admin,{appUserId:a.ctx.userId!});await expect(confirm(a,review.reviewDigest)).rejects.toThrow();await grantAssistant(a.admin,{appUserId:a.ctx.userId!});await setModule(base.tenantId,'attendance','disabled');await expect(confirm(a,review.reviewDigest)).rejects.toThrow();await setModule(base.tenantId,'attendance','active');

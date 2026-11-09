@@ -1,11 +1,11 @@
 import { AttendanceWorkflowSubmissionError } from '../lib/attendance-workflow-submission';
 import { nextAttendanceWorkflowPriority } from '@/lib/attendance-workflow';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {getTableColumns as templateColumnsOf, and, asc, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant,assertModuleGate } from './module-gate';
 import { actorOf, appendEvent, type AppendEventArgs } from '../db/events';
-import { company, attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, attendanceWorkflowReassignment as reassignment, attendanceWorkflowParticipantDecision as participantDecision, attendanceWorkflowParticipantReassignment as participantReassignment, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
+import { company, attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, attendanceWorkflowReassignment as reassignment, attendanceWorkflowParticipantDecision as participantDecision, attendanceWorkflowParticipantReassignment as participantReassignment, domainEvent, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
 import { approversOf } from '../lib/leave-approval-kinds';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { resolveOrgCriteriaTargets } from './org-criteria';
@@ -167,7 +167,8 @@ async function validateActivation(tx: Tx, ctx: SessionContext, input: AnyAttenda
        if(sources.some(source=>source.kind==='specific_employee')&&['employee_unavailable','missing_or_ambiguous_login'].includes(error.problem.code)){await warning(id,error.problem);continue;}
        if(dynamic&&['missing_superior','ambiguous_superior','cycle','inactive_superior','outside_company_scope','missing_or_ambiguous_login','missing_person'].includes(error.problem.code)){await warning(id,error.problem);continue;}
       }
-      if(error instanceof AttendanceWorkflowError&&error.code==='unresolved'&&(input.routingVersion??1)<=2&&input.stages.some(stage=>'level' in stage&&approversOf(stage.level).some(actor=>actor.kind==='direct_manager'))){await warning(id,null);continue;}
+      if(error instanceof AttendanceLevelError&&error.problem.code==='hr_unavailable'){await warning(id,error.problem);continue;}
+      if(error instanceof AttendanceWorkflowError&&error.code==='unresolved'){await warning(id,null);continue;}
       if(!strict&&(error instanceof AttendanceLevelError||error instanceof AttendanceWorkflowError&&error.code==='unresolved')){await warning(id,error instanceof AttendanceLevelError?error.problem:null);continue;}
       throw error;
      }
@@ -175,9 +176,13 @@ async function validateActivation(tx: Tx, ctx: SessionContext, input: AnyAttenda
     // Submission still resolves every required level and never treats an unresolved route as approved.
     return warnings;
 }
-export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, lineageId?: string, restoreVersion?:number, autoPriority = false) {
+export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, lineageId?: string, restoreVersion?:number, autoPriority = false, saveRequestId?:string) {
     const input = validateAnyAttendanceWorkflow(raw);
+    if(saveRequestId!==undefined&&(!ctx.userId||typeof saveRequestId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(saveRequestId)))
+        throw new AttendanceWorkflowError('invalid','Reload the workflow form before saving.');
+    const intent = saveRequestId ? createHash('sha256').update(JSON.stringify({version:1,input,lineageId,restoreVersion,autoPriority})).digest('hex') : undefined;
     return withTenant(ctx, async (tx) => {
+        if(saveRequestId&&ctx.userId)await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':attendance-workflow-save:'+ctx.userId+':'+saveRequestId.toLowerCase()},0))`);
         await configurationLock(tx,ctx.tenantId,input.applicationType);
         // Serialize the lineage before discovering its complete prior assignment set.
         if(lineageId)await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':attendance-workflow-lineage:'+lineageId},0))`);
@@ -188,6 +193,19 @@ export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, 
         const companies=await configurationCompanies(tx,input);
         const warnings:AttendanceWorkflowWarning[]=[];
         for(const companyId of [...new Set([...previousCompanies,...companies])].sort()){await adminFor(tx,companyId);await companyLock(tx,ctx.tenantId,companyId,input.applicationType);}
+        if(saveRequestId&&ctx.userId){
+            const [receipt]=await tx.select({payload:domainEvent.payload}).from(domainEvent).where(and(
+                eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'attendance-workflow-save'),
+                eq(domainEvent.aggregateId,saveRequestId),eq(domainEvent.eventType,'attendance-workflow-save.completed'),eq(domainEvent.actorId,ctx.userId),
+            )).limit(1);
+            if(receipt){
+                const payload=receipt.payload as {intent:string;templateId:string;warningCount:number} | null;
+                if(!payload||payload.intent!==intent)throw new AttendanceWorkflowError('stale','This save attempt belongs to an earlier edit. Reopen the workflow before saving.');
+                const [saved]=await tx.select().from(template).where(and(eq(template.id,payload.templateId),isNull(template.supersededAt),isNull(template.retiredAt))).limit(1);
+                if(!saved)throw new AttendanceWorkflowError('stale','The workflow changed after this save. Reopen it before saving again.');
+                return {...saved,companyIds:companies,warningCount:payload.warningCount};
+            }
+        }
         let [old] = lineageId ? await tx.select().from(template).where(and(eq(template.lineageId, lineageId), isNull(template.supersededAt))).for('update') : [];
         if(old && restoreVersion!==undefined)throw new AttendanceWorkflowError('stale','This workflow already has a current version. Reload before restoring.');
         if (!old && lineageId && restoreVersion!==undefined) {
@@ -217,6 +235,7 @@ export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, 
         const [row] = await tx.insert(template).values({ tenantId: ctx.tenantId, ...configuration, lineageId: lineage, version: (old?.version ?? 0) + 1 }).returning();
         for(const companyId of companies.filter(id=>id!==input.companyId))await tx.execute(sql`insert into attendance_workflow_company(tenant_id,template_id,company_id) values(${ctx.tenantId}::uuid,${row.id}::uuid,${companyId}::uuid)`);
         await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-workflow-template', aggregateId: lineage, eventType: old?.retiredAt?'attendance-workflow-template.restored':old ? 'attendance-workflow-template.versioned' : 'attendance-workflow-template.created', actor: actorOf(ctx), payload: { companyId: input.companyId, templateId: row.id, version: row.version, before: old ?? null, after: input } });
+        if(saveRequestId)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-workflow-save',aggregateId:saveRequestId,eventType:'attendance-workflow-save.completed',actor:actorOf(ctx),payload:{intent,templateId:row.id,warningCount:warnings.length}});
         return {...row,companyIds:companies,warningCount:warnings.length};
     });
 }
@@ -258,6 +277,7 @@ export async function restoreAttendanceWorkflow(ctx:SessionContext,lineageId:str
  if(!retained?.retiredAt||retained.version!==expectedVersion)throw new AttendanceWorkflowError('stale','The retained workflow changed. Reload before restoring.');
  return saveAttendanceWorkflow(ctx,attendanceWorkflowConfiguration(retained),lineageId,expectedVersion);
 }
+/** Retained for compatibility with the pre-publication settings model. Submission uses active templates directly. */
 export function listAttendanceWorkflowSettings(ctx: SessionContext, companyIds: string[]) {
     return withTenant(ctx, tx => companyIds.length ? tx.select().from(setting).where(inArray(setting.companyId, companyIds)).orderBy(asc(setting.companyId), asc(setting.applicationType)) : Promise.resolve([]));
 }
@@ -291,9 +311,6 @@ export async function prepareAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionConte
     // Match the lifecycle owner's exclusive lock before any company lock.
     await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${ctx.tenantId + ':attendance-workflow-scope:' + applicationType},0))`);
     await companyLock(tx, ctx.tenantId, subject.companyId, applicationType);
-    const [config] = await tx.select().from(setting).where(and(eq(setting.companyId, subject.companyId), eq(setting.applicationType, applicationType)));
-    if (!config?.enabled)
-        throw new AttendanceWorkflowSubmissionError('noMatch');
     const candidates = await tx.select().from(template).where(and(applies(subject.companyId), eq(template.applicationType, applicationType), eq(template.active, true), isNull(template.supersededAt), isNull(template.retiredAt))).orderBy(asc(template.priority), asc(template.id));
     const matches: typeof candidates = [];
     for (const row of candidates)
@@ -308,7 +325,8 @@ export async function prepareAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionConte
     const validated = attendanceWorkflowConfiguration(selected);
     const resolved=validated.routingVersion===4?await resolveV4(tx,employmentId,validated.stages,validated.cc):{stages:await resolveStages(tx,employmentId,validated.stages,validated.routingVersion),cc:[]};
     const {stages,cc}=resolved;
-    return {subject,selected,validated,stages,cc};
+    const fingerprint=createHash('sha256').update(JSON.stringify({version:1,tenantId:ctx.tenantId,employmentId,templateId:selected.id,stages,cc})).digest('hex');
+    return {subject,selected,validated,stages,cc,fingerprint};
     } catch (error) {
       if (error instanceof AttendanceLevelError || error instanceof AttendanceWorkflowError || error instanceof AttendanceCcError)
         throw new AttendanceWorkflowSubmissionError('unresolved', error instanceof AttendanceLevelError ? error.problem : undefined);
@@ -321,15 +339,19 @@ export async function ownAttendanceSubmissionRoute(ctx:SessionContext, employmen
     if(!ctx.personId || subject?.personId!==ctx.personId) throw new AttendanceWorkflowError('scope','The employee is not visible.');
     try {
       const route=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);
-      return {available:true as const,name:route.selected.name,stages:route.stages};
+      const first=route.stages[0];
+      const firstApprovers=(first.mode==='sequential'?first.approvers.slice(0,1):first.approvers).map(({kind,name})=>({kind,name}));
+      if(first.hrAlternative&&!firstApprovers.some(actor=>actor.kind==='hr_admin'))firstApprovers.push({kind:'hr_admin',name:'HR administrators'});
+      return {available:true as const,name:route.selected.name,stages:route.stages,firstApprovers,fingerprint:route.fingerprint};
     } catch(error) {
-      if(error instanceof AttendanceWorkflowSubmissionError) return {available:false as const};
+      if(error instanceof AttendanceWorkflowSubmissionError) return {available:false as const,reason:error.reason};
       throw error;
     }
   });
 }
-export async function snapshotAttendanceWorkflowTx(tx: Tx, ctx: SessionContext, correctionId: string, employmentId: string, applicationType: AttendanceApplicationType) {
+export async function snapshotAttendanceWorkflowTx(tx: Tx, ctx: SessionContext, correctionId: string, employmentId: string, applicationType: AttendanceApplicationType, expectedFingerprint?:string) {
     const prepared=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);
+    if(expectedFingerprint!==undefined&&expectedFingerprint!==prepared.fingerprint)throw new AttendanceWorkflowSubmissionError('routeChanged');
     const {subject,selected,validated,stages,cc}=prepared;
     const [snapshot] = await tx.insert(request).values({ tenantId: ctx.tenantId, correctionId, employmentId, companyId: subject.companyId, templateId: selected.id, templateCode: selected.code, templateName: selected.name, templateVersion: selected.version, applicationType, routingVersion: validated.routingVersion, stages, cc }).returning();
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: correctionId, eventType: 'attendance-workflow.resolved', actor: actorOf(ctx), subjectEmploymentId: employmentId, payload: { workflowRequestId: snapshot.id, templateId: selected.id, templateVersion: selected.version, stages } });

@@ -26871,7 +26871,8 @@
     "moveUp": "Di chuyển lên",
     "remove": "Xóa",
     "activate": "Hoạt động cho đơn mới",
-    "activationHelp": "Kích hoạt kiểm tra nhân viên hiện tại, tuyến quản lý và phạm vi chồng lấn. Đơn hiện có giữ nguyên các bước đã lưu. Định tuyến được bật riêng theo công ty và loại đơn.",
+    "activationHelp": "Sau khi lưu, quy trình này áp dụng cho các yêu cầu mới khớp với công ty, loại yêu cầu và phân công nhân viên. Các yêu cầu đã gửi giữ nguyên quy trình phê duyệt.",
+    "savedAt": "Đã lưu lúc {date}",
     "preview": "Xem trước phạm vi",
     "previewTitle": "Nhân viên phù hợp: {count}",
     "previewTruncated": "Hiển thị 100 nhân viên phù hợp đầu tiên. Khi nộp, nhân viên thực tế được kiểm tra lại.",
@@ -26898,7 +26899,7 @@
       "irregularity": "Bất thường chấm công",
       "self_overtime": "Tự đăng ký làm thêm giờ"
     },
-    "alternativeHelp": "Bước duyệt bất kỳ một người chỉ giữ các lựa chọn hợp lệ. Quản lý không khả dụng hoặc nhóm nhân sự chỉ có người nộp đơn bị loại khỏi luồng đã lưu; bước không có người duyệt hoạt động khác người nộp sẽ chặn kích hoạt và gửi đơn.",
+    "alternativeHelp": "Bất kỳ người phê duyệt đủ điều kiện nào cũng có thể hoàn tất bước này. Nếu không có người phù hợp, nhân sự vẫn có thể lưu quy trình và nhân viên bị ảnh hưởng cần chờ đến khi có tuyến phê duyệt hợp lệ mới gửi yêu cầu.",
     "companyHelp": "Chọn công ty để quản lý quy trình phê duyệt.",
     "workflowCount": "Quy trình",
     "viewEdit": "Xem / Sửa",
@@ -27010,6 +27011,12 @@
     "noEmployeeMatches": "Không có nhân viên phù hợp.",
     "previousEmployees": "Nhân viên trước",
     "nextEmployees": "Thêm nhân viên",
+    "submissionRefusals": {
+      "noMatch": "Không có quy trình phê duyệt đã lưu nào phù hợp với yêu cầu của bạn. Hãy nhờ bộ phận nhân sự kiểm tra công ty và phân công của bạn.",
+      "tie": "Nhiều quy trình phê duyệt cùng mức ưu tiên phù hợp với yêu cầu. Hãy nhờ bộ phận nhân sự điều chỉnh mức ưu tiên.",
+      "unresolved": "Thiếu người phê duyệt bắt buộc hoặc người đó không khả dụng. Hãy nhờ bộ phận nhân sự kiểm tra cấp quản lý hoặc người phê duyệt được chỉ định.",
+      "routeChanged": "Quy trình phê duyệt của bạn đã thay đổi. Hãy tải lại để xem người nhận yêu cầu trước khi gửi lại."
+    },
     "submissionContactHr": "Vui lòng liên hệ quản trị viên nhân sự.",
     "submissionSending": "Đang gửi…",
     "allCompany": "Tất cả công ty",
@@ -27026,7 +27033,7 @@
     "employeeName": "Tên nhân viên",
     "approvalLevel": "Cấp phê duyệt",
     "warningIssue": "Vấn đề",
-    "legacyReadinessWarning": "Không xác định được cấp trên trực tiếp bắt buộc.",
+    "legacyReadinessWarning": "Người phê duyệt bắt buộc hiện không khả dụng.",
     "warningPage": "{from}–{to} trên {total}"
   },
   "attendanceHistory": {

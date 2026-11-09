@@ -19,6 +19,7 @@ vi.mock('../packs/attendance/service', async () => ({
   attendanceForEmploymentRange: state.rows,
   attendancePunchesForRange: state.punches,
   myAttendanceCorrections: state.requests,
+  ownAttendanceSubmissionRoute: async()=>({available:true,fingerprint:'a'.repeat(64),firstApprovers:[{kind:'direct_manager',name:'Fictional manager'}]}),
   ...(await import('../core/attendance-derive')),
   ...(await import('../core/attendance-explain')),
 }));

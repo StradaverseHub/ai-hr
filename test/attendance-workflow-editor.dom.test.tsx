@@ -95,6 +95,8 @@ describe('company workflow editor outcomes', () => {
     await waitFor(() => expect(screen.getByLabelText('Workflow name')).not.toBeDisabled());
     expect(screen.getByLabelText('Workflow name')).toHaveValue('Retain this');
     expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[0][3]).toBeTypeOf('string');
+    expect(save.mock.calls[1][3]).toBe(save.mock.calls[0][3]);
     expect(router.push).not.toHaveBeenCalled();
   });
   it.each([['en', en], ['ms', ms], ['ta', ta], ['th', th], ['vi', viLocale], ['zh', zh]] as const)('renders translated shared controls without missing messages (%s)', (_, messages) => {

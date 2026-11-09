@@ -26871,7 +26871,8 @@
     "moveUp": "Move up",
     "remove": "Remove",
     "activate": "Active for new applications",
-    "activationHelp": "Activation validates the current employee population, reporting lines and overlapping assignments. Existing applications retain their saved stages. Routing is enabled separately for each company and application type.",
+    "activationHelp": "Saving applies this workflow to new requests that match its company, request type and employee assignment. Requests already submitted keep their approval route.",
+    "savedAt": "Saved {date}",
     "preview": "Preview assignment",
     "previewTitle": "Matching employees: {count}",
     "previewTruncated": "Showing the first 100 matching employees. Submission validates the actual employee again.",
@@ -26898,7 +26899,7 @@
       "irregularity": "Attendance Irregularity",
       "self_overtime": "Self Overtime"
     },
-    "alternativeHelp": "Any-one stages keep their usable alternatives. An unavailable manager or a self-only HR group is excluded from the saved routing; a stage with no active non-self approver blocks activation and submission.",
+    "alternativeHelp": "Any eligible approver can complete an any-one stage. If no eligible approver is available, HR can still save the workflow and affected employees must wait for a valid route before submitting.",
     "companyHelp": "Choose a company to manage its approval workflows.",
     "workflowCount": "Workflows",
     "viewEdit": "View / Edit",
@@ -27010,6 +27011,12 @@
     "noEmployeeMatches": "No employees match your search.",
     "previousEmployees": "Previous employees",
     "nextEmployees": "More employees",
+    "submissionRefusals": {
+      "noMatch": "No saved approval workflow matches your request. Ask HR to check your company and employee assignment.",
+      "tie": "Multiple approval workflows match at the same priority. Ask HR to adjust their priorities.",
+      "unresolved": "A required approver is missing or unavailable. Ask HR to check your reporting line or assigned approvers.",
+      "routeChanged": "Your approval route changed. Refresh to review who will receive your request before submitting again."
+    },
     "submissionContactHr": "Please Contact the HR Administrator.",
     "submissionSending": "Submitting…",
     "allCompany": "All Company",
@@ -27026,7 +27033,7 @@
     "employeeName": "Employee name",
     "approvalLevel": "Approval level",
     "warningIssue": "Issue",
-    "legacyReadinessWarning": "A required Direct Superior could not be resolved.",
+    "legacyReadinessWarning": "A required approver is unavailable.",
     "warningPage": "{from}–{to} of {total}"
   },
   "attendanceHistory": {

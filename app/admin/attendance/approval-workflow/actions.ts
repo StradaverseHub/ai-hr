@@ -1,53 +1,59 @@
 'use server';
-import type {AnyAttendanceWorkflowInput} from '@/lib/attendance-workflow-config';
+import {validateAnyAttendanceWorkflow, type AnyAttendanceWorkflowInput} from '@/lib/attendance-workflow-config';
 import { getTranslations } from 'next-intl/server';
 import {AttendanceCcError} from '@/lib/attendance-workflow-v4';
 import { AttendanceLevelError, attendanceLevelProblemMessageKey } from '@/lib/attendance-workflow-v3';
 import { revalidatePath } from 'next/cache';
+import { unstable_rethrow } from 'next/navigation';
+import { pgSqlState } from '@/lib/db-error';
+import { isWorkflowId } from './navigation';
 import { scopedAdmin } from '@/lib/scope';
-import { saveAttendanceWorkflow, archiveAttendanceWorkflow, attendanceWorkflowWarningPage, retireAttendanceWorkflow, restoreAttendanceWorkflow, getAttendanceWorkflow, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, AttendanceWorkflowError, type AttendanceWorkflowInput, type AttendanceApplicationType } from '@/packs/attendance/service';
+import { saveAttendanceWorkflow, archiveAttendanceWorkflow, attendanceWorkflowWarningPage, retireAttendanceWorkflow, restoreAttendanceWorkflow, getAttendanceWorkflow, previewAttendanceWorkflow, AttendanceWorkflowError } from '@/packs/attendance/service';
 const LIST = '/admin/attendance/approval-workflow';
 async function publicError(e: unknown) { if(e instanceof AttendanceCcError)return(await getTranslations('attendanceWorkflow.v4'))(e.code);if(e instanceof AttendanceWorkflowError&&e.code==='inUse')return(await getTranslations('attendanceWorkflow.v4'))('usedCannotDelete');if(e instanceof AttendanceWorkflowError&&e.code==='stale')return(await getTranslations('attendanceWorkflow.v4'))('deleteChanged'); if (e instanceof AttendanceLevelError) return (await getTranslations('attendanceWorkflow.v3'))(attendanceLevelProblemMessageKey(e.problem)); return e instanceof AttendanceWorkflowError ? e.message : 'The workflow could not be saved. Check the configuration and try again.'; }
-export async function saveAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput, autoPriority = false) {
-    const { s, scopeIds,allowedCompanyIds } = await scopedAdmin();
-    if ((input.companyIds??[input.companyId]).some(id=>!(allowedCompanyIds??scopeIds).includes(id)))
-        return { ok: false as const, error: 'Select a company in your active access scope.' };
+export async function saveAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput, autoPriority = false, saveRequestId?:string) {
+    let row: Awaited<ReturnType<typeof saveAttendanceWorkflow>>;
     try {
-        const row = await saveAttendanceWorkflow(s, input, lineageId ?? undefined, undefined, autoPriority === true);
+        const { s, scopeIds, allowedCompanyIds } = await scopedAdmin();
+        if (lineageId!==null&&!isWorkflowId(lineageId)) throw new AttendanceWorkflowError('invalid','Reopen the workflow before saving.');
+        const configuration=validateAnyAttendanceWorkflow({...input,active:true});
+        const allowed=allowedCompanyIds??scopeIds;
+        if ((configuration.companyIds??[configuration.companyId]).some(id=>!allowed.includes(id)))
+            throw new AttendanceWorkflowError('scope','Select a company in your active access scope.');
+        row = await saveAttendanceWorkflow(s, configuration, lineageId ?? undefined, undefined, autoPriority === true, saveRequestId);
+    }
+    catch (error) {
+        unstable_rethrow(error);
+        if (!(error instanceof AttendanceWorkflowError || error instanceof AttendanceLevelError || error instanceof AttendanceCcError)) {
+            const state = pgSqlState(error);
+            console.warn('Attendance workflow save did not complete.', { state });
+            if (state === '42501') return { ok: false as const, error: 'Your workflow access changed. Reopen the workflow and check your company access.' };
+            if (state === '23505') return { ok: false as const, error: 'The workflow code or version changed during this save. Reopen the workflow before trying again.' };
+        }
+        const message=error instanceof AttendanceWorkflowError&&error.code==='stale' ? error.message : await publicError(error);
+        return { ok: false as const, error: message, levelProblem: error instanceof AttendanceLevelError ? error.problem : null };
+    }
+    // The definition and receipt have committed. Cache invalidation cannot turn that into a failed save.
+    try {
         revalidatePath(LIST);
         revalidatePath(`${LIST}/${row.lineageId}`);
         revalidatePath(`${LIST}/${row.lineageId}/edit`);
-        return { ok: true as const, lineageId: row.lineageId, ...(row.warningCount?{warningCount:row.warningCount}:{}) };
+    } catch {
+        console.warn('Attendance workflow saved, but its pages could not be revalidated.');
     }
-    catch (e) {
-        return { ok: false as const, error: await publicError(e), levelProblem: e instanceof AttendanceLevelError ? e.problem : null };
-    }
+    return { ok: true as const, lineageId: row.lineageId, ...(row.warningCount?{warningCount:row.warningCount}:{}) };
 }
 export async function previewAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput) {
     const { s, scopeIds,allowedCompanyIds } = await scopedAdmin();
     if ((input.companyIds??[input.companyId]).some(id=>!(allowedCompanyIds??scopeIds).includes(id)))
         return { ok: false as const, error: 'Select a company in your active access scope.' };
     try {
-        return { ok: true as const, preview: await previewAttendanceWorkflow(s, input, lineageId ?? undefined) };
+        return { ok: true as const, preview: await previewAttendanceWorkflow(s, {...input,active:true}, lineageId ?? undefined) };
     }
     catch (e) {
         return { ok: false as const, error: await publicError(e), levelProblem: e instanceof AttendanceLevelError ? e.problem : null };
     }
 }
-export async function setAttendanceWorkflowEnabledAction(companyId: string, type: AttendanceApplicationType, enabled: boolean) {
-    const { s, scopeIds,allowedCompanyIds } = await scopedAdmin();
-    if (!(allowedCompanyIds??scopeIds).includes(companyId))
-        return { ok: false as const, error: 'Select a company in your active access scope.' };
-    try {
-        await setAttendanceWorkflowEnabled(s, companyId, type, enabled);
-        revalidatePath(LIST);
-        return { ok: true as const };
-    }
-    catch (e) {
-        return { ok: false as const, error: await publicError(e), levelProblem: e instanceof AttendanceLevelError ? e.problem : null };
-    }
-}
-
 export async function retireAttendanceWorkflowAction(lineageId:string,version:number) {
  const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
  try{const current=await getAttendanceWorkflow(s,lineageId,allowedCompanyIds??scopeIds);if(!current)throw new AttendanceWorkflowError('stale','The workflow changed. Reload.');await retireAttendanceWorkflow(s,lineageId,version);revalidatePath(LIST);revalidatePath(`${LIST}/${lineageId}`);return{ok:true as const,companyId:current.companyId,applicationType:current.applicationType};}

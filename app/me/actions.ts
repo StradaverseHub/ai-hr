@@ -580,6 +580,7 @@ export async function myRequestCorrection(formData: FormData) {
       assertAttendanceAttachmentAcceptable(file);
     }
     const { correctionId } = await requestAttendanceCorrection(s, {
+      workflowFingerprint: String(formData.get('workflowFingerprint') ?? '') || undefined,
       employmentId,
       date,
       checkIn: checkInTime || null,
@@ -728,6 +729,7 @@ export async function myRequestOvertime(formData: FormData) {
       assertAttendanceAttachmentAcceptable(file);
     }
     const { correctionId } = await requestAttendanceCorrection(s, {
+      workflowFingerprint: String(formData.get('workflowFingerprint') ?? '') || undefined,
       employmentId,
       date,
       requestedOtMinutes,

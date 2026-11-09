@@ -112,7 +112,7 @@ export default async function ApplyOtPlanPage({
     isPast ? attendanceForEmploymentRange(s, me.employmentId, date, date) : Promise.resolve([]),
   ]);
   const routeCopy = await getTranslations('attendanceWorkflow');
-  const approver = route.available ? route.stages.map(stage => stage.approvers.map(actor => actor.kind === 'hr_admin' ? routeCopy('hr') : actor.name).join(' / ')).join('; ') : routeCopy('submissionContactHr');
+  const approver = route.available ? route.firstApprovers.map(actor => actor.kind === 'hr_admin' ? routeCopy('hr') : actor.name).join(', ') : routeCopy(`submissionRefusals.${route.reason}`);
 
   const day: OtPlanCalendarDay | undefined = calendar.find((d) => d.date === date);
   const clocked = actual[0];
@@ -409,10 +409,10 @@ export default async function ApplyOtPlanPage({
               <p className="text-[11px] text-muted-foreground">{t('maAttachmentHelp')}</p>
 
               <Field label={t('otGoesToLabel')}>
-                {/* Informational preview only. Submission re-resolves and freezes its own route. */}
-                <div className={`${inputCls} flex items-center bg-muted/40`}>{approver}</div>
+                {route.available&&<input type="hidden" name="workflowFingerprint" value={route.fingerprint} />}
+                <div className={`${inputCls} flex items-center bg-muted/40`} role={route.available?undefined:'status'}>{approver}</div>
               </Field>
-              <p className="text-[11px] text-muted-foreground">{route.available ? t('otWorkflowGoesToHelp') : routeCopy('submissionContactHr')}</p>
+              {route.available&&<p className="text-[11px] text-muted-foreground">{t('otWorkflowGoesToHelp')}</p>}
 
               {/* On a phone Submit is pinned to the bottom of the screen with the date beside it, which is
                   what the approved picture draws; from `lg` up it is an ordinary footer row again.
@@ -422,7 +422,7 @@ export default async function ApplyOtPlanPage({
                   disagree with the layout for the 768–1023px band. */}
               <div className="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-3 rounded-b-[1.25rem] border-t border-border bg-card px-4 py-3 lg:static lg:mx-0 lg:mb-0 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0">
                 <p className="text-[11px] text-muted-foreground">{t('otStaysOnCalendarHelp')}</p>
-                <AttendanceSubmissionButton type="submit" size="sm" className="shrink-0">
+                <AttendanceSubmissionButton type="submit" size="sm" className="shrink-0" disabled={!route.available}>
                   {t('otSubmitPlan')}
                 </AttendanceSubmissionButton>
               </div>

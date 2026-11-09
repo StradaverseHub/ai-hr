@@ -270,7 +270,8 @@ describe('E · the two right-hand panels, and what happened to their keys', () =
   });
   it('does not name a reporting-line superior as the configured workflow approver', () => {
     expect(APPLY).toContain("ownAttendanceSubmissionRoute(s, me.employmentId, 'self_overtime')");
-    expect(APPLY).toContain("routeCopy('submissionContactHr')");
+    expect(APPLY).toContain('submissionRefusals.');
+    expect(APPLY).toContain('route.firstApprovers');
     expect(LIST).toContain('p.assignedApproverNames');
     expect(MESSAGES.en.me.overtimeRequestHelp).not.toContain('goes to your superior');
     for (const messages of Object.values(MESSAGES)) {

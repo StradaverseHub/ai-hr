@@ -25,7 +25,7 @@ import { useSession } from './session';
 import { Button, Card, LoadState, Muted, Row, Screen, Title, fmtDays } from './ui';
 import { fmtCalendarDate, fmtMinutes } from './attendance-format';
 import { TimeZoneNote, scheduleText } from './attendance-records';
-import { attendanceRefusalText } from './attendance-applications';
+import { AttendanceGoesTo, attendanceRefusalText } from './attendance-applications';
 import {
   AttendanceCorrectionResult, AttendanceDayResult, ReplacementLeaveDayResult, ReplacementLeaveOfferV2, ReplacementLeaveResult,
   type LeaveCreditDayType, type ReplacementLeaveDayV2, type ReplacementLeaveRefusal, type ReplacementLeaveRefusalCode, type ReplacementUnavailable,
@@ -45,7 +45,7 @@ function useInput() {
 
 // ── Correction (missed punch) ──────────────────────────────────────────────────────────────────────────────
 
-type CorrectionBody = { requestId: string; date: string; checkIn?: string; checkOut?: string; reason: string; remark?: string };
+type CorrectionBody = { requestId: string; workflowFingerprint?:string; date: string; checkIn?: string; checkOut?: string; reason: string; remark?: string };
 
 /** A correction request for one own day: the clockings on record shown read only, proposed times, a reason. */
 export function AttendanceCorrectionScreen({ date }: { date: string }) {
@@ -55,6 +55,7 @@ export function AttendanceCorrectionScreen({ date }: { date: string }) {
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(date);
   const day = useApiV2('v2/attendance/day', AttendanceDayResult, { employmentId: employmentId ?? undefined, date: valid ? date : undefined }, signOut);
   const found = day.data?.outcome === 'found' ? day.data : null;
+  const route=found?.correction.route;
   // undefined = untouched (the web's form opens on the day's own pair); null = cleared.
   const [times, setTimes] = useState<{ checkIn?: string | null; checkOut?: string | null }>({});
   const [reason, setReason] = useState('');
@@ -87,10 +88,10 @@ export function AttendanceCorrectionScreen({ date }: { date: string }) {
     } finally { flight.current = false; }
   }
   function review() {
-    if (!found || !online) return;
+    if (!found || !online || route?.available===false) return;
     if (!checkIn && !checkOut) { setNotice(t('attCorrectionNothing')); return; }
     if (!reason.trim()) { setNotice(t('attReasonMissing')); return; }
-    const body: CorrectionBody = { requestId: randomUUID(), date: found.day.date, ...(checkIn ? { checkIn } : {}), ...(checkOut ? { checkOut } : {}), reason: reason.trim(), ...(remark.trim() ? { remark: remark.trim() } : {}) };
+    const body: CorrectionBody = { requestId: randomUUID(), ...(route?.available&&{workflowFingerprint:route.fingerprint}), date: found.day.date, ...(checkIn ? { checkIn } : {}), ...(checkOut ? { checkOut } : {}), reason: reason.trim(), ...(remark.trim() ? { remark: remark.trim() } : {}) };
     Alert.alert(t('attCorrectionConfirmTitle'), t('attCorrectionConfirm', { date: fmtCalendarDate(body.date), in: body.checkIn ?? '—', out: body.checkOut ?? '—', reason: body.reason }), [
       { text: t('cancel'), style: 'cancel' },
       { text: t('attSend'), onPress: () => void send(body) },
@@ -124,12 +125,13 @@ export function AttendanceCorrectionScreen({ date }: { date: string }) {
         </View>
         {field(t('attReasonRequired'), reason, setReason, locked, 500)}
         {field(t('attRemarkOptional'), remark, setRemark, locked, 2000)}
+        {route&&<AttendanceGoesTo route={route} />}
         {!online && <Muted>{t('attCommandsOnline')}</Muted>}
         {command?.phase === 'uncertain' ? <Card>
           <Text accessibilityRole="alert" style={{ color: palette.text, lineHeight: 23 }}>{t('leaveCommandUncertain')}</Text>
           <Button title={t('leaveCommandRetry')} onPress={() => void send(command.value)} />
           <Button title={t('leaveCommandDismiss')} kind="quiet" onPress={() => { setCommand(null); day.reload(); }} />
-        </Card> : <Button title={t('attReview')} disabled={!online || locked} onPress={review} />}
+        </Card> : <Button title={t('attReview')} disabled={!online || locked || route?.available===false} onPress={review} />}
         {busy && <Muted>{t('leaveCommandSending')}</Muted>}
       </>}
     </>}

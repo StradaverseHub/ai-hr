@@ -147,7 +147,8 @@ export default async function AttendanceIrregularityPage({
     ownAttendanceSubmissionRoute(s, me.employmentId, 'irregularity'),
   ]);
   const routeCopy = await getTranslations('attendanceWorkflow');
-  const approver = route.available ? route.stages.map(stage => stage.approvers.map(actor => actor.kind === 'hr_admin' ? routeCopy('hr') : actor.name).join(' / ')).join('; ') : routeCopy('submissionContactHr');
+  const approver = route.available ? route.firstApprovers.map(actor => actor.kind === 'hr_admin' ? routeCopy('hr') : actor.name).join(', ') : routeCopy(`submissionRefusals.${route.reason}`);
+  const workflowFingerprint = route.available ? route.fingerprint : null;
 
   // An employee who is not on clocking at all has no attendance rows, and every scheduled day in the
   // window would then read as an unexplained absence — a wall of red for somebody whose company simply
@@ -235,6 +236,7 @@ export default async function AttendanceIrregularityPage({
   const request: CorrectionRequest = {
     copy,
     approver,
+    workflowFingerprint,
     submitAction: myRequestCorrection,
     minDate: from,
     maxDate: to,
@@ -275,6 +277,7 @@ export default async function AttendanceIrregularityPage({
               cancelLabel={t('maCancel')}
               copy={copy}
               approver={approver}
+              workflowFingerprint={workflowFingerprint}
               submitAction={myRequestCorrection}
               section="other"
               requestKind="other"
@@ -332,6 +335,7 @@ export default async function AttendanceIrregularityPage({
             <CorrectionForm
               copy={copy}
               approver={approver}
+              workflowFingerprint={workflowFingerprint}
               submitAction={myRequestCorrection}
               /* OFF THE DAY, NOT THE TAB. With one mixed list the open filter no longer implies the
                  kind, and taking it from `section` would file an `all` request under a section that is
@@ -422,6 +426,7 @@ type T = Awaited<ReturnType<typeof getTranslations<'me'>>>;
 type CorrectionRequest = {
   copy: CorrectionCopy;
   approver: string;
+  workflowFingerprint: string | null;
   submitAction: AttendanceSubmissionAction;
   minDate: string;
   maxDate: string;
@@ -527,6 +532,7 @@ function ExceptionTable({
                       cancelLabel={t('maCancel')}
                       copy={request.copy}
                       approver={request.approver}
+                      workflowFingerprint={request.workflowFingerprint}
                       submitAction={request.submitAction}
                       section={d.section}
                       requestKind={KIND_OF_SECTION[d.section]}

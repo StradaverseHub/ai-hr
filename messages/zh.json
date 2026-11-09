@@ -26871,7 +26871,8 @@
     "moveUp": "上移",
     "remove": "移除",
     "activate": "对新申请启用",
-    "activationHelp": "启用前验证当前员工、汇报关系和重叠范围。已有申请保留已保存的阶段。每个公司和申请类型分别开启流程审批。",
+    "activationHelp": "保存后，此工作流程将用于公司、申请类型和员工分配均匹配的新申请。已提交的申请保留原审批流程。",
+    "savedAt": "保存于 {date}",
     "preview": "预览适用范围",
     "previewTitle": "匹配员工：{count}",
     "previewTruncated": "仅显示前 100 名匹配员工。提交时会再次验证实际申请人。",
@@ -26898,7 +26899,7 @@
       "irregularity": "考勤异常",
       "self_overtime": "自助加班"
     },
-    "alternativeHelp": "任选一人审批阶段仅保留可用的审批人。无法使用的经理或仅包含申请人本人的人事组不会加入保存的审批路线；若阶段没有其他有效审批人，则无法启用或提交。",
+    "alternativeHelp": "任一符合条件的审批人都可以完成此阶段。如果没有符合条件的审批人，人力资源部门仍可保存流程，受影响的员工需等到审批路径有效后才能提交。",
     "companyHelp": "选择公司以管理其审批流程。",
     "workflowCount": "审批流程",
     "viewEdit": "查看 / 编辑",
@@ -27010,6 +27011,12 @@
     "noEmployeeMatches": "没有符合搜索条件的员工。",
     "previousEmployees": "上一页员工",
     "nextEmployees": "更多员工",
+    "submissionRefusals": {
+      "noMatch": "没有已保存的审批流程与您的申请匹配。请让人力资源部门检查您的公司和员工分配。",
+      "tie": "有多个优先级相同的审批流程与您的申请匹配。请让人力资源部门调整优先级。",
+      "unresolved": "缺少必需的审批人或审批人不可用。请让人力资源部门检查您的汇报关系或指定审批人。",
+      "routeChanged": "您的审批流程已变更。请刷新页面，确认申请接收人后再提交。"
+    },
     "submissionContactHr": "请联系 HR 管理员。",
     "submissionSending": "正在提交…",
     "allCompany": "所有公司",
@@ -27026,7 +27033,7 @@
     "employeeName": "员工姓名",
     "approvalLevel": "审批级别",
     "warningIssue": "问题",
-    "legacyReadinessWarning": "无法确定所需的直属上司。",
+    "legacyReadinessWarning": "必需的审批人不可用。",
     "warningPage": "第 {from}–{to} 项，共 {total} 项"
   },
   "attendanceHistory": {

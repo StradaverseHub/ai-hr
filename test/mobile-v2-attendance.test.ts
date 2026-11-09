@@ -285,7 +285,10 @@ describe('own application history', () => {
     await setAttendanceWorkflowEnabled(a, base.companyId, 'irregularity', true);
 
     caller = worker.ctx;
-    const sent = await post(corrections.POST, '/corrections', { requestId: randomUUID(), date: MULTI, checkIn: '09:00', checkOut: '18:00', reason: 'Badge reader down' });
+    const preview = await call(dayRoute.GET,`/day?date=${MULTI}`);
+    const route = preview.body.correction.route;
+    expect(route).toMatchObject({available:true,firstApprovers:[{kind:'direct_manager',name:'Frozen manager'}]});
+    const sent = await post(corrections.POST, '/corrections', { requestId: randomUUID(), date: MULTI, checkIn: '09:00', checkOut: '18:00', reason: 'Badge reader down', workflowFingerprint:route.fingerprint });
     expect(sent.body).toMatchObject({ outcome: 'submitted', date: MULTI });
     const id = sent.body.id as string;
     // The policy changes after submission; the application keeps what was recorded with it.
