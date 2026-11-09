@@ -184,7 +184,8 @@ class WrapperModels(unittest.TestCase):
             channel.recvmsg.return_value = (W._GO, [cred, rights], socket.MSG_CTRUNC, None)
             with self.assertRaisesRegex(W.Refused, '^wrapper-control-packet$'):
                 W._recv(channel, len(W._GO))
-            self.assertEqual([call.args for call in close.call_args_list], [(44,), (45,)])
+            # ExitStack closes received rights in reverse registration order.
+            self.assertEqual([call.args for call in close.call_args_list], [(45,), (44,)])
         for body, ancillary, flags in ((b'', [], 0), (W._GO, [cred, cred], 0), (W._GO + b'x', [cred], 0)):
             channel.recvmsg.return_value = (body, ancillary, flags, None)
             with self.assertRaises(W.Refused):
