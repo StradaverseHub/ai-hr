@@ -1,4 +1,6 @@
 import {captureStatutorySourceContext as captureStatutoryContext,lockStatutorySourceTx as statutoryWriteIntervalMYTx} from '../../core/statutory-source-lock';
+import {isPresentationCarrierPrincipalCurrentTx} from '../../core/carrier-principal';
+import {TENANT_STATUS_GOOD_STANDING} from '../../core/entitlement-types';
 import {savedTaxCircumstance} from './tax-circumstance';
 /** The Income Tax Resident field owns the scoped scheme; legacy approvals are conversion evidence only. */
 import {and,eq,isNull,sql} from 'drizzle-orm';
@@ -53,15 +55,37 @@ async function initialize(tx:Tx,ctx:SessionContext,e:{employmentId:string;person
  const [existing]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,e.companyId))).limit(1);return existing;
 }
 export async function getTaxSelectionMY(ctx:SessionContext,employmentId:string,payrollBatchId?:string,options?:{tx:Tx;readOnly:true}){
- ctx=captureStatutoryContext(ctx);const readOnly=options?.readOnly===true,snapshotTx=options?.tx;
- const read=async(tx:Tx)=>{if(!readOnly)await statutoryWriteIntervalMYTx(tx,ctx);const e=await taxSelectionContextMY(tx,ctx,employmentId,false,payrollBatchId,readOnly);
- const query=tx.select({key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1);
- const [profile]=await (readOnly?query:query.for('share'));
- if(!readOnly)await lock(tx,ctx.tenantId,e.employmentId);
- let [selection]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,e.companyId))).limit(1);
- if(!selection&&!readOnly){const permission=await tx.execute(sql`SELECT app.is_admin_for(${e.companyId}::uuid) AND app.is_admin_for(${e.currentCompanyId}::uuid) AS ok`);if(permission[0]?.ok===true)selection=await initialize(tx,ctx,e);}
- return {...e,scheme:profile?.key==='none'?'none':selection?.scheme??null,transitionState:profile?.key==='none'?'resolved':selection?.taxApplicabilityEpoch!==(profile?.epoch??0)?'confirmation_required':selection?.transitionState??'confirmation_required',version:selection?.version??0,taxApplicabilityEpoch:profile?.epoch??0};};
- return snapshotTx?read(snapshotTx):withTenant(ctx,read);
+ ctx=captureStatutoryContext(ctx);
+ const read=async(tx:Tx,mode:'borrowed'|'snapshot'|'initialize')=>{
+  const readOnly=mode!=='initialize';
+  if(!readOnly)await statutoryWriteIntervalMYTx(tx,ctx);
+  const e=await taxSelectionContextMY(tx,ctx,employmentId,false,payrollBatchId,readOnly);
+  const query=tx.select({key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1);
+  const [profile]=await (readOnly?query:query.for('share'));
+  if(!readOnly)await lock(tx,ctx.tenantId,e.employmentId);
+  let [selection]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,e.companyId))).limit(1);
+  const canInitialize=!selection&&mode!=='borrowed'&&(await tx.execute(sql`SELECT app.is_admin_for(${e.companyId}::uuid) AND app.is_admin_for(${e.currentCompanyId}::uuid) AS ok`))[0]?.ok===true;
+  if(canInitialize&&mode==='initialize')selection=await initialize(tx,ctx,e);
+  return {
+   needsInitialization:canInitialize&&mode==='snapshot',
+   view:{...e,scheme:profile?.key==='none'?'none':selection?.scheme??null,transitionState:profile?.key==='none'?'resolved':selection?.taxApplicabilityEpoch!==(profile?.epoch??0)?'confirmation_required':selection?.transitionState??'confirmation_required',version:selection?.version??0,taxApplicabilityEpoch:profile?.epoch??0},
+  };
+ };
+ if(options?.readOnly===true)return (await read(options.tx,'borrowed')).view;
+
+ const tenantStatus=ctx.entitlements?.tenantStatus;
+ if(tenantStatus!=null&&!TENANT_STATUS_GOOD_STANDING.has(tenantStatus)&&!ctx.statutoryOverride){
+  return (await withTenant(ctx,tx=>read(tx,'initialize'))).view;
+ }
+ const snapshot=await withTenant(ctx,async tx=>{
+  if(ctx.userId&&!(await isPresentationCarrierPrincipalCurrentTx(tx,ctx)))throw new Error('Statutory authority unavailable');
+  return read(tx,'snapshot');
+ },{readOnlySnapshot:true});
+ if(!snapshot.needsInitialization)return snapshot.view;
+
+ // A genuinely missing legacy row can materialize. Recheck principal, company and selection in
+ // a fresh transaction under the existing statutory barrier before using the legacy initializer.
+ return (await withTenant(ctx,tx=>read(tx,'initialize'))).view;
 }
 export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;personId?:string;scheme:string;expectedCompanyId:string;expectedVersion?:number;payrollBatchId?:string;expectedPayPeriod?:string}){
  ctx=captureStatutoryContext(ctx);p=structuredClone(p);await statutoryWriteIntervalMYTx(tx,ctx);

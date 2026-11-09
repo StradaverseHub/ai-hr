@@ -10,6 +10,7 @@ vi.mock('../lib/authz',async importActual=>({...await importActual<typeof import
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {createCompany,createDepartment} from '../core/admin';
+import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {hireEmployee} from '../core/org';
 import {employeeDetail} from '../core/read';
 import {workforceViewScope} from '../core/workforce-access';
@@ -19,6 +20,7 @@ import {requirePackFor} from '../localization/registry';
 import {setBankAction,saveBankStatutoryTabAction} from '../app/admin/personnel/[employmentId]/actions';
 import {SECTIONS_FIELD,SECTION_FIELD_PREFIX} from '../lib/personnel-tab-sections';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {pgSqlState} from '../lib/db-error';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,ctx:SessionContext,target:{personId:string;employmentId:string},otherCompany:string;
 const pack=()=>requirePackFor('MY'),fields={bankName:'Maybank',bankAccountNo:'FICTIONAL-NEW',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null};
@@ -28,6 +30,56 @@ async function login(companyId:string|null,personId:string|null=null,role:Parame
 function form(consolidated=false,employmentId=target.employmentId,personId=target.personId){const fd=new FormData();fd.set('employmentId',employmentId);if(consolidated)fd.set(SECTIONS_FIELD,'bank');const prefix=consolidated?SECTION_FIELD_PREFIX+'.bank.':'';for(const [key,value]of Object.entries({personId,bankName:fields.bankName,bankAccountNo:fields.bankAccountNo}))fd.set(prefix+key,value);return fd;}
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.restoreAllMocks());
 beforeEach(async()=>{await resetDb();b=await seedBase();ctx={...await entitledCtx(b),personId:null,grants:[{role:'hr_admin',companyId:null}]};session.ctx=ctx;target=await hireEmployee(ctx,{person:{fullName:'Fictional Bank Subject',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});await pack().statutory.set(ctx,{personId:target.personId,icNumber:null,bankName:'Maybank',bankAccountNo:'FICTIONAL-OLD',epfNumber:'PRIVATE-EPF'});otherCompany=(await createCompany(ctx,{legalName:'Fictional unrelated bank company',country:'MY',currency:'MYR'})).id;});
+it('offers bank and passport editors during an open Access writer while retaining scoped authority',async({signal})=>{
+ const scoped=await login(b.companyId),outside=await login(otherCompany),before=await snapshot();
+ if(!scoped.entitlements)throw Error('Scoped statutory fixture must have tenant entitlements');
+ const suspended={...scoped,entitlements:{...scoped.entitlements,tenantStatus:'suspended'}};
+ const editors=(actor:SessionContext,subject=target)=>Promise.all([
+  pack().statutory.bankEditAccess!(actor,subject),pack().statutory.passportEditAccess!(actor,subject),
+ ]);
+ let announce!:(pid:number)=>void,release!:()=>void;
+ const ready=new Promise<number>(resolve=>{announce=resolve;});
+ const held=new Promise<void>(resolve=>{release=resolve;});
+ signal.addEventListener('abort',release,{once:true});
+ const holder=owner.withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,b.tenantId);
+  const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
+  announce(backend.pid);
+  await held;
+ });
+ let deadline:ReturnType<typeof setTimeout>|undefined;
+ let checks:Promise<boolean[][]>|undefined;
+ try{
+  const blocker=await Promise.race([ready,holder.then(()=>{throw Error('Access holder exited before the statutory witness');})]);
+  const write=await withTenant(scoped,async tx=>{
+   await tx.execute(sql`set local lock_timeout='300ms'`);
+   await pack().statutory.setBank(scoped,command(),tx);
+  }).then(()=>null,(error:unknown)=>error);
+  expect(pgSqlState(write)).toBe('55P03');
+  checks=Promise.all([
+   editors(scoped),editors(outside),editors({...scoped,personId:target.personId}),
+   editors(scoped,{...target,personId:randomUUID()}),editors(suspended),
+   editors({...suspended,statutoryOverride:'Fictional existing statutory carrier override'}),
+  ]);
+  await expect(Promise.race([
+   checks,new Promise<never>((_,reject)=>{deadline=setTimeout(()=>reject(Error('Statutory editor admission waited for Access')),3000);}),
+  ])).resolves.toEqual([[true,true],[false,false],[false,false],[false,false],[false,false],[true,true]]);
+  const key='access-configuration:'+b.tenantId;
+  const [lock]=await owner.db.execute<{held:boolean}>(sql`select exists(
+   select 1 from pg_locks where pid=${blocker}::integer and locktype='advisory' and mode='ExclusiveLock' and granted
+    and classid=((hashtextextended(${key},0)>>32)&4294967295)::oid
+    and objid=(hashtextextended(${key},0)&4294967295)::oid and objsubid=1) as held`);
+  expect(lock.held).toBe(true);
+ }finally{
+  clearTimeout(deadline);
+  signal.removeEventListener('abort',release);
+  release();
+  await Promise.all([holder,checks?.catch(()=>{})]);
+ }
+ expect(await snapshot()).toEqual(before);
+ await owner.db.update(s.roleAssignment).set({companyId:otherCompany}).where(eq(s.roleAssignment.appUserId,scoped.userId!));
+ await expect(editors(scoped)).resolves.toEqual([false,false]);
+});
 it('refuses unrelated-company HR through the actual native page gate and directly at the native owner before private fields',async()=>{const outsider=await login(otherCompany);expect((await workforceViewScope(outsider)).canOpen).toBe(true);expect(await employeeDetail(outsider,target.employmentId,'workforce')).toBeNull();expect(await pack().statutory.bankEditAccess!(outsider,{personId:target.personId,employmentId:target.employmentId})).toBe(false);const before=await snapshot();let privateRead=false;await expect(withTenant(outsider,async tx=>{const select=vi.spyOn(tx,'select');try{await pack().statutory.setBank(outsider,{personId:target.personId,...fields},tx);}finally{privateRead=select.mock.calls.some(args=>!!args[0]&&'bankAccountNo' in (args[0] as Record<string,unknown>));}})).rejects.toThrow();expect(privateRead).toBe(false);expect(await snapshot()).toEqual(before);});
 it.each([false,true])('refuses the real %s consolidated/standalone action for unrelated-company HR',async consolidated=>{session.ctx=await login(otherCompany);const before=await snapshot();if(consolidated)expect(await saveBankStatutoryTabAction(form(true))).toMatchObject({ok:false,saved:[],failedSection:'bank'});else await expect(setBankAction(form())).rejects.toThrow(/REDIRECT:.*error=/);expect(await snapshot()).toEqual(before);});
 it.each([false,true])('binds actual employment to person for the real %s consolidated/standalone action',async consolidated=>{const another=await hireEmployee(ctx,{person:{fullName:'Fictional alternate bank subject',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});await pack().statutory.set(ctx,{personId:another.personId,icNumber:null,bankName:'Maybank',bankAccountNo:'FICTIONAL-OTHER'});const before=await snapshot();if(consolidated)expect(await saveBankStatutoryTabAction(form(true,target.employmentId,another.personId))).toMatchObject({ok:false,saved:[],failedSection:'bank'});else await expect(setBankAction(form(false,target.employmentId,another.personId))).rejects.toThrow(/REDIRECT:.*error=/);expect(await snapshot()).toEqual(before);});
