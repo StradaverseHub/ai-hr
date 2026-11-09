@@ -379,27 +379,47 @@ describe('first-party authentication with real private storage and existing HR b
     const loginAudits = () => owner.client`select count(*)::int as n from domain_event
       where tenant_id=${base.tenantId} and event_type='app-user.logged-in'`;
     const before = await loginAudits();
+    const read = vi.spyOn(client, 'unsafe');
+    let finished = 0, announce!: () => void;
+    const settledMiss = new Promise<void>(resolve => { announce = resolve; });
+    vi.stubGlobal('__aihrPerfBeginPoolWork', () => ({
+      acquired: () => {}, finished: () => { if (++finished === 2) announce(); },
+    }));
     let attempt: Promise<AuthReply> | undefined;
+    let witnessTimeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await owner.client.begin(async tx => {
-        const [holder] = await tx`select pg_backend_pid() as pid`;
+        const [holder] = await tx<{ pid: number }[]>`select pg_backend_pid() as pid`;
         await tx`select pg_advisory_xact_lock(hashtextextended(${'internal-auth:' + rateKey},0))`;
-        attempt = verifyMfa(raw, signedIn.recoveryCodes![0]);
-        void attempt.catch(() => {});
-        await expect.poll(async () => {
-          const [row] = await tx`select exists(select 1 from pg_locks
-            where locktype='advisory' and not granted and ${holder.pid}::int=any(pg_blocking_pids(pid))) as waiting`;
-          return row.waiting;
-        }, { timeout: 5000 }).toBe(true);
-        await tx`update public.app_internal_auth_record set expires_at=clock_timestamp()-interval '1 second'
-          where record_key=${key}`;
+        const started = performance.now();
+        const pending = verifyMfa(raw, signedIn.recoveryCodes![0]);
+        attempt = pending;
+        // First app permit is the unlocked challenge read. The second is the settled rate-key miss.
+        await Promise.race([
+          settledMiss,
+          pending.then(() => { throw Error('MFA completed while its rate key was held'); }),
+          new Promise<never>((_, reject) => { witnessTimeout = setTimeout(() => reject(Error('MFA rate-key miss did not settle')), 350); }),
+        ]);
+        clearTimeout(witnessTimeout);
+        expect(read.mock.calls.filter(([query, params]) =>
+          query === 'select sealed from app.internal_auth_read($1,$2)' && params?.[0] === key && params?.[1] === false)).toHaveLength(1);
+        expect(await rateLockState(holder.pid)).toEqual({ held: true, waiting: false });
+        expect(await readRecord(client, rateKey)).toEqual({ count: 1 });
+        await tx`set local lock_timeout='250ms'`;
+        const expired = await tx<{ expired: boolean }[]>`update public.app_internal_auth_record
+          set expires_at=clock_timestamp()-interval '1 second' where record_key=${key}
+          returning expires_at<clock_timestamp() as expired`;
+        expect(expired).toEqual([{ expired: true }]);
+        expect(performance.now() - started).toBeLessThan(750);
       });
       await expect(attempt).rejects.toMatchObject({ code: 'invalidChallenge' });
       expect(await readRecord(client, rateKey)).toEqual({ count: 2 });
       expect((await credentialByLogin('alpha', 'owner'))?.recoveryHashes).toEqual(account.recoveryHashes);
       expect(await loginAudits()).toEqual(before);
     } finally {
+      clearTimeout(witnessTimeout);
       await attempt?.catch(() => {});
+      read.mockRestore();
       clock.mockRestore();
     }
   }, 20000);
