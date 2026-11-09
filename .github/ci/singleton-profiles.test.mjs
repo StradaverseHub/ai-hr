@@ -11,6 +11,9 @@ import {fileURLToPath} from 'node:url';
 import {buildUnits,requiredEvidence,CI_EXECUTION} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
 import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,singletonSourceMaximum,protocolHash,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection} from './singleton-protocol.mjs';
+import {NATIVE_WORKLOAD_DATABASE_FILE,NATIVE_WORKLOAD_DATABASE_HBA,NATIVE_WORKLOAD_DATABASE_SETTINGS,NATIVE_WORKLOAD_OBSERVER,
+ NATIVE_WORKLOAD_OBSERVER_URL,nativeWorkloadDatabaseUnit,validateNativeWorkloadDatabaseUrls,validateNativeWorkloadObserverUrl} from './singleton-protocol.mjs';
+import {prepareNativeWorkloadPostgres} from './native-workload-postgres.mjs';
 import {requiredHostedSingletons} from '../../scripts/gate-singleton-scope.mjs';
 const candidateRoot=realpathSync(fileURLToPath(new URL('../../',import.meta.url)));
 const journalPath='db/migrations/meta/_journal.json';
@@ -36,7 +39,7 @@ test('every registered infrastructure file remains exactly once in its native cl
  const native=Object.keys(SINGLETON_FILES),ordinary=['test/ordinary-db.test.ts','test/ordinary-nodb.test.ts'];
  const db=native.filter(f=>singletonKind(singletonDescriptor(f).profile)==='db').concat(ordinary[0]),nodb=native.filter(f=>!db.includes(f)).concat(ordinary[1]),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browser),special=units.filter(u=>u.singleton);
- assert.equal(special.length,27);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
+ assert.equal(special.length,28);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
  assert(special.every(u=>u.files.length===1&&u.singleton.workers===1));assert.equal(requiredEvidence({suite,units}).units.length,units.length);
  for(const unit of special){const changed=structuredClone(units);changed.find(u=>u.id===unit.id).singleton.workers=2;assert.throws(()=>requiredEvidence({suite,units:changed}));}
  assert.throws(()=>buildUnits([native[0]],{db:[],nodb:[native[0]]},browser));
@@ -102,6 +105,41 @@ test('actual full-CI host context, complete plan and closed native prerequisites
  for(const file of ['test/runtime-ready-admission-native.test.ts','test/notification-worker-lifecycle.test.ts','test/analytics-termination-lateral.test.ts','test/runtime-next-admission-native.test.ts','test/access-editor-native-owner-presentation.test.ts','test/notification-worker-native-plan-diagnostic.test.ts']){
   const f=fixture(file);validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
  }
+});
+test('native workload DB custody refuses focused intent, foreign role URLs and incomplete durable custody',()=>{
+ const f=fixture(NATIVE_WORKLOAD_DATABASE_FILE),boot=fixture('test/runtime-next-admission-native.test.ts');
+ assert(nativeWorkloadDatabaseUnit(f.unit)&&nativeNextUnit(f.unit));
+ assert(!nativeWorkloadDatabaseUnit(boot.unit));
+ assert.throws(()=>prepareNativeWorkloadPostgres(boot.plan,boot.unit,'/unused'),/fixed native workload DB unit/);
+ assert.throws(()=>assertSingletonSelection([NATIVE_WORKLOAD_DATABASE_FILE]),/protected full-CI unit/);
+ assert(singletonSources(f.unit,candidateRoot).includes('.github/ci/native-workload-postgres.mjs'));
+ assert(!singletonSources(boot.unit,candidateRoot).includes('.github/ci/native-workload-postgres.mjs'));
+ validateSingletonHost(f);
+ assert.throws(()=>validateSingletonHost({...f,env:{...f.env,GITHUB_JOB:'selected-tests'}}));
+ assert.throws(()=>validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot));
+ f.binding.prerequisites.workloadDatabase={kind:'OWNED_SCRAM_WORKLOAD_DATABASE_COMPONENT',containerIdentitySha256:'e'.repeat(64),
+  systemIdentifierSha256:'d'.repeat(64),hbaSha256:createHash('sha256').update(NATIVE_WORKLOAD_DATABASE_HBA).digest('hex'),
+  settings:{...NATIVE_WORKLOAD_DATABASE_SETTINGS}};
+ validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
+ for(const mutate of [p=>p.hbaSha256='0'.repeat(64),p=>p.settings.fsync='off',p=>p.settings.deadlock_timeout='5s',p=>p.settings.log_lock_waits='off',p=>p.ownerUrl='unused']){
+  const invalid=structuredClone(f.binding);mutate(invalid.prerequisites.workloadDatabase);
+  assert.throws(()=>validateSingletonBinding(invalid,f.plan,f.unit,f.witness,candidateRoot));
+ }
+ const url=(user,key,db)=>`postgres://${user}:${key.repeat(64)}@127.0.0.1:5433/${db}`;
+ const app=url('ai_hr_app','a','ai_hr_test_w1'),owner=url('postgres','b','ai_hr_test_w1'),observer=url(NATIVE_WORKLOAD_OBSERVER,'c','ai_hr_test_w1');
+ const worker={DATABASE_URL:app,TEST_DATABASE_URL:app,MIGRATION_DATABASE_URL:owner,TEST_MIGRATION_DATABASE_URL:owner,[NATIVE_WORKLOAD_OBSERVER_URL]:observer};
+ assert.equal(validateNativeWorkloadDatabaseUrls(worker,'ai_hr_test_w1'),url('postgres','b','postgres'));
+ assert.equal(validateNativeWorkloadObserverUrl(worker),observer);
+ const migration={DATABASE_URL:url('ai_hr_app','a','ai_hr_dev'),TEST_DATABASE_URL:url('ai_hr_app','a','ai_hr_test'),
+  MIGRATION_DATABASE_URL:url('postgres','b','ai_hr_dev'),TEST_MIGRATION_DATABASE_URL:url('postgres','b','ai_hr_test')};
+ assert.equal(validateNativeWorkloadDatabaseUrls(migration,null),url('postgres','b','postgres'));
+ for(const value of [app.replace('127.0.0.1','example.invalid'),app.replace('5433','5432'),app+'?sslmode=require',app+'#x',
+  app.replace(':'+ 'a'.repeat(64),''),app.replace('a'.repeat(64),'b'.repeat(64)),url('postgres','a','ai_hr_test_w1')]){
+  assert.throws(()=>validateNativeWorkloadDatabaseUrls({...worker,DATABASE_URL:value},'ai_hr_test_w1'),error=>!String(error).includes(value));
+ }
+ assert.throws(()=>validateNativeWorkloadDatabaseUrls(worker,'ai_hr_test_w2'));
+ assert.throws(()=>validateNativeWorkloadDatabaseUrls(migration,'ai_hr_test_w1'));
+ assert.throws(()=>validateNativeWorkloadObserverUrl({...worker,[NATIVE_WORKLOAD_OBSERVER_URL]:url(NATIVE_WORKLOAD_OBSERVER,'b','ai_hr_test_w1')}));
 });
 for(const [name,mutate]of [
  ['foreign source',f=>f.binding.candidate='f'.repeat(40)],['foreign controller',f=>f.binding.controller='f'.repeat(40)],

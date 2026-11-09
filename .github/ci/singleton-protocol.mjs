@@ -10,6 +10,26 @@ import {REWARDS_NATIVE_SOURCES} from './rewards-native-sources.mjs';
 import {EMPLOYEE_LIFECYCLE_PROFILE,employeeLifecycleFile} from './employee-lifecycle-profile.mjs';
 import {EMPLOYEE_LIFECYCLE_SOURCES,assertEmployeeLifecycleSourceClosure} from './employee-lifecycle-sources.mjs';
 export const SINGLETON_VERSION=1;
+export const NATIVE_WORKLOAD_DATABASE_FILE='test/runtime-next-workload-database-native.test.ts';
+export const NATIVE_WORKLOAD_DATABASE_PROFILE='linux-next-workload-postgres-v1';
+export const NATIVE_WORKLOAD_OBSERVER='ai_hr_workload_observer';
+export const NATIVE_WORKLOAD_OBSERVER_URL='AIHR_NATIVE_WORKLOAD_DATABASE_OBSERVER_URL';
+export const NATIVE_WORKLOAD_DATABASE_HBA=[
+ 'local all postgres trust',
+ 'local all all reject',
+ 'host postgres,ai_hr_dev,ai_hr_test,ai_hr_test_tpl,ai_hr_test_w1 postgres 127.0.0.1/32 scram-sha-256',
+ 'host ai_hr_test_w1 ai_hr_app 127.0.0.1/32 scram-sha-256',
+ `host ai_hr_test_w1 ${NATIVE_WORKLOAD_OBSERVER} 127.0.0.1/32 scram-sha-256`,
+ 'host all all all reject',
+ '',
+].join('\n');
+export const NATIVE_WORKLOAD_DATABASE_SETTINGS=Object.freeze({
+ fsync:'on',synchronous_commit:'on',full_page_writes:'on',wal_level:'replica',jit:'on',
+ listen_addresses:'127.0.0.1',port:'5433',shared_preload_libraries:'pg_stat_statements',
+ compute_query_id:'on','pg_stat_statements.track':'all','pg_stat_statements.track_planning':'on',
+ log_lock_waits:'on',deadlock_timeout:'1s',log_line_prefix:'%m [%p] %c %u@%d ',
+ log_statement:'none',log_min_error_statement:'panic',log_parameter_max_length_on_error:'0',
+});
 const measured=[
  'test/access-editor-native-owner-presentation.test.ts',
  'test/analytics-termination-lateral.test.ts',
@@ -37,13 +57,20 @@ export const SINGLETON_FILES=Object.freeze({
  'test/notification-worker-lifecycle.test.ts':'notification-cluster-v1',
  'test/notification-worker-native-plan-diagnostic.test.ts':'notification-cluster-v1',
  'test/runtime-next-admission-native.test.ts':'linux-next-postgres-v1',
+ [NATIVE_WORKLOAD_DATABASE_FILE]:NATIVE_WORKLOAD_DATABASE_PROFILE,
 });
 export const singletonProfile=file=>Object.hasOwn(SINGLETON_FILES,file)?SINGLETON_FILES[file]:null;
-export const nativeNextUnit=unit=>unit?.singleton?.profile==='linux-next-postgres-v1';
+export const nativeNextProfile=profile=>profile==='linux-next-postgres-v1'||profile===NATIVE_WORKLOAD_DATABASE_PROFILE;
+export const nativeNextUnit=unit=>nativeNextProfile(unit?.singleton?.profile);
+export const nativeWorkloadDatabaseUnit=unit=>unit?.singleton?.profile===NATIVE_WORKLOAD_DATABASE_PROFILE
+ &&unit?.files?.length===1&&unit.files[0]===NATIVE_WORKLOAD_DATABASE_FILE;
 export const singletonControllerPath=(unit,workspace,runId)=>nativeNextUnit(unit)?'/var/lib/aihr-native-controller/'+runId+'/automation':workspace+'/automation';
 export const singletonJobName=unit=>nativeNextUnit(unit)?`native-test (${unit.id})`:unit.kind==='browser'?`browser (${unit.engine})`:`test (${unit.id})`;
 export const singletonKind=profile=>profile==='linux-systemd-nginx-v1'?'nodb':'db';
-export function assertSingletonSelection(files){assert(!files.some(file=>singletonProfile(file))||files.length===1,'Infrastructure-sensitive focused tests require an actual sole-file selection');}
+export function assertSingletonSelection(files){
+ assert(!files.includes(NATIVE_WORKLOAD_DATABASE_FILE),'Native workload database requires the protected full-CI unit');
+ assert(!files.some(file=>singletonProfile(file))||files.length===1,'Infrastructure-sensitive focused tests require an actual sole-file selection');
+}
 export function assertSingletonCoverage(suite,read){
  for(const file of suite){
   const text=read(file),profile=singletonProfile(file);
@@ -83,7 +110,7 @@ registerEmployeeChoiceBenchmark('${purpose}');
   }
  }
 }
-export const singletonDescriptor=file=>{const profile=singletonProfile(file);return profile?{version:SINGLETON_VERSION,profile,workers:1,isolation:profile==='linux-next-postgres-v1'?'job-host-and-postgres-cluster':profile==='linux-systemd-nginx-v1'?'job-host':'job-postgres-cluster'}:null;};
+export const singletonDescriptor=file=>{const profile=singletonProfile(file);return profile?{version:SINGLETON_VERSION,profile,workers:1,isolation:nativeNextProfile(profile)?'job-host-and-postgres-cluster':profile==='linux-systemd-nginx-v1'?'job-host':'job-postgres-cluster'}:null;};
 export function assertSingletonUnit(unit){
  assert(unit&&unit.files?.length===1,'Singleton unit requires exactly one complete test file');
  const expected=singletonDescriptor(unit.files[0]);assert(expected,'Unregistered singleton file');
@@ -725,7 +752,8 @@ function singletonSourceInputs(unit,candidateRoot){
    '.github/ci/native-controller-bootstrap.py','.github/ci/native-controller-owner.mjs','.github/ci/prepare-runner.sh',
    '.github/ci/run-unit.mjs','.github/ci/plan.mjs','.github/ci/singleton-profiles.mjs',
    '.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml',
-   'scripts/migrate-with-focused-prerequisites.ts','scripts/lib/discard-premigration.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts']:[])];
+   'scripts/migrate-with-focused-prerequisites.ts','scripts/lib/discard-premigration.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts']:[]),
+  ...(nativeWorkloadDatabaseUnit(unit)?['.github/ci/native-workload-postgres.mjs','.github/ci/postgres.sh']:[])];
  return {sources:[...new Set(sources)].sort(),journalSha256:database?.journalSha256};
 }
 export function singletonSources(unit,candidateRoot){return singletonSourceInputs(unit,candidateRoot).sources;}
@@ -738,6 +766,35 @@ export function validateSingletonDatabaseUrls(env,database){
  for(const [key,user]of Object.entries({DATABASE_URL:'ai_hr_app',TEST_DATABASE_URL:'ai_hr_app',MIGRATION_DATABASE_URL:'postgres',TEST_MIGRATION_DATABASE_URL:'postgres'})){
   const value=new URL(env[key]);assert(['postgres:','postgresql:'].includes(value.protocol));assert.equal(value.hostname,'127.0.0.1');assert.equal(value.port,'5433');assert.equal(value.pathname,'/'+database);assert.equal(value.username,user);assert.equal(value.search,'');assert.equal(value.hash,'');
  }
+}
+function workloadDatabaseUrl(raw,user,database){
+ let url;try{url=new URL(raw);}catch{throw Error('Native workload database URL refused');}
+ assert(url.protocol==='postgres:'&&url.hostname==='127.0.0.1'&&url.port==='5433'
+  &&url.username===user&&/^[a-f0-9]{64}$/.test(url.password)&&url.pathname==='/'+database
+  &&!url.search&&!url.hash&&url.href===raw,'Native workload database URL refused');
+ return url;
+}
+export function validateNativeWorkloadDatabaseUrls(env,database){
+ assert(database===null||database==='ai_hr_test_w1','Native workload requires the sole canonical worker database');
+ const app=workloadDatabaseUrl(env.DATABASE_URL,'ai_hr_app',database??'ai_hr_dev');
+ const owner=workloadDatabaseUrl(env.MIGRATION_DATABASE_URL,'postgres',database??'ai_hr_dev');
+ const testApp=workloadDatabaseUrl(env.TEST_DATABASE_URL,'ai_hr_app',database??'ai_hr_test');
+ const testOwner=workloadDatabaseUrl(env.TEST_MIGRATION_DATABASE_URL,'postgres',database??'ai_hr_test');
+ assert(app.password===testApp.password&&owner.password===testOwner.password&&app.password!==owner.password,'Native workload role credentials must be distinct and consistently bound');
+ owner.pathname='/postgres';return owner.href;
+}
+export function validateNativeWorkloadObserverUrl(env){
+ const observer=workloadDatabaseUrl(env[NATIVE_WORKLOAD_OBSERVER_URL],NATIVE_WORKLOAD_OBSERVER,'ai_hr_test_w1');
+ const app=workloadDatabaseUrl(env.DATABASE_URL,'ai_hr_app','ai_hr_test_w1'),owner=workloadDatabaseUrl(env.MIGRATION_DATABASE_URL,'postgres','ai_hr_test_w1');
+ assert(observer.password!==app.password&&observer.password!==owner.password,'Native workload observer credential must be distinct');
+ return observer.href;
+}
+export function validateNativeWorkloadDatabaseCustody(value){
+ assert(value&&Object.keys(value).sort().join('|')==='containerIdentitySha256|hbaSha256|kind|settings|systemIdentifierSha256');
+ assert.equal(value.kind,'OWNED_SCRAM_WORKLOAD_DATABASE_COMPONENT');
+ assert(digest(value.containerIdentitySha256)&&digest(value.systemIdentifierSha256));
+ assert.equal(value.hbaSha256,createHash('sha256').update(NATIVE_WORKLOAD_DATABASE_HBA).digest('hex'));
+ assert.deepEqual(value.settings,NATIVE_WORKLOAD_DATABASE_SETTINGS);
 }
 export function validateNativeHostPrerequisite(p){
  assert(p&&Object.keys(p).sort().join('|')==='kind|nginxPath|nginxSha256|nginxVersion|pid1|platform|sudoUid|systemdVersion');
@@ -776,7 +833,7 @@ export function validateSingletonBinding(binding,plan,unit,witness,candidateRoot
  assert(typeof binding.evidenceDirectory==='string'&&binding.evidenceDirectory.startsWith('/')&&!binding.evidenceDirectory.includes('\0'));
  const p=binding.prerequisites;
  if(unit.kind==='db'){
-  assert(p&&Object.keys(p).sort().join('|')===(nativeNextUnit(unit)?'build|database|host|kind|workers':'database|kind|workers'));
+  assert(p&&Object.keys(p).sort().join('|')===(nativeWorkloadDatabaseUnit(unit)?'build|database|host|kind|workers|workloadDatabase':nativeNextUnit(unit)?'build|database|host|kind|workers':'database|kind|workers'));
   assert.equal(p.kind,nativeNextUnit(unit)?'fresh-job-next-systemd-nginx-postgres':'fresh-job-postgres-cluster');assert.equal(p.workers,1);
   assert.equal(p.database?.name,`aihr-ci-${binding.runId}-${binding.attempt}-${unit.id}`,'Cluster belongs to another job unit');
   validatePostgresEvidence(p.database,plan.execution);
@@ -784,6 +841,7 @@ export function validateSingletonBinding(binding,plan,unit,witness,candidateRoot
    validateNativeHostPrerequisite(p.host);
    validateNativeBuildPrerequisite(p.build,{source:plan.sha,controller:plan.controller,runId:binding.runId,attempt:binding.attempt});
   }
+  if(nativeWorkloadDatabaseUnit(unit))validateNativeWorkloadDatabaseCustody(p.workloadDatabase);
  }else validateNativeHostPrerequisite(p);
  return true;
 }
