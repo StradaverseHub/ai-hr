@@ -32,6 +32,10 @@ on:
         description: Whole-repository compiler check in a separate standard runner
         default: false
         type: boolean
+      compiler_full_trace:
+        description: Closed stock full-project trace for the two reviewed Db interface cells; diagnostic only
+        default: false
+        type: boolean
       run_native_typecheck:
         description: Native app compiler with its strict Expo project and locked SDK dependencies
         default: false
@@ -90,7 +94,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
-      tests: ${{ steps.selection.outputs.tests }}
+      tests: ${{ inputs.compiler_full_trace && steps.trace-selection.outputs.tests || steps.selection.outputs.tests }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -102,10 +106,22 @@ jobs:
       - name: Focused controller regression checks
         run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
       - name: Validate bounded manifest
+        if: ${{ !inputs.compiler_full_trace }}
         id: selection
         run: node .github/ci/focused-checks.mjs selection
         env:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}
+      - name: Trace controller regression controls
+        if: ${{ inputs.compiler_full_trace }}
+        run: node --test .github/ci/diagnostics/compiler-full-trace.test.mjs .github/ci/compiler-wrapper.test.mjs
+      - name: Validate exact trace-only selection before candidate resolution
+        if: ${{ inputs.compiler_full_trace }}
+        id: trace-selection
+        run: |
+          node .github/ci/diagnostics/compiler-full-trace.mjs --selection
+          echo 'tests=[]' >> "$GITHUB_OUTPUT"
+        env:
+          AIHR_COMPILER_TRACE_INPUTS: ${{ toJSON(inputs) }}
       - name: Resolve frozen same-repository candidate
         id: candidate
         run: node .github/ci/resolve.mjs
@@ -113,6 +129,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
+    if: ${{ !inputs.compiler_full_trace }}
     needs: resolve
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
@@ -179,19 +196,79 @@ jobs:
       run:
         working-directory: source
     steps:
+      - name: Record native first-step trace clock
+        if: ${{ inputs.compiler_full_trace }}
+        working-directory: ${{ github.workspace }}
+        env:
+          AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+        run: |
+          python3 -I -B - <<'PYCODE'
+          import json, os, pathlib, time
+          root = pathlib.Path(os.environ['RUNNER_TEMP']).resolve() / 'compiler-full-trace-clock'
+          root.mkdir(mode=0o700)
+          record = dict(version=1, kind='NATIVE_FIRST_STEP_CLOCK_NOT_GITHUB_JOB_START',
+            source=os.environ['AIHR_CI_HEAD'], controller=os.environ['AIHR_CI_CONTROL_HEAD'],
+            runId=os.environ['GITHUB_RUN_ID'], attempt=os.environ['GITHUB_RUN_ATTEMPT'],
+            job=os.environ['GITHUB_JOB'], monotonicNs=str(time.monotonic_ns()))
+          fd = os.open(root / 'anchor.json', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+          try:
+            with os.fdopen(fd, 'w') as output: output.write(json.dumps(record) + '\n')
+          except BaseException:
+            raise
+          PYCODE
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.workflow_sha }}
           path: automation
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        if: ${{ !inputs.compiler_full_trace }}
         with:
           ref: ${{ needs.resolve.outputs.sha }}
           path: source
           persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        if: ${{ inputs.compiler_full_trace }}
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 0
       - uses: ./automation/.github/actions/setup-alpha
       - run: pnpm exec next typegen
+        if: ${{ !inputs.compiler_full_trace }}
       - run: bash ../automation/.github/ci/typecheck.sh
+        if: ${{ !inputs.compiler_full_trace }}
+      - name: Meter the unchanged real Next typegen command
+        if: ${{ inputs.compiler_full_trace }}
+        run: node ../automation/.github/ci/diagnostics/compiler-full-trace.mjs --typegen
+        env:
+          AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+          AIHR_COMPILER_TRACE_INPUTS: ${{ toJSON(inputs) }}
+      - name: One cold stock whole-project checking trace
+        if: ${{ inputs.compiler_full_trace }}
+        run: bash ../automation/.github/ci/typecheck.sh --full-trace
+        env:
+          AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+          AIHR_COMPILER_TRACE_INPUTS: ${{ toJSON(inputs) }}
+      - name: Collect only bounded owned trace artifacts, including actual failure
+        if: ${{ always() && inputs.compiler_full_trace }}
+        id: trace-collect
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ -d source ]; then cd source; fi
+          /usr/bin/timeout --signal=KILL 20s node "$GITHUB_WORKSPACE/automation/.github/ci/diagnostics/compiler-full-trace.mjs" --collect
+        env:
+          AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+          AIHR_COMPILER_TRACE_INPUTS: ${{ toJSON(inputs) }}
+      - name: Retain private compiler diagnostic bytes without changing the failed outcome
+        if: ${{ always() && inputs.compiler_full_trace && steps.trace-collect.outputs.export_ready == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-full-trace
+          path: ${{ runner.temp }}/compiler-full-trace-export/
+          if-no-files-found: error
+          retention-days: 14
   linux-build:
     if: ${{ inputs.run_build }}
     needs: resolve

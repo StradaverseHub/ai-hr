@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted && "$(uname -s)" == Linux ]] || exit 2
-case "${1:-}" in ""|--incremental-diagnostic|--state-transport-producer|--state-transport-consumer|--whole-cache) (( $# <= 1 )) || exit 2 ;; *) exit 2 ;; esac
+case "${1:-}" in ""|--incremental-diagnostic|--state-transport-producer|--state-transport-consumer|--whole-cache|--full-trace) (( $# <= 1 )) || exit 2 ;; *) exit 2 ;; esac
 compiler_mode="${1:-}"
+if [[ "$compiler_mode" == --full-trace ]]; then
+  [[ "${AIHR_CI_CAPACITY_PROFILE:-legacy}" == legacy ]] || exit 2
+fi
 swapfile="$RUNNER_TEMP/aihr-tsc-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.swap"
 owned_swap=0
 owned_file=0
 cleanup() {
   local entry_exit=$?
-  if [[ "$compiler_mode" == --state-transport-producer || "$compiler_mode" == --state-transport-consumer || "$compiler_mode" == --whole-cache ]]; then
+  if [[ "$compiler_mode" == --state-transport-producer || "$compiler_mode" == --state-transport-consumer || "$compiler_mode" == --whole-cache || "$compiler_mode" == --full-trace ]]; then
     local cleanup_exit=0 swap_absent=true file_absent=true active_state
     if [[ "$owned_swap" == 1 ]]; then
       sudo swapoff "$swapfile" || cleanup_exit=1
@@ -31,6 +34,11 @@ cleanup() {
         "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$compiler_mode" "$owned_swap" "$owned_file" "$swap_absent" "$file_absent" "$entry_exit" "$cleanup_exit" \
         > "$RUNNER_TEMP/compiler-transport-swap-cleanup.json"
     ) || cleanup_exit=1
+    if [[ "$compiler_mode" == --full-trace ]]; then
+      trap - EXIT
+      if (( entry_exit != 0 )); then exit "$entry_exit"; fi
+      exit "$cleanup_exit"
+    fi
     if (( entry_exit != 0 )); then return "$entry_exit"; fi
     return "$cleanup_exit"
   fi
@@ -68,7 +76,9 @@ df -Pk "$RUNNER_TEMP"
 free -b
 export NODE_OPTIONS=--max-old-space-size=12288
 # Whole repository, same strict config; no file exclusions or ignored build errors.
-if [[ "${1:-}" == --whole-cache ]]; then
+if [[ "${1:-}" == --full-trace ]]; then
+  node "$(dirname "$0")/diagnostics/compiler-full-trace.mjs"
+elif [[ "${1:-}" == --whole-cache ]]; then
   node "$(dirname "$0")/compiler-cache.mjs"
 elif [[ "${1:-}" == --state-transport-producer ]]; then
   node "$(dirname "$0")/diagnostics/compiler-transport.mjs" producer

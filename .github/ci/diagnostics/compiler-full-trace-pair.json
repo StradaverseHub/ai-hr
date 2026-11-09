@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "kind": "FIXED_TWO_SOURCE_STOCK_FULL_TRACE_PAIR",
+  "base": "0f50e869e9e74f012803e8aafe1f3350e8792605",
+  "guard": {
+    "path": "test/types/database-client-native-contract.ts",
+    "bytes": 7540,
+    "sha256": "99a8278db7e0009402b5c9afc5caaf5c429b60eb3e0741d80dbd4ad259427014"
+  },
+  "control": {
+    "source": "0be622808b1b7a07889fdf4ef2f273e43c740c38",
+    "parent": "0f50e869e9e74f012803e8aafe1f3350e8792605",
+    "branch": "codex/compiler-native-db-control-email-20261109",
+    "dbClient": {
+      "path": "db/client.ts",
+      "bytes": 22595,
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f"
+    }
+  },
+  "candidate": {
+    "source": "2202245a62cabcd43ba193150a54dfabb5f71c43",
+    "parent": "0be622808b1b7a07889fdf4ef2f273e43c740c38",
+    "branch": "codex/compiler-native-db-interface-email-20261109",
+    "dbClient": {
+      "path": "db/client.ts",
+      "bytes": 22914,
+      "sha256": "e0330805d9818e43d2915ce074daa4855dbc4cc1431288d74edba5de627dbc72"
+    }
+  },
+  "common": [
+    {
+      "path": "tsconfig.json",
+      "bytes": 676,
+      "sha256": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "bytes": 356104,
+      "sha256": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+    },
+    {
+      "path": "package.json",
+      "bytes": 6300,
+      "sha256": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c"
+    },
+    {
+      "path": "node_modules/typescript/package.json",
+      "bytes": 3620,
+      "sha256": "822ef7ca6452205657b6288b066481ecf508bfbf43455d715cf7d3ec457561e6"
+    },
+    {
+      "path": "node_modules/typescript/lib/tsc.js",
+      "bytes": 267,
+      "sha256": "2cffde0b8c6760dfb0b5b0382bbb7e00ba6a8b2d981b9205b256a700a481d983"
+    },
+    {
+      "path": "node_modules/typescript/lib/_tsc.js",
+      "bytes": 6213092,
+      "sha256": "e8f349eabd48486bdb2bf9dc1a00c89d58297270c54b745838879e2859194419"
+    },
+    {
+      "path": "node_modules/typescript/lib/typescript.js",
+      "bytes": 9112572,
+      "sha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675"
+    }
+  ],
+  "trackedInputCount": 9069,
+  "trackedInputPathsSha256": "2b23741bcb500d3f18efda30bb1e6454b160a008b5ee496ff6f51b0a9cc06f22"
+}
