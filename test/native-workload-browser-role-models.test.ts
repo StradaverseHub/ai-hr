@@ -67,7 +67,7 @@ const suites=[
   'test_stock_observation_requires_held_exec_transition_and_never_uses_control_eof',
   'test_stock_snapshot_rejects_command_or_surviving_helper_socket',
  ]},
- {name:'runs the 10 exact manager admission source models',stem:'manager-admission',count:10,owner:'ManagerAdmissionModels',methods:[
+ {name:'runs the 17 exact manager admission source models',stem:'manager-admission',count:17,owner:'ManagerAdmissionModels',methods:[
   'test_borrowed_library_and_callback_close_after_terminal_or_refused_recheck',
   'test_fixed_paths_observe_same_pid1_library_and_socket_without_loader_or_connection',
   'test_original_clock_refuses_invalid_expired_and_late_native_readback',
@@ -78,7 +78,15 @@ const suites=[
   'test_recheck_rejects_pid1_birth_executable_credentials_namespaces_and_exit',
   'test_refuses_symlink_writable_parent_or_foreign_socket_path_before_admission',
   'test_refuses_unsafe_library_header_extent_or_changed_name',
- ]},
+ ],additional:{owner:'ManagerLibraryLinkInputModels',methods:[
+  'test_link_inputs_are_dormant_and_read_only_with_exact_byte_boundary',
+  'test_link_inputs_bind_exact_bytes_and_ordered_duplicate_dependencies',
+  'test_link_inputs_refuse_competing_projected_pages_even_when_load_extents_are_disjoint',
+  'test_link_inputs_refuse_conflicting_or_non_file_backed_address_mappings',
+  'test_link_inputs_refuse_invalid_dynamic_segment_and_missing_terminator',
+  'test_link_inputs_refuse_missing_duplicate_or_unbounded_string_table_fields',
+  'test_link_inputs_require_fixed_soname_and_bounded_ascii_basenames',
+ ]}},
 ] as const;
 const sources=[
  'test/native-workload-browser-role-models.test.ts',
@@ -131,10 +139,9 @@ const exceptionKinds=new Map([
  ['RuntimeError','runtime'],['TimeoutError','timeout'],['Refused','refused'],
 ]);
 
-function reportFailure(owner:string,methods:readonly string[],stderr:string){
+function reportFailure(cases:readonly {id:string;label:string}[],stderr:string){
  const lines=stderr.split('\n');
- const cases=methods.map(method=>{
-  const id=owner+'.'+method,label=method+' (__main__.'+id+')';
+ const outcomesByCase=cases.map(({id,label})=>{
   const outcomes=lines.filter(line=>line.startsWith(label+' ... ')||line.startsWith('  '+label+' ('));
   const outcome=outcomes.some(line=>line.endsWith(' ... ERROR'))?'error'
    :outcomes.some(line=>line.endsWith(' ... FAIL'))?'failed'
@@ -148,10 +155,11 @@ function reportFailure(owner:string,methods:readonly string[],stderr:string){
   const kind=name&&exceptionKinds.get(name);
   if(kind)exceptions.add(kind);
  }
- process.stderr.write(JSON.stringify({cases,exceptions:exceptions.size?[...exceptions].sort():['other']})+'\n');
+ process.stderr.write(JSON.stringify({cases:outcomesByCase,exceptions:exceptions.size?[...exceptions].sort():['other']})+'\n');
 }
 
-it.each(suites)('$name',({stem,count,owner,methods})=>{
+it.each(suites)('$name',suite=>{
+ const {stem,count,owner,methods}=suite;
  expect(process.platform).toBe('linux');
  expect(process.env.GITHUB_ACTIONS).toBe('true');
  expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
@@ -160,7 +168,12 @@ it.each(suites)('$name',({stem,count,owner,methods})=>{
  const sha=process.env.AIHR_CI_HEAD??'';
  expect(sha).toMatch(/^[a-f0-9]{40}$/);
  requireSource(sha);
- const expected=[...methods].sort().map(method=>method+' (__main__.'+owner+'.'+method+') ... ok');
+ const groups='additional' in suite?[{owner,methods},suite.additional]:[{owner,methods}];
+ const cases=groups.flatMap(group=>[...group.methods].sort().map(method=>{
+  const id=group.owner+'.'+method;
+  return {id,label:method+' (__main__.'+id+')'};
+ }));
+ const expected=cases.map(({label})=>label+' ... ok');
  expect(expected).toHaveLength(count);
  expect(new Set(expected).size).toBe(count);
  expect(lstatSync('/dev/null').isCharacterDevice()).toBe(true);
@@ -169,8 +182,9 @@ it.each(suites)('$name',({stem,count,owner,methods})=>{
   cwd:root,env,encoding:'utf8',
   timeout:10000,killSignal:'SIGKILL',maxBuffer:128*1024,stdio:['ignore','pipe','pipe'],
  });
+ requireSource(sha);
  if(result.error||result.signal!==null||result.status!==0){
-  reportFailure(owner,methods,result.stderr??'');
+  reportFailure(cases,result.stderr??'');
   throw Error('Browser role model process failed');
  }
  const transcript=result.stderr.split('\n');
@@ -178,6 +192,5 @@ it.each(suites)('$name',({stem,count,owner,methods})=>{
  const duration=new RegExp('^Ran '+count+' tests in [0-9]+\\.[0-9]{3}s$');
  expect(result.stdout===''&&transcript.length===count+6&&expected.every((line,index)=>line===transcript[index])
   &&spacer===''&&divider==='-'.repeat(70)&&duration.test(elapsed)&&blank===''&&summary==='OK'&&eof==='').toBe(true);
- requireSource(sha);
  process.stderr.write(result.stderr);
 },30000);
