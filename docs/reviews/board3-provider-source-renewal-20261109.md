@@ -42,3 +42,7 @@ The existing closure members whose bytes changed are listed below.
 The merge preserves Payroll’s 718 applied SQL payloads and journal entries and appends Board 3’s three previously reviewed SQL payloads at their reserved higher timestamps. Board 3’s focused development evidence remains bound to its original source. The merged release candidate requires the standard authenticated hosted release checks against the Payroll baseline.
 
 The registry requires actual human approval of the exact source binding before renewal. The renewal itself does not activate a pending contract or renew a stored promotion or evaluation. [Provider review rule](../../lib/ai/provider-data-reviews.ts)
+
+## Owner approval
+
+The repository owner answered **“Yes approve”** at 2026-11-09T05:21:16+00:00 to the exact 29-contract renewal request for review commit `100861f700f05c6cf45c12388b8618b0043a2df2`. The registry changes only the 29 existing source digests. Reversing those substitutions reproduces the Payroll registry byte for byte, including both pending contracts and all existing metadata.
