@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import runpy
 import stat
+import subprocess
 import tempfile
 import time
 from types import SimpleNamespace
@@ -162,6 +163,8 @@ class SettlementModel(unittest.TestCase):
             'kind': model['MANAGED_KIND'], 'candidateSha': model['SOURCE'],
             'candidateTree': model['SOURCE_TREE'], 'controllerSha': CONTROLLER, 'runId': RUN, 'attempt': 1,
             'releaseEligible': False, 'compilerStateReusable': False, 'complete': True,
+            'diagnosticLocationOrigin': {'run': model['LOCATION_ORIGIN_RUN'], 'artifactSha256': model['LOCATION_ORIGIN_ARTIFACT_SHA256']},
+            'diagnosticLocations': {'status': 'unmatched-compiler-outcome', 'rows': []},
             'heapMiB': model['HEAP_MIB'], 'residentCapBytes': CAP, 'swapCapBytes': SWAP,
             'platformSwapVerified': True, 'platformSwapPreserved': True,
             'compilerExit': 0, **matched_input(), 'managedState': inventory_row(result=True, matched=True),
@@ -209,6 +212,26 @@ class SettlementModel(unittest.TestCase):
                 self.settle()
         self.assertFalse(self.output.exists())
 
+    def test_changed_compiler_log_or_projection_refuses_upload_and_deletes_raw(self):
+        raw = self.directory / 'compiler.raw.log'
+        compiler_log = b'sealed compiler details\n'
+        raw.write_bytes(compiler_log)
+        raw.chmod(0o600)
+        self.receipt(compilerLog={'bytes': len(compiler_log), 'sha256': '0' * 64})
+        with self.assertRaisesRegex(Refusal, 'diagnostic-log-custody'):
+            self.settle()
+        self.assertFalse(raw.exists())
+        self.assertFalse(self.output.exists())
+        (self.directory / 'receipt.json').unlink()
+        raw.write_bytes(compiler_log)
+        raw.chmod(0o600)
+        self.receipt(compilerLog={'bytes': len(compiler_log), 'sha256': hashlib.sha256(compiler_log).hexdigest()},
+                     diagnosticLocations={'status': 'verified', 'rows': []})
+        with self.assertRaisesRegex(Refusal, 'diagnostic-location-custody'):
+            self.settle()
+        self.assertFalse(raw.exists())
+        self.assertFalse(self.output.exists())
+
     def test_changed_platform_cleans_raw_without_admitting_upload(self):
         raw = self.directory / 'manager.raw.log'
         model['own_json'](raw, {'private': 'raw'})
@@ -242,6 +265,68 @@ class SettlementModel(unittest.TestCase):
         receipt = json.loads((self.directory / 'swap-settlement.json').read_text())
         self.assertFalse(receipt['platformSwapIdentityVerified'])
         self.assertEqual(receipt['platformSwapBirthSha256'], None)
+
+
+class DiagnosticLocationModel(unittest.TestCase):
+    def setUp(self):
+        owner = tempfile.TemporaryDirectory()
+        self.addCleanup(owner.cleanup)
+        self.source = Path(owner.name).resolve()
+        self.relative = 'app/(panel)/[user]/view.tsx'
+        self.path = self.source / self.relative
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text('abcdef\n💡ab\nabcd\nabcdef\nabcdef\n', encoding='utf-8')
+        self.git('init', '-q')
+        self.git('add', '--', self.relative)
+        self.raw = self.output()
+        self.report = {'compilerOutcome': 'typescript-diagnostics', 'compilerExit': 2, 'compilerFiles': 11685,
+                       'typescriptDiagnosticCount': 5, 'typescriptDiagnosticCodes': [[2769, 1], [7031, 4]],
+                       **matched_input(), 'ownedCleanup': 'settled'}
+        self.report.update({key: True for key in ('admitted', 'grantSent', 'managedInputsReverified',
+                           'generatedTypesVerified', 'sourceReverified', 'zeroObservedOom', 'platformSwapPreserved')})
+
+    def git(self, *args):
+        subprocess.run(['/usr/bin/git', '-C', str(self.source), *args], check=True, capture_output=True,
+                       env={**os.environ, 'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_CONFIG_NOSYSTEM': '1'})
+
+    def output(self, first=None):
+        return ''.join([first or f'{self.relative}(1,3): error TS2769: private-message-omit\n'] + [
+            f'{self.relative}({line},5): error TS7031: private-message-omit\n' for line in range(2, 6)]).encode()
+
+    def project(self, raw=None, **overrides):
+        if raw is None:
+            raw = self.raw
+        report = {**self.report, 'compilerLog': {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}, **overrides}
+        return model['diagnostic_location_evidence'](raw, self.source, report)
+
+    def test_exact_headers_project_public_tracked_coordinates_only(self):
+        expected = [{'code': 2769 if line == 1 else 7031, 'path': self.relative,
+                     'line': line, 'column': 3 if line == 1 else 5} for line in range(1, 6)]
+        normal = self.project()
+        self.assertEqual(normal, {'status': 'verified', 'rows': expected})
+        self.assertEqual(self.project(self.output(f'{self.path}(1,3): error TS2769: different message\r\n')), normal)
+        self.assertNotIn('private-message-omit', json.dumps(normal))
+        self.assertNotIn(str(self.source), json.dumps(normal))
+
+    def test_foreign_unknown_or_ambiguous_coordinates_fail_closed(self):
+        variants = [f'../{self.relative}(1,3): error TS2769: private\n',
+                    f'/absolute/private.ts(1,3): error TS2769: private\n',
+                    f'{self.relative}(999,3): error TS2769: private\n',
+                    f'{self.relative}(1,999): error TS2769: private\n',
+                    f'{self.relative}(1,3): error TS2345: private\n',
+                    'error TS2769: private\n']
+        unknown = self.source / 'untracked.ts'
+        unknown.write_text('abcdef\n')
+        variants.append('untracked.ts(1,3): error TS2769: private\n')
+        for first in variants:
+            with self.subTest(first=first):
+                self.assertEqual(self.project(self.output(first)), {'status': 'location-projection-refused', 'rows': []})
+        duplicate = self.raw.replace(b'(3,5)', b'(2,5)')
+        self.assertEqual(self.project(duplicate)['rows'], [])
+        self.assertEqual(self.project(compilerLog={'bytes': len(self.raw), 'sha256': '0'*64})['rows'], [])
+        self.assertEqual(self.project(compilerFiles=11686), {'status': 'unmatched-compiler-outcome', 'rows': []})
+        self.path.write_text('different contents\n')
+        self.assertEqual(self.project()['rows'], [])
 
 
 def inventory_row(*, result=False, matched=False):

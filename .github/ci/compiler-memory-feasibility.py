@@ -19,7 +19,7 @@ import time
 SOURCE = '06e499c211807981689c34c5e732b7dac488abbc'
 SOURCE_TREE = '07eb0a9652ff94af91950de089df84e5e6fce2bd'
 SOURCE_BRANCH = 'codex/architecture-zero-busy-lock-qualification-20261109'
-BRANCH = 'codex/compiler-06e499c-managed-platform-swap-20261110'
+BRANCH = 'codex/compiler-06e499c-managed-diagnostic-locations-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 HEAP_MIB = 13 * 1024
@@ -41,8 +41,8 @@ PROGRESS_COUNTERS = ('cpuUsec', 'userUsec', 'systemUsec', 'cpuSomeUsec', 'cpuFul
 PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
 PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-13312-managed-platform'
-UNIT_PREFIX = 'aihr-compiler-13312-managed-'
+DIRECTORY = 'compiler-13312-managed-locations'
+UNIT_PREFIX = 'aihr-compiler-13312-locations-'
 UNIT_NAME = re.compile(rf'{re.escape(UNIT_PREFIX)}[1-9][0-9]{{0,15}}\.service')
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -66,6 +66,12 @@ BASELINE_INVENTORY = {
 }
 BASELINE_NODE_SHA256 = 'fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48'
 BASELINE_ARGV_SHA256 = 'c24f853d33edb0cfbb3068197aba380b9869e89e762827bb0edf9fe72de8027d'
+LOCATION_ORIGIN_RUN = '42678892305'
+LOCATION_ORIGIN_ARTIFACT_SHA256 = '6242512bde138de6c56eb15e52ddb28479ca5b37ff67acb2e2487dcacc53b539'
+LOCATION_CODES = [[2769, 1], [7031, 4]]
+LOCATION_NATIVE_FILES = 11685
+LOCATION_GENERATED = {'next-env.d.ts', '.next/types/cache-life.d.ts', '.next/types/root-params.d.ts',
+                      '.next/types/routes.d.ts', '.next/types/validator.ts'}
 SOURCE_INPUTS = {
     'tsconfig.json': '0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a',
     'package.json': '7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c',
@@ -740,6 +746,75 @@ def compiler_log_evidence(raw):
             'compilerFiles': int(files[0]) if len(files) == 1 and len(files[0]) <= 6 else None}
 
 
+def read_owned_compiler_log(log):
+    fd = os.open(log, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as stream:
+        info = os.fstat(fd)
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1
+                and stat.S_IMODE(info.st_mode) == 0o600 and 0 < info.st_size <= MAX_LOG, 'log-bound')
+        raw = stream.read(MAX_LOG + 1)
+        require(len(raw) == info.st_size and identity(info) == identity(os.fstat(fd))
+                == identity(os.stat(log, follow_symlinks=False)), 'log-changed')
+        return raw
+
+
+def diagnostic_source(source, raw_name, line, column):
+    prefix = os.fsencode(source) + b'/'
+    if raw_name.startswith(prefix):
+        raw_name = raw_name[len(prefix):]
+    elif raw_name.startswith(b'./'):
+        raw_name = raw_name[2:]
+    require(re.fullmatch(rb'[A-Za-z0-9_.@+() \[\]/-]{1,384}', raw_name) is not None
+            and all(part not in (b'', b'.', b'..', b'.git') for part in raw_name.split(b'/')),
+            'diagnostic-source-name')
+    name = raw_name.decode('ascii')
+    path = source / name
+    require(path.resolve(strict=True) == path and path.suffix in {'.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'},
+            'diagnostic-source-path')
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as stream:
+        info = os.fstat(fd)
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1
+                and 0 < info.st_size <= MAX_LOG, 'diagnostic-source-member')
+        content = stream.read(MAX_LOG + 1)
+        require(len(content) == info.st_size and identity(info) == identity(os.fstat(fd))
+                == identity(path.lstat()), 'diagnostic-source-changed')
+    if name not in LOCATION_GENERATED:
+        result, found = command(['/usr/bin/git', '-C', str(source), '--literal-pathspecs', 'ls-files', '--stage', '-z', '--', name])
+        blob = hashlib.sha1(b'blob ' + str(len(content)).encode('ascii') + b'\0' + content).hexdigest().encode('ascii')
+        require(result == 0 and re.fullmatch(rb'100(?:644|755) ' + blob + rb' 0\t' + re.escape(raw_name) + rb'\0', found),
+                'diagnostic-source-tracked-blob')
+    lines = re.split(r'\r\n|\r|\n|\u2028|\u2029', content.decode('utf-8-sig'))
+    require(1 <= line <= len(lines) and 1 <= column <= len(lines[line-1].encode('utf-16-le')) // 2 + 1,
+            'diagnostic-source-coordinate')
+    return name
+
+
+def diagnostic_location_evidence(raw, source, report):
+    if (report.get('compilerOutcome') != 'typescript-diagnostics' or report.get('compilerExit') != 2
+            or report.get('compilerFiles') != LOCATION_NATIVE_FILES or report.get('typescriptDiagnosticCount') != 5
+            or report.get('typescriptDiagnosticCodes') != LOCATION_CODES or not same_baseline(report)
+            or not all(report.get(key) is True for key in ('admitted', 'grantSent', 'managedInputsReverified',
+                       'generatedTypesVerified', 'sourceReverified', 'zeroObservedOom', 'platformSwapPreserved'))
+            or report.get('ownedCleanup') != 'settled'):
+        return {'status': 'unmatched-compiler-outcome', 'rows': []}
+    try:
+        require(isinstance(raw, bytes) and 0 < len(raw) <= MAX_LOG and report['compilerLog'] == {
+            'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}, 'diagnostic-log-identity')
+        fields = re.findall(rb'^([^\r\n]{1,384})\(([1-9][0-9]{0,6}),([1-9][0-9]{0,6})\): error TS([1-9][0-9]{3,4}):', raw, re.M)
+        require(len(fields) == 5 and sorted(int(item[3]) for item in fields) == [2769, 7031, 7031, 7031, 7031],
+                'diagnostic-location-count')
+        rows = []
+        for filename, line, column, code in fields:
+            line, column, code = int(line), int(column), int(code)
+            name = diagnostic_source(source, filename, line, column)
+            rows.append({'code': code, 'path': name, 'line': line, 'column': column})
+        require(len({tuple(row.values()) for row in rows}) == 5, 'diagnostic-location-duplicate')
+        return {'status': 'verified', 'rows': rows}
+    except (Refusal, OSError, ValueError, KeyError, subprocess.SubprocessError):
+        return {'status': 'location-projection-refused', 'rows': []}
+
+
 def compiler_outcome(report):
     if report.get('v8HeapFatalMarker') is True:
         return 'v8-heap-exhausted'
@@ -1072,16 +1147,9 @@ def run_stock(workspace, temporary, controller, run_id, directory):
                 report['platformSwapPreserved'] = True
         except (Refusal, OSError, ValueError, KeyError, subprocess.SubprocessError):
             report['platformSettlementRefused'] = True
+        raw = None
         try:
-            log = directory / 'compiler.raw.log'
-            fd = os.open(log, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
-            with os.fdopen(fd, 'rb') as stream:
-                info = os.fstat(fd)
-                require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1
-                        and stat.S_IMODE(info.st_mode) == 0o600 and 0 < info.st_size <= MAX_LOG, 'log-bound')
-                raw = stream.read(MAX_LOG + 1)
-                require(len(raw) == info.st_size and identity(info) == identity(os.fstat(fd))
-                        == identity(os.stat(log, follow_symlinks=False)), 'log-changed')
+            raw = read_owned_compiler_log(directory / 'compiler.raw.log')
             if report['ownedCleanup'] == 'settled':
                 report['compilerLog'] = {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
                 report.update(compiler_log_evidence(raw))
@@ -1108,6 +1176,8 @@ def run_stock(workspace, temporary, controller, run_id, directory):
                 os.close(cache_fd)
         report['complete'] = accepted_terminal(report, deadline)
         report['compilerOutcome'] = compiler_outcome(report)
+        report['diagnosticLocationOrigin'] = {'run': LOCATION_ORIGIN_RUN, 'artifactSha256': LOCATION_ORIGIN_ARTIFACT_SHA256}
+        report['diagnosticLocations'] = diagnostic_location_evidence(raw, source, report)
         own_json(directory / 'receipt.json', report)
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as stream:
             stream.write('evidence=true\n')
@@ -1122,11 +1192,28 @@ def independent_cleanup(workspace, temporary, controller, run_id):
     with owner_lock(directory):
         settle_manager(directory, unit_name(run_id), controller, run_id)
         cleanup_cache(workspace / 'source', directory, controller, run_id)
-        for name in ('compiler.raw.log', 'manager.raw.log'):
-            path = directory / name
-            if os.path.lexists(path):
-                private_file_birth(path.lstat())
-                path.unlink()
+        locations_verified = False
+        report = None
+        try:
+            receipt = directory / 'receipt.json'
+            if os.path.lexists(receipt):
+                report = read_intent(receipt, maximum=64 * 1024)
+                require(report.get('diagnosticLocationOrigin') == {
+                    'run': LOCATION_ORIGIN_RUN, 'artifactSha256': LOCATION_ORIGIN_ARTIFACT_SHA256}, 'diagnostic-location-origin')
+                raw = None
+                if report.get('compilerLog') is not None:
+                    raw = read_owned_compiler_log(directory / 'compiler.raw.log')
+                    require(report['compilerLog'] == {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()},
+                            'diagnostic-log-custody')
+                projected = diagnostic_location_evidence(raw, workspace / 'source', report)
+                require(projected == report.get('diagnosticLocations'), 'diagnostic-location-custody')
+                locations_verified = projected['status'] == 'verified'
+        finally:
+            for name in ('compiler.raw.log', 'manager.raw.log'):
+                path = directory / name
+                if os.path.lexists(path):
+                    private_file_birth(path.lstat())
+                    path.unlink()
         swap = directory / 'platform-swap.json'
         platform_verified = False
         birth_digest = None
@@ -1138,9 +1225,7 @@ def independent_cleanup(workspace, temporary, controller, run_id):
             platform_swap(birth)
             birth_digest = hashlib.sha256(json.dumps(birth).encode('ascii')).hexdigest()
             platform_verified = True
-        receipt = directory / 'receipt.json'
-        if os.path.lexists(receipt):
-            report = read_intent(receipt, maximum=64 * 1024)
+        if report is not None:
             require([report.get(key) for key in ('kind', 'candidateSha', 'candidateTree', 'controllerSha', 'runId', 'attempt',
                     'releaseEligible', 'compilerStateReusable', 'heapMiB', 'residentCapBytes', 'swapCapBytes')] == [
                         MANAGED_KIND, SOURCE, SOURCE_TREE, controller, run_id, 1, False, False, HEAP_MIB, LIMIT, SWAP],
@@ -1162,7 +1247,7 @@ def independent_cleanup(workspace, temporary, controller, run_id):
                   'kind': 'COMPILER_PLATFORM_SWAP_INDEPENDENT_SETTLEMENT_NOT_RELEASE',
                   'unitAbsent': True, 'managedStateRemoved': True, 'platformSwapIdentityVerified': platform_verified,
                   'platformSwapBirthSha256': birth_digest, 'privateLogsRemoved': True,
-                  'releaseEligible': False})
+                  'diagnosticLocationsIndependentlyVerified': locations_verified, 'releaseEligible': False})
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as stream:
             stream.write('settled=true\n')
 
