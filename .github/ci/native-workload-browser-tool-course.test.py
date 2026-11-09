@@ -86,7 +86,26 @@ def tool_owner_report():
 
 class ToolIntentModels(unittest.TestCase):
     def test_only_exact_real_native_job_and_manual_self_source_enter(self):
-        self.assertEqual(B.tool_intent(environment(), event())[0], '123')
+        env = environment()
+        for omitted in (False, True):
+            data = event()
+            if omitted:
+                del data['inputs']['commission_singleton_units']
+            with self.subTest(omitted=omitted):
+                raw = B.canonical(data)
+                self.assertEqual(B.tool_intent(env, data), ('123', pathlib.Path(env['GITHUB_WORKSPACE'])))
+                self.assertEqual(B.canonical(data), raw)
+                event_row = {'path':'/home/runner/work/_temp/_github_workflow/event.json',
+                             'size':len(raw), 'sha256':B.hashlib.sha256(raw).hexdigest()}
+                request = {'environment':env, 'runnerUid':1001, 'runnerGid':1001, 'event':event_row, 'rows':[]}
+                # The receiver must accept the same original event bytes, then refuse the empty capsule.
+                with patch.object(sys, 'platform', 'linux'), patch.object(os, 'geteuid', return_value=0), \
+                     patch.dict(os.environ, {'SUDO_UID':'1001','SUDO_GID':'1001'}, clear=True), \
+                     patch.object(B.pwd, 'getpwuid', return_value=SimpleNamespace(pw_gid=1001)), \
+                     patch.object(B, '_tool_event', return_value=raw) as read_event, \
+                     self.assertRaisesRegex(ValueError, 'Fixed TOOL capsule census required'):
+                    B.seal_tool(request)
+                read_event.assert_called_once_with(env, event_row['path'], 1001, event_row)
         for key, value in [('GITHUB_JOB','runner-diagnostics'), ('GITHUB_RUN_ATTEMPT','2'),
                            ('RUNNER_ENVIRONMENT','self-hosted'), ('GITHUB_EVENT_NAME','push'),
                            ('GITHUB_REF','refs/heads/main'), ('GITHUB_WORKFLOW_SHA','b'*40),
@@ -173,9 +192,14 @@ class ToolIntentModels(unittest.TestCase):
             ]
             for actual, checkpoint in (([], 'dispatch-input-map'), ({}, 'dispatch-input-keys'),
                                        (inputs | {'extra':'fictional private bytes'}, 'dispatch-input-keys'),
+                                       (omitted | {'extra':'fictional private bytes'}, 'dispatch-input-keys'),
+                                       ({key:value for key, value in omitted.items() if key != 'expected_sha'}, 'dispatch-input-keys'),
                                        (inputs | {'test_parallelism':'8'}, 'dispatch-input-values'),
+                                       (omitted | {'test_parallelism':'8'}, 'dispatch-input-values'),
+                                       (inputs | {'commission_singleton_units':' '}, 'dispatch-input-values'),
+                                       (inputs | {'commission_singleton_units':None}, 'dispatch-input-types'),
+                                       (inputs | {'commission_singleton_units':False}, 'dispatch-input-types'),
                                        (inputs | typed | {'controller_only':True}, 'dispatch-input-types'),
-                                       (omitted, 'dispatch-commission-omitted'),
                                        (inputs | typed, 'dispatch-typed-booleans'),
                                        (omitted | typed, 'dispatch-commission-omitted-and-typed-booleans')):
                 cases.append((B.canonical(dispatch | {'inputs':actual}), {}, checkpoint))
@@ -184,6 +208,14 @@ class ToolIntentModels(unittest.TestCase):
                      patch.object(B, '_tool_event', side_effect=[supplied]):
                     receipt = B.prepare_tool()
                     self.assertEqual(receipt, base | {'preRootCheckpoint':checkpoint})
+                    B._validate_tool_capture(B.canonical(receipt), '1')
+            for actual in (inputs, omitted):
+                with self.subTest(commission_present='commission_singleton_units' in actual), \
+                     patch.dict(os.environ, env, clear=True), \
+                     patch.object(B, '_tool_event', return_value=B.canonical(dispatch | {'inputs':actual})), \
+                     patch.object(pathlib.Path, 'cwd', return_value=pathlib.Path('/fictional-tool-controller')):
+                    receipt = B.prepare_tool()
+                    self.assertEqual(receipt, base | {'preRootCheckpoint':'controller-location'})
                     B._validate_tool_capture(B.canonical(receipt), '1')
             with patch.dict(os.environ, env, clear=True), patch.object(B, '_tool_event', return_value=payload), \
                  patch.object(B, 'context', side_effect=[('123', pathlib.Path(env['GITHUB_WORKSPACE'])),
@@ -205,6 +237,7 @@ class ToolIntentModels(unittest.TestCase):
             with self.subTest(fields=changed.keys()), self.assertRaises(ValueError):
                 B._validate_tool_capture(B.canonical(changed), '1')
         B._validate_tool_capture(B.canonical(base | {'preRootCheckpoint':'unknown'}), '1')
+        B._validate_tool_capture(B.canonical(base | {'preRootCheckpoint':'dispatch-commission-omitted'}), '1')
 
     def test_success_capture_requires_closed_owner_shape_and_positive_settlement(self):
         report = tool_owner_report()

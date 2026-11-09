@@ -317,5 +317,30 @@
     "resolvePassedExpressionIntentDoesNotProveNativeRepresentation": true,
     "modelCount": 25,
     "nativeObservation": "UNRUN"
+  },
+  "optionalCommissionOmissionCorrection": {
+    "historicalRun": {
+      "runId": "42570802869",
+      "source": "ab7b7aa8547e3141e6166f4d89146192be66d72d",
+      "controller": "ab7b7aa8547e3141e6166f4d89146192be66d72d",
+      "attempt": 1,
+      "artifactId": "13653446430",
+      "terminalJobs": 13,
+      "conclusion": "failure",
+      "nativeLogSha256": "12df1f91c833375f836e5a5b394375ed6e29fdd6d44f6c7c9a7a0b90195acc4a",
+      "artifactZipSha256": "bf356b90daf5fac1fa08b44ccb86de59532200da483bcaabade93861707f2e85",
+      "receiptSha256": "c5344742336191576634fdc4d2707430b41d01b978b72fa12f3e9d88604c4827",
+      "receiptBytes": 190,
+      "observedCheckpoint": "dispatch-commission-omitted",
+      "cleanup": "not-observed"
+    },
+    "acceptedAdditionalInputShape": "Exact TOOL inputs with only the optional empty commission_singleton_units field absent",
+    "explicitEmptyRemainsAdmitted": true,
+    "otherKeysTypesAndValuesRemainExact": true,
+    "originalEventBytesAndHashBoundAcrossRootHandoff": true,
+    "historicalReceiptStillValid": true,
+    "rawEventBytesPublished": false,
+    "modelCount": 25,
+    "nativeObservation": "UNRUN"
   }
 }

@@ -446,7 +446,8 @@ def tool_intent(environment, event):
                 'commission_singleton_units': '', 'build_only': 'false', 'diagnostics_only': 'true',
                 'controller_only': 'false', 'native_tool_only': 'true'}
     inputs = event.get('inputs')
-    if not (type(inputs) is dict and inputs == expected):
+    # The runner may omit the optional empty commission input from event.json.
+    if not (type(inputs) is dict and {'commission_singleton_units': '', **inputs} == expected):
         raise _ToolDispatchRefusal(_tool_dispatch_input_checkpoint(inputs, expected),
                                    'Exclusive fixed TOOL dispatch inputs required')
     return run, workspace
