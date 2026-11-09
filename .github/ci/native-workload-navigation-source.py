@@ -163,3 +163,104 @@ def capture_navigation_history(tree: PinnedTree, inventory: bytes,
     tree.assert_unchanged()
     check_clock()
     return NativeNavigationHistoryFacts(ordinary, history)
+
+
+class NavigationOrdinaryGitObject(NamedTuple):
+    """Expected raw Git object facts supplied by the separately authenticated owner."""
+    member: BoundedHarnessMember
+    sha256: str
+
+
+class ObservedNavigationOrdinary(NamedTuple):
+    path: str
+    mode: str
+    size: int
+    git_blob: str
+    sha256: str
+
+
+class NativeNavigationOrdinaryFacts(NamedTuple):
+    ordinary: tuple[ObservedNavigationOrdinary, ...]
+    scenario: bytes
+
+
+_SCENARIO_PATH = 'scripts/performance/navigation-scenarios.json'
+_RAW_SHA256 = re.compile(r'[a-f0-9]{64}')
+
+
+def _stream_ordinary(tree, member, expected_sha256, check_clock):
+    check_clock()
+    sha256 = hashlib.sha256()
+    git_blob = hashlib.sha1(f'blob {member.size}\0'.encode('ascii'), usedforsecurity=False)
+    scenario = bytearray() if member.path == _SCENARIO_PATH else None
+    with tree.open_regular(member.path, member.size, context='ordinary navigation source') as (source, before):
+        original = _file_identity(before)
+        mode = before.st_mode
+        executable = bool(mode & 0o100) if member.mode == '100755' else not mode & 0o111
+        # Git stores the owner execute distinction. A read-only projection can
+        # remove write bits; privileged or externally writable modes refuse.
+        _require(before.st_size == member.size and before.st_nlink == 1
+                 and mode & 0o400 and not mode & 0o7022 and executable,
+                 'ordinary navigation checkout metadata differs')
+        _require(_file_identity(os.fstat(source.fileno())) == original,
+                 'ordinary navigation descriptor differs before reading')
+        remaining = member.size
+        while remaining:
+            check_clock()
+            block = source.read(min(READ_CHUNK, remaining))
+            _require(0 < len(block) <= remaining, 'ordinary navigation source length changed')
+            remaining -= len(block)
+            sha256.update(block)
+            git_blob.update(block)
+            if scenario is not None:
+                scenario.extend(block)
+        check_clock()
+        _require(not source.read(1), 'ordinary navigation source grew')
+        _require(_file_identity(os.fstat(source.fileno())) == original
+                 == _file_identity(tree.metadata(member.path)),
+                 'ordinary navigation source changed while reading')
+    check_clock()
+    sha, oid = sha256.hexdigest(), git_blob.hexdigest()
+    _require(oid == member.git_blob and sha == expected_sha256,
+             'ordinary navigation checkout bytes differ from Git object evidence')
+    return ObservedNavigationOrdinary(member.path, member.mode, member.size, oid, sha), scenario
+
+
+def capture_navigation_ordinary(tree: PinnedTree, inventory: bytes,
+                                git_objects: tuple[NavigationOrdinaryGitObject, ...],
+                                check_clock: Callable[[], None]) -> NativeNavigationOrdinaryFacts:
+    """Compare one held checkout to its independently authenticated Git objects.
+
+    The caller owns complete inventory and Git-object authentication. Returned
+    rows use the existing partition's path order, with no execution authority.
+    """
+    ordinary = _partition(inventory, check_clock)
+    _require(type(git_objects) is tuple and len(git_objects) == len(ordinary),
+             'ordinary navigation Git object evidence count differs')
+    by_path = {member.path: member for member in ordinary}
+    expected = {}
+    for obj in git_objects:
+        check_clock()
+        _require(type(obj) is NavigationOrdinaryGitObject and type(obj.member) is BoundedHarnessMember
+                 and type(obj.member.path) is str and 0 < len(obj.member.path) <= 4096
+                 and type(obj.member.mode) is str and obj.member.mode in ('100644', '100755')
+                 and type(obj.member.size) is int and 0 <= obj.member.size <= MAX_FILE
+                 and type(obj.member.git_blob) is str and len(obj.member.git_blob) == 40
+                 and type(obj.sha256) is str and _RAW_SHA256.fullmatch(obj.sha256) is not None,
+                 'invalid ordinary navigation Git object evidence')
+        path = obj.member.path
+        _require(path not in expected, 'duplicate ordinary navigation Git object evidence')
+        _require(by_path.get(path) == obj.member, 'ordinary navigation Git object metadata differs')
+        expected[path] = obj.sha256
+
+    observed, scenario = [], None
+    for member in ordinary:
+        fact, content = _stream_ordinary(tree, member, expected[member.path], check_clock)
+        observed.append(fact)
+        if content is not None:
+            scenario = bytes(content)
+    _require(scenario is not None, 'ordinary navigation scenario bytes missing')
+    check_clock()
+    tree.assert_unchanged()
+    check_clock()
+    return NativeNavigationOrdinaryFacts(tuple(observed), scenario)
