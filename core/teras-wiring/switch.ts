@@ -11,15 +11,26 @@
 import {and,eq} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {terasWorkerControl,type TerasAttestedProvider} from '../../db/teras-schema';
-import {workerRunGateTx} from '../agent-registry/controls';
-import {mayUseAssistant} from '../assistant-grant';
+import {workerRunGateTx,workerRunGatesTx} from '../agent-registry/controls';
+import {ASSISTANT_MODULE,mayUseAssistant} from '../assistant-grant';
 import {issueHarnessPermit,type HarnessPermit} from '../harness/permit';
+import {withModulePresentationRead} from '../module-presentation-read';
 
 export const CONVERSATION_WORKER='conversation' as const;
 export type ConversationRoute=Readonly<{route:'closed'}>|Readonly<{route:'harness';permit:HarnessPermit;attestedProvider:TerasAttestedProvider|null;
  /** The explainers worker's own gate (ADR-0170 §3.13): off, and the turn is not offered the "Why?" explainers. */
  explainers:boolean}>;
 const CLOSED:ConversationRoute=Object.freeze({route:'closed'});
+
+/** Whether to offer a chat affordance from the current presentation snapshot. */
+export async function conversationHarnessAvailableForPresentation(ctx:SessionContext):Promise<boolean>{
+ try{
+  return await withModulePresentationRead(ctx,ASSISTANT_MODULE,async(tx,current)=>{
+   const gates=await workerRunGatesTx(tx,current,[CONVERSATION_WORKER]);
+   return gates.get(CONVERSATION_WORKER)?.gate.run===true&&(await mayUseAssistant(current,tx)).allowed;
+  });
+ }catch{return false;}
+}
 
 export async function conversationRoute(supplied:SessionContext):Promise<ConversationRoute>{
  const ctx:SessionContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};

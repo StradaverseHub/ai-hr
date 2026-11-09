@@ -1,5 +1,5 @@
 /** ADR-0169 phase B: the Assistant's destination registry must stay complete, real and labelled. */
-import {readFileSync,readdirSync} from 'node:fs';
+import {existsSync,readFileSync,readdirSync} from 'node:fs';
 import {join,relative} from 'node:path';
 import {describe,expect,it} from 'vitest';
 import '@/packs/register-all';
@@ -25,9 +25,10 @@ describe('product destination registry',()=>{
   expect(rows.length).toBeGreaterThan(80);
   expect(new Set(rows.map(row=>row.href)).size).toBe(rows.length);
  });
- it('names only real pages',()=>{
+ it('names only real pages and the guarded Claim Forms bookmark',()=>{
   const routes=pageRoutes();expect(routes.length).toBeGreaterThan(100);
-  expect(rows.filter(row=>!routes.some(route=>route.test(pathOf(row.href)))).map(row=>row.href)).toEqual([]);
+  expect(rows.filter(row=>!routes.some(route=>route.test(pathOf(row.href)))
+   && !(row.href==='/admin/claims/forms'&&existsSync(join(app,'admin/claims/forms/route.ts')))).map(row=>row.href)).toEqual([]);
  });
  it('has a label in every shipped locale',()=>{
   for(const [locale,messages] of Object.entries({en,ms,zh,vi,ta,th})){

@@ -676,9 +676,10 @@ describe('e7eb5d83 — configurable claim management', () => {
     expect(tabs).not.toMatch(/'forms'/);
     // The route survives for bookmarks — as a guarded permanent redirect, which lib/permissions.ts and
     // test/function-access.test.ts both still require to exist on disk.
-    const forms = read('app/admin/claims/forms/page.tsx');
-    expect(forms).toMatch(/permanentRedirect\('\/admin\/claims'\)/);
-    expect(forms).toMatch(/requireAdmin/);
+    const forms = read('app/admin/claims/forms/route.ts');
+    expect(forms).toMatch(/await requireModule\('claims', session\);\s+await requireAdmin\(session\)/);
+    expect(forms).toMatch(/status: 308/);
+    expect(forms).toMatch(/Location: '\/admin\/claims'/);
   });
 
   it('the Claim Types list opens its create form from a disclosure, not permanently', () => {

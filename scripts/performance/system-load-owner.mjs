@@ -419,6 +419,17 @@ async function main(){
  if(nativePreflight)await startProtectedPreflightLockSampling();
  else if(samplingRequired)startPreflightLockSampling(lockScope);
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
+ const claimsFormsBookmark='/admin/claims/forms';
+ const claimsFormsWire=!nativePreflight&&suite==='workflow-preflight';
+ if(claimsFormsWire){
+  for(const actor of [employee,manager,null]){
+   const response=await request(actor,claimsFormsBookmark,undefined,307,false);
+   const destination=actor?'/':'/login?returnTo=%2Fadmin%2Fclaims%2Fforms';
+   assert(response.headers.location===destination||response.headers.location===base+destination,'Unexpected Claims Forms denial redirect');
+   report.boundaries.push({kind:'claims-forms-bookmark-denied',role:actor?.role??'anonymous',
+    httpStatus:response.status,destination:actor?'home':'login',passed:true});
+  }
+ }
  // Bound independent preflight roles to four lanes; every role still visits its full route pool.
  const pilotResults=await runLanes(primaryActors,async user=>{
   const routes=routePool(user);
@@ -435,6 +446,12 @@ async function main(){
    try{
     const intended=nativePreflight?nativePreflightRouteFor(user.role,user.index,route):null;
     const response=await readRoute(user,route);
+    if(claimsFormsWire&&route===claimsFormsBookmark){
+     assert.equal(response.content,'','Claims Forms redirect must have no response body');
+     assert.equal(response.headers['cache-control'],'private, no-store','Claims Forms redirect must be private and uncached');
+     report.boundaries.push({kind:'claims-forms-bookmark-admitted',role:user.role,httpStatus:response.status,
+      destination:'claims',emptyBody:true,privateNoStore:true,passed:true});
+    }
     report.coverage.push({role:user.role,route,status:'passed',durationMs:response.durationMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes,
      ...(intended?{actorIndex:user.index,httpStatus:response.status,redirectStatus:intended.redirectStatus}:{})});
    }
