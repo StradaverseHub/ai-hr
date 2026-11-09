@@ -77,11 +77,11 @@ export async function saveRewardSetupGrant(ctx:SessionContext,raw:unknown){const
 export function rewardNavigation(ctx: SessionContext, isPlatformAdmin: boolean = isAdmin(ctx)) {
   return withRewardsTenant(ctx, async tx => {
     const [pages] = await tx.execute<{
-      review: boolean; analytics: boolean; approvals: boolean; rules: boolean;
+      review: boolean; analytics: boolean; approvals: boolean; rules: boolean; promotions: boolean;
       manage: boolean; libraries: boolean; access: boolean; bootstrap: boolean; wholeGroupManage: boolean;
     }>(sql`
       with visible_units as (
-        select id from reward_unit
+        select id, kind from reward_unit
         where tenant_id = app.current_tenant_id() and deleted_at is null
       )
       select
@@ -89,6 +89,9 @@ export function rewardNavigation(ctx: SessionContext, isPlatformAdmin: boolean =
         exists(select 1 from visible_units u where app.reward_capability(u.id, 'analytics.view')) as analytics,
         exists(select 1 from visible_units u where app.reward_capability(u.id, 'approvals.view')) as approvals,
         exists(select 1 from visible_units u where app.reward_capability(u.id, 'rules.view')) as rules,
+        exists(select 1 from visible_units u where u.kind = 'annual'
+          and app.reward_capability(u.id, 'review.view')
+          and 'gr' in (select app.reward_roles(u.id))) as promotions,
         app.reward_setup_allowed(null, 'manage') as manage,
         exists(select 1 from app.reward_current_group_roles() role where role='gr') as "wholeGroupManage",
         app.reward_setup_allowed(null, 'library_view') as libraries,
@@ -97,11 +100,12 @@ export function rewardNavigation(ctx: SessionContext, isPlatformAdmin: boolean =
     `);
     if (!pages) return [];
     return [
-      ...(pages.review ? ['/rewards'] : []),
+      ...(pages.review ? ['/rewards', '/rewards/reviews'] : []),
       ...(pages.analytics ? ['/rewards/analytics'] : []),
       ...(pages.approvals ? ['/rewards/approvals'] : []),
       ...(pages.rules ? ['/rewards/rules'] : []),
-      ...(pages.manage && (isPlatformAdmin || pages.wholeGroupManage) ? ['/admin/rewards', '/admin/rewards/shared'] : []),
+      ...(pages.promotions ? ['/rewards/promotions'] : []),
+      ...(pages.manage && (isPlatformAdmin || pages.wholeGroupManage) ? ['/admin/rewards/shared'] : []),
       ...(pages.libraries ? ['/admin/rewards/salary-structures', '/admin/rewards/bonus-matrices'] : []),
       ...(pages.manage ? ['/admin/rewards/pat-inputs'] : []),
       ...(pages.access || pages.bootstrap ? ['/admin/rewards/access'] : []),

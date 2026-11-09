@@ -7,15 +7,19 @@ import {filterRewardReviews,rewardReviewHref,rewardReviewUpcoming,type RewardRev
 import {Button,Card,inputCls,tableWrapCls,theadCls,thCls,tbodyCls} from '@/components/ui';
 import { deskMoney } from './[unitId]/desk/salary-increase-table';
 import {RewardStageLabel} from './returned-status';
+import type { ReactNode } from 'react';
 
-type Props={rows:RewardReviewListRow[];filters:RewardReviewFilters;emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null;year:number;canConfigure:boolean;overview?:boolean;canOpenApprovals?:boolean;companyGroups?:Readonly<Record<string,{groupId:string;groupName:string}>>};
-export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure,overview=false,canOpenApprovals=false,companyGroups={}}:Props){
+type Props={rows:RewardReviewListRow[];filters:RewardReviewFilters;emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null;year:number;canConfigure:boolean;overview?:boolean;canOpenApprovals?:boolean;maintenanceActions?:ReadonlyMap<string,ReactNode>;companyGroups?:Readonly<Record<string,{groupId:string;groupName:string}>>};
+export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure,overview=false,canOpenApprovals=false,maintenanceActions,companyGroups={}}:Props){
  const t=useTranslations('rewards'),u=useTranslations('rewardUploaded'),nav=useTranslations('nav'),locale=useLocale(),rows=filterRewardReviews(all,filters,companyGroups),waiting=all.filter(row=>row.waiting).length;
  const choices=(key:'cycleId'|'companyId'|'businessUnitId',label:'cycle'|'company'|'unit')=>[...new Map(all.map(row=>[row[key],row[label]])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
  const groupOptions=[...new Map(Object.values(companyGroups).map(group=>[group.groupId,group.groupName])).entries()];
  const percent=(bp:number|null|undefined)=>bp==null?'—':new Intl.NumberFormat(locale,{style:'percent',minimumFractionDigits:1,maximumFractionDigits:1}).format(bp/10000);
  const date=(iso:string)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
  const relative=(days:number)=>{const phrase=rewardDueWording(days);return t(`board.${phrase.key}`,{days:phrase.days});};
+ const config=useTranslations('rewardsConfig');
+ const canSeeSetup=(row:RewardReviewListRow)=>row.roles.some(role=>role==='gr'||role==='ctro'||role==='ec');
+ const showSetup=all.some(canSeeSetup);
  const budgetRows = overview ? rows.filter(row => row.kind === 'annual' &&
    row.roles.some(role => role === 'gr' || role === 'ctro' || role === 'ec') && (row.salary || row.bonus)) : [];
  const flaggedReviews = overview ? rows.flatMap(row =>
@@ -91,12 +95,20 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
       </Link>)}</div>
     </li>)}</ul>
   </details>}
-  <div data-tour="rewards-review-units" className={tableWrapCls}>{rows.length>0?<table className="w-full text-sm"><thead className={theadCls}><tr>{['cycle','company','unit','myRole','with','due','salary','bonus','blocks','action'].map(key=><th scope="col" key={key} className={thCls}>{['cycle','company','unit','action'].includes(key)?t(key):t(`reviewList.${key}`)}</th>)}</tr></thead>
-   <tbody className={tbodyCls}>{rows.map(row=><tr key={row.id} className="align-top"><td className="px-3 py-3 font-medium">{row.cycle} · {row.uploaded?u('label'):t(`kinds.${row.kind}`)}<span className="ml-2 text-muted-foreground">{row.year}</span></td><td className="px-3 py-3">{row.company}</td><td className="px-3 py-3">{row.unit}</td><td className="px-3 py-3">{row.roles.length?row.roles.map(role=>t(`board.seat.${role}`)).join(', '):t('reviewList.unavailable')}</td>
+  <div data-tour="rewards-review-units" className={tableWrapCls}>{rows.length>0?<table className="w-full text-sm"><thead className={theadCls}><tr>{['cycle','company','unit','myRole','with','due','salary','bonus','blocks'].map(key=><th scope="col" key={key} className={thCls}>{key==='due'&&showSetup?config('columns.due'):['cycle','company','unit'].includes(key)?t(key):t(`reviewList.${key}`)}</th>)}{showSetup&&<><th scope="col" className={thCls}>{config('columns.people')}</th><th scope="col" className={thCls}>{config('columns.dataCheck')}</th></>}<th scope="col" className={thCls}>{t('action')}</th></tr></thead>
+   <tbody className={tbodyCls}>{rows.map(row=><tr key={row.id} className="align-top"><td className="px-3 py-3 font-medium">{row.cycle} · {row.uploaded?u('label'):t(`kinds.${row.kind}`)}<span className="ml-2 text-muted-foreground">{row.year}</span>{canSeeSetup(row)&&row.policyOrigin&&<div className="text-xs text-muted-foreground">
+      {config('shared.originLine',{name:row.policyOrigin.name,version:row.policyOrigin.revision})}
+      {row.policyOrigin.changed&&<> · <span>{config('shared.changedInReview')}</span></>}
+    </div>}</td><td className="px-3 py-3">{row.company}</td><td className="px-3 py-3">{row.unit}</td><td className="px-3 py-3">{row.roles.length?row.roles.map(role=>t(`board.seat.${role}`)).join(', '):t('reviewList.unavailable')}</td>
     <td className="px-3 py-3"><RewardStageLabel status={row.status} returnedTo={row.returnedTo}/>{row.seat&&<p className="mt-1 text-muted-foreground">{t(`board.seat.${row.seat}`)}</p>}{row.holders.length>0&&<p className="mt-1 text-muted-foreground">{row.holders.map(name=>name??t('reviewList.restrictedName')).join(', ')}</p>}</td>
     <td className="px-3 py-3">{row.due&&row.daysUntilDue!==null?<><span className="whitespace-nowrap tabular-nums">{date(row.due)}</span><p className={`text-xs ${row.daysUntilDue<0?'font-semibold text-destructive':'text-muted-foreground'}`}>{relative(row.daysUntilDue)}</p></>:'—'}</td>
     <td className="px-3 py-3 text-right tabular-nums">{row.roles.length?percent(row.salary?.poolShareBp):t('reviewList.unavailable')}</td><td className="px-3 py-3 text-right tabular-nums">{row.roles.length?percent(row.bonus?.budgetShareBp):t('reviewList.unavailable')}</td>
     <td className="px-3 py-3">{row.blocking===null?t('reviewList.unavailable'):<><span className={row.blocking?'font-semibold text-destructive':''}>{t('reviewList.blocking',{count:row.blocking})}</span><p>{t('reviewList.exceptions',{count:row.exceptions??0})}</p></>}</td>
-    <td className="px-3 py-3"><Link href={`/rewards/${row.id}`} className="font-medium text-primary hover:underline">{t('openReview')}</Link></td></tr>)}</tbody></table>:<div className="max-w-2xl space-y-3 px-5 py-10 text-sm text-muted-foreground"><p>{all.length?t('reviewList.noMatches'):t(`reviewList.empty.${emptyReason??'noRole'}`,{year})}</p>{!all.length&&emptyReason==='noCycle'&&canConfigure&&<Link href="/admin/rewards" className="inline-flex font-medium text-primary hover:underline">{t('reviewList.create')}</Link>}</div>}</div>
+    {showSetup&&<>
+      <td className="px-3 py-3 tabular-nums">{canSeeSetup(row)?row.people??'—':'—'}</td>
+      <td className="px-3 py-3 tabular-nums">{canSeeSetup(row)&&row.people!=null&&row.verified!=null
+        ? row.people===0?config('noPeople'):row.verified===row.people?config('allVerified'):config('verifiedOf',{verified:row.verified,total:row.people}) : '—'}</td>
+    </>}
+    <td className="px-3 py-3"><Link href={`/rewards/${row.id}`} className="font-medium text-primary hover:underline">{t('openReview')}</Link>{maintenanceActions?.get(row.id)}</td></tr>)}</tbody></table>:<div className="max-w-2xl space-y-3 px-5 py-10 text-sm text-muted-foreground"><p>{all.length?t('reviewList.noMatches'):t(`reviewList.empty.${emptyReason??'noRole'}`,{year})}</p>{!all.length&&emptyReason==='noCycle'&&canConfigure&&<Link href="/admin/rewards/plans" className="inline-flex font-medium text-primary hover:underline">{t('reviewList.create')}</Link>}</div>}</div>
  </>;
 }

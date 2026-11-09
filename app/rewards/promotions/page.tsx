@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
+import { notFound } from 'next/navigation';
 import { requireModule } from '@/lib/authz';
 import { getScopeIds, scopedSession } from '@/lib/scope';
 import { Card, PageHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -11,8 +12,8 @@ export default async function RewardPromotionsPage({ searchParams }: {
 }) {
   await requireModule('rewards');
   const { s } = await scopedSession();
-  const [companies, t, nav, filters] = await Promise.all([
-    rewardVisibleCompanies(s), getTranslations('rewards'), getTranslations('nav'), searchParams,
+  const [companies, t, filters] = await Promise.all([
+    rewardVisibleCompanies(s), getTranslations('rewards'), searchParams,
   ]);
   const allowed = companies.map(company => company.id);
   const scope = companies.some(company => company.wholeGroup) ? allowed : await getScopeIds(allowed);
@@ -20,11 +21,12 @@ export default async function RewardPromotionsPage({ searchParams }: {
   const year = typeof filters.year === 'string' && /^20[0-9]{2}$/.test(filters.year) ? Number(filters.year) : undefined;
   const requested = typeof filters.page === 'string' && /^\d{1,5}$/.test(filters.page) ? Number(filters.page) : 1;
   const { year: selectedYear, page, maxPage, nominations, companies: choices } = await rewardPromotionNominations(s, scope, { companyId, year, page: requested });
+  if (!choices.length) notFound();
   const url = (page: number) => '/rewards/promotions?' + new URLSearchParams({
     ...(companyId ? { company: companyId } : {}), year: String(selectedYear), page: String(page),
   });
   return <div className="space-y-5">
-    <PageHeader title={t('promotionNominations')} back={{ href: '/rewards', label: nav('rewardsReviewing') }} />
+    <PageHeader title={t('promotionNominations')} description={t('description')} />
     <Card className="space-y-4 p-4">
       <form method="get" className="flex flex-wrap items-end gap-3">
         <label className="grid gap-1 text-sm">{t('company')}

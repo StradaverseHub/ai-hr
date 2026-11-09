@@ -169,8 +169,8 @@ export async function saveRewardAccessAction(input:unknown,digest:string){
 function maintenanceErrorCode(error:unknown){return error instanceof RewardMaintenanceError?error.code:'system';}
 export async function deleteRewardAction(f:FormData){
  try{await deleteRewardReview(await getSession(),str(f,'unitId'),number(f,'revision'),str(f,'confirmation'));}
- catch(error){redirect(`/admin/rewards?deletionError=${maintenanceErrorCode(error)}`);}
- revalidatePath('/rewards','layout');revalidatePath('/admin/rewards','layout');redirect('/admin/rewards?deleted=1');
+ catch(error){redirect(`/rewards/reviews?deletionError=${maintenanceErrorCode(error)}`);}
+ revalidatePath('/rewards','layout');revalidatePath('/admin/rewards','layout');redirect('/rewards/reviews?deleted=1');
 }
 
 /** A cell edit changes only its own override. The review owner still validates the revision and amount. */

@@ -24,7 +24,7 @@ beforeEach(() => {
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     if (init?.method === 'POST') return new Response('BANK', { headers: { 'Content-Disposition': 'attachment; filename="OCBC.txt"' } });
-    if (url.includes('operation=options')) return Response.json({ accounts: [{ id: bankProfileId, label: 'Operations', last4: '9012' }], runs: [{ runSeq: 1, cycleName: 'Regular', runType: 'regular' }, { runSeq: 2, cycleName: 'Bonus', runType: 'bonus' }] });
+    if (url.includes('operation=options')) return Response.json({ accounts: [{ id: bankProfileId, label: 'Operations', accountNumber: '123456789012' }], runs: [{ runSeq: 1, cycleName: 'Regular', runType: 'regular' }, { runSeq: 2, cycleName: 'Bonus', runType: 'bonus' }] });
     return Response.json(summary);
   });
 });

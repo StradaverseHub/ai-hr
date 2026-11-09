@@ -8,7 +8,7 @@ import { formatMoney } from '@/lib/money';
 import type { BankPaymentPreview, BankPaymentRequest } from '@/localization/country-pack';
 import type { SelectionOption } from './download-dialog';
 
-type Options = { configuredAccountId?:string|null;accounts: { id: string; label: string; last4: string }[]; runs: { runSeq: number; cycleName: string | null; runType: string }[] };
+type Options = { configuredAccountId?:string|null;accounts: { id: string; label: string; accountNumber: string }[]; runs: { runSeq: number; cycleName: string | null; runType: string }[] };
 type Props = {
   formatId: string; formatLabel: string; periodKind: 'month' | 'month-cycle' | 'month-runs'; testIndicator: boolean;
   endpoint: string; companies: SelectionOption[]; defaultCompanyId: string; years: string[]; defaultYear: string;
@@ -115,7 +115,7 @@ export function BankDownloadDialog(p: Props) {
           <div className="col-span-2"><Field label={t('company')}><select aria-label={t('company')} className={inputCls} value={companyId} onChange={(e) => change(() => setCompanyId(e.target.value))}>{p.companies.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select></Field></div>
           <Field label={t('year')}><select aria-label={t('year')} className={inputCls} value={year} onChange={(e) => change(() => setYear(e.target.value))}>{p.years.map((y) => <option key={y}>{y}</option>)}</select></Field>
           <Field label={t('month')}><select aria-label={t('month')} className={inputCls} value={month} onChange={(e) => change(() => setMonth(e.target.value))}>{p.months.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></Field>
-          <div className="col-span-2"><Field label={t('bankAccount')}><select aria-label={t('bankAccount')} className={inputCls} value={bankProfileId} onChange={(e) => change(() => setBankProfileId(e.target.value))}><option value="">{t('bankChooseAccount')}</option>{options.accounts.map((a) => <option key={a.id} value={a.id}>{a.label} · •••• {a.last4}</option>)}</select></Field></div>
+          <div className="col-span-2"><Field label={t('bankAccount')}><select aria-label={t('bankAccount')} className={inputCls} value={bankProfileId} onChange={(e) => change(() => setBankProfileId(e.target.value))}><option value="">{t('bankChooseAccount')}</option>{options.accounts.map((a) => <option key={a.id} value={a.id}>{a.label} · {a.accountNumber}</option>)}</select></Field></div>
           <Field label={t('bankPaymentDate')}><input aria-label={t('bankPaymentDate')} className={inputCls} type="date" required value={paymentDate} onChange={(e) => change(() => setPaymentDate(e.target.value))} /></Field>
           <Field label={t('bankReference')}><input aria-label={t('bankReference')} className={inputCls} maxLength={16} value={reference} onChange={(e) => change(() => setReference(e.target.value))} /></Field>
           {p.testIndicator && <div className="col-span-2"><Field label={t('bankFileMode')}><select aria-label={t('bankFileMode')} className={inputCls} value={testFile ? 'test' : 'live'} onChange={(e) => change(() => setTestFile(e.target.value === 'test'))}><option value="test">{t('bankTestFile')}</option><option value="live">{t('bankLiveFile')}</option></select></Field></div>}

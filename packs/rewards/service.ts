@@ -25,7 +25,7 @@ import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import type { PackTaskItem } from '../../lib/assigned-work';
 import { calculateRewards, ratio, increase, type RewardMultiplierSuggestion } from './engine';
-import {approvedPlanPolicyTx} from './plan-configuration';
+import {approvedPlanPolicyTx,assertIndependentReviewCreator} from './plan-configuration';
 import {latestConfirmedPatTx} from './pat-inputs';
 import {setupAuthority,setupLock} from './setup-data';
 import {setupYear} from './setup-model';
@@ -610,6 +610,7 @@ export async function createRewardUnitTx(tx:Tx,ctx:SessionContext,raw:PlannedRew
  await setupLock(tx,ctx,'plans');
  await setupLock(tx,ctx,'pat:'+companyId+':'+setupYear.parse(raw.year));
  const resolved=await approvedPlanPolicyTx(tx,ctx,version,companyId,businessUnitId);
+ await assertIndependentReviewCreator(tx,ctx,resolved.setup);
  if(raw.year!==resolved.setup.year||raw.snapshotDate!==resolved.setup.snapshotDate||raw.name&&raw.name!==resolved.setup.cycleName||raw.cycleId)throw new RewardError('Use the frozen approved plan cycle, year and snapshot date.');
  const [created]=await tx.execute<{id:string}>(sql`select app.reward_create_planned_unit(${version}::uuid,${raw.companyId}::uuid,${raw.businessUnitId}::uuid) as id`);
  const [unit]=await tx.select().from(rewardUnit).where(eq(rewardUnit.id,created.id));if(!unit)throw new RewardError('The approved review could not be loaded.');
@@ -1821,6 +1822,7 @@ export async function rewardPromotionNominations(ctx: SessionContext, companyIds
     const companies = await tx.selectDistinct({ id: company.id, name: company.legalName })
       .from(company).innerJoin(rewardUnit, eq(rewardUnit.companyId, company.id))
       .where(and(inArray(company.id, companyIds), eq(rewardUnit.tenantId, ctx.tenantId), isNull(rewardUnit.deletedAt),
+        eq(rewardUnit.kind, 'annual'),
         sql`app.reward_capability(${rewardUnit.id},'review.view') and 'gr' in (select app.reward_roles(${rewardUnit.id}))`))
       .orderBy(asc(company.legalName), asc(company.id));
     const ids = companies.map(c => c.id);

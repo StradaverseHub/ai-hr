@@ -38,7 +38,6 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   await requireModule('rewards'); const { s, scopeIds } = await scopedSession();
   const { unitId } = await params; const sp = await searchParams; const t = await getTranslations('rewards');
   if (sp.view === 'configuration') redirect(`/admin/rewards/${encodeURIComponent(unitId)}`);
-  const nav = await getTranslations('nav');
   const preparation = await getRewardPreparationStatus(s,unitId);
   const prepText=await getTranslations('rewardsPreparation');
   if(!preparation.released&&!preparation.setupVisible&&!(preparation.uploaded&&preparation.canInspect))return <div className="space-y-4"><PageHeader title={prepText('review')}/><p role="status">{prepText('preparing')}</p><p className="text-sm text-muted-foreground">{preparation.expectedRelease?prepText('expectedOn',{date:preparation.expectedRelease}):prepText('datePending')}</p><Link href="/rewards" className="text-primary hover:underline">{prepText('back')}</Link></div>;
@@ -87,7 +86,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   return <div className="w-full space-y-5">
     <ScopedCommandIndex entries={v.rows.map(row=>({href:`/rewards/${unitId}?person=${row.id}`,label:row.source.name,context:row.source.employeeCode??''}))}/>
 
-    <Link href="/rewards" className="text-sm text-primary hover:underline">← {nav('rewardsReviewing')}</Link>
+
     <PageHeader title={rewardReviewTitle(v.cycle?.name ?? t('title'), v.companyName, v.name)} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)}${v.due ? ` · ${t('dueOn', { date: v.due })}` : ''} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
     {!annual&&((v.roles.includes('gr') && v.capabilities?.dataCheck!==false) || v.roles.includes('pbp')) && <Link href={`/rewards/${unitId}/data-check`} className="text-sm font-medium text-primary hover:underline">{t('prelaunchDataCheck')}</Link>}
     <ErrorBanner message={sp.error} /><Link href={`/rewards/rules?unit=${unitId}`} className="inline-block text-sm text-primary underline underline-offset-2">{t('rules')}</Link>

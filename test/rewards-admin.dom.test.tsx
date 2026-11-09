@@ -6,6 +6,8 @@ import en from '../messages/en.json';
 
 const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), scope: vi.fn(), visibleCompanies: vi.fn(), navigation: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn(), requests: vi.fn(), accessCompanies: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async (namespace: keyof typeof en = 'rewards') => (key: string) => key.split('.').reduce((v: any, k) => v[k], en[namespace]) }));
+const redirect = vi.hoisted(() => vi.fn(() => { throw new Error('redirect'); }));
+vi.mock('next/navigation', () => ({ redirect }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession, getScopeIds: ports.scope }));
 vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: ports.visibleCompanies, rewardNavigation: ports.navigation, rewardAccessPageCompanies: ports.accessCompanies }));
@@ -50,26 +52,17 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Rewards administration and review destinations', () => {
-  it('links the admin hub to approved plan creation and scopes existing reviews to administrative companies', async () => {
-    show(await resolvePolicyFields(await AdminPage({ searchParams: Promise.resolve({}) })));
-    expect(screen.getByRole('heading', { name: 'Review Cycles' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'View' }).getAttribute('href')).toBe('/admin/rewards/review?mode=view');
-    expect(screen.getByRole('link', { name: 'Edit' }).getAttribute('href')).toBe('/admin/rewards/review');
-    expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Create annual reviews from an approved Rewards plan' }).getAttribute('href')).toBe('/admin/rewards/plans');
-    expect(screen.queryByRole('button', { name: 'Create unit review' })).toBeNull();
-    expect(screen.queryByLabelText('Snapshot date')).toBeNull();
-    expect(ports.scopedAdmin).toHaveBeenCalledOnce();
-    expect(ports.requireModule).toHaveBeenCalledWith('rewards');
-    expect(ports.list).toHaveBeenCalledWith(session, ['company']);
-    expect(ports.shared).toHaveBeenCalledWith(session, ['company']);
-    expect(ports.memberships).toHaveBeenCalledWith(session, ['company']);
+  it('redirects legacy Review Cycles to the approved plan workspace with the selected version', async () => {
+    await expect(AdminPage({ searchParams: Promise.resolve({ version: 'approved', year: '2026' }) })).rejects.toThrow('redirect');
+    expect(redirect).toHaveBeenCalledWith('/admin/rewards/plans?version=approved&year=2026');
+    expect(ports.list).not.toHaveBeenCalled();
   });
   it('shows authorized review shortcuts and leaves configuration in the menu', async () => {
-    show(await ReviewsPage({ searchParams: Promise.resolve({}) }));
+    show(await resolvePolicyFields(await ReviewsPage({ searchParams: Promise.resolve({}) })));
     expect(screen.getAllByRole('link', { name: 'Open review' }).map(link => link.getAttribute('href'))).toContain('/rewards/review');
     expect(screen.getByRole('heading', { name: 'Reviewing Team Rewards' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Rules' }).getAttribute('href')).toBe('/rewards/rules');
+    expect(screen.queryByRole('link', { name: 'Rules' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'View' }).getAttribute('href')).toBe('/admin/rewards/review?mode=view');
     expect(screen.queryByRole('link', { name: 'Rewards Analytics' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Review Cycles' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Create unit review' })).toBeNull();

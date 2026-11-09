@@ -16,7 +16,6 @@ import {rewardCompanyBusinessGroup} from '@/packs/rewards/company-picker';
 import {rewardCompanyClassifications} from '@/packs/rewards/company-classification';
 import {RewardCompanyClassificationPanel} from './classification';
 import {SharedRewardEditor} from './editor';
-import {RewardsAdminTabs} from '../admin-tabs';
 import {classifySharedRewardCompanyAction,changeSharedRewardExclusionAction,loadSharedRewardTakenAction,saveSharedRewardPolicyAction} from './actions';
 export default async function SharedRewardPolicyPage({searchParams}:{searchParams:Promise<{group?:string;versions?:string;version?:string;compare?:string|string[]}>}){
  await requireModule('rewards');
@@ -36,7 +35,7 @@ export default async function SharedRewardPolicyPage({searchParams}:{searchParam
  if(params.version&&!shownVersion)notFound();
  const usage=(selected?await rewardPolicyGroupUsage(s,selected.groupId):[]).filter(row=>!shownVersion||row.revision===shownVersion.version.revision);
  return <div className="mx-auto max-w-6xl space-y-6"><PageHeader title={(await getTranslations('nav'))('rewardsSharedConfiguration')} description={t('description')}/>
-  <RewardsAdminTabs current="shared"/><Link className="text-primary underline" href="/admin/rewards/plans">{(await getTranslations('rewardSetup'))('plans')}</Link><p className="text-sm text-muted-foreground">{t('currencyHelp')}</p>
+  <Link className="text-primary underline" href="/admin/rewards/plans">{(await getTranslations('rewardSetup'))('plans')}</Link><p className="text-sm text-muted-foreground">{t('currencyHelp')}</p>
   <SharedRewardHistory session={s} groups={groups} groupId={groupId} showVersions={params.versions} versionId={params.version} compare={params.compare} companies={choices.companies} units={choices.units}/>
   {choices.companies.length>0&&<SharedRewardEditor actorUserId={s.userId??''} groupId={selected?.groupId??null} revision={selected?.revision??0} name={selected?.name??''} year={policy.year} targets={selected?.targets??[]} companies={groupedCompanies} units={choices.units} memberships={memberships} initialTaken={taken} loadTakenAction={loadSharedRewardTakenAction} canManageUnits={companies.length>0} exclusions={exclusions} exclusionAction={changeSharedRewardExclusionAction}
    policyFields={<RewardPolicyFields policy={policy} context="shared"/>} saveAction={saveSharedRewardPolicyAction}/>}

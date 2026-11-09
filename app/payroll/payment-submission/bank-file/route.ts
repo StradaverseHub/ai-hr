@@ -1,3 +1,4 @@
+import { assertModuleEnabled } from '@/core/entitlements';
 import {DEFAULT_MAYBANK_PAYMENT_SETTINGS} from '@/lib/maybank-payment-settings';
 import { recordPayrollExport } from '@/core/payroll-audit/access-log';
 import { and, eq, sql } from 'drizzle-orm';
@@ -42,6 +43,7 @@ function validSelection(p: BankPaymentRequest) {
 async function authorize(p: z.infer<typeof base>) {
   const { s, scopeIds } = await scopedAdmin();
   if (!scopeIds.includes(p.companyId)) return null;
+  try { assertModuleEnabled(s, 'payroll', p.companyId); } catch { return null; }
   const country = await withTenant(s, async (tx) => {
     const [permission] = await tx.execute<{ ok: boolean }>(sql`select app.is_admin_for(${p.companyId}::uuid) as ok`);
     if (!permission?.ok) return null;
@@ -67,7 +69,8 @@ export async function GET(req: Request) {
   if (operation === 'options') {
     const parsed = base.safeParse(raw);
     if (!parsed.success) return failure('Invalid bank file request.', 400);
-    if (!formatFor(parsed.data)) return failure('Not found', 404);
+    const format = formatFor(parsed.data);
+    if (!format) return failure('Not found', 404);
     const auth = await authorize(parsed.data);
     if (!auth) return failure('Not found', 404);
     try {
@@ -77,16 +80,28 @@ export async function GET(req: Request) {
         listBatches(auth.s, [parsed.data.companyId], parsed.data.periodKey),
       ]);
       const maybank=parsed.data.formatId.startsWith('my.maybank74.');
-      let mappedId:string|null=null;
+      let mappedId = format.periodKind === 'month-cycle'
+        ? accounts.find(account => account.isPrimary)?.id ?? null : null;
       if(maybank){
         const category=parsed.data.formatId.split('.').at(-1)!;
-        if(category==='salary')mappedId=accounts.find(account=>account.isPrimary)?.id??null;
-        else mappedId=await withTenant(auth.s,async tx=>{const [row]=await tx.select({id:companyStatutoryAuthority.bankProfileId}).from(companyStatutoryAuthority).where(and(eq(companyStatutoryAuthority.tenantId,auth.s.tenantId),eq(companyStatutoryAuthority.companyId,parsed.data.companyId),eq(companyStatutoryAuthority.authority,category==='kwsp'?'epf':category)));return row?.id??null;});
+        if(category!=='salary')mappedId=await withTenant(auth.s,async tx=>{const [row]=await tx.select({id:companyStatutoryAuthority.bankProfileId}).from(companyStatutoryAuthority).where(and(eq(companyStatutoryAuthority.tenantId,auth.s.tenantId),eq(companyStatutoryAuthority.companyId,parsed.data.companyId),eq(companyStatutoryAuthority.authority,category==='kwsp'?'epf':category)));return row?.id??null;});
       }
-      const ready = new Set(batches.filter((b) => !b.historyImportAttemptId && !b.needsRecalcAt && ['processed', 'closed'].includes(b.status)).map((b) => b.runSeq));
+      const contributing = batches.filter(batch => !batch.historyImportAttemptId &&
+        (batch.status === 'processed' || batch.status === 'closed'));
+      const ready = new Set(contributing.filter(batch => batch.status === 'closed' && !batch.needsRecalcAt)
+        .map(batch => batch.runSeq));
+      const availableAccounts = accounts.filter(account =>
+        account.bank === (maybank ? 'maybank' : 'ocbc_bank') && account.currency === 'MYR' &&
+        (!maybank || account.id === mappedId && (account.maybankPaymentSettings ?? DEFAULT_MAYBANK_PAYMENT_SETTINGS).version === '7.4'));
       return Response.json({
-        accounts: accounts.filter((a) => a.bank === (maybank?'maybank':'ocbc_bank') && a.currency === 'MYR' && (!maybank||a.id===mappedId&&(a.maybankPaymentSettings??DEFAULT_MAYBANK_PAYMENT_SETTINGS).version==='7.4')).map((a) => ({ id: a.id, label: a.accountLabel || (maybank?'Maybank':'OCBC'), last4: a.debitAccountNo.replace(/\D/g, '').slice(-4) })),
-        runs: runs.filter((r) => ready.has(r.runSeq)),...(maybank?{configuredAccountId:mappedId}:{}),
+        accounts: availableAccounts.map(account => ({
+          id: account.id,
+          label: account.accountLabel || (maybank ? 'Maybank' : 'OCBC'),
+          accountNumber: account.debitAccountNo,
+        })),
+        configuredAccountId: availableAccounts.some(account => account.id === mappedId) ? mappedId : null,
+        runs: format.periodKind === 'month' && contributing.some(batch => !ready.has(batch.runSeq))
+          ? [] : runs.filter(run => ready.has(run.runSeq)),
       }, { headers });
     } catch (error) { return errorResponse(error); }
   }
@@ -101,7 +116,7 @@ export async function GET(req: Request) {
   if (!validSelection(parsed.data)) return failure('Select exactly one ready salary run, or the whole month for statutory files.', 422);
   const auth = await authorize(parsed.data);
   if (!auth) return failure('Not found', 404);
-  try { return Response.json(await auth.service.preview(auth.s, parsed.data), { headers }); }
+  try { return Response.json(await auth.service.preview(auth.s, { ...parsed.data, closedPayrollOnly: true }), { headers }); }
   catch (error) { return errorResponse(error); }
 }
 
@@ -119,7 +134,7 @@ export async function POST(req: Request) {
   const auth = await authorize(parsed.data);
   if (!auth) return failure('Not found', 404);
   try {
-    const file = await auth.service.download(auth.s, parsed.data);
+    const file = await auth.service.download(auth.s, { ...parsed.data, closedPayrollOnly: true });
     if (!/^[A-Za-z0-9._-]{1,160}$/.test(file.filename)) throw new Error('Invalid filename');
     // AI v2 P2-2b: the bank file handed over is recorded with its sha256 before it leaves (fail closed).
     await recordPayrollExport(auth.s, { surface: 'bank_file', companyId: parsed.data.companyId, payPeriod: parsed.data.periodKey, format: 'txt', detail: parsed.data.formatId }, file.content);

@@ -3,6 +3,7 @@ const m = vi.hoisted(() => ({
   scopedAdmin: vi.fn(), permission: true, country: 'MY',
   accounts: vi.fn(), runs: vi.fn(), batches: vi.fn(), preview: vi.fn(), download: vi.fn(),
 }));
+vi.mock('@/core/entitlements', () => ({ assertModuleEnabled: vi.fn() }));
 vi.mock('@/lib/scope', () => ({ scopedAdmin: m.scopedAdmin }));
 vi.mock('@/db/client', () => ({ withTenant: async (_s: unknown, fn: (tx: unknown) => unknown) => fn({
   execute: async () => [{ ok: m.permission }],
@@ -35,16 +36,17 @@ beforeEach(() => {
   vi.clearAllMocks(); m.permission = true; m.country = 'MY';
   m.scopedAdmin.mockResolvedValue({ s: { tenantId: companyId, userId: companyId }, scopeIds: [companyId] });
   m.accounts.mockResolvedValue([{ id: bankProfileId, bank: 'ocbc_bank', currency: 'MYR', accountLabel: 'Operations', debitAccountNo: '123456789012' }, { id: 'other', bank: 'other', currency: 'MYR', debitAccountNo: 'full-secret' }]);
-  m.runs.mockResolvedValue([1, 2, 3, 4].map(runSeq => ({ runSeq, runType: 'regular', cycleName: null, status: 'processed' })));
-  m.batches.mockResolvedValue([{ runSeq: 1, status: 'processed' }, { runSeq: 2, status: 'closed', historyImportAttemptId: 'import' }, { runSeq: 3, status: 'processed', needsRecalcAt: new Date() }, { runSeq: 4, status: 'draft' }]);
+  m.runs.mockResolvedValue([1, 2, 3, 4].map(runSeq => ({ runSeq, runType: 'regular', cycleName: null, status: 'closed' })));
+  m.batches.mockResolvedValue([{ runSeq: 1, status: 'closed' }, { runSeq: 2, status: 'closed', historyImportAttemptId: 'import' }, { runSeq: 3, status: 'processed', needsRecalcAt: new Date() }, { runSeq: 4, status: 'draft' }]);
   m.preview.mockResolvedValue({ digest: 'a'.repeat(64), companyName: 'Acme', recordCount: 2, totalCents: 300000, periodKey: request.periodKey, paymentDate: request.paymentDate });
   m.download.mockResolvedValue({ filename: 'OCBC.txt', content: 'BANK\r\n' });
 });
 describe('OCBC bank file route', () => {
-  it('returns only account selection data and ready native payroll runs', async () => {
+  it('returns the authorised account number and only closed native payroll runs', async () => {
     const response = await get({ operation: 'options', companyId, formatId: request.formatId, periodKey: request.periodKey });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ accounts: [{ id: bankProfileId, label: 'Operations', last4: '9012' }], runs: [{ runSeq: 1, runType: 'regular', cycleName: null, status: 'processed' }] });
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(await response.json()).toEqual({ accounts: [{ id: bankProfileId, label: 'Operations', accountNumber: '123456789012' }], configuredAccountId: null, runs: [{ runSeq: 1, runType: 'regular', cycleName: null, status: 'closed' }] });
     expect(m.preview).not.toHaveBeenCalled(); expect(m.download).not.toHaveBeenCalled();
   });
   it.each(['scope', 'database', 'country'])('denies %s before reading sensitive options', async (gate) => {
@@ -60,7 +62,7 @@ describe('OCBC bank file route', () => {
   });
   it('previews exactly one salary run without generating', async () => {
     expect((await get({ operation: 'preview', ...request })).status).toBe(200);
-    expect(m.preview).toHaveBeenCalledWith(expect.anything(), request); expect(m.download).not.toHaveBeenCalled();
+    expect(m.preview).toHaveBeenCalledWith(expect.anything(), { ...request, closedPayrollOnly: true }); expect(m.download).not.toHaveBeenCalled();
   });
   it.each([
     { ...request, runSeq: undefined }, { ...request, runSeq: '1,2' }, { ...request, runSeqs: '1,2' },
@@ -96,8 +98,8 @@ describe('OCBC bank file route', () => {
   });
   it('returns immutable generation bytes and forwards the exact idempotency key on retry', async () => {
     for (let i = 0; i < 2; i++) { const response = await post(generated); expect(response.status).toBe(200); expect(await response.text()).toBe('BANK\r\n'); }
-    expect(m.download).toHaveBeenNthCalledWith(1, expect.anything(), generated);
-    expect(m.download).toHaveBeenNthCalledWith(2, expect.anything(), generated);
+    expect(m.download).toHaveBeenNthCalledWith(1, expect.anything(), { ...generated, closedPayrollOnly: true });
+    expect(m.download).toHaveBeenNthCalledWith(2, expect.anything(), { ...generated, closedPayrollOnly: true });
     // AI v2 P2-2b: each hand-over is recorded with the company, month, format and the bytes themselves.
     expect(access.recordPayrollExport).toHaveBeenCalledTimes(2);
     expect(access.recordPayrollExport).toHaveBeenCalledWith(expect.anything(), { surface: 'bank_file', companyId, payPeriod: '2026-10', format: 'txt', detail: 'my.ocbc.salary' }, 'BANK\r\n');
