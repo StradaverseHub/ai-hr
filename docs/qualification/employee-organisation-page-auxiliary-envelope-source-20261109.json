@@ -1,0 +1,151 @@
+{
+  "kind": "PERSONNEL_ORGANISATION_PAGE_AUXILIARY_ENVELOPE_SOURCE_ONLY",
+  "directParent": "3d0eb166e2fe7beeab2d90b365163217b4783a21",
+  "selector": "test/employee-choice-db.test.ts",
+  "source": {
+    "parent": {
+      "gitBlob": "fdb04c6ef6537175733fcffe6526d57cf04b095e",
+      "bytes": 86492,
+      "sha256": "2b3bfd5b57334bede41a423bfc93784815b01cac7a5f34fdde659639ab1b6beb"
+    },
+    "current": {
+      "gitBlob": "de3884a271422782fcf789d397a7aa2624874f55",
+      "bytes": 101280,
+      "sha256": "12fb48ae2b7b262c1849646f360bec878db4de84327a7485bca90d275764dbd0"
+    },
+    "staticCensus": {
+      "registeredSyntaxSites": 9,
+      "expandedCases": 10,
+      "allRegistrationBodiesIdentical": true,
+      "wholeOldFunctions": [
+        "organisationPageCourse",
+        "previousOrganisationPage",
+        "organisationPagePreTagPlan",
+        "organisationPagePlan"
+      ],
+      "changedFunctions": [
+        "compareOrganisationPage"
+      ],
+      "newFunctions": [
+        "taggedAuxiliaryEnvelope",
+        "taggedAuxiliaryWork"
+      ],
+      "wholeOldLocalBindings": [
+        "active",
+        "pageCatalogue",
+        "cleanup",
+        "limit",
+        "realm",
+        "taggedEvidence",
+        "runRead",
+        "track",
+        "observeTaggedAuxiliaries",
+        "ownerTransaction"
+      ],
+      "expectCounts": {
+        "old": 170,
+        "new": 187,
+        "additions": 17,
+        "oldExact": 170
+      },
+      "sqlTemplates": {
+        "old": 34,
+        "new": 37,
+        "oldExact": 34,
+        "additions": 3
+      },
+      "awaitSites": {
+        "old": 207,
+        "new": 216
+      },
+      "closedBinds": 17,
+      "originalCatalogueAndOneSecondSourcePresent": true
+    }
+  },
+  "sourceInverse": {
+    "restore": "test/employee-choice-db.test.ts",
+    "remove": "docs/qualification/employee-organisation-page-auxiliary-envelope-source-20261109.json",
+    "targetGitTree": "5f5c0ea72e9f5e129b077b86e368ad77f10a163b"
+  },
+  "protectedGitBlobs": {
+    "docs/qualification/employee-organisation-page-auxiliary-plans-source-20261109.json": "963c68aaf82e0fc475ebab2a8fcdb45a30e54941",
+    "core/employee-choice.ts": "06c19151cd686b538e4f3c8c42a7a827b563d81c",
+    "db/client.ts": "0c4f28e00393a763608b506d608a3cf7df542c57",
+    "db/migrations/2105_authorization_navigation_plans.sql": "7e91900ec36ed596544c9a7e099762ce440bb43f",
+    "db/migrations/3001_employment_membership_initplan.sql": "e18adf86fc258b25ef46aaefaca8fbe7f06dd802",
+    "db/migrations/3102_assignment_membership_initplan.sql": "0143e372b6146aa0f0aeaad292962f04826fb904",
+    "test/harness.ts": "2239a072cbc922366ebb0ad1f3ec7c85c8668685",
+    "test/global-setup.ts": "526193c2dc39ad7a9298161fff0c95ca9e62f1f6",
+    "test/performance/personnel-native-fixture.ts": "933f1543bf2ea08aae446d805720272e597dacf0",
+    ".github/workflows/alpha-focused-checks.yml": "e993882d7e92f28bd4f75f31556f5a971dfe47f6",
+    ".github/ci/postgres.sh": "8d9cdd60ca3bf666e5717c17efd3841ecb3879fb"
+  },
+  "retainedObservedFailure": {
+    "source": "3d0eb166e2fe7beeab2d90b365163217b4783a21",
+    "controller": "5aa20706fb7219e28bd077307d7d892996640e1a",
+    "run": 42567213983,
+    "attempt": 1,
+    "workflow": 395862645,
+    "selectedJob": 128996381722,
+    "terminalJobs": 7,
+    "artifact": 13651718870,
+    "artifactSha256": "b8362b561645a19869fdd9900b9e538ba3762848f36a1c9795d0975ac1398e97",
+    "pageMemberSha256": "015b0d2cd1c1dbf7bd2901cce2faa5e0a92063c4f507aef8ff00b1c7cd59a1c0",
+    "independentAuthenticationSha256": "f7fd6227b9de6c93d8fc0357085ba6d50908394b4952383cf44d5a797c2a14b4",
+    "reportedTests": {
+      "passed": 9,
+      "failed": 1
+    },
+    "original": {
+      "catalogue": "failed",
+      "verifiedDTOs": 12,
+      "statementPositions": 76,
+      "pageAndCountPlans": 16,
+      "publicPortSamples": 0,
+      "fixtureRestored": true,
+      "nativeAppSettled": true
+    },
+    "tagged": {
+      "plans": 4,
+      "executionMs": 705.645,
+      "visibilityCalls": 7,
+      "visibilityRows": 350000,
+      "visibilitySharedHits": 12992,
+      "allSharedHits": 15647,
+      "jitPlans": 0,
+      "tempBlocks": 0
+    }
+  },
+  "newTestOnlyComparison": {
+    "trigger": "The exact original terminal catalogue equality throws. The original four tagged plans must finish with equal diagnostic endpoints, complete sealed inputs and the same held app transaction. The supplemental capture independently proves equal endpoints and rethrows the original error through the existing owner.",
+    "successPath": "The pre-existing passing-catalogue path and subsequent independent public timings issue no supplemental SQL.",
+    "scope": "Fixed tagged 50k department-active names profile with one explicit company scope and one exact off-page selected employee. Product code, native policies, principal admission, six-table identity, old page and fallback count, planner settings, ordinary matrix and public one-second gate are unchanged.",
+    "baseline": "Original four SQL objects from the B1 department-active read, already sealed against all twelve matched reads and their pre-tag counterparts. Exact ordered results compared to independent native fixture facts.",
+    "counterfactual": "One typed auxiliary envelope with native Employment/Person visibility, a single current native Assignment source and separate selected/company/department/unit facts. Three independent option families and the off-page selected row are compared in full against the same fixture oracle. No candidate results feed the ordinary test path.",
+    "ordinaryArms": [
+      "A0",
+      "B0",
+      "B1",
+      "A1"
+    ],
+    "ordinaryCommands": 10,
+    "nativePlans": 5,
+    "identityFixtureAndCatalogueCommands": 5,
+    "maxNewCommands": 20,
+    "limits": {
+      "caseMs": 300000,
+      "activeMs": 275000,
+      "restoreTailMs": 25000,
+      "supplementalWindowMs": 42000,
+      "existingInheritedDiagnosticStatementTimeoutMs": 2000,
+      "lockTimeoutMs": 300,
+      "aggregateRawPlanBytes": 4194304,
+      "perDocumentBytes": 1048576,
+      "aggregateMetadataBytes": 65536
+    },
+    "evidence": "Await every operation. Require unchanged tagged physical identity and comparison catalogue endpoints, complete oracle, same seven baseline visibility expansions, two candidate visibility expansions with fewer visibility hits, one Assignment scan and loop, no candidate temporary blocks, and slower candidate arm below faster baseline arm. Physical and latency facts report separately. Completion follows confirmed app settlement and exact native fixture restoration.",
+    "maintenanceFence": "Deferred pending separate owner lifecycle and native lock admission/absence design. This bounded comparison cannot retroactively qualify a failed PAGE matrix or substitute for a real independently measured public port."
+  },
+  "runtimeQualificationPending": true,
+  "releaseEligible": false
+}

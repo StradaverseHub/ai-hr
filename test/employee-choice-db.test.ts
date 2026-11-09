@@ -212,6 +212,62 @@ const pageAuxiliaryPositions=['selected','company','department','unit'] as const
 type PagePosition='principal'|'page'|'count'|typeof pageAuxiliaryPositions[number];
 const pageRelationNames=['assignment','business_unit','company','department','employment','person'] as const;
 
+// Fixed names-mode counterfactual for the tagged 50k profile. Keep the normal
+// native joins and policy-bearing tables. Only the selected identity carries text.
+function taggedAuxiliaryEnvelope(tenant:string,input:OrganisationPageInput){
+ return sql`with admitted as materialized (
+  select e.id,e.company_id,
+   case when e.id=${input.selectedId}::uuid then p.full_name end as selected_name,
+   case when e.id=${input.selectedId}::uuid then e.employee_code end as selected_code,
+   case when e.id=${input.selectedId}::uuid then
+    case when e.terminated_on is null then 'active' else 'ended' end end as selected_status
+  from public.employment e join public.person p on p.id=e.person_id and p.tenant_id=${tenant}::uuid
+  where e.tenant_id=${tenant}::uuid and e.company_id=any(${organisationPageArray(input.companyIds)}::uuid[])
+ ), represented as materialized (
+  select e.company_id,a.department_id,a.business_unit_id,
+   case when e.id=${input.selectedId}::uuid then a.id end as selected_assignment
+  from public.assignment a join admitted e on e.id=a.employment_id
+  where a.tenant_id=${tenant}::uuid and a.valid_to is null and a.superseded_at is null
+ ), picked as (
+  select e.id,e.company_id,c.legal_name,e.selected_name,e.selected_code,e.selected_status,
+   a.department_id,d.name as department,a.business_unit_id,u.name as unit
+  from admitted e join public.company c on c.id=e.company_id and c.tenant_id=${tenant}::uuid
+  left join represented a on a.selected_assignment is not null
+  left join public.department d on d.id=a.department_id and d.tenant_id=${tenant}::uuid
+  left join public.business_unit u on u.id=a.business_unit_id and u.tenant_id=${tenant}::uuid
+  where e.id=${input.selectedId}::uuid
+  order by e.selected_name,e.id,a.selected_assignment limit 1
+ ), facts as (
+  select 0 as ordinal, 'selected'::text as position, p.company_id, null::uuid as facet_id,
+   jsonb_build_object('employmentId',p.id,'name',p.selected_name,'employeeCode',p.selected_code,
+    'company',p.legal_name,'companyId',p.company_id,'departmentId',p.department_id,'departmentCode',null,
+    'department',p.department,'businessUnitId',p.business_unit_id,'businessUnitCode',null,
+    'businessUnit',p.unit,'status',p.selected_status) as value
+  from picked p
+  union all
+  select 1, 'company', c.id, null::uuid,
+   jsonb_build_object('companyId',c.id,'company',c.legal_name,'departmentId',null,'departmentCode',null,
+    'department',null,'businessUnitId',null,'businessUnitCode',null,'businessUnit',null)
+  from (select distinct company_id from admitted) e
+  join public.company c on c.id=e.company_id and c.tenant_id=${tenant}::uuid
+  union all
+  select 2, 'department', c.id, d.id,
+   jsonb_build_object('companyId',c.id,'company',c.legal_name,'departmentId',d.id,'departmentCode',null,
+    'department',d.name,'businessUnitId',null,'businessUnitCode',null,'businessUnit',null)
+  from (select distinct company_id,department_id from represented where department_id is not null) a
+  join public.company c on c.id=a.company_id and c.tenant_id=${tenant}::uuid
+  join public.department d on d.id=a.department_id and d.tenant_id=${tenant}::uuid
+  union all
+  select 3, 'unit', c.id, u.id,
+   jsonb_build_object('companyId',c.id,'company',c.legal_name,'departmentId',null,'departmentCode',null,
+    'department',null,'businessUnitId',u.id,'businessUnitCode',null,'businessUnit',u.name)
+  from (select distinct company_id,business_unit_id from represented where business_unit_id is not null) a
+  join public.company c on c.id=a.company_id and c.tenant_id=${tenant}::uuid
+  join public.business_unit u on u.id=a.business_unit_id and u.tenant_id=${tenant}::uuid
+ )
+ select position,value from facts order by ordinal,company_id,facet_id`;
+}
+
 function organisationPagePreTagPlan(result:unknown){
  if(!Array.isArray(result)||result.length!==1)throw new Error('Missing pre-tag organisation plan row');
  const raw:unknown=result[0]?.['QUERY PLAN'];
@@ -233,6 +289,38 @@ function organisationPagePreTagPlan(result:unknown){
     typeof estimatedRows!=='number'||!Number.isSafeInteger(estimatedRows)||estimatedRows<0)
   throw new Error('Invalid pre-tag organisation plan estimates');
  return {rootKind,cost,estimatedRows,nodes,jit:document.JIT!==undefined,relationScans};
+}
+
+function taggedAuxiliaryWork(result:unknown,rows:number){
+ const plan=organisationPagePreTagPlan(result);
+ const raw=(result as {'QUERY PLAN':Record<string,unknown>[]}[])[0]['QUERY PLAN'];
+ if(Buffer.byteLength(JSON.stringify(raw))>1024*1024)throw new Error('Auxiliary comparison plan exceeds its document cap');
+ const [document]=raw,root=document.Plan as PagePlanNode;
+ const counter=(value:unknown)=>{
+  if(typeof value!=='number'||!Number.isFinite(value)||value<0)throw new Error('Invalid auxiliary comparison plan counter');
+  return value;
+ };
+ expect(counter(root['Actual Rows'])).toBe(rows);
+ let visibilityCalls=0,visibilityRows=0,visibilityHits=0,assignmentScans=0,assignmentLoops=0;
+ const visit=(node:PagePlanNode)=>{
+  const loops=counter(node['Actual Loops']);
+  if(loops>0){
+   if(node['Relation Name']==='assignment'){assignmentScans++;assignmentLoops+=loops;}
+   if(Array.isArray(node.Output)&&node.Output.some(value=>typeof value==='string'&&value.includes('app.visible_employment_ids()')))
+    visibilityCalls+=loops;
+   if(node['Node Type']==='ProjectSet'){
+    const outputRows=counter(node['Actual Rows']);
+    if(outputRows>0){visibilityRows+=outputRows*loops;visibilityHits+=counter(node['Shared Hit Blocks']);}
+   }
+  }
+  for(const child of node.Plans??[])visit(child);
+ };
+ // The existing plan parser already bounds and validates this exact tree.
+ visit(root);
+ return {raw,summary:{nodes:plan.nodes,jit:plan.jit,visibilityCalls,visibilityRows,visibilityHits,
+  assignmentScans,assignmentLoops,sharedHits:counter(root['Shared Hit Blocks']),sharedReads:counter(root['Shared Read Blocks']),
+  tempReads:counter(root['Temp Read Blocks']),tempWrites:counter(root['Temp Written Blocks']),
+  executionMs:counter(document['Execution Time']),planningMs:counter(document['Planning Time'])}};
 }
 
 function organisationPagePlan(raw:unknown,candidate:boolean,kind:'page'|'count',pageRows:number,assignmentKeys:number){
@@ -412,6 +500,19 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   outerFailure?:string|null;
   statements:{position:Auxiliary;seal:ReturnType<typeof seal>;executionMs:number;planningMs:number;jit:boolean}[];
  }={state:'unavailable',stage:'catalogue-mismatch-not-observed',statements:[]};
+ type EnvelopeStage='requires-complete-tagged-diagnostic'|'admission'|'identity'|'fixture'|'initial-catalogue'|
+  'A0'|'B0'|'B1'|'A1'|'plans'|'terminal-catalogue'|'terminal-identity'|'capture-finished'|'native-settled';
+ type EnvelopeSample={arm:'A0'|'B0'|'B1'|'A1';wallMs:number;positions:{position:Auxiliary|'envelope';ms:number}[]};
+ type EnvelopePlan={position:Auxiliary|'envelope';seal:ReturnType<typeof seal>;summary:ReturnType<typeof taggedAuxiliaryWork>['summary']};
+ const envelopeEvidence:{
+  state:'unavailable'|'incomplete'|'settled';stage:EnvelopeStage;failure?:string|null;
+  catalogueBefore?:string;catalogueAfter?:string;fixtureOracle?:true;
+  sourceSeals?:{position:Auxiliary|'envelope';seal:ReturnType<typeof seal>}[];
+  samples:EnvelopeSample[];plans:EnvelopePlan[];
+  matchesRetainedVisibility?:boolean;reducesVisibilityWork?:boolean;boundedAssignment?:boolean;
+  noTempSpill?:boolean;fasterAuxiliaries?:boolean;meetsCausalGate?:boolean;
+ }={state:'unavailable',stage:'requires-complete-tagged-diagnostic',samples:[],plans:[]};
+ const envelopePlans:{position:Auxiliary|'envelope';raw:ReturnType<typeof taggedAuxiliaryWork>['raw']}[]=[];
  const metadata:Record<string,unknown>={kind:'FICTIONAL_NATIVE_ORGANISATION_PAGE_COMPONENT_ONLY',releaseEligible:false,
   source:course.source,controller:course.controller,caseEnd,activeEnd,epochs,observations,planSummaries,
   historical:{run:42387710131,source:'1de4d9047a7e8d58f79693ba614b2e5e0a586a43',wholePortTargetMet:false},
@@ -422,7 +523,7 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
   if(Buffer.byteLength(facts)>65536||Buffer.byteLength(plans)>4*1024*1024)throw new Error('Organisation page evidence exceeds its byte cap');
   const report:{metadata:typeof metadata;rawPlans:typeof rawPlans;taggedAuxiliary?:{
    evidence:typeof taggedEvidence;rawPlans:typeof taggedPlans
-  }}={metadata,rawPlans};
+  };auxiliaryEnvelope?:{evidence:typeof envelopeEvidence;rawPlans:typeof envelopePlans}}={metadata,rawPlans};
   if(includeTaggedEvidence){
    if(Buffer.byteLength(JSON.stringify([metadata,taggedEvidence]))<=65536)report.taggedAuxiliary={evidence:taggedEvidence,rawPlans:taggedPlans};
    else{
@@ -430,6 +531,10 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
     if(Buffer.byteLength(JSON.stringify([metadata,unavailable]))<=65536)report.taggedAuxiliary={evidence:unavailable,rawPlans:[]};
     else console.warn('Organisation page tagged auxiliary evidence unavailable (metadata cap)');
    }
+   if(report.taggedAuxiliary?.evidence===taggedEvidence&&
+      Buffer.byteLength(JSON.stringify([metadata,taggedEvidence,envelopeEvidence]))<=65536)
+    report.auxiliaryEnvelope={evidence:envelopeEvidence,rawPlans:envelopePlans};
+   else console.warn('Organisation page auxiliary envelope evidence unavailable (metadata cap)');
   }
   writeFileSync(join(course.directory,'employee-choice-organisation-page-private.json'),JSON.stringify(report),{mode:0o600});
  };
@@ -579,6 +684,128 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    taggedEvidence.failure=errorHash(error);
   }
  };
+ const compareTaggedEnvelope=async(tx:Tx,identity:PageRealm)=>{
+  // Only the original refusal path reaches here. The original diagnostic must
+  // have finished in this same held transaction with its exact shorter timeout.
+  if(taggedEvidence.stage!=='capture-finished'||taggedEvidence.failure!==undefined||
+     !taggedEvidence.catalogueStableDuringDiagnostic||taggedPlans.length!==4)return;
+  envelopeEvidence.stage='admission';
+  try{
+   active('tagged auxiliary envelope admission',42000);
+   const end=performance.now()+42000;
+   const step=(stage:EnvelopeStage,remaining=2000)=>{
+    envelopeEvidence.stage=stage;
+    active('tagged auxiliary envelope '+stage,remaining);
+    requireTime(end,remaining,'tagged auxiliary envelope '+stage);
+   };
+   envelopeEvidence.state='incomplete';
+   const originals=pageAuxiliaryPositions.map((position,index)=>{
+    const held=taggedCalls.get(position);
+    if(!held||taggedEvidence.statements[index]?.position!==position)throw new Error('Missing sealed auxiliary comparison input');
+    expect(held.seal).toEqual(taggedEvidence.statements[index].seal);
+    return {position,...held};
+   });
+   const profile=references[0],input=profile.input;
+   expect(profile.label).toBe('department-active');
+   expect(input).toEqual({companyIds:[b.companyId],departmentId:b.deptA,status:'active',selectedId});
+   expect(profile.expected.labelMode).toBe('names');
+   const query=taggedAuxiliaryEnvelope(tenant,input),compiled=dialect.sqlToQuery(query);
+   const companyScope=organisationPageArray(input.companyIds);
+   expect(compiled.params).toEqual([selectedId,selectedId,selectedId,tenant,tenant,companyScope,selectedId,tenant,
+    tenant,tenant,tenant,selectedId,tenant,tenant,tenant,tenant,tenant]);
+   const alternate={position:'envelope' as const,query,seal:seal(compiled)};
+   envelopeEvidence.sourceSeals=[...originals,alternate].map(({position,seal})=>({position,seal}));
+   const option=(extra:Record<string,string>)=>({companyId:b.companyId,company:'Acme Sdn Bhd',
+    departmentId:null,departmentCode:null,department:null,businessUnitId:null,businessUnitCode:null,businessUnit:null,...extra});
+   const expected=[
+    {position:'selected',value:profile.expected.selected},
+    {position:'company',value:option({})},
+    {position:'department',value:option({departmentId:b.deptA,department:'Finance'})},
+    {position:'unit',value:option({businessUnitId:represented,businessUnit:representedName})},
+   ];
+   const heldIdentity={...identity,statement_timeout:'2s'};
+   step('identity');
+   const [startIdentity]=await tx.execute<PageRealm>(pageRealm);
+   step('identity',0);
+   expect(startIdentity).toEqual(heldIdentity);
+   step('fixture');
+   const [shape]=await tx.execute<{units:number;tags:number}>(sql`select
+    (select count(*)::int from public.business_unit where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid
+     and id=any(${organisationPageArray([represented,empty])}::uuid[])) as units,
+    (select count(*)::int from public.assignment where tenant_id=${tenant}::uuid and company_id=${b.companyId}::uuid
+     and department_id=${b.deptA}::uuid and business_unit_id=${represented}::uuid and valid_to is null
+     and superseded_at is null and employment_id=any(${sampleArray}::uuid[])) as tags`);
+   step('fixture',0);
+   expect(shape).toEqual({units:2,tags:500});
+   step('initial-catalogue');
+   const [before]=await tx.execute(pageCatalogue);
+   step('initial-catalogue',0);
+   if(!before)throw new Error('Missing initial auxiliary comparison catalogue');
+   envelopeEvidence.catalogueBefore=organisationPageHash(JSON.stringify(before));
+   expect(envelopeEvidence.catalogueBefore).toBe(taggedEvidence.catalogueAfter);
+   const run=async(call:typeof originals[number]|typeof alternate,arm:EnvelopeSample['arm'])=>{
+    step(arm);
+    const start=performance.now(),rows=await tx.execute(call.query),ms=performance.now()-start;
+    step(arm,0);
+    return {position:call.position,rows,ms};
+   };
+   for(const arm of epochs){
+    const baseline=arm==='A0'||arm==='A1',calls=baseline?originals:[alternate];
+    for(const call of calls)expect(seal(dialect.sqlToQuery(call.query))).toEqual(call.seal);
+    const start=performance.now(),measured:Awaited<ReturnType<typeof run>>[]=[];
+    for(const call of calls)measured.push(await run(call,arm));
+    const wallMs=performance.now()-start;
+    const facts=baseline?measured.map(({position,rows})=>{
+     expect(rows).toHaveLength(1);
+     return {position,value:{...rows[0]}};
+    }):measured[0].rows.map(row=>({...row}));
+    expect(facts).toStrictEqual(expected);
+    envelopeEvidence.samples.push({arm,wallMs,positions:measured.map(({position,ms})=>({position,ms}))});
+   }
+   envelopeEvidence.fixtureOracle=true;
+   for(const call of [...originals,alternate]){
+    const original=dialect.sqlToQuery(call.query);
+    expect(seal(original)).toEqual(call.seal);
+    const explain=sql`explain (analyze,buffers,verbose,settings,timing off,format json) ${call.query}`;
+    const wrapped=dialect.sqlToQuery(explain);
+    expect(wrapped.sql).toBe('explain (analyze,buffers,verbose,settings,timing off,format json) '+original.sql);
+    expect(seal(wrapped).params).toBe(call.seal.params);
+    step('plans');
+    const result=await tx.execute<{'QUERY PLAN':unknown}>(explain);
+    step('plans',0);
+    const {raw,summary}=taggedAuxiliaryWork(result,call.position==='envelope'?expected.length:1);
+    const entry={position:call.position,raw};
+    if(Buffer.byteLength(JSON.stringify([rawPlans,taggedPlans,[...envelopePlans,entry]]))>4*1024*1024)
+     throw new Error('Auxiliary comparison aggregate plan evidence exceeds its byte cap');
+    envelopePlans.push(entry);
+    envelopeEvidence.plans.push({position:call.position,seal:call.seal,summary});
+   }
+   step('terminal-catalogue');
+   const [after]=await tx.execute(pageCatalogue);
+   step('terminal-catalogue',0);
+   if(!after)throw new Error('Missing terminal auxiliary comparison catalogue');
+   envelopeEvidence.catalogueAfter=organisationPageHash(JSON.stringify(after));
+   expect(after).toEqual(before);
+   step('terminal-identity');
+   const [endIdentity]=await tx.execute<PageRealm>(pageRealm);
+   step('terminal-identity',0);
+   expect(endIdentity).toEqual(heldIdentity);
+   const summaries=envelopeEvidence.plans.map(plan=>plan.summary),baseline=summaries.slice(0,4),candidate=summaries[4];
+   const [a0,b0,b1,a1]=envelopeEvidence.samples;
+   envelopeEvidence.matchesRetainedVisibility=baseline.every((plan,index)=>{
+    const count=index===1?1:2;
+    return plan.visibilityCalls===count&&plan.visibilityRows===count*50000;
+   });
+   envelopeEvidence.reducesVisibilityWork=candidate.visibilityCalls===2&&candidate.visibilityRows===100000&&
+    candidate.visibilityHits<baseline.reduce((sum,plan)=>sum+plan.visibilityHits,0);
+   envelopeEvidence.boundedAssignment=candidate.assignmentScans===1&&candidate.assignmentLoops===1;
+   envelopeEvidence.noTempSpill=candidate.tempReads===0&&candidate.tempWrites===0;
+   envelopeEvidence.fasterAuxiliaries=Math.max(b0.wallMs,b1.wallMs)<Math.min(a0.wallMs,a1.wallMs);
+   step('capture-finished',0);
+  }catch(error){
+   envelopeEvidence.failure=errorHash(error);
+  }
+ };
  type OwnerStep=(label:string,remaining?:number)=>void;
  type OwnerReceipt={outer:'pending'|'commit-acknowledged'|'unconfirmed';callback:'pending'|'not-entered'|'fulfilled'|'rejected';
   backend?:PageRealm;outerFailure?:string|null;callbackFailure?:string|null};
@@ -688,7 +915,10 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
    catch(error){
     // Preserve the exact original mismatch even if collecting the later plans refuses.
     catalogueRefusal={error};
-    try{await observeTaggedAuxiliaries(tx,identity,terminalCatalogue);}
+   try{
+    await observeTaggedAuxiliaries(tx,identity,terminalCatalogue);
+    await compareTaggedEnvelope(tx,identity);
+   }
     finally{throw error;}
    }
    expect(await realm(tx,active,'ai_hr_app')).toEqual(identity);
@@ -783,6 +1013,11 @@ async function compareOrganisationPage(fixture:PageFixture,course:NonNullable<Re
  metadata.restored=restored;metadata.ownerStopRequired=organisationPageUnconfirmed;
  if(taggedEvidence.stage==='capture-finished'&&taggedEvidence.failure===undefined&&!appOuterRefusal&&restored&&metadata.nativeAppSettled===true){
   taggedEvidence.state='complete';taggedEvidence.stage='native-settled';
+  if(envelopeEvidence.stage==='capture-finished'&&envelopeEvidence.failure===undefined){
+   envelopeEvidence.state='settled';envelopeEvidence.stage='native-settled';
+   envelopeEvidence.meetsCausalGate=envelopeEvidence.matchesRetainedVisibility===true&&envelopeEvidence.reducesVisibilityWork===true&&
+    envelopeEvidence.boundedAssignment===true&&envelopeEvidence.noTempSpill===true&&envelopeEvidence.fasterAuxiliaries===true;
+  }
  }
  const failures=[...(workFailed?[workFailure]:[]),...(appOuterRefusal?[appOuterRefusal.error]:[]),...(restoreFailed?[restoreFailure]:[])];
  metadata.positionTimings=positionTimings;
