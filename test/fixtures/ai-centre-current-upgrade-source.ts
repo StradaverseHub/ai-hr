@@ -24,7 +24,7 @@ const sha = (bytes: Buffer | string) => createHash('sha256').update(bytes).diges
 const ledgerTuple = ({ tag, created_at, hash }: LedgerIdentity) => [tag, created_at, hash];
 const ledgerDigest = (rows: LedgerIdentity[]) => sha(JSON.stringify(rows.map(ledgerTuple)));
 
-function heldBytes(path: string, maximum: number): Buffer {
+function heldBytes(path: string, maximum: number): Buffer<ArrayBuffer> {
   assert.equal(realpathSync(path), path, 'Current upgrade source path differs');
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {

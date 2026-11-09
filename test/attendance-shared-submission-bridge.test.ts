@@ -158,8 +158,8 @@ it('executes the exact bridge as a real restricted owner and serves a distinct a
  expect(result.appIdentity).toEqual({session:'ai_hr_app',current:'ai_hr_app',super:false,bypass:false});
  expect(result.restrictedIdentity).toMatchObject({super:false,bypass:false,parentSet:false,statementTimeout:'5s',lockTimeout:'300ms'});
 },90000);
-it.for(OWNER_MODES.filter(mode=>mode!=='positive'))('settles real owned child fault %s before any later reset or teardown SQL',async mode=>{
+it.for(OWNER_MODES.filter(mode=>mode!=='positive'))('settles real owned child fault %s before any later reset or teardown SQL',{timeout:90000},async mode=>{
  const result=await isolatedOwner(mode);
  expect(result).toMatchObject({kind:'ATTENDANCE_OWNER_FAULT',faultObserved:true,allCatalogueRestored:true,roleAbsent:true});
  expect(result.ownedOidCaptured).toBe(mode==='rollback-before-commit'||mode==='lost-after-commit'||mode==='restore-guard-drift');
-},90000);
+});

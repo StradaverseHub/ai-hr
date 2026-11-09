@@ -1462,11 +1462,12 @@ async function selectedReaders(observer:Sql,configuration:ReturnType<typeof sele
  // Empty-base read is an explicit additional SERIAL lifetime, not a fifth slot.
  for(const name of ['ai_hr_dev','ai_hr_test',names.template,...names.workers]){
   budget.guard();const url=new URL(configuration.url);url.pathname='/'+name;
-  const client=postgres(url.toString(),{max:1,onnotice:()=>{},connection:{statement_timeout:'10000',lock_timeout:'5000'}});
+  const client=postgres(url.toString(),{max:1,onnotice:()=>{},connection:{statement_timeout:10000,lock_timeout:5000}});
   let identity:{pid:number;backendStart:string}|null=null,primary:unknown;
   try{
    const snapshot=await selectedReadonly(client,async q=>{
-    identity=await selectedConnection(q,budget);selectedEqual((identity as SelectedConnection).database,name);
+    const connection=await selectedConnection(q,budget);
+    identity=connection;selectedEqual(connection.database,name);
     return selectedSnapshotRead(q,budget,name==='ai_hr_test');
    });
    selectedSnapshot(snapshot,'postgres',cluster,name==='ai_hr_test');readers.push(snapshot);
