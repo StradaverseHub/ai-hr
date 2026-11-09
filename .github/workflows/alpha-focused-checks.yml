@@ -335,167 +335,536 @@ jobs:
             test ! -L "$RUNNER_TEMP/$name"
           done
           node scripts/performance/system-runner.mjs
-      - name: Settle only the disposable development PostgreSQL container
+      - name: Adjudicate owned development browser settlement and evidence
         if: ${{ always() && inputs.architecture_browser_development_preflight && steps.development-browser-source.outcome == 'success' && steps.development-browser.outcome != 'skipped' && steps.development-browser.outcome != '' }}
         id: development-browser-cleanup
         env:
-          AIHR_CI_UNIT: db-1
-          AIHR_CI_PG_DURABLE: '1'
-          AIHR_CI_PG_STATEMENTS: '1'
-          AIHR_CI_PG_STATEMENTS_OWNER: system-http-profile
-        run: timeout --signal=TERM --kill-after=5s 25s bash ../automation/.github/ci/postgres.sh stop
-      - name: Select existing sanitized development evidence
-        if: ${{ always() && inputs.architecture_browser_development_preflight && steps.development-browser-source.outcome == 'success' && steps.development-browser.outcome != 'skipped' && steps.development-browser.outcome != '' }}
-        id: development-browser-evidence
-        env:
           COURSE_OUTCOME: ${{ steps.development-browser.outcome }}
-          CLEANUP_OUTCOME: ${{ steps.development-browser-cleanup.outcome }}
         run: |
-          /usr/bin/python3 -I -B - <<'PYTHON'
-          import json, os, stat
+          /usr/bin/timeout --signal=TERM --kill-after=5s 25s /usr/bin/python3 -I -B - <<'PYTHON'
+          import hashlib, json, os, re, stat
+          from contextlib import ExitStack
           from pathlib import Path
 
-          root = Path(os.environ['RUNNER_TEMP']) / 'system-performance-evidence'
-          if root.resolve(strict=True) != root or not root.is_dir():
-              raise SystemExit('Development browser evidence directory refused')
+          limit = 4 * 1024**2
+          directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+          temp = Path(os.environ['RUNNER_TEMP'])
+          source_name = 'system-performance-evidence'
+          publish_name = 'system-performance-published'
+          sha = os.environ['AIHR_CI_HEAD']
+          run = os.environ['GITHUB_RUN_ID']
+          course_outcome = os.environ['COURSE_OUTCOME']
+          if (temp.resolve(strict=True) != temp or not re.fullmatch(r'[a-f0-9]{40}', sha)
+                  or sha != os.environ['AIHR_CI_CONTROL_HEAD'] or sha != os.environ['GITHUB_WORKFLOW_SHA']
+                  or not re.fullmatch(r'[1-9][0-9]{0,15}', run) or int(run) > 2**53 - 1
+                  or os.environ['GITHUB_RUN_ATTEMPT'] != '1' or os.environ['GITHUB_JOB'] != 'selected-tests'):
+              raise SystemExit('Development browser adjudication identity refused')
+          identity_fields = {'candidateSha': sha, 'controllerSha': sha, 'runId': int(run), 'runAttempt': 1}
 
-          def check_file(name):
-              member = root / name
-              info = member.lstat()
-              if (member.resolve(strict=True) != member or not stat.S_ISREG(info.st_mode)
-                      or info.st_uid != os.getuid() or info.st_nlink != 1 or not 0 < info.st_size <= 4 * 1024**2):
-                  raise SystemExit('Development browser evidence member refused')
-              return member
+          def record(value):
+              return value if type(value) is dict else {}
+
+          def closed(value, keys):
+              return type(value) is dict and value.keys() == set(keys.split())
+
+          def choice(value, allowed):
+              return value if type(value) is str and value in allowed else None
+
+          def number(value, maximum, minimum=0):
+              return value if type(value) is int and minimum <= value <= maximum else None
+
+          def flag(value):
+              return value if type(value) is bool else None
+
+          def count(value):
+              return number(len(value), 4096) if type(value) is list else None
+
+          def first(value, condition):
+              return next((row for row in value if type(row) is dict and condition(row)), {}) if count(value) is not None else {}
+
+          def same_identity(value):
+              return all(type(value.get(key)) is type(expected) and value[key] == expected
+                         for key, expected in identity_fields.items())
+
+          def digest(value):
+              return type(value) is str and re.fullmatch(r'[a-f0-9]{64}', value) is not None
+
+          def identity(info):
+              return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_nlink,
+                      info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+          def unique_object(pairs):
+              value = dict(pairs)
+              if len(value) != len(pairs):
+                  raise ValueError('duplicate JSON field')
+              return value
+
+          def refuse_constant(_):
+              raise ValueError('non-finite JSON constant')
+
+          def read_member(directory, name):
+              if directory is None:
+                  return 'absent', None
+              try:
+                  fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=directory)
+              except FileNotFoundError:
+                  return 'absent', None
+              except OSError:
+                  return 'refused', None
+              try:
+                  with os.fdopen(fd, 'rb') as stream:
+                      info = os.fstat(fd)
+                      if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                              or info.st_nlink != 1 or not 0 < info.st_size <= limit):
+                          return 'refused', None
+                      raw = stream.read(limit + 1)
+                      if (len(raw) != info.st_size or identity(info) != identity(os.fstat(fd))
+                              or identity(info) != identity(os.stat(name, dir_fd=directory, follow_symlinks=False))):
+                          return 'refused', None
+                      return 'observed', raw
+              except OSError:
+                  return 'refused', None
+
+          def json_member(directory, name, admitted, value_type=dict):
+              state, raw = read_member(directory, name)
+              if raw is not None:
+                  try:
+                      value = json.loads(raw, object_pairs_hook=unique_object, parse_constant=refuse_constant)
+                      if type(value) is value_type and admitted(value):
+                          return state, value, raw
+                  except (ValueError, RecursionError):
+                      pass
+                  state = 'refused'
+              return state, {}, None
+
+          def clean_phase(phases, label, positive):
+              if count(phases) is None:
+                  return False
+              rows = [row for row in phases if record(row).get('label') == label]
+              if len(rows) != 1:
+                  return False
+              row = rows[0]
+              return (number(row.get('exitCode'), 255, 0 if positive else 1) is not None
+                      and (row['exitCode'] == 0 if positive else True)
+                      and row.get('timedOut') is False and 'exitSignal' in row and row['exitSignal'] is None)
+
+          def capture_source(row):
+              baseline = record(row.get('baseline'))
+              return (closed(row, 'schemaVersion protocol releaseAuthorized baseline')
+                      and number(row['schemaVersion'], 1, 1) == 1 and row['protocol'] == 'aihr-navigation-development/v2'
+                      and row['releaseAuthorized'] is False and same_identity(baseline)
+                      and closed(baseline, 'schemaVersion protocol releaseAuthorized fixture engine candidateSha controllerSha '
+                                      'runId runAttempt harnessSha256 scenarioSha256 phase complete observations')
+                  and number(baseline['schemaVersion'], 1, 1) == 1 and baseline['protocol'] == row['protocol']
+                      and baseline.get('releaseAuthorized') is False and baseline.get('complete') is True
+                      and baseline.get('engine') == 'chromium' and baseline.get('phase') == 'baseline'
+                      and baseline.get('fixture') == 'system-load-v1' and count(baseline.get('observations')) not in (None, 0)
+                      and all(digest(baseline.get(key)) for key in ('harnessSha256', 'scenarioSha256')))
+
+          states = {'settled', 'failed', 'unknown'}
+          runner_keys = 'driver proxy workers postgres postgresReset postgresRemoveApi postgresAbsent'
+          pool_evidence = 'postgres-js-end-api-acknowledgement'
+          page_keys = 'censusComplete observedPages closedPages observedCrashes qualifiedCrashes aborted transport http5xx pageError consoleError'
+          lock_keys = 'phase intervalMs maxGapUs state reason coveragePass pass blockingSamples observedBlockingSamples qualifiedSamples openingGapUs interiorGapUs tailGapUs'
+          lock_numbers = 'blockingSamples observedBlockingSamples qualifiedSamples'.split()
+          lock_gaps = 'openingGapUs interiorGapUs tailGapUs'.split()
+          lock_reasons = {'window-unknown', 'samples-unknown', 'sample-failed', 'sample-unknown', 'sample-order', 'coverage-gap',
+                          'cadence-unobserved', 'blocking-observed', 'window-unsettled', 'application-unobserved'}
+
+          def nullable_counts(value, keys, maximum):
+              return all(key in value and (value[key] is None or number(value[key], maximum) is not None) for key in keys)
+
+          def lock_window(lock):
+              if (not closed(lock, lock_keys) or lock['phase'] != 'preflight'
+                      or number(lock['intervalMs'], 250, 250) != 250 or number(lock['maxGapUs'], 500000, 500000) != 500000
+                      or not nullable_counts(lock, lock_numbers, 4097) or not nullable_counts(lock, lock_gaps, 1000000000)
+                      or choice(lock['state'], {'complete', 'missed', 'unknown'}) is None):
+                  return False
+              covered = lock['state'] == 'complete'
+              blocking = lock['blockingSamples']
+              if lock['coveragePass'] is not covered or lock['pass'] is not (covered and blocking == 0):
+                  return False
+              if covered:
+                  return (number(lock['qualifiedSamples'], 4096, 2) is not None and blocking is not None
+                          and blocking == lock['observedBlockingSamples']
+                          and lock['reason'] == (None if blocking == 0 else 'blocking-observed')
+                          and all(number(lock[key], 500000) is not None for key in lock_gaps))
+              return blocking is None and choice(lock['reason'], lock_reasons) is not None
+
+          def loaded_not_applicable(lock):
+              return (closed(lock, lock_keys) and lock['phase'] == 'loaded'
+                      and number(lock['intervalMs'], 1000, 1000) == 1000 and number(lock['maxGapUs'], 2000000, 2000000) == 2000000
+                      and lock['state'] == 'not-applicable' and lock['coveragePass'] is False and lock['pass'] is False
+                      and all(lock[key] is None for key in ['reason', *lock_numbers, *lock_gaps]))
+
+          def driver_receipt(value):
+              if (not closed(value, 'kind suite workCompleted identity busyResponses poolEvidence pageEvents locks settlement complete renderedCapture')
+                      or value['kind'] != 'DEVELOPMENT_BROWSER_MEASUREMENT_V1' or value['suite'] != 'workflow-preflight'
+                      or flag(value['workCompleted']) is None or flag(value['complete']) is None
+                      or value['poolEvidence'] != pool_evidence or not nullable_counts(value, ['busyResponses'], 1000000)
+                      or (not value['workCompleted'] and value['busyResponses'] == 0)):
+                  return False
+              binding = value['renderedCapture']
+              if value['complete']:
+                  if (not closed(binding, 'sha256 bytes') or not digest(binding['sha256'])
+                          or number(binding['bytes'], limit, 1) is None):
+                      return False
+              elif binding is not None:
+                  return False
+              source, pages, locks, settlement = (value[key] for key in ('identity', 'pageEvents', 'locks', 'settlement'))
+              if (not closed(source, 'candidateSha controllerSha runId runAttempt harnessSha256 scenarioSha256')
+                      or not same_identity(source)
+                      or not all(source[key] is None or digest(source[key]) for key in ('harnessSha256', 'scenarioSha256'))
+                      or not closed(pages, page_keys) or flag(pages['censusComplete']) is None
+                      or not nullable_counts(pages, ['observedPages', 'closedPages'], 4096)
+                      or not nullable_counts(pages, page_keys.split()[3:], 1000000)
+                      or not closed(settlement, 'browser https diagnostics auditPool observerPool')
+                      or any(choice(state, states | {'absent'}) is None for state in settlement.values())
+                      or not closed(locks, 'preflight loaded') or not lock_window(locks['preflight'])
+                      or not loaded_not_applicable(locks['loaded'])):
+                  return False
+              observed, completed, crashes = (pages[key] for key in ('observedPages', 'closedPages', 'observedCrashes'))
+              if (completed is not None and (observed is None or completed > observed)
+                      or not observed and any(pages[key] is not None for key in page_keys.split()[3:])):
+                  return False
+              if pages['censusComplete']:
+                  if not observed or observed != completed or crashes is None or settlement['browser'] != 'settled':
+                      return False
+              if pages['qualifiedCrashes'] != (crashes if pages['censusComplete'] else None):
+                  return False
+              return not value['complete'] or (
+                  value['workCompleted'] and value['busyResponses'] == 0 and pages['censusComplete']
+                  and pages['qualifiedCrashes'] == 0 and pages['aborted'] is not None
+                  and all(pages[key] == 0 for key in ('transport', 'http5xx', 'pageError', 'consoleError'))
+                  and locks['preflight']['pass'] and all(state == 'settled' for state in settlement.values())
+                  and all(digest(source[key]) for key in ('harnessSha256', 'scenarioSha256')))
+
+          def terminal_measurement(row):
+              receipt = record(row.get('developmentMeasurement'))
+              acceptance = row.get('runtimeAcceptance')
+              if (not closed(receipt, 'kind complete driver driverReceipt settlement')
+                      or receipt['kind'] != 'DEVELOPMENT_BROWSER_RUNNER_MEASUREMENT_V1'
+                      or flag(receipt['complete']) is None or not closed(acceptance, 'pass failures')
+                      or flag(acceptance['pass']) is None or count(acceptance['failures']) is None
+                      or acceptance['pass'] is not (not acceptance['failures'])):
+                  return None
+              status, driver, settlement = (receipt[key] for key in ('driverReceipt', 'driver', 'settlement'))
+              if (choice(status, {'observed', 'absent', 'refused'}) is None
+                      or (not driver_receipt(driver) if status == 'observed' else driver is not None)
+                      or not closed(settlement, runner_keys)
+                      or any(choice(settlement[key], states) is None for key in runner_keys.split()[:-1])):
+                  return None
+              reset, remove, absent = (settlement[key] for key in ('postgresReset', 'postgresRemoveApi', 'postgresAbsent'))
+              postgres = 'failed' if remove == 'failed' or absent is False else (
+                  'settled' if remove == 'settled' and absent is True else 'unknown')
+              if (absent is not None and flag(absent) is None
+                      or absent is not None and (reset == 'unknown' or remove != 'settled')
+                      or settlement['postgres'] != postgres
+                      or absent is True and not (clean_phase(row.get('phases'), 'postgres', reset == 'settled')
+                                                 and clean_phase(row.get('phases'), 'cleanup', True))
+                      or receipt['complete'] and not (
+                          row['exitCode'] == 0 and acceptance['pass'] and status == 'observed' and driver['complete']
+                          and all(settlement[key] == 'settled' for key in runner_keys.split()[:-1]) and absent is True
+                          and clean_phase(row.get('phases'), 'http-and-browser', True))):
+                  return None
+              return receipt
+
+          # Fixed fixture and diagnostics projections. Never pass through raw optional payloads.
+          role_keys = 'employee manager companyHR groupHR'
+          timing_keys = 'hire identityAndSessionProvisioning historyAndCompensationSeed payrollGenerate50 payrollClose50'
+          module_codes = set(('employees org leave ess approvals knowledge_base payroll attendance claims performance '
+                              'rewards lifecycle notifications assistant system_explorer system_testing').split())
+          fixture_phase_names = set(('letter-draft-prerequisites claims-history attendance-history historical-payroll-generate '
+                                     'historical-payroll-close rewards-draft-prerequisites rewards-draft-import '
+                                     'payroll-readiness-after-organisation-publication attendance-workflow-tail '
+                                     'reporting-line-tail post-seed-counts audit-counts assistant-saved-history').split())
+          fixture_error_codes = set(('ERR_ASSERTION ERR_INVALID_ARG_TYPE ERR_INVALID_PACKAGE_CONFIG ERR_MODULE_NOT_FOUND '
+                                     'MODULE_NOT_FOUND ERR_PACKAGE_PATH_NOT_EXPORTED ERR_REQUIRE_ESM ERR_UNKNOWN_FILE_EXTENSION '
+                                     'ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX 22023 23502 23503 23505 23514 25006 25P02 40001 40P01 '
+                                     '42501 42703 42883 42P01 55P03 57014 P0001').split())
+          fixture_error_kinds = {'assertion-error', 'syntax-error', 'type-error', 'error', 'other'}
+          lock_modes = set(('AccessShareLock RowShareLock RowExclusiveLock ShareUpdateExclusiveLock ShareLock '
+                            'ShareRowExclusiveLock ExclusiveLock AccessExclusiveLock').split())
+
+          def projected_counts(value, keys, maximum=100000000):
+              row = record(value)
+              return {key: number(row.get(key), maximum) for key in keys.split()}
+
+          def duration(value, maximum):
+              return value if type(value) in (int, float) and 0 <= value <= maximum else None
+
+          def matches(value, pattern):
+              return value if type(value) is str and re.fullmatch(pattern, value) else None
+
+          def bounded_list(value, maximum, project):
+              if type(value) is not list or len(value) > maximum:
+                  return None
+              rows = [project(row) for row in value]
+              return rows if all(row is not None for row in rows) else None
+
+          def project_fixture(row):
+              summary = projected_counts(row, 'tenants companies users claimsPerEmployee attendanceDays')
+              summary.update(
+                  fictional=True, monthlyBasicSalary=number(row.get('monthlyBasicSalary'), 5000, 5000),
+                  fixtureVolumeKind=choice(row.get('fixtureVolumeKind'), {'workflow-preflight-only'}),
+                  historicalMonth=matches(row.get('historicalMonth'), r'[0-9]{4}-(0[1-9]|1[0-2])'),
+                  publicationMonth=matches(row.get('publicationMonth'), r'[0-9]{4}-(0[1-9]|1[0-2])'),
+                  attendanceBounds=projected_counts(row.get('attendanceBounds'), 'current_rows before_hire'),
+                  roles=projected_counts(row.get('roles'), role_keys),
+                  counts=projected_counts(row.get('counts'), 'claims attendance payslips'),
+                  auditHashChainRequested=flag(row.get('auditHashChainRequested')),
+                  auditHashChain=flag(row.get('auditHashChain')),
+                  auditCounts=bounded_list(row.get('auditCounts'), 2,
+                      lambda entry: projected_counts(entry, 'tenant events chained initialization_prefix') if type(entry) is dict else None),
+                  assistantHistoryFixture={
+                      **projected_counts(row.get('assistantHistoryFixture'), 'actors tenants threadsPerActor exchangesPerActor'),
+                      'rowsVerified': flag(record(row.get('assistantHistoryFixture')).get('rowsVerified'))},
+                  coreModules=bounded_list(row.get('coreModules'), len(module_codes), lambda code: choice(code, module_codes)),
+                  explicitActiveModules=bounded_list(row.get('explicitActiveModules'), 2,
+                      lambda entry: {'tenant': number(entry.get('tenant'), 1),
+                                     'modules': bounded_list(entry.get('modules'), len(module_codes), lambda code: choice(code, module_codes))}
+                      if type(entry) is dict else None),
+              )
+              timings = record(row.get('operationTimings'))
+              summary['operationTimings'] = {
+                  key: {'samples': number(record(timings[key]).get('samples'), 4096),
+                        **{field: duration(record(timings[key]).get(field), 3600000)
+                           for field in ('totalMs', 'p50Ms', 'p95Ms', 'maxMs')}}
+                  for key in timing_keys.split() if key in timings}
+              return summary
+
+          def project_actors(row):
+              projected = projected_counts(row, 'trafficActors tenants companies actorsPerTenant actorsPerCompany nativeSelectedRows nativeGrants')
+              roles = projected_counts(row.get('roles'), role_keys)
+              if (row.get('fictional') is not True or row.get('globalPopulationAsserted') is not False
+                      or any(value is None for value in (*projected.values(), *roles.values()))):
+                  return None
+              return {**projected, 'fictional': True, 'globalPopulationAsserted': False, 'roles': roles}
+
+          def project_fixture_phase(value):
+              row = record(value)
+              phase = choice(row.get('phase'), fixture_phase_names)
+              state = choice(row.get('status'), {'running', 'passed', 'failed'})
+              tenant = row.get('tenant')
+              if not phase or not state or 'tenant' not in row or (tenant is not None and number(tenant, 1) is None):
+                  return None
+              result = {'tenant': tenant, 'phase': phase, 'status': state, 'elapsedMs': duration(row.get('elapsedMs'), 910000)}
+              if state == 'failed':
+                  failure = record(row.get('failure'))
+                  result['failure'] = {'kind': choice(failure.get('kind'), fixture_error_kinds),
+                                       'code': choice(failure.get('code'), fixture_error_codes)}
+              return result
+
+          def project_fixture_phases(rows):
+              return bounded_list(rows, 64, project_fixture_phase)
+
+          def project_server_failure(value):
+              row = record(value)
+              worker = number(row.get('worker'), 1)
+              sqlstates = bounded_list(row.get('sqlStates'), 64, lambda code: matches(code, r'[0-9A-Z]{5}'))
+              if worker is None or sqlstates is None:
+                  return None
+              result = {'worker': worker, 'sqlStates': sqlstates}
+              if row.get('source') == 'public-error':
+                  return {**result, 'source': 'public-error'}
+              operation = choice(row.get('operation'), {'activate', 'delete'})
+              return {**result, 'operation': operation, **{key: flag(row.get(key)) for key in
+                  ('lockTimeoutMessage', 'statementTimeoutMessage', 'deadlockMessage', 'permissionDeniedMessage')}} if operation else None
+
+          def project_server_failures(row):
+              failures = bounded_list(row.get('failures'), 100, project_server_failure)
+              return {'scope': 'Closed worker diagnostics without raw logs or references', 'failures': failures} if failures is not None else None
+
+          def project_postgres_failure(value):
+              row = record(value)
+              kind = choice(row.get('kind'), {'observed heavyweight lock wait', 'deadlock detected', 'canceling statement due to lock timeout'})
+              waits, routines = row.get('waits'), row.get('routines')
+              if not kind or type(waits) is not list or len(waits) > 64 or type(routines) is not list or len(routines) > 32:
+                  return None
+              result = {'kind': kind, 'waitDetails': len(waits), 'routineFrames': len(routines)}
+              if kind == 'observed heavyweight lock wait':
+                  outcome = choice(row.get('outcome'), {'still waiting for', 'acquired', 'avoided deadlock for',
+                      'detected deadlock while waiting for', 'failed to acquire'})
+                  mode = choice(row.get('mode'), lock_modes)
+                  elapsed = duration(row.get('waitMs'), 1000000000000)
+                  if outcome is None or mode is None or elapsed is None:
+                      return None
+                  result.update(outcome=outcome, mode=mode, waitMs=elapsed)
+              return result
+
+          def project_postgres_failures(row):
+              failures = bounded_list(row.get('failures'), 64, project_postgres_failure)
+              runtime = matches(row.get('runtimeFrom'), r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z')
+              return {'scope': 'Owned PostgreSQL log observations without native identifiers',
+                      'runtimeFrom': runtime, 'failures': failures} if failures is not None else None
+
+
+          def publish(directory, name, raw):
+              fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=directory)
+              with os.fdopen(fd, 'wb') as output:
+                  output.write(raw)
+                  output.flush()
+                  if identity(os.fstat(fd)) != identity(os.stat(name, dir_fd=directory, follow_symlinks=False)):
+                      raise OSError('Published development evidence changed')
+              members.append(name)
+
+          def publish_json(directory, name, value, maximum=8192):
+              raw = (json.dumps(value, separators=(',', ':'), allow_nan=False) + '\n').encode()
+              if len(raw) > maximum:
+                  raise OSError('Development receipt exceeds its closed projection bound')
+              publish(directory, name, raw)
 
           members = []
-          for name in ('navigation-browser-capture.json', 'actor-tenancy.json', 'fixture.json',
-                       'fixture-phases.json', 'server-native-failures.json', 'postgres-lock-failures.json'):
+
+          # The source check and fresh-directory preflight restrict this to the first
+          # attempt's owned job. No Docker or process mutation is permitted here.
+          with ExitStack() as held:
+              temp_fd = os.open(temp, directory_flags)
+              held.callback(os.close, temp_fd)
+              if os.fstat(temp_fd).st_uid != os.getuid():
+                  raise SystemExit('Development browser runner temp owner refused')
+
+              directory = None
+              directory_state = 'absent'
               try:
-                  members.append(check_file(name))
+                  directory = os.open(source_name, directory_flags, dir_fd=temp_fd)
+                  held.callback(os.close, directory)
+                  source_info = os.fstat(directory)
+                  if source_info.st_uid != os.getuid() or stat.S_IMODE(source_info.st_mode) != 0o700:
+                      directory = None
+                      directory_state = 'refused'
+                  else:
+                      directory_state = 'observed'
               except FileNotFoundError:
                   pass
-          if os.environ['COURSE_OUTCOME'] == 'success' and os.environ['CLEANUP_OUTCOME'] == 'success':
-              if not members:
-                  raise SystemExit('No sanitized development browser evidence')
-              runner = json.loads(check_file('runner.json').read_bytes())
-              driver = json.loads(check_file('http-browser.json').read_bytes())
-              fixture = json.loads(check_file('fixture.json').read_bytes())
-              capture = json.loads(check_file('navigation-browser-capture.json').read_bytes())
-              sha = os.environ['AIHR_CI_HEAD']
-              topology = runner.get('topology', {})
-              baseline = capture.get('baseline', {})
-              if (runner.get('kind') != 'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY'
-                      or runner.get('sha') != sha or runner.get('controller') != sha
-                      or runner.get('run') != os.environ['GITHUB_RUN_ID'] or runner.get('exitCode') != 0
-                      or runner.get('releaseEligible') is not False or runner.get('productionEquivalent') is not False
-                      or runner.get('runtimeAcceptance', {}).get('pass') is not True
-                      or [topology.get(key) for key in ('workers', 'poolPerWorker', 'totalApplicationPool',
-                                                       'heapMiBPerWorker', 'totalHeapMiB')] != [2, 8, 16, 2048, 4096]
-                      or driver.get('kind') != 'HTTP_WORKFLOW_PREFLIGHT_ONLY' or driver.get('suite') != 'workflow-preflight'
-                      or driver.get('preflightPassed') is not True or driver.get('users') != 0
-                      or driver.get('releaseEligible') is not False or fixture.get('fictional') is not True
-                      or fixture.get('claimsPerEmployee') != 200 or fixture.get('counts', {}).get('claims') != 100000
-                      or capture.get('releaseAuthorized') is not False or 'loaded' in capture
-                      or baseline.get('complete') is not True or baseline.get('candidateSha') != sha
-                      or baseline.get('controllerSha') != sha or baseline.get('engine') != 'chromium'
-                      or baseline.get('phase') != 'baseline' or baseline.get('runAttempt') != 1
-                      or baseline.get('runId') != int(os.environ['GITHUB_RUN_ID'])):
-                  raise SystemExit('Development browser terminal evidence refused')
-              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
-                  summary.write('Two-worker fictional functional browser preflight passed. '
-                                'No steady load, release authority or deployment.\n')
-          else:
-              # Never upload the private source reports. Project only fixed diagnostics,
-              # with absent/refused inputs distinct from an observed zero or false.
-              def record(value):
-                  return value if type(value) is dict else {}
-
-              def choice(value, allowed):
-                  return value if type(value) is str and value in allowed else None
-
-              def number(value, maximum, minimum=0):
-                  return value if type(value) is int and minimum <= value <= maximum else None
-
-              def flag(value):
-                  return value if type(value) is bool else None
-
-              def count(value):
-                  return number(len(value), 4096) if type(value) is list else None
-
-              def first(value, condition):
-                  return next((row for row in value if type(row) is dict and condition(row)), {}) if count(value) is not None else {}
-
-              def identity(info):
-                  return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_nlink,
-                          info.st_size, info.st_mtime_ns, info.st_ctime_ns)
-
-              def private_report(directory, name, admitted):
-                  try:
-                      fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=directory)
-                  except FileNotFoundError:
-                      return 'absent', {}
-                  except OSError:
-                      return 'refused', {}
-                  try:
-                      with os.fdopen(fd, 'rb') as stream:
-                          info = os.fstat(fd)
-                          limit = 4 * 1024**2
-                          if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
-                                  or info.st_nlink != 1 or not 0 < info.st_size <= limit):
-                              return 'refused', {}
-                          raw = stream.read(limit + 1)
-                          if (len(raw) != info.st_size or identity(info) != identity(os.fstat(fd))
-                                  or identity(info) != identity(os.stat(name, dir_fd=directory, follow_symlinks=False))):
-                              return 'refused', {}
-                      value = record(json.loads(raw))
-                      return ('observed', value) if admitted(value) else ('refused', {})
-                  except (OSError, ValueError, RecursionError):
-                      return 'refused', {}
-
-              roles = {'employee', 'manager', 'companyHR', 'groupHR'}
-              types = {'Error', 'AssertionError', 'TimeoutError', 'AbortError', 'TypeError', 'AggregateError', 'unclassified'}
-              codes = {'ERR_ASSERTION', 'ABORT_ERR', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE',
-                       'Z_DATA_ERROR', 'Z_BUF_ERROR', '57014', '55P03', '53300', '08006', '42501', '23514', '25P02', '57P01'}
-              visits = {'sign-in', 'navigation', 'page-content', 'heading', 'table-data', 'personnel-access-lock',
-                        'personnel-statement-timeout', 'payslip-statement', 'analytics-metrics', 'roster-scoped-grid',
-                        'job-description-read-controls', 'lifecycle-staff-tiles', 'home-cards', 'navigation-timing',
-                        'native-primary-rendered-evidence'}
-              routes = set((
-                  '/ /admin/attendance/file-mappings /admin/attendance/schedule /admin/claims /admin/claims/forms '
-                  '/admin/claims/limits /admin/claims/mileage /admin/claims/reimbursements /admin/holidays /admin/holidays/groups '
-                  '/admin/job-descriptions /admin/locations /admin/notice-board /admin/personnel /admin/rewards /admin/rewards/plans /admin/rewards/shared '
-                  '/admin/security-center /admin/settings/movement /admin/settings/system-labels /admin/settings/system-labels/profile-options '
-                  '/analytics /approvals /approvals/history /assistant /attendance /attendance/daily /attendance/individual /claims '
-                  '/control-tower/agents /control-tower/agents/allowances /control-tower/agents/assistant /control-tower/agents/build-list '
-                  '/control-tower/agents/features /control-tower/agents/provider /control-tower/agents/runs /control-tower/agents/spending '
-                  '/control-tower/exceptions /control-tower/loops /control-tower/loops/payroll-cycle /control-tower/readiness '
-                  '/delegations /feedback /knowledge-base /leave /leave/credit /leave/credit-details /leave/employee-balances '
-                  '/leave/employee-records /leave/history /leave/tracker /letters/approval /letters/fields /letters/register /letters/reports '
-                  '/letters/settings /letters/templates /letters/templates/new /lifecycle /lifecycle/offboarding /lifecycle/onboarding '
-                  '/me /me/calendar /me/ea /me/letters /me/notifications /me/payroll-readiness /me/payslip /me/tax-relief /me/tp3 '
-                  '/notices /org /payroll /payroll/formula-builder /payroll/formula-builder/new /performance /performance/home '
-                  '/personnel /policies /reports /reports/employee-master /rewards /rewards/approvals /rewards/reviews /roster /roster/exceptions '
-                  '/roster/import /system-testing /tasks'
-              ).split())
-              assistant_views = {'/assistant?view=' + name: name for name in ('how', 'privacy', 'tools', 'insights', 'jobs')}
-
-              def route(value):
-                  view = assistant_views.get(value) if type(value) is str else None
-                  return {'path': '/assistant' if view else choice(value, routes), 'assistantView': view}
-
-              try:
-                  directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
               except OSError:
-                  raise SystemExit('Development browser failure evidence directory refused') from None
-              try:
-                  runner_state, runner = private_report(directory, 'runner.json', lambda row:
-                      row.get('kind') == 'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY'
-                      and row.get('sha') == row.get('controller') == os.environ['AIHR_CI_HEAD']
-                      and row.get('run') == os.environ['GITHUB_RUN_ID'] and row.get('releaseEligible') is False
-                      and row.get('productionEquivalent') is False)
-                  driver_state, driver = private_report(directory, 'http-browser.json', lambda row:
-                      row.get('kind') == 'HTTP_WORKFLOW_PREFLIGHT_ONLY' and row.get('suite') == 'workflow-preflight'
-                      and type(row.get('users')) is int and row['users'] == 0 and row.get('releaseEligible') is False)
+                  directory_state = 'refused'
+
+              runner_state, runner, _ = json_member(directory, 'runner.json', lambda row:
+                  row.get('kind') == 'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY'
+                  and row.get('sha') == row.get('controller') == sha and row.get('run') == run
+                  and row.get('releaseEligible') is False and row.get('productionEquivalent') is False
+                  and number(row.get('exitCode'), 255) is not None)
+              driver_state, driver, _ = json_member(directory, 'http-browser.json', lambda row:
+                  row.get('kind') == 'HTTP_WORKFLOW_PREFLIGHT_ONLY' and row.get('suite') == 'workflow-preflight'
+                  and number(row.get('users'), 0) == 0 and row.get('releaseEligible') is False)
+              capture_state, capture, capture_bytes = json_member(directory, 'navigation-browser-capture.json', capture_source)
+              fixture_state, fixture, _ = json_member(directory, 'fixture.json', lambda row:
+                  row.get('fictional') is True and number(row.get('claimsPerEmployee'), 200, 200) == 200
+                  and number(record(row.get('counts')).get('claims'), 100000, 100000) == 100000)
+              if directory_state == 'refused':
+                  runner_state = driver_state = capture_state = fixture_state = 'refused'
+
+              public = {}
+              legacy_states = {'fixture.json': fixture_state}
+              if fixture_state == 'observed':
+                  public['fixture.json'] = project_fixture(fixture)
+              for name, value_type, project in (
+                      ('actor-tenancy.json', dict, project_actors),
+                      ('fixture-phases.json', list, project_fixture_phases),
+                      ('server-native-failures.json', dict, project_server_failures),
+                      ('postgres-lock-failures.json', dict, project_postgres_failures)):
+                  state, value, _ = json_member(directory, name, lambda _: True, value_type)
+                  if directory_state == 'refused':
+                      state = 'refused'
+                  if state == 'observed':
+                      projected = project(value)
+                      if projected is None:
+                          state = 'refused'
+                      else:
+                          public[name] = projected
+                  legacy_states[name] = state
+              if directory is not None and (identity(source_info) != identity(os.fstat(directory))
+                      or identity(source_info) != identity(os.stat(source_name, dir_fd=temp_fd, follow_symlinks=False))):
+                  raise SystemExit('Development browser evidence directory changed')
+
+              receipt = terminal_measurement(runner) if runner_state == 'observed' else None
+              terminal_state = runner_state
+              if runner_state == 'observed':
+                  terminal_state = ('observed' if receipt is not None else
+                                    'refused' if 'runtimeAcceptance' in runner else 'absent')
+              child = receipt['driver'] if receipt is not None else None
+              settlement = receipt['settlement'] if receipt is not None else None
+              baseline = record(capture.get('baseline'))
+              pinned_capture = child['renderedCapture'] if child is not None else None
+              capture_binding = None
+              if pinned_capture is not None and capture_state == 'observed' and all(
+                      child['identity'][key] == baseline[key] for key in ('harnessSha256', 'scenarioSha256')):
+                  if len(capture_bytes) == pinned_capture['bytes'] and hashlib.sha256(capture_bytes).hexdigest() == pinned_capture['sha256']:
+                      capture_binding = {**pinned_capture, **{key: baseline[key] for key in ('harnessSha256', 'scenarioSha256')}}
+              topology = record(runner.get('topology'))
+              expected_topology = {'workers': 2, 'poolPerWorker': 8, 'totalApplicationPool': 16,
+                                   'heapMiBPerWorker': 2048, 'totalHeapMiB': 4096}
+              driver_capture = record(driver.get('navigationCapture'))
+              driver_mirror = driver.get('developmentMeasurement')
+              full_pass = (course_outcome == 'success' and receipt is not None and receipt['complete']
+                  and all(number(topology.get(key), value, value) == value for key, value in expected_topology.items())
+                  and driver_state == 'observed' and driver.get('preflightPassed') is True
+                  and driver_receipt(driver_mirror) and driver_mirror == child and fixture_state == 'observed'
+                  and capture_binding is not None
+                  and driver_capture.get('scope') == 'DEVELOPMENT_ONLY'
+                  and driver_capture.get('releaseEligible') is False
+                  and number(driver_capture.get('loadedScenarios'), 0) == 0
+                  and number(driver_capture.get('baselineScenarios'), 4096, 1) == len(baseline['observations']))
+              cleanup_outcome = {'settled': 'success', 'failed': 'failure'}.get(settlement['postgres']) if settlement else None
+
+              os.mkdir(publish_name, mode=0o700, dir_fd=temp_fd)
+              publish_fd = os.open(publish_name, directory_flags, dir_fd=temp_fd)
+              held.callback(os.close, publish_fd)
+              publish_info = os.fstat(publish_fd)
+              if publish_info.st_uid != os.getuid() or stat.S_IMODE(publish_info.st_mode) != 0o700:
+                  raise SystemExit('Development browser publication directory refused')
+              if capture_binding is not None:
+                  publish(publish_fd, 'navigation-browser-capture.json', capture_bytes)
+              for name, projected in public.items():
+                  publish_json(publish_fd, name, projected, limit)
+              publish_json(publish_fd, 'browser-preflight-measurement.json', {
+                  'kind': 'DEVELOPMENT_BROWSER_PREFLIGHT_MEASUREMENT_V1', 'version': 1,
+                  'complete': full_pass, 'releaseEligible': False, 'source': identity_fields, 'suite': 'workflow-preflight',
+                  'courseOutcome': choice(course_outcome, {'success', 'failure', 'cancelled', 'skipped'}),
+                  'runnerReport': runner_state,
+                  'terminalReceipt': terminal_state,
+                  'driverReceipt': receipt['driverReceipt'] if receipt is not None else None,
+                  'capture': capture_binding, 'legacyEvidence': legacy_states,
+                  'settlement': {'runner': settlement, 'driver': child['settlement'] if child else None},
+                  'workCompleted': child['workCompleted'] if child else None,
+                  'busyResponses': child['busyResponses'] if child else None,
+                  'pageEvents': child['pageEvents'] if child else None,
+                  'locks': child['locks'] if child else None,
+                  'poolEvidence': child['poolEvidence'] if child else None,
+              })
+              if not full_pass:
+                  roles = {'employee', 'manager', 'companyHR', 'groupHR'}
+                  types = {'Error', 'AssertionError', 'TimeoutError', 'AbortError', 'TypeError', 'AggregateError', 'unclassified'}
+                  codes = {'ERR_ASSERTION', 'ABORT_ERR', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE',
+                           'Z_DATA_ERROR', 'Z_BUF_ERROR', '57014', '55P03', '53300', '08006', '42501', '23514', '25P02', '57P01'}
+                  visits = {'sign-in', 'navigation', 'page-content', 'heading', 'table-data', 'personnel-access-lock',
+                            'personnel-statement-timeout', 'payslip-statement', 'analytics-metrics', 'roster-scoped-grid',
+                            'job-description-read-controls', 'lifecycle-staff-tiles', 'home-cards', 'navigation-timing',
+                            'native-primary-rendered-evidence'}
+                  routes = set((
+                      '/ /admin/attendance/file-mappings /admin/attendance/schedule /admin/claims /admin/claims/forms '
+                      '/admin/claims/limits /admin/claims/mileage /admin/claims/reimbursements /admin/holidays /admin/holidays/groups '
+                      '/admin/job-descriptions /admin/locations /admin/notice-board /admin/personnel /admin/rewards /admin/rewards/plans /admin/rewards/shared '
+                      '/admin/security-center /admin/settings/movement /admin/settings/system-labels /admin/settings/system-labels/profile-options '
+                      '/analytics /approvals /approvals/history /assistant /attendance /attendance/daily /attendance/individual /claims '
+                      '/control-tower/agents /control-tower/agents/allowances /control-tower/agents/assistant /control-tower/agents/build-list '
+                      '/control-tower/agents/features /control-tower/agents/provider /control-tower/agents/runs /control-tower/agents/spending '
+                      '/control-tower/exceptions /control-tower/loops /control-tower/loops/payroll-cycle /control-tower/readiness '
+                      '/delegations /feedback /knowledge-base /leave /leave/credit /leave/credit-details /leave/employee-balances '
+                      '/leave/employee-records /leave/history /leave/tracker /letters/approval /letters/fields /letters/register /letters/reports '
+                      '/letters/settings /letters/templates /letters/templates/new /lifecycle /lifecycle/offboarding /lifecycle/onboarding '
+                      '/me /me/calendar /me/ea /me/letters /me/notifications /me/payroll-readiness /me/payslip /me/tax-relief /me/tp3 '
+                      '/notices /org /payroll /payroll/formula-builder /payroll/formula-builder/new /performance /performance/home '
+                      '/personnel /policies /reports /reports/employee-master /rewards /rewards/approvals /rewards/reviews /roster /roster/exceptions '
+                      '/roster/import /system-testing /tasks'
+                  ).split())
+                  assistant_views = {'/assistant?view=' + name: name for name in ('how', 'privacy', 'tools', 'insights', 'jobs')}
+
+                  def route(value):
+                      view = assistant_views.get(value) if type(value) is str else None
+                      return {'path': '/assistant' if view else choice(value, routes), 'assistantView': view}
+
                   labels = ('postgres', 'migrate', 'organisation-admission-verifier', 'catalogs', 'fixture',
                             'build', 'certificate', 'http-and-browser', 'cleanup')
                   phases = {}
@@ -530,7 +899,7 @@ jobs:
                   receipt = {
                       'kind': 'INCOMPLETE_DEVELOPMENT_BROWSER_FAILURE', 'version': 1, 'complete': False, 'releaseEligible': False,
                       'courseOutcome': choice(os.environ['COURSE_OUTCOME'], {'success', 'failure', 'cancelled', 'skipped'}),
-                      'cleanupOutcome': choice(os.environ['CLEANUP_OUTCOME'], {'success', 'failure', 'cancelled', 'skipped'}),
+                      'cleanupOutcome': cleanup_outcome,
                       'runnerReport': runner_state, 'driverReport': driver_state, 'runnerPhases': phases,
                       'primaryFailure': {'errorType': choice(primary.get('kind'), types), 'errorCode': choice(primary.get('code'), codes)} if primary else None,
                       'firstSecondaryFailure': {'stage': choice(secondary.get('stage'), {
@@ -565,32 +934,30 @@ jobs:
                       baselineScenarios=number(record(driver.get('navigationCapture')).get('baselineScenarios'), 4096),
                       lockSamplesCompleted=completed, lockSamplesObserved=observed, lockSamplesBlocking=blocking,
                       driverSecondaryFailures=count(driver_failures.get('secondary')))
-                  receipt_name = 'browser-preflight-failure.json'
-                  fd = os.open(receipt_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-                               0o600, dir_fd=directory)
-                  with os.fdopen(fd, 'w', encoding='utf-8') as output:
-                      json.dump(receipt, output, separators=(',', ':'))
-                      output.write('\n')
-                      output.flush()
-                      written = identity(os.fstat(fd))
-                  member = check_file(receipt_name)
-                  if identity(member.lstat()) != written:
-                      raise SystemExit('Development browser failure receipt replaced')
-                  members.append(member)
-              except OSError:
-                  raise SystemExit('Development browser failure receipt refused') from None
-              finally:
-                  os.close(directory)
-          # The full runner/driver records, SQL samples, screenshots, profiles and logs stay on the runner.
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
-              output.write('paths<<DEVELOPMENT_EVIDENCE\n' + '\n'.join(map(str, members)) + '\nDEVELOPMENT_EVIDENCE\n')
+                  publish_json(publish_fd, 'browser-preflight-failure.json', receipt)
+
+              named = os.stat(publish_name, dir_fd=temp_fd, follow_symlinks=False)
+              current = os.fstat(publish_fd)
+              if ((publish_info.st_dev, publish_info.st_ino) != (current.st_dev, current.st_ino)
+                      or identity(current) != identity(named)
+                      or identity(os.fstat(temp_fd)) != identity(temp.lstat())):
+                  raise SystemExit('Development browser publication directory changed')
+              paths = [str(temp / publish_name / name) for name in members]
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+                  output.write('paths<<DEVELOPMENT_EVIDENCE\n' + '\n'.join(paths) + '\nDEVELOPMENT_EVIDENCE\n')
+
+          if not full_pass:
+              raise SystemExit('Development browser terminal evidence was incomplete or refused')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write('Two-worker fictional functional browser preflight passed. '
+                            'No steady load, release authority or deployment.\n')
           PYTHON
       - name: Publish sanitized functional browser development evidence
-        if: ${{ always() && inputs.architecture_browser_development_preflight && steps.development-browser-evidence.outcome == 'success' }}
+        if: ${{ always() && inputs.architecture_browser_development_preflight && steps.development-browser-cleanup.outputs.paths != '' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: architecture-browser-development-preflight-evidence
-          path: ${{ steps.development-browser-evidence.outputs.paths }}
+          path: ${{ steps.development-browser-cleanup.outputs.paths }}
           if-no-files-found: error
           retention-days: 14
   typecheck:
