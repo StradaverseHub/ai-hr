@@ -22,7 +22,7 @@ it('evaluates the independent statutory worked examples through the same exact f
     MY_REST_DAY_OT_20: ['28.85'],
     MY_PAID_HOLIDAY_WORK_20: ['230.77'],
     MY_PAID_HOLIDAY_OT_30: ['43.27'],
-    MY_REST_DAY_PIECES: ['100'],
+    MY_REST_DAY_PIECE_PAY: ['100'],
     MY_PAID_HOLIDAY_PIECES: ['137.5'],
   };
   const actual = Object.fromEntries(MALAYSIA_STATUTORY_OVERTIME_REFERENCES.map(reference => [

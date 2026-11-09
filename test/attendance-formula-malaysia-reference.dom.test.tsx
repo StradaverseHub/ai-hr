@@ -30,6 +30,7 @@ const catalogs = { en, ms, zh, ta, th, vi: viMessages };
 const companyId = '10000000-0000-4000-8000-000000000001';
 const payItemId = '20000000-0000-4000-8000-000000000001';
 const options = {
+  canSelectAll: false,
   companies: [{ id: companyId, label: 'Fictional company', currency: 'MYR' }],
   payItems: [{ id: payItemId, code: 'OVERTIME', name: 'Overtime', kind: 'allowance' as const, companyIds: [companyId] }],
 };
