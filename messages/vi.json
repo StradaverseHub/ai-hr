@@ -4148,6 +4148,16 @@
     "clockEvidenceGeofenced": "{site} · cách {distance} m trên {radius} m cho phép",
     "clockEvidenceLocationUnavailable": "Không ghi nhận vị trí — không có thông tin",
     "clockEvidenceNotRequired": "Không yêu cầu hàng rào địa lý",
+    "clockEvidenceReview": "Cần xem xét",
+    "clockReviewReasons": {
+      "location_missing": "Không có vị trí",
+      "location_stale": "Vị trí đã cũ",
+      "location_accuracy": "Vị trí có độ chính xác thấp",
+      "outside_site": "Ngoài nơi làm việc được chỉ định",
+      "no_assigned_site": "Chưa chỉ định nơi làm việc",
+      "photo_missing": "Thiếu ảnh bắt buộc",
+      "photo_invalid": "Không thể xác minh ảnh"
+    },
     "colAbsent": "Vắng mặt",
     "colAction": "Hành động",
     "colActualHours": "Giờ thực tế",
