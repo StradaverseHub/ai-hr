@@ -106,11 +106,6 @@ jobs:
               exit 1
             }
           )
-          if [ -n "${GOOGLE_SERVICES_JSON:-}" ]; then
-            values=mobile/android/app/build/generated/res/google-services/release/values/values.xml
-            grep -Eq '<string name="project_id"[^>]*>onehr-staging</string>' "$values"
-            grep -q '<string name="google_app_id"' "$values"
-          fi
           mkdir -p "$RUNNER_TEMP/onehr-field-notes-android"
           cp mobile/android/app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/onehr-field-notes-android/OneHR-Field-Notes-review.apk"
           git rev-parse HEAD > "$RUNNER_TEMP/onehr-field-notes-android/source.txt"
@@ -122,3 +117,21 @@ jobs:
           path: ${{ runner.temp }}/onehr-field-notes-android/
           retention-days: 1
           if-no-files-found: error
+      - name: Verify Firebase resources in the compiled APK
+        if: inputs.staging_fcm
+        shell: bash
+        run: |
+          set -euo pipefail
+          aapt2=$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -1)
+          python3 - "$aapt2" "$RUNNER_TEMP/onehr-field-notes-android/OneHR-Field-Notes-review.apk" <<'PY'
+          import json, os, re, subprocess, sys
+          with open(os.environ['GOOGLE_SERVICES_JSON']) as source:
+              registration = json.load(source)
+          client, = [entry['client_info'] for entry in registration['client']
+                     if entry['client_info']['android_client_info']['package_name'] == 'ai.stradaverse.aihr.test']
+          resources = subprocess.check_output([sys.argv[1], 'dump', 'resources', sys.argv[2]], text=True)
+          fields = dict(re.findall(r'(?m)^\s*resource \S+ string/(project_id|google_app_id)\s*\n\s*\(\) "([^"\n]+)"', resources))
+          assert fields.get('project_id') == 'onehr-staging', 'Staging Firebase project missing from APK'
+          assert fields.get('google_app_id') == client['mobilesdk_app_id'], 'Staging Firebase app ID missing from APK'
+          print('Compiled APK contains the verified OneHR staging Firebase resources')
+          PY
