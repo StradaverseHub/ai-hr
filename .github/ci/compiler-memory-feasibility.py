@@ -16,10 +16,10 @@ import sys
 import time
 
 
-SOURCE = 'f02e24c81c3177e0be54e08af482677e209d7fc3'
-SOURCE_TREE = '838da66fbeadc369c78d43eabb3fc69a56a90b09'
-SOURCE_BRANCH = 'codex/architecture-f02e-stock-compiler-reference-20261110'
-BRANCH = 'codex/compiler-sampler-f02e24c8-13312-phase-proof-20261110'
+SOURCE = 'c32ebe88924f83a6b3eaba227882e0a787d6bb44'
+SOURCE_TREE = 'a97ceef53d5569e640d8a7158d34e42eb5eb00bf'
+SOURCE_BRANCH = 'codex/architecture-c32-stock-compiler-reference-20261110'
+BRANCH = 'codex/compiler-control-c32ebe88-13312-phase-proof-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 HEAP_MIB = 13 * 1024
@@ -41,8 +41,8 @@ PROGRESS_COUNTERS = ('cpuUsec', 'userUsec', 'systemUsec', 'cpuSomeUsec', 'cpuFul
 PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
 PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-13312-sampler-f02e24c8-phase'
-UNIT_PREFIX = 'aihr-compiler-13312-sampler-f02e24c8-phase-'
+DIRECTORY = 'compiler-13312-control-c32ebe88-phase'
+UNIT_PREFIX = 'aihr-compiler-13312-control-c32ebe88-phase-'
 UNIT_NAME = re.compile(rf'{re.escape(UNIT_PREFIX)}[1-9][0-9]{{0,15}}\.service')
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -56,14 +56,14 @@ INVENTORY_FIELDS = ('configuredRoots', 'orderedRootSha256', 'rootSetSha256', 'ge
 STATE_FIELDS = ('buildInfoBytes', 'buildInfoSha256', 'nativeFiles', 'nativeRoots', 'nativeRootSetSha256')
 # The earlier managed command proves the tool, root census and route inputs on its own source.
 # Neither its typecheck result nor its compiler graph is adopted.
-BASELINE_RUN = '42712727555'
+BASELINE_RUN = '42703784976'
 CALIBRATION_SOURCE = SOURCE
-TRACKED_MEMBERS = 12968
-TRACKED_SHA256 = 'c14778c83e7b6ac33373db43a9c7fc14a81acc8009a685c764e341c752bcb4eb'
+TRACKED_MEMBERS = 12965
+TRACKED_SHA256 = '72d14ff7bf60a132d0247f906a0c9153ff9dae453e76cb003630e908b6a5d918'
 BASELINE_INVENTORY = {
-    'configuredRoots': 9206,
-    'orderedRootSha256': 'ede0443db2183aa00a164170912c73e28e9eebf10d06025f49140050e76d6c79',
-    'rootSetSha256': '91757b55ea1211fc80cb0553c7e7f6befe7a40065de5d8b04d27c802e2de0ba6',
+    'configuredRoots': 9205,
+    'orderedRootSha256': '9fdad7b65530150218090b7b4378d6b647b0da6f856081ca898d2ed09a1349fc',
+    'rootSetSha256': '8a418081b8ade80d627a2ee0f1be4936f9b28a8aea141c78af432878cbe9bd15',
     'generatedCount': 5,
     'generatedSha256': '61eb985bfaa59dcd9621c43083c11c792856c4e031587d40fa6962c9d17f612e',
     'toolSha256': '8a3f43685059608d9fa8e5333e233d0494f89cd453202f5f9a54989631efa4be',
