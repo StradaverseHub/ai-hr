@@ -156,7 +156,7 @@ export function AttendanceClockData({ data, employmentId, date, action }: {
               {['time', 'direction', 'source', 'evidence', 'status', 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}
             </tr></thead>
             <tbody className={tbodyCls}>{data.rows.map(row => <tr key={row.id}>
-              <td className="p-3 tabular-nums" title={row.effectiveAt??row.receivedAt??undefined}>{row.punchAt}</td>
+              <td className="p-3 tabular-nums">{row.punchAt}</td>
               <td className="p-3">{t(row.direction)}</td>
               <td className="p-3">{rowSource(row)}{received(row)}</td>
               <td className="p-3">

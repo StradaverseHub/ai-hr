@@ -34,7 +34,7 @@ export async function attendanceClockData(ctx: SessionContext, employmentId: str
     const source = (captureId: string | null) => {
       const capture = captureId ? captures.find(c => c.id === captureId) : undefined;
       if (!capture) return { clockSource: null, effectiveAt: null, receivedAt: null };
-      return capture.effectiveAt ? { clockSource: 'offline' as const, effectiveAt: capture.effectiveAt.toISOString(), receivedAt: capture.receivedAt.toISOString() } : { clockSource: 'online' as const, effectiveAt: null, receivedAt: capture.receivedAt.toISOString() };
+      return capture.effectiveAt ? { clockSource: 'offline' as const, effectiveAt: capture.effectiveAt.toISOString(), receivedAt: capture.receivedAt.toISOString() } : { clockSource: 'online' as const, effectiveAt: null, receivedAt: null };
     };
     const actors = rows.map(r => r.voidedBy).filter((id): id is string => !!id);
     const names = actors.length ? await tx.select({ id: appUser.id, name: person.fullName }).from(appUser).leftJoin(person, eq(person.id, appUser.personId)).where(and(eq(appUser.tenantId, ctx.tenantId), inArray(sql<string> `${appUser.id}::text`, actors))) : [];
