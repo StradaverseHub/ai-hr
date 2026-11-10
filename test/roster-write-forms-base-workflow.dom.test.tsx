@@ -35,7 +35,7 @@ const forms=(view:ReturnType<typeof render>)=>[...view.container.querySelectorAl
 it('posts Generate and Copy once, through the server actions, for the whole filtered workforce beyond the grid page',async()=>{
  const view=await page({companyId:'company',dept:'d1',q:'roster'});
  expect(view.container.querySelector('form[action="/roster/prepare"]')).toBeNull();
- expect(view.container.querySelector('input[name="command"],input[name="selectionIds"],input[name="populationQuery"]')).toBeNull();
+ expect(view.container.querySelector('input[name="command"],input[name="selectionIds"],input[name="stage"]')).toBeNull();
  const generate=forms(view).find(form=>form.querySelector('select[name="shiftId"]'))!;
  const copy=forms(view).find(form=>form.querySelector('input[name="targetFrom"]'))!;
  expect(generate).toBeTruthy();expect(copy).toBeTruthy();
@@ -44,6 +44,8 @@ it('posts Generate and Copy once, through the server actions, for the whole filt
  expect([...generate.querySelectorAll('select[name="employmentIds"] option')].map(o=>(o as HTMLOptionElement).value)).toEqual(everyone.map(e=>e.employmentId));
  expect([...copy.querySelectorAll('input[type="hidden"][name="employmentIds"]')].map(i=>(i as HTMLInputElement).value)).toEqual(everyone.map(e=>e.employmentId));
  expect(state.employees).toHaveBeenCalledWith({},{companyIds:['company'],departmentId:'d1',q:'roster'});
+ // Each form carries the view's query so the action can re-resolve the team scope server-side.
+ for(const f of [generate,copy])expect(f.querySelector('input[type="hidden"][name="populationQuery"]')).not.toBeNull();
 });
 
 it('shows both forms to an administrator in a team scope that cannot edit the roster grid, as the base screen did',async()=>{

@@ -528,6 +528,8 @@ export default async function RosterPage({
             ) : (
               <form action={generateRosterAction} className="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="companyId" value={companyId} />
+                {/* Lets the action re-resolve the team scope; it never widens what the server admits. */}
+                <input type="hidden" name="populationQuery" value={qs({page:undefined,size:undefined})} />
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                   {t('shifts')}
                   <select name="shiftId" required className={inputCls}>
@@ -591,6 +593,7 @@ export default async function RosterPage({
             ) : (
               <form action={copyRosterAction} className="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="companyId" value={companyId} />
+                <input type="hidden" name="populationQuery" value={qs({page:undefined,size:undefined})} />
                 {writeEmployees.map((e) => (
                   <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
                 ))}
