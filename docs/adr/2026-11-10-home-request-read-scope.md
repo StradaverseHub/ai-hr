@@ -345,6 +345,27 @@ calculation, authority, ordering or failure changes.
      and acknowledged, loop cases of several kinds with ties, open undo windows, a pause, a Watch level, an active and a
      stopped AI Centre generation, letter requests and review index rows) added after the traces.
 
+## Measured together
+
+Decisions 6 to 13 on one branch (`claude/home-bundles-combined-20261110`), hosted runs 42892625912 and 42892631468
+(the diagnostic's two equivalence parts over one seed: 3,180 comparisons, 0 mismatches), every statement counted, BEGIN,
+the identity statement and COMMIT included. Manager and employee alike:
+- **Home stream: 14 trips** (41 before decisions 9 to 13; 103 with every owner in its own transaction). BEGIN, the
+  identity statement with the preamble (decision 12), COMMIT, and one statement each for: team, celebrations, notices,
+  the calendar window (every card's holidays, replacement days, presence and dated proof), the own leave inputs (Time
+  Off, the Summary's next leave and Apply entry, the Calendar's Apply entry), the clock day (Today), the team calendar
+  (Calendar), the greeting's own facts, the account task statement (Tasks and the Summary count), the Summary's claim
+  form availability and the own payroll metadata (Summary, Today, Calendar).
+- **Whole page: 33 trips** (145/138 before; 206 independent): the stream's 14 and one page render's 19. The render
+  pays BEGIN, its identity statement with the preamble and COMMIT, and one statement each for Needs you, Done for you,
+  the performance block, assigned performance, the account task statement (the shell's approvals and Needs you's
+  tasks), Before payroll, and At a glance's payslip, leave inputs, greeting identity and Coming up. The own leave
+  application index keeps its own bounded transaction (six trips: begin, read-only setting, identity, time limits, its
+  statement, commit; decision 13).
+- **One card alone** in a carrier that declares the preamble: three trips of carrier, plus 1 for greeting, notices,
+  tasks, Time Off, team and celebrations, 2 for Today (clock day, payroll), 4 for Calendar (window, leave inputs, team
+  calendar, payroll) and 5 for the Summary (window, leave inputs, tasks, claim form, payroll).
+
 ## Not done here
 
 - **Before payroll's remaining reads** (decision 11). The own-subject proof and company date proof
