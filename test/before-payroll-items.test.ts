@@ -19,7 +19,7 @@ const fx=vi.hoisted(()=>({approvalSummary:vi.fn(),cutOffRow:true as boolean,cutO
 const failing=(name:string)=>{if(fx.fail.has(name))throw new Error('Fictional owner failure: '+name);};
 
 // The only direct query is app.own_payroll_cut_off_day (migration 0967): one row for the person's own employment, or none.
-vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,fn:(tx:unknown)=>unknown)=>fn({execute:async()=>{fx.calls.push(['ownCutOff']);return fx.cutOffRow?[{cut_off_day:fx.cutOffDay}]:[];}})}));
+vi.mock('../db/client',()=>({withSharedReadSnapshot:async(_ctx:unknown,work:()=>unknown)=>work(),withTenant:async(_ctx:unknown,fn:(tx:unknown)=>unknown)=>fn({execute:async()=>{fx.calls.push(['ownCutOff']);return fx.cutOffRow?[{cut_off_day:fx.cutOffDay}]:[];}})}));
 // Phase 2 hardening: the person's own answer to "Did you work for another employer earlier this year?" (core/pre-salary/tp3-answer.ts).
 vi.mock('../core/pre-salary/tp3-answer',()=>({myTp3PreviousEmployerAnswer:async(_ctx:unknown,year:number)=>{fx.calls.push(['tp3Answer',year]);return fx.tp3Answer;}}));
 vi.mock('../core/entitlements',()=>{

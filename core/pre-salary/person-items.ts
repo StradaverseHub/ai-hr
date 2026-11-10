@@ -49,7 +49,7 @@
  * NO PAY FIGURE. No amount, rate, balance, limit or salary is copied into an item; minutes and days are not copied
  * either. One owner that fails is reported as that group's "could not check", never as done. Never writes. */
 import {sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../../db/client';
+import {withSharedReadSnapshot,withTenant,type SessionContext} from '../../db/client';
 import {EntitlementsResolutionFailedError,isModuleEnabled} from '../entitlements';
 import {HomeAccessError,requireOwnHomeSubject} from '../employee-home';
 import {leaveRequestsFor,listEligibleLeaveTypesFor} from '../read';
@@ -333,7 +333,12 @@ async function approvalsGroup(approvalsRead:ReturnType<typeof startApprovals>,pe
 /** The person's "Before payroll" checklist. `null` when payroll is not in use for the tenant: there is no payroll to be
  * ready for. Someone with no own employment (or several and none chosen) gets no own items, only their approvals.
  * `scopeIds`: the companies in the viewer's current scope, for the approvals owner's company filter (Today's own). */
-export async function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean;includeApprovals?:false}>={}):Promise<PayrollReadiness|null>{
+/** One read-only snapshot for the caller's own identity (db/shared-read.ts). Each owner keeps its own result and
+ * failure; a barrier-locked or read-committed owner still reads in its own transaction. */
+export function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean;includeApprovals?:false}>={}):Promise<PayrollReadiness|null>{
+ return withSharedReadSnapshot(ctx,()=>payrollReadinessOwners(ctx,p));
+}
+async function payrollReadinessOwners(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean;includeApprovals?:false}>):Promise<PayrollReadiness|null>{
  if(!ctx.userId||ctx.agent)return null;
  const payroll=moduleState(ctx,'payroll');
  if(payroll==='off')return null;

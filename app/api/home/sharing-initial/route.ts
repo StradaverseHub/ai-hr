@@ -12,6 +12,7 @@ import {
 import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
 import {greetingProjection,tasksProjection,todayProjection,calendarProjection} from '../personal-projections';
 import {withDatabaseReadCancellation} from '@/db/workload';
+import {withSharedReadSnapshot} from '@/db/client';
 import {readEmployeeHomeToday} from '@/core/employee-home-today';
 import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
 import {homeCalendarMonth} from '@/lib/employee-home-calendar';
@@ -84,7 +85,8 @@ export async function GET(request:Request){
     detach=()=>{readLifetime.abort();open=false;request.signal.removeEventListener('abort',disconnect);};
     if(request.signal.aborted){disconnect();return;}
     request.signal.addEventListener('abort',disconnect,{once:true});
-    const reads=cards.map(async card=>{
+    // One read-only snapshot for this response's own identity: each card keeps its own owner, result and failure.
+    const read=async(card:HomeSharingCard)=>{
      markHomeRead('read-start',card);
      let encoded:Uint8Array;
      try{
@@ -100,9 +102,9 @@ export async function GET(request:Request){
       encoded=encoder.encode(JSON.stringify(frame)+'\n');
      }
      if(open)controller.enqueue(encoded);
-    });
+    };
     // Disconnect stops eligible readers at their next admission check and drops pending values.
-    void Promise.allSettled(reads).then(stop);
+    void withSharedReadSnapshot(session,()=>Promise.allSettled(cards.map(read)),signal).then(stop,stop);
    },
    cancel(){detach();},
   });

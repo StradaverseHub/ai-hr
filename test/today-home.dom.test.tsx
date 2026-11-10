@@ -41,7 +41,7 @@ vi.mock('next-intl/server',async()=>{
  return {getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages,namespace:namespace as never}),getLocale:async()=>'en'};
 });
 vi.mock('next/navigation',()=>({useRouter:()=>({push:S.push}),usePathname:()=>'/'}));
-vi.mock('@/db/client',()=>({withTenant:async(_s:unknown,run:(tx:unknown)=>unknown)=>run({})}));
+vi.mock('@/db/client',()=>({withSharedReadSnapshot:async(_s:unknown,work:()=>unknown)=>work(),withTenant:async(_s:unknown,run:(tx:unknown)=>unknown)=>run({})}));
 // Today reads modules with the throwing check (test/module-catalog-drift.test.ts); an unresolved snapshot throws the
 // resolution-failed error, as core/entitlements.ts does.
 vi.mock('@/core/entitlements',()=>({EntitlementsResolutionFailedError:fx.FixtureEntitlementsResolutionFailedError,
