@@ -9,7 +9,7 @@ import {AttendanceCorrectionPendingError,requestAttendanceCorrection} from '../c
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {withAttendanceTenant} from '../core/module-gate';
 import {endReportingLine,hireEmployee,setReportingLine} from '../core/org';
-import {AttendanceLevelError} from '../lib/attendance-workflow-v3';
+import {AttendanceWorkflowSubmissionError} from '../lib/attendance-workflow-submission';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 
@@ -174,8 +174,13 @@ it('allows independent ordinary submissions to overlap before audit while retain
   release.resolve();
   await Promise.all([...inflight,...(revoke?[revoke]:[])]);
  }
- await expect(submit(first,true)).rejects.toBeInstanceOf(AttendanceLevelError);
- await expect(submit(first,false)).rejects.toBeInstanceOf(AttendanceLevelError);
+ // 28c8b134 returns the employee-facing finite refusal for a route that no longer resolves, while
+ // retaining the native level problem: the revoked Direct Superior is missing at level 0.
+ for(const shared of [true,false]){
+  const refusal=submit(first,shared);
+  await expect(refusal).rejects.toBeInstanceOf(AttendanceWorkflowSubmissionError);
+  await expect(refusal).rejects.toMatchObject({reason:'unresolved',problem:{code:'missing_superior',levelIndex:0}});
+ }
  const [retained]=await owner.db.select({count:sql<number>`count(*)::int`}).from(s.attendanceCorrection)
   .where(and(eq(s.attendanceCorrection.tenantId,base.tenantId),eq(s.attendanceCorrection.attendanceDate,today)));
  expect(retained.count).toBe(0);
@@ -245,6 +250,17 @@ it('limits standalone submissions waiting on Access without dropping or duplicat
   companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const ctx:SessionContext={...admin,userId:await createAppUser(base.tenantId,worker.personId,'employee'),
   personId:worker.personId,roles:['employee'],grants:[{role:'employee',companyId:base.companyId}]};
+ // 28c8b134: a new application requires a configured route, so admission is measured on requests
+ // that would otherwise be accepted rather than on refusals for an unrouted employee.
+ const manager=await hireEmployee(admin,{person:{fullName:'Fictional admission reviewer',primaryEmail:randomUUID()+'@example.invalid'},
+  companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ await createAppUser(base.tenantId,manager.personId,'manager');
+ await setReportingLine(admin,{subordinateEmploymentId:worker.employmentId,managerEmploymentId:manager.employmentId,
+  lineType:'administrative',validFrom:'2020-01-01'});
+ await saveAttendanceWorkflow(admin,{companyId:base.companyId,applicationType:'irregularity',routingVersion:4,code:'ADMISSION',
+  name:'Fictional admission route',priority:100,active:true,criteria:{employeeIds:[worker.employmentId]},
+  stages:[{name:'Review',mode:'sequential',sources:[{kind:'direct_manager',depth:1}],hrAlternative:false}],cc:[]});
+ await setAttendanceWorkflowEnabled(admin,base.companyId,'irregularity',true);
  const today=Date.parse(todayInKualaLumpur()+'T00:00:00Z');
  const dates=[1,2,3].map(days=>new Date(today-days*86400000).toISOString().slice(0,10));
  let submissions:Promise<PromiseSettledResult<{correctionId:string}>[]>|undefined;
