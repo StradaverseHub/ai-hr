@@ -129,8 +129,11 @@ async function priorFailureTx(tx:Tx,job:BulkJobRow){
  return Boolean(row?.failed);
 }
 async function stepTotalsTx(tx:Tx,job:BulkJobRow){
- const [row]=await tx.execute<{applied:number;failed:number;working:number;rest:number;rows:number;source:number;error:string|null}>(sql`select
+ const [row]=await tx.execute<{applied:number;employees:number;workingSteps:number;restSteps:number;failed:number;working:number;rest:number;rows:number;source:number;error:string|null}>(sql`select
    count(*) filter (where state='applied' and not coalesce((result->>'skipped')::boolean,false))::int applied,
+   count(distinct payload->>'employmentId') filter (where state='applied' and not coalesce((result->>'skipped')::boolean,false))::int employees,
+   count(*) filter (where kind='working' and state='applied')::int "workingSteps",
+   count(*) filter (where kind='rest' and state='applied' and not coalesce((result->>'skipped')::boolean,false))::int "restSteps",
    count(*) filter (where state='failed')::int failed,
    coalesce(sum((result->>'workingRows')::int) filter (where state='applied'),0)::int working,
    coalesce(sum((result->>'restRows')::int) filter (where state='applied'),0)::int rest,
@@ -167,7 +170,10 @@ async function prepareRoster(ctx:SessionContext,job:BulkJobRow):Promise<BulkJobP
    const {workingDates,restDates}=rosterGenerationDates(nominated.tpl,p);
    plan={...plan,templateCompanyId:nominated.tpl.companyId,workingDates,restDates,employments:nominated.ids.length};
    await validateBrushes(ctx,kind,nominated.ids,{dates:workingDates,shiftId:p.shiftId},{dates:restDates});
-   return{plan,counters:{employees:nominated.ids.length},steps:nominated.ids.map((employmentId,i)=>({kind:'employee',rowNum:i+1,payload:{employmentId,ref:nominated.refs.get(employmentId)??''} satisfies EmployeeStep}))};
+   // Two steps per employee, one per half of the generator (assignShiftBulk, then setRestDayBulk): each half is the
+   // employee's own duty-guard event in the synchronous run too, so the audit is the same and a step is half as long.
+   const halves=[...(workingDates.length?['working']:[]),...(restDates.length?['rest']:[])];
+   return{plan,counters:{employees:nominated.ids.length},steps:nominated.ids.flatMap((employmentId,i)=>halves.map(kind=>({kind,rowNum:i+1,payload:{employmentId,ref:nominated.refs.get(employmentId)??''} satisfies EmployeeStep})))};
   }
   if(input.op==='copy'){
    const c=input.copy;const {offsetDays}=validateRosterCopyRange(c);
@@ -255,9 +261,16 @@ async function applyRosterStep(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:Bulk
    if(!(await rosterDepartmentMembersTx(tx,{departmentId:plan.departmentId,templateCompanyId:plan.templateCompanyId},[employmentId])).length)
     throw new RosterCommandRefusal('selection','The department selection changed. Prepare it again.');
   }
+  if(step.kind==='rest'){
+   // The employee's working half was refused (a change made meanwhile): its rest half is not written either.
+   // Steps come in pairs, so the employee's working half is the step just before (a primary-key read).
+   const [working]=plan.workingDates.length?await tx.execute<{state:string}>(sql`select state from bulk_job_step where job_id=${job.id}::uuid and seq=${step.seq-1} and kind='working' and payload->>'employmentId'=${employmentId}`):[];
+   if(working?.state==='failed')return{result:{skipped:true},counters:{skipped:1}};
+   const restRows=await writeRosterRestRowsTx(tx,ctx,{employmentIds:[employmentId],shiftDates:plan.restDates});
+   return{result:{restRows},counters:{saved:1}};
+  }
   const workingRows=await writeRosterShiftRowsTx(tx,ctx,{employmentIds:[employmentId],shiftDates:plan.workingDates,shiftId:plan.shiftId});
-  const restRows=await writeRosterRestRowsTx(tx,ctx,{employmentIds:[employmentId],shiftDates:plan.restDates});
-  return{result:{workingRows,restRows},counters:{saved:1}};
+  return{result:{workingRows},counters:{saved:1}};
  }
  if(plan.op==='copy'){
   const {employmentId}=step.payload as EmployeeStep;
@@ -312,8 +325,8 @@ async function finalizeRoster(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit
   if(!plan.summarized){
    // The operation's one summary event, for the rows actually written, once (the plan flag survives a restart).
    if(plan.op==='generate'&&t.applied>0){
-    if(plan.workingDates.length)await appendRosterBulkAssignedTx(tx,ctx,{shiftId:plan.shiftId,employmentCount:t.applied,dateCount:plan.workingDates.length,rows:t.working});
-    if(plan.restDates.length)await appendRosterBulkRestDayTx(tx,ctx,{anchorId:plan.shiftId,shiftId:plan.shiftId,employmentCount:t.applied,dateCount:plan.restDates.length,rows:t.rest});
+    if(plan.workingDates.length&&t.workingSteps>0)await appendRosterBulkAssignedTx(tx,ctx,{shiftId:plan.shiftId,employmentCount:t.workingSteps,dateCount:plan.workingDates.length,rows:t.working});
+    if(plan.restDates.length&&t.restSteps>0)await appendRosterBulkRestDayTx(tx,ctx,{anchorId:plan.shiftId,shiftId:plan.shiftId,employmentCount:t.restSteps,dateCount:plan.restDates.length,rows:t.rest});
    }else if(plan.op==='copy'&&t.source>0){
     await appendRosterCopiedTx(tx,ctx,{sourceFrom:plan.sourceFrom,sourceTo:plan.sourceTo,targetFrom:plan.targetFrom,offsetDays:plan.offsetDays,rows:t.rows,employmentScope:plan.employmentScope});
    }else if(plan.op==='assign'&&plan.brush!=='rest'&&plan.brush!=='clear'&&t.applied>0){
@@ -328,7 +341,7 @@ async function finalizeRoster(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit
  });
  if(plan.op==='import'&&plan.refusal)throw new RosterBulkStopped(plan.refusal);
  if(totals.failed>0)throw new RosterBulkStopped(totals.error??'');
- if(plan.op==='generate')return{result:{op:'generate',employments:totals.applied,workingDates:plan.workingDates.length,restDates:plan.restDates.length,workingRows:totals.working,restRows:totals.rest}};
+ if(plan.op==='generate')return{result:{op:'generate',employments:totals.employees,workingDates:plan.workingDates.length,restDates:plan.restDates.length,workingRows:totals.working,restRows:totals.rest}};
  if(plan.op==='copy')return{result:{op:'copy',copied:totals.source>0?totals.rows:0,sourceRows:totals.source}};
  if(plan.op==='assign')return{result:{op:'assign',assigned:totals.rows}};
  return{result:{op:'import',result:{...plan.result,committed:true}}};

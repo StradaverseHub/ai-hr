@@ -6,7 +6,9 @@
 import type postgres from 'postgres';
 
 export type TenantLockHold={lock:string;mode:string;pid:number;app:string;ms:number;queries:string[]};
-export type TenantLockReport={byLock:Record<string,{holds:number;maxMs:number;over1s:number}>;longest:TenantLockHold[]};
+export type TenantLockReport={byLock:Record<string,{holds:number;maxMs:number;over1s:number}>;longest:TenantLockHold[];
+ /** The same, per application_name (a bulk job labels its transactions aihr-bulk:<kind>:<phase>; probes are unlabelled). */
+ byApp:Record<string,{holds:number;maxMs:number;over1s:number;p95Ms:number}>};
 
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 
@@ -51,7 +53,10 @@ export async function startTenantLockSampler(obs:postgres.Sql,tenantId:string,in
    const all=[...holds.values()].map(h=>({lock:h.lock,mode:h.mode,pid:h.pid,app:h.app,ms:h.last-h.first,queries:h.queries}));
    const byLock:TenantLockReport['byLock']={};
    for(const h of all){const b=byLock[h.lock]??={holds:0,maxMs:0,over1s:0};b.holds++;b.maxMs=Math.max(b.maxMs,h.ms);if(h.ms>1000)b.over1s++;}
-   return{byLock,longest:all.sort((a,b)=>b.ms-a.ms).slice(0,8)};
+   const byApp:TenantLockReport['byApp']={};const msByApp:Record<string,number[]>={};
+   for(const h of all){const key=h.app||'(unlabelled)';const b=byApp[key]??={holds:0,maxMs:0,over1s:0,p95Ms:0};b.holds++;b.maxMs=Math.max(b.maxMs,h.ms);if(h.ms>1000)b.over1s++;(msByApp[key]??=[]).push(h.ms);}
+   for(const [key,values] of Object.entries(msByApp)){values.sort((a,b)=>a-b);byApp[key].p95Ms=values[Math.floor(values.length*.95)]??0;}
+   return{byLock,longest:all.sort((a,b)=>b.ms-a.ms).slice(0,8),byApp};
   },
  };
 }

@@ -5,7 +5,7 @@
  * Access writer, clock-in, My Profile, Home, Personnel), samples every tenant-wide lock, and reports per operation:
  * wall time, chunk metrics, the longest tenant-lock holds, probe maxima, errors and Busy refusals.
  *
- * Operations (OPS, comma separated): sync (today's single-transaction generateRosterFromTemplate, for comparison),
+ * Operations (OPS, comma separated): baseline (probes only), sync (today's single-transaction generateRosterFromTemplate, for comparison),
  * generate, copy, import, group. Env: DATABASE_URL (app), MIGRATION_DATABASE_URL (owner), REHEARSAL_PORT,
  * REHEARSAL_TENANT, REHEARSAL_ADMIN, BASE_EMPLOYEES (3000), ROSTER_EMPLOYEES (all), IMPORT_EMPLOYEES (1200),
  * SYNC_EMPLOYEES (1200), MONTH (2027-01).
@@ -103,6 +103,8 @@ async function main(){
   console.log(JSON.stringify({[name]:report[name]},null,2));
  };
  const days=monthDays(MONTH),next=nextMonth(MONTH);
+ // The same probes with no bulk operation, so host load is not mistaken for lock waits.
+ if(OPS.includes('baseline'))await measure('baseline',async()=>{await sleep(Number(process.env.BASELINE_SECONDS??60)*1000);return{detail:'idle'};});
  if(OPS.includes('sync')){
   // Today's path, for comparison: one transaction for the whole grid (no worker involved).
   const ids=rosterIds.slice(0,Number(process.env.SYNC_EMPLOYEES??1200));
