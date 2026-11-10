@@ -3,7 +3,7 @@ import {isPresentationCarrierPrincipalCurrentTx} from '../../core/carrier-princi
 import {TENANT_STATUS_GOOD_STANDING} from '../../core/entitlement-types';
 import {savedTaxCircumstance} from './tax-circumstance';
 /** The Income Tax Resident field owns the scoped scheme; legacy approvals are conversion evidence only. */
-import {and,eq,isNull,sql} from 'drizzle-orm';
+import {and,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
 import {assignment,company,employment,employeeStatutoryMy,employmentTaxSchemeMy,employmentTaxSelectionMy,payrollBatch} from '../../db/schema';
@@ -68,7 +68,7 @@ export async function getTaxSelectionMY(ctx:SessionContext,employmentId:string,p
   if(canInitialize&&mode==='initialize')selection=await initialize(tx,ctx,e);
   return {
    needsInitialization:canInitialize&&mode==='snapshot',
-   view:{...e,scheme:profile?.key==='none'?'none':selection?.scheme??null,transitionState:profile?.key==='none'?'resolved':selection?.taxApplicabilityEpoch!==(profile?.epoch??0)?'confirmation_required':selection?.transitionState??'confirmation_required',version:selection?.version??0,taxApplicabilityEpoch:profile?.epoch??0},
+   view:taxSelectionViewMY(e,profile,selection),
   };
  };
  if(options?.readOnly===true)return (await read(options.tx,'borrowed')).view;
@@ -86,6 +86,44 @@ export async function getTaxSelectionMY(ctx:SessionContext,employmentId:string,p
  // A genuinely missing legacy row can materialize. Recheck principal, company and selection in
  // a fresh transaction under the existing statutory barrier before using the legacy initializer.
  return (await withTenant(ctx,tx=>read(tx,'initialize'))).view;
+}
+type TaxSelectionContextMY=Awaited<ReturnType<typeof taxSelectionContextMY>>;
+function taxSelectionViewMY(e:TaxSelectionContextMY,profile:{key:string|null;epoch:number}|undefined,selection:typeof employmentTaxSelectionMy.$inferSelect|undefined){
+ return {...e,scheme:profile?.key==='none'?'none':selection?.scheme??null,transitionState:profile?.key==='none'?'resolved':selection?.taxApplicabilityEpoch!==(profile?.epoch??0)?'confirmation_required':selection?.transitionState??'confirmation_required',version:selection?.version??0,taxApplicabilityEpoch:profile?.epoch??0};
+}
+/** Set-wise form of the BORROWED read-only getTaxSelectionMY, for a caller-held scoped snapshot (the
+ * Personnel export). The same employment, authority, company, profile and selection reads, each issued once
+ * for every employment; each employment's view — or the not_found refusal its single read raises — comes
+ * from the same checks, in the same order, when it is asked for. Borrowed reads never initialize, exactly as
+ * the single borrowed read. An employment outside the list falls back to the single read. */
+export async function getTaxSelectionsMY(ctx:SessionContext,employmentIds:readonly string[],options:{tx:Tx;readOnly:true}){
+ ctx=captureStatutoryContext(ctx);
+ const tx=options.tx,ids=[...new Set(employmentIds)].filter(idOk),listed=new Set(ids);
+ const single=(employmentId:string)=>getTaxSelectionMY(ctx,employmentId,undefined,options);
+ const contexts=ids.length?await tx.select({employmentId:employment.id,personId:employment.personId,employeeCode:employment.employeeCode,currentCompanyId:employment.companyId}).from(employment).where(and(inArray(employment.id,ids),eq(employment.tenantId,ctx.tenantId))):[];
+ // No readable employment: each listed one is the single read's not_found, with nothing else to read.
+ if(!contexts.length)return async(employmentId:string)=>{if(!listed.has(employmentId))return single(employmentId);throw new TaxSelectionError('not_found');};
+ const companyIds=[...new Set(contexts.map(row=>row.currentCompanyId))],personIds=[...new Set(contexts.map(row=>row.personId))];
+ // Without a payroll batch the single read's two authority operands name the same company.
+ const [allowed,companies,profiles,selections]=await Promise.all([
+  tx.execute<{id:string;ok:boolean|null}>(sql`SELECT c.id::text AS id,app.can_admin_payroll_for(c.id) AND app.can_admin_payroll_for(c.id) AS ok FROM unnest(${'{'+companyIds.join(',')+'}'}::uuid[]) AS c(id)`),
+  tx.select({id:company.id,companyName:company.legalName}).from(company).where(and(inArray(company.id,companyIds),eq(company.tenantId,ctx.tenantId),eq(company.country,'MY'))),
+  tx.select({personId:employeeStatutoryMy.personId,key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(inArray(employeeStatutoryMy.personId,personIds)),
+  tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),inArray(employmentTaxSelectionMy.employmentId,contexts.map(row=>row.employmentId)))),
+ ]);
+ const contextBy=new Map(contexts.map(row=>[row.employmentId,row] as const)),allowedBy=new Map([...allowed].map(row=>[row.id,row.ok] as const));
+ const companyBy=new Map(companies.map(row=>[row.id,row] as const)),profileBy=new Map(profiles.map(({personId,...row})=>[personId,row] as const));
+ // employment_tax_selection_my_context: one row per (tenant, employment, company).
+ const selectionBy=new Map(selections.map(row=>[row.employmentId+'|'+row.companyId,row] as const));
+ return async(employmentId:string)=>{
+  if(!listed.has(employmentId))return single(employmentId);
+  const e=contextBy.get(employmentId);
+  if(!e)throw new TaxSelectionError('not_found');
+  if(allowedBy.get(e.currentCompanyId)!==true)throw new TaxSelectionError('not_found');
+  const c=companyBy.get(e.currentCompanyId);if(!c)throw new TaxSelectionError('not_found');
+  const context:TaxSelectionContextMY={...e,companyName:c.companyName,companyId:e.currentCompanyId,payPeriod:undefined,payrollBatchId:undefined};
+  return taxSelectionViewMY(context,profileBy.get(e.personId),selectionBy.get(e.employmentId+'|'+e.currentCompanyId));
+ };
 }
 export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;personId?:string;scheme:string;expectedCompanyId:string;expectedVersion?:number;payrollBatchId?:string;expectedPayPeriod?:string}){
  ctx=captureStatutoryContext(ctx);p=structuredClone(p);await statutoryWriteIntervalMYTx(tx,ctx);
