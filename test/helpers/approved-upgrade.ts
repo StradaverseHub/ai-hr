@@ -312,7 +312,13 @@ export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db
   await migrate(db.db,{migrationsFolder});
   expect(await db.client`select id from public.company where display_group_field is not null or display_group_option_id is not null`).toEqual([]);
   expect(await db.client`select user_id from public.reward_group_role_grant`).toEqual([]);
-  expect(await table(db,'public.domain_event')).toEqual(eventsAfter);
+  // 5012 appends the nullable staged-import marker to domain_event. Where the tail added it, every retained event
+  // holds null there, and only then is it compared without the column; any other change to an event still fails.
+  expect((await table(db,'public.domain_event')).map(row=>{
+   if(!Object.hasOwn(row,'import_pending_attempt_id'))return row;
+   expect(row.import_pending_attempt_id,'domain_event staged-import marker (5012) on a retained event').toBeNull();
+   const {import_pending_attempt_id:_marker,...original}=row;return original;
+  })).toEqual(eventsAfter);
   expect(await table(db,'public.access_group_grant')).toEqual(groupAfter);expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
   expect(await table(db,'public.access_configuration')).toEqual(configsAfter);expect(await table(db,'app.access_profile_write_generation')).toEqual(generationsAfter);
   return {events,eventsRaw:eventsRaw.filter(row=>events.some(event=>event.id===row.id)),grants,overrides,configurations,generations:generationPairs};

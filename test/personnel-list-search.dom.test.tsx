@@ -78,7 +78,8 @@ it('shows the shared busy/retry feedback for its own form when the search cannot
  mount();
  fireEvent.change(box(),{target:{value:'Fictional'}});
  const alert=await screen.findByRole('alert');
- expect(alert).toHaveTextContent(en.personnelOrganisationFilters.readBusy);
+ // The release's shared Personnel filter feedback says the filters could not be applied, never "busy".
+ expect(alert).toHaveTextContent(en.personnelOrganisationFilters.applyFailed);
  expect(controls.replace).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:en.personnelOrganisationFilters.retryRead}));
  await waitFor(()=>expect(controls.replace).toHaveBeenCalledTimes(1));
