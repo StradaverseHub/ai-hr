@@ -254,7 +254,8 @@ describe('payroll processing background job',()=>{
   expect(ledger).toEqual({outstandingBalance:'2400.00',instalmentsPaid:0});
   expect(await owner.client`select to_jsonb(i)-'updated_at' as row from payroll_input i where batch_id=${f.batchId}::uuid order by employment_id`).toEqual(inputsBefore);
   const [discarded]=await owner.client<{payload:{jobId:string;oneOffTransactionsDetached:number}}[]>`select payload from domain_event where aggregate_id=${f.batchId}::uuid and event_type='payroll-batch.processing-discarded'`;
-  expect(discarded.payload).toMatchObject({jobId,oneOffTransactionsDetached:1});
+  // The discard runs in the kernel's owner transaction (unit.ownerTx), so its events carry the job (migration 5014).
+  expect(discarded.payload).toMatchObject({jobId,oneOffTransactionsDetached:1,bulkJob:{id:jobId,kind:'payroll_process'}});
   expect((await owner.client<{batch_id:string|null}[]>`select batch_id from payroll_individual_txn where id=${oneOffId}::uuid`)[0].batch_id).toBeNull();
   expect(await owner.client`select payload->>'reason' as reason from domain_event where aggregate_id=${oneOffId}::uuid and event_type='payroll.individual-txn.detached'`).toEqual([{reason:'payroll-processing-discarded'}]);
   expect((await owner.db.execute(sql`select count(*)::int as n from domain_event where aggregate_id=${f.batchId}::uuid and event_type='payroll-batch.processed'`))[0]).toMatchObject({n:0});
