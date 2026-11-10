@@ -24,7 +24,13 @@ Entitlement, carry expiry and year-open the same shape or larger), and a busy em
   next run completes it). Authority: admin at enqueue, the kernel's captured-grant fence on every transaction, and
   admin re-checked when the summary events and the log are written.
 - **Leave ledger import** (`core/leave-import-worker.ts`, kind `leave_ledger`) is the bulk plan's proof ported onto the
-  kernel: one planned row per step through the same row writer, summary event written once.
+  kernel: one planned row per step through the same row writer, summary event written once. The per-row re-check
+  under the row's locks used to read every employment and the whole ledger (its hold grew with the tenant); it now
+  reads only the employments the row's reference can match (and any non-ASCII code or e-mail) and their ledger rows,
+  deciding exactly as before.
+- **Generate Entitlement's log** inserts its lines in statements of at most 1,000: one statement exceeded PostgreSQL's
+  65,535 bind parameters at about 7,300 lines and failed the log after the grants committed (found at 3,000
+  employees).
 - **Timers stay timers.** `scripts/accrue-earned.ts` and `scripts/expire-carry.ts` run with a system context and no
   signed-in creator, which the kernel's admission requires, so they use the same batch steps through
   `runLeaveCohortInline` (short transaction per batch, transient retry, one summary event, failure reported after the
