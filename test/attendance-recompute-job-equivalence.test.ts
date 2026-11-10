@@ -19,6 +19,7 @@ import { commitClockingImport } from '../core/attendance-clocking-import';
 import { recomputeAttendance, type RecomputeResult, type RecomputeScope } from '../core/attendance-recompute';
 import { attendanceRecomputeJobHandler, attendanceRecomputePreviewJobHandler, getRecomputeJob, startRecomputeJob } from '../core/attendance-recompute-job';
 import { runBulkJobTick } from '../core/bulk-job-worker';
+import { requestBulkJobCancel } from '../core/bulk-job';
 import { attendanceSnapshot, buildAttendanceFixture, fixtureDate, normalizeIds, type AttendanceFixture } from './helpers/attendance-bulk-fixture';
 
 let b: Base;
@@ -120,4 +121,23 @@ it('refuses the whole scope when a closed pay run owns a changed day, preview an
   const [check] = await owner.client<{ checks: number }[]>`select (counters->>'checks')::int as checks from bulk_job where tenant_id=${b.tenantId}::uuid and kind='attendance_recompute'`;
   expect(check.checks).toBeGreaterThan(0);
   void and; void eq;
+}, 900_000);
+
+it('an apply stopped part-way keeps the days it wrote, with their run history and nothing else', async () => {
+  const f = await recorded();
+  const { job } = await startRecomputeJob(f.ctx, { ...scopeOf(), dryRun: false });
+  for (let i = 0; i < 2000; i++) {
+    const [row] = await owner.client<{ state: string; done: number }[]>`select state,steps_done as done from bulk_job where id=${job.id}::uuid`;
+    if (row.state === 'running' && row.done >= 8) break;
+    if (!await tick()) await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  await requestBulkJobCancel(f.ctx, job.id);
+  expect(await runJob(job.id)).toBe('cancelled');
+  const { runId } = (await owner.client<{ input: { runId: string } }[]>`select input from bulk_job where id=${job.id}::uuid`)[0]?.input ?? { runId: '' };
+  const days = await owner.client<{ n: number }[]>`select count(*)::int n from domain_event where tenant_id=${b.tenantId}::uuid and event_type='attendance.recomputed'`;
+  const [run] = await owner.client<{ payload: { updated: number; rows: unknown[] } }[]>`select payload from domain_event where tenant_id=${b.tenantId}::uuid and event_type='attendance-recompute.run'`;
+  expect(days[0].n).toBeGreaterThan(0);
+  expect(run.payload.updated).toBe(days[0].n);
+  expect(run.payload.rows).toHaveLength(days[0].n);
+  void runId;
 }, 900_000);

@@ -168,20 +168,35 @@ function recomputeJobHandler(kind:string,dryRun:boolean):BulkJobHandler<StepPayl
     const failedCheck=steps.find(s=>s.kind==='check'&&s.state==='failed');
     if(failedCheck)throw new RecomputeScopeError(failedCheck.error??'Attendance could not be checked against closed payroll.');
     await assertRecomputeAuthorityTx(tx,scope.companyId);
-    const own=steps.filter(s=>s.kind!=='check'&&s.state==='applied'&&s.result).map(s=>s.result!);
-    const checked=own.reduce((n,r)=>n+r.checked,0);
-    if(checked===0)return empty;
-    const rows=own.flatMap(r=>r.rows).sort(byDayThenEmployment);
-    const flags=own.flatMap(r=>r.flags).sort(byDayThenEmployment);
-    const batchWarnings=await batchesCoveringAttendanceDates(tx,{companyId:scope.companyId,entries:own.flatMap(r=>r.payAffecting)});
-    const result:RecomputeResult={...empty,checked,updated:rows.length,unchanged:own.reduce((n,r)=>n+r.unchanged,0),flagged:flags.length,rows,flags,batchWarnings};
-    if(!dryRun)await appendRecomputeRunTx(tx,ctx,result);
+    const result=await assembledTx(tx,scope,empty,steps);
+    if(!dryRun&&result.checked>0)await appendRecomputeRunTx(tx,ctx,result);
     return result;
    });
    unit.metric('finalizeTxMs',performance.now()-started);
    return{result};
   },
+  /** An apply that stopped after some employees were written (cancelled, or authority or a step failure ended it
+   * before finalize): their days keep the run's history event and pay-run marks, as finalize would have written. */
+  async afterTerminal(ctx,job){
+   if(dryRun||job.state==='completed'||!ctx)return;
+   const input=inputOf(job);const {scope}=input;
+   await withTenant(ctx,async tx=>{
+    const steps=await tx.execute<{kind:StepKind;state:string;error:string|null;result:StepResult|null}>(sql`select kind,state,error,result from bulk_job_step where job_id=${job.id}::uuid order by seq`);
+    const result=await assembledTx(tx,scope,emptyRecomputeResult({...scope,dryRun},input.runId,input.ranAt),steps);
+    if(result.updated>0)await appendRecomputeRunTx(tx,ctx,result);
+   });
+  },
  };
+}
+/** The synchronous result from the applied preview/apply steps: rows and flags in (date, employment) order. */
+async function assembledTx(tx:Tx,scope:RecomputeJobInput['scope'],empty:RecomputeResult,steps:{kind:StepKind;state:string;result:StepResult|null}[]):Promise<RecomputeResult>{
+ const own=steps.filter(s=>s.kind!=='check'&&s.state==='applied'&&s.result).map(s=>s.result!);
+ const checked=own.reduce((n,r)=>n+r.checked,0);
+ if(checked===0)return empty;
+ const rows=own.flatMap(r=>r.rows).sort(byDayThenEmployment);
+ const flags=own.flatMap(r=>r.flags).sort(byDayThenEmployment);
+ const batchWarnings=await batchesCoveringAttendanceDates(tx,{companyId:scope.companyId,entries:own.flatMap(r=>r.payAffecting)});
+ return{...empty,checked,updated:rows.length,unchanged:own.reduce((n,r)=>n+r.unchanged,0),flagged:flags.length,rows,flags,batchWarnings};
 }
 export const attendanceRecomputePreviewJobHandler=recomputeJobHandler(ATTENDANCE_RECOMPUTE_PREVIEW_KIND,true);
 export const attendanceRecomputeJobHandler=recomputeJobHandler(ATTENDANCE_RECOMPUTE_KIND,false);
