@@ -27,6 +27,19 @@ def env(course='parallel-smoke', **extra):
             'WORKER_BUILD_RESULT': 'success', 'WORKER_CELL_RESULT': 'success', **extra}
 
 
+def latency():
+    row = {'samples': 10, 'p50Ms': 100, 'p95Ms': 200, 'p99Ms': 300, 'maxMs': 400}
+    return {role: {work: dict(row) for work in owner.WORK} for role in owner.ROLES}
+
+
+def observation(scope):
+    locks = {'preflight': {'pass': True}, 'loaded': {'pass': scope == 'steady-500'}}
+    return {'driver': {'identity': dict(HARNESS), 'complete': True, 'busyResponses': 0, 'pageEvents': {'qualifiedCrashes': 0},
+                       'locks': locks},
+            'workerCrashes': 0, 'browserErrors': 0, 'runtimeAcceptance': {'pass': True},
+            'postgresWaitLog': {'retainedFailures': 0}, 'roleLatency': latency() if scope == 'steady-500' else None}
+
+
 def cell(workers, course='parallel-smoke', **changes):
     name, scope = next((row[1], row[2]) for row in owner.COURSES[course] if row[0] == workers)
     value = {
@@ -36,7 +49,7 @@ def cell(workers, course='parallel-smoke', **changes):
         'frontiers': {}, 'buildSeal': SEAL, 'transport': {'seal': SEAL, 'archiveSha256': ARCHIVE, 'archiveBytes': 1000},
         'seedSettlement': 'settled', 'complete': True, 'host': dict(HOST), 'productionEquivalent': False, 'scope': 'x',
         'cell': {'name': name, 'scope': scope, 'state': 'passed', 'reason': None, 'fixtureDay': '2026-11-10',
-                 'settlement': 'settled', 'observation': {'driver': {'identity': dict(HARNESS)}, 'roleLatency': None}},
+                 'settlement': 'settled', 'observation': observation(scope)},
         'processOwner': {'settled': True, 'cellBarriers': 1, 'runnerExitCode': 0},
     }
     for key, update in changes.items():
@@ -70,17 +83,82 @@ class AggregateTests(unittest.TestCase):
         self.assertTrue(result['complete'] and result['steadyPairPassed'])
         self.assertEqual(result['reasons'], [])
         self.assertEqual(result['steadyPair']['differences'], {})
+        self.assertEqual(result['scalingComparison'], 'claimed')
         self.assertEqual([row['host']['cpuModel'] for row in result['cells']], [HOST['cpuModel']] * 3)
 
-    def test_steady_pair_cpu_model_or_vcpu_mismatch_fails_and_reports_the_difference(self):
-        for change in ({'cpuModel': 'Intel Xeon Platinum 8370C'}, {'effectiveCpus': 2, 'logicalCpus': 2}):
+    def test_matched_runners_claim_the_scaling_comparison(self):
+        full = 'parallel-2-4-8'
+        self.publish(cell('2', full), cell('4', full), cell('8', full))
+        result = owner.aggregate(env(full), self.root)
+        self.assertTrue(result['complete'] and result['steadyPairPassed'])
+        self.assertEqual(result['scalingComparison'], 'claimed')
+        self.assertIsNone(result['steadyPair']['scalingNotClaimedReason'])
+        self.assertEqual(result['steadyPair']['latency']['employee.read']['p95Ms'], [200, 200])
+
+    def test_unmatched_cpu_model_passes_release_gates_without_any_scaling_number(self):
+        full = 'parallel-2-4-8'
+        other = 'Intel Xeon Platinum 8370C'
+        self.publish(cell('2', full), cell('4', full, host={'cpuModel': other}), cell('8', full))
+        result = owner.aggregate(env(full), self.root)
+        self.assertTrue(result['complete'] and result['steadyPairPassed'])
+        self.assertEqual(result['reasons'], [])
+        self.assertEqual(result['scalingComparison'], 'not-claimed')
+        self.assertEqual(result['steadyPair']['scalingNotClaimedReason'], 'cpu-model-differs')
+        self.assertEqual(result['steadyPair']['cpuModels'], {'steady-2': HOST['cpuModel'], 'steady-4': other})
+        self.assertNotIn('latency', result['steadyPair'])
+        published = json.dumps(result) + owner.summary_markdown(result)
+        self.assertNotIn('p95Ms', published)
+        self.assertIn('not claimed', owner.summary_markdown(result))
+
+    def test_mismatched_vcpu_fails_the_smaller_cell_and_claims_nothing(self):
+        for change in ({'effectiveCpus': 2, 'logicalCpus': 2}, {'memoryBytes': 7 * 1024 ** 3}):
             with self.subTest(change=change):
                 self.tearDown(); self.setUp()
                 self.publish(cell('2'), cell('4', host=change), cell('8'))
                 result = owner.aggregate(env(), self.root)
                 self.assertFalse(result['complete'] or result['steadyPairPassed'])
-                self.assertIn('steady-runners-not-comparable', result['reasons'])
+                self.assertIn('smoke-4-gate-runner-class', result['reasons'])
+                self.assertEqual(result['cells'][1]['gateFailures'], ['runner-class'])
                 self.assertTrue(set(change) <= set(result['steadyPair']['differences']))
+
+    def test_vcpu_difference_is_never_a_scaling_claim(self):
+        self.publish(cell('2'), cell('4', host={'effectiveCpus': 2, 'logicalCpus': 2}), cell('8'))
+        result = owner.aggregate(env(), self.root)
+        self.assertEqual((result['scalingComparison'], result['steadyPair']['scalingNotClaimedReason']), ('not-claimed', 'vcpu-differs'))
+
+    def test_any_cell_gate_fails_the_aggregate_whatever_the_cpu_models(self):
+        full = 'parallel-2-4-8'
+        def broken(path, value):
+            changed = cell('8' if path[0] == 'eight' else '4', full, host={'cpuModel': 'Intel Xeon Platinum 8370C'})
+            target = changed['cell']['observation']
+            for key in path[1:-1]:
+                target = target[key]
+            target[path[-1]] = value
+            return changed
+        cases = (
+            (('four', 'driver', 'busyResponses', 1), 'busy'),
+            (('four', 'driver', 'pageEvents', 'qualifiedCrashes', 1), 'page-crashes'),
+            (('four', 'workerCrashes', 2), 'worker-crashes'),
+            (('four', 'browserErrors', 3), 'browser-errors'),
+            (('four', 'driver', 'locks', 'preflight', 'pass', False), 'preflight-lock-sampler'),
+            (('four', 'driver', 'locks', 'loaded', 'pass', False), 'loaded-lock-sampler'),
+            (('four', 'runtimeAcceptance', 'pass', False), 'runtime-acceptance'),
+            (('four', 'postgresWaitLog', 'retainedFailures', 1), 'database-lock-waits'),
+            (('four', 'driver', 'complete', False), 'driver-complete'),
+            (('eight', 'browserErrors', 1), 'browser-errors'),
+        )
+        for row, gate in cases:
+            with self.subTest(row=row):
+                self.tearDown(); self.setUp()
+                bad = broken(row[:-1], row[-1])
+                others = [cell(w, full) for w in ('2', '4', '8') if w != ('8' if row[0] == 'eight' else '4')]
+                self.publish(bad, *others)
+                result = owner.aggregate(env(full), self.root)
+                self.assertFalse(result['complete'])
+                name = 'functional-8' if row[0] == 'eight' else 'steady-4'
+                self.assertIn(name + '-gate-' + gate, result['reasons'])
+                if row[0] == 'four':
+                    self.assertEqual(result['scalingComparison'], 'not-claimed')
 
     def test_memory_and_kernel_differences_are_reported_not_hidden(self):
         self.publish(cell('2'), cell('4', host={'memoryBytes': 16 * 1024 ** 3 - 4096, 'kernel': '6.8.0-1'}), cell('8'))
@@ -131,6 +209,8 @@ class AggregateTests(unittest.TestCase):
         self.publish(cell('2', full), other, cell('8', full))
         result = owner.aggregate(env(full), self.root)
         self.assertIn('harness-differs', result['reasons'])
+        self.assertEqual((result['scalingComparison'], result['steadyPair']['scalingNotClaimedReason']), ('not-claimed', 'harness-differs'))
+        self.assertNotIn('latency', result['steadyPair'])
         self.assertEqual([row['name'] for row in result['cells']], ['steady-2', 'steady-4', 'functional-8'])
         with self.assertRaises(owner.Refused):
             owner.check_cell(cell('2', full, prerequisite=None), full, '2', owner.expected_identity(env(full)))

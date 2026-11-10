@@ -1,8 +1,12 @@
 """Closed evidence checks for the parallel 2/4/8 worker course.
 
 verify-cell  Bind one runner's sealed cell summary to its owner outputs before publication.
-aggregate    Read every published cell, require one build and comparable 2/4 runners, and
-             publish a sanitized aggregate. A failed, missing or non-comparable cell fails it.
+aggregate    Read every published cell and publish a sanitized aggregate in two tiers.
+             Release tier: every cell passes its own gates on the standard runner class,
+             from one build and one 2/4 fixture day. Any failure fails the aggregate.
+             Scaling tier: the 2-versus-4 comparison is claimed only when both cells passed
+             on the same CPU model and vCPU. Otherwise it is not claimed and no scaling
+             number is published; that alone does not fail the aggregate.
 
 Neither mode grants staging, production or release authority.
 """
@@ -27,9 +31,13 @@ CELL_FIELDS = {'kind', 'releaseEligible', 'course', 'identity', 'prerequisite', 
                'seedSettlement', 'cell', 'complete', 'host', 'productionEquivalent', 'scope', 'processOwner'}
 HOST_FIELDS = {'effectiveCpus', 'memoryBytes', 'nodeVersion', 'postgresProfile', 'cpuModel', 'logicalCpus', 'kernel'}
 SEAL_FIELDS = {'buildId', 'entries', 'bytes', 'sha256'}
-# Comparability is decided on these; the rest of the runner specification is reported, not hidden.
-REQUIRED_MATCH = ('cpuModel', 'effectiveCpus', 'logicalCpus')
+# A 2-versus-4 scaling claim needs these to match; the rest of the specification is reported, not hidden.
+SCALING_VCPU = ('effectiveCpus', 'logicalCpus')
+SCALING_MATCH = ('cpuModel',) + SCALING_VCPU
 REPORTED = ('memoryBytes', 'kernel', 'nodeVersion')
+# Every cell must be the standard hosted class: a smaller machine fails whatever its CPU model.
+RUNNER_VCPUS = 4
+RUNNER_MEMORY_BYTES = (15 * 1024 ** 3, 17 * 1024 ** 3)
 ROLES = ('employee', 'manager', 'companyHR', 'groupHR')
 WORK = ('navigation', 'read', 'write')
 LATENCY = ('samples', 'p50Ms', 'p95Ms', 'p99Ms', 'maxMs')
@@ -111,6 +119,36 @@ def host_of(value):
     return value
 
 
+def runner_class_ok(host):
+    return (host['effectiveCpus'] == RUNNER_VCPUS and host['logicalCpus'] == RUNNER_VCPUS
+            and RUNNER_MEMORY_BYTES[0] <= host['memoryBytes'] <= RUNNER_MEMORY_BYTES[1])
+
+
+def record(value):
+    return value if type(value) is dict else {}
+
+
+def gate_failures(observation, scope, host):
+    """Per-cell release gates, read independently of the runner's own verdict and of CPU matching."""
+    driver = record(observation.get('driver'))
+    locks = record(driver.get('locks'))
+    wait_log = record(observation.get('postgresWaitLog'))
+    gates = {
+        'runner-class': runner_class_ok(host),
+        'driver-complete': driver.get('complete') is True,
+        'busy': driver.get('busyResponses') == 0,
+        'page-crashes': record(driver.get('pageEvents')).get('qualifiedCrashes') == 0,
+        'worker-crashes': observation.get('workerCrashes') == 0,
+        'browser-errors': observation.get('browserErrors') == 0,
+        'preflight-lock-sampler': record(locks.get('preflight')).get('pass') is True,
+        'runtime-acceptance': record(observation.get('runtimeAcceptance')).get('pass') is True,
+        'database-lock-waits': wait_log.get('retainedFailures') == 0,
+    }
+    if scope == 'steady-500':
+        gates['loaded-lock-sampler'] = record(locks.get('loaded')).get('pass') is True
+    return sorted(name for name, passed in gates.items() if not passed)
+
+
 def check_cell(summary, course, workers, expected, seal=None, archive=None):
     """Return the closed facts of one cell summary. Raises Refused on any foreign shape."""
     row = next((row for row in COURSES[course] if row[0] == workers), None)
@@ -140,18 +178,20 @@ def check_cell(summary, course, workers, expected, seal=None, archive=None):
     build_seal = summary['buildSeal']
     if build_seal is not None:
         require(seal_of(build_seal) == transport['seal'], 'cell build seal differs from its transport')
-    passed = (summary['complete'] is True and cell['state'] == 'passed' and owner['cellBarriers'] == 1
-              and owner['runnerExitCode'] == 0 and build_seal == transport['seal'] and summary['seedSettlement'] == 'settled')
+    settled = (summary['complete'] is True and cell['state'] == 'passed' and owner['cellBarriers'] == 1
+               and owner['runnerExitCode'] == 0 and build_seal == transport['seal'] and summary['seedSettlement'] == 'settled')
     if summary['complete'] is True:
-        require(passed, 'complete cell without settled proof')
+        require(settled, 'complete cell without settled proof')
     observation = cell.get('observation') if type(cell.get('observation')) is dict else {}
+    gates = gate_failures(observation, scope, host)
+    passed = settled and not gates
     driver = observation.get('driver') if type(observation.get('driver')) is dict else {}
     harness = driver.get('identity') if type(driver.get('identity')) is dict else {}
     phases = observation.get('phaseStatus') if type(observation.get('phaseStatus')) is list else []
     failed = [row.get('label') for row in phases if type(row) is dict and (row.get('exitCode') != 0 or row.get('timedOut') is not False)]
     failed_phase = failed[0] if failed and type(failed[0]) is str and re.fullmatch(r'[a-z-]{1,64}', failed[0]) else None
     return {'workers': int(workers), 'name': name, 'scope': scope, 'state': cell['state'], 'reason': cell.get('reason'),
-            'passed': passed, 'failedPhase': failed_phase, 'fixtureDay': cell.get('fixtureDay'), 'host': host, 'processOwner': owner,
+            'passed': passed, 'gateFailures': gates, 'failedPhase': failed_phase, 'fixtureDay': cell.get('fixtureDay'), 'host': host, 'processOwner': owner,
             'prerequisite': summary['prerequisite'],
             'harness': {key: harness.get(key) for key in ('harnessSha256', 'scenarioSha256')},
             'roleLatency': observation.get('roleLatency')}
@@ -230,24 +270,36 @@ def aggregate(env, root):
             continue
         if not cells[-1]['passed']:
             reasons.append(name + '-' + str(cells[-1]['reason'] or cells[-1]['state']))
+            reasons.extend(name + '-gate-' + gate for gate in cells[-1]['gateFailures'])
     if cell_result != 'success':
         reasons.append('cell-jobs-' + str(cell_result))
 
     pair = [cell for cell in cells[:2] if 'host' in cell]
-    steady = {'cells': [cells[0]['name'], cells[1]['name']], 'comparable': False, 'differences': {}, 'fixtureDayMatch': False}
+    steady = {'cells': [cells[0]['name'], cells[1]['name']], 'scalingComparison': 'not-claimed',
+              'scalingNotClaimedReason': 'steady-pair-unobserved', 'cpuModels': {}, 'vcpus': {},
+              'differences': {}, 'fixtureDayMatch': False}
     if len(pair) == 2:
         left, right = (cell['host'] for cell in pair)
-        for key in REQUIRED_MATCH + REPORTED:
+        for key in SCALING_MATCH + REPORTED:
             if left[key] != right[key]:
                 steady['differences'][key] = {pair[0]['name']: left[key], pair[1]['name']: right[key]}
-        steady['comparable'] = all(left[key] == right[key] for key in REQUIRED_MATCH)
-        if not steady['comparable']:
-            reasons.append('steady-runners-not-comparable')
+        steady['cpuModels'] = {cell['name']: cell['host']['cpuModel'] for cell in pair}
+        steady['vcpus'] = {cell['name']: cell['host']['effectiveCpus'] for cell in pair}
         days = [cell['fixtureDay'] for cell in pair]
         steady['fixtureDayMatch'] = days[0] is not None and days[0] == days[1]
         if not steady['fixtureDayMatch']:
             reasons.append('fixture-day')
-        steady['latency'] = latency_pair(pair[0].get('roleLatency'), pair[1].get('roleLatency'))
+        if any(left[key] != right[key] for key in SCALING_VCPU):
+            steady['scalingNotClaimedReason'] = 'vcpu-differs'
+        elif left['cpuModel'] != right['cpuModel']:
+            steady['scalingNotClaimedReason'] = 'cpu-model-differs'
+        elif not all(cell['passed'] for cell in pair) or not steady['fixtureDayMatch']:
+            steady['scalingNotClaimedReason'] = 'steady-pair-not-passed'
+        else:
+            steady['scalingComparison'] = 'claimed'
+            steady['scalingNotClaimedReason'] = None
+            # The only place a 2-versus-4 number may appear.
+            steady['latency'] = latency_pair(pair[0].get('roleLatency'), pair[1].get('roleLatency'))
     else:
         reasons.append('steady-pair-unobserved')
     observed = [cell for cell in cells if cell.get('passed')]
@@ -257,26 +309,30 @@ def aggregate(env, root):
         reasons.append('harness-differs')
     if len(prerequisites) > 1:
         reasons.append('prerequisite-differs')
-    steady_pair_passed = (len(pair) == 2 and all(cell.get('passed') for cell in cells[:2]) and steady['comparable']
+    if steady['scalingComparison'] == 'claimed' and ('harness-differs' in reasons or 'prerequisite-differs' in reasons):
+        steady.update(scalingComparison='not-claimed', scalingNotClaimedReason='harness-differs')
+        steady.pop('latency', None)
+    steady_pair_passed = (len(pair) == 2 and all(cell.get('passed') for cell in cells[:2])
                           and steady['fixtureDayMatch'] and 'harness-differs' not in reasons and seal is not None)
     complete = not reasons and all(cell.get('passed') for cell in cells)
     public = []
     for cell in cells:
-        public.append({key: cell[key] for key in ('workers', 'name', 'scope', 'state', 'reason', 'failedPhase', 'passed', 'fixtureDay',
+        public.append({key: cell[key] for key in ('workers', 'name', 'scope', 'state', 'reason', 'gateFailures', 'failedPhase', 'passed', 'fixtureDay',
                                                   'host', 'processOwner', 'harness', 'refusal') if key in cell})
     return {'kind': AGGREGATE_KIND, 'releaseEligible': False, 'productionEquivalent': False, 'course': course,
             'identity': expected, 'build': {'result': build_result, 'seal': seal, 'archiveSha256': archive},
             'cells': public, 'steadyPair': steady, 'steadyPairPassed': steady_pair_passed, 'complete': complete,
+            'scalingComparison': steady['scalingComparison'],
             'reasons': sorted(set(reasons)),
             'scope': ('Harness smoke only. No comparison evidence.' if course == 'parallel-smoke' else
-                      'Each cell ran on its own hosted runner from one sealed build. Steady 2 and 4 must match on CPU '
-                      'model and vCPU; memory, kernel and Node differences are reported. Eight workers are a '
-                      'functional oversubscription diagnostic only.')}
+                      'Each cell ran on its own hosted runner from one sealed build and must pass its own gates. A '
+                      '2-versus-4 scaling comparison is claimed only on matching CPU model and vCPU; memory, kernel and '
+                      'Node differences are reported. Eight workers are a functional oversubscription diagnostic only.')}
 
 
 def summary_markdown(result):
     lines = ['### Parallel worker comparison (%s)' % result['course'], '',
-             'Complete: **%s**; steady pair passed: **%s**.' % (result['complete'], result['steadyPairPassed']), '',
+             'Release tier complete: **%s**; steady pair passed: **%s**.' % (result['complete'], result['steadyPairPassed']), '',
              '| Cell | State | CPU model | vCPU | Memory GiB | Kernel | Fixture day |', '|---|---|---|---|---|---|---|']
     for cell in result['cells']:
         host = cell.get('host') or {}
@@ -285,7 +341,13 @@ def summary_markdown(result):
             cell['name'], cell['state'] + ('' if cell.get('reason') in (None, '') else ' (' + str(cell['reason']) + ')'),
             host.get('cpuModel', '-'), host.get('effectiveCpus', '-'), host.get('logicalCpus', '-'),
             '-' if memory is None else '%.2f' % (memory / 1024 ** 3), host.get('kernel', '-'), cell.get('fixtureDay') or '-'))
-    differences = result['steadyPair']['differences']
+    steady = result['steadyPair']
+    if steady['scalingComparison'] == 'claimed':
+        lines += ['', '2-versus-4 scaling comparison: **claimed** on matching CPU model and vCPU.']
+    else:
+        lines += ['', '2-versus-4 scaling comparison: **not claimed** (%s). No scaling number is published. CPU models: %s.'
+                  % (steady['scalingNotClaimedReason'], json.dumps(steady['cpuModels'], sort_keys=True))]
+    differences = steady['differences']
     lines += ['', 'Steady pair runner differences: ' + (json.dumps(differences, sort_keys=True) if differences else 'none') + '.']
     if result['reasons']:
         lines.append('Refusals: ' + ', '.join(result['reasons']) + '.')
@@ -309,10 +371,10 @@ def main(argv, env):
         if summary:
             with open(summary, 'a', encoding='utf-8') as stream:
                 stream.write(summary_markdown(result))
-        print(json.dumps({key: result[key] for key in ('course', 'complete', 'steadyPairPassed', 'reasons')}), flush=True)
-        print(json.dumps({'cells': [{key: cell.get(key) for key in ('name', 'state', 'reason', 'failedPhase', 'host', 'fixtureDay')}
+        print(json.dumps({key: result[key] for key in ('course', 'complete', 'steadyPairPassed', 'scalingComparison', 'reasons')}), flush=True)
+        print(json.dumps({'cells': [{key: cell.get(key) for key in ('name', 'state', 'reason', 'gateFailures', 'failedPhase', 'host', 'fixtureDay')}
                                     for cell in result['cells']], 'steadyPair': {key: result['steadyPair'][key] for key in
-                                                                                 ('comparable', 'differences', 'fixtureDayMatch')}}),
+                                                                                 ('scalingNotClaimedReason', 'cpuModels', 'differences', 'fixtureDayMatch')}}),
               flush=True)
         return 0 if result['complete'] else 1
     except (Refused, OSError, KeyError) as error:
