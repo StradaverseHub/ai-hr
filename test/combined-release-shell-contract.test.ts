@@ -28,10 +28,10 @@ describe('combined release rendered-shell source boundary',()=>{
  });
  it('retains real server authorization behind the displayed destinations',()=>{
   expect(readFileSync('app/admin/audit/page.tsx','utf8')).toContain('await requireAdmin()');
-  // The Personnel screen answers its Workforce view gate inside its one read snapshot, before any listing read.
-  expect(readFileSync('app/admin/personnel/page.tsx','utf8')).toContain("if (!data) redirect('/');");
-  const pageRead=readFileSync('app/admin/personnel/page-read.ts','utf8');
-  expect(pageRead).toContain('personnelPageAccessSql');
-  expect(pageRead.indexOf('if (!access.canOpen) return null;')).toBeLessThan(pageRead.indexOf('readPersonnelOverviewTx(tx'));
+  // The Personnel screen's Workforce gate now also opens the one read snapshot its reads share.
+  expect(readFileSync('app/admin/personnel/page.tsx','utf8')).toContain('await requireWorkforceAccess({ personnelList: true, extra: personnelPageExtra, read:');
+  const gate=readFileSync('lib/workforce-authz.ts','utf8');
+  expect(gate.indexOf("if(!allowed.canOpen)return {open:false as const};")).toBeLessThan(gate.indexOf('value:await read('));
+  expect(gate).toContain("if(!outcome.open)redirect('/');");
  });
 });

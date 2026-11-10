@@ -10,9 +10,8 @@ import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
-import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/session';
-import { readPersonnelPage } from './page-read';
+import { requireWorkforceAccess, type WorkforcePageRead } from '@/lib/workforce-authz';
+import { personnelPageExtra, readPersonnelPageTx } from './page-read';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
 
@@ -101,21 +100,19 @@ export default async function PeoplePage({
 }
 
 async function renderPersonnelPage(sp: PersonnelSearchParams) {
-  const session = await getSession();
-  const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const pq = parsePageQuery(sp);
   // 579255c3 — ONE parse of the query string, shared with the Excel export so the file and the table
   // are answering the same question. See ./list-query.ts for why the cards write `bucket` rather than
   // overloading `status`.
   const query = parsePersonnelListQuery(sp);
-  // Every database read of this screen shares one read-only snapshot (./page-read.ts), which also
-  // answers the Workforce view gate (workforceViewScope's predicate) before any listing read.
-  const data = await readPersonnelPage(session, {
-    query, page: pq, isAdmin,
+  // The Workforce gate and every database read of this screen share one read-only snapshot
+  // (./page-read.ts); a reader who may not open Personnel is redirected before any listing read.
+  const data = await requireWorkforceAccess({ personnelList: true, extra: personnelPageExtra, read: (access: WorkforcePageRead) => readPersonnelPageTx(access, {
+    query, page: pq, isAdmin: (access.s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin'),
     overviewInput: (scopeIds) => ({ companyIds: scopeIds, ...query.filters, limit: pq.limit, offset: pq.offset }),
-  });
-  if (!data) redirect('/');
-  const { scopeIds, maintainIds, canCreate, overview, privateCriteria, companies, departments, idConfigs, photoIds } = data;
+  }) });
+  const { session, scopeIds, maintainIds, canCreate, overview, privateCriteria, companies, departments, idConfigs, photoIds } = data;
+  const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const { rows: drafts, count: draftCardCount } = data.drafts;
   const savedColumns = data.savedColumns;
   const t = await getTranslations('people.list');

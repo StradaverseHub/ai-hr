@@ -45,7 +45,7 @@ export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) =
 export type PersonnelOverviewSnapshot = { previousJit: string; typedFacts: boolean; databaseToday: string; extra?: unknown };
 const PERSONNEL_TYPED_FACTS = [
   'app.personnel_overview_facts(date,uuid[])', 'app.personnel_private_search_entries(text,uuid[])',
-  'app.personnel_list_rows_for_ids(date,uuid[],uuid[])',
+  'app.personnel_list_rows_for_ids(date,uuid[],uuid[])', 'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])',
 ];
 export async function personnelOverviewSnapshotTx(tx: Tx, extra?: SQL): Promise<PersonnelOverviewSnapshot> {
   // The bounded overview's measured compile cost dominates the small page, so it is interpreted. The

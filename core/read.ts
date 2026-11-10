@@ -784,9 +784,11 @@ const attachedColumn = (attach: Record<string, SQL> | undefined) => attach && Ob
 
 function personnelNarrowOverviewQuery(
   input: PersonnelOverviewInput, facets: EmployeeListFilters, asOf: string, source: PersonnelFactSource,
-  duplicateIds: readonly string[], extras: PersonnelOverviewAttachments = {},
+  duplicateIds: readonly string[], extras: PersonnelOverviewAttachments = {}, typedPageRows = false,
 ): SQL {
   const photos = extras.pagePhotos?.(sql`array(select employment_id from page)`) ?? null;
+  // The complete typed draft ships the same page projection with the set-wise organisation resolver.
+  const pageRows = typedPageRows ? sql`app.personnel_overview_page_rows_typed` : sql`app.personnel_overview_page_rows`;
   const read = typedWorkforceFieldAccess, columns = workforceListColumns(asOf, read);
   const scope = sql`array[${sql.join(input.companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
   const key = isEmployeeColumnKey(input.columnSort) ? input.columnSort : undefined;
@@ -837,7 +839,7 @@ function personnelNarrowOverviewQuery(
       where page_matches order by ${order} limit ${input.limit} offset ${input.offset}
     ), page_details as materialized (${input.limit <= PERSONNEL_PAGE_ROWS_CHUNK ? sql`
       select page.*, details.value from page
-      join app.personnel_overview_page_rows(${asOf}::date, ${scope},
+      join ${pageRows}(${asOf}::date, ${scope},
         array(select employment_id from page)) as details(value)
         on (details.value->>'employmentId')::uuid=page.employment_id` : sql`
       select page.*, details.value from (
@@ -845,7 +847,7 @@ function personnelNarrowOverviewQuery(
           select employment_id, row_number() over (order by employment_id) as ordinal from page
         ) as numbered group by (ordinal - 1) / ${PERSONNEL_PAGE_ROWS_CHUNK}
       ) as chunk
-      cross join lateral app.personnel_overview_page_rows(${asOf}::date, ${scope}, chunk.ids) as details(value)
+      cross join lateral ${pageRows}(${asOf}::date, ${scope}, chunk.ids) as details(value)
       join page on (details.value->>'employmentId')::uuid=page.employment_id`}
     )
     select
@@ -924,7 +926,7 @@ export async function readPersonnelOverviewTx(
   if (source) {
     const duplicateIds = [input, facets].some(filters => filters.qualityFlags?.includes('suspected_duplicate'))
       ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf }) : [];
-    const [narrow] = await tx.execute<PersonnelNarrowResult>(personnelNarrowOverviewQuery(input, facets, asOf, source, duplicateIds, options));
+    const [narrow] = await tx.execute<PersonnelNarrowResult>(personnelNarrowOverviewQuery(input, facets, asOf, source, duplicateIds, options, snapshot.typedFacts));
     if (narrow?.pageDetailsComplete) return {
       employees: { rows: narrow.rows, total: narrow.total },
       headcount: { total: Object.values(narrow.byStatus).reduce((sum, count) => sum + count, 0), byStatus: narrow.byStatus },

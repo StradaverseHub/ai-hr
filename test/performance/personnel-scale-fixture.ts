@@ -3,6 +3,7 @@
  * Bulk rows are written by the migration owner (like personnel-native-fixture.ts); every read under
  * test still runs as ai_hr_app under RLS. All names, codes and addresses are invented. */
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {expect} from 'vitest';
 import {withTenant,type SessionContext} from '../../db/client';
@@ -86,10 +87,10 @@ export async function seedPersonnelScaleFixture(count: number): Promise<Personne
         case when f.hired_on < $4::date - 200 and f.n%5<>4 then f.hired_on + 180 end,
         case when f.hired_on < $4::date - 200 and f.n%11=0 then f.hired_on + 190 end,
         case when f.n%3=0 then f.hired_on + 90 end,
-        case when f.n%10=3 then least($4::date - 1, f.hired_on + 400 + f.n%700) end,
-        case when f.n%20=7 then greatest(f.hired_on, $4::date - 10) when f.n%20=11 then greatest(f.hired_on, least($4::date - 5, f.hired_on + 300)) end,
-        case when f.n%20=7 then $4::date + 20 when f.n%20=11 then greatest(f.hired_on, least($4::date - 2, f.hired_on + 330)) end,
-        case when f.n%250=5 then greatest(f.hired_on, least($4::date - 3, f.hired_on + 100)) end
+        case when f.n%13=3 then least($4::date - 1, f.hired_on + 400 + f.n%700) end,
+        case when f.n%17=7 then greatest(f.hired_on, $4::date - 10) when f.n%17=11 then greatest(f.hired_on, least($4::date - 5, f.hired_on + 300)) end,
+        case when f.n%17=7 then $4::date + 20 when f.n%17=11 then greatest(f.hired_on, least($4::date - 2, f.hired_on + 330)) end,
+        case when f.n%251=5 then greatest(f.hired_on, least($4::date - 3, f.hired_on + 100)) end
       from (${fixtureSql(personPrefix, employmentPrefix, count)}) f`, [t, companyArray, grades, today]);
     // Dated assignment history: an earlier placement (some in another company), the current placement,
     // a scheduled future change for some, and superseded corrections that must never be read.
@@ -202,4 +203,26 @@ function fixtureSql(personPrefix: string, employmentPrefix: string, count: numbe
       case when n%10<4 then 1 when n%10<7 then 2 when n%10<9 then 3 else 4 end as company_index,
       (date '2016-01-05' + ((n*37)%3950))::date as hired_on
     from generate_series(1,${count}) n`;
+}
+
+const DRAFT_NEW_FUNCTIONS = [
+  'app.personnel_list_rows_for_ids(date,uuid[],uuid[])', 'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])',
+  'app.personnel_private_search_entries(text,uuid[])', 'app.personnel_overview_facts(date,uuid[])',
+];
+const DRAFT_REPLACED_FUNCTIONS = [
+  'app.personnel_filter_rows(date,uuid[])', 'app.personnel_search_rows(uuid[])', 'app.personnel_private_search_bind()',
+];
+const draftSql = () => readFileSync(new URL('../../db/migration-drafts/personnel_overview_facts.sql', import.meta.url), 'utf8');
+
+/** Install the unallocated typed-facts draft, remembering the exact definitions it replaces. */
+export async function installPersonnelDraft(): Promise<() => Promise<void>> {
+  const originals = await owner.client<{definition: string}[]>`
+    select pg_get_functiondef(to_regprocedure(name)) as definition from unnest(${DRAFT_REPLACED_FUNCTIONS}::text[]) name`;
+  expect(originals.every(row => typeof row.definition === 'string')).toBe(true);
+  await owner.client.unsafe(draftSql());
+  return async () => {
+    for (const name of DRAFT_NEW_FUNCTIONS) await owner.client.unsafe(`drop function if exists ${name}`);
+    for (const {definition} of originals) await owner.client.unsafe(definition);
+    await owner.client.unsafe('drop function if exists app._personnel_employment_tags(uuid[],date)');
+  };
 }

@@ -2,7 +2,7 @@
  * The calling test file owns the module mocks (session, cookies, translations, navigation); this module
  * only drives the application code and records round trips, owners, wall time and nested plans.
  * It supplies no release evidence and never touches an installation. */
-import {writeFileSync} from 'node:fs';
+import {existsSync,writeFileSync} from 'node:fs';
 import {join,relative} from 'node:path';
 import {cloneElement,createElement,isValidElement,type ReactElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -112,6 +112,9 @@ function scenarios(f: PersonnelScaleFixture): Scenario[] {
     {name: 'filter-status-probation', sp: {bucket: 'probation'}},
     {name: 'filter-legacy-terminated', sp: {status: 'terminated'}},
     {name: 'filter-department-active', sp: {dept: f.departments.b[1], bucket: 'active'}},
+    {name: 'filter-parent-company', sp: {parent: f.companies.b}},
+    {name: 'filter-grade', sp: {grade: '13,H'}},
+    {name: 'filter-quality-superior', sp: {quality: 'missing_direct_superior'}},
     {name: 'sort-department', sp: {sort: 'department'}},
     {name: 'sort-join-date-desc', sp: {sort: 'joinDate', direction: 'desc'}},
     {name: 'private-search', search: 'Tan'},
@@ -182,17 +185,18 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
   const results: unknown[] = [];
   report.results = results;
   const searchHrefs: Record<string, string> = {};
+  const measure = async (variant: string, only?: Set<string>) => {
   for (const [role, ctx] of Object.entries(roles)) {
     personnelDiagnosticState.session = ctx;
-    for (const scenario of scenarios(fixture)) {
-      if (performance.now() - started > options.budgetMs) {results.push({role, scenario: scenario.name, skipped: 'budget'}); continue;}
+    for (const scenario of scenarios(fixture).filter(s => !only || only.has(s.name))) {
+      if (performance.now() - started > options.budgetMs) {results.push({role, variant, scenario: scenario.name, skipped: 'budget'}); continue;}
       const runs: {ms: number; trips: number}[] = [];
       let first: Record<string, unknown> | undefined;
       for (let attempt = 0; attempt < 3; attempt++) {
         let outcome: Awaited<ReturnType<typeof traced<Awaited<ReturnType<typeof runScenario>>>>>;
         try {outcome = await traced(() => runScenario(modules, scenario));}
         catch (error) {
-          results.push({role, scenario: scenario.name, attempt, error: {name: (error as Error)?.name, code: (error as {code?: string})?.code ?? null,
+          results.push({role, variant, scenario: scenario.name, attempt, error: {name: (error as Error)?.name, code: (error as {code?: string})?.code ?? null,
             message: String((error as Error)?.message ?? error).slice(0, 300)}});
           break;
         }
@@ -204,7 +208,7 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
         if (outcome.ms > 8000 || (attempt === 1 && outcome.ms > 3000)) break;
       }
       const warm = runs.slice(1).map(r => r.ms).sort((a, b) => a - b);
-      const row = {role, scenario: scenario.name, coldMs: runs[0]?.ms, warmMs: warm.length ? warm[Math.floor((warm.length - 1) / 2)] : null, runs,
+      const row = {role, variant, scenario: scenario.name, coldMs: runs[0]?.ms, warmMs: warm.length ? warm[Math.floor((warm.length - 1) / 2)] : null, runs,
         ...(first ?? {})};
       const compact = {...row} as Record<string, unknown>;
       if (compact.result && typeof compact.result === 'object' && 'ids' in (compact.result as object)) {
@@ -212,13 +216,13 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
         compact.result = {...r, ids: undefined, rowCount: r.ids.length, firstIds: r.ids.slice(0, 3)};
       }
       results.push(compact);
-      print('scenario', {size: options.size, role, scenario: scenario.name, coldMs: row.coldMs, warmMs: row.warmMs,
+      print('scenario', {size: options.size, variant, role, scenario: scenario.name, coldMs: row.coldMs, warmMs: row.warmMs,
         trips: (first as {trips?: number} | undefined)?.trips, transactions: (first as {transactions?: number} | undefined)?.transactions});
       save();
     }
     // The page that the private search route redirected to.
     const href = searchHrefs[role];
-    if (href && performance.now() - started <= options.budgetMs) {
+    if (href && (!only || only.has('private-search')) && performance.now() - started <= options.budgetMs) {
       const params = Object.fromEntries(new URL(href, 'http://x').searchParams);
       const runs: number[] = [];let first: unknown;
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -229,9 +233,24 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
         if (attempt === 0) first = {...summarize(outcome.statements), rowCount: outcome.result.ids.length, total: outcome.result.total};
         if (outcome.ms > 3000) break;
       }
-      results.push({role, scenario: 'private-search-page', coldMs: runs[0], warmMs: runs.slice(1).sort((a, b) => a - b)[0] ?? null, runs, ...(first as object)});
-      print('scenario', {size: options.size, role, scenario: 'private-search-page', runs, trips: (first as {trips?: number} | undefined)?.trips});
+      results.push({role, variant, scenario: 'private-search-page', coldMs: runs[0], warmMs: runs.slice(1).sort((a, b) => a - b)[0] ?? null, runs, ...(first as object)});
+      print('scenario', {size: options.size, variant, role, scenario: 'private-search-page', runs, trips: (first as {trips?: number} | undefined)?.trips});
       save();
+    }
+  }
+  };
+  await measure('installed');
+  // The unallocated typed-facts draft, where this source carries it: the views that still use the exact
+  // owner without it, measured again with it installed.
+  const draftUrl = new URL('../../db/migration-drafts/personnel_overview_facts.sql', import.meta.url);
+  if (existsSync(draftUrl)) {
+    const {installPersonnelDraft} = await import('./personnel-scale-fixture');
+    const removeDraft = await installPersonnelDraft();
+    try {
+      await measure('with-draft', new Set(['list', 'filter-department', 'filter-parent-company', 'filter-grade',
+        'filter-quality-superior', 'sort-department', 'sort-join-date-desc', 'private-search', 'export-page', 'export-all-department']));
+    } finally {
+      await removeDraft();
     }
   }
 
