@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5081_reward_access_observation_due, idx 4481, when 1793330004781.
+-- Draft name on its branch: 9850_reward_access_observation_due. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT (Home round trips, 10 November 2026). Final tag, idx and when are assigned at integration.
 -- Read-only probe for the native Rewards access observation (0681 app.reward_access_observe). The observation
 -- WRITE stays the only writer, keeps its separate committed transaction before the Rewards presentation, and keeps

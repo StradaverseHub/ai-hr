@@ -968,7 +968,7 @@ export async function newScheduleMemo(tx: Tx, p: { employmentIds: string[]; from
   return { from: p.from, to: p.to, cache: new Map(), roster, adjustments };
 }
 
-/** The schedule rows of app.home_own_clock_day (draft 9870): the reads scheduleFor makes for one employment on its
+/** The schedule rows of app.home_own_clock_day (draft 5082): the reads scheduleFor makes for one employment on its
  *  two clock dates, carried as JSON (db/json-row.ts) and decoded as each of those reads returns them. */
 export type OwnClockScheduleJson = {
   policy: PolicyRow | null; adjustments: Record<string, unknown>[];
@@ -3626,7 +3626,7 @@ export function calendarWindowDatedFacts(pre:CalendarWindowInputs):AttendanceRan
  * payroll read (core/pre-salary/before-payroll-bundle.ts). Each part is the owner's own select, predicate and order:
  * the employment and person, the days, the company policy, the roster, the live arrangements, the absence-deduction
  * switch (employment, company default and policy rows), the arranged and default shifts, the Schedule Group weeks, the
- * rotations with their allowed shifts, the day adjustments with their range-shaped schedule inputs (draft 9873, read
+ * rotations with their allowed shifts, the day adjustments with their range-shaped schedule inputs (draft 5083, read
  * only when an adjustment names a shift or day kind) and the exception lookups. Where the owner's next select depends
  * on the rows of an earlier one, the section reads the same rows by the same predicate in a sub-select, or a superset
  * that the projection narrows to exactly the owner's ids. Approved leave presence and the holiday calendar are not
@@ -7991,7 +7991,7 @@ export async function attendanceDateOverridesTx(tx:Tx,employmentIds:string[],fro
   return dateOverridesFor(tx,rows,()=>memo);
 }
 /** attendanceDateOverridesTx for ONE employment over bundled rows: its adjustments in the range, the range-shaped schedule
- * inputs of draft 9873 (app.home_own_schedule_range) and the range's holiday calendar. Each adjusted day resolves through
+ * inputs of draft 5083 (app.home_own_schedule_range) and the range's holiday calendar. Each adjusted day resolves through
  * scheduleFor on ownClockScheduleMemo, the memo whose entries are the values scheduleFor's memoized reads produce from
  * those rows, with the holiday calendar the range already read for the same window (holidayDatesByEmployment's set for
  * a visible employment is holidayDatesFor's: the same originals and retained replacements). */

@@ -1499,7 +1499,7 @@ const REWARD_TASK_APPROVAL_STAGES = ['bg', 'gr', 'ctro', 'ec'] as const;
 /**
  * The native suspension observation (0681 app.reward_access_observe) is a separately committed WRITE before the task
  * presentation, and a failure still blocks it. It records only a member state not yet recorded; the read-only probe
- * (9850 app.reward_access_observation_due) answers exactly that for the current login, so the write runs whenever it
+ * (5081 app.reward_access_observation_due) answers exactly that for the current login, so the write runs whenever it
  * has something to record and is skipped only when it would record nothing. The probe reads inside the caller's
  * snapshot (one shared statement on Home) instead of a write transaction on every read.
  */

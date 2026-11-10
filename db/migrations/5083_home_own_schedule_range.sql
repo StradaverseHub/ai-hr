@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5083_home_own_schedule_range, idx 4483, when 1793330004783.
+-- Draft name on its branch: 9873_home_own_schedule_range. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT (Home per-card reads, Before payroll, 10 November 2026). Final tag, idx and when are assigned at
 -- integration. The range-shaped twin of the schedule part of app.home_own_clock_day (draft 9870): the rows the
 -- schedule owner (core/attendance.ts scheduleFor, through ownClockScheduleMemo) reads for ONE employment on any date

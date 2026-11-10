@@ -1,5 +1,5 @@
 /** The Rewards task source keeps the native suspension observation WRITE (0681) and runs it exactly when it has
- * something to record (9850 app.reward_access_observation_due). Nothing suspended: no write transaction and no
+ * something to record (5081 app.reward_access_observation_due). Nothing suspended: no write transaction and no
  * observation. A newly suspended member: the same single observation and audit event as before, once. The probe
  * answers for the current login only, like the write it guards. */
 import {createApprovedRewardUnit} from './rewards-setup-fixture';

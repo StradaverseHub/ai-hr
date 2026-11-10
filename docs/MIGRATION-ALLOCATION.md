@@ -1,9 +1,9 @@
 # Combined release block — 11 November 2026 MYT (unapplied allocation, one block)
 
 Branch `claude/combined-release-20261111` (base `claude/architecture-release-20261110` @ `6e4a883c2`) merges every
-accepted branch of the combined release and moves all of their draft migrations into one block (43 migrations): tags `5000`–`5090`,
+accepted branch of the combined release and moves all of their draft migrations into one block (46 migrations): tags `5000`–`5090`,
 idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when share one offset (tag 50NN, idx 44NN, when
-…47NN). The 772-entry journal of the base keeps its entries, order and SQL bytes; the 815-entry journal passes
+…47NN). The 772-entry journal of the base keeps its entries, order and SQL bytes; the 818-entry journal passes
 `node .github/ci/check-migration-order.mjs origin/main` (main `9cf69292a`, 729 entries ending at
 `4800_ai_shared_leave_groups_read`, idx 4200 / when 1793330004500).
 
@@ -51,6 +51,9 @@ idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when sh
 | `9913_bulk_job_movement_import_revert` | 9913 / 1793330099913 | `5078_bulk_job_movement_import_revert` | 4478 / 1793330004778 | `7c9cc1e2564400925acece3c05644e62eb87b31315cbc7b43d28eab9c0d7489f` |
 | `9914_movement_revert_capture` | 9914 / 1793330099914 | `5079_movement_revert_capture` | 4479 / 1793330004779 | `e5f5a468d2087067101ab6df786e682023952ab75251efdcb0799f2957b77139` |
 | `9990_access_administrator_coalesced_assert` | 9990 / 1793330099990 | `5080_access_administrator_coalesced_assert` | 4480 / 1793330004780 | `721af90b5e4554c36ce39ee8e8db2ae6b53bdfa2cabc0029b990bd0f78cfd1f2` |
+| `9850_reward_access_observation_due` | 3743 / 1793330009850 | `5081_reward_access_observation_due` | 4481 / 1793330004781 | `f55738cd1422d1c955c722869e0328f9dcafafeb0042fd2b137165606663460a` |
+| `9870_home_own_clock_day` | 3744 / 1793330009870 | `5082_home_own_clock_day` | 4482 / 1793330004782 | `345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58` |
+| `9873_home_own_schedule_range` | 3745 / 1793330009873 | `5083_home_own_schedule_range` | 4483 / 1793330004783 | `75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a` |
 | `4700_audit_chain_commit_seal` | 4100 / 1793330004400 | `5090_audit_chain_commit_seal` | 4490 / 1793330004790 | `f6bf0e0f80ca6cb222c8ec10996d55e1bafdbe436809987d9d7b7cf9c11485f1` |
 
 Order and why:
@@ -80,7 +83,10 @@ Order and why:
   whose screens they share. 5080 replaces `app.access_administrator_constraint()` from its 5000 body, so it runs
   after the reader/writer Access lock migrations; it adds one private queue table and its deferred trigger and no
   trigger on `domain_event`, so 5090's reviewed trigger set is unchanged.
-- **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069, 5072–5074 and 5081–5089 are
+- **Home reads (5081–5083).** Accepted after the first allocation: one read-only probe for the Rewards access
+  observation and two SECURITY INVOKER readers of one employment's own clock day and schedule range. They create
+  functions only and change no existing definition.
+- **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069, 5072–5074 and 5084–5089 are
   left for branches accepted later; they are inserted before 5090 in journal order while the block is unapplied.
 
 Retired: `9002_leave_import_job` (phase 3's leave import proof). The leave ledger import runs on the shared kernel
@@ -91,8 +97,7 @@ Phase 0 and phase 2 both claimed `4700` at idx 4100 / when 1793330004400; they a
 Read-only survey, 11 November 2026: 7,316 refs (4,055 distinct heads, 556 distinct committed journal blobs, all
 parseable, one ref without a journal) and 250 readable journals among 265 registered worktrees (one unparseable:
 feedback-menu-operator-toggle-616263). Above idx 4243 / when 1793330004543 the peers hold `4900`–`4902` at idx
-4300–4302 / when 1793330004600–1793330004602 (staging board window 4 and the account-action fix), the Home drafts
-`9850`, `9870`, `9873`, and the drafts of this programme now allocated here (`9910`–`9914`, `9990`).
+4300–4302 / when 1793330004600–1793330004602 (staging board window 4 and the account-action fix), and the drafts now allocated here: Home's `9850`, `9870`, `9873` and this programme's `9910`–`9914`, `9990`.
 Nothing occupies tags 5000–5099, idx 4303–4600 or when 1793330004603–1793330004999. This block sits above
 4900–4902 on purpose. **The architecture block of this same release (idx 4201–4243 / when …4501–…4543) sits below
 them:** if 4900–4902 are installed anywhere before this release, those 43 entries would be skipped there and must

@@ -132,7 +132,7 @@ describe('the one-statement read of the owners (docs/adr/2026-11-10-home-request
   expect(owner.length).toBeGreaterThan(0);
   expect(bundled).toEqual(owner);
  });
- it('reads a day adjustment and a rostered rest day through the same schedule owner (draft 9873)',async()=>{
+ it('reads a day adjustment and a rostered rest day through the same schedule owner (draft 5083)',async()=>{
   // The checklist's July range is 1 July only (yesterday): the adjustment and the roster row are on it.
   await owner.db.insert(schema.attendanceDayAdjustment).values({tenantId:b.tenantId,employmentId:aina.employmentId,attendanceDate:YESTERDAY,dayKind:'rest_day',reason:'Fictional adjustment',updatedBy:'fixture'});
   await owner.db.insert(schema.rosterAssignment).values({tenantId:b.tenantId,employmentId:siti.employmentId,shiftDate:YESTERDAY,isRestDay:true});

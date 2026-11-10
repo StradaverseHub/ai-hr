@@ -17,7 +17,7 @@ export async function readEmployeeHomeToday(ctx:SessionContext,employmentId:stri
   const attendanceEnabled=isModuleEnabled(ctx,'attendance'),payrollEnabled=isModuleEnabled(ctx,'payroll');
   if(!attendanceEnabled)return {subjectId,attendanceEnabled,payrollEnabled,attendance:null};
   // The own clock summary, the work location names and the calendar window of yesterday and today (holidays,
-  // replacement days, leave presence) come from one bundled read of the clock day (draft 9870 and
+  // replacement days, leave presence) come from one bundled read of the clock day (draft 5082 and
   // core/calendar-window-inputs.ts); inside a Home stream the stream's one calendar window answers the calendar part.
   // The approved leave presence of the business date is the presence owner's own answer over those rows.
   const {clock,workLocations,calendar}=await ownClockTodayHomeTx(tx,ctx,subjectId);

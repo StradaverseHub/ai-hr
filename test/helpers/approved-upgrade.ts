@@ -125,6 +125,9 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4478,when:1793330004778,tag:'5078_bulk_job_movement_import_revert'},
  {idx:4479,when:1793330004779,tag:'5079_movement_revert_capture'},
  {idx:4480,when:1793330004780,tag:'5080_access_administrator_coalesced_assert'},
+ {idx:4481,when:1793330004781,tag:'5081_reward_access_observation_due'},
+ {idx:4482,when:1793330004782,tag:'5082_home_own_clock_day'},
+ {idx:4483,when:1793330004783,tag:'5083_home_own_schedule_range'},
  {idx:4490,when:1793330004790,tag:'5090_audit_chain_commit_seal'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
@@ -238,6 +241,9 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5078_bulk_job_movement_import_revert':'7c9cc1e2564400925acece3c05644e62eb87b31315cbc7b43d28eab9c0d7489f',
  '5079_movement_revert_capture':'e5f5a468d2087067101ab6df786e682023952ab75251efdcb0799f2957b77139',
  '5080_access_administrator_coalesced_assert':'721af90b5e4554c36ce39ee8e8db2ae6b53bdfa2cabc0029b990bd0f78cfd1f2',
+ '5081_reward_access_observation_due':'f55738cd1422d1c955c722869e0328f9dcafafeb0042fd2b137165606663460a',
+ '5082_home_own_clock_day':'345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58',
+ '5083_home_own_schedule_range':'75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a',
  '5090_audit_chain_commit_seal':'f6bf0e0f80ca6cb222c8ec10996d55e1bafdbe436809987d9d7b7cf9c11485f1',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){

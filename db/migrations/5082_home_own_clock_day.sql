@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5082_home_own_clock_day, idx 4482, when 1793330004782.
+-- Draft name on its branch: 9870_home_own_clock_day. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT (Home per-card reads, 10 November 2026). Final tag, idx and when are assigned at integration.
 -- One read of the rows the own live clock and its schedule read for one employment on yesterday and today: the open
 -- day probe, the attendance rows, their unvoided punches with each capture's true instant, the day adjustments, the

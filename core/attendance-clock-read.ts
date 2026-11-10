@@ -42,7 +42,7 @@ export async function previewOwnClockLocation(ctx:SessionContext,selectedEmploym
     }
   });
 }
-/** The rows ownClockCoreTx reads, read once for its two candidate dates by app.home_own_clock_day (draft 9870). */
+/** The rows ownClockCoreTx reads, read once for its two candidate dates by app.home_own_clock_day (draft 5082). */
 type OwnClockDayJson = OwnClockScheduleJson & {
   openDay: string | null;
   days: { attendanceDate: string; id: string; checkIn: string | null; checkOut: string | null; checkInMethod: (typeof attendance.$inferSelect)['checkInMethod']; trace: (typeof attendance.$inferSelect)['calcTrace'] }[];

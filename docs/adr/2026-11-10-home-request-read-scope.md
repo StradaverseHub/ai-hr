@@ -33,7 +33,7 @@ calculation, authority, ordering or failure changes.
 4. **The Rewards access observation stays a write, and runs only when due.** The native observation is an audit write
    committed before the Rewards presentation, and its failure blocks the presentation (2026-11-08 Rewards
    configuration presentation). It is therefore not deferred or batched. A read-only definer probe
-   (`app.reward_access_observation_due`, unallocated draft migration 9850) answers exactly whether the write would
+   (`app.reward_access_observation_due`, unallocated draft migration 5081) answers exactly whether the write would
    record anything for the current login; the task source runs the unchanged write whenever it would. The probe reads
    inside the caller's snapshot, so a suspension that begins within the few milliseconds after a Home stream's snapshot
    is recorded by the next observation rather than this one.
@@ -57,7 +57,7 @@ calculation, authority, ordering or failure changes.
      employment and transaction it was read for; any other request, and any leave type with an entitlement table in
      force on the asked date (whose resolver still reads its rules live), reads exactly as before. The cards'
      principal proof is asked before the bundle is read.
-   - *Today.* `app.home_own_clock_day` (unallocated draft migration 9870, SECURITY INVOKER) returns the open-day
+   - *Today.* `app.home_own_clock_day` (unallocated draft migration 5082, SECURITY INVOKER) returns the open-day
      probe, both candidate days and their unvoided punches with each capture's true instant, the switches, the work
      location names and every schedule input of yesterday and today (policy row, adjustments, roster, arrangements,
      every shift and rule they can name with OT rows, exception revisions and OT windows, rotation versions). The
@@ -114,7 +114,7 @@ calculation, authority, ordering or failure changes.
      It answers only the transaction, employment and a window inside its own, and declines a group whose states are not
      all text (which the live statement binds as text). Inside a Home stream the declared window (decision 2) is read
      once by it and answers every card's holidays, replacement days, presence and in-window company proof. Today reads
-     its two days beside the clock day statement (draft 9870) unless a stream window covers them; the Summary
+     its two days beside the clock day statement (draft 5082) unless a stream window covers them; the Summary
      (lookahead) and the Calendar (grid) read their own window when alone. A failed window read leaves each owner to
      its previous path.
    - *Own leave inputs, shared.* Inside a shared carrier the own leave inputs are read once per employment and date
@@ -196,8 +196,8 @@ calculation, authority, ordering or failure changes.
      (`attendanceRangeRowsFrom`, now shared by both paths) over the employment, days, policy, roster, live arrangements,
      absence-deduction switch, arranged shifts, Schedule Group weeks, rotations and exception lookups, each from the
      owner's select. Day adjustments that name a shift or day kind resolve through `scheduleFor` on `ownClockScheduleMemo`
-     (the Today memo, decision 6) fed by draft migration 9873 (`app.home_own_schedule_range`), the range-shaped twin of
-     9870's schedule inputs; the memo's holiday entry is the range's own holiday set (for a visible employment
+     (the Today memo, decision 6) fed by draft migration 5083 (`app.home_own_schedule_range`), the range-shaped twin of
+     5082's schedule inputs; the memo's holiday entry is the range's own holiday set (for a visible employment
      `holidayDatesByEmployment` is `holidayDatesFor`'s originals and retained replacements). Every row equals the owner's
      except `formulaOvertime`, the stored overtime-formula record, which the checklist never reads and the statement does
      not read.

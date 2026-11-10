@@ -1,4 +1,4 @@
-/** Home Today: app.home_own_clock_day (draft 9870) answers the own clock and schedule reads exactly.
+/** Home Today: app.home_own_clock_day (draft 5082) answers the own clock and schedule reads exactly.
  *
  * For each clock state the live owners and the bundled owners run inside ONE read-only snapshot at ONE frozen
  * instant (the clock's `now`), and every result must be identical to the byte: the own clock summary, the work

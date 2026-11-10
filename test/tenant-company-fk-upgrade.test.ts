@@ -179,6 +179,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5078_bulk_job_movement_import_revert',
    '5079_movement_revert_capture',
    '5080_access_administrator_coalesced_assert',
+   '5081_reward_access_observation_due',
+   '5082_home_own_clock_day',
+   '5083_home_own_schedule_range',
    '5090_audit_chain_commit_seal',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);

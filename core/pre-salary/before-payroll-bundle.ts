@@ -8,7 +8,7 @@
  * presentation proof, the profile's own-person check) is read in the same statement as a value. The checklist then runs
  * each owner's TypeScript projection on the section: the Attendance Records day loop with its schedule, rotation,
  * Schedule Group, absence-deduction and exception ladders (day adjustments through scheduleFor on the range-shaped twin
- * of the Today clock day's schedule inputs, draft 9873), the loop cards' gate and card rules, the readiness gaps and
+ * of the Today clock day's schedule inputs, draft 5083), the loop cards' gate and card rules, the readiness gaps and
  * their correction actions, the TP1 month collapse, the TP3 history mapping and the onboarding projection. Where the
  * checklist reads only some fields of an owner, the section carries those fields of the same rows (decision 8's rule for
  * the claim types): no amount, limit, balance, rating or bank fact is read.
