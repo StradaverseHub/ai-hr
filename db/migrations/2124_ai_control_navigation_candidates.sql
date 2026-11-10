@@ -6,7 +6,7 @@
 DO $context_predecessor$
 BEGIN
  -- Refuse an unexpected installed owner rather than overwriting another owner's narrowing.
- IF (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('app._ai_control_context_before_centre(text,boolean)')) IS DISTINCT FROM '0d00bc269a9b69d02a8b42d70eba8cce' THEN
+ IF to_regprocedure('app._ai_control_context_before_centre(text,boolean)') IS NOT NULL AND (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('app._ai_control_context_before_centre(text,boolean)')) IS DISTINCT FROM '0d00bc269a9b69d02a8b42d70eba8cce' THEN
   RAISE EXCEPTION 'Unexpected AI Centre compatibility predecessor: app._ai_control_context_before_centre(text,boolean)' USING ERRCODE='55000';
  END IF;
 END $context_predecessor$;

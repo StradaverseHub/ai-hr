@@ -6,7 +6,7 @@
 DO $action_predecessor$
 BEGIN
  -- Refuse an unexpected installed owner rather than overwriting another owner's narrowing.
- IF (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('app.ai_agent_action_unpaused_before_centre(text)')) IS DISTINCT FROM '96a2c89c92efcad817c0777a0cd8ad83' THEN
+ IF to_regprocedure('app.ai_agent_action_unpaused_before_centre(text)') IS NOT NULL AND (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('app.ai_agent_action_unpaused_before_centre(text)')) IS DISTINCT FROM '96a2c89c92efcad817c0777a0cd8ad83' THEN
   RAISE EXCEPTION 'Unexpected AI Centre compatibility predecessor: app.ai_agent_action_unpaused_before_centre(text)' USING ERRCODE='55000';
  END IF;
 END $action_predecessor$;
