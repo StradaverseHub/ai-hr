@@ -8,7 +8,7 @@ import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
 import {rewardsAuditCanonicalTruthContract,rewardsAuditPolicyReplacementBodies} from './rewards-audit-policy-contract';
 import {createRewardsAuditFixtureOwner,type RewardsAuditOwnerDependencies} from './rewards-audited-read-owner-factory';
 const canonicalPath='core/audit-chain-arming.ts',source=readFileSync('test/prototypes/rewards-audited-read.sql','utf8');
-if(createHash('sha256').update(source).digest('hex')!=='cad7076c1263888257084dbf5b2eef77ebb6e360dbf08ae38e2029a00a58b654')throw Error('Exact qualified315 prototype SQL required');
+if(createHash('sha256').update(source).digest('hex')!=='b131023b5c55cb4c9b67c9f846b7a1caf57cd810c1664c2ba61357010c348454')throw Error('Exact qualified315 prototype SQL required');
 const closure=z.object({kind:z.literal('UNINSTALLED_REWARDS_POLICY_NATIVE_PRE_CLOSURE'),base:z.literal('315467b94d49011ba367a54c46a4eaa2e90b8a8a'),functions:z.array(z.object({signature:z.string(),source:z.string(),bodyMd5:z.string(),bodySha256:z.string(),body:z.string(),header:z.string(),language:z.literal('plpgsql'),volatility:z.literal('v'),securityDefiner:z.literal(true)}).strict()).length(11)}).strict().parse(JSON.parse(readFileSync('test/prototypes/rewards-audit-policy-predecessors.json','utf8')));
 const rowSchema=z.object({signature:z.string(),definition:z.string(),body:z.string(),details:z.record(z.string(),z.unknown())}).strict();
 type FunctionRow=z.infer<typeof rowSchema>;

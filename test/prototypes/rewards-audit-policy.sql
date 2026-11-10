@@ -21,7 +21,7 @@ BEGIN
   ('app._bank_review_parent_fence()','b09e13ccb23c615dc50c43f906198749',0,NULL::text[],0,NULL::text,'trigger',false,false),
   ('app.assistant_bank_review_arm(uuid)','6d1ee57aefd755ac107f3282398e22eb',1,ARRAY['p_id']::text[],0,NULL::text,'void',true,false),
   ('app._bank_audit_owner_frame_guard()','f70f12b5a66a6a99a5f01a266b591a30',0,NULL::text[],0,NULL::text,'void',false,false),
-  ('app.domain_event_chain_tg()','67c5ccec77df9b5690b086c206d0166a',0,NULL::text[],0,NULL::text,'trigger',false,true),
+  ('app.domain_event_chain_tg()','aeecd386c91435bd6d5f553e96da5edd',0,NULL::text[],0,NULL::text,'trigger',false,true),
   ('app._assistant_catalogue_audit_preimage_guard()','5147c6c5635b44823e5283a57d86a0d1',0,NULL::text[],0,NULL::text,'trigger',false,false),
   ('app._assistant_catalogue_audit_owner_frame_guard()','c567cb10896020af14486b31d72b539c',0,NULL::text[],0,NULL::text,'void',false,false),
   ('app._assistant_catalogue_native_phase(uuid,text,tid,uuid)','7bebed36dc9c305bde20e9f8a42be22f',4,ARRAY['p_id','p_phase','p_tid','p_event']::text[],2,'NULL::tid, NULL::uuid','void',false,false),

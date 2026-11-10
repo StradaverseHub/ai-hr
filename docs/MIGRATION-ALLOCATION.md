@@ -1,3 +1,26 @@
+# Audit chain commit seal — 10 November 2026 (provisional, unapplied)
+
+Branch `claude/audit-commit-seal-20261110`, based on candidate
+`7b585515d67885045d79ebb3dce4ef6c5e7b1bd8`, proposes
+`4700_audit_chain_commit_seal` at idx 4100 and when 1793330004400, after that
+candidate's 769-entry journal ending at `4342_attendance_clock_policy_audit_scope`
+(idx 3742 / when 1793330004042). All 769 preceding entries and their SQL bytes are
+unchanged.
+
+The read-only peer survey on 10 November 2026 covered 7,141 refs, 529 distinct
+committed journal blobs, 589 allocation documents and 244 readable journals among
+1,243 registered worktrees. One ref has no journal and one journal needed a raw
+tuple scan. The peer maximum was tag `4601_last_login_event_index`, idx 4001 and
+when 1793330004301. No peer claimed 4700, idx 4100 or when 1793330004400. Unreadable
+worktrees and any reservation made after the survey are not covered, and the
+integration owner has not confirmed the pending union.
+
+This is a provisional source proposal. Refresh peer allocations, the accepted source
+and the installed ordered ledger before release admission. It carries no reservation
+authority beyond this branch, and no deployment authority. The migration takes SHARE
+ROW EXCLUSIVE on `public.domain_event` under a 5-second `lock_timeout`, held until the
+migration transaction commits, so it should be the last migration of its batch.
+
 # Joint AI Functions, Attendance and architecture candidate — 10 November 2026 (private proposal)
 
 The exact Streamline AI Functions and Schedule Group candidate

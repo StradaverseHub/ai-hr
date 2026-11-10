@@ -75,8 +75,8 @@
     {
       "signature": "app.domain_event_chain_tg()",
       "owner": "native",
-      "source": "db/migrations/0864_assistant_catalogue_effect_closure.sql",
-      "bodyMd5": "67c5ccec77df9b5690b086c206d0166a",
+      "source": "db/migrations/4700_audit_chain_commit_seal.sql",
+      "bodyMd5": "aeecd386c91435bd6d5f553e96da5edd",
       "language": "plpgsql",
       "securityDefiner": true,
       "volatility": "v",

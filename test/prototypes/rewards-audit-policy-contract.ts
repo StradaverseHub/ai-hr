@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {chainArmingDecision} from '../../core/audit-chain-arming';
 const source=readFileSync('test/prototypes/rewards-audited-read.sql','utf8');
-if(createHash('sha256').update(source).digest('hex')!=='cad7076c1263888257084dbf5b2eef77ebb6e360dbf08ae38e2029a00a58b654')throw Error('Exact qualified315 prototype SQL required');
+if(createHash('sha256').update(source).digest('hex')!=='b131023b5c55cb4c9b67c9f846b7a1caf57cd810c1664c2ba61357010c348454')throw Error('Exact qualified315 prototype SQL required');
 const closure: {functions:Array<{signature:string;body:string}>}=JSON.parse(readFileSync('test/prototypes/rewards-audit-policy-predecessors.json','utf8'));
 function one(text:string,from:string,to:string){if(text.split(from).length!==2)throw Error('Exact single native replacement boundary required: '+from.slice(0,90));return text.replace(from,to);}
 function baseBody(name:string){return source.slice(source.indexOf('CREATE FUNCTION '+name)).split('AS $body$')[1].split('$body$;')[0];}
