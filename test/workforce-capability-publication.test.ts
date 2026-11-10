@@ -79,7 +79,7 @@ it('keeps a tenant whose publication audit refuses on its previous catalogue, pr
  expect(await effective(b.tenantId)).toEqual({supported:false,bindings:[]});
  expect((await owner.client`select state from app.access_capability_publication where version=1`)[0]?.state).toBe('publishing');
  // Running it again publishes every tenant and closes the version: the single-transaction publication's end state.
- expect(await publishWorkforceCapabilities(owner.client)).toMatchObject({changed:true,capabilities:3,tenantsFenced:before.configuration.length});
+ expect(await publishWorkforceCapabilities(owner.client)).toMatchObject({changed:true,capabilities:3,tenantsFenced:before.generation.length});
  const after=await snapshot();
  for(const row of before.generation)expect(after.generation.find(next=>next.tenant_id===row.tenant_id)?.generation).toBe(String(BigInt(row.generation)+BigInt(1)));
  expect((await effective(b.tenantId)).supported).toBe(true);
