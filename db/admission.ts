@@ -1,6 +1,11 @@
+import {DATABASE_CAPACITY_DIGEST} from '../lib/database-capacity';
+
 /** Application admission happens before a PostgreSQL connection is borrowed. */
-export type DatabaseWorkload = 'interactive' | 'background';
+export type DatabaseWorkload = 'interactive' | 'background' | 'authentication';
+export {DATABASE_CAPACITY_DIGEST};
 export class DatabaseAdmissionError extends Error {
+  /** Next.js keeps a thrown error's own digest, so the error boundary can recognise this failure. */
+  readonly digest = DATABASE_CAPACITY_DIGEST;
   constructor(readonly code: 'queue-full' | 'queue-timeout') {
     super('Database work could not start within the configured capacity budget.');
     this.name = 'DatabaseAdmissionError';
@@ -9,6 +14,8 @@ export class DatabaseAdmissionError extends Error {
 type Waiter = {
   workload: DatabaseWorkload;
   tenant: string;
+  /** Nested in a transaction this tenant already holds; never waits on the tenant's own share. */
+  uncapped: boolean;
   resolve: (release: () => void) => void;
   reject: (error: unknown) => void;
   clean: () => void;
@@ -21,7 +28,25 @@ export function createDatabaseAdmission(options: {
   maxWaiting: number;
   maxBackgroundWaiting?: number;
   waitMs: number;
+  /** Hard ceiling per tenant, whatever else is idle. Tenant write admission uses 1 to serialise writes. */
   perTenantCapacity?: number;
+  /**
+   * A tenant's fair share, and it is work-conserving. A tenant at or above it takes a new permit only while
+   * no other tenant has work running or waiting, so a lone tenant can use every permit except the login
+   * reserve. Once another tenant has work, the over-share tenant gets nothing new until it is back under
+   * its share, and the other tenant goes first. Permits already held are never revoked, so an arriving
+   * tenant waits for the next permit to free; that is safe only because long transactions are leaving the
+   * request path. Authentication work is not a tenant here and never counts as one.
+   */
+  tenantFairShare?: number;
+  /** Most waiters one tenant may queue, so a hot tenant cannot fill the whole queue. */
+  maxWaitingPerTenant?: number;
+  /** Permits tenant work may never hold: login can always start here. */
+  authenticationReserve?: number;
+  /** Most permits authentication may hold, so a login flood cannot displace every page. */
+  authenticationCapacity?: number;
+  /** Pending authentication work, counted apart from the tenant queue. */
+  maxAuthenticationWaiting?: number;
 }, now:()=>number=()=>performance.now()) {
   const {capacity, backgroundCapacity, maxWaiting, waitMs} = options;
   const maxBackgroundWaiting = options.maxBackgroundWaiting ?? maxWaiting;
@@ -34,10 +59,25 @@ export function createDatabaseAdmission(options: {
     throw new Error('Invalid background waiting budget.');
   if (!Number.isSafeInteger(perTenantCapacity) || perTenantCapacity < 1 || perTenantCapacity > capacity)
     throw new Error('Invalid per-tenant admission budget.');
-  let active = 0, background = 0, interactiveTurns = 0, backgroundWaiting = 0;
+  const tenantFairShare = options.tenantFairShare ?? capacity;
+  if (!Number.isSafeInteger(tenantFairShare) || tenantFairShare < 1 || tenantFairShare > capacity)
+    throw new Error('Invalid tenant fair share.');
+  const maxWaitingPerTenant = options.maxWaitingPerTenant ?? maxWaiting;
+  if (!Number.isSafeInteger(maxWaitingPerTenant) || maxWaitingPerTenant < 0 || maxWaitingPerTenant > maxWaiting)
+    throw new Error('Invalid per-tenant waiting budget.');
+  const authenticationReserve = options.authenticationReserve ?? 0;
+  const authenticationCapacity = options.authenticationCapacity ?? capacity;
+  const maxAuthenticationWaiting = options.maxAuthenticationWaiting ?? maxWaiting;
+  if (![authenticationReserve, authenticationCapacity, maxAuthenticationWaiting].every(Number.isSafeInteger)
+    || authenticationReserve < 0 || authenticationReserve >= capacity
+    || authenticationCapacity < 1 || authenticationCapacity > capacity || authenticationCapacity < authenticationReserve
+    || maxAuthenticationWaiting < 0)
+    throw new Error('Invalid authentication admission budget.');
+  let active = 0, background = 0, authentication = 0, interactiveTurns = 0, backgroundWaiting = 0, authenticationWaiting = 0;
   let backgroundDebtMs = 0, accountedAt=now();
   const waiting: Waiter[] = [];
   const activeByTenant = new Map<string, number>();
+  const waitingByTenant = new Map<string, number>();
   function accountOccupiedTime(){
     const at=now(),elapsed=Math.max(0,at-accountedAt);accountedAt=at;
     // Only contended time matters. Account both lanes together so completion
@@ -49,12 +89,27 @@ export function createDatabaseAdmission(options: {
     accountOccupiedTime();
     const [waiter] = waiting.splice(index, 1);
     if (waiter.workload === 'background') backgroundWaiting--;
+    if (waiter.workload === 'authentication') authenticationWaiting--;
+    else {
+      const remaining = (waitingByTenant.get(waiter.tenant) ?? 1) - 1;
+      if (remaining) waitingByTenant.set(waiter.tenant, remaining);
+      else waitingByTenant.delete(waiter.tenant);
+    }
     return waiter;
   }
-  const eligible = (workload: DatabaseWorkload, tenant?: string) => active < capacity
-    && (workload !== 'background' || background < backgroundCapacity)
-    && (workload !== 'background' || backgroundDebtMs <= 0 || !waiting.some(w=>w.workload==='interactive'))
-    && (tenant === undefined || (activeByTenant.get(tenant) ?? 0) < perTenantCapacity);
+  const otherTenantHasWork = (tenant: string) =>
+    activeByTenant.size > (activeByTenant.has(tenant) ? 1 : 0) || waitingByTenant.size > (waitingByTenant.has(tenant) ? 1 : 0);
+  const eligible = (workload: DatabaseWorkload, tenant?: string, uncapped = false) => {
+    if (active >= capacity) return false;
+    // Authentication has its own ceiling and never counts against a tenant's share.
+    if (workload === 'authentication') return authentication < authenticationCapacity;
+    if (active - authentication >= capacity - authenticationReserve) return false;
+    if (workload === 'background' && (background >= backgroundCapacity
+      || (backgroundDebtMs > 0 && waiting.some(w=>w.workload==='interactive')))) return false;
+    if (tenant === undefined || uncapped) return true;
+    const held = activeByTenant.get(tenant) ?? 0;
+    return held < perTenantCapacity && (held < tenantFairShare || !otherTenantHasWork(tenant));
+  };
   function grant(waiter: Waiter) {
     waiter.clean();
     accountOccupiedTime();
@@ -62,8 +117,9 @@ export function createDatabaseAdmission(options: {
     if (waiter.workload === 'background') {
       background++; interactiveTurns = 0;
     }
+    else if (waiter.workload === 'authentication') authentication++;
     else interactiveTurns = Math.min(3, interactiveTurns + 1);
-    activeByTenant.set(waiter.tenant, (activeByTenant.get(waiter.tenant) ?? 0) + 1);
+    if (waiter.workload !== 'authentication') activeByTenant.set(waiter.tenant, (activeByTenant.get(waiter.tenant) ?? 0) + 1);
     let released = false;
     waiter.resolve(() => {
       if (released) return;
@@ -73,29 +129,35 @@ export function createDatabaseAdmission(options: {
       if (waiter.workload === 'background') {
         background--;
       }
-      const remaining = (activeByTenant.get(waiter.tenant) ?? 1) - 1;
-      if (remaining) activeByTenant.set(waiter.tenant, remaining);
-      else activeByTenant.delete(waiter.tenant);
+      else if (waiter.workload === 'authentication') authentication--;
+      if (waiter.workload !== 'authentication') {
+        const remaining = (activeByTenant.get(waiter.tenant) ?? 1) - 1;
+        if (remaining) activeByTenant.set(waiter.tenant, remaining);
+        else activeByTenant.delete(waiter.tenant);
+      }
       drain();
     });
   }
   function drain() {
     accountOccupiedTime();
     while (active < capacity && waiting.length) {
+      // Login, session checks and recovery run first: every page depends on them and they are short.
+      // Their own ceiling keeps a login flood from taking the permits tenant pages need.
+      let index = authenticationWaiting && eligible('authentication')
+        ? waiting.findIndex(w => w.workload === 'authentication') : -1;
       // Interactive work has preference, but a waiting background unit receives one of every
       // four admissions when its lane has space and its occupied-time share is paid.
       // With no interactive queue background can use spare capacity. Within a lane, prefer the least active tenant;
       // equal tenants retain FIFO order. No tenant label is exported in telemetry.
-      const preferred: DatabaseWorkload = interactiveTurns >= 3 ? 'background' : 'interactive';
-      const lanes: DatabaseWorkload[] = [preferred, preferred === 'interactive' ? 'background' : 'interactive'];
-      let index = -1;
-      for (const lane of lanes) {
+      const preferred: 'interactive' | 'background' = interactiveTurns >= 3 ? 'background' : 'interactive';
+      const lanes: ('interactive' | 'background')[] = [preferred, preferred === 'interactive' ? 'background' : 'interactive'];
+      for (const lane of index === -1 ? lanes : []) {
         if (!eligible(lane)) continue;
         let least = Infinity;
         for (let i = 0; i < waiting.length; i++) {
           const w = waiting[i];
           const count = activeByTenant.get(w.tenant) ?? 0;
-          if (w.workload === lane && eligible(lane, w.tenant) && count < least) { index = i; least = count; }
+          if (w.workload === lane && eligible(lane, w.tenant, w.uncapped) && count < least) { index = i; least = count; }
         }
         if (index !== -1) break;
       }
@@ -103,17 +165,23 @@ export function createDatabaseAdmission(options: {
       grant(dequeue(index));
     }
   }
-  async function acquire(tenant: string, workload: DatabaseWorkload, signal?: AbortSignal): Promise<() => void> {
+  async function acquire(tenant: string, workload: DatabaseWorkload, signal?: AbortSignal, options?: {ignoreTenantCap?: boolean}): Promise<() => void> {
     signal?.throwIfAborted();
     accountOccupiedTime();
     tenant = tenant.toLowerCase();
+    // A nested transaction already holds this tenant's permit; capping it again could deadlock.
+    const uncapped = options?.ignoreTenantCap === true;
     // A full queue cannot reject a new eligible lane while all queued work is lane-blocked.
-    const immediate = eligible(workload, tenant) && !waiting.some(w => eligible(w.workload, w.tenant));
-    if (!immediate && (waiting.length >= maxWaiting || (workload === 'background' && backgroundWaiting >= maxBackgroundWaiting)))
+    const immediate = eligible(workload, tenant, uncapped) && !waiting.some(w => eligible(w.workload, w.tenant, w.uncapped));
+    if (!immediate && (workload === 'authentication'
+      ? authenticationWaiting >= maxAuthenticationWaiting
+      : (waiting.length - authenticationWaiting >= maxWaiting
+        || (workload === 'background' && backgroundWaiting >= maxBackgroundWaiting)
+        || (!uncapped && (waitingByTenant.get(tenant) ?? 0) >= maxWaitingPerTenant))))
       throw new DatabaseAdmissionError('queue-full');
     return new Promise((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const waiter: Waiter = {tenant: tenant.toLowerCase(), workload, resolve, reject, clean: () => {
+      const waiter: Waiter = {tenant: tenant.toLowerCase(), workload, uncapped, resolve, reject, clean: () => {
         if (timer !== undefined) clearTimeout(timer);
         signal?.removeEventListener('abort', abort);
       }};
@@ -129,6 +197,8 @@ export function createDatabaseAdmission(options: {
       if (immediate) { grant(waiter); return; }
       waiting.push(waiter);
       if (workload === 'background') backgroundWaiting++;
+      if (workload === 'authentication') authenticationWaiting++;
+      else waitingByTenant.set(waiter.tenant, (waitingByTenant.get(waiter.tenant) ?? 0) + 1);
       timer = setTimeout(() => remove(new DatabaseAdmissionError('queue-timeout')), waitMs);
       signal?.addEventListener('abort', abort, {once: true});
       if (signal?.aborted) abort();
@@ -139,7 +209,7 @@ export function createDatabaseAdmission(options: {
     acquire,
     snapshot: () => {
       accountOccupiedTime();
-      return {active, background, waiting: waiting.length, backgroundWaiting, backgroundDebtMs, capacity, backgroundCapacity, maxWaiting, maxBackgroundWaiting};
+      return {active, background, authentication, waiting: waiting.length, backgroundWaiting, authenticationWaiting, backgroundDebtMs, capacity, backgroundCapacity, maxWaiting, maxBackgroundWaiting, perTenantCapacity, tenantFairShare, maxWaitingPerTenant, authenticationReserve, authenticationCapacity, maxAuthenticationWaiting};
     },
   };
 }

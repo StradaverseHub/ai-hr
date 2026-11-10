@@ -1,3 +1,4 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import { pendingBellClaimPreview } from '@/core/approvals-inbox';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { AuthRequiredError } from '@/lib/auth-errors';
@@ -6,7 +7,7 @@ import { getSession } from '@/lib/session';
 
 const headers = { 'Cache-Control': 'private, no-store', Vary: 'Cookie, Authorization' };
 
-export async function GET() {
+export const GET = capacityAwareRoute(async function GET() {
   try {
     const session = await getSession();
     if (!isModuleEnabledOrFalse(session, 'claims')) {
@@ -19,4 +20,4 @@ export async function GET() {
       ? Response.json({ error: 'authentication' }, { status: 401, headers })
       : Response.json({ error: 'unavailable' }, { status: 503, headers });
   }
-}
+});

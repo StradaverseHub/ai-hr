@@ -1,4 +1,4 @@
-import { client } from '../../db/client';
+import { client, withSystemWork } from '../../db/client';
 import { todayInKualaLumpur } from '../hr-date';
 import { connector, assertProvisioning } from './store';
 import { EntraError, type WorkforceRecord } from './model';
@@ -6,7 +6,7 @@ import { graphToken, upload, reconcile, confirmedDirectoryObject } from './graph
 export async function runEntraWorker(limit=50,fetcher:typeof fetch=fetch) {
   let processed=0;const deadline=Date.now()+45_000;
   while(Date.now()<deadline&&processed<Math.min(500,Math.max(1,limit))){
-    const rows=await client.unsafe<WorkforceRecord[]>('select * from app.entra_claim($1::date)',[todayInKualaLumpur()]);
+    const rows=await withSystemWork(()=>client.unsafe<WorkforceRecord[]>('select * from app.entra_claim($1::date)',[todayInKualaLumpur()]));
     if(!rows[0])break;
     const record=rows[0];
     let status='failed',location=record.last_location,delay=60;
@@ -35,7 +35,7 @@ export async function runEntraWorker(limit=50,fetcher:typeof fetch=fetch) {
               await assertProvisioning(config);
               if(!config.enabled){status=record.active?'ready':'disabled';}
               else {
-              const linked=await client.unsafe('select app.entra_auto_bind($1::uuid,$2::uuid,$3::bigint,$4::uuid,$5::uuid) linked',[record.tenant_id,record.person_id,record.revision,record.lease,object]);
+              const linked=await withSystemWork(()=>client.unsafe('select app.entra_auto_bind($1::uuid,$2::uuid,$3::bigint,$4::uuid,$5::uuid) linked',[record.tenant_id,record.person_id,record.revision,record.lease,object]));
               status=!record.active?'disabled':linked[0]?.linked?'ready':'awaiting-link';
               }
             }
@@ -46,7 +46,7 @@ export async function runEntraWorker(limit=50,fetcher:typeof fetch=fetch) {
       delay=e instanceof EntraError?e.retryAfter:60;
     }
     const active=record.last_location?record.last_active:record.active;
-    await client.unsafe('select app.entra_finish($1::uuid,$2::uuid,$3::bigint,$4::uuid,$5,$6,$7,$8::int)',[record.tenant_id,record.person_id,record.revision,record.lease,status,location,active,delay]);
+    await withSystemWork(()=>client.unsafe('select app.entra_finish($1::uuid,$2::uuid,$3::bigint,$4::uuid,$5,$6,$7,$8::int)',[record.tenant_id,record.person_id,record.revision,record.lease,status,location,active,delay]));
     processed++;
   }
   return {processed};

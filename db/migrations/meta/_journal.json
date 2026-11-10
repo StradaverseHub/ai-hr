@@ -5468,6 +5468,13 @@
       "when": 1793330009820,
       "tag": "9820_access_wave4_admin_fair_exclusive",
       "breakpoints": true
+    },
+    {
+      "idx": 9002,
+      "version": "7",
+      "when": 1793330090002,
+      "tag": "9002_leave_import_job",
+      "breakpoints": true
     }
   ]
 }

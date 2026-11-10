@@ -1,6 +1,7 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import { clockApiSession } from '@/lib/attendance-clock-session';
 import { ownClockToday,OwnClockEmploymentUnavailableError } from '@/packs/attendance/service';
-export async function GET(request:Request) {
+export const GET = capacityAwareRoute(async function GET(request:Request) {
   const session=await clockApiSession();
   if(!session) return Response.json({error:'authentication'},{status:401});
   const url=new URL(request.url);
@@ -11,4 +12,4 @@ export async function GET(request:Request) {
   // presents a device).
   try{return Response.json(await ownClockToday(session,geo,url.searchParams.get('employmentId')??undefined),{headers:{'Cache-Control':'private, no-store'}});}
   catch(error){if(error instanceof OwnClockEmploymentUnavailableError)return Response.json({error:'accountChanged'},{status:403,headers:{'Cache-Control':'private, no-store'}});throw error;}
-}
+});

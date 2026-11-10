@@ -1,3 +1,4 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import {getSession} from '@/lib/session';
 import {AuthRequiredError} from '@/lib/auth-errors';
 import {recordHomeCardInteractions} from '@/core/employee-home-analytics';
@@ -14,8 +15,8 @@ async function boundedBody(request:Request):Promise<unknown>{
  const bytes=new Uint8Array(size);let offset=0;for(const part of chunks){bytes.set(part,offset);offset+=part.byteLength;}
  try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{throw new HomeAnalyticsInputError();}
 }
-export async function POST(request:Request){
+export const POST = capacityAwareRoute(async function POST(request:Request){
  try{const session=await getSession(),body=await boundedBody(request);await recordHomeCardInteractions(session,body);
   return new Response(null,{status:204,headers});
  }catch(error){return Response.json({error:'unavailable'},{status:error instanceof AuthRequiredError?401:error instanceof HomeAnalyticsInputError?400:503,headers});}
-}
+});

@@ -6,6 +6,7 @@
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {client,withTenant,type SessionContext} from '../db/client';
+import {applicationDatabaseBudget,databaseAdmissionShares} from '../db/capacity';
 import {
   ACCESS_CONFIGURATION_LOCK_WAIT_MS,accessLockModeHeldTx,lockAccessConfigurationReadTx,lockAccessConfigurationTx,
   lockAccessConfigurationWriteTx,tryLockAccessConfigurationReadTx,tryLockAccessConfigurationTx,
@@ -170,9 +171,11 @@ describe('bounded Access configuration lock',()=>{
   },20_000);
 
   it('many waiters on a held lock each acquire or time out at the bound, and unrelated reads keep running',async()=>{
-    // Stay inside the admission layer's pool capacity: one holder plus every other connection but one, so the
-    // measured unrelated read is admitted at once while all of these callers are genuinely waiting.
-    const many=client.options.max-2;
+    // Stay inside the admission layer's tenant capacity (the pool less the permits fair admission keeps for login):
+    // one holder plus every other tenant permit but one, so the measured unrelated read is admitted at once while
+    // all of these callers are genuinely waiting.
+    const budget=applicationDatabaseBudget(process.env);
+    const many=client.options.max-databaseAdmissionShares(client.options.max,budget.maxWaiting,budget.role).authenticationReserve-2;
     expect(many).toBeGreaterThanOrEqual(3);
     const longHolder=await holder();
     try{

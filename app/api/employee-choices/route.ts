@@ -1,3 +1,4 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import {scopedSession} from '@/lib/scope';
 import {AuthRequiredError} from '@/lib/auth-errors';
 import {readEmployeeChoices,EmployeeChoiceInputError,EmployeeChoiceAccessError} from '@/core/employee-choice';
@@ -19,7 +20,7 @@ async function body(request:Request):Promise<EmployeeChoiceInput>{
  return input as EmployeeChoiceInput;
 }
 /** POST is a side-effect-free read: raw search stays out of URLs and access logs. */
-export async function POST(request:Request){
+export const POST = capacityAwareRoute(async function POST(request:Request){
  if(!isSameOriginBrowserRequest(request))return Response.json({error:'origin'},{status:403,headers});
  try{
   const {s,scopeIds}=await scopedSession();
@@ -30,4 +31,4 @@ export async function POST(request:Request){
   const status=error instanceof AuthRequiredError?401:error instanceof EmployeeChoiceInputError?400:error instanceof EmployeeChoiceAccessError?403:503;
   return Response.json({error:status===401?'authentication':status===400?'invalid':status===403?'forbidden':'unavailable'},{status,headers});
  }
-}
+});

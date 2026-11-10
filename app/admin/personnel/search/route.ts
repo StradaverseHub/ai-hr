@@ -1,12 +1,14 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
+import {isDatabaseCapacityFailure} from '@/db/read-retry';
 import {parsePersonnelColumnFilters} from '@/lib/personnel-list-controls';
 import {isSameOriginBrowserRequest} from '@/lib/request-origin';
 import {requireWorkforceAccess} from '@/lib/workforce-authz';
 import {createPersonnelPrivateSearch,PersonnelSearchLimitError} from '@/core/personnel-private-search';
 import {parsePageQuery} from '@/lib/pagination';
 import {personnelQueryParams,type PersonnelSearchParams} from '../list-query';
-export async function POST(request: Request) {
+export const POST = capacityAwareRoute(async function POST(request: Request) {
  return searchPersonnel(request);
-}
+});
 
 function searchFailure(status:400|500,message='Search unavailable. Try again.'){
  return new Response(message,{status,headers:{'Cache-Control':'private, no-store'}});
@@ -32,7 +34,7 @@ async function searchPersonnel(request: Request) {
  try{
   if(text||filters.length){const token=await createPersonnelPrivateSearch(s,{text,companyIds:scopeIds,columnFilters:filters,replaceCriteria:true});target.set('search',token);}
  }
- catch(error){return error instanceof PersonnelSearchLimitError?searchFailure(400,error.message):searchFailure(500);}
+ catch(error){if(isDatabaseCapacityFailure(error))throw error;return error instanceof PersonnelSearchLimitError?searchFailure(400,error.message):searchFailure(500);}
  const href='/admin/personnel'+(target.size?'?'+target.toString():'');
  const headers={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'};
  if(request.headers.get('accept')==='application/json')return Response.json({href},{headers});

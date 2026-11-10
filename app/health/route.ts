@@ -26,7 +26,7 @@
  * `test/health-route.test.ts` pins the disclosure as a closed set — the response body must deep-equal
  * one of the two constants — so a future "just add the version, it is handy" cannot pass silently.
  */
-import { client } from '@/db/client';
+import { client, withPoolWork } from '@/db/client';
 import { HEALTH_BODY_OK, HEALTH_BODY_UNHEALTHY, checkHealth } from '@/lib/health';
 import { initializeHomeReadModule } from '@/lib/worker-readiness';
 
@@ -64,7 +64,8 @@ const probe = () => {
   if (underlyingProbe) return underlyingProbe;
   const pending = (async () => {
     await initializeHomeReadModule();
-    await client`select 1`;
+    // The login lane's reserved connection: a probe must not read as unhealthy behind page traffic.
+    await withPoolWork('authentication', () => client`select 1`);
   })();
   underlyingProbe = pending;
   const release = () => { if (underlyingProbe === pending) underlyingProbe = undefined; };

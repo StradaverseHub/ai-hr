@@ -1,3 +1,4 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import {getLocale} from 'next-intl/server';
 import {scopedSession} from '@/lib/scope';
 import {AuthRequiredError} from '@/lib/auth-errors';
@@ -19,7 +20,7 @@ async function body(request:Request):Promise<EmployeeChoiceInput>{
  normalizeLeaveInquiryPicker(value as EmployeeChoiceInput);return value as EmployeeChoiceInput;
 }
 /** Navigation read only. Native HR admission intersects current company context afresh. */
-export async function POST(request:Request){
+export const POST = capacityAwareRoute(async function POST(request:Request){
  if(!isSameOriginBrowserRequest(request))return Response.json({error:'origin'},{status:403,headers});
  try{
   const input=await body(request),{s,scopeIds}=await scopedSession(),locale=await getLocale();
@@ -28,4 +29,4 @@ export async function POST(request:Request){
   const status=error instanceof AuthRequiredError?401:error instanceof InquiryQueryError?error.message==='Forbidden'?403:400:503;
   return Response.json({error:status===401?'authentication':status===400?'invalid':status===403?'forbidden':'unavailable'},{status,headers});
  }
-}
+});

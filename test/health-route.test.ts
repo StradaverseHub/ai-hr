@@ -59,6 +59,8 @@ vi.mock('@/db/client', () => ({
     stub.calls += 1;
     return stub.impl();
   },
+  // The probe's admission gate is exercised by test/database-admission-integration.test.ts.
+  withPoolWork: (_lane: string, work: () => PromiseLike<unknown>) => work(),
 }));
 
 const req = (path: string, auth?: string) =>

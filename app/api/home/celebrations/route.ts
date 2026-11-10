@@ -1,10 +1,11 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import {getSession} from '@/lib/session';
 import {sharingError,sharingHeaders as headers,celebrationsResponse} from '../sharing-responses';
 import {homeSharingPageInput} from '@/lib/employee-home-sharing';
 import {capHomeCardRead} from '../read-cap';
 
 /** Read-only: viewing or paging never sends a greeting or opts anybody in. */
-export async function GET(request:Request){
+export const GET = capacityAwareRoute(async function GET(request:Request){
  try{
   const session=await getSession(),query=new URL(request.url).searchParams;
   if([...query.keys()].some(key=>!['employmentId','after'].includes(key))
@@ -18,4 +19,4 @@ export async function GET(request:Request){
   const {code,status}=sharingError(error);
   return Response.json({error:code},{status,headers});
  }
-}
+});

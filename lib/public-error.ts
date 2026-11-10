@@ -19,7 +19,7 @@
  * client components instead.
  */
 import { randomBytes } from 'node:crypto';
-import { pgSqlState, isDatabaseError } from './db-error';
+import { pgErrorChain, pgSqlState, isDatabaseError } from './db-error';
 import { formatDatabaseErrorRef, type DatabaseErrorKind } from './database-error-token';
 
 /** English source of common.databaseError.* — pinned against messages/en.json by the r388 test. */
@@ -51,7 +51,8 @@ export function databaseErrorKind(sqlState: string | undefined): DatabaseErrorKi
 export function publicErrorMessage(e: unknown): string {
   if (!isDatabaseError(e)) return e instanceof Error ? e.message : String(e);
   const sqlState = pgSqlState(e);
-  const kind = databaseErrorKind(sqlState);
+  // Admission refused before any SQL ran, so there is no SQLSTATE; the plain sentence is still "busy".
+  const kind = pgErrorChain(e).some(l => l.name === 'DatabaseAdmissionError') ? 'busy' : databaseErrorKind(sqlState);
   const ref = formatDatabaseErrorRef(kind, randomBytes(3).toString('hex').toUpperCase());
   if (sqlState === 'PN001') console.error(`[database error ${ref}] sqlstate=PN001`);
   else console.error(`[database error ${ref}] sqlstate=${sqlState ?? 'none'}`, e);

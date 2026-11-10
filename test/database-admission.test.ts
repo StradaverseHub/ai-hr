@@ -1,6 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {createDatabaseAdmission,DatabaseAdmissionError} from '../db/admission';
-import {applicationDatabaseBudget} from '../db/capacity';
+import {applicationDatabaseBudget,assertFleetFitsServer,databaseAdmissionShares,databaseFleetBudget} from '../db/capacity';
 import {createBackgroundReadAdmission} from '../db/background-read-admission';
 import {currentDatabaseWorkload,withBackgroundDatabaseWork} from '../db/workload';
 const gate = (overrides = {}) => createDatabaseAdmission({capacity:4,backgroundCapacity:1,maxWaiting:8,waitMs:1000,...overrides});
@@ -136,5 +136,172 @@ describe('aggregate application capacity',()=>{
   expect(()=>applicationDatabaseBudget({AIHR_APP_WORKERS:'4'})).toThrow(/both/);
   expect(()=>applicationDatabaseBudget({AIHR_DB_POOL_MAX:'1e1'})).toThrow(/integer/);
   expect(applicationDatabaseBudget({}).poolMax).toBe(10);
+ });
+});
+
+describe('fair capacity: one hot tenant cannot starve login or another tenant',()=>{
+ const shared=()=>createDatabaseAdmission({capacity:8,backgroundCapacity:2,maxWaiting:64,waitMs:1000,...databaseAdmissionShares(8,64)});
+ it('derives shares from pool size and worker count',()=>{
+  // P = floor(C/W): the deployed 16-connection web fleet at 2, 4 and 8 workers, plus a larger pool.
+  expect(databaseAdmissionShares(8,1024)).toMatchObject({authenticationReserve:1,tenantFairShare:5,otherTenantReserve:2,authenticationCapacity:4,maxWaitingPerTenant:768,maxAuthenticationWaiting:128});
+  expect(databaseAdmissionShares(4,512)).toMatchObject({authenticationReserve:1,tenantFairShare:2,otherTenantReserve:1,authenticationCapacity:2});
+  expect(databaseAdmissionShares(2,256)).toMatchObject({authenticationReserve:0,tenantFairShare:1,otherTenantReserve:1,authenticationCapacity:1});
+  expect(databaseAdmissionShares(1,128)).toMatchObject({authenticationReserve:0,tenantFairShare:1,otherTenantReserve:0,authenticationCapacity:1});
+  expect(databaseAdmissionShares(16,512)).toMatchObject({authenticationReserve:2,tenantFairShare:10,otherTenantReserve:4,authenticationCapacity:8});
+  // Every pool of at least three keeps one permit from the hot tenant and one for login.
+  for(let p=3;p<=50;p++){const s=databaseAdmissionShares(p,1024);expect(s.tenantFairShare+s.authenticationReserve).toBeLessThanOrEqual(p-1);expect(s.otherTenantReserve).toBeGreaterThanOrEqual(1);expect(s.authenticationReserve).toBeGreaterThanOrEqual(1);}
+  // Workers get no reservation: one tenant at a time, no logins.
+  expect(databaseAdmissionShares(3,64,'worker')).toMatchObject({authenticationReserve:0,tenantFairShare:3,otherTenantReserve:0});
+ });
+ it('lets a lone tenant use every permit except the login reserve',async()=>{
+  const q=shared(),held=await Promise.all(Array.from({length:7},()=>q.acquire('solo','interactive')));
+  expect(q.snapshot()).toMatchObject({active:7,waiting:0});
+  let eighth=false;const queued=q.acquire('solo','interactive').then(r=>{eighth=true;return r;});
+  await Promise.resolve();
+  // The eighth permit is the login reserve, whichever tenant asks.
+  expect(eighth).toBe(false);expect(q.snapshot()).toMatchObject({active:7,waiting:1});
+  const login=await q.acquire('authentication','authentication');
+  expect(q.snapshot()).toMatchObject({active:8,authentication:1});
+  login();held.forEach(release=>release());(await queued)();
+  expect(q.snapshot()).toMatchObject({active:0,waiting:0});
+ });
+ it('uses the two connections a lone tenant has at W=8',async()=>{
+  const q=createDatabaseAdmission({capacity:2,backgroundCapacity:1,maxWaiting:32,waitMs:1000,...databaseAdmissionShares(2,32)});
+  const held=await Promise.all([q.acquire('solo','interactive'),q.acquire('solo','interactive')]);
+  expect(q.snapshot().active).toBe(2);held.forEach(release=>release());
+ });
+ it('gives a tenant that arrives during an over-share burst the next freed permits',async()=>{
+  const q=shared(),hot=await Promise.all(Array.from({length:7},()=>q.acquire('hot','interactive')));
+  const order:string[]=[];
+  const hotQueued=q.acquire('hot','interactive').then(r=>{order.push('hot');return r;});
+  const first=q.acquire('other','interactive').then(r=>{order.push('other-1');return r;});
+  const second=q.acquire('other','interactive').then(r=>{order.push('other-2');return r;});
+  expect(q.snapshot()).toMatchObject({active:7,waiting:3});
+  hot[0]();await vi.waitFor(()=>expect(order).toEqual(['other-1']));
+  hot[1]();await vi.waitFor(()=>expect(order).toEqual(['other-1','other-2']));
+  expect(q.snapshot()).toMatchObject({active:7,waiting:1});
+  // Below its share of five again: the hot tenant may run.
+  hot[2]();await vi.waitFor(()=>expect(order).toEqual(['other-1','other-2','hot']));
+  [...hot.slice(3),await first,await second,await hotQueued].forEach(release=>release());
+  expect(q.snapshot()).toMatchObject({active:0,waiting:0});
+ });
+ it('holds an over-share tenant back while another tenant waits, then resumes using idle permits',async()=>{
+  const q=createDatabaseAdmission({capacity:4,backgroundCapacity:1,maxWaiting:16,waitMs:1000,tenantFairShare:2,authenticationReserve:1});
+  const hot=await Promise.all([q.acquire('hot','interactive'),q.acquire('hot','interactive'),q.acquire('hot','interactive')]);
+  let hotEntered=false,otherEntered=false;
+  const hotQueued=q.acquire('hot','interactive').then(r=>{hotEntered=true;return r;});
+  const other=q.acquire('other','interactive').then(r=>{otherEntered=true;return r;});
+  hot[0]();await vi.waitFor(()=>expect(otherEntered).toBe(true));
+  // Hot is at its share while the other tenant runs, so the idle permit stays free for the other tenant.
+  expect(hotEntered).toBe(false);expect(q.snapshot()).toMatchObject({active:3,waiting:1});
+  (await other)();
+  // The other tenant is gone: idle capacity goes back to the lone tenant, even above its share.
+  await vi.waitFor(()=>expect(hotEntered).toBe(true));
+  expect(q.snapshot()).toMatchObject({active:3,waiting:0});
+  [hot[1],hot[2],await hotQueued].forEach(release=>release());
+ });
+ it('serves a login first even while tenants compete for freed permits',async()=>{
+  const q=createDatabaseAdmission({capacity:3,backgroundCapacity:1,maxWaiting:16,waitMs:1000,tenantFairShare:1,authenticationReserve:1,authenticationCapacity:2});
+  const hot=await Promise.all([q.acquire('hot','interactive'),q.acquire('hot','interactive')]);
+  const login1=await q.acquire('authentication','authentication');
+  const order:string[]=[];
+  const page=q.acquire('other','interactive').then(r=>{order.push('page');return r;});
+  const login2=q.acquire('authentication','authentication').then(r=>{order.push('login');return r;});
+  await Promise.resolve();expect(order).toEqual([]);
+  hot[0]();await vi.waitFor(()=>expect(order).toEqual(['login']));
+  hot[1]();await vi.waitFor(()=>expect(order).toEqual(['login','page']));
+  login1();(await login2)();(await page)();
+  expect(q.snapshot()).toMatchObject({active:0,waiting:0});
+ });
+ it('never treats login work as another tenant competing for the share',async()=>{
+  const q=createDatabaseAdmission({capacity:4,backgroundCapacity:1,maxWaiting:8,waitMs:1000,tenantFairShare:1,authenticationReserve:1,authenticationCapacity:2});
+  const login=await q.acquire('authentication','authentication');
+  const held=await Promise.all([q.acquire('solo','interactive'),q.acquire('solo','interactive')]);
+  expect(q.snapshot()).toMatchObject({active:3,authentication:1});
+  login();held.forEach(release=>release());
+ });
+ it('keeps a hard per-tenant ceiling hard even when the tenant is alone',async()=>{
+  const q=createDatabaseAdmission({capacity:4,backgroundCapacity:1,maxWaiting:8,waitMs:1000,perTenantCapacity:1,tenantFairShare:1});
+  const first=await q.acquire('solo','interactive');let entered=false;
+  const second=q.acquire('solo','interactive').then(r=>{entered=true;return r;});
+  await Promise.resolve();expect(entered).toBe(false);
+  first();(await second)();
+ });
+ it('always keeps a permit for login that no tenant work can take',async()=>{
+  const q=shared(),work=await Promise.all([...Array.from({length:5},()=>q.acquire('a','interactive')),q.acquire('b','interactive'),q.acquire('c','interactive')]);
+  // Seven permits used across three tenants; the eighth is the authentication reserve.
+  let page=false;const blocked=q.acquire('d','interactive').then(r=>{page=true;return r;});
+  await Promise.resolve();expect(page).toBe(false);expect(q.snapshot()).toMatchObject({active:7,waiting:1});
+  const login=await q.acquire('authentication','authentication');
+  expect(q.snapshot()).toMatchObject({active:8,authentication:1,waiting:1});
+  login();work.forEach(release=>release());(await blocked)();
+  expect(q.snapshot()).toMatchObject({active:0,waiting:0});
+ });
+ it('serves queued login before queued page reads and never after them',async()=>{
+  const q=createDatabaseAdmission({capacity:2,backgroundCapacity:1,maxWaiting:16,waitMs:1000,perTenantCapacity:2,authenticationCapacity:2});
+  const held=await Promise.all([q.acquire('a','interactive'),q.acquire('a','interactive')]);
+  const order:string[]=[];
+  const page=q.acquire('b','interactive').then(r=>{order.push('page');return r;});
+  const login=q.acquire('authentication','authentication').then(r=>{order.push('login');return r;});
+  held[0]();await vi.waitFor(()=>expect(order).toEqual(['login']));
+  held[1]();await vi.waitFor(()=>expect(order).toEqual(['login','page']));
+  (await login)();(await page)();
+ });
+ it('caps a login flood so pages keep half the pool',async()=>{
+  const q=shared(),logins=await Promise.all(Array.from({length:4},()=>q.acquire('authentication','authentication')));
+  expect(q.snapshot().authentication).toBe(4);
+  let fifth=false;const queued=q.acquire('authentication','authentication').then(r=>{fifth=true;return r;});
+  const pages=await Promise.all(Array.from({length:3},(_, i)=>q.acquire('t'+i,'interactive')));
+  expect(fifth).toBe(false);expect(q.snapshot()).toMatchObject({active:7,authentication:4,waiting:1});
+  [...logins,...pages].forEach(release=>release());(await queued)();
+  expect(q.snapshot()).toMatchObject({active:0,waiting:0});
+ });
+ it('stops one tenant from filling the whole queue while another can still wait',async()=>{
+  const q=createDatabaseAdmission({capacity:1,backgroundCapacity:1,maxWaiting:8,waitMs:1000,maxWaitingPerTenant:2});
+  const held=await q.acquire('a','interactive'),hot=[q.acquire('hot','interactive'),q.acquire('hot','interactive')];
+  await expect(q.acquire('hot','interactive')).rejects.toMatchObject({code:'queue-full'});
+  const other=q.acquire('other','interactive');
+  expect(q.snapshot().waiting).toBe(3);
+  held();for(const pending of [...hot,other])(await pending)();
+ });
+ it('never makes nested work wait on its own tenant share',async()=>{
+  const q=createDatabaseAdmission({capacity:4,backgroundCapacity:1,maxWaiting:8,waitMs:1000,perTenantCapacity:1});
+  const outer=await q.acquire('a','interactive');
+  // Without the exemption this would deadlock against its own outer transaction.
+  const nested=await q.acquire('a','interactive',undefined,{ignoreTenantCap:true});
+  expect(q.snapshot().active).toBe(2);
+  nested();outer();
+  await expect(Promise.race([q.acquire('a','interactive').then(r=>{r();return 'ok';}),new Promise(r=>setTimeout(()=>r('timeout'),50))])).resolves.toBe('ok');
+ });
+ it('keeps authentication waiters apart from a full tenant queue',async()=>{
+  const q=createDatabaseAdmission({capacity:1,backgroundCapacity:1,maxWaiting:1,waitMs:1000,authenticationReserve:0,maxAuthenticationWaiting:1,authenticationCapacity:1});
+  const held=await q.acquire('a','interactive'),page=q.acquire('b','interactive');
+  await expect(q.acquire('c','interactive')).rejects.toMatchObject({code:'queue-full'});
+  const login=q.acquire('authentication','authentication');
+  expect(q.snapshot()).toMatchObject({waiting:2,authenticationWaiting:1});
+  held();const loginRelease=await login;loginRelease();(await page)();
+ });
+ it('rejects impossible authentication budgets',()=>{
+  expect(()=>createDatabaseAdmission({capacity:2,backgroundCapacity:1,maxWaiting:1,waitMs:1,authenticationReserve:2})).toThrow(/authentication/);
+  expect(()=>createDatabaseAdmission({capacity:2,backgroundCapacity:1,maxWaiting:1,waitMs:1,authenticationCapacity:3})).toThrow(/authentication/);
+  expect(()=>createDatabaseAdmission({capacity:2,backgroundCapacity:1,maxWaiting:1,waitMs:1,maxWaitingPerTenant:2})).toThrow(/waiting/);
+ });
+});
+
+describe('every process counts against the database connection limit',()=>{
+ const shared={AIHR_APP_WORKERS:'2',AIHR_DB_POOL_MAX:'8',AIHR_DB_TOTAL_CONNECTIONS:'16'};
+ it('declares small explicit pools for non-web processes',()=>{
+  const worker=applicationDatabaseBudget({...shared,AIHR_DB_PROCESS_ROLE:'worker',AIHR_DB_POOL_MAX:'3'});
+  expect(worker).toMatchObject({role:'worker',poolMax:3,maxWaiting:64});
+  expect(applicationDatabaseBudget({AIHR_DB_PROCESS_ROLE:'worker'}).poolMax).toBe(2);
+  expect(()=>applicationDatabaseBudget({AIHR_DB_PROCESS_ROLE:'worker',AIHR_DB_POOL_MAX:'50'})).toThrow(/AIHR_DB_POOL_MAX/);
+  expect(()=>applicationDatabaseBudget({AIHR_DB_PROCESS_ROLE:'job'})).toThrow(/AIHR_DB_PROCESS_ROLE/);
+ });
+ it('adds web, background and reserved connections for the fleet',()=>{
+  expect(databaseFleetBudget({...shared,AIHR_DB_BACKGROUND_CONNECTIONS:'14',AIHR_DB_RESERVED_CONNECTIONS:'6'})).toEqual({webConnections:16,backgroundConnections:14,reservedConnections:6,requiredConnections:36});
+ });
+ it('refuses to start when the fleet cannot fit the server limit',()=>{
+  expect(assertFleetFitsServer(shared,{maxConnections:100,superuserReserved:3})).toMatchObject({requiredConnections:37,available:97});
+  expect(()=>assertFleetFitsServer(shared,{maxConnections:30,superuserReserved:3})).toThrow(/37.*27 are available/);
  });
 });

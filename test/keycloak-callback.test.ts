@@ -4,7 +4,7 @@ import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const ports=vi.hoisted(()=>({create:vi.fn(),remove:vi.fn(),succeeded:vi.fn(),blocked:vi.fn(),principal:vi.fn()}));
 vi.mock('../lib/identity/session',()=>({createIdentitySession:ports.create,deleteIdentitySession:ports.remove,cookieOptions:{httpOnly:true,secure:true,sameSite:'lax',path:'/'}}));
-vi.mock('../db/client',()=>({client:ports.principal}));
+vi.mock('../db/client',()=>({client:ports.principal,withPoolWork:(_lane:string,work:()=>unknown)=>work(),withSystemWork:(work:()=>unknown)=>work()}));
 vi.mock('../core/auth',()=>({recordLoginSucceeded:ports.succeeded,recordLoginBlocked:ports.blocked}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=> (key:string)=>key}));
 import { startKeycloakLogin, completeKeycloakLogin } from '../lib/identity/login';

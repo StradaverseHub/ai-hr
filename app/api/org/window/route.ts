@@ -1,3 +1,4 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import {scopedSession} from '@/lib/scope';
 import {personnelImportBrowserKey} from '@/lib/personnel-import-browser-key';
 import {AuthRequiredError} from '@/lib/auth-errors';
@@ -6,7 +7,7 @@ import type {OrgWindowRequest} from '@/lib/org-chart-window';
 
 const headers={'Cache-Control':'private, no-store',Vary:'Cookie, Authorization','X-Content-Type-Options':'nosniff'};
 const respond=(body:unknown,status=200)=>Response.json(body,{status,headers});
-export async function GET(request:Request){
+export const GET = capacityAwareRoute(async function GET(request:Request){
  try{
   const params=new URL(request.url).searchParams;
   const keys=['view','focusId','after','q'];
@@ -22,4 +23,4 @@ export async function GET(request:Request){
   if(error instanceof OrgWindowUnavailableError)return respond({error:error.reason},error.reason==='principal'?403:error.reason==='focus'?404:409);
   return respond({error:'unavailable'},503);
  }
-}
+});

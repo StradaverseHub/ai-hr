@@ -11,6 +11,13 @@ half-hour of writing units under pressure.
     sudo systemctl daemon-reload
     sudo systemctl enable --now aihr-usage-capture.timer     # start with this one — see below
 
+## Connection budget
+
+Every Node unit here (and `aihr-entra.service`) sets `AIHR_DB_PROCESS_ROLE=worker` and a pool of two connections. These count in
+`AIHR_DB_BACKGROUND_CONNECTIONS`, not the web fleet's `AIHR_DB_TOTAL_CONNECTIONS`, so their real connections are declared
+against PostgreSQL's `max_connections`. `deploy/deploy.sh` refuses a deploy that does not fit (`scripts/check-db-connection-budget.ts`).
+Add the same two lines to any new Node unit.
+
 ## The one that costs money to leave off
 
 **`aihr-usage-capture`** meters seats and payslips for billing. **Usage cannot be backfilled** — a day

@@ -306,6 +306,14 @@
       "busy": "系统繁忙，更改未完成。请重试。参考编号 {ref}。",
       "nricDuplicate": "此 NRIC 已存在于另一名员工的记录中。当前人员常规设置不允许重复 NRIC。 参考编号 {ref}."
     },
+    "degraded": {
+      "title": "加载时间比平时更长",
+      "body": "由于系统当前负载较高，页面未能完成加载。系统稍后会自动重试。",
+      "retryNow": "立即重试",
+      "unexpectedTitle": "无法显示此页面",
+      "unexpectedBody": "发生了意外情况，导致此页面无法加载。请重试；如果问题仍然存在，请联系管理员。",
+      "apiMessage": "系统当前负载较高，请稍后再试。"
+    },
     "moreActions": "更多操作",
     "noSearchResults": "没有与搜索匹配的结果。",
     "sectionFilter": "分区",
@@ -10889,7 +10897,20 @@
         "fileTooLarge": "文件过大。请拆分为较小批次后重试。",
         "emptySheet": "第一个工作表为空。",
         "pasteToggle": "或改为粘贴 CSV",
-        "downloadTemplateXlsx": "下载 Excel 模板"
+        "downloadTemplateXlsx": "下载 Excel 模板",
+        "job": {
+          "title": "正在导入休假记录",
+          "progressCount": "已处理 {done} / {total} 行",
+          "backgroundHelp": "此操作在后台运行。您可以离开此页面，稍后再回来。",
+          "waiting": "正在等待导入服务继续。无需任何操作。",
+          "failed": "导入未能完成。已保存的记录将被保留。",
+          "state": {
+            "queued": "等待开始",
+            "importing": "正在导入",
+            "completed": "已完成",
+            "failed": "已停止"
+          }
+        }
       },
       "expiryUnitMonths": "月",
       "expiryUnitDays": "天",

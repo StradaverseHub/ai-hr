@@ -33,8 +33,10 @@ describe('combined Microsoft sign-in and shared idle-session policy',()=>{
   const native=!operation.startsWith('web-'),session=await createEntraSession(config,object,native);
   let release!:()=>void,admitted!:()=>void,started=0;
   const held=new Promise<void>(done=>{release=done;}),ready=new Promise<void>(done=>{admitted=done;});
-  const holders=Array.from({length:client.options.max},(_,i)=>withPoolWork(`entra-admission-fixture-${i}`,async()=>{
-   if(++started===client.options.max)admitted();await held;
+  // Authentication has its own ceiling: hold every permit in that lane, so the operation must queue.
+  const authenticationPermits=Math.ceil(client.options.max/2);
+  const holders=Array.from({length:authenticationPermits},()=>withPoolWork('authentication',async()=>{
+   if(++started===authenticationPermits)admitted();await held;
   }));
   let request:Promise<unknown>|undefined;
   try{

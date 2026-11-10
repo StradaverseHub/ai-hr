@@ -1,9 +1,10 @@
+import {capacityAwareRead} from '@/lib/database-degraded';
 import {getSession} from '@/lib/session';
 import {getScopeIds} from '@/lib/scope';
 import {workforceViewScope} from '@/core/workforce-access';
 import {searchWorkforceEmployees} from '@/core/read';
 
-export async function GET(request:Request){
+export const GET = capacityAwareRead(async function GET(request:Request){
   const session=await getSession();
   const allowed=await workforceViewScope(session);
   const respond=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store'}});
@@ -13,4 +14,4 @@ export async function GET(request:Request){
   const companyIds=await getScopeIds(allowed.companyIds);
   const rows=await searchWorkforceEmployees(session,companyIds,query);
   return respond({rows:rows.map(({employmentId,name,employeeCode,company,department})=>({employmentId,name,employeeCode,company,department}))});
-}
+});

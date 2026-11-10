@@ -12,11 +12,24 @@ import postgres from 'postgres';
 import {createDatabaseAdmission} from './admission';
 import {createBackgroundReadAdmission} from './background-read-admission';
 import {createTenantWriteAdmission} from './tenant-write-admission';
-import {cancelStatementsAtDeadline,currentDatabaseReadDeadline,currentDatabaseWorkload,databaseReadSignal} from './workload';
-import {applicationDatabaseBudget} from './capacity';
+import {AsyncLocalStorage} from 'node:async_hooks';
+import {cancelStatementsAtDeadline,currentDatabaseReadDeadline,currentDatabaseWorkload,databaseReadSignal,inIdempotentDatabaseRead,withBackgroundDatabaseWork} from './workload';
+import {applicationDatabaseBudget,databaseAdmissionShares} from './capacity';
+import {markDatabaseCapacityFailure,retryIdempotentRead} from './read-retry';
 import {SharedReadSession,currentSharedRead,independentTransactionsRequired,runInSharedRead,sharedReadDriver,type SharedReadStats} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
 const applicationBudget = applicationDatabaseBudget(process.env);
+/** The tenant whose transaction this code runs inside; a nested acquire must not wait on that tenant's own share. */
+const transactionTenant = new AsyncLocalStorage<string>();
+/** The tenant whose shared read snapshot (db/shared-read.ts) this request runs inside, and whether one of its carrier
+ * transactions holds a permit now. An owner that keeps its own transaction while a carrier is open is nested in that
+ * carrier exactly as above: the request already holds this tenant's permit, so it must not wait on the tenant's share. */
+const sharedReadTenant = new AsyncLocalStorage<{ tenantId: string; carrierHeld: () => boolean }>();
+function nestedInTenant(tenantId: string): { ignoreTenantCap: true } | undefined {
+  if (transactionTenant.getStore() === tenantId) return { ignoreTenantCap: true };
+  const shared = sharedReadTenant.getStore();
+  return shared?.tenantId === tenantId && shared.carrierHeld() ? { ignoreTenantCap: true } : undefined;
+}
 import { chainArmingDecision } from '../core/audit-chain-arming';
 import type { EntitlementSnapshot, EntitlementsExemptReason } from '../core/entitlement-types';
 // Value import, and safe: core/entitlement-types.ts imports NOTHING, so there is no cycle back here.
@@ -191,10 +204,10 @@ function sharedReadIdentity(ctx: SessionContext, grants: Grant[], roleNames: str
   return JSON.stringify([ctx.tenantId, ctx.userId ?? '', ctx.personId ?? null, roleNames.join(','), JSON.stringify(grants), ctx.agent?.principalId ?? '']);
 }
 
-export function createDb(connectionString: string, options?: { max?: number }) {
+export function createDb(connectionString: string, options?: { max?: number; admissionWaitMs?: number }) {
   let client = pgPools.get(connectionString);
   if (!client) {
-    client = postgres(connectionString, { max: options?.max ?? 10 });
+    client = postgres(connectionString, { max: options?.max ?? applicationBudget.poolMax });
     pgPools.set(connectionString, client);
   }
   // Direct table-based select/insert/update/delete retain their own schema and types. Registering
@@ -212,7 +225,8 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   if (!admission) {
     admission = createDatabaseAdmission({capacity: configuredPoolMax,
       backgroundCapacity: Math.max(1, Math.floor(configuredPoolMax / 4)), maxWaiting: applicationBudget.maxWaiting,
-      maxBackgroundWaiting:Math.floor(applicationBudget.maxWaiting/4),waitMs: applicationBudget.waitMs});
+      maxBackgroundWaiting:Math.floor(applicationBudget.maxWaiting/4),waitMs: options?.admissionWaitMs ?? applicationBudget.waitMs,
+      ...databaseAdmissionShares(configuredPoolMax,applicationBudget.maxWaiting,applicationBudget.role)});
     admissionByPool.set(client, admission);
   }
   const poolAdmission = admission;
@@ -232,16 +246,28 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   const withTenantWriteWork=tenantWrites.run;
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-  /** For existing raw SQL owners only. This adds no transaction, GUC, retry or authority.
+  /** For existing raw SQL owners only. This adds no transaction, GUC or authority.
+   * The `authentication` pseudo-tenant runs in the authentication lane whatever the caller's workload.
    * Open queries inside work; do not pass an already-running promise or nest withTenant here.
+   * `options.idempotent` retries capacity failures; pass it only for reads.
    */
-  async function withPoolWork<T>(tenant: string, work: () => PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+  async function withPoolWork<T>(tenant: string, work: () => PromiseLike<T>, signal?: AbortSignal, options?: { idempotent?: boolean }): Promise<T> {
     signal = databaseReadSignal(signal);
-    const timing=globalForPg.__aihrPerfBeginPoolWork?.(configuredPoolMax);let release:(()=>void)|undefined;
-    try {
-      release=await poolAdmission.acquire(tenant,currentDatabaseWorkload(),signal);timing?.acquired();
-      signal?.throwIfAborted();return await work();
-    }finally{release?.();timing?.finished();}
+    const workload = tenant === 'authentication' ? 'authentication' : currentDatabaseWorkload();
+    const attempt = async () => {
+      const timing=globalForPg.__aihrPerfBeginPoolWork?.(configuredPoolMax);let release:(()=>void)|undefined;
+      try {
+        release=await poolAdmission.acquire(tenant,workload,signal,nestedInTenant(tenant));timing?.acquired();
+        signal?.throwIfAborted();return await work();
+      }catch(error){throw markDatabaseCapacityFailure(error);}
+      finally{release?.();timing?.finished();}
+    };
+    return options?.idempotent ? retryIdempotentRead(attempt,signal) : attempt();
+  }
+
+  /** Raw work that belongs to no tenant and no login: mail delivery, public tokens, operator pages. */
+  function withSystemWork<T>(work: () => PromiseLike<T>, signal?: AbortSignal, options?: { idempotent?: boolean }): Promise<T> {
+    return withBackgroundDatabaseWork(() => withPoolWork('system', work, signal, options));
   }
 
 
@@ -264,12 +290,12 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
     readSignal?.throwIfAborted();
-    const ownTransaction = async (): Promise<T> => {
+    const attempt = async (): Promise<T> => {
     const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
     let release: (() => void) | undefined;
     let stopDeadline: (() => void) | undefined;
     try {
-      release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal);
+      release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal, nestedInTenant(ctx.tenantId));
       // readOnlySnapshot: REPEATABLE READ / READ ONLY from BEGIN, before the session settings below.
       return await (options?.readOnlySnapshot ? snapshotDb : db).transaction(async (tx) => {
       // A hard read deadline (Home cards) cancels this transaction's running statement; see db/workload.ts.
@@ -279,14 +305,19 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       readSignal?.throwIfAborted();
       await bootstrapTenantTx(tx, ctx, grants, roleNames);
       readSignal?.throwIfAborted();
-      return fn(tx);
+      return transactionTenant.run(ctx.tenantId, () => fn(tx));
     });
+    } catch (error) {
+      throw markDatabaseCapacityFailure(error);
     } finally {
       stopDeadline?.();
       release?.();
       timing?.finished();
     }
     };
+    // Only declared reads retry: a READ ONLY transaction, or an operation verified to write nothing.
+    const ownTransaction = (): Promise<T> =>
+      options?.readOnlySnapshot || inIdempotentDatabaseRead() ? retryIdempotentRead(attempt, readSignal) : attempt();
     // Inside one request's shared read snapshot, the same identity joins its single transaction. Any other
     // identity, client or incompatible statement keeps this owner's own transaction (db/shared-read.ts).
     // A shared carrier cancels its statements at its own hard read deadline, so only an owner under that same
@@ -390,6 +421,9 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     const readDeadline = currentDatabaseReadDeadline();
     // A read already inside this identity's snapshot stays in it rather than opening a second one.
     if (currentSharedRead()?.admits(client!, sharedReadIdentity(ctx, grants, roleNames), readDeadline)) return work();
+    // The carrier itself is this tenant's ordinary capped work unless the request was already inside a transaction.
+    const carrierNested = nestedInTenant(ctx.tenantId);
+    let carriersHeld = 0;
     const session: SharedReadSession<Tx> = new SharedReadSession<Tx>(client!, sharedReadIdentity(ctx, grants, roleNames), () => {
       let finish: () => void = () => {};
       const finished = new Promise<void>((resolve) => { finish = resolve; });
@@ -403,8 +437,10 @@ export function createDb(connectionString: string, options?: { max?: number }) {
         const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
         let release: (() => void) | undefined;
         let stopDeadline: (() => void) | undefined;
+        let held = false;
         try {
-          release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal);
+          release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal, carrierNested);
+          held = true; carriersHeld++;
           const carrierClient = new Proxy(client!, { get(target, property, receiver) {
             if (property !== 'begin') return Reflect.get(target, property, receiver);
             return (fn: (sqlTx: postgres.TransactionSql) => Promise<unknown>) =>
@@ -423,8 +459,11 @@ export function createDb(connectionString: string, options?: { max?: number }) {
             resolveTx(carrierTx);
             await finished;
           });
+        } catch (error) {
+          throw markDatabaseCapacityFailure(error);
         } finally {
           stopDeadline?.();
+          if (held) carriersHeld--;
           release?.();
           timing?.finished();
         }
@@ -432,14 +471,15 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       return { tx, finish, done };
     }, readDeadline);
     try {
-      return await runInSharedRead(session as SharedReadSession<unknown>, work);
+      return await sharedReadTenant.run({ tenantId: ctx.tenantId, carrierHeld: () => carriersHeld > 0 },
+        () => runInSharedRead(session as SharedReadSession<unknown>, work));
     } finally {
       await session.close();
       globalForPg.__aihrPerfSharedRead?.(session.stats);
     }
   }
 
-  return { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withBackgroundReadWork, withTenantWriteWork };
+  return { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork };
 }
 
 export type Db = ReturnType<typeof createDb>['db'];
@@ -450,4 +490,4 @@ if (!url) throw new Error('DATABASE_URL is not set');
 
 // App singleton (non-privileged role). Keep the default for deployments that do
 // not explicitly divide a connection budget among application workers.
-export const { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withBackgroundReadWork, withTenantWriteWork } = createDb(url, {max: applicationBudget.poolMax});
+export const { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork } = createDb(url, {max: applicationBudget.poolMax});

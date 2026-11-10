@@ -306,6 +306,14 @@
       "busy": "The system was busy and the change was not completed. Please try again. Reference {ref}.",
       "nricDuplicate": "This NRIC already exists in another employee record. Duplicate NRIC numbers are not allowed under the current People General Settings. Reference {ref}."
     },
+    "degraded": {
+      "title": "This is taking longer than usual",
+      "body": "The page could not finish loading because the system is under heavy demand. It will try again automatically in a moment.",
+      "retryNow": "Try again now",
+      "unexpectedTitle": "This page could not be displayed",
+      "unexpectedBody": "Something unexpected stopped this page from loading. Try again, and if it keeps happening, contact your administrator.",
+      "apiMessage": "The system is under heavy demand. Please try again in a moment."
+    },
     "moreActions": "More actions",
     "noSearchResults": "No results match your search.",
     "sectionFilter": "Section",
@@ -10889,7 +10897,20 @@
         "fileTooLarge": "File is too large. Split it into smaller batches and try again.",
         "emptySheet": "The first worksheet is empty.",
         "pasteToggle": "Or paste CSV instead",
-        "downloadTemplateXlsx": "Download Excel template"
+        "downloadTemplateXlsx": "Download Excel template",
+        "job": {
+          "title": "Importing leave records",
+          "progressCount": "{done} of {total} rows processed",
+          "backgroundHelp": "This runs in the background. You can leave this page and come back.",
+          "waiting": "Waiting for the import service to continue. No action is needed.",
+          "failed": "The import could not finish. Rows already saved are kept.",
+          "state": {
+            "queued": "Waiting to start",
+            "importing": "Importing",
+            "completed": "Finished",
+            "failed": "Stopped"
+          }
+        }
       },
       "expiryUnitMonths": "Months",
       "expiryUnitDays": "Days",

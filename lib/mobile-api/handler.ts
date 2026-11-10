@@ -22,6 +22,8 @@ import type { ErrorResponse } from './contract';
 import { PageRequestRefused } from './v2/common';
 import { hasMobileBinarySignature, isMobileBinaryType, MOBILE_BINARY_TYPES, safeMobileFileName, type MobileBinaryType } from './binary-types';
 import { createRequestAdmission, createScopedAdmission, RequestBudgetExceeded, takeRequestBudget, trustedRequestSource } from '../request-budget';
+import { isDatabaseCapacityFailure } from '@/db/read-retry';
+import { DATABASE_RETRY_AFTER_SECONDS } from '../database-capacity';
 
 const admit = createRequestAdmission(24);
 const admitSource = createScopedAdmission(16);
@@ -115,6 +117,11 @@ function handlerFailure(e: unknown): Response {
   if (e instanceof MobileServiceUnavailable) return mobileError(503,'unavailable');
   // The tenant's entitlements could not be read (an infrastructure fault): "retry", never "this module is off".
   if (e instanceof EntitlementsResolutionFailedError) return mobileError(503,'unavailable');
+  if (isDatabaseCapacityFailure(e)) {
+    const response = mobileError(503,'unavailable');
+    response.headers.set('retry-after', String(DATABASE_RETRY_AFTER_SECONDS));
+    return response;
+  }
   if (e instanceof MobileBadRequest || e instanceof PageRequestRefused) return mobileError(400, 'bad_request');
   if (e instanceof AuthRequiredError) return mobileError(401, 'auth_required');
   return privateFailure(500,'internal','handler');

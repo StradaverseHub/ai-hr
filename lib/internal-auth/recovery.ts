@@ -6,10 +6,10 @@ import {emailLocale,type EmailLocale} from '../email-design/model';
 import {recoveryEmailDesign} from '../email-design/delivery';
 import {renderEmailDesign} from '../email-design/render';
 import {accountEmailAction,recoveryEmailContent} from '../account-email-content';
-import { client } from '../../db/client';
+import { client, withPoolWork } from '../../db/client';
 import { internalConfig } from './config';
 import { digest, opaque, validOpaque } from './crypto';
-import { authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions } from './store';
+import { admittedAuthSql, authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions } from './store';
 import { canonicalOrg, credentialByLogin, takeRate, InternalAuthError, verifyCredentialFactor, type Credential } from './service';
 import { sendInternalMail, type MailTransport } from './mail';
 import { AccountEmailDeliveryError } from '../account-email-model';
@@ -45,10 +45,10 @@ export async function requestRecovery(organization: string, username: string, tr
 /** Exact delivery lease + authenticated original account binding; an email address is never a lookup. */
 export async function sendInternalRecovery(email: string, context?: { deliveryId: string; leaseToken: string }, transport?: MailTransport) {
   if (!context) throw new AccountEmailDeliveryError('notEligible');
-  const rows = await client.unsafe('select app.internal_auth_recovery_source($1::uuid,$2::uuid) id', [context.deliveryId, context.leaseToken]);
+  const rows = await withPoolWork('authentication', () => client.unsafe('select app.internal_auth_recovery_source($1::uuid,$2::uuid) id', [context.deliveryId, context.leaseToken]), undefined, {idempotent:true});
   const source = rows[0]?.id;
   if (!source) throw new AccountEmailDeliveryError('notEligible');
-  const binding = await readRecord<RecoveryContext>(client, `recovery-mail:${source}`);
+  const binding = await readRecord<RecoveryContext>(admittedAuthSql, `recovery-mail:${source}`);
   if (!binding || binding.email !== email) throw new AccountEmailDeliveryError('notEligible');
   const token = await authTransaction(binding.subject, async tx => {
     const c = await readRecord<Credential>(tx, `credential:${binding.subject}`, true);
@@ -63,14 +63,14 @@ export async function sendInternalRecovery(email: string, context?: { deliveryId
     await writeRecord(tx, `recovery-active:${c.subject}`, { key }, c.subject);
     return raw;
   });
-  const [principal]=await client.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)',[binding.issuer,binding.subject]);
+  const [principal]=await withPoolWork('authentication',()=>client.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)',[binding.issuer,binding.subject]),undefined,{idempotent:true});
   if(principal?.tenant_id!==binding.tenantId||!principal.app_user_id)throw new AccountEmailDeliveryError('notEligible');
   const design=await recoveryEmailDesign({tenantId:binding.tenantId,userId:principal.app_user_id},binding.locale??'en'),link=`${internalConfig().origin}/reset-password#token=${token}`;
   await sendInternalMail({to:email,...renderEmailDesign(design.document,'recovery',design.locale,{...recoveryEmailContent(link,design.locale),link,buttonLabel:accountEmailAction('recovery',design.locale)},{...design.data,expiry_minutes:'30'})},transport);
 }
 export async function completeRecovery(raw: string, password: string, code: string) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');
-  const key = `recovery:${digest(raw)}`, initial = await readRecord<Recovery>(client, key);
+  const key = `recovery:${digest(raw)}`, initial = await readRecord<Recovery>(admittedAuthSql, key);
   if (!initial) throw new InternalAuthError('invalidChallenge');
   await takeRate(`recovery-complete:${initial.subject}`, 10);
   const result = await authTransaction(initial.subject, async tx => {

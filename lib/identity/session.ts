@@ -2,7 +2,7 @@ import { readSessionHandle } from './cookie';
 import { randomBytes, createHash } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { client } from '../../db/client';
+import { client, withPoolWork } from '../../db/client';
 import { AuthRequiredError } from '../auth-errors';
 import { JwksUnavailableError } from '../mobile-api/jwt';
 import { keycloakConfig, WEB_SESSION_COOKIE } from './config';
@@ -28,14 +28,15 @@ export async function createIdentitySession(value: IdentitySession) {
   const raw = randomBytes(32).toString('base64url');
   const hash = sessionHash(raw)!;
   const expiry = Math.floor(Date.now() / 1000) + 8 * 3600;
-  await client`select app.identity_session_write(${hash},${await seal(value, `session:${hash}`, expiry)},${new Date(expiry * 1000).toISOString()}::timestamptz)`;
+  const sealed = await seal(value, `session:${hash}`, expiry);
+  await withPoolWork('authentication', () => client`select app.identity_session_write(${hash},${sealed},${new Date(expiry * 1000).toISOString()}::timestamptz)`);
   return raw;
 }
 /** The row lock serializes refresh-token rotation across requests and processes. Absolute lifetime never slides. */
 export async function readIdentitySession(raw: string | undefined, refresh = true): Promise<IdentitySession | null> {
   const hash = raw && sessionHash(raw);
   if (!hash) return null;
-  const result = await client.begin(async tx => {
+  const result = await withPoolWork('authentication', () => client.begin(async tx => {
     const [row] = await tx<{ sealed: string; expires_at: Date }[]>`select * from app.identity_session_read(${hash},true)`;
     if (!row) return null;
     let value: IdentitySession;
@@ -66,7 +67,7 @@ export async function readIdentitySession(raw: string | undefined, refresh = tru
       await tx`select app.identity_session_delete(${hash})`; return null;
     }
     return value;
-  });
+  }));
   return result as IdentitySession | null;
 }
 export async function currentIdentitySession() {
@@ -74,7 +75,7 @@ export async function currentIdentitySession() {
 }
 export async function deleteIdentitySession(raw: string | undefined) {
   const hash = raw && sessionHash(raw);
-  if (hash) await client`select app.identity_session_delete(${hash})`;
+  if (hash) await withPoolWork('authentication', () => client`select app.identity_session_delete(${hash})`);
 }
 export async function endIdentitySession(): Promise<never> {
   const store = await cookies();
