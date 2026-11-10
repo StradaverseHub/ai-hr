@@ -71,7 +71,7 @@ const int8multirange=customType<{data:string;driver:string}>({dataType(){return 
 
 // Partner roles (ADR-0049) are ADDITIVE specialist roles beside hr_admin: each administers only
 // its function's data (payroll, or performance+comp) within its company subtree. Company-scopable
-// like hr_admin. Recruiting Partner is deferred to the ATS PR.
+// like hr_admin. Recruiting Partner shipped with the recruitment pack (4400/4401).
 export const roleEnum = pgEnum('role', [
   'employee',
   'manager',
@@ -89,6 +89,10 @@ export const roleEnum = pgEnum('role', [
   // company subtree WITHOUT any compensation, payroll, Rewards, HR or generic-cycle authority. Appended
   // after operator because ALTER TYPE … ADD VALUE appends; enum order is NOT authority order (0312).
   'performance_partner',
+  // ADR-0049 §2 (4400/4401) — Recruiting Partner: administers Recruitment (jobs, candidates, applications and
+  // recruitment settings) for its company subtree via app.can_admin_recruitment_for, and nothing else. It
+  // shipped with the recruitment tables (packs/recruitment), never as an inert label.
+  'recruiting_partner',
 ]);
 export const employmentTypeEnum = pgEnum('employment_type', PERSONNEL_EMPLOYMENT_TYPES);
 /**
@@ -753,7 +757,7 @@ export const appInvitation = pgTable(
     // database, the way role_assignment's check above does.
     check(
       'app_invitation_role_customer_set',
-      sql`${t.role} IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner')`,
+      sql`${t.role} IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner', 'recruiting_partner')`,
     ),
     // 0312 — the table-level mirror of role_assignment_super_admin_group_wide. Without it an
     // invitation for a company-scoped super_admin was writable and simply un-consumable.

@@ -167,6 +167,13 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/rewards/analytics',
  '/rewards/promotions',
  '/rewards/rules',
+ // ADR-0049 — Recruitment admits HR administrators and the company-scoped Recruiting Partner per company
+ // (app.can_admin_recruitment_for); neither the coarse admin role nor the manage group says who that is.
+ '/recruitment',
+ '/recruitment/candidates',
+ '/recruitment/positions',
+ '/recruitment/positions/new',
+ '/recruitment/settings',
 ]);
 export function classifyPage(route:string,source:string):Readonly<{audience:DestinationAudience;module:string|null}>|null{
  if(NOT_LINKABLE.some(area=>under(route,area))||FORWARD_STUBS.has(route)||NATIVE_SCOPE_ONLY_PAGES.has(route))return null;

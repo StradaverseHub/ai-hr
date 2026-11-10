@@ -25,12 +25,13 @@ const cases:readonly [AgentModuleCode,unknown,string|number][]=[
  ['notifications',bound([{createdAt:new Date('2026-10-01T01:00:00Z'),readAt:null,title:'PRIVATE_POISON',body:'PRIVATE_POISON',linkPath:'PRIVATE_POISON'}]),'2026-10-01T01:00:00.000Z'],
  ['system_explorer',{withheldTables:6,tables:bound([{table:'employment',module:'employees',rows:'PRIVATE_POISON'}])},6],
  ['assistant',{capabilities:[{module:'leave',capability:'own_leave_balances',secret:'PRIVATE_POISON'}]},'leave'],
+ ['recruitment',bound([{company:'Canonical employer',openJobs:2,onHoldJobs:0,activeApplications:5,toScreen:3,interview:1,offer:1,onboarding:0,hired:0,archived:2,candidateName:'PRIVATE_POISON',email:'PRIVATE_POISON'}]),5],
  ['system_testing',bound([{caseNo:42,title:'Assigned canonical test',moduleCode:'leave',status:'not_started',ordinal:1,updatedAt:null,description:'PRIVATE_POISON'}]),42],
 ];
 describe('independent deterministic fact-presentation contracts for every canonical module',()=>{
  it('covers exactly the current catalogue and refuses unsupported future modules',()=>{
   expect(cases.map(([module])=>module).sort()).toEqual(MODULE_CATALOG.map(row=>row.code).sort());
-  expect(new Set(MODULE_JOBS.map(([module])=>module)).size).toBe(20);
+  expect(new Set(MODULE_JOBS.map(([module])=>module)).size).toBe(21);
   expect(()=>presentCanonicalModuleData('future_module' as AgentModuleCode,bound([]))).toThrow();
  });
  it.each(cases)('%s copies only the expected canonical fields and never renders model/raw payload additions',(module,data,expected)=>{

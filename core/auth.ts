@@ -78,6 +78,8 @@ export const ROLES = new Set([
   'performance_comp_partner',
   // ADR-0142 — repeated in 0611's app_invitation_role_customer_set and app.consume_invitation guard A.
   'performance_partner',
+  // ADR-0049 §2 — repeated in 4401's app_invitation_role_customer_set and app.consume_invitation guard A.
+  'recruiting_partner',
 ]);
 const INVITE_TTL_DAYS = 7;
 

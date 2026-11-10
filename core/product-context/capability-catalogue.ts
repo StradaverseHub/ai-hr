@@ -49,7 +49,7 @@ export type CatalogueEntry=Readonly<{id:string;kind:CapabilityKind;mode:Capabili
 export const MODULE_AREA:Readonly<Record<string,CapabilityArea>>=Object.freeze({
  employees:'people',org:'organisation',leave:'leave',toil:'leave',ess:'self_service',approvals:'approvals',knowledge_base:'knowledge',
  payroll:'payroll',multi_cycle_payroll:'payroll',typed_pay_components:'payroll','country-my':'payroll',attendance:'attendance',claims:'claims',
- performance:'performance',rewards:'rewards',lifecycle:'lifecycle',notifications:'notifications',system_testing:'testing',system_explorer:'settings',assistant:'ai',
+ performance:'performance',rewards:'rewards',recruitment:'people',lifecycle:'lifecycle',notifications:'notifications',system_testing:'testing',system_explorer:'settings',assistant:'ai',
 });
 /** Pages without a module, by path prefix; the first match wins. */
 const PATH_AREA:readonly (readonly [string,CapabilityArea])[]=[

@@ -196,6 +196,8 @@ export const withPerformanceTenant = withModuleTenant('performance');
 export const withLifecycleTenant = withModuleTenant('lifecycle');
 
 export const withRewardsTenant = withModuleTenant('rewards');
+/** ADR-0080 D10 — the Recruitment pack (packs/recruitment); every service entry point runs through it. */
+export const withRecruitmentTenant = withModuleTenant('recruitment');
 
 /** Admission for additive Lifecycle modules whose native owners check each target company.
  * This does not grant company scope and leaves the legacy onb/off gate unchanged. */

@@ -19,6 +19,8 @@ export const ROLES = [
   'performance_comp_partner',
   // ADR-0142 — OneHR performance partner: company-scoped OneHR administration without compensation.
   'performance_partner',
+  // ADR-0049 §2 — Recruiting Partner: company-scoped Recruitment administration (4401).
+  'recruiting_partner',
 ] as const;
 
 export async function loadUsersData(s: SessionContext) {

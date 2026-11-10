@@ -77,8 +77,9 @@ const hashOf = async (raw: string) => {
 const ROLE_CHECKS = [
   {
     name: 'app_invitation_role_customer_set',
-    // 0611 (ADR-0142) re-issued this constraint with performance_partner; it is the latest definition.
-    def: "CHECK (role IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner'))",
+    // 0611 (ADR-0142) re-issued this constraint with performance_partner, and 4401 (ADR-0049) with
+    // recruiting_partner; 4401 is the latest definition.
+    def: "CHECK (role IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner', 'recruiting_partner'))",
   },
   {
     name: 'app_invitation_super_admin_group_wide',
@@ -255,7 +256,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
       if (dropped.length > 0) {
         await owner.db.execute(sql`
           DELETE FROM app_invitation
-           WHERE role NOT IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner')
+           WHERE role NOT IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner', 'recruiting_partner')
               OR (role = 'super_admin' AND company_id IS NOT NULL)`);
         for (const c of dropped) {
           await owner.db.execute(sql.raw(`ALTER TABLE app_invitation ADD CONSTRAINT ${c.name} ${c.def}`));

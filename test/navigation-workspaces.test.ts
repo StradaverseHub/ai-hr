@@ -105,7 +105,7 @@ describe('Ops and Strata placement never grants authority',()=>{
  });
  it('keeps each module in exactly one workspace',()=>{
   // Issue 17: the Control Tower module left Ops; People is first.
-  expect(NAVIGATION_MODULES.filter(module=>module.workspace==='ops').map(module=>module.id)).toEqual(['people','eLetter','onboarding','leave','attendance','claims','payroll','probation','contracts']);
+  expect(NAVIGATION_MODULES.filter(module=>module.workspace==='ops').map(module=>module.id)).toEqual(['people','eLetter','onboarding','leave','attendance','claims','payroll','probation','contracts','recruitment']);
   // PT-X5: Talent and Development retired into the area's tabs; Rewards keeps its own module.
   expect(NAVIGATION_MODULES.filter(module=>module.workspace==='strata').map(module=>module.id)).toEqual(['performance','performanceAdmin','rewards','workforceInsights']);
   expect(new Set(NAVIGATION_MODULES.map(module=>module.id)).size).toBe(NAVIGATION_MODULES.length);

@@ -1,3 +1,16 @@
+# Recruitment slice 1 — 10 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves `4400_recruiting_partner_role`
+at idx 3800 / when 1793330004100 and `4401_recruitment_core` at idx 3801 / when
+1793330004101, in that order (the enum label first, its authority second, as 0610/0611).
+A fresh read-only survey of 7,038 refs (522 distinct committed journal blobs), 1,224
+registered worktrees (290 readable journals) and 355 committed allocation-document blobs
+found the peer maximum `4342_attendance_clock_policy_audit_scope` at idx 3742 / when
+1793330004042 (origin/codex/architecture-2ab9-build-custody-proof-20261110); this block
+sits above it. The source base is origin/main `f07f32dcd`, ending at 4202 / idx 3602.
+Recheck peer claims, the published baseline and the ordered applied ledger before
+admission. The reservation grants no installation authority.
+
 # Schedule Group clock policy — 10 November 2026 MYT (unapplied)
 
 Reserve `4202_attendance_clock_policy_revisions` at idx 3602 and when

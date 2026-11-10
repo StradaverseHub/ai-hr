@@ -5083,6 +5083,20 @@
       "when": 1793330003902,
       "tag": "4202_attendance_clock_policy_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 3800,
+      "version": "7",
+      "when": 1793330004100,
+      "tag": "4400_recruiting_partner_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 3801,
+      "version": "7",
+      "when": 1793330004101,
+      "tag": "4401_recruitment_core",
+      "breakpoints": true
     }
   ]
 }

@@ -14,7 +14,7 @@ export type ModuleActionStatus='implemented'|'read_context_only'|'human_workflow
 type ReadCapability<M extends AgentModuleCode>=Extract<typeof MODULE_AGENT_CAPABILITIES[number],readonly[M,unknown]>[1];
 type EffectIds={[M in AgentModuleCode]:AgentActionIdOfModule<M>};
 export type ModuleEffectActionId=EffectIds[AgentModuleCode];
-type CanonicalOwner=AgentActionOwner|'schema_inventory'|'assistant_orchestration';
+type CanonicalOwner=AgentActionOwner|'schema_inventory'|'assistant_orchestration'|'recruitment';
 type PhaseBoundary=Readonly<{status:ModuleActionStatus;adapter:AgentActionAdapter|null;inputSchema:string|null;outputSchema:string|null}>;
 type Action<M extends AgentModuleCode>=Readonly<{id:EffectIds[M];owner:CanonicalOwner;publicBoundary:string;publicMember?:AgentActionServiceMember;observations?:'human_actual_only';contractVersion:number;prepare:PhaseBoundary;confirm:PhaseBoundary;human:'canonical_workflow_required';outcome:'canonical_receipt_required'|'submitted_not_approved'}>;
 type Declaration<M extends AgentModuleCode>=Readonly<{module:M;owner:CanonicalOwner;publicBoundary:string;publicMember?:AgentActionServiceMember;source:string;coverage:'partial_actions'|'read_only'|'orchestration_only';money:'stored_kernel_amounts_only'|'canonical_engine_only'|'not_exposed';phases:Readonly<Record<ModuleActionPhase,ModuleActionStatus>>;read:Readonly<{id:ReadCapability<M>;status:'implemented';adapter:'canonical_module_read_v1';inputSchema:'AgentModuleCode';outputSchema:'createModuleAgentReaders.moduleWork:return'}>;actions:readonly Action<M>[]} >;
@@ -63,6 +63,8 @@ export const MODULE_AGENT_ACTIONS=Object.freeze({
  system_explorer:declaration('system_explorer','schema_inventory','core/schema-explorer.ts#listSchemaTables','core/module-agent-readers.ts#createModuleAgentReaders','not_exposed','read_only'),
  assistant:declaration('assistant','assistant_orchestration','core/module-agent-readers.ts#createModuleAgentReaders','core/module-agent-readers.ts#createModuleAgentReaders','not_exposed','orchestration_only'),
  system_testing:declaration('system_testing','system_testing','core/system-testing-workspace.ts#saveTestingExecution','core/system-testing-workspace.ts#ownTestingWorkStatusesTx'),
+ // Counts only: no prepare/confirm effect, and the read never carries a candidate or application record.
+ recruitment:declaration('recruitment','recruitment','packs/recruitment/service.ts#recruitmentPipelineCounts','packs/recruitment/service.ts#recruitmentPipelineCounts','not_exposed','read_only'),
 } satisfies {[M in AgentModuleCode]:Declaration<M>});
 const declarations:readonly ModuleAgentActionDeclaration[]=Object.freeze(Object.values(MODULE_AGENT_ACTIONS));
 /** Static metadata only. This never checks a user's access or resolves a callable function. */

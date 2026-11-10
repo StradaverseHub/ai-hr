@@ -315,6 +315,10 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'lc_staff', column: 'company_id', disposition: 'other', note: 'A user named as Onboarding & IT module staff for this company (ADR-0095). Access is removed deliberately, never as a side effect.' },
   { table: 'it_asset', column: 'company_id', disposition: 'other', note: 'An IT asset registered to this company (ADR-0095), with its holder history. The register is a record of who held what.' },
 
+  // ADR-0080 D10 — Recruitment (4401). Jobs and candidates are hiring history: a company with either refuses.
+  { table: 'recruitment_job_opening', column: 'company_id', disposition: 'other', note: 'A job opening with its MJ number, team and applications. Close it; the history stays with the company.' },
+  { table: 'recruitment_candidate', column: 'company_id', disposition: 'other', note: 'A candidate who applied to this company, and their application history.' },
+
   // ── config: deleted with the company, in this order ──────────────────────────────────────────────────
   { table: 'company_logo', column: 'company_id', disposition: 'config', note: 'The company\'s logo image, held in its own side table.' },
   { table: 'company_statutory_my', column: 'company_id', disposition: 'config', note: 'The company\'s own EPF / SOCSO / LHDN registration numbers.' },
@@ -357,6 +361,12 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
     note: 'Nightly platform usage. All-zero rows (five on ABC Comapny) are deleted and counted on company.deleted — the plan\'s decision; migration 0511\'s function removes exactly those. A non-zero row is evidence and refuses. Composite key with tenant_id.',
   },
 
+  // Recruitment setup (4401): editable defaults seeded when Recruitment is first opened. Removed by one definer
+  // function (the app role has no DELETE here and default reasons refuse deletion), only when no job opening or
+  // candidate exists — those refuse the delete first, above.
+  { table: 'recruitment_archive_reason', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s rejection / archive reasons. Removed with its stages and processes.' },
+  { table: 'recruitment_process', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment processes; their ordered stages go with them (ON DELETE CASCADE).' },
+  { table: 'recruitment_stage', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment stage catalogue. After the processes that order it.' },
   // ── config-if-unreferenced: the company's own org structure, deleted unless something outside uses it ──
   { table: 'department', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Before business_unit, which a department references.' },
   { table: 'position', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Positions of this company. An assignment or approval rule elsewhere naming one refuses.' },
@@ -415,6 +425,17 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'payroll_attendance_allowance_source', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A payroll contribution retains the policy that owns it; company deletion cannot detach it.' },
   { table: 'attendance_allowance_transfer', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A transfer attempt retains the policy identity for later audit and operator resolution.' },
   { table: 'reward_unit', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'A reward review retains its business unit and financial approval history; it must never disappear with company setup.' },
+  { table: 'recruitment_process_stage', column: 'process_id', references: 'recruitment_process', effect: 'part', note: 'A process\'s ordered stages. ON DELETE CASCADE.' },
+  { table: 'recruitment_process_stage', column: 'stage_id', references: 'recruitment_stage', effect: 'part', note: 'A stage\'s place in a process. ON DELETE CASCADE.' },
+  { table: 'recruitment_job_opening', column: 'process_id', references: 'recruitment_process', effect: 'blocks', note: 'A job keeps its recruitment process.' },
+  { table: 'recruitment_job_opening', column: 'department_id', references: 'department', effect: 'blocks', note: 'A job keeps its department.' },
+  { table: 'recruitment_job_opening', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'A job keeps its business unit.' },
+  { table: 'recruitment_application', column: 'current_stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'An application keeps its stage.' },
+  { table: 'recruitment_application', column: 'stage_left_at_archive', references: 'recruitment_stage', effect: 'blocks', note: 'An archived application keeps the stage it left.' },
+  { table: 'recruitment_application', column: 'archive_reason_id', references: 'recruitment_archive_reason', effect: 'blocks', note: 'An archived application keeps its reason.' },
+  { table: 'recruitment_application_event', column: 'from_stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'Append-only application history keeps its stages.' },
+  { table: 'recruitment_application_event', column: 'to_stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'Append-only application history keeps its stages.' },
+  { table: 'recruitment_application_event', column: 'archive_reason_id', references: 'recruitment_archive_reason', effect: 'blocks', note: 'Append-only application history keeps its reasons.' },
   { table: 'shift_ot_window', column: 'shift_id', references: 'shift', effect: 'part', note: 'A shift\'s clock-time OT windows. ON DELETE CASCADE.' },
   { table: 'attendance_rule_ot_row', column: 'rule_id', references: 'attendance_rule', effect: 'part', note: 'A rule\'s OT rows. ON DELETE CASCADE.' },
   { table: 'holiday_group_holiday', column: 'holiday_id', references: 'holiday', effect: 'blocks', note: 'ON DELETE CASCADE, but a holiday group may serve another company: removing our holiday from it would change their calendar. Refuses.' },

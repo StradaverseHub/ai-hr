@@ -959,16 +959,20 @@ describe('§4 only an administrator for the company can delete it', () => {
 
   it('the function is SECURITY DEFINER with a pinned search_path, and only the app role may execute it', async () => {
     const fns = [...new Set(COMPANY_REFERRERS.flatMap((r) => (r.deleteFunction ? [r.deleteFunction] : [])))];
-    expect(fns).toEqual(['app.delete_unused_usage_snapshots']);
+    // 4401 added the Recruitment setup remover (stages, processes and archive reasons, which the app role
+    // cannot DELETE); it is held to exactly the same definer/search_path/execute contract.
+    expect(fns).toEqual(['app.delete_unused_usage_snapshots', 'app.recruitment_delete_company_setup']);
     const rows = (await owner.db.execute(sql`
-      select p.prosecdef, p.proconfig,
+      select p.proname, p.prosecdef, p.proconfig,
              has_function_privilege('ai_hr_app', p.oid, 'EXECUTE') as app_exec,
              exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0) as public_exec
         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-       where n.nspname = 'app' and p.proname = 'delete_unused_usage_snapshots'
-    `)) as unknown as { prosecdef: boolean; proconfig: string[]; app_exec: boolean; public_exec: boolean }[];
+       where n.nspname = 'app' and p.proname in ('delete_unused_usage_snapshots', 'recruitment_delete_company_setup')
+       order by p.proname
+    `)) as unknown as { proname: string; prosecdef: boolean; proconfig: string[]; app_exec: boolean; public_exec: boolean }[];
     expect(rows).toEqual([
-      { prosecdef: true, proconfig: ['search_path=pg_catalog, public, pg_temp'], app_exec: true, public_exec: false },
+      { proname: 'delete_unused_usage_snapshots', prosecdef: true, proconfig: ['search_path=pg_catalog, public, pg_temp'], app_exec: true, public_exec: false },
+      { proname: 'recruitment_delete_company_setup', prosecdef: true, proconfig: ['search_path=pg_catalog, public, app, pg_temp'], app_exec: true, public_exec: false },
     ]);
   });
 });

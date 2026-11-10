@@ -26,6 +26,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   system_explorer:'Using only my existing administrator rights, list the schema catalog I may already inspect; do not grant rights or change anything.',
   assistant:'Which Assistant capabilities are currently available to me?',
   system_testing:'Show the reported statuses of my currently assigned tests; do not run tests, claim independent verification or grant rights.',
+  recruitment:'Show the recruitment pipeline counts for the companies whose recruitment I manage; do not show any candidate details.',
  },
  ms:{
   employees:'Tunjukkan profil pekerjaan dan butiran jawatan saya yang terkini.',
@@ -48,6 +49,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   system_explorer:'Dengan hak pentadbir sedia ada saya sahaja, senaraikan katalog skema yang memang boleh saya periksa; jangan beri hak baharu atau ubah apa-apa.',
   assistant:'Apakah keupayaan Pembantu yang tersedia untuk saya sekarang?',
   system_testing:'Tunjukkan status yang dilaporkan bagi ujian yang kini ditugaskan kepada saya; jangan jalankan ujian, dakwa pengesahan bebas atau beri hak baharu.',
+  recruitment:'Tunjukkan bilangan saluran pengambilan bagi syarikat yang pengambilannya saya uruskan; jangan tunjukkan sebarang butiran calon.',
  },
  zh:{
   employees:'请显示我目前的任职资料和职位详情。',
@@ -70,6 +72,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   system_explorer:'仅使用我现有的管理员权限，列出我本来就能查看的数据库结构目录；不要授予权限或更改任何内容。',
   assistant:'我目前可以使用哪些助手功能？',
   system_testing:'请显示目前分配给我的测试所报告的状态；不要运行测试、声称已经独立验证或授予权限。',
+  recruitment:'请显示我所管理招聘的各公司的招聘流程数量；不要显示任何候选人详情。',
  },
  ta:{
   employees:'எனது தற்போதைய பணியாளர் விவரத்தையும் பதவி விவரங்களையும் காட்டுங்கள்.',
@@ -92,6 +95,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   system_explorer:'எனக்கு ஏற்கனவே உள்ள நிர்வாக உரிமைகளை மட்டும் பயன்படுத்தி, நான் பார்க்க அனுமதிக்கப்பட்ட தரவுத்தள அமைப்புப் பட்டியலைக் காட்டுங்கள்; உரிமை வழங்கவோ எதையும் மாற்றவோ வேண்டாம்.',
   assistant:'எனக்கு தற்போது எந்த உதவியாளர் வசதிகள் கிடைக்கின்றன?',
   system_testing:'தற்போது எனக்கு ஒதுக்கப்பட்ட சோதனைகளின் அறிக்கையிடப்பட்ட நிலையைக் காட்டுங்கள்; சோதனைகளை இயக்கவோ சுயாதீனமாகச் சரிபார்க்கப்பட்டதாகக் கூறவோ உரிமை வழங்கவோ வேண்டாம்.',
+  recruitment:'நான் ஆட்சேர்ப்பை நிர்வகிக்கும் நிறுவனங்களின் ஆட்சேர்ப்பு நிலை எண்ணிக்கைகளைக் காட்டுங்கள்; எந்த விண்ணப்பதாரர் விவரங்களையும் காட்ட வேண்டாம்.',
  },
  th:{
   employees:'แสดงข้อมูลการจ้างงานและรายละเอียดตำแหน่งปัจจุบันของฉัน',
@@ -114,6 +118,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   system_explorer:'ใช้เฉพาะสิทธิ์ผู้ดูแลที่ฉันมีอยู่แล้ว แสดงรายการโครงสร้างฐานข้อมูลที่ฉันมีสิทธิ์ตรวจดูอยู่แล้ว ห้ามให้สิทธิ์เพิ่มหรือเปลี่ยนแปลงข้อมูล',
   assistant:'ตอนนี้ฉันใช้ความสามารถใดของผู้ช่วยได้บ้าง?',
   system_testing:'แสดงสถานะที่รายงานของการทดสอบที่มอบหมายให้ฉันในปัจจุบัน ห้ามรันการทดสอบ อ้างว่าได้รับการตรวจสอบอย่างอิสระ หรือให้สิทธิ์เพิ่ม',
+  recruitment:'แสดงจำนวนในขั้นตอนการสรรหาของบริษัทที่ฉันดูแลการสรรหา โดยไม่แสดงรายละเอียดผู้สมัครใด ๆ',
  },
  vi:{
   employees:'Cho tôi xem hồ sơ công việc và chi tiết chức danh hiện tại của mình.',
@@ -136,6 +141,7 @@ const moduleQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,string>>
   system_explorer:'Chỉ dùng quyền quản trị hiện có của tôi để liệt kê danh mục cấu trúc dữ liệu mà tôi vốn được phép xem; không cấp thêm quyền hay thay đổi nội dung.',
   assistant:'Hiện tại tôi có thể sử dụng những chức năng nào của Trợ lý?',
   system_testing:'Cho tôi xem trạng thái được báo cáo của các ca kiểm thử hiện được giao cho mình; không chạy kiểm thử, khẳng định đã xác minh độc lập hay cấp thêm quyền.',
+  recruitment:'Cho tôi xem số liệu quy trình tuyển dụng của các công ty mà tôi quản lý tuyển dụng; không hiển thị bất kỳ thông tin ứng viên nào.',
  },
 };
 const securityQuestions:Record<PromptHoldoutLocale,Record<PromptSecurityKey,string>>={

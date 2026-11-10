@@ -115,3 +115,18 @@ export function canAdminOnehr(s: SessionContext, companyId?: string | null): boo
 export function isOnehrOnlyPerformanceAdmin(s: SessionContext): boolean {
   return hasGrantFor(s, 'performance_partner') && !isAdmin(s) && !canManagePerfComp(s);
 }
+
+/**
+ * ADR-0049 §2 — who administers Recruitment: the admin roles and the company-scoped Recruiting Partner. The TS
+ * mirror of app.can_admin_recruitment_for (4401), a UX gate only: the recruitment service re-asks the database
+ * per company, and row security on every recruitment table is the backstop. Hiring managers and interviewers
+ * are per-job team memberships, not grants, and are deliberately absent. Resolved against `s.grants`.
+ */
+const RECRUITMENT_ROLES = new Set([...ADMIN_ROLES, 'recruiting_partner']);
+
+/** Can administer Recruitment for `companyId` (no companyId = any grant of the set). */
+export function canAdminRecruitment(s: SessionContext, companyId?: string | null): boolean {
+  return !!s.grants?.some(
+    (g) => RECRUITMENT_ROLES.has(g.role) && (companyId == null || g.companyId == null || g.companyId === companyId),
+  );
+}

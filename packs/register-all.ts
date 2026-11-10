@@ -34,3 +34,4 @@ import '@/packs/payroll';
 import '@/packs/lifecycle';
 
 import '@/packs/rewards';
+import '@/packs/recruitment';

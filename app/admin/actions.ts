@@ -1502,7 +1502,8 @@ export async function assignRoleAction(formData: FormData) {
         | 'super_admin'
         | 'payroll_partner'
         | 'performance_comp_partner'
-        | 'performance_partner',
+        | 'performance_partner'
+        | 'recruiting_partner',
       companyId: (formData.get('companyId') as string) || undefined,
     });
   } catch (e) {

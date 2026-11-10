@@ -22,6 +22,7 @@ export const SPECIALIST_FOLLOWUP_CASES=Object.freeze([
  {module:'notifications' as const,inputId:'notifications:unread',state:'review' as const,code:'read_notifications' as const,route:null},
  {module:'system_explorer' as const,inputId:'system_explorer:visible-only',state:'recorded' as const,code:'schema_boundary' as const,route:null},
  {module:'assistant' as const,inputId:'assistant:catalogue',state:'recorded' as const,code:'select_native_workflow' as const,route:null},
+ {module:'recruitment' as const,inputId:'recruitment:pipeline-active',state:'recorded' as const,code:'read_recruitment_counts' as const,route:null},
  {module:'system_testing' as const,inputId:'system_testing:reported-failure',state:'review' as const,code:'inspect_test_problem' as const,route:'/assistant/testing'},
  {module:'claims' as const,inputId:'claims:paid',state:'recorded' as const,code:'read_claim_payment' as const,route:null},
  {module:'claims' as const,inputId:'claims:pending',state:'recorded' as const,code:'track_claim' as const,route:null},

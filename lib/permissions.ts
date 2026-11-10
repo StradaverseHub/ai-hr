@@ -56,6 +56,10 @@ export const MATRIX_ROLES: readonly Role[] = [
   // reaches; /performance and its cycle children admit it for OneHR-native cycles inside the page
   // (requireOnehrAdminAccess + notFound for a generic cycle), and no requireAdmin/scopedAdmin screen.
   'performance_partner',
+  // ADR-0049 §2 (4400/4401) — Recruiting Partner. Reaches the scopedSession screens every role reaches; the
+  // /recruitment screens admit it inside the page (canAdministerRecruitment, then app.can_admin_recruitment_for
+  // per company in the service and RLS), and no requireAdmin/scopedAdmin screen.
+  'recruiting_partner',
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */
@@ -167,6 +171,13 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },
   { screenKey: 'rewardsPolicy', href: '/admin/rewards/[unitId]', labelKey: 'rewards.configuration', guard: 'scopedSession', routes: ['/admin/rewards/[unitId]'] },
+  // ADR-0080 D10 / ADR-0049 — Recruitment. Every page calls requireModule('recruitment') + scopedSession and then admits
+  // only recruitment administrators (canAdminRecruitment: HR administrators and the company-scoped Recruiting Partner),
+  // for the companies app.can_admin_recruitment_for answers true; the service and row security refuse independently.
+  // A capability gate inside the page, not a role grant at the boundary — hence conditionalAccess.
+  {screenKey:'recruitment',href:'/recruitment',labelKey:'nav.recruitment',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
+    '/recruitment','/recruitment/positions','/recruitment/positions/new','/recruitment/positions/[id]','/recruitment/candidates','/recruitment/settings',
+  ]},
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──
   { screenKey: 'dashboard', href: '/', labelKey: 'nav.dashboard', guard: 'scopedSession', routes: ['/'] },
   {

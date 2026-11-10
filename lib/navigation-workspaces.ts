@@ -2,7 +2,7 @@
 export type NavigationWorkspace = 'ops' | 'strata';
 export type NavigationSection = 'mine' | 'team' | 'hr' | 'ai' | 'config';
 export type NavigationModule = 'people' | 'eLetter' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll' | 'probation' | 'contracts'
-  | 'performance' | 'performanceAdmin' | 'rewards' | 'workforceInsights';
+  | 'performance' | 'performanceAdmin' | 'rewards' | 'workforceInsights' | 'recruitment';
 export type NavigationPlacement = {area:'shared' | 'system'} | {area:NavigationWorkspace;module:NavigationModule;section:NavigationSection};
 export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:NavigationWorkspace;labelKey:string}[] = [
   // Issue 17 (owner: "Merge both entirely", 3 November 2026): the Control Tower module left Ops. Its pages are
@@ -17,6 +17,8 @@ export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:Navigat
   {id:'payroll',workspace:'ops',labelKey:'payroll'},
   {id:'probation',workspace:'ops',labelKey:'probationConfirmation'},
   {id:'contracts',workspace:'ops',labelKey:'contractManagement'},
+  // ADR-0080 D10 — Recruitment sits with People operations: it hands a hire to Onboarding. One entry.
+  {id:'recruitment',workspace:'ops',labelKey:'recruitment'},
   // D-P1-32 PT-X5 (APR-025 D4): Performance & Talent and Performance admin, one entry each. The former Talent and
   // Development modules held the journey's ?module= entry points, which retired into the area's tabs.
   {id:'performance',workspace:'strata',labelKey:'performanceTalent'},
@@ -85,6 +87,8 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path.startsWith('/performance'))return modulePlacement('performance','mine');
   if(path==='/rewards/rules'||path.startsWith('/admin/rewards'))return modulePlacement('rewards','config');
   if(path.startsWith('/rewards'))return modulePlacement('rewards','mine');
+  if(path==='/recruitment/settings'||path.startsWith('/recruitment/settings/'))return modulePlacement('recruitment','config');
+  if(path==='/recruitment'||path.startsWith('/recruitment/'))return modulePlacement('recruitment','hr');
   if(path==='/analytics'||path.startsWith('/reports'))return modulePlacement('workforceInsights','hr');
   return undefined;
 }

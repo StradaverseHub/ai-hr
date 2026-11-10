@@ -177,6 +177,10 @@ const ONBOARDING_REQUISITIONS_NODE:CollapsibleGroupItem={collapsible:true,labelK
 const REVIEW_WORKSPACE_PATH = '/performance/workspace';
 const PERFORMANCE_TALENT_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'main' && l.labelKey === 'performanceTalent')!;
 const PERFORMANCE_ADMIN_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage' && l.labelKey === 'performanceAdmin')!;
+// ADR-0080 D10 — the Recruitment pack's ONE row (packs/recruitment/index.ts). Gated twice, like every module row:
+// by the `recruitment` entitlement (MODULE_OF_HREF) and by canAdministerRecruitment (HR administrators and the
+// company-scoped Recruiting Partner, ADR-0049). Every /recruitment page and the service refuse on their own.
+const RECRUITMENT_ROW: ChildItem = modulePackById('recruitment')!.navLinks!.find((l) => l.group === 'manage')!;
 
 // Leave nav rows (ADR-0080 rung 6): two flat rows the leave pack contributes (packs/leave/index.ts,
 // LEAVE_NAV_LINKS — provenance comments moved with them), placed at their pre-rung-6 positions below:
@@ -239,6 +243,7 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // section tabs (lib/ai-centre/centre-nav.ts CENTRE_SECTIONS, `payroll: true`).
   ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),
   ...(modulePackById('performance')!.navLinks ?? []).map((l) => [l.href, 'performance'] as const),
+  ...(modulePackById('recruitment')!.navLinks ?? []).map((l) => [l.href, 'recruitment'] as const),
   // deec1691 — the ONE hand-written entry, and it has to be: `system_explorer` is a catalog module
   // with no pack (it owns no tables and contributes no service of its own), so there is no descriptor
   // to derive it from. The drift risk the comment above warns about is closed a different way here —
@@ -452,6 +457,7 @@ const GROUPS: Group[] = [
       MY_TEAM_ROW,
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ADMIN_ROW,
+      RECRUITMENT_ROW,
       // a324a4b3 rev3: Roster + Import come back here as FLAT rows. rev2 put them inside the Attendance
       // node, which was safe while that node sat in the ungated group; it is not safe now the node has
       // moved into admin-gated Administration, because the group gate would hide them from every
@@ -558,6 +564,7 @@ export function Sidebar({
   letterDestinations = [],
   rewardDestinations = [],
   canAdministerOnehr = false,
+  canAdministerRecruitment = false,
   performanceAdminHref,
   approvalCount = 0,
   taskCount = 0,
@@ -609,6 +616,8 @@ export function Sidebar({
    * The ONLY gate of the Performance admin entry (D-P1-32 PT-X5); it never opens the admin rail, approvals or My Team.
    */
   canAdministerOnehr?: boolean;
+  /** ADR-0049 — Recruitment administration (HR administrators and Recruiting Partners). The ONLY role gate of the Recruitment entry. */
+  canAdministerRecruitment?: boolean;
   /**
    * D-P1-32 PT-X5 — where Performance admin opens: the admin area's first tab for the latest cycle the viewer
    * administers (app/layout.tsx). Absent means the pack's own address, /performance (no cycle yet).
@@ -742,7 +751,7 @@ export function Sidebar({
   // administrator (whose requireAdmin pages those are) keeps it without the Assistant grant or module; /assistant
   // then shows its unavailable home with the centre's tabs, and every page still checks for itself.
   const canSeeChild = (c: ChildItem) => (c.href === '/assistant' && canAdministerAi) ||
-    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (c.href !== '/cases' || privateCaseHandler) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
+    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (c.href !== '/cases' || privateCaseHandler) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === RECRUITMENT_ROW.href ? canAdministerRecruitment : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS

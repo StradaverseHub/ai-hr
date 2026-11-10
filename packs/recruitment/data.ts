@@ -1,0 +1,852 @@
+/**
+ * Recruitment service implementation (slice 1). Reached from outside the pack ONLY through ./service.
+ *
+ * Every entry point:
+ *   1. runs inside `withRecruitmentTenant` — the module gate refuses a tenant that has not bought Recruitment
+ *      before any SQL runs (ADR-0077 D3);
+ *   2. asks the database whether the caller administers recruitment for the company it touches
+ *      (app.can_admin_recruitment_for: HR administrators and the company-scoped Recruiting Partner);
+ *   3. applies the pure rules in ./model, and the 4401 guards refuse the same illegal states again.
+ * Hiring managers and interviewers are per-job team memberships; in slice 1 they confer no access.
+ * Nothing here calls a model: every number on these screens is a count query. The AI Centre reads only
+ * recruitmentPipelineCounts (per-company counts, never a candidate).
+ */
+import { and, asc, eq, sql } from 'drizzle-orm';
+import type { SessionContext, Tx } from '../../db/client';
+import { actorOf, appendEvent } from '../../db/events';
+import { withRecruitmentTenant } from '../../core/module-gate';
+import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
+import { todayInKualaLumpur } from '../../lib/hr-date';
+import {
+  DEFAULT_ARCHIVE_REASONS, DEFAULT_PROCESS, DEFAULT_STAGES, JOB_MEMBER_ROLES, JOB_STATUSES, RECRUITMENT_STAGE_TYPES,
+  RecruitmentError, appliedEvent, canChangeJobStatus, firstStage, isUuid, moveEvent, planMoveForward, planMoveTo, planReject,
+  processChangeRefused, rejectEvent,
+  validateCandidateInput, validateJobInput,
+  type ApplicationState, type CandidateInput, type JobInput, type JobMemberRole, type JobStatus, type ProcessStage,
+  type RecruitmentStageType, type ValidJob,
+} from './model';
+import {
+  recruitmentApplication, recruitmentApplicationEvent, recruitmentArchiveReason, recruitmentCandidate, recruitmentJobMember,
+  recruitmentJobOpening, recruitmentProcess, recruitmentProcessStage, recruitmentStage,
+} from './schema';
+
+const uuidArray = (ids: readonly string[]) => {
+  if (!ids.every(isUuid)) throw new RecruitmentError('invalid_input');
+  return `{${ids.join(',')}}`;
+};
+const actorId = (s: SessionContext): string => {
+  if (!s.userId) throw new RecruitmentError('forbidden');
+  return s.userId;
+};
+
+/** Refuse unless the caller administers recruitment for `companyId` (the database's own predicate). */
+async function assertCompanyTx(tx: Tx, companyId: string): Promise<void> {
+  if (!isUuid(companyId)) throw new RecruitmentError('forbidden');
+  const [row] = await tx.execute<{ ok: boolean }>(sql`select app.can_admin_recruitment_for(${companyId}::uuid) as ok`);
+  if (row?.ok !== true) throw new RecruitmentError('forbidden');
+}
+
+export type RecruitmentCompany = { id: string; name: string };
+
+/** The companies in `scopeIds` whose recruitment the caller administers, by name. */
+export async function recruitmentCompanies(s: SessionContext, scopeIds: readonly string[]): Promise<RecruitmentCompany[]> {
+  const ids = scopeIds.filter(isUuid);
+  if (!ids.length) return [];
+  return withRecruitmentTenant(s, async (tx) => {
+    const rows = await tx.execute<{ id: string; name: string }>(sql`
+      select c.id, c.legal_name as name from company c
+      where c.tenant_id = ${s.tenantId}::uuid and c.id = any(${uuidArray(ids)}::uuid[]) and c.archived_at is null
+        and app.can_admin_recruitment_for(c.id)
+      order by c.legal_name, c.id`);
+    return rows.map((r) => ({ id: r.id, name: r.name }));
+  });
+}
+
+/**
+ * Give a company its editable defaults, once: the stage catalogue, the "Recruitment process" with its nine
+ * ordered stages, and the seven default archive reasons. Idempotent and concurrency-safe — every insert is
+ * keyed by a per-company seed key and skips on conflict, so a renamed or disabled default is never restored.
+ */
+export async function ensureRecruitmentDefaultsTx(tx: Tx, s: SessionContext, companyId: string): Promise<void> {
+  await assertCompanyTx(tx, companyId);
+  const user = actorId(s);
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`recruitment-seed:${s.tenantId}:${companyId}`}, 0))`);
+  for (const stage of DEFAULT_STAGES) {
+    await tx.insert(recruitmentStage).values({
+      tenantId: s.tenantId, companyId, name: stage.name, stageType: stage.type, systemKey: stage.systemKey ?? null,
+      seedKey: stage.seedKey, createdByUserId: user, updatedByUserId: user,
+    }).onConflictDoNothing();
+  }
+  const [existingProcess] = await tx.select({ id: recruitmentProcess.id }).from(recruitmentProcess)
+    .where(and(eq(recruitmentProcess.tenantId, s.tenantId), eq(recruitmentProcess.companyId, companyId), eq(recruitmentProcess.seedKey, DEFAULT_PROCESS.seedKey)));
+  if (!existingProcess) {
+    const [process] = await tx.insert(recruitmentProcess).values({
+      tenantId: s.tenantId, companyId, name: DEFAULT_PROCESS.name, seedKey: DEFAULT_PROCESS.seedKey, createdByUserId: user, updatedByUserId: user,
+    }).onConflictDoNothing().returning({ id: recruitmentProcess.id });
+    if (process) {
+      const stages = await tx.select({ id: recruitmentStage.id, seedKey: recruitmentStage.seedKey }).from(recruitmentStage)
+        .where(and(eq(recruitmentStage.tenantId, s.tenantId), eq(recruitmentStage.companyId, companyId)));
+      const bySeed = new Map(stages.map((r) => [r.seedKey, r.id]));
+      let position = 0;
+      for (const stage of DEFAULT_STAGES) {
+        const stageId = bySeed.get(stage.seedKey);
+        if (!stageId) continue;
+        position += 1;
+        await tx.insert(recruitmentProcessStage).values({ tenantId: s.tenantId, companyId, processId: process.id, stageId, position });
+      }
+    }
+  }
+  let position = 0;
+  for (const reason of DEFAULT_ARCHIVE_REASONS) {
+    position += 10;
+    await tx.insert(recruitmentArchiveReason).values({
+      tenantId: s.tenantId, companyId, internalReason: reason.internal, externalReason: reason.external, kind: 'default',
+      position, seedKey: reason.seedKey, createdByUserId: user, updatedByUserId: user,
+    }).onConflictDoNothing();
+  }
+}
+
+/** Seed every listed company the caller administers (the pages call this when Recruitment opens). */
+export async function ensureRecruitmentDefaults(s: SessionContext, companyIds: readonly string[]): Promise<void> {
+  if (!companyIds.length) return;
+  await withRecruitmentTenant(s, async (tx) => {
+    for (const companyId of companyIds) await ensureRecruitmentDefaultsTx(tx, s, companyId);
+  });
+}
+
+// ── Reads shared by several screens ─────────────────────────────────────────────────────────────────────
+
+export type UserLabel = { id: string; name: string; active: boolean; employed: boolean };
+async function userLabelsTx(tx: Tx, companyId: string): Promise<Map<string, UserLabel>> {
+  const rows = await tx.execute<{ app_user_id: string; full_name: string; active: boolean; employed: boolean }>(
+    sql`select * from app.recruitment_user_labels(${companyId}::uuid)`);
+  return new Map(rows.map((r) => [r.app_user_id, { id: r.app_user_id, name: r.full_name, active: r.active, employed: r.employed }]));
+}
+
+async function processStagesTx(tx: Tx, processId: string): Promise<(ProcessStage & { name: string; type: RecruitmentStageType; systemKey: string | null })[]> {
+  const rows = await tx.select({
+    stageId: recruitmentProcessStage.stageId, position: recruitmentProcessStage.position, enabled: recruitmentStage.enabled,
+    name: recruitmentStage.name, type: recruitmentStage.stageType, systemKey: recruitmentStage.systemKey,
+  }).from(recruitmentProcessStage)
+    .innerJoin(recruitmentStage, eq(recruitmentStage.id, recruitmentProcessStage.stageId))
+    .where(eq(recruitmentProcessStage.processId, processId))
+    .orderBy(asc(recruitmentProcessStage.position));
+  return rows.map((r) => ({ ...r, systemKey: r.systemKey ?? null }));
+}
+
+// ── Overview ──────────────────────────────────────────────────────────────────────────────────────────
+
+export type RecruitmentOverview = {
+  applicationsToday: number; toScreen: number; interview: number; offer: number; onboarding: number;
+  openJobs: number; activeApplications: number;
+};
+
+/**
+ * Overview tiles, each one count query over the applications the caller administers:
+ *   applications today — applied on today's Kuala Lumpur calendar day (lib/hr-date owns "today");
+ *   to screen — active, in Application Review or a Screening-type stage;
+ *   interview / offer — active, in an Interview- / Offer-type stage;
+ *   onboarding — active, in the Onboarding system stage.
+ */
+export async function recruitmentOverview(s: SessionContext, companyIds: readonly string[]): Promise<RecruitmentOverview> {
+  const empty = { applicationsToday: 0, toScreen: 0, interview: 0, offer: 0, onboarding: 0, openJobs: 0, activeApplications: 0 };
+  if (!companyIds.length) return empty;
+  const today = todayInKualaLumpur();
+  return withRecruitmentTenant(s, async (tx) => {
+    for (const id of companyIds) await assertCompanyTx(tx, id);
+    const ids = uuidArray(companyIds);
+    const [row] = await tx.execute<Record<keyof RecruitmentOverview, number>>(sql`
+      select
+        count(*) filter (where (a.applied_at at time zone 'Asia/Kuala_Lumpur')::date = ${today}::date)::int as "applicationsToday",
+        count(*) filter (where a.state = 'active' and (st.system_key = 'application_review' or st.stage_type = 'screening'))::int as "toScreen",
+        count(*) filter (where a.state = 'active' and st.stage_type = 'interview')::int as "interview",
+        count(*) filter (where a.state = 'active' and st.stage_type = 'offer')::int as "offer",
+        count(*) filter (where a.state = 'active' and st.system_key = 'onboarding')::int as "onboarding",
+        (select count(*)::int from recruitment_job_opening j where j.tenant_id = ${s.tenantId}::uuid and j.company_id = any(${ids}::uuid[]) and j.status = 'open') as "openJobs",
+        count(*) filter (where a.state = 'active')::int as "activeApplications"
+      from recruitment_application a
+      join recruitment_stage st on st.id = a.current_stage_id
+      where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[])`);
+    return row ? { ...empty, ...row } : empty;
+  });
+}
+
+// ── AI Centre read (counts only) ──────────────────────────────────────────────────────────────────────
+
+export type RecruitmentPipelineCountRow = {
+  company: string; openJobs: number; onHoldJobs: number; activeApplications: number; toScreen: number;
+  interview: number; offer: number; onboarding: number; hired: number; archived: number;
+};
+const PIPELINE_COUNT_LIMIT = 25;
+
+/**
+ * The AI Centre's ONLY recruitment read (owner decision 2026-11-10: counts, no candidates). One row per company
+ * the caller administers recruitment for, holding the company's name and whole-number counts. It never selects
+ * a candidate, application, job title, job number, person, user, reason or note — so nothing a model sees can
+ * identify an applicant. The same database predicate as every other entry point (app.can_admin_recruitment_for)
+ * picks the companies, and row security on the counted tables applies again.
+ *
+ * With `existingTx` it joins the Assistant's admitted transaction (withCanonicalAiReadTx re-proves the AI principal
+ * and the Recruitment entitlement); without one it opens its own module-gated transaction.
+ */
+export async function recruitmentPipelineCounts(
+  s: SessionContext, existingTx?: Tx,
+): Promise<{ rows: RecruitmentPipelineCountRow[]; truncated: boolean }> {
+  return withCanonicalAiReadTx(s, existingTx, 'recruitment', withRecruitmentTenant, async (tx) => {
+    const rows = await tx.execute<RecruitmentPipelineCountRow>(sql`
+      select c.legal_name as company,
+        (select count(*)::int from recruitment_job_opening j where j.tenant_id = c.tenant_id and j.company_id = c.id and j.status = 'open') as "openJobs",
+        (select count(*)::int from recruitment_job_opening j where j.tenant_id = c.tenant_id and j.company_id = c.id and j.status = 'on_hold') as "onHoldJobs",
+        count(a.id) filter (where a.state = 'active')::int as "activeApplications",
+        count(a.id) filter (where a.state = 'active' and (st.system_key = 'application_review' or st.stage_type = 'screening'))::int as "toScreen",
+        count(a.id) filter (where a.state = 'active' and st.stage_type = 'interview')::int as "interview",
+        count(a.id) filter (where a.state = 'active' and st.stage_type = 'offer')::int as "offer",
+        count(a.id) filter (where a.state = 'active' and st.system_key = 'onboarding')::int as "onboarding",
+        count(a.id) filter (where a.state = 'hired')::int as "hired",
+        count(a.id) filter (where a.state = 'archived')::int as "archived"
+      from company c
+      left join recruitment_application a on a.tenant_id = c.tenant_id and a.company_id = c.id
+      left join recruitment_stage st on st.id = a.current_stage_id
+      where c.tenant_id = ${s.tenantId}::uuid and c.archived_at is null and app.can_admin_recruitment_for(c.id)
+      group by c.id, c.tenant_id, c.legal_name
+      order by c.legal_name, c.id
+      limit ${PIPELINE_COUNT_LIMIT + 1}`);
+    return {
+      rows: rows.slice(0, PIPELINE_COUNT_LIMIT).map((r) => ({
+        company: r.company, openJobs: r.openJobs, onHoldJobs: r.onHoldJobs, activeApplications: r.activeApplications,
+        toScreen: r.toScreen, interview: r.interview, offer: r.offer, onboarding: r.onboarding, hired: r.hired, archived: r.archived,
+      })),
+      truncated: rows.length > PIPELINE_COUNT_LIMIT,
+    };
+  });
+}
+
+// ── Positions (job openings) ─────────────────────────────────────────────────────────────────────────
+
+export type JobListFilters = { tab?: 'opening' | 'closed'; title?: string; jobNumber?: string; departmentId?: string; recruiterUserId?: string };
+export type JobListRow = {
+  id: string; jobNumber: string; title: string; status: JobStatus; companyId: string; companyName: string;
+  departmentName: string | null; workLocation: string; recruiterUserId: string | null; recruiterName: string | null;
+  candidates: number; hired: number; onboarding: number;
+};
+export type JobList = {
+  rows: JobListRow[]; counts: { opening: number; closed: number };
+  /** Filter choices: the departments and recruiters that appear on any job in view. */
+  departments: { id: string; name: string }[]; recruiters: { id: string; name: string }[];
+};
+
+export async function listJobs(s: SessionContext, companyIds: readonly string[], filters: JobListFilters = {}): Promise<JobList> {
+  if (!companyIds.length) return { rows: [], counts: { opening: 0, closed: 0 }, departments: [], recruiters: [] };
+  return withRecruitmentTenant(s, async (tx) => {
+    for (const id of companyIds) await assertCompanyTx(tx, id);
+    const ids = uuidArray(companyIds);
+    const title = filters.title?.trim() ? `%${filters.title.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+    const number = filters.jobNumber?.trim() ? filters.jobNumber.trim().toUpperCase() : null;
+    const department = filters.departmentId && isUuid(filters.departmentId) ? filters.departmentId : null;
+    const recruiter = filters.recruiterUserId && isUuid(filters.recruiterUserId) ? filters.recruiterUserId : null;
+    const where = sql`j.tenant_id = ${s.tenantId}::uuid and j.company_id = any(${ids}::uuid[])
+      and (${title}::text is null or j.title ilike ${title}::text)
+      and (${number}::text is null or j.job_number = ${number}::text)
+      and (${department}::uuid is null or j.department_id = ${department}::uuid)
+      and (${recruiter}::uuid is null or exists (select 1 from recruitment_job_member m where m.job_id = j.id and m.member_role = 'recruiter' and m.app_user_id = ${recruiter}::uuid))`;
+    const [counts] = await tx.execute<{ opening: number; closed: number }>(sql`
+      select count(*) filter (where j.status <> 'closed')::int as opening, count(*) filter (where j.status = 'closed')::int as closed
+      from recruitment_job_opening j where ${where}`);
+    const tab = filters.tab === 'closed' ? 'closed' : 'opening';
+    const rows = await tx.execute<{
+      id: string; job_number: string; title: string; status: JobStatus; company_id: string; company_name: string; department_name: string | null;
+      work_location: string; recruiter_user_id: string | null; candidates: number; hired: number; onboarding: number;
+    }>(sql`
+      select j.id, j.job_number, j.title, j.status, j.company_id, c.legal_name as company_name, d.name as department_name, j.work_location,
+        (select m.app_user_id from recruitment_job_member m where m.job_id = j.id and m.member_role = 'recruiter') as recruiter_user_id,
+        (select count(*)::int from recruitment_application a where a.job_id = j.id) as candidates,
+        (select count(*)::int from recruitment_application a where a.job_id = j.id and a.state = 'hired') as hired,
+        (select count(*)::int from recruitment_application a join recruitment_stage st on st.id = a.current_stage_id
+          where a.job_id = j.id and a.state = 'active' and st.system_key = 'onboarding') as onboarding
+      from recruitment_job_opening j
+      join company c on c.id = j.company_id
+      left join department d on d.id = j.department_id
+      where ${where} and ${tab === 'closed' ? sql`j.status = 'closed'` : sql`j.status <> 'closed'`}
+      order by j.created_at desc, j.job_number desc`);
+    const labels = new Map<string, UserLabel>();
+    for (const id of companyIds) for (const [k, v] of await userLabelsTx(tx, id)) labels.set(k, v);
+    const departments = await tx.execute<{ id: string; name: string }>(sql`
+      select distinct d.id, d.name from recruitment_job_opening j join department d on d.id = j.department_id
+      where j.tenant_id = ${s.tenantId}::uuid and j.company_id = any(${ids}::uuid[]) order by d.name`);
+    const recruiterIds = await tx.execute<{ id: string }>(sql`
+      select distinct m.app_user_id as id from recruitment_job_member m
+      where m.tenant_id = ${s.tenantId}::uuid and m.company_id = any(${ids}::uuid[]) and m.member_role = 'recruiter'`);
+    return {
+      departments: [...departments],
+      recruiters: recruiterIds.map((r) => ({ id: r.id, name: labels.get(r.id)?.name ?? '' })).sort((a, b) => a.name.localeCompare(b.name)),
+      counts: counts ?? { opening: 0, closed: 0 },
+      rows: rows.map((r) => ({
+        id: r.id, jobNumber: r.job_number, title: r.title, status: r.status, companyId: r.company_id, companyName: r.company_name,
+        departmentName: r.department_name, workLocation: r.work_location, recruiterUserId: r.recruiter_user_id,
+        recruiterName: r.recruiter_user_id ? labels.get(r.recruiter_user_id)?.name ?? null : null,
+        candidates: r.candidates, hired: r.hired, onboarding: r.onboarding,
+      })),
+    };
+  });
+}
+
+export type JobFormOptions = {
+  companyId: string;
+  processes: { id: string; name: string; enabled: boolean }[];
+  grades: { id: string; name: string }[];
+  departments: { id: string; name: string }[];
+  businessUnits: { id: string; name: string }[];
+  users: UserLabel[];
+};
+
+/** Everything a job form for `companyId` offers. Seeds the company's defaults first. */
+export async function jobFormOptions(s: SessionContext, companyId: string): Promise<JobFormOptions> {
+  return withRecruitmentTenant(s, async (tx) => {
+    await ensureRecruitmentDefaultsTx(tx, s, companyId);
+    return jobFormOptionsTx(tx, s, companyId);
+  });
+}
+async function jobFormOptionsTx(tx: Tx, s: SessionContext, companyId: string): Promise<JobFormOptions> {
+  const processes = await tx.select({ id: recruitmentProcess.id, name: recruitmentProcess.name, enabled: recruitmentProcess.enabled })
+    .from(recruitmentProcess).where(and(eq(recruitmentProcess.tenantId, s.tenantId), eq(recruitmentProcess.companyId, companyId)))
+    .orderBy(asc(recruitmentProcess.name));
+  const grades = await tx.execute<{ id: string; name: string }>(sql`
+    select g.id, g.name from job_grade g where g.tenant_id = ${s.tenantId}::uuid and g.archived_at is null
+      and (g.scope_company_ids is null or cardinality(g.scope_company_ids) = 0 or ${companyId}::uuid = any(g.scope_company_ids))
+    order by g.rank, g.name`);
+  const departments = await tx.execute<{ id: string; name: string }>(sql`
+    select d.id, d.name from department d where d.tenant_id = ${s.tenantId}::uuid and d.archived_at is null
+      and (d.company_id = ${companyId}::uuid or d.is_global) order by d.name`);
+  const businessUnits = await tx.execute<{ id: string; name: string }>(sql`
+    select b.id, b.name from business_unit b where b.tenant_id = ${s.tenantId}::uuid and b.archived_at is null
+      and (b.company_id = ${companyId}::uuid or b.is_global) order by b.name`);
+  const users = [...(await userLabelsTx(tx, companyId)).values()].filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name));
+  return { companyId, processes, grades: [...grades], departments: [...departments], businessUnits: [...businessUnits], users };
+}
+
+/** Grades must be live grades of this tenant offered to the company. */
+async function assertGradesTx(tx: Tx, s: SessionContext, companyId: string, gradeIds: readonly string[]): Promise<void> {
+  const [row] = await tx.execute<{ n: number }>(sql`
+    select count(*)::int as n from job_grade g where g.tenant_id = ${s.tenantId}::uuid and g.archived_at is null
+      and g.id = any(${uuidArray(gradeIds)}::uuid[])
+      and (g.scope_company_ids is null or cardinality(g.scope_company_ids) = 0 or ${companyId}::uuid = any(g.scope_company_ids))`);
+  if ((row?.n ?? 0) !== gradeIds.length) throw new RecruitmentError('invalid_input', ['jobLevel']);
+}
+
+async function defaultProcessTx(tx: Tx, s: SessionContext, companyId: string): Promise<string> {
+  const [row] = await tx.select({ id: recruitmentProcess.id }).from(recruitmentProcess)
+    .where(and(eq(recruitmentProcess.tenantId, s.tenantId), eq(recruitmentProcess.companyId, companyId), eq(recruitmentProcess.enabled, true)))
+    .orderBy(sql`(${recruitmentProcess.seedKey} is null)`, asc(recruitmentProcess.createdAt));
+  if (!row) throw new RecruitmentError('process_unavailable');
+  return row.id;
+}
+
+async function assertProcessUsableTx(tx: Tx, s: SessionContext, companyId: string, processId: string): Promise<void> {
+  const [row] = await tx.select({ enabled: recruitmentProcess.enabled }).from(recruitmentProcess)
+    .where(and(eq(recruitmentProcess.id, processId), eq(recruitmentProcess.tenantId, s.tenantId), eq(recruitmentProcess.companyId, companyId)));
+  if (!row?.enabled) throw new RecruitmentError('process_unavailable');
+  if (!firstStage(await processStagesTx(tx, processId))) throw new RecruitmentError('process_unavailable');
+}
+
+function validJob(input: JobInput): ValidJob {
+  const result = validateJobInput(input);
+  if (!result.ok) throw new RecruitmentError(result.code, result.fields);
+  return result.value;
+}
+
+/** Create a job opening. Required fields are refused here whatever the form sent; the number is allocated in SQL. */
+export async function createJob(s: SessionContext, input: JobInput & { recruiterUserId?: unknown }): Promise<{ id: string; jobNumber: string }> {
+  const job = validJob(input);
+  const user = actorId(s);
+  return withRecruitmentTenant(s, async (tx) => {
+    await ensureRecruitmentDefaultsTx(tx, s, job.companyId);
+    await assertGradesTx(tx, s, job.companyId, job.jobGradeIds);
+    const processId = job.processId ?? await defaultProcessTx(tx, s, job.companyId);
+    await assertProcessUsableTx(tx, s, job.companyId, processId);
+    const [row] = await tx.insert(recruitmentJobOpening).values({
+      tenantId: s.tenantId, companyId: job.companyId, jobNumber: 'MJ000000', title: job.title, description: job.description,
+      jobGradeIds: job.jobGradeIds, workLocation: job.workLocation, recruitmentType: job.recruitmentType, employmentType: job.employmentType,
+      replacedEmploymentId: job.replacedEmploymentId, businessUnitId: job.businessUnitId, departmentId: job.departmentId,
+      positionAttribute: job.positionAttribute, processId, autoArchiveAfterReject: job.autoArchiveAfterReject,
+      createdByUserId: user, updatedByUserId: user,
+    }).returning({ id: recruitmentJobOpening.id, jobNumber: recruitmentJobOpening.jobNumber });
+    if (isUuid(input.recruiterUserId)) await addMemberTx(tx, s, row.id, job.companyId, 'recruiter', input.recruiterUserId);
+    await appendEvent(tx, {
+      tenantId: s.tenantId, aggregateType: 'recruitment-job', aggregateId: row.id, eventType: 'recruitment-job.created', actor: actorOf(s),
+      payload: { companyId: job.companyId, jobNumber: row.jobNumber, processId },
+    });
+    return row;
+  });
+}
+
+async function jobTx(tx: Tx, s: SessionContext, jobId: string) {
+  if (!isUuid(jobId)) throw new RecruitmentError('not_found');
+  const [job] = await tx.select().from(recruitmentJobOpening)
+    .where(and(eq(recruitmentJobOpening.id, jobId), eq(recruitmentJobOpening.tenantId, s.tenantId)));
+  if (!job) throw new RecruitmentError('not_found');
+  await assertCompanyTx(tx, job.companyId);
+  return job;
+}
+async function jobHasApplicationsTx(tx: Tx, jobId: string): Promise<boolean> {
+  const [row] = await tx.execute<{ any: boolean }>(sql`select exists (select 1 from recruitment_application a where a.job_id = ${jobId}::uuid) as any`);
+  return row?.any === true;
+}
+
+export type JobDetail = {
+  job: typeof recruitmentJobOpening.$inferSelect;
+  companyName: string;
+  hasApplications: boolean;
+  members: { id: string; role: JobMemberRole; userId: string; name: string | null }[];
+  stages: { stageId: string; name: string; enabled: boolean; position: number; active: number }[];
+  hired: number; archived: number;
+  options: JobFormOptions;
+};
+
+export async function getJob(s: SessionContext, jobId: string): Promise<JobDetail> {
+  return withRecruitmentTenant(s, async (tx) => {
+    const job = await jobTx(tx, s, jobId);
+    const [company] = await tx.execute<{ name: string }>(sql`select legal_name as name from company where id = ${job.companyId}::uuid`);
+    const options = await jobFormOptionsTx(tx, s, job.companyId);
+    const labels = await userLabelsTx(tx, job.companyId);
+    const members = await tx.select({ id: recruitmentJobMember.id, role: recruitmentJobMember.memberRole, userId: recruitmentJobMember.appUserId })
+      .from(recruitmentJobMember).where(eq(recruitmentJobMember.jobId, job.id)).orderBy(asc(recruitmentJobMember.createdAt));
+    const counts = await tx.execute<{ stage_id: string; state: ApplicationState; n: number }>(sql`
+      select current_stage_id as stage_id, state, count(*)::int as n from recruitment_application where job_id = ${job.id}::uuid group by 1, 2`);
+    const stages = (await processStagesTx(tx, job.processId)).map((st) => ({
+      stageId: st.stageId, name: st.name, enabled: st.enabled, position: st.position,
+      active: counts.filter((c) => c.stage_id === st.stageId && c.state === 'active').reduce((n, c) => n + c.n, 0),
+    }));
+    return {
+      job, companyName: company?.name ?? '', hasApplications: counts.length > 0, options, stages,
+      hired: counts.filter((c) => c.state === 'hired').reduce((n, c) => n + c.n, 0),
+      archived: counts.filter((c) => c.state === 'archived').reduce((n, c) => n + c.n, 0),
+      members: members.map((m) => ({ ...m, name: labels.get(m.userId)?.name ?? null })),
+    };
+  });
+}
+
+/**
+ * Edit a job's information and settings. The company and position attribute never change; the process is
+ * refused once the job has an application — and that refusal is AUDITED: it is recorded as its own domain
+ * event in a committed transaction before the error reaches the caller.
+ */
+export async function updateJob(s: SessionContext, jobId: string, input: JobInput): Promise<void> {
+  const user = actorId(s);
+  const refused = await withRecruitmentTenant(s, async (tx) => {
+    const current = await jobTx(tx, s, jobId);
+    const job = validJob({ ...input, companyId: current.companyId, positionAttribute: input.positionAttribute ?? current.positionAttribute });
+    if (job.positionAttribute !== current.positionAttribute) throw new RecruitmentError('invalid_input', ['positionAttribute']);
+    const processId = job.processId ?? current.processId;
+    if (processId !== current.processId) {
+      if (processChangeRefused(current.processId, processId, await jobHasApplicationsTx(tx, current.id))) {
+        await appendEvent(tx, {
+          tenantId: s.tenantId, aggregateType: 'recruitment-job', aggregateId: current.id, eventType: 'recruitment-job.process-change-refused',
+          actor: actorOf(s), payload: { companyId: current.companyId, processId: current.processId, requestedProcessId: processId, reason: 'has_applications' },
+        });
+        return true;
+      }
+      await assertProcessUsableTx(tx, s, current.companyId, processId);
+    }
+    await assertGradesTx(tx, s, current.companyId, job.jobGradeIds);
+    await tx.update(recruitmentJobOpening).set({
+      title: job.title, description: job.description, jobGradeIds: job.jobGradeIds, workLocation: job.workLocation,
+      recruitmentType: job.recruitmentType, employmentType: job.employmentType, replacedEmploymentId: job.replacedEmploymentId,
+      businessUnitId: job.businessUnitId, departmentId: job.departmentId, processId, autoArchiveAfterReject: job.autoArchiveAfterReject,
+      updatedAt: sql`now()`, updatedByUserId: user,
+    }).where(eq(recruitmentJobOpening.id, current.id));
+    await appendEvent(tx, {
+      tenantId: s.tenantId, aggregateType: 'recruitment-job', aggregateId: current.id, eventType: 'recruitment-job.updated', actor: actorOf(s),
+      payload: { companyId: current.companyId, processId, processChanged: processId !== current.processId },
+    });
+    return false;
+  });
+  if (refused) throw new RecruitmentError('process_locked');
+}
+
+/** Open ↔ On hold, Open / On hold → Closed, Closed → Open. */
+export async function changeJobStatus(s: SessionContext, jobId: string, to: unknown): Promise<void> {
+  if (typeof to !== 'string' || !(JOB_STATUSES as readonly string[]).includes(to)) throw new RecruitmentError('invalid_status_change');
+  const user = actorId(s);
+  await withRecruitmentTenant(s, async (tx) => {
+    const job = await jobTx(tx, s, jobId);
+    if (!canChangeJobStatus(job.status, to as JobStatus)) throw new RecruitmentError('invalid_status_change');
+    await tx.update(recruitmentJobOpening).set({ status: to as JobStatus, updatedAt: sql`now()`, updatedByUserId: user })
+      .where(eq(recruitmentJobOpening.id, job.id));
+    await appendEvent(tx, {
+      tenantId: s.tenantId, aggregateType: 'recruitment-job', aggregateId: job.id, eventType: 'recruitment-job.status-changed', actor: actorOf(s),
+      payload: { companyId: job.companyId, from: job.status, to },
+    });
+  });
+}
+
+async function addMemberTx(tx: Tx, s: SessionContext, jobId: string, companyId: string, role: JobMemberRole, userId: string): Promise<void> {
+  const labels = await userLabelsTx(tx, companyId);
+  if (!labels.get(userId)?.active) throw new RecruitmentError('invalid_input', ['member']);
+  if (role === 'recruiter') await tx.delete(recruitmentJobMember).where(and(eq(recruitmentJobMember.jobId, jobId), eq(recruitmentJobMember.memberRole, 'recruiter')));
+  await tx.insert(recruitmentJobMember).values({ tenantId: s.tenantId, companyId, jobId, memberRole: role, appUserId: userId, createdByUserId: actorId(s) })
+    .onConflictDoNothing();
+}
+
+/** Add a team member. A job has one recruiter: naming a new one replaces the previous recruiter. */
+export async function addJobMember(s: SessionContext, jobId: string, role: unknown, userId: unknown): Promise<void> {
+  if (typeof role !== 'string' || !(JOB_MEMBER_ROLES as readonly string[]).includes(role) || !isUuid(userId)) throw new RecruitmentError('invalid_input', ['member']);
+  await withRecruitmentTenant(s, async (tx) => {
+    const job = await jobTx(tx, s, jobId);
+    await addMemberTx(tx, s, job.id, job.companyId, role as JobMemberRole, userId);
+    await appendEvent(tx, {
+      tenantId: s.tenantId, aggregateType: 'recruitment-job', aggregateId: job.id, eventType: 'recruitment-job.member-added', actor: actorOf(s),
+      payload: { companyId: job.companyId, role, appUserId: userId },
+    });
+  });
+}
+
+export async function removeJobMember(s: SessionContext, jobId: string, memberId: unknown): Promise<void> {
+  if (!isUuid(memberId)) throw new RecruitmentError('not_found');
+  await withRecruitmentTenant(s, async (tx) => {
+    const job = await jobTx(tx, s, jobId);
+    const removed = await tx.delete(recruitmentJobMember).where(and(eq(recruitmentJobMember.id, memberId), eq(recruitmentJobMember.jobId, job.id)))
+      .returning({ role: recruitmentJobMember.memberRole, userId: recruitmentJobMember.appUserId });
+    if (!removed.length) throw new RecruitmentError('not_found');
+    await appendEvent(tx, {
+      tenantId: s.tenantId, aggregateType: 'recruitment-job', aggregateId: job.id, eventType: 'recruitment-job.member-removed', actor: actorOf(s),
+      payload: { companyId: job.companyId, role: removed[0].role, appUserId: removed[0].userId },
+    });
+  });
+}
+
+// ── Candidates and applications ─────────────────────────────────────────────────────────────────────
+
+export type StageTab = { key: string; stageId: string | null; name: string; count: number };
+export type ApplicationCard = {
+  id: string; candidateName: string; email: string | null; phone: string | null; jobId: string; jobTitle: string; jobNumber: string;
+  source: string | null; appliedAt: string; ownerName: string | null; state: ApplicationState; stageId: string; stageName: string;
+  archiveReason: string | null; companyId: string;
+};
+export type CandidateBoard = {
+  tabs: StageTab[]; cards: ApplicationCard[];
+  jobs: { id: string; title: string; jobNumber: string; status: JobStatus; companyId: string }[];
+  reasons: { id: string; internal: string; external: string; companyId: string }[];
+  nextStage: Record<string, { stageId: string; name: string } | 'hired'>;
+  moveTargets: Record<string, { stageId: string; name: string }[]>;
+};
+
+/**
+ * The pipeline board. Tabs are the stages of the processes in view (the selected job's process, or every
+ * process of the companies in view, ordered by position), each with its live count of ACTIVE applications,
+ * followed by the Hired and Archived buckets.
+ */
+export async function candidateBoard(s: SessionContext, companyIds: readonly string[], filter: { jobId?: string; tab?: string } = {}): Promise<CandidateBoard> {
+  if (!companyIds.length) return { tabs: [], cards: [], jobs: [], reasons: [], nextStage: {}, moveTargets: {} };
+  return withRecruitmentTenant(s, async (tx) => {
+    for (const id of companyIds) await assertCompanyTx(tx, id);
+    const ids = uuidArray(companyIds);
+    const jobs = await tx.execute<{ id: string; title: string; job_number: string; status: JobStatus; company_id: string; process_id: string }>(sql`
+      select j.id, j.title, j.job_number, j.status, j.company_id, j.process_id from recruitment_job_opening j
+      where j.tenant_id = ${s.tenantId}::uuid and j.company_id = any(${ids}::uuid[]) order by j.status = 'closed', j.title, j.job_number`);
+    const job = filter.jobId && isUuid(filter.jobId) ? jobs.find((j) => j.id === filter.jobId) : undefined;
+    const processIds = job ? [job.process_id] : [...new Set(jobs.map((j) => j.process_id))];
+    const stageRows = processIds.length ? await tx.execute<{ stage_id: string; name: string; position: number }>(sql`
+      select ps.stage_id, st.name, min(ps.position)::int as position from recruitment_process_stage ps
+      join recruitment_stage st on st.id = ps.stage_id
+      where ps.process_id = any(${uuidArray(processIds)}::uuid[]) group by ps.stage_id, st.name order by 3, 2`) : [];
+    const jobFilter = job ? sql`and a.job_id = ${job.id}::uuid` : sql``;
+    const counts = await tx.execute<{ stage_id: string; state: ApplicationState; n: number }>(sql`
+      select a.current_stage_id as stage_id, a.state, count(*)::int as n from recruitment_application a
+      where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[]) ${jobFilter} group by 1, 2`);
+    const activeIn = (stageId: string) => counts.filter((c) => c.state === 'active' && c.stage_id === stageId).reduce((n, c) => n + c.n, 0);
+    const inState = (state: ApplicationState) => counts.filter((c) => c.state === state).reduce((n, c) => n + c.n, 0);
+    const tabs: StageTab[] = [
+      ...stageRows.map((r) => ({ key: r.stage_id, stageId: r.stage_id, name: r.name, count: activeIn(r.stage_id) })),
+      { key: 'hired', stageId: null, name: 'hired', count: inState('hired') },
+      { key: 'archived', stageId: null, name: 'archived', count: inState('archived') },
+    ];
+    const selected = tabs.find((t) => t.key === filter.tab) ?? tabs[0];
+    const tabFilter = !selected ? sql`and false`
+      : selected.key === 'hired' ? sql`and a.state = 'hired'`
+        : selected.key === 'archived' ? sql`and a.state = 'archived'`
+          : sql`and a.state = 'active' and a.current_stage_id = ${selected.stageId}::uuid`;
+    const rows = await tx.execute<{
+      id: string; full_name: string; email: string | null; phone: string | null; job_id: string; title: string; job_number: string; source: string | null;
+      applied_at: string; owner_user_id: string | null; state: ApplicationState; stage_id: string; stage_name: string; reason: string | null; company_id: string;
+    }>(sql`
+      select a.id, c.full_name, c.email, c.phone, a.job_id, j.title, j.job_number, a.source, to_char(a.applied_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as applied_at, c.owner_user_id,
+        a.state, a.current_stage_id as stage_id, st.name as stage_name, r.internal_reason as reason, a.company_id
+      from recruitment_application a
+      join recruitment_candidate c on c.id = a.candidate_id
+      join recruitment_job_opening j on j.id = a.job_id
+      join recruitment_stage st on st.id = a.current_stage_id
+      left join recruitment_archive_reason r on r.id = a.archive_reason_id
+      where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[]) ${jobFilter} ${tabFilter}
+      order by a.applied_at desc, a.id limit 200`);
+    const labels = new Map<string, UserLabel>();
+    for (const id of companyIds) for (const [k, v] of await userLabelsTx(tx, id)) labels.set(k, v);
+    const reasons = await tx.select({ id: recruitmentArchiveReason.id, internal: recruitmentArchiveReason.internalReason, external: recruitmentArchiveReason.externalReason, companyId: recruitmentArchiveReason.companyId })
+      .from(recruitmentArchiveReason)
+      .where(and(eq(recruitmentArchiveReason.tenantId, s.tenantId), eq(recruitmentArchiveReason.displayed, true), sql`${recruitmentArchiveReason.companyId} = any(${ids}::uuid[])`))
+      .orderBy(asc(recruitmentArchiveReason.position), asc(recruitmentArchiveReason.internalReason));
+    const nextStage: CandidateBoard['nextStage'] = {};
+    const moveTargets: CandidateBoard['moveTargets'] = {};
+    const byProcess = new Map<string, Awaited<ReturnType<typeof processStagesTx>>>();
+    for (const r of rows) {
+      if (r.state !== 'active') continue;
+      const processId = jobs.find((j) => j.id === r.job_id)?.process_id;
+      if (!processId) continue;
+      if (!byProcess.has(processId)) byProcess.set(processId, await processStagesTx(tx, processId));
+      const stages = byProcess.get(processId)!;
+      const plan = planMoveForward(stages, r.stage_id);
+      nextStage[r.id] = plan.kind === 'hired' ? 'hired' : { stageId: plan.to, name: stages.find((x) => x.stageId === plan.to)!.name };
+      moveTargets[r.id] = stages.filter((x) => x.enabled && x.stageId !== r.stage_id).map((x) => ({ stageId: x.stageId, name: x.name }));
+    }
+    return {
+      tabs, nextStage, moveTargets, reasons: [...reasons],
+      jobs: jobs.map((j) => ({ id: j.id, title: j.title, jobNumber: j.job_number, status: j.status, companyId: j.company_id })),
+      cards: rows.map((r) => ({
+        id: r.id, candidateName: r.full_name, email: r.email, phone: r.phone, jobId: r.job_id, jobTitle: r.title, jobNumber: r.job_number,
+        source: r.source, appliedAt: r.applied_at, ownerName: r.owner_user_id ? labels.get(r.owner_user_id)?.name ?? null : null, state: r.state,
+        stageId: r.stage_id, stageName: r.stage_name, archiveReason: r.reason, companyId: r.company_id,
+      })),
+    };
+  });
+}
+
+async function writeEventTx(tx: Tx, s: SessionContext, e: Omit<typeof recruitmentApplicationEvent.$inferInsert, 'tenantId' | 'actorUserId'>): Promise<void> {
+  await tx.insert(recruitmentApplicationEvent).values({ ...e, tenantId: s.tenantId, actorUserId: actorId(s) });
+}
+
+/**
+ * Add an application for a NEW candidate (slice 1 creates the candidate with it; a candidate is never a
+ * person or an employee). It starts at the first enabled stage of the job's process. A closed job takes
+ * no applications (slice 1 implementation decision).
+ */
+export async function addApplication(s: SessionContext, input: { jobId?: unknown } & CandidateInput): Promise<{ applicationId: string; candidateId: string }> {
+  const candidate = validateCandidateInput(input);
+  if (!candidate.ok) throw new RecruitmentError(candidate.fields.includes('fullName') ? 'missing_fields' : 'invalid_input', candidate.fields);
+  if (!isUuid(input.jobId)) throw new RecruitmentError('missing_fields', ['job']);
+  const user = actorId(s);
+  return withRecruitmentTenant(s, async (tx) => {
+    const job = await jobTx(tx, s, input.jobId as string);
+    if (job.status === 'closed') throw new RecruitmentError('job_closed');
+    const start = firstStage(await processStagesTx(tx, job.processId));
+    if (!start) throw new RecruitmentError('process_unavailable');
+    const [created] = await tx.insert(recruitmentCandidate).values({
+      tenantId: s.tenantId, companyId: job.companyId, fullName: candidate.value.fullName, email: candidate.value.email, phone: candidate.value.phone,
+      ownerUserId: user, createdByUserId: user, updatedByUserId: user,
+    }).returning({ id: recruitmentCandidate.id });
+    const [application] = await tx.insert(recruitmentApplication).values({
+      tenantId: s.tenantId, companyId: job.companyId, jobId: job.id, candidateId: created.id, currentStageId: start,
+      source: candidate.value.source, createdByUserId: user, updatedByUserId: user,
+    }).returning({ id: recruitmentApplication.id });
+    await writeEventTx(tx, s, { companyId: job.companyId, applicationId: application.id, ...appliedEvent(start) });
+    return { applicationId: application.id, candidateId: created.id };
+  });
+}
+
+async function applicationTx(tx: Tx, s: SessionContext, applicationId: unknown) {
+  if (!isUuid(applicationId)) throw new RecruitmentError('not_found');
+  const [row] = await tx.select({ app: recruitmentApplication, processId: recruitmentJobOpening.processId })
+    .from(recruitmentApplication)
+    .innerJoin(recruitmentJobOpening, eq(recruitmentJobOpening.id, recruitmentApplication.jobId))
+    .where(and(eq(recruitmentApplication.id, applicationId), eq(recruitmentApplication.tenantId, s.tenantId)))
+    .for('update', { of: recruitmentApplication });
+  if (!row) throw new RecruitmentError('not_found');
+  await assertCompanyTx(tx, row.app.companyId);
+  if (row.app.state !== 'active') throw new RecruitmentError('application_closed');
+  return row;
+}
+
+/**
+ * Move forward (no target): the next enabled stage of the job's process, or hired from the last one.
+ * Move to (target): any other enabled stage of the job's process. Every move writes one history event.
+ */
+export async function moveApplication(s: SessionContext, applicationId: unknown, targetStageId?: unknown): Promise<{ state: ApplicationState; stageId: string }> {
+  const user = actorId(s);
+  return withRecruitmentTenant(s, async (tx) => {
+    const { app, processId } = await applicationTx(tx, s, applicationId);
+    const stages = await processStagesTx(tx, processId);
+    const plan = targetStageId == null || targetStageId === ''
+      ? planMoveForward(stages, app.currentStageId)
+      : planMoveTo(stages, app.currentStageId, isUuid(targetStageId) ? targetStageId : '');
+    if (plan.kind === 'hired') {
+      await tx.update(recruitmentApplication).set({ state: 'hired', updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id));
+      await writeEventTx(tx, s, { companyId: app.companyId, applicationId: app.id, ...moveEvent(plan) });
+      return { state: 'hired', stageId: plan.from };
+    }
+    await tx.update(recruitmentApplication).set({ currentStageId: plan.to, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id));
+    await writeEventTx(tx, s, { companyId: app.companyId, applicationId: app.id, ...moveEvent(plan) });
+    return { state: 'active', stageId: plan.to };
+  });
+}
+
+/** Reject: an archive reason of the application's company is mandatory; the application keeps the stage it left. */
+export async function rejectApplication(s: SessionContext, applicationId: unknown, archiveReasonId: unknown): Promise<void> {
+  const user = actorId(s);
+  await withRecruitmentTenant(s, async (tx) => {
+    const { app } = await applicationTx(tx, s, applicationId);
+    const plan = planReject(app.currentStageId, archiveReasonId);
+    const [reason] = await tx.select({ id: recruitmentArchiveReason.id }).from(recruitmentArchiveReason)
+      .where(and(eq(recruitmentArchiveReason.id, plan.reasonId), eq(recruitmentArchiveReason.companyId, app.companyId), eq(recruitmentArchiveReason.displayed, true)));
+    if (!reason) throw new RecruitmentError('reason_required');
+    await tx.update(recruitmentApplication).set({
+      state: 'archived', archiveReasonId: reason.id, stageLeftAtArchive: plan.stageLeft, updatedAt: sql`now()`, updatedByUserId: user,
+    }).where(eq(recruitmentApplication.id, app.id));
+    await writeEventTx(tx, s, { companyId: app.companyId, applicationId: app.id, ...rejectEvent({ stageLeft: plan.stageLeft, reasonId: reason.id }) });
+  });
+}
+
+export type ApplicationHistoryRow = {
+  id: string; kind: 'applied' | 'moved' | 'rejected' | 'hired'; fromStage: string | null; toStage: string | null; reason: string | null;
+  actorName: string | null; occurredAt: string;
+};
+/** The application's history, oldest first, with who did it and when. */
+export async function applicationHistory(s: SessionContext, applicationId: unknown): Promise<ApplicationHistoryRow[]> {
+  if (!isUuid(applicationId)) throw new RecruitmentError('not_found');
+  return withRecruitmentTenant(s, async (tx) => {
+    const [app] = await tx.select({ companyId: recruitmentApplication.companyId }).from(recruitmentApplication)
+      .where(and(eq(recruitmentApplication.id, applicationId), eq(recruitmentApplication.tenantId, s.tenantId)));
+    if (!app) throw new RecruitmentError('not_found');
+    await assertCompanyTx(tx, app.companyId);
+    const labels = await userLabelsTx(tx, app.companyId);
+    const rows = await tx.execute<{ id: string; kind: ApplicationHistoryRow['kind']; from_stage: string | null; to_stage: string | null; reason: string | null; actor_user_id: string; occurred_at: string }>(sql`
+      select e.id, e.kind, f.name as from_stage, t.name as to_stage, r.internal_reason as reason, e.actor_user_id, to_char(e.occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as occurred_at
+      from recruitment_application_event e
+      left join recruitment_stage f on f.id = e.from_stage_id
+      left join recruitment_stage t on t.id = e.to_stage_id
+      left join recruitment_archive_reason r on r.id = e.archive_reason_id
+      where e.application_id = ${applicationId}::uuid order by e.occurred_at, e.id`);
+    return rows.map((r) => ({ id: r.id, kind: r.kind, fromStage: r.from_stage, toStage: r.to_stage, reason: r.reason, actorName: labels.get(r.actor_user_id)?.name ?? null, occurredAt: r.occurred_at }));
+  });
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────────────────────────────────
+
+export type RecruitmentSettings = {
+  companyId: string;
+  stages: { id: string; name: string; type: RecruitmentStageType; systemKey: string | null; enabled: boolean; updatedAt: string; updatedBy: string | null }[];
+  processes: { id: string; name: string; enabled: boolean; updatedAt: string; updatedBy: string | null; stages: { stageId: string; name: string; enabled: boolean }[]; jobs: number }[];
+  reasons: { id: string; internal: string; external: string; kind: 'default' | 'custom'; displayed: boolean; updatedAt: string; updatedBy: string | null; used: boolean }[];
+};
+
+export async function recruitmentSettings(s: SessionContext, companyId: string): Promise<RecruitmentSettings> {
+  return withRecruitmentTenant(s, async (tx) => {
+    await ensureRecruitmentDefaultsTx(tx, s, companyId);
+    const labels = await userLabelsTx(tx, companyId);
+    const who = (id: string) => labels.get(id)?.name ?? null;
+    const stages = await tx.select().from(recruitmentStage)
+      .where(and(eq(recruitmentStage.tenantId, s.tenantId), eq(recruitmentStage.companyId, companyId)));
+    const processes = await tx.select().from(recruitmentProcess)
+      .where(and(eq(recruitmentProcess.tenantId, s.tenantId), eq(recruitmentProcess.companyId, companyId))).orderBy(asc(recruitmentProcess.name));
+    const jobCounts = await tx.execute<{ process_id: string; n: number }>(sql`
+      select process_id, count(*)::int as n from recruitment_job_opening where tenant_id = ${s.tenantId}::uuid and company_id = ${companyId}::uuid group by 1`);
+    const processRows = [];
+    for (const p of processes) {
+      const ordered = await processStagesTx(tx, p.id);
+      processRows.push({
+        id: p.id, name: p.name, enabled: p.enabled, updatedAt: p.updatedAt.toISOString(), updatedBy: who(p.updatedByUserId),
+        stages: ordered.map((st) => ({ stageId: st.stageId, name: st.name, enabled: st.enabled })),
+        jobs: jobCounts.find((c) => c.process_id === p.id)?.n ?? 0,
+      });
+    }
+    const order = new Map((processRows[0]?.stages ?? []).map((st, i) => [st.stageId, i]));
+    const reasons = await tx.execute<{ id: string; internal_reason: string; external_reason: string; kind: 'default' | 'custom'; displayed: boolean; updated_at: string; updated_by_user_id: string; used: boolean }>(sql`
+      select r.id, r.internal_reason, r.external_reason, r.kind, r.displayed, to_char(r.updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at, r.updated_by_user_id,
+        exists (select 1 from recruitment_application a where a.archive_reason_id = r.id) as used
+      from recruitment_archive_reason r where r.tenant_id = ${s.tenantId}::uuid and r.company_id = ${companyId}::uuid
+      order by r.kind, r.position, r.internal_reason`);
+    return {
+      companyId,
+      stages: stages
+        .sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999) || a.name.localeCompare(b.name))
+        .map((st) => ({ id: st.id, name: st.name, type: st.stageType, systemKey: st.systemKey ?? null, enabled: st.enabled, updatedAt: st.updatedAt.toISOString(), updatedBy: who(st.updatedByUserId) })),
+      processes: processRows,
+      reasons: reasons.map((r) => ({ id: r.id, internal: r.internal_reason, external: r.external_reason, kind: r.kind, displayed: r.displayed, updatedAt: r.updated_at, updatedBy: who(r.updated_by_user_id), used: r.used })),
+    };
+  });
+}
+
+const settingsEvent = (s: SessionContext, tx: Tx, aggregateType: string, aggregateId: string, eventType: string, payload: Record<string, unknown>) =>
+  appendEvent(tx, { tenantId: s.tenantId, aggregateType, aggregateId, eventType, actor: actorOf(s), payload });
+
+/** Rename, retype or enable/disable a stage. A system stage (Application Review, Onboarding) keeps its type and stays enabled. */
+export async function updateStage(s: SessionContext, stageId: unknown, input: { name?: unknown; type?: unknown; enabled?: unknown }): Promise<void> {
+  if (!isUuid(stageId)) throw new RecruitmentError('not_found');
+  const name = typeof input.name === 'string' ? input.name.trim() : '';
+  if (!name || name.length > 120) throw new RecruitmentError('missing_fields', ['name']);
+  const type = typeof input.type === 'string' && (RECRUITMENT_STAGE_TYPES as readonly string[]).includes(input.type) ? input.type as RecruitmentStageType : null;
+  if (!type) throw new RecruitmentError('invalid_input', ['type']);
+  const enabled = input.enabled === true || input.enabled === 'on' || input.enabled === 'true';
+  const user = actorId(s);
+  await withRecruitmentTenant(s, async (tx) => {
+    const [stage] = await tx.select().from(recruitmentStage).where(and(eq(recruitmentStage.id, stageId), eq(recruitmentStage.tenantId, s.tenantId)));
+    if (!stage) throw new RecruitmentError('not_found');
+    await assertCompanyTx(tx, stage.companyId);
+    if (stage.systemKey && (!enabled || type !== 'system_default')) throw new RecruitmentError('system_stage');
+    if (!stage.systemKey && type === 'system_default') throw new RecruitmentError('system_stage');
+    await tx.update(recruitmentStage).set({ name, stageType: type, enabled, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentStage.id, stage.id));
+    await settingsEvent(s, tx, 'recruitment-stage', stage.id, 'recruitment-stage.updated', { companyId: stage.companyId, before: { name: stage.name, type: stage.stageType, enabled: stage.enabled }, after: { name, type, enabled } });
+  });
+}
+
+/** Rename or enable/disable a process. A disabled process is not offered to new jobs; jobs already using it keep it. */
+export async function updateProcess(s: SessionContext, processId: unknown, input: { name?: unknown; enabled?: unknown }): Promise<void> {
+  if (!isUuid(processId)) throw new RecruitmentError('not_found');
+  const name = typeof input.name === 'string' ? input.name.trim() : '';
+  if (!name || name.length > 120) throw new RecruitmentError('missing_fields', ['name']);
+  const enabled = input.enabled === true || input.enabled === 'on' || input.enabled === 'true';
+  const user = actorId(s);
+  await withRecruitmentTenant(s, async (tx) => {
+    const [process] = await tx.select().from(recruitmentProcess).where(and(eq(recruitmentProcess.id, processId), eq(recruitmentProcess.tenantId, s.tenantId)));
+    if (!process) throw new RecruitmentError('not_found');
+    await assertCompanyTx(tx, process.companyId);
+    await tx.update(recruitmentProcess).set({ name, enabled, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentProcess.id, process.id));
+    await settingsEvent(s, tx, 'recruitment-process', process.id, 'recruitment-process.updated', { companyId: process.companyId, before: { name: process.name, enabled: process.enabled }, after: { name, enabled } });
+  });
+}
+
+/** Create (no id) a custom archive reason, or edit any reason's text and Displayed flag. */
+export async function saveArchiveReason(s: SessionContext, input: { id?: unknown; companyId?: unknown; internal?: unknown; external?: unknown; displayed?: unknown }): Promise<void> {
+  const internal = typeof input.internal === 'string' ? input.internal.trim() : '';
+  const external = typeof input.external === 'string' ? input.external.trim() : '';
+  const missing = [...(!internal ? ['internal'] : []), ...(!external ? ['external'] : [])];
+  if (missing.length) throw new RecruitmentError('missing_fields', missing);
+  if (internal.length > 200 || external.length > 500) throw new RecruitmentError('invalid_input', ['reason']);
+  const displayed = input.displayed === true || input.displayed === 'on' || input.displayed === 'true';
+  const user = actorId(s);
+  await withRecruitmentTenant(s, async (tx) => {
+    if (input.id == null || input.id === '') {
+      if (!isUuid(input.companyId)) throw new RecruitmentError('forbidden');
+      await assertCompanyTx(tx, input.companyId);
+      const [row] = await tx.insert(recruitmentArchiveReason).values({
+        tenantId: s.tenantId, companyId: input.companyId, internalReason: internal, externalReason: external, kind: 'custom', displayed,
+        createdByUserId: user, updatedByUserId: user,
+      }).returning({ id: recruitmentArchiveReason.id });
+      await settingsEvent(s, tx, 'recruitment-archive-reason', row.id, 'recruitment-archive-reason.created', { companyId: input.companyId, internal, external, displayed });
+      return;
+    }
+    if (!isUuid(input.id)) throw new RecruitmentError('not_found');
+    const [reason] = await tx.select().from(recruitmentArchiveReason).where(and(eq(recruitmentArchiveReason.id, input.id), eq(recruitmentArchiveReason.tenantId, s.tenantId)));
+    if (!reason) throw new RecruitmentError('not_found');
+    await assertCompanyTx(tx, reason.companyId);
+    await tx.update(recruitmentArchiveReason).set({ internalReason: internal, externalReason: external, displayed, updatedAt: sql`now()`, updatedByUserId: user })
+      .where(eq(recruitmentArchiveReason.id, reason.id));
+    await settingsEvent(s, tx, 'recruitment-archive-reason', reason.id, 'recruitment-archive-reason.updated', {
+      companyId: reason.companyId, before: { internal: reason.internalReason, external: reason.externalReason, displayed: reason.displayed }, after: { internal, external, displayed },
+    });
+  });
+}
+
+/** Delete a custom reason nothing uses. A default reason can only be hidden. */
+export async function deleteArchiveReason(s: SessionContext, reasonId: unknown): Promise<void> {
+  if (!isUuid(reasonId)) throw new RecruitmentError('not_found');
+  await withRecruitmentTenant(s, async (tx) => {
+    const [reason] = await tx.select().from(recruitmentArchiveReason).where(and(eq(recruitmentArchiveReason.id, reasonId), eq(recruitmentArchiveReason.tenantId, s.tenantId)));
+    if (!reason) throw new RecruitmentError('not_found');
+    await assertCompanyTx(tx, reason.companyId);
+    if (reason.kind === 'default') throw new RecruitmentError('default_reason');
+    const [used] = await tx.execute<{ used: boolean }>(sql`select exists (
+      select 1 from recruitment_application a where a.archive_reason_id = ${reason.id}::uuid
+      union all select 1 from recruitment_application_event e where e.archive_reason_id = ${reason.id}::uuid) as used`);
+    if (used?.used) throw new RecruitmentError('reason_in_use');
+    await tx.delete(recruitmentArchiveReason).where(eq(recruitmentArchiveReason.id, reason.id));
+    await settingsEvent(s, tx, 'recruitment-archive-reason', reason.id, 'recruitment-archive-reason.deleted', { companyId: reason.companyId, internal: reason.internalReason });
+  });
+}

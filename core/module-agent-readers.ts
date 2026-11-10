@@ -27,6 +27,7 @@ import { listRewardUnits } from '../packs/rewards/service';
 import { ownClaimStatuses } from '../packs/claims/service';
 import { listSchemaTables } from './schema-explorer';
 import {ownTestingWorkStatusesTx} from './system-testing-workspace';
+import { recruitmentPipelineCounts } from '../packs/recruitment/service';
 
 const unavailable = (): never => { throw new AiGatewayError('Assistant data access could not be confirmed.'); };
 const storedAmount = (value: unknown): string | number | null => typeof value === 'number' && Number.isFinite(value) ? value :
@@ -125,6 +126,8 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
         data = { tables: bounded(result.tables.map(row => ({ table: row.table, module: row.moduleCode }))), withheldTables: result.withheldTables }; break;
       }
       case 'system_testing': data = await ownTestingWorkStatusesTx(tx,fresh,25); break;
+      // Counts only, per administered company; the owner returns no candidate or application record.
+      case 'recruitment': data = await recruitmentPipelineCounts(fresh, tx); break;
       case 'assistant': data = { capabilities: MODULE_AGENT_CAPABILITIES.filter(([code]) => isModuleEnabled(fresh, code)&&(code!=='system_explorer'||isAdmin(fresh)))
         .map(([code, binding]) => ({ module: code, capability: binding, authority: 'rechecked-at-canonical-source' })), effects: 'human-confirmation-only',
         ...(isAdmin(fresh)?{adminAgentStatus:await assistantAgentStatusTx(tx,fresh)}:{}) }; break;

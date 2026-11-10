@@ -49,7 +49,7 @@ import { viewerIdentity } from '@/lib/viewer';
 import { visibleModuleCodes } from '@/lib/nav-entitlements';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
-import { canAdminOnehr, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator } from '@/lib/authz';
+import { canAdminOnehr, canAdminRecruitment, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
@@ -316,6 +316,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // ADR-0142 — the OneHR performance partner gets the Performance admin entry only, NOT the admin rail:
               // it is deliberately absent from isAdmin above, because it can enter no admin screen.
               canAdministerOnehr={canAdminOnehr(session)}
+              // ADR-0049 — Recruitment administration: HR administrators and the company-scoped Recruiting Partner.
+              canAdministerRecruitment={canAdminRecruitment(session)}
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
               performanceAdminHref={await performanceAdminHref}

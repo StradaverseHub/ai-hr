@@ -7,7 +7,7 @@ import { AGENT_MODULE_CODES, isAgentModuleCode, moduleAgentCoverage } from '../l
 import { captureTypedModulePlan } from '../lib/ai/module-agent-routing';
 describe('canonical module binding and bounded orchestration', () => {
   it('explicitly binds every current catalogue module and refuses future implicit support', () => {
-    expect(new Set(AGENT_MODULE_CODES).size).toBe(20);
+    expect(new Set(AGENT_MODULE_CODES).size).toBe(21);
     expect(moduleAgentCoverage(MODULE_CATALOG).filter(row => row.capability === null)).toEqual([]);
     expect(moduleAgentCoverage([{ code: 'future-module' }])).toEqual([{ code: 'future-module', capability: null }]);
     expect(isAgentModuleCode('future-module')).toBe(false);
