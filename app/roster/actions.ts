@@ -39,10 +39,11 @@ export type CellResult = { ok: true } | { ok: false; error: string };
  * an error we RAISED speaks for itself and passes through; anything that smells of the driver is
  * replaced. It never swallows a refusal — the action still reports failure — only its wording.
  */
-// The check itself lives in lib/roster-bulk-job.ts (rosterReadableError), shared with the background roster worker
-// so a job's stored refusal is the same sentence this file would have shown.
+// The driver-text check itself lives in lib/roster-bulk-job.ts (rosterReadableError), shared with the background
+// roster worker so a job's stored refusal is the same sentence this file would have shown.
 function readableError(e: unknown): string {
-  return rosterReadableError(e);
+  const message = e instanceof Error ? e.message : '';
+  return rosterReadableError(message);
 }
 /** A roster bulk job refused at admission because the tenant already runs one: said in the reader's language. */
 async function admissionError(e: unknown): Promise<string> {

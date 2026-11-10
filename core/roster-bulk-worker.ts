@@ -18,6 +18,8 @@
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {publicErrorMessage} from '../lib/public-error';
+import {isDatabaseError} from '../lib/db-error';
+import {isAdmin} from '../lib/authz-model';
 import {isTransientBulkJobError,type BulkJobHandler,type BulkJobPrepared,type BulkJobRefused,type BulkJobStep,type BulkJobStepOutcome,type BulkJobUnit} from './bulk-job-worker';
 import type {BulkJobRow} from './bulk-job';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
@@ -35,7 +37,7 @@ import {
 import {assertRosterImportCellsCurrentTx,rosterImportDirectoryTx,rosterImportPlan,rosterImportWriteGroups,type RosterImportCell,type RosterImportDirectory,type RosterImportResult} from './roster-import';
 import {employment,person} from '../db/schema';
 import {eq} from 'drizzle-orm';
-import {ROSTER_BULK_KIND,SCHEDULE_GROUP_BULK_KIND,SCHEDULE_GROUP_BULK_UNEXPECTED,rosterReadableError} from '../lib/roster-bulk-job';
+import {ROSTER_BULK_KIND,ROSTER_WRITE_FAILED,SCHEDULE_GROUP_BULK_KIND,SCHEDULE_GROUP_BULK_UNEXPECTED,rosterReadableError} from '../lib/roster-bulk-job';
 import type {RosterBulkInput,RosterBulkResult,ScheduleGroupBulkInput,ScheduleGroupBulkResult} from './roster-bulk-job';
 
 /** Step work per chunk transaction before it commits. One employee-month costs about 20–40 ms. */
@@ -61,8 +63,12 @@ class ValidateRollback extends Error{constructor(){super('roster bulk validation
 const ROLLBACK=new ValidateRollback();
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 async function label(tx:Tx,kind:string,phase:string){await tx.execute(sql`select set_config('application_name',${`aihr-bulk:${kind}:${phase}`},true)`);}
-/** The roster's own wording for a refusal (never driver text), as the synchronous actions showed it. */
-const rosterMessage=(error:unknown)=>rosterReadableError(publicErrorMessage(error)).slice(0,4000);
+/** The roster's own wording for a refusal, as the synchronous actions showed it (app/roster/actions.ts
+ * readableError): a domain refusal speaks for itself, and any database failure is the roster's own sentence. */
+const rosterMessage=(error:unknown)=>{
+ if(isDatabaseError(error)){publicErrorMessage(error);return ROSTER_WRITE_FAILED;} // logged under a reference
+ return rosterReadableError(error).slice(0,4000);
+};
 
 /**
  * Runs the synchronous path's guards over `items` in short transactions that always roll back. Adaptive chunks of
@@ -353,6 +359,9 @@ export const rosterBulkJobHandler:BulkJobHandler={
 
 // ── Schedule Group bulk assignment ─────────────────────────────────────────────────────────────────────
 
+/** The Schedule Group screens are administrator-only (requireAdmin); the worker re-checks the creator's fresh role. */
+class ScheduleGroupAuthorityLost extends Error{constructor(){super(SCHEDULE_GROUP_BULK_UNEXPECTED);this.name='ScheduleGroupAuthorityLost';}}
+const assertScheduleAdmin=(ctx:SessionContext)=>{if(!isAdmin(ctx))throw new ScheduleGroupAuthorityLost();};
 /** The refusals the Schedule Group screen prints as they are (app/admin/attendance/schedule-assignment/actions.ts
  * messageFor); anything else is stored as a code the screen renders as its own "unexpected error" sentence. */
 const scheduleGroupMessage=(error:unknown)=>error instanceof ShiftNotInScheduleGroupError||error instanceof ScheduleGroupNotFoundError
@@ -377,6 +386,7 @@ export const scheduleGroupBulkJobHandler:BulkJobHandler<EmployeeStep>={
   const input=job.input as ScheduleGroupBulkInput;
   const plan:SchedulePlan={returnQuery:input.returnQuery,attendanceRuleId:input.attendanceRuleId,requested:0};
   try{
+   assertScheduleAdmin(ctx);
    const ids=sortedIds(input.employmentIds.map(v=>v.trim()).filter(Boolean));
    if(ids.length===0)throw new NoEmploymentsSelectedError();
    plan.requested=ids.length;
@@ -398,7 +408,7 @@ export const scheduleGroupBulkJobHandler:BulkJobHandler<EmployeeStep>={
    return{refused:scheduleGroupMessage(error),plan};
   }
  },
- async beginChunkTx(tx){await tx.execute(sql`select app.access_workforce_write_lock()`);},
+ async beginChunkTx(tx,ctx){assertScheduleAdmin(ctx);await tx.execute(sql`select app.access_workforce_write_lock()`);},
  async applyStepTx(tx,ctx,job,step){
   const plan=job.plan as SchedulePlan;const {employmentId}=step.payload;
   try{
@@ -413,6 +423,7 @@ export const scheduleGroupBulkJobHandler:BulkJobHandler<EmployeeStep>={
   }
  },
  async finalize(ctx,job,unit){
+  assertScheduleAdmin(ctx);
   const plan=job.plan as SchedulePlan;
   const t=await fencedTx(ctx,job,unit,async tx=>{
    const [row]=await tx.execute<{changed:number;unchanged:number;failed:number;error:string|null}>(sql`select

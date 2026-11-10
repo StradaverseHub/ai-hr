@@ -17,7 +17,9 @@ import {rosterBulkJobHandler,scheduleGroupBulkJobHandler} from '../core/roster-b
 import {enqueueRosterAssignJob,enqueueRosterCopyJob,enqueueRosterGenerateJob,enqueueRosterImportJob,enqueueScheduleGroupBulkJob,readRosterBulkJob} from '../core/roster-bulk-job';
 import {assignShift,assignShiftBulk,copyRoster,createShift,generateRosterFromTemplate,setEmploymentScheduleGroupBulk,setRestDay} from '../core/roster';
 import {analyzeRosterImport} from '../core/roster-import';
-import {createAttendanceRule,type AttendanceRuleInput} from '../core/attendance-rule';
+import {resolveWorkedDayKindTx} from '../core/toil';
+import {withTenant} from '../db/client';
+import {createAttendanceRule,type AttendanceRuleInput} from '../packs/attendance/service';
 import {SCHEDULE_GROUP_BULK_KIND} from '../lib/roster-bulk-job';
 import {BULK_JOB_ALREADY_RUNNING} from '../core/bulk-job';
 import {ROSTER_BULK_ALREADY_RUNNING} from '../lib/roster-bulk-job';
@@ -116,6 +118,11 @@ describe('Generate', ()=>{
   const row=await jobRow(job.id);
   expect(Number(row.metrics.chunks)).toBeGreaterThan(3);
   expect(row.result).toEqual({op:'generate',...sync});
+  // TOIL reads the day kind (workday / rest day / off day) through the schedule resolver: identical for both groups.
+  const kinds=(g:typeof A)=>withTenant(ctx,async tx=>{const out:string[]=[];for(const e of g)for(let d=1;d<=14;d++)out.push(await resolveWorkedDayKindTx(tx,e.id,`2027-03-${String(d).padStart(2,'0')}`));return out;});
+  const kindsA=await kinds(A);
+  expect(kindsA).toContain('rest_day');
+  expect(await kinds(B)).toEqual(kindsA);
  });
 
  it('refuses the whole grid before any row, with the generator\'s own sentence, when one employee may not work the shift',async()=>{

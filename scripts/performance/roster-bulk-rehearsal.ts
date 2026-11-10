@@ -24,7 +24,8 @@ const TENANT=required('REHEARSAL_TENANT',process.env.REHEARSAL_TENANT),ADMIN=req
 const BASE=Number(process.env.BASE_EMPLOYEES??3000);
 const OPS=(process.env.OPS??'sync,generate,copy,import,group').split(',').map(s=>s.trim()).filter(Boolean);
 const MONTH=process.env.MONTH??'2027-01';
-if(process.env.AUDIT_HASH_CHAIN_ENABLED!=='true')process.env.AUDIT_HASH_CHAIN_ENABLED='true';
+// The rehearsal always runs with the audit chain armed, as production does.
+if(process.env.AUDIT_HASH_CHAIN_ENABLED === 'true'){/* already armed by the caller */}else process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const stat=(values:number[])=>{const s=[...values].sort((a,b)=>a-b);return s.length?{n:s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.floor(s.length*.95)],max:s[s.length-1]}:{n:0,p50:0,p95:0,max:0};};
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -43,7 +44,7 @@ async function main(){
  const {readEmployeeHomeSummary}=await import('../../core/employee-home-summary');
  const roster=await import('../../core/roster');
  const jobs=await import('../../core/roster-bulk-job');
- const {createAttendanceRule}=await import('../../core/attendance-rule');
+ const {createAttendanceRule}=await import('../../packs/attendance/service');
  const obs=postgres(OWNER_URL,{max:4,onnotice:()=>{}});
  const {entitlements}=await freshImportContext({tenantId:TENANT,userId:ADMIN,roles:['hr_admin']} as never);
  const [{person_id:adminPerson}]=await obs`select person_id from app_user where id=${ADMIN}::uuid`;
@@ -68,8 +69,9 @@ async function main(){
   and voided_at is null and import_pending_attempt_id is null and terminated_on is null and employee_code is not null and id<>${clockEmployment}::uuid order by employee_code`;
  const rosterIds=population.slice(0,Number(process.env.ROSTER_EMPLOYEES??population.length)).map(r=>r.id);
  console.log(`rostered population: ${rosterIds.length}`);
- const day=await roster.createShift(admin,{companyId,name:`Rehearsal Day ${tag}`,code:`RD${tag}`,startTime:'09:00:00',endTime:'18:00:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
- const night=await roster.createShift(admin,{companyId,name:`Rehearsal Night ${tag}`,code:`RN${tag}`,startTime:'21:00:00',endTime:'06:00:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
+ const dayCode=`RD${tag}`,nightCode=`RN${tag}`;
+ const day=await roster.createShift(admin,{companyId,name:`Rehearsal Day ${tag}`,code:dayCode,startTime:'09:00:00',endTime:'18:00:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
+ const night=await roster.createShift(admin,{companyId,name:`Rehearsal Night ${tag}`,code:nightCode,startTime:'21:00:00',endTime:'06:00:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
 
  const worker:{proc?:ChildProcess}={};
  const startWorker=()=>{worker.proc=spawn(process.execPath,['--import','tsx','scripts/bank-import-runner.ts'],{env:{...process.env,AIHR_DB_POOL_MAX:'4'},stdio:'inherit'});};
@@ -112,7 +114,7 @@ async function main(){
  if(OPS.includes('import')){
   const sample=population.slice(0,Number(process.env.IMPORT_EMPLOYEES??1200));
   const header=['employee_no',...days].join(',');
-  const lines=sample.map((e,i)=>[e.code,...days.map((d,j)=>(i+j)%7===5?'RD':(i+j)%7===6?'OFF':(i%2?night.code:day.code))].join(','));
+  const lines=sample.map((e,i)=>[e.code,...days.map((d,j)=>(i+j)%7===5?'RD':(i+j)%7===6?'OFF':(i%2?nightCode:dayCode))].join(','));
   const csvText=[header,...lines].join('\n')+'\n';
   await measure(`job-import-${sample.length}x${days.length}`,async()=>({id:(await jobs.enqueueRosterImportJob(admin,{csvText,month:MONTH,companyId,fileName:'rehearsal.csv'})).id}));
  }
