@@ -20,7 +20,7 @@ export type PersonnelScaleFixture = {
   positions: string[];
   /** Group-wide HR administrator: sees every company. */
   admin: SessionContext;
-  /** Manager with workforce.view allowed on B (and its descendant C) and D, explicitly denied on C. */
+  /** Scoped manager: HR grants on B (and so its descendant C) and D, Workforce view explicitly denied on C. */
   manager: SessionContext;
   managerVisibleCompanies: string[];
 };
@@ -155,12 +155,15 @@ export async function seedPersonnelScaleFixture(count: number): Promise<Personne
     order by e.employee_code limit 1`;
   const [managerUser] = await owner.client<{id: string}[]>`insert into app_user(tenant_id,workos_user_id,person_id)
     values(${t}::uuid,${'fictional-manager-' + randomUUID()},${managerPerson.personId}::uuid) returning id`;
+  // Company-scoped HR grants on B (which covers its descendant C) and on D, and an explicit Workforce
+  // view denial on C that must win over the inherited grant. (A capability-only viewer without an HR
+  // role cannot open Personnel today: app.personnel_filter_companies raises 42501 for that principal.)
   await owner.client`insert into role_assignment(tenant_id,app_user_id,company_id,role) values
     (${t}::uuid,${managerUser.id}::uuid,${companies.b}::uuid,'employee'),
-    (${t}::uuid,${managerUser.id}::uuid,${companies.b}::uuid,'manager')`;
+    (${t}::uuid,${managerUser.id}::uuid,${companies.b}::uuid,'manager'),
+    (${t}::uuid,${managerUser.id}::uuid,${companies.b}::uuid,'hr_admin'),
+    (${t}::uuid,${managerUser.id}::uuid,${companies.d}::uuid,'hr_admin')`;
   await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect) values
-    (${t}::uuid,${managerUser.id}::uuid,'workforce.view',${companies.b}::uuid,'allow'),
-    (${t}::uuid,${managerUser.id}::uuid,'workforce.view',${companies.d}::uuid,'allow'),
     (${t}::uuid,${managerUser.id}::uuid,'workforce.view',${companies.c}::uuid,'deny')`;
   for (const table of ['person', 'employment', 'assignment', 'reporting_line', 'company', 'department', 'position',
     'business_unit', 'app_user', 'role_assignment', 'domain_event', 'access_user_override', 'employee_draft'])
@@ -168,8 +171,9 @@ export async function seedPersonnelScaleFixture(count: number): Promise<Personne
 
   const admin: SessionContext = {...adminCtx(base), grants: [{role: 'hr_admin', companyId: null}]};
   const manager: SessionContext = {
-    tenantId: t, userId: managerUser.id, personId: managerPerson.personId, roles: ['employee', 'manager'],
-    grants: [{role: 'employee', companyId: companies.b}, {role: 'manager', companyId: companies.b}],
+    tenantId: t, userId: managerUser.id, personId: managerPerson.personId, roles: ['employee', 'manager', 'hr_admin'],
+    grants: [{role: 'employee', companyId: companies.b}, {role: 'manager', companyId: companies.b},
+      {role: 'hr_admin', companyId: companies.b}, {role: 'hr_admin', companyId: companies.d}],
     entitlements: admin.entitlements,
   };
   const [counts] = await owner.client<{employees: number; assignments: number; lines: number}[]>`select

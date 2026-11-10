@@ -43,10 +43,9 @@ it('preserves the real overview rows, facets, scope, dated assignment and unsupp
   organisationChoices:{...data.organisationChoices,rows:data.organisationChoices.rows
    .map(row=>JSON.stringify(row)).sort()},
  });
+ // Without the unallocated typed-facts draft, quality filters keep the exact owner.
  const fallbackCases=[
   {name:'quality',input:{...scope,qualityFlags:['missing_business_unit' as const]},expected:[first.employmentId,second.employmentId]},
-  {name:'foreign requested scope',input:{...scope,companyIds:[base.companyId,foreign.companyId]},expected:[first.employmentId,second.employmentId]},
-  {name:'unbounded page',input:{...scope,limit:2000},expected:[first.employmentId,second.employmentId]},
  ];
  // Prove the migrated functions are installed and private to their approved role.
  const installed=await owner.db.execute<{canonicalOwner:boolean;appCanExecute:boolean;publicCanExecute:boolean}>(sql`
@@ -79,6 +78,9 @@ it('preserves the real overview rows, facets, scope, dated assignment and unsupp
    {name:'literal wildcard and independent facets',input:{...scope,q:'B-02',sort:'company' as const},expected:[second.employmentId],total:1},
    {name:'second page',input:{...scope,limit:1,offset:1},expected:[second.employmentId],total:2},
    {name:'empty page',input:{...scope,offset:10},expected:[],total:2},
+   // A foreign requested company is never admitted, and a 2,000-row page fits the bounded projection.
+   {name:'foreign requested scope',input:{...scope,companyIds:[base.companyId,foreign.companyId]},expected:[first.employmentId,second.employmentId],total:2},
+   {name:'unbounded page',input:{...scope,limit:2000},expected:[first.employmentId,second.employmentId],total:2},
   ];
   for(const {input,expected,total} of cases){
    const exact=await readPersonnelOverview(ctx,input,{},exactMode);
