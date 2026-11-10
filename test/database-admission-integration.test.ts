@@ -100,7 +100,8 @@ describe('physical pool admission with real tenant transactions',()=>{
    await tx.execute(sql`select 1`);between.resolve();await resume.promise;
    const row=await tx.execute(sql`select 2 as n`);secondRan=true;return row;}));
   await between.promise;late.abort(reason);resume.resolve();
-  await expect(pending).rejects.toBe(reason);expect(secondRan).toBe(false);
+  const refused=await pending.then(()=>null,(error:unknown)=>error as {cause?:unknown});
+  expect(refused?.cause).toBe(reason);expect(secondRan).toBe(false);
   expect((await database.withTenant(ctx,tx=>tx.execute(sql`select app.current_tenant_id() as tenant`)))[0].tenant).toBe(base.tenantId);
  });
  it('allows three independent interactive transactions while background work waits outside the four-slot pool',async()=>{
