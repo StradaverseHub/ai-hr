@@ -86,10 +86,17 @@ export type Step =
   | { id: string; type: 'email'; template: string; to: Role | Role[]; cc: Role[] }
   | { id: string; type: 'notify'; subject: string; body: string; to: Role | Role[]; cc: Role[] };
 export type Workflow = {
-  id: string; name: string; module: Module; status: 'draft' | 'published'; trigger: Trigger;
+  id: string; name: string; module: Module; status: 'draft' | 'published' | 'retired'; trigger: Trigger;
   conditions: { field: RuleField | 'joinWithin'; op: 'is' | 'isNot' | 'lt' | 'gte'; value: string }[];
   steps: Step[]; description: string;
+  /** Set only by the retire action. A retired workflow never starts again; runs already started finish from their frozen definition. */
+  retired?: WorkflowRetirement;
 };
+export type WorkflowRetirement = { at: string; by: Actor; cases: number; automatic: boolean };
+/** Live workflows start new runs; retired workflows only let runs that already started finish. */
+export function workflowFinishes(workflow: Pick<Workflow, 'status'> | undefined): boolean { return workflow?.status === 'published' || workflow?.status === 'retired'; }
+/** A live workflow with any trigger other than "Started by hand" starts for new cases on its own. */
+export function workflowStartsAutomatically(workflow: Pick<Workflow, 'status' | 'trigger'>): boolean { return workflow.status === 'published' && workflow.trigger.event !== 'manual'; }
 /** Drafts can be incomplete. Activation must be safe and independently validated by the service. */
 export function workflowProblems(workflow: Workflow, config: Pick<Config, 'templates' | 'emails'>, options: { allowInactiveEmail?: boolean } = {}): string[] {
   const problems: string[] = [];
@@ -473,7 +480,7 @@ export function retryEmail(c: Case, config: Config, id: string, reason: string, 
   const original = c.mails.find(mail => mail.id === id);
   if (!original || original.status !== 'failed' || !original.delivery || !['smtpTemporary','smtpRejected','smtpAuthentication','smtpTls'].includes(original.failure ?? '') || c.mails.some(mail => mail.retryOf === id)) throw new V9Error('This delivery needs review and cannot be retried.', 'conflict');
   if (!reason.trim()) throw new V9Error('Record the delivery review reason before retrying.');
-  if (original.templateId && !config.emails.some(email => email.id === original.templateId && email.active) || original.workflowId && !config.workflows.some(workflow => workflow.id === original.workflowId && workflow.status === 'published')) throw new V9Error('Turn on the email and workflow before retrying.');
+  if (original.templateId && !config.emails.some(email => email.id === original.templateId && email.active) || original.workflowId && !workflowFinishes(config.workflows.find(workflow => workflow.id === original.workflowId))) throw new V9Error('Turn on the email and workflow before retrying.');
   const accountRecipients = original.delivery.contact ? original.cc : [...original.to, ...original.cc];
   if (accountRecipients.some(userId => !eligibleRecipient(userId, env))) throw new V9Error('Review the unavailable recipients before retrying.');
   const next = structuredClone(original); next.id = env.nextId(); next.key = `retry:${original.id}:${next.id}`;
@@ -488,7 +495,7 @@ export function updatedDeliveryPlan(c:Case,config:Config,id:string,env:Environme
   if(!config.emails.some(email=>email.id===original.templateId&&email.module===c.module&&email.active))throw new V9Error('Turn on the email before preparing an updated copy.');
   let step:Extract<Step,{type:'email'}>={id:'manual',type:'email',template:original.templateId,to:'employee',cc:[]};
   if(original.workflowId){
-    if(!config.workflows.some(workflow=>workflow.id===original.workflowId&&workflow.status==='published'))throw new V9Error('Turn on the source workflow before preparing an updated copy.');
+    if(!workflowFinishes(config.workflows.find(workflow=>workflow.id===original.workflowId)))throw new V9Error('Turn on the source workflow before preparing an updated copy.');
     const candidates=c.runs.filter(run=>run.workflowId===original.workflowId).flatMap(run=>(run.definition?.steps??[]).filter((candidate):candidate is Extract<Step,{type:'email'}>=>candidate.type==='email'&&candidate.template===original.templateId&&original.key.startsWith(`${run.id}:${candidate.id}:`)));
     if(candidates.length!==1)throw new V9Error('Review the original workflow step before preparing another copy.');
     step=candidates[0];
@@ -676,6 +683,7 @@ export function previewWorkflowNotification(c: Case, config: Config, step: Extra
 export function testWorkflowMessages(c: Case, config: Config, workflowId: string, env: Environment): void {
   const workflow = config.workflows.find(workflow => workflow.id === workflowId && workflow.module === c.module);
   if (!workflow) throw new V9Error('Workflow not found.', 'not_found');
+  if (workflow.status === 'retired') throw new V9Error('This workflow is retired. Restore it before testing it.', 'conflict');
   const message = workflow.steps.find(step=>step.type==='email') ?? workflow.steps.find(step=>step.type==='notify');
   if (!message || (message.type!=='email' && message.type!=='notify')) throw new V9Error('This workflow has no message to test.');
   for (const step of [message]) {
@@ -700,9 +708,12 @@ export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: P
   return { matches, lines };
 }
 export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'manual', options: { startNow?: boolean } = {}): Run | null {
-  if (c.state !== 'submitted' || workflow.status !== 'published') return null;
   const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed'));
+  // A retired workflow starts nothing new, but a run that already started finishes with the steps it saved.
+  const finishing = workflow.status === 'retired' && event === 'resume' && !!unfinished;
+  if (c.state !== 'submitted' || workflow.status !== 'published' && !finishing) return null;
   if (unfinished?.definition) workflow = unfinished.definition;
+  else if (finishing) workflow = { ...workflow, status: 'published' };
   if (c.state !== 'submitted' || workflow.status !== 'published' || !(event === 'resume' && unfinished?.sourceEvent) && !workflowMatches(c, workflow, env.today)) return null;
   const trigger = workflow.trigger, anchor = ['beforeLWD','afterLWD'].includes(trigger.event) ? c.facts.lastDay : c.facts.joinDate;
   if (event !== 'resume' && !options.startNow && (event === 'date' ? !dateTrigger(trigger.event) : trigger.event !== event)) return null;

@@ -5,15 +5,18 @@ import { WorkflowEditor } from '../app/lifecycle/v9/workflow-editor';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import type { Config } from '../lib/lifecycle-v9-model';
 import { parseV9Config } from '../lib/lifecycle-v9-validation';
+import { NextIntlClientProvider } from 'next-intl';
+import { readFileSync } from 'node:fs';
 
 vi.mock('../components/onboarding-date-input', () => ({ OnboardingDateInput: ({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) => <input aria-label={label} value={value} onChange={e => onChange(e.target.value)}/> }));
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
 });
+const messages = JSON.parse(readFileSync('messages/en.json', 'utf8'));
 function Harness({ editable = true }: { editable?: boolean }) {
   const [config, setConfig] = useState(() => { const config = v9Defaults(); config.groups.push({ id: 'fixture-reviewers', name: 'Fictional review group', members: ['11111111-1111-4111-8111-111111111111'], limit: 0 }); return config; }), [selected, select] = useState(''), [module, setModule] = useState<'off' | 'onb'>('off');
-  return <><WorkflowEditor config={config} selected={selected} select={select} module={module} setModule={setModule} editable={editable} edit={change => setConfig(value => { const next = structuredClone(value); change(next); return next; })} cases={[]} users={[{ id: '11111111-1111-4111-8111-111111111111', name: 'Fictional reviewer' }]} actor={{ id: 'hr', name: 'HR' }} labels={{ caseType: { Resignation: 'Resignation' } }}/><output data-testid="definition">{JSON.stringify(config)}</output></>;
+  return <NextIntlClientProvider locale="en" messages={messages}><WorkflowEditor config={config} selected={selected} select={select} module={module} setModule={setModule} editable={editable} edit={change => setConfig(value => { const next = structuredClone(value); change(next); return next; })} cases={[]} users={[{ id: '11111111-1111-4111-8111-111111111111', name: 'Fictional reviewer' }]} actor={{ id: 'hr', name: 'HR' }} labels={{ caseType: { Resignation: 'Resignation' } }}/><output data-testid="definition">{JSON.stringify(config)}</output></NextIntlClientProvider>;
 }
 it('edits ordered steps and conditions into a definition accepted by the service validator', () => {
   render(<Harness/>);
