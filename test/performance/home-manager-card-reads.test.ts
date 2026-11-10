@@ -324,15 +324,15 @@ async function bundleCalculatorPairs(actor:Actor,today:string){
 // ── Before payroll as one statement (docs/adr/2026-11-10-home-request-read-scope.md decision 11,
 // core/pre-salary/before-payroll-bundle.ts). Every own owner reading on its own against the one statement: the traces,
 // the fixture rows that give each owner rows to compare (added after the traces), and the comparisons. ───────────────
-type TraceRow={before:number;after:number;afterOrdered:string[];shared:unknown;failure:unknown};
-async function beforePayrollTraces(label:string,actor:Actor,today:string,trace:(before:()=>Promise<unknown>,after:()=>Promise<unknown>)=>Promise<TraceRow>){
+type BeforePayrollTraceRow={before:number;after:number;afterOrdered:string[];shared:unknown;failure:unknown};
+async function beforePayrollTraces(label:string,actor:Actor,today:string,trace:(before:()=>Promise<unknown>,after:()=>Promise<unknown>)=>Promise<BeforePayrollTraceRow>){
  const {readMyPayrollReadiness,readMyPayrollReadinessFromOwners}=await import('../../core/pre-salary/person-items');
  const {allowedCompanies}=await import('../../core/read');
  const scopeIds=(await allowedCompanies(actor.ctx)).map(company=>company.id);
  const summary=(value:{failed:boolean;items:readonly unknown[]}|null)=>({present:value!==null,failed:value?.failed??null,items:value?.items.length??null});
  const owners=()=>readMyPayrollReadinessFromOwners(actor.ctx,{scopeIds,locale:'en',today,includeApprovals:false}).then(summary);
  const bundled=()=>readMyPayrollReadiness(actor.ctx,{scopeIds,locale:'en',today,includeApprovals:false}).then(summary);
- const rows:Record<string,TraceRow>={'section:beforePayroll:owners':await trace(owners,owners),'section:beforePayroll:bundled':await trace(bundled,bundled)};
+ const rows:Record<string,BeforePayrollTraceRow>={'section:beforePayroll:owners':await trace(owners,owners),'section:beforePayroll:bundled':await trace(bundled,bundled)};
  print('before-payroll-trips',{label,owners:[rows['section:beforePayroll:owners'].before,rows['section:beforePayroll:owners'].after],
   bundled:[rows['section:beforePayroll:bundled'].before,rows['section:beforePayroll:bundled'].after],bundledStatements:rows['section:beforePayroll:bundled'].afterOrdered});
  return rows;
