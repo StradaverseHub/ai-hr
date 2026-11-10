@@ -795,7 +795,7 @@ export async function generateAttendanceWorkflowPreview(ctx:SessionContext,linea
   return{id:stored.id,generatedAt:stored.generatedAt,totalMatching:total,warningCount};
  });
 }
-const previewHeader={id:previewSnapshot.id,lineageId:previewSnapshot.lineageId,templateVersion:previewSnapshot.templateVersion,generatedAt:previewSnapshot.generatedAt,totalMatching:previewSnapshot.totalMatching,warningCount:previewSnapshot.warningCount,truncated:previewSnapshot.truncated,generatedBy:sql<string|null>`(select p.full_name from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=${previewSnapshot.generatedByUserId} and u.tenant_id=${previewSnapshot.tenantId})`.as('generatedBy')};
+const previewHeader={id:previewSnapshot.id,lineageId:previewSnapshot.lineageId,templateVersion:previewSnapshot.templateVersion,generatedAt:previewSnapshot.generatedAt,totalMatching:previewSnapshot.totalMatching,warningCount:previewSnapshot.warningCount,truncated:previewSnapshot.truncated,generatedBy:sql<string|null>`(select p.full_name from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=attendance_workflow_preview.generated_by_user_id and u.tenant_id=attendance_workflow_preview.tenant_id)`.as('generatedBy')};
 /** Latest stored previews of a workflow the caller manages (RLS: administrator of every workflow company). */
 export async function listAttendanceWorkflowPreviews(ctx:SessionContext,lineageId:string,companyIds:string[]){
  if(!await getAttendanceWorkflow(ctx,lineageId,companyIds,true))return null;

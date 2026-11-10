@@ -82,7 +82,8 @@ describe('automatic skip when the reporting chain has genuinely ended (decided a
   expect(await owner.db.select().from(schema.attendanceWorkflowRequest)).toEqual([]);
  });
  it('keeps Selected Employees levels, renumbers slots by kept stage and keeps the configured level name',async()=>{
-  const a=await actor('Fictional selected A'),b=await actor('Fictional selected B'),named=await actor('Fictional named approver');await reports(a,b);
+  // The final named approver is an HR administrator: a final Attendance effect needs an approver who may see the employee.
+  const a=await actor('Fictional selected A'),b=await actor('Fictional selected B'),named=await actor('Fictional named approver',{role:'hr_admin'});await reports(a,b);
   await saveAttendanceWorkflow(adminCtx(base),workflow([a],[level([superior(1)]),level([superior(2)]),level([{kind:'specific_employee',employmentIds:[named.employmentId]}])]));
   const id=await submit(a),frozen=await requestOf(id);
   expect(frozen.stages.map(stage=>[stage.name,stage.approvers.map(x=>x.slot)])).toEqual([['Level 1',['0:0']],['Level 3',['1:0']]]);
@@ -135,8 +136,8 @@ describe('in-flight requests keep their stored route',()=>{
   const second=await submit(d);
   expect((await requestOf(second)).stages.map(stage=>stage.approvers[0].employmentId)).toEqual([b.employmentId,c.employmentId]);
   // A later configuration edit never re-routes either application.
-  const edited=workflow([a,d],[level([superior(1)]),level([superior(2)]),level([{kind:'specific_employee',employmentIds:[c.employmentId]}])],{code:'EDITED',expectedVersion:1});
-  await saveAttendanceWorkflow(adminCtx(base),{...edited,code:saved.code},saved.lineageId);
+  const edited=workflow([a,d],[level([superior(1)]),level([superior(2)]),level([{kind:'specific_employee',employmentIds:[c.employmentId]}])],{code:'EDITED'});
+  await saveAttendanceWorkflow(adminCtx(base),{...edited,code:saved.code,expectedVersion:1},saved.lineageId);
   await decide(b,first,0,'0:0');
   expect(await statusOf(first)).toBe('approved');
   const after=await requestOf(first);
@@ -188,7 +189,7 @@ describe('Save no longer resolves every employee; Preview Assignment is stored',
   const saved=await saveAttendanceWorkflow(adminCtx(base),workflow([lone],[level([superior(1)])]));
   expect(saved).not.toHaveProperty('warningCount');
   expect(await owner.db.select().from(schema.attendanceWorkflowPreview)).toEqual([]);
-  await expect(saveAttendanceWorkflow(adminCtx(base),workflow([lone],[level([{kind:'specific_employee',employmentIds:[lone.employmentId]}])],{code:'SELF'}))).rejects.toMatchObject({problem:{code:'self_approval'}});
+  await expect(saveAttendanceWorkflow(adminCtx(base),workflow([lone],[level([{kind:'specific_employee',employmentIds:[lone.employmentId]}])],{code:'SELF',priority:101}))).rejects.toMatchObject({problem:{code:'self_approval'}});
   await expect(saveAttendanceWorkflow(adminCtx(base),workflow([],[level([superior(1)])],{code:'BAD_LABEL',criteria:{groups:[{departmentIds:[base.deptA]},{departmentIds:[randomUUID()]}]}}))).rejects.toMatchObject({code:'invalid'});
  });
  it('stores matching employees and distinct Direct Superior warnings with the approver, and flags an older version',async()=>{

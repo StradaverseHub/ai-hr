@@ -21,7 +21,9 @@ export async function saveAttendanceWorkflowAction(lineageId: string | null, inp
         const allowed=allowedCompanyIds??scopeIds;
         if ((configuration.companyIds??[configuration.companyId]).some(id=>!allowed.includes(id)))
             throw new AttendanceWorkflowError('scope','Select a company in your active access scope.');
-        row = await saveAttendanceWorkflow(s, configuration, lineageId ?? undefined, undefined, autoPriority === true, saveRequestId, copiedFrom===undefined?undefined:{lineageId:copiedFrom.lineageId,version:copiedFrom.version});
+        row = copiedFrom===undefined
+            ? await saveAttendanceWorkflow(s, configuration, lineageId ?? undefined, undefined, autoPriority === true, saveRequestId)
+            : await saveAttendanceWorkflow(s, configuration, undefined, undefined, autoPriority === true, saveRequestId, {lineageId:copiedFrom.lineageId,version:copiedFrom.version});
     }
     catch (error) {
         unstable_rethrow(error);
