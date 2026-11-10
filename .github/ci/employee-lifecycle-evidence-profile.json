@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "archiveBytes": 67108864,
+  "expandedBytes": 134217728,
+  "memberBytes": 67108864,
+  "entries": 256,
+  "maximumZipRatio": 4096,
+  "rootNames": ["unit-{UNIT}.json", "health-before-{UNIT}.json", "pdf-tools-setup.json", "personnel-dd-full-role-{UNIT}-offset-0.json", "{UNIT}-batch-0.json", "{UNIT}-singleton.json", "{UNIT}-employee-job-anchor.json", "{UNIT}-employee-preparation.json", "{UNIT}-employee-test-context.json", "{UNIT}-employee-monitor.json", "{UNIT}-employee-lifecycle.json", "{UNIT}-employee-supervisor.jsonl", "{UNIT}-employee-container-created.json", "{UNIT}-employee-container-started.json", "{UNIT}-employee-container-stats.json", "{UNIT}-employee-container-observed.json", "{UNIT}-employee-container-stopped.json", "{UNIT}-employee-always-stop.json", "{UNIT}-employee-recovery.json", "{UNIT}-employee-recovery-stage.json", "{UNIT}-employee-recovery-supervisor.jsonl"],
+  "sequencePrefixes": ["{UNIT}-employee-stage-", "{UNIT}-employee-resource-"],
+  "sequenceMaximum": 99,
+  "clockNames": ["benchmark-clock.json", "benchmark-clock-ack.json"],
+  "planNames": ["native-log-index.json", "benchmark-progress.jsonl"],
+  "reportByStage": {"benchmark": "employee-choice-native-purpose-plan.json", "ascii-plan": "employee-choice-exact-ascii-plan.json", "ascii-purpose": "runtime-before-shutdown.json"},
+  "gzipParts": 128,
+  "gzipRawBytes": 134217728,
+  "gzipCompressedBytes": 33554432
+}

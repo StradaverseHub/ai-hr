@@ -1,0 +1,22 @@
+{
+  "kind": "CLOSED_PURPOSE_FILE_WINDOW_EXTENSION_NOT_PROCESS_OWNERSHIP_REPLACEMENT",
+  "base": "756e834dc0db88b5131547bc6d5108284201ab48",
+  "qualifiedKernelSha256": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+  "currentKernelSha256": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129",
+  "defaultFileSeconds": 900,
+  "compilerFileSeconds": 720,
+  "changes": [
+    {
+      "before": "file_clock=None, mandatory=False):",
+      "after": "file_clock=None, file_seconds=900, mandatory=False):"
+    },
+    {
+      "before": "    require(type(seconds) in (int, float) and 0 < seconds <= 960)\n",
+      "after": "    require(type(seconds) in (int, float) and 0 < seconds <= 960)\n    require(type(file_seconds) in (int, float) and 0 < file_seconds <= 960)\n"
+    },
+    {
+      "before": "benchmark_start + 900",
+      "after": "benchmark_start + file_seconds"
+    }
+  ]
+}
