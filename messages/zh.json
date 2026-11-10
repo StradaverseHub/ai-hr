@@ -12330,7 +12330,25 @@
       "closeAlready": "该年度边界已结算；无需操作。",
       "configMovedTitle": "Replacement leave settings",
       "configMovedHint": "The policy editor for replacement leave now lives under Leave Config.",
-      "configMovedLink": "Go to Replacement Leave settings"
+      "configMovedLink": "Go to Replacement Leave settings",
+      "sweepJob": {
+        "title": {
+          "toil_expiry": "正在处理到期",
+          "toil_year_close": "正在结算补假年度"
+        },
+        "progressCount": "已处理 {done} / {total} 名员工",
+        "backgroundHelp": "此操作在后台运行。您可以离开此页面，稍后再回来。",
+        "waiting": "正在等待后台服务继续。无需任何操作。",
+        "state": {
+          "queued": "等待开始",
+          "running": "正在运行",
+          "completed": "已完成",
+          "failed": "已停止"
+        },
+        "failed": "运行已停止：{reason} 已处理的补假保持不变。请再次运行以处理其余部分。",
+        "partial": "{count} 名员工无法处理，其补假保持不变：{reason} 请再次运行以完成。",
+        "alreadyRunning": "另一位管理员正在运行此操作。请在其完成后重试。"
+      }
     },
     "locations": {
       "pageTitle": "地点",
@@ -37322,6 +37340,20 @@
         "cancelled": {
           "title": "休假处理已取消",
           "body": "已处理的员工保留其数据。请再次运行以完成其余部分。"
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "补假结算已完成",
+          "body": "到期的补假已处理完毕。打开假期额度页面查看。"
+        },
+        "failed": {
+          "title": "补假结算已停止",
+          "body": "已处理的补假保持不变。请再次运行以处理其余部分。"
+        },
+        "cancelled": {
+          "title": "补假结算已取消",
+          "body": "已处理的补假保持不变。请再次运行以处理其余部分。"
         }
       }
     }

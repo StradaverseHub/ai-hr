@@ -12330,7 +12330,25 @@
       "closeAlready": "This year boundary was already closed; nothing to do.",
       "configMovedTitle": "Replacement leave settings",
       "configMovedHint": "The policy editor for replacement leave now lives under Leave Config.",
-      "configMovedLink": "Go to Replacement Leave settings"
+      "configMovedLink": "Go to Replacement Leave settings",
+      "sweepJob": {
+        "title": {
+          "toil_expiry": "Processing expirations",
+          "toil_year_close": "Closing the replacement-leave year"
+        },
+        "progressCount": "{done} of {total} employees processed",
+        "backgroundHelp": "This runs in the background. You can leave this page and come back.",
+        "waiting": "Waiting for the background service to continue. No action is needed.",
+        "state": {
+          "queued": "Waiting to start",
+          "running": "Running",
+          "completed": "Finished",
+          "failed": "Stopped"
+        },
+        "failed": "The run stopped: {reason} Credits already settled stay settled. Run it again to settle the rest.",
+        "partial": "{count} employee(s) could not be processed and their credits were left unchanged: {reason} Run it again to complete them.",
+        "alreadyRunning": "Another administrator is already running this. Try again when it has finished."
+      }
     },
     "locations": {
       "pageTitle": "Locations",
@@ -37322,6 +37340,20 @@
         "cancelled": {
           "title": "Leave processing cancelled",
           "body": "Employees already processed keep their figures. Run it again to complete the rest."
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "Replacement leave settlement finished",
+          "body": "The replacement leave credits that were due have been settled. Open Leave Credit to review them."
+        },
+        "failed": {
+          "title": "Replacement leave settlement stopped",
+          "body": "Credits already settled stay settled. Run it again to settle the rest."
+        },
+        "cancelled": {
+          "title": "Replacement leave settlement cancelled",
+          "body": "Credits already settled stay settled. Run it again to settle the rest."
         }
       }
     }
