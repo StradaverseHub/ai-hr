@@ -125,10 +125,10 @@ export async function seedPersonnelScaleFixture(count: number): Promise<Personne
     // Reporting lines: one manager per block of 25, a closed earlier line for some, none for 1 in 12.
     await tx.unsafe(`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from,valid_to,superseded_at)
       with f as (select * from (${fixtureSql(personPrefix, employmentPrefix, count)}) f)
-      select $1::uuid,f.employment_id,m.employment_id,'administrative'::reporting_line_type,f.hired_on,null,null
+      select $1::uuid,f.employment_id,m.employment_id,'administrative'::reporting_line_type,f.hired_on,null::date,null::timestamptz
       from f join f m on m.n = ((f.n-1)/25)*25 + 1 where f.n%25<>1 and f.n%12<>5
       union all
-      select $1::uuid,f.employment_id,m.employment_id,'administrative'::reporting_line_type,f.hired_on - 30,f.hired_on,null
+      select $1::uuid,f.employment_id,m.employment_id,'administrative'::reporting_line_type,f.hired_on - 30,f.hired_on,null::timestamptz
       from f join f m on m.n = ((f.n-1)/25)*25 + 26 where f.n%25<>1 and f.n%5=0 and m.n<>f.n`, [t]);
     // Accounts for most people; Personnel reads must not depend on them.
     await tx.unsafe(`insert into app_user(tenant_id,workos_user_id,person_id)
