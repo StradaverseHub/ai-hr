@@ -49,6 +49,27 @@ alone would not have fixed them (docs/plans/bulk-operations-job-migration.md 3.7
   job to the existing result: the import log page, or the preview / result tables. Employees a job left out are
   listed. Completion notices: `bulkJobs.notification.{clockingImport,attendanceRecomputePreview,attendanceRecompute}`.
 
+## Rehearsal (10–11 Nov 2026)
+
+`scripts/performance/attendance-jobs-rehearsal.ts` on a private PostgreSQL 16 cluster with durability on, 3,000
+fictional employees hired through the employee import, 60,000 recorded days, the real import worker process, the
+audit chain armed. The host was shared with other agents (load average 24–36): with no job running a clock-in already
+took up to 1.4 s and the Personnel list up to 12.8 s. Tenant lock holds come from an independent `pg_locks` sampler.
+
+| Run | Wall | Longest tenant-lock hold | Holds over 1 s | Clock-in max | Access writer max | Login max |
+|---|---|---|---|---|---|---|
+| Synchronous import, 2,400 lines (1,200 employees) | 76 s | 75.7 s | 1 | 75.5 s | 75.9 s | 1.1 s |
+| Job, same file shape on another day | 171 s | 0.98 s | 0 | 1.5 s | 1.6 s | 0.26 s |
+| Job, 150 employees × 10 days | 43 s | 0.38 s | 0 | 0.51 s | 0.43 s | 0.04 s |
+| Synchronous recompute, 1,201 days | 145 s | 144.5 s (audit chain 39.7 s) | 1 | 144.2 s | 144.5 s | 39.6 s |
+| Job preview, 1,201 days | 191 s | 0.51 s | 0 | 0.74 s | 0.76 s | 0.06 s |
+| Job apply, 1,201 days (a Sunday: nothing to write) | 171 s | 0.87 s | 0 | 1.23 s | 1.15 s | 0.09 s |
+| Job apply, 1,201 weekday days, 270 written | 163 s | 0.58 s | 0 | 0.69 s | 0.63 s | 0.14 s |
+
+Synchronous rows ran on 1,200 employees' days, job rows on another 1,200 employees' days in the same tenant.
+No errors or Busy refusals in any run; the probe employee has exactly one clock-in per date; `verifyTenantChain` valid.
+A first run with eight one-day employees per step held the locks up to 2.7 s on this host, hence two per step.
+
 ## Consequences
 
 - Equivalence is pinned on a populated fixture (24 employees, three weeks of rotating day/early/night shifts, a

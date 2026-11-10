@@ -64,7 +64,9 @@ async function main(){
   if(r.failed.length||r.fileErrors.length)throw new Error('base seed failed: '+JSON.stringify(r.fileErrors).slice(0,300)+JSON.stringify(r.failed[0]).slice(0,300));
  }
  await obs`update employment set card_id='K'||substr(employee_code,3) where tenant_id=${TENANT}::uuid and employee_code like 'RC%'`;
- const historyFrom='2026-08-03',importDay=addDays(historyFrom,HISTORY+7),syncDay=addDays(historyFrom,HISTORY+3);
+ // Both measured days are weekdays (with the default 20 history days: Wednesday 26 and Monday 31 August), so the
+ // policy change below moves lateness on both and the recompute apply writes.
+ const historyFrom='2026-08-03',importDay=addDays(historyFrom,HISTORY+8),syncDay=addDays(historyFrom,HISTORY+3);
  await obs`insert into attendance(tenant_id,employment_id,attendance_date,check_in_at,check_out_at,status,day_type,worked_minutes,ot_minutes,late_minutes,check_in_method,check_out_method)
   select ${TENANT}::uuid,e.id,d::date,('09:0'||(abs(hashtext(e.id::text||d::text))%10)||':00')::time,('18:0'||(abs(hashtext(d::text||e.id::text))%10)||':00')::time,'present','workday',480,0,0,'import','import'
   from employment e cross join generate_series(${historyFrom}::date,${addDays(historyFrom,HISTORY-1)}::date,interval '1 day') d where e.tenant_id=${TENANT}::uuid and e.employee_code like 'RC%'`;
