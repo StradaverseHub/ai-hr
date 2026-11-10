@@ -1,9 +1,11 @@
--- Reader/writer Access lock: people and workforce wave (draft number 9840; the integration step renumbers it).
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5005_access_reader_writer_people_values, idx 4405, when 1793330004705.
+-- Draft name on its branch: 9840_access_reader_writer_people_values. Any draft note below describes that unallocated branch position.
+-- Reader/writer Access lock: people and workforce wave (draft number 5005; the integration step renumbers it).
 --
 -- The Personnel maintenance command (core/workforce-maintenance.ts) changes one person's or one
 -- employment's values. It took the profile-policy lock exclusively here, so a writer holding the shared
 -- Access and policy locks would have upgraded. It now joins the policy lock in value mode, like the other
--- register writers (4701, 4702). Only a profile-policy editor excludes it. Every row rule it enforces (one
+-- register writers (5001, 5002). Only a profile-policy editor excludes it. Every row rule it enforces (one
 -- Primary contact, one Highest qualification, the expected-version check) runs under the caller's
 -- per-person or per-employment profile lock and the row locks below, which are unchanged. A caller that
 -- already holds the policy lock exclusively keeps it. The body is otherwise byte-for-byte 0579's.

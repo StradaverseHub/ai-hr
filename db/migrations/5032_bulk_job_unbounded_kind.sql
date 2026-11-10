@@ -1,6 +1,8 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5032_bulk_job_unbounded_kind, idx 4432, when 1793330004732.
+-- Draft name on its branch: 9902_bulk_job_unbounded_kind. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-leave-20261110: not a reservation, not an installation allocation. The
 -- journal position (idx 9902, when 1793330099902) exists only so this branch's schema is executable and reviewable;
--- the integration owner assigns the final tag/idx/when, per docs/MIGRATION-ALLOCATION.md. Requires 9003.
+-- the integration owner assigns the final tag/idx/when, per docs/MIGRATION-ALLOCATION.md. Requires 5011.
 --
 -- KERNEL EXTENSION (shared with every bulk-job kind; note for integration). bulk_job_kind.exclusive gains 'none':
 -- no one-active-job rule, so one person may have several active jobs of the kind at once. Used by follow-up work a

@@ -250,7 +250,7 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
     }
   }
   };
-  // Migration 9880 is applied by migrateTestDb: every scenario reads the typed facts.
+  // Migration 5020 is applied by migrateTestDb: every scenario reads the typed facts.
   await measure('installed');
   // Before the plan pass, which restarts the application's database sessions.
   report.writes = await measureWrites(fixture);
@@ -312,7 +312,7 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
 }
 
 /** A capability-only Workforce viewer: an employee of B with a published workforce.view allow on B and an
- * explicit deny on its descendant C, and no HR, payroll or rewards role. Before 9880 the page refused it. */
+ * explicit deny on its descendant C, and no HR, payroll or rewards role. Before 5020 the page refused it. */
 export async function capabilityOnlyViewer(f: PersonnelScaleFixture): Promise<SessionContext> {
   const t = f.base.tenantId;
   const [person] = await owner.client<{personId: string}[]>`select e.person_id as "personId" from employment e
@@ -329,8 +329,8 @@ export async function capabilityOnlyViewer(f: PersonnelScaleFixture): Promise<Se
     grants: [{role: 'employee', companyId: f.companies.b}], entitlements: f.admin.entitlements};
 }
 
-/** Wall time of the ordinary hire, edit (dated department change) and terminate commands with 9880 and
- * with the pre-9880 owners. 9880 adds no trigger, index or constraint to any table they write. */
+/** Wall time of the ordinary hire, edit (dated department change) and terminate commands with 5020 and
+ * with the pre-5020 owners. 5020 adds no trigger, index or constraint to any table they write. */
 async function measureWrites(f: PersonnelScaleFixture) {
   const ctx = f.admin, today = todayInKualaLumpur();
   const median = (values: number[]) => {const sorted = [...values].sort((a, b) => a - b); return sorted[Math.floor((sorted.length - 1) / 2)];};

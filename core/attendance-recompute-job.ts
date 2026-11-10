@@ -1,6 +1,6 @@
 /**
  * Recompute Attendance (preview and apply) as clients of the shared bulk-job kernel (core/bulk-job-worker.ts;
- * migrations 9003, 9940). core/attendance-recompute.ts is unchanged in what it computes and writes; this moves
+ * migrations 5011, 5045). core/attendance-recompute.ts is unchanged in what it computes and writes; this moves
  * WHERE it runs.
  *
  * The synchronous preview and apply each held the tenant-wide Access lock (exclusive), the leave-dependency

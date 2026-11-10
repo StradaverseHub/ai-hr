@@ -59,7 +59,7 @@ function exactBindings(actual:unknown,expected:readonly {owner:string;operation:
 /** Caller must supply the actual storage-owner connection. The production CLI additionally refuses
  * superuser/BYPASSRLS/role inheritance. There is no ai_hr_app definer, new grant or runtime route.
  *
- * Per tenant and resumable (migration 9962). One short transaction opens the version: it checks the exact owner,
+ * Per tenant and resumable (migration 5071). One short transaction opens the version: it checks the exact owner,
  * catalogue, functions and every tenant's readiness, records the rows it replaces and flips the catalogue, holding
  * no tenant's lock; every tenant keeps seeing its previous catalogue (app.access_capability_effective). Each tenant
  * is then published in its own short transaction, exactly as the single transaction published it: its

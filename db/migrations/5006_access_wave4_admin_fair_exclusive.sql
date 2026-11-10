@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5006_access_wave4_admin_fair_exclusive, idx 4406, when 1793330004706.
+-- Draft name on its branch: 9820_access_wave4_admin_fair_exclusive. Any draft note below describes that unallocated branch position.
 -- Reader/writer Access lock, wave 4 (admin, AI Centre and operator tools). Draft number: the
 -- integration step renumbers it.
 --

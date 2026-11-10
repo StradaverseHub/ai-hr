@@ -1,4 +1,4 @@
-/** JSON responses of the attendance background-job routes (draft 9940). A refusal carries its code; anything else
+/** JSON responses of the attendance background-job routes (draft 5045). A refusal carries its code; anything else
  * is a plain sentence, never SQL or a cell value. Server only. */
 export function attendanceJobJson(body:unknown){return Response.json(body,{headers:{'Cache-Control':'private, no-store'}});}
 export function attendanceJobHttpError(error:unknown){

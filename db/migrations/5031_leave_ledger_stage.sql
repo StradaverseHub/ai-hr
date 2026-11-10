@@ -1,12 +1,14 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5031_leave_ledger_stage, idx 4431, when 1793330004731.
+-- Draft name on its branch: 9901_leave_ledger_stage. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-leave-20261110 (leave family on the shared bulk-job kernel): not a
 -- reservation, not an installation allocation. The journal position (idx 9901, when 1793330099901) exists only so
 -- this branch's schema is executable and reviewable; the integration owner assigns the final tag/idx/when after the
--- freshly verified ledger, per docs/MIGRATION-ALLOCATION.md. Requires 9003 (bulk_job).
+-- freshly verified ledger, per docs/MIGRATION-ALLOCATION.md. Requires 5011 (bulk_job).
 --
 -- STAGED LEAVE LEDGER ROWS. A leave operation that used to be ONE transaction (all-or-nothing) now runs in batches
 -- of employees on the job kernel. Its batches write their ledger rows STAGED: invisible to every other session until
 -- the job releases them all at once, so a failure part-way leaves nothing visible, exactly as the old transaction's
--- rollback did. Same shape as the staged employee import (9001/9004): a marker column, a restrictive policy, and a
+-- rollback did. Same shape as the staged employee import (5010/5012): a marker column, a restrictive policy, and a
 -- constant-time release row.
 --  * leave_ledger.stage_id  NULL for every ordinary row. A transaction that sets app.leave_stage (transaction-local)
 --    stamps its inserts with that stage; the job's own transactions list their stages in app.leave_stage_visible.

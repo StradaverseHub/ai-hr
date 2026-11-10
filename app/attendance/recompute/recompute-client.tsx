@@ -84,7 +84,7 @@ export function RecomputeClient({
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [openRunId, setOpenRunId] = useState<string | null>(null);
-  // Draft 9940: Preview and Apply run as background jobs; the screen follows the running one and rejoins it.
+  // Draft 5045: Preview and Apply run as background jobs; the screen follows the running one and rejoins it.
   const [job, setJob] = useState<RecomputeJobProgress | null>(null);
   const [leftOut, setLeftOut] = useState<RecomputeJobProgress['errors']>([]);
   const [pending, startTransition] = useTransition();

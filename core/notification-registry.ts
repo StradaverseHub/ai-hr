@@ -735,7 +735,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   },
   // Shared bulk-job kernel (core/bulk-job-worker.ts): the person who started a background import is told when it
   // finished, failed or was stopped. Only the job's recorded notice event, appended by its creator, resolves a recipient
-  // (app.bulk_job_notice_recipients, migration 9003). In-app only (no email category). Stored as message KEYS like the
+  // (app.bulk_job_notice_recipients, migration 5011). In-app only (no email category). Stored as message KEYS like the
   // cut-off reminder; the bell renders them in the reader's language (bulkJobs.notification.* in all six catalogues).
   // Never a row count, file name or another person's name. It opens the kind's Import History.
   'bulk-job.finished': {recipientAudience:'reader',

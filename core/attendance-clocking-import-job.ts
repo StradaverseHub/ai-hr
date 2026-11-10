@@ -1,5 +1,5 @@
 /**
- * Import Clocking Data as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; migrations 9003, 9940).
+ * Import Clocking Data as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; migrations 5011, 5045).
  * ADR-0096 is unchanged in what an import decides and writes; this moves WHERE it runs.
  *
  * The synchronous import held the tenant-wide Access and leave-dependency configuration locks, and every named

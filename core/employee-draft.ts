@@ -605,7 +605,7 @@ export async function createEmployeeDraftWithReservedCode(
   return withTenant(ctx, async (tx) => {
     // Shared Access; the Workforce check joins it. Exclusivity used to be the only thing serialising "is this
     // Employee ID free across employments and drafts" with the reservation insert. The per-code claim lock from
-    // 4701 (taken inside findEmployeeCodeClaim and held to commit) now does: a concurrent claimer of the same ID
+    // 5001 (taken inside findEmployeeCodeClaim and held to commit) now does: a concurrent claimer of the same ID
     // waits, then sees this draft's reservation and gets the same refusal. A running number is issued under its
     // counter row lock, so two creates never take the same number, and employee_draft_reserved_code_uq remains.
     await lockAccessConfigurationTx(tx,ctx.tenantId);

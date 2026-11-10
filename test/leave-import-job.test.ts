@@ -1,4 +1,4 @@
-/** Leave ledger import on the shared bulk-job kernel (kind leave_ledger, draft 9900): real PostgreSQL, real RLS,
+/** Leave ledger import on the shared bulk-job kernel (kind leave_ledger, draft 5030): real PostgreSQL, real RLS,
  * real worker ticks. The job must leave the same ledger, row outcomes and summary event as the synchronous import. */
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';

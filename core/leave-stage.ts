@@ -1,5 +1,5 @@
 /**
- * Staged leave ledger rows for all-or-nothing background leave jobs (draft migration 9901).
+ * Staged leave ledger rows for all-or-nothing background leave jobs (draft migration 5031).
  *
  * The old synchronous runs (Generate Entitlement's year-open and its earned Annual Leave part, the A2C re-projection)
  * were each ONE transaction: a failure part-way rolled everything back. On the job kernel they run in short batches
@@ -33,7 +33,7 @@ export async function useLeaveStageTx(tx: Tx, write: string | null, visible: rea
  * Another job's released rows count whether or not their markers have been cleared yet. */
 export async function leaveStageFingerprintsTx(tx: Tx, employmentIds: readonly string[], ownStages: readonly string[]): Promise<Record<string, string>> {
   if (!employmentIds.length) return {};
-  // Draft 9905: one definer digest per employment, the visible set hashed once (row security tested every scanned
+  // Draft 5035: one definer digest per employment, the visible set hashed once (row security tested every scanned
   // row against the whole visible-employment array: 0.5-0.7 s for 3,000 employees inside the release).
   const rows = await tx.execute<{id: string; fp: string}>(sql`select employment_id::text as id, digest as fp
     from app.leave_stage_digests(${`{${employmentIds.join(',')}}`}::uuid[], ${`{${ownStages.join(',')}}`}::uuid[], true)`);

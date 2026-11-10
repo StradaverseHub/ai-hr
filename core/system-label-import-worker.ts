@@ -1,5 +1,5 @@
-/** Staged System Labels import as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; migrations 9003,
- * 9004, 9961). All-or-nothing, as the single-transaction import was: the worker validates once with no writer lock
+/** Staged System Labels import as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; migrations 5011,
+ * 5012, 5070). All-or-nothing, as the single-transaction import was: the worker validates once with no writer lock
  * (refusing unless the preview token still matches), writes each new code through its ordinary writer in chunk
  * transactions of about 100 ms that hold the import's usual locks, and every staged row and audit event stays
  * invisible until one short release transaction makes the whole import visible. A refusal or a stop deletes the

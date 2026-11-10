@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5090_audit_chain_commit_seal, idx 4490, when 1793330004790.
+-- Draft name on its branch: 4700_audit_chain_commit_seal. Any draft note below describes that unallocated branch position.
 -- Audit chain sealed at commit (phase 0): a tenant's chain position is taken at the last moment of the
 -- transaction, under the same audit-chain advisory key, for only as long as the seal itself. A long
 -- transaction that writes one audit event no longer blocks every other audited write of that tenant

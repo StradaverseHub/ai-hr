@@ -43,7 +43,7 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
   const [tab, setTab] = useState<Tab>('all');
   const [q, setQ] = useState('');
   const [dragging, setDragging] = useState(false);
-  // Draft 9940: Import runs as a background job; the screen follows it here and rejoins it after navigation.
+  // Draft 5045: Import runs as a background job; the screen follows it here and rejoins it after navigation.
   const [job, setJob] = useState<ClockingImportJobProgress | null>(null);
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);

@@ -1,5 +1,5 @@
 /**
- * Payroll processing as a background bulk job (core/payroll-processing-job.ts, draft 9950/9951): real PostgreSQL,
+ * Payroll processing as a background bulk job (core/payroll-processing-job.ts, draft 5050/5051): real PostgreSQL,
  * real RLS, real worker ticks.
  *
  * - Equivalence: the payroll wave's populated fictional fixture (test/payroll-lock-equivalence.test.ts) processed by

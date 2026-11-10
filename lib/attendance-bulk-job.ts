@@ -1,4 +1,4 @@
-/** Clocking import and Recompute Attendance as background jobs on the shared bulk-job kernel (migration 9940):
+/** Clocking import and Recompute Attendance as background jobs on the shared bulk-job kernel (migration 5045):
  * browser-safe kinds, progress shape and refusal codes. The services are core/attendance-clocking-import-job.ts
  * and core/attendance-recompute-job.ts; the screens poll their own jobs routes. */
 import {bulkJobActive,bulkJobPercent,type BulkJobProgress,type BulkJobState} from './bulk-job';

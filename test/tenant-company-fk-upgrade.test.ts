@@ -137,8 +137,37 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '4340_ai_management_presentation_snapshot',
    '4341_home_leave_presentation_snapshot',
    '4342_attendance_clock_policy_audit_scope',
-   '9880_personnel_overview_facts',
-   '4700_audit_chain_commit_seal',
+   '5000_access_reader_writer_core',
+   '5001_access_reader_writer_serialisers',
+   '5002_access_reader_writer_profile_values',
+   '5003_access_reader_writer_owner_writers',
+   '5004_access_reader_writer_payroll_inputs',
+   '5005_access_reader_writer_people_values',
+   '5006_access_wave4_admin_fair_exclusive',
+   '5010_employee_import_staged_job',
+   '5011_bulk_job_kernel',
+   '5012_import_release_visibility',
+   '5020_personnel_overview_facts',
+   '5030_leave_bulk_jobs',
+   '5031_leave_ledger_stage',
+   '5032_bulk_job_unbounded_kind',
+   '5033_leave_follow_up_jobs',
+   '5035_leave_stage_digests',
+   '5036_leave_type_pending_year_cycle',
+   '5040_roster_bulk_jobs',
+   '5041_bulk_job_queue_and_watch',
+   '5045_attendance_bulk_jobs',
+   '5050_payroll_processing_status',
+   '5051_payroll_processing_job',
+   '5052_payroll_run_group',
+   '5060_register_section_import_jobs',
+   '5061_register_import_set_release',
+   '5062_employee_import_revert_job',
+   '5063_register_import_release_key_authority',
+   '5064_employee_import_revert_release_hash',
+   '5070_system_label_import_staged_job',
+   '5071_workforce_capability_tenant_publication',
+   '5090_audit_chain_commit_seal',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -169,7 +198,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app._assistant_presentation_feature_unpaused_v1()',
    'app._assistant_rewards_return_choice_payload_v1()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_rewards_calendar_choice_payload_v1()','app._assistant_rewards_cancel_choice_payload_v1()',
-   // 9880: the set-wise organisation resolver is owner-only.
+   // 5020: the set-wise organisation resolver is owner-only.
    'app._personnel_employment_tags(uuid[],date)',
    // Audit-chain commit seal: trigger functions and the key/seal helpers stay private.
    'app._domain_event_chain_key_held(uuid)','app._domain_event_chain_seal_tenant(uuid)','app.domain_event_chain_arm()','app.domain_event_chain_seal_now()'];
@@ -189,7 +218,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.assistant_rewards_cancel_presentation_choices_v1()',
    'app.home_leave_presentation_index(text)',
    'app.attendance_clock_policy_history(uuid,uuid)',
-   // 9880: Personnel typed facts, search entries and the typed page rows.
+   // 5020: Personnel typed facts, search entries and the typed page rows.
    'app.personnel_overview_facts(date,uuid[])','app.personnel_private_search_entries(text,uuid[])',
    'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_list_rows_for_ids(date,uuid[],uuid[])',
    'app.domain_event_chain_flush(uuid)',...publicFunctions,

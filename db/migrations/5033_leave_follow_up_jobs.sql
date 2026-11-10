@@ -1,6 +1,8 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5033_leave_follow_up_jobs, idx 4433, when 1793330004733.
+-- Draft name on its branch: 9903_leave_follow_up_jobs. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-leave-20261110: not a reservation, not an installation allocation. The
 -- journal position (idx 9903, when 1793330099903) exists only so this branch's schema is executable and reviewable;
--- the integration owner assigns the final tag/idx/when, per docs/MIGRATION-ALLOCATION.md. Requires 9003 and 9902.
+-- the integration owner assigns the final tag/idx/when, per docs/MIGRATION-ALLOCATION.md. Requires 5011 and 5032.
 --
 -- The rest of the leave family on the shared bulk-job kernel (one bulk_job_kind row each, no new job table):
 --  * leave_recalc     Entitlement recalculation after a leave-type earning-rule, table or eligibility-rule save

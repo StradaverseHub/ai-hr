@@ -1,5 +1,5 @@
 /** Durable admission and creator-scoped progress for background employee imports, as a client of the shared
- * bulk-job kernel (core/bulk-job.ts, migration 9003). No HR change occurs in an HTTP request. */
+ * bulk-job kernel (core/bulk-job.ts, migration 5011). No HR change occurs in an HTTP request. */
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {EMPLOYEE_IMPORT_ALREADY_RUNNING,type EmployeeImportProgress,type EmployeeImportRowError,type EmployeeImportState,type EmployeeImportResultSummary,type EmployeeImportPhase} from '../lib/employee-import-job';

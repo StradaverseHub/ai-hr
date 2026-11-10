@@ -1,9 +1,11 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5051_payroll_processing_job, idx 4451, when 1793330004751.
+-- Draft name on its branch: 9951_payroll_processing_job. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-payroll-20261110 (payroll processing as a background bulk job): not a
 -- reservation, not an installation allocation. The journal position (idx 9951, when 1793330099951) exists only so
 -- this branch's schema is executable and reviewable; the integration owner assigns the final tag/idx/when after the
 -- freshly verified ledger, per docs/MIGRATION-ALLOCATION.md.
 --
--- Payroll processing runs on the shared bulk-job kernel (9003). The web action admits the job and moves the run
+-- Payroll processing runs on the shared bulk-job kernel (5011). The web action admits the job and moves the run
 -- draft -> processing in one short transaction; the worker writes payslips in short chunks under the run's own
 -- company/month and payroll-inputs keys, and one short finalize moves processing -> processed. A failed or cancelled
 -- job discards its payslips and returns the run to draft.
@@ -17,7 +19,7 @@ ALTER TABLE payroll_batch ADD COLUMN processing_job_id uuid, ADD COLUMN processi
 -- (processing -> processed) and discard (processing -> draft) leave it, clearing the job id in the same UPDATE.
 -- Every other status writer moves a row that was never 'processing'. No existing row is 'processing'.
 -- status::text throughout this file: the drizzle migrator applies every pending file in one transaction, and an enum
--- value added in that transaction (9950) cannot be used as a constant before it commits.
+-- value added in that transaction (5050) cannot be used as a constant before it commits.
 ALTER TABLE payroll_batch ADD CONSTRAINT payroll_batch_processing_lease
  CHECK ((status::text = 'processing') = (processing_job_id IS NOT NULL)) NOT VALID;
 --> statement-breakpoint

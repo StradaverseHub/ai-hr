@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5001_access_reader_writer_serialisers, idx 4401, when 1793330004701.
+-- Draft name on its branch: 4701_access_reader_writer_serialisers. Any draft note below describes that unallocated branch position.
 -- Reader/writer Access lock: narrow serialisers (wave 2, 10 November 2026).
 --
 -- Exclusivity on the tenant Access key was the only thing serialising these check-then-write

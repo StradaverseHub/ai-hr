@@ -1,4 +1,6 @@
--- Personnel overview typed facts (UNALLOCATED draft number 9880; reallocate through
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5020_personnel_overview_facts, idx 4420, when 1793330004720.
+-- Draft name on its branch: 9880_personnel_overview_facts. Any draft note below describes that unallocated branch position.
+-- Personnel overview typed facts (UNALLOCATED draft number 5020; reallocate through
 -- docs/MIGRATION-ALLOCATION.md before release). Functions only: it creates and replaces SECURITY DEFINER
 -- readers and the private-search bind trigger function. It adds no table, column, index, constraint or
 -- trigger and writes no row, so it holds no lock on an application table and needs no backfill or

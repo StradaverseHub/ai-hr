@@ -1,6 +1,8 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5036_leave_type_pending_year_cycle, idx 4436, when 1793330004736.
+-- Draft name on its branch: 9906_leave_type_pending_year_cycle. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-leave-20261110: not a reservation, not an installation allocation. The
 -- journal position (idx 9906, when 1793330099906) exists only so this branch's schema is executable and reviewable;
--- the integration owner assigns the final tag/idx/when, per docs/MIGRATION-ALLOCATION.md. Requires 9903.
+-- the integration owner assigns the final tag/idx/when, per docs/MIGRATION-ALLOCATION.md. Requires 5033.
 --
 -- A Leave Year Type save that moves a type TO Anniversary-to-Calendar used to change the type and correct every
 -- first-year employee in one transaction. On the job kernel the correction is staged (leave_ledger.stage_id), so the

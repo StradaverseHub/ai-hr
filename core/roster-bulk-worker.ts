@@ -1,4 +1,4 @@
-/** Roster bulk operations on the shared bulk-job kernel (core/bulk-job-worker.ts; draft migration 9920), worker side.
+/** Roster bulk operations on the shared bulk-job kernel (core/bulk-job-worker.ts; draft migration 5040), worker side.
  *
  * Every operation used to run in one transaction that held the tenant's Access lock (and the audit chain) for the
  * whole grid: about 26 s for a 1,200-employee month. Here each employee's rows are one step (Generate: one per half

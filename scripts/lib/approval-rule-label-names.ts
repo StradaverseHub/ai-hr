@@ -1,6 +1,6 @@
 /** Names of the organisation codes an approval rule can name, for the unreachable-rules report. The report reads
  * them on the storage-owner connection, which row security does not govern, so codes still staged by a running
- * System Labels import (migration 9961) are filtered explicitly (core/system-label-visibility.ts). */
+ * System Labels import (migration 5070) are filtered explicitly (core/system-label-visibility.ts). */
 import {and,eq} from 'drizzle-orm';
 import type {Db} from '../../db/client';
 import {businessUnit,department,gradeGroup,jobGrade,position} from '../../db/schema';

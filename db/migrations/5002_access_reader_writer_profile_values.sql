@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5002_access_reader_writer_profile_values, idx 4402, when 1793330004702.
+-- Draft name on its branch: 4702_access_reader_writer_profile_values. Any draft note below describes that unallocated branch position.
 -- Reader/writer Access lock: profile value writers (wave 3).
 -- The family child-relief sync runs inside the dependent writer's transaction. Register writers now
 -- hold the shared profile-policy lock, so an exclusive request here would upgrade and could deadlock.

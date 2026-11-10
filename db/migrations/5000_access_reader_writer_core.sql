@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5000_access_reader_writer_core, idx 4400, when 1793330004700.
+-- Draft name on its branch: 4700_access_reader_writer_core. Any draft note below describes that unallocated branch position.
 -- Reader/writer Access lock: central wave (design mechanisms C and D, 10 November 2026).
 --
 -- The tenant-wide key access-configuration:<tenant> becomes a reader/writer lock. Ordinary

@@ -4,7 +4,7 @@
  * r424 (50ed39e1) — Import Clocking Data. Validate writes nothing; Import re-runs every check on the
  * server (the browser's preview is never trusted) and saves the valid lines. The rules all live in
  * core/attendance-clocking-import.ts; `requireAdmin` is this surface's guard, and RLS is the authority.
- * Draft 9940: Import admits a background job (core/attendance-clocking-import-job.ts) and returns at once; the
+ * Draft 5045: Import admits a background job (core/attendance-clocking-import-job.ts) and returns at once; the
  * import worker decides and adds every line, employee by employee, and the screen follows its progress.
  */
 import { requireAdmin } from '@/lib/authz';

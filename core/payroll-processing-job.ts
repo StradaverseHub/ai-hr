@@ -1,5 +1,5 @@
 /** Payroll processing (draft -> processed) as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; draft
- * migrations 9950/9951; owner decision 2026-11-10: a `processing` run status, visible to payroll operators and hidden
+ * migrations 5050/5051; owner decision 2026-11-10: a `processing` run status, visible to payroll operators and hidden
  * from employees, with a run-level durable lease).
  *
  * The web action checks the run and its authority, admits the job and moves the run draft -> processing in one short

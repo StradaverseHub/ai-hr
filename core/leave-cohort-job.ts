@@ -1,5 +1,5 @@
 /** Admission and creator-scoped progress of the background leave processing jobs on the shared bulk-job kernel
- * (kinds leave_generation and leave_accrual, draft 9900). The request checks authority and enqueues; the protected
+ * (kinds leave_generation and leave_accrual, draft 5030). The request checks authority and enqueues; the protected
  * import worker runs the unchanged engines in batches of employees (core/leave-cohort-worker.ts). */
 import {withTenant, type SessionContext, type Tx} from '../db/client';
 import {isAdmin} from '../lib/authz-model';
@@ -12,7 +12,7 @@ import {BULK_JOB_ALREADY_RUNNING, BulkJobError, bulkJobTx, bulkJobWorkerStatusTx
 export {LEAVE_A2C_JOB_KIND, LEAVE_ACCRUAL_JOB_KIND, LEAVE_GENERATION_JOB_KIND, LEAVE_RECALC_JOB_KIND};
 /** Entitlement recalculation after a leave-type earning-rule, table or eligibility-rule save. */
 export type LeaveRecalcJobInput = {leaveTypeId: string; trigger: string; asOf: string};
-/** The A2C re-projection after a Leave Year Type save, and the Leave Year Type it sets at release (draft 9906). */
+/** The A2C re-projection after a Leave Year Type save, and the Leave Year Type it sets at release (draft 5036). */
 export type LeaveA2cJobInput = {leaveTypeId: string; trigger: string; asOf: string; yearCycleOverride?: string};
 /** Another administrator's run of the same kind is still going (one per tenant). Translated by the screen. */
 export const LEAVE_COHORT_ALREADY_RUNNING = 'leave-cohort-already-running';

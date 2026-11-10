@@ -1,4 +1,4 @@
-/** Storage-owner readers of the System Labels catalogue while an import is staged (migration 9961). The owner
+/** Storage-owner readers of the System Labels catalogue while an import is staged (migration 5070). The owner
  * connection bypasses row security, so every reader there that enumerates a catalogue table filters staged codes
  * explicitly (core/system-label-visibility.ts); readers that follow a stored reference cannot meet one. The audit
  * ledger is in docs/adr/2026-11-10-system-label-import-staged-job.md. */

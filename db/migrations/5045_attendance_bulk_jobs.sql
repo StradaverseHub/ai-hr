@@ -1,5 +1,7 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5045_attendance_bulk_jobs, idx 4445, when 1793330004745.
+-- Draft name on its branch: 9940_attendance_bulk_jobs. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-clocking-20261110 (clocking import and Recompute Attendance as
--- background jobs on the shared bulk-job kernel, 9003): not a reservation, not an installation allocation. The
+-- background jobs on the shared bulk-job kernel, 5011): not a reservation, not an installation allocation. The
 -- journal position (idx 9940, when 1793330099400) exists only so this branch's schema is executable and
 -- reviewable; the integration owner assigns the final tag/idx/when after the freshly verified ledger, per
 -- docs/MIGRATION-ALLOCATION.md. Range 9940-9949 is this conversion's draft range.

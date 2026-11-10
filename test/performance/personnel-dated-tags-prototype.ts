@@ -210,7 +210,7 @@ export async function personnelDatedTagsPrototype() {
  await owner.client.begin(async tx=>{
   const [installed]=await tx<{body:string;owner:string}[]>`select prosrc as body,proowner::regrole::text as owner
    from pg_proc where oid=${canonical}::regprocedure`;
-  // 9880 replaces this owner in place; the prototype rewrites the body 2210 installed.
+  // 5020 replaces this owner in place; the prototype rewrites the body 2210 installed.
   const statement=predecessorStatement('2210_personnel_projection_reuse','personnel_filter_rows');
   const original={owner:installed.owner,body:statement.slice(statement.indexOf('AS $$')+5,statement.lastIndexOf('$$'))};
   expect(original.body.split(scopeFence)).toHaveLength(2);

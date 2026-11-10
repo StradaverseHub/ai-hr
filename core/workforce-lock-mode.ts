@@ -62,7 +62,7 @@ async function lockLeaveConfigurationExclusiveWaitTx(tx:Tx,tenantId:string):Prom
 }
 
 /**
- * The tenant reporting-line serialiser from 4701 (org-reporting:<tenant>), taken explicitly and with the Access
+ * The tenant reporting-line serialiser from 5001 (org-reporting:<tenant>), taken explicitly and with the Access
  * bound. The reporting_line statement trigger takes the same key, but only at the write. A writer that reads the
  * reporting graph first (a cycle preflight, "is a newer line already open", which lines to reopen) takes it before
  * that read, so under the shared Access lock it sees every committed reporting-line change and gives the same
@@ -98,7 +98,7 @@ export async function lockPersonValueWritesTx(tx:Tx,tenantId:string,personId:str
  * Under the shared Access lock: a qualification belongs to the employment and takes that employment's profile
  * lock, like the qualification register writer; a person's own fields feed leave cohorts and take the person's
  * value locks (lockPersonValueWritesTx); a family or emergency-contact row takes the person's profile lock, like
- * those register writers. The SQL command then joins the profile-policy lock in value mode (9840). A
+ * those register writers. The SQL command then joins the profile-policy lock in value mode (5005). A
  * transaction holding the exclusive lock keeps the exclusive Access and profile-policy locks it took before.
  */
 export async function lockWorkforceRecordValueWritesTx(tx:Tx,tenantId:string,employmentId:string,kind:'person'|'qualification'|'emergency'|'dependent'):Promise<void>{

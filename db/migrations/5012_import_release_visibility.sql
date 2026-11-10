@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5012_import_release_visibility, idx 4412, when 1793330004712.
+-- Draft name on its branch: 9004_import_release_visibility. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/import-staged-job-20261110 (staged import: constant-time activation and staged
 -- audit events): not a reservation, not an installation allocation. The journal position (idx 9004, when
 -- 1793330090004) exists only so this branch's schema is executable; the integration owner assigns the final
@@ -81,7 +83,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   JOIN public.person p ON p.tenant_id=app.current_tenant_id() AND p.import_pending_attempt_id=h.id;
 $$;
 --> statement-breakpoint
--- Child rows of staged hires (9001 policies). While a large import is staged an ordinary session's hidden-id array
+-- Child rows of staged hires (5010 policies). While a large import is staged an ordinary session's hidden-id array
 -- holds thousands of ids; "= ANY(array)" compared every row with every id. "IN (SELECT unnest(...))" lets the planner
 -- hash the set once per statement, and with no import staged it is still one empty probe.
 ALTER POLICY assignment_import_pending ON public.assignment USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
@@ -108,8 +110,8 @@ ALTER POLICY person_emergency_contact_import_pending ON public.person_emergency_
 --> statement-breakpoint
 ALTER POLICY import_attempt_item_import_pending ON public.import_attempt_item USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
 --> statement-breakpoint
--- The 9001 audit's definer readers filtered "marker IS NULL". Each is re-created with the release-aware predicate,
--- from its installed definition, after checking the exact number of predicates the 9001 audit installed. The two
+-- The 5010 audit's definer readers filtered "marker IS NULL". Each is re-created with the release-aware predicate,
+-- from its installed definition, after checking the exact number of predicates the 5010 audit installed. The two
 -- trigger functions (import_pending_stamp, enqueue_replacement_holidays) keep "IS NULL": they react to row writes,
 -- and settle's marker clear re-fires them for every staged row.
 DO $$

@@ -1,5 +1,5 @@
 /**
- * Fictional-data rehearsal of Import Clocking Data and Recompute Attendance as background jobs (draft 9940).
+ * Fictional-data rehearsal of Import Clocking Data and Recompute Attendance as background jobs (draft 5045).
  * Disposable database only: refuses any URL not on the rehearsal port. Builds its own fictional tenant (the test
  * harness seed) with BASE_EMPLOYEES employees and HISTORY_DAYS of recorded attendance, spawns the real protected
  * worker (scripts/bank-import-runner.ts, which runs the shared bulk-job kernel), runs the hot-path probes (clock-in,

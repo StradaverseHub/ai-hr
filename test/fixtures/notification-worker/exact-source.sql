@@ -133,8 +133,8 @@ END $prior_profile$
   AND conkey=ARRAY[1]::smallint[]AND convalidated AND NOT condeferrable AND NOT condeferred)
  OR(SELECT count(*)FROM pg_index WHERE indrelid=contract_relation.oid)<>1
  OR NOT EXISTS(SELECT 1 FROM pg_index WHERE indrelid=contract_relation.oid AND indisprimary AND indisunique AND indisvalid AND indisready AND indislive AND indnkeyatts=1)
- OR(SELECT count(*)FROM notification_worker_private.helper_contract)<>2399
- OR(SELECT count(*)FROM pg_proc WHERE pronamespace='app'::regnamespace)<>2399
+ OR(SELECT count(*)FROM notification_worker_private.helper_contract)<>2448
+ OR(SELECT count(*)FROM pg_proc WHERE pronamespace='app'::regnamespace)<>2448
  OR EXISTS(SELECT 1 FROM pg_proc p WHERE p.pronamespace='app'::regnamespace AND NOT EXISTS(SELECT 1 FROM notification_worker_private.helper_contract c WHERE c.signature=p.oid))
  OR EXISTS(SELECT 1 FROM notification_worker_private.helper_contract c LEFT JOIN pg_proc p ON p.oid=c.signature
   WHERE p.oid IS NULL OR p.pronamespace<>'app'::regnamespace OR p.proowner<>c.owner_oid OR md5(p.prosrc)<>c.body_md5
@@ -153,7 +153,7 @@ BEGIN
   AND md5(p.prosrc)=c.body_md5 AND p.proconfig IS NOT DISTINCT FROM c.configuration
   AND p.prosecdef=c.security_definer AND p.provolatile=c.volatility AND p.prolang=c.language_oid;
  GET DIAGNOSTICS n=ROW_COUNT;
- IF n<>2399 OR EXISTS(SELECT 1 FROM notification_worker_private.helper_contract WHERE body_source IS NULL)
+ IF n<>2448 OR EXISTS(SELECT 1 FROM notification_worker_private.helper_contract WHERE body_source IS NULL)
  THEN RAISE EXCEPTION 'Complete canonical source capture refused' USING ERRCODE='55000';END IF;
 END $capture$;
 ALTER TABLE notification_worker_private.helper_contract ALTER COLUMN body_source SET NOT NULL;

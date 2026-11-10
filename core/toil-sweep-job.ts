@@ -1,5 +1,5 @@
 /** Admission and creator-scoped progress of the two replacement-leave sweeps on the shared bulk-job kernel (kinds
- * toil_expiry and toil_year_close, draft 9903). The request checks the same authority the synchronous sweep checked
+ * toil_expiry and toil_year_close, draft 5033). The request checks the same authority the synchronous sweep checked
  * and enqueues; the protected import worker settles the credits in batches of employees (core/toil-sweep-worker.ts). */
 import {withTenant, type SessionContext, type Tx} from '../db/client';
 import {bulkJobActive, type BulkJobState} from '../lib/bulk-job';

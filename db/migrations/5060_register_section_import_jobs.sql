@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5060_register_section_import_jobs, idx 4460, when 1793330004760.
+-- Draft name on its branch: 9930_register_section_import_jobs. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-register-20261110 (register and section imports as background jobs on the
 -- shared bulk-job kernel, 9003): not a reservation, not an installation allocation. The journal position (idx 9930,
 -- when 1793330099300) exists only so this branch's schema is executable and reviewable; the integration owner assigns

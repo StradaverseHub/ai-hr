@@ -1,5 +1,5 @@
 /** Admission and creator-scoped progress for background System Labels imports, a client of the shared bulk-job
- * kernel (core/bulk-job.ts; migrations 9003, 9961). The request only checks and enqueues; the worker
+ * kernel (core/bulk-job.ts; migrations 5011, 5070). The request only checks and enqueues; the worker
  * (core/system-label-import-worker.ts) validates against the preview token, stages the codes and releases them. */
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';

@@ -4239,7 +4239,7 @@ export async function updateLeaveType(
     }
     const payrollHits = touchPaid && before && p.paid !== before.paid
       ? await lockPayrollForLeavePaidSettingTx(tx, p.id, p.paid!) : [];
-    // Bulk-job conversion (drafts 9903/9906): a web save moving the type TO Anniversary-to-Calendar does not
+    // Bulk-job conversion (drafts 5033/5036): a web save moving the type TO Anniversary-to-Calendar does not
     // change year_cycle_override here. It admits the background A2C job and names it on the type; the job's
     // release sets the override and makes every staged correction visible in ONE transaction, so readers see the
     // old type with the old figures until then and the new type with the corrected figures after. Any other
@@ -4309,7 +4309,7 @@ export async function updateLeaveType(
     // Idempotent, so a re-save of the same value writes nothing. A move AWAY from a2c is a no-op inside the
     // helper (the type is no longer a2c) — the ordinary calendar engines own it from the next year-open.
     //
-    // Bulk-job conversion (draft 9903): for a signed-in administrator the correction no longer runs inside this
+    // Bulk-job conversion (draft 5033): for a signed-in administrator the correction no longer runs inside this
     // transaction (it held the tenant's locks over every live employee of the type). The background A2C job is
     // admitted HERE, in the same transaction, so it exists exactly when this save commits; its batches stage their
     // rows and one short release makes the whole correction visible at once (core/leave-follow-up-worker.ts).

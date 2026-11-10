@@ -1,8 +1,10 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5003_access_reader_writer_owner_writers, idx 4403, when 1793330004703.
+-- Draft name on its branch: 4703_access_reader_writer_owner_writers. Any draft note below describes that unallocated branch position.
 -- Reader/writer Access lock: owner and maintenance sessions keep waiting (wave 1 repair).
 -- The try-and-refuse rule is for request sites, which always run with a tenant context. Owner sessions
 -- (provisioning, operator tooling, fixtures) have none; refusing them under ordinary shared traffic would
 -- stop an operator adding an administrator during working hours, and concurrent owner writes refused
--- each other. They wait for the exclusive lock as before 4700. Request sites are unchanged.
+-- each other. They wait for the exclusive lock as before 5000. Request sites are unchanged.
 CREATE OR REPLACE FUNCTION app.access_lock_legacy_writer() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid; k bigint; old_person uuid; new_person uuid; touched_login boolean:=false;

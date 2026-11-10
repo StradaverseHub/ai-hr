@@ -1,5 +1,5 @@
-/** Staged employee import as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; migrations 9001, 9003,
- * 9004). Steps are applied in short chunk transactions under the initiating user's authority and stay invisible.
+/** Staged employee import as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; migrations 5010, 5011,
+ * 5012). Steps are applied in short chunk transactions under the initiating user's authority and stay invisible.
  * Activation is a constant-time release of the attempt; the markers are then settled in bounded owner batches.
  * A failure before release discards the staged rows in bounded batches (ADR-0157 void trail). */
 import {sql} from 'drizzle-orm';

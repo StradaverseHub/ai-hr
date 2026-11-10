@@ -1,4 +1,4 @@
-/** Roster bulk operations as clients of the shared bulk-job kernel (core/bulk-job.ts, draft migration 9920): the web
+/** Roster bulk operations as clients of the shared bulk-job kernel (core/bulk-job.ts, draft migration 5040): the web
  * side. Each door checks the same authority the synchronous path checked, then only enqueues; the protected import
  * worker writes (core/roster-bulk-worker.ts). No roster row changes in an HTTP request. */
 import {withTenant,type SessionContext,type Tx} from '../db/client';

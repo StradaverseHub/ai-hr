@@ -1,8 +1,10 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5041_bulk_job_queue_and_watch, idx 4441, when 1793330004741.
+-- Draft name on its branch: 9921_bulk_job_queue_and_watch. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-roster-20261110 (assigned draft range 9920-9929): not a reservation, not an
 -- installation allocation. The journal position (idx 9921, when 1793330099921) exists only so this branch's schema is
 -- executable and reviewable; the integration owner assigns the final tag/idx/when per docs/MIGRATION-ALLOCATION.md.
 --
--- KERNEL EXTENSION (shared bulk-job kernel, 9003; to be reconciled at integration with the other kernel clients):
+-- KERNEL EXTENSION (shared bulk-job kernel, 5011; to be reconciled at integration with the other kernel clients):
 --  1. Exclusivity 'tenant_queue': one job of the kind RUNS at a time per tenant, but a later one is always admitted
 --     and waits in 'queued' until every earlier active job of its kind has ended; the worker then starts it by
 --     itself (core/bulk-job-worker.ts claim). No admission is refused, so a second administrator never sees a

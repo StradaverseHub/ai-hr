@@ -1,5 +1,5 @@
 /**
- * Recompute Attendance preview and apply as background jobs (draft 9940) against the synchronous call they replace
+ * Recompute Attendance preview and apply as background jobs (draft 5045) against the synchronous call they replace
  * on the screen.
  *
  * The populated fixture (test/helpers/attendance-bulk-fixture.ts) is put on the books through the real write path

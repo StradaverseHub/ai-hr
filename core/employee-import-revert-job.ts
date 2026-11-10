@@ -1,5 +1,5 @@
 /** The employee import Revert (ADR-0155, ADR-0157) as a background job on the shared bulk-job kernel (draft migration
- * 9932; docs/adr/2026-11-10-register-section-import-jobs.md). The request only admits the job, inside the synchronous
+ * 5062; docs/adr/2026-11-10-register-section-import-jobs.md). The request only admits the job, inside the synchronous
  * revert's own checks. The worker reviews eligibility once without any lock (nothing is written), then performs the
  * whole revert in one short owner-run transaction that re-checks everything set-based under the revert's locks and
  * the creator's captured session: the same refusals, voids, audit events in the same order and Import History event. */

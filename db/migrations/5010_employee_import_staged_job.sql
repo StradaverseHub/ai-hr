@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5010_employee_import_staged_job, idx 4410, when 1793330004710.
+-- Draft name on its branch: 9001_employee_import_staged_job. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/import-staged-job-20261110 (phase 1 of the Access-lock / staged-import design):
 -- not a reservation, not an installation allocation. The journal position (idx 9001, when 1793330090001) exists
 -- only so this branch's schema is executable and reviewable; the integration owner assigns the final

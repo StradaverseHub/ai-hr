@@ -1,4 +1,4 @@
-/** Staged System Labels import rows (migration 9961) on connections that row security does not govern.
+/** Staged System Labels import rows (migration 5070) on connections that row security does not govern.
  *
  * A staged code is written by the import's chunk transactions and stays invisible until its release: a RESTRICTIVE
  * policy hides it from every role subject to row security, and the audited definers filter it. The storage-owner

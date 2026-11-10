@@ -1,6 +1,6 @@
 # Background employee imports (shared bulk-job kernel)
 
-The web process only admits an import (a `bulk_job` row of kind `employee_import`, migration 9003) and returns.
+The web process only admits an import (a `bulk_job` row of kind `employee_import`, migration 5011) and returns.
 The protected import worker, `aihr-bank-import.service` (`scripts/bank-import-runner.ts`), runs it on the shared
 bulk-job kernel next to the Bank & Statutory and Individual Transaction queues. There is no separate employee import
 unit: the same closed `worker-package-v1`, first-install helper (`bank_import_worker_installer_v2.py`) and staging

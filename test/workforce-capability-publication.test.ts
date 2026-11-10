@@ -14,7 +14,7 @@ import {accessConfigurationStore} from '../core/access-configuration-store';
 let b:Base;
 const ids=['workforce.view','workforce.maintain','profile.review'];
 beforeAll(migrateTestDb);
-// Publication state (migration 9962) is global: clear it with the catalogue so every case starts uninstalled.
+// Publication state (migration 5071) is global: clear it with the catalogue so every case starts uninstalled.
 const clearPublication=async()=>{await owner.client`delete from app.access_capability_tenant_publication`;await owner.client`delete from app.access_capability_publication`;};
 beforeEach(async()=>{await resetDb();b=await seedBase();await clearPublication();await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${ids}::text[])`;});
 afterAll(async()=>{try{await clearPublication();await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${ids}::text[])`;}finally{await closeAll();}});
@@ -65,7 +65,7 @@ it('refuses an active tenant without initialized recovery defaults instead of in
  await owner.db.insert(appUser).values({tenantId:other.id,workosUserId:'fictional-publication-without-recovery'});
  const before=await snapshot();await expect(publishWorkforceCapabilities(owner.client)).rejects.toThrow('Workforce capability installation refused');expect(await snapshot()).toEqual(before);
 });
-// ── Per-tenant publication (migration 9962). Safety property: no capability ever becomes effective for a tenant
+// ── Per-tenant publication (migration 5071). Safety property: no capability ever becomes effective for a tenant
 // without that tenant's own immutable publication audit, which commits with its publication, preview revision and
 // physical writer generation. ───────────────────────────────────────────────────────────────────────────────────────
 const ids3=['workforce.view','workforce.maintain','profile.review'];

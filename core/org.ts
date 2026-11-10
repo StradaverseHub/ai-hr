@@ -857,7 +857,7 @@ export async function reverseTerminationTx(
   // Reader/writer lock. Shared Access, then the administrator guard (this writes terminated_on, so it follows the
   // same order as a termination) and this employment's leave dependencies. A line is reopened "only while it still
   // ends on that date and nothing newer has replaced it": a check-then-write on other employments' reporting lines
-  // that exclusivity used to serialise. The tenant reporting-line serialiser (4701) is taken before those reads, so
+  // that exclusivity used to serialise. The tenant reporting-line serialiser (5001) is taken before those reads, so
   // a concurrent reporting-line change is either fully visible to the check or waits for this reversal.
   await lockAccessConfigurationTx(tx, ctx.tenantId);
   await lockAccessAdministratorSetTx(tx, ctx.tenantId);
@@ -1423,7 +1423,7 @@ export async function setReportingLine(
       // A structural line for one subordinate: shared Access. Approver routing is read per subordinate, so the
       // subordinate's leave-dependency lock replaces exclusive configuration under the shared lock. The cycle
       // preflight and "supersede the prior open line" are check-then-writes on the reporting graph that
-      // exclusivity used to serialise: the tenant reporting-line serialiser (4701) is taken before them, so a
+      // exclusivity used to serialise: the tenant reporting-line serialiser (5001) is taken before them, so a
       // concurrent edge is either visible to the preflight (same ReportingCycleError) or waits for this one.
       await lockAccessConfigurationTx(tx, ctx.tenantId);
       await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.subordinateEmploymentId], { configuration: true });

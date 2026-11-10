@@ -75,7 +75,7 @@ export async function verifyTenantChain(ctx: SessionContext): Promise<ChainVerif
   return withTenant(ctx, async (tx) => {
     const [scope]=await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
     if(!scope?.allowed)throw new AuditChainScopeError();
-    // A staged import's events stay invisible until its attempt is released (migration 9004), but they are already
+    // A staged import's events stay invisible until its attempt is released (migration 5012), but they are already
     // links of the chain. This group-admin-only proof reads every chained row; it returns sequence numbers only.
     await tx.execute(sql`select set_config('app.audit_chain_verification','on',true)`);
     // ALL THREE counts in one pass, so they are read from the same snapshot and cannot disagree.

@@ -1,4 +1,4 @@
-/** The employee import Revert as a background job (draft migration 9932): real PostgreSQL, real RLS, real worker
+/** The employee import Revert as a background job (draft migration 5062): real PostgreSQL, real RLS, real worker
  * ticks. Equivalence against the synchronous revert on an identical second tenant: the same voids, the same audit
  * events in the same order and the same Import History events. */
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';

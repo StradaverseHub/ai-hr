@@ -1,3 +1,83 @@
+# Combined release block — 11 November 2026 MYT (unapplied allocation, one block)
+
+Branch `claude/combined-release-20261111` (base `claude/architecture-release-20261110` @ `6e4a883c2`) merges every
+accepted branch of the combined release and moves all of their draft migrations into one block: tags `5000`–`5090`,
+idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when share one offset (tag 50NN, idx 44NN, when
+…47NN). The 772-entry journal of the base keeps its entries, order and SQL bytes; the 803-entry journal passes
+`node .github/ci/check-migration-order.mjs origin/main` (main `9cf69292a`, 729 entries ending at
+`4800_ai_shared_leave_groups_read`, idx 4200 / when 1793330004500).
+
+| Draft tag (branch) | Draft idx / when | Allocated tag | idx / when | SHA256 at allocation |
+| --- | ---: | --- | ---: | --- |
+| `4700_access_reader_writer_core` | 4100 / 1793330004400 | `5000_access_reader_writer_core` | 4400 / 1793330004700 | `fead3e8f0d90a199119cf0578e2cab387f4a4d9a2e56cb4ab96de792d4040527` |
+| `4701_access_reader_writer_serialisers` | 4101 / 1793330004401 | `5001_access_reader_writer_serialisers` | 4401 / 1793330004701 | `6665dac2d56dd325b0495fbf1e1215326071b7a23043d5c546155abae971c104` |
+| `4702_access_reader_writer_profile_values` | 4102 / 1793330004402 | `5002_access_reader_writer_profile_values` | 4402 / 1793330004702 | `c976c1b3852df4a7715047912ead0fc53a50492ca9a59c7e72490c8fff4598f1` |
+| `4703_access_reader_writer_owner_writers` | 4103 / 1793330004403 | `5003_access_reader_writer_owner_writers` | 4403 / 1793330004703 | `07f7c70515033c682a9dadd5031c68df282ad56b9eb984423fd2ee807de019cf` |
+| `9830_access_reader_writer_payroll_inputs` | 4104 / 1793330009830 | `5004_access_reader_writer_payroll_inputs` | 4404 / 1793330004704 | `5f6cf69f2c1c6b1285536727df0bb43d6459a4bbec013e4ea2c0628ab80d4bd0` |
+| `9840_access_reader_writer_people_values` | 9840 / 1793330009840 | `5005_access_reader_writer_people_values` | 4405 / 1793330004705 | `4e00488e5571f4d7e17e4f90fa8445150c848fb4159bd50d76f986f1e6354025` |
+| `9820_access_wave4_admin_fair_exclusive` | 9820 / 1793330009820 | `5006_access_wave4_admin_fair_exclusive` | 4406 / 1793330004706 | `3a8ef207e6235548a53d2d49993c81404a097a6dc503eb77e1e5a7115abe8445` |
+| `9001_employee_import_staged_job` | 9001 / 1793330090001 | `5010_employee_import_staged_job` | 4410 / 1793330004710 | `c71e21ef9571ebd015bcff95b87da46fbedb098b66f0b8edfbb10d4b16fe9e65` |
+| `9003_bulk_job_kernel` | 9003 / 1793330090003 | `5011_bulk_job_kernel` | 4411 / 1793330004711 | `50af4670d06419c82ec7495827cf14db2905fda780b21ee58f17ae2f1df7af58` |
+| `9004_import_release_visibility` | 9004 / 1793330090004 | `5012_import_release_visibility` | 4412 / 1793330004712 | `c9317842654b48046d93ca842cf5fbb99db42324bca02858fcea4759a0d90801` |
+| `9880_personnel_overview_facts` | 3743 / 1793330004043 | `5020_personnel_overview_facts` | 4420 / 1793330004720 | `e45555e45eee6f644abf2cd2665b9ac7c3c4adad5b46874fc8b1296f648d350f` |
+| `9900_leave_bulk_jobs` | 9900 / 1793330099900 | `5030_leave_bulk_jobs` | 4430 / 1793330004730 | `8019ec0924cf3318b5a6c5b98598185f66fb6c813be7ce17562a69dd6a70a4a4` |
+| `9901_leave_ledger_stage` | 9901 / 1793330099901 | `5031_leave_ledger_stage` | 4431 / 1793330004731 | `89b37fb2f07bd3d12214ddbab3ec681a029d539a1312adcd611f29ff7580b484` |
+| `9902_bulk_job_unbounded_kind` | 9902 / 1793330099902 | `5032_bulk_job_unbounded_kind` | 4432 / 1793330004732 | `87546b29bea2e2103bf6261fef63d04d068906cba48555def165f53e2fd83df4` |
+| `9903_leave_follow_up_jobs` | 9903 / 1793330099903 | `5033_leave_follow_up_jobs` | 4433 / 1793330004733 | `79370dae32b696614ac1abeb35098a2f12425845b265cfec8605dfd5c157b6a3` |
+| `9905_leave_stage_digests` | 9905 / 1793330099905 | `5035_leave_stage_digests` | 4435 / 1793330004735 | `494012354aa83806eee58e6c4476016cc2534ec255b58feacd523b0f784638d1` |
+| `9906_leave_type_pending_year_cycle` | 9906 / 1793330099906 | `5036_leave_type_pending_year_cycle` | 4436 / 1793330004736 | `451ac2eefb07ca27865ea92f60bd7819f9882156c7dda88b1686ef4eace69324` |
+| `9920_roster_bulk_jobs` | 9920 / 1793330099920 | `5040_roster_bulk_jobs` | 4440 / 1793330004740 | `2c53adf60304ed9135c24242c6e7b3165459618f2d60f35ecf09ad0d1004e5cb` |
+| `9921_bulk_job_queue_and_watch` | 9921 / 1793330099921 | `5041_bulk_job_queue_and_watch` | 4441 / 1793330004741 | `04622440b5568f374fe6ab0e7260351114464253fbbc74b86daaf185b1b427c0` |
+| `9940_attendance_bulk_jobs` | 9940 / 1793330099400 | `5045_attendance_bulk_jobs` | 4445 / 1793330004745 | `94efcd4b24a895146afa3d8d6da9283648b1f5c85d41ed197bf6f25b7e089f7f` |
+| `9950_payroll_processing_status` | 9950 / 1793330099950 | `5050_payroll_processing_status` | 4450 / 1793330004750 | `1e9ca4115879eff695e815bc7e83ce18eef78ce0982da05a8d292eb5a08bc7d1` |
+| `9951_payroll_processing_job` | 9951 / 1793330099951 | `5051_payroll_processing_job` | 4451 / 1793330004751 | `51b0c09b5590db921f1fbc0267f43a80b82849edc39eaf230bb711156c1a85cb` |
+| `9952_payroll_run_group` | 9952 / 1793330099952 | `5052_payroll_run_group` | 4452 / 1793330004752 | `f420568a0612c6da490ea7330d36b464bedad8fc5e25663d268e9750b1886901` |
+| `9930_register_section_import_jobs` | 9930 / 1793330099300 | `5060_register_section_import_jobs` | 4460 / 1793330004760 | `9f31d58e832178bffeb05db717d387225bfbf81486aed12b91d8806814fb10dc` |
+| `9931_register_import_set_release` | 9931 / 1793330099310 | `5061_register_import_set_release` | 4461 / 1793330004761 | `5f42cc417104ce3e72cd00b9c81abaaebc2c0c5fe24854b67fb00c50479751e7` |
+| `9932_employee_import_revert_job` | 9932 / 1793330099320 | `5062_employee_import_revert_job` | 4462 / 1793330004762 | `8fd23f7bf263f64338fc21ddf8caeb94b527cbba10396425e68dd2368f6266c1` |
+| `9933_register_import_release_key_authority` | 9933 / 1793330099330 | `5063_register_import_release_key_authority` | 4463 / 1793330004763 | `3bfcee2909aa130c3c415ab07f4da31c04ccb89d2299606d8b9ea64428287db9` |
+| `9934_employee_import_revert_release_hash` | 9934 / 1793330099340 | `5064_employee_import_revert_release_hash` | 4464 / 1793330004764 | `eeff6f99fe872fc063e96d13ef339d65c1acb2c9625d810d5ae5df5998851683` |
+| `9961_system_label_import_staged_job` | 9961 / 1793330090961 | `5070_system_label_import_staged_job` | 4470 / 1793330004770 | `ea05c3983ef6034bca2a40fd7681da8bb5b0b1d439cea5c91c1d4551d991dfca` |
+| `9962_workforce_capability_tenant_publication` | 9962 / 1793330090962 | `5071_workforce_capability_tenant_publication` | 4471 / 1793330004771 | `4d22cd648ea0698c5ce230461862fc4c93e61cbc9196800e0317b680d694a311` |
+| `4700_audit_chain_commit_seal` | 4100 / 1793330004400 | `5090_audit_chain_commit_seal` | 4490 / 1793330004790 | `f6bf0e0f80ca6cb222c8ec10996d55e1bafdbe436809987d9d7b7cf9c11485f1` |
+
+Order and why:
+
+- **Reader/writer Access lock first (5000–5006).** Its migrations re-create existing functions from their reviewed
+  bodies. Everything that rewrites an installed definition in place runs after them.
+- **Staged employee import and kernel (5010–5012), then Personnel typed facts (5020).** 5010 re-creates three
+  Personnel readers with the staged-row filter and 5012 rewrites that filter in place. 5020 replaces the same three
+  readers, so it now expects those bodies as its predecessors and keeps `app.import_marker_visible` in every
+  employment reader it creates or replaces. Its bytes changed for that (was
+  `ebe4e9de76f137a577aaa555b22ec5afedaa8f06922860e03a5dbaacaba8302d` on its branch).
+- **Bulk conversions (5030–5071).** One kernel: `5032_bulk_job_unbounded_kind` introduces exclusivity `none`,
+  `5041_bulk_job_queue_and_watch` adds `tenant_queue` and `watched_at` and carries all four modes in its constraint
+  and in `app.bulk_job_admit`, and `5051_payroll_processing_job` no longer redefines either (its bytes changed).
+  `5064_employee_import_revert_release_hash` takes a short queued wait for the exclusive Access lock and then the
+  editor barrier, as the synchronous revert does under the reader/writer lock (its bytes changed).
+- **Audit-chain commit seal last (5090).** It asks to be the last migration of its batch: its final statement takes
+  the only lock on a populated table, it rewrites one function the Access-lock migrations re-create
+  (`app.contract_lock_authority_sources`), and it refuses unless the UPDATE triggers on `domain_event` are exactly
+  its reviewed set.
+- **Gaps are deliberate.** 5013–5019 (kernel hardening), 5034 and 5037–5039, 5053–5059, 5065–5069 and 5072–5089 are
+  left for branches accepted later; they are inserted before 5090 in journal order while the block is unapplied.
+
+Retired: `9002_leave_import_job` (phase 3's leave import proof). The leave ledger import runs on the shared kernel
+(kind `leave_ledger`, 5030), so the proof's table, runner and systemd unit were removed with it; it was never applied.
+
+Phase 0 and phase 2 both claimed `4700` at idx 4100 / when 1793330004400; they are now 5090 and 5000.
+
+Read-only survey, 11 November 2026: 7,316 refs (4,055 distinct heads, 556 distinct committed journal blobs, all
+parseable, one ref without a journal) and 250 readable journals among 265 registered worktrees (one unparseable:
+feedback-menu-operator-toggle-616263). Above idx 4243 / when 1793330004543 the peers hold `4900`–`4902` at idx
+4300–4302 / when 1793330004600–1793330004602 (staging board window 4 and the account-action fix), the Home drafts
+`9850`, `9870`, `9873`, and the pending drafts of this programme (`9005`, `9006`, `9910`–`9912`, `9953`–`9955`).
+Nothing occupies tags 5000–5099, idx 4303–4600 or when 1793330004603–1793330004999. This block sits above
+4900–4902 on purpose. **The architecture block of this same release (idx 4201–4243 / when …4501–…4543) sits below
+them:** if 4900–4902 are installed anywhere before this release, those 43 entries would be skipped there and must
+move above when 1793330004602 first. Refresh the peer survey and the installed ordered ledger before release
+admission. This allocation grants no installation authority.
+
 # Reader/writer Access lock — 10 November 2026 (provisional, unapplied)
 
 Branch `claude/access-reader-writer-20261110` provisionally claims `4700_access_reader_writer_core`

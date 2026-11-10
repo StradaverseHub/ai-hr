@@ -1,9 +1,9 @@
 /** The bounded Personnel overview returns exactly the exact owner's rows, order, counts, headcount and
  * choices for every list filter, sort and private search, for an HR administrator and for a scoped
- * manager (allow on two companies, explicit deny on a descendant), before and after migration 9880.
- * The oracle is the exact reader (`compareExact`) over the owners as they were before 9880: the test
+ * manager (allow on two companies, explicit deny on a descendant), before and after migration 5020.
+ * The oracle is the exact reader (`compareExact`) over the owners as they were before 5020: the test
  * restores those predecessor bodies from the migrations that installed them, captures every answer,
- * then re-applies 9880 and compares the typed facts, the replaced exact owner, the set-wise resolver,
+ * then re-applies 5020 and compares the typed facts, the replaced exact owner, the set-wise resolver,
  * page rows, search rows, private-search creation and the bind trigger's refusals against them. */
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {randomBytes} from 'node:crypto';
@@ -45,13 +45,13 @@ beforeAll(async()=>{
   (${t}::uuid,${user.id}::uuid,'workforce.view',${fixture.companies.c}::uuid,'deny')`;
  viewer={tenantId:t,userId:user.id,personId:person.personId,roles:['employee'],grants:[{role:'employee',companyId:fixture.companies.b}],
   entitlements:fixture.admin.entitlements};
- // The oracle state: the Personnel owners exactly as they were before 9880.
+ // The oracle state: the Personnel owners exactly as they were before 5020.
  reapplyMigration=await installPreMigrationOwners();
 },240_000);
 afterAll(async()=>{try{await reapplyMigration?.();await restoreWorkforceCapabilityCatalogue();}finally{await closeAll();}},120_000);
 async function migrate9880(){if(reapplyMigration){const reapply=reapplyMigration;reapplyMigration=undefined;await reapply();}}
 
-/** The pre-9880 exact owner's answers. */
+/** The pre-5020 exact owner's answers. */
 const original=new Map<string,Overview>();
 const searchRows=new Map<string,string[]>();
 const tokenMatches=new Map<string,string[]>();
@@ -139,8 +139,8 @@ async function compareAll(role:'admin'|'manager',migrated:boolean){
   if(!migrated)original.set(key,exact);
   const oracle=original.get(key);expect(oracle,key+' oracle').toBeDefined();
   expect(normalize(traced.result),key+' via '+source).toEqual(normalize(oracle!));
-  // After 9880 the exact owner itself runs the set-wise resolver; it must still answer the same.
-  if(migrated)expect(normalize(exact),key+' exact after 9880').toEqual(normalize(oracle!));
+  // After 5020 the exact owner itself runs the set-wise resolver; it must still answer the same.
+  if(migrated)expect(normalize(exact),key+' exact after 5020').toEqual(normalize(oracle!));
   compared++;if(exact.employees.rows.length)nonEmpty++;
  }
  return {scope,used,compared,nonEmpty};
@@ -200,7 +200,7 @@ describe('bounded Personnel overview equivalence on a fictional multi-company fi
   expect(terminated.employees.total).toBe(counts.terminated);
   const managerTerminated=await readPersonnelOverview(fixture.manager,{companyIds:manager.companyIds,...parsePersonnelListQuery({status:'terminated'}).filters,limit:25,offset:0},{});
   expect(managerTerminated.employees.total).toBe(counts.managerTerminated);
-  // The pre-9880 search projection and bind trigger, for the parity checks once 9880 replaces them.
+  // The pre-5020 search projection and bind trigger, for the parity checks once 5020 replaces them.
   for(const [role,ctx] of Object.entries(roles())){
    const scope=(role==='admin'?admin:manager).companyIds;
    searchRows.set(role,await withTenant(ctx,tx=>tx.execute<{value:Record<string,unknown>}>(sql`select value from app.personnel_search_rows(array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) r(value)`))
@@ -216,7 +216,7 @@ describe('bounded Personnel overview equivalence on a fictional multi-company fi
   expect(refusals.get('admin')).toHaveLength(5);expect(refusals.get('manager')).toHaveLength(6);
  },180_000);
 
- it('before 9880 a capability-only Workforce viewer is admitted to Personnel but its company choices refuse (the defect)',async()=>{
+ it('before 5020 a capability-only Workforce viewer is admitted to Personnel but its company choices refuse (the defect)',async()=>{
   const scope=await scopeOf(viewer);
   expect(scope).toEqual([fixture.companies.b]);
   const query=parsePersonnelListQuery({});
@@ -225,7 +225,7 @@ describe('bounded Personnel overview equivalence on a fictional multi-company fi
  },60_000);
 
  for(const role of ['admin','manager'] as const){
-  it(`before 9880 the bounded overview matches the exact owner for every filter, sort and search (${role})`,async()=>{
+  it(`before 5020 the bounded overview matches the exact owner for every filter, sort and search (${role})`,async()=>{
    expect(reapplyMigration).toBeDefined();
    const {used,compared,nonEmpty}=await compareAll(role,false);
    expect(compared).toBeGreaterThan(60);expect(nonEmpty).toBeGreaterThan(40);
@@ -234,7 +234,7 @@ describe('bounded Personnel overview equivalence on a fictional multi-company fi
   },600_000);
  }
  for(const role of ['admin','manager'] as const){
-  it(`after 9880 every filter, sort and search is bounded and matches the pre-9880 exact owner (${role})`,async()=>{
+  it(`after 5020 every filter, sort and search is bounded and matches the pre-5020 exact owner (${role})`,async()=>{
    await migrate9880();
    const {used,compared}=await compareAll(role,true);
    expect(compared).toBeGreaterThan(60);
@@ -242,7 +242,7 @@ describe('bounded Personnel overview equivalence on a fictional multi-company fi
    expect(used.exact).toBe(0);expect(used.facts).toBeGreaterThanOrEqual(30);
   },600_000);
  }
- it('after 9880 the set-wise resolver, page rows, search rows and bind trigger answer exactly as the per-row owners',async()=>{
+ it('after 5020 the set-wise resolver, page rows, search rows and bind trigger answer exactly as the per-row owners',async()=>{
   await migrate9880();
   const day=todayInKualaLumpur();
   for(const [role,ctx] of Object.entries(roles())){
@@ -268,7 +268,7 @@ describe('bounded Personnel overview equivalence on a fictional multi-company fi
   }
  },300_000);
 
- it('after 9880 the capability-only viewer opens Personnel with exactly its own companies and employees',async()=>{
+ it('after 5020 the capability-only viewer opens Personnel with exactly its own companies and employees',async()=>{
   await migrate9880();
   const scope=await scopeOf(viewer);
   expect(scope).toEqual([fixture.companies.b]);

@@ -1,4 +1,4 @@
-/** Staged employee import on the shared bulk-job kernel (migrations 9001, 9003, 9004): real PostgreSQL, real RLS,
+/** Staged employee import on the shared bulk-job kernel (migrations 5010, 5011, 5012): real PostgreSQL, real RLS,
  * real worker ticks. Release is a constant-time visibility flip; markers are settled afterwards. */
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {spawnSync} from 'node:child_process';

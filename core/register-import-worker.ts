@@ -3,7 +3,7 @@
  * visibility of the employee import cannot hide it. Instead each chunk step runs the unchanged register writers for
  * one employee (the employment for qualifications, the person for contacts) inside a savepoint, CAPTURES exactly what
  * they wrote — that employee's register rows before and after, and the audit events — and rolls the savepoint back.
- * Nothing is visible until the release: one set-based statement (migration 9931), under the writers' own locks and
+ * Nothing is visible until the release: one set-based statement (migration 5061), under the writers' own locks and
  * the creator's captured authority, that checks every captured employee is still the same, still maintainable and
  * unchanged since capture, then applies every captured row and event. An employee whose register changed meanwhile is captured again;
  * after a few rounds the import stops with nothing written. */
@@ -56,7 +56,7 @@ export function registerFailedResult(section:PersonnelRegisterKind,total:number,
 
 /** The employee's register rows as the creator's session sees them, and their fingerprint: every row's identity and
  * row version (xmin), so any later write to any of them, by anyone, changes it, whatever the session's time zone. The
- * release computes the same expression (migration 9931). */
+ * release computes the same expression (migration 5061). */
 async function registerRowsTx(tx:Tx,kind:PersonnelRegisterKind,key:string):Promise<Row[]>{
  const t=TABLES[kind];
  return(await tx.execute<{row:Row}>(sql`select to_jsonb(r) as row from ${t.table} r where r.${t.key}=${key}::uuid order by r.id`)).map(r=>r.row);
@@ -113,7 +113,7 @@ const sameSubjects=(refs:SubjectRef[],subjects:RegisterSubject[])=>refs.every(re
  return match.length===1&&match[0].valid&&match[0].employmentId===ref.employmentId&&match[0].personId===ref.personId;
 });
 
-/** The visibility flip, in one statement on the worker's queue-owner connection (migration 9931): under the creator's
+/** The visibility flip, in one statement on the worker's queue-owner connection (migration 5061): under the creator's
  * captured session it re-checks the creator, every employee's identity, status and workforce maintain authority, the
  * tables' row security and every employee's register fingerprint, once per statement rather than once per row, then
  * applies every captured row and the writers' audit events in file order. Changed employees go back for a fresh

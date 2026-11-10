@@ -208,15 +208,15 @@ function fixtureSql(personPrefix: string, employmentPrefix: string, count: numbe
     from generate_series(1,${count}) n`;
 }
 
-/** The functions migration 9880 adds, and the five reviewed predecessors it replaces in place. */
+/** The functions migration 5020 adds, and the five reviewed predecessors it replaces in place. */
 export const PERSONNEL_FACTS_NEW_FUNCTIONS = [
   'app.personnel_list_rows_for_ids(date,uuid[],uuid[])', 'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])',
   'app.personnel_private_search_entries(text,uuid[])', 'app.personnel_overview_facts(date,uuid[])',
   'app._personnel_employment_tags(uuid[],date)',
 ];
-/** The staged employee import (9001) re-created three of the predecessors with its staged-row filter, and the
- * release-visibility migration (9004) rewrote that filter in place; 9880 follows both in the combined release. */
-const STAGED_IMPORT = '9001_employee_import_staged_job';
+/** The staged employee import (5010) re-created three of the predecessors with its staged-row filter, and the
+ * release-visibility migration (5012) rewrote that filter in place; 5020 follows both in the combined release. */
+const STAGED_IMPORT = '5010_employee_import_staged_job';
 const PERSONNEL_FACTS_PREDECESSORS = [
   [STAGED_IMPORT, 'personnel_filter_rows'],
   [STAGED_IMPORT, 'personnel_search_rows'],
@@ -224,7 +224,7 @@ const PERSONNEL_FACTS_PREDECESSORS = [
   ['2451_personnel_company_filter_choices', 'personnel_filter_companies'],
   [STAGED_IMPORT, 'personnel_overview_filter_fields'],
 ] as const;
-/** The 9004 rewrite of an installed definition: every staged-marker filter becomes the release-aware predicate. */
+/** The 5012 rewrite of an installed definition: every staged-marker filter becomes the release-aware predicate. */
 const releaseAware = (statement: string) =>
   statement.replace(/(\b[a-z_]+\.)?import_pending_attempt_id IS NULL/g, (_match, alias?: string) => `app.import_marker_visible(${alias ?? ''}import_pending_attempt_id)`);
 const migrationSql = (tag: string) => readFileSync(new URL('../../db/migrations/' + tag + '.sql', import.meta.url), 'utf8');
@@ -236,22 +236,22 @@ export function predecessorStatement(tag: string, name: string) {
   return chunks[chunks.length - 1];
 }
 
-/** Return the database to the Personnel owners as they were before migration 9880 (the predecessor
+/** Return the database to the Personnel owners as they were before migration 5020 (the predecessor
  * bodies from the migrations that installed them, and none of its new functions); the returned
- * function re-applies 9880 itself. The pre-existing exact owner is the equivalence oracle. */
+ * function re-applies 5020 itself. The pre-existing exact owner is the equivalence oracle. */
 export async function installPreMigrationOwners(): Promise<() => Promise<void>> {
   const [installed] = await owner.client<{n: number}[]>`
     select count(*)::int as n from unnest(${PERSONNEL_FACTS_NEW_FUNCTIONS}::text[]) name where to_regprocedure(name) is not null`;
-  expect(installed.n, 'migration 9880 is applied before the oracle switch').toBe(PERSONNEL_FACTS_NEW_FUNCTIONS.length);
+  expect(installed.n, 'migration 5020 is applied before the oracle switch').toBe(PERSONNEL_FACTS_NEW_FUNCTIONS.length);
   await owner.client.begin(async tx => {
     for (const name of PERSONNEL_FACTS_NEW_FUNCTIONS) await tx.unsafe(`drop function ${name}`);
-    // The same statement replaces 9880's body in place (owner and grants kept).
+    // The same statement replaces 5020's body in place (owner and grants kept).
     for (const [tag, name] of PERSONNEL_FACTS_PREDECESSORS) {
       const statement = predecessorStatement(tag, name).replace('CREATE FUNCTION app.' + name + '(', 'CREATE OR REPLACE FUNCTION app.' + name + '(');
       await tx.unsafe(tag === STAGED_IMPORT ? releaseAware(statement) : statement).simple();
     }
   });
   return async () => {
-    await owner.client.unsafe(migrationSql('9880_personnel_overview_facts')).simple();
+    await owner.client.unsafe(migrationSql('5020_personnel_overview_facts')).simple();
   };
 }

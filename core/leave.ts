@@ -11136,7 +11136,7 @@ export async function reprojectA2cEntitlement(
     newGradeId?: string | null;
     changeEffectiveOn?: string | null;
     /** The background A2C job only: the Leave Year Type the save asked for, which the job's release will set
-     *  together with these corrections (draft 9906). The engine computes exactly as if the type already had it. */
+     *  together with these corrections (draft 5036). The engine computes exactly as if the type already had it. */
     yearCycleOverrideAs?: string | null;
   },
   /** The background A2C job (core/leave-follow-up-worker.ts) only: each corrected employee's history row and

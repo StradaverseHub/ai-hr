@@ -43,7 +43,7 @@ export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) =
 
 /** The Personnel overview snapshot, with its statement bound, the bounded overview's interpreted
  * execution and the typed-projection probe in the one statement the snapshot already spends. The probe
- * names migration 9880's functions, so a database it has not reached keeps the previous readers. */
+ * names migration 5020's functions, so a database it has not reached keeps the previous readers. */
 export type PersonnelOverviewSnapshot = { previousJit: string; typedFacts: boolean; databaseToday: string; extra?: unknown };
 const PERSONNEL_TYPED_FACTS = [
   'app.personnel_overview_facts(date,uuid[])', 'app.personnel_private_search_entries(text,uuid[])',

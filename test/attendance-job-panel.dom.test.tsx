@@ -1,4 +1,4 @@
-/** The attendance background-job panel (Import Clocking Data, Recompute Attendance; draft 9940): polling, progress,
+/** The attendance background-job panel (Import Clocking Data, Recompute Attendance; draft 5045): polling, progress,
  * the waiting states and a single hand-off of the finished job, under the shipping catalogues. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {render,screen,waitFor} from '@testing-library/react';

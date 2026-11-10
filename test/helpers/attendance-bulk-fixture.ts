@@ -1,6 +1,6 @@
 /**
  * A populated, fully deterministic attendance fixture for the clocking-import and Recompute Attendance job
- * equivalence suites (draft 9940): many employees over three weeks on rotating day / early / night (cross-
+ * equivalence suites (draft 5045): many employees over three weeks on rotating day / early / night (cross-
  * midnight) shifts with Sunday rest days, a public holiday, Clock-screen and offline (mobile_offline) clockings,
  * a legacy day row with no punches, an approved attendance correction, a terminated employee, a PROCESSED pay run
  * (needs-recalculation marks) and a CLOSED one (refused days), cards / codes / IC references, and files with

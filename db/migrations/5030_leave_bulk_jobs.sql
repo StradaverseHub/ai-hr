@@ -1,7 +1,9 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5030_leave_bulk_jobs, idx 4430, when 1793330004730.
+-- Draft name on its branch: 9900_leave_bulk_jobs. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-leave-20261110 (leave family on the shared bulk-job kernel): not a
 -- reservation, not an installation allocation. The journal position (idx 9900, when 1793330099900) exists only so
 -- this branch's schema is executable and reviewable; the integration owner assigns the final tag/idx/when after the
--- freshly verified ledger, per docs/MIGRATION-ALLOCATION.md. Requires 9003 (bulk_job_kind).
+-- freshly verified ledger, per docs/MIGRATION-ALLOCATION.md. Requires 5011 (bulk_job_kind).
 --
 -- Leave operations that used to run in one web-request transaction holding the tenant's Access and leave-dependency
 -- locks now run as background jobs on the kernel (ADR 2026-11-10 employee import, "Shared job kernel"). No new job

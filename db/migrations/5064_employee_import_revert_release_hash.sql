@@ -1,8 +1,10 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5064_employee_import_revert_release_hash, idx 4464, when 1793330004764.
+-- Draft name on its branch: 9934_employee_import_revert_release_hash. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-register-20261110 (employee import Revert release, security review fixes):
 -- not a reservation, not an installation allocation. The journal position (idx 9934, when 1793330099340) exists only so
 -- this branch's schema is executable and reviewable; the integration owner assigns the final tag/idx/when.
 --
--- 9932's release compared the attempt's items with the plan stored on the job row and left the preview hash to the
+-- 5062's release compared the attempt's items with the plan stored on the job row and left the preview hash to the
 -- lock-free review. It now trusts nothing stored on the job for what it reverts: the applied items are read as the
 -- creator's session reads them (Import History view of each item's company; every applied item must be visible), and
 -- the preview hash the creator confirmed is recomputed inside the release, under its locks, exactly as the review

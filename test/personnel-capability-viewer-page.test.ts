@@ -1,6 +1,6 @@
 /** A Workforce viewer admitted by the published workforce.view capability alone (an ordinary employee,
  * no HR, payroll or rewards role) opens the real Personnel page and sees exactly its own companies'
- * employees. Before migration 9880 the page failed for that viewer: the company filter choices read
+ * employees. Before migration 5020 the page failed for that viewer: the company filter choices read
  * organisation tags through a company-read check that does not recognise the capability (42501), and
  * the page's photo predicate took a lock that refuses the page's read-only snapshot. */
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
@@ -56,7 +56,7 @@ describe('Personnel page for a capability-only Workforce viewer',()=>{
   expect(admin.cards.total).toBe(all.total);
  },180_000);
 
- it('before 9880 the same page refused the viewer with 42501 (the defect this fixes)',async()=>{
+ it('before 5020 the same page refused the viewer with 42501 (the defect this fixes)',async()=>{
   const reapply=await installPreMigrationOwners();
   try{
    state.shared.session=viewer;

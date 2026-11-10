@@ -1,5 +1,5 @@
 /**
- * Roster bulk operations on the shared bulk-job kernel (core/roster-bulk-worker.ts, draft migration 9920), against
+ * Roster bulk operations on the shared bulk-job kernel (core/roster-bulk-worker.ts, draft migration 5040), against
  * real PostgreSQL, real RLS and real worker ticks. Equivalence is proven side by side in one tenant: group A goes
  * through the old synchronous path, group B (configured identically) through the background job, and the end states
  * are compared after mapping each group's employments to the same tokens — roster rows (cells, rest days, notes),

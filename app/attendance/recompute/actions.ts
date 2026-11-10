@@ -21,7 +21,7 @@ async function start(s: SessionContext, p: RecomputeRequest, dryRun: boolean, op
 }
 
 /**
- * Preview. Admits a background preview (draft 9940): it writes NOTHING — no attendance column, no event, no
+ * Preview. Admits a background preview (draft 5045): it writes NOTHING — no attendance column, no event, no
  * pay-run mark — and its result has exactly the shape Apply's has, including the already-processed pay runs that
  * Apply would flag, so what the reporter reads before pressing Apply is the real consequence.
  */

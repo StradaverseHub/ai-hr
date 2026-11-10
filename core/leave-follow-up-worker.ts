@@ -141,7 +141,7 @@ async function a2cReleaseUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJo
       return;
     }
     if (input.yearCycleOverride !== undefined) {
-      // The Leave Year Type change itself, in the SAME transaction as the corrections (draft 9906): this release
+      // The Leave Year Type change itself, in the SAME transaction as the corrections (draft 5036): this release
       // is the configuration write the save used to make, so it takes the configuration lock exclusively (busy
       // is retried). A later Leave Year Type save superseded this job: nothing is released.
       await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);

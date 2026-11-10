@@ -356,7 +356,7 @@ export async function surveyTenants(url: string): Promise<TenantSurveyRow[]> {
 
 // ── THE STAGE RUNNER ──────────────────────────────────────────────────────────────────────────────────
 /** The tenant's active grades for the balance-health read. This tool runs on the storage-owner connection, which row
- * security does not govern, so grades still staged by a running System Labels import (migration 9961) are filtered
+ * security does not govern, so grades still staged by a running System Labels import (migration 5070) are filtered
  * explicitly (core/system-label-visibility.ts). */
 export async function resetHealthGrades(db: Db | Tx, tenantId: string): Promise<{ id: string; name: string }[]> {
   return db

@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5011_bulk_job_kernel, idx 4411, when 1793330004711.
+-- Draft name on its branch: 9003_bulk_job_kernel. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/import-staged-job-20261110 (shared background bulk-job kernel): not a
 -- reservation, not an installation allocation. The journal position (idx 9003, when 1793330090003) exists only so
 -- this branch's schema is executable and reviewable; the integration owner assigns the final tag/idx/when after the
@@ -197,7 +199,7 @@ REVOKE ALL ON FUNCTION app.bulk_job_notice_recipients(uuid) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.bulk_job_notice_recipients(uuid) TO ai_hr_app;
 --> statement-breakpoint
--- The employee import now runs on the kernel. Its phase-1 tables (9001, never installed) are replaced here.
+-- The employee import now runs on the kernel. Its phase-1 tables (5010, never installed) are replaced here.
 DROP TABLE employee_import_step;
 --> statement-breakpoint
 DROP TABLE employee_import_job;

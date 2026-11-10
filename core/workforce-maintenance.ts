@@ -52,7 +52,7 @@ export async function maintainWorkforceRecord(ctx:SessionContext,p:{employmentId
   // Reader/writer lock: one person's or one employment's values. Shared Access unless the caller already holds the
   // exclusive lock, then the subject's value locks (leave dependencies for a person's own fields, the shared
   // profile-policy lock and the per-person or per-employment lock) before any row lock. The SQL command joins the
-  // policy lock in value mode (9840) and keeps its row locks and expected-version check.
+  // policy lock in value mode (5005) and keeps its row locks and expected-version check.
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   await lockWorkforceRecordValueWritesTx(tx,ctx.tenantId,p.employmentId,p.kind);
   const workspace=await workforceEditorTx(tx,p.employmentId);

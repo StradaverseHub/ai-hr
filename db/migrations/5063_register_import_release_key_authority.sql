@@ -1,8 +1,10 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5063_register_import_release_key_authority, idx 4463, when 1793330004763.
+-- Draft name on its branch: 9933_register_import_release_key_authority. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-register-20261110 (register import release, security review fixes): not a
 -- reservation, not an installation allocation. The journal position (idx 9933, when 1793330099330) exists only so this
 -- branch's schema is executable and reviewable; the integration owner assigns the final tag/idx/when.
 --
--- 9931's release decided authority on each capture's `subjects` but wrote to its `key`, and accepted the writers' audit
+-- 5061's release decided authority on each capture's `subjects` but wrote to its `key`, and accepted the writers' audit
 -- events as captured. The release now trusts nothing in the job's step rows for authority or for what is recorded:
 --  * every capture's KEY (the employment for qualifications, the person for contacts) is decided itself, in the job's
 --    tenant, as the profile value guard and row security decided each written row: live and visible, company

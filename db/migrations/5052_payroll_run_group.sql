@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5052_payroll_run_group, idx 4452, when 1793330004752.
+-- Draft name on its branch: 9952_payroll_run_group. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-payroll-20261110 (payroll wizard runs as background processing jobs):
 -- not a reservation, not an installation allocation. The journal position (idx 9952, when 1793330099952) exists
 -- only so this branch's schema is executable and reviewable; the integration owner assigns the final tag/idx/when
@@ -5,7 +7,7 @@
 --
 -- The Payroll Process wizard's terminal actions (a resumed draft, and the run of one, several or all companies)
 -- used to generate every run synchronously inside the request and carry the finished outcomes on the redirect.
--- Each company's run is now a payroll_process bulk job (9951), so the outcomes exist only when the jobs finish.
+-- Each company's run is now a payroll_process bulk job (5051), so the outcomes exist only when the jobs finish.
 -- This row is the run group the result screen reads while they run: who started it, the month, every company's
 -- outcome (a finished one, or the processing job it waits for) and, once every job has finished, the result and
 -- the run-group audit event. Only its creator reads or changes it, while their captured grants stay current.

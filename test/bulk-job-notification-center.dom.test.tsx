@@ -24,7 +24,7 @@ it('shows any other text stored on a bulk-job notice as stored',()=>{
  fireEvent.click(screen.getByRole('button',{name:'Notifications, 1 waiting: 1 unread and 0 open tasks'}));
  expect(screen.getByText('Background job finished')).toBeTruthy();
 });
-// Draft 9940: the clocking import and Recompute Attendance jobs use the same notice, with their own copy and page.
+// Draft 5045: the clocking import and Recompute Attendance jobs use the same notice, with their own copy and page.
 const attendanceKinds=[['clocking_import','clockingImport','/attendance/import/logs'],['attendance_recompute_preview','attendanceRecomputePreview','/attendance/recompute'],['attendance_recompute','attendanceRecompute','/attendance/recompute']] as const;
 it.each((['en','ms','zh','ta','th','vi'] as const).flatMap(locale=>attendanceKinds.flatMap(kind=>(['completed','failed','cancelled'] as const).map(outcome=>[locale,kind[0],kind[1],kind[2],outcome] as const))))('renders the %s %s notice (%s) without exposing keys',(locale,kind,group,linkPath,outcome)=>{
  const messages=catalogues[locale],t=createTranslator({locale,messages,namespace:'notifications'});

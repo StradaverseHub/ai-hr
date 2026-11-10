@@ -1,4 +1,4 @@
-/** Staged System Labels import on the shared bulk-job kernel (migrations 9003, 9004, 9961): real PostgreSQL, real
+/** Staged System Labels import on the shared bulk-job kernel (migrations 5011, 5012, 5070): real PostgreSQL, real
  * row security, real worker ticks. All-or-nothing: staged codes and their events stay invisible until one release. */
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';

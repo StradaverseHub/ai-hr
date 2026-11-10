@@ -23,7 +23,7 @@ const dropNarrowFunctions='drop function app.personnel_overview_narrow_rows(date
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 
-// Written for the Personnel owners before 9880 (no typed facts): its fallback and drop expectations hold there.
+// Written for the Personnel owners before 5020 (no typed facts): its fallback and drop expectations hold there.
 it('preserves the real overview rows, facets, scope, dated assignment and unsupported filter paths',()=>inPreMigrationOwners(async()=>{
  await resetDb();
  const base=await seedBase();
@@ -45,7 +45,7 @@ it('preserves the real overview rows, facets, scope, dated assignment and unsupp
   organisationChoices:{...data.organisationChoices,rows:data.organisationChoices.rows
    .map(row=>JSON.stringify(row)).sort()},
  });
- // Without 9880's typed facts, quality filters keep the exact owner.
+ // Without 5020's typed facts, quality filters keep the exact owner.
  const fallbackCases=[
   {name:'quality',input:{...scope,qualityFlags:['missing_business_unit' as const]},expected:[first.employmentId,second.employmentId]},
  ];

@@ -875,7 +875,7 @@ export const person = pgTable(
     // read through `person_rls`, which releases the work email; the statutory IC moves to `voidedIcNumber`.
     voidedAt: timestamp('voided_at', { withTimezone: true }),
     voidedIcNumber: text('voided_ic_number'),
-    // Staged import (9001): non-null while a background import owns this row; hidden from every normal session.
+    // Staged import (5010): non-null while a background import owns this row; hidden from every normal session.
     importPendingAttemptId: uuid('import_pending_attempt_id'),
     createdAt: createdAt(),
   },
@@ -1269,7 +1269,7 @@ export const employment = pgTable(
     // Final and one-way (trigger `employment_void_guard`); a voided row leaves every ordinary read through
     // `employment_rls`. `employeeCode` is cleared (the original kept in `voidedEmployeeCode`) so the ID re-imports.
     voidedAt: timestamp('voided_at', { withTimezone: true }),
-    // Staged import (9001): see person.importPendingAttemptId.
+    // Staged import (5010): see person.importPendingAttemptId.
     importPendingAttemptId: uuid('import_pending_attempt_id'),
     voidedBy: uuid('voided_by'),
     voidReason: text('void_reason'),
@@ -1615,7 +1615,7 @@ export const leaveType = pgTable('leave_type', {
   // where set, company cycle otherwise. 'a2c' resolves to its OWN token, which every boundary consumer
   // treats as calendar through its existing non-anniversary default (see that function's ADR note).
   yearCycleOverride: text('year_cycle_override'),
-  // Draft 9906: the background A2C job that will set year_cycle_override together with its staged corrections
+  // Draft 5036: the background A2C job that will set year_cycle_override together with its staged corrections
   // (core/leave-follow-up-worker.ts). NULL unless a move to a2c is waiting for its release.
   pendingYearCycleJobId: uuid('pending_year_cycle_job_id'),
   // Leave Type Employee Visibility (feedback 7b11f1c1): two additive, NULLABLE booleans that let HR control,
@@ -2462,7 +2462,7 @@ export const leaveLedger = pgTable(
     // importer's Replace mode safe — Replace negates only the rows carrying a run id, never the rest of
     // the prior-year balance, which contains real accruals, debits and adjustments.
     bfImportRunId: uuid('bf_import_run_id').references((): AnyPgColumn => leaveBfImportRun.id),
-    // Staged cohort run (draft 9901, core/leave-stage.ts): the stage of an all-or-nothing background leave job
+    // Staged cohort run (draft 5031, core/leave-stage.ts): the stage of an all-or-nothing background leave job
     // whose rows are not yet released. NULL for every ordinary row; stamped by trigger from app.leave_stage,
     // never written by a writer directly.
     stageId: uuid('stage_id'),
@@ -6502,7 +6502,7 @@ export const employeeQualification = pgTable(
 );
 
 // ──────────────────────── Payroll (generic kernel) ────────────────────────
-// 'processing' (draft migration 9950/9951): a run the background payroll processing job owns. Visible to payroll
+// 'processing' (draft migration 5050/5051): a run the background payroll processing job owns. Visible to payroll
 // operators as in progress, never to employees (they read closed, released runs only); its payslips are written
 // in chunks and the run flips to 'processed' in one short finalize transaction.
 export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'processing', 'processed', 'closed']);
@@ -6710,7 +6710,7 @@ export const payrollBatch = pgTable(
     // A null-cycle REGULAR run behaves exactly as it does today; a null-cycle NON-regular run can name no
     // cycle, so it collects no period-keyed rows at all — which is also exactly today's behaviour.
     payrollCycleId: uuid('payroll_cycle_id').references(() => payrollCycle.id),
-    // Run-level durable lease (draft 9951): the bulk job that owns a 'processing' run. Set exactly while
+    // Run-level durable lease (draft 5051): the bulk job that owns a 'processing' run. Set exactly while
     // status = 'processing' (CHECK payroll_batch_processing_lease); the job's chunks fence on it.
     processingJobId: uuid('processing_job_id'),
     processingStartedAt: timestamp('processing_started_at', { withTimezone: true }),
@@ -11705,7 +11705,7 @@ export const aiAgentPrincipal=agentPrincipalPrivate.table('ai_agent_principal',{
  id:id(),tenantId:uuid('tenant_id').notNull().unique().references(()=>tenant.id),createdAt:createdAt(),
 });
 
-/** Shared background bulk-job kernel (migration 9003): one job/step store for every background bulk operation.
+/** Shared background bulk-job kernel (migration 5011): one job/step store for every background bulk operation.
  * Admission, reads and cancel: core/bulk-job.ts. Worker: core/bulk-job-worker.ts. Kinds: bulk_job_kind rows. */
 export const bulkJobKind=pgTable('bulk_job_kind',{kind:text('kind').primaryKey(),scopeKind:text('scope_kind'),exclusive:text('exclusive').notNull().$type<'tenant'|'creator'|'tenant_queue'|'none'>()});
 export const bulkJob=pgTable('bulk_job',{

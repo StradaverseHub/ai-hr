@@ -1,4 +1,6 @@
--- Reader/writer Access lock: payroll and statutory wave (draft 9830, 10 November 2026; renumbered at integration).
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5004_access_reader_writer_payroll_inputs, idx 4404, when 1793330004704.
+-- Draft name on its branch: 9830_access_reader_writer_payroll_inputs. Any draft note below describes that unallocated branch position.
+-- Reader/writer Access lock: payroll and statutory wave (draft 5004, 10 November 2026; renumbered at integration).
 --
 -- 1. Payroll inputs serialiser. Exclusivity on the tenant Access key was the only thing keeping a
 -- compensation, statutory, fixed-item, policy-assignment or payroll-input change from landing while

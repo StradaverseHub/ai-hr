@@ -707,7 +707,7 @@ type PersonnelOverviewInput = PersonnelListInput & { companyIds: string[] };
 
 const PERSONNEL_BOUNDED_ROW_LIMIT = 10_000, PERSONNEL_PAGE_ROWS_CHUNK = 2_000;
 /** Which typed fact relation the bounded overview reads: the 2701 projection, or the complete typed
- * projection of migration 9880 (db/migrations/9880_personnel_overview_facts.sql) where it is installed. */
+ * projection of migration 5020 (db/migrations/5020_personnel_overview_facts.sql) where it is installed. */
 type PersonnelFactSource = 'filter-fields' | 'facts';
 const personnelFactRelation: Record<PersonnelFactSource, SQL> = {
   'filter-fields': sql`app.personnel_overview_filter_fields`, facts: sql`app.personnel_overview_facts`,

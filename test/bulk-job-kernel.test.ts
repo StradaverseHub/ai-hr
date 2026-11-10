@@ -1,4 +1,4 @@
-/** Shared background bulk-job kernel (migration 9003) with a fixture kind in per-step mode, the shape the leave
+/** Shared background bulk-job kernel (migration 5011) with a fixture kind in per-step mode, the shape the leave
  * ledger import needs: real PostgreSQL, real RLS, real worker ticks. */
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';

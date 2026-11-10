@@ -28,6 +28,6 @@ async function main(){
   const result=await publishWorkforceCapabilities(db);console.log(JSON.stringify({kind:'workforce-capability-publication',...result}));
  }finally{await db.end({timeout:3});}
 }
-// Each tenant commits on its own (migration 9962): a stopped run leaves published tenants published and every other
+// Each tenant commits on its own (migration 5071): a stopped run leaves published tenants published and every other
 // tenant on its previous catalogue; running the same command again resumes.
 main().catch(()=>{console.error('Workforce capability publication stopped; tenants already published stay published and running it again resumes. Review private server state.');process.exitCode=1;});

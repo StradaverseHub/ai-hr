@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5061_register_import_set_release, idx 4461, when 1793330004761.
+-- Draft name on its branch: 9931_register_import_set_release. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-register-20261110 (register import release, set-based): not a reservation,
 -- not an installation allocation. The journal position (idx 9931, when 1793330099310) exists only so this branch's
 -- schema is executable and reviewable; the integration owner assigns the final tag/idx/when.

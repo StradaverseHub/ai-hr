@@ -1,17 +1,19 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5070_system_label_import_staged_job, idx 4470, when 1793330004770.
+-- Draft name on its branch: 9961_system_label_import_staged_job. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-labels-20261110 (bulk-operation conversion, 10 Nov 2026): not a
 -- reservation, not an installation allocation. The journal position (idx 9961, when 1793330090961) exists only so
 -- this branch's schema is executable and reviewable; the integration owner assigns the final tag/idx/when after the
 -- freshly verified ledger, per docs/MIGRATION-ALLOCATION.md. Discard this file's position, not its bytes.
 --
--- System Labels import as a staged background job on the shared kernel (9003). The import used to hold the tenant's
+-- System Labels import as a staged background job on the shared kernel (5011). The import used to hold the tenant's
 -- Access, leave-dependency and catalogue locks for its whole analysis and write (1.3 s idle, 9.7 s loaded at 445
 -- codes). It stays all-or-nothing: the worker writes the new codes in short chunk transactions through the ordinary
--- writers, every row it writes stays invisible (the 9001/9004 staged-attempt marker), and one short transaction
+-- writers, every row it writes stays invisible (the 5010/5012 staged-attempt marker), and one short transaction
 -- releases them all at once. A refused or stopped import deletes its staged rows; nobody ever saw them.
 INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES('system_label_import',NULL,'tenant');
 --> statement-breakpoint
 -- The nine catalogue tables the import writes. Every row inserted while app.import_attempt is set (only the worker's
--- chunk transactions set it) is stamped by the database; the 9001 guard refuses any other writer of the column.
+-- chunk transactions set it) is stamped by the database; the 5010 guard refuses any other writer of the column.
 -- RESTRICTIVE, ANDed with each table's tenant/scope policies, for every role subject to row security.
 DO $$
 DECLARE t text;
@@ -44,8 +46,8 @@ CREATE INDEX system_label_import_release_tenant ON app.system_label_import_relea
 --> statement-breakpoint
 REVOKE ALL ON app.system_label_import_release FROM PUBLIC;
 --> statement-breakpoint
--- Policy-side released attempts (9004) now include activated label imports, so the staged label rows and the label
--- events stamped in their chunks (domain_event, 9004) become visible in the same instant. Reveals attempt ids only.
+-- Policy-side released attempts (5012) now include activated label imports, so the staged label rows and the label
+-- events stamped in their chunks (domain_event, 5012) become visible in the same instant. Reveals attempt ids only.
 CREATE OR REPLACE FUNCTION app.import_released_attempt_ids() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER
  SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT coalesce(array_agg(x.attempt_id),'{}'::uuid[]) FROM (

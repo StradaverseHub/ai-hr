@@ -1,6 +1,8 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5035_leave_stage_digests, idx 4435, when 1793330004735.
+-- Draft name on its branch: 9905_leave_stage_digests. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-leave-20261110: not a reservation, not an installation allocation. The
 -- journal position (idx 9905, when 1793330099905) exists only so this branch's schema is executable and reviewable;
--- the integration owner assigns the final tag/idx/when, per docs/MIGRATION-ALLOCATION.md. Requires 9901.
+-- the integration owner assigns the final tag/idx/when, per docs/MIGRATION-ALLOCATION.md. Requires 5031.
 --
 -- The digests a staged leave job compares at release (core/leave-stage.ts). Read through the app role's row
 -- security they cost about 0.2 ms per employee (every scanned ledger and assignment row was tested against the

@@ -1,4 +1,4 @@
-/** Shared background bulk-job kernel, worker side (migration 9003). The queue-owner connection only claims, leases,
+/** Shared background bulk-job kernel, worker side (migration 5011). The queue-owner connection only claims, leases,
  * coordinates and runs a kind's owner-only discard/settle routines. Every HR write runs through the app role under
  * the creator's freshly resolved authority, in short transactions that fence on the lease. A kind plugs in with a
  * BulkJobHandler (see the ADR section "Shared job kernel"). */
@@ -66,7 +66,7 @@ export type BulkJobHandler<P=any>={
  /** Best effort after the terminal state committed (history, post-commit refreshes). ctx is null when revoked. */
  afterTerminal?(ctx:SessionContext|null,job:BulkJobRow):Promise<void>;
  /** true: skip the completion notice for this terminal job (for example a short job its creator watched to the end
-  *  on its own screen, bulk_job.watched_at, draft 9921). The job row still shows the outcome. */
+  *  on its own screen, bulk_job.watched_at, draft 5041). The job row still shows the outcome. */
  quietNotice?(job:BulkJobRow):boolean;
 };
 export class BulkJobStepRefused extends Error{constructor(readonly step:BulkJobStep,readonly cause:unknown){super(publicErrorMessage(cause));this.name='BulkJobStepRefused';}}
@@ -118,7 +118,7 @@ export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOpt
   const token=randomUUID();
   // Active work first, through the partial queue index (literal state list so the index predicate applies); then a
   // terminal job whose completion notice is still owed (its own partial index). History rows are never scanned.
-  // A queued job of a 'tenant_queue' kind (draft 9921) waits until every earlier active job of its kind in its
+  // A queued job of a 'tenant_queue' kind (draft 5041) waits until every earlier active job of its kind in its
   // tenant has ended, so jobs of that kind run one after another without ever refusing an admission.
   let [job]=await connection<BulkJobRow[]>`update bulk_job set lease_token=${token}::uuid,lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS})
    where id=(select j.id from bulk_job j where j.state in ('queued','preparing','running','finalizing','discarding') and j.kind=any(${kinds})
