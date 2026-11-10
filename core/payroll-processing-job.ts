@@ -76,10 +76,10 @@ async function lockRunUnitTx(tx:Tx,ctx:SessionContext,batchId:string){
 }
 
 /** A processing unit reads its employments one chunk at a time, under the initiator's own authority. The
- * transaction-local marker (migration 0691, first used by the bank import worker) lets an employment read by a
- * company administrator skip rebuilding the whole visible-employment array for every statement: the
- * administrator arm is already part of the original predicate, so the rows read are the same and no authority is
- * added. An initiator who is not a company administrator takes the original predicate unchanged. */
+ * transaction-local marker (migration 0691, first used by the bank import worker) lets an employment read skip
+ * rebuilding the whole visible-employment array for every statement when the initiator administers the company or
+ * its payroll (9954 added the payroll partner): `app.can_admin_payroll_for` is already an arm of the original
+ * predicate, so the rows read are the same and no authority is added. Anyone else takes the original predicate. */
 async function pointReadTx(tx:Tx){await tx.execute(sql`select set_config('app.bank_import_point_read','on',true)`);}
 
 /** Web side: validate the run and the caller's authority, admit the job and move the run to 'processing'. Short:

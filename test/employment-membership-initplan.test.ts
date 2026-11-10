@@ -13,6 +13,10 @@ import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 
 const migration=readFileSync('db/migrations/3001_employment_membership_initplan.sql','utf8');
+// The later reviewed rewrite of the same policy (9954): the point-read arm also answers for a payroll partner.
+const partnerMigration=readFileSync('db/migrations/9954_payroll_partner_point_read.sql','utf8');
+const adminArm='CASEWHENapp.is_admin_for(company_id)THENtrueELSE',partnerArm='CASEWHEN(app.is_admin_for(company_id)ORapp.can_admin_payroll_for(company_id))THENtrueELSE';
+const installedPartnerArm='WHEN (app.is_admin_for(company_id) OR app.can_admin_payroll_for(company_id)) THEN true';
 const compact=(value:string)=>value.replace(/\s+/g,'');
 // Independent pg_get_expr identity of the reviewed predecessor, not parsed from
 // the migration under test or derived from its replacement algorithm.
@@ -27,7 +31,8 @@ async function installedPolicy(){
 }
 function predecessorQual(current:string){
  expect(compact(current).split(currentMembership)).toHaveLength(3);
- const previous=current.replace(currentPattern,'(id = ANY ((SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[]))');
+ expect(current.split(installedPartnerArm)).toHaveLength(2);
+ const previous=current.replace(installedPartnerArm,'WHEN app.is_admin_for(company_id) THEN true').replace(currentPattern,'(id = ANY ((SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[]))');
  expect(compact(previous)).toBe(originalQual);return previous;
 }
 async function setQual(qual:string){
@@ -170,7 +175,7 @@ it('installs the wrapped positive membership without changing any other authorit
  const installed=await installedPolicy();
  expect(installed).toMatchObject({permissive:'PERMISSIVE',roles:['ai_hr_app'],cmd:'ALL'});
  expect(installed.with_check).toBe('((tenant_id = app.current_tenant_id()) AND app.is_admin_for(company_id))');
- expect(compact(installed.qual)).toBe(originalQual.replaceAll(originalMembership,currentMembership));
+ expect(compact(installed.qual)).toBe(originalQual.replaceAll(originalMembership,currentMembership).replace(adminArm,partnerArm));
  const [functionRow]=await owner.client`select md5(prosrc) as body,prosecdef,provolatile,proconfig from pg_proc where oid='app.visible_employment_ids()'::regprocedure`;
  expect(functionRow).toEqual({body:'1bc7e85a740a98b9db79efb2b7768c8b',prosecdef:true,provolatile:'s',proconfig:['search_path=public']});
 });
@@ -182,8 +187,9 @@ it('replays the real append on populated predecessor data with exact native befo
   await setQual(previous);
   expect(compact((await installedPolicy()).qual)).toBe(originalQual);
   const before=await authority(f);
-  // Apply actual migration bytes, not a rewritten test replacement or fabricated ledger.
-  await owner.client.begin(async tx=>{await tx.unsafe(migration);});
+  // Apply actual migration bytes, not a rewritten test replacement or fabricated ledger: 3001, then the later
+  // reviewed 9954 rewrite of the same policy.
+  await owner.client.begin(async tx=>{await tx.unsafe(migration);await tx.unsafe(partnerMigration);});
   expect(await installedPolicy()).toEqual(installed);
   expect(await securitySnapshot()).toEqual(metadata);
   const after=await authority(f);expect(after).toEqual(before);

@@ -5468,6 +5468,13 @@
       "when": 1793330099953,
       "tag": "9953_bulk_job_settle",
       "breakpoints": true
+    },
+    {
+      "idx": 9954,
+      "version": "7",
+      "when": 1793330099954,
+      "tag": "9954_payroll_partner_point_read",
+      "breakpoints": true
     }
   ]
 }
