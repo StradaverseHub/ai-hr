@@ -53,3 +53,9 @@ The same 28 approvals carry forward from `a146ce7f78b132b784519acd00be3aa4aedc03
 On 11 November 2026 MYT the repository owner approved staging window 3 review commit `00de11161fb623c3dece33d516e55ad1f267c49e` and exact fingerprint `56043471ab48e71069e2f62b97da6ef18d012b9f95dd877094b8a9af81aa33d2` in the Claude board session ("Yes, I approve"). The window integrates board item ccd3a65c (Import Employees correction fields and history, migration 4900). No provider transform, outbound field, approved purpose or transport changes; the only changed file under lib/ai is the agent capability inventory, which registers the board actions as native handoff, internal or backlog entries.
 
 The same 28 approvals carry forward from `68679de0d5212e8341257bdc7f8f37674b9b14aced7da4c643a9f3b5c104084f` (board staging window 2) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.
+
+## Board staging window 4 (rebased on 8d5254eb)
+
+On 11 November 2026 MYT the repository owner approved staging window 4 review commit `d671dba904f03b9429ad449fed031bac173ddb3c` and exact fingerprint `af9cfec76fea3558fb47b1fb337246f1d5a86cbc28402bc7455be4ecfa4c98e9` in the Claude board session ("Yes, I approve"). The window integrates board item 4452ba3c (Attendance approval workflow groups, preview history, automatic level skip and copy, migration 4901). No provider transform, outbound field, approved purpose or transport changes; the only changed file under lib/ai is the agent capability inventory, which registers the board actions as native handoff, internal or backlog entries.
+
+The same 28 approvals carry forward from `56043471ab48e71069e2f62b97da6ef18d012b9f95dd877094b8a9af81aa33d2` (board staging window 3) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.
