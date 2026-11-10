@@ -1,12 +1,15 @@
 'use client';
 
 import { ActionButton } from '@/components/ui/action-button';
-import { Fragment, useId, useMemo, useState } from 'react';
+import { Fragment, useId, useMemo, useState, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 import { Avatar, Card, Field, RoleTag, SectionHeader, btnGhost, inputCls, theadCls, thCls } from '@/components/ui';
+import { formatDmy, formatDmyTime } from '@/lib/date-display';
 import { archiveUserAction, assignRoleAction, revokeInvitationAction, revokeRoleAction, setAssistantGrantAction } from '../actions';
 import { ManualSubmit } from './manual-submit';
+import { AccountControls, type EditCommand } from './[userId]/account/account-controls';
+import { AuthenticatorControlDialog, ResetPasswordDialog } from './[userId]/account/account-dialogs';
 import styles from './users-directory.module.css';
 import { directoryGrants, directoryType, type DirectoryGroupBy, type UserDirectoryRow } from './directory-model';
 
@@ -19,13 +22,18 @@ type Props = {
   companies: { id: string; name: string }[];
   roleOptions: string[];
   assistantGrantedIds: string[];
-  accounts?:Record<string,{username:string;status:string;activeUntil:string|null}>;
+  accounts?:Record<string,{username:string;status:string;activeUntil:string|null;exemptionUntil?:number|null}>;
+  /** Latest successful sign-in per app user (ISO instant), from the app-user.logged-in audit events. */
+  lastSignIns?:Record<string,string>;
+  /** False when sign-in is not owned by the embedded HR login (another provider is selected). */
+  managedSignIn?:boolean;
 };
+type Tier = 'pending' | 'active' | 'inactive';
 const statusOrder = ['active', 'pending', 'preparing', 'invited', 'archived'];
 const cell = 'min-w-0 px-3 py-3 align-top md:py-1 md:align-middle';
 const rowAction = `${styles.rowAction} inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring`;
 
-export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, roleOptions, assistantGrantedIds, accounts={} }: Props) {
+export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, roleOptions, assistantGrantedIds, accounts={}, lastSignIns={}, managedSignIn=true }: Props) {
   const accountT=useTranslations('accountManagement');
   const t = useTranslations('admin.users'), d = useTranslations('admin.users.directory'), locale = useLocale();
   const instance = useId();
@@ -38,10 +46,14 @@ export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, r
   const name = (u: UserDirectoryRow) => u.name ?? (u.appUserId ? t('unlinkedLogin', { id: u.loginSuffix ?? '' }) : u.email ?? d('unnamed'));
   const accountStatus=(u:UserDirectoryRow)=>u.status==='active'&&u.appUserId&&accounts[u.appUserId]?accounts[u.appUserId].status:u.status;
   const statusLabel=(value:string)=>['suspended','expired'].includes(value)?accountT(value):t(`status.${value}`);
+  // Account Status (board 07c98c36): three states, with the finer status kept as the detail line and filter.
+  const tier=(u:UserDirectoryRow):Tier=>{const value=accountStatus(u);return ['pending','invited','preparing'].includes(value)?'pending':value==='active'?'active':'inactive';};
+  const managed=(u:UserDirectoryRow)=>u.appUserId?accounts[u.appUserId]:undefined;
+  const editCommands=(status:string):EditCommand[]=>status==='active'?['reset-email','suspend','expiry']:['reactivate','expiry'];
   const availableRoles = [...new Set(rows.flatMap(u => directoryGrants(u).map(g => g.role)))].sort((a,b) => t(`role.${a}`).localeCompare(t(`role.${b}`),locale));
   const filtered = useMemo(() => rows.filter(u => {
     const grants = directoryGrants(u), query = search.trim().toLocaleLowerCase(locale);
-    return (!query || `${u.name ?? ''} ${u.email ?? ''} ${u.appUserId?accounts[u.appUserId]?.username??'':''}`.toLocaleLowerCase(locale).includes(query))
+    return (!query || `${u.name ?? ''} ${u.email ?? ''} ${u.employeeCode ?? ''} ${u.appUserId?accounts[u.appUserId]?.username??'':''}`.toLocaleLowerCase(locale).includes(query))
       && (status === 'all' || (status === 'current' ? u.status !== 'archived' : accountStatus(u) === status))
       && (type === 'all' || directoryType(u) === type)
       && (role === 'all' || grants.some(g => g.role === role))
@@ -67,12 +79,9 @@ export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, r
   function reset() { setSearch('');setStatus('current');setRole('all');setCompany('all');setType('all');setPage(1);setCollapsed([]); }
   const panel = (u: UserDirectoryRow) => <div className="space-y-5 bg-muted/30 px-4 py-5 sm:px-6">
     <div><h3 className="text-sm font-semibold">{d('accessFor',{name:name(u)})}</h3><p className="mt-1 text-sm text-muted-foreground">{u.status==='archived' ? t(u.manuallyArchived?'archivedCauseManual':'archivedCauseLeft') : d('accessHelp')}</p>{groupAdmin&&u.hasEmployment===false&&u.personId&&<p className="mt-1 text-xs text-muted-foreground">{t('withoutEmployment')}</p>}</div>
-    {u.status==='pending'&&groupAdmin&&u.personId&&<div className="flex flex-wrap gap-2">
-      <a href={`/admin/users/create?activate=${u.personId}`} className={btnGhost}>{t('activateManually')}</a>
-      <a href={`/admin/users/invite?activate=${u.personId}`} className={btnGhost}>{t('activateByInvitation')}</a>
-    </div>}
     {groupAdmin&&u.status==='invited'&&u.invitationId&&<form action={revokeInvitationAction}><input type="hidden" name="invitationId" value={u.invitationId}/><ManualSubmit variant="outline">{t('revokeInvitation')}</ManualSubmit></form>}
-    {u.appUserId&&accounts[u.appUserId]&&<a href={`/admin/users/${u.appUserId}/account`} className={btnGhost}>{t('accountManagement')}</a>}
+    {u.appUserId&&managed(u)&&managed(u)!.status!=='preparing'&&<section className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-xs font-medium text-muted-foreground">{d('accountControls')}</h4><a href={`/admin/users/${u.appUserId}/account`} className={`${btnGhost} min-h-11`}>{d('securityHistory')}</a></div>
+      <AccountControls userId={u.appUserId} allowed={editCommands(managed(u)!.status)}/></section>}
     {!!u.roles.length&&<section className="space-y-2"><h4 className="text-xs font-medium text-muted-foreground">{d('assignedRoles')}</h4>
       <ul className="space-y-2">{u.roles.map(g=><li key={g.id} className="flex flex-wrap items-center gap-2 text-sm"><RoleTag role={g.role} label={t(`role.${g.role}`)}/><span>{companyName(g.companyId)}</span>
         {u.status==='active'&&(groupAdmin||(g.role==='hr_admin'&&g.companyId))&&<form action={revokeRoleAction} className="ml-auto"><input type="hidden" name="roleAssignmentId" value={g.id}/><ActionButton type="submit" className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-sm text-destructive hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" aria-label={d('removeRole',{role:t(`role.${g.role}`),scope:companyName(g.companyId)})}><X aria-hidden="true" className="size-4"/>{d('remove')}</ActionButton></form>}
@@ -85,10 +94,46 @@ export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, r
       <ManualSubmit variant="outline">{t('addRole')}</ManualSubmit>
     </form>}
     {groupAdmin&&u.appUserId&&u.status!=='preparing'&&<div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4">
-      <form action={setAssistantGrantAction}><input type="hidden" name="appUserId" value={u.appUserId}/><input type="hidden" name="granted" value={assistantGrantedIds.includes(u.appUserId)?'false':'true'}/><ManualSubmit variant="outline">{t(assistantGrantedIds.includes(u.appUserId)?'assistantRevoke':'assistantGrant')}</ManualSubmit></form>
+      <form action={setAssistantGrantAction} className="flex flex-wrap items-center gap-3"><span className="text-sm text-muted-foreground">{d('assistant')}: {d(assistantGrantedIds.includes(u.appUserId)?'enabled':'off')}</span><input type="hidden" name="appUserId" value={u.appUserId}/><input type="hidden" name="granted" value={assistantGrantedIds.includes(u.appUserId)?'false':'true'}/><ManualSubmit variant="outline">{t(assistantGrantedIds.includes(u.appUserId)?'assistantRevoke':'assistantGrant')}</ManualSubmit></form>
       {(u.status==='active'||u.manuallyArchived)&&<form action={archiveUserAction}><input type="hidden" name="appUserId" value={u.appUserId}/><input type="hidden" name="archived" value={u.manuallyArchived?'false':'true'}/><ManualSubmit variant="outline">{t(u.manuallyArchived?'restore':'archive')}</ManualSubmit></form>}
     </div>}
   </div>;
+  const columns:[string,string][]=[['employeeName','md:w-[13%]'],['employeeId','md:w-[8%]'],['username','md:w-[10%]'],['email','md:w-[15%]'],['accountStatus','md:w-[13%]'],['role','md:w-[9%]'],['companyScope','md:w-[11%]'],['lastLogin','md:w-[9%]'],['actions','md:w-[12%]']];
+  // Phone: stacked records, every value labelled. Desktop: the label is hidden behind the column header.
+  const labelled=(column:string,value:ReactNode,span=false,extra='')=><td className={`${cell} ${span?'col-span-2':''} md:table-cell ${extra}`}><span className="block text-xs text-muted-foreground md:hidden">{d(column)}</span>{value}</td>;
+  const unique=(values:string[])=>[...new Set(values)];
+  const row=(u:UserDirectoryRow,key:string,id:string)=>{
+    const account=managed(u),state=tier(u),detail=accountStatus(u),grants=directoryGrants(u),signedIn=u.appUserId?lastSignIns[u.appUserId]:undefined;
+    const roles=unique(grants.map(g=>t(`role.${g.role}`))),scopes=unique(grants.map(g=>companyName(g.companyId)));
+    const paused=account?.exemptionUntil&&account.exemptionUntil>0?account.exemptionUntil:null;
+    const toggle=<button type="button" aria-expanded={expanded===key} aria-controls={id} className={`${rowAction} whitespace-nowrap`} title={d('accessFor',{name:name(u)})} onClick={()=>setExpanded(expanded===key?null:key)}>{d(expanded===key?'close':'edit')}<ChevronDown aria-hidden="true" className={`ml-1 size-4 ${expanded===key?'rotate-180':''}`}/></button>;
+    const actions=u.status==='preparing'?<a href="/admin/users/create" className={rowAction}>{t('resumeActivation')}</a>
+      :u.status==='pending'?(groupAdmin&&u.personId?<><a href={`/admin/users/create?activate=${u.personId}`} className={rowAction}>{d('setUsernamePassword')}</a><a href={`/admin/users/invite?activate=${u.personId}`} className={rowAction}>{d('sendInvitation')}</a></>:<span className="text-muted-foreground">—</span>)
+      :state==='active'&&u.appUserId?(account&&account.status==='active'?<>
+        <ResetPasswordDialog userId={u.appUserId} name={name(u)} username={account.username} triggerClassName={rowAction}/>
+        <AuthenticatorControlDialog userId={u.appUserId} name={name(u)} exemptionUntil={paused} triggerClassName={rowAction}/>{toggle}</>
+        :<>{toggle}<p className="max-w-56 text-left text-xs text-muted-foreground md:ml-auto md:text-right">{d(managedSignIn?'unavailableScope':'unavailableProvider')}</p></>)
+      :toggle;
+    return <>
+      <tr data-directory-row className="grid grid-cols-2 border-b border-border hover:bg-muted/20 md:table-row">
+        <th scope="row" className={`${cell} col-span-2 font-normal md:table-cell`}><div className="flex min-w-0 items-start gap-3"><Avatar name={name(u)}/><p className="min-w-0 break-words font-medium text-foreground">{name(u)}</p></div></th>
+        {labelled('employeeId',<span className="break-all tabular-nums">{u.employeeCode??'—'}</span>)}
+        {labelled('username',<span className="break-all font-mono text-xs">{account?.username??'—'}</span>)}
+        {labelled('email',<span className="break-all">{u.email??'—'}</span>,true)}
+        {labelled('accountStatus',<div className="space-y-1">
+          <span className={`inline-block max-w-full break-words rounded-full px-2 py-0.5 text-xs font-medium ${state==='active'?'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300':state==='pending'?'bg-amber-500/10 text-amber-800 dark:text-amber-300':'bg-muted text-muted-foreground'}`}>{d(`tier.${state}`)}</span>
+          {detail!==state&&!(state==='pending'&&detail==='pending')&&<p className="text-xs text-muted-foreground">{statusLabel(detail)}{u.status==='archived'?` · ${t(u.manuallyArchived?'archivedCauseManual':'archivedCauseLeft')}`:''}</p>}
+          {account?.activeUntil&&<p className="text-xs text-muted-foreground">{d('activeUntil',{date:formatDmy(account.activeUntil)})}</p>}
+          {paused&&<p className="text-xs text-amber-800 dark:text-amber-300">{accountT('pausedUntil',{until:formatDmyTime(new Date(paused))})}</p>}
+        </div>,true)}
+        {labelled('role',grants.length?<ul className="space-y-0.5">{roles.map(r=><li key={r} className="break-words">{r}</li>)}</ul>:<span className="text-muted-foreground">{u.status==='active'?t('noRoles'):'—'}</span>)}
+        {labelled('companyScope',grants.length?<span className="break-words">{scopes.join(', ')}</span>:<span className="text-muted-foreground">—</span>)}
+        {labelled('lastLogin',signedIn?<span className="tabular-nums">{formatDmyTime(signedIn)}</span>:<span className="text-muted-foreground">{d('neverLoggedIn')}</span>,true)}
+        {labelled('actions',<div className="flex flex-col items-start gap-1 md:items-end">{actions}</div>,true,'md:text-right')}
+      </tr>
+      {expanded===key&&<tr className="block md:table-row"><td colSpan={columns.length} className="block md:table-cell"><div id={id} role="region" aria-label={d('accessFor',{name:name(u)})}>{panel(u)}</div></td></tr>}
+    </>;
+  };
   return <Card data-tour="admin-users"><SectionHeader title={t('sectionUsers')} count={rows.length}/>
     <div className="space-y-3 border-b border-border p-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(14rem,2fr)_1fr_1fr]">
@@ -103,23 +148,13 @@ export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, r
       {(groupBy==='role'||groupBy==='company')&&<p className="text-xs text-muted-foreground">{d('multipleGroups')}</p>}
     </div>
     {filtered.length===0?<div className="space-y-2 px-4 py-10 text-center"><p className="text-sm font-medium">{rows.length?d('noMatches'):t('empty')}</p><p className="text-sm text-muted-foreground">{rows.length?d('noMatchesHelp'):d('emptyHelp')}</p></div>:<>
-      <table className={`${styles.directoryTable} block w-full text-left text-sm md:table md:table-fixed`}><thead className={`${theadCls} sr-only md:not-sr-only md:table-header-group`}><tr><th scope="col" className={`${thCls} md:w-[32%]`}>{d('user')}</th><th scope="col" className={`${thCls} md:w-[12%]`}>{t('statusColumn')}</th><th scope="col" className={thCls}>{accountT('activeUntil')}</th><th scope="col" className={`${thCls} md:w-[25%]`}>{d('access')}</th><th scope="col" className={`${thCls} md:w-[10%]`}>{d('assistant')}</th><th scope="col" className={`${thCls} md:w-[16%]`}><span className="sr-only">{d('actions')}</span></th></tr></thead>
+      <table className={`${styles.directoryTable} block w-full text-left text-sm md:table md:table-fixed`}><thead className={`${theadCls} sr-only md:not-sr-only md:table-header-group`}><tr>{columns.map(([key,width])=><th key={key} scope="col" className={`${thCls} ${width} break-words ${key==='actions'?'text-right':''}`}>{d(key)}</th>)}</tr></thead>
         <tbody className="block md:table-row-group">{visible.map(({group,row:u},index)=>{
           const showGroup=groupBy!=='none'&&(index===0||visible[index-1].group.key!==group.key);
           const key=u?`${group.key}:${u.key}`:`group:${group.key}`,id=`${instance}-access-${currentPage}-${index}`;
           return <Fragment key={showGroup?`group-header:${group.key}`:key}>
-            {showGroup&&<tr className="block bg-muted/50 md:table-row"><th colSpan={6} scope="rowgroup" className="block px-3 py-1 md:table-cell"><button type="button" className="flex min-h-11 w-full items-center gap-2 text-left text-sm font-medium md:min-h-7 focus-visible:outline-2 focus-visible:outline-ring" aria-expanded={!collapsed.includes(group.key)} onClick={()=>{setCollapsed(prev=>prev.includes(group.key)?prev.filter(k=>k!==group.key):[...prev,group.key]);setPage(1);}}>{collapsed.includes(group.key)?<ChevronRight aria-hidden="true" className="size-4"/>:<ChevronDown aria-hidden="true" className="size-4"/>}{group.label}<span className="font-normal tabular-nums text-muted-foreground">{group.rows.length}</span></button></th></tr>}
-            {u&&<>
-              <tr data-directory-row className="grid grid-cols-2 border-b border-border hover:bg-muted/20 md:table-row">
-                <th scope="row" className={`${cell} col-span-2 font-normal md:table-cell`}><div className="flex min-w-0 items-start gap-3"><Avatar name={name(u)}/><div className="min-w-0"><p className="break-words font-medium text-foreground">{name(u)}</p><p className="break-all text-xs font-normal text-muted-foreground">{u.email??'—'}</p>{u.appUserId&&accounts[u.appUserId]&&<p className="break-all text-xs text-muted-foreground">{accounts[u.appUserId].username}</p>}</div></div></th>
-                <td className={`${cell} md:table-cell`}><span className={`inline-block max-w-full break-words rounded-full px-2 py-0.5 text-xs font-medium ${accountStatus(u)==='active'?'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300':u.status==='invited'?'bg-amber-500/10 text-amber-800 dark:text-amber-300':'bg-muted text-muted-foreground'}`}>{statusLabel(accountStatus(u))}</span></td>
-                <td className={`${cell} md:table-cell`}><span className="text-xs text-muted-foreground md:hidden">{accountT('activeUntil')}: </span>{u.appUserId?accounts[u.appUserId]?.activeUntil??'—':'—'}</td>
-                <td className={`${cell} col-span-2 md:table-cell`}><span className="mb-1 block text-xs text-muted-foreground md:hidden">{d('access')}</span>{directoryGrants(u).length?<ul className="space-y-1.5 md:space-y-0">{directoryGrants(u).map(g=><li key={g.id} className="break-words"><span className="font-medium">{t(`role.${g.role}`)}</span><span className="ml-1 text-muted-foreground">· {companyName(g.companyId)}</span></li>)}</ul>:<span className="text-muted-foreground">{u.status==='active'?t('noRoles'):d('notGranted')}</span>}</td>
-                <td className={`${cell} md:table-cell`}><span className="text-xs text-muted-foreground md:hidden">{d('assistant')}: </span>{groupAdmin&&u.appUserId?<span className="break-words text-xs">{d(assistantGrantedIds.includes(u.appUserId)?'enabled':'off')}</span>:<span className="text-muted-foreground">—</span>}</td>
-                <td className={`${cell} text-right md:table-cell`}>{u.status==='preparing'?<a href="/admin/users/create" className={rowAction}>{t('resumeActivation')}</a>:<button type="button" aria-expanded={expanded===key} aria-controls={id} className={`${rowAction} whitespace-nowrap`} title={d('accessFor',{name:name(u)})} onClick={()=>setExpanded(expanded===key?null:key)}>{d(expanded===key?'close':u.status==='pending'?'activate':'manage')}<ChevronDown aria-hidden="true" className={`ml-1 size-4 ${expanded===key?'rotate-180':''}`}/></button>}</td>
-              </tr>
-              {expanded===key&&<tr className="block md:table-row"><td colSpan={6} className="block md:table-cell"><div id={id} role="region" aria-label={d('accessFor',{name:name(u)})}>{panel(u)}</div></td></tr>}
-            </>}
+            {showGroup&&<tr className="block bg-muted/50 md:table-row"><th colSpan={columns.length} scope="rowgroup" className="block px-3 py-1 md:table-cell"><button type="button" className="flex min-h-11 w-full items-center gap-2 text-left text-sm font-medium md:min-h-7 focus-visible:outline-2 focus-visible:outline-ring" aria-expanded={!collapsed.includes(group.key)} onClick={()=>{setCollapsed(prev=>prev.includes(group.key)?prev.filter(k=>k!==group.key):[...prev,group.key]);setPage(1);}}>{collapsed.includes(group.key)?<ChevronRight aria-hidden="true" className="size-4"/>:<ChevronDown aria-hidden="true" className="size-4"/>}{group.label}<span className="font-normal tabular-nums text-muted-foreground">{group.rows.length}</span></button></th></tr>}
+            {u&&row(u,key,id)}
           </Fragment>;
         })}</tbody>
       </table>
