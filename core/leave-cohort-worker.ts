@@ -8,12 +8,14 @@ import {randomUUID} from 'node:crypto';
 import {withTenant, type SessionContext, type Tx} from '../db/client';
 import {isAdmin} from '../lib/authz-model';
 import {publicErrorMessage} from '../lib/public-error';
-import {applyGenerationAccrual, assertInformationLeavePeriodTx, completeLeaveGeneration, leaveGenerationHandover, openLeaveYear, planLeaveGeneration,
+import {applyGenerationAccrual, assertInformationLeavePeriodTx, readEarnedAccrualRunInputsTx, type EarnedAccrualRunInputs, completeLeaveGeneration, leaveGenerationHandover, openLeaveYear, planLeaveGeneration,
   type EarnedAccrualResult, type LeaveGenerationPlan, type LeaveGenerationRequest, type LeaveGenerationResult, type LeaveYearGrantRow} from '../packs/leave/service';
 import {isTransientBulkJobError, type BulkJobHandler, type BulkJobPrepared, type BulkJobRefused, type BulkJobStepOutcome, type BulkJobUnit} from './bulk-job-worker';
 import type {BulkJobRow} from './bulk-job';
 import {LEAVE_ACCRUAL_JOB_KIND, LEAVE_GENERATION_JOB_KIND} from './leave-cohort-job';
-import {discardLeaveStageRows, dropLeaveStageRowsTx, leaveConfigFingerprintTx, leaveStageConflictsTx, leaveStageFingerprintsTx, lockLeaveStageSubjectsTx,
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockLeaveDependencyReadConfigurationTx} from './leave-dependency-lock';
+import {discardLeaveStageRows, dropLeaveStageRowsTx, leaveConfigFingerprintTx, leaveRunInputFingerprintsTx, leaveStageConflictsTx, leaveStageFingerprintsTx, lockLeaveStageSubjectsTx,
   releaseLeaveStageTx, settleLeaveStages, useLeaveStageTx} from './leave-stage';
 import {appendLeaveCohortSummaryTx, batchesOf, earnedAccrualBatchTx, earnedAccrualRunSummary, leaveCohortEmploymentIdsTx, yearOpenRunSummary,
   type AccrualBatchOutcome, type EarnedAccrualRunInput, type LeaveCohortSummary} from './leave-cohort-run';
@@ -61,6 +63,27 @@ async function accrualSummaryOnce(ctx: SessionContext, job: BulkJobRow, unit: Pi
     if (payload) await appendLeaveCohortSummaryTx(tx, ctx, 'leave.earned-accrual.run', payload);
   });
 }
+/**
+ * The run's once-per-run reads (leave types, tables in force, the template resolver for every employee), made once
+ * per worker and reused by every batch while they are still current, instead of again in every batch's lock hold.
+ * Before each batch, under the same first locks the engine takes (the tenant's Access lock, which every workforce
+ * writer takes too, and the leave configuration shared), one statement re-checks the configuration and the batch's
+ * employment and assignment rows against what the reads saw; anything changed and the batch reads for itself.
+ */
+type AccrualRunCache = {inputs: EarnedAccrualRunInputs; configFp: string; orgFp: Record<string, string>};
+async function accrualRunInputsTx(tx: Tx, ctx: SessionContext, job: BulkJobRow, input: EarnedAccrualRunInput, batch: string[], cache: Map<string, unknown>): Promise<EarnedAccrualRunInputs | undefined> {
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+  const held = cache.get('runInputs') as AccrualRunCache | undefined;
+  const now = await leaveRunInputFingerprintsTx(tx, held ? batch : null);
+  if (held && held.configFp === now.configFp) return batch.every(id => held.orgFp[id] !== undefined && held.orgFp[id] === now.orgFp[id]) ? held.inputs : undefined;
+  // First batch on this worker, or the configuration changed: read once for every employee the run may reach.
+  const all = (await tx.execute<{id: string}>(sql`select jsonb_array_elements_text(payload->'employmentIds') as id from bulk_job_step where job_id=${job.id}::uuid order by seq`)).map(r => r.id);
+  const fresh = await leaveRunInputFingerprintsTx(tx, all);
+  const inputs = await readEarnedAccrualRunInputsTx(tx, {asOf: input.asOf, leaveTypeIds: input.leaveTypeIds, employmentIds: all, periodChecked: true});
+  cache.set('runInputs', {inputs, configFp: fresh.configFp, orgFp: fresh.orgFp} satisfies AccrualRunCache);
+  return inputs;
+}
 export const earnedAccrualJobHandler: BulkJobHandler<Batch> = {
   kind: LEAVE_ACCRUAL_JOB_KIND,
   mode: 'per-step',
@@ -80,8 +103,10 @@ export const earnedAccrualJobHandler: BulkJobHandler<Batch> = {
     if (refused) return {refused};
     return {steps: batchesOf(ids).map((employmentIds, i) => ({kind: 'employees', rowNum: i + 1, payload: {employmentIds}})), counters: {employees: ids.length, granted: 0, forfeits: 0}, plan: {}};
   },
-  async applyStepTx(tx, ctx, job, step) {
-    const o = await earnedAccrualBatchTx(tx, ctx, job.input as EarnedAccrualRunInput, step.payload.employmentIds);
+  async applyStepTx(tx, ctx, job, step, cache) {
+    const input = job.input as EarnedAccrualRunInput;
+    const preload = await accrualRunInputsTx(tx, ctx, job, input, step.payload.employmentIds, cache);
+    const o = await earnedAccrualBatchTx(tx, ctx, input, step.payload.employmentIds, {preload});
     const result: AccrualStepResult = {summary: o.summary, granted: o.granted, forfeits: o.forfeits};
     return {result, counters: {granted: o.granted, forfeits: o.forfeits}};
   },

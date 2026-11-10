@@ -14,7 +14,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant, type SessionContext, type Tx} from '../db/client';
 import {appendEvent, actorOf} from '../db/events';
 import {publicErrorMessage} from '../lib/public-error';
-import {accrueEarnedLeave, expireCarriedLeave, type EarnedAccrualResult} from '../packs/leave/service';
+import {accrueEarnedLeave, expireCarriedLeave, type EarnedAccrualResult, type EarnedAccrualRunInputs} from '../packs/leave/service';
 import {isTransientBulkJobError} from './bulk-job-worker';
 
 /** Employees per batch (one batch is one engine call in one transaction). Measured on 3,000 employees on a heavily
@@ -50,10 +50,10 @@ export async function leaveCohortEmploymentIdsTx(tx: Tx, scope: {companyIds?: re
 
 /** One batch of earned accrual. The batch is passed as the engine's employee axis; the run's own scope (none for the
  * monthly cron) goes back into the summary event, so the audit log reads exactly as the whole-cohort run's did. */
-export async function earnedAccrualBatchTx(tx: Tx, ctx: SessionContext, input: EarnedAccrualRunInput, employmentIds: string[], extra: {leaveTypeIds?: string[]} = {}): Promise<AccrualBatchOutcome> {
+export async function earnedAccrualBatchTx(tx: Tx, ctx: SessionContext, input: EarnedAccrualRunInput, employmentIds: string[], extra: {leaveTypeIds?: string[]; preload?: EarnedAccrualRunInputs} = {}): Promise<AccrualBatchOutcome> {
   let summary: LeaveCohortSummary | null = null;
   const r = await accrueEarnedLeave(ctx, {asOf: input.asOf, companyIds: input.companyIds, gradeIds: input.gradeIds, leaveTypeIds: extra.leaveTypeIds ?? input.leaveTypeIds, employmentIds},
-    {tx, onSummary: payload => { summary = payload; }});
+    {tx, onSummary: payload => { summary = payload; }, preload: extra.preload});
   return {summary, granted: r.granted, forfeits: r.forfeits, pairs: r.pairs, typeNames: [...new Map(r.breakdown.map(g => [g.leaveTypeId, g.leaveTypeName])).entries()]};
 }
 /** The whole run's `leave.earned-accrual.run` payload, or null when no batch reached the engine's summary. */

@@ -5949,7 +5949,58 @@ export type LeaveCohortStepRun = {
   onSummary: (payload: Record<string, unknown>) => void;
   /** Carry expiry only (it has no employee scope of its own): restrict the sweep to these employments. */
   employmentIds?: readonly string[];
+  /** Earned accrual only: the run's own reads, made once for the whole run instead of once per batch
+   * (`readEarnedAccrualRunInputsTx`). Used only for the same as-at date and leave-type scope; the caller
+   * guarantees they are still current (core/leave-cohort-worker.ts re-checks them before every batch). */
+  preload?: EarnedAccrualRunInputs;
 };
+/** What earned accrual reads once per run rather than per employee: the scoped active leave types, the types with
+ * a table in force at the as-at date, the template resolver for every employee the run may reach, and whether the
+ * run's whole-scope protected-period check has already passed (the synchronous run made it once, at its start). */
+export type EarnedAccrualRunInputs = {
+  asOf: string;
+  leaveTypeIds: string[];
+  activeTypes: Awaited<ReturnType<typeof readEarnedAccrualActiveTypesTx>>;
+  templateConfigured: Set<string>;
+  resolver: Awaited<ReturnType<typeof buildTemplateEntitlementResolver>>;
+  periodChecked: boolean;
+};
+function readEarnedAccrualActiveTypesTx(tx: Tx, scopeTypeIds: readonly string[]) {
+  return tx
+    // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
+    // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
+    // 9816a5ad step 2: the type's own rules ride along (see leaveTypeRuleColumns).
+    .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
+    .from(leaveType)
+    .where(
+      and(
+        isNull(leaveType.archivedAt),
+        // Leave-Type scope filter (feedback 2c7c6385). Empty ⇒ every active type, narrowed below.
+        scopeTypeIds.length ? inArray(leaveType.id, [...scopeTypeIds]) : undefined,
+      ),
+    );
+}
+/** Which of the scoped types the sweep accrues: Annual Leave, with a table in force, configured, earned method. */
+function earnedAccrualTypeIdsOf(types: readonly { id: string; code: string | null; role: string | null; accrualMethod: string | null; accrualUnconfigured?: Date | string | null }[], templateConfigured: ReadonlySet<string>) {
+  return types
+    .filter((t) => {
+      if (!templateConfigured.has(t.id)) return false;
+      // bc36c768 — THE NOT-CONFIGURED GATE, ahead of method resolution. An unconfigured type is not an
+      // earned type and is not a lump type; it is a type that grants nothing until HR configures it.
+      if (isAccrualUnconfigured(t)) return false;
+      return isEarnedMethod(t.accrualMethod);
+    })
+    .map((t) => t.id);
+}
+/** The earned accrual run's once-per-run reads (see `EarnedAccrualRunInputs`), for every employee it may reach. */
+export async function readEarnedAccrualRunInputsTx(tx: Tx, p: { asOf: string; leaveTypeIds?: string[]; employmentIds: readonly string[]; periodChecked: boolean }): Promise<EarnedAccrualRunInputs> {
+  const leaveTypeIds = (p.leaveTypeIds ?? []).filter(Boolean);
+  const activeTypes = await readEarnedAccrualActiveTypesTx(tx, leaveTypeIds);
+  const templateConfigured = await leaveTypeIdsWithTemplatesAt(tx, p.asOf);
+  const earnedTypeIds = earnedAccrualTypeIdsOf(activeTypes.filter((t) => isEarnedAccrualType(t)), templateConfigured);
+  const resolver = await buildTemplateEntitlementResolver(tx, { employmentIds: [...p.employmentIds], leaveTypeIds: earnedTypeIds, asOf: p.asOf });
+  return { asOf: p.asOf, leaveTypeIds, activeTypes, templateConfigured, resolver, periodChecked: p.periodChecked };
+}
 /** D5(a) — run in the caller's transaction when one is passed (a mobile command receipt), else in a new one. */
 function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>): Promise<T> {
   return existingTx ? run(existingTx) : withTenant(ctx, run);
@@ -10097,9 +10148,11 @@ export async function accrueEarnedLeave(
   const accrualPeriod = Number(p.asOf.slice(0, 4));
   p = { ...p, companyIds: p.companyIds?.slice(), gradeIds: p.gradeIds?.slice(), leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  // The run's once-per-run reads, when the caller made them for this same date and type scope.
+  const pre = run?.preload && run.preload.asOf === p.asOf && run.preload.leaveTypeIds.join(',') === scopeTypeIds.join(',') ? run.preload : undefined;
   return withLeaveTx(ctx, run?.tx, async (tx): Promise<EarnedAccrualResult> => {
     await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun);
-    await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:scopeEmpIds===null?undefined:scopeEmpIds,companyIds:scopeCompanyIds,gradeIds:scopeGradeIds});
+    if (!pre?.periodChecked) await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:scopeEmpIds===null?undefined:scopeEmpIds,companyIds:scopeCompanyIds,gradeIds:scopeGradeIds});
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
 
     // ── feedback cf9dcb98 — the empty-preview explanation. Everything below this comment runs ONLY where
@@ -10158,19 +10211,7 @@ export async function accrueEarnedLeave(
     // `role` MUST ride in the select. Without it every row is unclassified to `leaveTypeIs`, the predicate
     // silently falls back to the code, and the reporter's `AL` "*Annual Leave" — switched on by role — is
     // declined exactly as before. Nothing would fail; the sweep would just stay wrong.
-    const activeTypes = await tx
-      // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
-      // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
-      // 9816a5ad step 2: the type's own rules ride along (see leaveTypeRuleColumns).
-      .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
-      .from(leaveType)
-      .where(
-        and(
-          isNull(leaveType.archivedAt),
-          // Leave-Type scope filter (feedback 2c7c6385). Empty ⇒ every active type, narrowed below.
-          scopeTypeIds.length ? inArray(leaveType.id, scopeTypeIds) : undefined,
-        ),
-      );
+    const activeTypes = pre?.activeTypes ?? await readEarnedAccrualActiveTypesTx(tx, scopeTypeIds);
     const types = activeTypes.filter((t) => isEarnedAccrualType(t));
     const typeIds = types.map((t) => t.id);
     if (typeIds.length === 0) {
@@ -10236,16 +10277,8 @@ export async function accrueEarnedLeave(
     // The membership test is deliberately KEPT — a type with nothing configured has no days to accrue and
     // was never swept here. It also decides which ledger rows are read back as "already accrued", so
     // widening it would have this sweep reasoning about a type it must not touch.
-    const templateConfigured = await leaveTypeIdsWithTemplatesAt(tx, p.asOf);
-    const earnedTypeIds = types
-      .filter((t) => {
-        if (!templateConfigured.has(t.id)) return false;
-        // bc36c768 — THE NOT-CONFIGURED GATE, ahead of method resolution. An unconfigured type is not an
-        // earned type and is not a lump type; it is a type that grants nothing until HR configures it.
-        if (isAccrualUnconfigured(t)) return false;
-        return isEarnedMethod(t.accrualMethod);
-      })
-      .map((t) => t.id);
+    const templateConfigured = pre?.templateConfigured ?? await leaveTypeIdsWithTemplatesAt(tx, p.asOf);
+    const earnedTypeIds = earnedAccrualTypeIdsOf(types, templateConfigured);
     if (earnedTypeIds.length === 0) {
       // feedback cf9dcb98 — EXIT 2, partitioned by the SAME three conditions the filter above applies, in
       // the same order, so the sentence and the gate can never disagree about which one bit.
@@ -10366,7 +10399,9 @@ export async function accrueEarnedLeave(
     // dates the same question `templateConfigured` above asked, so both answer for the same moment. The
     // BAND is still picked per (employee, type) at that pair's own cycle-start service length, below —
     // dating the eligibility and dating the band are different questions and only the first one is `asOf`.
-    const templates = await buildTemplateEntitlementResolver(tx, {
+    // A run's preloaded resolver was built for every employee it may reach and the same earned types: each
+    // employee's band depends only on that employee and the configuration, so it answers exactly as this one.
+    const templates = pre?.resolver ?? await buildTemplateEntitlementResolver(tx, {
       employmentIds: empIds,
       leaveTypeIds: earnedTypeIds,
       asOf: p.asOf,

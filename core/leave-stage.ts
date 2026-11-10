@@ -50,16 +50,26 @@ export async function leaveStageConflictsTx(tx: Tx, expected: Readonly<Record<st
 }
 /** The tenant's leave configuration the engines read (types, tables, rules, defaults, leave cycle, year config). Its
  * writers take the leave-dependency configuration lock exclusively; a run's batches and its release take it shared. */
-export async function leaveConfigFingerprintTx(tx: Tx): Promise<string> {
-  const [row] = await tx.execute<{fp: string}>(sql`select md5(concat_ws('|',
+const configDigest = sql`md5(concat_ws('|',
       (select string_agg(t.xmin::text, ',' order by t.id) from leave_type t),
       (select string_agg(t.xmin::text, ',' order by t.id) from entitlement_template t),
       (select string_agg(r.xmin::text, ',' order by r.id) from entitlement_eligibility_rule r),
       (select string_agg(c.id::text||':'||c.leave_cycle::text, ',' order by c.id) from company c),
-      (select string_agg(y.xmin::text, ',' order by y.id) from leave_year_config y))) as fp`);
+      (select string_agg(y.xmin::text, ',' order by y.id) from leave_year_config y)))`;
+export async function leaveConfigFingerprintTx(tx: Tx): Promise<string> {
+  const [row] = await tx.execute<{fp: string}>(sql`select ${configDigest} as fp`);
   return row.fp;
 }
 
+/** The configuration digest and, for the given employees (null: none), a digest of the employment and assignment
+ * rows the template resolver matches on, in one statement (the accrual job's re-check of its once-per-run reads). */
+export async function leaveRunInputFingerprintsTx(tx: Tx, employmentIds: readonly string[] | null): Promise<{configFp: string; orgFp: Record<string, string>}> {
+  const [row] = await tx.execute<{fp: string; org: Record<string, string> | null}>(sql`select ${configDigest} as fp,
+    ${employmentIds ? sql`(select jsonb_object_agg(e.id::text, md5(concat_ws('|', e.xmin::text,
+      (select string_agg(a.xmin::text, ',' order by a.id) from assignment a where a.employment_id=e.id))))
+     from employment e where e.id = any(${`{${employmentIds.join(',')}}`}::uuid[]))` : sql`null::jsonb`} as org`);
+  return {configFp: row.fp, orgFp: row.org ?? {}};
+}
 /** Release: one row, under the job's own fenced transaction. Every reader sees the stage from its commit on. */
 export async function releaseLeaveStageTx(tx: Tx, jobId: string, stageId: string) {
   await tx.execute(sql`select app.leave_stage_release(${jobId}::uuid, ${stageId}::uuid)`);
