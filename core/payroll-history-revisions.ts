@@ -612,7 +612,16 @@ async function revertTargetsTx(tx:Tx,ctx:SessionContext,source:RevertSource,lock
   targets.push({change,identity,current,previous});
  }
  const previewHash=hash(canonical({attemptId:source.id,actorId:ctx.userId,eventId:confirmed.id,targets:targets.map(target=>({recordId:target.identity.id,currentRevisionId:target.current.id,restoreSnapshotId:target.previous?.snapshotId??null})).sort((a,b)=>a.recordId.localeCompare(b.recordId))}));
- return {targets,previewHash};
+ // What of the eligibility can still change while a staged revert is open: runs processed and statutory reports
+ // generated for the dependent months, and statutory artefacts of the current snapshots' batches. Everything else it
+ // read is immutable (records, revisions of a closed attempt, closed imported batches) or fenced by the open stage.
+ const volatile:RevertVolatileKeys={pairs:sortBy([...new Map(dependent.map(d=>[d.identity.companyId+':'+d.identity.period,{companyId:d.identity.companyId,period:d.identity.period}])).values()],k=>k.companyId+':'+k.period),
+  batches:sortBy([...new Map([...batchOf.values()].map(b=>[b.id,{id:b.id,companyId:b.companyId,payPeriod:b.payPeriod}])).values()],b=>b.id)};
+ return {targets,previewHash,volatile};
+}
+type RevertVolatileKeys={pairs:{companyId:string;period:string}[];batches:{id:string;companyId:string;payPeriod:string}[]};
+async function revertVolatileDigestTx(tx:Tx,keys:RevertVolatileKeys){
+ return hash(canonical({periods:[...await periodFactsTx(tx,keys.pairs)].sort(([a],[b])=>byText(a,b)),downstream:[...await downstreamFactsTx(tx,keys.batches)].sort(([a],[b])=>byText(a,b))}));
 }
 /** User-requested read-only eligibility review. No recovery event or money changes occur here. */
 export async function previewPayrollHistoryRevert(ctx:SessionContext,id:string){
@@ -661,7 +670,8 @@ export async function planStagedPayrollHistoryRevert(ctx:SessionContext,id:strin
   await principal(tx,ctx);
   const [source]=await tx.select({id:attempt.id,companyIds:attempt.companyIds}).from(attempt).where(eq(attempt.id,id));if(!source)fail('Import attempt unavailable.');
   const plan=await revertTargetsTx(tx,ctx,source,false);if(plan.previewHash!==expectedPreviewHash)fail('The revert preview changed. Review eligibility again before confirming.');
-  return{companyIds:source.companyIds,targets:plan.targets.map(({identity,current,previous}):StagedHistoryRevertTarget=>({recordId:identity.id,currentRevisionId:current.id,currentOrdinal:current.ordinal,
+  return{companyIds:source.companyIds,volatile:plan.volatile,digest:await revertVolatileDigestTx(tx,plan.volatile),
+   targets:plan.targets.map(({identity,current,previous}):StagedHistoryRevertTarget=>({recordId:identity.id,currentRevisionId:current.id,currentOrdinal:current.ordinal,
    restoreSnapshotId:previous?.snapshotId??null,cycleName:previous?.cycleName??current.cycleName}))};
  },{readOnlySnapshot:true});
 }
@@ -672,10 +682,19 @@ export async function stageHistoryRevertTx(tx:Tx,ctx:SessionContext,id:string,ta
 /** The staged revert's release: the single transaction's locks and its complete eligibility re-derivation (set-wise,
  * read without the stage setting so the staged revisions stay hidden from it), the same `reverted` history and audit
  * events, then the stage is released. */
-export async function releaseStagedPayrollHistoryRevertTx(tx:Tx,ctx:SessionContext,p:{stageId:string;id:string;expectedPreviewHash:string;changes:HistoryRevisionChange[]}){
+export async function releaseStagedPayrollHistoryRevertTx(tx:Tx,ctx:SessionContext,p:{stageId:string;id:string;expectedPreviewHash:string;changes:HistoryRevisionChange[];
+ volatile:RevertVolatileKeys;digest:string}):Promise<{attemptId:string;restored:number}|'recheck'>{
  await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await principal(tx,ctx);
  const [source]=await tx.select({id:attempt.id,companyIds:attempt.companyIds}).from(attempt).where(eq(attempt.id,p.id)).for('update');if(!source)fail('Import attempt unavailable.');
- const plan=await revertTargetsTx(tx,ctx,source,true);if(plan.previewHash!==p.expectedPreviewHash)fail('The revert preview changed. Review eligibility again before confirming.');
+ for(const companyId of source.companyIds)await permission(tx,ctx,companyId,'revert');
+ const events=await tx.select({kind:historyEvent.kind}).from(historyEvent).where(eq(historyEvent.attemptId,source.id));
+ if(events.some(event=>event.kind==='reverted'))fail('This import has already been reverted.');
+ // The rest of the eligibility cannot have changed since the plan: the records and the attempt's revisions are
+ // immutable, the current snapshots' batches are closed imported batches, and the tenant's open stage excludes every
+ // other history writer (a revision appended meanwhile would already have refused this job's own staged revision on
+ // its chain check). What can change is re-read set-wise and compared; a change re-derives the whole eligibility
+ // without locks and refuses exactly as the single transaction would.
+ if(await revertVolatileDigestTx(tx,p.volatile)!==p.digest)return'recheck';
  await joinPayrollHistoryStageTx(tx,p.stageId);
  await tx.insert(historyEvent).values({tenantId:ctx.tenantId,attemptId:p.id,kind:'reverted',actorId:ctx.userId!,changes:p.changes,detail:{restored:p.changes.length}});
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:p.id,eventType:'payroll-history-import.reverted',actor:actorOf(ctx),payload:{changes:p.changes}});

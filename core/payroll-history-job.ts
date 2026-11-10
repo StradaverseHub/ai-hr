@@ -49,7 +49,7 @@ type RevertJobInput={operation:'revert';attemptId:string;previewHash:string};
 type JobInput=ConfirmJobInput|RevertJobInput;
 type ConfirmPlan={operation:'confirm';attemptId:string;input:HistoryConfirmInput;digest:string;factKeys:HistoryPlanFactKeys;groups:StagedHistoryGroup[];
  counts:HistoryRevisionPlan['counts'];skippedReplacements:number;importedRows:number;rechecks?:number;recheck?:boolean};
-type RevertPlan={operation:'revert';attemptId:string;previewHash:string;restored:number};
+type RevertPlan={operation:'revert';attemptId:string;previewHash:string;restored:number;digest:string;volatile:Awaited<ReturnType<typeof planStagedPayrollHistoryRevert>>['volatile'];rechecks?:number;recheck?:boolean};
 type CommonPlan={stageId:string;opened?:boolean;released?:boolean;settled?:boolean;failureRecorded?:boolean;alreadyCommitted?:Record<string,unknown>;result?:Record<string,unknown>};
 type JobPlan=(ConfirmPlan|RevertPlan)&CommonPlan;
 type Step={group:number}|{group:number;row:HistoryRevisionRow}|{target:StagedHistoryRevertTarget};
@@ -127,7 +127,7 @@ export const payrollHistoryJobHandler:BulkJobHandler<Step>={
     return{steps,plan,counters:{records:planned.rows.length,groups:planned.groups.length},companyIds:planned.companyIds,phase:'writing'};
    }
    const planned=await planStagedPayrollHistoryRevert(ctx,input.attemptId,input.previewHash);
-   const plan:JobPlan={...base,operation:'revert',previewHash:input.previewHash,restored:planned.targets.length};
+   const plan:JobPlan={...base,operation:'revert',previewHash:input.previewHash,restored:planned.targets.length,digest:planned.digest,volatile:planned.volatile};
    return{steps:planned.targets.map(target=>({kind:'revert',payload:{target}})),plan,counters:{records:planned.targets.length},companyIds:planned.companyIds,phase:'reverting'};
   }catch(error){
    if(error instanceof BulkJobWaiting||isTransientBulkJobError(error))throw error;
@@ -182,6 +182,14 @@ async function finalizeHistory(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
  const plan=planOf(job)!;
  if(plan.alreadyCommitted)return{result:plan.alreadyCommitted};
  if(!plan.released){
+  if(plan.operation==='revert'&&plan.recheck){
+   // Something the revert depends on changed: re-derive the whole eligibility without locks; it must still hold.
+   const started=performance.now();
+   const fresh=await planStagedPayrollHistoryRevert(ctx,plan.attemptId,plan.previewHash);
+   await withTenant(ctx,async tx=>{await label(tx,'recheck');await unit.fenceTx(tx);await savePlanTx(tx,job.id,{digest:fresh.digest,volatile:fresh.volatile,recheck:false});});
+   unit.metric('recheckMs',performance.now()-started);
+   return'more';
+  }
   if(plan.operation==='confirm'&&plan.recheck){
    // The digest changed: re-plan without locks; the plan must be the one the attempt was validated with.
    const started=performance.now();
@@ -195,7 +203,12 @@ async function finalizeHistory(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
    await label(tx,'release');await unit.fenceTx(tx);
    const changes=(await tx.execute<{change:HistoryRevisionChange}>(sql`select result->'change' as change from bulk_job_step where job_id=${job.id}::uuid and kind in ('row','revert') and state='applied' order by seq`)).map(r=>r.change);
    if(plan.operation==='revert'){
-    const result=await releaseStagedPayrollHistoryRevertTx(tx,ctx,{stageId:plan.stageId,id:plan.attemptId,expectedPreviewHash:plan.previewHash,changes});
+    const result=await releaseStagedPayrollHistoryRevertTx(tx,ctx,{stageId:plan.stageId,id:plan.attemptId,expectedPreviewHash:plan.previewHash,changes,volatile:plan.volatile,digest:plan.digest});
+    if(result==='recheck'){
+     if((plan.rechecks??0)>=MAX_RECHECKS)throw new PayrollHistoryRevisionError('The revert preview changed. Review eligibility again before confirming.');
+     await savePlanTx(tx,job.id,{recheck:true,rechecks:(plan.rechecks??0)+1});
+     return'recheck' as const;
+    }
     await savePlanTx(tx,job.id,{released:true,result});
     return'released' as const;
    }

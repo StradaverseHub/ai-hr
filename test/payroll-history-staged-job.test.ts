@@ -235,6 +235,27 @@ describe('payroll history confirm and revert as staged jobs',()=>{
   }finally{delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;}
  },240000);
 
+ it('re-derives a staged revert whose dependencies changed, and refuses it exactly as the single transaction would',async()=>{
+  const t=await tenant();const v=await validated(t);
+  const confirm=await requestPayrollHistoryConfirm(t.ctx,v.input);if(!('jobId' in confirm))throw new Error('expected a job');
+  expect(await drain(confirm.jobId)).toBe('completed');
+  const review=await previewPayrollHistoryRevert(t.ctx,v.preview.attemptId);
+  process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS='1';
+  try{
+   const revert=await requestPayrollHistoryRevert(t.ctx,v.preview.attemptId,review.previewHash);
+   for(let i=0;i<50;i++){await tick();const [r]=await owner.client<{n:number}[]>`select count(*)::int as n from app.payroll_history_staged_row where stage_id=${revert.jobId}::uuid`;if(r.n>=1)break;}
+   // A later month is processed while the revert is staged: the restored basis would change what it was worked from.
+   const run=await createBatch(t.ctx,{companyId:t.b.companyId,payPeriod:`${year}-04`});await generatePayslips(t.ctx,{batchId:run.batchId});
+   expect(await drain(revert.jobId)).toBe('failed');
+   const [job]=await owner.client<{error:string;rechecks:number}[]>`select error,(plan->>'rechecks')::int as rechecks from bulk_job where id=${revert.jobId}::uuid`;
+   expect(job).toEqual({error:'Normally processed payroll already depends on this period or a later period in the same year.',rechecks:1});
+   // Nothing of the revert remains; the import stays effective; the failure is recorded once.
+   expect(await owner.client`select 1 from payroll_history_import_revision where tenant_id=${t.b.tenantId}::uuid and kind='revert'`).toHaveLength(0);
+   const events=await owner.db.select().from(schema.payrollHistoryImportEvent).where(eq(schema.payrollHistoryImportEvent.attemptId,v.preview.attemptId));
+   expect(events.map(e=>[e.kind,e.detail])).toEqual([['confirmed',expect.anything()],['revert_failed',{reason:job.error}]]);
+  }finally{delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;}
+ },240000);
+
  it('waits for the open stage instead of refusing a second history job, and refuses a single-transaction writer meanwhile',async()=>{
   const t=await tenant();const v=await validated(t);
   const second=await previewPayrollHistoryUpload(t.ctx,{name:'other.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...lines('0008',`${year}-05`,'4321.00')])),operationKey:randomUUID()});

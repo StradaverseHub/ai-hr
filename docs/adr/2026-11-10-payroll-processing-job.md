@@ -3,7 +3,8 @@
 Status: source implementation on `claude/bulkjob-payroll-20261110`; hosted verification and integration pending.
 Base: `claude/import-staged-job-20261110` @ `0143d761c` (shared bulk-job kernel) merged with
 `claude/access-wave4-payroll-20261110` @ `9e5c13d38` (reader/writer Access lock, payroll inputs key). Production and
-staging untouched. Draft migrations (unallocated): 9950 status value, 9951 lease, kind and guard.
+staging untouched. Draft migrations (unallocated): 9950 status value, 9951 lease, kind and guard, 9952 run group,
+9953 kernel settle, 9954 payroll-partner point read, 9955 staged payroll history, 9956 selective reprocess kind.
 
 Owner decision 2026-11-10 (bulk-job plan, item 2): a `processing` run status, visible to payroll operators and hidden
 from employees, with a run-level durable lease. Until now one transaction computed and wrote every payslip of a run
@@ -80,9 +81,38 @@ fixed-item and policy edits for that company waited for the whole run and were r
   `payroll-run-group.completed` event (its `endedAt` is when the last run finished). Saved drafts keep the one-shot
   `?r=` result. Known difference: every company's draft is now created before the first run processes (before, each
   after the previous company's run); no draft-creation reader depends on another company's processed run.
-- **Income-tax recalculation preview** (core/payroll-tax-basis.ts) computes in one read-only snapshot with no
-  tenant-wide lock and saves the preview record in a short transaction that rechecks authority. Confirming still
-  recomputes the whole selection under the history and Access write locks (up to 25 s); not converted here.
+- **Income-tax recalculation** (core/payroll-tax-basis.ts). The preview computes in one read-only snapshot with no
+  tenant-wide lock and saves the preview record in a short transaction that rechecks authority. Confirming used to
+  recompute the whole selection (up to 1,000 employees, up to 25 s) under the history and Access write locks before
+  opening the batch. It now recomputes in a read-only snapshot with no lock, refused exactly as before when the
+  figures no longer match; the batch opens in one short transaction under the write locks after a set-wise digest
+  proves nothing the recomputation read changed since that snapshot (Pay Item settings, subjects, company, the
+  year's verified rules, and every payslip and run of the company in the year by row version, with their income-tax
+  corrections and imported history snapshots and revisions); a changed digest recomputes again (twice at most, then
+  the same refusal). Each employee is still recomputed and compared under the write locks before its own correction
+  commits, which already bounded every other hold to one employee. All-or-nothing is not required: every employee
+  commits on its own with a durable per-employee outcome, so no staging is needed. The 50-employee continuation still
+  runs on the request (short holds each); moving it onto the kernel is the remaining step.
+- **Selective reprocess** (core/payroll-reprocess-job.ts, 9956). The screen used to recalculate every selected
+  employee inside the request. The per-employee transaction is extracted unchanged (`reprocessEmployeeTx`, checked
+  token for token against the old loop body) and `reprocessSelectedEmployees` composes the same phases. The screen now
+  calls `requestSelectiveReprocess` (same checks and idempotent payroll_reprocess_job enqueue) and a
+  `payroll_reprocess` job (exclusive `none`: the reprocess job's claim is the exclusivity) claims the reprocess job
+  with its own worker token, runs one employee per chunk, completes under that token, and on a run-level refusal
+  leaves the request path's stop record (failed, stop code, employee stopped at; committed employees stay). The
+  screen shows the job's progress (the existing reprocess-job route) and then its results.
+- **Point reads for a payroll partner** (9954). The 0691 marker skipped rebuilding the visible-employment array only
+  for a company administrator. `app.can_admin_payroll_for(company_id)` is already an arm of the original predicate
+  under the same voided/tenant guards, so 9954 adds it to the short-circuit: identical rows for every grant, no
+  authority added (test/payroll-partner-point-read.test.ts proves the rows and that the array is never built).
+- **Run-group settlement** is now the kernel's retried `settle` (9953, `bulk_job.settled_at`): the job stays
+  unnotified with its inputs and a later tick retries a failed settlement with backoff; it runs on the queue-owner
+  connection under each group's row lock, idempotently (a settled group is skipped), with the same result and
+  `payroll-run-group.completed` payload and the creator as actor. The web-side settle reads the jobs FOR SHARE, so a
+  job whose terminal state commits meanwhile finds the group. test/payroll-run-group-failed-company.test.ts refuses
+  the first attempt and proves one event, and restores 7076f8af test 2b end to end: a company job that fails inside
+  the run (after paying an employee) or when it prepares renders on the result page as its reason row
+  (PRE_PROCESS_BLOCKED, as the synchronous catch mapped it) beside the company that succeeded.
 - **Kernel extension.** `bulk_job_kind.exclusive = 'none'` (9951): the run's own lease is the exclusivity, so an
   operator can start the runs of several companies back to back (the multi-company wizard admits them in one
   request). **Merge rule for other kernel users:** 9951 replaces `bulk_job_kind_exclusive_check` (now `tenant`,
@@ -92,41 +122,91 @@ fixed-item and policy edits for that company waited for the whole run and were r
   the `none` arm were lost, a payroll kind would fall back to per-creator exclusivity and the second company of a
   wizard run would be refused as already running; test/payroll-multi-company-process.test.ts ("follows the run …")
   admits two jobs for one creator and fails in that case. The handler also uses the kernel's optional
-  `describeFailure` (writes the reason onto its own job's plan through the owner connection) and `afterTerminal`.
+  `describeFailure` (writes the reason onto its own job's plan through the owner connection) and `settle`.
+- **Kernel extensions, later** (core/bulk-job-worker.ts): `settle` (above, 9953) and `BulkJobWaiting`, a unit that
+  cannot start until other work finishes is retried after 2 s without using the transient retry budget, so waiting
+  never fails a job (the payroll history kind waits for its tenant's open stage this way).
 
-Known limits: the selective reprocess and the income-tax recalculation's confirmation are not converted. Payroll
-history upload confirm and revert (core/payroll-history-revisions.ts) still run as one exclusive transaction; see
-"Payroll history upload" below.
+## Payroll history upload confirm and revert (core/payroll-history-revisions.ts, core/payroll-history-job.ts, 9955)
 
-## Payroll history upload (core/payroll-history-revisions.ts)
+Both ran as one transaction holding the tenant's history barrier and Access lock exclusively for the whole file
+(105.6 s and 28.2 s at 2,994 employees, measured on the previous base). Both stay all-or-nothing (a partially applied
+file cannot be represented: one `confirmed` event lists every change and revert undoes by that list).
 
-Measured on the rehearsal database (fictional, one month, five lines per employee, load 7 to 12):
+- **Set-wise planning.** Every per-record fact the plan reads (names, records, latest and first revisions,
+  snapshots, payroll on file, open and processed runs, statutory reports, payment exports) is read in a fixed number
+  of bulk reads under the same row security, and the plan's rules run over them in memory. On the 3,000-employee
+  rehearsal tenant the plan hash equals the per-record planner's for creates, overwrites of a closed processed run
+  (with their warnings) and refused months; validation 31.2 s -> 1.1 s (6,000 records: 68.2 s -> 2.2 s). Revert
+  eligibility likewise, judged change by change so the first refusal is unchanged (test suites unchanged).
+- **The job.** The Import Payroll History screen and the log's Revert make the same checks (a refusal records the
+  failure, as before) and admit a `payroll_history` job. Prepare re-plans in a read-only snapshot with no lock and
+  refuses exactly when the single transaction did, recording the digest of every fact the plan read. Chunks write the
+  single transaction's rows through the same code (`writeRecordPayslipTx`, `writeSnapshotRevisionTx`) under the
+  shared Access lock only. The release takes the history and Access write locks, repeats the attempt's checks,
+  re-reads the facts and compares the digest (a changed digest re-plans without locks and refuses only if the plan
+  changed, at most five times), resolves or creates each group's pay period, allocates its run sequence, closes the
+  batch with the same totals, writes the same `confirmed`/`committed` (or `reverted`) events and releases the stage.
+  A revert's release compares a digest of what can still change (see below) instead. A failure deletes the staged rows on the owner
+  connection (newest revisions first) and records the attempt's failure once (kernel `settle`).
+- **One history writer per tenant, never refused.** The tenant's one open stage (unique partial index) is what the
+  exclusive barrier gave. A second job waits for it (`BulkJobWaiting`); the single-transaction paths that remain
+  (the trusted record-based import and the chat import card) refuse while a stage is open.
+- **Staged visibility.** A pending-row registry (`app.payroll_history_staged_row`, stamped by an AFTER INSERT trigger
+  while the job's transaction-local setting names the open stage) with RESTRICTIVE policies on payroll_batch, payslip
+  and the history record, snapshot and revision tables, instead of a pending column per table: payslip and batch rows
+  are published whole by existing owners (the information payslip document, assistant review witnesses, attendance
+  digests) and the history tables are immutable, so a column would change every existing document and could never
+  be cleared. Every row stays byte-identical to the single transaction's; the release is one row (the stage's state)
+  and the registry is cleared afterwards in bounded batches. A staged batch carries no pay period until the release
+  (a deferred constraint trigger requires one on every other batch), so a run an operator creates meanwhile in the
+  same month never collides with a run sequence nobody can see.
+- **Definer and owner-connection audit.** The effective-snapshot owner (`payroll_history_effective`, applied by the
+  payslip policy and every payslip definer) ignores staged revisions and treats a staged imported payslip as not
+  effective, while an ordinary payslip a staged import adopts stays effective; `payroll_history_batch_adopted` and
+  `payroll_history_self_issued` ignore staged snapshots. Of the 68 definers reading these tables, 16 reads enumerate
+  rows independently of a stored reference (run existence for periods, the leave and attendance coverage row locks,
+  information preservation and readiness, the assistant family context, the learning leaver check, child-relief
+  resync, the attendance review's history fingerprint, the income-tax binders) and get `payroll_history_row_visible`
+  after an exact count of their reads; the rest reach rows by a stored or caller-supplied id, through the effective
+  owner, by pay_period_id (a staged batch has none), or by a status a staged draft never has; triggers act on their
+  own transaction's rows as before. The adopted-payslip freeze now sees a staged adoption (an unlock or reset of that
+  payslip is refused as it would be a moment later, instead of failing on the snapshot's foreign key). Owner
+  connection: usage capture counts payslips by creation day and now excludes unreleased staged ones explicitly (as it
+  excludes staged employee imports); the anomaly sweep reads processed runs only (a staged batch is a draft). Operator
+  report and repair scripts read by stored id or are one-off reports.
+- **Snapshot binding.** The 0660 snapshot binding checked the planned rows in one statement joining every attempt;
+  its cached generic plan expanded every attempt's planned rows per snapshot (about 250 ms each once a tenant holds a
+  few large attempts). 9955 finds the snapshot's attempt first and scans only its rows (same conjunction, about 5 ms).
 
-| | 300 employees | 2,994 employees | locks held throughout |
-|---|---|---|---|
-| validate upload (preview) | 3.0 s | 42.5 s | history barrier (shared) — now none |
-| confirm | 4.1 s | 105.6 s | history (exclusive) + Access (exclusive) |
-| review revert (preview) | 6.4 s | 23.8 s | history (shared) + Access (exclusive) — now none |
-| revert | 6.6 s | 28.2 s | history (exclusive) + Access (exclusive) |
+Rehearsal (scripts/performance/payroll-history-rehearsal.ts, 2,994 fictional employees, one month, five lines per
+employee, worker process as installed, load 4.6 to 7.6; the single transaction now plans set-wise, so it is far
+shorter than the 105.6 s measured before):
 
-- **Converted here:** the upload's validation and the revert review are read-only (the review "never held a row";
-  the validation writes only the attempt and its event). Both now plan in one REPEATABLE READ, READ ONLY snapshot with
-  no tenant-wide lock (every history writer commits whole, so the snapshot sees it all or nothing) and the upload saves
-  its attempt in a short transaction. Confirm and revert still re-plan under the write locks and refuse a changed
-  plan, so nothing a snapshot missed is ever applied.
-- **All-or-nothing is needed today.** A confirm commits every selected record of the file or none: its failure record
-  says no payroll change was committed, one `confirmed` event lists every change, and revert undoes an attempt by
-  that list. A partially applied file cannot be represented, so per-step mode is not available without an owner
-  decision.
-- **Not converted: confirm and revert.** Both re-plan the whole file under the exclusive history and Access locks
-  (planning is most of the time: per record, about eight reads for dependencies and warnings), then write about five
-  rows per record. The conversion needs (1) a `payroll_history_import` bulk-job kind with `exclusive='tenant'` (one
-  history writer per tenant, which the exclusive barrier gave), (2) staged visibility: a pending attempt column on
-  `payroll_batch`, `payroll_history_import_record`, `_snapshot` and `_revision` with restrictive policies (as
-  9001/9004 do for employment and person), released by one flip per table, (3) an audit of every SECURITY DEFINER
-  reader of those tables (at least `payroll_history_batch_totals`, `payroll_history_batch_adopted`,
-  `payroll_tax_basis_subjects`, the effective-batch view and the statutory/EA readers) so none sees a pending row,
-  (4) a release unit under the history write lock that rechecks the plan's volatile inputs set-wise (target revision
-  pointers, later processed runs, statutory reports, payment exports, master-data rows and authority) instead of the
-  whole re-plan, and (5) planning made set-wise so the job's prepare (no lock) stays bounded. Revert is the same
-  shape (one revision per record). Until then both remain long exclusive holders at this size.
+| | job confirm | job revert | single-transaction confirm | single-transaction revert |
+|---|---|---|---|---|
+| wall | 64.4 s | 34.1 s | 35.7 s | 6.3 s |
+| history barrier, longest exclusive hold | 266 ms (release) | 28 ms (release) | 35,552 ms | 6,118 ms |
+| Access, longest hold by the operation | 190 ms exclusive (release); chunks 134 ms shared | chunks 249 ms shared; release 58 ms | 35,422 ms exclusive | 5,989 ms exclusive |
+| longest chunk / release transaction | 145 / 293 ms | 282 / 58 ms | — | — |
+| probe max: login, Access writer, clock-in, My Profile, Home, Personnel, payroll reader | 5, 256, 149, 16, 210, 2,695, 89 ms | 54, 75, 1,067, 54, 1,241, 6,502, 25 ms | 20, 4,290, 4,559, 19, 34,935, 3,597, 35,523 ms | 4, 848, 5,142, 10, 5,460, 2,965, 6,055 ms |
+| errors / Busy | 0 / 0 | 0 / 0 | 11 / 11 (lock timeouts) | 1 / 1 |
+
+During the job revert the host load rose to 7.6: no exclusive tenant hold exceeded 28 ms and the Access-writer and
+payroll-reader probes stayed at 75 and 25 ms, so the clock-in, Home and Personnel maxima there are CPU, not lock
+waits (the longest Access hold, 1,005 ms shared, was a probe's own Personnel read). Revert's release checks only what
+can still change (runs processed and statutory reports for the dependent months, statutory artefacts of the current
+snapshots' batches) and re-derives the whole eligibility without locks when that changed; re-deriving it under the
+locks took about 1.3 s at this size.
+
+Baseline with nothing running: Personnel 2,603 ms max (the 3,000-row workforce list on this host), Home 261 ms,
+clock-in 250 ms. Figures digest of the imported batches, job = single transaction (`e3b8f978…`); `verifyTenantChain`
+valid. Equivalence on identical tenants (test/payroll-history-staged-job.test.ts): pay periods, batches, payslips,
+records, snapshots, revisions, history and audit events equal after confirm and after revert; a refused revert
+refuses identically and records the same failure; a revert whose dependent month is processed while it is staged
+re-derives its eligibility and refuses exactly as the single transaction would.
+
+Known limits: the trusted record-based import (`commitPayrollHistoryImport`) and the chat import card still confirm
+through the single transaction (now about 30 s at 3,000 records instead of 105 s); moving them onto the job changes
+their synchronous result shape and the chat card's wording, which needs a product decision. The income-tax
+recalculation's per-employee continuation still runs on the request.
