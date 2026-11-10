@@ -201,17 +201,37 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
   it('ENUMERATION: 23e87eef explicitly replaces the per-employee restriction with authorized All/single inquiry', () => {
     // The later approved plan requests All employees on this separate inquiry surface. The removed
     // /leave Requests subsection stays removed; its former single-employee restriction is no longer policy.
-    expect(recordsPage).toContain('await scopedAdmin()');
-    expect(recordsPage).toContain('await leaveInquiryContext(session, scopeIds, query)');
-    expect(recordsPage).toContain('leaveInquiryRecordsPage(session, inquiry, query)');
+    const accessAt = recordsPage.indexOf('const { s: session, scopeIds } = await scopedAdmin();');
+    const queryAt = recordsPage.indexOf("query = parseInquiryQuery(sp, 'records');");
+    const snapshotAt = recordsPage.indexOf('const frame=await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)=>({');
+    const snapshotEnd = recordsPage.indexOf('}),{selectionOnly:true});', snapshotAt);
+    expect(accessAt).toBeGreaterThan(-1);
+    expect(queryAt).toBeGreaterThan(accessAt);
+    expect(snapshotAt).toBeGreaterThan(queryAt);
+    expect(snapshotEnd).toBeGreaterThan(snapshotAt);
+    const snapshotRead = recordsPage.slice(snapshotAt, snapshotEnd);
+    expect(snapshotRead).toContain('inquiry:scope,result:await leaveInquiryRecordsPageTx(tx,session,scope,query)');
+    expect(recordsPage.slice(snapshotEnd)).toContain('inquiry=frame.inquiry;result=frame.result;');
+    expect(recordsPage).not.toMatch(/\b(?:leaveInquiryContext|leaveInquiryRecordsPage)\(\s*session\s*,/);
     expect(recordsPage).not.toContain('listLeaveRequestsPage(session,');
     const owner = read('core/leave-inquiry.ts');
+    const snapshotOwner = owner.slice(owner.indexOf('export async function leaveInquirySnapshot<T>('),
+      owner.indexOf('export async function leaveInquirySnapshotForContext<T>('));
+    expect(snapshotOwner).toContain('read(tx, await leaveInquiryContextTx(tx,session,ids,captured,ctx,selectionOnly))');
+    expect(snapshotOwner).toContain('{ readOnlySnapshot: true }');
     const from = owner.indexOf('export async function leaveInquiryRecordsPageTx(');
     const to = owner.indexOf('function checkWindow(', from);
     expect(from, 'canonical records page reader exists').toBeGreaterThan(-1);
     expect(to, 'canonical records page reader has a closing boundary').toBeGreaterThan(from);
     const recordsRead = owner.slice(from, to);
-    expect(recordsRead).toContain('scope = authorizedScope(ctx, scope, query)');
+    const authorizeAt = recordsRead.indexOf('scope = authorizedScope(ctx, scope, query)');
+    const transactionAt = recordsRead.indexOf("if(verified!.tx!==tx)throw new InquiryQueryError('Forbidden');");
+    const principalAt = recordsRead.indexOf('await assertInquiryPrincipalTx(tx,verified!.session)');
+    const readAt = recordsRead.indexOf('return listLeaveRequestsPageTx(tx, verified!.session,');
+    expect(authorizeAt).toBeGreaterThan(-1);
+    expect(transactionAt).toBeGreaterThan(authorizeAt);
+    expect(principalAt).toBeGreaterThan(transactionAt);
+    expect(readAt).toBeGreaterThan(principalAt);
     expect(recordsRead).toContain('if (!scope.companyIds.length) return { rows: [], total: 0 }');
     expect(recordsRead).toContain('companyIds: scope.companyIds, employmentIds: scope.selected ? [scope.selected.employmentId] : undefined');
     expect(recordsPage).toContain('<AdminCancelLeaveDialog');
