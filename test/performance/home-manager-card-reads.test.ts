@@ -597,18 +597,6 @@ it('completes every manager Home card and Today section read without a handled f
   evidence();
  }
 
- // TEMPORARY diagnostic (removed before review): the account task statement's own cost at this fixture size, then stop.
- {
-  const {isModuleEnabled}=await import('../../core/entitlements'),probe:Record<string,unknown>={};
-  for(const [label,actor] of [['manager',manager],['employee',employee]] as const){
-   const flags={attendance:isModuleEnabled(actor.ctx,'attendance'),claims:isModuleEnabled(actor.ctx,'claims'),performance:isModuleEnabled(actor.ctx,'performance'),
-    rewards:isModuleEnabled(actor.ctx,'rewards'),lifecycle:isModuleEnabled(actor.ctx,'lifecycle')};
-   const runs=[];for(let attempt=0;attempt<3;attempt++)runs.push(await explainTaskStatement(actor.ctx,flags).catch(error=>errorFact(error)));
-   probe[label]=runs;
-  }
-  print('task-statement-probe',probe);
-  throw new Error('Task statement probe only');
- }
  // 3. Four concurrent Home streams on one eight-connection worker pool.
  const concurrent=await sampleActivity(()=>Promise.all([manager,secondManager,employee,actors.find(a=>a.index===5)!].map(actor=>streamHome(actor,month,null))));
  report.concurrent={streams:concurrent.result,statements:concurrent.statements()};
