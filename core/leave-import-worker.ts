@@ -69,7 +69,8 @@ export const leaveImportJobHandler: BulkJobHandler<LeaveImportPlanRow> = {
     const input = inputOf(job);
     const written = await applyLeaveImportRowTx(tx, ctx, step.payload, input.records[step.payload.result.rowNum - 1], input.companyId);
     // Counters describe committed effects, including a duplicate discovered under ownership.
-    return {counters: written ? {imported: 1} : {skipped: 1}};
+    const counters: Record<string, number> = written ? {imported: 1} : {skipped: 1};
+    return {counters};
   },
   /** The summary event under the creator's re-checked authority, then the same result the synchronous import returned. */
   async finalize(ctx, job, unit: BulkJobUnit) {

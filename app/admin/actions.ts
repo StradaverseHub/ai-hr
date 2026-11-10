@@ -74,8 +74,9 @@ import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 // 93249794 — the Generate Entitlement run. `openLeaveYear` is no longer imported here: this file reaches
 // the grant sweep THROUGH core/leave-generation.ts, which calls it and writes the processing log, so the
 // engine has one entry point from the app layer instead of two.
-import { runLeaveGeneration } from '@/packs/leave/service';
-import { leaveGenerationMessages } from '@/lib/leave-generation-message';
+import type { LeaveGenerationRequest } from '@/packs/leave/service';
+import { createEarnedAccrualJob, createLeaveGenerationJob, LEAVE_COHORT_ALREADY_RUNNING } from '@/core/leave-cohort-job';
+import type { LeaveCohortJobProgress } from '@/lib/leave-cohort-job';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
 // Override Leave Application (56910869): the trigger list the form iterates, so the card and the parser
 // cannot disagree about which rows exist.
@@ -1113,20 +1114,21 @@ export async function previewEarnedAccrualAction(
  *  toasts + refreshes — the pattern grantAdHocLeaveAction used before 38f1fd40 retired it. */
 export async function runEarnedAccrualAction(
   scope: EarnedAccrualScope,
-): Promise<{ granted?: number; forfeits?: number; error?: string }> {
+): Promise<{ job?: LeaveCohortJobProgress; error?: string }> {
   const s = await requireAdmin();
   try {
     const asOf = asOfForLeaveYear(scope.year, todayInKualaLumpur());
-    const { granted, forfeits } = await accrueEarnedLeave(s, {
+    // Runs in the background (core/leave-cohort-worker.ts), one batch of employees per short transaction; the card
+    // follows the job and shows the same "{granted} generated, {forfeits} forfeits" toast when it finishes.
+    const job = await createEarnedAccrualJob(s, {
       asOf,
       companyIds: scope.companyIds,
       gradeIds: scope.gradeIds,
       leaveTypeIds: scope.leaveTypeIds,
     });
-    revalidatePath(LEAVE);
-    revalidatePath(ENTITLEMENTS);
-    return { granted, forfeits };
+    return { job };
   } catch (e) {
+    if (e instanceof Error && e.message === LEAVE_COHORT_ALREADY_RUNNING) return { error: (await getTranslations('admin.leave.processingJob'))('alreadyRunning') };
     return { error: publicErrorMessage(e) };
   }
 }
@@ -1432,7 +1434,7 @@ export async function openLeaveYearAction(formData: FormData) {
   const t = await getTranslations('admin.leave');
   const year = Number(formData.get('year'));
   const targetMode = formData.get('targetMode') === 'individual' ? 'individual' : 'criteria';
-  let res: Awaited<ReturnType<typeof runLeaveGeneration>>;
+  let job: LeaveCohortJobProgress;
   try {
     if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error('Invalid year');
     // r289 — THE POPULATION A PASTED EMPLOYEE ID RESOLVES AGAINST, read here rather than trusted from the
@@ -1440,7 +1442,9 @@ export async function openLeaveYearAction(formData: FormData) {
     // as it did in the live preview. Read ONLY in individual mode — the criteria path resolves nobody by
     // reference and must not pay for a list it will not look at.
     const pickPopulation = targetMode === 'individual' ? await listEmployeePickOptions(s) : [];
-    res = await runLeaveGeneration(s, {
+    // The run itself happens in the background (core/leave-cohort-worker.ts runs `runLeaveGeneration`'s phases in
+    // batches of employees); this request only checks authority and enqueues. The page follows the job.
+    const request: LeaveGenerationRequest = {
       year,
       // Empty ⇒ every type this sweep grants, exactly as the bare button did.
       leaveTypeIds: formData.getAll('leaveTypeIds').map(String).filter(Boolean),
@@ -1476,18 +1480,15 @@ export async function openLeaveYearAction(formData: FormData) {
               pickPopulation,
             )
           : undefined,
-    });
+    };
+    job = await createLeaveGenerationJob(s, request);
   } catch (e) {
-    fail(GENERATE, e);
+    fail(GENERATE, e instanceof Error && e.message === LEAVE_COHORT_ALREADY_RUNNING ? new Error(t('processingJob.alreadyRunning')) : e);
   }
-  // Localised HERE before the redirect (the dcd8e32f convention): ToastFromQuery renders the raw string, so
-  // an i18n key in the URL would surface to HR verbatim.
-  //
-  // r301 (e5018593) — ONE message for both halves of the run, composed from the result by one pure function
-  // (lib/leave-generation-message.ts). A failed earned accrual rides `?error=` beside it: the entitlement is
-  // committed and the toast says so, and the error says the earned part did not run and where to run it.
-  const message = leaveGenerationMessages((key, values) => t(key as never, values as never), res);
-  okToast(GENERATE, message.toast, message.error);
+  // r301 (e5018593) — the ONE message for both halves of the run is still composed from the result by
+  // lib/leave-generation-message.ts, now by the page's progress panel when the job finishes (a failed earned
+  // accrual still shows as its own error beside the success toast).
+  redirect(`${GENERATE}?job=${job.id}`);
 }
 
 export async function assignRoleAction(formData: FormData) {

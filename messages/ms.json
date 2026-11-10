@@ -11309,7 +11309,25 @@
       "cancelApprovedReplacementNote": "Pembatalan Cuti Gantian sentiasa memerlukan kelulusan semula pelulus, kerana memulangkan cuti turut memulangkan kreditnya.",
       "cancelApprovedNotifyLabel": "Maklumkan pelulus dan HR apabila pembatalan diminta",
       "cancelApprovedNotifyHelp": "Penerima melihat makluman dalam loceng aplikasi. E-mel juga memerlukan kategori dibenarkan, persetujuan penerima dan geganti SMTP aktif.",
-      "generateOutcome_not_eligible": "Tidak layak — syarat jenis cuti ini tidak merangkumi pekerja tersebut"
+      "generateOutcome_not_eligible": "Tidak layak — syarat jenis cuti ini tidak merangkumi pekerja tersebut",
+      "processingJob": {
+        "title": {
+          "leave_generation": "Menjana kelayakan",
+          "leave_accrual": "Menjalankan akruan cuti yang diperoleh"
+        },
+        "progressCount": "{done} daripada {total} pekerja diproses",
+        "backgroundHelp": "Ini berjalan di latar belakang. Anda boleh meninggalkan halaman ini dan kembali kemudian.",
+        "waiting": "Menunggu perkhidmatan latar belakang untuk meneruskan. Tiada tindakan diperlukan.",
+        "state": {
+          "queued": "Menunggu untuk bermula",
+          "running": "Sedang berjalan",
+          "completed": "Selesai",
+          "failed": "Dihentikan"
+        },
+        "failed": "Proses dihentikan: {reason} Pekerja yang telah diproses mengekalkan angka mereka.",
+        "partial": "{count} pekerja tidak dapat diproses dan tidak diubah: {reason} Jalankan sekali lagi untuk melengkapkannya.",
+        "alreadyRunning": "Pentadbir lain sedang menjalankan proses ini. Cuba lagi apabila ia selesai."
+      }
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -37290,6 +37308,20 @@
         "cancelled": {
           "title": "Import cuti dibatalkan",
           "body": "Baris yang telah disimpan dikekalkan. Mengimport fail yang sama sekali lagi akan melangkau baris tersebut."
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "Pemprosesan cuti selesai",
+          "body": "Angka cuti telah dikemas kini."
+        },
+        "failed": {
+          "title": "Pemprosesan cuti dihentikan",
+          "body": "Pekerja yang telah diproses mengekalkan angka mereka. Jalankan sekali lagi untuk melengkapkan selebihnya."
+        },
+        "cancelled": {
+          "title": "Pemprosesan cuti dibatalkan",
+          "body": "Pekerja yang telah diproses mengekalkan angka mereka. Jalankan sekali lagi untuk melengkapkan selebihnya."
         }
       }
     }

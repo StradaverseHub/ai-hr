@@ -11309,7 +11309,25 @@
       "cancelApprovedReplacementNote": "取消补休始终需要审批人重新审批，因为退回休假也会退回其抵扣额度。",
       "cancelApprovedNotifyLabel": "有取消申请时通知审批人和人力资源部",
       "cancelApprovedNotifyHelp": "收件人可在应用通知铃中查看提醒。邮件还需要启用类别、收件人同意和已激活的 SMTP 中继。",
-      "generateOutcome_not_eligible": "不符合条件 — 该休假类型的条件不包含此员工"
+      "generateOutcome_not_eligible": "不符合条件 — 该休假类型的条件不包含此员工",
+      "processingJob": {
+        "title": {
+          "leave_generation": "正在生成休假权益",
+          "leave_accrual": "正在运行累计休假"
+        },
+        "progressCount": "已处理 {done} / {total} 名员工",
+        "backgroundHelp": "此操作在后台运行。您可以离开此页面，稍后再回来。",
+        "waiting": "正在等待后台服务继续。无需任何操作。",
+        "state": {
+          "queued": "等待开始",
+          "running": "正在运行",
+          "completed": "已完成",
+          "failed": "已停止"
+        },
+        "failed": "运行已停止：{reason} 已处理的员工保留其数据。",
+        "partial": "{count} 名员工无法处理，保持不变：{reason} 请再次运行以完成。",
+        "alreadyRunning": "另一位管理员正在运行此操作。请在其完成后重试。"
+      }
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -37290,6 +37308,20 @@
         "cancelled": {
           "title": "休假数据导入已取消",
           "body": "已保存的记录将被保留。再次导入同一文件时会跳过这些记录。"
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "休假处理已完成",
+          "body": "休假数据已更新。"
+        },
+        "failed": {
+          "title": "休假处理已停止",
+          "body": "已处理的员工保留其数据。请再次运行以完成其余部分。"
+        },
+        "cancelled": {
+          "title": "休假处理已取消",
+          "body": "已处理的员工保留其数据。请再次运行以完成其余部分。"
         }
       }
     }

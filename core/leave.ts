@@ -5937,6 +5937,19 @@ function assertExpectedLeaveStep(
   const current = [...steps].sort((a, b) => a.stepIndex - b.stepIndex).find((st) => st.status === 'pending')?.stepIndex ?? null;
   if (status !== 'pending' || current !== expected) throw new LeaveStaleStepError();
 }
+/**
+ * A leave cohort writer (year-open, earned accrual, carry expiry) run for ONE BATCH of employees by a background
+ * job or a chunked timer (core/leave-cohort-run.ts), so no transaction holds the tenant's Access and leave locks for
+ * the whole cohort. Inside the caller's transaction, and handing over the summary event it would have appended:
+ * the caller appends one event for the whole run. Nothing about the calculation changes; each employee's result
+ * depends only on that employee, so a batch computes exactly what the whole-cohort run computes for it.
+ */
+export type LeaveCohortStepRun = {
+  tx: Tx;
+  onSummary: (payload: Record<string, unknown>) => void;
+  /** Carry expiry only (it has no employee scope of its own): restrict the sweep to these employments. */
+  employmentIds?: readonly string[];
+};
 /** D5(a) — run in the caller's transaction when one is passed (a mobile command receipt), else in a new one. */
 function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>): Promise<T> {
   return existingTx ? run(existingTx) : withTenant(ctx, run);
@@ -5945,7 +5958,7 @@ function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (t
 /** Information-only corrections apply to future processing. Earlier leave runs require an
  * independent historical review rather than interpreting today's corrected service/grade/company.
  * This guard runs after the ordinary dependency locks and before any ledger writes. */
-async function assertInformationLeavePeriodTx(tx:Tx,asOf:string,scope:{employmentIds?:readonly string[];companyIds?:readonly string[];gradeIds?:readonly string[]}={}){
+export async function assertInformationLeavePeriodTx(tx:Tx,asOf:string,scope:{employmentIds?:readonly string[];companyIds?:readonly string[];gradeIds?:readonly string[]}={}){
  const [protectedPeriod]=await tx.select({id:employment.id}).from(employment).where(and(
   scope.employmentIds!==undefined?(scope.employmentIds.length?inArray(employment.id,[...scope.employmentIds]):sql`false`):undefined,
   scope.companyIds?.length?inArray(employment.companyId,[...scope.companyIds]):undefined,
@@ -8791,13 +8804,14 @@ function yearOpenMarkerCond(yearStart: string, yearEnd: string) {
 export async function openLeaveYear(
   ctx: SessionContext,
   p: { year: number; leaveTypeIds?: string[]; employmentIds?: string[]; dryRun?: boolean },
+  run?: LeaveCohortStepRun,
 ): Promise<OpenLeaveYearResult> {
   const scopeTypeIds = (p.leaveTypeIds ?? []).filter(Boolean);
   const scopeEmpIds = (p.employmentIds ?? []).filter(Boolean);
   const dryRun = p.dryRun === true;
   p = { ...p, leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  return withTenant(ctx, async (tx): Promise<OpenLeaveYearResult> => {
+  return withLeaveTx(ctx, run?.tx, async (tx): Promise<OpenLeaveYearResult> => {
     await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds.length ? scopeEmpIds : undefined }, !dryRun);
     const yearStart = `${p.year}-01-01`;
     await assertInformationLeavePeriodTx(tx,yearStart,{employmentIds:scopeEmpIds.length?scopeEmpIds:undefined});
@@ -9260,13 +9274,16 @@ export async function openLeaveYear(
     // `leave-generation.run` event on the commit path (core/leave-generation.ts), carrying the scope this
     // event has no field for.
     if (!dryRun) {
-      await appendEvent(tx, {
+      const payload = { year: p.year, granted, skipped, forfeits };
+      // A batch of a background run hands the payload over; the run appends one event for the whole cohort.
+      if (run) run.onSummary(payload);
+      else await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'leave-year',
         aggregateId: ctx.tenantId,
         eventType: 'leave-year.opened',
         actor: actorOf(ctx),
-        payload: { year: p.year, granted, skipped, forfeits },
+        payload,
       });
     }
     return { granted, skipped, forfeits, packBlocked, rows };
@@ -10068,6 +10085,7 @@ export async function accrueEarnedLeave(
     employmentIds?: string[];
     dryRun?: boolean;
   },
+  run?: LeaveCohortStepRun,
 ): Promise<EarnedAccrualResult> {
   const scopeCompanyIds = (p.companyIds ?? []).filter(Boolean);
   const scopeGradeIds = (p.gradeIds ?? []).filter(Boolean);
@@ -10079,7 +10097,7 @@ export async function accrueEarnedLeave(
   const accrualPeriod = Number(p.asOf.slice(0, 4));
   p = { ...p, companyIds: p.companyIds?.slice(), gradeIds: p.gradeIds?.slice(), leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  return withTenant(ctx, async (tx): Promise<EarnedAccrualResult> => {
+  return withLeaveTx(ctx, run?.tx, async (tx): Promise<EarnedAccrualResult> => {
     await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun);
     await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:scopeEmpIds===null?undefined:scopeEmpIds,companyIds:scopeCompanyIds,gradeIds:scopeGradeIds});
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
@@ -10713,27 +10731,30 @@ export async function accrueEarnedLeave(
     // dryRun (feedback 2c7c6385): a PREVIEW must leave no trace — skip the audit event entirely. A real
     // run appends ONE summary event; the ledger rows are the per-item audit (deliberate skip, as openLeaveYear).
     if (!dryRun) {
-      await appendEvent(tx, {
+      // feedback 2c7c6385 (product decision 4): stamp the scope so a manual scoped run is distinguishable
+      // from the unscoped monthly cron in the audit log. Empty arrays ⇒ "all" on that axis. IDs only (no
+      // PII — see test/event-payload-pii-guard.test.ts). A batch of a background run hands the payload
+      // over; the run appends one event carrying the run's own scope.
+      const payload = {
+        asOf: p.asOf,
+        granted,
+        forfeits,
+        companyIds: scopeCompanyIds,
+        gradeIds: scopeGradeIds,
+        leaveTypeIds: scopeTypeIds,
+        // r301 — so a run Generate Entitlement triggered for named employees does not read, in the audit
+        // log, as an unscoped sweep of everyone. `[]` ⇒ unscoped, as on the axes above (an EMPTY employee
+        // scope never reaches this line: it has no employments and returns at exit 3).
+        employmentIds: scopeEmpIds ?? [],
+      };
+      if (run) run.onSummary(payload);
+      else await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'leave-year',
         aggregateId: ctx.tenantId,
         eventType: 'leave.earned-accrual.run',
         actor: actorOf(ctx),
-        // feedback 2c7c6385 (product decision 4): stamp the scope so a manual scoped run is distinguishable
-        // from the unscoped monthly cron in the audit log. Empty arrays ⇒ "all" on that axis. IDs only (no
-        // PII — see test/event-payload-pii-guard.test.ts).
-        payload: {
-          asOf: p.asOf,
-          granted,
-          forfeits,
-          companyIds: scopeCompanyIds,
-          gradeIds: scopeGradeIds,
-          leaveTypeIds: scopeTypeIds,
-          // r301 — so a run Generate Entitlement triggered for named employees does not read, in the audit
-          // log, as an unscoped sweep of everyone. `[]` ⇒ unscoped, as on the axes above (an EMPTY employee
-          // scope never reaches this line: it has no employments and returns at exit 3).
-          employmentIds: scopeEmpIds ?? [],
-        },
+        payload,
       });
     }
     // feedback cf9dcb98 — EXIT 4, the last one: the configuration is present, the population is present,
@@ -11890,11 +11911,12 @@ export function resolveCarryBreakdown(p: {
  * convention in openLeaveYear/accrueEarnedLeave (ledger rows are the per-item audit). One summary
  * DomainEvent is appended below.
  */
-export async function expireCarriedLeave(ctx: SessionContext, p: { today: string }) {
+export async function expireCarriedLeave(ctx: SessionContext, p: { today: string }, run?: LeaveCohortStepRun) {
   p = { ...p };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  return withTenant(ctx, async (tx) => {
-    await lockLeaveCohortDependenciesTx(tx, ctx, {});
+  const batch = run?.employmentIds?.slice();
+  return withLeaveTx(ctx, run?.tx, async (tx) => {
+    await lockLeaveCohortDependenciesTx(tx, ctx, batch ? { employmentIds: batch } : {});
     const todayYear = Number(p.today.slice(0, 4));
     const annualTypes = await tx
       // 9816a5ad step 2: the type's own carry-forward rules drive both the sweepable-year boundary and the
@@ -11915,7 +11937,8 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
-      .where(and(lte(employment.hiredOn, p.today), or(isNull(employment.terminatedOn), gte(employment.terminatedOn, `${todayYear}-01-01`))));
+      .where(and(lte(employment.hiredOn, p.today), or(isNull(employment.terminatedOn), gte(employment.terminatedOn, `${todayYear}-01-01`)),
+        batch ? (batch.length ? inArray(employment.id, batch) : sql`false`) : undefined));
     if (emps.length === 0) return { swept: 0, forfeited: 0 };
     const empIds = emps.map((e) => e.employmentId);
 
@@ -12096,13 +12119,15 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
 
     // One summary event; the ledger rows are the per-item audit (deliberate substrate skip, as
     // openLeaveYear / accrueEarnedLeave).
-    await appendEvent(tx, {
+    const payload = { today: p.today, swept, forfeited: forfeitedTotal };
+    if (run) run.onSummary(payload);
+    else await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-year',
       aggregateId: ctx.tenantId,
       eventType: 'leave.carry-forward.swept',
       actor: actorOf(ctx),
-      payload: { today: p.today, swept, forfeited: forfeitedTotal },
+      payload,
     });
     return { swept, forfeited: forfeitedTotal };
   });
