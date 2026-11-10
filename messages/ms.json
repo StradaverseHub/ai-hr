@@ -37229,7 +37229,17 @@
       "requisition_terminal": "Permintaan yang selesai atau dibatalkan tidak boleh diubah.",
       "hire_not_eligible": "Pengambilan baharu hanya boleh dimulakan daripada permohonan di peringkat Onboarding atau yang telah diambil bekerja.",
       "hire_linked": "Pengambilan baharu telah pun dimulakan daripada permohonan ini.",
-      "not_in_pool": "Permohonan itu tiada dalam kumpulan bakat."
+      "not_in_pool": "Permohonan itu tiada dalam kumpulan bakat.",
+      "possible_duplicate": "Calon ini kelihatan sudah ada dalam syarikat. Semak calon pendua yang mungkin sebelum menambah.",
+      "repeat_application": "Calon ini baru-baru ini memohon jawatan ini. Permohonan baharu dibenarkan selepas tempoh permohonan berulang berakhir.",
+      "candidate_removed": "Data peribadi calon ini telah dipadam. Tiada apa-apa lagi boleh ditambah pada rekod ini.",
+      "file_type": "Muat naik PDF, dokumen Word atau imej (JPG atau PNG). Kandungan fail mesti sepadan dengan jenisnya.",
+      "file_too_large": "Fail melebihi 10 MB.",
+      "permission_required": "Sahkan bahawa anda mempunyai kebenaran calon untuk menyimpan fail ini.",
+      "not_due": "Hanya calon yang tempoh penyimpanannya telah tamat boleh dipadam. Calon dengan permohonan aktif atau telah diambil bekerja tidak pernah layak.",
+      "confirm_required": "Tandakan pengesahan untuk memadam calon yang dipilih.",
+      "consent_state": "Persetujuan hanya boleh ditarik balik apabila calon telah memberi persetujuan.",
+      "tag_disabled": "Tag ini dinyahdayakan dan tidak boleh ditambah lagi."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -37463,7 +37473,9 @@
       "section": {
         "general": "Saluran",
         "interviews": "Temu duga",
-        "offers": "Tawaran dan kelulusan"
+        "offers": "Tawaran dan kelulusan",
+        "privacy": "Privasi",
+        "tags": "Tag"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -37521,6 +37533,48 @@
         "addField": "Tambah medan",
         "choicesHint": "Hanya untuk medan pilihan tunggal",
         "flowsTitle": "Aliran kelulusan"
+      },
+      "privacy": {
+        "retentionTitle": "Penyimpanan dan permohonan berulang",
+        "retentionNote": "Tempoh data calon disimpan selepas permohonan terakhirnya ditutup. Kiraan bermula pada tarikh arkib terkini, atau tarikh persetujuan jika lebih lewat; penarikan balik memulakannya semula tanpa persetujuan.",
+        "withoutConsent": "Bulan disimpan tanpa persetujuan",
+        "withConsent": "Bulan disimpan dengan persetujuan",
+        "repeatWindow": "Permohonan berulang untuk jawatan yang sama",
+        "repeatOff": "Tutup (dibenarkan pada bila-bila masa)",
+        "months": "{n, plural, one {# bulan} other {# bulan}}",
+        "repeatNote": "Selagi calon mempunyai permohonan aktif untuk sesuatu jawatan, atau permohonan yang ditutup dalam tempoh ini, permohonan baharu untuk jawatan yang sama ditolak. Jawatan lain sentiasa dibenarkan.",
+        "save": "Simpan tetapan privasi",
+        "dueTitle": "Layak untuk dipadam",
+        "dueNote": "Calon yang tempoh penyimpanannya tamat pada atau sebelum {date}. Tiada apa-apa dipadam secara automatik.",
+        "noneDue": "Tiada calon yang layak untuk dipadam.",
+        "select": "Pilih",
+        "candidate": "Calon",
+        "archivedOn": "Diarkib terakhir",
+        "consent": "Persetujuan",
+        "dueOn": "Penyimpanan tamat",
+        "selectCandidate": "Pilih {name}",
+        "ended": "Tempoh penyimpanan tamat",
+        "noConsent": "Tiada persetujuan direkodkan",
+        "withdrawnOn": "Ditarik balik pada {date}",
+        "consentedOn": "Bersetuju pada {date}",
+        "destroyExplain": "Memadam calon akan memadam nama, butiran hubungan, profil, butiran terhad, fail, tag dan butiran persetujuan, nota dan ringkasan temu duga, nilai tawaran dan ulasan penolakan. Permohonan kekal sebagai rekod tanpa nama, jadi kiraan peringkat dan saluran tidak berubah. Tindakan ini tidak boleh dibatalkan.",
+        "confirm": "Saya mengesahkan bahawa data peribadi calon yang dipilih perlu dipadam secara kekal.",
+        "destroy": "Padam calon yang dipilih",
+        "removedNotice": "Data peribadi calon yang dipilih telah dipadam."
+      },
+      "tags": {
+        "note": "Kumpulkan tag yang ditambah secara manual oleh pasukan anda kepada calon. Tag yang dinyahdayakan kekal pada calon yang memilikinya tetapi tidak ditawarkan lagi.",
+        "empty": "Belum ada kumpulan tag.",
+        "groupName": "Nama kumpulan",
+        "enabled": "Didayakan",
+        "save": "Simpan",
+        "noTags": "Belum ada tag dalam kumpulan ini.",
+        "tagName": "Nama tag",
+        "used": "{n, plural, one {# calon} other {# calon}}",
+        "newTag": "Tag baharu",
+        "addTag": "Tambah tag",
+        "newGroup": "Kumpulan tag baharu",
+        "addGroup": "Tambah kumpulan"
       }
     },
     "app": {
@@ -37529,7 +37583,8 @@
       "tabInterviews": "Temu duga",
       "tabOffer": "Tawaran",
       "tabHistory": "Sejarah",
-      "teamNote": "Anda melihat permohonan ini kerana anda dalam pasukan pengambilan atau menemu duga calon ini."
+      "teamNote": "Anda melihat permohonan ini kerana anda dalam pasukan pengambilan atau menemu duga calon ini.",
+      "tabCandidate": "Calon"
     },
     "iv": {
       "none": "Belum ada temu duga.",
@@ -37842,6 +37897,140 @@
       "associate": "Kaitkan",
       "reapprovalNote": "Mengubah medan wajib di luar Draf memulakan semula kelulusan jika syarikat mempunyai aliran kelulusan permintaan.",
       "save": "Simpan"
+    },
+    "cand": {
+      "tagFilter": "Tag",
+      "anyTag": "Sebarang tag",
+      "tags": "Tag",
+      "removedLabel": "Calon dipadam",
+      "removedNote": "Data peribadi telah dipadam",
+      "adding": "Menambah…",
+      "sources": {
+        "referral": "Rujukan",
+        "job_board": "Papan kerja",
+        "career_page": "Halaman kerjaya",
+        "agency": "Agensi",
+        "walk_in": "Walk-in",
+        "other": "Lain-lain"
+      },
+      "idTypes": {
+        "nric": "MyKad",
+        "passport": "Pasport"
+      },
+      "match": {
+        "idNumber": "nombor pengenalan",
+        "email": "e-mel",
+        "name": "nama",
+        "mobile": "telefon bimbit"
+      },
+      "appStates": {
+        "active": "aktif",
+        "hired": "diambil bekerja",
+        "archived": "diarkib"
+      },
+      "idType": "Jenis pengenalan",
+      "idNumber": "Nombor pengenalan",
+      "idNone": "Tiada",
+      "dup": {
+        "title": "Kemungkinan pendua",
+        "askAdmin": "Syarikat mungkin sudah mempunyai calon ini. Minta pentadbir HR menyemak sebelum menambahnya.",
+        "admin": "Syarikat sudah mempunyai calon dengan nombor pengenalan yang sama, atau dua daripada e-mel, nama dan telefon bimbit yang sama.",
+        "useExisting": "Tambah permohonan kepada calon ini",
+        "createSeparate": "Cipta calon berasingan",
+        "matchedOn": "Sepadan pada:",
+        "noApplications": "Tiada permohonan yang boleh anda lihat"
+      },
+      "noConsent": "Tiada persetujuan direkodkan",
+      "consentWithdrawn": "Persetujuan ditarik balik pada {date}",
+      "consentGiven": "Persetujuan direkodkan pada {date}",
+      "retentionEnded": "Tempoh penyimpanan tamat",
+      "retentionUntil": "Disimpan sehingga {date}",
+      "profileTitle": "Profil",
+      "fullName": "Nama penuh",
+      "required": "wajib",
+      "email": "E-mel",
+      "mobile": "Telefon bimbit",
+      "location": "Lokasi",
+      "currentCompany": "Syarikat semasa",
+      "currentTitle": "Jawatan semasa",
+      "education": "Pendidikan tertinggi",
+      "notStated": "Tidak dinyatakan",
+      "educationLevels": {
+        "secondary": "Sekolah menengah",
+        "certificate": "Sijil",
+        "diploma": "Diploma",
+        "bachelor": "Ijazah sarjana muda",
+        "master": "Ijazah sarjana",
+        "doctorate": "Doktor falsafah",
+        "professional": "Kelayakan profesional",
+        "other": "Lain-lain"
+      },
+      "noticePeriod": "Tempoh notis",
+      "noticePlaceholder": "cth. 1 bulan",
+      "source": "Sumber",
+      "notCollected": "Bangsa, agama, kesihatan, kehamilan, rekod jenayah dan butiran keluarga tidak dikumpul di sini.",
+      "saveProfile": "Simpan profil",
+      "entriesTitle": "Pengalaman dan pendidikan",
+      "entryKinds": {
+        "work": "Pengalaman kerja",
+        "education": "Pendidikan"
+      },
+      "noEntries": "Belum ada apa-apa ditambah.",
+      "present": "Kini",
+      "remove": "Buang",
+      "employer": "Syarikat",
+      "school": "Sekolah",
+      "jobTitle": "Jawatan",
+      "qualification": "Kelayakan",
+      "from": "Dari",
+      "to": "Hingga",
+      "add": "Tambah",
+      "restrictedTitle": "Butiran terhad",
+      "restrictedNote": "Hanya boleh dilihat oleh pentadbir pengambilan dan perekrut serta pembantu bagi jawatan calon.",
+      "currentSalary": "Gaji semasa (bulanan)",
+      "expectedSalary": "Gaji yang dijangka (bulanan)",
+      "currency": "Mata wang",
+      "amount": "Amaun",
+      "peopleEnterPay": "Amaun dimasukkan oleh manusia seperti yang dinyatakan oleh calon. Tiada apa-apa dikira.",
+      "saveRestricted": "Simpan butiran terhad",
+      "filesTitle": "Resume dan lampiran",
+      "noFiles": "Belum ada fail.",
+      "fileKinds": {
+        "resume": "Resume",
+        "attachment": "Lampiran"
+      },
+      "uploadedBy": "Dimuat naik oleh {name}, {at}",
+      "unnamedUser": "Pengguna",
+      "delete": "Padam",
+      "filesReaderNote": "Anda boleh membuka resume. Lampiran lain hanya ditunjukkan kepada pentadbir dan perekrut jawatan.",
+      "fileKind": "Jenis",
+      "file": "Fail",
+      "fileRules": "PDF, Word atau imej (JPG, PNG), sehingga 10 MB. Setiap muat turun direkodkan.",
+      "permission": "Saya mempunyai kebenaran calon untuk menyimpan fail ini.",
+      "upload": "Muat naik",
+      "noTags": "Tiada tag.",
+      "disabled": "dinyahdayakan",
+      "removeTag": "Buang tag {name}",
+      "addTag": "Tambah tag",
+      "chooseTag": "Pilih tag",
+      "consentTitle": "Persetujuan",
+      "consentNote": "Rekodkan persetujuan seperti yang diberikan oleh calon (borang, e-mel, borang dalam talian atau secara lisan). Sejarahnya disimpan.",
+      "consentStatuses": {
+        "consented": "Bersetuju",
+        "withdrawn": "Ditarik balik"
+      },
+      "consentMethods": {
+        "written_form": "Borang bertulis",
+        "email": "E-mel",
+        "online_form": "Borang dalam talian",
+        "verbal": "Direkodkan secara lisan"
+      },
+      "recordedBy": "Direkodkan oleh {name}, {at}",
+      "consentStatus": "Status",
+      "consentDate": "Tarikh",
+      "consentMethod": "Kaedah",
+      "noticeReference": "Rujukan notis privasi",
+      "recordConsent": "Rekod"
     }
   }
 }

@@ -18,6 +18,9 @@
  * - Hire → employee (slice 3): "Start new hire" opens the existing personnel create form pre-filled on the server; the
  *   draft is created by the personnel writer when HR saves, then linked back. Recruitment never creates a person,
  *   employee or employment.
+ * - Candidate records and privacy (slice 5, ./candidates and ./privacy-model): profile, restricted values, files, duplicate
+ *   detection that discloses only a count, repeated applications, manual tags, consent, retention and administrator-confirmed
+ *   destruction (db/migrations/4405_recruitment_candidate_privacy.sql).
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (4402); the menu shows for team members, interviewers and pending approvers.
  */
@@ -59,6 +62,14 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_requisition', note: 'job requisitions with HC numbers, statuses and approval' },
     { table: 'recruitment_requisition_approval', note: 'requisition approval decision log' },
     { table: 'recruitment_requisition_job', note: 'many jobs to one requisition' },
+    // Slice 5 (4405)
+    { table: 'recruitment_candidate_restricted', note: 'salaries and ID number: administrators and the candidate\'s job operators only' },
+    { table: 'recruitment_candidate_entry', note: 'candidate work experience and education entries' },
+    { table: 'recruitment_candidate_file', note: 'resumes and attachments (bytes), with the uploader\'s permission confirmation' },
+    { table: 'recruitment_tag_group', note: 'company tag groups' },
+    { table: 'recruitment_tag', note: 'manual tags, unique within a group; disabled tags stay on candidates' },
+    { table: 'recruitment_candidate_tag', note: 'tags on candidates: reviewers read, operators write' },
+    { table: 'recruitment_candidate_consent', note: 'append-only consent history entered by people' },
   ],
 };
 registerPack(recruitmentPack);

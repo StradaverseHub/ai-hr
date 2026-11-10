@@ -6,7 +6,7 @@ import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, Input, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import {
-  applicationHire, applicationHistory, applicationInterviews, applicationOffer, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
+  applicationHire, applicationHistory, applicationInterviews, applicationOffer, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
   OFFER_SEND_CHANNELS, RecruitmentError, type ApplicationHire, type InterviewFormOptions, type InterviewStatus, type OfferView,
 } from '@/packs/recruitment/service';
 import {
@@ -14,8 +14,9 @@ import {
   submitOfferAction, withdrawOfferAction,
 } from '../../actions';
 import { Notice, Pill, SubTabs, klDate, klDateTime, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
+import { CandidateSection } from './candidate-section';
 
-type Tab = 'interviews' | 'offer' | 'history';
+type Tab = 'candidate' | 'interviews' | 'offer' | 'history';
 const STATUS_TONE: Record<InterviewStatus, 'neutral' | 'info' | 'good' | 'warn' | 'bad'> = {
   scheduled: 'info', in_progress: 'info', awaiting_feedback: 'warn', feedback_complete: 'good', cancelled: 'neutral',
 };
@@ -41,12 +42,12 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
     throw e;
   }
   const soft = async <T,>(work: Promise<T>): Promise<T | null> => work.catch((e) => { if (e instanceof RecruitmentError) return null; throw e; });
-  const [offer, history, hire, options] = await Promise.all([
+  const [offer, history, hire, options, profile] = await Promise.all([
     soft(applicationOffer(s, id)), soft(applicationHistory(s, id)), soft(applicationHire(s, id)),
-    interviews.canSchedule ? soft(interviewFormOptions(s, id)) : Promise.resolve(null),
+    interviews.canSchedule ? soft(interviewFormOptions(s, id)) : Promise.resolve(null), soft(candidateProfile(s, id)),
   ]);
   const reviewer = !!offer;
-  const tab: Tab = sp.tab === 'offer' && reviewer ? 'offer' : sp.tab === 'history' && history ? 'history' : 'interviews';
+  const tab: Tab = sp.tab === 'offer' && reviewer ? 'offer' : sp.tab === 'history' && history ? 'history' : sp.tab === 'interviews' || !profile ? 'interviews' : 'candidate';
   const [t, locale] = await Promise.all([getTranslations('recruitment'), getLocale()]);
   const here = `/recruitment/applications/${id}?tab=${tab}`;
   const hidden = (name: string, value: string) => <input type="hidden" name={name} value={value} />;
@@ -54,16 +55,19 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
   const errorText = await recruitmentErrorText(sp.error);
   return (
     <div className="mx-auto w-full max-w-5xl space-y-5">
-      <PageHeader title={interviews.candidateName} description={<>{interviews.jobTitle} · {stateText}</>}
+      <PageHeader title={profile?.removed ? t('cand.removedLabel') : interviews.candidateName} description={<>{interviews.jobTitle} · {stateText}</>}
         back={{ href: '/recruitment/candidates', label: t('app.back') }} />
       <Notice text={sp.notice === 'saved' ? t('candidates.savedNotice') : undefined} />
       <ErrorBanner message={errorText} />
       {hire && <HireSection hire={hire} applicationId={id} t={t} locale={locale} />}
       <SubTabs label={t('app.sections')} items={[
+        ...(profile ? [{ key: 'candidate', href: `/recruitment/applications/${id}?tab=candidate`, text: t('app.tabCandidate'), current: tab === 'candidate' }] : []),
         { key: 'interviews', href: `/recruitment/applications/${id}?tab=interviews`, text: t('app.tabInterviews'), current: tab === 'interviews' },
         ...(reviewer ? [{ key: 'offer', href: `/recruitment/applications/${id}?tab=offer`, text: t('app.tabOffer'), current: tab === 'offer' }] : []),
         ...(history ? [{ key: 'history', href: `/recruitment/applications/${id}?tab=history`, text: t('app.tabHistory'), current: tab === 'history' }] : []),
       ]} />
+
+      {tab === 'candidate' && profile && <CandidateSection profile={profile} applicationId={id} here={here} locale={locale} />}
 
       {tab === 'interviews' && (
         <div className="space-y-4">

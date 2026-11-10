@@ -16,3 +16,5 @@ F10,Roles,owner account,settings read-only,EV-020,observed,specification.md slic
 F11,Talent pool,owner account,list filters + archived candidates,EV-020;EV-025,observed,specification.md slice 4,implemented (requisitions.ts talentPool),PASS case 18 (private Postgres); rendered,D-011
 F12,Reports (/bi-reports),owner account,not visited,,not observed,later slice,not implemented,not run,
 I-001,AI HR Recruitment menu + module gate,AI HR roles,default-off,architecture.md,n/a (destination),specification.md slices 1-4,implemented,PASS (registry tests; rendered),
+F13,Candidate records: profile fields, restricted values, files, duplicates, repeat window, tags,owner account,settings read-only + one record (structure),EV-026;EV-027;EV-028;EV-029;EV-031,observed,specification.md slice 5,implemented (4405; candidates.ts),PASS cases 19-23 (private Postgres); rendered,D-013;D-014;D-015
+F14,Privacy: consent, retention, removal,owner account,settings read-only,EV-030,observed (no rules configured in tenant),specification.md slice 5,implemented (4405; candidates.ts),PASS cases 24-27 (private Postgres); rendered,D-016

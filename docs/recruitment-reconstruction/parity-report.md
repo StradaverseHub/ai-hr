@@ -1,4 +1,4 @@
-# Recruitment — parity and verification report (slices 1–4, 2026-11-10)
+# Recruitment — parity and verification report (slices 1–5, 2026-11-10)
 
 Replica revision: uncommitted working tree on `claude/rea-web-app-reconstruction-2c12ee`, base `f07f32dcd`.
 Reference baseline: Moka `hire-r1`, the owner's live tenant, one non-super-admin account, read-only (EV-007…EV-020).
@@ -125,6 +125,59 @@ demo selector):
 
 The demo seed (`db/seed.ts`) stopped partway on this branch with an attendance-workflow error unrelated to
 recruitment; the core demo users and companies it creates first were enough for rendering. Not investigated.
+
+## GitHub Actions focused run 42792007535 (commit 69a7afb3b, slices 1–4, 2026-11-10)
+
+| Job | Result |
+| --- | --- |
+| Whole-repo `typecheck` | PASS |
+| `linux-build` (production build) | PASS |
+| Selected tests, no-DB batch (27 files, 521 tests) | 26 files PASS; `provider-analysis-policy` 9 FAIL (owner provider-data approval stale, expected) |
+| Selected tests, DB batch (19 files, 394 tests) | 14 files PASS, including `recruitment-slices-service` (15), `recruitment-service`, `company-referrers` (93), `partner-roles`, `module-gate`, `module-job-source-security`; 5 files FAIL, 44 tests |
+
+DB-batch failures: `assistant-conversation-evaluation-fence`, `assistant-conversation-lifecycle`,
+`human-module-planner`, `module-agent-evaluation-progress` and `module-agent-prompt-release`. The logged causes are
+`AiPrivacyGateError` ("needs a reviewed data-protection policy") and fixture evaluations that stay `incomplete`
+because their provider calls are refused, plus downstream timeouts. Consistent with the stale owner approval, as in
+run 42772917480; not individually re-proven. They can only be proven clean after the owner re-records the approval.
+
+## Slice 5 — candidate records and privacy (2026-11-10, uncommitted)
+
+Owner choice: candidate records and privacy. Observed read-only first (EV-026…EV-031). Migration 4405 (idx 3805) after
+a fresh peer survey (no other claim on the number, index or timestamp). Built by a builder agent, reviewed by a
+separate reviewer agent, fixed, then checked by the lead.
+
+Review findings and outcomes:
+
+| Finding | Severity | Outcome |
+| --- | --- | --- |
+| Removal raced with a concurrent upload, ID save or talent-pool add, which could leave personal data on a removed candidate | Medium | Fixed: removal holds a per-candidate advisory lock; every guard that reads the removal state takes it shared first; the service locks before its retention check. Test proves a removal waits for a concurrent write |
+| The removal exception trusted the function owner plus a session setting any caller can set | Medium (design) | Fixed: a private marker table only the removal function writes (no app grants), checked through a definer predicate; the candidate branch is clear-only and the scorecard branch keeps ratings and result. Tests prove the app role cannot read or write the marker and a session setting no longer opens it |
+| Duplicate check scanned the whole company | Low–medium (scale) | Fixed: four indexed equality lookups; EXPLAIN on 200k candidates uses all four indexes, no sequential scan |
+| A duplicate check confirmed whether a chosen ID number or email existed without a trace | Low | Fixed: each flag appends an event with company, job, match count and route only |
+| Retention check and removal not atomic | Low | Fixed with the lock above |
+| Talent-pool add bypassed the repeat-application error mapping | Low | Fixed; concurrency test |
+| Inline file downloads | Low | `Content-Security-Policy: sandbox`, nosniff, no-store on every response |
+
+The restated guards (application, scorecard, offer, offer value, offer approval) were diffed against their previous
+definitions: identical apart from the removal branch; the hardened approval transitions are intact.
+
+Checks by the lead on a private Postgres 16 cluster, under the resource lock:
+
+| Check | Result |
+| --- | --- |
+| DB: `recruitment-candidate-privacy` (cases 19–27 and the race, marker and audit tests), `recruitment-privacy-rules`, `recruitment-slices-service`, `recruitment-service`, `company-referrers`, `module-catalog-drift`, `module-gate`, `partner-roles`, `invitation-privesc`, `draft-action-atomicity`, `module-job-source-security` | PASS, 11 files, 332 tests |
+| No-DB set (33 files incl. the two personnel DOM files missed in run 42792007535) | PASS except 9 `provider-analysis-policy` (stale owner approval, expected) |
+| Scoped `tsc` over 25 changed TypeScript files; ESLint on the same | PASS, 0 errors; clean |
+| AI source manifests | Regenerated |
+
+Rendered (local dev server, fictional data): the Candidate tab for HR Admin (profile, restricted salary and ID, resume
+with the permission note, tags, consent history); the interviewer's view of the same candidate (profile and resume
+only); Settings › Privacy listing one candidate past retention, removal blocked until the confirmation box is ticked,
+then removed — afterwards a scan of every text column of every recruitment table and the event log found neither the
+name nor the email, and stage counts were unchanged; Settings › Tags; the duplicate warning for an administrator (the
+matching candidate, matched fields and the two choices) and for a recruiter ("may already have this candidate, ask
+an HR administrator", no details), with the audit events carrying ids and counts only. Server log: no errors.
 
 ## Not verified
 

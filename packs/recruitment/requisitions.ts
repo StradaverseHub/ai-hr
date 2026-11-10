@@ -24,7 +24,11 @@ import {
 import {
   recruitmentApplication, recruitmentApplicationEvent, recruitmentRequisition, recruitmentRequisitionApproval, recruitmentRequisitionJob,
 } from './schema';
-import { actorId, assertCompanyTx, jobFormOptions, jobTx, processStagesTx, userLabelsTx, uuidArray, type JobFormOptions } from './data';
+import {
+  actorId, assertCompanyTx, assertNotRepeatedTx, earlierApplicationsTx, insertApplicationTx, jobFormOptions, jobTx, processStagesTx, repeatWindowTx, userLabelsTx, uuidArray,
+  type JobFormOptions,
+} from './data';
+import { repeatApplicationBlocked } from './privacy-model';
 import { approvalFlowTx, myPendingOfferApprovalsTx, type PendingOfferApproval } from './offers';
 
 const reqEvent = (tx: Tx, s: SessionContext, aggregateId: string, eventType: string, payload: Record<string, unknown>) =>
@@ -405,9 +409,11 @@ export async function myApprovals(s: SessionContext): Promise<MyApprovals> {
 
 // ── Talent pool ──────────────────────────────────────────────────────────────────────────────────────────
 
-export type PoolFilters = { jobId?: string; reasonId?: string; since?: string };
+export type PoolFilters = { jobId?: string; reasonId?: string; since?: string; tagId?: string };
 export type PoolCard = {
   applicationId: string; candidateId: string; candidateName: string; email: string | null; phone: string | null; companyId: string;
+  /** Slice 5: the candidate's tags, and whether their personal data has been removed (then nothing can be added). */
+  tags: { id: string; name: string }[]; removed: boolean;
   appliedAt: string; jobId: string; jobTitle: string; jobNumber: string; archivedAt: string; stageLeft: string; reason: string;
   /** Open jobs of the candidate's company it has not applied to (the "Add to job" choices). */
   addable: { id: string; title: string; jobNumber: string }[];
@@ -415,6 +421,7 @@ export type PoolCard = {
 export type TalentPool = {
   cards: PoolCard[]; totals: { today: number; total: number };
   jobs: { id: string; title: string; jobNumber: string }[]; reasons: { id: string; internal: string }[];
+  tags: { id: string; name: string; groupName: string }[];
 };
 
 /**
@@ -422,7 +429,7 @@ export type TalentPool = {
  * the archive reason. Totals: archived today (Kuala Lumpur) and all pool entries, both count queries.
  */
 export async function talentPool(s: SessionContext, companyIds: readonly string[], filters: PoolFilters = {}): Promise<TalentPool> {
-  if (!companyIds.length) return { cards: [], totals: { today: 0, total: 0 }, jobs: [], reasons: [] };
+  if (!companyIds.length) return { cards: [], totals: { today: 0, total: 0 }, jobs: [], reasons: [], tags: [] };
   const today = todayInKualaLumpur();
   return withRecruitmentTenant(s, async (tx) => {
     for (const id of companyIds) await assertCompanyTx(tx, id);
@@ -430,6 +437,7 @@ export async function talentPool(s: SessionContext, companyIds: readonly string[
     const job = filters.jobId && isUuid(filters.jobId) ? filters.jobId : null;
     const reason = filters.reasonId && isUuid(filters.reasonId) ? filters.reasonId : null;
     const since = filters.since && /^\d{4}-\d{2}-\d{2}$/.test(filters.since) ? filters.since : null;
+    const tag = filters.tagId && isUuid(filters.tagId) ? filters.tagId : null;
     const pool = sql`(select distinct on (a.candidate_id) a.* from recruitment_application a
       where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[]) and a.state = 'archived'
       order by a.candidate_id, a.state_changed_at desc, a.id desc)`;
@@ -437,9 +445,9 @@ export async function talentPool(s: SessionContext, companyIds: readonly string[
       select count(*) filter (where (p.state_changed_at at time zone 'Asia/Kuala_Lumpur')::date = ${today}::date)::int as today, count(*)::int as total from ${pool} p`);
     const rows = await tx.execute<{
       id: string; candidate_id: string; full_name: string; email: string | null; phone: string | null; company_id: string; applied_at: string; job_id: string;
-      title: string; job_number: string; archived_at: string; stage_left: string; reason: string;
+      title: string; job_number: string; archived_at: string; stage_left: string; reason: string; removed: boolean;
     }>(sql`
-      select p.id, p.candidate_id, c.full_name, c.email, c.phone, p.company_id,
+      select p.id, p.candidate_id, c.full_name, c.email, c.phone, p.company_id, c.destroyed_at is not null as removed,
         to_char(p.applied_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as applied_at, p.job_id, j.title, j.job_number,
         to_char(p.state_changed_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as archived_at, st.name as stage_left, r.internal_reason as reason
       from ${pool} p
@@ -449,12 +457,21 @@ export async function talentPool(s: SessionContext, companyIds: readonly string[
       join recruitment_archive_reason r on r.id = p.archive_reason_id
       where (${job}::uuid is null or p.job_id = ${job}::uuid) and (${reason}::uuid is null or p.archive_reason_id = ${reason}::uuid)
         and (${since}::date is null or (p.state_changed_at at time zone 'Asia/Kuala_Lumpur')::date >= ${since}::date)
+        and (${tag}::uuid is null or exists (select 1 from recruitment_candidate_tag ct where ct.candidate_id = p.candidate_id and ct.tag_id = ${tag}::uuid))
       order by p.state_changed_at desc, p.id limit 200`);
     const open = await tx.execute<{ id: string; title: string; job_number: string; company_id: string }>(sql`
       select j.id, j.title, j.job_number, j.company_id from recruitment_job_opening j
       where j.tenant_id = ${s.tenantId}::uuid and j.company_id = any(${ids}::uuid[]) and j.status <> 'closed' order by j.title, j.job_number`);
-    const applied = rows.length ? await tx.execute<{ candidate_id: string; job_id: string }>(sql`
-      select candidate_id, job_id from recruitment_application where candidate_id = any(${uuidArray(rows.map((r) => r.candidate_id))}::uuid[])`) : [];
+    // "Add to job" offers only the jobs the repeated-application rule allows (slice 5), per company window.
+    const earlier = await earlierApplicationsTx(tx, [...new Set(rows.map((r) => r.candidate_id))]);
+    const windows = new Map<string, number>();
+    for (const id of companyIds) windows.set(id, await repeatWindowTx(tx, id));
+    const cardTags = rows.length ? await tx.execute<{ candidate_id: string; id: string; name: string }>(sql`
+      select ct.candidate_id, t.id, t.name from recruitment_candidate_tag ct join recruitment_tag t on t.id = ct.tag_id
+      where ct.candidate_id = any(${uuidArray([...new Set(rows.map((r) => r.candidate_id))])}::uuid[]) order by t.name`) : [];
+    const tags = await tx.execute<{ id: string; name: string; group_name: string }>(sql`
+      select t.id, t.name, g.name as group_name from recruitment_tag t join recruitment_tag_group g on g.id = t.group_id
+      where t.tenant_id = ${s.tenantId}::uuid and t.company_id = any(${ids}::uuid[]) order by g.name, t.name`);
     const jobs = await tx.execute<{ id: string; title: string; job_number: string }>(sql`
       select distinct j.id, j.title, j.job_number from recruitment_application a join recruitment_job_opening j on j.id = a.job_id
       where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[]) and a.state = 'archived' order by j.title, j.job_number`);
@@ -465,10 +482,13 @@ export async function talentPool(s: SessionContext, companyIds: readonly string[
       cards: rows.map((r) => ({
         applicationId: r.id, candidateId: r.candidate_id, candidateName: r.full_name, email: r.email, phone: r.phone, companyId: r.company_id, appliedAt: r.applied_at,
         jobId: r.job_id, jobTitle: r.title, jobNumber: r.job_number, archivedAt: r.archived_at, stageLeft: r.stage_left, reason: r.reason,
-        addable: open.filter((j) => j.company_id === r.company_id && !applied.some((a) => a.candidate_id === r.candidate_id && a.job_id === j.id))
+        removed: r.removed, tags: cardTags.filter((x) => x.candidate_id === r.candidate_id).map((x) => ({ id: x.id, name: x.name })),
+        addable: r.removed ? [] : open.filter((j) => j.company_id === r.company_id
+          && !repeatApplicationBlocked(earlier.filter((a) => a.candidateId === r.candidate_id), j.id, windows.get(r.company_id) ?? 3, today))
           .map((j) => ({ id: j.id, title: j.title, jobNumber: j.job_number })),
       })),
       jobs: jobs.map((j) => ({ id: j.id, title: j.title, jobNumber: j.job_number })), reasons: [...reasons],
+      tags: tags.map((t) => ({ id: t.id, name: t.name, groupName: t.group_name })),
     };
   });
 }
@@ -491,11 +511,16 @@ export async function addPoolCandidateToJob(s: SessionContext, archivedApplicati
     if (job.status === 'closed') throw new RecruitmentError('job_closed');
     const start = firstStage(await processStagesTx(tx, job.processId));
     if (!start) throw new RecruitmentError('process_unavailable');
-    const inserted = await tx.insert(recruitmentApplication).values({
+    const [candidate] = await tx.execute<{ removed: boolean }>(sql`select destroyed_at is not null as removed from recruitment_candidate where id = ${archived.candidateId}::uuid`);
+    if (candidate?.removed) throw new RecruitmentError('candidate_removed');
+    // Slice 5: the repeated-application rule (the same job while active or closed within the window) replaces the
+    // one-application-per-job key; the 4405 guard refuses the same again.
+    await assertNotRepeatedTx(tx, job.companyId, archived.candidateId, job.id);
+    // A concurrent add of the same candidate to the same job (the guard's 23505) maps to duplicate_application.
+    const inserted = [{ id: await insertApplicationTx(tx, {
       tenantId: s.tenantId, companyId: job.companyId, jobId: job.id, candidateId: archived.candidateId, currentStageId: start, source: 'Talent pool',
       createdByUserId: user, updatedByUserId: user,
-    }).onConflictDoNothing().returning({ id: recruitmentApplication.id });
-    if (!inserted.length) throw new RecruitmentError('duplicate_application');
+    }) }];
     await tx.insert(recruitmentApplicationEvent).values({ tenantId: s.tenantId, companyId: job.companyId, applicationId: inserted[0].id, actorUserId: user, ...appliedEvent(start) });
     await appendEvent(tx, { tenantId: s.tenantId, aggregateType: 'recruitment-application', aggregateId: inserted[0].id, eventType: 'recruitment-application.added-from-pool', actor: actorOf(s),
       payload: { companyId: job.companyId, fromApplicationId: archived.id, jobId: job.id } });

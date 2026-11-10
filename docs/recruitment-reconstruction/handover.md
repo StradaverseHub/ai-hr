@@ -63,6 +63,13 @@ Open:
 4. Retire the private render cluster (`/private/tmp/aihr-recruit-render-2c12ee`, port 55440) and the local
    `recruitment-render` preview entry when rendering is no longer needed.
 
+## Update — slice 5 built, reviewed and rendered (uncommitted, 2026-11-10)
+
+Candidate profile with restricted salary and ID, resume and attachment files, duplicate detection and the
+repeated-application window, manual tags, PDPA consent, retention and confirmed removal (4405). Results in
+`parity-report.md`; decisions D-013…D-016 in `discrepancies.md` wait for the owner (sensitive questions not collected,
+no smart tags, no merge, retention defaults 6/24 months per company).
+
 ## Next actions, in order (original plan)
 
 1. Resolve B-001: the owner signs in to a Moka **test tenant** in the built-in browser pane. Then use read-only observation (`read_page`, screenshots, network list) per role and journey, recording EV-0xx entries.

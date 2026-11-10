@@ -20,6 +20,7 @@ import { actorOf, appendEvent } from '../../db/events';
 import { withRecruitmentTenant } from '../../core/module-gate';
 import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
 import { todayInKualaLumpur } from '../../lib/hr-date';
+import { pgSqlState } from '../../lib/db-error';
 import {
   DEFAULT_ARCHIVE_REASONS, DEFAULT_PROCESS, DEFAULT_STAGES, JOB_MEMBER_ROLES, JOB_STATUSES, RECRUITMENT_STAGE_TYPES,
   RecruitmentError, appliedEvent, canChangeJobStatus, firstStage, isUuid, moveEvent, planMoveForward, planMoveTo, planReject,
@@ -31,9 +32,13 @@ import {
 import {
   recruitmentApplication, recruitmentApplicationEvent, recruitmentArchiveReason, recruitmentCandidate, recruitmentCompanySetting,
   recruitmentEvaluationForm, recruitmentJobMember, recruitmentJobOpening, recruitmentOfferField, recruitmentProcess, recruitmentProcessStage,
-  recruitmentRequisitionJob, recruitmentStage,
+  recruitmentRequisitionJob, recruitmentStage, recruitmentCandidateRestricted,
 } from './schema';
 import { DEFAULT_EVALUATION_FORM, DEFAULT_OFFER_FIELDS } from './hiring-model';
+import {
+  CANDIDATE_SOURCES, DEFAULT_REPEAT_WINDOW_MONTHS, ID_TYPES, normEmail, normIdNumber, normMobile, normName, repeatApplicationBlocked,
+  type CandidateSource, type IdType,
+} from './privacy-model';
 
 export const uuidArray = (ids: readonly string[]) => {
   if (!ids.every(isUuid)) throw new RecruitmentError('invalid_input');
@@ -655,9 +660,13 @@ export type ApplicationCard = {
   archiveReason: string | null; companyId: string;
   /** Slice 2: what the viewer may do on this card's job (database predicates). */
   canReview: boolean; canOperate: boolean;
+  /** Slice 5: the candidate's tags the viewer may see (row security: reviewers, not interviewers); a removed candidate. */
+  candidateId: string; tags: { id: string; name: string }[]; removed: boolean;
 };
 export type CandidateBoard = {
   tabs: StageTab[]; cards: ApplicationCard[];
+  /** Slice 5: tags the viewer may filter by (enabled or not: a disabled tag still finds its candidates). */
+  tagOptions: { id: string; name: string; groupName: string }[];
   /** The jobs in view; `canOperate` marks those the viewer may add applications to (slice 2). */
   jobs: { id: string; title: string; jobNumber: string; status: JobStatus; companyId: string; canOperate: boolean }[];
   reasons: { id: string; internal: string; external: string; companyId: string }[];
@@ -670,8 +679,8 @@ export type CandidateBoard = {
  * process of the companies in view, ordered by position), each with its live count of ACTIVE applications,
  * followed by the Hired and Archived buckets.
  */
-export async function candidateBoard(s: SessionContext, companyIds: readonly string[], filter: { jobId?: string; tab?: string } = {}): Promise<CandidateBoard> {
-  if (!companyIds.length) return { tabs: [], cards: [], jobs: [], reasons: [], nextStage: {}, moveTargets: {} };
+export async function candidateBoard(s: SessionContext, companyIds: readonly string[], filter: { jobId?: string; tab?: string; tagId?: string } = {}): Promise<CandidateBoard> {
+  if (!companyIds.length) return { tabs: [], cards: [], jobs: [], reasons: [], nextStage: {}, moveTargets: {}, tagOptions: [] };
   return withRecruitmentTenant(s, async (tx) => {
     // Administrators see the company's pipeline; a team member's row security narrows it to their jobs' applications
     // and the applications they interview (4402). Every count below runs under the same row security.
@@ -686,7 +695,11 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
       select ps.stage_id, st.name, min(ps.position)::int as position from recruitment_process_stage ps
       join recruitment_stage st on st.id = ps.stage_id
       where ps.process_id = any(${uuidArray(processIds)}::uuid[]) group by ps.stage_id, st.name order by 3, 2`) : [];
-    const jobFilter = job ? sql`and a.job_id = ${job.id}::uuid` : sql``;
+    // Slice 5: the tag filter reads recruitment_candidate_tag under row security, so it finds nothing for a viewer who
+    // may not see the candidate's tags (an interviewer).
+    const tagId = filter.tagId && isUuid(filter.tagId) ? filter.tagId : null;
+    const jobFilter = sql`${job ? sql`and a.job_id = ${job.id}::uuid` : sql``} ${tagId ? sql`and exists (select 1 from recruitment_candidate_tag ct
+      where ct.candidate_id = a.candidate_id and ct.tag_id = ${tagId}::uuid)` : sql``}`;
     const counts = await tx.execute<{ stage_id: string; state: ApplicationState; n: number }>(sql`
       select a.current_stage_id as stage_id, a.state, count(*)::int as n from recruitment_application a
       where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[]) ${jobFilter} group by 1, 2`);
@@ -705,8 +718,9 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
     const rows = await tx.execute<{
       id: string; full_name: string; email: string | null; phone: string | null; job_id: string; title: string; job_number: string; source: string | null;
       applied_at: string; owner_user_id: string | null; state: ApplicationState; stage_id: string; stage_name: string; reason: string | null; company_id: string;
+      candidate_id: string; removed: boolean;
     }>(sql`
-      select a.id, c.full_name, c.email, c.phone, a.job_id, j.title, j.job_number, a.source, to_char(a.applied_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as applied_at, c.owner_user_id,
+      select a.id, a.candidate_id, c.destroyed_at is not null as removed, c.full_name, c.email, c.phone, a.job_id, j.title, j.job_number, a.source, to_char(a.applied_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as applied_at, c.owner_user_id,
         a.state, a.current_stage_id as stage_id, st.name as stage_name, r.internal_reason as reason, a.company_id
       from recruitment_application a
       join recruitment_candidate c on c.id = a.candidate_id
@@ -729,6 +743,14 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
     for (const r of rows) {
       if (!access.has(r.job_id)) access.set(r.job_id, await jobLevelTx(tx, r.company_id, r.job_id));
     }
+    const cardTags = rows.length ? await tx.execute<{ candidate_id: string; id: string; name: string }>(sql`
+      select ct.candidate_id, t.id, t.name from recruitment_candidate_tag ct join recruitment_tag t on t.id = ct.tag_id
+      where ct.candidate_id = any(${uuidArray([...new Set(rows.map((r) => r.candidate_id))])}::uuid[]) order by t.name`) : [];
+    const tagOptions = await tx.execute<{ id: string; name: string; group_name: string }>(sql`
+      select t.id, t.name, g.name as group_name from recruitment_tag t join recruitment_tag_group g on g.id = t.group_id
+      where t.tenant_id = ${s.tenantId}::uuid and t.company_id = any(${ids}::uuid[])
+        and exists (select 1 from recruitment_candidate_tag ct where ct.tag_id = t.id)
+      order by g.name, t.name`);
     for (const r of rows) {
       if (r.state !== 'active' || !access.get(r.job_id)?.review) continue;
       const processId = jobs.find((j) => j.id === r.job_id)?.process_id;
@@ -741,12 +763,15 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
     }
     return {
       tabs, nextStage, moveTargets, reasons: [...reasons],
+      tagOptions: tagOptions.map((t) => ({ id: t.id, name: t.name, groupName: t.group_name })),
       jobs: jobs.map((j) => ({ id: j.id, title: j.title, jobNumber: j.job_number, status: j.status, companyId: j.company_id, canOperate: access.get(j.id)?.operate ?? false })),
       cards: rows.map((r) => ({
         id: r.id, candidateName: r.full_name, email: r.email, phone: r.phone, jobId: r.job_id, jobTitle: r.title, jobNumber: r.job_number,
         source: r.source, appliedAt: r.applied_at, ownerName: r.owner_user_id ? labels.get(r.owner_user_id)?.name ?? null : null, state: r.state,
         stageId: r.stage_id, stageName: r.stage_name, archiveReason: r.reason, companyId: r.company_id,
         canReview: access.get(r.job_id)?.review ?? false, canOperate: access.get(r.job_id)?.operate ?? false,
+        candidateId: r.candidate_id, removed: r.removed,
+        tags: cardTags.filter((x) => x.candidate_id === r.candidate_id).map((x) => ({ id: x.id, name: x.name })),
       })),
     };
   });
@@ -756,35 +781,220 @@ async function writeEventTx(tx: Tx, s: SessionContext, e: Omit<typeof recruitmen
   await tx.insert(recruitmentApplicationEvent).values({ ...e, tenantId: s.tenantId, actorUserId: actorId(s) });
 }
 
+/** The company's repeated-application window (months; 0 = off). A missing settings row reads as the default. */
+export async function repeatWindowTx(tx: Tx, companyId: string): Promise<number> {
+  const [row] = await tx.select({ months: recruitmentCompanySetting.repeatWindowMonths }).from(recruitmentCompanySetting)
+    .where(eq(recruitmentCompanySetting.companyId, companyId));
+  return row?.months ?? DEFAULT_REPEAT_WINDOW_MONTHS;
+}
+
+/** The candidate's earlier applications to `jobId`, as the repeated-application rule reads them (Kuala Lumpur days). */
+export async function earlierApplicationsTx(tx: Tx, candidateIds: readonly string[], jobIds?: readonly string[]) {
+  if (!candidateIds.length) return [];
+  const rows = await tx.execute<{ candidate_id: string; job_id: string; state: ApplicationState; closed_on: string | null }>(sql`
+    select candidate_id, job_id, state,
+      case when state = 'active' then null else to_char((state_changed_at at time zone 'Asia/Kuala_Lumpur')::date, 'YYYY-MM-DD') end as closed_on
+    from recruitment_application where candidate_id = any(${uuidArray(candidateIds)}::uuid[])
+      ${jobIds ? sql`and job_id = any(${uuidArray(jobIds)}::uuid[])` : sql``}`);
+  return rows.map((r) => ({ candidateId: r.candidate_id, jobId: r.job_id, state: r.state, closedOn: r.closed_on }));
+}
+
 /**
- * Add an application for a NEW candidate (slice 1 creates the candidate with it; a candidate is never a
- * person or an employee). It starts at the first enabled stage of the job's process. A closed job takes
- * no applications (slice 1 implementation decision).
+ * Refuse a repeated application (slice 5): the same candidate and job while an earlier application is active
+ * (duplicate_application) or closed within the company's window (repeat_application). The 4405 guard refuses the
+ * same again. Another job is always allowed.
  */
-export async function addApplication(s: SessionContext, input: { jobId?: unknown } & CandidateInput): Promise<{ applicationId: string; candidateId: string }> {
+export async function assertNotRepeatedTx(tx: Tx, companyId: string, candidateId: string, jobId: string): Promise<void> {
+  const earlier = await earlierApplicationsTx(tx, [candidateId], [jobId]);
+  if (earlier.some((a) => a.state === 'active')) throw new RecruitmentError('duplicate_application');
+  if (repeatApplicationBlocked(earlier, jobId, await repeatWindowTx(tx, companyId), todayInKualaLumpur())) throw new RecruitmentError('repeat_application');
+}
+
+/**
+ * Insert an application, mapping the 4405 repeated-application guard's refusal (SQLSTATE 23505: a concurrent add of the
+ * same candidate to the same job got there first) to duplicate_application. Shared with the talent pool's "Add to job".
+ */
+export async function insertApplicationTx(tx: Tx, values: typeof recruitmentApplication.$inferInsert): Promise<string> {
+  try {
+    const [row] = await tx.insert(recruitmentApplication).values(values).returning({ id: recruitmentApplication.id });
+    return row.id;
+  } catch (e) {
+    if (pgSqlState(e) === '23505') throw new RecruitmentError('duplicate_application');
+    throw e;
+  }
+}
+
+export type DuplicateMatch = {
+  candidateId: string; fullName: string; email: string | null; phone: string | null; matchedOn: ('idNumber' | 'email' | 'name' | 'mobile')[];
+  applications: { jobTitle: string; jobNumber: string; state: ApplicationState }[];
+};
+export type DuplicateCheck = { count: number; matches: DuplicateMatch[] | null };
+type Probe = { fullName: string; email: string | null; phone: string | null; idNumber: string | null };
+
+/**
+ * Possible duplicates of a new candidate in the company (slice 5): the same ID number, or two of email, name and mobile.
+ * The COUNT comes from app.recruitment_candidate_duplicate_count, which never returns a row, so a job operator learns
+ * only that a match exists. An administrator also gets the matches, read through ordinary row security.
+ */
+export async function duplicateCheckTx(tx: Tx, companyId: string, probe: Probe): Promise<DuplicateCheck> {
+  const [row] = await tx.execute<{ n: number }>(sql`select app.recruitment_candidate_duplicate_count(${companyId}::uuid, ${probe.fullName}, ${probe.email},
+    ${probe.phone}, ${probe.idNumber}, null) as n`);
+  const count = row?.n ?? 0;
+  const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.can_admin_recruitment_for(${companyId}::uuid) as ok`);
+  if (!count || admin?.ok !== true) return { count, matches: count ? null : [] };
+  // The same indexed equality lookups as the count (one per item, each on its expression index), read under the
+  // administrator's own row security; never a company-wide scan.
+  const id = normIdNumber(probe.idNumber), email = normEmail(probe.email), name = normName(probe.fullName), mobile = normMobile(probe.phone);
+  const rows = await tx.execute<{ id: string; full_name: string; email: string | null; phone: string | null; id_number: string | null }>(sql`
+    with hits as (
+      select r.candidate_id, 'id'::text as kind from recruitment_candidate_restricted r
+       where ${id}::text is not null and r.tenant_id = app.current_tenant_id() and r.company_id = ${companyId}::uuid and r.id_number is not null
+        and app.recruitment_norm_id(r.id_number) = ${id}::text
+      union all
+      select c.id, 'email' from recruitment_candidate c
+       where ${email}::text is not null and c.tenant_id = app.current_tenant_id() and c.company_id = ${companyId}::uuid and c.email is not null
+        and app.recruitment_norm_email(c.email) = ${email}::text
+      union all
+      select c.id, 'name' from recruitment_candidate c
+       where ${name}::text is not null and c.tenant_id = app.current_tenant_id() and c.company_id = ${companyId}::uuid
+        and app.recruitment_norm_name(c.full_name) = ${name}::text
+      union all
+      select c.id, 'mobile' from recruitment_candidate c
+       where ${mobile}::text is not null and c.tenant_id = app.current_tenant_id() and c.company_id = ${companyId}::uuid and c.phone is not null
+        and app.recruitment_norm_mobile(c.phone) = ${mobile}::text
+    ), matched as (
+      select candidate_id from hits group by candidate_id having bool_or(kind = 'id') or count(distinct kind) >= 2
+    )
+    select c.id, c.full_name, c.email, c.phone, r.id_number from matched m
+    join recruitment_candidate c on c.id = m.candidate_id and c.destroyed_at is null
+    left join recruitment_candidate_restricted r on r.candidate_id = c.id
+    order by c.created_at, c.id limit 20`);
+  const apps = rows.length ? await tx.execute<{ candidate_id: string; title: string; job_number: string; state: ApplicationState }>(sql`
+    select a.candidate_id, j.title, j.job_number, a.state from recruitment_application a join recruitment_job_opening j on j.id = a.job_id
+    where a.candidate_id = any(${uuidArray(rows.map((r) => r.id))}::uuid[]) order by a.applied_at`) : [];
+  return {
+    count,
+    matches: rows.map((r) => ({
+      candidateId: r.id, fullName: r.full_name, email: r.email, phone: r.phone,
+      matchedOn: [
+        ...(normIdNumber(probe.idNumber) && normIdNumber(probe.idNumber) === normIdNumber(r.id_number) ? ['idNumber' as const] : []),
+        ...(normEmail(probe.email) && normEmail(probe.email) === normEmail(r.email) ? ['email' as const] : []),
+        ...(normName(probe.fullName) === normName(r.full_name) ? ['name' as const] : []),
+        ...(normMobile(probe.phone) && normMobile(probe.phone) === normMobile(r.phone) ? ['mobile' as const] : []),
+      ],
+      applications: apps.filter((a) => a.candidate_id === r.id).map((a) => ({ jobTitle: a.title, jobNumber: a.job_number, state: a.state })),
+    })),
+  };
+}
+
+export type AddApplicationInput = { jobId?: unknown } & CandidateInput & {
+  /** Slice 5: the candidate's source (choice), ID type and number (restricted), and how a possible duplicate is resolved. */
+  candidateSource?: unknown; idType?: unknown; idNumber?: unknown; existingCandidateId?: unknown; confirmSeparate?: unknown;
+};
+
+function addProbe(input: AddApplicationInput) {
   const candidate = validateCandidateInput(input);
   if (!candidate.ok) throw new RecruitmentError(candidate.fields.includes('fullName') ? 'missing_fields' : 'invalid_input', candidate.fields);
+  const fields: string[] = [];
+  const candidateSource = input.candidateSource == null || input.candidateSource === '' ? null
+    : (CANDIDATE_SOURCES as readonly string[]).includes(String(input.candidateSource)) ? input.candidateSource as CandidateSource : undefined;
+  if (candidateSource === undefined) fields.push('candidateSource');
+  const idNumber = typeof input.idNumber === 'string' && input.idNumber.trim() ? input.idNumber.trim() : null;
+  const idType = input.idType == null || input.idType === '' ? null : (ID_TYPES as readonly string[]).includes(String(input.idType)) ? input.idType as IdType : undefined;
+  if (idNumber && (idNumber.length > 40 || !idType)) fields.push('idNumber');
+  if (idType === undefined) fields.push('idType');
+  if (fields.length) throw new RecruitmentError('invalid_input', fields);
+  return { ...candidate.value, candidateSource: candidateSource ?? null, idNumber, idType: idNumber ? idType as IdType : null };
+}
+
+/**
+ * Every possible-duplicate result is audited: who asked, on which job, and how many matched — never what was typed.
+ * Repeated probing for whether someone is already a candidate shows up in the log.
+ */
+async function duplicateFlaggedTx(tx: Tx, s: SessionContext, companyId: string, jobId: string, matches: number, via: 'add' | 'check'): Promise<void> {
+  await appendEvent(tx, { tenantId: s.tenantId, aggregateType: 'recruitment-job', aggregateId: jobId, eventType: 'recruitment-candidate.duplicate-flagged',
+    actor: actorOf(s), payload: { companyId, jobId, matches, via } });
+}
+
+/**
+ * Before adding: does the new candidate look like one the company already has? (slice 5). Same access as adding.
+ */
+export async function checkDuplicateCandidate(s: SessionContext, input: AddApplicationInput): Promise<DuplicateCheck> {
+  const v = addProbe(input);
+  if (!isUuid(input.jobId)) throw new RecruitmentError('missing_fields', ['job']);
+  return withRecruitmentTenant(s, async (tx) => {
+    const job = await jobTx(tx, s, input.jobId as string, 'operate');
+    const result = await duplicateCheckTx(tx, job.companyId, { fullName: v.fullName, email: v.email, phone: v.phone, idNumber: v.idNumber });
+    if (result.count > 0) await duplicateFlaggedTx(tx, s, job.companyId, job.id, result.count, 'check');
+    return result;
+  });
+}
+
+/**
+ * Add an application. Slice 1 creates a NEW candidate with it (a candidate is never a person or an employee). It starts
+ * at the first enabled stage of the job's process. A closed job takes no applications (slice 1 implementation decision).
+ *
+ * Slice 5: a possible duplicate in the company is refused (possible_duplicate) unless an administrator confirms a
+ * separate candidate (`confirmSeparate`) or adds the application to the existing candidate (`existingCandidateId`) — a
+ * job operator cannot resolve it. A repeated application to the same job follows the company's window.
+ */
+export async function addApplication(s: SessionContext, input: AddApplicationInput): Promise<{ applicationId: string; candidateId: string }> {
+  const v = addProbe(input);
   if (!isUuid(input.jobId)) throw new RecruitmentError('missing_fields', ['job']);
   const user = actorId(s);
-  return withRecruitmentTenant(s, async (tx) => {
+  const existing = input.existingCandidateId == null || input.existingCandidateId === '' ? null : input.existingCandidateId;
+  if (existing !== null && !isUuid(existing)) throw new RecruitmentError('not_found');
+  // A refused possible duplicate commits its audit event (nothing else has been written yet), then the refusal is thrown.
+  const outcome = await withRecruitmentTenant(s, async (tx): Promise<{ applicationId: string; candidateId: string } | 'duplicate'> => {
     // The job's recruiter and assistants may add applications to it, as administrators may (slice 2).
     const job = await jobTx(tx, s, input.jobId as string, 'operate');
     if (job.status === 'closed') throw new RecruitmentError('job_closed');
     const start = firstStage(await processStagesTx(tx, job.processId));
     if (!start) throw new RecruitmentError('process_unavailable');
-    // The id is made here, not returned: a job team member cannot read a candidate until its application exists.
-    const created = { id: randomUUID() };
-    await tx.insert(recruitmentCandidate).values({
-      id: created.id, tenantId: s.tenantId, companyId: job.companyId, fullName: candidate.value.fullName, email: candidate.value.email, phone: candidate.value.phone,
-      ownerUserId: user, createdByUserId: user, updatedByUserId: user,
+    const [adminRow] = await tx.execute<{ ok: boolean }>(sql`select app.can_admin_recruitment_for(${job.companyId}::uuid) as ok`);
+    const admin = adminRow?.ok === true;
+    let candidateId: string;
+    if (existing) {
+      // Only an administrator resolves a duplicate onto an existing candidate of the same company.
+      if (!admin) throw new RecruitmentError('forbidden');
+      const [c] = await tx.select({ id: recruitmentCandidate.id, destroyedAt: recruitmentCandidate.destroyedAt }).from(recruitmentCandidate)
+        .where(and(eq(recruitmentCandidate.id, existing), eq(recruitmentCandidate.tenantId, s.tenantId), eq(recruitmentCandidate.companyId, job.companyId)));
+      if (!c) throw new RecruitmentError('not_found');
+      if (c.destroyedAt) throw new RecruitmentError('candidate_removed');
+      await assertNotRepeatedTx(tx, job.companyId, c.id, job.id);
+      candidateId = c.id;
+    } else {
+      const duplicates = await duplicateCheckTx(tx, job.companyId, { fullName: v.fullName, email: v.email, phone: v.phone, idNumber: v.idNumber });
+      const confirmed = input.confirmSeparate === true || input.confirmSeparate === 'on' || input.confirmSeparate === 'true' || input.confirmSeparate === '1';
+      if (duplicates.count > 0 && !(admin && confirmed)) {
+        await duplicateFlaggedTx(tx, s, job.companyId, job.id, duplicates.count, 'add');
+        return 'duplicate';
+      }
+      // The id is made here, not returned: a job team member cannot read a candidate until its application exists.
+      candidateId = randomUUID();
+      await tx.insert(recruitmentCandidate).values({
+        id: candidateId, tenantId: s.tenantId, companyId: job.companyId, fullName: v.fullName, email: v.email, phone: v.phone,
+        source: v.candidateSource, ownerUserId: user, createdByUserId: user, updatedByUserId: user,
+      });
+    }
+    const applicationId = await insertApplicationTx(tx, {
+      tenantId: s.tenantId, companyId: job.companyId, jobId: job.id, candidateId, currentStageId: start,
+      source: v.source ?? v.candidateSource, createdByUserId: user, updatedByUserId: user,
     });
-    const [application] = await tx.insert(recruitmentApplication).values({
-      tenantId: s.tenantId, companyId: job.companyId, jobId: job.id, candidateId: created.id, currentStageId: start,
-      source: candidate.value.source, createdByUserId: user, updatedByUserId: user,
-    }).returning({ id: recruitmentApplication.id });
-    await writeEventTx(tx, s, { companyId: job.companyId, applicationId: application.id, ...appliedEvent(start) });
-    return { applicationId: application.id, candidateId: created.id };
+    if (!existing && v.idNumber) {
+      await tx.insert(recruitmentCandidateRestricted).values({
+        tenantId: s.tenantId, companyId: job.companyId, candidateId, idType: v.idType, idNumber: v.idNumber, updatedByUserId: user,
+      });
+    }
+    await writeEventTx(tx, s, { companyId: job.companyId, applicationId, ...appliedEvent(start) });
+    if (existing) {
+      await appendEvent(tx, { tenantId: s.tenantId, aggregateType: 'recruitment-application', aggregateId: applicationId, eventType: 'recruitment-application.added-to-existing-candidate',
+        actor: actorOf(s), payload: { companyId: job.companyId, candidateId, jobId: job.id } });
+    }
+    return { applicationId, candidateId };
   });
+  if (outcome === 'duplicate') throw new RecruitmentError('possible_duplicate');
+  return outcome;
 }
 
 /** An ACTIVE application the caller may act on at `level` on its job (review: move forward / reject; operate: the rest). */

@@ -37229,7 +37229,17 @@
       "requisition_terminal": "Yêu cầu tuyển dụng đã hoàn tất hoặc đã hủy thì không thể thay đổi.",
       "hire_not_eligible": "Chỉ có thể bắt đầu tuyển nhân viên mới từ hồ sơ ở bước Onboarding hoặc đã được tuyển.",
       "hire_linked": "Đã bắt đầu tuyển nhân viên mới từ hồ sơ này.",
-      "not_in_pool": "Hồ sơ đó không nằm trong nguồn ứng viên."
+      "not_in_pool": "Hồ sơ đó không nằm trong nguồn ứng viên.",
+      "possible_duplicate": "Ứng viên này có vẻ đã có trong công ty. Hãy kiểm tra hồ sơ có thể trùng trước khi thêm.",
+      "repeat_application": "Ứng viên này vừa ứng tuyển vị trí này gần đây. Chỉ được ứng tuyển lại khi đã hết thời hạn ứng tuyển lặp lại.",
+      "candidate_removed": "Dữ liệu cá nhân của ứng viên này đã bị xóa. Không thể thêm gì vào hồ sơ này nữa.",
+      "file_type": "Hãy tải lên tệp PDF, tài liệu Word hoặc hình ảnh (JPG hoặc PNG). Nội dung tệp phải khớp với loại tệp.",
+      "file_too_large": "Tệp lớn hơn 10 MB.",
+      "permission_required": "Hãy xác nhận rằng bạn đã được ứng viên cho phép lưu tệp này.",
+      "not_due": "Chỉ có thể xóa những ứng viên đã hết thời hạn lưu giữ. Ứng viên có hồ sơ đang xử lý hoặc đã được tuyển không bao giờ đến hạn.",
+      "confirm_required": "Hãy đánh dấu xác nhận để xóa các ứng viên đã chọn.",
+      "consent_state": "Chỉ có thể rút lại sự đồng ý khi ứng viên đã đồng ý.",
+      "tag_disabled": "Thẻ này đã bị tắt và không thể thêm nữa."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -37463,7 +37473,9 @@
       "section": {
         "general": "Quy trình",
         "interviews": "Phỏng vấn",
-        "offers": "Đề nghị và phê duyệt"
+        "offers": "Đề nghị và phê duyệt",
+        "privacy": "Quyền riêng tư",
+        "tags": "Thẻ"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -37521,6 +37533,48 @@
         "addField": "Thêm trường",
         "choicesHint": "Chỉ dành cho trường chọn một",
         "flowsTitle": "Quy trình phê duyệt"
+      },
+      "privacy": {
+        "retentionTitle": "Lưu giữ dữ liệu và ứng tuyển lặp lại",
+        "retentionNote": "Thời gian lưu giữ dữ liệu ứng viên sau khi hồ sơ cuối cùng của họ được đóng. Thời gian bắt đầu tính từ ngày lưu trữ gần nhất, hoặc ngày đồng ý nếu muộn hơn; việc rút lại sự đồng ý sẽ tính lại theo mức không có đồng ý.",
+        "withoutConsent": "Số tháng lưu khi không có đồng ý",
+        "withConsent": "Số tháng lưu khi có đồng ý",
+        "repeatWindow": "Ứng tuyển lặp lại cùng một vị trí",
+        "repeatOff": "Tắt (cho phép bất cứ lúc nào)",
+        "months": "{n, plural, other {# tháng}}",
+        "repeatNote": "Khi ứng viên có hồ sơ đang xử lý cho một vị trí, hoặc hồ sơ đã đóng trong thời hạn này, hồ sơ mới cho cùng vị trí sẽ bị từ chối. Các vị trí khác luôn được phép.",
+        "save": "Lưu cài đặt quyền riêng tư",
+        "dueTitle": "Đến hạn xóa",
+        "dueNote": "Các ứng viên hết thời hạn lưu giữ vào hoặc trước ngày {date}. Không có gì bị xóa tự động.",
+        "noneDue": "Không có ứng viên nào đến hạn xóa.",
+        "select": "Chọn",
+        "candidate": "Ứng viên",
+        "archivedOn": "Lưu trữ gần nhất",
+        "consent": "Đồng ý",
+        "dueOn": "Hết hạn lưu giữ",
+        "selectCandidate": "Chọn {name}",
+        "ended": "Đã hết thời hạn lưu giữ",
+        "noConsent": "Chưa ghi nhận đồng ý",
+        "withdrawnOn": "Rút lại ngày {date}",
+        "consentedOn": "Đồng ý ngày {date}",
+        "destroyExplain": "Xóa ứng viên sẽ xóa tên, thông tin liên hệ, hồ sơ, thông tin hạn chế, tệp, thẻ và chi tiết đồng ý, ghi chú và nhận xét tổng quan phỏng vấn, giá trị đề nghị và ý kiến từ chối. Các hồ sơ ứng tuyển vẫn được giữ dưới dạng bản ghi ẩn danh, nên số liệu theo giai đoạn và quy trình không thay đổi. Không thể hoàn tác thao tác này.",
+        "confirm": "Tôi xác nhận rằng dữ liệu cá nhân của các ứng viên đã chọn cần được xóa vĩnh viễn.",
+        "destroy": "Xóa các ứng viên đã chọn",
+        "removedNotice": "Đã xóa dữ liệu cá nhân của các ứng viên đã chọn."
+      },
+      "tags": {
+        "note": "Nhóm các thẻ mà nhóm của bạn gắn thủ công cho ứng viên. Thẻ bị tắt vẫn còn trên những ứng viên đã có thẻ đó nhưng không còn được đưa ra để chọn.",
+        "empty": "Chưa có nhóm thẻ nào.",
+        "groupName": "Tên nhóm",
+        "enabled": "Bật",
+        "save": "Lưu",
+        "noTags": "Nhóm này chưa có thẻ nào.",
+        "tagName": "Tên thẻ",
+        "used": "{n, plural, other {# ứng viên}}",
+        "newTag": "Thẻ mới",
+        "addTag": "Thêm thẻ",
+        "newGroup": "Nhóm thẻ mới",
+        "addGroup": "Thêm nhóm"
       }
     },
     "app": {
@@ -37529,7 +37583,8 @@
       "tabInterviews": "Phỏng vấn",
       "tabOffer": "Đề nghị tuyển dụng",
       "tabHistory": "Lịch sử",
-      "teamNote": "Bạn thấy hồ sơ này vì bạn thuộc nhóm tuyển dụng hoặc phỏng vấn ứng viên."
+      "teamNote": "Bạn thấy hồ sơ này vì bạn thuộc nhóm tuyển dụng hoặc phỏng vấn ứng viên.",
+      "tabCandidate": "Ứng viên"
     },
     "iv": {
       "none": "Chưa có buổi phỏng vấn nào.",
@@ -37842,6 +37897,140 @@
       "associate": "Liên kết",
       "reapprovalNote": "Thay đổi trường bắt buộc ngoài trạng thái Bản nháp sẽ bắt đầu lại phê duyệt nếu công ty có quy trình phê duyệt yêu cầu.",
       "save": "Lưu"
+    },
+    "cand": {
+      "tagFilter": "Thẻ",
+      "anyTag": "Mọi thẻ",
+      "tags": "Thẻ",
+      "removedLabel": "Ứng viên đã xóa",
+      "removedNote": "Đã xóa dữ liệu cá nhân",
+      "adding": "Đang thêm…",
+      "sources": {
+        "referral": "Giới thiệu",
+        "job_board": "Trang tuyển dụng",
+        "career_page": "Trang nghề nghiệp",
+        "agency": "Công ty tuyển dụng",
+        "walk_in": "Trực tiếp",
+        "other": "Khác"
+      },
+      "idTypes": {
+        "nric": "CCCD (NRIC)",
+        "passport": "Hộ chiếu"
+      },
+      "match": {
+        "idNumber": "số giấy tờ",
+        "email": "email",
+        "name": "tên",
+        "mobile": "điện thoại di động"
+      },
+      "appStates": {
+        "active": "đang xử lý",
+        "hired": "đã tuyển",
+        "archived": "đã lưu trữ"
+      },
+      "idType": "Loại giấy tờ",
+      "idNumber": "Số giấy tờ",
+      "idNone": "Không có",
+      "dup": {
+        "title": "Có thể trùng lặp",
+        "askAdmin": "Công ty có thể đã có ứng viên này. Hãy nhờ quản trị viên nhân sự kiểm tra trước khi thêm.",
+        "admin": "Công ty đã có một ứng viên trùng số giấy tờ, hoặc trùng hai trong số email, tên và điện thoại di động.",
+        "useExisting": "Thêm hồ sơ cho ứng viên này",
+        "createSeparate": "Tạo ứng viên riêng",
+        "matchedOn": "Trùng ở:",
+        "noApplications": "Không có hồ sơ nào bạn được xem"
+      },
+      "noConsent": "Chưa ghi nhận đồng ý",
+      "consentWithdrawn": "Đã rút lại đồng ý ngày {date}",
+      "consentGiven": "Đã ghi nhận đồng ý ngày {date}",
+      "retentionEnded": "Đã hết thời hạn lưu giữ",
+      "retentionUntil": "Lưu giữ đến {date}",
+      "profileTitle": "Hồ sơ",
+      "fullName": "Họ và tên",
+      "required": "bắt buộc",
+      "email": "Email",
+      "mobile": "Điện thoại di động",
+      "location": "Nơi ở",
+      "currentCompany": "Công ty hiện tại",
+      "currentTitle": "Chức danh hiện tại",
+      "education": "Trình độ học vấn cao nhất",
+      "notStated": "Không nêu",
+      "educationLevels": {
+        "secondary": "Trung học",
+        "certificate": "Chứng chỉ",
+        "diploma": "Cao đẳng",
+        "bachelor": "Cử nhân",
+        "master": "Thạc sĩ",
+        "doctorate": "Tiến sĩ",
+        "professional": "Chứng chỉ hành nghề",
+        "other": "Khác"
+      },
+      "noticePeriod": "Thời gian báo trước",
+      "noticePlaceholder": "ví dụ: 1 tháng",
+      "source": "Nguồn",
+      "notCollected": "Không thu thập chủng tộc, tôn giáo, sức khỏe, thai sản, tiền án và thông tin gia đình tại đây.",
+      "saveProfile": "Lưu hồ sơ",
+      "entriesTitle": "Kinh nghiệm và học vấn",
+      "entryKinds": {
+        "work": "Kinh nghiệm làm việc",
+        "education": "Học vấn"
+      },
+      "noEntries": "Chưa thêm gì.",
+      "present": "Hiện tại",
+      "remove": "Gỡ bỏ",
+      "employer": "Công ty",
+      "school": "Trường",
+      "jobTitle": "Chức danh",
+      "qualification": "Bằng cấp",
+      "from": "Từ",
+      "to": "Đến",
+      "add": "Thêm",
+      "restrictedTitle": "Thông tin hạn chế",
+      "restrictedNote": "Chỉ quản trị viên tuyển dụng, chuyên viên tuyển dụng và trợ lý của các vị trí ứng viên ứng tuyển mới xem được.",
+      "currentSalary": "Lương hiện tại (theo tháng)",
+      "expectedSalary": "Lương mong muốn (theo tháng)",
+      "currency": "Tiền tệ",
+      "amount": "Số tiền",
+      "peopleEnterPay": "Số tiền do con người nhập theo những gì ứng viên cho biết. Không có gì được tính toán.",
+      "saveRestricted": "Lưu thông tin hạn chế",
+      "filesTitle": "CV và tệp đính kèm",
+      "noFiles": "Chưa có tệp nào.",
+      "fileKinds": {
+        "resume": "CV",
+        "attachment": "Tệp đính kèm"
+      },
+      "uploadedBy": "Tải lên bởi {name}, {at}",
+      "unnamedUser": "Người dùng",
+      "delete": "Xóa",
+      "filesReaderNote": "Bạn có thể mở CV. Các tệp đính kèm khác chỉ hiển thị cho quản trị viên và chuyên viên tuyển dụng của vị trí.",
+      "fileKind": "Loại",
+      "file": "Tệp",
+      "fileRules": "PDF, Word hoặc hình ảnh (JPG, PNG), tối đa 10 MB. Mỗi lần tải xuống đều được ghi lại.",
+      "permission": "Tôi đã được ứng viên cho phép lưu tệp này.",
+      "upload": "Tải lên",
+      "noTags": "Không có thẻ.",
+      "disabled": "đã tắt",
+      "removeTag": "Gỡ thẻ {name}",
+      "addTag": "Thêm thẻ",
+      "chooseTag": "Chọn thẻ",
+      "consentTitle": "Đồng ý",
+      "consentNote": "Ghi nhận sự đồng ý theo cách ứng viên đã đưa ra (biểu mẫu, email, biểu mẫu trực tuyến hoặc bằng lời). Lịch sử được lưu giữ.",
+      "consentStatuses": {
+        "consented": "Đã đồng ý",
+        "withdrawn": "Đã rút lại"
+      },
+      "consentMethods": {
+        "written_form": "Biểu mẫu giấy",
+        "email": "Email",
+        "online_form": "Biểu mẫu trực tuyến",
+        "verbal": "Ghi nhận bằng lời"
+      },
+      "recordedBy": "Ghi nhận bởi {name}, {at}",
+      "consentStatus": "Trạng thái",
+      "consentDate": "Ngày",
+      "consentMethod": "Cách thức",
+      "noticeReference": "Mã thông báo quyền riêng tư",
+      "recordConsent": "Ghi nhận"
     }
   }
 }

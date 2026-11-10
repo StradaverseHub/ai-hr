@@ -307,3 +307,101 @@ Talent pool:
     onboarding capacity match independent counts.
 18. A rejected application appears in the talent pool with its pre-archiving stage and reason; "Add to job" creates a
     new active application and leaves the archived one archived.
+
+## Slice 5 — Candidate records and privacy (owner decision 2026-11-10; EV-026…EV-031)
+
+Scope: a fuller candidate record, resume files, duplicate detection, manual tags, and PDPA consent, retention and
+destruction. One migration (4405, after a fresh peer survey), service functions in the pack, pages, six-locale labels
+and tests. New tables get forced RLS, explicit grants and none to PUBLIC; every service entry point runs inside
+`withRecruitmentTenant`. Nothing here calls a model, parses a resume or infers anything about a candidate.
+
+### Candidate profile (EV-027)
+
+- Besides name, email and mobile: location, current company, current title, highest education (choice), notice
+  period, source (choice: referral, job board, career page, agency, walk-in, other) and repeatable entries for work
+  experience (from, to or present, company, title) and education (school, qualification, from, to).
+- Restricted fields: current salary, expected salary (amount + ISO currency, typed by people, never computed) and
+  ID number (NRIC or passport). Stored apart from the candidate row. Readable and writable only by recruitment
+  administrators and the operators (recruiter, assistant) of a job the candidate has applied to; hidden from hiring
+  managers, interviewers, approvers and other companies by row security, not only by the screen.
+- Editing: administrators and operators of any of the candidate's jobs. Hiring managers and interviewers read the
+  non-restricted profile of a candidate whose application they may read.
+- Not collected (D-013): race, religion, health or disability, pregnancy, criminal record and family particulars.
+  The reference collects them through a tenant-configured form; under the PDPA these are sensitive personal data
+  and several invite discriminatory decisions. Adding any of them needs an owner and legal decision.
+
+### Resume and attachments (EV-027, EV-030)
+
+- Files on a candidate: kind `resume` or `attachment`; PDF, Word or image; at most 10 MB each; bytes in a side table
+  (same pattern as `employee_document`). Upload by administrators and the candidate's job operators.
+- Upload asks the uploader to confirm they have the candidate's permission to store the file (the reference's
+  "resume upload reminder"); the confirmation is recorded with the file.
+- Anyone who may read one of the candidate's applications may view and download the resume; other attachments are
+  for administrators and operators. Every download appends an audit event. Event payloads carry ids, kind and size,
+  never file bytes or file names.
+- Delete by administrators and operators, with an event.
+
+### Duplicate detection and repeated applications (EV-026)
+
+- When a candidate is added, the service checks the company's candidates: the same ID number; or any two of email
+  (case-insensitive), name (normalised spacing and case) and mobile (digits only). One matching item is not a
+  duplicate.
+- A caller who may not read the matching candidate learns only that a possible duplicate exists ("ask an HR
+  administrator"); no name, contact or job is disclosed. An administrator sees the matches and may add the new
+  application to the existing candidate instead, or confirm creating a separate candidate.
+- Repeated applications: a company setting, on by default with 3 months (choices: off, 1, 3, 6, 12 months). A new
+  application by the same candidate to the same job while an earlier one is active, or archived within the window,
+  is refused. Different jobs are allowed.
+- No automatic or manual merge in this slice (D-014).
+
+### Tags (EV-029)
+
+- Company tag groups and manual tags (unique name within a group; enable or disable). Administrators manage them.
+  Administrators and operators add or remove tags on candidates; hiring managers see a candidate's tags;
+  interviewers do not. Filter the Candidates board and the talent pool by tag. A disabled tag stays on candidates
+  but is no longer offered.
+- No smart tags (D-015): the reference's inferred tags ("job hopping", "employment gap") are automated profiling of
+  candidates; they are not built.
+
+### Consent, retention and destruction (EV-030)
+
+- Consent record per candidate, entered by a person (no candidate portal yet): status (not recorded, consented,
+  withdrawn), date, method (written form, email, online form, recorded verbally), notice reference and who recorded
+  it. History is kept. Candidate pages show "No consent recorded" or "Consent withdrawn" to administrators and
+  operators.
+- Retention settings per company (D-016): months kept without consent (default 6) and with consent (default 24).
+  The clock starts at the candidate's latest archival date, or at the consent date if later; withdrawal restarts it
+  as "without consent" from the withdrawal date. A candidate with an active application is never due. A candidate
+  with a hired application is excluded (the employee record takes over). Dates come from the repository's HR date
+  owner (Asia/Kuala_Lumpur).
+- Due candidates are marked "Retention period ended" and listed for administrators (Settings › Privacy). Nothing is
+  destroyed automatically.
+- Destruction: an administrator selects due candidates and confirms. It removes the candidate's personal data:
+  name replaced by a neutral label, contact details, restricted values, profile entries, files, tags, consent
+  details, scorecard notes and overviews and rejection comments on their applications, and their offer values. The
+  application skeleton (job, stages, dates, state, archive reason) stays so counts do not change. One event records
+  the destruction without personal data. Refused for a candidate with an active or hired application. Personal
+  data in earlier event payloads must already be absent (verify; redact if not).
+
+### Slice 5 acceptance cases
+
+19. Profile and restricted fields: an operator edits the profile and salary; the hiring manager, an interviewer, an
+    approver and another company's partner cannot read the restricted values through the service or the table.
+20. Files: allowed type and size only; the permission confirmation is required; an interviewer of the application
+    downloads the resume but not other attachments; a bystander gets nothing; each download appends an event with
+    no file name or bytes.
+21. Duplicates: ID number match and two-of-three contact match are found, one-of-three is not; an operator without
+    access to the match learns only that one exists; an administrator sees it and adds the application to the
+    existing candidate.
+22. Repeated applications: same job within the window refused (active or recently archived); after the window or
+    with the setting off, allowed; another job allowed.
+23. Tags: administrators manage groups and tags; operators tag; hiring managers see; interviewers do not; filters
+    return the tagged candidates; a disabled tag is kept on candidates but not offered.
+24. Consent: recorded and withdrawn by people with history kept; the due date moves as specified.
+25. Retention: due dates from fixed dates through the HR date owner; active applications never due; hired excluded;
+    the due list and marker show only due candidates, to administrators only.
+26. Destruction: administrator only, explicit confirmation, refused for active or hired; afterwards no sentinel
+    personal value remains in any recruitment table (including files, scorecards, offer values and events); stage
+    and pipeline counts are unchanged; the event carries no personal data.
+27. Every new table has forced RLS, grants to the app role and none to PUBLIC; the AI Centre recruitment read still
+    returns counts only.

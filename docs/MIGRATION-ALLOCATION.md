@@ -1,3 +1,18 @@
+# Recruitment slice 5 — 10 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slices 2–4 block,
+`4405_recruitment_candidate_privacy` at idx 3805 / when 1793330004105. A fresh read-only
+survey after `git fetch --prune origin` of 3,918 remote refs (412 distinct committed journal
+blobs), 1,251 registered worktrees (252 readable journals) and every committed
+allocation-document blob found no claim of this name, position or timestamp. Peers above
+this block still exist (4500–4502, 4600–4601, 4700–4701, 4800; the peer timestamp maximum
+is 1793330090001), so whichever lands later must be checked against the applied watermark;
+a lower timestamp can be silently skipped. 4405 drops 4401's
+`recruitment_application_once_uq` (replaced by a repeated-application guard) and restates
+five 4401–4403 guard functions with one destroy-only branch each; 4400–4404 are unapplied
+outside throwaway databases and CI. Recheck peer claims, the published baseline and the
+ordered applied ledger before admission. The reservation grants no installation authority.
+
 # Recruitment slices 2–4 — 10 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 1 pair,

@@ -141,7 +141,7 @@ describe('case 11 — no team, not an administrator: no menu and no rows', () =>
     expect(await code(interviewSchedule(t.bystander, [base.companyId]))).toBe('forbidden');
     const tables = await owner.db.execute<{ relname: string }>(sql`select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'recruitment\\_%' order by relname`);
-    expect(tables.length).toBe(23);
+    expect(tables.length).toBe(30); // 9 (slice 1) + 14 (slices 2–4) + 7 (slice 5)
     for (const { relname } of tables) {
       const seen = await rows(t.bystander, sql`select 1 from ${sql.identifier(relname)} where tenant_id = ${base.tenantId}::uuid`);
       expect(seen.length, `${relname} visible to a bystander`).toBe(0);

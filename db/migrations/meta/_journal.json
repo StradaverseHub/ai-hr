@@ -5118,6 +5118,13 @@
       "when": 1793330004104,
       "tag": "4404_recruitment_requisitions",
       "breakpoints": true
+    },
+    {
+      "idx": 3805,
+      "version": "7",
+      "when": 1793330004105,
+      "tag": "4405_recruitment_candidate_privacy",
+      "breakpoints": true
     }
   ]
 }

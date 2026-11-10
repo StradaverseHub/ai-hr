@@ -37229,7 +37229,17 @@
       "requisition_terminal": "已完成或已取消的招聘需求不能更改。",
       "hire_not_eligible": "只有处于入职阶段或已录用的申请才能开始新员工建档。",
       "hire_linked": "已从此申请开始新员工建档。",
-      "not_in_pool": "该申请不在人才库中。"
+      "not_in_pool": "该申请不在人才库中。",
+      "possible_duplicate": "公司可能已有此候选人。添加前请先核对可能的重复记录。",
+      "repeat_application": "此候选人最近已申请过该职位。重复申请期满后才可再次申请。",
+      "candidate_removed": "此候选人的个人资料已被删除，记录中不能再添加任何内容。",
+      "file_type": "请上传 PDF、Word 文档或图片（JPG 或 PNG）。文件内容必须与其类型相符。",
+      "file_too_large": "文件超过 10 MB。",
+      "permission_required": "请确认您已获得候选人同意保存此文件。",
+      "not_due": "只有保留期已届满的候选人才能删除。有进行中或已录用申请的候选人永远不会到期。",
+      "confirm_required": "请勾选确认后再删除所选候选人。",
+      "consent_state": "只有在候选人已同意的情况下才能撤回同意。",
+      "tag_disabled": "此标签已停用，不能再添加。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -37463,7 +37473,9 @@
       "section": {
         "general": "招聘流程",
         "interviews": "面试",
-        "offers": "录用与审批"
+        "offers": "录用与审批",
+        "privacy": "隐私",
+        "tags": "标签"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -37521,6 +37533,48 @@
         "addField": "添加字段",
         "choicesHint": "仅用于单选字段",
         "flowsTitle": "审批流程"
+      },
+      "privacy": {
+        "retentionTitle": "保留期限与重复申请",
+        "retentionNote": "候选人最后一份申请关闭后，其资料保留的时长。计时从最近一次归档日期开始；如同意日期更晚，则从同意日期开始；撤回同意后按\"未同意\"重新计时。",
+        "withoutConsent": "未同意时保留月数",
+        "withConsent": "已同意时保留月数",
+        "repeatWindow": "同一职位的重复申请",
+        "repeatOff": "关闭（随时允许）",
+        "months": "{n, plural, other {# 个月}}",
+        "repeatNote": "候选人对某职位有进行中的申请，或在此期限内有已关闭的申请时，将拒绝其对同一职位的新申请。其他职位始终允许。",
+        "save": "保存隐私设置",
+        "dueTitle": "待删除",
+        "dueNote": "保留期在 {date} 或之前届满的候选人。系统不会自动删除任何内容。",
+        "noneDue": "没有待删除的候选人。",
+        "select": "选择",
+        "candidate": "候选人",
+        "archivedOn": "最近归档",
+        "consent": "同意",
+        "dueOn": "保留期届满",
+        "selectCandidate": "选择 {name}",
+        "ended": "保留期已届满",
+        "noConsent": "未记录同意",
+        "withdrawnOn": "于 {date} 撤回",
+        "consentedOn": "于 {date} 同意",
+        "destroyExplain": "删除候选人将清除其姓名、联系方式、个人档案、受限资料、文件、标签和同意详情、面试备注和总结、录用条件数值及拒绝意见。其申请将以匿名记录保留，因此各阶段和招聘流程的统计数字不变。此操作无法撤销。",
+        "confirm": "我确认应永久删除所选候选人的个人资料。",
+        "destroy": "删除所选候选人",
+        "removedNotice": "所选候选人的个人资料已删除。"
+      },
+      "tags": {
+        "note": "将团队手动添加给候选人的标签分组。已停用的标签仍保留在已有该标签的候选人身上，但不再提供选择。",
+        "empty": "尚无标签组。",
+        "groupName": "组名",
+        "enabled": "已启用",
+        "save": "保存",
+        "noTags": "此组中尚无标签。",
+        "tagName": "标签名称",
+        "used": "{n, plural, other {# 位候选人}}",
+        "newTag": "新标签",
+        "addTag": "添加标签",
+        "newGroup": "新标签组",
+        "addGroup": "添加组"
       }
     },
     "app": {
@@ -37529,7 +37583,8 @@
       "tabInterviews": "面试",
       "tabOffer": "录用通知",
       "tabHistory": "历史",
-      "teamNote": "您能看到此申请，因为您是招聘团队成员或该候选人的面试官。"
+      "teamNote": "您能看到此申请，因为您是招聘团队成员或该候选人的面试官。",
+      "tabCandidate": "候选人"
     },
     "iv": {
       "none": "暂无面试。",
@@ -37842,6 +37897,140 @@
       "associate": "关联",
       "reapprovalNote": "如公司设有需求审批流程，在非草稿状态下修改必填字段会重新开始审批。",
       "save": "保存"
+    },
+    "cand": {
+      "tagFilter": "标签",
+      "anyTag": "任意标签",
+      "tags": "标签",
+      "removedLabel": "已删除的候选人",
+      "removedNote": "个人资料已删除",
+      "adding": "正在添加…",
+      "sources": {
+        "referral": "内部推荐",
+        "job_board": "招聘网站",
+        "career_page": "招聘页面",
+        "agency": "猎头机构",
+        "walk_in": "现场应聘",
+        "other": "其他"
+      },
+      "idTypes": {
+        "nric": "身份证",
+        "passport": "护照"
+      },
+      "match": {
+        "idNumber": "证件号码",
+        "email": "电子邮件",
+        "name": "姓名",
+        "mobile": "手机号码"
+      },
+      "appStates": {
+        "active": "进行中",
+        "hired": "已录用",
+        "archived": "已归档"
+      },
+      "idType": "证件类型",
+      "idNumber": "证件号码",
+      "idNone": "无",
+      "dup": {
+        "title": "可能重复",
+        "askAdmin": "公司可能已有此候选人。添加前请联系人力资源管理员核对。",
+        "admin": "公司已有一位证件号码相同，或电子邮件、姓名、手机号码中有两项相同的候选人。",
+        "useExisting": "将申请添加到此候选人",
+        "createSeparate": "另建一位候选人",
+        "matchedOn": "相同项：",
+        "noApplications": "没有您可查看的申请"
+      },
+      "noConsent": "未记录同意",
+      "consentWithdrawn": "已于 {date} 撤回同意",
+      "consentGiven": "已于 {date} 记录同意",
+      "retentionEnded": "保留期已届满",
+      "retentionUntil": "保留至 {date}",
+      "profileTitle": "个人档案",
+      "fullName": "全名",
+      "required": "必填",
+      "email": "电子邮件",
+      "mobile": "手机号码",
+      "location": "所在地",
+      "currentCompany": "目前公司",
+      "currentTitle": "目前职位",
+      "education": "最高学历",
+      "notStated": "未说明",
+      "educationLevels": {
+        "secondary": "中学",
+        "certificate": "证书",
+        "diploma": "文凭",
+        "bachelor": "学士学位",
+        "master": "硕士学位",
+        "doctorate": "博士学位",
+        "professional": "专业资格",
+        "other": "其他"
+      },
+      "noticePeriod": "离职通知期",
+      "noticePlaceholder": "例如：1 个月",
+      "source": "来源",
+      "notCollected": "此处不收集种族、宗教、健康、怀孕、犯罪记录和家庭资料。",
+      "saveProfile": "保存个人档案",
+      "entriesTitle": "工作经历与教育背景",
+      "entryKinds": {
+        "work": "工作经历",
+        "education": "教育背景"
+      },
+      "noEntries": "尚未添加。",
+      "present": "至今",
+      "remove": "移除",
+      "employer": "公司",
+      "school": "学校",
+      "jobTitle": "职位",
+      "qualification": "学历",
+      "from": "起",
+      "to": "止",
+      "add": "添加",
+      "restrictedTitle": "受限资料",
+      "restrictedNote": "仅招聘管理员及该候选人所申请职位的招聘专员和助理可见。",
+      "currentSalary": "目前薪资（月薪）",
+      "expectedSalary": "期望薪资（月薪）",
+      "currency": "货币",
+      "amount": "金额",
+      "peopleEnterPay": "金额由人员按候选人所述填写，系统不作任何计算。",
+      "saveRestricted": "保存受限资料",
+      "filesTitle": "简历与附件",
+      "noFiles": "尚无文件。",
+      "fileKinds": {
+        "resume": "简历",
+        "attachment": "附件"
+      },
+      "uploadedBy": "由 {name} 上传，{at}",
+      "unnamedUser": "用户",
+      "delete": "删除",
+      "filesReaderNote": "您可以打开简历。其他附件仅对管理员和该职位的招聘专员显示。",
+      "fileKind": "类型",
+      "file": "文件",
+      "fileRules": "PDF、Word 或图片（JPG、PNG），不超过 10 MB。每次下载都会被记录。",
+      "permission": "我已获得候选人同意保存此文件。",
+      "upload": "上传",
+      "noTags": "没有标签。",
+      "disabled": "已停用",
+      "removeTag": "移除标签 {name}",
+      "addTag": "添加标签",
+      "chooseTag": "选择标签",
+      "consentTitle": "同意",
+      "consentNote": "按候选人给予同意的方式记录（表格、电子邮件、在线表格或口头）。历史记录会被保留。",
+      "consentStatuses": {
+        "consented": "已同意",
+        "withdrawn": "已撤回"
+      },
+      "consentMethods": {
+        "written_form": "书面表格",
+        "email": "电子邮件",
+        "online_form": "在线表格",
+        "verbal": "口头记录"
+      },
+      "recordedBy": "由 {name} 记录，{at}",
+      "consentStatus": "状态",
+      "consentDate": "日期",
+      "consentMethod": "方式",
+      "noticeReference": "隐私声明编号",
+      "recordConsent": "记录"
     }
   }
 }

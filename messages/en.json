@@ -37229,7 +37229,17 @@
       "requisition_terminal": "A completed or cancelled requisition cannot be changed.",
       "hire_not_eligible": "A new hire can start only from an application at Onboarding or already hired.",
       "hire_linked": "A new hire has already been started from this application.",
-      "not_in_pool": "That application is not in the talent pool."
+      "not_in_pool": "That application is not in the talent pool.",
+      "possible_duplicate": "This looks like a candidate the company already has. Check the possible duplicate before adding.",
+      "repeat_application": "This candidate applied to this job recently. A new application is allowed once the repeated-application period has passed.",
+      "candidate_removed": "This candidate's personal data has been removed. Nothing more can be added to the record.",
+      "file_type": "Upload a PDF, Word document or image (JPG or PNG). The file contents must match its type.",
+      "file_too_large": "The file is larger than 10 MB.",
+      "permission_required": "Confirm that you have the candidate's permission to store this file.",
+      "not_due": "Only candidates whose retention period has ended can be removed. A candidate with an active or hired application is never due.",
+      "confirm_required": "Tick the confirmation to remove the selected candidates.",
+      "consent_state": "Consent can be withdrawn only when the candidate has consented.",
+      "tag_disabled": "This tag is disabled and can no longer be added."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -37463,7 +37473,9 @@
       "section": {
         "general": "Pipeline",
         "interviews": "Interviews",
-        "offers": "Offers and approvals"
+        "offers": "Offers and approvals",
+        "privacy": "Privacy",
+        "tags": "Tags"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -37521,6 +37533,48 @@
         "addField": "Add field",
         "choicesHint": "Only for a single-choice field",
         "flowsTitle": "Approval flows"
+      },
+      "privacy": {
+        "retentionTitle": "Retention and repeated applications",
+        "retentionNote": "How long a candidate's data is kept after their last application closes. The clock starts at the latest archiving date, or at the consent date if later; a withdrawal restarts it without consent.",
+        "withoutConsent": "Months kept without consent",
+        "withConsent": "Months kept with consent",
+        "repeatWindow": "Repeated applications to the same job",
+        "repeatOff": "Off (allowed any time)",
+        "months": "{n, plural, one {# month} other {# months}}",
+        "repeatNote": "While a candidate has an active application to a job, or one closed within this period, a new application to the same job is refused. Other jobs are always allowed.",
+        "save": "Save privacy settings",
+        "dueTitle": "Due for removal",
+        "dueNote": "Candidates whose retention period has ended on or before {date}. Nothing is removed automatically.",
+        "noneDue": "No candidate is due for removal.",
+        "select": "Select",
+        "candidate": "Candidate",
+        "archivedOn": "Last archived",
+        "consent": "Consent",
+        "dueOn": "Retention ended",
+        "selectCandidate": "Select {name}",
+        "ended": "Retention period ended",
+        "noConsent": "No consent recorded",
+        "withdrawnOn": "Withdrawn on {date}",
+        "consentedOn": "Consented on {date}",
+        "destroyExplain": "Removing a candidate deletes their name, contact details, profile, restricted values, files, tags and consent details, interview notes and overviews, offer values and rejection comments. Their applications stay as anonymous records, so stage and pipeline counts do not change. This cannot be undone.",
+        "confirm": "I confirm that the selected candidates' personal data should be permanently removed.",
+        "destroy": "Remove selected candidates",
+        "removedNotice": "The selected candidates' personal data has been removed."
+      },
+      "tags": {
+        "note": "Group the tags your team adds to candidates by hand. A disabled tag stays on the candidates who have it but is no longer offered.",
+        "empty": "No tag groups yet.",
+        "groupName": "Group name",
+        "enabled": "Enabled",
+        "save": "Save",
+        "noTags": "No tags in this group yet.",
+        "tagName": "Tag name",
+        "used": "{n, plural, one {# candidate} other {# candidates}}",
+        "newTag": "New tag",
+        "addTag": "Add tag",
+        "newGroup": "New tag group",
+        "addGroup": "Add group"
       }
     },
     "app": {
@@ -37529,7 +37583,8 @@
       "tabInterviews": "Interview",
       "tabOffer": "Offer",
       "tabHistory": "History",
-      "teamNote": "You see this application because you are on its hiring team or interview the candidate."
+      "teamNote": "You see this application because you are on its hiring team or interview the candidate.",
+      "tabCandidate": "Candidate"
     },
     "iv": {
       "none": "No interviews yet.",
@@ -37842,6 +37897,140 @@
       "associate": "Associate",
       "reapprovalNote": "Changing a required field outside Draft restarts approval when the company has a requisition approval flow.",
       "save": "Save"
+    },
+    "cand": {
+      "tagFilter": "Tag",
+      "anyTag": "Any tag",
+      "tags": "Tags",
+      "removedLabel": "Removed candidate",
+      "removedNote": "Personal data removed",
+      "adding": "Adding…",
+      "sources": {
+        "referral": "Referral",
+        "job_board": "Job board",
+        "career_page": "Career page",
+        "agency": "Agency",
+        "walk_in": "Walk-in",
+        "other": "Other"
+      },
+      "idTypes": {
+        "nric": "NRIC",
+        "passport": "Passport"
+      },
+      "match": {
+        "idNumber": "ID number",
+        "email": "email",
+        "name": "name",
+        "mobile": "mobile"
+      },
+      "appStates": {
+        "active": "active",
+        "hired": "hired",
+        "archived": "archived"
+      },
+      "idType": "ID type",
+      "idNumber": "ID number",
+      "idNone": "None",
+      "dup": {
+        "title": "Possible duplicate",
+        "askAdmin": "The company may already have this candidate. Ask an HR administrator to check before adding them.",
+        "admin": "The company already has a candidate with the same ID number, or with two of the same email, name and mobile.",
+        "useExisting": "Add the application to this candidate",
+        "createSeparate": "Create a separate candidate",
+        "matchedOn": "Matches on:",
+        "noApplications": "No applications you can see"
+      },
+      "noConsent": "No consent recorded",
+      "consentWithdrawn": "Consent withdrawn on {date}",
+      "consentGiven": "Consent recorded on {date}",
+      "retentionEnded": "Retention period ended",
+      "retentionUntil": "Kept until {date}",
+      "profileTitle": "Profile",
+      "fullName": "Full name",
+      "required": "required",
+      "email": "Email",
+      "mobile": "Mobile",
+      "location": "Location",
+      "currentCompany": "Current company",
+      "currentTitle": "Current title",
+      "education": "Highest education",
+      "notStated": "Not stated",
+      "educationLevels": {
+        "secondary": "Secondary school",
+        "certificate": "Certificate",
+        "diploma": "Diploma",
+        "bachelor": "Bachelor's degree",
+        "master": "Master's degree",
+        "doctorate": "Doctorate",
+        "professional": "Professional qualification",
+        "other": "Other"
+      },
+      "noticePeriod": "Notice period",
+      "noticePlaceholder": "e.g. 1 month",
+      "source": "Source",
+      "notCollected": "Race, religion, health, pregnancy, criminal record and family details are not collected here.",
+      "saveProfile": "Save profile",
+      "entriesTitle": "Experience and education",
+      "entryKinds": {
+        "work": "Work experience",
+        "education": "Education"
+      },
+      "noEntries": "Nothing added yet.",
+      "present": "Present",
+      "remove": "Remove",
+      "employer": "Company",
+      "school": "School",
+      "jobTitle": "Title",
+      "qualification": "Qualification",
+      "from": "From",
+      "to": "To",
+      "add": "Add",
+      "restrictedTitle": "Restricted details",
+      "restrictedNote": "Visible only to recruitment administrators and the recruiter and assistants of the candidate's jobs.",
+      "currentSalary": "Current salary (monthly)",
+      "expectedSalary": "Expected salary (monthly)",
+      "currency": "Currency",
+      "amount": "Amount",
+      "peopleEnterPay": "Amounts are entered by people as the candidate stated them. Nothing is calculated.",
+      "saveRestricted": "Save restricted details",
+      "filesTitle": "Resume and attachments",
+      "noFiles": "No files yet.",
+      "fileKinds": {
+        "resume": "Resume",
+        "attachment": "Attachment"
+      },
+      "uploadedBy": "Uploaded by {name}, {at}",
+      "unnamedUser": "User",
+      "delete": "Delete",
+      "filesReaderNote": "You can open the resume. Other attachments are shown to administrators and the job recruiter only.",
+      "fileKind": "Kind",
+      "file": "File",
+      "fileRules": "PDF, Word or image (JPG, PNG), up to 10 MB. Every download is recorded.",
+      "permission": "I have the candidate's permission to store this file.",
+      "upload": "Upload",
+      "noTags": "No tags.",
+      "disabled": "disabled",
+      "removeTag": "Remove tag {name}",
+      "addTag": "Add tag",
+      "chooseTag": "Choose a tag",
+      "consentTitle": "Consent",
+      "consentNote": "Record consent as the candidate gave it (form, email, online form or verbally). The history is kept.",
+      "consentStatuses": {
+        "consented": "Consented",
+        "withdrawn": "Withdrawn"
+      },
+      "consentMethods": {
+        "written_form": "Written form",
+        "email": "Email",
+        "online_form": "Online form",
+        "verbal": "Recorded verbally"
+      },
+      "recordedBy": "Recorded by {name}, {at}",
+      "consentStatus": "Status",
+      "consentDate": "Date",
+      "consentMethod": "Method",
+      "noticeReference": "Privacy notice reference",
+      "recordConsent": "Record"
     }
   }
 }

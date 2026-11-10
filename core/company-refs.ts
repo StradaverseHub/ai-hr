@@ -368,6 +368,9 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   // candidate exists — those refuse the delete first, above.
   // 4402/4403 — further setup the same function removes first: approval flows, the offer-field set, the settings row
   // and evaluation forms. Only interviews, scorecards and offers point at forms and fields, and those need a job opening.
+  // 4405 — the tag catalogue, removed first (tags before their groups). A candidate's tags need a candidate, which refuses above.
+  { table: 'recruitment_tag', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s manual candidate tags. Before their groups; only a candidate (which refuses the delete) carries one.' },
+  { table: 'recruitment_tag_group', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s candidate tag groups. After the tags that belong to them.' },
   { table: 'recruitment_approval_step', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s offer and requisition approval flows (ordered approvers).' },
   { table: 'recruitment_offer_field', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s offer-field set. Offer values point at it only through an offer, which needs a job opening.' },
   { table: 'recruitment_company_setting', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment settings row (feedback visibility and lock, offer validity and automation).' },
@@ -448,6 +451,8 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'recruitment_interview', column: 'evaluation_form_id', references: 'recruitment_evaluation_form', effect: 'blocks', note: 'An interview keeps its evaluation form.' },
   { table: 'recruitment_scorecard', column: 'evaluation_form_id', references: 'recruitment_evaluation_form', effect: 'blocks', note: 'Feedback keeps the form it answered.' },
   { table: 'recruitment_offer_value', column: 'field_id', references: 'recruitment_offer_field', effect: 'blocks', note: 'An offer value keeps its field.' },
+  { table: 'recruitment_tag', column: 'group_id', references: 'recruitment_tag_group', effect: 'blocks', note: 'A tag keeps its group; the company delete removes tags before groups.' },
+  { table: 'recruitment_candidate_tag', column: 'tag_id', references: 'recruitment_tag', effect: 'blocks', note: 'A candidate keeps their tags; a candidate refuses the company delete first.' },
   { table: 'recruitment_requisition', column: 'department_id', references: 'department', effect: 'blocks', note: 'A requisition keeps its department.' },
   { table: 'shift_ot_window', column: 'shift_id', references: 'shift', effect: 'part', note: 'A shift\'s clock-time OT windows. ON DELETE CASCADE.' },
   { table: 'attendance_rule_ot_row', column: 'rule_id', references: 'attendance_rule', effect: 'part', note: 'A rule\'s OT rows. ON DELETE CASCADE.' },

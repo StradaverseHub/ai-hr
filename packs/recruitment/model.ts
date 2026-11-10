@@ -57,6 +57,9 @@ export const RECRUITMENT_ERROR_CODES = [
   // Slices 2–4.
   'not_interviewer', 'feedback_locked', 'interview_closed', 'invalid_form', 'form_in_use', 'self_approval', 'not_your_step',
   'offer_state', 'offer_closed', 'approval_pending', 'requisition_terminal', 'hire_not_eligible', 'hire_linked', 'not_in_pool',
+  // Slice 5.
+  'possible_duplicate', 'repeat_application', 'candidate_removed', 'file_type', 'file_too_large', 'permission_required', 'not_due',
+  'confirm_required', 'consent_state', 'tag_disabled',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

@@ -2,14 +2,15 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
-import { ErrorBanner, Field, Input, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
+import { ErrorBanner, Field, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { applicationHistory, candidateBoard, RecruitmentError, type ApplicationHistoryRow } from '@/packs/recruitment/service';
-import { addApplicationAction, moveApplicationAction, rejectApplicationAction } from '../actions';
+import { applicationHistory, candidateBoard, CANDIDATE_SOURCES, ID_TYPES, RecruitmentError, type ApplicationHistoryRow } from '@/packs/recruitment/service';
+import { moveApplicationAction, rejectApplicationAction } from '../actions';
 import { NoRecruitmentCompany, Notice, RecruitmentTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
 import { RejectDialog } from './reject-dialog';
+import { AddApplicationForm } from './add-application-form';
 
-type Search = { job?: string; tab?: string; application?: string; error?: string; notice?: string };
+type Search = { job?: string; tab?: string; tag?: string; application?: string; error?: string; notice?: string };
 
 /**
  * Recruitment › Candidates: the pipeline by stage, with live counts, Move forward, Reject and Add application.
@@ -22,11 +23,11 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   const access = await recruitmentViewerAccess(s, scopeIds);
   const companies = access.companies;
   const sp = await searchParams;
-  const [t, nav, locale] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale()]);
-  const board = await candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab });
+  const [t, nav, locale, tc] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale(), getTranslations('recruitment.cand')]);
+  const board = await candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab, tagId: sp.tag });
   const selectedTab = board.tabs.find((x) => x.key === sp.tab) ?? board.tabs[0];
   const query = (next: Record<string, string | undefined>) => {
-    const q = new URLSearchParams(Object.entries({ job: sp.job, tab: selectedTab?.key, ...next }).filter((e): e is [string, string] => !!e[1]));
+    const q = new URLSearchParams(Object.entries({ job: sp.job, tag: sp.tag, tab: selectedTab?.key, ...next }).filter((e): e is [string, string] => !!e[1]));
     return `/recruitment/candidates${q.size ? `?${q}` : ''}`;
   };
   const here = query({});
@@ -55,6 +56,14 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                   {board.jobs.map((j) => <option key={j.id} value={j.id}>{j.title} · {j.jobNumber}</option>)}
                 </select>
               </Field>
+              {board.tagOptions.length > 0 && (
+                <Field label={tc('tagFilter')} className="min-w-48">
+                  <select name="tag" defaultValue={sp.tag ?? ''} className={selectCls}>
+                    <option value="">{tc('anyTag')}</option>
+                    {board.tagOptions.map((g) => <option key={g.id} value={g.id}>{g.groupName} · {g.name}</option>)}
+                  </select>
+                </Field>
+              )}
               <button type="submit" className={btnGhost}>{t('apply')}</button>
             </form>
             <nav aria-label={t('stages')} className="flex flex-wrap gap-2">
@@ -75,11 +84,16 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                     <li key={card.id} className={cn('space-y-3 rounded-xl border border-border bg-card p-4', sp.application === card.id && 'border-primary')}>
                       <div className="text-xs text-muted-foreground">
                         {t('applied', { date: date(card.appliedAt) })} · <Link href={`/recruitment/positions/${card.jobId}`} className="hover:underline">{card.jobTitle}</Link>
-                        {card.source && <> · {card.source}</>}
+                        {card.source && <> · {(CANDIDATE_SOURCES as readonly string[]).includes(card.source) ? tc(`sources.${card.source as (typeof CANDIDATE_SOURCES)[number]}`) : card.source}</>}
                       </div>
                       <div>
-                        <p className="font-medium">{card.candidateName}</p>
+                        <p className="font-medium">{card.removed ? tc('removedLabel') : card.candidateName}</p>
                         <p className="text-xs text-muted-foreground">{[card.email, card.phone].filter(Boolean).join(' · ') || t('noContact')}</p>
+                        {card.tags.length > 0 && (
+                          <ul aria-label={tc('tags')} className="mt-1 flex flex-wrap gap-1">
+                            {card.tags.map((tag) => <li key={tag.id} className="rounded-full border border-border px-2 py-0.5 text-xs">{tag.name}</li>)}
+                          </ul>
+                        )}
                       </div>
                       <dl className="grid grid-cols-2 gap-2 text-xs">
                         <div><dt className="text-muted-foreground">{t('stage')}</dt><dd>{card.state === 'active' ? card.stageName : card.state === 'hired' ? t('hired') : t('archivedFrom', { stage: card.stageName })}</dd></div>
@@ -139,20 +153,21 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
             {(access.isAdmin || openJobs.length > 0) && <section className="space-y-3 rounded-xl border border-border bg-card p-4" aria-labelledby="add-title">
               <h2 id="add-title" className="text-sm font-semibold">{t('addTitle')}</h2>
               {openJobs.length === 0 ? <p className="text-sm text-muted-foreground">{t('noOpenJobs')}</p> : (
-                <form action={addApplicationAction} className="space-y-3">
-                  <input type="hidden" name="returnTo" value={here} />
-                  <Field label={t('job')} required requiredAriaLabel={t('required')}>
-                    <select name="jobId" defaultValue={openJobs.some((j) => j.id === sp.job) ? sp.job : ''} required className={selectCls}>
-                      <option value="" disabled>{t('choose')}</option>
-                      {openJobs.map((j) => <option key={j.id} value={j.id}>{j.title} · {j.jobNumber}</option>)}
-                    </select>
-                  </Field>
-                  <Field label={t('fullName')} required requiredAriaLabel={t('required')}><Input name="fullName" required maxLength={200} /></Field>
-                  <Field label={t('email')}><Input name="email" type="email" maxLength={254} /></Field>
-                  <Field label={t('phone')}><Input name="phone" maxLength={40} /></Field>
-                  <Field label={t('source')}><Input name="source" maxLength={120} placeholder={t('sourcePlaceholder')} /></Field>
-                  <button type="submit" className={btnPrimary}>{t('add')}</button>
-                </form>
+                <AddApplicationForm
+                  returnTo={here}
+                  jobs={openJobs.map((j) => ({ id: j.id, label: `${j.title} · ${j.jobNumber}` }))}
+                  defaultJob={openJobs.some((j) => j.id === sp.job) ? sp.job! : ''}
+                  sources={CANDIDATE_SOURCES.map((v) => ({ value: v, label: tc(`sources.${v}`) }))}
+                  idTypes={ID_TYPES.map((v) => ({ value: v, label: tc(`idTypes.${v}`) }))}
+                  matchLabels={{ idNumber: tc('match.idNumber'), email: tc('match.email'), name: tc('match.name'), mobile: tc('match.mobile') }}
+                  stateLabels={{ active: tc('appStates.active'), hired: tc('appStates.hired'), archived: tc('appStates.archived') }}
+                  labels={{
+                    job: t('job'), choose: t('choose'), required: t('required'), fullName: t('fullName'), email: t('email'), phone: t('phone'),
+                    idType: tc('idType'), idNumber: tc('idNumber'), idNone: tc('idNone'), source: t('source'), add: t('add'), adding: tc('adding'),
+                    duplicateTitle: tc('dup.title'), duplicateAskAdmin: tc('dup.askAdmin'), duplicateAdmin: tc('dup.admin'), useExisting: tc('dup.useExisting'),
+                    createSeparate: tc('dup.createSeparate'), matchedOn: tc('dup.matchedOn'), noApplications: tc('dup.noApplications'),
+                  }}
+                />
               )}
             </section>}
           </aside>

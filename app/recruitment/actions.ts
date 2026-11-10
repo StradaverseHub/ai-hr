@@ -6,6 +6,7 @@
  */
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { pgSqlState } from '@/lib/db-error';
 import {
@@ -14,6 +15,9 @@ import {
   rejectApplication, removeJobMember, saveApprovalFlow, saveArchiveReason, saveEvaluationForm, saveOffer, saveOfferField, scheduleInterview,
   setCandidateResponse, submitOffer, submitRequisition, submitScorecard, updateInterviewSettings, updateJob, updateOfferSettings, updateProcess,
   updateRequisition, updateStage, withdrawOffer, withdrawRequisition, RecruitmentError,
+  addCandidateEntry, addCandidateTag, deleteCandidateFile, destroyCandidates, recordConsent, removeCandidateEntry, removeCandidateTag,
+  saveCandidateRestricted, saveTag, saveTagGroup, updateCandidateProfile, updatePrivacySettings, uploadCandidateFile, CANDIDATE_FILE_MAX_BYTES,
+  checkDuplicateCandidate, RECRUITMENT_ERROR_CODES, type DuplicateCheck,
 } from '@/packs/recruitment/service';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -83,10 +87,43 @@ export async function removeJobMemberAction(f: FormData) {
   return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=team`), (s) => removeJobMember(s, jobId, str(f, 'memberId')));
 }
 
-export async function addApplicationAction(f: FormData) {
-  return run(back(f, '/recruitment/candidates'), (s) => addApplication(s, {
-    jobId: str(f, 'jobId'), fullName: str(f, 'fullName'), email: str(f, 'email'), phone: str(f, 'phone'), source: str(f, 'source'),
-  }));
+/** What the Add application form shows after a save that did not complete (slice 5). */
+export type AddApplicationState = {
+  status: 'idle' | 'error' | 'duplicate';
+  errorText?: string;
+  duplicate?: DuplicateCheck;
+  /** The typed values, returned to the same viewer who typed them so the form keeps them. Never logged or put in a URL. */
+  values?: Record<string, string>;
+  nonce?: number;
+};
+/**
+ * Add application with duplicate detection. A possible duplicate returns what the SERVICE lets the viewer know: a count
+ * only for a job operator, the matches for an administrator. An administrator resolves it with `existingCandidateId`
+ * (add to that candidate) or `confirmSeparate`. Success revalidates and redirects as every other action does.
+ */
+export async function addApplicationFormAction(prev: AddApplicationState, f: FormData): Promise<AddApplicationState> {
+  const s = await getSession();
+  const values = Object.fromEntries(['jobId', 'fullName', 'email', 'phone', 'idType', 'idNumber', 'candidateSource'].map((k) => [k, str(f, k)]));
+  const input = { ...values, existingCandidateId: str(f, 'existingCandidateId'), confirmSeparate: str(f, 'confirmSeparate') };
+  const nonce = (prev.nonce ?? 0) + 1;
+  try {
+    await addApplication(s, input);
+  } catch (e) {
+    if (e instanceof RecruitmentError && e.code === 'possible_duplicate') {
+      try {
+        return { status: 'duplicate', duplicate: await checkDuplicateCandidate(s, input), values, nonce };
+      } catch (inner) {
+        e = inner;
+      }
+    }
+    if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    const t = await getTranslations('recruitment.errors');
+    const code = errorCode(e);
+    const errorText = (RECRUITMENT_ERROR_CODES as readonly string[]).includes(code) ? t(code as (typeof RECRUITMENT_ERROR_CODES)[number]) : t('unexpected');
+    return { status: 'error', errorText, values, nonce };
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(back(f, '/recruitment/candidates'), 'notice', 'saved'));
 }
 
 export async function moveApplicationAction(f: FormData) {
@@ -253,4 +290,76 @@ export async function dissociateJobAction(f: FormData) {
 }
 export async function addPoolCandidateToJobAction(f: FormData) {
   return run(back(f, '/recruitment/talent-pool'), (s) => addPoolCandidateToJob(s, str(f, 'applicationId'), str(f, 'jobId')));
+}
+
+// ── Slice 5: candidate records and privacy ───────────────────────────────────────────────────────────────
+
+const candidatePage = (f: FormData) => appPage(f, 'candidate');
+
+export async function updateCandidateProfileAction(f: FormData) {
+  return run(candidatePage(f), (s) => updateCandidateProfile(s, str(f, 'candidateId'), {
+    fullName: str(f, 'fullName'), email: str(f, 'email'), phone: str(f, 'phone'), location: str(f, 'location'), currentCompany: str(f, 'currentCompany'),
+    currentTitle: str(f, 'currentTitle'), highestEducation: str(f, 'highestEducation'), noticePeriod: str(f, 'noticePeriod'), source: str(f, 'source'),
+  }));
+}
+export async function saveCandidateRestrictedAction(f: FormData) {
+  return run(candidatePage(f), (s) => saveCandidateRestricted(s, str(f, 'candidateId'), {
+    currentSalaryAmount: str(f, 'currentSalaryAmount'), currentSalaryCurrency: str(f, 'currentSalaryCurrency'),
+    expectedSalaryAmount: str(f, 'expectedSalaryAmount'), expectedSalaryCurrency: str(f, 'expectedSalaryCurrency'),
+    idType: str(f, 'idType'), idNumber: str(f, 'idNumber'),
+  }));
+}
+export async function addCandidateEntryAction(f: FormData) {
+  return run(candidatePage(f), (s) => addCandidateEntry(s, str(f, 'candidateId'), {
+    kind: str(f, 'kind'), organisation: str(f, 'organisation'), title: str(f, 'title'), fromMonth: str(f, 'fromMonth'), toMonth: str(f, 'toMonth'),
+    isCurrent: f.get('isCurrent') === 'on',
+  }));
+}
+export async function removeCandidateEntryAction(f: FormData) {
+  return run(candidatePage(f), (s) => removeCandidateEntry(s, str(f, 'entryId')));
+}
+/** The browser-declared type is never trusted: the service reads the file's own bytes (core/employee-documents). */
+export async function uploadCandidateFileAction(f: FormData) {
+  const file = f.get('file');
+  return run(candidatePage(f), async (s) => {
+    if (!(file instanceof File) || file.size === 0) throw new RecruitmentError('missing_fields', ['file']);
+    if (file.size > CANDIDATE_FILE_MAX_BYTES) throw new RecruitmentError('file_too_large');
+    await uploadCandidateFile(s, str(f, 'candidateId'), {
+      kind: str(f, 'kind'), fileName: file.name, content: Buffer.from(await file.arrayBuffer()), permissionConfirmed: f.get('permissionConfirmed') === 'on',
+    });
+  });
+}
+export async function deleteCandidateFileAction(f: FormData) {
+  return run(candidatePage(f), (s) => deleteCandidateFile(s, str(f, 'fileId')));
+}
+export async function addCandidateTagAction(f: FormData) {
+  return run(candidatePage(f), (s) => addCandidateTag(s, str(f, 'candidateId'), str(f, 'tagId')));
+}
+export async function removeCandidateTagAction(f: FormData) {
+  return run(candidatePage(f), (s) => removeCandidateTag(s, str(f, 'candidateId'), str(f, 'tagId')));
+}
+export async function recordConsentAction(f: FormData) {
+  return run(candidatePage(f), (s) => recordConsent(s, str(f, 'candidateId'), {
+    status: str(f, 'status'), effectiveOn: str(f, 'effectiveOn'), method: str(f, 'method'), noticeReference: str(f, 'noticeReference'),
+  }));
+}
+export async function updatePrivacySettingsAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=privacy'), (s) => updatePrivacySettings(s, str(f, 'companyId'), {
+    monthsWithoutConsent: str(f, 'monthsWithoutConsent'), monthsWithConsent: str(f, 'monthsWithConsent'), repeatWindowMonths: str(f, 'repeatWindowMonths'),
+  }));
+}
+/** Destruction: the administrator's selection and explicit confirmation; the service re-checks every candidate is due. */
+export async function destroyCandidatesAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=privacy'), (s) => destroyCandidates(s, str(f, 'companyId'), f.getAll('candidateIds').map(String), f.get('confirm') === 'on'),
+    withParam(back(f, '/recruitment/settings?section=privacy'), 'notice', 'removed'));
+}
+export async function saveTagGroupAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=tags'), (s) => saveTagGroup(s, {
+    id: str(f, 'groupId'), companyId: str(f, 'companyId'), name: str(f, 'name'), enabled: f.get('enabled') === 'on',
+  }));
+}
+export async function saveTagAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=tags'), (s) => saveTag(s, {
+    id: str(f, 'tagId'), groupId: str(f, 'groupId'), name: str(f, 'name'), enabled: f.get('enabled') === 'on',
+  }));
 }

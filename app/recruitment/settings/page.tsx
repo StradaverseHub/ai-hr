@@ -7,6 +7,8 @@ import { deleteArchiveReasonAction, saveArchiveReasonAction, updateProcessAction
 import { NoRecruitmentCompany, Notice, RecruitmentTabs, SubTabs, pickCompany, recruitmentAccess, recruitmentErrorText, selectCls } from '../shared';
 import { InterviewSettingsSection } from './interview-settings';
 import { OfferSettingsSection } from './offer-settings';
+import { PrivacySettingsSection } from './privacy-settings';
+import { TagSettingsSection } from './tag-settings';
 
 /**
  * Recruitment › Settings for one company (administrators only). Pipeline: the stage catalogue, recruitment processes
@@ -22,7 +24,7 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
   const [t, nav, locale] = await Promise.all([getTranslations('recruitment.settings'), getTranslations('nav'), getLocale()]);
   const company = pickCompany(companies, sp.company);
   const settings = company ? await recruitmentSettings(s, company.id) : null;
-  const section = sp.section === 'interviews' || sp.section === 'offers' ? sp.section : 'general';
+  const section = sp.section === 'interviews' || sp.section === 'offers' || sp.section === 'privacy' || sp.section === 'tags' ? sp.section : 'general';
   const sectionHref = (key: string) => `/recruitment/settings?${new URLSearchParams({ ...(company ? { company: company.id } : {}), ...(key === 'general' ? {} : { section: key }) })}`;
   const here = sectionHref(section);
   const when = (iso: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(iso));
@@ -32,7 +34,7 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
       <RecruitmentTabs active="settings" />
-      <Notice text={sp.notice === 'saved' ? t('savedNotice') : undefined} />
+      <Notice text={sp.notice === 'saved' ? t('savedNotice') : sp.notice === 'removed' ? t('privacy.removedNotice') : undefined} />
       <ErrorBanner message={await recruitmentErrorText(sp.error)} />
       {!company || !settings ? <NoRecruitmentCompany /> : (
         <>
@@ -46,9 +48,11 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
               <button type="submit" className={btnGhost}>{t('switchCompany')}</button>
             </form>
           )}
-          <SubTabs label={t('sections')} items={(['general', 'interviews', 'offers'] as const).map((key) => ({ key, href: sectionHref(key), text: t(`section.${key}`), current: section === key }))} />
+          <SubTabs label={t('sections')} items={(['general', 'interviews', 'offers', 'privacy', 'tags'] as const).map((key) => ({ key, href: sectionHref(key), text: t(`section.${key}`), current: section === key }))} />
           {section === 'interviews' ? <InterviewSettingsSection s={s} companyId={company.id} here={here} />
-            : section === 'offers' ? <OfferSettingsSection s={s} companyId={company.id} here={here} /> : (<>
+            : section === 'offers' ? <OfferSettingsSection s={s} companyId={company.id} here={here} />
+              : section === 'privacy' ? <PrivacySettingsSection s={s} companyId={company.id} here={here} />
+                : section === 'tags' ? <TagSettingsSection s={s} companyId={company.id} here={here} /> : (<>
 
           <section className="space-y-3" aria-labelledby="stages-title">
             <div><h2 id="stages-title" className="text-base font-semibold">{t('stagesTitle')}</h2><p className="text-sm text-muted-foreground">{t('stagesNote')}</p></div>

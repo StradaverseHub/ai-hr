@@ -3,12 +3,13 @@
  * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4404; these
  * declarations carry no references or checks of their own so they can never disagree with it.
  */
-import { boolean, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import type { ApplicationState, JobEmploymentType, JobMemberRole, JobStatus, PositionAttribute, RecruitmentStageType, RecruitmentType, SystemStageKey } from './model';
 import type {
   ApprovalDecision, CandidateDecision, CandidateResponse, CriterionRating, EvaluationFormDefinition, EvaluationResult, FeedbackEditLock,
   InterviewType, OfferFieldType, OfferSendChannel, OfferStatus, RequisitionApprovalStatus, RequisitionStatus,
 } from './hiring-model';
+import type { CandidateFileKind, CandidateSource, ConsentMethod, ConsentStatus, EducationLevel, EntryKind, IdType } from './privacy-model';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 const audit = {
@@ -105,6 +106,15 @@ export const recruitmentCandidate = pgTable('recruitment_candidate', {
   email: text('email'),
   phone: text('phone'),
   ownerUserId: uuid('owner_user_id'),
+  // Slice 5 (4405): the profile and the removal marker.
+  location: text('location'),
+  currentCompany: text('current_company'),
+  currentTitle: text('current_title'),
+  highestEducation: text('highest_education').$type<EducationLevel>(),
+  noticePeriod: text('notice_period'),
+  source: text('source').$type<CandidateSource>(),
+  destroyedAt: ts('destroyed_at'),
+  destroyedByUserId: uuid('destroyed_by_user_id'),
   ...audit,
 });
 
@@ -153,6 +163,10 @@ export const recruitmentCompanySetting = pgTable('recruitment_company_setting', 
   offerValidDays: integer('offer_valid_days').notNull().default(15),
   offerAcceptMovesForward: boolean('offer_accept_moves_forward').notNull().default(false),
   offerDeclineArchives: boolean('offer_decline_archives').notNull().default(false),
+  // Slice 5 (4405).
+  retentionMonthsWithoutConsent: integer('retention_months_without_consent').notNull().default(6),
+  retentionMonthsWithConsent: integer('retention_months_with_consent').notNull().default(24),
+  repeatWindowMonths: integer('repeat_window_months').notNull().default(3),
   ...audit,
 });
 
@@ -369,4 +383,96 @@ export const recruitmentRequisitionJob = pgTable('recruitment_requisition_job', 
   jobId: uuid('job_id').notNull(),
   createdAt: ts('created_at').notNull().defaultNow(),
   createdByUserId: uuid('created_by_user_id').notNull(),
+});
+
+// ── Slice 5 (db/migrations/4405_recruitment_candidate_privacy.sql) ───────────────────────────────────────────
+
+const bytea = customType<{ data: Buffer; driver: Buffer }>({ dataType: () => 'bytea' });
+
+export const recruitmentCandidateRestricted = pgTable('recruitment_candidate_restricted', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  candidateId: uuid('candidate_id').notNull(),
+  currentSalaryAmount: numeric('current_salary_amount', { precision: 18, scale: 2 }),
+  currentSalaryCurrency: text('current_salary_currency'),
+  expectedSalaryAmount: numeric('expected_salary_amount', { precision: 18, scale: 2 }),
+  expectedSalaryCurrency: text('expected_salary_currency'),
+  idType: text('id_type').$type<IdType>(),
+  idNumber: text('id_number'),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+  updatedByUserId: uuid('updated_by_user_id').notNull(),
+});
+
+export const recruitmentCandidateEntry = pgTable('recruitment_candidate_entry', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  candidateId: uuid('candidate_id').notNull(),
+  kind: text('kind').$type<EntryKind>().notNull(),
+  organisation: text('organisation').notNull(),
+  title: text('title'),
+  fromMonth: date('from_month'),
+  toMonth: date('to_month'),
+  isCurrent: boolean('is_current').notNull().default(false),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+});
+
+export const recruitmentCandidateFile = pgTable('recruitment_candidate_file', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  candidateId: uuid('candidate_id').notNull(),
+  kind: text('kind').$type<CandidateFileKind>().notNull(),
+  fileName: text('file_name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  /** Never selected by a list: only an authorised download reads the bytes. */
+  content: bytea('content').notNull(),
+  permissionConfirmed: boolean('permission_confirmed').notNull(),
+  uploadedAt: ts('uploaded_at').notNull().defaultNow(),
+  uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
+});
+
+export const recruitmentTagGroup = pgTable('recruitment_tag_group', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  name: text('name').notNull(),
+  enabled: boolean('enabled').notNull().default(true),
+  ...audit,
+});
+
+export const recruitmentTag = pgTable('recruitment_tag', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  groupId: uuid('group_id').notNull(),
+  name: text('name').notNull(),
+  enabled: boolean('enabled').notNull().default(true),
+  ...audit,
+});
+
+export const recruitmentCandidateTag = pgTable('recruitment_candidate_tag', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  candidateId: uuid('candidate_id').notNull(),
+  tagId: uuid('tag_id').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+});
+
+export const recruitmentCandidateConsent = pgTable('recruitment_candidate_consent', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  candidateId: uuid('candidate_id').notNull(),
+  status: text('status').$type<ConsentStatus>().notNull(),
+  effectiveOn: date('effective_on').notNull(),
+  method: text('method').$type<ConsentMethod>().notNull(),
+  noticeReference: text('notice_reference'),
+  recordedAt: ts('recorded_at').notNull().defaultNow(),
+  recordedByUserId: uuid('recorded_by_user_id').notNull(),
 });
