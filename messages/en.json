@@ -28380,7 +28380,7 @@
       "next": "Next",
       "stepOf": "Step {current} of {total}",
       "stepNavigation": "Pattern setup navigation",
-      "completeGeneral": "Complete the name, label, company, currency and duration choices before continuing.",
+      "completeGeneral": "Complete the overtime pattern label, name and day types before continuing.",
       "employeeEligibility": "Employee eligibility",
       "testCalculation": "Test calculation and payroll processing",
       "editGeneral": "Edit general settings",
@@ -28388,7 +28388,8 @@
       "editEligibility": "Edit eligibility",
       "salaryDateHelp": "Salary conditions use the employee’s compensation effective on the calculation date, in the configured currency.",
       "and": "AND",
-      "or": "OR"
+      "or": "OR",
+      "draftOnlyNote": "Patterns saved here stay as drafts. Overtime rates and switching a pattern on come back in the next update. Saved companies, currency and rates are kept as they are."
     },
     "title": "Overtime Patterns",
     "descriptionText": "Configure and review employee overtime, payable duration and payroll mapping.",
@@ -28440,7 +28441,7 @@
     "legacyLink": "Open Schedule Groups",
     "legacyContext": "Existing group settings continue to apply unless an effective formula pattern is assigned.",
     "openWorkspace": "Configure Overtime Patterns",
-    "immutableHelp": "Activated versions are read-only. Fork a draft to make future changes.",
+    "immutableHelp": "Activated versions are read-only. Changing them returns in the next update of this page.",
     "readerLimitations": "Recorded field availability",
     "unknownHelp": "Unavailable historical facts remain Unknown. Current employee values cannot replace missing historical evidence.",
     "unavailable": "This pattern or version is unavailable in your current scope.",
@@ -28920,7 +28921,8 @@
     },
     "positionSearch": "Search positions",
     "loadMorePositions": "Load more positions",
-    "attendanceFormulaBinding": "Attendance formula result set: {id}"
+    "attendanceFormulaBinding": "Attendance formula result set: {id}",
+    "chooseOneCompany": "Select one company in the company switcher at the top of the screen before saving a new pattern. The new pattern belongs to that company."
   },
   "systemTestingWorkspace": {
     "title": "System Testing",
