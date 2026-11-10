@@ -31,8 +31,11 @@ import type { ChecklistCandidate } from '@/lib/lifecycle-v9-population';
 import { RequestRecords } from './request-records';
 import { TaskQueue } from './task-queue';
 import { NativeJoiners, type NativeJoinersData } from './native-joiners';
-import { commandV9, createV9Offboarding, readV9PersonnelPreview, saveV9Config, setupV9 } from './actions';
+import { commandV9, createV9Offboarding, readV9PersonnelPreview, saveV9Config, setupV9, readV9WorkflowRemoval, removeV9Workflow, restoreV9Workflow } from './actions';
+import type { WorkflowRemovalActions } from './workflow-removal';
 
+/** Stable references, resolved only when called, for the workflow Delete/Retire/Restore server actions. */
+const workflowRemovalServer: Pick<WorkflowRemovalActions, 'preview' | 'remove' | 'restore'> = { preview: id => readV9WorkflowRemoval(id), remove: input => removeV9Workflow(input), restore: input => restoreV9Workflow(input) };
 const ActorContext = createContext<M.Actor>({ id: '', name: '' });
 const RuleLabels = createContext<Workspace['options']['labels']>({});
 type View = 'joiners' | 'leavers' | 'onbChecklists' | 'offChecklists' | 'tasks' | 'records' | 'templates' | 'workflows' | 'settings' | 'groups' | 'access';
@@ -61,6 +64,7 @@ export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativ
   const [pick, setPick] = useState(''), [document, setDocument] = useState<M.Document | null>(null);
   const configuration = useV9Configuration(initial.config, saveV9Config, () => router.refresh());
   const config = configuration.draft, edit = configuration.edit;
+  const workflowRemoval: WorkflowRemovalActions = { saved: configuration.state === 'saved', ...workflowRemovalServer, changed: message => { setError(''); setNotice(message); router.refresh(); } };
   const inCompany = (id: string) => navigation === 'global' ? companyScope?.includes(id) ?? false : !company || id === company;
   const scopedCases = initial.cases.filter(c => inCompany(c.facts.company));
   const current = scopedCases.find(c => c.id === selected) ?? null;
@@ -103,7 +107,7 @@ export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativ
       {view === 'records' && <RequestRecords cases={scopedCases} native={scopedJoiners} labels={initial.options.labels ?? {}} company={company} search={search} openCase={openCase}/>}
       {(view === 'onbChecklists' || view === 'offChecklists') && <ChecklistEditor actor={initial.actor} users={initial.options.users} eligibleOwnerIds={initial.options.checklistOwnerIds?.filter(id => nativeSettings?.context.config.access[view === 'onbChecklists' ? 'onboarding' : 'offboarding'].includes(id)) ?? []} candidates={[...initial.cases.filter(c => c.state !== 'cancelled').map(c => ({ id: c.id, module: c.module, facts: c.facts, ...(c.state !== 'pending' ? { selectedChecklistId: c.checklistId } : c.override !== 'automatic' ? { selectedChecklistId: c.override === 'none' ? null : c.override } : {}) })), ...(joiners?.rows ?? []).filter(row => row.case.state !== 'cancelled').map(row => ({ id: row.case.id, module: 'onb' as const, facts: nativeV9Facts(row.case), ...(row.case.personnelStatus === 'Active' && row.case.confirmedChecklist ? { selectedChecklistId: row.case.confirmedChecklist.id } : row.case.checklistOverride ? { selectedChecklistId: row.case.checklistOverride === 'none' ? null : row.case.checklistOverride } : {}) }))].filter(candidate => inCompany(candidate.facts.company))} config={config} module={view === 'onbChecklists' ? 'onb' : 'off'} selected={pick} select={setPick} edit={edit} editable={initial.canConfigure}/>}
       {view === 'templates' && <TemplateEditor previewCases={[...scopedCases.map(c => ({ id: c.id, module: c.module, label: c.facts.name + ' (' + c.facts.employeeNo + ')' })), ...(scopedJoiners?.rows ?? []).map(row => ({ id: row.case.id, module: 'onb' as const, label: nativeV9Facts(row.case).name }))]} users={initial.options.users} references={initial.definitionUsage} usage={initial.templateUsage} saved={configuration.state === 'saved'} config={config} selected={pick} select={setPick} module={module} setModule={setModule} edit={edit} editable={initial.canConfigure}/>}
-      {view === 'workflows' && <>{workflowNavigation}<WorkflowEditor cases={cases} users={initial.options.users} actor={initial.actor} labels={initial.options.labels ?? {}} config={config} selected={pick} select={setPick} module={module} setModule={setModule} edit={edit} editable={initial.canConfigure}/></>}
+      {view === 'workflows' && <>{workflowNavigation}<WorkflowEditor cases={cases} users={initial.options.users} actor={initial.actor} labels={initial.options.labels ?? {}} config={config} selected={pick} select={setPick} module={module} setModule={setModule} edit={edit} editable={initial.canConfigure} removal={workflowRemoval}/></>}
       {view === 'groups' && !nativeSettings && <section className="v9-panel"><h2>Assignment groups access</h2><p>Onboarding module or Master Admin access is required to manage assignment groups.</p></section>}
       {view === 'settings' && <WorkspaceSettings hasOffboarding={initial.permissions?.offboarding!==false} activeTab={settingsTab} onTabChange={setSettingsTab} externalOnboarding nativeSettings={nativeSettings} config={config} options={initial.options} editable={initial.canConfigure} edit={edit}/>}
       {view === 'access' && <section className="v9-panel"><h2>Module access</h2><p>Choose who can open each module. Company permissions and HR-only fields are checked separately.</p>{!nativeSettings?.context.actor.master&&<p className="v9-muted">Master Admin access is required to change module access.</p>}</section>}
