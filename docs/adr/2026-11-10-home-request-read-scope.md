@@ -188,6 +188,70 @@ calculation, authority, ordering or failure changes.
    and every section with its owner for each fixture subject (`beforePayroll:*`), with fixture rows for every owner
    added after the traces; test/before-payroll-checklist.test.ts does the same per login.
 
+12. **One request preamble per carrier: the proofs, own identity and configuration reads ride its identity statement**
+   (`core/home-request-preamble.ts`, branch `claude/home-bundles-preamble-20261111`). Every composition of a Home stream
+   and of a Today page render first sends the same owner statements: the repeatable-read-only proof, the presentation
+   (read-composition), assigned-work and own-subject principal proofs, `app.principal_snapshot_current()`, the own
+   employment inventory and its dated company proof, the selected employment's two checks (current own Home employment,
+   own profile-edit employment), `app.own_home_dashboard_role`, the Home configuration revision,
+   `app.dashboard_layout_get()` and the module entitlement snapshot, and the account task statement's `set local jit=off`.
+   - *Mechanism: the carrier's statement memo is seeded, not a preamble object each owner consults.* After its six
+     identity settings, the carrier's one identity statement (db/client.ts `bootstrapTenantTx`, `preambleColumns`)
+     evaluates one more column: each of those owner statements as a sub-select of the statement its owner builds. The
+     owners now build them through exported builders they call themselves (`repeatableReadOnlyProofSql`,
+     `principalSnapshotCurrentSql`, `aiPresentationPrincipalStatementSql`, `assignedWorkPrincipalSql`,
+     `ownHomeSubjectPrincipalSql`, `ownEmploymentSubjectsQuery`, `provenCompanyDatePointsSql`, `ownHomeDashboardRoleSql`,
+     `currentOwnHomeEmploymentQuery`, `ownProfileEditEmploymentQuery`, `homeConfigurationRevisionQuery`,
+     `dashboardLayoutGetSql`, the entitlements' `snapshotQuery`), so the text is one source. The column is decoded into
+     driver-shaped answers, each keyed exactly like decision 5's memo (mode, statement text, parameters), and entered into
+     the carrier's memo before any owner can join. An owner that later sends that statement receives it as the memo
+     answers any identical read repeated in one snapshot. Owners keep their code, call sites, order and failure
+     behaviour; a statement with any other text, mode or parameter (another employment, a later date) is not in the memo
+     and reads as before, so a key that does not match costs a trip and never a result. A typed object consulted by
+     each owner was the alternative; it would have put a preamble branch into a dozen owners and their many callers.
+   - *Why results cannot change.* (1) Same transaction, snapshot and identity: a REPEATABLE READ transaction takes its
+     snapshot at its first statement, which is this one; the column is a sub-select whose one-time filter requires each
+     setting the statement sets (tenant, user, roles, grants, agent principal, payroll tax basis reader) to hold already,
+     so if PostgreSQL ever evaluated it before the `set_config` calls it would be null and nothing would be answered.
+     After it, no statement in a carrier can change a setting (decision 1 refuses `set_config` and `SET`); the audit chain
+     flag a first arming sets in a second statement is read only by the domain-event writer, which a read-only carrier
+     never runs. (2) Same statements and parameters: each sub-select is the owner's text with the owner's parameters. Where
+     a parameter is an earlier answer (the dated proof's points, the employment a page render selects, the configuration's
+     company and role), the same statement computes it, returns it beside the answer, and the answer is entered under the
+     parameters it was evaluated with (the owner's builder again, from the returned values), never under the ones it was
+     meant for. The points are an equal jsonb value (jsonb is canonical; the function also deduplicates and orders).
+     (3) The driver's own rows: text, uuid, date and timestamp values travel as their `::text` output, which is what the
+     driver receives for them under drizzle's transparent date parsers; booleans and integers as JSON; json and jsonb
+     values are embedded by `json_build_object` as their own text output, so parsing yields what the driver's parse
+     yields. The inventory and the proofs are aggregated in their owners' own order keys (hire date and id; employment
+     and date), and every one-row statement answered is on a unique key (employment id; configuration ordinal, unique per
+     company and role). A value of an unexpected shape answers nothing. (4) One carrier, one identity: the memo belongs to
+     the carrier and is dropped with it; another identity never joins (decision 1); the same login asking for another
+     employment or date has another key.
+   - *Which employment.* The stream declares its selected employment (`declareSharedReadPreamble(homeRequestPreamble(id))`,
+     only an id of the owners' own shape). A page render's request scope selects as the owners do without a selection: the
+     login's only own employment, and nothing employment-specific for a login with none or several.
+   - *JIT.* The same identity statement sets `jit` off (`set_config('jit','off',true)`, SET LOCAL's own form) and the
+     carrier holds it (decision 5), so the account task statement's, Claims' and Attendance's `set local jit=off` cost no
+     trip. JIT changes how a statement is planned and compiled, never its result; before, the first owner to send it set
+     it for every later statement of the carrier anyway.
+   - *Where.* Every request scope's carriers read the registered preamble (registered by core/home-request-preamble.ts,
+     which the root layout imports), so the shell's approvals badge shares it on every page; on a page without Home
+     sections its identity part is read in the round trip the carrier already pays and goes unused. The Home stream
+     declares it. withTenant's own transactions, a plain shared session that declares nothing, and every fallback read
+     exactly as before.
+   - *Equivalence.* `withOwnerPreambleReads` keeps every owner's own statement. test/home-request-preamble.test.ts and the
+     hosted diagnostic's `preamble:*` comparisons cover the stream frames, every card, every Today section, every complete
+     page owner in one render, and each answered statement against the owner's statement sent by itself in one snapshot,
+     for the stream's employment and a page render; for every fixture subject (terminated, other tenant, cross-company
+     manager), two own employments, a refused principal and a substituted person id; and guests and foreign employments
+     inside a host carrier.
+   - *Trips* (hosted run 42874922657, preamble off -> on, manager and employee alike unless shown): stream 29 -> 17;
+     one page render's sections 51 -> 40 (employee 44 -> 33); the whole page 80 -> 57 (employee 73 -> 50). Each carrier
+     answers 13 owner statements ahead. What remains in the stream is BEGIN, the identity statement and COMMIT and the
+     cards' own reads; in the page also the two owners that fall back to their own transactions (Needs you's statement
+     timeout setting and AI Centre's barrier), whose bootstrap and presentation proof no carrier can answer.
+
 ## Not done here
 
 - **Before payroll's remaining reads** (decision 11). The own-subject proof and company date proof
@@ -203,6 +267,11 @@ calculation, authority, ordering or failure changes.
   `explainEntitlementEligibility` live: every table version and rule of that type, the membership per rule and the first
   failing axis per rule. It could take the same preloaded tables and rules and ask every membership and axis subset in one
   `resolveOrgCriteriaTargetsBatch` statement, plus the person and dated assignment facts it quotes.
+- **The request preamble's remaining trips** (decision 12). Each carrier still pays BEGIN, its identity statement and
+  COMMIT (the driver sends BEGIN and COMMIT as statements of their own; folding them would mean inlining the identity
+  values as literals into one simple-protocol message). Owner fallbacks in their own transactions (a refused setting or
+  barrier) still send their own bootstrap and proofs, which no carrier can answer. A page render that the shell's badge
+  and the page's sections reach at different times opens a fresh carrier, which reads the preamble again.
 
 ## Read models worth maintaining
 
