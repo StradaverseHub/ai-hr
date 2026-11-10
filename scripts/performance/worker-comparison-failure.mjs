@@ -1,5 +1,6 @@
 /** Closed, diagnostic-only facts from the existing fictional comparison owner. */
 import {driverErrorFact} from './driver-shutdown.mjs';
+import {routePools} from './system-route-manifest.mjs';
 
 export const workerDriverFailureFile='worker-driver-failure.json';
 export const workerDriverFailureBytes=3584;
@@ -23,7 +24,7 @@ const outcomes=new Set([...specificHttpStatuses].map(status=>'http-'+status).con
 const advisoryFamilies=new Set(['access-configuration','ai-control','audit-chain','employment','payroll-history',
  'pay-component-catalog','leave-dependency-configuration','leave-dependency-employment','advisory-unclassified']);
 const nativeFamilies=new Set([...advisoryFamilies,'transaction','relation','tuple','unknown']);
-const homePhases=new Set(['baseline','loaded']);
+const homePhases=new Set(['baseline','sign-in-preflight','loaded']);
 // Closed Home card inventory rendered by the personal and HR Home surfaces.
 export const homeFailureCards=Object.freeze(['calendar','celebrations','notices','summary','tasks','team','timeOff','today',
  'attendanceOverview','companies','headcount','headcountByCompany','latestPayroll','latestPayrollRun','noticeBoard','pendingLeave',
@@ -132,6 +133,47 @@ function closedHomeFact(value){
   section:section===null?null:homeSection.test(section)?section:'other',message:closedMessage(value?.message)};
 }
 
+const stageSteps=new Set(['legacy-navigation-capture','hidden-shell-capture','primary-route-observer','primary-route-navigation','primary-route-retirement',
+ 'sign-in','navigation','page-content','heading','table-data','personnel-access-lock','personnel-statement-timeout','payslip-statement','analytics-metrics',
+ 'roster-scoped-grid','job-description-read-controls','lifecycle-staff-tiles','home-cards','navigation-timing','native-primary-rendered-evidence']);
+const knownRoutes=new Set(Object.values(routePools).flat());
+const stageSources=/^[a-z][a-z-]{0,48}\.(?:mjs|ts)$/;
+const authoredMessage=/^[A-Za-z][A-Za-z0-9 ,.'\/:()_-]{0,119}$/;
+const scenarioId=/^[A-Za-z0-9._:-]{1,96}$/;
+const navigationCounts=['busy','unavailable','alerts','http500','pageErrors'];
+const closedToken=value=>typeof value==='string'&&(homeCardSet.has(value)||homeSection.test(value));
+const scalar=value=>typeof value==='boolean'||(Number.isSafeInteger(value)&&Math.abs(value)<=1000000)?value:null;
+/** Only an authored assertion literal, numbers, booleans and the closed Home inventory leave the driver. */
+function assertionFact(error){
+ if(error?.code!=='ERR_ASSERTION'||typeof error!=='object')return null;
+ const inventory=value=>Array.isArray(value)&&value.length<=64&&value.every(item=>typeof item==='string')?value:null;
+ const actual=inventory(error.actual),expected=inventory(error.expected),diff=(left,right)=>left&&right?left.filter(item=>!right.includes(item)&&closedToken(item)).slice(0,8):[];
+ // Node appends the value diff after the authored first line; only that literal line may leave.
+ const authored=error.generatedMessage===false&&typeof error.message==='string'?error.message.split('\n',1)[0]:'';
+ return {message:authoredMessage.test(authored)?authored:null,
+  expected:scalar(error.expected),actual:scalar(error.actual),missing:diff(expected,actual),unexpected:diff(actual,expected)};
+}
+/** One closed account of where the primary failure happened: step, role, route, source line and assertion. */
+export function workerStageFailureFact({step,role,route,sourceFile,sourceLine,error,navigation}={}){
+ const counts=navigation?.counts&&fields(navigation.counts,navigationCounts)&&navigationCounts.every(key=>integer(navigation.counts[key],1000000))?navigation.counts:null;
+ return {step:stageSteps.has(step)?step:'unavailable',role:roles.has(role)?role:null,route:typeof route==='string'?knownRoutes.has(route)?route:'other':null,
+  sourceFile:typeof sourceFile==='string'&&stageSources.test(sourceFile)?sourceFile:null,sourceLine:integer(sourceLine,1000000)?sourceLine:null,
+  assertion:assertionFact(error),
+  navigation:navigation&&typeof navigation.scenarioId==='string'&&scenarioId.test(navigation.scenarioId)?{scenarioId:navigation.scenarioId,
+   check:typeof navigation.checkId==='string'&&scenarioId.test(navigation.checkId)?navigation.checkId:null,counts}:null};
+}
+const validInventory=value=>Array.isArray(value)&&value.length<=8&&value.every(closedToken);
+const validAssertion=value=>value===null||fields(value,['message','expected','actual','missing','unexpected'])
+ &&(value.message===null||typeof value.message==='string'&&authoredMessage.test(value.message))&&scalar(value.expected)===value.expected&&scalar(value.actual)===value.actual
+ &&validInventory(value.missing)&&validInventory(value.unexpected);
+const validStage=value=>value===null||fields(value,['step','role','route','sourceFile','sourceLine','assertion','navigation'])
+ &&(value.step==='unavailable'||stageSteps.has(value.step))&&(value.role===null||roles.has(value.role))
+ &&(value.route===null||value.route==='other'||knownRoutes.has(value.route))&&(value.sourceFile===null||typeof value.sourceFile==='string'&&stageSources.test(value.sourceFile))
+ &&(value.sourceLine===null||integer(value.sourceLine,1000000))&&validAssertion(value.assertion)
+ &&(value.navigation===null||fields(value.navigation,['scenarioId','check','counts'])&&scenarioId.test(value.navigation.scenarioId)
+  &&(value.navigation.check===null||scenarioId.test(value.navigation.check))
+  &&(value.navigation.counts===null||fields(value.navigation.counts,navigationCounts)&&navigationCounts.every(key=>integer(value.navigation.counts[key],1000000))));
+
 function homeFailures(rows){
  if(!Array.isArray(rows)||rows.length>4096)return null;
  const groups=new Map();
@@ -208,16 +250,17 @@ function projectDriverFailure(stage,workload,report,loaded){
   preflightLocks:lockFacts(report.lockSampling?.preflight?.cadence),loadedLocks:lockFacts(report.lockSampling?.loaded?.cadence),
   traffic:report.measurementWindow===undefined?null:loaded?.traffic??null,
   loadedAdvisory:report.measurementWindow===undefined?null:loaded?.loadedAdvisory??null,homeFailures:homeFailures(report.homeCardFailures),
+  stageFailure:validStage(report.workerStageFailure??null)?report.workerStageFailure??null:null,
   loadEntered:report.measurementWindow!==undefined,steadyWindowElapsed:typeof report.steady?.load?.windowElapsed==='boolean'
    ?report.steady.load.windowElapsed:null};
 }
 
 export function validateWorkerDriverFailure(value){
- return fields(value,['kind','stage','workload','primary','firstSecondary','counts','preflightLocks','loadedLocks','traffic','loadedAdvisory','homeFailures','loadEntered','steadyWindowElapsed'])
+ return fields(value,['kind','stage','workload','primary','firstSecondary','counts','preflightLocks','loadedLocks','traffic','loadedAdvisory','homeFailures','stageFailure','loadEntered','steadyWindowElapsed'])
   &&value.kind===kind&&stages.has(value.stage)&&(value.workload===null||workloads.has(value.workload))
   &&validError(value.primary)&&validError(value.firstSecondary)&&fields(value.counts,countKeys)
   &&countKeys.every(key=>knownCount(value.counts[key]))&&validLock(value.preflightLocks)&&validLock(value.loadedLocks)
-  &&validTraffic(value.traffic)&&validAdvisory(value.loadedAdvisory)&&validHome(value.homeFailures)
+  &&validTraffic(value.traffic)&&validAdvisory(value.loadedAdvisory)&&validHome(value.homeFailures)&&validStage(value.stageFailure)
   &&typeof value.loadEntered==='boolean'&&(value.loadEntered||value.traffic===null&&value.loadedAdvisory===null)&&(value.steadyWindowElapsed===null
    ||value.loadEntered&&typeof value.steadyWindowElapsed==='boolean')
   ?value:null;

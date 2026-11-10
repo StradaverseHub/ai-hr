@@ -7,7 +7,7 @@ import {routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,writeDevelopmentRenderedRouteUnion,
- installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,legacyNavigationFailureFacts} from './navigation-browser-capture.ts';
+ installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,legacyNavigationFailureCounts,legacyNavigationFailureFacts} from './navigation-browser-capture.ts';
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
 import {NATIVE_HIDDEN_SHELL_CASES} from './navigation-protocol.ts';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
@@ -43,7 +43,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
-import {createWorkerLoadedDiagnostics,homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
+import {createWorkerLoadedDiagnostics,homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,workerDriverFailureFile,workerStageFailureFact} from './worker-comparison-failure.mjs';
 import {readMeasuredClockCs,readMeasuredClockIdentity} from './measured-lock-clock.mjs';
 import {createMeasuredPreflightObserver,measuredLockSampleLimit,observeDatabaseLockCore,observeMeasuredLockConnection} from './measured-lock-observer.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
@@ -999,6 +999,7 @@ async function main(){
   }catch(error){
    visitFailed=true;
    failures.notePrimary(error);
+   noteWorkerStageFailure(error,visitStage,user,path);
    await failures.attempt('visit-diagnostic',async()=>{
    const nativeEvidence=nativeEvidenceRule&&browserFactsBefore?{
     rule:nativeRenderedVisitFailureRule(error)??nativeEvidenceRule,
@@ -1161,6 +1162,15 @@ async function main(){
    finally{noteEvidence(()=>{page.off('request',observe);(report.assistantHistoryTraffic??=[]).push({phase,role:user.role,...traffic});save();});}
   }
  }
+ /** Comparison cells publish a closed account of the step that produced the primary failure. */
+ function noteWorkerStageFailure(reason,step,user=null,route=null){
+  if(!serialComparison||failures.primary().reason!==reason)return;
+  noteEvidence(()=>{
+   const facts=step==='legacy-navigation-capture'?legacyNavigationFailureFacts(reason):null;
+   report.workerStageFailure??=workerStageFailureFact({step,role:user?.role??null,route,...browserPreflightFailureLocation(reason),error:reason,
+    navigation:facts?{...facts,counts:legacyNavigationFailureCounts(reason)}:null});
+  });
+ }
  function notePreflightStageFailure(reason,stage,user=null,page=null){
   if(!fullDevelopmentRoutes)return;
   notePrimary(reason);
@@ -1207,6 +1217,8 @@ async function main(){
      await nativeDom.finish(()=>nativeRemaining(retirementDeadline));
     }
    }catch(reason){
+    notePrimary(reason);
+    noteWorkerStageFailure(reason,stage,user,null);
     notePreflightStageFailure(reason,stage,user,page);
     throw reason;
    }

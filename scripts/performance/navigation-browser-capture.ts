@@ -24,6 +24,12 @@ const legacyFailures=new WeakMap<Error,Readonly<{scenarioId:string;checkId:strin
 export function legacyNavigationFailureFacts(error:unknown){
  return error instanceof Error?legacyFailures.get(error)??null:null;
 }
+type LegacyFailureCounts=Readonly<{busy:number;unavailable:number;alerts:number;http500:number;pageErrors:number}>;
+const legacyFailureCounts=new WeakMap<Error,LegacyFailureCounts>();
+/** The scenario's own failure census at the moment it refused: numbers only. */
+export function legacyNavigationFailureCounts(error:unknown){
+ return error instanceof Error?legacyFailureCounts.get(error)??null:null;
+}
 const instrumented=new WeakSet<Page>();
 async function installFailureObserver(page:Page){
  if(instrumented.has(page))return;instrumented.add(page);
@@ -455,7 +461,7 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
    status:200,finalPath:target.pathname,internalSessionObserved:true,fixtureIdentityObserved:true,elapsedMs:performance.now()-started,checks,failures,
    ...(startedWith?{startedWith}:{}),...(usableWith?{usableWith}:{})};
  }catch(error){
-  if(error instanceof Error)legacyFailures.set(error,Object.freeze({scenarioId:scenario.id,checkId}));
+  if(error instanceof Error){legacyFailures.set(error,Object.freeze({scenarioId:scenario.id,checkId}));legacyFailureCounts.set(error,Object.freeze({...failures}));}
   throw error;
  }finally{
   page.off('response',response);page.off('pageerror',pageError);page.off('console',consoleError);

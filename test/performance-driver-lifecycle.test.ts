@@ -547,6 +547,40 @@ it('names the failed Home card and its catalog message key without exporting ren
  expect(bounded.homeFailures).toHaveLength(8);expect(bounded.counts.homeCardFailures).toBe(64);
 });
 
+it('names the failing driver step, route and authored assertion without exporting a fixture value',async()=>{
+ const {projectWorkerDriverFailure,validateWorkerDriverFailure,workerStageFailureFact}=await import('../scripts/performance/worker-comparison-failure.mjs');
+ const assert=(await import('node:assert/strict')).default;
+ const sensitive='PERF Person 0004 person4@example.invalid';
+ const failure=(work:()=>void)=>{try{work();}catch(error){return error;}throw Error('expected an assertion');};
+ const inventory=failure(()=>assert.deepEqual(['calendar','tasks',sensitive],['calendar','summary','tasks'],'fictional Home must render every expected card'));
+ const home=workerStageFailureFact({step:'home-cards',role:'manager',route:'/',sourceFile:'system-load-owner.mjs',sourceLine:917,error:inventory,navigation:null});
+ expect(home).toEqual({step:'home-cards',role:'manager',route:'/',sourceFile:'system-load-owner.mjs',sourceLine:917,navigation:null,
+  assertion:{message:'fictional Home must render every expected card',expected:null,actual:null,missing:['summary'],unexpected:[]}});
+ const census=failure(()=>assert(false,'Navigation rendered failure state or browser/server error'));
+ const navigation=workerStageFailureFact({step:'legacy-navigation-capture',role:'employee',route:null,sourceFile:'navigation-browser-capture.ts',sourceLine:458,error:census,
+  navigation:{scenarioId:'submenu.claims.types.employee.denied',checkId:null,counts:{busy:0,unavailable:0,alerts:1,http500:0,pageErrors:0}}});
+ expect(navigation).toMatchObject({assertion:{message:'Navigation rendered failure state or browser/server error'},
+  navigation:{scenarioId:'submenu.claims.types.employee.denied',check:null,counts:{alerts:1}}});
+ // Generated assertion text and values never leave, whatever they contain.
+ const generated=workerStageFailureFact({step:sensitive,role:sensitive,route:'/personnel/'+sensitive,sourceFile:sensitive,sourceLine:-1,
+  error:failure(()=>assert.equal(sensitive,'other')),navigation:{scenarioId:sensitive,checkId:sensitive,counts:{secret:sensitive}}});
+ expect(generated).toEqual({step:'unavailable',role:null,route:'other',sourceFile:null,sourceLine:null,navigation:null,
+  assertion:{message:null,expected:null,actual:null,missing:[],unexpected:[]}});
+ expect(workerStageFailureFact({step:'navigation',error:Error(sensitive)}).assertion).toBeNull();
+ const numeric=workerStageFailureFact({step:'home-cards',error:failure(()=>assert.equal(3,0,'cards'))});
+ expect(numeric.assertion).toMatchObject({expected:0,actual:3,message:'cards'});
+ const result=projectWorkerDriverFailure('sign-in-and-navigation',null,{workerStageFailure:home});
+ expect(validateWorkerDriverFailure(result)).toEqual(result);expect(result.stageFailure).toEqual(home);
+ expect(JSON.stringify([home,navigation,generated,result])).not.toContain(sensitive);
+ expect(projectWorkerDriverFailure('sign-in-and-navigation',null,{workerStageFailure:{...home,route:sensitive}}).stageFailure).toBeNull();
+ expect(projectWorkerDriverFailure('sign-in-and-navigation',null,{}).stageFailure).toBeNull();
+ for(const invalid of [{...home,sourceFile:sensitive},{...home,assertion:{...home.assertion,message:sensitive}},{...home,assertion:{...home.assertion,missing:[sensitive]}},{...navigation,navigation:{...navigation.navigation,scenarioId:sensitive}}])
+  expect(validateWorkerDriverFailure({...result,stageFailure:invalid})).toBeNull();
+ const signedIn=projectWorkerDriverFailure('sign-in-and-navigation',null,{homeCardFailures:[{role:'manager',phase:'sign-in-preflight',messages:[],cards:[{card:'tasks',marker:'alert',section:null,message:'employeeHome.tasks.timeout'}]}]});
+ expect(signedIn.homeFailures).toEqual([{role:'manager',phase:'sign-in-preflight',count:1,cards:[{card:'tasks',marker:'alert',section:null,message:'employeeHome.tasks.timeout',count:1}]}]);
+ expect(validateWorkerDriverFailure(signedIn)).toEqual(signedIn);
+});
+
 it('keeps native failure categories bounded, independent of the loaded sampling phase and free of process data',async()=>{
  const {projectWorkerNativeLockFailures}=await import('../scripts/performance/worker-comparison-failure.mjs');
  const failures=[
