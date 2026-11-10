@@ -149,7 +149,7 @@ export function inspectMeasuredPreflightArchiveBytes(bytes, { source, runId }, t
   let raw;
   try {
     raw = execFileSync('/usr/bin/python3', ['-I', '-B', '-c', extract], {
-      input: bytes, timeout: timeoutMs, killSignal: 'SIGKILL', env: environment,
+      input: bytes, timeout: timeoutMs, killSignal: 'SIGKILL', env: environment, cwd: '/',
       maxBuffer: (members.length - 1) * maximumMemberBytes + maximumReceiptBytes + 4 * members.length, stdio: ['pipe', 'pipe', 'pipe'],
     });
   } catch {
@@ -209,10 +209,10 @@ function remaining(deadline, maximum = 15000) {
   return milliseconds;
 }
 
-function command(executable, args, deadline, env = environment) {
+function command(executable, args, deadline, env = environment, cwd = controllerRoot) {
   try {
     return execFileSync(executable, args, {
-      env, timeout: remaining(deadline), killSignal: 'SIGKILL', maxBuffer: 1024 ** 2,
+      env, cwd, timeout: remaining(deadline), killSignal: 'SIGKILL', maxBuffer: 1024 ** 2,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch {
@@ -282,7 +282,8 @@ export function readMeasuredPreflightArchiveRefusalStage(reason) {
 async function collectMeasuredPreflightArchive(mark) {
   const deadline = performance.now() + 150000;
   const temp = process.env.RUNNER_TEMP;
-  assert(typeof temp === 'string' && realpathSync(temp) === temp && lstatSync(temp).isDirectory()
+  assert(typeof temp === 'string' && temp !== controllerRoot && !temp.startsWith(controllerRoot + '/')
+    && realpathSync(temp) === temp && lstatSync(temp).isDirectory()
     && lstatSync(temp).uid === process.getuid(), 'Measured preflight runner directory refused');
   mark('event-custody');
   const event = hostedEvent(temp);
@@ -301,13 +302,14 @@ async function collectMeasuredPreflightArchive(mark) {
   const privateDirectory = mkdtempSync(join(temp, 'measured-preflight-archive-'));
   const configDirectory = join(privateDirectory, 'gh');
   mkdirSync(configDirectory, { mode: 0o700 });
-  const github = { ...environment, GH_TOKEN: token, GH_CONFIG_DIR: configDirectory, GH_PROMPT_DISABLED: '1',
+  // Provider tools may keep local state. Never run them inside the checkout they must authenticate.
+  const github = { ...environment, HOME: privateDirectory, GH_TOKEN: token, GH_CONFIG_DIR: configDirectory, GH_PROMPT_DISABLED: '1',
     GH_NO_UPDATE_NOTIFIER: '1', GH_NO_EXTENSION_UPDATE_NOTIFIER: '1' };
   const root = 'repos/' + repository;
   const ghArgs = endpoint => ['api', '--hostname', 'github.com', '--method', 'GET', endpoint];
   const get = (stage, endpoint) => {
     mark(stage);
-    return json(command('/usr/bin/gh', ghArgs(endpoint), deadline, github));
+    return json(command('/usr/bin/gh', ghArgs(endpoint), deadline, github, privateDirectory));
   };
   const current = get('current-run-read', root + '/actions/runs/' + currentRunId);
   mark('current-run-contract');
@@ -334,7 +336,7 @@ async function collectMeasuredPreflightArchive(mark) {
     await downloadCiArchives([artifact], privateDirectory, {
       concurrency: 1, timeoutMs: remaining(deadline - 20000, 100000),
       start: () => spawn('/usr/bin/gh', ghArgs(root + '/actions/artifacts/' + metadata.artifactId + '/zip'), {
-        env: github, stdio: ['ignore', 'pipe', 'pipe'],
+        env: github, cwd: privateDirectory, stdio: ['ignore', 'pipe', 'pipe'],
       }),
     });
   } catch {
