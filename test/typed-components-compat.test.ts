@@ -64,6 +64,15 @@ const money = (st: unknown) => {
   expect(context.itemization).toBe('componentLines' in rest?'complete':'partial');
   rest.reportContext={...context,itemization:'validated-itemization'};
   for (const k of PROVENANCE_ONLY) delete rest[k];
+  // c2ea9567 — the HRDF wages' ITEMISATION is provenance in exactly the sense componentLines is: the legacy
+  // path can only name its compensation allowance ("allowance" line), the typed path names the pay item
+  // behind it. The money in the stamp — wages, rate, calculated and charged levy — is still compared
+  // byte-for-byte, and the items must still sum to the same wages on both paths.
+  if (rest.hrdfWorking && typeof rest.hrdfWorking === 'object') {
+    const { items, ...figures } = rest.hrdfWorking as { items: { amount: number }[] } & Record<string, unknown>;
+    expect(Math.round(items.reduce((sum, it) => sum + it.amount, 0) * 100) / 100).toBe(figures.wages);
+    rest.hrdfWorking = figures;
+  }
   return rest;
 };
 const noUnexpectedNewKeys = (typed: unknown, legacy: unknown) =>

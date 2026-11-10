@@ -49,6 +49,7 @@
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { epfWorkingRows } from './epf-working';
+import { hrdfCalculationLine, hrdfWorkingRows } from './hrdf-working';
 import { Card } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
 // `isSetByHand` is the derivation's OWN predicate over `provenance` — imported rather than re-spelled as
@@ -406,6 +407,47 @@ export async function StatutoryDetailView({
                   <Row key={index} label={label} value={value} />
                 ))}
               </div>
+            ) : i.key === 'hrdf' && explanation.hrdfWorking ? (
+              /* c2ea9567 — the HRDF wages as the run itemised them, the stamped rate and the levy. Every
+                 figure is off `statutory.hrdfWorking`; see app/payroll/statutory-detail/hrdf-working.ts. */
+              <div aria-label={t('hrdfWorkingTitle')} className="space-y-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="text-sm font-medium">{t('hrdfWorkingTitle')}</p>
+                  <p className="text-xs text-muted-foreground">{t('hrdfEmployerCostNote')}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">{t('hrdfWorkingIntro')}</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr className="border-b border-border">
+                        <th className="py-1.5 pr-3 font-medium">{t('hrdfColDescription')}</th>
+                        <th className="py-1.5 pr-3 font-medium">{t('hrdfColTreatment')}</th>
+                        <th className="py-1.5 text-right font-medium">{t('hrdfColAmount')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {hrdfWorkingRows(explanation.hrdfWorking, t, rm, locale).map((row, index) => (
+                        <tr key={index} className={row.emphasis ? 'font-semibold' : undefined}>
+                          <td className="py-1.5 pr-3">
+                            {row.description}
+                            {row.code && (
+                              <span className="ml-1.5 font-mono text-xs text-muted-foreground">{row.code}</span>
+                            )}
+                          </td>
+                          <td className="py-1.5 pr-3 text-muted-foreground">{row.treatment}</td>
+                          <td className="py-1.5 text-right tabular-nums whitespace-nowrap">{row.amount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="break-words rounded-md border border-border bg-background px-3 py-2 font-mono text-sm tabular-nums">
+                  {hrdfCalculationLine(explanation.hrdfWorking, t, rm, locale)}
+                </p>
+                {explanation.hrdfWorking.levySetByHand && (
+                  <p className="text-xs text-muted-foreground">{t('manualNote')}</p>
+                )}
+              </div>
             ) : i.workingNotRecorded ? (
               <p className="text-sm text-muted-foreground">{t('workingNotRecorded')}</p>
             ) : i.ruleKind === 'mtd' ? (
@@ -444,6 +486,11 @@ export async function StatutoryDetailView({
                     no percentage at all because the amount and the wage are not the same month's money. */}
                 <p className="text-xs text-muted-foreground">{t(workingNoteKey(i, incremental))}</p>
               </>
+            )}
+            {/* c2ea9567 — a payslip processed before the HRDF wages were itemised keeps the line above and
+                says where the itemisation begins, rather than inventing lines it never recorded. */}
+            {i.key === 'hrdf' && explanation.hrdfBreakdownNotRecorded && (
+              <p className="text-xs text-muted-foreground">{t('hrdfBreakdownNotRecorded')}</p>
             )}
           </div>
 
