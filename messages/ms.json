@@ -28441,7 +28441,7 @@
       "next": "Seterusnya",
       "stepOf": "Langkah {current} daripada {total}",
       "stepNavigation": "Navigasi persediaan corak",
-      "completeGeneral": "Lengkapkan nama, label, syarikat, mata wang dan pilihan tempoh sebelum meneruskan.",
+      "completeGeneral": "Lengkapkan label, nama dan jenis hari corak lebih masa sebelum meneruskan.",
       "employeeEligibility": "Kelayakan pekerja",
       "testCalculation": "Uji pengiraan dan pemprosesan gaji",
       "editGeneral": "Edit tetapan umum",
@@ -28449,7 +28449,8 @@
       "editEligibility": "Edit kelayakan",
       "salaryDateHelp": "Syarat gaji menggunakan pampasan pekerja yang berkuat kuasa pada tarikh pengiraan dalam mata wang ditetapkan.",
       "and": "DAN",
-      "or": "ATAU"
+      "or": "ATAU",
+      "draftOnlyNote": "Corak yang disimpan di sini kekal sebagai draf. Kadar lebih masa dan pengaktifan corak akan kembali dalam kemas kini seterusnya. Syarikat, mata wang dan kadar yang telah disimpan dikekalkan seperti sedia ada."
     },
     "title": "Corak Kerja Lebih Masa",
     "descriptionText": "Konfigurasi dan semak kerja lebih masa pekerja, tempoh bayaran dan pemetaan gaji.",
@@ -28501,7 +28502,7 @@
     "legacyLink": "Buka Kumpulan Jadual",
     "legacyContext": "Tetapan kumpulan sedia ada terus terpakai melainkan corak formula berkuat kuasa ditetapkan.",
     "openWorkspace": "Konfigurasi Corak Kerja Lebih Masa",
-    "immutableHelp": "Versi diaktifkan adalah baca sahaja. Cipta draf baharu untuk perubahan akan datang.",
+    "immutableHelp": "Versi diaktifkan adalah baca sahaja. Pengubahannya akan kembali dalam kemas kini seterusnya halaman ini.",
     "readerLimitations": "Ketersediaan medan direkodkan",
     "unknownHelp": "Fakta sejarah tidak tersedia kekal Tidak Diketahui. Nilai semasa tidak menggantikan bukti sejarah yang tiada.",
     "unavailable": "Corak atau versi ini tidak tersedia dalam skop semasa anda.",
@@ -28981,7 +28982,8 @@
     },
     "positionSearch": "Cari jawatan",
     "loadMorePositions": "Muatkan lebih banyak jawatan",
-    "attendanceFormulaBinding": "Set hasil formula kehadiran: {id}"
+    "attendanceFormulaBinding": "Set hasil formula kehadiran: {id}",
+    "chooseOneCompany": "Pilih satu syarikat dalam penukar syarikat di bahagian atas skrin sebelum menyimpan corak baharu. Corak baharu itu milik syarikat tersebut."
   },
   "systemTestingWorkspace": {
     "title": "Ujian Sistem",

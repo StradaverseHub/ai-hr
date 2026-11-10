@@ -30,6 +30,9 @@ export default async function OvertimePatternsPage({searchParams}:{searchParams:
   const version=detail?.versions.find(item=>item.id===query.version)??(!query.version?detail?.versions[0]:undefined);
   const starter=query.new==='1'?overtimeStarter(query.starter):null;
   const showEditor=query.new==='1'||Boolean(detail&&version);
+  // b31981c0: a new pattern belongs to the one company selected in the company switcher. With several selected,
+  // the editor asks for one; the save action re-derives this from the server session and never from the form.
+  const newPatternCompany=scopeIds.length===1?eligible.filter(company=>company.id===scopeIds[0]).map(company=>({id:company.id,currency:company.currency}))[0]??null:null;
   // Only the list view loads this independent review. An editor GET/prefetch remains read-only,
   // and no posted company/group identity can widen the active company context.
   const groups=showEditor?[]:await listAttendanceRules(s);
@@ -44,7 +47,7 @@ export default async function OvertimePatternsPage({searchParams}:{searchParams:
     <PageHeader title={t('title')} description={t('descriptionText')} back={{href:'/admin/attendance/settings',label:t('backToSettings')}} actions={<Link className={btnPrimary} href={`${PAGE}?new=1`}>{t('create')}</Link>}/>
     {showEditor?<>
       <div className="flex flex-wrap items-center justify-between gap-3"><Link href={PAGE} className="text-sm text-primary hover:underline">{t('backToList')}</Link>{detail?<div className="flex flex-wrap items-center gap-2 text-sm"><span>{t('versions')}</span>{detail.versions.map(item=><Link key={item.id} href={`${PAGE}?pattern=${detail.pattern.id}&version=${item.id}`} aria-current={version?.id===item.id?'page':undefined} className="rounded-lg border border-border px-3 py-2">{item.ordinal} · {t(`status.${item.status}`)}</Link>)}</div>:null}</div>
-      <OvertimeWorkspace key={`${detail?.pattern.id??'new'}:${version?.id??'new'}:${version?.revision??0}:${s.userId??'session'}:${scopeIds.join(',')}:${starter?.key??'custom'}`} detail={query.new==='1'?null:detail} version={query.new==='1'?undefined:version} setup={setup} starterKey={starter?.key}/>
+      <OvertimeWorkspace key={`${detail?.pattern.id??'new'}:${version?.id??'new'}:${version?.revision??0}:${s.userId??'session'}:${scopeIds.join(',')}:${starter?.key??'custom'}`} detail={query.new==='1'?null:detail} version={query.new==='1'?undefined:version} setup={setup} starterKey={starter?.key} newPatternCompany={newPatternCompany}/>
     </>:<>
       {query.pattern||query.version?<p role="alert" className="rounded-lg border border-border p-4 text-sm">{t('unavailable')}</p>:null}
       <section aria-label={t('standardStarters')} className="space-y-3"><h2 className="font-semibold">{t('standardStarters')}</h2><p className="text-sm text-muted-foreground">{t('starterDraftHelp')}</p><p className="text-sm font-medium">{OVERTIME_STARTERS.map(item=>item.name).join(' · ')}</p><OvertimeStarterInitializer key={scopeIds.slice().sort().join(',')} scopeKey={scopeIds.slice().sort().join(',')}/></section>

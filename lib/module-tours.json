@@ -578,7 +578,7 @@
         "placement": "bottom",
         "text": {
           "title": "Review the schedule configuration",
-          "body": "Open Settings → Locations to inspect clocking points, coordinates and radius; retry a failed map without changing entered coordinates. Overtime setup guides you through four steps with a preview. Check effective assignments before changing an attendance result.",
+          "body": "Open Settings → Locations to inspect clocking points, coordinates and radius; retry a failed map without changing entered coordinates. Overtime setup guides you through three steps with a preview. Check effective assignments before changing an attendance result.",
           "lang": "en"
         },
         "roles": [
