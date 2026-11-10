@@ -29,6 +29,7 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  employee_import:{messages:'employeeImport',linkPath:'/admin/personnel/import/history'},
  section_import:{messages:'sectionImport',linkPath:'/admin/personnel/import'},
  register_import:{messages:'registerImport',linkPath:'/admin/personnel/import'},
+ employee_import_revert:{messages:'employeeImportRevert',linkPath:'/admin/personnel/import/history'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

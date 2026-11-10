@@ -2,7 +2,8 @@
  * its bulk_job_kind row in a migration and its completion-notice entry in lib/bulk-job.ts (ADR "Shared job kernel"). */
 import type {BulkJobHandler} from './bulk-job-worker';
 import {employeeImportJobHandler} from './employee-import-worker';
+import {employeeImportRevertJobHandler} from './employee-import-revert-job';
 import {registerImportJobHandler} from './register-import-worker';
 import {sectionImportJobHandler} from './section-import-worker';
 
-export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,sectionImportJobHandler,registerImportJobHandler];
+export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,employeeImportRevertJobHandler,sectionImportJobHandler,registerImportJobHandler];

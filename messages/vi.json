@@ -37308,6 +37308,20 @@
           "title": "Đã hủy việc nhập sổ đăng ký",
           "body": "Không có bản ghi sổ đăng ký nào được lưu. Mở Nhập để xem chi tiết."
         }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "Đã hoàn tác việc nhập xong",
+          "body": "Mở Lịch sử nhập để xem các nhân viên đã bị vô hiệu."
+        },
+        "failed": {
+          "title": "Việc hoàn tác nhập đã dừng",
+          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc hoàn tác nhập",
+          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem chi tiết."
+        }
       }
     }
   }

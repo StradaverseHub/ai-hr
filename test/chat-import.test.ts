@@ -24,7 +24,8 @@ import {chatImportKindsFor} from '../core/chat-import/kinds';
 import {confirmChatImport} from '../core/chat-import/confirm';
 import {prepareChatImportProposal} from '../core/proposals/chat-import';
 import {verifyProposal,type Proposal} from '../core/proposals/proposal';
-import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
+import {previewImportRevertForAttempt} from '../core/import-history-handlers';
+import {revertImportToOutcome} from './helpers/employee-import-revert';
 import {confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
@@ -213,7 +214,7 @@ describe('employee records: confirmed through the employee import, and its own r
   expect(await confirmChatImport(ctx,{proposal,confirm:true,file})).toMatchObject({kind:'imported',imported:2,replayed:true});
   const recovery=await previewImportRevertForAttempt(ctx,attemptId);
   expect(recovery.eligible).toBe(true);
-  expect(await revertImportForAttempt(ctx,attemptId,{previewHash:recovery.previewHash,reason:'Fictional wrong file'})).toEqual({attemptId,restored:2});
+  expect(await revertImportToOutcome(ctx,attemptId,{previewHash:recovery.previewHash,reason:'Fictional wrong file'})).toEqual({attemptId,restored:2});
  });
 });
 

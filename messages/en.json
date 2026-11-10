@@ -37308,6 +37308,20 @@
           "title": "Register import cancelled",
           "body": "No register records were saved. Open Import for details."
         }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "Import revert finished",
+          "body": "Open Import History to see the employees that were voided."
+        },
+        "failed": {
+          "title": "Import revert stopped",
+          "body": "Nothing was changed. Open Import History to see why."
+        },
+        "cancelled": {
+          "title": "Import revert cancelled",
+          "body": "Nothing was changed. Open Import History for details."
+        }
       }
     }
   }

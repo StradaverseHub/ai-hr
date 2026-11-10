@@ -37308,6 +37308,20 @@
           "title": "Import daftar dibatalkan",
           "body": "Tiada rekod daftar disimpan. Buka Import untuk butiran."
         }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "Pembatalan import selesai",
+          "body": "Buka Sejarah Import untuk melihat pekerja yang dibatalkan."
+        },
+        "failed": {
+          "title": "Pembatalan import dihentikan",
+          "body": "Tiada apa-apa yang diubah. Buka Sejarah Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pembatalan import dibatalkan",
+          "body": "Tiada apa-apa yang diubah. Buka Sejarah Import untuk butiran."
+        }
       }
     }
   }

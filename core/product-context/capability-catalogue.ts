@@ -115,6 +115,7 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/bank-statutory-import.ts':'Row rules of the bank and statutory import.',
  'core/employee-import-history.ts':'Revert support for the employee import.',
  'core/employee-import-job.ts':'Background admission and progress of the employee import.',
+ 'core/employee-import-revert-job.ts':'Background revert of the employee import (ADR-0155, ADR-0157).',
  'core/employee-import-upload.ts':'Upload transport of the employee import.',
  'core/employee-import-worker.ts':'Background worker of the staged employee import.',
  'core/import-history-handlers.ts':'Shared import history and revert.',
