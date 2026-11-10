@@ -237,6 +237,22 @@ jobs:
           path: ${{ runner.temp }}/next-build-memory/
           if-no-files-found: warn
           retention-days: 14
+      # DIAGNOSTIC BRANCH ONLY (claude/build-size-diagnostic-20261110): never release evidence.
+      - name: Diagnostic build size attribution
+        if: ${{ always() && steps.build-heap.outcome == 'success' }}
+        run: |
+          python3 ../automation/.github/ci/build-size-attribution.py "$PWD/.next" "$RUNNER_TEMP/build-size"
+          mkdir -p "$RUNNER_TEMP/pack"
+          python3 ../automation/.github/ci/build-bundle.py pack "$PWD" "$RUNNER_TEMP/pack/bytes" 2> "$RUNNER_TEMP/build-size/pack-stderr.txt" || echo "pack exit $?"
+          ls -la "$RUNNER_TEMP/pack/bytes" || true
+      - name: Publish diagnostic build size attribution
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build-size-attribution
+          path: ${{ runner.temp }}/build-size/
+          if-no-files-found: warn
+          retention-days: 7
 
   native-typecheck:
     if: ${{ inputs.run_native_typecheck }}
