@@ -1,7 +1,7 @@
 /** Workforce-purpose adapter. Existing record, financial, self-service and approval owners remain independent. */
 import {sql,type SQL} from 'drizzle-orm';
 import {type SessionContext,type Tx} from '../db/client';
-import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {joinAccessConfigurationTx,joinWorkforceBarrierTx} from './workforce-lock-mode';
 import {withPersonnelRead} from './personnel-read-bounds';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 export type WorkforceOperation='view'|'maintain';
@@ -13,9 +13,11 @@ export function workforceEmploymentPredicate(subject:SQL,operation:WorkforceOper
  if(companyIds?.length===0)return sql`false`;
  return sql`app.access_workforce_employment(${subject},${'workforce.'+operation})`;
 }
+/** A converted writer that already holds the shared Access lock joins in shared mode and never upgrades.
+ * Every other caller keeps the exclusive barrier it had before the reader/writer lock. */
 async function lockWorkforceOperationTx(tx:Tx,ctx:SessionContext,operation:WorkforceOperation){
- if(operation==='maintain')await tx.execute(sql`select app.access_configuration_write_lock()`);
- else await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+ if(operation==='maintain')await joinWorkforceBarrierTx(tx,ctx.tenantId);
+ else await joinAccessConfigurationTx(tx,ctx.tenantId);
 }
 export async function assertWorkforceCompanyTx(tx:Tx,ctx:SessionContext,companyId:string,operation:WorkforceOperation){
  await lockWorkforceOperationTx(tx,ctx,operation);

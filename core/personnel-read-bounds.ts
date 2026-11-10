@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
+import { joinAccessConfigurationTx } from './workforce-lock-mode';
 import { assertAiPrincipalTx, assertAiPresentationPrincipalTx } from './ai-principal';
 
 /** Keep tighter caller deadlines; a real database failure is never an empty result or Busy page. */
@@ -25,12 +25,13 @@ export async function withPersonnelPresentationReadTx<T>(
 /** Standalone projections read authority and data from one REPEATABLE READ / READ ONLY snapshot.
  * They linearize at snapshot admission, not behind an unrelated tenant writer. Committed revocations
  * apply to the next snapshot; already admitted reads may finish. No cross-request result cache.
- * A borrowed transaction may write later: retain its exclusive command barrier and current principal.
+ * A borrowed transaction may write later: retain its command barrier and current principal. A command that
+ * already holds the shared Access lock reads under it and never upgrades; any other keeps the exclusive lock.
  */
 export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) => Promise<T>, options: { existingTx?: Tx } = {}): Promise<T> {
   if (options.existingTx) {
     await assertAiPrincipalTx(options.existingTx, ctx);
-    await lockAccessConfigurationWriteTx(options.existingTx, ctx.tenantId);
+    await joinAccessConfigurationTx(options.existingTx, ctx.tenantId);
     // The command owner keeps its timeout through subsequent writes and COMMIT.
     return read(options.existingTx);
   }

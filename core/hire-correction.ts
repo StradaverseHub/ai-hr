@@ -3,6 +3,8 @@ import { compensation } from '../db/schema';
 import {organisationManagedTx} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx} from './company-organisation';
 import {assertWorkforceEmploymentTx} from './workforce-access';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockEmploymentLeaveDependenciesTx,lockOrgReportingTx} from './workforce-lock-mode';
 /**
  * c063eea9 — "Correct hire details" on the Hired movement event.
  *
@@ -720,6 +722,16 @@ export async function correctHireDetails(
 
   return withTenant(ctx, async (tx) => {
     if (input.basicSalary !== undefined) await tx.execute(sql`select app.access_configuration_write_lock()`);
+    else {
+      // Reader/writer lock. Correcting one hire's organisation fields: shared Access, and the Workforce check joins
+      // it. Department and position feed leave cohorts, so leave commands on this employment wait for it. A
+      // reporting-manager correction runs the canonical cycle rule before writing, a check-then-write on the
+      // reporting graph that exclusivity used to serialise; the reporting-line serialiser (4701) is taken before
+      // that read. A salary correction keeps the exclusive lock its compensation owner still needs.
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [input.employmentId], { configuration: false });
+      if (requested.managerEmploymentId !== undefined) await lockOrgReportingTx(tx, ctx.tenantId);
+    }
     await assertWorkforceEmploymentTx(tx,ctx,input.employmentId,'maintain');
     // Same lock order as every movement writer: the person's statutory owner, then the employment row.
     // Holding the employment row for the whole correction serialises two corrections of one hire.

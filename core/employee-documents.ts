@@ -1,5 +1,5 @@
 import {assertWorkforceEmploymentTx} from './workforce-access';
-import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from './access-configuration-lock';
 /**
  * General employee document store (f018ce8d — Personnel → Documents tab redesign).
  *
@@ -160,6 +160,8 @@ export async function addEmployeeDocument(
   const title = cleanTitle(p.title);
   assertValidEmployeeDocument(p.mimeType, p.content);
   return withTenant(ctx, async (tx) => {
+    // A new document on one employment: shared Access, then the Workforce check joins it.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     await assertWorkforceEmploymentTx(tx, ctx, p.employmentId, 'maintain');
     const [row] = await tx
       .insert(employeeDocument)
@@ -197,7 +199,8 @@ export function normalizeEmployeeDocumentMetadata(p:EmployeeDocumentMetadataInpu
 /** Nomination only, then the actual stored-employment authority, before private metadata is read.
  * This is not an Assistant permission or self rule; ordinary native HR callers retain their course. */
 export async function employeeDocumentMetadataSubjectTx(tx:Tx,ctx:SessionContext,documentId:string){
- assertAdmin(ctx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+ // One document's values: shared Access; the document row lock taken by the caller's write serialises it.
+ assertAdmin(ctx);await lockAccessConfigurationTx(tx,ctx.tenantId);
  const [row]=await tx.select({id:employeeDocument.id,employmentId:employeeDocument.employmentId,letterArtifactId:employeeDocument.letterArtifactId}).from(employeeDocument).where(eq(employeeDocument.id,documentId)).limit(1);
  if(!row)throw new EmployeeDocumentError('Document not found (or not visible).');
  await assertWorkforceEmploymentTx(tx,ctx,row.employmentId,'maintain');
@@ -221,7 +224,8 @@ export async function updateEmployeeDocumentMeta(
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};p=structuredClone(p);
  assertAdmin(ctx);const values=normalizeEmployeeDocumentMetadata(p);
  const run=async(tx:Tx)=>{
-  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+  // Shared Access: the UPDATE below row-locks this document and refuses when it has gone.
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
   const [existing]=await tx.select({id:employeeDocument.id,employmentId:employeeDocument.employmentId}).from(employeeDocument).where(eq(employeeDocument.id,p.documentId)).limit(1);
   if(!existing)throw new EmployeeDocumentError('Document not found (or not visible).');
   await assertWorkforceEmploymentTx(tx,ctx,existing.employmentId,'maintain');
@@ -240,12 +244,15 @@ export async function replaceEmployeeDocumentContent(
   assertAdmin(ctx);
   assertValidEmployeeDocument(p.mimeType, p.content);
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    // Shared Access. The document row lock serialises a replace against a concurrent delete or replace,
+    // so a replace never records an event for a document another writer has just removed.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [existing] = await tx
       .select({ id: employeeDocument.id, employmentId: employeeDocument.employmentId })
       .from(employeeDocument)
       .where(eq(employeeDocument.id, p.documentId))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!existing) throw new EmployeeDocumentError('Document not found (or not visible).');
     await assertWorkforceEmploymentTx(tx, ctx, existing.employmentId, 'maintain');
     await tx
@@ -276,12 +283,14 @@ export async function replaceEmployeeDocumentContent(
 export async function deleteEmployeeDocument(ctx: SessionContext, p: { documentId: string }): Promise<{ id: string }> {
   assertAdmin(ctx);
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    // Shared Access; the document row lock makes two concurrent deletes record one deletion.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [existing] = await tx
       .select({ id: employeeDocument.id, employmentId: employeeDocument.employmentId, title: employeeDocument.title, fileName: employeeDocument.fileName })
       .from(employeeDocument)
       .where(eq(employeeDocument.id, p.documentId))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!existing) throw new EmployeeDocumentError('Document not found (or not visible).');
     await assertWorkforceEmploymentTx(tx, ctx, existing.employmentId, 'maintain');
     await tx.delete(employeeDocument).where(eq(employeeDocument.id, p.documentId));
@@ -323,7 +332,7 @@ export function listEmployeeDocuments(ctx: SessionContext, employmentId: string)
   const updater = alias(person, 'updater');
   const updaterUser = alias(appUser, 'updater_user');
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
     return tx
       .select({
         id: employeeDocument.id,
@@ -361,7 +370,8 @@ export function getEmployeeDocument(
   expectedEmploymentId?: string,
 ): Promise<{ content: Buffer; fileName: string; mimeType: string; employmentId: string } | null> {
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    // A read plus its own download audit event: shared Access.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [row] = await tx
       .select({
         content: employeeDocument.content,

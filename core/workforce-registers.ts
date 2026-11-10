@@ -3,7 +3,7 @@
 import {eq} from 'drizzle-orm';
 import {withTenant, type SessionContext, type Tx} from '../db/client';
 import {employeeDependent, employeeQualification, personEmergencyContact} from '../db/schema';
-import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {assertWorkforceEmploymentTx, assertWorkforcePersonTx, WorkforceAccessError} from './workforce-access';
 import * as family from './dependents';
 import * as qualifications from './qualifications';
@@ -24,7 +24,9 @@ async function existingSubject(tx: Tx, kind: Register, id: string) {
 }
 async function maintain<T>(ctx: SessionContext, kind: Register, target: {id: string; existing: boolean}, write: (tx: Tx) => Promise<T>, outerTx?: Tx) {
   const run = async (tx: Tx) => {
-    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    // The register writers run under the shared Access lock with their per-person (or per-employment) lock, so
+    // the Workforce check joins the shared lock first instead of taking the exclusive lock for them.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     // A record id from a form/import never selects a different subject from the stored relationship.
     const subject = target.existing ? await existingSubject(tx, kind, target.id) : target.id;
     if (!subject) throw new WorkforceAccessError();

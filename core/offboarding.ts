@@ -14,7 +14,8 @@ import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefus
 import { freezeOnResignationApprovalTx } from './leave-encashment';
 import { validateLeaveDocument } from './leave';
 import { terminateEmploymentTx } from './org';
-import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
+import { lockAccessAdministratorSetTx, lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockEmploymentLeaveDependenciesTx } from './workforce-lock-mode';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
@@ -119,13 +120,16 @@ export async function decideResignation(
     if (p.decision === 'accepted') {
       // Acceptance changes employment/assignment/reporting dependencies as well as leave state.
       // Preserve Access-before-dependency order: the existing consequence guard repeats this lock.
-      await tx.execute(sql`select app.access_configuration_write_lock()`);
-      await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+      // Reader/writer lock (S+A): shared Access unless the caller holds the exclusive lock, then the administrator
+      // guard before any other lock, because accepting ends the employment and the person may hold a login. Two
+      // decisions of one request queue on the guard; the second then sees the first's decision and is refused.
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      await lockAccessAdministratorSetTx(tx, ctx.tenantId);
       const [nominated] = await tx.select({ employmentId: resignationRequest.employmentId })
         .from(resignationRequest).where(eq(resignationRequest.id, p.requestId)).limit(1);
       if (!nominated) throw new ResignationError('Resignation not found (or not visible).');
       nominatedEmployment = nominated.employmentId;
-      await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominatedEmployment]);
+      await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [nominatedEmployment], { configuration: true });
     }
     const req = await (async () => {
       try {
