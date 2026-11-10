@@ -162,6 +162,38 @@ export function workerStageFailureFact({step,role,route,sourceFile,sourceLine,er
   navigation:navigation&&typeof navigation.scenarioId==='string'&&scenarioId.test(navigation.scenarioId)?{scenarioId:navigation.scenarioId,
    check:typeof navigation.checkId==='string'&&scenarioId.test(navigation.checkId)?navigation.checkId:null,counts}:null};
 }
+const requestMethods=new Set(['GET','POST']);
+const requestAbortSources=new Set(['driver-deadline','connection-reset','premature-close','abort-unattributed','not-aborted']);
+const requestDeadlineMaxMs=900000;
+const requestElapsedMaxMs=910000;
+/** Which side ended an owned HTTP request. Only the driver's own fired deadline signal names the driver. */
+function requestAbortSource(error,deadline){
+ const name=error?.name,code=error?.code;
+ if(deadline?.aborted===true&&deadline.reason?.name==='TimeoutError'&&name==='AbortError')return 'driver-deadline';
+ if(code==='ECONNRESET'||code==='EPIPE')return 'connection-reset';
+ if(code==='ERR_STREAM_PREMATURE_CLOSE')return 'premature-close';
+ if(name==='AbortError'||code==='ABORT_ERR')return 'abort-unattributed';
+ return 'not-aborted';
+}
+const wholeMs=(value,maximum)=>typeof value==='number'&&Number.isFinite(value)&&value>=0?Math.min(Math.ceil(value),maximum):null;
+/** One closed account of the owned HTTP request behind the primary failure: stage, role, reviewed route, method,
+ * its deadline, how long it ran, whether headers arrived, and what ended it. Never a path, query, body or header. */
+export function workerRequestFailureFact({stage,role,route,method,deadlineMs,elapsedMs,ttfbMs,httpStatus,error,deadline}={}){
+ return {stage:stages.has(stage)?stage:'unavailable',role:roles.has(role)?role:null,
+  route:typeof route==='string'?knownRoutes.has(route)?route:'other':null,method:requestMethods.has(method)?method:null,
+  deadlineMs:Number.isSafeInteger(deadlineMs)&&deadlineMs>0&&deadlineMs<=requestDeadlineMaxMs?deadlineMs:null,
+  elapsedMs:wholeMs(elapsedMs,requestElapsedMaxMs),ttfbMs:wholeMs(ttfbMs,requestElapsedMaxMs),
+  httpStatus:Number.isInteger(httpStatus)&&httpStatus>=100&&httpStatus<=599?httpStatus:null,
+  abortSource:requestAbortSource(error,deadline)};
+}
+const validRequest=value=>value===null||fields(value,['stage','role','route','method','deadlineMs','elapsedMs','ttfbMs','httpStatus','abortSource'])
+ &&stages.has(value.stage)&&(value.role===null||roles.has(value.role))&&(value.route===null||value.route==='other'||knownRoutes.has(value.route))
+ &&(value.method===null||requestMethods.has(value.method))
+ &&(value.deadlineMs===null||Number.isSafeInteger(value.deadlineMs)&&value.deadlineMs>0&&value.deadlineMs<=requestDeadlineMaxMs)
+ &&(value.elapsedMs===null||integer(value.elapsedMs,requestElapsedMaxMs))&&(value.ttfbMs===null||integer(value.ttfbMs,requestElapsedMaxMs))
+ &&(value.httpStatus===null||Number.isInteger(value.httpStatus)&&value.httpStatus>=100&&value.httpStatus<=599)
+ &&requestAbortSources.has(value.abortSource);
+
 const validInventory=value=>Array.isArray(value)&&value.length<=8&&value.every(closedToken);
 const validAssertion=value=>value===null||fields(value,['message','expected','actual','missing','unexpected'])
  &&(value.message===null||typeof value.message==='string'&&authoredMessage.test(value.message))&&scalar(value.expected)===value.expected&&scalar(value.actual)===value.actual
@@ -251,16 +283,18 @@ function projectDriverFailure(stage,workload,report,loaded){
   traffic:report.measurementWindow===undefined?null:loaded?.traffic??null,
   loadedAdvisory:report.measurementWindow===undefined?null:loaded?.loadedAdvisory??null,homeFailures:homeFailures(report.homeCardFailures),
   stageFailure:validStage(report.workerStageFailure??null)?report.workerStageFailure??null:null,
+  requestFailure:validRequest(report.workerRequestFailure??null)?report.workerRequestFailure??null:null,
   loadEntered:report.measurementWindow!==undefined,steadyWindowElapsed:typeof report.steady?.load?.windowElapsed==='boolean'
    ?report.steady.load.windowElapsed:null};
 }
 
 export function validateWorkerDriverFailure(value){
- return fields(value,['kind','stage','workload','primary','firstSecondary','counts','preflightLocks','loadedLocks','traffic','loadedAdvisory','homeFailures','stageFailure','loadEntered','steadyWindowElapsed'])
+ return fields(value,['kind','stage','workload','primary','firstSecondary','counts','preflightLocks','loadedLocks','traffic','loadedAdvisory','homeFailures','stageFailure','requestFailure','loadEntered','steadyWindowElapsed'])
   &&value.kind===kind&&stages.has(value.stage)&&(value.workload===null||workloads.has(value.workload))
   &&validError(value.primary)&&validError(value.firstSecondary)&&fields(value.counts,countKeys)
   &&countKeys.every(key=>knownCount(value.counts[key]))&&validLock(value.preflightLocks)&&validLock(value.loadedLocks)
   &&validTraffic(value.traffic)&&validAdvisory(value.loadedAdvisory)&&validHome(value.homeFailures)&&validStage(value.stageFailure)
+  &&validRequest(value.requestFailure)
   &&typeof value.loadEntered==='boolean'&&(value.loadEntered||value.traffic===null&&value.loadedAdvisory===null)&&(value.steadyWindowElapsed===null
    ||value.loadEntered&&typeof value.steadyWindowElapsed==='boolean')
   ?value:null;

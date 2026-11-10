@@ -43,7 +43,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
-import {createWorkerLoadedDiagnostics,homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,workerDriverFailureFile,workerStageFailureFact} from './worker-comparison-failure.mjs';
+import {createWorkerLoadedDiagnostics,homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,workerDriverFailureFile,workerRequestFailureFact,workerStageFailureFact} from './worker-comparison-failure.mjs';
 import {isWorkerComparisonCourse} from './worker-comparison.mjs';
 import {readMeasuredClockCs,readMeasuredClockIdentity} from './measured-lock-clock.mjs';
 import {createMeasuredPreflightObserver,measuredLockSampleLimit,observeDatabaseLockCore,observeMeasuredLockConnection} from './measured-lock-observer.mjs';
@@ -276,8 +276,27 @@ const claimRestorationKey=Symbol('owned claim restoration');
 const homeHttp=createHomeHttpReplay({base,request,report});
 function request(...args){requireNativeBusiness();return requests.run(()=>requestBody(...args));}
 function readRoute(user,route){return readManifestRoute(route,(path,status)=>request(user,path,undefined,status));}
+// Private request facts keyed by the error an owned request threw. Only the primary failure's facts are
+// projected, through the closed workerRequestFailureFact, so a failure names its route but never its path.
+const ownedRequestFailures=new WeakMap();
 async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action,claimAttempt){
- assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
+ const attempt={stage:comparisonStage,role:user?.role??null,route:readRouteForMeasurement(path),method:fields?'POST':'GET',
+  startedMs:performance.now(),deadlineMs:null,deadline:null,headers:null};
+ try{return await sendRequestBody(attempt,user,path,fields,expectedStatus,record,actionHeaders,fieldOrder,action,claimAttempt);}
+ catch(error){
+  if(error!==null&&typeof error==='object'&&!ownedRequestFailures.has(error))
+   ownedRequestFailures.set(error,{...attempt,elapsedMs:performance.now()-attempt.startedMs});
+  throw error;
+ }
+}
+function recordPrimaryRequestFailure(){
+ const {failed,reason}=failures.primary(),facts=failed&&reason!==null&&typeof reason==='object'?ownedRequestFailures.get(reason):undefined;
+ if(!facts)return;
+ report.workerRequestFailure??=workerRequestFailureFact({stage:facts.stage,role:facts.role,route:facts.route,method:facts.method,
+  deadlineMs:facts.deadlineMs,elapsedMs:facts.elapsedMs,ttfbMs:facts.headers?.ttfbMs,httpStatus:facts.headers?.status,error:reason,deadline:facts.deadline});
+}
+async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,actionHeaders,fieldOrder,action,claimAttempt){
+ assert(path.startsWith('/')&&!path.startsWith('//'));const started=attempt.startedMs;let body,contentType;
  if(Array.isArray(fields)){body=Buffer.from(JSON.stringify(fields));contentType='text/plain;charset=UTF-8';}
  else if(fields){const encoded=new Response(actionFormData(fields,fieldOrder));contentType=encoded.headers.get('content-type');body=Buffer.from(await encoded.arrayBuffer());}
  let responseHeaders;
@@ -289,10 +308,12 @@ async function requestBody(user,path,fields,expectedStatus=200,record=true,actio
    };
    checkAdmission();
    if(claimAttempt){claimAttempt.beforeDispatch();checkAdmission();}
-   return https.request(base+path,{agent,signal:AbortSignal.timeout(nativePreflight?Math.min(90000,nativeRemaining(nativeDeadline)):90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
+   attempt.deadlineMs=nativePreflight?Math.min(90000,nativeRemaining(nativeDeadline)):90000;
+   attempt.deadline=AbortSignal.timeout(attempt.deadlineMs);
+   return https.request(base+path,{agent,signal:attempt.deadline,method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
     Cookie:`__Host-aihr_internal=${user?.token??''}; NEXT_LOCALE=en`,'Accept-Encoding':'gzip',...actionHeaders,...(body?{'Content-Type':contentType,'Content-Length':body.length}:{})}});
   },
-  onHeaders:(res,ttfbMs)=>{responseHeaders={status:res.statusCode,ttfbMs,hasActionRedirect:Boolean(res.headers['x-action-redirect'])};},
+  onHeaders:(res,ttfbMs)=>{responseHeaders=attempt.headers={status:res.statusCode,ttfbMs,hasActionRedirect:Boolean(res.headers['x-action-redirect'])};},
  });
  transports.run(()=>transport.terminal);
  const response=await transport.result.catch(error=>{
@@ -2037,6 +2058,8 @@ if(measureDevelopment){
 }
 report.driverFailures=failures.publicFailures();
 if(failures.failed()){
+ // Name the owned HTTP request behind the primary failure, if one threw it (route, method, deadline, elapsed, abort source).
+ try{recordPrimaryRequestFailure();}catch{/* Failure attribution never affects acceptance or settlement. */}
  report.error=report.driverFailures.primary?.code??report.driverFailures.primary?.kind??'Owned driver settlement failed';
  noteEvidence(()=>writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples)));
  noteEvidence(()=>writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits)));

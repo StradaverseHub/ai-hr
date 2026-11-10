@@ -582,6 +582,48 @@ it('names the failing driver step, route and authored assertion without exportin
  expect(validateWorkerDriverFailure(signedIn)).toEqual(signedIn);
 });
 
+it('names the owned request a driver deadline aborted: role, reviewed route, method, deadline, elapsed and abort source',async()=>{
+ const {projectWorkerDriverFailure,validateWorkerDriverFailure,workerRequestFailureFact,workerDriverFailureBytes}
+  =await import('../scripts/performance/worker-comparison-failure.mjs');
+ const sensitive='/approvals?private=PERF Person 0004';
+ // A real stalled document: headers arrive, the body never completes, and the driver's own deadline fires.
+ const server=createServer((_request,response)=>{response.writeHead(200,{'content-type':'text/html'});response.write('<html>');});
+ server.listen(0,'127.0.0.1');await once(server,'listening');
+ const address=server.address();if(!address||typeof address==='string')throw Error('server address unavailable');
+ const failures=createDriverFailures(),deadline=AbortSignal.timeout(60);let headers:{status:number;ttfbMs:number}|undefined;
+ const started=performance.now();
+ const opened=openDriverResponse({start:()=>httpRequest('http://127.0.0.1:'+address.port+'/approvals',{signal:deadline,agent:new Agent()}),
+  startedMs:started,onHeaders:(response:{statusCode:number},ttfbMs:number)=>{headers={status:response.statusCode,ttfbMs};},
+  observeSocket:()=>{},recordFailure:failures.record});
+ const error=await opened.result.then(()=>null,(reason:unknown)=>reason);
+ const elapsedMs=performance.now()-started;
+ await opened.terminal;server.closeAllConnections();server.close();
+ expect(error).toMatchObject({name:'AbortError',code:'ABORT_ERR'});
+ const fact=workerRequestFailureFact({stage:'pilot-http',role:'manager',route:'/approvals',method:'GET',deadlineMs:60,elapsedMs,
+  ttfbMs:headers?.ttfbMs,httpStatus:headers?.status,error,deadline});
+ expect(fact).toMatchObject({stage:'pilot-http',role:'manager',route:'/approvals',method:'GET',deadlineMs:60,httpStatus:200,abortSource:'driver-deadline'});
+ expect(fact.elapsedMs).toBeGreaterThanOrEqual(60);expect(fact.ttfbMs).toBeLessThanOrEqual(fact.elapsedMs??0);
+ // Another side's abort, a reset and an ordinary failure are never attributed to the driver's deadline.
+ const reset=Object.assign(Error(sensitive),{code:'ECONNRESET'});
+ expect(workerRequestFailureFact({error,deadline:AbortSignal.abort()}).abortSource).toBe('abort-unattributed');
+ expect(workerRequestFailureFact({error:reset,deadline}).abortSource).toBe('connection-reset');
+ expect(workerRequestFailureFact({error:Error(sensitive)}).abortSource).toBe('not-aborted');
+ // Unreviewed routes, roles, methods and out-of-range numbers leave as closed values only.
+ const unreviewed=workerRequestFailureFact({stage:sensitive,role:sensitive,route:sensitive,method:sensitive,deadlineMs:-1,
+  elapsedMs:Number.NaN,ttfbMs:sensitive,httpStatus:1000,error:reset});
+ expect(unreviewed).toEqual({stage:'unavailable',role:null,route:'other',method:null,deadlineMs:null,elapsedMs:null,ttfbMs:null,httpStatus:null,
+  abortSource:'connection-reset'});
+ const result=projectWorkerDriverFailure('pilot-http',null,{driverFailures:{primary:{kind:'AbortError',code:'ABORT_ERR'}},
+  coverage:[{status:'failed',route:sensitive}],requestErrors:[{route:sensitive}],workerRequestFailure:fact});
+ expect(validateWorkerDriverFailure(result)).toEqual(result);expect(result.requestFailure).toEqual(fact);
+ expect(JSON.stringify(result)).not.toContain('private');
+ expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(workerDriverFailureBytes);
+ expect(projectWorkerDriverFailure('pilot-http',null,{}).requestFailure).toBeNull();
+ expect(projectWorkerDriverFailure('pilot-http',null,{workerRequestFailure:{...fact,route:sensitive}}).requestFailure).toBeNull();
+ for(const invalid of [{...fact,route:sensitive},{...fact,abortSource:sensitive},{...fact,elapsedMs:910001},{...fact,method:'DELETE'},{...fact,path:sensitive}])
+  expect(validateWorkerDriverFailure({...result,requestFailure:invalid})).toBeNull();
+});
+
 it('keeps native failure categories bounded, independent of the loaded sampling phase and free of process data',async()=>{
  const {projectWorkerNativeLockFailures}=await import('../scripts/performance/worker-comparison-failure.mjs');
  const failures=[
