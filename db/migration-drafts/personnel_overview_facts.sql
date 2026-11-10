@@ -214,9 +214,12 @@ GRANT EXECUTE ON FUNCTION app.personnel_private_search_entries(text,uuid[]) TO a
 -- per-row resolver, so its value and its refusals are unchanged.
 CREATE FUNCTION app._personnel_employment_tags(p_employments uuid[],p_day date) RETURNS TABLE(employment_id uuid,tags jsonb)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ -- A join, not id = ANY(array): a runtime array parameter is not hashed, and a per-row scan of a
+ -- whole-tenant subject array is quadratic.
  WITH subjects AS MATERIALIZED (
-   SELECT e.id,e.tenant_id,e.company_id FROM public.employment e
-   WHERE e.tenant_id=app.current_tenant_id() AND e.id=ANY(p_employments)
+   SELECT DISTINCT e.id,e.tenant_id,e.company_id FROM unnest(p_employments) AS requested(id)
+   JOIN public.employment e ON e.id=requested.id
+   WHERE e.tenant_id=app.current_tenant_id()
  ),
  future_correction_presence AS MATERIALIZED (
    SELECT EXISTS (
