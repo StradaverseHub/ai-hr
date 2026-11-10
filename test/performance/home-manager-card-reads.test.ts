@@ -676,13 +676,20 @@ async function cardsSectionsFixtures(actors:readonly Actor[],others:readonly Act
  // Open undo windows on own days: one for the employee, one for the manager, and two created at the same instant for the
  // second manager (a tie on the owner's order key: the owner reads).
  const caseOf=(subjectKey:string)=>cases.find(row=>row.subjectKey===subjectKey)?.id;
- const action=(a:Actor,caseId:string|undefined,date:string,createdAt?:Date)=>({tenantId,workerId:'loop_missed_clock_outs' as const,companyId:a.companyId,caseId:caseId!,employmentId:a.employmentId,
+ // An applied action names the owner's record it applied (owner_ref; the table requires it for 'applied'): the
+ // approved attendance correction of that day, as test/teras-loop-autonomy.test.ts restores one.
+ const action=(a:Actor,caseId:string|undefined,date:string,ownerRef:string,createdAt?:Date)=>({tenantId,workerId:'loop_missed_clock_outs' as const,companyId:a.companyId,caseId:caseId!,employmentId:a.employmentId,
   runId:run,level:2 as const,state:'applied' as const,ruleVersion:'loop_missed_clock_outs.act@v1',sponsorUserId:group.ctx.userId!,agentPrincipalId:randomUUID(),checks:[],
-  facts:{date,checkIn:'09:00',checkOut:'18:00'},appliedAt:new Date(),undoUntil:new Date(Date.now()+86400000),...(createdAt?{createdAt}:{})});
+  facts:{date,checkIn:'09:00',checkOut:'18:00'},ownerRef,appliedAt:new Date(),undoUntil:new Date(Date.now()+86400000),...(createdAt?{createdAt}:{})});
  await step('loops:autonomy',async()=>{
   const tie=new Date(Date.now()-60000);
-  await owner.db.insert(autonomy.terasLoopAction).values([action(employee,caseOf(key(employee,'clockout',day(-2))),day(-2)),action(manager,caseOf(key(manager,'clockout',day(-3))),day(-3)),
-   action(secondManager,caseOf(key(secondManager,'clockout',day(-2))),day(-2),tie),action(secondManager,caseOf(key(secondManager,'clockout',day(-6))),day(-2),tie)]);
+  const correction=async(a:Actor,date:string)=>(await owner.db.insert(s.attendanceCorrection).values({tenantId,employmentId:a.employmentId,attendanceDate:date,
+   proposedCheckIn:'09:00',proposedCheckOut:'18:00',reason:'Fictional loop clock-out',status:'approved',decidedAt:new Date()}).returning({id:s.attendanceCorrection.id}))[0].id;
+  await owner.db.insert(autonomy.terasLoopAction).values([
+   action(employee,caseOf(key(employee,'clockout',day(-2))),day(-2),await correction(employee,day(-2))),
+   action(manager,caseOf(key(manager,'clockout',day(-3))),day(-3),await correction(manager,day(-3))),
+   action(secondManager,caseOf(key(secondManager,'clockout',day(-2))),day(-2),await correction(secondManager,day(-2)),tie),
+   action(secondManager,caseOf(key(secondManager,'clockout',day(-6))),day(-2),await correction(secondManager,day(-6)),tie)]);
  });
  // Letter requests through the owners: a template approved by a second HR administrator, opened for requests, and two
  // employees' requests waiting in company 0.
