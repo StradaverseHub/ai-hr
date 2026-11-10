@@ -28,6 +28,15 @@ const checksum=value=>createHash('sha256').update(value).digest('hex');
 const comparisonPorts=[5433,3443,...Array.from({length:8},(_,index)=>3174+index)];
 async function assertPortFree(port){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
 
+function processBirth(pid){
+ assert(Number.isSafeInteger(pid)&&pid>1,'Development PostgreSQL process identity refused');
+ let stat;
+ try{stat=readFileSync('/proc/'+pid+'/stat','utf8');}catch(error){if(error.code==='ENOENT')return null;throw error;}
+ const end=stat.lastIndexOf(') '),birth=stat.slice(end+2).trimEnd().split(' ')[19];
+ assert(stat.startsWith(pid+' (')&&end>0&&/^[1-9][0-9]*(?![\s\S])/.test(birth),'Development PostgreSQL process birth refused');
+ return birth;
+}
+
 async function runSystemCell(comparison=null){
 const base=comparison?.env??process.env;
 const out=comparison?.paths.out??join(base.RUNNER_TEMP,'system-performance-evidence');
@@ -270,14 +279,6 @@ function observeDevelopmentPostgres(id){
  assert(volume.type==='volume'&&volume.destination==='/var/lib/postgresql/data'
   &&/^[a-f0-9]{64}(?![\s\S])/.test(volume.name),'Development PostgreSQL anonymous volume refused');
  return {id,pid:row.pid,running:row.running,started:row.started,volume:volume.name};
-}
-function processBirth(pid){
- assert(Number.isSafeInteger(pid)&&pid>1,'Development PostgreSQL process identity refused');
- let stat;
- try{stat=readFileSync('/proc/'+pid+'/stat','utf8');}catch(error){if(error.code==='ENOENT')return null;throw error;}
- const end=stat.lastIndexOf(') '),birth=stat.slice(end+2).trimEnd().split(' ')[19];
- assert(stat.startsWith(pid+' (')&&end>0&&/^[1-9][0-9]*(?![\s\S])/.test(birth),'Development PostgreSQL process birth refused');
- return birth;
 }
 function captureDevelopmentPostgres(id){
  const row=observeDevelopmentPostgres(id);
