@@ -107,14 +107,17 @@ function AuthenticatorForms({userId,name,exemptionUntil}:{userId:string;name:str
  const [resume,resumeAction,resuming]=useActionState<AccountActionState,FormData>(accountAction,{status:'idle'});
  // Opening time anchors the allowed window; the server re-checks it against its own clock.
  const [opened]=useState(()=>Date.now());
- const paused=exemptionUntil!==null&&exemptionUntil>opened&&resume.status!=='saved';
+ // The latest submitted action in this dialog decides the shown state until the server refresh arrives.
+ const [last,setLast]=useState<{kind:'pause';until:string}|{kind:'resume'}|null>(null);
+ const resumed=last?.kind==='resume'&&resume.status==='saved';
+ const savedUntil=last?.kind==='pause'&&pause.status==='saved'?last.until:null;
+ const paused=exemptionUntil!==null&&exemptionUntil>opened&&!resumed;
  const [mode,setMode]=useState<'required'|'paused'>(paused?'paused':'required');
- const [until,setUntil]=useState(()=>kualaLumpurLocalInput(paused?exemptionUntil!:opened+DAY));
+ const [until,setUntil]=useState(()=>kualaLumpurLocalInput(exemptionUntil!==null&&exemptionUntil>opened?exemptionUntil:opened+DAY));
  const [history,setHistory]=useState<{status:'loading'|'failed'}|{status:'ok';entries:AccountHistoryEntry[]}>({status:'loading'});
- const historyKey=`${pause.status}:${resume.status}`;
- useEffect(()=>{let live=true;accountHistoryAction(userId).then(result=>{if(live)setHistory(result);},()=>{if(live)setHistory({status:'failed'});});return()=>{live=false;};},[userId,historyKey]);
- const savedUntil=pause.status==='saved'?until:null;
- const statusText=resume.status==='saved'?t('statusRequired'):savedUntil?t('statusPaused',{until:formatDmyTime(new Date(`${savedUntil}:00+08:00`))}):paused?t('statusPaused',{until:formatDmyTime(new Date(exemptionUntil!))}):t('statusRequired');
+ // Each completed action yields a new state object, so the history reloads after every save or switch-back.
+ useEffect(()=>{let live=true;accountHistoryAction(userId).then(result=>{if(live)setHistory(result);},()=>{if(live)setHistory({status:'failed'});});return()=>{live=false;};},[userId,pause,resume]);
+ const statusText=resumed?t('statusRequired'):savedUntil?t('statusPaused',{until:formatDmyTime(new Date(`${savedUntil}:00+08:00`))}):paused?t('statusPaused',{until:formatDmyTime(new Date(exemptionUntil!))}):t('statusRequired');
  return <div className="space-y-5">
   <div className="space-y-2"><p className={caption} id={`${id}-requirement`}>{t('requirement')}</p>
    <div role="group" aria-labelledby={`${id}-requirement`} className="inline-flex rounded-md border border-border p-1">
@@ -122,7 +125,7 @@ function AuthenticatorForms({userId,name,exemptionUntil}:{userId:string;name:str
    </div>
    <p className="text-sm"><span className="text-muted-foreground">{t('status')}: </span><span role="status">{statusText}</span></p>
   </div>
-  {mode==='paused'&&<form className="space-y-4" onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);startTransition(()=>pauseAction(form));}}>
+  {mode==='paused'&&<form className="space-y-4" onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);setLast({kind:'pause',until:String(form.get('until'))});startTransition(()=>pauseAction(form));}}>
    <input type="hidden" name="type" value="recovery-exemption"/><input type="hidden" name="userId" value={userId}/><input type="hidden" name="confirmed" value="on"/>
    <label className={label}><span className={caption}>{t('expiry')} <span aria-hidden="true" className="text-destructive">*</span></span>
     <input name="until" type="datetime-local" required min={kualaLumpurLocalInput(opened+MIN_PAUSE)} max={kualaLumpurLocalInput(opened+MAX_PAUSE)} value={until} onChange={event=>setUntil(event.target.value)} className={`${inputCls} min-h-11`}/>
@@ -130,17 +133,17 @@ function AuthenticatorForms({userId,name,exemptionUntil}:{userId:string;name:str
    <label className={label}><span className={caption}>{t('reason')} <span aria-hidden="true" className="text-destructive">*</span></span>
     <textarea name="reason" required minLength={5} maxLength={500} className={`${inputCls} min-h-20`}/></label>
    <p className="text-sm text-muted-foreground">{t('help',{name})}</p>
-   {pause.status==='saved'&&<p role="status" className="text-sm font-medium">{t('saved')}</p>}
-   {pause.status==='failed'&&<p role="alert" className="text-sm text-destructive">{t('failed')}</p>}
+   {last?.kind==='pause'&&pause.status==='saved'&&<p role="status" className="text-sm font-medium">{t('saved')}</p>}
+   {last?.kind==='pause'&&pause.status==='failed'&&<p role="alert" className="text-sm text-destructive">{t('failed')}</p>}
    <div className="flex flex-wrap justify-end gap-2"><ActionButton type="submit" aria-busy={pausing} disabled={pausing} className={button(btnPrimary)}>{t('save')}</ActionButton></div>
   </form>}
   {mode==='required'&&!paused&&!savedUntil&&<p className="text-sm text-muted-foreground">{t('requiredHelp')}</p>}
-  {(paused||savedUntil)&&resume.status!=='saved'&&<form className="flex flex-wrap items-center justify-end gap-2" onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);startTransition(()=>resumeAction(form));}}>
+  {(paused||savedUntil)&&!resumed&&<form className="flex flex-wrap items-center justify-end gap-2" onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);setLast({kind:'resume'});startTransition(()=>resumeAction(form));}}>
    <input type="hidden" name="type" value="recovery-exemption-cancel"/><input type="hidden" name="userId" value={userId}/><input type="hidden" name="confirmed" value="on"/>
    {resume.status==='failed'&&<p role="alert" className="text-sm text-destructive">{t('failed')}</p>}
    <ActionButton type="submit" aria-busy={resuming} disabled={resuming} className={button(btnGhost)}>{t('switchOn')}</ActionButton>
   </form>}
-  {resume.status==='saved'&&<p role="status" className="text-sm font-medium">{t('resumed')}</p>}
+  {resumed&&<p role="status" className="text-sm font-medium">{t('resumed')}</p>}
   <section className="space-y-2 border-t border-border pt-4"><h3 className={caption}>{t('history')}</h3>
    {history.status==='loading'&&<p className="text-sm text-muted-foreground">{t('historyLoading')}</p>}
    {history.status==='failed'&&<p className="text-sm text-muted-foreground">{t('historyFailed')}</p>}
