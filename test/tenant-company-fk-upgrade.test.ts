@@ -207,37 +207,71 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const beforePerformancePrivileges=await privileges();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const afterPerformancePrivileges=await privileges();
-  const privateFunctions=['app._access_bootstrap_eligible(uuid,uuid)','app._ai_control_context_for_purpose(text,boolean,boolean)','app._access_workforce_list_rows(uuid[])','app._assistant_assigned_index_login(uuid,boolean)','app.notification_event_processing_enqueue()',
-   'app.ai_centre_mandate_write_order()','app.ai_centre_mandate_bound_tenant()',
-   'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()',
-   'app._assistant_presentation_feature_unpaused_v1()',
-   'app._assistant_rewards_return_choice_payload_v1()','app._assert_assistant_rewards_presentation_v1(text)',
-   'app._assistant_rewards_calendar_choice_payload_v1()','app._assistant_rewards_cancel_choice_payload_v1()',
-   // 5020: the set-wise organisation resolver is owner-only.
-   'app._personnel_employment_tags(uuid[],date)',
-   // Audit-chain commit seal: trigger functions and the key/seal helpers stay private.
-   'app._domain_event_chain_key_held(uuid)','app._domain_event_chain_seal_tenant(uuid)','app.domain_event_chain_arm()','app.domain_event_chain_seal_now()'];
-  // The fence triggers' WHEN calls it under whichever role writes an event, and PostgreSQL checks EXECUTE for that
-  // role; it answers only whether the caller's own transaction is sealing.
-  const publicFunctions=['app.domain_event_chain_sealing()'];
-  const addedFunctions=[...privateFunctions,'app.access_editor_presentation_v1()','app.access_profile_policy_read_lock()','app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)',
-   'app.may_have_attendance_task_metadata()',
-   'app.attendance_pending_visible_headers(uuid)',
-   'app.personnel_overview_narrow_rows(date,uuid[])',
-   'app.personnel_overview_page_rows(date,uuid[],uuid[])',
-   'app.access_workforce_picker_facts(uuid[])',
-   'app.personnel_overview_filter_fields(date,uuid[])',
-   'app.notification_projection_exists(uuid,uuid,text)',
-   'app.assistant_rewards_return_presentation_choices_v1()',
-   'app.assistant_rewards_calendar_presentation_choices_v1()',
-   'app.assistant_rewards_cancel_presentation_choices_v1()',
-   'app.home_leave_presentation_index(text)',
-   'app.attendance_clock_policy_history(uuid,uuid)',
-   // 5020: Personnel typed facts, search entries and the typed page rows.
-   'app.personnel_overview_facts(date,uuid[])','app.personnel_private_search_entries(text,uuid[])',
-   'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_list_rows_for_ids(date,uuid[],uuid[])',
-   'app.domain_event_chain_flush(uuid)',...publicFunctions,
-  ].sort();
+  // Every function the forward migrations add, with its reviewed EXECUTE privileges: private functions are not
+  // callable by the application role; the public ones are policy-side or trigger-WHEN helpers that every writing
+  // role must be able to call and that reveal nothing beyond the caller's own transaction or released ids.
+  const privateFunctions=[
+   'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
+   'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
+   'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
+   'app._assistant_rewards_cancel_choice_payload_v1()','app._assistant_rewards_return_choice_payload_v1()','app._domain_event_chain_key_held(uuid)',
+   'app._domain_event_chain_seal_tenant(uuid)','app._personnel_employment_tags(uuid[],date)','app.access_administrator_assert_run()',
+   'app.access_administrator_guard_tenant()','app.access_capability_effective(uuid)','app.access_lock_assert_strict(uuid,text,text)',
+   'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.bulk_job_capability_held(uuid)',
+   'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_event_attribution()','app.bulk_job_held(uuid)',
+   'app.bulk_job_input_conforms(jsonb,integer,jsonb)','app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)',
+   'app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)','app.bulk_job_value_digest(jsonb)',
+   'app.domain_event_chain_arm()','app.domain_event_chain_seal_now()','app.employee_import_revert_release(uuid,boolean)',
+   'app.employment_void_reference_blockers(uuid[])','app.import_discard_batch(uuid,uuid,uuid,text,integer)','app.import_marker_visible(uuid)',
+   'app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()',
+   'app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.org_structure_statement_lock()',
+   'app.payroll_history_row_visible(text,uuid)','app.register_import_release(uuid,boolean)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
+  ];
+  const publicFunctions=[
+   'app.domain_event_chain_sealing()','app.import_released_attempt_ids()',
+   'app.payroll_history_hidden_rows(text)',
+  ];
+  const addedFunctions=[
+   'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
+   'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
+   'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
+   'app._assistant_rewards_cancel_choice_payload_v1()','app._assistant_rewards_return_choice_payload_v1()','app._domain_event_chain_key_held(uuid)',
+   'app._domain_event_chain_seal_tenant(uuid)','app._personnel_employment_tags(uuid[],date)','app.access_administrator_assert_run()',
+   'app.access_administrator_guard_tenant()','app.access_administrator_set_lock(uuid)','app.access_capability_effective(uuid)',
+   'app.access_configuration_exclusive_wait(uuid,integer)','app.access_configuration_write_lock()','app.access_editor_presentation_v1()',
+   'app.access_lock_assert_strict(uuid,text,text)','app.access_lock_mode_held(uuid)','app.access_profile_policy_read_lock()',
+   'app.access_profile_policy_value_lock()','app.access_workforce_employment_permitted(uuid,uuid,timestamp with time zone,uuid,uuid[])','app.access_workforce_list_facts()',
+   'app.access_workforce_list_rows_for_ids(uuid[])','app.access_workforce_permitted_companies(text)','app.access_workforce_picker_facts(uuid[])',
+   'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.assistant_rewards_calendar_presentation_choices_v1()',
+   'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)',
+   'app.attendance_frozen_actor_identity_keys(jsonb,text)','app.attendance_pending_visible_headers(uuid)','app.bulk_job_access(uuid)',
+   'app.bulk_job_admit()','app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)',
+   'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()',
+   'app.bulk_job_fence(uuid,text)','app.bulk_job_held(uuid)','app.bulk_job_input_conforms(jsonb,integer,jsonb)',
+   'app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)','app.bulk_job_mark_watched(uuid)',
+   'app.bulk_job_notice_recipients(uuid)','app.bulk_job_pending_steps(uuid,integer)','app.bulk_job_request_cancel(uuid,text)',
+   'app.bulk_job_scope_current(text,uuid[])','app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)',
+   'app.bulk_job_step_update(uuid,integer[],jsonb)','app.bulk_job_steps_put(uuid,boolean,jsonb)','app.bulk_job_value_digest(jsonb)',
+   'app.bulk_job_waiting(uuid)','app.bulk_job_worker_ready(text)','app.bulk_job_worker_update(uuid,jsonb)',
+   'app.delegated_approval_subjects(uuid[],text,text)','app.domain_event_chain_arm()','app.domain_event_chain_flush(uuid)',
+   'app.domain_event_chain_seal_now()','app.domain_event_chain_sealing()','app.employee_import_revert_release(uuid,boolean)',
+   'app.employment_void_reference_blockers(uuid[])','app.home_leave_presentation_index(text)','app.home_own_clock_day(uuid,date,date)',
+   'app.home_own_schedule_range(uuid,date,date)','app.import_activation_conflicts(uuid)','app.import_discard_batch(uuid,uuid,uuid,text,integer)',
+   'app.import_hidden_attempt_ids()','app.import_marker_released(uuid)','app.import_marker_visible(uuid)',
+   'app.import_pending_employment_ids()','app.import_pending_guard()','app.import_pending_person_ids()',
+   'app.import_pending_stamp()','app.import_release(uuid)','app.import_released_attempt_ids()',
+   'app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()',
+   'app.leave_stage_digests(uuid[],uuid[],boolean)','app.leave_stage_release(uuid,uuid)','app.leave_stage_released_ids()',
+   'app.may_have_attendance_task_metadata()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()',
+   'app.notification_projection_exists(uuid,uuid,text)','app.org_structure_statement_lock()','app.payroll_batch_period_required()',
+   'app.payroll_history_hidden_rows(text)','app.payroll_history_row_visible(text,uuid)','app.payroll_history_stage_busy(uuid)',
+   'app.payroll_history_stage_open(uuid,uuid,text)','app.payroll_history_stage_release(uuid)','app.payroll_history_stage_stamp()',
+   'app.payroll_input_lock_keys(uuid[],uuid)','app.personnel_list_rows_for_ids(date,uuid[],uuid[])','app.personnel_overview_facts(date,uuid[])',
+   'app.personnel_overview_filter_fields(date,uuid[])','app.personnel_overview_narrow_rows(date,uuid[])','app.personnel_overview_page_rows(date,uuid[],uuid[])',
+   'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_private_search_entries(text,uuid[])','app.register_import_release(uuid,boolean)',
+   'app.reward_access_observation_due(uuid)','app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
+   'app.system_label_import_release_attempt(uuid,uuid)',
+  ];
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
   for(const fn of addedFunctions){
@@ -363,12 +397,88 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    expect(String(row?.acl??''),rel).not.toMatch(/(^|[{,])(ai_hr_app)?=/);
    expect(afterPerformancePrivileges.policies.filter(policy=>'app.'+policy.tablename===rel)).toEqual([]);
   }
+  // The combined release block (5000-5090): every relation, column grant and policy it adds, reviewed here and then
+  // left out of the comparison of pre-existing privileges below. The owner role's name is normalised.
+  const [{owner_role:ownerRole}]=await storage.client<{owner_role:string}[]>`select current_user as owner_role`;
+  const ownerAcl=(acl:string|null)=>acl===null?null:acl.split(ownerRole).join('OWNER');
+  const digest=(text:string|null)=>text===null?null:createHash('md5').update(text).digest('hex');
+  const combinedRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
+   'app.access_administrator_assert_pending':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.access_administrator_guard':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.access_capability_publication':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.access_capability_tenant_publication':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.bulk_job_seal':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.bulk_job_step_seal':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.import_attempt_release':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_reward_setup_reader=r/OWNER}'},
+   'app.leave_stage_release':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.movement_revert_capture':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'app.movement_revert_capture_seq_seq':{rls:false,force:false,acl:null},
+   'app.payroll_history_stage':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.payroll_history_staged_row':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.system_label_import_release':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_reward_setup_reader=r/OWNER,ai_hr_reward_upload_reader=r/OWNER}'},
+   'bulk_job':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'bulk_job_kind':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'bulk_job_step':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'bulk_job_worker':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'payroll_run_group':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+  };
+  const combinedColumns=[
+   {rel:'payroll_run_group',col:'ended_at',acl:'{ai_hr_app=w/OWNER}'},
+   {rel:'payroll_run_group',col:'event_id',acl:'{ai_hr_app=w/OWNER}'},
+   {rel:'payroll_run_group',col:'outcomes',acl:'{ai_hr_app=w/OWNER}'},
+   {rel:'payroll_run_group',col:'result',acl:'{ai_hr_app=w/OWNER}'},
+   {rel:'payroll_run_group',col:'sealed_at',acl:'{ai_hr_app=w/OWNER}'},
+  ];
+  const combinedPolicies=[
+   {schemaname:'public',tablename:'assignment',policyname:'assignment_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
+   {schemaname:'public',tablename:'bulk_job',policyname:'bulk_job_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'854f996ebf0fabb3d26bab47074b4367',with_check:null},
+   {schemaname:'public',tablename:'bulk_job_step',policyname:'bulk_job_step_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'d7dd4940b61e35f349026181b8e2bf9f',with_check:null},
+   {schemaname:'public',tablename:'business_unit',policyname:'business_unit_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
+   {schemaname:'public',tablename:'compensation',policyname:'compensation_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
+   {schemaname:'public',tablename:'cost_center',policyname:'cost_center_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
+   {schemaname:'public',tablename:'department',policyname:'department_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
+   {schemaname:'public',tablename:'domain_event',policyname:'domain_event_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'b0a8927456ec43012df21412a95f7c37',with_check:null},
+   {schemaname:'public',tablename:'employee_dependent',policyname:'employee_dependent_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'e1e347cd1d2f41f260b72723cf6fcd03',with_check:null},
+   {schemaname:'public',tablename:'employee_qualification',policyname:'employee_qualification_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
+   {schemaname:'public',tablename:'employee_statutory_my',policyname:'employee_statutory_my_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'e1e347cd1d2f41f260b72723cf6fcd03',with_check:null},
+   {schemaname:'public',tablename:'employment',policyname:'employment_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
+   {schemaname:'public',tablename:'employment_cost_allocation_head',policyname:'employment_cost_allocation_head_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
+   {schemaname:'public',tablename:'employment_tax_scheme_my',policyname:'employment_tax_scheme_my_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
+   {schemaname:'public',tablename:'employment_tax_selection_my',policyname:'employment_tax_selection_my_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
+   {schemaname:'public',tablename:'grade_group',policyname:'grade_group_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
+   {schemaname:'public',tablename:'grade_group_member',policyname:'grade_group_member_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
+   {schemaname:'public',tablename:'import_attempt_item',policyname:'import_attempt_item_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
+   {schemaname:'public',tablename:'job_grade',policyname:'job_grade_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
+   {schemaname:'public',tablename:'label_company_assignment',policyname:'label_company_assignment_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
+   {schemaname:'public',tablename:'leave_ledger',policyname:'leave_ledger_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
+   {schemaname:'public',tablename:'leave_ledger',policyname:'leave_ledger_stage_hidden',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'04ae78d4be9a45c73791e800606ae4f3',with_check:'750a56c287292289aa2796686ca07de0'},
+   {schemaname:'public',tablename:'payroll_batch',policyname:'payroll_batch_history_stage',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'6ce658a1711835306c3e9cac03d44dda',with_check:null},
+   {schemaname:'public',tablename:'payroll_history_import_record',policyname:'payroll_history_import_record_history_stage',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'b86f613f85d47351b877d5c302dd1f31',with_check:null},
+   {schemaname:'public',tablename:'payroll_history_import_revision',policyname:'payroll_history_import_revision_history_stage',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'a9343f694013ea4b56643ee2bc1e5225',with_check:null},
+   {schemaname:'public',tablename:'payroll_history_import_snapshot',policyname:'payroll_history_import_snapshot_history_stage',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'45e1516e5e1f89eceeac25aea6901daf',with_check:null},
+   {schemaname:'public',tablename:'payroll_run_group',policyname:'payroll_run_group_insert',permissive:'PERMISSIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'ebf95bb6d330d9540e7de0753f0651e7'},
+   {schemaname:'public',tablename:'payroll_run_group',policyname:'payroll_run_group_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'ebf95bb6d330d9540e7de0753f0651e7',with_check:null},
+   {schemaname:'public',tablename:'payroll_run_group',policyname:'payroll_run_group_update',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'ebf95bb6d330d9540e7de0753f0651e7',with_check:'ebf95bb6d330d9540e7de0753f0651e7'},
+   {schemaname:'public',tablename:'payslip',policyname:'payslip_history_stage',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'be7965b44ae497db663f98fe9eb010be',with_check:null},
+   {schemaname:'public',tablename:'person',policyname:'person_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
+   {schemaname:'public',tablename:'person_emergency_contact',policyname:'person_emergency_contact_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'e1e347cd1d2f41f260b72723cf6fcd03',with_check:null},
+   {schemaname:'public',tablename:'position',policyname:'position_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
+   {schemaname:'public',tablename:'profile_option',policyname:'profile_option_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
+   {schemaname:'public',tablename:'reporting_line',policyname:'reporting_line_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'b1326dc10537d8076dc330a56c78bb62',with_check:null},
+  ];
+  const isCombinedRelation=(rel:string)=>Object.hasOwn(combinedRelations,rel);
+  expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>isCombinedRelation(row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}])))
+   .toEqual(combinedRelations);
+  expect(afterPerformancePrivileges.columns.filter(row=>isCombinedRelation(row.rel)).map(row=>({rel:row.rel,col:row.col,acl:ownerAcl(row.acl)}))).toEqual(combinedColumns);
+  const isCombinedPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>combinedPolicies.some(policy=>policy.schemaname===row.schemaname&&policy.tablename===row.tablename&&policy.policyname===row.policyname);
+  expect(afterPerformancePrivileges.policies.filter(isCombinedPolicy).map(row=>({...row,qual:digest(row.qual),with_check:digest(row.with_check)}))).toEqual(combinedPolicies);
+  for(const rel of Object.keys(combinedRelations))expect(beforePerformancePrivileges.relations.some(row=>row.rel===rel),rel).toBe(false);
   expect({
-   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)).map(row=>
+   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
-   columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable),
+   columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
   }).toEqual(beforePerformancePrivileges);
