@@ -81,6 +81,8 @@ async function blockedError(ctx:SessionContext,attemptId:string){
 export const employeeImportRevertJobHandler:BulkJobHandler<never>={
  kind:EMPLOYEE_IMPORT_REVERT_KIND,
  mode:'per-step',
+ /** The revert has no steps: its review is the prepare and its whole write is the release. */
+ async applyStepTx(){throw new Error('The employee import revert has no steps.');},
  /** The synchronous revert's review without its locks: a refusal here writes nothing. */
  async prepare(ctx,job){
   const {attemptId,previewHash}=inputOf(job);

@@ -117,6 +117,8 @@ async function main(){
   const probes=runProbes();const sampler=await startSampler(obs,TENANT);
   const started=Date.now();let outcome:unknown;
   try{outcome=await run();}finally{stop=true;await probes;}
+  // The state a normal session sees once the operation has finished (the poll may stop before its last sample).
+  if(watch)seen.add(await watch());
   const locks=await sampler.stop();
   report[name]={wallMs:Date.now()-started,outcome,visibleCountsSeen:watch?[...seen].sort((a,b)=>a-b):undefined,
    probes:Object.fromEntries(Object.entries(lat).filter(([k])=>k!=='visibility').map(([k,v])=>[k,stat(v)])),errors:[...new Set(errors)].slice(0,8),errorCount:errors.length,

@@ -2,7 +2,8 @@
 
 Status: source implementation on `claude/bulkjob-register-20261110`; hosted verification and integration pending.
 Base: `claude/import-staged-job-20261110` @ `0143d761c` (shared bulk-job kernel, ADR 2026-11-10 employee import).
-Draft migration (unallocated): 9930 adds the kinds `section_import` and `register_import`. Production and staging untouched.
+Draft migrations (unallocated): 9930 (kinds `section_import`, `register_import`), 9931 (set-based register release),
+9932 (employee import Revert job). Production and staging untouched.
 
 ## Context
 
@@ -39,14 +40,20 @@ Instead (`core/register-import-worker.ts`):
    whose `app.import_attempt` is a throwaway token, so the database stamps exactly the audit events those writers
    append. It captures the employee's register rows before and after, the diff, and the events, then rolls the
    savepoint back. Nothing the file changes is ever visible before the release.
-3. **Release** is one transaction under the writers' own locks (Access, then profile policy) and the creator's
-   freshly resolved authority: it checks, by primary key, that every captured employee still holds the same code
-   and person in a live company the creator administers, compares each employee's register fingerprint (an md5 of
-   every row as the creator's session sees it) with the one captured before the writers ran, and then applies every
-   capture set-based: changed rows that clear or keep an exclusive flag, then rows that take one, then new rows with
-   their captured IDs, then all events in file order through `appendEvents`. The tables' own triggers and row
-   security run as for the writers; at COMMIT the deferred profile value guard re-checks workforce maintain
-   authority for every written row, exactly as it did for the synchronous write.
+3. **Release** is one statement on the worker's queue-owner connection (`app.register_import_release`, draft
+   migration 9931), so its per-row cost is the tables' own triggers, not a re-decision per row. It opens the
+   creator's session from the grants the database captured at admission (the job is readable only while they stay
+   current), takes the writers' locks (Access, its tuples, then the profile policy) and decides once per statement
+   what the app role decided once per row: the creator's grants and administration; every captured employee's code,
+   person, live company and status; workforce maintain through the same two company-level predicates
+   (`access_workforce_company`, `access_workforce_not_denied`) that `access_workforce_employment` and
+   `access_workforce_person` apply in the profile value guard; the tables' row security conditions; and each
+   employee's register fingerprint (every row's identity and row version, `xmin`, so the comparison does not depend on
+   the session's time zone). It then re-validates every captured row against its own employee (a capture that names
+   another employee's record is refused) and applies them set-based: changed rows that clear or keep an exclusive
+   flag, then rows that take one, then new rows with their captured IDs, then the writers' audit events verbatim in
+   file order. The system label guard and every audit-event trigger still run per row. A read-only organisation
+   refuses first, in the creator's own transaction, as a write there would.
 4. **Changed meanwhile.** An employee whose register or identity changed between capture and release is sent back
    for a fresh capture (its steps become pending again, the job returns to running); after three rounds the import
    stops with nothing written. Concurrent edits survive: the fresh capture runs the writers on top of them.
@@ -79,50 +86,66 @@ section screen shows the employee import's progress panel pattern and hands the 
 result card; it rejoins a running import after navigation. Completion notices: `bulkJobs.notification.sectionImport`
 and `.registerImport` in all six catalogues, opening the import page whose history list shows the run.
 
+### Employee import Revert: review without locks, one short release
+
+The employee import Revert (ADR-0155, ADR-0157; `core/employee-import-history.ts:72`) voided every hire of the attempt
+in one request transaction under the Access and leave-dependency locks, and its review held the same locks. Now
+(`core/employee-import-revert-job.ts`, kind `employee_import_revert`, draft migration 9932):
+
+- The review (`previewImportRevertForAttempt`) and the job's own review read one snapshot with no lock; the
+  confirmation only admits the job, inside the synchronous revert's input and authority checks.
+- The release, `app.employee_import_revert_release`, is one owner-run statement under the revert's locks (Workforce
+  barrier, leave dependency without waiting, the attempt row) and the creator's captured session. It refuses, in
+  the synchronous words, when access changed, the import was already reverted or never saved, or the attempt's
+  items or confirmation differ from the reviewed plan. Workforce maintain is decided once per company; the reference
+  blockers come from `app.employment_void_reference_blockers`, which `app.employment_void_blockers` now calls, so
+  there is one list of judged references; any blocker refuses the whole revert and the worker lists the blockers as
+  before.
+- The voids then run in the staged import discard's environment (owner connection, no request tenant or user), so
+  the per-row guards take their owner path; the `employment.voided` events (in file order), the Import History
+  `reverted` event and its audit event are written with the creator as actor, and the last-administrator rule is
+  asserted once for the tenant (no voided person has a login: an `app_user` is a void blocker).
+- A refused or failed revert records `revert_failed` with its blockers, as before. The history screen follows the
+  job and rejoins it after navigation.
+
+Register imports have no Revert: they never recorded an Import History attempt, and still do not.
+
 ## Measured (populated rehearsal, `scripts/performance/register-import-rehearsal.ts`)
 
 Private PostgreSQL 16 cluster with durability on, 3,008 fictional employees each holding one live Highest
-qualification and one Primary contact, audit chain armed, the real protected worker process. The host was shared
-with other agents' clusters: load average 23 to 34 on 12 cores throughout, so every number is inflated; the baseline
-row is the same probes with no import running. 500-row files (the register cap). Holds are tenant-wide advisory
-keys sampled every 25 ms in the rehearsal's own database.
+qualification and one Primary contact, audit chain armed, the real protected worker process, 500-row files (the
+register cap) and two 500-hire employee import files for the Revert rows. The host is shared with other agents'
+clusters; this run had load average about 12 on 12 cores (an earlier run of round 1 at 23 to 34 measured the old
+synchronous register commit at 30 to 52 s). Holds are tenant-wide advisory keys sampled every 25 ms in the
+rehearsal's own database; the baseline row is the same probes with no import running.
 
-| Phase | Longest import hold | Import chunk holds p50 / p95 / max | Clock-in max | Login max | Access writer max |
-|---|---|---|---|---|---|
-| Baseline (no import) | - | - | 0.81 s | 0.15 s | 0.63 s |
-| Synchronous register commit (before) | 30.4 s Access X (52.3 s in an earlier run) | one transaction | 29.6 s | 26.6 s | 30.2 s |
-| Register job, Qualifications | release 1.65 s | 0.14 / 0.35 / 0.66 s | 1.64 s | 1.13 s | 1.67 s |
-| Register job, Emergency Contacts | release 1.88 s | 0.13 / 0.25 / 0.55 s | 1.70 s | 1.17 s | 1.78 s |
-| Section job, Profile | 0.74 s | 0.17 / 0.34 / 0.74 s | 1.01 s | 0.23 s | 1.13 s |
-| Section job, Family | 0.54 s | 0.12 / 0.24 / 0.54 s | 1.21 s | 0.15 s | 1.17 s |
-| Register job, late refusal (row 490) | 0.62 s | 0.16 / 0.35 / 0.62 s | 1.46 s | 0.28 s | 1.83 s |
-| Employee import Revert, 500 hires (not converted) | 18.8 s Access and leave X | one transaction | 19.3 s | 5.5 s | 18.9 s |
+| Phase | Longest import hold | Import chunk holds p50 / p95 / max | Clock-in max | Login max | Access writer max | My Profile / Home max |
+|---|---|---|---|---|---|---|
+| Baseline (no import) | - | - | 0.47 s | 0.03 s | 0.44 s | 0.04 / 0.16 s |
+| Synchronous register commit (before) | 12.0 s Access X | one transaction | 11.2 s | 10.1 s | 12.1 s | 0.04 / 0.13 s |
+| Register job, Qualifications | release 0.30 s | 0.11 / 0.19 / 0.26 s | 0.71 s | 0.22 s | 0.65 s | 0.08 / 0.40 s |
+| Register job, Emergency Contacts | release 0.79 s | 0.11 / 0.17 / 0.25 s | 0.79 s | 0.38 s | 0.86 s | 0.11 / 0.34 s |
+| Section job, Profile | 0.62 s | 0.11 / 0.35 / 0.62 s | 0.99 s | 0.16 s | 1.26 s | 0.25 / 0.62 s |
+| Section job, Family | 0.33 s | 0.11 / 0.16 / 0.33 s | 0.55 s | 0.10 s | 0.46 s | 0.07 / 0.39 s |
+| Register job, late refusal (row 490) | 0.36 s | 0.11 / 0.16 / 0.36 s | 0.34 s | 0.11 s | 0.37 s | 0.06 / 0.24 s |
+| Employee import Revert, synchronous (before) | 5.24 s Access and leave X | one transaction | 4.41 s | 1.37 s | 5.42 s | 0.02 / 0.09 s |
+| Employee import Revert, job | release 0.64 s | - (review 0.8 s, no lock) | 0.84 s | 0.39 s | 0.82 s | 0.03 / 0.12 s |
 
-No errors and no Busy in any probe (the Personnel list probe is 9 to 15 s on this host with or without an import).
-A normal session saw a register file's rows jump from none to all (counts seen: 500 then 1,000; 0 then 500); after
-the late refusal it saw none. `verifyTenantChain` valid after every run. Release parts (Qualifications /
-Emergency): subject check 32 / 29 ms, apply 715 / 1,138 ms, COMMIT (deferred guards) 887 / 716 ms.
+No errors and no Busy in any probe (the Personnel list probe is 3 to 12 s on this host with or without an import).
+A normal session saw no partial register file (none, then all) and nothing after the late refusal; the database then
+held exactly 1,000 imported qualifications (500 synchronous, 500 by the job), 500 contacts, none from the refused
+file, and 500 voided hires for each Revert. `verifyTenantChain` valid at the end.
 
-Release cost is linear: about 2.3 ms per written row on this host (audit event with its row triggers about 0.9 ms,
-deferred profile value guard about 1.1 ms, keyed row write about 0.3 ms), measured at 100 to 500 rows.
+## Release cost
 
-## The fallback was not taken
-
-The release is above the 1 s bar at the 500-row cap on this oversubscribed host (1.65 to 1.88 s); in the same window
-ordinary clock-ins held the same Access lock for up to 1.34 s. Its cost is the register writers' own per-row
-work (audit events and the authority guard), which no design can drop without changing audit or permission checks;
-staging events ahead of the release would leave phantom audit rows for imports that are later refused. The fallback
-(per-employee writes, then Revert) was not built because its Revert is, by ADR-0155, one all-or-nothing transaction
-running the same writers over the same rows: the measured synchronous shape of that is 30 to 52 s at 500 rows
-(compare the employee Revert, 18.8 s), so it moves the long hold to the undo path instead of removing it. Options for
-the owner: accept the bounded release (cap 500 rows, linear, projected well under 1 s on an uncontended database);
-lower the register file cap (200 rows measured about 0.5 s on this host); or the fallback with a chunked, not atomic,
-Revert. Phase 0 (commit seal) takes the audit-chain lock off the event inserts and phase 2 makes the Access lock
-shared, which leaves only the profile-policy lock exclusive during the release.
+Measured with `track_functions` on a 500-row file: through the app role the register release paid the profile
+value guard (about 1.3 ms per emergency contact, most of it `access_workforce_person`), row security and the
+statement lock per row. The set-based statement removes those; what remains per row is the system label guard and
+the audit events' own triggers (about 0.76 ms per event at load 13, chain hash included), which are the same for any
+writer of these rows. The employee Revert paid `access_workforce_employment` per item twice, the guards per voided
+row and the last-administrator assertion per row at COMMIT.
 
 ## Not changed here
 
-- `core/employee-import-history.ts:72`, the employee import **Revert**, still voids every employment of the attempt
-  in one transaction under the Access and leave-dependency locks. It is all-or-nothing by ADR-0155 and belongs to
-  the import-revert conversion (plan step 12); its measured hold is recorded with the rehearsal.
+- The other import kinds' Reverts (Bank & Statutory, Movement, Cost allocation) are unchanged.
 - The synchronous `commitSectionImport` remains for its other callers (tests, the Bank & Statutory upload helper).
