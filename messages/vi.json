@@ -5059,6 +5059,7 @@
     },
     "payrollStatus": {
       "draft": "Nháp",
+      "processing": "Đang xử lý",
       "processed": "Đã xử lý",
       "closed": "Đã đóng"
     },
@@ -5879,6 +5880,7 @@
       },
       "status": {
         "draft": "Nháp",
+        "processing": "Đang xử lý",
         "processed": "Đã xử lý",
         "closed": "Đã đóng",
         "unattached": "Chưa gắn đợt",
@@ -6661,6 +6663,7 @@
       "transactionDetail": "Chi tiết giao dịch",
       "transactionDetailTitle": "Tải xuống thu nhập, các khoản khấu trừ, đóng góp của người sử dụng lao động và tổng cộng của từng nhân viên trong kỳ này dưới dạng tệp Excel.",
       "generatePayslips": "Xử lý bảng lương",
+      "processingStarted": "Đã bắt đầu xử lý bảng lương. Trang này hiển thị tiến độ.",
       "closeBatch": "Đóng đợt",
       "disclaimer": "<strong>Số liệu nháp.</strong> Các khoản theo luật được tính từ các quy tắc Malaysia đã xác minh có hiệu lực tại thời điểm cuối kỳ. Hãy kiểm tra mọi phiếu lương trước khi đóng — sau khi đóng, đợt sẽ không thể thay đổi. Các tệp ngân hàng (<mono>CP39 / KWSP / PERKESO</mono>) được tạo riêng.",
       "leaversTitle": "Nhân viên nghỉ việc trong kỳ này",
@@ -7102,7 +7105,25 @@
       "reprocessPendingEmployees": "Còn {count} nhân viên đã chọn đang chờ xử lý.",
       "reprocessPcbBefore": "PCB trước",
       "reprocessPcbAfter": "PCB cập nhật",
-      "reprocessPcbDifference": "Chênh lệch PCB"
+      "reprocessPcbDifference": "Chênh lệch PCB",
+      "processingJob": {
+        "title": "Xử lý bảng lương",
+        "othersRun": "Đợt lương này đang được xử lý. Đợt sẽ mở để rà soát khi xử lý xong.",
+        "state": {
+          "queued": "Đang chờ bắt đầu",
+          "preparing": "Đang kiểm tra đợt lương",
+          "running": "Đang tính phiếu lương",
+          "finalizing": "Đang hoàn tất đợt lương",
+          "discarding": "Đang hoàn tác việc xử lý",
+          "completed": "Đã xử lý xong",
+          "failed": "Việc xử lý đã dừng — đợt lương trở về bản nháp",
+          "cancelled": "Đã hủy xử lý — đợt lương trở về bản nháp"
+        },
+        "progressCount": "Đã xong {done}/{total} bước",
+        "backgroundHelp": "Bạn có thể rời trang này. Nhân viên không thấy gì cho đến khi đợt lương được đóng, và bạn sẽ nhận thông báo khi xử lý xong.",
+        "waiting": "Đang chờ dịch vụ xử lý bảng lương. Tiến độ đã được lưu; đừng xử lý lại đợt lương này.",
+        "workerUnavailable": "Dịch vụ xử lý bảng lương chưa chạy. Đợt lương đã được lưu và tự động bắt đầu ngay khi dịch vụ chạy."
+      }
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",
@@ -16067,6 +16088,7 @@
     },
     "batchStatus": {
       "draft": "Nháp",
+      "processing": "Đang xử lý",
       "processed": "Đã xử lý",
       "closed": "Đã đóng"
     }
@@ -19646,6 +19668,7 @@
         },
         "statuses": {
           "draft": "Nháp",
+          "processing": "Đang xử lý",
           "processed": "Đã xử lý",
           "closed": "Đã chốt"
         },
@@ -19790,6 +19813,7 @@
         },
         "statuses": {
           "draft": "Nháp",
+          "processing": "Đang xử lý",
           "processed": "Đã xử lý",
           "closed": "Đã chốt"
         },
@@ -31752,6 +31776,7 @@
     },
     "runStates": {
       "draft": "Bản nháp",
+      "processing": "Đang xử lý",
       "processed": "Đã xử lý",
       "closed": "Đã đóng"
     },
@@ -37263,6 +37288,20 @@
         "cancelled": {
           "title": "Đã hủy việc nhập nhân viên",
           "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "Đã xử lý xong bảng lương",
+          "body": "Mở Bảng lương để rà soát đợt đã xử lý."
+        },
+        "failed": {
+          "title": "Việc xử lý bảng lương đã dừng",
+          "body": "Đợt lương trở về bản nháp và không giữ phiếu lương nào. Mở Bảng lương để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy xử lý bảng lương",
+          "body": "Đợt lương trở về bản nháp và không giữ phiếu lương nào."
         }
       }
     }

@@ -11915,7 +11915,9 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
     }).from(payslip)
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payslip.batchId, batchId)));
+      // A run the background job is still processing shows no register: its payslips become the run's together,
+      // when the job's finalize flips it to processed.
+      .where(and(eq(payslip.batchId, batchId), batch.status === 'processing' ? sql`false` : undefined)));
     const registerTotal = tx.select({ total: sql<number>`count(*)`.mapWith(Number).as('total') })
       .from(visibleRegister).as('register_total');
     const registerPage = tx.select().from(visibleRegister)

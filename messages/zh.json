@@ -5059,6 +5059,7 @@
     },
     "payrollStatus": {
       "draft": "草稿",
+      "processing": "处理中",
       "processed": "已处理",
       "closed": "已关闭"
     },
@@ -5879,6 +5880,7 @@
       },
       "status": {
         "draft": "草稿",
+        "processing": "处理中",
         "processed": "已处理",
         "closed": "已关闭",
         "unattached": "未挂接",
@@ -6661,6 +6663,7 @@
       "transactionDetail": "交易明细",
       "transactionDetailTitle": "将本次薪资运行中每位员工的收入、扣除、雇主缴纳与合计下载为 Excel 文件。",
       "generatePayslips": "处理薪资",
+      "processingStarted": "薪资处理已开始。此页面显示其进度。",
       "closeBatch": "关闭批次",
       "disclaimer": "<strong>草稿数据。</strong>法定金额依据期末生效的已核实马来西亚规则计算。关闭前请核对每一份工资单 — 一旦关闭，批次即不可更改。银行文件（<mono>CP39 / KWSP / PERKESO</mono>）将单独生成。",
       "leaversTitle": "本周期离职人员",
@@ -7102,7 +7105,25 @@
       "reprocessPendingEmployees": "{count} 名所选员工仍待处理。",
       "reprocessPcbBefore": "原 PCB",
       "reprocessPcbAfter": "更新后 PCB",
-      "reprocessPcbDifference": "PCB 差额"
+      "reprocessPcbDifference": "PCB 差额",
+      "processingJob": {
+        "title": "薪资处理",
+        "othersRun": "此薪资批次正在处理中。处理完成后即可审核。",
+        "state": {
+          "queued": "等待开始",
+          "preparing": "正在检查批次",
+          "running": "正在计算工资单",
+          "finalizing": "正在完成批次",
+          "discarding": "正在撤销处理",
+          "completed": "处理已完成",
+          "failed": "处理已停止——批次已退回草稿",
+          "cancelled": "处理已取消——批次已退回草稿"
+        },
+        "progressCount": "已完成 {done}/{total} 个步骤",
+        "backgroundHelp": "您可以离开此页面。批次关闭前员工看不到任何内容，处理完成后您会收到通知。",
+        "waiting": "正在等待薪资处理服务。进度已保存；请勿再次处理此批次。",
+        "workerUnavailable": "薪资处理服务尚未运行。批次已保存，服务一运行便会自动开始。"
+      }
     },
     "transactions": {
       "title": "交易录入",
@@ -16067,6 +16088,7 @@
     },
     "batchStatus": {
       "draft": "草稿",
+      "processing": "处理中",
       "processed": "已处理",
       "closed": "已关闭"
     }
@@ -19646,6 +19668,7 @@
         },
         "statuses": {
           "draft": "草稿",
+          "processing": "处理中",
           "processed": "已处理",
           "closed": "已关闭"
         },
@@ -19790,6 +19813,7 @@
         },
         "statuses": {
           "draft": "草稿",
+          "processing": "处理中",
           "processed": "已处理",
           "closed": "已关闭"
         },
@@ -31752,6 +31776,7 @@
     },
     "runStates": {
       "draft": "草稿",
+      "processing": "处理中",
       "processed": "已处理",
       "closed": "已关闭"
     },
@@ -37263,6 +37288,20 @@
         "cancelled": {
           "title": "员工导入已取消",
           "body": "未添加任何员工。打开导入历史查看详情。"
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "薪资处理已完成",
+          "body": "打开薪资，审核已处理的批次。"
+        },
+        "failed": {
+          "title": "薪资处理已停止",
+          "body": "批次已退回草稿，未保留任何工资单。打开薪资查看原因。"
+        },
+        "cancelled": {
+          "title": "薪资处理已取消",
+          "body": "批次已退回草稿，未保留任何工资单。"
         }
       }
     }

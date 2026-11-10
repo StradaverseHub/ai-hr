@@ -143,7 +143,7 @@ function calculationDates(r:CalculationRead):string[]{
  return dates;
 }
 
-async function targetTx(tx:Tx,ctx:SessionContext,p:{batchId:string;employmentId:string;date:string;dates?:readonly string[];companyId:string;status:'draft'|'processed'}){
+async function targetTx(tx:Tx,ctx:SessionContext,p:{batchId:string;employmentId:string;date:string;dates?:readonly string[];companyId:string;status:'draft'|'processing'|'processed'}){
  const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,uuid(p.batchId))).limit(1);if(!batch||batch.companyId!==p.companyId)fail('coverage');await financial(tx,batch.companyId);
  if(batch.status!==p.status)fail('stale');if(batch.runType!=='regular')fail('unsupportedRun');
  const scoped=await resolveBatchScopeFilter(tx,batch.scope as BatchScope|null);if(scoped.employmentIds&&!scoped.employmentIds.includes(p.employmentId))fail('coverage');
@@ -179,7 +179,7 @@ async function pricedLinesTx(tx:Tx,ctx:SessionContext,r:CalculationRead,batch:ty
  // The parent is indivisible. Every actual payable date must fit this run's existing cut-off
  // and dated employer scope; a parent source date cannot stand in for its next-day money.
  if(bound.kind==='policy')await targetTx(tx,ctx,{batchId:batch.id,employmentId:r.source.employmentId,date:r.source.attendanceDate,
-  companyId:r.source.companyId,status:batch.status==='draft'?'draft':'processed',dates:allocations.map(row=>row.date)});
+  companyId:r.source.companyId,status:batch.status==='draft'||batch.status==='processing'?batch.status:'processed',dates:allocations.map(row=>row.date)});
  const [entity]=await tx.select().from(company).where(eq(company.id,batch.companyId)).limit(1);
  if(!entity)fail('permission');assertStatutory(entity.statutoryTier,'Payroll',entity.legalName);
  const pack=packFor(entity.country);if(!pack)fail('unavailable');if(entity.currency!==currency.code)fail('currency');
@@ -236,7 +236,7 @@ export async function readPayrollOvertimePatternCashTx(tx:Tx,ctx:SessionContext,
    :{source:claim.source,calculation,evidence,lines:claim.lines};
   if(contribution.calculation?.id!==calculation.id)fail('stale');
   await targetTx(tx,ctx,{batchId:p.batchId,employmentId:claim.source.employmentId,date:claim.source.attendanceDate,
-   dates:calculationDates(contribution),companyId:claim.source.companyId,status:b.status==='draft'?'draft':'processed'});
+   dates:calculationDates(contribution),companyId:claim.source.companyId,status:b.status==='draft'||b.status==='processing'?b.status:'processed'});
   lines.push(...await pricedLinesTx(tx,ctx,contribution,b,claim.settlement.id));
  }
  const byEmployment=new Map<string,PayrollOvertimePatternLine[]>();for(const line of lines){const list=byEmployment.get(line.employmentId)??[];list.push(line);byEmployment.set(line.employmentId,list);}return {lines,byEmployment};

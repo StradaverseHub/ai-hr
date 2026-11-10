@@ -5059,6 +5059,7 @@
     },
     "payrollStatus": {
       "draft": "Draf",
+      "processing": "Sedang diproses",
       "processed": "Diproses",
       "closed": "Ditutup"
     },
@@ -5879,6 +5880,7 @@
       },
       "status": {
         "draft": "Draf",
+        "processing": "Sedang diproses",
         "processed": "Diproses",
         "closed": "Ditutup",
         "unattached": "Belum dilampirkan",
@@ -6661,6 +6663,7 @@
       "transactionDetail": "Butiran Transaksi",
       "transactionDetailTitle": "Muat turun pendapatan, potongan, caruman majikan dan jumlah setiap pekerja bagi larian ini sebagai fail Excel.",
       "generatePayslips": "Proses Gaji",
+      "processingStarted": "Pemprosesan gaji dimulakan. Halaman ini menunjukkan kemajuannya.",
       "closeBatch": "Tutup kelompok",
       "disclaimer": "<strong>Angka draf.</strong> Amaun berkanun dikira daripada peraturan Malaysia yang disahkan dan berkuat kuasa pada akhir tempoh. Semak setiap slip gaji sebelum menutup — setelah ditutup, kelompok ini tidak boleh diubah. Fail bank (<mono>CP39 / KWSP / PERKESO</mono>) dijana secara berasingan.",
       "leaversTitle": "Pekerja berhenti tempoh ini",
@@ -7102,7 +7105,25 @@
       "reprocessPendingEmployees": "{count} pekerja yang dipilih masih menunggu.",
       "reprocessPcbBefore": "PCB sebelum",
       "reprocessPcbAfter": "PCB dikemas kini",
-      "reprocessPcbDifference": "Perbezaan PCB"
+      "reprocessPcbDifference": "Perbezaan PCB",
+      "processingJob": {
+        "title": "Pemprosesan gaji",
+        "othersRun": "Larian ini sedang diproses. Ia dibuka untuk semakan apabila pemprosesan selesai.",
+        "state": {
+          "queued": "Menunggu untuk bermula",
+          "preparing": "Menyemak larian",
+          "running": "Mengira slip gaji",
+          "finalizing": "Menyelesaikan larian",
+          "discarding": "Membatalkan pemprosesan",
+          "completed": "Pemprosesan selesai",
+          "failed": "Pemprosesan dihentikan — larian kembali ke draf",
+          "cancelled": "Pemprosesan dibatalkan — larian kembali ke draf"
+        },
+        "progressCount": "{done} daripada {total} langkah selesai",
+        "backgroundHelp": "Anda boleh tinggalkan halaman ini. Pekerja tidak melihat apa-apa sehingga larian ditutup, dan anda menerima notis apabila pemprosesan selesai.",
+        "waiting": "Menunggu perkhidmatan pemprosesan gaji. Kemajuan disimpan; jangan proses larian ini sekali lagi.",
+        "workerUnavailable": "Perkhidmatan pemprosesan gaji belum berjalan. Larian telah disimpan dan bermula secara automatik sebaik sahaja perkhidmatan berjalan."
+      }
     },
     "transactions": {
       "title": "Kemasukan Transaksi",
@@ -16067,6 +16088,7 @@
     },
     "batchStatus": {
       "draft": "Draf",
+      "processing": "Sedang diproses",
       "processed": "Diproses",
       "closed": "Ditutup"
     }
@@ -19646,6 +19668,7 @@
         },
         "statuses": {
           "draft": "Draf",
+          "processing": "Sedang diproses",
           "processed": "Diproses",
           "closed": "Ditutup"
         },
@@ -19790,6 +19813,7 @@
         },
         "statuses": {
           "draft": "Draf",
+          "processing": "Sedang diproses",
           "processed": "Diproses",
           "closed": "Ditutup"
         },
@@ -31752,6 +31776,7 @@
     },
     "runStates": {
       "draft": "Draf",
+      "processing": "Sedang diproses",
       "processed": "Diproses",
       "closed": "Ditutup"
     },
@@ -37263,6 +37288,20 @@
         "cancelled": {
           "title": "Import pekerja dibatalkan",
           "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "Pemprosesan gaji selesai",
+          "body": "Buka Gaji untuk menyemak larian yang telah diproses."
+        },
+        "failed": {
+          "title": "Pemprosesan gaji dihentikan",
+          "body": "Larian kembali ke draf dan tiada slip gaji disimpan. Buka Gaji untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pemprosesan gaji dibatalkan",
+          "body": "Larian kembali ke draf dan tiada slip gaji disimpan."
         }
       }
     }

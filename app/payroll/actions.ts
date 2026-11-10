@@ -29,7 +29,6 @@ import {
   UnlockReasonRequiredError,
   closeBatch,
   deleteDraftBatch,
-  generatePayslips,
   preProcessAdvisory,
   prefillFixedZakat,
   prefillOvertimeFromAttendance,
@@ -46,6 +45,7 @@ import {
 // 1b0943d5 — the two refusals a transferred month can produce: the month does not tile (close), and
 // the counterpart employer's run is already closed so the days it owes can never be added (generate).
 import { PayrollCounterpartClosedError, PayrollCoverageIncompleteError } from '@/core/payroll-coverage';
+import { requestPayrollProcessing } from '@/core/payroll-processing-job';
 import { evaluateBatchAnomalies, resolveAnomalyVerdict } from '@/core/payroll-anomaly';
 import { narrateVerdict } from '@/core/payroll-anomaly-narrate';
 import { proposeHypotheses } from '@/core/payroll-hypothesis';
@@ -99,7 +99,7 @@ export async function generateAction(formData: FormData) {
   const acknowledged = String(formData.get('ackWarnings') ?? '') === '1';
   const t = await getTranslations('payroll.batch');
   let errMsg: string | null = null;
-  let toastMsg = 'Payslips generated';
+  let toastMsg = '';
   try {
     const checks = await preProcessAdvisory(s, batchId);
     // BLOCKER count: no compensation row covering the period OR a zero basic/rate (feedback 64fb5e48) —
@@ -142,9 +142,11 @@ export async function generateAction(formData: FormData) {
       // no result payload to carry the names (that is the wizard's Step-3 page, which does list them), so
       // the toast at least says HOW MANY are absent rather than leaving forty missing payslips to be
       // noticed by counting. The run screen itself shows what was written.
-      const gen = await generatePayslips(s, { batchId });
-      const skipped = 'skipped' in gen && Array.isArray(gen.skipped) ? gen.skipped.length : 0;
-      if (skipped > 0) toastMsg = t('generatedWithSkipped', { n: skipped });
+      // The run is processed by the background payroll job (core/payroll-processing-job.ts): this request only
+      // admits it and moves the run to 'processing'. The run screen shows its progress; who was skipped is on the
+      // run once it is processed, and the operator gets the completion notice.
+      await requestPayrollProcessing(s, { batchId });
+      toastMsg = t('processingStarted');
     }
   } catch (e) {
     errMsg =

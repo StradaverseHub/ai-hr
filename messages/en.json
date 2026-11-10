@@ -5092,6 +5092,7 @@
     },
     "payrollStatus": {
       "draft": "Draft",
+      "processing": "Processing",
       "processed": "Processed",
       "closed": "Closed"
     },
@@ -5879,6 +5880,7 @@
       },
       "status": {
         "draft": "Draft",
+        "processing": "Processing",
         "processed": "Processed",
         "closed": "Closed",
         "unattached": "Unattached",
@@ -5937,6 +5939,7 @@
       "transactionDetail": "Transaction Detail",
       "transactionDetailTitle": "Download every employee’s earnings, deductions, employer contributions and totals for this run as an Excel file.",
       "generatePayslips": "Process Payroll",
+      "processingStarted": "Payroll processing started. This page shows its progress.",
       "closeBatch": "Close batch",
       "disclaimer": "<strong>Draft figures.</strong> Statutory amounts are computed from the verified Malaysian rules in effect at period end. Review every payslip before closing — once closed, the batch is immutable. Bank files (<mono>CP39 / KWSP / PERKESO</mono>) are generated separately.",
       "leaversTitle": "Leavers this period",
@@ -6378,7 +6381,25 @@
       "reprocessPendingEmployees": "{count} selected employee(s) are pending.",
       "reprocessPcbBefore": "Previous PCB",
       "reprocessPcbAfter": "Updated PCB",
-      "reprocessPcbDifference": "PCB difference"
+      "reprocessPcbDifference": "PCB difference",
+      "processingJob": {
+        "title": "Payroll processing",
+        "othersRun": "This run is being processed. It opens for review when processing finishes.",
+        "state": {
+          "queued": "Waiting to start",
+          "preparing": "Checking the run",
+          "running": "Calculating payslips",
+          "finalizing": "Finishing the run",
+          "discarding": "Undoing the processing",
+          "completed": "Processing finished",
+          "failed": "Processing stopped — the run is back in draft",
+          "cancelled": "Processing cancelled — the run is back in draft"
+        },
+        "progressCount": "{done} of {total} steps complete",
+        "backgroundHelp": "You can leave this page. Employees see nothing until the run is closed, and you get a notice when processing finishes.",
+        "waiting": "Waiting for the payroll processing service. Progress is saved; do not process the run again.",
+        "workerUnavailable": "The payroll processing service is not running yet. The run is saved and starts automatically as soon as it is."
+      }
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -16067,6 +16088,7 @@
     },
     "batchStatus": {
       "draft": "Draft",
+      "processing": "Processing",
       "processed": "Processed",
       "closed": "Closed"
     }
@@ -19646,6 +19668,7 @@
         },
         "statuses": {
           "draft": "Draft",
+          "processing": "Processing",
           "processed": "Processed",
           "closed": "Closed"
         },
@@ -19790,6 +19813,7 @@
         },
         "statuses": {
           "draft": "Draft",
+          "processing": "Processing",
           "processed": "Processed",
           "closed": "Closed"
         },
@@ -31752,6 +31776,7 @@
     },
     "runStates": {
       "draft": "Draft",
+      "processing": "Processing",
       "processed": "Processed",
       "closed": "Closed"
     },
@@ -37263,6 +37288,20 @@
         "cancelled": {
           "title": "Employee import cancelled",
           "body": "No employees were added. Open Import History for details."
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "Payroll processing finished",
+          "body": "Open Payroll to review the processed run."
+        },
+        "failed": {
+          "title": "Payroll processing stopped",
+          "body": "The run is back in draft and no payslips were kept. Open Payroll to see why."
+        },
+        "cancelled": {
+          "title": "Payroll processing cancelled",
+          "body": "The run is back in draft and no payslips were kept."
         }
       }
     }
