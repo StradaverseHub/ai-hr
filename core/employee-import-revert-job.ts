@@ -15,7 +15,7 @@ import {employeeFullRevertHandler} from './employee-import-history';
 
 export const EMPLOYEE_IMPORT_REVERT_KIND='employee_import_revert';
 type RevertInput={attemptId:string;previewHash:string;reason:string};
-type RevertPlan={attemptId:string;confirmedEventId?:string;employmentIds?:string[];released?:boolean;restored?:number};
+type RevertPlan={attemptId:string;released?:boolean;restored?:number};
 export type {EmployeeImportRevertProgress} from '../lib/employee-import-revert';
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const inputOf=(job:BulkJobRow)=>job.input as RevertInput;
@@ -24,7 +24,7 @@ const planOf=(job:BulkJobRow)=>(job.plan??{}) as RevertPlan;
 const REFUSALS:Record<string,string>={
  access:'Access changed. Sign in again before continuing.',unavailable:'Import attempt unavailable.',
  maintain:'Reverting this import needs maintain permission for every company in it.',reverted:'This import has already been reverted.',
- unsaved:'This import was not saved, so there is nothing to revert.',changed:'What this revert would restore has changed. Review it again before confirming.',
+ unsaved:'This import was not saved, so there is nothing to revert.',empty:'This import saved no changes, so there is nothing to revert.',changed:'What this revert would restore has changed. Review it again before confirming.',
 };
 const BLOCKED='This import cannot be reverted because some records changed after it.';
 const blockersOf=(job:BulkJobRow):ImportRevertBlocker[]=>(job.errors??[]).map(e=>({itemId:'',label:e.ref,reason:e.message}));
@@ -90,8 +90,8 @@ export const employeeImportRevertJobHandler:BulkJobHandler<never>={
    const plan=await planImportRevert(ctx,attemptId,employeeFullRevertHandler);
    if(plan.blockers.length)return{refused:BLOCKED,errors:toErrors(plan.blockers),plan:{attemptId}};
    if(plan.previewHash!==previewHash)return{refused:REFUSALS.changed,plan:{attemptId}};
-   const employmentIds=[...new Set(plan.items.map(i=>i.employmentId).filter((id):id is string=>!!id))].sort();
-   return{steps:[],plan:{attemptId,confirmedEventId:plan.confirmedEventId,employmentIds} satisfies RevertPlan,counters:{items:plan.items.length}};
+   // The release re-reads the items and recomputes this hash itself; the job stores only which attempt it is for.
+   return{steps:[],plan:{attemptId} satisfies RevertPlan,counters:{items:plan.items.length}};
   }catch(error){
    if(error instanceof ImportHistoryError)return{refused:error.message,errors:toErrors(error.blockers),plan:{attemptId}};
    throw error;

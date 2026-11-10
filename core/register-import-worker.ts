@@ -35,7 +35,7 @@ export type RegisterStepPayload={key:string;rowNums:number[];subjects:SubjectRef
 type Row=Record<string,unknown>&{id:string};
 type CapturedEvent={rowNum:number;aggregateType:string;aggregateId:string;eventType:string;actorType:string;actorId:string|null;subjectEmploymentId:string|null;payload:unknown};
 /** What the writers did for one employee, rolled back and kept until the release. */
-export type RegisterCapture={key:string;fingerprint:string;created:Row[];changed:{id:string;set:Record<string,unknown>}[];events:CapturedEvent[];rows:number;subjects:SubjectRef[];chained:boolean};
+export type RegisterCapture={key:string;fingerprint:string;created:Row[];changed:{id:string;set:Record<string,unknown>}[];events:CapturedEvent[];rows:number;subjects:SubjectRef[]};
 export type RegisterStoredPlan={section:PersonnelRegisterKind;total:number;rounds?:number;released?:boolean;updated?:number;result?:SectionImportResult};
 
 const TABLES={
@@ -96,12 +96,12 @@ async function captureTx(tx:Tx,ctx:SessionContext,kind:PersonnelRegisterKind,key
    const before=await registerRowsTx(savepoint,kind,key);
    await writeRegisterRowsTx(savepoint,ctx,kind,resolved);
    const after=await registerRowsTx(savepoint,kind,key);
-   const events=await savepoint.execute<{aggregate_type:string;aggregate_id:string;event_type:string;actor_type:string;actor_id:string|null;subject_employment_id:string|null;payload:unknown;chained:boolean}>(sql`
-    select aggregate_type,aggregate_id,event_type,actor_type::text as actor_type,actor_id,subject_employment_id,payload,chain_seq is not null as chained from public.domain_event where import_pending_attempt_id=${token}::uuid order by sequence`);
+   const events=await savepoint.execute<{aggregate_type:string;aggregate_id:string;event_type:string;actor_type:string;actor_id:string|null;subject_employment_id:string|null;payload:unknown}>(sql`
+    select aggregate_type,aggregate_id,event_type,actor_type::text as actor_type,actor_id,subject_employment_id,payload from public.domain_event where import_pending_attempt_id=${token}::uuid order by sequence`);
    // Each register writer appends exactly one event, in file order: the n-th event belongs to the n-th row.
    if(events.length!==resolved.length)throw new Error('Register audit events could not be matched to their rows.');
    const {created,changed}=diffRows(before,after);
-   throw new CaptureRollback({key,fingerprint:fp,created,changed,rows:resolved.length,subjects,chained:events.some(e=>e.chained),
+   throw new CaptureRollback({key,fingerprint:fp,created,changed,rows:resolved.length,subjects,
     events:events.map((e,i)=>({rowNum:rowNums[i],aggregateType:e.aggregate_type,aggregateId:e.aggregate_id,eventType:e.event_type,actorType:e.actor_type,actorId:e.actor_id,subjectEmploymentId:e.subject_employment_id,payload:e.payload}))});
   });
  }catch(error){if(error instanceof CaptureRollback)return error.capture;throw error;}
@@ -119,10 +119,11 @@ const sameSubjects=(refs:SubjectRef[],subjects:RegisterSubject[])=>refs.every(re
  * applies every captured row and the writers' audit events in file order. Changed employees go back for a fresh
  * capture. A read-only organisation refuses first, through the creator's own transaction, as a write there would. */
 async function release(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,plan:RegisterStoredPlan){
- // The audit chain is armed exactly as it was for the creator's own capture transactions.
+ // The audit chain is armed exactly as the creator's own session arms it now (withTenant's decision), never from
+ // anything stored on the job.
  const [chain]=await withTenant(ctx,async tx=>{
   await unit.fenceTx(tx);await tx.execute(sql`select pg_current_xact_id()`);
-  return tx.execute<{chained:boolean}>(sql`select coalesce(bool_or((result->>'chained')::boolean),false) as chained from bulk_job_step where job_id=${job.id}::uuid and state='applied'`);
+  return tx.execute<{chained:boolean}>(sql`select coalesce(current_setting('app.audit_hash_chain',true),'')='on' as chained`);
  });
  const started=performance.now();
  const [row]=await unit.owner<{r:{released:boolean;stale?:number[];updated?:number}}[]>`select app.register_import_release(${job.id}::uuid,${chain?.chained===true}) as r`;

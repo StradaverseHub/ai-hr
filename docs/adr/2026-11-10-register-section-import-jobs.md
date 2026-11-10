@@ -3,7 +3,8 @@
 Status: source implementation on `claude/bulkjob-register-20261110`; hosted verification and integration pending.
 Base: `claude/import-staged-job-20261110` @ `0143d761c` (shared bulk-job kernel, ADR 2026-11-10 employee import).
 Draft migrations (unallocated): 9930 (kinds `section_import`, `register_import`), 9931 (set-based register release),
-9932 (employee import Revert job). Production and staging untouched.
+9932 (employee import Revert job), 9933 and 9934 (both releases re-decide everything from the database, security
+review of 7d2e19db1). Production and staging untouched.
 
 ## Context
 
@@ -51,8 +52,10 @@ Instead (`core/register-import-worker.ts`):
    employee's register fingerprint (every row's identity and row version, `xmin`, so the comparison does not depend on
    the session's time zone). It then re-validates every captured row against its own employee (a capture that names
    another employee's record is refused) and applies them set-based: changed rows that clear or keep an exclusive
-   flag, then rows that take one, then new rows with their captured IDs, then the writers' audit events verbatim in
-   file order. The system label guard and every audit-event trigger still run per row. A read-only organisation
+   flag, then rows that take one, then new rows with their captured IDs, then the writers' audit events in file
+   order. Draft 9933 makes the captured employee itself (the capture's key: the employment for qualifications, the
+   person for contacts) the thing that is authorised, in the job's tenant, rather than the capture's subject list;
+   see Trust boundary below. The system label guard and every audit-event trigger still run per row. A read-only organisation
    refuses first, in the creator's own transaction, as a write there would.
 4. **Changed meanwhile.** An employee whose register or identity changed between capture and release is sent back
    for a fresh capture (its steps become pending again, the job returns to running); after three rounds the import
@@ -96,8 +99,10 @@ in one request transaction under the Access and leave-dependency locks, and its 
   confirmation only admits the job, inside the synchronous revert's input and authority checks.
 - The release, `app.employee_import_revert_release`, is one owner-run statement under the revert's locks (Workforce
   barrier, leave dependency without waiting, the attempt row) and the creator's captured session. It refuses, in
-  the synchronous words, when access changed, the import was already reverted or never saved, or the attempt's
-  items or confirmation differ from the reviewed plan. Workforce maintain is decided once per company; the reference
+  the synchronous words, when access changed, the import was already reverted or never saved, or what it would
+  restore differs from what the creator reviewed: since draft 9934 it reads the attempt's applied items itself (each
+  visible to the creator through Import History, every one of them) and recomputes the confirmed preview hash under
+  its locks, exactly as the review computes it, instead of comparing with the plan stored on the job. Workforce maintain is decided once per company; the reference
   blockers come from `app.employment_void_reference_blockers`, which `app.employment_void_blockers` now calls, so
   there is one list of judged references; any blocker refuses the whole revert and the worker lists the blockers as
   before.
@@ -109,6 +114,35 @@ in one request transaction under the Access and leave-dependency locks, and its 
   job and rejoins it after navigation.
 
 Register imports have no Revert: they never recorded an Import History attempt, and still do not.
+
+### Trust boundary of the owner-run releases
+
+Both releases write on the queue-owner connection, so nothing an app-role session can write may decide what they
+write. Job and step rows are app-role writable today (kernel grants, migration 9003, hardened separately), so:
+
+- **Who and where.** The job's tenant and creator are the same claim an app-role session already makes through its
+  session settings; the grants captured at admission are honoured only while every one is still held by the
+  creator's live principal (`app.bank_import_context_current`), so a rewritten grant list cannot widen them.
+- **Register release (9933).** A capture is refused outright (`invalid`) without a subject, with a duplicate key, a
+  subject that is not the key's own employment or person, or a key outside the job's tenant; and refused (`forbidden`)
+  when the creator could not write that key's register through the profile value guard: a qualification's employment
+  visible, in a company the creator administers with workforce maintain; a contact's person employed in such a
+  company and in no company where workforce maintain is explicitly denied. A key whose status or
+  register changed is recaptured from the file, which replaces anything forged. Created rows are inserted with the
+  job's tenant and the key, never archived. Events: exactly one `added` per created row and one `updated` per changed
+  row, and nothing else; each event's subject employment and every value that describes the row are rebuilt from the
+  rows written; the referenced cleared or demoted holder must be a row of the same key changed in the same release;
+  the count of events must equal the file's row count. `register-section-import-job.test.ts` forges a capture with no
+  subjects, a key in a company the creator does not administer, a key the creator is explicitly denied, another
+  tenant's employment, and a created row without its event: each fails the job with nothing written.
+- **Employee import Revert release (9934).** The items and the confirmation come from the attempt, never from the
+  job's plan; the hash the creator confirmed is recomputed inside the release. `employee-import-revert-job.test.ts`
+  rewrites the job's plan and stored hash after the review: the revert is refused with nothing voided.
+- **Audit chain.** Both callers arm `app.audit_hash_chain` from the creator's live session, not from captured data.
+- **Owner-path triggers.** The revert's voids run with the request tenant and user cleared, so session-aware guards
+  on person, employment and employee_statutory_my take their owner path.
+  `employee-import-revert-owner-path.test.ts` pins every trigger on those tables and which trigger functions read the
+  session, so a new or changed guard fails until the release is reviewed against it.
 
 ## Measured (populated rehearsal, `scripts/performance/register-import-rehearsal.ts`)
 

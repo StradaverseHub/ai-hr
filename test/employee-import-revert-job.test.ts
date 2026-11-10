@@ -102,6 +102,18 @@ describe('employee import revert job',()=>{
   expect((await owner.client`select id from employment where tenant_id=${job.b.tenantId}::uuid and voided_at is not null`)).toHaveLength(0);
  });
 
+ it('recomputes the confirmed preview inside the release: a review stored on the job cannot widen or retarget it',async()=>{
+  const job=await fixture(2);
+  const preview=await previewImportRevertForAttempt(job.ctx,job.attemptId);
+  const started=await revertImportForAttempt(job.ctx,job.attemptId,{previewHash:preview.previewHash,reason:'Undo the file'}) as {job:{id:string}};
+  for(let i=0;i<100;i++){const [r]=await owner.client<{state:string}[]>`select state from bulk_job where id=${started.job.id}::uuid`;if(r.state==='finalizing')break;await tick();}
+  // The job's stored review (plan and input) are rewritten as the app role could: neither is trusted.
+  await owner.client`update bulk_job set plan=plan||'{"employmentIds":[],"confirmedEventId":"00000000-0000-4000-8000-000000000000"}'::jsonb,input=jsonb_set(input,'{previewHash}',to_jsonb(${'f'.repeat(64)}::text)) where id=${started.job.id}::uuid`;
+  for(let i=0;i<100;i++){const [r]=await owner.client<{state:string}[]>`select state from bulk_job where id=${started.job.id}::uuid`;if(['completed','failed'].includes(r.state))break;if(!await tick())await new Promise(r2=>setTimeout(r2,40));}
+  expect(await getEmployeeImportRevertJob(job.ctx,started.job.id)).toMatchObject({state:'failed',error:'What this revert would restore has changed. Review it again before confirming.'});
+  expect((await owner.client`select id from employment where tenant_id=${job.b.tenantId}::uuid and voided_at is not null`)).toHaveLength(0);
+ });
+
  it('refuses a stale review, keeps the release owner-only, and refuses a caller without maintain at the door',async()=>{
   const job=await fixture(1);
   await expect(revertImportToOutcome(job.ctx,job.attemptId,{previewHash:'0'.repeat(64),reason:'Undo the file'})).rejects.toThrow('has changed. Review it again');

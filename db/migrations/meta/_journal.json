@@ -5426,6 +5426,20 @@
       "when": 1793330099320,
       "tag": "9932_employee_import_revert_job",
       "breakpoints": true
+    },
+    {
+      "idx": 9933,
+      "version": "7",
+      "when": 1793330099330,
+      "tag": "9933_register_import_release_key_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 9934,
+      "version": "7",
+      "when": 1793330099340,
+      "tag": "9934_employee_import_revert_release_hash",
+      "breakpoints": true
     }
   ]
 }

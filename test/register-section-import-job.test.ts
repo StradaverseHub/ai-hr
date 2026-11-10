@@ -217,6 +217,88 @@ describe('register import job (all-or-nothing)',()=>{
   expect(await endState(job)).toEqual(before);
  });
 
+describe('register release trusts nothing in the job\'s steps for authority',()=>{
+ /** Runs a qualification job to its release with `forge` rewriting the first applied capture as the app role could. */
+ async function forged(f:Fixture,forge:(capture:Record<string,unknown>)=>Record<string,unknown>,as:SessionContext=f.ctx){
+  const before=await endState(f);
+  const {job:started}=await createSectionImportJob(as,{section:'qualification',records:await qualificationFile(f),fileName:'f.csv',csv:'x',operationKey:randomUUID()});
+  await ticks(started.id,j=>j.state==='finalizing');
+  const [step]=await owner.client<{seq:number;result:Record<string,unknown>}[]>`select seq,result from bulk_job_step where job_id=${started.id}::uuid and state='applied' order by seq limit 1`;
+  await owner.client`update bulk_job_step set result=${JSON.stringify(forge(step.result))}::jsonb where job_id=${started.id}::uuid and seq=${step.seq}`;
+  await ticks(started.id);
+  const progress=await getSectionImportJob(as,started.id);
+  expect(progress.state).toBe('failed');
+  expect(progress.result!.fileErrors[0]).toMatch(/^No register rows were written\./);
+  return{before,after:await endState(f)};
+ }
+ const pointAt=(employmentId:string,personId:string,code:string)=>(c:Record<string,unknown>)=>({...c,key:employmentId,subjects:[{code,employmentId,personId}]});
+ it('refuses a capture with no subjects',async()=>{
+  const f=await fixture();
+  const {before,after}=await forged(f,c=>({...c,subjects:[]}));
+  expect(after).toEqual(before);
+ });
+ it('refuses a capture whose key is an employee outside the creator\'s companies',async()=>{
+  const f=await fixture();
+  // A second company of the same tenant, and an administrator scoped to the first company only.
+  const [other]=await owner.client<{id:string}[]>`insert into company(tenant_id,legal_name) values(${f.b.tenantId}::uuid,'Fictional Other Sdn Bhd') returning id`;
+  const [dept]=await owner.client<{id:string}[]>`insert into department(tenant_id,company_id,name) values(${f.b.tenantId}::uuid,${other.id}::uuid,'Fictional Other Dept') returning id`;
+  const outside=await hireEmployee(f.ctx,{companyId:other.id,departmentId:dept.id,employmentType:'full_time',hiredOn:day(-100),employeeCode:'OUT1',person:{fullName:'Fictional Outside',primaryEmail:`outside-${f.b.tenantId.slice(0,8)}@fixture.test`}});
+  const [person]=await owner.client<{id:string}[]>`insert into person(tenant_id,full_name,primary_email) values(${f.b.tenantId}::uuid,'Fictional Scoped Admin',${`scoped-${f.b.tenantId.slice(0,8)}@fixture.test`}) returning id`;
+  const userId=await createAppUser(f.b.tenantId,person.id,'hr_admin');
+  await owner.client`update role_assignment set company_id=${f.b.companyId}::uuid where app_user_id=${userId}::uuid`;
+  const scoped={...f.ctx,userId,personId:person.id,grants:[{role:'hr_admin',companyId:f.b.companyId}],roles:['hr_admin']} as SessionContext;
+  const outsideRows=async()=>(await owner.client`select id from employee_qualification where employment_id=${outside.employmentId}::uuid`).length;
+  const {before,after}=await forged(f,pointAt(outside.employmentId,outside.personId,'OUT1'),scoped);
+  expect(after.qualifications).toEqual(before.qualifications);
+  expect(await outsideRows()).toBe(0);
+ });
+ it('refuses a capture once the creator is explicitly denied workforce maintain for the company',async()=>{
+  const f=await fixture();
+  const {job:started}=await createSectionImportJob(f.ctx,{section:'qualification',records:await qualificationFile(f),fileName:'f.csv',csv:'x',operationKey:randomUUID()});
+  await ticks(started.id,j=>j.state==='finalizing');
+  const before=await endState(f);
+  await owner.client`update access_capability set supported=true where id='workforce.maintain'`;
+  try{
+   await owner.client`insert into access_configuration(tenant_id,initialized) values(${f.b.tenantId}::uuid,true) on conflict(tenant_id) do update set initialized=true`;
+   await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect) values(${f.b.tenantId}::uuid,${f.ctx.userId!}::uuid,'workforce.maintain',${f.b.companyId}::uuid,'deny')`;
+   const denied=await withTenant(f.ctx,tx=>tx.execute<{ok:boolean}>(sql`select app.access_workforce_company(${f.b.companyId}::uuid,'workforce.maintain') as ok`));
+   expect(denied[0].ok).toBe(false);
+   await ticks(started.id);
+   const progress=await getSectionImportJob(f.ctx,started.id);
+   expect(progress.state).toBe('failed');
+   expect(progress.result!.fileErrors[0]).toMatch(/^No register rows were written\./);
+   expect((await endState(f)).qualifications).toEqual(before.qualifications);
+  }finally{await owner.client`update access_capability set supported=false where id='workforce.maintain'`;}
+ });
+ it('refuses a capture whose key is another tenant\'s employment',async()=>{
+  const f=await fixture(),other=await fixture();
+  const otherBefore=await endState(other);
+  const {before,after}=await forged(f,pointAt(other.employments.REG0,other.persons.REG0,'REG0'));
+  expect(after).toEqual(before);
+  expect(await endState(other)).toEqual(otherBefore);
+  expect((await owner.client`select id from employee_qualification where tenant_id=${f.b.tenantId}::uuid and employment_id=${other.employments.REG0}::uuid`)).toHaveLength(0);
+ });
+ it('refuses a capture that adds a row without its own audit event',async()=>{
+  const f=await fixture();
+  const {before,after}=await forged(f,c=>{
+   const created=c.created as Record<string,unknown>[];
+   const events=(c.events as {eventType:string;aggregateId:string}[]);
+   const extra={...(created[0]??{}),id:randomUUID(),institute:'Forged extra row'};
+   return{...c,created:[...created,extra],events};
+  });
+  expect(after).toEqual(before);
+ });
+ it('refuses a capture that changes a column its audit event does not name',async()=>{
+  const f=await fixture();
+  const {before,after}=await forged(f,c=>{
+   const changed=c.changed as {id:string;set:Record<string,unknown>}[];
+   if(!changed.length)throw new Error('fixture: the first capture changes an existing row');
+   return{...c,changed:[{...changed[0],set:{...changed[0].set,major:'Forged silent change'}},...changed.slice(1)]};
+  });
+  expect(after).toEqual(before);
+ });
+});
+
  it('admits one register import per person at a time and refuses a non-administrator at the door',async()=>{
   const job=await fixture();
   await createSectionImportJob(job.ctx,{section:'qualification',records:await qualificationFile(job),fileName:'a.csv',csv:'x'});
