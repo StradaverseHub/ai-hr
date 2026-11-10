@@ -11,7 +11,13 @@
 --  * leave_ledger     Leave ledger import, one row per step; one running import per person (rejoined on resubmit).
 --  * leave_generation Generate Entitlement (year-open plus its earned Annual Leave top-up), per employee; one per tenant.
 --  * leave_accrual    Run Earned Accrual, per employee; one per tenant.
-INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES
- ('leave_ledger',NULL,'creator'),
- ('leave_generation',NULL,'tenant'),
- ('leave_accrual',NULL,'tenant');
+--
+-- Hardened kernel (5013): each kind declares the top-level keys and JSON types of the input its admission passes
+-- (core/leave-import-job.ts, core/leave-cohort-job.ts); app.bulk_job_enqueue refuses anything else. The ledger import
+-- carries the file's records, so its input may exceed the 1 MiB default. Generate Entitlement settles its staged
+-- ledger rows on the queue-owner connection in finalize (core/leave-cohort-worker.ts, finalizeOwner), so it alone
+-- declares finalize_owner.
+INSERT INTO bulk_job_kind(kind,scope_kind,exclusive,input_shape,input_max_bytes,finalize_owner) VALUES
+ ('leave_ledger',NULL,'creator','{"records":"array","source":"object?","companyId":"string?"}'::jsonb,67108864,false),
+ ('leave_generation',NULL,'tenant','{"year":"number","targetMode":"string","leaveTypeIds":"array?","criteria":"object?","employmentIds":"array?"}'::jsonb,1048576,true),
+ ('leave_accrual',NULL,'tenant','{"asOf":"string","companyIds":"array","gradeIds":"array","leaveTypeIds":"array"}'::jsonb,1048576,false);

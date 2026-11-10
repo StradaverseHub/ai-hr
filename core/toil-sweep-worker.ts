@@ -85,10 +85,11 @@ async function finalTx<R>(ctx: SessionContext, job: BulkJobRow, unit: BulkJobUni
     await label(tx, job.kind, 'finalize');
     await unit.fenceTx(tx);
     assertToilSweepAuthority(ctx);
-    const [row] = await tx.execute<{plan: {final?: R} | null}>(sql`select plan from bulk_job where id=${job.id}::uuid for update`);
+    // The fence holds the job row's lock; the marker is written through the kernel (sealed).
+    const [row] = await tx.execute<{plan: {final?: R} | null}>(sql`select plan from bulk_job where id=${job.id}::uuid`);
     if (row?.plan?.final !== undefined) return row.plan.final;
     const final = await write(tx);
-    await tx.execute(sql`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||jsonb_build_object('final',${JSON.stringify(final)}::jsonb),updated_at=now() where id=${job.id}::uuid`);
+    await unit.set(tx, {planMerge: {final}});
     return final;
   });
 }

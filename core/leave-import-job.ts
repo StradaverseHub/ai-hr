@@ -8,8 +8,12 @@ import type {LeaveImportRecord, LeaveImportResult, LeaveImportSource} from '../l
 import {BULK_JOB_ALREADY_RUNNING, BulkJobError, bulkJobTx, bulkJobWorkerStatusTx, enqueueBulkJobTx, isBulkJobId, listBulkJobsTx, type BulkJobRow} from './bulk-job';
 
 export const LEAVE_LEDGER_IMPORT_KIND = 'leave_ledger';
-/** What the worker reads back. Removed from the job once it finishes. */
-export type LeaveImportJobInput = {records: LeaveImportRecord[]; source: LeaveImportSource | null; companyId?: string};
+/** What the worker reads back. Removed from the job once it finishes. The kind's declared input shape (migration
+ * 5030: records array, source object?, companyId string?) admits no JSON null, so an import without a source
+ * carries no `source` key and the worker reads that as null. */
+export type LeaveImportJobInput = {records: LeaveImportRecord[]; source?: LeaveImportSource | null; companyId?: string};
+const jobInputOf = (input: {records: LeaveImportRecord[]; source?: LeaveImportSource; companyId?: string}): LeaveImportJobInput =>
+  ({records: input.records.map(record => ({...record})), ...(input.source ? {source: input.source} : {}), ...(input.companyId ? {companyId: input.companyId} : {})});
 
 const uiState: Record<BulkJobState, LeaveImportJobState> = {
   queued: 'queued', preparing: 'importing', running: 'importing', finalizing: 'importing', discarding: 'importing',
@@ -37,7 +41,7 @@ async function activeTx(tx: Tx, ctx: SessionContext) {
 export async function createLeaveImportJob(ctx: SessionContext, input: {records: LeaveImportRecord[]; source?: LeaveImportSource; companyId?: string}): Promise<LeaveImportJobProgress> {
   if (!ctx.userId) throw new BulkJobError('Sign in again to import leave.', 401);
   if (!isAdmin(ctx)) throw new BulkJobError('Only HR administrators can import leave records.', 403);
-  const jobInput: LeaveImportJobInput = {records: input.records.map(record => ({...record})), source: input.source ?? null, ...(input.companyId ? {companyId: input.companyId} : {})};
+  const jobInput = jobInputOf(input);
   return withTenant(ctx, async tx => {
     try {
       // A full scope returns no row (ON CONFLICT DO NOTHING), so this transaction stays usable for the rejoin read.
@@ -58,7 +62,7 @@ export async function createLeaveImportJob(ctx: SessionContext, input: {records:
 export async function startLeaveImportJobOnce(ctx: SessionContext, input: {records: LeaveImportRecord[]; source?: LeaveImportSource; companyId?: string}, operationKey: string): Promise<{started: boolean; job: LeaveImportJobProgress | null}> {
   if (!ctx.userId) throw new BulkJobError('Sign in again to import leave.', 401);
   if (!isAdmin(ctx)) throw new BulkJobError('Only HR administrators can import leave records.', 403);
-  const jobInput: LeaveImportJobInput = {records: input.records.map(record => ({...record})), source: input.source ?? null, ...(input.companyId ? {companyId: input.companyId} : {})};
+  const jobInput = jobInputOf(input);
   return withTenant(ctx, async tx => {
     try {
       const {row} = await enqueueBulkJobTx(tx, ctx, {kind: LEAVE_LEDGER_IMPORT_KIND, operationKey, input: jobInput});

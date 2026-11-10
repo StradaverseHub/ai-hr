@@ -12,8 +12,12 @@
 --                     once, as the save's single transaction was). 'none' for the same reason.
 --  * toil_expiry      Run TOIL Expiry (batches of employees). One per tenant.
 --  * toil_year_close  Close the replacement-leave year (batches of employees, then the per-company markers). One per tenant.
-INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES
- ('leave_recalc',NULL,'none'),
- ('leave_a2c',NULL,'none'),
- ('toil_expiry',NULL,'tenant'),
- ('toil_year_close',NULL,'tenant');
+--
+-- Hardened kernel (5013): each kind declares the input its admission passes (core/leave-cohort-job.ts,
+-- core/toil-sweep-job.ts). The A2C re-projection settles its staged ledger rows on the queue-owner connection in
+-- finalize (core/leave-follow-up-worker.ts, finalizeOwner), so it alone declares finalize_owner.
+INSERT INTO bulk_job_kind(kind,scope_kind,exclusive,input_shape,finalize_owner) VALUES
+ ('leave_recalc',NULL,'none','{"leaveTypeId":"string","trigger":"string","asOf":"string"}'::jsonb,false),
+ ('leave_a2c',NULL,'none','{"leaveTypeId":"string","trigger":"string","asOf":"string","yearCycleOverride":"string?"}'::jsonb,true),
+ ('toil_expiry',NULL,'tenant','{"today":"string"}'::jsonb,false),
+ ('toil_year_close',NULL,'tenant','{"asOf":"string"}'::jsonb,false);

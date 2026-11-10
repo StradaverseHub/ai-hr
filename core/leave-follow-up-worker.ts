@@ -86,8 +86,8 @@ const a2cPlanOf = (job: BulkJobRow) => (job.plan ?? {}) as A2cPlan;
 export const LEAVE_A2C_RELEASE_ATTEMPTS = 40;
 /** History rows and events written per follow-up transaction after the release. */
 const A2C_HISTORY_PER_UNIT = 100;
-const setA2cPlanTx = (tx: Tx, job: BulkJobRow, patch: Partial<A2cPlan>) =>
-  tx.execute(sql`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||${JSON.stringify(patch)}::jsonb,updated_at=now() where id=${job.id}::uuid`);
+/** A plan merge through the kernel (sealed), in a transaction the caller has fenced. */
+const setA2cPlanTx = (tx: Tx, unit: Pick<BulkJobUnit, 'set'>, patch: Partial<A2cPlan>) => unit.set(tx, {planMerge: {...patch}});
 const a2cStepsTx = async (tx: Tx, job: BulkJobRow) =>
   [...await tx.execute<{seq: number; payload: {employmentIds: string[]}; result: A2cStepResult}>(sql`select seq,payload,result from bulk_job_step where job_id=${job.id}::uuid order by seq`)];
 
@@ -113,8 +113,8 @@ async function a2cRestageUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJo
     await useLeaveStageTx(tx, null, [stage]);
     await dropLeaveStageRowsTx(tx, [stage], step.payload.employmentIds);
     const fresh = await a2cBatchTx(tx, ctx, job.input as LeaveA2cJobInput, stage, step.payload.employmentIds);
-    await tx.execute(sql`update bulk_job_step set result=${JSON.stringify(fresh)}::jsonb where job_id=${job.id}::uuid and seq=${seq}`);
-    await setA2cPlanTx(tx, job, {restage: (plan.restage ?? []).filter(s => s !== seq)});
+    await unit.step(tx, seq, {result: fresh});
+    await setA2cPlanTx(tx, unit, {restage: (plan.restage ?? []).filter(s => s !== seq)});
   });
 }
 async function a2cReleaseUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJobUnit) {
@@ -137,7 +137,7 @@ async function a2cReleaseUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJo
     if (restage.length) {
       const attempts = (plan.releaseAttempts ?? 0) + 1;
       if (attempts > LEAVE_A2C_RELEASE_ATTEMPTS) throw new Error('The recalculation was stopped because the employees kept changing while it ran. Nothing was changed; save the leave year type again.');
-      await setA2cPlanTx(tx, job, {restage, releaseAttempts: attempts});
+      await setA2cPlanTx(tx, unit, {restage, releaseAttempts: attempts});
       return;
     }
     if (input.yearCycleOverride !== undefined) {
@@ -149,7 +149,7 @@ async function a2cReleaseUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJo
         from leave_type where id=${input.leaveTypeId}::uuid for update`);
       if (!type || type.pending !== job.id) {
         await dropLeaveStageRowsTx(tx, [stage]);
-        await setA2cPlanTx(tx, job, {released: true, settled: true, superseded: true, restage: []});
+        await setA2cPlanTx(tx, unit, {released: true, settled: true, superseded: true, restage: []});
         return;
       }
       await tx.execute(sql`update leave_type set year_cycle_override=${input.yearCycleOverride},pending_year_cycle_job_id=null where id=${input.leaveTypeId}::uuid`);
@@ -157,7 +157,7 @@ async function a2cReleaseUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJo
         payload: {before: {yearCycleOverride: type.override}, after: {yearCycleOverride: input.yearCycleOverride}}});
     }
     await releaseLeaveStageTx(tx, job.id, stage);
-    await setA2cPlanTx(tx, job, {released: true, restage: []});
+    await setA2cPlanTx(tx, unit, {released: true, restage: []});
   });
   unit.metric('releaseTxMs', performance.now() - started);
 }
@@ -177,7 +177,7 @@ async function a2cHistoryUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJo
         await appendEvent(tx, c.event);
       }
       written += step.result.corrections.length;
-      await tx.execute(sql`update bulk_job_step set result=result||'{"written":true}'::jsonb where job_id=${job.id}::uuid and seq=${step.seq}`);
+      await unit.step(tx, step.seq, {resultMerge: {written: true}});
     }
     return pending.length > 0;
   });
@@ -189,6 +189,8 @@ export const leaveA2cJobHandler: BulkJobHandler<{employmentIds: string[]}> = {
   chunkBudgetMs: 100,
   maxStepsPerChunk: 1,
   stepRef: step => `${step.payload.employmentIds.length}`,
+  // Settling the released stage clears its markers on the queue-owner connection (bulk_job_kind.finalize_owner, 5033).
+  finalizeOwner: true,
   async prepare(ctx, job) {
     if (!isAdmin(ctx)) return {refused: notAdmin};
     const input = job.input as LeaveA2cJobInput;
@@ -224,8 +226,13 @@ export const leaveA2cJobHandler: BulkJobHandler<{employmentIds: string[]}> = {
         return 'more';
       }
       if (!plan.settled) {
-        if (await settleLeaveStages(unit.owner, job.tenant_id, [plan.stage!]) === 'more') return 'more';
-        await unit.owner`update bulk_job set plan=plan||'{"settled":true}'::jsonb where id=${job.id}::uuid`;
+        // One bounded owner transaction per unit, attributed to the job; the last batch commits with its plan marker.
+        const settled = await unit.ownerTx!(async owner => {
+          if (await settleLeaveStages(owner, job.tenant_id, [plan.stage!]) === 'more') return false;
+          await unit.set(owner, {planMerge: {settled: true}});
+          return true;
+        });
+        if (!settled) return 'more';
       }
       if (await a2cHistoryUnit(ctx, job, unit)) return 'more';
     }
@@ -236,12 +243,15 @@ export const leaveA2cJobHandler: BulkJobHandler<{employmentIds: string[]}> = {
   },
   /** Refused or stopped before release: the staged rows are deleted (nobody saw them) and no history is written. */
   async discard(job, unit) {
-    // A refused or stopped conversion leaves the type as it was: its pending change is withdrawn.
-    await unit.owner`update leave_type set pending_year_cycle_job_id=null where tenant_id=${job.tenant_id}::uuid and pending_year_cycle_job_id=${job.id}::uuid`;
-    const stage = a2cPlanOf(job).stage;
-    if (!stage) return 'done';
-    const removed = await discardLeaveStageRows(unit.owner, job.tenant_id, [stage]);
-    if (removed) return 'more';
-    return settleLeaveStages(unit.owner, job.tenant_id, [stage]);
+    // One bounded owner transaction per unit, attributed to the job.
+    return unit.ownerTx<'more' | 'done'>(async owner => {
+      // A refused or stopped conversion leaves the type as it was: its pending change is withdrawn.
+      await owner`update leave_type set pending_year_cycle_job_id=null where tenant_id=${job.tenant_id}::uuid and pending_year_cycle_job_id=${job.id}::uuid`;
+      const stage = a2cPlanOf(job).stage;
+      if (!stage) return 'done';
+      const removed = await discardLeaveStageRows(owner, job.tenant_id, [stage]);
+      if (removed) return 'more';
+      return settleLeaveStages(owner, job.tenant_id, [stage]);
+    });
   },
 };
