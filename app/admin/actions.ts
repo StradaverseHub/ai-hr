@@ -143,7 +143,8 @@ import {
   LeaveSharedGroupNameTakenError,
 } from '@/core/leave-shared-group';
 import { inviteUser, revokeInvitation, setAppUserArchived } from '@/core/auth';
-import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
+import { setToilPolicy } from '@/core/toil';
+import { createReplacementYearCloseJob, createToilExpiryJob, TOIL_SWEEP_ALREADY_RUNNING } from '@/core/toil-sweep-job';
 import { REPLACEMENT_ELIGIBILITY_CRITERIA, type ReplacementRequestEligibility } from '@/core/replacement-eligibility';
 import { setEncashmentPolicy } from '@/core/leave-encashment';
 import type { ToilAccrualBasis, ToilExpiryAction, ToilExpiryUnit, ToilReplacementLeaveFrom } from '@/db/schema';
@@ -2375,23 +2376,25 @@ export async function deleteLeaveTypeAction(fd: FormData) {
 // (a lapsed entitlement must not strand a settlement the employer already owes), which left a mutating
 // statutory sweep behind a bare session on a directly-POSTable server action. Same correction as
 // openLeaveYearAction above. The service asserts it too — a redirect is a UX gate, not authority.
+//
+// IN THE BACKGROUND (core/toil-sweep-worker.ts): the sweep used to be one request transaction holding the tenant's
+// Access lock and leave configuration lock for every employee. The action now checks the same authority and enqueues
+// it; the page follows the job (components/leave/toil-sweep-job-panel.tsx) and, when it finishes, opens the address
+// this action used to redirect to, `?processed=…&converted=…&lapsed=…&skipped=…` (lib/toil-sweep-job.ts
+// `toilSweepResultHref`). `skipped` still carries core/toil.ts's `skippedOutOfScope` to the banner: dropping it would
+// put the partial-sweep signal back where it was, the same success banner whether nothing was due or another
+// company's statutory settlements were silently left behind.
 export async function runToilExpiryAction() {
   const s = await requireAdmin();
   const today = todayInKualaLumpur();
-  let result;
+  let job;
   try {
-    result = await runToilExpiry(s, { today });
+    job = await createToilExpiryJob(s, { today });
   } catch (e) {
-    fail(TOIL_POLICY, e);
+    fail(TOIL_POLICY, e instanceof Error && e.message === TOIL_SWEEP_ALREADY_RUNNING ? new Error((await getTranslations('admin.toilPolicy.sweepJob'))('alreadyRunning')) : e);
   }
   revalidatePath(TOIL_POLICY);
-  // `skipped` carries core/toil.ts's `skippedOutOfScope` to the banner. Dropping it here would put the
-  // partial-sweep signal back where it was: a company-scoped admin would see the same success banner
-  // whether nothing was due or another company's statutory settlements were silently left behind.
-  redirect(
-    `${TOIL_POLICY}?processed=${result!.processed}&converted=${result!.converted}&lapsed=${result!.lapsed}` +
-      `&skipped=${result!.skippedOutOfScope}`,
-  );
+  redirect(`${TOIL_POLICY}?job=${job!.id}`);
 }
 
 // RL Control Engine (0113) — year-end rollover: expire (or carry-forward, per each accrual's frozen flag) the
@@ -2400,20 +2403,19 @@ export async function runToilExpiryAction() {
 // requireAdmin() for the reason given on runToilExpiryAction, and more sharply here: this writes a
 // `replacement-leave-year.closed` marker, and `domain_event` has UPDATE/DELETE REVOKEd from ai_hr_app, so
 // a marker written by the wrong caller cannot be undone through the product.
+// In the background like runToilExpiryAction; the finished job opens the address this action used to redirect to,
+// `?closed=1&closedAlready=…&closedProcessed=…&closedConverted=…&closedLapsed=…&closedCarried=…`.
 export async function closeReplacementLeaveYearAction() {
   const s = await requireAdmin();
   const asOf = `${new Date().getUTCFullYear()}-12-31`;
-  let result;
+  let job;
   try {
-    result = await closeReplacementLeaveYear(s, { asOf });
+    job = await createReplacementYearCloseJob(s, { asOf });
   } catch (e) {
-    fail(TOIL_POLICY, e);
+    fail(TOIL_POLICY, e instanceof Error && e.message === TOIL_SWEEP_ALREADY_RUNNING ? new Error((await getTranslations('admin.toilPolicy.sweepJob'))('alreadyRunning')) : e);
   }
   revalidatePath(TOIL_POLICY);
-  redirect(
-    `${TOIL_POLICY}?closed=1&closedAlready=${result!.alreadyClosed ? 1 : 0}&closedProcessed=${result!.processed}` +
-      `&closedConverted=${result!.converted}&closedLapsed=${result!.lapsed}&closedCarried=${result!.carriedForward}`,
-  );
+  redirect(`${TOIL_POLICY}?job=${job!.id}`);
 }
 
 // ADR-0033 33-5 — upsert one company's TOIL (leave-in-lieu) policy. Checkboxes ⇒ presence test.

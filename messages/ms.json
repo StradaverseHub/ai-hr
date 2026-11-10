@@ -12333,7 +12333,25 @@
       "closeAlready": "Sempadan tahun ini telah ditutup; tiada apa-apa untuk dilakukan.",
       "configMovedTitle": "Replacement leave settings",
       "configMovedHint": "The policy editor for replacement leave now lives under Leave Config.",
-      "configMovedLink": "Go to Replacement Leave settings"
+      "configMovedLink": "Go to Replacement Leave settings",
+      "sweepJob": {
+        "title": {
+          "toil_expiry": "Memproses tamat tempoh",
+          "toil_year_close": "Menutup tahun cuti ganti"
+        },
+        "progressCount": "{done} daripada {total} pekerja diproses",
+        "backgroundHelp": "Ini berjalan di latar belakang. Anda boleh meninggalkan halaman ini dan kembali kemudian.",
+        "waiting": "Menunggu perkhidmatan latar belakang untuk meneruskan. Tiada tindakan diperlukan.",
+        "state": {
+          "queued": "Menunggu untuk bermula",
+          "running": "Sedang berjalan",
+          "completed": "Selesai",
+          "failed": "Dihentikan"
+        },
+        "failed": "Proses dihentikan: {reason} Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya.",
+        "partial": "{count} pekerja tidak dapat diproses dan kredit mereka tidak diubah: {reason} Jalankan sekali lagi untuk melengkapkannya.",
+        "alreadyRunning": "Pentadbir lain sedang menjalankan proses ini. Cuba lagi apabila ia selesai."
+      }
     },
     "locations": {
       "pageTitle": "Lokasi",
@@ -37367,6 +37385,20 @@
         "cancelled": {
           "title": "Pembetulan jenis tahun cuti dibatalkan",
           "body": "Tiada angka cuti yang diubah."
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "Penyelesaian cuti ganti selesai",
+          "body": "Kredit cuti ganti yang perlu diselesaikan telah diselesaikan. Buka Kredit Cuti untuk menyemaknya."
+        },
+        "failed": {
+          "title": "Penyelesaian cuti ganti dihentikan",
+          "body": "Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya."
+        },
+        "cancelled": {
+          "title": "Penyelesaian cuti ganti dibatalkan",
+          "body": "Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya."
         }
       }
     }

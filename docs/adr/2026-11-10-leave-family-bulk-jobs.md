@@ -105,3 +105,58 @@ Entitlement, carry expiry and year-open the same shape or larger), and a busy em
 Open questions for the owner: Run Earned Accrual and the carry-expiry and monthly accrual timers were single
 transactions too but stay per-step (each employee independent and idempotent; a rerun completes a refused batch);
 the same staging would make them all-or-nothing. The A2C window above.
+
+## TOIL expiry and the replacement-leave year-end close (kinds `toil_expiry`, `toil_year_close`, draft 9903)
+
+Source: `claude/bulkjob-toil-20261111`. Each sweep (`runToilExpiry`, `closeReplacementLeaveYear` in `core/toil.ts`) was
+ONE request transaction holding the tenant's Access lock, the leave-dependency configuration lock exclusively and every
+subject employee's locks for the whole tenant.
+
+- **Off the request path.** `runToilExpiryAction` / `closeReplacementLeaveYearAction` check the same authority
+  (`ToilSweepForbiddenError`) and enqueue (`core/toil-sweep-job.ts`); the Leave Credit page follows the job and, when it
+  finishes, opens the address the action used to redirect to, so the existing banners report the result. A person's
+  own running sweep is rejoined; another administrator's is refused. Notice group `toilSweep`.
+- **Batches, unchanged calculation** (`core/toil-sweep-worker.ts`, per-step). One step is 5 employees
+  (`LEAVE_COHORT_BATCH_EMPLOYEES`) and at most 40 credits (`TOIL_SWEEP_BATCH_CREDITS`, an employee is never split), one
+  step per chunk. A batch runs the selection, subject locks and NOWAIT re-read the synchronous sweep ran, narrowed to its
+  employees (`lockedDueToilAccrualsTx`, `lockedActiveToilAccrualsTx`, now shared by both forms), and the unchanged
+  executor `expireAccrualsTx` with the same per-company boundary and carry-forward rules (`sweepReplacementYearTx`).
+  Each credit's settlement depends only on that credit, its employee's wages and hire date and its company's leave
+  cycle and country, so a batch writes what the whole-tenant sweep wrote for those employees; events keep the sweep's
+  order (employment, then credit). The synchronous functions remain for other callers.
+- **Lock modes.** A batch takes the Access lock, the configuration lock SHARED and its employees' locks. Exclusive is
+  needed only to create the tenant's REPLACEMENT leave type (`ensureReplacementLeaveType` inserts on a miss): the
+  transaction that makes the steps runnable creates it once, under the exclusive lock, when the plan settles anything
+  and the type is missing (exactly when the old sweep reached it). A batch resolves the type with
+  `findReplacementLeaveTypeIdTx` under the shared lock; every writer that archives, reclassifies or deletes a leave type
+  takes the lock exclusively, so the executor finds the same type later in that transaction. Only if the type vanished
+  after preparation does a batch take the lock exclusively (non-waiting) and let the executor create it.
+- **Whole-run decisions once.** Expiry's `skippedOutOfScope` is counted in preparation, in one snapshot (due and
+  visible, minus settleable). The close's decisions (the boundary's markers, the legacy tenant-wide marker, "already
+  closed") are made in preparation from the same marker read. The per-company `replacement-leave-year.closed` markers
+  are written once after the last batch, with the subtotals and carried-forward counts the synchronous close computed,
+  only for companies that had in-scope credits and none of whose employees sits in a failed batch (a marker on a partly
+  swept company would strand the rest); the boundary's markers are read again under the Access lock and the shared
+  configuration lock so a company is never closed twice.
+- **Partial result.** A busy employee (credit lock or row held, or the due set moving: `LeaveDependencyUnavailable`) is
+  retried; a batch that keeps failing (60 retries) or is refused is recorded and left unchanged, the job's result is
+  what the synchronous sweep returns for what was written, `failedEmployees` says how many employees were not
+  processed, and running the sweep again completes them (only `active` credits are ever touched).
+- **Authority.** Admin at enqueue, the kernel's captured-grant fence on every transaction, admin re-checked in every
+  batch and in the transaction that writes the markers and the result: a creator who loses admin gets no marker.
+- **Evidence.** `test/toil-sweep-equivalence.test.ts` (populated fixture: four companies including an anniversary
+  cycle; lapse, statutory and ORP convert-to-pay, carry forward, partly taken, self-declared, not yet due; type present
+  and absent; a dual-scoped administrator's `skippedOutOfScope`), `test/toil-sweep-job.test.ts` (refused batch and
+  re-run, authority, busy employee), `test/toil-sweep-job-panel.dom.test.tsx`, `test/toil-sweep-notice.dom.test.tsx`.
+
+**Open question for the owner: the sweeps are no longer all-or-nothing.** The old transaction settled every due credit
+or none. The ledger-row staging the rest of the family uses (`core/leave-stage.ts`) hides staged `leave_ledger` rows
+only; a sweep also flips `toil_accrual.status`, links `settled_ledger_entry_id` and appends one `toil.converted` /
+`toil.lapsed` event per credit (convert-to-pay records the owed cash on that event; no payroll input is written), and
+none of those has an invisible staged state. So a batch that cannot be written leaves its employees' credits active
+while the rest are settled, and the screen says so. Two consequences to accept or reject: (1) after a re-run, the
+marker of a company that was partly swept states only what the re-run settled for it (the first run's part is in its
+credits' events), where an uninterrupted run's marker states the whole; (2) the REPLACEMENT leave type, when created,
+is created before the batches and stays even if every batch fails. Keeping all-or-nothing would need staged states for
+the credit status, the settlement link and the per-credit events (a schema change of the 9001/9004 kind); no schema
+change is made here.

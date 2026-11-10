@@ -19,7 +19,7 @@ import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { earnedCycleStart } from './leave';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
-import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {
   appUser,
   attendance,
@@ -3855,6 +3855,86 @@ async function lockedToilSweepRows<T>(read: () => PromiseLike<T>): Promise<T> {
   try { return await read(); } catch { throw new LeaveDependencyUnavailable(); }
 }
 
+/**
+ * The expiry sweep's due accruals, nominated, locked and re-read exactly as `runToilExpiry` always did:
+ * status 'active', expiry date reached, settleable by this caller; every subject's leave-dependency and credit
+ * lock; then the same rows FOR UPDATE NOWAIT, refused if the set moved. `employmentIds` narrows all three reads
+ * to one batch of employees (the background job, core/toil-sweep-worker.ts); null reads the whole tenant. The
+ * caller already holds the Access lock and a leave-dependency configuration lock.
+ */
+async function lockedDueToilAccrualsTx(tx: Tx, ctx: SessionContext, today: string, employmentIds: readonly string[] | null): Promise<SweepRow[]> {
+  const batch = employmentIds ? inArray(toilAccrual.employmentId, [...employmentIds]) : undefined;
+  const nominated = await tx.select({ id: toilAccrual.id, employmentId: toilAccrual.employmentId }).from(toilAccrual)
+    .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, today), SETTLEABLE_BY_CALLER, batch));
+  await lockToilSweepSubjectsTx(tx, ctx, nominated);
+  const due = await lockedToilSweepRows(() => tx
+    .select({
+      id: toilAccrual.id,
+      employmentId: toilAccrual.employmentId,
+      daysCredited: toilAccrual.daysCredited,
+      daysTaken: toilAccrual.daysTaken,
+      expiryAction: toilAccrual.expiryAction,
+      workedDate: toilAccrual.workedDate,
+      // Phase-B #14: the worked-day shape so a First-Schedule convert reconciles to the exact statutory cash.
+      dayType: toilAccrual.dayType,
+      datedCredit: toilAccrual.datedCredit,
+      otMinutes: toilAccrual.otMinutes,
+      workedDayKind: toilAccrual.workedDayKind,
+    })
+    .from(toilAccrual)
+    .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, today), SETTLEABLE_BY_CALLER, batch))
+    .orderBy(asc(toilAccrual.employmentId), asc(toilAccrual.id))
+    .for('update', { of: toilAccrual, noWait: true }));
+  assertToilSweepSubjectsUnchanged(nominated, due);
+  return due.map((d) => ({
+    id: d.id,
+    employmentId: d.employmentId,
+    remaining: round2(Number(d.daysCredited) - Number(d.daysTaken)),
+    expiryAction: d.expiryAction,
+    workedDate: d.workedDate,
+    dayType: d.dayType as 'workday' | 'rest_day' | 'holiday',
+    otMinutes: d.otMinutes,
+    workedDayKind: d.workedDayKind,
+    datedCredit: d.datedCredit,
+  }));
+}
+
+/** A sweep's admin assertion, for the whole-tenant functions and for every unit of their background jobs. */
+export function assertToilSweepAuthority(ctx: SessionContext): void {
+  if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError();
+}
+
+/**
+ * The configuration lock a BATCH of either sweep takes. The whole-tenant sweeps take it exclusively because the
+ * shared executor `expireAccrualsTx` may create the tenant's REPLACEMENT leave type (`ensureReplacementLeaveType`
+ * inserts on a miss). A batch takes it SHARED and first resolves that type with `findReplacementLeaveTypeIdTx`, the
+ * same read `ensureReplacementLeaveType` begins with. Every writer that can remove or reclassify a leave type
+ * (archive, rules, delete: core/admin.ts) takes this lock exclusively, so while the batch holds it shared the type it
+ * found is still the one `ensureReplacementLeaveType` finds later in the same transaction: a batch with the type
+ * present never creates it. The job ensures the type once, before any batch (`ensureReplacementLeaveTypeForSweepTx`);
+ * only if it was archived or deleted after that does a batch find none, and only then does it take the lock
+ * exclusively (a non-waiting try, so a busy refusal retries) and let the executor create it, as the old sweep did.
+ */
+async function lockToilSweepBatchConfigurationTx(tx: Tx, tenantId: string): Promise<'shared' | 'exclusive'> {
+  await lockLeaveDependencyReadConfigurationTx(tx, tenantId);
+  if (await findReplacementLeaveTypeIdTx(tx, tenantId)) return 'shared';
+  await lockLeaveDependencyConfigurationTx(tx, tenantId);
+  return 'exclusive';
+}
+
+/**
+ * The sweeps' one configuration write, made once before a background run's batches: the tenant's REPLACEMENT
+ * leave type, under the Access lock and the configuration lock EXCLUSIVELY (what the whole-tenant sweep held while
+ * `expireAccrualsTx` created it). The job calls it only when its plan has an accrual to settle, which is exactly
+ * when the whole-tenant sweep reached `ensureReplacementLeaveType`. Idempotent.
+ */
+export async function ensureReplacementLeaveTypeForSweepTx(tx: Tx, ctx: SessionContext): Promise<string> {
+  assertToilSweepAuthority(ctx);
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+  return ensureReplacementLeaveType(tx, ctx.tenantId);
+}
+
 
 /**
  * Expire active TOIL accruals whose expiry date has arrived. Each follows its FROZEN expiry_action via
@@ -3890,39 +3970,7 @@ export async function runToilExpiry(ctx: SessionContext, p: { today: string }): 
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     // The shared executor may create the replacement catalogue entry, so this owner is exclusive.
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
-    const nominated = await tx.select({ id: toilAccrual.id, employmentId: toilAccrual.employmentId }).from(toilAccrual)
-      .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today), SETTLEABLE_BY_CALLER));
-    await lockToilSweepSubjectsTx(tx, ctx, nominated);
-    const due = await lockedToilSweepRows(() => tx
-      .select({
-        id: toilAccrual.id,
-        employmentId: toilAccrual.employmentId,
-        daysCredited: toilAccrual.daysCredited,
-        daysTaken: toilAccrual.daysTaken,
-        expiryAction: toilAccrual.expiryAction,
-        workedDate: toilAccrual.workedDate,
-        // Phase-B #14: the worked-day shape so a First-Schedule convert reconciles to the exact statutory cash.
-        dayType: toilAccrual.dayType,
-        datedCredit: toilAccrual.datedCredit,
-        otMinutes: toilAccrual.otMinutes,
-        workedDayKind: toilAccrual.workedDayKind,
-      })
-      .from(toilAccrual)
-      .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today), SETTLEABLE_BY_CALLER))
-      .orderBy(asc(toilAccrual.employmentId), asc(toilAccrual.id))
-      .for('update', { of: toilAccrual, noWait: true }));
-    assertToilSweepSubjectsUnchanged(nominated, due);
-    const rows: SweepRow[] = due.map((d) => ({
-      id: d.id,
-      employmentId: d.employmentId,
-      remaining: round2(Number(d.daysCredited) - Number(d.daysTaken)),
-      expiryAction: d.expiryAction,
-      workedDate: d.workedDate,
-      dayType: d.dayType as 'workday' | 'rest_day' | 'holiday',
-      otMinutes: d.otMinutes,
-      workedDayKind: d.workedDayKind,
-      datedCredit: d.datedCredit,
-    }));
+    const rows = await lockedDueToilAccrualsTx(tx, ctx, p.today, null);
     // THE RESIDUE, COUNTED (review r3). Identical predicate MINUS `SETTLEABLE_BY_CALLER`, so the
     // difference is exactly the accruals that were due and that this caller's company scope hid. Both
     // reads run inside the same `withTenant` transaction, so tenant RLS still applies to both and this
@@ -3998,60 +4046,14 @@ export async function closeReplacementLeaveYear(
       alreadyClosed: false, carriedForward: 0,
     };
 
-    // Idempotency guard beyond "no active rows left": a prior close marker for this exact boundary ⇒ true
-    // no-op (so a re-fire, or a race against runToilExpiry, is genuinely idempotent, not incidentally safe).
-    // Read ALL of them, not `limit(1)`, because the grain is per company now.
-    const markers = await tx
-      .select({ companyId: sql<string | null>`${domainEvent.payload} ->> 'companyId'` })
-      .from(domainEvent)
-      .where(
-        and(
-          eq(domainEvent.tenantId, ctx.tenantId),
-          eq(domainEvent.eventType, 'replacement-leave-year.closed'),
-          sql`${domainEvent.payload} ->> 'asOf' = ${p.asOf}`,
-        ),
-      );
-    const closedCompanies = new Set(markers.map((m) => m.companyId).filter((c): c is string => c != null));
-    // A legacy marker (no companyId) closed the whole tenant. Honour it verbatim rather than re-opening
-    // a boundary an earlier release already recorded as closed.
-    const closedTenantWide = markers.some((m) => m.companyId == null);
-    if (closedTenantWide) return { ...empty, alreadyClosed: true };
+    const markers = await replacementYearMarkersTx(tx, ctx, p.asOf);
+    if (markers.closedTenantWide) return { ...empty, alreadyClosed: true };
 
-    // The leave cycle drives the boundary, and it is PER-COMPANY: a mixed-cycle tenant must sweep each
-    // company at its OWN boundary. Join `company` so each accrual carries its own employment's leave cycle
-    // (the previous single-company SELECT applied one arbitrary company's cycle tenant-wide — bug #19).
-    const nominated = await tx.select({ id: toilAccrual.id, employmentId: toilAccrual.employmentId }).from(toilAccrual)
-      .where(and(eq(toilAccrual.status, 'active'), SETTLEABLE_BY_CALLER));
-    await lockToilSweepSubjectsTx(tx, ctx, nominated);
-    const active = await lockedToilSweepRows(() => tx
-      .select({
-        id: toilAccrual.id,
-        employmentId: toilAccrual.employmentId,
-        daysCredited: toilAccrual.daysCredited,
-        daysTaken: toilAccrual.daysTaken,
-        expiryAction: toilAccrual.expiryAction,
-        carryForwardAtYearEnd: toilAccrual.carryForwardAtYearEnd,
-        workedDate: toilAccrual.workedDate,
-        // Phase-B #14: the worked-day shape so a First-Schedule convert reconciles to the exact statutory cash.
-        dayType: toilAccrual.dayType,
-        datedCredit: toilAccrual.datedCredit,
-        otMinutes: toilAccrual.otMinutes,
-        workedDayKind: toilAccrual.workedDayKind,
-        hiredOn: employment.hiredOn,
-        companyId: employment.companyId,
-        leaveCycle: company.leaveCycle,
-      })
-      .from(toilAccrual)
-      .innerJoin(employment, eq(employment.id, toilAccrual.employmentId))
-      .innerJoin(company, eq(company.id, employment.companyId))
-      .where(and(eq(toilAccrual.status, 'active'), SETTLEABLE_BY_CALLER))
-      .orderBy(asc(toilAccrual.employmentId), asc(toilAccrual.id))
-      .for('update', { of: toilAccrual, noWait: true }));
-    assertToilSweepSubjectsUnchanged(nominated, active);
+    const active = await lockedActiveToilAccrualsTx(tx, ctx, null);
 
     // Companies this caller can actually see accruals for. A company with no visible active accrual is
     // NOT in scope and gets no marker — that is what stops a partial sweep from claiming the group.
-    const inScope = active.filter((a) => !closedCompanies.has(a.companyId));
+    const inScope = active.filter((a) => !markers.closedCompanies.has(a.companyId));
     const scopeCompanies = [...new Set(inScope.map((a) => a.companyId))].sort();
     // Everything this caller could close at this boundary already carries a marker ⇒ a genuine
     // idempotent re-fire.
@@ -4064,81 +4066,314 @@ export async function closeReplacementLeaveYear(
     // "a true no-op rather than incidentally safe" was back to being incidentally safe on the one path
     // that matters. app/admin/toil/page.tsx branches on exactly this field, so a re-run of a completed
     // close reported "closed 0 accruals" instead of "already closed".
-    if (markers.length > 0 && scopeCompanies.length === 0) return { ...empty, alreadyClosed: true };
+    if (markers.count > 0 && scopeCompanies.length === 0) return { ...empty, alreadyClosed: true };
 
-    let carriedForward = 0;
-    // Each row carries its own per-company boundary; calendar rows resolve to `asOf`, anniversary rows to the
-    // employee's own cycle start. We branch per row so a mixed-cycle tenant closes every company correctly.
-    const rows: (SweepRow & { boundary: string; companyId: string })[] = [];
-    for (const a of inScope) {
-      if (a.carryForwardAtYearEnd) {
-        carriedForward += 1;
-        continue; // survives the close — frozen opt-in carry-forward
-      }
-      const boundary = a.leaveCycle === 'anniversary' ? earnedCycleStart(a.hiredOn, p.asOf, 'anniversary') : p.asOf;
-      rows.push({
-        id: a.id,
-        employmentId: a.employmentId,
-        companyId: a.companyId,
-        remaining: round2(Number(a.daysCredited) - Number(a.daysTaken)),
-        expiryAction: a.expiryAction,
-        workedDate: a.workedDate,
-        dayType: a.dayType as 'workday' | 'rest_day' | 'holiday',
-        otMinutes: a.otMinutes,
-        workedDayKind: a.workedDayKind,
-        datedCredit: a.datedCredit,
-        boundary,
-      });
-    }
-
-    // Sweep each row at its own per-company boundary, accumulating a PER-COMPANY subtotal as well as the
-    // run total: the marker each company gets below must describe what was settled for THAT company, or
-    // it is the same overstatement one grain down.
-    const zero = (): ToilExpiryResult => ({ processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0, skippedOutOfScope: 0 });
-    const add = (x: ToilExpiryResult, y: ToilExpiryResult): ToilExpiryResult => ({
-      processed: x.processed + y.processed,
-      converted: x.converted + y.converted,
-      lapsed: x.lapsed + y.lapsed,
-      convertedDays: round2(x.convertedDays + y.convertedDays),
-      convertedAmount: round2(x.convertedAmount + y.convertedAmount),
-      // Always 0 on this path, and that is a statement rather than an oversight: this sweep already
-      // reports its scope truthfully, by writing one `replacement-leave-year.closed` marker per company
-      // it actually swept. `runToilExpiry` has no such marker, which is why it needs the count.
-      skippedOutOfScope: x.skippedOutOfScope + y.skippedOutOfScope,
-    });
-    let agg = zero();
-    const perCompany = new Map<string, ToilExpiryResult>();
-    for (const r of rows) {
-      const part = await expireAccrualsTx(tx, ctx, [r], r.boundary);
-      agg = add(agg, part);
-      perCompany.set(r.companyId, add(perCompany.get(r.companyId) ?? zero(), part));
-    }
+    const { agg, carriedForward, perCompany } = await sweepReplacementYearTx(tx, ctx, p.asOf, inScope);
 
     // ONE MARKER PER COMPANY SWEPT; the per-accrual toil.converted/toil.lapsed rows are the audit (mirrors
-    // the leave-year.opened skip comment). `aggregateId` is the COMPANY, so the event log reads as "this
-    // company's replacement-leave year was closed" — which is the fact, and which the previous version's
-    // tenant aggregateId overstated.
+    // the leave-year.opened skip comment).
     for (const companyId of scopeCompanies) {
       const ofCompany = inScope.filter((a) => a.companyId === companyId);
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'replacement-leave-year',
-        aggregateId: companyId,
-        eventType: 'replacement-leave-year.closed',
-        actor: actorOf(ctx),
-        // leaveCycle is per-company (bug #19), so with the marker per company it is a single value rather
-        // than a set. `companyId` is the idempotency key alongside `asOf`.
-        payload: {
-          asOf: p.asOf,
-          companyId,
-          leaveCycle: ofCompany[0]?.leaveCycle ?? null,
-          carriedForward: ofCompany.filter((a) => a.carryForwardAtYearEnd).length,
-          ...(perCompany.get(companyId) ?? zero()),
-        },
+      await appendReplacementYearClosedTx(tx, ctx, {
+        asOf: p.asOf,
+        companyId,
+        leaveCycle: ofCompany[0]?.leaveCycle ?? null,
+        carriedForward: ofCompany.filter((a) => a.carryForwardAtYearEnd).length,
+        subtotal: perCompany.get(companyId) ?? emptyToilExpiryResult(),
       });
     }
     return { ...agg, alreadyClosed: false, carriedForward };
   });
+}
+
+/** Zero, and the per-company / run total arithmetic of the close (also how a background run adds its batches). */
+export const emptyToilExpiryResult = (): ToilExpiryResult => ({ processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0, skippedOutOfScope: 0 });
+export const addToilExpiryResults = (x: ToilExpiryResult, y: ToilExpiryResult): ToilExpiryResult => ({
+  processed: x.processed + y.processed,
+  converted: x.converted + y.converted,
+  lapsed: x.lapsed + y.lapsed,
+  convertedDays: round2(x.convertedDays + y.convertedDays),
+  convertedAmount: round2(x.convertedAmount + y.convertedAmount),
+  // Always 0 on the close, and that is a statement rather than an oversight: that sweep already
+  // reports its scope truthfully, by writing one `replacement-leave-year.closed` marker per company
+  // it actually swept. `runToilExpiry` has no such marker, which is why it needs the count.
+  skippedOutOfScope: x.skippedOutOfScope + y.skippedOutOfScope,
+});
+
+/** The boundary's close markers, as the close always read them before deciding anything. */
+async function replacementYearMarkersTx(tx: Tx, ctx: SessionContext, asOf: string) {
+  // Idempotency guard beyond "no active rows left": a prior close marker for this exact boundary ⇒ true
+  // no-op (so a re-fire, or a race against runToilExpiry, is genuinely idempotent, not incidentally safe).
+  // Read ALL of them, not `limit(1)`, because the grain is per company now.
+  const markers = await tx
+    .select({ companyId: sql<string | null>`${domainEvent.payload} ->> 'companyId'` })
+    .from(domainEvent)
+    .where(
+      and(
+        eq(domainEvent.tenantId, ctx.tenantId),
+        eq(domainEvent.eventType, 'replacement-leave-year.closed'),
+        sql`${domainEvent.payload} ->> 'asOf' = ${asOf}`,
+      ),
+    );
+  const closedCompanies = new Set(markers.map((m) => m.companyId).filter((c): c is string => c != null));
+  // A legacy marker (no companyId) closed the whole tenant. Honour it verbatim rather than re-opening
+  // a boundary an earlier release already recorded as closed.
+  const closedTenantWide = markers.some((m) => m.companyId == null);
+  return { count: markers.length, closedCompanies, closedTenantWide };
+}
+
+/**
+ * The close's active accruals, nominated, locked and re-read exactly as `closeReplacementLeaveYear` always did;
+ * `employmentIds` narrows the three reads to one batch of employees (null: the whole tenant).
+ */
+async function lockedActiveToilAccrualsTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[] | null) {
+  const batch = employmentIds ? inArray(toilAccrual.employmentId, [...employmentIds]) : undefined;
+  // The leave cycle drives the boundary, and it is PER-COMPANY: a mixed-cycle tenant must sweep each
+  // company at its OWN boundary. Join `company` so each accrual carries its own employment's leave cycle
+  // (the previous single-company SELECT applied one arbitrary company's cycle tenant-wide — bug #19).
+  const nominated = await tx.select({ id: toilAccrual.id, employmentId: toilAccrual.employmentId }).from(toilAccrual)
+    .where(and(eq(toilAccrual.status, 'active'), SETTLEABLE_BY_CALLER, batch));
+  await lockToilSweepSubjectsTx(tx, ctx, nominated);
+  const active = await lockedToilSweepRows(() => tx
+    .select({
+      id: toilAccrual.id,
+      employmentId: toilAccrual.employmentId,
+      daysCredited: toilAccrual.daysCredited,
+      daysTaken: toilAccrual.daysTaken,
+      expiryAction: toilAccrual.expiryAction,
+      carryForwardAtYearEnd: toilAccrual.carryForwardAtYearEnd,
+      workedDate: toilAccrual.workedDate,
+      // Phase-B #14: the worked-day shape so a First-Schedule convert reconciles to the exact statutory cash.
+      dayType: toilAccrual.dayType,
+      datedCredit: toilAccrual.datedCredit,
+      otMinutes: toilAccrual.otMinutes,
+      workedDayKind: toilAccrual.workedDayKind,
+      hiredOn: employment.hiredOn,
+      companyId: employment.companyId,
+      leaveCycle: company.leaveCycle,
+    })
+    .from(toilAccrual)
+    .innerJoin(employment, eq(employment.id, toilAccrual.employmentId))
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .where(and(eq(toilAccrual.status, 'active'), SETTLEABLE_BY_CALLER, batch))
+    .orderBy(asc(toilAccrual.employmentId), asc(toilAccrual.id))
+    .for('update', { of: toilAccrual, noWait: true }));
+  assertToilSweepSubjectsUnchanged(nominated, active);
+  return active;
+}
+type ActiveCloseRow = Awaited<ReturnType<typeof lockedActiveToilAccrualsTx>>[number];
+type ReplacementYearLeaveCycle = ActiveCloseRow['leaveCycle'];
+
+/** Forfeit (or carry forward) the in-scope accruals at their boundaries, with the run and per-company totals. */
+async function sweepReplacementYearTx(tx: Tx, ctx: SessionContext, asOf: string, inScope: readonly ActiveCloseRow[]) {
+  let carriedForward = 0;
+  // Each row carries its own per-company boundary; calendar rows resolve to `asOf`, anniversary rows to the
+  // employee's own cycle start. We branch per row so a mixed-cycle tenant closes every company correctly.
+  const rows: (SweepRow & { boundary: string; companyId: string })[] = [];
+  for (const a of inScope) {
+    if (a.carryForwardAtYearEnd) {
+      carriedForward += 1;
+      continue; // survives the close — frozen opt-in carry-forward
+    }
+    const boundary = a.leaveCycle === 'anniversary' ? earnedCycleStart(a.hiredOn, asOf, 'anniversary') : asOf;
+    rows.push({
+      id: a.id,
+      employmentId: a.employmentId,
+      companyId: a.companyId,
+      remaining: round2(Number(a.daysCredited) - Number(a.daysTaken)),
+      expiryAction: a.expiryAction,
+      workedDate: a.workedDate,
+      dayType: a.dayType as 'workday' | 'rest_day' | 'holiday',
+      otMinutes: a.otMinutes,
+      workedDayKind: a.workedDayKind,
+      datedCredit: a.datedCredit,
+      boundary,
+    });
+  }
+
+  // Sweep each row at its own per-company boundary, accumulating a PER-COMPANY subtotal as well as the
+  // run total: the marker each company gets must describe what was settled for THAT company, or it is the
+  // same overstatement one grain down.
+  let agg = emptyToilExpiryResult();
+  const perCompany = new Map<string, ToilExpiryResult>();
+  for (const r of rows) {
+    const part = await expireAccrualsTx(tx, ctx, [r], r.boundary);
+    agg = addToilExpiryResults(agg, part);
+    perCompany.set(r.companyId, addToilExpiryResults(perCompany.get(r.companyId) ?? emptyToilExpiryResult(), part));
+  }
+  return { agg, carriedForward, perCompany };
+}
+
+/** One company's close marker. */
+async function appendReplacementYearClosedTx(tx: Tx, ctx: SessionContext, m: ReplacementYearCloseCompany & { asOf: string }) {
+  // `aggregateId` is the COMPANY, so the event log reads as "this company's replacement-leave year was
+  // closed" — which is the fact, and which the previous version's tenant aggregateId overstated.
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'replacement-leave-year',
+    aggregateId: m.companyId,
+    eventType: 'replacement-leave-year.closed',
+    actor: actorOf(ctx),
+    // leaveCycle is per-company (bug #19), so with the marker per company it is a single value rather
+    // than a set. `companyId` is the idempotency key alongside `asOf`.
+    payload: {
+      asOf: m.asOf,
+      companyId: m.companyId,
+      leaveCycle: m.leaveCycle,
+      carriedForward: m.carriedForward,
+      ...m.subtotal,
+    },
+  });
+}
+
+// ─── the two sweeps in batches of employees (background jobs, core/toil-sweep-worker.ts) ─────────────
+// Each accrual's settlement depends only on that accrual, its employee's wages and hire date and its company's
+// leave cycle and country, so a batch of employees settles exactly what the whole-tenant sweep settled for them.
+// A batch is one short transaction under the same locks the sweep took, for that batch's employees only (the
+// configuration lock shared: see lockToilSweepBatchConfigurationTx). The whole-run decisions are made once before
+// any batch (the plans below) and the close markers once after the last.
+
+/** What a background expiry run settles, read once with no lock held (each batch re-reads its own employees under
+ * their locks): the employees with a due accrual this caller may settle, in the sweep's order, with how many each
+ * has, and `skippedOutOfScope` counted as `runToilExpiry` counts it (due and visible, minus settleable), in one
+ * snapshot. */
+export type ToilSweepEmployee = { employmentId: string; credits: number };
+export type ToilExpiryPlan = { employees: ToilSweepEmployee[]; due: number; skippedOutOfScope: number };
+export async function planToilExpiryTx(tx: Tx, ctx: SessionContext, p: { today: string }): Promise<ToilExpiryPlan> {
+  assertToilSweepAuthority(ctx);
+  const rows = await tx
+    .select({ employmentId: toilAccrual.employmentId, settleable: sql<boolean>`${SETTLEABLE_BY_CALLER}` })
+    .from(toilAccrual)
+    .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today)))
+    .orderBy(asc(toilAccrual.employmentId), asc(toilAccrual.id));
+  const settleable = rows.filter((r) => r.settleable);
+  const credits = new Map<string, number>();
+  for (const r of settleable) credits.set(r.employmentId, (credits.get(r.employmentId) ?? 0) + 1);
+  return {
+    employees: [...credits].map(([employmentId, n]) => ({ employmentId, credits: n })),
+    due: settleable.length,
+    skippedOutOfScope: Math.max(0, rows.length - settleable.length),
+  };
+}
+
+/** One batch of `runToilExpiry`, inside the caller's transaction. `skippedOutOfScope` is 0: the run counts it once. */
+export async function runToilExpiryBatchTx(tx: Tx, ctx: SessionContext, p: { today: string }, employmentIds: readonly string[]): Promise<ToilExpiryResult> {
+  assertToilSweepAuthority(ctx);
+  if (!employmentIds.length) return emptyToilExpiryResult();
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockToilSweepBatchConfigurationTx(tx, ctx.tenantId);
+  const rows = await lockedDueToilAccrualsTx(tx, ctx, p.today, employmentIds);
+  return expireAccrualsTx(tx, ctx, rows, p.today);
+}
+
+/** The year-end close's whole-run decisions, made once before any batch exactly as `closeReplacementLeaveYear`
+ * makes them: the markers of this boundary, the legacy tenant-wide marker, and "already closed". Otherwise the
+ * employees with an in-scope active accrual (each with its company, in the sweep's order) and whether any of those
+ * accruals is forfeited at all (only then does the sweep need the REPLACEMENT leave type). Read with no lock held. */
+export type ReplacementYearClosePlan =
+  | { alreadyClosed: true }
+  | { alreadyClosed: false; closedCompanies: string[]; employees: (ToilSweepEmployee & { companyId: string })[]; settles: boolean };
+export async function planReplacementYearCloseTx(tx: Tx, ctx: SessionContext, p: { asOf: string }): Promise<ReplacementYearClosePlan> {
+  assertToilSweepAuthority(ctx);
+  const markers = await replacementYearMarkersTx(tx, ctx, p.asOf);
+  if (markers.closedTenantWide) return { alreadyClosed: true };
+  const active = await tx
+    .select({ employmentId: toilAccrual.employmentId, companyId: employment.companyId, carryForwardAtYearEnd: toilAccrual.carryForwardAtYearEnd })
+    .from(toilAccrual)
+    .innerJoin(employment, eq(employment.id, toilAccrual.employmentId))
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .where(and(eq(toilAccrual.status, 'active'), SETTLEABLE_BY_CALLER))
+    .orderBy(asc(toilAccrual.employmentId), asc(toilAccrual.id));
+  const inScope = active.filter((a) => !markers.closedCompanies.has(a.companyId));
+  if (markers.count > 0 && inScope.length === 0) return { alreadyClosed: true };
+  const employees = new Map<string, ToilSweepEmployee & { companyId: string }>();
+  for (const a of inScope) {
+    const seen = employees.get(a.employmentId);
+    if (seen) seen.credits += 1;
+    else employees.set(a.employmentId, { employmentId: a.employmentId, companyId: a.companyId, credits: 1 });
+  }
+  return {
+    alreadyClosed: false,
+    closedCompanies: [...markers.closedCompanies].sort(),
+    employees: [...employees.values()],
+    settles: inScope.some((a) => !a.carryForwardAtYearEnd),
+  };
+}
+
+/** One company's part of a close: what its marker states. */
+export type ReplacementYearCloseCompany = { companyId: string; leaveCycle: ReplacementYearLeaveCycle | null; carriedForward: number; subtotal: ToilExpiryResult };
+export type ReplacementYearCloseBatch = { result: CloseReplacementYearResult; companies: ReplacementYearCloseCompany[] };
+
+/** One batch of `closeReplacementLeaveYear` (the run's `closedCompanies` decided before any batch), inside the
+ * caller's transaction: the sweep and each of its companies' subtotals. No marker: the run writes those once. */
+export async function closeReplacementLeaveYearBatchTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { asOf: string; closedCompanies: readonly string[] },
+  employmentIds: readonly string[],
+): Promise<ReplacementYearCloseBatch> {
+  assertToilSweepAuthority(ctx);
+  if (!employmentIds.length) return { result: { ...emptyToilExpiryResult(), alreadyClosed: false, carriedForward: 0 }, companies: [] };
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockToilSweepBatchConfigurationTx(tx, ctx.tenantId);
+  const closed = new Set(p.closedCompanies);
+  const inScope = (await lockedActiveToilAccrualsTx(tx, ctx, employmentIds)).filter((a) => !closed.has(a.companyId));
+  const { agg, carriedForward, perCompany } = await sweepReplacementYearTx(tx, ctx, p.asOf, inScope);
+  const companies = [...new Set(inScope.map((a) => a.companyId))].sort().map((companyId) => {
+    const ofCompany = inScope.filter((a) => a.companyId === companyId);
+    return {
+      companyId,
+      leaveCycle: ofCompany[0]?.leaveCycle ?? null,
+      carriedForward: ofCompany.filter((a) => a.carryForwardAtYearEnd).length,
+      subtotal: perCompany.get(companyId) ?? emptyToilExpiryResult(),
+    };
+  });
+  return { result: { ...agg, alreadyClosed: false, carriedForward }, companies };
+}
+
+/** A whole run from its batches, in batch order: the run total and, per company (sorted, as the markers are
+ * written), the subtotal, carried-forward count and leave cycle the whole-tenant close computed for it. */
+export function combineReplacementYearCloseBatches(batches: readonly ReplacementYearCloseBatch[]): ReplacementYearCloseBatch {
+  let total = emptyToilExpiryResult();
+  let carriedForward = 0;
+  const companies = new Map<string, ReplacementYearCloseCompany>();
+  for (const b of batches) {
+    total = addToilExpiryResults(total, b.result);
+    carriedForward += b.result.carriedForward;
+    for (const c of b.companies) {
+      const seen = companies.get(c.companyId);
+      companies.set(c.companyId, seen
+        ? { ...seen, leaveCycle: seen.leaveCycle ?? c.leaveCycle, carriedForward: seen.carriedForward + c.carriedForward, subtotal: addToilExpiryResults(seen.subtotal, c.subtotal) }
+        : { ...c, subtotal: { ...c.subtotal } });
+    }
+  }
+  return {
+    result: { ...total, alreadyClosed: false, carriedForward },
+    companies: [...companies.values()].sort((x, y) => (x.companyId < y.companyId ? -1 : x.companyId > y.companyId ? 1 : 0)),
+  };
+}
+
+/**
+ * A background close's markers, written once after its last batch for the companies it closed (the caller leaves
+ * out every company with an employee in a batch that could not be written: a marker there would strand the rest).
+ * Under the Access lock and the configuration lock shared, the boundary's markers are read again so a company is
+ * never closed twice (the whole-tenant close held the configuration lock exclusively for that). Returns the
+ * companies it wrote a marker for.
+ */
+export async function appendReplacementYearClosedMarkersTx(tx: Tx, ctx: SessionContext, p: { asOf: string }, companies: readonly ReplacementYearCloseCompany[]): Promise<string[]> {
+  assertToilSweepAuthority(ctx);
+  if (!companies.length) return [];
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+  const markers = await replacementYearMarkersTx(tx, ctx, p.asOf);
+  if (markers.closedTenantWide) return [];
+  const written: string[] = [];
+  for (const c of companies) {
+    if (markers.closedCompanies.has(c.companyId)) continue;
+    await appendReplacementYearClosedTx(tx, ctx, { ...c, asOf: p.asOf });
+    written.push(c.companyId);
+  }
+  return written;
 }
 
 

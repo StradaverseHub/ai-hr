@@ -5,5 +5,7 @@ import {employeeImportJobHandler} from './employee-import-worker';
 import {leaveImportJobHandler} from './leave-import-worker';
 import {earnedAccrualJobHandler,leaveGenerationJobHandler} from './leave-cohort-worker';
 import {leaveA2cJobHandler,leaveRecalcJobHandler} from './leave-follow-up-worker';
+import {toilExpiryJobHandler,toilYearCloseJobHandler} from './toil-sweep-worker';
 
-export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,earnedAccrualJobHandler,leaveRecalcJobHandler,leaveA2cJobHandler];
+export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,earnedAccrualJobHandler,
+ leaveRecalcJobHandler,leaveA2cJobHandler,toilExpiryJobHandler,toilYearCloseJobHandler];
