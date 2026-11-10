@@ -62,14 +62,15 @@ function installObservers(){
   stages.push({run:state.run,stage,card,at:performance.now()});
  };
  (globalThis as {__aihrPerfBeginTransaction?:(poolMax:number)=>{acquired:()=>void;finished:()=>void}}).__aihrPerfBeginTransaction=()=>{
-  const startedAt=performance.now(),run=state.run,ownerFrames=transactionOwner();let acquiredAt:number|undefined;
-  return {acquired(){acquiredAt=performance.now();},finished(){
+  const startedAt=performance.now(),run=state.run,ownerFrames=transactionOwner();let acquiredAt:number|undefined,tripsAt=0;
+  return {acquired(){acquiredAt=performance.now();tripsAt=tripCounter();},finished(){
    const now=performance.now();
-   transactions.push({run,owner:ownerFrames,startedAt,waitMs:(acquiredAt??now)-startedAt,totalMs:now-startedAt});
+   transactions.push({run,owner:ownerFrames,startedAt,waitMs:(acquiredAt??now)-startedAt,totalMs:now-startedAt,trips:tripCounter()-tripsAt});
   }};
  };
 }
-type Transaction={run:string|null;owner:string;startedAt:number;waitMs:number;totalMs:number};
+type Transaction={run:string|null;owner:string;startedAt:number;waitMs:number;totalMs:number;trips:number};
+let tripCounter:()=>number=()=>0;
 const transactions:Transaction[]=[];
 function transactionOwner(){
  const limit=Error.stackTraceLimit;Error.stackTraceLimit=40;
@@ -279,6 +280,7 @@ async function coldWorker(workers:number){
  const [route,database]=await Promise.all([import('../../app/api/home/sharing-initial/route'),import('../../db/client')]);
  let trips=0;
  (database.client.options as {debug?:unknown}).debug=()=>{trips++;};
+ tripCounter=()=>trips;
  return {GET:route.GET as typeof GET,trips:()=>trips,resetTrips(){trips=0;},close:()=>database.client.end({timeout:5})};
 }
 /** Compete for the four runner CPUs the way extra application workers and browser contexts do. */
@@ -457,6 +459,38 @@ it('completes every manager Home card and Today section read without a handled f
     overlappedMs:Math.round(performance.now()-startedOverlap),overlappedOver:overlap.flatMap(result=>result.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card)),
     overlappedSlowest:overlap.map(result=>[...result.frames].sort((a,b)=>b.ms-a.ms).slice(0,3).map(frame=>[frame.card,frame.status,frame.ms]))};
    workerModel.push(row);print('worker-model',row);evidence();
+  }finally{stop();await worker.close().catch(()=>undefined);}
+ }
+ // 7. Round trips each owner spends, on one connection so per-transaction deltas are exact.
+ {
+  const worker=await coldWorker(16);
+  try{
+   for(const [label,actor] of [['manager',manager],['employee',employee]] as const){
+    await streamHome(actor,month,null,worker.GET);
+    const run='trips:'+label;worker.resetTrips();
+    const cpuBefore=process.cpuUsage();await streamHome(actor,month,run,worker.GET);const cpu=process.cpuUsage(cpuBefore);
+    const owners=new Map<string,{owner:string;tx:number;trips:number}>();
+    for(const row of transactions.filter(row=>row.run===run)){
+     const entry=owners.get(row.owner)??{owner:row.owner.split(' < ').slice(0,2).join(' < '),tx:0,trips:0};
+     entry.tx++;entry.trips+=row.trips;owners.set(row.owner,entry);
+    }
+    const trace={label,totalTrips:worker.trips(),nodeCpuMs:Math.round((cpu.user+cpu.system)/1000),owners:[...owners.values()].sort((a,b)=>b.trips-a.trips)};
+    (report.tripsByOwner??=[] as unknown[]);(report.tripsByOwner as unknown[]).push(trace);print('trips-by-owner',trace);
+   }
+  }finally{await worker.close().catch(()=>undefined);}
+  evidence();
+ }
+ // 8. Find where a Home stream crosses the card deadline as CPU competition rises.
+ const ramp:unknown[]=[];report.cpuRamp=ramp;
+ for(const [workers,pressure] of [[2,16],[8,16],[2,32],[8,32],[4,32]] as const){
+  const stop=cpuPressure(pressure),worker=await coldWorker(workers);
+  try{
+   await new Promise(resolve=>setTimeout(resolve,1500));
+   const once=async(actor:Actor)=>{const result=await streamHome(actor,month,null,worker.GET);return {elapsedMs:result.elapsedMs,over:result.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card)};};
+   const cold=await once(manager),warm=[await once(manager),await once(manager)];
+   const overlapped=await Promise.all([manager,employee,secondManager].map(once));
+   const row={workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,cold,warm,overlapped};
+   ramp.push(row);print('cpu-ramp',row);evidence();
   }finally{stop();await worker.close().catch(()=>undefined);}
  }
  Object.assign(process.env,{DATABASE_URL:applicationUrl});delete process.env.AIHR_APP_WORKERS;delete process.env.AIHR_DB_TOTAL_CONNECTIONS;
