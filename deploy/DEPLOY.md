@@ -378,6 +378,10 @@ VALUES ('<tenant-uuid>', '<app-user-uuid>', NULL, 'operator');
 
 Note: **suspending or deleting a customer is not implemented** (ADR-0079, deferred).
 
+## 5b-pool. Optional: PgBouncer transaction pooling
+
+The web application can share a few real database connections through PgBouncer. It is off by default, is not installed by `deploy.sh`, and is a separate, owner-approved step: [deploy/pgbouncer/README.md](pgbouncer/README.md).
+
 ## 5c. Alerting and log rotation (readiness 1.6 — NOT installed by deploy.sh)
 
 Three pieces, and only the first is already live after a deploy. The other two are text files in this

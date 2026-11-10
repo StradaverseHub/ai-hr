@@ -18,6 +18,8 @@ Every Node unit here (and `aihr-entra.service`) sets `AIHR_DB_PROCESS_ROLE=worke
 against PostgreSQL's `max_connections`. `deploy/deploy.sh` refuses a deploy that does not fit (`scripts/check-db-connection-budget.ts`).
 Add the same two lines to any new Node unit.
 
+These units stay on direct connections when the web application uses PgBouncer: `AIHR_DB_PROCESS_ROLE=worker` makes them ignore `DATABASE_POOLED_URL`. See [PgBouncer transaction pooling](../pgbouncer/README.md).
+
 ## The one that costs money to leave off
 
 **`aihr-usage-capture`** meters seats and payslips for billing. **Usage cannot be backfilled** — a day
