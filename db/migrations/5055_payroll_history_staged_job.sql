@@ -20,7 +20,16 @@
 
 -- 1. The kind. One stage per tenant at a time (the unique index below), which is what the exclusive history barrier
 --    gave: a second confirm or revert never refuses, it waits until the open stage is released or discarded.
-INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES('payroll_history',NULL,'none');
+--    Hardened kernel (5013): the kind declares the top-level keys and JSON types of the input its admission passes
+--    (core/payroll-history-job.ts); app.bulk_job_enqueue refuses anything else. `operation` is 'confirm' or 'revert';
+--    both carry the attempt and its preview hash, and a confirm adds its selection (confirmReplacement always, the
+--    other options when the screen sends them). A shape has no null, so an absent option is left out and is optional
+--    here. input_max_bytes: selectedRecordKeys names every ticked record (about 120 bytes each as stored text), so a
+--    large file's selection passes the 1 MiB default; 16 MiB covers about 130,000 records. Finalize clears the
+--    released stage's registry rows on the queue-owner connection (finalizeOwner on the handler), so the kind declares
+--    finalize_owner. The worker writes its plan through the kernel's sealed definers: no grant on the job store here.
+INSERT INTO bulk_job_kind(kind,scope_kind,exclusive,input_shape,input_max_bytes,finalize_owner)
+ VALUES('payroll_history',NULL,'none','{"operation":"string","attemptId":"string","previewHash":"string","confirmReplacement":"boolean?","skipReplacements":"boolean?","selectedRecordKeys":"array?","acknowledgeWarnings":"boolean?","expectedCompanyId":"string?"}'::jsonb,16777216,true);
 --> statement-breakpoint
 CREATE TABLE app.payroll_history_stage (
  stage_id uuid PRIMARY KEY,

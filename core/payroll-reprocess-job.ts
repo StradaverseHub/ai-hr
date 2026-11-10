@@ -6,6 +6,10 @@
  * worker token, completes it under that token, and records a stop exactly as the request path did (`failed`, the
  * run-level stop code and the employee it stopped at). Employees already committed stay committed, as before; the
  * screen follows the payroll_reprocess_job row it already polled (/api/payroll/reprocess-job/<id>).
+ *
+ * Hardened kernel (5013, 5014): describeFailure is read only, so it hands the stop (code and employee) to the kernel
+ * as a plan merge, and the settle writes the reprocess job's stop record from it in one owner transaction
+ * (unit.ownerTx). The admission input is the kind's declared shape (5056); finalize runs as the application role.
  */
 
 import {withTenant,type SessionContext} from '../db/client';
@@ -20,9 +24,11 @@ import {PAYROLL_REPROCESS_JOB_KIND} from '../lib/payroll-processing-job';
 
 export {PAYROLL_REPROCESS_JOB_KIND};
 type JobInput={reprocessJobId:string;batchId:string;employmentIds:string[];reason?:string};
-type JobPlan=JobInput&{completed?:Record<string,unknown>};
-type Step={employmentId:string};
 type Stopped={current:{employmentId:string;name:string;employeeCode:string|null}|null};
+/** `stopped`: what a failure recorded for the settle (the run-level stop code and the employee it stopped at). A
+ * failure before the plan exists leaves a plan that holds only this key. */
+type JobPlan=JobInput&{completed?:Record<string,unknown>;stopped?:{code:string;employee:Stopped['current']}};
+type Step={employmentId:string};
 const inputOf=(job:BulkJobRow)=>job.input as JobInput|null;
 const planOf=(job:BulkJobRow)=>job.plan as JobPlan|null;
 /** The employee a failing step stopped at, kept for the failure record (process-local, per job). */
@@ -79,25 +85,26 @@ export const payrollReprocessJobHandler:BulkJobHandler<Step>={
  },
  // Nothing to undo: every committed employee stays, exactly as when the request path stopped.
  onFailure:()=>'fail',
- // The request path's stop record: status failed, the run-level stop code and the employee it stopped at.
- async describeFailure(job,error,_step,owner){
-  const plan=planOf(job)??inputOf(job);
-  if(plan){
-   const stopped=stoppedOf.get(job.id)?.current??null;stoppedOf.delete(job.id);
-   await owner`update payroll_reprocess_job set status='failed',error=${reprocessRunErrorCode(error)},updated_at=now(),
-     result=coalesce(result,'{"outcomes":[]}'::jsonb)||jsonb_build_object('stoppedEmployee',${JSON.stringify(stopped)}::jsonb)
-    where id=${plan.reprocessJobId}::uuid and status='running' and result->>'workerToken'=${job.id}`;
-  }
-  return{error:publicErrorMessage(error)};
+ // The request path's stop record: status failed, the run-level stop code and the employee it stopped at. Read only
+ // here: the kernel merges the stop into the plan with the failure, and the settle below writes the record from it.
+ async describeFailure(job,error){
+  const stopped=stoppedOf.get(job.id)?.current??null;stoppedOf.delete(job.id);
+  return{error:publicErrorMessage(error),planMerge:{stopped:{code:reprocessRunErrorCode(error),employee:stopped}} satisfies Pick<JobPlan,'stopped'>};
  },
- // A job stopped at its creator's request (or failed before describeFailure ran) leaves the reprocess job as the
- // request path left a stopped one. Idempotent: only a row still running under this job's token changes.
- async settle(_ctx,job,owner){
+ // The reprocess job's stop record, in one owner transaction attributed to this job (unit.ownerTx): the failure's
+ // own code and employee, or, for a job stopped at its creator's request (or one that failed before its failure was
+ // described), what the request path left on a stopped one. Idempotent: only a row still running under this job's
+ // token changes, and the kernel retries a settle that fails.
+ async settle(_ctx,job,unit){
   if(job.state==='completed')return;
-  const plan=planOf(job)??inputOf(job);if(!plan)return;
-  await owner`update payroll_reprocess_job set status='failed',error='REPROCESS_STOPPED',updated_at=now(),
-    result=coalesce(result,'{"outcomes":[]}'::jsonb)||jsonb_build_object('stoppedEmployee',null::jsonb)
-   where id=${plan.reprocessJobId}::uuid and status='running' and result->>'workerToken'=${job.id}`;
+  const plan=planOf(job);
+  const reprocessJobId=plan?.reprocessJobId??inputOf(job)?.reprocessJobId;if(!reprocessJobId)return;
+  const stop=plan?.stopped;
+  await unit.ownerTx(async owner=>{
+   await owner`update payroll_reprocess_job set status='failed',error=${stop?.code??'REPROCESS_STOPPED'},updated_at=now(),
+     result=coalesce(result,'{"outcomes":[]}'::jsonb)||jsonb_build_object('stoppedEmployee',${JSON.stringify(stop?.employee??null)}::jsonb)
+    where id=${reprocessJobId}::uuid and status='running' and result->>'workerToken'=${job.id}`;
+  });
  },
 };
 

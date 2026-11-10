@@ -8,4 +8,12 @@
 -- Selective per-employee reprocessing runs on the shared bulk-job kernel (core/payroll-reprocess-job.ts) instead of
 -- inside the web request. Its exclusivity is the payroll_reprocess_job row's own claim (one worker token per job), so
 -- the kind adds no per-creator limit ('none', 9951): an operator may reprocess several runs back to back.
-INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES('payroll_reprocess',NULL,'none');
+-- Hardened kernel (5013): the kind declares the top-level keys and JSON types of its admission input
+-- (core/payroll-reprocess-job.ts): the reprocess job it runs, the run, the selected employments and, when one was
+-- given, the reason (a shape has no null, so an absent reason is left out and is optional here). The list of
+-- employment ids stays far below the 1 MiB default. Finalize runs as the application role only (finalize_owner
+-- false); the stop record of a failed or stopped job is written by the kind's settle in the kernel's owner
+-- transaction, and the worker's plan through the kernel's sealed definers, so this kind needs no grant on the job
+-- store.
+INSERT INTO bulk_job_kind(kind,scope_kind,exclusive,input_shape,finalize_owner)
+ VALUES('payroll_reprocess',NULL,'none','{"reprocessJobId":"string","batchId":"string","employmentIds":"array","reason":"string?"}'::jsonb,false);
