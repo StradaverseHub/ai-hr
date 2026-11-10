@@ -101,8 +101,8 @@ export function registerRewardsAuditPolicyNativeCases(){
   await controlledPolicyWait(ownership.poison).run(work,async()=>{await owner.client`drop schema reward_audit_policy_witness cascade`;});
  }
  async function backend(connection:ReturnType<typeof postgres>){const [row]=await connection`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started`;if(!row||typeof row.pid!=='number'||typeof row.started!=='string')throw Error('Actual native session identity required');return{pid:row.pid,started:row.started};}
- async function blocking(context:TestContext,waiting:{pid:number;started:string},holder:{pid:number;started:string}){
-  const until=Date.now()+200;
+ async function blocking(context:TestContext,waiting:{pid:number;started:string},holder:{pid:number;started:string},budgetMs=200){
+  const until=Date.now()+budgetMs;
   do{context.signal.throwIfAborted();const [row]=await owner.client`select exists(select 1 from pg_stat_activity w,pg_stat_activity h where w.pid=${waiting.pid} and w.backend_start=${waiting.started}::text::timestamptz and h.pid=${holder.pid} and h.backend_start=${holder.started}::text::timestamptz and h.pid=any(pg_blocking_pids(w.pid)))as owned`;
    if(row.owned===true)return;await new Promise<void>(resolve=>setTimeout(resolve,5));
   }while(Date.now()<until);
@@ -346,9 +346,13 @@ export function registerRewardsAuditPolicyNativeCases(){
    await owned().fixture.withProbeBarrier(f.b.tenantId,async key=>{
     await control.run(async()=>{
      await holder`select pg_advisory_lock(${key}::text::bigint)`;
-     const command=control.start(()=>writer.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.probe-before-first-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
+     // finalize_read runs three complete native profile assertions before its marker INSERT can meet the
+     // probe tuple: hosted runs measured 148 ms and >250 ms of active, lock-free execution before the
+     // transactionid wait. The probe writer must outlast that path, so its own lock wait (not the
+     // reader's or any other session's) is bounded above the reader witness budget below.
+     const command=control.start(()=>writer.begin('isolation level repeatable read',async tx=>{await tx`set local lock_timeout='5s'`;await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.probe-before-first-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
      await blocking(context,writerIdentity,holderIdentity);finalize.resolve();
-     await blocking(context,readerIdentity,writerIdentity);
+     await blocking(context,readerIdentity,writerIdentity,2000);
      expect((await holder`select pg_advisory_unlock(${key}::text::bigint)as released`)[0].released).toBe(true);
      expect(await command.value()).toEqual({seq:null});expect((await receipt.value()).id).toBe(receiptId);
     },async()=>{finalize.resolve();await holder`select pg_advisory_unlock_all()`;});
