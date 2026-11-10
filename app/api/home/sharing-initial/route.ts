@@ -12,11 +12,12 @@ import {
 import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
 import {greetingProjection,tasksProjection,todayProjection,calendarProjection} from '../personal-projections';
 import {withDatabaseReadCancellation} from '@/db/workload';
+import {withSharedReadSnapshot} from '@/db/client';
 import {readEmployeeHomeToday} from '@/core/employee-home-today';
 import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
 import {homeCalendarMonth} from '@/lib/employee-home-calendar';
 import {OwnClockEmploymentUnavailableError} from '@/packs/attendance/service';
-import {OwnPayrollSubjectUnavailableError} from '@/packs/payroll/service';
+import {OwnHomePayrollRead,OwnPayrollSubjectUnavailableError} from '@/packs/payroll/service';
 import {HomeAccessError} from '@/core/employee-home';
 import {markHomeRead} from '@/lib/home-read-timing';
 
@@ -41,6 +42,8 @@ export async function GET(request:Request){
   const signal=readLifetime.signal;
   const configurationRead=new OwnHomeConfigurationRead(session,employmentId,signal);
   const taskSourceRead=cards.includes('summary')&&cards.includes('tasks')?new OwnHomeTaskSourceRead(session,employmentId):undefined;
+  // Summary, Today and Calendar share one own payroll read when at least two of them are requested.
+  const payrollRead=(['summary','today','calendar'] as const).filter(card=>cards.includes(card)).length>1?new OwnHomePayrollRead(session,employmentId,signal):undefined;
   const readLocale=async()=>{
    const value=await getLocale();
    if(!isLocale(value))throw Error('Home locale unavailable');
@@ -56,18 +59,18 @@ export async function GET(request:Request){
    greeting:async()=>greetingProjection(await readEmployeeHomeGreeting(session,employmentId,await locale(),undefined,configurationRead)),
    summary:async()=>{
     const [language,t]=await Promise.all([locale(),getTranslations('employeeHome.calendar')]);
-    const value=await readEmployeeHomeSummary(session,employmentId,language,t('replacement'),configurationRead,taskSourceRead);
+    const value=await readEmployeeHomeSummary(session,employmentId,language,t('replacement'),configurationRead,taskSourceRead,payrollRead);
     return validateEmployeeHomeSummary(value,employmentId);
    },
    tasks:async()=>tasksProjection(await readEmployeeHomeTasks(session,employmentId,1,configurationRead,taskSourceRead)),
    today:async()=>{
-    try{return todayProjection(await readEmployeeHomeToday(session,employmentId,signal));}
+    try{return todayProjection(await readEmployeeHomeToday(session,employmentId,signal,payrollRead));}
     catch(error){
      if(error instanceof OwnClockEmploymentUnavailableError||error instanceof OwnPayrollSubjectUnavailableError)throw new HomeAccessError('employmentUnavailable');
      throw error;
     }
    },
-   calendar:async()=>calendarProjection(await readEmployeeHomeCalendar(session,employmentId,month,undefined,signal)),
+   calendar:async()=>calendarProjection(await readEmployeeHomeCalendar(session,employmentId,month,undefined,signal,payrollRead)),
   };
   const encoder=new TextEncoder();
   let detach=()=>{};
@@ -84,7 +87,8 @@ export async function GET(request:Request){
     detach=()=>{readLifetime.abort();open=false;request.signal.removeEventListener('abort',disconnect);};
     if(request.signal.aborted){disconnect();return;}
     request.signal.addEventListener('abort',disconnect,{once:true});
-    const reads=cards.map(async card=>{
+    // One read-only snapshot for this response's own identity: each card keeps its own owner, result and failure.
+    const read=async(card:HomeSharingCard)=>{
      markHomeRead('read-start',card);
      let encoded:Uint8Array;
      try{
@@ -100,9 +104,9 @@ export async function GET(request:Request){
       encoded=encoder.encode(JSON.stringify(frame)+'\n');
      }
      if(open)controller.enqueue(encoded);
-    });
+    };
     // Disconnect stops eligible readers at their next admission check and drops pending values.
-    void Promise.allSettled(reads).then(stop);
+    void withSharedReadSnapshot(session,()=>Promise.allSettled(cards.map(read)),signal).then(stop,stop);
    },
    cancel(){detach();},
   });

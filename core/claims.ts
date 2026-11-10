@@ -3446,12 +3446,13 @@ const toRow = (r: RawClaimRow, atts: Map<string, ClaimRow['attachments']>): Clai
   attachments: atts.get(r.id) ?? [],
 });
 
-type EmploymentClaimRead = {claimId?: string; status?: 'draft' | 'history'; limit?: number; offset?: number};
+type EmploymentClaimRead = {claimId?: string; status?: 'draft' | 'history' | 'open'; limit?: number; offset?: number};
 function employmentClaimWhere(employmentId: string, opts: EmploymentClaimRead) {
   return and(eq(claimRequest.employmentId, employmentId),
     opts.claimId ? eq(claimRequest.id, opts.claimId) : undefined,
     opts.status === 'draft' ? eq(claimRequest.status, 'draft') : undefined,
-    opts.status === 'history' ? ne(claimRequest.status, 'draft') : undefined);
+    opts.status === 'history' ? ne(claimRequest.status, 'draft') : undefined,
+    opts.status === 'open' ? inArray(claimRequest.status, ['pending', 'draft']) : undefined);
 }
 async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: EmploymentClaimRead = {}): Promise<ClaimRow[]> {
   const query = tx.select(rowSelect()).from(claimRequest)
@@ -3471,6 +3472,12 @@ async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: Employm
 /** A single employment's claims, newest first; a detail read can narrow by id in SQL. */
 export function listClaimsForEmployment(ctx: SessionContext, employmentId: string, opts: {claimId?: string} = {}): Promise<ClaimRow[]> {
   return withTenant(ctx, tx => employmentClaimRowsTx(tx, employmentId, opts));
+}
+
+/** The employment's still-open claims (pending and draft), in the same order and shape as listClaimsForEmployment.
+ * Decided history (approved, rejected, paid) and its attachments are never read for a question it cannot answer. */
+export function listOpenClaimsForEmployment(ctx: SessionContext, employmentId: string): Promise<ClaimRow[]> {
+  return withTenant(ctx, tx => employmentClaimRowsTx(tx, employmentId, {status: 'open'}));
 }
 
 /** Drafts have their own workspace; never read filed history to populate it. */

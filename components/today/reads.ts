@@ -22,7 +22,7 @@
  *  - At a glance, everyone else: own leave balances (core/employee-home-time-off.ts), the latest released
  *    payslip's metadata (core/employee-home.ts readEmployeeHomePayHints, no amounts) and a manager's absence
  *    from the Home team calendar (lib/today/coming-up.ts). */
-import {withTenant,type SessionContext} from '@/db/client';
+import {withSharedReadSnapshot,withTenant,type SessionContext} from '@/db/client';
 import {EntitlementsResolutionFailedError,isModuleEnabled} from '@/core/entitlements';
 import {listPendingTasks,pendingTaskSummary,type PendingTaskItem} from '@/core/approvals-inbox';
 import {reopenOwnLeaveReviewTx} from '@/core/assistant-actions/own-leave-store';
@@ -133,7 +133,11 @@ async function preparedLeave(s:SessionContext,item:PreparedItem,locale:string):P
  }catch{return null;}
 }
 
-export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonly string[];audience:TodayAudience;today:string;locale?:string;now?:number;all?:boolean}>):Promise<NeedsYouData>{
+/** One read-only snapshot for this section's own identity (db/shared-read.ts); each owner keeps its result. */
+export function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonly string[];audience:TodayAudience;today:string;locale?:string;now?:number;all?:boolean}>):Promise<NeedsYouData>{
+ return withSharedReadSnapshot(s,()=>readNeedsYouOwners(s,p));
+}
+async function readNeedsYouOwners(s:SessionContext,p:Readonly<{scopeIds:readonly string[];audience:TodayAudience;today:string;locale?:string;now?:number;all?:boolean}>):Promise<NeedsYouData>{
  const modules=moduleChecks(s),now=p.now??Date.now(),admin=p.audience.layout==='administrator',payroll=modules.on('payroll'),leave=modules.on('leave');
  const [tasks,ownLeave,cancellations,decisions,proposals,readiness,digest,loops,letterRequests]=await Promise.all([
   // Home only renders five decisions. Keep its exact count without transporting every Claim.
@@ -176,7 +180,11 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
 }
 
 // ── Done for you ────────────────────────────────────────────────────────────────────────────────────────────
-export async function readDoneForYou(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<Settled<OutcomeSummary>>{
+/** One read-only snapshot for this section's own identity (db/shared-read.ts); each owner keeps its result. */
+export function readDoneForYou(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<Settled<OutcomeSummary>>{
+ return withSharedReadSnapshot(s,()=>readDoneForYouOwners(s,p));
+}
+async function readDoneForYouOwners(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<Settled<OutcomeSummary>>{
  return settle(()=>summariseOutcomeRecords(s,{since:windowStart(p.today),companyIds:p.scopeIds}));
 }
 
@@ -191,7 +199,11 @@ export type WatchingData=Readonly<{
  failed:boolean;
 }>;
 
-export async function readWatching(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<WatchingData>{
+/** One read-only snapshot for this section's own identity (db/shared-read.ts); each owner keeps its result. */
+export function readWatching(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<WatchingData>{
+ return withSharedReadSnapshot(s,()=>readWatchingOwners(s,p));
+}
+async function readWatchingOwners(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<WatchingData>{
  const modules=moduleChecks(s),payroll=modules.on('payroll'),companies=p.scopeIds.slice(0,WATCH_COMPANY_LIMIT);
  const deadlineRead=payroll?settle(async()=>{
   const lists:Awaited<ReturnType<typeof complianceWorklist>>[]=[];
@@ -222,7 +234,11 @@ export type GlanceData=Readonly<{
  failed:boolean;
 }>;
 
-export async function readAtAGlance(s:SessionContext,p:Readonly<{employmentId?:string;locale:string;today:string}>):Promise<GlanceData>{
+/** One read-only snapshot for this section's own identity (db/shared-read.ts); each owner keeps its result. */
+export function readAtAGlance(s:SessionContext,p:Readonly<{employmentId?:string;locale:string;today:string}>):Promise<GlanceData>{
+ return withSharedReadSnapshot(s,()=>readAtAGlanceOwners(s,p));
+}
+async function readAtAGlanceOwners(s:SessionContext,p:Readonly<{employmentId?:string;locale:string;today:string}>):Promise<GlanceData>{
  const modules=moduleChecks(s),payroll=modules.on('payroll');
  const [timeOff,pay]=await Promise.all([
   settle(()=>readEmployeeHomeTimeOff(s,p.employmentId,p.locale)),

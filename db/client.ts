@@ -14,6 +14,8 @@ import {createBackgroundReadAdmission} from './background-read-admission';
 import {createTenantWriteAdmission} from './tenant-write-admission';
 import {currentDatabaseWorkload,databaseReadSignal} from './workload';
 import {applicationDatabaseBudget} from './capacity';
+import {SharedReadSession,currentSharedRead,independentTransactionsRequired,runInSharedRead,sharedReadDriver,type SharedReadStats} from './shared-read';
+export {withIndependentTransactions} from './shared-read';
 const applicationBudget = applicationDatabaseBudget(process.env);
 import { chainArmingDecision } from '../core/audit-chain-arming';
 import type { EntitlementSnapshot, EntitlementsExemptReason } from '../core/entitlement-types';
@@ -86,6 +88,7 @@ const globalForPg = globalThis as unknown as {
   __aihrTenantWriteAdmission?: WeakMap<ReturnType<typeof postgres>, ReturnType<typeof createTenantWriteAdmission>>;
   __aihrPerfBeginTransaction?: (poolMax: number) => { acquired: () => void; finished: () => void };
   __aihrPerfBeginPoolWork?: (poolMax: number) => { acquired: () => void; finished: () => void };
+  __aihrPerfSharedRead?: (stats: SharedReadStats) => void;
 };
 const pgPools = (globalForPg.__aihrPgPools ??= new Map<string, ReturnType<typeof postgres>>());
 const admissionByPool = (globalForPg.__aihrDbAdmission ??= new WeakMap());
@@ -182,6 +185,12 @@ function auditHashChainArmed(): boolean {
   return process.env.AUDIT_HASH_CHAIN_ENABLED === 'true';
 }
 
+/** Every transaction-local identity setting withTenant derives from a context. Two contexts share a snapshot only
+ * when all of them are identical; an agent principal never shares one. */
+function sharedReadIdentity(ctx: SessionContext, grants: Grant[], roleNames: string[]): string {
+  return JSON.stringify([ctx.tenantId, ctx.userId ?? '', ctx.personId ?? null, roleNames.join(','), JSON.stringify(grants), ctx.agent?.principalId ?? '']);
+}
+
 export function createDb(connectionString: string, options?: { max?: number }) {
   let client = pgPools.get(connectionString);
   if (!client) {
@@ -247,6 +256,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
     readSignal?.throwIfAborted();
+    const ownTransaction = async (): Promise<T> => {
     const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
     let release: (() => void) | undefined;
     try {
@@ -255,6 +265,27 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       timing?.acquired();
       // A queued read may have disconnected while waiting for a connection.
       readSignal?.throwIfAborted();
+      await bootstrapTenantTx(tx, ctx, grants, roleNames);
+      readSignal?.throwIfAborted();
+      return fn(tx);
+    }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
+    } finally {
+      release?.();
+      timing?.finished();
+    }
+    };
+    // Inside one request's shared read snapshot, the same identity joins its single transaction. Any other
+    // identity, client or incompatible statement keeps this owner's own transaction (db/shared-read.ts).
+    const shared = currentSharedRead();
+    if (shared?.admits(client!, sharedReadIdentity(ctx, grants, roleNames))) {
+      return shared.join(fn as (tx: unknown) => Promise<T>, ownTransaction, readSignal);
+    }
+    return ownTransaction();
+  }
+
+  /** The identity bootstrap every tenant transaction runs before its first read (r394: one statement), shared by
+   * withTenant and the shared read snapshot so both establish exactly the same transaction-local identity. */
+  async function bootstrapTenantTx(tx: Tx, ctx: SessionContext, grants: Grant[], roleNames: string[]) {
       // The existing sticky fact only moves from unknown to on. An already known chain can
       // share the identity bootstrap statement; first activation still decides after this await.
       const auditAlreadyArmed = tenantHasChainedHistory(ctx.tenantId);
@@ -331,16 +362,60 @@ export function createDb(connectionString: string, options?: { max?: number }) {
         // are SELECTs, which do not close the window for SET TRANSACTION.
         await tx.execute(sql`SET TRANSACTION READ ONLY`);
       }
-      readSignal?.throwIfAborted();
-      return fn(tx);
-    }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
+  }
+
+  /** One request's reads as ONE read-only snapshot (db/shared-read.ts). `work` is every read owner of that
+   * request; each joins while the identity matches. BEGIN carries the isolation and access mode, so the whole
+   * request pays BEGIN, one identity statement and COMMIT, instead of those per owner. Nothing outlives `work`. */
+  async function withSharedReadSnapshot<T>(ctx: SessionContext, work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!ctx?.tenantId || !ctx.userId || ctx.agent || independentTransactionsRequired()) return work();
+    const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
+    const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
+    // A read already inside this identity's snapshot stays in it rather than opening a second one.
+    if (currentSharedRead()?.admits(client!, sharedReadIdentity(ctx, grants, roleNames))) return work();
+    const session: SharedReadSession<Tx> = new SharedReadSession<Tx>(client!, sharedReadIdentity(ctx, grants, roleNames), () => {
+      let finish: () => void = () => {};
+      const finished = new Promise<void>((resolve) => { finish = resolve; });
+      let resolveTx: (tx: Tx) => void = () => {};
+      let rejectTx: (error: unknown) => void = () => {};
+      const tx = new Promise<Tx>((resolve, reject) => { resolveTx = resolve; rejectTx = reject; });
+      tx.catch(() => undefined);
+      const readSignal = databaseReadSignal(signal);
+      const done = (async () => {
+        readSignal?.throwIfAborted();
+        const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
+        let release: (() => void) | undefined;
+        try {
+          release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal);
+          const carrierClient = new Proxy(client!, { get(target, property, receiver) {
+            if (property !== 'begin') return Reflect.get(target, property, receiver);
+            return (fn: (sqlTx: postgres.TransactionSql) => Promise<unknown>) =>
+              target.begin('isolation level repeatable read read only', (sqlTx) => fn(sharedReadDriver(sqlTx, session as SharedReadSession<unknown>)));
+          } });
+          await drizzle(carrierClient).transaction(async (carrierTx) => {
+            timing?.acquired();
+            readSignal?.throwIfAborted();
+            await bootstrapTenantTx(carrierTx, ctx, grants, roleNames);
+            session.bootstrapping = false;
+            resolveTx(carrierTx);
+            await finished;
+          });
+        } finally {
+          release?.();
+          timing?.finished();
+        }
+      })().catch((error) => { session.poison(); rejectTx(error); });
+      return { tx, finish, done };
+    });
+    try {
+      return await runInSharedRead(session as SharedReadSession<unknown>, work);
     } finally {
-      release?.();
-      timing?.finished();
+      await session.close();
+      globalForPg.__aihrPerfSharedRead?.(session.stats);
     }
   }
 
-  return { db, client, withTenant, withPoolWork, withBackgroundReadWork, withTenantWriteWork };
+  return { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withBackgroundReadWork, withTenantWriteWork };
 }
 
 export type Db = ReturnType<typeof createDb>['db'];
@@ -351,4 +426,4 @@ if (!url) throw new Error('DATABASE_URL is not set');
 
 // App singleton (non-privileged role). Keep the default for deployments that do
 // not explicitly divide a connection budget among application workers.
-export const { db, client, withTenant, withPoolWork, withBackgroundReadWork, withTenantWriteWork } = createDb(url, {max: applicationBudget.poolMax});
+export const { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withBackgroundReadWork, withTenantWriteWork } = createDb(url, {max: applicationBudget.poolMax});

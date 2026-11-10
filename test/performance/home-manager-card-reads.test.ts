@@ -22,7 +22,8 @@ const state=vi.hoisted(()=>{
 vi.mock('../../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>(key:string)=>key}));
 import {sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../../db/client';
+import {client as applicationClient,withIndependentTransactions,withSharedReadSnapshot,withTenant,type SessionContext} from '../../db/client';
+import type {SharedReadStats} from '../../db/shared-read';
 import * as s from '../../db/schema';
 import {hireEmployee} from '../../core/org';
 import {createClaimType} from '../../packs/claims/service';
@@ -213,7 +214,27 @@ async function todayReaders(today:string){
  };
 }
 
-async function streamHome(actor:Actor,month:string,run:string|null,handler:typeof GET=GET){
+type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[]};
+const sharedStats:SharedReadStats[]=[];
+(globalThis as {__aihrPerfSharedRead?:(stats:SharedReadStats)=>void}).__aihrPerfSharedRead=stats=>{sharedStats.push(stats);};
+const sharedSummary=(rows:SharedReadStats[])=>({sessions:rows.length,joins:rows.reduce((n,row)=>n+row.joins,0),fallbacks:rows.reduce((n,row)=>n+row.fallbacks,0),
+ sharedStatements:rows.reduce((n,row)=>n+row.statements,0),memoHits:rows.reduce((n,row)=>n+row.memoHits,0),
+ refused:rows.reduce((all,row)=>{for(const [reason,count] of Object.entries(row.refused))all[reason]=(all[reason]??0)+count;return all;},{} as Record<string,number>)});
+/** Results without the response clock, which differs between any two reads. */
+const comparable=(value:unknown)=>JSON.stringify(value,(key,item)=>key==='serverNow'?undefined:item);
+async function outcome(read:()=>Promise<unknown>){try{return {ok:true,value:await read()};}catch(error){return {ok:false,error:{name:(error as Error)?.name??null,code:(error as {code?:string})?.code??null}};}}
+async function traceStatements<T>(work:()=>Promise<T>){
+ const options=applicationClient.options as {debug?:unknown},ordered:string[]=[],previous=options.debug;
+ options.debug=(_connection:number,query:string)=>{ordered.push(query.replace(/\s+/g,' ').trim().slice(0,420));};
+ let result:T|null=null,failure:unknown=null;
+ try{result=await work();}catch(error){failure=errorFact(error);}finally{options.debug=previous;}
+ const counts=new Map<string,number>();
+ for(const text of ordered)counts.set(text,(counts.get(text)??0)+1);
+ const trace:Traced={trips:ordered.length,statements:[...counts].map(([text,count])=>({sql:text,count})).sort((a,b)=>b.count-a.count),ordered};
+ return {result,failure,trace};
+}
+
+async function streamHome(actor:Actor,month:string,run:string|null,handler:typeof GET=GET,values?:Record<string,unknown>){
  state.session=actor.ctx;state.run=run;
  const query=new URLSearchParams({employmentId:actor.employmentId});
  for(const card of CARDS)query.append('card',card);
@@ -231,6 +252,7 @@ async function streamHome(actor:Actor,month:string,run:string|null,handler:typeo
   for(let end=buffer.indexOf('\n');end!==-1;end=buffer.indexOf('\n')){
    const line=buffer.slice(0,end);buffer=buffer.slice(end+1);
    const frame=JSON.parse(line) as {card:string;status:number;value?:{total?:number;page?:{totalPeople?:number;total?:number}}};
+   if(values)values[frame.card]={status:frame.status,value:frame.value??null};
    frames.push({card:frame.card,status:frame.status,ms:Math.round(performance.now()-started),bytes:line.length+1,
     total:frame.value?.total??frame.value?.page?.totalPeople??frame.value?.page?.total??null});
   }
@@ -283,7 +305,8 @@ async function coldWorker(workers:number){
  let trips=0;
  (database.client.options as {debug?:unknown}).debug=()=>{trips++;};
  tripCounter=()=>trips;
- return {GET:route.GET as typeof GET,trips:()=>trips,resetTrips(){trips=0;},close:()=>database.client.end({timeout:5})};
+ return {GET:route.GET as typeof GET,trips:()=>trips,resetTrips(){trips=0;},close:()=>database.client.end({timeout:5}),
+  independent:database.withIndependentTransactions as <T>(work:()=>Promise<T>)=>Promise<T>};
 }
 /** Compete for the four runner CPUs the way extra application workers and browser contexts do. */
 function cpuPressure(count:number){
@@ -374,6 +397,115 @@ it('completes every manager Home card and Today section read without a handled f
   }))});
   evidence();
  }
+ // 5b. Exact statements each card and Today section issues, on the application client, before (every owner in
+ // its own transaction) and after (one shared read-only snapshot per stream or section). Statement text only (bound
+ // values never appear in it); BEGIN, SET TRANSACTION, set_config and COMMIT all count as trips.
+ const statementTrace:Record<string,unknown>={};report.statementTrace=statementTrace;
+ const pageSections=['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'];
+ const traceBoth=async(before:()=>Promise<unknown>,after:()=>Promise<unknown>)=>{
+  await after().catch(()=>undefined);
+  const old=await traceStatements(()=>withIndependentTransactions(before));
+  sharedStats.length=0;
+  const fresh=await traceStatements(after);
+  return {before:old.trace.trips,after:fresh.trace.trips,beforeStatements:old.trace.statements,afterStatements:fresh.trace.statements,
+   afterOrdered:fresh.trace.ordered,shared:sharedSummary(sharedStats.splice(0)),failure:fresh.failure};
+ };
+ for(const [label,actor] of [['manager',manager],['employee',employee]] as const){
+  const targets=await todayTargets(actor.ctx),rows:Record<string,Awaited<ReturnType<typeof traceBoth>>>={};statementTrace[label]=rows;
+  for(const card of CARDS){
+   const read=()=>readers(actor.ctx,actor.employmentId,month)[card]();
+   rows['card:'+card]=await traceBoth(read,()=>withSharedReadSnapshot(actor.ctx,read));
+  }
+  for(const [name,read] of Object.entries(targets))rows['section:'+name]=await traceBoth(read,read);
+  const stream=()=>streamHome(actor,month,null);
+  rows.stream=await traceBoth(stream,stream);
+  const page=()=>Promise.all([streamHome(actor,month,null),...pageSections.map(name=>targets[name]())]);
+  rows.page=await traceBoth(page,page);
+  print('statement-trace',{label,trips:Object.fromEntries(Object.entries(rows).map(([name,row])=>[name,[row.before,row.after]])),
+   shared:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.shared.sessions>0).map(([name,row])=>[name,row.shared])),
+   failures:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.failure).map(([name,row])=>[name,row.failure]))});
+  evidence();
+ }
+ // 5c. Equivalence: every card, Today section and stream frame returns the same result through the shared snapshot
+ // as through independent transactions, for each role and both tenants. Another identity's read inside a session
+ // never joins it and returns that identity's own independent result, including under concurrency.
+ const equivalence:{subject:string;target:string;equal:boolean;old?:string;fresh?:string}[]=[];report.equivalence=equivalence;
+ const others=tenants[1];
+ const subjects=[['manager',manager],['employee',employee],['secondManager',secondManager],['groupHR',actors.find(a=>a.role==='groupHR')!],
+  ['companyHR',actors.find(a=>a.role==='companyHR'&&a.company===1)!],['otherTenantManager',others.find(a=>a.role==='manager')!],
+  ['otherTenantEmployee',others.find(a=>a.role==='employee'&&a.company===2)!]] as const;
+ const compare=(subject:string,target:string,old:unknown,fresh:unknown)=>{
+  const [a,b]=[comparable(old),comparable(fresh)];
+  equivalence.push(a===b?{subject,target,equal:true}:{subject,target,equal:false,old:a.slice(0,1500),fresh:b.slice(0,1500)});
+ };
+ // Give one subject decided history and drafts beside its pending claims, so the open-claims read has rows to leave out.
+ {
+  const subject=subjects.at(-1)![1];
+  const [type]=await owner.client<{id:string}[]>`select id from claim_type where tenant_id=${subject.ctx.tenantId}::uuid and code='PERF'`;
+  await owner.client`insert into claim_request(tenant_id,employment_id,claim_type_id,amount,incurred_on,status,created_at)
+   select ${subject.ctx.tenantId}::uuid,${subject.employmentId}::uuid,${type.id}::uuid,1,${today}::date-n::integer,s,now()-n::integer*interval '1 second'
+   from unnest(array['draft','draft','approved','approved','rejected','rejected']::claim_status[]) with ordinality as statuses(s,n)`;
+ }
+ const {listClaimsForEmployment,listOpenClaimsForEmployment}=await import('../../packs/claims/service');
+ for(const [subject,actor] of subjects){
+  const targets=await todayTargets(actor.ctx);
+  compare(subject,'claims:open',await outcome(async()=>(await listClaimsForEmployment(actor.ctx,actor.employmentId)).filter(row=>row.status==='pending'||row.status==='draft')),
+   await outcome(()=>listOpenClaimsForEmployment(actor.ctx,actor.employmentId)));
+  for(const card of CARDS){
+   const read=()=>readers(actor.ctx,actor.employmentId,month)[card]();
+   compare(subject,'card:'+card,await outcome(()=>withIndependentTransactions(read)),await outcome(()=>withSharedReadSnapshot(actor.ctx,read)));
+  }
+  for(const [name,read] of Object.entries(targets))compare(subject,'section:'+name,await outcome(()=>withIndependentTransactions(read)),await outcome(read));
+  // The complete section values, not only their summaries above.
+  const sectionReads=await import('../../components/today/reads'),{todayAudience}=await import('../../lib/today/audience');
+  const {readMyPayrollReadiness}=await import('../../core/pre-salary/person-items'),{allowedCompanies}=await import('../../core/read');
+  const scopeIds=(await allowedCompanies(actor.ctx)).map(company=>company.id);
+  const full:Record<string,()=>Promise<unknown>>={
+   needsYou:()=>sectionReads.readNeedsYou(actor.ctx,{scopeIds,audience:todayAudience(actor.ctx),today,locale:'en',now:Date.parse(today+'T12:00:00+08:00')}),
+   doneForYou:()=>sectionReads.readDoneForYou(actor.ctx,{scopeIds,today}),
+   atAGlance:()=>sectionReads.readAtAGlance(actor.ctx,{locale:'en',today}),
+   watching:()=>sectionReads.readWatching(actor.ctx,{scopeIds,today}),
+   beforePayroll:()=>readMyPayrollReadiness(actor.ctx,{scopeIds,locale:'en',today,includeApprovals:false}),
+   beforePayrollWithApprovals:()=>readMyPayrollReadiness(actor.ctx,{scopeIds,locale:'en',today,approvalPreview:true}),
+  };
+  for(const [name,read] of Object.entries(full))compare(subject,'full:'+name,await outcome(()=>withIndependentTransactions(read)),await outcome(read));
+  // One request's own payroll read (Summary, Today, Calendar) against each card's own payroll reader.
+  const {OwnHomePayrollRead,readOwnPayrollHomeMetadata}=await import('../../packs/payroll/service');
+  const payrollCards=(shared?:InstanceType<typeof OwnHomePayrollRead>)=>Promise.all([
+   readEmployeeHomeToday(actor.ctx,actor.employmentId,undefined,shared),
+   readEmployeeHomeCalendar(actor.ctx,actor.employmentId,month,undefined,undefined,shared),
+   readEmployeeHomeSummary(actor.ctx,actor.employmentId,'en','replacement',undefined,undefined,shared)]);
+  compare(subject,'payrollRead',await outcome(()=>payrollCards()),await outcome(()=>payrollCards(new OwnHomePayrollRead(actor.ctx,actor.employmentId))));
+  // A carrier bound to another login or employment never answers for this one: it reruns this card's own reader.
+  const foreignCarrier=new OwnHomePayrollRead(manager.ctx,manager.employmentId);
+  compare(subject,'payrollRead:foreignCarrier',await outcome(()=>readOwnPayrollHomeMetadata(actor.ctx,actor.employmentId)),
+   await outcome(()=>foreignCarrier.homeMetadata(actor.ctx,actor.employmentId)));
+  const oldFrames:Record<string,unknown>={},newFrames:Record<string,unknown>={};
+  await withIndependentTransactions(()=>streamHome(actor,month,null,GET,oldFrames));
+  await streamHome(actor,month,null,GET,newFrames);
+  const byCard=(frames:Record<string,unknown>)=>Object.fromEntries(Object.entries(frames).sort(([a],[b])=>a.localeCompare(b)));
+  compare(subject,'stream',byCard(oldFrames),byCard(newFrames));
+ }
+ // Isolation: a foreign identity inside a session, and two identities' sessions at once across tenants.
+ const isolation:Record<string,unknown>={};report.isolation=isolation;
+ for(const [host,guest] of [[manager,employee],[manager,others.find(a=>a.role==='employee')!]] as const){
+  const read=(actor:Actor,card:Card)=>readers(actor.ctx,actor.employmentId,month)[card]();
+  sharedStats.length=0;
+  const inside=await withSharedReadSnapshot(host.ctx,async()=>{const out:Record<string,unknown>={};for(const card of CARDS)out[card]=await outcome(()=>read(guest,card));return out;});
+  const hostStats=sharedSummary(sharedStats.splice(0));
+  const [hostShared,guestShared]=await Promise.all([host,guest].map(actor=>withSharedReadSnapshot(actor.ctx,async()=>{
+   const out:Record<string,unknown>={};await Promise.all(CARDS.map(async card=>{out[card]=await outcome(()=>read(actor,card));}));return out;})));
+  for(const card of CARDS){
+   const guestOld=await outcome(()=>withIndependentTransactions(()=>read(guest,card)));
+   compare('guest:'+guest.index,'insideHostSession:'+card,guestOld,(inside as Record<string,unknown>)[card]);
+   compare('guest:'+guest.index,'concurrentSessions:'+card,guestOld,(guestShared as Record<string,unknown>)[card]);
+   compare('host:'+host.index,'concurrentSessions:'+card,await outcome(()=>withIndependentTransactions(()=>read(host,card))),(hostShared as Record<string,unknown>)[card]);
+  }
+  isolation[host.index+'>'+guest.index]={hostSessionJoins:hostStats.joins,hostSessionStatements:hostStats.sharedStatements};
+ }
+ const mismatches=equivalence.filter(row=>!row.equal);
+ print('equivalence',{compared:equivalence.length,mismatches:mismatches.length,isolation,first:mismatches.slice(0,6)});
+ evidence();
  // The browser renders Today sections and starts the card stream on the same worker pool.
  const pageRuns:unknown[]=[];report.pageRuns=pageRuns;
  for(const [label,actor] of [['manager',manager],['employee',employee],['manager',manager]] as const){
@@ -482,37 +614,45 @@ it('completes every manager Home card and Today section read without a handled f
   }finally{await worker.close().catch(()=>undefined);}
   evidence();
  }
- // 8. Find where a Home stream crosses the card deadline as CPU competition rises.
+ // 8 and 9, both transaction scopes on the same runner: 'off' (every owner its own transaction, the old path)
+ // and 'stream' (one shared snapshot per Home stream and per Today section, the shipped path). A per-card scope was
+ // measured and rejected: cards awaiting a carrier read held in another card's snapshot stalled at two connections.
+ const scopes=['off','stream'] as const;
  const ramp:unknown[]=[];report.cpuRamp=ramp;
- for(const [workers,pressure] of [[2,16],[8,16],[2,32],[8,32],[4,32]] as const){
+ for(const [workers,pressure] of [[2,16],[8,16],[4,32]] as const)for(const scope of scopes){
   const stop=cpuPressure(pressure),worker=await coldWorker(workers);
   try{
    await new Promise(resolve=>setTimeout(resolve,1500));
-   const once=async(actor:Actor)=>{const result=await streamHome(actor,month,null,worker.GET);return {elapsedMs:result.elapsedMs,over:result.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card)};};
+   const scoped=<T,>(work:()=>Promise<T>)=>scope==='off'?worker.independent(work):work();
+   const once=async(actor:Actor)=>{const result=await scoped(()=>streamHome(actor,month,null,worker.GET));return {elapsedMs:result.elapsedMs,over:result.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card)};};
    const cold=await once(manager),warm=[await once(manager),await once(manager)];
+   worker.resetTrips();const counted=await once(manager);const trips=worker.trips();
    const overlapped=await Promise.all([manager,employee,secondManager].map(once));
-   const row={workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,cold,warm,overlapped};
+   const row={scope,workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,cold,warm,counted:{...counted,trips},overlapped};
    ramp.push(row);print('cpu-ramp',row);evidence();
   }finally{stop();await worker.close().catch(()=>undefined);}
  }
- // 9. The first browser sweep: six simultaneous whole Home pages, shared round-robin across the workers.
+ // The first browser sweep: six simultaneous whole Home pages, shared round-robin across the workers.
  const burst:unknown[]=[];report.pageBurst=burst;
- for(const [workers,pressure] of [[2,16],[4,16],[8,16]] as const){
+ for(const [workers,pressure] of [[2,16],[4,16],[8,16]] as const)for(const scope of scopes){
   const stop=cpuPressure(pressure),worker=await coldWorker(workers);
   try{
    await new Promise(resolve=>setTimeout(resolve,1500));
    const targets=await todayReaders(today),pagesPerWorker=Math.ceil(6/workers);
    const lane=[manager,employee,secondManager].slice(0,Math.min(3,pagesPerWorker));
    while(lane.length<pagesPerWorker)lane.push(actors.find(a=>a.index===5+lane.length)!);
+   const section=<T,>(read:()=>Promise<T>)=>scope==='off'?worker.independent(read):read();
    for(const attempt of ['cold','warm']){
+    worker.resetTrips();
     const pages=await Promise.all(lane.map(async actor=>{
      const owners=await targets(actor.ctx),started=performance.now(),sections:Record<string,unknown>={};
-     const [stream]=await Promise.all([streamHome(actor,month,null,worker.GET),...['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'].map(name=>
-      owners[name]().then(()=>{sections[name]=Math.round(performance.now()-started);},error=>{sections[name]=errorFact(error);}))]);
+     const [stream]=await Promise.all([section(()=>streamHome(actor,month,null,worker.GET)),...['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'].map(name=>
+      section(owners[name]).then(()=>{sections[name]=Math.round(performance.now()-started);},error=>{sections[name]=errorFact(error);}))]);
      return {role:actor.role,elapsedMs:stream.elapsedMs,over:stream.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card),
+      failed:stream.frames.filter(frame=>frame.status!==200).map(frame=>frame.card),
       slowest:[...stream.frames].sort((a,b)=>b.ms-a.ms).slice(0,4).map(frame=>[frame.card,frame.status,frame.ms]),sections};
     }));
-    const row={workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,pagesPerWorker,attempt,pages};
+    const row={scope,workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,pagesPerWorker,attempt,trips:worker.trips(),pages};
     burst.push(row);print('page-burst',row);evidence();
    }
   }finally{stop();await worker.close().catch(()=>undefined);}
@@ -528,5 +668,8 @@ it('completes every manager Home card and Today section read without a handled f
   ...triple.result as unknown as {frames:[string,number,number][];sections:Record<string,{failure?:unknown;value?:unknown}>}[]];
  expect(overlapped.flatMap(row=>[...row.frames.filter(([,status])=>status!==200).map(([card])=>card),
   ...Object.entries(row.sections).filter(([,section])=>section.failure!==undefined||(section.value as {failed?:unknown}|null)?.failed===true).map(([name])=>name)])).toEqual([]);
-},900_000);
+ // Old and new reads are identical, and no foreign identity ever joined a host session.
+ expect(mismatches).toEqual([]);
+ expect(Object.values(isolation).map(row=>(row as {hostSessionJoins:number}).hostSessionJoins)).toEqual([0,0]);
+},1_400_000);
 });

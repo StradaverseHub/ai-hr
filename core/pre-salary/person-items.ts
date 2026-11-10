@@ -49,13 +49,13 @@
  * NO PAY FIGURE. No amount, rate, balance, limit or salary is copied into an item; minutes and days are not copied
  * either. One owner that fails is reported as that group's "could not check", never as done. Never writes. */
 import {sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../../db/client';
+import {withSharedReadSnapshot,withTenant,type SessionContext} from '../../db/client';
 import {EntitlementsResolutionFailedError,isModuleEnabled} from '../entitlements';
 import {HomeAccessError,requireOwnHomeSubject} from '../employee-home';
 import {leaveRequestsFor,listEligibleLeaveTypesFor} from '../read';
 import {attendanceForEmploymentRange,classifyDay,myAttendanceCorrections,myOvertimePlans,otMonthToDateMinutes} from '../../packs/attendance/service';
 import {listReplacementLeaveRequests} from '../../packs/leave/service';
-import {getEmployeeClaimTypes,listClaimsForEmployment} from '../../packs/claims/service';
+import {getEmployeeClaimTypes,listOpenClaimsForEmployment} from '../../packs/claims/service';
 import {listMyTp1Declarations,myTp3Employments,myTp3History} from '../../packs/payroll/service';
 import {myReadinessActions} from '../readiness-actions';
 import {myProfile} from '../profile';
@@ -205,7 +205,8 @@ async function leaveGroup(ctx:SessionContext,subject:Subject,period:PayrollPerio
 async function claimsGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod,today:string):Promise<GroupRead>{
  const state=moduleState(ctx,'claims',subject.companyId);
  if(state!=='on')return state==='off'?off:failed;
- const [claims,types]=await Promise.all([settle(()=>listClaimsForEmployment(ctx,subject.employmentId)),settle(()=>getEmployeeClaimTypes(ctx,subject.employmentId))]);
+ // Only pending and draft claims produce an item, so decided history is never loaded (same rows, same order).
+ const [claims,types]=await Promise.all([settle(()=>listOpenClaimsForEmployment(ctx,subject.employmentId)),settle(()=>getEmployeeClaimTypes(ctx,subject.employmentId))]);
  if(!claims.ok)return failed;
  // Only the receipt rule and the receipt-age window are taken from each type; limits and balances are left behind.
  const rules=new Map((types.ok?types.value:[]).map(type=>[type.id,{requiresReceipt:type.requiresReceipt,window:type.maxReceiptAgeDays}]));
@@ -333,7 +334,12 @@ async function approvalsGroup(approvalsRead:ReturnType<typeof startApprovals>,pe
 /** The person's "Before payroll" checklist. `null` when payroll is not in use for the tenant: there is no payroll to be
  * ready for. Someone with no own employment (or several and none chosen) gets no own items, only their approvals.
  * `scopeIds`: the companies in the viewer's current scope, for the approvals owner's company filter (Today's own). */
-export async function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean;includeApprovals?:false}>={}):Promise<PayrollReadiness|null>{
+/** One read-only snapshot for the caller's own identity (db/shared-read.ts). Each owner keeps its own result and
+ * failure; a barrier-locked or read-committed owner still reads in its own transaction. */
+export function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean;includeApprovals?:false}>={}):Promise<PayrollReadiness|null>{
+ return withSharedReadSnapshot(ctx,()=>payrollReadinessOwners(ctx,p));
+}
+async function payrollReadinessOwners(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean;includeApprovals?:false}>):Promise<PayrollReadiness|null>{
  if(!ctx.userId||ctx.agent)return null;
  const payroll=moduleState(ctx,'payroll');
  if(payroll==='off')return null;

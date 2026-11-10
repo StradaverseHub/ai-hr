@@ -10,7 +10,9 @@ vi.mock('@/core/employee-home-time-off',()=>({readEmployeeHomeTimeOff:state.time
 vi.mock('@/core/employee-home-today',()=>({readEmployeeHomeToday:state.today}));
 vi.mock('@/core/employee-home-calendar',()=>({readEmployeeHomeCalendar:state.calendar}));
 vi.mock('@/packs/attendance/service',()=>({OwnClockEmploymentUnavailableError:class extends Error{}}));
-vi.mock('@/packs/payroll/service',()=>({OwnPayrollSubjectUnavailableError:class extends Error{}}));
+vi.mock('@/packs/payroll/service',()=>({OwnPayrollSubjectUnavailableError:class extends Error{},OwnHomePayrollRead:class{
+ constructor(readonly session:unknown,readonly employmentId:string,readonly signal?:AbortSignal){}
+}}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>()=> 'Replacement holiday'}));
 vi.mock('@/core/employee-home-configuration',()=>({OwnHomeConfigurationRead:class{
  constructor(readonly session:unknown,readonly employmentId:string,readonly signal?:AbortSignal){}
@@ -90,8 +92,12 @@ it('shares one fresh session for Today and a pinned Calendar month and preserves
  const response=await GET(request('employmentId=own&card=today&card=calendar&month='+month));
  const frames=(await response.text()).trim().split('\n').map(line=>JSON.parse(line)).sort((a,b)=>a.card.localeCompare(b.card));
  expect(frames).toEqual([{version:1,card:'calendar',status:200,value:calendar},{version:1,card:'today',status:200,value:today}]);
- expect(state.session).toHaveBeenCalledOnce();expect(state.today).toHaveBeenCalledWith(ctx,'own',expect.any(AbortSignal));
- expect(state.calendar).toHaveBeenCalledWith(ctx,'own',month,undefined,expect.any(AbortSignal));
+ // Today and Calendar share one own payroll read carrier for this request, session and employment.
+ const payrollCarrier=state.today.mock.calls[0][3];
+ expect(payrollCarrier).toMatchObject({session:ctx,employmentId:'own',signal:expect.any(AbortSignal)});
+ expect(state.session).toHaveBeenCalledOnce();expect(state.today).toHaveBeenCalledWith(ctx,'own',expect.any(AbortSignal),payrollCarrier);
+ expect(state.calendar).toHaveBeenCalledWith(ctx,'own',month,undefined,expect.any(AbortSignal),payrollCarrier);
+ expect(state.calendar.mock.calls[0][5]).toBe(payrollCarrier);
  expect(state.team).not.toHaveBeenCalled();expect(state.greeting).not.toHaveBeenCalled();
 });
 
@@ -118,7 +124,8 @@ it('reuses the exact request configuration carrier while independently projectin
  expect(taskCarrier).toMatchObject({session:ctx,employmentId:'own'});
  expect(taskCarrier).not.toBe(carrier);
  expect(state.greeting).toHaveBeenCalledWith(ctx,'own','en',undefined,carrier);
- expect(state.summary).toHaveBeenCalledWith(ctx,'own','en','Replacement holiday',carrier,taskCarrier);
+ // Summary is the only payroll consumer requested here, so it keeps its own payroll read.
+ expect(state.summary).toHaveBeenCalledWith(ctx,'own','en','Replacement holiday',carrier,taskCarrier,undefined);
  expect(state.tasks).toHaveBeenCalledWith(ctx,'own',1,carrier,taskCarrier);
  expect(state.summary.mock.calls[0][4]).toBe(carrier);
  expect(state.tasks.mock.calls[0][3]).toBe(carrier);
