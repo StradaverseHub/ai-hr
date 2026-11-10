@@ -126,7 +126,11 @@ async function compareAll(role:'admin'|'manager',migrated:boolean){
   else expect(matches,key+' private search entries').toEqual(tokenMatches.get(key));
  }
  const used={facts:0,'filter-fields':0,exact:0};let compared=0,nonEmpty=0;
- for(const [name,sp,page] of cases(fixture,tokens)){
+ // A private search token lives five minutes (2127), and the pre-5020 exact owner needs longer than that for the
+ // whole list on a hosted runner. The token cases therefore run first, straight after the tokens are created; the
+ // cases are independent, so their order changes nothing that is compared.
+ const all=cases(fixture,tokens),tokenCase=([name]:(typeof all)[number])=>name.startsWith('private-');
+ for(const [name,sp,page] of [...all.filter(tokenCase),...all.filter(entry=>!tokenCase(entry))]){
   const query=parsePersonnelListQuery(sp);
   const input={companyIds:scope,...query.filters,limit:page?.limit??25,offset:page?.offset??0};
   const exact=await readPersonnelOverview(ctx,input,headcountFilters(query),{compareExact:true});
