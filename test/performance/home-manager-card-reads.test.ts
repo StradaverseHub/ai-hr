@@ -542,11 +542,16 @@ async function beforePayrollEquivalence(subject:string,actor:Actor,today:string,
  // The range rows' stored overtime-formula record is the one field the statement does not read (decision 11).
  const ordered:Record<string,(value:unknown)=>unknown>={loopCards:value=>byId(value as {caseId?:string}[]),leaveRequests:value=>byId(value as {id:string}[]),reviews:value=>byId(value as {reviewId:string}[]),
   days:value=>(value as {formulaOvertime?:unknown}[]).map(({formulaOvertime:_formula,...row})=>row)};
- const answered:string[]=[],deferred:string[]=[];
+ const answered:string[]=[],deferred:string[]=[],rows:Record<string,number|null>={};
+ // How many rows each compared section held: an empty section proves less than a populated one.
+ const size=(value:unknown):number|null=>Array.isArray(value)?value.length:value&&typeof value==='object'&&Array.isArray((value as {rows?:unknown}).rows)
+  ?(value as {rows:unknown[]}).rows.length:value&&typeof value==='object'&&(value as {history?:{records:unknown[];drafts:unknown[]}}).history
+  ?(value as {employments:unknown[];history:{records:unknown[];drafts:unknown[]}}).employments.length+(value as {history:{records:unknown[];drafts:unknown[]}}).history.records.length
+   +(value as {history:{records:unknown[];drafts:unknown[]}}).history.drafts.length:value===null?0:null;
  for(const [name,owner] of Object.entries(owners)){
   const section=(bundle as Record<string,{value:unknown}|null>|null)?.[name];
   if(!section){deferred.push(name);continue;}
-  answered.push(name);
+  answered.push(name);rows[name]=size(section.value);
   compare(subject,'beforePayroll:section:'+name,await outcome(()=>withIndependentTransactions(owner)),{ok:true,value:(ordered[name]??(value=>value))(section.value)});
  }
  // The readiness snapshot alone, owner against the section's own rows, so a difference names its stage.
@@ -557,7 +562,7 @@ async function beforePayrollEquivalence(subject:string,actor:Actor,today:string,
    await outcome(()=>withIndependentTransactions(()=>withTenant(ctx,async tx=>{const [row]=await tx.execute<{rows:unknown}>(sql`select ${recordReadiness.readinessSnapshotBundleSql(scope)} as rows`);
     return recordReadiness.readinessSnapshotFromBundle(row.rows,Number.POSITIVE_INFINITY);},{readOnlySnapshot:true}))));
  }
- return {subject,answered,deferred,windows};
+ return {subject,answered,deferred,rows,windows};
 }
 // ── end Before payroll ───────────────────────────────────────────────────────────────────────────────────────────────
 // ── Calendar window, shared own leave inputs and the preloaded entitlement resolver (core/calendar-window-inputs.ts,
