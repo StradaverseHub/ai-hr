@@ -20,6 +20,7 @@ import { peopleGeneralPolicyReviews } from '../core/assistant-actions/people-gen
 import { commitEmployeeImport } from '../core/import';
 import { hireEmployee } from '../core/org';
 import { checkIn } from '../core/attendance';
+import { pgSqlState } from '../lib/db-error';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, type Base } from './harness';
 
 let b: Base;
@@ -520,7 +521,16 @@ describe('audit-chain key holders', () => {
     const clock = (async () => {
       for (let day = 1; importing && day <= 28; day++) {
         const start = performance.now();
-        await checkIn(ctx, { employmentId: worker.employmentId, date: `2026-02-${String(day).padStart(2, '0')}`, time: '08:00:00' });
+        // Clock-in queues on the Access configuration key the synchronous import holds to its commit. That wait is
+        // bounded (core/access-configuration-lock.ts): a clock-in that meets the bound gets the retryable 55P03 and is
+        // tried again here. It is the Access key, not the audit chain, and no part of what this test measures.
+        try {
+          await checkIn(ctx, { employmentId: worker.employmentId, date: `2026-02-${String(day).padStart(2, '0')}`, time: '08:00:00' });
+        } catch (error) {
+          if (pgSqlState(error) !== '55P03') throw error;
+          day--;
+          continue;
+        }
         latencies.clock.push(performance.now() - start);
         await new Promise((resolve) => setTimeout(resolve, 100));
       }

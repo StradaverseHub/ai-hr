@@ -8,11 +8,15 @@ import {join} from 'node:path';
 import {describe, expect, it} from 'vitest';
 
 const ROOTS = ['app', 'core', 'db', 'lib', 'packs'];
-const WORKER_LOCK_OWNERS = ['core/bank-import-worker.ts', 'core/individual-import-worker.ts', 'core/leave-import-worker.ts', 'core/loops/tick.ts'];
+// The leave ledger import's own worker is gone: it runs on the shared bulk-job kernel, whose worker reserves the
+// queue-owner connection. That kernel worker runs only in the protected import worker process, which ignores the
+// pooled URL (db/pooling.ts) and connects directly.
+const WORKER_LOCK_OWNERS = ['core/bank-import-worker.ts', 'core/individual-import-worker.ts', 'core/loops/tick.ts'];
+const KERNEL_WORKER = 'core/bulk-job-worker.ts';
 const RULES: {name: string; pattern: RegExp; allowed: string[]}[] = [
   {name: 'session advisory lock', pattern: /pg_(try_)?advisory_lock(_shared)?\(/, allowed: WORKER_LOCK_OWNERS},
   // Authentication reads hold no session state: their reserved connection only serializes autocommit reads.
-  {name: 'reserved connection', pattern: /\.reserve\(\)/, allowed: [...WORKER_LOCK_OWNERS, 'lib/internal-auth/store.ts']},
+  {name: 'reserved connection', pattern: /\.reserve\(\)/, allowed: [...WORKER_LOCK_OWNERS, KERNEL_WORKER, 'lib/internal-auth/store.ts']},
   {name: 'session GUC', pattern: /set_config\([^)]*,\s*false\s*\)/, allowed: []},
   {name: 'session SET', pattern: /sql`\s*set\s+(?!local\b|transaction\b)[a-z_.]+\s*(=|to)\s/i, allowed: []},
   {name: 'LISTEN or NOTIFY', pattern: /\bpg_notify\(|sql`\s*(listen|notify)\s/i, allowed: []},
