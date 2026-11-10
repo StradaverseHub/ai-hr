@@ -36,7 +36,7 @@ export async function readPersonnelPageTx(access: WorkforcePageRead, p: {
   });
   const workforceIds = new Set(access.companyIds);
   const companies = (await listCompanies(session, {}, tx)).filter(row => workforceIds.has(row.id));
-  const departments = scopeIds.length ? await listDepartments(session, {companyIds: scopeIds}, tx) : [];
+  const departments = scopeIds.length ? await listDepartments(session, {companyIds: scopeIds, usage: false}, tx) : [];
   // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees do.
   const drafts = isAdmin
     ? await readPersonnelDraftList(session, draftListScope(scopeIds, access.allowedCount), query, page.offset === 0, tx)

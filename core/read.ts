@@ -1564,7 +1564,7 @@ export function companyDeleteStatus(
 
 export function listDepartments(
   ctx: SessionContext,
-  opts: { includeArchived?: boolean; companyIds?: string[] } = {},
+  opts: { includeArchived?: boolean; companyIds?: string[]; usage?: false } = {},
  outerTx?:Tx) {
   const run=(tx:Tx)=>tx
       .select({
@@ -1583,7 +1583,9 @@ export function listDepartments(
         isGlobal: department.isGlobal,
         assignedCompanyIds: labelCompanyIdsSql(department, 'department'),
         archivedAt: department.archivedAt,
-        inUse: sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
+        // `usage: false` is for choice lists that never show it (the Personnel filters): without an
+        // assignment department index this is a scan of every assignment per department.
+        inUse: opts.usage === false ? sql<boolean>`null::boolean` : sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
       })
       .from(department)
       .where(
