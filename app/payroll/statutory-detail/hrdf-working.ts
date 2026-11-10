@@ -78,7 +78,9 @@ export function hrdfWorkingRows(
   rows.push({ description: t('hrdfTotalWages'), treatment: '', amount: money(working.wages), emphasis: true });
   rows.push({
     description: t('hrdfRateRow'),
-    treatment: working.subject ? t(STATUS_LABEL[working.status]) : t('hrdfNotSubject'),
+    // The company's registration decides first: an unregistered employer owes nothing for anybody, and
+    // calling that "employee not subject" would send the reader to the wrong record.
+    treatment: working.status === 'not_registered' || working.subject ? t(STATUS_LABEL[working.status]) : t('hrdfNotSubject'),
     amount: hrdfRateLabel(working.rate, locale),
   });
   rows.push({

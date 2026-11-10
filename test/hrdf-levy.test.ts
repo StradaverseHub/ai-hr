@@ -430,6 +430,9 @@ describe('c2ea9567 — HRDF wages follow the HRDF tick on every pay item', () =>
     await upsertPayComponent(a, item('BASICBP', 'Back Pay', {
       includedInPcb: true, includedInHrdfBase: true, pcbRemunerationType: 'additional', pcbExemptionCode: 'PCB_TAXABLE',
     }));
+    // Additional runs are entitlement-gated; the snapshot is point-in-time, so re-resolve after the grant.
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    a = await entitledCtx(base);
     const e = await hireTyped('Extra', '900101016008', 3000);
     const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId: reg.batchId });

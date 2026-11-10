@@ -653,6 +653,13 @@ describe('c2ea9567 — the HRD Corp levy breakdown on the shared display and in 
       ['hrdfRateRow', '', 'hrdfStatusMandatory', '1%'],
       ['hrdfLevyRow', '', '', 'RM30.00'],
     ]);
+    // The rate row names WHY a rate is 0: the company's registration first, then the employee's flag.
+    const rateTreatment = (status: 'mandatory' | 'not_registered', subject: boolean) =>
+      hrdfWorkingRows({ ...reporter.hrdfWorking!, status, subject, rate: 0 }, t, money, 'en').find(
+        (r) => r.description === 'hrdfRateRow',
+      )!.treatment;
+    expect(rateTreatment('not_registered', false)).toBe('hrdfStatusNotRegistered');
+    expect(rateTreatment('mandatory', false)).toBe('hrdfNotSubject');
   });
 
   it('a payslip processed before the change keeps its line and says where the itemisation starts', async () => {
