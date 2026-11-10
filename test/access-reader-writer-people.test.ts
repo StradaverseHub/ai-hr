@@ -31,6 +31,8 @@ import {decideResignation,submitResignation} from '../core/offboarding';
 import {correctHireDetails} from '../core/hire-correction';
 import {movementImportDownloadData} from '../core/movement-import';
 import {withExitDateAuthorityTx} from '../core/exit-date-authority';
+import {maintainWorkforceRecord,workforceEditor} from '../core/workforce-maintenance';
+import {WorkforceRecordChangedError} from '../core/workforce-code';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
@@ -265,6 +267,30 @@ describe('serialisers under the shared lock',()=>{
   expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
   expect(results.filter((result):result is PromiseRejectedResult=>result.status==='rejected').map(result=>String(result.reason?.message))).toEqual([`Employee ID "${code}" is reserved by a draft employee record`]);
   expect(await owner.db.select({id:employeeDraft.id}).from(employeeDraft).where(eq(employeeDraft.reservedEmployeeCode,code))).toHaveLength(1);
+ },60000);
+});
+
+describe('Personnel maintenance command under the shared lock',()=>{
+ async function maintainer():Promise<SessionContext>{
+  const hrPerson=await hire('maintainer');const userId=await createAppUser(b.tenantId,hrPerson.personId,'hr_admin');
+  return {...adminCtx(b),userId,personId:hrPerson.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+ }
+ it('finishes a person save holding only the shared lock in strict mode',async()=>{
+  const ctx=await maintainer(),subject=await hire('maintained strict');
+  const workspace=await workforceEditor(ctx,subject.employmentId);
+  expect(workspace?.sharedMaintain).toBe(true);
+  const result=await strict(ctx,tx=>maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'person',rowId:null,operation:'update',expectedVersion:workspace!.profileVersion,patch:{preferredName:'Fictional strict preferred'}},tx));
+  expect(result.mode).toBe('S');
+  expect(result.value).toMatchObject({changed:true});
+ },60000);
+ it('serialises two saves of the same profile version: one applies, the other sees the change',async()=>{
+  const ctx=await maintainer(),subject=await hire('maintained twice');
+  const workspace=(await workforceEditor(ctx,subject.employmentId))!;
+  const results=await Promise.allSettled(['Fictional First','Fictional Second'].map(preferredName=>maintainWorkforceRecord(ctx,{employmentId:subject.employmentId,kind:'person',rowId:null,operation:'update',expectedVersion:workspace.profileVersion,patch:{preferredName}})));
+  expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+  const refused=results.filter((result):result is PromiseRejectedResult=>result.status==='rejected');
+  expect(refused).toHaveLength(1);
+  expect(refused[0].reason).toBeInstanceOf(WorkforceRecordChangedError);
  },60000);
 });
 

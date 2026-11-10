@@ -5412,6 +5412,13 @@
       "when": 1793330004403,
       "tag": "4703_access_reader_writer_owner_writers",
       "breakpoints": true
+    },
+    {
+      "idx": 9840,
+      "version": "7",
+      "when": 1793330009840,
+      "tag": "9840_access_reader_writer_people_values",
+      "breakpoints": true
     }
   ]
 }

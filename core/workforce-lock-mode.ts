@@ -69,3 +69,22 @@ export async function lockPersonValueWritesTx(tx:Tx,tenantId:string,personId:str
  await lockProfileValueSharedTx(tx,tenantId);
  await lockProfileSubjectTx(tx,tenantId,personId);
 }
+
+/**
+ * Locks for the Personnel maintenance command (core/workforce-maintenance.ts) on one employment's subject.
+ * Under the shared Access lock: a qualification belongs to the employment and takes that employment's profile
+ * lock, like the qualification register writer; a person's own fields feed leave cohorts and take the person's
+ * value locks (lockPersonValueWritesTx); a family or emergency-contact row takes the person's profile lock, like
+ * those register writers. The SQL command then joins the profile-policy lock in value mode (9840). A
+ * transaction holding the exclusive lock keeps the exclusive Access and profile-policy locks it took before.
+ */
+export async function lockWorkforceRecordValueWritesTx(tx:Tx,tenantId:string,employmentId:string,kind:'person'|'qualification'|'emergency'|'dependent'):Promise<void>{
+ if(await accessLockModeHeldTx(tx,tenantId)!=='S'){await lockProfileValueWritesTx(tx,tenantId);return;}
+ if(kind==='qualification'){await lockProfileValueSharedTx(tx,tenantId);await lockProfileSubjectTx(tx,tenantId,employmentId);return;}
+ const [subject]=await tx.execute<{personId:string}>(sql`select e.person_id::text as "personId" from public.employment e where e.id=${employmentId}::uuid and e.tenant_id=${tenantId}::uuid`);
+ // An unavailable employment is refused by the command itself; it still joins the shared policy lock first.
+ if(!subject){await lockProfileValueSharedTx(tx,tenantId);return;}
+ if(kind==='person'){await lockPersonValueWritesTx(tx,tenantId,subject.personId);return;}
+ await lockProfileValueSharedTx(tx,tenantId);
+ await lockProfileSubjectTx(tx,tenantId,subject.personId);
+}
