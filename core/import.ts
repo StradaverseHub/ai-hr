@@ -1,5 +1,5 @@
 import {labelAppliesToCompany} from '../lib/system-label-assignment';
-import {organisationImportWarningsTx} from './derived-organisation-display';
+import {organisationImportWarningsBatchTx} from './derived-organisation-display';
 import {readEmployeeImportEvaluationTx,claimEmployeeImportEvaluationTx,completeEmployeeImportEvaluationTx} from './personnel-import-evaluation';
 import type {EmployeeImportEvaluationBinding,EmployeeImportEvaluationReceipt} from '../lib/personnel-import-evaluation';
 import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
@@ -497,11 +497,14 @@ async function analyze(
     return active.has(value)&&catalogScopeRows.some(row=>row.category===category&&row.value===value&&row.isActive&&labelAppliesToCompany(row.scopeCompanyIds,companyId));
   };
 
-  const derivedOrganisationRows=await read(async tx=>{
-    const rows=new Map<number,Awaited<ReturnType<typeof organisationImportWarningsTx>>>();
-    for(let index=0;index<records.length;index++){const companyId=rowCompanies[index].co?.id,asOf=norm(records[index].hired_on);if(companyId&&isCalendarDate(asOf))rows.set(index,await organisationImportWarningsTx(tx,ctx,{companyId,asOf,businessUnit:norm(records[index].business_unit),parentCompany:norm(records[index].parent_company??records[index]['Parent company'])}));}
-    return rows;
+  const organisationInputs=records.flatMap((record,index)=>{
+    const companyId=rowCompanies[index].co?.id,asOf=norm(record.hired_on);
+    if(!companyId||!isCalendarDate(asOf))return [];
+    return [{index,companyId,asOf,businessUnit:norm(record.business_unit),parentCompany:norm(record.parent_company??record['Parent company'])}];
   });
+  // Both the nomination and the protected recheck read their own dated organisation facts.
+  const organisationFacts=await read(tx=>organisationImportWarningsBatchTx(tx,ctx,organisationInputs));
+  const derivedOrganisationRows=new Map(organisationInputs.map(({index},slot)=>[index,organisationFacts[slot]]));
   records.forEach((rawRecord, idx) => {
     const {record:rec,errors}=normalizePersonnelCatalogRecord(rawRecord,'employee',catalog);
     const warnings: string[] = [...(derivedOrganisationRows.get(idx)?.warnings??[])];

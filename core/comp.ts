@@ -929,8 +929,9 @@ export type CompensationHistoryRow = {
 export function compensationHistoryDetailed(
   ctx: SessionContext,
   employmentId: string,
+  existingTx?: Tx,
 ): Promise<CompensationHistoryRow[]> {
-  return withTenant(ctx, (tx) =>
+  const read = (tx: Tx) =>
     tx
       .select({
         id: compensation.id,
@@ -955,8 +956,8 @@ export function compensationHistoryDetailed(
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
       .leftJoin(person, eq(person.id, appUser.personId))
       .where(and(eq(compensation.employmentId, employmentId), isNull(compensation.supersededAt)))
-      .orderBy(desc(compensation.validFrom)),
-  ) as Promise<CompensationHistoryRow[]>;
+      .orderBy(desc(compensation.validFrom));
+  return existingTx?read(existingTx):withTenant(ctx,read);
 }
 
 /** Next per-tenant employee code. Call INSIDE an existing transaction (e.g. during hire). */

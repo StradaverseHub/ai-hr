@@ -3159,7 +3159,7 @@ export function employmentCompanyEditable(ctx: SessionContext, employmentId: str
 }
 
 export function employeeDetail(ctx: SessionContext, employmentId: string,purpose?:'workforce', existingTx?: Tx) {
-  return withProjectionTx(ctx, existingTx, purpose, async (tx) => {
+  const read = async (tx: Tx) => {
     const emergencyContact = primaryEmergencyContactRow(tx);
     const [row] = await tx
       .select({
@@ -3325,7 +3325,8 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
       .where(and(eq(employment.id,employmentId),purpose?workforceEmploymentPredicate(sql`${employment.id}`):undefined))
       .limit(1);
     return row ?? null;
-  });
+  };
+  return purpose?withProjectionTx(ctx,existingTx,purpose,read):withReadTx(ctx,existingTx,read,{presentationSnapshot:true});
 }
 
 /** ADR-0041 2E: the tenant grade catalog, most-senior first (rank asc), then name. */
@@ -3406,8 +3407,8 @@ export function countEmployeesInScope(
 }
 
 /** All effective-dated assignment versions (newest first) — the bitemporal history. */
-export function assignmentHistory(ctx: SessionContext, employmentId: string) {
-  return withTenant(ctx, (tx) =>
+export function assignmentHistory(ctx: SessionContext, employmentId: string, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, (tx) =>
     tx
       .select({
         id: assignment.id,
@@ -3436,7 +3437,7 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
       .leftJoin(location,eq(location.id,assignment.locationId))
       .where(and(eq(assignment.employmentId, employmentId), isNull(assignment.supersededAt)))
       .orderBy(desc(assignment.validFrom),desc(assignment.id)),
-  );
+  {presentationSnapshot:true});
 }
 
 /** R37 (2F-2): resolve a leave-type name to the viewer's locale, falling back to the default name.
@@ -5722,7 +5723,7 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
     // the same dates the service will accept.
     const withDates = await resolveLeaveWorkingDates(tx, rows);
     return withDates.map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n, locale) }));
-  });
+  },{presentationSnapshot:true});
 }
 
 /** The reporting-line vocabulary as the edge stores it, in the enum's DECLARATION order — which is also

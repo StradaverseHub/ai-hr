@@ -5,7 +5,7 @@ import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {ESS_PROFILE_TABS} from '../lib/personnel-ess-model';
 import {ME_TABS,ME_TAB_LABEL_KEY,ME_HIDDEN_FIELDS,ME_VISIBLE_FIELD_LABEL_KEYS} from '../app/me/visible-fields';
 const read=(name:string)=>fs.readFileSync(path.resolve(__dirname,'..',name),'utf8');
-const page=read('app/me/page.tsx'),editor=read('app/me/profile-editor.tsx'),record=read('app/me/record.ts'),owner=read('core/profile-edit.ts'),view=read('core/profile-view.ts'),doc=read('docs/me-profile-field-visibility.md');
+const page=read('app/me/page.tsx'),editor=read('app/me/profile-editor.tsx'),record=read('app/me/record.ts'),presentation=read('app/me/presentation.ts'),owner=read('core/profile-edit.ts'),view=read('core/profile-view.ts'),doc=read('docs/me-profile-field-visibility.md');
 const at=(raw:unknown,key:string):unknown=>key.split('.').reduce<unknown>((value,part)=>value&&typeof value==='object'?(value as Record<string,unknown>)[part]:undefined,raw);
 describe('My Profile shared Personnel inventory and actual consumers',()=>{
  it('retains the exact eleven-tab order, canonical labels and a panel for every tab',()=>{
@@ -35,9 +35,9 @@ describe('My Profile shared Personnel inventory and actual consumers',()=>{
   for(const locale of ['en','ms','zh','ta','th','vi']){const messages=JSON.parse(read(`messages/${locale}.json`));for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible')){expect(field.labelKey,field.id).toBeTruthy();expect(typeof at(messages,field.labelKey),`${locale}:${field.id}`).toBe('string');}for(const key of ME_TABS)expect(typeof at(messages,`people.detail.${ME_TAB_LABEL_KEY[key]}`)).toBe('string');}
  });
  it('derives every subject from the authenticated own-employment set and never mounts the administrative search or full-row projection',()=>{
-  expect(page).toContain('myOwnEmploymentSubjects(s,{profileEdit:true})');expect(page).toContain('own.find(row=>row.employmentId===requestedEmploymentId)');expect(page).toContain('own.length===1?own[0]:null');
+  expect(page).toContain('readMyProfilePresentation(s,requestedEmploymentId)');expect(presentation).toContain('myOwnEmploymentSubjectsTx(tx,current,{profileEdit:true})');expect(presentation).toContain('own.find(row=>row.employmentId===requestedEmploymentId)');expect(presentation).toContain('own.length===1?own[0]:null');
   expect(record).toContain('myOwnEmploymentSubjects(ctx)');expect(owner).toContain('myOwnEmploymentSubjectsTx(tx,ctx');expect(view).toContain('subjects.find(row=>row.employmentId===employmentId)');
-  for(const forbidden of ['EmployeeSwitcher','listEmployees','employeeSearch','DocumentsManager','DocumentsSection','listEmployeeDocuments'])expect(page+editor+record+view).not.toContain(forbidden);
+  for(const forbidden of ['EmployeeSwitcher','listEmployees','employeeSearch','DocumentsManager','DocumentsSection','listEmployeeDocuments'])expect(page+editor+record+view+presentation).not.toContain(forbidden);
   expect(record).not.toMatch(/\.\.\.(?:emp|statutoryRow)\b/);expect(view).toContain("field.ess.visibility!=='visible'");expect(owner).toContain("field.ess.visibility!=='visible'");
   expect(PERSONNEL_FIELDS.filter(field=>field.owner==='document').every(field=>field.ess.visibility==='protected')).toBe(true);
  });

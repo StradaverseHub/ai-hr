@@ -3,21 +3,17 @@ import {profileHiddenTabs,isProfileVisibilityPolicyValue,profileSectionPolicyKey
 import {ownPhotoSubmissionAllowed} from '@/core/person-photo';
 import {saveOwnPhotoAction} from './own-photo-action';
 import {getSetting} from '@/core/entitlements';
-import {readProfilePresentationPolicy} from '@/core/profile-edit-policy';
 import Link from 'next/link';
 import {PrivateCaseEntryCard} from '@/components/private-cases/entry-cards';
 import {redirect} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
-import {myOwnEmploymentSubjects,myPayslips,myTaxRelief,myTaxReliefEmploymentIds,myEmploymentIdsAll,type TaxReliefResult} from '@/core/read';
+import {myPayslips,myTaxRelief,myTaxReliefEmploymentIds,myEmploymentIdsAll,type TaxReliefResult} from '@/core/read';
 import {listLoansForEmployment} from '@/core/loans';
-import {myProfileChangeRequests} from '@/core/profile';
 import {isModuleEnabledOrFalse} from '@/core/entitlements';
 import {myResignation} from '@/core/offboarding';
 import {serviceYearsMonthsDaysAt} from '@/packs/leave/service';
-import {readOwnProfileWorkspace} from '@/core/profile-edit';
 import {ownProfileEditSeed} from '@/core/own-profile-edit-seed';
-import {readOwnProfileFacts} from '@/core/profile-view';
 import {essFactVisible} from '@/lib/personnel-ess-visibility';
 import {personnelField} from '@/lib/personnel-field-registry';
 import {personnelFieldChoices} from '@/lib/personnel-import-contract';
@@ -26,7 +22,7 @@ import {ProfileEditor} from './profile-editor';
 import {Avatar,Badge,Button,Card,ErrorBanner,Field,PageHeader,SectionHeader,inputCls} from '@/components/ui';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import {formatDmy} from '@/lib/date-display';
-import {myProfileRecord} from './record';
+import {readMyProfilePresentation} from './presentation';
 import {MONO_ME_SECTION_HEAD,ReadCard,ReadField} from './read-field';
 import {MeReviewCard} from './review-card';
 import {ME_TABS,type MeTabKey} from './visible-fields';
@@ -56,19 +52,16 @@ export default async function MePage({
   if (spTab === 'performance') redirect('/me/performance');
 
   const te=await getTranslations('essProfile'),allLabels=await getTranslations();
-  const presentation=await readProfilePresentationPolicy(s);
+  const profile=await readMyProfilePresentation(s,requestedEmploymentId);
+  const {presentation,own}=profile;
   const visible=presentation.visible;
   const visibilityPolicy=getSetting(presentation.ctx,'ess.profile_change_fields');
   const hiddenTabs=new Set<string>(profileHiddenTabs(visibilityPolicy));
   const tabVisible=(tab:string)=>!hiddenTabs.has(tab);
   const sectionVisible=(tab:string,section:string)=>tabVisible(tab)&&(!isProfileVisibilityPolicyValue(visibilityPolicy)||visibilityPolicy.version===3||visibilityPolicy.groups[profileSectionPolicyKey(tab,section)]!=='hide');
   const canSee=(owner:string,field:string)=>essFactVisible(visible,owner,field);
-  const own=await myOwnEmploymentSubjects(s,{profileEdit:true});
-  const selected=requestedEmploymentId?own.find(row=>row.employmentId===requestedEmploymentId):own.length===1?own[0]:null;
-  if(!selected&&own.length>0)return <div className="mx-auto max-w-2xl space-y-4"><PageHeader title={t('title')} description={te('chooseEmployment')}/>{requestedEmploymentId&&<ErrorBanner message={te('error.permission')}/>}<Card className="p-5"><ul className="space-y-3">{own.map(row=><li key={row.employmentId}><Link href={`/me?employmentId=${row.employmentId}`} className="text-primary underline">{canSee('employment','employeeCode')?row.employeeCode:''} · {canSee('assignment','companyName')?row.company:''}</Link></li>)}</ul></Card></div>;
-  const record = selected?await myProfileRecord(s,selected.employmentId):null;
-
-  if (!record) {
+  if(profile.kind==='choose')return <div className="mx-auto max-w-2xl space-y-4"><PageHeader title={t('title')} description={te('chooseEmployment')}/>{requestedEmploymentId&&<ErrorBanner message={te('error.permission')}/>}<Card className="p-5"><ul className="space-y-3">{own.map(row=><li key={row.employmentId}><Link href={`/me?employmentId=${row.employmentId}`} className="text-primary underline">{canSee('employment','employeeCode')?row.employeeCode:''} · {canSee('assignment','companyName')?row.company:''}</Link></li>)}</ul></Card></div>;
+  if (profile.kind!=='ready') {
     return (
       <div className="mx-auto max-w-2xl">
         <Card className="p-8 text-center">
@@ -79,9 +72,9 @@ export default async function MePage({
     );
   }
 
+  const {record,workspace,facts,profileRequests}=profile;
   const { employmentId } = record;
   const employments = own;
-  const [workspace,facts]=await Promise.all([readOwnProfileWorkspace(s,{employmentId},presentation),readOwnProfileFacts(s,employmentId,presentation)]);
   // AI v2 slice 3 follow-up: a profile change prepared in chat opens the form filled from its own sealed review, which
   // is reopened here as the caller (core/own-profile-edit-seed.ts); the link carries only the review handle.
   const profileSeed=spProfileSeed===undefined?null:await ownProfileEditSeed(s,spProfileSeed,workspace);
@@ -91,10 +84,9 @@ export default async function MePage({
   const taxReliefEmploymentIds = payrollOn ? await myTaxReliefEmploymentIds(s) : [];
   const noTaxRelief: TaxReliefResult = { year: Number(todayInKualaLumpur().slice(0, 4)), rows: [], ytd: 0 };
 
-  const [payslips, taxRelief, profileRequests, resignation, myLoans] = await Promise.all([
+  const [payslips, taxRelief, resignation, myLoans] = await Promise.all([
     payrollOn ? myPayslips(s, employments.map((e) => e.employmentId)) : [],
     payrollOn ? myTaxRelief(s, taxReliefEmploymentIds) : noTaxRelief,
-    myProfileChangeRequests(s,50,presentation),
     tabVisible('Documents')?myResignation(s, employmentId):null,
 
     payrollOn ? listLoansForEmployment(s, employmentId) : [],
@@ -193,7 +185,7 @@ export default async function MePage({
         {canSee('compensation','payMode')&&<ReadField label={tp('payMode')} value={canSee('compensation','payMode')?compensationChoice('paymode',comp?.payMode):null} notSet={notSet} />}
         {canSee('compensation','paymentTerm')&&<ReadField label={tp('paymentTerm')} value={canSee('compensation','paymentTerm')?compensationChoice('paymentterm',comp?.paymentTerm):null} notSet={notSet} />}
         {/* Daily / hourly staff are paid from the rate, not the basic — it was already projected in
-            app/me/record.ts and simply never put on screen. Blank for a monthly contract, like any other
+            the canonical record owner and is never put on screen. Blank for a monthly contract, like any other
             field that is not recorded. */}
         {canSee('compensation','rateAmount')&&<ReadField label={tp('rateAmount')} value={canSee('compensation','rateAmount')?comp?.rateAmount??null:null} notSet={notSet} />}
         {canSee('compensation','status')&&<ReadField label={tp('status')} value={canSee('compensation','status')&&comp?tp('salaryStatusActive'):null} notSet={notSet} />}

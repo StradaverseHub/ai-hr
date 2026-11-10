@@ -80,7 +80,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
-vi.mock('@/db/client', () => ({}));
+vi.mock('@/db/client', () => ({withTenant:async (_context:unknown,read:(tx:object)=>unknown)=>read({})}));
 vi.mock('@/lib/scope', () => ({ scopedSession: vi.fn(async () => ({ s: { tenantId: 't', roles: [] }, scopeIds: ['c1', 'c2'], allowedCount: 2 })) }));
 vi.mock('@/lib/authz', () => ({ isAdmin: vi.fn(() => fx.admin) }));
 vi.mock('@/lib/session', () => ({ getSession: vi.fn(async () => ({ tenantId: 't', roles: [] })) }));
@@ -97,7 +97,7 @@ vi.mock('@/core/read', () => ({
   reportingLinesFor: vi.fn(async () => null),
   upcomingHolidays: vi.fn(async () => EVENTS),
   // my profile
-  myOwnEmploymentSubjects:vi.fn(async()=>[{employmentId:'e1',company:'Nusantara Holdings',employeeCode:'EMP0042'}]),
+  myOwnEmploymentSubjectsTx:vi.fn(async()=>[{employmentId:'e1',company:'Nusantara Holdings',employeeCode:'EMP0042'}]),
   myEmployments: vi.fn(async () => [{ employmentId: 'e1', company: 'Nusantara Holdings', position: 'Analyst', department: 'Finance', basic: '7200', allowance: '400' }]),
   myPayslips: vi.fn(async () => PAYSLIPS),
   myTaxRelief: vi.fn(async () => ({ year: 2026, rows: [], ytd: 0 })),
@@ -162,7 +162,7 @@ vi.mock('@/core/loans', () => ({ listLoansForEmployment: vi.fn(async () => []) }
 // Keep the backend read mocked; do not import the actual database-backed profile module.
 vi.mock('@/core/profile', async () => {
   const {GENDERS,MARITAL_STATUSES}=await import('../lib/person-vocabulary');
-  return {GENDERS,MARITAL_STATUSES,myProfileChangeRequests:vi.fn(async()=>[])};
+  return {GENDERS,MARITAL_STATUSES,myProfileChangeRequestsSnapshotTx:vi.fn(async()=>[])};
 });
 vi.mock('@/core/offboarding', () => ({ myResignation: vi.fn(async () => null) }));
 // core/profile-options reads the dependents vocabulary at module load, so the mock carries the real
@@ -193,11 +193,10 @@ vi.mock('@/components/attendance-clock-button', () => ({
   AttendanceClockButton: ({ label }: { label: string }) => <button type="button">{label}</button>,
   LocationNotice: () => null,
 }));
-vi.mock('@/core/profile-edit-policy',async()=>{const {resolveEssVisibleIds}=await import('../lib/personnel-ess-visibility');return {readProfilePresentationPolicy:vi.fn(async()=>({ctx:{tenantId:'t',roles:[]},visible:resolveEssVisibleIds('all')}))};});
-vi.mock('@/core/profile-edit',()=>({readOwnProfileWorkspace:vi.fn(async()=>({employmentId:'e1',personId:'p1',country:'MY',values:{'profile.personal_details.fullname':'Aisyah Rahman','profile.personal_details.employeecode':'EMP0042'},baselines:{},registers:[],editable:[],legacyPrimaryEditable:[],addressReview:false,legacyAddress:{},statutoryAvailable:true}))}));
-vi.mock('@/core/profile-view',()=>({readOwnProfileFacts:vi.fn(async()=>({values:{},records:[],choices:{},service:{group:{years:5,months:7,days:19},company:{years:5,months:7,days:19}},header:{name:'Aisyah Rahman',employeeCode:'EMP0042',company:'Nusantara Holdings',department:'Finance',position:'Analyst',superior:null,status:'active',photo:false,service:{years:5,months:7,days:19}},modules:{payroll:true,leave:true,attendance:true}}))}));
+vi.mock('@/core/profile-edit-policy',async()=>{const {resolveEssVisibleIds}=await import('../lib/personnel-ess-visibility');return {readProfilePresentationSnapshotPolicyTx:vi.fn(async()=>({ctx:{tenantId:'t',roles:[]},visible:resolveEssVisibleIds('all')}))};});
+vi.mock('@/core/profile-edit',()=>({readOwnProfileWorkspaceSnapshotTx:vi.fn(async()=>({employmentId:'e1',personId:'p1',country:'MY',values:{'profile.personal_details.fullname':'Aisyah Rahman','profile.personal_details.employeecode':'EMP0042'},baselines:{},registers:[],editable:[],legacyPrimaryEditable:[],addressReview:false,legacyAddress:{},statutoryAvailable:true}))}));
+vi.mock('@/core/profile-view',()=>({readOwnProfileFactsSnapshotTx:vi.fn(async()=>({record:RECORD,facts:{values:{},records:[],choices:{},service:{group:{years:5,months:7,days:19},company:{years:5,months:7,days:19}},header:{name:'Aisyah Rahman',employeeCode:'EMP0042',company:'Nusantara Holdings',department:'Finance',position:'Analyst',superior:null,status:'active',photo:false,service:{years:5,months:7,days:19}},modules:{payroll:true,leave:true,attendance:true}}}))}));
 vi.mock('../app/me/profile-edit-actions',()=>({saveMyProfileEditAction:vi.fn(),readMyProfileMovementAction:vi.fn()}));
-vi.mock('../app/me/record', () => ({ myProfileRecord: vi.fn(async () => RECORD) }));
 const RECORD = {
   employmentId: 'e1',
   personId: 'p1',

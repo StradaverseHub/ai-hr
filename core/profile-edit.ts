@@ -116,39 +116,48 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
   // display owns a complete native read-only transaction and shared policy/revocation barrier.
   const policy=presentation??await(existingTx?freshProfileEditPolicyTx(tx,ctx):freshProfilePresentationPolicyTx(tx,ctx));
   if(presentation&&!existingTx)await tx.execute(sql`select app.access_profile_policy_read_lock()`);
-  const {subject,master}=await profileSubjectTx(tx,policy.ctx,p.employmentId,false,Boolean(existingTx));
-  const rows=await mastersTx(tx,policy.ctx,subject,Boolean(existingTx));
-  const mayEdit=(await myOwnEmploymentSubjectsTx(tx,policy.ctx,{profileEdit:true})).some(row=>row.employmentId===subject.id);
-  const values={...readonlyValues('person',master),...registryValues('person',master),...registryValues('compliance',master)};
-  const age=PERSONNEL_FIELDS.find(field=>field.owner==='person'&&field.ownerField==='age');if(age)values[age.id]=childAgeYears(master.dateOfBirth);
-  if(rows.pack&&!rows.stat)for(const field of PERSONNEL_FIELDS)if(field.ess.visibility==='visible'&&field.ess.binding&&!['person','compliance','dependent','qualification','emergency'].includes(field.ess.binding.owner))values[field.id]=null;
-  if(rows.stat){if(isModuleEnabled(policy.ctx,'payroll'))Object.assign(values,readonlyValues('zakat',{status:rows.stat.zakatActive?'active':'inactive',stateAuthority:rows.stat.zakatState,method:rows.stat.zakatMethod,rate:rows.stat.zakatMethod==='fixed'?rows.stat.zakatFixed:rows.stat.zakatPercent}));Object.assign(values,readonlyValues('statutory',rows.stat));for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(values,registryValues(owner,rows.stat));}
-  const fieldReadOnlyReasons:NonNullable<EssWorkspace['fieldReadOnlyReasons']>={};
-  if(rows.stat){
-   const epfMode=rows.pack?.client.payroll.epfUiModeFrom;
-   for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible'&&field.owner==='statutory'&&field.ownerField==='epfEmployeeRate'))values[field.id]=rows.pack?.client.payroll.epfRateToPercent?.(rows.stat.epfEmployeeRate)??null;
-   if(epfMode){const stat=rows.stat,numberOrNull=(value:unknown)=>value==null?null:Number(value);for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible'&&field.owner==='statutory'&&field.ownerField==='epfUiMode'))values[field.id]=epfMode(stat.epfMode,numberOrNull(stat.epfEmployeeRate),numberOrNull(stat.epfEmployerRate),numberOrNull(stat.epfEmployeeAmount),numberOrNull(stat.epfEmployerAmount));}
-   for(const field of PERSONNEL_FIELDS)if(field.ess.visibility==='visible'&&field.childReliefCell)values[field.id]=scalar(personnelChildReliefValue(rows.stat.childReliefTable,field.childReliefCell).value);
-   const relief=await qualifyingChildReliefFor(policy.ctx,{personId:subject.personId,country:subject.country??'',asOf:todayInKualaLumpur()},tx);
-   if(rows.stat.childReliefMode==='auto'||rows.stat.childReliefMode==='auto_table'){
-    for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.binding?.owner==='taxLegacy'&&field.ess.binding.field==='numChildren')){
-     values[field.id]=rows.stat.childReliefMode==='auto'?relief?.eligibleChildren??null:rows.pack?.payroll.childReliefTableHeadCount?.(rows.stat.childReliefTable)??null;
-     fieldReadOnlyReasons[field.id]='derivedChildCount';
-    }
-   }
-   if(relief)for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible'&&field.owner==='statutory')){
-    if(field.ownerField==='qualifyingChildren')values[field.id]=relief.qualifyingChildren;
-    if(field.ownerField==='childReliefAmount')values[field.id]=relief.reliefRM;
-   }
-  }
-  const primary=rows.emergency.filter(row=>row.priority==='primary');
-  const registers:EssRecord[]=[...rows.dependents.map(row=>({kind:'dependent' as const,id:row.id,...safeValues({...registryValues('dependent',row),...readonlyValues('dependent',{age:childAgeYears(row.dateOfBirth),countsTowardRelief:isChildReliefEligible(row)})},id=>maskedRegisterBaseline(policy.ctx,subject,rows,'dependent',row.id,id)),primary:false})),...rows.qualifications.map(row=>({kind:'qualification' as const,id:row.id,...safeValues(registryValues('qualification',row)),primary:false})),...rows.emergency.map(row=>({kind:'emergency' as const,id:row.id,...safeValues(registryValues('emergency',row)),primary:primary.length===1&&primary[0].id===row.id}))];
-  const visible=policy.visible;
-  const addressVisible=PERSONNEL_FIELDS.filter(field=>field.owner==='person'&&field.ownerField.startsWith('permanent')).every(field=>visible.has(field.id));
-  const safe=safeValues(projectEssVisible(values,visible),id=>maskedProfileBaseline(policy.ctx,subject,rows,id));
-  return {approvals:Object.fromEntries(PERSONNEL_FIELDS.filter(field=>visible.has(field.id)&&policy.editable.has(field.id)).map(field=>[field.id,profileFieldApproval(getSetting(policy.ctx,'ess.profile_change_fields'),field)])),visible:[...visible],employmentId:subject.id,personId:subject.personId,country:subject.country,...safe,registers:registers.map(row=>({...row,values:projectEssVisible(row.values,visible),baselines:projectEssVisible(row.baselines,visible),primary:essFactVisible(visible,'emergency','priority')&&row.primary})).filter(row=>Object.keys(row.values).length>0),editable:mayEdit?[...policy.editable].filter(id=>visible.has(id)):[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary].filter(id=>visible.has(id)&&!profileLegacyPrimaryApprovalRequired(getSetting(policy.ctx,'ess.profile_change_fields'),id)):[],addressReview:addressVisible&&addressNeedsReview(master),legacyAddress:addressVisible?legacyAddress(master):{},statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons:projectEssVisible(fieldReadOnlyReasons,visible)} satisfies EssWorkspace;
+  return projectOwnProfileWorkspaceTx(tx,p,policy,Boolean(existingTx));
  };
  return existingTx?run(existingTx):withTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return run(tx);});
+}
+
+/** My Profile display only. The page owner has proved its current principal and read-only snapshot. */
+export function readOwnProfileWorkspaceSnapshotTx(tx:Tx,p:{employmentId:string},policy:ProfilePresentationPolicy):Promise<EssWorkspace>{
+ return projectOwnProfileWorkspaceTx(tx,p,policy,false);
+}
+
+async function projectOwnProfileWorkspaceTx(tx:Tx,p:{employmentId?:string},policy:ProfilePresentationPolicy,lockRows:boolean):Promise<EssWorkspace>{
+ const {subject,master}=await profileSubjectTx(tx,policy.ctx,p.employmentId,false,lockRows);
+ const rows=await mastersTx(tx,policy.ctx,subject,lockRows);
+ const mayEdit=(await myOwnEmploymentSubjectsTx(tx,policy.ctx,{profileEdit:true})).some(row=>row.employmentId===subject.id);
+ const values={...readonlyValues('person',master),...registryValues('person',master),...registryValues('compliance',master)};
+ const age=PERSONNEL_FIELDS.find(field=>field.owner==='person'&&field.ownerField==='age');if(age)values[age.id]=childAgeYears(master.dateOfBirth);
+ if(rows.pack&&!rows.stat)for(const field of PERSONNEL_FIELDS)if(field.ess.visibility==='visible'&&field.ess.binding&&!['person','compliance','dependent','qualification','emergency'].includes(field.ess.binding.owner))values[field.id]=null;
+ if(rows.stat){if(isModuleEnabled(policy.ctx,'payroll'))Object.assign(values,readonlyValues('zakat',{status:rows.stat.zakatActive?'active':'inactive',stateAuthority:rows.stat.zakatState,method:rows.stat.zakatMethod,rate:rows.stat.zakatMethod==='fixed'?rows.stat.zakatFixed:rows.stat.zakatPercent}));Object.assign(values,readonlyValues('statutory',rows.stat));for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(values,registryValues(owner,rows.stat));}
+ const fieldReadOnlyReasons:NonNullable<EssWorkspace['fieldReadOnlyReasons']>={};
+ if(rows.stat){
+  const epfMode=rows.pack?.client.payroll.epfUiModeFrom;
+  for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible'&&field.owner==='statutory'&&field.ownerField==='epfEmployeeRate'))values[field.id]=rows.pack?.client.payroll.epfRateToPercent?.(rows.stat.epfEmployeeRate)??null;
+  if(epfMode){const stat=rows.stat,numberOrNull=(value:unknown)=>value==null?null:Number(value);for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible'&&field.owner==='statutory'&&field.ownerField==='epfUiMode'))values[field.id]=epfMode(stat.epfMode,numberOrNull(stat.epfEmployeeRate),numberOrNull(stat.epfEmployerRate),numberOrNull(stat.epfEmployeeAmount),numberOrNull(stat.epfEmployerAmount));}
+  for(const field of PERSONNEL_FIELDS)if(field.ess.visibility==='visible'&&field.childReliefCell)values[field.id]=scalar(personnelChildReliefValue(rows.stat.childReliefTable,field.childReliefCell).value);
+  const relief=await qualifyingChildReliefFor(policy.ctx,{personId:subject.personId,country:subject.country??'',asOf:todayInKualaLumpur()},tx);
+  if(rows.stat.childReliefMode==='auto'||rows.stat.childReliefMode==='auto_table'){
+   for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.binding?.owner==='taxLegacy'&&field.ess.binding.field==='numChildren')){
+    values[field.id]=rows.stat.childReliefMode==='auto'?relief?.eligibleChildren??null:rows.pack?.payroll.childReliefTableHeadCount?.(rows.stat.childReliefTable)??null;
+    fieldReadOnlyReasons[field.id]='derivedChildCount';
+   }
+  }
+  if(relief)for(const field of PERSONNEL_FIELDS.filter(field=>field.ess.visibility==='visible'&&field.owner==='statutory')){
+   if(field.ownerField==='qualifyingChildren')values[field.id]=relief.qualifyingChildren;
+   if(field.ownerField==='childReliefAmount')values[field.id]=relief.reliefRM;
+  }
+ }
+ const primary=rows.emergency.filter(row=>row.priority==='primary');
+ const registers:EssRecord[]=[...rows.dependents.map(row=>({kind:'dependent' as const,id:row.id,...safeValues({...registryValues('dependent',row),...readonlyValues('dependent',{age:childAgeYears(row.dateOfBirth),countsTowardRelief:isChildReliefEligible(row)})},id=>maskedRegisterBaseline(policy.ctx,subject,rows,'dependent',row.id,id)),primary:false})),...rows.qualifications.map(row=>({kind:'qualification' as const,id:row.id,...safeValues(registryValues('qualification',row)),primary:false})),...rows.emergency.map(row=>({kind:'emergency' as const,id:row.id,...safeValues(registryValues('emergency',row)),primary:primary.length===1&&primary[0].id===row.id}))];
+ const visible=policy.visible;
+ const addressVisible=PERSONNEL_FIELDS.filter(field=>field.owner==='person'&&field.ownerField.startsWith('permanent')).every(field=>visible.has(field.id));
+ const safe=safeValues(projectEssVisible(values,visible),id=>maskedProfileBaseline(policy.ctx,subject,rows,id));
+ return {approvals:Object.fromEntries(PERSONNEL_FIELDS.filter(field=>visible.has(field.id)&&policy.editable.has(field.id)).map(field=>[field.id,profileFieldApproval(getSetting(policy.ctx,'ess.profile_change_fields'),field)])),visible:[...visible],employmentId:subject.id,personId:subject.personId,country:subject.country,...safe,registers:registers.map(row=>({...row,values:projectEssVisible(row.values,visible),baselines:projectEssVisible(row.baselines,visible),primary:essFactVisible(visible,'emergency','priority')&&row.primary})).filter(row=>Object.keys(row.values).length>0),editable:mayEdit?[...policy.editable].filter(id=>visible.has(id)):[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary].filter(id=>visible.has(id)&&!profileLegacyPrimaryApprovalRequired(getSetting(policy.ctx,'ess.profile_change_fields'),id)):[],addressReview:addressVisible&&addressNeedsReview(master),legacyAddress:addressVisible?legacyAddress(master):{},statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons:projectEssVisible(fieldReadOnlyReasons,visible)} satisfies EssWorkspace;
 }
 
 /** Validation and baseline comparison run again at approval, never trusting the editor or stored JSON. */

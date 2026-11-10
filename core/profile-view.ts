@@ -3,11 +3,11 @@ import {projectEssVisible,essFactVisible} from '../lib/personnel-ess-visibility'
 import {readProfilePresentationPolicy,type ProfilePresentationPolicy} from './profile-edit-policy';
 import {eq} from 'drizzle-orm';
 import {attendanceRule,shift} from '../db/schema';
-import type {SessionContext} from '../db/client';
+import type {SessionContext,Tx} from '../db/client';
 import {withTenant} from '../db/client';
-import {myOwnEmploymentSubjects,employeeDetail,assignmentHistory,ownReportingManagersTx,leaveRequestsFor} from './read';
+import {myOwnEmploymentSubjects,myOwnEmploymentSubjectsTx,employeeDetail,assignmentHistory,ownReportingManagersTx,leaveRequestsFor} from './read';
 import {compensationHistoryDetailed} from './comp';
-import {ownMovementHistory,ownMovementDetail} from './movement';
+import {ownMovementHistory,ownMovementHistoryTx,ownMovementDetail} from './movement';
 import {listAllProfileOptions} from './profile-options';
 import {listEmploymentPayComponents,listCp38} from '../packs/payroll/service';
 import {shiftArrangementHistory,scheduleGroupLookupTx,scheduleGroupDisplayName} from '../packs/attendance/service';
@@ -16,7 +16,8 @@ import {isModuleEnabled} from './entitlements';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {EssProfileError,type EssScalar} from '../lib/personnel-ess-model';
-import {hasPersonPhoto} from './person-photo';
+import {hasPersonPhoto,hasPersonPhotoSnapshotTx} from './person-photo';
+import {settleReadGroup} from '../lib/settle-read-group';
 export type EssReadRecord={key:string;tab:string;section:string;context?:'before'|'after';date?:string;detailId?:string;values:Record<string,EssScalar>};
 function project(owner:string,row:Record<string,unknown>){
  const values:Record<string,EssScalar>={};
@@ -29,22 +30,44 @@ function project(owner:string,row:Record<string,unknown>){
  return values;
 }
 export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string,presentation?:ProfilePresentationPolicy){
- const subjects=await myOwnEmploymentSubjects(ctx);const subject=subjects.find(row=>row.employmentId===employmentId);if(!subject)throw new EssProfileError('permission');
- const policy=presentation??await readProfilePresentationPolicy(ctx);ctx=policy.ctx;const visible=policy.visible;
+ const projection=await readOwnProfileFactsProjection(ctx,employmentId,presentation);
+ if(!projection)throw new EssProfileError('unavailable');
+ return projection.facts;
+}
+
+/** Both page projections use the same canonical employment and compensation rows. */
+export function readOwnProfileFactsSnapshotTx(tx:Tx,employmentId:string,policy:ProfilePresentationPolicy){
+ return readOwnProfileFactsProjection(policy.ctx,employmentId,policy,tx);
+}
+
+async function readOwnProfileFactsProjection(ctx:SessionContext,employmentId:string,presentation?:ProfilePresentationPolicy,snapshotTx?:Tx){
+ const subjects=await (snapshotTx?myOwnEmploymentSubjectsTx(snapshotTx,ctx):myOwnEmploymentSubjects(ctx));
+ const subject=subjects.find(row=>row.employmentId===employmentId);if(!subject)throw new EssProfileError('permission');
+ const policy=presentation??await readProfilePresentationPolicy(ctx);
+ ctx=policy.ctx;
+ const read=<T>(run:(tx:Tx)=>Promise<T>)=>snapshotTx?run(snapshotTx):withTenant(ctx,run);
+ const visible=policy.visible;
  const payrollOn=isModuleEnabled(ctx,'payroll'),leaveOn=isModuleEnabled(ctx,'leave'),attendanceOn=isModuleEnabled(ctx,'attendance');
  const today=todayInKualaLumpur();
- const [emp,assignments,salaries,lines,movements,catalog,photo,payItems,cp38,shifts,leave,requests]=await Promise.all([
-  employeeDetail(ctx,employmentId),assignmentHistory(ctx,employmentId),compensationHistoryDetailed(ctx,employmentId),withTenant(ctx,tx=>ownReportingManagersTx(tx,employmentId)),ownMovementHistory(ctx,employmentId),
-  listAllProfileOptions(ctx,{activeOnly:true,companyId:subject.currentCompanyId}),hasPersonPhoto(ctx,subject.personId),
-  payrollOn?listEmploymentPayComponents(ctx,employmentId):[],payrollOn?listCp38(ctx,{employmentId}):[],attendanceOn?shiftArrangementHistory(ctx,employmentId):[],
-  leaveOn?withTenant(ctx,async tx=>{
+ const [emp,assignments,salaries,lines,movements,catalog,photo,payItems,cp38,shifts,leave,requests]=await settleReadGroup([
+  ()=>employeeDetail(ctx,employmentId,undefined,snapshotTx),
+  ()=>assignmentHistory(ctx,employmentId,snapshotTx),
+  ()=>compensationHistoryDetailed(ctx,employmentId,snapshotTx),
+  ()=>read(tx=>ownReportingManagersTx(tx,employmentId)),
+  ()=>snapshotTx?ownMovementHistoryTx(snapshotTx,ctx,employmentId):ownMovementHistory(ctx,employmentId),
+  ()=>listAllProfileOptions(ctx,{activeOnly:true,companyId:subject.currentCompanyId},snapshotTx),
+  ()=>snapshotTx?hasPersonPhotoSnapshotTx(snapshotTx,ctx,subject.personId):hasPersonPhoto(ctx,subject.personId),
+  ()=>payrollOn?listEmploymentPayComponents(ctx,employmentId,snapshotTx):[],
+  ()=>payrollOn?listCp38(ctx,{employmentId},snapshotTx):[],
+  ()=>attendanceOn?shiftArrangementHistory(ctx,employmentId,snapshotTx):[],
+  ()=>leaveOn?read(async tx=>{
    const balances=await leaveBalancesTx(tx,ctx,employmentId,undefined,{asOf:today});
-   const breakdowns=await Promise.all(balances.map(row=>leaveEntitlementBreakdownTx(tx,employmentId,row.leaveTypeId,today,undefined,{})));
+   const breakdowns=await settleReadGroup(balances.map(row=>()=>leaveEntitlementBreakdownTx(tx,employmentId,row.leaveTypeId,today,undefined,{})));
    return {balances,breakdowns,scheme:await ownBenefitSchemeViewTx(tx,ctx,employmentId,today)};
   }):null,
-  leaveOn?leaveRequestsFor(ctx,employmentId):[],
+  ()=>leaveOn?leaveRequestsFor(ctx,employmentId,undefined,snapshotTx):[],
  ]);
- if(!emp)throw new EssProfileError('unavailable');
+ if(!emp)return null;
  const applicable=assignments.filter(row=>row.validFrom<=today&&(!row.validTo||row.validTo>today));
  const current=applicable.length===1?applicable[0]:null;
  const salaryRows=salaries.filter(row=>row.validFrom<=today&&(!row.validTo||row.validTo>today));const salary=salaryRows.length===1?salaryRows[0]:null;
@@ -88,7 +111,7 @@ export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string
   }
  }
  if(attendanceOn){
-  const profile=await withTenant(ctx,async tx=>{
+  const profile=await read(async tx=>{
    const groupOn=await scheduleGroupLookupTx(tx,[employmentId],today,today),groupId=groupOn(employmentId,today);
    const [group]=groupId?await tx.select({name:attendanceRule.name,label:attendanceRule.label}).from(attendanceRule).where(eq(attendanceRule.id,groupId)).limit(1):[];
    const periods=shifts.filter(row=>row.effectiveFrom<=today&&(!row.effectiveTo||row.effectiveTo>=today));
@@ -105,7 +128,14 @@ export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string
   choices[field.id]=options.map(option=>({value:option.value,label:option.label}));
  }
  const may=(owner:string,field:string)=>essFactVisible(visible,owner,field);
- return {values:projectEssVisible(values,visible),records:records.map(row=>({...row,values:projectEssVisible(row.values,visible)})).filter(row=>Object.keys(row.values).length>0),choices:projectEssVisible(choices,visible),service:{group:may('employment','hiredOn')&&may('employment','groupService')?serviceYearsMonthsDaysAt(emp.hiredOn,today):null,company:may('employment','joinDate')&&may('employment','companyService')?serviceYearsMonthsDaysAt(emp.joinDate??emp.hiredOn,today):null},header:{name:may('person','fullName')?subject.personName:'',employeeCode:may('employment','employeeCode')?subject.employeeCode:null,company:may('assignment','companyName')?subject.company:null,department:may('assignment','departmentName')?current?.department??null:null,position:may('assignment','positionName')?current?.position??null:null,superior:may('directSuperior','fullName')?manager?.name??null:null,status:may('employmentStatus','status')?subject.status:null,photo:may('person','photo')&&photo,service:may('employment','hiredOn')?serviceYearsMonthsDaysAt(emp.hiredOn,today):null},modules:{payroll:payrollOn,leave:leaveOn,attendance:attendanceOn}};
+ const facts={values:projectEssVisible(values,visible),records:records.map(row=>({...row,values:projectEssVisible(row.values,visible)})).filter(row=>Object.keys(row.values).length>0),choices:projectEssVisible(choices,visible),service:{group:may('employment','hiredOn')&&may('employment','groupService')?serviceYearsMonthsDaysAt(emp.hiredOn,today):null,company:may('employment','joinDate')&&may('employment','companyService')?serviceYearsMonthsDaysAt(emp.joinDate??emp.hiredOn,today):null},header:{name:may('person','fullName')?subject.personName:'',employeeCode:may('employment','employeeCode')?subject.employeeCode:null,company:may('assignment','companyName')?subject.company:null,department:may('assignment','departmentName')?current?.department??null:null,position:may('assignment','positionName')?current?.position??null:null,superior:may('directSuperior','fullName')?manager?.name??null:null,status:may('employmentStatus','status')?subject.status:null,photo:may('person','photo')&&photo,service:may('employment','hiredOn')?serviceYearsMonthsDaysAt(emp.hiredOn,today):null},modules:{payroll:payrollOn,leave:leaveOn,attendance:attendanceOn}};
+ const record={
+  employmentId,
+  employment:{company:emp.company,hiredOn:emp.hiredOn},
+  compensation:salary?{basicSalary:salary.basicSalary,currency:salary.currency,validFrom:salary.validFrom,
+   payMode:salary.payMode,paymentTerm:salary.paymentTerm,rateAmount:salary.rateAmount}:null,
+ };
+ return {facts,record};
 }
 
 /** One selected immutable history event, loaded on demand instead of replaying every event per page. */

@@ -1,7 +1,8 @@
 /** Native public owners against reviewed, independently approved mappings. No owner-mode
  * mapping insertion: publication, RLS, source freezing and the projection callback all run. */
-import {afterAll,beforeAll,beforeEach,it,expect} from 'vitest';
+import {afterAll,beforeAll,beforeEach,it,expect,vi} from 'vitest';
 import {and,asc,eq,isNull,sql} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import * as schema from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -9,7 +10,7 @@ import {hireEmployee,setEmploymentAssignment,projectEmploymentOrganisationAssign
 import {setCompanyParent} from '../core/admin';
 import {setCompensation} from '../core/comp';
 import {prepareCompanyOrganisationRun,companyOrganisationRuns,decideCompanyOrganisationRun,processCompanyOrganisationRun,employmentOrganisationTagsTx} from '../core/company-organisation';
-import {organisationImportWarningsTx} from '../core/derived-organisation-display';
+import {organisationImportWarningsBatchTx,organisationImportWarningsTx} from '../core/derived-organisation-display';
 import {createMovementEvent} from '../core/movement';
 import {correctHireDetails} from '../core/hire-correction';
 import {correctInformation,previewInformationCorrection} from '../core/information-correction';
@@ -18,6 +19,7 @@ import {rewardPolicyMemberships} from '../packs/rewards/service';
 import {setupChecker,setupRewardLibrariesFixture} from './rewards-setup-fixture';
 import {saveRewardPlanConfiguration,saveRewardSetupPlan} from '../packs/rewards/plan-configuration';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {pgSqlState} from '../lib/db-error';
 let b:Base,ctx:SessionContext,checker:SessionContext,oldBu:string,newBu:string;
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4)),hireDate=`${year-2}-01-01`;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -38,6 +40,58 @@ async function publish(effectiveOn=today,businessUnitId:string|null=newBu){
  expect(result.state,result.failure??'reviewed publication').toBe('published');return id;
 }
 const versions=(id:string)=>owner.db.select().from(schema.assignment).where(and(eq(schema.assignment.employmentId,id),isNull(schema.assignment.supersededAt))).orderBy(asc(schema.assignment.validFrom));
+it('batches distinct Employee Import dates and companies while retaining ordered row warnings and current native scope',async()=>{
+ const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional alternate import company'}).returning({id:schema.company.id});
+ await publish();
+ const current={companyId:b.companyId,asOf:today};
+ const inputs=[
+  {...current,businessUnit:'Fictional submitted BU'},
+  {companyId:b.companyId,asOf:hireDate,parentCompany:'Fictional historical parent'},
+  {...current,parentCompany:'Fictional submitted parent'},
+  {companyId:other.id,asOf:today,businessUnit:'Fictional pending BU'},
+  {...current,businessUnit:'   ',parentCompany:'  '},
+ ];
+ const rows=await withTenant(ctx,async tx=>{
+  const execute=vi.spyOn(tx,'execute');
+  const dialect=new PgDialect();
+  let batched:Awaited<ReturnType<typeof organisationImportWarningsBatchTx>>;
+  try{
+   expect(await organisationImportWarningsBatchTx(tx,ctx,[])).toEqual([]);
+   expect(execute).not.toHaveBeenCalled();
+   batched=await organisationImportWarningsBatchTx(tx,ctx,inputs);
+   const dated=execute.mock.calls.flatMap(([query])=>{
+    if(typeof query==='string')return [];
+    const compiled=dialect.sqlToQuery(query.getSQL());
+    return compiled.sql.includes('app.company_organisation_tags(')?[compiled]:[];
+   });
+   expect(dated).toHaveLength(1);
+   expect(dated[0].params).toHaveLength(1);
+   expect(JSON.parse(String(dated[0].params[0]))).toEqual([
+    {input_slot:0,company_id:b.companyId,as_of:today},
+    {input_slot:1,company_id:b.companyId,as_of:hireDate},
+    {input_slot:2,company_id:other.id,as_of:today},
+   ]);
+  }finally{execute.mockRestore();}
+  const individual=[];
+  for(const input of inputs)individual.push(await organisationImportWarningsTx(tx,ctx,input));
+  expect(batched).toEqual(individual);
+  return batched;
+ });
+ expect(rows.map(row=>row.tags.status)).toEqual(['ready','legacy','ready','pending','ready']);
+ expect(rows.map(row=>row.warnings.length)).toEqual([2,2,2,3,1]);
+ expect(rows[0].warnings[1]).toContain('business_unit: imported value ignored');
+ expect(rows[2].warnings[1]).toContain('parent_company: imported value ignored');
+
+ const userId=await createAppUser(b.tenantId,null,'hr_admin');
+ const role=eq(schema.roleAssignment.appUserId,userId);
+ await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(role);
+ const scoped={...ctx,userId,personId:null,grants:[{role:'hr_admin',companyId:b.companyId}]};
+ const run=(refs:typeof inputs)=>withTenant(scoped,tx=>organisationImportWarningsBatchTx(tx,scoped,refs));
+ await expect(run([inputs[0]])).resolves.toHaveLength(1);
+ expect(pgSqlState(await run([inputs[0],inputs[3]]).catch((error:unknown)=>error))).toBe('42501');
+ await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(role);
+ expect(pgSqlState(await run([inputs[0]]).catch((error:unknown)=>error))).toBe('42501');
+});
 it('preserves legacy choice and historical prefix, then ignores manual BU in native hire, assignment, movement and correction owners',async()=>{
  const first=await hire('legacy');expect((await versions(first.employmentId))[0].businessUnitId).toBe(oldBu);
  const source=(await versions(first.employmentId))[0];const mapping=await publish();

@@ -9,8 +9,22 @@ export type CompanyOrganisationChange={companyId:string;businessUnitId:string|nu
 export type CompanyOrganisationRunInput={kind:'mapping'|'restructure'|'retag';companyIds:string[];effectiveOn:string;changes?:CompanyOrganisationChange[]};
 export type CompanyOrganisationRun={id:string;kind:CompanyOrganisationRunInput['kind'];effectiveOn:string;state:'prepared'|'approved'|'staging'|'published'|'stale'|'rejected';digest:string;requestedBy:string;checkedBy:string|null;counts:{total:number;changed:number;unchanged:number;skipped:number;failed:number;staged:number};companyIds:string[];structure?:{companyId:string;company:string;before:CompanyOrganisationTags;after:CompanyOrganisationTags;beforeDisplay:Record<string,string|null>;afterDisplay:Record<string,string|null>}[];failure:string|null;canApprove:boolean;canProcess:boolean};
 function day(value:string){if(!isCalendarDate(value))throw Error('Choose a valid organisation effective date.');return value;}
-export async function deriveCompanyOrganisationTx(tx:Tx,_ctx:SessionContext,p:{companyId:string;asOf:string}):Promise<CompanyOrganisationTags>{
+export type CompanyOrganisationReference={companyId:string;asOf:string};
+export async function deriveCompanyOrganisationTx(tx:Tx,_ctx:SessionContext,p:CompanyOrganisationReference):Promise<CompanyOrganisationTags>{
  const [row]=await tx.execute<{tags:CompanyOrganisationTags}>(sql`select app.company_organisation_tags(${p.companyId}::uuid,${day(p.asOf)}::date) tags`);if(!row?.tags)throw Error('Company organisation is unavailable.');return row.tags;
+}
+/** A caller-ordered set of dated references, checked by the same native owner as a single reference. */
+export async function deriveCompanyOrganisationBatchTx(tx:Tx,refs:readonly CompanyOrganisationReference[]){
+ if(!refs.length)return [];
+ const inputs=refs.map(({companyId,asOf},input_slot)=>({input_slot,company_id:companyId,as_of:day(asOf)}));
+ const rows=await tx.execute<{tags:CompanyOrganisationTags;managed:boolean}>(sql`
+  select app.company_organisation_tags(ref.company_id,ref.as_of) as tags,
+         (select app.company_organisation_managed()) as managed
+  from jsonb_to_recordset(${JSON.stringify(inputs)}::jsonb) as ref(input_slot integer,company_id uuid,as_of date)
+  order by ref.input_slot
+ `);
+ if(rows.length!==refs.length||rows.some(row=>!row.tags))throw Error('Company organisation is unavailable.');
+ return rows;
 }
 export async function employmentOrganisationTagsTx(tx:Tx,_ctx:SessionContext,p:{employmentId:string;asOf:string}):Promise<CompanyOrganisationTags>{
  const [row]=await tx.execute<{tags:CompanyOrganisationTags}>(sql`select app.employment_organisation_tags(${p.employmentId}::uuid,${day(p.asOf)}::date) tags`);if(!row?.tags)throw Error('Employee organisation is unavailable.');return row.tags;

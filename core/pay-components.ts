@@ -226,8 +226,8 @@ const flagsOf = (c: Pick<PayComponentSeed, 'includedInEpf' | 'includedInSocsoEis
  * `active` vs `ended` from validTo against today. `prorates` (catalog) is selected so the UI can render the
  * resolved prorate (override ?? catalog).
  */
-export function listEmploymentPayComponents(ctx: SessionContext, employmentId: string) {
-  return withTenant(ctx, (tx) =>
+export function listEmploymentPayComponents(ctx: SessionContext, employmentId: string, existingTx?: Tx) {
+  const read = (tx: Tx) =>
     tx
       .select({
         id: employmentPayComponent.id,
@@ -259,8 +259,8 @@ export function listEmploymentPayComponents(ctx: SessionContext, employmentId: s
           isNull(employmentPayComponent.supersededAt),
         ),
       )
-      .orderBy(payComponent.code, employmentPayComponent.validFrom),
-  );
+      .orderBy(payComponent.code, employmentPayComponent.validFrom);
+  return existingTx?read(existingTx):withTenant(ctx,read);
 }
 
 /** One row of `listEmploymentPayComponents`, which `getEmploymentPayComponent` returns exactly one of. */

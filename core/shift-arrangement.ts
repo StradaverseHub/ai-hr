@@ -28,7 +28,7 @@
  *   · periods can never overlap, because each simply runs until the next begins.
  */
 import { and, asc, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { lockLeaveDependenciesTx } from '../packs/leave/service';
 // 8cd601d0 — `attendanceRule` is the SCHEDULE GROUP table (870b79e2 named it; there is no second table
@@ -471,8 +471,9 @@ export type ShiftArrangementHistoryRow = {
 export function shiftArrangementHistory(
   ctx: SessionContext,
   employmentId: string,
+  existingTx?: Tx,
 ): Promise<ShiftArrangementHistoryRow[]> {
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx) => {
     const rows = await tx
       .select({
         id: employmentShiftArrangement.id,
@@ -516,7 +517,8 @@ export function shiftArrangementHistory(
         recordedOnRelease: i === 0 && r.createdBy == null,
       };
     }).reverse(); // ascending while previous-shift is resolved, newest-first for the screen
-  });
+  };
+  return existingTx?read(existingTx):withTenant(ctx,read);
 }
 
 // ── 0bade264 (r209) · SCHEDULE ASSIGNMENT — every employee's current arrangement, in one read ────────

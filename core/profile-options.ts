@@ -241,8 +241,9 @@ export function listProfileOptions(
 export async function listAllProfileOptions(
   ctx: SessionContext,
   opts: { activeOnly?: boolean; companyId?:string|null } = {},
+  existingTx?: Tx,
 ): Promise<Record<ProfileOptionCategory, ProfileOptionRow[]>> {
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx) => {
     const where = opts.activeOnly ? eq(profileOption.isActive, true) : undefined;
     const rows = await tx
       .select()
@@ -268,7 +269,8 @@ export async function listAllProfileOptions(
       }
     }
     return out;
-  });
+  };
+  return existingTx?read(existingTx):withTenant(ctx,read);
 }
 
 /**

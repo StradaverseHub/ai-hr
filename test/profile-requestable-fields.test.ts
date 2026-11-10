@@ -45,6 +45,7 @@ const CORE_PROFILE = read('core/profile.ts');
 const ME_ACTIONS = read('app/me/actions.ts');
 const REQUEST_CARD = read('app/me/request-change-card.tsx');
 const ME_PAGE = read('app/me/page.tsx');
+const ME_PRESENTATION = read('app/me/presentation.ts');
 const ESS_EDITOR=read('app/me/profile-editor.tsx'),ESS_OWNER=read('core/profile-edit.ts'),POLICY_OWNER=read('core/profile-edit-policy.ts'),PROPOSAL_DISPLAY=read('lib/profile-proposal-display.ts');
 // The two screens an APPROVER reads a proposed change on. Both are held to the same renderer as /me.
 const PERSONNEL_PAGE = read('app/admin/personnel/profile-changes/page.tsx');
@@ -441,7 +442,7 @@ describe('r261 — the two settings are catalogued, and catalogued the way they 
 
 describe('r261 — a switched-off field is ABSENT from the employee\'s screen, not disabled on it', () => {
   it('the actual editor keeps View Only visible and derives writable controls only from the fresh owner permission sets',()=>{
-    expect(ME_PAGE).toContain('readOwnProfileWorkspace(s,{employmentId},presentation)');expect(ESS_EDITOR).toContain('const editable=new Set(workspace.editable),primaryEditable=new Set(workspace.legacyPrimaryEditable)');
+    expect(ME_PRESENTATION).toContain('readOwnProfileWorkspaceSnapshotTx(tx,{employmentId},presentation)');expect(ESS_EDITOR).toContain('const editable=new Set(workspace.editable),primaryEditable=new Set(workspace.legacyPrimaryEditable)');
     expect(ESS_EDITOR).toContain('const allowed=applicable&&taxAvailable&&canEdit(field.id,row)');expect(ESS_EDITOR).toContain('{allowed?<div');expect(ESS_EDITOR).toContain('{displayValue}');
     expect(ESS_OWNER).toContain('freshProfileEditPolicyTx(tx,ctx)');expect(ESS_OWNER).toContain("throw new EssProfileError('fieldClosed',[field.id])");
     expect(CORE_PROFILE).toContain("profileChangeApprover(ctx)==='group_admin'");expect(CORE_PROFILE).toContain('await assertProfileRouteDecisionTx(tx,ctx,req)');

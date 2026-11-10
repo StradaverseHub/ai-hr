@@ -49,8 +49,8 @@ export type Cp38Row = {
 };
 
 /** All CP38 rows (incl. superseded/closed) for an employment, latest-effective first. Read-only. */
-export function listCp38(ctx: SessionContext, p: { employmentId: string }): Promise<Cp38Row[]> {
-  return withTenant(ctx, (tx) =>
+export function listCp38(ctx: SessionContext, p: { employmentId: string }, existingTx?: Tx): Promise<Cp38Row[]> {
+  const read = (tx: Tx) =>
     tx
       .select({
         id: employeeCp38.id,
@@ -64,8 +64,8 @@ export function listCp38(ctx: SessionContext, p: { employmentId: string }): Prom
       })
       .from(employeeCp38)
       .where(eq(employeeCp38.employmentId, p.employmentId))
-      .orderBy(desc(employeeCp38.validFrom), desc(employeeCp38.id)),
-  );
+      .orderBy(desc(employeeCp38.validFrom), desc(employeeCp38.id));
+  return existingTx?read(existingTx):withTenant(ctx,read);
 }
 
 /**

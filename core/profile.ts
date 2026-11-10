@@ -783,31 +783,37 @@ export function listProfileChangeRequests(
  * bottom after five newer requests is a promise not kept.
  */
 export function myProfileChangeRequests(ctx: SessionContext, limit = 50,presentation?:ProfilePresentationPolicy) {
-  const personId = ctx.personId;
-  if (!personId) return Promise.resolve([]);
+  if (!ctx.personId) return Promise.resolve([]);
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`SET TRANSACTION READ ONLY`);
     const policy=presentation??await freshProfilePresentationPolicyTx(tx,ctx);
     if(presentation)await tx.execute(sql`select app.access_profile_policy_read_lock()`);
-    const rows=await tx
-      .select({
-        id: profileChangeRequest.id,
-        proposed: profileChangeRequest.proposed,
-        status: profileChangeRequest.status,
-        decisionReason: profileChangeRequest.decisionReason,
-        decidedAt: profileChangeRequest.decidedAt,
-        createdAt: profileChangeRequest.createdAt,
-      })
-      .from(profileChangeRequest)
-      .where(and(ownPersonPredicate(ctx),eq(profileChangeRequest.personId, personId)))
-      .orderBy(desc(profileChangeRequest.createdAt),desc(profileChangeRequest.id))
-      .limit(limit);
-    return rows.map(row=>{
-      const proposed=projectOwnProfileProposal(row.proposed,policy.visible);
-      // Free-form decision text can repeat a proposed private value; retain it only for an intact view.
-      const intact=ownProfileProposalIsIntact(row.proposed,policy.visible);
-      return {...row,proposed,decisionReason:intact?row.decisionReason:null};
-    });
+    return myProfileChangeRequestsSnapshotTx(tx,ctx,policy,limit);
+  });
+}
+
+/** Same own-person history and redaction for the admitted My Profile display transaction. */
+export async function myProfileChangeRequestsSnapshotTx(tx:Tx,ctx:SessionContext,policy:ProfilePresentationPolicy,limit=50) {
+  const personId=ctx.personId;
+  if(!personId)return [];
+  const rows=await tx
+    .select({
+      id: profileChangeRequest.id,
+      proposed: profileChangeRequest.proposed,
+      status: profileChangeRequest.status,
+      decisionReason: profileChangeRequest.decisionReason,
+      decidedAt: profileChangeRequest.decidedAt,
+      createdAt: profileChangeRequest.createdAt,
+    })
+    .from(profileChangeRequest)
+    .where(and(ownPersonPredicate(ctx),eq(profileChangeRequest.personId, personId)))
+    .orderBy(desc(profileChangeRequest.createdAt),desc(profileChangeRequest.id))
+    .limit(limit);
+  return rows.map(row=>{
+    const proposed=projectOwnProfileProposal(row.proposed,policy.visible);
+    // Free-form decision text can repeat a proposed private value; retain it only for an intact view.
+    const intact=ownProfileProposalIsIntact(row.proposed,policy.visible);
+    return {...row,proposed,decisionReason:intact?row.decisionReason:null};
   });
 }
 
