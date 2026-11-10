@@ -8,6 +8,9 @@
  * transactions other work proceeds. Each tool is idempotent per item, so a run stopped part way is completed by
  * running it again.
  */
+import { sql } from 'drizzle-orm';
+import type { Tx } from '../db/client';
+
 export const OPERATOR_CHUNK_BUDGET_MS = 200;
 
 /** Rows a chunk reads at most before it handles them; the time budget usually ends a chunk first. */
@@ -23,3 +26,14 @@ export function chunkDeadline(budgetMs: number = OPERATOR_CHUNK_BUDGET_MS): () =
 export function chunkRows(requested: number | undefined): number {
   return Number.isSafeInteger(requested) && requested! > 0 ? Math.min(requested!, 5000) : OPERATOR_CHUNK_ROWS;
 }
+
+/**
+ * The tenant writer lock each chunk of these tools takes first, held to its commit, exactly as their single
+ * transaction did. One owner, so the reader/writer Access lock (phase 2) changes it in one place: there it is the
+ * bounded exclusive wait (core/access-exclusive-wait.ts) followed by app.access_configuration_write_lock().
+ */
+export async function lockOperatorChunkTx(tx: Tx, tenantId: string): Promise<void> {
+  void tenantId;
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+}
+

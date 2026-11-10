@@ -10,7 +10,7 @@ import {createDb,type SessionContext} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {appUser,roleAssignment,informationPayslipSnapshot} from '../db/schema';
 import {lockEmploymentStatutoryOwnerTx} from '../core/org';
-import {chunkDeadline} from '../core/operator-chunks';
+import {chunkDeadline,lockOperatorChunkTx} from '../core/operator-chunks';
 import {isCalendarDate} from '../lib/calendar-date';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
 import {pgSqlState} from '../lib/db-error';
@@ -48,7 +48,7 @@ export async function reconcileInformationSnapshots(storage:ReturnType<typeof cr
   while(start<items.length){
    const chunk=await storage.withTenant(ctx,async tx=>{
     const [database]=await tx.execute<{role:string}>(sql`select current_user as role`);if(database.role==='ai_hr_app')throw new Error('Use the private operator connection for reconciliation.');
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockOperatorChunkTx(tx,manifest.tenantId);
     const overBudget=chunkDeadline();
     let missing=0,handled=0;const evidenceRecords:unknown[]=[];
     for(const item of items.slice(start)){

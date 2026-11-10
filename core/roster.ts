@@ -47,7 +47,7 @@ import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break
 import { holidayCalendarFactsByEmployment } from './holidays';
 import { approvedLeavePresenceByEmploymentTx, lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
-import {chunkDeadline} from './operator-chunks';
+import {chunkDeadline,lockOperatorChunkTx} from './operator-chunks';
 import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
 import type { RotationCycle } from './week-pattern';
@@ -2109,7 +2109,7 @@ export async function backfillBackupShift(
   // fresh shift match at the start of a chunk prove what the old per-row checks proved for every row in it.
   while (completed.size < before.length) {
     await withTenant(ctx,async tx=>{
-      await tx.execute(sql`select app.access_workforce_write_lock()`);
+      await lockOperatorChunkTx(tx,ctx.tenantId);
       const overBudget=chunkDeadline();
       const current=await employmentsWithoutBackupShift(ctx,undefined,tx);
       if(image(current)!==image(before.filter(row=>!completed.has(row.employmentId))))throw new LeaveDependencyUnavailable();

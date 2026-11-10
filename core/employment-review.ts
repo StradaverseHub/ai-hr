@@ -33,7 +33,7 @@ import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefus
 import { currentAdminManager } from './performance';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { chunkDeadline, chunkRows } from './operator-chunks';
+import { chunkDeadline, chunkRows, lockOperatorChunkTx } from './operator-chunks';
 
 export class ReviewError extends Error {
   constructor(message: string) {
@@ -627,7 +627,7 @@ export async function sweepDueReviews(
   for (;;) {
     const cursor: Cursor | null = after;
     const chunk = await withTenant(ctx, async (tx): Promise<{ opened: number; last: Cursor | null; done: boolean }> => {
-      await tx.execute(sql`select app.access_workforce_write_lock()`);
+      await lockOperatorChunkTx(tx, ctx.tenantId);
       const overBudget = chunkDeadline();
       // Enumerate active employments left-joined to the current open assignment row, the next chunk in id order.
       const rows = await tx
@@ -867,7 +867,7 @@ export async function sweepReviewReminders(
   for (;;) {
     const cursor: string | null = after;
     const chunk = await withTenant(ctx, async (tx): Promise<{ reminders: number; last: string | null; done: boolean }> => {
-      await tx.execute(sql`select app.access_workforce_write_lock()`);
+      await lockOperatorChunkTx(tx, ctx.tenantId);
       const overBudget = chunkDeadline();
       const rows = await tx
         .select({
@@ -909,7 +909,7 @@ export async function sweepReviewReminders(
   // the sweep is daily and an empty run is not a state change. Appended after the last chunk, as before.
   if (reminders > 0) {
     await withTenant(ctx, async (tx) => {
-      await tx.execute(sql`select app.access_workforce_write_lock()`);
+      await lockOperatorChunkTx(tx, ctx.tenantId);
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'employment-review-reminder-sweep',
