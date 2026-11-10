@@ -5,6 +5,7 @@ import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import type {SessionContext,Tx} from '../db/client';
 import * as s from '../db/schema';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {AttendanceCorrectionPendingError,requestAttendanceCorrection} from '../core/attendance';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {withAttendanceTenant} from '../core/module-gate';
@@ -17,22 +18,19 @@ beforeAll(migrateTestDb);
 afterAll(closeAll);
 
 const dialect=new PgDialect();
-// The bounded Access lock first tries without waiting, in one statement.
-const lockStatement='select pg_try_advisory_xact_lock(hashtextextended($1,0)) as acquired';
 const sharedLockStatement='select pg_advisory_xact_lock_shared(hashtextextended($1,0))';
 
-function observedCarrier(tx:Tx,tenantId:string,companyId:string,shared:boolean,afterEpoch?:()=>Promise<void>){
- let access=0,workflow=0;
+/** Wave 4: a submission in a caller-owned transaction joins the Access lock itself (shared unless the caller
+ * already holds a mode), so the carrier only observes the workflow epoch lock; lock modes are read back from
+ * pg_locks. An 'exclusive' caller takes the exclusive Access lock before submitting. */
+function observedCarrier(tx:Tx,tenantId:string,companyId:string,afterEpoch?:()=>Promise<void>){
+ let workflow=0;
  const carrier=new Proxy(tx,{get(target,key){
   if(key==='execute')return async(statement:Parameters<Tx['execute']>[0])=>{
    if(typeof statement==='string')return target.execute(statement);
    const query=dialect.sqlToQuery(statement.getSQL());
    const statementText=query.sql.replace(/\s+/g,' ').trim().replace(/\( /g,'(');
    const key=query.params.length===1?query.params[0]:undefined;
-   if(statementText===lockStatement&&key==='access-configuration:'+tenantId){
-    access++;
-    if(shared)return target.execute(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as acquired`);
-   }
    const result=await target.execute(statement);
    // The one application snapshot follows correction INSERT, which already froze the epoch.
    if(statementText===sharedLockStatement&&key===tenantId+':attendance-workflow:'+companyId+':irregularity'){
@@ -44,7 +42,7 @@ function observedCarrier(tx:Tx,tenantId:string,companyId:string,shared:boolean,a
   const value=Reflect.get(target,key,target);
   return typeof value==='function'?value.bind(target):value;
  }});
- return {carrier,counts:()=>({access,workflow})};
+ return {carrier,counts:()=>({workflow})};
 }
 
 function barrier(){
@@ -90,10 +88,11 @@ it('allows independent ordinary submissions to overlap before audit while retain
   let snapshot:unknown;
   await withAttendanceTenant(subject.ctx,async tx=>{
    await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);
+   if(!shared)await lockAccessConfigurationWriteTx(tx,base.tenantId);
    const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
-   const {carrier,counts}=observedCarrier(tx,base.tenantId,subject.companyId,shared,afterEpoch?()=>afterEpoch(backend.pid):undefined);
+   const {carrier,counts}=observedCarrier(tx,base.tenantId,subject.companyId,afterEpoch?()=>afterEpoch(backend.pid):undefined);
    const {correctionId}=await requestAttendanceCorrection(subject.ctx,subject.input,carrier);
-   expect(counts()).toEqual({access:1,workflow:1});
+   expect(counts()).toEqual({workflow:1});
    const expectedLocks=[
     ['access-configuration:'+base.tenantId,shared?'ShareLock':'ExclusiveLock'],
     ['leave-dependency-configuration:'+base.tenantId,'ShareLock'],

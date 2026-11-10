@@ -10,6 +10,7 @@ import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/atten
 import {withAttendanceTenant} from '../core/module-gate';
 import {endReportingLine,hireEmployee,setReportingLine} from '../core/org';
 import {LeaveDependencyUnavailable} from '../core/leave-dependency-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 import {restoreHistoricalAttendanceSubmission} from './helpers/attendance-submission-fixture';
@@ -18,30 +19,19 @@ beforeAll(migrateTestDb);
 afterAll(closeAll);
 
 const dialect=new PgDialect();
-const accessStatement='select pg_advisory_xact_lock(hashtextextended($1,0))';
 const attendanceSubjectStatement='select pg_advisory_xact_lock(hashtextextended($1, 0))';
-const leaveStatement="select case when app.current_tenant_id()=$1::uuid and current_setting('transaction_isolation')='read committed' and current_setting('transaction_read_only')='off' then pg_try_advisory_xact_lock(hashtextextended($2,0)) else false end as acquired";
 
-function observedCarrier(tx:Tx,tenantId:string,employmentId:string,shared:boolean,onSubjectLocked?:()=>Promise<void>){
-  let access=0,leave=0,subject=0;
+/** Wave 4: a decision in a caller-owned transaction joins the Access lock itself (shared unless the caller
+ * already holds a mode), so the carrier only observes the attendance subject lock; lock modes are read
+ * back from pg_locks. An 'exclusive' caller takes the exclusive Access lock before deciding. */
+function observedCarrier(tx:Tx,tenantId:string,employmentId:string,onSubjectLocked?:()=>Promise<void>){
+  let subject=0;
   const carrier=new Proxy(tx,{get(target,key){
     if(key==='execute')return async (statement:Parameters<Tx['execute']>[0])=>{
       if(typeof statement==='string')return target.execute(statement);
       const compiled=dialect.sqlToQuery(statement.getSQL());
       const text=compiled.sql.replace(/\s+/g,' ').trim();
       const params=compiled.params;
-      if(text===accessStatement&&params.length===1&&params[0]==='access-configuration:'+tenantId){
-        access++;
-        if(shared)return target.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${params[0]},0))`);
-      }
-      if(text===leaveStatement&&params.length===2&&params[0]===tenantId&&params[1]==='leave-dependency-configuration:'+tenantId){
-        leave++;
-        if(shared)return target.execute(sql`select case
-          when app.current_tenant_id()=${params[0]}::uuid and current_setting('transaction_isolation')='read committed'
-            and current_setting('transaction_read_only')='off'
-          then pg_try_advisory_xact_lock_shared(hashtextextended(${params[1]},0))
-          else false end as acquired`);
-      }
       const result=await target.execute(statement);
       if(text===attendanceSubjectStatement&&params.length===1&&params[0]===tenantId+':'+employmentId){
         subject++;
@@ -52,8 +42,11 @@ function observedCarrier(tx:Tx,tenantId:string,employmentId:string,shared:boolea
     const value=Reflect.get(target,key,target);
     return typeof value==='function'?value.bind(target):value;
   }});
-  return {carrier,counts:()=>({access,leave,subject})};
+  return {carrier,subjectLocks:()=>subject};
 }
+type CallerMode='shared'|'exclusive';
+const accessModes=(mode:CallerMode)=>[mode==='shared'?'ShareLock':'ExclusiveLock'];
+const leaveConfigurationModes=(mode:CallerMode)=>mode==='shared'?['ShareLock']:['ExclusiveLock','ShareLock'];
 
 async function lockModes(tx:Tx,tenantId:string,employmentId:string){
   return tx.execute<{key:string;mode:string}>(sql`
@@ -76,11 +69,11 @@ function barrier(){
   return {promise,resolve};
 }
 
-async function within<T>(promise:Promise<T>):Promise<T>{
+async function within<T>(promise:Promise<T>,ms=5000):Promise<T>{
   let timer:ReturnType<typeof setTimeout>|undefined;
   try{
     return await Promise.race([promise,new Promise<never>((_,reject)=>{
-      timer=setTimeout(()=>reject(new Error('Independent rejection subjects did not overlap')),5000);
+      timer=setTimeout(()=>reject(new Error('Independent rejection subjects did not overlap')),ms);
     })]);
   }finally{clearTimeout(timer);}
 }
@@ -106,20 +99,19 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
   expect(await owner.db.select({id:attendanceWorkflowRequest.id}).from(attendanceWorkflowRequest)
     .where(eq(attendanceWorkflowRequest.tenantId,base.tenantId))).toEqual([]);
   const rollback=new Error('rollback only');
-  async function reject(request:typeof first,shared:boolean,onSubjectLocked?:()=>Promise<void>){
+  async function reject(request:typeof first,mode:CallerMode,onSubjectLocked?:()=>Promise<void>){
     let snapshot:unknown;
     await withAttendanceTenant(admin,async tx=>{
       await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);
-      const {carrier,counts}=observedCarrier(tx,base.tenantId,request.employmentId,shared,onSubjectLocked);
+      if(mode==='exclusive')await lockAccessConfigurationWriteTx(tx,base.tenantId);
+      const {carrier,subjectLocks}=observedCarrier(tx,base.tenantId,request.employmentId,onSubjectLocked);
       const result=await decideAttendanceCorrection(admin,{correctionId:request.correctionId,decision:'rejected',
         rejectReason:'Fictional native rejection witness'},carrier);
       expect(result).toEqual({status:'rejected',deferred:false});
-      expect(counts()).toEqual({access:1,leave:1,subject:1});
-      const configurationMode=shared?'ShareLock':'ExclusiveLock';
+      expect(subjectLocks()).toBe(1);
       const modes=await lockModes(tx,base.tenantId,request.employmentId);
-      expect(modes.filter(row=>row.key==='access')).toEqual([{key:'access',mode:configurationMode}]);
-      expect(modes.filter(row=>row.key==='leaveConfiguration').map(row=>row.mode))
-        .toEqual(shared?['ShareLock']:['ExclusiveLock','ShareLock']);
+      expect(modes.filter(row=>row.key==='access').map(row=>row.mode)).toEqual(accessModes(mode));
+      expect(modes.filter(row=>row.key==='leaveConfiguration').map(row=>row.mode)).toEqual(leaveConfigurationModes(mode));
       for(const key of ['leaveSubject','attendanceSubject','audit']){
         expect(modes.filter(row=>row.key===key)).toEqual([{key,mode:'ExclusiveLock'}]);
       }
@@ -140,10 +132,10 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
     }).catch(error=>{if(error!==rollback)throw error;});
     return snapshot;
   }
-  expect(await reject(first,true)).toEqual(await reject(first,false));
+  expect(await reject(first,'shared')).toEqual(await reject(first,'exclusive'));
 
   const entered=[barrier(),barrier()],release=barrier();
-  const concurrent=[first,second].map((request,index)=>reject(request,true,async()=>{
+  const concurrent=[first,second].map((request,index)=>reject(request,'shared',async()=>{
     entered[index].resolve();
     await release.promise;
   }));
@@ -156,12 +148,12 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
       });
       expect(obtained).toBe(false);
     }
+    // A same-subject decision waits, with the bound, for the employment lock and then refuses as busy.
     await within(withAttendanceTenant(admin,async tx=>{
-      const {carrier}=observedCarrier(tx,base.tenantId,first.employmentId,true);
       await expect(decideAttendanceCorrection(admin,{correctionId:first.correctionId,decision:'rejected',
-        rejectReason:'Conflicting fictional same-subject rejection'},carrier)).rejects.toBeInstanceOf(LeaveDependencyUnavailable);
+        rejectReason:'Conflicting fictional same-subject rejection'},tx)).rejects.toBeInstanceOf(LeaveDependencyUnavailable);
       throw rollback;
-    }).catch(error=>{if(error!==rollback)throw error;}));
+    }).catch(error=>{if(error!==rollback)throw error;}),12000);
   }finally{
     release.resolve();
     await Promise.all(concurrent);
@@ -213,18 +205,25 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
       error => error,
     );
     const duplicateFinishedBeforeLockWitness=duplicate.then(error=>{throw error;});
+    // The duplicate's ordinary attempt rolls back on the busy subject, then retries on the held course: it waits
+    // for the employment lock while holding only the shared Access lock, never the exclusive one.
     await within(Promise.race([duplicateFinishedBeforeLockWitness,(async()=>{
       for(let attempt=0;attempt<100;attempt++){
-        const [result]=await owner.client`with key as (select hashtextextended(${'access-configuration:'+base.tenantId},0) as value)
-          select exists(select 1 from pg_locks l cross join key k
+        const [result]=await owner.client`with access as (select hashtextextended(${'access-configuration:'+base.tenantId},0) as value),
+          subject as (select hashtextextended(${'leave-dependency-employment:'+base.tenantId+':'+first.employmentId},0) as value)
+          select exists(select 1 from pg_locks l cross join subject k
             where l.locktype='advisory' and l.mode='ExclusiveLock' and not l.granted and l.objsubid=1
               and l.classid::bigint=((k.value>>32)&4294967295) and l.objid::bigint=(k.value&4294967295)
-              and not exists(select 1 from pg_locks s where s.pid=l.pid and s.locktype=l.locktype
-                and s.classid=l.classid and s.objid=l.objid and s.objsubid=l.objsubid and s.granted)) as waiting`;
+              and exists(select 1 from pg_locks s cross join access a where s.pid=l.pid and s.locktype='advisory'
+                and s.mode='ShareLock' and s.granted and s.objsubid=1
+                and s.classid::bigint=((a.value>>32)&4294967295) and s.objid::bigint=(a.value&4294967295))
+              and not exists(select 1 from pg_locks x cross join access a where x.pid=l.pid and x.locktype='advisory'
+                and x.mode='ExclusiveLock' and x.objsubid=1
+                and x.classid::bigint=((a.value>>32)&4294967295) and x.objid::bigint=(a.value&4294967295))) as waiting`;
         if(result.waiting)return;
         await new Promise(resolve=>setTimeout(resolve,25));
       }
-      throw new Error('Same-subject rejection must roll back its shared attempt before waiting for exclusive Access');
+      throw new Error('Same-subject rejection must wait for the employment lock holding only shared Access');
     })()]));
   }finally{
     unlockRows.resolve();
@@ -251,20 +250,12 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
   let overtimeDecision:ReturnType<typeof decideAttendanceCorrection>|undefined;
   try{
     await within(Promise.race([holdingAccess.promise,accessHolder]));
+    // Wave 4: an overtime-bearing rejection takes the approval's held course, which shares the Access lock, so it
+    // completes while another writer holds the shared lock instead of waiting for exclusive Access.
     overtimeDecision=decideAttendanceCorrection(admin,{correctionId:overtime.correctionId,decision:'rejected',
-      rejectReason:'Fictional overtime rejection retains exclusive configuration'});
-    const overtimeFinishedBeforeLockWitness=overtimeDecision.then(()=>{
-      throw new Error('Overtime-bearing rejection completed while another transaction held shared Access');
-    });
-    await within(Promise.race([overtimeFinishedBeforeLockWitness,(async()=>{
-      for(let attempt=0;attempt<100;attempt++){
-        const [result]=await owner.client`select exists(select 1 from pg_locks l where l.locktype='advisory'
-          and l.mode='ExclusiveLock' and not l.granted and ${accessHolderPid}::integer=any(pg_blocking_pids(l.pid))) as waiting`;
-        if(result.waiting)return;
-        await new Promise(resolve=>setTimeout(resolve,25));
-      }
-      throw new Error('Overtime-bearing rejection must wait for exclusive Access');
-    })()]));
+      rejectReason:'Fictional overtime rejection shares configuration'});
+    expect(accessHolderPid).toBeGreaterThan(0);
+    expect(await within(overtimeDecision,15000)).toEqual({status:'rejected',deferred:false});
   }finally{
     releaseAccess.resolve();
     await accessHolder;
@@ -318,19 +309,19 @@ it.each([1,2,3,4,'delegated-v2'] as const)('keeps versioned non-OT rejection and
   const input={correctionId,decision:'rejected' as const,rejectReason:'Fictional native rejection witness',
     expectedStageIndex:0,...(route===3||route===4?{expectedParticipantSlot:'0:0'}:{})};
   const rollback=new Error('rollback only');
-  async function reject(shared:boolean,onSubjectLocked?:(pid:number)=>Promise<void>){
+  async function reject(mode:CallerMode,onSubjectLocked?:(pid:number)=>Promise<void>){
     let snapshot:unknown;
     await withAttendanceTenant(reviewer.ctx,async tx=>{
       await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);
+      if(mode==='exclusive')await lockAccessConfigurationWriteTx(tx,base.tenantId);
       const [connection]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
-      const {carrier,counts}=observedCarrier(tx,base.tenantId,worker.employmentId,shared,
+      const {carrier,subjectLocks}=observedCarrier(tx,base.tenantId,worker.employmentId,
         onSubjectLocked?()=>onSubjectLocked(connection.pid):undefined);
       expect(await decideAttendanceCorrection(reviewer.ctx,input,carrier)).toEqual({status:'rejected',deferred:false});
-      expect(counts()).toEqual({access:1,leave:1,subject:1});
+      expect(subjectLocks()).toBe(1);
       const modes=await lockModes(tx,base.tenantId,worker.employmentId);
-      expect(modes.filter(row=>row.key==='access').map(row=>row.mode)).toEqual([shared?'ShareLock':'ExclusiveLock']);
-      expect(modes.filter(row=>row.key==='leaveConfiguration').map(row=>row.mode))
-        .toEqual(shared?['ShareLock']:['ExclusiveLock','ShareLock']);
+      expect(modes.filter(row=>row.key==='access').map(row=>row.mode)).toEqual(accessModes(mode));
+      expect(modes.filter(row=>row.key==='leaveConfiguration').map(row=>row.mode)).toEqual(leaveConfigurationModes(mode));
       expect(modes.filter(row=>row.key==='audit')).toEqual([{key:'audit',mode:'ExclusiveLock'}]);
       const [row]=await tx.select({status:attendanceCorrection.status,reason:attendanceCorrection.rejectReason})
         .from(attendanceCorrection).where(eq(attendanceCorrection.id,correctionId));
@@ -359,7 +350,7 @@ it.each([1,2,3,4,'delegated-v2'] as const)('keeps versioned non-OT rejection and
     }).catch(error=>{if(error!==rollback)throw error;});
     return snapshot;
   }
-  expect(await reject(true)).toEqual(await reject(false));
+  expect(await reject('shared')).toEqual(await reject('exclusive'));
   if(route===4){
     await owner.client`alter table domain_event add constraint attendance_rejection_witness_late_failure
       check (event_type <> 'attendance-correction.rejected') not valid`;
@@ -380,7 +371,7 @@ it.each([1,2,3,4,'delegated-v2'] as const)('keeps versioned non-OT rejection and
   if(delegationId){
     const entered=barrier(),release=barrier();
     let pid=0;
-    const pending=reject(true,async connectionPid=>{pid=connectionPid;entered.resolve();await release.promise;});
+    const pending=reject('shared',async connectionPid=>{pid=connectionPid;entered.resolve();await release.promise;});
     let revocation:Promise<unknown>|undefined;
     try{
       await within(Promise.race([entered.promise,pending]));
@@ -399,10 +390,7 @@ it.each([1,2,3,4,'delegated-v2'] as const)('keeps versioned non-OT rejection and
       release.resolve();
       await Promise.all([pending,...(revocation?[revocation]:[])]);
     }
-    await expect(withAttendanceTenant(reviewer.ctx,tx=>{
-      const {carrier}=observedCarrier(tx,base.tenantId,worker.employmentId,true);
-      return decideAttendanceCorrection(reviewer.ctx,input,carrier);
-    })).rejects.toThrow();
+    await expect(withAttendanceTenant(reviewer.ctx,tx=>decideAttendanceCorrection(reviewer.ctx,input,tx))).rejects.toThrow();
     await expect(decideAttendanceCorrection(reviewer.ctx,input)).rejects.toThrow();
   }
   const [retained]=await owner.db.select().from(attendanceCorrection).where(eq(attendanceCorrection.id,correctionId));

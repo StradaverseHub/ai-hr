@@ -36,6 +36,7 @@ import {saveEmploymentHolidayCalendarAssignment} from '../core/holiday-calendar-
 import {reprojectEntitlementForEmployment} from '../core/leave';
 import {decideAttendanceCorrection,lockAttendanceClockDependenciesTx,requestAttendanceCorrection} from '../core/attendance';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {configureAttendanceSubmissionFixtures,restoreHistoricalAttendanceSubmission} from './helpers/attendance-submission-fixture';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
 const barrier=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};};
@@ -205,25 +206,30 @@ describe('entitlement reprojection for one employment under the shared lock',()=
 });
 
 describe('attendance corrections in a caller’s transaction and the fallback rejection course',()=>{
- const date='2026-06-03';
- const fileOvertime=(employmentId:string,existing?:Parameters<typeof requestAttendanceCorrection>[2])=>requestAttendanceCorrection(adminCtx(b),
-  {employmentId,date,checkIn:'09:00',checkOut:'18:00',requestedOtMinutes:90,reason:'Fictional overtime claim'},existing);
+ beforeEach(async()=>{await setModule(b.tenantId,'attendance','active');});
+ /** A pending overtime-bearing request, restored as a historical row so no routing fixture is involved. */
+ const pendingOvertime=async(employmentId:string,date:string)=>(await restoreHistoricalAttendanceSubmission(b,{
+  employmentId,attendanceDate:date,status:'pending',requestKind:'other',proposedCheckIn:'09:00',proposedCheckOut:'18:00',
+  requestedOtMinutes:60,reason:'Fictional overtime claim',
+  originalClockSnapshot:{version:1,attendanceId:null,originalCheckIn:null,originalCheckOut:null,capturedAt:new Date().toISOString()},
+ })).id;
+ const reject=(correctionId:string,tx?:Parameters<typeof decideAttendanceCorrection>[2])=>decideAttendanceCorrection(adminCtx(b),
+  {correctionId,decision:'rejected',rejectReason:'Fictional refusal'},tx);
  it('files and decides inside a caller-owned transaction on the shared lock',async()=>{
-  const employmentId=await hire('caller-tx','2020-01-01');
+  await configureAttendanceSubmissionFixtures(b);
+  const employmentId=await hire('caller-tx','2020-01-01'),ctx=adminCtx(b);
   let correctionId='';
-  await completesBesideSharedHolder(async()=>{correctionId=(await withTenant(adminCtx(b),tx=>fileOvertime(employmentId,tx))).correctionId;});
-  await completesBesideSharedHolder(()=>withTenant(adminCtx(b),tx=>decideAttendanceCorrection(adminCtx(b),{correctionId,decision:'rejected',rejectReason:'Fictional refusal'},tx)));
+  await completesBesideSharedHolder(async()=>{correctionId=(await withTenant(ctx,tx=>requestAttendanceCorrection(ctx,
+   {employmentId,date:'2026-06-03',checkIn:'09:00',checkOut:'18:00',reason:'Fictional caller-owned request'},tx))).correctionId;});
+  await completesBesideSharedHolder(()=>withTenant(ctx,tx=>reject(correctionId,tx)));
   const [row]=await owner.db.select({status:schema.attendanceCorrection.status}).from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id,correctionId));
   expect(row.status).toBe('rejected');
  },90000);
  it('rejects an overtime request beside a shared writer, behind an editor, and only once when two deciders race',async()=>{
   const employmentId=await hire('reject','2020-01-01');
-  const reject=(correctionId:string)=>decideAttendanceCorrection(adminCtx(b),{correctionId,decision:'rejected',rejectReason:'Fictional refusal'});
-  const first=(await fileOvertime(employmentId)).correctionId;
+  const [first,second,third]=[await pendingOvertime(employmentId,'2026-06-03'),await pendingOvertime(employmentId,'2026-06-04'),await pendingOvertime(employmentId,'2026-06-05')];
   await completesBesideSharedHolder(()=>reject(first));
-  const second=(await requestAttendanceCorrection(adminCtx(b),{employmentId,date:'2026-06-04',checkIn:'09:00',checkOut:'18:00',requestedOtMinutes:60,reason:'Fictional second claim'})).correctionId;
   await waitsBehindEditor(()=>reject(second));
-  const third=(await requestAttendanceCorrection(adminCtx(b),{employmentId,date:'2026-06-05',checkIn:'09:00',checkOut:'18:00',requestedOtMinutes:30,reason:'Fictional third claim'})).correctionId;
   const results=await Promise.allSettled([reject(third),reject(third)]);
   expect(lockRefusals(results)).toEqual([]);
   expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
