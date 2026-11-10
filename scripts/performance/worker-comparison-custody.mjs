@@ -89,7 +89,11 @@ function removeKnown(parent,name,fd,deadline){
  check();
 }
 
-export function holdWorkerComparisonFiles(env){
+/** Serial courses open cells 1, 2 and 3 in order; one parallel runner opens only its own cell. */
+export function holdWorkerComparisonFiles(env,{ordinals=[1,2,3]}={}){
+ assert(Array.isArray(ordinals)&&ordinals.length>=1&&ordinals.length<=3
+  &&ordinals.every((value,index)=>Number.isSafeInteger(value)&&value>=1&&value<=3&&ordinals.indexOf(value)===index),
+  'Worker comparison cell sequence refused');
  const sourcePath=env.GITHUB_WORKSPACE+'/source',tempPath=env.RUNNER_TEMP;
  const descriptors=new Set();
  const open=path=>{
@@ -141,13 +145,14 @@ export function holdWorkerComparisonFiles(env){
    },
    openCell(cell){
     roots();
-    assert(current===null&&cell.ordinal===opened+1&&opened<3&&absent(named(source,buildName)),
+    assert(current===null&&opened<ordinals.length&&cell.ordinal===ordinals[opened]&&absent(named(source,buildName)),
      'Worker comparison prior cell has not settled');
     const directory=fresh(work,cell.name);
     const focused=fresh(temp,'aihr-focused');
     const evidence=fresh(directory,'evidence');
     const base=join(tempPath,workName,cell.name);
-    current={ordinal:++opened,name:cell.name,directory,focused,evidence,build:null};
+    opened++;
+    current={ordinal:cell.ordinal,name:cell.name,directory,focused,evidence,build:null};
     return {privateDir:base,out:join(base,'evidence'),focusedEvidence:join(tempPath,'aihr-focused')};
    },
    holdBuild(ordinal,view){
@@ -218,7 +223,8 @@ export function openWorkerComparisonFamily(env){
   async acknowledge(next,deadline){
    assert(!failed&&!pending&&next===ordinal&&next<=3&&comparisonClock()<deadline,'Worker comparison family barrier refused');
    const accepted=await new Promise(resolve=>{
-    const timer=setTimeout(()=>pending?.finish(false),Math.min(5000,deadline-comparisonClock()));
+    // The owner waits up to 20 s for exiting descendants before its census.
+    const timer=setTimeout(()=>pending?.finish(false),Math.min(30000,deadline-comparisonClock()));
     const finish=passed=>{
      clearTimeout(timer);
      pending=null;

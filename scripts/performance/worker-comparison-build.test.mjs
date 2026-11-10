@@ -4,6 +4,7 @@ import fs,{chmodSync,existsSync,linkSync,lstatSync,mkdirSync,mkdtempSync,readFil
 import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {execFileSync} from 'node:child_process';
 import {test} from 'node:test';
 import {holdDevelopmentBuildSnapshot} from './worker-comparison-build.mjs';
 
@@ -87,6 +88,55 @@ test('requires the exact hosted source identity before creating a custody direct
    assert.throws(()=>holdDevelopmentBuildSnapshot({...env,...changed}),/hosted source identity refused/);
    assert.equal(existsSync(privateRoot),false);
   }
+ });
+});
+
+test('admits the parallel build and cell jobs only for a parallel worker course',()=>{
+ fixture(({env,privateRoot})=>{
+  for(const job of ['worker-build','worker-cell']){
+   for(const course of [undefined,'serial-2-4-8','preflight-2','off'])
+    assert.throws(()=>holdDevelopmentBuildSnapshot({...env,GITHUB_JOB:job,AIHR_MEASURED_BROWSER_COURSE:course}),/hosted source identity refused/);
+   assert.equal(existsSync(privateRoot),false);
+  }
+  for(const course of ['parallel-2-4-8','parallel-smoke']){
+   holdDevelopmentBuildSnapshot({...env,GITHUB_JOB:'worker-build',AIHR_MEASURED_BROWSER_COURSE:course}).close();
+   rmSync(privateRoot,{recursive:true});
+  }
+ });
+});
+
+test('a parallel cell reproduces the upstream seal exactly from the tar transport',()=>{
+ fixture(({root,source,next,privateRoot,seed,env,build})=>{
+  const course={AIHR_MEASURED_BROWSER_COURSE:'parallel-smoke'};
+  const upstream=holdDevelopmentBuildSnapshot({...env,...course,GITHUB_JOB:'worker-build'});
+  let sealed;
+  try{
+   build();
+   sealed=upstream.capture();
+   execFileSync('/usr/bin/tar',['--create','--file',join(root,'next.tar'),'--directory',seed,'--sort=name','--numeric-owner',
+    '--owner=0','--group=0','--format=gnu','.']);
+  }finally{upstream.close();}
+  // A fresh runner: no build, no custody directory, only the transported archive.
+  rmSync(next,{recursive:true});rmSync(privateRoot,{recursive:true});
+  const cell=holdDevelopmentBuildSnapshot({...env,...course,GITHUB_JOB:'worker-cell'});
+  try{
+   mkdirSync(next,{mode:0o700});
+   execFileSync('/usr/bin/tar',['--extract','--file',join(root,'next.tar'),'--directory',next,'--no-same-owner','--preserve-permissions']);
+   const installed=cell.capture();
+   assert.deepEqual(installed.seal,sealed.seal);assert.deepEqual(installed.identity,sealed.identity);
+   assert.equal(lstatSync(join(next,'server','app','route.js')).mode&0o777,0o640);
+   assert.equal(realpathSync(join(next,'node_modules',runtimeAliases[1])),join(source,'node_modules','.store','sharp'));
+   assert.deepEqual(cell.verify(),sealed.seal);
+  }finally{cell.close();}
+  // Any changed transported byte yields a different seal, which the cell model refuses.
+  rmSync(next,{recursive:true});rmSync(privateRoot,{recursive:true});
+  const tampered=holdDevelopmentBuildSnapshot({...env,...course,GITHUB_JOB:'worker-cell'});
+  try{
+   mkdirSync(next,{mode:0o700});
+   execFileSync('/usr/bin/tar',['--extract','--file',join(root,'next.tar'),'--directory',next,'--no-same-owner','--preserve-permissions']);
+   writeFileSync(join(next,'server','app','route.js'),'const stock=2;');
+   assert.notEqual(tampered.capture().seal.sha256,sealed.seal.sha256);
+  }finally{tampered.close();}
  });
 });
 

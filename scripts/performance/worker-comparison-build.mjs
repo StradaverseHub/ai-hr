@@ -10,6 +10,8 @@ import {fileURLToPath} from 'node:url';
 const buildName='.next',privateName='aihr-worker-comparison-next',seedName='seed',aliasesDirectory='node_modules';
 const aliasVerifier=fileURLToPath(new URL('../../.github/ci/worker-comparison-build-aliases.py',import.meta.url));
 const aliasEnvironment=Object.freeze({PATH:'/usr/bin:/bin',LANG:'C',LC_ALL:'C'});
+// One upstream job builds and seals; each parallel cell job installs that sealed transport.
+const parallelJobs=new Set(['worker-build','worker-cell']),parallelCourses=new Set(['parallel-2-4-8','parallel-smoke']);
 const maxEntries=100000,maxBytes=3*1024**3,maxWorkMs=180000;
 const readFlags=flags.O_RDONLY|flags.O_NOFOLLOW|flags.O_NONBLOCK;
 const fdPath=fd=>`/proc/self/fd/${fd}`;
@@ -259,7 +261,8 @@ function identityOf(env){
  assert(process.platform==='linux'&&process.arch==='x64'&&env.GITHUB_ACTIONS==='true'&&env.CI==='true'
   &&env.RUNNER_ENVIRONMENT==='github-hosted'&&env.RUNNER_OS==='Linux'&&env.RUNNER_ARCH==='X64'
   &&env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_REPOSITORY_ID==='1333414856'&&env.GITHUB_EVENT_NAME==='workflow_dispatch'
-  &&env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&env.GITHUB_RUN_ATTEMPT==='1'
+  &&env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_RUN_ATTEMPT==='1'
+  &&(env.GITHUB_JOB==='selected-tests'||parallelJobs.has(env.GITHUB_JOB)&&parallelCourses.has(env.AIHR_MEASURED_BROWSER_COURSE))
   &&typeof candidateSha==='string'&&/^[a-f0-9]{40}(?![\s\S])/.test(candidateSha)
   &&['GITHUB_SHA','GITHUB_WORKFLOW_SHA','AIHR_CI_CONTROL_HEAD'].every(name=>env[name]===candidateSha)
   &&typeof runId==='string'&&/^[1-9][0-9]{0,15}(?![\s\S])/.test(runId)&&Number.isSafeInteger(Number(runId)),

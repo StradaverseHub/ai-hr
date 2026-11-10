@@ -44,6 +44,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
 import {createWorkerLoadedDiagnostics,projectWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
+import {isWorkerComparisonCourse} from './worker-comparison.mjs';
 import {readMeasuredClockCs,readMeasuredClockIdentity} from './measured-lock-clock.mjs';
 import {createMeasuredPreflightObserver,measuredLockSampleLimit,observeDatabaseLockCore,observeMeasuredLockConnection} from './measured-lock-observer.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
@@ -193,7 +194,8 @@ const report={suite,kind:nativePreflight?'NATIVE_RENDERED_UNION_WORKFLOW_SLICE':
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
 const nativeBrowserFailures=nativePreflight?createNativeBrowserFailureObservation():null;
 const measureDevelopment=!nativePreflight&&suite!=='claims-heavy';
-const serialComparison=measureDevelopment&&process.env.AIHR_MEASURED_BROWSER_COURSE==='serial-2-4-8';
+// Serial and parallel comparison cells share the same driver diagnostics.
+const serialComparison=measureDevelopment&&isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE);
 const workerLoadedDiagnostics=serialComparison?createWorkerLoadedDiagnostics():null;
 let comparisonStage='driver-initialization',comparisonWorkload=null;
 function markComparisonStage(stage){comparisonStage=stage;comparisonWorkload=null;}

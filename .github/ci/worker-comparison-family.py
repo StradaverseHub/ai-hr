@@ -1,4 +1,4 @@
-"""Closed subreaper for the hosted serial worker comparison."""
+"""Closed subreaper for the hosted serial worker comparison and for each parallel comparison cell."""
 import hashlib
 import json
 import os
@@ -25,6 +25,28 @@ def clock():
     return time.monotonic_ns() // 1_000_000
 
 
+# Frontiers in milliseconds after the job anchor. A serial course reuses one host for three
+# cells; a parallel cell owns one fresh runner and hands over exactly one cell barrier.
+MODES = {
+    'serial-2-4-8': {'job': 'selected-tests', 'entry': '--serial-2-4-8', 'kind': 'HOSTED_WORKER_COMPARISON_V1',
+                     'cells': 3, 'active': 6600_000, 'minimum': 2560_000, 'settlement': 6960_000, 'final': 7080_000,
+                     'outer': 7100_000},
+    'parallel-2-4-8': {'job': 'worker-cell', 'entry': '--parallel-cell', 'kind': 'HOSTED_WORKER_COMPARISON_CELL_V1',
+                       'cells': 1, 'active': 3000_000, 'minimum': 1390_000, 'settlement': 3360_000, 'final': 3480_000,
+                       'outer': 3500_000},
+}
+MODES['parallel-smoke'] = MODES['parallel-2-4-8']
+# Exiting descendants may still be tearing down when cleanup returns. Wait, bounded,
+# for the whole owned family to finish exiting before any census is taken.
+FAMILY_EXIT_WAIT_MS = 20_000
+
+
+def mode():
+    course = os.environ.get('AIHR_MEASURED_BROWSER_COURSE')
+    require(course in MODES)
+    return MODES[course]
+
+
 def require(value):
     if not value:
         raise ValueError('Worker comparison process custody refused')
@@ -36,8 +58,8 @@ def admit():
         'GITHUB_ACTIONS': 'true', 'CI': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted',
         'RUNNER_OS': 'Linux', 'RUNNER_ARCH': 'X64', 'GITHUB_REPOSITORY': 'StradaverseHub/ai-hr',
         'GITHUB_REPOSITORY_ID': '1333414856', 'GITHUB_EVENT_NAME': 'workflow_dispatch',
-        'GITHUB_WORKFLOW': 'alpha-focused-checks', 'GITHUB_JOB': 'selected-tests',
-        'GITHUB_RUN_ATTEMPT': '1', 'AIHR_MEASURED_BROWSER_COURSE': 'serial-2-4-8',
+        'GITHUB_WORKFLOW': 'alpha-focused-checks', 'GITHUB_JOB': mode()['job'],
+        'GITHUB_RUN_ATTEMPT': '1',
         'AIHR_CI_UNIT': 'db-1', 'AIHR_CI_PG_PROFILE': '2', 'AIHR_CI_PG_DURABLE': '1',
         'AIHR_CI_PG_STATEMENTS': '1', 'AIHR_CI_PG_STATEMENTS_OWNER': 'system-http-profile',
     }
@@ -51,7 +73,7 @@ def admit():
     anchor = env.get('AIHR_WORKER_COMPARISON_T0_MS', '')
     require(re.fullmatch(r'[1-9][0-9]{0,14}', anchor))
     anchor = int(anchor)
-    require(0 <= clock() - anchor < 6600_000 - 2560_000)
+    require(0 <= clock() - anchor < mode()['active'] - mode()['minimum'])
     node = shutil.which('node')
     require(node and Path(node).is_absolute() and Path(node).is_file())
     require(KERNEL.own_children() == [] and len(list(Path('/proc/self/task').iterdir())) == 1)
@@ -103,7 +125,31 @@ def reap_exited_adoptees(child, candidates):
             os.close(descriptor)
 
 
-def barrier(child, descriptor, birth, mark=lambda _check, _count=None: None):
+def await_family_exit(child, deadline):
+    """Return once every adopted orphan is a zombie and the runner has no children.
+
+    This only waits; it never signals or reaps. The census below still refuses any
+    process that remains alive, so the barrier keeps its strength when the wait elapses.
+    """
+    end = min(deadline, clock() + FAMILY_EXIT_WAIT_MS)
+    while True:
+        live = []
+        for pid in KERNEL.own_children():
+            if pid == child:
+                continue
+            try:
+                if KERNEL.identity(pid)['state'] not in ('Z', 'X'):
+                    live.append(pid)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+        if not live and children_of(child) == []:
+            return True
+        if clock() >= end:
+            return False
+        time.sleep(0.02)
+
+
+def barrier(child, descriptor, birth, mark=lambda _check, _count=None: None, deadline=None):
     def census(check, read, expected, reap=False):
         mark(check)
         actual = read()
@@ -118,6 +164,9 @@ def barrier(child, descriptor, birth, mark=lambda _check, _count=None: None):
 
     mark('runner-birth-before')
     exact_child(child, descriptor, birth)
+    if deadline is not None:
+        await_family_exit(child, deadline)
+        exact_child(child, descriptor, birth)
     census('owner-census-before', KERNEL.own_children, [child], reap=True)
     census('runner-descendant-census', lambda: children_of(child), [])
     census('owner-census-after', KERNEL.own_children, [child])
@@ -129,7 +178,8 @@ def exchange(connection, descriptor, child, birth, anchor, mark=lambda _stage, _
     next_frame = b'H\n'
     ordinal = 0
     buffered = b''
-    end = anchor + 7080_000
+    limits = mode()
+    end = anchor + limits['final']
     while clock() < end:
         mark('family-frame', ordinal)
         readable, _, _ = select.select([connection, descriptor], [], [], max(0, end - clock()) / 1000)
@@ -146,14 +196,12 @@ def exchange(connection, descriptor, child, birth, anchor, mark=lambda _stage, _
         require(len(buffered) <= len(next_frame) and next_frame.startswith(buffered))
         if buffered != next_frame:
             continue
-        if ordinal == 0:
-            require(clock() < anchor + 6600_000)
-        else:
-            require(ordinal <= 3 and clock() < anchor + 6960_000)
+        frontier = anchor + (limits['active'] if ordinal == 0 else limits['settlement'])
+        require(ordinal <= limits['cells'] and clock() < frontier)
         mark('family-barrier', ordinal)
-        barrier(child, descriptor, birth, lambda check, count=None: mark('family-barrier', ordinal, check, count))
+        barrier(child, descriptor, birth, lambda check, count=None: mark('family-barrier', ordinal, check, count), frontier)
         reply = f'A{ordinal}\n'.encode('ascii')
-        require(clock() < anchor + (6600_000 if ordinal == 0 else 6960_000))
+        require(clock() < frontier)
         require(connection.send(reply) == len(reply))
         ordinal += 1
         next_frame = f'B{ordinal}\n'.encode('ascii')
@@ -167,6 +215,8 @@ def file_identity(info):
 
 
 def publish(anchor, code, ordinal):
+    limits = mode()
+    final_end = anchor + limits['final']
     temp = Path(os.environ['RUNNER_TEMP'])
     require(temp.is_absolute() and temp.resolve(strict=True) == temp)
     directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -187,11 +237,11 @@ def publish(anchor, code, ordinal):
                         == file_identity(os.stat('pending.json', dir_fd=directory, follow_symlinks=False)))
             summary = json.loads(raw)
             identity = summary['identity']
-            require(summary['kind'] == 'HOSTED_WORKER_COMPARISON_V1' and summary['releaseEligible'] is False
+            require(summary['kind'] == limits['kind'] and summary['releaseEligible'] is False
                     and type(summary['complete']) is bool and summary['complete'] == (code == 0)
                     and identity['candidateSha'] == identity['controllerSha'] == os.environ['AIHR_CI_HEAD']
                     and identity['runId'] == int(os.environ['GITHUB_RUN_ID']) and identity['runAttempt'] == 1
-                    and 'processOwner' not in summary and 1 <= ordinal <= 4 and clock() < anchor + 7080_000)
+                    and 'processOwner' not in summary and 1 <= ordinal <= limits['cells'] + 1 and clock() < final_end)
             summary['processOwner'] = {'settled': True, 'cellBarriers': ordinal - 1, 'runnerExitCode': code}
             data = (json.dumps(summary, indent=2) + '\n').encode('utf-8')
             require(len(data) <= limit)
@@ -203,7 +253,7 @@ def publish(anchor, code, ordinal):
                 after = os.stat('system-worker-comparison-evidence', dir_fd=root, follow_symlinks=False)
                 require((before.st_dev, before.st_ino) == (after.st_dev, after.st_ino)
                         and file_identity(os.fstat(fd)) == file_identity(os.stat(packet, dir_fd=directory, follow_symlinks=False))
-                        and clock() < anchor + 7080_000)
+                        and clock() < final_end)
                 os.link(packet, 'summary.json', src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
                 os.unlink(packet, dir_fd=directory)
                 final = os.open('summary.json', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
@@ -212,7 +262,7 @@ def publish(anchor, code, ordinal):
                     require(file_identity(sealed) == file_identity(os.fstat(fd)) and sealed.st_nlink == 1
                             and stat.S_IMODE(sealed.st_mode) == 0o600 and stream.read(limit + 1) == data
                             and file_identity(sealed) == file_identity(os.stat('summary.json', dir_fd=directory, follow_symlinks=False))
-                            and clock() < anchor + 7080_000)
+                            and clock() < final_end)
                 return hashlib.sha256(data).hexdigest()
             finally:
                 os.close(fd)
@@ -259,7 +309,7 @@ def run(mark=lambda _stage, _ordinal=None, _check=None, _count=None: None):
             env = {key: value for key, value in os.environ.items() if key not in
                    ('GITHUB_OUTPUT', 'GITHUB_ENV', 'GITHUB_STEP_SUMMARY', 'GITHUB_PATH', 'NODE_PATH')}
             env['AIHR_WORKER_COMPARISON_FAMILY_FD'] = str(client.fileno())
-            child = subprocess.Popen([node, 'scripts/performance/system-runner.mjs', '--serial-2-4-8'],
+            child = subprocess.Popen([node, 'scripts/performance/system-runner.mjs', mode()['entry']],
                                      env=env, pass_fds=(client.fileno(),), stdin=subprocess.DEVNULL, start_new_session=True)
             descriptor = os.pidfd_open(child.pid)
             client.close()
@@ -269,7 +319,7 @@ def run(mark=lambda _stage, _ordinal=None, _check=None, _count=None: None):
             code = child.wait(timeout=1)
             require(KERNEL.own_children() == [])
             if code == 0:
-                require(ordinal == 4 and clock() < anchor + 7080_000)
+                require(ordinal == mode()['cells'] + 1 and clock() < anchor + mode()['final'])
             mark('summary-custody', ordinal)
             summary_digest = publish(anchor, code, ordinal)
             owner_result = 0 if code == 0 else 1
@@ -296,10 +346,10 @@ def run(mark=lambda _stage, _ordinal=None, _check=None, _count=None: None):
         if descriptor is not None:
             os.close(descriptor)
         monitor = child.pid if child is not None and child.returncode is None else -1
-        settled, _ = KERNEL.settle_adopted(monitor, min(clock() / 1000 + 10, anchor / 1000 + 7100), time.monotonic)
+        settled, _ = KERNEL.settle_adopted(monitor, min(clock() / 1000 + 10, (anchor + mode()['outer']) / 1000), time.monotonic)
         require(settled and monitor == -1 and KERNEL.own_children() == [])
     mark('workflow-output', ordinal)
-    require(summary_digest and clock() < anchor + 7080_000)
+    require(summary_digest and clock() < anchor + mode()['final'])
     with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as output:
         output.write('published=true\nsummary_sha256=' + summary_digest + '\n')
     return owner_result

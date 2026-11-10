@@ -20,9 +20,9 @@ on:
         default: false
         type: boolean
       measured_browser_course:
-        description: Full role-route preflight or same-source 2, 4 and 8 worker comparison
+        description: Full role-route preflight, same-source 2, 4 and 8 worker comparison (serial on one host, or parallel one runner per cell), or the parallel harness smoke
         type: choice
-        options: ['off', 'preflight-2', 'serial-2-4-8']
+        options: ['off', 'preflight-2', 'serial-2-4-8', 'parallel-2-4-8', 'parallel-smoke']
         default: 'off'
       measured_browser_preflight_run:
         description: Successful full browser preflight run ID on the same immutable source
@@ -170,7 +170,7 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
-          fetch-depth: ${{ inputs.measured_browser_course == 'serial-2-4-8' && '0' || '1' }}
+          fetch-depth: ${{ (inputs.measured_browser_course == 'serial-2-4-8' || inputs.measured_browser_course == 'parallel-2-4-8') && '0' || '1' }}
       - name: Pin dependency-free controller runtime
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
@@ -191,8 +191,15 @@ jobs:
           const result = inspectMeasuredWorkerDispatch(process.env, JSON.parse(readFileSync(path, 'utf8')));
           assert.equal(result.profile.course, 'preflight-2');
           JS
+      - name: Admit the parallel worker harness smoke
+        # Harness smoke only: no preflight authority, no secrets, no comparison or release evidence.
+        if: ${{ inputs.measured_browser_course == 'parallel-smoke' }}
+        env:
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: /usr/bin/python3 -I -B .github/ci/worker-comparison-smoke-admission.py
       - name: Authenticate same-source full browser preflight for the worker comparison
-        if: ${{ inputs.measured_browser_course == 'serial-2-4-8' }}
+        if: ${{ inputs.measured_browser_course == 'serial-2-4-8' || inputs.measured_browser_course == 'parallel-2-4-8' }}
         id: worker-prerequisite
         env:
           GH_TOKEN: ${{ github.token }}
@@ -245,6 +252,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
+    # Parallel worker courses run only in the worker-build, worker-cell and worker-aggregate jobs.
+    if: ${{ !startsWith(inputs.measured_browser_course, 'parallel-') }}
     needs: resolve
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
@@ -1515,6 +1524,255 @@ jobs:
           name: architecture-same-build-worker-comparison-evidence
           path: ${{ runner.temp }}/system-worker-comparison-evidence/summary.json
           if-no-files-found: error
+          retention-days: 14
+  # Parallel 2/4/8 course: build once, run each worker count on its own runner, then compare.
+  worker-build:
+    if: ${{ startsWith(inputs.measured_browser_course, 'parallel-') }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_MEASURED_BROWSER_COURSE: ${{ inputs.measured_browser_course }}
+    outputs:
+      seal: ${{ steps.transport.outputs.seal }}
+      archive_sha256: ${{ steps.transport.outputs.archive_sha256 }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the exact self-source before dependency installation
+        env:
+          EXPECTED_SOURCE: ${{ inputs.expected_sha }}
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: bash ../automation/.github/ci/worker-comparison-self-source.sh worker-build
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '24.22.1', mobile: 'false', capacity_profile: legacy}
+      - name: Linux harness controls before the build
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types --test scripts/performance/worker-comparison-build.test.mjs \
+            scripts/performance/worker-comparison-custody.test.mjs .github/ci/measured-browser-worker-contract.test.mjs
+          /usr/bin/python3 -I -B .github/ci/worker-comparison-family.test.py
+          /usr/bin/python3 -I -B .github/ci/worker-comparison-aggregate.test.py
+      - name: Build once and seal the transport for every worker cell
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          set -euo pipefail
+          umask 077
+          node scripts/performance/system-runner.mjs --worker-build
+      - name: Bind the sealed build transport to this job's outputs
+        id: transport
+        run: |
+          /usr/bin/python3 -I -B - <<'PYTHON'
+          import hashlib, json, os, re
+          from pathlib import Path
+          directory = Path(os.environ['RUNNER_TEMP']) / 'aihr-worker-build-transport'
+          receipt = json.loads((directory / 'build.json').read_bytes())
+          assert set(receipt) == {'kind', 'releaseEligible', 'course', 'identity', 'seal', 'archive', 'buildElapsedMs',
+                                  'buildHeap', 'buildMemory', 'host'}
+          assert receipt['kind'] == 'WORKER_COMPARISON_BUILD_TRANSPORT_V1' and receipt['releaseEligible'] is False
+          assert receipt['course'] == os.environ['AIHR_MEASURED_BROWSER_COURSE']
+          assert receipt['identity'] == {'candidateSha': os.environ['AIHR_CI_HEAD'], 'controllerSha': os.environ['GITHUB_WORKFLOW_SHA'],
+                                         'runId': int(os.environ['GITHUB_RUN_ID']), 'runAttempt': 1}
+          seal = receipt['seal']
+          assert set(seal) == {'buildId', 'entries', 'bytes', 'sha256'} and re.fullmatch(r'[A-Za-z0-9_-]{1,128}', seal['buildId'])
+          assert re.fullmatch(r'[a-f0-9]{64}', seal['sha256']) and all(type(seal[key]) is int and seal[key] > 0 for key in ('entries', 'bytes'))
+          digest = hashlib.sha256()
+          with open(directory / 'next.tar', 'rb') as stream:
+              for chunk in iter(lambda: stream.read(1 << 20), b''):
+                  digest.update(chunk)
+          assert digest.hexdigest() == receipt['archive']['sha256']
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as out:
+              out.write('seal=' + json.dumps(seal, separators=(',', ':'), sort_keys=True) + '\n')
+              out.write('archive_sha256=' + receipt['archive']['sha256'] + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+              out.write('Sealed build `%s`: %d entries, %d bytes, tree `%s`, archive `%s`.\n'
+                        % (seal['buildId'], seal['entries'], seal['bytes'], seal['sha256'], receipt['archive']['sha256']))
+          PYTHON
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: worker-comparison-build
+          path: |
+            ${{ runner.temp }}/aihr-worker-build-transport/next.tar
+            ${{ runner.temp }}/aihr-worker-build-transport/build.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 1
+  worker-cell:
+    name: worker-cell (${{ matrix.workers }})
+    if: ${{ startsWith(inputs.measured_browser_course, 'parallel-') }}
+    needs: [resolve, worker-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        workers: ['2', '4', '8']
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_MEASURED_BROWSER_COURSE: ${{ inputs.measured_browser_course }}
+      AIHR_FOCUSED_SUITE_CAPACITY: 'true'
+    steps:
+      - name: Anchor first executable worker cell step (not runner allocation time)
+        working-directory: ${{ runner.temp }}
+        run: |
+          python3 -I -B - <<'PYTHON'
+          import os, time
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('AIHR_FOCUSED_JOB_MONOTONIC_NS=' + str(time.monotonic_ns()) + '\n')
+          PYTHON
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the exact self-source before dependency installation
+        env:
+          EXPECTED_SOURCE: ${{ inputs.expected_sha }}
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: bash ../automation/.github/ci/worker-comparison-self-source.sh worker-cell
+      - name: Materialize the authenticated worker preflight receipt
+        if: ${{ inputs.measured_browser_course == 'parallel-2-4-8' }}
+        env:
+          PREFLIGHT_RUN: ${{ inputs.measured_browser_preflight_run }}
+          PREFLIGHT_ADMISSION: ${{ needs.resolve.outputs.worker_admission }}
+          PREFLIGHT_ADMISSION_SHA256: ${{ needs.resolve.outputs.worker_admission_sha256 }}
+        run: |
+          /usr/bin/python3 -I -B - <<'PYTHON'
+          import base64, hashlib, json, os, re
+          from pathlib import Path
+
+          envelope = os.environ['PREFLIGHT_ADMISSION']
+          assert 0 < len(envelope) <= 2048
+          raw = base64.b64decode(envelope, validate=True)
+          assert base64.b64encode(raw).decode('ascii') == envelope and raw.endswith(b'\n')
+          digest = os.environ['PREFLIGHT_ADMISSION_SHA256']
+          assert re.fullmatch(r'[a-f0-9]{64}', digest) and hashlib.sha256(raw).hexdigest() == digest
+          receipt = json.loads(raw)
+          assert receipt['kind'] == 'AUTHENTICATED_FULL_DEVELOPMENT_PREFLIGHT_SCOPE_ONLY'
+          assert receipt['releaseEligible'] is False
+          assert receipt['source'] == os.environ['AIHR_CI_HEAD'] == os.environ['GITHUB_WORKFLOW_SHA']
+          assert str(receipt['runId']) == os.environ['PREFLIGHT_RUN']
+          temp = Path(os.environ['RUNNER_TEMP'])
+          assert temp.is_absolute() and temp.resolve(strict=True) == temp and temp.stat().st_uid == os.getuid()
+          for name in ('system-worker-comparison-evidence', 'system-worker-comparison-private'):
+              assert not os.path.lexists(temp / name)
+          path = temp / 'aihr-worker-comparison-admission.json'
+          with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'wb') as out:
+              out.write(raw)
+          PYTHON
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '24.22.1', mobile: 'false', capacity_profile: legacy}
+      - name: Select installed Chrome or install locked Playwright Chromium
+        run: |
+          set -euo pipefail
+          if test -x /usr/bin/google-chrome; then
+            echo 'PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome' >> "$GITHUB_ENV"
+            /usr/bin/google-chrome --version
+          else
+            pnpm exec playwright install --with-deps chromium
+          fi
+      - name: Receive the one sealed build transport
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: worker-comparison-build
+          path: ${{ runner.temp }}/aihr-worker-build-transport
+      - name: Run one worker cell on this runner
+        id: worker-cell
+        env:
+          AIHR_CI_UNIT: db-1
+          AIHR_CI_PG_DURABLE: '1'
+          AIHR_CI_PG_STATEMENTS: '1'
+          AIHR_CI_PG_STATEMENTS_OWNER: system-http-profile
+          AIHR_WORKER_COMPARISON_ADMISSION_SHA256: ${{ inputs.measured_browser_course == 'parallel-2-4-8' && needs.resolve.outputs.worker_admission_sha256 || '' }}
+          AIHR_WORKER_COMPARISON_CELL_WORKERS: ${{ matrix.workers }}
+          AIHR_WORKER_BUILD_SEAL: ${{ needs.worker-build.outputs.seal }}
+          AIHR_WORKER_BUILD_ARCHIVE_SHA256: ${{ needs.worker-build.outputs.archive_sha256 }}
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "${#AIHR_FOCUSED_JOB_MONOTONIC_NS}" -le 18
+          [[ "$AIHR_FOCUSED_JOB_MONOTONIC_NS" =~ ^[1-9][0-9]+$ ]]
+          export AIHR_WORKER_COMPARISON_T0_MS="$(( AIHR_FOCUSED_JOB_MONOTONIC_NS / 1000000 ))"
+          /usr/bin/python3 -I -B .github/ci/worker-comparison-family.py
+      - name: Verify worker cell evidence ownership
+        if: ${{ always() && steps.worker-cell.outputs.published == 'true' && steps.worker-cell.outputs.summary_sha256 != '' }}
+        id: worker-cell-evidence
+        env:
+          CELL_OUTCOME: ${{ steps.worker-cell.outcome }}
+          CELL_SUMMARY_SHA256: ${{ steps.worker-cell.outputs.summary_sha256 }}
+          CELL_WORKERS: ${{ matrix.workers }}
+        run: /usr/bin/python3 -I -B .github/ci/worker-comparison-aggregate.py verify-cell
+      - name: Publish sanitized worker cell evidence
+        if: ${{ always() && steps.worker-cell-evidence.outputs.owned_summary == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: worker-comparison-cell-${{ matrix.workers }}
+          path: ${{ runner.temp }}/system-worker-comparison-evidence/summary.json
+          if-no-files-found: error
+          retention-days: 14
+  worker-aggregate:
+    if: ${{ always() && startsWith(inputs.measured_browser_course, 'parallel-') && needs.resolve.result == 'success' }}
+    needs: [resolve, worker-build, worker-cell]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_MEASURED_BROWSER_COURSE: ${{ inputs.measured_browser_course }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - name: Receive every published worker cell summary
+        # A missing cell is a finding for the aggregate, not a reason to skip it.
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: worker-comparison-cell-*
+          path: ${{ runner.temp }}/worker-comparison-cells
+      - name: Compare 2 and 4 workers and require comparable runners
+        env:
+          WORKER_BUILD_RESULT: ${{ needs.worker-build.result }}
+          WORKER_CELL_RESULT: ${{ needs.worker-cell.result }}
+          AIHR_WORKER_BUILD_SEAL: ${{ needs.worker-build.outputs.seal }}
+          AIHR_WORKER_BUILD_ARCHIVE_SHA256: ${{ needs.worker-build.outputs.archive_sha256 }}
+        run: >-
+          /usr/bin/python3 -I -B automation/.github/ci/worker-comparison-aggregate.py aggregate
+          "$RUNNER_TEMP/worker-comparison-cells" "$RUNNER_TEMP/worker-comparison-aggregate/aggregate.json"
+      - name: Publish the worker comparison aggregate
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: worker-comparison-aggregate
+          path: ${{ runner.temp }}/worker-comparison-aggregate/aggregate.json
+          if-no-files-found: warn
           retention-days: 14
   typecheck:
     if: ${{ inputs.run_typecheck }}

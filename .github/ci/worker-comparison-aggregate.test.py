@@ -1,0 +1,163 @@
+"""Synthetic evidence controls for the parallel worker aggregate. No runner or application."""
+import copy
+import hashlib
+import json
+import os
+from pathlib import Path
+import tempfile
+import unittest
+from types import ModuleType
+
+path = Path(__file__).with_name('worker-comparison-aggregate.py')
+owner = ModuleType('worker_comparison_aggregate')
+owner.__file__ = str(path)
+exec(compile(path.read_bytes(), str(path), 'exec', dont_inherit=True), owner.__dict__)
+
+SHA = 'a' * 40
+SEAL = {'buildId': 'model-build', 'entries': 9, 'bytes': 120, 'sha256': 'b' * 64}
+ARCHIVE = 'c' * 64
+HOST = {'effectiveCpus': 4, 'memoryBytes': 16 * 1024 ** 3, 'nodeVersion': 'v24.22.1', 'postgresProfile': 2,
+        'cpuModel': 'AMD EPYC 7763 64-Core Processor', 'logicalCpus': 4, 'kernel': '6.11.0-1018-azure'}
+HARNESS = {'harnessSha256': 'd' * 64, 'scenarioSha256': 'e' * 64}
+
+
+def env(course='parallel-smoke', **extra):
+    return {'AIHR_CI_HEAD': SHA, 'GITHUB_WORKFLOW_SHA': SHA, 'GITHUB_RUN_ID': '77', 'AIHR_MEASURED_BROWSER_COURSE': course,
+            'AIHR_WORKER_BUILD_SEAL': json.dumps(SEAL), 'AIHR_WORKER_BUILD_ARCHIVE_SHA256': ARCHIVE,
+            'WORKER_BUILD_RESULT': 'success', 'WORKER_CELL_RESULT': 'success', **extra}
+
+
+def cell(workers, course='parallel-smoke', **changes):
+    name, scope = next((row[1], row[2]) for row in owner.COURSES[course] if row[0] == workers)
+    value = {
+        'kind': owner.KIND, 'releaseEligible': False, 'course': course,
+        'identity': {'candidateSha': SHA, 'controllerSha': SHA, 'runId': 77, 'runAttempt': 1},
+        'prerequisite': None if course == 'parallel-smoke' else {'source': SHA, 'runId': 5, 'harnessSha256': 'd' * 64},
+        'frontiers': {}, 'buildSeal': SEAL, 'transport': {'seal': SEAL, 'archiveSha256': ARCHIVE, 'archiveBytes': 1000},
+        'seedSettlement': 'settled', 'complete': True, 'host': dict(HOST), 'productionEquivalent': False, 'scope': 'x',
+        'cell': {'name': name, 'scope': scope, 'state': 'passed', 'reason': None, 'fixtureDay': '2026-11-10',
+                 'settlement': 'settled', 'observation': {'driver': {'identity': dict(HARNESS)}, 'roleLatency': None}},
+        'processOwner': {'settled': True, 'cellBarriers': 1, 'runnerExitCode': 0},
+    }
+    for key, update in changes.items():
+        if key == 'host':
+            value['host'].update(update)
+        elif key == 'cellState':
+            value['cell'].update(update)
+        else:
+            value[key] = update
+    return value
+
+
+class AggregateTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name).resolve()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def publish(self, *cells):
+        for value in cells:
+            directory = self.root / ('worker-comparison-cell-' + value['cell']['name'].split('-')[-1])
+            directory.mkdir()
+            (directory / 'summary.json').write_text(json.dumps(value))
+            (directory / 'summary.json').chmod(0o644)
+
+    def test_three_passed_cells_on_matching_runners_complete(self):
+        self.publish(cell('2'), cell('4'), cell('8', host={'kernel': '6.8.0-1'}))
+        result = owner.aggregate(env(), self.root)
+        self.assertTrue(result['complete'] and result['steadyPairPassed'])
+        self.assertEqual(result['reasons'], [])
+        self.assertEqual(result['steadyPair']['differences'], {})
+        self.assertEqual([row['host']['cpuModel'] for row in result['cells']], [HOST['cpuModel']] * 3)
+
+    def test_steady_pair_cpu_model_or_vcpu_mismatch_fails_and_reports_the_difference(self):
+        for change in ({'cpuModel': 'Intel Xeon Platinum 8370C'}, {'effectiveCpus': 2, 'logicalCpus': 2}):
+            with self.subTest(change=change):
+                self.tearDown(); self.setUp()
+                self.publish(cell('2'), cell('4', host=change), cell('8'))
+                result = owner.aggregate(env(), self.root)
+                self.assertFalse(result['complete'] or result['steadyPairPassed'])
+                self.assertIn('steady-runners-not-comparable', result['reasons'])
+                self.assertTrue(set(change) <= set(result['steadyPair']['differences']))
+
+    def test_memory_and_kernel_differences_are_reported_not_hidden(self):
+        self.publish(cell('2'), cell('4', host={'memoryBytes': 16 * 1024 ** 3 - 4096, 'kernel': '6.8.0-1'}), cell('8'))
+        result = owner.aggregate(env(), self.root)
+        self.assertTrue(result['complete'])
+        self.assertEqual(set(result['steadyPair']['differences']), {'memoryBytes', 'kernel'})
+        self.assertIn('kernel', owner.summary_markdown(result))
+
+    def test_missing_failed_or_foreign_build_cells_fail_the_aggregate(self):
+        cases = (
+            ((cell('2'), cell('4')), 'smoke-8-missing'),
+            ((cell('2'), cell('4'), cell('8', complete=False, processOwner={'settled': True, 'cellBarriers': 1,
+              'runnerExitCode': 1}, cellState={'state': 'failed', 'reason': 'measurement'})), 'smoke-8-measurement'),
+            ((cell('2'), cell('4', transport={'seal': dict(SEAL, sha256='f' * 64), 'archiveSha256': ARCHIVE,
+              'archiveBytes': 1}, buildSeal=dict(SEAL, sha256='f' * 64)), cell('8')), 'smoke-4-refused'),
+            ((cell('2'), cell('4', cellState={'fixtureDay': '2026-11-11'}), cell('8')), 'fixture-day'),
+        )
+        for cells, reason in cases:
+            with self.subTest(reason=reason):
+                self.tearDown(); self.setUp()
+                self.publish(*cells)
+                result = owner.aggregate(env(), self.root)
+                self.assertFalse(result['complete'])
+                self.assertIn(reason, result['reasons'])
+
+    def test_failed_upstream_jobs_fail_even_with_every_summary(self):
+        self.publish(cell('2'), cell('4'), cell('8'))
+        result = owner.aggregate(env(WORKER_CELL_RESULT='failure'), self.root)
+        self.assertFalse(result['complete'])
+        self.assertIn('cell-jobs-failure', result['reasons'])
+        result = owner.aggregate(env(AIHR_WORKER_BUILD_SEAL=''), self.root)
+        self.assertIn('build-transport-unavailable', result['reasons'])
+
+    def test_full_course_requires_one_prerequisite_and_one_harness(self):
+        full = 'parallel-2-4-8'
+        other = cell('4', full)
+        other['cell']['observation']['driver']['identity']['scenarioSha256'] = '0' * 64
+        self.publish(cell('2', full), other, cell('8', full))
+        result = owner.aggregate(env(full), self.root)
+        self.assertIn('harness-differs', result['reasons'])
+        self.assertEqual([row['name'] for row in result['cells']], ['steady-2', 'steady-4', 'functional-8'])
+        with self.assertRaises(owner.Refused):
+            owner.check_cell(cell('2', full, prerequisite=None), full, '2', owner.expected_identity(env(full)))
+
+    def test_complete_without_settled_owner_proof_is_refused(self):
+        forged = cell('2', processOwner={'settled': True, 'cellBarriers': 0, 'runnerExitCode': 0})
+        with self.assertRaises(owner.Refused):
+            owner.check_cell(forged, 'parallel-smoke', '2', owner.expected_identity(env()))
+
+    def test_verify_cell_binds_owner_digest_and_outcome(self):
+        temp = self.root / 'runner'
+        evidence = temp / 'system-worker-comparison-evidence'
+        evidence.mkdir(parents=True, mode=0o700)
+        evidence.chmod(0o700)
+        raw = json.dumps(cell('4')).encode()
+        (evidence / 'summary.json').write_bytes(raw)
+        (evidence / 'summary.json').chmod(0o600)
+        output = self.root / 'output'
+        output.write_text('')
+        base = env(RUNNER_TEMP=str(temp), GITHUB_OUTPUT=str(output), CELL_WORKERS='4',
+                   CELL_SUMMARY_SHA256=hashlib.sha256(raw).hexdigest(), CELL_OUTCOME='success')
+        owner.verify_cell(base)
+        self.assertEqual(output.read_text(), 'owned_summary=true\n')
+        for change in ({'CELL_SUMMARY_SHA256': '0' * 64}, {'CELL_OUTCOME': 'failure'}, {'CELL_WORKERS': '2'}):
+            with self.assertRaises(owner.Refused):
+                owner.verify_cell({**base, **change})
+
+    def test_main_writes_bounded_aggregate_and_exit_status(self):
+        self.publish(cell('2'), cell('4'), cell('8'))
+        out = self.root / 'aggregate' / 'aggregate.json'
+        summary = self.root / 'summary.md'
+        self.assertEqual(owner.main(['x', 'aggregate', str(self.root), str(out)], env(GITHUB_STEP_SUMMARY=str(summary))), 0)
+        self.assertTrue(json.loads(out.read_text())['complete'])
+        self.assertEqual(out.stat().st_mode & 0o777, 0o600)
+        self.assertIn('smoke-4', summary.read_text())
+        self.assertEqual(owner.main(['x', 'aggregate', str(self.root), str(out)], env()), 1)
+
+
+if __name__ == '__main__':
+    unittest.main()
