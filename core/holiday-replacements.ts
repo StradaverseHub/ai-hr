@@ -2,8 +2,8 @@
 import {createHash} from 'node:crypto';
 import {and,asc,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
-import {lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx} from '../packs/leave/service';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockLeaveDependenciesWaitTx,lockLeaveDependencyConfigurationTx} from '../packs/leave/service';
 import {actorOf,appendEvent} from '../db/events';
 import {attendance,company,employment,holiday,replacementHoliday,replacementHolidayPolicy,replacementHolidayRevision,replacementHolidayQueue} from '../db/schema';
 import {isAdmin} from '../lib/authz-model';
@@ -48,9 +48,11 @@ async function saveRevision(tx:Tx,ctx:SessionContext,row:typeof replacementHolid
 export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,employmentId:string,options?:{sourceWindow:{from:string;to:string}}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  options=options?.sourceWindow?{sourceWindow:{...options.sourceWindow}}:options;
- await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+ // One employment's replacement days. Its employment lock and row lock serialise the allocation with every
+ // other writer of this person's days; policy and calendar definitions stay fixed under the shared Access lock.
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
  await authority(tx,employmentId);
- await lockLeaveDependenciesTx(tx,ctx.tenantId,[employmentId]);
+ await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[employmentId]);
  const [emp]=await tx.select().from(employment).where(eq(employment.id,employmentId)).for('update');if(!emp)throw new Error('Employee unavailable.');
  const [c]=await tx.select().from(company).where(eq(company.id,emp.companyId));if(!c)throw new Error('Company unavailable.');
  const existing=await tx.select().from(replacementHoliday).where(eq(replacementHoliday.employmentId,employmentId)).orderBy(asc(replacementHoliday.sourceDate),asc(replacementHoliday.sourceHolidayId));
@@ -154,10 +156,11 @@ export function adjustReplacementHoliday(ctx:SessionContext,p:{allocationId:stri
  if(p.reason.trim().length<3||p.reason.trim().length>2000)throw new Error('Record an adjustment reason in 3 to 2000 characters.');
  if(p.date&&!isoDate(p.date))throw new Error('Choose a valid replacement date.');
  return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+  // Same shared course and employment serialisation as reconcileReplacementHolidaysTx.
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
   const [found]=await tx.select().from(replacementHoliday).where(eq(replacementHoliday.id,p.allocationId));if(!found)throw new Error('Replacement unavailable.');
   await authority(tx,found.employmentId);
-  await lockLeaveDependenciesTx(tx,ctx.tenantId,[found.employmentId]);
+  await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[found.employmentId]);
   const [emp]=await tx.select().from(employment).where(eq(employment.id,found.employmentId)).for('update');if(!emp)throw new Error('Employee unavailable.');
   const [old]=await tx.select().from(replacementHoliday).where(eq(replacementHoliday.id,p.allocationId)).for('update');
   if(!old||old.employmentId!==found.employmentId||old.employmentId!==emp.id)throw new Error('Replacement unavailable.');

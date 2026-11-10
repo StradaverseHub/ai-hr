@@ -5990,6 +5990,10 @@ async function readLeaveRequestWithDependenciesTx<T extends { employmentId: stri
   tx: Tx, ctx: SessionContext, requestId: string, readCurrent: () => PromiseLike<readonly T[]>,
   sharedAccessHeld = false,
 ): Promise<T> {
+  // Stays exclusive: approvals and cancellations lock the company's payroll batches FOR UPDATE NOWAIT
+  // (app.leave_payroll_coverage, record_leave_payroll_effect) so they never wait behind the audit-chain lock.
+  // Exclusivity is what keeps two decisions, or a decision and a clocking, from meeting there; shared, they
+  // would refuse each other as busy. Revisit once the audit chain is sealed at commit.
   if (!sharedAccessHeld) await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   const [nominated] = await tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
@@ -11349,8 +11353,10 @@ export async function reprojectEntitlementForEmployment(
   const asOf = p.asOf ?? todayInKualaLumpur();
   const none = { affected: 0, totalDelta: 0 };
   const run=async(tx:Tx)=>{
-    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
-    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    // One employment's entitlement ledger. Its employment lock below serialises the read-recalculate-write;
+    // configuration only has to stay stable, so this shares the Access lock and waits for short holders.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, []);
     // 1. Resolve the employment + its company's country/leave-cycle context.
     const readEmployment = () => tx
       .select({
@@ -11368,7 +11374,7 @@ export async function reprojectEntitlementForEmployment(
       .limit(1);
     const [emp] = await readEmployment();
     if (!emp) return none;
-    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, [p.employmentId]);
     const [currentEmployment] = await readEmployment();
     if (!currentEmployment || JSON.stringify(emp) !== JSON.stringify(currentEmployment)) {
       throw new LeaveDependencyUnavailable();
