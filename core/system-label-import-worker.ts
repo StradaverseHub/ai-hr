@@ -1,0 +1,122 @@
+/** Staged System Labels import as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; migrations 9003,
+ * 9004, 9961). All-or-nothing, as the single-transaction import was: the worker validates once with no writer lock
+ * (refusing unless the preview token still matches), writes each new code through its ordinary writer in chunk
+ * transactions of about 100 ms that hold the import's usual locks, and every staged row and audit event stays
+ * invisible until one short release transaction makes the whole import visible. A refusal or a stop deletes the
+ * staged rows in bounded owner batches; the release record keeps their chunk events hidden for good. */
+import {randomUUID} from 'node:crypto';
+import {sql} from 'drizzle-orm';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {publicErrorMessage} from '../lib/public-error';
+import type {LabelImportPreviewRow} from '../lib/system-label-definition';
+import type {BulkJobRowError} from '../lib/bulk-job';
+import type {SystemLabelImportResult} from '../lib/system-label-import-job';
+import {isTransientBulkJobError,type BulkJobHandler,type BulkJobUnit} from './bulk-job-worker';
+import type {BulkJobRow} from './bulk-job';
+import {OPERATOR_CHUNK_BUDGET_MS,lockOperatorChunkTx} from './operator-chunks';
+import {SYSTEM_LABEL_IMPORT_KIND,type SystemLabelImportJobInput} from './system-label-import-job';
+import {SYSTEM_LABEL_IMPORT_CHANGED,SYSTEM_LABEL_IMPORT_NOTHING,analyseSystemLabelImport,appendSystemLabelImportAppliedTx,applySystemLabelWriteTx,
+ lockSystemLabelImportTx,systemLabelImportBlockedRows,systemLabelImportErrorReport,systemLabelImportEventRows,systemLabelImportSummary,
+ type SystemLabelImportEventRow,type SystemLabelImportSummary,type SystemLabelWrite} from './system-label-import';
+
+/** Step work per chunk before it commits (one new code costs a few milliseconds idle, far more on a loaded host). */
+export const SYSTEM_LABEL_IMPORT_CHUNK_BUDGET_MS=Number(process.env.SYSTEM_LABEL_IMPORT_CHUNK_BUDGET_MS??OPERATOR_CHUNK_BUDGET_MS);
+const DISCARD_BATCH=200;
+/** What prepare stores for release: the preview's summary, its history rows and the rows the error workbook lists. */
+export type SystemLabelImportStoredPlan={summary:SystemLabelImportSummary;eventRows:SystemLabelImportEventRow[];blocked:LabelImportPreviewRow[];
+ /** The staged attempt that marks every row this import writes (bulk_job.attempt_id is Import History's). */
+ attemptId?:string;released?:boolean;result?:SystemLabelImportResult};
+const inputOf=(job:BulkJobRow)=>job.input as SystemLabelImportJobInput;
+const planOf=(job:BulkJobRow)=>(job.plan??{}) as SystemLabelImportStoredPlan;
+const attemptOf=(job:BulkJobRow)=>planOf(job).attemptId??null;
+const rowNumOf=(key:string)=>{const n=Number(key.slice(key.lastIndexOf(':')+1));return Number.isSafeInteger(n)?n:null;};
+const codeOf=(write:SystemLabelWrite)=>write.kind==='org'?String((write.orgKind==='department'?write.create.name:write.orgKind==='position'?write.create.title:write.create.code)??''):write.kind==='option'?write.input.value:write.kind==='grade'?write.input.code:write.input.name;
+
+/** A visible code that appeared while the import was staged and that the preview's rules refuse. */
+class ReleaseConflict extends Error{constructor(readonly rows:{kind:string;code:string}[]){super('Labels changed while the import was running.');}}
+async function setImportAttemptTx(tx:Tx,attemptId:string){await tx.execute(sql`select set_config('app.import_attempt',${attemptId},true)`);}
+/** The single-transaction import's writer locks, in its order; the tenant writer lock through the chunk lock owner. */
+const lockTx=(tx:Tx,ctx:SessionContext)=>lockSystemLabelImportTx(tx,ctx,tx=>lockOperatorChunkTx(tx,ctx.tenantId));
+
+export const systemLabelImportJobHandler:BulkJobHandler<SystemLabelWrite>={
+ kind:SYSTEM_LABEL_IMPORT_KIND,
+ mode:'atomic',
+ chunkBudgetMs:SYSTEM_LABEL_IMPORT_CHUNK_BUDGET_MS,
+ maxStepsPerChunk:32,
+ phaseOf:()=>'codes',
+ isTransient:isTransientBulkJobError,
+ stepRef:step=>codeOf(step.payload).slice(0,200),
+ /** Validate once, as the preview did and with no writer lock: the token proves nothing changed since the preview. */
+ async prepare(ctx,job){
+  const {token,selectedKeys}=inputOf(job);
+  let analysed:Awaited<ReturnType<typeof analyseSystemLabelImport>>;
+  try{analysed=await analyseSystemLabelImport(ctx,Buffer.from(job.source_content??Buffer.alloc(0)),selectedKeys);}
+  catch(error){if(isTransientBulkJobError(error))throw error;return{refused:publicErrorMessage(error)};}
+  const {preview,writes}=analysed;
+  const summary=systemLabelImportSummary(preview);
+  const counters={total:preview.rows.length,valid:summary.imported,skipped:summary.skipped,invalid:summary.failed};
+  if(preview.token!==token)return{refused:SYSTEM_LABEL_IMPORT_CHANGED,counters};
+  if(!preview.valid)return{refused:SYSTEM_LABEL_IMPORT_NOTHING,counters};
+  const plan:SystemLabelImportStoredPlan={summary,eventRows:systemLabelImportEventRows(preview),blocked:systemLabelImportBlockedRows(preview)};
+  return{steps:writes.map(write=>({kind:write.kind,rowNum:rowNumOf(write.key),payload:write})),counters,plan};
+ },
+ /** The administrator check of the request, repeated where the steps become runnable; the attempt marks every row. */
+ async commitPrepareTx(tx,_ctx,_job,outcome){
+  if('refused' in outcome)return;
+  const [permission]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() and app.principal_snapshot_current() as allowed`);
+  if(!permission?.allowed)throw new Error('Only an administrator may import System Labels.');
+  return{plan:{...(outcome.plan as SystemLabelImportStoredPlan),attemptId:randomUUID()}};
+ },
+ async beginChunkTx(tx,ctx,job){
+  await setImportAttemptTx(tx,attemptOf(job)!);
+  await lockTx(tx,ctx);
+ },
+ async applyStepTx(tx,ctx,_job,step){
+  await applySystemLabelWriteTx(tx,ctx,step.payload);
+  return{counters:{imported:1}};
+ },
+ /** Release (one short transaction under the same locks), then the result the screen shows. */
+ async finalize(ctx,job,unit){
+  const plan=planOf(job);
+  if(!plan.released){await release(ctx,job,unit,plan);return'more';}
+  return{result:plan.result??{...plan.summary}};
+ },
+ onFailure:job=>planOf(job).released?'fail':'discard',
+ async describeFailure(job,error,step){
+  if(error instanceof ReleaseConflict)return{error:`No labels were imported. ${error.message} Preview the workbook again.`,
+   errors:error.rows.map(r=>({rowNum:0,ref:r.code.slice(0,200),message:`Code "${r.code}" was added by someone else while the import was running.`}))};
+  const message=publicErrorMessage(error);
+  if(planOf(job).released)return{error:`The labels were imported; finishing the import needs attention: ${message}`};
+  const errors:BulkJobRowError[]=step?[{rowNum:step.row_num??0,ref:codeOf(step.payload as SystemLabelWrite).slice(0,200),message:message.slice(0,1000)}]:[];
+  return{error:step?`No labels were imported${step.row_num?`; row ${step.row_num} was refused`:''}. ${message}`:`No labels were imported. ${message}`,errors};
+ },
+ /** Delete every staged row in bounded owner batches; the last batch records the attempt as discarded. */
+ async discard(job,unit){
+  const attemptId=attemptOf(job);
+  if(!attemptId)return'done';
+  const started=performance.now();
+  const [r]=await unit.owner<{remaining:string}[]>`select app.system_label_import_discard_batch(${job.tenant_id}::uuid,${attemptId}::uuid,${job.id}::uuid,${job.created_by}::uuid,${DISCARD_BATCH}) as remaining`;
+  unit.metric('discardTxMs',performance.now()-started);
+  return Number(r.remaining)>0?'more':'done';
+ },
+};
+
+/** The visibility flip: conflicts and the administrator's authority are rechecked under the import's writer locks,
+ * and the release record and the import's history event commit together. Constant in the size of the workbook
+ * apart from the conflict probe, which reads only this import's staged rows through their marker index. */
+async function release(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,plan:SystemLabelImportStoredPlan){
+ const started=performance.now();
+ await withTenant(ctx,async tx=>{
+  await tx.execute(sql`select set_config('application_name','aihr-bulk:system_label_import:release',true)`);
+  await unit.fenceTx(tx);
+  await lockTx(tx,ctx);
+  const conflicts=await tx.execute<{kind:string;code:string}>(sql`select kind,code from app.system_label_import_conflicts(${attemptOf(job)}::uuid)`);
+  if(conflicts.length)throw new ReleaseConflict([...conflicts].slice(0,200));
+  await tx.execute(sql`select app.system_label_import_release_attempt(${attemptOf(job)}::uuid,${job.id}::uuid)`);
+  await appendSystemLabelImportAppliedTx(tx,ctx,plan.summary,plan.eventRows);
+  const result:SystemLabelImportResult={...plan.summary,...systemLabelImportErrorReport(plan.blocked)};
+  const next:SystemLabelImportStoredPlan={summary:plan.summary,eventRows:[],blocked:[],attemptId:plan.attemptId,released:true,result};
+  await tx.execute(sql`update bulk_job set plan=${JSON.stringify(next)}::jsonb,updated_at=now() where id=${job.id}::uuid`);
+ });
+ unit.metric('releaseTxMs',performance.now()-started);
+}

@@ -29536,7 +29536,25 @@
     },
     "notSelected": "此有效新代码未被选中导入，未创建任何记录。",
     "notSelectedStatus": "未选择 — 已跳过",
-    "invalidStatus": "状态必须填写 Active 或 Inactive。留空时默认为 Active。"
+    "invalidStatus": "状态必须填写 Active 或 Inactive。留空时默认为 Active。",
+    "job": {
+      "state": {
+        "queued": "等待开始",
+        "preparing": "正在检查工作簿",
+        "running": "正在导入代码",
+        "finalizing": "正在完成导入",
+        "discarding": "正在撤销导入",
+        "completed": "导入已完成",
+        "failed": "导入已停止——未添加任何代码",
+        "cancelled": "导入已取消——未添加任何代码"
+      },
+      "progressCount": "已写入 {done}/{total} 个代码",
+      "backgroundHelp": "您可以关闭此窗口。导入完成前，任何人都看不到新代码。",
+      "waiting": "正在等待导入服务处理。进度已保存，请勿再次上传工作簿。",
+      "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务运行后会自动开始。",
+      "otherRunning": "另一个系统标签导入仍在运行。请等待其完成后再开始新的导入。",
+      "unavailable": "无法获取导入状态。请刷新页面再次查看。"
+    }
   },
   "onboardingV31": {
     "copy": {
@@ -37612,6 +37630,20 @@
         "cancelled": {
           "title": "薪资处理已取消",
           "body": "批次已退回草稿，未保留任何工资单。"
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "系统标签导入已完成",
+          "body": "打开系统标签，查看已添加的代码。"
+        },
+        "failed": {
+          "title": "系统标签导入已停止",
+          "body": "未添加任何代码。请打开系统标签并重新预览工作簿。"
+        },
+        "cancelled": {
+          "title": "系统标签导入已取消",
+          "body": "未添加任何代码。"
         }
       }
     },

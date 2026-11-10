@@ -1,6 +1,7 @@
 # Operator tools and review sweeps run in bounded transactions
 
-Date: 10 November 2026. Status: accepted for the sweeps and tools converted below; System Labels import remains open.
+Date: 10 November 2026. Status: accepted for the sweeps and tools converted below; System Labels import and capability publication: see
+2026-11-10-system-label-import-staged-job.md.
 Context: DESIGN.md (Access lock and audit chain), owner bar "no transaction holds a tenant-wide lock for more than about
 1 s", and the shared bulk-job kernel (2026-11-10-employee-import-staged-job.md).
 
@@ -44,8 +45,5 @@ flips the global catalogue; a chunked publication needs per-tenant publication s
 
 ## Open
 
-System Labels import is started by an administrator and holds exclusive Access, the leave configuration lock and the
-catalogue table locks for about 1.3–1.7 s at 445 new codes, mostly in analysis under the lock. It is all-or-nothing
-today. Moving it to the kernel needs either staged, invisible labels released by one flip (pending markers and
-restrictive policies on nine catalogue tables plus a definer audit, as the employee import did) or an owner decision
-that a per-step import with a clear partial result is acceptable.
+None. System Labels import and the workforce capability publication are converted in
+2026-11-10-system-label-import-staged-job.md (staged all-or-nothing job; per-tenant resumable publication).

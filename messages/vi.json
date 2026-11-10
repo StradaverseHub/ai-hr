@@ -29536,7 +29536,25 @@
     },
     "notSelected": "Mã mới hợp lệ này không được chọn để nhập. Không có bản ghi nào được tạo.",
     "notSelectedStatus": "Không được chọn — đã bỏ qua",
-    "invalidStatus": "Trạng thái phải là Active hoặc Inactive. Để trống để dùng giá trị mặc định Active."
+    "invalidStatus": "Trạng thái phải là Active hoặc Inactive. Để trống để dùng giá trị mặc định Active.",
+    "job": {
+      "state": {
+        "queued": "Đang chờ bắt đầu",
+        "preparing": "Đang kiểm tra sổ làm việc",
+        "running": "Đang nhập mã",
+        "finalizing": "Đang hoàn tất việc nhập",
+        "discarding": "Đang hoàn tác việc nhập",
+        "completed": "Đã nhập xong",
+        "failed": "Đã dừng nhập — không có mã nào được thêm",
+        "cancelled": "Đã hủy nhập — không có mã nào được thêm"
+      },
+      "progressCount": "Đã ghi {done} trên {total} mã",
+      "backgroundHelp": "Bạn có thể đóng cửa sổ này. Không ai thấy các mã mới cho đến khi việc nhập hoàn tất.",
+      "waiting": "Đang chờ trình xử lý nhập. Tiến độ đã được lưu; đừng tải sổ làm việc lên lần nữa.",
+      "workerUnavailable": "Dịch vụ nhập chưa chạy. Việc nhập của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy.",
+      "otherRunning": "Một lần nhập Nhãn hệ thống khác vẫn đang chạy. Hãy chờ nó hoàn tất trước khi bắt đầu lần mới.",
+      "unavailable": "Không có trạng thái nhập. Hãy làm mới trang để kiểm tra lại."
+    }
   },
   "onboardingV31": {
     "copy": {
@@ -37612,6 +37630,20 @@
         "cancelled": {
           "title": "Đã hủy xử lý bảng lương",
           "body": "Đợt lương trở về bản nháp và không giữ phiếu lương nào."
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "Đã nhập Nhãn hệ thống xong",
+          "body": "Mở Nhãn hệ thống để xem các mã đã được thêm."
+        },
+        "failed": {
+          "title": "Đã dừng nhập Nhãn hệ thống",
+          "body": "Không có mã nào được thêm. Mở Nhãn hệ thống và xem trước sổ làm việc lần nữa."
+        },
+        "cancelled": {
+          "title": "Đã hủy nhập Nhãn hệ thống",
+          "body": "Không có mã nào được thêm."
         }
       }
     },

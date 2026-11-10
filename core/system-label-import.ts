@@ -161,8 +161,15 @@ async function readExportAudit(tx:Tx,ctx:SessionContext,exportId:string|null):Pr
 
 const existingCodeMessage = 'This code already exists in this category. No existing record will be changed. Edit it on the System Labels page.';
 /** Import intent is server-owned. Legacy mode arguments and export receipts confer no update right. */
-async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audit: ExportAudit|null, selectedKeys?: string[]): Promise<{preview:LabelImportPreview;writes:(()=>Promise<unknown>)[]}> {
-  const c=await catalogue(tx), output:LabelImportPreviewRow[]=[], writes:{key:string;apply:()=>Promise<unknown>;org?:{kind:OrganisationLabelKind;create:LabelCreateInput}}[]=[];
+/** One new code the import writes, as plain data: the synchronous import applies these in one transaction and the
+ * background job (core/system-label-import-worker.ts) applies one per step, through the same writers. */
+export type SystemLabelWrite=
+ |{kind:'org';key:string;orgKind:OrganisationLabelKind;create:LabelCreateInput}
+ |{kind:'option';key:string;input:{category:string;value:string;label:string;description:string;sortOrder:number;isActive:boolean;scopeCompanyIds:string[]|null}}
+ |{kind:'grade';key:string;input:{code:string;name:string;rank:number;description:string;active:boolean;scopeCompanyIds:string[]|null}}
+ |{kind:'group';key:string;input:{name:string;gradeIds:string[];scopeCompanyIds:string[]|null}};
+async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audit: ExportAudit|null, selectedKeys?: string[]): Promise<{preview:LabelImportPreview;writes:SystemLabelWrite[]}> {
+  const c=await catalogue(tx), output:LabelImportPreviewRow[]=[], writes:SystemLabelWrite[]=[];
   const allowedKeys=new Set(rows.map(r=>r.sheet+':'+r.row));
   if(selectedKeys&&(new Set(selectedKeys).size!==selectedKeys.length||selectedKeys.some(k=>!allowedKeys.has(k))))throw new Error('Invalid row selection.');
   const selected=selectedKeys?new Set(selectedKeys):null;
@@ -192,8 +199,8 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         if(previous){result.reason=same(previous,v)?'duplicate':'conflicting';result.outcome='skip';result.selected=false;result.message=same(previous,v)?'Duplicate code in this workbook; only the first valid row can be added.':'Conflicting code in this workbook; this later row is skipped.';return false;}
         seen.set(identity,{...v});return true;
       };
-      const add=(apply:()=>Promise<unknown>,org?:{kind:OrganisationLabelKind;create:LabelCreateInput})=>{
-        result.outcome='add';result.message='Valid new code.';writes.push({key,apply,org});
+      const add=(write:SystemLabelWrite)=>{
+        result.outcome='add';result.message='Valid new code.';writes.push(write);
       };
       if((ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)){
         const kind=row.sheet as OrganisationLabelKind, code=requireValue('Code');
@@ -215,14 +222,14 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         const fields:Partial<LabelCreateInput>={companyId:co.id,label:v.Label,archived:!active};
         for(const col of ORGANISATION_LABEL_COLUMNS[kind])Object.assign(fields,{[col.field]:v[{code:'Code',label:'Label',description:'Description'}[col.headerKey]]});
         if('Head Employee Code' in v)fields.headEmploymentId=heads[0]?.id??null;
-        add(async()=>{},{kind,create:{...fields,key,companyId:co.id,isGlobal:v.Criteria==='global',companyIds:shared} as LabelCreateInput});
+        add({kind:'org',key,orgKind:kind,create:{...fields,key,companyId:co.id,isGlobal:v.Criteria==='global',companyIds:shared} as LabelCreateInput});
       }else if((PROFILE_LABEL_CATEGORIES as readonly string[]).includes(row.sheet)){
         const scope=resolveLabelAssignment(v,c.companies,c.groupAdmin);Object.assign(v,flatScopeValues(c,scope.companyIds));
         const value=requireValue('Code');
         if(c.options.some(option=>option.category===row.sheet&&option.value===value))throw new LabelImportRowError('existing',existingCodeMessage);
         v.Label=v.Label||value;v['Sort Order']=String(whole(v['Sort Order']));
         if(!identify(`${row.sheet}|${value}`))continue;
-        add(()=>createProfileOption(ctx,{category:row.sheet,value,label:v.Label,description:v.Description,sortOrder:Number(v['Sort Order']),isActive:active,scopeCompanyIds:scope.companyIds},tx));
+        add({kind:'option',key,input:{category:row.sheet,value,label:v.Label,description:v.Description,sortOrder:Number(v['Sort Order']),isActive:active,scopeCompanyIds:scope.companyIds}});
       }else if(row.sheet==='grades'){
         const scope=resolveLabelAssignment(v,c.companies,c.groupAdmin);Object.assign(v,flatScopeValues(c,scope.companyIds));
         const code=requireValue('Code');
@@ -231,7 +238,7 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         const name=requireValue('Label');v.Rank=String(whole(v.Rank));
         if(seen.has(`grades|${code}`)){identify(`grades|${code}`);continue;}
         if(c.grades.some(grade=>!grade.archivedAt&&lower(grade.name)===lower(name))||names.has(lower(name)))throw new LabelImportRowError('gradeLabelExists','Another grade already uses this Label.');
-        identify(`grades|${code}`);names.add(lower(name));add(()=>createJobGrade(ctx,{code,name,rank:Number(v.Rank),description:v.Description,active,scopeCompanyIds:scope.companyIds},tx));
+        identify(`grades|${code}`);names.add(lower(name));add({kind:'grade',key,input:{code,name,rank:Number(v.Rank),description:v.Description,active,scopeCompanyIds:scope.companyIds}});
       }else{
         const scope=resolveLabelAssignment(v,c.companies,c.groupAdmin);Object.assign(v,flatScopeValues(c,scope.companyIds));
         const name=requireValue('Name');
@@ -244,7 +251,7 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         if(grades.some(grade=>grade!.scopeCompanyIds!==null&&(scope.companyIds===null||scope.companyIds.some(id=>!grade!.scopeCompanyIds!.includes(id)))))throw new LabelImportRowError('invalidCriteriaCompany','Every grade must apply to every company in the group.');
         if(!identify(`grade_groups|${lower(name)}`))continue;
         for(const grade of grades)memberClaims.add(grade!.id);
-        add(()=>createGradeGroup(ctx,{name,gradeIds:grades.map(grade=>grade!.id),scopeCompanyIds:scope.companyIds},tx));
+        add({kind:'group',key,input:{name,gradeIds:grades.map(grade=>grade!.id),scopeCompanyIds:scope.companyIds}});
       }
     }catch(error){result.reason=error instanceof LabelImportRowError||error instanceof LabelAssignmentError?error.reason:'invalidRow';if(error instanceof LabelImportRowError&&error.reasonField)result.reasonField=error.reasonField;result.outcome='error';result.selected=false;result.message=error instanceof Error?error.message:'Invalid label row.';}
   }
@@ -253,12 +260,60 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
     result.outcome='skip';result.reason='notSelected';result.message='Valid new code was not selected for this import. No record was created.';
   }
   for(const result of output)if(result.warnings?.length)result.message=[result.message,...result.warnings].join(' ');
-  const orgGroups=new Map<OrganisationLabelKind,LabelCreateInput[]>(),apply:(()=>Promise<unknown>)[]=[];
   const selectedWrites=writes.filter(write=>output.some(row=>row.selected&&row.outcome==='add'&&row.sheet+':'+row.row===write.key));
-  for(const write of selectedWrites){if(!write.org){apply.push(write.apply);continue;}orgGroups.set(write.org.kind,[...(orgGroups.get(write.org.kind)??[]),write.org.create]);}
-  for(const kind of ORGANISATION_LABEL_KINDS){const creates=orgGroups.get(kind);if(creates?.length)apply.push(()=>bulkSaveLabels(ctx,kind,{creates,updates:[]},tx));}
+  // Application order: flat codes in workbook order, then each organisation category in ORGANISATION_LABEL_KINDS order.
+  const ordered=[...selectedWrites.filter(write=>write.kind!=='org'),...ORGANISATION_LABEL_KINDS.flatMap(kind=>selectedWrites.filter(write=>write.kind==='org'&&write.orgKind===kind))];
   const token=createHash('sha256').update(JSON.stringify([ctx.tenantId,ctx.userId,'add',c,audit,output])).digest('hex');
-  return {preview:{token,rows:output,valid:selectedWrites.length>0,mode:'add'},writes:apply};
+  return {preview:{token,rows:output,valid:selectedWrites.length>0,mode:'add'},writes:ordered};
+}
+
+const gradeAlreadyGrouped='A grade already belongs to another group. Change its membership in the editor first.';
+/** Writes one new code through its ordinary owner, inside the caller's transaction and writer locks. A grade group
+ * first re-checks, under those locks, that none of its grades joined another group since the preview: the group
+ * writer would otherwise move them out of that group. */
+export async function applySystemLabelWriteTx(tx:Tx,ctx:SessionContext,write:SystemLabelWrite):Promise<void>{
+  if(write.kind==='org'){await bulkSaveLabels(ctx,write.orgKind,{creates:[write.create],updates:[]},tx);return;}
+  if(write.kind==='option'){await createProfileOption(ctx,write.input,tx);return;}
+  if(write.kind==='grade'){await createJobGrade(ctx,write.input,tx);return;}
+  if(write.input.gradeIds.length){
+    const [grouped]=await tx.select({id:s.gradeGroupMember.id}).from(s.gradeGroupMember).where(inArray(s.gradeGroupMember.gradeId,write.input.gradeIds)).limit(1);
+    if(grouped)throw new Error(gradeAlreadyGrouped);
+  }
+  await createGradeGroup(ctx,write.input,tx);
+}
+/** The synchronous application: flat codes one by one, then each organisation category in one save. */
+async function applyWritesTx(tx:Tx,ctx:SessionContext,writes:SystemLabelWrite[]){
+  for(const write of writes)if(write.kind!=='org')await applySystemLabelWriteTx(tx,ctx,write);
+  for(const kind of ORGANISATION_LABEL_KINDS){
+    const creates=writes.flatMap(write=>write.kind==='org'&&write.orgKind===kind?[write.create]:[]);
+    if(creates.length)await bulkSaveLabels(ctx,kind,{creates,updates:[]},tx);
+  }
+}
+export type SystemLabelImportSummary={imported:number;updated:number;skipped:number;failed:number};
+export function systemLabelImportSummary(preview:LabelImportPreview):SystemLabelImportSummary{
+  return {imported:preview.rows.filter(row=>row.selected&&row.outcome==='add').length,updated:0,
+    skipped:preview.rows.filter(row=>row.outcome==='skip'||row.outcome==='add'&&!row.selected).length,failed:preview.rows.filter(row=>row.outcome==='error').length};
+}
+/** The import's history record, identical whichever path applied the codes. */
+export type SystemLabelImportEventRow={sheet:string;row:number;outcome:string;reason:string|null;message:string};
+export const systemLabelImportEventRows=(preview:LabelImportPreview):SystemLabelImportEventRow[]=>preview.rows.map(row=>({sheet:row.sheet,row:row.row,outcome:row.outcome,reason:row.reason??null,message:row.message}));
+export async function appendSystemLabelImportAppliedTx(tx:Tx,ctx:SessionContext,summary:SystemLabelImportSummary,rows:SystemLabelImportEventRow[]){
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'system-label-import',aggregateId:randomUUID(),eventType:'system-label-import.applied',actor:actorOf(ctx),payload:{mode:'add',summary,rows}});
+}
+export const systemLabelImportBlockedRows=(preview:LabelImportPreview)=>preview.rows.filter(row=>!row.selected||row.outcome!=='add');
+export const systemLabelImportErrorReport=(blocked:LabelImportPreviewRow[])=>blocked.length?{errorReport:Buffer.from(systemLabelErrorWorkbook(blocked)).toString('base64')}:{};
+/** The same writer locks, in the same order as the canonical owners, for the synchronous import and every job chunk. */
+export async function lockSystemLabelImportTx(tx:Tx,ctx:SessionContext,writerLock:(tx:Tx)=>Promise<void>){
+  await writerLock(tx);
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+  await tx.execute(sql`LOCK TABLE profile_option, job_grade, grade_group, grade_group_member IN SHARE ROW EXCLUSIVE MODE`);
+  await lockLabelCriteriaTx(tx,ctx.tenantId);
+}
+/** Analysis as the preview runs it (no writer lock): the job validates once with this and compares the token. */
+export function analyseSystemLabelImport(ctx:SessionContext,bytes:Buffer,selectedKeys?:string[]):Promise<{preview:LabelImportPreview;writes:SystemLabelWrite[]}>{
+  const rows=readSystemLabelWorkbook(bytes);
+  if(!rows.length)throw new Error('The workbook contains no label data. Fill in new codes in a recognised category sheet.');
+  return withTenant(ctx,async tx=>analyse(tx,ctx,rows,await readExportAudit(tx,ctx,systemLabelExportId(bytes)),selectedKeys));
 }
 
 export function previewSystemLabelImport(ctx:SessionContext,bytes:Buffer,_legacyMode:LabelImportMode='add',selectedKeys?:string[]): Promise<LabelImportPreview> {
@@ -267,28 +322,30 @@ export function previewSystemLabelImport(ctx:SessionContext,bytes:Buffer,_legacy
   return withTenant(ctx,async tx=>{const audit=await readExportAudit(tx,ctx,systemLabelExportId(bytes));return (await analyse(tx,ctx,rows,audit,selectedKeys)).preview;});
 }
 
+export const SYSTEM_LABEL_IMPORT_CHANGED='Labels or permissions changed since preview. Preview the workbook again.';
+export const SYSTEM_LABEL_IMPORT_NOTHING='There are no valid new codes to import. Edit existing codes on the System Labels page.';
+/** The single-transaction import: holds the tenant writer locks for its analysis and every write. The System Labels
+ * screen no longer calls it (it starts a background job, core/system-label-import-job.ts); it remains the reference
+ * the job's results are proved equal to, and the owner of the import's analysis and writers. */
 export function applySystemLabelImport(ctx:SessionContext,p:{bytes:Buffer;mode?:LabelImportMode;token:string;confirmUpdates?:boolean;selectedKeys?:string[]}): Promise<{imported:number;updated:number;skipped:number;failed:number;errorReport?:string}> {
   p={...p,bytes:Buffer.from(p.bytes),selectedKeys:p.selectedKeys?.slice()};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const rows=readSystemLabelWorkbook(p.bytes);
   return withTenant(ctx,async tx=>{
-    // Creating labels edits the catalogue, so this holds exclusive Access to commit (a long holder: flagged
-    // for chunking). Queue for it briefly and back off from a long holder instead of waiting unbounded,
-    // which would stop every later clock-in behind this request. The editor lock below then re-enters.
-    if(!await waitAccessConfigurationExclusiveTx(tx,ctx.tenantId,{attempts:6}))throw new AccessConfigurationBusyError();
-    await tx.execute(sql`select app.access_configuration_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Same lock order as the canonical owners; an unexpected writer refusal rolls back all additions.
-    await tx.execute(sql`LOCK TABLE profile_option, job_grade, grade_group, grade_group_member IN SHARE ROW EXCLUSIVE MODE`);
-    await lockLabelCriteriaTx(tx,ctx.tenantId);
+    // Creating labels edits the catalogue, so the synchronous import holds exclusive Access to commit. Queue for
+    // it briefly and back off from a long holder instead of waiting unbounded, which would stop every later
+    // clock-in behind this request. The editor lock then re-enters.
+    await lockSystemLabelImportTx(tx,ctx,async tx=>{
+      if(!await waitAccessConfigurationExclusiveTx(tx,ctx.tenantId,{attempts:6}))throw new AccessConfigurationBusyError();
+      await tx.execute(sql`select app.access_configuration_write_lock()`);
+    });
     const audit=await readExportAudit(tx,ctx,systemLabelExportId(p.bytes));
     const {preview,writes}=await analyse(tx,ctx,rows,audit,p.selectedKeys);
-    if(preview.token!==p.token)throw new Error('Labels or permissions changed since preview. Preview the workbook again.');
-    if(!preview.valid)throw new Error('There are no valid new codes to import. Edit existing codes on the System Labels page.');
-    for(const write of writes)await write();
-    const summary={imported:preview.rows.filter(row=>row.selected&&row.outcome==='add').length,updated:0,
-      skipped:preview.rows.filter(row=>row.outcome==='skip'||row.outcome==='add'&&!row.selected).length,failed:preview.rows.filter(row=>row.outcome==='error').length};
-    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'system-label-import',aggregateId:randomUUID(),eventType:'system-label-import.applied',actor:actorOf(ctx),payload:{mode:'add',summary,rows:preview.rows.map(row=>({sheet:row.sheet,row:row.row,outcome:row.outcome,reason:row.reason??null,message:row.message}))}});
-    const blocked=preview.rows.filter(row=>!row.selected||row.outcome!=='add');
-    return {...summary,...(blocked.length?{errorReport:Buffer.from(systemLabelErrorWorkbook(blocked)).toString('base64')}:{})};
+    if(preview.token!==p.token)throw new Error(SYSTEM_LABEL_IMPORT_CHANGED);
+    if(!preview.valid)throw new Error(SYSTEM_LABEL_IMPORT_NOTHING);
+    await applyWritesTx(tx,ctx,writes);
+    const summary=systemLabelImportSummary(preview);
+    await appendSystemLabelImportAppliedTx(tx,ctx,summary,systemLabelImportEventRows(preview));
+    return {...summary,...systemLabelImportErrorReport(systemLabelImportBlockedRows(preview))};
   });
 }
