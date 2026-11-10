@@ -182,6 +182,16 @@ async function revertItemTx(tx:Tx,ctx:SessionContext,i:ImportAttemptItemRow,reas
   await reverseMovementForImportTx(tx,ctx,i.employmentId,after.movementId,reason);
  }
 }
+/** The revert's whole compensation for these items, newest import write first, through the Movement owner; the
+ * revert event's detail. The synchronous revert applies it; the background revert rehearses it per employee in a
+ * savepoint that always rolls back and replays what it wrote (core/movement-import-revert-job.ts). */
+export async function applyMovementRevertTx(tx:Tx,ctx:SessionContext,items:ImportAttemptItemRow[],reason:string){
+ let reversed=0,restored=0;
+ for(const i of revertOrder(items)){await revertItemTx(tx,ctx,i,reason);if(isCorrectionItem(i))restored++;else reversed++;}
+ return{movements:reversed,...(restored?{corrections:restored}:{})};
+}
+/** The employments of a revert in the order its compensation runs (revertOrder sorts by employment first). */
+export function movementRevertEmployments(items:ImportAttemptItemRow[]){return [...new Set(revertOrder(items).map(i=>i.employmentId??''))];}
 /** Static blockers of an Update or Delete item: the event it touched changed later, or a later movement would
  *  be overwritten by re-recording a deleted one. The rehearsal below catches every owner refusal besides. */
 async function correctionBlockersTx(tx:Tx,ctx:SessionContext,employmentId:string,i:ImportAttemptItemRow,importIds:Set<string>):Promise<string[]>{
@@ -245,9 +255,5 @@ export const movementRevertHandler:ImportRevertHandler={
   }
   return{items:out,fingerprint};
  },
- async apply(tx,ctx,items,options){
-  const reason=options?.reason??'';let reversed=0,restored=0;
-  for(const i of revertOrder(items)){await revertItemTx(tx,ctx,i,reason);if(isCorrectionItem(i))restored++;else reversed++;}
-  return{movements:reversed,...(restored?{corrections:restored}:{})};
- },
+ async apply(tx,ctx,items,options){return applyMovementRevertTx(tx,ctx,items,options?.reason??'');},
 };

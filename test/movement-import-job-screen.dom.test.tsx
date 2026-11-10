@@ -55,6 +55,23 @@ describe('Movement import screen with a background check',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Check file'}));
   expect(await screen.findByText('The file can no longer be read in the current layout. Upload it again.')).toBeInTheDocument();
  },15_000);
+ it('shows a check that finished while its creator was away, from its recorded result, and confirms it',async()=>{
+  mocks.checks.mockResolvedValue(response({jobs:[checkJob('completed',{result:{attemptId:'attempt-7',previewHash:'hash-7',preview},reviewOpen:true})]}));
+  mount();
+  expect(await screen.findByRole('heading',{name:'Review events before importing'})).toBeInTheDocument();
+  expect(mocks.post).not.toHaveBeenCalled();
+  mocks.post.mockResolvedValueOnce(response({ok:true,job:job('queued'),existing:false},202));
+  mocks.job.mockResolvedValue(response({job:job('completed',{result,imported:1})}));
+  fireEvent.click(screen.getByRole('button',{name:'Confirm and import selected events'}));
+  expect(await screen.findByRole('heading',{name:'Import result'},{timeout:5000})).toBeInTheDocument();
+  const apply=mocks.post.mock.calls[0][1].body as FormData;expect(apply.get('attemptId')).toBe('attempt-7');expect(apply.get('previewHash')).toBe('hash-7');
+ },15_000);
+ it('does not show a finished check again once its attempt is no longer open for review, nor while a confirmation runs',async()=>{
+  mocks.checks.mockResolvedValue(response({jobs:[checkJob('completed',{result:{attemptId:'attempt-7',previewHash:'hash-7',preview},reviewOpen:false})]}));
+  mount();
+  await new Promise(r=>setTimeout(r,50));
+  expect(screen.queryByRole('heading',{name:'Review events before importing'})).toBeNull();
+ });
  it('rejoins a running check after navigation',async()=>{
   mocks.checks.mockResolvedValue(response({jobs:[checkJob('checking',{stepsTotal:4,stepsDone:1})]}));
   mocks.check.mockResolvedValue(response({job:checkJob('checking',{stepsTotal:4,stepsDone:3})}));

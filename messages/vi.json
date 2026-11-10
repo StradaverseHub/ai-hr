@@ -37320,6 +37320,20 @@
           "title": "Việc kiểm tra biến động đã dừng",
           "body": "Chưa có gì được lưu. Mở Lịch sử nhập để xem chi tiết."
         }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "Đã hoàn tác việc nhập biến động",
+          "body": "Mở Lịch sử nhập để xem các biến động đã được hoàn tác."
+        },
+        "failed": {
+          "title": "Việc hoàn tác nhập biến động đã dừng",
+          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc hoàn tác nhập biến động",
+          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem chi tiết."
+        }
       }
     }
   }

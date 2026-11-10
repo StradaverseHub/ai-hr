@@ -37320,6 +37320,20 @@
           "title": "Semakan pergerakan dihentikan",
           "body": "Tiada apa-apa disimpan. Buka Sejarah Import untuk butiran."
         }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "Pembatalan import pergerakan selesai",
+          "body": "Buka Sejarah Import untuk melihat pergerakan yang telah dibatalkan."
+        },
+        "failed": {
+          "title": "Pembatalan import pergerakan dihentikan",
+          "body": "Tiada apa-apa diubah. Buka Sejarah Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pembatalan import pergerakan dibatalkan",
+          "body": "Tiada apa-apa diubah. Buka Sejarah Import untuk butiran."
+        }
       }
     }
   }

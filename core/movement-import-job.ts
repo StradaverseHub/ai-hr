@@ -117,9 +117,21 @@ export async function startMovementCheckJob(ctx:SessionContext,input:{name:strin
 export async function getMovementCheckJob(ctx:SessionContext,id:string){
  try{return await withTenant(ctx,async tx=>checkProgressTx(tx,await bulkJobTx(tx,id,{kind:MOVEMENT_CHECK_KIND})));}catch(error){throw checkKernelError(error);}
 }
-/** The signed-in user's most recent movement checks, newest first (the screen rejoins a running one). */
+/** The signed-in user's most recent movement checks, newest first. The screen rejoins a running one, or shows the
+ * newest finished one again while its attempt is still open for review (`reviewOpen`). */
 export async function listMovementCheckJobs(ctx:SessionContext){return withTenant(ctx,async tx=>{
  const rows=await listBulkJobsTx(tx,ctx,MOVEMENT_CHECK_KIND,10);
  const worker=rows.some(r=>r.state==='queued')?await bulkJobWorkerStatusTx(tx,MOVEMENT_CHECK_KIND):'running';
- return rows.map(row=>movementCheckJobProgress(row,worker));
+ const jobs=rows.map(row=>movementCheckJobProgress(row,worker));
+ const newest=jobs[0];
+ if(newest?.state==='completed'&&newest.result)newest.reviewOpen=await movementCheckReviewOpenTx(tx,ctx,newest.result.attemptId);
+ return jobs;
 });}
+/** Whether a checked attempt can still be confirmed from its preview: visible to the user, neither confirmed nor
+ * reverted, and no confirmation of it started (a running or finished background import names it). */
+async function movementCheckReviewOpenTx(tx:Tx,ctx:SessionContext,attemptId:string){
+ const [row]=await tx.execute<{open:boolean}>(sql`select exists(select 1 from import_attempt a where a.id=${attemptId}::uuid and a.kind='movement')
+   and not exists(select 1 from import_attempt_event e where e.attempt_id=${attemptId}::uuid and e.kind in ('confirmed','reverted'))
+   and not exists(select 1 from bulk_job j where j.created_by=${ctx.userId??null}::uuid and j.kind=${MOVEMENT_IMPORT_KIND} and (j.attempt_id=${attemptId}::uuid or j.input->>'attemptId'=${attemptId}) and j.state<>'failed') as open`);
+ return row?.open===true;
+}

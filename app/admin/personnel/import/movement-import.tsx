@@ -32,11 +32,24 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
  const reset=()=>{revision.current++;setPreview(null);setResult(null);setAttempt(null);setSelected([]);setAcknowledge(false);setClosedPayroll(false);setError(null);};
  useEffect(()=>()=>{revision.current++;},[]);
  // A check or a confirmation running in the background keeps running after navigation: rejoin the newest active one.
+ // A check that finished while its creator was away is shown again, from its own recorded result, while its attempt is
+ // still open for review (the server says so); a running confirmation takes precedence.
  useEffect(()=>{
-  let alive=true;
-  fetch('/admin/personnel/import/movement/jobs',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{if(alive&&p?.jobs){const active=(p.jobs as MovementImportJobProgress[]).find(found=>movementImportJobActive(found.state));if(active)setJob(active);}}).catch(()=>undefined);
-  fetch('/admin/personnel/import/movement/checks',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{if(alive&&p?.jobs){const active=(p.jobs as MovementCheckJobProgress[]).find(found=>movementCheckJobActive(found.state));if(active)setCheck(active);}}).catch(()=>undefined);
+  let alive=true;const started=revision.current;
+  const list=(path:string)=>fetch(path,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+  void(async()=>{
+   const imports=await list('/admin/personnel/import/movement/jobs');if(!alive)return;
+   const running=(imports?.jobs as MovementImportJobProgress[]|undefined)?.find(found=>movementImportJobActive(found.state));
+   if(running){setJob(running);return;}
+   const checks=await list('/admin/personnel/import/movement/checks');if(!alive||!checks?.jobs)return;
+   const jobs=checks.jobs as MovementCheckJobProgress[];
+   const active=jobs.find(found=>movementCheckJobActive(found.state));
+   if(active){setCheck(active);return;}
+   const newest=jobs[0];
+   if(newest?.state==='completed'&&newest.result&&newest.reviewOpen&&revision.current===started)showPreview(newest.result);
+  })();
   return()=>{alive=false;};
+ // eslint-disable-next-line react-hooks/exhaustive-deps
  },[]);
  const showPreview=useCallback((value:MovementCheckJobResult)=>{
   setPreview(value.preview);setAttempt({attemptId:value.attemptId,previewHash:value.previewHash});setSelected(value.preview.employees.filter(e=>e.fingerprint&&e.rows.every(r=>r.status==='valid')).map(movementEmployeeKey));setAcknowledge(false);requestAnimationFrame(()=>summary.current?.focus());

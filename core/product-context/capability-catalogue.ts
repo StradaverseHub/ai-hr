@@ -123,6 +123,7 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/movement-import-history.ts':'Recorded upload preview and confirm of the movement import.',
  'core/movement-import-job.ts':'Admission and progress of the background movement import confirmation.',
  'core/movement-import-worker.ts':'Bulk-job worker that saves a confirmed movement import, one employee per chunk, through the movement import owner.',
+ 'core/movement-import-revert-job.ts':'Background whole-import revert of a movement import: rehearsed plan per employee, verified set-based release, synchronous fallback.',
  'core/movement-import-check-worker.ts':'Bulk-job worker that checks an uploaded movement file, one employee per chunk with every change rolled back, and records the attempt.',
  'core/movement-import-rules.ts':'Admission rules of the movement import.',
  'core/payslip-imported-lines.ts':'Payslip display of imported payroll history lines.',

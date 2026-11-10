@@ -7,6 +7,8 @@ import type {ImportKind} from '../lib/import-history';
 import {importAttemptKind,planImportRevert,previewImportRevert,revertImport,ImportHistoryError,type ImportRevertHandler} from './import-history';
 import {movementRevertReviewWritesTx} from './movement-import-history';
 import {withTenant} from '../db/client';
+import {createMovementImportRevertJob} from './movement-import-revert-job';
+import type {ImportRevertJobProgress} from '../lib/import-revert-job';
 import {costAllocationRevertHandler} from './cost-allocation-import';
 import {bankStatutoryRevertHandler} from './bank-statutory-import';
 import {movementRevertHandler} from './movement-import-history';
@@ -32,4 +34,10 @@ export async function previewImportRevertForAttempt(ctx:SessionContext,attemptId
  const plan=await planImportRevert(ctx,attemptId,handler);
  return{attemptId,kind:plan.attempt.kind,eligible:plan.blockers.length===0,items:plan.inspection,blockers:plan.blockers,previewHash:plan.previewHash};
 }
-export async function revertImportForAttempt(ctx:SessionContext,attemptId:string,input:{previewHash:string;reason:string}){return revertImport(ctx,attemptId,await handlerFor(ctx,attemptId),input);}
+/** A movement import's revert runs as a background job (core/movement-import-revert-job.ts): a verified set-based
+ * release, with the synchronous revert as its whole-revert fallback. Other kinds keep their synchronous revert. */
+export async function revertImportForAttempt(ctx:SessionContext,attemptId:string,input:{previewHash:string;reason:string}):Promise<Awaited<ReturnType<typeof revertImport>>|{job:ImportRevertJobProgress}>{
+ const handler=await handlerFor(ctx,attemptId);
+ if(handler.kind==='movement')return{job:await createMovementImportRevertJob(ctx,attemptId,input)};
+ return revertImport(ctx,attemptId,handler,input);
+}

@@ -37320,6 +37320,20 @@
           "title": "Movement check stopped",
           "body": "Nothing was saved. Open Import History for details."
         }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "Movement import revert finished",
+          "body": "Open Import History to see the movements that were rolled back."
+        },
+        "failed": {
+          "title": "Movement import revert stopped",
+          "body": "Nothing was changed. Open Import History to see why."
+        },
+        "cancelled": {
+          "title": "Movement import revert cancelled",
+          "body": "Nothing was changed. Open Import History for details."
+        }
       }
     }
   }

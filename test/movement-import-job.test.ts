@@ -12,11 +12,14 @@ import {setCompensation} from '../core/comp';
 import {createJobGrade,createPosition} from '../core/admin';
 import {createMovementEvent,movementHistory} from '../core/movement';
 import {previewMovementUpload,confirmMovementUpload,type MovementUploadResult} from '../core/movement-import-history';
-import {getMovementCheckJob,getMovementImportJob,listMovementImportJobs,startMovementCheckJob,startMovementImportJob,MovementImportJobError} from '../core/movement-import-job';
+import {getMovementCheckJob,getMovementImportJob,listMovementCheckJobs,listMovementImportJobs,startMovementCheckJob,startMovementImportJob,MovementImportJobError} from '../core/movement-import-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
 import {getImportAttempt,previewImportRevert} from '../core/import-history';
 import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
+import {revertImport} from '../core/import-history';
+import {revertMovementByJob} from './movement-revert-job-helper';
+import {createHash} from 'node:crypto';
 import {movementRevertHandler} from '../core/movement-import-history';
 import {verifyTenantChain} from '../core/audit-chain';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
@@ -177,6 +180,25 @@ async function snapshot(tenantId:string){
  for(const [table,rows] of Object.entries(raw))result[table]=rows.map(canon);
  return{tables:result,canon};
 }
+/** Audit events grouped per employee, each employee's own order kept: a revert compensates employee by employee in
+ * employment-id order (revertOrder), and the ids differ between two fixture runs. */
+const perEmployeeEvents=(tables:Record<string,unknown[]>)=>{
+ const events=(tables.domain_event as {subject_employment_id:string|null}[]).map((row,index)=>({row,index}));
+ events.sort((x,y)=>String(x.row.subject_employment_id??'').localeCompare(String(y.row.subject_employment_id??''))||x.index-y.index);
+ const grouped:Record<string,unknown[]>={...tables,domain_event:events.map(e=>e.row)};
+ // Anonymous ids were numbered in the original traversal; number them again in this one.
+ const tokens=new Map<string,string>();
+ const renumber=(v:unknown):unknown=>typeof v==='string'?v.replace(/#\d+/g,m=>{if(!tokens.has(m))tokens.set(m,`#${tokens.size}`);return tokens.get(m)!;}):Array.isArray(v)?v.map(renumber):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,renumber(x)])):v;
+ return Object.fromEntries(Object.keys(grouped).sort().map(k=>[k,renumber(grouped[k])]));
+};
+/** The revert's own events follow the employees in employment-id order, as the synchronous revert's do. */
+async function revertEventsInEmploymentOrder(tenantId:string,attemptIds:string[]){
+ for(const attemptId of attemptIds){
+  const rows=await owner.client<{subject:string}[]>`select subject_employment_id::text subject from domain_event where tenant_id=${tenantId}::uuid and event_type in ('employment.movement.reversed') and payload->>'reason'='Fictional wrong batch' and sequence>(select min(sequence) from domain_event where tenant_id=${tenantId}::uuid and aggregate_id=${attemptId}::uuid and event_type='import-attempt.confirmed') and subject_employment_id in (select employment_id from import_attempt_item where attempt_id=${attemptId}::uuid) order by sequence`;
+  const subjects=rows.map(r=>r.subject);const firsts=subjects.filter((x,i)=>subjects.indexOf(x)===i);
+  expect(firsts).toEqual([...firsts].sort());
+ }
+}
 /** The confirmation result without its opaque digests (they hash row ids, which differ between runs). */
 const comparable=(result:MovementUploadResult,canon:(v:unknown)=>unknown)=>canon({...result,employees:result.employees.map(e=>({...e,fingerprint:e.fingerprint?'<digest>':null}))});
 
@@ -312,12 +334,82 @@ describe('movement import background job (bulk-job kernel)',()=>{
   expect(await hrRows()).toBe(before);
   const[residue]=await owner.client<{steps:number;input:unknown;content:unknown}[]>`select (select count(*)::int from bulk_job_step where job_id=${started.job.id}::uuid) steps,input,source_content content from bulk_job where id=${started.job.id}::uuid`;
   expect(residue).toEqual({steps:0,input:null,content:null});
+  // The attempt holds the actual uploaded bytes, as the synchronous check recorded them.
+  const uploaded=file(FILE_A);
+  const[stored]=await owner.client<{content:Buffer;hash:string;name:string;mime:string}[]>`select source_content content,source_hash hash,source_name name,mime_type mime from import_attempt where id=${job.result!.attemptId}::uuid`;
+  expect(Buffer.from(stored.content).equals(uploaded)).toBe(true);
+  expect(stored.hash).toBe(createHash('sha256').update(uploaded).digest('hex'));
+  expect(stored.name).toBe('movements.csv');expect(stored.mime).toBe('text/csv');
+  // While it is unconfirmed, the screen may show it again on return.
+  expect((await listMovementCheckJobs(f.a))[0]).toMatchObject({id:started.job.id,state:'completed',reviewOpen:true});
+  // The reference and preview hash are what the confirmation verifies: a different hash is refused and recorded.
+  await expect(startMovementImportJob(f.a,{attemptId:job.result!.attemptId,previewHash:'f'.repeat(64),employees:['x'],acknowledgeExcluded:true,locale:'en',operationKey:randomUUID()})).rejects.toThrow(/upload it again before saving/i);
   // The background attempt confirms exactly like the synchronous one.
   const keys=job.result!.preview.employees.filter(e=>e.fingerprint).map(e=>e.key!);
   const confirmed=await startMovementImportJob(f.a,{attemptId:job.result!.attemptId,previewHash:job.result!.previewHash,employees:keys,acknowledgeExcluded:true,locale:'en',operationKey:randomUUID()});
   if(!('job' in confirmed))throw new Error('expected a job');
   await ticks(confirmed.job.id,terminal);
   expect((await getMovementImportJob(f.a,confirmed.job.id)).result).toMatchObject({imported:5,failed:0});
+  expect((await listMovementCheckJobs(f.a))[0]).toMatchObject({id:started.job.id,reviewOpen:false});
+ },300_000);
+
+ it('reverts as a job with one verified set-based release, ending exactly like the synchronous revert',async()=>{
+  // Run 1: the synchronous revert of both files, confirmed through the job as the screen does.
+  const confirmBoth=async()=>{
+   const a=await checked(f);
+   const ja=await startMovementImportJob(f.a,{attemptId:a.preview.attemptId,previewHash:a.preview.previewHash,employees:a.keys,acknowledgeExcluded:true,locale:'en',operationKey:randomUUID()});if(!('job' in ja))throw new Error('expected a job');await ticks(ja.job.id,terminal);
+   const b=await checked(f,FILE_B,{valid:['AC004'],invalid:[]});
+   const jb=await startMovementImportJob(f.a,{attemptId:b.preview.attemptId,previewHash:b.preview.previewHash,employees:b.keys,acknowledgeExcluded:true,locale:'en',operationKey:randomUUID()});if(!('job' in jb))throw new Error('expected a job');await ticks(jb.job.id,terminal);
+   return[a.preview.attemptId,b.preview.attemptId];
+  };
+  const attempts1=await confirmBoth();
+  for(const attemptId of attempts1){const review=await previewImportRevertForAttempt(f.a,attemptId);expect(review.eligible).toBe(true);
+   await revertImport(f.a,attemptId,movementRevertHandler,{previewHash:review.previewHash,reason:'Fictional wrong batch'});}
+  expect(await verifyTenantChain(f.a)).toMatchObject({valid:true});
+  const before=await snapshot(f.b.tenantId);
+  // Run 2: the same fixture, files and reasons, reverted as jobs.
+  f=await fixture();
+  const attempts2=await confirmBoth();
+  for(const attemptId of attempts2){const review=await previewImportRevertForAttempt(f.a,attemptId);
+   const done=await revertMovementByJob(f.a,attemptId,{previewHash:review.previewHash,reason:'Fictional wrong batch'});
+   const[job]=await owner.client<{counters:Record<string,number>;metrics:Record<string,number>;plan:{released?:{path:string};fallback?:string}}[]>`select counters,metrics,plan from bulk_job where id=${(done as {jobId:string}).jobId}::uuid`;
+   // Planned per employee, then released set-based (no fallback).
+   expect(job.plan.released?.path,JSON.stringify(job.plan)).toBe('release');expect(job.counters).toMatchObject({released:1});expect(job.counters.reference).toBeUndefined();
+   expect(Number(job.metrics.releaseTxMs)).toBeGreaterThan(0);
+  }
+  expect(await verifyTenantChain(f.a)).toMatchObject({valid:true});
+  const after=await snapshot(f.b.tenantId);
+  expect(perEmployeeEvents(after.tables)).toEqual(perEmployeeEvents(before.tables));
+  await revertEventsInEmploymentOrder(f.b.tenantId,attempts2);
+ },300_000);
+
+ it('falls back to the synchronous revert for the whole import when a planned record changed before the release',async()=>{
+  const confirmA=async()=>{
+   const a=await checked(f);
+   const ja=await startMovementImportJob(f.a,{attemptId:a.preview.attemptId,previewHash:a.preview.previewHash,employees:a.keys,acknowledgeExcluded:true,locale:'en',operationKey:randomUUID()});if(!('job' in ja))throw new Error('expected a job');await ticks(ja.job.id,terminal);
+   return a.preview.attemptId;
+  };
+  // An unrelated edit of a planned employee's own record (not a field the import changed: no blocker).
+  const edit=(f:Fixture)=>owner.client`update employment set org_division='Fictional division' where id=${f.ids.AC001}::uuid`;
+  // Run 1: the edit, then the synchronous revert.
+  const attempt1=await confirmA();const review1=await previewImportRevertForAttempt(f.a,attempt1);
+  await edit(f);
+  await revertImport(f.a,attempt1,movementRevertHandler,{previewHash:review1.previewHash,reason:'Fictional wrong batch'});
+  const before=await snapshot(f.b.tenantId);
+  // Run 2: the job plans every employee, the edit lands before the release, so the whole revert is the synchronous one.
+  f=await fixture();
+  const attempt2=await confirmA();const review2=await previewImportRevertForAttempt(f.a,attempt2);
+  const out=await revertImportForAttempt(f.a,attempt2,{previewHash:review2.previewHash,reason:'Fictional wrong batch'});
+  if(!('job' in out))throw new Error('expected a job');
+  await ticks(out.job.id,j=>j.state==='finalizing'||terminal(j));
+  await edit(f);
+  const done=await ticks(out.job.id,terminal);
+  expect(done.state).toBe('completed');
+  const[job]=await owner.client<{counters:Record<string,number>;plan:{released?:{path:string};fallback?:string}}[]>`select counters,plan from bulk_job where id=${out.job.id}::uuid`;
+  expect(job.plan.released?.path).toBe('reference');expect(job.plan.fallback).toBe('records:employment');expect(job.counters).toMatchObject({reference:1});
+  const after=await snapshot(f.b.tenantId);
+  expect(perEmployeeEvents(after.tables)).toEqual(perEmployeeEvents(before.tables));
+  expect(await verifyTenantChain(f.a)).toMatchObject({valid:true});
  },300_000);
 
  it('the lean commit and its hand-backs (future-dated, Update, the actor\'s own employment) end like the synchronous confirmation',async()=>{
@@ -368,7 +460,7 @@ describe('movement import background job (bulk-job kernel)',()=>{
   expect(review).not.toBe('waited');
   expect(review).toEqual(locked);
   // The reviewed hash is the one the locked revert re-checks.
-  await expect(revertImportForAttempt(f.a,preview.attemptId,{previewHash:(review as typeof locked).previewHash,reason:'Fictional revert after a lock-free review'})).resolves.toMatchObject({restored:locked.items.length});
+  await expect(revertMovementByJob(f.a,preview.attemptId,{previewHash:(review as typeof locked).previewHash,reason:'Fictional revert after a lock-free review'})).resolves.toMatchObject({restored:locked.items.length});
  },180_000);
 
  it('names its completion notice in all six catalogues',()=>{

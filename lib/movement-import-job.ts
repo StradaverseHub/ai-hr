@@ -26,6 +26,9 @@ export const movementCheckJobActive=(state:MovementCheckJobState)=>(MOVEMENT_CHE
 export type MovementCheckJobResult={attemptId:string;previewHash:string;preview:import('./movement-import-contract').MovementImportPreview};
 /** One step is one employee of the file. */
 export type MovementCheckJobProgress={id:string;sourceName:string;state:MovementCheckJobState;stepsTotal:number;stepsDone:number;
- error:string|null;result:MovementCheckJobResult|null;updatedAt:string;createdAt:string;worker?:'running'|'unavailable'};
+ error:string|null;result:MovementCheckJobResult|null;updatedAt:string;createdAt:string;worker?:'running'|'unavailable';
+ /** Listing only, for the newest finished check: its attempt can still be confirmed (not confirmed, not reverted and no
+  * confirmation started from it), so the screen shows its preview again when its creator returns. */
+ reviewOpen?:boolean};
 /** Stable code, translated on the screen, for a check refused because the same person's movement check is running. */
 export const MOVEMENT_CHECK_ALREADY_RUNNING='movement-check-already-running';

@@ -4,5 +4,6 @@ import type {BulkJobHandler} from './bulk-job-worker';
 import {employeeImportJobHandler} from './employee-import-worker';
 import {movementImportJobHandler} from './movement-import-worker';
 import {movementCheckJobHandler} from './movement-import-check-worker';
+import {movementImportRevertJobHandler} from './movement-import-revert-job';
 
-export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,movementImportJobHandler,movementCheckJobHandler];
+export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,movementImportJobHandler,movementCheckJobHandler,movementImportRevertJobHandler];
