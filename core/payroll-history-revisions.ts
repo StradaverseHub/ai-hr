@@ -7,7 +7,7 @@ import {company,employment,person,payrollCycle,payrollBatch,payPeriod,payslip,st
 import {actorOf,appendEvent} from '../db/events';
 import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
-import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-history-lock';
+import {lockPayrollHistoryWriteTx} from './payroll-history-lock';
 import {resolvePayrollPermission,batchDownstreamWarnings} from './payroll';
 import {preparePayrollHistoryRevisionTx,toIsoPeriod} from './payroll-history-import';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -237,11 +237,24 @@ export async function previewPayrollHistoryUpload(ctx:SessionContext,input:{name
  const sourceHash=hash(input.content),operationKey=input.operationKey&&uuid.test(input.operationKey)?input.operationKey:randomUUID();
  let records:PayrollHistoryRecord[]=[],parseError:string|undefined;
  try{records=await parsePayrollHistorySource(name,input.content);}catch(error){parseError=error instanceof PayrollHistoryRevisionError?error.message:'This source file could not be read.';}
- return withTenant(ctx,async tx=>{
-  await lockPayrollHistoryReadTx(tx,ctx.tenantId);await principal(tx,ctx);
+ const priorTx=async(tx:Tx)=>{
   const [prior]=await tx.select({id:attempt.id,sourceHash:attempt.sourceHash,plan:attempt.plan}).from(attempt).where(and(eq(attempt.createdBy,ctx.userId!),eq(attempt.operationKey,operationKey)));
-  if(prior){if(prior.sourceHash!==sourceHash)fail('This upload operation already identifies a different file.');return {attemptId:prior.id,plan:prior.plan};}
-  const plan=parseError?seal({...emptyPlan(sourceHash),issues:[{rowNum:1,reason:parseError}],counts:{created:0,replaced:0,unchanged:0,invalid:1}}):await planRows(tx,ctx,records,sourceHash);
+  if(prior&&prior.sourceHash!==sourceHash)fail('This upload operation already identifies a different file.');
+  return prior?{attemptId:prior.id,plan:prior.plan}:null;
+ };
+ // The plan is validated in one read-only snapshot with no tenant-wide lock: a history writer commits whole, so the
+ // snapshot sees it all or nothing (as the shared history barrier made it before), and the database refuses any
+ // write in it. Confirming re-plans under the history write lock and refuses a plan that changed.
+ const planned=await withTenant(ctx,async tx=>{
+  await principal(tx,ctx);
+  const prior=await priorTx(tx);if(prior)return prior;
+  return {attemptId:null,plan:parseError?seal({...emptyPlan(sourceHash),issues:[{rowNum:1,reason:parseError}],counts:{created:0,replaced:0,unchanged:0,invalid:1}}):await planRows(tx,ctx,records,sourceHash)};
+ },{readOnlySnapshot:true});
+ if(planned.attemptId)return {attemptId:planned.attemptId,plan:planned.plan};
+ const plan=planned.plan;
+ return withTenant(ctx,async tx=>{
+  await principal(tx,ctx);
+  const prior=await priorTx(tx);if(prior)return prior;
   const [created]=await tx.insert(attempt).values({tenantId:ctx.tenantId,createdBy:ctx.userId!,operationKey,sourceName:name,mimeType:name.toLowerCase().endsWith('.xlsx')?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':name.toLowerCase().endsWith('.xls')?'application/vnd.ms-excel':'text/csv',sourceHash,sourceContent:input.content,companyIds:plan.companyIds,plan}).returning({id:attempt.id});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:created.id,eventType:'payroll-history-import.validated',actor:actorOf(ctx),payload:{sourceHash,counts:plan.counts,companyIds:plan.companyIds}});
   return {attemptId:created.id,plan};
@@ -355,10 +368,12 @@ async function revertTargetsTx(tx:Tx,ctx:SessionContext,source:RevertSource,lock
 /** User-requested read-only eligibility review. No recovery event or money changes occur here. */
 export async function previewPayrollHistoryRevert(ctx:SessionContext,id:string){
  assertModuleGate(ctx,'payroll');if(!uuid.test(id))fail('Import attempt unavailable.');return withTenant(ctx,async tx=>{
-  await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await principal(tx,ctx);
+  // A read-only snapshot with no tenant-wide lock (it never held a row): the revert itself re-derives the targets
+  // under the history and Access write locks and refuses a preview that changed.
+  await principal(tx,ctx);
   const [source]=await tx.select({id:attempt.id,companyIds:attempt.companyIds}).from(attempt).where(eq(attempt.id,id));if(!source)fail('Import attempt unavailable.');const plan=await revertTargetsTx(tx,ctx,source,false);
   return {attemptId:id,count:plan.targets.length,previewHash:plan.previewHash};
- });
+ },{readOnlySnapshot:true});
 }
 export async function revertPayrollHistoryUpload(ctx:SessionContext,id:string,expectedPreviewHash:string){
  assertModuleGate(ctx,'payroll');if(!uuid.test(id)||typeof expectedPreviewHash!=='string'||!/^([0-9a-f]{64})$/.test(expectedPreviewHash))fail('Review the current revert eligibility before confirming.');

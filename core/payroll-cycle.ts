@@ -444,7 +444,7 @@ export type CopyCycleResult = { companyId: string; outcome: CopyCycleOutcome; id
  * Copy an existing cycle's DEFINITION (name, runType, remarks, description, sortOrder) into one or more
  * OTHER companies in a single transaction — the ticket's "create once, assign to many companies" workflow.
  * Each target is handled independently and its outcome recorded (never throws mid-loop — mirrors the
- * per-company continue discipline of runMultiCompanyPayroll):
+ * per-company continue discipline of startMultiCompanyPayroll):
  *   - `skipped_duplicate`         — a LIVE cycle with the same (case-insensitive) name already exists there;
  *   - `skipped_regular_conflict`  — the source is a regular cycle and the target already has an active one;
  *   - `created`                   — a clone row was inserted (and a `payroll-cycle.created` event appended).

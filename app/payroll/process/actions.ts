@@ -5,17 +5,15 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
 import { scopedAdmin } from '@/lib/scope';
-import { batchHeader, createAdditionalRun, createBatch, generatePayslips, preProcessAdvisoryForSelection, updateBatchScope, type PreProcessAdvisory } from '@/core/payroll';
+import { batchHeader, createAdditionalRun, createBatch, preProcessAdvisoryForSelection, updateBatchScope, type PreProcessAdvisory } from '@/core/payroll';
 import { getActivePayrollCycle } from '@/core/payroll-cycle';
 import { allowedCompanies, payrollProcessEmployeeCount, payrollProcessEmployeeSelection, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
 import {
   companiesMissingCycle,
   encodeRunGroupResult,
-  reasonForPayrollError,
-  runMultiCompanyPayroll,
   saveMultiCompanyPayrollDrafts,
-  summarize,
-  type CompanyOutcome,
+  startMultiCompanyPayroll,
+  startResumedPayrollRun,
   type IntendedRunType,
 } from '@/core/payroll-run-group';
 import { unattachedHoldersOutsideSelection, type UnattachedHolderRow } from '@/core/payroll-view';
@@ -225,7 +223,7 @@ export async function createRunAction(formData: FormData) {
  * same friendly reason vocabulary. `summarize` derives the header figures, so this cannot disagree with the
  * multi-company run about what "partial" or "failed" means.
  *
- * The try/catch around the generation is deliberate and mirrors runMultiCompanyPayroll's HAZARD 2: a
+ * The try/catch around the generation is deliberate and mirrors startMultiCompanyPayroll's HAZARD 2: a
  * generation that throws (most often PreProcessBlockedError — somebody in scope has no salary record) must
  * render as a REASON ROW on the result page, not as a thrown error page. Note redirect() signals by
  * THROWING, so every redirect here is placed outside the try that could swallow it.
@@ -261,50 +259,25 @@ export async function resumeRunAction(formData: FormData) {
     ? persistedScope.employmentIds.length
     : await payrollProcessEmployeeCount(s, batch.companyId);
 
-  const startedAt = new Date().toISOString();
-  let outcome: CompanyOutcome;
+  // The run processes as a background job; the result page follows it and then reports the outcome exactly as
+  // before — succeeded with the run's own counts, or failed with a reason row (a generation that throws, most often
+  // PreProcessBlockedError, is a reason, not a thrown error page). The run-group record survives a refresh.
+  let groupId: string;
   try {
-    const gen = await generatePayslips(s, { batchId });
-    // Full draft→processed generation (never the reprocessSubset path), so `payslips` is present; the
-    // fallback satisfies the union return type, exactly as in runMultiCompanyPayroll.
-    const payslips = 'payslips' in gen && typeof gen.payslips === 'number' ? gen.payslips : 0;
-    // r226 — the additional-run skip, carried onto the result payload exactly as the multi-company
-    // orchestrator does. Same guard, same shape: the single-company path is the SAME result screen and
-    // must not be the one that loses the account of who was left out. r227 carries the COUNT only — the
-    // names are read back from this batch's own `payroll-batch.processed` event by the result page, so
-    // the redirect stays O(companies) whatever the headcount (see CompanyOutcome.employeesSkipped).
-    const skipped = 'skipped' in gen && Array.isArray(gen.skipped) ? gen.skipped : [];
-    outcome = {
-      companyId: batch.companyId,
-      companyName,
-      status: 'succeeded',
-      batchId,
-      employeesSelected,
-      employeesSucceeded: payslips,
-      ...(skipped.length > 0 ? { employeesSkipped: skipped.length } : {}),
-    };
+    ({ groupId } = await startResumedPayrollRun(s, { batchId, companyId: batch.companyId, companyName, payPeriod: batch.payPeriod, employeesSelected }));
   } catch (e) {
-    outcome = {
-      companyId: batch.companyId,
-      companyName,
-      status: 'failed',
-      batchId,
-      employeesSelected,
-      employeesSucceeded: 0,
-      reason: reasonForPayrollError(e),
-    };
+    redirect(`/payroll/process?resume=${batchId}&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
-  const result = summarize(batch.payPeriod, startedAt, new Date().toISOString(), [outcome]);
 
   revalidatePath('/payroll');
   revalidatePath(`/payroll/${batchId}`);
-  redirect(`/payroll/process/result?r=${encodeRunGroupResult(result)}${resultFromSuffix(formData.get('from'))}`);
+  redirect(`/payroll/process/result?g=${groupId}${resultFromSuffix(formData.get('from'))}`);
 }
 
 /**
  * Payroll Process wizard — MULTI-COMPANY run (feedback 3653d14b, Phase 1). Called from Step 2's confirm
  * button when the admin selected one, several, or ALL companies in Step 1. Composes the existing per-company
- * primitives via `runMultiCompanyPayroll` (NO kernel change) and lands on the new Step-3 result page.
+ * primitives via `startMultiCompanyPayroll` (NO kernel change) and lands on the new Step-3 result page.
  *
  * "All my companies" is resolved to the admin's ACTIVE company-context scope here (scopedAdmin → scopeIds:
  * allowedCompanies ∩ the company_scope cookie) — matching the UI's scoped list and never wider — and every
@@ -340,23 +313,26 @@ async function submitRunGroup(formData:FormData,mode:'draft'|'process') {
     redirect(`/payroll/process?error=${encodeURIComponent('Select at least one company to process.')}`);
   }
 
-  let encoded: string;
+  const input = {
+    companyIds,
+    payPeriod,
+    payrollCycleId,
+    paymentDate,
+    employmentIds,
+    explicitSelection:String(formData.get('filtersTouched'))==='true',
+  };
+  // Drafts are saved here and reported on the redirect; a run admits each company's processing job and the result
+  // page follows the run group until every job has finished.
+  let destination: string;
   try {
-    const prepare=mode==='draft'?saveMultiCompanyPayrollDrafts:runMultiCompanyPayroll;
-    const result = await prepare(s, {
-      companyIds,
-      payPeriod,
-      payrollCycleId,
-      paymentDate,
-      employmentIds,
-      explicitSelection:String(formData.get('filtersTouched'))==='true',
-    });
-    encoded = encodeRunGroupResult(result);
+    destination = mode==='draft'
+      ? `r=${encodeRunGroupResult(await saveMultiCompanyPayrollDrafts(s, input))}`
+      : `g=${(await startMultiCompanyPayroll(s, input)).groupId}`;
   } catch (e) {
     // A whole-run failure (e.g. an invalid session) is rare — per-company failures are caught inside the
     // orchestrator and reported as rows. Surface anything that escapes as a Step-1 error banner.
     redirect(`/payroll/process?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll');
-  redirect(`/payroll/process/result?r=${encoded}${resultFromSuffix(formData.get('from'))}`);
+  redirect(`/payroll/process/result?${destination}${resultFromSuffix(formData.get('from'))}`);
 }

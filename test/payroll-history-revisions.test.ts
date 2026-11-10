@@ -19,6 +19,8 @@ import {toCsv} from '../lib/csv';
 import {payrollPublicationState} from '../lib/payroll-publication';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 
 let b:Base,ctx:SessionContext,employeeId:string,employeePersonId:string;
 const year=Number(todayInKualaLumpur().slice(0,4))-2,period=`${year}-01`;
@@ -41,6 +43,24 @@ beforeEach(async()=>{
 afterAll(closeAll);
 
 describe('immutable payroll history correction and recovery',()=>{
+ it('validates an upload and reviews a revert from snapshots while a history writer and an Access editor hold their exclusive locks',async()=>{
+  // Both reviews used to hold the history barrier (and the revert review the exclusive Access lock) for their whole
+  // planning, which grows with the file; they now take no tenant-wide lock, so neither waits here nor blocks.
+  const whileLocked=<T,>(work:()=>Promise<T>)=>withTenant(ctx,async tx=>{
+   await lockPayrollHistoryWriteTx(tx,b.tenantId);await lockAccessConfigurationWriteTx(tx,b.tenantId);
+   let timer:ReturnType<typeof setTimeout>|undefined;
+   const waited=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('the review waited for a tenant-wide lock')),20000);});
+   try{return await Promise.race([work(),waited]);}finally{clearTimeout(timer);}
+  });
+  const preview=await whileLocked(()=>upload());
+  expect(preview.plan.counts).toEqual({created:1,replaced:0,unchanged:0,invalid:0});
+  // The saved attempt is the one the confirmation re-plans under the write locks.
+  expect((await confirm(preview)).importedRows).toBe(5);
+  const review=await whileLocked(()=>previewPayrollHistoryRevert(ctx,preview.attemptId));
+  expect(review.count).toBe(1);
+  expect(await revertPayrollHistoryUpload(ctx,preview.attemptId,review.previewHash)).toMatchObject({restored:1});
+ });
+
  it('preserves original rows while replacing and reverting the effective money exactly once',async()=>{
   const first=await upload();expect(first.plan.counts).toEqual({created:1,replaced:0,unchanged:0,invalid:0});
   const initial=await confirm(first);expect(payrollPublicationState((await listBatches(ctx,[b.companyId]))[0])).toBe('history');await expect(paymentSummaryForBatch(ctx,(await listBatches(ctx,[b.companyId]))[0].id)).rejects.toThrow(/Imported history/);const original=(await effective())[0];expect(Number(original.grossPay)).toBe(5000);

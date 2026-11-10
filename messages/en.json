@@ -5123,7 +5123,8 @@
     "payrollStatus": {
       "draft": "Draft",
       "processed": "Processed",
-      "closed": "Closed"
+      "closed": "Closed",
+      "processing": "Processing"
     },
     "payslip": {
       "backToWorkspace": "My Profile",
@@ -5913,7 +5914,8 @@
         "closed": "Closed",
         "unattached": "Unattached",
         "reprocess": "Pending reprocessing",
-        "reprocessRequired": "Reprocess Required"
+        "reprocessRequired": "Reprocess Required",
+        "processing": "Processing"
       },
       "importHistory": "Import payroll history",
       "periodContext": "Pay period",
@@ -6408,7 +6410,26 @@
       "reprocessPendingEmployees": "{count} selected employee(s) are pending.",
       "reprocessPcbBefore": "Previous PCB",
       "reprocessPcbAfter": "Updated PCB",
-      "reprocessPcbDifference": "PCB difference"
+      "reprocessPcbDifference": "PCB difference",
+      "processingStarted": "Payroll processing started. This page shows its progress.",
+      "processingJob": {
+        "title": "Payroll processing",
+        "othersRun": "This run is being processed. It opens for review when processing finishes.",
+        "state": {
+          "queued": "Waiting to start",
+          "preparing": "Checking the run",
+          "running": "Calculating payslips",
+          "finalizing": "Finishing the run",
+          "discarding": "Undoing the processing",
+          "completed": "Processing finished",
+          "failed": "Processing stopped — the run is back in draft",
+          "cancelled": "Processing cancelled — the run is back in draft"
+        },
+        "progressCount": "{done} of {total} steps complete",
+        "backgroundHelp": "You can leave this page. Employees see nothing until the run is closed, and you get a notice when processing finishes.",
+        "waiting": "Waiting for the payroll processing service. Progress is saved; do not process the run again.",
+        "workerUnavailable": "The payroll processing service is not running yet. The run is saved and starts automatically as soon as it is."
+      }
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -16187,7 +16208,8 @@
     "batchStatus": {
       "draft": "Draft",
       "processed": "Processed",
-      "closed": "Closed"
+      "closed": "Closed",
+      "processing": "Processing"
     }
   },
   "payrollCycleConfig": {
@@ -19766,7 +19788,8 @@
         "statuses": {
           "draft": "Draft",
           "processed": "Processed",
-          "closed": "Closed"
+          "closed": "Closed",
+          "processing": "Processing"
         },
         "periodStates": {
           "open": "Open",
@@ -19910,7 +19933,8 @@
         "statuses": {
           "draft": "Draft",
           "processed": "Processed",
-          "closed": "Closed"
+          "closed": "Closed",
+          "processing": "Processing"
         },
         "currentStatus": "Current run status",
         "title": "Create an additional payroll draft",
@@ -31890,7 +31914,8 @@
     "runStates": {
       "draft": "Draft",
       "processed": "Processed",
-      "closed": "Closed"
+      "closed": "Closed",
+      "processing": "Processing"
     },
     "reconciliationTitle": "Payroll Reconciliation",
     "summaryNetPay": "Employee summary basis: recorded Net Pay",
@@ -37573,6 +37598,20 @@
         "cancelled": {
           "title": "Attendance recompute stopped",
           "body": "Open Recompute Attendance for details."
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "Payroll processing finished",
+          "body": "Open Payroll to review the processed run."
+        },
+        "failed": {
+          "title": "Payroll processing stopped",
+          "body": "The run is back in draft and no payslips were kept. Open Payroll to see why."
+        },
+        "cancelled": {
+          "title": "Payroll processing cancelled",
+          "body": "The run is back in draft and no payslips were kept."
         }
       }
     },

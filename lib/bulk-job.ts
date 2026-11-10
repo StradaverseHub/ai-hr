@@ -35,6 +35,7 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  clocking_import:{messages:'clockingImport',linkPath:'/attendance/import/logs'},
  attendance_recompute_preview:{messages:'attendanceRecomputePreview',linkPath:'/attendance/recompute'},
  attendance_recompute:{messages:'attendanceRecompute',linkPath:'/attendance/recompute'},
+ payroll_process:{messages:'payrollProcess',linkPath:'/payroll'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

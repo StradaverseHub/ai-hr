@@ -5090,7 +5090,8 @@
     "payrollStatus": {
       "draft": "草稿",
       "processed": "已处理",
-      "closed": "已关闭"
+      "closed": "已关闭",
+      "processing": "处理中"
     },
     "payslip": {
       "backToWorkspace": "我的资料",
@@ -5913,7 +5914,8 @@
         "closed": "已关闭",
         "unattached": "未挂接",
         "reprocess": "待重新计算",
-        "reprocessRequired": "需重新处理"
+        "reprocessRequired": "需重新处理",
+        "processing": "处理中"
       },
       "importHistory": "导入薪资历史",
       "periodContext": "发薪周期",
@@ -7132,7 +7134,26 @@
       "reprocessPendingEmployees": "{count} 名所选员工仍待处理。",
       "reprocessPcbBefore": "原 PCB",
       "reprocessPcbAfter": "更新后 PCB",
-      "reprocessPcbDifference": "PCB 差额"
+      "reprocessPcbDifference": "PCB 差额",
+      "processingStarted": "薪资处理已开始。此页面显示其进度。",
+      "processingJob": {
+        "title": "薪资处理",
+        "othersRun": "此薪资批次正在处理中。处理完成后即可审核。",
+        "state": {
+          "queued": "等待开始",
+          "preparing": "正在检查批次",
+          "running": "正在计算工资单",
+          "finalizing": "正在完成批次",
+          "discarding": "正在撤销处理",
+          "completed": "处理已完成",
+          "failed": "处理已停止——批次已退回草稿",
+          "cancelled": "处理已取消——批次已退回草稿"
+        },
+        "progressCount": "已完成 {done}/{total} 个步骤",
+        "backgroundHelp": "您可以离开此页面。批次关闭前员工看不到任何内容，处理完成后您会收到通知。",
+        "waiting": "正在等待薪资处理服务。进度已保存；请勿再次处理此批次。",
+        "workerUnavailable": "薪资处理服务尚未运行。批次已保存，服务一运行便会自动开始。"
+      }
     },
     "transactions": {
       "title": "交易录入",
@@ -16187,7 +16208,8 @@
     "batchStatus": {
       "draft": "草稿",
       "processed": "已处理",
-      "closed": "已关闭"
+      "closed": "已关闭",
+      "processing": "处理中"
     }
   },
   "payrollCycleConfig": {
@@ -19766,7 +19788,8 @@
         "statuses": {
           "draft": "草稿",
           "processed": "已处理",
-          "closed": "已关闭"
+          "closed": "已关闭",
+          "processing": "处理中"
         },
         "periodStates": {
           "open": "开放",
@@ -19910,7 +19933,8 @@
         "statuses": {
           "draft": "草稿",
           "processed": "已处理",
-          "closed": "已关闭"
+          "closed": "已关闭",
+          "processing": "处理中"
         },
         "currentStatus": "批次当前状态",
         "title": "创建额外薪资草稿",
@@ -31890,7 +31914,8 @@
     "runStates": {
       "draft": "草稿",
       "processed": "已处理",
-      "closed": "已关闭"
+      "closed": "已关闭",
+      "processing": "处理中"
     },
     "reconciliationTitle": "薪资对账",
     "summaryNetPay": "员工汇总依据：已记录的实发工资",
@@ -37573,6 +37598,20 @@
         "cancelled": {
           "title": "考勤重新计算已中止",
           "body": "打开重新计算考勤，查看详情。"
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "薪资处理已完成",
+          "body": "打开薪资，审核已处理的批次。"
+        },
+        "failed": {
+          "title": "薪资处理已停止",
+          "body": "批次已退回草稿，未保留任何工资单。打开薪资查看原因。"
+        },
+        "cancelled": {
+          "title": "薪资处理已取消",
+          "body": "批次已退回草稿，未保留任何工资单。"
         }
       }
     },

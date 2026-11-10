@@ -5090,7 +5090,8 @@
     "payrollStatus": {
       "draft": "Nháp",
       "processed": "Đã xử lý",
-      "closed": "Đã đóng"
+      "closed": "Đã đóng",
+      "processing": "Đang xử lý"
     },
     "payslip": {
       "backToWorkspace": "Hồ sơ của tôi",
@@ -5913,7 +5914,8 @@
         "closed": "Đã đóng",
         "unattached": "Chưa gắn đợt",
         "reprocess": "Chờ tính lại",
-        "reprocessRequired": "Cần tính lại"
+        "reprocessRequired": "Cần tính lại",
+        "processing": "Đang xử lý"
       },
       "importHistory": "Nhập lịch sử bảng lương",
       "periodContext": "Kỳ lương",
@@ -7132,7 +7134,26 @@
       "reprocessPendingEmployees": "Còn {count} nhân viên đã chọn đang chờ xử lý.",
       "reprocessPcbBefore": "PCB trước",
       "reprocessPcbAfter": "PCB cập nhật",
-      "reprocessPcbDifference": "Chênh lệch PCB"
+      "reprocessPcbDifference": "Chênh lệch PCB",
+      "processingStarted": "Đã bắt đầu xử lý bảng lương. Trang này hiển thị tiến độ.",
+      "processingJob": {
+        "title": "Xử lý bảng lương",
+        "othersRun": "Đợt lương này đang được xử lý. Đợt sẽ mở để rà soát khi xử lý xong.",
+        "state": {
+          "queued": "Đang chờ bắt đầu",
+          "preparing": "Đang kiểm tra đợt lương",
+          "running": "Đang tính phiếu lương",
+          "finalizing": "Đang hoàn tất đợt lương",
+          "discarding": "Đang hoàn tác việc xử lý",
+          "completed": "Đã xử lý xong",
+          "failed": "Việc xử lý đã dừng — đợt lương trở về bản nháp",
+          "cancelled": "Đã hủy xử lý — đợt lương trở về bản nháp"
+        },
+        "progressCount": "Đã xong {done}/{total} bước",
+        "backgroundHelp": "Bạn có thể rời trang này. Nhân viên không thấy gì cho đến khi đợt lương được đóng, và bạn sẽ nhận thông báo khi xử lý xong.",
+        "waiting": "Đang chờ dịch vụ xử lý bảng lương. Tiến độ đã được lưu; đừng xử lý lại đợt lương này.",
+        "workerUnavailable": "Dịch vụ xử lý bảng lương chưa chạy. Đợt lương đã được lưu và tự động bắt đầu ngay khi dịch vụ chạy."
+      }
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",
@@ -16187,7 +16208,8 @@
     "batchStatus": {
       "draft": "Nháp",
       "processed": "Đã xử lý",
-      "closed": "Đã đóng"
+      "closed": "Đã đóng",
+      "processing": "Đang xử lý"
     }
   },
   "payrollCycleConfig": {
@@ -19766,7 +19788,8 @@
         "statuses": {
           "draft": "Nháp",
           "processed": "Đã xử lý",
-          "closed": "Đã chốt"
+          "closed": "Đã chốt",
+          "processing": "Đang xử lý"
         },
         "periodStates": {
           "open": "Mở",
@@ -19910,7 +19933,8 @@
         "statuses": {
           "draft": "Nháp",
           "processed": "Đã xử lý",
-          "closed": "Đã chốt"
+          "closed": "Đã chốt",
+          "processing": "Đang xử lý"
         },
         "currentStatus": "Trạng thái đợt hiện tại",
         "title": "Tạo bản nháp kỳ lương bổ sung",
@@ -31890,7 +31914,8 @@
     "runStates": {
       "draft": "Bản nháp",
       "processed": "Đã xử lý",
-      "closed": "Đã đóng"
+      "closed": "Đã đóng",
+      "processing": "Đang xử lý"
     },
     "reconciliationTitle": "Đối soát lương",
     "summaryNetPay": "Cơ sở tổng hợp nhân viên: lương thực nhận đã ghi nhận",
@@ -37573,6 +37598,20 @@
         "cancelled": {
           "title": "Quá trình tính lại chấm công đã dừng",
           "body": "Mở Tính lại chấm công để xem chi tiết."
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "Đã xử lý xong bảng lương",
+          "body": "Mở Bảng lương để rà soát đợt đã xử lý."
+        },
+        "failed": {
+          "title": "Việc xử lý bảng lương đã dừng",
+          "body": "Đợt lương trở về bản nháp và không giữ phiếu lương nào. Mở Bảng lương để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy xử lý bảng lương",
+          "body": "Đợt lương trở về bản nháp và không giữ phiếu lương nào."
         }
       }
     },

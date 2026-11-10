@@ -20,6 +20,8 @@ import { Pager } from '@/components/pager';
 import { parsePageQuery } from '@/lib/pagination';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { closeAction, generateAction, resetAction, unlockAction } from '../actions';
+import { payrollProcessingStatus } from '@/core/payroll-processing-job';
+import { PayrollProcessingPanel } from './processing-progress';
 // b372e923 — the payroll result destination, now spelled in ONE place because the Reprocess result table
 // links to it too and the reporter's requirement is that the two cannot be different screens.
 import { payrollResultHref } from '../payroll-result-href';
@@ -95,11 +97,19 @@ export default async function BatchPage({
   if (!data) notFound();
   const { batch, closeCycleName, slipPage } = data;
   const slipCount = slipPage.state.total;
+  // 'processing': the background job is writing this run's payslips. Nothing of the run is shown as issued until its
+  // finalize flips it to processed in one transaction; the processing panel below says where it is.
+  const issued = batch.status === 'processed' || batch.status === 'closed';
+  const processingStatus = await payrollProcessingStatus(s, batch.id);
+  const processingJob = processingStatus?.job ?? null;
+  const showProcessing = batch.status === 'processing' || (processingJob != null && batch.status === 'draft'
+    && (processingJob.state === 'failed' || processingJob.state === 'cancelled')
+    && processingJob.finishedAt != null && Date.now() - Date.parse(processingJob.finishedAt) < 86_400_000);
   const retiredFormulaInputs = batch.status !== 'closed' && await payrollHasRetiredAttendanceFormulaInputs(s, batch.id);
   // AI v2 P2-2b: who viewed this run's payroll register is recorded (core/payroll-audit/access-log.ts), before it renders.
   await recordPayrollAccess(s, { surface: 'register', action: 'view', companyId: batch.companyId, payPeriod: batch.payPeriod, batchId: batch.id });
   const scope = (batch.scope ?? null) as BatchScope | null;
-  const processingOutcomes = batch.status === 'draft' ? [] : await listReprocessEmployeeOutcomes(s, {batchId});
+  const processingOutcomes = !issued ? [] : await listReprocessEmployeeOutcomes(s, {batchId});
   const processingByEmployment = new Map(processingOutcomes.map(outcome => [outcome.employmentId, outcome]));
   // Feedback ef31d251 — this header used to render the RAW status enum, and "Processed" reads as
   // finished. It is not: payslips stay invisible to employees until Close, which is why eighteen runs
@@ -157,7 +167,7 @@ export default async function BatchPage({
   // nobody this is an empty list and renders nothing. (r369 — that used to read "every regular run". A
   // regular run now skips an employee with no monthly basic and nothing payable, which is exactly why this
   // panel matters on the ordinary monthly run and not only on a bonus one.)
-  const skippedEmployees = batch.status === 'draft' ? [] : await listSkippedEmployees(s, [batchId]);
+  const skippedEmployees = !issued ? [] : await listSkippedEmployees(s, [batchId]);
   // Feedback 64fb5e48 — blockers are the salary-record gaps (missing / period-miss / a daily-or-hourly
   // employee with no pay rate); the old BASIC-pay-item existence blocker is gone, and r369 took the MONTHLY
   // zero out of `zeroBasic` (it is `preNotices` below). A stale BASIC pay item is a confirm-to-proceed warning.
@@ -354,7 +364,7 @@ export default async function BatchPage({
   // row of its (company, period) is outstanding, regardless of when it arrived — arrival time only
   // decides which of the two causes the copy should name.
   const outstanding =
-    isRegular && batch.status !== 'draft'
+    isRegular && issued
       ? await listUnattachedTxnSummary(s, { companyIds: [batch.companyId], year: txnYear, month: txnMonth })
       : [];
   // Summed in CENTS — float-summing the decimal strings would drift on four-figure bonuses.
@@ -386,7 +396,7 @@ export default async function BatchPage({
                 carrying `from` this screen's Back would then collapse to a bare /payroll and the
                 operator's filter selection would be lost one screen deeper than anyone was looking.
                 Same `fromSuffix` Reprocess and Remove already ride. */}
-            {batch.status !== 'draft' && (
+            {issued && (
               <Link
                 href={`/payroll/${batch.id}/anomalies${fromSuffix}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -394,7 +404,7 @@ export default async function BatchPage({
                 {ta('title')}
               </Link>
             )}
-            {batch.status !== 'draft' && (
+            {issued && (
               <ExportDownloadLink
                 href={`/payroll/reports/payment-summary?batchId=${batch.id}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -407,7 +417,7 @@ export default async function BatchPage({
                 deduction, employer contribution and total, off the stored payslips. A plain <a>, not a
                 form: the route is a GET download and this keeps the header a server component.
                 Processed/closed only — a draft has no payslips to reconcile. */}
-            {batch.status !== 'draft' && (
+            {issued && (
               <ExportDownloadLink
                 href={`/payroll/${batch.id}/export?format=xlsx`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -537,6 +547,7 @@ export default async function BatchPage({
       />
 
       <ErrorBanner message={error} />
+      {showProcessing && processingStatus && <PayrollProcessingPanel batchId={batch.id} initial={processingStatus} />}
       {retiredFormulaInputs && (
         <div className="space-y-3 rounded-lg border border-border bg-muted p-4 text-sm">
           <p className="font-medium">{t('retiredFormulaReview')}</p>
@@ -1132,7 +1143,7 @@ export default async function BatchPage({
           import moved to Transactions only. A reset no longer lands anyone here, so leaving them would
           have left two copies of the same functions in two places. */}
 
-      {batch.status !== 'draft' &&
+      {issued &&
         (() => {
           // HRD Corp levy is an employer-only cost. Feedback efece4ce — the tile is ALWAYS present now: a
           // registered company shows the amount, an unregistered one says so in words. Hiding it left the

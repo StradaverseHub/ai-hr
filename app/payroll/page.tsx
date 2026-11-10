@@ -70,6 +70,7 @@ import {
 
 const STATUS_STYLE: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
+  processing: 'bg-muted text-muted-foreground',
   processed: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   closed: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
 };

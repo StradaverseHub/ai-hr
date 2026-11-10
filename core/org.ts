@@ -3768,7 +3768,7 @@ export async function applyAcceptedContractRecordsTx(tx:Tx,ctx:SessionContext,ca
    // The ordinary marker filters login grants. The genuine owner executor discovers only
    // this protected employment's processed runs and delegates each write to its canonical owner.
    const {markBatchNeedsRecalc}=await import('../packs/payroll/service');
-   const batches=await tx.execute<{id:string}>(sql`select b.id from payroll_batch b where b.tenant_id=${ctx.tenantId}::uuid and b.status='processed' and b.pay_period>=${intent.startOn.slice(0,7)} and exists(select 1 from payslip p where p.batch_id=b.id and p.tenant_id=b.tenant_id and p.employment_id=${intent.employmentId}::uuid) order by b.id for update nowait`);
+   const batches=await tx.execute<{id:string}>(sql`select b.id from payroll_batch b where b.tenant_id=${ctx.tenantId}::uuid and b.status in ('processed','processing') and b.pay_period>=${intent.startOn.slice(0,7)} and exists(select 1 from payslip p where p.batch_id=b.id and p.tenant_id=b.tenant_id and p.employment_id=${intent.employmentId}::uuid) order by b.id for update nowait`);
    for(const batch of batches)await markBatchNeedsRecalc(tx,ctx,{batchId:batch.id,employmentIds:[intent.employmentId],category:'compensation'});
   }
   await tx.execute(sql`select app.contract_prepare_record_dates(${caseId}::uuid)`);
