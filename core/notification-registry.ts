@@ -4,6 +4,7 @@
 import type {NotificationSeverity} from '../db/schema';
 import type {NotificationEmailCategory} from '../lib/notification-email-model';
 import {READINESS_CORRECTIONS} from '../lib/readiness-correction-actions';
+import {bulkJobNoticeKeys} from '../lib/bulk-job';
 export type Rendered={severity:NotificationSeverity;title:string;body:string;linkPath:string};
 export type EventRef={id?:string;aggregateId:string;subjectEmploymentId:string|null};
 export type NotificationPayload=Record<string,unknown>|null;
@@ -51,6 +52,7 @@ export type NotificationRecipientReaders<Reader>={
  employeeLoopDigest:NotificationRecipientReader<Reader>;
  noticePublished:NotificationRecipientReader<Reader>;
  payrollClosed:NotificationRecipientReader<Reader>;
+ bulkJobInitiator:NotificationRecipientReader<Reader>;
  approvalChase:(source:ApprovalChaseSource)=>NotificationRecipientReader<Reader>;
 };
 /**
@@ -729,6 +731,21 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
       const approvals = typeof p?.approvals === 'number' && Number.isInteger(p.approvals) && p.approvals > 0;
       return { severity: 'action', title: `payrollReadiness.reminder.title.${lead}`,
         body: `payrollReadiness.reminder.body.${own && approvals ? 'both' : approvals ? 'approvals' : 'own'}`, linkPath: '/' };
+    },
+  },
+  // Shared bulk-job kernel (core/bulk-job-worker.ts): the person who started a background import is told when it
+  // finished, failed or was stopped. Only the job's recorded notice event, appended by its creator, resolves a recipient
+  // (app.bulk_job_notice_recipients, migration 9003). In-app only (no email category). Stored as message KEYS like the
+  // cut-off reminder; the bell renders them in the reader's language (bulkJobs.notification.* in all six catalogues).
+  // Never a row count, file name or another person's name. It opens the kind's Import History.
+  'bulk-job.finished': {recipientAudience:'reader',
+    kind: 'bulk-job.finished',
+    category: null,
+    recipientPort:'bulkJobInitiator',recipients:readers.bulkJobInitiator,
+    render: (p) => {
+      const keys = bulkJobNoticeKeys(typeof p?.kind === 'string' ? p.kind : '', typeof p?.outcome === 'string' ? p.outcome : '');
+      return keys ? { severity: 'info', title: keys.title, body: keys.body, linkPath: keys.linkPath }
+        : { severity: 'info', title: 'Background job finished', body: 'Open the page where you started it to see the outcome.', linkPath: '/' };
     },
   },
 };

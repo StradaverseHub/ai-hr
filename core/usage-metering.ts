@@ -52,6 +52,8 @@ export type UsageCounts = {
 /** Employment is active on `on` when it had started and had not yet ended. */
 const activeOn = (on: string) =>
   and(
+    // The owner connection bypasses RLS, so a staged import's unactivated rows are excluded here explicitly.
+    isNull(employment.importPendingAttemptId),
     sql`${employment.hiredOn} <= ${on}`,
     or(isNull(employment.terminatedOn), gte(employment.terminatedOn, on)),
   );

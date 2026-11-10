@@ -348,9 +348,10 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
     // actions.ts parses and delegates and does nothing else, which the FormData/File check below is what
     // enforces.
     expect(actions).toMatch(/validateEmployeeImport\(s, \{[\s\S]{0,200}?companyId,[\s\S]{0,200}?records[\s\S]{0,200}?\}\)/);
-    // r88 (cf43c909): the commit payload gained `fileName` so the import-history row can name what was
-    // uploaded. Still the same delegate call with the same companyId + records — only extra scalars.
-    expect(actions).toMatch(/commitEmployeeImport\(s, \{[\s\S]{0,300}?companyId,[\s\S]{0,300}?records[\s\S]{0,300}?\}\)/);
+    // Staged-import job: the non-measured commit enqueues the sheets' text (the file bytes ride as `source`); the
+    // worker parses it through the same shared parser (`parseEmployeeImportUpload`) before any canonical writer runs.
+    expect(actions).toMatch(/createEmployeeImportJob\(s,\{companyId,csv,/);
+    expect(read('/core/employee-import-worker.ts')).toContain('parseEmployeeImportUpload(input)');
     // No file/FormData handling leaked to the server — the reader is browser-side by design so
     // d8471481 can swap it without touching anything that writes. A file NAME is a string and is fine;
     // a File OBJECT or FormData would mean the reader had moved server-side, which is what this forbids.

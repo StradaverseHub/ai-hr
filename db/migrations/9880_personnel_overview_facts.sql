@@ -3,6 +3,11 @@
 -- readers and the private-search bind trigger function. It adds no table, column, index, constraint or
 -- trigger and writes no row, so it holds no lock on an application table and needs no backfill or
 -- post-migration step; running readers keep their snapshot of the previous bodies.
+-- Combined release: it applies after the staged employee import (staged rows and release visibility). The
+-- staged-import audit put the staged-row filter into three of the readers replaced here, so those predecessors
+-- are the release-aware bodies, and every definer below that reads employment keeps the same filter,
+-- app.import_marker_visible(import_pending_attempt_id), beside its voided_at check: a staged hire stays out of
+-- the Personnel list, filters, search and private search until its import is released.
 -- core/read.ts probes for the new functions inside its existing bounds statement and keeps the previous
 -- Personnel readers when they are absent.
 -- The same installation prerequisites as 2403 and 2701.
@@ -30,18 +35,19 @@ BEGIN
 END;
 $personnel_assignment_prerequisite$;
 --> statement-breakpoint
--- Replace only the reviewed predecessors: the bodies 2210, 2450, 4001, 2451 and 2701 installed, under the
--- migration owner, SECURITY DEFINER, with their search path and the application grant.
+-- Replace only the reviewed predecessors: the bodies 4001 and 2451 installed and, for the filter rows, the
+-- search rows and the typed filter fields, the staged-import bodies after the release-visibility rewrite,
+-- under the migration owner, SECURITY DEFINER, with their search path and the application grant.
 DO $personnel_overview_predecessors$
 DECLARE previous record;
 BEGIN
  FOR previous IN SELECT x.signature,x.digest,p.oid,p.prosrc,p.prosecdef,p.proowner,p.proconfig
    FROM (VALUES
-     ('app.personnel_filter_rows(date,uuid[])','c064b074d4e5c3c0820a00e927a0f418'),
-     ('app.personnel_search_rows(uuid[])','58ef080639a4f5b977aed32e6a22bb6d'),
+     ('app.personnel_filter_rows(date,uuid[])','9cedadb3a3d2b42aa177324c1c419ce3'),
+     ('app.personnel_search_rows(uuid[])','ad5772e950714feb0a6e69a2bea633bc'),
      ('app.personnel_private_search_bind()','337bfcb9e3943c6a8215403271964e48'),
      ('app.personnel_filter_companies(uuid[],date)','ed25dd94dd1ef1bd49c63d18276cf715'),
-     ('app.personnel_overview_filter_fields(date,uuid[])','56d0c2caff2bef120ed1a3caa630cd76')
+     ('app.personnel_overview_filter_fields(date,uuid[])','3f60ec3025e15f5ae55ee4a1a1372233')
    ) AS x(signature,digest)
    LEFT JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(x.signature)
  LOOP
@@ -97,7 +103,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET e
       e.id,e.tenant_id,e.company_id,e.hired_on,e.join_date,e.grade_id,e.confirmation_date,e.final_confirmation_date
    FROM public.employment e
    JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
-   WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
+   WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL AND app.import_marker_visible(e.import_pending_attempt_id)
      AND e.company_id=ANY(p_scope) AND e.company_id=ANY((SELECT ids FROM permitted)::uuid[])
  ),
  future_correction_presence AS MATERIALIZED (
@@ -192,7 +198,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET e
  superiors AS MATERIALIZED (
    SELECT DISTINCT ON (l.subordinate_employment_id) l.subordinate_employment_id AS employment_id,mp.full_name
    FROM current_lines l
-   JOIN public.employment me ON me.id=l.manager_employment_id AND me.tenant_id=app.current_tenant_id() AND me.voided_at IS NULL
+   JOIN public.employment me ON me.id=l.manager_employment_id AND me.tenant_id=app.current_tenant_id() AND me.voided_at IS NULL AND app.import_marker_visible(me.import_pending_attempt_id)
    JOIN public.person mp ON mp.id=me.person_id AND mp.tenant_id=me.tenant_id
    WHERE me.company_id=ANY((SELECT ids FROM permitted)::uuid[])
    ORDER BY l.subordinate_employment_id,l.valid_from DESC,l.id
@@ -262,7 +268,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET e
       e.id,e.tenant_id,e.company_id,e.hired_on,e.grade_id,e.confirmation_date,e.final_confirmation_date
    FROM public.employment e
    JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
-   WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
+   WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL AND app.import_marker_visible(e.import_pending_attempt_id)
      AND e.company_id=ANY(p_scope) AND e.company_id=ANY((SELECT ids FROM permitted)::uuid[])
  ),
  future_correction_presence AS MATERIALIZED (
@@ -368,7 +374,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
    SELECT t.tenant_id,m.item FROM token t CROSS JOIN LATERAL jsonb_array_elements(t.matches) m(item)
  )
  SELECT e.id,x.item->>'kind',x.item->>'filterRevision',x.item ? 'filterRevision',
-   e.voided_at IS NULL AND e.xmin::text=x.item->>'employmentRevision' AND p.xmin::text=x.item->>'personRevision'
+   e.voided_at IS NULL AND app.import_marker_visible(e.import_pending_attempt_id) AND e.xmin::text=x.item->>'employmentRevision' AND p.xmin::text=x.item->>'personRevision'
      AND (x.item->>'kind'='public' OR (x.item->>'kind'='identity' AND i.xmin::text=x.item->>'identityRevision'))
  FROM entries x
  JOIN public.employment e ON e.id=(x.item->>'employmentId')::uuid AND e.tenant_id=x.tenant_id
@@ -475,7 +481,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
    JOIN public.employment e ON e.id=(b.value->>'employmentId')::uuid AND e.tenant_id=app.current_tenant_id()
    JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
    JOIN permitted_companies permitted ON permitted.id=e.company_id
-   WHERE e.voided_at IS NULL
+   WHERE e.voided_at IS NULL AND app.import_marker_visible(e.import_pending_attempt_id)
  ),
  -- Fence the scoped candidates before the raising resolver, then retain its result once per row.
  tagged AS MATERIALIZED (
@@ -512,7 +518,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
    'jobGradeCode',g.code,'costCenter',cc.name,'workLocation',loc.name,
    'reportingTo',(
      SELECT mp.full_name FROM public.reporting_line r
-     JOIN public.employment me ON me.id=r.manager_employment_id AND me.tenant_id=r.tenant_id AND me.voided_at IS NULL
+     JOIN public.employment me ON me.id=r.manager_employment_id AND me.tenant_id=r.tenant_id AND me.voided_at IS NULL AND app.import_marker_visible(me.import_pending_attempt_id)
      JOIN permitted_companies manager_scope ON manager_scope.id=me.company_id
      JOIN public.person mp ON mp.id=me.person_id AND mp.tenant_id=me.tenant_id
      WHERE r.tenant_id=v.tenant_id AND r.subordinate_employment_id=v.id AND r.line_type='administrative'
@@ -559,7 +565,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
    JOIN public.employment e ON e.id=(b.value->>'employmentId')::uuid AND e.tenant_id=app.current_tenant_id()
    JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
    JOIN permitted_companies permitted ON permitted.id=e.company_id
-   WHERE e.voided_at IS NULL
+   WHERE e.voided_at IS NULL AND app.import_marker_visible(e.import_pending_attempt_id)
  ),
  -- Fence the scoped candidates before the raising resolver, then retain its result once per row.
  tagged AS MATERIALIZED (
@@ -596,7 +602,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
    'jobGradeCode',g.code,'costCenter',cc.name,'workLocation',loc.name,
    'reportingTo',(
      SELECT mp.full_name FROM public.reporting_line r
-     JOIN public.employment me ON me.id=r.manager_employment_id AND me.tenant_id=r.tenant_id AND me.voided_at IS NULL
+     JOIN public.employment me ON me.id=r.manager_employment_id AND me.tenant_id=r.tenant_id AND me.voided_at IS NULL AND app.import_marker_visible(me.import_pending_attempt_id)
      JOIN permitted_companies manager_scope ON manager_scope.id=me.company_id
      JOIN public.person mp ON mp.id=me.person_id AND mp.tenant_id=me.tenant_id
      WHERE r.tenant_id=v.tenant_id AND r.subordinate_employment_id=v.id AND r.line_type='administrative'
@@ -632,12 +638,12 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  SELECT a.value||jsonb_build_object(
  'directSuperiorFullName',a.value->'reportingTo',
  'directSuperiorEmployeeCode',(SELECT me.employee_code FROM public.reporting_line r
- JOIN public.employment me ON me.id=r.manager_employment_id AND me.tenant_id=r.tenant_id AND me.voided_at IS NULL
+ JOIN public.employment me ON me.id=r.manager_employment_id AND me.tenant_id=r.tenant_id AND me.voided_at IS NULL AND app.import_marker_visible(me.import_pending_attempt_id)
  WHERE r.tenant_id=e.tenant_id AND r.subordinate_employment_id=e.id AND r.line_type='administrative'
  AND r.superseded_at IS NULL AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
  AND app.access_workforce_projection_company(me.company_id) ORDER BY r.valid_from DESC,r.id LIMIT 1),
  'employmentFieldsPermitted',app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain'),'orgDivision',CASE WHEN a.value ? 'orgDivision' THEN a.value->'orgDivision' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.org_division) ELSE NULL::jsonb END,'orgBranch',CASE WHEN a.value ? 'orgBranch' THEN a.value->'orgBranch' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.org_branch) ELSE NULL::jsonb END,'orgRegion',CASE WHEN a.value ? 'orgRegion' THEN a.value->'orgRegion' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.org_region) ELSE NULL::jsonb END,'orgLine',CASE WHEN a.value ? 'orgLine' THEN a.value->'orgLine' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.org_line) ELSE NULL::jsonb END,'orgSection',CASE WHEN a.value ? 'orgSection' THEN a.value->'orgSection' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.org_section) ELSE NULL::jsonb END,'orgTeam',CASE WHEN a.value ? 'orgTeam' THEN a.value->'orgTeam' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.org_team) ELSE NULL::jsonb END,'orgBase',CASE WHEN a.value ? 'orgBase' THEN a.value->'orgBase' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.org_base) ELSE NULL::jsonb END,'employmentCategory',CASE WHEN a.value ? 'employmentCategory' THEN a.value->'employmentCategory' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.employment_category) ELSE NULL::jsonb END,'hiredOn',CASE WHEN a.value ? 'hiredOn' THEN a.value->'hiredOn' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.hired_on) ELSE NULL::jsonb END,'joinDate',CASE WHEN a.value ? 'joinDate' THEN a.value->'joinDate' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.join_date) ELSE NULL::jsonb END,'probationValue',CASE WHEN a.value ? 'probationValue' THEN a.value->'probationValue' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.probation_value) ELSE NULL::jsonb END,'probationUnit',CASE WHEN a.value ? 'probationUnit' THEN a.value->'probationUnit' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.probation_unit) ELSE NULL::jsonb END,'extendedProbationValue',CASE WHEN a.value ? 'extendedProbationValue' THEN a.value->'extendedProbationValue' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.extended_probation_value) ELSE NULL::jsonb END,'extendedProbationUnit',CASE WHEN a.value ? 'extendedProbationUnit' THEN a.value->'extendedProbationUnit' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.extended_probation_unit) ELSE NULL::jsonb END,'finalConfirmationDate',CASE WHEN a.value ? 'finalConfirmationDate' THEN a.value->'finalConfirmationDate' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.final_confirmation_date) ELSE NULL::jsonb END,'contractStartDate',CASE WHEN a.value ? 'contractStartDate' THEN a.value->'contractStartDate' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.contract_start_date) ELSE NULL::jsonb END,'contractEndDate',CASE WHEN a.value ? 'contractEndDate' THEN a.value->'contractEndDate' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.contract_end_date) ELSE NULL::jsonb END,'contractRemark',CASE WHEN a.value ? 'contractRemark' THEN a.value->'contractRemark' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.contract_remark) ELSE NULL::jsonb END,'noticeBeforeConfirmationValue',CASE WHEN a.value ? 'noticeBeforeConfirmationValue' THEN a.value->'noticeBeforeConfirmationValue' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.notice_before_confirmation_value) ELSE NULL::jsonb END,'noticeBeforeConfirmationUnit',CASE WHEN a.value ? 'noticeBeforeConfirmationUnit' THEN a.value->'noticeBeforeConfirmationUnit' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.notice_before_confirmation_unit) ELSE NULL::jsonb END,'noticeAfterConfirmationValue',CASE WHEN a.value ? 'noticeAfterConfirmationValue' THEN a.value->'noticeAfterConfirmationValue' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.notice_after_confirmation_value) ELSE NULL::jsonb END,'noticeAfterConfirmationUnit',CASE WHEN a.value ? 'noticeAfterConfirmationUnit' THEN a.value->'noticeAfterConfirmationUnit' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.notice_after_confirmation_unit) ELSE NULL::jsonb END,'tenderResignationDate',CASE WHEN a.value ? 'tenderResignationDate' THEN a.value->'tenderResignationDate' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.tender_resignation_date) ELSE NULL::jsonb END,'resignationDate',CASE WHEN a.value ? 'resignationDate' THEN a.value->'resignationDate' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.resignation_date) ELSE NULL::jsonb END,'lastWorkingDate',CASE WHEN a.value ? 'lastWorkingDate' THEN a.value->'lastWorkingDate' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.last_working_date) ELSE NULL::jsonb END,'confirmationDate',CASE WHEN a.value ? 'confirmationDate' THEN a.value->'confirmationDate' WHEN app.access_workforce_company((a.value->>'companyId')::uuid,'workforce.maintain') THEN to_jsonb(e.confirmation_date) ELSE NULL::jsonb END) value
- FROM admitted a JOIN public.employment e ON e.id=(a.value->>'employmentId')::uuid AND e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
+ FROM admitted a JOIN public.employment e ON e.id=(a.value->>'employmentId')::uuid AND e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL AND app.import_marker_visible(e.import_pending_attempt_id)
  ) SELECT value||jsonb_build_object('filterRevision',md5(value::text)) FROM extended
 $$;
 --> statement-breakpoint
@@ -662,7 +668,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
    FROM public.employment e
    JOIN permitted_companies allowed ON allowed.id=e.company_id
    JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
-   WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
+   WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL AND app.import_marker_visible(e.import_pending_attempt_id)
  ),
  tagged AS MATERIALIZED (
    SELECT c.*,COALESCE((t.tags->>'companyId')::uuid,c.company_id) dated_company_id

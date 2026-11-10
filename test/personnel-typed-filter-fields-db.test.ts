@@ -12,6 +12,11 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness'
 const migration=readFileSync(new URL('../db/migrations/2701_personnel_typed_overview_filter_fields.sql',import.meta.url),'utf8');
 const typed='app.personnel_overview_filter_fields(date,uuid[])';
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(resetDb);
+// Migrations 9001/9004 later add the release-aware staged-import filter to this body; 2701 pins its exact predecessor, so replay from that shape.
+const restoreNarrowPredecessor=async(tx:{unsafe:(q:string)=>Promise<unknown>})=>{
+ const rows=await tx.unsafe("select pg_get_functiondef('app.personnel_overview_narrow_rows(date,uuid[])'::regprocedure) as ddl") as {ddl:string}[];
+ await tx.unsafe(rows[0].ddl.replace(/ AND app\.import_marker_visible\(e\.import_pending_attempt_id\)/g,''));
+};
 const normalize=(value:Awaited<ReturnType<typeof readPersonnelOverview>>)=>({...value,organisationChoices:{...value.organisationChoices,rows:value.organisationChoices.rows.map(row=>JSON.stringify(row)).sort()}});
 
 it('retains exact full DTOs, independently expected pages/facets and native dated-company facts',async()=>{
@@ -63,7 +68,7 @@ it('installs on a populated predecessor without changing source facts, full DTOs
  await hireEmployee(ctx,{person:{fullName:'Fictional retained upgrade employee',primaryEmail:randomUUID()+'@example.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const scope=sql`array[${base.companyId}::uuid]`,day=todayInKualaLumpur();
  const before=await withTenant(ctx,tx=>tx.execute(sql`select value from app.personnel_filter_rows(${day}::date,${scope}) r(value) order by value->>'employmentId'`));
- await owner.client.begin(async tx=>{await tx.unsafe('drop function '+typed);await tx.unsafe(migration);});
+ await owner.client.begin(async tx=>{await restoreNarrowPredecessor(tx);await tx.unsafe('drop function '+typed);await tx.unsafe(migration);});
  const after=await withTenant(ctx,tx=>tx.execute(sql`select value from app.personnel_filter_rows(${day}::date,${scope}) r(value) order by value->>'employmentId'`));
  expect(after).toHaveLength(1);expect(Array.from(after)).toEqual(Array.from(before));
  const [attributes]=await owner.db.execute(sql`select p.prosecdef,p.provolatile,p.proconfig,
@@ -83,7 +88,7 @@ it.each([
  'grant execute on function app.personnel_overview_narrow_rows(date,uuid[]) to public',
 ])('refuses unreviewed predecessor drift and rolls back (%s)',async drift=>{
  await expect(owner.client.begin(async tx=>{
-  await tx.unsafe('drop function '+typed);await tx.unsafe(drift);await tx.unsafe(migration);
+  await restoreNarrowPredecessor(tx);await tx.unsafe('drop function '+typed);await tx.unsafe(drift);await tx.unsafe(migration);
  })).rejects.toMatchObject({code:'55000'});
  const [retained]=await owner.client`select to_regprocedure(${typed}) is not null as present`;
  expect(retained.present).toBe(true);

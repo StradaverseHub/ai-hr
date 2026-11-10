@@ -32,11 +32,16 @@ export function employeeImportUploadInput(raw:unknown):EmployeeImportUploadInput
  return input;
 }
 
+/** Shared parsers for the sheets' text: the upload route, the paste action and the worker read rows identically. */
+export function parseEmployeeImportUpload(input:EmployeeImportUploadInput){
+ const records=parsePersonnelImportCsv(input.csv,{columns:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional],resolvers:personnelImportLabelResolvers}).records;
+ const dependentRecords=(input.dependentsCsv??'').trim()?parsePersonnelImportCsv(input.dependentsCsv!,{columns:[...DEPENDENT_IMPORT_COLUMNS.required,...DEPENDENT_IMPORT_COLUMNS.optional],sheet:'family',resolvers:personnelImportLabelResolvers}).records:[];
+ const registerRecords:PersonnelRegisterRecords={};
+ for(const kind of PERSONNEL_REGISTER_KINDS){const t=input.registers?.[kind]??'';registerRecords[kind]=t.trim()?parsePersonnelImportCsv(t,{columns:personnelRegisterColumns(kind),sheet:kind,resolvers:personnelImportLabelResolvers}).records:[];}
+ return{records,dependentRecords,registerRecords,allocationRecords:parseCostAllocationCsv(input.allocationsCsv??'')};
+}
 export async function commitEmployeeImportUpload(ctx:SessionContext,input:EmployeeImportUploadInput,source:{name:string;content:Buffer;operationKey?:string}){
  if(source.content.length>IMPORT_SOURCE_MAX_BYTES)throw new ImportHistoryError('Choose a file no larger than 10 MB.');
- const records=parsePersonnelImportCsv(input.csv,{columns:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional],resolvers:personnelImportLabelResolvers}).records;
- const family=(input.dependentsCsv??'').trim()?parsePersonnelImportCsv(input.dependentsCsv!,{columns:[...DEPENDENT_IMPORT_COLUMNS.required,...DEPENDENT_IMPORT_COLUMNS.optional],sheet:'family',resolvers:personnelImportLabelResolvers}).records:[];
- const registers:PersonnelRegisterRecords={};
- for(const kind of PERSONNEL_REGISTER_KINDS){const t=input.registers?.[kind]??'';registers[kind]=t.trim()?parsePersonnelImportCsv(t,{columns:personnelRegisterColumns(kind),sheet:kind,resolvers:personnelImportLabelResolvers}).records:[];}
- return commitEmployeeImport(ctx,{companyId:input.companyId,records,dependentRecords:family,registerRecords:registers,allocationRecords:parseCostAllocationCsv(input.allocationsCsv??''),allocationToken:input.allocationToken,fileName:input.fileName??source.name,source});
+ const parsed=parseEmployeeImportUpload(input);
+ return commitEmployeeImport(ctx,{companyId:input.companyId,records:parsed.records,dependentRecords:parsed.dependentRecords,registerRecords:parsed.registerRecords,allocationRecords:parsed.allocationRecords,allocationToken:input.allocationToken,fileName:input.fileName??source.name,source});
 }

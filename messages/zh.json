@@ -2956,6 +2956,26 @@
         "payItems": "基本工资和每月津贴以外的固定薪资项目——在“薪资”标签页或通过薪资项目导入添加。",
         "openingTax": "年中入职员工的期初税款余额（TP3）——在“薪资”标签页填写。",
         "holidayCalendar": "假日日历——带日期并有自身历史的分配；请在导入后于“考勤”标签页设置。"
+      },
+      "employeeJob": {
+        "queued": "等待开始",
+        "validating": "正在检查文件",
+        "importing": "正在导入员工",
+        "activating": "正在完成导入",
+        "discarding": "正在撤销导入",
+        "completed": "导入已完成",
+        "failed": "导入已停止——未添加任何员工",
+        "phase": {
+          "employees": "正在创建员工",
+          "superiors": "正在关联汇报线",
+          "registers": "正在添加登记记录",
+          "activation": "正在收尾"
+        },
+        "progressCount": "已完成 {done}/{total} 个步骤",
+        "backgroundHelp": "您可以离开此页面。导入完成前，其他人看不到新员工。",
+        "waiting": "正在等待导入进程。进度已保存；请勿再次上传文件。",
+        "otherRunning": "另一项员工导入仍在进行。请等待其完成后再开始新的导入。",
+        "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务一运行便会自动开始。"
       }
     },
     "wizard": {
@@ -37385,5 +37405,23 @@
     "appliesFromTomorrow": "配对方式和打卡最短间隔的更改从明天起生效，今天已记录的考勤不会被重新计算。历史记录会保存更改人和更改时间。",
     "systemReason": "已在排班组设置中更新",
     "dutyRosterPoolNote": "轮班只能使用上方“允许的班次”中已纳入的班次。"
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "员工导入已完成",
+          "body": "打开导入历史，查看已添加的员工。"
+        },
+        "failed": {
+          "title": "员工导入已停止",
+          "body": "未添加任何员工。打开导入历史查看原因。"
+        },
+        "cancelled": {
+          "title": "员工导入已取消",
+          "body": "未添加任何员工。打开导入历史查看详情。"
+        }
+      }
+    }
   }
 }

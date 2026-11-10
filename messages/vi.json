@@ -2956,6 +2956,26 @@
         "payItems": "Các khoản lương định kỳ ngoài lương cơ bản và phụ cấp hằng tháng — thêm ở thẻ Lương hoặc bằng chức năng nhập khoản lương.",
         "openingTax": "Số dư thuế đầu kỳ cho người vào giữa năm (TP3) — nhập ở thẻ Lương.",
         "holidayCalendar": "Lịch ngày nghỉ — một phân công có ngày hiệu lực với lịch sử riêng; đặt ở thẻ Chấm công sau khi nhập."
+      },
+      "employeeJob": {
+        "queued": "Đang chờ bắt đầu",
+        "validating": "Đang kiểm tra tệp",
+        "importing": "Đang nhập nhân viên",
+        "activating": "Đang hoàn tất việc nhập",
+        "discarding": "Đang hoàn tác việc nhập",
+        "completed": "Đã nhập xong",
+        "failed": "Việc nhập đã dừng — không có nhân viên nào được thêm",
+        "phase": {
+          "employees": "Đang tạo nhân viên",
+          "superiors": "Đang liên kết tuyến báo cáo",
+          "registers": "Đang thêm hồ sơ sổ đăng ký",
+          "activation": "Đang hoàn thiện"
+        },
+        "progressCount": "Đã hoàn tất {done}/{total} bước",
+        "backgroundHelp": "Bạn có thể rời trang này. Sẽ không ai thấy nhân viên mới cho đến khi việc nhập hoàn tất.",
+        "waiting": "Đang chờ trình xử lý nhập. Tiến độ đã được lưu; đừng tải tệp lên lần nữa.",
+        "otherRunning": "Một lần nhập nhân viên khác vẫn đang chạy. Hãy chờ hoàn tất trước khi bắt đầu lần mới.",
+        "workerUnavailable": "Dịch vụ nhập chưa chạy. Lần nhập của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy."
       }
     },
     "wizard": {
@@ -37385,5 +37405,23 @@
     "appliesFromTomorrow": "Thay đổi Cách ghép lượt chấm công và Khoảng cách tối thiểu giữa các lượt chấm công có hiệu lực từ ngày mai, nên dữ liệu chấm công đã ghi nhận hôm nay không bị tính lại. Lịch sử ghi lại ai đã thay đổi và khi nào.",
     "systemReason": "Đã cập nhật trong cài đặt Nhóm lịch làm việc",
     "dutyRosterPoolNote": "Vòng xoay chỉ có thể dùng các ca Đã đưa vào trong Ca được phép ở trên."
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "Đã nhập nhân viên xong",
+          "body": "Mở Lịch sử nhập để xem các nhân viên đã được thêm."
+        },
+        "failed": {
+          "title": "Việc nhập nhân viên đã dừng",
+          "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc nhập nhân viên",
+          "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem chi tiết."
+        }
+      }
+    }
   }
 }

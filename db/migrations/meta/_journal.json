@@ -5407,13 +5407,6 @@
       "breakpoints": true
     },
     {
-      "idx": 3743,
-      "version": "7",
-      "when": 1793330004043,
-      "tag": "9880_personnel_overview_facts",
-      "breakpoints": true
-    },
-    {
       "idx": 4100,
       "version": "7",
       "when": 1793330004400,
@@ -5474,6 +5467,34 @@
       "version": "7",
       "when": 1793330090002,
       "tag": "9002_leave_import_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 9001,
+      "version": "7",
+      "when": 1793330090001,
+      "tag": "9001_employee_import_staged_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 9003,
+      "version": "7",
+      "when": 1793330090003,
+      "tag": "9003_bulk_job_kernel",
+      "breakpoints": true
+    },
+    {
+      "idx": 9004,
+      "version": "7",
+      "when": 1793330090004,
+      "tag": "9004_import_release_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 3743,
+      "version": "7",
+      "when": 1793330004043,
+      "tag": "9880_personnel_overview_facts",
       "breakpoints": true
     }
   ]

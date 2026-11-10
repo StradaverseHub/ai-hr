@@ -214,13 +214,19 @@ export const PERSONNEL_FACTS_NEW_FUNCTIONS = [
   'app.personnel_private_search_entries(text,uuid[])', 'app.personnel_overview_facts(date,uuid[])',
   'app._personnel_employment_tags(uuid[],date)',
 ];
+/** The staged employee import (9001) re-created three of the predecessors with its staged-row filter, and the
+ * release-visibility migration (9004) rewrote that filter in place; 9880 follows both in the combined release. */
+const STAGED_IMPORT = '9001_employee_import_staged_job';
 const PERSONNEL_FACTS_PREDECESSORS = [
-  ['2210_personnel_projection_reuse', 'personnel_filter_rows'],
-  ['2450_personnel_search_projection', 'personnel_search_rows'],
+  [STAGED_IMPORT, 'personnel_filter_rows'],
+  [STAGED_IMPORT, 'personnel_search_rows'],
   ['4001_personnel_employment_filter_projection', 'personnel_private_search_bind'],
   ['2451_personnel_company_filter_choices', 'personnel_filter_companies'],
-  ['2701_personnel_typed_overview_filter_fields', 'personnel_overview_filter_fields'],
+  [STAGED_IMPORT, 'personnel_overview_filter_fields'],
 ] as const;
+/** The 9004 rewrite of an installed definition: every staged-marker filter becomes the release-aware predicate. */
+const releaseAware = (statement: string) =>
+  statement.replace(/(\b[a-z_]+\.)?import_pending_attempt_id IS NULL/g, (_match, alias?: string) => `app.import_marker_visible(${alias ?? ''}import_pending_attempt_id)`);
 const migrationSql = (tag: string) => readFileSync(new URL('../../db/migrations/' + tag + '.sql', import.meta.url), 'utf8');
 /** The exact statement an applied migration used to install a function (its last definition there). */
 export function predecessorStatement(tag: string, name: string) {
@@ -239,9 +245,11 @@ export async function installPreMigrationOwners(): Promise<() => Promise<void>> 
   expect(installed.n, 'migration 9880 is applied before the oracle switch').toBe(PERSONNEL_FACTS_NEW_FUNCTIONS.length);
   await owner.client.begin(async tx => {
     for (const name of PERSONNEL_FACTS_NEW_FUNCTIONS) await tx.unsafe(`drop function ${name}`);
-    // 2701 created its function; the same statement replaces 9880's body in place (owner and grants kept).
-    for (const [tag, name] of PERSONNEL_FACTS_PREDECESSORS) await tx.unsafe(predecessorStatement(tag, name)
-      .replace('CREATE FUNCTION app.' + name + '(', 'CREATE OR REPLACE FUNCTION app.' + name + '(')).simple();
+    // The same statement replaces 9880's body in place (owner and grants kept).
+    for (const [tag, name] of PERSONNEL_FACTS_PREDECESSORS) {
+      const statement = predecessorStatement(tag, name).replace('CREATE FUNCTION app.' + name + '(', 'CREATE OR REPLACE FUNCTION app.' + name + '(');
+      await tx.unsafe(tag === STAGED_IMPORT ? releaseAware(statement) : statement).simple();
+    }
   });
   return async () => {
     await owner.client.unsafe(migrationSql('9880_personnel_overview_facts')).simple();

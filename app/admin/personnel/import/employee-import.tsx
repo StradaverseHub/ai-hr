@@ -20,7 +20,7 @@ import {PERSONNEL_REGISTER_KINDS,PERSONNEL_REGISTER_SHEETS,personnelRegisterColu
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
 import { PersonnelImportValues } from '@/components/personnel-import-values';
 
-import { Fragment, useRef, useState, useTransition } from 'react';
+import { Fragment, useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -44,7 +44,10 @@ import {
   EMPLOYEE_XLSX_FILENAME,
   EMPLOYEE_XLSX_SHEETS,
 } from '@/lib/import-template-xlsx';
-import { validateImportAction, commitImportAction } from './actions';
+import { validateImportAction, commitImportAction, reopenEmployeeImportEvaluationAction } from './actions';
+import type {EmployeeImportEvaluationBinding} from '@/lib/personnel-import-evaluation';
+import {EmployeeImportJobPanel} from './employee-import-progress';
+import {EMPLOYEE_IMPORT_ALREADY_RUNNING,employeeImportActive,type EmployeeImportProgress} from '@/lib/employee-import-job';
 
 const SAMPLE = `full_name,email,department,position,hired_on,employment_type,ic_number,basic_salary,monthly_allowance,bank_name,bank_account_no,tax_category,num_children
 Nadia Yusof,nadia@demo.test,Finance,,2026-06-01,full_time,910505051234,5200,400,Maybank,5566778899,2,1
@@ -150,6 +153,22 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   const [registerTexts,setRegisterTexts]=useState<PersonnelRegisterTexts>({});
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  // Background employee import (design B): the running job, resumed after navigation.
+  const [importJob, setImportJob] = useState<EmployeeImportProgress | null>(null);
+  // An evaluation-bound import runs as the same background job; its receipt is read once the job finishes.
+  const boundJob=useRef<{jobId:string;binding:EmployeeImportEvaluationBinding;companyId:string}|null>(null);
+  const settleBoundJob=(jobId:string,completed:boolean)=>{
+    const bound=boundJob.current;if(!bound||bound.jobId!==jobId)return;boundJob.current=null;
+    if(!completed){evaluation.current?.commitUncertain();return;}
+    void reopenEmployeeImportEvaluationAction(bound.binding,bound.companyId)
+      .then(outcome=>{if(outcome.kind==='evaluation'&&outcome.receipt.state==='committed')evaluation.current?.acceptCommit(outcome.receipt);else evaluation.current?.commitUncertain();})
+      .catch(()=>evaluation.current?.commitUncertain());
+  };
+  useEffect(()=>{
+    let alive=true;
+    fetch('/admin/personnel/import/employee/jobs',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{if(alive&&p?.jobs){const active=(p.jobs as EmployeeImportProgress[]).find(job=>employeeImportActive(job.state));if(active)setImportJob(active);}}).catch(()=>undefined);
+    return()=>{alive=false;};
+  },[]);
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [pending, startTransition] = useTransition();
@@ -438,15 +457,16 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         const revision=inputRevision.current;
         const binding=await evaluation.current?.prepareCommit({csv,companyId,family:dependentsCsv,registers:registerTexts,allocations:allocationsCsv,revision});
         if(binding===null||revision!==inputRevision.current)return;
-        let r:Exclude<Awaited<ReturnType<typeof commitImportAction>>, {error:string}>;
+        let r:Exclude<Awaited<ReturnType<typeof commitImportAction>>, {error:string}|{job:EmployeeImportProgress;existing:boolean}>;
+        let started:{job:EmployeeImportProgress}|null=null;
         try{
           // 524303d9 — an uploaded file whose text is still exactly what is being imported goes to Import History
           // as the original bytes; a paste, an edited or a prepared text is recorded by the action as its CSV text.
           const original=!binding&&sourceFile.current&&sourceFile.current.text===csv?sourceFile.current.file:null;
           if(!original){
             const outcome=await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv, registerTexts, allocationsCsv, preview.allocations?.token, binding);
-            if('error' in outcome){if(binding)evaluation.current?.commitUncertain();setError(outcome.error);return;}
-            r=outcome;
+            if('error' in outcome){if(binding)evaluation.current?.commitUncertain();setError(outcome.error===EMPLOYEE_IMPORT_ALREADY_RUNNING?t('employeeJob.otherRunning'):outcome.error);return;}
+            if('job' in outcome)started=outcome;else r=outcome;
           }
           else{
             const body=new FormData();
@@ -454,12 +474,13 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
             body.append('payload',JSON.stringify({companyId,csv,fileName:fileName??'',dependentsCsv,registers:registerTexts,allocationsCsv,allocationToken:preview.allocations?.token}));
             const response=await fetch('/admin/personnel/import/employee/upload',{method:'POST',body,headers:{'x-upload-operation':crypto.randomUUID()}});
             const payload=await response.json().catch(()=>({error:null}));
-            if(!response.ok){setError(response.status===413?t('fileTooLarge'):payload.error??t('employeeUploadFailed'));return;}
-            r=payload as typeof r;
+            if(!response.ok){setError(response.status===413?t('fileTooLarge'):payload.error===EMPLOYEE_IMPORT_ALREADY_RUNNING?t('employeeJob.otherRunning'):payload.error??t('employeeUploadFailed'));return;}
+            started=payload as {job:EmployeeImportProgress};
           }
         }catch(cause){if(binding)evaluation.current?.commitUncertain();throw cause;}
-        if(binding)evaluation.current?.acceptCommit(r.evaluationReceipt);
-        setResult(r);
+        if(started){boundJob.current=binding?{jobId:started.job.id,binding,companyId}:null;setImportJob(started.job);setPhase('done');return;}
+        if(binding)evaluation.current?.acceptCommit(r!.evaluationReceipt);
+        setResult(r!);
         setPhase('done');
         router.refresh();
       } catch {
@@ -767,6 +788,8 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           {nricMessage(error)}
         </div>
       )}
+
+      {importJob && !result && <EmployeeImportJobPanel job={importJob} onFinished={r=>{settleBoundJob(importJob.id,r.fileErrors.length===0);setImportJob(null);setResult(r);setPhase('done');router.refresh();}}/>}
 
       {result && (
         <Card className="overflow-hidden border-emerald-200 dark:border-emerald-500/30">

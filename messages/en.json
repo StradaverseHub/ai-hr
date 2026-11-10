@@ -2956,6 +2956,26 @@
         "payItems": "Recurring pay items beyond basic salary and monthly allowance — add them on the Payroll tab or with the pay item import.",
         "openingTax": "Opening tax balances for mid-year joiners (TP3) — entered on the Payroll tab.",
         "holidayCalendar": "Holiday calendar — a dated assignment with its own history; set it on the Attendance tab after the import."
+      },
+      "employeeJob": {
+        "queued": "Waiting to start",
+        "validating": "Checking the file",
+        "importing": "Importing employees",
+        "activating": "Finishing the import",
+        "discarding": "Undoing the import",
+        "completed": "Import finished",
+        "failed": "Import stopped — no employees were added",
+        "phase": {
+          "employees": "Creating employees",
+          "superiors": "Linking reporting lines",
+          "registers": "Adding register records",
+          "activation": "Finalising"
+        },
+        "progressCount": "{done} of {total} steps complete",
+        "backgroundHelp": "You can leave this page. Nobody sees the new employees until the import finishes.",
+        "waiting": "Waiting for the import worker. Progress is saved; do not upload the file again.",
+        "otherRunning": "Another employee import is still running. Wait for it to finish before starting a new one.",
+        "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is."
       }
     },
     "wizard": {
@@ -37385,5 +37405,23 @@
     "appliesFromTomorrow": "Changes to Pairing Method and Minimum Interval Between Clock apply from tomorrow, so attendance already captured today is not reworked. The history records who changed them and when.",
     "systemReason": "Updated in Schedule Group settings",
     "dutyRosterPoolNote": "The rotation can only use the shifts Included in Shift Allowed above."
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "Employee import finished",
+          "body": "Open Import History to see the employees that were added."
+        },
+        "failed": {
+          "title": "Employee import stopped",
+          "body": "No employees were added. Open Import History to see why."
+        },
+        "cancelled": {
+          "title": "Employee import cancelled",
+          "body": "No employees were added. Open Import History for details."
+        }
+      }
+    }
   }
 }
