@@ -53,7 +53,7 @@ describe.skipIf(!state.hostedFocused)('account task statement planning',()=>{
   const hire=(name:string)=>hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01'});
   const lead=await hire('Fictional planning manager'),member=await hire('Fictional planning employee');
   await setReportingLine(admin,{subordinateEmploymentId:member.employmentId,managerEmploymentId:lead.employmentId,lineType:'administrative',validFrom:'2025-01-01'});
-  const actor=async(personId:string,role:string):Promise<SessionContext>=>({...admin,userId:await createAppUser(b.tenantId,personId,role),personId,roles:[role],grants:[{role,companyId:null}]});
+  const actor=async(personId:string,role:'employee'|'manager'):Promise<SessionContext>=>({...admin,userId:await createAppUser(b.tenantId,personId,role),personId,roles:[role],grants:[{role,companyId:null}]});
   const actors:Record<string,SessionContext>={admin,manager:await actor(lead.personId,'manager'),employee:await actor(member.personId,'employee')};
   const all:AccountTaskModules={attendance:true,claims:true,performance:true,rewards:true,lifecycle:true};
   const report:Record<string,unknown>={kind:'ACCOUNT_TASK_STATEMENT_PLANNING_DIAGNOSTIC',releaseEligible:false,fictional:true};

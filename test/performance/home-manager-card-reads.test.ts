@@ -680,7 +680,7 @@ async function calendarWindowEntitlementTrips(subjects:[string,Actor][],month:st
  * which the owner refuses with a non-refusal error (only that tenant's actors see them). A step that fails is recorded
  * instead of failing the run. */
 async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
- const failures:{step:string;error:unknown}[]=[];
+ const failures:{step:string;error:unknown;cause:unknown}[]=[];
  const step=async(name:string,work:()=>Promise<unknown>)=>{try{await work();}catch(error){const cause=(error as {cause?:{message?:string;code?:string}})?.cause;
   failures.push({step:name,error:errorFact(error),cause:cause?{code:cause.code??null,message:String(cause.message).slice(0,240)}:null});}};
  const day=(offset:number)=>new Date(Date.parse(today+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
@@ -732,7 +732,7 @@ async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
     // as PostgreSQL but not plain UUID text accepts it (braces). That employee's leave owner reads alone. (A subject head
     // cannot disagree: assignment_no_overlap leaves one current assignment.)
     await leave(at(55),[{kind:'manager_manager'}]);
-    await leave(at(58),[{kind:'custom_role',alternates:[{kind:'specific_employee',employmentId:'{'+lone.employmentId+'}'}]}]);
+    await leave(at(58),[{kind:'custom_role',alternates:[{kind:'specific_employee',employmentId:'{'+at(54).employmentId+'}'}]}]);
    });
    await step('departmentHeads',async()=>{
     await headed(at(27),manager);await leave(at(27),[{kind:'department_head'}]);
@@ -1038,7 +1038,7 @@ async function cardsSectionsFixtures(actors:readonly Actor[],others:readonly Act
  // The case table's own key shape: kind, the employment, and for a dated case its date.
  const key=(a:Actor,kind:string,date?:string)=>kind+':'+a.employmentId+(date?':'+date:'');
  const kase=(a:Actor,workerId:string,subjectKey:string,recipient:'employee'|'hr',facts:Record<string,unknown>)=>({tenantId,workerId:workerId as 'loop_missed_clock_outs',companyId:a.companyId,
-  employmentId:a.employmentId,subjectKey,recipient,state:'open' as const,facts,openedRunId:run,checkedRunId:run});
+  employmentId:a.employmentId,subjectKey,recipient,state:'open' as const,facts:facts as typeof teras.terasLoopCase.$inferInsert['facts'],openedRunId:run,checkedRunId:run});
  let cases:{id:string;subjectKey:string;employmentId:string|null}[]=[];
  await step('loops:cases',async()=>{cases=await owner.db.insert(teras.terasLoopCase).values([
   kase(employee,'loop_missed_clock_outs',key(employee,'clockout',day(-2)),'employee',{date:day(-2),checkIn:'09:00',proposedCheckOut:'18:00'}),
