@@ -45,8 +45,8 @@ import {
 } from './attendance';
 import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break-rules';
 import { holidayCalendarFactsByEmployment } from './holidays';
-import { approvedLeavePresenceByEmploymentTx, lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
-import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import { approvedLeavePresenceByEmploymentTx, lockLeaveDependenciesTx, lockLeaveDependenciesWaitTx, lockLeaveDependencyReadConfigurationTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
 import type { RotationCycle } from './week-pattern';
@@ -1683,8 +1683,11 @@ export async function setEmploymentScheduleGroupTx(
 ): Promise<{ id: string; attendanceRuleId: string | null; changed: boolean; eventId?: string }> {
   p={...p};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  await tx.execute(sql`select app.access_configuration_write_lock()`);
-  await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+  // Seating one employment in a group writes only that employment. Its employment lock serialises this with
+  // every other writer of its group, backup shift and roster (the reverse check reads all three), and group
+  // and shift definitions stay fixed under the shared Access lock because their editors take it exclusively.
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[p.employmentId]);
   const ruleId = p.attendanceRuleId?.trim() || null;
   const [emp] = await tx
     .select({ id: employment.id, before: employment.attendanceRuleId })
@@ -1902,8 +1905,9 @@ export async function assignEmployeeShift(
   const shiftId = p.shiftId || null;
   if (!shiftId) throw new BackupShiftRequiredError();
   const perform = async (tx: Tx) => {
-    await tx.execute(sql`select app.access_configuration_write_lock()`);
-    await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+    // One employment's backup shift: serialised by its employment lock, like setEmploymentScheduleGroupTx.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[p.employmentId]);
     const [emp] = await tx
       .select({
         id: employment.id,
@@ -2271,6 +2275,9 @@ export async function assignShiftBulk(
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: p.shiftId, isRestDay: false })),
   );
   const write = async (tx: Tx) => {
+    // A grid or generated batch can write thousands of cells in one transaction: it stays exclusive until it
+    // runs as a chunked background job. assertDutyRosterWriteTx keeps the mode already held.
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await assertDutyRosterWriteTx(tx,ctx,values);
     // 870b79e2 — one batched check for the whole grid, BEFORE any row is written, so a generation run that
     // would put somebody on a shift their group forbids fails whole rather than half. This is the
@@ -2328,6 +2335,8 @@ export async function setRestDayBulk(
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: null, isRestDay: true })),
   );
   const write = async (tx: Tx) => {
+    // Bulk rest days stay exclusive with assignShiftBulk until roster generation runs as a chunked job.
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await assertDutyRosterWriteTx(tx,ctx,values);
     assertUniqueRosterWriteKeys(values);
     const updatedAt=new Date();

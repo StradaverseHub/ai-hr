@@ -3,8 +3,8 @@ import { liveArrangementsTx, pickArrangementOn } from './shift-arrangement-resol
 /** Canonical group controls. Exception revisions are immutable and forward dated. */
 import { and, asc, eq, gte, lte, inArray, sql } from 'drizzle-orm';
 import { withTenant, type Tx, type SessionContext } from '../db/client';
-import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
-import {lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx} from '../packs/leave/service';
+import {accessLockModeHeldTx,lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockLeaveDependenciesTx,lockLeaveDependenciesWaitTx,lockLeaveDependencyConfigurationTx} from '../packs/leave/service';
 import { attendanceExceptionRevision, attendanceRule, employment, shift, rosterAssignment } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -83,12 +83,20 @@ export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:r
  if(!isAdmin(ctx))throw new DutyRosterWriteRefusal('permission','Only an HR administrator can change the roster.');
  changes=changes.map(change=>({...change}));
  const ids=[...new Set(changes.map(c=>c.employmentId))];if(!ids.length)return;
- await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
- await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
+ // A cell edit writes only its employees' roster days, so it shares the Access lock and waits for their
+ // employment locks; those and the employment rows below serialise it with every other writer of the same
+ // people. Bulk batches take the exclusive lock first and keep it, with the original no-wait subject locks.
+ if(await accessLockModeHeldTx(tx,ctx.tenantId)==='X')await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
+ else{await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,ids);}
  const employees=await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(rosterUuidSet(employment.id,ids)).orderBy(asc(employment.id)).for('update');
  if(employees.length!==ids.length)throw new DutyRosterWriteRefusal('permission','An employee is unavailable in your company scope.');
  const rules=await tx.select().from(attendanceRule).orderBy(asc(attendanceRule.id)).for('update');
  const targetIds=[...new Set(changes.flatMap(c=>c.shiftId?[c.shiftId]:[]))];
+ // Group rows, then the target shifts, both in id order and before any payroll lock or audit event: the
+ // order assertShiftsAllowedForEmploymentsTx takes them in. Under the shared lock a cell writer must already
+ // own these rows when it appends its event, or it could wait for a shift held by a writer that is waiting
+ // for the audit chain this transaction then holds.
+ if(targetIds.length)await tx.select({id:shift.id}).from(shift).where(rosterUuidSet(shift.id,targetIds)).orderBy(asc(shift.id)).for('update');
  const targetShifts=targetIds.length?await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(rosterUuidSet(shift.id,targetIds)):[];
  const allDates=changes.map(c=>c.shiftDate).sort();const groupOn=await scheduleGroupLookupTx(tx,ids,allDates[0],allDates.reduce((a,b)=>a>b?a:b));
  for(const emp of employees){

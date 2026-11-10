@@ -2269,9 +2269,21 @@ async function attendanceMayCreateReplacementTypeTx(tx: Tx, ctx: SessionContext)
 /** Clocking writes the employee's own day under the per-employment locks taken here and by the callers.
  * It needs configuration stable, not a tenant-wide writer, so it joins both locks in shared mode. */
 export async function lockAttendanceClockDependenciesTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]) {
-  if (await attendanceMayCreateReplacementTypeTx(tx, ctx)) return lockAttendanceLeaveDependenciesTx(tx, ctx, employmentIds);
+  // A caller that already shares the lock never asks for exclusive: ensureReplacementLeaveType refuses for a
+  // retry instead. Checked only on the rare exclusive course, so the clock-in path pays no extra round trip.
+  if (await attendanceMayCreateReplacementTypeTx(tx, ctx) && await accessLockModeHeldTx(tx, ctx.tenantId) !== 'S') {
+    return lockAttendanceLeaveDependenciesTx(tx, ctx, employmentIds);
+  }
   await lockAccessConfigurationTx(tx, ctx.tenantId);
   await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, employmentIds);
+}
+
+/** A caller-owned transaction keeps the Access mode it already holds. With none, it joins the way an owned
+ * attendance write does: shared, unless TOIL may create the REPLACEMENT leave type. Never upgrades. */
+async function joinAttendanceAccessTx(tx: Tx, ctx: SessionContext): Promise<void> {
+  if (await accessLockModeHeldTx(tx, ctx.tenantId) !== null) return;
+  if (await attendanceMayCreateReplacementTypeTx(tx, ctx)) await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+  else await lockAccessConfigurationTx(tx, ctx.tenantId);
 }
 function captureAttendanceContext(ctx: SessionContext): SessionContext {
   return {...ctx, roles:ctx.roles?.slice(), grants:ctx.grants?.map(grant=>({...grant}))};
@@ -4093,7 +4105,11 @@ export async function requestAttendanceCorrection(ctx:SessionContext,p:Attendanc
   const data=await prepareAttendanceCorrectionInputTx(tx,current,captured,access);
   return insertAttendanceCorrectionRequestTx(tx,current,data,options);
  };
- if(existingTx)return run(existingTx).catch(attendanceCorrectionSubmissionFailure);
+ if(existingTx){
+  // A caller-owned transaction keeps the Access mode it holds, or joins the way an owned submission does.
+  const tx=existingTx;
+  return joinAttendanceAccessTx(tx,current).then(()=>run(tx,'held')).catch(attendanceCorrectionSubmissionFailure);
+ }
  const sharedCandidate=current.userId&&current.personId&&!current.agent&&isCalendarDate(captured.date)&&
   /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(captured.employmentId)&&
   !normalized.clockChanges&&normalized.requestedOtMinutes===null&&!normalized.unclockedWork&&
@@ -5049,7 +5065,11 @@ export async function decideAttendanceCorrection(
     });
     return { status: p.decision, deferred: deferredApproval };
   };
-  if (existingTx) return decide(existingTx);
+  if (existingTx) {
+    // Same course as an owned approval: the employment and correction locks serialise the decision.
+    await joinAttendanceAccessTx(existingTx, ctx);
+    return decide(existingTx, undefined, 'held');
+  }
   const correctionIdIsCanonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.correctionId);
   if (p.decision === 'approved') {
     return admitAttendanceWrite('approval', ctx.tenantId, async () => {
@@ -5075,7 +5095,9 @@ export async function decideAttendanceCorrection(
       return withAttendanceAccessWrite(ctx, 'approval', tx => decide(tx, undefined, 'held'));
     }, attendancePerformance.__aihrPerfBeginAttendanceApproval?.());
   }
-  if (p.decision !== 'rejected' || !ctx.userId || ctx.agent || !correctionIdIsCanonical) return withTenant(ctx, decide);
+  // Other rejections take the approval course: shared Access, waiting for the employment and correction locks.
+  const heldDecision = () => withAttendanceAccessWrite(ctx, 'approval', tx => decide(tx, undefined, 'held'));
+  if (p.decision !== 'rejected' || !ctx.userId || ctx.agent || !correctionIdIsCanonical) return heldDecision();
   try {
     return await withTenant(ctx, async tx => {
       // Use only a positively visible pending correction. Workflow visibility is not a
@@ -5083,12 +5105,14 @@ export async function decideAttendanceCorrection(
       const [candidate] = await tx.select({employmentId:attendanceCorrection.employmentId,...rejectionShape})
         .from(attendanceCorrection).where(and(eq(attendanceCorrection.tenantId, ctx.tenantId),
           eq(attendanceCorrection.id, p.correctionId), eq(attendanceCorrection.status, 'pending'))).limit(1);
-      return decide(tx, candidate && isOrdinaryNonOvertimeRejection(candidate) ? candidate.employmentId : undefined);
+      // Anything else takes the held course below rather than an exclusive lock in this transaction.
+      if (!candidate || !isOrdinaryNonOvertimeRejection(candidate)) throw retryAttendanceRejectionExclusively;
+      return decide(tx, candidate.employmentId);
     });
   } catch (error) {
     if (error !== retryAttendanceRejectionExclusively) throw error;
     // The owned transaction has rolled back. Never upgrade a held shared lock.
-    return withTenant(ctx, decide);
+    return heldDecision();
   }
 }
 

@@ -1,8 +1,8 @@
 /** Dated calendar assignment owns its history; calendar, Attendance and Payroll retain their calculations. */
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
-import { lockLeaveDependenciesTx } from '../packs/leave/service';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockLeaveDependenciesWaitTx } from '../packs/leave/service';
 import { actorOf, appendEvent } from '../db/events';
 import { attendance, employment, employmentHolidayCalendar, holidayGroup, replacementHoliday, toilAccrual } from '../db/schema';
 import { isAdmin } from '../lib/authz-model';
@@ -50,10 +50,12 @@ export async function saveEmploymentHolidayCalendarAssignment(ctx:SessionContext
   const validTo=p.endDate?add(p.endDate,1):null;
   if(!p.selection||!['none','state','group'].includes(p.selection.kind))fail('calendar');
   return withTenant(ctx,async tx=>{
-    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+    // One employment's calendar assignment and the days it recalculates. The employment, subject and row
+    // locks below serialise it per person; calendars and groups stay fixed under the shared Access lock.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [access]=await tx.execute(sql`select app.can_admin_employment(${p.employmentId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
     if(!access?.allowed)fail('scope');
-    await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+    await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[p.employmentId]);
     // Same subject interlock as clocking, punch imports, corrections and the recompute owner.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
     const [subject]=await tx.select().from(employment).where(eq(employment.id,p.employmentId)).for('update');
