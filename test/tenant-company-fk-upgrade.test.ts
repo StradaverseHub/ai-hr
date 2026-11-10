@@ -207,6 +207,23 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const beforePerformancePrivileges=await privileges();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const afterPerformancePrivileges=await privileges();
+  {
+   const key=(r:Record<string,unknown>)=>JSON.stringify(r),lines:string[]=[];
+   for(const part of ['relations','columns','functions','policies'] as const){
+    const before=new Set((beforePerformancePrivileges[part] as Record<string,unknown>[]).map(key)),after=new Set((afterPerformancePrivileges[part] as Record<string,unknown>[]).map(key));
+    for(const row of afterPerformancePrivileges[part] as Record<string,unknown>[])if(!before.has(key(row)))lines.push('+ '+part+' '+key(row));
+    for(const row of beforePerformancePrivileges[part] as Record<string,unknown>[])if(!after.has(key(row)))lines.push('- '+part+' '+key(row));
+   }
+   const fns=await storage.client`select p.oid::regprocedure::text as fn,has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_execute,
+    exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
+    from pg_proc p where p.pronamespace in ('public'::regnamespace,'app'::regnamespace) order by 1`;
+   const beforeFns=new Set(beforePerformancePrivileges.functions.map(r=>r.fn));
+   for(const r of fns)if(!beforeFns.has(r.fn))lines.push('fn '+JSON.stringify(r));
+   const [count]=await storage.client`select count(*)::int as n from pg_proc where pronamespace='app'::regnamespace`;
+   lines.push('appfns '+count.n);
+   for(const line of lines)console.log('PRIVDIAG '+line);
+   throw new Error('PRIVDIAG done');
+  }
   const privateFunctions=['app._access_bootstrap_eligible(uuid,uuid)','app._ai_control_context_for_purpose(text,boolean,boolean)','app._access_workforce_list_rows(uuid[])','app._assistant_assigned_index_login(uuid,boolean)','app.notification_event_processing_enqueue()',
    'app.ai_centre_mandate_write_order()','app.ai_centre_mandate_bound_tenant()',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()',
