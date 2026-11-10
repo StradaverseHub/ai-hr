@@ -282,7 +282,8 @@ export default async function ReprocessPage({
         <ReprocessJobPanel jobId={thisJob.id} initial={{ status: thisJob.status, employmentIds: thisJob.employmentIds, result: thisJob.result as { outcomes?: unknown[] } | null }} />
       )}
       {thisJob?.status === 'failed' && <ErrorBanner message={t(reprocessStoppedMessageKey(thisJob.stopCode))} />}
-      {thisJob && thisJob.status !== 'queued' && thisJob.status !== 'running' && outcomes !== null && (
+      {/* While the job runs, the employees it has already committed show here under its progress panel. */}
+      {thisJob && outcomes !== null && (
         <ReprocessOutcomePanel outcomes={outcomes} history={disclosure} slips={slips} run={batch}
           currency={currency} batchId={batchId} from={listFrom} jobId={thisJob.id}
           stoppedEmployee={readStoppedEmployee(thisJob.result,thisJob.employmentIds)}
