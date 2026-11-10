@@ -10,13 +10,14 @@ import {eq,sql as dsql} from 'drizzle-orm';
 import postgres from 'postgres';
 import {randomUUID} from 'node:crypto';
 import {withTenant} from '../db/client';
-import {appUser,employment,leaveRequest,leaveType,person,roleAssignment} from '../db/schema';
+import {appUser,employment,leaveRequest,leaveType,person,personEmergencyContact,roleAssignment} from '../db/schema';
 import {lockAccessAdministratorSetTx,lockAccessConfigurationReadTx,lockAccessConfigurationTx,lockAccessConfigurationWriteTx,tryLockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {hireEmployee} from '../core/org';
 import {revokeRole} from '../core/admin';
 import {checkIn,checkOut} from '../core/attendance';
 import {requestLeave} from '../core/leave';
+import {addEmergencyContact} from '../core/emergency-contacts';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
@@ -417,6 +418,43 @@ describe('wave 3: leave apply under the shared lock',()=>{
   const results=await Promise.allSettled([apply(first),apply(second)]);
   expect(results.map(result=>result.status)).toEqual(['fulfilled','fulfilled']);
  },70000);
+});
+
+describe('wave 3: profile values under the shared lock',()=>{
+ async function subject(label:string){
+  const hired=await hireEmployee(adminCtx(b),{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01',person:{fullName:`Fictional profile ${label}`,primaryEmail:`profile-${label}-${randomUUID()}@example.invalid`}});
+  return hired.personId;
+ }
+ const contact=(personId:string,name:string)=>addEmergencyContact(adminCtx(b),{personId,fullName:`Fictional ${name}`,relationship:'spouse',mobilePhone:'+60123456789',priority:'primary'});
+ it('completes a register write while another writer holds the shared lock',async()=>{
+  const personId=await subject('solo'),held=barrier(),release=barrier();
+  const other=raw.begin(async tx=>{await tx.unsafe(`select pg_advisory_xact_lock_shared(${lockKey(b.tenantId)})`);held.resolve();await release.promise;});
+  await held.promise;
+  await expect(settled(contact(personId,'one'),30000)).resolves.not.toBe('timeout');
+  release.resolve();await other;
+ },60000);
+ it('keeps exactly one primary contact when two primaries are added at the same moment',async()=>{
+  const personId=await subject('primary');
+  const results=await Promise.allSettled([contact(personId,'a'),contact(personId,'b')]);
+  expect(results.map(result=>result.status)).toEqual(['fulfilled','fulfilled']);
+  const rows=await owner.db.select({priority:personEmergencyContact.priority}).from(personEmergencyContact).where(eq(personEmergencyContact.personId,personId));
+  expect(rows).toHaveLength(2);
+  expect(rows.filter(row=>row.priority==='primary')).toHaveLength(1);
+ },60000);
+ it('does not make writers for different people wait for each other',async()=>{
+  const [first,second]=[await subject('x'),await subject('y')];
+  const results=await Promise.allSettled([contact(first,'x'),contact(second,'y')]);
+  expect(results.map(result=>result.status)).toEqual(['fulfilled','fulfilled']);
+ },60000);
+ it('excludes a profile-policy editor while a value writer holds the shared policy lock',async()=>{
+  const entered=barrier(),release=barrier();
+  const writer=withTenant(adminCtx(b),async tx=>{await tx.execute(dsql`select app.access_profile_policy_value_lock()`);entered.resolve();await release.promise;});
+  await entered.promise;
+  const policy=`hashtextextended('profile-edit-policy:${b.tenantId}',0)`;
+  const [row]=await raw.begin(async tx=>tx.unsafe(`select pg_try_advisory_xact_lock(${policy}) acquired`));
+  expect(row.acquired).toBe(false);
+  release.resolve();await writer;
+ },30000);
 });
 
 describe('authority writers never block in a trigger',()=>{

@@ -3,7 +3,7 @@ import {profileVisibilityFingerprint} from '../lib/profile-policy-fingerprint';
 import {sql} from 'drizzle-orm';
 import {assertAiPrincipalTx,assertAiPresentationPrincipalTx} from './ai-principal';
 import {resolveEssVisibleIds} from '../lib/personnel-ess-visibility';
-import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockProfileValueSharedTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import type {SessionContext,Tx} from '../db/client';
 import {getSetting,resolveEntitlementsTx} from './entitlements';
 import {resolveEssEditableIds,resolveEssPrimaryEditableIds} from '../lib/personnel-ess-contract';
@@ -13,6 +13,12 @@ export async function lockProfileEditPolicyTx(tx:Tx,tenantId:string){
 }
 export async function freshProfileEditPolicyTx(tx:Tx,ctx:SessionContext){
  await lockProfileEditPolicyTx(tx,ctx.tenantId);
+ return profilePolicyValuesTx(tx,ctx);
+}
+
+/** The policy snapshot for an ordinary value writer. Shared: only access and profile-policy editors exclude it. */
+export async function freshProfileEditPolicySharedTx(tx:Tx,ctx:SessionContext){
+ await lockProfileValueSharedTx(tx,ctx.tenantId);
  return profilePolicyValuesTx(tx,ctx);
 }
 

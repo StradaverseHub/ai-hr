@@ -94,6 +94,15 @@ export async function lockLeaveDependenciesWaitTx(tx: Tx, tenantId: string, empl
   }
 }
 
+/** A person attribute can feed leave cohorts, so writers of those attributes serialise with leave commands on
+ * every employment of that person. The RLS-visible employments are nominated first, then locked in key order. */
+export async function lockPersonLeaveDependenciesWaitTx(tx: Tx, tenantId: string, employmentId: string): Promise<void> {
+  const rows = await tx.execute<{ id: string }>(sql`select peer.id from public.employment subject
+    join public.employment peer on peer.person_id=subject.person_id and peer.tenant_id=subject.tenant_id
+    where subject.id=${employmentId}::uuid`);
+  await lockLeaveDependenciesWaitTx(tx, tenantId, rows.length ? Array.from(rows, row => row.id) : [employmentId]);
+}
+
 /** Explicit SOURCE-READ interval for an actual READ COMMITTED READ ONLY transaction. Same physical
  * keys as ordinary writers; shared subject mode coexists with other source readers but conflicts
  * with every participating employment-exclusive writer. This grants no effect authority, never

@@ -121,6 +121,19 @@ export async function tryLockAccessConfigurationReadTx(tx: Tx, tenantId: string)
   return row.acquired;
 }
 
+/** Ordinary profile and register value writers: shared Access and a shared profile-policy lock, so writers overlap
+ * each other and only exclude access and profile-policy editors. Pair with lockProfileSubjectTx. */
+export async function lockProfileValueSharedTx(tx:Tx,tenantId:string){
+  await lockAccessConfigurationTx(tx,tenantId);
+  await tx.execute(sql`select app.access_profile_policy_value_lock()`);
+}
+
+/** Serialises value writers on one person or employment's registers (single primary contact, single highest
+ * qualification, dependent de-duplication). Take it before reading or locking the subject's rows. */
+export async function lockProfileSubjectTx(tx:Tx,tenantId:string,subjectId:string){
+  await acquireBoundedAdvisoryLockTx(tx,`profile-subject:${tenantId}:${subjectId}`,false);
+}
+
 /** The Access lock mode this transaction holds: 'X', 'S', or null when it holds neither. */
 export async function accessLockModeHeldTx(tx:Tx,tenantId:string):Promise<'X'|'S'|null>{
   const [row]=await tx.execute<{mode:'X'|'S'|null}>(sql`select app.access_lock_mode_held(${tenantId}::uuid) as mode`);
