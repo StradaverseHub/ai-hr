@@ -16,7 +16,6 @@ import * as schema from '../db/schema';
 import { resolveActiveAiConfig } from '../core/ai-config';
 import { bindAiSpendTaskTx } from '../core/ai-spend-task';
 import { withAiAdmissionLifecycle } from '../core/ai-governance';
-import { ACCESS_CONFIGURATION_MAX_WAITERS } from '../core/access-configuration-lock';
 import type { AiFeatureId } from '../lib/ai/features';
 import { aiManagementView, allowanceLevel, applyBulkAssistantAccess, clearGroupAllowance, setGroupAllowance, clearUserAllowance, parseAiAllowance, previewBulkAssistantAccess, setAiAllowance, setAiFeature, setAssistantPermission } from '../core/ai-management';
 import { generateDraft, converse, readImage } from '../lib/ai';
@@ -40,10 +39,9 @@ afterAll(async()=>{await closeAll();vi.unstubAllEnvs();});
 describe('central AI allowance admission and durable accounting',()=>{
  it('serializes simultaneous calls at a daily user ceiling and counts blocked calls separately',async()=>{
   await limit('user',base.adminUserId,2,null);
-  // Admission joins the exclusive Access lock, whose waits are bounded (core/access-configuration-lock.ts): one
-  // holder plus at most ACCESS_CONFIGURATION_MAX_WAITERS waiting connections per process. Every one of these
-  // simultaneous calls therefore queues and is serialized; a call beyond the bound is refused as busy instead.
-  const simultaneous=ACCESS_CONFIGURATION_MAX_WAITERS+1;
+  // Admission joins the exclusive Access lock. With the per-process waiter cap removed (11 November 2026), all
+  // eight simultaneous calls queue on it within its wait bound and are serialized, as before 799afc80c.
+  const simultaneous=8;
   const result=await Promise.allSettled(Array.from({length:simultaneous},()=>call()));
   expect(result.filter(r=>r.status==='fulfilled')).toHaveLength(2);
   const rows=await runs();expect(rows.filter(r=>r.state==='completed')).toHaveLength(2);expect(rows.filter(r=>r.state==='blocked')).toHaveLength(simultaneous-2);
