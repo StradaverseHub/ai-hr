@@ -32,8 +32,10 @@ export function createPlan(cwd = process.cwd()) {
   const [major,minor]=process.versions.node.split('.').map(Number);
   if(classifierRuntime==='native'&&(major!==22||minor<18))throw Error('Native classifier requires Node 22.18+');
   const loader=classifierRuntime==='native'?['--experimental-strip-types']:['--import','tsx'];
+  // Bounded candidate classifier. Main-based candidates still carry the pre-graph classifier,
+  // measured at ~17 s locally for 3,440 files (v17 had no bound); the graph classifier takes ~3 s.
   const classified = execFileSync(process.execPath, [...loader, 'scripts/gate-db-classify.ts', 'explain'], {
-    cwd, env:candidateEnvironment(process.env), timeout:15000,killSignal:'SIGTERM', input: suite.join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+    cwd, env:candidateEnvironment(process.env), timeout:60000,killSignal:'SIGTERM', input: suite.join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
   }).trim().split('\n').map(line => line.split('\t'));
   const groups = {nodb: [], db: []};
   for (const [kind, file] of classified) {
