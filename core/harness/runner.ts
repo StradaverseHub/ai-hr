@@ -271,7 +271,7 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
     if(!handle||handle.callerKey!==callerKey){unknownHandle=true;break;}resolved[name]=handle.value;}
    if(unknownHandle){record('unknown_handle',{ok:false,message:'Use a handle exactly as an earlier result in this conversation turn gave it; never guess one.'});continue;}
    let run:Awaited<ReturnType<ToolBinding['run']>>;
-   try{run=await binding.run(resolved);}catch{record('error',{ok:false,message:'This source is unavailable for this request.'});continue;}
+   try{run=await binding.run(resolved);}catch(diagError){const d=diagError as {name?:string;message?:string;code?:string;reason?:string;cause?:{name?:string;message?:string;code?:string};stack?:string};console.error('AIHR_TOOL_DIAG '+JSON.stringify({tool:binding.name,name:d?.name,message:d?.message,code:d?.code,reason:d?.reason,cause:d?.cause&&{name:d.cause.name,message:d.cause.message,code:d.cause.code},stack:(d?.stack??'').split('\n').slice(0,12).map(line=>line.trim())}));record('error',{ok:false,message:'This source is unavailable for this request.'});continue;}
    // Reads and suggest_action are disclosed under their declared entity; context tools (no entity) are swept. Spec v23: a
    // topic tool's result is disclosed under the entity of the topic its validated input names.
    const entity=binding.entityOf?binding.entityOf(resolved):binding.entity;
