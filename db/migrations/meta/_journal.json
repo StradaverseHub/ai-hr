@@ -5412,6 +5412,20 @@
       "when": 1793330099900,
       "tag": "9900_leave_bulk_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 9901,
+      "version": "7",
+      "when": 1793330099901,
+      "tag": "9901_leave_ledger_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 9902,
+      "version": "7",
+      "when": 1793330099902,
+      "tag": "9902_bulk_job_unbounded_kind",
+      "breakpoints": true
     }
   ]
 }

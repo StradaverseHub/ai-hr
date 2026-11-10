@@ -66,7 +66,12 @@ export async function lockLeaveDependenciesTx(tx: Tx, tenantId: string, employme
     return;
   }
   await acquire(tx, tenantId, configuration);
-  for (const id of subjects) await acquire(tx, tenantId, subjectLock(id));
+  // Every subject in ONE statement, in the same sorted order and with the same keys (a cohort batch used to pay one
+  // round trip per employee while it held the tenant's Access lock). Any refusal still refuses the whole set, and
+  // whatever was acquired is released by the required outer rollback, exactly as before.
+  const keys = subjects.map(id => `leave-dependency-employment:${tenantId}:${id}`);
+  await acquire(tx, tenantId, sql`(select coalesce(bool_and(pg_try_advisory_xact_lock(hashtextextended(k.key,0))),false)
+    from unnest(${`{${keys.join(',')}}`}::text[]) as k(key))`);
 }
 
 /** Explicit SOURCE-READ interval for an actual READ COMMITTED READ ONLY transaction. Same physical

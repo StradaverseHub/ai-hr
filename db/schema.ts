@@ -2459,6 +2459,10 @@ export const leaveLedger = pgTable(
     // importer's Replace mode safe — Replace negates only the rows carrying a run id, never the rest of
     // the prior-year balance, which contains real accruals, debits and adjustments.
     bfImportRunId: uuid('bf_import_run_id').references((): AnyPgColumn => leaveBfImportRun.id),
+    // Staged cohort run (draft 9901, core/leave-stage.ts): the stage of an all-or-nothing background leave job
+    // whose rows are not yet released. NULL for every ordinary row; stamped by trigger from app.leave_stage,
+    // never written by a writer directly.
+    stageId: uuid('stage_id'),
     createdAt: createdAt(),
   },
   (t) => [index('leave_ledger_employment_idx').on(t.employmentId, t.leaveTypeId)],
