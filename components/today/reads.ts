@@ -43,12 +43,13 @@ import {complianceWorklist} from '@/core/reporting';
 import {openExceptionsAcrossRuns} from '@/core/payroll-anomaly';
 import {readEmployeeHomeTimeOff} from '@/core/employee-home-time-off';
 import {HomeAccessError,readEmployeeHomePayHints} from '@/core/employee-home';
-import {readHomeTeamCalendar} from '@/core/employee-home-sharing';
+import {readHomeTeamCalendar,readHomeTeamCalendarAndManagers} from '@/core/employee-home-sharing';
 import {reportingLinesFor} from '@/core/read';
 import {readLoopCards,type LoopCard} from '@/core/loops/cards';
 import {addHrDays,windowStart,type TodayAudience} from '@/lib/today/audience';
 import {managerAbsences,type AwayRange} from '@/lib/today/coming-up';
 import {countWaitingLetterRequests} from '@/core/letter-requests';
+import {readNeedsYouBundle,type NeedsYouAnswer,type NeedsYouBundle} from '@/core/needs-you-bundle';
 
 type Settled<T>={ok:true;value:T}|{ok:false;error:unknown};
 async function settle<T>(read:()=>Promise<T>):Promise<Settled<T>>{try{return{ok:true,value:await read()};}catch(error){return{ok:false,error};}}
@@ -141,23 +142,34 @@ export function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonly stri
 }
 async function readNeedsYouOwners(s:SessionContext,p:Readonly<{scopeIds:readonly string[];audience:TodayAudience;today:string;locale?:string;now?:number;all?:boolean}>):Promise<NeedsYouData>{
  const modules=moduleChecks(s),now=p.now??Date.now(),admin=p.audience.layout==='administrator',payroll=modules.on('payroll'),leave=modules.on('leave');
+ // The review indices, the loops' cards, the letter requests and the recommender's gate in one statement (decision 13,
+ // core/needs-you-bundle.ts); each section it cannot answer exactly is read by its owner below, unchanged.
+ const bundle=readNeedsYouBundle(s,{scopeIds:p.scopeIds,admin,leave,recommender:RECOMMENDER_WORKER});
+ const bundled=<T,>(pick:(read:NeedsYouBundle)=>NeedsYouAnswer<T>,owner:()=>Promise<T>)=>async()=>{
+  const read=await bundle,answer=read?pick(read):null;
+  if(!answer)return owner();
+  if('refused' in answer)throw new Error('Leave review index unavailable.');
+  return answer.value;
+ };
  const [tasks,ownLeave,cancellations,decisions,proposals,readiness,digest,loops,letterRequests]=await Promise.all([
   // Home only renders five decisions. Keep its exact count without transporting every Claim.
   // The existing explicit All view retains its complete-queue contract.
   settle(()=>p.all?listPendingTasks(s,[...p.scopeIds],inboxModules(modules)).then(items=>({items,total:items.length})):pendingTaskSummary(s,[...p.scopeIds],inboxModules(modules))),
   leave?settle(()=>readHomeOwnLeaveReviewIndex(s)):null,
-  leave?settle(()=>readHomeLeaveCancellationReviewIndex(s)):null,
-  leave?settle(()=>readHomeLeaveDecisionReviewIndex(s)):null,
+  leave?settle(bundled(read=>read.cancellations,()=>readHomeLeaveCancellationReviewIndex(s))):null,
+  leave?settle(bundled(read=>read.decisions,()=>readHomeLeaveDecisionReviewIndex(s))):null,
   admin&&payroll?settle(()=>proposeActions(s)):null,
   admin?settle(()=>recordReadiness(s,{peopleLimit:0})):null,
   admin?settle(()=>latestDailyDigest(s)):null,
-  settle(()=>readLoopCards(s,{scopeIds:p.scopeIds,admin})),
+  settle(bundled(read=>read.loops,()=>readLoopCards(s,{scopeIds:p.scopeIds,admin}))),
   // Letter requests count only in companies where the viewer holds `generate` (the owner's own filter), any layout.
-  settle(()=>countWaitingLetterRequests(s,p.scopeIds)),
+  settle(bundled(read=>read.letterRequests,()=>countWaitingLetterRequests(s,p.scopeIds))),
  ]);
  const list=tasks.ok?tasks.value.items:[];
- // The recommendation is offered only while its worker may run, read through the gate the recommender checks.
- const recommender=list.some(task=>task.kind==='leave')?await workerRunGate(s,RECOMMENDER_WORKER).then(gate=>gate.run).catch(()=>false):false;
+ // The recommendation is offered only while its worker may run, read through the gate the recommender checks. The
+ // offer reads that gate's two switches in the shared snapshot; the recommender itself asks the gate, with its locks,
+ // before it computes and before it records (decision 13).
+ const recommender=list.some(task=>task.kind==='leave')?await bundled(read=>read.recommender,()=>workerRunGate(s,RECOMMENDER_WORKER))().then(gate=>gate.run).catch(()=>false):false;
  const prepared=[
   ...awaiting('leaveApply',ownLeave?.ok?ownLeave.value.reviews:undefined,now),
   ...awaiting('leaveCancel',cancellations?.ok?cancellations.value.reviews:undefined,now),
@@ -248,7 +260,11 @@ async function readAtAGlanceOwners(s:SessionContext,p:Readonly<{employmentId?:st
  ]);
  const subject=timeOff.ok?timeOff.value.employmentId:pay?.ok?pay.value.employmentId:null;
  const away=subject?await settle(async()=>{
-  const [lines,calendar]=await Promise.all([reportingLinesFor(s,subject),readHomeTeamCalendar(s,subject,p.today,addHrDays(p.today,COMING_UP_DAYS-1))]);
+  const to=addHrDays(p.today,COMING_UP_DAYS-1);
+  // The calendar and the managers' ids in one statement (decision 13); anything it cannot answer reads both owners.
+  const bundled=await (async()=>readHomeTeamCalendarAndManagers(s,subject,p.today,to))().catch(()=>null);
+  if(bundled)return managerAbsences(bundled.managerEmploymentIds,bundled.calendar.days);
+  const [lines,calendar]=await Promise.all([reportingLinesFor(s,subject),readHomeTeamCalendar(s,subject,p.today,to)]);
   return managerAbsences(lines.managers.map(line=>line.employmentId),calendar.days);
  }):null;
  const latest=pay?.ok?pay.value.payslips[0]:undefined;

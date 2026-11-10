@@ -30,6 +30,8 @@ import {resolveDocumentUpload} from './employee-documents';
 import { and, asc, desc, eq, inArray, isNull, isNotNull, lte, gte, sql } from 'drizzle-orm';
 
 import { withTenant, type SessionContext,type Tx } from '../db/client';
+import {decodeJsonFieldRows,decodeJsonFields,jsonFieldsSql,jsonRowsSql} from '../db/json-fields';
+import {ownerCardSectionReads} from './home-owner-reads';
 import { actorOf, appendEvent } from '../db/events';
 import { company,employment, notice, noticeRecipient,noticeRevision,noticeAcknowledgement,noticeAttachment } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -680,15 +682,28 @@ export async function employeeNoticeBoardTx(tx:Tx,employmentId:string,options:Em
    query?sql`position(lower(${query}) in lower(${notice.title} || ' ' || ${notice.summary} || ' ' || ${notice.body})) > 0`:undefined,
    category?eq(notice.category,category):undefined);
   const fields=employeeNoticeFields();
-  const [counts]=await tx.select({total:sql<number>`count(*)::integer`,
+  const counted={total:sql<number>`count(*)::integer`,
    unread:sql<number>`count(*) FILTER (WHERE ${noticeRecipient.firstViewedAt} IS NULL)::integer`,
-   acknowledgementRequired:sql<number>`count(*) FILTER (WHERE ${notice.requiresAcknowledgement} AND ${fields.acknowledgedAt} IS NULL)::integer`})
-   .from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId)).where(eligible);
-  const total=counts?.total??0,pages=Math.max(1,Math.ceil(total/size)),page=Math.min(requested,pages);
+   acknowledgementRequired:sql<number>`count(*) FILTER (WHERE ${notice.requiresAcknowledgement} AND ${fields.acknowledgedAt} IS NULL)::integer`};
   const {body:_body,attachmentIds:_files,popupEnabled:_popup,popupFrequency:_frequency,popupDismissedAt:_dismissed,
    startOn:_start,endOn:_end,showEndDate:_show,...summaryFields}=fields;
+  const order=[desc(notice.pinned),desc(notice.publishedAt),asc(notice.id)];
+  // The first page never depends on the count (page = min(1, pages) = 1), so its counts and its rows are one statement
+  // (docs/adr/2026-11-10-home-request-read-scope.md decision 13): the same predicate, joins, order and page, each row
+  // decoded exactly as the select below returns it. Any later page is clamped by the count and keeps two statements.
+  if(requested===1&&!ownerCardSectionReads()){
+   const from=sql`${noticeRecipient} inner join ${notice} on ${eq(notice.id,noticeRecipient.noticeId)}`;
+   const [row]=await tx.execute<{counts:Record<string,unknown>;items:unknown}>(sql`select (select ${jsonFieldsSql(counted)} from ${from} where ${eligible!}) as counts,
+    ${jsonRowsSql({row:jsonFieldsSql(summaryFields),from,where:eligible!,order:sql.join(order,sql`, `),limit:size})} as items`);
+   if(!row?.counts)throw new Error('The notice board statement returned no row.');
+   const counts=decodeJsonFields(counted,row.counts);
+   const total=counts.total??0,pages=Math.max(1,Math.ceil(total/size));
+   return {items:decodeJsonFieldRows(summaryFields,row.items) as unknown as EmployeeNoticeSummary[],total,unread:counts.unread??0,acknowledgementRequired:counts.acknowledgementRequired??0,page:1,pageSize:size,pages};
+  }
+  const [counts]=await tx.select(counted).from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId)).where(eligible);
+  const total=counts?.total??0,pages=Math.max(1,Math.ceil(total/size)),page=Math.min(requested,pages);
   const items=await tx.select(summaryFields).from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
-   .where(eligible).orderBy(desc(notice.pinned),desc(notice.publishedAt),asc(notice.id)).limit(size).offset((page-1)*size);
+   .where(eligible).orderBy(...order).limit(size).offset((page-1)*size);
   return {items,total,unread:counts?.unread??0,acknowledgementRequired:counts?.acknowledgementRequired??0,page,pageSize:size,pages};
 }
 

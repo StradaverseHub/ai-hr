@@ -5,7 +5,8 @@ const state=vi.hoisted(()=>({subjects:vi.fn(),lines:vi.fn(),photo:vi.fn(),select
   snapshotSafe:true,principalCurrent:true,dashboardRole:'employee' as string|null,probes:[] as string[]}));
 vi.mock('../db/client',()=>({withTenant:state.tenant}));
 vi.mock('../core/read',()=>({myOwnEmploymentSubjectsTx:state.subjects,isCurrentOwnHomeEmploymentTx:state.selected,reportingLinesFor:state.lines}));
-vi.mock('../core/person-photo',()=>({hasPersonPhotoTx:state.photo,hasPersonPhotoSnapshotTx:state.photo}));
+// The greeting's own facts read the photo owner's proofs through personPhotoSnapshotExistsSql (decision 13).
+vi.mock('../core/person-photo',()=>({hasPersonPhotoTx:state.photo,hasPersonPhotoSnapshotTx:state.photo,personPhotoSnapshotExistsSql:state.photo}));
 import {readEmployeeHomeIdentity,readEmployeeHomeGreetingIdentity} from '../core/employee-home';
 
 const ctx={tenantId:'fictional-tenant',userId:'fictional-login',personId:'fictional-person',roles:['employee']};

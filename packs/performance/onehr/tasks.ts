@@ -29,9 +29,11 @@
 import { and, asc, desc, eq, getTableName, inArray, sql, type SQL } from 'drizzle-orm';
 import { decodeJsonColumns, jsonColumnsSql } from '../../../db/json-row';
 import {settleReadGroup} from '../../../lib/settle-read-group';
-import type { SessionContext } from '../../../db/client';
+import { withTenant, type SessionContext } from '../../../db/client';
 import { employment, onehrCycle, onehrPlan, onehrReview, reviewCycle } from '../../../db/schema';
-import { withPerformanceTenant } from '../../../core/module-gate';
+import { assertModuleGate, withPerformanceTenant } from '../../../core/module-gate';
+import { aiCentreActivity } from '../../../lib/ai/centre-activity';
+import { ownerCardSectionReads } from '../../../core/home-owner-reads';
 import { managerPendingReviews, managerPendingReviewsBundleSql, managerPendingReviewsFromBundle } from '../../../core/performance';
 import type { PackTaskItem } from '../../../lib/assigned-work';
 import { competencySchema, kpiSchema, policySchema } from './model';
@@ -187,6 +189,20 @@ export function pendingPerformanceTasksFromBundle(value: unknown, scopeIds: stri
   const assessment = assessmentSources(parseAssessmentRows(rows), plans, section.assessment.mine);
   return combinePerformanceTasks([...managerReviewSources(managerPendingReviewsFromBundle(section.reviews)), ...assessment,
     ...pendingCalibrationTasksFromBundle(ctx, section.calibration)], scopeIds);
+}
+
+/** pendingPerformanceTasks in ONE statement where its own section of the account task statement answers it exactly
+ * (docs/adr/2026-11-10-home-request-read-scope.md decision 13, Home's assigned-performance check): the review queue's
+ * own rows, and whether any assessment or calibration candidate exists, combined by the owner's own projection. Null
+ * where the owner reads itself: a candidate that needs the owner's schema parsing and window checks, a module gate that
+ * would refuse, an AI Centre activity (the owner asserts its generation), or a statement that fails. */
+export async function pendingPerformanceTasksFromStatement(ctx: SessionContext, scopeIds: string[] | undefined): Promise<PackTaskItem[] | null> {
+  if (ownerCardSectionReads() || aiCentreActivity(ctx.tenantId)) return null;
+  try { assertModuleGate(ctx, 'performance'); } catch { return null; }
+  try {
+    const [row] = await withTenant(ctx, (tx) => tx.execute<{ performance: unknown }>(sql`select ${pendingPerformanceTasksBundleSql(ctx)} as performance`), { readOnlySnapshot: true });
+    return pendingPerformanceTasksFromBundle(row?.performance, scopeIds);
+  } catch { return null; }
 }
 
 function combinePerformanceTasks(all: Sourced[], scopeIds: string[] | undefined): PackTaskItem[] {

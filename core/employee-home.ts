@@ -6,7 +6,8 @@ import {isAiPrincipalCurrentTx,isAiPresentationPrincipalCurrentTx} from './ai-pr
 import {person} from '../db/schema';
 import {isRepeatableReadOnlyTx} from './read-only-snapshot';
 import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
-import {hasPersonPhotoTx,hasPersonPhotoSnapshotTx} from './person-photo';
+import {hasPersonPhotoTx,hasPersonPhotoSnapshotTx,personPhotoSnapshotExistsSql} from './person-photo';
+import {ownerCardSectionReads} from './home-owner-reads';
 import {isAdmin} from '../lib/authz-model';
 import {resolveDashboardRole} from '../lib/dashboard-cards';
 import {employeeHomeGreetingName} from '../lib/employee-home';
@@ -167,6 +168,10 @@ async function greetingIdentityInputsTx(tx:Tx,ctx:SessionContext,requestedEmploy
   : await requireSelectedOwnHomeEmploymentIdTx(tx,ctx,requestedEmploymentId);
  const personId=ctx.personId;
  if(!personId)return {version:1,employmentId,name:null,photoHref:null};
+ if(options?.presentationSnapshot&&!ownerCardSectionReads()){
+  const facts=await greetingFactsSnapshotTx(tx,ctx,personId);
+  return {version:1,employmentId,name:facts.name,photoHref:facts.photo?`/personnel/photo/${encodeURIComponent(personId)}`:null};
+ }
  const [rows,photo]=await settleReadGroup([
   ()=>tx.select({preferredName:person.preferredName,firstName:person.firstName,fullName:person.fullName})
    .from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,personId))).limit(1),
@@ -174,6 +179,36 @@ async function greetingIdentityInputsTx(tx:Tx,ctx:SessionContext,requestedEmploy
  ]);
  return {version:1,employmentId,name:rows[0]?employeeHomeGreetingName(rows[0]):null,
   photoHref:photo?`/personnel/photo/${encodeURIComponent(personId)}`:null};
+}
+
+/** The greeting's own facts in ONE statement (docs/adr/2026-11-10-home-request-read-scope.md decision 13). The photo
+ * owner's admission proof and visibility policy are read first, exactly as hasPersonPhotoSnapshotTx reads them; `more`
+ * then reads whatever the caller needs before its own facts (the greeting card's display preferences) and names further
+ * sub-selects of the same statement. The statement carries the recorded names (the select greetingIdentityInputsTx sends),
+ * whether a photo the caller may see exists (that owner's existence predicate) and each of `more`'s values. */
+async function greetingFactsSnapshotTx(tx:Tx,ctx:SessionContext,personId:string,more?:()=>Promise<Readonly<Record<string,SQL>>>){
+ const photo=await personPhotoSnapshotExistsSql(tx,ctx,personId);
+ const extra=Object.entries(more?await more():{});
+ const names=sql`(select jsonb_build_object('preferredName',${person.preferredName},'firstName',${person.firstName},'fullName',${person.fullName})
+  from ${person} where ${and(eq(person.tenantId,ctx.tenantId),eq(person.id,personId))} limit 1)`;
+ const [row]=await tx.execute<Record<string,unknown>>(sql`select ${names} as names,${photo} as photo${sql.join(extra.map(([key,value])=>sql`,${value} as ${sql.identifier(key)}`))}`);
+ if(!row||typeof row.photo!=='boolean')throw new Error('Own greeting facts unavailable');
+ const recorded=row.names as {preferredName:string|null;firstName:string|null;fullName:string|null}|null;
+ return {name:recorded?employeeHomeGreetingName(recorded):null,photo:row.photo,
+  more:Object.fromEntries(extra.map(([key])=>[key,row[key]])) as Record<string,unknown>};
+}
+/** The greeting card's own facts in one statement (decision 13): readEmployeeHomeGreetingSnapshotIdentityTx's login,
+ * principal and selection checks in the same order, then greetingFactsSnapshotTx with the card's own `more`. Null where
+ * the card reads as before: under withOwnerCardSectionReads, or for a login without a person. */
+export async function readEmployeeHomeGreetingCardFactsTx(tx:Tx,ctx:SessionContext,requestedEmploymentId:string,more:()=>Promise<Readonly<Record<string,SQL>>>):Promise<{
+ identity:EmployeeHomeGreetingIdentity;more:Record<string,unknown>;
+}|null>{
+ if(ownerCardSectionReads()||!ctx.personId)return null;
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ if(!await isAiPresentationPrincipalCurrentTx(tx,ctx))throw new HomeAccessError('employmentUnavailable');
+ const employmentId=await requireSelectedOwnHomeEmploymentIdTx(tx,ctx,requestedEmploymentId),personId=ctx.personId;
+ const facts=await greetingFactsSnapshotTx(tx,ctx,personId,more);
+ return {identity:{version:1,employmentId,name:facts.name,photoHref:facts.photo?`/personnel/photo/${encodeURIComponent(personId)}`:null},more:facts.more};
 }
 
 /** Independent pay hint reader. Payroll repeats own-active/login and publication enforcement and

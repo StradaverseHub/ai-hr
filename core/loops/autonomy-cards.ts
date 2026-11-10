@@ -12,7 +12,8 @@
  * Row-level security decides what each viewer reads (migration 0963): an employee their own actions, an administrator
  * the level history of companies they administer and the actions of employments they administer. Only dates, clock
  * times and the employee's own name: no figure, no reason text. */
-import {and,desc,eq,gt,gte,inArray,isNull} from 'drizzle-orm';
+import {and,desc,eq,gt,gte,inArray,isNull,sql,type SQL} from 'drizzle-orm';
+import {decodeJsonFieldRows,jsonFieldsSql,jsonRowsSql} from '../../db/json-fields';
 import type {SessionContext,Tx} from '../../db/client';
 import {company,employment,person} from '../../db/schema';
 import {terasLoopCase} from '../../db/teras-schema';
@@ -37,21 +38,28 @@ const isDate=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\
 const isClock=(value:unknown):value is string=>typeof value==='string'&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** The employee's own open undo windows: the select, joins, predicate and page readAutonomyCardsTx reads. */
+const OWN_AUTOFIXED_FIELDS={id:terasLoopAction.id,facts:terasLoopAction.facts,employmentId:terasLoopAction.employmentId,undoUntil:terasLoopAction.undoUntil};
+const OWN_AUTOFIXED_LIMIT=5;
+const ownAutoFixedWhere=(ctx:SessionContext,personId:string,now:Date)=>and(eq(terasLoopAction.tenantId,ctx.tenantId),eq(terasLoopAction.workerId,'loop_missed_clock_outs'),eq(terasLoopAction.state,'applied'),
+ gt(terasLoopAction.undoUntil,now),isNull(terasLoopAction.peopleChangedAt),isNull(terasLoopActionUndo.actionId),eq(employment.personId,personId));
+type OwnAutoFixedRow={id:string;facts:Readonly<Record<string,unknown>>;employmentId:string;undoUntil:Date};
+const autoFixedCards=(rows:readonly OwnAutoFixedRow[])=>rows.flatMap(row=>{
+ const {date,checkOut}=row.facts;
+ return isDate(date)&&isClock(checkOut)?[Object.freeze({kind:'autoFixed' as const,actionId:row.id,date,checkOut,employmentId:row.employmentId,undoUntil:row.undoUntil.toISOString()})]:[];
+});
+
 export async function readAutonomyCardsTx(tx:Tx,ctx:SessionContext,p:Readonly<{scopeIds:readonly string[];admin:boolean;now?:Date}>):Promise<readonly AutonomyCard[]>{
  if(!ctx.userId||ctx.agent)return [];
  const now=p.now??new Date(),cards:AutonomyCard[]=[];
  // The employee's own: open undo windows on their own days.
  if(ctx.personId){
-  const own=await tx.select({id:terasLoopAction.id,facts:terasLoopAction.facts,employmentId:terasLoopAction.employmentId,undoUntil:terasLoopAction.undoUntil}).from(terasLoopAction)
+  const own=await tx.select(OWN_AUTOFIXED_FIELDS).from(terasLoopAction)
    .innerJoin(employment,eq(employment.id,terasLoopAction.employmentId))
    .leftJoin(terasLoopActionUndo,eq(terasLoopActionUndo.actionId,terasLoopAction.id))
-   .where(and(eq(terasLoopAction.tenantId,ctx.tenantId),eq(terasLoopAction.workerId,'loop_missed_clock_outs'),eq(terasLoopAction.state,'applied'),
-    gt(terasLoopAction.undoUntil,now),isNull(terasLoopAction.peopleChangedAt),isNull(terasLoopActionUndo.actionId),eq(employment.personId,ctx.personId)))
-   .orderBy(desc(terasLoopAction.createdAt)).limit(5);
-  for(const row of own){
-   const {date,checkOut}=row.facts;
-   if(isDate(date)&&isClock(checkOut))cards.push(Object.freeze({kind:'autoFixed' as const,actionId:row.id,date,checkOut,employmentId:row.employmentId,undoUntil:row.undoUntil.toISOString()}));
-  }
+   .where(ownAutoFixedWhere(ctx,ctx.personId,now))
+   .orderBy(desc(terasLoopAction.createdAt)).limit(OWN_AUTOFIXED_LIMIT);
+  cards.push(...autoFixedCards(own as OwnAutoFixedRow[]));
  }
  // Administrators: loops that moved themselves down in a company in scope.
  if(p.admin&&p.scopeIds.length){
@@ -79,6 +87,26 @@ export async function readAutonomyCardsTx(tx:Tx,ctx:SessionContext,p:Readonly<{s
   cards.push(...await feedCardsTx(tx,ctx,p.scopeIds,now));
  }
  return Object.freeze(cards);
+}
+
+/** readAutonomyCardsTx for a viewer without HR's cards (admin false), as one value of a bundled statement (Today's
+ * Needs you, docs/adr/2026-11-10-home-request-read-scope.md decision 13): the own open undo windows, one row past the
+ * owner's page so a tie on its order key at the boundary is seen. Null where the owner returns [] without reading. */
+export function ownAutonomyCardsSectionSql(ctx:SessionContext,now:Date):SQL|null{
+ if(!ctx.userId||ctx.agent||!ctx.personId)return null;
+ return jsonRowsSql({row:jsonFieldsSql({...OWN_AUTOFIXED_FIELDS,createdAt:terasLoopAction.createdAt}),
+  from:sql`${terasLoopAction} inner join ${employment} on ${eq(employment.id,terasLoopAction.employmentId)}
+   left join ${terasLoopActionUndo} on ${eq(terasLoopActionUndo.actionId,terasLoopAction.id)}`,
+  where:ownAutoFixedWhere(ctx,ctx.personId,now),order:sql`${terasLoopAction.createdAt} desc`,limit:OWN_AUTOFIXED_LIMIT+1});
+}
+/** The owner's cards over the section's rows (`value` undefined: the section was not read, the owner reads nothing),
+ * or null where the owner's own page order is the plan's: two rows tie on the order key. */
+export function ownAutonomyCardsFromSection(ctx:SessionContext,value:unknown):readonly AutonomyCard[]|null{
+ if(!ctx.userId||ctx.agent)return [];
+ if(!ctx.personId)return Object.freeze([]);
+ const rows=decodeJsonFieldRows({...OWN_AUTOFIXED_FIELDS,createdAt:terasLoopAction.createdAt},value);
+ if(rows.some((row,index)=>index>0&&row.createdAt!.getTime()===rows[index-1].createdAt!.getTime()))return null;
+ return Object.freeze(autoFixedCards(rows.slice(0,OWN_AUTOFIXED_LIMIT) as OwnAutoFixedRow[]));
 }
 
 /** HR's feed: each action of the last day at Level 2, the weekly sample at Level 3, and what the loop left alone. */

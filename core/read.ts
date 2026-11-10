@@ -5888,6 +5888,31 @@ export async function ownReportingManagersTx(tx: Tx, employmentId: string): Prom
  *  (it filters `valid_to IS NULL` and never checks `valid_from`), while 0498 answers only for the line
  *  in force today. Taking either one alone would REMOVE a row somebody can see today, and this round
  *  takes nothing away. */
+/** reportingLinesFor's `managers` predicate: the current, unsuperseded, non-delegate lines above `employmentId`. */
+const visibleReportingManagersWhere = (employmentId: string) => and(
+  eq(reportingLine.subordinateEmploymentId, employmentId),
+  isNull(reportingLine.validTo),
+  isNull(reportingLine.supersededAt),
+  sql`${reportingLine.lineType} <> 'delegate'`,
+);
+/** The manager employment ids of reportingLinesFor's `managers` (the rows this session's row-level security reaches,
+ *  and the rows ownReportingManagersTx adds for the caller's own employment), as one jsonb value of a bundled statement
+ *  (Today's At a glance, docs/adr/2026-11-10-home-request-read-scope.md decision 13). Each read keeps its select, joins
+ *  and predicate; only the ids are carried, the one field that reader uses. */
+export function reportingManagerIdsBundleSql(employmentId: string): SQL {
+  return sql`jsonb_build_object('visible',(select coalesce(jsonb_agg(${reportingLine.managerEmploymentId}),'[]'::jsonb) from ${reportingLine}
+    inner join ${employment} on ${eq(employment.id, reportingLine.managerEmploymentId)} inner join ${person} on ${eq(person.id, employment.personId)}
+    where ${visibleReportingManagersWhere(employmentId)}),
+   'own',(select coalesce(jsonb_agg(manager_employment_id),'[]'::jsonb) from app.own_reporting_managers(${employmentId}::uuid)))`;
+}
+/** The set of manager employment ids reportingLinesFor's `managers` maps to, from reportingManagerIdsBundleSql's value. */
+export function reportingManagerIdsFromBundle(value: unknown): string[] {
+  const raw = value as { visible?: unknown; own?: unknown } | null;
+  if (!raw || !Array.isArray(raw.visible) || !Array.isArray(raw.own) || ![...raw.visible, ...raw.own].every((id) => typeof id === 'string'))
+    throw new Error('Bundled reporting managers are malformed.');
+  return [...new Set([...raw.visible, ...raw.own] as string[])];
+}
+
 export function reportingLinesFor(ctx: SessionContext, employmentId: string, existingTx?: Tx) {
   return withReadTx(ctx, existingTx, async (tx) => {
     const visibleManagers = await tx
@@ -5905,14 +5930,7 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string, exi
       .from(reportingLine)
       .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(
-        and(
-          eq(reportingLine.subordinateEmploymentId, employmentId),
-          isNull(reportingLine.validTo),
-          isNull(reportingLine.supersededAt),
-          sql`${reportingLine.lineType} <> 'delegate'`,
-        ),
-      )
+      .where(visibleReportingManagersWhere(employmentId))
       .orderBy(reportingLine.lineType);
     // r375 — the caller's OWN supervisors, which the query above cannot reach (see ownReportingManagersTx).
     // Keyed by reporting-line id so a row both reads return appears ONCE: `test/direct-superior.test.ts`

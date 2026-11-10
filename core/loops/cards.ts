@@ -18,7 +18,7 @@ import {isModuleEnabled} from '../entitlements';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {PAYROLL_INPUTS_LEAD_DAYS,daysBetween} from './period';
 import {LOOP_IDS,type LoopFacts,type LoopId} from './types';
-import {readAutonomyCardsTx,type AutonomyCard} from './autonomy-cards';
+import {ownAutonomyCardsFromSection,ownAutonomyCardsSectionSql,readAutonomyCardsTx,type AutonomyCard} from './autonomy-cards';
 
 export type EmployeeLoopCard=Readonly<
  |{kind:'clockOut';caseId:string;date:string;checkIn:string;proposedCheckOut:string;href:string}
@@ -93,6 +93,41 @@ export async function readLoopCards(ctx:SessionContext,p:LoopCardRead):Promise<r
   const watching=await tx.select(LOOP_LEVEL_FIELDS).from(terasLoopLevel).where(loopWatchWhere(ctx));
   return loopCardsFrom(ctx,p,today,{live,paused,fetched:fetched as LoopCaseRow[],watching},autonomy);
  });
+}
+
+/** readLoopCards(ctx, {scopeIds, admin: false}) as one JSON value of Today's Needs you statement (core/needs-you-bundle.ts,
+ * docs/adr/2026-11-10-home-request-read-scope.md decision 13): the owner's own autonomy read (the viewer's open undo
+ * windows), every loop's gate with the gates of `moreWorkers` read by the same select (the recommender's, for Needs
+ * you's offer), the pauses, the open cases of every loop (the projection keeps the live loops' cases, the owner's own
+ * predicate) and the Watch levels. An administrator's view (HR cards, moved-down, acted, sample and left-alone feeds)
+ * is not read here: its owner reads it. */
+export function readLoopCardsSectionSql(ctx:SessionContext,now:Date,moreWorkers:readonly string[]=[]):SQL{
+ const p:LoopCardRead={scopeIds:[],admin:false};
+ return sql`jsonb_build_object('autonomy',${ownAutonomyCardsSectionSql(ctx,now)??sql`'[]'::jsonb`},
+  'gates',${workerRunGatesBundleSql(ctx,[...LOOP_IDS,...moreWorkers])},
+  'paused',${jsonRowsSql({row:jsonFieldsSql(LOOP_PAUSE_FIELDS),from:sql`${terasLoopPause}`,where:loopPauseWhere(ctx)})},
+  'cases',${jsonRowsSql({row:jsonFieldsSql(LOOP_CASE_FIELDS),from:sql`${terasLoopCase} left join ${employment} on ${eq(employment.id,terasLoopCase.employmentId)}
+   left join ${person} on ${eq(person.id,employment.personId)} left join ${company} on ${eq(company.id,terasLoopCase.companyId)}`,where:loopCaseWhere(ctx,p,LOOP_IDS)})},
+  'watching',${jsonRowsSql({row:jsonFieldsSql(LOOP_LEVEL_FIELDS),from:sql`${terasLoopLevel}`,where:loopWatchWhere(ctx)})})`;
+}
+/** readLoopCards(ctx, {scopeIds, admin: false, today}) over readLoopCardsSectionSql's rows, the autonomy cards
+ * included; null where the owner must read (a gate read elsewhere, an autonomy page or two cards of one kind whose order
+ * the owner leaves to the plan). */
+export function readLoopCardsFromSection(ctx:SessionContext,scopeIds:readonly string[],value:unknown,today?:string):readonly LoopCard[]|null{
+ if(!ctx.userId||ctx.agent)return [];
+ const p:LoopCardRead={scopeIds,admin:false};
+ const raw=value as {autonomy:unknown;gates:unknown;paused:unknown;cases:unknown;watching:unknown};
+ const autonomy=ownAutonomyCardsFromSection(ctx,raw.autonomy);
+ if(!autonomy)return null;
+ const gates=workerRunGatesFromBundle(LOOP_IDS,raw.gates);
+ if(!gates)return null;
+ const live=liveLoops(gates,p);
+ if(!live.length)return autonomy;
+ const cases=(decodeJsonFieldRows(LOOP_CASE_FIELDS,raw.cases) as LoopCaseRow[]).filter(row=>(live as readonly string[]).includes(row.workerId));
+ try{
+  return loopCardsFrom(ctx,p,today??todayInKualaLumpur(),{live,paused:decodeJsonFieldRows(LOOP_PAUSE_FIELDS,raw.paused),fetched:cases,
+   watching:decodeJsonFieldRows(LOOP_LEVEL_FIELDS,raw.watching)},autonomy,true);
+ }catch(error){if(error instanceof LoopCardOrderTie)return null;throw error;}
 }
 
 /** readLoopCards for the Before payroll checklist's own read (scopeIds [], admin false) as one JSON value, a section

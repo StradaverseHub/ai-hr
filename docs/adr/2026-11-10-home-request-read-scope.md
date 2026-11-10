@@ -298,6 +298,53 @@ calculation, authority, ordering or failure changes.
      cards' own reads; in the page also the two owners that fall back to their own transactions (Needs you's statement
      timeout setting and AI Centre's barrier), whose bootstrap and presentation proof no carrier can answer.
 
+13. **The greeting's own facts, the notices card, Needs you, the assigned-performance check and "Coming up" are single
+   statements** (branch `claude/home-bundles-cards-sections-20261111`). Each keeps its owners' proofs, predicates, order
+   and projection; `withOwnerCardSectionReads` (`core/home-owner-reads.ts`) keeps every previous path reachable.
+   - *Greeting.* After the same login, principal and selection checks, the photo owner's admission proof and visibility
+     policy (`personPhotoSnapshotExistsSql`, `hasPersonPhotoSnapshotTx`'s own reads) and the display preferences, one
+     statement carries the recorded names, whether a photo the caller may see exists, the birthday match in the display
+     zone and, when no shared Home window holds it, the return-from-leave lookback (`leaveCalendarPresenceRowsJsonSql`:
+     the presence owner's call, filter and order). Without a full-day candidate no further transaction is opened; with one
+     the workday checks read as before. The Today page's greeting identity reads the names and photo the same way. A
+     login without a person reads as before.
+   - *Notices.* The board's first page never depends on its count (page = min(1, pages)), so counts and rows are one
+     statement with the same predicate, joins, order and page, each row decoded as the select returns it
+     (`db/json-fields.ts`). Any later page is clamped by the count and keeps two statements.
+   - *Needs you* (`core/needs-you-bundle.ts`). One statement carries the cancellation and decision review indices (the
+     index function behind the owner's presentation proof, called only where the function cannot refuse; a refusal the
+     owner decides without reading stays that refusal), the loops' cards of a viewer without HR cards (own open undo
+     windows read one row past their page, every loop's gate, pauses, open cases, Watch levels, with the owner's card
+     rules; a tie on an order key leaves the cards to the owner), the letter requests waiting where the viewer holds
+     `generate`, and the recommender's run gate. That gate's owner (`workerRunGateTx`) first takes the
+     access-configuration lock and asserts the AI Centre generation (`app.ai_centre_assert_running`, which takes the
+     ai-control lock and requires READ COMMITTED). Those locks are a worker run's authority: they keep a stop from
+     interleaving with the run's effect. Needs you takes no effect under the gate; it decides only whether to offer the
+     recommendation link, and the recommender asks its own locked gate before it computes and again before it records.
+     The offer therefore reads the switch and the stop flag in the shared read-only snapshot: one statement in one
+     snapshot sees a state every writer committed, and the locks could only delay the offer until an in-flight stop or
+     access change committed (decision 3's reasoning). Only the gate's `run` is used; when stopped, the owner's reasons
+     list `stopped` alone where the switches' own list may add `switched_off`. Inside an AI Centre activity (a
+     generation to match) the owner reads. The own leave application index keeps its own transaction: its owner bounds
+     statement and lock time for it (`boundNativeOutcomeTransactionTx`), a setting a shared snapshot cannot take for one
+     read without changing every other owner's bounds; that transaction now sends the presentation proof and the index
+     as one statement (a false proof reads nothing; a refusal inside the function fails the statement; both are the
+     reader's one "unavailable"). Not folded: the approvals preview (decision 7's own statement), an administrator's loop
+     feeds, proposals, readiness and digest (their owners read them), and the prepared reviews' reopen.
+   - *Assigned performance* (`pendingPerformanceTasksFromStatement`). The page's check reads the performance pack's own
+     section of the account task statement (decision 7: the review queue's rows, and whether an assessment or calibration
+     candidate exists) as one statement, combined by the owner's projection with the page's company filter; a candidate,
+     a refusing gate or an AI Centre activity leaves it to the owner.
+   - *Coming up* (`readHomeTeamCalendarAndManagers`). After the calendar's own-employment proof, the Home team calendar
+     and the current managers' employment ids (`reportingManagerIdsBundleSql`: both of `reportingLinesFor`'s manager reads,
+     their joins and predicates, carrying the one field At a glance uses) are one statement; the direct reports, which At a
+     glance never used, are not read. Any failure reads both owners.
+   - Equivalence: the hosted diagnostic compares each path with its owners for every fixture subject, alone and in one
+     shared snapshot, each Needs you section with its owner, the stream frames and the page render (`cardsSections:*`),
+     with fixture rows for each (a preferred name, photos, a birthday today, a return from leave, published notices read
+     and acknowledged, loop cases of several kinds with ties, open undo windows, a pause, a Watch level, an active and a
+     stopped AI Centre generation, letter requests and review index rows) added after the traces.
+
 ## Not done here
 
 - **Before payroll's remaining reads** (decision 11). The own-subject proof and company date proof
@@ -318,6 +365,13 @@ calculation, authority, ordering or failure changes.
   values as literals into one simple-protocol message). Owner fallbacks in their own transactions (a refused setting or
   barrier) still send their own bootstrap and proofs, which no carrier can answer. A page render that the shell's badge
   and the page's sections reach at different times opens a fresh carrier, which reads the preamble again.
+- **Cards and sections' remaining reads** (decision 13). The own leave application index keeps its own bounded
+  transaction (begin, read-only setting, identity, time bounds, one statement, commit): a shared snapshot cannot take
+  those bounds for one read. An administrator's Needs you still reads its loop feeds (moved down, acted, weekly sample,
+  left alone), proposals, readiness and digest through their owners, and every prepared review's reopen repeats its
+  owner's checks. The greeting's workday checks still read the schedule owner per day when the lookback finds a
+  full-day candidate. At a glance's leave balances and payslip are their owners' own statements (decisions 6 and 3) in
+  the page render's snapshot, not the stream's: the two are separate requests and nothing is cached across them.
 
 ## Read models worth maintaining
 

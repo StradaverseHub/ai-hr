@@ -4,7 +4,8 @@
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {HomeAccessError} from './employee-home';
-import {isCurrentOwnHomeEmploymentTx} from './read';
+import {isCurrentOwnHomeEmploymentTx,reportingManagerIdsBundleSql,reportingManagerIdsFromBundle} from './read';
+import {ownerCardSectionReads} from './home-owner-reads';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {calendarWindowDates} from '../lib/calendar-window';
 import {homeSharingPageInput,validateHomeTeamPage,validateHomeCelebrationPage,validateHomeTeamCalendar} from '../lib/employee-home-sharing';
@@ -35,6 +36,19 @@ export async function readHomeTeamCalendar(ctx:SessionContext,employmentId:strin
   const [row]=await tx.execute(sql`SELECT app.home_team_calendar(${employmentId}::uuid,${from}::date,${to}::date) AS projection`) as unknown as {projection:unknown}[];
   return validateHomeTeamCalendar(row?.projection,from,to);
  },signal,outerTx);
+}
+/** Today's At a glance "Coming up" (docs/adr/2026-11-10-home-request-read-scope.md decision 13): readHomeTeamCalendar
+ * for [from, to], after its own-employment proof and window check, and the employment's current managers'
+ * employment ids (core/read.ts reportingManagerIdsBundleSql, the ids reportingLinesFor's `managers` carry) in the
+ * calendar's own statement. Null under withOwnerCardSectionReads, where both owners read on their own. */
+export async function readHomeTeamCalendarAndManagers(ctx:SessionContext,employmentId:string,from:string,to:string,signal?:AbortSignal){
+ if(ownerCardSectionReads())return null;
+ return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
+  calendarWindowDates(from,to);
+  const [row]=await tx.execute(sql`SELECT app.home_team_calendar(${employmentId}::uuid,${from}::date,${to}::date) AS projection,
+   ${reportingManagerIdsBundleSql(employmentId)} AS managers`) as unknown as {projection:unknown;managers:unknown}[];
+  return {calendar:validateHomeTeamCalendar(row?.projection,from,to),managerEmploymentIds:reportingManagerIdsFromBundle(row?.managers)};
+ },signal);
 }
 export async function readHomeCelebrationPage(ctx:SessionContext,employmentId:string,p:{after?:string;limit?:number}={},signal?:AbortSignal){
  return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
