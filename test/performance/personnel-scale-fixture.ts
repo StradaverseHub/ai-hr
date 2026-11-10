@@ -147,7 +147,10 @@ export async function seedPersonnelScaleFixture(count: number): Promise<Personne
       select $1::uuid,($2::uuid[])[1 + n%4],'Fictional draft '||n,'{}'::jsonb,1 from generate_series(1,6) n`, [t, companyArray]);
   });
 
-  // The real capability publication path, then per-user allow/deny overrides for the manager.
+  // The real capability publication path, then per-user allow/deny overrides for the manager. The
+  // catalogue is not truncated with the tenant data, and another file in the same worker may have left a
+  // fixture binding on it; publication refuses anything but the uninstalled or exact published state.
+  await restoreWorkforceCapabilityCatalogue();
   await publishWorkforceCapabilities(owner.client);
   const [managerPerson] = await owner.client<{personId: string; employmentId: string}[]>`
     select e.person_id as "personId",e.id as "employmentId" from employment e
