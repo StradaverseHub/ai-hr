@@ -9,13 +9,13 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql as dsql} from 'drizzle-orm';
 import postgres from 'postgres';
 import {randomUUID} from 'node:crypto';
-import {withTenant} from '../db/client';
+import {withTenant,type Tx} from '../db/client';
 import {appUser,employment,leaveRequest,leaveType,person,personEmergencyContact,roleAssignment} from '../db/schema';
 import {lockAccessAdministratorSetTx,lockAccessConfigurationReadTx,lockAccessConfigurationTx,lockAccessConfigurationWriteTx,tryLockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {hireEmployee} from '../core/org';
 import {revokeRole} from '../core/admin';
-import {checkIn,checkOut} from '../core/attendance';
+import {checkIn,checkInTx,checkOut} from '../core/attendance';
 import {requestLeave} from '../core/leave';
 import {addEmergencyContact} from '../core/emergency-contacts';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,type Base} from './harness';
@@ -488,6 +488,17 @@ describe('strict lock mode',()=>{
   const [row]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Fictional strict hire',primaryEmail:`strict-${randomUUID()}@example.invalid`}).returning({id:person.id});
   await raw.begin(async tx=>{await asTenant(tx,b.tenantId,true);await tx.unsafe(`insert into employment(tenant_id,person_id,company_id,employee_code,hired_on) values('${b.tenantId}','${row.id}','${b.companyId}','STRICT-${randomUUID().slice(0,8)}','${todayInKualaLumpur()}')`);});
  });
+ it('passes the converted hot writers: none of them touches an authority row without the exclusive lock',async()=>{
+  const ctx=adminCtx(b),year=todayInKualaLumpur().slice(0,4);
+  await seedEntitlement(ctx,{leaveTypeId:b.annualLeaveTypeId,annualDays:12,validFrom:`${year}-01-01`,name:'Fictional strict entitlement'});
+  await owner.db.update(leaveType).set({counting:'calendar_days'}).where(eq(leaveType.id,b.annualLeaveTypeId));
+  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional strict worker',primaryEmail:`strict-worker-${randomUUID()}@example.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year}-01-01`,grantLeaveTypes:[{id:b.annualLeaveTypeId,code:'ANNUAL'}]});
+  const strict=<T>(work:(tx:Tx)=>Promise<T>)=>withTenant(ctx,async tx=>{await tx.execute(dsql`select set_config('app.access_lock_strict','on',true)`);return work(tx);});
+  const today=todayInKualaLumpur();
+  await strict(tx=>checkInTx(ctx,{employmentId:hired.employmentId,date:'2026-07-06',time:'08:00:00'},tx));
+  await strict(tx=>requestLeave(ctx,{employmentId:hired.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:today,endDate:today,durationType:'full_day',reason:'Fictional strict request',today},tx));
+  await strict(tx=>addEmergencyContact(ctx,{personId:hired.personId,fullName:'Fictional strict contact',relationship:'Mother',mobilePhone:'019-9876543',priority:'primary'},tx));
+ },90000);
  it('is off unless the session opts in',async()=>{
   await raw.begin(async tx=>{await asTenant(tx,b.tenantId);await insertRole(tx,b.adminUserId);});
  });
