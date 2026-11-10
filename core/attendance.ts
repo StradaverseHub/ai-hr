@@ -6175,7 +6175,7 @@ export function myOvertimePlans(
   } = {},
 ): Promise<OvertimePlanRow[]> {
   // f618065d (r362) — the ceiling is the pager's "All" ceiling, not a private 200. See the import.
-  const limit = overtimePlanLimit(opts.limit);
+  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 25)), ALL_ROW_CEILING);
   const offset = Math.max(0, Math.trunc(opts.offset ?? 0));
   // ce5ded11 (r362) — an OPTIONAL overtime-date window, for the calendar, which draws one month and must
   // not be told about it by a `limit` that happened to reach far enough back. Absent ⇒ byte-identical to
@@ -6235,6 +6235,7 @@ export function myOvertimePlans(
  * OT-only by construction: a clock-time correction that happens to carry OT belongs to Attendance
  * Request, and mixing the two is the other half of the complaint this list was split out of.
  */
+/** myOvertimePlans' own page size (the same expression its body states, which test/plan-ot-self-screen.test.ts pins there). */
 const overtimePlanLimit = (limit: number | undefined) => Math.min(Math.max(1, Math.trunc(limit ?? 25)), ALL_ROW_CEILING);
 function overtimePlanWindow(employmentId: string, opts: OvertimePlanFilter & { status?: OvertimePlanRow['status'] }) {
   return [
