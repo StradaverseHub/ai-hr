@@ -48,9 +48,14 @@ async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promi
  */
 export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ // A read-only carrier outside an AI Centre activity stays on the shared barrier: it can produce no effect,
+ // writers still serialize against it, and ai_action_unpaused reads Stop under that barrier. Taking Access or
+ // ai-control exclusively here upgrades its earlier shared holds, so two concurrent readers deadlock (40P01).
+ const [carrier]=await tx.execute<{read_only:boolean}>(sql`select current_setting('transaction_read_only')='on' as read_only`);
+ const sharedBarrier=carrier?.read_only===true&&aiCentreActivity(ctx.tenantId)===undefined;
+ await (sharedBarrier?lockAccessConfigurationReadTx:lockAccessConfigurationTx)(tx,ctx.tenantId);
  await assertFeatureUnpausedTx(tx,ctx,feature);
- await assertAiCentreRunningTx(tx,ctx);
+ if(!sharedBarrier)await assertAiCentreRunningTx(tx,ctx);
  // WP12 (R8): inside an Assistant review-route command, that action's own pause key under hr_assistant (0696).
  // A review-route command whose action could not be named fails closed.
  const route=currentAgentActionScope();

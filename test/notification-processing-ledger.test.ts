@@ -80,12 +80,30 @@ it('upgrades a populated cursor without replaying historical events and enqueues
   await tx`DROP TABLE notification_event_processing`;
   await tx`DROP INDEX notification_source_recipient_kind_idx`;
   await tx`DROP FUNCTION app.notification_projection_exists(uuid,uuid,text)`;
+  await tx`DROP FUNCTION online_migration.notification_receipt_backfill_batch(integer)`;
+  await tx`DROP TABLE online_migration.notification_cursor_cutover`;
+  await tx`DELETE FROM online_migration.step WHERE step='notification-receipts'`;
   const oldId=randomUUID(),pendingId=randomUUID();
   const [old]=await tx`insert into domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload) values(${oldId}::uuid,${b.tenantId}::uuid,'ledger-test',${oldId}::uuid,'toil.accrued','system',${subject.employmentId}::uuid,'{}'::jsonb) returning sequence`;
   await tx`update notification_cursor set last_sequence=${old.sequence} where tenant_id=${b.tenantId}::uuid`;
   await tx`insert into domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload) values(${pendingId}::uuid,${b.tenantId}::uuid,'ledger-test',${pendingId}::uuid,'toil.accrued','system',${subject.employmentId}::uuid,'{}'::jsonb)`;
   const migration=readFileSync(new URL('../db/migrations/2504_notification_event_processing.sql',import.meta.url),'utf8');
   for(const statement of migration.split('--> statement-breakpoint'))if(statement.trim())await tx.unsafe(statement);
+  // History is written by the online backfill, not the migration transaction.
+  expect(await tx`select event_id from notification_event_processing where event_id in (${oldId}::uuid,${pendingId}::uuid)`).toHaveLength(0);
+  const liveId=randomUUID();
+  await tx`insert into domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,payload) values(${liveId}::uuid,${b.tenantId}::uuid,'ledger-test',${liveId}::uuid,'ledger.unmapped','system','{}'::jsonb)`;
+  const backfill=async()=>{for(let pages=0;pages<10000;pages++){const [page]=await tx`select * from online_migration.notification_receipt_backfill_batch(2)`;if(page.done)return;}throw Error('Backfill did not terminate');};
+  await backfill();
+  const receiptCount=async()=>Number((await tx`select count(*) from notification_event_processing`)[0].count);
+  const afterFirstPass=await receiptCount();
+  expect(await tx`select count(*)::int as missing from domain_event e where not exists(select 1 from notification_event_processing r where r.event_id=e.id and r.consumer='notifications')`).toEqual([{missing:0}]);
+  // A later cursor must not reclassify history, and a rerun must not duplicate or change a receipt.
+  await tx`update notification_cursor set last_sequence=last_sequence+1000000 where tenant_id=${b.tenantId}::uuid`;
+  await tx`update online_migration.step set position=null,completed_at=null where step='notification-receipts'`;
+  await backfill();
+  expect(await receiptCount()).toBe(afterFirstPass);
+  expect(await tx`select disposition from notification_event_processing where event_id=${liveId}::uuid and consumer='notifications'`).toEqual([{disposition:null}]);
   const rows=await tx`select event_id,disposition from notification_event_processing where event_id in (${oldId}::uuid,${pendingId}::uuid)`;
   expect(rows).toEqual(expect.arrayContaining([{event_id:oldId,disposition:'legacy-cursor'},{event_id:pendingId,disposition:null}]));
   const rollbackId=randomUUID();

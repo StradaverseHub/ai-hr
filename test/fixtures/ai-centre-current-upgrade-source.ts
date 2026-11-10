@@ -9,7 +9,7 @@ import { expectedBaselineMigrationLedger } from '../../.github/ci/staging-migrat
 const incoming = 'f07f32dcd0ccaeb6b49d40f2b6c64307b9bf80fc';
 const checkpointJournalSha256 = '69e00aaf89b8c9deb4d0e81f36d3cb732343e66565b2fa95da15a33842d1cf38';
 const incomingLedgerSha256 = '949043cefb77fecae0e9909d9421680f9cfcb4d4fc9953b4a2052121ea92fb00';
-const architectureTailSha256 = '5fe119909f6e737f575158b95051497b815fc92a8ad149593b76ebef81ed7ddd';
+const architectureTailSha256 = '532c53d4023f74c55714c888b715bf5f700fc57693f42568743e156094b5a9f4';
 const firstPending = '2103_system_performance_read_guards';
 const compatibility = '3500_ai_centre_architecture_compatibility';
 const mandate = '3501_ai_centre_mandate_write_order';

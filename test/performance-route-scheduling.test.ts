@@ -15,7 +15,7 @@ it('retains disjoint fallback lanes, three non-group reads and the explicit boun
  expect(navigationRoutesForIteration(pool,{role:'companyHR',ordinal:0,actors:2,iteration:1})).toEqual(pool.slice(6,9));
  expect(navigationRoutesForIteration(pool,{role:'groupHR',ordinal:0,actors:2,iteration:0})).toEqual(pool.slice(0,7));
  expect(navigationRoutesForIteration(pool,{role:'groupHR',ordinal:1,actors:2,iteration:0})).toEqual(pool.slice(7));
- expect(scheduler().slots('groupHR')).toBe(7);expect(scheduler().slots('groupHR',0,0)).toBe(9);for(const role of roles.slice(0,3))expect(scheduler().slots(role)).toBe(3);
+ expect(scheduler().slots('groupHR')).toBe(7);expect(scheduler().slots('groupHR',0,0)).toBe(10);for(const role of roles.slice(0,3))expect(scheduler().slots(role)).toBe(3);
 });
 it('preserves actual first-cycle Group HR priority routes during ramp without consuming steady obligations',()=>{
  const s=scheduler(),first=firstGroupNavigationRoutes(routePools,counts);
@@ -63,9 +63,14 @@ it.each([1000,5000])('models actual 500 actor offsets and first-cycle priorities
  const bounded=planSteadyRouteCoverage({pools:routePools,users,thinkTimeMs,steadyHoldMs:300000});expect(bounded.protocol).toBe(navigationProtocol);expect(bounded.groupReadSlots).toBe(7);
 });
 it('handles future route cardinality through a bounded explicit revision or refuses, never drops required routes',()=>{
- const more={...routePools,groupHR:[...routePools.groupHR,...Array.from({length:6},(_,i)=>'/future/'+i)]};
- const plan=planSteadyRouteCoverage({pools:more,users,thinkTimeMs:5000,steadyHoldMs:300000});expect(plan.groupReadSlots).toBeGreaterThan(7);expect(plan.groupReadSlots).toBeLessThanOrEqual(12);
+ // Group HR carries the 20 routes no other role reaches in the first cycle, at most 12 per actor: growth that fits the
+ // remaining headroom is revised within the bound and the next route must refuse, so neither case can drop an obligation.
+ const firstCycle=firstGroupNavigationRoutes(routePools,counts),headroom=12*firstCycle.length-firstCycle.flat().length;
+ const grown=(routes:number)=>({...routePools,groupHR:[...routePools.groupHR,...Array.from({length:routes},(_,i)=>'/future/'+i)]});
+ expect(headroom).toBeGreaterThan(0);
+ const more=grown(headroom),plan=planSteadyRouteCoverage({pools:more,users,thinkTimeMs:5000,steadyHoldMs:300000});expect(plan.groupReadSlots).toBeGreaterThan(7);expect(plan.groupReadSlots).toBeLessThanOrEqual(12);
  expect(plan.rows.find(row=>row.role==='groupHR')!.completed).toBe(more.groupHR.length);
+ expect(()=>planSteadyRouteCoverage({pools:grown(headroom+1),users,thinkTimeMs:5000,steadyHoldMs:300000})).toThrow(/capacity/);
  const impossible={...routePools,groupHR:[...routePools.groupHR,...Array.from({length:1000},(_,i)=>'/future/'+i)]};
  expect(()=>planSteadyRouteCoverage({pools:impossible,users,thinkTimeMs:5000,steadyHoldMs:300000})).toThrow(/capacity/);
  expect(()=>planSteadyRouteCoverage({pools:routePools,users,thinkTimeMs:5000,steadyHoldMs:30000})).toThrow(/capacity/);

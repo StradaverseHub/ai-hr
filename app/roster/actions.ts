@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
-import { rosterCommandTargets, rosterGenerationTargets } from './command-targets';
+import { rosterFormCopyTargets, rosterFormGenerationTargets } from './command-targets';
 import {
   assertRosterAdmin,
   assertRosterDatesWritable,
@@ -209,12 +209,13 @@ export async function generateRosterAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
   const from = String(formData.get('from') ?? '');
-
   // Outside the try on purpose: redirect() signals by throwing, and a catch here would swallow it.
   if (!isAdmin(s)) redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(new RosterAdminRequiredError().message)}`);
   let summary: { employments: number; workingRows: number; restRows: number };
   try {
-    const targets = await rosterGenerationTargets(s, formData);
+    // Server-side admission of the posted targets (company write scope, fresh team scope, permitted
+    // population) before the writer; a department still wins over the employee selection.
+    const targets = await rosterFormGenerationTargets(s, formData);
     summary = await generateRosterFromTemplate(s, {
       shiftId: String(formData.get('shiftId') ?? ''),
       ...targets,
@@ -240,11 +241,11 @@ export async function copyRosterAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
   const targetFrom = String(formData.get('targetFrom') ?? '');
-
   if (!isAdmin(s)) redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(new RosterAdminRequiredError().message)}`);
   let summary: { copied: number; sourceRows: number };
   try {
-    const employmentIds = await rosterCommandTargets(s, formData);
+    // Every posted employee is admitted against the current scope; an empty post is bounded to it.
+    const employmentIds = await rosterFormCopyTargets(s, formData);
     summary = await copyRoster(s, {
       sourceFrom: String(formData.get('sourceFrom') ?? ''),
       sourceTo: String(formData.get('sourceTo') ?? ''),

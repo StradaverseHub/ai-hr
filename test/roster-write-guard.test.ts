@@ -265,7 +265,7 @@ describe('the guard must not refuse everything — an administrator still roster
 
   it('generateRosterAction still redirects with its summary', async () => {
     await expect(
-      generateRosterAction(formOf({ companyId: b.companyId, shiftId, from: FUTURE, to: FUTURE_MONTH_END, selectionIds: JSON.stringify([employmentId]) })),
+      generateRosterAction(formOf({ companyId: b.companyId, shiftId, from: FUTURE, to: FUTURE_MONTH_END, employmentIds: [employmentId] })),
     ).rejects.toThrow('NEXT_REDIRECT');
     expect(LAST_REDIRECT).toContain('generated=');
     expect(LAST_REDIRECT).not.toContain('error=');

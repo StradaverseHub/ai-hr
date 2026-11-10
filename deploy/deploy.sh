@@ -402,6 +402,13 @@ echo "▸ Applying database migrations (as ai_hr_owner)…"
 dstate phase migrate
 pnpm db:migrate
 
+# Online follow-up to the transactional migrations: concurrent index builds, plus the batched
+# notification receipt backfill. The batch transaction cannot do these without holding locks on hot
+# tables until it commits. Idempotent and resumable; a failure stops here with the old build serving.
+echo "▸ Running online post-migration steps…"
+dstate phase migrate-online
+node --env-file=.env.production --import tsx scripts/post-migrate-online.ts
+
 # ADR-0077 C11 — UNCONDITIONAL, and deliberately above the demo-seed `if` below: that branch is skipped
 # on every normal update, so seeding the catalogs inside it would leave an updated deployment with an
 # empty module catalog and every entitlement lookup failing closed. Idempotent (ON CONFLICT DO UPDATE).

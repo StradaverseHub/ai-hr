@@ -2887,11 +2887,26 @@ export async function rosterWindowView(
   assertRosterWindow(p.from, p.to);
   const { from, to } = { from: p.from, to: p.to };
   const dates = datesBetween(from, to);
-  const today=todayInKualaLumpur();
-  const [employeeRows, shiftRows] = await Promise.all([
-    p.employmentIds?.length === 0 ? Promise.resolve([]) : listEmployees(ctx, p.companyIds.length > 0 ? p.companyIds : undefined),
+  const [{ employees, allEmployees }, shiftRows] = await Promise.all([
+    rosterWindowEmployees(ctx, p),
     listShiftsForTenant(ctx),
   ]);
+
+  return hydrateRosterWindow(ctx, { from, to, dates, employees, allEmployees, shiftRows });
+}
+
+/**
+ * The employees rosterWindowView puts on screen (`employees`, after the filters) and the unfiltered set the
+ * filters draw from (`allEmployees`), with no cell hydration. rosterWindowView reads its people through this
+ * one function, so the Roster Generate and Copy forms, which use it directly, always target exactly the
+ * employees the unpaged roster screen listed, while the grid itself pages. RLS-fenced like listEmployees.
+ */
+export async function rosterWindowEmployees(
+  ctx: SessionContext,
+  p: { companyIds: string[]; businessUnitId?: string; departmentId?: string; q?: string; employmentIds?: string[] },
+): Promise<{ employees: RosterMonthEmployee[]; allEmployees: RosterMonthEmployee[] }> {
+  const today=todayInKualaLumpur();
+  const employeeRows = p.employmentIds?.length === 0 ? [] : await listEmployees(ctx, p.companyIds.length > 0 ? p.companyIds : undefined);
 
   const allEmployees: RosterMonthEmployee[] = employeeRows
     .filter((e) => (!e.terminatedOn || e.terminatedOn>today) && (!p.employmentIds || p.employmentIds.includes(e.employmentId)))
@@ -2922,7 +2937,7 @@ export async function rosterWindowView(
       (needle === '' || e.name.toLowerCase().includes(needle) || (e.code ?? '').toLowerCase().includes(needle)),
   );
 
-  return hydrateRosterWindow(ctx, { from, to, dates, employees, allEmployees, shiftRows });
+  return { employees, allEmployees };
 }
 
 /** Canonical cell hydration shared by the full artifact reader and bounded presentation reader.

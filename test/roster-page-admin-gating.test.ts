@@ -45,6 +45,7 @@ vi.mock('next/navigation', () => ({ redirect: () => { throw new Error('NEXT_REDI
 vi.mock('@/lib/session', () => ({ getSession: async () => SCOPE.s }));
 
 import RosterPage from '../app/roster/page';
+import { copyRosterAction, generateRosterAction } from '../app/roster/actions';
 import { RosterGrid, RosterTemplateButton } from '../components/roster-grid';
 import { ROSTER_MAX_RANGE_DAYS } from '../lib/roster-month';
 
@@ -136,8 +137,10 @@ function stringsIn(tree: unknown): string[] {
 
 /** The server action a `<form action={…}>` in the tree is bound to — the least forgeable evidence that
  *  the Generate / Copy cards are really on the page, since their labels are only message keys. */
-const formCommands = (tree: unknown): string[] => elementsIn(tree).filter(el=>el.type==='input'&&el.props?.name==='command').map(el=>el.props.value);
-const nativePreparationForms = (tree:unknown) => elementsIn(tree).filter(el=>el.type==='form'&&el.props?.action==='/roster/prepare'&&el.props?.method==='post');
+const formActions = (tree: unknown): unknown[] =>
+  elementsIn(tree)
+    .filter((el) => el.type === 'form' && typeof el.props?.action === 'function')
+    .map((el) => el.props.action);
 
 const hasTemplateButton = (tree: unknown): boolean => elementsIn(tree).some((el) => el.type === RosterTemplateButton);
 
@@ -161,8 +164,8 @@ describe('the roster screen offers its write tools to an HR administrator', () =
 
     expect(labels).toContain('generate');
     expect(labels).toContain('copyTitle');
-    expect(formCommands(tree)).toEqual(['generate','copy']);
-    expect(nativePreparationForms(tree)).toHaveLength(2);
+    expect(formActions(tree)).toContain(generateRosterAction);
+    expect(formActions(tree)).toContain(copyRosterAction);
 
     // 2ec1e3d2 — the link stays exactly where it was for the people it actually opens for.
     expect(labels).toContain('manageShiftsLink');
@@ -208,8 +211,8 @@ describe('…and offers a supervisor none of them', () => {
     // Generate and Copy — forms whose only possible outcome for this session is a refused write.
     expect(labels).not.toContain('generate');
     expect(labels).not.toContain('copyTitle');
-    expect(formCommands(tree)).toEqual([]);
-    expect(nativePreparationForms(tree)).toHaveLength(0);
+    expect(formActions(tree)).not.toContain(generateRosterAction);
+    expect(formActions(tree)).not.toContain(copyRosterAction);
     // 2ec1e3d2 — Manage shift schedules: /admin/attendance is requireAdmin, so following it can only
     // ever bounce this session back to '/' with nothing said. Not a write, but the same broken promise.
     expect(labels).not.toContain('manageShiftsLink');

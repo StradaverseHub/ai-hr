@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {claimRequest} from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {createClaimType, pendingClaimTaskSummary, listClaimHistoryPage, listPendingClaimsPage, listPendingClaimSelection, listClaimDraftsForEmployment, listClaimsForEmployment} from '../packs/claims/service';
+import {createClaimType, pendingClaimTaskSummary, listClaimHistoryPage, listPendingClaims, listPendingClaimsPage, listPendingClaimSelection, listClaimDraftsForEmployment, listClaimsForEmployment} from '../packs/claims/service';
 import {adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
 import {ALL_ROW_CEILING} from '../lib/pagination';
 let base: Base;
@@ -43,22 +43,22 @@ describe('claims history database pagination', () => {
   });
   it('returns the exact pending queue total and a bounded selection page', async () => {
     const {ctx, ids} = await fixture();
-    const first = await listPendingClaimsPage(ctx, {companyIds:[base.companyId]});
-    const second = await listPendingClaimsPage(ctx, {companyIds:[base.companyId],page:'1'});
+    const first = await listPendingClaimsPage(ctx);
+    const second = await listPendingClaimsPage(ctx, {page:'1'});
     const expected = ids.slice(0,60).sort();
     expect(first.page.total).toBe(60);
     expect(first.rows.map(row=>row.id)).toEqual(expected.slice(0,25));
     expect(second.rows.map(row=>row.id)).toEqual(expected.slice(25,50));
-    expect((await listPendingClaimsPage(ctx,{companyIds:[]})).page.total).toBe(0);
+    expect((await listPendingClaims(ctx)).map(row=>row.id).sort()).toEqual(expected);
+    expect((await listPendingClaimsPage(adminCtx(await seedBase()))).page.total).toBe(0);
   });
   it('captures the exact actionable claim IDs across pages under the same authority',async()=>{
     const {ctx,subject,ids}=await fixture(),expected=ids.slice(0,60).sort();
-    expect(await listPendingClaimSelection(ctx,[base.companyId])).toEqual(expected);
-    expect(await listPendingClaimSelection(ctx,[])).toEqual([]);
+    expect(await listPendingClaimSelection(ctx)).toEqual(expected);
     const ownAdmin=await createAppUser(base.tenantId,subject.personId,'hr_admin');
-    expect(await listPendingClaimSelection({...ctx,userId:ownAdmin,personId:subject.personId},[base.companyId])).toEqual([]);
+    expect(await listPendingClaimSelection({...ctx,userId:ownAdmin,personId:subject.personId})).toEqual([]);
     const foreign=await seedBase();
-    expect(await listPendingClaimSelection(adminCtx(foreign),[base.companyId])).toEqual([]);
+    expect(await listPendingClaimSelection(adminCtx(foreign))).toEqual([]);
   });
   it('returns a counted task preview without transporting the complete Claims queue',async()=>{
     const {ctx,ids}=await fixture(),expected=ids.slice(0,60).sort();

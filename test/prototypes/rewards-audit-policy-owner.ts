@@ -13,6 +13,18 @@ const closure=z.object({kind:z.literal('UNINSTALLED_REWARDS_POLICY_NATIVE_PRE_CL
 const rowSchema=z.object({signature:z.string(),definition:z.string(),body:z.string(),details:z.record(z.string(),z.unknown())}).strict();
 type FunctionRow=z.infer<typeof rowSchema>;
 function one(text:string,from:string,to:string){if(text.split(from).length!==2)throw Error('Exact single native replacement boundary required: '+from.slice(0,90));return text.replace(from,to);}
+/** CREATE OR REPLACE re-parses argument defaults, and pg_node_tree stores each default's byte offset in the
+ * statement text (:location). pg_get_functiondef places a default earlier than the commented migration that
+ * installed it (0863: 268 against 87), so a replacement or restore would change pg_proc. Re-run the same
+ * statement padded with spaces until every default keeps its exact offset; refuse what cannot be reproduced. */
+const defaultOffsets=(details:Record<string,unknown>)=>[...String(details.proargdefaults??'').matchAll(/:location (-?[0-9]+)/g)].map(match=>Number(match[1]));
+async function recreateExactly(tx:postgres.TransactionSql,signature:string,statement:string,expected:Record<string,unknown>){
+ await tx.unsafe(statement);
+ const [current]=await tx`select to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`;
+ const want=defaultOffsets(expected),got=defaultOffsets(current.details),shift=want.length?want[0]-got[0]:0;
+ if(want.length!==got.length||shift<0||want.some((offset,index)=>offset-got[index]!==shift))throw Error('Native default offsets cannot be reproduced: '+signature);
+ if(shift)await tx.unsafe(' '.repeat(shift)+statement);
+}
 async function definition(owner:RewardsAuditOwnerDependencies['owner'],signature:string):Promise<FunctionRow>{const [row]=await owner.client`select ${signature}::text as signature,pg_get_functiondef(p.oid)as definition,p.prosrc as body,to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`;return rowSchema.parse(row);}
 export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOwnerDependencies,poison:(error:Error)=>void){
  const {owner}=dependencies;
@@ -28,7 +40,7 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
   return owner.client.begin(async tx=>{
    await tx`select reward_audit_policy_private.assert_profile()`;
    expect((await tx`select to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`)[0].details).toEqual(expected.details);
-   await tx.unsafe(one(expected.definition,expected.body,body));
+   await recreateExactly(tx,signature,one(expected.definition,expected.body,body),expected.details);
    const [raw]=await tx`select ${signature}::text as signature,pg_get_functiondef(p.oid)as definition,p.prosrc as body,to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`;
    const actual=rowSchema.parse(raw);expect(actual.body).toBe(body);
    expect(Object.fromEntries(Object.entries(actual.details).filter(([key])=>key!=='prosrc'))).toEqual(Object.fromEntries(Object.entries(expected.details).filter(([key])=>key!=='prosrc')));
@@ -43,7 +55,7 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
   return owner.client.begin(async tx=>{
    await tx`select reward_audit_policy_private.assert_profile()`;
    expect((await tx`select to_jsonb(p)as details from pg_proc p where p.oid=${expected.signature}::regprocedure`)[0].details).toEqual(expected.details);
-   await tx.unsafe(one(expected.definition,expected.body,body));
+   await recreateExactly(tx,expected.signature,one(expected.definition,expected.body,body),expected.details);
    const [raw]=await tx`select ${expected.signature}::text as signature,pg_get_functiondef(p.oid)as definition,p.prosrc as body,to_jsonb(p)as details from pg_proc p where p.oid=${expected.signature}::regprocedure`;
    const actual=rowSchema.parse(raw);expect(actual.body).toBe(body);
    expect(Object.fromEntries(Object.entries(actual.details).filter(([key])=>key!=='prosrc'))).toEqual(Object.fromEntries(Object.entries(expected.details).filter(([key])=>key!=='prosrc')));
@@ -99,7 +111,7 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
    for(const [signature,body]of bindings){
     const old=originals.find(row=>row.signature===signature);if(!old)throw Error('Exact native replacement owner absent');
     expect((await tx`select to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`)[0].details).toEqual(old.details);
-    await tx.unsafe(one(old.definition,old.body,body));
+    await recreateExactly(tx,signature,one(old.definition,old.body,body),old.details);
     const [actual]=await tx`select ${signature}::text as signature,pg_get_functiondef(p.oid)as definition,p.prosrc as body,to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`;
     const parsed=rowSchema.parse(actual);expect(parsed.body).toBe(body);
     expect(Object.fromEntries(Object.entries(parsed.details).filter(([key])=>key!=='prosrc'))).toEqual(Object.fromEntries(Object.entries(old.details).filter(([key])=>key!=='prosrc')));
@@ -148,7 +160,7 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
      for(const current of changed){
       const old=originals.find(row=>row.signature===current.signature);if(!old)throw Error('Native restore preimage absent');
       expect((await tx`select to_jsonb(p)as details from pg_proc p where p.oid=${current.signature}::regprocedure`)[0].details).toEqual(current.details);
-      await tx.unsafe(old.definition);
+      await recreateExactly(tx,old.signature,old.definition,old.details);
       expect((await tx`select to_jsonb(p)as details from pg_proc p where p.oid=${old.signature}::regprocedure`)[0].details).toEqual(old.details);
       expect(await tx`update reward_audit_private.function_contract c set details=${JSON.stringify(old.details)}::text::jsonb where c.signature=${old.signature}::regprocedure and c.details=${JSON.stringify(current.details)}::text::jsonb returning c.signature`).toHaveLength(1);
      }

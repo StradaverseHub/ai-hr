@@ -74,7 +74,7 @@ describe.sequential('real native notification nested SQL attribution',()=>{
   }
   const original=await guard();report.guardsBefore=original;
   report.helperContract=await owner.client`select count(*)::int as rows,sum(octet_length(p.prosrc))::text as canonical_bytes,max(octet_length(p.prosrc))::int as maximum_body_bytes from notification_worker_private.helper_contract c join pg_proc p on p.oid=c.signature`;
-  if(queryShapeVariant==='candidate'){const [actual]=await owner.client`select count(*)::int as rows,count(*)filter(where(c.body_source collate "C")is distinct from(p.prosrc collate "C")or md5(c.body_source)<>c.body_md5)::int as drift,sum(octet_length(c.body_source))::text as source_bytes from notification_worker_private.helper_contract c left join pg_proc p on p.oid=c.signature`;expect(actual.rows).toBe(2300);expect(actual.drift).toBe(0);report.exactSourceContract=actual;}
+  if(queryShapeVariant==='candidate'){const [actual]=await owner.client`select count(*)::int as rows,count(*)filter(where(c.body_source collate "C")is distinct from(p.prosrc collate "C")or md5(c.body_source)<>c.body_md5)::int as drift,sum(octet_length(c.body_source))::text as source_bytes from notification_worker_private.helper_contract c left join pg_proc p on p.oid=c.signature`;expect(actual.rows).toBe(2399);expect(actual.drift).toBe(0);report.exactSourceContract=actual;}
   expect(original.find(row=>row.signature==='notification_worker_private.admit_login()')?.body,'actual sealed native admission body matches reviewed query owner').toBe(expectedAdmission.bodyMd5);report.containerBefore=container();save();
   const logging=await notificationPlanLogging(fixture.binding);
   let connection:ReturnType<typeof fixture.connect>;
