@@ -215,12 +215,14 @@ async function DashboardMore({
   </>;
   let teamEmploymentId:string|null=null;
   if(!admin){
-    if(Array.isArray(homeQuery?.employmentId))notFound();
+    // A const keeps the not-an-array narrowing inside the snapshot callback below.
+    const selectedEmploymentId=homeQuery?.employmentId;
+    if(Array.isArray(selectedEmploymentId))notFound();
     // Personal landing never needs the legacy first-employment read, which includes compensation.
     // Only an explicit workbench request resolves management authority here; its selected own
     // identity is salary-free and cannot be replaced by a query-string role or company scope.
     if(homeQuery?.workspace!=='team')return personalLanding();
-    const identity=await withSharedReadSnapshot(s,()=>readEmployeeHomeIdentity(s,homeQuery.employmentId),undefined,requestReadScope()).catch(error=>{
+    const identity=await withSharedReadSnapshot(s,()=>readEmployeeHomeIdentity(s,selectedEmploymentId),undefined,requestReadScope()).catch(error=>{
       if(error instanceof HomeAccessError&&error.code==='employmentUnavailable')notFound();
       throw error;
     });
