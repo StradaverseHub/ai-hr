@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {existsSync,lstatSync,mkdirSync,mkdtempSync,realpathSync,renameSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
+import {existsSync,fstatSync,lstatSync,mkdirSync,mkdtempSync,readdirSync,realpathSync,renameSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -49,6 +49,55 @@ test('native runtime retirement holds inode and never follows a link', {skip:pro
   mkdirSync(build);
   assert.throws(()=>files.retireCell(2,comparisonClock()+10000),/name changed/);
   assert(existsSync(second.focusedEvidence)&&existsSync(build)&&existsSync(join(source,'.next-previous')));
+ }finally{
+  files?.close();
+  process.chdir(before);
+  rmSync(temp,{force:true,recursive:true});
+ }
+});
+
+test('pins each unlinked build inode across reuse and releases all three on owner close',{skip:process.platform!=='linux'},()=>{
+ const temp=realpathSync(mkdtempSync(join(tmpdir(),'worker-build-births-')));
+ const before=process.cwd(),workspace=join(temp,'work'),runtime=join(temp,'runner'),source=join(workspace,'source');
+ const build=join(source,'.next'),seed=join(runtime,'aihr-worker-comparison-next');
+ mkdirSync(source,{recursive:true,mode:0o700});mkdirSync(runtime,{mode:0o700});
+ process.chdir(source);
+ let files;
+ function matchingDescriptors(row){
+  const matches=[];
+  for(const entry of readdirSync('/proc/self/fd')){
+   try{
+    const held=fstatSync(Number(entry),{bigint:true});
+    if(held.dev===row.dev&&held.ino===row.ino)matches.push(held);
+   }catch(error){if(error.code!=='EBADF')throw error;}
+  }
+  return matches;
+ }
+ try{
+  files=holdWorkerComparisonFiles({GITHUB_WORKSPACE:workspace,RUNNER_TEMP:runtime});
+  mkdirSync(seed,{mode:0o700});
+  files.holdSeed();
+  const retired=[];
+  for(const ordinal of [1,2,3]){
+   const paths=files.openCell({ordinal,name:'build-'+ordinal});
+   mkdirSync(build,{mode:0o700});
+   writeFileSync(join(build,'BUILD_ID'),'fictional-build',{mode:0o600});
+   const row=lstatSync(build,{bigint:true});
+   assert(!retired.some(previous=>previous.dev===row.dev&&previous.ino===row.ino));
+   files.holdBuild(ordinal,{directory:{device:String(row.dev),inode:String(row.ino)}});
+   files.retireCell(ordinal,comparisonClock()+10000);
+   assert(!existsSync(build)&&!existsSync(paths.focusedEvidence)&&!existsSync(paths.privateDir));
+   retired.push(row);
+   for(const previous of retired){
+    const matches=matchingDescriptors(previous);
+    assert.equal(matches.length,1,'retired runtime birth must stay pinned');
+    assert(matches[0].isDirectory()&&matches[0].nlink===0n);
+   }
+  }
+  files.retireSeed(comparisonClock()+10000);
+  assert(!existsSync(seed)&&!existsSync(join(runtime,'aihr-worker-comparison-cells')));
+  files.close();
+  assert(retired.every(previous=>matchingDescriptors(previous).length===0));
  }finally{
   files?.close();
   process.chdir(before);

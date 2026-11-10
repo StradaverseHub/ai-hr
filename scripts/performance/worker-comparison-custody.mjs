@@ -162,7 +162,12 @@ export function holdWorkerComparisonFiles(env){
     const cell=currentCell(ordinal);
     roots();
     if(cell.build===null)assert(absent(named(source,buildName)),'Worker comparison cannot retire an unknown runtime build');
-    else retire(source,buildName,cell.build,deadline);
+    else{
+     roots();
+     // The name and tree are gone before reuse. Keep the unlinked inode pinned
+     // until the owner closes so the filesystem cannot give it to the next cell.
+     removeKnown(source,buildName,cell.build,deadline);
+    }
     retire(temp,'aihr-focused',cell.focused,deadline);
     close(cell.evidence);
     retire(work,cell.name,cell.directory,deadline);
