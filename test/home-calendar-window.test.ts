@@ -98,7 +98,7 @@ beforeAll(async()=>{
  const moved=await hire('company change');
  const [current]=await owner.db.select().from(s.assignment).where(eq(s.assignment.employmentId,moved.employmentId));
  await owner.db.update(s.assignment).set({validTo:`${Y0}-12-27`}).where(eq(s.assignment.id,current.id));
- await owner.db.insert(s.assignment).values({tenantId:b.tenantId,employmentId:moved.employmentId,departmentId:current.departmentId,companyId:other.id,
+ await owner.db.insert(s.assignment).values({tenantId:b.tenantId,employmentId:moved.employmentId,departmentId:otherDepartment,companyId:other.id,
   employmentType:current.employmentType,validFrom:`${Y0}-12-27`});
  const tenure=await hire('short tenure',b.companyId,b.deptA,`${Y0}-12-14`);
  await owner.db.update(s.employment).set({terminatedOn:`${Y1}-01-10`}).where(eq(s.employment.id,tenure.employmentId));

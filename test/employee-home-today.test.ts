@@ -9,7 +9,7 @@ vi.mock('../core/entitlements',()=>({isModuleEnabled:state.enabled}));
 // Home Today reads its clock summary and work locations through one bundled owner; the two stand-ins below are what
 // that owner returns (its equivalence with the separate owners is proven in test/home-own-clock-day.test.ts).
 vi.mock('../packs/attendance/service',()=>({ownClockTodayHomeTx:async(tx:unknown,ctx:unknown,id:string)=>
- ({clock:await state.clock(tx,ctx,id),workLocations:await state.locations(tx,id)})}));
+ ({clock:await state.clock(tx,ctx,id),workLocations:await state.locations(tx,id),calendar:'own calendar window'})}));
 vi.mock('../packs/leave/service',()=>({approvedLeavePresenceByEmploymentTx:state.leave}));
 vi.mock('../packs/payroll/service',()=>({readOwnNextPayrollPaymentDate:state.payroll}));
 import {readEmployeeHomeToday} from '../core/employee-home-today';
@@ -20,7 +20,7 @@ describe('Your Day independent own metadata',()=>{
  it('uses canonical owners and sends only the small clock and recorded payment facts',async()=>{
   const signal=new AbortController().signal;
   const value=await readEmployeeHomeToday(ctx,'own',signal);expect(validateEmployeeHomeToday(value,'own')).toEqual(todayData());
-  expect(state.leave).toHaveBeenCalledWith(state.clock.mock.calls[0][0],['own'],date,date);
+  expect(state.leave).toHaveBeenCalledWith(state.clock.mock.calls[0][0],['own'],date,date,'own calendar window');
   const [attendanceTx]=state.clock.mock.calls[0];
   expect(state.subject).toHaveBeenCalledWith(attendanceTx,ctx,'own');
   expect(state.clock).toHaveBeenCalledWith(attendanceTx,ctx,'own');
