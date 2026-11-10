@@ -12,6 +12,8 @@ import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation,taxBasisOptions,getTaxBasisBatch,listTaxBasisBatches,continueTaxBasisBatch,recoverTaxBasisBatch} from '../core/payroll-tax-basis';
 import {readEffectiveTaxBasesTx} from '../core/payroll-tax-basis-read';
+import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -50,6 +52,19 @@ describe('authorized immutable historical income tax corrections',()=>{
   const repeated=await previewTaxBasisRecalculation(ctx,selection());expect(repeated.unchangedCount).toBe(1);expect(repeated.eligibleCount).toBe(0);
   await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.id,travel));
   const next=await previewTaxBasisRecalculation(ctx,selection());expect(next.eligibleCount).toBe(1);expect(next.employees[0].months[0].items.find(i=>i.code==='TRV')?.previousTreatment).toMatch(/Taxable/);expect(next.employees[0].months[0].taxable).toBe(5000);
+ });
+ it('previews from a read-only snapshot while a history writer and an Access editor hold their exclusive locks',async()=>{
+  // Before, the preview took the history barrier and the exclusive Access lock for its whole computation (up to
+  // 25 s), so it waited here and every payroll calculation queued behind it. Now it neither waits nor blocks.
+  const preview=await withTenant(ctx,async tx=>{
+   await lockPayrollHistoryWriteTx(tx,b.tenantId);await lockAccessConfigurationWriteTx(tx,b.tenantId);
+   let timer:ReturnType<typeof setTimeout>|undefined;
+   const waited=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('the preview waited for a tenant-wide lock')),20000);});
+   try{return await Promise.race([previewTaxBasisRecalculation(ctx,selection()),waited]);}finally{clearTimeout(timer);}
+  });
+  expect(preview.eligibleCount).toBe(1);expect(preview.recordCount).toBe(3);
+  // The saved preview is the one a confirmation recomputes and checks under the write locks.
+  const batch=await confirm(preview);expect((await getTaxBasisBatch(ctx,batch.id))?.completedCount).toBe(1);
  });
  it('feeds the corrected prefix into a real future run while preserving prior issued money',async()=>{
   await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.id,travel));

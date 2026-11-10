@@ -162,9 +162,19 @@ export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,
  for(const id of ids){const subjects=await tx.execute<{id:string;employeeNo:string;name:string}>(sql`select * from app.payroll_tax_basis_subjects(${id}::uuid,null,null)`);employees.push(...subjects.map(s=>({...s,companyId:id})));}
  const years=await tx.execute<{year:number}>(sql`select distinct left(pay_period,4)::integer as year from payroll_batch where company_id=any(${uuidArray(ids)}) and status in ('processed','closed') order by year desc`);return {companies,employees,years:years.map(r=>r.year),canRecalculate};
  });}
-export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:TaxBasisSelection):Promise<TaxBasisPreview>{validateSelection(selection);return withTenant(ctx,async tx=>{
- await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await permission(tx,ctx,selection.companyId,true);const computed=await computeTx(tx,ctx,selection);const id=randomUUID(),createdAt=new Date().toISOString(),expiresAt=new Date(Date.now()+15*60000).toISOString();const previewHash=hash({selection,computed});
- const preview:TaxBasisPreview={...computed,previewId:id,previewHash,createdAt,expiresAt};await tx.execute(sql`insert into payroll_tax_basis_preview(id,tenant_id,company_id,created_by,preview,selection,preview_hash,expires_at) values(${id}::uuid,${ctx.tenantId}::uuid,${selection.companyId}::uuid,${ctx.userId!}::uuid,${JSON.stringify(preview)}::jsonb,${JSON.stringify(selection)}::jsonb,${previewHash},${expiresAt}::timestamptz)`);return preview;
+/** The preview computes in one read-only snapshot with no tenant-wide lock: everything it reads is committed
+ * whole by its writers (a history import or revert, a correction employee), so a snapshot sees each of them all or
+ * nothing, exactly as the shared history barrier made it before, and the database refuses any write in it. Only
+ * the preview record is then saved, in a short transaction that rechecks the caller's authority on the primary.
+ * Confirming still recomputes the selection under the history and Access write locks and refuses a preview whose
+ * figures no longer match, so a change between the snapshot and the confirmation is never applied. */
+export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:TaxBasisSelection):Promise<TaxBasisPreview>{validateSelection(selection);
+ const computed=await withTenant(ctx,async tx=>{await permission(tx,ctx,selection.companyId,true);return computeTx(tx,ctx,selection);},{readOnlySnapshot:true});
+ const id=randomUUID(),createdAt=new Date().toISOString(),expiresAt=new Date(Date.now()+15*60000).toISOString();const previewHash=hash({selection,computed});
+ const preview:TaxBasisPreview={...computed,previewId:id,previewHash,createdAt,expiresAt};
+ return withTenant(ctx,async tx=>{
+  await permission(tx,ctx,selection.companyId,true);
+  await tx.execute(sql`insert into payroll_tax_basis_preview(id,tenant_id,company_id,created_by,preview,selection,preview_hash,expires_at) values(${id}::uuid,${ctx.tenantId}::uuid,${selection.companyId}::uuid,${ctx.userId!}::uuid,${JSON.stringify(preview)}::jsonb,${JSON.stringify(selection)}::jsonb,${previewHash},${expiresAt}::timestamptz)`);return preview;
  });}
 async function recordEventTx(tx:Tx,ctx:SessionContext,batchId:string,companyId:string,kind:string,detail:unknown={},employmentId:string|null=null){await tx.execute(sql`insert into payroll_tax_basis_event(tenant_id,company_id,batch_id,employment_id,actor_id,kind,detail) values(${ctx.tenantId}::uuid,${companyId}::uuid,${batchId}::uuid,${employmentId}::uuid,${ctx.userId!}::uuid,${kind},${JSON.stringify(detail)}::jsonb)`);}
 async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},resume=false):Promise<{id:string}>{
