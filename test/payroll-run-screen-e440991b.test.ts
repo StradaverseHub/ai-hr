@@ -106,9 +106,15 @@ describe('e440991b point 5 — the payslip rows open the employee’s full resul
     // employee". Deleting this line would turn a convenience link into a way to read another company's
     // payroll by editing the address bar, and nothing else in the tree would notice.
     const view = code('app/payroll/transaction-view/page.tsx');
-    expect(view).toMatch(
-      /const employmentId\s*=\s*\n?\s*sp\.employmentId && employees\.some\(\(e\) => e\.employmentId === sp\.employmentId\) \? sp\.employmentId : undefined;/,
-    );
+    // d035f387d (docs/adr/2026-11-07-payroll-inquiry-pages.md) resolves the selection through bounded
+    // employee choices instead of the full scoped list: the requested id is only ever handed to the
+    // scoped owner, and only the employee IT returns becomes the filter.
+    expect(view).toContain("readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'labels',selectedId:sp.employmentId})");
+    expect(view).toContain('const employmentId=employeeChoices.selected?.employmentId;');
+    expect(view.match(/\bsp\.employmentId\b/g), 'the raw parameter reaches no other read').toHaveLength(1);
+    const choices = code('core/employee-choice.ts');
+    expect(choices).toContain('const scoped=sql`${employment.tenantId}=${ctx.tenantId}::uuid and ${p.companyIds.length?sql`${employment.companyId}=any(');
+    expect(choices).toContain('where ${scoped} and ${employment.id}=${p.selectedId}::uuid');
     // …and the company fence it sits behind.
     expect(view).toMatch(/const companyId = sp\.companyId && scopeIds\.includes\(sp\.companyId\) \? sp\.companyId : undefined;/);
   });

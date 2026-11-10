@@ -226,7 +226,13 @@ describe('4c63b37e · (a) the column is on the screen and in the export, immedia
     const read = code('core/read.ts');
     expect(read).toContain('return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts),{presentationSnapshot:true});');
     expect(read).toContain('if (!existingTx) return withTenant(ctx, read);');
-    expect(read).toContain('await assertAiPrincipalTx(existingTx, ctx);');
+    // 4edf8b71b (docs/adr/2026-11-07-home-initial-read-cohort.md) lets a pure presentation snapshot
+    // re-check the principal through the read-composition owner. Either branch still re-checks it
+    // before the supplied transaction is used; neither waives the check.
+    expect(read).toContain('await (options?.presentationSnapshot?assertReadCompositionPrincipalTx:assertAiPrincipalTx)(existingTx, ctx);');
+    const composition = code('core/read-composition-principal.ts');
+    expect(composition).toContain('if(carrier?.snapshot===true)return assertAiPresentationPrincipalTx(tx,ctx);');
+    expect(composition).toContain(' return assertAiPrincipalTx(tx,ctx);\n}');
     for (const src of [page, route, inquiry]) expect(src, 'presentation adds no separate balance read').not.toMatch(/\bleaveBalances(?:Tx)?\(/);
   });
 });
