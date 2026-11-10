@@ -116,6 +116,7 @@ import {
   leaveType,
   tenant,
 } from '../db/schema';
+import { releasedLabelRows } from '../core/system-label-visibility';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { leaveConfigHealthAll, type LeaveConfigHealth } from '../lib/leave-config-health';
 // r299 (3de1453a) — the health derivation's `earnedMethodNotAnnualLeave` is decided by the engine's own
@@ -354,6 +355,15 @@ export async function surveyTenants(url: string): Promise<TenantSurveyRow[]> {
 }
 
 // ── THE STAGE RUNNER ──────────────────────────────────────────────────────────────────────────────────
+/** The tenant's active grades for the balance-health read. This tool runs on the storage-owner connection, which row
+ * security does not govern, so grades still staged by a running System Labels import (migration 9961) are filtered
+ * explicitly (core/system-label-visibility.ts). */
+export async function resetHealthGrades(db: Db | Tx, tenantId: string): Promise<{ id: string; name: string }[]> {
+  return db
+    .select({ id: jobGrade.id, name: jobGrade.name })
+    .from(jobGrade)
+    .where(and(eq(jobGrade.tenantId, tenantId), sql`${jobGrade.archivedAt} is null`, releasedLabelRows(jobGrade)));
+}
 export async function runEntitlementReset(url: string, opts: ResetOptions): Promise<EntitlementResetReport> {
   opts = { ...opts, ...(opts.testHooks ? { testHooks: { ...opts.testHooks } } : {}) };
   if (!STAGES.includes(opts.stage)) throw new Error(`unknown stage '${opts.stage}' — expected config | accruals`);
@@ -415,10 +425,7 @@ export async function runEntitlementReset(url: string, opts: ResetOptions): Prom
     .from(entitlementEligibilityRule)
     .where(eq(entitlementEligibilityRule.tenantId, tenantId))
     .orderBy(asc(entitlementEligibilityRule.lineageId), asc(entitlementEligibilityRule.validFrom));
-  const grades = await db
-    .select({ id: jobGrade.id, name: jobGrade.name })
-    .from(jobGrade)
-    .where(and(eq(jobGrade.tenantId, tenantId), sql`${jobGrade.archivedAt} is null`));
+  const grades = await resetHealthGrades(db, tenantId);
 
   // A rule belongs to the leave type its template LINEAGE belongs to (constant across versions).
   const leaveTypeByLineage = new Map<string, string>();

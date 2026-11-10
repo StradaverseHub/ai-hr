@@ -33,7 +33,22 @@ import.
   count. The rest reach a catalogue row only through a stored reference or a caller-supplied id: nothing references a
   new code and no reader discloses its id. `existing_system_label_import_keys` and `system_label_catalog_conflicts`
   keep seeing staged codes so they stay reserved. No view reads these tables.
-- **Release** is one short transaction under the same locks: `app.system_label_import_conflicts` (codes that appeared
+- **Owner-connection readers.** The storage-owner connection (scheduled sweeps, operator scripts, the import worker)
+  bypasses row security. Every TypeScript read of the nine tables on it was traced from the owner handle
+  (`createDb(MIGRATION_DATABASE_URL)`, `owner.withTenant`, `owner.client`, the worker's reserved connection):
+  - *Enumerations, now filtered* with `releasedLabelRows` (core/system-label-visibility.ts): the unreachable
+    approval rules report's code names (moved to scripts/lib/approval-rule-label-names.ts), the entitlement
+    reset's active grades (`resetHealthGrades`) and its criteria catalogues (`loadCriteriaCatalogues`).
+    `test/system-label-import-owner-readers.test.ts` proves each hides staged codes until release and pins that
+    every catalogue read in them carries the predicate.
+  - *By stored reference, unchanged* (no stored reference can name a staged code): lifecycle personnel refresh
+    and V9 sweep/e-mail (case and draft ids; notification e-mail sweep), due movements (stored placement ids; review
+    sweep), payroll loop acknowledgements (assignment departments; payroll loop tick), information snapshot
+    reconciliation, child-relief resync, probation sweep (no catalogue read on its owner path).
+  - *Intended*: the import worker's discard (`app.system_label_import_discard_batch`) deletes staged rows.
+  - *Not deployed*: development fixtures, seeds and rehearsal scripts. Tenant provisioning writes catalogues
+    only for a new tenant, which has no staged import.
+ under the same locks: `app.system_label_import_conflicts` (codes that appeared
   while staged and that the preview's rules refuse; unique indexes caught the rest physically), the administrator's
   fresh authority over every staged code, one `app.system_label_import_release` row (which `app.import_released_attempt_ids`
   now includes, so codes and events become visible at once) and the import's `system-label-import.applied` history
@@ -59,6 +74,13 @@ access-configuration and profile-edit-policy locks (286 / 786 / 1,546 ms at 10 /
   `app.access_capability_tenant_publication`. `app.access_capability_effective(tenant)` shows a tenant the replaced
   rows while a version is publishing and has not reached it; the 14 installed readers of `supported`/`bindings` read
   through it (inlined; one empty partial-index probe when nothing is publishing).
+- **Safety property**: no capability becomes effective for a tenant without that tenant's own immutable publication
+  audit, which commits with its publication row, preview revision and writer generation. Tests: a refused audit rolls
+  back that tenant's publication, revision and generation and every reader keeps the previous catalogue; tenants
+  published earlier stay consistent (one audit, one generation step) and later ones stay unpublished; every
+  installed reader of supported/bindings reads `app.access_capability_effective` (the four that still name the
+  stored table read ids or scopes only) and an open version with no tenant row makes nothing effective; the resumed
+  run publishes the refused tenant exactly once.
 - The publisher opens the version in one short transaction (exact owner, catalogue, functions and every tenant's
   readiness, then the flip) holding no tenant lock, publishes each tenant in its own transaction (its two locks, its
   publication row, preview revision, writer generation and audit event, exactly as before for that tenant), and closes
