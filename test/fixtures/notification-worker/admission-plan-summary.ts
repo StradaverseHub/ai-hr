@@ -43,7 +43,7 @@ export function notificationHelperContractScans(entries:readonly AutoExplainMess
   if(found.length!==1||found[0]['Actual Loops']!==1||!['Seq Scan','Index Scan','Index Only Scan','Bitmap Heap Scan'].includes(String(found[0]['Node Type'])))throw Error('One complete native helper contract scan required per admission');
   const numeric=(key:string)=>{const n=found[0][key]??(key==='Actual Rows'?NaN:0);if(typeof n!=='number'||!Number.isFinite(n)||n<0)throw Error('Native helper scan counter required');return n;};
   const rows=numeric('Actual Rows')+numeric('Rows Removed by Filter')+numeric('Rows Removed by Index Recheck');
-  if(rows!==2300)throw Error('Every one of2300canonical helper rows must be examined');return{rows,loops:1};
+  if(rows!==2399)throw Error('Every one of2399canonical helper rows must be examined');return{rows,loops:1};
  });
- return{admissions:scans.length,rowsPerAdmission:2300,everyContractExamined:true};
+ return{admissions:scans.length,rowsPerAdmission:2399,everyContractExamined:true};
 }
