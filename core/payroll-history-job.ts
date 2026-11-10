@@ -31,7 +31,7 @@ import {sql} from 'drizzle-orm';
 import {createHash} from 'node:crypto';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {bulkJobProgress,bulkJobTx,bulkJobWorkerStatusTx,enqueueBulkJobTx,isBulkJobId,type BulkJobRow} from './bulk-job';
-import {BulkJobWaiting,isTransientBulkJobError,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobPrepared,type BulkJobRefused,type BulkJobRunner,type BulkJobUnit} from './bulk-job-worker';
+import {BulkJobAuthorityLost,BulkJobWaiting,isTransientBulkJobError,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobSettleUnit,type BulkJobPrepared,type BulkJobRefused,type BulkJobRunner,type BulkJobUnit} from './bulk-job-worker';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {
  PayrollHistoryRevisionError,checkPayrollHistoryConfirm,checkPayrollHistoryRevert,joinPayrollHistoryStageTx,openPayrollHistoryStageTx,payrollHistoryFailureReason,
@@ -291,22 +291,20 @@ async function discardHistory(job:BulkJobRow,unit:BulkJobDiscardUnit):Promise<'m
  * transaction wrote it. Nothing when it committed, or when the creator's access is gone (the single transaction's
  * recorder skipped an attempt its actor could no longer see).
  *
- * Once: the job's `failureRecorded` plan marker says the record exists. The application role does not write the job
- * store and a settle unit has no fenced app-role transaction, so the marker can no longer commit with the record: it
- * is written right after it, in the settle's owner transaction (unit.ownerTx, sealed). The record stays app-role work,
- * outside that owner transaction. If the worker stops between the two commits the kernel's retried settle records
- * the failure again (never loses it). */
-async function recordFailureOnce(ctx:SessionContext|null,job:BulkJobRow,unit:BulkJobDiscardUnit){
+ * Exactly once: the record and the job's `failureRecorded` plan marker commit in one fenced app-role transaction
+ * (unit.fenceTx locks the job row; unit.set writes the sealed marker), so a retried settle finds the marker. */
+async function recordFailureOnce(ctx:SessionContext|null,job:BulkJobRow,unit:BulkJobSettleUnit){
  if(job.state==='completed'||!ctx)return;
  const plan=planOf(job),input=inputOf(job);
  if(plan?.failureRecorded||plan?.released)return;
  const attemptId=plan?.attemptId??input?.attemptId;const operation=plan?.operation??input?.operation;
  if(!attemptId||!operation)return;
- const recorded=await withTenant(ctx,async tx=>{
+ await withTenant(ctx,async tx=>{
+  // The creator's access went between the kernel's context read and this transaction: nothing to record, as above.
+  try{await unit.fenceTx(tx);}catch(error){if(error instanceof BulkJobAuthorityLost)return;throw error;}
   const [fresh]=await tx.execute<{plan:JobPlan|null}>(sql`select plan from bulk_job where id=${job.id}::uuid`);
-  if(fresh?.plan?.failureRecorded)return false;
+  if(fresh?.plan?.failureRecorded)return;
   await recordPayrollHistoryFailureTx(tx,ctx,attemptId,operation==='revert'?'revert_failed':'failed',job.error??payrollHistoryFailureReason(null));
-  return true;
+  await savePlan(unit,tx,{failureRecorded:true});
  });
- if(recorded)await unit.ownerTx(owner=>savePlan(unit,owner,{failureRecorded:true}));
 }

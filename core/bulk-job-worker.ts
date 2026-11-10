@@ -59,6 +59,8 @@ export type BulkJobUnit={
  ownerTx?<T>(fn:(owner:postgres.ReservedSql)=>Promise<T>):Promise<T>;
 };
 export type BulkJobDiscardUnit=Omit<BulkJobUnit,'fenceTx'|'ownerTx'>&{ownerTx<T>(fn:(owner:postgres.ReservedSql)=>Promise<T>):Promise<T>};
+/** A settle's unit: fenced app-role transactions (while the creator's authority lasts) and owner transactions. */
+export type BulkJobSettleUnit=Omit<BulkJobUnit,'ownerTx'>&{ownerTx<T>(fn:(owner:postgres.ReservedSql)=>Promise<T>):Promise<T>};
 export type BulkJobFinalized={result:unknown;counters?:Record<string,number>};
 export type BulkJobHandler<P=any>={
  kind:string;
@@ -104,8 +106,9 @@ export type BulkJobHandler<P=any>={
   *  event). Runs after afterTerminal and before the clean-up and the completion notice; until it succeeds the kernel
   *  keeps the job unnotified with its inputs and retries it on a later tick with backoff (bulk_job.settled_at records
   *  success), so it must be idempotent. ctx is null when the creator's access is gone. Like discard, it gets no raw
-  *  owner handle: owner work runs in unit.ownerTx, one transaction attributed to the job (5014). */
- settle?(ctx:SessionContext|null,job:BulkJobRow,unit:BulkJobDiscardUnit):Promise<void>;
+  *  owner handle: owner work runs in unit.ownerTx, one transaction attributed to the job (5014). App-role work that
+  *  must commit together with a marker on the job fences its transaction (unit.fenceTx) and writes it with unit.set. */
+ settle?(ctx:SessionContext|null,job:BulkJobRow,unit:BulkJobSettleUnit):Promise<void>;
 };
 /** A unit that cannot start until other work finishes (a tenant-serialised kind whose turn has not come): the kernel
  * runs it again after a short pause, without using the job's transient retry budget, so waiting never fails a job. */
@@ -473,7 +476,7 @@ async function closeTerminal(connection:postgres.ReservedSql,handler:BulkJobHand
  if(handler.settle&&!fresh.settled_at){
   try{
    const unit=unitOf(connection,c);
-   const settleUnit:BulkJobDiscardUnit={metric:unit.metric,set:unit.set,step:unit.step,verifySeal:unit.verifySeal,ownerTx:fn=>ownerTransaction(connection,c,'settle',fn)};
+   const settleUnit:BulkJobSettleUnit={...unit,ownerTx:fn=>ownerTransaction(connection,c,'settle',fn)};
    await handler.settle(ctx,fresh,settleUnit);
    await connection`update bulk_job set settled_at=now(),transient_retries=0,not_before=null where id=${fresh.id}::uuid`;
   }catch(error){
