@@ -43,7 +43,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
-import {createWorkerLoadedDiagnostics,projectWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
+import {createWorkerLoadedDiagnostics,homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
 import {readMeasuredClockCs,readMeasuredClockIdentity} from './measured-lock-clock.mjs';
 import {createMeasuredPreflightObserver,measuredLockSampleLimit,observeDatabaseLockCore,observeMeasuredLockConnection} from './measured-lock-observer.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
@@ -183,6 +183,11 @@ const loadedNavigation=suite==='whole-system'?createNavigationCaptureCollector({
 const nativeShell=strictRenderedPreflight?baselineNavigation.nativeHiddenShell(renderedDeadline):undefined;
 // Keep complete role routes for baseline and whole-system browser pilots.
 const routePool=user=>routePools[user.role];
+// Rendered Home failure text maps to its static catalog key; an unreadable catalog only yields 'unrecognized'.
+const homeFailureMessages=(()=>{
+ try{return homeFailureMessageCatalog(['en','ms','ta','th','vi','zh'].map(locale=>JSON.parse(readFileSync(new URL('../../messages/'+locale+'.json',import.meta.url),'utf8'))));}
+ catch{return new Map();}
+})();
 const measuredRoutePools=suite==='whole-system'?routePools:{employee:['/me','/claims','/leave'],manager:['/approvals','/claims','/performance/home'],companyHR:['/admin/personnel','/payroll','/claims'],groupHR:['/admin/personnel','/payroll','/claims']};
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
@@ -899,10 +904,17 @@ async function main(){
    const cards=page.locator('main ['+attribute+']');
    await cards.first().waitFor({timeout:timeout()});
    await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:timeout()});
-   const failures=await page.locator('main [role="alert"], main [data-today-unavailable], main [data-read-unavailable]').allTextContents();
+   // Name the owning card, marker and catalog message key, never the rendered text, in shared evidence.
+   const failureNodes=await page.locator('main [role="alert"], main [data-today-unavailable], main [data-read-unavailable]').evaluateAll(nodes=>nodes.map(node=>{
+    const card=node.closest('[data-home-card],[data-dashboard-card]');
+    return {card:card?.getAttribute('data-home-card')??card?.getAttribute('data-dashboard-card')??null,
+     marker:node.hasAttribute('data-today-unavailable')?'today-unavailable':node.hasAttribute('data-read-unavailable')?'read-unavailable':'alert',
+     section:node.closest('[data-today-section]')?.getAttribute('data-today-section')??null,text:node.textContent??''};
+   }));
+   const failures=failureNodes.map(node=>node.text);
    if(path==='/'){todaySectionIds=await page.locator('main [data-today-section]').evaluateAll(sections=>sections.map(section=>section.getAttribute('data-today-section')).sort());assert(todaySectionIds.length>0,'current Today sections missing');}
    cardFailures=failures.length;
-   if(cardFailures)report.homeCardFailures.push({role:user.role,phase,messages:failures});
+   if(cardFailures)report.homeCardFailures.push({role:user.role,phase,messages:failures,cards:homeCardFailureFacts(failureNodes,homeFailureMessages)});
    // Keep collecting independent workflow and load evidence. A handled card error
    // still fails the run even if the other journeys meet their targets.
    homeCardIds=await cards.evaluateAll((cards,attribute)=>cards.map(card=>card.getAttribute(attribute)).sort(),attribute);

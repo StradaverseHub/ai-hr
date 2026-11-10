@@ -485,11 +485,58 @@ it('aggregates only closed loaded traffic cohorts, Home phases and real sampled 
  ]});
  expect(result.loadedAdvisory).toMatchObject({activityWaitSamples:2,appAdvisorySamples:2,activityWithoutAdvisorySamples:1,
   families:{'audit-chain':1,'advisory-unclassified':1,'access-configuration':1,'leave-dependency-employment':1}});
- expect(result.homeFailures).toEqual([{role:'employee',phase:'loaded',count:2},{role:'manager',phase:'baseline',count:1}]);
+ expect(result.homeFailures).toEqual([{role:'employee',phase:'loaded',count:2,cards:[]},{role:'manager',phase:'baseline',count:1,cards:[]}]);
  expect(JSON.stringify(result)).not.toContain(sensitive);
  expect(validateWorkerDriverFailure({...result,traffic:{...result.traffic,omitted:1}})).toBeNull();
  expect(validateWorkerDriverFailure({...result,loadedAdvisory:{...result.loadedAdvisory,families:{secret:1}}})).toBeNull();
  expect(validateWorkerDriverFailure({...result,loadEntered:false})).toBeNull();
+});
+
+it('names the failed Home card and its catalog message key without exporting rendered text',async()=>{
+ const {homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,validateWorkerDriverFailure,workerDriverFailureBytes}
+  =await import('../scripts/performance/worker-comparison-failure.mjs');
+ const sensitive='PERF Person 0004 private-id 4f0c';
+ const catalog=homeFailureMessageCatalog([{employeeHome:{tasks:{timeout:'Your assigned work is taking longer than expected. Try again.',
+  failed:'Your assigned work is unavailable. Try again.'},team:{failed:'Shared team status could not be loaded.'}},
+  'not-a-key!':{value:sensitive}}]);
+ const nodes=[
+  {card:'tasks',marker:'alert',section:null,text:' Your assigned work is taking longer than expected. Try again. '},
+  {card:'team',marker:'alert',section:null,text:'Shared team status could not be loaded.'},
+  {card:sensitive,marker:sensitive,section:sensitive,text:sensitive},
+  {card:'today',marker:'today-unavailable',section:'today-at-a-glance',text:sensitive},
+ ];
+ const facts=homeCardFailureFacts(nodes,catalog);
+ expect(facts).toEqual([
+  {card:'tasks',marker:'alert',section:null,message:'employeeHome.tasks.timeout'},
+  {card:'team',marker:'alert',section:null,message:'employeeHome.team.failed'},
+  {card:'outside-card',marker:'alert',section:'other',message:'unrecognized'},
+  {card:'today',marker:'today-unavailable',section:'today-at-a-glance',message:'unrecognized'},
+ ]);
+ const report={homeCardFailures:[{role:'manager',phase:'baseline',messages:nodes.map(node=>node.text),cards:facts},
+  {role:'manager',phase:'baseline',messages:[sensitive],cards:[facts[0],{...facts[1],message:sensitive}]}]};
+ const result=projectWorkerDriverFailure('preflight-checks',null,report);
+ expect(validateWorkerDriverFailure(result)).toEqual(result);
+ expect(result.homeFailures).toEqual([{role:'manager',phase:'baseline',count:2,cards:[
+  {card:'tasks',marker:'alert',message:'employeeHome.tasks.timeout',count:2},
+  {card:'outside-card',marker:'alert',message:'unrecognized',count:1},
+  {card:'team',marker:'alert',message:'employeeHome.team.failed',count:1},
+ ]}]);
+ expect(JSON.stringify(result)).not.toContain(sensitive);
+ for(const invalid of [
+  {...result.homeFailures[0],cards:[{...result.homeFailures[0].cards[0],card:sensitive}]},
+  {...result.homeFailures[0],cards:[{...result.homeFailures[0].cards[0],message:sensitive}]},
+  {...result.homeFailures[0],cards:[...result.homeFailures[0].cards,{card:'today',marker:'alert',message:'unrecognized',count:1}]},
+  {role:'manager',phase:'baseline',count:2},
+ ])expect(validateWorkerDriverFailure({...result,homeFailures:[invalid]})).toBeNull();
+ // Every role and phase failing every card still fits the runner's bounded read.
+ const many={homeCardFailures:['employee','manager','companyHR','groupHR'].flatMap(role=>['baseline','loaded'].flatMap(phase=>
+  ['calendar','celebrations','notices','summary','tasks','team','timeOff','today'].map(card=>({role,phase,messages:[],
+   cards:[{card,marker:'read-unavailable',section:null,message:'employeeHome.'+card+'.timeoutWithAVeryLongCatalogKeySegment'}]})))),
+  coverage:Array.from({length:10},()=>({status:'failed'}))};
+ const bounded=projectWorkerDriverFailure('loaded-acceptance','movement',many);
+ expect(validateWorkerDriverFailure(bounded)).toEqual(bounded);
+ expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(workerDriverFailureBytes);
+ expect(bounded.homeFailures).toHaveLength(8);expect(bounded.counts.homeCardFailures).toBe(64);
 });
 
 it('keeps native failure categories bounded, independent of the loaded sampling phase and free of process data',async()=>{
