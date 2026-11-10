@@ -201,6 +201,8 @@ CREATE POLICY employee_import_step_read ON employee_import_step FOR SELECT USING
 CREATE POLICY employee_import_step_write ON employee_import_step FOR INSERT WITH CHECK(app.employee_import_job_access(job_id) AND tenant_id=app.current_tenant_id());
 --> statement-breakpoint
 CREATE POLICY employee_import_step_update ON employee_import_step FOR UPDATE USING(app.employee_import_job_access(job_id)) WITH CHECK(app.employee_import_job_access(job_id));
+--> statement-breakpoint
+CREATE POLICY employee_import_step_delete ON employee_import_step FOR DELETE USING(app.employee_import_job_access(job_id));
 
 --> statement-breakpoint
 -- Audit fixes (see phase-1 audit): enumerators and pickers that must never reach a pending row. Definer functions

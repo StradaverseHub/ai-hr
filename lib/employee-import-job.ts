@@ -8,6 +8,8 @@ export type EmployeeImportRowError={rowNum:number;email:string;fullName?:string;
 export type EmployeeImportProgress={id:string;sourceName:string;state:EmployeeImportState;phase:EmployeeImportPhase|null;total:number;valid:number;invalid:number;stepsTotal:number;stepsDone:number;imported:number;attemptId:string|null;error:string|null;errors:EmployeeImportRowError[];result:EmployeeImportResultSummary|null;updatedAt:string;createdAt:string};
 /** Mirrors the fields of ImportResult the existing result panel renders. */
 export type EmployeeImportResultSummary={companyId:string;imported:number;failed:{rowNum:number;email:string;message:string}[];skipped:number;dependentsImported:number;registersImported:{qualification:number;emergency:number};superiorFailed:{rowNum:number;email:string;message:string}[];fileErrors:string[];warnings:string[];runId:string|null;attemptId:string|null};
+/** Stable code, translated on the screen, for an import refused because another one is still running. */
+export const EMPLOYEE_IMPORT_ALREADY_RUNNING='employee-import-already-running';
 export function employeeImportPercent(job:Pick<EmployeeImportProgress,'state'|'stepsDone'|'stepsTotal'>){
  if(job.state==='completed')return 100;
  return job.stepsTotal>0?Math.min(99,Math.floor(job.stepsDone/job.stepsTotal*100)):0;
