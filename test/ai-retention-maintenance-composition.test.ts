@@ -26,9 +26,8 @@ function carrier(script:Script){
  const log:Step[]=[];
  const execute=async(statement:SQL):Promise<unknown[]>=>{
   const query=dialect.sqlToQuery(statement),text=query.sql;log.push({text,params:query.params});
-  // The oldest tenant's bounded queued wait: a savepoint, a non-increasing lock_timeout, a blocking lock
-  // that a busy tenant refuses with 55P03, then rollback or release and restore.
-  if(/^(savepoint|release savepoint|rollback to savepoint) ai_retention_access_wait$/.test(text))return [];
+  // The oldest tenant's bounded queued wait: in a nested transaction (savepoint scope), a non-increasing
+  // lock_timeout and a blocking lock that a busy tenant refuses with 55P03; restore after a grant.
   if(text.includes(' as saved,'))return [{saved:'500ms',bounded:'250ms'}];
   if(text.startsWith("select set_config('lock_timeout',"))return [{set_config:'500ms'}];
   if(text.startsWith('select pg_advisory_xact_lock(')){const key=String(query.params[0]);if((script.busy??[]).some(id=>key==='access-configuration:'+id))throw Object.assign(Error('canceling statement due to lock timeout'),{code:'55P03'});return [{pg_advisory_xact_lock:''}];}
@@ -43,7 +42,10 @@ function carrier(script:Script){
   if(text.includes('exists(select 1 from oldest)'))return [script.queue??{remaining:false,oldest_age_seconds:null}];
   throw Error('Unscripted maintenance statement');
  };
- return {tx:{execute} as unknown as Tx,log};
+ // A nested transaction is a savepoint scope: the attempt's statements run on the same carrier and a
+ // refusal propagates after the scope rolls back.
+ const transaction=async(fn:(nested:Tx)=>Promise<unknown>)=>{log.push({text:'<nested>',params:[]});try{return await fn({execute,transaction} as unknown as Tx);}catch(error){log.push({text:'<nested rollback>',params:[]});throw error;}};
+ return {tx:{execute,transaction} as unknown as Tx,log};
 }
 const index=(log:Step[],predicate:(step:Step)=>boolean)=>log.findIndex(predicate);
 const mutated=(text:string)=>[...text.matchAll(/\b(?:delete\s+from|update)\s+((?:public|app)\.[a-z_]+)/gi)].map(match=>match[1].toLowerCase());
@@ -112,9 +114,9 @@ describe('AI custody maintenance composition (pure, fake carrier)',()=>{
   const {tx,log}=carrier({tenants:[A,B],busy:[A],transcripts:{[A]:5,[B]:2}});const result=await retireExpiredAiCustodyTx(tx);
   expect(result).toMatchObject({tenants:2,busy:1,transcripts:2});
   // The head waits in the queue under a bounded lock_timeout inside a savepoint, and only the attempt rolls back.
-  const head=log.map(step=>step.text).filter(text=>/ai_retention_access_wait|^select pg_advisory_xact_lock\(| as saved,/.test(text));
-  expect(head.map(text=>text.startsWith('select pg_advisory_xact_lock(')?'lock':text.includes(' as saved,')?'bound':text)).toEqual([
-   'savepoint ai_retention_access_wait','bound','lock','rollback to savepoint ai_retention_access_wait','release savepoint ai_retention_access_wait']);
+  const head=log.map(step=>step.text).filter(text=>/^<nested|^select pg_advisory_xact_lock\(| as saved,|^select set_config\('lock_timeout',/.test(text));
+  expect(head.map(text=>text.startsWith('select pg_advisory_xact_lock(')?'lock':text.includes(' as saved,')?'bound':text.startsWith('select set_config')?'restore':text)).toEqual([
+   '<nested>','bound','lock','<nested rollback>']);
   expect(log.find(step=>step.text.includes(' as saved,'))!.params).toEqual([250,250]);
   expect(log.find(step=>step.text.startsWith('select pg_advisory_xact_lock('))!.params).toEqual(['access-configuration:'+A]);
   const tries=log.filter(step=>step.text.includes('pg_try_advisory_xact_lock'));

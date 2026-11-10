@@ -50,28 +50,27 @@ export const AI_RETENTION_ACCESS_WAIT_MS = 250;
 /**
  * The oldest queue's exclusive Access, waiting its turn in the lock queue for a bounded moment. Later
  * shared writers are delayed by at most that while the current short holders drain. Builtins only: the
- * maintenance owner holds no application function grants. The wait runs inside a savepoint, so a timeout
- * behind a long holder rolls back only the attempt and its lock_timeout change, never the tick; a granted
- * lock is kept to commit. Keeps any tighter lock_timeout the tick already has.
+ * maintenance owner holds no application function grants. The attempt runs in a nested transaction (a
+ * savepoint scope), so a timeout behind a long holder rolls back only the attempt and its lock_timeout
+ * change, never the tick; a granted lock is kept to commit. Keeps any tighter lock_timeout already set.
  */
 async function queuedAccessExclusiveTx(tx: Tx, tenantId: string): Promise<boolean> {
-  await tx.execute(sql`savepoint ai_retention_access_wait`);
-  const [prior] = await tx.execute<{ saved: string }>(sql`select current_setting('lock_timeout') as saved,
-    set_config('lock_timeout',(select (case when s.setting::bigint=0 then ${AI_RETENTION_ACCESS_WAIT_MS}::bigint
-      else least(s.setting::bigint,${AI_RETENTION_ACCESS_WAIT_MS}::bigint) end)::text||'ms'
-      from pg_catalog.pg_settings s where s.name='lock_timeout'),true) as bounded`);
-  if (typeof prior?.saved !== 'string') return unavailable();
+  let saved: unknown;
   try {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + tenantId},0))`);
+    await tx.transaction(async attempt => {
+      const [prior] = await attempt.execute<{ saved: string }>(sql`select current_setting('lock_timeout') as saved,
+        set_config('lock_timeout',(select (case when s.setting::bigint=0 then ${AI_RETENTION_ACCESS_WAIT_MS}::bigint
+          else least(s.setting::bigint,${AI_RETENTION_ACCESS_WAIT_MS}::bigint) end)::text||'ms'
+          from pg_catalog.pg_settings s where s.name='lock_timeout'),true) as bounded`);
+      saved = prior?.saved;
+      await attempt.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + tenantId},0))`);
+    });
   } catch (error) {
     if (pgSqlState(error) !== '55P03') throw error;
-    // Reverts the attempt and the lock_timeout change together; nothing is held.
-    await tx.execute(sql`rollback to savepoint ai_retention_access_wait`);
-    await tx.execute(sql`release savepoint ai_retention_access_wait`);
     return false;
   }
-  await tx.execute(sql`release savepoint ai_retention_access_wait`);
-  await tx.execute(sql`select set_config('lock_timeout',${prior.saved},true)`);
+  if (typeof saved !== 'string') return unavailable();
+  await tx.execute(sql`select set_config('lock_timeout',${saved},true)`);
   return true;
 }
 const count = (value: unknown, max: number): number => {
