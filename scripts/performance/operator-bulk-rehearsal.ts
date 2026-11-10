@@ -93,9 +93,12 @@ async function main(){
   const started=Date.now();let result:unknown,failure:string|null=null;
   try{result=await fn();}catch(e){failure=String((e as Error)?.message??e).slice(0,300);}
   const wallMs=Date.now()-started;await sleep(1000);stop=true;await probes;const locks:TenantLockReport=await sampler.stop();
-  // Holds by the operation itself (not the probes): every sampled hold not taken by a probe backend.
-  const out={name,wallMs,result,failure,probes:Object.fromEntries(Object.entries(lat).map(([k,v])=>[k,stat(v)])),errors:[...new Set(errors)].slice(0,8),errorCount:errors.length,busy:errors.filter(e=>/busy|55P03|57014|try again/i.test(e)).length,tenantLocks:locks};
-  console.log(JSON.stringify({phase:name,wallMs,failure,result:typeof result==='object'?JSON.stringify(result).slice(0,300):result,maxHold:Object.fromEntries(Object.entries(locks.byLock).map(([k,v])=>[k,v.maxMs])),longest:locks.longest.slice(0,3).map(h=>({lock:h.lock,mode:h.mode,ms:h.ms,app:h.app,q:h.queries.slice(0,3)})),probes:out.probes,errorCount:out.errorCount,errors:out.errors}));
+  // Holds by the operation itself, not the probes (which share its pool): a hold whose statements are the probes'.
+  const probeQuery=/attendance|personnel_filter|append_auth_event|employee_home|^select \$?1\b|^select 1$/;
+  const opHolds=locks.holds.filter(h=>!h.queries.some(q=>probeQuery.test(q)));
+  const operationMaxHold=Object.fromEntries(['access','leave','audit','profile'].map(lock=>[lock,Math.max(0,...opHolds.filter(h=>h.lock===lock).map(h=>h.ms))]));
+  const out={name,wallMs,result,failure,operationMaxHold,probes:Object.fromEntries(Object.entries(lat).map(([k,v])=>[k,stat(v)])),errors:[...new Set(errors)].slice(0,8),errorCount:errors.length,busy:errors.filter(e=>/busy|55P03|57014|try again/i.test(e)).length,tenantLocks:{byLock:locks.byLock,longest:locks.longest}};
+  console.log(JSON.stringify({phase:name,wallMs,failure,operationMaxHold,result:typeof result==='object'?JSON.stringify(result).slice(0,300):result,maxHold:Object.fromEntries(Object.entries(locks.byLock).map(([k,v])=>[k,v.maxMs])),longest:locks.longest.slice(0,3).map(h=>({lock:h.lock,mode:h.mode,ms:h.ms,app:h.app,q:h.queries.slice(0,3)})),probes:out.probes,errorCount:out.errorCount,errors:out.errors}));
   return out;
  };
 
