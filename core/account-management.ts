@@ -129,7 +129,7 @@ export async function readManagedAccountDirectory(ctx:SessionContext,userIds:str
    const c=await readRecord<Credential>(auth,`credential:${identity.subject}`);
    if(!c||c.subject!==identity.subject||c.tenantId!==ctx.tenantId||c.issuer!==issuer)continue;
    const exemption=await readRecord<RecoveryExemption>(auth,recoveryExemptionKey(c.subject));
-   result[id]={username:c.username,status:accountStatus(c),activeUntil:c.accountActiveUntil??null,exemptionUntil:recoveryExemptionActive(exemption,now)?exemption.expiresAt:null};
+   result[id]={username:c.username,status:accountStatus(c),activeUntil:c.accountActiveUntil??null,exemptionUntil:exemption&&recoveryExemptionActive(exemption,now)?exemption.expiresAt:null};
   }
   return result;
  });

@@ -10,6 +10,6 @@ export function temporaryPasswordAvailable(c:Pick<Credential,'temporaryPasswordE
 /** An administrator's single-use pause of the existing authenticator check (ADR-0117 recovery exemption).
  * It never removes MFA: a consuming sign-in or reset retires the old factor and must enrol a new one. */
 export type RecoveryExemption={purpose:'password-reset';expiresAt:number;reason:string};
-export function recoveryExemptionActive(e:RecoveryExemption|null|undefined,now=Date.now()):e is RecoveryExemption {
- return e?.purpose==='password-reset'&&Number.isFinite(e.expiresAt)&&e.expiresAt>now;
+export function recoveryExemptionActive(e:RecoveryExemption|null|undefined,now=Date.now()):boolean {
+ return !!e&&e.purpose==='password-reset'&&Number.isFinite(e.expiresAt)&&e.expiresAt>now;
 }
