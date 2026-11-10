@@ -371,15 +371,15 @@ export function pendingResignationCandidatesExistSql(tx:Tx,ctx:SessionContext,co
 /** pendingResignationTaskMetadata(ctx, companyIds) in one statement for the account task read (core/account-task-bundle.ts):
  * the owner's header query unchanged, kept where assertResignationDecisionAuthorityTx returns: assertCanDecide (canDecideSql,
  * no task scope, as the owner calls it), then an admin role. Both of its throws are refusals the owner skips, so every
- * header is decided exactly here. jsonb array of the owner's rows in its order. */
+ * header is decided exactly here; without an admin role every header is refused whatever assertCanDecide answers (its
+ * statements read rows and a definer function, none of which can fail). jsonb array of the owner's rows in its order. */
 export function pendingResignationTaskBundleSql(tx:Tx,ctx:SessionContext,companyIds?:string[]):SQL{
   const roles=ctx.roles??[],admin=roles.includes('super_admin')||roles.includes('hr_admin');
   return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',resignation_header.id,'employmentId',resignation_header.employment_id,
      'personId',resignation_header.person_id,'employee',resignation_header.employee,'createdAt',resignation_header.created_at)
      order by resignation_header.created_at desc,resignation_header.id) filter(where decided.allowed),'[]'::jsonb)
    from (${pendingResignationHeadersQuery(tx,ctx,companyIds).getSQL()}) as resignation_header(id,employment_id,person_id,employee,created_at)
-   cross join lateral (select case when not ${canDecideSql(ctx,sql`resignation_header.employment_id`)} then false
-     when ${admin?sql`false`:sql`true`} then false else true end as allowed) decided)`;
+   cross join lateral (select ${admin?sql`${canDecideSql(ctx,sql`resignation_header.employment_id`)}`:sql`false`} as allowed) decided)`;
 }
 type BundleResignationRow={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string};
 /** The resignation section's owner result. */

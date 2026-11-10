@@ -140,9 +140,10 @@ const currentAdministrativeManagerSql=(subject:SQL,person:string)=>sql`exists(se
  where decide_line.subordinate_employment_id=${subject} and decide_line.line_type='administrative'
   and decide_line.valid_from<=current_date and (decide_line.valid_to is null or decide_line.valid_to>current_date)
   and decide_line.superseded_at is null and decide_manager.person_id=${person}::uuid)`;
-/** assertCanDecide as a boolean: true where the guard returns, false where it throws one of its two refusals. */
-export function canDecideSql(ctx:SessionContext,subject:SQL,scope?:{module:string;taskType:string}):SQL{
- const {admin,person}=decisionRoles(ctx),self=decideSelfSql(ctx,subject);
+/** assertCanDecide as a boolean: true where the guard returns, false where it throws one of its two refusals. `self`: the
+ * subject's decideSelfSql, when the caller has already read it once for this subject. */
+export function canDecideSql(ctx:SessionContext,subject:SQL,scope?:{module:string;taskType:string},self:SQL=decideSelfSql(ctx,subject)):SQL{
+ const {admin,person}=decisionRoles(ctx);
  if(admin)return sql`(not ${self})`;
  if(!person)return sql`false`;
  return sql`(not ${self} and (${currentAdministrativeManagerSql(subject,person)}

@@ -1083,9 +1083,9 @@ export function pendingReviewCandidatesExistSql(tx:Tx,ctx:SessionContext,stage:'
 export function pendingReviewTaskBundleSql(tx:Tx,ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[]):SQL{
   const roles=ctx.roles??[],admin=roles.includes('super_admin')||roles.includes('hr_admin'),person=ctx.personId??null;
   const allowed=stage==='manager'
-    ?sql`case when ${admin?sql`true`:sql`false`} then true when review_header.manager_employment_id is not null and ${person!=null?sql`exists(select 1 from public.employment review_manager
-       where review_manager.id=review_header.manager_employment_id and review_manager.person_id=${person}::uuid)`:sql`false`} then true else false end`
-    :sql`case when not ${canDecideSql(ctx,sql`review_header.employment_id`)} then false when ${admin?sql`false`:sql`true`} then false else true end`;
+    ?admin?sql`true`:person!=null?sql`(review_header.manager_employment_id is not null and exists(select 1 from public.employment review_manager
+       where review_manager.id=review_header.manager_employment_id and review_manager.person_id=${person}::uuid))`:sql`false`
+    :admin?canDecideSql(ctx,sql`review_header.employment_id`):sql`false`;
   return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',review_header.id,'employmentId',review_header.employment_id,
      'personId',review_header.person_id,'employee',review_header.employee,'createdAt',review_header.created_at,'dueDate',review_header.due_date)
      order by review_header.created_at desc,review_header.id) filter(where decided.allowed),'[]'::jsonb)
