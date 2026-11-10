@@ -8,6 +8,9 @@ patchedDependencies:
   fontkit@1.9.0:
     hash: b208b0e233a985efb2decb13e5043f8c26955724f0df805849ef7b305773642a
     path: patches/fontkit@1.9.0.patch
+  postgres@3.4.9:
+    hash: f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd
+    path: patches/postgres@3.4.9.patch
 
 importers:
 
@@ -78,7 +81,7 @@ importers:
         version: 3.4.17
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(postgres@3.4.9)
+        version: 0.45.2(postgres@3.4.9(patch_hash=f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd))
       fontkit:
         specifier: ^1.9.0
         version: 1.9.0(patch_hash=b208b0e233a985efb2decb13e5043f8c26955724f0df805849ef7b305773642a)
@@ -129,7 +132,7 @@ importers:
         version: 4.0.0(asn1js@4.0.0)
       postgres:
         specifier: ^3.4.9
-        version: 3.4.9
+        version: 3.4.9(patch_hash=f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd)
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
@@ -7577,9 +7580,9 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.22.4
 
-  drizzle-orm@0.45.2(postgres@3.4.9):
+  drizzle-orm@0.45.2(postgres@3.4.9(patch_hash=f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd)):
     optionalDependencies:
-      postgres: 3.4.9
+      postgres: 3.4.9(patch_hash=f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd)
 
   dunder-proto@1.0.1:
     dependencies:
@@ -9407,7 +9410,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.2
 
-  postgres@3.4.9: {}
+  postgres@3.4.9(patch_hash=f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd): {}
 
   prelude-ls@1.2.1: {}
 

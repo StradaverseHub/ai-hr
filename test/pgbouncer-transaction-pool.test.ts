@@ -13,7 +13,8 @@ import {DatabaseAdmissionError} from '../db/admission';
 import {createDb, type SessionContext} from '../db/client';
 import {actorOf, appendEvent} from '../db/events';
 import {adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
-import {poolerTarget, type PoolerTarget} from './helpers/pgbouncer-target';
+import {isDatabaseCapacityFailure} from '../db/read-retry';
+import {poolerTarget, SHORT_WAIT_POOLER, type PoolerTarget} from './helpers/pgbouncer-target';
 
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return {promise, resolve}; };
 const appPool = (target: PoolerTarget, max: number, admissionWaitMs?: number) => {
@@ -34,6 +35,8 @@ async function appBackends(): Promise<number> {
 }
 
 const available = await (async () => { target = await poolerTarget(); return target !== null; })();
+let shortWait: PoolerTarget | null = null;
+const shortWaitAvailable = available && await (async () => { shortWait = await poolerTarget(SHORT_WAIT_POOLER); return shortWait !== null; })();
 
 describe.skipIf(!available)('web transactions through PgBouncer transaction pooling', () => {
   beforeAll(async () => {
@@ -46,6 +49,7 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
   afterAll(async () => {
     delete process.env.AUDIT_HASH_CHAIN_ENABLED;
     target?.stop();
+    shortWait?.stop();
     await closeAll();
   });
 
@@ -154,23 +158,32 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
     } finally { await pool.client.end({timeout: 5}); }
   });
 
-  it('still applies per-tenant admission on a pooled connection', async () => {
-    const pool = appPool(target!, 4, 250);
-    const ctx = adminCtx(a);
-    const held = [deferred(), deferred()], finish = deferred();
+  it('still applies fair per-tenant admission on a pooled connection', async () => {
+    const pool = appPool(target!, 4, 10_000);
+    const tenantA = adminCtx(a), tenantB = adminCtx(b);
+    const entered = [deferred(), deferred(), deferred()], release = [deferred(), deferred(), deferred()];
+    const order: string[] = [];
     try {
-      // A pool of four allows one tenant two connections and reserves one for sign-in.
-      const holders = held.map(gate => pool.withTenant(ctx, async () => { gate.resolve(); await finish.promise; }));
-      await Promise.all(held.map(gate => gate.promise));
-      await expect(pool.withTenant(ctx, async () => 'over-share')).rejects.toBeInstanceOf(DatabaseAdmissionError);
-      await expect(pool.withTenant(adminCtx(b), async tx => (await tx.execute(sql`select app.current_tenant_id() as tenant`))[0])).resolves.toEqual({tenant: b.tenantId});
-      finish.resolve();
-      await Promise.all(holders);
-    } finally { finish.resolve(); await pool.client.end({timeout: 5}); }
+      // A pool of four reserves one permit for sign-in. Alone, tenant A may use the other three.
+      const holders = release.map((gate, index) => pool.withTenant(tenantA, async () => { entered[index].resolve(); await gate.promise; }));
+      await Promise.all(entered.map(gate => gate.promise));
+      // A queues first and B second. Once B has work, A is above its fair share of two, so B goes first.
+      const laterA = pool.withTenant(tenantA, async () => { order.push('a'); });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const waitingB = pool.withTenant(tenantB, async tx => { order.push('b'); return (await tx.execute(sql`select app.current_tenant_id() as tenant`))[0]; });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(order).toEqual([]);
+      release[0].resolve();
+      await expect(waitingB).resolves.toEqual({tenant: b.tenantId});
+      release[1].resolve(); release[2].resolve();
+      await Promise.all([...holders, laterA]);
+      expect(order).toEqual(['b', 'a']);
+    } finally { release.forEach(gate => gate.resolve()); await pool.client.end({timeout: 5}); }
   });
 
   it('serves many more clients than server connections, all successfully', async () => {
-    const clients = 150, transactions = 3;
+    // GitHub runs 150. A developer machine reaching Docker through a port forward should use fewer.
+    const clients = Number(process.env.TEST_PGBOUNCER_MANY_CLIENTS ?? 150), transactions = 3;
     const before = await appBackends();
     let peak = before, sampling = true;
     const sampler = (async () => { while (sampling) { peak = Math.max(peak, await appBackends()); await new Promise(resolve => setTimeout(resolve, 50)); } })();
@@ -196,5 +209,43 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
     expect(completed).toBe(clients * transactions);
     expect(peak - before).toBeLessThanOrEqual(target!.serverConnections);
     console.log(`[pooler] ${clients} clients, peak ${peak - before} server connections, ${completed} transactions`);
+  });
+
+  /**
+   * postgres.js fetches array types on every new connection, in a promise nothing awaited. Behind a pooler
+   * that query can be the one that waits for a server connection; when PgBouncer refused it with
+   * query_wait_timeout the rejection was unhandled, which ends a plain Node process. patches/postgres@3.4.9.patch
+   * handles it: the waiting query fails with the pooler's error and the next connection fetches the types.
+   */
+  it.skipIf(!shortWaitAvailable)('fails a new connection\'s timed-out first query cleanly, with no unhandled rejection, and recovers', async () => {
+    const unhandled: unknown[] = [];
+    const listener = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', listener);
+    const holder = postgres(shortWait!.appUrl, {max: 1, onnotice: () => {}});
+    const fresh = postgres(shortWait!.appUrl, {max: 1, onnotice: () => {}});
+    try {
+      await holder`select 1`;
+      // The pooler has one server connection; hold it past the two-second query_wait_timeout.
+      const held = holder`select pg_sleep(4)`.then(rows => rows);
+      const database = new URL(process.env.TEST_DATABASE_URL!).pathname.slice(1);
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const [row] = await owner.client<{n: number}[]>`select count(*)::int as n from pg_stat_activity where datname = ${database} and state = 'active' and query like 'select pg_sleep%'`;
+        if (row.n > 0) break;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      // This client's connection has never run a query, so its first statement is postgres.js's type fetch.
+      const refused = await fresh`select 1 as ok`.then(() => null, (error: unknown) => error);
+      expect(refused).toMatchObject({code: '08P01', message: 'query_wait_timeout'});
+      expect(isDatabaseCapacityFailure(refused)).toBe(true);
+      await held;
+      await new Promise(resolve => setTimeout(resolve, 300));
+      expect(unhandled).toEqual([]);
+      // Capacity is back: the same client reconnects and parses arrays, so the type fetch ran again.
+      const [row] = await fresh<{words: string[]; numbers: number[]}[]>`select array['a','b']::text[] as words, array[1,2]::int4[] as numbers`;
+      expect(row).toEqual({words: ['a', 'b'], numbers: [1, 2]});
+    } finally {
+      process.off('unhandledRejection', listener);
+      await Promise.all([holder.end({timeout: 5}), fresh.end({timeout: 5})]);
+    }
   });
 });

@@ -3,3 +3,4 @@ ignoredBuiltDependencies:
   - unrs-resolver
 patchedDependencies:
   fontkit@1.9.0: patches/fontkit@1.9.0.patch
+  postgres@3.4.9: patches/postgres@3.4.9.patch

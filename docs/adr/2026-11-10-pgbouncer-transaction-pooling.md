@@ -16,7 +16,7 @@ PgBouncer runs on the application host on loopback, with TLS and certificate ver
 
 ## Compatibility audit
 
-Transaction pooling breaks anything that needs one connection to last beyond a transaction. Line numbers are at the base commit `512b168d7`.
+Transaction pooling breaks anything that needs one connection to last beyond a transaction. Line numbers are at the base commit `b6825946e`.
 
 | Feature | Where | Decision |
 | --- | --- | --- |
@@ -46,4 +46,6 @@ The connection budget changes meaning when pooling is on: the web fleet costs Po
 
 Fair admission holds per process and PgBouncer queues first come, first served, so a web fleet far larger than the server pool would queue where tenants are not told apart. The operating guidance is a fleet within about three times `max_db_connections`.
 
-postgres.js fetches array types when a connection opens, in a promise with no rejection handler. If that query times out in the pooler, the rejection is unhandled. Next.js logs it and continues; a plain Node process would exit, which is why workers stay direct. Removing the risk needs a fix in postgres.js or in how it is patched here.
+postgres.js fetches array types when a connection opens, in a promise with no rejection handler. Behind the pooler that query can be the one refused with `query_wait_timeout`, which made the rejection unhandled and would end a plain Node process. `patches/postgres@3.4.9.patch` handles it: the waiting query fails with the pooler's error and the connection closes, so the next one fetches the types again. `test/pgbouncer-transaction-pool.test.ts` reproduces the refusal against a real PgBouncer and fails without the patch.
+
+The connect-time type fetch also costs a catalogue query per new connection. Under a burst of new connections (load check, 1000 to 2000 new clients in 30 seconds on 7 server connections) those queries, with SCRAM logins, are what queue past `query_wait_timeout`. Long-lived application connections pay it rarely.

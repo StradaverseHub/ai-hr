@@ -12,11 +12,8 @@ import {pgErrorChain} from '../lib/db-error';
 import {databaseProcessRole} from './capacity';
 
 /**
- * Non-web processes ignore the pooled URL even when they inherit it from a shared environment file.
- *
- * postgres.js fetches array types when a connection opens, in a promise nothing handles. Through a pooler
- * that query can wait for a server connection and fail with query_wait_timeout. Next.js keeps serving
- * after an unhandled rejection; a plain Node worker exits.
+ * Non-web processes ignore the pooled URL even when they inherit it from a shared environment file: they
+ * hold session advisory locks and are counted in the direct background budget (deploy/pgbouncer/README.md).
  */
 export function applicationDatabaseUrl(env: Record<string, string | undefined>): {url: string; pooled: boolean} {
   const direct = env.DATABASE_URL;

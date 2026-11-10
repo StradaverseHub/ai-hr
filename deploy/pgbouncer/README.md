@@ -14,7 +14,9 @@ Decision and compatibility audit: [ADR 2026-11-10](../../docs/adr/2026-11-10-pgb
 | Platform control plane, `PLATFORM_DATABASE_URL` | Direct | A separate privileged role that must not share a route with the application |
 | Backups and operator sessions | Direct | `pg_dump` and interactive sessions need a real session |
 
-`AIHR_DB_PROCESS_ROLE=worker`, which every non-web unit already sets, forces the direct URL even if the process inherits `DATABASE_POOLED_URL`. A worker must never use the pooler: postgres.js fetches array types in a promise nothing handles, so a pooler timeout during connection setup ends a plain Node process. Next.js logs such a rejection and keeps serving.
+`AIHR_DB_PROCESS_ROLE=worker`, which every non-web unit already sets, forces the direct URL even if the process inherits `DATABASE_POOLED_URL`. Workers own session advisory locks and long single-tenant jobs, and they are already counted in the direct background budget.
+
+postgres.js fetches array types as the first query of each new connection. `patches/postgres@3.4.9.patch` makes a pooler refusal of that query an ordinary, handled capacity failure instead of an unhandled rejection.
 
 ## Where it runs
 
