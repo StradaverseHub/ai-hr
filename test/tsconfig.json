@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "tsBuildInfoFile": "../node_modules/.cache/aihr-typecheck/test.tsbuildinfo"
+  },
+  "include": ["**/*.ts", "**/*.tsx", "**/*.mts", "../next-env.d.ts", "../types/**/*.d.ts"],
+  "exclude": [],
+  "references": [{ "path": "../tsconfig.typecheck-declarations.json" }]
+}
