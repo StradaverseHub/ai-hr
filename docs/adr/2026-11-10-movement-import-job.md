@@ -103,19 +103,24 @@ is reviewed by `planImportRevert` (the same function and shape as the employee i
 and leave-dependency locks for 2.2-2.6 s. An import with Update or Delete items keeps the locked review (it rehearses
 their compensation). The reviewed hash is the one the locked revert re-checks.
 
-**Measured** (3,397 employments, the same 50-employee, 129-row file, local host at load 7-11, probes running):
+**Measured** (the same 50-employee, 129-row file; 3,400-3,500 employments; local host at load 7-10; probes running;
+two samples, the larger value shown):
 | | check (job) | confirm (job) | revert |
 |---|---|---|---|
-| request | 10 ms | enqueue only | review then revert |
-| wall | 31.6 s | 32.6 s | review 2.3 s, revert 9.8 s |
-| max tenant-lock hold | 619 ms (0 over 1 s) | 817 ms (0 over 1 s) | 9.6 s (one transaction) |
+| request | 10-12 ms (enqueue) | enqueue only | review 2.3 s (no writer lock), then revert |
+| wall | 30-32 s | 32-33 s | 9.8-10.3 s |
+| max tenant-lock hold | 0.71 s (0 over 1 s) | 0.91 s (0 over 1 s) | 10.2 s (one transaction) |
 | outcome | 50 of 50 valid | 120 saved, 9 stale (as before), 50 lean | 120 restored |
-| probe max: login / Access writer / clock-in | 373 / 566 / 406 ms | 646 / 676 / 731 ms | 7.4 / 9.6 / 8.8 s |
-| probe max: My Profile / Home / Personnel | 11 / 195 / 3,380 ms | 15 / 263 / 3,263 ms | 10 / 203 / 3,190 ms |
+| probe max: login / Access writer / clock-in | 486 / 567 / 406 ms | 776 / 777 / 731 ms | 8.0 / 10.4 / 10.4 s |
+| probe max: My Profile / Home / Personnel | 18 / 293 / 3,553 ms | 21 / 321 / 3,859 ms | 20 / 273 / 3,548 ms |
 | errors, Busy | 0, 0 | 0, 0 | 0, 0 |
-Personnel is already 3.0 s at baseline on this tenant (the list read itself, not a lock wait). The synchronous
-confirmation of the same file ran its 45 s request budget and failed 25 of 129 movements as `movement_import_timeout`,
-with holds up to 1.3 s.
+The review no longer holds a writer lock (second sample; the first still did). In the second sample the clock-in probe
+reused days earlier runs had punched and was refused as a fixture conflict ("Each clocking must be later than the
+previous one"); its clock-in figures are the first sample's. Personnel is already 3.0-3.3 s at baseline on this tenant (the list read itself, not a lock wait). With the host at
+load 11-17 (other workers) one of 50 confirm chunks held 1.27 s and the check 0.99 s; the revert took 22.8 s. The
+synchronous confirmation of the same file ran its 45 s request budget and failed 22-25 of 129 movements as
+`movement_import_timeout`, holding up to 1.37 s; under the load spike the synchronous check itself ran out of its
+45 s budget.
 
 Known limits:
 - An exit or company change alters the tenant's manager list, which every later employee's reviewed fingerprint
